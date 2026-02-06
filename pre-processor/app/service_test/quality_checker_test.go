@@ -13,8 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"pre-processor/models"
-	"pre-processor/repository"
+	"pre-processor/domain"
 	"pre-processor/service"
 	"pre-processor/test/mocks"
 )
@@ -28,32 +27,15 @@ func TestQualityCheckerService_CheckQuality(t *testing.T) {
 		expectedError  string
 		description    string
 	}{
-		"success_case_nil_repository": {
-			description: "Should handle nil repository gracefully for testing (safety check)",
-			batchSize:   10,
-			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
-				// No expectations - testing nil repository scenario from quality_checker.go:46-58
-			},
-			expectedResult: &service.QualityResult{
-				ProcessedCount: 0,
-				SuccessCount:   0,
-				ErrorCount:     0,
-				RemovedCount:   0,
-				RetainedCount:  0,
-				Errors:         []error{},
-				HasMore:        false,
-			},
-			expectedError: "",
-		},
 		"success_case_no_articles": {
 			description: "Should handle empty article list gracefully",
 			batchSize:   10,
 			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
-				cursor := &repository.Cursor{}
+				cursor := &domain.Cursor{}
 
 				mockSummaryRepo.EXPECT().
 					FindArticlesWithSummaries(gomock.Any(), cursor, 10).
-					Return([]*models.ArticleWithSummary{}, nil, nil). // Empty list, no next cursor
+					Return([]*domain.ArticleWithSummary{}, nil, nil). // Empty list, no next cursor
 					Times(1)
 			},
 			expectedResult: &service.QualityResult{
@@ -71,7 +53,7 @@ func TestQualityCheckerService_CheckQuality(t *testing.T) {
 			description: "Should fail when repository cannot find articles",
 			batchSize:   10,
 			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
-				cursor := &repository.Cursor{}
+				cursor := &domain.Cursor{}
 
 				mockSummaryRepo.EXPECT().
 					FindArticlesWithSummaries(gomock.Any(), cursor, 10).
@@ -85,11 +67,11 @@ func TestQualityCheckerService_CheckQuality(t *testing.T) {
 			description: "Should validate input parameters and return appropriate results",
 			batchSize:   0, // Test edge case with zero batch size
 			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
-				cursor := &repository.Cursor{}
+				cursor := &domain.Cursor{}
 
 				mockSummaryRepo.EXPECT().
 					FindArticlesWithSummaries(gomock.Any(), cursor, 0).
-					Return([]*models.ArticleWithSummary{}, nil, nil).
+					Return([]*domain.ArticleWithSummary{}, nil, nil).
 					Times(1)
 			},
 			expectedResult: &service.QualityResult{
@@ -118,17 +100,9 @@ func TestQualityCheckerService_CheckQuality(t *testing.T) {
 			// Setup test expectations
 			tc.setupMocks(mockSummaryRepo)
 
-			// Create service - use nil for repositories in nil test case
-			var summaryRepo repository.SummaryRepository = mockSummaryRepo
-			var apiRepo repository.ExternalAPIRepository = mockAPIRepo
-			if name == "success_case_nil_repository" {
-				summaryRepo = nil
-				apiRepo = nil
-			}
-
 			serviceInstance := service.NewQualityCheckerService(
-				summaryRepo,
-				apiRepo,
+				mockSummaryRepo,
+				mockAPIRepo,
 				nil, // dbPool not needed for these tests
 				logger,
 			)
@@ -159,7 +133,7 @@ func TestQualityCheckerService_CheckQuality(t *testing.T) {
 
 func TestQualityCheckerService_ProcessLowQualityArticles(t *testing.T) {
 	// Test data setup
-	lowQualityArticles := []models.ArticleWithSummary{
+	lowQualityArticles := []domain.ArticleWithSummary{
 		{
 			ArticleID: "article1",
 			SummaryID: "summary1",
@@ -172,7 +146,7 @@ func TestQualityCheckerService_ProcessLowQualityArticles(t *testing.T) {
 
 	tests := map[string]struct {
 		setupMocks    func(*mocks.MockSummaryRepository)
-		articles      []models.ArticleWithSummary
+		articles      []domain.ArticleWithSummary
 		expectedError string
 		description   string
 	}{
@@ -195,7 +169,7 @@ func TestQualityCheckerService_ProcessLowQualityArticles(t *testing.T) {
 		},
 		"success_case_empty_list": {
 			description: "Should handle empty article list gracefully",
-			articles:    []models.ArticleWithSummary{},
+			articles:    []domain.ArticleWithSummary{},
 			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
 				// No expectations for empty list
 			},
@@ -212,14 +186,6 @@ func TestQualityCheckerService_ProcessLowQualityArticles(t *testing.T) {
 			},
 			expectedError: "delete operation failed",
 		},
-		"success_case_nil_repository": {
-			description: "Should handle nil repository gracefully for testing",
-			articles:    lowQualityArticles,
-			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
-				// No expectations - testing nil repository scenario
-			},
-			expectedError: "",
-		},
 	}
 
 	for name, tc := range tests {
@@ -235,17 +201,9 @@ func TestQualityCheckerService_ProcessLowQualityArticles(t *testing.T) {
 			// Setup test expectations
 			tc.setupMocks(mockSummaryRepo)
 
-			// Create service - use nil for repositories in nil test case
-			var summaryRepo repository.SummaryRepository = mockSummaryRepo
-			var apiRepo repository.ExternalAPIRepository = mockAPIRepo
-			if name == "success_case_nil_repository" {
-				summaryRepo = nil
-				apiRepo = nil
-			}
-
 			serviceInstance := service.NewQualityCheckerService(
-				summaryRepo,
-				apiRepo,
+				mockSummaryRepo,
+				mockAPIRepo,
 				nil, // dbPool not needed for these tests
 				logger,
 			)
@@ -363,10 +321,10 @@ func TestQualityCheckerService_EdgeCases(t *testing.T) {
 		logger := slog.Default()
 
 		// Setup expectation for large batch
-		cursor := &repository.Cursor{}
+		cursor := &domain.Cursor{}
 		mockSummaryRepo.EXPECT().
 			FindArticlesWithSummaries(gomock.Any(), cursor, 1000).
-			Return([]*models.ArticleWithSummary{}, nil, nil).
+			Return([]*domain.ArticleWithSummary{}, nil, nil).
 			Times(1)
 
 		serviceInstance := service.NewQualityCheckerService(
@@ -390,10 +348,10 @@ func TestQualityCheckerService_EdgeCases(t *testing.T) {
 		logger := slog.Default()
 
 		// Setup expectation for zero batch
-		cursor := &repository.Cursor{}
+		cursor := &domain.Cursor{}
 		mockSummaryRepo.EXPECT().
 			FindArticlesWithSummaries(gomock.Any(), cursor, 0).
-			Return([]*models.ArticleWithSummary{}, nil, nil).
+			Return([]*domain.ArticleWithSummary{}, nil, nil).
 			Times(1)
 
 		serviceInstance := service.NewQualityCheckerService(

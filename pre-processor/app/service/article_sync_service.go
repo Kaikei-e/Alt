@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 	"pre-processor/repository"
 	"pre-processor/utils"
 )
@@ -66,7 +66,7 @@ func (s *articleSyncService) SyncArticles(ctx context.Context) error {
 
 	s.logger.InfoContext(ctx, "processing articles for sync", "count", len(articles))
 
-	var validArticles []*models.Article
+	var validArticles []*domain.Article
 	for _, article := range articles {
 		// 1. Sanitize content (Zero-Trust)
 		sanitizedContent := s.sanitizer.SanitizeHTMLAndTrim(article.Content)

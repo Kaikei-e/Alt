@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"pre-processor/domain"
-	"pre-processor/models"
 	"pre-processor/repository"
 
 	"github.com/google/uuid"
@@ -18,20 +17,20 @@ import (
 // stubJobRepo returns a fixed set of pending jobs.
 type stubJobRepo struct {
 	repository.SummarizeJobRepository
-	jobs        []*models.SummarizeJob
+	jobs        []*domain.SummarizeJob
 	cancelOnGet bool // cancel context after returning jobs
 	cancelFunc  context.CancelFunc
 	updateCalls int
 }
 
-func (m *stubJobRepo) GetPendingJobs(_ context.Context, _ int) ([]*models.SummarizeJob, error) {
+func (m *stubJobRepo) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
 	if m.cancelOnGet && m.cancelFunc != nil {
 		m.cancelFunc()
 	}
 	return m.jobs, nil
 }
 
-func (m *stubJobRepo) UpdateJobStatus(_ context.Context, _ string, _ models.SummarizeJobStatus, _ string, _ string) error {
+func (m *stubJobRepo) UpdateJobStatus(_ context.Context, _ string, _ domain.SummarizeJobStatus, _ string, _ string) error {
 	m.updateCalls++
 	return nil
 }
@@ -42,9 +41,9 @@ type stubArticleRepoForWorker struct {
 	findCalls int
 }
 
-func (m *stubArticleRepoForWorker) FindByID(_ context.Context, _ string) (*models.Article, error) {
+func (m *stubArticleRepoForWorker) FindByID(_ context.Context, _ string) (*domain.Article, error) {
 	m.findCalls++
-	return &models.Article{
+	return &domain.Article{
 		ID:      "article-1",
 		UserID:  "user-1",
 		Title:   "Test Article",
@@ -58,9 +57,9 @@ type stubAPIRepoForWorker struct {
 	summarizeCalls int
 }
 
-func (m *stubAPIRepoForWorker) SummarizeArticle(_ context.Context, _ *models.Article, _ string) (*models.SummarizedContent, error) {
+func (m *stubAPIRepoForWorker) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
 	m.summarizeCalls++
-	return &models.SummarizedContent{SummaryJapanese: "テスト要約"}, nil
+	return &domain.SummarizedContent{SummaryJapanese: "テスト要約"}, nil
 }
 
 // stubSummaryRepoForWorker tracks calls to Create.
@@ -69,7 +68,7 @@ type stubSummaryRepoForWorker struct {
 	createCalls int
 }
 
-func (m *stubSummaryRepoForWorker) Create(_ context.Context, _ *models.ArticleSummary) error {
+func (m *stubSummaryRepoForWorker) Create(_ context.Context, _ *domain.ArticleSummary) error {
 	m.createCalls++
 	return nil
 }
@@ -80,7 +79,7 @@ type stubAPIRepoOverloaded struct {
 	summarizeCalls int
 }
 
-func (m *stubAPIRepoOverloaded) SummarizeArticle(_ context.Context, _ *models.Article, _ string) (*models.SummarizedContent, error) {
+func (m *stubAPIRepoOverloaded) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
 	m.summarizeCalls++
 	return nil, domain.ErrServiceOverloaded
 }
@@ -89,7 +88,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ServiceOverloaded(t *testing.T) {
 	t.Run("should return ErrServiceOverloaded and skip remaining jobs on 429", func(t *testing.T) {
 		ctx := context.Background()
 
-		jobs := []*models.SummarizeJob{
+		jobs := []*domain.SummarizeJob{
 			{JobID: uuid.New(), ArticleID: "article-1", MaxRetries: 3},
 			{JobID: uuid.New(), ArticleID: "article-2", MaxRetries: 3},
 			{JobID: uuid.New(), ArticleID: "article-3", MaxRetries: 3},
@@ -128,7 +127,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 	t.Run("should skip remaining jobs when context is canceled after fetching", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
-		jobs := []*models.SummarizeJob{
+		jobs := []*domain.SummarizeJob{
 			{JobID: uuid.New(), ArticleID: "article-1", MaxRetries: 3},
 			{JobID: uuid.New(), ArticleID: "article-2", MaxRetries: 3},
 			{JobID: uuid.New(), ArticleID: "article-3", MaxRetries: 3},
@@ -166,7 +165,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // cancel before processing
 
-		jobs := []*models.SummarizeJob{
+		jobs := []*domain.SummarizeJob{
 			{JobID: uuid.New(), ArticleID: "article-1", MaxRetries: 3},
 		}
 

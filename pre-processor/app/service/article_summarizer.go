@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"pre-processor/domain"
-	"pre-processor/models"
 	"pre-processor/repository"
 )
 
@@ -17,7 +16,7 @@ type articleSummarizerService struct {
 	summaryRepo repository.SummaryRepository
 	apiRepo     repository.ExternalAPIRepository
 	logger      *slog.Logger
-	cursor      *repository.Cursor
+	cursor      *domain.Cursor
 }
 
 // NewArticleSummarizerService creates a new article summarizer service.
@@ -32,27 +31,13 @@ func NewArticleSummarizerService(
 		summaryRepo: summaryRepo,
 		apiRepo:     apiRepo,
 		logger:      logger,
-		cursor:      &repository.Cursor{},
+		cursor:      &domain.Cursor{},
 	}
 }
 
 // SummarizeArticles processes a batch of articles for summarization.
 func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchSize int) (*SummarizationResult, error) {
 	s.logger.InfoContext(ctx, "starting article summarization", "batch_size", batchSize)
-
-	// REFACTOR PHASE: Proper implementation
-	// Safety check for testing with nil repositories
-	if s.articleRepo == nil {
-		s.logger.WarnContext(ctx, "articleRepo is nil, returning empty result for testing")
-
-		return &SummarizationResult{
-			ProcessedCount: 0,
-			SuccessCount:   0,
-			ErrorCount:     0,
-			Errors:         []error{},
-			HasMore:        false,
-		}, nil
-	}
 
 	// Get articles that need summarization
 	articles, newCursor, err := s.articleRepo.FindForSummarization(ctx, s.cursor, batchSize)
@@ -82,72 +67,29 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 		// Generate summary using external API with LOW priority (batch operation)
 		summarizedContent, err := s.apiRepo.SummarizeArticle(ctx, article, "low")
 		if err != nil {
-			// Handle content too short: Save a placeholder summary to mark as processed
-			if errors.Is(err, domain.ErrContentTooShort) {
-				s.logger.InfoContext(ctx, "article content too short, saving placeholder summary",
+			// Handle content length errors: save a placeholder summary to mark as processed
+			if msg, ok := placeholderMessage(err); ok {
+				s.logger.InfoContext(ctx, "saving placeholder summary",
 					"article_id", article.ID,
-					"content_length", len(article.Content))
-
-				// Create placeholder summary
-				placeholderSummary := &models.ArticleSummary{
-					ArticleID:       article.ID,
-					UserID:          article.UserID,
-					ArticleTitle:    article.Title,
-					SummaryJapanese: "本文が短すぎるため要約できませんでした。",
-					CreatedAt:       time.Now(),
-				}
-
-				// Save the placeholder summary
-				if createErr := s.summaryRepo.Create(ctx, placeholderSummary); createErr != nil {
-					s.logger.ErrorContext(ctx, "failed to save placeholder summary", "article_id", article.ID, "error", createErr)
+					"content_length", len(article.Content),
+					"reason", err)
+				if createErr := s.savePlaceholder(ctx, article, msg); createErr != nil {
 					result.ErrorCount++
 					result.Errors = append(result.Errors, createErr)
 				} else {
-					result.SuccessCount++ // Count as success since we processed it
+					result.SuccessCount++
 				}
-
-				// Continue to next article
-				continue
-			}
-
-			// Handle content too long: Save a placeholder summary to mark as processed
-			if errors.Is(err, domain.ErrContentTooLong) {
-				s.logger.InfoContext(ctx, "article content too long, saving placeholder summary",
-					"article_id", article.ID,
-					"content_length", len(article.Content))
-
-				// Create placeholder summary
-				placeholderSummary := &models.ArticleSummary{
-					ArticleID:       article.ID,
-					UserID:          article.UserID,
-					ArticleTitle:    article.Title,
-					SummaryJapanese: "本文が長すぎるため要約できませんでした。",
-					CreatedAt:       time.Now(),
-				}
-
-				// Save the placeholder summary
-				if createErr := s.summaryRepo.Create(ctx, placeholderSummary); createErr != nil {
-					s.logger.ErrorContext(ctx, "failed to save placeholder summary", "article_id", article.ID, "error", createErr)
-					result.ErrorCount++
-					result.Errors = append(result.Errors, createErr)
-				} else {
-					result.SuccessCount++ // Count as success since we processed it
-				}
-
-				// Continue to next article
 				continue
 			}
 
 			s.logger.ErrorContext(ctx, "failed to generate summary", "article_id", article.ID, "error", err)
-
 			result.ErrorCount++
 			result.Errors = append(result.Errors, err)
-
 			continue
 		}
 
 		// Create summary model
-		summary := &models.ArticleSummary{
+		summary := &domain.ArticleSummary{
 			ArticleID:       article.ID,
 			UserID:          article.UserID,
 			ArticleTitle:    article.Title,
@@ -188,13 +130,6 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 func (s *articleSummarizerService) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
 	s.logger.InfoContext(ctx, "checking for unsummarized articles")
 
-	// REFACTOR PHASE: Proper implementation
-	// Safety check for testing with nil repositories
-	if s.articleRepo == nil {
-		s.logger.WarnContext(ctx, "articleRepo is nil, returning false for testing")
-		return false, nil
-	}
-
 	hasArticles, err := s.articleRepo.HasUnsummarizedArticles(ctx)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "failed to check for unsummarized articles", "error", err)
@@ -209,8 +144,40 @@ func (s *articleSummarizerService) HasUnsummarizedArticles(ctx context.Context) 
 // ResetPagination resets the pagination cursor.
 func (s *articleSummarizerService) ResetPagination() error {
 	s.logger.Info("resetting pagination cursor")
-	s.cursor = &repository.Cursor{}
+	s.cursor = &domain.Cursor{}
 	s.logger.Info("pagination cursor reset")
 
+	return nil
+}
+
+// placeholderMessages maps content-length errors to Japanese placeholder messages.
+var placeholderMessages = map[error]string{
+	domain.ErrContentTooShort: "本文が短すぎるため要約できませんでした。",
+	domain.ErrContentTooLong:  "本文が長すぎるため要約できませんでした。",
+}
+
+// placeholderMessage returns the placeholder message for a content-length error, or empty if not applicable.
+func placeholderMessage(err error) (string, bool) {
+	for target, msg := range placeholderMessages {
+		if errors.Is(err, target) {
+			return msg, true
+		}
+	}
+	return "", false
+}
+
+// savePlaceholder creates and persists a placeholder summary for an article.
+func (s *articleSummarizerService) savePlaceholder(ctx context.Context, article *domain.Article, msg string) error {
+	summary := &domain.ArticleSummary{
+		ArticleID:       article.ID,
+		UserID:          article.UserID,
+		ArticleTitle:    article.Title,
+		SummaryJapanese: msg,
+		CreatedAt:       time.Now(),
+	}
+	if err := s.summaryRepo.Create(ctx, summary); err != nil {
+		s.logger.ErrorContext(ctx, "failed to save placeholder summary", "article_id", article.ID, "error", err)
+		return err
+	}
 	return nil
 }

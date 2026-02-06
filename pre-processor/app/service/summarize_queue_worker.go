@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"pre-processor/domain"
-	"pre-processor/models"
 	"pre-processor/repository"
 	"pre-processor/utils/html_parser"
 )
@@ -86,9 +85,9 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 }
 
 // processJob processes a single summarization job
-func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.SummarizeJob) error {
+func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.SummarizeJob) error {
 	// Update status to running
-	if err := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), models.SummarizeJobStatusRunning, "", ""); err != nil {
+	if err := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusRunning, "", ""); err != nil {
 		w.logger.ErrorContext(ctx, "failed to update job status to running", "error", err, "job_id", job.JobID)
 		return fmt.Errorf("failed to update job status: %w", err)
 	}
@@ -100,7 +99,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to fetch article: %v", err)
 		w.logger.ErrorContext(ctx, "failed to fetch article", "error", err, "article_id", job.ArticleID)
-		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), models.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {
+		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {
 			w.logger.ErrorContext(ctx, "failed to update job status to failed", "error", updateErr, "job_id", job.JobID)
 		}
 		return fmt.Errorf("failed to fetch article: %w", err)
@@ -109,7 +108,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 	if article == nil {
 		errorMsg := "Article not found in database"
 		w.logger.WarnContext(ctx, "article not found", "article_id", job.ArticleID)
-		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), models.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {
+		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {
 			w.logger.ErrorContext(ctx, "failed to update job status to failed", "error", updateErr, "job_id", job.JobID)
 		}
 		return fmt.Errorf("article not found: %s", job.ArticleID)
@@ -118,7 +117,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 	if article.Content == "" {
 		errorMsg := "Article content is empty"
 		w.logger.WarnContext(ctx, "article content is empty", "article_id", job.ArticleID)
-		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), models.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {
+		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {
 			w.logger.ErrorContext(ctx, "failed to update job status to failed", "error", updateErr, "job_id", job.JobID)
 		}
 		return fmt.Errorf("article content is empty: %s", job.ArticleID)
@@ -138,7 +137,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 	}
 
 	// Create article model for summarization
-	articleModel := &models.Article{
+	articleModel := &domain.Article{
 		ID:      job.ArticleID,
 		Content: content,
 	}
@@ -176,7 +175,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 				"max_retries", job.MaxRetries)
 		}
 
-		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), models.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {
+		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {
 			w.logger.ErrorContext(ctx, "failed to update job status to failed", "error", updateErr, "job_id", job.JobID)
 		}
 		return fmt.Errorf("failed to summarize article: %w", err)
@@ -193,7 +192,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 		articleTitle = "Untitled"
 	}
 
-	articleSummary := &models.ArticleSummary{
+	articleSummary := &domain.ArticleSummary{
 		ArticleID:       job.ArticleID,
 		UserID:          article.UserID,
 		ArticleTitle:    articleTitle,
@@ -214,7 +213,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *models.Summa
 
 	// Update job status to completed
 	updateStatusStartTime := time.Now()
-	if err := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), models.SummarizeJobStatusCompleted, summarized.SummaryJapanese, ""); err != nil {
+	if err := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, summarized.SummaryJapanese, ""); err != nil {
 		w.logger.ErrorContext(ctx, "failed to update job status to completed", "error", err, "job_id", job.JobID)
 		return fmt.Errorf("failed to update job status: %w", err)
 	}

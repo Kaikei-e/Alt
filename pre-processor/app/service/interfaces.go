@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 )
 
 //go:generate mockgen -source=interfaces.go -destination=../test/mocks/service_mocks.go -package=mocks
@@ -25,13 +25,13 @@ type ArticleSummarizerService interface {
 // QualityCheckerService handles article quality checking business logic.
 type QualityCheckerService interface {
 	CheckQuality(ctx context.Context, batchSize int) (*QualityResult, error)
-	ProcessLowQualityArticles(ctx context.Context, articles []models.ArticleWithSummary) error
+	ProcessLowQualityArticles(ctx context.Context, articles []domain.ArticleWithSummary) error
 	ResetPagination() error
 }
 
 // ArticleFetcherService handles external article fetching.
 type ArticleFetcherService interface {
-	FetchArticle(ctx context.Context, url string) (*models.Article, error)
+	FetchArticle(ctx context.Context, url string) (*domain.Article, error)
 	ValidateURL(url string) error
 }
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
+	"pre-processor/domain"
 	"pre-processor/driver"
-	"pre-processor/models"
 	qualitychecker "pre-processor/quality-checker"
 	"pre-processor/repository"
 
@@ -18,7 +18,7 @@ type qualityCheckerService struct {
 	apiRepo     repository.ExternalAPIRepository
 	dbPool      *pgxpool.Pool
 	logger      *slog.Logger
-	cursor      *repository.Cursor
+	cursor      *domain.Cursor
 }
 
 // NewQualityCheckerService creates a new quality checker service.
@@ -33,29 +33,13 @@ func NewQualityCheckerService(
 		apiRepo:     apiRepo,
 		dbPool:      dbPool,
 		logger:      logger,
-		cursor:      &repository.Cursor{},
+		cursor:      &domain.Cursor{},
 	}
 }
 
 // CheckQuality processes a batch of articles for quality checking.
 func (s *qualityCheckerService) CheckQuality(ctx context.Context, batchSize int) (*QualityResult, error) {
 	s.logger.InfoContext(ctx, "starting quality check", "batch_size", batchSize)
-
-	// REFACTOR PHASE: Proper implementation
-	// Safety check for testing with nil repositories
-	if s.summaryRepo == nil {
-		s.logger.WarnContext(ctx, "summaryRepo is nil, returning empty result for testing")
-
-		return &QualityResult{
-			ProcessedCount: 0,
-			SuccessCount:   0,
-			ErrorCount:     0,
-			RemovedCount:   0,
-			RetainedCount:  0,
-			Errors:         []error{},
-			HasMore:        false,
-		}, nil
-	}
 
 	// Get articles with summaries that need quality checking
 	articlesWithSummaries, newCursor, err := s.summaryRepo.FindArticlesWithSummaries(ctx, s.cursor, batchSize)
@@ -78,7 +62,7 @@ func (s *qualityCheckerService) CheckQuality(ctx context.Context, batchSize int)
 	for _, articleWithSummary := range articlesWithSummaries {
 		s.logger.InfoContext(ctx, "processing article for quality check", "article_id", articleWithSummary.ArticleID)
 
-		// Convert models.ArticleWithSummary to driver.ArticleWithSummary for quality checker
+		// Convert domain.ArticleWithSummary to driver.ArticleWithSummary for quality checker
 		driverArticle := s.convertToDriverArticle(articleWithSummary)
 
 		// Use the actual LLM-based quality scoring from quality_judger.go
@@ -133,8 +117,8 @@ func (s *qualityCheckerService) CheckQuality(ctx context.Context, batchSize int)
 	return result, nil
 }
 
-// convertToDriverArticle converts models.ArticleWithSummary to driver.ArticleWithSummary.
-func (s *qualityCheckerService) convertToDriverArticle(article *models.ArticleWithSummary) *driver.ArticleWithSummary {
+// convertToDriverArticle converts domain.ArticleWithSummary to driver.ArticleWithSummary.
+func (s *qualityCheckerService) convertToDriverArticle(article *domain.ArticleWithSummary) *driver.ArticleWithSummary {
 	return &driver.ArticleWithSummary{
 		ArticleID:       article.ArticleID,
 		Content:         article.ArticleContent,
@@ -143,15 +127,8 @@ func (s *qualityCheckerService) convertToDriverArticle(article *models.ArticleWi
 }
 
 // ProcessLowQualityArticles processes articles that have been marked as low quality.
-func (s *qualityCheckerService) ProcessLowQualityArticles(ctx context.Context, articles []models.ArticleWithSummary) error {
+func (s *qualityCheckerService) ProcessLowQualityArticles(ctx context.Context, articles []domain.ArticleWithSummary) error {
 	s.logger.InfoContext(ctx, "processing low quality articles", "count", len(articles))
-
-	// REFACTOR PHASE: Proper implementation
-	// Safety check for testing with nil repositories
-	if s.summaryRepo == nil {
-		s.logger.WarnContext(ctx, "summaryRepo is nil, skipping low quality article processing for testing")
-		return nil
-	}
 
 	// Remove summaries for low quality articles
 	for _, article := range articles {
@@ -177,7 +154,7 @@ func (s *qualityCheckerService) ProcessLowQualityArticles(ctx context.Context, a
 // ResetPagination resets the pagination cursor.
 func (s *qualityCheckerService) ResetPagination() error {
 	s.logger.Info("resetting pagination cursor")
-	s.cursor = &repository.Cursor{}
+	s.cursor = &domain.Cursor{}
 	s.logger.Info("pagination cursor reset")
 
 	return nil

@@ -11,7 +11,6 @@ package mocks
 
 import (
 	context "context"
-	handler "pre-processor/handler"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -53,20 +52,6 @@ func (m *MockJobHandler) StartArticleSyncJob(ctx context.Context) error {
 func (mr *MockJobHandlerMockRecorder) StartArticleSyncJob(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartArticleSyncJob", reflect.TypeOf((*MockJobHandler)(nil).StartArticleSyncJob), ctx)
-}
-
-// StartFeedProcessingJob mocks base method.
-func (m *MockJobHandler) StartFeedProcessingJob(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StartFeedProcessingJob", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// StartFeedProcessingJob indicates an expected call of StartFeedProcessingJob.
-func (mr *MockJobHandlerMockRecorder) StartFeedProcessingJob(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartFeedProcessingJob", reflect.TypeOf((*MockJobHandler)(nil).StartFeedProcessingJob), ctx)
 }
 
 // StartQualityCheckJob mocks base method.
@@ -235,85 +220,4 @@ func (m *MockHealthHandler) GetHealthMetrics(ctx context.Context) (map[string]an
 func (mr *MockHealthHandlerMockRecorder) GetHealthMetrics(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHealthMetrics", reflect.TypeOf((*MockHealthHandler)(nil).GetHealthMetrics), ctx)
-}
-
-// MockJobScheduler is a mock of JobScheduler interface.
-type MockJobScheduler struct {
-	ctrl     *gomock.Controller
-	recorder *MockJobSchedulerMockRecorder
-	isgomock struct{}
-}
-
-// MockJobSchedulerMockRecorder is the mock recorder for MockJobScheduler.
-type MockJobSchedulerMockRecorder struct {
-	mock *MockJobScheduler
-}
-
-// NewMockJobScheduler creates a new mock instance.
-func NewMockJobScheduler(ctrl *gomock.Controller) *MockJobScheduler {
-	mock := &MockJobScheduler{ctrl: ctrl}
-	mock.recorder = &MockJobSchedulerMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockJobScheduler) EXPECT() *MockJobSchedulerMockRecorder {
-	return m.recorder
-}
-
-// GetJobStatus mocks base method.
-func (m *MockJobScheduler) GetJobStatus(jobName string) (handler.JobStatus, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetJobStatus", jobName)
-	ret0, _ := ret[0].(handler.JobStatus)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetJobStatus indicates an expected call of GetJobStatus.
-func (mr *MockJobSchedulerMockRecorder) GetJobStatus(jobName any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetJobStatus", reflect.TypeOf((*MockJobScheduler)(nil).GetJobStatus), jobName)
-}
-
-// Schedule mocks base method.
-func (m *MockJobScheduler) Schedule(ctx context.Context, jobName, interval string, jobFunc func() error) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Schedule", ctx, jobName, interval, jobFunc)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Schedule indicates an expected call of Schedule.
-func (mr *MockJobSchedulerMockRecorder) Schedule(ctx, jobName, interval, jobFunc any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Schedule", reflect.TypeOf((*MockJobScheduler)(nil).Schedule), ctx, jobName, interval, jobFunc)
-}
-
-// Stop mocks base method.
-func (m *MockJobScheduler) Stop(jobName string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Stop", jobName)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Stop indicates an expected call of Stop.
-func (mr *MockJobSchedulerMockRecorder) Stop(jobName any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockJobScheduler)(nil).Stop), jobName)
-}
-
-// StopAll mocks base method.
-func (m *MockJobScheduler) StopAll() error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StopAll")
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// StopAll indicates an expected call of StopAll.
-func (mr *MockJobSchedulerMockRecorder) StopAll() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StopAll", reflect.TypeOf((*MockJobScheduler)(nil).StopAll))
 }

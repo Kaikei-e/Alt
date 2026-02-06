@@ -13,8 +13,7 @@ import (
 	context "context"
 	io "io"
 	url "net/url"
-	models "pre-processor/models"
-	repository "pre-processor/repository"
+	domain "pre-processor/domain"
 	reflect "reflect"
 	time "time"
 
@@ -61,7 +60,7 @@ func (mr *MockArticleRepositoryMockRecorder) CheckExists(ctx, urls any) *gomock.
 }
 
 // Create mocks base method.
-func (m *MockArticleRepository) Create(ctx context.Context, article *models.Article) error {
+func (m *MockArticleRepository) Create(ctx context.Context, article *domain.Article) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Create", ctx, article)
 	ret0, _ := ret[0].(error)
@@ -75,10 +74,10 @@ func (mr *MockArticleRepositoryMockRecorder) Create(ctx, article any) *gomock.Ca
 }
 
 // FetchInoreaderArticles mocks base method.
-func (m *MockArticleRepository) FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*models.Article, error) {
+func (m *MockArticleRepository) FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*domain.Article, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FetchInoreaderArticles", ctx, since)
-	ret0, _ := ret[0].([]*models.Article)
+	ret0, _ := ret[0].([]*domain.Article)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -90,10 +89,10 @@ func (mr *MockArticleRepositoryMockRecorder) FetchInoreaderArticles(ctx, since a
 }
 
 // FindByID mocks base method.
-func (m *MockArticleRepository) FindByID(ctx context.Context, articleID string) (*models.Article, error) {
+func (m *MockArticleRepository) FindByID(ctx context.Context, articleID string) (*domain.Article, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindByID", ctx, articleID)
-	ret0, _ := ret[0].(*models.Article)
+	ret0, _ := ret[0].(*domain.Article)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -105,11 +104,11 @@ func (mr *MockArticleRepositoryMockRecorder) FindByID(ctx, articleID any) *gomoc
 }
 
 // FindForSummarization mocks base method.
-func (m *MockArticleRepository) FindForSummarization(ctx context.Context, cursor *repository.Cursor, limit int) ([]*models.Article, *repository.Cursor, error) {
+func (m *MockArticleRepository) FindForSummarization(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindForSummarization", ctx, cursor, limit)
-	ret0, _ := ret[0].([]*models.Article)
-	ret1, _ := ret[1].(*repository.Cursor)
+	ret0, _ := ret[0].([]*domain.Article)
+	ret1, _ := ret[1].(*domain.Cursor)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -136,7 +135,7 @@ func (mr *MockArticleRepositoryMockRecorder) HasUnsummarizedArticles(ctx any) *g
 }
 
 // UpsertArticles mocks base method.
-func (m *MockArticleRepository) UpsertArticles(ctx context.Context, articles []*models.Article) error {
+func (m *MockArticleRepository) UpsertArticles(ctx context.Context, articles []*domain.Article) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpsertArticles", ctx, articles)
 	ret0, _ := ret[0].(error)
@@ -174,10 +173,10 @@ func (m *MockFeedRepository) EXPECT() *MockFeedRepositoryMockRecorder {
 }
 
 // GetProcessingStats mocks base method.
-func (m *MockFeedRepository) GetProcessingStats(ctx context.Context) (*repository.ProcessingStats, error) {
+func (m *MockFeedRepository) GetProcessingStats(ctx context.Context) (*domain.ProcessingStatistics, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetProcessingStats", ctx)
-	ret0, _ := ret[0].(*repository.ProcessingStats)
+	ret0, _ := ret[0].(*domain.ProcessingStatistics)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -189,11 +188,11 @@ func (mr *MockFeedRepositoryMockRecorder) GetProcessingStats(ctx any) *gomock.Ca
 }
 
 // GetUnprocessedFeeds mocks base method.
-func (m *MockFeedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *repository.Cursor, limit int) ([]*url.URL, *repository.Cursor, error) {
+func (m *MockFeedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain.Cursor, limit int) ([]*url.URL, *domain.Cursor, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetUnprocessedFeeds", ctx, cursor, limit)
 	ret0, _ := ret[0].([]*url.URL)
-	ret1, _ := ret[1].(*repository.Cursor)
+	ret1, _ := ret[1].(*domain.Cursor)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -229,7 +228,7 @@ func (m *MockSummaryRepository) EXPECT() *MockSummaryRepositoryMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockSummaryRepository) Create(ctx context.Context, summary *models.ArticleSummary) error {
+func (m *MockSummaryRepository) Create(ctx context.Context, summary *domain.ArticleSummary) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Create", ctx, summary)
 	ret0, _ := ret[0].(error)
@@ -272,11 +271,11 @@ func (mr *MockSummaryRepositoryMockRecorder) Exists(ctx, summaryID any) *gomock.
 }
 
 // FindArticlesWithSummaries mocks base method.
-func (m *MockSummaryRepository) FindArticlesWithSummaries(ctx context.Context, cursor *repository.Cursor, limit int) ([]*models.ArticleWithSummary, *repository.Cursor, error) {
+func (m *MockSummaryRepository) FindArticlesWithSummaries(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.ArticleWithSummary, *domain.Cursor, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindArticlesWithSummaries", ctx, cursor, limit)
-	ret0, _ := ret[0].([]*models.ArticleWithSummary)
-	ret1, _ := ret[1].(*repository.Cursor)
+	ret0, _ := ret[0].([]*domain.ArticleWithSummary)
+	ret1, _ := ret[1].(*domain.Cursor)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -341,7 +340,7 @@ func (mr *MockExternalAPIRepositoryMockRecorder) GetSystemUserID(ctx any) *gomoc
 }
 
 // StreamSummarizeArticle mocks base method.
-func (m *MockExternalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *models.Article, priority string) (io.ReadCloser, error) {
+func (m *MockExternalAPIRepository) StreamSummarizeArticle(ctx context.Context, article *domain.Article, priority string) (io.ReadCloser, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StreamSummarizeArticle", ctx, article, priority)
 	ret0, _ := ret[0].(io.ReadCloser)
@@ -356,10 +355,10 @@ func (mr *MockExternalAPIRepositoryMockRecorder) StreamSummarizeArticle(ctx, art
 }
 
 // SummarizeArticle mocks base method.
-func (m *MockExternalAPIRepository) SummarizeArticle(ctx context.Context, article *models.Article, priority string) (*models.SummarizedContent, error) {
+func (m *MockExternalAPIRepository) SummarizeArticle(ctx context.Context, article *domain.Article, priority string) (*domain.SummarizedContent, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SummarizeArticle", ctx, article, priority)
-	ret0, _ := ret[0].(*models.SummarizedContent)
+	ret0, _ := ret[0].(*domain.SummarizedContent)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -410,10 +409,10 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) CreateJob(ctx, articleID any) 
 }
 
 // GetJob mocks base method.
-func (m *MockSummarizeJobRepository) GetJob(ctx context.Context, jobID string) (*models.SummarizeJob, error) {
+func (m *MockSummarizeJobRepository) GetJob(ctx context.Context, jobID string) (*domain.SummarizeJob, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetJob", ctx, jobID)
-	ret0, _ := ret[0].(*models.SummarizeJob)
+	ret0, _ := ret[0].(*domain.SummarizeJob)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -425,10 +424,10 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) GetJob(ctx, jobID any) *gomock
 }
 
 // GetPendingJobs mocks base method.
-func (m *MockSummarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) ([]*models.SummarizeJob, error) {
+func (m *MockSummarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetPendingJobs", ctx, limit)
-	ret0, _ := ret[0].([]*models.SummarizeJob)
+	ret0, _ := ret[0].([]*domain.SummarizeJob)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -440,7 +439,7 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) GetPendingJobs(ctx, limit any)
 }
 
 // UpdateJobStatus mocks base method.
-func (m *MockSummarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID string, status models.SummarizeJobStatus, summary, errorMessage string) error {
+func (m *MockSummarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID string, status domain.SummarizeJobStatus, summary, errorMessage string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateJobStatus", ctx, jobID, status, summary, errorMessage)
 	ret0, _ := ret[0].(error)

@@ -11,7 +11,7 @@ package mocks
 
 import (
 	context "context"
-	models "pre-processor/models"
+	domain "pre-processor/domain"
 	service "pre-processor/service"
 	reflect "reflect"
 
@@ -194,7 +194,7 @@ func (mr *MockQualityCheckerServiceMockRecorder) CheckQuality(ctx, batchSize any
 }
 
 // ProcessLowQualityArticles mocks base method.
-func (m *MockQualityCheckerService) ProcessLowQualityArticles(ctx context.Context, articles []models.ArticleWithSummary) error {
+func (m *MockQualityCheckerService) ProcessLowQualityArticles(ctx context.Context, articles []domain.ArticleWithSummary) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ProcessLowQualityArticles", ctx, articles)
 	ret0, _ := ret[0].(error)
@@ -246,10 +246,10 @@ func (m *MockArticleFetcherService) EXPECT() *MockArticleFetcherServiceMockRecor
 }
 
 // FetchArticle mocks base method.
-func (m *MockArticleFetcherService) FetchArticle(ctx context.Context, url string) (*models.Article, error) {
+func (m *MockArticleFetcherService) FetchArticle(ctx context.Context, url string) (*domain.Article, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FetchArticle", ctx, url)
-	ret0, _ := ret[0].(*models.Article)
+	ret0, _ := ret[0].(*domain.Article)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"pre-processor/models"
+	"pre-processor/domain"
 	"pre-processor/repository"
 
 	"github.com/stretchr/testify/assert"
@@ -31,9 +31,13 @@ func TestArticleSummarizerService_InterfaceCompliance(t *testing.T) {
 }
 
 func TestArticleSummarizerService_SummarizeArticles(t *testing.T) {
-	t.Run("should return empty result with minimal implementation", func(t *testing.T) {
-		// GREEN PHASE: Test minimal implementation
-		service := NewArticleSummarizerService(nil, nil, nil, testLoggerSummarizer())
+	t.Run("should return empty result when no articles need summarization", func(t *testing.T) {
+		service := NewArticleSummarizerService(
+			&stubArticleRepo{articles: nil},
+			&noopSummaryRepo{},
+			&trackingAPIRepo{},
+			testLoggerSummarizer(),
+		)
 
 		result, err := service.SummarizeArticles(context.Background(), 10)
 
@@ -48,15 +52,33 @@ func TestArticleSummarizerService_SummarizeArticles(t *testing.T) {
 }
 
 func TestArticleSummarizerService_HasUnsummarizedArticles(t *testing.T) {
-	t.Run("should return false with minimal implementation", func(t *testing.T) {
-		// GREEN PHASE: Test minimal implementation
-		service := NewArticleSummarizerService(nil, nil, nil, testLoggerSummarizer())
+	t.Run("should return false when no articles need summarization", func(t *testing.T) {
+		service := NewArticleSummarizerService(
+			&stubArticleRepoHasUnsummarized{has: false},
+			&noopSummaryRepo{},
+			&trackingAPIRepo{},
+			testLoggerSummarizer(),
+		)
 
 		hasArticles, err := service.HasUnsummarizedArticles(context.Background())
 
 		assert.NoError(t, err)
 		assert.False(t, hasArticles)
 	})
+}
+
+// stubArticleRepoHasUnsummarized returns a fixed value for HasUnsummarizedArticles.
+type stubArticleRepoHasUnsummarized struct {
+	repository.ArticleRepository
+	has bool
+}
+
+func (m *stubArticleRepoHasUnsummarized) HasUnsummarizedArticles(_ context.Context) (bool, error) {
+	return m.has, nil
+}
+
+func (m *stubArticleRepoHasUnsummarized) FindForSummarization(_ context.Context, _ *domain.Cursor, _ int) ([]*domain.Article, *domain.Cursor, error) {
+	return nil, nil, nil
 }
 
 func TestArticleSummarizerService_ResetPagination(t *testing.T) {
@@ -75,10 +97,10 @@ func TestArticleSummarizerService_ResetPagination(t *testing.T) {
 // stubArticleRepo returns a fixed set of articles from FindForSummarization.
 type stubArticleRepo struct {
 	repository.ArticleRepository
-	articles []*models.Article
+	articles []*domain.Article
 }
 
-func (m *stubArticleRepo) FindForSummarization(_ context.Context, _ *repository.Cursor, _ int) ([]*models.Article, *repository.Cursor, error) {
+func (m *stubArticleRepo) FindForSummarization(_ context.Context, _ *domain.Cursor, _ int) ([]*domain.Article, *domain.Cursor, error) {
 	return m.articles, nil, nil
 }
 
@@ -90,12 +112,12 @@ type trackingAPIRepo struct {
 	cancelFunc   context.CancelFunc
 }
 
-func (m *trackingAPIRepo) SummarizeArticle(_ context.Context, article *models.Article, _ string) (*models.SummarizedContent, error) {
+func (m *trackingAPIRepo) SummarizeArticle(_ context.Context, article *domain.Article, _ string) (*domain.SummarizedContent, error) {
 	m.callCount++
 	if m.cancelOnCall > 0 && m.callCount == m.cancelOnCall {
 		m.cancelFunc()
 	}
-	return &models.SummarizedContent{
+	return &domain.SummarizedContent{
 		ArticleID:       article.ID,
 		SummaryJapanese: "テスト要約",
 	}, nil
@@ -106,13 +128,13 @@ type noopSummaryRepo struct {
 	repository.SummaryRepository
 }
 
-func (m *noopSummaryRepo) Create(_ context.Context, _ *models.ArticleSummary) error {
+func (m *noopSummaryRepo) Create(_ context.Context, _ *domain.ArticleSummary) error {
 	return nil
 }
 
 func TestArticleSummarizerService_SummarizeArticles_ContextCanceled(t *testing.T) {
 	t.Run("should skip remaining articles when context is canceled mid-batch", func(t *testing.T) {
-		articles := []*models.Article{
+		articles := []*domain.Article{
 			{ID: "1", Content: "content1", UserID: "user1", Title: "title1"},
 			{ID: "2", Content: "content2", UserID: "user1", Title: "title2"},
 			{ID: "3", Content: "content3", UserID: "user1", Title: "title3"},
@@ -143,7 +165,7 @@ func TestArticleSummarizerService_SummarizeArticles_ContextCanceled(t *testing.T
 	})
 
 	t.Run("should process zero articles when context is already canceled", func(t *testing.T) {
-		articles := []*models.Article{
+		articles := []*domain.Article{
 			{ID: "1", Content: "content1", UserID: "user1", Title: "title1"},
 			{ID: "2", Content: "content2", UserID: "user1", Title: "title2"},
 		}
