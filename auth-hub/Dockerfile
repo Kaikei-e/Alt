@@ -1,28 +1,25 @@
 # Build stage
 FROM golang:1.25-alpine AS builder
 
-# ビルド時に必要な依存関係
 RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /build
 
-# 依存関係キャッシュ最適化
+# Cache dependency downloads
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 
-# 最適化ビルド: シンボル除去 + 静的リンク
+# Optimized build: strip symbols + static linking
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w" \
-    -o auth-hub main.go
+    -o auth-hub ./cmd/auth-hub
 
-# 最小イメージ (distroless/static) + 非rootユーザー
+# Minimal image (distroless/static) + non-root user
 FROM gcr.io/distroless/static-debian12:nonroot
 
-# タイムゾーンデータをコピー
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
-
 COPY --from=builder /build/auth-hub /auth-hub
 
 USER nonroot:nonroot

@@ -81,9 +81,9 @@ func TestSessionHandler_Handle(t *testing.T) {
 		assert.Equal(t, "user@example.com", user["email"])
 		assert.Equal(t, "user", user["role"])
 
-		// Check session object
+		// Check session object - session ID is the cookie value, not user ID
 		session := response["session"].(map[string]interface{})
-		assert.Equal(t, "user-456", session["id"])
+		assert.Equal(t, "session-123", session["id"])
 
 		// Kratos client should not be called on cache hit
 		mockClient.AssertNotCalled(t, "Whoami")

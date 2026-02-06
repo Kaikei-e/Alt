@@ -107,7 +107,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 				LastLoginAt: time.Now(),                      // Current session validation time
 			},
 			Session: Session{
-				ID:     sessionID, // 修正: identity.IDではなくsessionID（Cookieの値）を使用
+				ID:     sessionID, // Session ID is the cookie value, not identity.ID
 				Active: true,
 			},
 		}
@@ -156,7 +156,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 			LastLoginAt: time.Now(), // Current session validation time
 		},
 		Session: Session{
-			ID:     identity.SessionID, // 修正: identity.IDではなくidentity.SessionIDを使用
+			ID:     identity.SessionID, // Kratos session ID, not identity.ID
 			Active: true,
 		},
 	}

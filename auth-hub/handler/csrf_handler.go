@@ -119,6 +119,6 @@ func (h *CSRFHandler) Handle(c echo.Context) error {
 	if len(sessionID) > 8 {
 		sessionIDPrefix = sessionID[:8]
 	}
-	slog.InfoContext(ctx, "csrf token generated successfully", "session_id_hash", sessionIDPrefix)
+	slog.InfoContext(ctx, "csrf token generated successfully", "session_prefix", sessionIDPrefix)
 	return c.JSON(http.StatusOK, response)
 }

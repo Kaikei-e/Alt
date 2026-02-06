@@ -84,6 +84,13 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("CSRF_SECRET must be at least 32 characters")
 	}
 
+	if c.BackendTokenSecret == "" {
+		return fmt.Errorf("BACKEND_TOKEN_SECRET is required")
+	}
+	if len(c.BackendTokenSecret) < 32 {
+		return fmt.Errorf("BACKEND_TOKEN_SECRET must be at least 32 characters")
+	}
+
 	return nil
 }
 

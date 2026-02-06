@@ -38,12 +38,14 @@ func TestLoad(t *testing.T) {
 				os.Setenv("PORT", "9999")
 				os.Setenv("CACHE_TTL", "10m")
 				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
 			},
 			cleanupEnv: func() {
 				os.Unsetenv("KRATOS_URL")
 				os.Unsetenv("PORT")
 				os.Unsetenv("CACHE_TTL")
 				os.Unsetenv("CSRF_SECRET")
+				os.Unsetenv("BACKEND_TOKEN_SECRET")
 			},
 			expected: &Config{
 				KratosURL:  "http://custom-kratos:4444",
@@ -70,12 +72,14 @@ func TestLoad(t *testing.T) {
 			setupEnv: func() {
 				os.Setenv("KRATOS_URL", "http://localhost:4433")
 				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
 				os.Unsetenv("PORT")
 				os.Unsetenv("CACHE_TTL")
 			},
 			cleanupEnv: func() {
 				os.Unsetenv("KRATOS_URL")
 				os.Unsetenv("CSRF_SECRET")
+				os.Unsetenv("BACKEND_TOKEN_SECRET")
 			},
 			expected: &Config{
 				KratosURL:  "http://localhost:4433",
@@ -124,10 +128,11 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid configuration",
 			config: &Config{
-				KratosURL:  "http://kratos:4433",
-				Port:       "8888",
-				CacheTTL:   5 * time.Minute,
-				CSRFSecret: "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				KratosURL:          "http://kratos:4433",
+				Port:               "8888",
+				CacheTTL:           5 * time.Minute,
+				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
 			},
 			wantErr: false,
 		},
@@ -196,12 +201,37 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid CSRF secret",
 			config: &Config{
-				KratosURL:  "http://kratos:4433",
-				Port:       "8888",
-				CacheTTL:   5 * time.Minute,
-				CSRFSecret: "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				KratosURL:          "http://kratos:4433",
+				Port:               "8888",
+				CacheTTL:           5 * time.Minute,
+				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSecret: "this-is-a-valid-backend-token-secret-32-chars-long",
 			},
 			wantErr: false,
+		},
+		{
+			name: "missing backend token secret",
+			config: &Config{
+				KratosURL:          "http://kratos:4433",
+				Port:               "8888",
+				CacheTTL:           5 * time.Minute,
+				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSecret: "",
+			},
+			wantErr:     true,
+			errContains: "BACKEND_TOKEN_SECRET",
+		},
+		{
+			name: "backend token secret too short",
+			config: &Config{
+				KratosURL:          "http://kratos:4433",
+				Port:               "8888",
+				CacheTTL:           5 * time.Minute,
+				CSRFSecret:         "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSecret: "short-secret",
+			},
+			wantErr:     true,
+			errContains: "BACKEND_TOKEN_SECRET must be at least 32 characters",
 		},
 	}
 
