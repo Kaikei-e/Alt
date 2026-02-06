@@ -2,19 +2,16 @@ package handler
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"pre-processor/domain"
-	"pre-processor/models"
 	"pre-processor/repository"
+	summarizeuc "pre-processor/usecase/summarize"
 	apperrors "pre-processor/utils/errors"
-	"pre-processor/utils/html_parser"
 
 	"github.com/labstack/echo/v4"
 )
@@ -82,6 +79,7 @@ type SummarizeHandler struct {
 	summaryRepo repository.SummaryRepository
 	articleRepo repository.ArticleRepository
 	jobRepo     repository.SummarizeJobRepository
+	onDemand    *summarizeuc.OnDemandService
 	logger      *slog.Logger
 }
 
@@ -92,6 +90,7 @@ func NewSummarizeHandler(apiRepo repository.ExternalAPIRepository, summaryRepo r
 		summaryRepo: summaryRepo,
 		articleRepo: articleRepo,
 		jobRepo:     jobRepo,
+		onDemand:    summarizeuc.NewOnDemandService(articleRepo, summaryRepo, apiRepo, logger),
 		logger:      logger,
 	}
 }
@@ -120,8 +119,6 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 	}
 
 	// Check if this article is already being processed to prevent duplicate requests.
-	// This prevents the retry loop issue where timeout causes immediate retry which fills the queue.
-	// Uses timeout-based lock to prevent zombie locks when upstream uses context.Background().
 	if !tryAcquireLock(req.ArticleID) {
 		h.logger.WarnContext(ctx, "article is already being processed, rejecting duplicate request",
 			"article_id", req.ArticleID)
@@ -131,132 +128,61 @@ func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
 			map[string]interface{}{"article_id": req.ArticleID},
 		)
 	}
-	// Ensure we clean up the tracking entry when done
 	defer releaseLock(req.ArticleID)
 
-	// Fetch article to get user_id (always needed for summary storage)
-	fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
+	// Delegate to shared on-demand summarization usecase
+	result, err := h.onDemand.Summarize(ctx, summarizeuc.SummarizeRequest{
+		ArticleID: req.ArticleID,
+		Content:   req.Content,
+		Title:     req.Title,
+		Priority:  "high", // UI-triggered requests
+	})
 	if err != nil {
-		return apperrors.NewDatabaseContextError(
-			"failed to fetch article",
-			"handler", "SummarizeHandler", "HandleSummarize",
-			err,
-			map[string]interface{}{"article_id": req.ArticleID},
-		)
+		return mapDomainErrorToHTTP(err, req.ArticleID)
 	}
-	if fetchedArticle == nil {
+
+	return c.JSON(http.StatusOK, SummarizeResponse{
+		Success:   true,
+		Summary:   result.Summary,
+		ArticleID: req.ArticleID,
+	})
+}
+
+// mapDomainErrorToHTTP converts domain errors to appropriate HTTP error responses.
+func mapDomainErrorToHTTP(err error, articleID string) error {
+	switch {
+	case errors.Is(err, domain.ErrArticleNotFound):
 		return apperrors.NewNotFoundContextError(
 			domain.ErrArticleNotFound.Error(),
 			"handler", "SummarizeHandler", "HandleSummarize",
-			map[string]interface{}{"article_id": req.ArticleID},
+			map[string]interface{}{"article_id": articleID},
 		)
-	}
-
-	// If content is empty, use article content from DB
-	if req.Content == "" {
-		h.logger.InfoContext(ctx, "content is empty, using content from DB", "article_id", req.ArticleID)
-		if fetchedArticle.Content == "" {
-			return apperrors.NewValidationContextError(
-				domain.ErrArticleContentEmpty.Error(),
-				"handler", "SummarizeHandler", "HandleSummarize",
-				map[string]interface{}{"article_id": req.ArticleID},
-			)
-		}
-		// Zero Trust: Always extract text from content (HTML or not)
-		// This ensures we never send raw HTML to downstream services
-		content := fetchedArticle.Content
-		originalLength := len(content)
-		h.logger.InfoContext(ctx, "extracting text from content (Zero Trust validation)", "article_id", req.ArticleID, "original_length", originalLength)
-
-		extractedText := html_parser.ExtractArticleText(content)
-		extractedLength := len(extractedText)
-
-		if extractedText != "" {
-			content = extractedText
-			reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
-			h.logger.InfoContext(ctx, "text extraction completed",
-				"article_id", req.ArticleID,
-				"original_length", originalLength,
-				"extracted_length", extractedLength,
-				"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
-		} else {
-			h.logger.WarnContext(ctx, "text extraction returned empty, using original content", "article_id", req.ArticleID, "original_length", originalLength)
-		}
-		req.Content = content
-		// Also update title if missing
-		if req.Title == "" {
-			req.Title = fetchedArticle.Title
-		}
-		h.logger.InfoContext(ctx, "content fetched from DB successfully", "article_id", req.ArticleID, "content_length", len(req.Content))
-	}
-
-	if req.Content == "" {
+	case errors.Is(err, domain.ErrArticleContentEmpty):
+		return apperrors.NewValidationContextError(
+			domain.ErrArticleContentEmpty.Error(),
+			"handler", "SummarizeHandler", "HandleSummarize",
+			map[string]interface{}{"article_id": articleID},
+		)
+	case errors.Is(err, domain.ErrEmptyContent):
 		return apperrors.NewValidationContextError(
 			domain.ErrEmptyContent.Error(),
 			"handler", "SummarizeHandler", "HandleSummarize",
-			map[string]interface{}{"article_id": req.ArticleID},
+			map[string]interface{}{"article_id": articleID},
 		)
-	}
-
-	// Zero Trust: Ensure content is extracted text before processing
-	// If content still contains HTML-like patterns, extract again
-	if strings.Contains(req.Content, "<") && strings.Contains(req.Content, ">") {
-		h.logger.WarnContext(ctx, "content still contains HTML after extraction, re-extracting", "article_id", req.ArticleID, "content_length", len(req.Content))
-		req.Content = html_parser.ExtractArticleText(req.Content)
-		h.logger.InfoContext(ctx, "re-extraction completed", "article_id", req.ArticleID, "final_length", len(req.Content))
-	}
-
-	h.logger.InfoContext(ctx, "processing summarization request", "article_id", req.ArticleID, "content_length", len(req.Content))
-
-	// Create article model for summarization
-	article := &models.Article{
-		ID:      req.ArticleID,
-		Content: req.Content,
-	}
-
-	// Call summarization service with HIGH priority for UI-triggered requests
-	summarized, err := h.apiRepo.SummarizeArticle(ctx, article, "high")
-	if err != nil {
+	case errors.Is(err, domain.ErrContentTooShort):
+		return apperrors.NewValidationContextError(
+			domain.ErrContentTooShort.Error(),
+			"handler", "SummarizeHandler", "HandleSummarize",
+			map[string]interface{}{"article_id": articleID},
+		)
+	default:
 		return apperrors.NewExternalAPIContextError(
 			"failed to generate summary",
 			"handler", "SummarizeHandler", "HandleSummarize",
 			err,
-			map[string]interface{}{"article_id": req.ArticleID},
+			map[string]interface{}{"article_id": articleID},
 		)
 	}
-
-	h.logger.InfoContext(ctx, "article summarized successfully", "article_id", req.ArticleID)
-
-	// Save summary to database
-	articleTitle := req.Title
-	if articleTitle == "" {
-		articleTitle = "Untitled" // Fallback if no title provided
-	}
-
-	articleSummary := &models.ArticleSummary{
-		ArticleID:       req.ArticleID,
-		UserID:          fetchedArticle.UserID,
-		ArticleTitle:    articleTitle,
-		SummaryJapanese: summarized.SummaryJapanese,
-	}
-
-	if err := h.summaryRepo.Create(ctx, articleSummary); err != nil {
-		h.logger.ErrorContext(ctx, "failed to save summary to database", "error", err, "article_id", req.ArticleID)
-		// Don't fail the request if DB save fails - still return the summary
-		// This ensures the user gets the summary even if DB has issues
-		h.logger.WarnContext(ctx, "continuing despite DB save failure", "article_id", req.ArticleID)
-	} else {
-		h.logger.InfoContext(ctx, "summary saved to database successfully", "article_id", req.ArticleID)
-	}
-
-	// Return response
-	response := SummarizeResponse{
-		Success:   true,
-		Summary:   summarized.SummaryJapanese,
-		ArticleID: req.ArticleID,
-	}
-
-	return c.JSON(http.StatusOK, response)
 }
 
 // SummarizeQueueRequest represents the request body for queueing a summarization job
@@ -296,8 +222,6 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 	}
 
 	// Check if this article is already being processed to prevent duplicate requests.
-	// This prevents the retry loop issue where timeout causes immediate retry which fills the queue.
-	// Uses timeout-based lock to prevent zombie locks when upstream uses context.Background().
 	if !tryAcquireLock(req.ArticleID) {
 		h.logger.WarnContext(ctx, "article is already being processed (stream), rejecting duplicate request",
 			"article_id", req.ArticleID)
@@ -307,80 +231,29 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 			map[string]interface{}{"article_id": req.ArticleID},
 		)
 	}
-	// Ensure we clean up the tracking entry when done
 	defer releaseLock(req.ArticleID)
 
-	// If content is empty, try to fetch from DB
-	if req.Content == "" {
-		h.logger.InfoContext(ctx, "content is empty, fetching from DB for stream", "article_id", req.ArticleID)
-		fetchedArticle, err := h.articleRepo.FindByID(ctx, req.ArticleID)
-		if err != nil {
-			return apperrors.NewDatabaseContextError(
-				"failed to fetch article content",
-				"handler", "SummarizeHandler", "HandleStreamSummarize",
-				err,
-				map[string]interface{}{"article_id": req.ArticleID},
-			)
-		}
-		if fetchedArticle == nil {
-			return apperrors.NewNotFoundContextError(
-				domain.ErrArticleNotFound.Error(),
-				"handler", "SummarizeHandler", "HandleStreamSummarize",
-				map[string]interface{}{"article_id": req.ArticleID},
-			)
-		}
-
-		// Zero Trust extraction logic
-		content := fetchedArticle.Content
-		if fetchedArticle.Content != "" {
-			extractedText := html_parser.ExtractArticleText(fetchedArticle.Content)
-			if extractedText != "" {
-				content = extractedText
-			}
-		}
-		req.Content = content
-		if req.Title == "" {
-			req.Title = fetchedArticle.Title
-		}
+	// Resolve article content using shared usecase
+	resolved, err := h.onDemand.ResolveArticle(ctx, summarizeuc.SummarizeRequest{
+		ArticleID: req.ArticleID,
+		Content:   req.Content,
+		Title:     req.Title,
+	})
+	if err != nil {
+		return mapDomainErrorToHTTP(err, req.ArticleID)
 	}
 
-	if req.Content == "" {
-		return apperrors.NewValidationContextError(
-			domain.ErrEmptyContent.Error(),
-			"handler", "SummarizeHandler", "HandleStreamSummarize",
-			map[string]interface{}{"article_id": req.ArticleID},
-		)
-	}
+	h.logger.InfoContext(ctx, "processing streaming summarization request", "article_id", req.ArticleID, "content_length", len(resolved.Content))
 
-	// Zero Trust re-extraction
-	if strings.Contains(req.Content, "<") && strings.Contains(req.Content, ">") {
-		req.Content = html_parser.ExtractArticleText(req.Content)
-	}
-
-	h.logger.InfoContext(ctx, "processing streaming summarization request", "article_id", req.ArticleID, "content_length", len(req.Content))
-
-	article := &models.Article{
+	article := &domain.Article{
 		ID:      req.ArticleID,
-		Content: req.Content,
+		Content: resolved.Content,
 	}
 
 	// Call streaming service with HIGH priority for UI-triggered requests
 	stream, err := h.apiRepo.StreamSummarizeArticle(ctx, article, "high")
 	if err != nil {
-		// Check if it's a content too short error
-		if errors.Is(err, domain.ErrContentTooShort) {
-			return apperrors.NewValidationContextError(
-				domain.ErrContentTooShort.Error(),
-				"handler", "SummarizeHandler", "HandleStreamSummarize",
-				map[string]interface{}{"article_id": req.ArticleID, "content_length": len(req.Content)},
-			)
-		}
-		return apperrors.NewExternalAPIContextError(
-			"failed to generate summary stream",
-			"handler", "SummarizeHandler", "HandleStreamSummarize",
-			err,
-			map[string]interface{}{"article_id": req.ArticleID},
-		)
+		return mapDomainErrorToHTTP(err, req.ArticleID)
 	}
 	defer func() {
 		if cerr := stream.Close(); cerr != nil {
@@ -394,13 +267,11 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 	c.Response().Header().Set(echo.HeaderContentType, "text/event-stream; charset=utf-8")
 	c.Response().Header().Set(echo.HeaderCacheControl, "no-cache")
 	c.Response().Header().Set(echo.HeaderConnection, "keep-alive")
-	c.Response().Header().Set("X-Accel-Buffering", "no") // Disable Nginx buffering for SSE
+	c.Response().Header().Set("X-Accel-Buffering", "no")
 	c.Response().WriteHeader(http.StatusOK)
 
-	h.logger.InfoContext(ctx, "response headers set, starting to read stream", "article_id", req.ArticleID)
-
 	// Stream response with smaller buffer for incremental rendering
-	buf := make([]byte, 128) // Reduced to 128 bytes for faster incremental rendering
+	buf := make([]byte, 128)
 	bytesWritten := 0
 	hasData := false
 	readAttempts := 0
@@ -410,19 +281,13 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 		if n > 0 {
 			hasData = true
 			bytesWritten += n
-			// Log first few chunks and periodically for debugging incremental rendering
 			if readAttempts <= 3 || bytesWritten%5120 == 0 {
 				h.logger.InfoContext(ctx, "stream data received and flushed", "article_id", req.ArticleID, "bytes_written", bytesWritten, "chunk_size", n, "read_attempts", readAttempts)
-			} else if readAttempts <= 10 {
-				// Log more frequently for first 10 chunks to verify incremental rendering
-				h.logger.DebugContext(ctx, "stream chunk flushed", "article_id", req.ArticleID, "chunk_size", n, "read_attempts", readAttempts)
 			}
-			// Write immediately and flush for incremental rendering
 			if _, wErr := c.Response().Write(buf[:n]); wErr != nil {
 				h.logger.ErrorContext(ctx, "error writing to response stream", "error", wErr, "article_id", req.ArticleID, "bytes_written", bytesWritten)
 				return wErr
 			}
-			// Flush immediately after each chunk for incremental rendering
 			c.Response().Flush()
 		}
 		if err != nil {
@@ -433,16 +298,10 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 			h.logger.ErrorContext(ctx, "error reading from stream", "error", err, "article_id", req.ArticleID, "bytes_written", bytesWritten, "read_attempts", readAttempts)
 			return err
 		}
-		if n == 0 && readAttempts > 1 {
-			// No data read but no error - might be a timeout or empty stream
-			h.logger.WarnContext(ctx, "no data read from stream", "article_id", req.ArticleID, "read_attempts", readAttempts)
-		}
 	}
 
-	// Check if any data was actually streamed
 	if !hasData {
 		h.logger.WarnContext(ctx, "stream completed but no data was sent", "article_id", req.ArticleID)
-		// Still return success, but log the warning
 	} else {
 		h.logger.InfoContext(ctx, "stream completed successfully", "article_id", req.ArticleID, "bytes_written", bytesWritten)
 	}
@@ -541,12 +400,12 @@ func (h *SummarizeHandler) HandleSummarizeStatus(c echo.Context) error {
 	}
 
 	// Include summary if completed
-	if job.Status == models.SummarizeJobStatusCompleted && job.Summary != nil {
+	if job.Status == domain.SummarizeJobStatusCompleted && job.Summary != nil {
 		response.Summary = *job.Summary
 	}
 
 	// Include error message if failed
-	if job.Status == models.SummarizeJobStatusFailed && job.ErrorMessage != nil {
+	if job.Status == domain.SummarizeJobStatusFailed && job.ErrorMessage != nil {
 		response.ErrorMessage = *job.ErrorMessage
 	}
 

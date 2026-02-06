@@ -2,36 +2,30 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"pre-processor/domain"
+	"pre-processor/orchestrator"
 	"pre-processor/service"
 )
 
-// JobHandler implementation.
+// jobHandler implementation.
 type jobHandler struct {
-	feedProcessor     service.FeedProcessorService
 	articleSummarizer service.ArticleSummarizerService
 	qualityChecker    service.QualityCheckerService
 	articleSync       service.ArticleSyncService
 	healthChecker     service.HealthCheckerService
 	queueWorker       *service.SummarizeQueueWorker
 	logger            *slog.Logger
-
-	// Job control
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	batchSize int
+	jobGroup          *orchestrator.JobGroup
+	batchSize         int
 }
 
 // NewJobHandler creates a new job handler.
 func NewJobHandler(
-	feedProcessor service.FeedProcessorService,
+	ctx context.Context,
 	articleSummarizer service.ArticleSummarizerService,
 	qualityChecker service.QualityCheckerService,
 	articleSync service.ArticleSyncService,
@@ -40,32 +34,29 @@ func NewJobHandler(
 	batchSize int,
 	logger *slog.Logger,
 ) JobHandler {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	return &jobHandler{
-		feedProcessor:     feedProcessor,
 		articleSummarizer: articleSummarizer,
 		qualityChecker:    qualityChecker,
 		articleSync:       articleSync,
 		healthChecker:     healthChecker,
 		queueWorker:       queueWorker,
 		logger:            logger,
-		ctx:               ctx,
-		cancel:            cancel,
+		jobGroup:          orchestrator.NewJobGroup(ctx, logger),
 		batchSize:         batchSize,
 	}
 }
 
-// StartFeedProcessingJob starts the feed processing job.
-func (h *jobHandler) StartFeedProcessingJob(ctx context.Context) error {
-	h.logger.InfoContext(ctx, "starting feed processing job")
+// StartArticleSyncJob starts the article synchronization job.
+func (h *jobHandler) StartArticleSyncJob(ctx context.Context) error {
+	h.logger.InfoContext(ctx, "starting article sync job")
 
-	h.wg.Add(1)
-
-	go func() {
-		defer h.wg.Done()
-		h.runFeedProcessingLoop()
-	}()
+	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
+		Name:           "article-sync",
+		Interval:       1 * time.Hour,
+		RunImmediately: true,
+	}, func(ctx context.Context) error {
+		return h.articleSync.SyncArticles(ctx)
+	}, h.logger))
 
 	return nil
 }
@@ -80,12 +71,12 @@ func (h *jobHandler) StartSummarizationJob(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for news creator health: %w", err)
 	}
 
-	h.wg.Add(1)
-
-	go func() {
-		defer h.wg.Done()
-		h.runSummarizationLoop()
-	}()
+	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
+		Name:     "summarization",
+		Interval: 10 * time.Second,
+	}, func(ctx context.Context) error {
+		return h.processSummarizationBatch(ctx)
+	}, h.logger))
 
 	return nil
 }
@@ -100,57 +91,14 @@ func (h *jobHandler) StartQualityCheckJob(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for news creator health: %w", err)
 	}
 
-	h.wg.Add(1)
-
-	go func() {
-		defer h.wg.Done()
-		h.runQualityCheckLoop()
-	}()
-
-	return nil
-}
-
-// StartArticleSyncJob starts the article synchronization job.
-func (h *jobHandler) StartArticleSyncJob(ctx context.Context) error {
-	h.logger.InfoContext(ctx, "starting article sync job")
-
-	h.wg.Add(1)
-
-	go func() {
-		defer h.wg.Done()
-		h.runArticleSyncLoop()
-	}()
+	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
+		Name:     "quality-check",
+		Interval: 5 * time.Minute,
+	}, func(ctx context.Context) error {
+		return h.processQualityCheckBatch(ctx)
+	}, h.logger))
 
 	return nil
-}
-
-// runArticleSyncLoop runs the article sync loop.
-func (h *jobHandler) runArticleSyncLoop() {
-	defer func() {
-		if r := recover(); r != nil {
-			h.logger.ErrorContext(h.ctx, "panic in runArticleSyncLoop", "panic", r)
-		}
-	}()
-
-	// Run initially
-	if err := h.articleSync.SyncArticles(h.ctx); err != nil {
-		h.logger.ErrorContext(h.ctx, "initial article sync failed", "error", err)
-	}
-
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-h.ctx.Done():
-			h.logger.InfoContext(h.ctx, "article sync job stopped")
-			return
-		case <-ticker.C:
-			if err := h.articleSync.SyncArticles(h.ctx); err != nil {
-				h.logger.ErrorContext(h.ctx, "article sync failed", "error", err)
-			}
-		}
-	}
 }
 
 // StartSummarizeQueueWorker starts the summarize queue worker job.
@@ -168,214 +116,58 @@ func (h *jobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for news creator health: %w", err)
 	}
 
-	h.wg.Add(1)
-
-	go func() {
-		defer h.wg.Done()
-		h.runSummarizeQueueLoop()
-	}()
+	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
+		Name:            "queue-worker",
+		Interval:        10 * time.Second,
+		InitialBackoff:  30 * time.Second,
+		MaxBackoff:      5 * time.Minute,
+		BackoffOnErrors: []error{domain.ErrServiceOverloaded},
+	}, func(ctx context.Context) error {
+		return h.queueWorker.ProcessQueue(ctx)
+	}, h.logger))
 
 	return nil
-}
-
-// runSummarizeQueueLoop runs the summarize queue processing loop.
-func (h *jobHandler) runSummarizeQueueLoop() {
-	const (
-		normalInterval = 10 * time.Second
-		initialBackoff = 30 * time.Second
-		maxBackoff     = 5 * time.Minute
-	)
-
-	ticker := time.NewTicker(normalInterval)
-	defer ticker.Stop()
-
-	backoff := time.Duration(0)
-
-	for {
-		select {
-		case <-h.ctx.Done():
-			h.logger.InfoContext(h.ctx, "summarize queue worker stopped")
-			return
-		case <-ticker.C:
-			if err := h.queueWorker.ProcessQueue(h.ctx); err != nil {
-				if errors.Is(err, domain.ErrServiceOverloaded) {
-					if backoff == 0 {
-						backoff = initialBackoff
-					} else {
-						backoff = min(backoff*2, maxBackoff)
-					}
-					h.logger.WarnContext(h.ctx, "downstream overloaded, backing off",
-						"backoff", backoff)
-					// Replace the ticker with a longer interval during backoff
-					ticker.Reset(backoff)
-					continue
-				}
-				h.logger.ErrorContext(h.ctx, "summarize queue processing failed", "error", err)
-			} else {
-				// Success: reset backoff to normal interval
-				if backoff > 0 {
-					h.logger.InfoContext(h.ctx, "backoff cleared, resuming normal interval")
-					backoff = 0
-					ticker.Reset(normalInterval)
-				}
-			}
-		}
-	}
 }
 
 // Stop stops all jobs.
 func (h *jobHandler) Stop() error {
-	h.logger.InfoContext(h.ctx, "stopping all jobs")
-	h.cancel()
-	h.wg.Wait()
-	h.logger.InfoContext(h.ctx, "all jobs stopped")
-
+	h.logger.Info("stopping all jobs")
+	h.jobGroup.StopAll()
+	h.logger.Info("all jobs stopped")
 	return nil
 }
 
-// runFeedProcessingLoop runs the feed processing loop.
-func (h *jobHandler) runFeedProcessingLoop() {
-	h.logger.InfoContext(h.ctx, "runFeedProcessingLoop: Starting feed processing loop goroutine")
-
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	h.logger.InfoContext(h.ctx, "runFeedProcessingLoop: Ticker created, waiting for first tick in 5 minutes")
-
-	for {
-		select {
-		case <-h.ctx.Done():
-			h.logger.InfoContext(h.ctx, "feed processing job stopped")
-			return
-		case <-ticker.C:
-			h.logger.InfoContext(h.ctx, "runFeedProcessingLoop: Ticker fired, calling processFeedsBatch")
-			h.processFeedsBatch()
-		}
-	}
-}
-
-// runSummarizationLoop runs the summarization loop.
-func (h *jobHandler) runSummarizationLoop() {
-	defer func() {
-		if r := recover(); r != nil {
-			h.logger.ErrorContext(h.ctx, "panic in runSummarizationLoop", "panic", r)
-		}
-	}()
-
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-h.ctx.Done():
-			h.logger.InfoContext(h.ctx, "summarization job stopped")
-			return
-		case <-ticker.C:
-			h.processSummarizationBatch()
-		}
-	}
-}
-
-// runQualityCheckLoop runs the quality check loop.
-func (h *jobHandler) runQualityCheckLoop() {
-	defer func() {
-		if r := recover(); r != nil {
-			h.logger.ErrorContext(h.ctx, "panic in runQualityCheckLoop", "panic", r)
-		}
-	}()
-
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-h.ctx.Done():
-			h.logger.InfoContext(h.ctx, "quality check job stopped")
-			return
-		case <-ticker.C:
-			h.processQualityCheckBatch()
-		}
-	}
-}
-
-// processFeedsBatch processes a batch of feeds - DISABLED FOR ETHICAL COMPLIANCE
-func (h *jobHandler) processFeedsBatch() {
-	defer func() {
-		if r := recover(); r != nil {
-			h.logger.ErrorContext(h.ctx, "panic in processFeedsBatch", "panic", r)
-		}
-	}()
-
-	// Feed processing temporarily disabled for ethical compliance
-	h.logger.InfoContext(h.ctx, "Feed processing temporarily disabled for ethical compliance")
-
-	/*
-		h.logger.Info("Starting feed processing batch", "batch_size", h.batchSize)
-
-		result, err := h.feedProcessor.ProcessFeeds(h.ctx, h.batchSize)
-		if err != nil {
-			h.logger.Error("feed processing failed", "error", err)
-			return
-		}
-
-		h.logger.Info("feed processing completed",
-			"processed", result.ProcessedCount,
-			"success", result.SuccessCount,
-			"errors", result.ErrorCount,
-			"has_more", result.HasMore)
-
-		// Only reset pagination if we actually processed feeds and reached the end
-		// Don't reset if there were simply no feeds to process (ProcessedCount == 0)
-		if !result.HasMore && result.ProcessedCount > 0 {
-			h.logger.Info("reached end of feeds, resetting pagination cursor")
-
-			if err := h.feedProcessor.ResetPagination(); err != nil {
-				h.logger.Error("failed to reset feed processor pagination", "error", err)
-			}
-		}
-	*/
-}
-
 // processSummarizationBatch processes a batch of articles for summarization.
-func (h *jobHandler) processSummarizationBatch() {
-	result, err := h.articleSummarizer.SummarizeArticles(h.ctx, h.batchSize)
+func (h *jobHandler) processSummarizationBatch(ctx context.Context) error {
+	result, err := h.articleSummarizer.SummarizeArticles(ctx, h.batchSize)
 	if err != nil {
-		h.logger.ErrorContext(h.ctx, "summarization failed", "error", err)
-		return
+		return err
 	}
 
-	h.logger.InfoContext(h.ctx, "summarization completed",
+	h.logger.InfoContext(ctx, "summarization completed",
 		"processed", result.ProcessedCount,
 		"success", result.SuccessCount,
 		"errors", result.ErrorCount,
 		"has_more", result.HasMore)
 
-	// Only reset pagination if we actually processed articles and reached the end
-	// Don't reset if there were simply no articles to process (ProcessedCount == 0)
 	if !result.HasMore && result.ProcessedCount > 0 {
-		h.logger.InfoContext(h.ctx, "reached end of articles, resetting pagination cursor")
-
+		h.logger.InfoContext(ctx, "reached end of articles, resetting pagination cursor")
 		if err := h.articleSummarizer.ResetPagination(); err != nil {
-			h.logger.ErrorContext(h.ctx, "failed to reset summarizer pagination", "error", err)
+			h.logger.ErrorContext(ctx, "failed to reset summarizer pagination", "error", err)
 		}
 	}
+
+	return nil
 }
 
 // processQualityCheckBatch processes a batch of articles for quality checking.
-func (h *jobHandler) processQualityCheckBatch() {
-	defer func() {
-		if r := recover(); r != nil {
-			h.logger.ErrorContext(h.ctx, "panic in processQualityCheckBatch", "panic", r)
-		}
-	}()
-
-	result, err := h.qualityChecker.CheckQuality(h.ctx, h.batchSize)
+func (h *jobHandler) processQualityCheckBatch(ctx context.Context) error {
+	result, err := h.qualityChecker.CheckQuality(ctx, h.batchSize)
 	if err != nil {
-		h.logger.ErrorContext(h.ctx, "quality check failed", "error", err)
-		return
+		return err
 	}
 
-	h.logger.InfoContext(h.ctx, "quality check completed",
+	h.logger.InfoContext(ctx, "quality check completed",
 		"processed", result.ProcessedCount,
 		"success", result.SuccessCount,
 		"errors", result.ErrorCount,
@@ -383,13 +175,12 @@ func (h *jobHandler) processQualityCheckBatch() {
 		"retained", result.RetainedCount,
 		"has_more", result.HasMore)
 
-	// Only reset pagination if we actually processed articles and reached the end
-	// Don't reset if there were simply no articles to process (ProcessedCount == 0)
 	if !result.HasMore && result.ProcessedCount > 0 {
-		h.logger.InfoContext(h.ctx, "reached end of articles, resetting pagination cursor")
-
+		h.logger.InfoContext(ctx, "reached end of articles, resetting pagination cursor")
 		if err := h.qualityChecker.ResetPagination(); err != nil {
-			h.logger.ErrorContext(h.ctx, "failed to reset quality checker pagination", "error", err)
+			h.logger.ErrorContext(ctx, "failed to reset quality checker pagination", "error", err)
 		}
 	}
+
+	return nil
 }

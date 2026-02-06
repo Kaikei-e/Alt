@@ -8,7 +8,6 @@ import (
 
 // JobHandler handles background job orchestration.
 type JobHandler interface {
-	StartFeedProcessingJob(ctx context.Context) error
 	StartSummarizationJob(ctx context.Context) error
 	StartQualityCheckJob(ctx context.Context) error
 	StartArticleSyncJob(ctx context.Context) error
@@ -24,22 +23,4 @@ type HealthHandler interface {
 	GetExtendedHealthMetrics(ctx context.Context) (map[string]interface{}, error)
 	CheckSLACompliance(ctx context.Context) (map[string]interface{}, error)
 	GetHealthAlerts(ctx context.Context) ([]map[string]interface{}, error)
-}
-
-// JobScheduler handles job scheduling and coordination.
-type JobScheduler interface {
-	Schedule(ctx context.Context, jobName string, interval string, jobFunc func() error) error
-	Stop(jobName string) error
-	StopAll() error
-	GetJobStatus(jobName string) (JobStatus, error)
-}
-
-// JobStatus represents the status of a scheduled job.
-type JobStatus struct {
-	LastError  error
-	LastRun    *string
-	NextRun    *string
-	Name       string
-	ErrorCount int
-	IsRunning  bool
 }

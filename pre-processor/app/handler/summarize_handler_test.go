@@ -10,8 +10,8 @@ import (
 	"os"
 	"testing"
 
+	"pre-processor/domain"
 	"pre-processor/handler"
-	"pre-processor/models"
 	"pre-processor/test/mocks"
 
 	"github.com/labstack/echo/v4"
@@ -57,7 +57,7 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository, a *mocks.MockArticleRepository) {
 				a.EXPECT().
 					FindByID(gomock.Any(), "test-123").
-					Return(&models.Article{
+					Return(&domain.Article{
 						ID:      "test-123",
 						UserID:  "user-456",
 						Content: "This is a test article content",
@@ -65,7 +65,7 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 					}, nil)
 				m.EXPECT().
 					SummarizeArticle(gomock.Any(), gomock.Any(), "high").
-					Return(&models.SummarizedContent{
+					Return(&domain.SummarizedContent{
 						ArticleID:       "test-123",
 						SummaryJapanese: "これはテスト記事の要約です。",
 					}, nil)
@@ -88,7 +88,7 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository, a *mocks.MockArticleRepository) {
 				a.EXPECT().
 					FindByID(gomock.Any(), "test-123").
-					Return(&models.Article{
+					Return(&domain.Article{
 						ID:      "test-123",
 						UserID:  "user-456",
 						Content: "Fetched content from DB",
@@ -96,9 +96,9 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 					}, nil)
 				m.EXPECT().
 					SummarizeArticle(gomock.Any(), gomock.Any(), "high").
-					DoAndReturn(func(_ context.Context, article *models.Article, _ string) (*models.SummarizedContent, error) {
+					DoAndReturn(func(_ context.Context, article *domain.Article, _ string) (*domain.SummarizedContent, error) {
 						assert.Equal(t, "Fetched content from DB", article.Content)
-						return &models.SummarizedContent{
+						return &domain.SummarizedContent{
 							ArticleID:       "test-123",
 							SummaryJapanese: "DBからの要約",
 						}, nil
@@ -144,7 +144,7 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 			setupMock: func(m *mocks.MockExternalAPIRepository, s *mocks.MockSummaryRepository, a *mocks.MockArticleRepository) {
 				a.EXPECT().
 					FindByID(gomock.Any(), "test-123").
-					Return(&models.Article{
+					Return(&domain.Article{
 						ID:      "test-123",
 						UserID:  "user-456",
 						Content: "This is a test article content",
@@ -246,7 +246,7 @@ func TestSummarizeHandler_DuplicateRequestPrevention(t *testing.T) {
 	// Note: The duplicate check happens BEFORE FindByID, so second request won't call any mocks
 	mockArticleRepo.EXPECT().
 		FindByID(gomock.Any(), articleID).
-		Return(&models.Article{
+		Return(&domain.Article{
 			ID:      articleID,
 			UserID:  "user-456",
 			Content: "Test content for duplicate test",
@@ -260,10 +260,10 @@ func TestSummarizeHandler_DuplicateRequestPrevention(t *testing.T) {
 
 	mockAPIRepo.EXPECT().
 		SummarizeArticle(gomock.Any(), gomock.Any(), "high").
-		DoAndReturn(func(_ context.Context, _ *models.Article, _ string) (*models.SummarizedContent, error) {
+		DoAndReturn(func(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
 			close(firstRequestStarted)
 			<-firstRequestDone // Block until we signal completion
-			return &models.SummarizedContent{
+			return &domain.SummarizedContent{
 				ArticleID:       articleID,
 				SummaryJapanese: "要約",
 			}, nil
