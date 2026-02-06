@@ -2,11 +2,13 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
+	"pre-processor/domain"
 	"pre-processor/service"
 )
 
@@ -178,8 +180,16 @@ func (h *jobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
 
 // runSummarizeQueueLoop runs the summarize queue processing loop.
 func (h *jobHandler) runSummarizeQueueLoop() {
-	ticker := time.NewTicker(10 * time.Second)
+	const (
+		normalInterval  = 10 * time.Second
+		initialBackoff  = 30 * time.Second
+		maxBackoff      = 5 * time.Minute
+	)
+
+	ticker := time.NewTicker(normalInterval)
 	defer ticker.Stop()
+
+	backoff := time.Duration(0)
 
 	for {
 		select {
@@ -188,7 +198,26 @@ func (h *jobHandler) runSummarizeQueueLoop() {
 			return
 		case <-ticker.C:
 			if err := h.queueWorker.ProcessQueue(h.ctx); err != nil {
+				if errors.Is(err, domain.ErrServiceOverloaded) {
+					if backoff == 0 {
+						backoff = initialBackoff
+					} else {
+						backoff = min(backoff*2, maxBackoff)
+					}
+					h.logger.WarnContext(h.ctx, "downstream overloaded, backing off",
+						"backoff", backoff)
+					// Replace the ticker with a longer interval during backoff
+					ticker.Reset(backoff)
+					continue
+				}
 				h.logger.ErrorContext(h.ctx, "summarize queue processing failed", "error", err)
+			} else {
+				// Success: reset backoff to normal interval
+				if backoff > 0 {
+					h.logger.InfoContext(h.ctx, "backoff cleared, resuming normal interval")
+					backoff = 0
+					ticker.Reset(normalInterval)
+				}
 			}
 		}
 	}

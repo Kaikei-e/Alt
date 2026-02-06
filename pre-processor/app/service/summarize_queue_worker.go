@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
+	"pre-processor/domain"
 	"pre-processor/models"
 	"pre-processor/repository"
 	"pre-processor/utils/html_parser"
@@ -66,6 +68,14 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 		}
 
 		if err := w.processJob(ctx, job); err != nil {
+			// Check for downstream overload (429) - back off and skip remaining jobs
+			if errors.Is(err, domain.ErrServiceOverloaded) {
+				w.logger.WarnContext(ctx, "downstream service overloaded, backing off and skipping remaining jobs",
+					"job_id", job.JobID,
+					"article_id", job.ArticleID,
+					"remaining", len(jobs)-i-1)
+				return domain.ErrServiceOverloaded
+			}
 			w.logger.ErrorContext(ctx, "failed to process job", "error", err, "job_id", job.JobID, "article_id", job.ArticleID)
 			// Continue processing other jobs even if one fails
 			continue

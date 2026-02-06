@@ -42,4 +42,7 @@ var (
 var (
 	// ErrNewsCreatorUnavailable indicates news-creator service is not reachable
 	ErrNewsCreatorUnavailable = errors.New("news-creator service unavailable")
+
+	// ErrServiceOverloaded indicates downstream service returned 429 (queue full)
+	ErrServiceOverloaded = errors.New("downstream service overloaded")
 )

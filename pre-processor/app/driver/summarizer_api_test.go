@@ -1,14 +1,60 @@
 package driver
 
 import (
+	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"pre-processor/config"
+	"pre-processor/domain"
+	"pre-processor/models"
 )
 
 // TestContentLengthMeasurement verifies that we use rune count (character count)
 // instead of byte count for content length validation.
 // This is critical for Japanese content where 1 character = 3 bytes in UTF-8.
+func TestArticleSummarizerAPIClient_Returns429(t *testing.T) {
+	t.Run("should return ErrServiceOverloaded on 429 response", func(t *testing.T) {
+		// Create a test server that returns 429
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Retry-After", "30")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error": "queue full"}`))
+		}))
+		defer server.Close()
+
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+		cfg := &config.Config{
+			NewsCreator: config.NewsCreatorConfig{
+				Host:    server.URL,
+				APIPath: "/api/v1/summarize",
+				Timeout: 5 * 1_000_000_000, // 5 seconds as time.Duration (nanoseconds)
+			},
+		}
+
+		article := &models.Article{
+			ID:      "test-article-429",
+			Content: strings.Repeat("Test content for summarization. ", 10),
+		}
+
+		_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
+
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !errors.Is(err, domain.ErrServiceOverloaded) {
+			t.Errorf("expected ErrServiceOverloaded, got: %v", err)
+		}
+	})
+}
+
 func TestContentLengthMeasurement(t *testing.T) {
 	// Generate test strings with exact lengths
 	englishShort := strings.Repeat("a", 77)              // 77 chars, 77 bytes

@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"pre-processor/domain"
 	"pre-processor/models"
 	"pre-processor/repository"
 
@@ -70,6 +72,56 @@ type stubSummaryRepoForWorker struct {
 func (m *stubSummaryRepoForWorker) Create(_ context.Context, _ *models.ArticleSummary) error {
 	m.createCalls++
 	return nil
+}
+
+// stubAPIRepoOverloaded returns ErrServiceOverloaded for SummarizeArticle.
+type stubAPIRepoOverloaded struct {
+	repository.ExternalAPIRepository
+	summarizeCalls int
+}
+
+func (m *stubAPIRepoOverloaded) SummarizeArticle(_ context.Context, _ *models.Article, _ string) (*models.SummarizedContent, error) {
+	m.summarizeCalls++
+	return nil, domain.ErrServiceOverloaded
+}
+
+func TestSummarizeQueueWorker_ProcessQueue_ServiceOverloaded(t *testing.T) {
+	t.Run("should return ErrServiceOverloaded and skip remaining jobs on 429", func(t *testing.T) {
+		ctx := context.Background()
+
+		jobs := []*models.SummarizeJob{
+			{JobID: uuid.New(), ArticleID: "article-1", MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-2", MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-3", MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepo{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoOverloaded{}
+		summaryRepo := &stubSummaryRepoForWorker{}
+
+		worker := NewSummarizeQueueWorker(
+			jobRepo,
+			articleRepo,
+			apiRepo,
+			summaryRepo,
+			testLogger(),
+			10,
+		)
+
+		err := worker.ProcessQueue(ctx)
+
+		// Should return ErrServiceOverloaded
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, domain.ErrServiceOverloaded),
+			"should return ErrServiceOverloaded, got: %v", err)
+
+		// Only the first job should be attempted (then backoff kicks in)
+		assert.Equal(t, 1, apiRepo.summarizeCalls,
+			"should stop after first overloaded response")
+		assert.Equal(t, 1, articleRepo.findCalls,
+			"should only fetch article for the first job")
+	})
 }
 
 func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {

@@ -64,6 +64,11 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *m
 			r.logger.InfoContext(ctx, "skipping summarization: content too short", "article_id", article.ID)
 			return nil, domain.ErrContentTooShort
 		}
+		// Handle 429 (service overloaded) - propagate for backpressure
+		if errors.Is(err, domain.ErrServiceOverloaded) {
+			r.logger.WarnContext(ctx, "downstream service overloaded", "article_id", article.ID)
+			return nil, domain.ErrServiceOverloaded
+		}
 		r.logger.ErrorContext(ctx, "failed to summarize article", "error", err, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to summarize article: %w", err)
 	}

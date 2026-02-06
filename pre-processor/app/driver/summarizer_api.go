@@ -159,6 +159,14 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *models.Article, cf
 		bodyStr := string(bodyBytes)
 		logger.Error("API returned non-200 status", "status", resp.Status, "code", resp.StatusCode, "body", bodyStr)
 
+		// Handle 429 Too Many Requests (queue full / backpressure)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			retryAfter := resp.Header.Get("Retry-After")
+			logger.Warn("news-creator queue full, backing off",
+				"article_id", article.ID, "retry_after", retryAfter)
+			return nil, domain.ErrServiceOverloaded
+		}
+
 		// Handle 400 Bad Request as ErrContentTooShort if likely
 		if resp.StatusCode == http.StatusBadRequest {
 			// Simply assume 400 means content validation failed (likely too short or invalid)
@@ -312,6 +320,14 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *models.Artic
 		errorBody := string(bodyBytes)
 		if readErr != nil {
 			errorBody = fmt.Sprintf("(failed to read error body: %v)", readErr)
+		}
+
+		// Handle 429 Too Many Requests (queue full / backpressure)
+		if resp.StatusCode == http.StatusTooManyRequests {
+			retryAfter := resp.Header.Get("Retry-After")
+			logger.Warn("news-creator queue full (streaming), backing off",
+				"article_id", article.ID, "retry_after", retryAfter)
+			return nil, domain.ErrServiceOverloaded
 		}
 
 		logger.Error("API returned non-200 status for streaming request",
