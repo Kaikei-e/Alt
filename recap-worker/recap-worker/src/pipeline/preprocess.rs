@@ -6,7 +6,7 @@ use ammonia::clean;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use regex::Regex;
 use serde_json::json;
 use tokio::sync::Semaphore;
@@ -315,7 +315,7 @@ fn tokenize_latin_like(text: &str) -> Vec<String> {
     results
 }
 
-static NON_WORD_BOUNDARY: Lazy<Regex> = Lazy::new(|| {
+static NON_WORD_BOUNDARY: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[\p{Punctuation}\p{Symbol}]+|[\p{Punctuation}\p{Symbol}]+$").unwrap()
 });
 

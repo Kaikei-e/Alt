@@ -136,7 +136,6 @@ pub(crate) enum GraphOverrideError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
 
     fn fixtures_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config/graph.local.yaml")
@@ -144,38 +143,23 @@ mod tests {
 
     #[test]
     fn load_from_env_defaults_when_missing() {
-        // SAFETY: Modifying environment variable without mutex protection. This is potentially
-        // unsafe if tests run in parallel, as concurrent env var access can cause data races.
-        // TODO: Consider using ENV_MUTEX (from config::ENV_MUTEX) to protect this operation.
-        // Current assumption: This test doesn't conflict with other tests using GRAPH_CONFIG.
-        unsafe {
-            env::remove_var("GRAPH_CONFIG");
-        }
-        let overrides = GraphOverrideSettings::load_from_env().expect("should load defaults");
-        assert_eq!(overrides, GraphOverrideSettings::default());
+        temp_env::with_var("GRAPH_CONFIG", None::<&str>, || {
+            let overrides = GraphOverrideSettings::load_from_env().expect("should load defaults");
+            assert_eq!(overrides, GraphOverrideSettings::default());
+        });
     }
 
     #[test]
     fn load_from_env_reads_yaml() {
         let fixture = fixtures_path();
-        // SAFETY: Setting environment variable without mutex protection. This is potentially
-        // unsafe if tests run in parallel, as concurrent env var modifications can cause data races.
-        // TODO: Consider using ENV_MUTEX (from config::ENV_MUTEX) to protect this operation.
-        // Current assumption: This test doesn't conflict with other tests using GRAPH_CONFIG.
-        unsafe {
-            env::set_var("GRAPH_CONFIG", &fixture);
-        }
-        let overrides = GraphOverrideSettings::load_from_env().expect("should parse fixture");
-        // SAFETY: Removing environment variable without mutex protection. See TODO above.
-        // This cleanup is necessary but should be protected by ENV_MUTEX for proper isolation.
-        unsafe {
-            env::remove_var("GRAPH_CONFIG");
-        }
-        assert_eq!(overrides.graph_margin, Some(0.05));
-        assert_eq!(overrides.weighted_tie_break_margin, Some(0.03));
-        assert_eq!(overrides.tag_confidence_gate, Some(0.65));
-        assert_eq!(overrides.boost_threshold, Some(0.889_796_73));
-        assert_eq!(overrides.tag_count_threshold, Some(0));
+        temp_env::with_var("GRAPH_CONFIG", Some(fixture.to_str().unwrap()), || {
+            let overrides = GraphOverrideSettings::load_from_env().expect("should parse fixture");
+            assert_eq!(overrides.graph_margin, Some(0.05));
+            assert_eq!(overrides.weighted_tie_break_margin, Some(0.03));
+            assert_eq!(overrides.tag_confidence_gate, Some(0.65));
+            assert_eq!(overrides.boost_threshold, Some(0.889_796_73));
+            assert_eq!(overrides.tag_count_threshold, Some(0));
+        });
     }
 
     #[test]

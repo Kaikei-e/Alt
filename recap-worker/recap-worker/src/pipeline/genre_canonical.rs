@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 /// Canonical sentences for each genre to be used for embedding-based filtering.
 /// These sentences represent the "ideal" content for a genre.
 #[allow(dead_code)] // May be used in future refactoring
-static CANONICAL_SENTENCES: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|| {
+static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> = LazyLock::new(|| {
     let mut m = HashMap::new();
 
     m.insert(

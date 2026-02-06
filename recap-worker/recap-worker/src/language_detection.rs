@@ -3,12 +3,12 @@
 //! English/Japaneseのみに限定して高速に言語を検出し、
 //! 信頼度が低い場合は`Unknown`を返すことで誤ルーティングを防ぐ。
 use lingua::{Language, LanguageDetector, LanguageDetectorBuilder};
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 
 use crate::classification::ClassificationLanguage;
 
 /// 言語検出器（English/Japaneseのみに限定）
-static DETECTOR: Lazy<LanguageDetector> = Lazy::new(|| {
+static DETECTOR: LazyLock<LanguageDetector> = LazyLock::new(|| {
     LanguageDetectorBuilder::from_languages(&[Language::English, Language::Japanese])
         .with_minimum_relative_distance(0.01)
         .build()

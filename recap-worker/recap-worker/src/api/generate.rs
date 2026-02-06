@@ -127,27 +127,18 @@ mod tests {
     async fn trigger_returns_accepted_with_configured_defaults() {
         let config = {
             let _lock = ENV_MUTEX.lock().expect("env mutex");
-            // SAFETY: Environment variable modifications are protected by ENV_MUTEX held via _lock.
-            // The mutex ensures exclusive access during test setup, preventing concurrent modifications
-            // from parallel tests. All values are valid UTF-8 string literals. The lock lifetime
-            // extends through Config::from_env() to ensure environment stability during config loading.
-            unsafe {
-                std::env::set_var(
-                    "RECAP_DB_DSN",
-                    "postgres://recap:recap@localhost:5432/recap",
-                );
-                std::env::set_var("NEWS_CREATOR_BASE_URL", "http://localhost:18001/");
-                std::env::set_var("SUBWORKER_BASE_URL", "http://localhost:18002/");
-                std::env::set_var("ALT_BACKEND_BASE_URL", "http://localhost:19000/");
-                std::env::set_var("RECAP_GENRES", "ai,space");
-                std::env::remove_var("ALT_BACKEND_SERVICE_TOKEN");
-                // Set dummy token path for testing (file doesn't need to exist, will fail gracefully)
-                std::env::set_var(
-                    "HUGGING_FACE_TOKEN_PATH",
-                    "/tmp/test-token-which-does-not-exist",
-                );
-            }
-            Config::from_env().expect("config loads")
+            temp_env::with_vars(
+                [
+                    ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5432/recap")),
+                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                    ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                    ("RECAP_GENRES", Some("ai,space")),
+                    ("ALT_BACKEND_SERVICE_TOKEN", None),
+                    ("HUGGING_FACE_TOKEN_PATH", Some("/tmp/test-token-which-does-not-exist")),
+                ],
+                || Config::from_env().expect("config loads"),
+            )
         };
 
         let registry = ComponentRegistry::build(config)
@@ -184,20 +175,5 @@ mod tests {
             .map(|value| value.as_str().expect("genre str").to_string())
             .collect::<Vec<_>>();
         assert_eq!(genres, vec!["ai".to_string(), "space".to_string()]);
-
-        {
-            let _lock = ENV_MUTEX.lock().expect("env mutex cleanup");
-            // SAFETY: Environment variable cleanup protected by ENV_MUTEX held via _lock.
-            // This ensures no other test is concurrently accessing or modifying these variables.
-            // Cleanup is necessary to prevent test pollution and ensure test isolation.
-            unsafe {
-                std::env::remove_var("RECAP_DB_DSN");
-                std::env::remove_var("NEWS_CREATOR_BASE_URL");
-                std::env::remove_var("SUBWORKER_BASE_URL");
-                std::env::remove_var("ALT_BACKEND_BASE_URL");
-                std::env::remove_var("ALT_BACKEND_SERVICE_TOKEN");
-                std::env::remove_var("RECAP_GENRES");
-            }
-        }
     }
 }

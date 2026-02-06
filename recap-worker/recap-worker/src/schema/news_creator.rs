@@ -1,11 +1,12 @@
 /// News-Creator APIのJSON Schema定義。
 ///
 /// 日本語要約生成のレスポンススキーマを定義します。
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 use serde_json::{Value, json};
 
 /// News-Creator summary responseのJSON Schema。
-pub(crate) static SUMMARY_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
+pub(crate) static SUMMARY_RESPONSE_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://alt.dev/schemas/news-creator/summary-response.json",
@@ -120,7 +121,7 @@ pub(crate) static SUMMARY_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
 
 /// News-Creator summary requestのJSON Schema。
 #[allow(dead_code)]
-pub(crate) static SUMMARY_REQUEST_SCHEMA: Lazy<Value> = Lazy::new(|| {
+pub(crate) static SUMMARY_REQUEST_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://alt.dev/schemas/news-creator/summary-request.json",

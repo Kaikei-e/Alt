@@ -53,21 +53,15 @@ mod tests {
 
     fn setup_config() -> Arc<Config> {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
-        // SAFETY: Environment variable modifications are protected by ENV_MUTEX which is held
-        // for the duration of this function (via _lock). The mutex prevents concurrent access
-        // from other tests running in parallel, ensuring no data races. All values are valid
-        // UTF-8 string literals. The lock is held until Config::from_env() completes, ensuring
-        // the environment is stable during config construction.
-        unsafe {
-            std::env::set_var(
-                "RECAP_DB_DSN",
-                "postgres://recap:recap@localhost:5999/recap_db",
-            );
-            std::env::set_var("NEWS_CREATOR_BASE_URL", "http://localhost:8001/");
-            std::env::set_var("SUBWORKER_BASE_URL", "http://localhost:8002/");
-            std::env::set_var("ALT_BACKEND_BASE_URL", "http://localhost:9000/");
-        }
-        Arc::new(Config::from_env().expect("config should load for tests"))
+        Arc::new(temp_env::with_vars(
+            [
+                ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5999/recap_db")),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+            ],
+            || Config::from_env().expect("config should load for tests"),
+        ))
     }
 
     #[tokio::test]

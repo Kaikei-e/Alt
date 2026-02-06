@@ -1,11 +1,12 @@
 /// Subworker APIのJSON Schema定義。
 ///
 /// クラスタリング結果のスキーマを定義します。
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
 use serde_json::{Value, json};
 
 /// Subworker clustering responseのJSON Schema。
-pub(crate) static CLUSTERING_RESPONSE_SCHEMA: Lazy<Value> = Lazy::new(|| {
+pub(crate) static CLUSTERING_RESPONSE_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://alt.dev/schemas/subworker/cluster-job-response.json",

@@ -159,27 +159,17 @@ mod tests {
     async fn component_registry_builds() {
         let config = {
             let _lock = ENV_MUTEX.lock().expect("env mutex");
-            // SAFETY: Environment variable modifications are protected by ENV_MUTEX held via _lock.
-            // The mutex ensures exclusive access during test setup, preventing data races from
-            // parallel tests. All values are valid UTF-8 string literals. The lock lifetime extends
-            // through Config::from_env() to guarantee environment stability during config construction.
-            unsafe {
-                std::env::set_var(
-                    "RECAP_DB_DSN",
-                    "postgres://user:pass@localhost:5555/recap_db",
-                );
-                std::env::set_var("NEWS_CREATOR_BASE_URL", "http://localhost:8001/");
-                std::env::set_var("SUBWORKER_BASE_URL", "http://localhost:8002/");
-                std::env::set_var("ALT_BACKEND_BASE_URL", "http://localhost:9000/");
-                std::env::remove_var("ALT_BACKEND_SERVICE_TOKEN");
-                // Set dummy token path for testing (file doesn't need to exist, will fail gracefully)
-                std::env::set_var(
-                    "HUGGING_FACE_TOKEN_PATH",
-                    "/tmp/test-token-which-does-not-exist",
-                );
-            }
-
-            Config::from_env().expect("config loads")
+            temp_env::with_vars(
+                [
+                    ("RECAP_DB_DSN", Some("postgres://user:pass@localhost:5555/recap_db")),
+                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+                    ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                    ("ALT_BACKEND_SERVICE_TOKEN", None),
+                    ("HUGGING_FACE_TOKEN_PATH", Some("/tmp/test-token-which-does-not-exist")),
+                ],
+                || Config::from_env().expect("config loads"),
+            )
         };
         let registry = ComponentRegistry::build(config)
             .await

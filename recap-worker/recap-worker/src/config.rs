@@ -5,9 +5,8 @@ use thiserror::Error;
 use crate::clients::subworker::CLASSIFY_CHUNK_SIZE;
 
 #[cfg(test)]
-use once_cell::sync::Lazy;
-#[cfg(test)]
-pub(crate) static ENV_MUTEX: Lazy<std::sync::Mutex<()>> = Lazy::new(|| std::sync::Mutex::new(()));
+pub(crate) static ENV_MUTEX: std::sync::LazyLock<std::sync::Mutex<()>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
 
 /// boolの組み合わせ爆発を避けるための2値トグル。
 ///
@@ -1052,247 +1051,231 @@ fn parse_csv(name: &'static str, default: &str) -> std::vec::Vec<std::string::St
 mod tests {
     use super::*;
 
-    fn set_env(name: &str, value: &str) {
-        // SAFETY: Environment variable modification is protected by ENV_MUTEX (acquired by all
-        // tests before calling this function). The mutex ensures exclusive access during env var
-        // mutations, preventing data races. All callers must hold the ENV_MUTEX lock before
-        // invoking this function. The value parameter is valid UTF-8 (&str guarantee).
-        unsafe {
-            env::set_var(name, value);
-        }
-    }
-
-    fn remove_env(name: &str) {
-        // SAFETY: Environment variable modification is protected by ENV_MUTEX (acquired by all
-        // tests before calling this function). The mutex ensures exclusive access during env var
-        // mutations, preventing data races. All callers must hold the ENV_MUTEX lock before
-        // invoking this function.
-        unsafe {
-            env::remove_var(name);
-        }
-    }
-
-    fn reset_env() {
-        remove_env("RECAP_DB_DSN");
-        remove_env("RECAP_WORKER_HTTP_BIND");
-        remove_env("LLM_PROMPT_VERSION");
-        remove_env("LLM_MAX_CONCURRENCY");
-        remove_env("NEWS_CREATOR_BASE_URL");
-        remove_env("SUBWORKER_BASE_URL");
-        remove_env("ALT_BACKEND_BASE_URL");
-        remove_env("ALT_BACKEND_CONNECT_TIMEOUT_MS");
-        remove_env("ALT_BACKEND_READ_TIMEOUT_MS");
-        remove_env("ALT_BACKEND_TOTAL_TIMEOUT_MS");
-        remove_env("HTTP_MAX_RETRIES");
-        remove_env("HTTP_BACKOFF_BASE_MS");
-        remove_env("HTTP_BACKOFF_CAP_MS");
-        remove_env("TAG_LABEL_GRAPH_WINDOW");
-        remove_env("TAG_LABEL_GRAPH_TTL_SECONDS");
-        remove_env("OTEL_EXPORTER_ENDPOINT");
-        remove_env("OTEL_SAMPLING_RATIO");
-        remove_env("RECAP_WINDOW_DAYS");
-        remove_env("RECAP_3DAYS_WINDOW_DAYS");
-        remove_env("RECAP_GENRES");
-        remove_env("LLM_SUMMARY_TIMEOUT_SECS");
+    /// テスト内で設定すべき環境変数をクリアして必須のみセットするヘルパー。
+    /// `temp_env::with_vars` は各テスト終了時に自動的に元に戻す。
+    fn base_env_vars() -> Vec<(&'static str, Option<&'static str>)> {
+        vec![
+            // 先にリセット対象をNoneで列挙
+            ("RECAP_DB_DSN", None),
+            ("RECAP_WORKER_HTTP_BIND", None),
+            ("LLM_PROMPT_VERSION", None),
+            ("LLM_MAX_CONCURRENCY", None),
+            ("NEWS_CREATOR_BASE_URL", None),
+            ("SUBWORKER_BASE_URL", None),
+            ("ALT_BACKEND_BASE_URL", None),
+            ("ALT_BACKEND_CONNECT_TIMEOUT_MS", None),
+            ("ALT_BACKEND_READ_TIMEOUT_MS", None),
+            ("ALT_BACKEND_TOTAL_TIMEOUT_MS", None),
+            ("HTTP_MAX_RETRIES", None),
+            ("HTTP_BACKOFF_BASE_MS", None),
+            ("HTTP_BACKOFF_CAP_MS", None),
+            ("TAG_LABEL_GRAPH_WINDOW", None),
+            ("TAG_LABEL_GRAPH_TTL_SECONDS", None),
+            ("OTEL_EXPORTER_ENDPOINT", None),
+            ("OTEL_SAMPLING_RATIO", None),
+            ("RECAP_WINDOW_DAYS", None),
+            ("RECAP_3DAYS_WINDOW_DAYS", None),
+            ("RECAP_GENRES", None),
+            ("LLM_SUMMARY_TIMEOUT_SECS", None),
+        ]
     }
 
     #[test]
     fn from_env_uses_defaults_when_optional_missing() {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
-        reset_env();
-        set_env(
-            "RECAP_DB_DSN",
-            "postgres://recap:recap@localhost:5555/recap_db",
-        );
-        set_env("NEWS_CREATOR_BASE_URL", "http://localhost:8001/");
-        set_env("SUBWORKER_BASE_URL", "http://localhost:8002/");
-        set_env("ALT_BACKEND_BASE_URL", "http://localhost:9000/");
+        let mut vars = base_env_vars();
+        vars.extend([
+            ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5555/recap_db")),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
 
-        let config = Config::from_env().expect("config should load");
-
-        assert_eq!(
-            config.recap_db_dsn(),
-            "postgres://recap:recap@localhost:5555/recap_db"
-        );
-        assert_eq!(config.llm_prompt_version(), "recap-ja-v2");
-        assert_eq!(config.llm_max_concurrency().get(), 1);
-        assert_eq!(config.http_bind(), "0.0.0.0:9005".parse().unwrap());
-        assert_eq!(config.news_creator_base_url(), "http://localhost:8001/");
-        assert_eq!(config.subworker_base_url(), "http://localhost:8002/");
-        assert_eq!(config.alt_backend_base_url(), "http://localhost:9000/");
-        assert_eq!(
-            config.alt_backend_connect_timeout(),
-            Duration::from_millis(3000)
-        );
-        assert_eq!(
-            config.alt_backend_read_timeout(),
-            Duration::from_millis(20000)
-        );
-        assert_eq!(
-            config.alt_backend_total_timeout(),
-            Duration::from_millis(30000)
-        );
-        assert_eq!(config.http_max_retries(), 3);
-        assert_eq!(config.http_backoff_base_ms(), 250);
-        assert_eq!(config.http_backoff_cap_ms(), 10000);
-        assert!(config.otel_exporter_endpoint().is_none());
-        assert!((config.otel_sampling_ratio() - 1.0).abs() < f64::EPSILON);
-        assert_eq!(config.recap_window_days(), 7);
-        assert_eq!(config.tag_label_graph_window(), "7d");
-        assert_eq!(config.tag_label_graph_ttl(), Duration::from_secs(900));
-        assert_eq!(
-            config.recap_genres(),
-            &[
-                "ai_data",
-                "climate_environment",
-                "consumer_products",
-                "consumer_tech",
-                "culture_arts",
-                "cybersecurity",
-                "diplomacy_security",
-                "economics_macro",
-                "education",
-                "energy_transition",
-                "film_tv",
-                "food_cuisine",
-                "games_esports",
-                "health_medicine",
-                "home_living",
-                "industry_logistics",
-                "internet_platforms",
-                "labor_workplace",
-                "law_crime",
-                "life_science",
-                "markets_finance",
-                "mobility_automotive",
-                "music_audio",
-                "politics_government",
-                "society_demographics",
-                "software_dev",
-                "space_astronomy",
-                "sports",
-                "startups_innovation",
-                "travel_places",
-            ]
-        );
+            assert_eq!(
+                config.recap_db_dsn(),
+                "postgres://recap:recap@localhost:5555/recap_db"
+            );
+            assert_eq!(config.llm_prompt_version(), "recap-ja-v2");
+            assert_eq!(config.llm_max_concurrency().get(), 1);
+            assert_eq!(config.http_bind(), "0.0.0.0:9005".parse().unwrap());
+            assert_eq!(config.news_creator_base_url(), "http://localhost:8001/");
+            assert_eq!(config.subworker_base_url(), "http://localhost:8002/");
+            assert_eq!(config.alt_backend_base_url(), "http://localhost:9000/");
+            assert_eq!(
+                config.alt_backend_connect_timeout(),
+                Duration::from_millis(3000)
+            );
+            assert_eq!(
+                config.alt_backend_read_timeout(),
+                Duration::from_millis(20000)
+            );
+            assert_eq!(
+                config.alt_backend_total_timeout(),
+                Duration::from_millis(30000)
+            );
+            assert_eq!(config.http_max_retries(), 3);
+            assert_eq!(config.http_backoff_base_ms(), 250);
+            assert_eq!(config.http_backoff_cap_ms(), 10000);
+            assert!(config.otel_exporter_endpoint().is_none());
+            assert!((config.otel_sampling_ratio() - 1.0).abs() < f64::EPSILON);
+            assert_eq!(config.recap_window_days(), 7);
+            assert_eq!(config.tag_label_graph_window(), "7d");
+            assert_eq!(config.tag_label_graph_ttl(), Duration::from_secs(900));
+            assert_eq!(
+                config.recap_genres(),
+                &[
+                    "ai_data",
+                    "climate_environment",
+                    "consumer_products",
+                    "consumer_tech",
+                    "culture_arts",
+                    "cybersecurity",
+                    "diplomacy_security",
+                    "economics_macro",
+                    "education",
+                    "energy_transition",
+                    "film_tv",
+                    "food_cuisine",
+                    "games_esports",
+                    "health_medicine",
+                    "home_living",
+                    "industry_logistics",
+                    "internet_platforms",
+                    "labor_workplace",
+                    "law_crime",
+                    "life_science",
+                    "markets_finance",
+                    "mobility_automotive",
+                    "music_audio",
+                    "politics_government",
+                    "society_demographics",
+                    "software_dev",
+                    "space_astronomy",
+                    "sports",
+                    "startups_innovation",
+                    "travel_places",
+                ]
+            );
+        });
     }
 
     #[test]
     fn from_env_overrides_values() {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
-        reset_env();
-        set_env(
-            "RECAP_DB_DSN",
-            "postgres://recap:recap@localhost:5999/recap_db",
-        );
-        set_env("RECAP_WORKER_HTTP_BIND", "127.0.0.1:8088");
-        set_env("LLM_PROMPT_VERSION", "recap-ja-v3");
-        set_env("LLM_MAX_CONCURRENCY", "2");
-        set_env("NEWS_CREATOR_BASE_URL", "https://news.example.com/");
-        set_env("SUBWORKER_BASE_URL", "https://subworker.example.com/");
-        set_env("ALT_BACKEND_BASE_URL", "https://backend.example.com/");
-        set_env("ALT_BACKEND_CONNECT_TIMEOUT_MS", "5000");
-        set_env("HTTP_MAX_RETRIES", "5");
-        set_env("OTEL_EXPORTER_ENDPOINT", "http://otel:4317");
-        set_env("RECAP_WINDOW_DAYS", "14");
-        set_env("RECAP_GENRES", "ai,tech");
-        set_env("TAG_LABEL_GRAPH_WINDOW", "30d");
-        set_env("TAG_LABEL_GRAPH_TTL_SECONDS", "600");
+        let mut vars = base_env_vars();
+        vars.extend([
+            ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5999/recap_db")),
+            ("RECAP_WORKER_HTTP_BIND", Some("127.0.0.1:8088")),
+            ("LLM_PROMPT_VERSION", Some("recap-ja-v3")),
+            ("LLM_MAX_CONCURRENCY", Some("2")),
+            ("NEWS_CREATOR_BASE_URL", Some("https://news.example.com/")),
+            ("SUBWORKER_BASE_URL", Some("https://subworker.example.com/")),
+            ("ALT_BACKEND_BASE_URL", Some("https://backend.example.com/")),
+            ("ALT_BACKEND_CONNECT_TIMEOUT_MS", Some("5000")),
+            ("HTTP_MAX_RETRIES", Some("5")),
+            ("OTEL_EXPORTER_ENDPOINT", Some("http://otel:4317")),
+            ("RECAP_WINDOW_DAYS", Some("14")),
+            ("RECAP_GENRES", Some("ai,tech")),
+            ("TAG_LABEL_GRAPH_WINDOW", Some("30d")),
+            ("TAG_LABEL_GRAPH_TTL_SECONDS", Some("600")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("config should load");
 
-        let config = Config::from_env().expect("config should load");
-
-        assert_eq!(
-            config.recap_db_dsn(),
-            "postgres://recap:recap@localhost:5999/recap_db"
-        );
-        assert_eq!(config.llm_prompt_version(), "recap-ja-v3");
-        assert_eq!(config.llm_max_concurrency().get(), 2);
-        assert_eq!(config.http_bind(), "127.0.0.1:8088".parse().unwrap());
-        assert_eq!(config.news_creator_base_url(), "https://news.example.com/");
-        assert_eq!(
-            config.subworker_base_url(),
-            "https://subworker.example.com/"
-        );
-        assert_eq!(
-            config.alt_backend_base_url(),
-            "https://backend.example.com/"
-        );
-        assert_eq!(
-            config.alt_backend_connect_timeout(),
-            Duration::from_millis(5000)
-        );
-        assert_eq!(config.http_max_retries(), 5);
-        assert_eq!(config.otel_exporter_endpoint(), Some("http://otel:4317"));
-        assert_eq!(config.recap_window_days(), 14);
-        assert_eq!(config.recap_genres(), &["ai", "tech"]);
-        assert_eq!(config.tag_label_graph_window(), "30d");
-        assert_eq!(config.tag_label_graph_ttl(), Duration::from_secs(600));
+            assert_eq!(
+                config.recap_db_dsn(),
+                "postgres://recap:recap@localhost:5999/recap_db"
+            );
+            assert_eq!(config.llm_prompt_version(), "recap-ja-v3");
+            assert_eq!(config.llm_max_concurrency().get(), 2);
+            assert_eq!(config.http_bind(), "127.0.0.1:8088".parse().unwrap());
+            assert_eq!(config.news_creator_base_url(), "https://news.example.com/");
+            assert_eq!(
+                config.subworker_base_url(),
+                "https://subworker.example.com/"
+            );
+            assert_eq!(
+                config.alt_backend_base_url(),
+                "https://backend.example.com/"
+            );
+            assert_eq!(
+                config.alt_backend_connect_timeout(),
+                Duration::from_millis(5000)
+            );
+            assert_eq!(config.http_max_retries(), 5);
+            assert_eq!(config.otel_exporter_endpoint(), Some("http://otel:4317"));
+            assert_eq!(config.recap_window_days(), 14);
+            assert_eq!(config.recap_genres(), &["ai", "tech"]);
+            assert_eq!(config.tag_label_graph_window(), "30d");
+            assert_eq!(config.tag_label_graph_ttl(), Duration::from_secs(600));
+        });
     }
 
     #[test]
     fn from_env_errors_when_required_missing() {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
-        reset_env();
-        set_env("NEWS_CREATOR_BASE_URL", "http://localhost:8001/");
-        set_env("SUBWORKER_BASE_URL", "http://localhost:8002/");
-        set_env("ALT_BACKEND_BASE_URL", "http://localhost:9000/");
-
-        let error = Config::from_env().expect_err("missing DSN should fail");
-
-        assert!(matches!(error, ConfigError::Missing("RECAP_DB_DSN")));
+        let mut vars = base_env_vars();
+        vars.extend([
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let error = Config::from_env().expect_err("missing DSN should fail");
+            assert!(matches!(error, ConfigError::Missing("RECAP_DB_DSN")));
+        });
     }
 
     #[test]
     fn from_env_errors_when_news_creator_missing() {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
-        reset_env();
-        set_env(
-            "RECAP_DB_DSN",
-            "postgres://recap:recap@localhost:5555/recap_db",
-        );
-        set_env("SUBWORKER_BASE_URL", "http://localhost:8002/");
-        set_env("ALT_BACKEND_BASE_URL", "http://localhost:9000/");
-
-        let error = Config::from_env().expect_err("missing news creator should fail");
-
-        assert!(matches!(
-            error,
-            ConfigError::Missing("NEWS_CREATOR_BASE_URL")
-        ));
+        let mut vars = base_env_vars();
+        vars.extend([
+            ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5555/recap_db")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let error = Config::from_env().expect_err("missing news creator should fail");
+            assert!(matches!(
+                error,
+                ConfigError::Missing("NEWS_CREATOR_BASE_URL")
+            ));
+        });
     }
 
     #[test]
     fn from_env_errors_when_subworker_missing() {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
-        reset_env();
-        set_env(
-            "RECAP_DB_DSN",
-            "postgres://recap:recap@localhost:5555/recap_db",
-        );
-        set_env("NEWS_CREATOR_BASE_URL", "http://localhost:8001/");
-        set_env("ALT_BACKEND_BASE_URL", "http://localhost:9000/");
-
-        let error = Config::from_env().expect_err("missing subworker should fail");
-
-        assert!(matches!(error, ConfigError::Missing("SUBWORKER_BASE_URL")));
+        let mut vars = base_env_vars();
+        vars.extend([
+            ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5555/recap_db")),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let error = Config::from_env().expect_err("missing subworker should fail");
+            assert!(matches!(error, ConfigError::Missing("SUBWORKER_BASE_URL")));
+        });
     }
 
     #[test]
     fn from_env_errors_when_alt_backend_missing() {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
-        reset_env();
-        set_env(
-            "RECAP_DB_DSN",
-            "postgres://recap:recap@localhost:5555/recap_db",
-        );
-        set_env("NEWS_CREATOR_BASE_URL", "http://localhost:8001/");
-        set_env("SUBWORKER_BASE_URL", "http://localhost:8002/");
-
-        let error = Config::from_env().expect_err("missing alt backend should fail");
-
-        assert!(matches!(
-            error,
-            ConfigError::Missing("ALT_BACKEND_BASE_URL")
-        ));
+        let mut vars = base_env_vars();
+        vars.extend([
+            ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5555/recap_db")),
+            ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+            ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+        ]);
+        temp_env::with_vars(vars, || {
+            let error = Config::from_env().expect_err("missing alt backend should fail");
+            assert!(matches!(
+                error,
+                ConfigError::Missing("ALT_BACKEND_BASE_URL")
+            ));
+        });
     }
 }

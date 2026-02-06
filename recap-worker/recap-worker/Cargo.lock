@@ -3833,7 +3833,6 @@ dependencies = [
  "metrics-exporter-prometheus",
  "ndarray 0.16.1",
  "num_cpus",
- "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
@@ -3852,9 +3851,10 @@ dependencies = [
  "smallvec",
  "sprs",
  "sqlx",
+ "temp-env",
  "tempfile",
  "testcontainers",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokenizers",
  "tokio",
  "tower",
@@ -5072,6 +5072,15 @@ dependencies = [
  "thiserror 1.0.69",
  "torch-sys",
  "zip",
+]
+
+[[package]]
+name = "temp-env"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96374855068f47402c3121c6eed88d29cb1de8f3ab27090e273e420bdabcf050"
+dependencies = [
+ "parking_lot",
 ]
 
 [[package]]

@@ -1,7 +1,7 @@
 //! 高速なジャンルキーワード照合データ構造。
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use fst::{IntoStreamer, Map, Streamer};
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
@@ -76,7 +76,7 @@ pub struct Match {
 }
 
 /// コンパイル済みのデフォルト辞書。
-pub static DEFAULT_KEYWORDS: Lazy<Vec<KeywordEntry>> = Lazy::new(|| {
+pub static DEFAULT_KEYWORDS: LazyLock<Vec<KeywordEntry>> = LazyLock::new(|| {
     vec![
         KeywordEntry {
             genre: "ai".to_string(),
