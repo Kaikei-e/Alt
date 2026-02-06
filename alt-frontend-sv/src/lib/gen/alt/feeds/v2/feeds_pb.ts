@@ -2,144 +2,164 @@
 // @generated from file alt/feeds/v2/feeds.proto (package alt.feeds.v2, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+	GenFile,
+	GenMessage,
+	GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+	fileDesc,
+	messageDesc,
+	serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/feeds/v2/feeds.proto.
  */
-export const file_alt_feeds_v2_feeds: GenFile = /*@__PURE__*/
-  fileDesc("ChhhbHQvZmVlZHMvdjIvZmVlZHMucHJvdG8SDGFsdC5mZWVkcy52MiIVChNHZXRGZWVkU3RhdHNSZXF1ZXN0IksKFEdldEZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEh4KFnN1bW1hcml6ZWRfZmVlZF9hbW91bnQYAiABKAMiHQobR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0Im0KHEdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USEwoLZmVlZF9hbW91bnQYASABKAMSFgoOYXJ0aWNsZV9hbW91bnQYAiABKAMSIAoYdW5zdW1tYXJpemVkX2ZlZWRfYW1vdW50GAMgASgDIhcKFUdldFVucmVhZENvdW50UmVxdWVzdCInChZHZXRVbnJlYWRDb3VudFJlc3BvbnNlEg0KBWNvdW50GAEgASgDIhgKFlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QimgEKF1N0cmVhbUZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEiAKGHVuc3VtbWFyaXplZF9mZWVkX2Ftb3VudBgCIAEoAxIWCg50b3RhbF9hcnRpY2xlcxgDIAEoAxIwCghtZXRhZGF0YRgEIAEoCzIeLmFsdC5mZWVkcy52Mi5SZXNwb25zZU1ldGFkYXRhIjsKEFJlc3BvbnNlTWV0YWRhdGESEQoJdGltZXN0YW1wGAEgASgDEhQKDGlzX2hlYXJ0YmVhdBgCIAEoCCKnAQoIRmVlZEl0ZW0SCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSEwoLZGVzY3JpcHRpb24YAyABKAkSDAoEbGluaxgEIAEoCRIRCglwdWJsaXNoZWQYBSABKAkSEgoKY3JlYXRlZF9hdBgGIAEoCRIOCgZhdXRob3IYByABKAkSFwoKYXJ0aWNsZV9pZBgIIAEoCUgAiAEBQg0KC19hcnRpY2xlX2lkImIKFUdldFVucmVhZEZlZWRzUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBRIRCgR2aWV3GAMgASgJSAGIAQFCCQoHX2N1cnNvckIHCgVfdmlldyJ6ChZHZXRVbnJlYWRGZWVkc1Jlc3BvbnNlEiQKBGRhdGEYASADKAsyFi5hbHQuZmVlZHMudjIuRmVlZEl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiRAoTR2V0UmVhZEZlZWRzUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBUIJCgdfY3Vyc29yIngKFEdldFJlYWRGZWVkc1Jlc3BvbnNlEiQKBGRhdGEYASADKAsyFi5hbHQuZmVlZHMudjIuRmVlZEl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiSAoXR2V0RmF2b3JpdGVGZWVkc1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAVCCQoHX2N1cnNvciJ8ChhHZXRGYXZvcml0ZUZlZWRzUmVzcG9uc2USJAoEZGF0YRgBIAMoCzIWLmFsdC5mZWVkcy52Mi5GZWVkSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciJhChJTZWFyY2hGZWVkc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSEwoGY3Vyc29yGAIgASgFSACIAQESEgoFbGltaXQYAyABKAVIAYgBAUIJCgdfY3Vyc29yQggKBl9saW1pdCJ3ChNTZWFyY2hGZWVkc1Jlc3BvbnNlEiQKBGRhdGEYASADKAsyFi5hbHQuZmVlZHMudjIuRmVlZEl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAVIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IipAEKFlN0cmVhbVN1bW1hcml6ZVJlcXVlc3QSFQoIZmVlZF91cmwYASABKAlIAIgBARIXCgphcnRpY2xlX2lkGAIgASgJSAGIAQESFAoHY29udGVudBgDIAEoCUgCiAEBEhIKBXRpdGxlGAQgASgJSAOIAQFCCwoJX2ZlZWRfdXJsQg0KC19hcnRpY2xlX2lkQgoKCF9jb250ZW50QggKBl90aXRsZSKNAQoXU3RyZWFtU3VtbWFyaXplUmVzcG9uc2USDQoFY2h1bmsYASABKAkSEAoIaXNfZmluYWwYAiABKAgSEgoKYXJ0aWNsZV9pZBgDIAEoCRIRCglpc19jYWNoZWQYBCABKAgSGQoMZnVsbF9zdW1tYXJ5GAUgASgJSACIAQFCDwoNX2Z1bGxfc3VtbWFyeSIoChFNYXJrQXNSZWFkUmVxdWVzdBITCgthcnRpY2xlX3VybBgBIAEoCSIlChJNYXJrQXNSZWFkUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCTKwBwoLRmVlZFNlcnZpY2USVQoMR2V0RmVlZFN0YXRzEiEuYWx0LmZlZWRzLnYyLkdldEZlZWRTdGF0c1JlcXVlc3QaIi5hbHQuZmVlZHMudjIuR2V0RmVlZFN0YXRzUmVzcG9uc2USbQoUR2V0RGV0YWlsZWRGZWVkU3RhdHMSKS5hbHQuZmVlZHMudjIuR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0GiouYWx0LmZlZWRzLnYyLkdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USWwoOR2V0VW5yZWFkQ291bnQSIy5hbHQuZmVlZHMudjIuR2V0VW5yZWFkQ291bnRSZXF1ZXN0GiQuYWx0LmZlZWRzLnYyLkdldFVucmVhZENvdW50UmVzcG9uc2USYAoPU3RyZWFtRmVlZFN0YXRzEiQuYWx0LmZlZWRzLnYyLlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QaJS5hbHQuZmVlZHMudjIuU3RyZWFtRmVlZFN0YXRzUmVzcG9uc2UwARJbCg5HZXRVbnJlYWRGZWVkcxIjLmFsdC5mZWVkcy52Mi5HZXRVbnJlYWRGZWVkc1JlcXVlc3QaJC5hbHQuZmVlZHMudjIuR2V0VW5yZWFkRmVlZHNSZXNwb25zZRJVCgxHZXRSZWFkRmVlZHMSIS5hbHQuZmVlZHMudjIuR2V0UmVhZEZlZWRzUmVxdWVzdBoiLmFsdC5mZWVkcy52Mi5HZXRSZWFkRmVlZHNSZXNwb25zZRJhChBHZXRGYXZvcml0ZUZlZWRzEiUuYWx0LmZlZWRzLnYyLkdldEZhdm9yaXRlRmVlZHNSZXF1ZXN0GiYuYWx0LmZlZWRzLnYyLkdldEZhdm9yaXRlRmVlZHNSZXNwb25zZRJSCgtTZWFyY2hGZWVkcxIgLmFsdC5mZWVkcy52Mi5TZWFyY2hGZWVkc1JlcXVlc3QaIS5hbHQuZmVlZHMudjIuU2VhcmNoRmVlZHNSZXNwb25zZRJgCg9TdHJlYW1TdW1tYXJpemUSJC5hbHQuZmVlZHMudjIuU3RyZWFtU3VtbWFyaXplUmVxdWVzdBolLmFsdC5mZWVkcy52Mi5TdHJlYW1TdW1tYXJpemVSZXNwb25zZTABEk8KCk1hcmtBc1JlYWQSHy5hbHQuZmVlZHMudjIuTWFya0FzUmVhZFJlcXVlc3QaIC5hbHQuZmVlZHMudjIuTWFya0FzUmVhZFJlc3BvbnNlQiRaImFsdC9nZW4vcHJvdG8vYWx0L2ZlZWRzL3YyO2ZlZWRzdjJiBnByb3RvMw");
+export const file_alt_feeds_v2_feeds: GenFile =
+	/*@__PURE__*/
+	fileDesc(
+		"ChhhbHQvZmVlZHMvdjIvZmVlZHMucHJvdG8SDGFsdC5mZWVkcy52MiIVChNHZXRGZWVkU3RhdHNSZXF1ZXN0IksKFEdldEZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEh4KFnN1bW1hcml6ZWRfZmVlZF9hbW91bnQYAiABKAMiHQobR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0Im0KHEdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USEwoLZmVlZF9hbW91bnQYASABKAMSFgoOYXJ0aWNsZV9hbW91bnQYAiABKAMSIAoYdW5zdW1tYXJpemVkX2ZlZWRfYW1vdW50GAMgASgDIhcKFUdldFVucmVhZENvdW50UmVxdWVzdCInChZHZXRVbnJlYWRDb3VudFJlc3BvbnNlEg0KBWNvdW50GAEgASgDIhgKFlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QimgEKF1N0cmVhbUZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEiAKGHVuc3VtbWFyaXplZF9mZWVkX2Ftb3VudBgCIAEoAxIWCg50b3RhbF9hcnRpY2xlcxgDIAEoAxIwCghtZXRhZGF0YRgEIAEoCzIeLmFsdC5mZWVkcy52Mi5SZXNwb25zZU1ldGFkYXRhIjsKEFJlc3BvbnNlTWV0YWRhdGESEQoJdGltZXN0YW1wGAEgASgDEhQKDGlzX2hlYXJ0YmVhdBgCIAEoCCKnAQoIRmVlZEl0ZW0SCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSEwoLZGVzY3JpcHRpb24YAyABKAkSDAoEbGluaxgEIAEoCRIRCglwdWJsaXNoZWQYBSABKAkSEgoKY3JlYXRlZF9hdBgGIAEoCRIOCgZhdXRob3IYByABKAkSFwoKYXJ0aWNsZV9pZBgIIAEoCUgAiAEBQg0KC19hcnRpY2xlX2lkImIKFUdldFVucmVhZEZlZWRzUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBRIRCgR2aWV3GAMgASgJSAGIAQFCCQoHX2N1cnNvckIHCgVfdmlldyJ6ChZHZXRVbnJlYWRGZWVkc1Jlc3BvbnNlEiQKBGRhdGEYASADKAsyFi5hbHQuZmVlZHMudjIuRmVlZEl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiRAoTR2V0UmVhZEZlZWRzUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBUIJCgdfY3Vyc29yIngKFEdldFJlYWRGZWVkc1Jlc3BvbnNlEiQKBGRhdGEYASADKAsyFi5hbHQuZmVlZHMudjIuRmVlZEl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiSAoXR2V0RmF2b3JpdGVGZWVkc1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAVCCQoHX2N1cnNvciJ8ChhHZXRGYXZvcml0ZUZlZWRzUmVzcG9uc2USJAoEZGF0YRgBIAMoCzIWLmFsdC5mZWVkcy52Mi5GZWVkSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciJhChJTZWFyY2hGZWVkc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSEwoGY3Vyc29yGAIgASgFSACIAQESEgoFbGltaXQYAyABKAVIAYgBAUIJCgdfY3Vyc29yQggKBl9saW1pdCJ3ChNTZWFyY2hGZWVkc1Jlc3BvbnNlEiQKBGRhdGEYASADKAsyFi5hbHQuZmVlZHMudjIuRmVlZEl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAVIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IipAEKFlN0cmVhbVN1bW1hcml6ZVJlcXVlc3QSFQoIZmVlZF91cmwYASABKAlIAIgBARIXCgphcnRpY2xlX2lkGAIgASgJSAGIAQESFAoHY29udGVudBgDIAEoCUgCiAEBEhIKBXRpdGxlGAQgASgJSAOIAQFCCwoJX2ZlZWRfdXJsQg0KC19hcnRpY2xlX2lkQgoKCF9jb250ZW50QggKBl90aXRsZSKNAQoXU3RyZWFtU3VtbWFyaXplUmVzcG9uc2USDQoFY2h1bmsYASABKAkSEAoIaXNfZmluYWwYAiABKAgSEgoKYXJ0aWNsZV9pZBgDIAEoCRIRCglpc19jYWNoZWQYBCABKAgSGQoMZnVsbF9zdW1tYXJ5GAUgASgJSACIAQFCDwoNX2Z1bGxfc3VtbWFyeSIoChFNYXJrQXNSZWFkUmVxdWVzdBITCgthcnRpY2xlX3VybBgBIAEoCSIlChJNYXJrQXNSZWFkUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCTKwBwoLRmVlZFNlcnZpY2USVQoMR2V0RmVlZFN0YXRzEiEuYWx0LmZlZWRzLnYyLkdldEZlZWRTdGF0c1JlcXVlc3QaIi5hbHQuZmVlZHMudjIuR2V0RmVlZFN0YXRzUmVzcG9uc2USbQoUR2V0RGV0YWlsZWRGZWVkU3RhdHMSKS5hbHQuZmVlZHMudjIuR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0GiouYWx0LmZlZWRzLnYyLkdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USWwoOR2V0VW5yZWFkQ291bnQSIy5hbHQuZmVlZHMudjIuR2V0VW5yZWFkQ291bnRSZXF1ZXN0GiQuYWx0LmZlZWRzLnYyLkdldFVucmVhZENvdW50UmVzcG9uc2USYAoPU3RyZWFtRmVlZFN0YXRzEiQuYWx0LmZlZWRzLnYyLlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QaJS5hbHQuZmVlZHMudjIuU3RyZWFtRmVlZFN0YXRzUmVzcG9uc2UwARJbCg5HZXRVbnJlYWRGZWVkcxIjLmFsdC5mZWVkcy52Mi5HZXRVbnJlYWRGZWVkc1JlcXVlc3QaJC5hbHQuZmVlZHMudjIuR2V0VW5yZWFkRmVlZHNSZXNwb25zZRJVCgxHZXRSZWFkRmVlZHMSIS5hbHQuZmVlZHMudjIuR2V0UmVhZEZlZWRzUmVxdWVzdBoiLmFsdC5mZWVkcy52Mi5HZXRSZWFkRmVlZHNSZXNwb25zZRJhChBHZXRGYXZvcml0ZUZlZWRzEiUuYWx0LmZlZWRzLnYyLkdldEZhdm9yaXRlRmVlZHNSZXF1ZXN0GiYuYWx0LmZlZWRzLnYyLkdldEZhdm9yaXRlRmVlZHNSZXNwb25zZRJSCgtTZWFyY2hGZWVkcxIgLmFsdC5mZWVkcy52Mi5TZWFyY2hGZWVkc1JlcXVlc3QaIS5hbHQuZmVlZHMudjIuU2VhcmNoRmVlZHNSZXNwb25zZRJgCg9TdHJlYW1TdW1tYXJpemUSJC5hbHQuZmVlZHMudjIuU3RyZWFtU3VtbWFyaXplUmVxdWVzdBolLmFsdC5mZWVkcy52Mi5TdHJlYW1TdW1tYXJpemVSZXNwb25zZTABEk8KCk1hcmtBc1JlYWQSHy5hbHQuZmVlZHMudjIuTWFya0FzUmVhZFJlcXVlc3QaIC5hbHQuZmVlZHMudjIuTWFya0FzUmVhZFJlc3BvbnNlQiRaImFsdC9nZW4vcHJvdG8vYWx0L2ZlZWRzL3YyO2ZlZWRzdjJiBnByb3RvMw",
+	);
 
 /**
  * GetFeedStatsRequest is the request for getting basic feed statistics
  *
  * @generated from message alt.feeds.v2.GetFeedStatsRequest
  */
-export type GetFeedStatsRequest = Message<"alt.feeds.v2.GetFeedStatsRequest"> & {
-};
+export type GetFeedStatsRequest =
+	Message<"alt.feeds.v2.GetFeedStatsRequest"> & {};
 
 /**
  * Describes the message alt.feeds.v2.GetFeedStatsRequest.
  * Use `create(GetFeedStatsRequestSchema)` to create a new message.
  */
-export const GetFeedStatsRequestSchema: GenMessage<GetFeedStatsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 0);
+export const GetFeedStatsRequestSchema: GenMessage<GetFeedStatsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 0);
 
 /**
  * GetFeedStatsResponse contains basic feed statistics
  *
  * @generated from message alt.feeds.v2.GetFeedStatsResponse
  */
-export type GetFeedStatsResponse = Message<"alt.feeds.v2.GetFeedStatsResponse"> & {
-  /**
-   * Total number of feeds
-   *
-   * @generated from field: int64 feed_amount = 1;
-   */
-  feedAmount: bigint;
+export type GetFeedStatsResponse =
+	Message<"alt.feeds.v2.GetFeedStatsResponse"> & {
+		/**
+		 * Total number of feeds
+		 *
+		 * @generated from field: int64 feed_amount = 1;
+		 */
+		feedAmount: bigint;
 
-  /**
-   * Number of feeds with summaries
-   *
-   * @generated from field: int64 summarized_feed_amount = 2;
-   */
-  summarizedFeedAmount: bigint;
-};
+		/**
+		 * Number of feeds with summaries
+		 *
+		 * @generated from field: int64 summarized_feed_amount = 2;
+		 */
+		summarizedFeedAmount: bigint;
+	};
 
 /**
  * Describes the message alt.feeds.v2.GetFeedStatsResponse.
  * Use `create(GetFeedStatsResponseSchema)` to create a new message.
  */
-export const GetFeedStatsResponseSchema: GenMessage<GetFeedStatsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 1);
+export const GetFeedStatsResponseSchema: GenMessage<GetFeedStatsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 1);
 
 /**
  * GetDetailedFeedStatsRequest is the request for getting detailed feed statistics
  *
  * @generated from message alt.feeds.v2.GetDetailedFeedStatsRequest
  */
-export type GetDetailedFeedStatsRequest = Message<"alt.feeds.v2.GetDetailedFeedStatsRequest"> & {
-};
+export type GetDetailedFeedStatsRequest =
+	Message<"alt.feeds.v2.GetDetailedFeedStatsRequest"> & {};
 
 /**
  * Describes the message alt.feeds.v2.GetDetailedFeedStatsRequest.
  * Use `create(GetDetailedFeedStatsRequestSchema)` to create a new message.
  */
-export const GetDetailedFeedStatsRequestSchema: GenMessage<GetDetailedFeedStatsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 2);
+export const GetDetailedFeedStatsRequestSchema: GenMessage<GetDetailedFeedStatsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 2);
 
 /**
  * GetDetailedFeedStatsResponse contains detailed feed statistics
  *
  * @generated from message alt.feeds.v2.GetDetailedFeedStatsResponse
  */
-export type GetDetailedFeedStatsResponse = Message<"alt.feeds.v2.GetDetailedFeedStatsResponse"> & {
-  /**
-   * Total number of feeds
-   *
-   * @generated from field: int64 feed_amount = 1;
-   */
-  feedAmount: bigint;
+export type GetDetailedFeedStatsResponse =
+	Message<"alt.feeds.v2.GetDetailedFeedStatsResponse"> & {
+		/**
+		 * Total number of feeds
+		 *
+		 * @generated from field: int64 feed_amount = 1;
+		 */
+		feedAmount: bigint;
 
-  /**
-   * Total number of articles
-   *
-   * @generated from field: int64 article_amount = 2;
-   */
-  articleAmount: bigint;
+		/**
+		 * Total number of articles
+		 *
+		 * @generated from field: int64 article_amount = 2;
+		 */
+		articleAmount: bigint;
 
-  /**
-   * Number of unsummarized feeds
-   *
-   * @generated from field: int64 unsummarized_feed_amount = 3;
-   */
-  unsummarizedFeedAmount: bigint;
-};
+		/**
+		 * Number of unsummarized feeds
+		 *
+		 * @generated from field: int64 unsummarized_feed_amount = 3;
+		 */
+		unsummarizedFeedAmount: bigint;
+	};
 
 /**
  * Describes the message alt.feeds.v2.GetDetailedFeedStatsResponse.
  * Use `create(GetDetailedFeedStatsResponseSchema)` to create a new message.
  */
-export const GetDetailedFeedStatsResponseSchema: GenMessage<GetDetailedFeedStatsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 3);
+export const GetDetailedFeedStatsResponseSchema: GenMessage<GetDetailedFeedStatsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 3);
 
 /**
  * GetUnreadCountRequest is the request for getting unread article count
  *
  * @generated from message alt.feeds.v2.GetUnreadCountRequest
  */
-export type GetUnreadCountRequest = Message<"alt.feeds.v2.GetUnreadCountRequest"> & {
-};
+export type GetUnreadCountRequest =
+	Message<"alt.feeds.v2.GetUnreadCountRequest"> & {};
 
 /**
  * Describes the message alt.feeds.v2.GetUnreadCountRequest.
  * Use `create(GetUnreadCountRequestSchema)` to create a new message.
  */
-export const GetUnreadCountRequestSchema: GenMessage<GetUnreadCountRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 4);
+export const GetUnreadCountRequestSchema: GenMessage<GetUnreadCountRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 4);
 
 /**
  * GetUnreadCountResponse contains the unread article count
  *
  * @generated from message alt.feeds.v2.GetUnreadCountResponse
  */
-export type GetUnreadCountResponse = Message<"alt.feeds.v2.GetUnreadCountResponse"> & {
-  /**
-   * Number of unread articles (today)
-   *
-   * @generated from field: int64 count = 1;
-   */
-  count: bigint;
-};
+export type GetUnreadCountResponse =
+	Message<"alt.feeds.v2.GetUnreadCountResponse"> & {
+		/**
+		 * Number of unread articles (today)
+		 *
+		 * @generated from field: int64 count = 1;
+		 */
+		count: bigint;
+	};
 
 /**
  * Describes the message alt.feeds.v2.GetUnreadCountResponse.
  * Use `create(GetUnreadCountResponseSchema)` to create a new message.
  */
-export const GetUnreadCountResponseSchema: GenMessage<GetUnreadCountResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 5);
+export const GetUnreadCountResponseSchema: GenMessage<GetUnreadCountResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 5);
 
 /**
  * StreamFeedStatsRequest is the request for streaming feed statistics
@@ -148,57 +168,60 @@ export const GetUnreadCountResponseSchema: GenMessage<GetUnreadCountResponse> = 
  *
  * @generated from message alt.feeds.v2.StreamFeedStatsRequest
  */
-export type StreamFeedStatsRequest = Message<"alt.feeds.v2.StreamFeedStatsRequest"> & {
-};
+export type StreamFeedStatsRequest =
+	Message<"alt.feeds.v2.StreamFeedStatsRequest"> & {};
 
 /**
  * Describes the message alt.feeds.v2.StreamFeedStatsRequest.
  * Use `create(StreamFeedStatsRequestSchema)` to create a new message.
  */
-export const StreamFeedStatsRequestSchema: GenMessage<StreamFeedStatsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 6);
+export const StreamFeedStatsRequestSchema: GenMessage<StreamFeedStatsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 6);
 
 /**
  * StreamFeedStatsResponse contains feed statistics for streaming updates
  *
  * @generated from message alt.feeds.v2.StreamFeedStatsResponse
  */
-export type StreamFeedStatsResponse = Message<"alt.feeds.v2.StreamFeedStatsResponse"> & {
-  /**
-   * Total number of feeds
-   *
-   * @generated from field: int64 feed_amount = 1;
-   */
-  feedAmount: bigint;
+export type StreamFeedStatsResponse =
+	Message<"alt.feeds.v2.StreamFeedStatsResponse"> & {
+		/**
+		 * Total number of feeds
+		 *
+		 * @generated from field: int64 feed_amount = 1;
+		 */
+		feedAmount: bigint;
 
-  /**
-   * Number of unsummarized articles
-   *
-   * @generated from field: int64 unsummarized_feed_amount = 2;
-   */
-  unsummarizedFeedAmount: bigint;
+		/**
+		 * Number of unsummarized articles
+		 *
+		 * @generated from field: int64 unsummarized_feed_amount = 2;
+		 */
+		unsummarizedFeedAmount: bigint;
 
-  /**
-   * Total number of articles
-   *
-   * @generated from field: int64 total_articles = 3;
-   */
-  totalArticles: bigint;
+		/**
+		 * Total number of articles
+		 *
+		 * @generated from field: int64 total_articles = 3;
+		 */
+		totalArticles: bigint;
 
-  /**
-   * Metadata about this response
-   *
-   * @generated from field: alt.feeds.v2.ResponseMetadata metadata = 4;
-   */
-  metadata?: ResponseMetadata;
-};
+		/**
+		 * Metadata about this response
+		 *
+		 * @generated from field: alt.feeds.v2.ResponseMetadata metadata = 4;
+		 */
+		metadata?: ResponseMetadata;
+	};
 
 /**
  * Describes the message alt.feeds.v2.StreamFeedStatsResponse.
  * Use `create(StreamFeedStatsResponseSchema)` to create a new message.
  */
-export const StreamFeedStatsResponseSchema: GenMessage<StreamFeedStatsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 7);
+export const StreamFeedStatsResponseSchema: GenMessage<StreamFeedStatsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 7);
 
 /**
  * ResponseMetadata contains metadata about the streaming response
@@ -206,27 +229,28 @@ export const StreamFeedStatsResponseSchema: GenMessage<StreamFeedStatsResponse> 
  * @generated from message alt.feeds.v2.ResponseMetadata
  */
 export type ResponseMetadata = Message<"alt.feeds.v2.ResponseMetadata"> & {
-  /**
-   * Server timestamp (Unix seconds)
-   *
-   * @generated from field: int64 timestamp = 1;
-   */
-  timestamp: bigint;
+	/**
+	 * Server timestamp (Unix seconds)
+	 *
+	 * @generated from field: int64 timestamp = 1;
+	 */
+	timestamp: bigint;
 
-  /**
-   * Whether this is a heartbeat message (no data update)
-   *
-   * @generated from field: bool is_heartbeat = 2;
-   */
-  isHeartbeat: boolean;
+	/**
+	 * Whether this is a heartbeat message (no data update)
+	 *
+	 * @generated from field: bool is_heartbeat = 2;
+	 */
+	isHeartbeat: boolean;
 };
 
 /**
  * Describes the message alt.feeds.v2.ResponseMetadata.
  * Use `create(ResponseMetadataSchema)` to create a new message.
  */
-export const ResponseMetadataSchema: GenMessage<ResponseMetadata> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 8);
+export const ResponseMetadataSchema: GenMessage<ResponseMetadata> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 8);
 
 /**
  * FeedItem represents a single feed/article item
@@ -234,266 +258,279 @@ export const ResponseMetadataSchema: GenMessage<ResponseMetadata> = /*@__PURE__*
  * @generated from message alt.feeds.v2.FeedItem
  */
 export type FeedItem = Message<"alt.feeds.v2.FeedItem"> & {
-  /**
-   * Unique identifier (typically the link URL)
-   *
-   * @generated from field: string id = 1;
-   */
-  id: string;
+	/**
+	 * Unique identifier (typically the link URL)
+	 *
+	 * @generated from field: string id = 1;
+	 */
+	id: string;
 
-  /**
-   * Article title
-   *
-   * @generated from field: string title = 2;
-   */
-  title: string;
+	/**
+	 * Article title
+	 *
+	 * @generated from field: string title = 2;
+	 */
+	title: string;
 
-  /**
-   * Article description/excerpt (sanitized, truncated)
-   *
-   * @generated from field: string description = 3;
-   */
-  description: string;
+	/**
+	 * Article description/excerpt (sanitized, truncated)
+	 *
+	 * @generated from field: string description = 3;
+	 */
+	description: string;
 
-  /**
-   * Article URL
-   *
-   * @generated from field: string link = 4;
-   */
-  link: string;
+	/**
+	 * Article URL
+	 *
+	 * @generated from field: string link = 4;
+	 */
+	link: string;
 
-  /**
-   * Human-readable published date (e.g., "2 hours ago")
-   *
-   * @generated from field: string published = 5;
-   */
-  published: string;
+	/**
+	 * Human-readable published date (e.g., "2 hours ago")
+	 *
+	 * @generated from field: string published = 5;
+	 */
+	published: string;
 
-  /**
-   * RFC3339 timestamp for precise ordering
-   *
-   * @generated from field: string created_at = 6;
-   */
-  createdAt: string;
+	/**
+	 * RFC3339 timestamp for precise ordering
+	 *
+	 * @generated from field: string created_at = 6;
+	 */
+	createdAt: string;
 
-  /**
-   * Author name (formatted from author/authors)
-   *
-   * @generated from field: string author = 7;
-   */
-  author: string;
+	/**
+	 * Author name (formatted from author/authors)
+	 *
+	 * @generated from field: string author = 7;
+	 */
+	author: string;
 
-  /**
-   * Article ID in the articles table (empty if article doesn't exist)
-   * When empty, mark as read functionality should be disabled
-   *
-   * @generated from field: optional string article_id = 8;
-   */
-  articleId?: string;
+	/**
+	 * Article ID in the articles table (empty if article doesn't exist)
+	 * When empty, mark as read functionality should be disabled
+	 *
+	 * @generated from field: optional string article_id = 8;
+	 */
+	articleId?: string;
 };
 
 /**
  * Describes the message alt.feeds.v2.FeedItem.
  * Use `create(FeedItemSchema)` to create a new message.
  */
-export const FeedItemSchema: GenMessage<FeedItem> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 9);
+export const FeedItemSchema: GenMessage<FeedItem> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 9);
 
 /**
  * GetUnreadFeedsRequest is the request for fetching unread feeds with cursor
  *
  * @generated from message alt.feeds.v2.GetUnreadFeedsRequest
  */
-export type GetUnreadFeedsRequest = Message<"alt.feeds.v2.GetUnreadFeedsRequest"> & {
-  /**
-   * Cursor for pagination (RFC3339 timestamp)
-   *
-   * @generated from field: optional string cursor = 1;
-   */
-  cursor?: string;
+export type GetUnreadFeedsRequest =
+	Message<"alt.feeds.v2.GetUnreadFeedsRequest"> & {
+		/**
+		 * Cursor for pagination (RFC3339 timestamp)
+		 *
+		 * @generated from field: optional string cursor = 1;
+		 */
+		cursor?: string;
 
-  /**
-   * Maximum number of items to return (default: 20, max: 100)
-   *
-   * @generated from field: int32 limit = 2;
-   */
-  limit: number;
+		/**
+		 * Maximum number of items to return (default: 20, max: 100)
+		 *
+		 * @generated from field: int32 limit = 2;
+		 */
+		limit: number;
 
-  /**
-   * View mode: "swipe" for single-card response (optional)
-   *
-   * @generated from field: optional string view = 3;
-   */
-  view?: string;
-};
+		/**
+		 * View mode: "swipe" for single-card response (optional)
+		 *
+		 * @generated from field: optional string view = 3;
+		 */
+		view?: string;
+	};
 
 /**
  * Describes the message alt.feeds.v2.GetUnreadFeedsRequest.
  * Use `create(GetUnreadFeedsRequestSchema)` to create a new message.
  */
-export const GetUnreadFeedsRequestSchema: GenMessage<GetUnreadFeedsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 10);
+export const GetUnreadFeedsRequestSchema: GenMessage<GetUnreadFeedsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 10);
 
 /**
  * GetUnreadFeedsResponse contains unread feeds with pagination
  *
  * @generated from message alt.feeds.v2.GetUnreadFeedsResponse
  */
-export type GetUnreadFeedsResponse = Message<"alt.feeds.v2.GetUnreadFeedsResponse"> & {
-  /**
-   * Feed items
-   *
-   * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
-   */
-  data: FeedItem[];
+export type GetUnreadFeedsResponse =
+	Message<"alt.feeds.v2.GetUnreadFeedsResponse"> & {
+		/**
+		 * Feed items
+		 *
+		 * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
+		 */
+		data: FeedItem[];
 
-  /**
-   * Cursor for the next page (null if no more)
-   *
-   * @generated from field: optional string next_cursor = 2;
-   */
-  nextCursor?: string;
+		/**
+		 * Cursor for the next page (null if no more)
+		 *
+		 * @generated from field: optional string next_cursor = 2;
+		 */
+		nextCursor?: string;
 
-  /**
-   * Whether there are more items
-   *
-   * @generated from field: bool has_more = 3;
-   */
-  hasMore: boolean;
-};
+		/**
+		 * Whether there are more items
+		 *
+		 * @generated from field: bool has_more = 3;
+		 */
+		hasMore: boolean;
+	};
 
 /**
  * Describes the message alt.feeds.v2.GetUnreadFeedsResponse.
  * Use `create(GetUnreadFeedsResponseSchema)` to create a new message.
  */
-export const GetUnreadFeedsResponseSchema: GenMessage<GetUnreadFeedsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 11);
+export const GetUnreadFeedsResponseSchema: GenMessage<GetUnreadFeedsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 11);
 
 /**
  * GetReadFeedsRequest is the request for fetching read/viewed feeds with cursor
  *
  * @generated from message alt.feeds.v2.GetReadFeedsRequest
  */
-export type GetReadFeedsRequest = Message<"alt.feeds.v2.GetReadFeedsRequest"> & {
-  /**
-   * Cursor for pagination (RFC3339 timestamp)
-   *
-   * @generated from field: optional string cursor = 1;
-   */
-  cursor?: string;
+export type GetReadFeedsRequest =
+	Message<"alt.feeds.v2.GetReadFeedsRequest"> & {
+		/**
+		 * Cursor for pagination (RFC3339 timestamp)
+		 *
+		 * @generated from field: optional string cursor = 1;
+		 */
+		cursor?: string;
 
-  /**
-   * Maximum number of items to return (default: 32, max: 100)
-   *
-   * @generated from field: int32 limit = 2;
-   */
-  limit: number;
-};
+		/**
+		 * Maximum number of items to return (default: 32, max: 100)
+		 *
+		 * @generated from field: int32 limit = 2;
+		 */
+		limit: number;
+	};
 
 /**
  * Describes the message alt.feeds.v2.GetReadFeedsRequest.
  * Use `create(GetReadFeedsRequestSchema)` to create a new message.
  */
-export const GetReadFeedsRequestSchema: GenMessage<GetReadFeedsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 12);
+export const GetReadFeedsRequestSchema: GenMessage<GetReadFeedsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 12);
 
 /**
  * GetReadFeedsResponse contains read feeds with pagination
  *
  * @generated from message alt.feeds.v2.GetReadFeedsResponse
  */
-export type GetReadFeedsResponse = Message<"alt.feeds.v2.GetReadFeedsResponse"> & {
-  /**
-   * Feed items
-   *
-   * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
-   */
-  data: FeedItem[];
+export type GetReadFeedsResponse =
+	Message<"alt.feeds.v2.GetReadFeedsResponse"> & {
+		/**
+		 * Feed items
+		 *
+		 * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
+		 */
+		data: FeedItem[];
 
-  /**
-   * Cursor for the next page
-   *
-   * @generated from field: optional string next_cursor = 2;
-   */
-  nextCursor?: string;
+		/**
+		 * Cursor for the next page
+		 *
+		 * @generated from field: optional string next_cursor = 2;
+		 */
+		nextCursor?: string;
 
-  /**
-   * Whether there are more items
-   *
-   * @generated from field: bool has_more = 3;
-   */
-  hasMore: boolean;
-};
+		/**
+		 * Whether there are more items
+		 *
+		 * @generated from field: bool has_more = 3;
+		 */
+		hasMore: boolean;
+	};
 
 /**
  * Describes the message alt.feeds.v2.GetReadFeedsResponse.
  * Use `create(GetReadFeedsResponseSchema)` to create a new message.
  */
-export const GetReadFeedsResponseSchema: GenMessage<GetReadFeedsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 13);
+export const GetReadFeedsResponseSchema: GenMessage<GetReadFeedsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 13);
 
 /**
  * GetFavoriteFeedsRequest is the request for fetching favorite feeds with cursor
  *
  * @generated from message alt.feeds.v2.GetFavoriteFeedsRequest
  */
-export type GetFavoriteFeedsRequest = Message<"alt.feeds.v2.GetFavoriteFeedsRequest"> & {
-  /**
-   * Cursor for pagination (RFC3339 timestamp)
-   *
-   * @generated from field: optional string cursor = 1;
-   */
-  cursor?: string;
+export type GetFavoriteFeedsRequest =
+	Message<"alt.feeds.v2.GetFavoriteFeedsRequest"> & {
+		/**
+		 * Cursor for pagination (RFC3339 timestamp)
+		 *
+		 * @generated from field: optional string cursor = 1;
+		 */
+		cursor?: string;
 
-  /**
-   * Maximum number of items to return (default: 20, max: 100)
-   *
-   * @generated from field: int32 limit = 2;
-   */
-  limit: number;
-};
+		/**
+		 * Maximum number of items to return (default: 20, max: 100)
+		 *
+		 * @generated from field: int32 limit = 2;
+		 */
+		limit: number;
+	};
 
 /**
  * Describes the message alt.feeds.v2.GetFavoriteFeedsRequest.
  * Use `create(GetFavoriteFeedsRequestSchema)` to create a new message.
  */
-export const GetFavoriteFeedsRequestSchema: GenMessage<GetFavoriteFeedsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 14);
+export const GetFavoriteFeedsRequestSchema: GenMessage<GetFavoriteFeedsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 14);
 
 /**
  * GetFavoriteFeedsResponse contains favorite feeds with pagination
  *
  * @generated from message alt.feeds.v2.GetFavoriteFeedsResponse
  */
-export type GetFavoriteFeedsResponse = Message<"alt.feeds.v2.GetFavoriteFeedsResponse"> & {
-  /**
-   * Feed items
-   *
-   * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
-   */
-  data: FeedItem[];
+export type GetFavoriteFeedsResponse =
+	Message<"alt.feeds.v2.GetFavoriteFeedsResponse"> & {
+		/**
+		 * Feed items
+		 *
+		 * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
+		 */
+		data: FeedItem[];
 
-  /**
-   * Cursor for the next page
-   *
-   * @generated from field: optional string next_cursor = 2;
-   */
-  nextCursor?: string;
+		/**
+		 * Cursor for the next page
+		 *
+		 * @generated from field: optional string next_cursor = 2;
+		 */
+		nextCursor?: string;
 
-  /**
-   * Whether there are more items
-   *
-   * @generated from field: bool has_more = 3;
-   */
-  hasMore: boolean;
-};
+		/**
+		 * Whether there are more items
+		 *
+		 * @generated from field: bool has_more = 3;
+		 */
+		hasMore: boolean;
+	};
 
 /**
  * Describes the message alt.feeds.v2.GetFavoriteFeedsResponse.
  * Use `create(GetFavoriteFeedsResponseSchema)` to create a new message.
  */
-export const GetFavoriteFeedsResponseSchema: GenMessage<GetFavoriteFeedsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 15);
+export const GetFavoriteFeedsResponseSchema: GenMessage<GetFavoriteFeedsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 15);
 
 /**
  * SearchFeedsRequest is the request for searching feeds
@@ -501,160 +538,167 @@ export const GetFavoriteFeedsResponseSchema: GenMessage<GetFavoriteFeedsResponse
  * @generated from message alt.feeds.v2.SearchFeedsRequest
  */
 export type SearchFeedsRequest = Message<"alt.feeds.v2.SearchFeedsRequest"> & {
-  /**
-   * Search query (required, non-empty)
-   *
-   * @generated from field: string query = 1;
-   */
-  query: string;
+	/**
+	 * Search query (required, non-empty)
+	 *
+	 * @generated from field: string query = 1;
+	 */
+	query: string;
 
-  /**
-   * Offset for pagination (integer-based, not cursor)
-   *
-   * @generated from field: optional int32 cursor = 2;
-   */
-  cursor?: number;
+	/**
+	 * Offset for pagination (integer-based, not cursor)
+	 *
+	 * @generated from field: optional int32 cursor = 2;
+	 */
+	cursor?: number;
 
-  /**
-   * Maximum number of items to return (default: 20, max: 100)
-   *
-   * @generated from field: optional int32 limit = 3;
-   */
-  limit?: number;
+	/**
+	 * Maximum number of items to return (default: 20, max: 100)
+	 *
+	 * @generated from field: optional int32 limit = 3;
+	 */
+	limit?: number;
 };
 
 /**
  * Describes the message alt.feeds.v2.SearchFeedsRequest.
  * Use `create(SearchFeedsRequestSchema)` to create a new message.
  */
-export const SearchFeedsRequestSchema: GenMessage<SearchFeedsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 16);
+export const SearchFeedsRequestSchema: GenMessage<SearchFeedsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 16);
 
 /**
  * SearchFeedsResponse contains search results with pagination
  *
  * @generated from message alt.feeds.v2.SearchFeedsResponse
  */
-export type SearchFeedsResponse = Message<"alt.feeds.v2.SearchFeedsResponse"> & {
-  /**
-   * Search result items
-   *
-   * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
-   */
-  data: FeedItem[];
+export type SearchFeedsResponse =
+	Message<"alt.feeds.v2.SearchFeedsResponse"> & {
+		/**
+		 * Search result items
+		 *
+		 * @generated from field: repeated alt.feeds.v2.FeedItem data = 1;
+		 */
+		data: FeedItem[];
 
-  /**
-   * Next offset cursor (null if no more)
-   *
-   * @generated from field: optional int32 next_cursor = 2;
-   */
-  nextCursor?: number;
+		/**
+		 * Next offset cursor (null if no more)
+		 *
+		 * @generated from field: optional int32 next_cursor = 2;
+		 */
+		nextCursor?: number;
 
-  /**
-   * Whether there are more results
-   *
-   * @generated from field: bool has_more = 3;
-   */
-  hasMore: boolean;
-};
+		/**
+		 * Whether there are more results
+		 *
+		 * @generated from field: bool has_more = 3;
+		 */
+		hasMore: boolean;
+	};
 
 /**
  * Describes the message alt.feeds.v2.SearchFeedsResponse.
  * Use `create(SearchFeedsResponseSchema)` to create a new message.
  */
-export const SearchFeedsResponseSchema: GenMessage<SearchFeedsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 17);
+export const SearchFeedsResponseSchema: GenMessage<SearchFeedsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 17);
 
 /**
  * StreamSummarizeRequest is the request for streaming article summarization
  *
  * @generated from message alt.feeds.v2.StreamSummarizeRequest
  */
-export type StreamSummarizeRequest = Message<"alt.feeds.v2.StreamSummarizeRequest"> & {
-  /**
-   * Feed/article URL (required if article_id not provided)
-   *
-   * @generated from field: optional string feed_url = 1;
-   */
-  feedUrl?: string;
+export type StreamSummarizeRequest =
+	Message<"alt.feeds.v2.StreamSummarizeRequest"> & {
+		/**
+		 * Feed/article URL (required if article_id not provided)
+		 *
+		 * @generated from field: optional string feed_url = 1;
+		 */
+		feedUrl?: string;
 
-  /**
-   * Existing article ID (required if feed_url not provided)
-   *
-   * @generated from field: optional string article_id = 2;
-   */
-  articleId?: string;
+		/**
+		 * Existing article ID (required if feed_url not provided)
+		 *
+		 * @generated from field: optional string article_id = 2;
+		 */
+		articleId?: string;
 
-  /**
-   * Pre-fetched content (optional, skips fetch if provided)
-   *
-   * @generated from field: optional string content = 3;
-   */
-  content?: string;
+		/**
+		 * Pre-fetched content (optional, skips fetch if provided)
+		 *
+		 * @generated from field: optional string content = 3;
+		 */
+		content?: string;
 
-  /**
-   * Article title (optional)
-   *
-   * @generated from field: optional string title = 4;
-   */
-  title?: string;
-};
+		/**
+		 * Article title (optional)
+		 *
+		 * @generated from field: optional string title = 4;
+		 */
+		title?: string;
+	};
 
 /**
  * Describes the message alt.feeds.v2.StreamSummarizeRequest.
  * Use `create(StreamSummarizeRequestSchema)` to create a new message.
  */
-export const StreamSummarizeRequestSchema: GenMessage<StreamSummarizeRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 18);
+export const StreamSummarizeRequestSchema: GenMessage<StreamSummarizeRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 18);
 
 /**
  * StreamSummarizeResponse contains a chunk of the summarization stream
  *
  * @generated from message alt.feeds.v2.StreamSummarizeResponse
  */
-export type StreamSummarizeResponse = Message<"alt.feeds.v2.StreamSummarizeResponse"> & {
-  /**
-   * Text chunk from summarization
-   *
-   * @generated from field: string chunk = 1;
-   */
-  chunk: string;
+export type StreamSummarizeResponse =
+	Message<"alt.feeds.v2.StreamSummarizeResponse"> & {
+		/**
+		 * Text chunk from summarization
+		 *
+		 * @generated from field: string chunk = 1;
+		 */
+		chunk: string;
 
-  /**
-   * Whether this is the final chunk
-   *
-   * @generated from field: bool is_final = 2;
-   */
-  isFinal: boolean;
+		/**
+		 * Whether this is the final chunk
+		 *
+		 * @generated from field: bool is_final = 2;
+		 */
+		isFinal: boolean;
 
-  /**
-   * Article ID (populated after first chunk or from cache)
-   *
-   * @generated from field: string article_id = 3;
-   */
-  articleId: string;
+		/**
+		 * Article ID (populated after first chunk or from cache)
+		 *
+		 * @generated from field: string article_id = 3;
+		 */
+		articleId: string;
 
-  /**
-   * Whether this response is from cache
-   *
-   * @generated from field: bool is_cached = 4;
-   */
-  isCached: boolean;
+		/**
+		 * Whether this response is from cache
+		 *
+		 * @generated from field: bool is_cached = 4;
+		 */
+		isCached: boolean;
 
-  /**
-   * Full summary (only populated if is_cached=true or is_final=true)
-   *
-   * @generated from field: optional string full_summary = 5;
-   */
-  fullSummary?: string;
-};
+		/**
+		 * Full summary (only populated if is_cached=true or is_final=true)
+		 *
+		 * @generated from field: optional string full_summary = 5;
+		 */
+		fullSummary?: string;
+	};
 
 /**
  * Describes the message alt.feeds.v2.StreamSummarizeResponse.
  * Use `create(StreamSummarizeResponseSchema)` to create a new message.
  */
-export const StreamSummarizeResponseSchema: GenMessage<StreamSummarizeResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 19);
+export const StreamSummarizeResponseSchema: GenMessage<StreamSummarizeResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 19);
 
 /**
  * MarkAsReadRequest is the request for marking an article as read
@@ -662,20 +706,21 @@ export const StreamSummarizeResponseSchema: GenMessage<StreamSummarizeResponse> 
  * @generated from message alt.feeds.v2.MarkAsReadRequest
  */
 export type MarkAsReadRequest = Message<"alt.feeds.v2.MarkAsReadRequest"> & {
-  /**
-   * Article URL to mark as read (required)
-   *
-   * @generated from field: string article_url = 1;
-   */
-  articleUrl: string;
+	/**
+	 * Article URL to mark as read (required)
+	 *
+	 * @generated from field: string article_url = 1;
+	 */
+	articleUrl: string;
 };
 
 /**
  * Describes the message alt.feeds.v2.MarkAsReadRequest.
  * Use `create(MarkAsReadRequestSchema)` to create a new message.
  */
-export const MarkAsReadRequestSchema: GenMessage<MarkAsReadRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 20);
+export const MarkAsReadRequestSchema: GenMessage<MarkAsReadRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 20);
 
 /**
  * MarkAsReadResponse is the response after marking an article as read
@@ -683,20 +728,21 @@ export const MarkAsReadRequestSchema: GenMessage<MarkAsReadRequest> = /*@__PURE_
  * @generated from message alt.feeds.v2.MarkAsReadResponse
  */
 export type MarkAsReadResponse = Message<"alt.feeds.v2.MarkAsReadResponse"> & {
-  /**
-   * Success message
-   *
-   * @generated from field: string message = 1;
-   */
-  message: string;
+	/**
+	 * Success message
+	 *
+	 * @generated from field: string message = 1;
+	 */
+	message: string;
 };
 
 /**
  * Describes the message alt.feeds.v2.MarkAsReadResponse.
  * Use `create(MarkAsReadResponseSchema)` to create a new message.
  */
-export const MarkAsReadResponseSchema: GenMessage<MarkAsReadResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 21);
+export const MarkAsReadResponseSchema: GenMessage<MarkAsReadResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_feeds_v2_feeds, 21);
 
 /**
  * FeedService provides feed-related operations
@@ -706,113 +752,111 @@ export const MarkAsReadResponseSchema: GenMessage<MarkAsReadResponse> = /*@__PUR
  * @generated from service alt.feeds.v2.FeedService
  */
 export const FeedService: GenService<{
-  /**
-   * GetFeedStats returns basic feed statistics (feed count, summarized count)
-   *
-   * @generated from rpc alt.feeds.v2.FeedService.GetFeedStats
-   */
-  getFeedStats: {
-    methodKind: "unary";
-    input: typeof GetFeedStatsRequestSchema;
-    output: typeof GetFeedStatsResponseSchema;
-  },
-  /**
-   * GetDetailedFeedStats returns detailed feed statistics
-   *
-   * @generated from rpc alt.feeds.v2.FeedService.GetDetailedFeedStats
-   */
-  getDetailedFeedStats: {
-    methodKind: "unary";
-    input: typeof GetDetailedFeedStatsRequestSchema;
-    output: typeof GetDetailedFeedStatsResponseSchema;
-  },
-  /**
-   * GetUnreadCount returns the count of unread articles for today
-   *
-   * @generated from rpc alt.feeds.v2.FeedService.GetUnreadCount
-   */
-  getUnreadCount: {
-    methodKind: "unary";
-    input: typeof GetUnreadCountRequestSchema;
-    output: typeof GetUnreadCountResponseSchema;
-  },
-  /**
-   * StreamFeedStats streams real-time feed statistics updates
-   * Replaces SSE endpoint /v1/sse/feeds/stats
-   *
-   * @generated from rpc alt.feeds.v2.FeedService.StreamFeedStats
-   */
-  streamFeedStats: {
-    methodKind: "server_streaming";
-    input: typeof StreamFeedStatsRequestSchema;
-    output: typeof StreamFeedStatsResponseSchema;
-  },
-  /**
-   * GetUnreadFeeds returns unread feeds with cursor-based pagination
-   * Replaces GET /v1/feeds/fetch/cursor
-   *
-   * @generated from rpc alt.feeds.v2.FeedService.GetUnreadFeeds
-   */
-  getUnreadFeeds: {
-    methodKind: "unary";
-    input: typeof GetUnreadFeedsRequestSchema;
-    output: typeof GetUnreadFeedsResponseSchema;
-  },
-  /**
-   * GetReadFeeds returns read/viewed feeds with cursor-based pagination
-   * Replaces GET /v1/feeds/fetch/viewed/cursor
-   *
-   * @generated from rpc alt.feeds.v2.FeedService.GetReadFeeds
-   */
-  getReadFeeds: {
-    methodKind: "unary";
-    input: typeof GetReadFeedsRequestSchema;
-    output: typeof GetReadFeedsResponseSchema;
-  },
-  /**
-   * GetFavoriteFeeds returns favorite feeds with cursor-based pagination
-   * Replaces GET /v1/feeds/fetch/favorites/cursor
-   *
-   * @generated from rpc alt.feeds.v2.FeedService.GetFavoriteFeeds
-   */
-  getFavoriteFeeds: {
-    methodKind: "unary";
-    input: typeof GetFavoriteFeedsRequestSchema;
-    output: typeof GetFavoriteFeedsResponseSchema;
-  },
-  /**
-   * SearchFeeds searches for feeds by query with offset-based pagination
-   * Replaces POST /v1/feeds/search
-   *
-   * @generated from rpc alt.feeds.v2.FeedService.SearchFeeds
-   */
-  searchFeeds: {
-    methodKind: "unary";
-    input: typeof SearchFeedsRequestSchema;
-    output: typeof SearchFeedsResponseSchema;
-  },
-  /**
-   * StreamSummarize streams article summarization in real-time
-   * Replaces POST /v1/feeds/summarize/stream (SSE)
-   *
-   * @generated from rpc alt.feeds.v2.FeedService.StreamSummarize
-   */
-  streamSummarize: {
-    methodKind: "server_streaming";
-    input: typeof StreamSummarizeRequestSchema;
-    output: typeof StreamSummarizeResponseSchema;
-  },
-  /**
-   * MarkAsRead marks an article as read by its URL
-   * Replaces POST /v1/feeds/read
-   *
-   * @generated from rpc alt.feeds.v2.FeedService.MarkAsRead
-   */
-  markAsRead: {
-    methodKind: "unary";
-    input: typeof MarkAsReadRequestSchema;
-    output: typeof MarkAsReadResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_alt_feeds_v2_feeds, 0);
-
+	/**
+	 * GetFeedStats returns basic feed statistics (feed count, summarized count)
+	 *
+	 * @generated from rpc alt.feeds.v2.FeedService.GetFeedStats
+	 */
+	getFeedStats: {
+		methodKind: "unary";
+		input: typeof GetFeedStatsRequestSchema;
+		output: typeof GetFeedStatsResponseSchema;
+	};
+	/**
+	 * GetDetailedFeedStats returns detailed feed statistics
+	 *
+	 * @generated from rpc alt.feeds.v2.FeedService.GetDetailedFeedStats
+	 */
+	getDetailedFeedStats: {
+		methodKind: "unary";
+		input: typeof GetDetailedFeedStatsRequestSchema;
+		output: typeof GetDetailedFeedStatsResponseSchema;
+	};
+	/**
+	 * GetUnreadCount returns the count of unread articles for today
+	 *
+	 * @generated from rpc alt.feeds.v2.FeedService.GetUnreadCount
+	 */
+	getUnreadCount: {
+		methodKind: "unary";
+		input: typeof GetUnreadCountRequestSchema;
+		output: typeof GetUnreadCountResponseSchema;
+	};
+	/**
+	 * StreamFeedStats streams real-time feed statistics updates
+	 * Replaces SSE endpoint /v1/sse/feeds/stats
+	 *
+	 * @generated from rpc alt.feeds.v2.FeedService.StreamFeedStats
+	 */
+	streamFeedStats: {
+		methodKind: "server_streaming";
+		input: typeof StreamFeedStatsRequestSchema;
+		output: typeof StreamFeedStatsResponseSchema;
+	};
+	/**
+	 * GetUnreadFeeds returns unread feeds with cursor-based pagination
+	 * Replaces GET /v1/feeds/fetch/cursor
+	 *
+	 * @generated from rpc alt.feeds.v2.FeedService.GetUnreadFeeds
+	 */
+	getUnreadFeeds: {
+		methodKind: "unary";
+		input: typeof GetUnreadFeedsRequestSchema;
+		output: typeof GetUnreadFeedsResponseSchema;
+	};
+	/**
+	 * GetReadFeeds returns read/viewed feeds with cursor-based pagination
+	 * Replaces GET /v1/feeds/fetch/viewed/cursor
+	 *
+	 * @generated from rpc alt.feeds.v2.FeedService.GetReadFeeds
+	 */
+	getReadFeeds: {
+		methodKind: "unary";
+		input: typeof GetReadFeedsRequestSchema;
+		output: typeof GetReadFeedsResponseSchema;
+	};
+	/**
+	 * GetFavoriteFeeds returns favorite feeds with cursor-based pagination
+	 * Replaces GET /v1/feeds/fetch/favorites/cursor
+	 *
+	 * @generated from rpc alt.feeds.v2.FeedService.GetFavoriteFeeds
+	 */
+	getFavoriteFeeds: {
+		methodKind: "unary";
+		input: typeof GetFavoriteFeedsRequestSchema;
+		output: typeof GetFavoriteFeedsResponseSchema;
+	};
+	/**
+	 * SearchFeeds searches for feeds by query with offset-based pagination
+	 * Replaces POST /v1/feeds/search
+	 *
+	 * @generated from rpc alt.feeds.v2.FeedService.SearchFeeds
+	 */
+	searchFeeds: {
+		methodKind: "unary";
+		input: typeof SearchFeedsRequestSchema;
+		output: typeof SearchFeedsResponseSchema;
+	};
+	/**
+	 * StreamSummarize streams article summarization in real-time
+	 * Replaces POST /v1/feeds/summarize/stream (SSE)
+	 *
+	 * @generated from rpc alt.feeds.v2.FeedService.StreamSummarize
+	 */
+	streamSummarize: {
+		methodKind: "server_streaming";
+		input: typeof StreamSummarizeRequestSchema;
+		output: typeof StreamSummarizeResponseSchema;
+	};
+	/**
+	 * MarkAsRead marks an article as read by its URL
+	 * Replaces POST /v1/feeds/read
+	 *
+	 * @generated from rpc alt.feeds.v2.FeedService.MarkAsRead
+	 */
+	markAsRead: {
+		methodKind: "unary";
+		input: typeof MarkAsReadRequestSchema;
+		output: typeof MarkAsReadResponseSchema;
+	};
+}> = /*@__PURE__*/ serviceDesc(file_alt_feeds_v2_feeds, 0);

@@ -1,38 +1,11 @@
-export type FeedAmount = {
-	amount: number;
-};
-
-export type SummarizedFeedAmount = {
-	amount: number;
-};
-
-export type FeedStatsSummary = {
-	feed_amount: FeedAmount;
-	summarized_feed: SummarizedFeedAmount;
-};
-
-export type DetailedFeedStatsSummary = {
-	feed_amount: FeedAmount;
-	total_articles: { amount: number };
-	unsummarized_articles: { amount: number };
-};
-
-export type UnreadCountResponse = {
-	count: number;
-};
-
-// Trend Stats Types
-export type TrendDataPoint = {
-	timestamp: string;
-	articles: number;
-	summarized: number;
-	feed_activity: number;
-};
-
-export type TrendDataResponse = {
-	data_points: TrendDataPoint[];
-	granularity: "hourly" | "daily";
-	window: string;
-};
-
-export type TimeWindow = "4h" | "24h" | "3d" | "7d";
+// Re-export from domain layer
+export type {
+	FeedAmount,
+	SummarizedFeedAmount,
+	FeedStatsSummary,
+	DetailedFeedStatsSummary,
+	UnreadCountResponse,
+	TrendDataPoint,
+	TrendDataResponse,
+	TimeWindow,
+} from "$lib/domain/stats/types";

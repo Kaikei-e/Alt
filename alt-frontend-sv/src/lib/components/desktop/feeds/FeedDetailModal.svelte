@@ -12,7 +12,7 @@ import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
 import { updateFeedReadStatusClient } from "$lib/api/client/feeds";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import { Button } from "$lib/components/ui/button";
-import * as Dialog from "$lib/components/ui/dialog";
+import { Dialog as DialogPrimitive } from "bits-ui";
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
@@ -289,10 +289,10 @@ async function handleSummarize() {
 </script>
 
 {#if open}
-<Dialog.Root open={true} onOpenChange={(value) => { if (!value) { open = false; onOpenChange(false); } }}>
-	<Dialog.Portal>
-		<Dialog.Overlay class="fixed inset-0 bg-black/50 z-50" />
-		<Dialog.Content
+<DialogPrimitive.Root open={true} onOpenChange={(value) => { if (!value) { open = false; onOpenChange(false); } }}>
+	<DialogPrimitive.Portal>
+		<DialogPrimitive.Overlay class="fixed inset-0 bg-black/50 z-50" />
+		<DialogPrimitive.Content
 			class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[75vw] sm:max-w-[1800px] h-[75vh] bg-white rounded-lg shadow-xl overflow-hidden flex flex-col z-50"
 		>
 			<!-- Navigation Arrows (inside modal at edges) -->
@@ -319,17 +319,23 @@ async function handleSummarize() {
 				<!-- Header Section -->
 				<div class="py-6 border-b border-gray-200" style="padding-left: 70px; padding-right: 70px;">
 					<!-- Title with external link -->
-					<a
-						href={feed.link}
-						target="_blank"
-						rel="noopener noreferrer"
-						class="group flex items-start gap-2 hover:underline"
-					>
-						<h2 class="text-2xl font-bold text-[#1a1a1a] flex-1">
+					{#if feed.link}
+						<a
+							href={feed.link}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="group flex items-start gap-2 hover:underline"
+						>
+							<h2 class="text-2xl font-bold text-[#1a1a1a] flex-1">
+								{feed.title || "Untitled"}
+							</h2>
+							<ExternalLink class="h-5 w-5 text-gray-400 group-hover:text-blue-600 flex-shrink-0" />
+						</a>
+					{:else}
+						<h2 class="text-2xl font-bold text-[#1a1a1a]">
 							{feed.title || "Untitled"}
 						</h2>
-						<ExternalLink class="h-5 w-5 text-gray-400 group-hover:text-blue-600 flex-shrink-0" />
-					</a>
+					{/if}
 
 					<!-- Metadata -->
 					<div class="flex items-center gap-4 mt-2 text-sm text-gray-600">
@@ -450,13 +456,13 @@ async function handleSummarize() {
 						</Button>
 
 						<!-- Close -->
-						<Dialog.Close class="inline-flex items-center justify-center gap-2 rounded-none text-base font-bold px-4 py-2 h-9 bg-transparent text-[var(--text-primary)] border-2 border-transparent hover:bg-[var(--surface-hover)] hover:border-[var(--surface-border)] transition-all focus-visible:outline-none disabled:opacity-60">
+						<DialogPrimitive.Close class="inline-flex items-center justify-center gap-2 rounded-none text-base font-bold px-4 py-2 h-9 bg-transparent text-[var(--text-primary)] border-2 border-transparent hover:bg-[var(--surface-hover)] hover:border-[var(--surface-border)] transition-all focus-visible:outline-none disabled:opacity-60">
 							Close
-						</Dialog.Close>
+						</DialogPrimitive.Close>
 					</div>
 				</div>
 			{/if}
-		</Dialog.Content>
-	</Dialog.Portal>
-</Dialog.Root>
+		</DialogPrimitive.Content>
+	</DialogPrimitive.Portal>
+</DialogPrimitive.Root>
 {/if}

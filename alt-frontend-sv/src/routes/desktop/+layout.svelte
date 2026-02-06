@@ -3,9 +3,11 @@ import type { Snippet } from "svelte";
 import { navigating } from "$app/state";
 import DesktopLayout from "$lib/components/desktop/layout/DesktopLayout.svelte";
 import { SystemLoader } from "$lib/components/ui/system-loader";
-import { loadingStore } from "$lib/stores/loading.svelte";
+import { getLoadingStore } from "$lib/stores/loading.svelte";
 
 let { children }: { children: Snippet } = $props();
+
+const loadingStore = getLoadingStore();
 
 // Show loader during navigation OR when page is fetching data
 // navigating from $app/state returns object with type: null when not navigating

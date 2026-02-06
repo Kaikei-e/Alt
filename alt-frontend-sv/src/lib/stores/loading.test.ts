@@ -1,10 +1,9 @@
-/**
- * Loading Store Tests
- *
- * Tests for SSR-safe loading state management using Svelte 5 runes
- */
 import { describe, expect, it, beforeEach } from "vitest";
-import { createLoadingStore, type LoadingStore } from "./loading.svelte";
+import {
+	createLoadingStore,
+	LOADING_STORE_KEY,
+	type LoadingStore,
+} from "./loading.svelte";
 
 describe("LoadingStore", () => {
 	let store: LoadingStore;
@@ -54,9 +53,15 @@ describe("LoadingStore", () => {
 
 			store1.startLoading();
 
-			// store2 should not be affected by store1
 			expect(store1.isDesktopLoading).toBe(true);
 			expect(store2.isDesktopLoading).toBe(false);
+		});
+	});
+
+	describe("context key", () => {
+		it("should export a unique Symbol for context key", () => {
+			expect(typeof LOADING_STORE_KEY).toBe("symbol");
+			expect(LOADING_STORE_KEY.toString()).toBe("Symbol(loading-store)");
 		});
 	});
 });

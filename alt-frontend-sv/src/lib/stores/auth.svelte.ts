@@ -1,16 +1,5 @@
 import type { Identity } from "@ory/client";
-
-/**
- * Auth Store - SSR-safe authentication state management
- *
- * Uses Svelte 5 runes for reactivity. Creates independent instances
- * via factory function to prevent state leakage in SSR.
- *
- * Best Practice (Svelte 5):
- * - Use createAuthStore() in root layout with setContext()
- * - Use getContext() in child components to access the store
- * - This ensures each request gets its own store instance in SSR
- */
+import { getContext } from "svelte";
 
 export interface AuthStore {
 	readonly user: Identity | null;
@@ -19,13 +8,9 @@ export interface AuthStore {
 	logout(): void;
 }
 
-/**
- * Internal state class using Svelte 5 runes
- */
 class AuthStoreImpl implements AuthStore {
 	private _user = $state<Identity | null>(null);
 
-	/** Derived state for authentication status (Svelte 5 best practice) */
 	readonly isAuthenticated = $derived(this._user !== null);
 
 	get user(): Identity | null {
@@ -42,16 +27,19 @@ class AuthStoreImpl implements AuthStore {
 }
 
 /**
- * Factory function to create an AuthStore instance
- * Each call creates a new independent store - safe for SSR
+ * Factory function to create an AuthStore instance.
+ * Each call creates a new independent store - safe for SSR.
  */
 export function createAuthStore(): AuthStore {
 	return new AuthStoreImpl();
 }
 
-// Context key for auth store
 export const AUTH_STORE_KEY = Symbol("auth-store");
 
-// Legacy singleton export for backward compatibility
-// WARNING: Not SSR-safe - prefer createAuthStore() with context
-export const auth = createAuthStore();
+/**
+ * Retrieve the AuthStore from Svelte context.
+ * Must be called during component initialization (i.e. in <script> top level).
+ */
+export function getAuthStore(): AuthStore {
+	return getContext<AuthStore>(AUTH_STORE_KEY);
+}

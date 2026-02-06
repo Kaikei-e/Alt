@@ -1,5 +1,13 @@
 <script lang="ts">
-import { Loader2, RefreshCw, Shuffle, Home, ChevronRight, ExternalLink, Tag } from "@lucide/svelte";
+import {
+	Loader2,
+	RefreshCw,
+	Shuffle,
+	Home,
+	ChevronRight,
+	ExternalLink,
+	Tag,
+} from "@lucide/svelte";
 import {
 	createClientTransport,
 	fetchArticleContent,
@@ -97,7 +105,10 @@ async function loadFeedTagsAsync(feedUrl: string) {
 					isLoadingFeedTags = false;
 				},
 			);
-			activeStreamControllers = new Map([...activeStreamControllers, [result.articleId, controller]]);
+			activeStreamControllers = new Map([
+				...activeStreamControllers,
+				[result.articleId, controller],
+			]);
 		} else {
 			isLoadingFeedTags = false;
 		}
@@ -134,7 +145,10 @@ function loadArticleTags(articleId: string) {
 			switch (event.eventType) {
 				case "cached":
 				case "completed": {
-					articleTagsCache = new Map([...articleTagsCache, [articleId, event.tags]]);
+					articleTagsCache = new Map([
+						...articleTagsCache,
+						[articleId, event.tags],
+					]);
 					const newLoadingSet = new Set(loadingArticleTags);
 					newLoadingSet.delete(articleId);
 					loadingArticleTags = newLoadingSet;
@@ -164,7 +178,10 @@ function loadArticleTags(articleId: string) {
 		},
 	);
 
-	activeStreamControllers = new Map([...activeStreamControllers, [articleId, controller]]);
+	activeStreamControllers = new Map([
+		...activeStreamControllers,
+		[articleId, controller],
+	]);
 }
 
 function getArticleTags(articleId: string): TagTrailTag[] {

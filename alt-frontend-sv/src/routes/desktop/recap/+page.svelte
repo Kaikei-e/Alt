@@ -7,8 +7,14 @@ import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import RecapGenreList from "$lib/components/desktop/recap/RecapGenreList.svelte";
 import RecapDetail from "$lib/components/desktop/recap/RecapDetail.svelte";
 import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
-import { createClientTransport, getSevenDayRecap, getThreeDayRecap } from "$lib/connect";
-import { loadingStore } from "$lib/stores/loading.svelte";
+import {
+	createClientTransport,
+	getSevenDayRecap,
+	getThreeDayRecap,
+} from "$lib/connect";
+import { getLoadingStore } from "$lib/stores/loading.svelte";
+
+const loadingStore = getLoadingStore();
 
 let selectedGenre = $state<RecapGenre | null>(null);
 
@@ -33,14 +39,17 @@ async function fetchRecap(window: RecapWindow) {
 		selectedGenre = null;
 		loadingStore.startLoading();
 		const transport = createClientTransport();
-		recapData = window === 3
-			? await getThreeDayRecap(transport)
-			: await getSevenDayRecap(transport);
+		recapData =
+			window === 3
+				? await getThreeDayRecap(transport)
+				: await getSevenDayRecap(transport);
 		// Auto-select genre from URL param or first genre
 		if (recapData?.genres && recapData.genres.length > 0) {
-			const genreParam = page.url.searchParams.get('genre');
+			const genreParam = page.url.searchParams.get("genre");
 			if (genreParam) {
-				const matchingGenre = recapData.genres.find(g => g.genre === genreParam);
+				const matchingGenre = recapData.genres.find(
+					(g) => g.genre === genreParam,
+				);
 				selectedGenre = matchingGenre ?? recapData.genres[0];
 			} else {
 				selectedGenre = recapData.genres[0];

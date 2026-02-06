@@ -408,7 +408,9 @@ export interface StreamingArticleTagEvent {
 /**
  * Maps proto EventType to string literal for easier handling.
  */
-function mapEventType(protoEventType: ArticleTagEvent_EventType): ArticleTagEventType {
+function mapEventType(
+	protoEventType: ArticleTagEvent_EventType,
+): ArticleTagEventType {
 	switch (protoEventType) {
 		case ArticleTagEvent_EventType.CACHED:
 			return "cached";

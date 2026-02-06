@@ -2,7 +2,7 @@
 import { onMount } from "svelte";
 import { useJobProgress } from "$lib/hooks/useJobProgress.svelte";
 import { triggerRecapJob } from "$lib/api/client/dashboard";
-import { loadingStore } from "$lib/stores/loading.svelte";
+import { getLoadingStore } from "$lib/stores/loading.svelte";
 import type { TimeWindow } from "$lib/schema/dashboard";
 import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
 import {
@@ -14,6 +14,8 @@ import {
 	MobileJobDetailSheet,
 } from "$lib/components/mobile/recap/job-status";
 import type { RecentJobSummary } from "$lib/schema/dashboard";
+
+const loadingStore = getLoadingStore();
 
 const jobProgress = useJobProgress({
 	initialWindow: "24h",

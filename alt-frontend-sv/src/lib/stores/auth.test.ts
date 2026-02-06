@@ -1,10 +1,5 @@
-/**
- * Auth Store Tests
- *
- * Tests for SSR-safe auth state management using Svelte 5 runes
- */
 import { describe, expect, it, beforeEach } from "vitest";
-import { createAuthStore, type AuthStore } from "./auth.svelte";
+import { createAuthStore, AUTH_STORE_KEY, type AuthStore } from "./auth.svelte";
 
 describe("AuthStore", () => {
 	let authStore: AuthStore;
@@ -58,7 +53,6 @@ describe("AuthStore", () => {
 			const mockUser = { id: "user-1" } as any;
 			store1.setUser(mockUser);
 
-			// store2 should not be affected by store1
 			expect(store1.user?.id).toBe("user-1");
 			expect(store2.user).toBeNull();
 		});
@@ -73,6 +67,13 @@ describe("AuthStore", () => {
 
 			expect(authStore.user).toBeNull();
 			expect(authStore.isAuthenticated).toBe(false);
+		});
+	});
+
+	describe("context key", () => {
+		it("should export a unique Symbol for context key", () => {
+			expect(typeof AUTH_STORE_KEY).toBe("symbol");
+			expect(AUTH_STORE_KEY.toString()).toBe("Symbol(auth-store)");
 		});
 	});
 });

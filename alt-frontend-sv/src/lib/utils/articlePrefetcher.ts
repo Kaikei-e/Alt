@@ -19,6 +19,9 @@ export class ArticlePrefetcher {
 	private async prefetchContent(feed: RenderFeed) {
 		const cacheKey = feed.normalizedUrl;
 
+		// Skip feeds with empty URL
+		if (!cacheKey) return;
+
 		// Skip if article is being dismissed
 		if (this.dismissedArticles.has(cacheKey)) {
 			console.log(

@@ -111,7 +111,7 @@ const menuItems = [
 				label: "Manage Feed Links",
 				href: `${svBasePath}/desktop/settings/feeds`,
 				icon: LinkIcon,
-			}
+			},
 		],
 	},
 	{
@@ -122,7 +122,12 @@ const menuItems = [
 	},
 ];
 
-let expandedSections = $state<string[]>(["feeds", "explore", "recap", "settings"]);
+let expandedSections = $state<string[]>([
+	"feeds",
+	"explore",
+	"recap",
+	"settings",
+]);
 
 function toggleSection(category: string) {
 	if (expandedSections.includes(category)) {

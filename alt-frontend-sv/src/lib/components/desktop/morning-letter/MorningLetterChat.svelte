@@ -38,7 +38,7 @@ type Props = {
 let { withinHours = 24 }: Props = $props();
 
 const welcomeMessage = $derived(
-	`Hello! I'm your Morning Letter assistant. I can answer questions about news from the past ${withinHours} hours. What would you like to know?`
+	`Hello! I'm your Morning Letter assistant. I can answer questions about news from the past ${withinHours} hours. What would you like to know?`,
 );
 
 let messages = $state<Message[]>([]);

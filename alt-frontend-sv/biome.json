@@ -7,7 +7,7 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["**","!playwright-report"]
+		"includes": ["**", "!playwright-report"]
 	},
 	"formatter": {
 		"enabled": true,
@@ -62,6 +62,33 @@
 					},
 					"a11y": {
 						"useKeyWithClickEvents": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["src/lib/domain/**"],
+			"linter": {
+				"rules": {
+					"style": {
+						"noRestrictedImports": {
+							"level": "error",
+							"options": {
+								"patterns": [
+									{
+										"group": [
+											"$lib/hooks/*",
+											"$lib/stores/*",
+											"$lib/api/*",
+											"$lib/connect/*",
+											"$lib/queries/*",
+											"$lib/components/*",
+											"$lib/server/*"
+										]
+									}
+								]
+							}
+						}
 					}
 				}
 			}

@@ -43,3 +43,25 @@ export const rssKeys = {
 	all: ["rss"] as const,
 	links: () => [...rssKeys.all, "links"] as const,
 };
+
+export const recapKeys = {
+	all: ["recap"] as const,
+	threeDays: (draftId?: string) =>
+		[...recapKeys.all, "3d", { draftId }] as const,
+	sevenDays: (draftId?: string) =>
+		[...recapKeys.all, "7d", { draftId }] as const,
+};
+
+export const pulseKeys = {
+	all: ["pulse"] as const,
+	today: (date?: string) => [...pulseKeys.all, "today", { date }] as const,
+};
+
+export const tagTrailKeys = {
+	all: ["tagTrail"] as const,
+	articlesByTag: (tagName?: string, tagId?: string) =>
+		[...tagTrailKeys.all, "articles", { tagName, tagId }] as const,
+	articleTags: (articleId: string) =>
+		[...tagTrailKeys.all, "tags", articleId] as const,
+	randomFeed: () => [...tagTrailKeys.all, "randomFeed"] as const,
+};

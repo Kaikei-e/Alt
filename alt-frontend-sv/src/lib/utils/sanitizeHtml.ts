@@ -90,7 +90,6 @@ export function sanitizeHtml(html: string): string {
 		ALLOW_DATA_ATTR: false,
 		// Allow only safe URL protocols (https/http only, mailto excluded for RSS context)
 		// Note: hyphen escaped as \- to avoid ambiguous character range (CodeQL js/overly-large-range)
-		ALLOWED_URI_REGEXP:
-			/^(?:https?:|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
+		ALLOWED_URI_REGEXP: /^(?:https?:|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
 	});
 }

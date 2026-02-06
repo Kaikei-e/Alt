@@ -2,78 +2,93 @@
 // @generated from file alt/recap/v2/job_status.proto (package alt.recap.v2, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+	GenFile,
+	GenMessage,
+	GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+	fileDesc,
+	messageDesc,
+	serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/recap/v2/job_status.proto.
  */
-export const file_alt_recap_v2_job_status: GenFile = /*@__PURE__*/
-  fileDesc("Ch1hbHQvcmVjYXAvdjIvam9iX3N0YXR1cy5wcm90bxIMYWx0LnJlY2FwLnYyImwKGFN0cmVhbUpvYlByb2dyZXNzUmVxdWVzdBIUCgd1c2VyX2lkGAEgASgJSACIAQESGwoOd2luZG93X3NlY29uZHMYAiABKANIAYgBAUIKCghfdXNlcl9pZEIRCg9fd2luZG93X3NlY29uZHMiVgoXVHJpZ2dlclVzZXJSZWNhcFJlcXVlc3QSDwoHdXNlcl9pZBgBIAEoCRIOCgZnZW5yZXMYAiADKAkSEQoEbm90ZRgDIAEoCUgAiAEBQgcKBV9ub3RlIiEKD1JldHJ5Sm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiaQoVR2V0Sm9iUHJvZ3Jlc3NSZXF1ZXN0EhQKB3VzZXJfaWQYASABKAlIAIgBARIbCg53aW5kb3dfc2Vjb25kcxgCIAEoA0gBiAEBQgoKCF91c2VyX2lkQhEKD193aW5kb3dfc2Vjb25kcyI7ChhUcmlnZ2VyVXNlclJlY2FwUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEg8KB21lc3NhZ2UYAiABKAkiNAoQUmV0cnlKb2JSZXNwb25zZRIPCgdzdWNjZXNzGAEgASgIEg8KB21lc3NhZ2UYAiABKAki/QEKEEpvYlByb2dyZXNzRXZlbnQSNAoKYWN0aXZlX2pvYhgBIAEoCzIbLmFsdC5yZWNhcC52Mi5BY3RpdmVKb2JJbmZvSACIAQESMwoLcmVjZW50X2pvYnMYAiADKAsyHi5hbHQucmVjYXAudjIuUmVjZW50Sm9iU3VtbWFyeRIlCgVzdGF0cxgDIAEoCzIWLmFsdC5yZWNhcC52Mi5Kb2JTdGF0cxI3Cgx1c2VyX2NvbnRleHQYBCABKAsyHC5hbHQucmVjYXAudjIuVXNlckpvYkNvbnRleHRIAYgBAUINCgtfYWN0aXZlX2pvYkIPCg1fdXNlcl9jb250ZXh0Ir4DCg1BY3RpdmVKb2JJbmZvEg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSGgoNY3VycmVudF9zdGFnZRgDIAEoCUgAiAEBEhMKC3N0YWdlX2luZGV4GAQgASgFEhgKEHN0YWdlc19jb21wbGV0ZWQYBSADKAkSRgoOZ2VucmVfcHJvZ3Jlc3MYBiADKAsyLi5hbHQucmVjYXAudjIuQWN0aXZlSm9iSW5mby5HZW5yZVByb2dyZXNzRW50cnkSGwoOdG90YWxfYXJ0aWNsZXMYByABKAVIAYgBARIfChJ1c2VyX2FydGljbGVfY291bnQYCCABKAVIAogBARIRCglraWNrZWRfYXQYCSABKAkSFgoOdHJpZ2dlcl9zb3VyY2UYCiABKAkaVQoSR2VucmVQcm9ncmVzc0VudHJ5EgsKA2tleRgBIAEoCRIuCgV2YWx1ZRgCIAEoCzIfLmFsdC5yZWNhcC52Mi5HZW5yZVByb2dyZXNzSW5mbzoCOAFCEAoOX2N1cnJlbnRfc3RhZ2VCEQoPX3RvdGFsX2FydGljbGVzQhUKE191c2VyX2FydGljbGVfY291bnQifwoRR2VucmVQcm9ncmVzc0luZm8SDgoGc3RhdHVzGAEgASgJEhoKDWNsdXN0ZXJfY291bnQYAiABKAVIAIgBARIaCg1hcnRpY2xlX2NvdW50GAMgASgFSAGIAQFCEAoOX2NsdXN0ZXJfY291bnRCEAoOX2FydGljbGVfY291bnQi6QEKEFJlY2VudEpvYlN1bW1hcnkSDgoGam9iX2lkGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIXCgpsYXN0X3N0YWdlGAMgASgJSACIAQESEQoJa2lja2VkX2F0GAQgASgJEhIKCnVwZGF0ZWRfYXQYBSABKAkSGgoNZHVyYXRpb25fc2VjcxgGIAEoA0gBiAEBEhYKDnRyaWdnZXJfc291cmNlGAcgASgJEhQKB3VzZXJfaWQYCCABKAlIAogBAUINCgtfbGFzdF9zdGFnZUIQCg5fZHVyYXRpb25fc2Vjc0IKCghfdXNlcl9pZCKhAQoISm9iU3RhdHMSGAoQc3VjY2Vzc19yYXRlXzI0aBgBIAEoARIeChFhdmdfZHVyYXRpb25fc2VjcxgCIAEoA0gAiAEBEhYKDnRvdGFsX2pvYnNfMjRoGAMgASgFEhQKDHJ1bm5pbmdfam9icxgEIAEoBRIXCg9mYWlsZWRfam9ic18yNGgYBSABKAVCFAoSX2F2Z19kdXJhdGlvbl9zZWNzIlwKDlVzZXJKb2JDb250ZXh0EhoKEnVzZXJfYXJ0aWNsZV9jb3VudBgBIAEoBRIXCg91c2VyX2pvYnNfY291bnQYAiABKAUSFQoNdXNlcl9mZWVkX2lkcxgDIAMoCTL2AgoQSm9iU3RhdHVzU2VydmljZRJdChFTdHJlYW1Kb2JQcm9ncmVzcxImLmFsdC5yZWNhcC52Mi5TdHJlYW1Kb2JQcm9ncmVzc1JlcXVlc3QaHi5hbHQucmVjYXAudjIuSm9iUHJvZ3Jlc3NFdmVudDABEmEKEFRyaWdnZXJVc2VyUmVjYXASJS5hbHQucmVjYXAudjIuVHJpZ2dlclVzZXJSZWNhcFJlcXVlc3QaJi5hbHQucmVjYXAudjIuVHJpZ2dlclVzZXJSZWNhcFJlc3BvbnNlEkkKCFJldHJ5Sm9iEh0uYWx0LnJlY2FwLnYyLlJldHJ5Sm9iUmVxdWVzdBoeLmFsdC5yZWNhcC52Mi5SZXRyeUpvYlJlc3BvbnNlElUKDkdldEpvYlByb2dyZXNzEiMuYWx0LnJlY2FwLnYyLkdldEpvYlByb2dyZXNzUmVxdWVzdBoeLmFsdC5yZWNhcC52Mi5Kb2JQcm9ncmVzc0V2ZW50QiRaImFsdC9nZW4vcHJvdG8vYWx0L3JlY2FwL3YyO3JlY2FwdjJiBnByb3RvMw");
+export const file_alt_recap_v2_job_status: GenFile =
+	/*@__PURE__*/
+	fileDesc(
+		"Ch1hbHQvcmVjYXAvdjIvam9iX3N0YXR1cy5wcm90bxIMYWx0LnJlY2FwLnYyImwKGFN0cmVhbUpvYlByb2dyZXNzUmVxdWVzdBIUCgd1c2VyX2lkGAEgASgJSACIAQESGwoOd2luZG93X3NlY29uZHMYAiABKANIAYgBAUIKCghfdXNlcl9pZEIRCg9fd2luZG93X3NlY29uZHMiVgoXVHJpZ2dlclVzZXJSZWNhcFJlcXVlc3QSDwoHdXNlcl9pZBgBIAEoCRIOCgZnZW5yZXMYAiADKAkSEQoEbm90ZRgDIAEoCUgAiAEBQgcKBV9ub3RlIiEKD1JldHJ5Sm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiaQoVR2V0Sm9iUHJvZ3Jlc3NSZXF1ZXN0EhQKB3VzZXJfaWQYASABKAlIAIgBARIbCg53aW5kb3dfc2Vjb25kcxgCIAEoA0gBiAEBQgoKCF91c2VyX2lkQhEKD193aW5kb3dfc2Vjb25kcyI7ChhUcmlnZ2VyVXNlclJlY2FwUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEg8KB21lc3NhZ2UYAiABKAkiNAoQUmV0cnlKb2JSZXNwb25zZRIPCgdzdWNjZXNzGAEgASgIEg8KB21lc3NhZ2UYAiABKAki/QEKEEpvYlByb2dyZXNzRXZlbnQSNAoKYWN0aXZlX2pvYhgBIAEoCzIbLmFsdC5yZWNhcC52Mi5BY3RpdmVKb2JJbmZvSACIAQESMwoLcmVjZW50X2pvYnMYAiADKAsyHi5hbHQucmVjYXAudjIuUmVjZW50Sm9iU3VtbWFyeRIlCgVzdGF0cxgDIAEoCzIWLmFsdC5yZWNhcC52Mi5Kb2JTdGF0cxI3Cgx1c2VyX2NvbnRleHQYBCABKAsyHC5hbHQucmVjYXAudjIuVXNlckpvYkNvbnRleHRIAYgBAUINCgtfYWN0aXZlX2pvYkIPCg1fdXNlcl9jb250ZXh0Ir4DCg1BY3RpdmVKb2JJbmZvEg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSGgoNY3VycmVudF9zdGFnZRgDIAEoCUgAiAEBEhMKC3N0YWdlX2luZGV4GAQgASgFEhgKEHN0YWdlc19jb21wbGV0ZWQYBSADKAkSRgoOZ2VucmVfcHJvZ3Jlc3MYBiADKAsyLi5hbHQucmVjYXAudjIuQWN0aXZlSm9iSW5mby5HZW5yZVByb2dyZXNzRW50cnkSGwoOdG90YWxfYXJ0aWNsZXMYByABKAVIAYgBARIfChJ1c2VyX2FydGljbGVfY291bnQYCCABKAVIAogBARIRCglraWNrZWRfYXQYCSABKAkSFgoOdHJpZ2dlcl9zb3VyY2UYCiABKAkaVQoSR2VucmVQcm9ncmVzc0VudHJ5EgsKA2tleRgBIAEoCRIuCgV2YWx1ZRgCIAEoCzIfLmFsdC5yZWNhcC52Mi5HZW5yZVByb2dyZXNzSW5mbzoCOAFCEAoOX2N1cnJlbnRfc3RhZ2VCEQoPX3RvdGFsX2FydGljbGVzQhUKE191c2VyX2FydGljbGVfY291bnQifwoRR2VucmVQcm9ncmVzc0luZm8SDgoGc3RhdHVzGAEgASgJEhoKDWNsdXN0ZXJfY291bnQYAiABKAVIAIgBARIaCg1hcnRpY2xlX2NvdW50GAMgASgFSAGIAQFCEAoOX2NsdXN0ZXJfY291bnRCEAoOX2FydGljbGVfY291bnQi6QEKEFJlY2VudEpvYlN1bW1hcnkSDgoGam9iX2lkGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIXCgpsYXN0X3N0YWdlGAMgASgJSACIAQESEQoJa2lja2VkX2F0GAQgASgJEhIKCnVwZGF0ZWRfYXQYBSABKAkSGgoNZHVyYXRpb25fc2VjcxgGIAEoA0gBiAEBEhYKDnRyaWdnZXJfc291cmNlGAcgASgJEhQKB3VzZXJfaWQYCCABKAlIAogBAUINCgtfbGFzdF9zdGFnZUIQCg5fZHVyYXRpb25fc2Vjc0IKCghfdXNlcl9pZCKhAQoISm9iU3RhdHMSGAoQc3VjY2Vzc19yYXRlXzI0aBgBIAEoARIeChFhdmdfZHVyYXRpb25fc2VjcxgCIAEoA0gAiAEBEhYKDnRvdGFsX2pvYnNfMjRoGAMgASgFEhQKDHJ1bm5pbmdfam9icxgEIAEoBRIXCg9mYWlsZWRfam9ic18yNGgYBSABKAVCFAoSX2F2Z19kdXJhdGlvbl9zZWNzIlwKDlVzZXJKb2JDb250ZXh0EhoKEnVzZXJfYXJ0aWNsZV9jb3VudBgBIAEoBRIXCg91c2VyX2pvYnNfY291bnQYAiABKAUSFQoNdXNlcl9mZWVkX2lkcxgDIAMoCTL2AgoQSm9iU3RhdHVzU2VydmljZRJdChFTdHJlYW1Kb2JQcm9ncmVzcxImLmFsdC5yZWNhcC52Mi5TdHJlYW1Kb2JQcm9ncmVzc1JlcXVlc3QaHi5hbHQucmVjYXAudjIuSm9iUHJvZ3Jlc3NFdmVudDABEmEKEFRyaWdnZXJVc2VyUmVjYXASJS5hbHQucmVjYXAudjIuVHJpZ2dlclVzZXJSZWNhcFJlcXVlc3QaJi5hbHQucmVjYXAudjIuVHJpZ2dlclVzZXJSZWNhcFJlc3BvbnNlEkkKCFJldHJ5Sm9iEh0uYWx0LnJlY2FwLnYyLlJldHJ5Sm9iUmVxdWVzdBoeLmFsdC5yZWNhcC52Mi5SZXRyeUpvYlJlc3BvbnNlElUKDkdldEpvYlByb2dyZXNzEiMuYWx0LnJlY2FwLnYyLkdldEpvYlByb2dyZXNzUmVxdWVzdBoeLmFsdC5yZWNhcC52Mi5Kb2JQcm9ncmVzc0V2ZW50QiRaImFsdC9nZW4vcHJvdG8vYWx0L3JlY2FwL3YyO3JlY2FwdjJiBnByb3RvMw",
+	);
 
 /**
  * StreamJobProgressRequest is the request for streaming job progress
  *
  * @generated from message alt.recap.v2.StreamJobProgressRequest
  */
-export type StreamJobProgressRequest = Message<"alt.recap.v2.StreamJobProgressRequest"> & {
-  /**
-   * User ID for filtering user-specific jobs (required for user context)
-   *
-   * @generated from field: optional string user_id = 1;
-   */
-  userId?: string;
+export type StreamJobProgressRequest =
+	Message<"alt.recap.v2.StreamJobProgressRequest"> & {
+		/**
+		 * User ID for filtering user-specific jobs (required for user context)
+		 *
+		 * @generated from field: optional string user_id = 1;
+		 */
+		userId?: string;
 
-  /**
-   * Time window in seconds (default: 86400 = 24h)
-   *
-   * @generated from field: optional int64 window_seconds = 2;
-   */
-  windowSeconds?: bigint;
-};
+		/**
+		 * Time window in seconds (default: 86400 = 24h)
+		 *
+		 * @generated from field: optional int64 window_seconds = 2;
+		 */
+		windowSeconds?: bigint;
+	};
 
 /**
  * Describes the message alt.recap.v2.StreamJobProgressRequest.
  * Use `create(StreamJobProgressRequestSchema)` to create a new message.
  */
-export const StreamJobProgressRequestSchema: GenMessage<StreamJobProgressRequest> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 0);
+export const StreamJobProgressRequestSchema: GenMessage<StreamJobProgressRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 0);
 
 /**
  * TriggerUserRecapRequest is the request to trigger a user-specific recap job
  *
  * @generated from message alt.recap.v2.TriggerUserRecapRequest
  */
-export type TriggerUserRecapRequest = Message<"alt.recap.v2.TriggerUserRecapRequest"> & {
-  /**
-   * User ID (required)
-   *
-   * @generated from field: string user_id = 1;
-   */
-  userId: string;
+export type TriggerUserRecapRequest =
+	Message<"alt.recap.v2.TriggerUserRecapRequest"> & {
+		/**
+		 * User ID (required)
+		 *
+		 * @generated from field: string user_id = 1;
+		 */
+		userId: string;
 
-  /**
-   * Optional list of genres to include (empty = all genres)
-   *
-   * @generated from field: repeated string genres = 2;
-   */
-  genres: string[];
+		/**
+		 * Optional list of genres to include (empty = all genres)
+		 *
+		 * @generated from field: repeated string genres = 2;
+		 */
+		genres: string[];
 
-  /**
-   * Optional note for the job
-   *
-   * @generated from field: optional string note = 3;
-   */
-  note?: string;
-};
+		/**
+		 * Optional note for the job
+		 *
+		 * @generated from field: optional string note = 3;
+		 */
+		note?: string;
+	};
 
 /**
  * Describes the message alt.recap.v2.TriggerUserRecapRequest.
  * Use `create(TriggerUserRecapRequestSchema)` to create a new message.
  */
-export const TriggerUserRecapRequestSchema: GenMessage<TriggerUserRecapRequest> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 1);
+export const TriggerUserRecapRequestSchema: GenMessage<TriggerUserRecapRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 1);
 
 /**
  * RetryJobRequest is the request to retry a failed job
@@ -81,76 +96,81 @@ export const TriggerUserRecapRequestSchema: GenMessage<TriggerUserRecapRequest> 
  * @generated from message alt.recap.v2.RetryJobRequest
  */
 export type RetryJobRequest = Message<"alt.recap.v2.RetryJobRequest"> & {
-  /**
-   * Job ID to retry
-   *
-   * @generated from field: string job_id = 1;
-   */
-  jobId: string;
+	/**
+	 * Job ID to retry
+	 *
+	 * @generated from field: string job_id = 1;
+	 */
+	jobId: string;
 };
 
 /**
  * Describes the message alt.recap.v2.RetryJobRequest.
  * Use `create(RetryJobRequestSchema)` to create a new message.
  */
-export const RetryJobRequestSchema: GenMessage<RetryJobRequest> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 2);
+export const RetryJobRequestSchema: GenMessage<RetryJobRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 2);
 
 /**
  * GetJobProgressRequest is the request for getting current job progress
  *
  * @generated from message alt.recap.v2.GetJobProgressRequest
  */
-export type GetJobProgressRequest = Message<"alt.recap.v2.GetJobProgressRequest"> & {
-  /**
-   * User ID for filtering user-specific jobs
-   *
-   * @generated from field: optional string user_id = 1;
-   */
-  userId?: string;
+export type GetJobProgressRequest =
+	Message<"alt.recap.v2.GetJobProgressRequest"> & {
+		/**
+		 * User ID for filtering user-specific jobs
+		 *
+		 * @generated from field: optional string user_id = 1;
+		 */
+		userId?: string;
 
-  /**
-   * Time window in seconds (default: 86400 = 24h)
-   *
-   * @generated from field: optional int64 window_seconds = 2;
-   */
-  windowSeconds?: bigint;
-};
+		/**
+		 * Time window in seconds (default: 86400 = 24h)
+		 *
+		 * @generated from field: optional int64 window_seconds = 2;
+		 */
+		windowSeconds?: bigint;
+	};
 
 /**
  * Describes the message alt.recap.v2.GetJobProgressRequest.
  * Use `create(GetJobProgressRequestSchema)` to create a new message.
  */
-export const GetJobProgressRequestSchema: GenMessage<GetJobProgressRequest> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 3);
+export const GetJobProgressRequestSchema: GenMessage<GetJobProgressRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 3);
 
 /**
  * TriggerUserRecapResponse is the response for triggering a user recap
  *
  * @generated from message alt.recap.v2.TriggerUserRecapResponse
  */
-export type TriggerUserRecapResponse = Message<"alt.recap.v2.TriggerUserRecapResponse"> & {
-  /**
-   * New job ID
-   *
-   * @generated from field: string job_id = 1;
-   */
-  jobId: string;
+export type TriggerUserRecapResponse =
+	Message<"alt.recap.v2.TriggerUserRecapResponse"> & {
+		/**
+		 * New job ID
+		 *
+		 * @generated from field: string job_id = 1;
+		 */
+		jobId: string;
 
-  /**
-   * Status message
-   *
-   * @generated from field: string message = 2;
-   */
-  message: string;
-};
+		/**
+		 * Status message
+		 *
+		 * @generated from field: string message = 2;
+		 */
+		message: string;
+	};
 
 /**
  * Describes the message alt.recap.v2.TriggerUserRecapResponse.
  * Use `create(TriggerUserRecapResponseSchema)` to create a new message.
  */
-export const TriggerUserRecapResponseSchema: GenMessage<TriggerUserRecapResponse> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 4);
+export const TriggerUserRecapResponseSchema: GenMessage<TriggerUserRecapResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 4);
 
 /**
  * RetryJobResponse is the response for retrying a job
@@ -158,27 +178,28 @@ export const TriggerUserRecapResponseSchema: GenMessage<TriggerUserRecapResponse
  * @generated from message alt.recap.v2.RetryJobResponse
  */
 export type RetryJobResponse = Message<"alt.recap.v2.RetryJobResponse"> & {
-  /**
-   * Whether the retry was successful
-   *
-   * @generated from field: bool success = 1;
-   */
-  success: boolean;
+	/**
+	 * Whether the retry was successful
+	 *
+	 * @generated from field: bool success = 1;
+	 */
+	success: boolean;
 
-  /**
-   * Status message
-   *
-   * @generated from field: string message = 2;
-   */
-  message: string;
+	/**
+	 * Status message
+	 *
+	 * @generated from field: string message = 2;
+	 */
+	message: string;
 };
 
 /**
  * Describes the message alt.recap.v2.RetryJobResponse.
  * Use `create(RetryJobResponseSchema)` to create a new message.
  */
-export const RetryJobResponseSchema: GenMessage<RetryJobResponse> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 5);
+export const RetryJobResponseSchema: GenMessage<RetryJobResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 5);
 
 /**
  * JobProgressEvent is streamed to clients with current job status
@@ -186,41 +207,42 @@ export const RetryJobResponseSchema: GenMessage<RetryJobResponse> = /*@__PURE__*
  * @generated from message alt.recap.v2.JobProgressEvent
  */
 export type JobProgressEvent = Message<"alt.recap.v2.JobProgressEvent"> & {
-  /**
-   * Currently running job (if any)
-   *
-   * @generated from field: optional alt.recap.v2.ActiveJobInfo active_job = 1;
-   */
-  activeJob?: ActiveJobInfo;
+	/**
+	 * Currently running job (if any)
+	 *
+	 * @generated from field: optional alt.recap.v2.ActiveJobInfo active_job = 1;
+	 */
+	activeJob?: ActiveJobInfo;
 
-  /**
-   * Recent job history
-   *
-   * @generated from field: repeated alt.recap.v2.RecentJobSummary recent_jobs = 2;
-   */
-  recentJobs: RecentJobSummary[];
+	/**
+	 * Recent job history
+	 *
+	 * @generated from field: repeated alt.recap.v2.RecentJobSummary recent_jobs = 2;
+	 */
+	recentJobs: RecentJobSummary[];
 
-  /**
-   * Statistics for the time window
-   *
-   * @generated from field: alt.recap.v2.JobStats stats = 3;
-   */
-  stats?: JobStats;
+	/**
+	 * Statistics for the time window
+	 *
+	 * @generated from field: alt.recap.v2.JobStats stats = 3;
+	 */
+	stats?: JobStats;
 
-  /**
-   * User-specific context (populated when user_id provided)
-   *
-   * @generated from field: optional alt.recap.v2.UserJobContext user_context = 4;
-   */
-  userContext?: UserJobContext;
+	/**
+	 * User-specific context (populated when user_id provided)
+	 *
+	 * @generated from field: optional alt.recap.v2.UserJobContext user_context = 4;
+	 */
+	userContext?: UserJobContext;
 };
 
 /**
  * Describes the message alt.recap.v2.JobProgressEvent.
  * Use `create(JobProgressEventSchema)` to create a new message.
  */
-export const JobProgressEventSchema: GenMessage<JobProgressEvent> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 6);
+export const JobProgressEventSchema: GenMessage<JobProgressEvent> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 6);
 
 /**
  * ActiveJobInfo contains details about a running job
@@ -228,83 +250,84 @@ export const JobProgressEventSchema: GenMessage<JobProgressEvent> = /*@__PURE__*
  * @generated from message alt.recap.v2.ActiveJobInfo
  */
 export type ActiveJobInfo = Message<"alt.recap.v2.ActiveJobInfo"> & {
-  /**
-   * Job ID
-   *
-   * @generated from field: string job_id = 1;
-   */
-  jobId: string;
+	/**
+	 * Job ID
+	 *
+	 * @generated from field: string job_id = 1;
+	 */
+	jobId: string;
 
-  /**
-   * Current status (pending, running, completed, failed)
-   *
-   * @generated from field: string status = 2;
-   */
-  status: string;
+	/**
+	 * Current status (pending, running, completed, failed)
+	 *
+	 * @generated from field: string status = 2;
+	 */
+	status: string;
 
-  /**
-   * Current pipeline stage
-   *
-   * @generated from field: optional string current_stage = 3;
-   */
-  currentStage?: string;
+	/**
+	 * Current pipeline stage
+	 *
+	 * @generated from field: optional string current_stage = 3;
+	 */
+	currentStage?: string;
 
-  /**
-   * Index of current stage (0-7)
-   *
-   * @generated from field: int32 stage_index = 4;
-   */
-  stageIndex: number;
+	/**
+	 * Index of current stage (0-7)
+	 *
+	 * @generated from field: int32 stage_index = 4;
+	 */
+	stageIndex: number;
 
-  /**
-   * List of completed stages
-   *
-   * @generated from field: repeated string stages_completed = 5;
-   */
-  stagesCompleted: string[];
+	/**
+	 * List of completed stages
+	 *
+	 * @generated from field: repeated string stages_completed = 5;
+	 */
+	stagesCompleted: string[];
 
-  /**
-   * Progress for each genre
-   *
-   * @generated from field: map<string, alt.recap.v2.GenreProgressInfo> genre_progress = 6;
-   */
-  genreProgress: { [key: string]: GenreProgressInfo };
+	/**
+	 * Progress for each genre
+	 *
+	 * @generated from field: map<string, alt.recap.v2.GenreProgressInfo> genre_progress = 6;
+	 */
+	genreProgress: { [key: string]: GenreProgressInfo };
 
-  /**
-   * Total articles in this job
-   *
-   * @generated from field: optional int32 total_articles = 7;
-   */
-  totalArticles?: number;
+	/**
+	 * Total articles in this job
+	 *
+	 * @generated from field: optional int32 total_articles = 7;
+	 */
+	totalArticles?: number;
 
-  /**
-   * User's articles in this job (when user_id provided)
-   *
-   * @generated from field: optional int32 user_article_count = 8;
-   */
-  userArticleCount?: number;
+	/**
+	 * User's articles in this job (when user_id provided)
+	 *
+	 * @generated from field: optional int32 user_article_count = 8;
+	 */
+	userArticleCount?: number;
 
-  /**
-   * Job start time (RFC3339)
-   *
-   * @generated from field: string kicked_at = 9;
-   */
-  kickedAt: string;
+	/**
+	 * Job start time (RFC3339)
+	 *
+	 * @generated from field: string kicked_at = 9;
+	 */
+	kickedAt: string;
 
-  /**
-   * Trigger source (system or user)
-   *
-   * @generated from field: string trigger_source = 10;
-   */
-  triggerSource: string;
+	/**
+	 * Trigger source (system or user)
+	 *
+	 * @generated from field: string trigger_source = 10;
+	 */
+	triggerSource: string;
 };
 
 /**
  * Describes the message alt.recap.v2.ActiveJobInfo.
  * Use `create(ActiveJobInfoSchema)` to create a new message.
  */
-export const ActiveJobInfoSchema: GenMessage<ActiveJobInfo> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 7);
+export const ActiveJobInfoSchema: GenMessage<ActiveJobInfo> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 7);
 
 /**
  * GenreProgressInfo contains progress for a specific genre
@@ -312,34 +335,35 @@ export const ActiveJobInfoSchema: GenMessage<ActiveJobInfo> = /*@__PURE__*/
  * @generated from message alt.recap.v2.GenreProgressInfo
  */
 export type GenreProgressInfo = Message<"alt.recap.v2.GenreProgressInfo"> & {
-  /**
-   * Status (pending, running, succeeded, failed)
-   *
-   * @generated from field: string status = 1;
-   */
-  status: string;
+	/**
+	 * Status (pending, running, succeeded, failed)
+	 *
+	 * @generated from field: string status = 1;
+	 */
+	status: string;
 
-  /**
-   * Number of clusters generated
-   *
-   * @generated from field: optional int32 cluster_count = 2;
-   */
-  clusterCount?: number;
+	/**
+	 * Number of clusters generated
+	 *
+	 * @generated from field: optional int32 cluster_count = 2;
+	 */
+	clusterCount?: number;
 
-  /**
-   * Number of articles in this genre
-   *
-   * @generated from field: optional int32 article_count = 3;
-   */
-  articleCount?: number;
+	/**
+	 * Number of articles in this genre
+	 *
+	 * @generated from field: optional int32 article_count = 3;
+	 */
+	articleCount?: number;
 };
 
 /**
  * Describes the message alt.recap.v2.GenreProgressInfo.
  * Use `create(GenreProgressInfoSchema)` to create a new message.
  */
-export const GenreProgressInfoSchema: GenMessage<GenreProgressInfo> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 8);
+export const GenreProgressInfoSchema: GenMessage<GenreProgressInfo> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 8);
 
 /**
  * RecentJobSummary is a summary of a recent job
@@ -347,69 +371,70 @@ export const GenreProgressInfoSchema: GenMessage<GenreProgressInfo> = /*@__PURE_
  * @generated from message alt.recap.v2.RecentJobSummary
  */
 export type RecentJobSummary = Message<"alt.recap.v2.RecentJobSummary"> & {
-  /**
-   * Job ID
-   *
-   * @generated from field: string job_id = 1;
-   */
-  jobId: string;
+	/**
+	 * Job ID
+	 *
+	 * @generated from field: string job_id = 1;
+	 */
+	jobId: string;
 
-  /**
-   * Status (pending, running, completed, failed)
-   *
-   * @generated from field: string status = 2;
-   */
-  status: string;
+	/**
+	 * Status (pending, running, completed, failed)
+	 *
+	 * @generated from field: string status = 2;
+	 */
+	status: string;
 
-  /**
-   * Last completed stage
-   *
-   * @generated from field: optional string last_stage = 3;
-   */
-  lastStage?: string;
+	/**
+	 * Last completed stage
+	 *
+	 * @generated from field: optional string last_stage = 3;
+	 */
+	lastStage?: string;
 
-  /**
-   * Job start time (RFC3339)
-   *
-   * @generated from field: string kicked_at = 4;
-   */
-  kickedAt: string;
+	/**
+	 * Job start time (RFC3339)
+	 *
+	 * @generated from field: string kicked_at = 4;
+	 */
+	kickedAt: string;
 
-  /**
-   * Last update time (RFC3339)
-   *
-   * @generated from field: string updated_at = 5;
-   */
-  updatedAt: string;
+	/**
+	 * Last update time (RFC3339)
+	 *
+	 * @generated from field: string updated_at = 5;
+	 */
+	updatedAt: string;
 
-  /**
-   * Duration in seconds (for completed/failed jobs)
-   *
-   * @generated from field: optional int64 duration_secs = 6;
-   */
-  durationSecs?: bigint;
+	/**
+	 * Duration in seconds (for completed/failed jobs)
+	 *
+	 * @generated from field: optional int64 duration_secs = 6;
+	 */
+	durationSecs?: bigint;
 
-  /**
-   * Trigger source (system or user)
-   *
-   * @generated from field: string trigger_source = 7;
-   */
-  triggerSource: string;
+	/**
+	 * Trigger source (system or user)
+	 *
+	 * @generated from field: string trigger_source = 7;
+	 */
+	triggerSource: string;
 
-  /**
-   * User ID (if user-triggered)
-   *
-   * @generated from field: optional string user_id = 8;
-   */
-  userId?: string;
+	/**
+	 * User ID (if user-triggered)
+	 *
+	 * @generated from field: optional string user_id = 8;
+	 */
+	userId?: string;
 };
 
 /**
  * Describes the message alt.recap.v2.RecentJobSummary.
  * Use `create(RecentJobSummarySchema)` to create a new message.
  */
-export const RecentJobSummarySchema: GenMessage<RecentJobSummary> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 9);
+export const RecentJobSummarySchema: GenMessage<RecentJobSummary> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 9);
 
 /**
  * JobStats contains statistics for the dashboard
@@ -417,48 +442,49 @@ export const RecentJobSummarySchema: GenMessage<RecentJobSummary> = /*@__PURE__*
  * @generated from message alt.recap.v2.JobStats
  */
 export type JobStats = Message<"alt.recap.v2.JobStats"> & {
-  /**
-   * Success rate in the last 24 hours (0.0 - 1.0)
-   *
-   * @generated from field: double success_rate_24h = 1;
-   */
-  successRate24h: number;
+	/**
+	 * Success rate in the last 24 hours (0.0 - 1.0)
+	 *
+	 * @generated from field: double success_rate_24h = 1;
+	 */
+	successRate24h: number;
 
-  /**
-   * Average duration in seconds
-   *
-   * @generated from field: optional int64 avg_duration_secs = 2;
-   */
-  avgDurationSecs?: bigint;
+	/**
+	 * Average duration in seconds
+	 *
+	 * @generated from field: optional int64 avg_duration_secs = 2;
+	 */
+	avgDurationSecs?: bigint;
 
-  /**
-   * Total jobs in the last 24 hours
-   *
-   * @generated from field: int32 total_jobs_24h = 3;
-   */
-  totalJobs24h: number;
+	/**
+	 * Total jobs in the last 24 hours
+	 *
+	 * @generated from field: int32 total_jobs_24h = 3;
+	 */
+	totalJobs24h: number;
 
-  /**
-   * Currently running jobs
-   *
-   * @generated from field: int32 running_jobs = 4;
-   */
-  runningJobs: number;
+	/**
+	 * Currently running jobs
+	 *
+	 * @generated from field: int32 running_jobs = 4;
+	 */
+	runningJobs: number;
 
-  /**
-   * Failed jobs in the last 24 hours
-   *
-   * @generated from field: int32 failed_jobs_24h = 5;
-   */
-  failedJobs24h: number;
+	/**
+	 * Failed jobs in the last 24 hours
+	 *
+	 * @generated from field: int32 failed_jobs_24h = 5;
+	 */
+	failedJobs24h: number;
 };
 
 /**
  * Describes the message alt.recap.v2.JobStats.
  * Use `create(JobStatsSchema)` to create a new message.
  */
-export const JobStatsSchema: GenMessage<JobStats> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 10);
+export const JobStatsSchema: GenMessage<JobStats> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 10);
 
 /**
  * UserJobContext contains user-specific job information
@@ -466,34 +492,35 @@ export const JobStatsSchema: GenMessage<JobStats> = /*@__PURE__*/
  * @generated from message alt.recap.v2.UserJobContext
  */
 export type UserJobContext = Message<"alt.recap.v2.UserJobContext"> & {
-  /**
-   * Number of user's articles across jobs
-   *
-   * @generated from field: int32 user_article_count = 1;
-   */
-  userArticleCount: number;
+	/**
+	 * Number of user's articles across jobs
+	 *
+	 * @generated from field: int32 user_article_count = 1;
+	 */
+	userArticleCount: number;
 
-  /**
-   * Number of jobs related to the user
-   *
-   * @generated from field: int32 user_jobs_count = 2;
-   */
-  userJobsCount: number;
+	/**
+	 * Number of jobs related to the user
+	 *
+	 * @generated from field: int32 user_jobs_count = 2;
+	 */
+	userJobsCount: number;
 
-  /**
-   * User's subscribed feed IDs
-   *
-   * @generated from field: repeated string user_feed_ids = 3;
-   */
-  userFeedIds: string[];
+	/**
+	 * User's subscribed feed IDs
+	 *
+	 * @generated from field: repeated string user_feed_ids = 3;
+	 */
+	userFeedIds: string[];
 };
 
 /**
  * Describes the message alt.recap.v2.UserJobContext.
  * Use `create(UserJobContextSchema)` to create a new message.
  */
-export const UserJobContextSchema: GenMessage<UserJobContext> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 11);
+export const UserJobContextSchema: GenMessage<UserJobContext> =
+	/*@__PURE__*/
+	messageDesc(file_alt_recap_v2_job_status, 11);
 
 /**
  * JobStatusService provides real-time job status monitoring for recap jobs
@@ -501,47 +528,45 @@ export const UserJobContextSchema: GenMessage<UserJobContext> = /*@__PURE__*/
  * @generated from service alt.recap.v2.JobStatusService
  */
 export const JobStatusService: GenService<{
-  /**
-   * StreamJobProgress streams real-time job progress updates (authentication required)
-   * Sends updates every 2 seconds while connected
-   *
-   * @generated from rpc alt.recap.v2.JobStatusService.StreamJobProgress
-   */
-  streamJobProgress: {
-    methodKind: "server_streaming";
-    input: typeof StreamJobProgressRequestSchema;
-    output: typeof JobProgressEventSchema;
-  },
-  /**
-   * TriggerUserRecap triggers a new recap job for a specific user
-   *
-   * @generated from rpc alt.recap.v2.JobStatusService.TriggerUserRecap
-   */
-  triggerUserRecap: {
-    methodKind: "unary";
-    input: typeof TriggerUserRecapRequestSchema;
-    output: typeof TriggerUserRecapResponseSchema;
-  },
-  /**
-   * RetryJob retries a failed job
-   *
-   * @generated from rpc alt.recap.v2.JobStatusService.RetryJob
-   */
-  retryJob: {
-    methodKind: "unary";
-    input: typeof RetryJobRequestSchema;
-    output: typeof RetryJobResponseSchema;
-  },
-  /**
-   * GetJobProgress returns current job progress (non-streaming)
-   *
-   * @generated from rpc alt.recap.v2.JobStatusService.GetJobProgress
-   */
-  getJobProgress: {
-    methodKind: "unary";
-    input: typeof GetJobProgressRequestSchema;
-    output: typeof JobProgressEventSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_alt_recap_v2_job_status, 0);
-
+	/**
+	 * StreamJobProgress streams real-time job progress updates (authentication required)
+	 * Sends updates every 2 seconds while connected
+	 *
+	 * @generated from rpc alt.recap.v2.JobStatusService.StreamJobProgress
+	 */
+	streamJobProgress: {
+		methodKind: "server_streaming";
+		input: typeof StreamJobProgressRequestSchema;
+		output: typeof JobProgressEventSchema;
+	};
+	/**
+	 * TriggerUserRecap triggers a new recap job for a specific user
+	 *
+	 * @generated from rpc alt.recap.v2.JobStatusService.TriggerUserRecap
+	 */
+	triggerUserRecap: {
+		methodKind: "unary";
+		input: typeof TriggerUserRecapRequestSchema;
+		output: typeof TriggerUserRecapResponseSchema;
+	};
+	/**
+	 * RetryJob retries a failed job
+	 *
+	 * @generated from rpc alt.recap.v2.JobStatusService.RetryJob
+	 */
+	retryJob: {
+		methodKind: "unary";
+		input: typeof RetryJobRequestSchema;
+		output: typeof RetryJobResponseSchema;
+	};
+	/**
+	 * GetJobProgress returns current job progress (non-streaming)
+	 *
+	 * @generated from rpc alt.recap.v2.JobStatusService.GetJobProgress
+	 */
+	getJobProgress: {
+		methodKind: "unary";
+		input: typeof GetJobProgressRequestSchema;
+		output: typeof JobProgressEventSchema;
+	};
+}> = /*@__PURE__*/ serviceDesc(file_alt_recap_v2_job_status, 0);

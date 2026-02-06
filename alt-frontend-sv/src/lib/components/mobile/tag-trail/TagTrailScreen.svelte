@@ -118,7 +118,10 @@ async function loadFeedTagsAsync(feedUrl: string) {
 				},
 			);
 			// Track for cleanup on refresh/navigation
-			activeStreamControllers = new Map([...activeStreamControllers, [result.articleId, controller]]);
+			activeStreamControllers = new Map([
+				...activeStreamControllers,
+				[result.articleId, controller],
+			]);
 		} else {
 			// No articleId returned (rare edge case)
 			isLoadingFeedTags = false;
@@ -165,7 +168,10 @@ function loadArticleTags(articleId: string) {
 				case "cached":
 				case "completed": {
 					// Update cache with received tags
-					articleTagsCache = new Map([...articleTagsCache, [articleId, event.tags]]);
+					articleTagsCache = new Map([
+						...articleTagsCache,
+						[articleId, event.tags],
+					]);
 					// Remove from loading state
 					const newLoadingSet = new Set(loadingArticleTags);
 					newLoadingSet.delete(articleId);
@@ -201,7 +207,10 @@ function loadArticleTags(articleId: string) {
 	);
 
 	// Track controller for cleanup
-	activeStreamControllers = new Map([...activeStreamControllers, [articleId, controller]]);
+	activeStreamControllers = new Map([
+		...activeStreamControllers,
+		[articleId, controller],
+	]);
 }
 
 function getArticleTags(articleId: string): TagTrailTag[] {

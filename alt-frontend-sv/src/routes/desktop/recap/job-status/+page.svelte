@@ -10,7 +10,7 @@ import { useJobProgress } from "$lib/hooks/useJobProgress.svelte";
 import { triggerRecapJob } from "$lib/api/client/dashboard";
 import type { TimeWindow } from "$lib/schema/dashboard";
 import { TIME_WINDOWS } from "$lib/schema/dashboard";
-import { loadingStore } from "$lib/stores/loading.svelte";
+import { getLoadingStore } from "$lib/stores/loading.svelte";
 import {
 	Activity,
 	CheckCircle,
@@ -29,6 +29,8 @@ const timeWindows: { label: string; value: TimeWindow }[] = [
 	{ label: "3d", value: "3d" },
 	{ label: "7d", value: "7d" },
 ];
+
+const loadingStore = getLoadingStore();
 
 const jobProgress = useJobProgress({
 	initialWindow: "24h",

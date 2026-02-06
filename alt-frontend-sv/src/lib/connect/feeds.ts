@@ -531,7 +531,11 @@ export async function streamSummarize(
 			};
 		} catch (error) {
 			// Handle 409 Conflict with retry
-			if (retryOnConflict && isConflictError(error) && retryCount < CONFLICT_MAX_RETRIES) {
+			if (
+				retryOnConflict &&
+				isConflictError(error) &&
+				retryCount < CONFLICT_MAX_RETRIES
+			) {
 				retryCount++;
 				// Notify caller about retry
 				if (options.onConflictRetry) {
@@ -653,7 +657,11 @@ export function streamSummarizeWithAbort(
 			}
 
 			// Handle 409 Conflict with retry
-			if (retryOnConflict && isConflictError(error) && retryCount < CONFLICT_MAX_RETRIES) {
+			if (
+				retryOnConflict &&
+				isConflictError(error) &&
+				retryCount < CONFLICT_MAX_RETRIES
+			) {
 				const nextRetry = retryCount + 1;
 				// Notify caller about retry
 				if (options.onConflictRetry) {

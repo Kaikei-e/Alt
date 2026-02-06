@@ -500,7 +500,10 @@ export async function getArticlesByTag(
 	cursor?: string,
 	limit = 20,
 ): Promise<ArticlesByTagResponse> {
-	const params = new URLSearchParams({ tag_id: tagId, limit: limit.toString() });
+	const params = new URLSearchParams({
+		tag_id: tagId,
+		limit: limit.toString(),
+	});
 	if (cursor) {
 		params.append("cursor", cursor);
 	}

@@ -1,14 +1,4 @@
-/**
- * Loading Store - SSR-safe loading state management
- *
- * Used to show/hide the SystemLoader component during CSR data fetching.
- * Pages should set this to true when starting data fetch and false when complete.
- *
- * Best Practice (Svelte 5):
- * - Use createLoadingStore() in root layout with setContext()
- * - Use getContext() in child components to access the store
- * - This ensures each request gets its own store instance in SSR
- */
+import { getContext } from "svelte";
 
 export interface LoadingStore {
 	readonly isDesktopLoading: boolean;
@@ -17,9 +7,6 @@ export interface LoadingStore {
 	stopLoading(): void;
 }
 
-/**
- * Internal state class using Svelte 5 runes
- */
 class LoadingStoreImpl implements LoadingStore {
 	private _isDesktopLoading = $state(false);
 
@@ -41,16 +28,19 @@ class LoadingStoreImpl implements LoadingStore {
 }
 
 /**
- * Factory function to create a LoadingStore instance
- * Each call creates a new independent store - safe for SSR
+ * Factory function to create a LoadingStore instance.
+ * Each call creates a new independent store - safe for SSR.
  */
 export function createLoadingStore(): LoadingStore {
 	return new LoadingStoreImpl();
 }
 
-// Context key for loading store
 export const LOADING_STORE_KEY = Symbol("loading-store");
 
-// Legacy singleton export for backward compatibility
-// WARNING: Not SSR-safe - prefer createLoadingStore() with context
-export const loadingStore = createLoadingStore();
+/**
+ * Retrieve the LoadingStore from Svelte context.
+ * Must be called during component initialization (i.e. in <script> top level).
+ */
+export function getLoadingStore(): LoadingStore {
+	return getContext<LoadingStore>(LOADING_STORE_KEY);
+}

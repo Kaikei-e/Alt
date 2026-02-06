@@ -184,9 +184,7 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		// Dialog should appear
 		await expect(page.getByText("Delete Feed Link?")).toBeVisible();
 		await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
-		await expect(
-			page.getByRole("button", { name: /^Delete$/ }),
-		).toBeVisible();
+		await expect(page.getByRole("button", { name: /^Delete$/ })).toBeVisible();
 	});
 
 	test("cancels delete operation", async ({ page }) => {

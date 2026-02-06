@@ -3,23 +3,25 @@
  */
 
 // Query keys
-export { feedKeys, articleKeys, rssKeys } from "./keys";
+export {
+	feedKeys,
+	articleKeys,
+	rssKeys,
+	recapKeys,
+	pulseKeys,
+	tagTrailKeys,
+} from "./keys";
 
 // Feed queries and mutations
 export {
-	// Stats
 	createFeedStatsQuery,
 	createDetailedFeedStatsQuery,
 	createUnreadCountQuery,
-	// Lists
 	createUnreadFeedsQuery,
 	createReadFeedsQuery,
 	createFavoriteFeedsQuery,
-	// Search
 	createSearchFeedsQuery,
-	// Mutations
 	createMarkAsReadMutation,
-	// Helpers
 	flattenFeedPages,
 	flattenSearchPages,
 } from "./feeds";
@@ -39,3 +41,19 @@ export {
 	createDeleteRSSMutation,
 	createRegisterFavoriteMutation,
 } from "./rss";
+
+// Recap queries
+export {
+	createThreeDayRecapQuery,
+	createSevenDayRecapQuery,
+} from "./recap";
+
+// Evening Pulse queries
+export { createEveningPulseQuery } from "./pulse";
+
+// Tag Trail queries
+export {
+	createArticlesByTagQuery,
+	createArticleTagsQuery,
+	createRandomFeedQuery,
+} from "./tag-trail";

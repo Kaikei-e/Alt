@@ -4,8 +4,12 @@ import { onMount } from "svelte";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
 import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
-import TrendChart from "$lib/components/desktop/stats/TrendChart.svelte";
 import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
+
+// Lazy load chart.js (heavy dependency) - only loaded when stats page is visited
+const TrendChartPromise = import(
+	"$lib/components/desktop/stats/TrendChart.svelte"
+);
 
 const stats = useFeedStats();
 const trendStats = useTrendStats();
@@ -107,26 +111,28 @@ onMount(() => {
 	{/if}
 
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-		<TrendChart
-			title="Articles"
-			dataPoints={trendStats.data?.data_points ?? []}
-			dataKey="articles"
-			color="#3b82f6"
-			loading={trendStats.loading}
-		/>
-		<TrendChart
-			title="Summarized"
-			dataPoints={trendStats.data?.data_points ?? []}
-			dataKey="summarized"
-			color="#8b5cf6"
-			loading={trendStats.loading}
-		/>
-		<TrendChart
-			title="Feed Activity"
-			dataPoints={trendStats.data?.data_points ?? []}
-			dataKey="feed_activity"
-			color="#10b981"
-			loading={trendStats.loading}
-		/>
+		{#await TrendChartPromise then TrendChart}
+			<TrendChart.default
+				title="Articles"
+				dataPoints={trendStats.data?.data_points ?? []}
+				dataKey="articles"
+				color="#3b82f6"
+				loading={trendStats.loading}
+			/>
+			<TrendChart.default
+				title="Summarized"
+				dataPoints={trendStats.data?.data_points ?? []}
+				dataKey="summarized"
+				color="#8b5cf6"
+				loading={trendStats.loading}
+			/>
+			<TrendChart.default
+				title="Feed Activity"
+				dataPoints={trendStats.data?.data_points ?? []}
+				dataKey="feed_activity"
+				color="#10b981"
+				loading={trendStats.loading}
+			/>
+		{/await}
 	</div>
 </div>

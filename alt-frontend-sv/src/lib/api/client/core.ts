@@ -1,36 +1,28 @@
 import { browser } from "$app/environment";
+import { base } from "$app/paths";
 
-// V-004: Cache for CSRF token to avoid repeated fetches
 let cachedCSRFToken: string | null = null;
 let csrfTokenExpiry = 0;
 
-/**
- * Fetch CSRF token from the auth endpoint
- * V-004: CSRF protection for state-changing operations
- */
 async function fetchCSRFToken(): Promise<string | null> {
-	// Return cached token if still valid (cache for 5 minutes)
 	if (cachedCSRFToken && Date.now() < csrfTokenExpiry) {
 		return cachedCSRFToken;
 	}
 
 	try {
-		const response = await fetch("/sv/api/auth/csrf", {
+		const response = await fetch(`${base}/api/auth/csrf`, {
 			credentials: "include",
 		});
 		if (!response.ok) return null;
 		const data = await response.json();
 		cachedCSRFToken = data.csrf_token;
-		csrfTokenExpiry = Date.now() + 5 * 60 * 1000; // Cache for 5 minutes
+		csrfTokenExpiry = Date.now() + 5 * 60 * 1000;
 		return cachedCSRFToken;
 	} catch {
 		return null;
 	}
 }
 
-/**
- * クライアントサイドからバックエンドAPIを呼び出す共通関数
- */
 export async function callClientAPI<T>(
 	endpoint: string,
 	options?: RequestInit,
@@ -39,10 +31,6 @@ export async function callClientAPI<T>(
 		throw new Error("This function can only be called from the client");
 	}
 
-	// Use base path from config (matches svelte.config.js paths.base)
-	// For dynamic API paths, we need to use the base path directly
-	// since resolve() only works with static route paths
-	const base = "/sv";
 	const url = `${base}/api${endpoint}`;
 
 	// V-004: Include CSRF token for state-changing methods

@@ -1,12 +1,23 @@
 <script lang="ts">
-import { onMount } from "svelte";
+import { onMount, setContext } from "svelte";
 import "./layout.css";
 import favicon from "$lib/assets/favicon.svg";
 import { QueryClient, QueryClientProvider } from "@tanstack/svelte-query";
 import { page } from "$app/state";
-import { auth } from "$lib/stores/auth.svelte";
+import { createAuthStore, AUTH_STORE_KEY } from "$lib/stores/auth.svelte";
+import {
+	createLoadingStore,
+	LOADING_STORE_KEY,
+} from "$lib/stores/loading.svelte";
 
 const { children } = $props();
+
+// Create SSR-safe store instances and inject via context
+const auth = createAuthStore();
+setContext(AUTH_STORE_KEY, auth);
+
+const loadingStore = createLoadingStore();
+setContext(LOADING_STORE_KEY, loadingStore);
 
 // Sync auth store with page data (user from +layout.server.ts)
 $effect(() => {
