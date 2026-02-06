@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"search-indexer/domain"
-	"search-indexer/port"
 	"testing"
 	"time"
 )
@@ -80,7 +79,7 @@ func (m *mockArticleRepo) GetArticleByID(ctx context.Context, articleID string) 
 		}
 	}
 
-	return nil, &port.RepositoryError{Op: "GetArticleByID", Err: "not found"}
+	return nil, &domain.RepositoryError{Op: "GetArticleByID", Err: "not found"}
 }
 
 type mockSearchEngineForIndexing struct {
@@ -136,6 +135,14 @@ func (m *mockSearchEngineForIndexing) EnsureIndex(ctx context.Context) error {
 	return nil
 }
 
+func (m *mockSearchEngineForIndexing) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
+	return nil, nil
+}
+
+func (m *mockSearchEngineForIndexing) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]domain.SearchDocument, int64, error) {
+	return nil, 0, nil
+}
+
 func (m *mockSearchEngineForIndexing) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	return nil
 }
@@ -166,7 +173,7 @@ func TestIndexArticlesUsecase_Execute(t *testing.T) {
 		{
 			name:         "repository error",
 			mockArticles: nil,
-			repoErr:      &port.RepositoryError{Op: "GetArticlesWithTags", Err: "db error"},
+			repoErr:      &domain.RepositoryError{Op: "GetArticlesWithTags", Err: "db error"},
 			searchErr:    nil,
 			batchSize:    10,
 			wantIndexed:  0,
@@ -176,7 +183,7 @@ func TestIndexArticlesUsecase_Execute(t *testing.T) {
 			name:         "search engine error",
 			mockArticles: []*domain.Article{article1},
 			repoErr:      nil,
-			searchErr:    &port.SearchEngineError{Op: "IndexDocuments", Err: "index error"},
+			searchErr:    &domain.SearchEngineError{Op: "IndexDocuments", Err: "index error"},
 			batchSize:    10,
 			wantIndexed:  0,
 			wantErr:      true,

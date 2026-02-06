@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"search-indexer/domain"
-	"search-indexer/port"
 	"testing"
 	"time"
 )
@@ -56,6 +55,20 @@ func (m *mockSearchEngine) EnsureIndex(ctx context.Context) error {
 	return m.err
 }
 
+func (m *mockSearchEngine) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.indexedDocs, nil
+}
+
+func (m *mockSearchEngine) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]domain.SearchDocument, int64, error) {
+	if m.err != nil {
+		return nil, 0, m.err
+	}
+	return m.indexedDocs, int64(len(m.indexedDocs)), nil
+}
+
 func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	return m.err
 }
@@ -97,7 +110,7 @@ func TestSearchArticlesUsecase_Execute(t *testing.T) {
 			query:       "test",
 			limit:       10,
 			mockResults: nil,
-			mockErr:     &port.SearchEngineError{Op: "Search", Err: "search failed"},
+			mockErr:     &domain.SearchEngineError{Op: "Search", Err: "search failed"},
 			wantCount:   0,
 			wantErr:     true,
 		},

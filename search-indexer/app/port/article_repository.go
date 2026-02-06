@@ -18,12 +18,3 @@ type ArticleRepository interface {
 type ConfigRepository interface {
 	LoadSearchIndexerConfig() (*domain.SearchIndexerConfig, error)
 }
-
-type RepositoryError struct {
-	Op  string
-	Err string
-}
-
-func (e *RepositoryError) Error() string {
-	return e.Op + ": " + e.Err
-}

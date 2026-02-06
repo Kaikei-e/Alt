@@ -7,15 +7,14 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
-	"github.com/meilisearch/meilisearch-go"
-
 	"search-indexer/connect/v2/search"
 	searchv2connect "search-indexer/gen/proto/services/search/v2/searchv2connect"
 	"search-indexer/logger"
+	"search-indexer/usecase"
 )
 
 // CreateConnectServer creates the Connect-RPC server with HTTP/2 support.
-func CreateConnectServer(idx meilisearch.IndexManager) http.Handler {
+func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase) http.Handler {
 	mux := http.NewServeMux()
 
 	// Add health check endpoint for Connect-RPC server
@@ -26,7 +25,7 @@ func CreateConnectServer(idx meilisearch.IndexManager) http.Handler {
 	})
 
 	// Register Search service (no auth interceptor for internal service communication)
-	searchHandler := search.NewHandler(idx)
+	searchHandler := search.NewHandler(searchByUserUsecase)
 	searchPath, searchServiceHandler := searchv2connect.NewSearchServiceHandler(searchHandler)
 	mux.Handle(searchPath, searchServiceHandler)
 	logger.Logger.Info("Registered Connect-RPC SearchService", "path", searchPath)

@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"search-indexer/domain"
-	"search-indexer/port"
 	"testing"
 	"time"
 )
@@ -51,7 +50,7 @@ func TestLoadConfigUsecase_Execute(t *testing.T) {
 		{
 			name:       "repository error",
 			mockConfig: nil,
-			mockError:  &port.RepositoryError{Op: "LoadSearchIndexerConfig", Err: "env var not set"},
+			mockError:  &domain.RepositoryError{Op: "LoadSearchIndexerConfig", Err: "env var not set"},
 			wantErr:    true,
 		},
 	}

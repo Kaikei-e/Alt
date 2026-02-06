@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -24,17 +27,25 @@ type Config struct {
 	Environment    string
 	OTLPEndpoint   string
 	Enabled        bool
+	SampleRatio    float64
 }
 
 // ConfigFromEnv creates Config from environment variables
 func ConfigFromEnv() Config {
 	enabled := getEnv("OTEL_ENABLED", "true") == "true"
+	sampleRatio := 0.1 // default: 10% sampling in production
+	if v := os.Getenv("OTEL_TRACE_SAMPLE_RATIO"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 && f <= 1 {
+			sampleRatio = f
+		}
+	}
 	return Config{
 		ServiceName:    getEnv("OTEL_SERVICE_NAME", "search-indexer"),
 		ServiceVersion: getEnv("SERVICE_VERSION", "0.0.0"),
 		Environment:    getEnv("DEPLOYMENT_ENV", "development"),
 		OTLPEndpoint:   getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),
 		Enabled:        enabled,
+		SampleRatio:    sampleRatio,
 	}
 }
 
@@ -81,6 +92,18 @@ func InitProvider(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	}
 	global.SetLoggerProvider(loggerProvider)
 
+	// Initialize Meter Provider
+	meterProvider, err := initMeterProvider(ctx, cfg, res)
+	if err != nil {
+		return nil, fmt.Errorf("failed to init meter provider: %w", err)
+	}
+	otel.SetMeterProvider(meterProvider)
+
+	// Initialize metric instruments
+	if err := InitMetrics(); err != nil {
+		return nil, fmt.Errorf("failed to init metrics: %w", err)
+	}
+
 	// Return shutdown function
 	return func(ctx context.Context) error {
 		var errs []error
@@ -88,6 +111,9 @@ func InitProvider(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 			errs = append(errs, err)
 		}
 		if err := loggerProvider.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+		if err := meterProvider.Shutdown(ctx); err != nil {
 			errs = append(errs, err)
 		}
 		if len(errs) > 0 {
@@ -106,13 +132,17 @@ func initTracerProvider(ctx context.Context, cfg Config, res *resource.Resource)
 		return nil, err
 	}
 
+	// Use ParentBased sampler: if parent span exists, follow its decision;
+	// otherwise sample based on configured ratio.
+	sampler := sdktrace.ParentBased(sdktrace.TraceIDRatioBased(cfg.SampleRatio))
+
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter,
 			sdktrace.WithBatchTimeout(5*time.Second),
 			sdktrace.WithMaxExportBatchSize(512),
 		),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithSampler(sampler),
 	), nil
 }
 
@@ -131,6 +161,23 @@ func initLoggerProvider(ctx context.Context, cfg Config, res *resource.Resource)
 			sdklog.WithExportMaxBatchSize(512),
 		)),
 		sdklog.WithResource(res),
+	), nil
+}
+
+func initMeterProvider(ctx context.Context, cfg Config, res *resource.Resource) (*sdkmetric.MeterProvider, error) {
+	exporter, err := otlpmetrichttp.New(ctx,
+		otlpmetrichttp.WithEndpoint(cfg.OTLPEndpoint),
+		otlpmetrichttp.WithInsecure(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter,
+			sdkmetric.WithInterval(15*time.Second),
+		)),
+		sdkmetric.WithResource(res),
 	), nil
 }
 

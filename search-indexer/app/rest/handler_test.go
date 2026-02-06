@@ -1,204 +1,133 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"search-indexer/domain"
+	"search-indexer/logger"
+	"search-indexer/usecase"
 	"testing"
-
-	"github.com/meilisearch/meilisearch-go"
 )
 
-// convertToMeilisearchHit converts map[string]interface{} to meilisearch.Hit
-func convertToMeilisearchHit(data map[string]interface{}) meilisearch.Hit {
-	hit := make(meilisearch.Hit)
-	for k, v := range data {
-		if v != nil {
-			jsonBytes, _ := json.Marshal(v)
-			hit[k] = jsonBytes
-		}
-	}
-	return hit
+func TestMain(m *testing.M) {
+	logger.Init()
+	os.Exit(m.Run())
 }
 
-func TestSafeExtractSearchHit(t *testing.T) {
+// mockSearchEngine implements port.SearchEngine for testing
+type mockSearchEngine struct {
+	searchByUserIDResult []domain.SearchDocument
+	searchByUserIDErr    error
+}
+
+func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.SearchDocument) error {
+	return nil
+}
+func (m *mockSearchEngine) DeleteDocuments(ctx context.Context, ids []string) error { return nil }
+func (m *mockSearchEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
+	return nil, nil
+}
+func (m *mockSearchEngine) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
+	return nil, nil
+}
+func (m *mockSearchEngine) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
+	return m.searchByUserIDResult, m.searchByUserIDErr
+}
+func (m *mockSearchEngine) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]domain.SearchDocument, int64, error) {
+	return m.searchByUserIDResult, int64(len(m.searchByUserIDResult)), m.searchByUserIDErr
+}
+func (m *mockSearchEngine) EnsureIndex(ctx context.Context) error { return nil }
+func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
+	return nil
+}
+
+func TestHandler_SearchArticles(t *testing.T) {
 	tests := []struct {
-		name    string
-		hit     map[string]interface{}
-		want    SearchArticlesHit
-		wantErr bool
+		name           string
+		query          string
+		userID         string
+		mockResults    []domain.SearchDocument
+		mockErr        error
+		wantStatusCode int
+		wantHitCount   int
 	}{
 		{
-			name: "valid search hit",
-			hit: map[string]interface{}{
-				"id":      "123",
-				"title":   "Test Title",
-				"content": "Test Content",
-				"tags":    []interface{}{"tag1", "tag2"},
+			name:   "successful search",
+			query:  "test",
+			userID: "user1",
+			mockResults: []domain.SearchDocument{
+				{ID: "1", Title: "Test", Content: "Content", Tags: []string{"tag1"}},
 			},
-			want: SearchArticlesHit{
-				ID:      "123",
-				Title:   "Test Title",
-				Content: "Test Content",
-				Tags:    []string{"tag1", "tag2"},
-			},
-			wantErr: false,
+			wantStatusCode: http.StatusOK,
+			wantHitCount:   1,
 		},
 		{
-			name: "missing id field",
-			hit: map[string]interface{}{
-				"title":   "Test Title",
-				"content": "Test Content",
-				"tags":    []interface{}{"tag1"},
-			},
-			want:    SearchArticlesHit{},
-			wantErr: true,
+			name:           "missing query",
+			query:          "",
+			userID:         "user1",
+			wantStatusCode: http.StatusBadRequest,
 		},
 		{
-			name: "missing title field",
-			hit: map[string]interface{}{
-				"id":      "123",
-				"content": "Test Content",
-				"tags":    []interface{}{"tag1"},
-			},
-			want:    SearchArticlesHit{},
-			wantErr: true,
+			name:           "missing user_id",
+			query:          "test",
+			userID:         "",
+			wantStatusCode: http.StatusBadRequest,
 		},
 		{
-			name: "missing content field",
-			hit: map[string]interface{}{
-				"id":    "123",
-				"title": "Test Title",
-				"tags":  []interface{}{"tag1"},
-			},
-			want:    SearchArticlesHit{},
-			wantErr: true,
+			name:           "search engine error",
+			query:          "test",
+			userID:         "user1",
+			mockErr:        errors.New("search failed"),
+			wantStatusCode: http.StatusInternalServerError,
 		},
 		{
-			name: "id is not string",
-			hit: map[string]interface{}{
-				"id":      123,
-				"title":   "Test Title",
-				"content": "Test Content",
-				"tags":    []interface{}{"tag1"},
-			},
-			want:    SearchArticlesHit{},
-			wantErr: true,
-		},
-		{
-			name: "title is not string",
-			hit: map[string]interface{}{
-				"id":      "123",
-				"title":   123,
-				"content": "Test Content",
-				"tags":    []interface{}{"tag1"},
-			},
-			want:    SearchArticlesHit{},
-			wantErr: true,
-		},
-		{
-			name: "content is not string",
-			hit: map[string]interface{}{
-				"id":      "123",
-				"title":   "Test Title",
-				"content": 123,
-				"tags":    []interface{}{"tag1"},
-			},
-			want:    SearchArticlesHit{},
-			wantErr: true,
-		},
-		{
-			name:    "hit is nil",
-			want:    SearchArticlesHit{},
-			wantErr: true,
-		},
-		{
-			name: "tags field missing (should use empty slice)",
-			hit: map[string]interface{}{
-				"id":      "123",
-				"title":   "Test Title",
-				"content": "Test Content",
-			},
-			want: SearchArticlesHit{
-				ID:      "123",
-				Title:   "Test Title",
-				Content: "Test Content",
-				Tags:    nil,
-			},
-			wantErr: false,
-		},
-		{
-			name: "tags field invalid type (should use empty slice)",
-			hit: map[string]interface{}{
-				"id":      "123",
-				"title":   "Test Title",
-				"content": "Test Content",
-				"tags":    "invalid",
-			},
-			want: SearchArticlesHit{
-				ID:      "123",
-				Title:   "Test Title",
-				Content: "Test Content",
-				Tags:    nil,
-			},
-			wantErr: false,
-		},
-		{
-			name: "empty values should be preserved",
-			hit: map[string]interface{}{
-				"id":      "",
-				"title":   "",
-				"content": "",
-				"tags":    []interface{}{},
-			},
-			want: SearchArticlesHit{
-				ID:      "",
-				Title:   "",
-				Content: "",
-				Tags:    []string{},
-			},
-			wantErr: false,
+			name:           "empty results",
+			query:          "nonexistent",
+			userID:         "user1",
+			mockResults:    []domain.SearchDocument{},
+			wantStatusCode: http.StatusOK,
+			wantHitCount:   0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var meilisearchHit meilisearch.Hit
-			if tt.hit != nil {
-				meilisearchHit = convertToMeilisearchHit(tt.hit)
+			mock := &mockSearchEngine{
+				searchByUserIDResult: tt.mockResults,
+				searchByUserIDErr:    tt.mockErr,
 			}
 
-			got, err := safeExtractSearchHit(meilisearchHit)
+			searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
+			handler := NewHandler(searchByUserUsecase)
 
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("safeExtractSearchHit() error = %v, wantErr %v", err, tt.wantErr)
+			url := "/v1/search?"
+			if tt.query != "" {
+				url += "q=" + tt.query + "&"
+			}
+			if tt.userID != "" {
+				url += "user_id=" + tt.userID
+			}
+
+			req := httptest.NewRequest(http.MethodGet, url, nil)
+			rec := httptest.NewRecorder()
+
+			handler.SearchArticles(rec, req)
+
+			if rec.Code != tt.wantStatusCode {
+				t.Errorf("status code = %d, want %d", rec.Code, tt.wantStatusCode)
+			}
+
+			if tt.wantStatusCode == http.StatusOK {
+				var resp SearchArticlesResponse
+				if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+					t.Fatalf("failed to decode response: %v", err)
 				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("safeExtractSearchHit() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if got.ID != tt.want.ID {
-				t.Errorf("safeExtractSearchHit() ID = %v, want %v", got.ID, tt.want.ID)
-			}
-
-			if got.Title != tt.want.Title {
-				t.Errorf("safeExtractSearchHit() Title = %v, want %v", got.Title, tt.want.Title)
-			}
-
-			if got.Content != tt.want.Content {
-				t.Errorf("safeExtractSearchHit() Content = %v, want %v", got.Content, tt.want.Content)
-			}
-
-			if len(got.Tags) != len(tt.want.Tags) {
-				t.Errorf("safeExtractSearchHit() Tags length = %v, want %v", len(got.Tags), len(tt.want.Tags))
-			} else {
-				for i, tag := range got.Tags {
-					if tag != tt.want.Tags[i] {
-						t.Errorf("safeExtractSearchHit() Tags[%d] = %v, want %v", i, tag, tt.want.Tags[i])
-					}
+				if len(resp.Hits) != tt.wantHitCount {
+					t.Errorf("hit count = %d, want %d", len(resp.Hits), tt.wantHitCount)
 				}
 			}
 		})

@@ -5,21 +5,15 @@ import (
 	"search-indexer/driver"
 	"search-indexer/gateway"
 	"search-indexer/port"
-	"search-indexer/search_engine"
 	"search-indexer/usecase"
 	"testing"
 	"time"
 )
 
 func TestCompilation(t *testing.T) {
-	// Test basic compilation by creating instances
-
-	// Test search_engine functions
+	// Test domain filter validation
 	filters := []string{"test", "programming"}
-	filter := search_engine.MakeSecureSearchFilter(filters)
-	t.Log("Filter:", filter)
-
-	err := search_engine.ValidateFilterTags(filters)
+	err := domain.ValidateFilterTags(filters)
 	if err != nil {
 		t.Log("Validation error:", err)
 	}
@@ -51,6 +45,9 @@ func TestCompilation(t *testing.T) {
 
 	searchWithFiltersUsecase := usecase.NewSearchArticlesWithFiltersUsecase(nil)
 	t.Log("Search with filters usecase created:", searchWithFiltersUsecase != nil)
+
+	searchByUserUsecase := usecase.NewSearchByUserUsecase(nil)
+	t.Log("Search by user usecase created:", searchByUserUsecase != nil)
 
 	t.Log("All types compile successfully!")
 }

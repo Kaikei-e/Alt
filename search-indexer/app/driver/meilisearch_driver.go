@@ -3,7 +3,6 @@ package driver
 import (
 	"context"
 	"encoding/json"
-	"search-indexer/search_engine"
 
 	"github.com/meilisearch/meilisearch-go"
 )
@@ -230,6 +229,55 @@ func (d *MeilisearchDriver) getStringSlice(m meilisearch.Hit, key string) []stri
 	return []string{}
 }
 
+func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]SearchDocumentDriver, error) {
+	filter := BuildUserFilter(userID)
+
+	result, err := d.index.Search(query, &meilisearch.SearchRequest{
+		Limit:  int64(limit),
+		Filter: filter,
+	})
+	if err != nil {
+		return nil, &DriverError{Op: "SearchByUserID", Err: err.Error()}
+	}
+
+	return d.extractDocs(result.Hits), nil
+}
+
+func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]SearchDocumentDriver, int64, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	filter := BuildUserFilter(userID)
+
+	result, err := d.index.Search(query, &meilisearch.SearchRequest{
+		Offset: offset,
+		Limit:  limit,
+		Filter: filter,
+	})
+	if err != nil {
+		return nil, 0, &DriverError{Op: "SearchByUserIDWithPagination", Err: err.Error()}
+	}
+
+	return d.extractDocs(result.Hits), result.EstimatedTotalHits, nil
+}
+
+func (d *MeilisearchDriver) extractDocs(hits []meilisearch.Hit) []SearchDocumentDriver {
+	docs := make([]SearchDocumentDriver, 0, len(hits))
+	for _, hit := range hits {
+		docs = append(docs, SearchDocumentDriver{
+			ID:      d.getString(hit, "id"),
+			Title:   d.getString(hit, "title"),
+			Content: d.getString(hit, "content"),
+			Tags:    d.getStringSlice(hit, "tags"),
+		})
+	}
+	return docs
+}
+
 func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	task, err := d.index.UpdateSynonyms(&synonyms)
 	if err != nil {
@@ -252,5 +300,5 @@ func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[s
 
 // buildSecureFilter creates a secure filter from tag filters
 func (d *MeilisearchDriver) buildSecureFilter(filters []string) string {
-	return search_engine.MakeSecureSearchFilter(filters)
+	return makeSecureSearchFilter(filters)
 }

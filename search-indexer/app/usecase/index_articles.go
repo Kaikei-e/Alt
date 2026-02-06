@@ -144,7 +144,7 @@ func (u *IndexArticlesUsecase) GetIncrementalMark(ctx context.Context) (*time.Ti
 	return u.articleRepo.GetLatestCreatedAt(ctx)
 }
 
-// ExecuteSingleArticle indexes a single article by its ID (for event-driven indexing)
+// ExecuteSingleArticle indexes a single article by its ID (for event-driven indexing).
 func (u *IndexArticlesUsecase) ExecuteSingleArticle(ctx context.Context, articleID string) (*IndexResult, error) {
 	article, err := u.articleRepo.GetArticleByID(ctx, articleID)
 	if err != nil {
@@ -171,4 +171,39 @@ func (u *IndexArticlesUsecase) ExecuteSingleArticle(ctx context.Context, article
 	return &IndexResult{
 		IndexedCount: 1,
 	}, nil
+}
+
+// ExecuteBatchArticles indexes multiple articles by their IDs in a single batch.
+func (u *IndexArticlesUsecase) ExecuteBatchArticles(ctx context.Context, articleIDs []string) (*IndexResult, error) {
+	if len(articleIDs) == 0 {
+		return &IndexResult{IndexedCount: 0}, nil
+	}
+
+	var docs []domain.SearchDocument
+	for _, id := range articleIDs {
+		article, err := u.articleRepo.GetArticleByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if article != nil {
+			docs = append(docs, domain.NewSearchDocument(article))
+		}
+	}
+
+	if len(docs) == 0 {
+		return &IndexResult{IndexedCount: 0}, nil
+	}
+
+	if err := u.searchEngine.IndexDocuments(ctx, docs); err != nil {
+		return nil, err
+	}
+
+	for _, doc := range docs {
+		synonyms := tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags)
+		if len(synonyms) > 0 {
+			_ = u.searchEngine.RegisterSynonyms(ctx, synonyms)
+		}
+	}
+
+	return &IndexResult{IndexedCount: len(docs)}, nil
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"search-indexer/domain"
 	"search-indexer/driver"
-	"search-indexer/port"
 	"time"
 )
 
@@ -29,7 +28,7 @@ func NewArticleRepositoryGateway(driver ArticleDriver) *ArticleRepositoryGateway
 func (g *ArticleRepositoryGateway) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
 	driverArticles, newLastCreatedAt, newLastID, err := g.driver.GetArticlesWithTags(ctx, lastCreatedAt, lastID, limit)
 	if err != nil {
-		return nil, nil, "", &port.RepositoryError{
+		return nil, nil, "", &domain.RepositoryError{
 			Op:  "GetArticlesWithTags",
 			Err: err.Error(),
 		}
@@ -43,7 +42,7 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTags(ctx context.Context, last
 	for _, driverArticle := range driverArticles {
 		domainArticle, err := g.convertToDomain(driverArticle)
 		if err != nil {
-			return nil, nil, "", &port.RepositoryError{
+			return nil, nil, "", &domain.RepositoryError{
 				Op:  "GetArticlesWithTags",
 				Err: "failed to convert article to domain: id=" + driverArticle.ID + ", " + err.Error(),
 			}
@@ -73,7 +72,7 @@ func (g *ArticleRepositoryGateway) convertToDomain(driverArticle *driver.Article
 func (g *ArticleRepositoryGateway) GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*domain.Article, *time.Time, string, error) {
 	driverArticles, newLastCreatedAt, newLastID, err := g.driver.GetArticlesWithTagsForward(ctx, incrementalMark, lastCreatedAt, lastID, limit)
 	if err != nil {
-		return nil, nil, "", &port.RepositoryError{
+		return nil, nil, "", &domain.RepositoryError{
 			Op:  "GetArticlesWithTagsForward",
 			Err: err.Error(),
 		}
@@ -87,7 +86,7 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTagsForward(ctx context.Contex
 	for _, driverArticle := range driverArticles {
 		domainArticle, err := g.convertToDomain(driverArticle)
 		if err != nil {
-			return nil, nil, "", &port.RepositoryError{
+			return nil, nil, "", &domain.RepositoryError{
 				Op:  "GetArticlesWithTagsForward",
 				Err: "failed to convert article to domain: id=" + driverArticle.ID + ", " + err.Error(),
 			}
@@ -101,7 +100,7 @@ func (g *ArticleRepositoryGateway) GetArticlesWithTagsForward(ctx context.Contex
 func (g *ArticleRepositoryGateway) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]string, *time.Time, error) {
 	driverDeletedArticles, newLastDeletedAt, err := g.driver.GetDeletedArticles(ctx, lastDeletedAt, limit)
 	if err != nil {
-		return nil, nil, &port.RepositoryError{
+		return nil, nil, &domain.RepositoryError{
 			Op:  "GetDeletedArticles",
 			Err: err.Error(),
 		}
@@ -122,7 +121,7 @@ func (g *ArticleRepositoryGateway) GetDeletedArticles(ctx context.Context, lastD
 func (g *ArticleRepositoryGateway) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
 	latestCreatedAt, err := g.driver.GetLatestCreatedAt(ctx)
 	if err != nil {
-		return nil, &port.RepositoryError{
+		return nil, &domain.RepositoryError{
 			Op:  "GetLatestCreatedAt",
 			Err: err.Error(),
 		}
@@ -135,14 +134,14 @@ func (g *ArticleRepositoryGateway) GetLatestCreatedAt(ctx context.Context) (*tim
 func (g *ArticleRepositoryGateway) GetArticleByID(ctx context.Context, articleID string) (*domain.Article, error) {
 	driverArticle, err := g.driver.GetArticleByID(ctx, articleID)
 	if err != nil {
-		return nil, &port.RepositoryError{
+		return nil, &domain.RepositoryError{
 			Op:  "GetArticleByID",
 			Err: err.Error(),
 		}
 	}
 
 	if driverArticle == nil {
-		return nil, &port.RepositoryError{
+		return nil, &domain.RepositoryError{
 			Op:  "GetArticleByID",
 			Err: "article not found: " + articleID,
 		}

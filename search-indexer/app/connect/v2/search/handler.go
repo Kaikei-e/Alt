@@ -3,26 +3,24 @@ package search
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"connectrpc.com/connect"
-	"github.com/meilisearch/meilisearch-go"
 
 	searchv2 "search-indexer/gen/proto/services/search/v2"
 	"search-indexer/gen/proto/services/search/v2/searchv2connect"
 	"search-indexer/logger"
-	"search-indexer/search_engine"
+	"search-indexer/usecase"
 )
 
 // Handler implements the SearchService Connect-RPC handler.
 type Handler struct {
-	idx meilisearch.IndexManager
+	searchByUserUsecase *usecase.SearchByUserUsecase
 }
 
 // NewHandler creates a new search handler.
-func NewHandler(idx meilisearch.IndexManager) *Handler {
-	return &Handler{idx: idx}
+func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase) *Handler {
+	return &Handler{searchByUserUsecase: searchByUserUsecase}
 }
 
 // Compile-time check that Handler implements SearchServiceHandler.
@@ -38,7 +36,6 @@ func (h *Handler) SearchArticles(
 	offset := int64(req.Msg.Offset)
 	limit := int64(req.Msg.Limit)
 
-	// Validate required parameters
 	if query == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("query is required"))
 	}
@@ -46,74 +43,31 @@ func (h *Handler) SearchArticles(
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("user_id is required"))
 	}
 
-	// Build filter for user_id using secure escaping
-	filter := fmt.Sprintf("user_id = \"%s\"", search_engine.EscapeMeilisearchValue(userID))
-
-	raw, err := search_engine.SearchArticlesWithPagination(h.idx, query, filter, offset, limit)
+	result, err := h.searchByUserUsecase.ExecuteWithPagination(ctx, query, userID, offset, limit)
 	if err != nil {
 		logger.Logger.Error("search failed", "err", err, "user_id", userID, "offset", offset, "limit", limit)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("search failed"))
 	}
 
-	hits := make([]*searchv2.SearchHit, 0, len(raw.Hits))
-	for _, hit := range raw.Hits {
-		searchHit, err := extractSearchHit(hit)
-		if err != nil {
-			logger.Logger.Error("failed to extract search hit", "err", err)
-			continue // Skip invalid hits
+	hits := make([]*searchv2.SearchHit, 0, len(result.Hits))
+	for _, doc := range result.Hits {
+		tags := doc.Tags
+		if tags == nil {
+			tags = []string{}
 		}
-		hits = append(hits, searchHit)
+		hits = append(hits, &searchv2.SearchHit{
+			Id:      doc.ID,
+			Title:   doc.Title,
+			Content: doc.Content,
+			Tags:    tags,
+		})
 	}
 
-	logger.Logger.Info("search ok", "query", query, "user_id", userID, "count", len(hits), "estimated_total", raw.EstimatedTotalHits)
+	logger.Logger.Info("search ok", "query", query, "user_id", userID, "count", len(hits), "estimated_total", result.EstimatedTotalHits)
 
 	return connect.NewResponse(&searchv2.SearchArticlesResponse{
 		Query:              query,
 		Hits:               hits,
-		EstimatedTotalHits: raw.EstimatedTotalHits,
+		EstimatedTotalHits: result.EstimatedTotalHits,
 	}), nil
-}
-
-// extractSearchHit safely extracts SearchHit from meilisearch.Hit
-func extractSearchHit(hit meilisearch.Hit) (*searchv2.SearchHit, error) {
-	var result searchv2.SearchHit
-
-	// Extract ID
-	if idBytes, exists := hit["id"]; exists {
-		if err := json.Unmarshal(idBytes, &result.Id); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal id: %w", err)
-		}
-	} else {
-		return nil, fmt.Errorf("missing required field: id")
-	}
-
-	// Extract Title
-	if titleBytes, exists := hit["title"]; exists {
-		if err := json.Unmarshal(titleBytes, &result.Title); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal title: %w", err)
-		}
-	} else {
-		return nil, fmt.Errorf("missing required field: title")
-	}
-
-	// Extract Content
-	if contentBytes, exists := hit["content"]; exists {
-		if err := json.Unmarshal(contentBytes, &result.Content); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal content: %w", err)
-		}
-	} else {
-		return nil, fmt.Errorf("missing required field: content")
-	}
-
-	// Extract Tags (optional)
-	if tagsBytes, exists := hit["tags"]; exists {
-		if err := json.Unmarshal(tagsBytes, &result.Tags); err != nil {
-			// Tags is optional, so just set empty array on error
-			result.Tags = []string{}
-		}
-	} else {
-		result.Tags = []string{}
-	}
-
-	return &result, nil
 }

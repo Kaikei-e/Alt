@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"search-indexer/domain"
 	"search-indexer/port"
-	"search-indexer/search_engine"
 	"strings"
 )
 
@@ -26,7 +25,7 @@ func (u *SearchArticlesWithFiltersUsecase) Execute(ctx context.Context, query st
 	}
 
 	// Validate filter tags for security
-	if err := search_engine.ValidateFilterTags(filters); err != nil {
+	if err := domain.ValidateFilterTags(filters); err != nil {
 		return nil, fmt.Errorf("invalid filter tags: %w", err)
 	}
 

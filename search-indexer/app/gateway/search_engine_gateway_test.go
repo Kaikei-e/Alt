@@ -66,6 +66,20 @@ func (m *mockSearchDriver) SearchWithFilters(ctx context.Context, query string, 
 	return m.searchResults, nil
 }
 
+func (m *mockSearchDriver) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]driver.SearchDocumentDriver, error) {
+	if m.searchErr != nil {
+		return nil, m.searchErr
+	}
+	return m.searchResults, nil
+}
+
+func (m *mockSearchDriver) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]driver.SearchDocumentDriver, int64, error) {
+	if m.searchErr != nil {
+		return nil, 0, m.searchErr
+	}
+	return m.searchResults, int64(len(m.searchResults)), nil
+}
+
 func (m *mockSearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	if m.synonymsErr != nil {
 		return m.synonymsErr

@@ -3,7 +3,6 @@ package gateway
 import (
 	"os"
 	"search-indexer/domain"
-	"search-indexer/port"
 )
 
 // ConfigDriver defines the interface for configuration data source
@@ -32,7 +31,7 @@ func (g *ConfigGateway) LoadSearchIndexerConfig() (*domain.SearchIndexerConfig, 
 
 	config, err := g.convertToDomain(databaseURL, meilisearchHost, meilisearchAPIKey)
 	if err != nil {
-		return nil, &port.RepositoryError{
+		return nil, &domain.RepositoryError{
 			Op:  "LoadSearchIndexerConfig",
 			Err: err.Error(),
 		}

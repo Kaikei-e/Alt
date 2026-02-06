@@ -35,6 +35,14 @@ func (m *MockSearchEngine) EnsureIndex(ctx context.Context) error {
 	return nil
 }
 
+func (m *MockSearchEngine) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]domain.SearchDocument, error) {
+	return nil, nil
+}
+
+func (m *MockSearchEngine) SearchByUserIDWithPagination(ctx context.Context, query string, userID string, offset, limit int64) ([]domain.SearchDocument, int64, error) {
+	return nil, 0, nil
+}
+
 func (m *MockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[string][]string) error {
 	return nil
 }
