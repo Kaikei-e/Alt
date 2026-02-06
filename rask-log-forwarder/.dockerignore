@@ -11,3 +11,7 @@ app/CLAUDE.md*
 app/Dockerfile*
 app/docker-compose*.yml
 app/.dockerignore
+Dockerfile*
+.dockerignore
+CLAUDE.md*
+*.md

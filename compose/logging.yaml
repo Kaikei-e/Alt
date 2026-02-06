@@ -46,7 +46,7 @@ services:
 
   nginx-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -72,7 +72,7 @@ services:
 
   alt-backend-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -98,7 +98,7 @@ services:
 
   auth-hub-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -124,7 +124,7 @@ services:
 
   tag-generator-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -150,7 +150,7 @@ services:
 
   pre-processor-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -176,7 +176,7 @@ services:
 
   search-indexer-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -202,7 +202,7 @@ services:
 
   news-creator-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -229,7 +229,7 @@ services:
   # ADR-091: news-creator-backend (Ollama) ログ収集
   news-creator-backend-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -259,7 +259,7 @@ services:
   # NOTE: db-logs removed - SQL query fragments provide low observability value (74% of all logs)
   recap-worker-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -285,7 +285,7 @@ services:
 
   recap-subworker-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -311,7 +311,7 @@ services:
 
   dashboard-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -337,7 +337,7 @@ services:
 
   recap-evaluator-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network
@@ -365,7 +365,7 @@ services:
   # NOTE: recap-db-logs removed - SQL query fragments provide low observability value
   rag-orchestrator-logs:
     build:
-      context: ../rask-log-forwarder/app
+      context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
     networks:
       - alt-network

@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Stage 2: Recipe generation
 FROM chef AS planner
-COPY . .
+COPY app/ .
 RUN cargo chef prepare --recipe-path recipe.json
 
 # Stage 3: Dependency build (cached)
@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     cargo chef cook --release --features otlp --recipe-path recipe.json
 
 # Stage 4: Application build
-COPY . .
+COPY app/ .
 # Build with OTLP feature enabled
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
