@@ -246,7 +246,7 @@ impl Scheduler {
 
     pub(crate) async fn find_resumable_job(
         &self,
-    ) -> Result<Option<(Uuid, JobStatus, Option<String>)>> {
+    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
         self.recap_dao.find_resumable_job().await
     }
 

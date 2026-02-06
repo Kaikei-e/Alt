@@ -11,10 +11,14 @@ const JST_OFFSET_HOURS: i32 = 9;
 const BATCH_HOUR: u32 = 4;
 const BATCH_MINUTE: u32 = 0;
 
-pub fn spawn_jst_batch_daemon(scheduler: Scheduler, genres: Vec<String>) -> JoinHandle<()> {
+pub fn spawn_jst_batch_daemon(
+    scheduler: Scheduler,
+    genres: Vec<String>,
+    window_days: u32,
+) -> JoinHandle<()> {
     let tz = FixedOffset::east_opt(JST_OFFSET_HOURS * 3600).expect("valid JST offset");
     let cadence = DailyCadence::new(tz, BATCH_HOUR, BATCH_MINUTE);
-    BatchDaemon::new(scheduler, cadence, genres, tz).spawn()
+    BatchDaemon::new(scheduler, cadence, genres, tz, window_days).spawn()
 }
 
 struct BatchDaemon {
@@ -22,6 +26,7 @@ struct BatchDaemon {
     cadence: DailyCadence,
     genres: Vec<String>,
     tz: FixedOffset,
+    window_days: u32,
 }
 
 impl BatchDaemon {
@@ -30,12 +35,14 @@ impl BatchDaemon {
         cadence: DailyCadence,
         genres: Vec<String>,
         tz: FixedOffset,
+        window_days: u32,
     ) -> Self {
         Self {
             scheduler,
             cadence,
             genres,
             tz,
+            window_days,
         }
     }
 
@@ -49,15 +56,19 @@ impl BatchDaemon {
         let state = self;
 
         // 起動時に中断されたジョブがないか確認
-        if let Ok(Some((job_id, status, last_stage))) = state.scheduler.find_resumable_job().await {
+        if let Ok(Some((job_id, status, last_stage, resumed_window_days))) =
+            state.scheduler.find_resumable_job().await
+        {
             info!(
                 %job_id,
                 ?status,
                 ?last_stage,
+                resumed_window_days,
                 "found resumable job, resuming..."
             );
 
-            let mut job = JobContext::new(job_id, state.genres.clone());
+            let mut job =
+                JobContext::new_with_window(job_id, state.genres.clone(), resumed_window_days);
             if let Some(stage) = last_stage {
                 job = job.with_stage(stage);
             }
@@ -77,13 +88,14 @@ impl BatchDaemon {
                 next_run_utc = %next.to_rfc3339(),
                 next_run_jst = %next_local.to_rfc3339(),
                 wait_seconds = wait.as_secs(),
-                "scheduled automatic 7-day recap batch"
+                window_days = state.window_days,
+                "scheduled automatic {}-day recap batch", state.window_days
             );
             sleep(wait).await;
 
             // Start new job
             let job_id = Uuid::new_v4();
-            let job = JobContext::new(job_id, state.genres.clone());
+            let job = JobContext::new_with_window(job_id, state.genres.clone(), state.window_days);
             match state.scheduler.run_job(job).await {
                 Ok(()) => info!(
                     %job_id,

@@ -92,7 +92,8 @@ async fn main() -> anyhow::Result<()> {
     if default_genres.is_empty() {
         warn!("skipping automatic batch daemon because no default genres are configured");
     } else {
-        let _batch_daemon = spawn_jst_batch_daemon(scheduler.clone(), default_genres);
+        let recap_window = registry.config().recap_3days_window_days();
+        let _batch_daemon = spawn_jst_batch_daemon(scheduler.clone(), default_genres, recap_window);
     }
     // Morning Letter機能を一時停止
     // let _morning_daemon = recap_worker::scheduler::daemon::spawn_morning_update_daemon(scheduler);

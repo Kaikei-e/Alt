@@ -32,7 +32,7 @@ pub trait JobDao: Send + Sync {
     /// 再開可能なジョブを探す
     fn find_resumable_job(
         &self,
-    ) -> impl Future<Output = Result<Option<(Uuid, JobStatus, Option<String>)>>> + Send;
+    ) -> impl Future<Output = Result<Option<(Uuid, JobStatus, Option<String>, u32)>>> + Send;
 
     /// ジョブのステータスと最終ステージを更新する
     fn update_job_status(

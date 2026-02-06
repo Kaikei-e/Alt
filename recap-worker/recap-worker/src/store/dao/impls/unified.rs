@@ -65,7 +65,7 @@ impl JobDao for UnifiedDao {
         crate::store::dao::job::RecapDao::job_exists(&self.pool, job_id).await
     }
 
-    async fn find_resumable_job(&self) -> Result<Option<(Uuid, JobStatus, Option<String>)>> {
+    async fn find_resumable_job(&self) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
         crate::store::dao::job::RecapDao::find_resumable_job(&self.pool).await
     }
 

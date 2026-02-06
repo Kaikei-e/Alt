@@ -75,7 +75,7 @@ pub trait RecapDao: Send + Sync {
     async fn job_exists(&self, job_id: Uuid) -> anyhow::Result<bool>;
 
     async fn find_resumable_job(&self)
-    -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>)>>;
+    -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>, u32)>>;
 
     async fn update_job_status(
         &self,
@@ -424,7 +424,7 @@ where
 
     async fn find_resumable_job(
         &self,
-    ) -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>)>> {
+    ) -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
         JobDao::find_resumable_job(self).await
     }
 

@@ -97,10 +97,10 @@ impl RecapDao {
     /// ここでは簡易的に「最新の非完了ジョブ」を返す実装とします。
     pub async fn find_resumable_job(
         pool: &PgPool,
-    ) -> Result<Option<(Uuid, JobStatus, Option<String>)>> {
+    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
         let row = sqlx::query(
             r"
-            SELECT job_id, status, last_stage
+            SELECT job_id, status, last_stage, window_days
             FROM recap_jobs
             WHERE status IN ('pending', 'running', 'failed')
             ORDER BY kicked_at DESC
@@ -115,6 +115,8 @@ impl RecapDao {
             let job_id: Uuid = row.try_get("job_id")?;
             let status_str: String = row.try_get("status")?;
             let last_stage: Option<String> = row.try_get("last_stage")?;
+            let window_days: Option<i32> = row.try_get("window_days")?;
+            let window_days = window_days.unwrap_or(7) as u32;
 
             let status = match status_str.as_str() {
                 "pending" => JobStatus::Pending,
@@ -123,7 +125,7 @@ impl RecapDao {
                 _ => JobStatus::Failed, // Default fallback
             };
 
-            Ok(Some((job_id, status, last_stage)))
+            Ok(Some((job_id, status, last_stage, window_days)))
         } else {
             Ok(None)
         }
