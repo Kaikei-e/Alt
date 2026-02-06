@@ -137,12 +137,12 @@ class TestModelSharingOptimization:
             ) as mock_run2,
         ):
             # Act
-            result1 = extractor1.extract_tags(title, content)
-            result2 = extractor2.extract_tags(title, content)
+            result1 = extractor1.extract_tags_with_metrics(title, content)
+            result2 = extractor2.extract_tags_with_metrics(title, content)
 
             # Assert
-            assert result1 == result2, "Results should be consistent across shared models"
-            assert len(result1) > 0, "Should extract tags successfully"
+            assert result1.tags == result2.tags, "Results should be consistent across shared models"
+            assert len(result1.tags) > 0, "Should extract tags successfully"
             mock_run1.assert_called_once()
             mock_run2.assert_called_once()
 
@@ -170,10 +170,9 @@ class TestModelMemoryOptimization:
             mock_candidates.return_value = ["token1", "token2", "token3"]
 
             # Act
-            extractor.extract_tags("title", "content")
+            extractor.extract_tags_with_metrics("title", "content")
 
-            # Assert
-            # Verify that intermediate results don't persist beyond the method call
+            # Assert - verify that intermediate results don't persist beyond the method call
             assert not hasattr(extractor, "_temp_candidates"), "Should not store temporary candidates"
 
     def test_should_handle_memory_pressure_gracefully(self):
@@ -205,8 +204,8 @@ class TestConcurrentModelAccess:
 
         def extract_worker(worker_id: int):
             try:
-                result = extractor.extract_tags(f"Title {worker_id}", f"Content {worker_id}")
-                results.append(result)
+                outcome = extractor.extract_tags_with_metrics(f"Title {worker_id}", f"Content {worker_id}")
+                results.append(outcome.tags)
             except Exception as e:
                 errors.append(e)
 
@@ -235,8 +234,8 @@ class TestConcurrentModelAccess:
             try:
                 if worker_id == 2:  # Simulate failure in worker 2
                     raise ValueError("Simulated worker failure")
-                result = extractor.extract_tags(f"Title {worker_id}", f"Content {worker_id}")
-                results.append(result)
+                outcome = extractor.extract_tags_with_metrics(f"Title {worker_id}", f"Content {worker_id}")
+                results.append(outcome.tags)
             except Exception as e:
                 errors.append(e)
 
@@ -265,13 +264,13 @@ class TestModelPerformanceMetrics:
 
         # Act
         start_time = time.time()
-        result = extractor.extract_tags("Test title", "Test content")
+        outcome = extractor.extract_tags_with_metrics("Test title", "Test content")
         end_time = time.time()
 
         # Assert
         processing_time = end_time - start_time
         assert processing_time >= 0, "Processing time should be non-negative"
-        assert isinstance(result, list), "Should return a list of tags"
+        assert isinstance(outcome.tags, list), "Should return a list of tags"
 
     def test_should_track_memory_usage_patterns(self):
         """Test that memory usage patterns are tracked."""
@@ -300,8 +299,8 @@ class TestModelPerformanceMetrics:
         start_time = time.time()
         results = []
         for title, content in test_articles:
-            result = extractor.extract_tags(title, content)
-            results.append(result)
+            outcome = extractor.extract_tags_with_metrics(title, content)
+            results.append(outcome.tags)
         end_time = time.time()
 
         # Assert

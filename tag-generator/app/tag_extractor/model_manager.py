@@ -4,14 +4,17 @@ Implements singleton pattern for ML models to improve performance.
 """
 
 import threading
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
+import structlog
+
+from tag_extractor.config import ModelConfig
 from tag_extractor.onnx_embedder import (
     OnnxEmbeddingConfig,
     OnnxEmbeddingModel,
     OnnxRuntimeMissing,
 )
+from tag_generator.exceptions import ModelLoadError
 
 if TYPE_CHECKING:
     from keybert import KeyBERT  # type: ignore
@@ -27,63 +30,28 @@ except ImportError:
     KeyBERT = None  # type: ignore
     Tagger = None  # type: ignore
 
-import structlog
-
 logger = structlog.get_logger(__name__)
-
-
-@dataclass
-class ModelConfig:
-    """Configuration for model loading."""
-
-    model_name: str = "paraphrase-multilingual-MiniLM-L12-v2"
-    device: str = "cpu"
-    use_onnx: bool = False
-    onnx_model_path: str | None = None
-    onnx_tokenizer_name: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    onnx_pooling: str = "cls"
-    onnx_batch_size: int = 16
-    onnx_max_length: int = 256
-    use_fp16: bool = False  # Enable FP16 for ~50% memory reduction (GPU recommended)
-    # GiNZA configuration (requires ml-extended dependencies)
-    use_ginza: bool = False
-    ginza_model_name: str = "ja_ginza"
 
 
 class ModelManager:
     """
-    Thread-safe singleton model manager for efficient model sharing.
-    Ensures models are loaded only once and shared across all TagExtractor instances.
+    Thread-safe model manager for efficient model sharing.
+    Use ``get_model_manager()`` to obtain the shared application-level instance.
     """
 
-    _instance: Optional["ModelManager"] = None
-    _lock = threading.Lock()
-    _models_lock = threading.Lock()
-
-    def __new__(cls) -> "ModelManager":
-        """Ensure singleton instance."""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
-
-    def __init__(self):
-        """Initialize model manager (called only once)."""
-        if not getattr(self, "_initialized", False):
-            self._embedder: Any = None
-            self._keybert: Any = None
-            self._ja_tagger: Any = None
-            self._ginza_nlp: Any = None  # GiNZA spaCy model
-            self._ja_stopwords: set[str] | None = None
-            self._en_stopwords: set[str] | None = None
-            self._config: ModelConfig | None = None
-            self._embedder_backend: str | None = None
-            self._embedder_metadata: dict[str, Any] = {}
-            self._ginza_available: bool | None = None
-            self._initialized = True
-            logger.info("ModelManager singleton initialized")
+    def __init__(self) -> None:
+        self._models_lock = threading.Lock()
+        self._embedder: Any = None
+        self._keybert: Any = None
+        self._ja_tagger: Any = None
+        self._ginza_nlp: Any = None  # GiNZA spaCy model
+        self._ja_stopwords: set[str] | None = None
+        self._en_stopwords: set[str] | None = None
+        self._config: ModelConfig | None = None
+        self._embedder_backend: str | None = None
+        self._embedder_metadata: dict[str, Any] = {}
+        self._ginza_available: bool | None = None
+        logger.info("ModelManager initialized")
 
     def get_models(self, config: ModelConfig) -> tuple[Any, Any, Any]:
         """
@@ -210,7 +178,7 @@ class ModelManager:
                     self._embedder_metadata["embedding_dimension"] = embedding_dim
 
             if self._embedder is None:
-                raise RuntimeError("Embedder was not initialized")
+                raise ModelLoadError("Embedder was not initialized")
             logger.info("Loading KeyBERT model")
             self._keybert = KeyBERT(self._embedder)  # pyright: ignore[reportArgumentType,reportOptionalCall]
             logger.info(
@@ -231,13 +199,18 @@ class ModelManager:
 
         except ImportError as e:
             logger.error("Import error while loading models", error=str(e))
-            # Reset to None so we can retry
             self._embedder = None
             self._keybert = None
             self._ja_tagger = None
             self._embedder_backend = None
             self._embedder_metadata = {}
-            # Re-raise the original exception
+            raise ModelLoadError(f"Missing ML dependency: {e}") from e
+        except ModelLoadError:
+            self._embedder = None
+            self._keybert = None
+            self._ja_tagger = None
+            self._embedder_backend = None
+            self._embedder_metadata = {}
             raise
         except Exception as e:
             logger.error(
@@ -245,14 +218,12 @@ class ModelManager:
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            # Reset to None so we can retry
             self._embedder = None
             self._keybert = None
             self._ja_tagger = None
             self._embedder_backend = None
             self._embedder_metadata = {}
-            # Re-raise the original exception
-            raise
+            raise ModelLoadError(f"Failed to load models: {e}") from e
 
     def _load_stopwords(self) -> None:
         """Load stopwords files (called within lock)."""
@@ -365,6 +336,24 @@ class ModelManager:
             }
 
 
+_default_instance: ModelManager | None = None
+_instance_lock = threading.Lock()
+
+
 def get_model_manager() -> ModelManager:
-    """Get the singleton model manager instance."""
-    return ModelManager()
+    """Get the shared application-level ModelManager instance."""
+    global _default_instance
+    if _default_instance is None:
+        with _instance_lock:
+            if _default_instance is None:
+                _default_instance = ModelManager()
+    return _default_instance
+
+
+def reset_model_manager() -> None:
+    """Reset the shared instance (for testing)."""
+    global _default_instance
+    with _instance_lock:
+        if _default_instance is not None:
+            _default_instance.clear_models()
+        _default_instance = None

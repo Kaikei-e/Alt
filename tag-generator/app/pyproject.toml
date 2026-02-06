@@ -29,6 +29,7 @@ dependencies = [
     # Logging and Data Validation
     "structlog>=25.4.0",
     "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
 
     # Security
     "nh3>=0.2.18",

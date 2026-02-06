@@ -1,6 +1,6 @@
 """
 Unit tests for ModelManager class.
-Tests the singleton pattern, model loading, and error handling.
+Tests model loading, shared instance management, and error handling.
 """
 
 import threading
@@ -8,35 +8,35 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tag_extractor.model_manager import ModelConfig, ModelManager, get_model_manager
+from tag_extractor.model_manager import ModelConfig, ModelManager, get_model_manager, reset_model_manager
 
 
 class TestModelManager:
-    """Test cases for ModelManager singleton pattern and functionality."""
+    """Test cases for ModelManager functionality."""
 
     def setup_method(self):
-        """Reset ModelManager singleton for each test."""
-        ModelManager._instance = None
+        """Reset shared ModelManager instance for each test."""
+        reset_model_manager()
 
-    def test_singleton_pattern(self):
-        """Test that ModelManager implements singleton pattern correctly."""
-        manager1 = ModelManager()
-        manager2 = ModelManager()
-        assert manager1 is manager2
-
-    def test_get_model_manager_function(self):
-        """Test that get_model_manager returns singleton instance."""
+    def test_get_model_manager_returns_shared_instance(self):
+        """Test that get_model_manager returns the same instance."""
         manager1 = get_model_manager()
         manager2 = get_model_manager()
         assert manager1 is manager2
         assert isinstance(manager1, ModelManager)
 
-    def test_thread_safety(self):
-        """Test that singleton creation is thread-safe."""
+    def test_new_instances_are_independent(self):
+        """Test that direct construction creates independent instances."""
+        manager1 = ModelManager()
+        manager2 = ModelManager()
+        assert manager1 is not manager2
+
+    def test_get_model_manager_thread_safety(self):
+        """Test that get_model_manager is thread-safe."""
         instances = []
 
         def create_manager():
-            instances.append(ModelManager())
+            instances.append(get_model_manager())
 
         threads = [threading.Thread(target=create_manager) for _ in range(10)]
         for thread in threads:
@@ -44,7 +44,7 @@ class TestModelManager:
         for thread in threads:
             thread.join()
 
-        # All instances should be the same object
+        # All instances should be the same shared object
         assert all(instance is instances[0] for instance in instances)
 
     def test_models_loaded_initially_false(self):

@@ -10,16 +10,12 @@ import psycopg2.extensions
 import structlog
 from psycopg2.extensions import connection as Connection
 
+from tag_generator.exceptions import DatabaseConnectionError
+
 logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     from tag_generator.config import TagGeneratorConfig
-
-
-class DatabaseConnectionError(Exception):
-    """Custom exception for database connection errors."""
-
-    pass
 
 
 class DatabaseManager:
@@ -43,8 +39,8 @@ class DatabaseManager:
             try:
                 with open(password_file) as f:
                     password = f.read().strip()
-            except Exception as e:
-                logger.error(f"Failed to read password file: {e}")
+            except (OSError, ValueError) as e:
+                logger.error("Failed to read password file", error=str(e))
 
         required_vars = [
             "DB_TAG_GENERATOR_USER",
@@ -86,7 +82,7 @@ class DatabaseManager:
                 try:
                     conn.close()
                 except Exception as e:
-                    logger.warning(f"Error closing direct connection: {e}")
+                    logger.warning("Error closing direct connection", error=str(e))
 
     def _create_direct_connection(self) -> Connection:
         """Create direct database connection with retry logic."""
@@ -95,7 +91,9 @@ class DatabaseManager:
         for attempt in range(self.config.max_connection_retries):
             try:
                 logger.info(
-                    f"Attempting database connection (attempt {attempt + 1}/{self.config.max_connection_retries})"
+                    "Attempting database connection",
+                    attempt=attempt + 1,
+                    max_retries=self.config.max_connection_retries,
                 )
                 conn = psycopg2.connect(dsn)
 
@@ -112,19 +110,19 @@ class DatabaseManager:
                     logger.info("Database connected successfully")
                     return conn
                 except Exception as setup_error:
-                    logger.warning(f"Failed to setup connection state: {setup_error}")
+                    logger.warning("Failed to setup connection state", error=str(setup_error))
                     # If we can't set up the connection properly, close it and try again
                     try:
                         conn.close()
-                    except Exception:
+                    except OSError:
                         pass
                     raise setup_error
 
             except psycopg2.Error as e:
-                logger.error(f"Database connection failed (attempt {attempt + 1}): {e}")
+                logger.error("Database connection failed", attempt=attempt + 1, error=str(e))
 
                 if attempt < self.config.max_connection_retries - 1:
-                    logger.info(f"Retrying in {self.config.connection_retry_delay} seconds...")
+                    logger.info("Retrying database connection", delay=self.config.connection_retry_delay)
                     time.sleep(self.config.connection_retry_delay)
                 else:
                     raise DatabaseConnectionError(

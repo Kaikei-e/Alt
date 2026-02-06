@@ -6,16 +6,15 @@ from typing import TYPE_CHECKING, Any, cast
 import structlog
 from psycopg2.extensions import connection as Connection
 
+from tag_generator.exceptions import BatchProcessingError, TagExtractionError
+
 logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
-    from article_fetcher.fetch import ArticleFetcher
-    from tag_extractor.extract import TagExtractor
     from tag_generator.cascade import CascadeController
     from tag_generator.config import TagGeneratorConfig
     from tag_generator.cursor_manager import CursorManager
-    from tag_generator.database import DatabaseConnectionError
-    from tag_inserter.upsert_tags import TagInserter
+    from tag_generator.ports import ArticleFetcherPort, TagExtractorPort, TagInserterPort
 
 
 class BatchProcessor:
@@ -24,9 +23,9 @@ class BatchProcessor:
     def __init__(
         self,
         config: "TagGeneratorConfig",
-        article_fetcher: "ArticleFetcher",
-        tag_extractor: "TagExtractor",
-        tag_inserter: "TagInserter",
+        article_fetcher: "ArticleFetcherPort",
+        tag_extractor: "TagExtractorPort",
+        tag_inserter: "TagInserterPort",
         cascade_controller: "CascadeController",
         cursor_manager: "CursorManager",
     ):
@@ -64,11 +63,11 @@ class BatchProcessor:
                 conn, has_tags=False, limit=self.config.batch_limit
             )
 
-            logger.info(f"Fallback method retrieved {len(untagged_articles)} untagged articles")
+            logger.info("Fallback method retrieved untagged articles", article_count=len(untagged_articles))
             return untagged_articles
 
         except Exception as e:
-            logger.error(f"Fallback method failed to fetch untagged articles: {e}")
+            logger.error("Fallback method failed to fetch untagged articles", error=str(e))
             return []
 
     def _has_existing_tags(self, conn: Connection) -> bool:
@@ -137,14 +136,14 @@ class BatchProcessor:
 
                 # Log progress during tag extraction
                 if (i + 1) % self.config.progress_log_interval == 0:
-                    logger.debug(f"Extracted tags for {i + 1}/{len(articles)} articles...")
+                    logger.debug("Extracted tags progress", completed=i + 1, total=len(articles))
 
                 # Periodic memory cleanup during batch processing
                 if (i + 1) % self.config.memory_cleanup_interval == 0:
                     self._cleanup_memory()
 
-            except Exception as e:
-                logger.error(f"Error extracting tags for article {article.get('id', 'unknown')}: {e}")
+            except (TagExtractionError, Exception) as e:
+                logger.error("Error extracting tags for article", article_id=article.get("id", "unknown"), error=str(e))
                 batch_stats["failed"] += 1
                 continue
 
@@ -157,7 +156,7 @@ class BatchProcessor:
         # Perform batch upsert of all tags in the current transaction
         if article_tags_batch:
             try:
-                logger.info(f"Upserting tags for {len(article_tags_batch)} articles in current transaction...")
+                logger.info("Upserting tags in current transaction", article_count=len(article_tags_batch))
 
                 # Use the batch upsert method (transaction managed by caller)
                 result = self.tag_inserter.batch_upsert_tags_no_commit(conn, article_tags_batch)
@@ -167,15 +166,15 @@ class BatchProcessor:
                 batch_stats["total_processed"] = len(articles)
 
                 if result.get("success"):
-                    logger.info(f"Successfully batch processed {batch_stats['successful']} articles")
+                    logger.info("Successfully batch processed articles", successful=batch_stats["successful"])
                 else:
-                    logger.warning(f"Batch processing completed with {batch_stats['failed']} failures")
+                    logger.warning("Batch processing completed with failures", failed=batch_stats["failed"])
                     # If batch processing failed, raise exception to trigger rollback
                     if batch_stats["failed"] > 0:
-                        raise DatabaseConnectionError(f"Batch processing failed for {batch_stats['failed']} articles")
+                        raise BatchProcessingError(f"Batch processing failed for {batch_stats['failed']} articles")
 
             except Exception as e:
-                logger.error(f"Batch upsert failed: {e}")
+                logger.error("Batch upsert failed", error=str(e))
                 batch_stats["failed"] = len(articles)
                 batch_stats["total_processed"] = len(articles)
                 # Re-raise to trigger transaction rollback at higher level
@@ -247,18 +246,18 @@ class BatchProcessor:
                 conn.rollback()
                 logger.warning("Transaction rolled back due to forward batch failure")
         except Exception as exc:
-            logger.error(f"Error during forward batch processing: {exc}")
+            logger.error("Error during forward batch processing", error=str(exc))
             try:
                 conn.rollback()
             except Exception as rollback_error:
-                logger.error(f"Failed to rollback forward transaction: {rollback_error}")
+                logger.error("Failed to rollback forward transaction", error=str(rollback_error))
             raise
         finally:
             try:
                 if not conn.autocommit:
                     conn.autocommit = True
             except Exception as exc:
-                logger.warning(f"Failed to restore autocommit mode after forward batch: {exc}")
+                logger.warning("Failed to restore autocommit mode after forward batch", error=str(exc))
 
         return batch_stats
 
@@ -282,12 +281,15 @@ class BatchProcessor:
                 forward_stats = self.process_article_batch_forward(conn, cursor_manager, _from_backfill=True)
                 new_articles_processed = cast(int, forward_stats.get("successful", 0))
                 if new_articles_processed > 0:
-                    logger.info(f"Hybrid mode: Processed {new_articles_processed} new articles before backfill")
+                    logger.info(
+                        "Hybrid mode: processed new articles before backfill",
+                        new_articles_processed=new_articles_processed,
+                    )
                     # If we processed new articles and reached batch limit, return early
                     if cast(int, forward_stats.get("total_processed", 0)) >= self.config.batch_limit:
                         return forward_stats
             except Exception as exc:
-                logger.warning(f"Hybrid mode: Failed to process new articles, continuing with backfill: {exc}")
+                logger.warning("Hybrid mode: failed to process new articles, continuing with backfill", error=str(exc))
 
         last_created_at, last_id = cursor_manager.get_initial_cursor_position()
 
@@ -329,7 +331,7 @@ class BatchProcessor:
                 if not articles:
                     fetch_attempts += 1
                     self.consecutive_empty_backfill_fetches += 1
-                    logger.info(f"No articles found with cursor pagination (attempt {fetch_attempts})")
+                    logger.info("No articles found with cursor pagination", attempt=fetch_attempts)
 
                     # Check if backfill should be considered complete
                     if self.consecutive_empty_backfill_fetches >= self.max_empty_backfill_fetches:
@@ -346,7 +348,10 @@ class BatchProcessor:
                             fallback_articles = self._fetch_untagged_articles_fallback(conn)
                             if fallback_articles:
                                 articles_to_process.extend(fallback_articles[: self.config.batch_limit])
-                                logger.info(f"Fallback method found {len(fallback_articles)} untagged articles")
+                                logger.info(
+                                    "Fallback method found untagged articles",
+                                    article_count=len(fallback_articles),
+                                )
                                 # Update cursor based on the last article processed
                                 if articles_to_process:
                                     last_article = articles_to_process[-1]
@@ -364,7 +369,8 @@ class BatchProcessor:
                                 break
                         else:
                             logger.info(
-                                f"No more articles found. Collected {len(articles_to_process)} articles for batch processing"
+                                "No more articles found",
+                                collected=len(articles_to_process),
                             )
                             break
                     else:
@@ -373,14 +379,14 @@ class BatchProcessor:
                         )
                         break
 
-                logger.debug(f"Fetched {len(articles)} articles")
+                logger.debug("Fetched articles", article_count=len(articles))
                 fetch_attempts = 0  # Reset counter on successful fetch
                 self.consecutive_empty_backfill_fetches = 0  # Reset backfill completion counter
 
                 # Add articles to batch, respecting the batch limit
                 for article in articles:
                     if len(articles_to_process) >= self.config.batch_limit:
-                        logger.info(f"Reached batch limit of {self.config.batch_limit} articles")
+                        logger.info("Reached batch limit", batch_limit=self.config.batch_limit)
                         break
 
                     articles_to_process.append(article)
@@ -397,7 +403,7 @@ class BatchProcessor:
                     break
 
             except Exception as e:
-                logger.error(f"Error during article collection: {e}")
+                logger.error("Error during article collection", error=str(e))
                 # Try fallback method on exception
                 if len(articles_to_process) == 0:
                     logger.warning("Attempting fallback method due to fetch error")
@@ -405,9 +411,9 @@ class BatchProcessor:
                         fallback_articles = self._fetch_untagged_articles_fallback(conn)
                         if fallback_articles:
                             articles_to_process.extend(fallback_articles[: self.config.batch_limit])
-                            logger.info(f"Fallback method recovered {len(fallback_articles)} articles")
+                            logger.info("Fallback method recovered articles", article_count=len(fallback_articles))
                     except Exception as fallback_error:
-                        logger.error(f"Fallback method also failed: {fallback_error}")
+                        logger.error("Fallback method also failed", error=str(fallback_error))
                 break
 
         # Start explicit transaction for batch processing only
@@ -416,7 +422,7 @@ class BatchProcessor:
                 conn.autocommit = False
 
             if articles_to_process:
-                logger.info(f"Processing batch of {len(articles_to_process)} articles...")
+                logger.info("Processing batch", article_count=len(articles_to_process))
                 batch_stats = self.process_articles_as_batch(conn, articles_to_process)
                 # Ensure string format for batch stats
                 batch_stats["last_created_at"] = last_created_at
@@ -440,13 +446,16 @@ class BatchProcessor:
                     )
                     cursor_manager.update_forward_cursor_position(newest_created_at, newest_article["id"])
                     logger.info(
-                        f"Cursor advanced: processed {total_processed}, successful {successful}, "
-                        f"position: {last_created_at}, ID: {last_id}"
+                        "Cursor advanced",
+                        total_processed=total_processed,
+                        successful=successful,
+                        position=last_created_at,
+                        last_id=last_id,
                     )
                     conn.commit()
                 elif failed > 0:
                     conn.rollback()
-                    logger.warning(f"Transaction rolled back due to {failed} processing errors")
+                    logger.warning("Transaction rolled back due to processing errors", failed=failed)
                 else:
                     conn.commit()  # No articles processed, commit cleanly
             else:
@@ -460,11 +469,11 @@ class BatchProcessor:
                     return batch_stats
 
         except Exception as e:
-            logger.error(f"Error during batch processing: {e}")
+            logger.error("Error during batch processing", error=str(e))
             try:
                 conn.rollback()
             except Exception as rollback_error:
-                logger.error(f"Failed to rollback transaction: {rollback_error}")
+                logger.error("Failed to rollback transaction", error=str(rollback_error))
             raise
         finally:
             # Reset autocommit mode
@@ -472,7 +481,7 @@ class BatchProcessor:
                 if not conn.autocommit:
                     conn.autocommit = True
             except Exception as e:
-                logger.warning(f"Failed to restore autocommit mode: {e}")
+                logger.warning("Failed to restore autocommit mode", error=str(e))
 
         return batch_stats
 
@@ -585,7 +594,7 @@ class BatchProcessor:
 
                 # Log progress during tag extraction
                 if (i + 1) % self.config.progress_log_interval == 0:
-                    logger.debug(f"Regenerated tags for {i + 1}/{len(articles)} articles...")
+                    logger.debug("Regenerated tags progress", completed=i + 1, total=len(articles))
 
                 # Periodic memory cleanup during batch processing
                 if (i + 1) % self.config.memory_cleanup_interval == 0:
@@ -613,7 +622,7 @@ class BatchProcessor:
                 if conn.autocommit:
                     conn.autocommit = False
 
-                logger.info(f"Upserting regenerated tags for {len(article_tags_batch)} articles...")
+                logger.info("Upserting regenerated tags", article_count=len(article_tags_batch))
 
                 # Use the comparison-based batch upsert method
                 result = self.tag_inserter.batch_upsert_tags_with_comparison(conn, article_tags_batch)
@@ -640,11 +649,11 @@ class BatchProcessor:
                     )
 
             except Exception as e:
-                logger.error(f"Regeneration batch upsert failed: {e}")
+                logger.error("Regeneration batch upsert failed", error=str(e))
                 try:
                     conn.rollback()
                 except Exception as rollback_error:
-                    logger.error(f"Failed to rollback transaction: {rollback_error}")
+                    logger.error("Failed to rollback transaction", error=str(rollback_error))
                 batch_stats["failed"] = len(articles)
                 batch_stats["total_processed"] = len(articles)
                 batch_stats["error"] = str(e)
@@ -653,7 +662,7 @@ class BatchProcessor:
                     if not conn.autocommit:
                         conn.autocommit = True
                 except Exception as e:
-                    logger.warning(f"Failed to restore autocommit mode: {e}")
+                    logger.warning("Failed to restore autocommit mode", error=str(e))
         else:
             logger.warning("No articles with regenerated tags to process")
             batch_stats["total_processed"] = len(articles)

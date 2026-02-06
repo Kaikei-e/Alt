@@ -56,9 +56,9 @@ def mock_tag_generator_service():
     )
     service = TagGeneratorService(config)
     # Mock database connection and related methods
-    service._get_database_connection = MagicMock()
-    service._get_database_connection.return_value.__enter__.return_value = MagicMock()  # Mock the context manager
-    service._get_database_dsn = MagicMock(return_value="mock_dsn")
+    service.database_manager.get_connection = MagicMock()
+    service.database_manager.get_connection.return_value.__enter__.return_value = MagicMock()
+    service.database_manager.get_database_dsn = MagicMock(return_value="mock_dsn")
     service.article_fetcher = MagicMock()
     service.tag_extractor = MagicMock()
     service.tag_inserter = MagicMock()
@@ -85,7 +85,7 @@ def test_tag_generator_service_initialization_logs(mock_tag_generator_service, c
 
         # Look for initialization message
         init_found = any("Tag Generator Service initialized" in msg for msg in log_messages)
-        config_found = any("Configuration:" in msg for msg in log_messages)
+        config_found = any("configured" in msg.lower() or "Configuration:" in msg for msg in log_messages)
 
         assert init_found, f"Should log service initialization. Log messages: {log_messages}"
         assert config_found, f"Should log configuration. Log messages: {log_messages}"
@@ -110,12 +110,12 @@ def test_tag_generator_service_error_logging(mock_tag_generator_service, caplog)
         # Test error logging by calling a method that logs errors
         # Use the actual _create_direct_connection method but with broken DSN
         with patch.object(
-            mock_tag_generator_service,
-            "_get_database_dsn",
+            mock_tag_generator_service.database_manager,
+            "get_database_dsn",
             return_value="invalid://dsn",
         ):
             try:
-                mock_tag_generator_service._create_direct_connection()
+                mock_tag_generator_service.database_manager._create_direct_connection()
             except Exception:
                 pass  # Expected to fail - testing error logging behavior
 

@@ -3,7 +3,7 @@ Integration tests for sanitized tag extraction.
 Tests the integration between InputSanitizer and TagExtractor.
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -44,12 +44,12 @@ class TestSanitizedTagExtraction:
                 },
             )
 
-            tags = tag_extractor.extract_tags(title, content)
+            outcome = tag_extractor.extract_tags_with_metrics(title, content)
 
             # Should call the extraction method with sanitized input
             mock_extract.assert_called_once()
-            assert len(tags) == 3
-            assert "machine learning" in tags
+            assert len(outcome.tags) == 3
+            assert "machine learning" in outcome.tags
 
     def test_extract_tags_allows_normal_content(self, tag_extractor):
         """Test that normal content (including previously flagged patterns) is processed."""
@@ -60,10 +60,10 @@ class TestSanitizedTagExtraction:
         with patch.object(tag_extractor, "_extract_keywords_english") as mock_extract:
             mock_extract.return_value = (["machine learning"], {"machine learning": 0.9})
 
-            tags = tag_extractor.extract_tags(title, content)
+            outcome = tag_extractor.extract_tags_with_metrics(title, content)
 
             # Should successfully extract tags - prompt injection detection was removed
-            assert len(tags) > 0
+            assert len(outcome.tags) > 0
             mock_extract.assert_called_once()
 
     def test_extract_tags_sanitizes_html(self, tag_extractor):
@@ -75,10 +75,10 @@ class TestSanitizedTagExtraction:
         with patch.object(tag_extractor, "_extract_keywords_english") as mock_extract:
             mock_extract.return_value = (["machine learning"], {"machine learning": 0.9})
 
-            tags = tag_extractor.extract_tags(title, content)
+            outcome = tag_extractor.extract_tags_with_metrics(title, content)
 
             # Should successfully extract tags after HTML sanitization
-            assert len(tags) > 0
+            assert len(outcome.tags) > 0
             mock_extract.assert_called_once()
 
             # Verify that the HTML was stripped from the input passed to extraction
@@ -91,20 +91,20 @@ class TestSanitizedTagExtraction:
         title = "Machine Learning\x00Tutorial"
         content = "This content has \x01 control characters."
 
-        tags = tag_extractor.extract_tags(title, content)
+        outcome = tag_extractor.extract_tags_with_metrics(title, content)
 
         # Should return empty list due to control characters
-        assert tags == []
+        assert outcome.tags == []
 
     def test_extract_tags_handles_oversized_input(self, tag_extractor):
         """Test that oversized input is rejected."""
         title = "a" * 1001  # Exceeds max_title_length of 1000
         content = "Valid content"
 
-        tags = tag_extractor.extract_tags(title, content)
+        outcome = tag_extractor.extract_tags_with_metrics(title, content)
 
         # Should return empty list due to oversized title
-        assert tags == []
+        assert outcome.tags == []
 
     def test_extract_tags_normalizes_whitespace(self, tag_extractor):
         """Test that excessive whitespace is normalized."""
@@ -115,10 +115,10 @@ class TestSanitizedTagExtraction:
         with patch.object(tag_extractor, "_extract_keywords_english") as mock_extract:
             mock_extract.return_value = (["machine learning"], {"machine learning": 0.9})
 
-            tags = tag_extractor.extract_tags(title, content)
+            outcome = tag_extractor.extract_tags_with_metrics(title, content)
 
             # Should successfully extract tags after whitespace normalization
-            assert len(tags) > 0
+            assert len(outcome.tags) > 0
             mock_extract.assert_called_once()
 
             # Verify that excessive whitespace was normalized
@@ -136,12 +136,12 @@ class TestSanitizedTagExtraction:
             patch.object(tag_extractor, "_detect_language", return_value="ja"),
             patch.object(tag_extractor, "_extract_keywords_japanese") as mock_extract,
         ):
-            mock_extract.return_value = ["機械学習", "基礎"]
+            mock_extract.return_value = (["機械学習", "基礎"], {"機械学習": 0.9, "基礎": 0.7})
 
-            tags = tag_extractor.extract_tags(title, content)
+            outcome = tag_extractor.extract_tags_with_metrics(title, content)
 
             # Should successfully extract tags
-            assert len(tags) > 0
+            assert len(outcome.tags) > 0
             mock_extract.assert_called_once()
 
     def test_extract_tags_handles_mixed_language_input(self, tag_extractor):
@@ -153,10 +153,10 @@ class TestSanitizedTagExtraction:
         with patch.object(tag_extractor, "_extract_keywords_english") as mock_extract:
             mock_extract.return_value = (["ai", "tutorial"], {"ai": 0.9, "tutorial": 0.8})
 
-            tags = tag_extractor.extract_tags(title, content)
+            outcome = tag_extractor.extract_tags_with_metrics(title, content)
 
             # Should successfully extract tags
-            assert len(tags) > 0
+            assert len(outcome.tags) > 0
             mock_extract.assert_called_once()
 
     def test_extract_tags_handles_sanitization_failures(self, tag_extractor):
@@ -164,10 +164,10 @@ class TestSanitizedTagExtraction:
         title = "Title with \x00 control characters"
         content = "Normal content"
 
-        tags = tag_extractor.extract_tags(title, content)
+        outcome = tag_extractor.extract_tags_with_metrics(title, content)
 
         # Should return empty list due to control characters
-        assert tags == []
+        assert outcome.tags == []
 
     def test_extract_tags_preserves_original_functionality(self, tag_extractor):
         """Test that the original tag extraction functionality is preserved."""
@@ -175,31 +175,10 @@ class TestSanitizedTagExtraction:
         content = "This guide covers Python programming fundamentals including data structures and algorithms."
 
         # Use real extraction (no mocking) to test end-to-end functionality
-        tags = tag_extractor.extract_tags(title, content)
+        outcome = tag_extractor.extract_tags_with_metrics(title, content)
 
         # Should return tags (exact content depends on model but should not be empty)
-        assert isinstance(tags, list)
-        # We can't assert exact content without the models, but we can verify it's working
-
-    def test_backward_compatibility_function(self):
-        """Test that the backward compatibility function works."""
-        from tag_extractor.extract import extract_tags
-
-        title = "Test Article"
-        content = "This is test content for backward compatibility."
-
-        # Mock to avoid model loading
-        with patch("tag_extractor.extract.TagExtractor") as mock_extractor_class:
-            mock_extractor = Mock()
-            mock_extractor.extract_tags.return_value = ["test", "article"]
-            mock_extractor_class.return_value = mock_extractor
-
-            tags = extract_tags(title, content)
-
-            # Should create TagExtractor and call extract_tags
-            mock_extractor_class.assert_called_once()
-            mock_extractor.extract_tags.assert_called_once_with(title, content)
-            assert tags == ["test", "article"]
+        assert isinstance(outcome.tags, list)
 
     def test_sanitization_config_is_respected(self):
         """Test that custom sanitization config is respected."""
@@ -215,7 +194,7 @@ class TestSanitizedTagExtraction:
         title = "a" * 60  # Exceeds the 50 character limit
         content = "Short content"
 
-        tags = extractor.extract_tags(title, content)
+        outcome = extractor.extract_tags_with_metrics(title, content)
 
         # Should return empty list due to custom title length limit
-        assert tags == []
+        assert outcome.tags == []
