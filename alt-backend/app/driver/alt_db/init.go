@@ -41,8 +41,9 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 	}
 	config.MinConns = int32(minConns)
 
-	maxConnLifetime, _ := time.ParseDuration(getEnvOrDefault("DB_MAX_CONN_LIFE", "30m"))
+	maxConnLifetime, _ := time.ParseDuration(getEnvOrDefault("DB_MAX_CONN_LIFE", "1h"))
 	config.MaxConnLifetime = maxConnLifetime
+	config.MaxConnIdleTime = 30 * time.Minute
 	config.HealthCheckPeriod = time.Minute
 
 	// Linkerd環境での接続リトライ設定

@@ -5,6 +5,7 @@ import (
 	"alt/port/scraping_domain_port"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"time"
@@ -69,7 +70,7 @@ func (g *ScrapingPolicyGateway) CanFetchArticle(ctx context.Context, articleURL 
 		}
 		// Save default policy
 		if err := g.scrapingDomainPort.Save(ctx, scrapingDomain); err != nil {
-			// Continue with default policy even if save fails
+			slog.WarnContext(ctx, "failed to save default scraping policy", "domain", domainName, "error", err)
 		}
 	}
 
@@ -101,8 +102,11 @@ func (g *ScrapingPolicyGateway) CanFetchArticle(ctx context.Context, articleURL 
 			delay := time.Duration(*scrapingDomain.RobotsCrawlDelaySec) * time.Second
 			timeSinceLastRequest := time.Since(lastTime)
 			if timeSinceLastRequest < delay {
-				// Rate limit: wait time needed, but for now we'll just log and allow
-				// In a real implementation, you might want to wait here or return an error
+				slog.WarnContext(ctx, "crawl delay not elapsed, denying fetch",
+					"domain", domainName,
+					"delay", delay,
+					"time_since_last", timeSinceLastRequest)
+				return false, nil
 			}
 		}
 		g.lastRequestTime[domainKey] = time.Now()

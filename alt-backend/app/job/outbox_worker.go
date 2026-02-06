@@ -6,24 +6,21 @@ import (
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
-	"time"
 )
 
-func OutboxWorkerRunner(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort) {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	logger.Logger.InfoContext(ctx, "Outbox worker started")
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Logger.InfoContext(ctx, "Outbox worker stopping")
-			return
-		case <-ticker.C:
-			processOutboxEvents(ctx, repo, ragIntegration)
-		}
+// OutboxWorkerJob returns a function suitable for the JobScheduler that
+// processes pending outbox events.
+func OutboxWorkerJob(repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		processOutboxEvents(ctx, repo, ragIntegration)
+		return nil
 	}
+}
+
+// OutboxWorkerRunner is kept for backward compatibility.
+// Deprecated: Use OutboxWorkerJob with JobScheduler instead.
+func OutboxWorkerRunner(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort) {
+	processOutboxEvents(ctx, repo, ragIntegration)
 }
 
 func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort) {

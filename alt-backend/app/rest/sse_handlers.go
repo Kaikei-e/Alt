@@ -28,12 +28,7 @@ func handleSSEFeedsStats(container *di.ApplicationComponents, cfg *config.Config
 		)
 
 		// Validate and set CORS headers - use same origins as routes.go
-		allowedOrigins := []string{
-			"http://localhost:3000",
-			"http://localhost:80",
-			"http://localhost:4173",
-			"https://curionoah.com",
-		}
+		allowedOrigins := cfg.Server.CORSAllowedOrigins
 
 		// Check if origin is allowed
 		originAllowed := false

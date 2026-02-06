@@ -13,9 +13,11 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+type jwtContextKey string
+
 const (
 	backendTokenHeader = "X-Alt-Backend-Token"
-	userContextKey     = "altUser"
+	userContextKey     jwtContextKey = "altUser"
 )
 
 var (

@@ -13,42 +13,28 @@ const (
 	ScrapingPolicyRefreshInterval = 24 * time.Hour
 )
 
-// DailyScrapingPolicyJobRunner runs a job that refreshes robots.txt and scraping policies
-// for all domains every 24 hours
-func DailyScrapingPolicyJobRunner(ctx context.Context, usecase *scraping_domain_usecase.ScrapingDomainUsecase) {
-	ticker := time.NewTicker(ScrapingPolicyRefreshInterval)
-	defer ticker.Stop()
-
-	// Run immediately on startup
-	// First, ensure domains from feed_links exist in scraping_domains
-	logger.Logger.InfoContext(ctx, "Ensuring domains from feed_links exist in scraping_domains")
-	if err := usecase.EnsureDomainsFromFeedLinks(ctx); err != nil {
-		logger.Logger.ErrorContext(ctx, "Error ensuring domains from feed_links", "error", err)
-	} else {
-		logger.Logger.InfoContext(ctx, "Domains from feed_links ensured")
-	}
-
-	// Then refresh robots.txt for all domains
-	logger.Logger.InfoContext(ctx, "Starting initial scraping policy refresh")
-	if err := usecase.RefreshAllRobotsTxt(ctx); err != nil {
-		logger.Logger.ErrorContext(ctx, "Error refreshing scraping policies on startup", "error", err)
-	} else {
-		logger.Logger.InfoContext(ctx, "Initial scraping policy refresh completed")
-	}
-
-	// Then run every 24 hours
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Logger.InfoContext(ctx, "Stopping daily scraping policy job")
-			return
-		case <-ticker.C:
-			logger.Logger.InfoContext(ctx, "Starting scheduled scraping policy refresh")
-			if err := usecase.RefreshAllRobotsTxt(ctx); err != nil {
-				logger.Logger.ErrorContext(ctx, "Error refreshing scraping policies", "error", err)
-			} else {
-				logger.Logger.InfoContext(ctx, "Scheduled scraping policy refresh completed")
-			}
+// ScrapingPolicyJob returns a function suitable for the JobScheduler that
+// ensures domains exist and refreshes robots.txt policies.
+func ScrapingPolicyJob(usecase *scraping_domain_usecase.ScrapingDomainUsecase) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		logger.Logger.InfoContext(ctx, "Ensuring domains from feed_links exist in scraping_domains")
+		if err := usecase.EnsureDomainsFromFeedLinks(ctx); err != nil {
+			logger.Logger.ErrorContext(ctx, "Error ensuring domains from feed_links", "error", err)
 		}
+
+		logger.Logger.InfoContext(ctx, "Starting scraping policy refresh")
+		if err := usecase.RefreshAllRobotsTxt(ctx); err != nil {
+			return err
+		}
+		logger.Logger.InfoContext(ctx, "Scraping policy refresh completed")
+		return nil
+	}
+}
+
+// DailyScrapingPolicyJobRunner is kept for backward compatibility.
+// Deprecated: Use ScrapingPolicyJob with JobScheduler instead.
+func DailyScrapingPolicyJobRunner(ctx context.Context, usecase *scraping_domain_usecase.ScrapingDomainUsecase) {
+	if err := ScrapingPolicyJob(usecase)(ctx); err != nil {
+		logger.Logger.ErrorContext(ctx, "Error in scraping policy refresh", "error", err)
 	}
 }

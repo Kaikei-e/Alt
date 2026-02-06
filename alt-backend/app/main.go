@@ -23,7 +23,8 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Load configuration first
 	cfg, err := config.NewConfig()
@@ -41,8 +42,8 @@ func main() {
 		otelCfg.Enabled = false
 	}
 	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
 		if err := otelShutdown(shutdownCtx); err != nil {
 			fmt.Printf("Failed to shutdown OpenTelemetry: %v\n", err)
 		}
@@ -65,10 +66,27 @@ func main() {
 
 	container := di.NewApplicationComponents(pool)
 
-	// Start background jobs
-	go job.HourlyJobRunner(ctx, container.AltDBRepository)
-	go job.DailyScrapingPolicyJobRunner(ctx, container.ScrapingDomainUsecase)
-	go job.OutboxWorkerRunner(ctx, container.AltDBRepository, container.RagIntegration)
+	// Start background jobs via scheduler (context-aware with graceful shutdown)
+	scheduler := job.NewJobScheduler()
+	scheduler.Add(job.Job{
+		Name:     "hourly-feed-collector",
+		Interval: 1 * time.Hour,
+		Timeout:  30 * time.Minute,
+		Fn:       job.CollectFeedsJob(container.AltDBRepository),
+	})
+	scheduler.Add(job.Job{
+		Name:     "daily-scraping-policy",
+		Interval: 24 * time.Hour,
+		Timeout:  1 * time.Hour,
+		Fn:       job.ScrapingPolicyJob(container.ScrapingDomainUsecase),
+	})
+	scheduler.Add(job.Job{
+		Name:     "outbox-worker",
+		Interval: 5 * time.Second,
+		Timeout:  30 * time.Second,
+		Fn:       job.OutboxWorkerJob(container.AltDBRepository, container.RagIntegration),
+	})
+	scheduler.Start(ctx)
 
 	e := echo.New()
 
@@ -133,13 +151,20 @@ func main() {
 
 	logger.Logger.InfoContext(ctx, "Shutting down server...")
 
+	// Cancel context to signal all background jobs to stop
+	cancel()
+
+	// Wait for background jobs to finish
+	scheduler.Shutdown()
+	logger.Logger.Info("Background jobs stopped")
+
 	// Graceful shutdown with timeout (use server timeout configuration)
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.WriteTimeout)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Server.WriteTimeout)
+	defer shutdownCancel()
 
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		logger.Logger.ErrorContext(shutdownCtx, "Error during server shutdown", "error", err)
 	}
 
-	logger.Logger.InfoContext(ctx, "Server stopped")
+	logger.Logger.Info("Server stopped")
 }

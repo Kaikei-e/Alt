@@ -254,8 +254,8 @@ func SecureHTTPClientWithConfig(cfg *config.HTTPConfig) *http.Client {
 		},
 		TLSHandshakeTimeout: cfg.TLSHandshakeTimeout,
 		IdleConnTimeout:     cfg.IdleConnTimeout,
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 10,
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 50,
 	}
 
 	return &http.Client{
