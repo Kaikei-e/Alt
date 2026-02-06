@@ -4,6 +4,7 @@ Provides mocks for ML models and NLTK dependencies to enable testing without
 external downloads.
 """
 
+import builtins
 import os
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -154,14 +155,17 @@ has
 had
 """
 
+    _real_open = builtins.open
+
     def mock_open_file(filepath, *args, **kwargs):
-        if "stopwords_ja.txt" in filepath:
+        filepath_str = str(filepath)
+        if "stopwords_ja.txt" in filepath_str:
             return mock_open(read_data=ja_stopwords_content)(*args, **kwargs)
-        elif "stopwords_en.txt" in filepath:
+        elif "stopwords_en.txt" in filepath_str:
             return mock_open(read_data=en_stopwords_content)(*args, **kwargs)
         else:
             # Fallback to original open for other files
-            return open(filepath, *args, **kwargs)
+            return _real_open(filepath, *args, **kwargs)
 
     with patch("builtins.open", side_effect=mock_open_file):
         yield

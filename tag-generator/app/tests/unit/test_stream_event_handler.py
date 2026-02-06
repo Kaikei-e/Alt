@@ -139,6 +139,36 @@ class TestTagGeneratorEventHandler:
         assert "Model inference failed" in event_data["payload"]["error_message"]
 
     @pytest.mark.anyio
+    async def test_handle_tag_generation_requested_invalid_payload(self, handler, mock_service, mock_stream_consumer):
+        """Test that oversized or invalid payloads are rejected with error reply."""
+        event = Event(
+            message_id="msg-1",
+            event_id="evt-1",
+            event_type="TagGenerationRequested",
+            source="mq-hub",
+            created_at=datetime.now(),
+            payload={
+                "article_id": "",  # Empty article_id should fail validation
+                "title": "Title",
+                "content": "Content",
+            },
+            metadata={
+                "correlation_id": "corr-123",
+                "reply_to": "alt:replies:tags:corr-123",
+            },
+        )
+
+        await handler._handle_tag_generation_requested(event)
+
+        # Should publish error reply, not call tag extraction
+        mock_service.tag_extractor.extract_tags_with_metrics.assert_not_called()
+        mock_stream_consumer.publish_reply.assert_called_once()
+        call_args = mock_stream_consumer.publish_reply.call_args
+        event_data = call_args[0][1]
+        assert event_data["payload"]["success"] is False
+        assert "Invalid payload" in event_data["payload"]["error_message"]
+
+    @pytest.mark.anyio
     async def test_handle_event_ignores_unknown_events(self, handler, mock_stream_consumer):
         """Test that unknown events are ignored."""
         event = Event(

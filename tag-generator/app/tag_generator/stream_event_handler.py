@@ -5,7 +5,9 @@ import uuid
 from typing import TYPE_CHECKING
 
 import structlog
+from pydantic import ValidationError
 
+from tag_generator.handler.event_payload import TagGenerationRequestPayload
 from tag_generator.stream_consumer import Event, EventHandler, StreamConsumer
 
 if TYPE_CHECKING:
@@ -85,7 +87,7 @@ class TagGeneratorEventHandler(EventHandler):
         """
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
             self._process_article_sync,
@@ -138,10 +140,31 @@ class TagGeneratorEventHandler(EventHandler):
             )
             return
 
-        article_id = event.payload.get("article_id", "")
-        title = event.payload.get("title", "")
-        content = event.payload.get("content", "")
-        feed_id = event.payload.get("feed_id", "")
+        # Validate payload with size limits
+        try:
+            validated = TagGenerationRequestPayload.model_validate(event.payload)
+        except ValidationError as e:
+            logger.warning(
+                "invalid_tag_generation_payload",
+                event_id=event.event_id,
+                error=str(e),
+            )
+            await self._publish_reply(
+                reply_to,
+                correlation_id,
+                {
+                    "success": False,
+                    "article_id": event.payload.get("article_id", ""),
+                    "error_message": f"Invalid payload: {e}",
+                    "inference_ms": 0,
+                },
+            )
+            return
+
+        article_id = validated.article_id
+        title = validated.title
+        content = validated.content
+        feed_id = validated.feed_id
 
         logger.info(
             "processing_tag_generation_request",
@@ -198,7 +221,7 @@ class TagGeneratorEventHandler(EventHandler):
         """
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def generate_sync() -> tuple[list[dict], float]:
             start = time.perf_counter()

@@ -1040,18 +1040,3 @@ class TagInserter:
         results["updated_higher_confidence"] = updated_higher_confidence  # type: ignore
 
         return results
-
-
-# Maintain backward compatibility - requires feed_id now
-def upsert_tags(conn: Connection, article_id: str, tags: list[str], feed_id: str) -> None:
-    """
-    Legacy function for backward compatibility.
-
-    Args:
-        conn: Database connection
-        article_id: Article UUID as string
-        tags: List of tag names
-        feed_id: Feed UUID as string
-    """
-    inserter = TagInserter()
-    inserter.upsert_tags(conn, article_id, tags, feed_id)

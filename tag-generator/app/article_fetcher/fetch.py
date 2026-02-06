@@ -435,20 +435,3 @@ class ArticleFetcher:
                 threshold=confidence_threshold,
             )
             raise ArticleFetchError("Failed to fetch low-confidence articles") from e
-
-
-# Maintain backward compatibility
-def fetch_articles(conn: Connection, last_created_at: str, last_id: str) -> list[dict[str, Any]]:
-    """
-    Legacy function for backward compatibility.
-
-    Args:
-        conn: Database connection
-        last_created_at: ISO timestamp string for pagination
-        last_id: Article ID string for pagination
-
-    Returns:
-        List of article dictionaries
-    """
-    fetcher = ArticleFetcher()
-    return fetcher.fetch_articles(conn, last_created_at, last_id)

@@ -14,6 +14,7 @@ from tag_generator.cascade import CascadeController
 from tag_generator.config import TagGeneratorConfig
 from tag_generator.cursor_manager import CursorManager
 from tag_generator.database import DatabaseManager
+from tag_generator.domain.models import TagExtractionResult
 from tag_generator.exceptions import TagExtractionError
 from tag_generator.health_monitor import HealthMonitor
 from tag_generator.scheduler import ProcessingScheduler
@@ -82,12 +83,14 @@ class TagGeneratorService:
             logger.error("Tag extraction failed for article", article_id=article_id, error=str(exc))
             return False
 
-        if not outcome.tags:
+        extraction_result = TagExtractionResult.from_outcome(article_id, outcome)
+
+        if extraction_result.is_empty:
             logger.info("No tags extracted for article", article_id=article_id)
             return False
 
         try:
-            result = self.tag_inserter.upsert_tags(conn, article_id, outcome.tags, feed_id)
+            result = self.tag_inserter.upsert_tags(conn, article_id, extraction_result.tag_names, feed_id)
             success = bool(result.get("success"))
             if not success:
                 logger.warning("Tag upsert failed for article", article_id=article_id)

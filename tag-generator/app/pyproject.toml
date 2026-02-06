@@ -25,6 +25,8 @@ dependencies = [
 
     # Database
     "psycopg2-binary>=2.9.0",
+    "psycopg[binary]>=3.2.0",
+    "psycopg-pool>=3.2.0",
 
     # Logging and Data Validation
     "structlog>=25.4.0",
@@ -63,6 +65,10 @@ dev = [
     # Code Quality Tools
     "ruff>=0.12.1",
     "bandit>=1.8.0",
+    "pytest-asyncio>=0.24.0",
+
+    # Property-based testing
+    "hypothesis>=6.100.0",
 
     # Type Checking
     "pyrefly>=0.42.0",
@@ -153,8 +159,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = ["S101", "S603", "S110"]
-"tests/**" = ["S101", "S603", "S110"]
+"test_*.py" = ["S101", "S105", "S603", "S110"]
+"tests/**" = ["S101", "S105", "S603", "S110"]
 "auth_service.py" = [
     "S104",
 ] # Allow binding to all interfaces for development server
