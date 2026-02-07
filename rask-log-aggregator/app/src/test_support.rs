@@ -21,7 +21,14 @@ pub struct MockExporter {
     should_fail: AtomicBool,
 }
 
+impl Default for MockExporter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockExporter {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             exported_logs: Arc::new(Mutex::new(Vec::new())),
@@ -35,6 +42,8 @@ impl MockExporter {
         self.should_fail.store(fail, Ordering::SeqCst);
     }
 
+    /// # Panics
+    /// Panics if the internal mutex is poisoned.
     pub fn get_exported_logs(&self) -> Vec<EnrichedLogEntry> {
         self.exported_logs.lock().unwrap().clone()
     }

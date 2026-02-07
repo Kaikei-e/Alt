@@ -311,12 +311,14 @@ mod tests {
     // Channel behavior tests (no ClickHouse needed)
     // =========================================================================
 
-    fn make_writer() -> (
+    type WriterChannels = (
         BatchWriter,
         mpsc::Receiver<Vec<LogRow>>,
         mpsc::Receiver<Vec<OTelLogRow>>,
         mpsc::Receiver<Vec<OTelTraceRow>>,
-    ) {
+    );
+
+    fn make_writer() -> WriterChannels {
         let (logs_tx, logs_rx) = mpsc::channel(16);
         let (otel_logs_tx, otel_logs_rx) = mpsc::channel(16);
         let (otel_traces_tx, otel_traces_rx) = mpsc::channel(16);

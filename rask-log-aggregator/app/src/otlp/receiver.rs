@@ -321,8 +321,8 @@ mod tests {
                 scope_logs: vec![ScopeLogs {
                     scope: None,
                     log_records: vec![LogRecord {
-                        time_unix_nano: 1700000000000000000,
-                        observed_time_unix_nano: 1700000000000000000,
+                        time_unix_nano: 1_700_000_000_000_000_000,
+                        observed_time_unix_nano: 1_700_000_000_000_000_000,
                         severity_number: 9, // INFO
                         severity_text: "INFO".to_string(),
                         body: Some(AnyValue {
@@ -367,8 +367,8 @@ mod tests {
                 scope_logs: vec![ScopeLogs {
                     scope: None,
                     log_records: vec![LogRecord {
-                        time_unix_nano: 1700000000000000000,
-                        observed_time_unix_nano: 1700000000000000000,
+                        time_unix_nano: 1_700_000_000_000_000_000,
+                        observed_time_unix_nano: 1_700_000_000_000_000_000,
                         severity_number: 9,
                         severity_text: "INFO".to_string(),
                         body: Some(AnyValue {
@@ -488,8 +488,8 @@ mod tests {
                         parent_span_id: vec![],
                         name: "test-span".to_string(),
                         kind: 2, // Server
-                        start_time_unix_nano: 1700000000000000000,
-                        end_time_unix_nano: 1700000001000000000,
+                        start_time_unix_nano: 1_700_000_000_000_000_000,
+                        end_time_unix_nano: 1_700_000_001_000_000_000,
                         attributes: vec![],
                         dropped_attributes_count: 0,
                         events: vec![],
@@ -534,8 +534,8 @@ mod tests {
                         parent_span_id: vec![],
                         name: "test-span".to_string(),
                         kind: 2,
-                        start_time_unix_nano: 1700000000000000000,
-                        end_time_unix_nano: 1700000001000000000,
+                        start_time_unix_nano: 1_700_000_000_000_000_000,
+                        end_time_unix_nano: 1_700_000_001_000_000_000,
                         attributes: vec![],
                         dropped_attributes_count: 0,
                         events: vec![],

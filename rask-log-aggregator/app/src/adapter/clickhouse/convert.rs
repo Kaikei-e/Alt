@@ -140,7 +140,7 @@ mod tests {
             #[test]
             fn string_to_fixed_bytes_pads_with_zeros(s in "[a-z]{0,4}") {
                 let result: [u8; 8] = string_to_fixed_bytes(&s);
-                let input_len = s.as_bytes().len().min(8);
+                let input_len = s.len().min(8);
                 for &b in &result[input_len..] {
                     prop_assert_eq!(b, 0, "trailing bytes must be zero-padded");
                 }
