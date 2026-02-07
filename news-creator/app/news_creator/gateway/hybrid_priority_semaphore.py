@@ -385,6 +385,10 @@ class HybridPrioritySemaphore:
         except asyncio.CancelledError:
             if not future.done():
                 future.cancel()
+            # Purge this (and any other) cancelled futures from queues
+            # so they don't occupy queue slots or get popped by release()
+            async with self._lock:
+                self._purge_cancelled_from_queues()
             raise
 
     def release(self, was_high_priority: bool = False) -> None:
@@ -470,6 +474,33 @@ class HybridPrioritySemaphore:
             else:
                 self._be_available = min(self._be_available + 1, self._be_slots)
 
+    def _purge_cancelled_from_queues(self) -> None:
+        """Remove cancelled/done futures from both queues.
+
+        Called when a waiting request is cancelled (e.g. HTTP client disconnect)
+        to prevent stale entries from occupying queue slots.
+        """
+        purged = 0
+        for _, queue in [("rt", self._rt_queue), ("be", self._be_queue)]:
+            original_len = len(queue)
+            live = [r for r in queue if not r.future.done() and not r.future.cancelled()]
+            removed = original_len - len(live)
+            if removed > 0:
+                purged += removed
+                queue.clear()
+                for r in live:
+                    heapq.heappush(queue, r)
+
+        if purged > 0:
+            logger.info(
+                "Purged cancelled/done requests from queues",
+                extra={
+                    "purged_count": purged,
+                    "rt_queue_size": len(self._rt_queue),
+                    "be_queue_size": len(self._be_queue),
+                },
+            )
+
     def _apply_aging(self) -> None:
         """Recompute BE queue priorities with aging and handle promotions.
 
@@ -483,8 +514,14 @@ class HybridPrioritySemaphore:
         current_time = time.monotonic()
         new_be_queue: list[QueuedRequest] = []
         promoted_count = 0
+        purged_count = 0
 
         for request in self._be_queue:
+            # Skip cancelled/done requests (client disconnected while queued)
+            if request.future.done() or request.future.cancelled():
+                purged_count += 1
+                continue
+
             wait_time = current_time - request.enqueue_time
             new_score = self._compute_priority_score(False, request.enqueue_time)
 
@@ -517,6 +554,12 @@ class HybridPrioritySemaphore:
                 heapq.heappush(new_be_queue, request)
 
         self._be_queue = new_be_queue
+
+        if purged_count > 0:
+            logger.info(
+                "Purged cancelled/done requests during aging",
+                extra={"purged_count": purged_count},
+            )
 
         if promoted_count > 0:
             logger.info(

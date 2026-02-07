@@ -119,13 +119,18 @@ class RecapSummaryUsecase:
             extra={"request_count": len(batch_request.requests)},
         )
 
-        # Create tasks for parallel execution
-        tasks = [
-            self._generate_summary_with_error_handling(req)
-            for req in batch_request.requests
-        ]
+        # Throttle parallel execution to avoid saturating the LLM queue
+        batch_semaphore = asyncio.Semaphore(
+            min(3, self.config.ollama_request_concurrency)
+        )
 
-        # Execute all requests in parallel
+        async def throttled_request(req: RecapSummaryRequest):
+            async with batch_semaphore:
+                return await self._generate_summary_with_error_handling(req)
+
+        tasks = [throttled_request(req) for req in batch_request.requests]
+
+        # Execute with concurrency limited by semaphore
         results = await asyncio.gather(*tasks, return_exceptions=False)
 
         # Separate successful responses from errors
@@ -283,21 +288,28 @@ class RecapSummaryUsecase:
             },
         )
 
-        # Create tasks for parallel execution of map phase
+        # Throttle map phase concurrency to prevent queue saturation
+        map_semaphore = asyncio.Semaphore(
+            min(3, self.config.ollama_request_concurrency)
+        )
+
+        async def throttled_chunk_summary(chunk_idx, chunk_clusters):
+            async with map_semaphore:
+                return await self._generate_chunk_summary(
+                    request=request,
+                    chunk_idx=chunk_idx,
+                    chunk_clusters=chunk_clusters,
+                    json_schema=json_schema_intermediate,
+                    llm_options=llm_options,
+                    total_chunks=len(chunks),
+                )
+
         map_tasks = [
-            self._generate_chunk_summary(
-                request=request,
-                chunk_idx=chunk_idx,
-                chunk_clusters=chunk_clusters,
-                json_schema=json_schema_intermediate,
-                llm_options=llm_options,
-                total_chunks=len(chunks),
-            )
+            throttled_chunk_summary(chunk_idx, chunk_clusters)
             for chunk_idx, chunk_clusters in enumerate(chunks)
         ]
 
-        # Execute all map tasks in parallel
-        # Note: FIFO semaphore in OllamaGateway controls actual LLM concurrency
+        # Execute map tasks with concurrency limited by semaphore
         map_results = await asyncio.gather(*map_tasks, return_exceptions=False)
 
         # Collect successful intermediate summaries

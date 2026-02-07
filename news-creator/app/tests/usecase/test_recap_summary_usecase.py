@@ -193,6 +193,7 @@ def _create_mock_config():
     config.hierarchical_threshold_chars = 100000
     config.hierarchical_threshold_clusters = 50
     config.hierarchical_chunk_max_chars = 20000
+    config.ollama_request_concurrency = 2
     return config
 
 
@@ -477,6 +478,7 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
     config.hierarchical_threshold_clusters = 3
     config.hierarchical_chunk_max_chars = 500
     config.hierarchical_chunk_overlap_ratio = 0.15
+    config.ollama_request_concurrency = 2
     # Recursive reduce settings
     config.recursive_reduce_max_chars = 500  # Small for testing
     config.recursive_reduce_max_depth = 3
@@ -558,6 +560,7 @@ async def test_recursive_reduce_respects_max_depth():
     config.hierarchical_threshold_clusters = 2
     config.hierarchical_chunk_max_chars = 300
     config.hierarchical_chunk_overlap_ratio = 0.15
+    config.ollama_request_concurrency = 2
     config.recursive_reduce_max_chars = 50  # Very small to force recursion
     config.recursive_reduce_max_depth = 2  # Limited depth
 
@@ -614,6 +617,7 @@ async def test_small_intermediate_summaries_skip_recursive_reduce():
     config.hierarchical_threshold_clusters = 2
     config.hierarchical_chunk_max_chars = 2000
     config.hierarchical_chunk_overlap_ratio = 0.15
+    config.ollama_request_concurrency = 2
     config.recursive_reduce_max_chars = 10000  # Large enough to skip recursion
     config.recursive_reduce_max_depth = 3
 

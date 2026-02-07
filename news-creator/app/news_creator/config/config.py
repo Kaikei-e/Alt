@@ -150,9 +150,10 @@ class NewsCreatorConfig:
 
         # Priority promotion settings (BE -> RT after long wait)
         # After this threshold, BE requests are promoted to RT queue to prevent starvation
-        # Default: 10 minutes (600 seconds) - ensures batch requests complete before timeout
+        # Default: 120 seconds - must be well below backend timeout (300s) to allow
+        # promoted requests time to complete before upstream cancellation
         self.scheduling_priority_promotion_threshold_seconds = self._get_float(
-            "SCHEDULING_PRIORITY_PROMOTION_THRESHOLD_SECONDS", 600.0
+            "SCHEDULING_PRIORITY_PROMOTION_THRESHOLD_SECONDS", 120.0
         )
 
         # Guaranteed bandwidth settings (anti-starvation for BE requests)
@@ -165,8 +166,8 @@ class NewsCreatorConfig:
 
         # Queue depth limit (backpressure)
         # When set > 0, reject new requests with QueueFullError when queue exceeds this depth
-        # Default: 20 (prevents unbounded memory growth from queued requests)
-        self.max_queue_depth = self._get_int("MAX_QUEUE_DEPTH", 20)
+        # Default: 10 (fail-fast to prevent long queue waits with limited GPU slots)
+        self.max_queue_depth = self._get_int("MAX_QUEUE_DEPTH", 10)
 
         # Build bucket model names set for quick lookup
         self._bucket_model_names = {

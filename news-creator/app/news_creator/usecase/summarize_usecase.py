@@ -233,6 +233,7 @@ class SummarizeUsecase:
         attempt = 0
         raw_summary = ""
         llm_response = None
+        consecutive_empty_count = 0
 
         is_high_priority = priority == "high"
 
@@ -294,6 +295,7 @@ class SummarizeUsecase:
                 # LLM sometimes returns only whitespace (e.g., 60 spaces), which becomes empty after cleaning
                 raw_text_stripped = raw_summary.strip() if raw_summary else ""
                 if len(raw_text_stripped) < 10:
+                    consecutive_empty_count += 1
                     logger.warning(
                         "LLM returned insufficient content (empty or whitespace-only)",
                         extra={
@@ -302,8 +304,16 @@ class SummarizeUsecase:
                             "raw_length": len(raw_summary) if raw_summary else 0,
                             "stripped_length": len(raw_text_stripped),
                             "raw_preview": repr(raw_summary[:100]) if raw_summary else "None",
+                            "consecutive_empty_count": consecutive_empty_count,
                         }
                     )
+                    # Bail early on consecutive empty responses to release the slot
+                    if consecutive_empty_count >= 2:
+                        raise RuntimeError(
+                            f"LLM returned empty/whitespace summary {consecutive_empty_count} "
+                            f"times consecutively for article {article_id}. "
+                            f"Model may be in a bad state."
+                        )
                     if attempt < max_retries:
                         last_error = f"LLM returned insufficient content (length: {len(raw_text_stripped)})"
                         last_metadata = {
@@ -313,6 +323,8 @@ class SummarizeUsecase:
                             "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
                         }
                         continue  # Retry with adjusted temperature
+                else:
+                    consecutive_empty_count = 0  # Reset on non-empty response
 
                 # Check for repetition
                 has_repetition, rep_score, rep_patterns = detect_repetition(
