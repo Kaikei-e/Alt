@@ -102,8 +102,11 @@ services:
       - RUSTBERT_CACHE=/tmp/rustbert
       # Clustering timeout: relax stuck detection from 600s to 1200s for large genres
       - RECAP_CLUSTERING_STUCK_THRESHOLD_SECS=${RECAP_CLUSTERING_STUCK_THRESHOLD_SECS:-1200}
-      # Batch summary chunk size: reduced from 25 to 10 to prevent timeout with slow LLM
-      - RECAP_BATCH_SUMMARY_CHUNK_SIZE=${RECAP_BATCH_SUMMARY_CHUNK_SIZE:-10}
+      # Batch summary chunk size: reduced to 3 to prevent batch HTTP timeout
+      # (10 genres × hierarchical Map-Reduce exceeded 1800s timeout)
+      - RECAP_BATCH_SUMMARY_CHUNK_SIZE=${RECAP_BATCH_SUMMARY_CHUNK_SIZE:-3}
+      # Per-genre LLM summary timeout (hierarchical Map-Reduce needs sufficient margin)
+      - LLM_SUMMARY_TIMEOUT_SECS=${LLM_SUMMARY_TIMEOUT_SECS:-900}
       # Evening Pulse configuration
       - PULSE_ENABLED=true
       - PULSE_ROLLOUT_PERCENT=100
