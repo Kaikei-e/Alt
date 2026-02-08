@@ -210,8 +210,10 @@ impl NewsCreatorClient {
 
         let batch_request = BatchSummaryRequest { requests };
 
-        // バッチリクエストには長めのタイムアウトを設定
-        let batch_timeout = self.summary_timeout * 3;
+        // 各ジャンルは階層Map-Reduceで複数LLM呼び出しが発生するため
+        // ジャンル数に基づいてタイムアウトを動的に計算
+        let per_genre_timeout = self.summary_timeout;
+        let batch_timeout = per_genre_timeout * std::cmp::max(3, request_count as u32);
 
         let response = self
             .client
@@ -655,6 +657,25 @@ mod tests_batch {
         assert_eq!(response.errors.len(), 0);
         assert_eq!(response.responses[0].genre, "tech");
         assert_eq!(response.responses[1].genre, "politics");
+    }
+
+    #[test]
+    fn batch_timeout_scales_with_request_count() {
+        let client = NewsCreatorClient::new_for_test("http://localhost");
+        let base_timeout = client.summary_timeout; // 60s in test
+
+        // With fewer requests than 3, minimum multiplier of 3 applies
+        let request_count_small = 2usize;
+        let timeout_small = base_timeout * std::cmp::max(3, request_count_small as u32);
+        assert_eq!(timeout_small, base_timeout * 3, "small request count should use minimum multiplier of 3");
+
+        // With more requests, timeout scales with request count
+        let request_count_large = 7usize;
+        let timeout_large = base_timeout * std::cmp::max(3, request_count_large as u32);
+        assert_eq!(timeout_large, base_timeout * 7, "large request count should scale linearly");
+
+        // Verify large > small
+        assert!(timeout_large > timeout_small, "more requests should yield larger timeout");
     }
 
     #[tokio::test]

@@ -35,14 +35,15 @@ impl<'a> SummaryRequestBuilder<'a> {
             (Option<chrono::DateTime<chrono::Utc>>, Option<String>),
         >,
     ) -> SummaryRequest {
-        // 総トークン予算 (60,000トークン)
-        const TOTAL_TOKEN_BUDGET: usize = 60_000;
+        // news-creator は MAX_CLUSTER_SECTION_LENGTH=12,000 chars (~3K tokens) で切り捨てるため
+        // 60K トークンを送信しても大部分が破棄される → 事前に削減して処理効率向上
+        const TOTAL_TOKEN_BUDGET: usize = 12_000;
         // 1クラスタあたりの最小トークン数 (ヘッダーなどを考慮)
         const MIN_CLUSTER_BUDGET: usize = 200;
-        // クラスタ数の上限 (40件)
-        const MAX_CLUSTERS: usize = 40;
+        // クラスタ数の上限 (15件) - 階層Map-Reduce発動率を下げてタイムアウトリスクを軽減
+        const MAX_CLUSTERS: usize = 15;
 
-        // クラスタをsize（記事数）の降順でソートし、上位40件のみを抽出
+        // クラスタをsize（記事数）の降順でソートし、上位MAX_CLUSTERS件のみを抽出
         let mut sorted_clusters: Vec<_> = clustering
             .clusters
             .iter()
@@ -52,7 +53,7 @@ impl<'a> SummaryRequestBuilder<'a> {
         // size（記事数）の降順でソート
         sorted_clusters.sort_by(|a, b| b.size.cmp(&a.size));
 
-        // 上位40件に制限
+        // 上位MAX_CLUSTERS件に制限
         let target_clusters: Vec<_> = sorted_clusters.into_iter().take(MAX_CLUSTERS).collect();
 
         // 予算配分のためのスコア計算 (size^0.8)
@@ -182,7 +183,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn build_summary_request_limits_clusters_to_40() {
+    fn build_summary_request_limits_clusters_to_15() {
         let job_id = Uuid::new_v4();
         let mut clusters = Vec::new();
 
@@ -223,11 +224,11 @@ mod tests {
         let request =
             builder.build_summary_request(job_id, &clustering_response, 5, &article_metadata);
 
-        // クラスタ数が40件に制限されていることを確認
+        // クラスタ数が15件に制限されていることを確認
         assert_eq!(
             request.clusters.len(),
-            40,
-            "clusters should be limited to 40"
+            15,
+            "clusters should be limited to 15"
         );
 
         // クラスタがsizeの降順でソートされていることを確認
