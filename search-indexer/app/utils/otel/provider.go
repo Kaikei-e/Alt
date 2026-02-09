@@ -166,7 +166,7 @@ func initLoggerProvider(ctx context.Context, cfg Config, res *resource.Resource)
 
 func initMeterProvider(ctx context.Context, cfg Config, res *resource.Resource) (*sdkmetric.MeterProvider, error) {
 	exporter, err := otlpmetrichttp.New(ctx,
-		otlpmetrichttp.WithEndpoint(cfg.OTLPEndpoint),
+		otlpmetrichttp.WithEndpointURL(cfg.OTLPEndpoint+"/v1/metrics"),
 		otlpmetrichttp.WithInsecure(),
 	)
 	if err != nil {
