@@ -37,6 +37,21 @@ log_success() {
 check_requirements() {
     local require_db="${1:-true}"
 
+    # Construct DATABASE_URL if not provided but components are available
+    if [ -z "$DATABASE_URL" ] && [ -n "${DB_HOST:-}" ]; then
+        log_info "Constructing DATABASE_URL from environment variables..."
+        DB_USER="${DB_USER:-postgres}"
+        DB_NAME="${DB_NAME:-postgres}"
+        DB_PORT="${DB_PORT:-5432}"
+        if [ -n "${DB_PASSWORD_FILE:-}" ] && [ -f "$DB_PASSWORD_FILE" ]; then
+            DB_PASSWORD=$(cat "$DB_PASSWORD_FILE")
+        else
+            DB_PASSWORD="${DB_PASSWORD:-}"
+        fi
+        DATABASE_URL="postgres://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=disable&search_path=public"
+        export DATABASE_URL
+    fi
+
     if [ "$require_db" = "true" ] && [ -z "$DATABASE_URL" ]; then
         log_error "DATABASE_URL environment variable is required"
         exit 1
