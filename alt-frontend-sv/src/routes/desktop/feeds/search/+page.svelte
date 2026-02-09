@@ -2,6 +2,7 @@
 import { Search, Loader2 } from "@lucide/svelte";
 import { searchFeedsClient } from "$lib/api/client/feeds";
 import { type RenderFeed, sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
+import { infiniteScroll } from "$lib/actions/infinite-scroll";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
@@ -13,16 +14,23 @@ let isModalOpen = $state(false);
 let searchQuery = $state("");
 let lastSearchedQuery = $state("");
 
-// Simple state for search
+// Search state
 let feeds = $state<RenderFeed[]>([]);
 let isLoading = $state(false);
 let error = $state<Error | null>(null);
+
+// Pagination state
+let cursor = $state<number | null>(null);
+let hasMore = $state(false);
+let isLoadingMore = $state(false);
 
 async function handleSearch() {
 	if (!searchQuery.trim()) {
 		feeds = [];
 		error = null;
 		lastSearchedQuery = "";
+		cursor = null;
+		hasMore = false;
 		return;
 	}
 
@@ -30,12 +38,14 @@ async function handleSearch() {
 		isLoading = true;
 		error = null;
 		lastSearchedQuery = searchQuery.trim();
-		const result = await searchFeedsClient(searchQuery.trim(), undefined, 50);
+		const result = await searchFeedsClient(searchQuery.trim(), undefined, 20);
 
 		// Check for API error (following mobile pattern)
 		if (result.error) {
 			error = new Error(result.error);
 			feeds = [];
+			cursor = null;
+			hasMore = false;
 			isLoading = false;
 			return;
 		}
@@ -44,11 +54,36 @@ async function handleSearch() {
 		feeds = rawResults.map((item) =>
 			toRenderFeed(sanitizeFeed(item), item.tags),
 		);
+		cursor = result.next_cursor ?? null;
+		hasMore = result.has_more ?? false;
 	} catch (err) {
 		error = err as Error;
 		feeds = [];
+		cursor = null;
+		hasMore = false;
 	} finally {
 		isLoading = false;
+	}
+}
+
+async function loadMore() {
+	if (isLoadingMore || !hasMore) return;
+	isLoadingMore = true;
+	try {
+		const result = await searchFeedsClient(
+			lastSearchedQuery,
+			cursor ?? undefined,
+			20,
+		);
+		if (result.error) return;
+		const newFeeds = (result.results ?? []).map((item) =>
+			toRenderFeed(sanitizeFeed(item), item.tags),
+		);
+		feeds = [...feeds, ...newFeeds];
+		cursor = result.next_cursor ?? null;
+		hasMore = result.has_more ?? false;
+	} finally {
+		isLoadingMore = false;
 	}
 }
 
@@ -63,7 +98,10 @@ function handleKeyDown(event: KeyboardEvent) {
 let currentIndex = $state(-1);
 
 const hasPrevious = $derived(currentIndex > 0);
-const hasNext = $derived(currentIndex >= 0 && currentIndex < feeds.length - 1);
+const hasNextFeed = $derived(
+	(currentIndex >= 0 && currentIndex < feeds.length - 1) ||
+		(currentIndex === feeds.length - 1 && hasMore),
+);
 
 function handleSelectFeed(feed: RenderFeed, index: number) {
 	selectedFeed = feed;
@@ -78,10 +116,16 @@ function handlePrevious() {
 	}
 }
 
-function handleNext() {
+async function handleNext() {
 	if (currentIndex >= 0 && currentIndex < feeds.length - 1) {
 		selectedFeed = feeds[currentIndex + 1];
 		currentIndex = currentIndex + 1;
+	} else if (hasMore && !isLoadingMore) {
+		await loadMore();
+		if (currentIndex < feeds.length - 1) {
+			selectedFeed = feeds[currentIndex + 1];
+			currentIndex = currentIndex + 1;
+		}
 	}
 }
 </script>
@@ -149,7 +193,8 @@ function handleNext() {
 	{:else}
 		<div class="mb-4">
 			<p class="text-sm text-[var(--text-secondary)]">
-				Found {feeds.length} result{feeds.length === 1 ? "" : "s"} for "{lastSearchedQuery}"
+				{feeds.length} result{feeds.length === 1 ? "" : "s"} for "{lastSearchedQuery}"
+				{#if hasMore}<span class="text-[var(--text-muted)]">(scroll for more)</span>{/if}
 			</p>
 		</div>
 		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
@@ -157,6 +202,27 @@ function handleNext() {
 				<DesktopFeedCard {feed} onSelect={(f) => handleSelectFeed(f, index)} />
 			{/each}
 		</div>
+
+		{#if isLoadingMore}
+			<div class="flex items-center justify-center py-6">
+				<Loader2 class="h-6 w-6 animate-spin text-[var(--accent-primary)]" />
+				<span class="ml-2 text-sm text-[var(--text-secondary)]">Loading more...</span>
+			</div>
+		{/if}
+
+		{#if !hasMore && feeds.length > 0}
+			<p class="text-center text-sm py-4 text-[var(--text-secondary)]">
+				No more results
+			</p>
+		{/if}
+
+		{#if hasMore}
+			<div
+				use:infiniteScroll={{ callback: loadMore, disabled: isLoadingMore }}
+				aria-hidden="true"
+				style="height: 50px; min-height: 50px; width: 100%;"
+			></div>
+		{/if}
 	{/if}
 </div>
 
@@ -165,7 +231,7 @@ function handleNext() {
 	feed={selectedFeed}
 	onOpenChange={(open) => (isModalOpen = open)}
 	{hasPrevious}
-	{hasNext}
+	hasNext={hasNextFeed}
 	onPrevious={handlePrevious}
 	onNext={handleNext}
 	{feeds}
