@@ -164,6 +164,8 @@ services:
     depends_on:
       mq-hub:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       - CONNECT_PORT=9101
       - DB_HOST=db
@@ -238,5 +240,8 @@ services:
       - postgres_password
     volumes:
       - ../migrations-atlas/migrations:/migrations:ro
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - alt-network
