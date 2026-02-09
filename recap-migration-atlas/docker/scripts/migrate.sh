@@ -32,6 +32,22 @@ log_success() {
 check_requirements() {
     local require_db="${1:-true}"
 
+    # Construct DATABASE_URL if not provided but components are available
+    if [ -z "$DATABASE_URL" ] && [ -n "${RECAP_DB_HOST:-}" ]; then
+        log_info "Constructing DATABASE_URL from environment variables..."
+        local user="${RECAP_DB_USER:-postgres}"
+        local name="${RECAP_DB_NAME:-postgres}"
+        local port="${RECAP_DB_PORT:-5432}"
+        local password=""
+        if [ -n "${RECAP_DB_PASSWORD_FILE:-}" ] && [ -f "$RECAP_DB_PASSWORD_FILE" ]; then
+            password=$(cat "$RECAP_DB_PASSWORD_FILE")
+        else
+            password="${RECAP_DB_PASSWORD:-}"
+        fi
+        DATABASE_URL="postgres://$user:$password@$RECAP_DB_HOST:$port/$name?sslmode=disable&search_path=public"
+        export DATABASE_URL
+    fi
+
     if [ "$require_db" = "true" ] && [ -z "$DATABASE_URL" ]; then
         log_error "DATABASE_URL environment variable is required"
         exit 1
