@@ -74,9 +74,8 @@ type StreamMeta struct {
 type FallbackCategory string
 
 const (
-	FallbackRetrievalEmpty  FallbackCategory = "retrieval_empty"
+	FallbackRetrievalEmpty   FallbackCategory = "retrieval_empty"
 	FallbackGenerationFailed FallbackCategory = "generation_failed"
 	FallbackValidationFailed FallbackCategory = "validation_failed"
-	FallbackLLMFallback     FallbackCategory = "llm_fallback"
+	FallbackLLMFallback      FallbackCategory = "llm_fallback"
 )
-

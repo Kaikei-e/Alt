@@ -38,8 +38,8 @@ type ApplicationComponents struct {
 	IndexUsecaseFactory rag_http.IndexUsecaseFactory
 
 	// Adapters exposed for handler wiring
-	ArticleClient domain.ArticleClient
-	EmbeddingModel string
+	ArticleClient   domain.ArticleClient
+	EmbeddingModel  string
 	EmbedderTimeout int
 }
 
@@ -157,18 +157,18 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	jobWorker := worker.NewJobWorker(jobRepo, indexUsecase, log)
 
 	return &ApplicationComponents{
-		ChunkRepo:           chunkRepo,
-		DocRepo:             docRepo,
-		JobRepo:             jobRepo,
-		IndexUsecase:        indexUsecase,
-		RetrieveUsecase:     retrieveUsecase,
-		AnswerUsecase:       answerUsecase,
+		ChunkRepo:            chunkRepo,
+		DocRepo:              docRepo,
+		JobRepo:              jobRepo,
+		IndexUsecase:         indexUsecase,
+		RetrieveUsecase:      retrieveUsecase,
+		AnswerUsecase:        answerUsecase,
 		MorningLetterUsecase: morningLetterUsecase,
-		Worker:              jobWorker,
-		EmbedderFactory:     embedderFactory,
-		IndexUsecaseFactory: indexUsecaseFactory,
-		ArticleClient:       articleClient,
-		EmbeddingModel:      cfg.Embedder.Model,
-		EmbedderTimeout:     cfg.Embedder.Timeout,
+		Worker:               jobWorker,
+		EmbedderFactory:      embedderFactory,
+		IndexUsecaseFactory:  indexUsecaseFactory,
+		ArticleClient:        articleClient,
+		EmbeddingModel:       cfg.Embedder.Model,
+		EmbedderTimeout:      cfg.Embedder.Timeout,
 	}
 }

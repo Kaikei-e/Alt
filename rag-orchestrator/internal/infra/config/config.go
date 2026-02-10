@@ -117,16 +117,16 @@ type QueryExpansionConfig struct {
 
 // RAGConfig holds RAG retrieval parameters.
 type RAGConfig struct {
-	SearchLimit   int
-	QuotaOriginal int
-	QuotaExpanded int
-	RRFK          float64
-	MaxChunks     int
-	MaxTokens     int
-	MorningLetterMaxTokens int
-	MaxPromptTokens int
-	Locale        string
-	PromptVersion string
+	SearchLimit                      int
+	QuotaOriginal                    int
+	QuotaExpanded                    int
+	RRFK                             float64
+	MaxChunks                        int
+	MaxTokens                        int
+	MorningLetterMaxTokens           int
+	MaxPromptTokens                  int
+	Locale                           string
+	PromptVersion                    string
 	DynamicLanguageAllocationEnabled bool
 }
 
@@ -217,16 +217,16 @@ func Load() *Config {
 			Timeout: getEnvInt("QUERY_EXPANSION_TIMEOUT", 3),
 		},
 		RAG: RAGConfig{
-			SearchLimit:   getEnvInt("RAG_SEARCH_LIMIT", defaultRAGSearchLimit),
-			QuotaOriginal: getEnvInt("RAG_QUOTA_ORIGINAL", defaultRAGQuotaOriginal),
-			QuotaExpanded: getEnvInt("RAG_QUOTA_EXPANDED", defaultRAGQuotaExpanded),
-			RRFK:          getEnvFloat64("RAG_RRF_K", defaultRAGRRFK),
-			MaxChunks:     getEnvInt("RAG_DEFAULT_MAX_CHUNKS", 7),
-			MaxTokens:     getEnvInt("RAG_DEFAULT_MAX_TOKENS", 6144),
-			MorningLetterMaxTokens: getEnvInt("MORNING_LETTER_MAX_TOKENS", 4096),
-			MaxPromptTokens: getEnvInt("RAG_MAX_PROMPT_TOKENS", 6000),
-			Locale:        getEnv("RAG_DEFAULT_LOCALE", "ja"),
-			PromptVersion: getEnv("RAG_PROMPT_VERSION", "alpha-v1"),
+			SearchLimit:                      getEnvInt("RAG_SEARCH_LIMIT", defaultRAGSearchLimit),
+			QuotaOriginal:                    getEnvInt("RAG_QUOTA_ORIGINAL", defaultRAGQuotaOriginal),
+			QuotaExpanded:                    getEnvInt("RAG_QUOTA_EXPANDED", defaultRAGQuotaExpanded),
+			RRFK:                             getEnvFloat64("RAG_RRF_K", defaultRAGRRFK),
+			MaxChunks:                        getEnvInt("RAG_DEFAULT_MAX_CHUNKS", 7),
+			MaxTokens:                        getEnvInt("RAG_DEFAULT_MAX_TOKENS", 6144),
+			MorningLetterMaxTokens:           getEnvInt("MORNING_LETTER_MAX_TOKENS", 4096),
+			MaxPromptTokens:                  getEnvInt("RAG_MAX_PROMPT_TOKENS", 6000),
+			Locale:                           getEnv("RAG_DEFAULT_LOCALE", "ja"),
+			PromptVersion:                    getEnv("RAG_PROMPT_VERSION", "alpha-v1"),
 			DynamicLanguageAllocationEnabled: getEnvBool("RAG_DYNAMIC_LANGUAGE_ALLOCATION", defaultDynamicLanguageAllocationEnabled),
 		},
 		Rerank: RerankConfig{
