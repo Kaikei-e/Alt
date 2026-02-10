@@ -41,7 +41,7 @@ export class DesktopAugurPage extends BasePage {
 	}
 
 	get url(): string {
-		return "./desktop/augur";
+		return "./augur";
 	}
 
 	/**

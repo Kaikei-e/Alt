@@ -231,7 +231,7 @@ test.describe("Mobile Pages Accessibility", () => {
 				fulfillJson(route, MOCK_STATS),
 			);
 
-			await gotoMobileRoute(page, "feeds/stats");
+			await page.goto("./stats");
 			await page.waitForLoadState("domcontentloaded");
 			// Wait for page heading or content
 			await expect(page.getByRole("heading").first()).toBeVisible();

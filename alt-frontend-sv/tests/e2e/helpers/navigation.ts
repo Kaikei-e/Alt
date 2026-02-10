@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
-const MOBILE_ROOT = process.env.MOBILE_BASE_PATH ?? "./mobile";
-const DESKTOP_ROOT = process.env.DESKTOP_BASE_PATH ?? "./desktop";
+const MOBILE_ROOT = process.env.MOBILE_BASE_PATH ?? ".";
+const DESKTOP_ROOT = process.env.DESKTOP_BASE_PATH ?? ".";
 const AUTH_ROOT = process.env.AUTH_BASE_PATH ?? ".";
 
 /**

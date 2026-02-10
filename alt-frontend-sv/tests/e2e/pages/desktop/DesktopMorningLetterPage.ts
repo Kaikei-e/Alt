@@ -50,7 +50,7 @@ export class DesktopMorningLetterPage extends BasePage {
 	}
 
 	get url(): string {
-		return "./desktop/recap/morning-letter";
+		return "./recap/morning-letter";
 	}
 
 	/**

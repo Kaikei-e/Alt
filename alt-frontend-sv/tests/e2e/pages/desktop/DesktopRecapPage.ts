@@ -35,7 +35,7 @@ export class DesktopRecapPage extends BasePage {
 	}
 
 	get url(): string {
-		return "./desktop/recap";
+		return "./recap";
 	}
 
 	/**

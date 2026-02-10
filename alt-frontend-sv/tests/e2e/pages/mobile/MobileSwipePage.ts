@@ -42,7 +42,7 @@ export class MobileSwipePage extends BasePage {
 	}
 
 	get url(): string {
-		return "mobile/feeds/swipe";
+		return "feeds/swipe";
 	}
 
 	/**

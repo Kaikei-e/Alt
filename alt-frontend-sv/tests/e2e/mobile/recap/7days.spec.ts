@@ -22,7 +22,7 @@ test.describe("Mobile Recap 7-Days", () => {
 			await fulfillJson(route, CONNECT_RECAP_RESPONSE);
 		});
 
-		await gotoMobileRoute(page, "recap/7days");
+		await page.goto("./recap?window=7");
 
 		// Loading skeleton should be visible
 		const skeleton = page.getByTestId("recap-skeleton-container");
@@ -30,7 +30,7 @@ test.describe("Mobile Recap 7-Days", () => {
 	});
 
 	test("displays recap content after loading", async ({ page }) => {
-		await gotoMobileRoute(page, "recap/7days");
+		await page.goto("./recap?window=7");
 
 		// Wait for loading to complete
 		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
@@ -47,7 +47,7 @@ test.describe("Mobile Recap 7-Days", () => {
 			fulfillJson(route, CONNECT_RECAP_EMPTY_RESPONSE),
 		);
 
-		await gotoMobileRoute(page, "recap/7days");
+		await page.goto("./recap?window=7");
 
 		// Wait for loading to complete
 		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
@@ -63,7 +63,7 @@ test.describe("Mobile Recap 7-Days", () => {
 			fulfillError(route, "Server error", 500),
 		);
 
-		await gotoMobileRoute(page, "recap/7days");
+		await page.goto("./recap?window=7");
 
 		// Wait for loading to complete
 		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
@@ -79,7 +79,7 @@ test.describe("Mobile Recap 7-Days", () => {
 			fulfillError(route, "Server error", 500),
 		);
 
-		await gotoMobileRoute(page, "recap/7days");
+		await page.goto("./recap?window=7");
 
 		// Wait for loading to complete
 		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
@@ -105,7 +105,7 @@ test.describe("Mobile Recap 7-Days", () => {
 			}
 		});
 
-		await gotoMobileRoute(page, "recap/7days");
+		await page.goto("./recap?window=7");
 
 		// Wait for error state
 		await expect(page.getByText("Error loading recap")).toBeVisible({
@@ -123,7 +123,7 @@ test.describe("Mobile Recap 7-Days", () => {
 	});
 
 	test("has floating menu", async ({ page }) => {
-		await gotoMobileRoute(page, "recap/7days");
+		await page.goto("./recap?window=7");
 
 		// Wait for page to load
 		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
@@ -153,9 +153,9 @@ test.describe("Mobile Recap 7-Days - Navigation", () => {
 		await gotoMobileRoute(page, "feeds");
 
 		// Navigate to recap (through floating menu or navigation)
-		await page.goto("./mobile/recap/7days");
+		await page.goto("./recap?window=7");
 
 		// Should be on recap page
-		await expect(page).toHaveURL(/\/mobile\/recap\/7days/);
+		await expect(page).toHaveURL(/\/recap/);
 	});
 });

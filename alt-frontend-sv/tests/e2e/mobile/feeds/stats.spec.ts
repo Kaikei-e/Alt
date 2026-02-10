@@ -1,5 +1,4 @@
 import { expect, type Route, test } from "@playwright/test";
-import { gotoMobileRoute } from "../../helpers/navigation";
 
 // Connect-RPC response format (camelCase)
 const CONNECT_STATS_RESPONSE = {
@@ -85,7 +84,7 @@ test.describe("mobile feeds routes - stats", () => {
 			(route) => fulfillJson(route, CONNECT_UNREAD_RESPONSE),
 		);
 
-		await gotoMobileRoute(page, "feeds/stats");
+		await page.goto("./stats");
 
 		// Wait for page to load - check for either stats content, loading state, or error state
 		const pageTitle = page.getByRole("heading", { name: /statistics/i });

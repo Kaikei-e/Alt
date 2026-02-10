@@ -78,7 +78,7 @@ export class DesktopFeedsPage extends BasePage {
 	}
 
 	get url(): string {
-		return "./desktop/feeds";
+		return "./feeds";
 	}
 
 	/**
