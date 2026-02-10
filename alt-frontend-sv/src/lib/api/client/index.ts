@@ -30,6 +30,9 @@ export {
 	getReadFeedsWithCursorClient,
 	searchFeedsClient,
 	updateFeedReadStatusClient,
+	listSubscriptionsClient,
+	subscribeClient,
+	unsubscribeClient,
 } from "./feeds";
 // NOTE: Recap API migrated to Connect-RPC (see $lib/connect/recap.ts)
 // Tag Trail関連のAPI

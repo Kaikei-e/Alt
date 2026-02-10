@@ -7,6 +7,7 @@ export type Feed = {
 	created_at?: string;
 	author?: string;
 	articleId?: string;
+	isRead?: boolean;
 };
 
 export type SanitizedFeed = {

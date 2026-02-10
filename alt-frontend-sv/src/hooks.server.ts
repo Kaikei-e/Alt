@@ -16,9 +16,52 @@ const resolveOptions = {
 	filterSerializedResponseHeaders: (name: string) => name === "content-type",
 };
 
+// Redirect map: old path-based routes -> unified responsive routes
+const RESPONSIVE_REDIRECTS: Record<string, string> = {
+	// Phase 1 (completed)
+	"/sv/desktop/feeds": "/sv/feeds",
+	"/sv/mobile/feeds": "/sv/feeds",
+	// Batch A
+	"/sv/desktop/augur": "/sv/augur",
+	"/sv/mobile/retrieve/ask-augur": "/sv/augur",
+	"/sv/desktop/recap/morning-letter": "/sv/recap/morning-letter",
+	"/sv/mobile/recap/morning-letter": "/sv/recap/morning-letter",
+	"/sv/desktop/feeds/tag-trail": "/sv/feeds/tag-trail",
+	"/sv/mobile/feeds/tag-trail": "/sv/feeds/tag-trail",
+	"/sv/desktop/feeds/favorites": "/sv/feeds/favorites",
+	// Batch B
+	"/sv/desktop/feeds/search": "/sv/feeds/search",
+	"/sv/mobile/feeds/search": "/sv/feeds/search",
+	"/sv/desktop/feeds/viewed": "/sv/feeds/viewed",
+	"/sv/mobile/feeds/viewed": "/sv/feeds/viewed",
+	// Batch C
+	"/sv/desktop/recap/evening-pulse": "/sv/recap/evening-pulse",
+	"/sv/mobile/recap/evening-pulse": "/sv/recap/evening-pulse",
+	"/sv/desktop/recap": "/sv/recap",
+	"/sv/mobile/recap/3days": "/sv/recap",
+	"/sv/mobile/recap/7days": "/sv/recap?window=7",
+	"/sv/desktop/recap/job-status": "/sv/recap/job-status",
+	"/sv/mobile/recap/job-status": "/sv/recap/job-status",
+	// Batch D
+	"/sv/desktop/settings/feeds": "/sv/settings/feeds",
+	"/sv/mobile/feeds/manage": "/sv/settings/feeds",
+	"/sv/desktop/stats": "/sv/stats",
+	"/sv/mobile/feeds/stats": "/sv/stats",
+	// Batch E
+	"/sv/mobile/feeds/swipe": "/sv/feeds/swipe",
+	"/sv/desktop": "/sv/dashboard",
+};
+
 export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const { url } = event;
 	const pathname = url.pathname;
+
+	// Redirect old path-based routes to unified responsive routes
+	const redirectTarget = RESPONSIVE_REDIRECTS[pathname];
+	if (redirectTarget) {
+		throw redirect(301, redirectTarget);
+	}
+
 	const isPublic = isPublicRoute(pathname);
 
 	// Fast path: public routes without cookies skip auth entirely

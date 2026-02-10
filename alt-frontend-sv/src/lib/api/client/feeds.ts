@@ -10,9 +10,11 @@ import type {
 import { createClientTransport } from "$lib/connect/transport.client";
 import {
 	getUnreadFeeds,
+	getAllFeeds,
 	getReadFeeds,
 	searchFeeds as searchFeedsConnect,
 	type ConnectFeedItem,
+	type ConnectFeedSource,
 } from "$lib/connect/feeds";
 import {
 	formatPublishedDate,
@@ -35,6 +37,7 @@ function connectFeedToRenderFeed(item: ConnectFeedItem): RenderFeed {
 		author: item.author || undefined,
 		// Article ID in the articles table - used to determine if mark-as-read is available
 		articleId: item.articleId,
+		isRead: item.isRead,
 		// Generate display values from the already-sanitized data
 		publishedAtFormatted: formatPublishedDate(item.createdAt || item.published),
 		mergedTagsLabel: "", // Tags not available in Connect-RPC response
@@ -53,6 +56,24 @@ export async function getFeedsWithCursorClient(
 ): Promise<CursorResponse<RenderFeed>> {
 	const transport = createClientTransport();
 	const response = await getUnreadFeeds(transport, cursor, limit);
+
+	return {
+		data: response.data.map(connectFeedToRenderFeed),
+		next_cursor: response.nextCursor,
+		has_more: response.hasMore,
+	};
+}
+
+/**
+ * 全フィード（既読＋未読）をカーソルベースで取得（クライアントサイド）
+ * Connect-RPC を使用
+ */
+export async function getAllFeedsWithCursorClient(
+	cursor?: string,
+	limit: number = 20,
+): Promise<CursorResponse<RenderFeed>> {
+	const transport = createClientTransport();
+	const response = await getAllFeeds(transport, cursor, limit);
 
 	return {
 		data: response.data.map(connectFeedToRenderFeed),
@@ -174,4 +195,38 @@ export async function getUnreadCountClient(): Promise<UnreadCountResponse> {
 	return {
 		count: response.count,
 	};
+}
+
+// =============================================================================
+// Subscription Management (Client-side)
+// =============================================================================
+
+/**
+ * 購読ソース一覧を取得（クライアントサイド）
+ * Connect-RPC を使用
+ */
+export async function listSubscriptionsClient(): Promise<ConnectFeedSource[]> {
+	const transport = createClientTransport();
+	const { listSubscriptions } = await import("$lib/connect/feeds");
+	return listSubscriptions(transport);
+}
+
+/**
+ * フィードソースを購読（クライアントサイド）
+ * Connect-RPC を使用
+ */
+export async function subscribeClient(feedLinkId: string): Promise<string> {
+	const transport = createClientTransport();
+	const { subscribe } = await import("$lib/connect/feeds");
+	return subscribe(transport, feedLinkId);
+}
+
+/**
+ * フィードソースの購読を解除（クライアントサイド）
+ * Connect-RPC を使用
+ */
+export async function unsubscribeClient(feedLinkId: string): Promise<string> {
+	const transport = createClientTransport();
+	const { unsubscribe } = await import("$lib/connect/feeds");
+	return unsubscribe(transport, feedLinkId);
 }

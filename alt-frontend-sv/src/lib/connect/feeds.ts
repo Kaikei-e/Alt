@@ -12,12 +12,17 @@ import {
 	type GetDetailedFeedStatsResponse,
 	type GetUnreadCountResponse,
 	type GetUnreadFeedsResponse,
+	type GetAllFeedsResponse,
 	type GetReadFeedsResponse,
 	type GetFavoriteFeedsResponse,
 	type SearchFeedsResponse,
 	type StreamFeedStatsResponse,
 	type StreamSummarizeResponse,
 	type MarkAsReadResponse,
+	type ListSubscriptionsResponse,
+	type SubscribeResponse,
+	type UnsubscribeResponse,
+	type FeedSource,
 } from "$lib/gen/alt/feeds/v2/feeds_pb";
 
 /** Type-safe FeedService client */
@@ -125,6 +130,8 @@ export interface ConnectFeedItem {
 	author: string;
 	/** Article ID in the articles table. Undefined if article doesn't exist. */
 	articleId?: string;
+	/** Whether this feed has been read by the current user. */
+	isRead: boolean;
 }
 
 /**
@@ -166,6 +173,32 @@ export async function getUnreadFeeds(
 		limit,
 		view,
 	})) as GetUnreadFeedsResponse;
+
+	return {
+		data: response.data.map(convertProtoFeed),
+		nextCursor: response.nextCursor ?? null,
+		hasMore: response.hasMore,
+	};
+}
+
+/**
+ * Get all feeds (read + unread) with cursor-based pagination via Connect-RPC.
+ *
+ * @param transport - The Connect transport to use
+ * @param cursor - Optional cursor for pagination (RFC3339 timestamp)
+ * @param limit - Maximum number of items to return (default: 20)
+ * @returns All feeds with pagination info
+ */
+export async function getAllFeeds(
+	transport: Transport,
+	cursor?: string,
+	limit: number = 20,
+): Promise<FeedCursorResponse> {
+	const client = createFeedClient(transport);
+	const response = (await client.getAllFeeds({
+		cursor,
+		limit,
+	})) as GetAllFeedsResponse;
 
 	return {
 		data: response.data.map(convertProtoFeed),
@@ -275,6 +308,7 @@ function convertProtoFeed(proto: {
 	createdAt: string;
 	author: string;
 	articleId?: string;
+	isRead: boolean;
 }): ConnectFeedItem {
 	return {
 		id: proto.id,
@@ -285,6 +319,7 @@ function convertProtoFeed(proto: {
 		createdAt: proto.createdAt,
 		author: proto.author,
 		articleId: proto.articleId || undefined,
+		isRead: proto.isRead,
 	};
 }
 
@@ -733,4 +768,80 @@ export async function markAsRead(
 	return {
 		message: response.message,
 	};
+}
+
+// =============================================================================
+// Subscription Management Functions
+// =============================================================================
+
+/**
+ * Feed source with subscription status
+ */
+export interface ConnectFeedSource {
+	id: string;
+	url: string;
+	title: string;
+	isSubscribed: boolean;
+	createdAt: string;
+}
+
+/**
+ * List all feed sources with subscription status for the current user.
+ *
+ * @param transport - The Connect transport to use
+ * @returns All feed sources with subscription status
+ */
+export async function listSubscriptions(
+	transport: Transport,
+): Promise<ConnectFeedSource[]> {
+	const client = createFeedClient(transport);
+	const response = (await client.listSubscriptions(
+		{},
+	)) as ListSubscriptionsResponse;
+
+	return response.sources.map((source: FeedSource) => ({
+		id: source.id,
+		url: source.url,
+		title: source.title,
+		isSubscribed: source.isSubscribed,
+		createdAt: source.createdAt,
+	}));
+}
+
+/**
+ * Subscribe the current user to a feed source.
+ *
+ * @param transport - The Connect transport to use
+ * @param feedLinkId - The feed link ID to subscribe to
+ * @returns Success message
+ */
+export async function subscribe(
+	transport: Transport,
+	feedLinkId: string,
+): Promise<string> {
+	const client = createFeedClient(transport);
+	const response = (await client.subscribe({
+		feedLinkId,
+	})) as SubscribeResponse;
+
+	return response.message;
+}
+
+/**
+ * Unsubscribe the current user from a feed source.
+ *
+ * @param transport - The Connect transport to use
+ * @param feedLinkId - The feed link ID to unsubscribe from
+ * @returns Success message
+ */
+export async function unsubscribe(
+	transport: Transport,
+	feedLinkId: string,
+): Promise<string> {
+	const client = createFeedClient(transport);
+	const response = (await client.unsubscribe({
+		feedLinkId,
+	})) as UnsubscribeResponse;
+
+	return response.message;
 }

@@ -21,6 +21,7 @@ const createMockFeedItem = (id: string): ConnectFeedItem => ({
 	createdAt: new Date().toISOString(),
 	author: "Author",
 	articleId: undefined,
+	isRead: false,
 });
 
 describe("flattenFeedPages", () => {
