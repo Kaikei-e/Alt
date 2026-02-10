@@ -162,9 +162,6 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 	var args []interface{}
 
 	if cursor == nil {
-		// First page - no cursor
-		// Use scalar subquery for article_id to avoid duplicates when multiple articles have the same URL
-		// Filter out read feeds using read_status table (feed-based, not article-based)
 		query = `
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id
@@ -176,14 +173,12 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				AND rs.user_id = $2
 				AND rs.is_read = TRUE
 			)
+			AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
 		`
 		args = []interface{}{limit, user.UserID}
 	} else {
-		// Subsequent pages - use cursor
-		// Use scalar subquery for article_id to avoid duplicates when multiple articles have the same URL
-		// Filter out read feeds using read_status table (feed-based, not article-based)
 		query = `
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id
@@ -195,6 +190,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				AND rs.user_id = $3
 				AND rs.is_read = TRUE
 			)
+			AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
 			AND f.created_at < $1
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
@@ -223,6 +219,67 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 	return feeds, nil
 }
 
+// FetchAllFeedsListCursor retrieves all feeds (read + unread) using cursor-based pagination.
+// Unlike FetchUnreadFeedsListCursor, this does not filter by read status but includes
+// the read status via LEFT JOIN so the frontend can visually distinguish read/unread feeds.
+func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
+		return nil, errors.New("authentication required")
+	}
+
+	var query string
+	var args []interface{}
+
+	if cursor == nil {
+		query = `
+			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id,
+			       COALESCE(rs.is_read, FALSE) AS is_read
+			FROM feeds f
+			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $2
+			WHERE (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
+			ORDER BY f.created_at DESC, f.id DESC
+			LIMIT $1
+		`
+		args = []interface{}{limit, user.UserID}
+	} else {
+		query = `
+			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id,
+			       COALESCE(rs.is_read, FALSE) AS is_read
+			FROM feeds f
+			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $3
+			WHERE (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
+			AND f.created_at < $1
+			ORDER BY f.created_at DESC, f.id DESC
+			LIMIT $2
+		`
+		args = []interface{}{cursor, limit, user.UserID}
+	}
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "error fetching all feeds with cursor", "error", err, "cursor", cursor)
+		return nil, errors.New("error fetching feeds list")
+	}
+	defer rows.Close()
+
+	var feeds []*models.Feed
+	for rows.Next() {
+		var feed models.Feed
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.IsRead)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "error scanning all feeds with cursor", "error", err)
+			return nil, errors.New("error scanning feeds list")
+		}
+		feeds = append(feeds, &feed)
+	}
+
+	return feeds, nil
+}
+
 // FetchReadFeedsListCursor retrieves read feeds using cursor-based pagination
 // This method uses INNER JOIN with read_status table for better performance
 func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
@@ -236,26 +293,25 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 	var args []interface{}
 
 	if cursor == nil {
-		// Initial fetch: INNER JOIN for performance optimization
-		// Order by read_at to show most recently read feeds first
 		query = `
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
 			AND rs.user_id = $2
+			AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
 			ORDER BY rs.read_at DESC, f.id DESC
 			LIMIT $1
 		`
 		args = []interface{}{limit, user.UserID}
 	} else {
-		// Subsequent pages: cursor-based pagination using read_at
 		query = `
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
 			FROM feeds f
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
 			AND rs.user_id = $3
+			AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
 			AND rs.read_at < $1
 			ORDER BY rs.read_at DESC, f.id DESC
 			LIMIT $2
@@ -300,18 +356,18 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
                        WHERE ff.user_id = $2
+                       AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
                        ORDER BY ff.created_at DESC, f.id DESC
                        LIMIT $1
                `
 		args = []interface{}{limit, user.UserID}
 	} else {
-		// Fixed: Use proper cursor-based pagination that handles edge cases
-		// Order by ff.created_at since that's what we're using for the cursor
 		query = `
                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
                        WHERE ff.user_id = $3 AND ff.created_at < $1
+                       AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
                        ORDER BY ff.created_at DESC, f.id DESC
                        LIMIT $2
                `

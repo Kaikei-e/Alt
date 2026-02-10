@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
@@ -277,6 +278,52 @@ func (h *Handler) GetUnreadFeeds(
 	}
 
 	return connect.NewResponse(&feedsv2.GetUnreadFeedsResponse{
+		Data:       convertFeedsToProto(feeds),
+		NextCursor: deriveNextCursor(feeds, hasMore),
+		HasMore:    hasMore,
+	}), nil
+}
+
+// GetAllFeeds returns all feeds (read + unread) with cursor-based pagination.
+func (h *Handler) GetAllFeeds(
+	ctx context.Context,
+	req *connect.Request[feedsv2.GetAllFeedsRequest],
+) (*connect.Response[feedsv2.GetAllFeedsResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	// Parse and validate limit
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 20 // default
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Parse cursor if provided
+	var cursor *time.Time
+	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
+		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))
+		}
+		cursor = &parsed
+	}
+
+	// Call usecase (all feeds, no read status filter)
+	feeds, err := h.container.FetchFeedsListCursorUsecase.Execute(ctx, cursor, limit)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetAllFeeds")
+	}
+
+	// Determine hasMore based on result count vs requested limit
+	hasMore := len(feeds) >= limit
+
+	return connect.NewResponse(&feedsv2.GetAllFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
 		NextCursor: deriveNextCursor(feeds, hasMore),
 		HasMore:    hasMore,
@@ -939,5 +986,100 @@ func (h *Handler) MarkAsRead(
 
 	return connect.NewResponse(&feedsv2.MarkAsReadResponse{
 		Message: "Feed read status updated",
+	}), nil
+}
+
+// =============================================================================
+// Subscription RPCs
+// =============================================================================
+
+// ListSubscriptions returns all feed sources with subscription status for the current user.
+func (h *Handler) ListSubscriptions(
+	ctx context.Context,
+	req *connect.Request[feedsv2.ListSubscriptionsRequest],
+) (*connect.Response[feedsv2.ListSubscriptionsResponse], error) {
+	userCtx, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	sources, err := h.container.ListSubscriptionsUsecase.Execute(ctx, userCtx.UserID)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListSubscriptions")
+	}
+
+	protoSources := make([]*feedsv2.FeedSource, 0, len(sources))
+	for _, s := range sources {
+		protoSources = append(protoSources, &feedsv2.FeedSource{
+			Id:           s.ID,
+			Url:          s.URL,
+			Title:        s.Title,
+			IsSubscribed: s.IsSubscribed,
+			CreatedAt:    s.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	return connect.NewResponse(&feedsv2.ListSubscriptionsResponse{
+		Sources: protoSources,
+	}), nil
+}
+
+// Subscribe subscribes the current user to a feed source.
+func (h *Handler) Subscribe(
+	ctx context.Context,
+	req *connect.Request[feedsv2.SubscribeRequest],
+) (*connect.Response[feedsv2.SubscribeResponse], error) {
+	userCtx, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	if req.Msg.FeedLinkId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("feed_link_id is required"))
+	}
+
+	feedLinkID, err := uuid.Parse(req.Msg.FeedLinkId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid feed_link_id: %w", err))
+	}
+
+	if err := h.container.SubscribeUsecase.Execute(ctx, userCtx.UserID, feedLinkID); err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "Subscribe")
+	}
+
+	return connect.NewResponse(&feedsv2.SubscribeResponse{
+		Message: "Subscribed successfully",
+	}), nil
+}
+
+// Unsubscribe unsubscribes the current user from a feed source.
+func (h *Handler) Unsubscribe(
+	ctx context.Context,
+	req *connect.Request[feedsv2.UnsubscribeRequest],
+) (*connect.Response[feedsv2.UnsubscribeResponse], error) {
+	userCtx, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	if req.Msg.FeedLinkId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("feed_link_id is required"))
+	}
+
+	feedLinkID, err := uuid.Parse(req.Msg.FeedLinkId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid feed_link_id: %w", err))
+	}
+
+	if err := h.container.UnsubscribeUsecase.Execute(ctx, userCtx.UserID, feedLinkID); err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "Unsubscribe")
+	}
+
+	return connect.NewResponse(&feedsv2.UnsubscribeResponse{
+		Message: "Unsubscribed successfully",
 	}), nil
 }

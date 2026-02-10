@@ -9,10 +9,16 @@ import (
 	"errors"
 )
 
+// FeedLinkIDResolver resolves a feed URL to its feed_link_id.
+type FeedLinkIDResolver interface {
+	FetchFeedLinkIDByURL(ctx context.Context, feedURL string) (*string, error)
+}
+
 type RegisterFeedsUsecase struct {
 	registerFeedLinkGateway register_feed_port.RegisterFeedLinkPort
 	registerFeedsGateway    register_feed_port.RegisterFeedsPort
 	fetchFeedGateway        fetch_feed_port.FetchFeedsPort
+	feedLinkIDResolver      FeedLinkIDResolver
 }
 
 func NewRegisterFeedsUsecase(registerFeedLinkGateway register_feed_port.RegisterFeedLinkPort, registerFeedsGateway register_feed_port.RegisterFeedsPort, fetchFeedGateway fetch_feed_port.FetchFeedsPort) *RegisterFeedsUsecase {
@@ -23,6 +29,11 @@ func NewRegisterFeedsUsecase(registerFeedLinkGateway register_feed_port.Register
 	}
 }
 
+// SetFeedLinkIDResolver sets the resolver for looking up feed_link_id by URL.
+func (r *RegisterFeedsUsecase) SetFeedLinkIDResolver(resolver FeedLinkIDResolver) {
+	r.feedLinkIDResolver = resolver
+}
+
 func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 	err := r.registerFeedLinkGateway.RegisterRSSFeedLink(ctx, link)
 	if err != nil {
@@ -31,6 +42,12 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 			return errors.New("RSS feed link cannot be empty")
 		}
 		return errors.New("failed to register RSS feed link")
+	}
+
+	// Look up feed_link_id for this URL to associate feeds with their source
+	var feedLinkID *string
+	if r.feedLinkIDResolver != nil {
+		feedLinkID, _ = r.feedLinkIDResolver.FetchFeedLinkIDByURL(ctx, link)
 	}
 
 	feeds, err := r.fetchFeedGateway.FetchFeeds(ctx, link)
@@ -55,7 +72,8 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 					Name: feed.Author.Name,
 				},
 			},
-			Links: feed.Links,
+			Links:      feed.Links,
+			FeedLinkID: feedLinkID,
 		})
 	}
 

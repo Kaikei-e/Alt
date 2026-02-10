@@ -68,6 +68,7 @@ import (
 	"alt/gateway/fetch_random_subscription_gateway"
 	"alt/gateway/fetch_articles_by_tag_gateway"
 	"alt/gateway/fetch_article_tags_gateway"
+	"alt/gateway/subscription_gateway"
 	"alt/usecase/fetch_recent_articles_usecase"
 	"alt/usecase/fetch_trend_stats_usecase"
 	"alt/usecase/image_fetch_usecase"
@@ -81,6 +82,7 @@ import (
 	"alt/usecase/scraping_domain_usecase"
 	"alt/usecase/search_article_usecase"
 	"alt/usecase/search_feed_usecase"
+	"alt/usecase/subscription_usecase"
 	"alt/utils"
 	"alt/utils/batch_article_fetcher"
 	"alt/utils/rate_limiter"
@@ -151,6 +153,9 @@ type ApplicationComponents struct {
 	FetchArticlesByTagUsecase           *fetch_articles_by_tag_usecase.FetchArticlesByTagUsecase
 	FetchArticleTagsUsecase             *fetch_article_tags_usecase.FetchArticleTagsUsecase
 	GetRecapJobsUsecase                 dashboard_usecase.GetRecapJobsUsecase
+	ListSubscriptionsUsecase            *subscription_usecase.ListSubscriptionsUsecase
+	SubscribeUsecase                    *subscription_usecase.SubscribeUsecase
+	UnsubscribeUsecase                  *subscription_usecase.UnsubscribeUsecase
 
 	// Gateways exposed for handler use (on-the-fly tag generation)
 	FetchArticleTagsGateway             *fetch_article_tags_gateway.FetchArticleTagsGateway
@@ -190,6 +195,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	registerFavoriteFeedGatewayImpl := register_favorite_feed_gateway.NewRegisterFavoriteFeedGateway(pool)
 	fetchFeedsGatewayImpl := fetch_feed_gateway.NewFetchFeedsGatewayWithRateLimiter(pool, rateLimiter)
 	registerFeedsUsecase := register_feed_usecase.NewRegisterFeedsUsecase(registerFeedLinkGatewayImpl, registerFeedsGatewayImpl, fetchFeedsGatewayImpl)
+	registerFeedsUsecase.SetFeedLinkIDResolver(altDBRepository)
 	registerFavoriteFeedUsecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(registerFavoriteFeedGatewayImpl)
 	feedLinkGatewayImpl := feed_link_gateway.NewFeedLinkGateway(pool)
 	listFeedLinksUsecase := feed_link_usecase.NewListFeedLinksUsecase(feedLinkGatewayImpl)
@@ -338,6 +344,12 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	recapJobDriver := recap_job_driver.NewRecapJobGateway(cfg.Recap.WorkerURL)
 	getRecapJobsUsecase := dashboard_usecase.NewGetRecapJobsUsecase(recapJobDriver)
 
+	// Subscription components
+	subscriptionGatewayImpl := subscription_gateway.NewSubscriptionGateway(pool)
+	listSubscriptionsUsecase := subscription_usecase.NewListSubscriptionsUsecase(subscriptionGatewayImpl)
+	subscribeUsecase := subscription_usecase.NewSubscribeUsecase(subscriptionGatewayImpl)
+	unsubscribeUsecase := subscription_usecase.NewUnsubscribeUsecase(subscriptionGatewayImpl)
+
 	return &ApplicationComponents{
 		// Ports
 		ConfigPort:       configPort,
@@ -399,6 +411,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchArticlesByTagUsecase:           fetchArticlesByTagUsecase,
 		FetchArticleTagsUsecase:             fetchArticleTagsUsecase,
 		GetRecapJobsUsecase:                 getRecapJobsUsecase,
+		ListSubscriptionsUsecase:            listSubscriptionsUsecase,
+		SubscribeUsecase:                    subscribeUsecase,
+		UnsubscribeUsecase:                  unsubscribeUsecase,
 
 		// Gateways exposed for handler use (on-the-fly tag generation)
 		FetchArticleTagsGateway:             fetchArticleTagsGatewayImpl,

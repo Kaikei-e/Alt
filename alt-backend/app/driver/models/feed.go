@@ -12,6 +12,10 @@ type Feed struct {
 	UpdatedAt   time.Time `db:"updated_at"`
 	// ArticleID is the ID of the corresponding article in the articles table (nullable)
 	ArticleID *string `db:"article_id"`
+	// IsRead indicates whether this feed has been read by the current user
+	IsRead bool `db:"is_read"`
+	// FeedLinkID is the ID of the feed_links entry this feed belongs to (nullable)
+	FeedLinkID *string `db:"feed_link_id"`
 }
 
 type FeedAndArticle struct {

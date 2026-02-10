@@ -60,6 +60,10 @@ type FeedItem struct {
 	// ArticleID is the ID of the corresponding article in the articles table.
 	// Empty string if no article exists for this feed item.
 	ArticleID string `json:"articleId,omitempty"`
+	// IsRead indicates whether this feed has been read by the current user.
+	IsRead bool `json:"isRead,omitempty"`
+	// FeedLinkID is the feed_links.id for the RSS source this item belongs to.
+	FeedLinkID *string `json:"feedLinkId,omitempty"`
 }
 
 type Author struct {

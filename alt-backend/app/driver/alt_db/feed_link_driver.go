@@ -36,6 +36,17 @@ func (r *AltDBRepository) FetchFeedLinks(ctx context.Context) ([]*domain.FeedLin
 	return links, nil
 }
 
+// FetchFeedLinkIDByURL returns the feed_link ID for a given URL, or nil if not found.
+func (r *AltDBRepository) FetchFeedLinkIDByURL(ctx context.Context, feedURL string) (*string, error) {
+	var id string
+	err := r.pool.QueryRow(ctx, "SELECT id FROM feed_links WHERE url = $1", feedURL).Scan(&id)
+	if err != nil {
+		// Not found is not an error - just return nil
+		return nil, nil
+	}
+	return &id, nil
+}
+
 func (r *AltDBRepository) DeleteFeedLink(ctx context.Context, id uuid.UUID) error {
 	result, err := r.pool.Exec(ctx, "DELETE FROM feed_links WHERE id = $1", id)
 	if err != nil {

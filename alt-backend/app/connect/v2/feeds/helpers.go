@@ -25,6 +25,7 @@ func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 			Published:   formatTimeAgo(feed.PublishedParsed),
 			CreatedAt:   feed.PublishedParsed.Format(time.RFC3339),
 			Author:      formatAuthor(feed.Author, feed.Authors),
+			IsRead:      feed.IsRead,
 		}
 
 		// Set ArticleId if article exists in database

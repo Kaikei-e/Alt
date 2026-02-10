@@ -178,22 +178,30 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 		return nil, errors.New("database connection not available")
 	}
 
-	feeds, err := g.alt_db.FetchUnreadFeedsListCursor(ctx, cursor, limit)
+	feeds, err := g.alt_db.FetchAllFeedsListCursor(ctx, cursor, limit)
 	if err != nil {
-		logger.SafeErrorContext(ctx, "Error fetching feeds with cursor", "error", err)
+		logger.SafeErrorContext(ctx, "Error fetching all feeds with cursor", "error", err)
 		return nil, errors.New("error fetching feeds with cursor")
 	}
 
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
 		publishedTime := feed.CreatedAt
-		feedItems = append(feedItems, &domain.FeedItem{
+
+		feedItem := &domain.FeedItem{
 			Title:           feed.Title,
 			Description:     feed.Description,
 			Link:            feed.Link,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
-		})
+			IsRead:          feed.IsRead,
+		}
+
+		if feed.ArticleID != nil {
+			feedItem.ArticleID = *feed.ArticleID
+		}
+
+		feedItems = append(feedItems, feedItem)
 	}
 
 	return feedItems, nil

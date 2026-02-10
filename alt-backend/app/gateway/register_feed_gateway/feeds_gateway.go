@@ -52,6 +52,7 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 			PubDate:     feedItem.PublishedParsed,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
+			FeedLinkID:  feedItem.FeedLinkID,
 		}
 
 		logger.SafeInfoContext(ctx, "Feed model link", "feedModel", feedModel.Link)

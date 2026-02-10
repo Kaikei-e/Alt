@@ -253,6 +253,34 @@ func TestConvertFeedsToProto(t *testing.T) {
 	assert.Equal(t, "Test Feed 2", protoFeeds[1].Title)
 }
 
+func TestConvertFeedsToProto_IsReadField(t *testing.T) {
+	now := time.Now()
+	feeds := []*domain.FeedItem{
+		{
+			Title:           "Unread Feed",
+			Description:     "Unread description",
+			Link:            "https://example.com/unread",
+			Published:       now.Format(time.RFC3339),
+			PublishedParsed: now,
+			IsRead:          false,
+		},
+		{
+			Title:           "Read Feed",
+			Description:     "Read description",
+			Link:            "https://example.com/read",
+			Published:       now.Add(-time.Hour).Format(time.RFC3339),
+			PublishedParsed: now.Add(-time.Hour),
+			IsRead:          true,
+		},
+	}
+
+	protoFeeds := convertFeedsToProto(feeds)
+
+	require.Len(t, protoFeeds, 2)
+	assert.False(t, protoFeeds[0].IsRead, "First feed should be unread")
+	assert.True(t, protoFeeds[1].IsRead, "Second feed should be read")
+}
+
 func TestConvertFeedsToProto_EmptyList(t *testing.T) {
 	protoFeeds := convertFeedsToProto([]*domain.FeedItem{})
 	assert.Len(t, protoFeeds, 0)
@@ -393,6 +421,40 @@ func TestFormatAuthor(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// =============================================================================
+// Phase 2: GetAllFeeds Tests
+// =============================================================================
+
+func TestGetAllFeeds_RequiresAuth(t *testing.T) {
+	handler := createTestHandler()
+	ctx := context.Background() // No auth
+
+	req := connect.NewRequest(&feedsv2.GetAllFeedsRequest{})
+	resp, err := handler.GetAllFeeds(ctx, req)
+
+	require.Error(t, err)
+	require.Nil(t, resp)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+func TestGetAllFeedsResponse_Construction(t *testing.T) {
+	feeds := createSampleFeeds()
+	protoFeeds := convertFeedsToProto(feeds)
+	nextCursor := deriveNextCursor(feeds, true)
+
+	resp := &feedsv2.GetAllFeedsResponse{
+		Data:       protoFeeds,
+		NextCursor: nextCursor,
+		HasMore:    true,
+	}
+
+	assert.Len(t, resp.Data, 2)
+	assert.True(t, resp.HasMore)
+	assert.NotNil(t, resp.NextCursor)
 }
 
 // Test response message construction for Phase 2-3
