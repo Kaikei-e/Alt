@@ -68,6 +68,11 @@ func (r *externalAPIRepository) SummarizeArticle(ctx context.Context, article *d
 			r.logger.WarnContext(ctx, "downstream service overloaded", "article_id", article.ID)
 			return nil, domain.ErrServiceOverloaded
 		}
+		// Handle 422 (content not processable) - non-retryable, immediate dead_letter
+		if errors.Is(err, domain.ErrContentNotProcessable) {
+			r.logger.WarnContext(ctx, "content not processable by model", "article_id", article.ID)
+			return nil, domain.ErrContentNotProcessable
+		}
 		r.logger.ErrorContext(ctx, "failed to summarize article", "error", err, "article_id", article.ID)
 		return nil, fmt.Errorf("failed to summarize article: %w", err)
 	}

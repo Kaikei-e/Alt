@@ -18,6 +18,10 @@ var (
 	// ErrContentTooLong indicates content exceeds maximum length for summarization
 	// Large content (>100KB) causes timeouts on 8GB VRAM GPUs
 	ErrContentTooLong = errors.New("content too long for summarization")
+
+	// ErrContentNotProcessable indicates the content cannot be summarized by the model
+	// (e.g., model degeneration producing empty/whitespace output). Non-retryable.
+	ErrContentNotProcessable = errors.New("content not processable by model")
 )
 
 // Job-related errors

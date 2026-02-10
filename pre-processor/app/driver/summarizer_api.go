@@ -166,6 +166,13 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 			return nil, domain.ErrServiceOverloaded
 		}
 
+		// Handle 422 Unprocessable Entity as non-retryable (model degeneration)
+		if resp.StatusCode == http.StatusUnprocessableEntity {
+			logger.Warn("news-creator returned 422: content not processable by model",
+				"article_id", article.ID, "body", bodyStr)
+			return nil, domain.ErrContentNotProcessable
+		}
+
 		// Handle 400 Bad Request as ErrContentTooShort if likely
 		if resp.StatusCode == http.StatusBadRequest {
 			// Simply assume 400 means content validation failed (likely too short or invalid)
@@ -327,6 +334,13 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 			logger.Warn("news-creator queue full (streaming), backing off",
 				"article_id", article.ID, "retry_after", retryAfter)
 			return nil, domain.ErrServiceOverloaded
+		}
+
+		// Handle 422 Unprocessable Entity as non-retryable (model degeneration)
+		if resp.StatusCode == http.StatusUnprocessableEntity {
+			logger.Warn("news-creator returned 422 (streaming): content not processable by model",
+				"article_id", article.ID, "body", errorBody)
+			return nil, domain.ErrContentNotProcessable
 		}
 
 		logger.Error("API returned non-200 status for streaming request",
