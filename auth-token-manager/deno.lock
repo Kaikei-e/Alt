@@ -1,15 +1,16 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@std/assert@1": "1.0.16",
-    "jsr:@std/assert@^1.0.15": "1.0.16",
+    "jsr:@std/assert@^1.0.17": "1.0.18",
+    "jsr:@std/assert@^1.0.18": "1.0.18",
     "jsr:@std/datetime@~0.225.7": "0.225.7",
+    "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/fmt@^1.0.5": "1.0.8",
     "jsr:@std/fs@^1.0.11": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/io@~0.225.2": "0.225.2",
-    "jsr:@std/log@0.224": "0.224.14",
-    "jsr:@std/testing@1": "1.0.16",
+    "jsr:@std/log@~0.224.14": "0.224.14",
+    "jsr:@std/testing@^1.0.17": "1.0.17",
     "npm:@opentelemetry/api-logs@0.211.0": "0.211.0",
     "npm:@opentelemetry/api@1.9.0": "1.9.0",
     "npm:@opentelemetry/exporter-logs-otlp-http@0.211.0": "0.211.0_@opentelemetry+api@1.9.0",
@@ -18,14 +19,17 @@
     "npm:@opentelemetry/semantic-conventions@1.39.0": "1.39.0"
   },
   "jsr": {
-    "@std/assert@1.0.16": {
-      "integrity": "6a7272ed1eaa77defe76e5ff63ca705d9c495077e2d5fd0126d2b53fc5bd6532",
+    "@std/assert@1.0.18": {
+      "integrity": "270245e9c2c13b446286de475131dc688ca9abcd94fc5db41d43a219b34d1c78",
       "dependencies": [
         "jsr:@std/internal"
       ]
     },
     "@std/datetime@0.225.7": {
       "integrity": "e62c6c454a0ecfc2918fe41e7a621e0f334a6f82605e98fd32eb1e6371999328"
+    },
+    "@std/encoding@1.0.10": {
+      "integrity": "8783c6384a2d13abd5e9e87a7ae0520a30e9f56aeeaa3bdf910a3eaaf5c811a1"
     },
     "@std/fmt@1.0.8": {
       "integrity": "71e1fc498787e4434d213647a6e43e794af4fd393ef8f52062246e06f7e372b7"
@@ -47,10 +51,10 @@
         "jsr:@std/io"
       ]
     },
-    "@std/testing@1.0.16": {
-      "integrity": "a917ffdeb5924c9be436dc78bc32e511760e14d3a96e49c607fc5ecca86d0092",
+    "@std/testing@1.0.17": {
+      "integrity": "87bdc2700fa98249d48a17cd72413352d3d3680dcfbdb64947fd0982d6bbf681",
       "dependencies": [
-        "jsr:@std/assert@^1.0.15",
+        "jsr:@std/assert@^1.0.17",
         "jsr:@std/internal"
       ]
     }
@@ -404,11 +408,11 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@std/assert@1",
+      "jsr:@std/assert@^1.0.18",
       "jsr:@std/datetime@~0.225.7",
-      "jsr:@std/encoding@1",
-      "jsr:@std/log@0.224",
-      "jsr:@std/testing@1",
+      "jsr:@std/encoding@^1.0.10",
+      "jsr:@std/log@~0.224.14",
+      "jsr:@std/testing@^1.0.17",
       "npm:@opentelemetry/api-logs@0.211.0",
       "npm:@opentelemetry/api@1.9.0",
       "npm:@opentelemetry/exporter-logs-otlp-http@0.211.0",
