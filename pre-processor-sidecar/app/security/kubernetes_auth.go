@@ -6,7 +6,6 @@ package security
 import (
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
@@ -82,7 +81,7 @@ func NewKubernetesAuthenticator(logger *slog.Logger) *KubernetesAuthenticator {
 
 	// 初期化
 	if err := auth.initialize(); err != nil {
-		logger.Warn("Kubernetes authenticator initialization failed, running in fallback mode", "error", err)
+		logger.Error("Kubernetes authenticator initialization failed; rejecting admin authentication until fixed", "error", err)
 	} else {
 		logger.Info("Kubernetes authenticator initialized successfully", "namespace", auth.namespace)
 	}
@@ -151,6 +150,10 @@ func (ka *KubernetesAuthenticator) ValidateKubernetesServiceAccountToken(tokenSt
 		return nil, fmt.Errorf("empty token")
 	}
 
+	if ka.publicKey == nil {
+		return nil, fmt.Errorf("public key is not initialized")
+	}
+
 	// JWTトークンをパース
 	token, err := jwt.ParseWithClaims(tokenString, &ServiceAccountClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// 署名方法の確認
@@ -158,21 +161,10 @@ func (ka *KubernetesAuthenticator) ValidateKubernetesServiceAccountToken(tokenSt
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 
-		// 公開鍵が利用可能であれば使用
-		if ka.publicKey != nil {
-			return ka.publicKey, nil
-		}
-
-		// フォールバック: トークンの基本検証のみ
-		ka.logger.Warn("Public key not available, performing basic token validation only")
-		return nil, nil
+		return ka.publicKey, nil
 	})
 
 	if err != nil {
-		// 公開鍵が利用できない場合の基本検証
-		if ka.publicKey == nil {
-			return ka.validateTokenBasic(tokenString)
-		}
 		return nil, fmt.Errorf("token validation failed: %w", err)
 	}
 
@@ -190,6 +182,23 @@ func (ka *KubernetesAuthenticator) ValidateKubernetesServiceAccountToken(tokenSt
 	// 期限切れ確認
 	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
 		return nil, fmt.Errorf("token has expired")
+	}
+
+	// 必須クレーム確認
+	if claims.Subject == "" {
+		return nil, fmt.Errorf("missing subject in token")
+	}
+	if claims.Kubernetes.Namespace == "" {
+		return nil, fmt.Errorf("missing namespace in token")
+	}
+	if claims.Kubernetes.ServiceAccount.Name == "" {
+		return nil, fmt.Errorf("missing service account name in token")
+	}
+
+	// Subjectの一貫性確認: system:serviceaccount:<namespace>:<name>
+	expectedSubject := fmt.Sprintf("system:serviceaccount:%s:%s", claims.Kubernetes.Namespace, claims.Kubernetes.ServiceAccount.Name)
+	if claims.Subject != expectedSubject {
+		return nil, fmt.Errorf("invalid service account subject")
 	}
 
 	// ServiceAccount情報の構築
@@ -214,111 +223,46 @@ func (ka *KubernetesAuthenticator) ValidateKubernetesServiceAccountToken(tokenSt
 	return info, nil
 }
 
-// validateTokenBasic は基本的なトークン検証（公開鍵なし）
-func (ka *KubernetesAuthenticator) validateTokenBasic(tokenString string) (*ServiceAccountInfo, error) {
-	// JWT構造の基本確認
-	parts := strings.Split(tokenString, ".")
-	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid JWT format")
-	}
-
-	// ペイロード部分をデコード（検証なし）
-	payload := parts[1]
-
-	// Base64 URLデコード
-	decoded, err := jwt.DecodeSegment(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode JWT payload: %w", err)
-	}
-
-	// JSONパース
-	var claims ServiceAccountClaims
-	if err := json.Unmarshal(decoded, &claims); err != nil {
-		return nil, fmt.Errorf("failed to parse JWT claims: %w", err)
-	}
-
-	// 基本的な妥当性確認
-	if claims.Subject == "" {
-		return nil, fmt.Errorf("missing subject in token")
-	}
-
-	if claims.Kubernetes.ServiceAccount.Name == "" {
-		return nil, fmt.Errorf("missing service account name in token")
-	}
-
-	// 期限切れ確認（あれば）
-	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
-		return nil, fmt.Errorf("token has expired")
-	}
-
-	info := &ServiceAccountInfo{
-		Subject:   claims.Subject,
-		Namespace: claims.Kubernetes.Namespace,
-		Name:      claims.Kubernetes.ServiceAccount.Name,
-		UID:       claims.Kubernetes.ServiceAccount.UID,
-	}
-
-	if len(claims.Audience) > 0 {
-		info.Groups = claims.Audience
-	}
-
-	ka.logger.Warn("ServiceAccount token validated with basic method (signature not verified)",
-		"subject", info.Subject,
-		"namespace", info.Namespace,
-		"service_account", info.Name)
-
-	return info, nil
-}
-
 // HasAdminPermissions は管理者権限を確認
 func (ka *KubernetesAuthenticator) HasAdminPermissions(info *ServiceAccountInfo) bool {
 	if info == nil {
 		return false
 	}
 
-	// 管理者権限の判定ロジック
-
-	// 1. 特定のServiceAccount名による判定
-	adminServiceAccounts := []string{
-		"pre-processor-admin",
-		"pre-processor-sidecar-admin",
-		"system:serviceaccount:" + ka.namespace + ":pre-processor-admin",
-		"default", // 開発環境用（本番では削除推奨）
-	}
-
-	for _, adminSA := range adminServiceAccounts {
-		if info.Name == adminSA || info.Subject == adminSA {
-			ka.logger.Info("Admin access granted via service account name",
-				"service_account", info.Name,
-				"subject", info.Subject)
-			return true
-		}
-	}
-
-	// 2. 名前空間による判定
-	if info.Namespace == ka.namespace || info.Namespace == "alt-processing" {
-		// 同じ名前空間のServiceAccountには基本的な権限を付与
-		ka.logger.Debug("Admin access granted via namespace",
+	if info.Namespace == "" || info.Name == "" || info.Subject == "" {
+		ka.logger.Warn("Admin access denied due to missing required fields",
 			"namespace", info.Namespace,
 			"service_account", info.Name)
+		return false
+	}
+
+	// Strict namespace boundary
+	if info.Namespace != ka.namespace {
+		ka.logger.Warn("Admin access denied due to namespace mismatch",
+			"token_namespace", info.Namespace,
+			"expected_namespace", ka.namespace,
+			"service_account", info.Name)
+		return false
+	}
+
+	expectedSubject := fmt.Sprintf("system:serviceaccount:%s:%s", info.Namespace, info.Name)
+	if info.Subject != expectedSubject {
+		ka.logger.Warn("Admin access denied due to subject mismatch",
+			"subject", info.Subject,
+			"expected_subject", expectedSubject)
+		return false
+	}
+
+	if _, ok := ka.allowedAdminServiceAccounts()[info.Name]; ok {
+		ka.logger.Info("Admin access granted via service account allowlist",
+			"service_account", info.Name,
+			"namespace", info.Namespace)
 		return true
 	}
 
-	// 3. グループによる判定
-	for _, group := range info.Groups {
-		if strings.Contains(group, "admin") || strings.Contains(group, "system:masters") {
-			ka.logger.Info("Admin access granted via group membership",
-				"group", group,
-				"service_account", info.Name)
-			return true
-		}
-	}
-
-	// 4. 開発環境での特別扱い
-	if ka.isDevelopmentEnvironment() {
-		ka.logger.Warn("Admin access granted in development environment",
-			"service_account", info.Name,
-			"namespace", info.Namespace)
+	if _, ok := ka.allowedAdminSubjects()[info.Subject]; ok {
+		ka.logger.Info("Admin access granted via subject allowlist",
+			"subject", info.Subject)
 		return true
 	}
 
@@ -329,6 +273,42 @@ func (ka *KubernetesAuthenticator) HasAdminPermissions(info *ServiceAccountInfo)
 		"groups", info.Groups)
 
 	return false
+}
+
+func (ka *KubernetesAuthenticator) allowedAdminServiceAccounts() map[string]struct{} {
+	allowed := map[string]struct{}{
+		"pre-processor-admin":         {},
+		"pre-processor-sidecar-admin": {},
+	}
+
+	if raw := strings.TrimSpace(os.Getenv("PRE_PROCESSOR_ADMIN_SERVICE_ACCOUNTS")); raw != "" {
+		for _, v := range strings.Split(raw, ",") {
+			name := strings.TrimSpace(v)
+			if name != "" {
+				allowed[name] = struct{}{}
+			}
+		}
+	}
+
+	return allowed
+}
+
+func (ka *KubernetesAuthenticator) allowedAdminSubjects() map[string]struct{} {
+	allowed := map[string]struct{}{
+		fmt.Sprintf("system:serviceaccount:%s:pre-processor-admin", ka.namespace):         {},
+		fmt.Sprintf("system:serviceaccount:%s:pre-processor-sidecar-admin", ka.namespace): {},
+	}
+
+	if raw := strings.TrimSpace(os.Getenv("PRE_PROCESSOR_ADMIN_SUBJECTS")); raw != "" {
+		for _, v := range strings.Split(raw, ",") {
+			subject := strings.TrimSpace(v)
+			if subject != "" {
+				allowed[subject] = struct{}{}
+			}
+		}
+	}
+
+	return allowed
 }
 
 // isDevelopmentEnvironment は開発環境かどうか判定
