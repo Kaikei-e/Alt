@@ -20,15 +20,22 @@ function handleClick() {
 	type="button"
 	onclick={handleClick}
 	class={cn(
-		"w-full text-left border border-[var(--surface-border)] bg-white p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-1 cursor-pointer group",
-		isRead && "opacity-60"
+		"w-full text-left border border-[var(--surface-border)] p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-1 cursor-pointer group",
+		isRead
+			? "bg-[var(--surface-hover)]"
+			: "shadow-[inset_3px_0_0_var(--alt-primary)] bg-white"
 	)}
 	aria-label="Open {feed.title}"
 >
 	<div class="flex flex-col h-full gap-2">
 		<!-- Title -->
 		<h3
-			class="text-sm font-semibold text-[var(--text-primary)] line-clamp-2 group-hover:text-[var(--accent-primary)] transition-colors"
+			class={cn(
+				"text-sm line-clamp-2 group-hover:text-[var(--accent-primary)] transition-colors",
+				isRead
+					? "font-normal text-[var(--text-muted)]"
+					: "font-semibold text-[var(--text-primary)]"
+			)}
 		>
 			{feed.title}
 		</h3>

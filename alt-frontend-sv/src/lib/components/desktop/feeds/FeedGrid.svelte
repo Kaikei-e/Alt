@@ -20,7 +20,7 @@ export type FeedGridApi = {
 
 <script lang="ts">
 	import { Loader2 } from "@lucide/svelte";
-	import { getFeedsWithCursorClient } from "$lib/api/client/feeds";
+	import { getFeedsWithCursorClient, getAllFeedsWithCursorClient } from "$lib/api/client/feeds";
 	import DesktopFeedCard from "./DesktopFeedCard.svelte";
 	import { onMount } from "svelte";
 
@@ -39,10 +39,44 @@ export type FeedGridApi = {
 	// Track removed feed URLs for optimistic updates
 	let removedUrls = $state<Set<string>>(new Set());
 
-	// Filter out removed feeds
+	// Sort feeds client-side
+	function sortFeeds(items: RenderFeed[], sort: string): RenderFeed[] {
+		const sorted = [...items];
+		switch (sort) {
+			case "date_asc":
+				sorted.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
+				break;
+			case "title_asc":
+				sorted.sort((a, b) => (a.title ?? "").localeCompare(b.title ?? "", undefined, { sensitivity: "base" }));
+				break;
+			case "title_desc":
+				sorted.sort((a, b) => (b.title ?? "").localeCompare(a.title ?? "", undefined, { sensitivity: "base" }));
+				break;
+			case "date_desc":
+			default:
+				// Server default order is date_desc — no re-sort needed for fresh data,
+				// but we sort explicitly to handle mixed pages correctly
+				sorted.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+				break;
+		}
+		return sorted;
+	}
+
+	// Filter out removed feeds, then apply sort
 	const visibleFeeds = $derived(
-		feeds.filter(feed => !removedUrls.has(feed.normalizedUrl))
+		sortFeeds(
+			feeds.filter(feed => !removedUrls.has(feed.normalizedUrl)),
+			sortBy,
+		)
 	);
+
+	/** Fetch feeds using the correct API based on unreadOnly */
+	function fetchFeedsApi(cursor?: string, limit: number = 20) {
+		if (unreadOnly) {
+			return getFeedsWithCursorClient(cursor, limit);
+		}
+		return getAllFeedsWithCursorClient(cursor, limit);
+	}
 
 	/**
 	 * Synchronously removes a feed by URL and returns navigation info.
@@ -107,7 +141,7 @@ export type FeedGridApi = {
 		if (!hasNextPage || !nextCursor) return;
 
 		// Fire-and-forget: don't await, let it complete in the background
-		getFeedsWithCursorClient(nextCursor, 1)
+		fetchFeedsApi(nextCursor, 1)
 			.then((result) => {
 				if (result.data?.length > 0) {
 					feeds = [...feeds, ...result.data];
@@ -145,7 +179,7 @@ export type FeedGridApi = {
 
 	async function loadFeeds(cursor?: string) {
 		try {
-			const result = await getFeedsWithCursorClient(cursor, 20);
+			const result = await fetchFeedsApi(cursor, 20);
 
 			if (cursor) {
 				// Append to existing feeds
@@ -169,6 +203,41 @@ export type FeedGridApi = {
 		await loadFeeds(nextCursor);
 		isFetchingNextPage = false;
 	}
+
+	// Track filter key to detect changes
+	let prevFilterKey = $state("");
+
+	// Reset and reload when filters change
+	$effect(() => {
+		const filterKey = `${unreadOnly}:${sortBy}`;
+
+		// Skip the initial run (handled by onMount)
+		if (prevFilterKey === "") {
+			prevFilterKey = filterKey;
+			return;
+		}
+
+		// Only reload from server if unreadOnly changed (different data source)
+		// Sort changes are handled client-side via the derived visibleFeeds
+		if (filterKey !== prevFilterKey) {
+			const unreadOnlyChanged = prevFilterKey.split(":")[0] !== String(unreadOnly);
+			prevFilterKey = filterKey;
+
+			if (unreadOnlyChanged) {
+				// Reset state and reload
+				feeds = [];
+				nextCursor = undefined;
+				hasNextPage = true;
+				removedUrls = new Set();
+				error = null;
+				isLoading = true;
+
+				loadFeeds().finally(() => {
+					isLoading = false;
+				});
+			}
+		}
+	});
 
 	// Initial data load
 	onMount(async () => {
@@ -223,7 +292,7 @@ export type FeedGridApi = {
 		<!-- Grid layout -->
 		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
 			{#each visibleFeeds as feed, index (feed.id)}
-				<DesktopFeedCard {feed} onSelect={(f) => onSelectFeed(f, index, visibleFeeds.length)} />
+				<DesktopFeedCard {feed} isRead={feed.isRead ?? false} onSelect={(f) => onSelectFeed(f, index, visibleFeeds.length)} />
 			{/each}
 		</div>
 

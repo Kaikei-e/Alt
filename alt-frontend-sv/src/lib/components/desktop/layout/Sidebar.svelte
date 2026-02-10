@@ -26,7 +26,7 @@ const svBasePath = "/sv";
 const menuItems = [
 	{
 		label: "Dashboard",
-		href: `${svBasePath}/desktop`,
+		href: `${svBasePath}/dashboard`,
 		icon: Home,
 		category: "main",
 	},
@@ -37,22 +37,22 @@ const menuItems = [
 		children: [
 			{
 				label: "Unread Feeds",
-				href: `${svBasePath}/desktop/feeds`,
+				href: `${svBasePath}/feeds`,
 				icon: Rss,
 			},
 			{
 				label: "Read History",
-				href: `${svBasePath}/desktop/feeds/viewed`,
+				href: `${svBasePath}/feeds/viewed`,
 				icon: Eye,
 			},
 			{
 				label: "Favorites",
-				href: `${svBasePath}/desktop/feeds/favorites`,
+				href: `${svBasePath}/feeds/favorites`,
 				icon: Star,
 			},
 			{
 				label: "Search",
-				href: `${svBasePath}/desktop/feeds/search`,
+				href: `${svBasePath}/feeds/search`,
 				icon: Search,
 			},
 		],
@@ -64,22 +64,22 @@ const menuItems = [
 		children: [
 			{
 				label: "3-Day Summary",
-				href: `${svBasePath}/desktop/recap`,
+				href: `${svBasePath}/recap`,
 				icon: CalendarRange,
 			},
 			{
 				label: "Morning Letter",
-				href: `${svBasePath}/desktop/recap/morning-letter`,
+				href: `${svBasePath}/recap/morning-letter`,
 				icon: Newspaper,
 			},
 			{
 				label: "Evening Pulse",
-				href: `${svBasePath}/desktop/recap/evening-pulse`,
+				href: `${svBasePath}/recap/evening-pulse`,
 				icon: Sparkles,
 			},
 			{
 				label: "Job Status",
-				href: `${svBasePath}/desktop/recap/job-status`,
+				href: `${svBasePath}/recap/job-status`,
 				icon: Activity,
 			},
 		],
@@ -91,14 +91,14 @@ const menuItems = [
 		children: [
 			{
 				label: "Tag Trail",
-				href: `${svBasePath}/desktop/feeds/tag-trail`,
+				href: `${svBasePath}/feeds/tag-trail`,
 				icon: Shuffle,
 			},
 		],
 	},
 	{
 		label: "Ask Augur",
-		href: `${svBasePath}/desktop/augur`,
+		href: `${svBasePath}/augur`,
 		icon: BirdIcon,
 		category: "main",
 	},
@@ -109,14 +109,14 @@ const menuItems = [
 		children: [
 			{
 				label: "Manage Feed Links",
-				href: `${svBasePath}/desktop/settings/feeds`,
+				href: `${svBasePath}/settings/feeds`,
 				icon: LinkIcon,
 			},
 		],
 	},
 	{
 		label: "Statistics",
-		href: `${svBasePath}/desktop/stats`,
+		href: `${svBasePath}/stats`,
 		icon: ChartBar,
 		category: "main",
 	},
