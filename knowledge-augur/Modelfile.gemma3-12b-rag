@@ -1,0 +1,21 @@
+FROM gemma3:12b-it-qat
+
+# Gemma 3 12B QAT: news-creatorで実績のあるGemma系列
+# Swallow-8Bは structured JSON output 下で answer を30-50文字しか生成できない問題あり
+# Gemma 3 12B QATに移行して品質向上を図る
+# ライセンス: Gemma Terms of Use (商用利用可能)
+
+# RAG用パラメータ — VRAM 16GB 向け
+# 12B Q4_0 ~7GB + 8K KV cache ~2GB = ~9GB (16GB中)
+PARAMETER num_ctx 8192
+PARAMETER num_predict 4096
+PARAMETER num_batch 512
+
+# Gemma 3 推奨パラメータ (news-creator 実績準拠)
+PARAMETER temperature 0.7
+PARAMETER top_p 0.85
+PARAMETER top_k 40
+PARAMETER repeat_penalty 1.15
+
+# Gemma 3 stop トークン
+PARAMETER stop "<end_of_turn>"

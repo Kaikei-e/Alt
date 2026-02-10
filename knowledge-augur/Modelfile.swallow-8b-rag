@@ -9,7 +9,7 @@ FROM schroneko/llama-3.1-swallow-8b-instruct-v0.1:q5_k_s
 # Ollama API使用時、messages形式のsystemロールがModelfileのSYSTEMを上書きする
 
 # RAG用パラメータ
-PARAMETER num_ctx 8192
+PARAMETER num_ctx 16384
 PARAMETER num_predict 4096
 PARAMETER num_batch 512
 
