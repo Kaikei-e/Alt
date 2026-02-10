@@ -76,14 +76,21 @@ type OllamaGenerator struct {
 }
 
 // NewOllamaGenerator constructs a generator using the provided endpoint and model name.
-func NewOllamaGenerator(baseURL, model string, timeout int, logger *slog.Logger) *OllamaGenerator {
+// If client is nil, a default http.Client is created with the given timeout.
+func NewOllamaGenerator(baseURL, model string, timeout int, logger *slog.Logger, client ...*http.Client) *OllamaGenerator {
+	var c *http.Client
+	if len(client) > 0 && client[0] != nil {
+		c = client[0]
+	} else {
+		c = &http.Client{
+			Timeout: time.Duration(timeout) * time.Second,
+		}
+	}
 	return &OllamaGenerator{
 		BaseURL: strings.TrimRight(baseURL, "/"),
 		Model:   model,
-		Client: &http.Client{
-			Timeout: time.Duration(timeout) * time.Second,
-		},
-		logger: logger,
+		Client:  c,
+		logger:  logger,
 	}
 }
 
@@ -99,6 +106,10 @@ func (g *OllamaGenerator) getThinkParam(maxTokens int) interface{} {
 	}
 	// swallow/llama models: do not support thinking, skip parameter
 	if strings.Contains(modelLower, "swallow") || strings.Contains(modelLower, "llama") {
+		return nil
+	}
+	// gemma models: thinking not supported, return nil
+	if strings.Contains(modelLower, "gemma") {
 		return nil
 	}
 	// gpt-oss and other models: use string levels
@@ -122,14 +133,22 @@ func (g *OllamaGenerator) buildOptions(maxTokens int) map[string]interface{} {
 		opts["temperature"] = 0.7
 		opts["top_p"] = 0.8
 		opts["repeat_penalty"] = 1.15
+	case strings.Contains(modelLower, "gemma"):
+		// Gemma 3: news-creator実績準拠の設定
+		// M4 Mac Mini 16GB: 12B Q4_0 ~7GB + 8K KV cache ~2GB = ~9GB
+		opts["temperature"] = 0.7
+		opts["top_p"] = 0.85
+		opts["top_k"] = 40
+		opts["num_ctx"] = 8192
+		opts["repeat_penalty"] = 1.15
 	case strings.Contains(modelLower, "swallow") || strings.Contains(modelLower, "llama"):
 		// Swallow/Llama 3.1: 詳細な回答生成向け設定
 		// Swallow公式推奨: temperature=0.6 for detailed responses
 		// Reference: https://swallow-llm.github.io/llama3.1-swallow.en.html
 		opts["temperature"] = 0.6
 		opts["top_p"] = 0.9
-		// コンテキストウィンドウを明示的に設定（Modelfile依存を排除）
-		opts["num_ctx"] = 8192
+		// コンテキストウィンドウ: RAMで swallow-8b q5_k_s (~6GB) + 16k KV cache (~1.5GB) = ~7.5GB
+		opts["num_ctx"] = 16384
 		// 長い回答のためのrepeat_penalty（繰り返し防止）
 		opts["repeat_penalty"] = 1.1
 	default:
@@ -528,11 +547,11 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 	chatMsgs := toChatMessages(messages)
 	opts := g.buildOptions(maxTokens)
 
-	// Swallow/Llama models support structured output via Format
+	// Swallow/Llama/Gemma models support structured output via Format
 	// gpt-oss: Format causes empty content, skip
 	var format map[string]interface{}
 	modelLower := strings.ToLower(g.Model)
-	if strings.Contains(modelLower, "swallow") || strings.Contains(modelLower, "llama") {
+	if strings.Contains(modelLower, "swallow") || strings.Contains(modelLower, "llama") || strings.Contains(modelLower, "gemma") {
 		format = generationFormat
 	}
 
@@ -693,10 +712,21 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 			return
 		}
 
-		g.logger.Warn("ollama_chat_stream_ended_without_done",
-			slog.String("request_id", requestID),
-			slog.Int("chunks_received", chunkCount),
-			slog.Int("total_bytes", totalBytes))
+		// Stream ended without an explicit done flag.
+		// If we received substantial data, treat as success (done flag was just missing).
+		// If minimal data, report as error so caller can fallback.
+		if totalBytes < 50 {
+			g.logger.Warn("ollama_chat_stream_ended_without_done_minimal_data",
+				slog.String("request_id", requestID),
+				slog.Int("chunks_received", chunkCount),
+				slog.Int("total_bytes", totalBytes))
+			errCh <- fmt.Errorf("stream ended without done flag and minimal data (%d bytes)", totalBytes)
+		} else {
+			g.logger.Warn("ollama_chat_stream_ended_without_done",
+				slog.String("request_id", requestID),
+				slog.Int("chunks_received", chunkCount),
+				slog.Int("total_bytes", totalBytes))
+		}
 	}()
 
 	return chunkCh, errCh, nil

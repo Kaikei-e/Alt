@@ -35,13 +35,18 @@ type QueryExpanderClient struct {
 }
 
 // NewQueryExpanderClient constructs a new QueryExpanderClient.
-func NewQueryExpanderClient(baseURL string, timeoutSec int, logger *slog.Logger) *QueryExpanderClient {
+// If client is nil, a default http.Client is created with the given timeout.
+func NewQueryExpanderClient(baseURL string, timeoutSec int, logger *slog.Logger, client ...*http.Client) *QueryExpanderClient {
+	var c *http.Client
+	if len(client) > 0 && client[0] != nil {
+		c = client[0]
+	} else {
+		c = &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
+	}
 	return &QueryExpanderClient{
 		BaseURL: strings.TrimRight(baseURL, "/"),
-		Client: &http.Client{
-			Timeout: time.Duration(timeoutSec) * time.Second,
-		},
-		logger: logger,
+		Client:  c,
+		logger:  logger,
 	}
 }
 

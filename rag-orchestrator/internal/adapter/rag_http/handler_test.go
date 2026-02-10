@@ -102,6 +102,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		usecase.NewOutputValidator(),
 		5,
 		256,
+		6000,
 		"alpha-v1",
 		"ja",
 		testLogger,

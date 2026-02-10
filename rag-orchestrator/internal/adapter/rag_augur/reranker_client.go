@@ -46,14 +46,19 @@ type RerankerClient struct {
 // NewRerankerClient constructs a new RerankerClient.
 // baseURL should be the news-creator service URL (e.g., http://news-creator:8001).
 // model should be the cross-encoder model name (e.g., bge-reranker-v2-m3).
-func NewRerankerClient(baseURL, model string, timeout time.Duration, logger *slog.Logger) *RerankerClient {
+// If client is nil, a default http.Client is created with the given timeout.
+func NewRerankerClient(baseURL, model string, timeout time.Duration, logger *slog.Logger, client ...*http.Client) *RerankerClient {
+	var c *http.Client
+	if len(client) > 0 && client[0] != nil {
+		c = client[0]
+	} else {
+		c = &http.Client{Timeout: timeout}
+	}
 	return &RerankerClient{
 		BaseURL: strings.TrimRight(baseURL, "/"),
 		Model:   model,
-		Client: &http.Client{
-			Timeout: timeout,
-		},
-		logger: logger,
+		Client:  c,
+		logger:  logger,
 	}
 }
 
