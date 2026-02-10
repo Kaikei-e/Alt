@@ -149,6 +149,20 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to generate summary: %v", err)
+
+		// Handle non-retryable errors: immediately move to dead_letter
+		if errors.Is(err, domain.ErrContentNotProcessable) || errors.Is(err, domain.ErrContentTooShort) {
+			w.logger.WarnContext(ctx, "non-retryable summarization error, moving to dead_letter immediately",
+				"job_id", job.JobID,
+				"article_id", job.ArticleID,
+				"error", err,
+				"duration_ms", summarizeDuration.Milliseconds())
+			if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusDeadLetter, "", errorMsg); updateErr != nil {
+				w.logger.ErrorContext(ctx, "failed to update job status to dead_letter", "error", updateErr, "job_id", job.JobID)
+			}
+			return nil // Non-retryable, don't propagate error to skip remaining jobs
+		}
+
 		w.logger.ErrorContext(ctx, "failed to summarize article",
 			"error", err,
 			"article_id", job.ArticleID,
