@@ -5,27 +5,28 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
+	"time"
 
 	"rag-orchestrator/internal/domain"
 
-	"sync"
-	"time"
-
 	"github.com/google/uuid"
+	"github.com/hashicorp/golang-lru/v2/expirable"
 )
 
 type answerWithRAGUsecase struct {
-	retrieve      RetrieveContextUsecase
-	promptBuilder PromptBuilder
-	llmClient     domain.LLMClient
-	validator     OutputValidator
-	maxChunks     int
-	maxTokens     int
-	promptVersion string
-	defaultLocale string
-	cache         sync.Map // key: string hash, value: cacheItem
-	logger        *slog.Logger
+	retrieve        RetrieveContextUsecase
+	promptBuilder   PromptBuilder
+	llmClient       domain.LLMClient
+	validator       OutputValidator
+	maxChunks       int
+	maxTokens       int
+	maxPromptTokens int
+	promptVersion   string
+	defaultLocale   string
+	cache           *expirable.LRU[string, *AnswerWithRAGOutput]
+	logger          *slog.Logger
 }
 
 // NewAnswerWithRAGUsecase wires together the components needed to generate a RAG answer.
@@ -34,20 +35,42 @@ func NewAnswerWithRAGUsecase(
 	promptBuilder PromptBuilder,
 	llmClient domain.LLMClient,
 	validator OutputValidator,
-	maxChunks, maxTokens int,
+	maxChunks, maxTokens, maxPromptTokens int,
 	promptVersion, defaultLocale string,
 	logger *slog.Logger,
+	opts ...AnswerUsecaseOption,
 ) AnswerWithRAGUsecase {
+	if maxPromptTokens <= 0 {
+		maxPromptTokens = 6000
+	}
+	cacheSize := 256
+	cacheTTL := 10 * time.Minute
+	for _, opt := range opts {
+		opt(&cacheSize, &cacheTTL)
+	}
 	return &answerWithRAGUsecase{
-		retrieve:      retrieve,
-		promptBuilder: promptBuilder,
-		llmClient:     llmClient,
-		validator:     validator,
-		maxChunks:     maxChunks,
-		maxTokens:     maxTokens,
-		promptVersion: promptVersion,
-		defaultLocale: defaultLocale,
-		logger:        logger,
+		retrieve:        retrieve,
+		promptBuilder:   promptBuilder,
+		llmClient:       llmClient,
+		validator:       validator,
+		maxChunks:       maxChunks,
+		maxTokens:       maxTokens,
+		maxPromptTokens: maxPromptTokens,
+		promptVersion:   promptVersion,
+		defaultLocale:   defaultLocale,
+		cache:           expirable.NewLRU[string, *AnswerWithRAGOutput](cacheSize, nil, cacheTTL),
+		logger:          logger,
+	}
+}
+
+// AnswerUsecaseOption configures the answer usecase.
+type AnswerUsecaseOption func(cacheSize *int, cacheTTL *time.Duration)
+
+// WithCacheConfig sets the cache size and TTL.
+func WithCacheConfig(size int, ttl time.Duration) AnswerUsecaseOption {
+	return func(cacheSize *int, cacheTTL *time.Duration) {
+		*cacheSize = size
+		*cacheTTL = ttl
 	}
 }
 
@@ -68,17 +91,12 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 
 	// 1. Check Cache
 	cacheKey := u.generateCacheKey(input)
-	if val, ok := u.cache.Load(cacheKey); ok {
-		item := val.(cacheItem)
-		if time.Now().Before(item.expiresAt) {
-			u.logger.Info("cache_hit",
-				slog.String("request_id", requestID),
-				slog.String("cache_key", cacheKey),
-				slog.String("query", input.Query))
-			return item.output, nil
-		} else {
-			u.cache.Delete(cacheKey)
-		}
+	if val, ok := u.cache.Get(cacheKey); ok {
+		u.logger.Info("cache_hit",
+			slog.String("request_id", requestID),
+			slog.String("cache_key", cacheKey),
+			slog.String("query", input.Query))
+		return val, nil
 	}
 
 	// 2. Prepare Context (Retrieval)
@@ -90,7 +108,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("retrieval_set_id", promptData.retrievalSetID),
 			slog.String("reason", err.Error()),
 			slog.Int("contexts_available", len(promptData.contexts)))
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, err.Error())
+		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, err.Error(), FallbackRetrievalEmpty)
 	}
 
 	u.logger.Info("context_retrieved",
@@ -127,7 +145,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("retrieval_set_id", promptData.retrievalSetID),
 			slog.String("reason", "failed to build prompt"),
 			slog.Int("contexts_available", len(promptData.contexts)))
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, "failed to build prompt")
+		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, "failed to build prompt", FallbackGenerationFailed)
 	}
 
 	// Calculate approximate prompt size
@@ -161,7 +179,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("retrieval_set_id", promptData.retrievalSetID),
 			slog.String("reason", fmt.Sprintf("generation failed: %v", err)),
 			slog.Int("contexts_available", len(promptData.contexts)))
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("generation failed: %v", err))
+		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("generation failed: %v", err), FallbackGenerationFailed)
 	}
 
 	generationDuration := time.Since(generationStart)
@@ -178,7 +196,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("retrieval_set_id", promptData.retrievalSetID),
 			slog.String("reason", fmt.Sprintf("validation failed: %v", err)),
 			slog.Int("contexts_available", len(promptData.contexts)))
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("validation failed: %v", err))
+		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("validation failed: %v", err), FallbackValidationFailed)
 	}
 
 	u.logger.Info("validation_completed",
@@ -193,7 +211,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("reason", parsedAnswer.Reason),
 			slog.Int("contexts_available", len(promptData.contexts)),
 			slog.String("llm_raw_response", truncate(resp.Text, 500)))
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, parsedAnswer.Reason)
+		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, parsedAnswer.Reason, FallbackLLMFallback)
 	}
 
 	// Build Citations (Hydration)
@@ -213,10 +231,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 	}
 
 	// 5. Store in Cache
-	u.cache.Store(cacheKey, cacheItem{
-		output:    output,
-		expiresAt: time.Now().Add(10 * time.Minute),
-	})
+	u.cache.Add(cacheKey, output)
 
 	executionDuration := time.Since(executionStart)
 	u.logger.Info("answer_request_completed",
@@ -228,13 +243,14 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 	return output, nil
 }
 
-func (u *answerWithRAGUsecase) prepareFallback(contexts []ContextItem, reqID, reason string) (*AnswerWithRAGOutput, error) {
+func (u *answerWithRAGUsecase) prepareFallback(contexts []ContextItem, reqID, reason string, category FallbackCategory) (*AnswerWithRAGOutput, error) {
 	return &AnswerWithRAGOutput{
-		Answer:    "",
-		Citations: nil,
-		Contexts:  contexts,
-		Fallback:  true,
-		Reason:    reason,
+		Answer:           "",
+		Citations:        nil,
+		Contexts:         contexts,
+		Fallback:         true,
+		Reason:           reason,
+		FallbackCategory: category,
 		Debug: AnswerDebug{
 			RetrievalSetID: reqID,
 			PromptVersion:  u.promptVersion,
@@ -327,6 +343,29 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		contexts = contexts[:maxChunks]
 	}
 
+	// Dynamic token-based limiting: prevent prompt from exceeding LLM context window.
+	// With num_ctx=8192 and num_predict=4096, we have ~4096 tokens for input.
+	// Reserve headroom for system prompt (~400 tokens) and query (~100 tokens).
+	// Japanese text averages ~3 characters per token.
+	maxPromptTokens := u.maxPromptTokens
+	estimatedTokens := 500 // system prompt + query overhead
+	var limitedContexts []ContextItem
+	for _, ctx := range contexts {
+		chunkTokens := len(ctx.ChunkText) / 3 // Japanese ~3 chars/token
+		if estimatedTokens+chunkTokens > maxPromptTokens && len(limitedContexts) > 0 {
+			break
+		}
+		estimatedTokens += chunkTokens
+		limitedContexts = append(limitedContexts, ctx)
+	}
+	if len(limitedContexts) < len(contexts) {
+		u.logger.Info("context_chunks_limited_by_tokens",
+			slog.Int("original_count", len(contexts)),
+			slog.Int("limited_count", len(limitedContexts)),
+			slog.Int("estimated_tokens", estimatedTokens))
+	}
+	contexts = limitedContexts
+
 	result.contexts = contexts
 	result.expandedQueries = retrieved.ExpandedQueries
 
@@ -386,8 +425,11 @@ func (u *answerWithRAGUsecase) toPromptContexts(contexts []ContextItem) []Prompt
 }
 
 func (u *answerWithRAGUsecase) generateCacheKey(input AnswerWithRAGInput) string {
-	// Simple key generation
-	return fmt.Sprintf("%s|%v|%s", input.Query, input.CandidateArticleIDs, input.Locale)
+	// Normalize by sorting article IDs for consistent cache keys
+	ids := make([]string, len(input.CandidateArticleIDs))
+	copy(ids, input.CandidateArticleIDs)
+	sort.Strings(ids)
+	return fmt.Sprintf("%s|%v|%s", input.Query, ids, input.Locale)
 }
 
 func truncate(s string, maxLen int) string {

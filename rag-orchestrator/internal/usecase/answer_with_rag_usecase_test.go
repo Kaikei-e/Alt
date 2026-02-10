@@ -74,7 +74,7 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 	builder := usecase.NewXMLPromptBuilder()
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 10, 512, "alpha-v1", "ja", testLogger)
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
 	chunkID := uuid.New()
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
@@ -99,11 +99,11 @@ func TestAnswerWithRAG_Success(t *testing.T) {
   "reason": ""
 }`
 
-	// Expect Single Call
+	// Expect Single Call (Gemma 3: instructions merged into user message)
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		// Check for specific instruction (updated Japanese prompt)
-		return len(msgs) > 0 && msgs[0].Role == "system" &&
-			contains(msgs[0].Content, "非常に詳細で包括的な回答")
+		return len(msgs) == 1 && msgs[0].Role == "user" &&
+			contains(msgs[0].Content, "リサーチアナリスト") &&
+			contains(msgs[0].Content, "500文字以上")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
@@ -121,7 +121,7 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 	builder := usecase.NewXMLPromptBuilder()
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 7, 512, "alpha-v1", "ja", testLogger)
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 7, 512, 6000, "alpha-v1", "ja", testLogger)
 
 	chunkID := uuid.New()
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
@@ -143,15 +143,15 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
   "reason": "insufficient evidence"
 }`
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		// Check for specific instruction (updated Japanese prompt)
-		return len(msgs) > 0 && msgs[0].Role == "system" &&
-			contains(msgs[0].Content, "非常に詳細で包括的な回答")
+		return len(msgs) == 1 && msgs[0].Role == "user" &&
+			contains(msgs[0].Content, "リサーチアナリスト")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: fallbackResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
 	assert.NoError(t, err)
 	assert.True(t, output.Fallback)
 	assert.Equal(t, "insufficient evidence", output.Reason)
+	assert.Equal(t, usecase.FallbackLLMFallback, output.FallbackCategory)
 	assert.Len(t, output.Citations, 0)
 }
 
@@ -169,7 +169,7 @@ func TestStream_SendsThinkingEventFirst(t *testing.T) {
 	builder := usecase.NewXMLPromptBuilder()
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 10, 512, "alpha-v1", "ja", testLogger)
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
 	chunkID := uuid.New()
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{

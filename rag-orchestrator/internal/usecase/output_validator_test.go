@@ -168,6 +168,55 @@ func TestOutputValidator_Validate_LiteralBackslashN(t *testing.T) {
 	assert.Equal(t, expected, result.Answer, "Literal \\n in model output should be converted to actual newlines")
 }
 
+func TestOutputValidator_Validate_EmptyAnswerRejection(t *testing.T) {
+	validator := usecase.NewOutputValidator()
+
+	// Empty answer without fallback flag should be rejected
+	input := `{
+		"answer": "",
+		"citations": [],
+		"fallback": false,
+		"reason": ""
+	}`
+
+	result, err := validator.Validate(input, nil)
+	assert.Error(t, err, "should reject empty answer without fallback")
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "empty answer without fallback")
+}
+
+func TestOutputValidator_Validate_EmptyAnswerWithFallback(t *testing.T) {
+	validator := usecase.NewOutputValidator()
+
+	// Empty answer WITH fallback flag is valid
+	input := `{
+		"answer": "",
+		"citations": [],
+		"fallback": true,
+		"reason": "insufficient context"
+	}`
+
+	result, err := validator.Validate(input, nil)
+	assert.NoError(t, err, "empty answer with fallback=true should be valid")
+	assert.True(t, result.Fallback)
+}
+
+func TestOutputValidator_Validate_WhitespaceOnlyAnswerRejection(t *testing.T) {
+	validator := usecase.NewOutputValidator()
+
+	// Whitespace-only answer should also be rejected
+	input := `{
+		"answer": "   \n  \n  ",
+		"citations": [],
+		"fallback": false,
+		"reason": ""
+	}`
+
+	result, err := validator.Validate(input, nil)
+	assert.Error(t, err, "should reject whitespace-only answer without fallback")
+	assert.Nil(t, result)
+}
+
 func TestOutputValidator_ConvertLiteralEscapes_OnlyNewlines(t *testing.T) {
 	// Test that convertLiteralEscapes only converts \n, not \t or \r
 	// This is important to avoid breaking paths like C:\temp

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 )
 
 // Stream streams a RAG answer using Server-Sent Events.
@@ -24,32 +23,24 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 
 		// 1. Check Cache (Simulated Stream)
 		cacheKey := u.generateCacheKey(input)
-		if val, ok := u.cache.Load(cacheKey); ok {
-			item := val.(cacheItem)
-			if time.Now().Before(item.expiresAt) {
-				slog.InfoContext(ctx, "streaming cached answer", slog.String("key", cacheKey))
-				// Emit Meta
-				u.sendStreamEvent(ctx, events, StreamEvent{
-					Kind: StreamEventKindMeta,
-					Payload: StreamMeta{
-						Contexts: item.output.Contexts,
-						Debug:    item.output.Debug,
-					},
-				})
-				// Emit Answer as a single large delta (or chunk it?)
-				u.sendStreamEvent(ctx, events, StreamEvent{
-					Kind:    StreamEventKindDelta,
-					Payload: item.output.Answer,
-				})
-				// Emit Done
-				u.sendStreamEvent(ctx, events, StreamEvent{
-					Kind:    StreamEventKindDone,
-					Payload: item.output,
-				})
-				return
-			} else {
-				u.cache.Delete(cacheKey)
-			}
+		if val, ok := u.cache.Get(cacheKey); ok {
+			slog.InfoContext(ctx, "streaming cached answer", slog.String("key", cacheKey))
+			u.sendStreamEvent(ctx, events, StreamEvent{
+				Kind: StreamEventKindMeta,
+				Payload: StreamMeta{
+					Contexts: val.Contexts,
+					Debug:    val.Debug,
+				},
+			})
+			u.sendStreamEvent(ctx, events, StreamEvent{
+				Kind:    StreamEventKindDelta,
+				Payload: val.Answer,
+			})
+			u.sendStreamEvent(ctx, events, StreamEvent{
+				Kind:    StreamEventKindDone,
+				Payload: val,
+			})
+			return
 		}
 
 		// 2. Send immediate thinking event (Cloudflare 524 prevention)
@@ -64,13 +55,27 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
-		// 3. Prepare Context (may take 50+ seconds for retrieval + reranking)
+		// 3. Prepare Context (retrieval + reranking)
+		if !u.sendStreamEvent(ctx, events, StreamEvent{
+			Kind:    StreamEventKindProgress,
+			Payload: "searching",
+		}) {
+			return
+		}
+
 		promptData, err := u.buildPrompt(ctx, input)
 		if err != nil {
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
 				Payload: err.Error(),
 			})
+			return
+		}
+
+		if !u.sendStreamEvent(ctx, events, StreamEvent{
+			Kind:    StreamEventKindProgress,
+			Payload: "generating",
+		}) {
 			return
 		}
 
@@ -339,10 +344,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		}
 
 		// Store in Cache
-		u.cache.Store(cacheKey, cacheItem{
-			output:    output,
-			expiresAt: time.Now().Add(10 * time.Minute),
-		})
+		u.cache.Add(cacheKey, output)
 
 		u.sendStreamEvent(ctx, events, StreamEvent{
 			Kind:    StreamEventKindDone,

@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"time"
 )
 
 // AnswerWithRAGInput encapsulates the parameters that drive a RAG answer request.
@@ -17,12 +16,13 @@ type AnswerWithRAGInput struct {
 
 // AnswerWithRAGOutput represents the normalized answer response returned to API clients.
 type AnswerWithRAGOutput struct {
-	Answer    string
-	Citations []Citation
-	Contexts  []ContextItem
-	Fallback  bool
-	Reason    string
-	Debug     AnswerDebug
+	Answer           string
+	Citations        []Citation
+	Contexts         []ContextItem
+	Fallback         bool
+	Reason           string
+	FallbackCategory FallbackCategory // Structured fallback reason for observability
+	Debug            AnswerDebug
 }
 
 // Citation connects a chunk-level citation to the metadata needed by callers.
@@ -54,6 +54,7 @@ const (
 	StreamEventKindMeta     StreamEventKind = "meta"
 	StreamEventKindDelta    StreamEventKind = "delta"
 	StreamEventKindThinking StreamEventKind = "thinking"
+	StreamEventKindProgress StreamEventKind = "progress"
 	StreamEventKindDone     StreamEventKind = "done"
 	StreamEventKindFallback StreamEventKind = "fallback"
 	StreamEventKindError    StreamEventKind = "error"
@@ -69,7 +70,13 @@ type StreamMeta struct {
 	Debug    AnswerDebug
 }
 
-type cacheItem struct {
-	output    *AnswerWithRAGOutput
-	expiresAt time.Time
-}
+// FallbackCategory classifies why a fallback was triggered, aiding observability.
+type FallbackCategory string
+
+const (
+	FallbackRetrievalEmpty  FallbackCategory = "retrieval_empty"
+	FallbackGenerationFailed FallbackCategory = "generation_failed"
+	FallbackValidationFailed FallbackCategory = "validation_failed"
+	FallbackLLMFallback     FallbackCategory = "llm_fallback"
+)
+

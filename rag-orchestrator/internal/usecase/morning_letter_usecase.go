@@ -48,17 +48,23 @@ type morningLetterUsecase struct {
 	retrieveUC       RetrieveContextUsecase
 	promptBuilder    MorningLetterPromptBuilder
 	llmClient        domain.LLMClient
+	maxTokens        int
+	maxPromptTokens  int
 	temporalBoostCfg TemporalBoostConfig
 	logger           *slog.Logger
 }
 
 // NewMorningLetterUsecase creates a new morning letter usecase.
 // If temporalBoostCfg is zero-valued, defaults are used.
+// maxTokens controls the LLM generation token limit (0 defaults to 4096).
+// maxPromptTokens controls the maximum prompt tokens for context limiting (0 defaults to 6000).
 func NewMorningLetterUsecase(
 	articleClient domain.ArticleClient,
 	retrieveUC RetrieveContextUsecase,
 	promptBuilder MorningLetterPromptBuilder,
 	llmClient domain.LLMClient,
+	maxTokens int,
+	maxPromptTokens int,
 	temporalBoostCfg TemporalBoostConfig,
 	logger *slog.Logger,
 ) MorningLetterUsecase {
@@ -66,11 +72,19 @@ func NewMorningLetterUsecase(
 	if temporalBoostCfg.Boost6h == 0 {
 		temporalBoostCfg = DefaultTemporalBoostConfig()
 	}
+	if maxTokens <= 0 {
+		maxTokens = 4096
+	}
+	if maxPromptTokens <= 0 {
+		maxPromptTokens = 6000
+	}
 	return &morningLetterUsecase{
 		articleClient:    articleClient,
 		retrieveUC:       retrieveUC,
 		promptBuilder:    promptBuilder,
 		llmClient:        llmClient,
+		maxTokens:        maxTokens,
+		maxPromptTokens:  maxPromptTokens,
 		temporalBoostCfg: temporalBoostCfg,
 		logger:           logger,
 	}
@@ -157,6 +171,28 @@ func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterI
 	// 5. Apply temporal boost to context scores
 	boostedContexts := u.applyTemporalBoost(retrieveOutput.Contexts, now)
 
+	// 5.5 Dynamic token-based context limiting (same pattern as answer_with_rag_usecase)
+	// Prevents prompt from exceeding LLM context window.
+	// Japanese text averages ~3 characters per token.
+	maxMorningLetterPromptTokens := u.maxPromptTokens
+	estimatedTokens := 600 // morning letter system prompt overhead (larger than augur)
+	var limitedContexts []ContextItem
+	for _, ctx := range boostedContexts {
+		chunkTokens := len(ctx.ChunkText) / 3
+		if estimatedTokens+chunkTokens > maxMorningLetterPromptTokens && len(limitedContexts) > 0 {
+			break
+		}
+		estimatedTokens += chunkTokens
+		limitedContexts = append(limitedContexts, ctx)
+	}
+	if len(limitedContexts) < len(boostedContexts) {
+		u.logger.Info("morning_letter_context_limited_by_tokens",
+			slog.Int("original_count", len(boostedContexts)),
+			slog.Int("limited_count", len(limitedContexts)),
+			slog.Int("estimated_tokens", estimatedTokens))
+	}
+	boostedContexts = limitedContexts
+
 	// 6. Build morning letter prompt
 	messages, err := u.promptBuilder.Build(MorningLetterPromptInput{
 		Query:      input.Query,
@@ -172,7 +208,7 @@ func (u *morningLetterUsecase) Execute(ctx context.Context, input MorningLetterI
 	}
 
 	// 7. Generate topics via LLM
-	response, err := u.llmClient.Chat(ctx, messages, 1500)
+	response, err := u.llmClient.Chat(ctx, messages, u.maxTokens)
 	if err != nil {
 		u.logger.Error("LLM generation failed", slog.String("error", err.Error()))
 		return nil, fmt.Errorf("LLM generation failed: %w", err)

@@ -43,11 +43,11 @@ func TestMorningLetterPromptBuilder_Build_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, messages, 2)
 
-	// Check system message
+	// Check system message (Japanese for Gemma 3 token efficiency)
 	assert.Equal(t, "system", messages[0].Role)
-	assert.Contains(t, messages[0].Content, "expert news analyst")
-	assert.Contains(t, messages[0].Content, "24 hours")
-	assert.Contains(t, messages[0].Content, "5") // topic limit
+	assert.Contains(t, messages[0].Content, "ニュースアナリスト")
+	assert.Contains(t, messages[0].Content, "24時間")
+	assert.Contains(t, messages[0].Content, "最大5個") // topic limit
 
 	// Check user message
 	assert.Equal(t, "user", messages[1].Role)
@@ -99,5 +99,5 @@ func TestMorningLetterPromptBuilder_Build_DefaultTopicLimit(t *testing.T) {
 	require.Len(t, messages, 2)
 
 	// Should default to 10 topics
-	assert.Contains(t, messages[0].Content, "up to 10")
+	assert.Contains(t, messages[0].Content, "最大10個")
 }

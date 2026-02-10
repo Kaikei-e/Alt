@@ -71,6 +71,13 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 	// The model sometimes outputs literal \n instead of proper JSON escapes
 	answer.Answer = convertLiteralEscapes(answer.Answer)
 
+	// Reject empty answer when model didn't flag as fallback.
+	// This catches the 8B model "headers-only" failure where the model outputs
+	// section headings but runs out of tokens before filling content.
+	if answer.Answer == "" && !answer.Fallback {
+		return nil, errors.New("llm returned empty answer without fallback flag")
+	}
+
 	return &answer, nil
 }
 

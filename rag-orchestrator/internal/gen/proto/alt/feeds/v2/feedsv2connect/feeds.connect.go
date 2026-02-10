@@ -48,6 +48,8 @@ const (
 	// FeedServiceGetUnreadFeedsProcedure is the fully-qualified name of the FeedService's
 	// GetUnreadFeeds RPC.
 	FeedServiceGetUnreadFeedsProcedure = "/alt.feeds.v2.FeedService/GetUnreadFeeds"
+	// FeedServiceGetAllFeedsProcedure is the fully-qualified name of the FeedService's GetAllFeeds RPC.
+	FeedServiceGetAllFeedsProcedure = "/alt.feeds.v2.FeedService/GetAllFeeds"
 	// FeedServiceGetReadFeedsProcedure is the fully-qualified name of the FeedService's GetReadFeeds
 	// RPC.
 	FeedServiceGetReadFeedsProcedure = "/alt.feeds.v2.FeedService/GetReadFeeds"
@@ -61,6 +63,13 @@ const (
 	FeedServiceStreamSummarizeProcedure = "/alt.feeds.v2.FeedService/StreamSummarize"
 	// FeedServiceMarkAsReadProcedure is the fully-qualified name of the FeedService's MarkAsRead RPC.
 	FeedServiceMarkAsReadProcedure = "/alt.feeds.v2.FeedService/MarkAsRead"
+	// FeedServiceListSubscriptionsProcedure is the fully-qualified name of the FeedService's
+	// ListSubscriptions RPC.
+	FeedServiceListSubscriptionsProcedure = "/alt.feeds.v2.FeedService/ListSubscriptions"
+	// FeedServiceSubscribeProcedure is the fully-qualified name of the FeedService's Subscribe RPC.
+	FeedServiceSubscribeProcedure = "/alt.feeds.v2.FeedService/Subscribe"
+	// FeedServiceUnsubscribeProcedure is the fully-qualified name of the FeedService's Unsubscribe RPC.
+	FeedServiceUnsubscribeProcedure = "/alt.feeds.v2.FeedService/Unsubscribe"
 )
 
 // FeedServiceClient is a client for the alt.feeds.v2.FeedService service.
@@ -77,6 +86,8 @@ type FeedServiceClient interface {
 	// GetUnreadFeeds returns unread feeds with cursor-based pagination
 	// Replaces GET /v1/feeds/fetch/cursor
 	GetUnreadFeeds(context.Context, *connect.Request[v2.GetUnreadFeedsRequest]) (*connect.Response[v2.GetUnreadFeedsResponse], error)
+	// GetAllFeeds returns all feeds (read + unread) with cursor-based pagination
+	GetAllFeeds(context.Context, *connect.Request[v2.GetAllFeedsRequest]) (*connect.Response[v2.GetAllFeedsResponse], error)
 	// GetReadFeeds returns read/viewed feeds with cursor-based pagination
 	// Replaces GET /v1/feeds/fetch/viewed/cursor
 	GetReadFeeds(context.Context, *connect.Request[v2.GetReadFeedsRequest]) (*connect.Response[v2.GetReadFeedsResponse], error)
@@ -92,6 +103,12 @@ type FeedServiceClient interface {
 	// MarkAsRead marks an article as read by its URL
 	// Replaces POST /v1/feeds/read
 	MarkAsRead(context.Context, *connect.Request[v2.MarkAsReadRequest]) (*connect.Response[v2.MarkAsReadResponse], error)
+	// ListSubscriptions returns all feed sources with subscription status for the current user
+	ListSubscriptions(context.Context, *connect.Request[v2.ListSubscriptionsRequest]) (*connect.Response[v2.ListSubscriptionsResponse], error)
+	// Subscribe subscribes the current user to a feed source
+	Subscribe(context.Context, *connect.Request[v2.SubscribeRequest]) (*connect.Response[v2.SubscribeResponse], error)
+	// Unsubscribe unsubscribes the current user from a feed source
+	Unsubscribe(context.Context, *connect.Request[v2.UnsubscribeRequest]) (*connect.Response[v2.UnsubscribeResponse], error)
 }
 
 // NewFeedServiceClient constructs a client for the alt.feeds.v2.FeedService service. By default, it
@@ -135,6 +152,12 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("GetUnreadFeeds")),
 			connect.WithClientOptions(opts...),
 		),
+		getAllFeeds: connect.NewClient[v2.GetAllFeedsRequest, v2.GetAllFeedsResponse](
+			httpClient,
+			baseURL+FeedServiceGetAllFeedsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("GetAllFeeds")),
+			connect.WithClientOptions(opts...),
+		),
 		getReadFeeds: connect.NewClient[v2.GetReadFeedsRequest, v2.GetReadFeedsResponse](
 			httpClient,
 			baseURL+FeedServiceGetReadFeedsProcedure,
@@ -165,6 +188,24 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("MarkAsRead")),
 			connect.WithClientOptions(opts...),
 		),
+		listSubscriptions: connect.NewClient[v2.ListSubscriptionsRequest, v2.ListSubscriptionsResponse](
+			httpClient,
+			baseURL+FeedServiceListSubscriptionsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("ListSubscriptions")),
+			connect.WithClientOptions(opts...),
+		),
+		subscribe: connect.NewClient[v2.SubscribeRequest, v2.SubscribeResponse](
+			httpClient,
+			baseURL+FeedServiceSubscribeProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("Subscribe")),
+			connect.WithClientOptions(opts...),
+		),
+		unsubscribe: connect.NewClient[v2.UnsubscribeRequest, v2.UnsubscribeResponse](
+			httpClient,
+			baseURL+FeedServiceUnsubscribeProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("Unsubscribe")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -175,11 +216,15 @@ type feedServiceClient struct {
 	getUnreadCount       *connect.Client[v2.GetUnreadCountRequest, v2.GetUnreadCountResponse]
 	streamFeedStats      *connect.Client[v2.StreamFeedStatsRequest, v2.StreamFeedStatsResponse]
 	getUnreadFeeds       *connect.Client[v2.GetUnreadFeedsRequest, v2.GetUnreadFeedsResponse]
+	getAllFeeds          *connect.Client[v2.GetAllFeedsRequest, v2.GetAllFeedsResponse]
 	getReadFeeds         *connect.Client[v2.GetReadFeedsRequest, v2.GetReadFeedsResponse]
 	getFavoriteFeeds     *connect.Client[v2.GetFavoriteFeedsRequest, v2.GetFavoriteFeedsResponse]
 	searchFeeds          *connect.Client[v2.SearchFeedsRequest, v2.SearchFeedsResponse]
 	streamSummarize      *connect.Client[v2.StreamSummarizeRequest, v2.StreamSummarizeResponse]
 	markAsRead           *connect.Client[v2.MarkAsReadRequest, v2.MarkAsReadResponse]
+	listSubscriptions    *connect.Client[v2.ListSubscriptionsRequest, v2.ListSubscriptionsResponse]
+	subscribe            *connect.Client[v2.SubscribeRequest, v2.SubscribeResponse]
+	unsubscribe          *connect.Client[v2.UnsubscribeRequest, v2.UnsubscribeResponse]
 }
 
 // GetFeedStats calls alt.feeds.v2.FeedService.GetFeedStats.
@@ -207,6 +252,11 @@ func (c *feedServiceClient) GetUnreadFeeds(ctx context.Context, req *connect.Req
 	return c.getUnreadFeeds.CallUnary(ctx, req)
 }
 
+// GetAllFeeds calls alt.feeds.v2.FeedService.GetAllFeeds.
+func (c *feedServiceClient) GetAllFeeds(ctx context.Context, req *connect.Request[v2.GetAllFeedsRequest]) (*connect.Response[v2.GetAllFeedsResponse], error) {
+	return c.getAllFeeds.CallUnary(ctx, req)
+}
+
 // GetReadFeeds calls alt.feeds.v2.FeedService.GetReadFeeds.
 func (c *feedServiceClient) GetReadFeeds(ctx context.Context, req *connect.Request[v2.GetReadFeedsRequest]) (*connect.Response[v2.GetReadFeedsResponse], error) {
 	return c.getReadFeeds.CallUnary(ctx, req)
@@ -232,6 +282,21 @@ func (c *feedServiceClient) MarkAsRead(ctx context.Context, req *connect.Request
 	return c.markAsRead.CallUnary(ctx, req)
 }
 
+// ListSubscriptions calls alt.feeds.v2.FeedService.ListSubscriptions.
+func (c *feedServiceClient) ListSubscriptions(ctx context.Context, req *connect.Request[v2.ListSubscriptionsRequest]) (*connect.Response[v2.ListSubscriptionsResponse], error) {
+	return c.listSubscriptions.CallUnary(ctx, req)
+}
+
+// Subscribe calls alt.feeds.v2.FeedService.Subscribe.
+func (c *feedServiceClient) Subscribe(ctx context.Context, req *connect.Request[v2.SubscribeRequest]) (*connect.Response[v2.SubscribeResponse], error) {
+	return c.subscribe.CallUnary(ctx, req)
+}
+
+// Unsubscribe calls alt.feeds.v2.FeedService.Unsubscribe.
+func (c *feedServiceClient) Unsubscribe(ctx context.Context, req *connect.Request[v2.UnsubscribeRequest]) (*connect.Response[v2.UnsubscribeResponse], error) {
+	return c.unsubscribe.CallUnary(ctx, req)
+}
+
 // FeedServiceHandler is an implementation of the alt.feeds.v2.FeedService service.
 type FeedServiceHandler interface {
 	// GetFeedStats returns basic feed statistics (feed count, summarized count)
@@ -246,6 +311,8 @@ type FeedServiceHandler interface {
 	// GetUnreadFeeds returns unread feeds with cursor-based pagination
 	// Replaces GET /v1/feeds/fetch/cursor
 	GetUnreadFeeds(context.Context, *connect.Request[v2.GetUnreadFeedsRequest]) (*connect.Response[v2.GetUnreadFeedsResponse], error)
+	// GetAllFeeds returns all feeds (read + unread) with cursor-based pagination
+	GetAllFeeds(context.Context, *connect.Request[v2.GetAllFeedsRequest]) (*connect.Response[v2.GetAllFeedsResponse], error)
 	// GetReadFeeds returns read/viewed feeds with cursor-based pagination
 	// Replaces GET /v1/feeds/fetch/viewed/cursor
 	GetReadFeeds(context.Context, *connect.Request[v2.GetReadFeedsRequest]) (*connect.Response[v2.GetReadFeedsResponse], error)
@@ -261,6 +328,12 @@ type FeedServiceHandler interface {
 	// MarkAsRead marks an article as read by its URL
 	// Replaces POST /v1/feeds/read
 	MarkAsRead(context.Context, *connect.Request[v2.MarkAsReadRequest]) (*connect.Response[v2.MarkAsReadResponse], error)
+	// ListSubscriptions returns all feed sources with subscription status for the current user
+	ListSubscriptions(context.Context, *connect.Request[v2.ListSubscriptionsRequest]) (*connect.Response[v2.ListSubscriptionsResponse], error)
+	// Subscribe subscribes the current user to a feed source
+	Subscribe(context.Context, *connect.Request[v2.SubscribeRequest]) (*connect.Response[v2.SubscribeResponse], error)
+	// Unsubscribe unsubscribes the current user from a feed source
+	Unsubscribe(context.Context, *connect.Request[v2.UnsubscribeRequest]) (*connect.Response[v2.UnsubscribeResponse], error)
 }
 
 // NewFeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -300,6 +373,12 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("GetUnreadFeeds")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceGetAllFeedsHandler := connect.NewUnaryHandler(
+		FeedServiceGetAllFeedsProcedure,
+		svc.GetAllFeeds,
+		connect.WithSchema(feedServiceMethods.ByName("GetAllFeeds")),
+		connect.WithHandlerOptions(opts...),
+	)
 	feedServiceGetReadFeedsHandler := connect.NewUnaryHandler(
 		FeedServiceGetReadFeedsProcedure,
 		svc.GetReadFeeds,
@@ -330,6 +409,24 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("MarkAsRead")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceListSubscriptionsHandler := connect.NewUnaryHandler(
+		FeedServiceListSubscriptionsProcedure,
+		svc.ListSubscriptions,
+		connect.WithSchema(feedServiceMethods.ByName("ListSubscriptions")),
+		connect.WithHandlerOptions(opts...),
+	)
+	feedServiceSubscribeHandler := connect.NewUnaryHandler(
+		FeedServiceSubscribeProcedure,
+		svc.Subscribe,
+		connect.WithSchema(feedServiceMethods.ByName("Subscribe")),
+		connect.WithHandlerOptions(opts...),
+	)
+	feedServiceUnsubscribeHandler := connect.NewUnaryHandler(
+		FeedServiceUnsubscribeProcedure,
+		svc.Unsubscribe,
+		connect.WithSchema(feedServiceMethods.ByName("Unsubscribe")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.feeds.v2.FeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FeedServiceGetFeedStatsProcedure:
@@ -342,6 +439,8 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceStreamFeedStatsHandler.ServeHTTP(w, r)
 		case FeedServiceGetUnreadFeedsProcedure:
 			feedServiceGetUnreadFeedsHandler.ServeHTTP(w, r)
+		case FeedServiceGetAllFeedsProcedure:
+			feedServiceGetAllFeedsHandler.ServeHTTP(w, r)
 		case FeedServiceGetReadFeedsProcedure:
 			feedServiceGetReadFeedsHandler.ServeHTTP(w, r)
 		case FeedServiceGetFavoriteFeedsProcedure:
@@ -352,6 +451,12 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceStreamSummarizeHandler.ServeHTTP(w, r)
 		case FeedServiceMarkAsReadProcedure:
 			feedServiceMarkAsReadHandler.ServeHTTP(w, r)
+		case FeedServiceListSubscriptionsProcedure:
+			feedServiceListSubscriptionsHandler.ServeHTTP(w, r)
+		case FeedServiceSubscribeProcedure:
+			feedServiceSubscribeHandler.ServeHTTP(w, r)
+		case FeedServiceUnsubscribeProcedure:
+			feedServiceUnsubscribeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -381,6 +486,10 @@ func (UnimplementedFeedServiceHandler) GetUnreadFeeds(context.Context, *connect.
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.GetUnreadFeeds is not implemented"))
 }
 
+func (UnimplementedFeedServiceHandler) GetAllFeeds(context.Context, *connect.Request[v2.GetAllFeedsRequest]) (*connect.Response[v2.GetAllFeedsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.GetAllFeeds is not implemented"))
+}
+
 func (UnimplementedFeedServiceHandler) GetReadFeeds(context.Context, *connect.Request[v2.GetReadFeedsRequest]) (*connect.Response[v2.GetReadFeedsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.GetReadFeeds is not implemented"))
 }
@@ -399,4 +508,16 @@ func (UnimplementedFeedServiceHandler) StreamSummarize(context.Context, *connect
 
 func (UnimplementedFeedServiceHandler) MarkAsRead(context.Context, *connect.Request[v2.MarkAsReadRequest]) (*connect.Response[v2.MarkAsReadResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.MarkAsRead is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) ListSubscriptions(context.Context, *connect.Request[v2.ListSubscriptionsRequest]) (*connect.Response[v2.ListSubscriptionsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.ListSubscriptions is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) Subscribe(context.Context, *connect.Request[v2.SubscribeRequest]) (*connect.Response[v2.SubscribeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.Subscribe is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) Unsubscribe(context.Context, *connect.Request[v2.UnsubscribeRequest]) (*connect.Response[v2.UnsubscribeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.Unsubscribe is not implemented"))
 }

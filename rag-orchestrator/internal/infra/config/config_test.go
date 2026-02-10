@@ -8,7 +8,6 @@ import (
 )
 
 func TestLoad_RAGRetrievalParameters_Defaults(t *testing.T) {
-	// Clear all relevant env vars
 	envVars := []string{
 		"RAG_SEARCH_LIMIT",
 		"RAG_QUOTA_ORIGINAL",
@@ -21,15 +20,13 @@ func TestLoad_RAGRetrievalParameters_Defaults(t *testing.T) {
 
 	cfg := Load()
 
-	// Research-backed defaults (EMNLP 2024, Microsoft RAG Guide)
-	assert.Equal(t, 50, cfg.RAGSearchLimit, "searchLimit should default to 50")
-	assert.Equal(t, 5, cfg.RAGQuotaOriginal, "quotaOriginal should default to 5")
-	assert.Equal(t, 5, cfg.RAGQuotaExpanded, "quotaExpanded should default to 5")
-	assert.Equal(t, 60.0, cfg.RAGRRFK, "rrfK should default to 60.0")
+	assert.Equal(t, 50, cfg.RAG.SearchLimit, "searchLimit should default to 50")
+	assert.Equal(t, 5, cfg.RAG.QuotaOriginal, "quotaOriginal should default to 5")
+	assert.Equal(t, 5, cfg.RAG.QuotaExpanded, "quotaExpanded should default to 5")
+	assert.Equal(t, 60.0, cfg.RAG.RRFK, "rrfK should default to 60.0")
 }
 
 func TestLoad_RAGRetrievalParameters_FromEnv(t *testing.T) {
-	// Set custom values
 	t.Setenv("RAG_SEARCH_LIMIT", "100")
 	t.Setenv("RAG_QUOTA_ORIGINAL", "7")
 	t.Setenv("RAG_QUOTA_EXPANDED", "3")
@@ -37,14 +34,13 @@ func TestLoad_RAGRetrievalParameters_FromEnv(t *testing.T) {
 
 	cfg := Load()
 
-	assert.Equal(t, 100, cfg.RAGSearchLimit)
-	assert.Equal(t, 7, cfg.RAGQuotaOriginal)
-	assert.Equal(t, 3, cfg.RAGQuotaExpanded)
-	assert.Equal(t, 50.0, cfg.RAGRRFK)
+	assert.Equal(t, 100, cfg.RAG.SearchLimit)
+	assert.Equal(t, 7, cfg.RAG.QuotaOriginal)
+	assert.Equal(t, 3, cfg.RAG.QuotaExpanded)
+	assert.Equal(t, 50.0, cfg.RAG.RRFK)
 }
 
 func TestLoad_TemporalBoostParameters_Defaults(t *testing.T) {
-	// Clear all relevant env vars
 	envVars := []string{
 		"TEMPORAL_BOOST_6H",
 		"TEMPORAL_BOOST_12H",
@@ -56,10 +52,9 @@ func TestLoad_TemporalBoostParameters_Defaults(t *testing.T) {
 
 	cfg := Load()
 
-	// Current defaults
-	assert.Equal(t, float32(1.3), cfg.TemporalBoost6h)
-	assert.Equal(t, float32(1.15), cfg.TemporalBoost12h)
-	assert.Equal(t, float32(1.05), cfg.TemporalBoost18h)
+	assert.Equal(t, float32(1.3), cfg.Temporal.Boost6h)
+	assert.Equal(t, float32(1.15), cfg.Temporal.Boost12h)
+	assert.Equal(t, float32(1.05), cfg.Temporal.Boost18h)
 }
 
 func TestLoad_TemporalBoostParameters_FromEnv(t *testing.T) {
@@ -69,9 +64,9 @@ func TestLoad_TemporalBoostParameters_FromEnv(t *testing.T) {
 
 	cfg := Load()
 
-	assert.Equal(t, float32(1.5), cfg.TemporalBoost6h)
-	assert.Equal(t, float32(1.25), cfg.TemporalBoost12h)
-	assert.Equal(t, float32(1.1), cfg.TemporalBoost18h)
+	assert.Equal(t, float32(1.5), cfg.Temporal.Boost6h)
+	assert.Equal(t, float32(1.25), cfg.Temporal.Boost12h)
+	assert.Equal(t, float32(1.1), cfg.Temporal.Boost18h)
 }
 
 func TestGetEnvFloat64(t *testing.T) {
@@ -151,7 +146,7 @@ func TestLoad_DynamicLanguageAllocation_Default(t *testing.T) {
 
 	cfg := Load()
 
-	assert.True(t, cfg.DynamicLanguageAllocationEnabled, "dynamic language allocation should be enabled by default")
+	assert.True(t, cfg.RAG.DynamicLanguageAllocationEnabled, "dynamic language allocation should be enabled by default")
 }
 
 func TestLoad_DynamicLanguageAllocation_Disabled(t *testing.T) {
@@ -159,5 +154,104 @@ func TestLoad_DynamicLanguageAllocation_Disabled(t *testing.T) {
 
 	cfg := Load()
 
-	assert.False(t, cfg.DynamicLanguageAllocationEnabled, "dynamic language allocation should be disabled when env var is false")
+	assert.False(t, cfg.RAG.DynamicLanguageAllocationEnabled, "dynamic language allocation should be disabled when env var is false")
+}
+
+func TestDBConfig_DSN(t *testing.T) {
+	db := DBConfig{
+		Host:     "localhost",
+		Port:     "5432",
+		User:     "testuser",
+		Password: "testpass",
+		Name:     "testdb",
+	}
+
+	expected := "postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable"
+	assert.Equal(t, expected, db.DSN())
+}
+
+func TestLoad_ServerConfig_Defaults(t *testing.T) {
+	_ = os.Unsetenv("PORT")
+	_ = os.Unsetenv("CONNECT_PORT")
+
+	cfg := Load()
+
+	assert.Equal(t, "9010", cfg.Server.Port)
+	assert.Equal(t, "9011", cfg.Server.ConnectPort)
+}
+
+func TestLoad_DBPoolConfig_Defaults(t *testing.T) {
+	_ = os.Unsetenv("DB_MAX_CONNS")
+	_ = os.Unsetenv("DB_MIN_CONNS")
+
+	cfg := Load()
+
+	assert.Equal(t, 20, cfg.DB.MaxConns)
+	assert.Equal(t, 5, cfg.DB.MinConns)
+}
+
+func TestLoad_MorningLetterMaxTokens_Default(t *testing.T) {
+	_ = os.Unsetenv("MORNING_LETTER_MAX_TOKENS")
+
+	cfg := Load()
+
+	assert.Equal(t, 4096, cfg.RAG.MorningLetterMaxTokens, "morning letter max tokens should default to 4096")
+}
+
+func TestLoad_MorningLetterMaxTokens_FromEnv(t *testing.T) {
+	t.Setenv("MORNING_LETTER_MAX_TOKENS", "6144")
+
+	cfg := Load()
+
+	assert.Equal(t, 6144, cfg.RAG.MorningLetterMaxTokens)
+}
+
+func TestLoad_RAGDefaultMaxTokens_UpdatedDefault(t *testing.T) {
+	_ = os.Unsetenv("RAG_DEFAULT_MAX_TOKENS")
+
+	cfg := Load()
+
+	assert.Equal(t, 6144, cfg.RAG.MaxTokens, "RAG default max tokens should default to 6144")
+}
+
+func TestLoad_AugurKnowledgeModel_Default(t *testing.T) {
+	_ = os.Unsetenv("AUGUR_KNOWLEDGE_MODEL")
+
+	cfg := Load()
+
+	assert.Equal(t, "gemma3-12b-rag", cfg.Augur.Model, "AUGUR_KNOWLEDGE_MODEL should default to gemma3-12b-rag")
+}
+
+func TestLoad_AugurKnowledgeModel_FromEnv(t *testing.T) {
+	t.Setenv("AUGUR_KNOWLEDGE_MODEL", "swallow-8b-rag")
+
+	cfg := Load()
+
+	assert.Equal(t, "swallow-8b-rag", cfg.Augur.Model)
+}
+
+func TestLoad_MaxPromptTokens_Default(t *testing.T) {
+	_ = os.Unsetenv("RAG_MAX_PROMPT_TOKENS")
+
+	cfg := Load()
+
+	assert.Equal(t, 6000, cfg.RAG.MaxPromptTokens, "MaxPromptTokens should default to 6000")
+}
+
+func TestLoad_MaxPromptTokens_FromEnv(t *testing.T) {
+	t.Setenv("RAG_MAX_PROMPT_TOKENS", "10000")
+
+	cfg := Load()
+
+	assert.Equal(t, 10000, cfg.RAG.MaxPromptTokens)
+}
+
+func TestLoad_CacheConfig_Defaults(t *testing.T) {
+	_ = os.Unsetenv("RAG_CACHE_SIZE")
+	_ = os.Unsetenv("RAG_CACHE_TTL_MINUTES")
+
+	cfg := Load()
+
+	assert.Equal(t, 256, cfg.Cache.Size)
+	assert.Equal(t, 10, cfg.Cache.TTL)
 }

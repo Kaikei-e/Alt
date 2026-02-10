@@ -59,26 +59,35 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 	}
 
 	// Expectations
-	// 1. Expand Query using QueryExpander (not LLM)
-	// QueryExpander returns 4 variations (1 Japanese + 3 English)
-	mockQueryExpander.On("ExpandQuery", ctx, "search query", 1, 3).Return([]string{
+	// 1. Expand Query: news-creator and Ollama legacy run in parallel.
+	//    news-creator (QueryExpander) returns immediately; legacy (LLM.Generate) also fires.
+	mockQueryExpander.On("ExpandQuery", mock.Anything, "search query", 1, 3).Return([]string{
 		"検索クエリ",
 		"variation 1",
 		"variation 2",
 		"variation 3",
 	}, nil)
+	// Legacy expansion runs in parallel — mock the Generate call so it doesn't panic.
+	mockLLM.On("Generate", mock.Anything, mock.Anything, 200).Return(&domain.LLMResponse{
+		Text: "legacy query 1\nlegacy query 2",
+	}, nil).Maybe()
 
-	// 2. Encode
-	// Expect original + 4 variations = 5 queries
-	expectedQueries := []string{"search query", "検索クエリ", "variation 1", "variation 2", "variation 3"}
-	// We need multiple embeddings
+	// 2. Encode - called in two stages. Because news-creator and legacy expansion
+	//    race, the expanded query list is non-deterministic. Accept any string
+	//    slice for expanded queries and return enough vectors.
 	queryVec := []float32{0.1, 0.2, 0.3}
-	mockEncoder.On("Encode", ctx, expectedQueries).Return([][]float32{queryVec, queryVec, queryVec, queryVec, queryVec}, nil)
+	// Stage 1: Encode original query
+	mockEncoder.On("Encode", mock.Anything, []string{"search query"}).Return([][]float32{queryVec}, nil)
+	// Stage 2: Encode expanded queries (winner of the race is non-deterministic).
+	// Return 4 vectors — if legacy wins with 2 queries, the extra embeddings are
+	// harmless (they just produce additional vector searches returning the same results).
+	mockEncoder.On("Encode", mock.Anything, mock.MatchedBy(func(texts []string) bool {
+		return len(texts) > 0 && texts[0] != "search query"
+	})).Return([][]float32{queryVec, queryVec, queryVec, queryVec}, nil)
 
 	// 3. Search (parallel, but mock any call)
-	// Expect 5 searches (original + 4 expanded)
 	// Since CandidateArticleIDs is empty, Search() is called (Augur use case)
-	mockChunkRepo.On("Search", ctx, queryVec, 50).Return([]domain.SearchResult{
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
 		{
 			Chunk: domain.RagChunk{
 				ID:      uuid.New(),
