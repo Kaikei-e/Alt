@@ -220,6 +220,24 @@ class SummarizeUsecase:
                 }
             )
 
+        # Token-budget-based hierarchical fallback
+        total_token_budget = estimated_prompt_tokens + self.config.summary_num_predict
+        budget_limit = int(context_window * self.config.hierarchical_token_budget_percent / 100)
+
+        if total_token_budget > budget_limit:
+            logger.warning(
+                "Token budget exceeded, falling back to hierarchical summarization",
+                extra={
+                    "article_id": article_id,
+                    "estimated_prompt_tokens": estimated_prompt_tokens,
+                    "summary_num_predict": self.config.summary_num_predict,
+                    "total_token_budget": total_token_budget,
+                    "budget_limit": budget_limit,
+                    "context_window": context_window,
+                }
+            )
+            return await self._generate_hierarchical_summary(article_id, content)
+
         # Retry loop with repetition detection
         # IMPORTANT: Use hold_slot to acquire semaphore ONCE for all retries.
         # Previously, generate() was called per retry, re-acquiring the semaphore each time,

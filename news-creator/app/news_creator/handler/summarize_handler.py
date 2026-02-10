@@ -315,6 +315,18 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
 
         except RuntimeError as exc:
             error_detail = str(exc)
+            if "empty/whitespace summary" in error_detail:
+                logger.warning(
+                    "Article content caused model degeneration (empty output)",
+                    extra={
+                        "article_id": request.article_id,
+                        "error": error_detail,
+                    },
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Content not processable: {error_detail}"
+                ) from exc
             logger.error(
                 "Failed to generate summary",
                 extra={

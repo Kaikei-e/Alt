@@ -113,6 +113,7 @@ class NewsCreatorConfig:
         # Hierarchical summarization settings for single large articles
         self.hierarchical_single_article_threshold = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_THRESHOLD", 20_000)
         self.hierarchical_single_article_chunk_size = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_CHUNK_SIZE", 6_000)
+        self.hierarchical_token_budget_percent = self._get_int("HIERARCHICAL_TOKEN_BUDGET_PERCENT", 75)
 
         # Model routing settings (2-model bucket system: 8K, 60K)
         self.model_routing_enabled = os.getenv("MODEL_ROUTING_ENABLED", "true").lower() == "true"

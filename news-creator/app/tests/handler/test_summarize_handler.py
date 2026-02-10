@@ -68,3 +68,40 @@ def test_summarize_returns_200_on_success():
     data = response.json()
     assert data["success"] is True
     assert data["summary"] == "テスト要約"
+
+
+def test_empty_summary_returns_422():
+    """RuntimeError with 'empty/whitespace summary' should return HTTP 422."""
+    mock_usecase = _make_mock_usecase(
+        side_effect=RuntimeError(
+            "LLM returned empty/whitespace summary 2 times consecutively for article test-123. "
+            "Model may be in a bad state."
+        )
+    )
+    client = _make_client(mock_usecase)
+
+    response = client.post(
+        "/api/v1/summarize",
+        json={"article_id": "test-123", "content": "A" * 200, "stream": False},
+    )
+
+    assert response.status_code == 422
+    data = response.json()
+    assert "not processable" in data["detail"].lower() or "empty" in data["detail"].lower()
+
+
+def test_other_runtime_error_returns_502():
+    """RuntimeError without 'empty/whitespace' should still return HTTP 502."""
+    mock_usecase = _make_mock_usecase(
+        side_effect=RuntimeError("LLM connection timeout")
+    )
+    client = _make_client(mock_usecase)
+
+    response = client.post(
+        "/api/v1/summarize",
+        json={"article_id": "test-123", "content": "A" * 200, "stream": False},
+    )
+
+    assert response.status_code == 502
+    data = response.json()
+    assert "LLM connection timeout" in data["detail"]
