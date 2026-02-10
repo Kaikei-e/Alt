@@ -173,6 +173,14 @@ export function createBackendServer(): http.Server {
 		// Connect-RPC v2 Endpoints
 		// =============================================================================
 
+		// GetAllFeeds
+		if (path === "/alt.feeds.v2.FeedService/GetAllFeeds") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(CONNECT_FEEDS_RESPONSE));
+			return;
+		}
+
 		// GetUnreadFeeds
 		if (path === "/alt.feeds.v2.FeedService/GetUnreadFeeds") {
 			res.setHeader("Content-Type", "application/json");

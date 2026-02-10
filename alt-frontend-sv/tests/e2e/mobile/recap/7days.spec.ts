@@ -131,10 +131,7 @@ test.describe("Mobile Recap 7-Days", () => {
 		});
 
 		// FloatingMenu component should be present
-		// Check for common floating menu patterns (FAB, bottom navigation, etc.)
-		const floatingElements = page.locator('[class*="fixed"]');
-		const count = await floatingElements.count();
-		expect(count).toBeGreaterThan(0);
+		await expect(page.getByLabel("Open floating menu")).toBeVisible();
 	});
 });
 

@@ -384,6 +384,7 @@ export const CONNECT_SEARCH_RESPONSE = {
 
 // Connect-RPC service paths
 export const CONNECT_RPC_PATHS = {
+	getAllFeeds: "**/api/v2/alt.feeds.v2.FeedService/GetAllFeeds",
 	getUnreadFeeds: "**/api/v2/alt.feeds.v2.FeedService/GetUnreadFeeds",
 	getReadFeeds: "**/api/v2/alt.feeds.v2.FeedService/GetReadFeeds",
 	markAsRead: "**/api/v2/alt.feeds.v2.FeedService/MarkAsRead",

@@ -19,7 +19,7 @@ test.describe("Desktop Feeds", () => {
 		feedsPage = new DesktopFeedsPage(page);
 
 		// Mock Connect-RPC endpoints
-		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getAllFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_RESPONSE),
 		);
 
@@ -116,7 +116,7 @@ test.describe("Desktop Feeds", () => {
 
 	test("marks last feed as read and closes modal", async ({ page }) => {
 		// Override the feeds mock to prevent infinite scroll from fetching more
-		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getAllFeeds, (route) =>
 			fulfillJson(route, {
 				...CONNECT_FEEDS_RESPONSE,
 				hasMore: false, // Prevent infinite scroll from loading more
@@ -145,7 +145,7 @@ test.describe("Desktop Feeds", () => {
 
 	test("shows empty state when no feeds", async ({ page }) => {
 		// Override with empty response (Connect-RPC)
-		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getAllFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_EMPTY_RESPONSE),
 		);
 
@@ -158,7 +158,7 @@ test.describe("Desktop Feeds", () => {
 
 	test("shows error state on API failure", async ({ page }) => {
 		// Mock error response (Connect-RPC)
-		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getAllFeeds, (route) =>
 			fulfillJson(route, { code: "internal", message: "Server error" }, 500),
 		);
 
@@ -188,7 +188,7 @@ test.describe("Desktop Feeds", () => {
 		page,
 	}) => {
 		// Override feeds with feed that has no articleId (not saved)
-		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getAllFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_WITHOUT_ARTICLE_ID),
 		);
 
@@ -227,7 +227,7 @@ test.describe("Desktop Feeds - Accessibility", () => {
 		const feedsPage = new DesktopFeedsPage(page);
 
 		// Mock Connect-RPC endpoints
-		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getAllFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_RESPONSE),
 		);
 		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
@@ -255,7 +255,7 @@ test.describe("Desktop Feeds - Modal Navigation", () => {
 		feedsPage = new DesktopFeedsPage(page);
 
 		// Mock with 3 feeds for navigation testing
-		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+		await page.route(CONNECT_RPC_PATHS.getAllFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_NAVIGATION_RESPONSE),
 		);
 		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
