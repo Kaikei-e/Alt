@@ -205,20 +205,20 @@ class TestTagExtractionResult:
 
     def test_extraction_result_from_outcome(self):
         """Test converting from TagExtractionOutcome to domain model."""
+        from tag_extractor.extract import TagExtractionOutcome
         from tag_generator.domain.models import TagExtractionResult
 
-        # Simulate a TagExtractionOutcome-like object
-        class FakeOutcome:
-            tags = ["ml", "ai"]
-            confidence = 0.85
-            tag_count = 2
-            inference_ms = 42.0
-            language = "en"
-            model_name = "test-model"
-            sanitized_length = 500
-            tag_confidences = {"ml": 0.9, "ai": 0.8}
-
-        result = TagExtractionResult.from_outcome("article-1", FakeOutcome())
+        outcome = TagExtractionOutcome(
+            tags=["ml", "ai"],
+            confidence=0.85,
+            tag_count=2,
+            inference_ms=42.0,
+            language="en",
+            model_name="test-model",
+            sanitized_length=500,
+            tag_confidences={"ml": 0.9, "ai": 0.8},
+        )
+        result = TagExtractionResult.from_outcome("article-1", outcome)
         assert result.article_id == "article-1"
         assert len(result.tags) == 2
         assert result.tags[0].name == "ml"
