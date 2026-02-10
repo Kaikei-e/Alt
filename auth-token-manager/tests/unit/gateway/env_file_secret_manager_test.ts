@@ -115,4 +115,64 @@ describe("EnvFileSecretManager", {
     const result = await manager.getTokenSecret();
     assertEquals(result?.access_token, "test-access-token-1234567890");
   });
+
+  it("should correctly read token values containing = characters", async () => {
+    await Deno.mkdir(TEST_DIR, { recursive: true });
+    const filePath = `${TEST_DIR}/tokens.env`;
+
+    // Base64-encoded tokens often contain = padding characters
+    const accessToken = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0=";
+    const refreshToken = "dGVzdC1yZWZyZXNoLXRva2Vu==";
+
+    await Deno.writeTextFile(
+      filePath,
+      `OAUTH2_ACCESS_TOKEN=${accessToken}\nOAUTH2_REFRESH_TOKEN=${refreshToken}\nOAUTH2_TOKEN_TYPE=Bearer\nOAUTH2_EXPIRES_AT=2025-12-31T00:00:00.000Z\n`,
+    );
+
+    const manager = new EnvFileSecretManager(filePath);
+    const result = await manager.getTokenSecret();
+
+    assertEquals(result?.access_token, accessToken);
+    assertEquals(result?.refresh_token, refreshToken);
+  });
+
+  it("should write and read back tokens with = in values via round-trip", async () => {
+    await Deno.mkdir(TEST_DIR, { recursive: true });
+    const filePath = `${TEST_DIR}/tokens.env`;
+    const manager = new EnvFileSecretManager(filePath);
+
+    const accessToken = "token_with_base64_padding=";
+    const refreshToken = "refresh_with_double_pad==";
+
+    const tokens: TokenResponse = {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: new Date(Date.now() + 3600 * 1000),
+      token_type: "Bearer",
+    };
+
+    await manager.updateTokenSecret(tokens);
+
+    const result = await manager.getTokenSecret();
+    assertEquals(result?.access_token, accessToken);
+    assertEquals(result?.refresh_token, refreshToken);
+  });
+
+  it("should set file permissions to 0o644 after writing", async () => {
+    await Deno.mkdir(TEST_DIR, { recursive: true });
+    const filePath = `${TEST_DIR}/tokens.env`;
+    const manager = new EnvFileSecretManager(filePath);
+
+    const tokens: TokenResponse = {
+      access_token: "test-access-token-1234567890",
+      refresh_token: "test-refresh-token-1234567890",
+      expires_at: new Date(Date.now() + 3600 * 1000),
+    };
+
+    await manager.updateTokenSecret(tokens);
+
+    const stat = await Deno.stat(filePath);
+    // 0o644 = 420 in decimal; mask off file type bits
+    assertEquals(stat.mode! & 0o777, 0o644);
+  });
 });

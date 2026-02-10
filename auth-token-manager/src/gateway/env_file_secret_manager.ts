@@ -78,9 +78,9 @@ export class EnvFileSecretManager implements SecretManager {
 
       await Deno.writeTextFile(this.filePath, newLines.join("\n") + "\n");
 
-      // Set restrictive file permissions (owner read/write only)
+      // Set file permissions (owner rw, group/others read for cross-container access)
       try {
-        await Deno.chmod(this.filePath, 0o600);
+        await Deno.chmod(this.filePath, 0o644);
       } catch {
         // chmod may not be supported on all platforms
       }
@@ -108,9 +108,11 @@ export class EnvFileSecretManager implements SecretManager {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith("#")) continue;
 
-        const parts = trimmed.split("=", 2);
-        if (parts.length === 2) {
-          data[parts[0].trim()] = parts[1].trim();
+        const eqIndex = trimmed.indexOf("=");
+        if (eqIndex > 0) {
+          const key = trimmed.substring(0, eqIndex).trim();
+          const value = trimmed.substring(eqIndex + 1).trim();
+          data[key] = value;
         }
       }
 

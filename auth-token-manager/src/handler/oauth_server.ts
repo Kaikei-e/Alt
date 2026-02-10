@@ -164,24 +164,6 @@ export class OAuthServer {
         );
       }
 
-      // Return only metadata, not full tokens (unless explicitly internal)
-      if (!expectedToken) {
-        // No auth configured - return limited info
-        return new Response(
-          JSON.stringify({
-            has_access_token: Boolean(tokenData.access_token),
-            has_refresh_token: Boolean(tokenData.refresh_token),
-            expires_at: tokenData.expires_at,
-            updated_at: tokenData.updated_at,
-            token_type: tokenData.token_type,
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-
       return new Response(JSON.stringify(tokenData), {
         status: 200,
         headers: { "Content-Type": "application/json" },
