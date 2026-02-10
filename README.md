@@ -11,11 +11,11 @@
 
 # Alt – Compose-First AI Knowledge Platform
 
-_Last reviewed on January 13, 2026._
+_Last reviewed on February 6, 2026._
 
 > A Compose-first knowledge platform that ingests RSS content, enriches it with AI (LLM summaries, tag extraction, RAG-powered Q&A), and serves curated insights through Go, Python, Rust, and TypeScript services.
 
-**Key Capabilities:** RSS Ingestion • AI Enrichment • Full-Text Search • RAG Q&A • 7-Day Recap Summaries • TDD-First Development
+**Key Capabilities:** RSS Ingestion • AI Enrichment • Full-Text Search • RAG Q&A • 7-Day Recap Summaries • Evening Pulse • TDD-First Development
 
 ---
 
@@ -70,12 +70,19 @@ curl http://localhost:8888/health       # Auth Hub
 # 5. Stop or reset
 altctl down              # Stop (keep volumes)
 altctl down --volumes    # Full reset
+
+# Additional altctl commands
+altctl restart recap     # Restart a stack (down then up)
+altctl exec db -- psql -U postgres  # Execute command in container
+altctl migrate status    # Check backup health
 ```
 
 ### Additional Setup
 
 - **Service secrets:** Set `SERVICE_SECRET`, `TAG_LABEL_GRAPH_WINDOW`, and `TAG_LABEL_GRAPH_TTL_SECONDS` in `.env`
+- **`.env` loading:** `altctl` automatically loads `.env` via `--env-file`; no manual sourcing required
 - **ONNX models:** Place assets under `tag-generator/models/onnx` for tag extraction
+- **LLM model:** Run `ollama pull gemma3:4b-it-qat` for AI summarization (QAT-quantized Gemma 3 4B)
 - **Recap migrations:** Run `make recap-migrate` before enabling the `recap` profile
 
 ---
@@ -86,34 +93,40 @@ Alt uses Docker Compose as the source of truth for orchestration, maintaining lo
 
 ### Compose Topology
 
-The system consists of core services (always running), plus optional profiles for AI, recap, RAG, messaging, and logging capabilities.
+The system consists of services organized by compose YAML file. All services start by default via `compose.yaml` includes, except `restic-backup` (`--profile backup`) and `alt-perf` (`--profile perf`).
 
 ```mermaid
 flowchart TD
-    classDef client fill:#e6f4ff,stroke:#1f5aa5,stroke-width:2px
-    classDef edge fill:#f2e4ff,stroke:#8a4bd7,stroke-width:2px
     classDef core fill:#e8f5e9,stroke:#2f855a,stroke-width:2px
-    classDef bff fill:#d1fae5,stroke:#059669,stroke-width:2px
-    classDef mq fill:#fef3c7,stroke:#d97706,stroke-width:2px
-    classDef ai fill:#fff4e5,stroke:#f97316,stroke-width:2px,stroke-dasharray:4
+    classDef ai fill:#fff4e5,stroke:#f97316,stroke-width:2px
+    classDef recap fill:#fce7f3,stroke:#db2777,stroke-width:2px
+    classDef rag fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px
     classDef data fill:#fef3c7,stroke:#d97706,stroke-width:2px
-    classDef recap fill:#fce7f3,stroke:#db2777,stroke-width:2px,stroke-dasharray:4
-    classDef rag fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,stroke-dasharray:4
+    classDef log fill:#fde4f7,stroke:#c026d3,stroke-width:2px
     classDef obs fill:#fde4f7,stroke:#c026d3,stroke-width:2px,stroke-dasharray:4
+    classDef ext fill:#f3f4f6,stroke:#6b7280,stroke-width:1px,stroke-dasharray:4
 
-    Browser((Browser)):::client
-    Browser --> Nginx
+    Browser((Browser)) --> Nginx
 
     subgraph Edge["Edge :80"]
-        Nginx[nginx]:::edge
-        Nginx --> AuthHub[auth-hub :8888]:::edge
+        Nginx[nginx]:::core
+        AuthHub[auth-hub :8888]:::core
     end
+    Nginx --> AuthHub
 
+    subgraph Auth["Auth"]
+        direction LR
+        Kratos[kratos :4433]:::core
+        KratosDB[(kratos-db :5434)]:::data
+    end
     AuthHub --> Kratos
+    Kratos --> KratosDB
+
     Nginx --> UI
     Nginx --> UISv
 
     subgraph FE["Frontend"]
+        direction LR
         UI[alt-frontend :3000]:::core
         UISv[alt-frontend-sv :4173]:::core
     end
@@ -122,78 +135,109 @@ flowchart TD
     UISv --> BFF
 
     subgraph BFFLayer["BFF Layer"]
-        BFF[alt-butterfly-facade :9250]:::bff
-        BFF --> API
+        BFF[alt-butterfly-facade :9250]:::core
     end
+    BFF -->|Connect-RPC| API
+    BFF --> AuthHub
 
-    subgraph BE["Backend"]
+    subgraph BE["Backend + MQ"]
         API[alt-backend :9000/:9101]:::core
-        API --> Idx[search-indexer :9300]:::core
-        API --> Tag[tag-generator :9400]:::core
-        API --> MQHub
+        MQHub[mq-hub :9500]:::core
+        RedisStreams[(redis-streams :6380)]:::data
+    end
+    API -->|Connect-RPC| AuthHub
+    API -->|Connect-RPC| MQHub
+    MQHub --> RedisStreams
+
+    RedisStreams -.->|Stream| Idx
+    RedisStreams -.->|Stream| Tag
+    RedisStreams -.->|Stream| PP
+
+    subgraph Workers["Workers"]
+        Idx[search-indexer :9300/:9301]:::core
+        Tag[tag-generator :9400]:::core
+        PP[pre-processor :9200/:9202]:::ai
+        PPSidecar[pre-processor-sidecar]:::ai
+        ATM[auth-token-manager :9201]:::core
     end
 
-    subgraph MQ["Message Queue"]
-        MQHub[mq-hub :9500]:::mq
-        MQHub --> RedisStreams[(redis-streams :6380)]:::data
+    subgraph AI["AI / LLM"]
+        NC[news-creator :11434]:::ai
+        NCB[news-creator-backend :11435]:::ai
         RedisCache[(redis-cache :6379)]:::data
     end
-
-    RedisStreams -.-> Tag
-    RedisStreams -.-> Idx
-
-    API --> RW
-    API --> RO
-    Idx --> Meili
-    Tag --> DB
+    NC --> NCB
     NC --> RedisCache
+    PP --> NC
 
-    subgraph OL["Profile: ollama"]
-        PP[pre-processor :9200]:::ai
-        PP --> NC[news-creator :11434]:::ai
-    end
-
-    subgraph RC["Profile: recap"]
+    subgraph RC["Recap Pipeline"]
         RW[recap-worker :9005]:::recap
-        RW --> RS[recap-subworker :8002]:::recap
+        RS[recap-subworker :8002]:::recap
+        Dash[dashboard :8501]:::recap
+        REval[recap-evaluator :8085]:::recap
     end
-
-    subgraph RG["Profile: rag-extension"]
-        RO[rag-orchestrator :9010]:::rag
-    end
-
-    PP --> DB
+    RW --> RS
     RW --> NC
-    RW --> RecapDB
-    RO --> RagDB
+    RW --> API
+    REval --> NC
+    REval --> RW
+
+    subgraph RG["RAG Pipeline"]
+        RO[rag-orchestrator :9010/:9011]:::rag
+    end
     RO --> Idx
+    RO --> NC
+    RO -.->|External| ExtHosts([embedder / augur / rerank]):::ext
 
     subgraph Data["Data Stores"]
         DB[(db :5432)]:::data
         Meili[(meilisearch :7700)]:::data
-        Kratos[(kratos :4433)]:::data
-        RecapDB[(recap-db :5435)]:::recap
-        RagDB[(rag-db :5436)]:::rag
+        RecapDB[(recap-db :5435)]:::data
+        RagDB[(rag-db :5436)]:::data
     end
+    API --> DB
+    Idx --> DB
+    Idx --> Meili
+    Tag --> DB
+    PP --> DB
+    RW --> RecapDB
+    Dash --> RecapDB
+    RO --> RagDB
 
-    subgraph Obs["Profile: logging"]
-        Rask[rask-log-agg :9600]:::obs
-        Rask --> CH[(clickhouse :8123)]:::obs
+    subgraph Log["Logging"]
+        Rask[rask-log-aggregator<br/>:9600 / :4317 / :4318]:::log
+        Fwds[log-forwarders x13]:::log
+        CH[(clickhouse :8123)]:::data
     end
+    Fwds --> Rask
+    Rask --> CH
+    Tag -.->|OTLP| Rask
+    NC -.->|OTLP| Rask
+    PP -.->|OTLP| Rask
+    RO -.->|OTLP| Rask
+
+    subgraph Obs["Observability"]
+        direction LR
+        Prom[prometheus :9090]:::obs
+        Graf[grafana :3001]:::obs
+        CAdv[cadvisor]:::obs
+    end
+    Prom --> CAdv
+    Graf --> CH
 ```
 
 **Legend:**
 
-| Style | Profile | Description |
-|-------|---------|-------------|
-| Green (solid) | default | Core services (always running) |
-| Teal (solid) | default | BFF layer (alt-butterfly-facade) |
-| Orange (solid) | default | Message queue (mq-hub, Redis) |
-| Orange (dashed) | `--profile ollama` | AI/LLM services |
-| Pink (dashed) | `--profile recap` | Summarization pipeline |
-| Blue (dashed) | `--profile rag-extension` | RAG services |
-| Magenta (dashed) | `--profile logging` | Log aggregation |
-| Yellow | — | Data stores |
+| Style | Scope | Description |
+|-------|-------|-------------|
+| Green (solid) | Default | Core (nginx, frontend, backend, BFF, auth, workers, MQ) |
+| Orange (solid) | Default | AI/LLM pipeline (news-creator, pre-processor) |
+| Pink (solid) | Default | Recap pipeline (recap-worker, recap-subworker, dashboard, recap-evaluator) |
+| Blue (solid) | Default | RAG pipeline (rag-orchestrator) |
+| Yellow (solid) | Default | Data stores (PostgreSQL, Meilisearch, Redis, ClickHouse) |
+| Magenta (solid) | Default | Logging (rask-log-aggregator, log-forwarders x13) |
+| Magenta (dashed) | Default | Observability (Prometheus, Grafana, cAdvisor) |
+| Gray (dashed) | — | External services (embedder, augur, rerank) |
 
 **Network:** `alt-network` (shared by all services)
 
@@ -207,10 +251,12 @@ flowchart TD
 | `recap_db_data` | recap-db | Recap pipeline data |
 | `rag_db_data` | rag-db | RAG vectors (pgvector) |
 | `clickhouse_data` | clickhouse | Log analytics |
-| `news_creator_models` | news-creator | Ollama LLM models |
+| `news_creator_models` | news-creator-backend | Ollama LLM models |
 | `oauth_token_data` | auth-token-manager | OAuth2 tokens |
 | `redis-cache-data` | redis-cache | LRU cache persistence |
 | `redis-streams-data` | redis-streams | Event stream AOF persistence |
+| `prometheus_data` | prometheus | Metrics time-series data |
+| `grafana_data` | grafana | Dashboard definitions and state |
 
 ### Data Flow Overview
 
@@ -398,7 +444,7 @@ Nginx fronts every `/api` call with `auth_request`, sending it to auth-hub. Auth
 | Edge | Nginx, auth-hub | TLS termination, header normalization, auth checks |
 | Core | alt-backend, pre-processor, tag-generator, news-creator, search-indexer | Domain logic, enrichment, indexing |
 | Data | PostgreSQL, Meilisearch, ClickHouse, Kratos | Persistence, search, observability, identity |
-| Observability | rask-log-forwarder, rask-log-aggregator | Durable log delivery to ClickHouse |
+| Observability | rask-log-forwarder, rask-log-aggregator | OTLP-based log delivery to ClickHouse |
 
 ```mermaid
 sequenceDiagram
@@ -650,10 +696,10 @@ flowchart TD
 | Go API & RPC | Go 1.24/1.25, Echo 4.14, Connect-RPC 1.19 | Port 9000/9101 | Clean Architecture; GoMock; `make buf-generate` |
 | Go Data Pipeline | Go 1.24/1.25, circuitbreaker, singleflight | — | Pre-processor, scheduler, search-indexer |
 | RAG Pipeline | Go 1.25, pgvector, Ollama | Port 9010 | Chunk-based retrieval with LLM generation |
-| Python AI Services | Python 3.11-3.13, FastAPI, Ollama, `uv` | — | news-creator, recap-subworker, tag-generator |
+| Python AI Services | Python 3.11-3.13, FastAPI, Ollama (Gemma 3 4B QAT), `uv` | — | news-creator, recap-subworker, tag-generator |
 | Recap Pipeline | Rust 1.87, Axum, Tokio, sqlx | 2024 edition | recap-worker orchestration |
 | Identity & Tokens | Ory Kratos 1.3.0, auth-hub (Go) | — | 5-min TTL cache; `X-Alt-*` headers |
-| Observability | Rust 1.87, ClickHouse 25.9 | — | SIMD log forwarder; Axum aggregator |
+| Observability | Rust 1.87, ClickHouse 25.9 | — | OTLP log forwarder; Axum aggregator |
 | Storage & Search | PostgreSQL 17/18, Meilisearch 1.27.0 | — | Atlas migrations; pgvector for RAG |
 | Orchestration | Docker Desktop 4.36+, Compose v2.27+, altctl | — | Profiles: ollama, logging, recap, rag-extension |
 
@@ -670,19 +716,19 @@ Each service maintains a `CLAUDE.md` for workflow guidelines and a `docs/<servic
 | alt-frontend | TypeScript | [docs/alt-frontend.md](docs/alt-frontend.md) | Next.js 16 + React 19 UI with Chakra themes |
 | alt-frontend-sv | TypeScript | [docs/alt-frontend-sv.md](docs/alt-frontend-sv.md) | SvelteKit `/sv` with Runes, TailwindCSS, Connect-RPC |
 | alt-butterfly-facade | Go 1.24+ | [docs/alt-butterfly-facade.md](docs/alt-butterfly-facade.md) | HTTP/2 h2c BFF for SvelteKit with JWT validation |
-| alt-backend | Go 1.24+ | [docs/alt-backend.md](docs/alt-backend.md) | Clean Architecture REST + Connect-RPC API |
+| alt-backend | Go 1.24+ | [docs/alt-backend.md](docs/alt-backend.md) | Clean Architecture REST + Connect-RPC API with job scheduler |
 | sidecar-proxy | Go 1.24+ | [docs/sidecar-proxy.md](docs/sidecar-proxy.md) | Egress proxy with HTTPS allowlists |
-| mq-hub | Go 1.24+ | [docs/mq-hub.md](docs/mq-hub.md) | Redis Streams event broker via Connect-RPC |
-| pre-processor | Go 1.24+ | [docs/pre-processor.md](docs/pre-processor.md) | RSS ingestion with dedupe and circuit breakers |
+| mq-hub | Go 1.24+ | [docs/mq-hub.md](docs/mq-hub.md) | Redis Streams event broker with graceful shutdown, OTel metrics, connection pooling |
+| pre-processor | Go 1.24+ | [docs/pre-processor.md](docs/pre-processor.md) | RSS ingestion with dedupe, circuit breakers, and dead letter queue |
 | pre-processor-sidecar | Go 1.24+ | [docs/pre-processor-sidecar.md](docs/pre-processor-sidecar.md) | Scheduler for Inoreader token refresh |
-| news-creator | Python 3.11+ | [docs/news-creator.md](docs/news-creator.md) | FastAPI Ollama orchestrator for summaries |
+| news-creator | Python 3.11+ | [docs/news-creator.md](docs/news-creator.md) | FastAPI Ollama orchestrator with RT/BE priority scheduling |
 | tag-generator | Python 3.13+ | [docs/tag-generator.md](docs/tag-generator.md) | ONNX-backed tag extraction pipeline |
-| search-indexer | Go 1.24+ | [docs/search-indexer.md](docs/search-indexer.md) | Batch indexer for Meilisearch |
+| search-indexer | Go 1.24+ | [docs/search-indexer.md](docs/search-indexer.md) | Meilisearch indexer with bootstrap DI, OTel metrics, Redis event batching |
 | auth-hub | Go 1.24+ | [docs/auth-hub.md](docs/auth-hub.md) | Kratos-aware IAP with session caching |
 | auth-token-manager | Deno 2.x | [docs/auth-token-manager.md](docs/auth-token-manager.md) | OAuth2 CLI for Inoreader tokens |
-| rask-log-forwarder | Rust 1.87+ | [docs/rask-log-forwarder.md](docs/rask-log-forwarder.md) | SIMD JSON log forwarder |
+| rask-log-forwarder | Rust 1.87+ | [docs/rask-log-forwarder.md](docs/rask-log-forwarder.md) | OTLP Protocol Buffers log forwarder |
 | rask-log-aggregator | Rust 1.87+ | [docs/rask-log-aggregator.md](docs/rask-log-aggregator.md) | Axum API for ClickHouse ingestion |
-| recap-worker | Rust 1.87+ | [docs/recap-worker.md](docs/recap-worker.md) | 7-day recap pipeline orchestrator |
+| recap-worker | Rust 1.87+ | [docs/recap-worker.md](docs/recap-worker.md) | 7-day recap + Evening Pulse pipeline orchestrator |
 | recap-subworker | Python 3.12+ | [docs/recap-subworker.md](docs/recap-subworker.md) | Clustering and classification worker |
 | recap-db | PostgreSQL 18 | [docs/recap-db.md](docs/recap-db.md) | Recap jobs, evidence, and learning results |
 | rag-orchestrator | Go 1.25+ | [docs/rag-orchestrator.md](docs/rag-orchestrator.md) | RAG indexing, retrieval, and generation |
@@ -769,6 +815,25 @@ flowchart LR
     BackendAPI --> Mobile
 ```
 
+### Evening Pulse
+
+Evening Pulse (v4.0) provides a daily curated digest selecting topics through three perspectives:
+
+| Perspective | Purpose |
+|-------------|---------|
+| **NeedToKnow** | Critical developments requiring immediate attention |
+| **Trend** | Emerging patterns and momentum shifts |
+| **Serendipity** | Unexpected connections and discoveries |
+
+**API & UI:**
+
+| Endpoint / Path | Description |
+|-----------------|-------------|
+| `GET /v1/pulse/evening` | Latest Evening Pulse generation |
+| `/mobile/recap/evening-pulse` | Mobile UI for Evening Pulse |
+
+Evening Pulse data is stored in the `pulse_generations` table within recap-db. The pipeline runs as part of recap-worker's scheduled jobs.
+
 ---
 
 ## Development
@@ -803,6 +868,7 @@ flowchart LR
 | `logging` | rask-log-forwarder sidecars (8) | Observability |
 | `recap` | recap-worker, recap-subworker, recap-db | Recap pipeline |
 | `rag-extension` | rag-orchestrator, rag-db, knowledge-* | RAG Q&A |
+| `backup` | restic-backup | Automated 3-2-1 backup via supercronic |
 
 ```bash
 # Examples
@@ -859,6 +925,7 @@ erDiagram
     RECAP_JOB_ARTICLES }o--|| RECAP_JOBS : belongs_to
     RECAP_JOBS ||--o{ RECAP_OUTPUTS : produces
     RECAP_OUTPUTS ||--o{ RECAP_CLUSTER_EVIDENCE : references
+    RECAP_JOBS ||--o{ PULSE_GENERATIONS : generates
 
     ARTICLES ||--o{ RAG_DOCUMENTS : indexed_as
     RAG_DOCUMENTS ||--o{ RAG_DOCUMENT_VERSIONS : versioned_by
@@ -873,7 +940,22 @@ erDiagram
 - **Indices** – PostgreSQL indexes on `(feed_id, archived)` and `(published_at DESC)`
 - **Migrations** – Atlas migrations in `migrations-atlas/` must be backward-compatible
 - **Resets** – `altctl down --volumes` clears all state
-- **Backups** – Use `backup-postgres.sh` or `backup-postgres-docker.sh` when quiesced
+
+### Backup & Recovery
+
+Alt follows a **3-2-1-1-0** backup strategy:
+
+| Rule | Implementation |
+|------|----------------|
+| **3 copies** | Primary data + local Restic repo + offsite sync |
+| **2 media types** | Docker volumes + `pg_dump` logical exports |
+| **1 offsite** | Configurable remote Restic repository |
+| **1 air-gapped** | Offline copy via manual rotation |
+| **0 errors** | Automated restore verification (weekly) |
+
+**Scheduling:** Backups are managed by [supercronic](https://github.com/aptible/supercronic) inside the `restic-backup` container (`--profile backup`). `pg_dump`/`pg_restore` handle PostgreSQL logical backups.
+
+**Health monitoring:** Run `altctl migrate status` to check backup recency, volume coverage, and checksum integrity
 
 ---
 
@@ -981,12 +1063,19 @@ WHERE TraceId = 'abc123...'
 ORDER BY Timestamp;
 ```
 
+#### Trace Sampling
+
+Default trace sampling ratio is **10%** (`OTEL_TRACE_SAMPLE_RATIO=0.1`). Adjust per-service for debugging.
+
 #### Key Metrics
 
 Monitor these metrics for system health:
 - `recap_genre_refine_*` counters
 - `recap_api_evidence_duplicates_total`
 - `recap_api_latest_fetch_duration_seconds`
+- `search_indexer_indexed_total`, `search_indexer_deleted_total`, `search_indexer_errors_total` — search-indexer OTel counters
+- `search_indexer_batch_duration`, `search_indexer_search_duration` — search-indexer OTel histograms
+- `mq_hub_*` — mq-hub connection pool and message throughput metrics
 
 ### Troubleshooting
 
@@ -997,7 +1086,7 @@ Monitor these metrics for system health:
 | Recap dashboard shows skeletons | recap profile not running or job failed | Start `--profile recap --profile ollama`; check logs |
 | Recap evidence duplicates | Migrations missing or graph cache expired | Run `make recap-migrate`; refresh tag graph |
 | Meilisearch empty after ingest | search-indexer not running | Check `docker compose logs search-indexer` |
-| Ollama summary timeouts | Model not pulled or GPU unavailable | Run `ollama pull gemma:4b`; verify GPU drivers |
+| Ollama summary timeouts | Model not pulled or GPU unavailable | Run `ollama pull gemma3:4b-it-qat`; verify GPU drivers |
 | Rust services crash | Insufficient ulimit or missing env | Set `LOG_LEVEL`, `RASK_ENDPOINT`; increase file descriptors |
 | Go tests flaky | Missing fake clock or context deadline | Use `testing/synctest` clock; set explicit deadlines |
 | Tag-generator 401 | `SERVICE_SECRET` mismatch | Align `.env` values; include `X-Service-Token` header |
@@ -1005,6 +1094,9 @@ Monitor these metrics for system health:
 | RAG empty context | No indexed articles or pgvector missing | Run indexing job; verify pgvector extension |
 | Connect-RPC fails | Port 9101 not exposed | Check compose.yaml exposes 9101 |
 | alt-frontend-sv 404 | Wrong base path | Use `/sv` path; check `kit.paths.base` |
+| Articles stuck in processing | Exceeded max retries → dead letter | Check `dead_letter` status in pre-processor; re-enqueue if needed |
+| nginx 502 after container restart | Stale DNS resolution | nginx uses `resolver` directive for dynamic DNS; restart nginx |
+| altctl ignores `.env` | Old binary without `--env-file` | Rebuild: `cd altctl && make build && make install-local` |
 
 **General tip:** Use `docker compose ps` and `docker compose logs -f <service>` for debugging.
 
@@ -1056,7 +1148,7 @@ Monitor these metrics for system health:
 ### External Integrations
 
 - **Inoreader OAuth2** – Managed by auth-token-manager and pre-processor-sidecar
-- **Ollama (Gemma 3 4B)** – Powers LLM summaries; install GPU drivers for `ollama` profile
+- **Ollama (Gemma 3 4B QAT)** – Powers LLM summaries via QAT-quantized model; install GPU drivers for `ollama` profile
 - **RSS connectors** – pre-processor respects publisher rate limits (≥5 second intervals)
 
 ---
@@ -1069,18 +1161,23 @@ Monitor these metrics for system health:
 |------|------------|
 | Alt | The Compose-first AI knowledge platform |
 | Clean Architecture | Layered approach: interface → business logic → infrastructure |
+| Dead Letter Queue | Terminal status for jobs that exhaust retries; prevents infinite reprocessing |
 | Compose profile | Named service group toggled via `docker compose --profile` |
+| Evening Pulse | Daily curated digest with NeedToKnow, Trend, and Serendipity perspectives |
 | Connect-RPC | Type-safe RPC using Protocol Buffers (port 9101) |
 | Golden dataset | Curated inputs/outputs for regression detection |
 | IAP | Identity-Aware Proxy (auth-hub centralizes authentication) |
-| LLM | Large Language Model (Ollama-powered Gemma 3 4B) |
+| LLM | Large Language Model (Ollama-powered Gemma 3 4B QAT) |
 | Meilisearch | Lightweight search engine for full-text indexing |
+| OTLP | OpenTelemetry Protocol; standard for traces, metrics, and logs export |
 | pgvector | PostgreSQL extension for vector similarity search |
+| QAT | Quantization-Aware Training; produces smaller, faster LLM weights with minimal quality loss |
 | RAG | Retrieval Augmented Generation for grounded Q&A |
 | Rask | Rust observability services (forwarder + aggregator) |
 | Recap | 7-day batch summarization feature |
 | Runes | Svelte 5 reactive primitives (`$state`, `$derived`, `$effect`) |
 | Singleflight | Go concurrency primitive for deduplicating requests |
+| supercronic | Cron scheduler designed for containers; used for backup scheduling |
 | SvelteKit | Modern web framework powering alt-frontend-sv |
 | TDD | Test-Driven Development (Red → Green → Refactor) |
 
@@ -1096,6 +1193,9 @@ Monitor these metrics for system health:
 | `RECAP_DB_USER`, `RECAP_DB_PASSWORD`, `RECAP_DB_NAME` | Recap database credentials |
 | `BACKEND_CONNECT_URL` | Connect-RPC endpoint for SvelteKit |
 | `OLLAMA_BASE_URL` | Ollama API URL (default: `http://localhost:11434`) |
+| `OLLAMA_BASE_MODEL` | LLM model name (default: `gemma3:4b-it-qat`) |
+| `OTEL_TRACE_SAMPLE_RATIO` | Trace sampling ratio (default: `0.1` = 10%) |
+| `INDEX_BATCH_SIZE` | search-indexer batch size for Meilisearch upserts |
 | `EMBEDDING_MODEL`, `GENERATION_MODEL` | RAG model configuration |
 | `RAG_MAX_CHUNKS` | Maximum context chunks for RAG queries |
 
@@ -1109,6 +1209,9 @@ altctl down --volumes                          # Full reset
 altctl up core workers                         # Start specific stacks
 altctl status                                  # View running services
 altctl logs <service> -f                       # Stream logs
+altctl exec <service> -- <cmd>                 # Execute command in container
+altctl restart <stack>                         # Restart stack (down + up)
+altctl migrate status                          # Check backup health
 
 # Profiles
 docker compose --profile ollama up -d          # AI services
@@ -1133,6 +1236,7 @@ curl http://localhost:9000/v1/health           # Backend
 curl http://localhost:9101                     # Connect-RPC
 curl http://localhost:9010/health              # RAG
 curl http://localhost:9000/v1/recap/7days      # Recap API
+curl http://localhost:9000/v1/pulse/evening    # Evening Pulse
 ```
 
 ### External Resources
@@ -1147,9 +1251,8 @@ curl http://localhost:9000/v1/recap/7days      # Recap API
 ### Roadmap
 
 - Extend auth-hub with tenant scoping
-- Add semantic embeddings to Meilisearch
-- Deliver live article status (SSE/WebSocket)
 - Harden ClickHouse dashboards
+- Expand Evening Pulse perspective algorithms
 
 Historical Kubernetes assets in `stopped-using-k8s/` are reference-only.
 
