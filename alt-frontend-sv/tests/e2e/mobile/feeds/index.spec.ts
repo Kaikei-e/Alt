@@ -19,12 +19,9 @@ test.describe("mobile feeds routes", () => {
 
 		await gotoMobileRoute(page, "feeds");
 
-		// Wait for loading to complete - check for loading indicator to disappear
-		const loadingIndicator = page.getByText("Loading more...");
-		await expect(loadingIndicator).not.toBeVisible({ timeout: 10000 });
-
-		// Verify feed cards are rendered (mock returns 2 feeds)
+		// Wait for feed cards to render (auto-waits through SystemLoader)
 		const cards = page.getByTestId("feed-card");
+		await expect(cards.first()).toBeVisible({ timeout: 10000 });
 		const cardCount = await cards.count();
 		expect(cardCount).toBeGreaterThan(0);
 
