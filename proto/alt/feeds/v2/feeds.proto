@@ -93,6 +93,8 @@ message FeedItem {
   // Article ID in the articles table (empty if article doesn't exist)
   // When empty, mark as read functionality should be disabled
   optional string article_id = 8;
+  // Whether this feed has been read by the current user
+  bool is_read = 9;
 }
 
 // =============================================================================
@@ -114,6 +116,24 @@ message GetUnreadFeedsResponse {
   // Feed items
   repeated FeedItem data = 1;
   // Cursor for the next page (null if no more)
+  optional string next_cursor = 2;
+  // Whether there are more items
+  bool has_more = 3;
+}
+
+// GetAllFeedsRequest is the request for fetching all feeds (read + unread) with cursor
+message GetAllFeedsRequest {
+  // Cursor for pagination (RFC3339 timestamp)
+  optional string cursor = 1;
+  // Maximum number of items to return (default: 20, max: 100)
+  int32 limit = 2;
+}
+
+// GetAllFeedsResponse contains all feeds with pagination
+message GetAllFeedsResponse {
+  // Feed items
+  repeated FeedItem data = 1;
+  // Cursor for the next page
   optional string next_cursor = 2;
   // Whether there are more items
   bool has_more = 3;
@@ -226,6 +246,57 @@ message MarkAsReadResponse {
 }
 
 // =============================================================================
+// Subscription Messages
+// =============================================================================
+
+// FeedSource represents an RSS source with its subscription status
+message FeedSource {
+  // Feed link ID (UUID)
+  string id = 1;
+  // Feed URL
+  string url = 2;
+  // Feed title (derived from URL or empty)
+  string title = 3;
+  // Whether the current user is subscribed to this source
+  bool is_subscribed = 4;
+  // When the feed link was created (RFC3339)
+  string created_at = 5;
+}
+
+// ListSubscriptionsRequest is the request for listing feed sources with subscription status
+message ListSubscriptionsRequest {}
+
+// ListSubscriptionsResponse contains all feed sources with subscription status
+message ListSubscriptionsResponse {
+  // All feed sources with subscription status
+  repeated FeedSource sources = 1;
+}
+
+// SubscribeRequest is the request for subscribing to a feed source
+message SubscribeRequest {
+  // Feed link ID to subscribe to (UUID)
+  string feed_link_id = 1;
+}
+
+// SubscribeResponse is the response after subscribing
+message SubscribeResponse {
+  // Success message
+  string message = 1;
+}
+
+// UnsubscribeRequest is the request for unsubscribing from a feed source
+message UnsubscribeRequest {
+  // Feed link ID to unsubscribe from (UUID)
+  string feed_link_id = 1;
+}
+
+// UnsubscribeResponse is the response after unsubscribing
+message UnsubscribeResponse {
+  // Success message
+  string message = 1;
+}
+
+// =============================================================================
 // FeedService Definition
 // =============================================================================
 
@@ -254,6 +325,9 @@ service FeedService {
   // Replaces GET /v1/feeds/fetch/cursor
   rpc GetUnreadFeeds(GetUnreadFeedsRequest) returns (GetUnreadFeedsResponse);
 
+  // GetAllFeeds returns all feeds (read + unread) with cursor-based pagination
+  rpc GetAllFeeds(GetAllFeedsRequest) returns (GetAllFeedsResponse);
+
   // GetReadFeeds returns read/viewed feeds with cursor-based pagination
   // Replaces GET /v1/feeds/fetch/viewed/cursor
   rpc GetReadFeeds(GetReadFeedsRequest) returns (GetReadFeedsResponse);
@@ -279,4 +353,15 @@ service FeedService {
   // MarkAsRead marks an article as read by its URL
   // Replaces POST /v1/feeds/read
   rpc MarkAsRead(MarkAsReadRequest) returns (MarkAsReadResponse);
+
+  // Subscription RPCs
+
+  // ListSubscriptions returns all feed sources with subscription status for the current user
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+
+  // Subscribe subscribes the current user to a feed source
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse);
+
+  // Unsubscribe unsubscribes the current user from a feed source
+  rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
 }
