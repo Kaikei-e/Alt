@@ -30,6 +30,7 @@ type Config struct {
 	RequestTimeout   time.Duration
 	StreamingTimeout time.Duration
 	TTSConnectURL    string
+	TTSServiceSecret string
 
 	// BFF Feature Configuration
 	BFFConfig handler.BFFConfig
@@ -130,15 +131,25 @@ func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.Roun
 		if ttsTransport == nil {
 			ttsTransport = http.DefaultTransport
 		}
+		// Use streaming timeout for TTS since synthesis can be slow
 		ttsClient := client.NewBackendClientWithTransport(
 			cfg.TTSConnectURL,
-			cfg.RequestTimeout,
+			cfg.StreamingTimeout,
 			cfg.StreamingTimeout,
 			ttsTransport,
 		)
-		ttsHandler := handler.NewProxyHandler(
+		ttsProxy := handler.NewProxyHandler(
 			ttsClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger,
 		)
+		// Wrap to inject X-Service-Token for tts-speaker authentication
+		ttsServiceSecret := cfg.TTSServiceSecret
+		var ttsHandler http.Handler = ttsProxy
+		if ttsServiceSecret != "" {
+			ttsHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r.Header.Set("X-Service-Token", ttsServiceSecret)
+				ttsProxy.ServeHTTP(w, r)
+			})
+		}
 		mux.Handle("/alt.tts.v1.TTSService/", ttsHandler)
 	}
 

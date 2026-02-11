@@ -60,6 +60,7 @@ func main() {
 		RequestTimeout:   cfg.RequestTimeout,
 		StreamingTimeout: cfg.StreamingTimeout,
 		TTSConnectURL:    cfg.TTSConnectURL,
+		TTSServiceSecret: cfg.TTSServiceSecret,
 	}
 
 	// Create HTTP server

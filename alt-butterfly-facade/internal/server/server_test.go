@@ -138,6 +138,7 @@ func TestServer_TTSRoute_Success(t *testing.T) {
 	// Create mock TTS backend
 	ttsBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/alt.tts.v1.TTSService/Synthesize", r.URL.Path)
+		assert.Equal(t, "tts-secret", r.Header.Get("X-Service-Token"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"audioWav":""}`))
@@ -153,6 +154,7 @@ func TestServer_TTSRoute_Success(t *testing.T) {
 	cfg := Config{
 		BackendURL:       altBackend.URL,
 		TTSConnectURL:    ttsBackend.URL,
+		TTSServiceSecret: "tts-secret",
 		Secret:           []byte("test-secret"),
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",

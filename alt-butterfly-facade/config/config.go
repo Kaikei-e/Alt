@@ -30,6 +30,8 @@ type Config struct {
 	StreamingTimeout time.Duration
 	// TTSConnectURL is the URL of the TTS service (e.g., http://tts-external:9700)
 	TTSConnectURL string
+	// TTSServiceSecret is the shared secret for authenticating with the TTS service
+	TTSServiceSecret string
 
 	// BFF Feature Flags
 	// EnableCache enables response caching
@@ -72,7 +74,8 @@ func NewConfig() *Config {
 		BackendTokenAudience:   getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
 		RequestTimeout:         getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
 		StreamingTimeout:       getDurationEnv("BFF_STREAMING_TIMEOUT", 5*time.Minute),
-		TTSConnectURL:         getEnv("TTS_CONNECT_URL", ""),
+		TTSConnectURL:          getEnv("TTS_CONNECT_URL", ""),
+		TTSServiceSecret:       getEnv("TTS_SERVICE_SECRET", ""),
 
 		// BFF Feature Flags (all enabled by default)
 		EnableCache:              true,
