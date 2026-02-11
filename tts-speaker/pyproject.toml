@@ -17,6 +17,7 @@ dependencies = [
     "protobuf>=5.0.0",
     "starlette>=0.40.0",
     "connect-python>=0.8.1",
+    "alkana>=0.0.2",
 ]
 
 [dependency-groups]

@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from tts_speaker.app.main import create_app
 from tts_speaker.core.pipeline import TTSPipeline
+from tts_speaker.core.preprocess import preprocess_for_tts
 
 
 @pytest.mark.asyncio
@@ -214,3 +215,73 @@ async def test_health_no_auth_required(mock_pipeline: MagicMock):
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             resp = await ac.get("/health")
             assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_synthesize_preprocesses_english(client: AsyncClient, mock_pipeline: MagicMock):
+    """Synthesize applies English->Katakana preprocessing before passing to pipeline."""
+    resp = await client.post(
+        "/alt.tts.v1.TTSService/Synthesize",
+        json={"text": "APIのニュース"},
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code == 200
+    call_kwargs = mock_pipeline.synthesize.call_args
+    # "API" should be expanded to "エーピーアイ" before reaching the pipeline
+    assert "エーピーアイ" in call_kwargs[1]["text"]
+    assert "API" not in call_kwargs[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_synthesize_stream_preprocesses_english(mock_pipeline: MagicMock):
+    """Synthesize stream also applies English->Katakana preprocessing."""
+    from tts_speaker.app.connect_service import TTSConnectService
+    from tts_speaker.infra.config import Settings
+
+    async def fake_stream(**kwargs):
+        yield np.zeros(2400, dtype=np.float32)
+
+    mock_pipeline.synthesize_stream = MagicMock(side_effect=fake_stream)
+
+    service = TTSConnectService(mock_pipeline, Settings())
+    request = MagicMock()
+    request.text = "RSSリーダー"
+    request.voice = ""
+    request.speed = 0.0
+    ctx = MagicMock()
+    ctx.request_headers.return_value = {}
+
+    # Consume the async generator
+    chunks = []
+    async for chunk in service.synthesize_stream(request, ctx):
+        chunks.append(chunk)
+
+    call_kwargs = mock_pipeline.synthesize_stream.call_args
+    assert "アールエスエス" in call_kwargs[1]["text"]
+    assert "RSS" not in call_kwargs[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_synthesize_length_validated_after_preprocessing(client: AsyncClient):
+    """Text length is validated AFTER preprocessing, not before.
+
+    A string of acronyms that is under 5000 chars raw but expands
+    beyond 5000 chars after preprocessing should be rejected.
+    """
+    # Each 2-letter acronym like "AB" expands to ~4 katakana chars
+    # We need raw text < 5000 but expanded > 5000
+    # "AA " (3 chars) -> "エーエー " (5 chars) => expansion ratio ~1.67x
+    # Use 3-letter acronyms: "AAA " (4 chars) -> "エーエーエー " (7 chars) => 1.75x
+    # Need expanded > 5000, so raw > 5000/1.75 ≈ 2857
+    # Use "AAA " * 1000 = 4000 chars raw -> ~7000 chars expanded
+    text = " ".join(["AAA"] * 1000)
+    assert len(text) < 5000  # raw is under limit
+    expanded = preprocess_for_tts(text)
+    assert len(expanded) > 5000  # expanded exceeds limit
+
+    resp = await client.post(
+        "/alt.tts.v1.TTSService/Synthesize",
+        json={"text": text},
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code != 200

@@ -12,6 +12,15 @@ wheels = [
 ]
 
 [[package]]
+name = "alkana"
+version = "0.0.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/c6/d46afa94e24368f1f0014a861a86da2a2d26b0875da7a00a8ec41f4ba47d/alkana-0.0.3.tar.gz", hash = "sha256:95f40ab8d0a9446d7767bb71a22a64ffa032f5da7aa46aa6cb3afc93299fe6be", size = 369951, upload-time = "2021-10-07T21:25:21.725Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cd/4d/7be66b63787ff4a9008141ebd181f16e993bee91f2c42f0dd32d2aa8b0ea/alkana-0.0.3-py3-none-any.whl", hash = "sha256:9e9bd5502522cc93beaec44b7ae14e8bb409b055bc07d5c054fff3f93f53dd85", size = 371251, upload-time = "2021-10-07T21:25:19.225Z" },
+]
+
+[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1628,6 +1637,7 @@ name = "tts-speaker"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "alkana" },
     { name = "connect-python" },
     { name = "fastapi" },
     { name = "kokoro" },
@@ -1652,6 +1662,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "alkana", specifier = ">=0.0.2" },
     { name = "connect-python", specifier = ">=0.8.1" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "kokoro", specifier = ">=0.9.4" },

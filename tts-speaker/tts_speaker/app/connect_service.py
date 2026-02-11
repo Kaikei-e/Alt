@@ -11,6 +11,7 @@ from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 
 from ..core.pipeline import VOICES, TTSPipeline, VOICE_IDS
+from ..core.preprocess import preprocess_for_tts
 from ..gen.proto.alt.tts.v1 import tts_pb2
 
 if TYPE_CHECKING:
@@ -51,7 +52,13 @@ class TTSConnectService:
             raise ConnectError(Code.UNAVAILABLE, "TTS pipeline not ready")
 
         text = request.text
-        if not text or len(text) > 5000:
+        if not text:
+            raise ConnectError(Code.INVALID_ARGUMENT, "text must not be empty")
+
+        text = preprocess_for_tts(text)
+        logger.debug("Preprocessed text: %r", text)
+
+        if len(text) > 5000:
             raise ConnectError(
                 Code.INVALID_ARGUMENT,
                 "text must be between 1 and 5000 characters",
@@ -111,7 +118,13 @@ class TTSConnectService:
             raise ConnectError(Code.UNAVAILABLE, "TTS pipeline not ready")
 
         text = request.text
-        if not text or len(text) > 5000:
+        if not text:
+            raise ConnectError(Code.INVALID_ARGUMENT, "text must not be empty")
+
+        text = preprocess_for_tts(text)
+        logger.debug("Preprocessed text: %r", text)
+
+        if len(text) > 5000:
             raise ConnectError(
                 Code.INVALID_ARGUMENT,
                 "text must be between 1 and 5000 characters",
