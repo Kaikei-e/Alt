@@ -289,4 +289,20 @@ clean-tag-onnx:
 	@rm -rf $(TAG_ONNX_DIR) $(TAG_ONNX_VENV)
 	@echo "tag-generator ONNX assets cleaned."
 
-.PHONY: clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking
+# Observability stack (nginx-exporter + Prometheus + Grafana)
+up-observability:
+	@echo "Starting observability stack (nginx-exporter + Prometheus + Grafana)..."
+	@echo "Note: Requires core stack (nginx) to be running"
+	docker compose -p alt -f compose/compose.yaml up -d nginx-exporter prometheus grafana
+	@echo "Prometheus available at http://localhost:9090"
+	@echo "Grafana available at http://localhost:3001"
+
+down-observability:
+	@echo "Stopping observability stack..."
+	docker compose -p alt -f compose/compose.yaml stop nginx-exporter prometheus grafana
+	docker compose -p alt -f compose/compose.yaml rm -f nginx-exporter prometheus grafana
+
+logs-observability:
+	docker compose -p alt -f compose/compose.yaml logs -f nginx-exporter prometheus grafana
+
+.PHONY: clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability
