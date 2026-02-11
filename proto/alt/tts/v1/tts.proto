@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package alt.tts.v1;
+
+option go_package = "alt/gen/proto/alt/tts/v1;ttsv1";
+
+service TTSService {
+  rpc Synthesize(SynthesizeRequest) returns (SynthesizeResponse);
+  rpc ListVoices(ListVoicesRequest) returns (ListVoicesResponse);
+}
+
+message SynthesizeRequest {
+  string text = 1;
+  string voice = 2;
+  double speed = 3;
+}
+
+message SynthesizeResponse {
+  bytes audio_wav = 1;
+  int32 sample_rate = 2;
+  double duration_seconds = 3;
+}
+
+message Voice {
+  string id = 1;
+  string name = 2;
+  string gender = 3;
+}
+
+message ListVoicesRequest {}
+
+message ListVoicesResponse {
+  repeated Voice voices = 1;
+}

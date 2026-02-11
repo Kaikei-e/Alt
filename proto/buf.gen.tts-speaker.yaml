@@ -1,0 +1,15 @@
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - alt/tts
+plugins:
+  # Python protobuf messages
+  - remote: buf.build/protocolbuffers/python
+    out: ../tts-speaker/tts_speaker/gen/proto
+  # Python protobuf type stubs
+  - remote: buf.build/protocolbuffers/pyi
+    out: ../tts-speaker/tts_speaker/gen/proto
+  # Connect-RPC Python service stubs
+  - remote: buf.build/connectrpc/python
+    out: ../tts-speaker/tts_speaker/gen/proto

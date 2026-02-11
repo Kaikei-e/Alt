@@ -3,6 +3,7 @@ inputs:
   - directory: .
     paths:
       - alt
+      - alt/tts
 plugins:
   # ============================================================================
   # alt-backend (public protos only, clients are generated separately)
