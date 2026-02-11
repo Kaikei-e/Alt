@@ -19,6 +19,7 @@ services:
       - BFF_REQUEST_TIMEOUT=30s
       - BFF_STREAMING_TIMEOUT=5m
       - TTS_CONNECT_URL=${TTS_CONNECT_URL:-}
+      - TTS_SERVICE_SECRET=${TTS_SERVICE_SECRET:-}
     extra_hosts:
       - "tts-external:${TTS_EXTERNAL_HOST:-127.0.0.1}"
     secrets:
