@@ -30,6 +30,19 @@ class TTSPipeline:
     def __init__(self) -> None:
         self._pipeline = None
         self._ready = False
+        self._device = self._detect_device()
+
+    @staticmethod
+    def _detect_device() -> str:
+        """Detect GPU (ROCm/HIP or CUDA), fall back to CPU."""
+        import torch
+
+        if torch.cuda.is_available():
+            name = torch.cuda.get_device_name(0)
+            logger.info("GPU detected: %s", name)
+            return "cuda"
+        logger.info("No GPU detected, using CPU")
+        return "cpu"
 
     @property
     def is_ready(self) -> bool:
@@ -48,8 +61,12 @@ class TTSPipeline:
         """Synchronous model loading."""
         from kokoro import KPipeline
 
-        logger.info("Loading Kokoro-82M pipeline (lang=ja)...")
-        self._pipeline = KPipeline(lang_code="j")
+        logger.info("Loading Kokoro-82M pipeline (lang=ja, device=%s)...", self._device)
+        self._pipeline = KPipeline(lang_code="j", device=self._device)
+        # FP16 on GPU for ROCm 7.2 performance
+        if self._device == "cuda":
+            self._pipeline.model.half()
+            logger.info("FP16 enabled for GPU inference")
         self._ready = True
         logger.info("Kokoro-82M pipeline loaded successfully")
 
