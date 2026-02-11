@@ -1,11 +1,12 @@
 # ==============================================================================
 # ビルドステージ
 # ==============================================================================
-FROM python:3.12-slim AS builder
+# ROCm 7.2 + PyTorch 2.9 (Preview) base image
+FROM rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_release_2.9.1 AS builder
 
 WORKDIR /app
 
-# ビルド依存関係 (espeak-ng は misaki[ja] の phonemizer が必要)
+# ビルド依存関係
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     build-essential \
@@ -22,27 +23,35 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=0 UV_LINK_MODE=copy
 
 # 【レイヤーキャッシュ最適化】依存関係ファイルのみを先にコピー
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml ./
 
-# 仮想環境を作成
-RUN uv venv
+# 仮想環境を作成 (system site-packages を使うか、uv venv で新規作成するか)
+# rocm/pytorch イメージの PyTorch を使いたいので、--system-site-packages を使う
+RUN uv venv --system-site-packages
 
-# PyTorch ROCm版をインストール（AMD iGPU加速, gfx1150 対応）
-# CPU環境ではフォールバックして CPU 推論になる
-ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/rocm6.2
-RUN --mount=type=cache,id=uv-tts-speaker,target=/root/.cache/uv \
-    uv pip install torch --index-url ${PYTORCH_INDEX_URL}
+# 依存関係をインストール
+# Torch はプリインストールされているので除外する設定が必要だが、
+# uv pip install で torch を除外するか、pyproject.toml から torch を外すか。
+# ここでは単純に uv sync すると torch を pypi から取ってきて上書きしてしまう可能性がある。
+# よって、pyproject.toml の torch 依存を無視させるか、
+# uv pip install -r <(uv pip compile pyproject.toml | grep -v torch) のような工夫が必要。
+# または、以前のように extra-index-url を指定するが、7.2 の wheel が公開されていないなら
+# プリインストールされた torch を使う必要がある。
 
-# 依存関係をインストール（プロジェクト自体は後でインストール）
-RUN --mount=type=cache,id=uv-tts-speaker,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-install-project
+# 一旦、requirements.txt を生成して torch を削除してからインストールする戦略をとる
+RUN uv pip compile pyproject.toml -o requirements.txt \
+    && sed -i '/torch/d' requirements.txt \
+    && sed -i '/kokoro/d' requirements.txt \
+    && uv pip install -r requirements.txt
+
+# kokoro (depends on torch) を別途インストール (依存関係チェックをスキップ)
+RUN uv pip install --no-deps kokoro>=0.9.4
 
 # アプリケーションコードをコピー
 COPY tts_speaker ./tts_speaker
 
 # プロジェクトをインストール
-RUN --mount=type=cache,id=uv-tts-speaker,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+RUN uv pip install --no-deps .
 
 # Download UniDic dictionary
 RUN . .venv/bin/activate && python -m unidic download
@@ -50,11 +59,11 @@ RUN . .venv/bin/activate && python -m unidic download
 # ==============================================================================
 # ランタイムステージ
 # ==============================================================================
-FROM python:3.12-slim
+FROM rocm/pytorch:rocm7.2_ubuntu24.04_py3.12_pytorch_release_2.9.1
 
 WORKDIR /app
 
-# ランタイム依存関係 (espeak-ng + curl for healthcheck)
+# ランタイム依存関係
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     espeak-ng \

@@ -8,19 +8,19 @@ services:
       - "9700:9700"
     environment:
       - SERVICE_SECRET=${SERVICE_SECRET:-}
-      - TTS_DEFAULT_VOICE=${TTS_DEFAULT_VOICE:-jf_alpha}
-      - TTS_DEFAULT_SPEED=${TTS_DEFAULT_SPEED:-1.0}
+      - TTS_DEFAULT_VOICE=${TTS_DEFAULT_VOICE:-jf_gongitsune}
+      - TTS_DEFAULT_SPEED=${TTS_DEFAULT_SPEED:-1.25}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - HF_HOME=/app/.cache/huggingface
-      - HSA_OVERRIDE_GFX_VERSION=11.0.0
+      - HSA_OVERRIDE_GFX_VERSION=11.5.0
       - PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
       - HIP_VISIBLE_DEVICES=0
     devices:
       - /dev/kfd
       - /dev/dri
     group_add:
-      - video
-      - render
+      - "44"  # video
+      - "992" # render
     volumes:
       - tts_models:/app/.cache/huggingface
     networks:
