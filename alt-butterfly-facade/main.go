@@ -40,6 +40,7 @@ func main() {
 	slog.InfoContext(ctx, "configuration loaded",
 		"port", cfg.Port,
 		"backend_url", cfg.BackendConnectURL,
+		"tts_url", cfg.TTSConnectURL,
 		"issuer", cfg.BackendTokenIssuer,
 		"audience", cfg.BackendTokenAudience)
 

@@ -124,12 +124,17 @@ func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.Roun
 	mux.Handle("/v1/aggregate", aggregationHandler)
 
 	// TTS service routing (before catch-all)
+	// Uses HTTP/1.1 transport because tts-speaker (uvicorn) does not support h2c.
 	if cfg.TTSConnectURL != "" {
+		ttsTransport := transport
+		if ttsTransport == nil {
+			ttsTransport = http.DefaultTransport
+		}
 		ttsClient := client.NewBackendClientWithTransport(
 			cfg.TTSConnectURL,
 			cfg.RequestTimeout,
 			cfg.StreamingTimeout,
-			transport,
+			ttsTransport,
 		)
 		ttsHandler := handler.NewProxyHandler(
 			ttsClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger,
