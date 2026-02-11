@@ -52,7 +52,7 @@ export function sanitizeFeed(rawFeed: BackendFeedItem): SanitizedFeed {
 	};
 
 	return {
-		id: rawFeed.link || "",
+		id: rawFeed.article_id || rawFeed.link || "",
 		title: sanitized.title,
 		description: sanitized.description,
 		link: sanitized.link,

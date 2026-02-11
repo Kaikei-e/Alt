@@ -132,6 +132,7 @@ export async function searchFeedsClient(
 			link: item.link,
 			published: item.published,
 			author: item.author ? { name: item.author } : undefined,
+			article_id: item.articleId,
 		}));
 
 		return {

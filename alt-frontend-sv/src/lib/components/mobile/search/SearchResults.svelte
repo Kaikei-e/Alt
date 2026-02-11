@@ -180,7 +180,7 @@ const loadMore = async () => {
 
 		<!-- Results -->
 		<ul class="flex flex-col gap-4" role="list" aria-label="Search results">
-			{#each results as result (result.link || result.title)}
+			{#each results as result, i (result.article_id || `${result.link}-${i}`)}
 				<li>
 					<SearchResultItem {result} />
 				</li>
