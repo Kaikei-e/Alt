@@ -12,6 +12,15 @@ services:
       - TTS_DEFAULT_SPEED=${TTS_DEFAULT_SPEED:-1.0}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - HF_HOME=/app/.cache/huggingface
+      - HSA_OVERRIDE_GFX_VERSION=11.0.0
+      - PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
+      - HIP_VISIBLE_DEVICES=0
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    group_add:
+      - video
+      - render
     volumes:
       - tts_models:/app/.cache/huggingface
     networks:
