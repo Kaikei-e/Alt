@@ -12,7 +12,11 @@ let { children, class: className = "" }: { children: Snippet; class?: string } =
 const { isDesktop } = useViewport();
 
 /** Routes where FloatingMenu should be hidden (full-screen interactive pages) */
-const HIDE_FLOATING_MENU_PATHS = ["/sv/augur", "/sv/feeds/swipe", "/sv/feeds/search"];
+const HIDE_FLOATING_MENU_PATHS = [
+	"/sv/augur",
+	"/sv/feeds/swipe",
+	"/sv/feeds/search",
+];
 
 const showFloatingMenu = $derived(
 	!HIDE_FLOATING_MENU_PATHS.includes(page.url.pathname),

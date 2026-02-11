@@ -153,6 +153,39 @@ export async function searchFeedsClient(
 }
 
 /**
+ * デスクトップ検索用: RenderFeed[] を直接返す
+ * connectFeedToRenderFeed を使用し、id/tags/createdAt 等を保持
+ */
+export async function searchFeedsDesktopClient(
+	query: string,
+	cursor?: number,
+	limit: number = 20,
+): Promise<{
+	data: RenderFeed[];
+	error: string | null;
+	next_cursor: number | null;
+	has_more: boolean;
+}> {
+	try {
+		const transport = createClientTransport();
+		const response = await searchFeedsConnect(transport, query, cursor, limit);
+		return {
+			data: response.data.map(connectFeedToRenderFeed),
+			error: null,
+			next_cursor: response.nextCursor ?? null,
+			has_more: response.hasMore,
+		};
+	} catch (error) {
+		return {
+			data: [],
+			error: error instanceof Error ? error.message : "Search failed",
+			next_cursor: null,
+			has_more: false,
+		};
+	}
+}
+
+/**
  * フィードの統計情報を取得（クライアントサイド）
  * Connect-RPC を使用
  */

@@ -9,6 +9,7 @@ import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import { onMount } from "svelte";
+import { infiniteScroll } from "$lib/actions/infinite-scroll";
 
 // Mobile components
 import ViewedFeedsClient from "$lib/components/mobile/ViewedFeedsClient.svelte";
@@ -25,8 +26,6 @@ let isFetchingNextPage = $state(false);
 let error = $state<Error | null>(null);
 let nextCursor = $state<string | undefined>(undefined);
 let hasNextPage = $state(true);
-
-let loadMoreTrigger = $state<HTMLDivElement | undefined>(undefined);
 
 async function loadFeeds(cursor?: string) {
 	try {
@@ -49,8 +48,11 @@ async function loadMore() {
 	if (isFetchingNextPage || !hasNextPage) return;
 
 	isFetchingNextPage = true;
-	await loadFeeds(nextCursor);
-	isFetchingNextPage = false;
+	try {
+		await loadFeeds(nextCursor);
+	} finally {
+		isFetchingNextPage = false;
+	}
 }
 
 onMount(() => {
@@ -66,26 +68,6 @@ onMount(() => {
 			isLoading = false;
 		}
 	})();
-});
-
-$effect(() => {
-	if (!loadMoreTrigger || isLoading || !isDesktop) return;
-
-	const observer = new IntersectionObserver(
-		(entries) => {
-			const [entry] = entries;
-			if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-				loadMore();
-			}
-		},
-		{ threshold: 0.5 },
-	);
-
-	observer.observe(loadMoreTrigger);
-
-	return () => {
-		observer.disconnect();
-	};
 });
 
 // Navigation state
@@ -144,7 +126,15 @@ function handleNext() {
 				{/each}
 			</div>
 
-			<div bind:this={loadMoreTrigger} class="py-8 text-center">
+			<div
+				use:infiniteScroll={{
+					callback: loadMore,
+					disabled: isFetchingNextPage || !hasNextPage,
+					threshold: 0.1,
+					rootMargin: "0px 0px 200px 0px",
+				}}
+				class="py-8 text-center"
+			>
 				{#if isFetchingNextPage}
 					<Loader2 class="h-6 w-6 animate-spin text-[var(--accent-primary)] mx-auto" />
 				{:else if hasNextPage}

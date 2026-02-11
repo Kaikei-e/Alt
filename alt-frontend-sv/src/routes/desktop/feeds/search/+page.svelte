@@ -1,13 +1,13 @@
 <script lang="ts">
 import { Search, Loader2 } from "@lucide/svelte";
-import { searchFeedsClient } from "$lib/api/client/feeds";
-import { type RenderFeed, sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
-import { infiniteScroll } from "$lib/actions/infinite-scroll";
+import { searchFeedsDesktopClient } from "$lib/api/client/feeds";
+import type { RenderFeed } from "$lib/schema/feed";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import { Input } from "$lib/components/ui/input";
 import { Button } from "$lib/components/ui/button";
+import { infiniteScroll } from "$lib/actions/infinite-scroll";
 
 let selectedFeed = $state<RenderFeed | null>(null);
 let isModalOpen = $state(false);
@@ -21,8 +21,8 @@ let error = $state<Error | null>(null);
 
 // Pagination state
 let cursor = $state<number | null>(null);
-let hasMore = $state(false);
-let isLoadingMore = $state(false);
+let hasNextPage = $state(false);
+let isFetchingNextPage = $state(false);
 
 async function handleSearch() {
 	if (!searchQuery.trim()) {
@@ -30,7 +30,7 @@ async function handleSearch() {
 		error = null;
 		lastSearchedQuery = "";
 		cursor = null;
-		hasMore = false;
+		hasNextPage = false;
 		return;
 	}
 
@@ -38,52 +38,62 @@ async function handleSearch() {
 		isLoading = true;
 		error = null;
 		lastSearchedQuery = searchQuery.trim();
-		const result = await searchFeedsClient(searchQuery.trim(), undefined, 20);
+		const result = await searchFeedsDesktopClient(
+			searchQuery.trim(),
+			undefined,
+			20,
+		);
 
-		// Check for API error (following mobile pattern)
 		if (result.error) {
 			error = new Error(result.error);
 			feeds = [];
 			cursor = null;
-			hasMore = false;
+			hasNextPage = false;
 			isLoading = false;
 			return;
 		}
 
-		const rawResults = result.results ?? [];
-		feeds = rawResults.map((item) =>
-			toRenderFeed(sanitizeFeed(item), item.tags),
-		);
-		cursor = result.next_cursor ?? null;
-		hasMore = result.has_more ?? false;
+		feeds = result.data;
+		cursor = result.next_cursor;
+		hasNextPage = result.has_more;
 	} catch (err) {
 		error = err as Error;
 		feeds = [];
 		cursor = null;
-		hasMore = false;
+		hasNextPage = false;
 	} finally {
 		isLoading = false;
 	}
 }
 
+const MAX_SEARCH_RESULTS = 200;
+
 async function loadMore() {
-	if (isLoadingMore || !hasMore) return;
-	isLoadingMore = true;
+	if (isFetchingNextPage || !hasNextPage) return;
+	if (feeds.length >= MAX_SEARCH_RESULTS) {
+		hasNextPage = false;
+		return;
+	}
+	isFetchingNextPage = true;
 	try {
-		const result = await searchFeedsClient(
+		const result = await searchFeedsDesktopClient(
 			lastSearchedQuery,
 			cursor ?? undefined,
 			20,
 		);
-		if (result.error) return;
-		const newFeeds = (result.results ?? []).map((item) =>
-			toRenderFeed(sanitizeFeed(item), item.tags),
-		);
-		feeds = [...feeds, ...newFeeds];
-		cursor = result.next_cursor ?? null;
-		hasMore = result.has_more ?? false;
+		if (result.error) {
+			hasNextPage = false;
+			return;
+		}
+		if (result.data.length === 0) {
+			hasNextPage = false;
+			return;
+		}
+		feeds = [...feeds, ...result.data];
+		cursor = result.next_cursor;
+		hasNextPage = result.has_more;
 	} finally {
-		isLoadingMore = false;
+		isFetchingNextPage = false;
 	}
 }
 
@@ -100,7 +110,7 @@ let currentIndex = $state(-1);
 const hasPrevious = $derived(currentIndex > 0);
 const hasNextFeed = $derived(
 	(currentIndex >= 0 && currentIndex < feeds.length - 1) ||
-		(currentIndex === feeds.length - 1 && hasMore),
+		(currentIndex === feeds.length - 1 && hasNextPage),
 );
 
 function handleSelectFeed(feed: RenderFeed, index: number) {
@@ -120,7 +130,7 @@ async function handleNext() {
 	if (currentIndex >= 0 && currentIndex < feeds.length - 1) {
 		selectedFeed = feeds[currentIndex + 1];
 		currentIndex = currentIndex + 1;
-	} else if (hasMore && !isLoadingMore) {
+	} else if (hasNextPage && !isFetchingNextPage) {
 		await loadMore();
 		if (currentIndex < feeds.length - 1) {
 			selectedFeed = feeds[currentIndex + 1];
@@ -194,7 +204,7 @@ async function handleNext() {
 		<div class="mb-4">
 			<p class="text-sm text-[var(--text-secondary)]">
 				{feeds.length} result{feeds.length === 1 ? "" : "s"} for "{lastSearchedQuery}"
-				{#if hasMore}<span class="text-[var(--text-muted)]">(scroll for more)</span>{/if}
+				{#if hasNextPage}<span class="text-[var(--text-muted)]">(scroll for more)</span>{/if}
 			</p>
 		</div>
 		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
@@ -203,26 +213,23 @@ async function handleNext() {
 			{/each}
 		</div>
 
-		{#if isLoadingMore}
-			<div class="flex items-center justify-center py-6">
-				<Loader2 class="h-6 w-6 animate-spin text-[var(--accent-primary)]" />
-				<span class="ml-2 text-sm text-[var(--text-secondary)]">Loading more...</span>
-			</div>
-		{/if}
-
-		{#if !hasMore && feeds.length > 0}
-			<p class="text-center text-sm py-4 text-[var(--text-secondary)]">
-				No more results
-			</p>
-		{/if}
-
-		{#if hasMore}
-			<div
-				use:infiniteScroll={{ callback: loadMore, disabled: isLoadingMore }}
-				aria-hidden="true"
-				style="height: 50px; min-height: 50px; width: 100%;"
-			></div>
-		{/if}
+		<div
+			use:infiniteScroll={{
+				callback: loadMore,
+				disabled: isFetchingNextPage || !hasNextPage,
+				threshold: 0.1,
+				rootMargin: "0px 0px 200px 0px",
+			}}
+			class="py-8 text-center"
+		>
+			{#if isFetchingNextPage}
+				<Loader2 class="h-6 w-6 animate-spin text-[var(--accent-primary)] mx-auto" />
+			{:else if hasNextPage}
+				<p class="text-xs text-[var(--text-muted)]">Scroll for more</p>
+			{:else}
+				<p class="text-xs text-[var(--text-muted)]">No more results</p>
+			{/if}
+		</div>
 	{/if}
 </div>
 

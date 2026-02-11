@@ -18,12 +18,6 @@ const BACKEND_CONNECT_URL =
  * Note: Backend token is cached in event.locals by hooks.server.ts (TTFT optimization).
  */
 export const fallback: RequestHandler = async ({ request, params, locals }) => {
-	console.log("[Connect-RPC Proxy] Request received:", {
-		method: request.method,
-		path: params.path,
-		url: request.url,
-	});
-
 	// Use cached token from hooks.server.ts (request-scoped caching)
 	const token = locals.backendToken;
 
@@ -48,7 +42,6 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 	// Construct the backend URL
 	const path = params.path || "";
 	const backendUrl = `${BACKEND_CONNECT_URL}/${path}`;
-	console.log("[Connect-RPC Proxy] Forwarding to:", backendUrl);
 
 	// Clone headers and add authentication
 	const headers = new Headers(request.headers);
@@ -71,12 +64,6 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 			body: request.body,
 			// @ts-expect-error - duplex is needed for streaming request bodies
 			duplex: "half",
-		});
-
-		console.log("[Connect-RPC Proxy] Backend response:", {
-			status: response.status,
-			statusText: response.statusText,
-			contentType: response.headers.get("content-type"),
 		});
 
 		// Create response headers, preserving content-type for Connect-RPC

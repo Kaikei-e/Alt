@@ -72,8 +72,14 @@ async function handleSearch() {
 	}
 }
 
+const MAX_SEARCH_RESULTS = 200;
+
 async function loadMore() {
 	if (isLoadingMore || !hasMore) return;
+	if (feeds.length >= MAX_SEARCH_RESULTS) {
+		hasMore = false;
+		return;
+	}
 	isLoadingMore = true;
 	try {
 		const result = await searchFeedsClient(
@@ -81,10 +87,17 @@ async function loadMore() {
 			cursor ?? undefined,
 			20,
 		);
-		if (result.error) return;
+		if (result.error) {
+			hasMore = false;
+			return;
+		}
 		const newFeeds = (result.results ?? []).map((item) =>
 			toRenderFeed(sanitizeFeed(item), item.tags),
 		);
+		if (newFeeds.length === 0) {
+			hasMore = false;
+			return;
+		}
 		feeds = [...feeds, ...newFeeds];
 		cursor = result.next_cursor ?? null;
 		hasMore = result.has_more ?? false;

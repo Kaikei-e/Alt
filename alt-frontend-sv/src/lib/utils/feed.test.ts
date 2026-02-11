@@ -174,6 +174,22 @@ describe("generateExcerptFromDescription", () => {
 		expect(generateExcerptFromDescription("")).toBe("");
 	});
 
+	it("decodes HTML entities", () => {
+		expect(generateExcerptFromDescription("Here&#39;s the news")).toBe(
+			"Here's the news",
+		);
+	});
+
+	it("decodes &amp; entity", () => {
+		expect(generateExcerptFromDescription("A &amp; B")).toBe("A & B");
+	});
+
+	it("strips tags and decodes entities together", () => {
+		expect(
+			generateExcerptFromDescription("<p>It&#39;s &amp; more</p>"),
+		).toBe("It's & more");
+	});
+
 	it("respects custom maxLength parameter", () => {
 		const text = "A short text";
 		expect(generateExcerptFromDescription(text, 5).length).toBeLessThanOrEqual(

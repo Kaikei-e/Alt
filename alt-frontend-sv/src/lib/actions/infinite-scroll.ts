@@ -72,7 +72,7 @@ export function infiniteScroll(
 						console.error("[infiniteScroll] callback error:", error);
 					} finally {
 						// Re-observe after a short delay to allow DOM updates
-						await new Promise((resolve) => setTimeout(resolve, 100));
+						await new Promise((resolve) => requestAnimationFrame(resolve));
 						// Check if observer still exists and element is still connected
 						if (
 							observer &&

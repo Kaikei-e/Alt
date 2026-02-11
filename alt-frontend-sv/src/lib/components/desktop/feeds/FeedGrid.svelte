@@ -23,6 +23,7 @@ export type FeedGridApi = {
 	import { getFeedsWithCursorClient, getAllFeedsWithCursorClient } from "$lib/api/client/feeds";
 	import DesktopFeedCard from "./DesktopFeedCard.svelte";
 	import { onMount } from "svelte";
+	import { infiniteScroll } from "$lib/actions/infinite-scroll";
 
 	interface Props {
 		onSelectFeed: (feed: RenderFeed, index: number, totalCount: number) => void;
@@ -175,8 +176,6 @@ export type FeedGridApi = {
 	let nextCursor = $state<string | undefined>(undefined);
 	let hasNextPage = $state(true);
 
-	let loadMoreTrigger = $state<HTMLDivElement | undefined>(undefined);
-
 	async function loadFeeds(cursor?: string) {
 		try {
 			const result = await fetchFeedsApi(cursor, 20);
@@ -200,8 +199,11 @@ export type FeedGridApi = {
 		if (isFetchingNextPage || !hasNextPage) return;
 
 		isFetchingNextPage = true;
-		await loadFeeds(nextCursor);
-		isFetchingNextPage = false;
+		try {
+			await loadFeeds(nextCursor);
+		} finally {
+			isFetchingNextPage = false;
+		}
 	}
 
 	// Track filter key to detect changes
@@ -251,26 +253,6 @@ export type FeedGridApi = {
 		}
 	});
 
-	// Intersection Observer for infinite scroll (reactive to loadMoreTrigger)
-	$effect(() => {
-		if (!loadMoreTrigger || isLoading) return;
-
-		const observer = new IntersectionObserver(
-			(entries) => {
-				const [entry] = entries;
-				if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
-					loadMore();
-				}
-			},
-			{ threshold: 0.5 }
-		);
-
-		observer.observe(loadMoreTrigger);
-
-		return () => {
-			observer.disconnect();
-		};
-	});
 </script>
 
 <div class="w-full">
@@ -297,7 +279,15 @@ export type FeedGridApi = {
 		</div>
 
 		<!-- Load more trigger -->
-		<div bind:this={loadMoreTrigger} class="py-8 text-center">
+		<div
+			use:infiniteScroll={{
+				callback: loadMore,
+				disabled: isFetchingNextPage || !hasNextPage,
+				threshold: 0.1,
+				rootMargin: "0px 0px 200px 0px",
+			}}
+			class="py-8 text-center"
+		>
 			{#if isFetchingNextPage}
 				<Loader2 class="h-6 w-6 animate-spin text-[var(--accent-primary)] mx-auto" />
 			{:else if hasNextPage}

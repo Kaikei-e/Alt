@@ -13,7 +13,7 @@ import { createRenderFeed } from "../../../../../tests/fixtures/feeds";
 function createSearchResult(
 	startIndex: number,
 	count: number,
-	hasMore: boolean,
+	hasNextPage: boolean,
 	nextCursor: number | null,
 ): FeedSearchResult {
 	const results = Array.from({ length: count }, (_, i) => ({
@@ -27,7 +27,7 @@ function createSearchResult(
 		results,
 		error: null,
 		next_cursor: nextCursor,
-		has_more: hasMore,
+		has_more: hasNextPage,
 	};
 }
 
@@ -35,9 +35,9 @@ function createSearchResult(
 class SearchPageState {
 	feeds: RenderFeed[] = [];
 	cursor: number | null = null;
-	hasMore = false;
+	hasNextPage = false;
 	isLoading = false;
-	isLoadingMore = false;
+	isFetchingNextPage = false;
 	lastSearchedQuery = "";
 	error: Error | null = null;
 
@@ -68,7 +68,7 @@ class SearchPageState {
 			this.error = null;
 			this.lastSearchedQuery = "";
 			this.cursor = null;
-			this.hasMore = false;
+			this.hasNextPage = false;
 			return;
 		}
 
@@ -83,7 +83,7 @@ class SearchPageState {
 				this.error = new Error(result.error);
 				this.feeds = [];
 				this.cursor = null;
-				this.hasMore = false;
+				this.hasNextPage = false;
 				return;
 			}
 
@@ -91,35 +91,48 @@ class SearchPageState {
 				createRenderFeed(`feed-${i}`, item.link),
 			);
 			this.cursor = result.next_cursor ?? null;
-			this.hasMore = result.has_more ?? false;
+			this.hasNextPage = result.has_more ?? false;
 		} catch (err) {
 			this.error = err as Error;
 			this.feeds = [];
 			this.cursor = null;
-			this.hasMore = false;
+			this.hasNextPage = false;
 		} finally {
 			this.isLoading = false;
 		}
 	}
 
+	static readonly MAX_SEARCH_RESULTS = 200;
+
 	async loadMore(): Promise<void> {
-		if (this.isLoadingMore || !this.hasMore) return;
-		this.isLoadingMore = true;
+		if (this.isFetchingNextPage || !this.hasNextPage) return;
+		if (this.feeds.length >= SearchPageState.MAX_SEARCH_RESULTS) {
+			this.hasNextPage = false;
+			return;
+		}
+		this.isFetchingNextPage = true;
 		try {
 			const result = await this.searchFn(
 				this.lastSearchedQuery,
 				this.cursor ?? undefined,
 				20,
 			);
-			if (result.error) return;
+			if (result.error) {
+				this.hasNextPage = false;
+				return;
+			}
 			const newFeeds = (result.results ?? []).map((item, i) =>
 				createRenderFeed(`feed-${this.feeds.length + i}`, item.link),
 			);
+			if (newFeeds.length === 0) {
+				this.hasNextPage = false;
+				return;
+			}
 			this.feeds = [...this.feeds, ...newFeeds];
 			this.cursor = result.next_cursor ?? null;
-			this.hasMore = result.has_more ?? false;
+			this.hasNextPage = result.has_more ?? false;
 		} finally {
-			this.isLoadingMore = false;
+			this.isFetchingNextPage = false;
 		}
 	}
 
@@ -130,7 +143,7 @@ class SearchPageState {
 	get hasNext(): boolean {
 		return (
 			(this.currentIndex >= 0 && this.currentIndex < this.feeds.length - 1) ||
-			(this.currentIndex === this.feeds.length - 1 && this.hasMore)
+			(this.currentIndex === this.feeds.length - 1 && this.hasNextPage)
 		);
 	}
 
@@ -151,7 +164,7 @@ class SearchPageState {
 		if (this.currentIndex >= 0 && this.currentIndex < this.feeds.length - 1) {
 			this.selectedFeed = this.feeds[this.currentIndex + 1];
 			this.currentIndex = this.currentIndex + 1;
-		} else if (this.hasMore && !this.isLoadingMore) {
+		} else if (this.hasNextPage && !this.isFetchingNextPage) {
 			await this.loadMore();
 			if (this.currentIndex < this.feeds.length - 1) {
 				this.selectedFeed = this.feeds[this.currentIndex + 1];
@@ -194,18 +207,18 @@ describe("Desktop Search Infinite Scroll State", () => {
 
 			expect(state.feeds).toHaveLength(20);
 			expect(state.cursor).toBe(20);
-			expect(state.hasMore).toBe(true);
+			expect(state.hasNextPage).toBe(true);
 			expect(state.lastSearchedQuery).toBe("test query");
 		});
 
-		it("sets hasMore=false when results exhausted", async () => {
+		it("sets hasNextPage=false when results exhausted", async () => {
 			mockSearch.mockResolvedValue(createSearchResult(0, 5, false, null));
 
 			await state.handleSearch("rare query");
 
 			expect(state.feeds).toHaveLength(5);
 			expect(state.cursor).toBeNull();
-			expect(state.hasMore).toBe(false);
+			expect(state.hasNextPage).toBe(false);
 		});
 
 		it("handles API error", async () => {
@@ -221,7 +234,7 @@ describe("Desktop Search Infinite Scroll State", () => {
 			expect(state.error).toBeInstanceOf(Error);
 			expect(state.error?.message).toBe("Search failed");
 			expect(state.feeds).toHaveLength(0);
-			expect(state.hasMore).toBe(false);
+			expect(state.hasNextPage).toBe(false);
 		});
 
 		it("handles empty query by clearing state", async () => {
@@ -235,7 +248,7 @@ describe("Desktop Search Infinite Scroll State", () => {
 
 			expect(state.feeds).toHaveLength(0);
 			expect(state.cursor).toBeNull();
-			expect(state.hasMore).toBe(false);
+			expect(state.hasNextPage).toBe(false);
 			expect(state.lastSearchedQuery).toBe("");
 		});
 	});
@@ -262,44 +275,44 @@ describe("Desktop Search Infinite Scroll State", () => {
 
 			expect(state.feeds).toHaveLength(40);
 			expect(state.cursor).toBe(40);
-			expect(state.hasMore).toBe(true);
+			expect(state.hasNextPage).toBe(true);
 		});
 
-		it("updates hasMore when results exhausted", async () => {
+		it("updates hasNextPage when results exhausted", async () => {
 			mockSearch.mockResolvedValue(createSearchResult(20, 10, false, null));
 
 			await state.loadMore();
 
 			expect(state.feeds).toHaveLength(30);
-			expect(state.hasMore).toBe(false);
+			expect(state.hasNextPage).toBe(false);
 			expect(state.cursor).toBeNull();
 		});
 
 		it("does not load when already loading", async () => {
-			state.isLoadingMore = true;
+			state.isFetchingNextPage = true;
 
 			await state.loadMore();
 
 			expect(mockSearch).not.toHaveBeenCalled();
 		});
 
-		it("does not load when hasMore is false", async () => {
-			state.hasMore = false;
+		it("does not load when hasNextPage is false", async () => {
+			state.hasNextPage = false;
 
 			await state.loadMore();
 
 			expect(mockSearch).not.toHaveBeenCalled();
 		});
 
-		it("resets isLoadingMore after completion", async () => {
+		it("resets isFetchingNextPage after completion", async () => {
 			mockSearch.mockResolvedValue(createSearchResult(20, 20, true, 40));
 
 			await state.loadMore();
 
-			expect(state.isLoadingMore).toBe(false);
+			expect(state.isFetchingNextPage).toBe(false);
 		});
 
-		it("resets isLoadingMore on API error", async () => {
+		it("resets isFetchingNextPage on API error", async () => {
 			mockSearch.mockResolvedValue({
 				results: [],
 				error: "Server error",
@@ -309,18 +322,18 @@ describe("Desktop Search Infinite Scroll State", () => {
 
 			await state.loadMore();
 
-			// Should not append on error, but isLoadingMore should reset
-			expect(state.isLoadingMore).toBe(false);
+			// Should not append on error, but isFetchingNextPage should reset
+			expect(state.isFetchingNextPage).toBe(false);
 			expect(state.feeds).toHaveLength(20); // Original 20 unchanged
 		});
 	});
 
 	describe("query change resets state", () => {
-		it("resets cursor and hasMore on new search", async () => {
+		it("resets cursor and hasNextPage on new search", async () => {
 			// First search with pagination
 			mockSearch.mockResolvedValueOnce(createSearchResult(0, 20, true, 20));
 			await state.handleSearch("first query");
-			expect(state.hasMore).toBe(true);
+			expect(state.hasNextPage).toBe(true);
 			expect(state.cursor).toBe(20);
 
 			// New search should reset
@@ -329,7 +342,7 @@ describe("Desktop Search Infinite Scroll State", () => {
 
 			expect(state.feeds).toHaveLength(5);
 			expect(state.cursor).toBeNull();
-			expect(state.hasMore).toBe(false);
+			expect(state.hasNextPage).toBe(false);
 			expect(state.lastSearchedQuery).toBe("second query");
 		});
 	});
@@ -341,7 +354,7 @@ describe("Desktop Search Infinite Scroll State", () => {
 			mockSearch.mockClear();
 		});
 
-		it("handleNext loads more when at last feed and hasMore", async () => {
+		it("handleNext loads more when at last feed and hasNextPage", async () => {
 			// Navigate to last feed
 			state.handleSelectFeed(state.feeds[2], 2);
 			expect(state.currentIndex).toBe(2);
@@ -367,17 +380,58 @@ describe("Desktop Search Infinite Scroll State", () => {
 			expect(state.currentIndex).toBe(1);
 		});
 
-		it("hasNext is true at last feed when hasMore is true", () => {
+		it("hasNext is true at last feed when hasNextPage is true", () => {
 			state.handleSelectFeed(state.feeds[2], 2);
 
 			expect(state.hasNext).toBe(true);
 		});
 
-		it("hasNext is false at last feed when hasMore is false", () => {
-			state.hasMore = false;
+		it("hasNext is false at last feed when hasNextPage is false", () => {
+			state.hasNextPage = false;
 			state.handleSelectFeed(state.feeds[2], 2);
 
 			expect(state.hasNext).toBe(false);
+		});
+	});
+
+	describe("pagination safety guards", () => {
+		it("stops pagination when feeds exceed MAX_SEARCH_RESULTS", async () => {
+			// Simulate already having MAX_SEARCH_RESULTS feeds loaded
+			mockSearch.mockResolvedValueOnce(createSearchResult(0, 20, true, 20));
+			await state.handleSearch("test");
+			mockSearch.mockClear();
+
+			// Artificially inflate feeds to MAX_SEARCH_RESULTS
+			const extraFeeds = Array.from({ length: 180 }, (_, i) =>
+				createRenderFeed(`extra-${i}`, `https://example.com/extra-${i}`),
+			);
+			state.feeds = [...state.feeds, ...extraFeeds];
+			state.hasNextPage = true;
+
+			// loadMore should bail out without calling the API
+			await state.loadMore();
+
+			expect(mockSearch).not.toHaveBeenCalled();
+			expect(state.hasNextPage).toBe(false);
+		});
+
+		it("stops pagination when API returns empty results with has_more true", async () => {
+			mockSearch.mockResolvedValueOnce(createSearchResult(0, 20, true, 20));
+			await state.handleSearch("test");
+			mockSearch.mockClear();
+
+			// API returns empty results but claims has_more=true (buggy backend)
+			mockSearch.mockResolvedValue({
+				results: [],
+				error: null,
+				next_cursor: 40,
+				has_more: true,
+			});
+
+			await state.loadMore();
+
+			expect(state.hasNextPage).toBe(false);
+			expect(state.feeds).toHaveLength(20); // No new feeds appended
 		});
 	});
 });

@@ -3,6 +3,8 @@
  * These functions generate render-ready values on the server to reduce client-side processing
  */
 
+import { decodeHtmlEntities } from "$lib/domain/feed/sanitize";
+
 /**
  * Formats a date string to a human-readable format with time
  * @param dateString - ISO date string or RFC3339 format
@@ -105,11 +107,13 @@ export function generateExcerptFromDescription(
 		return "";
 	}
 
-	// Remove HTML tags if any
-	const textOnly = description
-		.replace(/<[^>]*>/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
+	// Remove HTML tags and decode entities
+	const textOnly = decodeHtmlEntities(
+		description
+			.replace(/<[^>]*>/g, " ")
+			.replace(/\s+/g, " ")
+			.trim(),
+	);
 
 	if (textOnly.length <= maxLength) {
 		return textOnly;
