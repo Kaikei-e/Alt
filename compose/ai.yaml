@@ -130,6 +130,8 @@ services:
       - OTEL_SERVICE_NAME=news-creator
     secrets:
       - service_secret
+    extra_hosts:
+      - "tts-external:${TTS_EXTERNAL_HOST:-127.0.0.1}"
     restart: unless-stopped
     ports:
       - "11434:11434"
