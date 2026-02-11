@@ -12,7 +12,7 @@ services:
       - TTS_DEFAULT_SPEED=${TTS_DEFAULT_SPEED:-1.25}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - HF_HOME=/app/.cache/huggingface
-      - HSA_OVERRIDE_GFX_VERSION=11.5.0
+      - HSA_OVERRIDE_GFX_VERSION=11.0.0
       - PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
       - HIP_VISIBLE_DEVICES=0
     devices:
@@ -21,6 +21,8 @@ services:
     group_add:
       - "44"  # video
       - "992" # render
+    ipc: host
+    shm_size: "2g"
     volumes:
       - tts_models:/app/.cache/huggingface
     networks:
