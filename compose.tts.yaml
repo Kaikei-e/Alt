@@ -1,0 +1,36 @@
+services:
+  tts-speaker:
+    build:
+      context: ./tts-speaker
+      dockerfile: Dockerfile
+    container_name: tts-speaker
+    ports:
+      - "9700:9700"
+    environment:
+      - SERVICE_SECRET=${SERVICE_SECRET:-}
+      - TTS_DEFAULT_VOICE=${TTS_DEFAULT_VOICE:-jf_alpha}
+      - TTS_DEFAULT_SPEED=${TTS_DEFAULT_SPEED:-1.0}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - HF_HOME=/app/.cache/huggingface
+    volumes:
+      - tts_models:/app/.cache/huggingface
+    networks:
+      - tts-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9700/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  tts-network:
+
+volumes:
+  tts_models:
