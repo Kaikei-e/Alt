@@ -35,6 +35,7 @@ def mock_pipeline() -> MagicMock:
         {"id": "jm_kumo", "name": "Kumo", "gender": "male"},
     ]
     pipeline._device = "cpu"
+    pipeline._gpu_name = None
     return pipeline
 
 
