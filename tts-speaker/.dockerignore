@@ -1,0 +1,51 @@
+# Python virtual environments
+.venv/
+venv/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.eggs/
+
+# Build artifacts
+build/
+dist/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Tools
+.ruff_cache/
+.uv-cache/
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Misc
+.DS_Store
+*.log
+.env
+.env.*
+
+# Git
+.git/
+.gitignore
+
+# Documentation (keep README for pyproject.toml)
+docs/
+*.md
+!README.md
+
+# Tests (not needed in production image)
+tests/
