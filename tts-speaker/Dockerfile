@@ -10,6 +10,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
+    cmake \
+    python3-dev \
     espeak-ng \
     && rm -rf /var/lib/apt/lists/*
 
@@ -27,7 +29,7 @@ RUN uv venv
 
 # PyTorch ROCm版をインストール（AMD iGPU加速, gfx1150 対応）
 # CPU環境ではフォールバックして CPU 推論になる
-ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/rocm7.2
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/rocm6.2
 RUN --mount=type=cache,id=uv-tts-speaker,target=/root/.cache/uv \
     uv pip install torch --index-url ${PYTORCH_INDEX_URL}
 
