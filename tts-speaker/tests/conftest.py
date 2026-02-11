@@ -34,12 +34,13 @@ def mock_pipeline() -> MagicMock:
         {"id": "jf_tebukuro", "name": "Tebukuro", "gender": "female"},
         {"id": "jm_kumo", "name": "Kumo", "gender": "male"},
     ]
+    pipeline._device = "cpu"
     return pipeline
 
 
 @pytest.fixture
 def app(mock_pipeline: MagicMock):
-    """Create a FastAPI app with mocked pipeline (no auth by default)."""
+    """Create a Starlette app with mocked pipeline (no auth by default)."""
     with patch.dict("os.environ", {"SERVICE_SECRET": ""}, clear=False):
         application = create_app(pipeline_override=mock_pipeline)
     return application

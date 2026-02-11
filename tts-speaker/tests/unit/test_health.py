@@ -17,6 +17,7 @@ async def test_health_ok(client: AsyncClient):
     assert body["status"] == "ok"
     assert body["model"] == "kokoro-82m"
     assert body["lang"] == "ja"
+    assert body["device"] == "cpu"
 
 
 @pytest.mark.asyncio
