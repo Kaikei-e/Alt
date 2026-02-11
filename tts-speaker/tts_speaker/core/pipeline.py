@@ -43,6 +43,11 @@ class TTSPipeline:
         """
         import torch
 
+        # Force CPU mode (useful when GPU is detected but MIOpen ops fail)
+        if os.environ.get("TTS_FORCE_CPU") == "1":
+            logger.info("TTS_FORCE_CPU=1, using CPU")
+            return "cpu", None
+
         hsa_ver = os.environ.get("HSA_OVERRIDE_GFX_VERSION")
         hip_dev = os.environ.get("HIP_VISIBLE_DEVICES")
         logger.info("HSA_OVERRIDE_GFX_VERSION=%s, HIP_VISIBLE_DEVICES=%s", hsa_ver, hip_dev)
