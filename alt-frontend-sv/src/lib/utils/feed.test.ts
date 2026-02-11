@@ -185,9 +185,9 @@ describe("generateExcerptFromDescription", () => {
 	});
 
 	it("strips tags and decodes entities together", () => {
-		expect(
-			generateExcerptFromDescription("<p>It&#39;s &amp; more</p>"),
-		).toBe("It's & more");
+		expect(generateExcerptFromDescription("<p>It&#39;s &amp; more</p>")).toBe(
+			"It's & more",
+		);
 	});
 
 	it("respects custom maxLength parameter", () => {

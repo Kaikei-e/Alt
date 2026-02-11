@@ -2,72 +2,88 @@
 // @generated from file alt/rss/v2/rss.proto (package alt.rss.v2, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+	GenFile,
+	GenMessage,
+	GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+	fileDesc,
+	messageDesc,
+	serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/rss/v2/rss.proto.
  */
-export const file_alt_rss_v2_rss: GenFile = /*@__PURE__*/
-  fileDesc("ChRhbHQvcnNzL3YyL3Jzcy5wcm90bxIKYWx0LnJzcy52MiIlChZSZWdpc3RlclJTU0ZlZWRSZXF1ZXN0EgsKA3VybBgBIAEoCSIqChdSZWdpc3RlclJTU0ZlZWRSZXNwb25zZRIPCgdtZXNzYWdlGAEgASgJIhkKF0xpc3RSU1NGZWVkTGlua3NSZXF1ZXN0IiYKC1JTU0ZlZWRMaW5rEgoKAmlkGAEgASgJEgsKA3VybBgCIAEoCSJCChhMaXN0UlNTRmVlZExpbmtzUmVzcG9uc2USJgoFbGlua3MYASADKAsyFy5hbHQucnNzLnYyLlJTU0ZlZWRMaW5rIiYKGERlbGV0ZVJTU0ZlZWRMaW5rUmVxdWVzdBIKCgJpZBgBIAEoCSIsChlEZWxldGVSU1NGZWVkTGlua1Jlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiKgobUmVnaXN0ZXJGYXZvcml0ZUZlZWRSZXF1ZXN0EgsKA3VybBgBIAEoCSIvChxSZWdpc3RlckZhdm9yaXRlRmVlZFJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkylAMKClJTU1NlcnZpY2USWgoPUmVnaXN0ZXJSU1NGZWVkEiIuYWx0LnJzcy52Mi5SZWdpc3RlclJTU0ZlZWRSZXF1ZXN0GiMuYWx0LnJzcy52Mi5SZWdpc3RlclJTU0ZlZWRSZXNwb25zZRJdChBMaXN0UlNTRmVlZExpbmtzEiMuYWx0LnJzcy52Mi5MaXN0UlNTRmVlZExpbmtzUmVxdWVzdBokLmFsdC5yc3MudjIuTGlzdFJTU0ZlZWRMaW5rc1Jlc3BvbnNlEmAKEURlbGV0ZVJTU0ZlZWRMaW5rEiQuYWx0LnJzcy52Mi5EZWxldGVSU1NGZWVkTGlua1JlcXVlc3QaJS5hbHQucnNzLnYyLkRlbGV0ZVJTU0ZlZWRMaW5rUmVzcG9uc2USaQoUUmVnaXN0ZXJGYXZvcml0ZUZlZWQSJy5hbHQucnNzLnYyLlJlZ2lzdGVyRmF2b3JpdGVGZWVkUmVxdWVzdBooLmFsdC5yc3MudjIuUmVnaXN0ZXJGYXZvcml0ZUZlZWRSZXNwb25zZUIgWh5hbHQvZ2VuL3Byb3RvL2FsdC9yc3MvdjI7cnNzdjJiBnByb3RvMw");
+export const file_alt_rss_v2_rss: GenFile =
+	/*@__PURE__*/
+	fileDesc(
+		"ChRhbHQvcnNzL3YyL3Jzcy5wcm90bxIKYWx0LnJzcy52MiIlChZSZWdpc3RlclJTU0ZlZWRSZXF1ZXN0EgsKA3VybBgBIAEoCSIqChdSZWdpc3RlclJTU0ZlZWRSZXNwb25zZRIPCgdtZXNzYWdlGAEgASgJIhkKF0xpc3RSU1NGZWVkTGlua3NSZXF1ZXN0IiYKC1JTU0ZlZWRMaW5rEgoKAmlkGAEgASgJEgsKA3VybBgCIAEoCSJCChhMaXN0UlNTRmVlZExpbmtzUmVzcG9uc2USJgoFbGlua3MYASADKAsyFy5hbHQucnNzLnYyLlJTU0ZlZWRMaW5rIiYKGERlbGV0ZVJTU0ZlZWRMaW5rUmVxdWVzdBIKCgJpZBgBIAEoCSIsChlEZWxldGVSU1NGZWVkTGlua1Jlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiKgobUmVnaXN0ZXJGYXZvcml0ZUZlZWRSZXF1ZXN0EgsKA3VybBgBIAEoCSIvChxSZWdpc3RlckZhdm9yaXRlRmVlZFJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkylAMKClJTU1NlcnZpY2USWgoPUmVnaXN0ZXJSU1NGZWVkEiIuYWx0LnJzcy52Mi5SZWdpc3RlclJTU0ZlZWRSZXF1ZXN0GiMuYWx0LnJzcy52Mi5SZWdpc3RlclJTU0ZlZWRSZXNwb25zZRJdChBMaXN0UlNTRmVlZExpbmtzEiMuYWx0LnJzcy52Mi5MaXN0UlNTRmVlZExpbmtzUmVxdWVzdBokLmFsdC5yc3MudjIuTGlzdFJTU0ZlZWRMaW5rc1Jlc3BvbnNlEmAKEURlbGV0ZVJTU0ZlZWRMaW5rEiQuYWx0LnJzcy52Mi5EZWxldGVSU1NGZWVkTGlua1JlcXVlc3QaJS5hbHQucnNzLnYyLkRlbGV0ZVJTU0ZlZWRMaW5rUmVzcG9uc2USaQoUUmVnaXN0ZXJGYXZvcml0ZUZlZWQSJy5hbHQucnNzLnYyLlJlZ2lzdGVyRmF2b3JpdGVGZWVkUmVxdWVzdBooLmFsdC5yc3MudjIuUmVnaXN0ZXJGYXZvcml0ZUZlZWRSZXNwb25zZUIgWh5hbHQvZ2VuL3Byb3RvL2FsdC9yc3MvdjI7cnNzdjJiBnByb3RvMw",
+	);
 
 /**
  * RegisterRSSFeedRequest is the request for registering a new RSS feed
  *
  * @generated from message alt.rss.v2.RegisterRSSFeedRequest
  */
-export type RegisterRSSFeedRequest = Message<"alt.rss.v2.RegisterRSSFeedRequest"> & {
-  /**
-   * RSS feed URL to register (required)
-   *
-   * @generated from field: string url = 1;
-   */
-  url: string;
-};
+export type RegisterRSSFeedRequest =
+	Message<"alt.rss.v2.RegisterRSSFeedRequest"> & {
+		/**
+		 * RSS feed URL to register (required)
+		 *
+		 * @generated from field: string url = 1;
+		 */
+		url: string;
+	};
 
 /**
  * Describes the message alt.rss.v2.RegisterRSSFeedRequest.
  * Use `create(RegisterRSSFeedRequestSchema)` to create a new message.
  */
-export const RegisterRSSFeedRequestSchema: GenMessage<RegisterRSSFeedRequest> = /*@__PURE__*/
-  messageDesc(file_alt_rss_v2_rss, 0);
+export const RegisterRSSFeedRequestSchema: GenMessage<RegisterRSSFeedRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_rss_v2_rss, 0);
 
 /**
  * RegisterRSSFeedResponse contains the result of registration
  *
  * @generated from message alt.rss.v2.RegisterRSSFeedResponse
  */
-export type RegisterRSSFeedResponse = Message<"alt.rss.v2.RegisterRSSFeedResponse"> & {
-  /**
-   * Success message
-   *
-   * @generated from field: string message = 1;
-   */
-  message: string;
-};
+export type RegisterRSSFeedResponse =
+	Message<"alt.rss.v2.RegisterRSSFeedResponse"> & {
+		/**
+		 * Success message
+		 *
+		 * @generated from field: string message = 1;
+		 */
+		message: string;
+	};
 
 /**
  * Describes the message alt.rss.v2.RegisterRSSFeedResponse.
  * Use `create(RegisterRSSFeedResponseSchema)` to create a new message.
  */
-export const RegisterRSSFeedResponseSchema: GenMessage<RegisterRSSFeedResponse> = /*@__PURE__*/
-  messageDesc(file_alt_rss_v2_rss, 1);
+export const RegisterRSSFeedResponseSchema: GenMessage<RegisterRSSFeedResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_rss_v2_rss, 1);
 
 /**
  * ListRSSFeedLinksRequest is the request for listing all feed links
  *
  * @generated from message alt.rss.v2.ListRSSFeedLinksRequest
  */
-export type ListRSSFeedLinksRequest = Message<"alt.rss.v2.ListRSSFeedLinksRequest"> & {
-};
+export type ListRSSFeedLinksRequest =
+	Message<"alt.rss.v2.ListRSSFeedLinksRequest"> & {};
 
 /**
  * Describes the message alt.rss.v2.ListRSSFeedLinksRequest.
  * Use `create(ListRSSFeedLinksRequestSchema)` to create a new message.
  */
-export const ListRSSFeedLinksRequestSchema: GenMessage<ListRSSFeedLinksRequest> = /*@__PURE__*/
-  messageDesc(file_alt_rss_v2_rss, 2);
+export const ListRSSFeedLinksRequestSchema: GenMessage<ListRSSFeedLinksRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_rss_v2_rss, 2);
 
 /**
  * RSSFeedLink represents a registered RSS feed link
@@ -75,132 +91,143 @@ export const ListRSSFeedLinksRequestSchema: GenMessage<ListRSSFeedLinksRequest> 
  * @generated from message alt.rss.v2.RSSFeedLink
  */
 export type RSSFeedLink = Message<"alt.rss.v2.RSSFeedLink"> & {
-  /**
-   * Feed link UUID
-   *
-   * @generated from field: string id = 1;
-   */
-  id: string;
+	/**
+	 * Feed link UUID
+	 *
+	 * @generated from field: string id = 1;
+	 */
+	id: string;
 
-  /**
-   * Feed URL
-   *
-   * @generated from field: string url = 2;
-   */
-  url: string;
+	/**
+	 * Feed URL
+	 *
+	 * @generated from field: string url = 2;
+	 */
+	url: string;
 };
 
 /**
  * Describes the message alt.rss.v2.RSSFeedLink.
  * Use `create(RSSFeedLinkSchema)` to create a new message.
  */
-export const RSSFeedLinkSchema: GenMessage<RSSFeedLink> = /*@__PURE__*/
-  messageDesc(file_alt_rss_v2_rss, 3);
+export const RSSFeedLinkSchema: GenMessage<RSSFeedLink> =
+	/*@__PURE__*/
+	messageDesc(file_alt_rss_v2_rss, 3);
 
 /**
  * ListRSSFeedLinksResponse contains all registered feed links
  *
  * @generated from message alt.rss.v2.ListRSSFeedLinksResponse
  */
-export type ListRSSFeedLinksResponse = Message<"alt.rss.v2.ListRSSFeedLinksResponse"> & {
-  /**
-   * List of registered feed links
-   *
-   * @generated from field: repeated alt.rss.v2.RSSFeedLink links = 1;
-   */
-  links: RSSFeedLink[];
-};
+export type ListRSSFeedLinksResponse =
+	Message<"alt.rss.v2.ListRSSFeedLinksResponse"> & {
+		/**
+		 * List of registered feed links
+		 *
+		 * @generated from field: repeated alt.rss.v2.RSSFeedLink links = 1;
+		 */
+		links: RSSFeedLink[];
+	};
 
 /**
  * Describes the message alt.rss.v2.ListRSSFeedLinksResponse.
  * Use `create(ListRSSFeedLinksResponseSchema)` to create a new message.
  */
-export const ListRSSFeedLinksResponseSchema: GenMessage<ListRSSFeedLinksResponse> = /*@__PURE__*/
-  messageDesc(file_alt_rss_v2_rss, 4);
+export const ListRSSFeedLinksResponseSchema: GenMessage<ListRSSFeedLinksResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_rss_v2_rss, 4);
 
 /**
  * DeleteRSSFeedLinkRequest is the request for deleting a feed link
  *
  * @generated from message alt.rss.v2.DeleteRSSFeedLinkRequest
  */
-export type DeleteRSSFeedLinkRequest = Message<"alt.rss.v2.DeleteRSSFeedLinkRequest"> & {
-  /**
-   * Feed link UUID to delete (required)
-   *
-   * @generated from field: string id = 1;
-   */
-  id: string;
-};
+export type DeleteRSSFeedLinkRequest =
+	Message<"alt.rss.v2.DeleteRSSFeedLinkRequest"> & {
+		/**
+		 * Feed link UUID to delete (required)
+		 *
+		 * @generated from field: string id = 1;
+		 */
+		id: string;
+	};
 
 /**
  * Describes the message alt.rss.v2.DeleteRSSFeedLinkRequest.
  * Use `create(DeleteRSSFeedLinkRequestSchema)` to create a new message.
  */
-export const DeleteRSSFeedLinkRequestSchema: GenMessage<DeleteRSSFeedLinkRequest> = /*@__PURE__*/
-  messageDesc(file_alt_rss_v2_rss, 5);
+export const DeleteRSSFeedLinkRequestSchema: GenMessage<DeleteRSSFeedLinkRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_rss_v2_rss, 5);
 
 /**
  * DeleteRSSFeedLinkResponse contains the result of deletion
  *
  * @generated from message alt.rss.v2.DeleteRSSFeedLinkResponse
  */
-export type DeleteRSSFeedLinkResponse = Message<"alt.rss.v2.DeleteRSSFeedLinkResponse"> & {
-  /**
-   * Success message
-   *
-   * @generated from field: string message = 1;
-   */
-  message: string;
-};
+export type DeleteRSSFeedLinkResponse =
+	Message<"alt.rss.v2.DeleteRSSFeedLinkResponse"> & {
+		/**
+		 * Success message
+		 *
+		 * @generated from field: string message = 1;
+		 */
+		message: string;
+	};
 
 /**
  * Describes the message alt.rss.v2.DeleteRSSFeedLinkResponse.
  * Use `create(DeleteRSSFeedLinkResponseSchema)` to create a new message.
  */
-export const DeleteRSSFeedLinkResponseSchema: GenMessage<DeleteRSSFeedLinkResponse> = /*@__PURE__*/
-  messageDesc(file_alt_rss_v2_rss, 6);
+export const DeleteRSSFeedLinkResponseSchema: GenMessage<DeleteRSSFeedLinkResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_rss_v2_rss, 6);
 
 /**
  * RegisterFavoriteFeedRequest is the request for marking a feed as favorite
  *
  * @generated from message alt.rss.v2.RegisterFavoriteFeedRequest
  */
-export type RegisterFavoriteFeedRequest = Message<"alt.rss.v2.RegisterFavoriteFeedRequest"> & {
-  /**
-   * Feed URL to mark as favorite (required)
-   *
-   * @generated from field: string url = 1;
-   */
-  url: string;
-};
+export type RegisterFavoriteFeedRequest =
+	Message<"alt.rss.v2.RegisterFavoriteFeedRequest"> & {
+		/**
+		 * Feed URL to mark as favorite (required)
+		 *
+		 * @generated from field: string url = 1;
+		 */
+		url: string;
+	};
 
 /**
  * Describes the message alt.rss.v2.RegisterFavoriteFeedRequest.
  * Use `create(RegisterFavoriteFeedRequestSchema)` to create a new message.
  */
-export const RegisterFavoriteFeedRequestSchema: GenMessage<RegisterFavoriteFeedRequest> = /*@__PURE__*/
-  messageDesc(file_alt_rss_v2_rss, 7);
+export const RegisterFavoriteFeedRequestSchema: GenMessage<RegisterFavoriteFeedRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_rss_v2_rss, 7);
 
 /**
  * RegisterFavoriteFeedResponse contains the result of registration
  *
  * @generated from message alt.rss.v2.RegisterFavoriteFeedResponse
  */
-export type RegisterFavoriteFeedResponse = Message<"alt.rss.v2.RegisterFavoriteFeedResponse"> & {
-  /**
-   * Success message
-   *
-   * @generated from field: string message = 1;
-   */
-  message: string;
-};
+export type RegisterFavoriteFeedResponse =
+	Message<"alt.rss.v2.RegisterFavoriteFeedResponse"> & {
+		/**
+		 * Success message
+		 *
+		 * @generated from field: string message = 1;
+		 */
+		message: string;
+	};
 
 /**
  * Describes the message alt.rss.v2.RegisterFavoriteFeedResponse.
  * Use `create(RegisterFavoriteFeedResponseSchema)` to create a new message.
  */
-export const RegisterFavoriteFeedResponseSchema: GenMessage<RegisterFavoriteFeedResponse> = /*@__PURE__*/
-  messageDesc(file_alt_rss_v2_rss, 8);
+export const RegisterFavoriteFeedResponseSchema: GenMessage<RegisterFavoriteFeedResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_rss_v2_rss, 8);
 
 /**
  * RSSService provides RSS feed link management operations
@@ -208,50 +235,48 @@ export const RegisterFavoriteFeedResponseSchema: GenMessage<RegisterFavoriteFeed
  * @generated from service alt.rss.v2.RSSService
  */
 export const RSSService: GenService<{
-  /**
-   * RegisterRSSFeed registers a new RSS feed link
-   * Replaces POST /v1/rss-feed-link/register
-   *
-   * @generated from rpc alt.rss.v2.RSSService.RegisterRSSFeed
-   */
-  registerRSSFeed: {
-    methodKind: "unary";
-    input: typeof RegisterRSSFeedRequestSchema;
-    output: typeof RegisterRSSFeedResponseSchema;
-  },
-  /**
-   * ListRSSFeedLinks returns all registered feed links
-   * Replaces GET /v1/rss-feed-link/list
-   *
-   * @generated from rpc alt.rss.v2.RSSService.ListRSSFeedLinks
-   */
-  listRSSFeedLinks: {
-    methodKind: "unary";
-    input: typeof ListRSSFeedLinksRequestSchema;
-    output: typeof ListRSSFeedLinksResponseSchema;
-  },
-  /**
-   * DeleteRSSFeedLink removes a registered feed link
-   * Replaces DELETE /v1/rss-feed-link/:id
-   *
-   * @generated from rpc alt.rss.v2.RSSService.DeleteRSSFeedLink
-   */
-  deleteRSSFeedLink: {
-    methodKind: "unary";
-    input: typeof DeleteRSSFeedLinkRequestSchema;
-    output: typeof DeleteRSSFeedLinkResponseSchema;
-  },
-  /**
-   * RegisterFavoriteFeed marks a feed as favorite
-   * Replaces POST /v1/feeds/register/favorite
-   *
-   * @generated from rpc alt.rss.v2.RSSService.RegisterFavoriteFeed
-   */
-  registerFavoriteFeed: {
-    methodKind: "unary";
-    input: typeof RegisterFavoriteFeedRequestSchema;
-    output: typeof RegisterFavoriteFeedResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_alt_rss_v2_rss, 0);
-
+	/**
+	 * RegisterRSSFeed registers a new RSS feed link
+	 * Replaces POST /v1/rss-feed-link/register
+	 *
+	 * @generated from rpc alt.rss.v2.RSSService.RegisterRSSFeed
+	 */
+	registerRSSFeed: {
+		methodKind: "unary";
+		input: typeof RegisterRSSFeedRequestSchema;
+		output: typeof RegisterRSSFeedResponseSchema;
+	};
+	/**
+	 * ListRSSFeedLinks returns all registered feed links
+	 * Replaces GET /v1/rss-feed-link/list
+	 *
+	 * @generated from rpc alt.rss.v2.RSSService.ListRSSFeedLinks
+	 */
+	listRSSFeedLinks: {
+		methodKind: "unary";
+		input: typeof ListRSSFeedLinksRequestSchema;
+		output: typeof ListRSSFeedLinksResponseSchema;
+	};
+	/**
+	 * DeleteRSSFeedLink removes a registered feed link
+	 * Replaces DELETE /v1/rss-feed-link/:id
+	 *
+	 * @generated from rpc alt.rss.v2.RSSService.DeleteRSSFeedLink
+	 */
+	deleteRSSFeedLink: {
+		methodKind: "unary";
+		input: typeof DeleteRSSFeedLinkRequestSchema;
+		output: typeof DeleteRSSFeedLinkResponseSchema;
+	};
+	/**
+	 * RegisterFavoriteFeed marks a feed as favorite
+	 * Replaces POST /v1/feeds/register/favorite
+	 *
+	 * @generated from rpc alt.rss.v2.RSSService.RegisterFavoriteFeed
+	 */
+	registerFavoriteFeed: {
+		methodKind: "unary";
+		input: typeof RegisterFavoriteFeedRequestSchema;
+		output: typeof RegisterFavoriteFeedResponseSchema;
+	};
+}> = /*@__PURE__*/ serviceDesc(file_alt_rss_v2_rss, 0);

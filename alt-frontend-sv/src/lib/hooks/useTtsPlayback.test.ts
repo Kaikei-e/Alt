@@ -89,8 +89,7 @@ describe("useTtsPlayback", () => {
 			}> = {
 				[Symbol.asyncIterator]() {
 					return {
-						next: () =>
-							Promise.reject(new Error("TTS service unavailable")),
+						next: () => Promise.reject(new Error("TTS service unavailable")),
 					};
 				},
 			};
