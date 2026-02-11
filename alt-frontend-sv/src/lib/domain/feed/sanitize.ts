@@ -15,6 +15,18 @@ function sanitizeUrl(url: string): string {
 	return url;
 }
 
+/** Decode common HTML entities. SSR-safe (no DOMParser). */
+export function decodeHtmlEntities(text: string): string {
+	return text
+		.replace(/&amp;/g, "&")
+		.replace(/&lt;/g, "<")
+		.replace(/&gt;/g, ">")
+		.replace(/&quot;/g, '"')
+		.replace(/&#0?39;/g, "'")
+		.replace(/&apos;/g, "'")
+		.replace(/&#x27;/g, "'");
+}
+
 function sanitizeContent(
 	content: string | null | undefined,
 	maxLength = 1000,
@@ -24,7 +36,8 @@ function sanitizeContent(
 		.replace(/<[^>]*>/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();
-	return textOnly.length > maxLength ? textOnly.slice(0, maxLength) : textOnly;
+	const decoded = decodeHtmlEntities(textOnly);
+	return decoded.length > maxLength ? decoded.slice(0, maxLength) : decoded;
 }
 
 export function sanitizeFeed(rawFeed: BackendFeedItem): SanitizedFeed {

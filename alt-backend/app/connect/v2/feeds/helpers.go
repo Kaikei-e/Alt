@@ -3,6 +3,7 @@ package feeds
 
 import (
 	"fmt"
+	"html"
 	"regexp"
 	"strings"
 	"time"
@@ -64,21 +65,26 @@ func deriveNextCursor(feeds []*domain.FeedItem, hasMore bool) *string {
 	return &cursor
 }
 
-// sanitizeDescription removes HTML tags and returns plain text.
-func sanitizeDescription(html string) string {
-	if html == "" {
+// spaceCollapseRe pre-compiles the whitespace collapsing regex.
+var spaceCollapseRe = regexp.MustCompile(`\s+`)
+
+// sanitizeDescription removes HTML tags, decodes HTML entities, and returns plain text.
+func sanitizeDescription(rawHTML string) string {
+	if rawHTML == "" {
 		return ""
 	}
 
 	p := bluemonday.StrictPolicy()
-	text := p.Sanitize(html)
+	text := p.Sanitize(rawHTML)
+
+	// Decode HTML entities (e.g. &#39; -> ', &amp; -> &)
+	text = html.UnescapeString(text)
 
 	// Trimming whitespace
 	text = strings.TrimSpace(text)
 
 	// Collapse multiple spaces
-	spaceRe := regexp.MustCompile(`\s+`)
-	text = spaceRe.ReplaceAllString(text, " ")
+	text = spaceCollapseRe.ReplaceAllString(text, " ")
 
 	return text
 }
