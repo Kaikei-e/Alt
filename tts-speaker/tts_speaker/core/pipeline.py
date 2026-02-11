@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -30,19 +31,48 @@ class TTSPipeline:
     def __init__(self) -> None:
         self._pipeline = None
         self._ready = False
-        self._device = self._detect_device()
+        self._device, self._gpu_name = self._detect_device()
 
     @staticmethod
-    def _detect_device() -> str:
-        """Detect GPU (ROCm/HIP or CUDA), fall back to CPU."""
+    def _detect_device() -> tuple[str, str | None]:
+        """Detect GPU (ROCm/HIP or CUDA), fall back to CPU.
+
+        Returns:
+            Tuple of (device, gpu_name). Raises RuntimeError if no GPU
+            is detected unless TTS_ALLOW_CPU_FALLBACK=1.
+        """
         import torch
 
+        hsa_ver = os.environ.get("HSA_OVERRIDE_GFX_VERSION")
+        hip_dev = os.environ.get("HIP_VISIBLE_DEVICES")
+        logger.info("HSA_OVERRIDE_GFX_VERSION=%s, HIP_VISIBLE_DEVICES=%s", hsa_ver, hip_dev)
+
         if torch.cuda.is_available():
-            name = torch.cuda.get_device_name(0)
-            logger.info("GPU detected: %s", name)
-            return "cuda"
-        logger.info("No GPU detected, using CPU")
-        return "cpu"
+            gpu_name = torch.cuda.get_device_name(0)
+            logger.info("GPU detected: %s", gpu_name)
+
+            # Verify GPU compute actually works
+            try:
+                t = torch.tensor([1.0, 2.0], device="cuda")
+                result = (t * t).sum().item()
+                assert result == 5.0  # noqa: S101
+                logger.info("GPU compute verification passed")
+            except Exception:
+                logger.exception("GPU compute verification failed")
+                if os.environ.get("TTS_ALLOW_CPU_FALLBACK") == "1":
+                    logger.warning("Falling back to CPU (TTS_ALLOW_CPU_FALLBACK=1)")
+                    return "cpu", None
+                raise RuntimeError("GPU detected but compute verification failed")
+
+            return "cuda", gpu_name
+
+        logger.warning("No GPU detected (torch.cuda.is_available() = False)")
+        if os.environ.get("TTS_ALLOW_CPU_FALLBACK") == "1":
+            logger.warning("Falling back to CPU (TTS_ALLOW_CPU_FALLBACK=1)")
+            return "cpu", None
+        raise RuntimeError(
+            "No GPU detected. Set TTS_ALLOW_CPU_FALLBACK=1 to allow CPU fallback."
+        )
 
     @property
     def is_ready(self) -> bool:

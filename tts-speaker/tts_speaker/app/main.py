@@ -47,9 +47,11 @@ async def health_endpoint(request: "Request") -> JSONResponse:
         )
 
     device = getattr(pipeline, "_device", "cpu")
-    return JSONResponse(
-        content={"status": "ok", "model": "kokoro-82m", "lang": "ja", "device": device},
-    )
+    gpu_name = getattr(pipeline, "_gpu_name", None)
+    content = {"status": "ok", "model": "kokoro-82m", "lang": "ja", "device": device}
+    if gpu_name:
+        content["gpu_name"] = gpu_name
+    return JSONResponse(content=content)
 
 
 def create_app(*, pipeline_override: TTSPipeline | None = None) -> Starlette:
