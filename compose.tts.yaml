@@ -15,6 +15,7 @@ services:
       - HSA_OVERRIDE_GFX_VERSION=11.0.0
       - PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
       - HIP_VISIBLE_DEVICES=0
+      - TTS_ALLOW_CPU_FALLBACK=1
     devices:
       - /dev/kfd
       - /dev/dri
