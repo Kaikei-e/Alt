@@ -13,7 +13,13 @@ vi.mock("@connectrpc/connect", () => ({
 
 import { createClient } from "@connectrpc/connect";
 import type { Transport } from "@connectrpc/connect";
-import { createTtsClient, synthesizeSpeech, listVoices } from "./tts";
+import {
+	createTtsClient,
+	synthesizeSpeech,
+	synthesizeSpeechStream,
+	listVoices,
+	type SynthesizeResult,
+} from "./tts";
 
 describe("createTtsClient", () => {
 	const mockTransport = {} as Transport;
@@ -39,6 +45,7 @@ describe("synthesizeSpeech", () => {
 		vi.clearAllMocks();
 		vi.mocked(createClient).mockReturnValue({
 			synthesize: mockSynthesize,
+			synthesizeStream: vi.fn(),
 			listVoices: vi.fn(),
 		} as unknown as ReturnType<typeof createClient>);
 	});
@@ -55,8 +62,8 @@ describe("synthesizeSpeech", () => {
 
 		expect(mockSynthesize).toHaveBeenCalledWith({
 			text: "Hello",
-			voice: "jf_alpha",
-			speed: 1.0,
+			voice: "jf_gongitsune",
+			speed: 1.25,
 		});
 		expect(result).toEqual({
 			audioWav: audioData,
@@ -94,6 +101,104 @@ describe("synthesizeSpeech", () => {
 	});
 });
 
+describe("synthesizeSpeechStream", () => {
+	const mockTransport = {} as Transport;
+	const mockSynthesizeStream = vi.fn();
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(createClient).mockReturnValue({
+			synthesize: vi.fn(),
+			synthesizeStream: mockSynthesizeStream,
+			listVoices: vi.fn(),
+		} as unknown as ReturnType<typeof createClient>);
+	});
+
+	it("yields chunks from the streaming RPC with defaults", async () => {
+		const chunk1 = {
+			audioWav: new Uint8Array([1, 2]),
+			sampleRate: 24000,
+			durationSeconds: 0.5,
+		};
+		const chunk2 = {
+			audioWav: new Uint8Array([3, 4]),
+			sampleRate: 24000,
+			durationSeconds: 0.7,
+		};
+
+		// Mock returns an async iterable
+		mockSynthesizeStream.mockReturnValue(
+			(async function* () {
+				yield chunk1;
+				yield chunk2;
+			})(),
+		);
+
+		const results = [];
+		for await (const result of synthesizeSpeechStream(mockTransport, {
+			text: "Hello world",
+		})) {
+			results.push(result);
+		}
+
+		expect(mockSynthesizeStream).toHaveBeenCalledWith({
+			text: "Hello world",
+			voice: "jf_gongitsune",
+			speed: 1.25,
+		});
+		expect(results).toHaveLength(2);
+		expect(results[0]).toEqual(chunk1);
+		expect(results[1]).toEqual(chunk2);
+	});
+
+	it("uses custom voice and speed when provided", async () => {
+		mockSynthesizeStream.mockReturnValue(
+			(async function* () {
+				yield {
+					audioWav: new Uint8Array([1]),
+					sampleRate: 24000,
+					durationSeconds: 0.3,
+				};
+			})(),
+		);
+
+		const results = [];
+		for await (const result of synthesizeSpeechStream(mockTransport, {
+			text: "Test",
+			voice: "jm_beta",
+			speed: 1.5,
+		})) {
+			results.push(result);
+		}
+
+		expect(mockSynthesizeStream).toHaveBeenCalledWith({
+			text: "Test",
+			voice: "jm_beta",
+			speed: 1.5,
+		});
+	});
+
+	it("propagates errors from the streaming client", async () => {
+		const failingIterable: AsyncIterable<SynthesizeResult> = {
+			[Symbol.asyncIterator]() {
+				return {
+					next: () => Promise.reject(new Error("Stream failed")),
+				};
+			},
+		};
+		mockSynthesizeStream.mockReturnValue(failingIterable);
+
+		const results = [];
+		await expect(async () => {
+			for await (const result of synthesizeSpeechStream(mockTransport, {
+				text: "Fail",
+			})) {
+				results.push(result);
+			}
+		}).rejects.toThrow("Stream failed");
+	});
+});
+
 describe("listVoices", () => {
 	const mockTransport = {} as Transport;
 	const mockListVoices = vi.fn();
@@ -102,6 +207,7 @@ describe("listVoices", () => {
 		vi.clearAllMocks();
 		vi.mocked(createClient).mockReturnValue({
 			synthesize: vi.fn(),
+			synthesizeStream: vi.fn(),
 			listVoices: mockListVoices,
 		} as unknown as ReturnType<typeof createClient>);
 	});

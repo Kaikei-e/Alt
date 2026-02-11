@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/tts/v1/tts.proto.
  */
 export const file_alt_tts_v1_tts: GenFile = /*@__PURE__*/
-  fileDesc("ChRhbHQvdHRzL3YxL3R0cy5wcm90bxIKYWx0LnR0cy52MSI/ChFTeW50aGVzaXplUmVxdWVzdBIMCgR0ZXh0GAEgASgJEg0KBXZvaWNlGAIgASgJEg0KBXNwZWVkGAMgASgBIlYKElN5bnRoZXNpemVSZXNwb25zZRIRCglhdWRpb193YXYYASABKAwSEwoLc2FtcGxlX3JhdGUYAiABKAUSGAoQZHVyYXRpb25fc2Vjb25kcxgDIAEoASIxCgVWb2ljZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmdlbmRlchgDIAEoCSITChFMaXN0Vm9pY2VzUmVxdWVzdCI3ChJMaXN0Vm9pY2VzUmVzcG9uc2USIQoGdm9pY2VzGAEgAygLMhEuYWx0LnR0cy52MS5Wb2ljZTKmAQoKVFRTU2VydmljZRJLCgpTeW50aGVzaXplEh0uYWx0LnR0cy52MS5TeW50aGVzaXplUmVxdWVzdBoeLmFsdC50dHMudjEuU3ludGhlc2l6ZVJlc3BvbnNlEksKCkxpc3RWb2ljZXMSHS5hbHQudHRzLnYxLkxpc3RWb2ljZXNSZXF1ZXN0Gh4uYWx0LnR0cy52MS5MaXN0Vm9pY2VzUmVzcG9uc2VCIFoeYWx0L2dlbi9wcm90by9hbHQvdHRzL3YxO3R0c3YxYgZwcm90bzM");
+  fileDesc("ChRhbHQvdHRzL3YxL3R0cy5wcm90bxIKYWx0LnR0cy52MSI/ChFTeW50aGVzaXplUmVxdWVzdBIMCgR0ZXh0GAEgASgJEg0KBXZvaWNlGAIgASgJEg0KBXNwZWVkGAMgASgBIlYKElN5bnRoZXNpemVSZXNwb25zZRIRCglhdWRpb193YXYYASABKAwSEwoLc2FtcGxlX3JhdGUYAiABKAUSGAoQZHVyYXRpb25fc2Vjb25kcxgDIAEoASIxCgVWb2ljZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmdlbmRlchgDIAEoCSITChFMaXN0Vm9pY2VzUmVxdWVzdCI3ChJMaXN0Vm9pY2VzUmVzcG9uc2USIQoGdm9pY2VzGAEgAygLMhEuYWx0LnR0cy52MS5Wb2ljZTL7AQoKVFRTU2VydmljZRJLCgpTeW50aGVzaXplEh0uYWx0LnR0cy52MS5TeW50aGVzaXplUmVxdWVzdBoeLmFsdC50dHMudjEuU3ludGhlc2l6ZVJlc3BvbnNlElMKEFN5bnRoZXNpemVTdHJlYW0SHS5hbHQudHRzLnYxLlN5bnRoZXNpemVSZXF1ZXN0Gh4uYWx0LnR0cy52MS5TeW50aGVzaXplUmVzcG9uc2UwARJLCgpMaXN0Vm9pY2VzEh0uYWx0LnR0cy52MS5MaXN0Vm9pY2VzUmVxdWVzdBoeLmFsdC50dHMudjEuTGlzdFZvaWNlc1Jlc3BvbnNlQiBaHmFsdC9nZW4vcHJvdG8vYWx0L3R0cy92MTt0dHN2MWIGcHJvdG8z");
 
 /**
  * @generated from message alt.tts.v1.SynthesizeRequest
@@ -132,6 +132,14 @@ export const TTSService: GenService<{
    */
   synthesize: {
     methodKind: "unary";
+    input: typeof SynthesizeRequestSchema;
+    output: typeof SynthesizeResponseSchema;
+  },
+  /**
+   * @generated from rpc alt.tts.v1.TTSService.SynthesizeStream
+   */
+  synthesizeStream: {
+    methodKind: "server_streaming";
     input: typeof SynthesizeRequestSchema;
     output: typeof SynthesizeResponseSchema;
   },

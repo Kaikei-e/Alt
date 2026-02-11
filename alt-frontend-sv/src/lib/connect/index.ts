@@ -131,6 +131,7 @@ export { getEveningPulse } from "./evening_pulse";
 export {
 	createTtsClient,
 	synthesizeSpeech,
+	synthesizeSpeechStream,
 	listVoices,
 	type SynthesizeResult,
 	type SynthesizeOptions,

@@ -37,8 +37,8 @@ export interface SynthesizeOptions {
 	speed?: number;
 }
 
-const DEFAULT_VOICE = "jf_alpha";
-const DEFAULT_SPEED = 1.0;
+const DEFAULT_VOICE = "jf_gongitsune";
+const DEFAULT_SPEED = 1.25;
 
 /**
  * Creates a TTSService client with the given transport.
@@ -70,6 +70,36 @@ export async function synthesizeSpeech(
 		sampleRate: response.sampleRate,
 		durationSeconds: response.durationSeconds,
 	};
+}
+
+/**
+ * Synthesizes speech via server-streaming RPC.
+ *
+ * The server yields one SynthesizeResponse per sentence chunk (each a complete WAV).
+ *
+ * @param transport - The Connect transport to use
+ * @param options - Text and optional voice/speed settings
+ * @returns AsyncIterable of SynthesizeResult chunks
+ */
+export async function* synthesizeSpeechStream(
+	transport: Transport,
+	options: SynthesizeOptions,
+): AsyncGenerator<SynthesizeResult> {
+	const client = createTtsClient(transport);
+	const stream = client.synthesizeStream({
+		text: options.text,
+		voice: options.voice ?? DEFAULT_VOICE,
+		speed: options.speed ?? DEFAULT_SPEED,
+	});
+
+	for await (const rawResponse of stream) {
+		const response = rawResponse as SynthesizeResponse;
+		yield {
+			audioWav: response.audioWav,
+			sampleRate: response.sampleRate,
+			durationSeconds: response.durationSeconds,
+		};
+	}
 }
 
 /**

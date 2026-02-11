@@ -2,11 +2,12 @@
  * TTS playback hook for Recap genre summaries.
  *
  * Manages the lifecycle of text-to-speech synthesis and audio playback.
- * Supports chunked playback for long texts and cleanup on genre changes.
+ * Uses server-streaming RPC — the server chunks text by sentence and yields
+ * complete WAV files, which we play back sequentially.
  */
 
-import { createClientTransport, synthesizeSpeech } from "$lib/connect";
-import { createAudioFromWav, splitTextForTts } from "$lib/utils/audio";
+import { createClientTransport, synthesizeSpeechStream } from "$lib/connect";
+import { createAudioFromWav } from "$lib/utils/audio";
 import type { AudioPlayer } from "$lib/utils/audio";
 
 type TtsState = "idle" | "loading" | "playing" | "error";
@@ -53,28 +54,25 @@ export function useTtsPlayback(): TtsPlayback {
 		stop();
 		cancelled = false;
 
-		const chunks = splitTextForTts(text);
-		if (chunks.length === 0) {
+		if (text.trim().length === 0) {
 			state = "idle";
 			return;
 		}
 
 		const transport = createClientTransport();
 
-		for (const chunk of chunks) {
-			if (cancelled) break;
+		try {
+			state = "loading";
+			const stream = synthesizeSpeechStream(transport, {
+				text,
+				voice: options?.voice,
+				speed: options?.speed,
+			});
 
-			try {
-				state = "loading";
-				const result = await synthesizeSpeech(transport, {
-					text: chunk,
-					voice: options?.voice,
-					speed: options?.speed,
-				});
-
+			for await (const chunk of stream) {
 				if (cancelled) break;
 
-				const player = createAudioFromWav(result.audioWav);
+				const player = createAudioFromWav(chunk.audioWav);
 				currentPlayer = player;
 				state = "playing";
 
@@ -93,8 +91,9 @@ export function useTtsPlayback(): TtsPlayback {
 					player.cleanup();
 					currentPlayer = null;
 				}
-			} catch (err) {
-				if (cancelled) break;
+			}
+		} catch (err) {
+			if (!cancelled) {
 				error = err instanceof Error ? err.message : "Unknown TTS error";
 				state = "error";
 				return;
