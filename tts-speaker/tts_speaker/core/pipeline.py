@@ -93,10 +93,10 @@ class TTSPipeline:
 
         logger.info("Loading Kokoro-82M pipeline (lang=ja, device=%s)...", self._device)
         self._pipeline = KPipeline(lang_code="j", device=self._device)
-        # FP16 on GPU for ROCm 7.2 performance
+        # Note: .half() is NOT used because ROCm LSTM does not support FP16,
+        # causing "parameter types mismatch" at inference time.
         if self._device == "cuda":
-            self._pipeline.model.half()
-            logger.info("FP16 enabled for GPU inference")
+            logger.info("GPU inference enabled (FP32 — ROCm LSTM requires FP32)")
         self._ready = True
         logger.info("Kokoro-82M pipeline loaded successfully")
 
