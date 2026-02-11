@@ -317,6 +317,56 @@ func TestSearchFeedMeilisearchUsecase_ExecuteWithPagination(t *testing.T) {
 			expectedMore:  false,
 			expectError:   true,
 		},
+		// hasMore logic: uses len(results) >= limit && offset+len(results) < maxSearchResults(200)
+		// Does NOT rely on estimatedTotalHits from Meilisearch
+		{
+			name:          "hasMore true when full page returned and under max cap",
+			query:         "LLM",
+			offset:        0,
+			limit:         20,
+			mockResponse:  generateMockSearchArticleHits(20),
+			mockTotal:     1000, // Meilisearch estimatedTotalHits (unreliable)
+			mockError:     nil,
+			expectedCount: 20,
+			expectedMore:  true,
+			expectError:   false,
+		},
+		{
+			name:          "hasMore false when partial page returned even if estimatedTotalHits is large",
+			query:         "LLM",
+			offset:        40,
+			limit:         20,
+			mockResponse:  generateMockSearchArticleHits(15),
+			mockTotal:     1000, // Meilisearch says 1000 but only 15 returned
+			mockError:     nil,
+			expectedCount: 15,
+			expectedMore:  false,
+			expectError:   false,
+		},
+		{
+			name:          "hasMore false when empty results returned",
+			query:         "LLM",
+			offset:        60,
+			limit:         20,
+			mockResponse:  []domain.SearchArticleHit{},
+			mockTotal:     1000,
+			mockError:     nil,
+			expectedCount: 0,
+			expectedMore:  false,
+			expectError:   false,
+		},
+		{
+			name:          "hasMore false when offset plus results exceeds max search cap",
+			query:         "LLM",
+			offset:        180,
+			limit:         20,
+			mockResponse:  generateMockSearchArticleHits(20),
+			mockTotal:     1000, // Would be true with old logic (200 < 1000)
+			mockError:     nil,
+			expectedCount: 20,
+			expectedMore:  false, // 180+20 >= 200 (maxSearchResults)
+			expectError:   false,
+		},
 	}
 
 	for _, tt := range tests {

@@ -18,8 +18,14 @@ import (
 func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 	result := make([]*feedsv2.FeedItem, 0, len(feeds))
 	for _, feed := range feeds {
+		// Use ArticleID as unique ID when available (e.g. search results),
+		// fall back to Link for regular feed items
+		id := feed.Link
+		if feed.ArticleID != "" {
+			id = feed.ArticleID
+		}
 		item := &feedsv2.FeedItem{
-			Id:          feed.Link, // Use Link as ID for consistency with frontend
+			Id:          id,
 			Title:       feed.Title,
 			Description: sanitizeDescription(feed.Description),
 			Link:        feed.Link,

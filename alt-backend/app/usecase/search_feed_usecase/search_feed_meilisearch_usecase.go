@@ -105,6 +105,7 @@ func (u *SearchFeedMeilisearchUsecase) Execute(ctx context.Context, query string
 			Title:       hit.Title,
 			Description: hit.Content,
 			Link:        urlMap[hit.ID], // Will be empty string if not found
+			ArticleID:   hit.ID,         // Preserve article ID for unique identification
 		}
 	}
 
@@ -175,11 +176,17 @@ func (u *SearchFeedMeilisearchUsecase) ExecuteWithPagination(ctx context.Context
 			Title:       hit.Title,
 			Description: hit.Content,
 			Link:        urlMap[hit.ID], // Will be empty string if not found
+			ArticleID:   hit.ID,         // Preserve article ID for unique identification
 		}
 	}
 
-	// Determine if there are more results
-	hasMore := offset+len(feedItems) < totalCount
+	// Determine if there are more results.
+	// Do NOT rely on totalCount (Meilisearch's estimatedTotalHits) — it is capped at 1000
+	// and is an unreliable estimate in offset/limit mode. Instead, use two deterministic checks:
+	// 1. If fewer results than requested were returned, there are no more results.
+	// 2. Cap total searchable results to avoid infinite scrolling.
+	const maxSearchResults = 200
+	hasMore := len(feedItems) >= limit && offset+len(feedItems) < maxSearchResults
 
 	u.logger.Info("feed search via meilisearch with pagination completed",
 		"query", query,
