@@ -40,6 +40,9 @@ COPY tts_speaker ./tts_speaker
 RUN --mount=type=cache,id=uv-tts-speaker,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+# Download UniDic dictionary
+RUN . .venv/bin/activate && python -m unidic download
+
 # ==============================================================================
 # ランタイムステージ
 # ==============================================================================
