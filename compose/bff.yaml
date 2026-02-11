@@ -18,6 +18,7 @@ services:
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BFF_REQUEST_TIMEOUT=30s
       - BFF_STREAMING_TIMEOUT=5m
+      - TTS_CONNECT_URL=${TTS_CONNECT_URL:-}
     secrets:
       - backend_token_secret
     ports:
