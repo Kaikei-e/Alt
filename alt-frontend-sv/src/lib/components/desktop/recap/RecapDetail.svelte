@@ -1,13 +1,44 @@
 <script lang="ts">
-import { FileText, Tag, FileStack } from "@lucide/svelte";
+import {
+	FileText,
+	Tag,
+	FileStack,
+	Volume2,
+	Square,
+	Loader2,
+} from "@lucide/svelte";
 import type { RecapGenre } from "$lib/schema/recap";
 import EvidenceArticles from "./EvidenceArticles.svelte";
+import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 
 interface Props {
 	genre: RecapGenre | null;
 }
 
 let { genre }: Props = $props();
+
+const tts = useTtsPlayback();
+
+const ttsText = $derived(
+	genre ? `${genre.summary}\n${(genre.bullets ?? []).join("\n")}` : "",
+);
+
+// Stop playback when genre changes
+$effect(() => {
+	// Access genre to track it
+	genre;
+	return () => {
+		tts.stop();
+	};
+});
+
+function handleTtsClick() {
+	if (tts.isPlaying || tts.isLoading) {
+		tts.stop();
+	} else {
+		tts.play(ttsText);
+	}
+}
 </script>
 
 <div class="border border-[var(--surface-border)] bg-white">
@@ -24,9 +55,25 @@ let { genre }: Props = $props();
 		<div class="p-6">
 			<!-- Header -->
 			<div class="mb-6">
-				<h2 class="text-2xl font-bold text-[var(--text-primary)] mb-2">
-					{genre.genre}
-				</h2>
+				<div class="flex items-center justify-between mb-2">
+					<h2 class="text-2xl font-bold text-[var(--text-primary)]">
+						{genre.genre}
+					</h2>
+					<button
+						onclick={handleTtsClick}
+						class="p-2 rounded-md hover:bg-[var(--surface-hover)] transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+						aria-label={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
+						title={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
+					>
+						{#if tts.isLoading}
+							<Loader2 class="h-5 w-5 animate-spin" />
+						{:else if tts.isPlaying}
+							<Square class="h-5 w-5" />
+						{:else}
+							<Volume2 class="h-5 w-5" />
+						{/if}
+					</button>
+				</div>
 				<div class="flex items-center gap-4 text-xs text-[var(--text-secondary)]">
 					<div class="flex items-center gap-1">
 						<FileStack class="h-3.5 w-3.5" />
@@ -37,6 +84,9 @@ let { genre }: Props = $props();
 						<span>{genre.clusterCount} clusters</span>
 					</div>
 				</div>
+				{#if tts.error}
+					<p class="text-xs text-red-500 mt-1">{tts.error}</p>
+				{/if}
 			</div>
 
 			<!-- Summary -->
