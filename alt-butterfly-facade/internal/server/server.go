@@ -29,6 +29,7 @@ type Config struct {
 	Audience         string
 	RequestTimeout   time.Duration
 	StreamingTimeout time.Duration
+	TTSConnectURL    string
 
 	// BFF Feature Configuration
 	BFFConfig handler.BFFConfig
@@ -121,6 +122,20 @@ func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.Roun
 
 	// Register aggregation endpoint
 	mux.Handle("/v1/aggregate", aggregationHandler)
+
+	// TTS service routing (before catch-all)
+	if cfg.TTSConnectURL != "" {
+		ttsClient := client.NewBackendClientWithTransport(
+			cfg.TTSConnectURL,
+			cfg.RequestTimeout,
+			cfg.StreamingTimeout,
+			transport,
+		)
+		ttsHandler := handler.NewProxyHandler(
+			ttsClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger,
+		)
+		mux.Handle("/alt.tts.v1.TTSService/", ttsHandler)
+	}
 
 	// Register proxy handler for all other paths
 	// Connect-RPC uses paths like /alt.feeds.v2.FeedService/GetFeedStats

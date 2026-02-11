@@ -22,6 +22,7 @@ func TestNewConfig_Defaults(t *testing.T) {
 	assert.Equal(t, "alt-backend", cfg.BackendTokenAudience)
 	assert.Equal(t, 30*time.Second, cfg.RequestTimeout)
 	assert.Equal(t, 5*time.Minute, cfg.StreamingTimeout)
+	assert.Equal(t, "", cfg.TTSConnectURL)
 }
 
 func TestNewConfig_FromEnvironment(t *testing.T) {
@@ -33,6 +34,7 @@ func TestNewConfig_FromEnvironment(t *testing.T) {
 	os.Setenv("BACKEND_TOKEN_AUDIENCE", "custom-audience")
 	os.Setenv("BFF_REQUEST_TIMEOUT", "60s")
 	os.Setenv("BFF_STREAMING_TIMEOUT", "10m")
+	os.Setenv("TTS_CONNECT_URL", "http://tts-external:9700")
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -44,6 +46,7 @@ func TestNewConfig_FromEnvironment(t *testing.T) {
 	assert.Equal(t, "custom-audience", cfg.BackendTokenAudience)
 	assert.Equal(t, 60*time.Second, cfg.RequestTimeout)
 	assert.Equal(t, 10*time.Minute, cfg.StreamingTimeout)
+	assert.Equal(t, "http://tts-external:9700", cfg.TTSConnectURL)
 }
 
 func TestNewConfig_InvalidDuration_UsesDefault(t *testing.T) {

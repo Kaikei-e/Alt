@@ -58,6 +58,7 @@ func main() {
 		Audience:         cfg.BackendTokenAudience,
 		RequestTimeout:   cfg.RequestTimeout,
 		StreamingTimeout: cfg.StreamingTimeout,
+		TTSConnectURL:    cfg.TTSConnectURL,
 	}
 
 	// Create HTTP server

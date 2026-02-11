@@ -28,6 +28,8 @@ type Config struct {
 	RequestTimeout time.Duration
 	// StreamingTimeout is the timeout for streaming RPC requests
 	StreamingTimeout time.Duration
+	// TTSConnectURL is the URL of the TTS service (e.g., http://tts-external:9700)
+	TTSConnectURL string
 
 	// BFF Feature Flags
 	// EnableCache enables response caching
@@ -70,6 +72,7 @@ func NewConfig() *Config {
 		BackendTokenAudience:   getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
 		RequestTimeout:         getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
 		StreamingTimeout:       getDurationEnv("BFF_STREAMING_TIMEOUT", 5*time.Minute),
+		TTSConnectURL:         getEnv("TTS_CONNECT_URL", ""),
 
 		// BFF Feature Flags (all enabled by default)
 		EnableCache:              true,
