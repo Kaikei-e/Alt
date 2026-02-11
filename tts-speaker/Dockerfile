@@ -25,9 +25,11 @@ COPY pyproject.toml uv.lock ./
 # 仮想環境を作成
 RUN uv venv
 
-# PyTorch CPU版をインストール（82Mパラメータは CPU で実用速度）
+# PyTorch ROCm版をインストール（AMD iGPU加速, gfx1150 対応）
+# CPU環境ではフォールバックして CPU 推論になる
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/rocm7.2
 RUN --mount=type=cache,id=uv-tts-speaker,target=/root/.cache/uv \
-    uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+    uv pip install torch --index-url ${PYTORCH_INDEX_URL}
 
 # 依存関係をインストール（プロジェクト自体は後でインストール）
 RUN --mount=type=cache,id=uv-tts-speaker,target=/root/.cache/uv \
@@ -64,7 +66,10 @@ RUN groupadd -r tts && useradd -r -g tts tts
 ENV PATH="/app/.venv/bin:$PATH" \
     HOME=/app \
     OMP_NUM_THREADS=2 \
-    HF_HOME=/app/.cache/huggingface
+    HF_HOME=/app/.cache/huggingface \
+    HSA_OVERRIDE_GFX_VERSION=11.0.0 \
+    PYTORCH_HIP_ALLOC_CONF=expandable_segments:True \
+    HIP_VISIBLE_DEVICES=0
 
 # 仮想環境をコピー
 COPY --from=builder /app/.venv /app/.venv
