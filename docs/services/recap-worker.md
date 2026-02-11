@@ -5,19 +5,20 @@ _Last reviewed: January 22, 2026_
 **Location:** `recap-worker` (Crate: `recap-worker/recap-worker`)
 
 ## Role
-`recap-worker` is the **orchestrator and pipeline runner** for the Alt 7-day recap system. Written in Rust (2024 edition), it manages the end-to-end flow of generating weekly Japanese news recaps.
+`recap-worker` is the **orchestrator and pipeline runner** for the Alt recap system. Written in Rust (2024 edition), it manages the end-to-end flow of generating Japanese news recaps for both **7-day** (weekly deep-dive) and **3-day** (daily quick-catch) windows.
 
 It delegates **heavy ML tasks** (embedding generation, coarse classification, clustering) to `recap-subworker`, keeping the worker itself focused on high-throughput data processing, pipeline coordination, and persistence.
 
 **Pipelines:**
-1.  **7-Day Recap Pipeline:** The main batch process (runs daily at 04:00 JST).
-2.  **Morning Update Pipeline:** A lighter pipeline for daily article deduplication and grouping (Daemon currently **disabled** in `main.rs`, but logic exists).
+1.  **7-Day Recap Pipeline:** Weekly deep-dive batch process (runs daily at 04:00 JST).
+2.  **3-Day Recap Pipeline:** Daily quick-catch batch process with smaller article window, faster processing, and reduced prompt sizes.
+3.  **Morning Update Pipeline:** A lighter pipeline for daily article deduplication and grouping (Daemon currently **disabled** in `main.rs`, but logic exists).
 
 ## Service Snapshot
 
 | Layer | Responsibilities |
 | --- | --- |
-| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/7days` <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs, recap_jobs, job-progress, job-stats) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
+| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/7days`, `/v1/generate/recaps/3days` <br>- **Fetch**: `/v1/recaps/7days`, `/v1/recaps/3days` <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs, recap_jobs, job-progress, job-stats) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
 | **Pipeline Core** | `src/pipeline/`: Modular stages for Fetch, Preprocess, Dedup, Genre, Select, Evidence, Dispatch, Persist. |
 | **Clients** | `src/clients/`: Strongly-typed HTTP clients for: <br>- **`recap-subworker`**: Coarse classification, clustering, graph refresh. <br>- **`news-creator`**: LLM summarization. <br>- **`alt-backend`**: Article fetching. <br>- **`tag-generator`**: Optional tag enrichment. |
 | **Classification** | **Remote Coarse**: Calls `recap-subworker` (`/v1/classify`) for initial genre assignment. <br>**Local Refine**: Optional Graph Label Propagation stage (`src/pipeline/genre_refine.rs`) using cached graph data. |
@@ -206,7 +207,8 @@ Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides
 ### Key Environment Variables
 
 #### Core Settings
-*   `RECAP_WINDOW_DAYS`: Number of days to include in the recap (default 7).
+*   `RECAP_WINDOW_DAYS`: Number of days to include in the 7-day recap (default 7).
+*   `RECAP_3DAYS_WINDOW_DAYS`: Number of days to include in the 3-day recap (default 3).
 *   `GENRE_CLASSIFIER_THRESHOLD`: Confidence threshold for remote classification.
 *   `RECAP_GENRE_REFINE_ENABLED`: Enable/disable local graph refinement.
 *   `RECAP_GENRE_REFINE_ROLLOUT_PERCENT`: Gradual rollout control for refinement.
