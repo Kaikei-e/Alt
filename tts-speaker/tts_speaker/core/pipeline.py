@@ -86,6 +86,49 @@ class TTSPipeline:
             None, self._synthesize_sync, text, voice, speed
         )
 
+    async def synthesize_stream(
+        self,
+        *,
+        text: str,
+        voice: str = "jf_alpha",
+        speed: float = 1.0,
+    ):  # -> AsyncGenerator[np.ndarray, None]
+        """Synthesize text to audio stream (yielding 24kHz float32 ndarray chunks).
+
+        Runs the blocking TTS inference in a thread executor, yielding chunks as they are generated.
+        """
+        loop = asyncio.get_event_loop()
+        # We need a queue to pass chunks from the sync thread to the async generator
+        queue = asyncio.Queue()
+
+        def producer():
+            try:
+                if not self._pipeline:
+                    raise RuntimeError("Pipeline not loaded")
+
+                # The pipeline call is a generator
+                for _gs, _ps, audio in self._pipeline(text, voice=voice, speed=speed):
+                    if audio is not None:
+                        if hasattr(audio, "cpu"):
+                            audio = audio.cpu().numpy()
+                        loop.call_soon_threadsafe(queue.put_nowait, audio)
+
+                # Signal end of stream
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+            except Exception as e:
+                loop.call_soon_threadsafe(queue.put_nowait, e)
+
+        # Run producer in executor
+        loop.run_in_executor(None, producer)
+
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                break
+            if isinstance(chunk, Exception):
+                raise chunk
+            yield chunk.astype(np.float32)
+
     def _synthesize_sync(self, text: str, voice: str, speed: float) -> np.ndarray:
         """Synchronous synthesis."""
         if not self._pipeline:
