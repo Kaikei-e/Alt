@@ -239,8 +239,8 @@ func TestConvertFeedsToProto(t *testing.T) {
 
 	require.Len(t, protoFeeds, 2)
 
-	// First feed
-	assert.Equal(t, "https://example.com/feed1", protoFeeds[0].Id)
+	// First feed — no ArticleID, so Id is a generated UUID
+	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, protoFeeds[0].Id)
 	assert.Equal(t, "Test Feed 1", protoFeeds[0].Title)
 	assert.Equal(t, "Test Description 1", protoFeeds[0].Description) // HTML sanitized
 	assert.Equal(t, "https://example.com/feed1", protoFeeds[0].Link)
@@ -248,8 +248,9 @@ func TestConvertFeedsToProto(t *testing.T) {
 	assert.NotEmpty(t, protoFeeds[0].CreatedAt)
 	assert.NotEmpty(t, protoFeeds[0].Published)
 
-	// Second feed
-	assert.Equal(t, "https://example.com/feed2", protoFeeds[1].Id)
+	// Second feed — no ArticleID, so Id is a generated UUID
+	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, protoFeeds[1].Id)
+	assert.NotEqual(t, protoFeeds[0].Id, protoFeeds[1].Id) // UUIDs must be unique
 	assert.Equal(t, "Test Feed 2", protoFeeds[1].Title)
 }
 

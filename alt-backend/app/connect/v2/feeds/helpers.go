@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/microcosm-cc/bluemonday"
 
 	"alt/domain"
@@ -18,9 +19,9 @@ import (
 func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 	result := make([]*feedsv2.FeedItem, 0, len(feeds))
 	for _, feed := range feeds {
-		// Use ArticleID as unique ID when available (e.g. search results),
-		// fall back to Link for regular feed items
-		id := feed.Link
+		// ID for Svelte {#each} keying only (not used in business logic).
+		// Use ArticleID when available; otherwise generate a UUID to guarantee uniqueness.
+		id := uuid.New().String()
 		if feed.ArticleID != "" {
 			id = feed.ArticleID
 		}

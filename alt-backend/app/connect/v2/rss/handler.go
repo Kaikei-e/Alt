@@ -154,22 +154,11 @@ func (h *Handler) RegisterFavoriteFeed(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	// Validate URL
+	// Validate URL (no SSRF check needed — this handler only does a DB lookup by URL,
+	// it does not make external requests)
 	if strings.TrimSpace(req.Msg.Url) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("url is required"))
-	}
-
-	parsedURL, err := url.Parse(req.Msg.Url)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("invalid URL format: %w", err))
-	}
-
-	// Check for allowed URLs (SSRF protection)
-	if err := rest.IsAllowedURL(parsedURL); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("URL not allowed: %w", err))
 	}
 
 	// Call usecase

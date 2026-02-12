@@ -2,15 +2,22 @@ package rss
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 
 	rssv2 "alt/gen/proto/alt/rss/v2"
 
+	"alt/di"
 	"alt/domain"
+	"alt/mocks"
+	"alt/usecase/register_favorite_feed_usecase"
 )
 
 func createAuthContext() context.Context {
@@ -282,4 +289,98 @@ func TestUUIDValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// =============================================================================
+// RegisterFavoriteFeed Handler Tests
+// =============================================================================
+
+func newTestHandler(t *testing.T, container *di.ApplicationComponents) *Handler {
+	t.Helper()
+	logger := slog.Default()
+	return NewHandler(container, nil, logger)
+}
+
+func TestRegisterFavoriteFeed_EmptyURL(t *testing.T) {
+	h := newTestHandler(t, &di.ApplicationComponents{})
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&rssv2.RegisterFavoriteFeedRequest{
+		Url: "",
+	})
+
+	_, err := h.RegisterFavoriteFeed(ctx, req)
+	assert.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestRegisterFavoriteFeed_WhitespaceURL(t *testing.T) {
+	h := newTestHandler(t, &di.ApplicationComponents{})
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&rssv2.RegisterFavoriteFeedRequest{
+		Url: "   ",
+	})
+
+	_, err := h.RegisterFavoriteFeed(ctx, req)
+	assert.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestRegisterFavoriteFeed_Unauthenticated(t *testing.T) {
+	h := newTestHandler(t, &di.ApplicationComponents{})
+	ctx := context.Background() // no auth
+
+	req := connect.NewRequest(&rssv2.RegisterFavoriteFeedRequest{
+		Url: "https://example.com/feed",
+	})
+
+	_, err := h.RegisterFavoriteFeed(ctx, req)
+	assert.Error(t, err)
+	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}
+
+func TestRegisterFavoriteFeed_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockPort := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
+	mockPort.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/feed").Return(nil)
+
+	usecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(mockPort)
+	container := &di.ApplicationComponents{
+		RegisterFavoriteFeedUsecase: usecase,
+	}
+	h := newTestHandler(t, container)
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&rssv2.RegisterFavoriteFeedRequest{
+		Url: "https://example.com/feed",
+	})
+
+	resp, err := h.RegisterFavoriteFeed(ctx, req)
+	assert.NoError(t, err)
+	assert.Equal(t, "favorite feed registered", resp.Msg.Message)
+}
+
+func TestRegisterFavoriteFeed_UsecaseError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockPort := mocks.NewMockRegisterFavoriteFeedPort(ctrl)
+	mockPort.EXPECT().RegisterFavoriteFeed(gomock.Any(), "https://example.com/feed").Return(errors.New("db error"))
+
+	usecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(mockPort)
+	container := &di.ApplicationComponents{
+		RegisterFavoriteFeedUsecase: usecase,
+	}
+	h := newTestHandler(t, container)
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&rssv2.RegisterFavoriteFeedRequest{
+		Url: "https://example.com/feed",
+	})
+
+	_, err := h.RegisterFavoriteFeed(ctx, req)
+	assert.Error(t, err)
 }

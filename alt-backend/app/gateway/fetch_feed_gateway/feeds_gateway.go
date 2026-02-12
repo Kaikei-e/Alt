@@ -299,13 +299,17 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 	var feedItems []*domain.FeedItem
 	for _, feed := range feeds {
 		publishedTime := feed.CreatedAt
-		feedItems = append(feedItems, &domain.FeedItem{
+		feedItem := &domain.FeedItem{
 			Title:           feed.Title,
 			Description:     feed.Description,
 			Link:            feed.Link,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
-		})
+		}
+		if feed.ArticleID != nil {
+			feedItem.ArticleID = *feed.ArticleID
+		}
+		feedItems = append(feedItems, feedItem)
 	}
 
 	return feedItems, nil
