@@ -4,6 +4,7 @@ import {
 	Loader,
 	Sparkles,
 	SquareArrowOutUpRight,
+	Star,
 } from "@lucide/svelte";
 import { onMount, tick } from "svelte";
 import { Spring } from "svelte/motion";
@@ -11,6 +12,7 @@ import { fade } from "svelte/transition";
 import { type SwipeDirection, swipe } from "$lib/actions/swipe";
 import {
 	getFeedContentOnTheFlyClient,
+	registerFavoriteFeedClient,
 	summarizeArticleClient,
 } from "$lib/api/client";
 import { Button } from "$lib/components/ui/button";
@@ -54,6 +56,9 @@ let isContentExpanded = $state(false);
 let fullContent = $state<string | null>(null);
 let isLoadingContent = $state(false);
 let contentError = $state<string | null>(null);
+
+let isFavoriting = $state(false);
+let isFavorited = $state(false);
 
 // Swipe state with Spring
 const SWIPE_THRESHOLD = 60;
@@ -325,6 +330,19 @@ async function handleGenerateAISummary() {
 	}
 }
 
+async function handleFavorite() {
+	if (isFavoriting || isFavorited) return;
+	isFavoriting = true;
+	try {
+		await registerFavoriteFeedClient(feed.link);
+		isFavorited = true;
+	} catch (err) {
+		console.error("[SwipeFeedCard] Failed to favorite feed:", err);
+	} finally {
+		isFavoriting = false;
+	}
+}
+
 async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 	const dir = event.detail.direction;
 	if (dir !== "left" && dir !== "right") return;
@@ -509,6 +527,21 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
             : isContentExpanded
               ? "Hide"
               : "Article"}
+        </Button>
+        <Button
+          onclick={handleFavorite}
+          size="sm"
+          class="rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isFavorited
+            ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
+            : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
+          disabled={isFavoriting || isFavorited}
+          aria-label={isFavorited ? "Favorited" : isFavoriting ? "Saving favorite" : "Favorite"}
+        >
+          {#if isFavoriting}
+            <Loader class="h-5 w-5 animate-spin" />
+          {:else}
+            <Star class="h-5 w-5" fill={isFavorited ? "currentColor" : "none"} />
+          {/if}
         </Button>
         <Button
           onclick={handleGenerateAISummary}

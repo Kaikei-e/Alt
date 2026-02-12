@@ -40,6 +40,7 @@ vi.mock("$lib/api/client", () => ({
 			summary: "This is a test summary.",
 		}),
 	),
+	registerFavoriteFeedClient: vi.fn(() => Promise.resolve({ message: "ok" })),
 }));
 
 // Mock Connect RPC functions
@@ -255,6 +256,59 @@ describe("SwipeFeedCard", () => {
 
 			const link = page.getByRole("link", { name: /open article/i });
 			await expect.element(link).toHaveAttribute("href", mockFeed.link);
+		});
+	});
+
+	describe("favorite button", () => {
+		it("renders Favorite button", async () => {
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			await expect
+				.element(page.getByRole("button", { name: /favorite/i }))
+				.toBeInTheDocument();
+		});
+
+		it("Favorite button is enabled initially", async () => {
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			const favoriteButton = page.getByRole("button", { name: /favorite/i });
+			await expect.element(favoriteButton).not.toBeDisabled();
+		});
+
+		it("Favorite button calls registerFavoriteFeedClient on click", async () => {
+			const { registerFavoriteFeedClient } = await import("$lib/api/client");
+
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			const favoriteButton = page.getByRole("button", { name: /favorite/i });
+			await favoriteButton.click();
+
+			// Wait for async handler
+			await new Promise((resolve) => setTimeout(resolve, 50));
+
+			expect(registerFavoriteFeedClient).toHaveBeenCalledWith(mockFeed.link);
+		});
+
+		it("Favorite button shows favorited state after successful call", async () => {
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			const favoriteButton = page.getByRole("button", { name: /favorite/i });
+			await favoriteButton.click();
+
+			// Wait for async handler to complete
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			await expect
+				.element(page.getByRole("button", { name: /favorited/i }))
+				.toBeInTheDocument();
 		});
 	});
 });

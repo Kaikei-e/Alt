@@ -9,7 +9,6 @@ import {
 	Sparkles,
 } from "@lucide/svelte";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
-import { updateFeedReadStatusClient } from "$lib/api/client/feeds";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import { Button } from "$lib/components/ui/button";
 import { Dialog as DialogPrimitive } from "bits-ui";
@@ -17,6 +16,7 @@ import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
+import type { Snippet } from "svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 
@@ -24,33 +24,27 @@ interface Props {
 	open: boolean;
 	feed: RenderFeed | null;
 	onOpenChange: (open: boolean) => void;
-	onMarkAsRead?: (feedUrl: string) => void;
 	hasPrevious?: boolean;
 	hasNext?: boolean;
 	onPrevious?: () => void;
 	onNext?: () => void;
 	feeds?: RenderFeed[];
 	currentIndex?: number;
-	/** Disable mark as read button (e.g., while parent is processing) */
-	disableMarkAsRead?: boolean;
+	footerActions?: Snippet;
 }
 
 let {
 	open = $bindable(),
 	feed,
 	onOpenChange,
-	onMarkAsRead,
 	hasPrevious = false,
 	hasNext = false,
 	onPrevious,
 	onNext,
 	feeds,
 	currentIndex,
-	disableMarkAsRead = false,
+	footerActions,
 }: Props = $props();
-
-// Mark as read state
-let isMarkingAsRead = $state(false);
 
 // Content fetching state
 let isFetchingContent = $state(false);
@@ -161,21 +155,6 @@ $effect(() => {
 		articlePrefetcher.triggerPrefetch(feeds, currentIndex, 2);
 	}
 });
-
-async function handleMarkAsRead() {
-	if (!feed || isMarkingAsRead) return;
-
-	try {
-		isMarkingAsRead = true;
-		await updateFeedReadStatusClient(feed.normalizedUrl);
-		onMarkAsRead?.(feed.normalizedUrl);
-		// Parent handles navigation/closing after removing the feed
-	} catch (error) {
-		console.error("Failed to mark feed as read:", error);
-	} finally {
-		isMarkingAsRead = false;
-	}
-}
 
 async function handleFetchFullArticle() {
 	if (!feed?.normalizedUrl || isFetchingContent) return;
@@ -432,7 +411,7 @@ async function handleSummarize() {
 						<Button
 							onclick={handleSummarize}
 							disabled={isSummarizing || !articleContent}
-							class="flex items-center gap-2 bg-[#2f4f4f] text-white hover:opacity-90 disabled:opacity-50"
+							class="flex items-center gap-2 bg-[#2f4f4f] text-white hover:bg-[#2f4f4f]/90 hover:text-white disabled:opacity-50"
 						>
 							{#if isSummarizing}
 								<Loader2 class="h-4 w-4 animate-spin" />
@@ -446,14 +425,9 @@ async function handleSummarize() {
 
 					<!-- 右側グループ: 状態変更とクローズ -->
 					<div class="flex gap-3 flex-shrink-0">
-						<!-- Mark as Read -->
-						<Button
-							onclick={handleMarkAsRead}
-							variant="outline"
-							disabled={isMarkingAsRead || disableMarkAsRead}
-						>
-							{isMarkingAsRead ? "Marking..." : "Mark as Read"}
-						</Button>
+						{#if footerActions}
+							{@render footerActions()}
+						{/if}
 
 						<!-- Close -->
 						<DialogPrimitive.Close class="inline-flex items-center justify-center gap-2 rounded-none text-base font-bold px-4 py-2 h-9 bg-transparent text-[var(--text-primary)] border-2 border-transparent hover:bg-[var(--surface-hover)] hover:border-[var(--surface-border)] transition-all focus-visible:outline-none disabled:opacity-60">

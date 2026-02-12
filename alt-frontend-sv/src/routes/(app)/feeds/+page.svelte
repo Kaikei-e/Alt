@@ -13,6 +13,8 @@ import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
 import MobileFeedsHero from "$lib/components/mobile/MobileFeedsHero.svelte";
 
+import { updateFeedReadStatusClient } from "$lib/api/client/feeds";
+import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
 
 interface PageData {
@@ -29,6 +31,7 @@ let isModalOpen = $state(false);
 let filters = $state({ unreadOnly: false, sortBy: "date_desc" });
 let feedGridApi = $state<FeedGridApi | null>(null);
 let isProcessingMarkAsRead = $state(false);
+let isMarkingAsRead = $state(false);
 
 const selectedFeed = $derived.by(() => {
 	if (!selectedFeedUrl || !feedGridApi) return null;
@@ -71,6 +74,21 @@ function handleFilterChange(newFilters: {
 	sortBy: string;
 }) {
 	filters = newFilters;
+}
+
+async function handleMarkAsReadInModal() {
+	const feed = selectedFeed;
+	if (!feed || isMarkingAsRead) return;
+
+	try {
+		isMarkingAsRead = true;
+		await updateFeedReadStatusClient(feed.normalizedUrl);
+		handleMarkAsRead(feed.normalizedUrl);
+	} catch (error) {
+		console.error("Failed to mark feed as read:", error);
+	} finally {
+		isMarkingAsRead = false;
+	}
 }
 
 function handleMarkAsRead(feedUrl: string) {
@@ -128,15 +146,23 @@ function handleFeedGridReady(api: FeedGridApi) {
 		bind:open={isModalOpen}
 		feed={selectedFeed}
 		onOpenChange={(open) => (isModalOpen = open)}
-		onMarkAsRead={handleMarkAsRead}
 		{hasPrevious}
 		{hasNext}
 		onPrevious={handlePrevious}
 		onNext={handleNext}
 		feeds={feedGridApi?.getVisibleFeeds() ?? []}
 		{currentIndex}
-		disableMarkAsRead={isProcessingMarkAsRead}
-	/>
+	>
+		{#snippet footerActions()}
+			<Button
+				onclick={handleMarkAsReadInModal}
+				variant="outline"
+				disabled={isMarkingAsRead || isProcessingMarkAsRead}
+			>
+				{isMarkingAsRead ? "Marking..." : "Mark as Read"}
+			</Button>
+		{/snippet}
+	</FeedDetailModal>
 {:else}
 	<!-- Mobile: Swipe card layout -->
 	<div

@@ -1,10 +1,12 @@
 <script lang="ts">
+import { updateFeedReadStatusClient } from "$lib/api/client/feeds";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
 import FeedGrid, {
 	type FeedGridApi,
 } from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
 
 // URL-based tracking to prevent race conditions
@@ -15,6 +17,7 @@ let feedGridApi = $state<FeedGridApi | null>(null);
 
 // Processing flag to prevent duplicate clicks
 let isProcessingMarkAsRead = $state(false);
+let isMarkingAsRead = $state(false);
 
 // Derive selectedFeed from URL - stable across array mutations
 const selectedFeed = $derived.by(() => {
@@ -60,6 +63,21 @@ function handleFilterChange(newFilters: {
 	sortBy: string;
 }) {
 	filters = newFilters;
+}
+
+async function handleMarkAsReadInModal() {
+	const feed = selectedFeed;
+	if (!feed || isMarkingAsRead) return;
+
+	try {
+		isMarkingAsRead = true;
+		await updateFeedReadStatusClient(feed.normalizedUrl);
+		handleMarkAsRead(feed.normalizedUrl);
+	} catch (error) {
+		console.error("Failed to mark feed as read:", error);
+	} finally {
+		isMarkingAsRead = false;
+	}
 }
 
 function handleMarkAsRead(feedUrl: string) {
@@ -125,12 +143,20 @@ function handleFeedGridReady(api: FeedGridApi) {
 	bind:open={isModalOpen}
 	feed={selectedFeed}
 	onOpenChange={(open) => (isModalOpen = open)}
-	onMarkAsRead={handleMarkAsRead}
 	{hasPrevious}
 	{hasNext}
 	onPrevious={handlePrevious}
 	onNext={handleNext}
 	feeds={feedGridApi?.getVisibleFeeds() ?? []}
 	{currentIndex}
-	disableMarkAsRead={isProcessingMarkAsRead}
-/>
+>
+	{#snippet footerActions()}
+		<Button
+			onclick={handleMarkAsReadInModal}
+			variant="outline"
+			disabled={isMarkingAsRead || isProcessingMarkAsRead}
+		>
+			{isMarkingAsRead ? "Marking..." : "Mark as Read"}
+		</Button>
+	{/snippet}
+</FeedDetailModal>
