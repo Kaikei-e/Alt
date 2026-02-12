@@ -310,5 +310,59 @@ describe("SwipeFeedCard", () => {
 				.element(page.getByRole("button", { name: /favorited/i }))
 				.toBeInTheDocument();
 		});
+
+		it("Favorite button is retryable after API error", async () => {
+			const { registerFavoriteFeedClient } = await import("$lib/api/client");
+			vi.mocked(registerFavoriteFeedClient).mockRejectedValueOnce(
+				new Error("network error"),
+			);
+
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			const favoriteButton = page.getByRole("button", { name: /favorite/i });
+			await favoriteButton.click();
+
+			// Wait for async handler to complete
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// Button should show error state
+			await expect
+				.element(page.getByRole("button", { name: /failed/i }))
+				.toBeInTheDocument();
+
+			// Button should NOT be disabled (retryable)
+			const errorButton = page.getByRole("button", { name: /failed/i });
+			await expect.element(errorButton).not.toBeDisabled();
+		});
+
+		it("Favorite button recovers from error on retry", async () => {
+			const { registerFavoriteFeedClient } = await import("$lib/api/client");
+			vi.mocked(registerFavoriteFeedClient)
+				.mockRejectedValueOnce(new Error("network error"))
+				.mockResolvedValueOnce({ message: "ok" });
+
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			const favoriteButton = page.getByRole("button", { name: /favorite/i });
+			await favoriteButton.click();
+
+			// Wait for error state
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			// Click again (retry)
+			const retryButton = page.getByRole("button", { name: /failed/i });
+			await retryButton.click();
+
+			// Wait for success
+			await new Promise((resolve) => setTimeout(resolve, 100));
+
+			await expect
+				.element(page.getByRole("button", { name: /favorited/i }))
+				.toBeInTheDocument();
+		});
 	});
 });

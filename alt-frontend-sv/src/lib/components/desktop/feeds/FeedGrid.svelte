@@ -30,9 +30,10 @@ export type FeedGridApi = {
 		unreadOnly?: boolean;
 		sortBy?: string;
 		onReady?: (api: FeedGridApi) => void;
+		fetchFn?: (cursor?: string, limit?: number) => Promise<import("$lib/api").CursorResponse<RenderFeed>>;
 	}
 
-	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", onReady }: Props = $props();
+	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", onReady, fetchFn }: Props = $props();
 
 	// Simple state for infinite scroll
 	let feeds = $state<RenderFeed[]>([]);
@@ -71,8 +72,9 @@ export type FeedGridApi = {
 		)
 	);
 
-	/** Fetch feeds using the correct API based on unreadOnly */
+	/** Fetch feeds using the correct API based on unreadOnly or custom fetchFn */
 	function fetchFeedsApi(cursor?: string, limit: number = 20) {
+		if (fetchFn) return fetchFn(cursor, limit);
 		if (unreadOnly) {
 			return getFeedsWithCursorClient(cursor, limit);
 		}

@@ -59,6 +59,7 @@ let contentError = $state<string | null>(null);
 
 let isFavoriting = $state(false);
 let isFavorited = $state(false);
+let favoriteError = $state<string | null>(null);
 
 // Swipe state with Spring
 const SWIPE_THRESHOLD = 60;
@@ -333,11 +334,16 @@ async function handleGenerateAISummary() {
 async function handleFavorite() {
 	if (isFavoriting || isFavorited) return;
 	isFavoriting = true;
+	favoriteError = null;
 	try {
 		await registerFavoriteFeedClient(feed.link);
 		isFavorited = true;
 	} catch (err) {
 		console.error("[SwipeFeedCard] Failed to favorite feed:", err);
+		favoriteError = "Failed";
+		setTimeout(() => {
+			favoriteError = null;
+		}, 3000);
 	} finally {
 		isFavoriting = false;
 	}
@@ -533,14 +539,16 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
           size="sm"
           class="rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isFavorited
             ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
-            : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
+            : favoriteError
+              ? 'bg-red-500/80 shadow-red-500/50'
+              : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
           disabled={isFavoriting || isFavorited}
-          aria-label={isFavorited ? "Favorited" : isFavoriting ? "Saving favorite" : "Favorite"}
+          aria-label={isFavorited ? "Favorited" : isFavoriting ? "Saving favorite" : favoriteError ? "Favorite failed, tap to retry" : "Favorite"}
         >
           {#if isFavoriting}
             <Loader class="h-5 w-5 animate-spin" />
           {:else}
-            <Star class="h-5 w-5" fill={isFavorited ? "currentColor" : "none"} />
+            <Star class="h-5 w-5" fill={isFavorited ? "currentColor" : "none"} stroke={favoriteError ? "red" : "currentColor"} />
           {/if}
         </Button>
         <Button

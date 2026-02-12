@@ -12,6 +12,7 @@ import {
 	getUnreadFeeds,
 	getAllFeeds,
 	getReadFeeds,
+	getFavoriteFeeds,
 	searchFeeds as searchFeedsConnect,
 	type ConnectFeedItem,
 	type ConnectFeedSource,
@@ -74,6 +75,24 @@ export async function getAllFeedsWithCursorClient(
 ): Promise<CursorResponse<RenderFeed>> {
 	const transport = createClientTransport();
 	const response = await getAllFeeds(transport, cursor, limit);
+
+	return {
+		data: response.data.map(connectFeedToRenderFeed),
+		next_cursor: response.nextCursor,
+		has_more: response.hasMore,
+	};
+}
+
+/**
+ * お気に入りフィードをカーソルベースで取得（クライアントサイド）
+ * Connect-RPC を使用
+ */
+export async function getFavoriteFeedsWithCursorClient(
+	cursor?: string,
+	limit: number = 20,
+): Promise<CursorResponse<RenderFeed>> {
+	const transport = createClientTransport();
+	const response = await getFavoriteFeeds(transport, cursor, limit);
 
 	return {
 		data: response.data.map(connectFeedToRenderFeed),

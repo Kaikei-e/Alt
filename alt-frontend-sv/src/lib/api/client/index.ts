@@ -26,6 +26,7 @@ export {
 } from "./feedLinks";
 // フィード関連のAPI
 export {
+	getFavoriteFeedsWithCursorClient,
 	getFeedsWithCursorClient,
 	getReadFeedsWithCursorClient,
 	searchFeedsClient,
