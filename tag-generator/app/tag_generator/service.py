@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Any
 
 import structlog
@@ -15,12 +16,27 @@ from tag_generator.config import TagGeneratorConfig
 from tag_generator.cursor_manager import CursorManager
 from tag_generator.database import DatabaseManager
 from tag_generator.domain.models import TagExtractionResult
+from tag_generator.driver.backend_api_client import BackendAPIClient
 from tag_generator.exceptions import TagExtractionError
 from tag_generator.health_monitor import HealthMonitor
 from tag_generator.scheduler import ProcessingScheduler
 from tag_inserter.upsert_tags import TagInserter
 
 logger = structlog.get_logger(__name__)
+
+
+class _NullDatabaseManager:
+    """Dummy database manager for API mode. Returns a no-op connection context."""
+
+    def __init__(self, config: TagGeneratorConfig) -> None:
+        self.config = config
+
+    def get_database_dsn(self) -> str:
+        return ""
+
+    @contextmanager
+    def get_connection(self):
+        yield None  # type: ignore[misc]
 
 
 class TagGeneratorService:
@@ -30,14 +46,30 @@ class TagGeneratorService:
         """Initialize tag generator service with configuration."""
         self.config = config or TagGeneratorConfig()
 
-        # Initialize dependencies
-        self.article_fetcher = ArticleFetcher()
+        # Check for API mode
+        api_client = BackendAPIClient.from_env()
+
+        if api_client is not None:
+            # API mode: use Connect-RPC client for article fetching and tag upserting
+            from tag_generator.driver.backend_api_article_fetcher import BackendAPIArticleFetcher
+            from tag_generator.driver.backend_api_tag_inserter import BackendAPITagInserter
+
+            logger.info("Using backend API mode for article/tag operations")
+            self.article_fetcher: Any = BackendAPIArticleFetcher(api_client)
+            self.tag_inserter: Any = BackendAPITagInserter(api_client)
+            self.database_manager: Any = _NullDatabaseManager(self.config)
+        else:
+            # Legacy DB mode
+            logger.info("Using legacy database mode for article/tag operations")
+            self.article_fetcher = ArticleFetcher()
+            self.tag_inserter = TagInserter()
+            self.database_manager = DatabaseManager(self.config)
+
+        # Initialize dependencies (shared across modes)
         self.tag_extractor = TagExtractor()
-        self.tag_inserter = TagInserter()
         self.cascade_controller = CascadeController()
 
         # Initialize managers
-        self.database_manager = DatabaseManager(self.config)
         self.cursor_manager = CursorManager(self.database_manager)
         self.batch_processor = BatchProcessor(
             self.config,
