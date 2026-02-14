@@ -55,12 +55,9 @@ services:
       redis-streams:
         condition: service_healthy
     environment:
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=${DB_NAME}
-      - DB_SSL_MODE=prefer
-      - SEARCH_INDEXER_DB_USER=${SEARCH_INDEXER_DB_USER}
-      - SEARCH_INDEXER_DB_PASSWORD_FILE=/run/secrets/search_indexer_db_password
+      # Backend API mode (replaces direct DB access)
+      - BACKEND_API_URL=http://alt-backend:9101
+      - SERVICE_TOKEN_FILE=/run/secrets/service_secret
       - MEILISEARCH_HOST=${MEILISEARCH_HOST}
       - MEILISEARCH_API_KEY_FILE=/run/secrets/meili_master_key
       - MEILI_MASTER_KEY_FILE=/run/secrets/meili_master_key
@@ -69,7 +66,7 @@ services:
       - CONSUMER_GROUP=search-indexer-group
       - CONSUMER_NAME=search-indexer-1
     secrets:
-      - search_indexer_db_password
+      - service_secret
       - meili_master_key
     networks:
       - alt-network
@@ -105,13 +102,10 @@ services:
     ports:
       - "9400:9400"
     environment:
-      - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=${DB_NAME}
-      - DB_TAG_GENERATOR_USER=${DB_TAG_GENERATOR_USER}
-      - DB_TAG_GENERATOR_PASSWORD_FILE=/run/secrets/tag_generator_db_password
+      # Backend API mode (replaces direct DB access for article/tag operations)
+      - BACKEND_API_URL=http://alt-backend:9101
+      - SERVICE_TOKEN_FILE=/run/secrets/service_secret
       - PORT=9400
-      - SERVICE_SECRET_FILE=/run/secrets/service_secret
       - CUDA_VISIBLE_DEVICES=""
       - REDIS_STREAMS_URL=redis://redis-streams:6379
       - CONSUMER_ENABLED=true
@@ -121,7 +115,6 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=tag-generator
     secrets:
-      - tag_generator_db_password
       - service_secret
     volumes:
       - ../scripts:/scripts:ro

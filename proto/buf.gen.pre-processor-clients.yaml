@@ -3,6 +3,7 @@ inputs:
   - directory: .
     paths:
       - clients/mqhub
+      - clients/preprocessor-backend
 plugins:
   - local: protoc-gen-go
     out: ../pre-processor/app/gen/proto

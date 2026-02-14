@@ -1,0 +1,285 @@
+syntax = "proto3";
+
+package services.backend.v1;
+
+option go_package = "pre-processor/gen/proto/clients/preprocessor-backend/v1;backendv1";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Article Types
+// =============================================================================
+
+// ArticleWithTags represents an article with its associated tags.
+message ArticleWithTags {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  repeated string tags = 4;
+  google.protobuf.Timestamp created_at = 5;
+  string user_id = 6;
+}
+
+// DeletedArticle represents a deleted article.
+message DeletedArticle {
+  string id = 1;
+  google.protobuf.Timestamp deleted_at = 2;
+}
+
+// =============================================================================
+// ListArticlesWithTags - Backward pagination for backfill
+// =============================================================================
+
+message ListArticlesWithTagsRequest {
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 1;
+  // Cursor: last article ID from previous page
+  string last_id = 2;
+  // Page size (max 500)
+  int32 limit = 3;
+}
+
+message ListArticlesWithTagsResponse {
+  repeated ArticleWithTags articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+// =============================================================================
+// ListArticlesWithTagsForward - Forward pagination for incremental indexing
+// =============================================================================
+
+message ListArticlesWithTagsForwardRequest {
+  // Incremental mark: only return articles created after this timestamp
+  google.protobuf.Timestamp incremental_mark = 1;
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 2;
+  // Cursor: last article ID from previous page
+  string last_id = 3;
+  // Page size (max 500)
+  int32 limit = 4;
+}
+
+message ListArticlesWithTagsForwardResponse {
+  repeated ArticleWithTags articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+// =============================================================================
+// ListDeletedArticles - For syncing deletions
+// =============================================================================
+
+message ListDeletedArticlesRequest {
+  // Cursor: last deleted_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_deleted_at = 1;
+  // Page size (max 500)
+  int32 limit = 2;
+}
+
+message ListDeletedArticlesResponse {
+  repeated DeletedArticle articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_deleted_at = 2;
+}
+
+// =============================================================================
+// GetLatestArticleTimestamp - For determining incremental mark
+// =============================================================================
+
+message GetLatestArticleTimestampRequest {}
+
+message GetLatestArticleTimestampResponse {
+  // Latest created_at timestamp, absent if no articles exist
+  optional google.protobuf.Timestamp latest_created_at = 1;
+}
+
+// =============================================================================
+// GetArticleByID
+// =============================================================================
+
+message GetArticleByIDRequest {
+  string article_id = 1;
+}
+
+message GetArticleByIDResponse {
+  ArticleWithTags article = 1;
+}
+
+// =============================================================================
+// Article Write Operations (for pre-processor - Phase 3)
+// =============================================================================
+
+message CheckArticleExistsRequest {
+  string url = 1;
+  string feed_id = 2;
+}
+
+message CheckArticleExistsResponse {
+  bool exists = 1;
+  string article_id = 2;
+}
+
+message CreateArticleRequest {
+  string title = 1;
+  string url = 2;
+  string content = 3;
+  string feed_id = 4;
+  string user_id = 5;
+  google.protobuf.Timestamp published_at = 6;
+}
+
+message CreateArticleResponse {
+  string article_id = 1;
+}
+
+message SaveArticleSummaryRequest {
+  string article_id = 1;
+  string summary = 2;
+  string language = 3;
+}
+
+message SaveArticleSummaryResponse {
+  bool success = 1;
+}
+
+message GetArticleContentRequest {
+  string article_id = 1;
+}
+
+message GetArticleContentResponse {
+  string article_id = 1;
+  string title = 2;
+  string content = 3;
+  string url = 4;
+}
+
+// =============================================================================
+// Feed Operations (for pre-processor, pre-processor-sidecar - Phase 2/3)
+// =============================================================================
+
+message GetFeedIDRequest {
+  string feed_url = 1;
+}
+
+message GetFeedIDResponse {
+  string feed_id = 1;
+}
+
+message ListFeedURLsRequest {
+  // Cursor for pagination (omit for first page)
+  string cursor = 1;
+  // Page size (max 500)
+  int32 limit = 2;
+}
+
+message ListFeedURLsResponse {
+  repeated FeedURL feeds = 1;
+  // Cursor for next page (empty if no more)
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+message FeedURL {
+  string feed_id = 1;
+  string url = 2;
+}
+
+// =============================================================================
+// Tag Operations (for tag-generator - Phase 4)
+// =============================================================================
+
+message UpsertArticleTagsRequest {
+  string article_id = 1;
+  string feed_id = 2;
+  repeated TagItem tags = 3;
+}
+
+message TagItem {
+  string name = 1;
+  float confidence = 2;
+}
+
+message UpsertArticleTagsResponse {
+  bool success = 1;
+  int32 upserted_count = 2;
+}
+
+message BatchUpsertArticleTagsRequest {
+  repeated UpsertArticleTagsRequest items = 1;
+}
+
+message BatchUpsertArticleTagsResponse {
+  bool success = 1;
+  int32 total_upserted = 2;
+}
+
+message ListUntaggedArticlesRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message ListUntaggedArticlesResponse {
+  repeated ArticleWithTags articles = 1;
+  int32 total_count = 2;
+}
+
+// =============================================================================
+// BackendInternalService - Internal API for service-to-service communication
+// =============================================================================
+
+service BackendInternalService {
+  // ── Article Read Operations (Phase 1: search-indexer) ──
+
+  // ListArticlesWithTags returns articles with tags using backward keyset pagination.
+  // Used by search-indexer for backfill indexing.
+  rpc ListArticlesWithTags(ListArticlesWithTagsRequest) returns (ListArticlesWithTagsResponse);
+
+  // ListArticlesWithTagsForward returns articles with tags using forward keyset pagination.
+  // Used by search-indexer for incremental indexing.
+  rpc ListArticlesWithTagsForward(ListArticlesWithTagsForwardRequest) returns (ListArticlesWithTagsForwardResponse);
+
+  // ListDeletedArticles returns deleted articles for syncing deletions.
+  rpc ListDeletedArticles(ListDeletedArticlesRequest) returns (ListDeletedArticlesResponse);
+
+  // GetLatestArticleTimestamp returns the latest article created_at timestamp.
+  rpc GetLatestArticleTimestamp(GetLatestArticleTimestampRequest) returns (GetLatestArticleTimestampResponse);
+
+  // GetArticleByID returns a single article with tags.
+  rpc GetArticleByID(GetArticleByIDRequest) returns (GetArticleByIDResponse);
+
+  // ── Article Write Operations (Phase 3: pre-processor) ──
+
+  // CheckArticleExists checks if an article already exists by URL and feed.
+  rpc CheckArticleExists(CheckArticleExistsRequest) returns (CheckArticleExistsResponse);
+
+  // CreateArticle creates a new article and publishes ArticleCreated event.
+  rpc CreateArticle(CreateArticleRequest) returns (CreateArticleResponse);
+
+  // SaveArticleSummary saves an article summary.
+  rpc SaveArticleSummary(SaveArticleSummaryRequest) returns (SaveArticleSummaryResponse);
+
+  // GetArticleContent returns article content for summarization.
+  rpc GetArticleContent(GetArticleContentRequest) returns (GetArticleContentResponse);
+
+  // ── Feed Operations (Phase 2/3: pre-processor, pre-processor-sidecar) ──
+
+  // GetFeedID returns the feed ID for a given feed URL.
+  rpc GetFeedID(GetFeedIDRequest) returns (GetFeedIDResponse);
+
+  // ListFeedURLs returns feed URLs with cursor pagination.
+  rpc ListFeedURLs(ListFeedURLsRequest) returns (ListFeedURLsResponse);
+
+  // ── Tag Operations (Phase 4: tag-generator) ──
+
+  // UpsertArticleTags upserts tags for an article.
+  rpc UpsertArticleTags(UpsertArticleTagsRequest) returns (UpsertArticleTagsResponse);
+
+  // BatchUpsertArticleTags upserts tags for multiple articles.
+  rpc BatchUpsertArticleTags(BatchUpsertArticleTagsRequest) returns (BatchUpsertArticleTagsResponse);
+
+  // ListUntaggedArticles returns articles without tags.
+  rpc ListUntaggedArticles(ListUntaggedArticlesRequest) returns (ListUntaggedArticlesResponse);
+}

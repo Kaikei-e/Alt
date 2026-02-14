@@ -3,6 +3,7 @@ inputs:
   - directory: .
     paths:
       - services/search
+      - clients/backend
 plugins:
   - local: protoc-gen-go
     out: ../search-indexer/app/gen/proto

@@ -1,0 +1,15 @@
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - services/backend
+plugins:
+  # ============================================================================
+  # alt-backend (server implementation)
+  # ============================================================================
+  - local: protoc-gen-go
+    out: ../alt-backend/app/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../alt-backend/app/gen/proto
+    opt: paths=source_relative

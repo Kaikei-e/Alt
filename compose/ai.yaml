@@ -179,6 +179,10 @@ services:
       redis-streams:
         condition: service_healthy
     environment:
+      # Backend API mode: article/feed/summary repos via Connect-RPC
+      - BACKEND_API_URL=http://alt-backend:9101
+      - SERVICE_TOKEN_FILE=/run/secrets/service_secret
+      # DB still required for job queue (Category C) and quality checker
       - DB_HOST=db
       - DB_PORT=5432
       - DB_NAME=${DB_NAME}
@@ -196,6 +200,7 @@ services:
       - OTEL_SERVICE_NAME=pre-processor
     secrets:
       - pre_processor_db_password
+      - service_secret
     restart: always
     ports:
       - "9200:9200" # REST API

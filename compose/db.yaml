@@ -26,17 +26,13 @@ services:
       PRE_PROCESSOR_DB_PASSWORD_FILE: /run/secrets/pre_processor_db_password
       PRE_PROCESSOR_SIDECAR_DB_USER: ${PRE_PROCESSOR_SIDECAR_DB_USER}
       PRE_PROCESSOR_SIDECAR_DB_PASSWORD_FILE: /run/secrets/pre_processor_sidecar_db_password
-      DB_TAG_GENERATOR_USER: ${DB_TAG_GENERATOR_USER}
-      DB_TAG_GENERATOR_PASSWORD_FILE: /run/secrets/tag_generator_db_password
-      SEARCH_INDEXER_DB_USER: ${SEARCH_INDEXER_DB_USER}
-      SEARCH_INDEXER_DB_PASSWORD_FILE: /run/secrets/search_indexer_db_password
+      # DB_TAG_GENERATOR_USER and SEARCH_INDEXER_DB_USER removed:
+      # these services now use BACKEND_API_URL (Connect-RPC) instead of direct DB access
     secrets:
       - postgres_password
       - db_password
       - pre_processor_db_password
       - pre_processor_sidecar_db_password
-      - tag_generator_db_password
-      - search_indexer_db_password
     volumes:
       - db_data_17:/var/lib/postgresql/data
       - ../db/init:/docker-entrypoint-initdb.d:rw
