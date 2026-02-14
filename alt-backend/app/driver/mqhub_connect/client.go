@@ -66,6 +66,8 @@ type ArticleCreatedPayload struct {
 	FeedID      string    `json:"feed_id"`
 	Title       string    `json:"title"`
 	URL         string    `json:"url"`
+	Content     string    `json:"content,omitempty"`
+	Tags        []string  `json:"tags,omitempty"`
 	PublishedAt time.Time `json:"published_at"`
 }
 
