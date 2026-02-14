@@ -774,60 +774,67 @@ class SummarizeUsecase:
             chunks_received = 0
             has_data = False
 
-            async for chunk in stream_gen:
-                chunks_received += 1
-                token = chunk.response
-                if token and token not in ignored_tokens:
-                    has_data = True
-                    tokens_yielded += 1
-                    bytes_yielded += len(token.encode('utf-8'))
+            try:
+                async for chunk in stream_gen:
+                    chunks_received += 1
+                    token = chunk.response
+                    if token and token not in ignored_tokens:
+                        has_data = True
+                        tokens_yielded += 1
+                        bytes_yielded += len(token.encode('utf-8'))
 
-                    # Log first few tokens and periodically
-                    if tokens_yielded <= 3 or tokens_yielded % 50 == 0:
-                        logger.info(
-                            "Yielding token from stream",
-                            extra={
-                                "article_id": article_id,
-                                "token_number": tokens_yielded,
-                                "token_preview": token[:50] if len(token) > 50 else token,
-                                "bytes_yielded": bytes_yielded,
-                                "chunks_received": chunks_received,
-                            }
-                        )
+                        # Log first few tokens and periodically
+                        if tokens_yielded <= 3 or tokens_yielded % 50 == 0:
+                            logger.info(
+                                "Yielding token from stream",
+                                extra={
+                                    "article_id": article_id,
+                                    "token_number": tokens_yielded,
+                                    "token_preview": token[:50] if len(token) > 50 else token,
+                                    "bytes_yielded": bytes_yielded,
+                                    "chunks_received": chunks_received,
+                                }
+                            )
 
-                    # Very basic filtering of partial control tokens could be added here if needed
-                    # For now, yield as is
-                    yield token
-                elif token:
-                    # Log ignored tokens for debugging
-                    if chunks_received <= 5:
-                        logger.debug(
-                            "Ignored control token",
-                            extra={
-                                "article_id": article_id,
-                                "token": token,
-                                "chunks_received": chunks_received,
-                            }
-                        )
+                        # Very basic filtering of partial control tokens could be added here if needed
+                        # For now, yield as is
+                        yield token
+                    elif token:
+                        # Log ignored tokens for debugging
+                        if chunks_received <= 5:
+                            logger.debug(
+                                "Ignored control token",
+                                extra={
+                                    "article_id": article_id,
+                                    "token": token,
+                                    "chunks_received": chunks_received,
+                                }
+                            )
 
-            if not has_data:
-                logger.warning(
-                    "Stream completed but no data was yielded",
-                    extra={
-                        "article_id": article_id,
-                        "chunks_received": chunks_received,
-                        "tokens_yielded": tokens_yielded,
-                    }
-                )
-            else:
+                if not has_data:
+                    logger.warning(
+                        "Stream completed but no data was yielded",
+                        extra={
+                            "article_id": article_id,
+                            "chunks_received": chunks_received,
+                            "tokens_yielded": tokens_yielded,
+                        }
+                    )
+                else:
+                    logger.info(
+                        "Stream completed successfully",
+                        extra={
+                            "article_id": article_id,
+                            "tokens_yielded": tokens_yielded,
+                            "bytes_yielded": bytes_yielded,
+                            "chunks_received": chunks_received,
+                        }
+                    )
+            finally:
+                await stream_gen.aclose()
                 logger.info(
-                    "Stream completed successfully",
-                    extra={
-                        "article_id": article_id,
-                        "tokens_yielded": tokens_yielded,
-                        "bytes_yielded": bytes_yielded,
-                        "chunks_received": chunks_received,
-                    }
+                    "Inner stream generator closed (aclose)",
+                    extra={"article_id": article_id}
                 )
 
         except aiohttp.ClientConnectionError as conn_err:

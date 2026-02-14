@@ -20,7 +20,7 @@ import heapq
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,16 @@ class QueueFullError(Exception):
     """Raised when the queue depth limit is exceeded."""
 
     pass
+
+
+@dataclass
+class AcquiredSlot:
+    """Tracks an acquired semaphore slot for leak detection."""
+
+    slot_id: int
+    acquired_at: float  # monotonic time
+    is_high_priority: bool
+    context: str = ""  # optional description for debugging
 
 
 @dataclass
@@ -130,6 +140,11 @@ class HybridPrioritySemaphore:
 
         self._lock = asyncio.Lock()
         self._last_wait_time: float = 0.0
+
+        # Leak detection: track acquired slots
+        self._slot_counter: int = 0
+        self._acquired_slots: Dict[int, AcquiredSlot] = {}
+        self._leak_threshold_seconds: float = 300.0  # 5 minutes default
 
         logger.info(
             "HybridPrioritySemaphore initialized",
@@ -246,6 +261,47 @@ class HybridPrioritySemaphore:
         oldest.cancel_event.set()
         return True
 
+    def _track_acquire(self, is_high_priority: bool, context: str = "") -> int:
+        """Track a slot acquisition for leak detection. Returns slot_id."""
+        self._slot_counter += 1
+        slot_id = self._slot_counter
+        self._acquired_slots[slot_id] = AcquiredSlot(
+            slot_id=slot_id,
+            acquired_at=time.monotonic(),
+            is_high_priority=is_high_priority,
+            context=context,
+        )
+        return slot_id
+
+    def _track_release(self, slot_id: int) -> None:
+        """Remove a tracked slot on release."""
+        if slot_id in self._acquired_slots:
+            del self._acquired_slots[slot_id]
+
+    def check_leaks(self) -> list[AcquiredSlot]:
+        """Check for potentially leaked slots (held longer than threshold).
+
+        Returns:
+            List of AcquiredSlot entries that have exceeded the leak threshold.
+        """
+        now = time.monotonic()
+        leaked = []
+        for slot in self._acquired_slots.values():
+            hold_time = now - slot.acquired_at
+            if hold_time > self._leak_threshold_seconds:
+                leaked.append(slot)
+                logger.warning(
+                    "Potential semaphore slot leak detected",
+                    extra={
+                        "slot_id": slot.slot_id,
+                        "hold_time_seconds": round(hold_time, 2),
+                        "threshold_seconds": self._leak_threshold_seconds,
+                        "is_high_priority": slot.is_high_priority,
+                        "context": slot.context,
+                    },
+                )
+        return leaked
+
     async def acquire(self, high_priority: bool = False) -> float:
         """
         Acquire a slot with RT/BE scheduling.
@@ -294,6 +350,7 @@ class HybridPrioritySemaphore:
                 if self._rt_available > 0:
                     self._rt_available -= 1
                     self._last_wait_time = 0.0
+                    self._track_acquire(is_high_priority=True, context="rt_immediate")
                     logger.debug(
                         "RT slot acquired immediately",
                         extra={"rt_available": self._rt_available},
@@ -303,6 +360,7 @@ class HybridPrioritySemaphore:
                 elif self._rt_reserved == 0 and self._be_available > 0:
                     self._be_available -= 1
                     self._last_wait_time = 0.0
+                    self._track_acquire(is_high_priority=True, context="hp_be_fallback")
                     logger.debug(
                         "High priority acquired BE slot (no RT reserved)",
                         extra={"be_available": self._be_available},
@@ -321,6 +379,7 @@ class HybridPrioritySemaphore:
                 if self._be_available > 0:
                     self._be_available -= 1
                     self._last_wait_time = 0.0
+                    self._track_acquire(is_high_priority=False, context="be_immediate")
                     logger.debug(
                         "BE slot acquired immediately",
                         extra={"be_available": self._be_available},
@@ -331,6 +390,7 @@ class HybridPrioritySemaphore:
                 elif self._be_slots == 0 and self._rt_available > 0:
                     self._rt_available -= 1
                     self._last_wait_time = 0.0
+                    self._track_acquire(is_high_priority=False, context="lp_rt_fallback")
                     logger.debug(
                         "Low priority acquired RT slot (no BE slots configured)",
                         extra={"rt_available": self._rt_available},
@@ -371,6 +431,7 @@ class HybridPrioritySemaphore:
             await future
             wait_time = time.monotonic() - start_time
             self._last_wait_time = wait_time
+            self._track_acquire(is_high_priority=high_priority, context="queued")
 
             if wait_time > 10.0:
                 logger.warning(
@@ -391,7 +452,7 @@ class HybridPrioritySemaphore:
                 self._purge_cancelled_from_queues()
             raise
 
-    def release(self, was_high_priority: bool = False) -> None:
+    def release(self, was_high_priority: bool = False, slot_id: Optional[int] = None) -> None:
         """
         Release a slot and wake up next waiter.
 
@@ -401,7 +462,21 @@ class HybridPrioritySemaphore:
 
         Args:
             was_high_priority: Whether the released slot was RT
+            slot_id: Optional slot_id from acquire tracking (for precise leak detection)
         """
+        # Untrack acquired slot
+        if slot_id is not None:
+            self._track_release(slot_id)
+        else:
+            # Find and release the oldest matching slot
+            matching = [
+                s for s in self._acquired_slots.values()
+                if s.is_high_priority == was_high_priority
+            ]
+            if matching:
+                oldest = min(matching, key=lambda s: s.acquired_at)
+                self._track_release(oldest.slot_id)
+
         # Recompute priorities with aging and handle promotions
         self._apply_aging()
 
@@ -592,6 +667,7 @@ class HybridPrioritySemaphore:
             "available_slots": available,
             "accepting": accepting,
             "max_queue_depth": self._max_queue_depth,
+            "acquired_slots": len(self._acquired_slots),
         }
 
     def __repr__(self) -> str:

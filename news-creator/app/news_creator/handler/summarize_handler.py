@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from contextlib import aclosing
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -154,25 +155,26 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                             nonlocal last_data_time
                             chunk_count = 0
                             try:
-                                async for chunk in original_stream:
-                                    if await http_request.is_disconnected():
-                                        stopped.set()
-                                        break
-                                    chunk_count += 1
-                                    # Log first few chunks for debugging incremental rendering
-                                    if chunk_count <= 3:
-                                        logger.debug(
-                                            "Streaming chunk to client",
-                                            extra={
-                                                "article_id": request.article_id,
-                                                "chunk_count": chunk_count,
-                                                "chunk_size": len(chunk) if chunk else 0,
-                                                "chunk_preview": chunk[:50] if chunk and len(chunk) > 50 else chunk
-                                            }
-                                        )
-                                    # Update last data time to prevent unnecessary heartbeats
-                                    last_data_time = asyncio.get_event_loop().time()
-                                    await data_queue.put(("data", chunk))
+                                async with aclosing(original_stream) as stream:
+                                    async for chunk in stream:
+                                        if await http_request.is_disconnected():
+                                            stopped.set()
+                                            break
+                                        chunk_count += 1
+                                        # Log first few chunks for debugging incremental rendering
+                                        if chunk_count <= 3:
+                                            logger.debug(
+                                                "Streaming chunk to client",
+                                                extra={
+                                                    "article_id": request.article_id,
+                                                    "chunk_count": chunk_count,
+                                                    "chunk_size": len(chunk) if chunk else 0,
+                                                    "chunk_preview": chunk[:50] if chunk and len(chunk) > 50 else chunk
+                                                }
+                                            )
+                                        # Update last data time to prevent unnecessary heartbeats
+                                        last_data_time = asyncio.get_event_loop().time()
+                                        await data_queue.put(("data", chunk))
                             except Exception as e:
                                 logger.error(
                                     "Error in stream task",

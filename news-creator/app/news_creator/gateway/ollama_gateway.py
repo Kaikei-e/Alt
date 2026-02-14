@@ -290,11 +290,24 @@ class OllamaGateway(LLMProviderPort):
                             prompt_eval_duration=chunk.get("prompt_eval_duration"),
                             eval_duration=chunk.get("eval_duration"),
                         )
+                except GeneratorExit:
+                    logger.info(
+                        "Stream generator closed by client disconnect or explicit aclose()",
+                        extra={"model": payload["model"], "is_high_priority": is_high_priority}
+                    )
+                    raise
+                except Exception:
+                    logger.error(
+                        "Stream generator error",
+                        extra={"model": payload["model"], "is_high_priority": is_high_priority},
+                        exc_info=True,
+                    )
+                    raise
                 finally:
                     # Release semaphore when generator completes (normal, abort, or GC)
                     self._semaphore.release(was_high_priority=is_high_priority)
-                    logger.debug(
-                        "Released semaphore after streaming completion",
+                    logger.info(
+                        "Released semaphore after streaming",
                         extra={"model": payload["model"], "is_high_priority": is_high_priority}
                     )
 
