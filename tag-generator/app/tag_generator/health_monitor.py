@@ -1,15 +1,13 @@
 """Health monitoring for tag generator service."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
-    from article_fetcher.fetch import ArticleFetcher
     from tag_generator.config import TagGeneratorConfig
-    from tag_generator.database import DatabaseManager
 
 
 class HealthMonitor:
@@ -18,8 +16,8 @@ class HealthMonitor:
     def __init__(
         self,
         config: "TagGeneratorConfig",
-        database_manager: "DatabaseManager",
-        article_fetcher: "ArticleFetcher",
+        database_manager: Any,
+        article_fetcher: Any,
     ):
         """Initialize health monitor with dependencies."""
         self.config = config

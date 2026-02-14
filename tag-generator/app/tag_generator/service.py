@@ -16,7 +16,7 @@ from tag_generator.config import TagGeneratorConfig
 from tag_generator.cursor_manager import CursorManager
 from tag_generator.database import DatabaseManager
 from tag_generator.domain.models import TagExtractionResult
-from tag_generator.driver.backend_api_client import BackendAPIClient
+from tag_generator.driver.connect_client_factory import create_backend_client
 from tag_generator.exceptions import TagExtractionError
 from tag_generator.health_monitor import HealthMonitor
 from tag_generator.scheduler import ProcessingScheduler
@@ -46,18 +46,24 @@ class TagGeneratorService:
         """Initialize tag generator service with configuration."""
         self.config = config or TagGeneratorConfig()
 
-        # Check for API mode
-        api_client = BackendAPIClient.from_env()
+        # Pluggable drivers — concrete type depends on API vs legacy DB mode.
+        self.article_fetcher: Any
+        self.tag_inserter: Any
+        self.database_manager: Any
 
-        if api_client is not None:
-            # API mode: use Connect-RPC client for article fetching and tag upserting
-            from tag_generator.driver.backend_api_article_fetcher import BackendAPIArticleFetcher
-            from tag_generator.driver.backend_api_tag_inserter import BackendAPITagInserter
+        # Check for API mode
+        result = create_backend_client()
+
+        if result is not None:
+            # API mode: use typed Connect-RPC client for article fetching and tag upserting
+            client, auth_headers = result
+            from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
+            from tag_generator.driver.connect_tag_inserter import ConnectTagInserter
 
             logger.info("Using backend API mode for article/tag operations")
-            self.article_fetcher: Any = BackendAPIArticleFetcher(api_client)
-            self.tag_inserter: Any = BackendAPITagInserter(api_client)
-            self.database_manager: Any = _NullDatabaseManager(self.config)
+            self.article_fetcher = ConnectArticleFetcher(client, auth_headers)
+            self.tag_inserter = ConnectTagInserter(client, auth_headers)
+            self.database_manager = _NullDatabaseManager(self.config)
         else:
             # Legacy DB mode
             logger.info("Using legacy database mode for article/tag operations")

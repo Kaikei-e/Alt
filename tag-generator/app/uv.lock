@@ -276,6 +276,19 @@ wheels = [
 ]
 
 [[package]]
+name = "connect-python"
+version = "0.8.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "protobuf" },
+    { name = "pyqwest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8f/8d/e04954dacc3c32c2f858a115b2b989ed6cccefc3835fb440bb12dcb468c2/connect_python-0.8.1.tar.gz", hash = "sha256:0d36c9cfe050661f8f167afcfff8df622805a4f348961d0d8fab630c96f0bdab", size = 39292, upload-time = "2026-01-27T05:00:02.751Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7d/e4/e36a6d0450493e2b940086ebe94394381803b2b09c97e8f8e34230bcaa99/connect_python-0.8.1-py3-none-any.whl", hash = "sha256:bfe31fb3d90c2a6715fc2996fa4bd5c98dfdccd81e47ac232c9d03aadd666be1", size = 54902, upload-time = "2026-01-27T05:00:01.18Z" },
+]
+
+[[package]]
 name = "coverage"
 version = "7.13.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1709,6 +1722,35 @@ wheels = [
 ]
 
 [[package]]
+name = "pyqwest"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a9/25/72d8d0e922022bf6f133511ff9aa7b2e516e2b5a515f2829928e6e35924a/pyqwest-0.4.0.tar.gz", hash = "sha256:ba3770790534b89ae97da7423fc4c6a814f0ccf1d1aa2eeafab6730acfb43449", size = 439348, upload-time = "2026-02-03T06:58:13.851Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ea/c9/a43fd95bc1206970dfa292a35fb562606cc98c94d71061032b49c7b81c54/pyqwest-0.4.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:e8417418b08faae184a2385905a57f07e59f4003434d39e9447ed3dd0f25c057", size = 4985285, upload-time = "2026-02-03T06:57:32.3Z" },
+    { url = "https://files.pythonhosted.org/packages/25/ad/1991226aed47ece496750b7e3124de0714969df2948afe8897c03c5c7073/pyqwest-0.4.0-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:96c384f279de2bc49219dc97d406f6ce6363f7400af1504e55579c27ef854206", size = 5353020, upload-time = "2026-02-03T06:57:33.819Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/ef/926f4a4758c788427cdafdcb4d87d687344f9e6a551522917840e1f38709/pyqwest-0.4.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fb9c0aa6fc02937ec53dc022ffdfcb1659b5c8b181e80d7d4e19277c9b882458", size = 5390214, upload-time = "2026-02-03T06:57:35.73Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/41/8efce20c3446ccbf686b9b18f19de833378fa05bcf65d91bd0a6d4283645/pyqwest-0.4.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:57cb1568bc5d2ef8e2477a86e8ed271197a37de23ebeacd85927affab71ae41c", size = 5516697, upload-time = "2026-02-03T06:57:37.504Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/7c/acc63e25f5e571be944c31903361bb775a9ea9b710a41cb687c7e7d84216/pyqwest-0.4.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:6cf9db68993d9defc3174814168709f0c59baf262ae92e35a0e3ea285a207fb0", size = 5699477, upload-time = "2026-02-03T06:57:38.974Z" },
+    { url = "https://files.pythonhosted.org/packages/02/73/d13a3d0c68b3091e024e8f542368d86a39fb28b56859a725cba38990ca8e/pyqwest-0.4.0-cp313-cp313-win_amd64.whl", hash = "sha256:d7de72d9daa14296468f534be9f6be21f34886992546a75d15a7562f12ae5d9b", size = 4564829, upload-time = "2026-02-03T06:57:41.88Z" },
+    { url = "https://files.pythonhosted.org/packages/72/31/44ca41c2ffffc7e60714aaadfe0b81c3f6e5adc86e26336b078a1b1abd08/pyqwest-0.4.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:f687900b48f6058edf38988191e411a1f8c8a420d9e1a9ecda4cafdbcf7d3b9f", size = 4980118, upload-time = "2026-02-03T06:57:43.732Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/f8/544ed82c6edd3b85db49ce9e9992441cbfefa8b92a556058174aba0a3f9c/pyqwest-0.4.0-cp314-cp314-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:fdee6edf8a7ebb108619ac99d5c9095d2b3898f21e14d8e02513dad867af7855", size = 5347929, upload-time = "2026-02-03T06:57:45.239Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/4b/012e246dee57fab23edb48cdd32119ed39546d5f67cfe1d8ebc6f594e837/pyqwest-0.4.0-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ef9157abebd1b31ef72f410be4b7c6d6a9957c9e7b97fd83a8552d8b04c20724", size = 5390422, upload-time = "2026-02-03T06:57:47.018Z" },
+    { url = "https://files.pythonhosted.org/packages/79/61/3cb30777c350cf7bef657d1250f19cd7921c14e44719d3eccf2a192e2ffd/pyqwest-0.4.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:5f225d8a473fc96d65bc837c60f4436d06440d42d0479619659746722ac33d45", size = 5512737, upload-time = "2026-02-03T06:57:48.756Z" },
+    { url = "https://files.pythonhosted.org/packages/69/1c/9e2137e88b05728f7ce3e52993cd2d53688a8731bcfcded47ae939a6705a/pyqwest-0.4.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:ddbba6f5cf91f12bea6ae2dc0c1d9acac45c1ab6f3b28ab4670c2740f5c8d82f", size = 5699482, upload-time = "2026-02-03T06:57:50.808Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/05/48c19c9726a4a95886d30ca5374773bd49bf02a39abdc46504d55716ae18/pyqwest-0.4.0-cp314-cp314-win_amd64.whl", hash = "sha256:dcbecc278646a88f1b51199050294c36ec7272696d2c317663d00a9e1f1a33fc", size = 4565677, upload-time = "2026-02-03T06:57:52.454Z" },
+    { url = "https://files.pythonhosted.org/packages/39/9a/39f66574406bd06e73f2fc69d8b1c3802218127b4ec80b3b2b2a2ea24f6b/pyqwest-0.4.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:8eab7213cc8f0fe0212bf0f77b73cec0b2cfad2a8c3d2c5c57d4166d4c429129", size = 4972879, upload-time = "2026-02-03T06:57:54.036Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/76/32e81cbaede301fa7a446a7a98d53eef2488b4bdf65c2204b206ed2146f8/pyqwest-0.4.0-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:fc4c27b8a84ceb0dbfd198f3878c5e36ab610749c478cf13e91a989913c5d873", size = 5349481, upload-time = "2026-02-03T06:57:55.562Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/3c/3a8e36e6ae92b4eaf664a5fa054164455f68180fe834bfceed2f8eef8d3b/pyqwest-0.4.0-cp314-cp314t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e32b9ee248e1f8b1a1dd2a8ae808a0dd870eba6422a483e154f8a326d69666b5", size = 5383775, upload-time = "2026-02-03T06:57:57.564Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/92/7d450c24b21b048f6291f6bb382817305e38f3612aa77d1f3a2f8f7675e7/pyqwest-0.4.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:bae8833afa0d2a6a0dade62b8ed0048336de36481f3d3aeba284fd88ac29a27c", size = 5511843, upload-time = "2026-02-03T06:57:59.05Z" },
+    { url = "https://files.pythonhosted.org/packages/33/a8/136642b402b74d3aa049d8e55e589481179940d95af7a2bb79dcf6fe393e/pyqwest-0.4.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:5e7066ec5e70648abf851980f6e4cb392ac828e22d3cf39625a13b533aff5142", size = 5693532, upload-time = "2026-02-03T06:58:00.978Z" },
+    { url = "https://files.pythonhosted.org/packages/de/fc/db26a325acbf7111f1429399ae021f1dd8927bcaacd6c835c94c82d3a22f/pyqwest-0.4.0-cp314-cp314t-win_amd64.whl", hash = "sha256:75caf851cbf063d867d207b356e67bdd4cf17ea59c06786359a3eaf9975340ec", size = 4566651, upload-time = "2026-02-03T06:58:02.504Z" },
+]
+
+[[package]]
 name = "pyrefly"
 version = "0.52.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2323,15 +2365,16 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "connect-python" },
     { name = "fastapi" },
     { name = "fugashi", extra = ["unidic-lite"] },
-    { name = "httpx" },
     { name = "langdetect" },
     { name = "nh3" },
     { name = "nltk" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-instrumentation-logging" },
     { name = "opentelemetry-sdk" },
+    { name = "protobuf" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
     { name = "psycopg2-binary" },
@@ -2384,15 +2427,16 @@ ml-extended = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9.0" },
+    { name = "connect-python", specifier = ">=0.8.1" },
     { name = "fastapi", specifier = ">=0.100.0" },
     { name = "fugashi", extras = ["unidic-lite"], specifier = ">=1.5.1" },
-    { name = "httpx", specifier = ">=0.27.0" },
     { name = "langdetect", specifier = ">=1.0.9" },
     { name = "nh3", specifier = ">=0.2.18" },
     { name = "nltk", specifier = ">=3.9.1" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.29.0" },
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.50b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.29.0" },
+    { name = "protobuf", specifier = ">=5.0.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.0" },
     { name = "psycopg-pool", specifier = ">=3.2.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.0" },

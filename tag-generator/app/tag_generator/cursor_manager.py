@@ -1,21 +1,18 @@
 """Cursor position management for article pagination."""
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, cast
+from typing import Any, cast
 
 import structlog
 from psycopg2.extensions import connection as Connection
 
 logger = structlog.get_logger(__name__)
 
-if TYPE_CHECKING:
-    from tag_generator.database import DatabaseManager
-
 
 class CursorManager:
     """Manages cursor positions for article pagination."""
 
-    def __init__(self, database_manager: "DatabaseManager"):
+    def __init__(self, database_manager: Any):
         """Initialize cursor manager with database manager."""
         self.database_manager = database_manager
 

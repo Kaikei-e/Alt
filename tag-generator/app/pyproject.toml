@@ -36,11 +36,14 @@ dependencies = [
     # Security
     "nh3>=0.2.18",
 
+    # Connect-RPC (typed backend API client)
+    "connect-python>=0.8.1",
+    "protobuf>=5.0.0",
+
     # Authentication and API
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
     "aiohttp>=3.9.0",
-    "httpx>=0.27.0",  # Connect-RPC HTTP client for backend API mode
     "redis>=5.0.0",  # Redis Streams consumer
     "PyJWT>=2.8.0",
     "python-multipart>=0.0.6",
@@ -139,7 +142,7 @@ find = { include = [
 [tool.ruff]
 target-version = "py313"
 line-length = 120
-exclude = [".git", "__pycache__", ".venv", "build", "dist", "*.egg-info"]
+exclude = [".git", "__pycache__", ".venv", "build", "dist", "*.egg-info", "tag_generator/gen"]
 
 [tool.ruff.lint]
 select = [
@@ -186,6 +189,7 @@ project-excludes = [
     "**/build",
     "**/dist",
     "**/*.egg-info",
+    "tag_generator/gen/**",
 ]
 python-version = "3.13"
 
