@@ -4,11 +4,13 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"pre-processor/config"
 	"pre-processor/consumer"
 	"pre-processor/driver"
+	backend_api "pre-processor/driver/backend_api"
 	"pre-processor/handler"
 	"pre-processor/repository"
 	"pre-processor/service"
@@ -40,7 +42,7 @@ type Dependencies struct {
 // BuildDependencies constructs all application dependencies.
 // Returns a cleanup function that should be deferred.
 func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) (*Dependencies, func(), error) {
-	// Initialize database
+	// Initialize database (still required for job queue and quality checker)
 	dbPool, err := driver.Init(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -53,9 +55,27 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		return nil, nil, err
 	}
 
-	// Initialize repositories
-	articleRepo := repository.NewArticleRepository(dbPool, log)
-	summaryRepo := repository.NewSummaryRepository(dbPool, log)
+	// Initialize repositories — API mode or legacy DB mode
+	var articleRepo repository.ArticleRepository
+	var summaryRepo repository.SummaryRepository
+
+	if backendAPIURL := os.Getenv("BACKEND_API_URL"); backendAPIURL != "" {
+		// API mode: use Connect-RPC client for article/feed/summary repos.
+		// DB is still required for job queue (Category C) and quality checker.
+		serviceToken := readSecret("SERVICE_TOKEN")
+		log.Info("Using backend API driver for article/feed/summary repos",
+			"url", backendAPIURL,
+		)
+		client := backend_api.NewClient(backendAPIURL, serviceToken)
+		articleRepo = backend_api.NewArticleRepository(client)
+		summaryRepo = backend_api.NewSummaryRepository(client)
+	} else {
+		// Legacy DB mode
+		log.Info("Using legacy database driver for article/feed/summary repos")
+		articleRepo = repository.NewArticleRepository(dbPool, log)
+		summaryRepo = repository.NewSummaryRepository(dbPool, log)
+	}
+
 	apiRepo := repository.NewExternalAPIRepository(cfg, log)
 	jobRepo := repository.NewSummarizeJobRepository(dbPool, log)
 
@@ -104,6 +124,18 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		ArticleRepo:      articleRepo,
 		JobRepo:          jobRepo,
 	}, cleanup, nil
+}
+
+// readSecret reads a secret value, supporting both direct env var and _FILE suffix
+// for Docker Secrets compatibility.
+func readSecret(key string) string {
+	if filePath := os.Getenv(key + "_FILE"); filePath != "" {
+		content, err := os.ReadFile(filePath)
+		if err == nil {
+			return strings.TrimSpace(string(content))
+		}
+	}
+	return os.Getenv(key)
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
