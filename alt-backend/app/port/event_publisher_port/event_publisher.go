@@ -13,6 +13,8 @@ type ArticleCreatedEvent struct {
 	FeedID      string
 	Title       string
 	URL         string
+	Content     string   // Fat event: article content for downstream consumers
+	Tags        []string // Fat event: article tags for downstream consumers
 	PublishedAt time.Time
 }
 

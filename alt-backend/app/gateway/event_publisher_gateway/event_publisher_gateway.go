@@ -38,6 +38,8 @@ func (g *EventPublisherGateway) PublishArticleCreated(ctx context.Context, event
 		FeedID:      event.FeedID,
 		Title:       event.Title,
 		URL:         event.URL,
+		Content:     event.Content,
+		Tags:        event.Tags,
 		PublishedAt: event.PublishedAt,
 	}
 

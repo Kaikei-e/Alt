@@ -68,6 +68,7 @@ import (
 	"alt/gateway/fetch_random_subscription_gateway"
 	"alt/gateway/fetch_articles_by_tag_gateway"
 	"alt/gateway/fetch_article_tags_gateway"
+	"alt/gateway/internal_article_gateway"
 	"alt/gateway/subscription_gateway"
 	"alt/usecase/fetch_recent_articles_usecase"
 	"alt/usecase/fetch_trend_stats_usecase"
@@ -159,6 +160,9 @@ type ApplicationComponents struct {
 
 	// Gateways exposed for handler use (on-the-fly tag generation)
 	FetchArticleTagsGateway             *fetch_article_tags_gateway.FetchArticleTagsGateway
+
+	// Internal API gateway (service-to-service)
+	InternalArticleGateway              *internal_article_gateway.Gateway
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -344,6 +348,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	recapJobDriver := recap_job_driver.NewRecapJobGateway(cfg.Recap.WorkerURL)
 	getRecapJobsUsecase := dashboard_usecase.NewGetRecapJobsUsecase(recapJobDriver)
 
+	// Internal article API gateway (for BackendInternalService)
+	internalArticleGatewayImpl := internal_article_gateway.NewGateway(altDBRepository)
+
 	// Subscription components
 	subscriptionGatewayImpl := subscription_gateway.NewSubscriptionGateway(pool)
 	listSubscriptionsUsecase := subscription_usecase.NewListSubscriptionsUsecase(subscriptionGatewayImpl)
@@ -417,5 +424,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 		// Gateways exposed for handler use (on-the-fly tag generation)
 		FetchArticleTagsGateway:             fetchArticleTagsGatewayImpl,
+
+		// Internal API gateway
+		InternalArticleGateway:              internalArticleGatewayImpl,
 	}
 }
