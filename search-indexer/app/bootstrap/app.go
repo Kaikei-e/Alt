@@ -24,7 +24,7 @@ import (
 type App struct {
 	httpServer    *http.Server
 	connectServer *http.Server
-	dbDriver      *driver.DatabaseDriver
+	driverClose   func() // closes the article driver (DB pool or noop for API)
 	redisConsumer *consumer.Consumer
 	otelShutdown  appOtel.ShutdownFunc
 }
@@ -54,28 +54,35 @@ func Run(ctx context.Context) error {
 		logger.Logger.Error("Failed to initialize tokenizer", "err", err)
 	}
 
-	// ── Drivers (infrastructure layer) ──
-	dbDriver, err := initDatabaseDriver(ctx)
+	// ── Load config ──
+	appCfg, err := config.Load()
 	if err != nil {
-		logger.Logger.Error("Failed to initialize database", "err", err)
+		logger.Logger.Error("Failed to load config", "err", err)
+		return err
+	}
+
+	// ── Drivers (infrastructure layer) ──
+	articleDriver, driverClose, err := initArticleDriver(ctx, appCfg)
+	if err != nil {
+		logger.Logger.Error("Failed to initialize article driver", "err", err)
 		return err
 	}
 
 	msClient, err := initMeilisearchClient()
 	if err != nil {
 		logger.Logger.Error("Failed to initialize Meilisearch", "err", err)
-		dbDriver.Close()
+		driverClose()
 		return err
 	}
 	searchDriver := driver.NewMeilisearchDriver(msClient, "articles")
 
 	// ── Gateways (anti-corruption layer) ──
-	articleRepo := gateway.NewArticleRepositoryGateway(dbDriver)
+	articleRepo := gateway.NewArticleRepositoryGateway(articleDriver)
 	searchEngine := gateway.NewSearchEngineGateway(searchDriver)
 
 	if err := searchEngine.EnsureIndex(ctx); err != nil {
 		logger.Logger.Error("Failed to ensure search index", "err", err)
-		dbDriver.Close()
+		driverClose()
 		return err
 	}
 
@@ -112,7 +119,7 @@ func Run(ctx context.Context) error {
 	app := &App{
 		httpServer:    newHTTPServer(searchByUserUsecase, otelCfg),
 		connectServer: newConnectServer(searchByUserUsecase),
-		dbDriver:      dbDriver,
+		driverClose:   driverClose,
 		redisConsumer: redisConsumer,
 		otelShutdown:  otelShutdown,
 	}
@@ -151,7 +158,9 @@ func (a *App) shutdown() {
 	if a.redisConsumer != nil {
 		a.redisConsumer.Stop()
 	}
-	a.dbDriver.Close()
+	if a.driverClose != nil {
+		a.driverClose()
+	}
 
 	otelCtx, otelCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer otelCancel()

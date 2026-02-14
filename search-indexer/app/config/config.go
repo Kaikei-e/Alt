@@ -14,6 +14,16 @@ type Config struct {
 	Meilisearch MeilisearchConfig
 	Indexer     IndexerConfig
 	HTTP        HTTPConfig
+	BackendAPI  BackendAPIConfig
+}
+
+// BackendAPIConfig holds configuration for connecting to alt-backend's internal API.
+// When URL is set, the search-indexer uses the API instead of direct DB access.
+type BackendAPIConfig struct {
+	// URL is the Connect-RPC URL for alt-backend's internal API.
+	URL string
+	// ServiceToken is the shared secret for service authentication.
+	ServiceToken string
 }
 
 // Enhanced DatabaseConfig with SSL support
@@ -47,7 +57,50 @@ type HTTPConfig struct {
 }
 
 func Load() (*Config, error) {
-	// Load required database environment variables
+	ctx := context.Background()
+
+	// Load Backend API configuration (when set, DB config is not required)
+	backendAPIURL := getEnvOrDefault("BACKEND_API_URL", "")
+	backendAPIConfig := BackendAPIConfig{
+		URL:          backendAPIURL,
+		ServiceToken: getEnvOrDefault("SERVICE_TOKEN", ""),
+	}
+
+	cfg := &Config{
+		BackendAPI: backendAPIConfig,
+		Meilisearch: MeilisearchConfig{
+			Host:    getEnvOrDefault("MEILISEARCH_HOST", ""),
+			APIKey:  getEnvOrDefault("MEILISEARCH_API_KEY", ""),
+			Timeout: 15 * time.Second,
+		},
+		Indexer: IndexerConfig{
+			Interval:     1 * time.Minute,
+			BatchSize:    200,
+			RetryDelay:   1 * time.Minute,
+			MaxRetries:   5,
+			RetryTimeout: 1 * time.Minute,
+		},
+		HTTP: HTTPConfig{
+			Addr:              ":9300",
+			ReadHeaderTimeout: 5 * time.Second,
+		},
+	}
+
+	// Validate Meilisearch config (always required)
+	if cfg.Meilisearch.Host == "" {
+		return nil, fmt.Errorf("meilisearch configuration error: required environment variable MEILISEARCH_HOST is not set")
+	}
+
+	// When BACKEND_API_URL is set, skip DB configuration entirely
+	if backendAPIURL != "" {
+		slog.InfoContext(ctx, "configuration loaded (API mode)",
+			"backend_api_url", backendAPIURL,
+			"meilisearch_host", cfg.Meilisearch.Host,
+		)
+		return cfg, nil
+	}
+
+	// Load required database environment variables (legacy DB mode)
 	dbHost, err := getEnvRequired("DB_HOST")
 	if err != nil {
 		return nil, fmt.Errorf("database configuration error: %w", err)
@@ -69,12 +122,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("database configuration error: %w", err)
 	}
 
-	// Load required Meilisearch environment variables
-	meilisearchHost, err := getEnvRequired("MEILISEARCH_HOST")
-	if err != nil {
-		return nil, fmt.Errorf("meilisearch configuration error: %w", err)
-	}
-
 	// Create database config with SSL support
 	dbConfig := &DatabaseConfig{
 		Host:     dbHost,
@@ -92,39 +139,26 @@ func Load() (*Config, error) {
 	}
 
 	// SSL設定の検証
-	ctx := context.Background()
 	if err := dbConfig.ValidateSSLConfig(); err != nil {
 		slog.ErrorContext(ctx, "invalid SSL configuration", "error", err)
 		return nil, fmt.Errorf("SSL configuration error: %w", err)
 	}
 
-	cfg := &Config{
-		Database: *dbConfig,
-		Meilisearch: MeilisearchConfig{
-			Host:    meilisearchHost,
-			APIKey:  getEnvOrDefault("MEILISEARCH_API_KEY", ""),
-			Timeout: 15 * time.Second,
-		},
-		Indexer: IndexerConfig{
-			Interval:     1 * time.Minute,
-			BatchSize:    200,
-			RetryDelay:   1 * time.Minute,
-			MaxRetries:   5,
-			RetryTimeout: 1 * time.Minute,
-		},
-		HTTP: HTTPConfig{
-			Addr:              ":9300",
-			ReadHeaderTimeout: 5 * time.Second,
-		},
-	}
+	cfg.Database = *dbConfig
 
-	slog.InfoContext(ctx, "configuration loaded",
+	slog.InfoContext(ctx, "configuration loaded (DB mode)",
 		"db_host", cfg.Database.Host,
 		"db_sslmode", cfg.Database.SSL.Mode,
 		"meilisearch_host", cfg.Meilisearch.Host,
 	)
 
 	return cfg, nil
+}
+
+// UseBackendAPI returns true when the search-indexer should use the backend API
+// instead of direct database access.
+func (c *Config) UseBackendAPI() bool {
+	return c.BackendAPI.URL != ""
 }
 
 // 後方互換性のためのメソッド（deprecated）

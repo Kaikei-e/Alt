@@ -173,6 +173,27 @@ func (u *IndexArticlesUsecase) ExecuteSingleArticle(ctx context.Context, article
 	}, nil
 }
 
+// IndexDocumentsDirectly indexes pre-built search documents without repository lookup.
+// Used for fat events where the event payload contains all necessary data.
+func (u *IndexArticlesUsecase) IndexDocumentsDirectly(ctx context.Context, docs []domain.SearchDocument) (*IndexResult, error) {
+	if len(docs) == 0 {
+		return &IndexResult{IndexedCount: 0}, nil
+	}
+
+	if err := u.searchEngine.IndexDocuments(ctx, docs); err != nil {
+		return nil, err
+	}
+
+	for _, doc := range docs {
+		synonyms := tokenize.ProcessTagToSynonyms(u.tokenizer, doc.Tags)
+		if len(synonyms) > 0 {
+			_ = u.searchEngine.RegisterSynonyms(ctx, synonyms)
+		}
+	}
+
+	return &IndexResult{IndexedCount: len(docs)}, nil
+}
+
 // ExecuteBatchArticles indexes multiple articles by their IDs in a single batch.
 func (u *IndexArticlesUsecase) ExecuteBatchArticles(ctx context.Context, articleIDs []string) (*IndexResult, error) {
 	if len(articleIDs) == 0 {

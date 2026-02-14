@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"search-indexer/domain"
 	"search-indexer/usecase"
 )
 
@@ -16,13 +17,16 @@ const (
 )
 
 // ArticleCreatedPayload represents the payload for ArticleCreated event.
+// Supports fat events with optional content and tags fields.
 type ArticleCreatedPayload struct {
-	ArticleID   string `json:"article_id"`
-	UserID      string `json:"user_id"`
-	FeedID      string `json:"feed_id"`
-	Title       string `json:"title"`
-	URL         string `json:"url"`
-	PublishedAt string `json:"published_at"`
+	ArticleID   string   `json:"article_id"`
+	UserID      string   `json:"user_id"`
+	FeedID      string   `json:"feed_id"`
+	Title       string   `json:"title"`
+	URL         string   `json:"url"`
+	Content     string   `json:"content,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	PublishedAt string   `json:"published_at"`
 }
 
 // IndexArticlePayload represents the payload for IndexArticle event.
@@ -34,7 +38,8 @@ type IndexArticlePayload struct {
 
 // IndexEventHandler processes indexing events from the stream.
 // It buffers article IDs and flushes them in batches to reduce
-// per-event Meilisearch round-trips.
+// per-event Meilisearch round-trips. For fat events with content,
+// it indexes directly without API/DB lookups.
 type IndexEventHandler struct {
 	indexUsecase *usecase.IndexArticlesUsecase
 	logger       *slog.Logger
@@ -45,6 +50,11 @@ type IndexEventHandler struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	flushed chan struct{} // closed on each flush for testing
+
+	// Fat event buffer for direct indexing
+	fatMu      sync.Mutex
+	fatBuffer  []domain.SearchDocument
+	fatTimer   *time.Timer
 }
 
 // NewIndexEventHandler creates a new IndexEventHandler.
@@ -60,6 +70,7 @@ func NewIndexEventHandler(indexUsecase *usecase.IndexArticlesUsecase, logger *sl
 		ctx:          ctx,
 		cancel:       cancel,
 		flushed:      make(chan struct{}, 1),
+		fatBuffer:    make([]domain.SearchDocument, 0, batchFlushSize),
 	}
 	return h
 }
@@ -72,8 +83,14 @@ func (h *IndexEventHandler) Stop() {
 		h.timer.Stop()
 	}
 	h.mu.Unlock()
+	h.fatMu.Lock()
+	if h.fatTimer != nil {
+		h.fatTimer.Stop()
+	}
+	h.fatMu.Unlock()
 	// Flush remaining
 	h.flush()
+	h.flushFat()
 }
 
 // HandleEvent processes a single event. Article IDs are buffered and
@@ -103,6 +120,24 @@ func (h *IndexEventHandler) handleArticleCreated(ctx context.Context, event Even
 		return err
 	}
 
+	// Fat event path: if content is present, index directly without DB/API lookup
+	if payload.Content != "" {
+		h.logger.Info("indexing ArticleCreated fat event directly",
+			"article_id", payload.ArticleID,
+			"title", payload.Title,
+		)
+		doc := domain.SearchDocument{
+			ID:      payload.ArticleID,
+			Title:   payload.Title,
+			Content: payload.Content,
+			Tags:    payload.Tags,
+			UserID:  payload.UserID,
+		}
+		h.enqueueFatEvent(doc)
+		return nil
+	}
+
+	// Thin event fallback: buffer article ID for batch lookup via API
 	h.logger.Info("buffering ArticleCreated event",
 		"article_id", payload.ArticleID,
 		"title", payload.Title,
@@ -187,6 +222,65 @@ func (h *IndexEventHandler) flush() {
 	h.logger.Info("batch indexed successfully", "indexed", result.IndexedCount)
 
 	// Signal flush completion (non-blocking for tests)
+	select {
+	case h.flushed <- struct{}{}:
+	default:
+	}
+}
+
+// enqueueFatEvent adds a pre-built search document to the fat event buffer.
+func (h *IndexEventHandler) enqueueFatEvent(doc domain.SearchDocument) {
+	h.fatMu.Lock()
+	h.fatBuffer = append(h.fatBuffer, doc)
+	size := len(h.fatBuffer)
+
+	if size == 1 {
+		h.fatTimer = time.AfterFunc(batchFlushInterval, func() {
+			h.flushFat()
+		})
+	}
+	h.fatMu.Unlock()
+
+	if size >= batchFlushSize {
+		h.flushFat()
+	}
+}
+
+// flushFat sends all buffered fat event documents to the search engine directly.
+func (h *IndexEventHandler) flushFat() {
+	h.fatMu.Lock()
+	if len(h.fatBuffer) == 0 {
+		h.fatMu.Unlock()
+		return
+	}
+	docs := h.fatBuffer
+	h.fatBuffer = make([]domain.SearchDocument, 0, batchFlushSize)
+	if h.fatTimer != nil {
+		h.fatTimer.Stop()
+		h.fatTimer = nil
+	}
+	h.fatMu.Unlock()
+
+	// Deduplicate by ID
+	seen := make(map[string]struct{}, len(docs))
+	unique := make([]domain.SearchDocument, 0, len(docs))
+	for _, doc := range docs {
+		if _, ok := seen[doc.ID]; !ok {
+			seen[doc.ID] = struct{}{}
+			unique = append(unique, doc)
+		}
+	}
+
+	h.logger.Info("flushing fat event batch", "count", len(unique))
+
+	result, err := h.indexUsecase.IndexDocumentsDirectly(h.ctx, unique)
+	if err != nil {
+		h.logger.Error("fat event batch indexing failed", "count", len(unique), "error", err)
+		return
+	}
+
+	h.logger.Info("fat event batch indexed successfully", "indexed", result.IndexedCount)
+
 	select {
 	case h.flushed <- struct{}{}:
 	default:
