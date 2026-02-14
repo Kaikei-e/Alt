@@ -18,7 +18,7 @@ import (
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
 	"alt/di"
-	"alt/rest"
+	"alt/utils/url_validator"
 )
 
 // Handler implements the RSSService Connect-RPC service.
@@ -64,7 +64,7 @@ func (h *Handler) RegisterRSSFeed(
 	}
 
 	// Check for allowed URLs (SSRF protection)
-	if err := rest.IsAllowedURL(parsedURL); err != nil {
+	if err := url_validator.IsAllowedURL(parsedURL); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("URL not allowed: %w", err))
 	}

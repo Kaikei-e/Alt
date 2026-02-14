@@ -10,7 +10,6 @@ import (
 
 	"connectrpc.com/connect"
 
-	"alt/driver/search_indexer"
 	"alt/utils/errors"
 )
 
@@ -102,7 +101,7 @@ func HandleUnauthenticatedError(ctx context.Context, logger *slog.Logger, err er
 // classifyDriverError checks for specific driver errors and returns appropriate AppContextError
 func classifyDriverError(err error, operation string) *errors.AppContextError {
 	// Check for search service unavailable error
-	if stderrors.Is(err, search_indexer.ErrSearchServiceUnavailable) {
+	if stderrors.Is(err, errors.ErrSearchServiceUnavailable) {
 		return errors.NewExternalAPIContextError(
 			"Search service is temporarily unavailable",
 			"connect",
@@ -114,7 +113,7 @@ func classifyDriverError(err error, operation string) *errors.AppContextError {
 	}
 
 	// Check for search timeout error
-	if stderrors.Is(err, search_indexer.ErrSearchTimeout) {
+	if stderrors.Is(err, errors.ErrSearchTimeout) {
 		return errors.NewTimeoutContextError(
 			"Search request timed out",
 			"connect",

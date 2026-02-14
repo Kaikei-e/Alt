@@ -19,8 +19,8 @@ import (
 	"alt/connect/v2/middleware"
 	"alt/di"
 	"alt/domain"
-	"alt/rest"
 	"alt/usecase/archive_article_usecase"
+	"alt/utils/url_validator"
 )
 
 // Handler implements the ArticleService Connect-RPC service.
@@ -66,7 +66,7 @@ func (h *Handler) FetchArticleContent(
 	}
 
 	// Check for allowed URLs (SSRF protection)
-	if err := rest.IsAllowedURL(parsedURL); err != nil {
+	if err := url_validator.IsAllowedURL(parsedURL); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("URL not allowed: %w", err))
 	}
@@ -120,7 +120,7 @@ func (h *Handler) ArchiveArticle(
 	}
 
 	// Check for allowed URLs (SSRF protection)
-	if err := rest.IsAllowedURL(parsedURL); err != nil {
+	if err := url_validator.IsAllowedURL(parsedURL); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("URL not allowed: %w", err))
 	}
@@ -361,28 +361,26 @@ func (h *Handler) FetchRandomFeed(
 	// Fetch tags for the feed's latest article (ADR-173)
 	var protoTags []*articlesv2.ArticleTagItem
 
-	if h.container.AltDBRepository != nil {
+	if h.container.FetchLatestArticleUsecase != nil {
 		// Get the latest article for this feed
-		latestArticle, err := h.container.AltDBRepository.FetchLatestArticleByFeedID(ctx, feed.ID)
+		latestArticle, err := h.container.FetchLatestArticleUsecase.Execute(ctx, feed.ID)
 		if err != nil {
 			h.logger.WarnContext(ctx, "failed to fetch latest article for feed", "feedID", feed.ID, "error", err)
 			// Continue without tags - fail-open
 		} else if latestArticle != nil {
 			h.logger.InfoContext(ctx, "found latest article for feed", "feedID", feed.ID, "articleID", latestArticle.ID)
 
-			// Use FetchArticleTagsGateway for on-the-fly generation (ADR-168)
-			if h.container.FetchArticleTagsGateway != nil {
-				tags, err := h.container.FetchArticleTagsGateway.FetchArticleTags(ctx, latestArticle.ID)
-				if err != nil {
-					h.logger.WarnContext(ctx, "failed to fetch/generate tags for article", "articleID", latestArticle.ID, "error", err)
-					// Continue without tags - fail-open
-				} else {
-					protoTags = convertTagsToProto(tags)
-					h.logger.InfoContext(ctx, "fetched tags for feed's latest article",
-						"feedID", feed.ID,
-						"articleID", latestArticle.ID,
-						"tagCount", len(protoTags))
-				}
+			// Use FetchArticleTagsUsecase for on-the-fly generation (ADR-168)
+			tags, err := h.container.FetchArticleTagsUsecase.Execute(ctx, latestArticle.ID)
+			if err != nil {
+				h.logger.WarnContext(ctx, "failed to fetch/generate tags for article", "articleID", latestArticle.ID, "error", err)
+				// Continue without tags - fail-open
+			} else {
+				protoTags = convertTagsToProto(tags)
+				h.logger.InfoContext(ctx, "fetched tags for feed's latest article",
+					"feedID", feed.ID,
+					"articleID", latestArticle.ID,
+					"tagCount", len(protoTags))
 			}
 		} else {
 			h.logger.InfoContext(ctx, "no articles found for feed, triggering async fetch", "feedID", feed.ID)
@@ -402,7 +400,7 @@ func (h *Handler) FetchRandomFeed(
 						h.logger.Warn("failed to parse feed link for async fetch", "feedID", feedIDCopy, "error", err)
 						return
 					}
-					if err := rest.IsAllowedURL(parsedURL); err != nil {
+					if err := url_validator.IsAllowedURL(parsedURL); err != nil {
 						h.logger.Warn("feed link not allowed for async fetch", "feedID", feedIDCopy, "error", err)
 						return
 					}
@@ -415,8 +413,8 @@ func (h *Handler) FetchRandomFeed(
 						return
 					}
 					h.logger.Info("async article fetch succeeded", "feedID", feedIDCopy, "articleID", newArticleID)
-					if newArticleID != "" && h.container.FetchArticleTagsGateway != nil {
-						_, tagErr := h.container.FetchArticleTagsGateway.FetchArticleTags(bgCtx, newArticleID)
+					if newArticleID != "" {
+						_, tagErr := h.container.FetchArticleTagsUsecase.Execute(bgCtx, newArticleID)
 						if tagErr != nil {
 							h.logger.Warn("async tag fetch failed", "feedID", feedIDCopy, "articleID", newArticleID, "error", tagErr)
 						} else {
@@ -458,31 +456,8 @@ func (h *Handler) StreamArticleTags(
 
 	h.logger.InfoContext(ctx, "starting article tags stream", "articleID", articleID)
 
-	// 1. Check DB directly for existing tags (no on-the-fly generation)
-	// This allows us to distinguish between CACHED (from DB) and COMPLETED (generated)
-	if h.container.AltDBRepository != nil {
-		cachedTags, err := h.container.AltDBRepository.FetchArticleTags(ctx, articleID)
-		if err != nil {
-			h.logger.WarnContext(ctx, "failed to check DB for cached tags", "error", err, "articleID", articleID)
-			// Continue to try on-the-fly generation
-		} else if len(cachedTags) > 0 {
-			// Tags found in DB - return as CACHED
-			h.logger.InfoContext(ctx, "returning cached tags from DB", "articleID", articleID, "tagCount", len(cachedTags))
-			return stream.Send(&articlesv2.ArticleTagEvent{
-				ArticleId: articleID,
-				Tags:      convertTagsToProto(cachedTags),
-				EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_CACHED,
-			})
-		}
-	}
-
-	// 2. No tags in DB - trigger on-the-fly generation via gateway
-	// The gateway handles mq-hub integration for tag generation (ADR-168)
-	h.logger.InfoContext(ctx, "no tags in DB, triggering on-the-fly generation", "articleID", articleID)
-
-	if h.container.FetchArticleTagsGateway == nil {
-		// Fallback: gateway not available, return empty
-		h.logger.WarnContext(ctx, "FetchArticleTagsGateway not available, returning empty tags", "articleID", articleID)
+	if h.container.StreamArticleTagsUsecase == nil {
+		h.logger.WarnContext(ctx, "StreamArticleTagsUsecase not available, returning empty tags", "articleID", articleID)
 		return stream.Send(&articlesv2.ArticleTagEvent{
 			ArticleId: articleID,
 			Tags:      []*articlesv2.ArticleTagItem{},
@@ -491,11 +466,9 @@ func (h *Handler) StreamArticleTags(
 		})
 	}
 
-	// Call gateway to trigger on-the-fly generation
-	generatedTags, err := h.container.FetchArticleTagsGateway.FetchArticleTags(ctx, articleID)
+	result, err := h.container.StreamArticleTagsUsecase.Execute(ctx, articleID)
 	if err != nil {
-		// Fail-open: return empty tags instead of error to keep UI functional
-		h.logger.WarnContext(ctx, "on-the-fly tag generation failed", "articleID", articleID, "error", err)
+		h.logger.WarnContext(ctx, "tag resolution failed", "articleID", articleID, "error", err)
 		return stream.Send(&articlesv2.ArticleTagEvent{
 			ArticleId: articleID,
 			Tags:      []*articlesv2.ArticleTagItem{},
@@ -504,8 +477,8 @@ func (h *Handler) StreamArticleTags(
 		})
 	}
 
-	if len(generatedTags) == 0 {
-		h.logger.InfoContext(ctx, "on-the-fly generation returned no tags", "articleID", articleID)
+	if len(result.Tags) == 0 {
+		h.logger.InfoContext(ctx, "no tags found or generated", "articleID", articleID)
 		return stream.Send(&articlesv2.ArticleTagEvent{
 			ArticleId: articleID,
 			Tags:      []*articlesv2.ArticleTagItem{},
@@ -514,11 +487,16 @@ func (h *Handler) StreamArticleTags(
 		})
 	}
 
-	h.logger.InfoContext(ctx, "returning generated tags", "articleID", articleID, "tagCount", len(generatedTags))
+	eventType := articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED
+	if result.IsCached {
+		eventType = articlesv2.ArticleTagEvent_EVENT_TYPE_CACHED
+	}
+
+	h.logger.InfoContext(ctx, "returning tags", "articleID", articleID, "tagCount", len(result.Tags), "cached", result.IsCached)
 	return stream.Send(&articlesv2.ArticleTagEvent{
 		ArticleId: articleID,
-		Tags:      convertTagsToProto(generatedTags),
-		EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED,
+		Tags:      convertTagsToProto(result.Tags),
+		EventType: eventType,
 	})
 }
 
@@ -569,8 +547,7 @@ func (h *Handler) FetchArticleSummary(
 	items := make([]*articlesv2.ArticleSummaryItem, 0, len(feedUrls))
 
 	// First, try to get AI-generated summaries from article_summaries table
-	// Only if AltDBRepository is available (may be nil in tests)
-	if h.container.AltDBRepository != nil {
+	if h.container.FetchArticleSummaryUsecase != nil {
 		for _, feedURL := range feedUrls {
 			parsedURL, parseErr := url.Parse(feedURL)
 			if parseErr != nil {
@@ -581,14 +558,14 @@ func (h *Handler) FetchArticleSummary(
 			}
 
 			// Check for allowed URLs (SSRF protection)
-			if ssrfErr := rest.IsAllowedURL(parsedURL); ssrfErr != nil {
+			if ssrfErr := url_validator.IsAllowedURL(parsedURL); ssrfErr != nil {
 				h.logger.WarnContext(ctx, "URL not allowed for AI summary lookup",
 					"url", feedURL,
 					"error", ssrfErr)
 				continue
 			}
 
-			aiSummary, aiErr := h.container.AltDBRepository.FetchFeedSummary(ctx, parsedURL)
+			aiSummary, aiErr := h.container.FetchArticleSummaryUsecase.Execute(ctx, parsedURL)
 			if aiErr == nil && aiSummary != nil && aiSummary.Summary != "" {
 				// Found AI-generated summary
 				items = append(items, &articlesv2.ArticleSummaryItem{

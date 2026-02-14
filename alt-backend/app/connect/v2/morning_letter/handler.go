@@ -8,15 +8,15 @@ import (
 
 	"alt/connect/errorhandler"
 	"alt/domain"
-	"alt/gateway/morning_letter_connect_gateway"
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
+	"alt/port/morning_letter_port"
 )
 
 // Handler implements morningletterv2connect.MorningLetterServiceHandler
 type Handler struct {
-	gateway *morning_letter_connect_gateway.Gateway
-	logger  *slog.Logger
+	streamChat morning_letter_port.StreamChatPort
+	logger     *slog.Logger
 }
 
 // Ensure Handler implements the interface
@@ -24,12 +24,12 @@ var _ morningletterv2connect.MorningLetterServiceHandler = (*Handler)(nil)
 
 // NewHandler creates a new MorningLetterService handler
 func NewHandler(
-	gateway *morning_letter_connect_gateway.Gateway,
+	streamChat morning_letter_port.StreamChatPort,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
-		gateway: gateway,
-		logger:  logger,
+		streamChat: streamChat,
+		logger:     logger,
 	}
 }
 
@@ -65,7 +65,7 @@ func (h *Handler) StreamChat(
 		slog.Int("within_hours", int(withinHours)))
 
 	// Call rag-orchestrator via gateway
-	upstreamStream, err := h.gateway.StreamChat(ctx, req.Msg.Messages, withinHours)
+	upstreamStream, err := h.streamChat.StreamChat(ctx, req.Msg.Messages, withinHours)
 	if err != nil {
 		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.ConnectUpstream")
 	}

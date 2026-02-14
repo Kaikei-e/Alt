@@ -9,7 +9,6 @@ import (
 
 	"connectrpc.com/connect"
 
-	"alt/driver/search_indexer"
 	appErrors "alt/utils/errors"
 )
 
@@ -172,7 +171,7 @@ func TestHandleInternalError_SearchServiceUnavailable(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.Default()
 
-	connectErr := HandleInternalError(ctx, logger, search_indexer.ErrSearchServiceUnavailable, "SearchFeeds")
+	connectErr := HandleInternalError(ctx, logger, appErrors.ErrSearchServiceUnavailable, "SearchFeeds")
 
 	if connectErr == nil {
 		t.Fatal("expected connect error, got nil")
@@ -204,7 +203,7 @@ func TestHandleInternalError_SearchTimeout(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.Default()
 
-	connectErr := HandleInternalError(ctx, logger, search_indexer.ErrSearchTimeout, "SearchFeeds")
+	connectErr := HandleInternalError(ctx, logger, appErrors.ErrSearchTimeout, "SearchFeeds")
 
 	if connectErr == nil {
 		t.Fatal("expected connect error, got nil")
@@ -235,12 +234,12 @@ func TestClassifyDriverError_SearchErrors(t *testing.T) {
 	}{
 		{
 			name:         "search service unavailable",
-			err:          search_indexer.ErrSearchServiceUnavailable,
+			err:          appErrors.ErrSearchServiceUnavailable,
 			expectedCode: "EXTERNAL_API_ERROR",
 		},
 		{
 			name:         "search timeout",
-			err:          search_indexer.ErrSearchTimeout,
+			err:          appErrors.ErrSearchTimeout,
 			expectedCode: "TIMEOUT_ERROR",
 		},
 		{

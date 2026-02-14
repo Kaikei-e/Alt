@@ -25,8 +25,8 @@ import (
 	"alt/connect/v2/middleware"
 	"alt/di"
 	"alt/domain"
-	"alt/rest"
 	"alt/utils/html_parser"
+	"alt/utils/url_validator"
 )
 
 // Handler implements the FeedService Connect-RPC service.
@@ -687,7 +687,7 @@ func (h *Handler) fetchArticleContent(ctx context.Context, urlStr string) (strin
 	}
 
 	// SSRF protection
-	if err := rest.IsAllowedURL(parsedURL); err != nil {
+	if err := url_validator.IsAllowedURL(parsedURL); err != nil {
 		return "", "", fmt.Errorf("URL not allowed: %w", err)
 	}
 

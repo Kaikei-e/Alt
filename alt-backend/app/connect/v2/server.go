@@ -63,7 +63,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	logger.Info("Registered Connect-RPC AugurService", "path", augurPath)
 
 	// Register MorningLetter service
-	morningLetterHandler := morning_letter.NewHandler(container.MorningLetterConnectGateway, logger)
+	morningLetterHandler := morning_letter.NewHandler(container.StreamChatPort, logger)
 	morningLetterPath, morningLetterServiceHandler := morningletterv2connect.NewMorningLetterServiceHandler(morningLetterHandler, opts)
 	mux.Handle(morningLetterPath, morningLetterServiceHandler)
 	logger.Info("Registered Connect-RPC MorningLetterService", "path", morningLetterPath)
