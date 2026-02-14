@@ -7,7 +7,7 @@
  */
 
 import { createClientTransport, synthesizeSpeechStream } from "$lib/connect";
-import { createAudioFromWav } from "$lib/utils/audio";
+import { createAudioFromWav, splitTextForTts } from "$lib/utils/audio";
 import type { AudioPlayer } from "$lib/utils/audio";
 
 type TtsState = "idle" | "loading" | "playing" | "error";
@@ -60,36 +60,42 @@ export function useTtsPlayback(): TtsPlayback {
 		}
 
 		const transport = createClientTransport();
+		const chunks = splitTextForTts(text);
 
 		try {
 			state = "loading";
-			const stream = synthesizeSpeechStream(transport, {
-				text,
-				voice: options?.voice,
-				speed: options?.speed,
-			});
 
-			for await (const chunk of stream) {
+			for (const textChunk of chunks) {
 				if (cancelled) break;
 
-				const player = createAudioFromWav(chunk.audioWav);
-				currentPlayer = player;
-				state = "playing";
-
-				await player.play();
-
-				// Wait for playback to finish or cancellation
-				await new Promise<void>((resolve) => {
-					pendingResolve = resolve;
-					player.onEnded(() => {
-						pendingResolve = null;
-						resolve();
-					});
+				const stream = synthesizeSpeechStream(transport, {
+					text: textChunk,
+					voice: options?.voice,
+					speed: options?.speed,
 				});
 
-				if (!cancelled) {
-					player.cleanup();
-					currentPlayer = null;
+				for await (const chunk of stream) {
+					if (cancelled) break;
+
+					const player = createAudioFromWav(chunk.audioWav);
+					currentPlayer = player;
+					state = "playing";
+
+					await player.play();
+
+					// Wait for playback to finish or cancellation
+					await new Promise<void>((resolve) => {
+						pendingResolve = resolve;
+						player.onEnded(() => {
+							pendingResolve = null;
+							resolve();
+						});
+					});
+
+					if (!cancelled) {
+						player.cleanup();
+						currentPlayer = null;
+					}
 				}
 			}
 		} catch (err) {

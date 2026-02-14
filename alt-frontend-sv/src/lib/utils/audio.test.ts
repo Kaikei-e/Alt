@@ -118,8 +118,8 @@ describe("splitTextForTts", () => {
 	});
 
 	it("splits on Japanese period (。)", () => {
-		const sentence1 = `${"あ".repeat(3000)}。`;
-		const sentence2 = `${"い".repeat(3000)}。`;
+		const sentence1 = `${"あ".repeat(20000)}。`;
+		const sentence2 = `${"い".repeat(20000)}。`;
 		const text = `${sentence1}${sentence2}`;
 		const result = splitTextForTts(text);
 		expect(result.length).toBe(2);
@@ -128,8 +128,8 @@ describe("splitTextForTts", () => {
 	});
 
 	it("splits on newlines", () => {
-		const line1 = "a".repeat(3000);
-		const line2 = "b".repeat(3000);
+		const line1 = "a".repeat(20000);
+		const line2 = "b".repeat(20000);
 		const text = `${line1}\n${line2}`;
 		const result = splitTextForTts(text);
 		expect(result.length).toBe(2);
@@ -138,11 +138,11 @@ describe("splitTextForTts", () => {
 	});
 
 	it("hard-cuts when no sentence boundary found within limit", () => {
-		const text = "あ".repeat(6000);
+		const text = "あ".repeat(35000);
 		const result = splitTextForTts(text);
 		expect(result.length).toBe(2);
-		expect(result[0].length).toBe(5000);
-		expect(result[1].length).toBe(1000);
+		expect(result[0].length).toBe(30000);
+		expect(result[1].length).toBe(5000);
 	});
 
 	it("does not produce empty chunks", () => {
@@ -154,8 +154,19 @@ describe("splitTextForTts", () => {
 	});
 
 	it("handles text exactly at limit", () => {
-		const text = "a".repeat(5000);
+		const text = "a".repeat(30000);
 		const result = splitTextForTts(text);
 		expect(result).toEqual([text]);
+	});
+
+	it("splits text exceeding 30000 chars into multiple chunks", () => {
+		// Total > 30000 with a period boundary at 25000
+		const part1 = `${"あ".repeat(25000)}。`;
+		const part2 = "い".repeat(20000);
+		const text = `${part1}${part2}`;
+		const result = splitTextForTts(text);
+		expect(result.length).toBe(2);
+		expect(result[0]).toBe(part1);
+		expect(result[1]).toBe(part2);
 	});
 });

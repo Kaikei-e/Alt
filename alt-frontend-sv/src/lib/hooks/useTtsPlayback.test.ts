@@ -7,10 +7,11 @@ vi.mock("$lib/connect", () => ({
 
 vi.mock("$lib/utils/audio", () => ({
 	createAudioFromWav: vi.fn(),
+	splitTextForTts: vi.fn((text: string) => [text]),
 }));
 
 import { synthesizeSpeechStream } from "$lib/connect";
-import { createAudioFromWav } from "$lib/utils/audio";
+import { createAudioFromWav, splitTextForTts } from "$lib/utils/audio";
 import { useTtsPlayback } from "./useTtsPlayback.svelte";
 
 /** Helper: creates an async generator that yields the given chunks */
@@ -180,6 +181,55 @@ describe("useTtsPlayback", () => {
 			expect(players[0].play).toHaveBeenCalled();
 			expect(players[1].play).toHaveBeenCalled();
 			expect(players[0].cleanup).toHaveBeenCalled();
+		});
+
+		it("splits long text into multiple chunks and streams each", async () => {
+			const mockPlayer = {
+				play: vi.fn().mockResolvedValue(undefined),
+				stop: vi.fn(),
+				cleanup: vi.fn(),
+				onEnded: vi.fn().mockImplementation((cb) => cb()),
+			};
+
+			// splitTextForTts returns two chunks
+			vi.mocked(splitTextForTts).mockReturnValue(["chunk1", "chunk2"]);
+
+			// Each chunk creates its own stream with one audio response
+			vi.mocked(synthesizeSpeechStream)
+				.mockReturnValueOnce(
+					createMockStream([
+						{
+							audioWav: new Uint8Array([1]),
+							sampleRate: 24000,
+							durationSeconds: 1.0,
+						},
+					])(),
+				)
+				.mockReturnValueOnce(
+					createMockStream([
+						{
+							audioWav: new Uint8Array([2]),
+							sampleRate: 24000,
+							durationSeconds: 1.0,
+						},
+					])(),
+				);
+			vi.mocked(createAudioFromWav).mockReturnValue(mockPlayer);
+
+			const tts = useTtsPlayback();
+			await tts.play("chunk1chunk2");
+
+			// synthesizeSpeechStream called once per chunk
+			expect(synthesizeSpeechStream).toHaveBeenCalledTimes(2);
+			expect(synthesizeSpeechStream).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({ text: "chunk1" }),
+			);
+			expect(synthesizeSpeechStream).toHaveBeenCalledWith(
+				expect.anything(),
+				expect.objectContaining({ text: "chunk2" }),
+			);
+			expect(mockPlayer.play).toHaveBeenCalledTimes(2);
 		});
 	});
 

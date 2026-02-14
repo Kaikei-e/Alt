@@ -4,7 +4,7 @@
  * Provides WAV audio player creation and text splitting for TTS character limits.
  */
 
-const TTS_MAX_CHARS = 5000;
+const TTS_MAX_CHARS = 30_000;
 
 export interface AudioPlayer {
 	play(): Promise<void>;
