@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     default_speed: float = Field(default=1.0, ge=0.5, le=2.0, validation_alias="TTS_DEFAULT_SPEED")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     service_secret: str = Field(default="", validation_alias="SERVICE_SECRET")
+    tts_max_stream_text_length: int = Field(
+        default=30_000, validation_alias="TTS_MAX_STREAM_TEXT_LENGTH"
+    )
 
     @model_validator(mode="after")
     def load_secret_file(self) -> "Settings":

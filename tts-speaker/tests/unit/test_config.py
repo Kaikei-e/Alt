@@ -21,6 +21,7 @@ def test_default_values():
     assert s.default_speed == 1.0
     assert s.log_level == "INFO"
     assert s.service_secret == ""
+    assert s.tts_max_stream_text_length == 30_000
 
 
 def test_env_override():
@@ -65,3 +66,10 @@ def test_speed_range():
     with patch.dict("os.environ", {"TTS_DEFAULT_SPEED": "2.0"}, clear=True):
         s = Settings()
     assert s.default_speed == 2.0
+
+
+def test_tts_max_stream_text_length_env_override():
+    """tts_max_stream_text_length can be overridden via environment variable."""
+    with patch.dict("os.environ", {"TTS_MAX_STREAM_TEXT_LENGTH": "50000"}, clear=True):
+        s = Settings()
+    assert s.tts_max_stream_text_length == 50_000

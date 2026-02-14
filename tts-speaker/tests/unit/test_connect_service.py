@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
 import pytest
+from connectrpc.code import Code
+from connectrpc.errors import ConnectError
 from httpx import ASGITransport, AsyncClient
 
 from tts_speaker.app.main import create_app
@@ -230,6 +232,83 @@ async def test_synthesize_preprocesses_english(client: AsyncClient, mock_pipelin
     # "API" should be expanded to "エーピーアイ" before reaching the pipeline
     assert "エーピーアイ" in call_kwargs[1]["text"]
     assert "API" not in call_kwargs[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_synthesize_stream_accepts_long_text(mock_pipeline: MagicMock):
+    """Synthesize stream accepts text between 5001 and 30000 characters."""
+    from tts_speaker.app.connect_service import TTSConnectService
+    from tts_speaker.infra.config import Settings
+
+    async def fake_stream(**kwargs):
+        yield np.zeros(2400, dtype=np.float32)
+
+    mock_pipeline.synthesize_stream = MagicMock(side_effect=fake_stream)
+
+    service = TTSConnectService(mock_pipeline, Settings())
+    request = MagicMock()
+    request.text = "あ" * 10000  # Well over 5000 but under 30000
+    request.voice = ""
+    request.speed = 0.0
+    ctx = MagicMock()
+    ctx.request_headers.return_value = {}
+
+    chunks = []
+    async for chunk in service.synthesize_stream(request, ctx):
+        chunks.append(chunk)
+
+    assert len(chunks) > 0
+    mock_pipeline.synthesize_stream.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_synthesize_stream_rejects_over_limit(mock_pipeline: MagicMock):
+    """Synthesize stream rejects text exceeding 30000 characters."""
+    from tts_speaker.app.connect_service import TTSConnectService
+    from tts_speaker.infra.config import Settings
+
+    service = TTSConnectService(mock_pipeline, Settings())
+    request = MagicMock()
+    request.text = "あ" * 30001
+    request.voice = ""
+    request.speed = 0.0
+    ctx = MagicMock()
+    ctx.request_headers.return_value = {}
+
+    with pytest.raises(ConnectError) as exc_info:
+        async for _ in service.synthesize_stream(request, ctx):
+            pass
+
+    assert exc_info.value.code == Code.INVALID_ARGUMENT
+
+
+@pytest.mark.asyncio
+async def test_synthesize_stream_long_text_preprocessed(mock_pipeline: MagicMock):
+    """Synthesize stream correctly processes long preprocessed text."""
+    from tts_speaker.app.connect_service import TTSConnectService
+    from tts_speaker.infra.config import Settings
+
+    async def fake_stream(**kwargs):
+        yield np.zeros(2400, dtype=np.float32)
+
+    mock_pipeline.synthesize_stream = MagicMock(side_effect=fake_stream)
+
+    service = TTSConnectService(mock_pipeline, Settings())
+    # Use text that stays under 30000 after preprocessing
+    request = MagicMock()
+    request.text = "テスト。" * 2000  # 8000 chars, all Japanese, no expansion
+    request.voice = ""
+    request.speed = 0.0
+    ctx = MagicMock()
+    ctx.request_headers.return_value = {}
+
+    chunks = []
+    async for chunk in service.synthesize_stream(request, ctx):
+        chunks.append(chunk)
+
+    assert len(chunks) > 0
+    call_kwargs = mock_pipeline.synthesize_stream.call_args
+    assert len(call_kwargs[1]["text"]) > 5000
 
 
 @pytest.mark.asyncio

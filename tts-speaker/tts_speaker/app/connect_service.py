@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 24000
+MAX_TEXT_LENGTH = 5000
 
 
 class TTSConnectService:
@@ -58,10 +59,10 @@ class TTSConnectService:
         text = preprocess_for_tts(text)
         logger.debug("Preprocessed text: %r", text)
 
-        if len(text) > 5000:
+        if len(text) > MAX_TEXT_LENGTH:
             raise ConnectError(
                 Code.INVALID_ARGUMENT,
-                "text must be between 1 and 5000 characters",
+                f"text must be between 1 and {MAX_TEXT_LENGTH} characters",
             )
 
         voice = request.voice or self._settings.default_voice
@@ -124,11 +125,13 @@ class TTSConnectService:
         text = preprocess_for_tts(text)
         logger.debug("Preprocessed text: %r", text)
 
-        if len(text) > 5000:
+        stream_max = self._settings.tts_max_stream_text_length
+        if len(text) > stream_max:
             raise ConnectError(
                 Code.INVALID_ARGUMENT,
-                "text must be between 1 and 5000 characters",
+                f"text must be between 1 and {stream_max} characters",
             )
+        logger.info("Text length: %d chars (after preprocess)", len(text))
 
         voice = request.voice or self._settings.default_voice
         if voice not in VOICE_IDS:
