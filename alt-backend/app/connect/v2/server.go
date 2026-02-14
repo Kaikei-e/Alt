@@ -15,11 +15,13 @@ import (
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
 	"alt/gen/proto/alt/rss/v2/rssv2connect"
+	"alt/gen/proto/services/backend/v1/backendv1connect"
 
 	"alt/config"
 	"alt/connect/v2/articles"
 	"alt/connect/v2/augur"
 	"alt/connect/v2/feeds"
+	internalhandler "alt/connect/v2/internal"
 	"alt/connect/v2/middleware"
 	"alt/connect/v2/morning_letter"
 	"alt/connect/v2/recap"
@@ -72,6 +74,20 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	recapPath, recapServiceHandler := recapv2connect.NewRecapServiceHandler(recapHandler, opts)
 	mux.Handle(recapPath, recapServiceHandler)
 	logger.Info("Registered Connect-RPC RecapService", "path", recapPath)
+
+	// Register BackendInternalService (service-to-service API, uses service token auth)
+	serviceAuthInterceptor := middleware.NewServiceAuthInterceptor(logger, cfg.InternalAPI.ServiceSecret)
+	internalOpts := connect.WithInterceptors(serviceAuthInterceptor.Interceptor())
+	gw := container.InternalArticleGateway
+	internalHandler := internalhandler.NewHandler(
+		gw, gw, gw, gw, gw,
+		logger,
+		internalhandler.WithPhase2Ports(gw, gw, gw, gw, gw, gw),
+		internalhandler.WithPhase3Ports(gw, gw, gw),
+	)
+	internalPath, internalServiceHandler := backendv1connect.NewBackendInternalServiceHandler(internalHandler, internalOpts)
+	mux.Handle(internalPath, internalServiceHandler)
+	logger.Info("Registered Connect-RPC BackendInternalService", "path", internalPath)
 }
 
 // CreateConnectServer creates the Connect-RPC server with HTTP/2 support.

@@ -21,6 +21,7 @@ type Config struct {
 	Rag           RAGConfig           `json:"rag"`
 	AuthHub       AuthHubConfig       `json:"auth_hub"`
 	MQHub         MQHubConfig         `json:"mq_hub"`
+	InternalAPI   InternalAPIConfig   `json:"internal_api"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -67,6 +68,13 @@ type MQHubConfig struct {
 	Enabled bool `json:"enabled" env:"MQHUB_ENABLED" default:"false"`
 	// ConnectURL is the Connect-RPC URL for mq-hub service.
 	ConnectURL string `json:"connect_url" env:"MQHUB_CONNECT_URL" default:"http://mq-hub:9500"`
+}
+
+// InternalAPIConfig holds configuration for the internal service-to-service API.
+type InternalAPIConfig struct {
+	// ServiceSecret is the shared secret for service-to-service authentication.
+	ServiceSecret     string `json:"service_secret" env:"SERVICE_SECRET"`
+	ServiceSecretFile string `json:"-" env:"SERVICE_SECRET_FILE"`
 }
 
 type AuthConfig struct {
@@ -154,6 +162,14 @@ func NewConfig() (*Config, error) {
 			config.Auth.SharedSecret = strings.TrimSpace(string(content))
 		}
 		// If file read fails, we fall back to the env var value (if any) or keep it empty
+	}
+
+	// Load service secret from file if configured (Docker Secrets support)
+	if config.InternalAPI.ServiceSecretFile != "" {
+		content, err := os.ReadFile(config.InternalAPI.ServiceSecretFile)
+		if err == nil {
+			config.InternalAPI.ServiceSecret = strings.TrimSpace(string(content))
+		}
 	}
 
 	// Load backend token secret from file if configured (Docker Secrets support)
