@@ -8,6 +8,7 @@ import (
 	"alt/gateway/robots_txt_gateway"
 	"alt/mocks"
 	"alt/usecase/fetch_article_usecase"
+	// Note: driver/gateway imports are used to construct the usecase, not for direct handler access.
 	"alt/utils/logger"
 	"alt/utils/security"
 	"context"
@@ -70,10 +71,8 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 
 	// Partial container with only needed components
 	container := &di.ApplicationComponents{
-		AltDBRepository:     repo,
-		RobotsTxtGateway:    gw,
-		FetchArticleGateway: fetchGw,
-		ArticleUsecase:      articleUsecase,
+		AltDBRepository: repo,
+		ArticleUsecase:  articleUsecase,
 	}
 
 	userID := uuid.New()

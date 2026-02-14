@@ -2,7 +2,6 @@ package rest
 
 import (
 	"alt/di"
-	"alt/gateway/dashboard_gateway"
 	dashboard_usecase "alt/usecase/dashboard"
 	"net/http"
 	"strconv"
@@ -11,16 +10,14 @@ import (
 )
 
 func registerDashboardRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
-	dashboardGateway := dashboard_gateway.NewDashboardGateway()
-
-	v1.GET("/dashboard/metrics", handleGetMetrics(dashboardGateway))
-	v1.GET("/dashboard/overview", handleGetOverview(dashboardGateway))
-	v1.GET("/dashboard/logs", handleGetLogs(dashboardGateway))
-	v1.GET("/dashboard/jobs", handleGetJobs(dashboardGateway))
+	v1.GET("/dashboard/metrics", handleGetMetrics(container.DashboardMetricsUsecase))
+	v1.GET("/dashboard/overview", handleGetOverview(container.DashboardMetricsUsecase))
+	v1.GET("/dashboard/logs", handleGetLogs(container.DashboardMetricsUsecase))
+	v1.GET("/dashboard/jobs", handleGetJobs(container.DashboardMetricsUsecase))
 	v1.GET("/dashboard/recap_jobs", handleGetRecapJobs(container.GetRecapJobsUsecase))
 }
 
-func handleGetMetrics(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc {
+func handleGetMetrics(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		metricType := c.QueryParam("type")
 		windowSeconds, _ := strconv.ParseInt(c.QueryParam("window"), 10, 64)
@@ -32,7 +29,7 @@ func handleGetMetrics(gateway *dashboard_gateway.DashboardGateway) echo.HandlerF
 			limit = 500
 		}
 
-		data, err := gateway.GetMetrics(c.Request().Context(), metricType, windowSeconds, limit)
+		data, err := usecase.GetMetrics(c.Request().Context(), metricType, windowSeconds, limit)
 		if err != nil {
 			return HandleError(c, err, "GetMetrics")
 		}
@@ -42,7 +39,7 @@ func handleGetMetrics(gateway *dashboard_gateway.DashboardGateway) echo.HandlerF
 	}
 }
 
-func handleGetOverview(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc {
+func handleGetOverview(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		windowSeconds, _ := strconv.ParseInt(c.QueryParam("window"), 10, 64)
 		if windowSeconds <= 0 {
@@ -53,7 +50,7 @@ func handleGetOverview(gateway *dashboard_gateway.DashboardGateway) echo.Handler
 			limit = 200
 		}
 
-		data, err := gateway.GetOverview(c.Request().Context(), windowSeconds, limit)
+		data, err := usecase.GetOverview(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
 			return HandleError(c, err, "GetOverview")
 		}
@@ -63,7 +60,7 @@ func handleGetOverview(gateway *dashboard_gateway.DashboardGateway) echo.Handler
 	}
 }
 
-func handleGetLogs(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc {
+func handleGetLogs(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		windowSeconds, _ := strconv.ParseInt(c.QueryParam("window"), 10, 64)
 		if windowSeconds <= 0 {
@@ -74,7 +71,7 @@ func handleGetLogs(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc
 			limit = 2000
 		}
 
-		data, err := gateway.GetLogs(c.Request().Context(), windowSeconds, limit)
+		data, err := usecase.GetLogs(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
 			return HandleError(c, err, "GetLogs")
 		}
@@ -84,7 +81,7 @@ func handleGetLogs(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc
 	}
 }
 
-func handleGetJobs(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc {
+func handleGetJobs(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		windowSeconds, _ := strconv.ParseInt(c.QueryParam("window"), 10, 64)
 		if windowSeconds <= 0 {
@@ -95,7 +92,7 @@ func handleGetJobs(gateway *dashboard_gateway.DashboardGateway) echo.HandlerFunc
 			limit = 200
 		}
 
-		data, err := gateway.GetJobs(c.Request().Context(), windowSeconds, limit)
+		data, err := usecase.GetJobs(c.Request().Context(), windowSeconds, limit)
 		if err != nil {
 			return HandleError(c, err, "GetJobs")
 		}

@@ -7,12 +7,12 @@ import (
 	"alt/utils/html_parser"
 	"alt/utils/logger"
 	"alt/utils/security"
+	"alt/utils/url_validator"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -107,26 +107,10 @@ func HandleValidationError(c echo.Context, message string, field string, value i
 	})
 }
 
-// isAllowedURL checks if the URL is allowed (not private IP)
+// IsAllowedURL checks if the URL is allowed (not private IP).
+// Deprecated: Use utils/url_validator.IsAllowedURL directly.
 func IsAllowedURL(u *url.URL) error {
-	// Allow http and https
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("scheme not allowed: %s", u.Scheme)
-	}
-
-	// Resolve IP
-	ips, err := net.LookupIP(u.Hostname())
-	if err != nil {
-		return fmt.Errorf("could not resolve hostname: %w", err)
-	}
-
-	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() {
-			return fmt.Errorf("private IP not allowed: %s", ip.String())
-		}
-	}
-
-	return nil
+	return url_validator.IsAllowedURL(u)
 }
 
 // Optimize feeds response specifically for search results
