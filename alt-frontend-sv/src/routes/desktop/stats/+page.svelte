@@ -1,5 +1,5 @@
 <script lang="ts">
-import { BarChart3, TrendingUp, FileText, CheckCircle } from "@lucide/svelte";
+import { BarChart3, TrendingUp, FileText, CheckCircle, RefreshCw } from "@lucide/svelte";
 import { onMount } from "svelte";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
@@ -88,7 +88,18 @@ onMount(() => {
 				<p class="text-xs text-[var(--text-secondary)]">{connectionStatus}</p>
 			</div>
 		</div>
-		<TrendingUp class="h-5 w-5 text-[var(--text-secondary)]" />
+		<div class="flex items-center gap-2">
+			{#if !stats.isConnected}
+				<button
+					onclick={() => stats.reconnect()}
+					class="inline-flex items-center gap-1.5 text-xs px-3 py-1 border border-[var(--surface-border)] rounded hover:bg-gray-50 text-[var(--text-secondary)] transition-colors"
+				>
+					<RefreshCw class="h-3 w-3" />
+					Reconnect
+				</button>
+			{/if}
+			<TrendingUp class="h-5 w-5 text-[var(--text-secondary)]" />
+		</div>
 	</div>
 </div>
 

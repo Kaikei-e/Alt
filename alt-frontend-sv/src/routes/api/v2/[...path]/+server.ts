@@ -64,6 +64,7 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 			body: request.body,
 			// @ts-expect-error - duplex is needed for streaming request bodies
 			duplex: "half",
+			signal: request.signal,
 		});
 
 		// Create response headers, preserving content-type for Connect-RPC
