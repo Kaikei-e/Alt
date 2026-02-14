@@ -14,6 +14,10 @@ var (
 	ErrExternalServiceUnavailable = errors.New("external service unavailable")
 	ErrOperationTimeout           = errors.New("operation timeout")
 	ErrInvalidInput               = errors.New("invalid input")
+
+	// Search service errors (used across layers)
+	ErrSearchServiceUnavailable = errors.New("search service unavailable")
+	ErrSearchTimeout            = errors.New("search request timed out")
 )
 
 // Error checking helper functions using errors.Is() for 2025 Go patterns
