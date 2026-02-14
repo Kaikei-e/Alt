@@ -6,44 +6,22 @@ export interface UnsummarizedFeedStatsSummary {
 	total_articles?: { amount: number };
 }
 
+/**
+ * Set up a basic SSE connection without reconnection.
+ * Delegates to setupSSEWithReconnect with maxReconnectAttempts=0.
+ */
 export function setupSSE(
 	endpoint: string,
 	onData: (data: UnsummarizedFeedStatsSummary) => void,
 	onError?: () => void,
 ): EventSource | null {
-	if (!browser) {
-		return null;
-	}
-
-	try {
-		const eventSource = new EventSource(endpoint);
-
-		eventSource.onmessage = (event) => {
-			try {
-				const data = JSON.parse(event.data) as UnsummarizedFeedStatsSummary;
-				// Validate basic structure before passing to callback
-				if (data && typeof data === "object") {
-					onData(data);
-				}
-			} catch (error) {
-				console.error("Error parsing SSE message:", error);
-			}
-		};
-
-		eventSource.onerror = () => {
-			if (onError) {
-				onError();
-			}
-		};
-
-		return eventSource;
-	} catch {
-		console.error("Error creating SSE connection");
-		if (onError) {
-			onError();
-		}
-		return null;
-	}
+	const { eventSource } = setupSSEWithReconnect(
+		endpoint,
+		onData,
+		onError,
+		0,
+	);
+	return eventSource;
 }
 
 export function setupSSEWithReconnect(

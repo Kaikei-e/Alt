@@ -14,9 +14,10 @@ interface StreamingFeedStatsState {
 	totalArticlesAmount: number;
 	isConnected: boolean;
 	retryCount: number;
+	reconnect: () => void;
 }
 
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 10;
 const BASE_RETRY_DELAY = 1000; // 1 second
 const MAX_RETRY_DELAY = 10000; // 10 seconds
 
@@ -119,6 +120,15 @@ export function useStreamingFeedStats(): StreamingFeedStatsState {
 		disconnect();
 	});
 
+	/**
+	 * Manual reconnection - resets retry count and re-establishes connection
+	 */
+	function reconnect() {
+		retryCount = 0;
+		disconnect();
+		connect();
+	}
+
 	// Return reactive getters (preserves Svelte 5 reactivity)
 	return {
 		get feedAmount() {
@@ -136,5 +146,6 @@ export function useStreamingFeedStats(): StreamingFeedStatsState {
 		get retryCount() {
 			return retryCount;
 		},
+		reconnect,
 	};
 }

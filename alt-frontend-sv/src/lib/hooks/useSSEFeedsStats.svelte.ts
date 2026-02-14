@@ -161,6 +161,80 @@ export function useSSEFeedsStats() {
 		return cleanupFn;
 	});
 
+	function reconnect() {
+		if (cleanupFn) {
+			cleanupFn();
+		}
+		isInitialized = false;
+		retryCount = 0;
+		isConnected = false;
+
+		const sseUrl = "/api/v1/sse/feeds/stats";
+
+		const { eventSource: es, cleanup } = setupSSEWithReconnect(
+			sseUrl,
+			(data: UnsummarizedFeedStatsSummary) => {
+				try {
+					if (data.feed_amount?.amount !== undefined) {
+						const amount = data.feed_amount.amount;
+						feedAmount = isValidAmount(amount) ? amount : 0;
+					}
+				} catch (error) {
+					console.error("Error handling feed amount:", error);
+				}
+
+				try {
+					if (data.unsummarized_feed?.amount !== undefined) {
+						const amount = data.unsummarized_feed.amount;
+						unsummarizedArticlesAmount = isValidAmount(amount) ? amount : 0;
+					}
+				} catch (error) {
+					console.error("Error handling unsummarized articles:", error);
+				}
+
+				try {
+					const totalArticlesAmountValue = data.total_articles?.amount ?? 0;
+					totalArticlesAmount = isValidAmount(totalArticlesAmountValue)
+						? totalArticlesAmountValue
+						: 0;
+				} catch (error) {
+					console.error("Error handling total articles:", error);
+				}
+
+				lastDataReceived = Date.now();
+				isConnected = true;
+				retryCount = 0;
+			},
+			() => {
+				isConnected = false;
+				retryCount++;
+			},
+			3,
+			() => {
+				lastDataReceived = Date.now();
+				isConnected = true;
+				retryCount = 0;
+			},
+			() => {
+				lastDataReceived = Date.now();
+			},
+		);
+
+		currentEventSource = es;
+		isInitialized = true;
+
+		cleanupFn = () => {
+			if (healthCheckInterval) {
+				clearInterval(healthCheckInterval);
+				healthCheckInterval = null;
+			}
+			if (cleanup) {
+				cleanup();
+			}
+			isInitialized = false;
+		};
+	}
+
 	// Return as getters to maintain reactivity when accessed from components
 	return {
 		get feedAmount() {
@@ -178,5 +252,6 @@ export function useSSEFeedsStats() {
 		get retryCount() {
 			return retryCount;
 		},
+		reconnect,
 	};
 }

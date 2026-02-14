@@ -15,6 +15,7 @@ interface FeedStatsState {
 	totalArticlesAmount: number;
 	isConnected: boolean;
 	retryCount: number;
+	reconnect: () => void;
 }
 
 /**
