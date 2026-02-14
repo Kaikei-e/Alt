@@ -1,6 +1,7 @@
 package dashboard_gateway
 
 import (
+	"alt/port/dashboard_port"
 	"context"
 	"fmt"
 	"io"
@@ -10,6 +11,9 @@ import (
 	"strconv"
 	"time"
 )
+
+// Verify interface compliance at compile time.
+var _ dashboard_port.DashboardMetricsPort = (*DashboardGateway)(nil)
 
 type DashboardGateway struct {
 	httpClient     *http.Client

@@ -2,6 +2,7 @@ package search_indexer
 
 import (
 	"alt/driver/models"
+	appErrors "alt/utils/errors"
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
@@ -14,12 +15,10 @@ import (
 	"time"
 )
 
-// Specific error types for search service failures
+// Re-export sentinel errors from utils/errors for backward compatibility within the driver.
 var (
-	// ErrSearchServiceUnavailable is returned when the search-indexer service cannot be reached
-	ErrSearchServiceUnavailable = errors.New("search service unavailable")
-	// ErrSearchTimeout is returned when the search request times out
-	ErrSearchTimeout = errors.New("search request timed out")
+	ErrSearchServiceUnavailable = appErrors.ErrSearchServiceUnavailable
+	ErrSearchTimeout            = appErrors.ErrSearchTimeout
 )
 
 func SearchArticles(ctx context.Context, query string) ([]models.SearchArticlesHit, error) {

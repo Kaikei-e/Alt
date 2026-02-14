@@ -9,7 +9,11 @@ import (
 
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
+	"alt/port/morning_letter_port"
 )
+
+// Verify interface compliance at compile time.
+var _ morning_letter_port.StreamChatPort = (*Gateway)(nil)
 
 // Gateway provides Connect-RPC client for rag-orchestrator MorningLetter service
 type Gateway struct {

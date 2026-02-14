@@ -67,9 +67,16 @@ import (
 	"alt/usecase/fetch_article_tags_usecase"
 	"alt/gateway/fetch_random_subscription_gateway"
 	"alt/gateway/fetch_articles_by_tag_gateway"
+	"alt/gateway/article_summary_gateway"
+	"alt/gateway/cached_article_tags_gateway"
+	"alt/gateway/dashboard_gateway"
 	"alt/gateway/fetch_article_tags_gateway"
 	"alt/gateway/internal_article_gateway"
+	"alt/gateway/latest_article_gateway"
 	"alt/gateway/subscription_gateway"
+	"alt/usecase/fetch_article_summary_usecase"
+	"alt/usecase/fetch_latest_article_usecase"
+	"alt/usecase/stream_article_tags_usecase"
 	"alt/usecase/fetch_recent_articles_usecase"
 	"alt/usecase/fetch_trend_stats_usecase"
 	"alt/usecase/image_fetch_usecase"
@@ -105,13 +112,11 @@ type ApplicationComponents struct {
 	// Drivers
 	KratosClient kratos_client.KratosClient
 
-	// Gateways
-	RobotsTxtGateway            *robots_txt_gateway.RobotsTxtGateway
-	FetchArticleGateway         *fetch_article_gateway.FetchArticleGateway
-	RagIntegration              rag_integration_port.RagIntegrationPort
-	RagConnectClient            *rag_connect_gateway.Client
-	MorningLetterConnectGateway *morning_letter_connect_gateway.Gateway
-	EventPublisher              event_publisher_port.EventPublisherPort
+	// Ports
+	RagIntegration rag_integration_port.RagIntegrationPort
+	RagConnectClient *rag_connect_gateway.Client
+	StreamChatPort   morning_letter_port.StreamChatPort
+	EventPublisher   event_publisher_port.EventPublisherPort
 
 	// Usecases
 	FetchSingleFeedUsecase              *fetch_feed_usecase.FetchSingleFeedUsecase
@@ -158,8 +163,10 @@ type ApplicationComponents struct {
 	SubscribeUsecase                    *subscription_usecase.SubscribeUsecase
 	UnsubscribeUsecase                  *subscription_usecase.UnsubscribeUsecase
 
-	// Gateways exposed for handler use (on-the-fly tag generation)
-	FetchArticleTagsGateway             *fetch_article_tags_gateway.FetchArticleTagsGateway
+	DashboardMetricsUsecase             *dashboard_usecase.DashboardMetricsUsecase
+	FetchLatestArticleUsecase           *fetch_latest_article_usecase.FetchLatestArticleUsecase
+	FetchArticleSummaryUsecase          *fetch_article_summary_usecase.FetchArticleSummaryUsecase
+	StreamArticleTagsUsecase            *stream_article_tags_usecase.StreamArticleTagsUsecase
 
 	// Internal API gateway (service-to-service)
 	InternalArticleGateway              *internal_article_gateway.Gateway
@@ -351,6 +358,25 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	// Internal article API gateway (for BackendInternalService)
 	internalArticleGatewayImpl := internal_article_gateway.NewGateway(altDBRepository)
 
+	// Dashboard metrics components
+	dashboardGatewayImpl := dashboard_gateway.NewDashboardGateway()
+	dashboardMetricsUsecase := dashboard_usecase.NewDashboardMetricsUsecase(dashboardGatewayImpl)
+
+	// Article summary components (for FetchArticleSummary)
+	articleSummaryGatewayImpl := article_summary_gateway.NewGateway(altDBRepository)
+	fetchArticleSummaryUsecase := fetch_article_summary_usecase.NewFetchArticleSummaryUsecase(articleSummaryGatewayImpl)
+
+	// Latest article components (for FetchRandomFeed)
+	latestArticleGatewayImpl := latest_article_gateway.NewGateway(altDBRepository)
+	fetchLatestArticleUsecase := fetch_latest_article_usecase.NewFetchLatestArticleUsecase(latestArticleGatewayImpl)
+
+	// Stream article tags components (cached check + on-the-fly generation)
+	cachedArticleTagsGatewayImpl := cached_article_tags_gateway.NewGateway(altDBRepository)
+	streamArticleTagsUsecase := stream_article_tags_usecase.NewStreamArticleTagsUsecase(
+		cachedArticleTagsGatewayImpl,
+		fetchArticleTagsGatewayImpl,
+	)
+
 	// Subscription components
 	subscriptionGatewayImpl := subscription_gateway.NewSubscriptionGateway(pool)
 	listSubscriptionsUsecase := subscription_usecase.NewListSubscriptionsUsecase(subscriptionGatewayImpl)
@@ -369,13 +395,11 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		// Drivers
 		KratosClient: kratosClientImpl,
 
-		// Gateways
-		RobotsTxtGateway:            robotsTxtGatewayImpl,
-		FetchArticleGateway:         fetchArticleGatewayImpl,
-		RagIntegration:              ragAdapterImpl,
-		RagConnectClient:            ragConnectClient,
-		MorningLetterConnectGateway: morningLetterConnectGateway,
-		EventPublisher:              eventPublisherGatewayImpl,
+		// Ports
+		RagIntegration: ragAdapterImpl,
+		RagConnectClient: ragConnectClient,
+		StreamChatPort:   morningLetterConnectGateway,
+		EventPublisher:   eventPublisherGatewayImpl,
 
 		// Usecases
 		FetchSingleFeedUsecase:              fetchSingleFeedUsecase,
@@ -422,8 +446,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		SubscribeUsecase:                    subscribeUsecase,
 		UnsubscribeUsecase:                  unsubscribeUsecase,
 
-		// Gateways exposed for handler use (on-the-fly tag generation)
-		FetchArticleTagsGateway:             fetchArticleTagsGatewayImpl,
+		DashboardMetricsUsecase:             dashboardMetricsUsecase,
+		FetchLatestArticleUsecase:           fetchLatestArticleUsecase,
+		FetchArticleSummaryUsecase:          fetchArticleSummaryUsecase,
+		StreamArticleTagsUsecase:            streamArticleTagsUsecase,
 
 		// Internal API gateway
 		InternalArticleGateway:              internalArticleGatewayImpl,
