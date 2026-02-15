@@ -1,6 +1,6 @@
 # Tag Generator
 
-_Last reviewed: January 22, 2026_
+_Last reviewed: February 15, 2026_
 
 **Location:** `tag-generator/app`
 
@@ -44,7 +44,7 @@ flowchart TD
         LogConfig[logging_config.py]
     end
 
-    Postgres[(PostgreSQL)]
+    AltBackend["alt-backend\n(Internal API)"]
     Recap[recap-worker]
     Search[search-indexer]
 
@@ -53,14 +53,14 @@ flowchart TD
     Scheduler --> BatchProc
     BatchProc --> CursorMgr
     BatchProc --> Fetcher
-    Fetcher --> Extractor --> Cascade --> Inserter --> Postgres
+    Fetcher --> AltBackend
+    Extractor --> Cascade --> Inserter --> AltBackend
+    Fetcher --> Extractor
     BatchProc --> HealthMon
     ArticleProc --> Extractor
     ArticleProc --> Inserter
     API --> ArticleProc
     BatchAPI --> Fetcher
-    Postgres --> Recap
-    Postgres --> Search
     OTel --> LogConfig
 ```
 
@@ -85,6 +85,10 @@ tag-generator/app/
 │   ├── health_monitor.py       # HealthMonitor
 │   ├── cascade.py              # CascadeController
 │   ├── database.py             # DatabaseManager
+│   ├── driver/
+│   │   ├── connect_client_factory.py   # Connect-RPC クライアントファクトリ
+│   │   ├── connect_article_fetcher.py  # ArticleFetcher (API モード)
+│   │   └── connect_tag_inserter.py     # TagInserter (API モード)
 │   ├── stream_consumer.py      # StreamConsumer (Redis Streams)
 │   ├── stream_event_handler.py # TagGeneratorEventHandler
 │   ├── otel.py                 # OpenTelemetry Provider
@@ -118,6 +122,14 @@ tag-generator/app/
         ├── test_tag_generator_logging.py
         └── test_sanitized_tag_extraction.py
 ```
+
+## Data Access Mode (ADR-000241)
+
+`service.py` がサービス起動時に `BACKEND_API_URL` 環境変数を検出し、自動的にモードを切り替え:
+- **API モード**: `ConnectArticleFetcher` + `ConnectTagInserter` が Connect protocol (HTTP/1.1 + JSON) で alt-backend Internal API を呼び出し。`_NullDatabaseManager` により DB 接続不要
+- **Legacy DB モード**: 従来の `ArticleFetcher` + `TagInserter` が PostgreSQL 直接アクセス
+
+API モードでは httpx を使い、Proto コード生成なしで Connect protocol を直接呼び出す。
 
 ## Redis Streams Integration
 
@@ -194,12 +206,11 @@ else:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 9400 | サービスポート |
-| `DB_HOST` | db | PostgreSQL ホスト |
-| `DB_PORT` | 5432 | PostgreSQL ポート |
-| `DB_NAME` | - | データベース名 |
-| `DB_TAG_GENERATOR_USER` | - | DB ユーザー |
-| `DB_TAG_GENERATOR_PASSWORD_FILE` | - | DB パスワードファイル |
+| `BACKEND_API_URL` | - | alt-backend Internal API URL (設定時は API モード) |
+| `SERVICE_TOKEN_FILE` | - | サービス認証トークンファイル |
 | `SERVICE_SECRET_FILE` | - | サービス認証シークレット |
+
+> **削除された変数** (ADR-000241 Phase 4 で廃止): `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_TAG_GENERATOR_USER`, `DB_TAG_GENERATOR_PASSWORD_FILE`
 
 ### Processing Settings
 
@@ -300,6 +311,7 @@ dependencies = [
     "nh3>=0.2.18",                   # HTML sanitizer
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
+    "httpx>=0.27.0",                 # Connect protocol client (ADR-000241)
     "aiohttp>=3.9.0",
     "redis>=5.0.0",                  # Redis Streams consumer
     "PyJWT>=2.8.0",

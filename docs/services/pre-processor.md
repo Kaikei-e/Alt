@@ -1,6 +1,6 @@
 # Pre-processor
 
-_Last reviewed: January 22, 2026_
+_Last reviewed: February 15, 2026_
 
 **Location:** `pre-processor/app`
 
@@ -20,7 +20,7 @@ _Last reviewed: January 22, 2026_
 | HTTP API layer | `handler/summarize_handler.go`, `handler/health_handler.go`, Echo middleware and request logging. |
 | Connect-RPC layer | `connect/v2/server.go`, `connect/v2/preprocessor/handler.go`, HTTP/2 with h2c for internal RPC. |
 | Redis Streams consumer | `consumer/redis_consumer.go`, `consumer/event_handler.go`, consumer group pattern with auto-claiming. |
-| Repository + driver | `repository/*`, `driver/*` handle Postgres (`pgxpool`) and news-creator HTTP calls, including `summarize_job_queue` access and `ArticleSummarizerAPIClient`/`StreamArticleSummarizerAPIClient`. |
+| Repository + driver | `driver/backend_api/` (Connect-RPC client for articles, feeds, summaries via alt-backend)、`driver/*` (Postgres for job queue + Inoreader tables)、`repository/*` (news-creator HTTP calls, `summarize_job_queue` access, `ArticleSummarizerAPIClient`/`StreamArticleSummarizerAPIClient`). |
 | Background orchestration | `handler/job_handler.go` launches summarization, quality check, article sync, and queue worker loops; `service/*` implements the business logic. |
 | External clients | `repository/external_api_repository.go` wraps `news-creator`, `alt-backend`, and `qualitychecker`, while `service/http_client_factory.go` + `utils/http_client_manager.go` centralize HTTP configuration and optional Envoy routing. |
 | Health & metrics | `service/health_checker.go` vets `news-creator` before jobs run; `service/health_metrics.go` keeps SLA/error rate counters for internal diagnostics. |
@@ -78,16 +78,19 @@ flowchart TB
     end
 
     subgraph DataLayer["Data Layer"]
-        Postgres[(Postgres)]
+        AltBackendAPI["alt-backend\n(Internal API :9101)"]
+        Postgres[(Postgres\njob queue + inoreader)]
     end
 
     %% HTTP flow
-    Handler -->|fetch/save| Postgres
+    Handler -->|articles/feeds/summaries| AltBackendAPI
+    Handler -->|job queue| Postgres
     Handler -->|queue job| Queue
     Handler -->|LLM calls| NewsCreator
 
     %% Connect-RPC flow
-    ConnectHandler -->|fetch/save| Postgres
+    ConnectHandler -->|articles/feeds/summaries| AltBackendAPI
+    ConnectHandler -->|job queue| Postgres
     ConnectHandler -->|queue job| Queue
     ConnectHandler -->|LLM calls| NewsCreator
 
@@ -103,7 +106,8 @@ flowchart TB
     ArticleSummarizer -->|LLM calls| NewsCreator
     QualityChecker -->|fetch/delete| Postgres
     QualityChecker -->|score| NewsCreator
-    ArticleSync -->|sanitize & save| Postgres
+    ArticleSync -->|inoreader tables| Postgres
+    ArticleSync -->|articles/summaries| AltBackendAPI
     ArticleSync -->|system user| AltBackend
 
     %% Health gating
@@ -283,9 +287,17 @@ Short articles trigger a Japanese placeholder summary inside `ArticleSummarizerS
 - Adds the `system` user (cached from `alt-backend`'s `/v1/internal/system-user`) before calling `articleRepo.UpsertArticles`.
 - Logs every decision so operators can trace why an article was skipped.
 
+## Data Access Mode (ADR-000241)
+
+`bootstrap/wire.go` が `BACKEND_API_URL` 環境変数で動作モードを自動判定:
+- **API モード**: `driver/backend_api/` の Connect-RPC クライアントが articles, feeds, article_summaries を alt-backend Internal API 経由で操作。`readSecret()` ヘルパーで Docker Secrets からトークン読み込み
+- **Legacy DB モード** (未設定): 従来の PostgreSQL 直接アクセス
+
+**注意**: API モードでも `summarize_job_queue` と `inoreader_articles` テーブルへの DB 直接アクセスは維持。これらは pre-processor 固有のテーブルであり alt-backend の管轄外 (ADR-000244 参照)。
+
 ## Dependencies & health gating
 
-- **Postgres** hosts `articles`, `article_summaries`, and `summarize_job_queue`. Repositories live under `repository/` and rely on `driver/db_*` helpers.
+- **Postgres** hosts `summarize_job_queue` and Inoreader テーブル (`inoreader_articles` 等)。articles, feeds, article_summaries は `BACKEND_API_URL` 設定時に alt-backend Internal API 経由でアクセス。Repositories live under `repository/` and rely on `driver/db_*` helpers.
 - **news-creator** (`NEWS_CREATOR_HOST`, default `http://news-creator:11434`): summarization (`/api/v1/summarize`), streaming, and quality scoring (`/api/generate`). `HealthChecker` polls `/health`, requires `models` array, and gates job startup.
 - **alt-backend** (`ALT_BACKEND_HOST`, default `http://alt-backend:8080`) only for `externalAPIRepo.GetSystemUserID`.
 - **Redis Streams** (`REDIS_STREAMS_URL`, default `redis://redis-streams:6379`): event-driven article processing when `CONSUMER_ENABLED=true`.
@@ -304,6 +316,8 @@ Short articles trigger a Japanese placeholder summary inside `ArticleSummarizerS
 | `NEWS_CREATOR_HOST`, `NEWS_CREATOR_API_PATH`, `NEWS_CREATOR_MODEL`, `NEWS_CREATOR_TIMEOUT` | Target news-creator endpoints | `http://news-creator:11434`, `/api/v1/summarize`, `gemma3:4b`, `600s`. |
 | `SUMMARIZE_QUEUE_WORKER_INTERVAL`, `SUMMARIZE_QUEUE_MAX_RETRIES`, `SUMMARIZE_QUEUE_POLLING_INTERVAL` | Tuning for the queue worker loop and retry accounting (`max_retries` populates `summarize_job_queue`). | `10s`, `3`, `5s`. |
 | `ALT_BACKEND_HOST`, `ALT_BACKEND_TIMEOUT` | Source for the cached system user | `http://alt-backend:8080`, `10s`. |
+| `BACKEND_API_URL` | alt-backend Internal API URL (設定時は API モード) | - |
+| `SERVICE_TOKEN_FILE` | サービス認証トークンファイル (Docker Secrets) | - |
 | `REDIS_STREAMS_URL` | Redis connection URL for event consumer | `redis://redis-streams:6379` |
 | `CONSUMER_GROUP` | Consumer group name for Redis Streams | `pre-processor-group` |
 | `CONSUMER_NAME` | Consumer instance name within the group | `pre-processor-1` |

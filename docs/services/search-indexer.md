@@ -1,6 +1,6 @@
 # Search Indexer
 
-_Last reviewed: January 13, 2026_
+_Last reviewed: February 15, 2026_
 
 **Location:** `search-indexer/app`
 
@@ -13,7 +13,7 @@ _Last reviewed: January 13, 2026_
 
 | Layer | Component |
 | --- | --- |
-| Driver | `driver/database_driver.go`, `driver/meilisearch_driver.go` - Postgres + Meilisearch 接続、リトライ、ヘルスチェック、コネクションプール |
+| Driver | `driver/backend_api/client.go` (Connect-RPC via alt-backend)、`driver/meilisearch_driver.go` (Meilisearch 接続)。`BACKEND_API_URL` 未設定時は `driver/database_driver.go` にフォールバック (Legacy DB モード) |
 | Gateway | `gateway/article_repository_gateway.go` (バッチ取得)、`gateway/search_engine_gateway.go` (インデックス設定) |
 | Usecases | `IndexArticlesUsecase` (インデックスループ)、`SearchArticlesUsecase` (クエリ処理) |
 | Server | `main.go` - `runIndexLoop` + `rest.SearchArticles` オーケストレーション |
@@ -21,14 +21,16 @@ _Last reviewed: January 13, 2026_
 
 ```mermaid
 flowchart LR
-    Postgres[(PostgreSQL)]
+    AltBackend["alt-backend\n(Internal API :9101)"]
     Loop((runIndexLoop))
     Meili[(Meilisearch `articles`)]
     REST[REST :9300]
     RPC[Connect-RPC :9301]
+    Redis[(Redis Streams)]
     Backend["alt-backend"]
 
-    Postgres --> Loop --> Meili
+    AltBackend -->|Connect-RPC| Loop --> Meili
+    Redis -->|Fat Events| Loop
     REST -->|/v1/search| Meili
     RPC -->|SearchService| Meili
     Backend --> REST
@@ -54,22 +56,31 @@ flowchart LR
 - 失敗時は `INDEX_RETRY_INTERVAL` でリトライ
 - 新記事なしの場合は `INDEX_INTERVAL` (1m) スリープ
 
+## Data Access Mode (ADR-000241)
+
+`BACKEND_API_URL` 環境変数で動作モードを自動判定:
+- **API モード** (`BACKEND_API_URL=http://alt-backend:9101`): `driver/backend_api/client.go` で Connect-RPC 経由のデータ取得。`SERVICE_TOKEN_FILE` で認証
+- **Legacy DB モード** (未設定): `driver/database_driver.go` で PostgreSQL 直接接続
+
+### Fat Events
+`consumer/event_handler.go` で `ArticleCreated` イベントの Fat Events を処理:
+- **Fat Event** (content + tags 含有): API/DB 呼び出し不要で直接インデックス
+- **Thin Event** (ID のみ): バッファリング後にバッチ API 呼び出しでデータ取得
+
 ## Configuration & Env
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `BACKEND_API_URL` | - | alt-backend Internal API URL (設定時は API モード) |
+| `SERVICE_TOKEN_FILE` | - | サービス認証トークンファイル |
 | `MEILISEARCH_HOST` | - | Meilisearch ホスト (必須) |
 | `MEILISEARCH_API_KEY_FILE` | - | Meilisearch API キーファイル |
 | `MEILI_MASTER_KEY_FILE` | - | Meilisearch マスターキーファイル |
-| `DB_HOST` | db | PostgreSQL ホスト |
-| `DB_PORT` | 5432 | PostgreSQL ポート |
-| `DB_NAME` | - | データベース名 |
-| `SEARCH_INDEXER_DB_USER` | - | DB ユーザー |
-| `SEARCH_INDEXER_DB_PASSWORD_FILE` | - | DB パスワードファイル |
-| `DB_SSL_MODE` | prefer | SSL モード |
 | `INDEX_BATCH_SIZE` | 200 | バッチサイズ |
 | `INDEX_INTERVAL` | 60s | インデックス間隔 |
 | `INDEX_RETRY_INTERVAL` | 60s | リトライ間隔 |
+
+> **削除された変数** (ADR-000241 Phase 4 で廃止): `DB_HOST`, `DB_PORT`, `DB_NAME`, `SEARCH_INDEXER_DB_USER`, `SEARCH_INDEXER_DB_PASSWORD_FILE`, `DB_SSL_MODE`
 
 ## Testing & Tooling
 

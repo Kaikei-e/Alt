@@ -1,6 +1,6 @@
 # Alt Backend
 
-_Last reviewed: January 22, 2026_
+_Last reviewed: February 15, 2026_
 
 **Location:** `alt-backend/app`
 
@@ -97,6 +97,17 @@ Connect-RPC provides a modern, type-safe RPC layer for service-to-service commun
 - **Proto**: `gen/proto/alt/recap/v2`
 - Operations: `GetWeeklyRecap`, `GetRecapArticles` - weekly summary and article aggregation with optional cluster draft headers
 
+### BackendInternalService (Internal API)
+- **Handler**: `connect/v2/internal/handler.go`
+- **Proto**: `proto/services/backend/v1/internal.proto`
+- **Authentication**: `service_auth_interceptor` — `X-Service-Token` ヘッダーによる共有シークレット検証
+- **Purpose**: search-indexer, pre-processor, tag-generator への内部データアクセス API (ADR-000241)
+- **Architecture**: Handler → Port (`port/internal_*_port/`) → Gateway (`gateway/internal_article_gateway/`) → Driver (`driver/alt_db/`)
+- Phase 1 (search-indexer): `ListArticlesWithTags`, `ListArticlesWithTagsForward`, `ListDeletedArticles`, `GetLatestArticleTimestamp`, `GetArticleByID`
+- Phase 2 (pre-processor): `CheckArticleExists`, `CreateArticle`, `SaveArticleSummary`, `GetArticleContent`, `GetFeedID`, `ListFeedURLs`
+- Phase 3 (tag-generator): `UpsertArticleTags`, `BatchUpsertArticleTags`, `ListUntaggedArticles`
+- **HandlerOption pattern**: `WithPhase2Ports`, `WithPhase3Ports` で Phase ごとに Port を注入
+
 ## Background Jobs
 - `job.HourlyJobRunner` (`job/job_runner.go:13`) loads RSS URLs from Postgres, spins a host-aware rate limiter (5s per host), and loops every hour, calling `CollectMultipleFeeds` (`job/feed_collector.go:18`) to validate, rate-limit, and parse feeds before persisting them through `AltDBRepository`.
 - `job.DailyScrapingPolicyJobRunner` (`job/daily_scraping_policy_job.go:16`) immediately materializes domains from `feed_links`, refreshes robots.txt, and repeats every 24 hours to keep scraping rules up to date.
@@ -149,7 +160,7 @@ Connect-RPC provides a modern, type-safe RPC layer for service-to-service commun
 flowchart TB
     subgraph Clients ["🌐 Clients"]
         direction LR
-        Browser["🖥️ Browser"] ~~~ Services["🔗 Services"]
+        Browser["🖥️ Browser"] ~~~ Services["🔗 Services\n(search-indexer, tag-generator, pre-processor)"]
     end
 
     subgraph Backend ["⚙️ Alt Backend"]

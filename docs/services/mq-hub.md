@@ -1,6 +1,6 @@
 # MQ Hub
 
-_Last reviewed: January 22, 2026_
+_Last reviewed: February 15, 2026_
 
 **Location:** `mq-hub`
 
@@ -58,13 +58,13 @@ flowchart TB
 
 ## Event Types
 
-| Event | Producer | Consumers |
-|-------|----------|-----------|
-| ArticleCreated | alt-backend | pre-processor, search-indexer, tag-generator |
-| SummarizeRequested | alt-backend | pre-processor |
-| ArticleSummarized | pre-processor | search-indexer |
-| TagsGenerated | tag-generator | search-indexer |
-| IndexArticle | search-indexer | search-indexer |
+| Event | Producer | Consumers | Note |
+|-------|----------|-----------|------|
+| ArticleCreated | alt-backend | pre-processor, search-indexer, tag-generator | Fat Event 対応 (下記参照) |
+| SummarizeRequested | alt-backend | pre-processor | |
+| ArticleSummarized | pre-processor | search-indexer | |
+| TagsGenerated | tag-generator | search-indexer | |
+| IndexArticle | search-indexer | search-indexer | |
 
 ## Event Structure
 
@@ -78,6 +78,14 @@ flowchart TB
 | `CreatedAt` | time.Time | イベント作成時刻 |
 | `Payload` | []byte | イベント固有データ (JSON or protobuf) |
 | `Metadata` | map[string]string | 追加コンテキスト (トレースID, correlation ID 等) |
+
+### Fat Events (ADR-000241)
+
+`ArticleCreated` イベントは Fat Event としてペイロードに記事データを含めることが可能:
+- **Fat Event**: `content`, `tags` フィールドを含有。コンシューマーは追加の API/DB 呼び出し不要で直接処理可能
+- **Thin Event**: `article_id` のみ。コンシューマーが別途データを取得
+
+Fat Events により search-indexer は alt-backend への API 呼び出しなしでインデックス更新可能。
 
 ## Stream Keys
 

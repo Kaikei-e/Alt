@@ -1,6 +1,6 @@
 # Alt Platform Microservices
 
-_Last reviewed: January 13, 2026_
+_Last reviewed: February 15, 2026_
 
 ## Overview
 
@@ -169,10 +169,10 @@ flowchart TB
     alt-backend --> db & mq-hub & auth-hub
     auth-hub --> kratos --> kratos-db
 
-    %% Worker connections
-    pre-processor --> db & redis-streams
-    search-indexer --> db & meilisearch
-    tag-generator --> db & redis-streams
+    %% Worker connections (ADR-000241: via alt-backend Internal API)
+    search-indexer --> alt-backend & meilisearch
+    tag-generator --> alt-backend & redis-streams
+    pre-processor --> db & alt-backend & redis-streams
     news-creator --> redis-cache
     mq-hub --> redis-streams
 
@@ -375,7 +375,7 @@ curl http://localhost:9500/health              # mq-hub
 | rag_db_password | rag-orchestrator, rag-db |
 | meili_master_key | meilisearch, search-indexer |
 | clickhouse_password | clickhouse, rask-log-aggregator |
-| service_secret | alt-backend, tag-generator, news-creator, recap-worker |
+| service_secret | alt-backend, search-indexer, tag-generator, pre-processor, news-creator, recap-worker |
 | auth_shared_secret | nginx, auth-hub, alt-backend |
 | backend_token_secret | auth-hub, alt-backend, alt-butterfly-facade |
 | csrf_secret | auth-hub, alt-backend |
@@ -419,5 +419,6 @@ curl http://localhost:9500/health              # mq-hub
 - 認証は auth-hub 経由の X-Alt-* ヘッダーまたは JWT トークン
 - サービス間認証は `X-Service-Token` + `SERVICE_SECRET`
 - イベント駆動は Redis Streams + mq-hub
+- alt-backend は alt-db の唯一のデータオーナー。search-indexer, tag-generator, pre-processor は Connect-RPC Internal API (:9101) 経由でデータアクセス (ADR-000241)
 - GPU 要件: news-creator, recap-subworker (NVIDIA GPU)
 - ログ集約は rask-log-forwarder → rask-log-aggregator → ClickHouse

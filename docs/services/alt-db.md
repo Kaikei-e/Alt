@@ -15,11 +15,11 @@ PostgreSQL 17 database serving as the central data store for RSS feeds, articles
 
 | Service | DB User | Access Purpose |
 |---------|---------|----------------|
-| alt-backend | `DB_USER` | Core API operations |
-| pre-processor | `PRE_PROCESSOR_DB_USER` | Article processing |
+| alt-backend | `DB_USER` | Core API operations (唯一のデータオーナー) |
+| pre-processor | `PRE_PROCESSOR_DB_USER` | Job queue (`summarize_job_queue`) + Inoreader テーブルのみ |
 | pre-processor-sidecar | `PRE_PROCESSOR_SIDECAR_DB_USER` | RSS/Inoreader sync |
-| search-indexer | `SEARCH_INDEXER_DB_USER` | Index data retrieval |
-| tag-generator | `DB_TAG_GENERATOR_USER` | Tag management |
+
+> **Note:** search-indexer, tag-generator は ADR-000241 により alt-backend Internal API (:9101) 経由でアクセス。DB 直接接続は廃止。
 
 ## ER Diagram
 
