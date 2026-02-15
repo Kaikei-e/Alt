@@ -81,6 +81,71 @@ func TestNewDatabaseConfig(t *testing.T) {
 	assert.Equal(t, "5432", config.Port) // デフォルト値
 }
 
+func TestNewDatabaseConfigWithPrefix(t *testing.T) {
+	os.Clearenv()
+
+	_ = os.Setenv("PP_DB_HOST", "pre-processor-db")
+	_ = os.Setenv("PP_DB_PORT", "5437")
+	_ = os.Setenv("PP_DB_NAME", "pre_processor")
+	_ = os.Setenv("PP_DB_USER", "pp_user")
+	_ = os.Setenv("PP_DB_PASSWORD", "pp_secret")
+
+	defer func() {
+		os.Clearenv()
+	}()
+
+	config := NewDatabaseConfigWithPrefix("PP_")
+
+	assert.Equal(t, "pre-processor-db", config.Host)
+	assert.Equal(t, "5437", config.Port)
+	assert.Equal(t, "pre_processor", config.DBName)
+	assert.Equal(t, "pp_user", config.User)
+	assert.Equal(t, "pp_secret", config.Password)
+	assert.Equal(t, "disable", config.SSL.Mode)
+}
+
+func TestNewDatabaseConfigWithPrefix_PasswordFile(t *testing.T) {
+	os.Clearenv()
+
+	// Create a temp file for password
+	tmpFile, err := os.CreateTemp("", "pp_password")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	_, _ = tmpFile.WriteString("secret_from_file\n")
+	_ = tmpFile.Close()
+
+	_ = os.Setenv("PP_DB_HOST", "ppdb")
+	_ = os.Setenv("PP_DB_PASSWORD_FILE", tmpFile.Name())
+
+	defer func() {
+		os.Clearenv()
+	}()
+
+	config := NewDatabaseConfigWithPrefix("PP_")
+
+	assert.Equal(t, "ppdb", config.Host)
+	assert.Equal(t, "secret_from_file", config.Password)
+}
+
+func TestNewDatabaseConfigWithPrefix_Defaults(t *testing.T) {
+	os.Clearenv()
+
+	defer func() {
+		os.Clearenv()
+	}()
+
+	config := NewDatabaseConfigWithPrefix("PP_")
+
+	assert.Equal(t, "localhost", config.Host)
+	assert.Equal(t, "5432", config.Port)
+	assert.Equal(t, "postgres", config.DBName)
+	assert.Equal(t, "postgres", config.User)
+	assert.Equal(t, "disable", config.SSL.Mode)
+}
+
 func TestDatabaseConfig_SSLValidation(t *testing.T) {
 	// Create temporary certificate file for testing
 	tempCertFile, err := os.CreateTemp("", "test_ca.crt")

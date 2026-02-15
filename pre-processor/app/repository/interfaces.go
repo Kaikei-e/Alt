@@ -32,8 +32,8 @@ type FeedRepository interface {
 type SummaryRepository interface {
 	Create(ctx context.Context, summary *domain.ArticleSummary) error
 	FindArticlesWithSummaries(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.ArticleWithSummary, *domain.Cursor, error)
-	Delete(ctx context.Context, summaryID string) error
-	Exists(ctx context.Context, summaryID string) (bool, error)
+	Delete(ctx context.Context, articleID string) error
+	Exists(ctx context.Context, articleID string) (bool, error)
 }
 
 // ExternalAPIRepository handles external API calls.

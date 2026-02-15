@@ -451,7 +451,7 @@ func TestJudgeArticleQuality(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := JudgeArticleQuality(context.Background(), nil, tc.article)
+			err := JudgeArticleQuality(context.Background(), nil, nil, tc.article)
 			if tc.expectedError {
 				require.Error(t, err, tc.description)
 			} else {
@@ -485,8 +485,8 @@ func TestJudgeArticleQualityScoring(t *testing.T) {
 		SummaryJapanese: "テスト要約",
 	}
 
-	// High score should not attempt database operation, so nil dbPool is OK
-	err := JudgeArticleQuality(context.Background(), nil, article)
+	// High score should not attempt database operation, so nil repos are OK
+	err := JudgeArticleQuality(context.Background(), nil, nil, article)
 	require.NoError(t, err, "High quality score should not require database operation")
 }
 
@@ -499,16 +499,16 @@ func TestRemoveLowScoreSummary(t *testing.T) {
 	}
 
 	t.Run("nil score returns error", func(t *testing.T) {
-		err := RemoveLowScoreSummary(context.Background(), nil, article, nil)
+		err := RemoveLowScoreSummary(context.Background(), nil, nil, article, nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "received nil score")
 	})
 
-	t.Run("nil dbPool returns error", func(t *testing.T) {
+	t.Run("nil summaryRepo returns error", func(t *testing.T) {
 		score := &Score{Overall: 10} // Low score
-		err := RemoveLowScoreSummary(context.Background(), nil, article, score)
+		err := RemoveLowScoreSummary(context.Background(), nil, nil, article, score)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "database pool is nil")
+		assert.Contains(t, err.Error(), "summary repository is nil")
 	})
 }
 
@@ -687,7 +687,7 @@ func TestJudgeArticleQualityConnectionError(t *testing.T) {
 	defer cancel()
 
 	// JudgeArticleQuality should return an error without deleting data
-	err := JudgeArticleQuality(ctx, nil, article)
+	err := JudgeArticleQuality(ctx, nil, nil, article)
 	require.Error(t, err, "Should return error on connection failure")
 	assert.Contains(t, err.Error(), "failed to connect to news-creator service", "Error should indicate connection failure")
 }
@@ -722,7 +722,7 @@ func TestJudgeArticleQualityTimeoutError(t *testing.T) {
 	defer cancel()
 
 	// JudgeArticleQuality should return an error without deleting data
-	err := JudgeArticleQuality(ctx, nil, article)
+	err := JudgeArticleQuality(ctx, nil, nil, article)
 	require.Error(t, err, "Should return error on timeout")
 	assert.Contains(t, err.Error(), "failed to connect to news-creator service", "Error should indicate connection failure")
 }
@@ -742,7 +742,7 @@ func TestJudgeArticleQualityContentTooLong(t *testing.T) {
 	}
 
 	// Should skip quality check without error (content too long)
-	err := JudgeArticleQuality(context.Background(), nil, article)
+	err := JudgeArticleQuality(context.Background(), nil, nil, article)
 	require.NoError(t, err, "Should skip quality check for long content without error")
 }
 
@@ -770,7 +770,7 @@ func TestJudgeArticleQualityContentWithinLimit(t *testing.T) {
 	}
 
 	// Should proceed with quality check
-	err := JudgeArticleQuality(context.Background(), nil, article)
+	err := JudgeArticleQuality(context.Background(), nil, nil, article)
 	require.NoError(t, err, "Should proceed with quality check for normal content")
 }
 
@@ -832,7 +832,7 @@ func TestJudgeArticleQualityContentBoundary(t *testing.T) {
 					SummaryJapanese: string(summary),
 				}
 
-				err := JudgeArticleQuality(context.Background(), nil, article)
+				err := JudgeArticleQuality(context.Background(), nil, nil, article)
 				require.NoError(t, err, tc.description)
 			} else {
 				// For proceed cases, we need a mock server
@@ -864,7 +864,7 @@ func TestJudgeArticleQualityContentBoundary(t *testing.T) {
 					SummaryJapanese: string(summary),
 				}
 
-				err := JudgeArticleQuality(context.Background(), nil, article)
+				err := JudgeArticleQuality(context.Background(), nil, nil, article)
 				require.NoError(t, err, tc.description)
 			}
 		})
@@ -899,14 +899,14 @@ func TestJudgeArticleQualityLowScoreStillDeletes(t *testing.T) {
 		SummaryJapanese: "テスト要約",
 	}
 
-	// Use nil dbPool to verify that JudgeArticleQuality attempts to call RemoveLowScoreSummary
-	// RemoveLowScoreSummary will return an error because dbPool is nil, but this confirms
+	// Use nil summaryRepo to verify that JudgeArticleQuality attempts to call RemoveLowScoreSummary
+	// RemoveLowScoreSummary will return an error because summaryRepo is nil, but this confirms
 	// that the low score was detected and deletion was attempted
 	ctx := context.Background()
-	err := JudgeArticleQuality(ctx, nil, article)
-	// Should attempt to delete (will fail because dbPool is nil, but that's expected)
-	require.Error(t, err, "Should return error when trying to delete with nil dbPool")
-	// The error should be about database pool being nil, not connection
-	assert.Contains(t, err.Error(), "database pool is nil", "Error should indicate database pool is nil")
+	err := JudgeArticleQuality(ctx, nil, nil, article)
+	// Should attempt to delete (will fail because summaryRepo is nil, but that's expected)
+	require.Error(t, err, "Should return error when trying to delete with nil summaryRepo")
+	// The error should be about summary repository being nil, not connection
+	assert.Contains(t, err.Error(), "summary repository is nil", "Error should indicate summary repository is nil")
 	assert.NotContains(t, err.Error(), "failed to connect to news-creator service", "Error should not be about connection")
 }

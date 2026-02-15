@@ -100,10 +100,11 @@ func TestQualityCheckerService_CheckQuality(t *testing.T) {
 			// Setup test expectations
 			tc.setupMocks(mockSummaryRepo)
 
+			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
 			serviceInstance := service.NewQualityCheckerService(
 				mockSummaryRepo,
+				mockArticleRepo,
 				mockAPIRepo,
-				nil, // dbPool not needed for these tests
 				logger,
 			)
 
@@ -154,14 +155,14 @@ func TestQualityCheckerService_ProcessLowQualityArticles(t *testing.T) {
 			description: "Should successfully delete low quality summaries",
 			articles:    lowQualityArticles,
 			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
-				// Expect deletion of both summaries
+				// Expect deletion of both articles' summaries (by article ID)
 				mockSummaryRepo.EXPECT().
-					Delete(gomock.Any(), "summary1").
+					Delete(gomock.Any(), "article1").
 					Return(nil).
 					Times(1)
 
 				mockSummaryRepo.EXPECT().
-					Delete(gomock.Any(), "summary2").
+					Delete(gomock.Any(), "article2").
 					Return(nil).
 					Times(1)
 			},
@@ -180,7 +181,7 @@ func TestQualityCheckerService_ProcessLowQualityArticles(t *testing.T) {
 			articles:    lowQualityArticles[:1], // Only first article
 			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
 				mockSummaryRepo.EXPECT().
-					Delete(gomock.Any(), "summary1").
+					Delete(gomock.Any(), "article1").
 					Return(errors.New("delete operation failed")).
 					Times(1)
 			},
@@ -201,10 +202,11 @@ func TestQualityCheckerService_ProcessLowQualityArticles(t *testing.T) {
 			// Setup test expectations
 			tc.setupMocks(mockSummaryRepo)
 
+			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
 			serviceInstance := service.NewQualityCheckerService(
 				mockSummaryRepo,
+				mockArticleRepo,
 				mockAPIRepo,
-				nil, // dbPool not needed for these tests
 				logger,
 			)
 
@@ -244,10 +246,11 @@ func TestQualityCheckerService_ResetPagination(t *testing.T) {
 			mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
 			logger := slog.Default()
 
+			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
 			serviceInstance := service.NewQualityCheckerService(
 				mockSummaryRepo,
+				mockArticleRepo,
 				mockAPIRepo,
-				nil, // dbPool not needed for these tests
 				logger,
 			)
 
@@ -274,10 +277,11 @@ func TestQualityCheckerService_Interface_Compliance(t *testing.T) {
 	mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
 	logger := slog.Default()
 
+	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
 	serviceInstance := service.NewQualityCheckerService(
 		mockSummaryRepo,
+		mockArticleRepo,
 		mockAPIRepo,
-		nil,
 		logger,
 	)
 
@@ -294,10 +298,11 @@ func TestQualityCheckerService_Constructor(t *testing.T) {
 	mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
 	logger := slog.Default()
 
+	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
 	serviceInstance := service.NewQualityCheckerService(
 		mockSummaryRepo,
+		mockArticleRepo,
 		mockAPIRepo,
-		nil,
 		logger,
 	)
 
@@ -327,10 +332,11 @@ func TestQualityCheckerService_EdgeCases(t *testing.T) {
 			Return([]*domain.ArticleWithSummary{}, nil, nil).
 			Times(1)
 
+		mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
 		serviceInstance := service.NewQualityCheckerService(
 			mockSummaryRepo,
+			mockArticleRepo,
 			mockAPIRepo,
-			nil,
 			logger,
 		)
 
@@ -354,10 +360,11 @@ func TestQualityCheckerService_EdgeCases(t *testing.T) {
 			Return([]*domain.ArticleWithSummary{}, nil, nil).
 			Times(1)
 
+		mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
 		serviceInstance := service.NewQualityCheckerService(
 			mockSummaryRepo,
+			mockArticleRepo,
 			mockAPIRepo,
-			nil,
 			logger,
 		)
 

@@ -8,15 +8,13 @@ import (
 	"pre-processor/driver"
 	qualitychecker "pre-processor/quality-checker"
 	"pre-processor/repository"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // QualityCheckerService implementation.
 type qualityCheckerService struct {
 	summaryRepo repository.SummaryRepository
+	articleRepo repository.ArticleRepository
 	apiRepo     repository.ExternalAPIRepository
-	dbPool      *pgxpool.Pool
 	logger      *slog.Logger
 	cursor      *domain.Cursor
 }
@@ -24,14 +22,14 @@ type qualityCheckerService struct {
 // NewQualityCheckerService creates a new quality checker service.
 func NewQualityCheckerService(
 	summaryRepo repository.SummaryRepository,
+	articleRepo repository.ArticleRepository,
 	apiRepo repository.ExternalAPIRepository,
-	dbPool *pgxpool.Pool,
 	logger *slog.Logger,
 ) QualityCheckerService {
 	return &qualityCheckerService{
 		summaryRepo: summaryRepo,
+		articleRepo: articleRepo,
 		apiRepo:     apiRepo,
-		dbPool:      dbPool,
 		logger:      logger,
 		cursor:      &domain.Cursor{},
 	}
@@ -67,7 +65,7 @@ func (s *qualityCheckerService) CheckQuality(ctx context.Context, batchSize int)
 
 		// Use the actual LLM-based quality scoring from quality_judger.go
 		// JudgeArticleQuality handles scoring and removal of low-quality summaries
-		err := qualitychecker.JudgeArticleQuality(ctx, s.dbPool, driverArticle)
+		err := qualitychecker.JudgeArticleQuality(ctx, s.summaryRepo, s.articleRepo, driverArticle)
 		if err != nil {
 			s.logger.ErrorContext(ctx, "failed to process quality check with LLM", "article_id", articleWithSummary.ArticleID, "error", err)
 
@@ -78,7 +76,7 @@ func (s *qualityCheckerService) CheckQuality(ctx context.Context, batchSize int)
 		}
 
 		// Check if the summary was actually removed by verifying it still exists
-		stillExists, checkErr := s.summaryRepo.Exists(ctx, articleWithSummary.SummaryID)
+		stillExists, checkErr := s.summaryRepo.Exists(ctx, articleWithSummary.ArticleID)
 		if checkErr != nil {
 			s.logger.ErrorContext(ctx, "failed to check if summary still exists", "article_id", articleWithSummary.ArticleID, "error", checkErr)
 
@@ -132,18 +130,16 @@ func (s *qualityCheckerService) ProcessLowQualityArticles(ctx context.Context, a
 
 	// Remove summaries for low quality articles
 	for _, article := range articles {
-		if err := s.summaryRepo.Delete(ctx, article.SummaryID); err != nil {
+		if err := s.summaryRepo.Delete(ctx, article.ArticleID); err != nil {
 			s.logger.ErrorContext(ctx, "failed to delete low quality summary",
 				"article_id", article.ArticleID,
-				"summary_id", article.SummaryID,
 				"error", err)
 
 			return err
 		}
 
 		s.logger.InfoContext(ctx, "removed low quality summary",
-			"article_id", article.ArticleID,
-			"summary_id", article.SummaryID)
+			"article_id", article.ArticleID)
 	}
 
 	s.logger.InfoContext(ctx, "completed processing low quality articles", "removed_count", len(articles))

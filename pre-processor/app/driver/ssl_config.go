@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type DatabaseSSLConfig struct {
@@ -125,6 +126,35 @@ func (dc *DatabaseConfig) ValidateSSLConfig() error {
 		return fmt.Errorf("invalid SSL mode: %s", dc.SSL.Mode)
 	}
 	return nil
+}
+
+// NewDatabaseConfigWithPrefix creates a DatabaseConfig reading env vars with the given prefix.
+// For example, prefix "PP_" reads PP_DB_HOST, PP_DB_PORT, PP_DB_NAME, PP_DB_USER, PP_DB_PASSWORD.
+// Supports _FILE suffix for Docker Secrets (e.g. PP_DB_PASSWORD_FILE).
+func NewDatabaseConfigWithPrefix(prefix string) *DatabaseConfig {
+	password := getEnvOrDefault(prefix+"DB_PASSWORD", "")
+	if password == "" {
+		if filePath := os.Getenv(prefix + "DB_PASSWORD_FILE"); filePath != "" {
+			if content, err := os.ReadFile(filePath); err == nil {
+				password = strings.TrimSpace(string(content))
+			}
+		}
+	}
+
+	return &DatabaseConfig{
+		Host:     getEnvOrDefault(prefix+"DB_HOST", "localhost"),
+		Port:     getEnvOrDefault(prefix+"DB_PORT", "5432"),
+		User:     getEnvOrDefault(prefix+"DB_USER", "postgres"),
+		Password: password,
+		DBName:   getEnvOrDefault(prefix+"DB_NAME", "postgres"),
+		SSL: DatabaseSSLConfig{
+			Mode: "disable",
+		},
+		MaxConns:        getEnvAsIntOrDefault(prefix+"DB_MAX_CONNS", 10),
+		MinConns:        getEnvAsIntOrDefault(prefix+"DB_MIN_CONNS", 2),
+		MaxConnLifetime: getEnvOrDefault(prefix+"DB_MAX_CONN_LIFETIME", "1h"),
+		MaxConnIdleTime: getEnvOrDefault(prefix+"DB_MAX_CONN_IDLE_TIME", "30m"),
+	}
 }
 
 func getEnvAsIntOrDefault(key string, defaultValue int) int {

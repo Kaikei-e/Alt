@@ -42,16 +42,55 @@ type Dependencies struct {
 // BuildDependencies constructs all application dependencies.
 // Returns a cleanup function that should be deferred.
 func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) (*Dependencies, func(), error) {
-	// Initialize database (still required for job queue and quality checker)
-	dbPool, err := driver.Init(ctx)
-	if err != nil {
-		return nil, nil, err
+	// Initialize pre-processor-db (ADR-000246)
+	var ppDBPool *pgxpool.Pool
+	var ppDBPoolCleanup func()
+	if os.Getenv("PP_DB_HOST") != "" {
+		ppPool, err := driver.InitPreProcessorDB(ctx)
+		if err != nil {
+			log.Error("Failed to connect to pre-processor-db", "error", err)
+			return nil, nil, err
+		}
+		log.Info("Using dedicated pre-processor-db for job queue and inoreader tables")
+		ppDBPool = ppPool
+		ppDBPoolCleanup = func() { ppPool.Close() }
+	}
+
+	// Initialize alt-db connection (required for legacy DB mode)
+	var dbPool *pgxpool.Pool
+	if os.Getenv("BACKEND_API_URL") == "" {
+		// Legacy DB mode: alt-db required for article/summary repos
+		var err error
+		dbPool, err = driver.Init(ctx)
+		if err != nil {
+			if ppDBPoolCleanup != nil {
+				ppDBPoolCleanup()
+			}
+			return nil, nil, err
+		}
+		// If no dedicated pre-processor-db, fall back to alt-db
+		if ppDBPool == nil {
+			ppDBPool = dbPool
+		}
+	} else if ppDBPool == nil {
+		// API mode but no pre-processor-db: need alt-db for inoreader tables
+		var err error
+		dbPool, err = driver.Init(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		ppDBPool = dbPool
 	}
 
 	// Load application config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		dbPool.Close()
+		if dbPool != nil {
+			dbPool.Close()
+		}
+		if ppDBPoolCleanup != nil {
+			ppDBPoolCleanup()
+		}
 		return nil, nil, err
 	}
 
@@ -61,13 +100,13 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 
 	if backendAPIURL := os.Getenv("BACKEND_API_URL"); backendAPIURL != "" {
 		// API mode: use Connect-RPC client for article/feed/summary repos.
-		// DB is still required for job queue (Category C) and quality checker.
+		// ppDBPool used for FetchInoreaderArticles (lives in pre-processor-db)
 		serviceToken := readSecret("SERVICE_TOKEN")
 		log.Info("Using backend API driver for article/feed/summary repos",
 			"url", backendAPIURL,
 		)
 		client := backend_api.NewClient(backendAPIURL, serviceToken)
-		articleRepo = backend_api.NewArticleRepository(client, dbPool)
+		articleRepo = backend_api.NewArticleRepository(client, ppDBPool)
 		summaryRepo = backend_api.NewSummaryRepository(client)
 	} else {
 		// Legacy DB mode
@@ -77,11 +116,11 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	}
 
 	apiRepo := repository.NewExternalAPIRepository(cfg, log)
-	jobRepo := repository.NewSummarizeJobRepository(dbPool, log)
+	jobRepo := repository.NewSummarizeJobRepository(ppDBPool, log)
 
 	// Initialize services
 	articleSummarizerService := service.NewArticleSummarizerService(articleRepo, summaryRepo, apiRepo, log)
-	qualityCheckerService := service.NewQualityCheckerService(summaryRepo, apiRepo, dbPool, log)
+	qualityCheckerService := service.NewQualityCheckerService(summaryRepo, articleRepo, apiRepo, log)
 	healthCheckerService := service.NewHealthCheckerServiceWithFactory(cfg, cfg.NewsCreator.Host, log)
 	articleSyncService := service.NewArticleSyncService(articleRepo, apiRepo, log)
 	summarizeQueueWorker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, batchSize)
@@ -109,7 +148,12 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	redisConsumer := buildRedisConsumer(ctx, jobRepo, articleRepo, log)
 
 	cleanup := func() {
-		dbPool.Close()
+		if dbPool != nil {
+			dbPool.Close()
+		}
+		if ppDBPoolCleanup != nil {
+			ppDBPoolCleanup()
+		}
 	}
 
 	return &Dependencies{

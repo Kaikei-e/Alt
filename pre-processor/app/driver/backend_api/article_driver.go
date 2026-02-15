@@ -107,18 +107,66 @@ func (r *ArticleRepository) CheckExists(ctx context.Context, urls []string) (boo
 	return false, nil
 }
 
-// FindForSummarization finds articles that need summarization.
-// This operation requires direct DB access as it involves complex joins.
-// For API mode, we return empty results; summarization is triggered via events.
+// FindForSummarization finds articles that need summarization via the backend API.
 func (r *ArticleRepository) FindForSummarization(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error) {
-	// Not available via API - summarization is event-driven in API mode
-	return nil, nil, nil
+	protoReq := &backendv1.ListUnsummarizedArticlesRequest{
+		Limit: int32(limit),
+	}
+	if cursor != nil {
+		if cursor.LastCreatedAt != nil {
+			protoReq.LastCreatedAt = timestamppb.New(*cursor.LastCreatedAt)
+		}
+		protoReq.LastId = cursor.LastID
+	}
+
+	req := connect.NewRequest(protoReq)
+	r.client.addAuth(req)
+
+	resp, err := r.client.client.ListUnsummarizedArticles(ctx, req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("ListUnsummarizedArticles: %w", err)
+	}
+
+	articles := make([]*domain.Article, len(resp.Msg.Articles))
+	for i, a := range resp.Msg.Articles {
+		articles[i] = &domain.Article{
+			ID:      a.Id,
+			Title:   a.Title,
+			Content: a.Content,
+			URL:     a.Url,
+			UserID:  a.UserId,
+		}
+		if a.CreatedAt != nil {
+			articles[i].CreatedAt = a.CreatedAt.AsTime()
+		}
+	}
+
+	var nextCursor *domain.Cursor
+	if resp.Msg.NextId != "" {
+		nextCursor = &domain.Cursor{
+			LastID: resp.Msg.NextId,
+		}
+		if resp.Msg.NextCreatedAt != nil {
+			t := resp.Msg.NextCreatedAt.AsTime()
+			nextCursor.LastCreatedAt = &t
+		}
+	}
+
+	return articles, nextCursor, nil
 }
 
-// HasUnsummarizedArticles checks if there are articles without summaries.
-// In API mode, returns false as summarization is event-driven.
+// HasUnsummarizedArticles checks if there are articles without summaries via the backend API.
 func (r *ArticleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
-	return false, nil
+	protoReq := &backendv1.HasUnsummarizedArticlesRequest{}
+	req := connect.NewRequest(protoReq)
+	r.client.addAuth(req)
+
+	resp, err := r.client.client.HasUnsummarizedArticles(ctx, req)
+	if err != nil {
+		return false, fmt.Errorf("HasUnsummarizedArticles: %w", err)
+	}
+
+	return resp.Msg.HasUnsummarized, nil
 }
 
 // FindByID finds an article by its ID.

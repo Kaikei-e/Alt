@@ -100,63 +100,58 @@ func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, curso
 	return result, newCursor, nil
 }
 
-// Delete deletes an article summary.
-func (r *summaryRepository) Delete(ctx context.Context, summaryID string) error {
-	// Validate input
-	if summaryID == "" {
-		r.logger.ErrorContext(ctx, "summary ID cannot be empty")
-		return fmt.Errorf("summary ID cannot be empty")
+// Delete deletes an article summary by article ID.
+func (r *summaryRepository) Delete(ctx context.Context, articleID string) error {
+	if articleID == "" {
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
+		return fmt.Errorf("article ID cannot be empty")
 	}
 
-	r.logger.InfoContext(ctx, "deleting article summary", "summary_id", summaryID)
+	r.logger.InfoContext(ctx, "deleting article summary", "article_id", articleID)
 
-	// Check for nil database
 	if r.db == nil {
 		r.logger.ErrorContext(ctx, "database connection is nil")
 		return fmt.Errorf("failed to delete article summary: database connection is nil")
 	}
 
-	// GREEN PHASE: Minimal implementation - we'll need to add this to driver later
-	query := `DELETE FROM article_summaries WHERE id = $1`
+	query := `DELETE FROM article_summaries WHERE article_id = $1`
 
-	_, err := r.db.Exec(ctx, query, summaryID)
+	_, err := r.db.Exec(ctx, query, articleID)
 	if err != nil {
-		r.logger.ErrorContext(ctx, "failed to delete article summary", "error", err, "summary_id", summaryID)
+		r.logger.ErrorContext(ctx, "failed to delete article summary", "error", err, "article_id", articleID)
 		return fmt.Errorf("failed to delete article summary: %w", err)
 	}
 
-	r.logger.InfoContext(ctx, "article summary deleted successfully", "summary_id", summaryID)
+	r.logger.InfoContext(ctx, "article summary deleted successfully", "article_id", articleID)
 
 	return nil
 }
 
-// Exists checks if an article summary exists.
-func (r *summaryRepository) Exists(ctx context.Context, summaryID string) (bool, error) {
-	// Validate input
-	if summaryID == "" {
-		r.logger.ErrorContext(ctx, "summary ID cannot be empty")
-		return false, fmt.Errorf("summary ID cannot be empty")
+// Exists checks if an article summary exists by article ID.
+func (r *summaryRepository) Exists(ctx context.Context, articleID string) (bool, error) {
+	if articleID == "" {
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
+		return false, fmt.Errorf("article ID cannot be empty")
 	}
 
-	r.logger.DebugContext(ctx, "checking if article summary exists", "summary_id", summaryID)
+	r.logger.DebugContext(ctx, "checking if article summary exists", "article_id", articleID)
 
-	// Check for nil database
 	if r.db == nil {
 		r.logger.ErrorContext(ctx, "database connection is nil")
 		return false, fmt.Errorf("failed to check if article summary exists: database connection is nil")
 	}
 
-	query := `SELECT EXISTS(SELECT 1 FROM article_summaries WHERE id = $1)`
+	query := `SELECT EXISTS(SELECT 1 FROM article_summaries WHERE article_id = $1)`
 
 	var exists bool
 
-	err := r.db.QueryRow(ctx, query, summaryID).Scan(&exists)
+	err := r.db.QueryRow(ctx, query, articleID).Scan(&exists)
 	if err != nil {
-		r.logger.ErrorContext(ctx, "failed to check if article summary exists", "error", err, "summary_id", summaryID)
+		r.logger.ErrorContext(ctx, "failed to check if article summary exists", "error", err, "article_id", articleID)
 		return false, fmt.Errorf("failed to check if article summary exists: %w", err)
 	}
 
-	r.logger.DebugContext(ctx, "article summary existence check completed", "summary_id", summaryID, "exists", exists)
+	r.logger.DebugContext(ctx, "article summary existence check completed", "article_id", articleID, "exists", exists)
 
 	return exists, nil
 }

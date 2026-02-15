@@ -13,12 +13,9 @@ import (
 	"strings"
 	"time"
 
-	logger "pre-processor/utils/logger"
-
 	"pre-processor/driver"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"pre-processor/repository"
+	logger "pre-processor/utils/logger"
 )
 
 var (
@@ -300,18 +297,16 @@ func attemptEmergencyParsing(response string) *Score {
 	return nil
 }
 
-// RemoveLowScoreSummary deletes a low-quality summary from the database and triggers re-fetch of the article.
+// RemoveLowScoreSummary deletes a low-quality summary via the repository and triggers re-fetch of the article.
 // The score parameter is passed from the caller to avoid redundant LLM calls for scoring.
-func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary, score *Score) error {
-	// Score is now passed from caller (JudgeArticleQuality) to avoid redundant LLM calls
+func RemoveLowScoreSummary(ctx context.Context, summaryRepo repository.SummaryRepository, articleRepo repository.ArticleRepository, articleWithSummary *driver.ArticleWithSummary, score *Score) error {
 	if score == nil {
 		logger.Logger.ErrorContext(ctx, "Received nil score", "articleID", articleWithSummary.ArticleID)
 		return errors.New("received nil score for article " + articleWithSummary.ArticleID)
 	}
 
-	// Validate dbPool is not nil before attempting deletion
-	if dbPool == nil {
-		return errors.New("database pool is nil, cannot delete summary")
+	if summaryRepo == nil {
+		return errors.New("summary repository is nil, cannot delete summary")
 	}
 
 	logger.Logger.InfoContext(ctx, "Removing low quality summary",
@@ -319,37 +314,21 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 		"score", score.Overall,
 		"threshold", lowScoreThreshold)
 
-	// Remove the summary (but keep the article)
-	txOptions := pgx.TxOptions{
-		IsoLevel: pgx.RepeatableRead,
-	}
-
-	tx, err := dbPool.BeginTx(ctx, txOptions)
+	// Remove the summary via repository (works with both DB and API modes)
+	err := summaryRepo.Delete(ctx, articleWithSummary.ArticleID)
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to begin transaction", "error", err)
-		return errors.New("failed to begin transaction")
-	}
-
-	_, err = tx.Exec(ctx, "DELETE FROM article_summaries WHERE article_id = $1", articleWithSummary.ArticleID)
-	if err != nil {
-		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil {
-			logger.Logger.ErrorContext(ctx, "Failed to rollback transaction", "error", rollbackErr)
-		}
 		logger.Logger.ErrorContext(ctx, "Failed to delete article summary", "error", err, "articleID", articleWithSummary.ArticleID)
-		return errors.New("failed to delete article summary")
-	}
-
-	err = tx.Commit(ctx)
-	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to commit transaction", "error", err)
-		return errors.New("failed to commit transaction")
+		return fmt.Errorf("failed to delete article summary: %w", err)
 	}
 
 	logger.Logger.InfoContext(ctx, "Deleted low quality article summary", "articleID", articleWithSummary.ArticleID)
 
-	// Re-fetch article from web after deletion (same mechanism as alt-backend)
-	// First, get article from database to obtain URL
-	article, fetchErr := driver.GetArticleByID(ctx, dbPool, articleWithSummary.ArticleID)
+	// Re-fetch article from web after deletion
+	if articleRepo == nil {
+		return nil
+	}
+
+	article, fetchErr := articleRepo.FindByID(ctx, articleWithSummary.ArticleID)
 	if fetchErr != nil {
 		logger.Logger.WarnContext(ctx, "Failed to get article for re-fetch after summary deletion",
 			"articleID", articleWithSummary.ArticleID,
@@ -361,7 +340,6 @@ func RemoveLowScoreSummary(ctx context.Context, dbPool *pgxpool.Pool, articleWit
 		logger.Logger.WarnContext(ctx, "Article URL is empty, cannot re-fetch from web",
 			"articleID", articleWithSummary.ArticleID)
 	} else {
-		// Re-fetch article from web using HTTP request
 		client := &http.Client{
 			Timeout: 30 * time.Second,
 		}
@@ -449,7 +427,7 @@ func scoreSummaryWithRetry(ctx context.Context, prompt string, maxRetries int) (
 }
 
 // JudgeArticleQuality judges the quality of an article's summary and takes action if the score is low.
-func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithSummary *driver.ArticleWithSummary) error {
+func JudgeArticleQuality(ctx context.Context, summaryRepo repository.SummaryRepository, articleRepo repository.ArticleRepository, articleWithSummary *driver.ArticleWithSummary) error {
 	if articleWithSummary == nil || articleWithSummary.ArticleID == "" {
 		return errors.New("article with summary is invalid")
 	}
@@ -469,21 +447,16 @@ func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithS
 	prompt := fmt.Sprintf(JudgeTemplate, articleWithSummary.Content, articleWithSummary.SummaryJapanese)
 	score, err := scoreSummaryWithRetry(ctx, prompt, 3)
 	if err != nil {
-		// Check if this is a connection error (service unavailable)
 		if isConnectionError(err) {
 			logger.Logger.WarnContext(ctx, "Connection error while scoring summary, skipping quality check to prevent data loss",
 				"articleID", articleWithSummary.ArticleID,
 				"error", err)
-			// Return error without deleting data - this indicates service unavailability, not low quality
 			return fmt.Errorf("failed to connect to news-creator service: %w", err)
 		}
 
-		// For non-connection errors (e.g., parsing errors, invalid responses), we still need to handle them
-		// However, we should not delete data based on connection failures
 		logger.Logger.ErrorContext(ctx, "Failed to get summary score after retries (non-connection error)",
 			"articleID", articleWithSummary.ArticleID,
 			"error", err)
-		// For non-connection errors, we skip the quality check rather than deleting data
 		return fmt.Errorf("failed to score summary (non-connection error): %w", err)
 	}
 
@@ -492,9 +465,8 @@ func JudgeArticleQuality(ctx context.Context, dbPool *pgxpool.Pool, articleWithS
 	}
 
 	// If score is too low, remove the summary (but keep the article)
-	// This only happens when we successfully got a score from the service
 	if score.Overall < lowScoreThreshold {
-		return RemoveLowScoreSummary(ctx, dbPool, articleWithSummary, score)
+		return RemoveLowScoreSummary(ctx, summaryRepo, articleRepo, articleWithSummary, score)
 	}
 
 	logger.Logger.InfoContext(ctx, "Summary quality is acceptable", "articleID", articleWithSummary.ArticleID, "score", score.Overall)
