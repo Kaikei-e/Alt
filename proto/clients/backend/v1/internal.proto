@@ -139,6 +139,7 @@ message SaveArticleSummaryRequest {
   string article_id = 1;
   string summary = 2;
   string language = 3;
+  string user_id = 4;
 }
 
 message SaveArticleSummaryResponse {

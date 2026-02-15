@@ -139,6 +139,7 @@ message SaveArticleSummaryRequest {
   string article_id = 1;
   string summary = 2;
   string language = 3;
+  string user_id = 4;
 }
 
 message SaveArticleSummaryResponse {
@@ -227,6 +228,83 @@ message ListUntaggedArticlesResponse {
 }
 
 // =============================================================================
+// Summary Quality Operations (Phase 4: quality checker API migration)
+// =============================================================================
+
+message DeleteArticleSummaryRequest {
+  string article_id = 1;
+}
+
+message DeleteArticleSummaryResponse {
+  bool success = 1;
+}
+
+message CheckArticleSummaryExistsRequest {
+  string article_id = 1;
+}
+
+message CheckArticleSummaryExistsResponse {
+  bool exists = 1;
+  string summary_id = 2;
+}
+
+message ArticleWithSummaryItem {
+  string article_id = 1;
+  string article_content = 2;
+  string article_url = 3;
+  string summary_id = 4;
+  string summary_japanese = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message FindArticlesWithSummariesRequest {
+  optional google.protobuf.Timestamp last_created_at = 1;
+  string last_id = 2;
+  int32 limit = 3;
+}
+
+message FindArticlesWithSummariesResponse {
+  repeated ArticleWithSummaryItem articles = 1;
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+// =============================================================================
+// ListUnsummarizedArticles - For pre-processor summarization polling
+// =============================================================================
+
+message UnsummarizedArticle {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  string url = 4;
+  google.protobuf.Timestamp created_at = 5;
+  string user_id = 6;
+}
+
+message ListUnsummarizedArticlesRequest {
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 1;
+  // Cursor: last article ID from previous page
+  string last_id = 2;
+  // Page size (max 500)
+  int32 limit = 3;
+}
+
+message ListUnsummarizedArticlesResponse {
+  repeated UnsummarizedArticle articles = 1;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 2;
+  string next_id = 3;
+}
+
+message HasUnsummarizedArticlesRequest {}
+
+message HasUnsummarizedArticlesResponse {
+  bool has_unsummarized = 1;
+}
+
+// =============================================================================
 // BackendInternalService - Internal API for service-to-service communication
 // =============================================================================
 
@@ -282,4 +360,23 @@ service BackendInternalService {
 
   // ListUntaggedArticles returns articles without tags.
   rpc ListUntaggedArticles(ListUntaggedArticlesRequest) returns (ListUntaggedArticlesResponse);
+
+  // ── Summary Quality Operations (Phase 4: quality checker) ──
+
+  // DeleteArticleSummary deletes an article summary by article ID.
+  rpc DeleteArticleSummary(DeleteArticleSummaryRequest) returns (DeleteArticleSummaryResponse);
+
+  // CheckArticleSummaryExists checks if an article summary exists.
+  rpc CheckArticleSummaryExists(CheckArticleSummaryExistsRequest) returns (CheckArticleSummaryExistsResponse);
+
+  // FindArticlesWithSummaries returns articles with summaries for quality checking.
+  rpc FindArticlesWithSummaries(FindArticlesWithSummariesRequest) returns (FindArticlesWithSummariesResponse);
+
+  // ── Summarization Operations (pre-processor polling) ──
+
+  // ListUnsummarizedArticles returns articles without summaries for polling-based summarization.
+  rpc ListUnsummarizedArticles(ListUnsummarizedArticlesRequest) returns (ListUnsummarizedArticlesResponse);
+
+  // HasUnsummarizedArticles checks if any articles lack summaries.
+  rpc HasUnsummarizedArticles(HasUnsummarizedArticlesRequest) returns (HasUnsummarizedArticlesResponse);
 }
