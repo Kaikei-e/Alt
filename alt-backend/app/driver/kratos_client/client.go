@@ -20,8 +20,9 @@ type KratosClient interface {
 
 // authHubClientImpl implements KratosClient by calling auth-hub.
 type authHubClientImpl struct {
-	authHubURL string
-	httpClient *http.Client
+	authHubURL   string
+	sharedSecret string
+	httpClient   *http.Client
 }
 
 // systemUserResponse represents the response from auth-hub /internal/system-user endpoint.
@@ -32,9 +33,10 @@ type systemUserResponse struct {
 // NewKratosClient creates a new auth-hub client.
 // Note: Despite the name, this now calls auth-hub instead of Kratos directly.
 // This provides abstraction so alt-backend doesn't need to know about Kratos.
-func NewKratosClient(authHubURL string) KratosClient {
+func NewKratosClient(authHubURL string, sharedSecret string) KratosClient {
 	return &authHubClientImpl{
-		authHubURL: authHubURL,
+		authHubURL:   authHubURL,
+		sharedSecret: sharedSecret,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -49,6 +51,7 @@ func (c *authHubClientImpl) GetFirstIdentityID(ctx context.Context) (string, err
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Header.Set("X-Internal-Auth", c.sharedSecret)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

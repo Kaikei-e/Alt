@@ -331,7 +331,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	eventPublisherGatewayImpl := event_publisher_gateway.NewEventPublisherGateway(mqhubClient, slog.Default())
 
 	// Auth-hub client for identity management (abstracts Kratos)
-	kratosClientImpl := kratos_client.NewKratosClient(cfg.AuthHub.URL)
+	kratosClientImpl := kratos_client.NewKratosClient(cfg.AuthHub.URL, cfg.Auth.SharedSecret)
 
 	// Random subscription components (for Tag Trail feature)
 	fetchRandomSubscriptionGatewayImpl := fetch_random_subscription_gateway.NewFetchRandomSubscriptionGateway(altDBRepository)
