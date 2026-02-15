@@ -86,6 +86,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		internalhandler.WithPhase3Ports(gw, gw, gw),
 		internalhandler.WithPhase4Ports(gw, gw, gw),
 		internalhandler.WithSummarizationPorts(gw, gw),
+		internalhandler.WithEventPublisher(container.EventPublisher),
 	)
 	internalPath, internalServiceHandler := backendv1connect.NewBackendInternalServiceHandler(internalHandler, internalOpts)
 	mux.Handle(internalPath, internalServiceHandler)

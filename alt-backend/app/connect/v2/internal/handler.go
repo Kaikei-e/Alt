@@ -12,6 +12,7 @@ import (
 
 	backendv1 "alt/gen/proto/services/backend/v1"
 	"alt/gen/proto/services/backend/v1/backendv1connect"
+	"alt/port/event_publisher_port"
 	"alt/port/internal_article_port"
 	"alt/port/internal_feed_port"
 	"alt/port/internal_tag_port"
@@ -49,6 +50,9 @@ type Handler struct {
 	// Summarization (pre-processor polling)
 	listUnsummarized internal_article_port.ListUnsummarizedArticlesPort
 	hasUnsummarized  internal_article_port.HasUnsummarizedArticlesPort
+
+	// Event publishing
+	eventPublisher event_publisher_port.EventPublisherPort
 
 	logger *slog.Logger
 }
@@ -125,6 +129,13 @@ func WithSummarizationPorts(
 	return func(h *Handler) {
 		h.listUnsummarized = listUnsummarized
 		h.hasUnsummarized = hasUnsummarized
+	}
+}
+
+// WithEventPublisher configures the event publisher for domain events.
+func WithEventPublisher(ep event_publisher_port.EventPublisherPort) HandlerOption {
+	return func(h *Handler) {
+		h.eventPublisher = ep
 	}
 }
 
@@ -311,6 +322,22 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[backen
 	if err != nil {
 		h.logger.Error("CreateArticle failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to create article"))
+	}
+
+	// Fire-and-forget: publish ArticleCreated event for downstream consumers
+	if h.eventPublisher != nil && h.eventPublisher.IsEnabled() {
+		if pubErr := h.eventPublisher.PublishArticleCreated(ctx, event_publisher_port.ArticleCreatedEvent{
+			ArticleID:   articleID,
+			UserID:      req.Msg.UserId,
+			FeedID:      req.Msg.FeedId,
+			Title:       req.Msg.Title,
+			URL:         req.Msg.Url,
+			Content:     req.Msg.Content,
+			PublishedAt: publishedAt,
+		}); pubErr != nil {
+			h.logger.Warn("failed to publish ArticleCreated event (non-fatal)",
+				"article_id", articleID, "error", pubErr)
+		}
 	}
 
 	return connect.NewResponse(&backendv1.CreateArticleResponse{
