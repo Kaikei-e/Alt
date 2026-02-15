@@ -11,7 +11,7 @@
 
 # Alt – Compose-First AI Knowledge Platform
 
-_Last reviewed on February 6, 2026._
+_Last reviewed on February 15, 2026._
 
 > A Compose-first knowledge platform that ingests RSS content, enriches it with AI (LLM summaries, tag extraction, RAG-powered Q&A), and serves curated insights through Go, Python, Rust, and TypeScript services.
 
@@ -196,10 +196,11 @@ flowchart TD
         RagDB[(rag-db :5436)]:::data
     end
     API --> DB
-    Idx --> DB
+    Idx -->|Connect-RPC| API
     Idx --> Meili
-    Tag --> DB
-    PP --> DB
+    Tag -->|Connect-RPC| API
+    PP -->|Connect-RPC| API
+    PP -.->|job queue| DB
     RW --> RecapDB
     Dash --> RecapDB
     RO --> RagDB
@@ -278,7 +279,7 @@ flowchart LR
     subgraph Tagging
         PreProc -->|/api/v1/summarize| TagGen[tag-generator<br/>ONNX + cascade]
         TagGen --> Graph[tag_label_graph]
-        TagGen -->|SQL| AltDB[(Postgres `<article_tags>`)]
+        TagGen -->|Connect-RPC| AltBackend
     end
     subgraph RecapPipeline
         AltBackend[alt-backend :9000/:9101<br/>REST + Connect-RPC]
@@ -320,16 +321,17 @@ flowchart LR
 
     RSS[External RSS feeds]:::ingest --> Fetch[pre-processor :9200<br/>Fetch & dedupe]:::ingest
     Fetch --> Score[Quality scoring + language detection]:::ingest
-    Score -->|SQL| RawDB[(PostgreSQL<br/>raw articles)]:::storage
-    RawDB --> TagJob[tag-generator<br/>/api/v1/tags/batch]:::ai
-    RawDB --> SummaryJob[news-creator :8001<br/>/api/v1/summarize]:::ai
-    TagJob -->|SQL| TagDB[(PostgreSQL<br/>article_tags)]:::storage
+    Score -->|Connect-RPC| Backend[alt-backend :9000/:9101]:::surface
+    Backend --> DB[(PostgreSQL)]:::storage
+    Backend --> TagJob[tag-generator<br/>/api/v1/tags/batch]:::ai
+    Backend --> SummaryJob[news-creator :8001<br/>/api/v1/summarize]:::ai
+    TagJob -->|Connect-RPC| Backend
     SummaryJob -->|SQL| SummaryDB[(PostgreSQL<br/>article_summaries)]:::storage
-    TagDB --> IndexBatch[search-indexer :9300<br/>batch 200 docs]:::ai
+    Backend --> IndexBatch[search-indexer :9300<br/>batch 200 docs]:::ai
     SummaryDB --> IndexBatch
     IndexBatch -->|upsert| Meili[(Meilisearch :7700<br/>search index)]:::storage
-    Meili --> API[alt-backend :9000<br/>/v1/search + /v1/feeds/*]:::surface
-    API --> Frontend[alt-frontend :3000<br/>Chakra themes]:::surface
+    Meili --> Backend
+    Backend --> Frontend[alt-frontend :3000<br/>Chakra themes]:::surface
 ```
 
 ### Microservice Communication
@@ -372,10 +374,11 @@ flowchart LR
     subgraph Core["Core"]
         direction TB
         API[alt-backend<br/>:9000/:9101]:::be
-        API --> Idx[search-indexer :9300]:::wk
-        API --> Tag[tag-generator :9400]:::wk
-        Idx --> DB[(db :5432)]:::db
-        Tag --> DB
+        Idx[search-indexer :9300]:::wk
+        Tag[tag-generator :9400]:::wk
+        Idx -->|Connect-RPC| API
+        Tag -->|Connect-RPC| API
+        API --> DB[(db :5432)]:::db
         Idx --> M[(meilisearch :7700)]:::db
     end
 
@@ -421,7 +424,7 @@ flowchart LR
     F1 --> API
     F2 --> BF
     BF -->|HTTP/2 h2c| API
-    API --> PP
+    PP -->|Connect-RPC| API
     API --> RW
     API --> RO
     API -->|Connect-RPC| MQH
@@ -570,9 +573,9 @@ Alt employs multiple communication protocols optimized for different use cases: 
 | Protocol | Usage | Services |
 |----------|-------|----------|
 | HTTP/REST | ~70% | nginx ↔ frontends, backend ↔ workers, external APIs |
-| Connect-RPC | ~20% | backend ↔ pre-processor, mq-hub, search-indexer; frontend-sv ↔ BFF |
+| Connect-RPC | ~20% | backend ↔ pre-processor, mq-hub, search-indexer, tag-generator; frontend-sv ↔ BFF |
 | Redis Streams | ~5% | mq-hub → tag-generator, search-indexer (event-driven) |
-| PostgreSQL | ~5% | All services → respective databases |
+| PostgreSQL | ~5% | backend → db (owner), workers → dedicated databases |
 
 **Event-Driven Architecture:**
 
@@ -652,7 +655,7 @@ flowchart TD
     classDef dedicated fill:#ccffcc,stroke:#00cc00,stroke-width:2px
     classDef service fill:#e6f4ff,stroke:#1f5aa5,stroke-width:2px
 
-    subgraph "Shared Database (db :5432)"
+    subgraph "Primary Database (db :5432)"
         DB[(PostgreSQL 17)]:::shared
     end
 
@@ -663,9 +666,10 @@ flowchart TD
     end
 
     Backend[alt-backend]:::service --> DB
-    PreProc[pre-processor]:::service --> DB
-    SearchIdx[search-indexer]:::service --> DB
-    TagGen[tag-generator]:::service --> DB
+    PreProc[pre-processor]:::service -.->|job queue only| DB
+    SearchIdx[search-indexer]:::service -->|Connect-RPC| Backend
+    TagGen[tag-generator]:::service -->|Connect-RPC| Backend
+    PreProc -->|Connect-RPC| Backend
 
     AuthHub[auth-hub]:::service --> KratosDB
     Kratos[kratos]:::service --> KratosDB
@@ -680,7 +684,7 @@ flowchart TD
 
 | Database | Users | Services |
 |----------|-------|----------|
-| db (shared) | `alt_appuser`, `pre_processor_user`, `search_indexer_user`, `tag_generator` | backend, pre-processor, search-indexer, tag-generator |
+| db | `alt_appuser`, `pre_processor_user` | backend (owner), pre-processor (job queue only) |
 | kratos-db | `kratos_user` | auth-hub, kratos |
 | recap-db | `recap_user` | recap-worker, recap-subworker, dashboard |
 | rag-db | `rag_user` | rag-orchestrator |
