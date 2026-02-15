@@ -5,7 +5,7 @@
 package mqhubv1connect
 
 import (
-	v1 "alt/gen/proto/clients/mqhub/v1"
+	v1 "pre-processor/gen/proto/clients/mqhub/v1"
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"

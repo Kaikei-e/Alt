@@ -170,7 +170,7 @@ func TestSummaryRepository_Delete(t *testing.T) {
 			summaryID: "",
 
 			wantErr:     true,
-			errContains: "summary ID cannot be empty",
+			errContains: "article ID cannot be empty",
 		},
 	}
 
@@ -214,7 +214,7 @@ func TestSummaryRepository_Exists(t *testing.T) {
 
 			wantErr:     true,
 			wantExists:  false,
-			errContains: "summary ID cannot be empty",
+			errContains: "article ID cannot be empty",
 		},
 	}
 
