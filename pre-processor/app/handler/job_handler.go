@@ -73,7 +73,7 @@ func (h *jobHandler) StartSummarizationJob(ctx context.Context) error {
 
 	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
 		Name:     "summarization",
-		Interval: 10 * time.Second,
+		Interval: 5 * time.Minute, // Fallback safety net; primary path is event-driven via ArticleCreated events
 	}, func(ctx context.Context) error {
 		return h.processSummarizationBatch(ctx)
 	}, h.logger))
