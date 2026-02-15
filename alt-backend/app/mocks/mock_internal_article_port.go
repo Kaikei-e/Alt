@@ -322,17 +322,17 @@ func (m *MockSaveArticleSummaryPort) EXPECT() *MockSaveArticleSummaryPortMockRec
 }
 
 // SaveArticleSummary mocks base method.
-func (m *MockSaveArticleSummaryPort) SaveArticleSummary(ctx context.Context, articleID, summary, language string) error {
+func (m *MockSaveArticleSummaryPort) SaveArticleSummary(ctx context.Context, articleID, userID, summary, language string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SaveArticleSummary", ctx, articleID, summary, language)
+	ret := m.ctrl.Call(m, "SaveArticleSummary", ctx, articleID, userID, summary, language)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // SaveArticleSummary indicates an expected call of SaveArticleSummary.
-func (mr *MockSaveArticleSummaryPortMockRecorder) SaveArticleSummary(ctx, articleID, summary, language any) *gomock.Call {
+func (mr *MockSaveArticleSummaryPortMockRecorder) SaveArticleSummary(ctx, articleID, userID, summary, language any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveArticleSummary", reflect.TypeOf((*MockSaveArticleSummaryPort)(nil).SaveArticleSummary), ctx, articleID, summary, language)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveArticleSummary", reflect.TypeOf((*MockSaveArticleSummaryPort)(nil).SaveArticleSummary), ctx, articleID, userID, summary, language)
 }
 
 // MockGetArticleContentPort is a mock of GetArticleContentPort interface.
@@ -372,4 +372,203 @@ func (m *MockGetArticleContentPort) GetArticleContent(ctx context.Context, artic
 func (mr *MockGetArticleContentPortMockRecorder) GetArticleContent(ctx, articleID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetArticleContent", reflect.TypeOf((*MockGetArticleContentPort)(nil).GetArticleContent), ctx, articleID)
+}
+
+// MockDeleteArticleSummaryPort is a mock of DeleteArticleSummaryPort interface.
+type MockDeleteArticleSummaryPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockDeleteArticleSummaryPortMockRecorder
+	isgomock struct{}
+}
+
+// MockDeleteArticleSummaryPortMockRecorder is the mock recorder for MockDeleteArticleSummaryPort.
+type MockDeleteArticleSummaryPortMockRecorder struct {
+	mock *MockDeleteArticleSummaryPort
+}
+
+// NewMockDeleteArticleSummaryPort creates a new mock instance.
+func NewMockDeleteArticleSummaryPort(ctrl *gomock.Controller) *MockDeleteArticleSummaryPort {
+	mock := &MockDeleteArticleSummaryPort{ctrl: ctrl}
+	mock.recorder = &MockDeleteArticleSummaryPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockDeleteArticleSummaryPort) EXPECT() *MockDeleteArticleSummaryPortMockRecorder {
+	return m.recorder
+}
+
+// DeleteArticleSummary mocks base method.
+func (m *MockDeleteArticleSummaryPort) DeleteArticleSummary(ctx context.Context, articleID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteArticleSummary", ctx, articleID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteArticleSummary indicates an expected call of DeleteArticleSummary.
+func (mr *MockDeleteArticleSummaryPortMockRecorder) DeleteArticleSummary(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteArticleSummary", reflect.TypeOf((*MockDeleteArticleSummaryPort)(nil).DeleteArticleSummary), ctx, articleID)
+}
+
+// MockCheckArticleSummaryExistsPort is a mock of CheckArticleSummaryExistsPort interface.
+type MockCheckArticleSummaryExistsPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockCheckArticleSummaryExistsPortMockRecorder
+	isgomock struct{}
+}
+
+// MockCheckArticleSummaryExistsPortMockRecorder is the mock recorder for MockCheckArticleSummaryExistsPort.
+type MockCheckArticleSummaryExistsPortMockRecorder struct {
+	mock *MockCheckArticleSummaryExistsPort
+}
+
+// NewMockCheckArticleSummaryExistsPort creates a new mock instance.
+func NewMockCheckArticleSummaryExistsPort(ctrl *gomock.Controller) *MockCheckArticleSummaryExistsPort {
+	mock := &MockCheckArticleSummaryExistsPort{ctrl: ctrl}
+	mock.recorder = &MockCheckArticleSummaryExistsPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockCheckArticleSummaryExistsPort) EXPECT() *MockCheckArticleSummaryExistsPortMockRecorder {
+	return m.recorder
+}
+
+// CheckArticleSummaryExists mocks base method.
+func (m *MockCheckArticleSummaryExistsPort) CheckArticleSummaryExists(ctx context.Context, articleID string) (bool, string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckArticleSummaryExists", ctx, articleID)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// CheckArticleSummaryExists indicates an expected call of CheckArticleSummaryExists.
+func (mr *MockCheckArticleSummaryExistsPortMockRecorder) CheckArticleSummaryExists(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckArticleSummaryExists", reflect.TypeOf((*MockCheckArticleSummaryExistsPort)(nil).CheckArticleSummaryExists), ctx, articleID)
+}
+
+// MockFindArticlesWithSummariesPort is a mock of FindArticlesWithSummariesPort interface.
+type MockFindArticlesWithSummariesPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockFindArticlesWithSummariesPortMockRecorder
+	isgomock struct{}
+}
+
+// MockFindArticlesWithSummariesPortMockRecorder is the mock recorder for MockFindArticlesWithSummariesPort.
+type MockFindArticlesWithSummariesPortMockRecorder struct {
+	mock *MockFindArticlesWithSummariesPort
+}
+
+// NewMockFindArticlesWithSummariesPort creates a new mock instance.
+func NewMockFindArticlesWithSummariesPort(ctrl *gomock.Controller) *MockFindArticlesWithSummariesPort {
+	mock := &MockFindArticlesWithSummariesPort{ctrl: ctrl}
+	mock.recorder = &MockFindArticlesWithSummariesPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockFindArticlesWithSummariesPort) EXPECT() *MockFindArticlesWithSummariesPortMockRecorder {
+	return m.recorder
+}
+
+// FindArticlesWithSummaries mocks base method.
+func (m *MockFindArticlesWithSummariesPort) FindArticlesWithSummaries(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*internal_article_port.ArticleWithSummaryResult, *time.Time, string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FindArticlesWithSummaries", ctx, lastCreatedAt, lastID, limit)
+	ret0, _ := ret[0].([]*internal_article_port.ArticleWithSummaryResult)
+	ret1, _ := ret[1].(*time.Time)
+	ret2, _ := ret[2].(string)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
+}
+
+// FindArticlesWithSummaries indicates an expected call of FindArticlesWithSummaries.
+func (mr *MockFindArticlesWithSummariesPortMockRecorder) FindArticlesWithSummaries(ctx, lastCreatedAt, lastID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindArticlesWithSummaries", reflect.TypeOf((*MockFindArticlesWithSummariesPort)(nil).FindArticlesWithSummaries), ctx, lastCreatedAt, lastID, limit)
+}
+
+// MockListUnsummarizedArticlesPort is a mock of ListUnsummarizedArticlesPort interface.
+type MockListUnsummarizedArticlesPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockListUnsummarizedArticlesPortMockRecorder
+	isgomock struct{}
+}
+
+// MockListUnsummarizedArticlesPortMockRecorder is the mock recorder for MockListUnsummarizedArticlesPort.
+type MockListUnsummarizedArticlesPortMockRecorder struct {
+	mock *MockListUnsummarizedArticlesPort
+}
+
+// NewMockListUnsummarizedArticlesPort creates a new mock instance.
+func NewMockListUnsummarizedArticlesPort(ctrl *gomock.Controller) *MockListUnsummarizedArticlesPort {
+	mock := &MockListUnsummarizedArticlesPort{ctrl: ctrl}
+	mock.recorder = &MockListUnsummarizedArticlesPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockListUnsummarizedArticlesPort) EXPECT() *MockListUnsummarizedArticlesPortMockRecorder {
+	return m.recorder
+}
+
+// ListUnsummarizedArticles mocks base method.
+func (m *MockListUnsummarizedArticlesPort) ListUnsummarizedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*internal_article_port.UnsummarizedArticle, *time.Time, string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListUnsummarizedArticles", ctx, lastCreatedAt, lastID, limit)
+	ret0, _ := ret[0].([]*internal_article_port.UnsummarizedArticle)
+	ret1, _ := ret[1].(*time.Time)
+	ret2, _ := ret[2].(string)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
+}
+
+// ListUnsummarizedArticles indicates an expected call of ListUnsummarizedArticles.
+func (mr *MockListUnsummarizedArticlesPortMockRecorder) ListUnsummarizedArticles(ctx, lastCreatedAt, lastID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUnsummarizedArticles", reflect.TypeOf((*MockListUnsummarizedArticlesPort)(nil).ListUnsummarizedArticles), ctx, lastCreatedAt, lastID, limit)
+}
+
+// MockHasUnsummarizedArticlesPort is a mock of HasUnsummarizedArticlesPort interface.
+type MockHasUnsummarizedArticlesPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockHasUnsummarizedArticlesPortMockRecorder
+	isgomock struct{}
+}
+
+// MockHasUnsummarizedArticlesPortMockRecorder is the mock recorder for MockHasUnsummarizedArticlesPort.
+type MockHasUnsummarizedArticlesPortMockRecorder struct {
+	mock *MockHasUnsummarizedArticlesPort
+}
+
+// NewMockHasUnsummarizedArticlesPort creates a new mock instance.
+func NewMockHasUnsummarizedArticlesPort(ctrl *gomock.Controller) *MockHasUnsummarizedArticlesPort {
+	mock := &MockHasUnsummarizedArticlesPort{ctrl: ctrl}
+	mock.recorder = &MockHasUnsummarizedArticlesPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockHasUnsummarizedArticlesPort) EXPECT() *MockHasUnsummarizedArticlesPortMockRecorder {
+	return m.recorder
+}
+
+// HasUnsummarizedArticles mocks base method.
+func (m *MockHasUnsummarizedArticlesPort) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasUnsummarizedArticles", ctx)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasUnsummarizedArticles indicates an expected call of HasUnsummarizedArticles.
+func (mr *MockHasUnsummarizedArticlesPortMockRecorder) HasUnsummarizedArticles(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasUnsummarizedArticles", reflect.TypeOf((*MockHasUnsummarizedArticlesPort)(nil).HasUnsummarizedArticles), ctx)
 }

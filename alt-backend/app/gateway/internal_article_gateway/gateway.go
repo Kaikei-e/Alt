@@ -116,11 +116,8 @@ func (g *Gateway) CreateArticle(ctx context.Context, params internal_article_por
 }
 
 // SaveArticleSummary implements SaveArticleSummaryPort.
-func (g *Gateway) SaveArticleSummary(ctx context.Context, articleID string, summary string, language string) error {
-	// SaveArticleSummary existing driver uses userID and articleTitle.
-	// For internal API, we use a system user ID and fetch title from article.
-	// The language parameter maps to summary_japanese field for now.
-	err := g.repo.SaveArticleSummary(ctx, articleID, "system", "", summary)
+func (g *Gateway) SaveArticleSummary(ctx context.Context, articleID string, userID string, summary string, language string) error {
+	err := g.repo.SaveArticleSummary(ctx, articleID, userID, "", summary)
 	if err != nil {
 		return fmt.Errorf("SaveArticleSummary: %w", err)
 	}
@@ -227,6 +224,81 @@ func (g *Gateway) ListUntaggedArticles(ctx context.Context, limit int, offset in
 	}
 
 	return articles, totalCount, nil
+}
+
+// ── Phase 4: Summary quality operations ──
+
+// DeleteArticleSummary implements DeleteArticleSummaryPort.
+func (g *Gateway) DeleteArticleSummary(ctx context.Context, articleID string) error {
+	err := g.repo.DeleteArticleSummaryByArticleID(ctx, articleID)
+	if err != nil {
+		return fmt.Errorf("DeleteArticleSummary: %w", err)
+	}
+	return nil
+}
+
+// CheckArticleSummaryExists implements CheckArticleSummaryExistsPort.
+func (g *Gateway) CheckArticleSummaryExists(ctx context.Context, articleID string) (bool, string, error) {
+	exists, summaryID, err := g.repo.CheckArticleSummaryExists(ctx, articleID)
+	if err != nil {
+		return false, "", fmt.Errorf("CheckArticleSummaryExists: %w", err)
+	}
+	return exists, summaryID, nil
+}
+
+// FindArticlesWithSummaries implements FindArticlesWithSummariesPort.
+func (g *Gateway) FindArticlesWithSummaries(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*internal_article_port.ArticleWithSummaryResult, *time.Time, string, error) {
+	driverResults, nextCreatedAt, nextID, err := g.repo.FindArticlesWithSummaries(ctx, lastCreatedAt, lastID, limit)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("FindArticlesWithSummaries: %w", err)
+	}
+
+	results := make([]*internal_article_port.ArticleWithSummaryResult, len(driverResults))
+	for i, dr := range driverResults {
+		results[i] = &internal_article_port.ArticleWithSummaryResult{
+			ArticleID:       dr.ArticleID,
+			ArticleContent:  dr.ArticleContent,
+			ArticleURL:      dr.ArticleURL,
+			SummaryID:       dr.SummaryID,
+			SummaryJapanese: dr.SummaryJapanese,
+			CreatedAt:       dr.CreatedAt,
+		}
+	}
+
+	return results, nextCreatedAt, nextID, nil
+}
+
+// ── Summarization operations ──
+
+// ListUnsummarizedArticles implements ListUnsummarizedArticlesPort.
+func (g *Gateway) ListUnsummarizedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*internal_article_port.UnsummarizedArticle, *time.Time, string, error) {
+	driverArticles, nextCreatedAt, nextID, err := g.repo.ListUnsummarizedArticles(ctx, lastCreatedAt, lastID, limit)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("ListUnsummarizedArticles: %w", err)
+	}
+
+	articles := make([]*internal_article_port.UnsummarizedArticle, len(driverArticles))
+	for i, da := range driverArticles {
+		articles[i] = &internal_article_port.UnsummarizedArticle{
+			ID:        da.ID,
+			Title:     da.Title,
+			Content:   da.Content,
+			URL:       da.URL,
+			CreatedAt: da.CreatedAt,
+			UserID:    da.UserID,
+		}
+	}
+
+	return articles, nextCreatedAt, nextID, nil
+}
+
+// HasUnsummarizedArticles implements HasUnsummarizedArticlesPort.
+func (g *Gateway) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
+	has, err := g.repo.HasUnsummarizedArticles(ctx)
+	if err != nil {
+		return false, fmt.Errorf("HasUnsummarizedArticles: %w", err)
+	}
+	return has, nil
 }
 
 func toPortArticle(da *alt_db.InternalArticleWithTags) *internal_article_port.ArticleWithTags {

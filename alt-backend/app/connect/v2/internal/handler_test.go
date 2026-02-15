@@ -392,13 +392,14 @@ func TestSaveArticleSummary_Success(t *testing.T) {
 		WithPhase2Ports(nil, nil, mockSave, nil, nil, nil))
 
 	mockSave.EXPECT().
-		SaveArticleSummary(gomock.Any(), "article-1", "This is a summary", "ja").
+		SaveArticleSummary(gomock.Any(), "article-1", "user-uuid-1", "This is a summary", "ja").
 		Return(nil)
 
 	req := connect.NewRequest(&backendv1.SaveArticleSummaryRequest{
 		ArticleId: "article-1",
 		Summary:   "This is a summary",
 		Language:  "ja",
+		UserId:    "user-uuid-1",
 	})
 
 	resp, err := h.SaveArticleSummary(context.Background(), req)
@@ -414,7 +415,18 @@ func TestSaveArticleSummary_MissingArticleID(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, nil,
 		WithPhase2Ports(nil, nil, mocks.NewMockSaveArticleSummaryPort(gomock.NewController(t)), nil, nil, nil))
 
-	req := connect.NewRequest(&backendv1.SaveArticleSummaryRequest{Summary: "text"})
+	req := connect.NewRequest(&backendv1.SaveArticleSummaryRequest{Summary: "text", UserId: "user-1"})
+	_, err := h.SaveArticleSummary(context.Background(), req)
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+	}
+}
+
+func TestSaveArticleSummary_MissingUserID(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithPhase2Ports(nil, nil, mocks.NewMockSaveArticleSummaryPort(gomock.NewController(t)), nil, nil, nil))
+
+	req := connect.NewRequest(&backendv1.SaveArticleSummaryRequest{ArticleId: "article-1", Summary: "text"})
 	_, err := h.SaveArticleSummary(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
@@ -534,6 +546,185 @@ func TestListFeedURLs_Success(t *testing.T) {
 	}
 	if resp.Msg.NextCursor != "f2" {
 		t.Errorf("expected next_cursor f2, got %s", resp.Msg.NextCursor)
+	}
+}
+
+// ── Summarization RPC tests ──
+
+func TestListUnsummarizedArticles_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockList := mocks.NewMockListUnsummarizedArticlesPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithSummarizationPorts(mockList, nil))
+
+	now := time.Now()
+	expected := []*internal_article_port.UnsummarizedArticle{
+		{ID: "a1", Title: "Title 1", Content: "Content 1", URL: "http://example.com/1", CreatedAt: now, UserID: "u1"},
+		{ID: "a2", Title: "Title 2", Content: "Content 2", URL: "http://example.com/2", CreatedAt: now.Add(-time.Hour), UserID: "u1"},
+	}
+
+	mockList.EXPECT().
+		ListUnsummarizedArticles(gomock.Any(), (*time.Time)(nil), "", 200).
+		Return(expected, &now, "a2", nil)
+
+	req := connect.NewRequest(&backendv1.ListUnsummarizedArticlesRequest{Limit: 200})
+	resp, err := h.ListUnsummarizedArticles(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Msg.Articles) != 2 {
+		t.Fatalf("expected 2 articles, got %d", len(resp.Msg.Articles))
+	}
+	if resp.Msg.Articles[0].Id != "a1" {
+		t.Errorf("expected first article ID a1, got %s", resp.Msg.Articles[0].Id)
+	}
+	if resp.Msg.Articles[0].Url != "http://example.com/1" {
+		t.Errorf("expected first article URL http://example.com/1, got %s", resp.Msg.Articles[0].Url)
+	}
+	if resp.Msg.NextId != "a2" {
+		t.Errorf("expected next_id a2, got %s", resp.Msg.NextId)
+	}
+	if resp.Msg.NextCreatedAt == nil {
+		t.Fatal("expected next_created_at to be set")
+	}
+}
+
+func TestListUnsummarizedArticles_WithCursor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockList := mocks.NewMockListUnsummarizedArticlesPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithSummarizationPorts(mockList, nil))
+
+	cursorTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	mockList.EXPECT().
+		ListUnsummarizedArticles(gomock.Any(), gomock.Any(), "prev-id", 100).
+		Return([]*internal_article_port.UnsummarizedArticle{}, (*time.Time)(nil), "", nil)
+
+	req := connect.NewRequest(&backendv1.ListUnsummarizedArticlesRequest{
+		LastCreatedAt: timestamppb.New(cursorTime),
+		LastId:        "prev-id",
+		Limit:         100,
+	})
+
+	resp, err := h.ListUnsummarizedArticles(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Msg.Articles) != 0 {
+		t.Fatalf("expected 0 articles, got %d", len(resp.Msg.Articles))
+	}
+}
+
+func TestListUnsummarizedArticles_Error(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockList := mocks.NewMockListUnsummarizedArticlesPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithSummarizationPorts(mockList, nil))
+
+	mockList.EXPECT().
+		ListUnsummarizedArticles(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, nil, "", errors.New("db error"))
+
+	req := connect.NewRequest(&backendv1.ListUnsummarizedArticlesRequest{Limit: 200})
+	_, err := h.ListUnsummarizedArticles(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeInternal {
+		t.Errorf("expected CodeInternal, got %v", connect.CodeOf(err))
+	}
+}
+
+func TestListUnsummarizedArticles_Unimplemented(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, nil, nil)
+
+	req := connect.NewRequest(&backendv1.ListUnsummarizedArticlesRequest{Limit: 200})
+	_, err := h.ListUnsummarizedArticles(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
+	}
+}
+
+func TestHasUnsummarizedArticles_True(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockHas := mocks.NewMockHasUnsummarizedArticlesPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithSummarizationPorts(nil, mockHas))
+
+	mockHas.EXPECT().
+		HasUnsummarizedArticles(gomock.Any()).
+		Return(true, nil)
+
+	req := connect.NewRequest(&backendv1.HasUnsummarizedArticlesRequest{})
+	resp, err := h.HasUnsummarizedArticles(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Msg.HasUnsummarized {
+		t.Error("expected has_unsummarized to be true")
+	}
+}
+
+func TestHasUnsummarizedArticles_False(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockHas := mocks.NewMockHasUnsummarizedArticlesPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithSummarizationPorts(nil, mockHas))
+
+	mockHas.EXPECT().
+		HasUnsummarizedArticles(gomock.Any()).
+		Return(false, nil)
+
+	req := connect.NewRequest(&backendv1.HasUnsummarizedArticlesRequest{})
+	resp, err := h.HasUnsummarizedArticles(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Msg.HasUnsummarized {
+		t.Error("expected has_unsummarized to be false")
+	}
+}
+
+func TestHasUnsummarizedArticles_Error(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockHas := mocks.NewMockHasUnsummarizedArticlesPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithSummarizationPorts(nil, mockHas))
+
+	mockHas.EXPECT().
+		HasUnsummarizedArticles(gomock.Any()).
+		Return(false, errors.New("db error"))
+
+	req := connect.NewRequest(&backendv1.HasUnsummarizedArticlesRequest{})
+	_, err := h.HasUnsummarizedArticles(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeInternal {
+		t.Errorf("expected CodeInternal, got %v", connect.CodeOf(err))
+	}
+}
+
+func TestHasUnsummarizedArticles_Unimplemented(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, nil, nil)
+
+	req := connect.NewRequest(&backendv1.HasUnsummarizedArticlesRequest{})
+	_, err := h.HasUnsummarizedArticles(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
 	}
 }
 

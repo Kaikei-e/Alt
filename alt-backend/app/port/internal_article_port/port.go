@@ -79,10 +79,59 @@ type CreateArticlePort interface {
 
 // SaveArticleSummaryPort saves an article summary.
 type SaveArticleSummaryPort interface {
-	SaveArticleSummary(ctx context.Context, articleID string, summary string, language string) error
+	SaveArticleSummary(ctx context.Context, articleID string, userID string, summary string, language string) error
 }
 
 // GetArticleContentPort returns article content for summarization.
 type GetArticleContentPort interface {
 	GetArticleContent(ctx context.Context, articleID string) (*ArticleContent, error)
+}
+
+// ── Phase 4: Summary quality operations (for pre-processor quality checker) ──
+
+// ArticleWithSummaryResult represents an article with its summary for quality checking.
+type ArticleWithSummaryResult struct {
+	ArticleID       string
+	ArticleContent  string
+	ArticleURL      string
+	SummaryID       string
+	SummaryJapanese string
+	CreatedAt       time.Time
+}
+
+// DeleteArticleSummaryPort deletes an article summary.
+type DeleteArticleSummaryPort interface {
+	DeleteArticleSummary(ctx context.Context, articleID string) error
+}
+
+// CheckArticleSummaryExistsPort checks if an article summary exists.
+type CheckArticleSummaryExistsPort interface {
+	CheckArticleSummaryExists(ctx context.Context, articleID string) (exists bool, summaryID string, err error)
+}
+
+// FindArticlesWithSummariesPort returns articles with summaries.
+type FindArticlesWithSummariesPort interface {
+	FindArticlesWithSummaries(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*ArticleWithSummaryResult, *time.Time, string, error)
+}
+
+// ── Summarization operations (for pre-processor polling) ──
+
+// UnsummarizedArticle represents an article without a summary.
+type UnsummarizedArticle struct {
+	ID        string
+	Title     string
+	Content   string
+	URL       string
+	CreatedAt time.Time
+	UserID    string
+}
+
+// ListUnsummarizedArticlesPort returns articles without summaries.
+type ListUnsummarizedArticlesPort interface {
+	ListUnsummarizedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*UnsummarizedArticle, *time.Time, string, error)
+}
+
+// HasUnsummarizedArticlesPort checks if any articles lack summaries.
+type HasUnsummarizedArticlesPort interface {
+	HasUnsummarizedArticles(ctx context.Context) (bool, error)
 }

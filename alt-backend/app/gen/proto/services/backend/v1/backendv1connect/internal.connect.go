@@ -75,6 +75,21 @@ const (
 	// BackendInternalServiceListUntaggedArticlesProcedure is the fully-qualified name of the
 	// BackendInternalService's ListUntaggedArticles RPC.
 	BackendInternalServiceListUntaggedArticlesProcedure = "/services.backend.v1.BackendInternalService/ListUntaggedArticles"
+	// BackendInternalServiceDeleteArticleSummaryProcedure is the fully-qualified name of the
+	// BackendInternalService's DeleteArticleSummary RPC.
+	BackendInternalServiceDeleteArticleSummaryProcedure = "/services.backend.v1.BackendInternalService/DeleteArticleSummary"
+	// BackendInternalServiceCheckArticleSummaryExistsProcedure is the fully-qualified name of the
+	// BackendInternalService's CheckArticleSummaryExists RPC.
+	BackendInternalServiceCheckArticleSummaryExistsProcedure = "/services.backend.v1.BackendInternalService/CheckArticleSummaryExists"
+	// BackendInternalServiceFindArticlesWithSummariesProcedure is the fully-qualified name of the
+	// BackendInternalService's FindArticlesWithSummaries RPC.
+	BackendInternalServiceFindArticlesWithSummariesProcedure = "/services.backend.v1.BackendInternalService/FindArticlesWithSummaries"
+	// BackendInternalServiceListUnsummarizedArticlesProcedure is the fully-qualified name of the
+	// BackendInternalService's ListUnsummarizedArticles RPC.
+	BackendInternalServiceListUnsummarizedArticlesProcedure = "/services.backend.v1.BackendInternalService/ListUnsummarizedArticles"
+	// BackendInternalServiceHasUnsummarizedArticlesProcedure is the fully-qualified name of the
+	// BackendInternalService's HasUnsummarizedArticles RPC.
+	BackendInternalServiceHasUnsummarizedArticlesProcedure = "/services.backend.v1.BackendInternalService/HasUnsummarizedArticles"
 )
 
 // BackendInternalServiceClient is a client for the services.backend.v1.BackendInternalService
@@ -110,6 +125,16 @@ type BackendInternalServiceClient interface {
 	BatchUpsertArticleTags(context.Context, *connect.Request[v1.BatchUpsertArticleTagsRequest]) (*connect.Response[v1.BatchUpsertArticleTagsResponse], error)
 	// ListUntaggedArticles returns articles without tags.
 	ListUntaggedArticles(context.Context, *connect.Request[v1.ListUntaggedArticlesRequest]) (*connect.Response[v1.ListUntaggedArticlesResponse], error)
+	// DeleteArticleSummary deletes an article summary by article ID.
+	DeleteArticleSummary(context.Context, *connect.Request[v1.DeleteArticleSummaryRequest]) (*connect.Response[v1.DeleteArticleSummaryResponse], error)
+	// CheckArticleSummaryExists checks if an article summary exists.
+	CheckArticleSummaryExists(context.Context, *connect.Request[v1.CheckArticleSummaryExistsRequest]) (*connect.Response[v1.CheckArticleSummaryExistsResponse], error)
+	// FindArticlesWithSummaries returns articles with summaries for quality checking.
+	FindArticlesWithSummaries(context.Context, *connect.Request[v1.FindArticlesWithSummariesRequest]) (*connect.Response[v1.FindArticlesWithSummariesResponse], error)
+	// ListUnsummarizedArticles returns articles without summaries for polling-based summarization.
+	ListUnsummarizedArticles(context.Context, *connect.Request[v1.ListUnsummarizedArticlesRequest]) (*connect.Response[v1.ListUnsummarizedArticlesResponse], error)
+	// HasUnsummarizedArticles checks if any articles lack summaries.
+	HasUnsummarizedArticles(context.Context, *connect.Request[v1.HasUnsummarizedArticlesRequest]) (*connect.Response[v1.HasUnsummarizedArticlesResponse], error)
 }
 
 // NewBackendInternalServiceClient constructs a client for the
@@ -207,6 +232,36 @@ func NewBackendInternalServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(backendInternalServiceMethods.ByName("ListUntaggedArticles")),
 			connect.WithClientOptions(opts...),
 		),
+		deleteArticleSummary: connect.NewClient[v1.DeleteArticleSummaryRequest, v1.DeleteArticleSummaryResponse](
+			httpClient,
+			baseURL+BackendInternalServiceDeleteArticleSummaryProcedure,
+			connect.WithSchema(backendInternalServiceMethods.ByName("DeleteArticleSummary")),
+			connect.WithClientOptions(opts...),
+		),
+		checkArticleSummaryExists: connect.NewClient[v1.CheckArticleSummaryExistsRequest, v1.CheckArticleSummaryExistsResponse](
+			httpClient,
+			baseURL+BackendInternalServiceCheckArticleSummaryExistsProcedure,
+			connect.WithSchema(backendInternalServiceMethods.ByName("CheckArticleSummaryExists")),
+			connect.WithClientOptions(opts...),
+		),
+		findArticlesWithSummaries: connect.NewClient[v1.FindArticlesWithSummariesRequest, v1.FindArticlesWithSummariesResponse](
+			httpClient,
+			baseURL+BackendInternalServiceFindArticlesWithSummariesProcedure,
+			connect.WithSchema(backendInternalServiceMethods.ByName("FindArticlesWithSummaries")),
+			connect.WithClientOptions(opts...),
+		),
+		listUnsummarizedArticles: connect.NewClient[v1.ListUnsummarizedArticlesRequest, v1.ListUnsummarizedArticlesResponse](
+			httpClient,
+			baseURL+BackendInternalServiceListUnsummarizedArticlesProcedure,
+			connect.WithSchema(backendInternalServiceMethods.ByName("ListUnsummarizedArticles")),
+			connect.WithClientOptions(opts...),
+		),
+		hasUnsummarizedArticles: connect.NewClient[v1.HasUnsummarizedArticlesRequest, v1.HasUnsummarizedArticlesResponse](
+			httpClient,
+			baseURL+BackendInternalServiceHasUnsummarizedArticlesProcedure,
+			connect.WithSchema(backendInternalServiceMethods.ByName("HasUnsummarizedArticles")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -226,6 +281,11 @@ type backendInternalServiceClient struct {
 	upsertArticleTags           *connect.Client[v1.UpsertArticleTagsRequest, v1.UpsertArticleTagsResponse]
 	batchUpsertArticleTags      *connect.Client[v1.BatchUpsertArticleTagsRequest, v1.BatchUpsertArticleTagsResponse]
 	listUntaggedArticles        *connect.Client[v1.ListUntaggedArticlesRequest, v1.ListUntaggedArticlesResponse]
+	deleteArticleSummary        *connect.Client[v1.DeleteArticleSummaryRequest, v1.DeleteArticleSummaryResponse]
+	checkArticleSummaryExists   *connect.Client[v1.CheckArticleSummaryExistsRequest, v1.CheckArticleSummaryExistsResponse]
+	findArticlesWithSummaries   *connect.Client[v1.FindArticlesWithSummariesRequest, v1.FindArticlesWithSummariesResponse]
+	listUnsummarizedArticles    *connect.Client[v1.ListUnsummarizedArticlesRequest, v1.ListUnsummarizedArticlesResponse]
+	hasUnsummarizedArticles     *connect.Client[v1.HasUnsummarizedArticlesRequest, v1.HasUnsummarizedArticlesResponse]
 }
 
 // ListArticlesWithTags calls services.backend.v1.BackendInternalService.ListArticlesWithTags.
@@ -300,6 +360,34 @@ func (c *backendInternalServiceClient) ListUntaggedArticles(ctx context.Context,
 	return c.listUntaggedArticles.CallUnary(ctx, req)
 }
 
+// DeleteArticleSummary calls services.backend.v1.BackendInternalService.DeleteArticleSummary.
+func (c *backendInternalServiceClient) DeleteArticleSummary(ctx context.Context, req *connect.Request[v1.DeleteArticleSummaryRequest]) (*connect.Response[v1.DeleteArticleSummaryResponse], error) {
+	return c.deleteArticleSummary.CallUnary(ctx, req)
+}
+
+// CheckArticleSummaryExists calls
+// services.backend.v1.BackendInternalService.CheckArticleSummaryExists.
+func (c *backendInternalServiceClient) CheckArticleSummaryExists(ctx context.Context, req *connect.Request[v1.CheckArticleSummaryExistsRequest]) (*connect.Response[v1.CheckArticleSummaryExistsResponse], error) {
+	return c.checkArticleSummaryExists.CallUnary(ctx, req)
+}
+
+// FindArticlesWithSummaries calls
+// services.backend.v1.BackendInternalService.FindArticlesWithSummaries.
+func (c *backendInternalServiceClient) FindArticlesWithSummaries(ctx context.Context, req *connect.Request[v1.FindArticlesWithSummariesRequest]) (*connect.Response[v1.FindArticlesWithSummariesResponse], error) {
+	return c.findArticlesWithSummaries.CallUnary(ctx, req)
+}
+
+// ListUnsummarizedArticles calls
+// services.backend.v1.BackendInternalService.ListUnsummarizedArticles.
+func (c *backendInternalServiceClient) ListUnsummarizedArticles(ctx context.Context, req *connect.Request[v1.ListUnsummarizedArticlesRequest]) (*connect.Response[v1.ListUnsummarizedArticlesResponse], error) {
+	return c.listUnsummarizedArticles.CallUnary(ctx, req)
+}
+
+// HasUnsummarizedArticles calls services.backend.v1.BackendInternalService.HasUnsummarizedArticles.
+func (c *backendInternalServiceClient) HasUnsummarizedArticles(ctx context.Context, req *connect.Request[v1.HasUnsummarizedArticlesRequest]) (*connect.Response[v1.HasUnsummarizedArticlesResponse], error) {
+	return c.hasUnsummarizedArticles.CallUnary(ctx, req)
+}
+
 // BackendInternalServiceHandler is an implementation of the
 // services.backend.v1.BackendInternalService service.
 type BackendInternalServiceHandler interface {
@@ -333,6 +421,16 @@ type BackendInternalServiceHandler interface {
 	BatchUpsertArticleTags(context.Context, *connect.Request[v1.BatchUpsertArticleTagsRequest]) (*connect.Response[v1.BatchUpsertArticleTagsResponse], error)
 	// ListUntaggedArticles returns articles without tags.
 	ListUntaggedArticles(context.Context, *connect.Request[v1.ListUntaggedArticlesRequest]) (*connect.Response[v1.ListUntaggedArticlesResponse], error)
+	// DeleteArticleSummary deletes an article summary by article ID.
+	DeleteArticleSummary(context.Context, *connect.Request[v1.DeleteArticleSummaryRequest]) (*connect.Response[v1.DeleteArticleSummaryResponse], error)
+	// CheckArticleSummaryExists checks if an article summary exists.
+	CheckArticleSummaryExists(context.Context, *connect.Request[v1.CheckArticleSummaryExistsRequest]) (*connect.Response[v1.CheckArticleSummaryExistsResponse], error)
+	// FindArticlesWithSummaries returns articles with summaries for quality checking.
+	FindArticlesWithSummaries(context.Context, *connect.Request[v1.FindArticlesWithSummariesRequest]) (*connect.Response[v1.FindArticlesWithSummariesResponse], error)
+	// ListUnsummarizedArticles returns articles without summaries for polling-based summarization.
+	ListUnsummarizedArticles(context.Context, *connect.Request[v1.ListUnsummarizedArticlesRequest]) (*connect.Response[v1.ListUnsummarizedArticlesResponse], error)
+	// HasUnsummarizedArticles checks if any articles lack summaries.
+	HasUnsummarizedArticles(context.Context, *connect.Request[v1.HasUnsummarizedArticlesRequest]) (*connect.Response[v1.HasUnsummarizedArticlesResponse], error)
 }
 
 // NewBackendInternalServiceHandler builds an HTTP handler from the service implementation. It
@@ -426,6 +524,36 @@ func NewBackendInternalServiceHandler(svc BackendInternalServiceHandler, opts ..
 		connect.WithSchema(backendInternalServiceMethods.ByName("ListUntaggedArticles")),
 		connect.WithHandlerOptions(opts...),
 	)
+	backendInternalServiceDeleteArticleSummaryHandler := connect.NewUnaryHandler(
+		BackendInternalServiceDeleteArticleSummaryProcedure,
+		svc.DeleteArticleSummary,
+		connect.WithSchema(backendInternalServiceMethods.ByName("DeleteArticleSummary")),
+		connect.WithHandlerOptions(opts...),
+	)
+	backendInternalServiceCheckArticleSummaryExistsHandler := connect.NewUnaryHandler(
+		BackendInternalServiceCheckArticleSummaryExistsProcedure,
+		svc.CheckArticleSummaryExists,
+		connect.WithSchema(backendInternalServiceMethods.ByName("CheckArticleSummaryExists")),
+		connect.WithHandlerOptions(opts...),
+	)
+	backendInternalServiceFindArticlesWithSummariesHandler := connect.NewUnaryHandler(
+		BackendInternalServiceFindArticlesWithSummariesProcedure,
+		svc.FindArticlesWithSummaries,
+		connect.WithSchema(backendInternalServiceMethods.ByName("FindArticlesWithSummaries")),
+		connect.WithHandlerOptions(opts...),
+	)
+	backendInternalServiceListUnsummarizedArticlesHandler := connect.NewUnaryHandler(
+		BackendInternalServiceListUnsummarizedArticlesProcedure,
+		svc.ListUnsummarizedArticles,
+		connect.WithSchema(backendInternalServiceMethods.ByName("ListUnsummarizedArticles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	backendInternalServiceHasUnsummarizedArticlesHandler := connect.NewUnaryHandler(
+		BackendInternalServiceHasUnsummarizedArticlesProcedure,
+		svc.HasUnsummarizedArticles,
+		connect.WithSchema(backendInternalServiceMethods.ByName("HasUnsummarizedArticles")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.backend.v1.BackendInternalService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BackendInternalServiceListArticlesWithTagsProcedure:
@@ -456,6 +584,16 @@ func NewBackendInternalServiceHandler(svc BackendInternalServiceHandler, opts ..
 			backendInternalServiceBatchUpsertArticleTagsHandler.ServeHTTP(w, r)
 		case BackendInternalServiceListUntaggedArticlesProcedure:
 			backendInternalServiceListUntaggedArticlesHandler.ServeHTTP(w, r)
+		case BackendInternalServiceDeleteArticleSummaryProcedure:
+			backendInternalServiceDeleteArticleSummaryHandler.ServeHTTP(w, r)
+		case BackendInternalServiceCheckArticleSummaryExistsProcedure:
+			backendInternalServiceCheckArticleSummaryExistsHandler.ServeHTTP(w, r)
+		case BackendInternalServiceFindArticlesWithSummariesProcedure:
+			backendInternalServiceFindArticlesWithSummariesHandler.ServeHTTP(w, r)
+		case BackendInternalServiceListUnsummarizedArticlesProcedure:
+			backendInternalServiceListUnsummarizedArticlesHandler.ServeHTTP(w, r)
+		case BackendInternalServiceHasUnsummarizedArticlesProcedure:
+			backendInternalServiceHasUnsummarizedArticlesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -519,4 +657,24 @@ func (UnimplementedBackendInternalServiceHandler) BatchUpsertArticleTags(context
 
 func (UnimplementedBackendInternalServiceHandler) ListUntaggedArticles(context.Context, *connect.Request[v1.ListUntaggedArticlesRequest]) (*connect.Response[v1.ListUntaggedArticlesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.ListUntaggedArticles is not implemented"))
+}
+
+func (UnimplementedBackendInternalServiceHandler) DeleteArticleSummary(context.Context, *connect.Request[v1.DeleteArticleSummaryRequest]) (*connect.Response[v1.DeleteArticleSummaryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.DeleteArticleSummary is not implemented"))
+}
+
+func (UnimplementedBackendInternalServiceHandler) CheckArticleSummaryExists(context.Context, *connect.Request[v1.CheckArticleSummaryExistsRequest]) (*connect.Response[v1.CheckArticleSummaryExistsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.CheckArticleSummaryExists is not implemented"))
+}
+
+func (UnimplementedBackendInternalServiceHandler) FindArticlesWithSummaries(context.Context, *connect.Request[v1.FindArticlesWithSummariesRequest]) (*connect.Response[v1.FindArticlesWithSummariesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.FindArticlesWithSummaries is not implemented"))
+}
+
+func (UnimplementedBackendInternalServiceHandler) ListUnsummarizedArticles(context.Context, *connect.Request[v1.ListUnsummarizedArticlesRequest]) (*connect.Response[v1.ListUnsummarizedArticlesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.ListUnsummarizedArticles is not implemented"))
+}
+
+func (UnimplementedBackendInternalServiceHandler) HasUnsummarizedArticles(context.Context, *connect.Request[v1.HasUnsummarizedArticlesRequest]) (*connect.Response[v1.HasUnsummarizedArticlesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.HasUnsummarizedArticles is not implemented"))
 }

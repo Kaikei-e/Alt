@@ -41,6 +41,15 @@ type Handler struct {
 	batchUpsertArticleTags internal_tag_port.BatchUpsertArticleTagsPort
 	listUntaggedArticles   internal_tag_port.ListUntaggedArticlesPort
 
+	// Phase 4 (quality checker)
+	deleteArticleSummary      internal_article_port.DeleteArticleSummaryPort
+	checkArticleSummaryExists internal_article_port.CheckArticleSummaryExistsPort
+	findArticlesWithSummaries internal_article_port.FindArticlesWithSummariesPort
+
+	// Summarization (pre-processor polling)
+	listUnsummarized internal_article_port.ListUnsummarizedArticlesPort
+	hasUnsummarized  internal_article_port.HasUnsummarizedArticlesPort
+
 	logger *slog.Logger
 }
 
@@ -105,6 +114,30 @@ func WithPhase3Ports(
 		h.upsertArticleTags = upsertTags
 		h.batchUpsertArticleTags = batchUpsertTags
 		h.listUntaggedArticles = listUntagged
+	}
+}
+
+// WithSummarizationPorts configures ports for summarization polling RPCs.
+func WithSummarizationPorts(
+	listUnsummarized internal_article_port.ListUnsummarizedArticlesPort,
+	hasUnsummarized internal_article_port.HasUnsummarizedArticlesPort,
+) HandlerOption {
+	return func(h *Handler) {
+		h.listUnsummarized = listUnsummarized
+		h.hasUnsummarized = hasUnsummarized
+	}
+}
+
+// WithPhase4Ports configures ports for Phase 4 (quality checker) RPCs.
+func WithPhase4Ports(
+	deleteSummary internal_article_port.DeleteArticleSummaryPort,
+	checkSummaryExists internal_article_port.CheckArticleSummaryExistsPort,
+	findWithSummaries internal_article_port.FindArticlesWithSummariesPort,
+) HandlerOption {
+	return func(h *Handler) {
+		h.deleteArticleSummary = deleteSummary
+		h.checkArticleSummaryExists = checkSummaryExists
+		h.findArticlesWithSummaries = findWithSummaries
 	}
 }
 
@@ -295,8 +328,11 @@ func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[b
 	if req.Msg.Summary == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("summary is required"))
 	}
+	if req.Msg.UserId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("user_id is required"))
+	}
 
-	err := h.saveArticleSummary.SaveArticleSummary(ctx, req.Msg.ArticleId, req.Msg.Summary, req.Msg.Language)
+	err := h.saveArticleSummary.SaveArticleSummary(ctx, req.Msg.ArticleId, req.Msg.UserId, req.Msg.Summary, req.Msg.Language)
 	if err != nil {
 		h.logger.Error("SaveArticleSummary failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to save article summary"))
@@ -461,6 +497,149 @@ func (h *Handler) ListUntaggedArticles(ctx context.Context, req *connect.Request
 	return connect.NewResponse(&backendv1.ListUntaggedArticlesResponse{
 		Articles:   protoArticles,
 		TotalCount: totalCount,
+	}), nil
+}
+
+// ── Phase 4: Summary quality operations (quality checker) ──
+
+func (h *Handler) DeleteArticleSummary(ctx context.Context, req *connect.Request[backendv1.DeleteArticleSummaryRequest]) (*connect.Response[backendv1.DeleteArticleSummaryResponse], error) {
+	if h.deleteArticleSummary == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.ArticleId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
+	}
+
+	err := h.deleteArticleSummary.DeleteArticleSummary(ctx, req.Msg.ArticleId)
+	if err != nil {
+		h.logger.Error("DeleteArticleSummary failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to delete article summary"))
+	}
+
+	return connect.NewResponse(&backendv1.DeleteArticleSummaryResponse{
+		Success: true,
+	}), nil
+}
+
+func (h *Handler) CheckArticleSummaryExists(ctx context.Context, req *connect.Request[backendv1.CheckArticleSummaryExistsRequest]) (*connect.Response[backendv1.CheckArticleSummaryExistsResponse], error) {
+	if h.checkArticleSummaryExists == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.ArticleId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
+	}
+
+	exists, summaryID, err := h.checkArticleSummaryExists.CheckArticleSummaryExists(ctx, req.Msg.ArticleId)
+	if err != nil {
+		h.logger.Error("CheckArticleSummaryExists failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to check article summary existence"))
+	}
+
+	return connect.NewResponse(&backendv1.CheckArticleSummaryExistsResponse{
+		Exists:    exists,
+		SummaryId: summaryID,
+	}), nil
+}
+
+func (h *Handler) FindArticlesWithSummaries(ctx context.Context, req *connect.Request[backendv1.FindArticlesWithSummariesRequest]) (*connect.Response[backendv1.FindArticlesWithSummariesResponse], error) {
+	if h.findArticlesWithSummaries == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	limit := clampLimit(int(req.Msg.Limit))
+
+	var lastCreatedAt *time.Time
+	if req.Msg.LastCreatedAt != nil {
+		t := req.Msg.LastCreatedAt.AsTime()
+		lastCreatedAt = &t
+	}
+
+	articles, nextCreatedAt, nextID, err := h.findArticlesWithSummaries.FindArticlesWithSummaries(ctx, lastCreatedAt, req.Msg.LastId, limit)
+	if err != nil {
+		h.logger.Error("FindArticlesWithSummaries failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to find articles with summaries"))
+	}
+
+	protoArticles := make([]*backendv1.ArticleWithSummaryItem, len(articles))
+	for i, a := range articles {
+		protoArticles[i] = &backendv1.ArticleWithSummaryItem{
+			ArticleId:       a.ArticleID,
+			ArticleContent:  a.ArticleContent,
+			ArticleUrl:      a.ArticleURL,
+			SummaryId:       a.SummaryID,
+			SummaryJapanese: a.SummaryJapanese,
+			CreatedAt:       timestamppb.New(a.CreatedAt),
+		}
+	}
+
+	resp := &backendv1.FindArticlesWithSummariesResponse{
+		Articles: protoArticles,
+		NextId:   nextID,
+	}
+	if nextCreatedAt != nil {
+		resp.NextCreatedAt = timestamppb.New(*nextCreatedAt)
+	}
+
+	return connect.NewResponse(resp), nil
+}
+
+// ── Summarization operations (pre-processor polling) ──
+
+func (h *Handler) ListUnsummarizedArticles(ctx context.Context, req *connect.Request[backendv1.ListUnsummarizedArticlesRequest]) (*connect.Response[backendv1.ListUnsummarizedArticlesResponse], error) {
+	if h.listUnsummarized == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	limit := clampLimit(int(req.Msg.Limit))
+
+	var lastCreatedAt *time.Time
+	if req.Msg.LastCreatedAt != nil {
+		t := req.Msg.LastCreatedAt.AsTime()
+		lastCreatedAt = &t
+	}
+
+	articles, nextCreatedAt, nextID, err := h.listUnsummarized.ListUnsummarizedArticles(ctx, lastCreatedAt, req.Msg.LastId, limit)
+	if err != nil {
+		h.logger.Error("ListUnsummarizedArticles failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list unsummarized articles"))
+	}
+
+	protoArticles := make([]*backendv1.UnsummarizedArticle, len(articles))
+	for i, a := range articles {
+		protoArticles[i] = &backendv1.UnsummarizedArticle{
+			Id:        a.ID,
+			Title:     a.Title,
+			Content:   a.Content,
+			Url:       a.URL,
+			CreatedAt: timestamppb.New(a.CreatedAt),
+			UserId:    a.UserID,
+		}
+	}
+
+	resp := &backendv1.ListUnsummarizedArticlesResponse{
+		Articles: protoArticles,
+		NextId:   nextID,
+	}
+	if nextCreatedAt != nil {
+		resp.NextCreatedAt = timestamppb.New(*nextCreatedAt)
+	}
+
+	return connect.NewResponse(resp), nil
+}
+
+func (h *Handler) HasUnsummarizedArticles(ctx context.Context, _ *connect.Request[backendv1.HasUnsummarizedArticlesRequest]) (*connect.Response[backendv1.HasUnsummarizedArticlesResponse], error) {
+	if h.hasUnsummarized == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+
+	has, err := h.hasUnsummarized.HasUnsummarizedArticles(ctx)
+	if err != nil {
+		h.logger.Error("HasUnsummarizedArticles failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to check unsummarized articles"))
+	}
+
+	return connect.NewResponse(&backendv1.HasUnsummarizedArticlesResponse{
+		HasUnsummarized: has,
 	}), nil
 }
 
