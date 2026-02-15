@@ -34,6 +34,9 @@ func TestConfigurationIntegration(t *testing.T) {
 		"MONITORING_ENABLE_TRACING":         "true",
 		"ENABLE_SCHEDULE_MODE":              "true",
 		"ENABLE_DEBUG_MODE":                 "false",
+		"DB_HOST":                          "postgres.alt-database.svc.cluster.local",
+		"DB_NAME":                          "alt",
+		"PRE_PROCESSOR_SIDECAR_DB_USER":    "pre_processor_sidecar_user",
 	}
 
 	for key := range testEnvVars {
