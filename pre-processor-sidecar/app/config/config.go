@@ -179,11 +179,11 @@ func LoadConfig() (*Config, error) {
 		ReadTimeout: getEnvOrDefaultDuration("READ_TIMEOUT", 30*time.Second),
 
 		Database: DatabaseConfig{
-			Host:     getEnvOrDefault("DB_HOST", "postgres.alt-database.svc.cluster.local"),
+			Host:     getEnvOrDefault("DB_HOST", "pre-processor-db"),
 			Port:     getEnvOrDefault("DB_PORT", "5432"),
-			Name:     getEnvOrDefault("DB_NAME", "alt"),
-			User:     getEnvOrDefault("PRE_PROCESSOR_SIDECAR_DB_USER", "pre_processor_sidecar_user"),
-			Password: GetSecretOrEnv("PRE_PROCESSOR_DB_PASSWORD_FILE", "PRE_PROCESSOR_SIDECAR_DB_PASSWORD"),
+			Name:     getEnvOrDefault("DB_NAME", "pre_processor"),
+			User:     getEnvOrDefault("PRE_PROCESSOR_SIDECAR_DB_USER", "pp_user"),
+			Password: GetSecretOrEnv("PRE_PROCESSOR_SIDECAR_DB_PASSWORD_FILE", "PRE_PROCESSOR_SIDECAR_DB_PASSWORD"),
 			SSLMode:  getEnvOrDefault("DB_SSL_MODE", "disable"),
 		},
 
