@@ -3,6 +3,7 @@ package backend_api
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"time"
 
@@ -146,12 +147,46 @@ func (r *ArticleRepository) FetchInoreaderArticles(ctx context.Context, since ti
 }
 
 // UpsertArticles batch upserts articles.
+// Articles with unresolvable feeds are skipped (matching legacy DB behavior),
+// while real errors (network, auth) abort the batch immediately.
 func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*domain.Article) error {
+	if len(articles) == 0 {
+		return nil
+	}
+
+	var created int
 	for _, article := range articles {
+		// Skip articles with empty FeedURL and no FeedID
+		if article.FeedURL == "" && article.FeedID == "" {
+			slog.WarnContext(ctx, "skipping article with empty FeedURL", "url", article.URL)
+			continue
+		}
+
+		// Pre-resolve FeedID if not set
+		if article.FeedID == "" {
+			id, err := r.getFeedID(ctx, article.FeedURL)
+			if err != nil {
+				// Feed not found in backend — skip gracefully (matches legacy behavior)
+				slog.WarnContext(ctx, "feed not found, skipping article",
+					"feedURL", article.FeedURL, "url", article.URL)
+				continue
+			}
+			if id == "" {
+				slog.WarnContext(ctx, "feed not found, skipping article",
+					"feedURL", article.FeedURL, "url", article.URL)
+				continue
+			}
+			article.FeedID = id
+		}
+
+		// Create article — real errors (network, auth, etc.) abort the batch
 		if err := r.Create(ctx, article); err != nil {
 			return fmt.Errorf("upsert article %s: %w", article.URL, err)
 		}
+		created++
 	}
+
+	slog.InfoContext(ctx, "articles upserted via API", "created", created, "total", len(articles))
 	return nil
 }
 
