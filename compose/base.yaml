@@ -49,6 +49,8 @@ secrets:
     file: ../secrets/grafana_admin_password.txt
   restic_password:
     file: ../secrets/restic_password.txt
+  pp_db_password:
+    file: ../secrets/pp_db_password.txt
 
 networks:
   alt-network:
@@ -65,6 +67,7 @@ volumes:
   oauth_token_data:
   prometheus_data:
   grafana_data:
+  pre_processor_db_data:
   redis-streams-data:
 
 x-rask-env: &rask-env

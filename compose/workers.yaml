@@ -14,12 +14,16 @@ services:
     depends_on:
       oauth-token-init:
         condition: service_completed_successfully
+      pre-processor-db:
+        condition: service_healthy
+      pre-processor-db-migrator:
+        condition: service_completed_successfully
     environment:
-      - DB_HOST=db
+      - DB_HOST=pre-processor-db
       - DB_PORT=5432
-      - DB_NAME=${DB_NAME}
-      - PRE_PROCESSOR_SIDECAR_DB_USER=${PRE_PROCESSOR_SIDECAR_DB_USER}
-      - PRE_PROCESSOR_SIDECAR_DB_PASSWORD_FILE=/run/secrets/pre_processor_sidecar_db_password
+      - DB_NAME=${PP_DB_NAME:-pre_processor}
+      - PRE_PROCESSOR_SIDECAR_DB_USER=${PP_DB_USER:-pp_user}
+      - PRE_PROCESSOR_SIDECAR_DB_PASSWORD_FILE=/run/secrets/pp_db_password
       - INOREADER_CLIENT_ID_FILE=/run/secrets/inoreader_client_id
       - INOREADER_CLIENT_SECRET_FILE=/run/secrets/inoreader_client_secret
       - LOG_LEVEL=info
@@ -28,7 +32,7 @@ services:
       - TOKEN_STORAGE_PATH=/app/secrets/oauth2_token.env
       - INOREADER_REFRESH_TOKEN_FILE=/app/secrets/oauth2_token.env
     secrets:
-      - pre_processor_sidecar_db_password
+      - pp_db_password
       - inoreader_client_id
       - inoreader_client_secret
     volumes:

@@ -169,6 +169,60 @@ services:
     labels:
       - rask.group=news-creator-init
 
+  # Pre-processor dedicated database (ADR-000246)
+  pre-processor-db:
+    image: postgres:17-alpine
+    container_name: pre-processor-db
+    ports:
+      - "5437:5432"
+    environment:
+      POSTGRES_DB: ${PP_DB_NAME:-pre_processor}
+      POSTGRES_USER: ${PP_DB_USER:-pp_user}
+      POSTGRES_PASSWORD_FILE: /run/secrets/pp_db_password
+    secrets:
+      - pp_db_password
+    volumes:
+      - pre_processor_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PP_DB_USER:-pp_user} -d ${PP_DB_NAME:-pre_processor}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - alt-network
+    restart: unless-stopped
+    labels:
+      - rask.group=pre-processor-db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Atlas migrator for pre-processor-db
+  pre-processor-db-migrator:
+    build:
+      context: ../pre-processor-migration-atlas
+      dockerfile: docker/Dockerfile
+    command: ["apply"]
+    environment:
+      - PP_DB_HOST=pre-processor-db
+      - PP_DB_PORT=5432
+      - PP_DB_NAME=${PP_DB_NAME:-pre_processor}
+      - PP_DB_USER=${PP_DB_USER:-pp_user}
+      - PP_DB_PASSWORD_FILE=/run/secrets/pp_db_password
+    secrets:
+      - pp_db_password
+    depends_on:
+      pre-processor-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    restart: "no"
+    labels:
+      - rask.group=pre-processor-db-migrator
+
   pre-processor:
     env_file:
       - ../.env
@@ -178,11 +232,21 @@ services:
     depends_on:
       redis-streams:
         condition: service_healthy
+      pre-processor-db:
+        condition: service_healthy
+      pre-processor-db-migrator:
+        condition: service_completed_successfully
     environment:
       # Backend API mode: article/feed/summary repos via Connect-RPC
       - BACKEND_API_URL=http://alt-backend:9101
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret
-      # DB still required for job queue (Category C) and quality checker
+      # Pre-processor dedicated DB (ADR-000246)
+      - PP_DB_HOST=pre-processor-db
+      - PP_DB_PORT=5432
+      - PP_DB_NAME=${PP_DB_NAME:-pre_processor}
+      - PP_DB_USER=${PP_DB_USER:-pp_user}
+      - PP_DB_PASSWORD_FILE=/run/secrets/pp_db_password
+      # alt-db connection maintained for quality checker (Phase 4 removes this)
       - DB_HOST=db
       - DB_PORT=5432
       - DB_NAME=${DB_NAME}
@@ -200,6 +264,7 @@ services:
       - OTEL_SERVICE_NAME=pre-processor
     secrets:
       - pre_processor_db_password
+      - pp_db_password
       - service_secret
     restart: always
     ports:
