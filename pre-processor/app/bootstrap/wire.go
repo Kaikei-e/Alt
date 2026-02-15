@@ -67,7 +67,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 			"url", backendAPIURL,
 		)
 		client := backend_api.NewClient(backendAPIURL, serviceToken)
-		articleRepo = backend_api.NewArticleRepository(client)
+		articleRepo = backend_api.NewArticleRepository(client, dbPool)
 		summaryRepo = backend_api.NewSummaryRepository(client)
 	} else {
 		// Legacy DB mode

@@ -1,0 +1,15 @@
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - services/backend
+plugins:
+  # Python protobuf messages
+  - remote: buf.build/protocolbuffers/python
+    out: ../tag-generator/app/tag_generator/gen/proto
+  # Python protobuf type stubs
+  - remote: buf.build/protocolbuffers/pyi
+    out: ../tag-generator/app/tag_generator/gen/proto
+  # Connect-RPC Python service stubs
+  - remote: buf.build/connectrpc/python
+    out: ../tag-generator/app/tag_generator/gen/proto

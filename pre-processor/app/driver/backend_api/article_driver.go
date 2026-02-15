@@ -7,21 +7,24 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	backendv1 "pre-processor/gen/proto/clients/preprocessor-backend/v1"
-
 	"pre-processor/domain"
+	"pre-processor/driver"
+	backendv1 "pre-processor/gen/proto/clients/preprocessor-backend/v1"
 )
 
 // ArticleRepository implements repository.ArticleRepository using the backend API.
 type ArticleRepository struct {
 	client *Client
+	dbPool *pgxpool.Pool
 }
 
 // NewArticleRepository creates a new API-backed article repository.
-func NewArticleRepository(client *Client) *ArticleRepository {
-	return &ArticleRepository{client: client}
+// dbPool is used for operations that require direct DB access (e.g. FetchInoreaderArticles).
+func NewArticleRepository(client *Client, dbPool *pgxpool.Pool) *ArticleRepository {
+	return &ArticleRepository{client: client, dbPool: dbPool}
 }
 
 // Create creates a new article via the backend API.
@@ -136,11 +139,10 @@ func (r *ArticleRepository) FindByID(ctx context.Context, articleID string) (*do
 	}, nil
 }
 
-// FetchInoreaderArticles fetches articles from Inoreader source.
-// This uses the sidecar's own tables and requires direct DB access.
+// FetchInoreaderArticles fetches articles from the pre-processor's own inoreader_articles table.
+// This requires direct DB access since the data lives in the sidecar DB, not the backend API.
 func (r *ArticleRepository) FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*domain.Article, error) {
-	// Category B: requires sidecar DB, not available via backend API
-	return nil, fmt.Errorf("FetchInoreaderArticles requires direct database access (category B)")
+	return driver.GetInoreaderArticles(ctx, r.dbPool, since)
 }
 
 // UpsertArticles batch upserts articles.
