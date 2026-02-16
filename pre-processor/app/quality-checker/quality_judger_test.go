@@ -908,6 +908,84 @@ func TestMaxQualityCheckContentLengthConstant(t *testing.T) {
 	assert.Greater(t, maxQualityCheckContentLength, 0, "maxQualityCheckContentLength should be positive")
 }
 
+// TestIsPlaceholderSummary tests the isPlaceholderSummary function
+func TestIsPlaceholderSummary(t *testing.T) {
+	tests := []struct {
+		name     string
+		summary  string
+		expected bool
+	}{
+		{
+			name:     "placeholder_too_short",
+			summary:  "本文が短すぎるため要約できませんでした。",
+			expected: true,
+		},
+		{
+			name:     "placeholder_too_long",
+			summary:  "本文が長すぎるため要約できませんでした。",
+			expected: true,
+		},
+		{
+			name:     "normal_summary",
+			summary:  "この記事はAIの最新動向について述べている。",
+			expected: false,
+		},
+		{
+			name:     "empty_summary",
+			summary:  "",
+			expected: false,
+		},
+		{
+			name:     "partial_match",
+			summary:  "本文が短すぎるため",
+			expected: false,
+		},
+		{
+			name:     "placeholder_with_extra_text",
+			summary:  "本文が短すぎるため要約できませんでした。追加テキスト",
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isPlaceholderSummary(tc.summary)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+// TestJudgeArticleQualitySkipsPlaceholder tests that placeholder summaries are skipped
+func TestJudgeArticleQualitySkipsPlaceholder(t *testing.T) {
+	tests := []struct {
+		name    string
+		summary string
+	}{
+		{
+			name:    "too_short_placeholder",
+			summary: "本文が短すぎるため要約できませんでした。",
+		},
+		{
+			name:    "too_long_placeholder",
+			summary: "本文が長すぎるため要約できませんでした。",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			article := &driver.ArticleWithSummary{
+				ArticleID:       "test-placeholder-article",
+				Content:         "Short",
+				SummaryJapanese: tc.summary,
+			}
+
+			// No mock server needed - should return nil without making any HTTP calls
+			err := JudgeArticleQuality(context.Background(), nil, nil, article)
+			require.NoError(t, err, "Placeholder summary should be skipped without error")
+		})
+	}
+}
+
 // TestJudgeArticleQualityLowScoreStillDeletes tests that low scores from successful responses still trigger deletion
 func TestJudgeArticleQualityLowScoreStillDeletes(t *testing.T) {
 	// Create a server that returns a low score (below threshold)

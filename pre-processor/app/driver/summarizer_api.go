@@ -84,13 +84,25 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 	const maxContentLength = 100_000
 	extractedRuneCount := utf8.RuneCountInString(extractedContent)
 	if extractedRuneCount < minContentLength {
-		logger.Info("Skipping summarization: content too short after extraction",
-			"article_id", article.ID,
-			"original_length", originalLength,
-			"extracted_length_bytes", extractedLength,
-			"extracted_length_chars", extractedRuneCount,
-			"min_required", minContentLength)
-		return nil, ErrContentTooShort
+		// Fallback: if content is too short but title is long enough, use title as content
+		titleRuneCount := utf8.RuneCountInString(article.Title)
+		if titleRuneCount >= minContentLength {
+			logger.Info("Content too short, falling back to title-based summarization",
+				"article_id", article.ID,
+				"content_rune_count", extractedRuneCount,
+				"title_rune_count", titleRuneCount)
+			extractedContent = article.Title
+			extractedRuneCount = titleRuneCount
+			extractedLength = len(article.Title)
+		} else {
+			logger.Info("Skipping summarization: content too short after extraction",
+				"article_id", article.ID,
+				"original_length", originalLength,
+				"extracted_length_bytes", extractedLength,
+				"extracted_length_chars", extractedRuneCount,
+				"min_required", minContentLength)
+			return nil, ErrContentTooShort
+		}
 	}
 	if extractedLength > maxContentLength {
 		logger.Info("Skipping summarization: content too long after extraction",
@@ -256,13 +268,25 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 	const maxContentLength = 100_000
 	extractedRuneCount := utf8.RuneCountInString(extractedContent)
 	if extractedRuneCount < minContentLength {
-		logger.Info("Skipping summarization: content too short after extraction",
-			"article_id", article.ID,
-			"original_length", originalLength,
-			"extracted_length_bytes", extractedLength,
-			"extracted_length_chars", extractedRuneCount,
-			"min_required", minContentLength)
-		return nil, ErrContentTooShort
+		// Fallback: if content is too short but title is long enough, use title as content
+		titleRuneCount := utf8.RuneCountInString(article.Title)
+		if titleRuneCount >= minContentLength {
+			logger.Info("Content too short, falling back to title-based summarization (streaming)",
+				"article_id", article.ID,
+				"content_rune_count", extractedRuneCount,
+				"title_rune_count", titleRuneCount)
+			extractedContent = article.Title
+			extractedRuneCount = titleRuneCount
+			extractedLength = len(article.Title)
+		} else {
+			logger.Info("Skipping summarization: content too short after extraction",
+				"article_id", article.ID,
+				"original_length", originalLength,
+				"extracted_length_bytes", extractedLength,
+				"extracted_length_chars", extractedRuneCount,
+				"min_required", minContentLength)
+			return nil, ErrContentTooShort
+		}
 	}
 	if extractedLength > maxContentLength {
 		logger.Info("Skipping summarization: content too long after extraction",

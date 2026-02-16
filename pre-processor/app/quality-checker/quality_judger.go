@@ -27,7 +27,27 @@ var (
 	// 記事 + サマリー + プロンプトテンプレート(~1500文字) < 8k トークン
 	// 日本語は約2文字/トークン（実測値）なので、記事+サマリーは約20,000文字まで
 	maxQualityCheckContentLength = 20_000
+
+	// knownPlaceholders are placeholder summaries saved when content is too short/long.
+	// These must NOT be quality-checked: deleting them causes an infinite summarize→delete loop.
+	knownPlaceholders = []string{
+		"本文が短すぎるため要約できませんでした。",
+		"本文が長すぎるため要約できませんでした。",
+	}
 )
+
+// isPlaceholderSummary returns true if the summary is a known placeholder message.
+// Placeholder summaries are generated when article content is too short or too long
+// for summarization. Quality-checking these would always yield low scores, causing
+// deletion and re-summarization in an infinite loop.
+func isPlaceholderSummary(summary string) bool {
+	for _, placeholder := range knownPlaceholders {
+		if summary == placeholder {
+			return true
+		}
+	}
+	return false
+}
 
 type judgePrompt struct {
 	Model   string       `json:"model"`
@@ -299,7 +319,7 @@ func attemptEmergencyParsing(response string) *Score {
 	return nil
 }
 
-// RemoveLowScoreSummary deletes a low-quality summary via the repository and triggers re-fetch of the article.
+// RemoveLowScoreSummary deletes a low-quality summary via the repository.
 // The score parameter is passed from the caller to avoid redundant LLM calls for scoring.
 func RemoveLowScoreSummary(ctx context.Context, summaryRepo repository.SummaryRepository, articleRepo repository.ArticleRepository, articleWithSummary *driver.ArticleWithSummary, score *Score) error {
 	if score == nil {
@@ -324,54 +344,6 @@ func RemoveLowScoreSummary(ctx context.Context, summaryRepo repository.SummaryRe
 	}
 
 	logger.Logger.InfoContext(ctx, "Deleted low quality article summary", "articleID", articleWithSummary.ArticleID)
-
-	// Re-fetch article from web after deletion
-	if articleRepo == nil {
-		return nil
-	}
-
-	article, fetchErr := articleRepo.FindByID(ctx, articleWithSummary.ArticleID)
-	if fetchErr != nil {
-		logger.Logger.WarnContext(ctx, "Failed to get article for re-fetch after summary deletion",
-			"articleID", articleWithSummary.ArticleID,
-			"error", fetchErr)
-	} else if article == nil {
-		logger.Logger.WarnContext(ctx, "Article not found for re-fetch after summary deletion",
-			"articleID", articleWithSummary.ArticleID)
-	} else if article.URL == "" {
-		logger.Logger.WarnContext(ctx, "Article URL is empty, cannot re-fetch from web",
-			"articleID", articleWithSummary.ArticleID)
-	} else {
-		client := &http.Client{
-			Timeout: 30 * time.Second,
-		}
-		req, err := http.NewRequestWithContext(ctx, "GET", article.URL, nil)
-		if err != nil {
-			logger.Logger.WarnContext(ctx, "Failed to create HTTP request for article re-fetch",
-				"articleID", articleWithSummary.ArticleID,
-				"url", article.URL,
-				"error", err)
-		} else {
-			req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)")
-			resp, err := client.Do(req)
-			if err != nil {
-				logger.Logger.WarnContext(ctx, "Failed to re-fetch article from web after summary deletion",
-					"articleID", articleWithSummary.ArticleID,
-					"url", article.URL,
-					"error", err)
-			} else {
-				defer func() {
-					if closeErr := resp.Body.Close(); closeErr != nil {
-						logger.Logger.ErrorContext(ctx, "Failed to close response body", "error", closeErr)
-					}
-				}()
-				logger.Logger.InfoContext(ctx, "Successfully re-fetched article from web after summary deletion",
-					"articleID", articleWithSummary.ArticleID,
-					"url", article.URL,
-					"status_code", resp.StatusCode)
-			}
-		}
-	}
 
 	return nil
 }
@@ -432,6 +404,13 @@ func scoreSummaryWithRetry(ctx context.Context, prompt string, maxRetries int) (
 func JudgeArticleQuality(ctx context.Context, summaryRepo repository.SummaryRepository, articleRepo repository.ArticleRepository, articleWithSummary *driver.ArticleWithSummary) error {
 	if articleWithSummary == nil || articleWithSummary.ArticleID == "" {
 		return errors.New("article with summary is invalid")
+	}
+
+	// プレースホルダーサマリーはLLM評価不要 - 削除すると無限ループになる
+	if isPlaceholderSummary(articleWithSummary.SummaryJapanese) {
+		logger.Logger.InfoContext(ctx, "Skipping quality check: placeholder summary",
+			"articleID", articleWithSummary.ArticleID)
+		return nil
 	}
 
 	// コンテンツ長チェック: 長すぎる場合はスキップ（サマリーは保持）

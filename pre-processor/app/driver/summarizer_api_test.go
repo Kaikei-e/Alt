@@ -54,6 +54,68 @@ func TestArticleSummarizerAPIClient_Returns429(t *testing.T) {
 	})
 }
 
+// TestTitleFallback tests that title-based fallback is used when content is too short
+func TestTitleFallback(t *testing.T) {
+	t.Run("short content with long title uses title", func(t *testing.T) {
+		// Create a server that returns a successful summary
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true,"article_id":"test-title-fallback","summary":"タイトルベースの要約","model":"test"}`))
+		}))
+		defer server.Close()
+
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		cfg := &config.Config{
+			NewsCreator: config.NewsCreatorConfig{
+				Host:    server.URL,
+				APIPath: "/api/v1/summarize",
+				Timeout: 5 * 1_000_000_000,
+			},
+		}
+
+		// Short content (35 chars) but title >= 100 chars
+		article := &domain.Article{
+			ID:      "test-title-fallback",
+			Title:   strings.Repeat("A very long article title about AI. ", 5), // 175 chars
+			Content: "Short content",
+		}
+
+		result, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
+		if err != nil {
+			t.Fatalf("expected no error, got: %v", err)
+		}
+		if result == nil {
+			t.Fatal("expected result, got nil")
+		}
+		if result.SummaryJapanese != "タイトルベースの要約" {
+			t.Errorf("expected summary from server, got: %s", result.SummaryJapanese)
+		}
+	})
+
+	t.Run("short content with short title returns ErrContentTooShort", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		cfg := &config.Config{
+			NewsCreator: config.NewsCreatorConfig{
+				Host:    "http://unused",
+				APIPath: "/api/v1/summarize",
+				Timeout: 5 * 1_000_000_000,
+			},
+		}
+
+		// Both content and title are too short
+		article := &domain.Article{
+			ID:      "test-short-everything",
+			Title:   "Short title",
+			Content: "Short content",
+		}
+
+		_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
+		if !errors.Is(err, domain.ErrContentTooShort) {
+			t.Errorf("expected ErrContentTooShort, got: %v", err)
+		}
+	})
+}
+
 func TestContentLengthMeasurement(t *testing.T) {
 	// Generate test strings with exact lengths
 	englishShort := strings.Repeat("a", 77)              // 77 chars, 77 bytes
