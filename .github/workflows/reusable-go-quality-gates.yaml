@@ -113,7 +113,7 @@ jobs:
       - name: fmt check
         working-directory: ${{ inputs.working-directory }}
         run: |
-          files=$(gofmt -l . | grep -v '^$' || true)
+          files=$(gofmt -l . | grep -v '^gen/' | grep -v '^$' || true)
           if [ -n "$files" ]; then
             echo "::error title=gofmt::Run 'gofmt -w' on these files:\n$files"
             exit 1

@@ -18,10 +18,10 @@ import (
 type mockBackendClient struct {
 	backendv1connect.UnimplementedBackendInternalServiceHandler
 
-	getFeedIDFunc              func(ctx context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error)
-	createArticleFunc          func(ctx context.Context, req *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error)
-	listUnsummarizedFunc       func(ctx context.Context, req *connect.Request[backendv1.ListUnsummarizedArticlesRequest]) (*connect.Response[backendv1.ListUnsummarizedArticlesResponse], error)
-	hasUnsummarizedFunc        func(ctx context.Context, req *connect.Request[backendv1.HasUnsummarizedArticlesRequest]) (*connect.Response[backendv1.HasUnsummarizedArticlesResponse], error)
+	getFeedIDFunc        func(ctx context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error)
+	createArticleFunc    func(ctx context.Context, req *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error)
+	listUnsummarizedFunc func(ctx context.Context, req *connect.Request[backendv1.ListUnsummarizedArticlesRequest]) (*connect.Response[backendv1.ListUnsummarizedArticlesResponse], error)
+	hasUnsummarizedFunc  func(ctx context.Context, req *connect.Request[backendv1.HasUnsummarizedArticlesRequest]) (*connect.Response[backendv1.HasUnsummarizedArticlesResponse], error)
 }
 
 func (m *mockBackendClient) GetFeedID(ctx context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
@@ -106,7 +106,7 @@ func TestUpsertArticles_SkipsEmptyFeedURL(t *testing.T) {
 	repo := newTestRepo(mock)
 
 	articles := []*domain.Article{
-		{URL: "https://example.com/no-feed", FeedURL: "", FeedID: ""},       // should be skipped
+		{URL: "https://example.com/no-feed", FeedURL: "", FeedID: ""},      // should be skipped
 		{URL: "https://example.com/has-feed", FeedURL: "https://feed.com"}, // should be created
 	}
 
