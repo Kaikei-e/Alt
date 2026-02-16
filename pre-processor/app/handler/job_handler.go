@@ -150,7 +150,7 @@ func (h *jobHandler) processSummarizationBatch(ctx context.Context) error {
 		"errors", result.ErrorCount,
 		"has_more", result.HasMore)
 
-	if !result.HasMore && result.ProcessedCount > 0 {
+	if !result.HasMore {
 		h.logger.InfoContext(ctx, "reached end of articles, resetting pagination cursor")
 		if err := h.articleSummarizer.ResetPagination(); err != nil {
 			h.logger.ErrorContext(ctx, "failed to reset summarizer pagination", "error", err)
@@ -175,7 +175,7 @@ func (h *jobHandler) processQualityCheckBatch(ctx context.Context) error {
 		"retained", result.RetainedCount,
 		"has_more", result.HasMore)
 
-	if !result.HasMore && result.ProcessedCount > 0 {
+	if !result.HasMore {
 		h.logger.InfoContext(ctx, "reached end of articles, resetting pagination cursor")
 		if err := h.qualityChecker.ResetPagination(); err != nil {
 			h.logger.ErrorContext(ctx, "failed to reset quality checker pagination", "error", err)

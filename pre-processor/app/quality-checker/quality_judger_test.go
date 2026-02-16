@@ -871,6 +871,37 @@ func TestJudgeArticleQualityContentBoundary(t *testing.T) {
 	}
 }
 
+// TestScoreSummaryRequestIncludesRawTrue verifies that the Ollama request includes raw:true
+// to prevent double-templating when JudgeTemplate already contains Gemma chat template tokens.
+func TestScoreSummaryRequestIncludesRawTrue(t *testing.T) {
+	var receivedPayload judgePrompt
+
+	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Decode the request body to inspect the payload
+		err := json.NewDecoder(r.Body).Decode(&receivedPayload)
+		require.NoError(t, err, "Should decode request body")
+
+		response := ollamaResponse{
+			Response: "<score>8</score>",
+			Done:     true,
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+
+	originalURL := qualityCheckerAPIURL
+	qualityCheckerAPIURL = testQualityCheckerURL
+	t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
+
+	ctx := context.Background()
+	_, err := scoreSummary(ctx, "Test prompt")
+	require.NoError(t, err)
+
+	assert.True(t, receivedPayload.Raw, "Request payload must include raw:true to prevent Ollama from double-applying chat template")
+	assert.Equal(t, modelName, receivedPayload.Model, "Model name should match")
+	assert.False(t, receivedPayload.Stream, "Stream should be false")
+}
+
 // TestMaxQualityCheckContentLengthConstant tests the constant value
 func TestMaxQualityCheckContentLengthConstant(t *testing.T) {
 	assert.Equal(t, 20_000, maxQualityCheckContentLength, "maxQualityCheckContentLength should be 20,000")

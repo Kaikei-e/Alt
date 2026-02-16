@@ -34,6 +34,7 @@ type judgePrompt struct {
 	Prompt  string       `json:"prompt"`
 	Options optionsModel `json:"options"`
 	Stream  bool         `json:"stream"`
+	Raw     bool         `json:"raw"`
 }
 
 type optionsModel struct {
@@ -140,6 +141,7 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 		Prompt:  prompt,
 		Stream:  false,
 		Options: opts,
+		Raw:     true, // JudgeTemplate contains Gemma chat template tokens; prevent Ollama from double-applying them
 	}
 
 	jsonPayload, err := json.Marshal(payload)
