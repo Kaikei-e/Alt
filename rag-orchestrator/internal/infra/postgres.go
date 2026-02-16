@@ -12,8 +12,8 @@ import (
 
 // PoolConfig holds tunable parameters for the PostgreSQL connection pool.
 type PoolConfig struct {
-	MaxConns int
-	MinConns int
+	MaxConns int32
+	MinConns int32
 }
 
 // NewPostgresDB creates a new PostgreSQL connection pool.
@@ -25,12 +25,12 @@ func NewPostgresDB(ctx context.Context, dsn string, opts ...PoolConfig) (*pgxpoo
 
 	// Apply pool config if provided, otherwise use defaults
 	if len(opts) > 0 && opts[0].MaxConns > 0 {
-		config.MaxConns = int32(opts[0].MaxConns)
+		config.MaxConns = opts[0].MaxConns
 	} else {
 		config.MaxConns = 10
 	}
 	if len(opts) > 0 && opts[0].MinConns > 0 {
-		config.MinConns = int32(opts[0].MinConns)
+		config.MinConns = opts[0].MinConns
 	} else {
 		config.MinConns = 2
 	}

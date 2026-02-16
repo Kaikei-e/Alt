@@ -25,8 +25,8 @@ type DatabaseConfig struct {
 	SSL      DatabaseSSLConfig
 
 	// 接続プール設定
-	MaxConns        int
-	MinConns        int
+	MaxConns        int32
+	MinConns        int32
 	MaxConnLifetime string
 	MaxConnIdleTime string
 }
@@ -44,8 +44,8 @@ func NewDatabaseConfig() *DatabaseConfig {
 			Cert:     getEnvOrDefault("DB_SSL_CERT", ""),
 			Key:      getEnvOrDefault("DB_SSL_KEY", ""),
 		},
-		MaxConns:        getEnvAsIntOrDefault("DB_MAX_CONNS", 20),
-		MinConns:        getEnvAsIntOrDefault("DB_MIN_CONNS", 5),
+		MaxConns:        getEnvAsInt32OrDefault("DB_MAX_CONNS", 20),
+		MinConns:        getEnvAsInt32OrDefault("DB_MIN_CONNS", 5),
 		MaxConnLifetime: getEnvOrDefault("DB_MAX_CONN_LIFETIME", "1h"),
 		MaxConnIdleTime: getEnvOrDefault("DB_MAX_CONN_IDLE_TIME", "30m"),
 	}
@@ -150,17 +150,17 @@ func NewDatabaseConfigWithPrefix(prefix string) *DatabaseConfig {
 		SSL: DatabaseSSLConfig{
 			Mode: "disable",
 		},
-		MaxConns:        getEnvAsIntOrDefault(prefix+"DB_MAX_CONNS", 10),
-		MinConns:        getEnvAsIntOrDefault(prefix+"DB_MIN_CONNS", 2),
+		MaxConns:        getEnvAsInt32OrDefault(prefix+"DB_MAX_CONNS", 10),
+		MinConns:        getEnvAsInt32OrDefault(prefix+"DB_MIN_CONNS", 2),
 		MaxConnLifetime: getEnvOrDefault(prefix+"DB_MAX_CONN_LIFETIME", "1h"),
 		MaxConnIdleTime: getEnvOrDefault(prefix+"DB_MAX_CONN_IDLE_TIME", "30m"),
 	}
 }
 
-func getEnvAsIntOrDefault(key string, defaultValue int) int {
+func getEnvAsInt32OrDefault(key string, defaultValue int32) int32 {
 	if value := os.Getenv(key); value != "" {
-		if intValue, err := strconv.Atoi(value); err == nil {
-			return intValue
+		if intValue, err := strconv.ParseInt(value, 10, 32); err == nil {
+			return int32(intValue)
 		}
 	}
 	return defaultValue

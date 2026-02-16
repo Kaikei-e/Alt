@@ -66,8 +66,8 @@ func InitPreProcessorDB(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("failed to parse pre-processor DB config: %w", err)
 	}
 
-	config.MaxConns = int32(dbConfig.MaxConns)
-	config.MinConns = int32(dbConfig.MinConns)
+	config.MaxConns = dbConfig.MaxConns
+	config.MinConns = dbConfig.MinConns
 	config.MaxConnLifetime = 1 * time.Hour
 	config.MaxConnIdleTime = 30 * time.Minute
 	config.ConnConfig.Tracer = &QueryTracer{}

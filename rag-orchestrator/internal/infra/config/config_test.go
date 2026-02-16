@@ -186,8 +186,8 @@ func TestLoad_DBPoolConfig_Defaults(t *testing.T) {
 
 	cfg := Load()
 
-	assert.Equal(t, 20, cfg.DB.MaxConns)
-	assert.Equal(t, 5, cfg.DB.MinConns)
+	assert.Equal(t, int32(20), cfg.DB.MaxConns)
+	assert.Equal(t, int32(5), cfg.DB.MinConns)
 }
 
 func TestLoad_MorningLetterMaxTokens_Default(t *testing.T) {

@@ -77,7 +77,7 @@ func TestNewDatabaseConfig(t *testing.T) {
 
 	assert.Equal(t, "testhost", config.Host)
 	assert.Equal(t, "require", config.SSL.Mode)
-	assert.Equal(t, 15, config.MaxConns)
+	assert.Equal(t, int32(15), config.MaxConns)
 	assert.Equal(t, "5432", config.Port) // デフォルト値
 }
 

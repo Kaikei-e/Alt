@@ -56,8 +56,8 @@ const (
 
 // DB pool defaults.
 const (
-	defaultDBMaxConns = 20
-	defaultDBMinConns = 5
+	defaultDBMaxConns int32 = 20
+	defaultDBMinConns int32 = 5
 )
 
 // Cache defaults.
@@ -79,8 +79,8 @@ type DBConfig struct {
 	User     string
 	Password string
 	Name     string
-	MaxConns int
-	MinConns int
+	MaxConns int32
+	MinConns int32
 }
 
 // DSN returns the PostgreSQL connection string.
@@ -195,8 +195,8 @@ func Load() *Config {
 			User:     getEnv("DB_USER", "rag_user"),
 			Password: getSecret("DB_PASSWORD", "DB_PASSWORD_FILE", "rag_password"),
 			Name:     getEnv("DB_NAME", "rag_db"),
-			MaxConns: getEnvInt("DB_MAX_CONNS", defaultDBMaxConns),
-			MinConns: getEnvInt("DB_MIN_CONNS", defaultDBMinConns),
+			MaxConns: getEnvInt32("DB_MAX_CONNS", defaultDBMaxConns),
+			MinConns: getEnvInt32("DB_MIN_CONNS", defaultDBMinConns),
 		},
 		Embedder: EmbedderConfig{
 			URL:     getEnvWithAlt("EMBEDDER_EXTERNAL", "EMBEDDER_EXTERNAL_URL", "http://embedder-external:11436"),
@@ -295,6 +295,15 @@ func getEnvInt(key string, fallback int) int {
 	if value, ok := os.LookupEnv(key); ok {
 		if parsed, err := strconv.Atoi(value); err == nil {
 			return parsed
+		}
+	}
+	return fallback
+}
+
+func getEnvInt32(key string, fallback int32) int32 {
+	if value, ok := os.LookupEnv(key); ok {
+		if parsed, err := strconv.ParseInt(value, 10, 32); err == nil {
+			return int32(parsed)
 		}
 	}
 	return fallback

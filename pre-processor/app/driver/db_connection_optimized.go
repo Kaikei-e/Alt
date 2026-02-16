@@ -70,13 +70,13 @@ func buildOptimizedConnectionString() string {
 
 	// Override with optimized settings from environment
 	if envMaxConns := getEnvOrDefault("DB_POOL_MAX_CONNS", ""); envMaxConns != "" {
-		if maxConns, err := strconv.Atoi(envMaxConns); err == nil {
-			dbConfig.MaxConns = maxConns
+		if maxConns, err := strconv.ParseInt(envMaxConns, 10, 32); err == nil {
+			dbConfig.MaxConns = int32(maxConns)
 		}
 	}
 	if envMinConns := getEnvOrDefault("DB_POOL_MIN_CONNS", ""); envMinConns != "" {
-		if minConns, err := strconv.Atoi(envMinConns); err == nil {
-			dbConfig.MinConns = minConns
+		if minConns, err := strconv.ParseInt(envMinConns, 10, 32); err == nil {
+			dbConfig.MinConns = int32(minConns)
 		}
 	}
 

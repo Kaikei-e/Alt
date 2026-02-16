@@ -4,6 +4,7 @@ package backend_api
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"time"
 
@@ -48,7 +49,7 @@ func (c *Client) addAuth(req connect.AnyRequest) {
 func (c *Client) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*driver.ArticleWithTags, *time.Time, string, error) {
 	protoReq := &backendv1.ListArticlesWithTagsRequest{
 		LastId: lastID,
-		Limit:  int32(limit),
+		Limit:  safeInt32(limit),
 	}
 	if lastCreatedAt != nil {
 		protoReq.LastCreatedAt = timestamppb.New(*lastCreatedAt)
@@ -77,7 +78,7 @@ func (c *Client) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Ti
 func (c *Client) GetArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*driver.ArticleWithTags, *time.Time, string, error) {
 	protoReq := &backendv1.ListArticlesWithTagsForwardRequest{
 		LastId: lastID,
-		Limit:  int32(limit),
+		Limit:  safeInt32(limit),
 	}
 	if incrementalMark != nil {
 		protoReq.IncrementalMark = timestamppb.New(*incrementalMark)
@@ -108,7 +109,7 @@ func (c *Client) GetArticlesWithTagsForward(ctx context.Context, incrementalMark
 // GetDeletedArticles fetches deleted articles for syncing deletions.
 func (c *Client) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]*driver.DeletedArticle, *time.Time, error) {
 	protoReq := &backendv1.ListDeletedArticlesRequest{
-		Limit: int32(limit),
+		Limit: safeInt32(limit),
 	}
 	if lastDeletedAt != nil {
 		protoReq.LastDeletedAt = timestamppb.New(*lastDeletedAt)
@@ -191,4 +192,15 @@ func toDriverArticle(p *backendv1.ArticleWithTags) *driver.ArticleWithTags {
 		CreatedAt: p.CreatedAt.AsTime(),
 		UserID:    p.UserId,
 	}
+}
+
+// safeInt32 converts an int to int32 with clamping to prevent overflow.
+func safeInt32(v int) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if v < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(v)
 }
