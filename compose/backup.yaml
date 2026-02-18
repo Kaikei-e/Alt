@@ -41,9 +41,9 @@ services:
       # Docker socket for pg_dump via docker exec
       - /var/run/docker.sock:/var/run/docker.sock
       # Backup destination
-      - /backups:/backups
+      - ../backups:/backups
       # PostgreSQL logical backups
-      - /backups/postgres:/backups/postgres
+      - ../backups/postgres:/backups/postgres
       # Volume data (read-only)
       - db_data_17:/data/db_data_17:ro
       - kratos_db_data:/data/kratos_db_data:ro
