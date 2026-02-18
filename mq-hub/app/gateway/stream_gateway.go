@@ -3,12 +3,16 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
 	"mq-hub/domain"
 	"mq-hub/port"
 )
+
+// ErrNilEvent is returned when attempting to publish a nil event.
+var ErrNilEvent = errors.New("nil event")
 
 // StreamGateway implements StreamPort using a driver.
 type StreamGateway struct {
@@ -30,10 +34,11 @@ func (g *StreamGateway) Publish(ctx context.Context, stream domain.StreamKey, ev
 	}
 
 	// Validate event
-	if event != nil {
-		if err := event.Validate(); err != nil {
-			return "", err
-		}
+	if event == nil {
+		return "", ErrNilEvent
+	}
+	if err := event.Validate(); err != nil {
+		return "", err
 	}
 
 	return g.driver.Publish(ctx, stream, event)
@@ -51,10 +56,11 @@ func (g *StreamGateway) PublishBatch(ctx context.Context, stream domain.StreamKe
 
 	// Validate all events before publishing
 	for _, event := range events {
-		if event != nil {
-			if err := event.Validate(); err != nil {
-				return nil, err
-			}
+		if event == nil {
+			return nil, ErrNilEvent
+		}
+		if err := event.Validate(); err != nil {
+			return nil, err
 		}
 	}
 
