@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -203,6 +204,19 @@ func runUp(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		printer.Error("Failed to start stacks: %v", err)
+
+		// Diagnose partial startup
+		psCtx, psCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer psCancel()
+		statuses, psErr := client.PS(psCtx, files)
+		if psErr == nil {
+			diag := classifyServices(stacks, statuses)
+			if cliErr := buildPartialStartupError(diag, err); cliErr != nil {
+				fmt.Println()
+				printDiagnostic(printer, diag)
+				return cliErr
+			}
+		}
 		return err
 	}
 
@@ -230,4 +244,99 @@ func completeStackNames(cmd *cobra.Command, args []string, toComplete string) ([
 	}
 
 	return completions, cobra.ShellCompDirectiveNoFileComp
+}
+
+// serviceDiag holds the classification of services after a partial startup failure.
+type serviceDiag struct {
+	running   []string
+	unhealthy []string
+	missing   []string
+	expected  map[string]string // service name → stack name
+}
+
+// classifyServices compares expected services from stacks against actual statuses
+// and classifies each as running, unhealthy, or missing.
+func classifyServices(stacks []*stack.Stack, statuses []compose.ServiceStatus) serviceDiag {
+	expected := make(map[string]string)
+	for _, s := range stacks {
+		for _, svc := range s.Services {
+			expected[svc] = s.Name
+		}
+	}
+
+	actual := make(map[string]compose.ServiceStatus)
+	for _, s := range statuses {
+		actual[s.Name] = s
+	}
+
+	var diag serviceDiag
+	diag.expected = expected
+	for svc := range expected {
+		if status, ok := actual[svc]; ok {
+			if status.Health == "unhealthy" {
+				diag.unhealthy = append(diag.unhealthy, svc)
+			} else {
+				diag.running = append(diag.running, svc)
+			}
+		} else {
+			diag.missing = append(diag.missing, svc)
+		}
+	}
+	sort.Strings(diag.running)
+	sort.Strings(diag.unhealthy)
+	sort.Strings(diag.missing)
+	return diag
+}
+
+// printDiagnostic renders the service status table after a startup failure.
+func printDiagnostic(printer *output.Printer, diag serviceDiag) {
+	printer.Header("Service Status After Failure")
+	table := output.NewTable([]string{"SERVICE", "STACK", "STATUS"})
+	for _, svc := range diag.running {
+		table.AddRow([]string{svc, diag.expected[svc], printer.StatusBadge("running") + " running"})
+	}
+	for _, svc := range diag.unhealthy {
+		table.AddRow([]string{svc, diag.expected[svc], printer.StatusBadge("restarting") + " unhealthy"})
+	}
+	for _, svc := range diag.missing {
+		table.AddRow([]string{svc, diag.expected[svc], printer.StatusBadge("exited") + " not started"})
+	}
+	table.Render()
+	printer.Info("Running: %d | Unhealthy: %d | Not started: %d",
+		len(diag.running), len(diag.unhealthy), len(diag.missing))
+}
+
+// buildPartialStartupError constructs a CLIError from the diagnostic result.
+// Returns nil when there are no expected services (nothing to diagnose).
+func buildPartialStartupError(diag serviceDiag, cause error) *output.CLIError {
+	if len(diag.expected) == 0 {
+		return nil
+	}
+
+	total := len(diag.expected)
+	started := len(diag.running)
+	detail := fmt.Sprintf("%d of %d services started", started, total)
+	suggestion := "Run 'altctl status' to see current state"
+
+	if len(diag.missing) > 0 {
+		stackSet := make(map[string]bool)
+		for _, svc := range diag.missing {
+			stackSet[diag.expected[svc]] = true
+		}
+		var stackNames []string
+		for name := range stackSet {
+			stackNames = append(stackNames, name)
+		}
+		sort.Strings(stackNames)
+		suggestion += fmt.Sprintf(
+			", or 'altctl up %s --build' to rebuild",
+			strings.Join(stackNames, " "))
+	}
+
+	return &output.CLIError{
+		Summary:    fmt.Sprintf("partial startup: %s", detail),
+		Detail:     cause.Error(),
+		Suggestion: suggestion,
+		ExitCode:   output.ExitComposeError,
+	}
 }
