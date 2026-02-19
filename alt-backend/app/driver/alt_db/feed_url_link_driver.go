@@ -14,9 +14,9 @@ func (a *AltDBRepository) GetFeedURLsByArticleIDs(ctx context.Context, articleID
 	}
 
 	queryString := `
-		SELECT f.id as feed_id, a.id as article_id, f.link as url, f.title as feed_title, a.title as article_title
+		SELECT COALESCE(f.id::text, '') as feed_id, a.id as article_id, a.url as url, COALESCE(f.title, '') as feed_title, a.title as article_title
 		FROM articles a
-		INNER JOIN feeds f ON a.url = f.link
+		LEFT JOIN feeds f ON a.feed_id = f.id
 		WHERE a.id = ANY($1)
 	`
 
