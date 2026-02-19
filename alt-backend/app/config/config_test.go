@@ -27,7 +27,7 @@ func TestNewConfig_WithDefaults(t *testing.T) {
 					ConnectionTimeout: 30 * time.Second,
 				},
 				RateLimit: RateLimitConfig{
-					ExternalAPIInterval: 5 * time.Second,
+					ExternalAPIInterval: 10 * time.Second,
 					FeedFetchLimit:      100,
 				},
 				Cache: CacheConfig{

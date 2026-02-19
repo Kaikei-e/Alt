@@ -46,7 +46,7 @@ func CollectSingleFeed(ctx context.Context, feedURL url.URL, rateLimiter *rate_l
 }
 
 // validateFeedURL performs basic validation on a feed URL before attempting to parse it
-func validateFeedURL(ctx context.Context, feedURL url.URL, rateLimiter *rate_limiter.HostRateLimiter) error {
+func validateFeedURL(ctx context.Context, feedURL url.URL) error {
 	// Check if URL scheme is valid
 	if feedURL.Scheme != "http" && feedURL.Scheme != "https" {
 		return fmt.Errorf("invalid URL scheme: %s (must be http or https)", feedURL.Scheme)
@@ -55,16 +55,6 @@ func validateFeedURL(ctx context.Context, feedURL url.URL, rateLimiter *rate_lim
 	// Check if host is present
 	if feedURL.Host == "" {
 		return fmt.Errorf("missing host in URL")
-	}
-
-	// Apply rate limiting if rate limiter is configured
-	if rateLimiter != nil {
-		slog.InfoContext(ctx, "Applying rate limiting for feed URL validation", "url", feedURL.String())
-		if err := rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
-			slog.ErrorContext(ctx, "Rate limiting failed for feed URL validation", "url", feedURL.String(), "error", err)
-			return fmt.Errorf("rate limiting failed for validation: %w", err)
-		}
-		slog.InfoContext(ctx, "Rate limiting passed, proceeding with feed URL validation", "url", feedURL.String())
 	}
 
 	// Try to make a HEAD request to check if URL is accessible using unified HTTP client factory
@@ -114,14 +104,14 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *
 
 	for i, feedURL := range feedURLs {
 		// First validate the URL
-		if err := validateFeedURL(ctx, feedURL, rateLimiter); err != nil {
+		if err := validateFeedURL(ctx, feedURL); err != nil {
 			logger.Logger.ErrorContext(ctx, "Feed URL validation failed", "url", feedURL.String(), "error", err)
 			errors = append(errors, err)
 			handleFeedError(ctx, feedURL, err, rateLimiter, availabilityRepo)
 			continue
 		}
 
-		// Apply rate limiting before parsing (separate from validation rate limiting)
+		// Apply rate limiting before parsing
 		if rateLimiter != nil {
 			slog.InfoContext(ctx, "Applying rate limiting for multiple feed collection", "url", feedURL.String())
 			if err := rateLimiter.WaitForHost(ctx, feedURL.String()); err != nil {
