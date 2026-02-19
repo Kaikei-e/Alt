@@ -14,7 +14,6 @@ import (
 
 	"pre-processor/config"
 	"pre-processor/domain"
-	"pre-processor/utils"
 )
 
 // URL scheme constants
@@ -30,25 +29,22 @@ type HTTPClient interface {
 
 // articleFetcherService implementation.
 type articleFetcherService struct {
-	logger      *slog.Logger
-	httpClient  HTTPClient
-	rateLimiter *utils.DomainRateLimiter
+	logger     *slog.Logger
+	httpClient HTTPClient
 }
 
 // NewArticleFetcherService creates a new article fetcher service.
 func NewArticleFetcherService(logger *slog.Logger) ArticleFetcherService {
 	return &articleFetcherService{
-		logger:      logger,
-		rateLimiter: utils.NewDomainRateLimiter(5*time.Second, 1),
+		logger: logger,
 	}
 }
 
 // NewArticleFetcherServiceWithClient creates a new article fetcher service with custom HTTP client.
 func NewArticleFetcherServiceWithClient(logger *slog.Logger, httpClient HTTPClient) ArticleFetcherService {
 	return &articleFetcherService{
-		logger:      logger,
-		httpClient:  httpClient,
-		rateLimiter: utils.NewDomainRateLimiter(5*time.Second, 1),
+		logger:     logger,
+		httpClient: httpClient,
 	}
 }
 
@@ -58,9 +54,8 @@ func NewArticleFetcherServiceWithFactory(cfg *config.Config, logger *slog.Logger
 	httpClient := factory.CreateArticleFetcherClient()
 
 	return &articleFetcherService{
-		logger:      logger,
-		httpClient:  httpClient,
-		rateLimiter: utils.NewDomainRateLimiter(cfg.RateLimit.DefaultInterval, cfg.RateLimit.BurstSize),
+		logger:     logger,
+		httpClient: httpClient,
 	}
 }
 
