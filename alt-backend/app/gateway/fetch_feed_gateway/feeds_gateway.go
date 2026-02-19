@@ -58,6 +58,7 @@ func (g *FetchFeedsGateway) FetchFeeds(ctx context.Context, link string) ([]*dom
 
 	fp := gofeed.NewParser()
 	fp.Client = httpClient
+	fp.UserAgent = "Alt-RSS-Reader/1.0 (+https://alt.example.com)"
 	feed, err := fp.ParseURL(link)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error parsing feed", "error", err)

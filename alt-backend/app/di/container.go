@@ -41,6 +41,7 @@ import (
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/robots_txt_gateway"
 	"alt/gateway/scraping_domain_gateway"
+	"alt/gateway/scraping_policy_gateway"
 	"alt/gateway/trend_stats_gateway"
 	"alt/gateway/update_feed_status_gateway"
 	"alt/gateway/user_feed_gateway"
@@ -271,7 +272,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	ragConnectClient := rag_connect_gateway.NewClient(cfg.Rag.OrchestratorConnectURL, slog.Default())
 
 	fetchArticleGatewayImpl := fetch_article_gateway.NewFetchArticleGateway(rateLimiter, httpClient)
-	fetchArticleUsecase := fetch_article_usecase.NewArticleUsecase(fetchArticleGatewayImpl, robotsTxtGatewayImpl, altDBRepository, ragAdapterImpl)
+	// fetchArticleUsecase is initialized below after scrapingDomainGatewayImpl is created
+	var fetchArticleUsecase fetch_article_usecase.ArticleUsecase
 	archiveArticleGatewayImpl := archive_article_gateway.NewArchiveArticleGateway(altDBRepository)
 	archiveArticleUsecase := archive_article_usecase.NewArchiveArticleUsecase(fetchArticleGatewayImpl, archiveArticleGatewayImpl)
 
@@ -322,6 +324,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	scrapingDomainGatewayImpl := scraping_domain_gateway.NewScrapingDomainGateway(altDBRepository)
 	feedLinkDomainGatewayImpl := feed_link_domain_gateway.NewFeedLinkDomainGateway(altDBRepository)
 	scrapingDomainUsecase := scraping_domain_usecase.NewScrapingDomainUsecaseWithFeedLinkDomain(scrapingDomainGatewayImpl, robotsTxtGatewayImpl, feedLinkDomainGatewayImpl)
+
+	// Wire ScrapingPolicyGateway into ArticleUsecase (uses cached robots.txt from scraping_domains)
+	scrapingPolicyGatewayImpl := scraping_policy_gateway.NewScrapingPolicyGateway(scrapingDomainGatewayImpl)
+	fetchArticleUsecase = fetch_article_usecase.NewArticleUsecaseWithScrapingPolicy(fetchArticleGatewayImpl, robotsTxtGatewayImpl, altDBRepository, ragAdapterImpl, scrapingPolicyGatewayImpl)
 
 	// MorningLetter Connect-RPC gateway (calls rag-orchestrator)
 	morningLetterConnectGateway := morning_letter_connect_gateway.NewGateway(cfg.Rag.OrchestratorConnectURL, slog.Default())

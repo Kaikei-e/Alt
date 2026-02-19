@@ -5,6 +5,7 @@ import (
 	"alt/port/fetch_article_port"
 	"alt/port/rag_integration_port"
 	"alt/port/robots_txt_port"
+	"alt/port/scraping_policy_port"
 	"alt/utils/html_parser"
 	"alt/utils/logger"
 	"context"
@@ -31,10 +32,11 @@ type ArticleRepository interface {
 }
 
 type ArticleUsecaseImpl struct {
-	articleFetcher fetch_article_port.FetchArticlePort
-	robotsTxt      robots_txt_port.RobotsTxtPort
-	repo           ArticleRepository
-	ragIntegration rag_integration_port.RagIntegrationPort
+	articleFetcher     fetch_article_port.FetchArticlePort
+	robotsTxt          robots_txt_port.RobotsTxtPort
+	repo               ArticleRepository
+	ragIntegration     rag_integration_port.RagIntegrationPort
+	scrapingPolicyPort scraping_policy_port.ScrapingPolicyPort // optional, nil = fallback to robotsTxt
 }
 
 func NewArticleUsecase(
@@ -48,6 +50,25 @@ func NewArticleUsecase(
 		robotsTxt:      robotsTxt,
 		repo:           repo,
 		ragIntegration: ragIntegration,
+	}
+}
+
+// NewArticleUsecaseWithScrapingPolicy creates an ArticleUsecase with ScrapingPolicyPort integration.
+// When scrapingPolicyPort is set, it is used instead of direct robots.txt HTTP fetching,
+// providing cached robots.txt checks and crawl-delay enforcement.
+func NewArticleUsecaseWithScrapingPolicy(
+	articleFetcher fetch_article_port.FetchArticlePort,
+	robotsTxt robots_txt_port.RobotsTxtPort,
+	repo ArticleRepository,
+	ragIntegration rag_integration_port.RagIntegrationPort,
+	scrapingPolicyPort scraping_policy_port.ScrapingPolicyPort,
+) ArticleUsecase {
+	return &ArticleUsecaseImpl{
+		articleFetcher:     articleFetcher,
+		robotsTxt:          robotsTxt,
+		repo:               repo,
+		ragIntegration:     ragIntegration,
+		scrapingPolicyPort: scrapingPolicyPort,
 	}
 }
 
@@ -97,15 +118,30 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	}
 
 	// 3. Robots.txt Compliance Check
-	userAgent := "Alt-RSS-Reader/1.0 (+https://alt.example.com)"
-	isAllowed, err := u.robotsTxt.IsPathAllowed(ctx, targetURL, userAgent)
-	if err != nil {
-		logger.Logger.WarnContext(ctx, "Failed to check robots.txt, defaulting to ALLOWED", "error", err, "url", urlStr)
-		isAllowed = true
+	// Use ScrapingPolicyPort (cached) if available, otherwise fall back to direct robots.txt fetch
+	var isAllowed bool
+	if u.scrapingPolicyPort != nil {
+		allowed, policyErr := u.scrapingPolicyPort.CanFetchArticle(ctx, urlStr)
+		if policyErr != nil {
+			logger.Logger.WarnContext(ctx, "ScrapingPolicy check failed, defaulting to ALLOWED", "error", policyErr, "url", urlStr)
+			isAllowed = true
+		} else {
+			isAllowed = allowed
+		}
+	} else {
+		// Fallback: direct robots.txt HTTP fetch (no cache)
+		userAgent := "Alt-RSS-Reader/1.0 (+https://alt.example.com)"
+		allowed, robotsErr := u.robotsTxt.IsPathAllowed(ctx, targetURL, userAgent)
+		if robotsErr != nil {
+			logger.Logger.WarnContext(ctx, "Failed to check robots.txt, defaulting to ALLOWED", "error", robotsErr, "url", urlStr)
+			isAllowed = true
+		} else {
+			isAllowed = allowed
+		}
 	}
 
 	if !isAllowed {
-		logger.Logger.InfoContext(ctx, "Access denied by robots.txt", "url", urlStr)
+		logger.Logger.InfoContext(ctx, "Access denied by scraping policy", "url", urlStr)
 		if err := u.repo.SaveDeclinedDomain(ctx, userContext.UserID.String(), domainStr); err != nil {
 			logger.Logger.ErrorContext(ctx, "Failed to save declined domain", "error", err, "domain", domainStr)
 		}

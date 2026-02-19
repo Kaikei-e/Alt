@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,7 @@ import (
 type ScrapingPolicyGateway struct {
 	scrapingDomainPort scraping_domain_port.ScrapingDomainPort
 	// Last request time per domain for rate limiting
+	mu              sync.Mutex
 	lastRequestTime map[string]time.Time
 }
 
@@ -94,14 +96,24 @@ func (g *ScrapingPolicyGateway) CanFetchArticle(ctx context.Context, articleURL 
 		}
 	}
 
-	// Check rate limiting (crawl delay)
+	// Log cache staleness for observability (fetch is still allowed)
+	if scrapingDomain.ForceRespectRobots && g.IsCacheStale(scrapingDomain.RobotsTxtFetchedAt, scrapingDomain.AllowCacheDays) {
+		slog.WarnContext(ctx, "robots.txt cache is stale, consider refreshing",
+			"domain", domainName,
+			"fetched_at", scrapingDomain.RobotsTxtFetchedAt,
+			"allow_cache_days", scrapingDomain.AllowCacheDays)
+	}
+
+	// Check rate limiting (crawl delay) with mutex protection
 	if scrapingDomain.RobotsCrawlDelaySec != nil && *scrapingDomain.RobotsCrawlDelaySec > 0 {
+		g.mu.Lock()
 		domainKey := domainName
 		lastTime, exists := g.lastRequestTime[domainKey]
 		if exists {
 			delay := time.Duration(*scrapingDomain.RobotsCrawlDelaySec) * time.Second
 			timeSinceLastRequest := time.Since(lastTime)
 			if timeSinceLastRequest < delay {
+				g.mu.Unlock()
 				slog.WarnContext(ctx, "crawl delay not elapsed, denying fetch",
 					"domain", domainName,
 					"delay", delay,
@@ -110,9 +122,21 @@ func (g *ScrapingPolicyGateway) CanFetchArticle(ctx context.Context, articleURL 
 			}
 		}
 		g.lastRequestTime[domainKey] = time.Now()
+		g.mu.Unlock()
 	}
 
 	return true, nil
+}
+
+// IsCacheStale checks if the robots.txt cache is stale based on the fetched time and allowed cache days
+func (g *ScrapingPolicyGateway) IsCacheStale(fetchedAt *time.Time, allowCacheDays int) bool {
+	if fetchedAt == nil {
+		return true
+	}
+	if allowCacheDays <= 0 {
+		return true
+	}
+	return time.Since(*fetchedAt) > time.Duration(allowCacheDays)*24*time.Hour
 }
 
 // pathMatches checks if an article path matches a robots.txt disallow pattern

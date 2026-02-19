@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/port/scraping_policy_port"
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -193,6 +194,178 @@ func TestScrapingPolicyGateway_CanFetchArticle_EmptyHostname(t *testing.T) {
 			mockRepo.AssertNotCalled(t, "GetByDomain")
 		})
 	}
+}
+
+func TestScrapingPolicyGateway_CanFetchArticle_CrawlDelay(t *testing.T) {
+	mockRepo := new(MockScrapingDomainPort)
+
+	crawlDelay := 2
+	mockDomain := &domain.ScrapingDomain{
+		ID:                  uuid.New(),
+		Domain:              "example.com",
+		Scheme:              "https",
+		AllowFetchBody:      true,
+		ForceRespectRobots:  false,
+		RobotsCrawlDelaySec: &crawlDelay,
+		RobotsDisallowPaths: []string{},
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+	}
+
+	mockRepo.On("GetByDomain", mock.Anything, "example.com").Return(mockDomain, nil)
+
+	gateway := NewScrapingPolicyGateway(mockRepo)
+
+	ctx := context.Background()
+
+	// First request should succeed
+	canFetch, err := gateway.CanFetchArticle(ctx, "https://example.com/article/1")
+	require.NoError(t, err)
+	assert.True(t, canFetch)
+
+	// Second request immediately should be denied (crawl delay not elapsed)
+	canFetch, err = gateway.CanFetchArticle(ctx, "https://example.com/article/2")
+	require.NoError(t, err)
+	assert.False(t, canFetch, "should be denied due to crawl delay")
+}
+
+func TestScrapingPolicyGateway_ConcurrentAccess(t *testing.T) {
+	mockRepo := new(MockScrapingDomainPort)
+
+	mockDomain := &domain.ScrapingDomain{
+		ID:                  uuid.New(),
+		Domain:              "example.com",
+		Scheme:              "https",
+		AllowFetchBody:      true,
+		ForceRespectRobots:  false,
+		RobotsDisallowPaths: []string{},
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+	}
+
+	mockRepo.On("GetByDomain", mock.Anything, "example.com").Return(mockDomain, nil)
+
+	gateway := NewScrapingPolicyGateway(mockRepo)
+
+	ctx := context.Background()
+
+	// Run concurrent requests - should not panic or race
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = gateway.CanFetchArticle(ctx, "https://example.com/article/test")
+		}()
+	}
+	wg.Wait()
+}
+
+func TestScrapingPolicyGateway_CacheExpired_StillAllows(t *testing.T) {
+	mockRepo := new(MockScrapingDomainPort)
+
+	// Cache expired (fetched 10 days ago, cache valid for 7 days)
+	fetchedAt := time.Now().Add(-10 * 24 * time.Hour)
+	mockDomain := &domain.ScrapingDomain{
+		ID:                  uuid.New(),
+		Domain:              "example.com",
+		Scheme:              "https",
+		AllowFetchBody:      true,
+		AllowCacheDays:      7,
+		ForceRespectRobots:  true,
+		RobotsTxtFetchedAt:  &fetchedAt,
+		RobotsDisallowPaths: []string{"/secret/"},
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+	}
+
+	mockRepo.On("GetByDomain", mock.Anything, "example.com").Return(mockDomain, nil)
+
+	gateway := NewScrapingPolicyGateway(mockRepo)
+
+	ctx := context.Background()
+	// Even with expired cache, should still allow (non-disallowed path) but log staleness
+	canFetch, err := gateway.CanFetchArticle(ctx, "https://example.com/article/ok")
+	require.NoError(t, err)
+	assert.True(t, canFetch)
+}
+
+func TestScrapingPolicyGateway_CacheFresh_Allowed(t *testing.T) {
+	mockRepo := new(MockScrapingDomainPort)
+
+	// Cache is fresh (fetched 1 day ago, cache valid for 7 days)
+	fetchedAt := time.Now().Add(-1 * 24 * time.Hour)
+	mockDomain := &domain.ScrapingDomain{
+		ID:                  uuid.New(),
+		Domain:              "example.com",
+		Scheme:              "https",
+		AllowFetchBody:      true,
+		AllowCacheDays:      7,
+		ForceRespectRobots:  true,
+		RobotsTxtFetchedAt:  &fetchedAt,
+		RobotsDisallowPaths: []string{},
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+	}
+
+	mockRepo.On("GetByDomain", mock.Anything, "example.com").Return(mockDomain, nil)
+
+	gateway := NewScrapingPolicyGateway(mockRepo)
+
+	ctx := context.Background()
+	canFetch, err := gateway.CanFetchArticle(ctx, "https://example.com/article/ok")
+	require.NoError(t, err)
+	assert.True(t, canFetch)
+}
+
+func TestScrapingPolicyGateway_NeverFetched_StillAllows(t *testing.T) {
+	mockRepo := new(MockScrapingDomainPort)
+
+	// RobotsTxtFetchedAt is nil (never fetched)
+	mockDomain := &domain.ScrapingDomain{
+		ID:                  uuid.New(),
+		Domain:              "example.com",
+		Scheme:              "https",
+		AllowFetchBody:      true,
+		AllowCacheDays:      7,
+		ForceRespectRobots:  true,
+		RobotsTxtFetchedAt:  nil,
+		RobotsDisallowPaths: []string{},
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+	}
+
+	mockRepo.On("GetByDomain", mock.Anything, "example.com").Return(mockDomain, nil)
+
+	gateway := NewScrapingPolicyGateway(mockRepo)
+
+	ctx := context.Background()
+	canFetch, err := gateway.CanFetchArticle(ctx, "https://example.com/article/ok")
+	require.NoError(t, err)
+	assert.True(t, canFetch)
+}
+
+func TestScrapingPolicyGateway_IsCacheStale(t *testing.T) {
+	gateway := NewScrapingPolicyGateway(nil)
+
+	t.Run("nil fetched_at is stale", func(t *testing.T) {
+		assert.True(t, gateway.IsCacheStale(nil, 7))
+	})
+
+	t.Run("recent fetch is fresh", func(t *testing.T) {
+		recent := time.Now().Add(-1 * 24 * time.Hour)
+		assert.False(t, gateway.IsCacheStale(&recent, 7))
+	})
+
+	t.Run("old fetch is stale", func(t *testing.T) {
+		old := time.Now().Add(-10 * 24 * time.Hour)
+		assert.True(t, gateway.IsCacheStale(&old, 7))
+	})
+
+	t.Run("zero cache days means always stale", func(t *testing.T) {
+		recent := time.Now().Add(-1 * time.Hour)
+		assert.True(t, gateway.IsCacheStale(&recent, 0))
+	})
 }
 
 func TestScrapingPolicyGateway_ImplementsPort(t *testing.T) {

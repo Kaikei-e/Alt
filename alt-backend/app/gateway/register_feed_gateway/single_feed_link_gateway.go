@@ -191,6 +191,7 @@ func (f *DefaultRSSFeedFetcher) fetchRSSFeedWithRetry(ctx context.Context, link 
 
 	fp := gofeed.NewParser()
 	fp.Client = httpClient
+	fp.UserAgent = "Alt-RSS-Reader/1.0 (+https://alt.example.com)"
 
 	// Use context with extended 60 second timeout for additional protection
 	feedCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
