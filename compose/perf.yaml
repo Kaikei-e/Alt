@@ -48,3 +48,38 @@ services:
     # Don't start automatically (run manually)
     profiles:
       - perf
+
+  k6:
+    image: grafana/k6:0.55.0
+    user: "0:0"
+    env_file:
+      - ../.env
+    environment:
+      - K6_BASE_URL=http://alt-backend:9000
+      - K6_TEST_USER_ID=${K6_TEST_USER_ID:-}
+      - K6_TEST_TENANT_ID=${K6_TEST_TENANT_ID:-}
+      - K6_TEST_USER_EMAIL=${K6_TEST_USER_EMAIL:-}
+    secrets:
+      - auth_shared_secret
+    volumes:
+      - ../alt-perf/k6:/scripts:ro
+      - ../alt-perf/reports:/app/reports
+    networks:
+      - alt-network
+    depends_on:
+      alt-backend:
+        condition: service_healthy
+    entrypoint: ["/scripts/docker-entrypoint.sh"]
+    command: ["run", "/scripts/scenarios/smoke.js"]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "2"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    profiles:
+      - perf
