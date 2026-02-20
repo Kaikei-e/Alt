@@ -286,8 +286,8 @@ export const CONNECT_FEEDS_RESPONSE = {
 			author: "Bob",
 		},
 	],
-	nextCursor: "next-cursor-123",
-	hasMore: true,
+	nextCursor: "",
+	hasMore: false,
 };
 
 /**
