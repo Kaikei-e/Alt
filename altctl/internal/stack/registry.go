@@ -107,9 +107,9 @@ var defaultStacks = []Stack{
 	},
 	{
 		Name:        "perf",
-		Description: "E2E performance measurement tool (Deno/Astral)",
+		Description: "E2E performance measurement tool (Deno/Astral) + K6 load testing",
 		ComposeFile: "perf.yaml",
-		Services:    []string{"alt-perf"},
+		Services:    []string{"alt-perf", "k6"},
 		DependsOn:   []string{"base", "db", "auth", "core"},
 		Profile:     "perf",
 		Optional:    true,
