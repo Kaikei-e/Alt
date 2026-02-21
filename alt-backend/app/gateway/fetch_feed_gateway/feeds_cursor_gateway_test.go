@@ -39,7 +39,7 @@ func TestFetchFeedsGateway_FetchFeedsListCursor_NilCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := gateway.FetchFeedsListCursor(ctx, tt.cursor, tt.limit)
+			_, err := gateway.FetchFeedsListCursor(ctx, tt.cursor, tt.limit, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FetchFeedsGateway.FetchFeedsListCursor() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -180,7 +180,7 @@ func TestFetchFeedsGateway_FetchUnreadFeedsListCursor_NilCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := gateway.FetchUnreadFeedsListCursor(ctx, tt.cursor, tt.limit)
+			_, err := gateway.FetchUnreadFeedsListCursor(ctx, tt.cursor, tt.limit, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FetchUnreadFeedsListCursor error = %v, wantErr %v", err, tt.wantErr)
 			}

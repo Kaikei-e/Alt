@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
 )
@@ -174,12 +175,12 @@ func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([
 	return feedItems, nil
 }
 
-func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
 	if g.alt_db == nil {
 		return nil, errors.New("database connection not available")
 	}
 
-	feeds, err := g.alt_db.FetchAllFeedsListCursor(ctx, cursor, limit)
+	feeds, err := g.alt_db.FetchAllFeedsListCursor(ctx, cursor, limit, excludeFeedLinkID)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching all feeds with cursor", "error", err)
 		return nil, errors.New("error fetching feeds with cursor")
@@ -208,12 +209,12 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 	return feedItems, nil
 }
 
-func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
 	if g.alt_db == nil {
 		return nil, errors.New("database connection not available")
 	}
 
-	feeds, err := g.alt_db.FetchUnreadFeedsListCursor(ctx, cursor, limit)
+	feeds, err := g.alt_db.FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkID)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching unread feeds with cursor", "error", err)
 		return nil, errors.New("error fetching unread feeds with cursor")
