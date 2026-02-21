@@ -31,12 +31,14 @@ export async function getUnreadFeeds(
 	cursor?: string,
 	limit: number = 20,
 	view?: "swipe",
+	excludeFeedLinkId?: string,
 ): Promise<FeedCursorResponse> {
 	const client = createFeedClient(transport);
 	const response = (await client.getUnreadFeeds({
 		cursor,
 		limit,
 		view,
+		excludeFeedLinkId,
 	})) as GetUnreadFeedsResponse;
 
 	return {
@@ -58,11 +60,13 @@ export async function getAllFeeds(
 	transport: Transport,
 	cursor?: string,
 	limit: number = 20,
+	excludeFeedLinkId?: string,
 ): Promise<FeedCursorResponse> {
 	const client = createFeedClient(transport);
 	const response = (await client.getAllFeeds({
 		cursor,
 		limit,
+		excludeFeedLinkId,
 	})) as GetAllFeedsResponse;
 
 	return {
