@@ -14,6 +14,7 @@ import {
 	getReadFeeds,
 	getFavoriteFeeds,
 	searchFeeds as searchFeedsConnect,
+	listSubscriptions,
 	type ConnectFeedItem,
 	type ConnectFeedSource,
 } from "$lib/connect/feeds";
@@ -54,9 +55,10 @@ function connectFeedToRenderFeed(item: ConnectFeedItem): RenderFeed {
 export async function getFeedsWithCursorClient(
 	cursor?: string,
 	limit: number = 20,
+	excludeFeedLinkId?: string,
 ): Promise<CursorResponse<RenderFeed>> {
 	const transport = createClientTransport();
-	const response = await getUnreadFeeds(transport, cursor, limit);
+	const response = await getUnreadFeeds(transport, cursor, limit, undefined, excludeFeedLinkId);
 
 	return {
 		data: response.data.map(connectFeedToRenderFeed),
@@ -72,9 +74,10 @@ export async function getFeedsWithCursorClient(
 export async function getAllFeedsWithCursorClient(
 	cursor?: string,
 	limit: number = 20,
+	excludeFeedLinkId?: string,
 ): Promise<CursorResponse<RenderFeed>> {
 	const transport = createClientTransport();
-	const response = await getAllFeeds(transport, cursor, limit);
+	const response = await getAllFeeds(transport, cursor, limit, excludeFeedLinkId);
 
 	return {
 		data: response.data.map(connectFeedToRenderFeed),
@@ -260,7 +263,6 @@ export async function getUnreadCountClient(): Promise<UnreadCountResponse> {
  */
 export async function listSubscriptionsClient(): Promise<ConnectFeedSource[]> {
 	const transport = createClientTransport();
-	const { listSubscriptions } = await import("$lib/connect/feeds");
 	return listSubscriptions(transport);
 }
 

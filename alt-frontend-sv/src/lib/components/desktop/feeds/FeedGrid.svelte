@@ -29,11 +29,12 @@ export type FeedGridApi = {
 		onSelectFeed: (feed: RenderFeed, index: number, totalCount: number) => void;
 		unreadOnly?: boolean;
 		sortBy?: string;
+		excludedFeedLinkId?: string | null;
 		onReady?: (api: FeedGridApi) => void;
 		fetchFn?: (cursor?: string, limit?: number) => Promise<import("$lib/api").CursorResponse<RenderFeed>>;
 	}
 
-	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", onReady, fetchFn }: Props = $props();
+	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkId = null, onReady, fetchFn }: Props = $props();
 
 	// Simple state for infinite scroll
 	let feeds = $state<RenderFeed[]>([]);
@@ -76,9 +77,9 @@ export type FeedGridApi = {
 	function fetchFeedsApi(cursor?: string, limit: number = 20) {
 		if (fetchFn) return fetchFn(cursor, limit);
 		if (unreadOnly) {
-			return getFeedsWithCursorClient(cursor, limit);
+			return getFeedsWithCursorClient(cursor, limit, excludedFeedLinkId ?? undefined);
 		}
-		return getAllFeedsWithCursorClient(cursor, limit);
+		return getAllFeedsWithCursorClient(cursor, limit, excludedFeedLinkId ?? undefined);
 	}
 
 	/**
@@ -213,7 +214,7 @@ export type FeedGridApi = {
 
 	// Reset and reload when filters change
 	$effect(() => {
-		const filterKey = `${unreadOnly}:${sortBy}`;
+		const filterKey = `${unreadOnly}:${sortBy}:${excludedFeedLinkId ?? ''}`;
 
 		// Skip the initial run (handled by onMount)
 		if (prevFilterKey === "") {
@@ -221,13 +222,15 @@ export type FeedGridApi = {
 			return;
 		}
 
-		// Only reload from server if unreadOnly changed (different data source)
+		// Only reload from server if unreadOnly or excludedFeedLinkId changed (different data source)
 		// Sort changes are handled client-side via the derived visibleFeeds
 		if (filterKey !== prevFilterKey) {
-			const unreadOnlyChanged = prevFilterKey.split(":")[0] !== String(unreadOnly);
+			const parts = prevFilterKey.split(":");
+			const unreadOnlyChanged = parts[0] !== String(unreadOnly);
+			const excludeChanged = (parts[2] ?? '') !== (excludedFeedLinkId ?? '');
 			prevFilterKey = filterKey;
 
-			if (unreadOnlyChanged) {
+			if (unreadOnlyChanged || excludeChanged) {
 				// Reset state and reload
 				feeds = [];
 				nextCursor = undefined;

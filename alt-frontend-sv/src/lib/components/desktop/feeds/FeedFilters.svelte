@@ -1,36 +1,54 @@
 <script lang="ts">
 import { Filter, ArrowUpDown } from "@lucide/svelte";
+import type { ConnectFeedSource } from "$lib/connect/feeds";
+import FeedSourceExcludeFilter from "./FeedSourceExcludeFilter.svelte";
 
 interface Props {
 	unreadOnly?: boolean;
 	sortBy?: string;
-	onFilterChange: (filters: { unreadOnly: boolean; sortBy: string }) => void;
+	excludedFeedLinkId?: string | null;
+	feedSources?: ConnectFeedSource[];
+	onFilterChange: (filters: { unreadOnly: boolean; sortBy: string; excludedFeedLinkId: string | null }) => void;
 }
 
 let {
 	unreadOnly = false,
 	sortBy = "date_desc",
+	excludedFeedLinkId = null,
+	feedSources = [],
 	onFilterChange,
 }: Props = $props();
 
 let localUnreadOnly = $state(false);
 let localSortBy = $state("date_desc");
+let localExcludedFeedLinkId = $state<string | null>(null);
 
 $effect.pre(() => {
 	localUnreadOnly = unreadOnly;
 	localSortBy = sortBy;
+	localExcludedFeedLinkId = excludedFeedLinkId ?? null;
 });
 
 function handleUnreadChange(event: Event) {
 	const target = event.target as HTMLInputElement;
 	localUnreadOnly = target.checked;
-	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy });
+	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy, excludedFeedLinkId: localExcludedFeedLinkId });
 }
 
 function handleSortChange(event: Event) {
 	const target = event.target as HTMLSelectElement;
 	localSortBy = target.value;
-	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy });
+	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy, excludedFeedLinkId: localExcludedFeedLinkId });
+}
+
+function handleExclude(feedLinkId: string) {
+	localExcludedFeedLinkId = feedLinkId;
+	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy, excludedFeedLinkId: localExcludedFeedLinkId });
+}
+
+function handleClearExclusion() {
+	localExcludedFeedLinkId = null;
+	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy, excludedFeedLinkId: null });
 }
 </script>
 
@@ -49,6 +67,16 @@ function handleSortChange(event: Event) {
 			<label for="unread-only" class="text-sm text-[var(--text-primary)] cursor-pointer">
 				Unread Only
 			</label>
+		</div>
+
+		<!-- Exclude source filter -->
+		<div class="border-l border-[var(--surface-border)] pl-3">
+			<FeedSourceExcludeFilter
+				sources={feedSources}
+				excludedSourceId={localExcludedFeedLinkId}
+				onExclude={handleExclude}
+				onClearExclusion={handleClearExclusion}
+			/>
 		</div>
 	</div>
 
