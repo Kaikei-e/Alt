@@ -1,5 +1,6 @@
 <script lang="ts">
-import { updateFeedReadStatusClient } from "$lib/api/client/feeds";
+import { updateFeedReadStatusClient, listSubscriptionsClient } from "$lib/api/client/feeds";
+import type { ConnectFeedSource } from "$lib/connect/feeds";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
 import FeedGrid, {
@@ -8,16 +9,27 @@ import FeedGrid, {
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
+import { onMount } from "svelte";
 
 // URL-based tracking to prevent race conditions
 let selectedFeedUrl = $state<string | null>(null);
 let isModalOpen = $state(false);
-let filters = $state({ unreadOnly: false, sortBy: "date_desc" });
+let filters = $state({ unreadOnly: false, sortBy: "date_desc", excludedFeedLinkId: null as string | null });
 let feedGridApi = $state<FeedGridApi | null>(null);
+let feedSources = $state<ConnectFeedSource[]>([]);
 
 // Processing flag to prevent duplicate clicks
 let isProcessingMarkAsRead = $state(false);
 let isMarkingAsRead = $state(false);
+
+// Load feed sources for the exclude filter
+onMount(async () => {
+	try {
+		feedSources = await listSubscriptionsClient();
+	} catch (e) {
+		console.error("Failed to load feed sources:", e);
+	}
+});
 
 // Derive selectedFeed from URL - stable across array mutations
 const selectedFeed = $derived.by(() => {
@@ -61,6 +73,7 @@ function handleSelectFeed(feed: RenderFeed, _index: number, _total: number) {
 function handleFilterChange(newFilters: {
 	unreadOnly: boolean;
 	sortBy: string;
+	excludedFeedLinkId: string | null;
 }) {
 	filters = newFilters;
 }
@@ -129,6 +142,8 @@ function handleFeedGridReady(api: FeedGridApi) {
 <FeedFilters
 	unreadOnly={filters.unreadOnly}
 	sortBy={filters.sortBy}
+	excludedFeedLinkId={filters.excludedFeedLinkId}
+	{feedSources}
 	onFilterChange={handleFilterChange}
 />
 
@@ -136,6 +151,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 	onSelectFeed={handleSelectFeed}
 	unreadOnly={filters.unreadOnly}
 	sortBy={filters.sortBy}
+	excludedFeedLinkId={filters.excludedFeedLinkId}
 	onReady={handleFeedGridReady}
 />
 

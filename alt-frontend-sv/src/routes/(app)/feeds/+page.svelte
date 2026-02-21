@@ -13,9 +13,11 @@ import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
 import MobileFeedsHero from "$lib/components/mobile/MobileFeedsHero.svelte";
 
-import { updateFeedReadStatusClient } from "$lib/api/client/feeds";
+import { updateFeedReadStatusClient, listSubscriptionsClient } from "$lib/api/client/feeds";
+import type { ConnectFeedSource } from "$lib/connect/feeds";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
+import { onMount } from "svelte";
 
 interface PageData {
 	initialFeeds?: RenderFeed[];
@@ -28,10 +30,19 @@ const { isDesktop } = useViewport();
 // --- Desktop state ---
 let selectedFeedUrl = $state<string | null>(null);
 let isModalOpen = $state(false);
-let filters = $state({ unreadOnly: false, sortBy: "date_desc" });
+let filters = $state({ unreadOnly: false, sortBy: "date_desc", excludedFeedLinkId: null as string | null });
 let feedGridApi = $state<FeedGridApi | null>(null);
+let feedSources = $state<ConnectFeedSource[]>([]);
 let isProcessingMarkAsRead = $state(false);
 let isMarkingAsRead = $state(false);
+
+onMount(async () => {
+	try {
+		feedSources = await listSubscriptionsClient();
+	} catch (e) {
+		console.error("Failed to load feed sources:", e);
+	}
+});
 
 const selectedFeed = $derived.by(() => {
 	if (!selectedFeedUrl || !feedGridApi) return null;
@@ -72,6 +83,7 @@ function handleSelectFeed(feed: RenderFeed, _index: number, _total: number) {
 function handleFilterChange(newFilters: {
 	unreadOnly: boolean;
 	sortBy: string;
+	excludedFeedLinkId: string | null;
 }) {
 	filters = newFilters;
 }
@@ -132,6 +144,8 @@ function handleFeedGridReady(api: FeedGridApi) {
 	<FeedFilters
 		unreadOnly={filters.unreadOnly}
 		sortBy={filters.sortBy}
+		excludedFeedLinkId={filters.excludedFeedLinkId}
+		{feedSources}
 		onFilterChange={handleFilterChange}
 	/>
 
@@ -139,6 +153,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 		onSelectFeed={handleSelectFeed}
 		unreadOnly={filters.unreadOnly}
 		sortBy={filters.sortBy}
+		excludedFeedLinkId={filters.excludedFeedLinkId}
 		onReady={handleFeedGridReady}
 	/>
 
