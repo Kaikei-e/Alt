@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::scheduler::{JobContext, Scheduler, cadence::DailyCadence};
 
 const JST_OFFSET_HOURS: i32 = 9;
-const BATCH_HOUR: u32 = 4;
+const BATCH_HOUR: u32 = 2;
 const BATCH_MINUTE: u32 = 0;
 
 pub fn spawn_jst_batch_daemon(
