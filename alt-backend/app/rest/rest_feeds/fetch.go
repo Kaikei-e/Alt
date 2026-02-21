@@ -160,7 +160,7 @@ func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.
 		}
 
 		logger.Logger.InfoContext(ctx, "Fetching unread feeds with cursor", "cursor", cursor, "cursor_str", cursorStr, "limit", limit)
-		feeds, hasMore, err := container.FetchUnreadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
+		feeds, hasMore, err := container.FetchUnreadFeedsListCursorUsecase.Execute(ctx, cursor, limit, nil)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "Error fetching feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "Failed to fetch feeds with cursor"})

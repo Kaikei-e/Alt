@@ -42,7 +42,7 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: nil,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11).Return(mockData, nil).Times(1)
+				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11, gomock.Nil()).Return(mockData, nil).Times(1)
 			},
 			want:        mockData,
 			wantHasMore: false,
@@ -54,7 +54,7 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: &cursorTime,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11).Return(mockData, nil).Times(1)
+				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11, gomock.Nil()).Return(mockData, nil).Times(1)
 			},
 			want:        mockData,
 			wantHasMore: false,
@@ -67,7 +67,7 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			limit:  1,
 			mockSetup: func() {
 				mockGateway.EXPECT().
-					FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 2).
+					FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 2, gomock.Nil()).
 					Return(mockData, nil).Times(1)
 			},
 			want:        mockData[:1],
@@ -86,7 +86,7 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 					extendedData[i] = mockData[i%len(mockData)]
 				}
 				mockGateway.EXPECT().
-					FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 21).
+					FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 21, gomock.Nil()).
 					Return(extendedData, nil).Times(1)
 			},
 			want: func() []*domain.FeedItem {
@@ -107,7 +107,7 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			limit:  10,
 			mockSetup: func() {
 				mockGateway.EXPECT().
-					FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11).
+					FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11, gomock.Nil()).
 					Return(testutil.CreateEmptyFeedItems(), nil).Times(1)
 			},
 			want:        testutil.CreateEmptyFeedItems(),
@@ -153,7 +153,7 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: nil,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11).Return(nil, testutil.ErrMockDatabase).Times(1)
+				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11, gomock.Nil()).Return(nil, testutil.ErrMockDatabase).Times(1)
 			},
 			want:    nil,
 			wantErr: true,
@@ -164,7 +164,7 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: nil,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11).Return(nil, context.Canceled).Times(1)
+				mockGateway.EXPECT().FetchUnreadFeedsListCursor(gomock.Any(), gomock.Any(), 11, gomock.Nil()).Return(nil, context.Canceled).Times(1)
 			},
 			want:    nil,
 			wantErr: true,
@@ -177,7 +177,7 @@ func TestFetchUnreadFeedsListCursorUsecase_Execute(t *testing.T) {
 			u := &FetchUnreadFeedsListCursorUsecase{
 				fetchFeedsListGateway: mockGateway,
 			}
-			got, hasMore, err := u.Execute(tt.ctx, tt.cursor, tt.limit)
+			got, hasMore, err := u.Execute(tt.ctx, tt.cursor, tt.limit, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FetchUnreadFeedsListCursorUsecase.Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return

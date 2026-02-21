@@ -41,7 +41,7 @@ func TestFetchFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: nil,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchFeedsListCursor(gomock.Any(), nil, 10).Return(mockData, nil).Times(1)
+				mockGateway.EXPECT().FetchFeedsListCursor(gomock.Any(), nil, 10, gomock.Nil()).Return(mockData, nil).Times(1)
 			},
 			want:    mockData,
 			wantErr: false,
@@ -52,7 +52,7 @@ func TestFetchFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: &cursorTime,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchFeedsListCursor(gomock.Any(), &cursorTime, 10).Return(mockData, nil).Times(1)
+				mockGateway.EXPECT().FetchFeedsListCursor(gomock.Any(), &cursorTime, 10, gomock.Nil()).Return(mockData, nil).Times(1)
 			},
 			want:    mockData,
 			wantErr: false,
@@ -63,7 +63,7 @@ func TestFetchFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: &cursorTime,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchFeedsListCursor(gomock.Any(), &cursorTime, 10).Return(testutil.CreateEmptyFeedItems(), nil).Times(1)
+				mockGateway.EXPECT().FetchFeedsListCursor(gomock.Any(), &cursorTime, 10, gomock.Nil()).Return(testutil.CreateEmptyFeedItems(), nil).Times(1)
 			},
 			want:    testutil.CreateEmptyFeedItems(),
 			wantErr: false,
@@ -107,7 +107,7 @@ func TestFetchFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: nil,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchFeedsListCursor(gomock.Any(), nil, 10).Return(nil, testutil.ErrMockDatabase).Times(1)
+				mockGateway.EXPECT().FetchFeedsListCursor(gomock.Any(), nil, 10, gomock.Nil()).Return(nil, testutil.ErrMockDatabase).Times(1)
 			},
 			want:    nil,
 			wantErr: true,
@@ -118,7 +118,7 @@ func TestFetchFeedsListCursorUsecase_Execute(t *testing.T) {
 			cursor: nil,
 			limit:  10,
 			mockSetup: func() {
-				mockGateway.EXPECT().FetchFeedsListCursor(gomock.Any(), nil, 10).Return(nil, context.Canceled).Times(1)
+				mockGateway.EXPECT().FetchFeedsListCursor(gomock.Any(), nil, 10, gomock.Nil()).Return(nil, context.Canceled).Times(1)
 			},
 			want:    nil,
 			wantErr: true,
@@ -131,7 +131,7 @@ func TestFetchFeedsListCursorUsecase_Execute(t *testing.T) {
 			u := &FetchFeedsListCursorUsecase{
 				fetchFeedsListGateway: mockGateway,
 			}
-			got, err := u.Execute(tt.ctx, tt.cursor, tt.limit)
+			got, err := u.Execute(tt.ctx, tt.cursor, tt.limit, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("FetchFeedsListCursorUsecase.Execute() error = %v, wantErr %v", err, tt.wantErr)
 				return

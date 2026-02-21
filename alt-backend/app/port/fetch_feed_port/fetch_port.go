@@ -6,6 +6,8 @@ import (
 	"alt/domain"
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type FetchSingleFeedPort interface {
@@ -17,8 +19,8 @@ type FetchFeedsPort interface {
 	FetchFeedsList(ctx context.Context) ([]*domain.FeedItem, error)
 	FetchFeedsListLimit(ctx context.Context, offset int) ([]*domain.FeedItem, error)
 	FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error)
-	FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error)
-	FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error)
+	FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error)
+	FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error)
 	FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error)
 	FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error)
 }

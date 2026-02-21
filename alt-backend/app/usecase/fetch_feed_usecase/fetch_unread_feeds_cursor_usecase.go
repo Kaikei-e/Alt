@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type FetchUnreadFeedsListCursorUsecase struct {
@@ -17,7 +19,7 @@ func NewFetchUnreadFeedsListCursorUsecase(fetchFeedsListGateway fetch_feed_port.
 	return &FetchUnreadFeedsListCursorUsecase{fetchFeedsListGateway: fetchFeedsListGateway}
 }
 
-func (u *FetchUnreadFeedsListCursorUsecase) Execute(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, bool, error) {
+func (u *FetchUnreadFeedsListCursorUsecase) Execute(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, bool, error) {
 	// ビジネスルール検証
 	if limit <= 0 {
 		logger.Logger.ErrorContext(ctx, "invalid limit: must be greater than 0", "limit", limit)
@@ -32,7 +34,7 @@ func (u *FetchUnreadFeedsListCursorUsecase) Execute(ctx context.Context, cursor 
 
 	// Fetch limit+1 to detect whether more data exists.
 	fetchLimit := limit + 1
-	feeds, err := u.fetchFeedsListGateway.FetchUnreadFeedsListCursor(ctx, cursor, fetchLimit)
+	feeds, err := u.fetchFeedsListGateway.FetchUnreadFeedsListCursor(ctx, cursor, fetchLimit, excludeFeedLinkID)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to fetch unread feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 		return nil, false, err
