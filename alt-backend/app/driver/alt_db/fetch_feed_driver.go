@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error) {
@@ -147,7 +149,29 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 	return feeds, nil
 }
 
-func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+// buildExcludeClause builds a NOT EXISTS clause that excludes feeds matching
+// the given feed_link_id, with domain-based fallback for feeds without feed_link_id.
+func buildExcludeClause(args []any, excludeFeedLinkID *uuid.UUID) (string, []any) {
+	if excludeFeedLinkID == nil {
+		return "", args
+	}
+	clause := fmt.Sprintf(`AND NOT EXISTS (
+				SELECT 1 FROM feed_links fl
+				WHERE fl.id = $%d
+				AND (
+					f.feed_link_id = fl.id
+					OR (
+						f.feed_link_id IS NULL
+						AND split_part(split_part(f.link, '://', 2), '/', 1)
+						  = split_part(split_part(fl.url, '://', 2), '/', 1)
+					)
+				)
+			)`, len(args)+1)
+	args = append(args, *excludeFeedLinkID)
+	return clause, args
+}
+
+func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
@@ -161,8 +185,11 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 	var query string
 	var args []interface{}
 
+	var excludeClause string
 	if cursor == nil {
-		query = `
+		args = []interface{}{limit, user.UserID}
+		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
+		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id
 			FROM feeds f
@@ -174,12 +201,14 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				AND rs.is_read = TRUE
 			)
 			AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
+			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
-		`
-		args = []interface{}{limit, user.UserID}
+		`, excludeClause)
 	} else {
-		query = `
+		args = []interface{}{cursor, limit, user.UserID}
+		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
+		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id
 			FROM feeds f
@@ -192,10 +221,10 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 			)
 			AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
 			AND f.created_at < $1
+			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
-		`
-		args = []interface{}{cursor, limit, user.UserID}
+		`, excludeClause)
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -222,7 +251,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 // FetchAllFeedsListCursor retrieves all feeds (read + unread) using cursor-based pagination.
 // Unlike FetchUnreadFeedsListCursor, this does not filter by read status but includes
 // the read status via LEFT JOIN so the frontend can visually distinguish read/unread feeds.
-func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
@@ -232,20 +261,25 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 	var query string
 	var args []interface{}
 
+	var excludeClause string
 	if cursor == nil {
-		query = `
+		args = []interface{}{limit, user.UserID}
+		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
+		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read
 			FROM feeds f
 			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $2
 			WHERE (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
+			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
-		`
-		args = []interface{}{limit, user.UserID}
+		`, excludeClause)
 	} else {
-		query = `
+		args = []interface{}{cursor, limit, user.UserID}
+		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
+		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read
@@ -253,10 +287,10 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $3
 			WHERE (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
 			AND f.created_at < $1
+			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
-		`
-		args = []interface{}{cursor, limit, user.UserID}
+		`, excludeClause)
 	}
 
 	rows, err := r.pool.Query(ctx, query, args...)

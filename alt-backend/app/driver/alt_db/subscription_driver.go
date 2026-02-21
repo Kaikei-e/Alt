@@ -14,7 +14,7 @@ func (r *AltDBRepository) FetchSubscriptions(ctx context.Context, userID uuid.UU
 	query := `
 		SELECT fl.id, fl.url,
 		       COALESCE(ufs.feed_link_id IS NOT NULL, FALSE) AS is_subscribed,
-		       fl.created_at
+		       COALESCE(ufs.created_at, NOW()) AS created_at
 		FROM feed_links fl
 		LEFT JOIN user_feed_subscriptions ufs
 		    ON ufs.feed_link_id = fl.id AND ufs.user_id = $1

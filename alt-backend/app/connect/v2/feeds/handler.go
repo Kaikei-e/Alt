@@ -271,8 +271,19 @@ func (h *Handler) GetUnreadFeeds(
 		cursor = &parsed
 	}
 
+	// Parse exclude_feed_link_id if provided
+	var excludeFeedLinkID *uuid.UUID
+	if req.Msg.ExcludeFeedLinkId != nil && *req.Msg.ExcludeFeedLinkId != "" {
+		parsed, err := uuid.Parse(*req.Msg.ExcludeFeedLinkId)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid exclude_feed_link_id: %w", err))
+		}
+		excludeFeedLinkID = &parsed
+	}
+
 	// Call usecase
-	feeds, hasMore, err := h.container.FetchUnreadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
+	feeds, hasMore, err := h.container.FetchUnreadFeedsListCursorUsecase.Execute(ctx, cursor, limit, excludeFeedLinkID)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetUnreadFeeds")
 	}
@@ -314,8 +325,19 @@ func (h *Handler) GetAllFeeds(
 		cursor = &parsed
 	}
 
+	// Parse exclude_feed_link_id if provided
+	var excludeFeedLinkID *uuid.UUID
+	if req.Msg.ExcludeFeedLinkId != nil && *req.Msg.ExcludeFeedLinkId != "" {
+		parsed, err := uuid.Parse(*req.Msg.ExcludeFeedLinkId)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid exclude_feed_link_id: %w", err))
+		}
+		excludeFeedLinkID = &parsed
+	}
+
 	// Call usecase (all feeds, no read status filter)
-	feeds, err := h.container.FetchFeedsListCursorUsecase.Execute(ctx, cursor, limit)
+	feeds, err := h.container.FetchFeedsListCursorUsecase.Execute(ctx, cursor, limit, excludeFeedLinkID)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetAllFeeds")
 	}
