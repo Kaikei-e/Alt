@@ -109,6 +109,8 @@ message GetUnreadFeedsRequest {
   int32 limit = 2;
   // View mode: "swipe" for single-card response (optional)
   optional string view = 3;
+  // Feed link ID to exclude from results (UUID format)
+  optional string exclude_feed_link_id = 4;
 }
 
 // GetUnreadFeedsResponse contains unread feeds with pagination
@@ -127,6 +129,8 @@ message GetAllFeedsRequest {
   optional string cursor = 1;
   // Maximum number of items to return (default: 20, max: 100)
   int32 limit = 2;
+  // Feed link ID to exclude from results (UUID format)
+  optional string exclude_feed_link_id = 3;
 }
 
 // GetAllFeedsResponse contains all feeds with pagination
