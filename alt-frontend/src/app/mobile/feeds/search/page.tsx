@@ -1,5 +1,5 @@
-import { Suspense } from "react";
 import dynamic from "next/dynamic";
+import { Suspense } from "react";
 
 // Client component is loaded dynamically to reduce initial bundle
 // Note: ssr: false is not allowed in Server Components, so we import directly

@@ -1,3 +1,5 @@
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   FullConfig,
   FullResult,
@@ -6,8 +8,6 @@ import type {
   TestCase,
   TestResult,
 } from "@playwright/test/reporter";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 
 interface TestMetrics {
   totalTests: number;

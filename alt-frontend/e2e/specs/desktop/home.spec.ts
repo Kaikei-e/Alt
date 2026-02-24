@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { DesktopHomePage } from "../../pages/desktop/DesktopHomePage";
 import { setupAllMocks } from "../../utils/api-mock";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Text, Button, Flex } from "@chakra-ui/react";
+import { Box, Button, Flex, Text } from "@chakra-ui/react";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";

@@ -1,9 +1,9 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { vi, describe, expect, beforeEach, afterEach, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 import type { CursorResponse } from "@/schema/common";
 import type { Feed, RenderFeed } from "@/schema/feed";
 import { toRenderFeed } from "@/schema/feed";
-import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 
 const mockUseSWRInfinite = vi.fn();
 

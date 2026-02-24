@@ -16,10 +16,10 @@ import {
 import { RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as v from "valibot";
-import { ApiError } from "@/lib/api/core/ApiError";
 import { feedApi } from "@/lib/api";
-import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
+import { ApiError } from "@/lib/api/core/ApiError";
 import type { FeedLink } from "@/schema/feedLink";
+import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
 
 type ActionMessage = {
   type: "success" | "error";

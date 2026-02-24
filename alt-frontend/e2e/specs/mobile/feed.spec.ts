@@ -1,7 +1,7 @@
-import { test, expect } from "@playwright/test";
-import { MobileHomePage } from "../../pages/mobile/MobileHomePage";
+import { expect, test } from "@playwright/test";
 import { MobileFeedPage } from "../../pages/mobile/MobileFeedPage";
-import { setupAllMocks, mockFeedsApi } from "../../utils/api-mock";
+import { MobileHomePage } from "../../pages/mobile/MobileHomePage";
+import { mockFeedsApi, setupAllMocks } from "../../utils/api-mock";
 
 test.describe("Mobile Feed", () => {
   test.beforeEach(async ({ page }) => {

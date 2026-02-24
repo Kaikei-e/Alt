@@ -1,5 +1,5 @@
-import { keyframes } from "@emotion/react";
 import { Box, Flex, Skeleton, SkeletonCircle } from "@chakra-ui/react";
+import { keyframes } from "@emotion/react";
 import { memo } from "react";
 
 type SkeletonFeedCardProps = {

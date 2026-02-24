@@ -1,11 +1,10 @@
-import { serverFetch } from "@/lib/api/utils/serverFetch";
-import { fetchArticleContentServer } from "@/lib/api/utils/serverArticleFetch";
-import type { CursorResponse } from "@/schema/common";
-import type { RenderFeed, BackendFeedItem } from "@/schema/feed";
-import { sanitizeFeed, toRenderFeed } from "@/schema/feed";
-import type { SafeHtmlString } from "@/lib/server/sanitize-html";
-
 import SwipeFeedScreen from "@/components/mobile/feeds/swipe/SwipeFeedScreen";
+import { fetchArticleContentServer } from "@/lib/api/utils/serverArticleFetch";
+import { serverFetch } from "@/lib/api/utils/serverFetch";
+import type { SafeHtmlString } from "@/lib/server/sanitize-html";
+import type { CursorResponse } from "@/schema/common";
+import type { BackendFeedItem, RenderFeed } from "@/schema/feed";
+import { sanitizeFeed, toRenderFeed } from "@/schema/feed";
 
 const INITIAL_FEEDS_LIMIT = 3; // Reduced from 5 to 3 for LCP optimization
 

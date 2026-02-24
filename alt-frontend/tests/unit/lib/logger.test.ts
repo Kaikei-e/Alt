@@ -3,13 +3,13 @@
  */
 
 import {
-  describe,
-  it,
-  expect,
-  beforeEach,
   afterEach,
-  vi,
+  beforeEach,
+  describe,
+  expect,
+  it,
   type MockInstance,
+  vi,
 } from "vitest";
 import { Logger } from "@/lib/logger";
 

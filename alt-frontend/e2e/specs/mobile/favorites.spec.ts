@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { MobileFavoritesPage } from "../../pages/mobile/MobileFavoritesPage";
 import { setupAllMocks } from "../../utils/api-mock";
 

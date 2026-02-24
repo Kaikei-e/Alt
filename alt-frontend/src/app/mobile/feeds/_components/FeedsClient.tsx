@@ -2,6 +2,7 @@
 
 import { Box, Button, Flex, Text } from "@chakra-ui/react";
 import { Infinity as InfinityIcon } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -14,7 +15,6 @@ import {
 } from "react";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
-import dynamic from "next/dynamic";
 import VirtualFeedList from "@/components/mobile/VirtualFeedList";
 
 // Dynamically import FloatingMenu to reduce initial bundle size for LCP optimization
@@ -25,6 +25,7 @@ const FloatingMenu = dynamic(
     })),
   { ssr: false },
 );
+
 import { useAuth } from "@/contexts/auth-context";
 import { useCursorPagination } from "@/hooks/useCursorPagination";
 import { feedApi } from "@/lib/api";

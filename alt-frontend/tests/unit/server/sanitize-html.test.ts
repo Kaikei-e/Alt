@@ -5,13 +5,13 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  createSafeHtml,
+  decodeHtmlEntities,
+  extractPlainText,
+  type SafeHtmlString,
   sanitizeForArticle,
   sanitizeHtml,
   sanitizeToPlainText,
-  decodeHtmlEntities,
-  extractPlainText,
-  createSafeHtml,
-  type SafeHtmlString,
 } from "../../../src/lib/server/sanitize-html";
 
 describe("server-only sanitize-html", () => {

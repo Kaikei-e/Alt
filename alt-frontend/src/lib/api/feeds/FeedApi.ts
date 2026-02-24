@@ -1,10 +1,10 @@
 import type { MessageResponse } from "@/schema/common";
-import type { FeedLink } from "@/schema/feedLink";
 import {
   type BackendFeedItem,
   type SanitizedFeed,
   sanitizeFeed,
 } from "@/schema/feed";
+import type { FeedLink } from "@/schema/feedLink";
 import type { FeedStatsSummary } from "@/schema/feedStats";
 import type { FeedSearchResult, SearchFeedItem } from "@/schema/search";
 import type { UnreadCount } from "@/schema/unread";

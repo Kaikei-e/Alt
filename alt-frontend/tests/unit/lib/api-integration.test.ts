@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   ApiClientError,
   apiClient,
-  feedApi,
   desktopApi,
+  feedApi,
   serverFetch,
 } from "@/lib/api";
 

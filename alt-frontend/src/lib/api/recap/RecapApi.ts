@@ -1,6 +1,6 @@
+import type { EvidenceLink, RecapGenre, RecapSummary } from "@/schema/recap";
 import type { ApiClient } from "../core/ApiClient";
 import { ApiError } from "../core/ApiError";
-import type { EvidenceLink, RecapGenre, RecapSummary } from "@/schema/recap";
 
 type RecapSummaryResponse = {
   job_id: string;

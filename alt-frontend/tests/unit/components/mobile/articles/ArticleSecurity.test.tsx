@@ -1,18 +1,18 @@
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import {
   cleanup,
+  fireEvent,
   render,
   screen,
   waitFor,
-  fireEvent,
 } from "@testing-library/react";
-import { sanitizeForArticle } from "@/lib/server/sanitize-html";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArticleDetailsModal } from "@/components/mobile/articles/ArticleDetailsModal";
 import SwipeFeedCard from "@/components/mobile/feeds/swipe/SwipeFeedCard";
 import { articleApi } from "@/lib/api";
+import { sanitizeForArticle } from "@/lib/server/sanitize-html";
 import type { Article } from "@/schema/article";
 import type { RenderFeed } from "@/schema/feed";
 import { toRenderFeed } from "@/schema/feed";

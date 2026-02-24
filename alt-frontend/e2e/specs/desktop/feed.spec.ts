@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { FeedPage } from "../../pages/desktop/FeedPage";
-import { setupAllMocks, mockFeedsApi } from "../../utils/api-mock";
+import { mockFeedsApi, setupAllMocks } from "../../utils/api-mock";
 
 test.describe("Desktop Feed", () => {
   let feedPage: FeedPage;

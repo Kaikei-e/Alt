@@ -1,4 +1,4 @@
-import { type Locator, expect } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
 
 /**
  * Custom assertions for E2E tests

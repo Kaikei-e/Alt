@@ -4,18 +4,18 @@
  */
 
 import { type NextRequest, NextResponse } from "next/server";
+import { getServerSessionHeaders } from "@/lib/auth/server-headers";
+import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 import {
-  sanitizeForArticle,
   extractPlainText,
+  sanitizeForArticle,
 } from "@/lib/server/sanitize-html";
 import { validateUrlForSSRF } from "@/lib/server/ssrf-validator";
-import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 import type {
+  ArticleSummaryItem,
   FetchArticleSummaryRequest,
   FetchArticleSummaryResponse,
-  ArticleSummaryItem,
 } from "@/schema/feed";
-import { getServerSessionHeaders } from "@/lib/auth/server-headers";
 
 interface SafeArticleSummaryItem {
   article_url: string;

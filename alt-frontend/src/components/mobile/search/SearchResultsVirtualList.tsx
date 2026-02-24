@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, VStack } from "@chakra-ui/react";
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SearchFeedItem } from "@/schema/search";
 import { SearchResultItem } from "./SearchResults";
 

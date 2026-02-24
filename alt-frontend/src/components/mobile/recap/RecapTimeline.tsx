@@ -1,8 +1,8 @@
 "use client";
 
 import { Flex } from "@chakra-ui/react";
-import RecapCard from "./RecapCard";
 import type { RecapGenre } from "@/schema/recap";
+import RecapCard from "./RecapCard";
 
 type RecapTimelineProps = {
   genres: RecapGenre[];

@@ -12,8 +12,8 @@ import {
 import { useState } from "react";
 import * as v from "valibot";
 import { feedApi } from "@/lib/api";
-import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
 import { ApiError } from "@/lib/api/core/ApiError";
+import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
 
 export default function DesktopRegisterFeedsPage() {
   const [feedUrl, setFeedUrl] = useState("");

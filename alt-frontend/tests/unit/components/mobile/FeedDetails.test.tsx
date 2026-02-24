@@ -1,11 +1,11 @@
 import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { createSafeHtml } from "@/lib/server/sanitize-html";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FeedDetails } from "@/components/mobile/FeedDetails";
 import { articleApi } from "@/lib/api";
+import { createSafeHtml } from "@/lib/server/sanitize-html";
 
 // Mock the API
 vi.mock("@/lib/api", () => ({

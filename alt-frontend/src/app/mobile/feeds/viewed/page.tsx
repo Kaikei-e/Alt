@@ -1,6 +1,9 @@
 "use client";
 
 import { Box, Flex, Text, VStack } from "@chakra-ui/react";
+import { useTransition } from "@react-spring/web";
+import { History } from "lucide-react";
+import dynamic from "next/dynamic";
 import {
   Component,
   type ErrorInfo,
@@ -9,11 +12,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { useTransition } from "@react-spring/web";
-import { History } from "lucide-react";
 import { ViewedFeedCard } from "@/components/mobile/feeds/viewed/ViewedFeedCard";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
-import dynamic from "next/dynamic";
 
 // Dynamically import FloatingMenu to reduce initial bundle size for LCP optimization
 const FloatingMenu = dynamic(
@@ -23,6 +23,7 @@ const FloatingMenu = dynamic(
     })),
   { ssr: false },
 );
+
 import { useReadFeeds } from "@/hooks/useReadFeeds";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
 import ErrorState from "../_components/ErrorState";

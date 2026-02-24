@@ -1,4 +1,4 @@
-import type { SearchFeedItem, FeedSearchResult } from "@/schema/search";
+import type { FeedSearchResult, SearchFeedItem } from "@/schema/search";
 
 export const transformFeedSearchResult = (
   feedSearchResult: FeedSearchResult | SearchFeedItem[],

@@ -3,8 +3,8 @@
 import { Box, Flex, Text } from "@chakra-ui/react";
 import ErrorState from "@/app/mobile/feeds/_components/ErrorState";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
-import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import RecapTimeline from "@/components/mobile/recap/RecapTimeline";
+import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useRecapData } from "@/hooks/useRecapData";
 

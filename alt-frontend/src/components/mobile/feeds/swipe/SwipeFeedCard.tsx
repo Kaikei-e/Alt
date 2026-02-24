@@ -11,8 +11,8 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
-import { useDrag } from "@use-gesture/react";
 import { animated, useSpring, useTransition } from "@react-spring/web";
+import { useDrag } from "@use-gesture/react";
 import {
   Archive,
   BookOpen,
@@ -22,9 +22,9 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { articleApi } from "@/lib/api";
+import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 import type { RenderFeed } from "@/schema/feed";
 import { renderingRegistry } from "@/utils/renderingStrategies";
-import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 
 const SWIPE_DISTANCE = 80;
 const SWIPE_VELOCITY = 0.5;

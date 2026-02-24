@@ -1,12 +1,12 @@
 import type { BackendIdentityHeaders } from "@/lib/auth/backend-headers";
 import { IDP_ORIGIN } from "@/lib/env.public";
+import { oryClient } from "@/lib/ory/client";
 import type {
   LoginFlow,
   RegistrationFlow,
   User,
   UserPreferences,
 } from "@/types/auth";
-import { oryClient } from "@/lib/ory/client";
 
 // Redirect function interface for dependency injection
 type RedirectFn = (url: string) => void;

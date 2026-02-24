@@ -2,9 +2,9 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
+import { Box, Button, HStack, Text, VStack } from "@chakra-ui/react";
+import { FileText, LogIn, Rss, UserPlus } from "lucide-react";
 import NextLink from "next/link";
-import { Box, Text, VStack, HStack, Button } from "@chakra-ui/react";
-import { Rss, FileText, LogIn, UserPlus } from "lucide-react";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { serverFetch } from "@/lib/server-fetch";

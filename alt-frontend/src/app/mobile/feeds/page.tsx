@@ -1,11 +1,11 @@
-import { Suspense } from "react";
 import { Box } from "@chakra-ui/react";
+import { Suspense } from "react";
 import { serverFetch } from "@/lib/api/utils/serverFetch";
 import type { CursorResponse } from "@/schema/common";
-import type { RenderFeed, BackendFeedItem } from "@/schema/feed";
+import type { BackendFeedItem, RenderFeed } from "@/schema/feed";
 import { sanitizeFeed, toRenderFeed } from "@/schema/feed";
-import { MobileFeedsHero } from "./_components/MobileFeedsHero";
 import { FeedsClient } from "./_components/FeedsClient";
+import { MobileFeedsHero } from "./_components/MobileFeedsHero";
 
 const INITIAL_FEEDS_LIMIT = 20; // Fetch 20, but render only 3 initially
 

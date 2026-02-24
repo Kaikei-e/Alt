@@ -15,19 +15,19 @@ import {
   VStack,
 } from "@chakra-ui/react";
 import { ArrowLeft, Home, RefreshCw, Settings } from "lucide-react";
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
+import { ApiError } from "@/lib/api/core/ApiError";
 import {
-  useScrapingDomains,
-  updateScrapingDomain,
   refreshRobotsTxt,
+  updateScrapingDomain,
+  useScrapingDomains,
 } from "@/lib/api/scrapingDomains";
 import type {
   ScrapingDomain,
   UpdateScrapingDomainRequest,
 } from "@/schema/scrapingDomain";
-import { ApiError } from "@/lib/api/core/ApiError";
-import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 
 type ActionMessage = {
   type: "success" | "error";

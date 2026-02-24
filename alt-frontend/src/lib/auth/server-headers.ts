@@ -1,10 +1,10 @@
 "use server";
 
-import { resolveServerSession } from "./server-session";
 import {
   type BackendIdentityHeaders,
   buildBackendIdentityHeaders,
 } from "./backend-headers";
+import { resolveServerSession } from "./server-session";
 
 /**
  * Gets server-side session headers for backend API calls.

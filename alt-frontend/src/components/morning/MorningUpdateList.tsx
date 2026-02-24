@@ -1,8 +1,8 @@
 "use client";
 
 import { Box, Flex, Text } from "@chakra-ui/react";
-import { MorningUpdateItem } from "./MorningUpdateItem";
 import type { MorningUpdate } from "@/schema/morning";
+import { MorningUpdateItem } from "./MorningUpdateItem";
 
 type MorningUpdateListProps = {
   updates: MorningUpdate[];

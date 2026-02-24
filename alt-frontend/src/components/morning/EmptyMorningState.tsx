@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Button, Flex, Text, VStack } from "@chakra-ui/react";
-import { animated, useSpring, easings } from "@react-spring/web";
+import { animated, easings, useSpring } from "@react-spring/web";
 import { Coffee, Moon, Sun } from "lucide-react";
 import Link from "next/link";
 

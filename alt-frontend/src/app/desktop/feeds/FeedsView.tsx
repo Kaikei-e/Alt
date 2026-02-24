@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import LazyRightPanel from "@/components/desktop/analytics/LazyRightPanel";
-import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import { DesktopHeader } from "@/components/desktop/layout/DesktopHeader";
+import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import LazyDesktopTimeline from "@/components/desktop/timeline/LazyDesktopTimeline";
 import type { FeedStatsSummary } from "@/schema/feedStats";
 

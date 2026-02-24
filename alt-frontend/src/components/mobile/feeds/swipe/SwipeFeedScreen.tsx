@@ -1,15 +1,15 @@
 "use client";
 
-import { keyframes } from "@emotion/react";
 import { Box, Flex, Text } from "@chakra-ui/react";
+import { keyframes } from "@emotion/react";
 import { useEffect, useState } from "react";
 import ErrorState from "@/app/mobile/feeds/_components/ErrorState";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
-import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 import SwipeFeedSkeleton from "@/components/mobile/feeds/swipe/SwipeFeedSkeleton";
+import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
-import type { RenderFeed } from "@/schema/feed";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
+import type { RenderFeed } from "@/schema/feed";
 
 const usePrefersReducedMotion = () => {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => {

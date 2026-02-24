@@ -1,7 +1,7 @@
-import { http, HttpResponse } from "msw";
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { HttpResponse, http } from "msw";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

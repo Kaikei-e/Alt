@@ -5,11 +5,11 @@
  */
 import type React from "react";
 import type { ReactNode } from "react";
-import { analyzeContent, ContentType } from "./contentTypeDetector";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
+import { analyzeContent, ContentType } from "./contentTypeDetector";
 import {
-  decodeHtmlEntities as decodeHtmlEntitiesUtil,
   decodeHtmlEntitiesFromUrl as decodeHtmlEntitiesFromUrlUtil,
+  decodeHtmlEntities as decodeHtmlEntitiesUtil,
 } from "./htmlEntityUtils";
 
 export interface RenderingStrategy {

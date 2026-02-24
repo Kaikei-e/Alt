@@ -7,7 +7,7 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { useState, useRef, useTransition, useEffect } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import * as v from "valibot";
 import { feedApi } from "@/lib/api";
 import { transformFeedSearchResult } from "@/lib/utils/transformFeedSearchResult";

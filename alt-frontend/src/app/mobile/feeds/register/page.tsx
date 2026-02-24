@@ -5,8 +5,8 @@ import { useState } from "react";
 import * as v from "valibot";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { feedApi } from "@/lib/api";
-import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
 import { ApiError } from "@/lib/api/core/ApiError";
+import { feedUrlSchema } from "@/schema/validation/feedUrlSchema";
 
 export default function RegisterFeedsPage() {
   const [feedUrl, setFeedUrl] = useState("");

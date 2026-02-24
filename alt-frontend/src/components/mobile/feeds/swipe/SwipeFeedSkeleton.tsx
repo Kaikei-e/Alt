@@ -1,5 +1,5 @@
-import { keyframes } from "@emotion/react";
 import { Box, HStack, Icon, Text, VStack } from "@chakra-ui/react";
+import { keyframes } from "@emotion/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";

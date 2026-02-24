@@ -2,12 +2,12 @@ import { Box, Button, Portal, Text } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
 import { Archive, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import RenderFeedDetails from "@/components/mobile/RenderFeedDetails";
 import { articleApi, feedApi } from "@/lib/api";
 import type {
   FeedContentOnTheFlyResponse,
   FetchArticleSummaryResponse,
 } from "@/schema/feed";
-import RenderFeedDetails from "@/components/mobile/RenderFeedDetails";
 
 const scrollAreaStyles: CSSObject = {
   "&::-webkit-scrollbar": {

@@ -5,9 +5,9 @@
  */
 
 import "server-only";
-import DOMPurify from "isomorphic-dompurify";
 import type { Config } from "dompurify";
 import * as he from "he";
+import DOMPurify from "isomorphic-dompurify";
 
 /**
  * Branded type for sanitized HTML strings

@@ -1,11 +1,11 @@
 "use client";
 
-import { Box, Flex, Text, Button, Icon } from "@chakra-ui/react";
+import { Box, Button, Flex, Icon, Text } from "@chakra-ui/react";
 import { AlertTriangle } from "lucide-react";
 import SkeletonFeedCard from "@/components/mobile/SkeletonFeedCard";
+import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import EmptyMorningState from "@/components/morning/EmptyMorningState";
 import { MorningUpdateList } from "@/components/morning/MorningUpdateList";
-import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useMorningUpdates } from "@/hooks/useMorningUpdates";
 
 export default function MorningLetterUpdatesPage() {

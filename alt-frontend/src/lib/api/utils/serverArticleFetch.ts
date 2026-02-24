@@ -4,10 +4,10 @@
  */
 
 import "server-only";
-import { sanitizeForArticle } from "@/lib/server/sanitize-html";
-import { validateUrlForSSRF } from "@/lib/server/ssrf-validator";
 import { getServerSessionHeaders } from "@/lib/auth/server-headers";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
+import { sanitizeForArticle } from "@/lib/server/sanitize-html";
+import { validateUrlForSSRF } from "@/lib/server/ssrf-validator";
 
 export interface ServerArticleContentResponse {
   content: SafeHtmlString;

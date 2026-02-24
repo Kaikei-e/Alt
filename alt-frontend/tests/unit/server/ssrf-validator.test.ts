@@ -5,8 +5,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  validateUrlForSSRF,
   SSRFValidationError,
+  validateUrlForSSRF,
 } from "../../../src/lib/server/ssrf-validator";
 
 describe("server-only ssrf-validator", () => {

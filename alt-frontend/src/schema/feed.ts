@@ -1,11 +1,11 @@
-import { sanitizeFeedContent } from "@/utils/contentSanitizer";
 import {
   formatPublishedDate,
+  generateExcerptFromDescription,
   mergeTagsLabel,
   normalizeUrl,
-  generateExcerptFromDescription,
 } from "@/lib/server/feed-formatters";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
+import { sanitizeFeedContent } from "@/utils/contentSanitizer";
 
 export type Feed = {
   id: string;

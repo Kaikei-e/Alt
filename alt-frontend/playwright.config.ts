@@ -1,6 +1,6 @@
+import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
-import path from "node:path";
 
 // Read from .env.test or .env
 dotenv.config({ path: path.resolve(process.cwd(), ".env.test") });

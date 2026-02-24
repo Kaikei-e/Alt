@@ -1,6 +1,6 @@
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { SearchPage } from "../../pages/desktop/SearchPage";
-import { setupAllMocks, mockSearchApi } from "../../utils/api-mock";
+import { mockSearchApi, setupAllMocks } from "../../utils/api-mock";
 
 test.describe("Desktop Search", () => {
   let searchPage: SearchPage;

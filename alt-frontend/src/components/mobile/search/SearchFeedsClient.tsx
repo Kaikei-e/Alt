@@ -1,8 +1,8 @@
 "use client";
 
 import { Box, Text, VStack } from "@chakra-ui/react";
-import { Suspense, useState, useTransition, useDeferredValue } from "react";
 import dynamic from "next/dynamic";
+import { Suspense, useDeferredValue, useState, useTransition } from "react";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import type { SearchFeedItem } from "@/schema/search";
 import type { SearchQuery } from "@/schema/validation/searchQuery";

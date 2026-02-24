@@ -1,8 +1,8 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { createSafeHtml } from "@/lib/server/sanitize-html";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useArticleContentPrefetch } from "@/hooks/useArticleContentPrefetch";
 import { articleApi } from "@/lib/api";
+import { createSafeHtml } from "@/lib/server/sanitize-html";
 import type { Feed } from "@/schema/feed";
 
 // Mock the API

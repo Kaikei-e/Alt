@@ -2,14 +2,14 @@
 
 import {
   Box,
-  Heading,
-  Text,
-  Spinner,
-  VStack,
   Container,
+  Heading,
+  Spinner,
+  Text,
+  VStack,
 } from "@chakra-ui/react";
-import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { articleApi } from "@/lib/api";
 import type { Article } from "@/schema/article";
 

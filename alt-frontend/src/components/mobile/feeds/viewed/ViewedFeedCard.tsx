@@ -1,11 +1,11 @@
-import { Box, Flex, Text, Button, HStack, Badge } from "@chakra-ui/react";
+import { Badge, Box, Button, Flex, HStack, Text } from "@chakra-ui/react";
 import { animated } from "@react-spring/web";
-import { Archive, ExternalLink, BookOpen } from "lucide-react";
+import { Archive, BookOpen, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { articleApi } from "@/lib/api";
 import { truncateFeedDescription } from "@/lib/utils/textUtils";
 import type { RenderFeed } from "@/schema/feed";
-import { articleApi } from "@/lib/api";
 import { ViewedFeedDetailsModal } from "./ViewedFeedDetailsModal";
 
 type ViewedFeedCardProps = {
