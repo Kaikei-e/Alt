@@ -151,16 +151,19 @@ const DesktopStyledFeedCard = ({
     [feed.link],
   );
 
-  const handleOpenSummary = useCallback(async (link: string, title: string) => {
-    try {
-      // Auto-archive article to ensure DB persistence before summarization
-      // Matches the pattern from mobile FeedDetails component
-      await articleApi.archiveContent(link, title);
-    } catch (err) {
-      console.warn("Failed to auto-archive article:", err);
-      // Don't block UI on archive failure
-    }
-  }, []);
+  const _handleOpenSummary = useCallback(
+    async (link: string, title: string) => {
+      try {
+        // Auto-archive article to ensure DB persistence before summarization
+        // Matches the pattern from mobile FeedDetails component
+        await articleApi.archiveContent(link, title);
+      } catch (err) {
+        console.warn("Failed to auto-archive article:", err);
+        // Don't block UI on archive failure
+      }
+    },
+    [],
+  );
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {

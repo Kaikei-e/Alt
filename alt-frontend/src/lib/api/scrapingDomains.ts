@@ -1,5 +1,5 @@
 import useSWR from "swr";
-import {
+import type {
   ScrapingDomain,
   UpdateScrapingDomainRequest,
 } from "@/schema/scrapingDomain";

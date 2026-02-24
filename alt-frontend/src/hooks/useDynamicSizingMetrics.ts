@@ -40,7 +40,7 @@ export const useDynamicSizingMetrics = (
 
     // 定期的にメトリクスを報告
     const interval = setInterval(() => {
-      const metrics = metricsRef.current;
+      const _metrics = metricsRef.current;
 
       if (process.env.NODE_ENV === "development") {
       }

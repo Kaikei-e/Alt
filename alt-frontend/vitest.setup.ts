@@ -86,14 +86,14 @@ if (typeof global.AbortSignal === "undefined") {
 
 // Node.js環境で必要なWeb APIのポリフィル
 if (typeof global.TextEncoder === "undefined") {
-  const { TextEncoder, TextDecoder } = require("util");
+  const { TextEncoder, TextDecoder } = require("node:util");
   global.TextEncoder = TextEncoder;
   global.TextDecoder = TextDecoder;
 }
 
 // URL と URLSearchParams のポリフィル
 if (typeof global.URL === "undefined") {
-  const { URL, URLSearchParams } = require("url");
+  const { URL, URLSearchParams } = require("node:url");
   global.URL = URL;
   global.URLSearchParams = URLSearchParams;
 }
@@ -143,7 +143,7 @@ class ResizeObserverMock {
   unobserve: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
 
-  constructor(callback?: ResizeObserverCallback) {
+  constructor(_callback?: ResizeObserverCallback) {
     this.observe = vi.fn();
     this.unobserve = vi.fn();
     this.disconnect = vi.fn();
@@ -159,8 +159,8 @@ class IntersectionObserverMock {
   disconnect: ReturnType<typeof vi.fn>;
 
   constructor(
-    callback?: IntersectionObserverCallback,
-    options?: IntersectionObserverInit,
+    _callback?: IntersectionObserverCallback,
+    _options?: IntersectionObserverInit,
   ) {
     this.observe = vi.fn();
     this.unobserve = vi.fn();

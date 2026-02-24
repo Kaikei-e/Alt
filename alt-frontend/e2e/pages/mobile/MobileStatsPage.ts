@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 export class MobileStatsPage extends BasePage {
   readonly statsHeading: Locator;
@@ -8,13 +8,15 @@ export class MobileStatsPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.statsHeading = page.getByTestId('stats-heading');
-    this.statsCards = page.getByTestId('stats-cards');
-    this.connectionStatus = page.getByText(/Connected|Disconnected|Reconnecting/);
+    this.statsHeading = page.getByTestId("stats-heading");
+    this.statsCards = page.getByTestId("stats-cards");
+    this.connectionStatus = page.getByText(
+      /Connected|Disconnected|Reconnecting/,
+    );
   }
 
   async goto(): Promise<void> {
-    await this.navigateTo('/mobile/feeds/stats');
+    await this.navigateTo("/mobile/feeds/stats");
   }
 
   async waitForReady(): Promise<void> {
@@ -31,7 +33,7 @@ export class MobileStatsPage extends BasePage {
   }
 
   async isConnected(): Promise<boolean> {
-    const connectedText = this.page.getByText('Connected');
+    const connectedText = this.page.getByText("Connected");
     try {
       await expect(connectedText).toBeVisible({ timeout: 5000 });
       return true;

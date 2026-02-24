@@ -26,7 +26,7 @@ vi.mock("@/lib/api", () => ({
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
   useSearchParams: vi.fn(() => ({
-    get: vi.fn((param: string) => null),
+    get: vi.fn((_param: string) => null),
   })),
   useRouter: vi.fn(() => ({
     push: vi.fn(),
@@ -390,7 +390,7 @@ describe("SearchArticles", () => {
       expect(articleApi.searchArticles).toHaveBeenCalledTimes(1);
 
       // Resolve the search
-      resolveSearch!();
+      resolveSearch?.();
     });
   });
 

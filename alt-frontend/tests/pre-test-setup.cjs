@@ -4,9 +4,9 @@
  * Pre-test setup validation script
  */
 
-const { exec } = require("child_process");
-const fs = require("fs");
-const path = require("path");
+const { exec } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
 const dotenv = require("dotenv");
 
 // Load test environment variables
@@ -26,7 +26,7 @@ function checkPortAvailable(port) {
 
 async function cleanupPorts() {
   const ports = [3010, 4545];
-  const { promisify } = require("util");
+  const { promisify } = require("node:util");
   const execAsync = promisify(exec);
 
   for (const port of ports) {
@@ -40,14 +40,14 @@ async function cleanupPorts() {
         for (const pid of pids) {
           try {
             await execAsync(`kill -9 ${pid}`);
-          } catch (killError) {
+          } catch (_killError) {
             // Process may have already terminated
           }
         }
         // Wait a bit for ports to be released
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
-    } catch (error) {
+    } catch (_error) {
       // Port is not in use, which is fine
     }
   }
@@ -119,7 +119,7 @@ async function checkPorts() {
 
 function checkBrowsers() {
   return new Promise((resolve) => {
-    exec("npx playwright install --dry-run", (error, stdout, stderr) => {
+    exec("npx playwright install --dry-run", (error, _stdout, stderr) => {
       if (error || stderr.includes("not found")) {
         console.log("⚠️  Some browsers may need installation");
         console.log("💡 Run: npx playwright install");
@@ -185,7 +185,7 @@ async function main() {
   // Ensure directories exist
   ensureDirectories();
 
-  console.log("\n" + "=".repeat(50));
+  console.log(`\n${"=".repeat(50)}`);
 
   if (allGood) {
     console.log("✅ Pre-test validation completed successfully!");

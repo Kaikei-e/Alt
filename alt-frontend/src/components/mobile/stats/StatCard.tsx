@@ -2,7 +2,6 @@
 
 import { Box, Flex, Icon, Text } from "@chakra-ui/react";
 import type { ElementType } from "react";
-import React from "react";
 
 // Safe number formatter with fallbacks
 const safeFormatNumber = (value: number): string => {

@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 export class MobileRegisterFeedPage extends BasePage {
   readonly registerFeedPage: Locator;
@@ -12,17 +12,17 @@ export class MobileRegisterFeedPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.registerFeedPage = page.getByTestId('register-feed-page');
-    this.registerFeedHeading = page.getByTestId('register-feed-heading');
-    this.feedUrlInput = page.getByTestId('feed-url-input');
-    this.feedUrlError = page.getByTestId('feed-url-error');
-    this.registerButton = page.getByTestId('register-feed-button');
-    this.successMessage = page.getByTestId('register-success-message');
-    this.errorMessage = page.getByTestId('register-error-message');
+    this.registerFeedPage = page.getByTestId("register-feed-page");
+    this.registerFeedHeading = page.getByTestId("register-feed-heading");
+    this.feedUrlInput = page.getByTestId("feed-url-input");
+    this.feedUrlError = page.getByTestId("feed-url-error");
+    this.registerButton = page.getByTestId("register-feed-button");
+    this.successMessage = page.getByTestId("register-success-message");
+    this.errorMessage = page.getByTestId("register-error-message");
   }
 
   async goto(): Promise<void> {
-    await this.navigateTo('/mobile/feeds/register');
+    await this.navigateTo("/mobile/feeds/register");
   }
 
   async waitForReady(): Promise<void> {

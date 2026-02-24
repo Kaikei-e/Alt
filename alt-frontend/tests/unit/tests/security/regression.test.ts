@@ -268,7 +268,7 @@ describe("Security Regression Tests - PROTECTED", () => {
   describe("Performance Regression Tests - PROTECTED", () => {
     test("should maintain performance on large content - PROTECTED", () => {
       const startTime = performance.now();
-      const largeContent = "<p>".repeat(1000) + "Content" + "</p>".repeat(1000);
+      const largeContent = `${"<p>".repeat(1000)}Content${"</p>".repeat(1000)}`;
       const result = sanitizeContent(largeContent);
       const endTime = performance.now();
 
@@ -277,7 +277,7 @@ describe("Security Regression Tests - PROTECTED", () => {
     });
 
     test("should handle deeply nested HTML - PROTECTED", () => {
-      const deepNested = "<div>".repeat(100) + "content" + "</div>".repeat(100);
+      const deepNested = `${"<div>".repeat(100)}content${"</div>".repeat(100)}`;
       const result = sanitizeContent(deepNested);
       expect(result).toBeDefined();
       expect(result).toContain("content");

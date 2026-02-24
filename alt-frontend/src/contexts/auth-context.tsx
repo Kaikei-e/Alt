@@ -1,4 +1,4 @@
-import React, {
+import {
   createContext,
   type ReactNode,
   useCallback,
@@ -392,7 +392,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [lastAction, setLastAction] = useState<LastActionType | null>(null);
 
   // 🔍 ULTRA-DIAGNOSTIC: デバッグ状態管理
-  const [debugCaptureEnabled, setDebugCaptureEnabled] = useState(false);
+  const [_debugCaptureEnabled, setDebugCaptureEnabled] = useState(false);
 
   // 🔄 Phase 3: フロー管理状態管理
   const [flowState, setFlowState] = useState<FlowState>({
@@ -425,7 +425,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     ];
 
     return sessionCookies.some((cookieName) =>
-      cookieString.includes(cookieName + "="),
+      cookieString.includes(`${cookieName}=`),
     );
   }, []);
 
@@ -456,7 +456,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   };
 
   // 📊 X24: Performance monitoring and optimization
-  const [performanceMetrics, setPerformanceMetrics] = useState({
+  const [_performanceMetrics, setPerformanceMetrics] = useState({
     apiCallsAvoided: 0,
     cacheHits: 0,
     totalRequests: 0,
@@ -500,7 +500,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         // Log performance improvement every 10 requests
         if (updated.totalRequests % 10 === 0) {
-          const avoidanceRate = (
+          const _avoidanceRate = (
             ((updated.apiCallsAvoided + updated.cacheHits) /
               updated.totalRequests) *
             100
@@ -642,7 +642,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   ]);
 
   // 🚀 X24 Phase 3: Enhanced activity tracking with security check
-  const updateActivity = useCallback(() => {
+  const _updateActivity = useCallback(() => {
     if (authState.isAuthenticated) {
       setAuthState((prev) => ({ ...prev, lastActivity: new Date() }));
       performSecurityCheck(); // Perform security check on user activity
@@ -969,7 +969,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         lastActivity: null,
       }));
       setLastAction(null); // ログアウト時はアクション履歴もクリア
-    } catch (error: unknown) {
+    } catch (_error: unknown) {
       // ログアウトエラーは重要ではないのでローカル状態をクリア
       setAuthState((prev) => ({
         ...prev,
@@ -993,32 +993,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     const { type, params } = lastAction;
-
-    try {
-      // 🔧 X24 Phase 2: Type-safe action execution
-      switch (type) {
-        case "login": {
-          const [email, password] = params;
-          await login(email, password);
-          break;
-        }
-        case "register": {
-          const [email, password, name] = params;
-          await register(email, password, name);
-          break;
-        }
-        case "refresh":
-          await refresh();
-          break;
-        default: {
-          // TypeScript exhaustiveness check
-          const _exhaustiveCheck: never = type;
-          throw new Error(`不明なアクションタイプです: ${_exhaustiveCheck}`);
-        }
+    // 🔧 X24 Phase 2: Type-safe action execution
+    switch (type) {
+      case "login": {
+        const [email, password] = params;
+        await login(email, password);
+        break;
       }
-    } catch (error) {
-      // エラーは元の関数で処理されるため、ここでは再スロー
-      throw error;
+      case "register": {
+        const [email, password, name] = params;
+        await register(email, password, name);
+        break;
+      }
+      case "refresh":
+        await refresh();
+        break;
+      default: {
+        // TypeScript exhaustiveness check
+        const _exhaustiveCheck: never = type;
+        throw new Error(`不明なアクションタイプです: ${_exhaustiveCheck}`);
+      }
     }
   };
 

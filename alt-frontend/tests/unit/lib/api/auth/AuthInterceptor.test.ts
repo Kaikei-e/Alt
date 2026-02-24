@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthInterceptor } from "../../../../../src/lib/api/auth/AuthInterceptor";
-import { ApiError } from "../../../../../src/lib/api/core/ApiError";
 
 // Mock fetch globally
 const mockFetch = vi.fn();

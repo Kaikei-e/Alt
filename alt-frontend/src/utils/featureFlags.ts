@@ -49,6 +49,7 @@ export class FeatureFlagManager {
       debugMode: process.env.NODE_ENV === "development",
       virtualizationThreshold: parseInt(
         process.env.NEXT_PUBLIC_VIRTUALIZATION_THRESHOLD || "200",
+        10,
       ),
     };
 
@@ -58,7 +59,7 @@ export class FeatureFlagManager {
       if (localFlags) {
         try {
           return { ...envFlags, ...JSON.parse(localFlags) };
-        } catch (error) {}
+        } catch (_error) {}
       }
     }
 
@@ -76,7 +77,7 @@ export class FeatureFlagManager {
     if (this.flags.debugMode && typeof window !== "undefined") {
       try {
         localStorage.setItem("featureFlags", JSON.stringify(updates));
-      } catch (error) {}
+      } catch (_error) {}
     }
   }
 

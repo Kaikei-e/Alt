@@ -11,4 +11,4 @@ export {
   mockSearchApi,
   mockErrorResponse,
   type MockOptions,
-} from '../mocks/playwright-msw';
+} from "../mocks/playwright-msw";

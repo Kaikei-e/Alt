@@ -121,12 +121,9 @@ export const FeedDetails = ({
 
       // Check if summary has valid content
       const hasValidSummary =
-        summary &&
-        summary.matched_articles &&
-        summary.matched_articles.length > 0;
+        summary?.matched_articles && summary.matched_articles.length > 0;
       // Check if details has valid content
-      const hasValidDetails =
-        details && details.content && details.content.trim() !== "";
+      const hasValidDetails = details?.content && details.content.trim() !== "";
 
       if (hasValidSummary) {
         setArticleSummary(summary);

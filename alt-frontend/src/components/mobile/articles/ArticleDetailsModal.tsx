@@ -16,10 +16,7 @@ import { Sparkles, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { articleApi } from "@/lib/api";
 import type { Article } from "@/schema/article";
-import {
-  type FeedContentOnTheFlyResponse,
-  FetchArticleSummaryResponse,
-} from "@/schema/feed";
+import type { FeedContentOnTheFlyResponse } from "@/schema/feed";
 import { renderingRegistry } from "@/utils/renderingStrategies";
 
 interface ArticleDetailsModalProps {

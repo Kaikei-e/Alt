@@ -1,4 +1,4 @@
-import { expect, test as setup } from "@playwright/test";
+import { test as setup } from "@playwright/test";
 
 const authFile = "playwright/.auth/user.json";
 
@@ -27,7 +27,7 @@ setup("authenticate via API", async ({ request, context }) => {
     console.log("[AUTH-SETUP] Flow response headers:", flowResponse.headers());
 
     // Extract flow ID from redirect location
-    const location = flowResponse.headers()["location"];
+    const location = flowResponse.headers().location;
     console.log("[AUTH-SETUP] Redirect location:", location);
 
     if (!location) {
@@ -122,7 +122,7 @@ setup("authenticate via API", async ({ request, context }) => {
     console.log("[AUTH-SETUP] Authentication state saved to", authFile);
 
     // Verify the auth file was created and has content
-    const fs = await import("fs");
+    const fs = await import("node:fs");
     if (!fs.existsSync(authFile)) {
       throw new Error("Auth file was not created");
     }

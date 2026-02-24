@@ -19,8 +19,8 @@ class IntersectionObserverMock {
   disconnect: ReturnType<typeof vi.fn>;
 
   constructor(
-    callback: IntersectionObserverCallback,
-    options?: IntersectionObserverInit,
+    _callback: IntersectionObserverCallback,
+    _options?: IntersectionObserverInit,
   ) {
     const stub = createObserverStub();
     this.observe = stub.observe;
@@ -34,7 +34,7 @@ class ResizeObserverMock {
   unobserve: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
 
-  constructor(callback: ResizeObserverCallback) {
+  constructor(_callback: ResizeObserverCallback) {
     const stub = createObserverStub();
     this.observe = stub.observe;
     this.unobserve = stub.unobserve;

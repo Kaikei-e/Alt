@@ -13,12 +13,7 @@ import {
 } from "@chakra-ui/react";
 import { Bookmark, Clock, ExternalLink, Heart } from "lucide-react";
 import Link from "next/link";
-import React, {
-  type KeyboardEvent,
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
+import { type KeyboardEvent, useCallback, useMemo, useState } from "react";
 import type { DesktopFeedCardProps } from "@/types/desktop-feed";
 
 const formatTimeAgo = (dateString: string) => {

@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 export class DesktopHomePage extends BasePage {
   readonly dashboardTitle: Locator;
@@ -11,16 +11,18 @@ export class DesktopHomePage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.dashboardTitle = page.getByText('Alt Dashboard');
+    this.dashboardTitle = page.getByText("Alt Dashboard");
     this.sidebar = page.locator('[class*="glass"]').first();
-    this.navItems = page.getByRole('link');
+    this.navItems = page.getByRole("link");
     this.statsCards = page.locator('[class*="stats"]');
     this.quickActions = page.getByText(/Add Feed|Search|Browse|Bookmarks/);
-    this.themeToggle = page.locator('[aria-label*="theme"], [data-testid*="theme"]');
+    this.themeToggle = page.locator(
+      '[aria-label*="theme"], [data-testid*="theme"]',
+    );
   }
 
   async goto(): Promise<void> {
-    await this.navigateTo('/desktop/home');
+    await this.navigateTo("/desktop/home");
   }
 
   async waitForReady(): Promise<void> {
@@ -37,14 +39,20 @@ export class DesktopHomePage extends BasePage {
   }
 
   async navigateToFeeds(): Promise<void> {
-    await this.page.getByRole('link', { name: /Feeds/i }).first().click();
+    await this.page.getByRole("link", { name: /Feeds/i }).first().click();
   }
 
   async navigateToSettings(): Promise<void> {
-    await this.page.getByRole('link', { name: /Settings/i }).first().click();
+    await this.page
+      .getByRole("link", { name: /Settings/i })
+      .first()
+      .click();
   }
 
   async navigateToSearch(): Promise<void> {
-    await this.page.getByRole('link', { name: /Search/i }).first().click();
+    await this.page
+      .getByRole("link", { name: /Search/i })
+      .first()
+      .click();
   }
 }

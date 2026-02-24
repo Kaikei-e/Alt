@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 /**
  * Desktop Home Page Object
@@ -17,38 +17,38 @@ export class HomePage extends BasePage {
   constructor(page: Page) {
     super(page);
     // Use data-testid selectors
-    this.homeContainer = page.getByTestId('desktop-home-container');
-    this.dashboardHeader = page.getByText('Dashboard Overview');
+    this.homeContainer = page.getByTestId("desktop-home-container");
+    this.dashboardHeader = page.getByText("Dashboard Overview");
     this.feedCards = page.locator('[data-testid^="desktop-feed-card-"]');
-    this.statsGrid = page.getByTestId('stats-grid');
-    this.activityFeed = page.getByTestId('activity-feed');
-    this.quickActions = page.getByTestId('quick-actions-panel');
-    this.ctaContainer = page.getByTestId('cta-container');
+    this.statsGrid = page.getByTestId("stats-grid");
+    this.activityFeed = page.getByTestId("activity-feed");
+    this.quickActions = page.getByTestId("quick-actions-panel");
+    this.ctaContainer = page.getByTestId("cta-container");
   }
 
   /**
    * Navigate to desktop home page
    */
   async goto(): Promise<void> {
-    await this.navigateTo('/desktop/home');
+    await this.navigateTo("/desktop/home");
   }
 
   /**
    * Wait for home page to load
    */
   async waitForReady(timeout = 10000): Promise<void> {
-    await expect(
-      this.homeContainer.or(this.dashboardHeader),
-    ).toBeVisible({ timeout });
+    await expect(this.homeContainer.or(this.dashboardHeader)).toBeVisible({
+      timeout,
+    });
   }
 
   /**
    * Wait for feeds to load (legacy method)
    */
   async waitForFeeds(timeout = 10000): Promise<void> {
-    await expect(
-      this.dashboardHeader.or(this.feedCards.first()),
-    ).toBeVisible({ timeout });
+    await expect(this.dashboardHeader.or(this.feedCards.first())).toBeVisible({
+      timeout,
+    });
   }
 
   /**

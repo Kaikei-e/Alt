@@ -17,7 +17,7 @@ export function formatPublishedDate(
 
   try {
     const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
+    if (Number.isNaN(date.getTime())) {
       return "";
     }
 
@@ -118,10 +118,10 @@ export function generateExcerpt(
 
   if (lastSpace > maxLength * 0.8) {
     // If we can find a space near the end, truncate there
-    return truncated.slice(0, lastSpace) + "...";
+    return `${truncated.slice(0, lastSpace)}...`;
   }
 
-  return truncated + "...";
+  return `${truncated}...`;
 }
 
 /**
@@ -153,8 +153,8 @@ export function generateExcerptFromDescription(
   const lastSpace = truncated.lastIndexOf(" ");
 
   if (lastSpace > maxLength * 0.8) {
-    return truncated.slice(0, lastSpace) + "...";
+    return `${truncated.slice(0, lastSpace)}...`;
   }
 
-  return truncated + "...";
+  return `${truncated}...`;
 }

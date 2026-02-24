@@ -28,7 +28,7 @@ import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 
 const SWIPE_DISTANCE = 80;
 const SWIPE_VELOCITY = 0.5;
-const DISMISS_DELAY = 140;
+const _DISMISS_DELAY = 140;
 
 const scrollAreaStyles: CSSObject = {
   "&::-webkit-scrollbar": {
@@ -896,7 +896,7 @@ const SwipeFeedCard = memo((props: SwipeFeedCardProps) => {
     from: { opacity: 0, scale: 0.98, zIndex: 0 },
     enter: { opacity: 1, scale: 1, zIndex: 1 },
     leave: { opacity: 0, pointerEvents: "none", zIndex: 10 },
-    config: (item, state) => {
+    config: (_item, state) => {
       if (String(state) === "leave") {
         return { tension: 600, friction: 30 };
       }

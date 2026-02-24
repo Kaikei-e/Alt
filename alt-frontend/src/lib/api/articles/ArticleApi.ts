@@ -1,10 +1,10 @@
 import type { Article } from "@/schema/article";
 import type { MessageResponse } from "@/schema/common";
-import {
-  type FeedContentOnTheFlyResponse,
-  type FeedDetails,
-  type FeedURLPayload,
-  type FetchArticleSummaryResponse,
+import type {
+  FeedContentOnTheFlyResponse,
+  FeedDetails,
+  FeedURLPayload,
+  FetchArticleSummaryResponse,
 } from "@/schema/feed";
 import type { ApiClient } from "../core/ApiClient";
 import { ApiError } from "../core/ApiError";

@@ -103,7 +103,13 @@ export default function RegisterFeedsPage() {
   };
 
   return (
-    <Box minHeight="100dvh" bg="var(--alt-gradient-bg)" color="white" p={4} data-testid="register-feed-page">
+    <Box
+      minHeight="100dvh"
+      bg="var(--alt-gradient-bg)"
+      color="white"
+      p={4}
+      data-testid="register-feed-page"
+    >
       <VStack gap={6} align="stretch" maxWidth="500px" mx="auto">
         <Text
           fontSize="2xl"
@@ -159,7 +165,12 @@ export default function RegisterFeedsPage() {
                   data-testid="feed-url-input"
                 />
                 {validationError && (
-                  <Text color="var(--alt-error)" fontSize="sm" mt={1} data-testid="feed-url-error">
+                  <Text
+                    color="var(--alt-error)"
+                    fontSize="sm"
+                    mt={1}
+                    data-testid="feed-url-error"
+                  >
                     {validationError}
                   </Text>
                 )}
@@ -200,7 +211,11 @@ export default function RegisterFeedsPage() {
                   textAlign="center"
                   fontSize="sm"
                   fontWeight="medium"
-                  data-testid={message.type === "success" ? "register-success-message" : "register-error-message"}
+                  data-testid={
+                    message.type === "success"
+                      ? "register-success-message"
+                      : "register-error-message"
+                  }
                 >
                   {message.text}
                 </Text>

@@ -253,7 +253,7 @@ describe("renderingStrategies Security Tests", () => {
         ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "a"],
         ALLOWED_ATTR: ["href", "title", "target", "rel"],
         ALLOWED_URI_REGEXP:
-          /^(?:(?:(?:f|ht)tps?):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+          /^(?:(?:(?:f|ht)tps?):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
         KEEP_CONTENT: true,
       });
 
@@ -273,7 +273,7 @@ describe("renderingStrategies Security Tests", () => {
         ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "a", "img"],
         ALLOWED_ATTR: ["href", "title", "target", "rel", "src", "alt"],
         ALLOWED_URI_REGEXP:
-          /^(?:(?:(?:f|ht)tps?):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+          /^(?:(?:(?:f|ht)tps?):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
         KEEP_CONTENT: true,
       });
 
@@ -295,7 +295,7 @@ describe("renderingStrategies Security Tests", () => {
           ALLOWED_TAGS: ["div", "img", "a"],
           ALLOWED_ATTR: ["href", "title", "src", "alt"],
           ALLOWED_URI_REGEXP:
-            /^(?:(?:(?:f|ht)tps?):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+            /^(?:(?:(?:f|ht)tps?):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
           KEEP_CONTENT: true,
         });
 
@@ -379,7 +379,7 @@ describe("renderingStrategies Security Tests", () => {
         ],
         ALLOW_DATA_ATTR: true,
         ALLOWED_URI_REGEXP:
-          /^(?:(?:(?:f|ht)tps?|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+          /^(?:(?:(?:f|ht)tps?|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
         KEEP_CONTENT: true,
       };
 
@@ -440,7 +440,7 @@ describe("renderingStrategies Security Tests", () => {
 
   describe("Integration Tests", () => {
     it("should handle content with both escaping issues and XSS attempts", () => {
-      const complexContent = `
+      const _complexContent = `
         &amp;lt;script&amp;gt;alert('xss')&amp;lt;/script&amp;gt;
         <p>&amp;quot;Safe quoted content&amp;quot;</p>
         <div onclick="alert('event')">Content</div>

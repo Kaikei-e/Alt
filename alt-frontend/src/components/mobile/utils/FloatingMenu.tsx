@@ -258,7 +258,8 @@ export const FloatingMenu = () => {
               right={6}
               zIndex={1000}
               css={{
-                paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
+                paddingBottom:
+                  "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
               }}
             >
               <Button

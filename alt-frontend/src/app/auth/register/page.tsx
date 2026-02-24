@@ -11,7 +11,10 @@ export default async function RegisterPage({
   const returnTo = params.return_to;
 
   // Build redirect URL to SvelteKit registration page
-  const svRegisterUrl = new URL("/sv/register", process.env.NEXT_PUBLIC_APP_ORIGIN || "https://curionoah.com");
+  const svRegisterUrl = new URL(
+    "/sv/register",
+    process.env.NEXT_PUBLIC_APP_ORIGIN || "https://curionoah.com",
+  );
   if (returnTo) {
     svRegisterUrl.searchParams.set("return_to", returnTo);
   }

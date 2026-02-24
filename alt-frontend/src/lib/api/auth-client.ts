@@ -1,7 +1,4 @@
-import {
-  type BackendIdentityHeaders,
-  buildBackendIdentityHeaders,
-} from "@/lib/auth/backend-headers";
+import type { BackendIdentityHeaders } from "@/lib/auth/backend-headers";
 import { IDP_ORIGIN } from "@/lib/env.public";
 import type {
   LoginFlow,
@@ -219,7 +216,7 @@ export class AuthAPIClient {
     try {
       // 🚀 X29 FIX: Use direct nginx route for CSRF token instead of frontend proxy
       return await this.getCSRFTokenInternal();
-    } catch (error: unknown) {
+    } catch (_error: unknown) {
       return null;
     }
   }
@@ -477,51 +474,10 @@ export class AuthAPIClient {
     return "http://localhost:3000";
   }
 
-  private debugLog(message: string, ...args: unknown[]) {
+  private debugLog(_message: string, ..._args: unknown[]) {
     if (process.env.NODE_ENV === "test") {
       return;
     }
-  }
-
-  private getMethodDescription(method: string, endpoint: string): string {
-    if (
-      endpoint.includes("/login") &&
-      method === "POST" &&
-      !endpoint.includes("/login/")
-    ) {
-      return "Failed to initiate login";
-    }
-    if (endpoint.includes("/login/") && method === "POST") {
-      return "Failed to complete login";
-    }
-    if (
-      endpoint.includes("/register") &&
-      method === "POST" &&
-      !endpoint.includes("/register/")
-    ) {
-      return "Failed to initiate registration";
-    }
-    if (endpoint.includes("/register/") && method === "POST") {
-      return "Failed to complete registration";
-    }
-    if (endpoint.includes("/logout")) {
-      return "Failed to logout";
-    }
-    if (endpoint.includes("/validate")) {
-      return "Failed to get current user";
-    }
-    if (endpoint.includes("/csrf")) {
-      return "Failed to get CSRF token";
-    }
-    if (endpoint.includes("/profile")) {
-      return "Failed to update profile";
-    }
-    if (endpoint.includes("/settings")) {
-      return method === "GET"
-        ? "Failed to get user settings"
-        : "Failed to update user settings";
-    }
-    return `Request failed`;
   }
 }
 

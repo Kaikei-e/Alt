@@ -1,14 +1,14 @@
-import { test, expect } from '@playwright/test';
-import { MobileHomePage } from '../../pages/mobile/MobileHomePage';
-import { MobileFeedPage } from '../../pages/mobile/MobileFeedPage';
-import { setupAllMocks, mockFeedsApi } from '../../utils/api-mock';
+import { test, expect } from "@playwright/test";
+import { MobileHomePage } from "../../pages/mobile/MobileHomePage";
+import { MobileFeedPage } from "../../pages/mobile/MobileFeedPage";
+import { setupAllMocks, mockFeedsApi } from "../../utils/api-mock";
 
-test.describe('Mobile Feed', () => {
+test.describe("Mobile Feed", () => {
   test.beforeEach(async ({ page }) => {
     await setupAllMocks(page);
   });
 
-  test('should load feed list on mobile', async ({ page }) => {
+  test("should load feed list on mobile", async ({ page }) => {
     const mobileHomePage = new MobileHomePage(page);
     await mobileHomePage.goto();
     await mobileHomePage.waitForFeeds();
@@ -22,7 +22,7 @@ test.describe('Mobile Feed', () => {
     }
   });
 
-  test('should handle infinite scroll on mobile', async ({ page }) => {
+  test("should handle infinite scroll on mobile", async ({ page }) => {
     const mobileFeedPage = new MobileFeedPage(page);
     await mockFeedsApi(page, { hasMore: true });
 
@@ -39,14 +39,16 @@ test.describe('Mobile Feed', () => {
     }
   });
 
-  test('should display empty state when no feeds available', async ({ page }) => {
+  test("should display empty state when no feeds available", async ({
+    page,
+  }) => {
     const mobileFeedPage = new MobileFeedPage(page);
     await mockFeedsApi(page, { empty: true });
 
     await mobileFeedPage.goto();
 
     // Wait for page to load
-    await page.waitForLoadState('domcontentloaded');
+    await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
     // Check state - either empty state or feeds (from SSR)
@@ -57,7 +59,7 @@ test.describe('Mobile Feed', () => {
     expect(hasEmptyState || feedCount >= 0).toBe(true);
   });
 
-  test('should mark feed as read', async ({ page }) => {
+  test("should mark feed as read", async ({ page }) => {
     const mobileHomePage = new MobileHomePage(page);
     await mobileHomePage.goto();
     await mobileHomePage.waitForFeeds();
@@ -66,10 +68,11 @@ test.describe('Mobile Feed', () => {
 
     if (initialCount > 0) {
       // Set up response listener for read API
-      const responsePromise = page.waitForResponse(
-        (response) => response.url().includes('/feeds/read'),
-        { timeout: 5000 },
-      ).catch(() => null);
+      const responsePromise = page
+        .waitForResponse((response) => response.url().includes("/feeds/read"), {
+          timeout: 5000,
+        })
+        .catch(() => null);
 
       // Mark first feed as read
       await mobileHomePage.markAsRead(0);

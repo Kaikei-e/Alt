@@ -1,4 +1,4 @@
-import { type Page, type Locator, expect } from '@playwright/test';
+import { type Page, type Locator, expect } from "@playwright/test";
 
 /**
  * Base Page Object class with Web-first assertion patterns
@@ -20,10 +20,10 @@ export abstract class BasePage {
    * Note: networkidle is avoided as it's flaky
    */
   protected async waitForPageReady(): Promise<void> {
-    await this.page.waitForLoadState('domcontentloaded');
+    await this.page.waitForLoadState("domcontentloaded");
     // Short timeout for networkidle - don't fail if it times out
     await this.page
-      .waitForLoadState('networkidle', { timeout: 5000 })
+      .waitForLoadState("networkidle", { timeout: 5000 })
       .catch(() => {});
   }
 
@@ -123,7 +123,7 @@ export abstract class BasePage {
     await this.page.waitForResponse(
       (response) => {
         const url = response.url();
-        return typeof urlPattern === 'string'
+        return typeof urlPattern === "string"
           ? url.includes(urlPattern)
           : urlPattern.test(url);
       },
@@ -135,7 +135,7 @@ export abstract class BasePage {
    * Wait for navigation to complete
    */
   async waitForNavigation(timeout = 10000): Promise<void> {
-    await this.page.waitForLoadState('domcontentloaded', { timeout });
+    await this.page.waitForLoadState("domcontentloaded", { timeout });
   }
 
   /**
@@ -153,7 +153,7 @@ export abstract class BasePage {
    */
   protected async getText(locator: Locator): Promise<string> {
     await expect(locator).toBeVisible();
-    return (await locator.textContent()) ?? '';
+    return (await locator.textContent()) ?? "";
   }
 
   /**
@@ -161,7 +161,7 @@ export abstract class BasePage {
    */
   protected async clickAndNavigate(locator: Locator): Promise<void> {
     await Promise.all([
-      this.page.waitForLoadState('domcontentloaded'),
+      this.page.waitForLoadState("domcontentloaded"),
       locator.click(),
     ]);
   }

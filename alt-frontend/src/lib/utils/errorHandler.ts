@@ -86,7 +86,7 @@ export class ErrorHandler {
   }
 
   static handleNetworkError(
-    error: unknown,
+    _error: unknown,
     context?: Record<string, unknown>,
   ): ErrorInfo {
     const errorInfo: ErrorInfo = {

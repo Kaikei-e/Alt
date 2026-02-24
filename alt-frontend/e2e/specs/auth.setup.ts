@@ -1,10 +1,10 @@
-import { test as setup, expect } from '@playwright/test';
-import path from 'path';
+import { test as setup, expect } from "@playwright/test";
+import path from "node:path";
 
-const authFile = path.join(process.cwd(), 'e2e/.auth/user.json');
+const authFile = path.join(process.cwd(), "e2e/.auth/user.json");
 
-setup('authenticate', async ({ request, context }) => {
-  console.log('[Auth Setup] Starting authentication...');
+setup("authenticate", async ({ request, context }) => {
+  console.log("[Auth Setup] Starting authentication...");
 
   // Wait for mock service to be healthy with retries
   const maxRetries = 10;
@@ -12,10 +12,12 @@ setup('authenticate', async ({ request, context }) => {
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const healthResponse = await request.get('http://localhost:4545/v1/health');
+      const healthResponse = await request.get(
+        "http://localhost:4545/v1/health",
+      );
       if (healthResponse.ok()) {
         healthy = true;
-        console.log('[Auth Setup] Mock service is healthy');
+        console.log("[Auth Setup] Mock service is healthy");
         break;
       }
     } catch {
@@ -27,17 +29,19 @@ setup('authenticate', async ({ request, context }) => {
   }
 
   if (!healthy) {
-    throw new Error('[Auth Setup] Mock service is not healthy after retries');
+    throw new Error("[Auth Setup] Mock service is not healthy after retries");
   }
 
   // Create a session on the mock server
-  const response = await request.post('http://localhost:4545/debug/create-session');
+  const response = await request.post(
+    "http://localhost:4545/debug/create-session",
+  );
   expect(response.ok()).toBeTruthy();
-  console.log('[Auth Setup] Session created');
+  console.log("[Auth Setup] Session created");
 
   // Get the set-cookie header
   const headers = response.headers();
-  const setCookie = headers['set-cookie'];
+  const setCookie = headers["set-cookie"];
 
   if (setCookie) {
     // Parse the cookie manually
@@ -46,20 +50,20 @@ setup('authenticate', async ({ request, context }) => {
       const cookieValue = match[1];
       await context.addCookies([
         {
-          name: 'ory_kratos_session',
+          name: "ory_kratos_session",
           value: cookieValue,
-          domain: 'localhost',
-          path: '/',
+          domain: "localhost",
+          path: "/",
           httpOnly: true,
-          sameSite: 'Lax',
+          sameSite: "Lax",
           expires: Date.now() / 1000 + 86400, // 24 hours
         },
       ]);
-      console.log('[Auth Setup] Session cookie added');
+      console.log("[Auth Setup] Session cookie added");
     }
   }
 
   // Save storage state
   await context.storageState({ path: authFile });
-  console.log('[Auth Setup] Storage state saved to:', authFile);
+  console.log("[Auth Setup] Storage state saved to:", authFile);
 });

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.3/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.4/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -9,82 +9,75 @@
     "ignoreUnknown": false,
     "includes": [
       "**",
-      "!**/node_modules",
-      "!**/.next",
-      "!**/out",
-      "!**/dist",
-      "!**/coverage",
-      "!**/playwright-report",
-      "!**/test-results",
-      "!**/.next/types",
-      "!**/.next/dev",
-      "!**/build",
-      "!**/*.config.js",
-      "!**/*.config.mjs",
-      "!**/scripts",
-      "!**/public",
-      "!**/test-server.*",
-      "!**/*.log"
+      "!.next",
+      "!out",
+      "!playwright-report",
+      "!test-results",
+      "!coverage"
     ]
   },
   "formatter": {
     "enabled": true,
-    "formatWithErrors": false,
     "indentStyle": "space",
-    "indentWidth": 2,
-    "lineEnding": "lf",
-    "lineWidth": 100,
-    "attributePosition": "auto"
+    "indentWidth": 2
   },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true,
-      "style": {
-        "useImportType": {
-          "level": "warn"
-        },
-        "useNodejsImportProtocol": {
-          "level": "off"
-        }
-      },
-      "suspicious": {
-        "noExplicitAny": {
-          "level": "warn"
-        }
+      "a11y": {
+        "useButtonType": "warn",
+        "useSemanticElements": "warn"
       },
       "complexity": {
-        "noForEach": {
-          "level": "off"
-        }
+        "noStaticOnlyClass": "warn"
       },
-      "a11y": {
-        "recommended": true
+      "correctness": {
+        "noUnusedImports": "warn",
+        "noUnusedVariables": "warn",
+        "noUnusedFunctionParameters": "warn",
+        "noConstantCondition": "warn",
+        "useExhaustiveDependencies": "off"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "warn",
+        "noUnusedTemplateLiteral": "off"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "warn",
+        "noExplicitAny": "warn",
+        "noShadowRestrictedNames": "warn",
+        "useIterableCallbackReturn": "warn"
       }
     }
   },
   "javascript": {
     "formatter": {
       "quoteStyle": "double",
-      "jsxQuoteStyle": "double",
-      "trailingCommas": "es5",
-      "semicolons": "always",
-      "arrowParentheses": "always",
-      "bracketSpacing": true,
-      "bracketSameLine": false,
-      "quoteProperties": "asNeeded",
-      "attributePosition": "auto"
+      "semicolons": "always"
     }
   },
-  "json": {
-    "formatter": {
-      "enabled": true,
-      "indentStyle": "space",
-      "indentWidth": 2,
-      "lineEnding": "lf",
-      "lineWidth": 100,
-      "trailingCommas": "none"
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["tests/**", "e2e/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+  ]
 }

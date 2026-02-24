@@ -67,7 +67,12 @@ export default async function PublicLandingPage() {
 
         {/* Authentication Buttons */}
         <HStack gap={4} flexWrap="wrap" justifyContent="center">
-          <NextLink href="/sv/auth/login" prefetch={false} passHref legacyBehavior>
+          <NextLink
+            href="/sv/auth/login"
+            prefetch={false}
+            passHref
+            legacyBehavior
+          >
             <Button
               as="a"
               bg="var(--alt-primary)"

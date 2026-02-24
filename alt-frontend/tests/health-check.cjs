@@ -4,7 +4,7 @@
  * Health check script for web servers before running tests
  */
 
-const http = require("http");
+const http = require("node:http");
 
 async function checkServer(url, name, timeout = 30000) {
   return new Promise((resolve, reject) => {
@@ -21,7 +21,7 @@ async function checkServer(url, name, timeout = 30000) {
         }
       });
 
-      req.on("error", (error) => {
+      req.on("error", (_error) => {
         if (Date.now() - startTime > timeout) {
           console.log(`❌ ${name} failed to start within ${timeout}ms`);
           reject(new Error(`${name} health check timeout`));

@@ -1,5 +1,5 @@
-import { Locator, Page } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import type { Locator, Page } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 export class MobileSearchPage extends BasePage {
   readonly searchInput: Locator;
@@ -14,24 +14,24 @@ export class MobileSearchPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.searchInput = page.getByTestId('search-input');
-    this.searchButton = page.getByTestId('search-button');
-    this.searchResults = page.getByTestId('search-results');
-    this.searchMetadata = page.getByTestId('search-metadata');
-    this.searchCount = page.getByTestId('search-count');
-    this.emptyState = page.getByTestId('search-empty-state');
-    this.emptyHeading = page.getByTestId('search-empty-heading');
-    this.articleCards = page.getByTestId('article-card');
-    this.loadingIndicator = page.getByText('Searching articles...');
+    this.searchInput = page.getByTestId("search-input");
+    this.searchButton = page.getByTestId("search-button");
+    this.searchResults = page.getByTestId("search-results");
+    this.searchMetadata = page.getByTestId("search-metadata");
+    this.searchCount = page.getByTestId("search-count");
+    this.emptyState = page.getByTestId("search-empty-state");
+    this.emptyHeading = page.getByTestId("search-empty-heading");
+    this.articleCards = page.getByTestId("article-card");
+    this.loadingIndicator = page.getByText("Searching articles...");
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/mobile/articles/search');
+    await this.page.goto("/mobile/articles/search");
     await this.waitForReady();
   }
 
   async waitForReady(): Promise<void> {
-    await this.searchInput.waitFor({ state: 'visible', timeout: 15000 });
+    await this.searchInput.waitFor({ state: "visible", timeout: 15000 });
   }
 
   async search(query: string): Promise<void> {
@@ -41,16 +41,18 @@ export class MobileSearchPage extends BasePage {
 
   async searchByEnter(query: string): Promise<void> {
     await this.searchInput.fill(query);
-    await this.searchInput.press('Enter');
+    await this.searchInput.press("Enter");
   }
 
   async waitForResults(): Promise<void> {
     // Wait for loading to finish
-    await this.loadingIndicator.waitFor({ state: 'hidden', timeout: 15000 }).catch(() => {});
+    await this.loadingIndicator
+      .waitFor({ state: "hidden", timeout: 15000 })
+      .catch(() => {});
     // Wait for results or empty state
     await Promise.race([
-      this.searchResults.waitFor({ state: 'visible', timeout: 15000 }),
-      this.emptyState.waitFor({ state: 'visible', timeout: 15000 }),
+      this.searchResults.waitFor({ state: "visible", timeout: 15000 }),
+      this.emptyState.waitFor({ state: "visible", timeout: 15000 }),
     ]);
   }
 

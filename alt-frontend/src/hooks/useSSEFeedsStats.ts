@@ -6,7 +6,10 @@ import type { UnsummarizedFeedStatsSummary } from "@/schema/feedStats";
 // Type guard for validating numeric amounts
 const isValidAmount = (value: unknown): value is number => {
   return (
-    typeof value === "number" && !isNaN(value) && value >= 0 && isFinite(value)
+    typeof value === "number" &&
+    !Number.isNaN(value) &&
+    value >= 0 &&
+    Number.isFinite(value)
   );
 };
 

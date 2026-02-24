@@ -325,7 +325,7 @@ export function useNavigationBadges() {
     [],
   );
 
-  const updateBadge = useCallback((itemId: string, count: number) => {
+  const updateBadge = useCallback((_itemId: string, _count: number) => {
     // Update badge count for specific navigation item
     // This would typically update global state or send to API
   }, []);

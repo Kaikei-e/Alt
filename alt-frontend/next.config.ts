@@ -1,4 +1,4 @@
-import { createRequire } from "module";
+import { createRequire } from "node:module";
 
 // Node ESM files (package.json has "type":"module") don't have the CommonJS
 // `require` function.  We recreate it via `createRequire` so the conditional
@@ -96,11 +96,6 @@ if (process.env.ANALYZE === "true") {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    // Run eslint via dedicated pnpm script; skip built-in lint during next build to avoid ESLint 9 patch failure
-    ignoreDuringBuilds: true,
-  },
-
   // X17.md Phase 17.2: HAR実証済み - local-devを回避する本番ビルドID生成
   generateBuildId: async () => {
     const buildId =

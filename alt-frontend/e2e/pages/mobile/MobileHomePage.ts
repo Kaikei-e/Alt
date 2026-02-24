@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 /**
  * Mobile Home Page Object
@@ -17,22 +17,22 @@ export class MobileHomePage extends BasePage {
   constructor(page: Page) {
     super(page);
     // Use data-testid selectors
-    this.feedCards = page.getByTestId('feed-card');
-    this.scrollContainer = page.getByTestId('feeds-scroll-container');
+    this.feedCards = page.getByTestId("feed-card");
+    this.scrollContainer = page.getByTestId("feeds-scroll-container");
     this.emptyState = page
-      .getByTestId('empty-state-icon')
-      .or(page.getByTestId('empty-state'));
-    this.loadingIndicator = page.getByTestId('infinite-scroll-sentinel');
+      .getByTestId("empty-state-icon")
+      .or(page.getByTestId("empty-state"));
+    this.loadingIndicator = page.getByTestId("infinite-scroll-sentinel");
     this.firstFeedCard = this.feedCards.first();
     this.bottomNav = page.locator('nav[role="navigation"]');
-    this.markReadButtons = page.getByRole('button', { name: /mark as read/i });
+    this.markReadButtons = page.getByRole("button", { name: /mark as read/i });
   }
 
   /**
    * Navigate to mobile home page
    */
   async goto(): Promise<void> {
-    await this.navigateTo('/mobile/feeds');
+    await this.navigateTo("/mobile/feeds");
   }
 
   /**
@@ -40,9 +40,9 @@ export class MobileHomePage extends BasePage {
    */
   async waitForFeeds(timeout = 15000): Promise<void> {
     // Wait for either feed cards or empty state
-    await expect(
-      this.feedCards.first().or(this.emptyState),
-    ).toBeVisible({ timeout });
+    await expect(this.feedCards.first().or(this.emptyState)).toBeVisible({
+      timeout,
+    });
   }
 
   /**
@@ -69,7 +69,7 @@ export class MobileHomePage extends BasePage {
   async markAsRead(index = 0): Promise<void> {
     const card = this.feedCards.nth(index);
     await expect(card).toBeVisible();
-    const markReadButton = card.getByTestId('mark-as-read-button');
+    const markReadButton = card.getByTestId("mark-as-read-button");
     await markReadButton.click();
   }
 
@@ -92,8 +92,8 @@ export class MobileHomePage extends BasePage {
     const firstCard = this.feedCards.first();
     await expect(firstCard).toBeVisible();
     // Title is in a link
-    const titleElement = firstCard.locator('a').first();
-    return (await titleElement.textContent()) ?? '';
+    const titleElement = firstCard.locator("a").first();
+    return (await titleElement.textContent()) ?? "";
   }
 
   /**

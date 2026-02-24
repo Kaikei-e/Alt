@@ -9,7 +9,7 @@ import type { FeedApi } from "../feeds/FeedApi";
 export class DesktopApi {
   constructor(
     private apiClient: ApiClient,
-    private feedsApi: FeedApi,
+    _feedsApi: FeedApi,
   ) {}
 
   // Desktop Feed Methods
@@ -53,7 +53,7 @@ export class DesktopApi {
   ): Promise<{ data: DesktopFeed[]; next_cursor: string | null }> {
     return new Promise((resolve) => {
       const pageSize = 20;
-      const startIndex = cursor ? parseInt(cursor) : 0;
+      const startIndex = cursor ? parseInt(cursor, 10) : 0;
       const endIndex = startIndex + pageSize;
       const paginatedFeeds = mockDesktopFeeds.slice(startIndex, endIndex);
 

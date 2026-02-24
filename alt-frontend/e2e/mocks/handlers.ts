@@ -1,7 +1,7 @@
-import { http, HttpResponse } from 'msw';
-import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { http, HttpResponse } from "msw";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -16,24 +16,24 @@ interface FeedItem {
 
 // Load JSON fixtures
 const feedsData = JSON.parse(
-  readFileSync(join(__dirname, '../fixtures/feeds.json'), 'utf-8'),
+  readFileSync(join(__dirname, "../fixtures/feeds.json"), "utf-8"),
 );
 const feedsEmpty = JSON.parse(
-  readFileSync(join(__dirname, '../fixtures/feeds-empty.json'), 'utf-8'),
+  readFileSync(join(__dirname, "../fixtures/feeds-empty.json"), "utf-8"),
 );
 const feedsPage2 = JSON.parse(
-  readFileSync(join(__dirname, '../fixtures/feeds-page2.json'), 'utf-8'),
+  readFileSync(join(__dirname, "../fixtures/feeds-page2.json"), "utf-8"),
 );
 const articleDetail = JSON.parse(
-  readFileSync(join(__dirname, '../fixtures/article-detail.json'), 'utf-8'),
+  readFileSync(join(__dirname, "../fixtures/article-detail.json"), "utf-8"),
 );
 const errors = JSON.parse(
-  readFileSync(join(__dirname, '../fixtures/errors.json'), 'utf-8'),
+  readFileSync(join(__dirname, "../fixtures/errors.json"), "utf-8"),
 );
 
 // Base URLs
-const MOCK_API_BASE = 'http://localhost:4545';
-const BACKEND_API_BASE = 'http://localhost:9000';
+const MOCK_API_BASE = "http://localhost:4545";
+const BACKEND_API_BASE = "http://localhost:9000";
 
 /**
  * Default MSW handlers for E2E tests
@@ -47,9 +47,9 @@ export const handlers = [
   // Cursor-based feed fetch
   http.get(`${MOCK_API_BASE}/v1/feeds/fetch/cursor`, ({ request }) => {
     const url = new URL(request.url);
-    const cursor = url.searchParams.get('cursor');
-    const mockEmpty = url.searchParams.get('empty');
-    const mockError = url.searchParams.get('error');
+    const cursor = url.searchParams.get("cursor");
+    const mockEmpty = url.searchParams.get("empty");
+    const mockError = url.searchParams.get("error");
 
     // Handle error scenarios
     if (mockError) {
@@ -59,7 +59,7 @@ export const handlers = [
     }
 
     // Handle empty scenario
-    if (mockEmpty === 'true') {
+    if (mockEmpty === "true") {
       return HttpResponse.json(feedsEmpty);
     }
 
@@ -74,7 +74,7 @@ export const handlers = [
   // Also handle backend URL pattern
   http.get(`${BACKEND_API_BASE}/v1/feeds/fetch/cursor`, ({ request }) => {
     const url = new URL(request.url);
-    const cursor = url.searchParams.get('cursor');
+    const cursor = url.searchParams.get("cursor");
 
     if (cursor) {
       return HttpResponse.json(feedsPage2);
@@ -103,11 +103,11 @@ export const handlers = [
 
   // Mark as read
   http.post(`${MOCK_API_BASE}/v1/feeds/read`, () => {
-    return HttpResponse.json({ message: 'Marked as read' });
+    return HttpResponse.json({ message: "Marked as read" });
   }),
 
   http.post(`${BACKEND_API_BASE}/v1/feeds/read`, () => {
-    return HttpResponse.json({ message: 'Marked as read' });
+    return HttpResponse.json({ message: "Marked as read" });
   }),
 
   // ============================================
@@ -118,7 +118,7 @@ export const handlers = [
   http.get(`${MOCK_API_BASE}/v1/articles/:id`, ({ params, request }) => {
     const { id } = params;
     const url = new URL(request.url);
-    const mockError = url.searchParams.get('error');
+    const mockError = url.searchParams.get("error");
 
     if (mockError) {
       const statusCode = parseInt(mockError, 10) as 404 | 401 | 500;
@@ -143,10 +143,10 @@ export const handlers = [
   // Article search
   http.get(`${MOCK_API_BASE}/v1/articles/search`, ({ request }) => {
     const url = new URL(request.url);
-    const query = url.searchParams.get('q') || '';
-    const mockEmpty = url.searchParams.get('empty');
+    const query = url.searchParams.get("q") || "";
+    const mockEmpty = url.searchParams.get("empty");
 
-    if (mockEmpty === 'true' || query.includes('NonExistent')) {
+    if (mockEmpty === "true" || query.includes("NonExistent")) {
       return HttpResponse.json([]);
     }
 
@@ -170,7 +170,7 @@ export const handlers = [
 
   http.get(`${BACKEND_API_BASE}/v1/articles/search`, ({ request }) => {
     const url = new URL(request.url);
-    const query = url.searchParams.get('q') || '';
+    const query = url.searchParams.get("q") || "";
 
     const filteredFeeds = feedsData.data.filter(
       (feed: FeedItem) =>
@@ -195,11 +195,11 @@ export const handlers = [
   // ============================================
 
   http.post(`${MOCK_API_BASE}/v1/bookmarks`, () => {
-    return HttpResponse.json({ message: 'Bookmarked successfully' });
+    return HttpResponse.json({ message: "Bookmarked successfully" });
   }),
 
   http.delete(`${MOCK_API_BASE}/v1/bookmarks/:id`, () => {
-    return HttpResponse.json({ message: 'Bookmark removed' });
+    return HttpResponse.json({ message: "Bookmark removed" });
   }),
 
   // ============================================
@@ -208,14 +208,14 @@ export const handlers = [
 
   http.get(`${MOCK_API_BASE}/sessions/whoami`, () => {
     return HttpResponse.json({
-      id: 'test-session-id',
+      id: "test-session-id",
       active: true,
       identity: {
-        id: 'test-user-id',
-        schema_id: 'default',
+        id: "test-user-id",
+        schema_id: "default",
         traits: {
-          email: 'test@example.com',
-          name: 'Test User',
+          email: "test@example.com",
+          name: "Test User",
         },
       },
     });
@@ -223,14 +223,14 @@ export const handlers = [
 
   http.get(`${MOCK_API_BASE}/session`, () => {
     return HttpResponse.json({
-      id: 'test-session-id',
+      id: "test-session-id",
       active: true,
       identity: {
-        id: 'test-user-id',
-        schema_id: 'default',
+        id: "test-user-id",
+        schema_id: "default",
         traits: {
-          email: 'test@example.com',
-          name: 'Test User',
+          email: "test@example.com",
+          name: "Test User",
         },
       },
     });
@@ -238,7 +238,7 @@ export const handlers = [
 
   // Health check
   http.get(`${MOCK_API_BASE}/v1/health`, () => {
-    return HttpResponse.json({ status: 'ok', service: 'mock-msw' });
+    return HttpResponse.json({ status: "ok", service: "mock-msw" });
   }),
 ];
 
@@ -247,7 +247,7 @@ export const handlers = [
  */
 export function createErrorHandler(
   endpoint: string,
-  method: 'get' | 'post' | 'put' | 'delete',
+  method: "get" | "post" | "put" | "delete",
   statusCode: 404 | 401 | 500,
 ) {
   const statusKey = statusCode.toString() as keyof typeof errors;

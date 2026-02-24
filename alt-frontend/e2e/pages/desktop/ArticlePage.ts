@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 /**
  * Desktop Article Detail Page Object
@@ -18,28 +18,28 @@ export class ArticlePage extends BasePage {
   constructor(page: Page) {
     super(page);
     // Use data-testid for stable selection
-    this.articleTitle = page.getByTestId('article-title');
+    this.articleTitle = page.getByTestId("article-title");
     // Article body with .article-content class or data-testid
     this.articleBody = page
-      .locator('.article-content')
-      .or(page.getByTestId('article-content'));
+      .locator(".article-content")
+      .or(page.getByTestId("article-content"));
     // Loading spinner
     this.loadingSpinner = page
       .locator('[class*="spinner"], [class*="loading"]')
-      .or(page.getByTestId('article-spinner'))
-      .or(page.getByTestId('article-loading'));
+      .or(page.getByTestId("article-spinner"))
+      .or(page.getByTestId("article-loading"));
     // Error message - multiple patterns
     this.errorMessage = page
       .getByText(/not found|error occurred|見つかりません/i)
-      .or(page.getByTestId('article-error-message'));
+      .or(page.getByTestId("article-error-message"));
     // Published date
     this.publishedDate = page.getByText(/published:/i);
     // Container
-    this.container = page.locator('main');
+    this.container = page.locator("main");
     // Article container with data-testid
-    this.articleContainer = page.getByTestId('article-container');
+    this.articleContainer = page.getByTestId("article-container");
     // Article error container
-    this.articleError = page.getByTestId('article-error');
+    this.articleError = page.getByTestId("article-error");
   }
 
   /**
@@ -54,12 +54,14 @@ export class ArticlePage extends BasePage {
    */
   async waitForArticle(timeout = 15000): Promise<void> {
     // Wait for loading spinner to disappear
-    await expect(this.loadingSpinner).toBeHidden({ timeout }).catch(() => {});
+    await expect(this.loadingSpinner)
+      .toBeHidden({ timeout })
+      .catch(() => {});
 
     // Wait for either article container or error container
-    await expect(
-      this.articleContainer.or(this.articleError),
-    ).toBeVisible({ timeout });
+    await expect(this.articleContainer.or(this.articleError)).toBeVisible({
+      timeout,
+    });
   }
 
   /**
@@ -67,7 +69,7 @@ export class ArticlePage extends BasePage {
    */
   async getArticleTitle(): Promise<string> {
     await expect(this.articleTitle).toBeVisible();
-    return (await this.articleTitle.textContent()) ?? '';
+    return (await this.articleTitle.textContent()) ?? "";
   }
 
   /**
@@ -92,7 +94,9 @@ export class ArticlePage extends BasePage {
       if (errorByTestId) return true;
 
       // Check for error text
-      const errorText = this.page.getByText('Article not found or error occurred');
+      const errorText = this.page.getByText(
+        "Article not found or error occurred",
+      );
       await expect(errorText).toBeVisible({ timeout: 5000 });
       return true;
     } catch {
@@ -105,7 +109,7 @@ export class ArticlePage extends BasePage {
    */
   async getArticleBodyHtml(): Promise<string> {
     await expect(this.articleBody).toBeVisible();
-    return (await this.articleBody.innerHTML()) ?? '';
+    return (await this.articleBody.innerHTML()) ?? "";
   }
 
   /**
@@ -113,7 +117,7 @@ export class ArticlePage extends BasePage {
    */
   async getArticleBodyText(): Promise<string> {
     await expect(this.articleBody).toBeVisible();
-    return (await this.articleBody.textContent()) ?? '';
+    return (await this.articleBody.textContent()) ?? "";
   }
 
   /**

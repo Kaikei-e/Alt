@@ -261,7 +261,7 @@ export async function waitForAuthRedirect(
             `[waitForAuthRedirect] Redirected to mock auth server: ${page.url()}`,
           );
         }
-      } catch (error) {
+      } catch (_error) {
         if (debugLogging) {
           console.log(
             `[waitForAuthRedirect] No redirect to mock auth server, continuing...`,

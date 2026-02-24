@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LoginFlow, RegistrationFlow, User } from "@/types/auth";
+import type { User } from "@/types/auth";
 import { AuthAPIClient } from "../../../../src/lib/api/auth-client";
 
 // Mock @ory/client

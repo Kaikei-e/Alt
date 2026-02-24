@@ -1,10 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import {
-  safeClick,
-  safeFill,
-  waitForFormReady,
-  waitForTextContent,
-} from "../utils/waitConditions";
+import { safeClick, safeFill, waitForFormReady } from "../utils/waitConditions";
 import { BasePage } from "./BasePage";
 
 /**

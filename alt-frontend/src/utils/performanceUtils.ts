@@ -43,9 +43,9 @@ export function throttle<T extends (...args: unknown[]) => unknown>(
 
 // Measure performance of operations
 export function measurePerformance<T>(operation: () => T, label?: string): T {
-  const startTime = performance.now();
+  const _startTime = performance.now();
   const result = operation();
-  const endTime = performance.now();
+  const _endTime = performance.now();
 
   if (label) {
   }

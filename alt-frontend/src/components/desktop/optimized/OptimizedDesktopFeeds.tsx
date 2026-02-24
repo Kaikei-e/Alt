@@ -140,7 +140,7 @@ export const OptimizedDesktopFeeds: React.FC<OptimizedDesktopFeedsProps> = ({
     [feeds],
   );
 
-  const handleReadLater = useCallback((feedId: string) => {}, []);
+  const handleReadLater = useCallback((_feedId: string) => {}, []);
 
   const handleViewArticle = useCallback(
     (feedId: string) => {

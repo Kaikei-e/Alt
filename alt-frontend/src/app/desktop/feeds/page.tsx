@@ -4,10 +4,7 @@ export const fetchCache = "force-no-store"; // 念のため
 export const revalidate = 0;
 
 import { Box, Spinner, Text } from "@chakra-ui/react";
-import React, { Suspense } from "react";
-import LazyRightPanel from "@/components/desktop/analytics/LazyRightPanel";
-import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
-import LazyDesktopTimeline from "@/components/desktop/timeline/LazyDesktopTimeline";
+import { Suspense } from "react";
 // Remove Lucide imports from Server Component
 import { serverFetch } from "@/lib/server-fetch";
 import type { FeedStatsSummary } from "@/schema/feedStats";

@@ -60,7 +60,7 @@ const transformToDesktopFeed = (feed: Feed): DesktopFeed => {
       priority: "medium" as const,
       category: "general",
       difficulty: "intermediate" as const,
-      summary: feed.description.substring(0, 200) + "...",
+      summary: `${feed.description.substring(0, 200)}...`,
     },
     isRead: false,
     isFavorited: false,

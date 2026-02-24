@@ -124,7 +124,7 @@ function safeRegexTest(content: string, patterns: RegExp[]): boolean {
       }
 
       return result;
-    } catch (error) {
+    } catch (_error) {
       // If regex fails, assume no match
       return false;
     }
@@ -153,7 +153,7 @@ function safeStripHtml(content: string): string {
       .replace(/&[#\w]+;/g, " ") // Remove HTML entities
       .replace(/\s+/g, " ") // Normalize whitespace
       .trim();
-  } catch (error) {
+  } catch (_error) {
     // Fallback to safe character-based cleaning if library fails
     return content
       .replace(/[<>]/g, " ") // Replace brackets with spaces

@@ -25,7 +25,6 @@ const FloatingMenu = dynamic(
 );
 import { useReadFeeds } from "@/hooks/useReadFeeds";
 import { useInfiniteScroll } from "@/lib/utils/infiniteScroll";
-import type { Feed } from "@/schema/feed";
 import ErrorState from "../_components/ErrorState";
 
 // Error boundary to catch React errors

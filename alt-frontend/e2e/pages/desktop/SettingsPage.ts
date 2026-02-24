@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 export class SettingsPage extends BasePage {
   readonly settingsPage: Locator;
@@ -12,17 +12,17 @@ export class SettingsPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.settingsPage = page.getByTestId('settings-page');
-    this.settingsHeading = page.getByTestId('settings-heading');
-    this.settingsForm = page.getByTestId('settings-form');
-    this.nameInput = page.getByTestId('settings-name-input');
-    this.saveButton = page.getByTestId('settings-save-button');
-    this.successMessage = page.getByTestId('settings-success-message');
-    this.errorMessage = page.getByTestId('settings-error-message');
+    this.settingsPage = page.getByTestId("settings-page");
+    this.settingsHeading = page.getByTestId("settings-heading");
+    this.settingsForm = page.getByTestId("settings-form");
+    this.nameInput = page.getByTestId("settings-name-input");
+    this.saveButton = page.getByTestId("settings-save-button");
+    this.successMessage = page.getByTestId("settings-success-message");
+    this.errorMessage = page.getByTestId("settings-error-message");
   }
 
   async goto(): Promise<void> {
-    await this.navigateTo('/desktop/settings');
+    await this.navigateTo("/desktop/settings");
   }
 
   async waitForReady(): Promise<void> {

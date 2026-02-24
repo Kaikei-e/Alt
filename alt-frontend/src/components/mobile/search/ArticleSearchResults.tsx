@@ -91,7 +91,12 @@ export const ArticleSearchResults = ({
         data-testid="search-metadata"
       >
         <VStack gap={2} align="start">
-          <Text color="var(--text-primary)" fontSize="sm" fontWeight="600" data-testid="search-count">
+          <Text
+            color="var(--text-primary)"
+            fontSize="sm"
+            fontWeight="600"
+            data-testid="search-count"
+          >
             Found {results.length} article{results.length !== 1 ? "s" : ""}
           </Text>
           {searchTime !== undefined && (

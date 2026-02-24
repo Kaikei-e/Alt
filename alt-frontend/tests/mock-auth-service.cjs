@@ -1,7 +1,7 @@
-const http = require("http");
-const url = require("url");
-const querystring = require("querystring");
-const crypto = require("crypto");
+const http = require("node:http");
+const url = require("node:url");
+const querystring = require("node:querystring");
+const crypto = require("node:crypto");
 
 const port = process.env.MOCK_AUTH_PORT || 4545;
 
@@ -27,7 +27,7 @@ function generateId() {
 
 // Generate CSRF token
 function generateCSRF() {
-  return "csrf-" + generateId();
+  return `csrf-${generateId()}`;
 }
 
 // Enhanced logging function
@@ -188,7 +188,11 @@ const server = http.createServer(async (req, res) => {
   // Handle request errors (client disconnect, etc.)
   req.on("error", (err) => {
     // Ignore aborted errors - these are normal when clients disconnect
-    if (err.code !== "ECONNRESET" && err.code !== "EPIPE" && err.message !== "aborted") {
+    if (
+      err.code !== "ECONNRESET" &&
+      err.code !== "EPIPE" &&
+      err.message !== "aborted"
+    ) {
       log("Request error:", err.message);
     }
   });
@@ -196,7 +200,11 @@ const server = http.createServer(async (req, res) => {
   // Handle response errors (client disconnect during response, etc.)
   res.on("error", (err) => {
     // Ignore aborted errors - these are normal when clients disconnect
-    if (err.code !== "ECONNRESET" && err.code !== "EPIPE" && err.message !== "aborted") {
+    if (
+      err.code !== "ECONNRESET" &&
+      err.code !== "EPIPE" &&
+      err.message !== "aborted"
+    ) {
       log("Response error:", err.message);
     }
   });
@@ -228,7 +236,11 @@ const server = http.createServer(async (req, res) => {
       await sendResponse(res, 200, "");
     } catch (err) {
       // Ignore errors if client disconnected
-      if (err.code !== "ECONNRESET" && err.code !== "EPIPE" && err.message !== "aborted") {
+      if (
+        err.code !== "ECONNRESET" &&
+        err.code !== "EPIPE" &&
+        err.message !== "aborted"
+      ) {
         log("Error sending OPTIONS response:", err.message);
       }
     }
@@ -564,7 +576,8 @@ const server = http.createServer(async (req, res) => {
       const mockArticle = {
         id: articleId,
         title: "Mock Article Title",
-        content: "<h1>Mock Article Title</h1><p>This is the content of the mock article.</p>",
+        content:
+          "<h1>Mock Article Title</h1><p>This is the content of the mock article.</p>",
         url: "https://example.com/article",
         published_at: new Date().toISOString(),
         feed: {
@@ -628,13 +641,21 @@ const server = http.createServer(async (req, res) => {
       await sendError(res, 404, "Not found");
     } catch (err) {
       // Ignore errors if client disconnected
-      if (err.code !== "ECONNRESET" && err.code !== "EPIPE" && err.message !== "aborted") {
+      if (
+        err.code !== "ECONNRESET" &&
+        err.code !== "EPIPE" &&
+        err.message !== "aborted"
+      ) {
         log("Error sending 404 response:", err.message);
       }
     }
   } catch (error) {
     // Ignore aborted errors - these are normal when clients disconnect
-    if (error.code === "ECONNRESET" || error.code === "EPIPE" || error.message === "aborted") {
+    if (
+      error.code === "ECONNRESET" ||
+      error.code === "EPIPE" ||
+      error.message === "aborted"
+    ) {
       return;
     }
     log("Unexpected error:", error);
@@ -642,12 +663,16 @@ const server = http.createServer(async (req, res) => {
       await sendError(res, 500, "Internal server error");
     } catch (sendError) {
       // Ignore errors if client disconnected
-      if (sendError.code !== "ECONNRESET" && sendError.code !== "EPIPE" && sendError.message !== "aborted") {
+      if (
+        sendError.code !== "ECONNRESET" &&
+        sendError.code !== "EPIPE" &&
+        sendError.message !== "aborted"
+      ) {
         log("Failed to send error response:", sendError);
         try {
           res.statusCode = 500;
           res.end("Internal Server Error");
-        } catch (finalError) {
+        } catch (_finalError) {
           // Client already disconnected, ignore
         }
       }
@@ -669,7 +694,11 @@ server.on("error", (err) => {
 // Handle client connection errors
 server.on("clientError", (err, socket) => {
   // Ignore aborted errors - these are normal when clients disconnect
-  if (err.code !== "ECONNRESET" && err.code !== "EPIPE" && err.message !== "aborted") {
+  if (
+    err.code !== "ECONNRESET" &&
+    err.code !== "EPIPE" &&
+    err.message !== "aborted"
+  ) {
     log("Client error:", err.message);
   }
   socket.destroy();
@@ -732,7 +761,11 @@ const close = () => {
 // Handle uncaught exceptions (but ignore aborted errors)
 process.on("uncaughtException", (err) => {
   // Ignore aborted errors - these are normal when clients disconnect
-  if (err.code === "ECONNRESET" || err.code === "EPIPE" || err.message === "aborted") {
+  if (
+    err.code === "ECONNRESET" ||
+    err.code === "EPIPE" ||
+    err.message === "aborted"
+  ) {
     return;
   }
   log("Uncaught exception:", err);
@@ -740,9 +773,14 @@ process.on("uncaughtException", (err) => {
 });
 
 // Handle unhandled promise rejections
-process.on("unhandledRejection", (reason, promise) => {
+process.on("unhandledRejection", (reason, _promise) => {
   // Ignore aborted errors
-  if (reason && (reason.code === "ECONNRESET" || reason.code === "EPIPE" || reason.message === "aborted")) {
+  if (
+    reason &&
+    (reason.code === "ECONNRESET" ||
+      reason.code === "EPIPE" ||
+      reason.message === "aborted")
+  ) {
     return;
   }
   log("Unhandled rejection:", reason);

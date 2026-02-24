@@ -1,6 +1,13 @@
 "use client";
 
-import { Box, Heading, Text, Spinner, VStack, Container } from "@chakra-ui/react";
+import {
+  Box,
+  Heading,
+  Text,
+  Spinner,
+  VStack,
+  Container,
+} from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { articleApi } from "@/lib/api";

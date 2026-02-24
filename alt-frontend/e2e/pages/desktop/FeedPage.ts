@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 /**
  * Desktop Feed Page Object
@@ -20,20 +20,20 @@ export class FeedPage extends BasePage {
     super(page);
     // Use stable data-testid selectors
     this.feedCards = page.locator('[data-testid^="desktop-feed-card-"]');
-    this.emptyState = page.getByTestId('empty-state');
-    this.loadingIndicator = page.getByTestId('infinite-scroll-sentinel');
-    this.timelineContainer = page.getByTestId('desktop-timeline-container');
-    this.skeleton = page.getByTestId('desktop-timeline-skeleton');
-    this.errorState = page.getByTestId('error-state');
-    this.errorMessage = page.getByTestId('error-message');
-    this.retryButton = page.getByTestId('retry-button');
+    this.emptyState = page.getByTestId("empty-state");
+    this.loadingIndicator = page.getByTestId("infinite-scroll-sentinel");
+    this.timelineContainer = page.getByTestId("desktop-timeline-container");
+    this.skeleton = page.getByTestId("desktop-timeline-skeleton");
+    this.errorState = page.getByTestId("error-state");
+    this.errorMessage = page.getByTestId("error-message");
+    this.retryButton = page.getByTestId("retry-button");
   }
 
   /**
    * Navigate to feed page
    */
   async goto(): Promise<void> {
-    await this.navigateTo('/desktop/feeds');
+    await this.navigateTo("/desktop/feeds");
   }
 
   /**
@@ -41,7 +41,9 @@ export class FeedPage extends BasePage {
    */
   async waitForFeeds(timeout = 15000): Promise<void> {
     // Wait for skeleton to disappear (if visible)
-    await expect(this.skeleton).toBeHidden({ timeout }).catch(() => {});
+    await expect(this.skeleton)
+      .toBeHidden({ timeout })
+      .catch(() => {});
 
     // Wait for either feed cards, empty state, or error state
     await expect(
@@ -65,8 +67,8 @@ export class FeedPage extends BasePage {
     const firstCard = this.feedCards.first();
     await expect(firstCard).toBeVisible();
     // Use data-testid for stable selection
-    const titleElement = firstCard.getByTestId('feed-card-title');
-    return (await titleElement.textContent()) ?? '';
+    const titleElement = firstCard.getByTestId("feed-card-title");
+    return (await titleElement.textContent()) ?? "";
   }
 
   /**
@@ -114,7 +116,7 @@ export class FeedPage extends BasePage {
    * Scroll to load more feeds (infinite scroll)
    */
   async loadMoreFeeds(): Promise<void> {
-    const initialCount = await this.getFeedCount();
+    const _initialCount = await this.getFeedCount();
     await this.scrollToBottom();
 
     // Wait for new feeds to potentially load

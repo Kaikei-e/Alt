@@ -1,5 +1,5 @@
-import { setupServer } from 'msw/node';
-import { handlers } from './handlers';
+import { setupServer } from "msw/node";
+import { handlers } from "./handlers";
 
 /**
  * MSW server instance for E2E tests
@@ -12,9 +12,9 @@ export const server = setupServer(...handlers);
  */
 export function startMswServer() {
   server.listen({
-    onUnhandledRequest: 'bypass', // Don't warn about unhandled requests
+    onUnhandledRequest: "bypass", // Don't warn about unhandled requests
   });
-  console.log('[MSW] Server started');
+  console.log("[MSW] Server started");
 }
 
 /**
@@ -22,7 +22,7 @@ export function startMswServer() {
  */
 export function stopMswServer() {
   server.close();
-  console.log('[MSW] Server stopped');
+  console.log("[MSW] Server stopped");
 }
 
 /**

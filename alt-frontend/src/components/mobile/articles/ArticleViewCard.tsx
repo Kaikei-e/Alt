@@ -31,7 +31,7 @@ export const ArticleViewCard = memo(function ArticleViewCard({
     // Use sanitizeContent to safely remove all HTML tags
     const plainText = sanitizeContent(article.content, { allowedTags: [] });
     return plainText.length > 150
-      ? plainText.substring(0, 150) + "..."
+      ? `${plainText.substring(0, 150)}...`
       : plainText;
   }, [article.content]);
 

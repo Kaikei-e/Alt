@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { FeedPage } from '../../pages/desktop/FeedPage';
-import { setupAllMocks, mockFeedsApi } from '../../utils/api-mock';
+import { test, expect } from "@playwright/test";
+import { FeedPage } from "../../pages/desktop/FeedPage";
+import { setupAllMocks, mockFeedsApi } from "../../utils/api-mock";
 
-test.describe('Desktop Feed', () => {
+test.describe("Desktop Feed", () => {
   let feedPage: FeedPage;
 
   test.beforeEach(async ({ page }) => {
@@ -10,7 +10,7 @@ test.describe('Desktop Feed', () => {
     await setupAllMocks(page);
   });
 
-  test('should load and display feed list', async () => {
+  test("should load and display feed list", async () => {
     await feedPage.goto();
     await feedPage.waitForFeeds();
 
@@ -18,7 +18,7 @@ test.describe('Desktop Feed', () => {
     expect(feedCount).toBeGreaterThanOrEqual(1);
   });
 
-  test('should display feed card with title', async () => {
+  test("should display feed card with title", async () => {
     await feedPage.goto();
     await feedPage.waitForFeeds();
 
@@ -29,7 +29,7 @@ test.describe('Desktop Feed', () => {
     expect(title.length).toBeGreaterThan(0);
   });
 
-  test('should display empty state when no feeds', async ({ page }) => {
+  test("should display empty state when no feeds", async ({ page }) => {
     await mockFeedsApi(page, { empty: true });
     await feedPage.goto();
 
@@ -46,12 +46,12 @@ test.describe('Desktop Feed', () => {
     expect(hasEmpty || feedCount >= 0).toBe(true);
   });
 
-  test('should handle API error gracefully', async ({ page }) => {
+  test("should handle API error gracefully", async ({ page }) => {
     await mockFeedsApi(page, { errorStatus: 500 });
     await feedPage.goto();
 
     // Wait for content to load
-    await page.waitForLoadState('domcontentloaded');
+    await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
     // Check for error state, empty state, or any content

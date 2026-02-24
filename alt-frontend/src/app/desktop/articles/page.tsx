@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Spinner, Text } from "@chakra-ui/react";
-import React, { Suspense } from "react";
+import { Suspense } from "react";
 import { DesktopLayout } from "@/components/desktop/layout/DesktopLayout";
 import { DesktopArticleTimeline } from "@/components/desktop/timeline/DesktopArticleTimeline";
 

@@ -28,7 +28,7 @@ import {
   Zap,
 } from "lucide-react";
 import NextLink from "next/link";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatedNumber } from "@/components/mobile/stats/AnimatedNumber";
 import Loading from "@/components/mobile/utils/Loading";
 import { ThemeToggle } from "@/components/ThemeToggle";

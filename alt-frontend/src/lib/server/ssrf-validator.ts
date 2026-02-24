@@ -56,7 +56,7 @@ export function validateUrlForSSRF(url: string): void {
   ];
 
   for (const endpoint of metadataEndpoints) {
-    if (hostname === endpoint || hostname.startsWith(endpoint + ":")) {
+    if (hostname === endpoint || hostname.startsWith(`${endpoint}:`)) {
       throw new SSRFValidationError(
         "Access to metadata endpoint not allowed",
         "METADATA_ENDPOINT_BLOCKED",

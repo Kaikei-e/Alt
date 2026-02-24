@@ -19,7 +19,7 @@ export class TestIsolationHelper {
         ignoreHTTPSErrors: true,
         timeout: 5000,
       });
-    } catch (error) {
+    } catch (_error) {
       // It's okay if the mock server doesn't have a reset endpoint
       // or if it's not responding - just continue
     }

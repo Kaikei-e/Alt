@@ -47,7 +47,7 @@ export class SizeMeasurementManager {
       this.pendingMeasurements.delete(key);
 
       return result;
-    } catch (error) {
+    } catch (_error) {
       this.errorCount++;
       this.pendingMeasurements.delete(key);
 

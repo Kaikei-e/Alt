@@ -4,7 +4,7 @@ WORKDIR /app
 
 # pnpm を corepack で有効化（公式推奨）
 # glibc 依存モジュール回避のため libc6-compat をインストール
-RUN corepack enable && corepack prepare pnpm@10.22.0 --activate \
+RUN corepack enable && corepack prepare pnpm@10.25.0 --activate \
   && apk add --no-cache libc6-compat
 
 # 依存関係ファイルを先にコピーしてキャッシュ効率を向上
@@ -16,7 +16,7 @@ FROM node:24-alpine AS build
 WORKDIR /app
 
 # pnpm を corepack で有効化（build stage でも必要）
-RUN corepack enable && corepack prepare pnpm@10.22.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.25.0 --activate
 
 # 依存関係を前ステージからコピー
 COPY --from=deps /app/node_modules ./node_modules
@@ -61,7 +61,7 @@ FROM node:24-alpine AS runner-deps
 WORKDIR /app
 
 # pnpm を corepack で有効化
-RUN corepack enable && corepack prepare pnpm@10.22.0 --activate \
+RUN corepack enable && corepack prepare pnpm@10.25.0 --activate \
   && apk add --no-cache libc6-compat
 
 # 本番依存関係のみインストール

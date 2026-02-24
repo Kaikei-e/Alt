@@ -3,14 +3,9 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "../src/*"
-      ]
+      "@/*": ["../src/*"]
     },
     "noEmit": true
   },
-  "include": [
-    "**/*.ts",
-    "../playwright.config.ts"
-  ]
+  "include": ["**/*.ts", "../playwright.config.ts"]
 }

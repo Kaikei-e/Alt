@@ -19,7 +19,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   useScrapingDomains,
-  useScrapingDomain,
   updateScrapingDomain,
   refreshRobotsTxt,
 } from "@/lib/api/scrapingDomains";
@@ -36,7 +35,7 @@ type ActionMessage = {
 };
 
 export default function ScrapingDomainsPage() {
-  const [offset, setOffset] = useState(0);
+  const [offset, _setOffset] = useState(0);
   const limit = 20;
   const { domains, isLoading, error, mutate } = useScrapingDomains(
     offset,
@@ -475,7 +474,11 @@ function EditDomainModal({
                       value={allowCacheDays}
                       onChange={(e) => {
                         const value = parseInt(e.target.value, 10);
-                        if (!isNaN(value) && value >= 0 && value <= 365) {
+                        if (
+                          !Number.isNaN(value) &&
+                          value >= 0 &&
+                          value <= 365
+                        ) {
                           setAllowCacheDays(value);
                         }
                       }}

@@ -3,7 +3,7 @@
  * Proxies requests to alt-backend and sanitizes HTML content server-side
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import {
   sanitizeForArticle,
   extractPlainText,

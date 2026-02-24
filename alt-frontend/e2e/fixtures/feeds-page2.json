@@ -9,10 +9,7 @@
       "author": {
         "name": "Rust Developer"
       },
-      "tags": [
-        "Rust",
-        "Programming"
-      ]
+      "tags": ["Rust", "Programming"]
     },
     {
       "title": "Kubernetes Deployment Strategies",
@@ -23,10 +20,7 @@
       "author": {
         "name": "K8s Expert"
       },
-      "tags": [
-        "Kubernetes",
-        "DevOps"
-      ]
+      "tags": ["Kubernetes", "DevOps"]
     }
   ],
   "next_cursor": null,

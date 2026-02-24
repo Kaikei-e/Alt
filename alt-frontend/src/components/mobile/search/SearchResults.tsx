@@ -37,7 +37,7 @@ export const SearchResultItem = memo(({ result }: SearchResultItemProps) => {
   const displayDescription = isDescriptionExpanded
     ? descriptionText
     : shouldTruncateDescription
-      ? descriptionText.slice(0, 200) + "..."
+      ? `${descriptionText.slice(0, 200)}...`
       : descriptionText;
 
   const handleToggleSummary = async () => {

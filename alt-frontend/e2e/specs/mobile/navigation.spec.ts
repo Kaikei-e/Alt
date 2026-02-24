@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { MobileHomePage } from '../../pages/mobile/MobileHomePage';
-import { setupAllMocks } from '../../utils/api-mock';
+import { test, expect } from "@playwright/test";
+import { MobileHomePage } from "../../pages/mobile/MobileHomePage";
+import { setupAllMocks } from "../../utils/api-mock";
 
-test.describe('Mobile Navigation', () => {
+test.describe("Mobile Navigation", () => {
   let mobileHomePage: MobileHomePage;
 
   test.beforeEach(async ({ page }) => {
@@ -10,7 +10,7 @@ test.describe('Mobile Navigation', () => {
     await setupAllMocks(page);
   });
 
-  test('should navigate to mobile home page', async () => {
+  test("should navigate to mobile home page", async () => {
     await mobileHomePage.goto();
     await mobileHomePage.waitForFeeds();
 
@@ -23,7 +23,7 @@ test.describe('Mobile Navigation', () => {
     expect(feedCount).toBeGreaterThanOrEqual(0);
   });
 
-  test('should display feed list on mobile', async () => {
+  test("should display feed list on mobile", async () => {
     await mobileHomePage.goto();
     await mobileHomePage.waitForFeeds();
 
@@ -35,7 +35,10 @@ test.describe('Mobile Navigation', () => {
     }
   });
 
-  test('should navigate to article from feed list', async ({ page, context }) => {
+  test("should navigate to article from feed list", async ({
+    page,
+    context,
+  }) => {
     await mobileHomePage.goto();
     await mobileHomePage.waitForFeeds();
 
@@ -43,11 +46,11 @@ test.describe('Mobile Navigation', () => {
 
     if (feedCount > 0) {
       // Get initial URL
-      const initialUrl = mobileHomePage.getUrl();
+      const _initialUrl = mobileHomePage.getUrl();
 
       // Click on first feed (this might open external link in new tab)
       const [newPage] = await Promise.all([
-        context.waitForEvent('page', { timeout: 2000 }).catch(() => null),
+        context.waitForEvent("page", { timeout: 2000 }).catch(() => null),
         mobileHomePage.clickFirstFeed(),
       ]);
 
@@ -60,12 +63,12 @@ test.describe('Mobile Navigation', () => {
         await page.waitForTimeout(500);
         const newUrl = page.url();
         // URL might not change if it's a modal, which is acceptable
-        expect(typeof newUrl).toBe('string');
+        expect(typeof newUrl).toBe("string");
       }
     }
   });
 
-  test('should support scroll on mobile', async ({ page }) => {
+  test("should support scroll on mobile", async ({ page }) => {
     await mobileHomePage.goto();
     await mobileHomePage.waitForFeeds();
 

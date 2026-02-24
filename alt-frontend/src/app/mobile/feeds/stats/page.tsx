@@ -2,7 +2,6 @@
 
 import { Box, Flex, Text } from "@chakra-ui/react";
 import { FileText, Layers, Rss } from "lucide-react";
-import React from "react";
 import { StatCard } from "@/components/mobile/stats/StatCard";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";
 import { useSSEFeedsStats } from "@/hooks/useSSEFeedsStats";
@@ -77,7 +76,12 @@ export default function FeedsStatsPage() {
         </Box>
 
         {/* Statistics Cards */}
-        <Flex direction="column" gap={6} overflowY="scroll" data-testid="stats-cards">
+        <Flex
+          direction="column"
+          gap={6}
+          overflowY="scroll"
+          data-testid="stats-cards"
+        >
           <StatCard
             label="TOTAL FEEDS"
             value={feedAmount}

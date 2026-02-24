@@ -64,7 +64,7 @@ export const SearchArticles = ({
           // 無効なURLクエリの場合は警告を記録し、無視
           setValidationError("Invalid search query from URL");
         }
-      } catch (error) {
+      } catch (_error) {
         setValidationError("Invalid search query from URL");
       }
     }

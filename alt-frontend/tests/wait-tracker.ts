@@ -3,7 +3,7 @@ export class WaitTracker {
 
   constructor(private thresholdMs = 5000) {}
 
-  record(waitMs: number) {
+  record(_waitMs: number) {
     const now = Date.now();
     this.timestamps = this.timestamps
       .filter((ts) => now - ts < this.thresholdMs)

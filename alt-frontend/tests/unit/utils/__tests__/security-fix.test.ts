@@ -43,7 +43,7 @@ describe.skip("Security Fix Tests - TDD", () => {
 
           // This assertion will FAIL initially - current implementation uses regex
           expect(actualResult).toBe(shouldNeedSanitization);
-        } catch (error) {
+        } catch (_error) {
           // If DOMPurify not available, expect the current function to still work
           expect(needsSanitization(content)).toBe(true);
         }

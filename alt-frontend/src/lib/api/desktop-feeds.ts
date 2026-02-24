@@ -174,7 +174,7 @@ export class DesktopFeedsApi {
 
   private generateSummary(description: string): string {
     return description.length > 150
-      ? description.substring(0, 147) + "..."
+      ? `${description.substring(0, 147)}...`
       : description;
   }
 

@@ -1,4 +1,4 @@
-import { type Locator, expect } from '@playwright/test';
+import { type Locator, expect } from "@playwright/test";
 
 /**
  * Custom assertions for E2E tests
@@ -7,10 +7,7 @@ import { type Locator, expect } from '@playwright/test';
 /**
  * Assert that a feed card contains expected information
  */
-export async function assertFeedCard(
-  card: Locator,
-  expectedTitle?: string,
-) {
+export async function assertFeedCard(card: Locator, expectedTitle?: string) {
   await expect(card).toBeVisible();
 
   if (expectedTitle) {
@@ -21,10 +18,7 @@ export async function assertFeedCard(
 /**
  * Assert that multiple feed cards are visible
  */
-export async function assertFeedCardsVisible(
-  cards: Locator,
-  minCount: number,
-) {
+export async function assertFeedCardsVisible(cards: Locator, minCount: number) {
   const count = await cards.count();
   expect(count).toBeGreaterThanOrEqual(minCount);
 }
@@ -72,11 +66,10 @@ export async function assertToastNotification(
   await expect(toast).toBeVisible({ timeout });
 
   if (expectedText) {
-    if (typeof expectedText === 'string') {
+    if (typeof expectedText === "string") {
       await expect(toast).toContainText(expectedText, { timeout });
     } else {
       await expect(toast).toContainText(expectedText, { timeout });
     }
   }
 }
-

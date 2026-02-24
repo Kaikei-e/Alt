@@ -10,7 +10,7 @@ import { getServerSessionHeaders } from "@/lib/auth/server-headers";
 export const dynamic = "force-dynamic";
 
 // Allowed HTTP methods
-const ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+const _ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 
 export async function GET(
   request: NextRequest,

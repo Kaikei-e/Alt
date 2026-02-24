@@ -203,7 +203,7 @@ export class SecureStorage {
       const storageKey = SecureStorage.prefix + key;
       const storageValue = encrypt ? SecureStorage.encrypt(value) : value;
       localStorage.setItem(storageKey, storageValue);
-    } catch (error) {}
+    } catch (_error) {}
   }
 
   static getItem(key: string, decrypt: boolean = true): string | null {
@@ -212,7 +212,7 @@ export class SecureStorage {
       const value = localStorage.getItem(storageKey);
       if (!value) return null;
       return decrypt ? SecureStorage.decrypt(value) : value;
-    } catch (error) {
+    } catch (_error) {
       return null;
     }
   }
@@ -221,7 +221,7 @@ export class SecureStorage {
     try {
       const storageKey = SecureStorage.prefix + key;
       localStorage.removeItem(storageKey);
-    } catch (error) {}
+    } catch (_error) {}
   }
 
   static clearAll(): void {
@@ -229,12 +229,12 @@ export class SecureStorage {
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith(SecureStorage.prefix)) {
+        if (key?.startsWith(SecureStorage.prefix)) {
           keysToRemove.push(key);
         }
       }
       keysToRemove.forEach((key) => localStorage.removeItem(key));
-    } catch (error) {}
+    } catch (_error) {}
   }
 
   private static encrypt(value: string): string {
@@ -242,7 +242,7 @@ export class SecureStorage {
     // In production, use proper encryption with a key derived from user session
     try {
       return btoa(encodeURIComponent(value));
-    } catch (error) {
+    } catch (_error) {
       return value;
     }
   }
@@ -250,7 +250,7 @@ export class SecureStorage {
   private static decrypt(value: string): string {
     try {
       return decodeURIComponent(atob(value));
-    } catch (error) {
+    } catch (_error) {
       return value;
     }
   }

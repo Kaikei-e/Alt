@@ -14,7 +14,7 @@ describe("contentTypeDetector Security Tests", () => {
   describe("ReDoS Vulnerability Tests", () => {
     it("should not hang on malformed HTML with unclosed tags (ReDoS attack)", () => {
       // Test with reasonable size that still demonstrates the vulnerability
-      const maliciousInput = "<" + "a".repeat(1000) + ">";
+      const maliciousInput = `<${"a".repeat(1000)}>`;
       const start = performance.now();
 
       // This should complete within reasonable time (100ms)

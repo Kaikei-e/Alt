@@ -75,7 +75,7 @@ const defaultArticleConfig: Config = {
   ],
   ALLOW_DATA_ATTR: true,
   ALLOWED_URI_REGEXP:
-    /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i,
   KEEP_CONTENT: true,
 };
 
@@ -225,7 +225,7 @@ export function decodeHtmlEntities(str: string): string {
 
   try {
     return he.decode(str);
-  } catch (error) {
+  } catch (_error) {
     // Fallback: return original string if decoding fails
     return str;
   }

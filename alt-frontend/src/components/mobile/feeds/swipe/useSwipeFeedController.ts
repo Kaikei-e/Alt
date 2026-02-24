@@ -283,7 +283,7 @@ export const useSwipeFeedController = (
           }
           return prev;
         });
-      } catch (err) {
+      } catch (_err) {
         // Continue with empty set if initialization fails
         // Backend filtering will still work correctly
         setIsReadFeedsInitialized(true);
@@ -713,7 +713,7 @@ export const useSwipeFeedController = (
           "text/html",
         );
         const img = doc.querySelector("img");
-        if (img && img.src) {
+        if (img?.src) {
           linkElement = document.createElement("link");
           linkElement.rel = "preload";
           linkElement.as = "image";

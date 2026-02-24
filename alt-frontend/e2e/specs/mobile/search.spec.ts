@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { MobileSearchPage } from '../../pages/mobile/MobileSearchPage';
-import { setupAllMocks, mockSearchApi } from '../../utils/api-mock';
+import { test, expect } from "@playwright/test";
+import { MobileSearchPage } from "../../pages/mobile/MobileSearchPage";
+import { setupAllMocks, mockSearchApi } from "../../utils/api-mock";
 
-test.describe('Mobile Search', () => {
+test.describe("Mobile Search", () => {
   let searchPage: MobileSearchPage;
 
   test.beforeEach(async ({ page }) => {
@@ -10,17 +10,17 @@ test.describe('Mobile Search', () => {
     await setupAllMocks(page);
   });
 
-  test('should display search page', async () => {
+  test("should display search page", async () => {
     await searchPage.goto();
 
     await expect(searchPage.searchInput).toBeVisible();
     await expect(searchPage.searchButton).toBeVisible();
   });
 
-  test('should perform search and display results', async () => {
+  test("should perform search and display results", async () => {
     await searchPage.goto();
 
-    await searchPage.search('TypeScript');
+    await searchPage.search("TypeScript");
     await searchPage.waitForResults();
 
     // Either results or empty state should be shown
@@ -30,11 +30,11 @@ test.describe('Mobile Search', () => {
     expect(hasResults || hasEmptyState).toBe(true);
   });
 
-  test('should display empty state when no results', async ({ page }) => {
+  test("should display empty state when no results", async ({ page }) => {
     await mockSearchApi(page, { empty: true });
     await searchPage.goto();
 
-    await searchPage.search('NonExistentQuery12345XYZ');
+    await searchPage.search("NonExistentQuery12345XYZ");
     await searchPage.waitForResults();
 
     // Check for empty state
@@ -42,20 +42,20 @@ test.describe('Mobile Search', () => {
     expect(hasEmptyState).toBe(true);
   });
 
-  test('should clear search input', async () => {
+  test("should clear search input", async () => {
     await searchPage.goto();
 
-    await searchPage.searchInput.fill('test query');
-    await expect(searchPage.searchInput).toHaveValue('test query');
+    await searchPage.searchInput.fill("test query");
+    await expect(searchPage.searchInput).toHaveValue("test query");
 
     await searchPage.clearSearch();
-    await expect(searchPage.searchInput).toHaveValue('');
+    await expect(searchPage.searchInput).toHaveValue("");
   });
 
-  test('should search by pressing Enter', async () => {
+  test("should search by pressing Enter", async () => {
     await searchPage.goto();
 
-    await searchPage.searchByEnter('React');
+    await searchPage.searchByEnter("React");
     await searchPage.waitForResults();
 
     // Either results or empty state should be shown

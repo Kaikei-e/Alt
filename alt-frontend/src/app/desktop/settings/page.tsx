@@ -12,9 +12,9 @@ export default function DesktopSettingsPage() {
     // Simulate API call or use real API if available
     // For E2E test, the network request will be intercepted
     try {
-      await fetch('/api/user/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/user/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
       setStatus("success");
@@ -32,7 +32,16 @@ export default function DesktopSettingsPage() {
       <form onSubmit={handleSubmit} data-testid="settings-form">
         <VStack gap={4} align="flex-start" maxW="md">
           <Box w="100%">
-            <label htmlFor="name" style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>Name</label>
+            <label
+              htmlFor="name"
+              style={{
+                display: "block",
+                marginBottom: "8px",
+                fontWeight: "bold",
+              }}
+            >
+              Name
+            </label>
             <Input
               id="name"
               value={name}
@@ -40,14 +49,22 @@ export default function DesktopSettingsPage() {
               data-testid="settings-name-input"
             />
           </Box>
-          <Button type="submit" colorPalette="blue" data-testid="settings-save-button">
+          <Button
+            type="submit"
+            colorPalette="blue"
+            data-testid="settings-save-button"
+          >
             Save Changes
           </Button>
           {status === "success" && (
-            <Text color="green.500" data-testid="settings-success-message">Profile updated.</Text>
+            <Text color="green.500" data-testid="settings-success-message">
+              Profile updated.
+            </Text>
           )}
           {status === "error" && (
-            <Text color="red.500" data-testid="settings-error-message">Failed to update profile.</Text>
+            <Text color="red.500" data-testid="settings-error-message">
+              Failed to update profile.
+            </Text>
           )}
         </VStack>
       </form>

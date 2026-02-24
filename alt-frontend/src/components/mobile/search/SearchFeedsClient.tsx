@@ -45,7 +45,7 @@ export default function SearchFeedsClient() {
   const [results, setResults] = useState<SearchFeedItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTime, setSearchTime] = useState<number>();
-  const [isPending, startTransition] = useTransition();
+  const [isPending, _startTransition] = useTransition();
 
   // Defer search query updates to reduce validation overhead
   const deferredQuery = useDeferredValue(searchQuery);

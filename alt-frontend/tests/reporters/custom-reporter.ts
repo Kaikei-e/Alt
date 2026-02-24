@@ -6,8 +6,8 @@ import type {
   TestCase,
   TestResult,
 } from "@playwright/test/reporter";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 interface TestMetrics {
   totalTests: number;
@@ -190,7 +190,7 @@ class CustomReporter implements Reporter {
   private printSummary(totalRunTime: number, status: string) {
     const { totalTests, passedTests, failedTests, skippedTests } = this.metrics;
 
-    console.log("\n" + "=".repeat(60));
+    console.log(`\n${"=".repeat(60)}`);
     console.log("🎯 TEST EXECUTION SUMMARY");
     console.log("=".repeat(60));
 
@@ -368,7 +368,7 @@ class CustomReporter implements Reporter {
                 <td>${test.duration.toFixed(0)}ms</td>
                 <td>${test.project}</td>
                 <td>${test.browser}</td>
-                <td>${test.error ? test.error.substring(0, 100) + "..." : ""}</td>
+                <td>${test.error ? `${test.error.substring(0, 100)}...` : ""}</td>
             </tr>
         `,
           )

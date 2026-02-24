@@ -4,8 +4,5 @@
   "content": "<article><h1>Understanding React 19 Concurrent Features</h1><p>A deep dive into React 19's concurrent rendering capabilities and how they improve application performance.</p><p>React 19 introduces several groundbreaking features that revolutionize how we build user interfaces. The concurrent rendering engine allows React to interrupt, pause, and resume work, leading to more responsive applications.</p><h2>Key Benefits</h2><ul><li>Improved user experience with smoother interactions</li><li>Better performance on low-end devices</li><li>More predictable rendering behavior</li></ul></article>",
   "url": "https://example.com/react-19-concurrent",
   "published_at": "2025-01-15T10:00:00Z",
-  "tags": [
-    "React",
-    "Performance"
-  ]
+  "tags": ["React", "Performance"]
 }

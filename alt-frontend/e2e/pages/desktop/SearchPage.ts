@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 /**
  * Desktop Search Page Object
@@ -19,30 +19,30 @@ export class SearchPage extends BasePage {
     // User-facing locators (following Playwright best practices)
     this.searchInput = page
       .getByPlaceholder(/search/i)
-      .or(page.getByRole('searchbox'))
-      .or(page.getByTestId('search-input'));
+      .or(page.getByRole("searchbox"))
+      .or(page.getByTestId("search-input"));
     this.searchButton = page
-      .getByRole('button', { name: /search/i })
-      .or(page.getByTestId('search-button'));
-    this.searchResults = page.getByTestId('search-results');
+      .getByRole("button", { name: /search/i })
+      .or(page.getByTestId("search-button"));
+    this.searchResults = page.getByTestId("search-results");
     this.resultItems = page
-      .getByTestId('search-result')
-      .or(page.locator('article'))
+      .getByTestId("search-result")
+      .or(page.locator("article"))
       .or(page.locator('[class*="result"]'));
     this.emptyState = page
       .getByText(/no results|not found|見つかりません/i)
-      .or(page.getByTestId('search-empty-state'));
+      .or(page.getByTestId("search-empty-state"));
     this.heading = page
-      .getByRole('heading', { name: /search/i })
-      .or(page.getByTestId('search-heading'));
-    this.searchForm = page.locator('form');
+      .getByRole("heading", { name: /search/i })
+      .or(page.getByTestId("search-heading"));
+    this.searchForm = page.locator("form");
   }
 
   /**
    * Navigate to search page
    */
   async goto(): Promise<void> {
-    await this.navigateTo('/desktop/articles/search');
+    await this.navigateTo("/desktop/articles/search");
   }
 
   /**
@@ -61,9 +61,9 @@ export class SearchPage extends BasePage {
     await this.searchButton.click();
 
     // Wait for results or empty state
-    await expect(
-      this.resultItems.first().or(this.emptyState),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(this.resultItems.first().or(this.emptyState)).toBeVisible({
+      timeout: 10000,
+    });
   }
 
   /**
@@ -72,12 +72,12 @@ export class SearchPage extends BasePage {
   async searchByEnter(query: string): Promise<void> {
     await expect(this.searchInput).toBeVisible();
     await this.searchInput.fill(query);
-    await this.searchInput.press('Enter');
+    await this.searchInput.press("Enter");
 
     // Wait for results or empty state
-    await expect(
-      this.resultItems.first().or(this.emptyState),
-    ).toBeVisible({ timeout: 10000 });
+    await expect(this.resultItems.first().or(this.emptyState)).toBeVisible({
+      timeout: 10000,
+    });
   }
 
   /**
@@ -124,7 +124,7 @@ export class SearchPage extends BasePage {
    * Get current search query value
    */
   async getSearchQuery(): Promise<string> {
-    return (await this.searchInput.inputValue()) ?? '';
+    return (await this.searchInput.inputValue()) ?? "";
   }
 
   /**
@@ -142,6 +142,6 @@ export class SearchPage extends BasePage {
     const firstResult = this.resultItems.first();
     await expect(firstResult).toBeVisible();
     const heading = firstResult.locator('h2, h3, [class*="title"]').first();
-    return (await heading.textContent()) ?? '';
+    return (await heading.textContent()) ?? "";
   }
 }

@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 /**
  * Mobile Feed Page Object
@@ -15,20 +15,20 @@ export class MobileFeedPage extends BasePage {
   constructor(page: Page) {
     super(page);
     // Use data-testid selectors
-    this.feedCards = page.getByTestId('feed-card');
-    this.loadingIndicator = page.getByTestId('infinite-scroll-sentinel');
+    this.feedCards = page.getByTestId("feed-card");
+    this.loadingIndicator = page.getByTestId("infinite-scroll-sentinel");
     this.emptyState = page
-      .getByTestId('empty-state-icon')
-      .or(page.getByTestId('empty-state'));
-    this.scrollContainer = page.getByTestId('feeds-scroll-container');
-    this.markReadButtons = page.getByRole('button', { name: /mark as read/i });
+      .getByTestId("empty-state-icon")
+      .or(page.getByTestId("empty-state"));
+    this.scrollContainer = page.getByTestId("feeds-scroll-container");
+    this.markReadButtons = page.getByRole("button", { name: /mark as read/i });
   }
 
   /**
    * Navigate to mobile feed page
    */
   async goto(): Promise<void> {
-    await this.navigateTo('/mobile/feeds');
+    await this.navigateTo("/mobile/feeds");
   }
 
   /**
@@ -36,9 +36,9 @@ export class MobileFeedPage extends BasePage {
    */
   async waitForFeeds(timeout = 15000): Promise<void> {
     // Wait for either feed cards or empty state
-    await expect(
-      this.feedCards.first().or(this.emptyState),
-    ).toBeVisible({ timeout });
+    await expect(this.feedCards.first().or(this.emptyState)).toBeVisible({
+      timeout,
+    });
   }
 
   /**
@@ -77,7 +77,7 @@ export class MobileFeedPage extends BasePage {
   async markAsRead(index = 0): Promise<void> {
     const card = this.feedCards.nth(index);
     await expect(card).toBeVisible();
-    const markReadButton = card.getByRole('button', { name: /mark as read/i });
+    const markReadButton = card.getByRole("button", { name: /mark as read/i });
     await markReadButton.click();
   }
 
@@ -87,8 +87,8 @@ export class MobileFeedPage extends BasePage {
   async getFeedTitle(index = 0): Promise<string> {
     const card = this.feedCards.nth(index);
     await expect(card).toBeVisible();
-    const titleElement = card.locator('a').first();
-    return (await titleElement.textContent()) ?? '';
+    const titleElement = card.locator("a").first();
+    return (await titleElement.textContent()) ?? "";
   }
 
   /**

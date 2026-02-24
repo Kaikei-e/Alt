@@ -24,7 +24,6 @@ import {
   Menu,
   Search,
   Settings,
-  User,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { UserProfile } from "@/components/auth/UserProfile";

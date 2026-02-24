@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
       console.warn(
         `[API] [${requestId}] Auth-hub error body: ${errorText.substring(0, 200)}`,
       );
-    } catch (e) {
+    } catch (_e) {
       console.warn(`[API] [${requestId}] Could not read error body`);
     }
 

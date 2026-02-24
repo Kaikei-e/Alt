@@ -1,12 +1,10 @@
 "use client";
 
 import { keyframes } from "@emotion/react";
-import { Box, Flex, HStack, Icon, Text, VStack } from "@chakra-ui/react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Box, Flex, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import ErrorState from "@/app/mobile/feeds/_components/ErrorState";
 import EmptyFeedState from "@/components/mobile/EmptyFeedState";
-import dynamic from "next/dynamic";
 import { useSwipeFeedController } from "@/components/mobile/feeds/swipe/useSwipeFeedController";
 import SwipeFeedSkeleton from "@/components/mobile/feeds/swipe/SwipeFeedSkeleton";
 import { FloatingMenu } from "@/components/mobile/utils/FloatingMenu";

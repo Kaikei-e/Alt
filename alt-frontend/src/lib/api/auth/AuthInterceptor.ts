@@ -60,7 +60,7 @@ export class AuthInterceptor {
           credentials: "include",
         });
       }
-    } catch (recheckError) {}
+    } catch (_recheckError) {}
 
     // ここで即遷移しない。ページ上部に「再ログインしてね」バナーを出すだけ。
     this.config.onAuthRequired();

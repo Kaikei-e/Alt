@@ -9,7 +9,7 @@ import { ApiError } from "./ApiError";
  */
 function getUserFriendlyErrorMessage(
   status: number,
-  statusText?: string,
+  _statusText?: string,
 ): string {
   switch (status) {
     case 400:
@@ -256,7 +256,7 @@ export class ApiClient {
         // Check if this is an async job with status_url
         if (asyncResult.job_id && asyncResult.status_url) {
           // Poll for job completion
-          const statusUrl = asyncResult.status_url.startsWith('http')
+          const statusUrl = asyncResult.status_url.startsWith("http")
             ? asyncResult.status_url
             : this.resolveRequestUrl(asyncResult.status_url);
 
@@ -279,14 +279,18 @@ export class ApiClient {
 
             // Poll status endpoint
             try {
-              const statusResponse = await this.makeRequest(statusUrl, {
-                method: "GET",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Accept-Encoding": "gzip, deflate, br",
+              const statusResponse = await this.makeRequest(
+                statusUrl,
+                {
+                  method: "GET",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Accept-Encoding": "gzip, deflate, br",
+                  },
+                  keepalive: true,
                 },
-                keepalive: true,
-              }, 10000); // 10 second timeout per poll
+                10000,
+              ); // 10 second timeout per poll
 
               const statusIntercepted = await this.authInterceptor.intercept(
                 statusResponse,
@@ -326,8 +330,6 @@ export class ApiClient {
               if (statusError instanceof ApiError) {
                 throw statusError;
               }
-              // Other errors - continue polling
-              continue;
             }
           }
 
@@ -561,7 +563,7 @@ export class ApiClient {
           ...enhancedOptions.headers,
           cookie: cookieHeader,
         };
-      } catch (error) {
+      } catch (_error) {
         // Ignore import errors in non-Next.js environments
       }
     }

@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { MobileFavoritesPage } from '../../pages/mobile/MobileFavoritesPage';
-import { setupAllMocks } from '../../utils/api-mock';
+import { test, expect } from "@playwright/test";
+import { MobileFavoritesPage } from "../../pages/mobile/MobileFavoritesPage";
+import { setupAllMocks } from "../../utils/api-mock";
 
-test.describe('Mobile Favorites', () => {
+test.describe("Mobile Favorites", () => {
   let favoritesPage: MobileFavoritesPage;
 
   test.beforeEach(async ({ page }) => {
@@ -10,10 +10,10 @@ test.describe('Mobile Favorites', () => {
     await setupAllMocks(page);
 
     // Mock favorites API with empty response by default
-    await page.route('**/v1/feeds/favorites/cursor*', async (route) => {
+    await page.route("**/v1/feeds/favorites/cursor*", async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({
           feeds: [],
           next_cursor: null,
@@ -23,7 +23,7 @@ test.describe('Mobile Favorites', () => {
     });
   });
 
-  test('should display favorites page', async () => {
+  test("should display favorites page", async () => {
     await favoritesPage.goto();
     await favoritesPage.waitForReady();
 
@@ -35,7 +35,7 @@ test.describe('Mobile Favorites', () => {
     expect(hasEmpty || hasFeeds).toBe(true);
   });
 
-  test('should show empty state when no favorites', async () => {
+  test("should show empty state when no favorites", async () => {
     await favoritesPage.goto();
     await favoritesPage.waitForReady();
 
@@ -43,21 +43,21 @@ test.describe('Mobile Favorites', () => {
     expect(hasEmpty).toBe(true);
   });
 
-  test('should display favorite feeds when available', async ({ page }) => {
+  test("should display favorite feeds when available", async ({ page }) => {
     // Override mock with feeds
-    await page.route('**/v1/feeds/favorites/cursor*', async (route) => {
+    await page.route("**/v1/feeds/favorites/cursor*", async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({
           feeds: [
             {
-              id: 'fav-1',
-              title: 'Favorite Feed 1',
-              link: 'https://example.com/fav1',
-              description: 'A favorite feed',
+              id: "fav-1",
+              title: "Favorite Feed 1",
+              link: "https://example.com/fav1",
+              description: "A favorite feed",
               published: new Date().toISOString(),
-              excerpt: 'This is a favorite article',
+              excerpt: "This is a favorite article",
             },
           ],
           next_cursor: null,

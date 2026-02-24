@@ -4,7 +4,6 @@
  */
 
 import "server-only";
-import { serverFetch } from "./serverFetch";
 import { sanitizeForArticle } from "@/lib/server/sanitize-html";
 import { validateUrlForSSRF } from "@/lib/server/ssrf-validator";
 import { getServerSessionHeaders } from "@/lib/auth/server-headers";

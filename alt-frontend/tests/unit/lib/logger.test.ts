@@ -2,7 +2,15 @@
  * Tests for structured logger (ADR 98/99 compliance)
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { Logger } from "@/lib/logger";
 
 describe("Logger", () => {
@@ -111,9 +119,9 @@ describe("Logger", () => {
       logger.exception("operation failed", error);
 
       const entry = errorSpy.mock.calls[0][1] as Record<string, unknown>;
-      expect(entry["error_name"]).toBe("Error");
-      expect(entry["error_message"]).toBe("test error");
-      expect(entry["error_stack"]).toBeDefined();
+      expect(entry.error_name).toBe("Error");
+      expect(entry.error_message).toBe("test error");
+      expect(entry.error_stack).toBeDefined();
     });
   });
 
@@ -123,8 +131,8 @@ describe("Logger", () => {
       logger.logDuration("fetch_articles", 150);
 
       const entry = infoSpy.mock.calls[0][1] as Record<string, unknown>;
-      expect(entry["operation"]).toBe("fetch_articles");
-      expect(entry["duration_ms"]).toBe(150);
+      expect(entry.operation).toBe("fetch_articles");
+      expect(entry.duration_ms).toBe(150);
     });
   });
 
@@ -134,9 +142,9 @@ describe("Logger", () => {
       logger.info("test");
 
       const entry = infoSpy.mock.calls[0][1] as Record<string, unknown>;
-      expect(entry["timestamp"]).toBeDefined();
+      expect(entry.timestamp).toBeDefined();
       // ISO timestamp format
-      expect(typeof entry["timestamp"]).toBe("string");
+      expect(typeof entry.timestamp).toBe("string");
     });
 
     it("should include level", () => {
@@ -144,7 +152,7 @@ describe("Logger", () => {
       logger.info("test");
 
       const entry = infoSpy.mock.calls[0][1] as Record<string, unknown>;
-      expect(entry["level"]).toBe("info");
+      expect(entry.level).toBe("info");
     });
 
     it("should include message", () => {
@@ -152,7 +160,7 @@ describe("Logger", () => {
       logger.info("my message");
 
       const entry = infoSpy.mock.calls[0][1] as Record<string, unknown>;
-      expect(entry["message"]).toBe("my message");
+      expect(entry.message).toBe("my message");
     });
 
     it("should include service name", () => {
@@ -160,7 +168,7 @@ describe("Logger", () => {
       logger.info("test");
 
       const entry = infoSpy.mock.calls[0][1] as Record<string, unknown>;
-      expect(entry["service"]).toBe("alt-frontend");
+      expect(entry.service).toBe("alt-frontend");
     });
 
     it("should include environment as browser in JSDOM", () => {
@@ -168,7 +176,7 @@ describe("Logger", () => {
       logger.info("test");
 
       const entry = infoSpy.mock.calls[0][1] as Record<string, unknown>;
-      expect(entry["environment"]).toBe("browser");
+      expect(entry.environment).toBe("browser");
     });
   });
 });

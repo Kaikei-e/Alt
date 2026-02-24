@@ -1,5 +1,5 @@
-import { type Locator, type Page, expect } from '@playwright/test';
-import { BasePage } from '../BasePage';
+import { type Locator, type Page, expect } from "@playwright/test";
+import { BasePage } from "../BasePage";
 
 export class MobileFavoritesPage extends BasePage {
   readonly scrollContainer: Locator;
@@ -11,21 +11,23 @@ export class MobileFavoritesPage extends BasePage {
 
   constructor(page: Page) {
     super(page);
-    this.scrollContainer = page.getByTestId('favorites-scroll-container');
-    this.skeletonContainer = page.getByTestId('favorites-skeleton-container');
-    this.feedCards = page.getByTestId('feed-card');
-    this.emptyState = page.getByText('No feeds available');
-    this.loadingIndicator = page.getByText('Loading more...');
-    this.infiniteScrollSentinel = page.getByTestId('infinite-scroll-sentinel');
+    this.scrollContainer = page.getByTestId("favorites-scroll-container");
+    this.skeletonContainer = page.getByTestId("favorites-skeleton-container");
+    this.feedCards = page.getByTestId("feed-card");
+    this.emptyState = page.getByText("No feeds available");
+    this.loadingIndicator = page.getByText("Loading more...");
+    this.infiniteScrollSentinel = page.getByTestId("infinite-scroll-sentinel");
   }
 
   async goto(): Promise<void> {
-    await this.navigateTo('/mobile/feeds/favorites');
+    await this.navigateTo("/mobile/feeds/favorites");
   }
 
   async waitForReady(): Promise<void> {
     // Wait for skeleton to disappear
-    await expect(this.skeletonContainer).toBeHidden({ timeout: 15000 }).catch(() => {});
+    await expect(this.skeletonContainer)
+      .toBeHidden({ timeout: 15000 })
+      .catch(() => {});
     // Wait for scroll container to be visible
     await expect(this.scrollContainer).toBeVisible({ timeout: 15000 });
   }

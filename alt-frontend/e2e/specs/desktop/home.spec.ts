@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { DesktopHomePage } from '../../pages/desktop/DesktopHomePage';
-import { setupAllMocks } from '../../utils/api-mock';
+import { test, expect } from "@playwright/test";
+import { DesktopHomePage } from "../../pages/desktop/DesktopHomePage";
+import { setupAllMocks } from "../../utils/api-mock";
 
-test.describe('Desktop Home', () => {
+test.describe("Desktop Home", () => {
   let homePage: DesktopHomePage;
 
   test.beforeEach(async ({ page }) => {
@@ -10,10 +10,10 @@ test.describe('Desktop Home', () => {
     await setupAllMocks(page);
 
     // Mock feed stats API
-    await page.route('**/v1/feeds/stats*', async (route) => {
+    await page.route("**/v1/feeds/stats*", async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({
           feed_amount: { amount: 10 },
           summarized_feed: { amount: 5 },
@@ -22,14 +22,14 @@ test.describe('Desktop Home', () => {
     });
   });
 
-  test('should display desktop home page', async () => {
+  test("should display desktop home page", async () => {
     await homePage.goto();
     await homePage.waitForReady();
 
     await expect(homePage.dashboardTitle).toBeVisible();
   });
 
-  test('should display sidebar navigation', async () => {
+  test("should display sidebar navigation", async () => {
     await homePage.goto();
     await homePage.waitForReady();
 
@@ -37,16 +37,20 @@ test.describe('Desktop Home', () => {
     expect(hasSidebar).toBe(true);
   });
 
-  test('should have navigation links', async () => {
+  test("should have navigation links", async () => {
     await homePage.goto();
     await homePage.waitForReady();
 
     // Check for common navigation items (use first() to avoid strict mode issues)
-    await expect(homePage.page.getByRole('link', { name: /Dashboard/i }).first()).toBeVisible();
-    await expect(homePage.page.getByRole('link', { name: /Feeds/i }).first()).toBeVisible();
+    await expect(
+      homePage.page.getByRole("link", { name: /Dashboard/i }).first(),
+    ).toBeVisible();
+    await expect(
+      homePage.page.getByRole("link", { name: /Feeds/i }).first(),
+    ).toBeVisible();
   });
 
-  test('should navigate to feeds page', async () => {
+  test("should navigate to feeds page", async () => {
     await homePage.goto();
     await homePage.waitForReady();
 
@@ -56,7 +60,7 @@ test.describe('Desktop Home', () => {
     await expect(homePage.page).toHaveURL(/\/desktop\/feeds/);
   });
 
-  test('should navigate to settings page', async () => {
+  test("should navigate to settings page", async () => {
     await homePage.goto();
     await homePage.waitForReady();
 

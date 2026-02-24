@@ -16,9 +16,9 @@ pnpm test:e2e            # E2E (Playwright)
 # Dev
 pnpm dev
 
-# Lint & Build
+# Lint & Format (Biome)
 pnpm lint && pnpm fmt
-pnpm type-check && pnpm build
+pnpm typecheck && pnpm build
 ```
 
 ## TDD Workflow

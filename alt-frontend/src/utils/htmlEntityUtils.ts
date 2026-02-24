@@ -227,7 +227,7 @@ export function decodeHtmlEntitiesFromUrl(url: string): string {
     }
 
     return normalized;
-  } catch (error) {
+  } catch (_error) {
     // PLAN.md: Fail-safe - return empty string on any error
     return "";
   }

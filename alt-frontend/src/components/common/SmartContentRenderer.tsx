@@ -98,7 +98,7 @@ const ContentErrorFallback: React.FC<{
       maxHeight="200px"
     >
       {originalContent.length > 500
-        ? originalContent.substring(0, 500) + "..."
+        ? `${originalContent.substring(0, 500)}...`
         : originalContent}
     </Text>
   </Box>

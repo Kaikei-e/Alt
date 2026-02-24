@@ -28,8 +28,7 @@ describe("Security Performance Tests - PROTECTED", () => {
     });
 
     test("should handle large malicious content efficiently - PROTECTED", () => {
-      const maliciousContent =
-        '<script>alert("xss")</script>'.repeat(10) + "<p>Safe content</p>";
+      const maliciousContent = `${'<script>alert("xss")</script>'.repeat(10)}<p>Safe content</p>`;
 
       const startTime = performance.now();
       const sanitized = sanitizeContent(maliciousContent);
@@ -183,8 +182,7 @@ describe("Security Performance Tests - PROTECTED", () => {
 
       // 大量のサニタイゼーション処理を実行
       for (let i = 0; i < 1000; i++) {
-        const content =
-          '<script>alert("xss")</script>'.repeat(10) + "Safe content";
+        const content = `${'<script>alert("xss")</script>'.repeat(10)}Safe content`;
         sanitizeContent(content);
       }
 
@@ -204,8 +202,7 @@ describe("Security Performance Tests - PROTECTED", () => {
       const initialMemory = process.memoryUsage().heapUsed;
 
       // 大きなコンテンツを処理
-      const largeContent =
-        "<p>".repeat(5000) + "Large content" + "</p>".repeat(5000);
+      const largeContent = `${"<p>".repeat(5000)}Large content${"</p>".repeat(5000)}`;
       const result = sanitizeContent(largeContent);
 
       const finalMemory = process.memoryUsage().heapUsed;
@@ -220,8 +217,7 @@ describe("Security Performance Tests - PROTECTED", () => {
   describe("Concurrent Processing Tests - PROTECTED", () => {
     test("should handle concurrent sanitization requests - PROTECTED", async () => {
       const concurrentRequests = 20;
-      const content =
-        '<script>alert("xss")</script>'.repeat(3) + "<p>Safe content</p>";
+      const content = `${'<script>alert("xss")</script>'.repeat(3)}<p>Safe content</p>`;
 
       const startTime = performance.now();
 

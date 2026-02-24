@@ -110,7 +110,7 @@ class Logger {
   private formatEntry(
     level: LogLevel,
     message: string,
-    data?: Record<string, unknown>
+    data?: Record<string, unknown>,
   ): LogEntry {
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
@@ -148,7 +148,7 @@ class Logger {
   private output(
     level: LogLevel,
     message: string,
-    data?: Record<string, unknown>
+    data?: Record<string, unknown>,
   ): void {
     if (!shouldLog(level)) {
       return;
@@ -206,7 +206,11 @@ class Logger {
   /**
    * Log an error with stack trace
    */
-  exception(message: string, error: Error, data?: Record<string, unknown>): void {
+  exception(
+    message: string,
+    error: Error,
+    data?: Record<string, unknown>,
+  ): void {
     this.output("error", message, {
       ...data,
       error_name: error.name,
@@ -221,7 +225,7 @@ class Logger {
   logDuration(
     operation: string,
     durationMs: number,
-    data?: Record<string, unknown>
+    data?: Record<string, unknown>,
   ): void {
     this.output("info", `${operation} completed`, {
       ...data,

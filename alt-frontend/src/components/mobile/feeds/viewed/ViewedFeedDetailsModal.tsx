@@ -1,4 +1,4 @@
-import { Box, Button, HStack, Portal, Text } from "@chakra-ui/react";
+import { Box, Button, Portal, Text } from "@chakra-ui/react";
 import type { CSSObject } from "@emotion/react";
 import { Archive, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -123,12 +123,10 @@ export const ViewedFeedDetailsModal = ({
       .then(([summary, details]) => {
         // Check if summary has valid content
         const hasValidSummary =
-          summary &&
-          summary.matched_articles &&
-          summary.matched_articles.length > 0;
+          summary?.matched_articles && summary.matched_articles.length > 0;
         // Check if details has valid content
         const hasValidDetails =
-          details && details.content && details.content.trim() !== "";
+          details?.content && details.content.trim() !== "";
 
         if (hasValidSummary) {
           setArticleSummary(summary);

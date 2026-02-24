@@ -1,6 +1,6 @@
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
+const http = require("node:http");
+const _fs = require("node:fs");
+const _path = require("node:path");
 
 const port = 3010;
 

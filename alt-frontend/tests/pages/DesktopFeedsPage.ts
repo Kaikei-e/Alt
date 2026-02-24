@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { BasePage } from "./BasePage";
 
 /**
@@ -129,7 +129,7 @@ export class DesktopFeedsPage extends BasePage {
   /**
    * Search for feeds (navigate to search page)
    */
-  async searchFeed(query: string) {
+  async searchFeed(_query: string) {
     await this.searchInput.click();
     await this.page.waitForURL(/\/desktop\/articles\/search/);
   }

@@ -1,8 +1,8 @@
-import { test, expect } from '@playwright/test';
-import { MobileViewedPage } from '../../pages/mobile/MobileViewedPage';
-import { setupAllMocks } from '../../utils/api-mock';
+import { test, expect } from "@playwright/test";
+import { MobileViewedPage } from "../../pages/mobile/MobileViewedPage";
+import { setupAllMocks } from "../../utils/api-mock";
 
-test.describe('Mobile Viewed History', () => {
+test.describe("Mobile Viewed History", () => {
   let viewedPage: MobileViewedPage;
 
   test.beforeEach(async ({ page }) => {
@@ -10,10 +10,10 @@ test.describe('Mobile Viewed History', () => {
     await setupAllMocks(page);
 
     // Mock read feeds API with empty response by default
-    await page.route('**/v1/feeds/read/cursor*', async (route) => {
+    await page.route("**/v1/feeds/read/cursor*", async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({
           feeds: [],
           next_cursor: null,
@@ -23,7 +23,7 @@ test.describe('Mobile Viewed History', () => {
     });
   });
 
-  test('should display viewed history page', async () => {
+  test("should display viewed history page", async () => {
     await viewedPage.goto();
     await viewedPage.waitForReady();
 
@@ -39,14 +39,14 @@ test.describe('Mobile Viewed History', () => {
     await viewedPage.waitForReady();
 
     // Title might be visible if we have content, or in skeleton
-    const title = await viewedPage.getTitle().catch(() => '');
+    const title = await viewedPage.getTitle().catch(() => "");
     // Title is "History" when visible
     if (title) {
-      expect(title).toBe('History');
+      expect(title).toBe("History");
     }
   });
 
-  test('should show empty state when no history', async () => {
+  test("should show empty state when no history", async () => {
     await viewedPage.goto();
     await viewedPage.waitForReady();
 
@@ -54,19 +54,19 @@ test.describe('Mobile Viewed History', () => {
     expect(hasEmpty).toBe(true);
   });
 
-  test('should display viewed feeds when available', async ({ page }) => {
+  test("should display viewed feeds when available", async ({ page }) => {
     // Override mock with feeds
-    await page.route('**/v1/feeds/read/cursor*', async (route) => {
+    await page.route("**/v1/feeds/read/cursor*", async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'application/json',
+        contentType: "application/json",
         body: JSON.stringify({
           feeds: [
             {
-              id: 'viewed-1',
-              title: 'Viewed Article 1',
-              link: 'https://example.com/viewed1',
-              description: 'A previously read article',
+              id: "viewed-1",
+              title: "Viewed Article 1",
+              link: "https://example.com/viewed1",
+              description: "A previously read article",
               published: new Date().toISOString(),
             },
           ],

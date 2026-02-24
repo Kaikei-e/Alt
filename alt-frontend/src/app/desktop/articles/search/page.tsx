@@ -1,6 +1,14 @@
 "use client";
 
-import { Box, Button, Heading, Input, Text, VStack, HStack } from "@chakra-ui/react";
+import {
+  Box,
+  Button,
+  Heading,
+  Input,
+  Text,
+  VStack,
+  HStack,
+} from "@chakra-ui/react";
 import { useState } from "react";
 import { articleApi } from "@/lib/api";
 import type { Article } from "@/schema/article";

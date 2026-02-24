@@ -3,7 +3,8 @@
  * Implements strategy pattern for HTML, text, and markdown rendering
  * XPLAN11: 2025 Best Practices - React 19 + Next.js 15 Compatible
  */
-import React, { type ReactNode } from "react";
+import type React from "react";
+import type { ReactNode } from "react";
 import { analyzeContent, ContentType } from "./contentTypeDetector";
 import type { SafeHtmlString } from "@/lib/server/sanitize-html";
 import {
@@ -60,7 +61,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
         // Step 1: Process image URLs (resolve relative paths, decode entities)
         .replace(
           /<img([^>]*?)src="([^"]*?)"([^>]*?)>/gi,
-          (match, before, src, after) => {
+          (_match, before, src, after) => {
             // Decode HTML entities
             const decodedSrc = decodeHtmlEntitiesFromUrlUtil(src);
             // Resolve relative paths against article URL
@@ -109,7 +110,7 @@ export class HTMLRenderingStrategy implements RenderingStrategy {
       const baseUrl = new URL(articleUrl);
       const resolvedUrl = new URL(imageUrl, baseUrl);
       return resolvedUrl.toString();
-    } catch (error) {
+    } catch (_error) {
       // If URL resolution fails, return original URL
       return imageUrl;
     }
@@ -140,7 +141,7 @@ export class TextRenderingStrategy implements RenderingStrategy {
     );
   }
 
-  render(content: string, articleUrl?: string): ReactNode {
+  render(content: string, _articleUrl?: string): ReactNode {
     // Split content into paragraphs and preserve line breaks
     const paragraphs = content
       .split(/\n\s*\n/) // Split on double line breaks
@@ -174,7 +175,7 @@ export class MarkdownRenderingStrategy implements RenderingStrategy {
     return analysis.type === ContentType.MARKDOWN;
   }
 
-  render(content: string, articleUrl?: string): ReactNode {
+  render(content: string, _articleUrl?: string): ReactNode {
     // Basic markdown-to-HTML conversion
     const html = content
       // Headers

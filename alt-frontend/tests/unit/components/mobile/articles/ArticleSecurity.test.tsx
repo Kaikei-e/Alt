@@ -6,7 +6,7 @@ import {
   waitFor,
   fireEvent,
 } from "@testing-library/react";
-import { createSafeHtml, sanitizeForArticle } from "@/lib/server/sanitize-html";
+import { sanitizeForArticle } from "@/lib/server/sanitize-html";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,7 +37,7 @@ vi.mock("@/lib/api", () => ({
 const renderWithProviders = (ui: React.ReactElement) =>
   render(<ChakraProvider value={defaultSystem}>{ui}</ChakraProvider>);
 
-const setupUser = () => userEvent.setup({ pointerEventsCheck: 0 });
+const _setupUser = () => userEvent.setup({ pointerEventsCheck: 0 });
 
 describe("Article rendering security", () => {
   beforeEach(() => {
