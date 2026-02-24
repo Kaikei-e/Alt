@@ -21,7 +21,7 @@ flowchart LR
 
     subgraph knowledge-augur
         Ollama[Ollama Server<br/>Port 11434]
-        Model[qwen3-14b-rag<br/>Custom Model]
+        Model[qwen3-8b-rag<br/>Custom Model]
     end
 
     subgraph Hardware
@@ -37,10 +37,10 @@ flowchart LR
 
 ### Default Model
 
-- **Model**: `qwen3:14b` (pulled from Ollama registry)
-- **Custom Variant**: `qwen3-14b-rag` (RAG-optimized, created via Modelfile)
+- **Model**: `qwen3:8b` (pulled from Ollama registry)
+- **Custom Variant**: `qwen3-8b-rag` (RAG-optimized, created via Modelfile)
 
-### Modelfile Parameters (`Modelfile.qwen3-14b-rag`)
+### Modelfile Parameters (`Modelfile.qwen3-8b-rag`)
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
@@ -74,7 +74,7 @@ flowchart LR
 ```
 knowledge-augur/
 ├── Dockerfile                  # Multi-stage build with Ollama base
-├── Modelfile.qwen3-14b-rag     # RAG-optimized qwen3 configuration (default)
+├── Modelfile.qwen3-8b-rag     # RAG-optimized qwen3 configuration (default)
 ├── Modelfile.gpt-oss20b-igpu   # iGPU-optimized gpt-oss configuration (legacy)
 ├── Modelfile.gpt-oss20b-cpu    # CPU model configuration (legacy)
 └── entrypoint.sh               # Startup script with GPU setup
@@ -134,9 +134,9 @@ knowledge-augur-volume-init:
 3. Drop privileges from root to `ollama-user` using `gosu`
 4. Start Ollama server in background
 5. Wait for server readiness (up to 60 seconds)
-6. Pull base models (`gpt-oss:20b`, `qwen3:14b`) if not present
-7. Create custom models from Modelfiles (`qwen3-14b-rag`, `gpt-oss20b-igpu`, `gpt-oss20b-cpu`)
-8. Preload configured model (default: `qwen3-14b-rag`, configurable via `AUGUR_KNOWLEDGE_MODEL`)
+6. Pull base models (`gpt-oss:20b`, `qwen3:8b`) if not present
+7. Create custom models from Modelfiles (`qwen3-8b-rag`, `gpt-oss20b-igpu`, `gpt-oss20b-cpu`)
+8. Preload configured model (default: `qwen3-8b-rag`, configurable via `AUGUR_KNOWLEDGE_MODEL`)
 
 ## API Integration
 
@@ -147,7 +147,7 @@ The `OllamaGenerator` in rag-orchestrator consumes knowledge-augur:
 ```go
 // Configuration
 KnowledgeAugurURL:   getEnv("AUGUR_EXTERNAL", "http://augur-external:11435")
-KnowledgeAugurModel: getEnv("AUGUR_KNOWLEDGE_MODEL", "qwen3-14b-rag")
+KnowledgeAugurModel: getEnv("AUGUR_KNOWLEDGE_MODEL", "qwen3-8b-rag")
 
 // Initialization
 generator := rag_augur.NewOllamaGenerator(
@@ -202,7 +202,7 @@ Configure via `.env` or `.env.template`:
 |----------|---------|-------------|
 | `AUGUR_EXTERNAL` | `http://augur-external:11435` | URL for rag-orchestrator to reach knowledge-augur |
 | `AUGUR_EXTERNAL_HOST` | `0.0.0.0` | Host binding for extra_hosts resolution |
-| `AUGUR_KNOWLEDGE_MODEL` | `qwen3-14b-rag` | Model name to use for generation |
+| `AUGUR_KNOWLEDGE_MODEL` | `qwen3-8b-rag` | Model name to use for generation |
 | `OLLAMA_TIMEOUT` | `300` | Request timeout in seconds |
 
 ## Health Check
@@ -227,7 +227,7 @@ curl http://localhost:11435/api/tags | jq '.models[].name'
 
 # Test generation
 curl http://localhost:11435/api/chat \
-  -d '{"model":"qwen3-14b-rag","messages":[{"role":"user","content":"Hello"}],"think":false}'
+  -d '{"model":"qwen3-8b-rag","messages":[{"role":"user","content":"Hello"}],"think":false}'
 ```
 
 ## Logging
@@ -277,7 +277,7 @@ docker compose -f compose.augur.yaml up --build knowledge-augur -d
 
 To update Modelfile parameters:
 
-1. Edit `knowledge-augur/Modelfile.qwen3-14b-rag`
+1. Edit `knowledge-augur/Modelfile.qwen3-8b-rag`
 2. Rebuild the container: `docker compose -f compose.augur.yaml up --build knowledge-augur -d`
 3. The entrypoint will recreate the custom model on startup
 
