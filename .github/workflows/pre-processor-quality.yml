@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/reusable-test-go.yaml
     with:
       working-directory: "pre-processor/app"
-      go-version: "1.24"
+      go-version: "1.25"
       coverage-flags: "pre-processor"
       sparse-checkout: "pre-processor"
       upload-coverage: true
@@ -34,7 +34,7 @@ jobs:
     needs: tests
     with:
       working-directory: "pre-processor/app"
-      go-version: "1.24"
+      go-version: "1.25"
       upload-sarif: false
     permissions:
       contents: read
