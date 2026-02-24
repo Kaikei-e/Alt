@@ -15,6 +15,9 @@
 
 set -euo pipefail
 
+# Docker Compose設定ファイルのパス
+export COMPOSE_FILE="compose/compose.yaml"
+
 # デフォルト設定
 BACKUP_FORMAT="sql"
 OUTPUT_DIR="./backups"
