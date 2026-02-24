@@ -129,12 +129,9 @@ export async function registerRssFeed(
 	cookie: string | null,
 	url: string,
 ): Promise<void> {
-	return callBackendAPIWithBody(
-		"/v1/rss-feed-link/register",
-		cookie,
-		"POST",
-		{ url },
-	);
+	return callBackendAPIWithBody("/v1/rss-feed-link/register", cookie, "POST", {
+		url,
+	});
 }
 
 /**

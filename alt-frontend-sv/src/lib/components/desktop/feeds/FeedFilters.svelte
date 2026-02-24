@@ -8,7 +8,11 @@ interface Props {
 	sortBy?: string;
 	excludedFeedLinkId?: string | null;
 	feedSources?: ConnectFeedSource[];
-	onFilterChange: (filters: { unreadOnly: boolean; sortBy: string; excludedFeedLinkId: string | null }) => void;
+	onFilterChange: (filters: {
+		unreadOnly: boolean;
+		sortBy: string;
+		excludedFeedLinkId: string | null;
+	}) => void;
 }
 
 let {
@@ -32,23 +36,39 @@ $effect.pre(() => {
 function handleUnreadChange(event: Event) {
 	const target = event.target as HTMLInputElement;
 	localUnreadOnly = target.checked;
-	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy, excludedFeedLinkId: localExcludedFeedLinkId });
+	onFilterChange({
+		unreadOnly: localUnreadOnly,
+		sortBy: localSortBy,
+		excludedFeedLinkId: localExcludedFeedLinkId,
+	});
 }
 
 function handleSortChange(event: Event) {
 	const target = event.target as HTMLSelectElement;
 	localSortBy = target.value;
-	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy, excludedFeedLinkId: localExcludedFeedLinkId });
+	onFilterChange({
+		unreadOnly: localUnreadOnly,
+		sortBy: localSortBy,
+		excludedFeedLinkId: localExcludedFeedLinkId,
+	});
 }
 
 function handleExclude(feedLinkId: string) {
 	localExcludedFeedLinkId = feedLinkId;
-	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy, excludedFeedLinkId: localExcludedFeedLinkId });
+	onFilterChange({
+		unreadOnly: localUnreadOnly,
+		sortBy: localSortBy,
+		excludedFeedLinkId: localExcludedFeedLinkId,
+	});
 }
 
 function handleClearExclusion() {
 	localExcludedFeedLinkId = null;
-	onFilterChange({ unreadOnly: localUnreadOnly, sortBy: localSortBy, excludedFeedLinkId: null });
+	onFilterChange({
+		unreadOnly: localUnreadOnly,
+		sortBy: localSortBy,
+		excludedFeedLinkId: null,
+	});
 }
 </script>
 

@@ -1,5 +1,8 @@
 <script lang="ts">
-import { updateFeedReadStatusClient, listSubscriptionsClient } from "$lib/api/client/feeds";
+import {
+	updateFeedReadStatusClient,
+	listSubscriptionsClient,
+} from "$lib/api/client/feeds";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
@@ -14,7 +17,11 @@ import { onMount } from "svelte";
 // URL-based tracking to prevent race conditions
 let selectedFeedUrl = $state<string | null>(null);
 let isModalOpen = $state(false);
-let filters = $state({ unreadOnly: false, sortBy: "date_desc", excludedFeedLinkId: null as string | null });
+let filters = $state({
+	unreadOnly: false,
+	sortBy: "date_desc",
+	excludedFeedLinkId: null as string | null,
+});
 let feedGridApi = $state<FeedGridApi | null>(null);
 let feedSources = $state<ConnectFeedSource[]>([]);
 

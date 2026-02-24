@@ -1,5 +1,11 @@
 <script lang="ts">
-import { BarChart3, TrendingUp, FileText, CheckCircle, RefreshCw } from "@lucide/svelte";
+import {
+	BarChart3,
+	TrendingUp,
+	FileText,
+	CheckCircle,
+	RefreshCw,
+} from "@lucide/svelte";
 import { onMount } from "svelte";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";

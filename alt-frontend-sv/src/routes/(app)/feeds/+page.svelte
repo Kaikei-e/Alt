@@ -13,7 +13,10 @@ import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
 import MobileFeedsHero from "$lib/components/mobile/MobileFeedsHero.svelte";
 
-import { updateFeedReadStatusClient, listSubscriptionsClient } from "$lib/api/client/feeds";
+import {
+	updateFeedReadStatusClient,
+	listSubscriptionsClient,
+} from "$lib/api/client/feeds";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
@@ -30,7 +33,11 @@ const { isDesktop } = useViewport();
 // --- Desktop state ---
 let selectedFeedUrl = $state<string | null>(null);
 let isModalOpen = $state(false);
-let filters = $state({ unreadOnly: false, sortBy: "date_desc", excludedFeedLinkId: null as string | null });
+let filters = $state({
+	unreadOnly: false,
+	sortBy: "date_desc",
+	excludedFeedLinkId: null as string | null,
+});
 let feedGridApi = $state<FeedGridApi | null>(null);
 let feedSources = $state<ConnectFeedSource[]>([]);
 let isProcessingMarkAsRead = $state(false);

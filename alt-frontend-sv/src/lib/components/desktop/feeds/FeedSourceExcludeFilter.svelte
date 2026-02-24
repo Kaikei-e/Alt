@@ -9,7 +9,8 @@ interface Props {
 	onClearExclusion: () => void;
 }
 
-let { sources, excludedSourceId, onExclude, onClearExclusion }: Props = $props();
+let { sources, excludedSourceId, onExclude, onClearExclusion }: Props =
+	$props();
 
 let query = $state("");
 let isOpen = $state(false);

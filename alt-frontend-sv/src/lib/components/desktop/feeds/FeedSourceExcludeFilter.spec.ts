@@ -45,7 +45,10 @@ const mockSources: MockFeedSource[] = [
 	},
 ];
 
-function filterSources(sources: MockFeedSource[], query: string): MockFeedSource[] {
+function filterSources(
+	sources: MockFeedSource[],
+	query: string,
+): MockFeedSource[] {
 	if (query.trim() === "") return [];
 	return sources
 		.filter((s) => s.url.toLowerCase().includes(query.toLowerCase()))
@@ -105,9 +108,9 @@ describe("FeedSourceExcludeFilter logic", () => {
 
 	describe("extractDomain", () => {
 		it("extracts hostname from URL", () => {
-			expect(extractDomain("https://feeds.theguardian.com/theguardian/rss")).toBe(
-				"feeds.theguardian.com",
-			);
+			expect(
+				extractDomain("https://feeds.theguardian.com/theguardian/rss"),
+			).toBe("feeds.theguardian.com");
 		});
 
 		it("returns the input for invalid URLs", () => {

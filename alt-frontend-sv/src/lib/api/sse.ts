@@ -15,12 +15,7 @@ export function setupSSE(
 	onData: (data: UnsummarizedFeedStatsSummary) => void,
 	onError?: () => void,
 ): EventSource | null {
-	const { eventSource } = setupSSEWithReconnect(
-		endpoint,
-		onData,
-		onError,
-		0,
-	);
+	const { eventSource } = setupSSEWithReconnect(endpoint, onData, onError, 0);
 	return eventSource;
 }
 

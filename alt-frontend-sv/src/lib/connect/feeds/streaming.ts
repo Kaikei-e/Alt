@@ -198,7 +198,9 @@ function processStreamResponse(
 }
 
 /** Convert a proto response to a StreamSummarizeChunk. */
-function toSummarizeChunk(response: StreamSummarizeResponse): StreamSummarizeChunk {
+function toSummarizeChunk(
+	response: StreamSummarizeResponse,
+): StreamSummarizeChunk {
 	return {
 		chunk: response.chunk,
 		isFinal: response.isFinal,
