@@ -15,10 +15,10 @@
     "@std/testing/bdd": "jsr:@std/testing@^1.0.17/bdd",
     "@std/testing/mock": "jsr:@std/testing@^1.0.17/mock",
     "@opentelemetry/api": "npm:@opentelemetry/api@1.9.0",
-    "@opentelemetry/api-logs": "npm:@opentelemetry/api-logs@0.211.0",
-    "@opentelemetry/sdk-logs": "npm:@opentelemetry/sdk-logs@0.211.0",
-    "@opentelemetry/exporter-logs-otlp-http": "npm:@opentelemetry/exporter-logs-otlp-http@0.211.0",
-    "@opentelemetry/resources": "npm:@opentelemetry/resources@2.5.0",
+    "@opentelemetry/api-logs": "npm:@opentelemetry/api-logs@0.212.0",
+    "@opentelemetry/sdk-logs": "npm:@opentelemetry/sdk-logs@0.212.0",
+    "@opentelemetry/exporter-logs-otlp-http": "npm:@opentelemetry/exporter-logs-otlp-http@0.212.0",
+    "@opentelemetry/resources": "npm:@opentelemetry/resources@2.5.1",
     "@opentelemetry/semantic-conventions": "npm:@opentelemetry/semantic-conventions@1.39.0"
   }
 }
