@@ -3,6 +3,7 @@ package backend_api
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/url"
 
 	"connectrpc.com/connect"
@@ -31,7 +32,7 @@ func (r *FeedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain
 
 	protoReq := &backendv1.ListFeedURLsRequest{
 		Cursor: cursorStr,
-		Limit:  int32(limit),
+		Limit:  int32(min(limit, math.MaxInt32)), // #nosec G115 -- clamped to int32 range
 	}
 
 	req := connect.NewRequest(protoReq)

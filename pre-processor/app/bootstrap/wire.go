@@ -174,7 +174,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 // for Docker Secrets compatibility.
 func readSecret(key string) string {
 	if filePath := os.Getenv(key + "_FILE"); filePath != "" {
-		content, err := os.ReadFile(filePath)
+		content, err := os.ReadFile(filePath) // #nosec G304 -- filePath comes from trusted env var for Docker Secrets
 		if err == nil {
 			return strings.TrimSpace(string(content))
 		}

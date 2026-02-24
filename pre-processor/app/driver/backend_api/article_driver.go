@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"time"
 
@@ -110,7 +111,7 @@ func (r *ArticleRepository) CheckExists(ctx context.Context, urls []string) (boo
 // FindForSummarization finds articles that need summarization via the backend API.
 func (r *ArticleRepository) FindForSummarization(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error) {
 	protoReq := &backendv1.ListUnsummarizedArticlesRequest{
-		Limit: int32(limit),
+		Limit: int32(min(limit, math.MaxInt32)), // #nosec G115 -- clamped to int32 range
 	}
 	if cursor != nil {
 		if cursor.LastCreatedAt != nil {

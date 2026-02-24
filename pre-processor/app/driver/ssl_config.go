@@ -135,6 +135,7 @@ func NewDatabaseConfigWithPrefix(prefix string) *DatabaseConfig {
 	password := getEnvOrDefault(prefix+"DB_PASSWORD", "")
 	if password == "" {
 		if filePath := os.Getenv(prefix + "DB_PASSWORD_FILE"); filePath != "" {
+			// #nosec G304 -- filePath comes from trusted env var for Docker Secrets
 			if content, err := os.ReadFile(filePath); err == nil {
 				password = strings.TrimSpace(string(content))
 			}

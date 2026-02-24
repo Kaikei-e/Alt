@@ -3,6 +3,7 @@ package backend_api
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -52,7 +53,7 @@ func (r *SummaryRepository) Create(ctx context.Context, summary *domain.ArticleS
 // FindArticlesWithSummaries finds articles with summaries for quality checking via the backend API.
 func (r *SummaryRepository) FindArticlesWithSummaries(ctx context.Context, cursor *domain.Cursor, limit int) ([]*domain.ArticleWithSummary, *domain.Cursor, error) {
 	protoReq := &backendv1.FindArticlesWithSummariesRequest{
-		Limit: int32(limit),
+		Limit: int32(min(limit, math.MaxInt32)), // #nosec G115 -- clamped to int32 range
 	}
 
 	if cursor != nil {

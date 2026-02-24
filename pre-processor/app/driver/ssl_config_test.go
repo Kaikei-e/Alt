@@ -112,7 +112,7 @@ func TestNewDatabaseConfigWithPrefix_PasswordFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	_, _ = tmpFile.WriteString("secret_from_file\n")
 	_ = tmpFile.Close()
