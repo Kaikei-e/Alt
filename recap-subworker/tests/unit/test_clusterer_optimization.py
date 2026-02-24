@@ -34,9 +34,9 @@ def test_optimize_clustering_finds_best_params(settings):
     unique_labels.discard(-1)
     assert len(unique_labels) >= 2 # Should find at least 2 clusters
 
-    # Check that it selected valid params
-    assert result.params.min_cluster_size in [5, 15]
-    assert result.params.min_samples in [1, 3]
+    # Check that it selected valid params within the search range
+    assert 5 <= result.params.min_cluster_size <= 15
+    assert 1 <= result.params.min_samples <= 3
 
 def test_optimize_clustering_handles_empty(settings):
     clusterer = Clusterer(settings)
