@@ -42,7 +42,8 @@ Complete reference for all environment variables used by Recap Worker.
 |----------|---------|-------------|
 | `LLM_MAX_CONCURRENCY` | `1` | Maximum number of simultaneous clustering jobs (summary generation is always sequential) |
 | `LLM_PROMPT_VERSION` | `recap-ja-v2` | Prompt blueprint version sent to news-creator |
-| `LLM_SUMMARY_TIMEOUT_SECS` | `600` | Timeout for summary generation requests to news-creator (seconds). Summary generation runs sequentially in a queue, so longer timeouts are safe |
+| `LLM_SUMMARY_TIMEOUT_SECS` | `900` | Timeout for a single genre's summary generation (seconds). Increased from 600 to accommodate hierarchical Map-Reduce (3-12 LLM calls per genre) |
+| `RECAP_BATCH_SUMMARY_CHUNK_SIZE` | `3` | Number of summary requests per batch API call. Reduced from 25→10→3 to prevent batch HTTP timeout (10 genres × Map-Reduce exceeded 1800s) |
 
 ### Alt Backend Client
 
@@ -71,7 +72,8 @@ Complete reference for all environment variables used by Recap Worker.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RECAP_WINDOW_DAYS` | `7` | Lookback window (in days) for the recap job |
+| `RECAP_WINDOW_DAYS` | `7` | Default lookback window (in days) for the 7-day recap job |
+| `RECAP_3DAYS_WINDOW_DAYS` | `3` | Lookback window (in days) for the 3-day recap job |
 | `RECAP_GENRES` | `ai,tech,business,politics,health,sports,science,entertainment,world,security,product,design,culture,environment,lifestyle,art_culture,developer_insights,pro_it_media,consumer_tech,global_politics,environment_policy,society_justice,travel_lifestyle,security_policy,business_finance,ai_research,ai_policy,games_puzzles,other` | Comma-separated genres processed during each run |
 
 ### Genre Model & Refinement Controls
@@ -137,10 +139,12 @@ RECAP_WORKER_HTTP_BIND=0.0.0.0:9005
 # LLM
 LLM_MAX_CONCURRENCY=1
 LLM_PROMPT_VERSION=recap-ja-v2
-LLM_SUMMARY_TIMEOUT_SECS=600
+LLM_SUMMARY_TIMEOUT_SECS=900
+RECAP_BATCH_SUMMARY_CHUNK_SIZE=3
 
 # Batch processing
 RECAP_WINDOW_DAYS=7
+RECAP_3DAYS_WINDOW_DAYS=3
 RECAP_GENRES=ai,tech,business,politics,health,sports,science,entertainment,world,security,product,design,culture,environment,lifestyle,art_culture,developer_insights,pro_it_media,consumer_tech,global_politics,environment_policy,society_justice,travel_lifestyle,security_policy,business_finance,ai_research,ai_policy,games_puzzles,other
 
 # Genre refinement
