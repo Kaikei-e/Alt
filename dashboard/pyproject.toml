@@ -4,10 +4,10 @@ version = "0.1.0"
 description = "Alt Platform Dashboard"
 requires-python = ">=3.12"
 dependencies = [
-    "streamlit==1.51.0",
-    "pandas==2.2.1",
-    "sqlalchemy==2.0.28",
-    "psycopg2-binary==2.9.9",
+    "streamlit==1.54.0",
+    "pandas==2.2.3",
+    "sqlalchemy==2.0.46",
+    "psycopg2-binary==2.9.11",
     "psutil>=5.9.0",
 ]
 
