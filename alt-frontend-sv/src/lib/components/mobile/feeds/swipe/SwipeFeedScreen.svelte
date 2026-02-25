@@ -5,15 +5,18 @@ import {
 	getFeedContentOnTheFlyClient,
 	getFeedsWithCursorClient,
 	getReadFeedsWithCursorClient,
+	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "$lib/api/client";
 import { Button } from "$lib/components/ui/button";
+import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import { canonicalize } from "$lib/utils/feed";
 import FloatingMenu from "./FloatingMenu.svelte";
 import SwipeFeedCard from "./SwipeFeedCard.svelte";
+import SwipeFilterSortSheet from "./SwipeFilterSortSheet.svelte";
 import SwipeLoadingOverlay from "./SwipeLoadingOverlay.svelte";
 
 interface Props {
@@ -40,6 +43,11 @@ let readFeeds = $state<Set<string>>(new Set());
 let activeIndex = $state(0);
 let isInitialLoading = $state(true);
 let liveRegionMessage = $state("");
+
+// Filter & sort state
+let excludedSourceId = $state<string | null>(null);
+let feedSources = $state<ConnectFeedSource[]>([]);
+let sortOrder = $state<"newest" | "oldest">("newest");
 
 // Initialize state from props
 $effect(() => {
@@ -88,6 +96,15 @@ onMount(() => {
 	}
 });
 
+// Load feed sources for filter
+onMount(async () => {
+	try {
+		feedSources = await listSubscriptionsClient();
+	} catch (e) {
+		console.error("Failed to load feed sources:", e);
+	}
+});
+
 // Prefetch next feeds
 $effect(() => {
 	if (feeds.length > 0) {
@@ -120,6 +137,7 @@ async function loadMore() {
 			const feedsPromise = getFeedsWithCursorClient(
 				cursor ?? undefined,
 				PAGE_SIZE,
+				excludedSourceId ?? undefined,
 			);
 
 			// feed取得を開始（article取得は後で開始）
@@ -186,6 +204,7 @@ async function loadMore() {
 			const res = await getFeedsWithCursorClient(
 				cursor ?? undefined,
 				PAGE_SIZE,
+				excludedSourceId ?? undefined,
 			);
 			const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
 
@@ -207,6 +226,25 @@ async function loadMore() {
 			isInitialLoading = false;
 		}
 	}
+}
+
+function handleExclude(id: string) {
+	excludedSourceId = id;
+	resetAndReload();
+}
+
+function handleClearExclusion() {
+	excludedSourceId = null;
+	resetAndReload();
+}
+
+function resetAndReload() {
+	feeds = [];
+	activeIndex = 0;
+	cursor = null;
+	hasMore = true;
+	isInitialLoading = true;
+	void loadMore();
 }
 
 async function handleDismiss(_direction: number) {
@@ -317,5 +355,13 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
   {/if}
 
   <SwipeLoadingOverlay isVisible={isLoading} />
+  <SwipeFilterSortSheet
+    sources={feedSources}
+    {excludedSourceId}
+    {sortOrder}
+    onExclude={handleExclude}
+    onClearExclusion={handleClearExclusion}
+    onSortChange={(order) => { sortOrder = order; }}
+  />
   <FloatingMenu />
 </div>

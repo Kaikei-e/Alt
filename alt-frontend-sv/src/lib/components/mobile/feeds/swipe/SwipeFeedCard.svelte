@@ -20,7 +20,7 @@ import type { RenderFeed } from "$lib/schema/feed";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
 import {
 	createClientTransport,
-	streamSummarizeWithRenderer,
+	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
 
 interface Props {
@@ -56,6 +56,8 @@ let isContentExpanded = $state(false);
 let fullContent = $state<string | null>(null);
 let isLoadingContent = $state(false);
 let contentError = $state<string | null>(null);
+
+let summaryAbortController = $state<AbortController | null>(null);
 
 let isFavoriting = $state(false);
 let isFavorited = $state(false);
@@ -179,6 +181,13 @@ $effect(() => {
 	};
 });
 
+// Abort in-flight summary stream when component is destroyed (e.g., swipe away)
+$effect(() => {
+	return () => {
+		summaryAbortController?.abort();
+	};
+});
+
 async function handleToggleContent() {
 	if (!isContentExpanded && !fullContent) {
 		// Use normalizedUrl for cache access (consistent with articlePrefetcher)
@@ -210,125 +219,128 @@ async function handleToggleContent() {
 	isContentExpanded = !isContentExpanded;
 }
 
-async function handleGenerateAISummary() {
+function handleGenerateAISummary() {
 	// Hide existing SUMMARY section
 	isAISummaryRequested = true;
 	isSummarizing = true;
 	summaryError = null;
 	aiSummary = "";
 
-	try {
-		// Use Connect-RPC streaming with renderer
-		const transport = createClientTransport();
-		const result = await streamSummarizeWithRenderer(
-			transport,
-			{
-				feedUrl: feed.link,
-				title: feed.title,
-			},
-			(chunk) => {
-				aiSummary = (aiSummary || "") + chunk;
-			},
-			{
-				tick,
-				typewriter: true, // Enable typewriter effect
-				typewriterDelay: 10, // 10ms delay per char
-				onChunk: (
-					chunkCount,
-					chunkSize,
-					decodedLength,
-					totalLength,
-					preview,
-				) => {
-					// Hide "Now summarizing..." when first chunk arrives
-					if (chunkCount === 1) {
-						isSummarizing = false;
-					}
-					if (chunkCount <= 5) {
-						console.log("[StreamSummarize] Chunk received and rendered", {
-							chunkCount,
-							chunkSize,
-							decodedLength,
-							totalLength,
-							preview,
-						});
-					}
-				},
-				onComplete: (totalLength, chunkCount) => {
-					console.log("[StreamSummarize] Final chunk decoded", {
-						chunkCount: chunkCount + 1,
+	// Abort any previous in-flight summary request
+	summaryAbortController?.abort();
+
+	const transport = createClientTransport();
+	summaryAbortController = streamSummarizeWithAbortAdapter(
+		transport,
+		{
+			feedUrl: feed.link,
+			title: feed.title,
+		},
+		(chunk) => {
+			aiSummary = (aiSummary || "") + chunk;
+		},
+		{
+			tick,
+			typewriter: true,
+			typewriterDelay: 10,
+			onChunk: (
+				chunkCount,
+				chunkSize,
+				decodedLength,
+				totalLength,
+				preview,
+			) => {
+				if (chunkCount === 1) {
+					isSummarizing = false;
+				}
+				if (chunkCount <= 5) {
+					console.log("[StreamSummarize] Chunk received and rendered", {
+						chunkCount,
+						chunkSize,
+						decodedLength,
 						totalLength,
+						preview,
 					});
-				},
+				}
 			},
-		);
+			onComplete: (totalLength, chunkCount) => {
+				console.log("[StreamSummarize] Final chunk decoded", {
+					chunkCount: chunkCount + 1,
+					totalLength,
+				});
+			},
+		},
+		(_result) => {
+			// onComplete callback
+			summaryAbortController = null;
+		},
+		async (err) => {
+			// onError callback
+			summaryAbortController = null;
 
-		const hasReceivedData = result.hasReceivedData;
-	} catch (err) {
-		const errorMessage = err instanceof Error ? err.message : String(err);
-		const isAuthError =
-			errorMessage.includes("403") ||
-			errorMessage.includes("401") ||
-			errorMessage.includes("Forbidden") ||
-			errorMessage.includes("Authentication") ||
-			errorMessage.includes("unauthenticated");
+			const errorMessage = err instanceof Error ? err.message : String(err);
 
-		console.error("[StreamSummarize] Error streaming summary:", {
-			error: errorMessage,
-			isAuthError,
-			hasPartialData: !!aiSummary && aiSummary.length > 0,
-		});
-
-		// Don't retry on authentication errors - user needs to re-authenticate
-		if (isAuthError) {
-			summaryError =
-				"Authentication failed. Please refresh the page and try again.";
-			isSummarizing = false;
-			return;
-		}
-
-		// If we have partial data, don't fallback - show what we have
-		if (aiSummary && aiSummary.length > 0) {
-			console.warn(
-				"[StreamSummarize] Using partial summary due to stream error",
-			);
-			summaryError = "Stream interrupted. Summary may be incomplete.";
-			isSummarizing = false;
-			return;
-		}
-
-		// Fallback to legacy endpoint only if no data was received
-		console.log("[StreamSummarize] Falling back to legacy endpoint");
-		try {
-			const res = await summarizeArticleClient(feed.link);
-			if (res.success && res.summary) {
-				// Use typewriter effect for fallback legacy summary too
-				isSummarizing = false; // Stop spinner immediately as we have data
-				const typewriter = simulateTypewriterEffect(
-					(char) => {
-						aiSummary = (aiSummary || "") + char;
-					},
-					{ tick, delay: 10 },
-				);
-				await typewriter.add(res.summary);
-			} else {
-				isSummarizing = false;
-				summaryError = "Failed to generate the summary";
+			// Ignore abort errors (expected when swiping away)
+			if (errorMessage.includes("abort") || errorMessage.includes("cancel")) {
+				return;
 			}
-		} catch (legacyErr) {
-			console.error(
-				"[StreamSummarize] Legacy endpoint also failed:",
-				legacyErr,
-			);
-			isSummarizing = false;
-			summaryError = "Failed to generate the summary. Please try again.";
-		}
-	} finally {
-		// Set isSummarizing to false if it's still true (e.g. total failure or completion)
-		if (isSummarizing && aiSummary === "") {
-			isSummarizing = false;
-		}
-	}
+
+			const isAuthError =
+				errorMessage.includes("403") ||
+				errorMessage.includes("401") ||
+				errorMessage.includes("Forbidden") ||
+				errorMessage.includes("Authentication") ||
+				errorMessage.includes("unauthenticated");
+
+			console.error("[StreamSummarize] Error streaming summary:", {
+				error: errorMessage,
+				isAuthError,
+				hasPartialData: !!aiSummary && aiSummary.length > 0,
+			});
+
+			if (isAuthError) {
+				summaryError =
+					"Authentication failed. Please refresh the page and try again.";
+				isSummarizing = false;
+				return;
+			}
+
+			if (aiSummary && aiSummary.length > 0) {
+				console.warn(
+					"[StreamSummarize] Using partial summary due to stream error",
+				);
+				summaryError = "Stream interrupted. Summary may be incomplete.";
+				isSummarizing = false;
+				return;
+			}
+
+			// Fallback to legacy endpoint only if no data was received
+			console.log("[StreamSummarize] Falling back to legacy endpoint");
+			try {
+				const res = await summarizeArticleClient(feed.link);
+				if (res.success && res.summary) {
+					isSummarizing = false;
+					const typewriter = simulateTypewriterEffect(
+						(char) => {
+							aiSummary = (aiSummary || "") + char;
+						},
+						{ tick, delay: 10 },
+					);
+					await typewriter.add(res.summary);
+				} else {
+					isSummarizing = false;
+					summaryError = "Failed to generate the summary";
+				}
+			} catch (legacyErr) {
+				console.error(
+					"[StreamSummarize] Legacy endpoint also failed:",
+					legacyErr,
+				);
+				isSummarizing = false;
+				summaryError = "Failed to generate the summary. Please try again.";
+			}
+		},
+	);
 }
 
 async function handleFavorite() {

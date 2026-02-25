@@ -46,11 +46,28 @@ vi.mock("$lib/api/client", () => ({
 // Mock Connect RPC functions
 vi.mock("$lib/connect", () => ({
 	createClientTransport: vi.fn(() => ({})),
-	streamSummarizeWithRenderer: vi.fn(() =>
-		Promise.resolve({
-			hasReceivedData: true,
-			articleId: "article-123",
-		}),
+	streamSummarizeWithAbortAdapter: vi.fn(
+		(
+			_transport: unknown,
+			_options: unknown,
+			_updateState: unknown,
+			_rendererOptions: unknown,
+			onComplete?: (result: unknown) => void,
+			_onError?: (error: Error) => void,
+		) => {
+			// Simulate immediate completion
+			if (onComplete) {
+				onComplete({
+					hasReceivedData: true,
+					articleId: "article-123",
+					chunkCount: 1,
+					totalLength: 20,
+					wasCached: false,
+				});
+			}
+			const controller = new AbortController();
+			return controller;
+		},
 	),
 }));
 
@@ -245,6 +262,45 @@ describe("SwipeFeedCard", () => {
 
 			// The component should have the content ready without fetching
 			await expect.element(page.getByTestId("swipe-card")).toBeInTheDocument();
+		});
+	});
+
+	describe("summary abort on destroy", () => {
+		it("aborts summary stream when component is destroyed", async () => {
+			const { streamSummarizeWithAbortAdapter } = await import(
+				"$lib/connect"
+			);
+			const mockAbortController = new AbortController();
+			const abortSpy = vi.spyOn(mockAbortController, "abort");
+
+			// Don't call onComplete so stream stays "in-flight"
+			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementation(() => {
+				return mockAbortController;
+			});
+
+			const { unmount } = render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			// Click Summary button to start streaming
+			const summaryButton = page.getByRole("button", { name: /summary/i });
+			await summaryButton.click();
+			await new Promise((resolve) => setTimeout(resolve, 50));
+
+			// Destroy component (simulates swiping away)
+			unmount();
+			await new Promise((resolve) => setTimeout(resolve, 50));
+
+			expect(abortSpy).toHaveBeenCalled();
+		});
+
+		it("does not error when destroyed without active summary", async () => {
+			const { unmount } = render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			// Destroy without ever requesting summary - should not throw
+			expect(() => unmount()).not.toThrow();
 		});
 	});
 
