@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"pre-processor/domain"
 	"pre-processor/driver"
@@ -57,7 +58,17 @@ func (s *qualityCheckerService) CheckQuality(ctx context.Context, batchSize int)
 	}
 
 	// Process each article with summary for quality check using LLM scoring
-	for _, articleWithSummary := range articlesWithSummaries {
+	for i, articleWithSummary := range articlesWithSummaries {
+		// Yield between items so other BE requests (e.g. summarize queue worker)
+		// can acquire the semaphore slot
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return result, ctx.Err()
+			case <-time.After(3 * time.Second):
+			}
+		}
+
 		s.logger.InfoContext(ctx, "processing article for quality check", "article_id", articleWithSummary.ArticleID)
 
 		// Convert domain.ArticleWithSummary to driver.ArticleWithSummary for quality checker

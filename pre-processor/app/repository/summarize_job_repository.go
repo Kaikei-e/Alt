@@ -250,7 +250,7 @@ func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) 
 		       retry_count, max_retries, created_at, started_at, completed_at
 		FROM summarize_job_queue
 		WHERE status = 'pending'
-		ORDER BY created_at ASC
+		ORDER BY created_at DESC
 		LIMIT $1
 		FOR UPDATE SKIP LOCKED
 	`

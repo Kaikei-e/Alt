@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	batchSize = 40
+	batchSize = 10
 )
 
 // Dependencies holds all application dependencies.

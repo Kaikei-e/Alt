@@ -110,4 +110,9 @@ func TestSummarizeJobRepository_GetPendingJobs(t *testing.T) {
 		assert.Contains(t, err.Error(), "limit must be positive")
 		assert.Nil(t, jobs)
 	})
+
+	// Note: GetPendingJobs uses ORDER BY created_at DESC (LIFO) so the queue worker
+	// processes the most recently created jobs first. This optimizes for swipe-feed UIs
+	// where the user's current view should get priority.
+	// Full ordering verification requires integration tests with a real database.
 }

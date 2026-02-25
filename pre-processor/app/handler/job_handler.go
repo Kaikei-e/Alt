@@ -119,7 +119,7 @@ func (h *jobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
 	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
 		Name:            "queue-worker",
 		Interval:        10 * time.Second,
-		InitialBackoff:  30 * time.Second,
+		InitialBackoff:  15 * time.Second,
 		MaxBackoff:      5 * time.Minute,
 		BackoffOnErrors: []error{domain.ErrServiceOverloaded},
 	}, func(ctx context.Context) error {
