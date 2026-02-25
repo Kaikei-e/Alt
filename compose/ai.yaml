@@ -125,6 +125,8 @@ services:
       - SCHEDULING_AGING_THRESHOLD_SECONDS=${SCHEDULING_AGING_THRESHOLD_SECONDS:-60}
       - SCHEDULING_PRIORITY_PROMOTION_THRESHOLD_SECONDS=${SCHEDULING_PRIORITY_PROMOTION_THRESHOLD_SECONDS:-120}
       - MAX_QUEUE_DEPTH=${MAX_QUEUE_DEPTH:-10}
+      # LIFO scheduling: newest summary requests processed first (swipe-feed optimization)
+      - SCHEDULING_RT_MODE=${SCHEDULING_RT_MODE:-lifo}
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=news-creator
