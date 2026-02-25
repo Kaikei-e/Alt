@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractDomain, filterSources } from "$lib/utils/feed-source-filter";
-
-/**
- * Tests for FeedSourceExcludeFilter component-specific behavior.
- * Core filterSources/extractDomain logic is tested in feed-source-filter.spec.ts.
- */
+import { extractDomain, filterSources } from "./feed-source-filter";
 
 interface MockFeedSource {
 	id: string;
@@ -45,8 +40,8 @@ const mockSources: MockFeedSource[] = [
 	},
 ];
 
-describe("FeedSourceExcludeFilter logic", () => {
-	describe("filterSources (via shared utility)", () => {
+describe("feed-source-filter", () => {
+	describe("filterSources", () => {
 		it("returns empty array for empty query", () => {
 			expect(filterSources(mockSources, "")).toEqual([]);
 			expect(filterSources(mockSources, "  ")).toEqual([]);
@@ -88,7 +83,7 @@ describe("FeedSourceExcludeFilter logic", () => {
 		});
 	});
 
-	describe("extractDomain (via shared utility)", () => {
+	describe("extractDomain", () => {
 		it("extracts hostname from URL", () => {
 			expect(
 				extractDomain("https://feeds.theguardian.com/theguardian/rss"),
@@ -98,19 +93,11 @@ describe("FeedSourceExcludeFilter logic", () => {
 		it("returns the input for invalid URLs", () => {
 			expect(extractDomain("not-a-url")).toBe("not-a-url");
 		});
-	});
 
-	describe("excluded source lookup", () => {
-		it("finds excluded source by ID", () => {
-			const excludedSourceId = "uuid-2";
-			const excludedSource = mockSources.find((s) => s.id === excludedSourceId);
-			expect(excludedSource).toBeDefined();
-			expect(excludedSource?.url).toBe("https://news.ycombinator.com/rss");
-		});
-
-		it("returns undefined for non-existent ID", () => {
-			const excludedSource = mockSources.find((s) => s.id === "non-existent");
-			expect(excludedSource).toBeUndefined();
+		it("extracts hostname from URL with path", () => {
+			expect(
+				extractDomain("https://rss.nytimes.com/services/xml/rss/nyt/World.xml"),
+			).toBe("rss.nytimes.com");
 		});
 	});
 });

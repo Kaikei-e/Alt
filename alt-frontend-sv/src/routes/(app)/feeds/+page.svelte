@@ -1,6 +1,9 @@
 <script lang="ts">
-import { useViewport } from "$lib/stores/viewport.svelte";
-
+import { onMount } from "svelte";
+import {
+	listSubscriptionsClient,
+	updateFeedReadStatusClient,
+} from "$lib/api/client/feeds";
 // Desktop components
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
@@ -8,19 +11,14 @@ import FeedGrid, {
 	type FeedGridApi,
 } from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-
 // Mobile components
 import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
+import MobileFeedExcludeFilter from "$lib/components/mobile/feeds/MobileFeedExcludeFilter.svelte";
 import MobileFeedsHero from "$lib/components/mobile/MobileFeedsHero.svelte";
-
-import {
-	updateFeedReadStatusClient,
-	listSubscriptionsClient,
-} from "$lib/api/client/feeds";
-import type { ConnectFeedSource } from "$lib/connect/feeds";
 import { Button } from "$lib/components/ui/button";
+import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
-import { onMount } from "svelte";
+import { useViewport } from "$lib/stores/viewport.svelte";
 
 interface PageData {
 	initialFeeds?: RenderFeed[];
@@ -29,6 +27,9 @@ interface PageData {
 
 const { data }: { data: PageData } = $props();
 const { isDesktop } = useViewport();
+
+// --- Mobile state ---
+let mobileExcludedFeedLinkId = $state<string | null>(null);
 
 // --- Desktop state ---
 let selectedFeedUrl = $state<string | null>(null);
@@ -192,8 +193,17 @@ function handleFeedGridReady(api: FeedGridApi) {
 		style="background: var(--app-bg);"
 	>
 		<MobileFeedsHero />
+		<MobileFeedExcludeFilter
+			sources={feedSources}
+			excludedSourceId={mobileExcludedFeedLinkId}
+			onExclude={(id) => (mobileExcludedFeedLinkId = id)}
+			onClearExclusion={() => (mobileExcludedFeedLinkId = null)}
+		/>
 		<div class="flex-1 min-h-0 flex flex-col">
-			<FeedsClient initialFeeds={data.initialFeeds || []} />
+			<FeedsClient
+				initialFeeds={data.initialFeeds || []}
+				excludeFeedLinkId={mobileExcludedFeedLinkId}
+			/>
 		</div>
 	</div>
 {/if}

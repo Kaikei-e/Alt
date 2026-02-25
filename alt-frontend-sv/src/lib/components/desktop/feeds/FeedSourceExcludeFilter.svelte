@@ -1,6 +1,7 @@
 <script lang="ts">
-import { X, Ban } from "@lucide/svelte";
+import { Ban, X } from "@lucide/svelte";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
+import { extractDomain, filterSources } from "$lib/utils/feed-source-filter";
 
 interface Props {
 	sources: ConnectFeedSource[];
@@ -21,13 +22,7 @@ const excludedSource = $derived(
 	excludedSourceId ? sources.find((s) => s.id === excludedSourceId) : null,
 );
 
-const filteredSources = $derived(
-	query.trim() === ""
-		? []
-		: sources
-				.filter((s) => s.url.toLowerCase().includes(query.toLowerCase()))
-				.slice(0, 10),
-);
+const filteredSources = $derived(filterSources(sources, query));
 
 function handleSelect(source: ConnectFeedSource) {
 	onExclude(source.id);
@@ -73,14 +68,6 @@ function handleBlur() {
 		isOpen = false;
 		highlightedIndex = -1;
 	}, 150);
-}
-
-function extractDomain(url: string): string {
-	try {
-		return new URL(url).hostname;
-	} catch {
-		return url;
-	}
 }
 
 const listboxId = "exclude-source-listbox";

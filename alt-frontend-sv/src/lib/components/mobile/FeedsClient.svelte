@@ -15,9 +15,10 @@ import FeedCard from "./FeedCard.svelte";
 
 interface Props {
 	initialFeeds?: RenderFeed[];
+	excludeFeedLinkId?: string | null;
 }
 
-const { initialFeeds = [] }: Props = $props();
+const { initialFeeds = [], excludeFeedLinkId = null }: Props = $props();
 
 const PAGE_SIZE = 20;
 
@@ -31,6 +32,7 @@ let error = $state<Error | null>(null);
 let readFeeds = $state<Set<string>>(new Set());
 let liveRegionMessage = $state("");
 let isRetrying = $state(false);
+let useInitialFeeds = $state(true);
 
 let scrollContainerRef: HTMLDivElement | null = $state(null);
 
@@ -103,10 +105,14 @@ const loadInitial = async () => {
 	error = null;
 
 	try {
-		const response = await getFeedsWithCursorClient(undefined, PAGE_SIZE);
+		const response = await getFeedsWithCursorClient(
+			undefined,
+			PAGE_SIZE,
+			excludeFeedLinkId ?? undefined,
+		);
 
-		// If initialFeeds exist, filter out duplicates
-		if (initialFeeds.length > 0) {
+		// If initialFeeds exist and still in use, filter out duplicates
+		if (useInitialFeeds && initialFeeds.length > 0) {
 			const initialFeedUrls = new Set(
 				initialFeeds.map((feed) => feed.normalizedUrl),
 			);
@@ -150,6 +156,7 @@ const loadMore = async () => {
 		const response = await getFeedsWithCursorClient(
 			currentCursor ?? undefined,
 			PAGE_SIZE,
+			excludeFeedLinkId ?? undefined,
 		);
 
 		if (response.data.length === 0) {
@@ -201,6 +208,27 @@ const retryFetch = async () => {
 	}
 };
 
+// Track previous excludeFeedLinkId to detect changes
+let prevExcludeFeedLinkId = $state<string | null | undefined>(undefined);
+
+// React to excludeFeedLinkId changes: reset and reload feeds
+$effect(() => {
+	const currentExclude = excludeFeedLinkId;
+	if (prevExcludeFeedLinkId === undefined) {
+		// First run - just record the initial value
+		prevExcludeFeedLinkId = currentExclude;
+		return;
+	}
+	if (prevExcludeFeedLinkId !== currentExclude) {
+		prevExcludeFeedLinkId = currentExclude;
+		feeds = [];
+		cursor = null;
+		hasMore = true;
+		useInitialFeeds = false;
+		void loadInitial();
+	}
+});
+
 // Start loading feeds after initial render
 onMount(() => {
 	if (hasMore && !isLoading && feeds.length === 0) {
@@ -234,8 +262,8 @@ const handleMarkAsRead = async (rawLink: string) => {
 
 // Merge initialFeeds with fetched feeds and filter/memoize visible feeds
 const renderFeeds = $derived.by(() => {
-	// Start with initialFeeds (already RenderFeed[])
-	const allFeeds: RenderFeed[] = [...initialFeeds];
+	// Start with initialFeeds only if filter hasn't changed
+	const allFeeds: RenderFeed[] = useInitialFeeds ? [...initialFeeds] : [];
 
 	// Add fetched feeds (convert SanitizedFeed to RenderFeed)
 	if (feeds.length > 0) {
