@@ -170,6 +170,11 @@ class NewsCreatorConfig:
         # Default: 10 (fail-fast to prevent long queue waits with limited GPU slots)
         self.max_queue_depth = self._get_int("MAX_QUEUE_DEPTH", 10)
 
+        # RT queue scheduling mode: "fifo" (default) or "lifo"
+        # LIFO processes newest requests first, optimizing for swipe-feed UIs
+        # where the user's current view should get priority
+        self.scheduling_rt_mode = os.getenv("SCHEDULING_RT_MODE", "fifo").lower()
+
         # Build bucket model names set for quick lookup
         self._bucket_model_names = {
             self.model_8k_name,
@@ -190,6 +195,7 @@ class NewsCreatorConfig:
                 "scheduling_aging_threshold_seconds": self.scheduling_aging_threshold_seconds,
                 "scheduling_priority_promotion_threshold_seconds": self.scheduling_priority_promotion_threshold_seconds,
                 "scheduling_guaranteed_be_ratio": self.scheduling_guaranteed_be_ratio,
+                "scheduling_rt_mode": self.scheduling_rt_mode,
             },
         )
 

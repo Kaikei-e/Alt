@@ -45,6 +45,7 @@ class OllamaGateway(LLMProviderPort):
             priority_promotion_threshold_seconds=config.scheduling_priority_promotion_threshold_seconds,
             guaranteed_be_ratio=config.scheduling_guaranteed_be_ratio,
             max_queue_depth=config.max_queue_depth,
+            rt_scheduling_mode=config.scheduling_rt_mode,
         )
         # OOM detector and model router
         self.oom_detector = OOMDetector(enabled=config.oom_detection_enabled)

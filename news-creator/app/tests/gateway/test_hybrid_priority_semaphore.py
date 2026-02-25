@@ -1,6 +1,6 @@
 """Tests for Hybrid Priority Semaphore implementation.
 
-Tests the RT/BE scheduling, reserved slots, and aging mechanism.
+Tests the RT/BE scheduling, reserved slots, aging mechanism, and LIFO mode.
 """
 
 import asyncio
@@ -1193,3 +1193,208 @@ class TestQueueDepthLimit:
         status = semaphore.queue_status()
         assert status["available_slots"] == 1
         assert status["accepting"] is True
+
+
+class TestLIFOSchedulingMode:
+    """Tests for LIFO (Last-In-First-Out) RT queue scheduling mode.
+
+    LIFO mode allows the most recently requested summary to be processed first,
+    optimizing for the user's current view in swipe-feed UIs.
+    """
+
+    @pytest.mark.asyncio
+    async def test_lifo_rt_queue_processes_newest_first(self, hybrid_semaphore_module):
+        """3 RT requests queued; with LIFO, verify C→B→A processing order."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            rt_scheduling_mode="lifo",
+        )
+
+        processing_order = []
+
+        # Acquire the only slot
+        await semaphore.acquire(high_priority=True)
+
+        async def rt_worker(name: str):
+            await semaphore.acquire(high_priority=True)
+            processing_order.append(name)
+            semaphore.release(was_high_priority=True)
+
+        # Queue A, B, C in order with small delays to ensure distinct enqueue times
+        task_a = asyncio.create_task(rt_worker("A"))
+        await asyncio.sleep(0.01)
+        task_b = asyncio.create_task(rt_worker("B"))
+        await asyncio.sleep(0.01)
+        task_c = asyncio.create_task(rt_worker("C"))
+        await asyncio.sleep(0.01)
+
+        # Release slot - LIFO should process C first (newest)
+        semaphore.release(was_high_priority=True)
+        await asyncio.gather(task_a, task_b, task_c)
+
+        assert processing_order == ["C", "B", "A"]
+
+    @pytest.mark.asyncio
+    async def test_fifo_rt_queue_processes_oldest_first(self, hybrid_semaphore_module):
+        """Regression: with FIFO (default), verify A→B→C processing order."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            rt_scheduling_mode="fifo",
+        )
+
+        processing_order = []
+
+        # Acquire the only slot
+        await semaphore.acquire(high_priority=True)
+
+        async def rt_worker(name: str):
+            await semaphore.acquire(high_priority=True)
+            processing_order.append(name)
+            semaphore.release(was_high_priority=True)
+
+        # Queue A, B, C in order
+        task_a = asyncio.create_task(rt_worker("A"))
+        await asyncio.sleep(0.01)
+        task_b = asyncio.create_task(rt_worker("B"))
+        await asyncio.sleep(0.01)
+        task_c = asyncio.create_task(rt_worker("C"))
+        await asyncio.sleep(0.01)
+
+        # Release slot - FIFO should process A first (oldest)
+        semaphore.release(was_high_priority=True)
+        await asyncio.gather(task_a, task_b, task_c)
+
+        assert processing_order == ["A", "B", "C"]
+
+    @pytest.mark.asyncio
+    async def test_lifo_does_not_affect_be_queue(self, hybrid_semaphore_module):
+        """BE queue remains FIFO regardless of rt_scheduling_mode."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=1,
+            rt_scheduling_mode="lifo",
+        )
+
+        processing_order = []
+
+        # Acquire the BE slot
+        await semaphore.acquire(high_priority=False)
+
+        async def be_worker(name: str):
+            await semaphore.acquire(high_priority=False)
+            processing_order.append(name)
+            semaphore.release(was_high_priority=False)
+
+        # Queue BE requests
+        task_a = asyncio.create_task(be_worker("A"))
+        await asyncio.sleep(0.01)
+        task_b = asyncio.create_task(be_worker("B"))
+        await asyncio.sleep(0.01)
+        task_c = asyncio.create_task(be_worker("C"))
+        await asyncio.sleep(0.01)
+
+        # Release - BE should still be FIFO (A→B→C)
+        semaphore.release(was_high_priority=False)
+        await asyncio.gather(task_a, task_b, task_c)
+
+        assert processing_order == ["A", "B", "C"]
+
+    @pytest.mark.asyncio
+    async def test_lifo_with_cancellation(self, hybrid_semaphore_module):
+        """Cancel newest RT request in LIFO; verify second-newest processes next."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            rt_scheduling_mode="lifo",
+        )
+
+        processing_order = []
+
+        # Acquire the only slot
+        await semaphore.acquire(high_priority=True)
+
+        async def rt_worker(name: str):
+            await semaphore.acquire(high_priority=True)
+            processing_order.append(name)
+            semaphore.release(was_high_priority=True)
+
+        task_a = asyncio.create_task(rt_worker("A"))
+        await asyncio.sleep(0.01)
+        task_b = asyncio.create_task(rt_worker("B"))
+        await asyncio.sleep(0.01)
+        task_c = asyncio.create_task(rt_worker("C"))
+        await asyncio.sleep(0.01)
+
+        # Cancel C (newest) before releasing
+        task_c.cancel()
+        try:
+            await task_c
+        except asyncio.CancelledError:
+            pass
+
+        # Release slot - should process B next (second-newest in LIFO)
+        semaphore.release(was_high_priority=True)
+        await asyncio.gather(task_a, task_b, return_exceptions=True)
+
+        assert processing_order == ["B", "A"]
+
+    @pytest.mark.asyncio
+    async def test_lifo_with_guaranteed_bandwidth(self, hybrid_semaphore_module):
+        """Guaranteed BE bandwidth still works when RT queue is LIFO."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            rt_scheduling_mode="lifo",
+            guaranteed_be_ratio=2,  # Force BE after 2 consecutive RT releases
+        )
+
+        processing_order = []
+
+        # Acquire the only slot
+        await semaphore.acquire(high_priority=True)
+
+        async def rt_worker(name: str):
+            await semaphore.acquire(high_priority=True)
+            processing_order.append(name)
+            semaphore.release(was_high_priority=True)
+
+        async def be_worker(name: str):
+            await semaphore.acquire(high_priority=False)
+            processing_order.append(name)
+            semaphore.release(was_high_priority=False)
+
+        # Queue: RT-A, RT-B, BE-X
+        task_rt_a = asyncio.create_task(rt_worker("RT-A"))
+        await asyncio.sleep(0.01)
+        task_rt_b = asyncio.create_task(rt_worker("RT-B"))
+        await asyncio.sleep(0.01)
+        task_be = asyncio.create_task(be_worker("BE-X"))
+        await asyncio.sleep(0.01)
+
+        # First release (RT) - LIFO processes RT-B first
+        semaphore.release(was_high_priority=True)
+        await asyncio.sleep(0.05)
+
+        # RT-B processed, releases as RT → consecutive_rt_releases = 2
+        # Guaranteed bandwidth triggers: BE-X should be next
+        await asyncio.gather(task_rt_a, task_rt_b, task_be)
+
+        # RT-B first (LIFO), then BE-X (guaranteed bandwidth after 2 RT),
+        # then RT-A
+        assert processing_order[0] == "RT-B"
+        assert "BE-X" in processing_order
+
+    @pytest.mark.asyncio
+    async def test_default_rt_scheduling_mode_is_fifo(self, hybrid_semaphore_module):
+        """Default rt_scheduling_mode should be 'fifo'."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        semaphore = HybridPrioritySemaphore(total_slots=2)
+
+        assert semaphore._rt_scheduling_mode == "fifo"

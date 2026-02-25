@@ -63,10 +63,13 @@ class QueuedRequest:
 
     Sorting order: priority_score (ascending), then enqueue_time (ascending).
     This ensures FIFO ordering among requests with the same priority score.
+
+    For LIFO mode, enqueue_time is negated so the newest request (largest
+    real timestamp → smallest negated value) pops first from the min-heap.
     """
 
     priority_score: float  # Lower = higher priority
-    enqueue_time: float  # Used for FIFO ordering within same priority
+    enqueue_time: float  # FIFO: start_time, LIFO: -start_time
     future: asyncio.Future = field(compare=False)
     is_high_priority: bool = field(compare=False)
 
@@ -102,6 +105,7 @@ class HybridPrioritySemaphore:
         priority_promotion_threshold_seconds: float = 600.0,
         guaranteed_be_ratio: int = 5,
         max_queue_depth: int = 0,
+        rt_scheduling_mode: str = "fifo",
     ):
         if total_slots < 1:
             raise ValueError("total_slots must be >= 1")
@@ -112,6 +116,7 @@ class HybridPrioritySemaphore:
         self._rt_reserved = rt_reserved_slots
         self._be_slots = total_slots - rt_reserved_slots
         self._max_queue_depth = max_queue_depth
+        self._rt_scheduling_mode = rt_scheduling_mode
 
         # Slot counters
         self._rt_available = rt_reserved_slots
@@ -158,6 +163,7 @@ class HybridPrioritySemaphore:
                 "preemption_enabled": preemption_enabled,
                 "preemption_wait_threshold": preemption_wait_threshold,
                 "max_queue_depth": max_queue_depth,
+                "rt_scheduling_mode": rt_scheduling_mode,
             },
         )
 
@@ -400,9 +406,15 @@ class HybridPrioritySemaphore:
             # No slot available, queue the request
             future = asyncio.get_event_loop().create_future()
             priority_score = self._compute_priority_score(high_priority, start_time)
+            # LIFO mode for RT: negate enqueue_time so newest (largest timestamp)
+            # becomes smallest value and pops first from the min-heap
+            if high_priority and self._rt_scheduling_mode == "lifo":
+                enqueue_time = -start_time
+            else:
+                enqueue_time = start_time
             request = QueuedRequest(
                 priority_score=priority_score,
-                enqueue_time=start_time,
+                enqueue_time=enqueue_time,
                 future=future,
                 is_high_priority=high_priority,
             )
