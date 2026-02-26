@@ -356,7 +356,7 @@ async function handleSummarize() {
 						<div class="mb-6 p-4 bg-white rounded border border-gray-200">
 							<h3 class="text-sm font-semibold text-gray-500 mb-3">FULL ARTICLE</h3>
 							<RenderFeedDetails
-								feedDetails={articleContent ? { content: articleContent, article_id: articleID ?? "" } : null}
+								feedDetails={articleContent ? { content: articleContent, article_id: articleID ?? "", og_image_url: "" } : null}
 								error={contentError}
 							/>
 						</div>
