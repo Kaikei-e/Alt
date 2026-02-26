@@ -7,13 +7,17 @@ export default defineConfig({
 	plugins: [
 		tailwindcss(),
 		sveltekit(),
-		visualizer({
-			filename: "stats.html",
-			gzipSize: true,
-			brotliSize: true,
-			emitFile: false,
-			open: false,
-		}),
+		...(process.env.ANALYZE === "true"
+			? [
+					visualizer({
+						filename: "stats.html",
+						gzipSize: true,
+						brotliSize: true,
+						emitFile: false,
+						open: false,
+					}),
+				]
+			: []),
 	],
 	experimental: {
 		enableNativePlugin: "v1",

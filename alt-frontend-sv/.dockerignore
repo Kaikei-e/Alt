@@ -11,3 +11,22 @@ Thumbs.db
 README.md
 Dockerfile
 compose.yaml
+
+# Tests
+tests/
+playwright.config.ts
+playwright-report/
+test-results/
+
+# Documentation
+CLAUDE.md
+
+# Logs & analysis
+*.log
+stats.html
+
+# Legacy lock file
+pnpm-lock.yaml
+
+# Editor
+.vscode/

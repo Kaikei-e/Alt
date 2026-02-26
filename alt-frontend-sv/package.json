@@ -21,7 +21,7 @@
 		"test:watch": "vitest --watch",
 		"test:e2e": "bun run build && npx playwright test --reporter=list",
 		"test:e2e:ui": "npx playwright test --ui",
-		"build:analyze": "vite build && echo 'Bundle report: stats.html'"
+		"build:analyze": "ANALYZE=true vite build && echo 'Bundle report: stats.html'"
 	},
 	"dependencies": {
 		"@bufbuild/protobuf": "^2.11.0",
