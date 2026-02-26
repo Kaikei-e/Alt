@@ -30,6 +30,7 @@ import (
 	"alt/gateway/fetch_inoreader_summary_gateway"
 	"alt/gateway/fetch_recent_articles_gateway"
 	"alt/gateway/image_fetch_gateway"
+	"alt/gateway/image_proxy_gateway"
 	"alt/gateway/morning_gateway"
 	"alt/gateway/morning_letter_connect_gateway"
 	"alt/gateway/rag_connect_gateway"
@@ -81,6 +82,7 @@ import (
 	"alt/usecase/fetch_recent_articles_usecase"
 	"alt/usecase/fetch_trend_stats_usecase"
 	"alt/usecase/image_fetch_usecase"
+	"alt/usecase/image_proxy_usecase"
 	"alt/usecase/morning_usecase"
 	"alt/usecase/reading_status"
 	"alt/usecase/recap_articles_usecase"
@@ -94,6 +96,7 @@ import (
 	"alt/usecase/subscription_usecase"
 	"alt/utils"
 	"alt/utils/batch_article_fetcher"
+	"alt/utils/image_proxy"
 	"alt/utils/rate_limiter"
 	"net/http"
 	"time"
@@ -168,6 +171,9 @@ type ApplicationComponents struct {
 	FetchLatestArticleUsecase           *fetch_latest_article_usecase.FetchLatestArticleUsecase
 	FetchArticleSummaryUsecase          *fetch_article_summary_usecase.FetchArticleSummaryUsecase
 	StreamArticleTagsUsecase            *stream_article_tags_usecase.StreamArticleTagsUsecase
+
+	// Image Proxy
+	ImageProxyUsecase                   *image_proxy_usecase.ImageProxyUsecase
 
 	// Internal API gateway (service-to-service)
 	InternalArticleGateway              *internal_article_gateway.Gateway
@@ -315,6 +321,26 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	imageFetchGateway := image_fetch_gateway.NewImageFetchGateway(imageHTTPClient)
 	imageFetchUsecase := image_fetch_usecase.NewImageFetchUsecase(imageFetchGateway)
 
+	// Image proxy components
+	var imageProxyUsecaseInstance *image_proxy_usecase.ImageProxyUsecase
+	if cfg.ImageProxy.Enabled && cfg.ImageProxy.Secret != "" {
+		imageProxySigner := image_proxy.NewSigner(cfg.ImageProxy.Secret)
+		imageProxyCacheGateway := image_proxy_gateway.NewCacheGateway(altDBRepository)
+		imageProxyProcessingGateway := image_proxy_gateway.NewProcessingGateway()
+		imageProxyDynamicDomainGateway := image_proxy_gateway.NewDynamicDomainGateway(altDBRepository)
+		imageProxyUsecaseInstance = image_proxy_usecase.NewImageProxyUsecase(
+			imageFetchGateway,
+			imageProxyProcessingGateway,
+			imageProxyCacheGateway,
+			imageProxySigner,
+			imageProxyDynamicDomainGateway,
+			rateLimiter,
+			cfg.ImageProxy.MaxWidth,
+			cfg.ImageProxy.WebPQuality,
+			cfg.ImageProxy.CacheTTLMin,
+		)
+	}
+
 	// Morning letter components
 	userFeedGatewayImpl := user_feed_gateway.NewGateway(altDBRepository)
 	morningGatewayImpl := morning_gateway.NewMorningGateway(pool)
@@ -456,6 +482,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchLatestArticleUsecase:           fetchLatestArticleUsecase,
 		FetchArticleSummaryUsecase:          fetchArticleSummaryUsecase,
 		StreamArticleTagsUsecase:            streamArticleTagsUsecase,
+
+		// Image Proxy
+		ImageProxyUsecase:                   imageProxyUsecaseInstance,
 
 		// Internal API gateway
 		InternalArticleGateway:              internalArticleGatewayImpl,

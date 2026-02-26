@@ -83,6 +83,36 @@ func (r *AltDBRepository) FetchOgImageURLByArticleID(ctx context.Context, articl
 	return ogImageURL, nil
 }
 
+// FetchOgImageURLsByArticleIDs retrieves og_image_url for multiple article IDs.
+// Returns a map of articleID -> ogImageURL (only non-empty entries).
+func (r *AltDBRepository) FetchOgImageURLsByArticleIDs(ctx context.Context, articleIDs []string) (map[string]string, error) {
+	if r == nil || r.pool == nil {
+		return nil, errors.New("database connection not available")
+	}
+	if len(articleIDs) == 0 {
+		return map[string]string{}, nil
+	}
+
+	query := `SELECT article_id, COALESCE(og_image_url, '') FROM article_heads WHERE article_id = ANY($1)`
+	rows, err := r.pool.Query(ctx, query, articleIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch og_image_urls: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]string)
+	for rows.Next() {
+		var articleID, ogURL string
+		if err := rows.Scan(&articleID, &ogURL); err != nil {
+			continue
+		}
+		if ogURL != "" {
+			result[articleID] = ogURL
+		}
+	}
+	return result, nil
+}
+
 // CleanupExpiredArticleHeads deletes article_heads older than the given TTL.
 // Returns the number of deleted rows.
 func (r *AltDBRepository) CleanupExpiredArticleHeads(ctx context.Context, ttl time.Duration) (int64, error) {
