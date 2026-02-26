@@ -179,7 +179,7 @@ class TagGeneratorService:
                 logger.info("Database connection acquired successfully")
 
                 # Ensure connection starts in autocommit mode
-                if not conn.autocommit:
+                if conn is not None and not conn.autocommit:
                     conn.autocommit = True
 
                 # Process articles batch (handles its own transaction)

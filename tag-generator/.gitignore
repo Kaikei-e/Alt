@@ -1,0 +1,4 @@
+app/.hypothesis/**/*
+app/tests/data/**/*
+app/coverage.xml
+app/tests/results.xml

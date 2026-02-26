@@ -222,7 +222,7 @@ class BatchProcessor:
             return batch_stats
 
         try:
-            if conn.autocommit:
+            if conn is not None and conn.autocommit:
                 conn.autocommit = False
 
             batch_stats = self.process_articles_as_batch(conn, articles)
@@ -241,20 +241,23 @@ class BatchProcessor:
             if cast(int, batch_stats.get("successful", 0)) > 0:
                 cursor_manager.update_forward_cursor_position(latest_created_at, last_article["id"])
                 cursor_manager.update_cursor_position(latest_created_at, last_article["id"])
-                conn.commit()
+                if conn is not None:
+                    conn.commit()
             else:
-                conn.rollback()
+                if conn is not None:
+                    conn.rollback()
                 logger.warning("Transaction rolled back due to forward batch failure")
         except Exception as exc:
             logger.error("Error during forward batch processing", error=str(exc))
             try:
-                conn.rollback()
+                if conn is not None:
+                    conn.rollback()
             except Exception as rollback_error:
                 logger.error("Failed to rollback forward transaction", error=str(rollback_error))
             raise
         finally:
             try:
-                if not conn.autocommit:
+                if conn is not None and not conn.autocommit:
                     conn.autocommit = True
             except Exception as exc:
                 logger.warning("Failed to restore autocommit mode after forward batch", error=str(exc))
@@ -418,7 +421,7 @@ class BatchProcessor:
 
         # Start explicit transaction for batch processing only
         try:
-            if conn.autocommit:
+            if conn is not None and conn.autocommit:
                 conn.autocommit = False
 
             if articles_to_process:
@@ -452,15 +455,19 @@ class BatchProcessor:
                         position=last_created_at,
                         last_id=last_id,
                     )
-                    conn.commit()
+                    if conn is not None:
+                        conn.commit()
                 elif failed > 0:
-                    conn.rollback()
+                    if conn is not None:
+                        conn.rollback()
                     logger.warning("Transaction rolled back due to processing errors", failed=failed)
                 else:
-                    conn.commit()  # No articles processed, commit cleanly
+                    if conn is not None:
+                        conn.commit()  # No articles processed, commit cleanly
             else:
                 # No articles to process, still commit to end transaction cleanly
-                conn.commit()
+                if conn is not None:
+                    conn.commit()
                 # If we processed new articles in hybrid mode, return those stats
                 if new_articles_processed > 0:
                     batch_stats["total_processed"] = new_articles_processed
@@ -471,14 +478,15 @@ class BatchProcessor:
         except Exception as e:
             logger.error("Error during batch processing", error=str(e))
             try:
-                conn.rollback()
+                if conn is not None:
+                    conn.rollback()
             except Exception as rollback_error:
                 logger.error("Failed to rollback transaction", error=str(rollback_error))
             raise
         finally:
             # Reset autocommit mode
             try:
-                if not conn.autocommit:
+                if conn is not None and not conn.autocommit:
                     conn.autocommit = True
             except Exception as e:
                 logger.warning("Failed to restore autocommit mode", error=str(e))
@@ -619,7 +627,7 @@ class BatchProcessor:
         if article_tags_batch:
             try:
                 # Start transaction
-                if conn.autocommit:
+                if conn is not None and conn.autocommit:
                     conn.autocommit = False
 
                 logger.info("Upserting regenerated tags", article_count=len(article_tags_batch))
@@ -634,7 +642,8 @@ class BatchProcessor:
                 batch_stats["updated_higher_confidence"] = result.get("updated_higher_confidence", 0)
 
                 if result.get("success"):
-                    conn.commit()
+                    if conn is not None:
+                        conn.commit()
                     logger.info(
                         "Successfully regenerated tags",
                         processed=batch_stats["successful"],
@@ -642,7 +651,8 @@ class BatchProcessor:
                         skipped=batch_stats.get("skipped_lower_confidence", 0),
                     )
                 else:
-                    conn.rollback()
+                    if conn is not None:
+                        conn.rollback()
                     logger.warning(
                         "Regeneration batch completed with failures",
                         failed=batch_stats["failed"],
@@ -651,7 +661,8 @@ class BatchProcessor:
             except Exception as e:
                 logger.error("Regeneration batch upsert failed", error=str(e))
                 try:
-                    conn.rollback()
+                    if conn is not None:
+                        conn.rollback()
                 except Exception as rollback_error:
                     logger.error("Failed to rollback transaction", error=str(rollback_error))
                 batch_stats["failed"] = len(articles)
@@ -659,7 +670,7 @@ class BatchProcessor:
                 batch_stats["error"] = str(e)
             finally:
                 try:
-                    if not conn.autocommit:
+                    if conn is not None and not conn.autocommit:
                         conn.autocommit = True
                 except Exception as e:
                     logger.warning("Failed to restore autocommit mode", error=str(e))
