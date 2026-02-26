@@ -22,6 +22,7 @@ type Config struct {
 	AuthHub       AuthHubConfig       `json:"auth_hub"`
 	MQHub         MQHubConfig         `json:"mq_hub"`
 	InternalAPI   InternalAPIConfig   `json:"internal_api"`
+	ImageProxy    ImageProxyConfig    `json:"image_proxy"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -68,6 +69,16 @@ type MQHubConfig struct {
 	Enabled bool `json:"enabled" env:"MQHUB_ENABLED" default:"false"`
 	// ConnectURL is the Connect-RPC URL for mq-hub service.
 	ConnectURL string `json:"connect_url" env:"MQHUB_CONNECT_URL" default:"http://mq-hub:9500"`
+}
+
+// ImageProxyConfig holds configuration for the OGP image proxy.
+type ImageProxyConfig struct {
+	Enabled     bool   `json:"enabled" env:"IMAGE_PROXY_ENABLED" default:"true"`
+	Secret      string `json:"secret" env:"IMAGE_PROXY_SECRET"`
+	SecretFile  string `json:"-" env:"IMAGE_PROXY_SECRET_FILE"`
+	CacheTTLMin int    `json:"cache_ttl_min" env:"IMAGE_PROXY_CACHE_TTL_MINUTES" default:"720"`
+	MaxWidth    int    `json:"max_width" env:"IMAGE_PROXY_MAX_WIDTH" default:"600"`
+	WebPQuality int    `json:"webp_quality" env:"IMAGE_PROXY_WEBP_QUALITY" default:"80"`
 }
 
 // InternalAPIConfig holds configuration for the internal service-to-service API.
@@ -169,6 +180,14 @@ func NewConfig() (*Config, error) {
 		content, err := os.ReadFile(config.InternalAPI.ServiceSecretFile)
 		if err == nil {
 			config.InternalAPI.ServiceSecret = strings.TrimSpace(string(content))
+		}
+	}
+
+	// Load image proxy secret from file if configured (Docker Secrets support)
+	if config.ImageProxy.SecretFile != "" {
+		content, err := os.ReadFile(config.ImageProxy.SecretFile)
+		if err == nil {
+			config.ImageProxy.Secret = strings.TrimSpace(string(content))
 		}
 	}
 

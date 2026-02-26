@@ -24,6 +24,8 @@ message FetchArticleContentResponse {
   string article_id = 3;
   // OGP image URL (HTTPS only, empty if not found)
   string og_image_url = 4;
+  // HMAC-signed proxy URL for the OGP image (empty if image proxy disabled or no OGP image)
+  string og_image_proxy_url = 5;
 }
 
 // =============================================================================
@@ -116,6 +118,32 @@ message FetchArticleSummaryResponse {
   int32 total_matched = 2;
   // Number of requested URLs
   int32 requested_count = 3;
+}
+
+// =============================================================================
+// Image Proxy Messages
+// =============================================================================
+
+// BatchPrefetchImagesRequest requests proxy URLs for multiple articles' OGP images.
+message BatchPrefetchImagesRequest {
+  // Article IDs to prefetch images for (max 10)
+  repeated string article_ids = 1;
+}
+
+// ImageProxyInfo contains the proxy URL info for a single article's OGP image.
+message ImageProxyInfo {
+  // Article ID
+  string article_id = 1;
+  // HMAC-signed proxy URL path
+  string proxy_url = 2;
+  // Whether the image is already cached on the server
+  bool is_cached = 3;
+}
+
+// BatchPrefetchImagesResponse contains proxy URLs for the requested articles.
+message BatchPrefetchImagesResponse {
+  // Proxy URL info for each article
+  repeated ImageProxyInfo images = 1;
 }
 
 // =============================================================================
@@ -277,4 +305,7 @@ service ArticleService {
   // StreamArticleTags streams real-time tag updates for an article
   // Returns cached tags immediately if available, otherwise streams generation progress
   rpc StreamArticleTags(StreamArticleTagsRequest) returns (stream ArticleTagEvent);
+
+  // BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
+  rpc BatchPrefetchImages(BatchPrefetchImagesRequest) returns (BatchPrefetchImagesResponse);
 }

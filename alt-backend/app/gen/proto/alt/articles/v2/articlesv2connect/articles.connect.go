@@ -57,6 +57,9 @@ const (
 	// ArticleServiceStreamArticleTagsProcedure is the fully-qualified name of the ArticleService's
 	// StreamArticleTags RPC.
 	ArticleServiceStreamArticleTagsProcedure = "/alt.articles.v2.ArticleService/StreamArticleTags"
+	// ArticleServiceBatchPrefetchImagesProcedure is the fully-qualified name of the ArticleService's
+	// BatchPrefetchImages RPC.
+	ArticleServiceBatchPrefetchImagesProcedure = "/alt.articles.v2.ArticleService/BatchPrefetchImages"
 )
 
 // ArticleServiceClient is a client for the alt.articles.v2.ArticleService service.
@@ -85,6 +88,8 @@ type ArticleServiceClient interface {
 	// StreamArticleTags streams real-time tag updates for an article
 	// Returns cached tags immediately if available, otherwise streams generation progress
 	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest]) (*connect.ServerStreamForClient[v2.ArticleTagEvent], error)
+	// BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
+	BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error)
 }
 
 // NewArticleServiceClient constructs a client for the alt.articles.v2.ArticleService service. By
@@ -146,6 +151,12 @@ func NewArticleServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(articleServiceMethods.ByName("StreamArticleTags")),
 			connect.WithClientOptions(opts...),
 		),
+		batchPrefetchImages: connect.NewClient[v2.BatchPrefetchImagesRequest, v2.BatchPrefetchImagesResponse](
+			httpClient,
+			baseURL+ArticleServiceBatchPrefetchImagesProcedure,
+			connect.WithSchema(articleServiceMethods.ByName("BatchPrefetchImages")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -159,6 +170,7 @@ type articleServiceClient struct {
 	fetchArticleTags    *connect.Client[v2.FetchArticleTagsRequest, v2.FetchArticleTagsResponse]
 	fetchRandomFeed     *connect.Client[v2.FetchRandomFeedRequest, v2.FetchRandomFeedResponse]
 	streamArticleTags   *connect.Client[v2.StreamArticleTagsRequest, v2.ArticleTagEvent]
+	batchPrefetchImages *connect.Client[v2.BatchPrefetchImagesRequest, v2.BatchPrefetchImagesResponse]
 }
 
 // FetchArticleContent calls alt.articles.v2.ArticleService.FetchArticleContent.
@@ -201,6 +213,11 @@ func (c *articleServiceClient) StreamArticleTags(ctx context.Context, req *conne
 	return c.streamArticleTags.CallServerStream(ctx, req)
 }
 
+// BatchPrefetchImages calls alt.articles.v2.ArticleService.BatchPrefetchImages.
+func (c *articleServiceClient) BatchPrefetchImages(ctx context.Context, req *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error) {
+	return c.batchPrefetchImages.CallUnary(ctx, req)
+}
+
 // ArticleServiceHandler is an implementation of the alt.articles.v2.ArticleService service.
 type ArticleServiceHandler interface {
 	// FetchArticleContent fetches and extracts compliant article content
@@ -227,6 +244,8 @@ type ArticleServiceHandler interface {
 	// StreamArticleTags streams real-time tag updates for an article
 	// Returns cached tags immediately if available, otherwise streams generation progress
 	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest], *connect.ServerStream[v2.ArticleTagEvent]) error
+	// BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
+	BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error)
 }
 
 // NewArticleServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -284,6 +303,12 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 		connect.WithSchema(articleServiceMethods.ByName("StreamArticleTags")),
 		connect.WithHandlerOptions(opts...),
 	)
+	articleServiceBatchPrefetchImagesHandler := connect.NewUnaryHandler(
+		ArticleServiceBatchPrefetchImagesProcedure,
+		svc.BatchPrefetchImages,
+		connect.WithSchema(articleServiceMethods.ByName("BatchPrefetchImages")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.articles.v2.ArticleService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ArticleServiceFetchArticleContentProcedure:
@@ -302,6 +327,8 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 			articleServiceFetchRandomFeedHandler.ServeHTTP(w, r)
 		case ArticleServiceStreamArticleTagsProcedure:
 			articleServiceStreamArticleTagsHandler.ServeHTTP(w, r)
+		case ArticleServiceBatchPrefetchImagesProcedure:
+			articleServiceBatchPrefetchImagesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -341,4 +368,8 @@ func (UnimplementedArticleServiceHandler) FetchRandomFeed(context.Context, *conn
 
 func (UnimplementedArticleServiceHandler) StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest], *connect.ServerStream[v2.ArticleTagEvent]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.StreamArticleTags is not implemented"))
+}
+
+func (UnimplementedArticleServiceHandler) BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.BatchPrefetchImages is not implemented"))
 }

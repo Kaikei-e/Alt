@@ -38,7 +38,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 
 	// 5. DOS protection - 悪意のあるリクエストを早期にブロック
 	dosConfig := cfg.RateLimit.DOSProtection
-	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/", "/v1/feeds/summarize/stream", "/security/csp-report"}
+	dosConfig.WhitelistedPaths = []string{"/v1/health", "/v1/sse/", "/v1/feeds/summarize/stream", "/security/csp-report", "/v1/images/proxy/"}
 	e.Use(middleware_custom.DOSProtectionMiddleware(middleware_custom.ConvertConfigDOSProtection(dosConfig)))
 
 	// 6. CSRF protection for state-changing operations
@@ -81,6 +81,7 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	registerArticleRoutes(v1, container, cfg)
 	fetchArticleRoutes(v1, container, cfg)
 	registerImageRoutes(v1, container, cfg)
+	registerImageProxyRoutes(v1, container, cfg)
 	registerSSERoutes(v1, container, cfg)
 	registerRecapRoutes(v1, container, cfg)
 	registerScrapingDomainRoutes(v1, container, cfg)

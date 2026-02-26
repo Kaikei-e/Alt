@@ -89,12 +89,19 @@ func (h *Handler) FetchArticleContent(
 	}
 
 	// Content is already sanitized by usecase (ExtractArticleHTML)
-	return connect.NewResponse(&articlesv2.FetchArticleContentResponse{
+	resp := &articlesv2.FetchArticleContentResponse{
 		Url:        parsedURL.String(),
 		Content:    content,
 		ArticleId:  articleID,
 		OgImageUrl: ogImageURL,
-	}), nil
+	}
+
+	// Generate proxy URL if image proxy is available
+	if h.container.ImageProxyUsecase != nil && ogImageURL != "" {
+		resp.OgImageProxyUrl = h.container.ImageProxyUsecase.GenerateProxyURL(ogImageURL)
+	}
+
+	return connect.NewResponse(resp), nil
 }
 
 // ArchiveArticle archives an article for later reading.
@@ -517,6 +524,61 @@ func convertTagsToProto(tags []*domain.FeedTag) []*articlesv2.ArticleTagItem {
 // stringPtr returns a pointer to a string.
 func stringPtr(s string) *string {
 	return &s
+}
+
+// BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images.
+func (h *Handler) BatchPrefetchImages(
+	ctx context.Context,
+	req *connect.Request[articlesv2.BatchPrefetchImagesRequest],
+) (*connect.Response[articlesv2.BatchPrefetchImagesResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	articleIDs := req.Msg.ArticleIds
+	if len(articleIDs) == 0 {
+		return connect.NewResponse(&articlesv2.BatchPrefetchImagesResponse{}), nil
+	}
+	if len(articleIDs) > 10 {
+		articleIDs = articleIDs[:10]
+	}
+
+	if h.container.ImageProxyUsecase == nil {
+		return connect.NewResponse(&articlesv2.BatchPrefetchImagesResponse{}), nil
+	}
+
+	// Fetch OGP URLs from article_heads
+	ogURLs, err := h.container.AltDBRepository.FetchOgImageURLsByArticleIDs(ctx, articleIDs)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "BatchPrefetchImages")
+	}
+
+	// Generate proxy URLs
+	proxyURLs := h.container.ImageProxyUsecase.BatchGenerateProxyURLs(ctx, ogURLs)
+
+	// Build response
+	images := make([]*articlesv2.ImageProxyInfo, 0, len(proxyURLs))
+	for articleID, proxyURL := range proxyURLs {
+		images = append(images, &articlesv2.ImageProxyInfo{
+			ArticleId: articleID,
+			ProxyUrl:  proxyURL,
+			IsCached:  false, // We don't check cache status in batch for performance
+		})
+	}
+
+	// Warm cache for images in background
+	for _, ogURL := range ogURLs {
+		ogURLCopy := ogURL
+		go func() {
+			warmCtx := context.Background()
+			h.container.ImageProxyUsecase.WarmCache(warmCtx, ogURLCopy)
+		}()
+	}
+
+	return connect.NewResponse(&articlesv2.BatchPrefetchImagesResponse{
+		Images: images,
+	}), nil
 }
 
 // FetchArticleSummary fetches article summaries for multiple URLs.
