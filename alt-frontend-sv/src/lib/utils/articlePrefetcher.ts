@@ -1,16 +1,31 @@
 import { getFeedContentOnTheFlyClient } from "$lib/api/client";
 import type { RenderFeed } from "$lib/schema/feed";
 
-const MAX_CACHE_SIZE = 5;
+const MAX_CACHE_SIZE = 10;
 const PREFETCH_DELAY = 500; // ms
 const DISMISSED_CLEANUP_DELAY = 3000; // ms
 
 export class ArticlePrefetcher {
 	private contentCache = new Map<string, string | "loading">();
 	private articleIdCache = new Map<string, string>();
+	private ogImageCache = new Map<string, string | null>();
 	private prefetchTimeouts: ReturnType<typeof setTimeout>[] = [];
 	private dismissedArticles = new Set<string>();
 	private dismissalTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+	private onContentFetched:
+		| ((feedUrl: string, content: string) => void)
+		| null = null;
+	private onOgImageFetched: (() => void) | null = null;
+
+	public setOnContentFetched(
+		cb: ((feedUrl: string, content: string) => void) | null,
+	): void {
+		this.onContentFetched = cb;
+	}
+
+	public setOnOgImageFetched(cb: (() => void) | null): void {
+		this.onOgImageFetched = cb;
+	}
 
 	/**
 	 * Prefetch content for a single article
@@ -44,6 +59,7 @@ export class ArticlePrefetcher {
 
 			if (response.content) {
 				this.contentCache.set(cacheKey, response.content);
+				this.onContentFetched?.(cacheKey, response.content);
 			} else {
 				this.contentCache.delete(cacheKey);
 			}
@@ -53,12 +69,14 @@ export class ArticlePrefetcher {
 				this.articleIdCache.set(cacheKey, response.article_id);
 			}
 
-			// Clean up old cache entries
-			if (this.contentCache.size > MAX_CACHE_SIZE) {
-				const entries = Array.from(this.contentCache.keys());
-				const oldestKey = entries[0];
-				this.contentCache.delete(oldestKey);
-			}
+			// Cache og_image_url (may be empty string)
+			this.ogImageCache.set(
+				cacheKey,
+				response.og_image_url || null,
+			);
+			this.onOgImageFetched?.();
+
+			this.evictOldEntries();
 		} catch (error) {
 			this.contentCache.delete(cacheKey);
 			console.warn(
@@ -107,6 +125,40 @@ export class ArticlePrefetcher {
 	 */
 	public getCachedArticleId(feedUrl: string): string | null {
 		return this.articleIdCache.get(feedUrl) ?? null;
+	}
+
+	/**
+	 * Get cached og:image URL for a feed URL
+	 */
+	public getCachedOgImage(feedUrl: string): string | null {
+		return this.ogImageCache.get(feedUrl) ?? null;
+	}
+
+	/**
+	 * Seed cache directly without fetching from API.
+	 * Used by SwipeFeedScreen to cache the first feed's content from loadMore.
+	 */
+	public seedCache(
+		feedUrl: string,
+		content: string,
+		articleId: string,
+		ogImageUrl: string | null,
+	): void {
+		this.contentCache.set(feedUrl, content);
+		this.articleIdCache.set(feedUrl, articleId);
+		this.ogImageCache.set(feedUrl, ogImageUrl);
+		this.onOgImageFetched?.();
+		this.evictOldEntries();
+	}
+
+	private evictOldEntries(): void {
+		while (this.contentCache.size > MAX_CACHE_SIZE) {
+			const oldestKey = this.contentCache.keys().next().value;
+			if (oldestKey !== undefined) {
+				this.contentCache.delete(oldestKey);
+				this.ogImageCache.delete(oldestKey);
+			}
+		}
 	}
 
 	/**

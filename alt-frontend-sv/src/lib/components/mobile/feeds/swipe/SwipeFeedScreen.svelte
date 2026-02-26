@@ -16,6 +16,7 @@ import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import { canonicalize } from "$lib/utils/feed";
 import FloatingMenu from "./FloatingMenu.svelte";
 import SwipeFeedCard from "./SwipeFeedCard.svelte";
+import VisualPreviewCard from "./VisualPreviewCard.svelte";
 import SwipeFilterSortSheet from "./SwipeFilterSortSheet.svelte";
 import SwipeLoadingOverlay from "./SwipeLoadingOverlay.svelte";
 
@@ -23,13 +24,18 @@ interface Props {
 	initialFeeds?: RenderFeed[];
 	initialNextCursor?: string | null;
 	initialArticleContent?: string | null;
+	mode?: "default" | "visual-preview";
 }
 
 const {
 	initialFeeds = [],
 	initialNextCursor,
 	initialArticleContent,
+	mode = "default",
 }: Props = $props();
+
+const isVisualPreview = $derived(mode === "visual-preview");
+const prefetchAhead = $derived(isVisualPreview ? 5 : 2);
 
 const PAGE_SIZE = 20;
 
@@ -48,6 +54,9 @@ let liveRegionMessage = $state("");
 let excludedSourceId = $state<string | null>(null);
 let feedSources = $state<ConnectFeedSource[]>([]);
 let sortOrder = $state<"newest" | "oldest">("newest");
+
+// Reactive OGP image update version counter
+let ogImageVersion = $state(0);
 
 // Initialize state from props
 $effect(() => {
@@ -105,10 +114,26 @@ onMount(async () => {
 	}
 });
 
+
+// Wire OGP image callback for reactivity
+onMount(() => {
+	articlePrefetcher.setOnOgImageFetched(() => {
+		ogImageVersion++;
+	});
+	return () => articlePrefetcher.setOnOgImageFetched(null);
+});
+
+// Re-evaluate OGP image when activeFeed changes or cache updates
+const currentOgImage = $derived.by(() => {
+	void ogImageVersion;
+	if (!activeFeed) return null;
+	return articlePrefetcher.getCachedOgImage(activeFeed.normalizedUrl) ?? null;
+});
+
 // Prefetch next feeds
 $effect(() => {
 	if (feeds.length > 0) {
-		articlePrefetcher.triggerPrefetch(feeds, activeIndex);
+		articlePrefetcher.triggerPrefetch(feeds, activeIndex, prefetchAhead);
 	}
 });
 
@@ -167,28 +192,12 @@ async function loadMore() {
 					getFeedContentOnTheFlyClient(cacheKey)
 						.then((articleRes) => {
 							if (articleRes.content) {
-								// articlePrefetcherのキャッシュに直接保存
-								// contentCacheはprivateなので、既存のprefetchContentロジックを参考に
-								// 簡易的に直接キャッシュに設定（型安全性のため、anyを使用）
-								const cache = (articlePrefetcher as any).contentCache as Map<
-									string,
-									string | "loading"
-								>;
-								cache.set(cacheKey, articleRes.content);
-
-								// キャッシュサイズ制限のチェック
-								if (cache.size > 5) {
-									const entries = Array.from(cache.keys());
-									const oldestKey = entries[0];
-									cache.delete(oldestKey);
-								}
-							}
-
-							// Cache article_id if present
-							if (articleRes.article_id) {
-								const articleIdCache = (articlePrefetcher as any)
-									.articleIdCache as Map<string, string>;
-								articleIdCache.set(cacheKey, articleRes.article_id);
+								articlePrefetcher.seedCache(
+									cacheKey,
+									articleRes.content,
+									articleRes.article_id || "",
+									articleRes.og_image_url || null,
+								);
 							}
 						})
 						.catch((err) => {
@@ -333,18 +342,34 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
 
       <!-- Active card -->
       {#key activeFeed.id}
-        <SwipeFeedCard
-          feed={activeFeed}
-          statusMessage={liveRegionMessage}
-          onDismiss={handleDismiss}
-          {getCachedContent}
-          {getCachedArticleId}
-          isBusy={isLoading}
-          initialArticleContent={activeIndex === 0
-            ? initialArticleContent
-            : undefined}
-          onArticleIdResolved={handleArticleIdResolved}
-        />
+        {#if isVisualPreview}
+          <VisualPreviewCard
+            feed={activeFeed}
+            statusMessage={liveRegionMessage}
+            onDismiss={handleDismiss}
+            thumbnailUrl={currentOgImage}
+            {getCachedContent}
+            {getCachedArticleId}
+            isBusy={isLoading}
+            initialArticleContent={activeIndex === 0
+              ? initialArticleContent
+              : undefined}
+            onArticleIdResolved={handleArticleIdResolved}
+          />
+        {:else}
+          <SwipeFeedCard
+            feed={activeFeed}
+            statusMessage={liveRegionMessage}
+            onDismiss={handleDismiss}
+            {getCachedContent}
+            {getCachedArticleId}
+            isBusy={isLoading}
+            initialArticleContent={activeIndex === 0
+              ? initialArticleContent
+              : undefined}
+            onArticleIdResolved={handleArticleIdResolved}
+          />
+        {/if}
       {/key}
     </div>
   {:else}

@@ -8,6 +8,7 @@ import {
 	Eye,
 	Globe,
 	Home,
+	Image as ImageIcon,
 	Infinity as InfinityIcon,
 	Link as LinkIcon,
 	Menu,
@@ -79,6 +80,13 @@ const menuItems = [
 		category: "feeds",
 		icon: InfinityIcon,
 		description: "Swipe through feeds",
+	},
+	{
+		label: "Visual Preview",
+		href: `${svBasePath}/feeds/swipe/visual-preview`,
+		category: "feeds",
+		icon: ImageIcon,
+		description: "Swipe with thumbnail images",
 	},
 	{
 		label: "Viewed Feeds",

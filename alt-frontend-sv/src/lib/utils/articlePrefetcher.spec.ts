@@ -40,6 +40,7 @@ describe("ArticlePrefetcher", () => {
 			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
 				content: "<p>Test content</p>",
 				article_id: expectedArticleId,
+				og_image_url: "",
 			});
 
 			const mockFeed = {
@@ -73,6 +74,7 @@ describe("ArticlePrefetcher", () => {
 			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
 				content: "<p>Test content</p>",
 				article_id: "",
+				og_image_url: "",
 			});
 
 			const mockFeed = {
@@ -95,6 +97,219 @@ describe("ArticlePrefetcher", () => {
 		});
 	});
 
+	describe("getCachedOgImage", () => {
+		it("should return null for non-cached URL", () => {
+			expect(prefetcher.getCachedOgImage("https://example.com/article")).toBeNull();
+		});
+
+		it("should return cached og_image_url after prefetch", async () => {
+			const feedUrl = "https://example.com/article";
+			const expectedOgImage = "https://example.com/og.png";
+
+			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
+				content: "<p>Test content</p>",
+				article_id: "test-id",
+				og_image_url: expectedOgImage,
+			});
+
+			const mockFeed = {
+				id: "1",
+				title: "Test Article",
+				description: "Test description",
+				link: feedUrl,
+				published: "2024-01-01",
+				normalizedUrl: feedUrl,
+				publishedAtFormatted: "Jan 1, 2024",
+				mergedTagsLabel: "",
+				excerpt: "Test description",
+			};
+
+			prefetcher.triggerPrefetch([mockFeed], -1, 1);
+			await vi.advanceTimersByTimeAsync(600);
+
+			expect(prefetcher.getCachedOgImage(feedUrl)).toBe(expectedOgImage);
+		});
+
+		it("should cache null when og_image_url is empty", async () => {
+			const feedUrl = "https://example.com/article";
+
+			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
+				content: "<p>Test content</p>",
+				article_id: "test-id",
+				og_image_url: "",
+			});
+
+			const mockFeed = {
+				id: "1",
+				title: "Test Article",
+				description: "Test description",
+				link: feedUrl,
+				published: "2024-01-01",
+				normalizedUrl: feedUrl,
+				publishedAtFormatted: "Jan 1, 2024",
+				mergedTagsLabel: "",
+				excerpt: "Test description",
+			};
+
+			prefetcher.triggerPrefetch([mockFeed], -1, 1);
+			await vi.advanceTimersByTimeAsync(600);
+
+			// Empty string should be stored as null
+			expect(prefetcher.getCachedOgImage(feedUrl)).toBeNull();
+		});
+	});
+
+	describe("onOgImageFetched callback", () => {
+		it("should invoke callback when og_image_url is cached after prefetch", async () => {
+			const feedUrl = "https://example.com/article";
+			const callback = vi.fn();
+
+			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
+				content: "<p>Test content</p>",
+				article_id: "test-id",
+				og_image_url: "https://example.com/og.png",
+			});
+
+			const mockFeed = {
+				id: "1",
+				title: "Test Article",
+				description: "Test description",
+				link: feedUrl,
+				published: "2024-01-01",
+				normalizedUrl: feedUrl,
+				publishedAtFormatted: "Jan 1, 2024",
+				mergedTagsLabel: "",
+				excerpt: "Test description",
+			};
+
+			prefetcher.setOnOgImageFetched(callback);
+			prefetcher.triggerPrefetch([mockFeed], -1, 1);
+			await vi.advanceTimersByTimeAsync(600);
+
+			expect(callback).toHaveBeenCalledTimes(1);
+		});
+
+		it("should invoke callback even when og_image_url is empty", async () => {
+			const feedUrl = "https://example.com/article";
+			const callback = vi.fn();
+
+			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
+				content: "<p>Test content</p>",
+				article_id: "test-id",
+				og_image_url: "",
+			});
+
+			const mockFeed = {
+				id: "1",
+				title: "Test Article",
+				description: "Test description",
+				link: feedUrl,
+				published: "2024-01-01",
+				normalizedUrl: feedUrl,
+				publishedAtFormatted: "Jan 1, 2024",
+				mergedTagsLabel: "",
+				excerpt: "Test description",
+			};
+
+			prefetcher.setOnOgImageFetched(callback);
+			prefetcher.triggerPrefetch([mockFeed], -1, 1);
+			await vi.advanceTimersByTimeAsync(600);
+
+			expect(callback).toHaveBeenCalledTimes(1);
+		});
+
+		it("should not invoke callback when cleared with null", async () => {
+			const feedUrl = "https://example.com/article";
+			const callback = vi.fn();
+
+			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
+				content: "<p>Test content</p>",
+				article_id: "test-id",
+				og_image_url: "https://example.com/og.png",
+			});
+
+			const mockFeed = {
+				id: "1",
+				title: "Test Article",
+				description: "Test description",
+				link: feedUrl,
+				published: "2024-01-01",
+				normalizedUrl: feedUrl,
+				publishedAtFormatted: "Jan 1, 2024",
+				mergedTagsLabel: "",
+				excerpt: "Test description",
+			};
+
+			prefetcher.setOnOgImageFetched(callback);
+			prefetcher.setOnOgImageFetched(null);
+			prefetcher.triggerPrefetch([mockFeed], -1, 1);
+			await vi.advanceTimersByTimeAsync(600);
+
+			expect(callback).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("seedCache", () => {
+		it("should store content, articleId, and ogImage retrievable via getters", () => {
+			const feedUrl = "https://example.com/seeded";
+			prefetcher.seedCache(feedUrl, "<p>Seeded</p>", "seed-id-1", "https://example.com/og.png");
+
+			expect(prefetcher.getCachedContent(feedUrl)).toBe("<p>Seeded</p>");
+			expect(prefetcher.getCachedArticleId(feedUrl)).toBe("seed-id-1");
+			expect(prefetcher.getCachedOgImage(feedUrl)).toBe("https://example.com/og.png");
+		});
+
+		it("should invoke onOgImageFetched callback", () => {
+			const callback = vi.fn();
+			prefetcher.setOnOgImageFetched(callback);
+
+			prefetcher.seedCache("https://example.com/seeded", "<p>Content</p>", "id-1", "https://example.com/og.png");
+
+			expect(callback).toHaveBeenCalledTimes(1);
+		});
+
+		it("should store null ogImage when passed null", () => {
+			prefetcher.seedCache("https://example.com/seeded", "<p>Content</p>", "id-1", null);
+
+			expect(prefetcher.getCachedOgImage("https://example.com/seeded")).toBeNull();
+		});
+	});
+
+	describe("cache eviction regression (OGP thumbnail fallback bug)", () => {
+		it("should not evict active feed ogImage when prefetching 6 feeds ahead", async () => {
+			// Regression test: MAX_CACHE_SIZE=5 < prefetchAhead+1=6 caused active feed eviction
+			const activeFeedUrl = "https://example.com/active";
+
+			// Seed the active feed into cache (simulates loadMore's first-feed fetch)
+			prefetcher.seedCache(activeFeedUrl, "<p>Active content</p>", "active-id", "https://example.com/active-og.png");
+
+			// Create 6 more feeds to prefetch ahead
+			const feeds = [
+				{ id: "0", title: "Active", description: "", link: activeFeedUrl, published: "", normalizedUrl: activeFeedUrl, publishedAtFormatted: "", mergedTagsLabel: "", excerpt: "" },
+			];
+			for (let i = 1; i <= 6; i++) {
+				const url = `https://example.com/feed-${i}`;
+				feeds.push({ id: `${i}`, title: `Feed ${i}`, description: "", link: url, published: "", normalizedUrl: url, publishedAtFormatted: "", mergedTagsLabel: "", excerpt: "" });
+
+				mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
+					content: `<p>Content ${i}</p>`,
+					article_id: `id-${i}`,
+					og_image_url: `https://example.com/og-${i}.png`,
+				});
+			}
+
+			// Trigger prefetch for 6 feeds ahead from index 0
+			prefetcher.triggerPrefetch(feeds, 0, 6);
+
+			// Wait for all prefetches to complete (6 * 500ms delay + resolution time)
+			await vi.advanceTimersByTimeAsync(4000);
+
+			// The active feed's OGP image must NOT have been evicted
+			expect(prefetcher.getCachedOgImage(activeFeedUrl)).toBe("https://example.com/active-og.png");
+			expect(prefetcher.getCachedContent(activeFeedUrl)).toBe("<p>Active content</p>");
+		});
+	});
+
 	describe("cache key consistency (regression test for stale content bug)", () => {
 		it("should use normalizedUrl as cache key, not link", async () => {
 			// This test ensures that cache is keyed by normalizedUrl
@@ -106,6 +321,7 @@ describe("ArticlePrefetcher", () => {
 			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
 				content: "<p>Correct content</p>",
 				article_id: "article-123",
+				og_image_url: "https://example.com/og.png",
 			});
 
 			const mockFeed = {
@@ -165,10 +381,12 @@ describe("ArticlePrefetcher", () => {
 				.mockResolvedValueOnce({
 					content: "<p>Content A</p>",
 					article_id: "id-a",
+					og_image_url: "https://example.com/a.png",
 				})
 				.mockResolvedValueOnce({
 					content: "<p>Content B</p>",
 					article_id: "id-b",
+					og_image_url: "https://example.com/b.png",
 				});
 
 			// Prefetch both feeds
@@ -195,6 +413,7 @@ describe("ArticlePrefetcher", () => {
 			mockGetFeedContentOnTheFlyClient.mockResolvedValueOnce({
 				content: "<p>Cached content</p>",
 				article_id: "article-123",
+				og_image_url: "https://example.com/og.png",
 			});
 
 			const mockFeed = {
