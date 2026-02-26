@@ -72,7 +72,7 @@ func (h *Handler) FetchArticleContent(
 	}
 
 	// Call usecase
-	content, articleID, err := h.container.ArticleUsecase.FetchCompliantArticle(ctx, parsedURL, *user)
+	content, articleID, ogImageURL, err := h.container.ArticleUsecase.FetchCompliantArticle(ctx, parsedURL, *user)
 	if err != nil {
 		var complianceErr *domain.ComplianceError
 		if errors.As(err, &complianceErr) {
@@ -90,9 +90,10 @@ func (h *Handler) FetchArticleContent(
 
 	// Content is already sanitized by usecase (ExtractArticleHTML)
 	return connect.NewResponse(&articlesv2.FetchArticleContentResponse{
-		Url:       parsedURL.String(),
-		Content:   content,
-		ArticleId: articleID,
+		Url:        parsedURL.String(),
+		Content:    content,
+		ArticleId:  articleID,
+		OgImageUrl: ogImageURL,
 	}), nil
 }
 
@@ -407,7 +408,7 @@ func (h *Handler) FetchRandomFeed(
 					if h.container.ArticleUsecase == nil {
 						return
 					}
-					_, newArticleID, fetchErr := h.container.ArticleUsecase.FetchCompliantArticle(bgCtx, parsedURL, userCopy)
+					_, newArticleID, _, fetchErr := h.container.ArticleUsecase.FetchCompliantArticle(bgCtx, parsedURL, userCopy)
 					if fetchErr != nil {
 						h.logger.Warn("async article fetch failed", "feedID", feedIDCopy, "error", fetchErr)
 						return
