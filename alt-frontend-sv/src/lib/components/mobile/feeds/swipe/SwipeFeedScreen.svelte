@@ -2,6 +2,7 @@
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import {
+	batchPrefetchImagesClient,
 	getFeedContentOnTheFlyClient,
 	getFeedsWithCursorClient,
 	getReadFeedsWithCursorClient,
@@ -35,7 +36,7 @@ const {
 }: Props = $props();
 
 const isVisualPreview = $derived(mode === "visual-preview");
-const prefetchAhead = $derived(isVisualPreview ? 5 : 2);
+const prefetchAhead = $derived(isVisualPreview ? 10 : 2);
 
 const PAGE_SIZE = 20;
 
@@ -197,6 +198,7 @@ async function loadMore() {
 									articleRes.content,
 									articleRes.article_id || "",
 									articleRes.og_image_url || null,
+									articleRes.og_image_proxy_url || null,
 								);
 							}
 						})
@@ -225,6 +227,11 @@ async function loadMore() {
 			feeds = [...feeds, ...filtered];
 			cursor = res.next_cursor;
 			hasMore = res.next_cursor !== null;
+
+			// Batch prefetch OGP images for Visual Preview mode
+			if (isVisualPreview && filtered.length > 0) {
+				triggerBatchImagePrefetch(filtered);
+			}
 		}
 	} catch (err) {
 		console.error("Error loading feeds:", err);
@@ -235,6 +242,44 @@ async function loadMore() {
 			isInitialLoading = false;
 		}
 	}
+}
+
+/**
+ * Trigger batch image prefetch for visual preview mode.
+ * Collects articleIds from prefetcher cache and calls BatchPrefetchImages.
+ */
+function triggerBatchImagePrefetch(newFeeds: RenderFeed[]) {
+	const articleIds: string[] = [];
+	for (const feed of newFeeds.slice(0, 10)) {
+		const articleId = articlePrefetcher.getCachedArticleId(feed.normalizedUrl);
+		if (articleId) {
+			articleIds.push(articleId);
+		}
+	}
+	if (articleIds.length === 0) return;
+
+	batchPrefetchImagesClient(articleIds)
+		.then((results) => {
+			for (const info of results) {
+				// Find the feed that matches this articleId and update ogImage cache
+				for (const feed of newFeeds) {
+					const cachedId = articlePrefetcher.getCachedArticleId(feed.normalizedUrl);
+					if (cachedId === info.articleId && info.proxyUrl) {
+						articlePrefetcher.seedCache(
+							feed.normalizedUrl,
+							articlePrefetcher.getCachedContent(feed.normalizedUrl) || "",
+							info.articleId,
+							null,
+							info.proxyUrl,
+						);
+						break;
+					}
+				}
+			}
+		})
+		.catch((err) => {
+			console.warn("[SwipeFeedScreen] Batch image prefetch failed:", err);
+		});
 }
 
 function handleExclude(id: string) {
