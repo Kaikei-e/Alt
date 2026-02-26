@@ -2,171 +2,155 @@
 // @generated from file alt/articles/v2/articles.proto (package alt.articles.v2, syntax proto3)
 /* eslint-disable */
 
-import type {
-	GenEnum,
-	GenFile,
-	GenMessage,
-	GenService,
-} from "@bufbuild/protobuf/codegenv2";
-import {
-	enumDesc,
-	fileDesc,
-	messageDesc,
-	serviceDesc,
-} from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/articles/v2/articles.proto.
  */
-export const file_alt_articles_v2_articles: GenFile =
-	/*@__PURE__*/
-	fileDesc(
-		"Ch5hbHQvYXJ0aWNsZXMvdjIvYXJ0aWNsZXMucHJvdG8SD2FsdC5hcnRpY2xlcy52MiIpChpGZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBILCgN1cmwYASABKAkiTwobRmV0Y2hBcnRpY2xlQ29udGVudFJlc3BvbnNlEgsKA3VybBgBIAEoCRIPCgdjb250ZW50GAIgASgJEhIKCmFydGljbGVfaWQYAyABKAkiRwoVQXJjaGl2ZUFydGljbGVSZXF1ZXN0EhAKCGZlZWRfdXJsGAEgASgJEhIKBXRpdGxlGAIgASgJSACIAQFCCAoGX3RpdGxlIikKFkFyY2hpdmVBcnRpY2xlUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCSJLChpGZXRjaEFydGljbGVzQ3Vyc29yUmVxdWVzdBINCgVsaW1pdBgBIAEoBRITCgZjdXJzb3IYAiABKAlIAIgBAUIJCgdfY3Vyc29yImoKC0FydGljbGVJdGVtEgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEgsKA3VybBgDIAEoCRIPCgdjb250ZW50GAQgASgJEhQKDHB1Ymxpc2hlZF9hdBgFIAEoCRIMCgR0YWdzGAYgAygJIoUBChtGZXRjaEFydGljbGVzQ3Vyc29yUmVzcG9uc2USKgoEZGF0YRgBIAMoCzIcLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciIvChpGZXRjaEFydGljbGVTdW1tYXJ5UmVxdWVzdBIRCglmZWVkX3VybHMYASADKAkigQEKEkFydGljbGVTdW1tYXJ5SXRlbRINCgV0aXRsZRgBIAEoCRIPCgdjb250ZW50GAIgASgJEg4KBmF1dGhvchgDIAEoCRIUCgxwdWJsaXNoZWRfYXQYBCABKAkSEgoKZmV0Y2hlZF9hdBgFIAEoCRIRCglzb3VyY2VfaWQYBiABKAkijAEKG0ZldGNoQXJ0aWNsZVN1bW1hcnlSZXNwb25zZRI9ChBtYXRjaGVkX2FydGljbGVzGAEgAygLMiMuYWx0LmFydGljbGVzLnYyLkFydGljbGVTdW1tYXJ5SXRlbRIVCg10b3RhbF9tYXRjaGVkGAIgASgFEhcKD3JlcXVlc3RlZF9jb3VudBgDIAEoBSKOAQoZRmV0Y2hBcnRpY2xlc0J5VGFnUmVxdWVzdBITCgZ0YWdfaWQYASABKAlIAIgBARIVCgh0YWdfbmFtZRgCIAEoCUgBiAEBEhMKBmN1cnNvchgDIAEoCUgCiAEBEg0KBWxpbWl0GAQgASgFQgkKB190YWdfaWRCCwoJX3RhZ19uYW1lQgkKB19jdXJzb3IiaAoTVGFnVHJhaWxBcnRpY2xlSXRlbRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIMCgRsaW5rGAMgASgJEhQKDHB1Ymxpc2hlZF9hdBgEIAEoCRISCgpmZWVkX3RpdGxlGAUgASgJIpABChpGZXRjaEFydGljbGVzQnlUYWdSZXNwb25zZRI2CghhcnRpY2xlcxgBIAMoCzIkLmFsdC5hcnRpY2xlcy52Mi5UYWdUcmFpbEFydGljbGVJdGVtEhgKC25leHRfY3Vyc29yGAIgASgJSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yIi0KF0ZldGNoQXJ0aWNsZVRhZ3NSZXF1ZXN0EhIKCmFydGljbGVfaWQYASABKAkiPgoOQXJ0aWNsZVRhZ0l0ZW0SCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRISCgpjcmVhdGVkX2F0GAMgASgJIl0KGEZldGNoQXJ0aWNsZVRhZ3NSZXNwb25zZRISCgphcnRpY2xlX2lkGAEgASgJEi0KBHRhZ3MYAiADKAsyHy5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0l0ZW0iGAoWRmV0Y2hSYW5kb21GZWVkUmVxdWVzdCKFAQoXRmV0Y2hSYW5kb21GZWVkUmVzcG9uc2USCgoCaWQYASABKAkSCwoDdXJsGAIgASgJEg0KBXRpdGxlGAMgASgJEhMKC2Rlc2NyaXB0aW9uGAQgASgJEi0KBHRhZ3MYBSADKAsyHy5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0l0ZW0ikAEKGFN0cmVhbUFydGljbGVUYWdzUmVxdWVzdBISCgphcnRpY2xlX2lkGAEgASgJEhIKBXRpdGxlGAIgASgJSACIAQESFAoHY29udGVudBgDIAEoCUgBiAEBEhQKB2ZlZWRfaWQYBCABKAlIAogBAUIICgZfdGl0bGVCCgoIX2NvbnRlbnRCCgoIX2ZlZWRfaWQiwgIKD0FydGljbGVUYWdFdmVudBISCgphcnRpY2xlX2lkGAEgASgJEi0KBHRhZ3MYAiADKAsyHy5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0l0ZW0SPgoKZXZlbnRfdHlwZRgDIAEoDjIqLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlVGFnRXZlbnQuRXZlbnRUeXBlEhQKB21lc3NhZ2UYBCABKAlIAIgBASKJAQoJRXZlbnRUeXBlEhoKFkVWRU5UX1RZUEVfVU5TUEVDSUZJRUQQABIVChFFVkVOVF9UWVBFX0NBQ0hFRBABEhkKFUVWRU5UX1RZUEVfR0VORVJBVElORxACEhgKFEVWRU5UX1RZUEVfQ09NUExFVEVEEAMSFAoQRVZFTlRfVFlQRV9FUlJPUhAEQgoKCF9tZXNzYWdlMusGCg5BcnRpY2xlU2VydmljZRJwChNGZXRjaEFydGljbGVDb250ZW50EisuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZUNvbnRlbnRSZXF1ZXN0GiwuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZUNvbnRlbnRSZXNwb25zZRJhCg5BcmNoaXZlQXJ0aWNsZRImLmFsdC5hcnRpY2xlcy52Mi5BcmNoaXZlQXJ0aWNsZVJlcXVlc3QaJy5hbHQuYXJ0aWNsZXMudjIuQXJjaGl2ZUFydGljbGVSZXNwb25zZRJwChNGZXRjaEFydGljbGVzQ3Vyc29yEisuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZXNDdXJzb3JSZXF1ZXN0GiwuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZXNDdXJzb3JSZXNwb25zZRJwChNGZXRjaEFydGljbGVTdW1tYXJ5EisuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVN1bW1hcnlSZXF1ZXN0GiwuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVN1bW1hcnlSZXNwb25zZRJtChJGZXRjaEFydGljbGVzQnlUYWcSKi5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlc0J5VGFnUmVxdWVzdBorLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQnlUYWdSZXNwb25zZRJnChBGZXRjaEFydGljbGVUYWdzEiguYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVRhZ3NSZXF1ZXN0GikuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVRhZ3NSZXNwb25zZRJkCg9GZXRjaFJhbmRvbUZlZWQSJy5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hSYW5kb21GZWVkUmVxdWVzdBooLmFsdC5hcnRpY2xlcy52Mi5GZXRjaFJhbmRvbUZlZWRSZXNwb25zZRJiChFTdHJlYW1BcnRpY2xlVGFncxIpLmFsdC5hcnRpY2xlcy52Mi5TdHJlYW1BcnRpY2xlVGFnc1JlcXVlc3QaIC5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0V2ZW50MAFCKlooYWx0L2dlbi9wcm90by9hbHQvYXJ0aWNsZXMvdjI7YXJ0aWNsZXN2MmIGcHJvdG8z",
-	);
+export const file_alt_articles_v2_articles: GenFile = /*@__PURE__*/
+  fileDesc("Ch5hbHQvYXJ0aWNsZXMvdjIvYXJ0aWNsZXMucHJvdG8SD2FsdC5hcnRpY2xlcy52MiIpChpGZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBILCgN1cmwYASABKAkiZQobRmV0Y2hBcnRpY2xlQ29udGVudFJlc3BvbnNlEgsKA3VybBgBIAEoCRIPCgdjb250ZW50GAIgASgJEhIKCmFydGljbGVfaWQYAyABKAkSFAoMb2dfaW1hZ2VfdXJsGAQgASgJIkcKFUFyY2hpdmVBcnRpY2xlUmVxdWVzdBIQCghmZWVkX3VybBgBIAEoCRISCgV0aXRsZRgCIAEoCUgAiAEBQggKBl90aXRsZSIpChZBcmNoaXZlQXJ0aWNsZVJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiSwoaRmV0Y2hBcnRpY2xlc0N1cnNvclJlcXVlc3QSDQoFbGltaXQYASABKAUSEwoGY3Vyc29yGAIgASgJSACIAQFCCQoHX2N1cnNvciJqCgtBcnRpY2xlSXRlbRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRILCgN1cmwYAyABKAkSDwoHY29udGVudBgEIAEoCRIUCgxwdWJsaXNoZWRfYXQYBSABKAkSDAoEdGFncxgGIAMoCSKFAQobRmV0Y2hBcnRpY2xlc0N1cnNvclJlc3BvbnNlEioKBGRhdGEYASADKAsyHC5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZUl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiLwoaRmV0Y2hBcnRpY2xlU3VtbWFyeVJlcXVlc3QSEQoJZmVlZF91cmxzGAEgAygJIoEBChJBcnRpY2xlU3VtbWFyeUl0ZW0SDQoFdGl0bGUYASABKAkSDwoHY29udGVudBgCIAEoCRIOCgZhdXRob3IYAyABKAkSFAoMcHVibGlzaGVkX2F0GAQgASgJEhIKCmZldGNoZWRfYXQYBSABKAkSEQoJc291cmNlX2lkGAYgASgJIowBChtGZXRjaEFydGljbGVTdW1tYXJ5UmVzcG9uc2USPQoQbWF0Y2hlZF9hcnRpY2xlcxgBIAMoCzIjLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlU3VtbWFyeUl0ZW0SFQoNdG90YWxfbWF0Y2hlZBgCIAEoBRIXCg9yZXF1ZXN0ZWRfY291bnQYAyABKAUijgEKGUZldGNoQXJ0aWNsZXNCeVRhZ1JlcXVlc3QSEwoGdGFnX2lkGAEgASgJSACIAQESFQoIdGFnX25hbWUYAiABKAlIAYgBARITCgZjdXJzb3IYAyABKAlIAogBARINCgVsaW1pdBgEIAEoBUIJCgdfdGFnX2lkQgsKCV90YWdfbmFtZUIJCgdfY3Vyc29yImgKE1RhZ1RyYWlsQXJ0aWNsZUl0ZW0SCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSDAoEbGluaxgDIAEoCRIUCgxwdWJsaXNoZWRfYXQYBCABKAkSEgoKZmVlZF90aXRsZRgFIAEoCSKQAQoaRmV0Y2hBcnRpY2xlc0J5VGFnUmVzcG9uc2USNgoIYXJ0aWNsZXMYASADKAsyJC5hbHQuYXJ0aWNsZXMudjIuVGFnVHJhaWxBcnRpY2xlSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciItChdGZXRjaEFydGljbGVUYWdzUmVxdWVzdBISCgphcnRpY2xlX2lkGAEgASgJIj4KDkFydGljbGVUYWdJdGVtEgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSEgoKY3JlYXRlZF9hdBgDIAEoCSJdChhGZXRjaEFydGljbGVUYWdzUmVzcG9uc2USEgoKYXJ0aWNsZV9pZBgBIAEoCRItCgR0YWdzGAIgAygLMh8uYWx0LmFydGljbGVzLnYyLkFydGljbGVUYWdJdGVtIhgKFkZldGNoUmFuZG9tRmVlZFJlcXVlc3QihQEKF0ZldGNoUmFuZG9tRmVlZFJlc3BvbnNlEgoKAmlkGAEgASgJEgsKA3VybBgCIAEoCRINCgV0aXRsZRgDIAEoCRITCgtkZXNjcmlwdGlvbhgEIAEoCRItCgR0YWdzGAUgAygLMh8uYWx0LmFydGljbGVzLnYyLkFydGljbGVUYWdJdGVtIpABChhTdHJlYW1BcnRpY2xlVGFnc1JlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRISCgV0aXRsZRgCIAEoCUgAiAEBEhQKB2NvbnRlbnQYAyABKAlIAYgBARIUCgdmZWVkX2lkGAQgASgJSAKIAQFCCAoGX3RpdGxlQgoKCF9jb250ZW50QgoKCF9mZWVkX2lkIsICCg9BcnRpY2xlVGFnRXZlbnQSEgoKYXJ0aWNsZV9pZBgBIAEoCRItCgR0YWdzGAIgAygLMh8uYWx0LmFydGljbGVzLnYyLkFydGljbGVUYWdJdGVtEj4KCmV2ZW50X3R5cGUYAyABKA4yKi5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0V2ZW50LkV2ZW50VHlwZRIUCgdtZXNzYWdlGAQgASgJSACIAQEiiQEKCUV2ZW50VHlwZRIaChZFVkVOVF9UWVBFX1VOU1BFQ0lGSUVEEAASFQoRRVZFTlRfVFlQRV9DQUNIRUQQARIZChVFVkVOVF9UWVBFX0dFTkVSQVRJTkcQAhIYChRFVkVOVF9UWVBFX0NPTVBMRVRFRBADEhQKEEVWRU5UX1RZUEVfRVJST1IQBEIKCghfbWVzc2FnZTLrBgoOQXJ0aWNsZVNlcnZpY2UScAoTRmV0Y2hBcnRpY2xlQ29udGVudBIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVDb250ZW50UmVzcG9uc2USYQoOQXJjaGl2ZUFydGljbGUSJi5hbHQuYXJ0aWNsZXMudjIuQXJjaGl2ZUFydGljbGVSZXF1ZXN0GicuYWx0LmFydGljbGVzLnYyLkFyY2hpdmVBcnRpY2xlUmVzcG9uc2UScAoTRmV0Y2hBcnRpY2xlc0N1cnNvchIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQ3Vyc29yUmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQ3Vyc29yUmVzcG9uc2UScAoTRmV0Y2hBcnRpY2xlU3VtbWFyeRIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVTdW1tYXJ5UmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVTdW1tYXJ5UmVzcG9uc2USbQoSRmV0Y2hBcnRpY2xlc0J5VGFnEiouYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZXNCeVRhZ1JlcXVlc3QaKy5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlc0J5VGFnUmVzcG9uc2USZwoQRmV0Y2hBcnRpY2xlVGFncxIoLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVUYWdzUmVxdWVzdBopLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVUYWdzUmVzcG9uc2USZAoPRmV0Y2hSYW5kb21GZWVkEicuYWx0LmFydGljbGVzLnYyLkZldGNoUmFuZG9tRmVlZFJlcXVlc3QaKC5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hSYW5kb21GZWVkUmVzcG9uc2USYgoRU3RyZWFtQXJ0aWNsZVRhZ3MSKS5hbHQuYXJ0aWNsZXMudjIuU3RyZWFtQXJ0aWNsZVRhZ3NSZXF1ZXN0GiAuYWx0LmFydGljbGVzLnYyLkFydGljbGVUYWdFdmVudDABQipaKGFsdC9nZW4vcHJvdG8vYWx0L2FydGljbGVzL3YyO2FydGljbGVzdjJiBnByb3RvMw");
 
 /**
  * FetchArticleContentRequest is the request for fetching article content
  *
  * @generated from message alt.articles.v2.FetchArticleContentRequest
  */
-export type FetchArticleContentRequest =
-	Message<"alt.articles.v2.FetchArticleContentRequest"> & {
-		/**
-		 * Article URL (required)
-		 *
-		 * @generated from field: string url = 1;
-		 */
-		url: string;
-	};
+export type FetchArticleContentRequest = Message<"alt.articles.v2.FetchArticleContentRequest"> & {
+  /**
+   * Article URL (required)
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
+};
 
 /**
  * Describes the message alt.articles.v2.FetchArticleContentRequest.
  * Use `create(FetchArticleContentRequestSchema)` to create a new message.
  */
-export const FetchArticleContentRequestSchema: GenMessage<FetchArticleContentRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 0);
+export const FetchArticleContentRequestSchema: GenMessage<FetchArticleContentRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 0);
 
 /**
  * FetchArticleContentResponse contains the fetched article content
  *
  * @generated from message alt.articles.v2.FetchArticleContentResponse
  */
-export type FetchArticleContentResponse =
-	Message<"alt.articles.v2.FetchArticleContentResponse"> & {
-		/**
-		 * Original URL
-		 *
-		 * @generated from field: string url = 1;
-		 */
-		url: string;
+export type FetchArticleContentResponse = Message<"alt.articles.v2.FetchArticleContentResponse"> & {
+  /**
+   * Original URL
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
 
-		/**
-		 * Extracted article content (HTML tags stripped)
-		 *
-		 * @generated from field: string content = 2;
-		 */
-		content: string;
+  /**
+   * Extracted article content (HTML tags stripped)
+   *
+   * @generated from field: string content = 2;
+   */
+  content: string;
 
-		/**
-		 * Generated article ID
-		 *
-		 * @generated from field: string article_id = 3;
-		 */
-		articleId: string;
-	};
+  /**
+   * Generated article ID
+   *
+   * @generated from field: string article_id = 3;
+   */
+  articleId: string;
+
+  /**
+   * OGP image URL (HTTPS only, empty if not found)
+   *
+   * @generated from field: string og_image_url = 4;
+   */
+  ogImageUrl: string;
+};
 
 /**
  * Describes the message alt.articles.v2.FetchArticleContentResponse.
  * Use `create(FetchArticleContentResponseSchema)` to create a new message.
  */
-export const FetchArticleContentResponseSchema: GenMessage<FetchArticleContentResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 1);
+export const FetchArticleContentResponseSchema: GenMessage<FetchArticleContentResponse> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 1);
 
 /**
  * ArchiveArticleRequest is the request for archiving an article
  *
  * @generated from message alt.articles.v2.ArchiveArticleRequest
  */
-export type ArchiveArticleRequest =
-	Message<"alt.articles.v2.ArchiveArticleRequest"> & {
-		/**
-		 * Article URL to archive (required)
-		 *
-		 * @generated from field: string feed_url = 1;
-		 */
-		feedUrl: string;
+export type ArchiveArticleRequest = Message<"alt.articles.v2.ArchiveArticleRequest"> & {
+  /**
+   * Article URL to archive (required)
+   *
+   * @generated from field: string feed_url = 1;
+   */
+  feedUrl: string;
 
-		/**
-		 * Optional title override
-		 *
-		 * @generated from field: optional string title = 2;
-		 */
-		title?: string;
-	};
+  /**
+   * Optional title override
+   *
+   * @generated from field: optional string title = 2;
+   */
+  title?: string;
+};
 
 /**
  * Describes the message alt.articles.v2.ArchiveArticleRequest.
  * Use `create(ArchiveArticleRequestSchema)` to create a new message.
  */
-export const ArchiveArticleRequestSchema: GenMessage<ArchiveArticleRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 2);
+export const ArchiveArticleRequestSchema: GenMessage<ArchiveArticleRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 2);
 
 /**
  * ArchiveArticleResponse contains the result of archiving
  *
  * @generated from message alt.articles.v2.ArchiveArticleResponse
  */
-export type ArchiveArticleResponse =
-	Message<"alt.articles.v2.ArchiveArticleResponse"> & {
-		/**
-		 * Success message
-		 *
-		 * @generated from field: string message = 1;
-		 */
-		message: string;
-	};
+export type ArchiveArticleResponse = Message<"alt.articles.v2.ArchiveArticleResponse"> & {
+  /**
+   * Success message
+   *
+   * @generated from field: string message = 1;
+   */
+  message: string;
+};
 
 /**
  * Describes the message alt.articles.v2.ArchiveArticleResponse.
  * Use `create(ArchiveArticleResponseSchema)` to create a new message.
  */
-export const ArchiveArticleResponseSchema: GenMessage<ArchiveArticleResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 3);
+export const ArchiveArticleResponseSchema: GenMessage<ArchiveArticleResponse> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 3);
 
 /**
  * FetchArticlesCursorRequest is the request for fetching articles with pagination
  *
  * @generated from message alt.articles.v2.FetchArticlesCursorRequest
  */
-export type FetchArticlesCursorRequest =
-	Message<"alt.articles.v2.FetchArticlesCursorRequest"> & {
-		/**
-		 * Maximum number of items to return (default: 20, max: 100)
-		 *
-		 * @generated from field: int32 limit = 1;
-		 */
-		limit: number;
+export type FetchArticlesCursorRequest = Message<"alt.articles.v2.FetchArticlesCursorRequest"> & {
+  /**
+   * Maximum number of items to return (default: 20, max: 100)
+   *
+   * @generated from field: int32 limit = 1;
+   */
+  limit: number;
 
-		/**
-		 * Cursor for pagination (RFC3339 timestamp)
-		 *
-		 * @generated from field: optional string cursor = 2;
-		 */
-		cursor?: string;
-	};
+  /**
+   * Cursor for pagination (RFC3339 timestamp)
+   *
+   * @generated from field: optional string cursor = 2;
+   */
+  cursor?: string;
+};
 
 /**
  * Describes the message alt.articles.v2.FetchArticlesCursorRequest.
  * Use `create(FetchArticlesCursorRequestSchema)` to create a new message.
  */
-export const FetchArticlesCursorRequestSchema: GenMessage<FetchArticlesCursorRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 4);
+export const FetchArticlesCursorRequestSchema: GenMessage<FetchArticlesCursorRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 4);
 
 /**
  * ArticleItem represents a single article
@@ -174,366 +158,349 @@ export const FetchArticlesCursorRequestSchema: GenMessage<FetchArticlesCursorReq
  * @generated from message alt.articles.v2.ArticleItem
  */
 export type ArticleItem = Message<"alt.articles.v2.ArticleItem"> & {
-	/**
-	 * Article UUID
-	 *
-	 * @generated from field: string id = 1;
-	 */
-	id: string;
+  /**
+   * Article UUID
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
 
-	/**
-	 * Article title
-	 *
-	 * @generated from field: string title = 2;
-	 */
-	title: string;
+  /**
+   * Article title
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
 
-	/**
-	 * Article URL
-	 *
-	 * @generated from field: string url = 3;
-	 */
-	url: string;
+  /**
+   * Article URL
+   *
+   * @generated from field: string url = 3;
+   */
+  url: string;
 
-	/**
-	 * Article content
-	 *
-	 * @generated from field: string content = 4;
-	 */
-	content: string;
+  /**
+   * Article content
+   *
+   * @generated from field: string content = 4;
+   */
+  content: string;
 
-	/**
-	 * Published timestamp (RFC3339)
-	 *
-	 * @generated from field: string published_at = 5;
-	 */
-	publishedAt: string;
+  /**
+   * Published timestamp (RFC3339)
+   *
+   * @generated from field: string published_at = 5;
+   */
+  publishedAt: string;
 
-	/**
-	 * Tags associated with the article
-	 *
-	 * @generated from field: repeated string tags = 6;
-	 */
-	tags: string[];
+  /**
+   * Tags associated with the article
+   *
+   * @generated from field: repeated string tags = 6;
+   */
+  tags: string[];
 };
 
 /**
  * Describes the message alt.articles.v2.ArticleItem.
  * Use `create(ArticleItemSchema)` to create a new message.
  */
-export const ArticleItemSchema: GenMessage<ArticleItem> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 5);
+export const ArticleItemSchema: GenMessage<ArticleItem> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 5);
 
 /**
  * FetchArticlesCursorResponse contains articles with pagination info
  *
  * @generated from message alt.articles.v2.FetchArticlesCursorResponse
  */
-export type FetchArticlesCursorResponse =
-	Message<"alt.articles.v2.FetchArticlesCursorResponse"> & {
-		/**
-		 * Article items
-		 *
-		 * @generated from field: repeated alt.articles.v2.ArticleItem data = 1;
-		 */
-		data: ArticleItem[];
+export type FetchArticlesCursorResponse = Message<"alt.articles.v2.FetchArticlesCursorResponse"> & {
+  /**
+   * Article items
+   *
+   * @generated from field: repeated alt.articles.v2.ArticleItem data = 1;
+   */
+  data: ArticleItem[];
 
-		/**
-		 * Next cursor for pagination (RFC3339 timestamp)
-		 *
-		 * @generated from field: optional string next_cursor = 2;
-		 */
-		nextCursor?: string;
+  /**
+   * Next cursor for pagination (RFC3339 timestamp)
+   *
+   * @generated from field: optional string next_cursor = 2;
+   */
+  nextCursor?: string;
 
-		/**
-		 * Whether there are more items
-		 *
-		 * @generated from field: bool has_more = 3;
-		 */
-		hasMore: boolean;
-	};
+  /**
+   * Whether there are more items
+   *
+   * @generated from field: bool has_more = 3;
+   */
+  hasMore: boolean;
+};
 
 /**
  * Describes the message alt.articles.v2.FetchArticlesCursorResponse.
  * Use `create(FetchArticlesCursorResponseSchema)` to create a new message.
  */
-export const FetchArticlesCursorResponseSchema: GenMessage<FetchArticlesCursorResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 6);
+export const FetchArticlesCursorResponseSchema: GenMessage<FetchArticlesCursorResponse> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 6);
 
 /**
  * FetchArticleSummaryRequest is the request for fetching article summaries
  *
  * @generated from message alt.articles.v2.FetchArticleSummaryRequest
  */
-export type FetchArticleSummaryRequest =
-	Message<"alt.articles.v2.FetchArticleSummaryRequest"> & {
-		/**
-		 * List of feed URLs to fetch summaries for (max 50 URLs)
-		 *
-		 * @generated from field: repeated string feed_urls = 1;
-		 */
-		feedUrls: string[];
-	};
+export type FetchArticleSummaryRequest = Message<"alt.articles.v2.FetchArticleSummaryRequest"> & {
+  /**
+   * List of feed URLs to fetch summaries for (max 50 URLs)
+   *
+   * @generated from field: repeated string feed_urls = 1;
+   */
+  feedUrls: string[];
+};
 
 /**
  * Describes the message alt.articles.v2.FetchArticleSummaryRequest.
  * Use `create(FetchArticleSummaryRequestSchema)` to create a new message.
  */
-export const FetchArticleSummaryRequestSchema: GenMessage<FetchArticleSummaryRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 7);
+export const FetchArticleSummaryRequestSchema: GenMessage<FetchArticleSummaryRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 7);
 
 /**
  * ArticleSummaryItem represents a single article summary
  *
  * @generated from message alt.articles.v2.ArticleSummaryItem
  */
-export type ArticleSummaryItem =
-	Message<"alt.articles.v2.ArticleSummaryItem"> & {
-		/**
-		 * Article title
-		 *
-		 * @generated from field: string title = 1;
-		 */
-		title: string;
+export type ArticleSummaryItem = Message<"alt.articles.v2.ArticleSummaryItem"> & {
+  /**
+   * Article title
+   *
+   * @generated from field: string title = 1;
+   */
+  title: string;
 
-		/**
-		 * Article content
-		 *
-		 * @generated from field: string content = 2;
-		 */
-		content: string;
+  /**
+   * Article content
+   *
+   * @generated from field: string content = 2;
+   */
+  content: string;
 
-		/**
-		 * Article author
-		 *
-		 * @generated from field: string author = 3;
-		 */
-		author: string;
+  /**
+   * Article author
+   *
+   * @generated from field: string author = 3;
+   */
+  author: string;
 
-		/**
-		 * Published timestamp
-		 *
-		 * @generated from field: string published_at = 4;
-		 */
-		publishedAt: string;
+  /**
+   * Published timestamp
+   *
+   * @generated from field: string published_at = 4;
+   */
+  publishedAt: string;
 
-		/**
-		 * Fetched timestamp
-		 *
-		 * @generated from field: string fetched_at = 5;
-		 */
-		fetchedAt: string;
+  /**
+   * Fetched timestamp
+   *
+   * @generated from field: string fetched_at = 5;
+   */
+  fetchedAt: string;
 
-		/**
-		 * Source ID
-		 *
-		 * @generated from field: string source_id = 6;
-		 */
-		sourceId: string;
-	};
+  /**
+   * Source ID
+   *
+   * @generated from field: string source_id = 6;
+   */
+  sourceId: string;
+};
 
 /**
  * Describes the message alt.articles.v2.ArticleSummaryItem.
  * Use `create(ArticleSummaryItemSchema)` to create a new message.
  */
-export const ArticleSummaryItemSchema: GenMessage<ArticleSummaryItem> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 8);
+export const ArticleSummaryItemSchema: GenMessage<ArticleSummaryItem> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 8);
 
 /**
  * FetchArticleSummaryResponse contains article summaries
  *
  * @generated from message alt.articles.v2.FetchArticleSummaryResponse
  */
-export type FetchArticleSummaryResponse =
-	Message<"alt.articles.v2.FetchArticleSummaryResponse"> & {
-		/**
-		 * Matched articles
-		 *
-		 * @generated from field: repeated alt.articles.v2.ArticleSummaryItem matched_articles = 1;
-		 */
-		matchedArticles: ArticleSummaryItem[];
+export type FetchArticleSummaryResponse = Message<"alt.articles.v2.FetchArticleSummaryResponse"> & {
+  /**
+   * Matched articles
+   *
+   * @generated from field: repeated alt.articles.v2.ArticleSummaryItem matched_articles = 1;
+   */
+  matchedArticles: ArticleSummaryItem[];
 
-		/**
-		 * Total number of matched articles
-		 *
-		 * @generated from field: int32 total_matched = 2;
-		 */
-		totalMatched: number;
+  /**
+   * Total number of matched articles
+   *
+   * @generated from field: int32 total_matched = 2;
+   */
+  totalMatched: number;
 
-		/**
-		 * Number of requested URLs
-		 *
-		 * @generated from field: int32 requested_count = 3;
-		 */
-		requestedCount: number;
-	};
+  /**
+   * Number of requested URLs
+   *
+   * @generated from field: int32 requested_count = 3;
+   */
+  requestedCount: number;
+};
 
 /**
  * Describes the message alt.articles.v2.FetchArticleSummaryResponse.
  * Use `create(FetchArticleSummaryResponseSchema)` to create a new message.
  */
-export const FetchArticleSummaryResponseSchema: GenMessage<FetchArticleSummaryResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 9);
+export const FetchArticleSummaryResponseSchema: GenMessage<FetchArticleSummaryResponse> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 9);
 
 /**
  * FetchArticlesByTagRequest is the request for fetching articles by tag
  *
  * @generated from message alt.articles.v2.FetchArticlesByTagRequest
  */
-export type FetchArticlesByTagRequest =
-	Message<"alt.articles.v2.FetchArticlesByTagRequest"> & {
-		/**
-		 * Tag ID for backward compatibility (optional)
-		 *
-		 * @generated from field: optional string tag_id = 1;
-		 */
-		tagId?: string;
+export type FetchArticlesByTagRequest = Message<"alt.articles.v2.FetchArticlesByTagRequest"> & {
+  /**
+   * Tag ID for backward compatibility (optional)
+   *
+   * @generated from field: optional string tag_id = 1;
+   */
+  tagId?: string;
 
-		/**
-		 * Tag name for cross-feed discovery (preferred, ADR-169)
-		 *
-		 * @generated from field: optional string tag_name = 2;
-		 */
-		tagName?: string;
+  /**
+   * Tag name for cross-feed discovery (preferred, ADR-169)
+   *
+   * @generated from field: optional string tag_name = 2;
+   */
+  tagName?: string;
 
-		/**
-		 * Cursor for pagination (RFC3339 timestamp)
-		 *
-		 * @generated from field: optional string cursor = 3;
-		 */
-		cursor?: string;
+  /**
+   * Cursor for pagination (RFC3339 timestamp)
+   *
+   * @generated from field: optional string cursor = 3;
+   */
+  cursor?: string;
 
-		/**
-		 * Maximum number of items to return (default: 20, max: 100)
-		 *
-		 * @generated from field: int32 limit = 4;
-		 */
-		limit: number;
-	};
+  /**
+   * Maximum number of items to return (default: 20, max: 100)
+   *
+   * @generated from field: int32 limit = 4;
+   */
+  limit: number;
+};
 
 /**
  * Describes the message alt.articles.v2.FetchArticlesByTagRequest.
  * Use `create(FetchArticlesByTagRequestSchema)` to create a new message.
  */
-export const FetchArticlesByTagRequestSchema: GenMessage<FetchArticlesByTagRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 10);
+export const FetchArticlesByTagRequestSchema: GenMessage<FetchArticlesByTagRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 10);
 
 /**
  * TagTrailArticleItem represents an article in Tag Trail
  *
  * @generated from message alt.articles.v2.TagTrailArticleItem
  */
-export type TagTrailArticleItem =
-	Message<"alt.articles.v2.TagTrailArticleItem"> & {
-		/**
-		 * Article UUID
-		 *
-		 * @generated from field: string id = 1;
-		 */
-		id: string;
+export type TagTrailArticleItem = Message<"alt.articles.v2.TagTrailArticleItem"> & {
+  /**
+   * Article UUID
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
 
-		/**
-		 * Article title
-		 *
-		 * @generated from field: string title = 2;
-		 */
-		title: string;
+  /**
+   * Article title
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
 
-		/**
-		 * Article URL (link)
-		 *
-		 * @generated from field: string link = 3;
-		 */
-		link: string;
+  /**
+   * Article URL (link)
+   *
+   * @generated from field: string link = 3;
+   */
+  link: string;
 
-		/**
-		 * Published timestamp (RFC3339)
-		 *
-		 * @generated from field: string published_at = 4;
-		 */
-		publishedAt: string;
+  /**
+   * Published timestamp (RFC3339)
+   *
+   * @generated from field: string published_at = 4;
+   */
+  publishedAt: string;
 
-		/**
-		 * Feed title (source)
-		 *
-		 * @generated from field: string feed_title = 5;
-		 */
-		feedTitle: string;
-	};
+  /**
+   * Feed title (source)
+   *
+   * @generated from field: string feed_title = 5;
+   */
+  feedTitle: string;
+};
 
 /**
  * Describes the message alt.articles.v2.TagTrailArticleItem.
  * Use `create(TagTrailArticleItemSchema)` to create a new message.
  */
-export const TagTrailArticleItemSchema: GenMessage<TagTrailArticleItem> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 11);
+export const TagTrailArticleItemSchema: GenMessage<TagTrailArticleItem> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 11);
 
 /**
  * FetchArticlesByTagResponse contains articles matching the tag
  *
  * @generated from message alt.articles.v2.FetchArticlesByTagResponse
  */
-export type FetchArticlesByTagResponse =
-	Message<"alt.articles.v2.FetchArticlesByTagResponse"> & {
-		/**
-		 * Matching articles
-		 *
-		 * @generated from field: repeated alt.articles.v2.TagTrailArticleItem articles = 1;
-		 */
-		articles: TagTrailArticleItem[];
+export type FetchArticlesByTagResponse = Message<"alt.articles.v2.FetchArticlesByTagResponse"> & {
+  /**
+   * Matching articles
+   *
+   * @generated from field: repeated alt.articles.v2.TagTrailArticleItem articles = 1;
+   */
+  articles: TagTrailArticleItem[];
 
-		/**
-		 * Next cursor for pagination
-		 *
-		 * @generated from field: optional string next_cursor = 2;
-		 */
-		nextCursor?: string;
+  /**
+   * Next cursor for pagination
+   *
+   * @generated from field: optional string next_cursor = 2;
+   */
+  nextCursor?: string;
 
-		/**
-		 * Whether there are more items
-		 *
-		 * @generated from field: bool has_more = 3;
-		 */
-		hasMore: boolean;
-	};
+  /**
+   * Whether there are more items
+   *
+   * @generated from field: bool has_more = 3;
+   */
+  hasMore: boolean;
+};
 
 /**
  * Describes the message alt.articles.v2.FetchArticlesByTagResponse.
  * Use `create(FetchArticlesByTagResponseSchema)` to create a new message.
  */
-export const FetchArticlesByTagResponseSchema: GenMessage<FetchArticlesByTagResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 12);
+export const FetchArticlesByTagResponseSchema: GenMessage<FetchArticlesByTagResponse> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 12);
 
 /**
  * FetchArticleTagsRequest is the request for fetching tags of an article
  *
  * @generated from message alt.articles.v2.FetchArticleTagsRequest
  */
-export type FetchArticleTagsRequest =
-	Message<"alt.articles.v2.FetchArticleTagsRequest"> & {
-		/**
-		 * Article ID (required)
-		 *
-		 * @generated from field: string article_id = 1;
-		 */
-		articleId: string;
-	};
+export type FetchArticleTagsRequest = Message<"alt.articles.v2.FetchArticleTagsRequest"> & {
+  /**
+   * Article ID (required)
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
+};
 
 /**
  * Describes the message alt.articles.v2.FetchArticleTagsRequest.
  * Use `create(FetchArticleTagsRequestSchema)` to create a new message.
  */
-export const FetchArticleTagsRequestSchema: GenMessage<FetchArticleTagsRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 13);
+export const FetchArticleTagsRequestSchema: GenMessage<FetchArticleTagsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 13);
 
 /**
  * ArticleTagItem represents a tag on an article
@@ -541,176 +508,168 @@ export const FetchArticleTagsRequestSchema: GenMessage<FetchArticleTagsRequest> 
  * @generated from message alt.articles.v2.ArticleTagItem
  */
 export type ArticleTagItem = Message<"alt.articles.v2.ArticleTagItem"> & {
-	/**
-	 * Tag ID
-	 *
-	 * @generated from field: string id = 1;
-	 */
-	id: string;
+  /**
+   * Tag ID
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
 
-	/**
-	 * Tag name
-	 *
-	 * @generated from field: string name = 2;
-	 */
-	name: string;
+  /**
+   * Tag name
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
 
-	/**
-	 * Created timestamp (RFC3339)
-	 *
-	 * @generated from field: string created_at = 3;
-	 */
-	createdAt: string;
+  /**
+   * Created timestamp (RFC3339)
+   *
+   * @generated from field: string created_at = 3;
+   */
+  createdAt: string;
 };
 
 /**
  * Describes the message alt.articles.v2.ArticleTagItem.
  * Use `create(ArticleTagItemSchema)` to create a new message.
  */
-export const ArticleTagItemSchema: GenMessage<ArticleTagItem> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 14);
+export const ArticleTagItemSchema: GenMessage<ArticleTagItem> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 14);
 
 /**
  * FetchArticleTagsResponse contains tags for an article
  *
  * @generated from message alt.articles.v2.FetchArticleTagsResponse
  */
-export type FetchArticleTagsResponse =
-	Message<"alt.articles.v2.FetchArticleTagsResponse"> & {
-		/**
-		 * Article ID
-		 *
-		 * @generated from field: string article_id = 1;
-		 */
-		articleId: string;
+export type FetchArticleTagsResponse = Message<"alt.articles.v2.FetchArticleTagsResponse"> & {
+  /**
+   * Article ID
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
 
-		/**
-		 * Article tags
-		 *
-		 * @generated from field: repeated alt.articles.v2.ArticleTagItem tags = 2;
-		 */
-		tags: ArticleTagItem[];
-	};
+  /**
+   * Article tags
+   *
+   * @generated from field: repeated alt.articles.v2.ArticleTagItem tags = 2;
+   */
+  tags: ArticleTagItem[];
+};
 
 /**
  * Describes the message alt.articles.v2.FetchArticleTagsResponse.
  * Use `create(FetchArticleTagsResponseSchema)` to create a new message.
  */
-export const FetchArticleTagsResponseSchema: GenMessage<FetchArticleTagsResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 15);
+export const FetchArticleTagsResponseSchema: GenMessage<FetchArticleTagsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 15);
 
 /**
  * FetchRandomFeedRequest is the request for getting a random feed
  *
  * @generated from message alt.articles.v2.FetchRandomFeedRequest
  */
-export type FetchRandomFeedRequest =
-	Message<"alt.articles.v2.FetchRandomFeedRequest"> & {};
+export type FetchRandomFeedRequest = Message<"alt.articles.v2.FetchRandomFeedRequest"> & {
+};
 
 /**
  * Describes the message alt.articles.v2.FetchRandomFeedRequest.
  * Use `create(FetchRandomFeedRequestSchema)` to create a new message.
  */
-export const FetchRandomFeedRequestSchema: GenMessage<FetchRandomFeedRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 16);
+export const FetchRandomFeedRequestSchema: GenMessage<FetchRandomFeedRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 16);
 
 /**
  * FetchRandomFeedResponse contains a random feed
  *
  * @generated from message alt.articles.v2.FetchRandomFeedResponse
  */
-export type FetchRandomFeedResponse =
-	Message<"alt.articles.v2.FetchRandomFeedResponse"> & {
-		/**
-		 * Feed ID
-		 *
-		 * @generated from field: string id = 1;
-		 */
-		id: string;
+export type FetchRandomFeedResponse = Message<"alt.articles.v2.FetchRandomFeedResponse"> & {
+  /**
+   * Feed ID
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
 
-		/**
-		 * Site URL (feeds.link)
-		 *
-		 * @generated from field: string url = 2;
-		 */
-		url: string;
+  /**
+   * Site URL (feeds.link)
+   *
+   * @generated from field: string url = 2;
+   */
+  url: string;
 
-		/**
-		 * Feed title
-		 *
-		 * @generated from field: string title = 3;
-		 */
-		title: string;
+  /**
+   * Feed title
+   *
+   * @generated from field: string title = 3;
+   */
+  title: string;
 
-		/**
-		 * Feed description
-		 *
-		 * @generated from field: string description = 4;
-		 */
-		description: string;
+  /**
+   * Feed description
+   *
+   * @generated from field: string description = 4;
+   */
+  description: string;
 
-		/**
-		 * Tags for the feed (generated on-the-fly if not in DB, ADR-173)
-		 *
-		 * @generated from field: repeated alt.articles.v2.ArticleTagItem tags = 5;
-		 */
-		tags: ArticleTagItem[];
-	};
+  /**
+   * Tags for the feed (generated on-the-fly if not in DB, ADR-173)
+   *
+   * @generated from field: repeated alt.articles.v2.ArticleTagItem tags = 5;
+   */
+  tags: ArticleTagItem[];
+};
 
 /**
  * Describes the message alt.articles.v2.FetchRandomFeedResponse.
  * Use `create(FetchRandomFeedResponseSchema)` to create a new message.
  */
-export const FetchRandomFeedResponseSchema: GenMessage<FetchRandomFeedResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 17);
+export const FetchRandomFeedResponseSchema: GenMessage<FetchRandomFeedResponse> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 17);
 
 /**
  * StreamArticleTagsRequest is the request for streaming tag updates
  *
  * @generated from message alt.articles.v2.StreamArticleTagsRequest
  */
-export type StreamArticleTagsRequest =
-	Message<"alt.articles.v2.StreamArticleTagsRequest"> & {
-		/**
-		 * Article ID (required)
-		 *
-		 * @generated from field: string article_id = 1;
-		 */
-		articleId: string;
+export type StreamArticleTagsRequest = Message<"alt.articles.v2.StreamArticleTagsRequest"> & {
+  /**
+   * Article ID (required)
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
 
-		/**
-		 * Article title (optional, for on-the-fly generation)
-		 *
-		 * @generated from field: optional string title = 2;
-		 */
-		title?: string;
+  /**
+   * Article title (optional, for on-the-fly generation)
+   *
+   * @generated from field: optional string title = 2;
+   */
+  title?: string;
 
-		/**
-		 * Article content (optional, for on-the-fly generation)
-		 *
-		 * @generated from field: optional string content = 3;
-		 */
-		content?: string;
+  /**
+   * Article content (optional, for on-the-fly generation)
+   *
+   * @generated from field: optional string content = 3;
+   */
+  content?: string;
 
-		/**
-		 * Feed ID (optional, for on-the-fly generation)
-		 *
-		 * @generated from field: optional string feed_id = 4;
-		 */
-		feedId?: string;
-	};
+  /**
+   * Feed ID (optional, for on-the-fly generation)
+   *
+   * @generated from field: optional string feed_id = 4;
+   */
+  feedId?: string;
+};
 
 /**
  * Describes the message alt.articles.v2.StreamArticleTagsRequest.
  * Use `create(StreamArticleTagsRequestSchema)` to create a new message.
  */
-export const StreamArticleTagsRequestSchema: GenMessage<StreamArticleTagsRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 18);
+export const StreamArticleTagsRequestSchema: GenMessage<StreamArticleTagsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 18);
 
 /**
  * ArticleTagEvent represents a streaming event for tag updates
@@ -718,42 +677,41 @@ export const StreamArticleTagsRequestSchema: GenMessage<StreamArticleTagsRequest
  * @generated from message alt.articles.v2.ArticleTagEvent
  */
 export type ArticleTagEvent = Message<"alt.articles.v2.ArticleTagEvent"> & {
-	/**
-	 * Article ID
-	 *
-	 * @generated from field: string article_id = 1;
-	 */
-	articleId: string;
+  /**
+   * Article ID
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
 
-	/**
-	 * Current tags (empty during generation)
-	 *
-	 * @generated from field: repeated alt.articles.v2.ArticleTagItem tags = 2;
-	 */
-	tags: ArticleTagItem[];
+  /**
+   * Current tags (empty during generation)
+   *
+   * @generated from field: repeated alt.articles.v2.ArticleTagItem tags = 2;
+   */
+  tags: ArticleTagItem[];
 
-	/**
-	 * Event type
-	 *
-	 * @generated from field: alt.articles.v2.ArticleTagEvent.EventType event_type = 3;
-	 */
-	eventType: ArticleTagEvent_EventType;
+  /**
+   * Event type
+   *
+   * @generated from field: alt.articles.v2.ArticleTagEvent.EventType event_type = 3;
+   */
+  eventType: ArticleTagEvent_EventType;
 
-	/**
-	 * Status message (optional)
-	 *
-	 * @generated from field: optional string message = 4;
-	 */
-	message?: string;
+  /**
+   * Status message (optional)
+   *
+   * @generated from field: optional string message = 4;
+   */
+  message?: string;
 };
 
 /**
  * Describes the message alt.articles.v2.ArticleTagEvent.
  * Use `create(ArticleTagEventSchema)` to create a new message.
  */
-export const ArticleTagEventSchema: GenMessage<ArticleTagEvent> =
-	/*@__PURE__*/
-	messageDesc(file_alt_articles_v2_articles, 19);
+export const ArticleTagEventSchema: GenMessage<ArticleTagEvent> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 19);
 
 /**
  * EventType indicates the type of tag event
@@ -761,46 +719,45 @@ export const ArticleTagEventSchema: GenMessage<ArticleTagEvent> =
  * @generated from enum alt.articles.v2.ArticleTagEvent.EventType
  */
 export enum ArticleTagEvent_EventType {
-	/**
-	 * @generated from enum value: EVENT_TYPE_UNSPECIFIED = 0;
-	 */
-	UNSPECIFIED = 0,
+  /**
+   * @generated from enum value: EVENT_TYPE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
 
-	/**
-	 * Tags retrieved from cache/DB (immediate completion)
-	 *
-	 * @generated from enum value: EVENT_TYPE_CACHED = 1;
-	 */
-	CACHED = 1,
+  /**
+   * Tags retrieved from cache/DB (immediate completion)
+   *
+   * @generated from enum value: EVENT_TYPE_CACHED = 1;
+   */
+  CACHED = 1,
 
-	/**
-	 * Tags are being generated (heartbeat)
-	 *
-	 * @generated from enum value: EVENT_TYPE_GENERATING = 2;
-	 */
-	GENERATING = 2,
+  /**
+   * Tags are being generated (heartbeat)
+   *
+   * @generated from enum value: EVENT_TYPE_GENERATING = 2;
+   */
+  GENERATING = 2,
 
-	/**
-	 * Tag generation completed
-	 *
-	 * @generated from enum value: EVENT_TYPE_COMPLETED = 3;
-	 */
-	COMPLETED = 3,
+  /**
+   * Tag generation completed
+   *
+   * @generated from enum value: EVENT_TYPE_COMPLETED = 3;
+   */
+  COMPLETED = 3,
 
-	/**
-	 * Error occurred during generation
-	 *
-	 * @generated from enum value: EVENT_TYPE_ERROR = 4;
-	 */
-	ERROR = 4,
+  /**
+   * Error occurred during generation
+   *
+   * @generated from enum value: EVENT_TYPE_ERROR = 4;
+   */
+  ERROR = 4,
 }
 
 /**
  * Describes the enum alt.articles.v2.ArticleTagEvent.EventType.
  */
-export const ArticleTagEvent_EventTypeSchema: GenEnum<ArticleTagEvent_EventType> =
-	/*@__PURE__*/
-	enumDesc(file_alt_articles_v2_articles, 19, 0);
+export const ArticleTagEvent_EventTypeSchema: GenEnum<ArticleTagEvent_EventType> = /*@__PURE__*/
+  enumDesc(file_alt_articles_v2_articles, 19, 0);
 
 /**
  * ArticleService provides article-related operations
@@ -808,92 +765,94 @@ export const ArticleTagEvent_EventTypeSchema: GenEnum<ArticleTagEvent_EventType>
  * @generated from service alt.articles.v2.ArticleService
  */
 export const ArticleService: GenService<{
-	/**
-	 * FetchArticleContent fetches and extracts compliant article content
-	 * Replaces GET /v1/articles/fetch/content
-	 *
-	 * @generated from rpc alt.articles.v2.ArticleService.FetchArticleContent
-	 */
-	fetchArticleContent: {
-		methodKind: "unary";
-		input: typeof FetchArticleContentRequestSchema;
-		output: typeof FetchArticleContentResponseSchema;
-	};
-	/**
-	 * ArchiveArticle archives an article for later reading
-	 * Replaces POST /v1/articles/archive
-	 *
-	 * @generated from rpc alt.articles.v2.ArticleService.ArchiveArticle
-	 */
-	archiveArticle: {
-		methodKind: "unary";
-		input: typeof ArchiveArticleRequestSchema;
-		output: typeof ArchiveArticleResponseSchema;
-	};
-	/**
-	 * FetchArticlesCursor fetches articles with cursor-based pagination
-	 * Replaces GET /v1/articles/fetch/cursor
-	 *
-	 * @generated from rpc alt.articles.v2.ArticleService.FetchArticlesCursor
-	 */
-	fetchArticlesCursor: {
-		methodKind: "unary";
-		input: typeof FetchArticlesCursorRequestSchema;
-		output: typeof FetchArticlesCursorResponseSchema;
-	};
-	/**
-	 * FetchArticleSummary fetches article summaries for multiple URLs
-	 * Replaces POST /v1/articles/summary
-	 *
-	 * @generated from rpc alt.articles.v2.ArticleService.FetchArticleSummary
-	 */
-	fetchArticleSummary: {
-		methodKind: "unary";
-		input: typeof FetchArticleSummaryRequestSchema;
-		output: typeof FetchArticleSummaryResponseSchema;
-	};
-	/**
-	 * FetchArticlesByTag fetches articles by tag (ID or name)
-	 * Replaces GET /v1/articles/by-tag
-	 *
-	 * @generated from rpc alt.articles.v2.ArticleService.FetchArticlesByTag
-	 */
-	fetchArticlesByTag: {
-		methodKind: "unary";
-		input: typeof FetchArticlesByTagRequestSchema;
-		output: typeof FetchArticlesByTagResponseSchema;
-	};
-	/**
-	 * FetchArticleTags fetches tags for an article
-	 * Replaces GET /v1/articles/:id/tags
-	 *
-	 * @generated from rpc alt.articles.v2.ArticleService.FetchArticleTags
-	 */
-	fetchArticleTags: {
-		methodKind: "unary";
-		input: typeof FetchArticleTagsRequestSchema;
-		output: typeof FetchArticleTagsResponseSchema;
-	};
-	/**
-	 * FetchRandomFeed fetches a random feed for Tag Trail
-	 * Replaces GET /v1/rss-feed-link/random
-	 *
-	 * @generated from rpc alt.articles.v2.ArticleService.FetchRandomFeed
-	 */
-	fetchRandomFeed: {
-		methodKind: "unary";
-		input: typeof FetchRandomFeedRequestSchema;
-		output: typeof FetchRandomFeedResponseSchema;
-	};
-	/**
-	 * StreamArticleTags streams real-time tag updates for an article
-	 * Returns cached tags immediately if available, otherwise streams generation progress
-	 *
-	 * @generated from rpc alt.articles.v2.ArticleService.StreamArticleTags
-	 */
-	streamArticleTags: {
-		methodKind: "server_streaming";
-		input: typeof StreamArticleTagsRequestSchema;
-		output: typeof ArticleTagEventSchema;
-	};
-}> = /*@__PURE__*/ serviceDesc(file_alt_articles_v2_articles, 0);
+  /**
+   * FetchArticleContent fetches and extracts compliant article content
+   * Replaces GET /v1/articles/fetch/content
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.FetchArticleContent
+   */
+  fetchArticleContent: {
+    methodKind: "unary";
+    input: typeof FetchArticleContentRequestSchema;
+    output: typeof FetchArticleContentResponseSchema;
+  },
+  /**
+   * ArchiveArticle archives an article for later reading
+   * Replaces POST /v1/articles/archive
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.ArchiveArticle
+   */
+  archiveArticle: {
+    methodKind: "unary";
+    input: typeof ArchiveArticleRequestSchema;
+    output: typeof ArchiveArticleResponseSchema;
+  },
+  /**
+   * FetchArticlesCursor fetches articles with cursor-based pagination
+   * Replaces GET /v1/articles/fetch/cursor
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.FetchArticlesCursor
+   */
+  fetchArticlesCursor: {
+    methodKind: "unary";
+    input: typeof FetchArticlesCursorRequestSchema;
+    output: typeof FetchArticlesCursorResponseSchema;
+  },
+  /**
+   * FetchArticleSummary fetches article summaries for multiple URLs
+   * Replaces POST /v1/articles/summary
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.FetchArticleSummary
+   */
+  fetchArticleSummary: {
+    methodKind: "unary";
+    input: typeof FetchArticleSummaryRequestSchema;
+    output: typeof FetchArticleSummaryResponseSchema;
+  },
+  /**
+   * FetchArticlesByTag fetches articles by tag (ID or name)
+   * Replaces GET /v1/articles/by-tag
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.FetchArticlesByTag
+   */
+  fetchArticlesByTag: {
+    methodKind: "unary";
+    input: typeof FetchArticlesByTagRequestSchema;
+    output: typeof FetchArticlesByTagResponseSchema;
+  },
+  /**
+   * FetchArticleTags fetches tags for an article
+   * Replaces GET /v1/articles/:id/tags
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.FetchArticleTags
+   */
+  fetchArticleTags: {
+    methodKind: "unary";
+    input: typeof FetchArticleTagsRequestSchema;
+    output: typeof FetchArticleTagsResponseSchema;
+  },
+  /**
+   * FetchRandomFeed fetches a random feed for Tag Trail
+   * Replaces GET /v1/rss-feed-link/random
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.FetchRandomFeed
+   */
+  fetchRandomFeed: {
+    methodKind: "unary";
+    input: typeof FetchRandomFeedRequestSchema;
+    output: typeof FetchRandomFeedResponseSchema;
+  },
+  /**
+   * StreamArticleTags streams real-time tag updates for an article
+   * Returns cached tags immediately if available, otherwise streams generation progress
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.StreamArticleTags
+   */
+  streamArticleTags: {
+    methodKind: "server_streaming";
+    input: typeof StreamArticleTagsRequestSchema;
+    output: typeof ArticleTagEventSchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_alt_articles_v2_articles, 0);
+

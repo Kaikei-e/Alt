@@ -36,6 +36,7 @@ export interface FetchArticleContentResult {
 	url: string;
 	content: string;
 	articleId: string;
+	ogImageUrl: string;
 }
 
 /**
@@ -172,6 +173,7 @@ export async function fetchArticleContent(
 		url: response.url,
 		content: response.content,
 		articleId: response.articleId,
+		ogImageUrl: response.ogImageUrl,
 	};
 }
 

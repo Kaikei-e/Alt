@@ -35,6 +35,7 @@ export interface FetchArticleSummaryResponse {
 export interface FeedContentOnTheFlyResponse {
 	content: SafeHtmlString;
 	article_id: string;
+	og_image_url: string;
 }
 
 /**
@@ -101,6 +102,7 @@ export async function getFeedContentOnTheFlyClient(
 	return {
 		content: response.content,
 		article_id: response.articleId,
+		og_image_url: response.ogImageUrl,
 	};
 }
 

@@ -2,56 +2,43 @@
 // @generated from file alt/morning_letter/v2/morning_letter.proto (package alt.morning_letter.v2, syntax proto3)
 /* eslint-disable */
 
-import type {
-	GenFile,
-	GenMessage,
-	GenService,
-} from "@bufbuild/protobuf/codegenv2";
-import {
-	fileDesc,
-	messageDesc,
-	serviceDesc,
-} from "@bufbuild/protobuf/codegenv2";
+import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/morning_letter/v2/morning_letter.proto.
  */
-export const file_alt_morning_letter_v2_morning_letter: GenFile =
-	/*@__PURE__*/
-	fileDesc(
-		"CiphbHQvbW9ybmluZ19sZXR0ZXIvdjIvbW9ybmluZ19sZXR0ZXIucHJvdG8SFWFsdC5tb3JuaW5nX2xldHRlci52MiJfChFTdHJlYW1DaGF0UmVxdWVzdBI0CghtZXNzYWdlcxgBIAMoCzIiLmFsdC5tb3JuaW5nX2xldHRlci52Mi5DaGF0TWVzc2FnZRIUCgx3aXRoaW5faG91cnMYAiABKAUiLAoLQ2hhdE1lc3NhZ2USDAoEcm9sZRgBIAEoCRIPCgdjb250ZW50GAIgASgJItUBCg9TdHJlYW1DaGF0RXZlbnQSDAoEa2luZBgBIAEoCRIPCgVkZWx0YRgCIAEoCUgAEjIKBG1ldGEYAyABKAsyIi5hbHQubW9ybmluZ19sZXR0ZXIudjIuTWV0YVBheWxvYWRIABIyCgRkb25lGAQgASgLMiIuYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkRvbmVQYXlsb2FkSAASFwoNZmFsbGJhY2tfY29kZRgFIAEoCUgAEhcKDWVycm9yX21lc3NhZ2UYBiABKAlIAEIJCgdwYXlsb2FkIpMBCgtNZXRhUGF5bG9hZBIyCgljaXRhdGlvbnMYASADKAsyHy5hbHQubW9ybmluZ19sZXR0ZXIudjIuQ2l0YXRpb24SNgoLdGltZV93aW5kb3cYAiABKAsyIS5hbHQubW9ybmluZ19sZXR0ZXIudjIuVGltZVdpbmRvdxIYChBhcnRpY2xlc19zY2FubmVkGAMgASgFIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiKgoKVGltZVdpbmRvdxINCgVzaW5jZRgBIAEoCRINCgV1bnRpbBgCIAEoCSJRCgtEb25lUGF5bG9hZBIOCgZhbnN3ZXIYASABKAkSMgoJY2l0YXRpb25zGAIgAygLMh8uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkNpdGF0aW9uMngKFE1vcm5pbmdMZXR0ZXJTZXJ2aWNlEmAKClN0cmVhbUNoYXQSKC5hbHQubW9ybmluZ19sZXR0ZXIudjIuU3RyZWFtQ2hhdFJlcXVlc3QaJi5hbHQubW9ybmluZ19sZXR0ZXIudjIuU3RyZWFtQ2hhdEV2ZW50MAFCNVozYWx0L2dlbi9wcm90by9hbHQvbW9ybmluZ19sZXR0ZXIvdjI7bW9ybmluZ2xldHRlcnYyYgZwcm90bzM",
-	);
+export const file_alt_morning_letter_v2_morning_letter: GenFile = /*@__PURE__*/
+  fileDesc("CiphbHQvbW9ybmluZ19sZXR0ZXIvdjIvbW9ybmluZ19sZXR0ZXIucHJvdG8SFWFsdC5tb3JuaW5nX2xldHRlci52MiJfChFTdHJlYW1DaGF0UmVxdWVzdBI0CghtZXNzYWdlcxgBIAMoCzIiLmFsdC5tb3JuaW5nX2xldHRlci52Mi5DaGF0TWVzc2FnZRIUCgx3aXRoaW5faG91cnMYAiABKAUiLAoLQ2hhdE1lc3NhZ2USDAoEcm9sZRgBIAEoCRIPCgdjb250ZW50GAIgASgJItUBCg9TdHJlYW1DaGF0RXZlbnQSDAoEa2luZBgBIAEoCRIPCgVkZWx0YRgCIAEoCUgAEjIKBG1ldGEYAyABKAsyIi5hbHQubW9ybmluZ19sZXR0ZXIudjIuTWV0YVBheWxvYWRIABIyCgRkb25lGAQgASgLMiIuYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkRvbmVQYXlsb2FkSAASFwoNZmFsbGJhY2tfY29kZRgFIAEoCUgAEhcKDWVycm9yX21lc3NhZ2UYBiABKAlIAEIJCgdwYXlsb2FkIpMBCgtNZXRhUGF5bG9hZBIyCgljaXRhdGlvbnMYASADKAsyHy5hbHQubW9ybmluZ19sZXR0ZXIudjIuQ2l0YXRpb24SNgoLdGltZV93aW5kb3cYAiABKAsyIS5hbHQubW9ybmluZ19sZXR0ZXIudjIuVGltZVdpbmRvdxIYChBhcnRpY2xlc19zY2FubmVkGAMgASgFIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiKgoKVGltZVdpbmRvdxINCgVzaW5jZRgBIAEoCRINCgV1bnRpbBgCIAEoCSJRCgtEb25lUGF5bG9hZBIOCgZhbnN3ZXIYASABKAkSMgoJY2l0YXRpb25zGAIgAygLMh8uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkNpdGF0aW9uMngKFE1vcm5pbmdMZXR0ZXJTZXJ2aWNlEmAKClN0cmVhbUNoYXQSKC5hbHQubW9ybmluZ19sZXR0ZXIudjIuU3RyZWFtQ2hhdFJlcXVlc3QaJi5hbHQubW9ybmluZ19sZXR0ZXIudjIuU3RyZWFtQ2hhdEV2ZW50MAFCNVozYWx0L2dlbi9wcm90by9hbHQvbW9ybmluZ19sZXR0ZXIvdjI7bW9ybmluZ2xldHRlcnYyYgZwcm90bzM");
 
 /**
  * StreamChatRequest is the request for streaming chat with time filtering.
  *
  * @generated from message alt.morning_letter.v2.StreamChatRequest
  */
-export type StreamChatRequest =
-	Message<"alt.morning_letter.v2.StreamChatRequest"> & {
-		/**
-		 * Chat message history (alternating user/assistant messages)
-		 *
-		 * @generated from field: repeated alt.morning_letter.v2.ChatMessage messages = 1;
-		 */
-		messages: ChatMessage[];
+export type StreamChatRequest = Message<"alt.morning_letter.v2.StreamChatRequest"> & {
+  /**
+   * Chat message history (alternating user/assistant messages)
+   *
+   * @generated from field: repeated alt.morning_letter.v2.ChatMessage messages = 1;
+   */
+  messages: ChatMessage[];
 
-		/**
-		 * Time window in hours (default: 24, max: 168 = 7 days)
-		 *
-		 * @generated from field: int32 within_hours = 2;
-		 */
-		withinHours: number;
-	};
+  /**
+   * Time window in hours (default: 24, max: 168 = 7 days)
+   *
+   * @generated from field: int32 within_hours = 2;
+   */
+  withinHours: number;
+};
 
 /**
  * Describes the message alt.morning_letter.v2.StreamChatRequest.
  * Use `create(StreamChatRequestSchema)` to create a new message.
  */
-export const StreamChatRequestSchema: GenMessage<StreamChatRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_morning_letter_v2_morning_letter, 0);
+export const StreamChatRequestSchema: GenMessage<StreamChatRequest> = /*@__PURE__*/
+  messageDesc(file_alt_morning_letter_v2_morning_letter, 0);
 
 /**
  * ChatMessage represents a single message in the conversation.
@@ -59,28 +46,27 @@ export const StreamChatRequestSchema: GenMessage<StreamChatRequest> =
  * @generated from message alt.morning_letter.v2.ChatMessage
  */
 export type ChatMessage = Message<"alt.morning_letter.v2.ChatMessage"> & {
-	/**
-	 * Role of the message sender: "user" or "assistant"
-	 *
-	 * @generated from field: string role = 1;
-	 */
-	role: string;
+  /**
+   * Role of the message sender: "user" or "assistant"
+   *
+   * @generated from field: string role = 1;
+   */
+  role: string;
 
-	/**
-	 * Content of the message
-	 *
-	 * @generated from field: string content = 2;
-	 */
-	content: string;
+  /**
+   * Content of the message
+   *
+   * @generated from field: string content = 2;
+   */
+  content: string;
 };
 
 /**
  * Describes the message alt.morning_letter.v2.ChatMessage.
  * Use `create(ChatMessageSchema)` to create a new message.
  */
-export const ChatMessageSchema: GenMessage<ChatMessage> =
-	/*@__PURE__*/
-	messageDesc(file_alt_morning_letter_v2_morning_letter, 1);
+export const ChatMessageSchema: GenMessage<ChatMessage> = /*@__PURE__*/
+  messageDesc(file_alt_morning_letter_v2_morning_letter, 1);
 
 /**
  * StreamChatEvent is a single event in the streaming response.
@@ -88,76 +74,68 @@ export const ChatMessageSchema: GenMessage<ChatMessage> =
  *
  * @generated from message alt.morning_letter.v2.StreamChatEvent
  */
-export type StreamChatEvent =
-	Message<"alt.morning_letter.v2.StreamChatEvent"> & {
-		/**
-		 * Event kind: "delta", "meta", "done", "fallback", "error"
-		 *
-		 * @generated from field: string kind = 1;
-		 */
-		kind: string;
+export type StreamChatEvent = Message<"alt.morning_letter.v2.StreamChatEvent"> & {
+  /**
+   * Event kind: "delta", "meta", "done", "fallback", "error"
+   *
+   * @generated from field: string kind = 1;
+   */
+  kind: string;
 
-		/**
-		 * Payload based on kind (only one will be set)
-		 *
-		 * @generated from oneof alt.morning_letter.v2.StreamChatEvent.payload
-		 */
-		payload:
-			| {
-					/**
-					 * Text chunk (when kind = "delta")
-					 *
-					 * @generated from field: string delta = 2;
-					 */
-					value: string;
-					case: "delta";
-			  }
-			| {
-					/**
-					 * Citations and time window metadata (when kind = "meta")
-					 *
-					 * @generated from field: alt.morning_letter.v2.MetaPayload meta = 3;
-					 */
-					value: MetaPayload;
-					case: "meta";
-			  }
-			| {
-					/**
-					 * Completion result (when kind = "done")
-					 *
-					 * @generated from field: alt.morning_letter.v2.DonePayload done = 4;
-					 */
-					value: DonePayload;
-					case: "done";
-			  }
-			| {
-					/**
-					 * Fallback reason code (when kind = "fallback")
-					 *
-					 * @generated from field: string fallback_code = 5;
-					 */
-					value: string;
-					case: "fallbackCode";
-			  }
-			| {
-					/**
-					 * Error message (when kind = "error")
-					 *
-					 * @generated from field: string error_message = 6;
-					 */
-					value: string;
-					case: "errorMessage";
-			  }
-			| { case: undefined; value?: undefined };
-	};
+  /**
+   * Payload based on kind (only one will be set)
+   *
+   * @generated from oneof alt.morning_letter.v2.StreamChatEvent.payload
+   */
+  payload: {
+    /**
+     * Text chunk (when kind = "delta")
+     *
+     * @generated from field: string delta = 2;
+     */
+    value: string;
+    case: "delta";
+  } | {
+    /**
+     * Citations and time window metadata (when kind = "meta")
+     *
+     * @generated from field: alt.morning_letter.v2.MetaPayload meta = 3;
+     */
+    value: MetaPayload;
+    case: "meta";
+  } | {
+    /**
+     * Completion result (when kind = "done")
+     *
+     * @generated from field: alt.morning_letter.v2.DonePayload done = 4;
+     */
+    value: DonePayload;
+    case: "done";
+  } | {
+    /**
+     * Fallback reason code (when kind = "fallback")
+     *
+     * @generated from field: string fallback_code = 5;
+     */
+    value: string;
+    case: "fallbackCode";
+  } | {
+    /**
+     * Error message (when kind = "error")
+     *
+     * @generated from field: string error_message = 6;
+     */
+    value: string;
+    case: "errorMessage";
+  } | { case: undefined; value?: undefined };
+};
 
 /**
  * Describes the message alt.morning_letter.v2.StreamChatEvent.
  * Use `create(StreamChatEventSchema)` to create a new message.
  */
-export const StreamChatEventSchema: GenMessage<StreamChatEvent> =
-	/*@__PURE__*/
-	messageDesc(file_alt_morning_letter_v2_morning_letter, 2);
+export const StreamChatEventSchema: GenMessage<StreamChatEvent> = /*@__PURE__*/
+  messageDesc(file_alt_morning_letter_v2_morning_letter, 2);
 
 /**
  * MetaPayload contains metadata about the response, including citations and time window.
@@ -165,35 +143,34 @@ export const StreamChatEventSchema: GenMessage<StreamChatEvent> =
  * @generated from message alt.morning_letter.v2.MetaPayload
  */
 export type MetaPayload = Message<"alt.morning_letter.v2.MetaPayload"> & {
-	/**
-	 * List of citations/sources used in the response
-	 *
-	 * @generated from field: repeated alt.morning_letter.v2.Citation citations = 1;
-	 */
-	citations: Citation[];
+  /**
+   * List of citations/sources used in the response
+   *
+   * @generated from field: repeated alt.morning_letter.v2.Citation citations = 1;
+   */
+  citations: Citation[];
 
-	/**
-	 * Time window used for filtering articles
-	 *
-	 * @generated from field: alt.morning_letter.v2.TimeWindow time_window = 2;
-	 */
-	timeWindow?: TimeWindow;
+  /**
+   * Time window used for filtering articles
+   *
+   * @generated from field: alt.morning_letter.v2.TimeWindow time_window = 2;
+   */
+  timeWindow?: TimeWindow;
 
-	/**
-	 * Number of articles scanned in the time window
-	 *
-	 * @generated from field: int32 articles_scanned = 3;
-	 */
-	articlesScanned: number;
+  /**
+   * Number of articles scanned in the time window
+   *
+   * @generated from field: int32 articles_scanned = 3;
+   */
+  articlesScanned: number;
 };
 
 /**
  * Describes the message alt.morning_letter.v2.MetaPayload.
  * Use `create(MetaPayloadSchema)` to create a new message.
  */
-export const MetaPayloadSchema: GenMessage<MetaPayload> =
-	/*@__PURE__*/
-	messageDesc(file_alt_morning_letter_v2_morning_letter, 3);
+export const MetaPayloadSchema: GenMessage<MetaPayload> = /*@__PURE__*/
+  messageDesc(file_alt_morning_letter_v2_morning_letter, 3);
 
 /**
  * Citation represents a source reference.
@@ -201,35 +178,34 @@ export const MetaPayloadSchema: GenMessage<MetaPayload> =
  * @generated from message alt.morning_letter.v2.Citation
  */
 export type Citation = Message<"alt.morning_letter.v2.Citation"> & {
-	/**
-	 * URL of the source article
-	 *
-	 * @generated from field: string url = 1;
-	 */
-	url: string;
+  /**
+   * URL of the source article
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
 
-	/**
-	 * Title of the source article
-	 *
-	 * @generated from field: string title = 2;
-	 */
-	title: string;
+  /**
+   * Title of the source article
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
 
-	/**
-	 * Publication date (ISO8601 format)
-	 *
-	 * @generated from field: string published_at = 3;
-	 */
-	publishedAt: string;
+  /**
+   * Publication date (ISO8601 format)
+   *
+   * @generated from field: string published_at = 3;
+   */
+  publishedAt: string;
 };
 
 /**
  * Describes the message alt.morning_letter.v2.Citation.
  * Use `create(CitationSchema)` to create a new message.
  */
-export const CitationSchema: GenMessage<Citation> =
-	/*@__PURE__*/
-	messageDesc(file_alt_morning_letter_v2_morning_letter, 4);
+export const CitationSchema: GenMessage<Citation> = /*@__PURE__*/
+  messageDesc(file_alt_morning_letter_v2_morning_letter, 4);
 
 /**
  * TimeWindow represents the time range for filtering.
@@ -237,28 +213,27 @@ export const CitationSchema: GenMessage<Citation> =
  * @generated from message alt.morning_letter.v2.TimeWindow
  */
 export type TimeWindow = Message<"alt.morning_letter.v2.TimeWindow"> & {
-	/**
-	 * Start of the time window (ISO8601 format)
-	 *
-	 * @generated from field: string since = 1;
-	 */
-	since: string;
+  /**
+   * Start of the time window (ISO8601 format)
+   *
+   * @generated from field: string since = 1;
+   */
+  since: string;
 
-	/**
-	 * End of the time window (ISO8601 format)
-	 *
-	 * @generated from field: string until = 2;
-	 */
-	until: string;
+  /**
+   * End of the time window (ISO8601 format)
+   *
+   * @generated from field: string until = 2;
+   */
+  until: string;
 };
 
 /**
  * Describes the message alt.morning_letter.v2.TimeWindow.
  * Use `create(TimeWindowSchema)` to create a new message.
  */
-export const TimeWindowSchema: GenMessage<TimeWindow> =
-	/*@__PURE__*/
-	messageDesc(file_alt_morning_letter_v2_morning_letter, 5);
+export const TimeWindowSchema: GenMessage<TimeWindow> = /*@__PURE__*/
+  messageDesc(file_alt_morning_letter_v2_morning_letter, 5);
 
 /**
  * DonePayload is sent when streaming completes successfully.
@@ -266,42 +241,43 @@ export const TimeWindowSchema: GenMessage<TimeWindow> =
  * @generated from message alt.morning_letter.v2.DonePayload
  */
 export type DonePayload = Message<"alt.morning_letter.v2.DonePayload"> & {
-	/**
-	 * Full answer text
-	 *
-	 * @generated from field: string answer = 1;
-	 */
-	answer: string;
+  /**
+   * Full answer text
+   *
+   * @generated from field: string answer = 1;
+   */
+  answer: string;
 
-	/**
-	 * List of citations used in the answer
-	 *
-	 * @generated from field: repeated alt.morning_letter.v2.Citation citations = 2;
-	 */
-	citations: Citation[];
+  /**
+   * List of citations used in the answer
+   *
+   * @generated from field: repeated alt.morning_letter.v2.Citation citations = 2;
+   */
+  citations: Citation[];
 };
 
 /**
  * Describes the message alt.morning_letter.v2.DonePayload.
  * Use `create(DonePayloadSchema)` to create a new message.
  */
-export const DonePayloadSchema: GenMessage<DonePayload> =
-	/*@__PURE__*/
-	messageDesc(file_alt_morning_letter_v2_morning_letter, 6);
+export const DonePayloadSchema: GenMessage<DonePayload> = /*@__PURE__*/
+  messageDesc(file_alt_morning_letter_v2_morning_letter, 6);
 
 /**
  * @generated from service alt.morning_letter.v2.MorningLetterService
  */
 export const MorningLetterService: GenService<{
-	/**
-	 * StreamChat performs a streaming chat with RAG context, filtered by time window.
-	 * Returns a stream of events: delta (text chunks), meta (citations + time window), done (completion), or error.
-	 *
-	 * @generated from rpc alt.morning_letter.v2.MorningLetterService.StreamChat
-	 */
-	streamChat: {
-		methodKind: "server_streaming";
-		input: typeof StreamChatRequestSchema;
-		output: typeof StreamChatEventSchema;
-	};
-}> = /*@__PURE__*/ serviceDesc(file_alt_morning_letter_v2_morning_letter, 0);
+  /**
+   * StreamChat performs a streaming chat with RAG context, filtered by time window.
+   * Returns a stream of events: delta (text chunks), meta (citations + time window), done (completion), or error.
+   *
+   * @generated from rpc alt.morning_letter.v2.MorningLetterService.StreamChat
+   */
+  streamChat: {
+    methodKind: "server_streaming";
+    input: typeof StreamChatRequestSchema;
+    output: typeof StreamChatEventSchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_alt_morning_letter_v2_morning_letter, 0);
+
