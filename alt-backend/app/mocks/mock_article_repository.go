@@ -58,13 +58,14 @@ func (mr *MockArticleUsecaseMockRecorder) Execute(ctx, articleURL any) *gomock.C
 }
 
 // FetchCompliantArticle mocks base method.
-func (m *MockArticleUsecase) FetchCompliantArticle(ctx context.Context, articleURL *url.URL, userContext domain.UserContext) (string, string, error) {
+func (m *MockArticleUsecase) FetchCompliantArticle(ctx context.Context, articleURL *url.URL, userContext domain.UserContext) (string, string, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FetchCompliantArticle", ctx, articleURL, userContext)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(string)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret2, _ := ret[2].(string)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
 }
 
 // FetchCompliantArticle indicates an expected call of FetchCompliantArticle.
@@ -140,6 +141,50 @@ func (m *MockArticleRepository) SaveArticle(ctx context.Context, arg1, title, co
 func (mr *MockArticleRepositoryMockRecorder) SaveArticle(ctx, arg1, title, content any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveArticle", reflect.TypeOf((*MockArticleRepository)(nil).SaveArticle), ctx, arg1, title, content)
+}
+
+// SaveArticleHead mocks base method.
+func (m *MockArticleRepository) SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveArticleHead", ctx, articleID, headHTML, ogImageURL)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SaveArticleHead indicates an expected call of SaveArticleHead.
+func (mr *MockArticleRepositoryMockRecorder) SaveArticleHead(ctx, articleID, headHTML, ogImageURL any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveArticleHead", reflect.TypeOf((*MockArticleRepository)(nil).SaveArticleHead), ctx, articleID, headHTML, ogImageURL)
+}
+
+// FetchArticleHeadByArticleID mocks base method.
+func (m *MockArticleRepository) FetchArticleHeadByArticleID(ctx context.Context, articleID string) (*domain.ArticleHead, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchArticleHeadByArticleID", ctx, articleID)
+	ret0, _ := ret[0].(*domain.ArticleHead)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchArticleHeadByArticleID indicates an expected call of FetchArticleHeadByArticleID.
+func (mr *MockArticleRepositoryMockRecorder) FetchArticleHeadByArticleID(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchArticleHeadByArticleID", reflect.TypeOf((*MockArticleRepository)(nil).FetchArticleHeadByArticleID), ctx, articleID)
+}
+
+// FetchOgImageURLByArticleID mocks base method.
+func (m *MockArticleRepository) FetchOgImageURLByArticleID(ctx context.Context, articleID string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchOgImageURLByArticleID", ctx, articleID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchOgImageURLByArticleID indicates an expected call of FetchOgImageURLByArticleID.
+func (mr *MockArticleRepositoryMockRecorder) FetchOgImageURLByArticleID(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchOgImageURLByArticleID", reflect.TypeOf((*MockArticleRepository)(nil).FetchOgImageURLByArticleID), ctx, articleID)
 }
 
 // SaveDeclinedDomain mocks base method.

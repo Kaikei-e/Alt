@@ -22,6 +22,8 @@ message FetchArticleContentResponse {
   string content = 2;
   // Generated article ID
   string article_id = 3;
+  // OGP image URL (HTTPS only, empty if not found)
+  string og_image_url = 4;
 }
 
 // =============================================================================

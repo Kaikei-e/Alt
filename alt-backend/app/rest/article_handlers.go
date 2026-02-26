@@ -80,7 +80,7 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 		}
 
 		// Call the usecase
-		content, articleID, err := container.ArticleUsecase.FetchCompliantArticle(ctx, parsedURL, *user)
+		content, articleID, _, err := container.ArticleUsecase.FetchCompliantArticle(ctx, parsedURL, *user)
 		if err != nil {
 			var complianceErr *domain.ComplianceError
 			if errors.As(err, &complianceErr) {

@@ -292,7 +292,7 @@ func TestFetchCompliantArticle_ScrapingPolicyDenied(t *testing.T) {
 	mockRepo.EXPECT().SaveDeclinedDomain(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 	// Execute
-	_, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+	_, _, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
 
 	// Verify: should return ComplianceError
 	if err == nil {
@@ -341,7 +341,7 @@ func TestFetchCompliantArticle_ScrapingPolicyAllowed(t *testing.T) {
 	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil)
 
 	// Execute
-	content, retID, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+	content, retID, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
 
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -387,7 +387,7 @@ func TestFetchCompliantArticle_ScrapingPolicyNil_FallbackToRobotsTxt(t *testing.
 	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil)
 
 	// Execute
-	content, retID, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+	content, retID, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
 
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
@@ -435,7 +435,7 @@ func TestFetchArticleUsecase_FetchCompliantArticle_UpsertsToRAG(t *testing.T) {
 	}).Return(nil)
 
 	// Execute
-	content, articleID, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+	content, articleID, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
 
 	// Verify
 	if err != nil {

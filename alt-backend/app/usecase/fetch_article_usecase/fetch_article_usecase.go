@@ -20,7 +20,7 @@ import (
 // ArticleUsecase defines the business logic for fetching articles
 type ArticleUsecase interface {
 	Execute(ctx context.Context, articleURL string) (*string, error)
-	FetchCompliantArticle(ctx context.Context, articleURL *url.URL, userContext domain.UserContext) (content string, articleID string, err error)
+	FetchCompliantArticle(ctx context.Context, articleURL *url.URL, userContext domain.UserContext) (content string, articleID string, ogImageURL string, err error)
 }
 
 // ArticleRepository defines the data access interface needed by this usecase
@@ -29,6 +29,9 @@ type ArticleRepository interface {
 	IsDomainDeclined(ctx context.Context, userID, domain string) (bool, error)
 	SaveDeclinedDomain(ctx context.Context, userID, domain string) error
 	SaveArticle(ctx context.Context, url, title, content string) (string, error)
+	SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error
+	FetchArticleHeadByArticleID(ctx context.Context, articleID string) (*domain.ArticleHead, error)
+	FetchOgImageURLByArticleID(ctx context.Context, articleID string) (string, error)
 }
 
 type ArticleUsecaseImpl struct {
@@ -88,7 +91,7 @@ func (u *ArticleUsecaseImpl) Execute(ctx context.Context, articleURL string) (*s
 	return &textOnly, nil
 }
 
-func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetURL *url.URL, userContext domain.UserContext) (content string, articleID string, err error) {
+func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetURL *url.URL, userContext domain.UserContext) (content string, articleID string, ogImageURL string, err error) {
 	urlStr := targetURL.String()
 	domainStr := targetURL.Hostname()
 
@@ -97,24 +100,29 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	if err != nil {
 		// Log error but generally fail if DB is down.
 		// Note via driver: returns nil, nil if Not Found.
-		return "", "", fmt.Errorf("failed to check existing article: %w", err)
+		return "", "", "", fmt.Errorf("failed to check existing article: %w", err)
 	}
 
 	if existingArticle != nil {
 		logger.Logger.InfoContext(ctx, "Article found in database", "url", urlStr, "id", existingArticle.ID)
-		return existingArticle.Content, existingArticle.ID, nil
+		// Try to retrieve cached og:image (lightweight query, no head_html)
+		cachedOgImage, ogErr := u.repo.FetchOgImageURLByArticleID(ctx, existingArticle.ID)
+		if ogErr != nil {
+			logger.Logger.WarnContext(ctx, "Failed to fetch og_image_url", "error", ogErr, "article_id", existingArticle.ID)
+		}
+		return existingArticle.Content, existingArticle.ID, cachedOgImage, nil
 	}
 
 	// 2. Check if the domain is in the declined_domains table for this user
 	isDeclined, err := u.repo.IsDomainDeclined(ctx, userContext.UserID.String(), domainStr)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to check if domain is declined", "error", err, "domain", domainStr, "user_id", userContext.UserID)
-		return "", "", fmt.Errorf("failed to check declined status: %w", err)
+		return "", "", "", fmt.Errorf("failed to check declined status: %w", err)
 	}
 
 	if isDeclined {
 		logger.Logger.InfoContext(ctx, "Domain is in declined list for user", "domain", domainStr, "user_id", userContext.UserID)
-		return "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
+		return "", "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
 	}
 
 	// 3. Robots.txt Compliance Check
@@ -145,7 +153,7 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 		if err := u.repo.SaveDeclinedDomain(ctx, userContext.UserID.String(), domainStr); err != nil {
 			logger.Logger.ErrorContext(ctx, "Failed to save declined domain", "error", err, "domain", domainStr)
 		}
-		return "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
+		return "", "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
 	}
 
 	// 4. Fetch from Web
@@ -153,14 +161,18 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 	contentPtr, err := u.articleFetcher.FetchArticleContents(ctx, urlStr)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to fetch article content", "error", err, "url", urlStr)
-		return "", "", fmt.Errorf("fetch failed: %w", err)
+		return "", "", "", fmt.Errorf("fetch failed: %w", err)
 	}
 	if contentPtr == nil || *contentPtr == "" {
-		return "", "", fmt.Errorf("fetched content is empty")
+		return "", "", "", fmt.Errorf("fetched content is empty")
 	}
 	htmlContent := *contentPtr
 
-	// 5. Extract Title and Rich HTML Content
+	// 5. Extract <head> and og:image from raw HTML (before sanitization removes them)
+	headHTML := html_parser.ExtractHead(htmlContent)
+	extractedOgImage := html_parser.ExtractOgImageURL(htmlContent)
+
+	// 6. Extract Title and Rich HTML Content
 	fetchedTitle := html_parser.ExtractTitle(htmlContent)
 	contentStr := html_parser.ExtractArticleHTML(htmlContent)
 
@@ -170,14 +182,21 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 		contentStr = html_parser.SanitizeHTML(htmlContent)
 	}
 
-	// 6. Save to Database
+	// 7. Save to Database
 	newID, saveErr := u.repo.SaveArticle(ctx, urlStr, fetchedTitle, contentStr)
 	if saveErr != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to save article to database", "error", saveErr, "url", urlStr)
 	} else {
 		logger.Logger.InfoContext(ctx, "Article content saved", "url", urlStr, "new_id", newID)
 
-		// 7. Upsert to RAG (Step A: Direct Call)
+		// 7a. Save article head (best-effort, don't fail the request)
+		if headHTML != "" {
+			if headErr := u.repo.SaveArticleHead(ctx, newID, headHTML, extractedOgImage); headErr != nil {
+				logger.Logger.ErrorContext(ctx, "Failed to save article head", "error", headErr, "article_id", newID)
+			}
+		}
+
+		// 8. Upsert to RAG (Step A: Direct Call)
 		// Using time.Now() for PublishedAt as a temporary measure until HTML parser supports date extraction
 
 		t := time.Now()
@@ -197,5 +216,5 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 		}
 	}
 
-	return contentStr, newID, nil
+	return contentStr, newID, extractedOgImage, nil
 }
