@@ -36,6 +36,7 @@ export interface FeedContentOnTheFlyResponse {
 	content: SafeHtmlString;
 	article_id: string;
 	og_image_url: string;
+	og_image_proxy_url: string;
 }
 
 /**
@@ -103,6 +104,7 @@ export async function getFeedContentOnTheFlyClient(
 		content: response.content,
 		article_id: response.articleId,
 		og_image_url: response.ogImageUrl,
+		og_image_proxy_url: response.ogImageProxyUrl,
 	};
 }
 
@@ -121,6 +123,18 @@ export async function archiveContentClient(
 	return {
 		message: response.message,
 	};
+}
+
+/**
+ * Batch prefetch OGP image proxy URLs (クライアントサイド)
+ * Connect-RPC を使用
+ */
+export async function batchPrefetchImagesClient(
+	articleIds: string[],
+): Promise<{ articleId: string; proxyUrl: string; isCached: boolean }[]> {
+	const transport = createClientTransport();
+	const { batchPrefetchImages } = await import("$lib/connect/articles");
+	return batchPrefetchImages(transport, articleIds);
 }
 
 /**

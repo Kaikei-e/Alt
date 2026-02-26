@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/articles/v2/articles.proto.
  */
 export const file_alt_articles_v2_articles: GenFile = /*@__PURE__*/
-  fileDesc("Ch5hbHQvYXJ0aWNsZXMvdjIvYXJ0aWNsZXMucHJvdG8SD2FsdC5hcnRpY2xlcy52MiIpChpGZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBILCgN1cmwYASABKAkiZQobRmV0Y2hBcnRpY2xlQ29udGVudFJlc3BvbnNlEgsKA3VybBgBIAEoCRIPCgdjb250ZW50GAIgASgJEhIKCmFydGljbGVfaWQYAyABKAkSFAoMb2dfaW1hZ2VfdXJsGAQgASgJIkcKFUFyY2hpdmVBcnRpY2xlUmVxdWVzdBIQCghmZWVkX3VybBgBIAEoCRISCgV0aXRsZRgCIAEoCUgAiAEBQggKBl90aXRsZSIpChZBcmNoaXZlQXJ0aWNsZVJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiSwoaRmV0Y2hBcnRpY2xlc0N1cnNvclJlcXVlc3QSDQoFbGltaXQYASABKAUSEwoGY3Vyc29yGAIgASgJSACIAQFCCQoHX2N1cnNvciJqCgtBcnRpY2xlSXRlbRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRILCgN1cmwYAyABKAkSDwoHY29udGVudBgEIAEoCRIUCgxwdWJsaXNoZWRfYXQYBSABKAkSDAoEdGFncxgGIAMoCSKFAQobRmV0Y2hBcnRpY2xlc0N1cnNvclJlc3BvbnNlEioKBGRhdGEYASADKAsyHC5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZUl0ZW0SGAoLbmV4dF9jdXJzb3IYAiABKAlIAIgBARIQCghoYXNfbW9yZRgDIAEoCEIOCgxfbmV4dF9jdXJzb3IiLwoaRmV0Y2hBcnRpY2xlU3VtbWFyeVJlcXVlc3QSEQoJZmVlZF91cmxzGAEgAygJIoEBChJBcnRpY2xlU3VtbWFyeUl0ZW0SDQoFdGl0bGUYASABKAkSDwoHY29udGVudBgCIAEoCRIOCgZhdXRob3IYAyABKAkSFAoMcHVibGlzaGVkX2F0GAQgASgJEhIKCmZldGNoZWRfYXQYBSABKAkSEQoJc291cmNlX2lkGAYgASgJIowBChtGZXRjaEFydGljbGVTdW1tYXJ5UmVzcG9uc2USPQoQbWF0Y2hlZF9hcnRpY2xlcxgBIAMoCzIjLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlU3VtbWFyeUl0ZW0SFQoNdG90YWxfbWF0Y2hlZBgCIAEoBRIXCg9yZXF1ZXN0ZWRfY291bnQYAyABKAUijgEKGUZldGNoQXJ0aWNsZXNCeVRhZ1JlcXVlc3QSEwoGdGFnX2lkGAEgASgJSACIAQESFQoIdGFnX25hbWUYAiABKAlIAYgBARITCgZjdXJzb3IYAyABKAlIAogBARINCgVsaW1pdBgEIAEoBUIJCgdfdGFnX2lkQgsKCV90YWdfbmFtZUIJCgdfY3Vyc29yImgKE1RhZ1RyYWlsQXJ0aWNsZUl0ZW0SCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSDAoEbGluaxgDIAEoCRIUCgxwdWJsaXNoZWRfYXQYBCABKAkSEgoKZmVlZF90aXRsZRgFIAEoCSKQAQoaRmV0Y2hBcnRpY2xlc0J5VGFnUmVzcG9uc2USNgoIYXJ0aWNsZXMYASADKAsyJC5hbHQuYXJ0aWNsZXMudjIuVGFnVHJhaWxBcnRpY2xlSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciItChdGZXRjaEFydGljbGVUYWdzUmVxdWVzdBISCgphcnRpY2xlX2lkGAEgASgJIj4KDkFydGljbGVUYWdJdGVtEgoKAmlkGAEgASgJEgwKBG5hbWUYAiABKAkSEgoKY3JlYXRlZF9hdBgDIAEoCSJdChhGZXRjaEFydGljbGVUYWdzUmVzcG9uc2USEgoKYXJ0aWNsZV9pZBgBIAEoCRItCgR0YWdzGAIgAygLMh8uYWx0LmFydGljbGVzLnYyLkFydGljbGVUYWdJdGVtIhgKFkZldGNoUmFuZG9tRmVlZFJlcXVlc3QihQEKF0ZldGNoUmFuZG9tRmVlZFJlc3BvbnNlEgoKAmlkGAEgASgJEgsKA3VybBgCIAEoCRINCgV0aXRsZRgDIAEoCRITCgtkZXNjcmlwdGlvbhgEIAEoCRItCgR0YWdzGAUgAygLMh8uYWx0LmFydGljbGVzLnYyLkFydGljbGVUYWdJdGVtIpABChhTdHJlYW1BcnRpY2xlVGFnc1JlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRISCgV0aXRsZRgCIAEoCUgAiAEBEhQKB2NvbnRlbnQYAyABKAlIAYgBARIUCgdmZWVkX2lkGAQgASgJSAKIAQFCCAoGX3RpdGxlQgoKCF9jb250ZW50QgoKCF9mZWVkX2lkIsICCg9BcnRpY2xlVGFnRXZlbnQSEgoKYXJ0aWNsZV9pZBgBIAEoCRItCgR0YWdzGAIgAygLMh8uYWx0LmFydGljbGVzLnYyLkFydGljbGVUYWdJdGVtEj4KCmV2ZW50X3R5cGUYAyABKA4yKi5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0V2ZW50LkV2ZW50VHlwZRIUCgdtZXNzYWdlGAQgASgJSACIAQEiiQEKCUV2ZW50VHlwZRIaChZFVkVOVF9UWVBFX1VOU1BFQ0lGSUVEEAASFQoRRVZFTlRfVFlQRV9DQUNIRUQQARIZChVFVkVOVF9UWVBFX0dFTkVSQVRJTkcQAhIYChRFVkVOVF9UWVBFX0NPTVBMRVRFRBADEhQKEEVWRU5UX1RZUEVfRVJST1IQBEIKCghfbWVzc2FnZTLrBgoOQXJ0aWNsZVNlcnZpY2UScAoTRmV0Y2hBcnRpY2xlQ29udGVudBIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVDb250ZW50UmVzcG9uc2USYQoOQXJjaGl2ZUFydGljbGUSJi5hbHQuYXJ0aWNsZXMudjIuQXJjaGl2ZUFydGljbGVSZXF1ZXN0GicuYWx0LmFydGljbGVzLnYyLkFyY2hpdmVBcnRpY2xlUmVzcG9uc2UScAoTRmV0Y2hBcnRpY2xlc0N1cnNvchIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQ3Vyc29yUmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQ3Vyc29yUmVzcG9uc2UScAoTRmV0Y2hBcnRpY2xlU3VtbWFyeRIrLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVTdW1tYXJ5UmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVTdW1tYXJ5UmVzcG9uc2USbQoSRmV0Y2hBcnRpY2xlc0J5VGFnEiouYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZXNCeVRhZ1JlcXVlc3QaKy5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlc0J5VGFnUmVzcG9uc2USZwoQRmV0Y2hBcnRpY2xlVGFncxIoLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVUYWdzUmVxdWVzdBopLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVUYWdzUmVzcG9uc2USZAoPRmV0Y2hSYW5kb21GZWVkEicuYWx0LmFydGljbGVzLnYyLkZldGNoUmFuZG9tRmVlZFJlcXVlc3QaKC5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hSYW5kb21GZWVkUmVzcG9uc2USYgoRU3RyZWFtQXJ0aWNsZVRhZ3MSKS5hbHQuYXJ0aWNsZXMudjIuU3RyZWFtQXJ0aWNsZVRhZ3NSZXF1ZXN0GiAuYWx0LmFydGljbGVzLnYyLkFydGljbGVUYWdFdmVudDABQipaKGFsdC9nZW4vcHJvdG8vYWx0L2FydGljbGVzL3YyO2FydGljbGVzdjJiBnByb3RvMw");
+  fileDesc("Ch5hbHQvYXJ0aWNsZXMvdjIvYXJ0aWNsZXMucHJvdG8SD2FsdC5hcnRpY2xlcy52MiIpChpGZXRjaEFydGljbGVDb250ZW50UmVxdWVzdBILCgN1cmwYASABKAkigQEKG0ZldGNoQXJ0aWNsZUNvbnRlbnRSZXNwb25zZRILCgN1cmwYASABKAkSDwoHY29udGVudBgCIAEoCRISCgphcnRpY2xlX2lkGAMgASgJEhQKDG9nX2ltYWdlX3VybBgEIAEoCRIaChJvZ19pbWFnZV9wcm94eV91cmwYBSABKAkiRwoVQXJjaGl2ZUFydGljbGVSZXF1ZXN0EhAKCGZlZWRfdXJsGAEgASgJEhIKBXRpdGxlGAIgASgJSACIAQFCCAoGX3RpdGxlIikKFkFyY2hpdmVBcnRpY2xlUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCSJLChpGZXRjaEFydGljbGVzQ3Vyc29yUmVxdWVzdBINCgVsaW1pdBgBIAEoBRITCgZjdXJzb3IYAiABKAlIAIgBAUIJCgdfY3Vyc29yImoKC0FydGljbGVJdGVtEgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEgsKA3VybBgDIAEoCRIPCgdjb250ZW50GAQgASgJEhQKDHB1Ymxpc2hlZF9hdBgFIAEoCRIMCgR0YWdzGAYgAygJIoUBChtGZXRjaEFydGljbGVzQ3Vyc29yUmVzcG9uc2USKgoEZGF0YRgBIAMoCzIcLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciIvChpGZXRjaEFydGljbGVTdW1tYXJ5UmVxdWVzdBIRCglmZWVkX3VybHMYASADKAkigQEKEkFydGljbGVTdW1tYXJ5SXRlbRINCgV0aXRsZRgBIAEoCRIPCgdjb250ZW50GAIgASgJEg4KBmF1dGhvchgDIAEoCRIUCgxwdWJsaXNoZWRfYXQYBCABKAkSEgoKZmV0Y2hlZF9hdBgFIAEoCRIRCglzb3VyY2VfaWQYBiABKAkijAEKG0ZldGNoQXJ0aWNsZVN1bW1hcnlSZXNwb25zZRI9ChBtYXRjaGVkX2FydGljbGVzGAEgAygLMiMuYWx0LmFydGljbGVzLnYyLkFydGljbGVTdW1tYXJ5SXRlbRIVCg10b3RhbF9tYXRjaGVkGAIgASgFEhcKD3JlcXVlc3RlZF9jb3VudBgDIAEoBSIxChpCYXRjaFByZWZldGNoSW1hZ2VzUmVxdWVzdBITCgthcnRpY2xlX2lkcxgBIAMoCSJKCg5JbWFnZVByb3h5SW5mbxISCgphcnRpY2xlX2lkGAEgASgJEhEKCXByb3h5X3VybBgCIAEoCRIRCglpc19jYWNoZWQYAyABKAgiTgobQmF0Y2hQcmVmZXRjaEltYWdlc1Jlc3BvbnNlEi8KBmltYWdlcxgBIAMoCzIfLmFsdC5hcnRpY2xlcy52Mi5JbWFnZVByb3h5SW5mbyKOAQoZRmV0Y2hBcnRpY2xlc0J5VGFnUmVxdWVzdBITCgZ0YWdfaWQYASABKAlIAIgBARIVCgh0YWdfbmFtZRgCIAEoCUgBiAEBEhMKBmN1cnNvchgDIAEoCUgCiAEBEg0KBWxpbWl0GAQgASgFQgkKB190YWdfaWRCCwoJX3RhZ19uYW1lQgkKB19jdXJzb3IiaAoTVGFnVHJhaWxBcnRpY2xlSXRlbRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIMCgRsaW5rGAMgASgJEhQKDHB1Ymxpc2hlZF9hdBgEIAEoCRISCgpmZWVkX3RpdGxlGAUgASgJIpABChpGZXRjaEFydGljbGVzQnlUYWdSZXNwb25zZRI2CghhcnRpY2xlcxgBIAMoCzIkLmFsdC5hcnRpY2xlcy52Mi5UYWdUcmFpbEFydGljbGVJdGVtEhgKC25leHRfY3Vyc29yGAIgASgJSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yIi0KF0ZldGNoQXJ0aWNsZVRhZ3NSZXF1ZXN0EhIKCmFydGljbGVfaWQYASABKAkiPgoOQXJ0aWNsZVRhZ0l0ZW0SCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRISCgpjcmVhdGVkX2F0GAMgASgJIl0KGEZldGNoQXJ0aWNsZVRhZ3NSZXNwb25zZRISCgphcnRpY2xlX2lkGAEgASgJEi0KBHRhZ3MYAiADKAsyHy5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0l0ZW0iGAoWRmV0Y2hSYW5kb21GZWVkUmVxdWVzdCKFAQoXRmV0Y2hSYW5kb21GZWVkUmVzcG9uc2USCgoCaWQYASABKAkSCwoDdXJsGAIgASgJEg0KBXRpdGxlGAMgASgJEhMKC2Rlc2NyaXB0aW9uGAQgASgJEi0KBHRhZ3MYBSADKAsyHy5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0l0ZW0ikAEKGFN0cmVhbUFydGljbGVUYWdzUmVxdWVzdBISCgphcnRpY2xlX2lkGAEgASgJEhIKBXRpdGxlGAIgASgJSACIAQESFAoHY29udGVudBgDIAEoCUgBiAEBEhQKB2ZlZWRfaWQYBCABKAlIAogBAUIICgZfdGl0bGVCCgoIX2NvbnRlbnRCCgoIX2ZlZWRfaWQiwgIKD0FydGljbGVUYWdFdmVudBISCgphcnRpY2xlX2lkGAEgASgJEi0KBHRhZ3MYAiADKAsyHy5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0l0ZW0SPgoKZXZlbnRfdHlwZRgDIAEoDjIqLmFsdC5hcnRpY2xlcy52Mi5BcnRpY2xlVGFnRXZlbnQuRXZlbnRUeXBlEhQKB21lc3NhZ2UYBCABKAlIAIgBASKJAQoJRXZlbnRUeXBlEhoKFkVWRU5UX1RZUEVfVU5TUEVDSUZJRUQQABIVChFFVkVOVF9UWVBFX0NBQ0hFRBABEhkKFUVWRU5UX1RZUEVfR0VORVJBVElORxACEhgKFEVWRU5UX1RZUEVfQ09NUExFVEVEEAMSFAoQRVZFTlRfVFlQRV9FUlJPUhAEQgoKCF9tZXNzYWdlMt0HCg5BcnRpY2xlU2VydmljZRJwChNGZXRjaEFydGljbGVDb250ZW50EisuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZUNvbnRlbnRSZXF1ZXN0GiwuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZUNvbnRlbnRSZXNwb25zZRJhCg5BcmNoaXZlQXJ0aWNsZRImLmFsdC5hcnRpY2xlcy52Mi5BcmNoaXZlQXJ0aWNsZVJlcXVlc3QaJy5hbHQuYXJ0aWNsZXMudjIuQXJjaGl2ZUFydGljbGVSZXNwb25zZRJwChNGZXRjaEFydGljbGVzQ3Vyc29yEisuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZXNDdXJzb3JSZXF1ZXN0GiwuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZXNDdXJzb3JSZXNwb25zZRJwChNGZXRjaEFydGljbGVTdW1tYXJ5EisuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVN1bW1hcnlSZXF1ZXN0GiwuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVN1bW1hcnlSZXNwb25zZRJtChJGZXRjaEFydGljbGVzQnlUYWcSKi5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hBcnRpY2xlc0J5VGFnUmVxdWVzdBorLmFsdC5hcnRpY2xlcy52Mi5GZXRjaEFydGljbGVzQnlUYWdSZXNwb25zZRJnChBGZXRjaEFydGljbGVUYWdzEiguYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVRhZ3NSZXF1ZXN0GikuYWx0LmFydGljbGVzLnYyLkZldGNoQXJ0aWNsZVRhZ3NSZXNwb25zZRJkCg9GZXRjaFJhbmRvbUZlZWQSJy5hbHQuYXJ0aWNsZXMudjIuRmV0Y2hSYW5kb21GZWVkUmVxdWVzdBooLmFsdC5hcnRpY2xlcy52Mi5GZXRjaFJhbmRvbUZlZWRSZXNwb25zZRJiChFTdHJlYW1BcnRpY2xlVGFncxIpLmFsdC5hcnRpY2xlcy52Mi5TdHJlYW1BcnRpY2xlVGFnc1JlcXVlc3QaIC5hbHQuYXJ0aWNsZXMudjIuQXJ0aWNsZVRhZ0V2ZW50MAEScAoTQmF0Y2hQcmVmZXRjaEltYWdlcxIrLmFsdC5hcnRpY2xlcy52Mi5CYXRjaFByZWZldGNoSW1hZ2VzUmVxdWVzdBosLmFsdC5hcnRpY2xlcy52Mi5CYXRjaFByZWZldGNoSW1hZ2VzUmVzcG9uc2VCKlooYWx0L2dlbi9wcm90by9hbHQvYXJ0aWNsZXMvdjI7YXJ0aWNsZXN2MmIGcHJvdG8z");
 
 /**
  * FetchArticleContentRequest is the request for fetching article content
@@ -66,6 +66,13 @@ export type FetchArticleContentResponse = Message<"alt.articles.v2.FetchArticleC
    * @generated from field: string og_image_url = 4;
    */
   ogImageUrl: string;
+
+  /**
+   * HMAC-signed proxy URL for the OGP image (empty if image proxy disabled or no OGP image)
+   *
+   * @generated from field: string og_image_proxy_url = 5;
+   */
+  ogImageProxyUrl: string;
 };
 
 /**
@@ -356,6 +363,83 @@ export const FetchArticleSummaryResponseSchema: GenMessage<FetchArticleSummaryRe
   messageDesc(file_alt_articles_v2_articles, 9);
 
 /**
+ * BatchPrefetchImagesRequest requests proxy URLs for multiple articles' OGP images.
+ *
+ * @generated from message alt.articles.v2.BatchPrefetchImagesRequest
+ */
+export type BatchPrefetchImagesRequest = Message<"alt.articles.v2.BatchPrefetchImagesRequest"> & {
+  /**
+   * Article IDs to prefetch images for (max 10)
+   *
+   * @generated from field: repeated string article_ids = 1;
+   */
+  articleIds: string[];
+};
+
+/**
+ * Describes the message alt.articles.v2.BatchPrefetchImagesRequest.
+ * Use `create(BatchPrefetchImagesRequestSchema)` to create a new message.
+ */
+export const BatchPrefetchImagesRequestSchema: GenMessage<BatchPrefetchImagesRequest> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 10);
+
+/**
+ * ImageProxyInfo contains the proxy URL info for a single article's OGP image.
+ *
+ * @generated from message alt.articles.v2.ImageProxyInfo
+ */
+export type ImageProxyInfo = Message<"alt.articles.v2.ImageProxyInfo"> & {
+  /**
+   * Article ID
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
+
+  /**
+   * HMAC-signed proxy URL path
+   *
+   * @generated from field: string proxy_url = 2;
+   */
+  proxyUrl: string;
+
+  /**
+   * Whether the image is already cached on the server
+   *
+   * @generated from field: bool is_cached = 3;
+   */
+  isCached: boolean;
+};
+
+/**
+ * Describes the message alt.articles.v2.ImageProxyInfo.
+ * Use `create(ImageProxyInfoSchema)` to create a new message.
+ */
+export const ImageProxyInfoSchema: GenMessage<ImageProxyInfo> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 11);
+
+/**
+ * BatchPrefetchImagesResponse contains proxy URLs for the requested articles.
+ *
+ * @generated from message alt.articles.v2.BatchPrefetchImagesResponse
+ */
+export type BatchPrefetchImagesResponse = Message<"alt.articles.v2.BatchPrefetchImagesResponse"> & {
+  /**
+   * Proxy URL info for each article
+   *
+   * @generated from field: repeated alt.articles.v2.ImageProxyInfo images = 1;
+   */
+  images: ImageProxyInfo[];
+};
+
+/**
+ * Describes the message alt.articles.v2.BatchPrefetchImagesResponse.
+ * Use `create(BatchPrefetchImagesResponseSchema)` to create a new message.
+ */
+export const BatchPrefetchImagesResponseSchema: GenMessage<BatchPrefetchImagesResponse> = /*@__PURE__*/
+  messageDesc(file_alt_articles_v2_articles, 12);
+
+/**
  * FetchArticlesByTagRequest is the request for fetching articles by tag
  *
  * @generated from message alt.articles.v2.FetchArticlesByTagRequest
@@ -395,7 +479,7 @@ export type FetchArticlesByTagRequest = Message<"alt.articles.v2.FetchArticlesBy
  * Use `create(FetchArticlesByTagRequestSchema)` to create a new message.
  */
 export const FetchArticlesByTagRequestSchema: GenMessage<FetchArticlesByTagRequest> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 10);
+  messageDesc(file_alt_articles_v2_articles, 13);
 
 /**
  * TagTrailArticleItem represents an article in Tag Trail
@@ -444,7 +528,7 @@ export type TagTrailArticleItem = Message<"alt.articles.v2.TagTrailArticleItem">
  * Use `create(TagTrailArticleItemSchema)` to create a new message.
  */
 export const TagTrailArticleItemSchema: GenMessage<TagTrailArticleItem> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 11);
+  messageDesc(file_alt_articles_v2_articles, 14);
 
 /**
  * FetchArticlesByTagResponse contains articles matching the tag
@@ -479,7 +563,7 @@ export type FetchArticlesByTagResponse = Message<"alt.articles.v2.FetchArticlesB
  * Use `create(FetchArticlesByTagResponseSchema)` to create a new message.
  */
 export const FetchArticlesByTagResponseSchema: GenMessage<FetchArticlesByTagResponse> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 12);
+  messageDesc(file_alt_articles_v2_articles, 15);
 
 /**
  * FetchArticleTagsRequest is the request for fetching tags of an article
@@ -500,7 +584,7 @@ export type FetchArticleTagsRequest = Message<"alt.articles.v2.FetchArticleTagsR
  * Use `create(FetchArticleTagsRequestSchema)` to create a new message.
  */
 export const FetchArticleTagsRequestSchema: GenMessage<FetchArticleTagsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 13);
+  messageDesc(file_alt_articles_v2_articles, 16);
 
 /**
  * ArticleTagItem represents a tag on an article
@@ -535,7 +619,7 @@ export type ArticleTagItem = Message<"alt.articles.v2.ArticleTagItem"> & {
  * Use `create(ArticleTagItemSchema)` to create a new message.
  */
 export const ArticleTagItemSchema: GenMessage<ArticleTagItem> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 14);
+  messageDesc(file_alt_articles_v2_articles, 17);
 
 /**
  * FetchArticleTagsResponse contains tags for an article
@@ -563,7 +647,7 @@ export type FetchArticleTagsResponse = Message<"alt.articles.v2.FetchArticleTags
  * Use `create(FetchArticleTagsResponseSchema)` to create a new message.
  */
 export const FetchArticleTagsResponseSchema: GenMessage<FetchArticleTagsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 15);
+  messageDesc(file_alt_articles_v2_articles, 18);
 
 /**
  * FetchRandomFeedRequest is the request for getting a random feed
@@ -578,7 +662,7 @@ export type FetchRandomFeedRequest = Message<"alt.articles.v2.FetchRandomFeedReq
  * Use `create(FetchRandomFeedRequestSchema)` to create a new message.
  */
 export const FetchRandomFeedRequestSchema: GenMessage<FetchRandomFeedRequest> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 16);
+  messageDesc(file_alt_articles_v2_articles, 19);
 
 /**
  * FetchRandomFeedResponse contains a random feed
@@ -627,7 +711,7 @@ export type FetchRandomFeedResponse = Message<"alt.articles.v2.FetchRandomFeedRe
  * Use `create(FetchRandomFeedResponseSchema)` to create a new message.
  */
 export const FetchRandomFeedResponseSchema: GenMessage<FetchRandomFeedResponse> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 17);
+  messageDesc(file_alt_articles_v2_articles, 20);
 
 /**
  * StreamArticleTagsRequest is the request for streaming tag updates
@@ -669,7 +753,7 @@ export type StreamArticleTagsRequest = Message<"alt.articles.v2.StreamArticleTag
  * Use `create(StreamArticleTagsRequestSchema)` to create a new message.
  */
 export const StreamArticleTagsRequestSchema: GenMessage<StreamArticleTagsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 18);
+  messageDesc(file_alt_articles_v2_articles, 21);
 
 /**
  * ArticleTagEvent represents a streaming event for tag updates
@@ -711,7 +795,7 @@ export type ArticleTagEvent = Message<"alt.articles.v2.ArticleTagEvent"> & {
  * Use `create(ArticleTagEventSchema)` to create a new message.
  */
 export const ArticleTagEventSchema: GenMessage<ArticleTagEvent> = /*@__PURE__*/
-  messageDesc(file_alt_articles_v2_articles, 19);
+  messageDesc(file_alt_articles_v2_articles, 22);
 
 /**
  * EventType indicates the type of tag event
@@ -757,7 +841,7 @@ export enum ArticleTagEvent_EventType {
  * Describes the enum alt.articles.v2.ArticleTagEvent.EventType.
  */
 export const ArticleTagEvent_EventTypeSchema: GenEnum<ArticleTagEvent_EventType> = /*@__PURE__*/
-  enumDesc(file_alt_articles_v2_articles, 19, 0);
+  enumDesc(file_alt_articles_v2_articles, 22, 0);
 
 /**
  * ArticleService provides article-related operations
@@ -852,6 +936,16 @@ export const ArticleService: GenService<{
     methodKind: "server_streaming";
     input: typeof StreamArticleTagsRequestSchema;
     output: typeof ArticleTagEventSchema;
+  },
+  /**
+   * BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
+   *
+   * @generated from rpc alt.articles.v2.ArticleService.BatchPrefetchImages
+   */
+  batchPrefetchImages: {
+    methodKind: "unary";
+    input: typeof BatchPrefetchImagesRequestSchema;
+    output: typeof BatchPrefetchImagesResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_articles_v2_articles, 0);

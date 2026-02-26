@@ -20,6 +20,8 @@ import {
 	type FetchRandomFeedResponse,
 	type TagTrailArticleItem as ProtoTagTrailArticleItem,
 	type ArticleTagItem as ProtoArticleTagItem,
+	type BatchPrefetchImagesResponse,
+	type ImageProxyInfo as ProtoImageProxyInfo,
 } from "$lib/gen/alt/articles/v2/articles_pb";
 
 /** Type-safe ArticleService client */
@@ -37,6 +39,7 @@ export interface FetchArticleContentResult {
 	content: string;
 	articleId: string;
 	ogImageUrl: string;
+	ogImageProxyUrl: string;
 }
 
 /**
@@ -174,6 +177,7 @@ export async function fetchArticleContent(
 		content: response.content,
 		articleId: response.articleId,
 		ogImageUrl: response.ogImageUrl,
+		ogImageProxyUrl: response.ogImageProxyUrl,
 	};
 }
 
@@ -282,6 +286,45 @@ function convertProtoArticle(proto: {
 		publishedAt: proto.publishedAt,
 		tags: proto.tags,
 	};
+}
+
+// =============================================================================
+// Image Proxy Types & Functions
+// =============================================================================
+
+/**
+ * Image proxy info for an article
+ */
+export interface ImageProxyInfo {
+	articleId: string;
+	proxyUrl: string;
+	isCached: boolean;
+}
+
+/**
+ * Batch prefetch images for multiple articles via Connect-RPC.
+ * Returns proxy URLs for OGP images.
+ *
+ * @param transport - The Connect transport to use
+ * @param articleIds - Article IDs to prefetch images for (max 10)
+ * @returns Proxy URL info for each article
+ */
+export async function batchPrefetchImages(
+	transport: Transport,
+	articleIds: string[],
+): Promise<ImageProxyInfo[]> {
+	const client = createArticleClient(transport);
+	const response = (await client.batchPrefetchImages({
+		articleIds,
+	})) as BatchPrefetchImagesResponse;
+
+	return response.images.map(
+		(item: ProtoImageProxyInfo): ImageProxyInfo => ({
+			articleId: item.articleId,
+			proxyUrl: item.proxyUrl,
+			isCached: item.isCached,
+		}),
+	);
 }
 
 // =============================================================================

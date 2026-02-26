@@ -7,6 +7,7 @@
 export {
 	type ArticleSummaryItem,
 	archiveContentClient,
+	batchPrefetchImagesClient,
 	type FeedContentOnTheFlyResponse,
 	type FetchArticleSummaryResponse,
 	getArticleSummaryClient,

@@ -69,10 +69,10 @@ export class ArticlePrefetcher {
 				this.articleIdCache.set(cacheKey, response.article_id);
 			}
 
-			// Cache og_image_url (may be empty string)
+			// Cache proxy URL if available, fallback to raw og_image_url
 			this.ogImageCache.set(
 				cacheKey,
-				response.og_image_url || null,
+				response.og_image_proxy_url || response.og_image_url || null,
 			);
 			this.onOgImageFetched?.();
 
@@ -143,10 +143,11 @@ export class ArticlePrefetcher {
 		content: string,
 		articleId: string,
 		ogImageUrl: string | null,
+		ogImageProxyUrl?: string | null,
 	): void {
 		this.contentCache.set(feedUrl, content);
 		this.articleIdCache.set(feedUrl, articleId);
-		this.ogImageCache.set(feedUrl, ogImageUrl);
+		this.ogImageCache.set(feedUrl, ogImageProxyUrl || ogImageUrl);
 		this.onOgImageFetched?.();
 		this.evictOldEntries();
 	}
