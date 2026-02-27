@@ -44,8 +44,8 @@ func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Ti
 			FROM articles a
 			LEFT JOIN article_tags at ON a.id = at.article_id
 			LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
-			WHERE a.created_at >= $1
-			GROUP BY a.id, a.feed_id, a.title, a.url, a.content, a.created_at
+			WHERE a.created_at >= $1 AND a.deleted_at IS NULL
+			GROUP BY a.id
 			ORDER BY a.created_at DESC, a.id DESC
 		`
 		rows, err = r.pool.Query(ctx, query, since)
@@ -64,8 +64,8 @@ func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Ti
 			FROM articles a
 			LEFT JOIN article_tags at ON a.id = at.article_id
 			LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
-			WHERE a.created_at >= $1
-			GROUP BY a.id, a.feed_id, a.title, a.url, a.content, a.created_at
+			WHERE a.created_at >= $1 AND a.deleted_at IS NULL
+			GROUP BY a.id
 			ORDER BY a.created_at DESC, a.id DESC
 			LIMIT $2
 		`

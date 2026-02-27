@@ -27,8 +27,9 @@ func (r *AltDBRepository) FetchUserFeedIDs(ctx context.Context) ([]uuid.UUID, er
 
 	// Get feed IDs from read_status table where user has interacted with articles
 	// This represents feeds that the user has subscribed to or has read articles from
+	// DISTINCT is unnecessary here because (feed_id, user_id) has a UNIQUE constraint
 	query := `
-		SELECT DISTINCT feed_id
+		SELECT feed_id
 		FROM read_status
 		WHERE user_id = $1
 		ORDER BY feed_id

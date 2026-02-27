@@ -141,10 +141,13 @@ func buildTrendQuery(granularity string) (string, error) {
 			GROUP BY bucket
 		),
 		feed_activity AS (
-			SELECT date_trunc('%s', created_at) AS bucket,
+			SELECT date_trunc('%s', f.created_at) AS bucket,
 				   COUNT(*) AS feed_count
-			FROM feeds
-			WHERE created_at >= $1
+			FROM feeds f
+			WHERE f.created_at >= $1
+			AND f.feed_link_id IN (
+				SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2
+			)
 			GROUP BY bucket
 		)
 		SELECT COALESCE(tb.bucket, fa.bucket) AS bucket,

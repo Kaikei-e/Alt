@@ -44,14 +44,21 @@ func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *t
 				a.content,
 				a.created_at as published_at,
 				a.created_at,
-				COALESCE(ARRAY_AGG(ft.tag_name) FILTER (WHERE ft.tag_name IS NOT NULL), '{}') as tags
-			FROM articles a
-			LEFT JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
-			WHERE a.user_id = $1
-			GROUP BY a.id, a.title, a.url, a.content, a.created_at
+				COALESCE(tags.tag_names, '{}') as tags
+			FROM (
+				SELECT id, title, url, content, created_at
+				FROM articles
+				WHERE user_id = $1 AND deleted_at IS NULL
+				ORDER BY created_at DESC, id DESC
+				LIMIT $2
+			) a
+			LEFT JOIN LATERAL (
+				SELECT ARRAY_AGG(ft.tag_name) as tag_names
+				FROM article_tags at
+				JOIN feed_tags ft ON at.feed_tag_id = ft.id
+				WHERE at.article_id = a.id
+			) tags ON TRUE
 			ORDER BY a.created_at DESC, a.id DESC
-			LIMIT $2
 		`
 		args = []interface{}{user.UserID, limit}
 	} else {
@@ -64,15 +71,22 @@ func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *t
 				a.content,
 				a.created_at as published_at,
 				a.created_at,
-				COALESCE(ARRAY_AGG(ft.tag_name) FILTER (WHERE ft.tag_name IS NOT NULL), '{}') as tags
-			FROM articles a
-			LEFT JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
-			WHERE a.user_id = $1
-			AND a.created_at < $2
-			GROUP BY a.id, a.title, a.url, a.content, a.created_at
+				COALESCE(tags.tag_names, '{}') as tags
+			FROM (
+				SELECT id, title, url, content, created_at
+				FROM articles
+				WHERE user_id = $1 AND deleted_at IS NULL
+				AND created_at < $2
+				ORDER BY created_at DESC, id DESC
+				LIMIT $3
+			) a
+			LEFT JOIN LATERAL (
+				SELECT ARRAY_AGG(ft.tag_name) as tag_names
+				FROM article_tags at
+				JOIN feed_tags ft ON at.feed_tag_id = ft.id
+				WHERE at.article_id = a.id
+			) tags ON TRUE
 			ORDER BY a.created_at DESC, a.id DESC
-			LIMIT $3
 		`
 		args = []interface{}{user.UserID, cursor, limit}
 	}

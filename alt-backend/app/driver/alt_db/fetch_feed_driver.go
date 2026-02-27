@@ -30,7 +30,7 @@ func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, erro
 
 func (r *AltDBRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, error) {
 	query := `
-		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC
+		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT 10000
 	`
 
 	var feeds []*models.Feed
@@ -191,7 +191,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id
 			FROM feeds f
 			WHERE NOT EXISTS (
 				SELECT 1
@@ -210,7 +210,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id
 			FROM feeds f
 			WHERE NOT EXISTS (
 				SELECT 1
@@ -267,7 +267,7 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read
 			FROM feeds f
 			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $2
@@ -281,7 +281,7 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
 			       COALESCE(rs.is_read, FALSE) AS is_read
 			FROM feeds f
 			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $3
@@ -387,7 +387,7 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
 	if cursor == nil {
 		query = `
                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-                              (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id
+                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
                        WHERE ff.user_id = $2
@@ -399,7 +399,7 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
 	} else {
 		query = `
                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-                              (SELECT a.id FROM articles a WHERE a.url = f.link AND a.deleted_at IS NULL LIMIT 1) AS article_id
+                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
                        WHERE ff.user_id = $3 AND ff.created_at < $1

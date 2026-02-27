@@ -7,7 +7,7 @@ import (
 )
 
 func (r *AltDBRepository) FetchTotalArticlesCount(ctx context.Context) (int, error) {
-	query := `SELECT COUNT(*) FROM articles`
+	query := `SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL`
 
 	var count int
 	err := r.pool.QueryRow(ctx, query).Scan(&count)

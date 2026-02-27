@@ -35,8 +35,8 @@ func (r *AltDBRepository) FetchArticlesByIDs(ctx context.Context, articleIDs []u
 		FROM articles a
 		LEFT JOIN article_tags at ON a.id = at.article_id
 		LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
-		WHERE a.id = ANY($1)
-		GROUP BY a.id, a.feed_id, a.title, a.content, a.url, a.created_at
+		WHERE a.id = ANY($1) AND a.deleted_at IS NULL
+		GROUP BY a.id
 	`
 
 	rows, err := r.pool.Query(ctx, query, articleIDs)

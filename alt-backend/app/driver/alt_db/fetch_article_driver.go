@@ -14,7 +14,7 @@ import (
 const fetchArticleByURLQuery = `
 	SELECT id, title, content, url
 	FROM articles
-	WHERE url = $1
+	WHERE url = $1 AND deleted_at IS NULL
 `
 
 // FetchArticleByURL retrieves article content from database by URL
@@ -53,7 +53,7 @@ func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL stri
 const fetchArticleByIDQuery = `
 	SELECT id, title, content, url
 	FROM articles
-	WHERE id = $1
+	WHERE id = $1 AND deleted_at IS NULL
 `
 
 // FetchArticleByID retrieves article content from database by ID

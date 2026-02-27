@@ -29,34 +29,42 @@ func (r *AltDBRepository) ListArticlesWithTags(ctx context.Context, lastCreatedA
 	if lastCreatedAt == nil || lastCreatedAt.IsZero() {
 		query = `
 			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
-				   COALESCE(
-					   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
-					   '{}'
-				   ) as tag_names
-			FROM articles a
-			LEFT JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
-			WHERE a.deleted_at IS NULL
-			GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
+				   COALESCE(tags.tag_names, '{}') as tag_names
+			FROM (
+				SELECT id, title, content, created_at, user_id
+				FROM articles
+				WHERE deleted_at IS NULL
+				ORDER BY created_at DESC, id DESC
+				LIMIT $1
+			) a
+			LEFT JOIN LATERAL (
+				SELECT ARRAY_AGG(t.tag_name ORDER BY t.tag_name) as tag_names
+				FROM article_tags at
+				JOIN feed_tags t ON at.feed_tag_id = t.id
+				WHERE at.article_id = a.id
+			) tags ON TRUE
 			ORDER BY a.created_at DESC, a.id DESC
-			LIMIT $1
 		`
 		args = []interface{}{limit}
 	} else {
 		query = `
 			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
-				   COALESCE(
-					   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
-					   '{}'
-				   ) as tag_names
-			FROM articles a
-			LEFT JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
-			WHERE a.deleted_at IS NULL
-			  AND (a.created_at, a.id) < ($1, $2)
-			GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
+				   COALESCE(tags.tag_names, '{}') as tag_names
+			FROM (
+				SELECT id, title, content, created_at, user_id
+				FROM articles
+				WHERE deleted_at IS NULL
+				  AND (created_at, id) < ($1, $2)
+				ORDER BY created_at DESC, id DESC
+				LIMIT $3
+			) a
+			LEFT JOIN LATERAL (
+				SELECT ARRAY_AGG(t.tag_name ORDER BY t.tag_name) as tag_names
+				FROM article_tags at
+				JOIN feed_tags t ON at.feed_tag_id = t.id
+				WHERE at.article_id = a.id
+			) tags ON TRUE
 			ORDER BY a.created_at DESC, a.id DESC
-			LIMIT $3
 		`
 		args = []interface{}{*lastCreatedAt, lastID, limit}
 	}
@@ -100,36 +108,44 @@ func (r *AltDBRepository) ListArticlesWithTagsForward(ctx context.Context, incre
 	if lastCreatedAt == nil || lastCreatedAt.IsZero() {
 		query = `
 			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
-				   COALESCE(
-					   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
-					   '{}'
-				   ) as tag_names
-			FROM articles a
-			LEFT JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
-			WHERE a.deleted_at IS NULL
-			  AND a.created_at > $1
-			GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
+				   COALESCE(tags.tag_names, '{}') as tag_names
+			FROM (
+				SELECT id, title, content, created_at, user_id
+				FROM articles
+				WHERE deleted_at IS NULL
+				  AND created_at > $1
+				ORDER BY created_at ASC, id ASC
+				LIMIT $2
+			) a
+			LEFT JOIN LATERAL (
+				SELECT ARRAY_AGG(t.tag_name ORDER BY t.tag_name) as tag_names
+				FROM article_tags at
+				JOIN feed_tags t ON at.feed_tag_id = t.id
+				WHERE at.article_id = a.id
+			) tags ON TRUE
 			ORDER BY a.created_at ASC, a.id ASC
-			LIMIT $2
 		`
 		args = []interface{}{*incrementalMark, limit}
 	} else {
 		query = `
 			SELECT a.id, a.title, a.content, a.created_at, a.user_id,
-				   COALESCE(
-					   array_agg(t.tag_name ORDER BY t.tag_name) FILTER (WHERE t.tag_name IS NOT NULL),
-					   '{}'
-				   ) as tag_names
-			FROM articles a
-			LEFT JOIN article_tags at ON a.id = at.article_id
-			LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
-			WHERE a.deleted_at IS NULL
-			  AND a.created_at > $1
-			  AND (a.created_at, a.id) > ($2, $3)
-			GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
+				   COALESCE(tags.tag_names, '{}') as tag_names
+			FROM (
+				SELECT id, title, content, created_at, user_id
+				FROM articles
+				WHERE deleted_at IS NULL
+				  AND created_at > $1
+				  AND (created_at, id) > ($2, $3)
+				ORDER BY created_at ASC, id ASC
+				LIMIT $4
+			) a
+			LEFT JOIN LATERAL (
+				SELECT ARRAY_AGG(t.tag_name ORDER BY t.tag_name) as tag_names
+				FROM article_tags at
+				JOIN feed_tags t ON at.feed_tag_id = t.id
+				WHERE at.article_id = a.id
+			) tags ON TRUE
 			ORDER BY a.created_at ASC, a.id ASC
-			LIMIT $4
 		`
 		args = []interface{}{*incrementalMark, *lastCreatedAt, lastID, limit}
 	}
@@ -238,7 +254,7 @@ func (r *AltDBRepository) GetArticleWithTagsByID(ctx context.Context, articleID 
 		LEFT JOIN article_tags at ON a.id = at.article_id
 		LEFT JOIN feed_tags t ON at.feed_tag_id = t.id
 		WHERE a.id = $1 AND a.deleted_at IS NULL
-		GROUP BY a.id, a.title, a.content, a.created_at, a.user_id
+		GROUP BY a.id
 	`
 
 	var article InternalArticleWithTags

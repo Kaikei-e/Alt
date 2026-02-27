@@ -35,19 +35,24 @@ type OutboxEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// FetchPendingOutboxEvents retrieves pending events, ordered by creation time.
-func (r *AltDBRepository) FetchPendingOutboxEvents(ctx context.Context, limit int) ([]OutboxEvent, error) {
-	// Using FOR UPDATE SKIP LOCKED to allow multiple workers (PostgreSQL specific)
-	query := `
+// FetchAndLockPendingOutboxEvents retrieves pending events within a transaction,
+// locks them with FOR UPDATE SKIP LOCKED, and atomically sets status to PROCESSING.
+// This prevents multiple workers from processing the same event.
+func (r *AltDBRepository) FetchAndLockPendingOutboxEvents(ctx context.Context, limit int) ([]OutboxEvent, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx, `
 		SELECT id, event_type, payload, status, created_at
 		FROM outbox_events
 		WHERE status = 'PENDING'
 		ORDER BY created_at ASC
 		LIMIT $1
 		FOR UPDATE SKIP LOCKED
-	`
-
-	rows, err := r.pool.Query(ctx, query, limit)
+	`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch pending outbox events: %w", err)
 	}
@@ -62,6 +67,21 @@ func (r *AltDBRepository) FetchPendingOutboxEvents(ctx context.Context, limit in
 		}
 		e.ID = id.String()
 		events = append(events, e)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate outbox events: %w", err)
+	}
+
+	// Atomically mark all selected events as PROCESSING within the same transaction
+	for _, e := range events {
+		if _, err := tx.Exec(ctx, `UPDATE outbox_events SET status = 'PROCESSING' WHERE id = $1`, e.ID); err != nil {
+			return nil, fmt.Errorf("failed to mark event %s as PROCESSING: %w", e.ID, err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 
 	return events, nil

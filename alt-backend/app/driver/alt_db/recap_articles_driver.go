@@ -24,7 +24,7 @@ SELECT
     a.created_at AS published_at,
     NULL::text AS lang_hint
 FROM articles a
-WHERE a.created_at BETWEEN $1 AND $2
+WHERE a.created_at BETWEEN $1 AND $2 AND a.deleted_at IS NULL
 ORDER BY a.created_at DESC, a.id DESC
 OFFSET $3
 LIMIT $4`
