@@ -24,9 +24,77 @@ func TestNewProxyHandler(t *testing.T) {
 	)
 	secret := []byte("test-secret")
 
-	handler := NewProxyHandler(backendClient, secret, "auth-hub", "alt-backend", nil)
+	handler := NewProxyHandler(backendClient, secret, "auth-hub", "alt-backend", nil, 30*time.Second)
 
 	assert.NotNil(t, handler)
+}
+
+func TestProxyHandler_ApplyConnectTimeout_WithHeader(t *testing.T) {
+	backendClient := client.NewBackendClientWithTransport(
+		"http://localhost:9101",
+		30*time.Second,
+		5*time.Minute,
+		http.DefaultTransport,
+	)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	req.Header.Set("Connect-Timeout-Ms", "120000")
+
+	newReq, cancel := handler.applyConnectTimeout(req)
+	defer cancel()
+
+	deadline, ok := newReq.Context().Deadline()
+	assert.True(t, ok)
+	// Should be ~120s from now
+	remaining := time.Until(deadline)
+	assert.Greater(t, remaining, 119*time.Second)
+	assert.LessOrEqual(t, remaining, 120*time.Second)
+}
+
+func TestProxyHandler_ApplyConnectTimeout_WithoutHeader(t *testing.T) {
+	backendClient := client.NewBackendClientWithTransport(
+		"http://localhost:9101",
+		30*time.Second,
+		5*time.Minute,
+		http.DefaultTransport,
+	)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+
+	newReq, cancel := handler.applyConnectTimeout(req)
+	defer cancel()
+
+	deadline, ok := newReq.Context().Deadline()
+	assert.True(t, ok)
+	// Should be ~30s (default) from now
+	remaining := time.Until(deadline)
+	assert.Greater(t, remaining, 29*time.Second)
+	assert.LessOrEqual(t, remaining, 30*time.Second)
+}
+
+func TestProxyHandler_ApplyConnectTimeout_CappedAt5Minutes(t *testing.T) {
+	backendClient := client.NewBackendClientWithTransport(
+		"http://localhost:9101",
+		30*time.Second,
+		5*time.Minute,
+		http.DefaultTransport,
+	)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	req.Header.Set("Connect-Timeout-Ms", "999999999") // ~277 hours
+
+	newReq, cancel := handler.applyConnectTimeout(req)
+	defer cancel()
+
+	deadline, ok := newReq.Context().Deadline()
+	assert.True(t, ok)
+	// Should be capped at 5 minutes
+	remaining := time.Until(deadline)
+	assert.Greater(t, remaining, 4*time.Minute+59*time.Second)
+	assert.LessOrEqual(t, remaining, 5*time.Minute)
 }
 
 func TestProxyHandler_ServeHTTP_Success(t *testing.T) {
@@ -48,7 +116,7 @@ func TestProxyHandler_ServeHTTP_Success(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
 
 	// Create request with valid token
 	req := httptest.NewRequest(
@@ -74,7 +142,7 @@ func TestProxyHandler_ServeHTTP_MissingToken(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	recorder := httptest.NewRecorder()
@@ -92,7 +160,7 @@ func TestProxyHandler_ServeHTTP_InvalidToken(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	req.Header.Set("X-Alt-Backend-Token", "invalid-token")
@@ -117,7 +185,7 @@ func TestProxyHandler_ServeHTTP_BackendError(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
@@ -150,7 +218,7 @@ func TestProxyHandler_ServeHTTP_StreamingRequest(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
 
 	req := httptest.NewRequest(
 		http.MethodPost,

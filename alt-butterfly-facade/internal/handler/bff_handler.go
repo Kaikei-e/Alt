@@ -3,9 +3,11 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"alt-butterfly-facade/internal/cache"
@@ -42,6 +44,7 @@ type BFFHandler struct {
 	authInterceptor *middleware.AuthInterceptor
 	logger          *slog.Logger
 	config          BFFConfig
+	defaultTimeout  time.Duration
 
 	// BFF components
 	responseCache   *cache.ResponseCache
@@ -58,12 +61,14 @@ func NewBFFHandler(
 	logger *slog.Logger,
 	config BFFConfig,
 ) *BFFHandler {
+	defaultTimeout := backendClient.DefaultTimeout()
 	h := &BFFHandler{
-		proxyHandler: NewProxyHandler(backendClient, secret, issuer, audience, logger),
+		proxyHandler:    NewProxyHandler(backendClient, secret, issuer, audience, logger, defaultTimeout),
 		backendClient:   backendClient,
 		authInterceptor: middleware.NewAuthInterceptor(logger, secret, issuer, audience),
 		logger:          logger,
 		config:          config,
+		defaultTimeout:  defaultTimeout,
 	}
 
 	// Initialize cache if enabled
@@ -89,8 +94,32 @@ func NewBFFHandler(
 	return h
 }
 
+// applyConnectTimeout parses the Connect-Timeout-Ms header and sets a context
+// deadline on the request. If the header is absent or invalid, defaultTimeout
+// is used. The timeout is capped at maxConnectTimeout (5 min).
+func (h *BFFHandler) applyConnectTimeout(r *http.Request) (*http.Request, context.CancelFunc) {
+	timeout := h.defaultTimeout
+
+	if ms := r.Header.Get("Connect-Timeout-Ms"); ms != "" {
+		if parsed, err := strconv.ParseInt(ms, 10, 64); err == nil && parsed > 0 {
+			timeout = time.Duration(parsed) * time.Millisecond
+		}
+	}
+
+	if timeout > maxConnectTimeout {
+		timeout = maxConnectTimeout
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	return r.WithContext(ctx), cancel
+}
+
 // ServeHTTP implements http.Handler.
 func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Apply Connect-Timeout-Ms based context deadline
+	r, cancel := h.applyConnectTimeout(r)
+	defer cancel()
+
 	// Generate request ID for tracing
 	requestID := generateRequestID()
 

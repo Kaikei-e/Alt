@@ -78,6 +78,7 @@ func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.Roun
 			cfg.Issuer,
 			cfg.Audience,
 			logger,
+			cfg.RequestTimeout,
 		)
 	}
 
@@ -139,7 +140,7 @@ func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.Roun
 			ttsTransport,
 		)
 		ttsProxy := handler.NewProxyHandler(
-			ttsClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger,
+			ttsClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger, cfg.StreamingTimeout,
 		)
 		// Wrap to inject X-Service-Token for tts-speaker authentication
 		ttsServiceSecret := cfg.TTSServiceSecret

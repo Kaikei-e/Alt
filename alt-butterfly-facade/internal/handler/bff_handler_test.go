@@ -275,6 +275,53 @@ func TestBFFHandler_NormalizedError_Unauthorized(t *testing.T) {
 	assert.False(t, normalized.IsRetryable)
 }
 
+func TestBFFHandler_ApplyConnectTimeout_WithHeader(t *testing.T) {
+	handler := createTestBFFHandler(t, BFFConfig{})
+
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	req.Header.Set("Connect-Timeout-Ms", "120000")
+
+	newReq, cancel := handler.applyConnectTimeout(req)
+	defer cancel()
+
+	deadline, ok := newReq.Context().Deadline()
+	assert.True(t, ok)
+	remaining := time.Until(deadline)
+	assert.Greater(t, remaining, 119*time.Second)
+	assert.LessOrEqual(t, remaining, 120*time.Second)
+}
+
+func TestBFFHandler_ApplyConnectTimeout_WithoutHeader(t *testing.T) {
+	handler := createTestBFFHandler(t, BFFConfig{})
+
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+
+	newReq, cancel := handler.applyConnectTimeout(req)
+	defer cancel()
+
+	deadline, ok := newReq.Context().Deadline()
+	assert.True(t, ok)
+	remaining := time.Until(deadline)
+	assert.Greater(t, remaining, 29*time.Second)
+	assert.LessOrEqual(t, remaining, 30*time.Second)
+}
+
+func TestBFFHandler_ApplyConnectTimeout_CappedAt5Minutes(t *testing.T) {
+	handler := createTestBFFHandler(t, BFFConfig{})
+
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	req.Header.Set("Connect-Timeout-Ms", "999999999")
+
+	newReq, cancel := handler.applyConnectTimeout(req)
+	defer cancel()
+
+	deadline, ok := newReq.Context().Deadline()
+	assert.True(t, ok)
+	remaining := time.Until(deadline)
+	assert.Greater(t, remaining, 4*time.Minute+59*time.Second)
+	assert.LessOrEqual(t, remaining, 5*time.Minute)
+}
+
 // Helper functions
 
 func createTestBFFHandler(t *testing.T, config BFFConfig) *BFFHandler {

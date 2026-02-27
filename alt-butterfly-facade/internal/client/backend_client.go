@@ -46,7 +46,9 @@ func NewBackendClientWithTransport(baseURL string, requestTimeout, streamingTime
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:   requestTimeout,
+			// Timeout is intentionally not set (0 = no timeout).
+			// Timeouts are controlled per-request via context deadline,
+			// derived from Connect-Timeout-Ms header by the handler layer.
 		},
 		streamingClient: &http.Client{
 			Transport: transport,
@@ -55,6 +57,12 @@ func NewBackendClientWithTransport(baseURL string, requestTimeout, streamingTime
 		requestTimeout:   requestTimeout,
 		streamingTimeout: streamingTimeout,
 	}
+}
+
+// DefaultTimeout returns the configured default request timeout.
+// Handlers use this as the fallback when Connect-Timeout-Ms header is absent.
+func (c *BackendClient) DefaultTimeout() time.Duration {
+	return c.requestTimeout
 }
 
 // ForwardRequest forwards an HTTP request to the backend with the given token.

@@ -2,14 +2,20 @@
 package handler
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"alt-butterfly-facade/internal/client"
 	"alt-butterfly-facade/internal/middleware"
 )
+
+// maxConnectTimeout is the upper bound for Connect-Timeout-Ms to prevent abuse.
+const maxConnectTimeout = 5 * time.Minute
 
 // streamingProcedures lists Connect-RPC procedures that use server streaming
 var streamingProcedures = map[string]bool{
@@ -25,6 +31,7 @@ type ProxyHandler struct {
 	backendClient   *client.BackendClient
 	authInterceptor *middleware.AuthInterceptor
 	logger          *slog.Logger
+	defaultTimeout  time.Duration
 }
 
 // NewProxyHandler creates a new proxy handler.
@@ -33,16 +40,42 @@ func NewProxyHandler(
 	secret []byte,
 	issuer, audience string,
 	logger *slog.Logger,
+	defaultTimeout time.Duration,
 ) *ProxyHandler {
 	return &ProxyHandler{
 		backendClient:   backendClient,
 		authInterceptor: middleware.NewAuthInterceptor(logger, secret, issuer, audience),
 		logger:          logger,
+		defaultTimeout:  defaultTimeout,
 	}
+}
+
+// applyConnectTimeout parses the Connect-Timeout-Ms header and sets a context
+// deadline on the request. If the header is absent or invalid, defaultTimeout
+// is used. The timeout is capped at maxConnectTimeout (5 min).
+func (h *ProxyHandler) applyConnectTimeout(r *http.Request) (*http.Request, context.CancelFunc) {
+	timeout := h.defaultTimeout
+
+	if ms := r.Header.Get("Connect-Timeout-Ms"); ms != "" {
+		if parsed, err := strconv.ParseInt(ms, 10, 64); err == nil && parsed > 0 {
+			timeout = time.Duration(parsed) * time.Millisecond
+		}
+	}
+
+	if timeout > maxConnectTimeout {
+		timeout = maxConnectTimeout
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	return r.WithContext(ctx), cancel
 }
 
 // ServeHTTP implements http.Handler.
 func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Apply Connect-Timeout-Ms based context deadline
+	r, cancel := h.applyConnectTimeout(r)
+	defer cancel()
+
 	// Extract and validate token
 	token := r.Header.Get(middleware.BackendTokenHeader)
 	_, err := h.authInterceptor.ValidateToken(token)

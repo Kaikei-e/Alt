@@ -25,6 +25,21 @@ func TestNewBackendClient(t *testing.T) {
 	assert.Equal(t, "http://localhost:9101", client.baseURL)
 }
 
+func TestBackendClient_HttpClientTimeout_IsZero(t *testing.T) {
+	// httpClient.Timeout must be 0 (disabled) so that Connect-Timeout-Ms
+	// header-based context deadlines are the sole timeout mechanism.
+	client := NewBackendClientWithTransport("http://localhost:9101", 30*time.Second, 5*time.Minute, http.DefaultTransport)
+
+	assert.Equal(t, time.Duration(0), client.httpClient.Timeout,
+		"httpClient.Timeout should be 0; timeout is controlled via context deadline from Connect-Timeout-Ms")
+}
+
+func TestBackendClient_DefaultTimeout(t *testing.T) {
+	client := NewBackendClientWithTransport("http://localhost:9101", 30*time.Second, 5*time.Minute, http.DefaultTransport)
+
+	assert.Equal(t, 30*time.Second, client.DefaultTimeout())
+}
+
 func TestBackendClient_ForwardRequest_Success(t *testing.T) {
 	// Create a mock backend server
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +111,7 @@ func TestBackendClient_ForwardRequest_Timeout(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	// Very short timeout
+	// httpClient.Timeout is 0 (disabled), so timeout is controlled via context
 	client := NewBackendClientWithTransport(backend.URL, 10*time.Millisecond, 10*time.Millisecond, http.DefaultTransport)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
