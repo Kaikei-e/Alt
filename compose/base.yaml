@@ -51,6 +51,8 @@ secrets:
     file: ../secrets/restic_password.txt
   pp_db_password:
     file: ../secrets/pp_db_password.txt
+  image_proxy_secret:
+    file: ../secrets/image_proxy_secret.txt
 
 networks:
   alt-network:

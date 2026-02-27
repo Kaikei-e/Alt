@@ -183,12 +183,14 @@ services:
       - AUTH_HUB_URL=http://auth-hub:8888
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub:9500
+      - IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret
     secrets:
       - auth_shared_secret
       - backend_token_secret
       - db_password
       - csrf_secret
       - service_secret
+      - image_proxy_secret
     deploy:
       resources:
         limits:
