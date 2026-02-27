@@ -1,6 +1,6 @@
 # Pre-processor Sidecar
 
-_Last reviewed: January 13, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `pre-processor-sidecar/app`
 

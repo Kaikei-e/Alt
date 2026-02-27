@@ -1,6 +1,6 @@
 # Auth Token Manager
 
-_Last reviewed: January 13, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `auth-token-manager`
 
@@ -38,6 +38,10 @@ _Last reviewed: January 13, 2026_
 
 ### Storage path
 - `TOKEN_STORAGE_PATH` (default `/app/secrets/oauth2_token.env`) is where `EnvFileSecretManager` persists tokens. Adjust this path when the file must live on shared volumes for sidecars or CronJobs.
+
+## DI Container Pattern
+
+`main.ts` serves as a manual DI container: it constructs the gateway layer (`EnvFileSecretManager`, `FetchHttpClient`, `InoreaderTokenClient`), wires them into usecases (`RefreshTokenUsecase`, `HealthCheckUsecase`, `MonitorTokenUsecase`, `AuthorizeUsecase`), then passes usecases to handler layer (`CliHandler`, `OAuthServer`, `DaemonLoop`). No framework is used—dependency resolution is explicit and top-down.
 
 ## Secret storage & consumption
 - `EnvFileSecretManager` preserves every non-token line in the destination file, removes stale `OAUTH2_*` entries, and rewrites the five canonical keys: `OAUTH2_ACCESS_TOKEN`, `OAUTH2_REFRESH_TOKEN`, `OAUTH2_TOKEN_TYPE`, `OAUTH2_EXPIRES_AT`, `OAUTH2_EXPIRES_IN`.

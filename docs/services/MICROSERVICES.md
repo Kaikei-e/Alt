@@ -1,6 +1,6 @@
 # Alt Platform Microservices
 
-_Last reviewed: February 15, 2026_
+_Last reviewed: February 28, 2026_
 
 ## Overview
 
@@ -25,6 +25,8 @@ Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームで�
 | search-indexer | Go 1.24+ | 9300, 9301 | workers.yaml | `/search-indexer healthcheck` |
 | tag-generator | Python 3.13+ (FastAPI) | 9400 | workers.yaml | `/health` |
 | news-creator | Python 3.11+ (FastAPI + Ollama) | 11434 | ai.yaml | `/health` |
+| tts-speaker | Python 3.12 (Starlette + Kokoro) | 9700 | compose.tts.yaml | `/health` |
+| knowledge-augur | Ollama (Swallow-8B) | 11435 | compose.augur.yaml | `/api/tags` |
 
 ### Auth Services
 | Service | Language | Port(s) | Compose File | Health Endpoint |
@@ -59,6 +61,7 @@ Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームで�
 | kratos-db | PostgreSQL 16 | 5434 | auth.yaml | `pg_isready` |
 | recap-db | PostgreSQL 18 | 5435 | recap.yaml | `pg_isready` |
 | rag-db | PostgreSQL 18 + pgvector | 5436 | rag.yaml | `pg_isready` |
+| pre-processor-db | PostgreSQL 17 | 5437 | db.yaml | `pg_isready` |
 | meilisearch | Meilisearch v1.27.0 | 7700 | db.yaml | `/health` |
 | clickhouse | ClickHouse 25.9 | 8123, 9009 | db.yaml | `/ping` |
 | redis-cache | Redis 8.0.2 | - | ai.yaml | `redis-cli ping` |
@@ -67,7 +70,7 @@ Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームで�
 | Service | Language | Port(s) | Compose File | Health Endpoint |
 |---------|----------|---------|--------------|-----------------|
 | rask-log-aggregator | Rust 1.87+ (Axum) | 9600, 4317, 4318 | logging.yaml | `/rask-log-aggregator healthcheck` |
-| rask-log-forwarder (14x) | Rust 1.87+ | - | logging.yaml | - |
+| rask-log-forwarder (13x) | Rust 1.87+ | - | logging.yaml | - |
 
 ### CLI & Tools
 | Service | Language | Description |
@@ -84,15 +87,17 @@ Alt は Compose-first の AI 拡張 RSS ナレッジプラットフォームで�
 | base.yaml | 共通設定 (networks, volumes, secrets) | - |
 | core.yaml | nginx, alt-frontend, alt-frontend-sv, alt-backend, migrate | default |
 | bff.yaml | alt-butterfly-facade | default |
-| db.yaml | db, meilisearch, clickhouse | default |
+| db.yaml | db, meilisearch, clickhouse, pre-processor-db, pre-processor-db-migrator | default |
 | auth.yaml | kratos-db, kratos, kratos-migrate, auth-hub | default |
 | workers.yaml | pre-processor-sidecar, search-indexer, tag-generator, auth-token-manager | default |
 | mq.yaml | redis-streams, mq-hub | default |
 | ai.yaml | redis-cache, news-creator, pre-processor | ollama |
 | recap.yaml | recap-db, recap-worker, recap-subworker, dashboard, recap-evaluator | recap |
 | rag.yaml | rag-db, rag-db-migrator, rag-orchestrator | rag-extension |
-| logging.yaml | rask-log-aggregator, 14x rask-log-forwarder | logging |
+| logging.yaml | rask-log-aggregator, 13x rask-log-forwarder | logging |
 | perf.yaml | alt-perf | perf |
+| compose.tts.yaml | tts-speaker | standalone |
+| compose.augur.yaml | knowledge-augur, knowledge-augur-volume-init, knowledge-embedder, knowledge-embedder-volume-init | standalone |
 
 ---
 
@@ -152,12 +157,21 @@ flowchart TB
         rag-orchestrator
     end
 
+    subgraph TTS["TTS"]
+        tts-speaker
+    end
+
+    subgraph Augur["Knowledge Augur"]
+        knowledge-augur
+    end
+
     subgraph DataStores["Data Stores"]
         direction LR
         db[(PostgreSQL)]
         kratos-db[(Kratos DB)]
         recap-db[(Recap DB)]
         rag-db[(RAG DB)]
+        pre-processor-db[(Pre-processor DB)]
         meilisearch[(Meilisearch)]
         clickhouse[(ClickHouse)]
         redis-cache[(Redis)]
@@ -175,6 +189,12 @@ flowchart TB
     pre-processor --> db & alt-backend & redis-streams
     news-creator --> redis-cache
     mq-hub --> redis-streams
+
+    %% BFF -> TTS
+    alt-butterfly-facade -.-> tts-speaker
+
+    %% Pre-processor -> pre-processor-db
+    pre-processor --> pre-processor-db
 
     %% Pipeline connections
     recap-worker --> recap-db & recap-subworker & news-creator
@@ -219,11 +239,18 @@ flowchart TB
     %% Styling - RAG (teal)
     style rag-orchestrator fill:#e0f2f1,stroke:#00796b,color:#004d40,stroke-width:2px
 
+    %% Styling - TTS (cyan)
+    style tts-speaker fill:#e0f7fa,stroke:#00838f,color:#004d40,stroke-width:2px
+
+    %% Styling - Knowledge Augur (deep orange)
+    style knowledge-augur fill:#fbe9e7,stroke:#e64a19,color:#bf360c,stroke-width:2px
+
     %% Styling - Data Stores (amber)
     style db fill:#fff8e1,stroke:#ffa000,color:#ff6f00,stroke-width:2px
     style kratos-db fill:#fff8e1,stroke:#ffa000,color:#ff6f00,stroke-width:2px
     style recap-db fill:#fff8e1,stroke:#ffa000,color:#ff6f00,stroke-width:2px
     style rag-db fill:#fff8e1,stroke:#ffa000,color:#ff6f00,stroke-width:2px
+    style pre-processor-db fill:#fff8e1,stroke:#ffa000,color:#ff6f00,stroke-width:2px
     style meilisearch fill:#fff8e1,stroke:#ffa000,color:#ff6f00,stroke-width:2px
     style clickhouse fill:#fff8e1,stroke:#ffa000,color:#ff6f00,stroke-width:2px
     style redis-cache fill:#fff8e1,stroke:#ffa000,color:#ff6f00,stroke-width:2px
@@ -243,6 +270,7 @@ flowchart TB
 5434    → kratos-db (PostgreSQL 16)
 5435    → recap-db (PostgreSQL 18)
 5436    → rag-db (PostgreSQL 18)
+5437    → pre-processor-db (PostgreSQL 17)
 6380    → redis-streams
 7700    → meilisearch
 8002    → recap-subworker
@@ -259,15 +287,17 @@ flowchart TB
 9200    → pre-processor (REST)
 9201    → auth-token-manager
 9202    → pre-processor (Connect-RPC)
-9250    → alt-butterfly-facade
+9250    → alt-butterfly-facade (Compose: 9250:9250)
 9300    → search-indexer (REST)
 9301    → search-indexer (Connect-RPC)
 9400    → tag-generator
 9500    → mq-hub
 9600    → rask-log-aggregator (HTTP)
+9700    → tts-speaker
 4317    → rask-log-aggregator (OTLP gRPC)
 4318    → rask-log-aggregator (OTLP HTTP)
 11434   → news-creator (Ollama API)
+11435   → knowledge-augur (Compose: 11435:11434)
 ```
 
 ---
@@ -360,7 +390,10 @@ curl http://localhost:9500/health              # mq-hub
 | redis-streams-data | redis-streams | Event streams |
 | redis-cache-data | redis-cache | LLM response cache |
 | news_creator_models | news-creator | Ollama models |
+| pre_processor_db_data | pre-processor-db | Pre-processor feed data |
 | oauth_token_data | auth-token-manager | OAuth2 tokens |
+| tts_models | tts-speaker | Kokoro TTS models |
+| knowledge_augur_models | knowledge-augur | Ollama Swallow models |
 
 ---
 
@@ -381,6 +414,7 @@ curl http://localhost:9500/health              # mq-hub
 | csrf_secret | auth-hub, alt-backend |
 | hugging_face_token | recap-worker |
 | inoreader_client_id | pre-processor-sidecar, auth-token-manager |
+| pp_db_password | pre-processor-db, pre-processor, pre-processor-sidecar |
 | inoreader_client_secret | pre-processor-sidecar, auth-token-manager |
 
 ---
@@ -409,6 +443,8 @@ curl http://localhost:9500/health              # mq-hub
 | rag-orchestrator | [docs/rag-orchestrator.md](./rag-orchestrator.md) |
 | rag-db | [docs/rag-db.md](./rag-db.md) |
 | rask-log-aggregator | [docs/rask-log-aggregator.md](./rask-log-aggregator.md) |
+| tts-speaker | [docs/tts-speaker.md](./tts-speaker.md) |
+| knowledge-augur | [docs/knowledge-augur.md](./knowledge-augur.md) |
 | rask-log-forwarder | [docs/rask-log-forwarder.md](./rask-log-forwarder.md) |
 
 ---
@@ -420,5 +456,5 @@ curl http://localhost:9500/health              # mq-hub
 - サービス間認証は `X-Service-Token` + `SERVICE_SECRET`
 - イベント駆動は Redis Streams + mq-hub
 - alt-backend は alt-db の唯一のデータオーナー。search-indexer, tag-generator, pre-processor は Connect-RPC Internal API (:9101) 経由でデータアクセス (ADR-000241)
-- GPU 要件: news-creator, recap-subworker (NVIDIA GPU)
+- GPU 要件: news-creator, recap-subworker (NVIDIA GPU); tts-speaker, knowledge-augur (AMD ROCm iGPU, CPU fallback 可)
 - ログ集約は rask-log-forwarder → rask-log-aggregator → ClickHouse

@@ -1,6 +1,6 @@
 # Knowledge Augur
 
-_Last reviewed: January 28, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `knowledge-augur/`
 **Port:** 11435 (external) → 11434 (internal Ollama)

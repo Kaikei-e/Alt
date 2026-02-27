@@ -1,6 +1,6 @@
 # Recap Database Schema Contract
 
-_Last reviewed: January 13, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `recap-db`, `recap-migration-atlas`
 
@@ -108,3 +108,65 @@ Indexes:
 - GIN indexes on `refine_decision`, `tag_profile`, and `coarse_candidates` accelerate JSON path filters.
 
 Comments explain each column’s role (coarse candidates, refine decision, tag profile, graph context, feedback, telemetry, timestamps) so downstream services understand what to expect before clogging the graph builder.
+
+### `pulse_generations`
+Tracks Evening Pulse generation runs with version control and status.
+
+| Column Name      | Type         | Constraints         | Description                                      |
+|------------------|--------------|---------------------|--------------------------------------------------|
+| `id`             | `BIGSERIAL`  | `PRIMARY KEY`       | Unique identifier for the generation run        |
+| `job_id`         | `UUID`       | `NOT NULL`          | Job UUID for this generation run                |
+| `target_date`    | `DATE`       | `NOT NULL`, `DEFAULT CURRENT_DATE` | Target date for the pulse generation  |
+| `version`        | `TEXT`       | `NOT NULL`, `CHECK (v2, v3, v4)` | Pulse algorithm version              |
+| `status`         | `TEXT`       | `NOT NULL`, `CHECK (running, succeeded, failed)` | Generation status         |
+| `topics_count`   | `INT`        | `NOT NULL`, `DEFAULT 0` | Number of topics generated (0-3)             |
+| `started_at`     | `TIMESTAMPTZ`| `NOT NULL`, `DEFAULT NOW()` | Generation start time                   |
+| `finished_at`    | `TIMESTAMPTZ`|                     | Generation finish time                           |
+| `config_snapshot`| `JSONB`      | `NOT NULL`, `DEFAULT ‘{}’` | Configuration snapshot at generation time   |
+| `result_payload` | `JSONB`      |                     | Full JSON result for succeeded generations       |
+| `error_message`  | `TEXT`       |                     | Error message for failed generations             |
+
+Indexes: `idx_pulse_generations_job_id`, `idx_pulse_generations_version_status`, `idx_pulse_generations_started_at`, `idx_pulse_generations_target_date`, GIN on `config_snapshot`.
+
+### `pulse_cluster_diagnostics`
+Per-cluster quality metrics and syndication detection results.
+
+| Column Name         | Type         | Constraints         | Description                                   |
+|---------------------|--------------|---------------------|-----------------------------------------------|
+| `id`                | `BIGSERIAL`  | `PRIMARY KEY`       | Unique identifier                            |
+| `generation_id`     | `BIGINT`     | `NOT NULL`, `FK (pulse_generations.id) ON DELETE CASCADE` | Parent generation |
+| `cluster_id`        | `BIGINT`     | `NOT NULL`          | Cluster identifier                            |
+| `cohesion`          | `REAL`       | `NOT NULL`          | Title cohesion score (0.0-1.0)               |
+| `ambiguity`         | `REAL`       | `NOT NULL`          | Ambiguity score (0.0-1.0, lower is better)   |
+| `entity_consistency`| `REAL`       | `NOT NULL`          | Entity consistency score (0.0-1.0)           |
+| `quality_tier`      | `TEXT`       | `NOT NULL`, `CHECK (ok, caution, ng)` | Diagnosed quality tier        |
+| `syndication_status`| `TEXT`       | `CHECK (original, canonical_match, wire_source, title_similar)` | Syndication detection |
+| `article_count`     | `INT`        | `NOT NULL`          | Number of articles in cluster                 |
+| `top_entities`      | `JSONB`      | `NOT NULL`, `DEFAULT ‘[]’` | Top entities from cluster articles       |
+
+Unique: `(generation_id, cluster_id)`.
+
+### `pulse_selection_log`
+Topic selection decisions with scoring breakdown.
+
+| Column Name      | Type         | Constraints         | Description                                      |
+|------------------|--------------|---------------------|--------------------------------------------------|
+| `id`             | `BIGSERIAL`  | `PRIMARY KEY`       | Unique identifier                               |
+| `generation_id`  | `BIGINT`     | `NOT NULL`, `FK (pulse_generations.id) ON DELETE CASCADE` | Parent generation |
+| `topic_rank`     | `INT`        | `NOT NULL`, `CHECK (1-3)` | Topic rank (1-3)                            |
+| `cluster_id`     | `BIGINT`     | `NOT NULL`          | Selected cluster identifier                      |
+| `role`           | `TEXT`       | `NOT NULL`, `CHECK (need_to_know, trend, serendipity)` | Assigned role       |
+| `impact_score`   | `REAL`       | `NOT NULL`          | Impact score component                           |
+| `burst_score`    | `REAL`       | `NOT NULL`          | Burst score component                            |
+| `novelty_score`  | `REAL`       | `NOT NULL`          | Novelty score component                          |
+| `recency_score`  | `REAL`       | `NOT NULL`          | Recency score component                          |
+| `final_score`    | `REAL`       | `NOT NULL`          | Final weighted score                             |
+| `rationale`      | `TEXT`       | `NOT NULL`          | Human-readable rationale for selection           |
+
+Unique: `(generation_id, topic_rank)`.
+
+### Views
+
+- `pulse_latest_generations` — Latest pulse generation per job
+- `pulse_quality_stats` — Quality statistics by version and tier
+- `pulse_syndication_stats` — Syndication detection statistics by version

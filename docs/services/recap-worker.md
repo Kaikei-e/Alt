@@ -1,6 +1,6 @@
 # Recap Worker
 
-_Last reviewed: January 22, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `recap-worker` (Crate: `recap-worker/recap-worker`)
 
@@ -10,28 +10,97 @@ _Last reviewed: January 22, 2026_
 It delegates **heavy ML tasks** (embedding generation, coarse classification, clustering) to `recap-subworker`, keeping the worker itself focused on high-throughput data processing, pipeline coordination, and persistence.
 
 **Pipelines:**
-1.  **7-Day Recap Pipeline:** Weekly deep-dive batch process (runs daily at 04:00 JST).
-2.  **3-Day Recap Pipeline:** Daily quick-catch batch process with smaller article window, faster processing, and reduced prompt sizes.
-3.  **Morning Update Pipeline:** A lighter pipeline for daily article deduplication and grouping (Daemon currently **disabled** in `main.rs`, but logic exists).
+1.  **7-Day Recap Pipeline:** Weekly deep-dive batch process (runs daily at 02:00 JST via `BatchDaemon`).
+2.  **3-Day Recap Pipeline:** Daily quick-catch batch process with smaller article window, faster processing, and reduced prompt sizes. The batch daemon uses `RECAP_3DAYS_WINDOW_DAYS` for window configuration.
+3.  **Evening Pulse Pipeline:** Daily digest delivering up to 3 high-quality news topics as an "entrance" to 7 Days Recap, helping users understand the day's news in 60 seconds. Controlled by `PULSE_ENABLED`, `PULSE_ROLLOUT_PERCENT`, and `PULSE_VERSION` feature flags.
+4.  **Morning Update Pipeline:** A lighter pipeline for daily article deduplication and grouping (Daemon currently **disabled** in `main.rs`, but logic exists).
 
 ## Service Snapshot
 
 | Layer | Responsibilities |
 | --- | --- |
-| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/7days`, `/v1/generate/recaps/3days` <br>- **Fetch**: `/v1/recaps/7days`, `/v1/recaps/3days` <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs, recap_jobs, job-progress, job-stats) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
+| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/health/live`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/7days`, `/v1/generate/recaps/3days` <br>- **Fetch**: `/v1/recaps/7days`, `/v1/recaps/3days`, `/v1/morning/updates` <br>- **Pulse**: `/v1/pulse/latest` (Evening Pulse digest) <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs, recap_jobs, job-progress, job-stats) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
 | **Pipeline Core** | `src/pipeline/`: Modular stages for Fetch, Preprocess, Dedup, Genre, Select, Evidence, Dispatch, Persist. |
-| **Clients** | `src/clients/`: Strongly-typed HTTP clients for: <br>- **`recap-subworker`**: Coarse classification, clustering, graph refresh. <br>- **`news-creator`**: LLM summarization. <br>- **`alt-backend`**: Article fetching. <br>- **`tag-generator`**: Optional tag enrichment. |
-| **Classification** | **Remote Coarse**: Calls `recap-subworker` (`/v1/classify`) for initial genre assignment. <br>**Local Refine**: Optional Graph Label Propagation stage (`src/pipeline/genre_refine.rs`) using cached graph data. |
-| **Store** | `src/store/`: SQLx DAO managing `recap_jobs`, `recap_cluster_evidence`, `recap_genre_learning_results`, and `tag_label_graph` (cached from DB). |
+| **Clients** | `src/clients/`: Strongly-typed HTTP clients for: <br>- **`recap-subworker`**: Coarse classification (`/v1/classify/coarse`), clustering (`/v1/runs`), graph refresh. <br>- **`news-creator`**: LLM summarization (`/v1/summary/generate`, `/v1/summary/generate/batch`). <br>- **`alt-backend`**: Article fetching. <br>- **`tag-generator`**: Optional tag enrichment. |
+| **Classification** | **Remote Coarse**: Calls `recap-subworker` (`/v1/classify/coarse`) for initial genre assignment. <br>**Local Refine**: Optional Graph Label Propagation stage (`src/pipeline/genre_refine/`) using cached graph data. |
+| **Store** | `src/store/`: SQLx DAO managing `recap_jobs`, `recap_cluster_evidence`, `recap_genre_learning_results`, `pulse_generations`, and `tag_label_graph` (cached from DB). |
 
 ## API Endpoints
 
-### Dashboard Endpoints
+### Ops
 | Endpoint | Method | Description |
 | --- | --- | --- |
+| `/health/ready` | GET | Readiness probe |
+| `/health/live` | GET | Liveness probe (used by Docker `healthcheck` subcommand) |
+| `/metrics` | GET | Prometheus metrics exporter |
+
+### Triggers
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v1/generate/recaps/7days` | POST | Trigger 7-day recap pipeline |
+| `/v1/generate/recaps/3days` | POST | Trigger 3-day recap pipeline |
+
+### Fetch
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v1/recaps/7days` | GET | Retrieve latest 7-day recap |
+| `/v1/recaps/3days` | GET | Retrieve latest 3-day recap |
+| `/v1/morning/updates` | GET | Retrieve morning updates |
+
+### Pulse
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v1/pulse/latest` | GET | Retrieve latest Evening Pulse (accepts optional `?date=YYYY-MM-DD`) |
+
+### Admin
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/admin/jobs/retry` | POST | Retry failed jobs |
+| `/admin/genre-learning` | POST | Receive genre learning results |
+
+### Evaluation
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v1/evaluation/genres` | POST | Run genre classification evaluation |
+| `/v1/evaluation/genres/latest` | GET | Get latest evaluation result |
+| `/v1/evaluation/genres/{run_id}` | GET | Get evaluation result by run ID |
+
+### Dashboard
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/v1/dashboard/metrics` | GET | Get dashboard metrics |
+| `/v1/dashboard/overview` | GET | Get dashboard overview |
+| `/v1/dashboard/logs` | GET | Get dashboard logs |
+| `/v1/dashboard/jobs` | GET | Get jobs list |
 | `/v1/dashboard/recap_jobs` | GET | Get recap job details |
 | `/v1/dashboard/job-progress` | GET | Get job progress |
 | `/v1/dashboard/job-stats` | GET | Get job statistics |
+
+## Dependency Injection: ComponentRegistry
+
+The application uses a `ComponentRegistry` pattern (`src/app.rs`) for centralised dependency injection. All shared infrastructure is constructed once at startup and wrapped in `Arc` for thread-safe sharing across Axum handlers and background daemons.
+
+```
+ComponentRegistry
+  +-- config: Arc<Config>
+  +-- telemetry: Telemetry
+  +-- scheduler: Scheduler
+  +-- news_creator_client: Arc<NewsCreatorClient>
+  +-- subworker_client: Arc<SubworkerClient>
+  +-- recap_dao: Arc<dyn RecapDao>
+```
+
+`AppState` wraps `Arc<ComponentRegistry>` and is passed as Axum `State` to all route handlers. The `build_router()` function wires `AppState` into the Axum `Router`.
+
+Key construction flow in `ComponentRegistry::build()`:
+
+1. Parse `Config` from environment variables.
+2. Initialise `Telemetry` (Prometheus + optional OTLP).
+3. Build HTTP clients (`NewsCreatorClient`, `SubworkerClient`).
+4. Create `PgPool` for `recap-db` and wrap it in `RecapDaoImpl` (the unified DAO implementation).
+5. Initialise `ClassificationJobQueue` (persistent queue with retry).
+6. Build `PipelineOrchestrator` with all stage implementations.
+7. Build `MorningPipeline` and `Scheduler`.
 
 ## Module Architecture
 
@@ -48,6 +117,13 @@ It delegates **heavy ML tasks** (embedding generation, coarse classification, cl
 | `pipeline/embedding.rs` | Embedding service integration |
 | `pipeline/minhash.rs` | MinHash-based similarity detection |
 | `pipeline/graph_override.rs` | Dynamic graph override settings |
+| `pipeline/pulse/` | Evening Pulse v4 pipeline (quality eval, syndication removal, role-based selection, rationale generation) |
+| `pipeline/pulse_integration.rs` | Pulse integration with the main recap pipeline |
+| `pipeline/genre_canonical.rs` | Canonical genre name resolution |
+| `pipeline/genre_keywords.rs` | Genre keyword definitions and scoring |
+| `pipeline/tag_signal.rs` | Tag signal extraction from articles |
+| `pipeline/select/` | Sub-modules: clustering, filtering, scoring, thresholds, trimming |
+| `pipeline/genre_refine/` | Sub-modules: cache, config, engine, scoring, strategy, tag_profile |
 
 ### Evaluation Module (`evaluation/`)
 
@@ -85,7 +161,7 @@ flowchart TB
 
     DedupDetails --> Genre[Genre Stage<br/>TwoStageGenreStage]
 
-    Genre --> RemoteCoarse["Remote Coarse Pass<br/>(Call recap-subworker /v1/classify)"]
+    Genre --> RemoteCoarse["Remote Coarse Pass<br/>(Call recap-subworker /v1/classify/coarse)"]
 
     RemoteCoarse --> RefineCheck{Refine<br/>Needed?}
     RefineCheck -->|Yes| LocalRefine["Local Graph Refine<br/>(Label Propagation)"]
@@ -98,13 +174,18 @@ flowchart TB
 
     Evidence --> Dispatch[Dispatch Stage<br/>MlLlmDispatchStage]
 
-    Dispatch --> Phase1["Phase 1: Parallel Clustering<br/>(Call recap-subworker /v1/cluster)"]
+    Dispatch --> Phase1["Phase 1: Parallel Clustering<br/>(Call recap-subworker /v1/runs)"]
 
-    Phase1 --> Phase2["Phase 2: Sequential Summary<br/>(Call news-creator /v1/completions)"]
+    Phase1 --> Phase2["Phase 2: Batch Summary<br/>(Call news-creator /v1/summary/generate/batch)"]
 
-    Phase2 --> Persist[Persist Stage<br/>FinalSectionPersistStage]
+    Phase2 --> Pulse{Pulse<br/>Enabled?}
+    Pulse -->|Yes| PulseStage["Evening Pulse Stage<br/>(Quality Eval, Syndication Removal,<br/>Role-Based Selection, Rationale)"]
+    Pulse -->|No| Persist
+    PulseStage --> Persist
 
-    Persist --> End([Pipeline Complete])
+    Persist --> PersistStage[Persist Stage<br/>FinalSectionPersistStage]
+
+    PersistStage --> End([Pipeline Complete])
 
     style Start fill:#e1f5ff
     style End fill:#d4edda
@@ -114,6 +195,8 @@ flowchart TB
     style Dispatch fill:#f8d7da
     style Phase1 fill:#f8d7da
     style Phase2 fill:#f8d7da
+    style Pulse fill:#e8daef
+    style PulseStage fill:#e8daef
 ```
 
 ### 1. Fetch (`fetch.rs`)
@@ -134,7 +217,7 @@ flowchart TB
 ### 4. Genre Assignment (`genre.rs`, `genre_remote.rs`)
 The genre classification is a hybrid **Remote + Local** process:
 
-1.  **Remote Coarse (`RemoteGenreStage`)**: Sends article text batches to `recap-subworker`. The subworker uses a GPU-accelerated embedding model and a Logistic Regression classifier to return genre probabilities.
+1.  **Remote Coarse (`RemoteGenreStage`)**: Sends article text batches to `recap-subworker` (`/v1/classify/coarse`). The subworker uses a GPU-accelerated embedding model and a Logistic Regression classifier to return genre probabilities.
 2.  **Local Refine (Optional)**: If the primary genre's confidence is below `GENRE_CLASSIFIER_THRESHOLD`, the worker runs a local Graph Label Propagation using the cached `tag_label_graph` to rescue the article based on its tags.
 
 ### 5. Selection (`select.rs`)
@@ -147,12 +230,22 @@ The genre classification is a hybrid **Remote + Local** process:
 *   Constructs the payload for clustering.
 
 ### 7. Dispatch (`dispatch.rs`)
-*   **Clustering**: Sends the `EvidenceBundle` to `recap-subworker` (`/v1/cluster`). The subworker performs HDBSCAN/K-Means clustering and returns sorted clusters with representatives.
-*   **Summarization**: Iterates through top clusters and sends them to `news-creator` (`/v1/completions`) for LLM-based summarization. This is done sequentially per genre to manage LLM context windows.
+*   **Clustering** (`dispatch/clustering.rs`): Sends the `EvidenceBundle` to `recap-subworker` (`/v1/runs`). The subworker performs HDBSCAN/K-Means clustering and returns sorted clusters with representatives. Uses idempotency keys for deduplication and supports configurable timeouts (`RECAP_CLUSTERING_GENRE_TIMEOUT_SECS`, `RECAP_CLUSTERING_STUCK_THRESHOLD_SECS`).
+*   **Summarization** (`dispatch/summarization.rs`): Sends cluster data to `news-creator` via batch API (`/v1/summary/generate/batch`). Multiple genres are batched into a single HTTP call for efficiency. Falls back to per-genre sequential calls (`/v1/summary/generate`) if needed.
 
 ### 8. Persist (`persist.rs`)
 *   Saves the final `Recap` and `RecapGenre` results to `recap_db`.
 *   Stores cluster evidence in `recap_cluster_evidence` for transparency.
+
+### 9. Evening Pulse (`pulse/`)
+The Evening Pulse is an optional post-pipeline stage (controlled by `PULSE_ENABLED` and `PULSE_ROLLOUT_PERCENT`) that selects up to 3 high-quality topics from the recap clusters:
+
+1.  **Quality Evaluation** (`cluster_quality.rs`): Evaluates cluster quality using cohesion, ambiguity, and entity consistency metrics.
+2.  **Syndication Removal** (`syndication.rs`): Removes duplicate/syndicated content using canonical URL matching, wire source detection, and title similarity.
+3.  **Role-Based Selection** (`selection.rs`): Selects topics with diverse roles: **NeedToKnow**, **Trend**, and **Serendipity**.
+4.  **Rationale Generation** (`rationale.rs`): Generates human-readable explanations for why each topic was selected.
+
+Results are persisted to the `pulse_generations` table and served via `/v1/pulse/latest`.
 
 ## Pipeline Resume Support
 
@@ -176,15 +269,15 @@ flowchart LR
     Genre --> Select[Select]
     Select --> Evidence[Evidence]
 
-    Evidence --> Subworker[recap-subworker<br/>Clustering]
+    Evidence --> SubCluster[recap-subworker<br/>/v1/runs<br/>Clustering]
 
-    %% Added Classification Flow
-    Genre -- Classify --> Subworker[recap-subworker<br/>Classification]
+    Genre -- /v1/classify/coarse --> SubClassify[recap-subworker<br/>Classification]
 
-    Subworker -- Cluster Results --> Dispatch[Dispatch]
-    Dispatch --> NewsCreator[news-creator<br/>Summarization]
+    SubCluster -- Cluster Results --> Dispatch[Dispatch]
+    Dispatch --> NewsCreator[news-creator<br/>/v1/summary/generate/batch]
 
-    NewsCreator --> Persist[Persist]
+    NewsCreator --> Pulse[Evening Pulse<br/>Optional]
+    Pulse --> Persist[Persist]
 
     Persist --> RecapDB[(recap-db<br/>PostgreSQL)]
 
@@ -193,11 +286,13 @@ flowchart LR
 
     style AltBackend fill:#e1f5ff
     style TagGen fill:#e1f5ff
-    style Subworker fill:#f8d7da
+    style SubCluster fill:#f8d7da
+    style SubClassify fill:#f8d7da
     style NewsCreator fill:#f8d7da
     style RecapDB fill:#d4edda
     style GraphCache fill:#fff3cd
     style Config fill:#fff3cd
+    style Pulse fill:#e8daef
 ```
 
 ## Configuration & Tuning
@@ -208,10 +303,12 @@ Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides
 
 #### Core Settings
 *   `RECAP_WINDOW_DAYS`: Number of days to include in the 7-day recap (default 7).
-*   `RECAP_3DAYS_WINDOW_DAYS`: Number of days to include in the 3-day recap (default 3).
-*   `GENRE_CLASSIFIER_THRESHOLD`: Confidence threshold for remote classification.
-*   `RECAP_GENRE_REFINE_ENABLED`: Enable/disable local graph refinement.
-*   `RECAP_GENRE_REFINE_ROLLOUT_PERCENT`: Gradual rollout control for refinement.
+*   `RECAP_3DAYS_WINDOW_DAYS`: Number of days to include in the 3-day recap (default 3). Also used by `BatchDaemon` as the window for the automated 3-day pipeline run.
+*   `RECAP_GENRES`: Comma-separated list of genre slugs to process (default: 30 genres including `ai_data`, `climate_environment`, `consumer_products`, `consumer_tech`, `culture_arts`, `cybersecurity`, `diplomacy_security`, `economics_macro`, `education`, `energy_transition`, `film_tv`, `food_cuisine`, `games_esports`, `health_medicine`, `home_living`, `industry_logistics`, `internet_platforms`, `labor_workplace`, `law_crime`, `life_science`, `markets_finance`, `mobility_automotive`, `music_audio`, `politics_government`, `society_demographics`, `software_dev`, `space_astronomy`, `sports`, `startups_innovation`, `travel_places`). If empty at startup, the batch daemon is skipped.
+*   `RECAP_GENRE_MODEL_THRESHOLD`: Confidence threshold for local genre classification (default: 0.5 via config, 0.75 in classifier).
+*   `RECAP_GENRE_REFINE_ENABLED`: Enable/disable local graph refinement (default: false).
+*   `RECAP_GENRE_REFINE_REQUIRE_TAGS`: Require tag data for refinement (default: true).
+*   `RECAP_GENRE_REFINE_ROLLOUT_PERCENT`: Gradual rollout control for refinement (default: 100).
 *   `MIN_DOCUMENTS_PER_GENRE`: Minimum articles required to generate a recap for a genre.
 
 #### LLM Configuration
@@ -247,6 +344,18 @@ Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides
 *   `RECAP_LANG_DETECT_MIN_CHARS`: Minimum characters for detection (default: 50).
 *   `RECAP_LANG_DETECT_MIN_CONFIDENCE`: Minimum confidence threshold (default: 0.65).
 
+#### Evening Pulse
+*   `PULSE_ENABLED`: Global enable/disable for the Evening Pulse pipeline (default: true).
+*   `PULSE_ROLLOUT_PERCENT`: Percentage rollout for Pulse (0-100).
+*   `PULSE_VERSION`: Target Pulse version (v2, v3, v4).
+*   `PULSE_MAX_TOPICS`: Maximum topics to select (default: 3).
+*   `PULSE_COHESION_THRESHOLD`: Minimum cluster cohesion score (default: 0.3).
+*   `PULSE_AMBIGUITY_THRESHOLD`: Maximum cluster ambiguity score (default: 0.5).
+*   `PULSE_ENTITY_CONSISTENCY_THRESHOLD`: Minimum entity consistency (default: 0.4).
+*   `PULSE_MIN_SCORE_THRESHOLD`: Minimum topic score to include (default: 0.3).
+*   `PULSE_MAX_FALLBACK_LEVEL`: Maximum fallback level for topic selection (default: 5).
+*   `PULSE_SYNDICATION_*`: Syndication removal toggles (`CANONICAL_ENABLED`, `WIRE_ENABLED`, `TITLE_ENABLED`, `TITLE_THRESHOLD`).
+
 ### Graph & Learning
 *   **Tag Label Graph**: Cached locally for `TAG_LABEL_GRAPH_TTL_SECONDS`. Loaded from `tag_label_graph` table.
 *   **Graph Overrides**: Dynamic thresholds and weights can be loaded from `recap_worker_config` table at runtime.
@@ -268,12 +377,14 @@ The store layer uses a modular trait-based DAO architecture:
 | `MetricsDao` | Metrics persistence |
 | `MorningDao` | Morning pipeline data |
 | `OutputDao` | Output storage |
+| `PulseDao` | Evening Pulse generation data (`pulse_generations` table) |
 | `StageDao` | Stage state persistence |
 | `SubworkerDao` | Subworker communication |
 
 ### Implementation
-*   **`UnifiedDao`**: Unified implementation of all DAO traits.
-*   **Backward Compatibility**: `RecapDao` remains available via compat module for legacy code.
+*   **`UnifiedDao`** (`RecapDaoImpl`): Unified implementation of all DAO traits, backed by a single `PgPool`.
+*   **Backward Compatibility**: `RecapDao` super-trait remains available via compat module (`store/dao/compat.rs`) for code that needs access to all DAO capabilities through a single trait object.
+*   **Mock**: `MockRecapDao` (`store/dao/mock.rs`) implements all traits for unit testing without a database.
 
 ## Development & Testing
 
@@ -302,6 +413,7 @@ curl http://localhost:9005/health/ready
     *   `recap_cluster_evidence`: Articles used for each cluster.
     *   `recap_worker_config`: Dynamic configuration store.
     *   `recap_stage_state`: Pipeline stage state for resume support.
+    *   `pulse_generations`: Evening Pulse generation results (job_id, target_date, version, status, result payload).
 
 ## Dependencies
 
@@ -309,9 +421,13 @@ Key dependencies (Rust Edition 2024):
 
 | Crate | Version | Purpose |
 |-------|---------|---------|
+| `axum` | 0.8 | HTTP control plane |
 | `rust-bert` | 0.23.0 | Transformer models |
-| `lingua` | 1.4 | Language detection (English/Japanese) |
+| `lingua` | 1.7 | Language detection (English/Japanese) |
 | `lindera` | 0.21 | Japanese tokenization |
 | `ndarray` | 0.16 | Numerical arrays |
 | `petgraph` | 0.6 | Graph data structures |
 | `sprs` | 0.11 | Sparse matrices |
+| `sqlx` | 0.8 | Async PostgreSQL access |
+| `reqwest` | 0.12 | HTTP client (JSON, gzip, HTTP/2, rustls) |
+| `tokenizers` | 0.20 | Tokenizer for token counting |

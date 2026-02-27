@@ -1,6 +1,6 @@
 # Rask Log Aggregator
 
-_Last reviewed: January 22, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `rask-log-aggregator/app`
 

@@ -1,6 +1,6 @@
 # Alt Backend
 
-_Last reviewed: February 15, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `alt-backend/app`
 
@@ -153,6 +153,7 @@ Connect-RPC provides a modern, type-safe RPC layer for service-to-service commun
 - Service requests (recap articles, queueing from other services) must include `X-Service-Token` matching `SERVICE_SECRET`; frontend-authenticated paths expect `X-Alt-*` headers or JWT tokens forwarded by Auth Hub.
 - SSE connections at `/v1/sse/feeds/stats` keep heartbeats, respect the same CORS whitelist as the rest of the API, and flush cached counts every `SERVER_SSE_INTERVAL`.
 - All remote fetches (feeds, articles, images, summarization) re-validate URLs with `IsAllowedURL` to block private IPs before touching `security.SSRFValidator`.
+- Docker image uses `gcr.io/distroless/static-debian12:nonroot` runtime (UID 65532) for minimal attack surface.
 
 ## Diagram
 

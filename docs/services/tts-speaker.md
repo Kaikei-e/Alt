@@ -1,6 +1,6 @@
 # TTS Speaker
 
-_Last reviewed: February 11, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `tts-speaker/`
 **Port:** 9700

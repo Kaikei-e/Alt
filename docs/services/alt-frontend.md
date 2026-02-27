@@ -1,6 +1,6 @@
 # Alt Frontend
 
-_Last reviewed: January 13, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `alt-frontend`
 

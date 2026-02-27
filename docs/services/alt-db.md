@@ -1,5 +1,7 @@
 # alt-db (Main PostgreSQL Database)
 
+_Last reviewed: February 28, 2026_
+
 PostgreSQL 17 database serving as the central data store for RSS feeds, articles, user status, and related data.
 
 ## Overview
@@ -467,4 +469,5 @@ Key performance indexes (see individual migration files for complete list):
 
 - [Database Patterns Analysis](../review/03-database-patterns.md)
 - [Microservices Reference](./MICROSERVICES.md)
+- [Pre-processor DB](./MICROSERVICES.md) — Separate PostgreSQL 17 instance (port 5437) for pre-processor feed data
 - [Migration README](../../migrations-atlas/README.md)

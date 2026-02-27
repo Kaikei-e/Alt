@@ -1,6 +1,6 @@
 # MQ Hub
 
-_Last reviewed: February 15, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `mq-hub`
 
@@ -65,6 +65,8 @@ flowchart TB
 | ArticleSummarized | pre-processor | search-indexer | |
 | TagsGenerated | tag-generator | search-indexer | |
 | IndexArticle | search-indexer | search-indexer | |
+| TagGenerationRequested | mq-hub | tag-generator | 同期タグ生成の request-reply パターン |
+| TagGenerationCompleted | tag-generator | mq-hub | TagGenerationRequested への応答 |
 
 ## Event Structure
 
@@ -113,13 +115,15 @@ Port 9500 で Connect-RPC API を提供。
 | Method | Request | Response | Description |
 |--------|---------|----------|-------------|
 | `Publish` | PublishRequest | PublishResponse | 単一イベント発行 |
-| `PublishBatch` | PublishBatchRequest | PublishBatchResponse | 複数イベント一括発行 |
+| `PublishBatch` | PublishBatchRequest | PublishBatchResponse | 複数イベント一括発行 (MAX_BATCH_SIZE 制限) |
 | `CreateConsumerGroup` | CreateConsumerGroupRequest | CreateConsumerGroupResponse | コンシューマーグループ作成 |
 | `GetStreamInfo` | StreamInfoRequest | StreamInfoResponse | ストリーム情報取得 |
 | `HealthCheck` | HealthCheckRequest | HealthCheckResponse | ヘルスチェック |
+| `GenerateTagsForArticle` | GenerateTagsRequest | GenerateTagsResponse | 同期タグ生成 (request-reply パターン、デフォルトタイムアウト 30s) |
 
 ### Endpoints
 - `GET /health` - HTTP ヘルスチェック
+- `GET /metrics` - Prometheus メトリクス
 - Connect-RPC (port 9500): 上記 RPC メソッド
 
 ## Configuration & Env
@@ -129,6 +133,8 @@ Port 9500 で Connect-RPC API を提供。
 | `REDIS_URL` | redis://redis-streams:6379 | Redis Streams URL |
 | `CONNECT_PORT` | 9500 | Connect-RPC ポート |
 | `LOG_LEVEL` | info | ログレベル |
+| `REDIS_POOL_SIZE` | 10 | Redis コネクションプールサイズ |
+| `MAX_BATCH_SIZE` | 1000 | バッチ発行の最大イベント数 |
 
 ## Dependencies
 
@@ -136,9 +142,12 @@ Port 9500 で Connect-RPC API を提供。
 |---------|---------|---------|
 | Go | 1.24+ | 言語ランタイム |
 | connectrpc.com/connect | v1.19.1 | Connect-RPC フレームワーク |
-| github.com/redis/go-redis/v9 | v9.17.2 | Redis クライアント |
+| github.com/redis/go-redis/v9 | v9.18.0 | Redis クライアント |
+| github.com/prometheus/client_golang | v1.23.2 | Prometheus メトリクス |
 | github.com/alicebob/miniredis/v2 | v2.34.0 | テスト用 Redis モック |
-| go.opentelemetry.io/otel/trace | v1.39.0 | 分散トレーシング |
+| github.com/google/uuid | v1.6.0 | UUID 生成 |
+| github.com/stretchr/testify | v1.11.1 | テストアサーション |
+| go.opentelemetry.io/otel/trace | v1.40.0 | 分散トレーシング |
 | google.golang.org/protobuf | v1.36.11 | Protocol Buffers |
 
 ## Redis 8.4 Features
@@ -182,6 +191,12 @@ curl http://localhost:9500/health
 - 構造化ログ: `log/slog`
 - ログには stream_key, event_type, message_id を含む
 - rask.group ラベル: `mq-hub`
+- Prometheus メトリクス (`/metrics`):
+  - `mqhub_publish_total` (counter): 発行操作の合計 (labels: stream, status)
+  - `mqhub_publish_duration_seconds` (histogram): 発行操作の所要時間 (labels: stream)
+  - `mqhub_batch_size` (histogram): バッチサイズ分布 (labels: stream)
+  - `mqhub_errors_total` (counter): エラー合計 (labels: operation, error_type)
+  - `mqhub_redis_connection_status` (gauge): Redis 接続状態 (1=接続, 0=切断)
 
 ## Common Pitfalls
 

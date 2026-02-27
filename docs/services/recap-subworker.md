@@ -1,6 +1,6 @@
 # Recap Subworker
 
-_Last reviewed: January 22, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `recap-subworker/`
 
@@ -11,7 +11,7 @@ Recap Subworker is a specialized ML/ETL microservice responsible for heavy text 
 3.  **Content Extraction**: Extracts main content from HTML using trafilatura.
 4.  **Evaluation**: Provides statistical evaluation of classification and summarization quality.
 
-It runs as a **FastAPI** application on Gunicorn with Uvicorn workers, optimized for high-concurrency CPU-bound operations.
+It runs as a **FastAPI** application on Uvicorn (single-process mode to avoid CUDA fork issues), optimized for high-concurrency CPU-bound operations. Gunicorn is available but disabled by default.
 
 **Python Version**: 3.12+
 
@@ -19,12 +19,14 @@ It runs as a **FastAPI** application on Gunicorn with Uvicorn workers, optimized
 
 | Layer | Details |
 | --- | --- |
-| **HTTP Edge** | `gunicorn` + `uvicorn.workers.UvicornWorker`. Configured for high concurrency with configurable workers and request recycling. |
+| **HTTP Edge** | `uvicorn` in single-process mode (default) or `gunicorn` + `uvicorn.workers.UvicornWorker` (optional). Gunicorn is available with configurable workers (`GUNICORN_WORKERS`, default: `2*CPU+1`) and request recycling, but disabled by default to avoid CUDA fork issues. |
 | **Orchestration** | `RunManager` handles async job submission (`/v1/runs`, `/v1/classify-runs`), idempotency checks (via `XXH3`), and background task scheduling. |
 | **Pipeline Execution** | `PipelineTaskRunner` spawns dedicated processes (via `ProcessPoolExecutor`) for CPU-intensive tasks. Supports `inprocess` or `processpool` modes with configurable `max_tasks_per_child` to prevent memory leaks. |
 | **ML Engine - Embeddings** | Multiple backends: `sentence-transformers` (BGE-M3/Distill), `onnx`, `hash`, `ollama-remote`. LRU caching for embeddings. |
-| **ML Engine - Clustering** | `umap-learn` + `hdbscan` (density-based) with FAISS for k-NN computation. Recursive `BisectingKMeans` for splitting large clusters. `MiniBatchKMeans` fallback on HDBSCAN timeout. Ward hierarchical merging for excessive clusters. |
+| **ML Engine - Clustering** | `umap-learn` + `hdbscan` (density-based) with FAISS for k-NN computation. **Optuna** (TPE sampler) for Bayesian hyperparameter optimization of clustering parameters. Recursive `BisectingKMeans` for splitting large clusters. `MiniBatchKMeans` fallback on HDBSCAN timeout. Ward hierarchical merging for excessive clusters. |
 | **ML Engine - Classification** | Two backends: `joblib` (LogisticRegression + TF-IDF) or `learning_machine` (DistilBERT student models with language-specific models for JA/EN). |
+| **ML Engine - Data Quality** | **Cleanlab** for automatic label issue detection during classifier training (identifies mislabeled training samples). |
+| **ML Engine - Evaluation** | **DeepEval** for summary quality evaluation (faithfulness, relevance metrics via `FaithfulnessMetric` / `LLMTestCase`). |
 | **Persistence** | Async `SQLAlchemy` (PostgreSQL) for run state, clusters, diagnostics (`recap_run_diagnostics`), evidence (`recap_cluster_evidence`), and evaluation results. |
 
 ## API & Endpoints
@@ -211,6 +213,8 @@ flowchart TB
 | `RECAP_SUBWORKER_PROCESS_POOL_SIZE` | `2` | Number of worker processes in the process pool. |
 | `RECAP_SUBWORKER_MODEL_BACKEND` | `sentence-transformers` | Embedding backend: `sentence-transformers`, `onnx`, `hash`, `ollama-remote`. |
 | `RECAP_SUBWORKER_DEVICE` | `cpu` | Device for embedding inference (`cpu` or `cuda`). |
+| `RECAP_SUBWORKER_BATCH_SIZE` | `64` | Maximum sentences per embedding batch. |
+| `RECAP_SUBWORKER_GUNICORN_WORKERS` | `None` (`2*CPU+1`) | Override for gunicorn worker processes; defaults to `2*CPU+1` when unset. Only relevant if gunicorn is used instead of uvicorn. |
 
 ### Classification Settings
 
@@ -230,6 +234,7 @@ flowchart TB
 | --- | --- | --- |
 | `RECAP_SUBWORKER_CLUSTERING_RECURSIVE_ENABLED` | `true` | Enable recursive splitting of large clusters. |
 | `RECAP_SUBWORKER_USE_BAYES_OPT` | `true` | Enable Optuna-based hyperparameter tuning for clustering. |
+| `RECAP_SUBWORKER_BAYES_OPT_TRIALS` | `50` | Number of trials for Optuna Bayesian optimization of clustering parameters. |
 | `RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS` | `300` | HDBSCAN timeout before fallback to MiniBatchKMeans. |
 | `RECAP_SUBWORKER_HDBSCAN_MIN_CLUSTER_SIZE` | `5` | HDBSCAN minimum cluster size. |
 | `RECAP_SUBWORKER_HDBSCAN_MIN_SAMPLES` | `5` | HDBSCAN minimum samples. |
@@ -300,3 +305,18 @@ uv run python -m recap_subworker.learning_machine.train --lang en
 
 ### Taxonomy Validation
 The `genres.yaml` taxonomy file defines the genre hierarchy and thresholds for the learning_machine backend. Ensure it's validated before deployment.
+
+## Key Dependencies
+
+| Library | Version | Purpose |
+| --- | --- | --- |
+| `optuna` | `>=3.6.0` | Bayesian hyperparameter optimization (TPE sampler) for HDBSCAN clustering parameters. |
+| `cleanlab` | `>=2.6.6` | Automatic label issue detection during genre classifier training (`find_label_issues`). |
+| `deepeval` | `>=0.21.0` | Summary quality evaluation: faithfulness, relevance metrics via `FaithfulnessMetric` / `LLMTestCase`. |
+| `scikit-optimize` | `>=0.10.2` | Bayesian threshold optimization (`gp_minimize`) for learning & graph boost tuning. |
+| `sentence-transformers` | `5.1.2` | Primary embedding backend (BGE-M3, distilled variants). |
+| `hdbscan` | `>=0.8.41` | Density-based clustering for evidence pipeline. |
+| `umap-learn` | `>=0.5.6` | Dimensionality reduction before clustering. |
+| `faiss-cpu` | `>=1.7.4` | k-NN computation for UMAP and deduplication. |
+| `trafilatura` | `>=1.10.0` | HTML content extraction for the `/v1/extract` endpoint. |
+| `transformers` + `torch` | `>=4.41.0` / `>=2.3.0` | DistilBERT student model inference for learning_machine classification backend. |

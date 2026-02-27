@@ -1,6 +1,6 @@
 # Rask Log Forwarder
 
-_Last reviewed: January 22, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `rask-log-forwarder/app`
 
@@ -55,25 +55,23 @@ flowchart LR
 
 ## Forwarder Instances
 
-logging.yaml で定義された 15 インスタンス:
+logging.yaml で定義された 13 インスタンス:
 
 | Instance | Target Service | Description |
 |----------|----------------|-------------|
 | nginx-logs | nginx | Edge/Reverse proxy |
 | alt-backend-logs | alt-backend | Backend API |
+| auth-hub-logs | auth-hub | Authentication hub |
 | tag-generator-logs | tag-generator | Tag extraction |
 | pre-processor-logs | pre-processor | RSS ingestion |
 | search-indexer-logs | search-indexer | Meilisearch indexing |
 | news-creator-logs | news-creator | LLM summarization |
-| meilisearch-logs | meilisearch | Search engine |
-| db-logs | db | PostgreSQL 17 |
+| news-creator-backend-logs | news-creator-backend | LLM backend (Ollama) |
 | recap-worker-logs | recap-worker | Recap orchestrator |
 | recap-subworker-logs | recap-subworker | ML clustering |
 | dashboard-logs | dashboard | Streamlit UI |
 | recap-evaluator-logs | recap-evaluator | Quality evaluation |
-| recap-db-logs | recap-db | Recap PostgreSQL |
 | rag-orchestrator-logs | rag-orchestrator | RAG system |
-| rag-db-logs | rag-db | RAG PostgreSQL |
 
 ## Configuration & Env
 

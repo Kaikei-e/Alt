@@ -1,6 +1,6 @@
 # Tag Generator
 
-_Last reviewed: February 15, 2026_
+_Last reviewed: February 28, 2026_
 
 **Location:** `tag-generator/app`
 
@@ -227,6 +227,10 @@ else:
 | `TAG_ONNX_MODEL_PATH` | /models/onnx/model.onnx | ONNX モデルパス |
 | `TAG_USE_FP16` | false | FP16 有効化 |
 | `CUDA_VISIBLE_DEVICES` | "" | GPU 無効化 (CPU 使用) |
+| `OMP_NUM_THREADS` | 4 | OpenMP スレッド数制限 (CPU 爆発防止) |
+| `MKL_NUM_THREADS` | 4 | MKL スレッド数制限 |
+| `TORCH_NUM_THREADS` | 4 | PyTorch スレッド数制限 |
+| `TOKENIZERS_PARALLELISM` | false | HuggingFace Tokenizers 並列化無効 (fork 安全性) |
 
 ### Logging & Observability
 
