@@ -77,6 +77,11 @@ class CursorManager:
         """Get cursor position starting from the newest article (regardless of tag status)."""
         try:
             with self.database_manager.get_connection() as conn:
+                if conn is None:
+                    # API mode (_NullDatabaseManager) – no DB available, use fallback.
+                    current_time = datetime.now(UTC).isoformat()
+                    logger.info("No database connection (API mode), using fallback cursor", cursor=current_time)
+                    return current_time, "ffffffff-ffff-ffff-ffff-ffffffffffff"
                 # Get the newest article (tagged or untagged)
                 query = """
                     SELECT

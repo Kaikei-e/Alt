@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 import structlog
+from pyqwest import SyncClient, SyncHTTPTransport
 
 from tag_generator.gen.proto.services.backend.v1.internal_connect import (
     BackendInternalServiceClientSync,
@@ -40,10 +41,16 @@ def create_backend_client() -> tuple[BackendInternalServiceClientSync, dict[str,
     if service_token:
         auth_headers["X-Service-Token"] = service_token
 
+    # Use system DNS resolver so Docker internal names (e.g. alt-backend)
+    # are resolved via /etc/resolv.conf instead of pyqwest's built-in resolver.
+    transport = SyncHTTPTransport(use_system_dns=True)
+    http_client = SyncClient(transport=transport)
+
     client = BackendInternalServiceClientSync(
         base_url.rstrip("/"),
         proto_json=True,
         timeout_ms=30000,
+        http_client=http_client,
     )
 
     logger.info("Connect-RPC backend client initialized", base_url=base_url)
