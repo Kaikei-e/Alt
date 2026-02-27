@@ -3,8 +3,8 @@ package worker
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"io"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
