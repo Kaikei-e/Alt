@@ -69,10 +69,10 @@ export class ArticlePrefetcher {
 				this.articleIdCache.set(cacheKey, response.article_id);
 			}
 
-			// Cache proxy URL if available, fallback to raw og_image_url
+			// Cache raw og_image_url; proxy URL comes from BatchPrefetchImages
 			this.ogImageCache.set(
 				cacheKey,
-				response.og_image_proxy_url || response.og_image_url || null,
+				response.og_image_url || null,
 			);
 			this.onOgImageFetched?.();
 

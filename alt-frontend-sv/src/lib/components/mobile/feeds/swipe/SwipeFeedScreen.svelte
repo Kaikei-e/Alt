@@ -25,6 +25,7 @@ interface Props {
 	initialFeeds?: RenderFeed[];
 	initialNextCursor?: string | null;
 	initialArticleContent?: string | null;
+	initialOgImageUrl?: string | null;
 	mode?: "default" | "visual-preview";
 }
 
@@ -32,6 +33,7 @@ const {
 	initialFeeds = [],
 	initialNextCursor,
 	initialArticleContent,
+	initialOgImageUrl,
 	mode = "default",
 }: Props = $props();
 
@@ -40,15 +42,15 @@ const prefetchAhead = $derived(isVisualPreview ? 10 : 2);
 
 const PAGE_SIZE = 20;
 
-// State
-let feeds = $state<RenderFeed[]>([]);
-let cursor = $state<string | null>(null);
-let hasMore = $state(false);
+// State - initialize directly from props (not via $effect to avoid circular deps)
+let feeds = $state<RenderFeed[]>([...(initialFeeds ?? [])]);
+let cursor = $state<string | null>(initialNextCursor ?? null);
+let hasMore = $state(!!initialNextCursor);
 let isLoading = $state(false);
 let error = $state<string | null>(null);
 let readFeeds = $state<Set<string>>(new Set());
 let activeIndex = $state(0);
-let isInitialLoading = $state(true);
+let isInitialLoading = $state((initialFeeds ?? []).length === 0);
 let liveRegionMessage = $state("");
 
 // Filter & sort state
@@ -58,14 +60,6 @@ let sortOrder = $state<"newest" | "oldest">("newest");
 
 // Reactive OGP image update version counter
 let ogImageVersion = $state(0);
-
-// Initialize state from props
-$effect(() => {
-	feeds = [...(initialFeeds ?? [])];
-	cursor = initialNextCursor ?? null;
-	hasMore = !!initialNextCursor;
-	isInitialLoading = (initialFeeds ?? []).length === 0;
-});
 
 // Derived
 const activeFeed = $derived(feeds[activeIndex]);
@@ -86,7 +80,7 @@ onMount(() => {
 			}
 			readFeeds = links;
 		} catch (err) {
-			console.error("Failed to initialize read feeds:", err);
+			console.warn("Failed to initialize read feeds:", err);
 		}
 	};
 
@@ -111,7 +105,7 @@ onMount(async () => {
 	try {
 		feedSources = await listSubscriptionsClient();
 	} catch (e) {
-		console.error("Failed to load feed sources:", e);
+		console.warn("Failed to load feed sources:", e);
 	}
 });
 
@@ -125,10 +119,15 @@ onMount(() => {
 });
 
 // Re-evaluate OGP image when activeFeed changes or cache updates
+// Use SSR-provided initialOgImageUrl for first card before prefetcher cache is populated
 const currentOgImage = $derived.by(() => {
 	void ogImageVersion;
 	if (!activeFeed) return null;
-	return articlePrefetcher.getCachedOgImage(activeFeed.normalizedUrl) ?? null;
+	const cached = articlePrefetcher.getCachedOgImage(activeFeed.normalizedUrl);
+	if (cached) return cached;
+	// SSR fallback: use server-provided URL for the first card
+	if (activeIndex === 0 && initialOgImageUrl) return initialOgImageUrl;
+	return null;
 });
 
 // Prefetch next feeds
@@ -198,7 +197,6 @@ async function loadMore() {
 									articleRes.content,
 									articleRes.article_id || "",
 									articleRes.og_image_url || null,
-									articleRes.og_image_proxy_url || null,
 								);
 							}
 						})
@@ -234,7 +232,7 @@ async function loadMore() {
 			}
 		}
 	} catch (err) {
-		console.error("Error loading feeds:", err);
+		console.warn("Error loading feeds:", err);
 		error = "Failed to load feeds";
 	} finally {
 		isLoading = false;
@@ -251,9 +249,8 @@ async function loadMore() {
 function triggerBatchImagePrefetch(newFeeds: RenderFeed[]) {
 	const articleIds: string[] = [];
 	for (const feed of newFeeds.slice(0, 10)) {
-		const articleId = articlePrefetcher.getCachedArticleId(feed.normalizedUrl);
-		if (articleId) {
-			articleIds.push(articleId);
+		if (feed.articleId) {
+			articleIds.push(feed.articleId);
 		}
 	}
 	if (articleIds.length === 0) return;
@@ -263,8 +260,7 @@ function triggerBatchImagePrefetch(newFeeds: RenderFeed[]) {
 			for (const info of results) {
 				// Find the feed that matches this articleId and update ogImage cache
 				for (const feed of newFeeds) {
-					const cachedId = articlePrefetcher.getCachedArticleId(feed.normalizedUrl);
-					if (cachedId === info.articleId && info.proxyUrl) {
+					if (feed.articleId === info.articleId && info.proxyUrl) {
 						articlePrefetcher.seedCache(
 							feed.normalizedUrl,
 							articlePrefetcher.getCachedContent(feed.normalizedUrl) || "",
@@ -400,6 +396,7 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
               ? initialArticleContent
               : undefined}
             onArticleIdResolved={handleArticleIdResolved}
+            isLcp={activeIndex === 0}
           />
         {:else}
           <SwipeFeedCard

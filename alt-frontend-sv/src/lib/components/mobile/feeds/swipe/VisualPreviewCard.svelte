@@ -33,6 +33,7 @@ interface Props {
 	isBusy?: boolean;
 	initialArticleContent?: string | null;
 	onArticleIdResolved?: (feedLink: string, articleId: string) => void;
+	isLcp?: boolean;
 }
 
 const {
@@ -45,6 +46,7 @@ const {
 	isBusy = false,
 	initialArticleContent,
 	onArticleIdResolved,
+	isLcp = false,
 }: Props = $props();
 
 // State
@@ -130,7 +132,7 @@ onMount(() => {
 				}
 			})
 			.catch((err) => {
-				console.error("[VisualPreviewCard] Error auto-fetching content:", err);
+				console.warn("[VisualPreviewCard] Error auto-fetching content:", err);
 			});
 	}
 });
@@ -200,7 +202,7 @@ async function handleToggleContent() {
 				contentError = "Could not fetch article content";
 			}
 		} catch (err) {
-			console.error("Error fetching content:", err);
+			console.warn("Error fetching content:", err);
 			contentError = "Could not fetch article content";
 		} finally {
 			isLoadingContent = false;
@@ -358,7 +360,8 @@ function handleImgError() {
         <img
           src={thumbnailUrl}
           alt=""
-          loading="lazy"
+          loading={isLcp ? "eager" : "lazy"}
+          fetchpriority={isLcp ? "high" : undefined}
           decoding="async"
           data-testid="thumbnail-image"
           class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 {imgLoaded ? 'opacity-100' : 'opacity-0'}"
@@ -395,7 +398,6 @@ function handleImgError() {
             href={feed.link}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Open article in new tab"
             class="flex items-center gap-2 text-[var(--alt-text-primary)] min-w-0 hover:opacity-80 transition-opacity"
           >
             <div class="shrink-0">
@@ -426,7 +428,7 @@ function handleImgError() {
         data-testid="unified-scroll-area"
       >
         {#if hasDescription && !isAISummaryRequested}
-          <div class="mb-3 overflow-x-hidden" transition:fade>
+          <div class="mb-3 overflow-x-hidden">
             <div
               class="text-sm text-[var(--alt-text-primary)] leading-[1.6] break-words overflow-wrap-anywhere line-clamp-3"
             >
@@ -519,8 +521,8 @@ function handleImgError() {
           onclick={handleToggleContent}
           size="sm"
           class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isContentExpanded
-            ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
-            : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
+            ? 'bg-[#4a5568] shadow-[var(--alt-secondary)]/50'
+            : 'bg-[#4a5568] shadow-[var(--alt-primary)]/50'}"
           disabled={isLoadingContent}
         >
           <BookOpen class="mr-2 h-4 w-4" />
@@ -534,10 +536,10 @@ function handleImgError() {
           onclick={handleFavorite}
           size="sm"
           class="rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isFavorited
-            ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
+            ? 'bg-[#4a5568] shadow-[var(--alt-secondary)]/50'
             : favoriteError
               ? 'bg-red-500/80 shadow-red-500/50'
-              : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
+              : 'bg-[#4a5568] shadow-[var(--alt-primary)]/50'}"
           disabled={isFavoriting || isFavorited}
           aria-label={isFavorited ? "Favorited" : isFavoriting ? "Saving favorite" : favoriteError ? "Favorite failed, tap to retry" : "Favorite"}
         >
@@ -551,8 +553,8 @@ function handleImgError() {
           onclick={handleGenerateAISummary}
           size="sm"
           class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isAISummaryRequested
-            ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
-            : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
+            ? 'bg-[#4a5568] shadow-[var(--alt-secondary)]/50'
+            : 'bg-[#4a5568] shadow-[var(--alt-primary)]/50'}"
           disabled={isSummarizing}
         >
           <Sparkles class="mr-2 h-4 w-4" />

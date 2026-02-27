@@ -1,4 +1,6 @@
 <script lang="ts">
+import { browser } from "$app/environment";
+import { onMount } from "svelte";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import SwipeFeedScreen from "$lib/components/mobile/feeds/swipe/SwipeFeedScreen.svelte";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
@@ -6,39 +8,40 @@ import type { RenderFeed } from "$lib/schema/feed";
 
 const { isDesktop } = useViewport();
 
-interface ArticleResult {
-	content: string | null;
-	og_image_url: string | null;
-	article_id: string | null;
-	feedUrl: string | null;
+interface ArticleData {
+	firstArticleImageUrl: string | null;
+	firstArticleContent: string | null;
+	firstArticleId: string | null;
 }
 
 interface PageData {
 	initialFeeds: RenderFeed[];
 	nextCursor: string | null;
-	articleContentPromise: Promise<ArticleResult>;
+	articleData: Promise<ArticleData>;
 }
 
 const { data }: { data: PageData } = $props();
 
-// Handle the streamed articleContent Promise
-let articleContent = $state<string | null>(null);
+// Resolved article data from streaming - populated when promise resolves
+let resolvedArticleData = $state<ArticleData | null>(null);
+let cacheSeeded = false;
 
-$effect(() => {
-	data.articleContentPromise?.then((result) => {
-		articleContent = result.content;
+// Resolve streamed article data and seed prefetcher cache on mount
+onMount(() => {
+	data.articleData.then((articleData) => {
+		resolvedArticleData = articleData;
 
-		// Seed articlePrefetcher cache with initial article data
-		if (result.feedUrl) {
-			const ogImageCache = (articlePrefetcher as any)
-				.ogImageCache as Map<string, string | null>;
-			ogImageCache.set(result.feedUrl, result.og_image_url);
-
-			if (result.article_id) {
-				const articleIdCache = (articlePrefetcher as any)
-					.articleIdCache as Map<string, string>;
-				articleIdCache.set(result.feedUrl, result.article_id);
-			}
+		// Seed cache once
+		if (!cacheSeeded && data.initialFeeds.length > 0 && articleData.firstArticleId) {
+			cacheSeeded = true;
+			const feedUrl = data.initialFeeds[0].normalizedUrl;
+			articlePrefetcher.seedCache(
+				feedUrl,
+				articleData.firstArticleContent || "",
+				articleData.firstArticleId,
+				articleData.firstArticleImageUrl,
+				null,
+			);
 		}
 	});
 });
@@ -46,6 +49,9 @@ $effect(() => {
 
 <svelte:head>
 	<title>Visual Preview - Alt</title>
+	{#if resolvedArticleData?.firstArticleImageUrl}
+		<link rel="preload" as="image" href={resolvedArticleData.firstArticleImageUrl} fetchpriority="high" />
+	{/if}
 </svelte:head>
 
 {#if isDesktop}
@@ -68,7 +74,8 @@ $effect(() => {
 	<SwipeFeedScreen
 		initialFeeds={data.initialFeeds}
 		initialNextCursor={data.nextCursor}
-		initialArticleContent={articleContent}
+		initialArticleContent={resolvedArticleData?.firstArticleContent ?? null}
+		initialOgImageUrl={resolvedArticleData?.firstArticleImageUrl ?? null}
 		mode="visual-preview"
 	/>
 {/if}
