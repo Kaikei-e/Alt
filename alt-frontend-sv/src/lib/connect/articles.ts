@@ -169,7 +169,7 @@ export async function fetchArticleContent(
 	const client = createArticleClient(transport);
 	const response = (await client.fetchArticleContent(
 		{ url },
-		signal ? { signal } : undefined,
+		{ timeoutMs: 120_000, ...(signal ? { signal } : {}) },
 	)) as FetchArticleContentResponse;
 
 	return {
