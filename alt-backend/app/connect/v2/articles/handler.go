@@ -96,11 +96,6 @@ func (h *Handler) FetchArticleContent(
 		OgImageUrl: ogImageURL,
 	}
 
-	// Generate proxy URL if image proxy is available
-	if h.container.ImageProxyUsecase != nil && ogImageURL != "" {
-		resp.OgImageProxyUrl = h.container.ImageProxyUsecase.GenerateProxyURL(ogImageURL)
-	}
-
 	return connect.NewResponse(resp), nil
 }
 
@@ -571,7 +566,8 @@ func (h *Handler) BatchPrefetchImages(
 	for _, ogURL := range ogURLs {
 		ogURLCopy := ogURL
 		go func() {
-			warmCtx := context.Background()
+			warmCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
 			h.container.ImageProxyUsecase.WarmCache(warmCtx, ogURLCopy)
 		}()
 	}

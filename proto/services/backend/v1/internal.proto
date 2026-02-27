@@ -18,6 +18,7 @@ message ArticleWithTags {
   repeated string tags = 4;
   google.protobuf.Timestamp created_at = 5;
   string user_id = 6;
+  string feed_id = 7;
 }
 
 // DeletedArticle represents a deleted article.

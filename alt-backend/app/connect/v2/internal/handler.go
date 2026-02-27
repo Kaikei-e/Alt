@@ -518,6 +518,7 @@ func (h *Handler) ListUntaggedArticles(ctx context.Context, req *connect.Request
 			Title:   a.Title,
 			Content: a.Content,
 			UserId:  a.UserID,
+			FeedId:  a.FeedID,
 		}
 	}
 
