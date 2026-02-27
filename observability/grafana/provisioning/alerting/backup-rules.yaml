@@ -1,0 +1,576 @@
+# Grafana alerting rules for Alt Platform Backup Monitoring
+# Note: These rules are designed for Grafana Unified Alerting
+# Import via Grafana UI: Alerting > Alert rules > Import
+#
+# Prerequisites:
+# - Prometheus datasource configured
+# - backup_metrics.prom exposed via node_exporter textfile collector
+#   or custom metrics endpoint
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: backup-monitoring
+    folder: Backup
+    interval: 5m
+    rules:
+      # Critical: No backup in 2 hours (Restic)
+      - uid: backup-missing-restic
+        title: Restic Backup Missing (2 hours)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 7200
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: time() - backup_last_success_timestamp{type="restic"}
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 7200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 7200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 7200  # 2 hours in seconds
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: Alerting
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "Restic backup not completed in over 2 hours"
+          description: |
+            The last successful Restic backup was {{ $values.B | humanizeDuration }} ago.
+            Check backup logs at /backups/logs/ and verify the backup service is running.
+
+            Runbook: docs/runbooks/backup-restore.md
+        labels:
+          severity: critical
+          team: platform
+          component: backup
+
+      # Warning: PostgreSQL backup missing for specific database
+      - uid: backup-missing-postgres
+        title: PostgreSQL Backup Missing (2 hours)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 7200
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: time() - backup_postgres_last_success_timestamp
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 7200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 7200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 7200
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: Alerting
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "PostgreSQL backup missing for {{ $labels.database }}"
+          description: |
+            No PostgreSQL backup for {{ $labels.database }} in the last 2 hours.
+            Last backup was {{ $values.B | humanizeDuration }} ago.
+
+            Check:
+            1. Database container is running: docker ps | grep {{ $labels.database }}
+            2. Backup logs: /backups/logs/
+            3. Disk space: df -h /backups
+
+            Runbook: docs/runbooks/backup-restore.md
+        labels:
+          severity: warning
+          team: platform
+          component: backup
+
+      # Warning: Backup disk space low (< 20%)
+      - uid: backup-disk-space-low
+        title: Backup Disk Space Low (< 20%)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: 100 - backup_disk_usage_percent
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 20
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Backup disk space below 20%"
+          description: |
+            Available backup disk space is {{ $values.B | printf "%.1f" }}%.
+
+            Actions:
+            1. Run backup prune: ./scripts/backup/backup-all.sh --prune
+            2. Check for large old backups: du -sh /backups/*
+            3. Consider expanding disk or adjusting retention policy
+
+            Runbook: docs/runbooks/backup-restore.md
+        labels:
+          severity: warning
+          team: platform
+          component: backup
+
+      # Critical: Backup disk space critically low (< 10%)
+      - uid: backup-disk-space-critical
+        title: Backup Disk Space Critical (< 10%)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: 100 - backup_disk_usage_percent
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 10
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "CRITICAL: Backup disk space below 10%"
+          description: |
+            Available backup disk space is critically low at {{ $values.B | printf "%.1f" }}%.
+            Backups may fail!
+
+            Immediate actions required:
+            1. Emergency prune: restic -r /backups/restic-repo forget --keep-last 3 --prune
+            2. Remove old PostgreSQL dumps: find /backups/postgres -mtime +3 -delete
+            3. Expand disk storage
+
+            Runbook: docs/runbooks/backup-restore.md
+        labels:
+          severity: critical
+          team: platform
+          component: backup
+
+      # Warning: Offsite sync not completed in 24 hours
+      - uid: backup-offsite-stale
+        title: Offsite Backup Stale (24 hours)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: time() - backup_offsite_last_success_timestamp
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 86400  # 24 hours
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: "Offsite backup sync not completed in 24 hours"
+          description: |
+            Last offsite sync was {{ $values.B | humanizeDuration }} ago.
+
+            Check:
+            1. Tailscale connectivity: tailscale ping backup-server
+            2. SSH access: ssh backup-server 'echo OK'
+            3. Sync logs: /backups/logs/sync-offsite-*.log
+
+            Runbook: docs/runbooks/backup-restore.md
+        labels:
+          severity: warning
+          team: platform
+          component: backup
+
+      # Warning: Offsite unreachable
+      - uid: backup-offsite-unreachable
+        title: Offsite Backup Server Unreachable
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: backup_offsite_reachable
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: "Offsite backup server is unreachable"
+          description: |
+            Cannot connect to the offsite backup server.
+
+            Check:
+            1. Tailscale status: tailscale status
+            2. Network connectivity
+            3. Remote server availability
+
+            Runbook: docs/runbooks/backup-restore.md
+        labels:
+          severity: warning
+          team: platform
+          component: backup
+
+      # Warning: Restore verification not run in 8 days
+      - uid: backup-restore-verify-stale
+        title: Restore Verification Stale (8 days)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 691200
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: time() - backup_restore_verify_last_timestamp
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 691200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 691200
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 691200  # 8 days in seconds
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: Alerting
+        execErrState: Error
+        for: 30m
+        annotations:
+          summary: "Restore verification not run in over 8 days"
+          description: |
+            The automated restore verification has not been run in {{ $values.B | humanizeDuration }}.
+            This is scheduled weekly. Check the backup container and supercronic logs.
+
+            Run manually: ./scripts/backup/restore-verify.sh
+
+            Runbook: docs/runbooks/backup-restore.md
+        labels:
+          severity: warning
+          team: platform
+          component: backup
+
+      # Critical: Restore verification failed
+      - uid: backup-restore-verify-failed
+        title: Restore Verification Failed
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 604800
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: backup_restore_verify_success
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 604800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 604800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "CRITICAL: Restore verification failed"
+          description: |
+            The latest automated restore verification failed.
+            Backups may not be restorable!
+
+            Check restore verification logs: /backups/logs/restore-verify-*.log
+            Run manually: ./scripts/backup/restore-verify.sh
+
+            Runbook: docs/runbooks/backup-restore.md
+        labels:
+          severity: critical
+          team: platform
+          component: backup
+
+      # Info: Backup repository not initialized
+      - uid: backup-not-initialized
+        title: Backup Repository Not Initialized
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: backup_repository_initialized
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Backup repository is not initialized"
+          description: |
+            The Restic backup repository has not been initialized.
+
+            Initialize with:
+            ./scripts/backup/backup-all.sh --init
+
+            Runbook: docs/runbooks/backup-restore.md
+        labels:
+          severity: warning
+          team: platform
+          component: backup

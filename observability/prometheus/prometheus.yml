@@ -42,3 +42,39 @@ scrape_configs:
           service: 'alt-backend'
     scrape_interval: 15s
     metrics_path: /metrics
+
+  # mq-hub message queue hub metrics (Go/promhttp)
+  - job_name: 'mq-hub'
+    static_configs:
+      - targets: ['mq-hub:9500']
+        labels:
+          service: 'mq-hub'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # pre-processor article processing metrics (separate metrics server on port 9201)
+  - job_name: 'pre-processor'
+    static_configs:
+      - targets: ['pre-processor:9201']
+        labels:
+          service: 'pre-processor'
+    scrape_interval: 15s
+    metrics_path: /metrics/prometheus
+
+  # recap-worker recap pipeline metrics (Rust/Axum)
+  - job_name: 'recap-worker'
+    static_configs:
+      - targets: ['recap-worker:9005']
+        labels:
+          service: 'recap-worker'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # recap-subworker LLM subworker metrics (Python/FastAPI instrumentator)
+  - job_name: 'recap-subworker'
+    static_configs:
+      - targets: ['recap-subworker:8002']
+        labels:
+          service: 'recap-subworker'
+    scrape_interval: 15s
+    metrics_path: /metrics
