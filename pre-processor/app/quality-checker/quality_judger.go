@@ -242,7 +242,9 @@ func parseScore(response string) (Score, error) {
 	logger.Logger.Info("Parsing response", "original_response", response)
 
 	// Try to extract score from <score>X</score> pattern
-	re := regexp.MustCompile(`<score>(\d+)</score>`)
+	// Closing tag is optional because Ollama's stop sequence includes "</score>",
+	// causing it to stop generating before outputting the closing tag.
+	re := regexp.MustCompile(`<score>(\d+)(?:</score>)?`)
 	matches := re.FindStringSubmatch(response)
 
 	if len(matches) == 2 {

@@ -73,6 +73,12 @@ func TestParseScore(t *testing.T) {
 			expectedError: false,
 			description:   "Should extract XML score from surrounding text",
 		},
+		"valid_xml_without_closing_tag": {
+			input:         "<score>9",
+			expectedScore: 9,
+			expectedError: false,
+			description:   "Should parse score without closing tag (Ollama stop sequence truncates it)",
+		},
 		"score_at_minimum_boundary": {
 			input:         "<score>0</score>",
 			expectedScore: 0,

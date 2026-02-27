@@ -300,6 +300,10 @@ func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) 
 		return nil, fmt.Errorf("error iterating job rows: %w", err)
 	}
 
-	r.logger.InfoContext(ctx, "retrieved pending summarization jobs", "count", len(jobs))
+	if len(jobs) == 0 {
+		r.logger.DebugContext(ctx, "retrieved pending summarization jobs", "count", 0)
+	} else {
+		r.logger.InfoContext(ctx, "retrieved pending summarization jobs", "count", len(jobs))
+	}
 	return jobs, nil
 }

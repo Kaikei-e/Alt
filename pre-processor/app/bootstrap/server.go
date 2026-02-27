@@ -36,6 +36,10 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 
 	// Middleware
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		Skipper: func(c echo.Context) bool {
+			path := c.Request().URL.Path
+			return path == "/health" || path == "/api/v1/health"
+		},
 		LogMethod:  true,
 		LogURI:     true,
 		LogStatus:  true,

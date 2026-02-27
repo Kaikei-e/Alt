@@ -4,19 +4,33 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"pre-processor/domain"
 	"pre-processor/repository"
 )
 
+const (
+	maxBatchFailures     = 3
+	failureBlockDuration = 1 * time.Hour
+)
+
+// articleFailure tracks failure count and last failure time for a single article.
+type articleFailure struct {
+	count      int
+	lastFailed time.Time
+}
+
 // ArticleSummarizerService implementation.
 type articleSummarizerService struct {
-	articleRepo repository.ArticleRepository
-	summaryRepo repository.SummaryRepository
-	apiRepo     repository.ExternalAPIRepository
-	logger      *slog.Logger
-	cursor      *domain.Cursor
+	articleRepo    repository.ArticleRepository
+	summaryRepo    repository.SummaryRepository
+	apiRepo        repository.ExternalAPIRepository
+	logger         *slog.Logger
+	cursor         *domain.Cursor
+	failureTracker map[string]*articleFailure
+	failureMu      sync.Mutex
 }
 
 // NewArticleSummarizerService creates a new article summarizer service.
@@ -27,11 +41,12 @@ func NewArticleSummarizerService(
 	logger *slog.Logger,
 ) ArticleSummarizerService {
 	return &articleSummarizerService{
-		articleRepo: articleRepo,
-		summaryRepo: summaryRepo,
-		apiRepo:     apiRepo,
-		logger:      logger,
-		cursor:      &domain.Cursor{},
+		articleRepo:    articleRepo,
+		summaryRepo:    summaryRepo,
+		apiRepo:        apiRepo,
+		logger:         logger,
+		cursor:         &domain.Cursor{},
+		failureTracker: make(map[string]*articleFailure),
 	}
 }
 
@@ -64,6 +79,15 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 			break
 		}
 
+		// Skip articles that have repeatedly failed (e.g., timeout on large content)
+		if s.isBlocked(article.ID) {
+			s.logger.WarnContext(ctx, "skipping blocked article (repeated batch failures)",
+				"article_id", article.ID,
+				"max_failures", maxBatchFailures,
+				"block_duration", failureBlockDuration)
+			continue
+		}
+
 		// Generate summary using external API with LOW priority (batch operation)
 		summarizedContent, err := s.apiRepo.SummarizeArticle(ctx, article, "low")
 		if err != nil {
@@ -83,6 +107,7 @@ func (s *articleSummarizerService) SummarizeArticles(ctx context.Context, batchS
 			}
 
 			s.logger.ErrorContext(ctx, "failed to generate summary", "article_id", article.ID, "error", err)
+			s.recordFailure(article.ID)
 			result.ErrorCount++
 			result.Errors = append(result.Errors, err)
 			continue
@@ -148,6 +173,41 @@ func (s *articleSummarizerService) ResetPagination() error {
 	s.logger.Info("pagination cursor reset")
 
 	return nil
+}
+
+// isBlocked checks if an article is blocked due to repeated failures.
+// Returns true if the article has failed maxBatchFailures times and the block duration hasn't elapsed.
+func (s *articleSummarizerService) isBlocked(articleID string) bool {
+	s.failureMu.Lock()
+	defer s.failureMu.Unlock()
+
+	f, ok := s.failureTracker[articleID]
+	if !ok {
+		return false
+	}
+
+	if f.count >= maxBatchFailures {
+		if time.Since(f.lastFailed) < failureBlockDuration {
+			return true
+		}
+		// Block duration elapsed, remove from tracker
+		delete(s.failureTracker, articleID)
+	}
+	return false
+}
+
+// recordFailure records a failure for an article.
+func (s *articleSummarizerService) recordFailure(articleID string) {
+	s.failureMu.Lock()
+	defer s.failureMu.Unlock()
+
+	f, ok := s.failureTracker[articleID]
+	if !ok {
+		f = &articleFailure{}
+		s.failureTracker[articleID] = f
+	}
+	f.count++
+	f.lastFailed = time.Now()
 }
 
 // placeholderMessages maps content-length errors to Japanese placeholder messages.

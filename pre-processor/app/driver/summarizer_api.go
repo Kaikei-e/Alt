@@ -67,11 +67,19 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 		extractedLength = originalLength
 	} else {
 		reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
-		logger.Info("text extraction completed before API call",
-			"article_id", article.ID,
-			"original_length", originalLength,
-			"extracted_length", extractedLength,
-			"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
+		if reductionRatio < 0 {
+			logger.Info("text extraction did not reduce content (content may already be plain text)",
+				"article_id", article.ID,
+				"original_length", originalLength,
+				"extracted_length", extractedLength,
+				"size_increase_ratio", fmt.Sprintf("%.2f%%", -reductionRatio))
+		} else {
+			logger.Info("text extraction completed before API call",
+				"article_id", article.ID,
+				"original_length", originalLength,
+				"extracted_length", extractedLength,
+				"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
+		}
 	}
 
 	// Check content length after extraction
@@ -252,11 +260,19 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 		extractedLength = originalLength
 	} else {
 		reductionRatio := (1.0 - float64(extractedLength)/float64(originalLength)) * 100.0
-		logger.Info("text extraction completed before streaming API call",
-			"article_id", article.ID,
-			"original_length", originalLength,
-			"extracted_length", extractedLength,
-			"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
+		if reductionRatio < 0 {
+			logger.Info("text extraction did not reduce content (content may already be plain text)",
+				"article_id", article.ID,
+				"original_length", originalLength,
+				"extracted_length", extractedLength,
+				"size_increase_ratio", fmt.Sprintf("%.2f%%", -reductionRatio))
+		} else {
+			logger.Info("text extraction completed before streaming API call",
+				"article_id", article.ID,
+				"original_length", originalLength,
+				"extracted_length", extractedLength,
+				"reduction_ratio", fmt.Sprintf("%.2f%%", reductionRatio))
+		}
 	}
 
 	// Use rune count (character count) instead of byte count for validation

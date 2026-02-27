@@ -144,12 +144,6 @@ func (h *jobHandler) processSummarizationBatch(ctx context.Context) error {
 		return err
 	}
 
-	h.logger.InfoContext(ctx, "summarization completed",
-		"processed", result.ProcessedCount,
-		"success", result.SuccessCount,
-		"errors", result.ErrorCount,
-		"has_more", result.HasMore)
-
 	if !result.HasMore {
 		h.logger.InfoContext(ctx, "reached end of articles, resetting pagination cursor")
 		if err := h.articleSummarizer.ResetPagination(); err != nil {
@@ -166,14 +160,6 @@ func (h *jobHandler) processQualityCheckBatch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
-	h.logger.InfoContext(ctx, "quality check completed",
-		"processed", result.ProcessedCount,
-		"success", result.SuccessCount,
-		"errors", result.ErrorCount,
-		"removed", result.RemovedCount,
-		"retained", result.RetainedCount,
-		"has_more", result.HasMore)
 
 	if !result.HasMore {
 		h.logger.InfoContext(ctx, "reached end of articles, resetting pagination cursor")

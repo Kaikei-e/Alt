@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -130,6 +131,51 @@ type noopSummaryRepo struct {
 
 func (m *noopSummaryRepo) Create(_ context.Context, _ *domain.ArticleSummary) error {
 	return nil
+}
+
+// failingAPIRepo always returns an error from SummarizeArticle.
+type failingAPIRepo struct {
+	repository.ExternalAPIRepository
+	callCount int
+}
+
+func (m *failingAPIRepo) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
+	m.callCount++
+	return nil, fmt.Errorf("context deadline exceeded (Client.Timeout exceeded)")
+}
+
+func TestArticleSummarizerService_SummarizeArticles_FailureTracker(t *testing.T) {
+	t.Run("should skip article after maxBatchFailures consecutive failures", func(t *testing.T) {
+		articles := []*domain.Article{
+			{ID: "timeout-article", Content: "very large content", UserID: "user1", Title: "title1"},
+		}
+
+		apiRepo := &failingAPIRepo{}
+
+		svc := NewArticleSummarizerService(
+			&stubArticleRepo{articles: articles},
+			&noopSummaryRepo{},
+			apiRepo,
+			testLoggerSummarizer(),
+		)
+
+		// Run batch 3 times to hit maxBatchFailures
+		for i := 0; i < maxBatchFailures; i++ {
+			result, err := svc.SummarizeArticles(context.Background(), 10)
+			assert.NoError(t, err)
+			assert.Equal(t, 1, result.ErrorCount, "attempt %d should fail", i+1)
+		}
+
+		assert.Equal(t, maxBatchFailures, apiRepo.callCount,
+			"API should have been called exactly maxBatchFailures times")
+
+		// 4th attempt: article should be blocked
+		result, err := svc.SummarizeArticles(context.Background(), 10)
+		assert.NoError(t, err)
+		assert.Equal(t, 0, result.ErrorCount, "blocked article should be skipped, not counted as error")
+		assert.Equal(t, maxBatchFailures, apiRepo.callCount,
+			"API should not be called for blocked article")
+	})
 }
 
 func TestArticleSummarizerService_SummarizeArticles_ContextCanceled(t *testing.T) {
