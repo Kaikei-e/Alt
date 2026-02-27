@@ -164,11 +164,14 @@ flowchart TD
     subgraph AI["AI / LLM"]
         NC[news-creator :11434]:::ai
         NCB[news-creator-backend :11435]:::ai
+        TTS[tts-speaker :9700]:::ai
         RedisCache[(redis-cache :6379)]:::data
     end
     NC --> NCB
     NC --> RedisCache
     PP --> NC
+    BFF -.->|Connect-RPC| TTS
+    ATM -.->|OAuth tokens| PPSidecar
 
     subgraph RC["Recap Pipeline"]
         RW[recap-worker :9005]:::recap
@@ -191,6 +194,7 @@ flowchart TD
 
     subgraph Data["Data Stores"]
         DB[(db :5432)]:::data
+        PPDB[(pre-processor-db :5437)]:::data
         Meili[(meilisearch :7700)]:::data
         RecapDB[(recap-db :5435)]:::data
         RagDB[(rag-db :5436)]:::data
@@ -200,8 +204,10 @@ flowchart TD
     Idx --> Meili
     Tag -->|Connect-RPC| API
     PP -->|Connect-RPC| API
-    PP -.->|job queue| DB
+    PP --> PPDB
     RW --> RecapDB
+    RS --> RecapDB
+    REval --> RecapDB
     Dash --> RecapDB
     RO --> RagDB
 
@@ -212,6 +218,10 @@ flowchart TD
     end
     Fwds --> Rask
     Rask --> CH
+    API -.->|OTLP| Rask
+    AuthHub -.->|OTLP| Rask
+    MQHub -.->|OTLP| Rask
+    Idx -.->|OTLP| Rask
     Tag -.->|OTLP| Rask
     NC -.->|OTLP| Rask
     PP -.->|OTLP| Rask
@@ -222,8 +232,11 @@ flowchart TD
         Prom[prometheus :9090]:::obs
         Graf[grafana :3001]:::obs
         CAdv[cadvisor]:::obs
+        NginxExp[nginx-exporter]:::obs
     end
     Prom --> CAdv
+    Prom --> NginxExp
+    Graf --> Prom
     Graf --> CH
 ```
 
@@ -266,46 +279,46 @@ RSS feeds flow through ingestion, enrichment, and delivery stages. Each stage is
 ```mermaid
 flowchart LR
     subgraph Ingestion
-        RSS[External RSS / Inoreader] --> PreProc[pre-processor :9200<br/>dedupe + summary]
+        RSS[External RSS / Inoreader] --> PPSidecar[pre-processor-sidecar<br/>Inoreader orchestration]
+        PPSidecar --> PreProc[pre-processor :9200<br/>dedupe + quality check]
+        PreProc -->|/api/v1/summarize| NewsCreator[news-creator :11434<br/>Ollama summaries]
     end
     subgraph "Event-Driven Processing"
         MQHub[mq-hub :9500]
         RedisStreams[(redis-streams :6380)]
         AltBackend -->|Publish| MQHub
         MQHub --> RedisStreams
-        RedisStreams -.->|ArticleCreated| TagGen
+        RedisStreams -.->|ArticleCreated| TagGen[tag-generator<br/>ONNX + cascade]
         RedisStreams -.->|IndexArticle| SearchIdx[search-indexer :9300]
     end
-    subgraph Tagging
-        PreProc -->|/api/v1/summarize| TagGen[tag-generator<br/>ONNX + cascade]
+    subgraph Enrichment
         TagGen --> Graph[tag_label_graph]
         TagGen -->|Connect-RPC| AltBackend
+        SearchIdx -->|Connect-RPC| AltBackend
+        SearchIdx --> Meili[(Meilisearch :7700)]
     end
     subgraph RecapPipeline
         AltBackend[alt-backend :9000/:9101<br/>REST + Connect-RPC]
         RecapWorker[recap-worker :9005<br/>fetch → dedup → genre → evidence]
         RecapSub[recap-subworker :8002<br/>clustering + dedup]
-        RecapDB[(recap-db<br/>jobs, cluster evidence, graph, learning results)]
-        NewsCreator[news-creator :8001<br/>Ollama summaries]
+        RecapDB[(recap-db<br/>jobs, cluster evidence, graph)]
+        RecapWorker -->|/v1/recap/articles| AltBackend
         RecapWorker -->|/v1/runs| RecapSub
         RecapWorker -->|/v1/summary/generate| NewsCreator
         RecapWorker -->|SQL| RecapDB
-        RecapWorker -->|/v1/recap/articles| AltBackend
         RecapSub -->|SQL| RecapDB
-        NewsCreator -->|SQL| RecapDB
-        AltBackend -->|/v1/recap/7days| RecapWorker
     end
-    subgraph "Frontend & Metrics"
-        RecapDB --> Frontend[alt-frontend<br/>/mobile/recap/7days]
-        RecapWorker --> Logs[rask-log-forwarder]
-        Logs -->|/v1/aggregate| ClickHouse[ClickHouse via rask-log-aggregator :9600]
-        AuthHub[auth-hub :8888<br/>Kratos → X-Alt-*] --> AltBackend
-        AuthToken[auth-token-manager<br/>Inoreader OAuth] --> PreProc
+    subgraph "Frontend & Auth"
+        Frontend[alt-frontend-sv :4173<br/>SvelteKit]
+        AuthHub[auth-hub :8888<br/>Kratos → X-Alt-*]
+        AuthToken[auth-token-manager<br/>Inoreader OAuth]
     end
-    Graph --> RecapWorker
-    PreProc --> AltBackend
+    PreProc -->|Connect-RPC Internal API| AltBackend
+    AuthHub --> AltBackend
+    AuthToken --> PPSidecar
+    AltBackend --> Frontend
     AuthHub --> Frontend
-    AuthToken --> TagGen
+    Graph --> RecapWorker
 ```
 
 ### Data Intelligence Flow
@@ -318,20 +331,21 @@ flowchart LR
     classDef ai fill:#ffe0f0,stroke:#d81b60,color:#880e4f
     classDef storage fill:#fff4d5,stroke:#fb8c00,color:#5d2c00
     classDef surface fill:#e8f5e9,stroke:#388e3c,color:#1b5e20
+    classDef event fill:#fef3c7,stroke:#d97706,color:#5d2c00
 
     RSS[External RSS feeds]:::ingest --> Fetch[pre-processor :9200<br/>Fetch & dedupe]:::ingest
     Fetch --> Score[Quality scoring + language detection]:::ingest
-    Score -->|Connect-RPC| Backend[alt-backend :9000/:9101]:::surface
+    Score -->|/api/v1/summarize| Summary[news-creator :11434<br/>Ollama summary]:::ai
+    Summary --> Save[pre-processor<br/>Connect-RPC Internal API]:::ingest
+    Save --> Backend[alt-backend :9000/:9101]:::surface
     Backend --> DB[(PostgreSQL)]:::storage
-    Backend --> TagJob[tag-generator<br/>/api/v1/tags/batch]:::ai
-    Backend --> SummaryJob[news-creator :8001<br/>/api/v1/summarize]:::ai
+    Backend -->|Publish| MQHub[mq-hub :9500]:::event
+    MQHub --> Streams[(Redis Streams)]:::event
+    Streams -.->|ArticleCreated| TagJob[tag-generator<br/>ONNX + cascade]:::ai
+    Streams -.->|IndexArticle| IndexBatch[search-indexer :9300<br/>batch 200 docs]:::ai
     TagJob -->|Connect-RPC| Backend
-    SummaryJob -->|SQL| SummaryDB[(PostgreSQL<br/>article_summaries)]:::storage
-    Backend --> IndexBatch[search-indexer :9300<br/>batch 200 docs]:::ai
-    SummaryDB --> IndexBatch
     IndexBatch -->|upsert| Meili[(Meilisearch :7700<br/>search index)]:::storage
-    Meili --> Backend
-    Backend --> Frontend[alt-frontend :3000<br/>Chakra themes]:::surface
+    Backend --> Frontend[alt-frontend-sv :4173<br/>SvelteKit + TailwindCSS]:::surface
 ```
 
 ### Microservice Communication
@@ -392,8 +406,9 @@ flowchart LR
     subgraph AI["AI Pipeline"]
         direction TB
         PP[pre-processor :9200]:::wk
+        PPDB[(pre-processor-db :5437)]:::db
         PP --> NC[news-creator :11434]:::wk
-        NC --> DB2[(db)]:::db
+        PP --> PPDB
         NC --> RC
     end
 
@@ -403,6 +418,8 @@ flowchart LR
         RW --> RS[recap-subworker :8002]:::wk
         RW --> RD[(recap-db :5435)]:::db
         RS --> RD
+        REval[recap-evaluator :8085]:::wk --> RD
+        Dash[dashboard :8501]:::wk --> RD
     end
 
     subgraph RAG["RAG"]
@@ -424,8 +441,9 @@ flowchart LR
     F1 --> API
     F2 --> BF
     BF -->|HTTP/2 h2c| API
+    BF -->|HTTP/1.1| TTS[tts-speaker :9700]:::wk
     PP -->|Connect-RPC| API
-    API --> RW
+    RW -->|/v1/recap/articles| API
     API --> RO
     API -->|Connect-RPC| MQH
     RS2 -.->|Subscribe| Tag
@@ -457,7 +475,7 @@ sequenceDiagram
     participant AuthHub
     participant Kratos
     participant Backend
-    participant Sidecar
+    participant SidecarProxy
     participant ExternalAPI
 
     User->>Browser: Request dashboard
@@ -467,10 +485,10 @@ sequenceDiagram
     Kratos-->>AuthHub: Session payload
     AuthHub-->>Nginx: 200 + X-Alt-* headers
     Nginx->>Backend: GET /api/articles (with headers)
-    Backend->>Sidecar: Fetch RSS feed (if stale)
-    Sidecar->>ExternalAPI: GET https://example.com/rss
-    ExternalAPI-->>Sidecar: RSS XML
-    Sidecar-->>Backend: Normalised response
+    Backend->>SidecarProxy: Fetch RSS feed (if stale)
+    SidecarProxy->>ExternalAPI: GET https://example.com/rss
+    ExternalAPI-->>SidecarProxy: RSS XML
+    SidecarProxy-->>Backend: Normalised response
     Backend-->>Browser: Article JSON payload
     Browser-->>User: Rendered dashboard
 ```
@@ -488,9 +506,11 @@ Alt runs REST (port 9000) and Connect-RPC (port 9101) in parallel, enabling grad
 
 | Service | Methods | Streaming | Description |
 |---------|---------|-----------|-------------|
-| ArticleService | 3 | No | FetchArticleContent, ArchiveArticle, FetchArticlesCursor |
-| FeedService | 10 | Yes | Stats, feeds, search, summarize (StreamFeedStats, StreamSummarize) |
-| RSSService | 4 | No | RegisterRSSFeed, ListRSSFeedLinks, DeleteRSSFeedLink, RegisterFavoriteFeed |
+| ArticleService | 5 | No | ListArticles, GetArticle, SearchArticles, MarkAsRead, MarkAsUnread |
+| FeedService | 7 | Yes | ListFeeds, GetFeed, CreateFeed, UpdateFeed, DeleteFeed, SubscribeFeed, UnsubscribeFeed |
+| RSSService | 2 | No | ValidateRSS, PreviewFeed |
+| RecapService | 2 | No | GetWeeklyRecap, GetRecapArticles |
+| BackendInternalService | — | No | Internal API for search-indexer, tag-generator, pre-processor |
 | AugurService | 2 | Yes | StreamChat (RAG Q&A), RetrieveContext |
 | MorningLetterService | 1 | Yes | StreamChat (via rag-orchestrator :9010) |
 
@@ -503,12 +523,19 @@ flowchart TD
     subgraph "alt-backend :9000/:9101"
         REST[REST API<br/>:9000 /v1/*]
         subgraph ConnectRPC[:9101 Connect-RPC]
-            ArticleSvc[ArticleService<br/>3 methods]
-            FeedSvc[FeedService<br/>10 methods ★stream]
-            RSSSvc[RSSService<br/>4 methods]
+            ArticleSvc[ArticleService<br/>5 methods]
+            FeedSvc[FeedService<br/>7 methods ★stream]
+            RSSSvc[RSSService<br/>2 methods]
+            RecapSvc[RecapService<br/>2 methods]
             AugurSvc[AugurService<br/>2 methods ★stream]
             MLGateway[MorningLetterService<br/>Gateway → rag-orchestrator]
+            InternalSvc[BackendInternalService<br/>Internal API]
         end
+    end
+    subgraph Workers
+        SearchIdx[search-indexer :9300]
+        TagGen[tag-generator :9400]
+        PreProc[pre-processor :9200]
     end
     subgraph "rag-orchestrator :9010"
         MLSvc[MorningLetterService<br/>Server ★stream]
@@ -520,7 +547,11 @@ flowchart TD
     SvelteKit --> ArticleSvc
     SvelteKit --> FeedSvc
     SvelteKit --> RSSSvc
+    SvelteKit --> RecapSvc
     SvelteKit --> AugurSvc
+    SearchIdx -->|Connect-RPC| InternalSvc
+    TagGen -->|Connect-RPC| InternalSvc
+    PreProc -->|Connect-RPC| InternalSvc
     MLGateway -->|gRPC| MLSvc
     Proto -.->|buf generate| ConnectRPC
     Proto -.->|buf generate| MLSvc
@@ -551,9 +582,14 @@ flowchart LR
         Embed -->|SQL + vector| RagDB[(rag-db<br/>pgvector)]
     end
     subgraph "Query & Answer"
-        Query[User Query via Connect-RPC] --> Retrieve[rag-orchestrator :9010<br/>Retrieve Context]
+        Query[User Query via Connect-RPC] --> Expand[Query Expansion<br/>news-creator /api/v1/expand-query]
+        Expand --> Retrieve[rag-orchestrator :9010<br/>Retrieve Context]
         Retrieve -->|similarity search| RagDB
-        RagDB --> Context[Top K Chunks]
+        Retrieve -->|BM25 keyword search| SearchIdx[search-indexer<br/>Meilisearch :7700]
+        RagDB --> RRF[RRF Fusion<br/>BM25 + Vector]
+        SearchIdx --> RRF
+        RRF --> Rerank[Reranker<br/>news-creator /v1/rerank<br/>cross-encoder]
+        Rerank --> Context[Top K Chunks]
         Context --> Answer[Answer Usecase]
         Answer --> Augur[knowledge-augur<br/>LLM Generation]
         Augur -->|Ollama| Response[Answer + Citations]
@@ -585,10 +621,10 @@ flowchart LR
     classDef broker fill:#fef3c7,stroke:#d97706,stroke-width:2px
     classDef consumer fill:#d4e6f1,stroke:#2874a6,stroke-width:2px
     classDef stream fill:#fcf3cf,stroke:#d4ac0d,stroke-width:2px
+    classDef both fill:#e8daef,stroke:#6c3483,stroke-width:2px
 
     subgraph Producers
         Backend[alt-backend :9000]:::producer
-        PreProc[pre-processor :9200]:::producer
     end
 
     subgraph "Event Broker"
@@ -597,17 +633,22 @@ flowchart LR
     end
 
     subgraph Consumers["Consumer Groups"]
-        TagGen[tag-generator :9400<br/>ArticleCreated]:::consumer
-        SearchIdx[search-indexer :9300<br/>IndexArticle]:::consumer
+        TagGen[tag-generator :9400<br/>ArticleCreated → TagsGenerated]:::both
+        SearchIdx[search-indexer :9300<br/>IndexArticle, TagsGenerated]:::consumer
+        PreProc[pre-processor :9200<br/>SummarizeRequested → ArticleSummarized]:::both
     end
 
     Backend -->|Publish ArticleCreated| MQHub
     Backend -->|Publish IndexArticle| MQHub
-    PreProc -->|Publish SummarizeRequested| MQHub
+    PreProc -->|Publish ArticleSummarized| MQHub
+    TagGen -->|Publish TagsGenerated| MQHub
     MQHub --> Redis
     Redis -.->|XREADGROUP| TagGen
     Redis -.->|XREADGROUP| SearchIdx
+    Redis -.->|XREADGROUP| PreProc
 ```
+
+> **Fat Events (ADR-000241):** `ArticleCreated` events embed full article content+tags, eliminating downstream API calls for consumers.
 
 **Stream Keys:**
 
@@ -628,16 +669,22 @@ flowchart TD
     classDef bff fill:#d1fae5,stroke:#059669,stroke-width:2px
     classDef auth fill:#f2e4ff,stroke:#8a4bd7,stroke-width:2px
     classDef be fill:#d5f5e3,stroke:#1e8449,stroke-width:2px
+    classDef tts fill:#e0f7fa,stroke:#00838f,stroke-width:2px
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px
 
     SvelteKit[alt-frontend-sv :4173<br/>Connect-RPC Client]:::fe
-    BFF[alt-butterfly-facade :9250<br/>HTTP/2 h2c Proxy]:::bff
+    BFF[alt-butterfly-facade :9250<br/>HTTP/2 h2c Proxy + Circuit Breaker]:::bff
+    LRU[(LRU Cache<br/>1000 entries)]:::cache
     AuthHub[auth-hub :8888<br/>JWT Validation]:::auth
     Backend[alt-backend :9101<br/>Connect-RPC Server]:::be
+    TTS[tts-speaker :9700<br/>Kokoro TTS]:::tts
 
     SvelteKit -->|Connect-RPC| BFF
+    BFF --> LRU
     BFF -->|Validate X-Alt-Backend-Token| AuthHub
     AuthHub -->|200 OK| BFF
     BFF -->|HTTP/2 h2c transparent proxy| Backend
+    BFF -->|HTTP/1.1 Connect-RPC| TTS
     Backend -->|Stream Response| BFF
     BFF -->|Stream Response| SvelteKit
 ```
@@ -654,6 +701,7 @@ flowchart TD
     classDef shared fill:#ffcccc,stroke:#cc0000,stroke-width:2px
     classDef dedicated fill:#ccffcc,stroke:#00cc00,stroke-width:2px
     classDef service fill:#e6f4ff,stroke:#1f5aa5,stroke-width:2px
+    classDef cache fill:#fef3c7,stroke:#d97706,stroke-width:2px
 
     subgraph "Primary Database (db :5432)"
         DB[(PostgreSQL 17)]:::shared
@@ -663,30 +711,42 @@ flowchart TD
         KratosDB[(kratos-db :5434)]:::dedicated
         RecapDB[(recap-db :5435)]:::dedicated
         RagDB[(rag-db :5436)]:::dedicated
+        PPDB[(pre-processor-db :5437)]:::dedicated
+        CH[(ClickHouse :8123)]:::dedicated
+    end
+
+    subgraph "Caches"
+        RedisCache[(redis-cache)]:::cache
+        RedisStreams[(redis-streams :6380)]:::cache
     end
 
     Backend[alt-backend]:::service --> DB
-    PreProc[pre-processor]:::service -.->|job queue only| DB
+    PreProc[pre-processor]:::service --> PPDB
     SearchIdx[search-indexer]:::service -->|Connect-RPC| Backend
     TagGen[tag-generator]:::service -->|Connect-RPC| Backend
     PreProc -->|Connect-RPC| Backend
 
-    AuthHub[auth-hub]:::service --> KratosDB
-    Kratos[kratos]:::service --> KratosDB
+    AuthHub[auth-hub]:::service --> Kratos[kratos]:::service --> KratosDB
 
     RecapWorker[recap-worker]:::service --> RecapDB
     RecapSub[recap-subworker]:::service --> RecapDB
+    Dash[dashboard]:::service --> RecapDB
+    REval[recap-evaluator]:::service --> RecapDB
 
     RagOrch[rag-orchestrator]:::service --> RagDB
+    RaskAgg[rask-log-aggregator]:::service --> CH
+    NC[news-creator]:::service --> RedisCache
+    MQHub[mq-hub]:::service --> RedisStreams
 ```
 
 **Database User Segregation:**
 
 | Database | Users | Services |
 |----------|-------|----------|
-| db | `alt_appuser`, `pre_processor_user` | backend (owner), pre-processor (job queue only) |
-| kratos-db | `kratos_user` | auth-hub, kratos |
-| recap-db | `recap_user` | recap-worker, recap-subworker, dashboard |
+| db | `alt_appuser` | backend (owner) |
+| pre-processor-db | `pp_user` | pre-processor, pre-processor-sidecar |
+| kratos-db | `kratos_user` | kratos (via auth-hub → Kratos API) |
+| recap-db | `recap_user` | recap-worker, recap-subworker, dashboard, recap-evaluator |
 | rag-db | `rag_user` | rag-orchestrator |
 
 ---
@@ -793,17 +853,19 @@ flowchart LR
     classDef data fill:#ecfccb,stroke:#16a34a,color:#052e16
     classDef ui fill:#cffafe,stroke:#0891b2,color:#083344
     classDef ctrl fill:#fde68a,stroke:#d97706,color:#713f12
+    classDef eval fill:#fce7f3,stroke:#db2777,color:#831843
 
-    Scheduler[[04:00 JST Cron]]:::ctrl
+    Scheduler[[04:00 JST Cron<br/>7-day recap + Evening Pulse]]:::ctrl
     Admin[Manual trigger<br/>POST :9005/v1/generate/recaps/7days]:::ctrl
-    Worker{{recap-worker :9005<br/>Rust pipeline}}:::svc
+    Worker{{recap-worker :9005<br/>Rust pipeline<br/>7-day + 3-day + Pulse}}:::svc
     AltAPI["alt-backend :9000<br/>GET /v1/recap/articles"]:::svc
     TagGen["tag-generator<br/>/api/v1/tags/batch"]:::svc
     Subworker["recap-subworker :8002<br/>/v1/runs clustering"]:::svc
-    News["news-creator :8001<br/>/v1/summary/generate"]:::svc
+    News["news-creator :11434<br/>/v1/summary/generate"]:::svc
     RecapDB[(recap-db<br/>PostgreSQL 18)]:::data
-    BackendAPI["alt-backend :9000<br/>GET /v1/recap/7days"]:::svc
-    Mobile["Mobile UI<br/>/mobile/recap/7days"]:::ui
+    REval["recap-evaluator :8085<br/>quality evaluation"]:::eval
+    BackendAPI["alt-backend :9000<br/>GET /v1/recap/7days + /v1/pulse/evening"]:::svc
+    Mobile["Mobile UI<br/>/mobile/recap"]:::ui
 
     Scheduler --> Worker
     Admin --> Worker
@@ -815,6 +877,7 @@ flowchart LR
     Worker -->|/v1/summary/generate| News
     News --> Worker
     Worker -->|SQL| RecapDB
+    RecapDB --> REval
     RecapDB --> BackendAPI
     BackendAPI --> Mobile
 ```
@@ -925,11 +988,19 @@ erDiagram
     ARTICLES ||--o{ ARTICLE_TAGS : tagged_with
     ARTICLES }o--o{ INGESTION_JOBS : processed_in
     USERS ||--o{ ARTICLES : archived_by
+    ARTICLES ||--o{ SUMMARIZE_JOB_QUEUE : queued_in
+    ARTICLES ||--o{ OUTBOX_EVENTS : publishes
+
+    ARTICLE_TAGS }o--o{ TAG_LABEL_GRAPH : refined_by
+
     ARTICLES ||--o{ RECAP_JOB_ARTICLES : cached_for
     RECAP_JOB_ARTICLES }o--|| RECAP_JOBS : belongs_to
     RECAP_JOBS ||--o{ RECAP_OUTPUTS : produces
     RECAP_OUTPUTS ||--o{ RECAP_CLUSTER_EVIDENCE : references
     RECAP_JOBS ||--o{ PULSE_GENERATIONS : generates
+    RECAP_JOBS ||--o{ RECAP_GENRE_LEARNING_RESULTS : learns_from
+    PULSE_GENERATIONS ||--o{ PULSE_CLUSTER_DIAGNOSTICS : diagnosed_by
+    PULSE_GENERATIONS ||--o{ PULSE_SELECTION_LOG : selected_by
 
     ARTICLES ||--o{ RAG_DOCUMENTS : indexed_as
     RAG_DOCUMENTS ||--o{ RAG_DOCUMENT_VERSIONS : versioned_by
