@@ -58,6 +58,21 @@ class BackendInternalService(Protocol):
     async def list_untagged_articles(self, request: services_dot_backend_dot_v1_dot_internal__pb2.ListUntaggedArticlesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.ListUntaggedArticlesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def delete_article_summary(self, request: services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def check_article_summary_exists(self, request: services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def find_articles_with_summaries(self, request: services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def list_unsummarized_articles(self, request: services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def has_unsummarized_articles(self, request: services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
 
 class BackendInternalServiceASGIApplication(ConnectASGIApplication[BackendInternalService]):
     def __init__(self, service: BackendInternalService | AsyncGenerator[BackendInternalService], *, interceptors: Iterable[Interceptor]=(), read_max_bytes: int | None = None) -> None:
@@ -203,6 +218,56 @@ class BackendInternalServiceASGIApplication(ConnectASGIApplication[BackendIntern
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.list_untagged_articles,
+                ),
+                "/services.backend.v1.BackendInternalService/DeleteArticleSummary": Endpoint.unary(
+                    method=MethodInfo(
+                        name="DeleteArticleSummary",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.delete_article_summary,
+                ),
+                "/services.backend.v1.BackendInternalService/CheckArticleSummaryExists": Endpoint.unary(
+                    method=MethodInfo(
+                        name="CheckArticleSummaryExists",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.check_article_summary_exists,
+                ),
+                "/services.backend.v1.BackendInternalService/FindArticlesWithSummaries": Endpoint.unary(
+                    method=MethodInfo(
+                        name="FindArticlesWithSummaries",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.find_articles_with_summaries,
+                ),
+                "/services.backend.v1.BackendInternalService/ListUnsummarizedArticles": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ListUnsummarizedArticles",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.list_unsummarized_articles,
+                ),
+                "/services.backend.v1.BackendInternalService/HasUnsummarizedArticles": Endpoint.unary(
+                    method=MethodInfo(
+                        name="HasUnsummarizedArticles",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.has_unsummarized_articles,
                 ),
             },
             interceptors=interceptors,
@@ -496,6 +561,106 @@ class BackendInternalServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def delete_article_summary(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DeleteArticleSummary",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def check_article_summary_exists(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="CheckArticleSummaryExists",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def find_articles_with_summaries(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="FindArticlesWithSummaries",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def list_unsummarized_articles(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListUnsummarizedArticles",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def has_unsummarized_articles(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="HasUnsummarizedArticles",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
 
 class BackendInternalServiceSync(Protocol):
     def list_articles_with_tags(self, request: services_dot_backend_dot_v1_dot_internal__pb2.ListArticlesWithTagsRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.ListArticlesWithTagsResponse:
@@ -525,6 +690,16 @@ class BackendInternalServiceSync(Protocol):
     def batch_upsert_article_tags(self, request: services_dot_backend_dot_v1_dot_internal__pb2.BatchUpsertArticleTagsRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.BatchUpsertArticleTagsResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def list_untagged_articles(self, request: services_dot_backend_dot_v1_dot_internal__pb2.ListUntaggedArticlesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.ListUntaggedArticlesResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def delete_article_summary(self, request: services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def check_article_summary_exists(self, request: services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def find_articles_with_summaries(self, request: services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def list_unsummarized_articles(self, request: services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def has_unsummarized_articles(self, request: services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
 
@@ -671,6 +846,56 @@ class BackendInternalServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.list_untagged_articles,
+                ),
+                "/services.backend.v1.BackendInternalService/DeleteArticleSummary": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="DeleteArticleSummary",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.delete_article_summary,
+                ),
+                "/services.backend.v1.BackendInternalService/CheckArticleSummaryExists": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="CheckArticleSummaryExists",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.check_article_summary_exists,
+                ),
+                "/services.backend.v1.BackendInternalService/FindArticlesWithSummaries": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="FindArticlesWithSummaries",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.find_articles_with_summaries,
+                ),
+                "/services.backend.v1.BackendInternalService/ListUnsummarizedArticles": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ListUnsummarizedArticles",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.list_unsummarized_articles,
+                ),
+                "/services.backend.v1.BackendInternalService/HasUnsummarizedArticles": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="HasUnsummarizedArticles",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.has_unsummarized_articles,
                 ),
             },
             interceptors=interceptors,
@@ -958,6 +1183,106 @@ class BackendInternalServiceClientSync(ConnectClientSync):
                 service_name="services.backend.v1.BackendInternalService",
                 input=services_dot_backend_dot_v1_dot_internal__pb2.ListUntaggedArticlesRequest,
                 output=services_dot_backend_dot_v1_dot_internal__pb2.ListUntaggedArticlesResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def delete_article_summary(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DeleteArticleSummary",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.DeleteArticleSummaryResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def check_article_summary_exists(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="CheckArticleSummaryExists",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.CheckArticleSummaryExistsResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def find_articles_with_summaries(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="FindArticlesWithSummaries",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.FindArticlesWithSummariesResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def list_unsummarized_articles(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListUnsummarizedArticles",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def has_unsummarized_articles(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="HasUnsummarizedArticles",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

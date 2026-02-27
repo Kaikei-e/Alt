@@ -122,6 +122,7 @@ class BatchProcessor:
                 article_tags_batch.append(
                     {
                         "article_id": article_id,
+                        "feed_id": article.get("feed_id", ""),
                         "tags": outcome.tags,
                         "tag_confidences": outcome.tag_confidences,
                         "cascade": decision.as_dict(),
@@ -584,6 +585,7 @@ class BatchProcessor:
                 article_tags_batch.append(
                     {
                         "article_id": article_id,
+                        "feed_id": article.get("feed_id", ""),
                         "tags": outcome.tags,
                         "tag_confidences": outcome.tag_confidences,
                         "cascade": decision.as_dict(),

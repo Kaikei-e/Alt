@@ -61,7 +61,7 @@ class ConnectArticleFetcher:
                     "title": a.title,
                     "content": a.content,
                     "created_at": created_at,
-                    "feed_id": None,
+                    "feed_id": a.feed_id if a.feed_id else None,
                     "url": "",
                     "user_id": a.user_id,
                 }

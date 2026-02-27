@@ -31,47 +31,39 @@ def extract_keywords_english(
         raise RuntimeError("KeyBERT not initialized")
 
     try:
-        # First extract both single words and phrases
-        single_keywords = keybert.extract_keywords(
+        # Single call covering both single words and phrases (1-3 ngrams)
+        all_raw = keybert.extract_keywords(
             text,
-            keyphrase_ngram_range=(1, 1),  # Single words only
+            keyphrase_ngram_range=(1, 3),
             top_n=config.top_keywords * 3,
             use_mmr=True,
-            diversity=0.3,
+            diversity=0.4,
         )
 
-        phrase_keywords = keybert.extract_keywords(
-            text,
-            keyphrase_ngram_range=(2, 3),  # Phrases only
-            top_n=config.top_keywords,
-            use_mmr=True,
-            diversity=0.5,
-        )
-
-        # Combine and process keywords
+        # Separate into phrases and single words, then merge
         all_keywords = []
         seen_words: set[str] = set()
 
         # Process phrases first to identify important compound terms
-        for phrase_tuple in cast(list[tuple[str, float]], phrase_keywords):
+        for phrase_tuple in cast(list[tuple[str, float]], all_raw):
             phrase = phrase_tuple[0].strip().lower()
             score = phrase_tuple[1]
-            # Only keep phrases with high scores or specific patterns
-            if score >= config.min_score_threshold * 1.5:  # Higher threshold for phrases
-                # Check if it's a meaningful compound (e.g., "apple intelligence", "mac mini")
-                words = phrase.split()
-                if len(words) >= 2:
+            words = phrase.split()
+            if len(words) >= 2:
+                # Only keep phrases with high scores or specific patterns
+                if score >= config.min_score_threshold * 1.5:  # Higher threshold for phrases
                     # Check for tech terms, product names, or proper nouns
-                    if any(w[0].isupper() for w in phrase.split() if w):
+                    if any(w[0].isupper() for w in phrase_tuple[0].strip().split() if w):
                         all_keywords.append((phrase, score))
                         # Mark individual words as seen to avoid duplication
                         seen_words.update(words)
 
         # Then add important single words not already in phrases
-        for word_tuple in cast(list[tuple[str, float]], single_keywords):
+        for word_tuple in cast(list[tuple[str, float]], all_raw):
             word = word_tuple[0].strip().lower()
             score = word_tuple[1]
-            if score >= config.min_score_threshold and word not in seen_words:
+            words = word.split()
+            if len(words) == 1 and score >= config.min_score_threshold and word not in seen_words:
                 # Skip generic words
                 if len(word) > 2 and not word.isdigit():
                     all_keywords.append((word, score))

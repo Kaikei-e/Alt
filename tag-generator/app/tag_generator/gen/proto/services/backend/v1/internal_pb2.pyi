@@ -10,20 +10,22 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class ArticleWithTags(_message.Message):
-    __slots__ = ("id", "title", "content", "tags", "created_at", "user_id")
+    __slots__ = ("id", "title", "content", "tags", "created_at", "user_id", "feed_id")
     ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     CONTENT_FIELD_NUMBER: _ClassVar[int]
     TAGS_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
     USER_ID_FIELD_NUMBER: _ClassVar[int]
+    FEED_ID_FIELD_NUMBER: _ClassVar[int]
     id: str
     title: str
     content: str
     tags: _containers.RepeatedScalarFieldContainer[str]
     created_at: _timestamp_pb2.Timestamp
     user_id: str
-    def __init__(self, id: _Optional[str] = ..., title: _Optional[str] = ..., content: _Optional[str] = ..., tags: _Optional[_Iterable[str]] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., user_id: _Optional[str] = ...) -> None: ...
+    feed_id: str
+    def __init__(self, id: _Optional[str] = ..., title: _Optional[str] = ..., content: _Optional[str] = ..., tags: _Optional[_Iterable[str]] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., user_id: _Optional[str] = ..., feed_id: _Optional[str] = ...) -> None: ...
 
 class DeletedArticle(_message.Message):
     __slots__ = ("id", "deleted_at")
@@ -152,14 +154,16 @@ class CreateArticleResponse(_message.Message):
     def __init__(self, article_id: _Optional[str] = ...) -> None: ...
 
 class SaveArticleSummaryRequest(_message.Message):
-    __slots__ = ("article_id", "summary", "language")
+    __slots__ = ("article_id", "summary", "language", "user_id")
     ARTICLE_ID_FIELD_NUMBER: _ClassVar[int]
     SUMMARY_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     article_id: str
     summary: str
     language: str
-    def __init__(self, article_id: _Optional[str] = ..., summary: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
+    user_id: str
+    def __init__(self, article_id: _Optional[str] = ..., summary: _Optional[str] = ..., language: _Optional[str] = ..., user_id: _Optional[str] = ...) -> None: ...
 
 class SaveArticleSummaryResponse(_message.Message):
     __slots__ = ("success",)
@@ -278,3 +282,111 @@ class ListUntaggedArticlesResponse(_message.Message):
     articles: _containers.RepeatedCompositeFieldContainer[ArticleWithTags]
     total_count: int
     def __init__(self, articles: _Optional[_Iterable[_Union[ArticleWithTags, _Mapping]]] = ..., total_count: _Optional[int] = ...) -> None: ...
+
+class DeleteArticleSummaryRequest(_message.Message):
+    __slots__ = ("article_id",)
+    ARTICLE_ID_FIELD_NUMBER: _ClassVar[int]
+    article_id: str
+    def __init__(self, article_id: _Optional[str] = ...) -> None: ...
+
+class DeleteArticleSummaryResponse(_message.Message):
+    __slots__ = ("success",)
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    def __init__(self, success: _Optional[bool] = ...) -> None: ...
+
+class CheckArticleSummaryExistsRequest(_message.Message):
+    __slots__ = ("article_id",)
+    ARTICLE_ID_FIELD_NUMBER: _ClassVar[int]
+    article_id: str
+    def __init__(self, article_id: _Optional[str] = ...) -> None: ...
+
+class CheckArticleSummaryExistsResponse(_message.Message):
+    __slots__ = ("exists", "summary_id")
+    EXISTS_FIELD_NUMBER: _ClassVar[int]
+    SUMMARY_ID_FIELD_NUMBER: _ClassVar[int]
+    exists: bool
+    summary_id: str
+    def __init__(self, exists: _Optional[bool] = ..., summary_id: _Optional[str] = ...) -> None: ...
+
+class ArticleWithSummaryItem(_message.Message):
+    __slots__ = ("article_id", "article_content", "article_url", "summary_id", "summary_japanese", "created_at")
+    ARTICLE_ID_FIELD_NUMBER: _ClassVar[int]
+    ARTICLE_CONTENT_FIELD_NUMBER: _ClassVar[int]
+    ARTICLE_URL_FIELD_NUMBER: _ClassVar[int]
+    SUMMARY_ID_FIELD_NUMBER: _ClassVar[int]
+    SUMMARY_JAPANESE_FIELD_NUMBER: _ClassVar[int]
+    CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    article_id: str
+    article_content: str
+    article_url: str
+    summary_id: str
+    summary_japanese: str
+    created_at: _timestamp_pb2.Timestamp
+    def __init__(self, article_id: _Optional[str] = ..., article_content: _Optional[str] = ..., article_url: _Optional[str] = ..., summary_id: _Optional[str] = ..., summary_japanese: _Optional[str] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ...) -> None: ...
+
+class FindArticlesWithSummariesRequest(_message.Message):
+    __slots__ = ("last_created_at", "last_id", "limit")
+    LAST_CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    LAST_ID_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    last_created_at: _timestamp_pb2.Timestamp
+    last_id: str
+    limit: int
+    def __init__(self, last_created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., last_id: _Optional[str] = ..., limit: _Optional[int] = ...) -> None: ...
+
+class FindArticlesWithSummariesResponse(_message.Message):
+    __slots__ = ("articles", "next_created_at", "next_id")
+    ARTICLES_FIELD_NUMBER: _ClassVar[int]
+    NEXT_CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    NEXT_ID_FIELD_NUMBER: _ClassVar[int]
+    articles: _containers.RepeatedCompositeFieldContainer[ArticleWithSummaryItem]
+    next_created_at: _timestamp_pb2.Timestamp
+    next_id: str
+    def __init__(self, articles: _Optional[_Iterable[_Union[ArticleWithSummaryItem, _Mapping]]] = ..., next_created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_id: _Optional[str] = ...) -> None: ...
+
+class UnsummarizedArticle(_message.Message):
+    __slots__ = ("id", "title", "content", "url", "created_at", "user_id")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    CONTENT_FIELD_NUMBER: _ClassVar[int]
+    URL_FIELD_NUMBER: _ClassVar[int]
+    CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    title: str
+    content: str
+    url: str
+    created_at: _timestamp_pb2.Timestamp
+    user_id: str
+    def __init__(self, id: _Optional[str] = ..., title: _Optional[str] = ..., content: _Optional[str] = ..., url: _Optional[str] = ..., created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., user_id: _Optional[str] = ...) -> None: ...
+
+class ListUnsummarizedArticlesRequest(_message.Message):
+    __slots__ = ("last_created_at", "last_id", "limit")
+    LAST_CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    LAST_ID_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    last_created_at: _timestamp_pb2.Timestamp
+    last_id: str
+    limit: int
+    def __init__(self, last_created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., last_id: _Optional[str] = ..., limit: _Optional[int] = ...) -> None: ...
+
+class ListUnsummarizedArticlesResponse(_message.Message):
+    __slots__ = ("articles", "next_created_at", "next_id")
+    ARTICLES_FIELD_NUMBER: _ClassVar[int]
+    NEXT_CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    NEXT_ID_FIELD_NUMBER: _ClassVar[int]
+    articles: _containers.RepeatedCompositeFieldContainer[UnsummarizedArticle]
+    next_created_at: _timestamp_pb2.Timestamp
+    next_id: str
+    def __init__(self, articles: _Optional[_Iterable[_Union[UnsummarizedArticle, _Mapping]]] = ..., next_created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_id: _Optional[str] = ...) -> None: ...
+
+class HasUnsummarizedArticlesRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class HasUnsummarizedArticlesResponse(_message.Message):
+    __slots__ = ("has_unsummarized",)
+    HAS_UNSUMMARIZED_FIELD_NUMBER: _ClassVar[int]
+    has_unsummarized: bool
+    def __init__(self, has_unsummarized: _Optional[bool] = ...) -> None: ...
