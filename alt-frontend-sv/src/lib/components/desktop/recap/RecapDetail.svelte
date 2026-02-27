@@ -36,7 +36,7 @@ function handleTtsClick() {
 	if (tts.isPlaying || tts.isLoading) {
 		tts.stop();
 	} else {
-		tts.play(ttsText);
+		tts.play(ttsText, { speed: 1.25 });
 	}
 }
 </script>

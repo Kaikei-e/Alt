@@ -7,6 +7,8 @@ import {
 	FileText,
 	Loader2,
 	Sparkles,
+	Volume2,
+	Square,
 } from "@lucide/svelte";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
@@ -19,6 +21,7 @@ import {
 import type { Snippet } from "svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
+import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 
 interface Props {
 	open: boolean;
@@ -46,6 +49,17 @@ let {
 	footerActions,
 }: Props = $props();
 
+// TTS playback
+const tts = useTtsPlayback();
+
+function handleTtsClick() {
+	if (tts.isPlaying || tts.isLoading) {
+		tts.stop();
+	} else if (summary) {
+		tts.play(summary, { speed: 1.25 });
+	}
+}
+
 // Content fetching state
 let isFetchingContent = $state(false);
 let articleContent = $state<string | null>(null);
@@ -67,6 +81,8 @@ let previousFeedUrl = $state<string | null>(null);
 // Cleanup on modal close
 $effect(() => {
 	if (!open) {
+		// Stop TTS playback
+		tts.stop();
 		// Cancel any ongoing content fetch request
 		if (contentAbortController) {
 			contentAbortController.abort();
@@ -98,6 +114,8 @@ $effect(() => {
 
 	previousFeedUrl = currentFeedUrl;
 
+	// Stop TTS playback
+	tts.stop();
 	// Cancel any ongoing content fetch request
 	if (contentAbortController) {
 		contentAbortController.abort();
@@ -369,13 +387,34 @@ async function handleSummarize() {
 					<!-- AI Summary Section -->
 					{#if summary}
 						<div class="mb-6 p-4 bg-white rounded border border-gray-200">
-							<h3 class="text-sm font-semibold text-gray-500 mb-3 flex items-center gap-2">
-								<Sparkles class="h-4 w-4" />
-								AI SUMMARY
-							</h3>
+							<div class="flex items-center justify-between mb-3">
+								<h3 class="text-sm font-semibold text-gray-500 flex items-center gap-2">
+									<Sparkles class="h-4 w-4" />
+									AI SUMMARY
+								</h3>
+								{#if !isSummarizing}
+									<button
+										onclick={handleTtsClick}
+										class="p-2 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+										aria-label={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
+										title={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
+									>
+										{#if tts.isLoading}
+											<Loader2 class="h-4 w-4 animate-spin" />
+										{:else if tts.isPlaying}
+											<Square class="h-4 w-4" />
+										{:else}
+											<Volume2 class="h-4 w-4" />
+										{/if}
+									</button>
+								{/if}
+							</div>
 							<div class="text-gray-700 leading-relaxed whitespace-pre-wrap">
 								{summary}
 							</div>
+							{#if tts.error}
+								<p class="text-xs text-red-500 mt-2">{tts.error}</p>
+							{/if}
 						</div>
 					{:else if summaryError}
 						<div class="mb-6 p-4 bg-red-50 border border-red-200 rounded">
