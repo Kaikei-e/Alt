@@ -1,6 +1,7 @@
 package rag_http
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -105,6 +106,8 @@ func (h *Handler) DeleteIndex(ctx echo.Context) error {
 	return ctx.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
 }
 
+const upsertTimeout = 90 * time.Second
+
 // Upsert an article to the RAG index
 // (POST /internal/rag/index/upsert)
 func (h *Handler) UpsertIndex(ctx echo.Context) error {
@@ -112,6 +115,10 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 	if err := ctx.Bind(&req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
+
+	// Server-side timeout decoupled from caller's context
+	timeoutCtx, cancel := context.WithTimeout(ctx.Request().Context(), upsertTimeout)
+	defer cancel()
 
 	// Check for embedder override (hyper-boost)
 	indexUsecase := h.indexUsecase
@@ -122,7 +129,7 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 
 	// Index the article with all required fields from the request
 	if err := indexUsecase.Upsert(
-		ctx.Request().Context(),
+		timeoutCtx,
 		req.ArticleId,
 		req.Title,
 		req.Url, // URL is a required field per OpenAPI spec

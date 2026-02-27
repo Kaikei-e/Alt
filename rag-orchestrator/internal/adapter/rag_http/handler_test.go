@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"rag-orchestrator/internal/adapter/rag_http"
 	"rag-orchestrator/internal/adapter/rag_http/openapi"
@@ -183,12 +184,14 @@ func TestHandler_AnswerWithRAGStream(t *testing.T) {
 type dummyIndexUsecase struct {
 	capturedURL   string
 	capturedTitle string
+	capturedCtx   context.Context
 	returnError   error
 }
 
 func (d *dummyIndexUsecase) Upsert(ctx context.Context, articleID, title, url, body string) error {
 	d.capturedURL = url
 	d.capturedTitle = title
+	d.capturedCtx = ctx
 	return d.returnError
 }
 
@@ -255,4 +258,34 @@ func TestUpsertIndex_ReturnsErrorWhenUsecaseFails(t *testing.T) {
 
 	assert.NoError(t, err) // handler doesn't return error, but sends error response
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestUpsertIndex_ContextHasServerSideTimeout(t *testing.T) {
+	e := echo.New()
+	dummy := &dummyIndexUsecase{}
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil)
+
+	reqBody := openapi.UpsertIndexRequest{
+		ArticleId: "art-timeout",
+		Title:     "Timeout Test",
+		Url:       "https://example.com/timeout",
+		Body:      "body",
+		UserId:    "user-1",
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.UpsertIndex(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+	// The context passed to Upsert should have a server-side deadline
+	assert.NotNil(t, dummy.capturedCtx)
+	deadline, ok := dummy.capturedCtx.Deadline()
+	assert.True(t, ok, "context passed to Upsert must have a server-side deadline")
+	assert.WithinDuration(t, time.Now().Add(90*time.Second), deadline, 5*time.Second)
 }

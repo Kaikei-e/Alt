@@ -10,11 +10,19 @@ import (
 	"rag-orchestrator/internal/usecase"
 )
 
+const (
+	defaultPollInterval = 100 * time.Millisecond
+	jobTimeout          = 60 * time.Second
+	initialBackoff      = 1 * time.Second
+	maxBackoff          = 5 * time.Minute
+)
+
 type JobWorker struct {
 	jobRepo      domain.RagJobRepository
 	indexUsecase usecase.IndexArticleUsecase
 	logger       *slog.Logger
 	stopChan     chan struct{}
+	backoff      time.Duration
 }
 
 func NewJobWorker(
@@ -41,7 +49,7 @@ func (w *JobWorker) Stop() {
 }
 
 func (w *JobWorker) run() {
-	ticker := time.NewTicker(100 * time.Millisecond) // Poll interval
+	ticker := time.NewTicker(defaultPollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -50,12 +58,18 @@ func (w *JobWorker) run() {
 			return
 		case <-ticker.C:
 			w.processNextJob()
+			if w.backoff > 0 {
+				ticker.Reset(w.backoff)
+			} else {
+				ticker.Reset(defaultPollInterval)
+			}
 		}
 	}
 }
 
 func (w *JobWorker) processNextJob() {
-	ctx := context.Background() // Create a new context for each job processing
+	ctx, cancel := context.WithTimeout(context.Background(), jobTimeout)
+	defer cancel()
 
 	job, err := w.jobRepo.AcquireNextJob(ctx)
 	if err != nil {
@@ -83,14 +97,27 @@ func (w *JobWorker) processNextJob() {
 		status = "failed"
 		msg := processErr.Error()
 		errMsg = &msg
-		w.logger.Error("Job failed", "job_id", job.ID, "error", processErr)
+		w.backoff = w.nextBackoff(w.backoff)
+		w.logger.Warn("Worker backing off", "job_id", job.ID, "backoff", w.backoff, "error", processErr)
 	} else {
+		w.backoff = 0
 		w.logger.Info("Job completed", "job_id", job.ID)
 	}
 
 	if err := w.jobRepo.UpdateStatus(ctx, job.ID, status, errMsg); err != nil {
 		w.logger.Error("Failed to update job status", "job_id", job.ID, "error", err)
 	}
+}
+
+func (w *JobWorker) nextBackoff(current time.Duration) time.Duration {
+	if current == 0 {
+		return initialBackoff
+	}
+	next := current * 2
+	if next > maxBackoff {
+		return maxBackoff
+	}
+	return next
 }
 
 func (w *JobWorker) processBackfillArticle(ctx context.Context, job *domain.RagJob) error {
