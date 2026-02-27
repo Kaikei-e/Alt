@@ -15,16 +15,18 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        set -e
-        apk add --no-cache curl bash jq docker-cli >/dev/null 2>&1
-        SC_URL="https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-linux-amd64"
-        if [ "$$(uname -m)" = "aarch64" ]; then
-          SC_URL="https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-linux-arm64"
-        fi
-        curl -fsSL "$$SC_URL" -o /usr/local/bin/supercronic
-        chmod +x /usr/local/bin/supercronic
-        echo "Starting supercronic scheduler..."
-        exec /usr/local/bin/supercronic /scripts/crontab
+          set -e
+          apk add --no-cache curl bash jq docker-cli >/dev/null 2>&1
+          SC_URL="https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-linux-amd64"
+          if [ "$$(uname -m)" = "aarch64" ]; then
+            SC_URL="https://github.com/aptible/supercronic/releases/download/v0.2.33/supercronic-linux-arm64"
+          fi
+          curl -fsSL "$$SC_URL" -o /usr/local/bin/supercronic
+          chmod +x /usr/local/bin/supercronic
+          echo "Starting supercronic scheduler..."
+          exec /usr/local/bin/supercronic /scripts/crontab
+    env_file:
+      - ../scripts/backup/alt-backup.env
     environment:
       - IN_CONTAINER=1
       - RESTIC_REPOSITORY=/backups/restic-repo
@@ -40,6 +42,9 @@ services:
     volumes:
       # Docker socket for pg_dump via docker exec
       - /var/run/docker.sock:/var/run/docker.sock
+      # Configured SSH keys for remote sync
+      - ../secrets/ssh/id_ed25519_backup:/root/.ssh/id_ed25519:ro
+      - ../secrets/ssh/known_hosts:/root/.ssh/known_hosts:ro
       # Backup destination
       - ../backups:/backups
       # PostgreSQL logical backups
