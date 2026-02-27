@@ -32,6 +32,7 @@ type UntaggedArticle struct {
 	Title   string
 	Content string
 	UserID  string
+	FeedID  string
 }
 
 // ListUntaggedArticlesPort returns articles without tags.

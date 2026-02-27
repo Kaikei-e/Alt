@@ -11,6 +11,7 @@ type InternalUntaggedArticle struct {
 	Title   string
 	Content string
 	UserID  string
+	FeedID  string
 }
 
 // ListUntaggedArticles returns articles that have no entries in article_tags.
@@ -30,7 +31,7 @@ func (r *AltDBRepository) ListUntaggedArticles(ctx context.Context, limit int, o
 
 	// Fetch paginated results
 	rows, err := r.pool.Query(ctx, `
-		SELECT a.id, a.title, a.content, a.user_id
+		SELECT a.id, a.title, a.content, a.user_id, COALESCE(a.feed_id::text, '') AS feed_id
 		FROM articles a
 		WHERE NOT EXISTS (
 			SELECT 1 FROM article_tags at WHERE at.article_id = a.id
@@ -46,7 +47,7 @@ func (r *AltDBRepository) ListUntaggedArticles(ctx context.Context, limit int, o
 	var articles []InternalUntaggedArticle
 	for rows.Next() {
 		var a InternalUntaggedArticle
-		if err := rows.Scan(&a.ID, &a.Title, &a.Content, &a.UserID); err != nil {
+		if err := rows.Scan(&a.ID, &a.Title, &a.Content, &a.UserID, &a.FeedID); err != nil {
 			return nil, 0, fmt.Errorf("scan untagged: %w", err)
 		}
 		articles = append(articles, a)

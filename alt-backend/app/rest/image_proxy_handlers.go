@@ -3,8 +3,12 @@ package rest
 import (
 	"alt/config"
 	"alt/di"
+	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -30,7 +34,11 @@ func handleImageProxy(container *di.ApplicationComponents) echo.HandlerFunc {
 			return c.String(http.StatusBadRequest, "missing parameters")
 		}
 
-		result, err := container.ImageProxyUsecase.ProxyImage(c.Request().Context(), sig, encodedURL)
+		// Add 25s timeout to fit within nginx's 30s proxy_read_timeout
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 25*time.Second)
+		defer cancel()
+
+		result, err := container.ImageProxyUsecase.ProxyImage(ctx, sig, encodedURL)
 		if err != nil {
 			errMsg := err.Error()
 			if strings.Contains(errMsg, "signature verification failed") {
@@ -39,6 +47,18 @@ func handleImageProxy(container *di.ApplicationComponents) echo.HandlerFunc {
 			if strings.Contains(errMsg, "domain not allowed") {
 				return c.String(http.StatusForbidden, "domain not allowed")
 			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				slog.WarnContext(c.Request().Context(), "image proxy timeout",
+					"error", err,
+				)
+				return c.String(http.StatusGatewayTimeout, "image proxy timeout")
+			}
+			if errors.Is(err, context.Canceled) {
+				return c.NoContent(499)
+			}
+			slog.ErrorContext(c.Request().Context(), "image proxy error",
+				"error", err,
+			)
 			return c.String(http.StatusBadGateway, "image proxy error")
 		}
 

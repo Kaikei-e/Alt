@@ -55,7 +55,7 @@ func TestDynamicDomainGateway_SubscriptionDomains(t *testing.T) {
 	gw := NewDynamicDomainGateway(&mockDomainLister{
 		domains: []domain.FeedLinkDomain{
 			{Domain: "blog.example.com", Scheme: "https"},
-			{Domain: "news.custom.org", Scheme: "https"},
+			{Domain: "news.example.org", Scheme: "https"},
 		},
 	})
 
@@ -64,8 +64,46 @@ func TestDynamicDomainGateway_SubscriptionDomains(t *testing.T) {
 		allowed  bool
 	}{
 		{"blog.example.com", true},
-		{"news.custom.org", true},
+		{"news.example.org", true},
 		{"other.example.com", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.hostname, func(t *testing.T) {
+			allowed, err := gw.IsAllowedImageDomain(context.Background(), tt.hostname)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if allowed != tt.allowed {
+				t.Errorf("IsAllowedImageDomain(%q) = %v, want %v", tt.hostname, allowed, tt.allowed)
+			}
+		})
+	}
+}
+
+func TestDynamicDomainGateway_OGPImageDomains(t *testing.T) {
+	// OGP image domains differ from feed subscription domains.
+	// The domain lister now returns both feed_links and article_heads.og_image_url domains.
+	gw := NewDynamicDomainGateway(&mockDomainLister{
+		domains: []domain.FeedLinkDomain{
+			{Domain: "feed.example.com", Scheme: "https"},     // feed domain
+			{Domain: "images.example.com", Scheme: "https"},   // OGP image domain (different from feed)
+			{Domain: "rss.example.org", Scheme: "https"},      // feed domain
+			{Domain: "cdn.example.org", Scheme: "https"},      // OGP image domain (different from feed)
+			{Domain: "ogp.example.net", Scheme: "https"},      // OGP image domain only
+		},
+	})
+
+	tests := []struct {
+		hostname string
+		allowed  bool
+	}{
+		{"feed.example.com", true},
+		{"images.example.com", true},
+		{"rss.example.org", true},
+		{"cdn.example.org", true},
+		{"ogp.example.net", true},
+		{"evil.attacker.example.invalid", false},
 	}
 
 	for _, tt := range tests {

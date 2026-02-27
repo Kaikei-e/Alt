@@ -99,7 +99,7 @@ func (u *ImageProxyUsecase) ProxyImage(ctx context.Context, sig, encodedURL stri
 
 	// 4. Rate limit
 	if u.rateLimiter != nil {
-		if err := u.rateLimiter.WaitForHost(ctx, parsedURL.Hostname()); err != nil {
+		if err := u.rateLimiter.WaitForHost(ctx, originalURL); err != nil {
 			return nil, fmt.Errorf("rate limit: %w", err)
 		}
 	}

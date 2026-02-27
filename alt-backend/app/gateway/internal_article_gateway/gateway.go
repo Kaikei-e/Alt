@@ -220,6 +220,7 @@ func (g *Gateway) ListUntaggedArticles(ctx context.Context, limit int, offset in
 			Title:   da.Title,
 			Content: da.Content,
 			UserID:  da.UserID,
+			FeedID:  da.FeedID,
 		}
 	}
 

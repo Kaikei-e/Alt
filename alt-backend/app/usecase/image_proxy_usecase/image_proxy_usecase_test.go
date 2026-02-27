@@ -2,6 +2,7 @@ package image_proxy_usecase
 
 import (
 	"alt/domain"
+	"alt/utils/rate_limiter"
 	"context"
 	"fmt"
 	"net/url"
@@ -198,6 +199,41 @@ func TestGenerateProxyURL_Empty(t *testing.T) {
 	result := uc.GenerateProxyURL("")
 	if result != "" {
 		t.Errorf("expected empty string, got %s", result)
+	}
+}
+
+func TestProxyImage_WithRateLimiter(t *testing.T) {
+	processedResult := &domain.ImageProxyResult{
+		Data:        []byte("processed-webp"),
+		ContentType: "image/webp",
+		Width:       600,
+		Height:      300,
+		SizeBytes:   14,
+		ETag:        "new-etag",
+		ExpiresAt:   time.Now().Add(12 * time.Hour),
+	}
+
+	rl := rate_limiter.NewHostRateLimiter(100 * time.Millisecond)
+
+	uc := NewImageProxyUsecase(
+		&mockImageFetchPort{result: &domain.ImageFetchResult{
+			Data:        []byte("raw-jpeg-data"),
+			ContentType: "image/jpeg",
+			Size:        13,
+		}},
+		&mockImageProcessingPort{result: processedResult},
+		&mockImageProxyCachePort{cached: nil},
+		&mockSignerPort{decodedURL: "https://example.com/img.jpg"},
+		&mockDynamicDomainPort{allowed: true},
+		rl, 600, 80, 720,
+	)
+
+	result, err := uc.ProxyImage(context.Background(), "valid-sig", "encoded-url")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(result.Data) != "processed-webp" {
+		t.Error("expected processed data")
 	}
 }
 
