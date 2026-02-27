@@ -115,6 +115,11 @@ services:
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=tag-generator-group
       - CONSUMER_NAME=tag-generator-1
+      # PyTorch thread limiting (prevent CPU explosion)
+      - OMP_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
+      - TORCH_NUM_THREADS=4
+      - TOKENIZERS_PARALLELISM=false
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=tag-generator
