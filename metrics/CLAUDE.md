@@ -2,7 +2,7 @@
 
 ## Overview
 
-System health analyzer with ClickHouse. **Python 3.11+**, generates Japanese Markdown reports.
+System health analyzer with ClickHouse. **Python 3.13+**, generates Japanese Markdown reports.
 
 > Details: `docs/services/metrics.md`
 
