@@ -116,13 +116,12 @@ class TestTagExtractor:
             mock_embedder = Mock()
             mock_keybert = Mock()
             mock_ja_tagger = Mock()
-            mock_keybert.extract_keywords.side_effect = [
-                [
-                    ("machine learning", 0.8),
-                    ("artificial intelligence", 0.7),
-                    ("technology", 0.6),
-                ],
-                [("Apple Intelligence", 0.9), ("Mac Mini", 0.8)],
+            mock_keybert.extract_keywords.return_value = [
+                ("Apple Intelligence", 0.9),
+                ("Mac Mini", 0.8),
+                ("machine learning", 0.8),
+                ("artificial intelligence", 0.7),
+                ("technology", 0.6),
             ]
             mock_get_models.return_value = (mock_embedder, mock_keybert, mock_ja_tagger)
 
@@ -131,7 +130,7 @@ class TestTagExtractor:
             )
 
             assert len(result) > 0
-            assert mock_keybert.extract_keywords.call_count == 2  # Called for single words and phrases
+            assert mock_keybert.extract_keywords.call_count == 1  # Single call with (1,3) ngram range
 
     def test_should_extract_japanese_compound_words(self):
         """Should extract compound words from Japanese text."""
