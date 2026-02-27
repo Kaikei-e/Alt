@@ -24,7 +24,7 @@ func OutboxWorkerRunner(ctx context.Context, repo *alt_db.AltDBRepository, ragIn
 }
 
 func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort) {
-	events, err := repo.FetchPendingOutboxEvents(ctx, 10)
+	events, err := repo.FetchAndLockPendingOutboxEvents(ctx, 10)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to fetch pending outbox events", "error", err)
 		return
