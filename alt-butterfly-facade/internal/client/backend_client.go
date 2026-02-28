@@ -65,6 +65,11 @@ func (c *BackendClient) DefaultTimeout() time.Duration {
 	return c.requestTimeout
 }
 
+// StreamingTimeout returns the configured streaming request timeout.
+func (c *BackendClient) StreamingTimeout() time.Duration {
+	return c.streamingTimeout
+}
+
 // ForwardRequest forwards an HTTP request to the backend with the given token.
 func (c *BackendClient) ForwardRequest(req *http.Request, token string) (*http.Response, error) {
 	// Build backend URL
