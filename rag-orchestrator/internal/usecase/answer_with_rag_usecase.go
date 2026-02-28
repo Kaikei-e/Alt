@@ -16,17 +16,18 @@ import (
 )
 
 type answerWithRAGUsecase struct {
-	retrieve        RetrieveContextUsecase
-	promptBuilder   PromptBuilder
-	llmClient       domain.LLMClient
-	validator       OutputValidator
-	maxChunks       int
-	maxTokens       int
-	maxPromptTokens int
-	promptVersion   string
-	defaultLocale   string
-	cache           *expirable.LRU[string, *AnswerWithRAGOutput]
-	logger          *slog.Logger
+	retrieve          RetrieveContextUsecase
+	promptBuilder     PromptBuilder
+	llmClient         domain.LLMClient
+	validator         OutputValidator
+	maxChunks         int
+	maxTokens         int
+	maxPromptTokens   int
+	promptVersion     string
+	defaultLocale     string
+	heartbeatInterval time.Duration
+	cache             *expirable.LRU[string, *AnswerWithRAGOutput]
+	logger            *slog.Logger
 }
 
 // NewAnswerWithRAGUsecase wires together the components needed to generate a RAG answer.
@@ -43,34 +44,52 @@ func NewAnswerWithRAGUsecase(
 	if maxPromptTokens <= 0 {
 		maxPromptTokens = 6000
 	}
-	cacheSize := 256
-	cacheTTL := 10 * time.Minute
+	cfg := answerUsecaseConfig{
+		cacheSize:         256,
+		cacheTTL:          10 * time.Minute,
+		heartbeatInterval: 5 * time.Second,
+	}
 	for _, opt := range opts {
-		opt(&cacheSize, &cacheTTL)
+		opt(&cfg)
 	}
 	return &answerWithRAGUsecase{
-		retrieve:        retrieve,
-		promptBuilder:   promptBuilder,
-		llmClient:       llmClient,
-		validator:       validator,
-		maxChunks:       maxChunks,
-		maxTokens:       maxTokens,
-		maxPromptTokens: maxPromptTokens,
-		promptVersion:   promptVersion,
-		defaultLocale:   defaultLocale,
-		cache:           expirable.NewLRU[string, *AnswerWithRAGOutput](cacheSize, nil, cacheTTL),
-		logger:          logger,
+		retrieve:          retrieve,
+		promptBuilder:     promptBuilder,
+		llmClient:         llmClient,
+		validator:         validator,
+		maxChunks:         maxChunks,
+		maxTokens:         maxTokens,
+		maxPromptTokens:   maxPromptTokens,
+		promptVersion:     promptVersion,
+		defaultLocale:     defaultLocale,
+		heartbeatInterval: cfg.heartbeatInterval,
+		cache:             expirable.NewLRU[string, *AnswerWithRAGOutput](cfg.cacheSize, nil, cfg.cacheTTL),
+		logger:            logger,
 	}
 }
 
 // AnswerUsecaseOption configures the answer usecase.
-type AnswerUsecaseOption func(cacheSize *int, cacheTTL *time.Duration)
+type AnswerUsecaseOption func(cfg *answerUsecaseConfig)
+
+type answerUsecaseConfig struct {
+	cacheSize         int
+	cacheTTL          time.Duration
+	heartbeatInterval time.Duration
+}
 
 // WithCacheConfig sets the cache size and TTL.
 func WithCacheConfig(size int, ttl time.Duration) AnswerUsecaseOption {
-	return func(cacheSize *int, cacheTTL *time.Duration) {
-		*cacheSize = size
-		*cacheTTL = ttl
+	return func(cfg *answerUsecaseConfig) {
+		cfg.cacheSize = size
+		cfg.cacheTTL = ttl
+	}
+}
+
+// WithHeartbeatInterval sets the interval for heartbeat events during long operations.
+// Default is 5 seconds. Set to 0 to disable heartbeats.
+func WithHeartbeatInterval(d time.Duration) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		cfg.heartbeatInterval = d
 	}
 }
 

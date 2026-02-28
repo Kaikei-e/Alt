@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
+
+	"rag-orchestrator/internal/domain"
 )
 
 // Stream streams a RAG answer using Server-Sent Events.
@@ -56,6 +59,9 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		}
 
 		// 3. Prepare Context (retrieval + reranking)
+		// Run buildPrompt in a goroutine with a heartbeat ticker to keep data
+		// flowing through Cloudflare Tunnel. Without this, Cloudflare's 30-second
+		// Proxy Write Timeout kills the connection during retrieval + reranking.
 		if !u.sendStreamEvent(ctx, events, StreamEvent{
 			Kind:    StreamEventKindProgress,
 			Payload: "searching",
@@ -63,13 +69,40 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
-		promptData, err := u.buildPrompt(ctx, input)
-		if err != nil {
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: err.Error(),
-			})
-			return
+		type buildResult struct {
+			data *promptBuildResult
+			err  error
+		}
+		buildCh := make(chan buildResult, 1)
+		go func() {
+			data, buildErr := u.buildPrompt(ctx, input)
+			buildCh <- buildResult{data: data, err: buildErr}
+		}()
+
+		var promptData *promptBuildResult
+		heartbeat := time.NewTicker(u.heartbeatInterval)
+		defer heartbeat.Stop()
+	waitBuild:
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result := <-buildCh:
+				if result.err != nil {
+					u.sendStreamEvent(ctx, events, StreamEvent{
+						Kind:    StreamEventKindFallback,
+						Payload: result.err.Error(),
+					})
+					return
+				}
+				promptData = result.data
+				break waitBuild
+			case <-heartbeat.C:
+				u.sendStreamEvent(ctx, events, StreamEvent{
+					Kind:    StreamEventKindHeartbeat,
+					Payload: "",
+				})
+			}
 		}
 
 		if !u.sendStreamEvent(ctx, events, StreamEvent{
@@ -110,13 +143,43 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
-		chunkCh, errCh, err := u.llmClient.ChatStream(ctx, messages, promptData.maxTokens)
-		if err != nil {
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: fmt.Sprintf("llm chat stream setup failed: %v", err),
-			})
-			return
+		// Run ChatStream in a goroutine so we can send heartbeats while
+		// waiting for Ollama to accept the connection and start generating.
+		type chatStreamResult struct {
+			chunkCh <-chan domain.LLMStreamChunk
+			errCh   <-chan error
+			err     error
+		}
+		chatStreamCh := make(chan chatStreamResult, 1)
+		go func() {
+			ch, ech, setupErr := u.llmClient.ChatStream(ctx, messages, promptData.maxTokens)
+			chatStreamCh <- chatStreamResult{chunkCh: ch, errCh: ech, err: setupErr}
+		}()
+
+		var chunkCh <-chan domain.LLMStreamChunk
+		var errCh <-chan error
+	waitChatStream:
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case result := <-chatStreamCh:
+				if result.err != nil {
+					u.sendStreamEvent(ctx, events, StreamEvent{
+						Kind:    StreamEventKindFallback,
+						Payload: fmt.Sprintf("llm chat stream setup failed: %v", result.err),
+					})
+					return
+				}
+				chunkCh = result.chunkCh
+				errCh = result.errCh
+				break waitChatStream
+			case <-heartbeat.C:
+				u.sendStreamEvent(ctx, events, StreamEvent{
+					Kind:    StreamEventKindHeartbeat,
+					Payload: "",
+				})
+			}
 		}
 
 		var builder strings.Builder
@@ -261,6 +324,11 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 					Payload: fmt.Sprintf("llm stream failed: %v", streamErr),
 				})
 				return
+			case <-heartbeat.C:
+				u.sendStreamEvent(ctx, events, StreamEvent{
+					Kind:    StreamEventKindHeartbeat,
+					Payload: "",
+				})
 			}
 			if done {
 				break

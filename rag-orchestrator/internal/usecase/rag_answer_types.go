@@ -54,8 +54,9 @@ const (
 	StreamEventKindMeta     StreamEventKind = "meta"
 	StreamEventKindDelta    StreamEventKind = "delta"
 	StreamEventKindThinking StreamEventKind = "thinking"
-	StreamEventKindProgress StreamEventKind = "progress"
-	StreamEventKindDone     StreamEventKind = "done"
+	StreamEventKindProgress  StreamEventKind = "progress"
+	StreamEventKindHeartbeat StreamEventKind = "heartbeat"
+	StreamEventKindDone      StreamEventKind = "done"
 	StreamEventKindFallback StreamEventKind = "fallback"
 	StreamEventKindError    StreamEventKind = "error"
 )

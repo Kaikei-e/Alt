@@ -180,6 +180,28 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 			},
 		}, true
 
+	case usecase.StreamEventKindHeartbeat:
+		return &augurv2.StreamChatEvent{
+			Kind: "heartbeat",
+			Payload: &augurv2.StreamChatEvent_Delta{
+				Delta: "",
+			},
+		}, true
+
+	case usecase.StreamEventKindProgress:
+		progress, ok := event.Payload.(string)
+		if !ok {
+			return nil, true
+		}
+		// Reuse delta payload as carrier for progress messages (e.g. "searching", "generating").
+		// The kind field distinguishes this from actual content deltas.
+		return &augurv2.StreamChatEvent{
+			Kind: "progress",
+			Payload: &augurv2.StreamChatEvent_Delta{
+				Delta: sanitizeUTF8(progress),
+			},
+		}, true
+
 	default:
 		h.logger.Warn("unknown stream event kind", slog.String("kind", string(event.Kind)))
 		return nil, true

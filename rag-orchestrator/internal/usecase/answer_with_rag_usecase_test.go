@@ -4,11 +4,12 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
+	"time"
 
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -221,4 +222,297 @@ func TestStream_SendsThinkingEventFirst(t *testing.T) {
 		}
 	}
 	assert.Greater(t, metaIdx, 0, "meta event should come after thinking event")
+}
+
+// TestStream_HeartbeatDuringSlowBuildPrompt verifies that heartbeat events are
+// emitted at regular intervals when buildPrompt (retrieval + reranking) takes a
+// long time. This prevents Cloudflare's 30-second Proxy Write Timeout from
+// killing the connection when no data flows through the tunnel.
+func TestStream_HeartbeatDuringSlowBuildPrompt(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	// Use a short heartbeat interval for testing (100ms instead of 5s)
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithHeartbeatInterval(100*time.Millisecond),
+	)
+
+	chunkID := uuid.New()
+	// Mock retrieval that takes 350ms (should trigger ~3 heartbeats at 100ms interval)
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			time.Sleep(350 * time.Millisecond)
+		}).
+		Return(&usecase.RetrieveContextOutput{
+			Contexts: []usecase.ContextItem{
+				{
+					ChunkID:         chunkID,
+					ChunkText:       "Test chunk",
+					URL:             "http://example.com",
+					Title:           "Example",
+					PublishedAt:     "2025-12-25T00:00:00Z",
+					Score:           0.9,
+					DocumentVersion: 1,
+				},
+			},
+		}, nil)
+
+	// Prepare streaming response
+	chunkChan := make(chan domain.LLMStreamChunk, 2)
+	errChan := make(chan error)
+
+	llmResponse := `{"answer": "Hello world [chunk_1]", "citations": [{"chunk_id":"` + chunkID.String() + `","reason":"relevant"}], "fallback": false, "reason": ""}`
+	chunkChan <- domain.LLMStreamChunk{Response: llmResponse, Done: false}
+	chunkChan <- domain.LLMStreamChunk{Done: true}
+	close(chunkChan)
+	close(errChan)
+
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
+
+	// Execute Stream
+	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+
+	// Collect all events
+	var events []usecase.StreamEvent
+	for event := range eventChan {
+		events = append(events, event)
+	}
+
+	// Count heartbeat events
+	heartbeatCount := 0
+	for _, e := range events {
+		if e.Kind == usecase.StreamEventKindHeartbeat {
+			heartbeatCount++
+		}
+	}
+
+	// With 350ms delay and 100ms interval, expect at least 2 heartbeats
+	assert.GreaterOrEqual(t, heartbeatCount, 2,
+		"should emit heartbeats during slow buildPrompt (got %d)", heartbeatCount)
+
+	// Verify heartbeat payload is empty string
+	for _, e := range events {
+		if e.Kind == usecase.StreamEventKindHeartbeat {
+			assert.Equal(t, "", e.Payload, "heartbeat payload should be empty")
+		}
+	}
+
+	// Verify stream still completes successfully with done event
+	lastEvent := events[len(events)-1]
+	assert.Equal(t, usecase.StreamEventKindDone, lastEvent.Kind, "stream should complete with done event")
+}
+
+// TestStream_NoHeartbeatWhenBuildPromptFast verifies that no heartbeat events
+// are emitted when buildPrompt completes quickly (under the heartbeat interval).
+func TestStream_NoHeartbeatWhenBuildPromptFast(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	// Use a long heartbeat interval so no heartbeats fire during fast buildPrompt
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithHeartbeatInterval(10*time.Second),
+	)
+
+	chunkID := uuid.New()
+	// Mock instant retrieval - no delay
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{
+				ChunkID:         chunkID,
+				ChunkText:       "Test chunk",
+				URL:             "http://example.com",
+				Title:           "Example",
+				PublishedAt:     "2025-12-25T00:00:00Z",
+				Score:           0.9,
+				DocumentVersion: 1,
+			},
+		},
+	}, nil)
+
+	chunkChan := make(chan domain.LLMStreamChunk, 2)
+	errChan := make(chan error)
+
+	llmResponse := `{"answer": "Hello world [chunk_1]", "citations": [{"chunk_id":"` + chunkID.String() + `","reason":"relevant"}], "fallback": false, "reason": ""}`
+	chunkChan <- domain.LLMStreamChunk{Response: llmResponse, Done: false}
+	chunkChan <- domain.LLMStreamChunk{Done: true}
+	close(chunkChan)
+	close(errChan)
+
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
+
+	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+
+	var events []usecase.StreamEvent
+	for event := range eventChan {
+		events = append(events, event)
+	}
+
+	// Count heartbeat events - should be zero
+	heartbeatCount := 0
+	for _, e := range events {
+		if e.Kind == usecase.StreamEventKindHeartbeat {
+			heartbeatCount++
+		}
+	}
+
+	assert.Equal(t, 0, heartbeatCount, "should not emit heartbeats when buildPrompt is fast")
+}
+
+// TestStream_HeartbeatDuringChatStreamSetup verifies that heartbeat events are
+// emitted while waiting for ChatStream() to establish a connection to Ollama.
+// ChatStream() can block for seconds when the LLM is loading or busy.
+func TestStream_HeartbeatDuringChatStreamSetup(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithHeartbeatInterval(100*time.Millisecond),
+	)
+
+	chunkID := uuid.New()
+	// Instant retrieval
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{
+				ChunkID:         chunkID,
+				ChunkText:       "Test chunk",
+				URL:             "http://example.com",
+				Title:           "Example",
+				PublishedAt:     "2025-12-25T00:00:00Z",
+				Score:           0.9,
+				DocumentVersion: 1,
+			},
+		},
+	}, nil)
+
+	// ChatStream blocks for 350ms simulating slow Ollama connection
+	chunkChan := make(chan domain.LLMStreamChunk, 2)
+	errChan := make(chan error)
+
+	llmResponse := `{"answer": "Hello world [chunk_1]", "citations": [{"chunk_id":"` + chunkID.String() + `","reason":"relevant"}], "fallback": false, "reason": ""}`
+
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			time.Sleep(350 * time.Millisecond) // Simulate slow connection setup
+			chunkChan <- domain.LLMStreamChunk{Response: llmResponse, Done: false}
+			chunkChan <- domain.LLMStreamChunk{Done: true}
+			close(chunkChan)
+			close(errChan)
+		}).
+		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
+
+	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+
+	var events []usecase.StreamEvent
+	for event := range eventChan {
+		events = append(events, event)
+	}
+
+	// Count heartbeat events
+	heartbeatCount := 0
+	for _, e := range events {
+		if e.Kind == usecase.StreamEventKindHeartbeat {
+			heartbeatCount++
+		}
+	}
+
+	// With 350ms ChatStream delay and 100ms interval, expect at least 2 heartbeats
+	assert.GreaterOrEqual(t, heartbeatCount, 2,
+		"should emit heartbeats during slow ChatStream setup (got %d)", heartbeatCount)
+
+	// Verify stream completes
+	lastEvent := events[len(events)-1]
+	assert.Equal(t, usecase.StreamEventKindDone, lastEvent.Kind, "stream should complete with done event")
+}
+
+// TestStream_HeartbeatDuringLLMStreaming verifies that heartbeat events are
+// emitted when there are long gaps between LLM chunks (e.g., during thinking
+// to generation phase transitions).
+func TestStream_HeartbeatDuringLLMStreaming(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithHeartbeatInterval(100*time.Millisecond),
+	)
+
+	chunkID := uuid.New()
+	// Instant retrieval
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{
+				ChunkID:         chunkID,
+				ChunkText:       "Test chunk",
+				URL:             "http://example.com",
+				Title:           "Example",
+				PublishedAt:     "2025-12-25T00:00:00Z",
+				Score:           0.9,
+				DocumentVersion: 1,
+			},
+		},
+	}, nil)
+
+	// Simulate LLM streaming with a long gap between chunks
+	chunkChan := make(chan domain.LLMStreamChunk)
+	errChan := make(chan error)
+
+	llmResponse := `{"answer": "Hello world [chunk_1]", "citations": [{"chunk_id":"` + chunkID.String() + `","reason":"relevant"}], "fallback": false, "reason": ""}`
+
+	go func() {
+		// Send thinking chunk, then pause 350ms (simulating thinking->generation transition)
+		chunkChan <- domain.LLMStreamChunk{Thinking: "Let me analyze...", Done: false}
+		time.Sleep(350 * time.Millisecond) // Long gap — should trigger heartbeats
+		chunkChan <- domain.LLMStreamChunk{Response: llmResponse, Done: false}
+		chunkChan <- domain.LLMStreamChunk{Done: true}
+		close(chunkChan)
+		close(errChan)
+	}()
+
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil)
+
+	eventChan := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "test query"})
+
+	var events []usecase.StreamEvent
+	for event := range eventChan {
+		events = append(events, event)
+	}
+
+	// Count heartbeat events
+	heartbeatCount := 0
+	for _, e := range events {
+		if e.Kind == usecase.StreamEventKindHeartbeat {
+			heartbeatCount++
+		}
+	}
+
+	// With 350ms gap and 100ms interval, expect at least 2 heartbeats during LLM streaming
+	assert.GreaterOrEqual(t, heartbeatCount, 2,
+		"should emit heartbeats during LLM streaming gaps (got %d)", heartbeatCount)
+
+	// Verify stream completes
+	lastEvent := events[len(events)-1]
+	assert.Equal(t, usecase.StreamEventKindDone, lastEvent.Kind, "stream should complete with done event")
 }
