@@ -34,15 +34,6 @@ scrape_configs:
     scrape_interval: 15s
     metrics_path: /metrics
 
-  # alt-backend application metrics
-  - job_name: 'alt-backend'
-    static_configs:
-      - targets: ['alt-backend:9000']
-        labels:
-          service: 'alt-backend'
-    scrape_interval: 15s
-    metrics_path: /metrics
-
   # mq-hub message queue hub metrics (Go/promhttp)
   - job_name: 'mq-hub'
     static_configs:
