@@ -51,14 +51,14 @@ type AnswerWithRAGUsecase interface {
 type StreamEventKind string
 
 const (
-	StreamEventKindMeta     StreamEventKind = "meta"
-	StreamEventKindDelta    StreamEventKind = "delta"
-	StreamEventKindThinking StreamEventKind = "thinking"
+	StreamEventKindMeta      StreamEventKind = "meta"
+	StreamEventKindDelta     StreamEventKind = "delta"
+	StreamEventKindThinking  StreamEventKind = "thinking"
 	StreamEventKindProgress  StreamEventKind = "progress"
 	StreamEventKindHeartbeat StreamEventKind = "heartbeat"
 	StreamEventKindDone      StreamEventKind = "done"
-	StreamEventKindFallback StreamEventKind = "fallback"
-	StreamEventKindError    StreamEventKind = "error"
+	StreamEventKindFallback  StreamEventKind = "fallback"
+	StreamEventKindError     StreamEventKind = "error"
 )
 
 type StreamEvent struct {
