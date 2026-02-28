@@ -48,6 +48,13 @@ services:
     ports:
       - "4173:4173"
       - "24678:24678"  # Vite HMR port
+    develop:
+      watch:
+        - action: sync
+          path: ../alt-frontend-sv/src
+          target: /app/src
+        - action: rebuild
+          path: ../alt-frontend-sv/package.json
     environment:
       - NODE_ENV=development
       - PORT=4173
@@ -93,6 +100,13 @@ services:
     ports:
       - "9000:9000"
       - "9101:9101"
+    develop:
+      watch:
+        - action: rebuild
+          path: ../alt-backend/app
+          ignore:
+            - "**/*_test.go"
+            - "**/mocks/**"
     networks:
       - alt-network
     environment:
