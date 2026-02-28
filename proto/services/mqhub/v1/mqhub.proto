@@ -96,14 +96,14 @@ message CreateConsumerGroupResponse {
   string message = 2;
 }
 
-// StreamInfoRequest requests information about a stream.
-message StreamInfoRequest {
+// GetStreamInfoRequest requests information about a stream.
+message GetStreamInfoRequest {
   // Stream name
   string stream = 1;
 }
 
-// StreamInfoResponse contains stream metadata.
-message StreamInfoResponse {
+// GetStreamInfoResponse contains stream metadata.
+message GetStreamInfoResponse {
   // Number of entries in the stream
   int64 length = 1;
   // Radix tree keys
@@ -151,8 +151,8 @@ message HealthCheckResponse {
 // Tag Generation (Request-Reply Pattern)
 // =============================================================================
 
-// GenerateTagsRequest requests synchronous tag generation for an article.
-message GenerateTagsRequest {
+// GenerateTagsForArticleRequest requests synchronous tag generation for an article.
+message GenerateTagsForArticleRequest {
   // Article ID to generate tags for
   string article_id = 1;
   // Article title
@@ -175,8 +175,8 @@ message GeneratedTag {
   float confidence = 3;
 }
 
-// GenerateTagsResponse contains the result of tag generation.
-message GenerateTagsResponse {
+// GenerateTagsForArticleResponse contains the result of tag generation.
+message GenerateTagsForArticleResponse {
   // Whether tag generation was successful
   bool success = 1;
   // Article ID that was processed
@@ -205,12 +205,12 @@ service MQHubService {
   rpc CreateConsumerGroup(CreateConsumerGroupRequest) returns (CreateConsumerGroupResponse);
 
   // GetStreamInfo returns information about a stream.
-  rpc GetStreamInfo(StreamInfoRequest) returns (StreamInfoResponse);
+  rpc GetStreamInfo(GetStreamInfoRequest) returns (GetStreamInfoResponse);
 
   // HealthCheck checks the health of the service.
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
 
   // GenerateTagsForArticle synchronously generates tags for an article.
   // Uses request-reply pattern over Redis Streams with tag-generator service.
-  rpc GenerateTagsForArticle(GenerateTagsRequest) returns (GenerateTagsResponse);
+  rpc GenerateTagsForArticle(GenerateTagsForArticleRequest) returns (GenerateTagsForArticleResponse);
 }

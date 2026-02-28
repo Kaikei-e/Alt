@@ -54,16 +54,16 @@ message StreamSummarizeResponse {
 // Async Queue Messages
 // =============================================================================
 
-// SummarizeQueueRequest is the request for async queue submission
-message SummarizeQueueRequest {
+// QueueSummarizeRequest is the request for async queue submission
+message QueueSummarizeRequest {
   // Article ID (required)
   string article_id = 1;
   // Article title
   string title = 2;
 }
 
-// SummarizeQueueResponse contains the job creation result
-message SummarizeQueueResponse {
+// QueueSummarizeResponse contains the job creation result
+message QueueSummarizeResponse {
   // Created job ID
   string job_id = 1;
   // Job status (pending)
@@ -76,14 +76,14 @@ message SummarizeQueueResponse {
 // Job Status Messages
 // =============================================================================
 
-// SummarizeStatusRequest is the request for checking job status
-message SummarizeStatusRequest {
+// GetSummarizeStatusRequest is the request for checking job status
+message GetSummarizeStatusRequest {
   // Job ID to check (required)
   string job_id = 1;
 }
 
-// SummarizeStatusResponse contains the job status
-message SummarizeStatusResponse {
+// GetSummarizeStatusResponse contains the job status
+message GetSummarizeStatusResponse {
   // Job ID
   string job_id = 1;
   // Job status: pending, running, completed, failed
@@ -109,8 +109,8 @@ service PreProcessorService {
   rpc StreamSummarize(StreamSummarizeRequest) returns (stream StreamSummarizeResponse);
 
   // QueueSummarize submits an article for async summarization
-  rpc QueueSummarize(SummarizeQueueRequest) returns (SummarizeQueueResponse);
+  rpc QueueSummarize(QueueSummarizeRequest) returns (QueueSummarizeResponse);
 
   // GetSummarizeStatus checks the status of a summarization job
-  rpc GetSummarizeStatus(SummarizeStatusRequest) returns (SummarizeStatusResponse);
+  rpc GetSummarizeStatus(GetSummarizeStatusRequest) returns (GetSummarizeStatusResponse);
 }
