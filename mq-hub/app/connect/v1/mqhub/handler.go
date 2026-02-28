@@ -109,7 +109,7 @@ func (h *Handler) CreateConsumerGroup(ctx context.Context, req *connect.Request[
 }
 
 // GetStreamInfo returns information about a stream.
-func (h *Handler) GetStreamInfo(ctx context.Context, req *connect.Request[mqhubv1.StreamInfoRequest]) (*connect.Response[mqhubv1.StreamInfoResponse], error) {
+func (h *Handler) GetStreamInfo(ctx context.Context, req *connect.Request[mqhubv1.GetStreamInfoRequest]) (*connect.Response[mqhubv1.GetStreamInfoResponse], error) {
 	info, err := h.publishUsecase.GetStreamInfo(ctx, domain.StreamKey(req.Msg.Stream))
 	if err != nil {
 		return nil, err
@@ -125,7 +125,7 @@ func (h *Handler) GetStreamInfo(ctx context.Context, req *connect.Request[mqhubv
 		}
 	}
 
-	return connect.NewResponse(&mqhubv1.StreamInfoResponse{
+	return connect.NewResponse(&mqhubv1.GetStreamInfoResponse{
 		Length:         info.Length,
 		RadixTreeKeys:  info.RadixTreeKeys,
 		RadixTreeNodes: info.RadixTreeNodes,
@@ -168,7 +168,7 @@ func protoEventToDomain(protoEvent *mqhubv1.Event) *domain.Event {
 }
 
 // GenerateTagsForArticle synchronously generates tags for an article.
-func (h *Handler) GenerateTagsForArticle(ctx context.Context, req *connect.Request[mqhubv1.GenerateTagsRequest]) (*connect.Response[mqhubv1.GenerateTagsResponse], error) {
+func (h *Handler) GenerateTagsForArticle(ctx context.Context, req *connect.Request[mqhubv1.GenerateTagsForArticleRequest]) (*connect.Response[mqhubv1.GenerateTagsForArticleResponse], error) {
 	if h.generateTagsUsecase == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, nil)
 	}
@@ -183,7 +183,7 @@ func (h *Handler) GenerateTagsForArticle(ctx context.Context, req *connect.Reque
 
 	result, err := h.generateTagsUsecase.GenerateTagsForArticle(ctx, ucReq)
 	if err != nil {
-		return connect.NewResponse(&mqhubv1.GenerateTagsResponse{
+		return connect.NewResponse(&mqhubv1.GenerateTagsForArticleResponse{
 			Success:      false,
 			ArticleId:    req.Msg.ArticleId,
 			ErrorMessage: err.Error(),
@@ -200,7 +200,7 @@ func (h *Handler) GenerateTagsForArticle(ctx context.Context, req *connect.Reque
 		}
 	}
 
-	return connect.NewResponse(&mqhubv1.GenerateTagsResponse{
+	return connect.NewResponse(&mqhubv1.GenerateTagsForArticleResponse{
 		Success:      result.Success,
 		ArticleId:    result.ArticleID,
 		Tags:         protoTags,

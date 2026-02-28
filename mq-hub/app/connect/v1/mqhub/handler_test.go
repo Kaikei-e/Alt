@@ -287,7 +287,7 @@ func TestHandler_GetStreamInfo(t *testing.T) {
 
 		mockPort.On("GetStreamInfo", ctx, domain.StreamKey("articles")).Return(expectedInfo, nil)
 
-		req := connect.NewRequest(&mqhubv1.StreamInfoRequest{
+		req := connect.NewRequest(&mqhubv1.GetStreamInfoRequest{
 			Stream: "articles",
 		})
 
@@ -314,7 +314,7 @@ func TestHandler_GetStreamInfo(t *testing.T) {
 		mockPort.On("GetStreamInfo", ctx, domain.StreamKey("nonexistent")).
 			Return(nil, errors.New("stream not found"))
 
-		req := connect.NewRequest(&mqhubv1.StreamInfoRequest{
+		req := connect.NewRequest(&mqhubv1.GetStreamInfoRequest{
 			Stream: "nonexistent",
 		})
 
@@ -373,7 +373,7 @@ func TestHandler_GenerateTagsForArticle(t *testing.T) {
 
 		ctx := context.Background()
 
-		req := connect.NewRequest(&mqhubv1.GenerateTagsRequest{
+		req := connect.NewRequest(&mqhubv1.GenerateTagsForArticleRequest{
 			ArticleId: "article-123",
 			Title:     "Test Article",
 			Content:   "Test content",
@@ -420,7 +420,7 @@ func TestHandler_GenerateTagsForArticle(t *testing.T) {
 
 		mockPort.On("DeleteStream", ctx, mock.AnythingOfType("domain.StreamKey")).Return(nil)
 
-		req := connect.NewRequest(&mqhubv1.GenerateTagsRequest{
+		req := connect.NewRequest(&mqhubv1.GenerateTagsForArticleRequest{
 			ArticleId: "article-123",
 			Title:     "Test Article",
 			Content:   "Test content",
