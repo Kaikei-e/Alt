@@ -19,7 +19,7 @@ class TTSService(Protocol):
     async def synthesize(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest, ctx: RequestContext) -> alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
-    def synthesize_stream(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest, ctx: RequestContext) -> AsyncIterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse]:
+    def synthesize_stream(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest, ctx: RequestContext) -> AsyncIterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
     async def list_voices(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesRequest, ctx: RequestContext) -> alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesResponse:
@@ -45,8 +45,8 @@ class TTSServiceASGIApplication(ConnectASGIApplication[TTSService]):
                     method=MethodInfo(
                         name="SynthesizeStream",
                         service_name="alt.tts.v1.TTSService",
-                        input=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest,
-                        output=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse,
+                        input=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest,
+                        output=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse,
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.synthesize_stream,
@@ -95,18 +95,18 @@ class TTSServiceClient(ConnectClient):
 
     def synthesize_stream(
         self,
-        request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest,
+        request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest,
         *,
         headers: Headers | Mapping[str, str] | None = None,
         timeout_ms: int | None = None,
-    ) -> AsyncIterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse]:
+    ) -> AsyncIterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse]:
         return self.execute_server_stream(
             request=request,
             method=MethodInfo(
                 name="SynthesizeStream",
                 service_name="alt.tts.v1.TTSService",
-                input=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest,
-                output=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse,
+                input=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest,
+                output=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
@@ -137,7 +137,7 @@ class TTSServiceClient(ConnectClient):
 class TTSServiceSync(Protocol):
     def synthesize(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest, ctx: RequestContext) -> alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
-    def synthesize_stream(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest, ctx: RequestContext) -> Iterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse]:
+    def synthesize_stream(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest, ctx: RequestContext) -> Iterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def list_voices(self, request: alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesRequest, ctx: RequestContext) -> alt_dot_tts_dot_v1_dot_tts__pb2.ListVoicesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
@@ -161,8 +161,8 @@ class TTSServiceWSGIApplication(ConnectWSGIApplication):
                     method=MethodInfo(
                         name="SynthesizeStream",
                         service_name="alt.tts.v1.TTSService",
-                        input=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest,
-                        output=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse,
+                        input=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest,
+                        output=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse,
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.synthesize_stream,
@@ -211,18 +211,18 @@ class TTSServiceClientSync(ConnectClientSync):
 
     def synthesize_stream(
         self,
-        request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest,
+        request: alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest,
         *,
         headers: Headers | Mapping[str, str] | None = None,
         timeout_ms: int | None = None,
-    ) -> Iterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse]:
+    ) -> Iterator[alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse]:
         return self.execute_server_stream(
             request=request,
             method=MethodInfo(
                 name="SynthesizeStream",
                 service_name="alt.tts.v1.TTSService",
-                input=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeRequest,
-                output=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeResponse,
+                input=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamRequest,
+                output=alt_dot_tts_dot_v1_dot_tts__pb2.SynthesizeStreamResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

@@ -109,9 +109,9 @@ class TTSConnectService:
 
     async def synthesize_stream(
         self,
-        request: tts_pb2.SynthesizeRequest,
+        request: tts_pb2.SynthesizeStreamRequest,
         ctx: RequestContext,
-    ):  # -> AsyncGenerator[tts_pb2.SynthesizeResponse, None]
+    ):  # -> AsyncGenerator[tts_pb2.SynthesizeStreamResponse, None]
         """Synthesize text to WAV audio stream."""
         self._verify_token(ctx)
 
@@ -186,7 +186,7 @@ class TTSConnectService:
 
                 duration = len(chunk) / SAMPLE_RATE
 
-                yield tts_pb2.SynthesizeResponse(
+                yield tts_pb2.SynthesizeStreamResponse(
                     audio_wav=wav_bytes,
                     sample_rate=SAMPLE_RATE,
                     duration_seconds=duration,

@@ -26,6 +26,26 @@ class SynthesizeResponse(_message.Message):
     duration_seconds: float
     def __init__(self, audio_wav: _Optional[bytes] = ..., sample_rate: _Optional[int] = ..., duration_seconds: _Optional[float] = ...) -> None: ...
 
+class SynthesizeStreamRequest(_message.Message):
+    __slots__ = ("text", "voice", "speed")
+    TEXT_FIELD_NUMBER: _ClassVar[int]
+    VOICE_FIELD_NUMBER: _ClassVar[int]
+    SPEED_FIELD_NUMBER: _ClassVar[int]
+    text: str
+    voice: str
+    speed: float
+    def __init__(self, text: _Optional[str] = ..., voice: _Optional[str] = ..., speed: _Optional[float] = ...) -> None: ...
+
+class SynthesizeStreamResponse(_message.Message):
+    __slots__ = ("audio_wav", "sample_rate", "duration_seconds")
+    AUDIO_WAV_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_RATE_FIELD_NUMBER: _ClassVar[int]
+    DURATION_SECONDS_FIELD_NUMBER: _ClassVar[int]
+    audio_wav: bytes
+    sample_rate: int
+    duration_seconds: float
+    def __init__(self, audio_wav: _Optional[bytes] = ..., sample_rate: _Optional[int] = ..., duration_seconds: _Optional[float] = ...) -> None: ...
+
 class Voice(_message.Message):
     __slots__ = ("id", "name", "gender")
     ID_FIELD_NUMBER: _ClassVar[int]
