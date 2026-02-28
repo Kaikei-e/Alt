@@ -11,7 +11,7 @@ type InternalUntaggedArticle struct {
 	Title   string
 	Content string
 	UserID  string
-	FeedID  string
+	FeedID  *string
 }
 
 // ListUntaggedArticles returns articles that have no entries in article_tags.
@@ -31,7 +31,7 @@ func (r *AltDBRepository) ListUntaggedArticles(ctx context.Context, limit int, o
 
 	// Fetch paginated results
 	rows, err := r.pool.Query(ctx, `
-		SELECT a.id, a.title, a.content, a.user_id, COALESCE(a.feed_id::text, '') AS feed_id
+		SELECT a.id, a.title, a.content, a.user_id, a.feed_id::text
 		FROM articles a
 		WHERE NOT EXISTS (
 			SELECT 1 FROM article_tags at WHERE at.article_id = a.id

@@ -67,7 +67,7 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 
 	// Get feed_id from URL if possible
 	var feedID *uuid.UUID
-	feedIDStr, err := r.GetFeedIDByURL(ctx, cleanURL)
+	feedIDStr, err := r.GetFeedIDByArticleURL(ctx, cleanURL)
 	if err != nil {
 		// If feed not found, log warning but continue (feed_id will be NULL)
 		logger.SafeWarnContext(ctx, "feed not found for article URL, article will be saved without feed_id", "url", cleanURL, "error", err)

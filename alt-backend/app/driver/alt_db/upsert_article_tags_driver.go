@@ -27,7 +27,7 @@ const upsertTagCTE = `
 // It first upserts into feed_tags (by feed_id + tag_name), then links via article_tags.
 // Uses pgx.Batch to send all tag operations in a single round trip.
 func (r *AltDBRepository) UpsertArticleTags(ctx context.Context, articleID string, feedID string, tags []TagUpsertItem) (int32, error) {
-	if len(tags) == 0 {
+	if len(tags) == 0 || feedID == "" {
 		return 0, nil
 	}
 
@@ -62,8 +62,26 @@ func (r *AltDBRepository) UpsertArticleTags(ctx context.Context, articleID strin
 
 // BatchUpsertArticleTags upserts tags for multiple articles in a single transaction.
 // Uses pgx.Batch to send all tag operations in a single round trip.
+// Items with empty FeedID are skipped since feed_tags requires a valid feed_id.
 func (r *AltDBRepository) BatchUpsertArticleTags(ctx context.Context, items []BatchUpsertTagItem) (int32, error) {
 	if len(items) == 0 {
+		return 0, nil
+	}
+
+	// Pre-filter: count valid tags before starting a transaction
+	batch := &pgx.Batch{}
+	totalTags := 0
+	for _, item := range items {
+		if item.FeedID == "" {
+			continue
+		}
+		for _, tag := range item.Tags {
+			batch.Queue(upsertTagCTE, item.FeedID, tag.Name, tag.Confidence, item.ArticleID)
+			totalTags++
+		}
+	}
+
+	if totalTags == 0 {
 		return 0, nil
 	}
 
@@ -72,15 +90,6 @@ func (r *AltDBRepository) BatchUpsertArticleTags(ctx context.Context, items []Ba
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
-
-	batch := &pgx.Batch{}
-	totalTags := 0
-	for _, item := range items {
-		for _, tag := range item.Tags {
-			batch.Queue(upsertTagCTE, item.FeedID, tag.Name, tag.Confidence, item.ArticleID)
-			totalTags++
-		}
-	}
 
 	br := tx.SendBatch(ctx, batch)
 	for i := 0; i < totalTags; i++ {

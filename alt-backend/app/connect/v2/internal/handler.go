@@ -513,12 +513,16 @@ func (h *Handler) ListUntaggedArticles(ctx context.Context, req *connect.Request
 
 	protoArticles := make([]*backendv1.ArticleWithTags, len(articles))
 	for i, a := range articles {
+		var feedID string
+		if a.FeedID != nil {
+			feedID = *a.FeedID
+		}
 		protoArticles[i] = &backendv1.ArticleWithTags{
 			Id:      a.ID,
 			Title:   a.Title,
 			Content: a.Content,
 			UserId:  a.UserID,
-			FeedId:  a.FeedID,
+			FeedId:  feedID,
 		}
 	}
 

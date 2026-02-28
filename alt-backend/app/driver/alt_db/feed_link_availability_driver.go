@@ -49,7 +49,7 @@ func (r *AltDBRepository) IncrementFeedLinkFailures(ctx context.Context, feedURL
 func (r *AltDBRepository) ResetFeedLinkFailures(ctx context.Context, feedURL string) error {
 	query := `
 		UPDATE feed_link_availability SET consecutive_failures = 0
-		WHERE feed_link_id = (SELECT id FROM feed_links WHERE url = $1)`
+		WHERE feed_link_id IN (SELECT id FROM feed_links WHERE url = $1)`
 	_, err := r.pool.Exec(ctx, query, feedURL)
 	return err
 }
@@ -58,7 +58,7 @@ func (r *AltDBRepository) ResetFeedLinkFailures(ctx context.Context, feedURL str
 func (r *AltDBRepository) DisableFeedLink(ctx context.Context, feedURL string) error {
 	query := `
 		UPDATE feed_link_availability SET is_active = false
-		WHERE feed_link_id = (SELECT id FROM feed_links WHERE url = $1)`
+		WHERE feed_link_id IN (SELECT id FROM feed_links WHERE url = $1)`
 	_, err := r.pool.Exec(ctx, query, feedURL)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Failed to disable feed link", "url", feedURL, "error", err)
