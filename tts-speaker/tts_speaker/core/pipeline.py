@@ -14,6 +14,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Split pattern for Japanese sentence boundaries.
+# Lookbehind keeps punctuation attached to the preceding segment (affects prosody).
+# Kokoro's default '\n+' only splits on newlines, causing 400-char chunks that
+# exceed the 510 phoneme limit for Japanese text (2-3 phonemes/char).
+JAPANESE_SPLIT_PATTERN = r"(?<=[。！？\n])"
+
 VOICES = [
     {"id": "jf_alpha", "name": "Alpha", "gender": "female"},
     {"id": "jf_gongitsune", "name": "Gongitsune", "gender": "female"},
@@ -142,7 +148,9 @@ class TTSPipeline:
                     raise RuntimeError("Pipeline not loaded")
 
                 # The pipeline call is a generator
-                for _gs, _ps, audio in self._pipeline(text, voice=voice, speed=speed):
+                for _gs, _ps, audio in self._pipeline(
+                    text, voice=voice, speed=speed, split_pattern=JAPANESE_SPLIT_PATTERN
+                ):
                     if audio is not None:
                         if hasattr(audio, "cpu"):
                             audio = audio.cpu().numpy()
@@ -170,7 +178,9 @@ class TTSPipeline:
             raise RuntimeError("Pipeline not loaded")
 
         samples = []
-        for _gs, _ps, audio in self._pipeline(text, voice=voice, speed=speed):
+        for _gs, _ps, audio in self._pipeline(
+            text, voice=voice, speed=speed, split_pattern=JAPANESE_SPLIT_PATTERN
+        ):
             if audio is not None:
                 samples.append(audio)
 
