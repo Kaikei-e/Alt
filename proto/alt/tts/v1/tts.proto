@@ -6,7 +6,7 @@ option go_package = "alt/gen/proto/alt/tts/v1;ttsv1";
 
 service TTSService {
   rpc Synthesize(SynthesizeRequest) returns (SynthesizeResponse);
-  rpc SynthesizeStream(SynthesizeRequest) returns (stream SynthesizeResponse);
+  rpc SynthesizeStream(SynthesizeStreamRequest) returns (stream SynthesizeStreamResponse);
   rpc ListVoices(ListVoicesRequest) returns (ListVoicesResponse);
 }
 
@@ -17,6 +17,18 @@ message SynthesizeRequest {
 }
 
 message SynthesizeResponse {
+  bytes audio_wav = 1;
+  int32 sample_rate = 2;
+  double duration_seconds = 3;
+}
+
+message SynthesizeStreamRequest {
+  string text = 1;
+  string voice = 2;
+  double speed = 3;
+}
+
+message SynthesizeStreamResponse {
   bytes audio_wav = 1;
   int32 sample_rate = 2;
   double duration_seconds = 3;

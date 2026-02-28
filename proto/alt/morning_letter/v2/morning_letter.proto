@@ -11,7 +11,7 @@ option go_package = "alt/gen/proto/alt/morning_letter/v2;morningletterv2";
 service MorningLetterService {
   // StreamChat performs a streaming chat with RAG context, filtered by time window.
   // Returns a stream of events: delta (text chunks), meta (citations + time window), done (completion), or error.
-  rpc StreamChat(StreamChatRequest) returns (stream StreamChatEvent);
+  rpc StreamChat(StreamChatRequest) returns (stream StreamChatResponse);
 }
 
 // =============================================================================
@@ -34,9 +34,9 @@ message ChatMessage {
   string content = 2;
 }
 
-// StreamChatEvent is a single event in the streaming response.
+// StreamChatResponse is a single event in the streaming response.
 // Each event has a kind and a corresponding payload.
-message StreamChatEvent {
+message StreamChatResponse {
   // Event kind: "delta", "meta", "done", "fallback", "error"
   string kind = 1;
 

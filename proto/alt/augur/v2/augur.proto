@@ -11,7 +11,7 @@ option go_package = "alt/gen/proto/alt/augur/v2;augurv2";
 service AugurService {
   // StreamChat performs a streaming chat with RAG context.
   // Returns a stream of events: delta (text chunks), meta (citations), done (completion), or error.
-  rpc StreamChat(StreamChatRequest) returns (stream StreamChatEvent);
+  rpc StreamChat(StreamChatRequest) returns (stream StreamChatResponse);
 
   // RetrieveContext retrieves relevant context for a query without generating an answer.
   // Useful for debugging or showing sources before chat.
@@ -36,9 +36,9 @@ message ChatMessage {
   string content = 2;
 }
 
-// StreamChatEvent is a single event in the streaming response.
+// StreamChatResponse is a single event in the streaming response.
 // Each event has a kind and a corresponding payload.
-message StreamChatEvent {
+message StreamChatResponse {
   // Event kind: "delta", "meta", "done", "fallback", "error", "thinking"
   string kind = 1;
 

@@ -12,7 +12,7 @@ option go_package = "alt/gen/proto/alt/recap/v2;recapv2";
 service JobStatusService {
   // StreamJobProgress streams real-time job progress updates (authentication required)
   // Sends updates every 2 seconds while connected
-  rpc StreamJobProgress(StreamJobProgressRequest) returns (stream JobProgressEvent);
+  rpc StreamJobProgress(StreamJobProgressRequest) returns (stream StreamJobProgressResponse);
 
   // TriggerUserRecap triggers a new recap job for a specific user
   rpc TriggerUserRecap(TriggerUserRecapRequest) returns (TriggerUserRecapResponse);
@@ -21,7 +21,7 @@ service JobStatusService {
   rpc RetryJob(RetryJobRequest) returns (RetryJobResponse);
 
   // GetJobProgress returns current job progress (non-streaming)
-  rpc GetJobProgress(GetJobProgressRequest) returns (JobProgressEvent);
+  rpc GetJobProgress(GetJobProgressRequest) returns (GetJobProgressResponse);
 }
 
 // =============================================================================
@@ -84,8 +84,20 @@ message RetryJobResponse {
 // Event Messages
 // =============================================================================
 
-// JobProgressEvent is streamed to clients with current job status
-message JobProgressEvent {
+// StreamJobProgressResponse is streamed to clients with current job status
+message StreamJobProgressResponse {
+  // Currently running job (if any)
+  optional ActiveJobInfo active_job = 1;
+  // Recent job history
+  repeated RecentJobSummary recent_jobs = 2;
+  // Statistics for the time window
+  JobStats stats = 3;
+  // User-specific context (populated when user_id provided)
+  optional UserJobContext user_context = 4;
+}
+
+// GetJobProgressResponse contains current job progress (non-streaming)
+message GetJobProgressResponse {
   // Currently running job (if any)
   optional ActiveJobInfo active_job = 1;
   // Recent job history

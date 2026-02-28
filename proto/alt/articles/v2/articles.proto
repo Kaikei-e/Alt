@@ -243,8 +243,8 @@ message StreamArticleTagsRequest {
   optional string feed_id = 4;
 }
 
-// ArticleTagEvent represents a streaming event for tag updates
-message ArticleTagEvent {
+// StreamArticleTagsResponse represents a streaming event for tag updates
+message StreamArticleTagsResponse {
   // Article ID
   string article_id = 1;
   // Current tags (empty during generation)
@@ -304,7 +304,7 @@ service ArticleService {
 
   // StreamArticleTags streams real-time tag updates for an article
   // Returns cached tags immediately if available, otherwise streams generation progress
-  rpc StreamArticleTags(StreamArticleTagsRequest) returns (stream ArticleTagEvent);
+  rpc StreamArticleTags(StreamArticleTagsRequest) returns (stream StreamArticleTagsResponse);
 
   // BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
   rpc BatchPrefetchImages(BatchPrefetchImagesRequest) returns (BatchPrefetchImagesResponse);
