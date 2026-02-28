@@ -1,0 +1,43 @@
+# Rust Build Artifacts
+app/target/
+**/target/
+*.rs.bk
+
+# Development Caches
+app/.cargo/
+**/.cargo/
+*.pdb
+
+# Version Control
+.git/
+.gitignore
+.gitattributes
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation (not needed in container)
+*.md
+
+# Logs
+logs/
+*.log
+
+# Docker files (prevent recursive inclusion)
+Dockerfile*
+!Dockerfile.rask-log-aggregator
+.dockerignore
+
+# Environment and Secrets
+.env
+.env.*
+*.key
+*.pem
+
+# CI/CD
+.github/
