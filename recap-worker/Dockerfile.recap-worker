@@ -1,5 +1,8 @@
-FROM rust:1.92-bookworm AS builder
+# syntax=docker/dockerfile:1
 
+# Stage 1: Chef setup
+FROM rust:1.92-bookworm AS chef
+RUN cargo install cargo-chef --locked
 WORKDIR /app
 
 # PyTorch C++ ライブラリをインストール (rust-bert 用)
@@ -14,7 +17,6 @@ RUN apt-get update && \
   wget -q https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.4.0%2Bcpu.zip && \
   unzip -q libtorch-cxx11-abi-shared-with-deps-2.4.0+cpu.zip && \
   cp -r libtorch/lib/* /usr/local/lib/ && \
-  # libgomp シンボリックリンクを保持
   if [ -d libtorch/lib ]; then \
   find libtorch/lib -name "libgomp*" -exec cp -a {} /usr/local/lib/ \; || true; \
   fi && \
@@ -22,15 +24,26 @@ RUN apt-get update && \
   ldconfig && \
   rm -rf /var/lib/apt/lists/*
 
-# 依存関係キャッシュ最適化
-COPY ./recap-worker/Cargo.toml ./recap-worker/Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs && \
-    cargo build --release 2>/dev/null || true && \
-    rm -rf src
-
+# Stage 2: Recipe generation
+FROM chef AS planner
 COPY ./recap-worker/ .
+RUN cargo chef prepare --recipe-path recipe.json
 
-RUN cargo build --release --bin recap-worker
+# Stage 3: Dependency build (cached)
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+RUN --mount=type=cache,id=recap-worker-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=recap-worker-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=recap-worker-target,target=/app/target,sharing=locked \
+    cargo chef cook --release --recipe-path recipe.json
+
+# Stage 4: Application build
+COPY ./recap-worker/ .
+RUN --mount=type=cache,id=recap-worker-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=recap-worker-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=recap-worker-target,target=/app/target,sharing=locked \
+    cargo build --release --bin recap-worker && \
+    cp target/release/recap-worker /app/recap-worker
 
 # ランタイムイメージ (debian-slim + 非rootユーザー)
 # PyTorch ライブラリ依存のため distroless 使用不可
@@ -55,7 +68,7 @@ COPY --from=builder /usr/local/lib/libcaffe2* /usr/local/lib/
 COPY --from=builder /usr/local/lib/libgomp* /usr/local/lib/
 RUN ldconfig
 
-COPY --from=builder /app/target/release/recap-worker /usr/local/bin/
+COPY --from=builder /app/recap-worker /usr/local/bin/
 
 # 評価用ゴールデンデータセット
 RUN mkdir -p /app/data && chown recap:recap /app/data
