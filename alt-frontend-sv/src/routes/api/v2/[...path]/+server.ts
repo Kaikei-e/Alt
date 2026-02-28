@@ -88,6 +88,13 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 			}
 		}
 
+		// Disable buffering for streaming responses (Connect-RPC server streams)
+		const ct = responseHeaders.get("content-type") || "";
+		if (ct.includes("application/connect+proto") || ct.includes("application/grpc")) {
+			responseHeaders.set("X-Accel-Buffering", "no");
+			responseHeaders.set("Cache-Control", "no-cache, no-transform");
+		}
+
 		return new Response(response.body, {
 			status: response.status,
 			statusText: response.statusText,

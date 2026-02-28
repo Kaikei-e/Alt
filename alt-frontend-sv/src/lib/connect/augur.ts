@@ -86,6 +86,7 @@ export function createAugurClient(transport: Transport): AugurClient {
  * @param onComplete - Callback when streaming completes (optional)
  * @param onFallback - Callback for fallback events (optional)
  * @param onError - Callback for errors (optional)
+ * @param onProgress - Callback for progress stage updates e.g. "searching", "generating" (optional)
  * @returns AbortController to cancel the stream
  */
 export function streamAugurChat(
@@ -97,6 +98,7 @@ export function streamAugurChat(
 	onComplete?: (result: AugurStreamResult) => void,
 	onFallback?: (code: string) => void,
 	onError?: (error: Error) => void,
+	onProgress?: (stage: string) => void,
 ): AbortController {
 	const abortController = new AbortController();
 	const client = createAugurClient(transport);
@@ -121,6 +123,19 @@ export function streamAugurChat(
 			for await (const rawEvent of stream) {
 				const event = rawEvent as StreamChatEvent;
 				const { payload } = event;
+
+				// Heartbeat events keep the connection alive through Cloudflare Tunnel
+				if (event.kind === "heartbeat") {
+					continue;
+				}
+
+				// Progress events reuse delta payload as carrier — always skip, never treat as content delta
+				if (event.kind === "progress") {
+					if (onProgress && payload.case === "delta" && payload.value) {
+						onProgress(payload.value);
+					}
+					continue;
+				}
 
 				switch (payload.case) {
 					case "delta":
