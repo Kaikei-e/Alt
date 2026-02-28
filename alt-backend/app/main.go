@@ -137,9 +137,16 @@ func main() {
 	// Start Connect-RPC server in a goroutine
 	connectPort := 9101
 	connectServer := connectv2.CreateConnectServer(container, cfg, log)
+	connectHTTPServer := &http.Server{
+		Addr:              fmt.Sprintf(":%d", connectPort),
+		Handler:           connectServer,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      0, // Unlimited for streaming responses
+		IdleTimeout:       120 * time.Second,
+	}
 	go func() {
 		logger.Logger.InfoContext(ctx, "Connect-RPC server starting", "port", connectPort)
-		if err := http.ListenAndServe(fmt.Sprintf(":%d", connectPort), connectServer); err != nil && err != http.ErrServerClosed {
+		if err := connectHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Logger.ErrorContext(ctx, "Error starting Connect-RPC server", "error", err)
 		}
 	}()
@@ -163,7 +170,11 @@ func main() {
 	defer shutdownCancel()
 
 	if err := e.Shutdown(shutdownCtx); err != nil {
-		logger.Logger.ErrorContext(shutdownCtx, "Error during server shutdown", "error", err)
+		logger.Logger.ErrorContext(shutdownCtx, "Error during REST server shutdown", "error", err)
+	}
+
+	if err := connectHTTPServer.Shutdown(shutdownCtx); err != nil {
+		logger.Logger.ErrorContext(shutdownCtx, "Error during Connect-RPC server shutdown", "error", err)
 	}
 
 	logger.Logger.Info("Server stopped")

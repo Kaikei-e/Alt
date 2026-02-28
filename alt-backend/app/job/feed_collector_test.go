@@ -1,6 +1,8 @@
 package job
 
 import (
+	"context"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -385,7 +387,7 @@ func TestIsPersistentError(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "403 error is persistent",
+			name: "403 error is persistent (retries exhausted before reaching here)",
 			err:  errorWithMessage("HTTP error: 403 Forbidden"),
 			want: true,
 		},
@@ -472,6 +474,167 @@ func TestIs429Error(t *testing.T) {
 	}
 }
 
+func TestIs403Error(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil error returns false",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "403 Forbidden returns true",
+			err:  errorWithMessage("HTTP error: 403 Forbidden"),
+			want: true,
+		},
+		{
+			name: "404 Not Found returns false",
+			err:  errorWithMessage("HTTP error: 404 Not Found"),
+			want: false,
+		},
+		{
+			name: "500 error returns false",
+			err:  errorWithMessage("HTTP error: 500 Internal Server Error"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := is403Error(tt.err); got != tt.want {
+				t.Errorf("is403Error() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFetchWithRetryOn403(t *testing.T) {
+	t.Run("first attempt succeeds without retry", func(t *testing.T) {
+		expectedFeed := &rssFeed.Feed{Title: "Test Feed"}
+		callCount := 0
+		fetchFn := func() (*rssFeed.Feed, error) {
+			callCount++
+			return expectedFeed, nil
+		}
+
+		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if feed != expectedFeed {
+			t.Errorf("expected feed %v, got %v", expectedFeed, feed)
+		}
+		if callCount != 1 {
+			t.Errorf("expected 1 call, got %d", callCount)
+		}
+	})
+
+	t.Run("403 on first attempt then succeeds on retry", func(t *testing.T) {
+		expectedFeed := &rssFeed.Feed{Title: "Test Feed"}
+		callCount := 0
+		fetchFn := func() (*rssFeed.Feed, error) {
+			callCount++
+			if callCount == 1 {
+				return nil, errorWithMessage("HTTP error: 403 Forbidden")
+			}
+			return expectedFeed, nil
+		}
+
+		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if feed != expectedFeed {
+			t.Errorf("expected feed %v, got %v", expectedFeed, feed)
+		}
+		if callCount != 2 {
+			t.Errorf("expected 2 calls, got %d", callCount)
+		}
+	})
+
+	t.Run("403 three times then succeeds on fourth attempt", func(t *testing.T) {
+		expectedFeed := &rssFeed.Feed{Title: "Test Feed"}
+		callCount := 0
+		fetchFn := func() (*rssFeed.Feed, error) {
+			callCount++
+			if callCount <= 3 {
+				return nil, errorWithMessage("HTTP error: 403 Forbidden")
+			}
+			return expectedFeed, nil
+		}
+
+		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if feed != expectedFeed {
+			t.Errorf("expected feed %v, got %v", expectedFeed, feed)
+		}
+		if callCount != 4 {
+			t.Errorf("expected 4 calls (1 initial + 3 retries), got %d", callCount)
+		}
+	})
+
+	t.Run("403 on all attempts returns error", func(t *testing.T) {
+		callCount := 0
+		fetchFn := func() (*rssFeed.Feed, error) {
+			callCount++
+			return nil, errorWithMessage("HTTP error: 403 Forbidden")
+		}
+
+		feed, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if feed != nil {
+			t.Errorf("expected nil feed, got %v", feed)
+		}
+		if callCount != 4 {
+			t.Errorf("expected 4 calls (1 initial + 3 retries), got %d", callCount)
+		}
+		if !strings.Contains(err.Error(), "403") {
+			t.Errorf("expected error to contain '403', got: %v", err)
+		}
+	})
+
+	t.Run("non-403 error does not retry", func(t *testing.T) {
+		callCount := 0
+		fetchFn := func() (*rssFeed.Feed, error) {
+			callCount++
+			return nil, errorWithMessage("HTTP error: 404 Not Found")
+		}
+
+		_, err := fetchWithRetryOn403(context.Background(), fetchFn, "https://example.com/feed")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if callCount != 1 {
+			t.Errorf("expected 1 call (no retry for non-403), got %d", callCount)
+		}
+	})
+
+	t.Run("context cancellation stops retry", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		callCount := 0
+		fetchFn := func() (*rssFeed.Feed, error) {
+			callCount++
+			cancel() // Cancel after first call
+			return nil, errorWithMessage("HTTP error: 403 Forbidden")
+		}
+
+		_, err := fetchWithRetryOn403(ctx, fetchFn, "https://example.com/feed")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if callCount != 1 {
+			t.Errorf("expected 1 call before context cancel, got %d", callCount)
+		}
+	})
+}
+
 // errorWithMessage creates a simple error with the given message
 type testError struct {
 	msg string
@@ -483,4 +646,61 @@ func (e *testError) Error() string {
 
 func errorWithMessage(msg string) error {
 	return &testError{msg: msg}
+}
+
+func TestValidateFeedURL(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		url     url.URL
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "valid https URL",
+			url:     url.URL{Scheme: "https", Host: "example.com", Path: "/feed.xml"},
+			wantErr: false,
+		},
+		{
+			name:    "valid http URL",
+			url:     url.URL{Scheme: "http", Host: "example.com", Path: "/rss"},
+			wantErr: false,
+		},
+		{
+			name:    "invalid scheme ftp",
+			url:     url.URL{Scheme: "ftp", Host: "example.com", Path: "/feed.xml"},
+			wantErr: true,
+			errMsg:  "invalid URL scheme",
+		},
+		{
+			name:    "empty scheme",
+			url:     url.URL{Scheme: "", Host: "example.com"},
+			wantErr: true,
+			errMsg:  "invalid URL scheme",
+		},
+		{
+			name:    "missing host",
+			url:     url.URL{Scheme: "https", Host: ""},
+			wantErr: true,
+			errMsg:  "missing host",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateFeedURL(ctx, tt.url)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("validateFeedURL() expected error, got nil")
+				} else if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("validateFeedURL() error = %v, want containing %q", err, tt.errMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("validateFeedURL() unexpected error: %v", err)
+				}
+			}
+		})
+	}
 }

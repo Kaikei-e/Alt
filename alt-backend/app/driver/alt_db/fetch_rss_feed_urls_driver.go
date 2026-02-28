@@ -1,16 +1,18 @@
 package alt_db
 
 import (
+	"alt/domain"
 	"alt/utils/logger"
 	"context"
 	"errors"
-	"net/url"
+
+	"github.com/google/uuid"
 )
 
-func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]url.URL, error) {
+func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]domain.FeedLink, error) {
 	// LEFT JOIN ensures feeds without availability records (new feeds) are still returned
 	query := `
-		SELECT fl.url FROM feed_links fl
+		SELECT fl.id, fl.url FROM feed_links fl
 		LEFT JOIN feed_link_availability fla ON fl.id = fla.feed_link_id
 		WHERE fla.is_active IS NULL OR fla.is_active = true`
 	rows, err := r.pool.Query(ctx, query)
@@ -20,31 +22,23 @@ func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]url.URL, erro
 	}
 	defer rows.Close()
 
-	links := []url.URL{}
+	var feedLinks []domain.FeedLink
 	for rows.Next() {
+		var id uuid.UUID
 		var link string
-		err := rows.Scan(&link)
+		err := rows.Scan(&id, &link)
 		if err != nil {
 			logger.SafeErrorContext(ctx, "Error scanning RSS link", "error", err)
 			return nil, errors.New("error scanning RSS link")
 		}
 
-		linkURL, err := url.Parse(link)
-		if err != nil {
-			logger.SafeErrorContext(ctx, "Error parsing RSS link - invalid URL format", "url", link, "error", err)
-			continue // Skip invalid URLs instead of failing entirely
-		}
-
-		// Log detailed information about each URL for debugging
 		logger.SafeInfoContext(ctx, "Found RSS link in database",
-			"url", linkURL.String(),
-			"scheme", linkURL.Scheme,
-			"host", linkURL.Host,
-			"path", linkURL.Path)
+			"id", id.String(),
+			"url", link)
 
-		links = append(links, *linkURL)
+		feedLinks = append(feedLinks, domain.FeedLink{ID: id, URL: link})
 	}
 
-	logger.SafeInfoContext(ctx, "RSS feed URL fetch summary", "total_found", len(links))
-	return links, nil
+	logger.SafeInfoContext(ctx, "RSS feed URL fetch summary", "total_found", len(feedLinks))
+	return feedLinks, nil
 }

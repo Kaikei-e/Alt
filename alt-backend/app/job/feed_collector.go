@@ -45,69 +45,40 @@ func CollectSingleFeed(ctx context.Context, feedURL url.URL, rateLimiter *rate_l
 	return feed, nil
 }
 
-// validateFeedURL performs basic validation on a feed URL before attempting to parse it
-func validateFeedURL(ctx context.Context, feedURL url.URL) error {
-	// Check if URL scheme is valid
+// validateFeedURL performs basic scheme/host validation on a feed URL.
+// Network reachability is verified by gofeed.ParseURL (GET request) in the collection loop.
+func validateFeedURL(_ context.Context, feedURL url.URL) error {
 	if feedURL.Scheme != "http" && feedURL.Scheme != "https" {
 		return fmt.Errorf("invalid URL scheme: %s (must be http or https)", feedURL.Scheme)
 	}
-
-	// Check if host is present
 	if feedURL.Host == "" {
 		return fmt.Errorf("missing host in URL")
 	}
-
-	// Try to make a HEAD request to check if URL is accessible using unified HTTP client factory
-	factory := utils.NewHTTPClientFactory()
-	client := factory.CreateHTTPClient()
-
-	resp, err := client.Head(feedURL.String())
-	if err != nil {
-		return fmt.Errorf("failed to access URL: %w", err)
-	}
-	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.Logger.DebugContext(ctx, "Failed to close response body", "error", closeErr)
-		}
-	}()
-
-	// Log response details for debugging
-	logger.Logger.InfoContext(ctx, "Feed URL validation response",
-		"url", feedURL.String(),
-		"status_code", resp.StatusCode,
-		"content_type", resp.Header.Get("Content-Type"),
-		"content_length", resp.Header.Get("Content-Length"))
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("HTTP error: %d %s", resp.StatusCode, resp.Status)
-	}
-
-	// Check if content type suggests this might be an RSS/XML feed
-	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
-	if contentType != "" && !strings.Contains(contentType, "xml") && !strings.Contains(contentType, "rss") && !strings.Contains(contentType, "atom") {
-		logger.SafeWarnContext(ctx, "Content type may not be RSS/XML",
-			"url", feedURL.String(),
-			"content_type", contentType)
-	}
-
 	return nil
 }
 
-func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *rate_limiter.HostRateLimiter, availabilityRepo feed_link_availability_port.FeedLinkAvailabilityPort) ([]*domain.FeedItem, error) {
+func CollectMultipleFeeds(ctx context.Context, feedLinks []domain.FeedLink, rateLimiter *rate_limiter.HostRateLimiter, availabilityRepo feed_link_availability_port.FeedLinkAvailabilityPort) ([]*domain.FeedItem, error) {
 	// Use unified HTTP client factory for secure RSS feed fetching
 	factory := utils.NewHTTPClientFactory()
 	httpClient := factory.CreateHTTPClient()
 	fp := rssFeed.NewParser()
 	fp.Client = httpClient
-	var feeds []*rssFeed.Feed
+	var feedItems []*domain.FeedItem
 	var errors []error
 
-	for i, feedURL := range feedURLs {
+	for i, feedLink := range feedLinks {
+		feedURL, err := url.Parse(feedLink.URL)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "Invalid feed link URL", "url", feedLink.URL, "error", err)
+			errors = append(errors, err)
+			continue
+		}
+
 		// First validate the URL
-		if err := validateFeedURL(ctx, feedURL); err != nil {
+		if err := validateFeedURL(ctx, *feedURL); err != nil {
 			logger.Logger.ErrorContext(ctx, "Feed URL validation failed", "url", feedURL.String(), "error", err)
 			errors = append(errors, err)
-			handleFeedError(ctx, feedURL, err, rateLimiter, availabilityRepo)
+			handleFeedError(ctx, *feedURL, err, rateLimiter, availabilityRepo)
 			continue
 		}
 
@@ -122,16 +93,25 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *
 			slog.InfoContext(ctx, "Rate limiting passed, proceeding with multiple feed collection", "url", feedURL.String())
 		}
 
-		feed, err := fp.ParseURL(feedURL.String())
+		feed, err := fetchWithRetryOn403(ctx, func() (*rssFeed.Feed, error) {
+			return fp.ParseURL(feedURL.String())
+		}, feedURL.String())
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "Error parsing feed", "url", feedURL.String(), "error", err)
 			errors = append(errors, err)
-			handleFeedError(ctx, feedURL, err, rateLimiter, availabilityRepo)
-			continue // Continue processing other feeds instead of failing entirely
+			handleFeedError(ctx, *feedURL, err, rateLimiter, availabilityRepo)
+			continue
 		}
 
-		feeds = append(feeds, feed)
 		logger.Logger.InfoContext(ctx, "Successfully parsed feed", "url", feedURL.String(), "title", feed.Title)
+
+		// Convert feed items and set feed_link_id
+		items := ConvertFeedToFeedItem([]*rssFeed.Feed{feed})
+		feedLinkIDStr := feedLink.ID.String()
+		for _, item := range items {
+			item.FeedLinkID = &feedLinkIDStr
+		}
+		feedItems = append(feedItems, items...)
 
 		// Reset failure count on success
 		if availabilityRepo != nil {
@@ -141,19 +121,19 @@ func CollectMultipleFeeds(ctx context.Context, feedURLs []url.URL, rateLimiter *
 		}
 
 		// Note: Rate limiting replaced the hardcoded sleep
-		logger.Logger.InfoContext(ctx, "Feed collection progress", "current", i+1, "total", len(feedURLs))
+		logger.Logger.InfoContext(ctx, "Feed collection progress", "current", i+1, "total", len(feedLinks))
 	}
 
 	// Log summary of collection results
-	logger.Logger.InfoContext(ctx, "Feed collection summary", "successful", len(feeds), "failed", len(errors), "total", len(feedURLs))
+	successCount := len(feedLinks) - len(errors)
+	logger.Logger.InfoContext(ctx, "Feed collection summary", "successful", successCount, "failed", len(errors), "total", len(feedLinks))
 
 	// Only return error if all feeds failed
-	if len(feeds) == 0 && len(errors) > 0 {
+	if len(feedItems) == 0 && len(errors) > 0 {
 		logger.Logger.ErrorContext(ctx, "All feeds failed to parse", "total_errors", len(errors))
 		return nil, errors[0] // Return the first error
 	}
 
-	feedItems := ConvertFeedToFeedItem(feeds)
 	logger.Logger.InfoContext(ctx, "Feed items", "feedItems count", len(feedItems))
 	return feedItems, nil
 }
@@ -189,6 +169,7 @@ func handleFeedError(ctx context.Context, feedURL url.URL, err error, rateLimite
 }
 
 // isPersistentError returns true for errors that indicate persistent issues with the feed.
+// Note: 403 is included because fetchWithRetryOn403 exhausts retries before this is called.
 func isPersistentError(err error) bool {
 	if err == nil {
 		return false
@@ -198,6 +179,44 @@ func isPersistentError(err error) bool {
 		strings.Contains(errStr, "403") ||
 		strings.Contains(errStr, "404") ||
 		strings.Contains(errStr, "Failed to detect feed type")
+}
+
+// is403Error returns true if the error indicates a 403 Forbidden response.
+func is403Error(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "403")
+}
+
+const max403Retries = 3
+
+// fetchWithRetryOn403 retries the fetch with exponential backoff when a 403 is received.
+// After max403Retries, the 403 error is returned and treated as persistent by the caller.
+func fetchWithRetryOn403(ctx context.Context, fetchFn func() (*rssFeed.Feed, error), feedURL string) (*rssFeed.Feed, error) {
+	feed, err := fetchFn()
+	if err == nil || !is403Error(err) {
+		return feed, err
+	}
+
+	for attempt := 1; attempt <= max403Retries; attempt++ {
+		backoff := time.Duration(1<<uint(attempt-1)) * time.Second // 1s, 2s, 4s
+		slog.WarnContext(ctx, "403 received, retrying with exponential backoff",
+			"url", feedURL, "attempt", attempt, "backoff", backoff)
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		feed, err = fetchFn()
+		if err == nil || !is403Error(err) {
+			return feed, err
+		}
+	}
+
+	return nil, err
 }
 
 // is429Error returns true if the error indicates rate limiting by the target site.

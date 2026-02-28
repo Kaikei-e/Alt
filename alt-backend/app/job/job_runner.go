@@ -18,14 +18,14 @@ func CollectFeedsJob(r *alt_db.AltDBRepository) func(ctx context.Context) error 
 	rateLimiter := rate_limiter.NewHostRateLimiter(5 * time.Second)
 
 	return func(ctx context.Context) error {
-		feedURLs, err := r.FetchRSSFeedURLs(ctx)
+		feedLinks, err := r.FetchRSSFeedURLs(ctx)
 		if err != nil {
 			return err
 		}
 
-		logger.Logger.InfoContext(ctx, "Found RSS feed URLs", "count", len(feedURLs))
+		logger.Logger.InfoContext(ctx, "Found RSS feed URLs", "count", len(feedLinks))
 
-		feedItems, err := CollectMultipleFeeds(ctx, feedURLs, rateLimiter, r)
+		feedItems, err := CollectMultipleFeeds(ctx, feedLinks, rateLimiter, r)
 		if err != nil {
 			return err
 		}
@@ -52,6 +52,7 @@ func CollectFeedsJob(r *alt_db.AltDBRepository) func(ctx context.Context) error 
 				PubDate:     pubDate,
 				CreatedAt:   time.Now().UTC(),
 				UpdatedAt:   time.Now().UTC(),
+				FeedLinkID:  feedItem.FeedLinkID,
 			}
 		}
 

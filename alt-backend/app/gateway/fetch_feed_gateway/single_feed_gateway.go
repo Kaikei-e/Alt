@@ -8,6 +8,8 @@ import (
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
 	"context"
+	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -48,8 +50,8 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 		logger.SafeLogErrorWithAppContext(ctx, "database_connection_check", dbErr)
 		return nil, dbErr
 	}
-	// Get RSS feed URLs from the database
-	feedURLs, err := g.alt_db.FetchRSSFeedURLs(ctx)
+	// Get RSS feed links from the database
+	feedLinks, err := g.alt_db.FetchRSSFeedURLs(ctx)
 	if err != nil {
 		dbErr := errors.NewDatabaseUnavailableError(
 			"gateway",
@@ -65,7 +67,7 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 		return nil, dbErr
 	}
 
-	if len(feedURLs) == 0 {
+	if len(feedLinks) == 0 {
 		logger.SafeLogInfo(ctx, "No RSS feed URLs found in database")
 		return &domain.RSSFeed{
 			Title:       "No feeds available",
@@ -74,8 +76,11 @@ func (g *SingleFeedGateway) FetchSingleFeed(ctx context.Context) (*domain.RSSFee
 		}, nil
 	}
 
-	// Use the first available feed URL
-	feedURL := feedURLs[0]
+	// Use the first available feed link
+	feedURL, err := url.Parse(feedLinks[0].URL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid feed link URL: %w", err)
+	}
 	logger.SafeLogInfo(ctx, "Fetching RSS feed", "url", feedURL.String())
 
 	// Apply rate limiting if rate limiter is configured
