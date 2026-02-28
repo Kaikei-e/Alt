@@ -305,4 +305,15 @@ down-observability:
 logs-observability:
 	docker compose -p alt -f compose/compose.yaml logs -f nginx-exporter prometheus grafana
 
-.PHONY: clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability
+# Rust build artifact cleanup
+rust-clean:
+	@echo "Cleaning Rust target/ directories across all services..."
+	@echo "  rask-log-aggregator..."
+	@cd rask-log-aggregator/app && cargo clean 2>/dev/null && echo "    cleaned." || echo "    skipped (no target/)."
+	@echo "  rask-log-forwarder..."
+	@cd rask-log-forwarder/app && cargo clean 2>/dev/null && echo "    cleaned." || echo "    skipped (no target/)."
+	@echo "  recap-worker..."
+	@cd recap-worker/recap-worker && cargo clean 2>/dev/null && echo "    cleaned." || echo "    skipped (no target/)."
+	@echo "Rust cleanup complete."
+
+.PHONY: clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability rust-clean
