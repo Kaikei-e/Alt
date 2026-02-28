@@ -1,0 +1,12 @@
+[Unit]
+Description=Alt Auto Deploy
+After=network.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=__ALT_ROOT__
+ExecStart=__ALT_ROOT__/deploy-system/deploy-local.sh
+User=__USER__
+Environment=PATH=/usr/local/bin:/usr/bin:__HOME__/go/bin:__HOME__/.local/bin
+StandardOutput=journal
+StandardError=journal
