@@ -306,6 +306,81 @@ func TestBFFHandler_ApplyConnectTimeout_WithoutHeader(t *testing.T) {
 	assert.LessOrEqual(t, remaining, 30*time.Second)
 }
 
+func TestBFFHandler_ServeHTTP_StreamingDelegatesToProxyHandler(t *testing.T) {
+	// Streaming requests (e.g. StreamChat) must be delegated to ProxyHandler
+	// which properly streams response chunks with flushing, instead of being
+	// buffered by BFFHandler's io.ReadAll path.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/alt.augur.v2.AugurService/StreamChat", r.URL.Path)
+
+		w.Header().Set("Content-Type", "application/connect+proto")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, ok := w.(http.Flusher)
+		require.True(t, ok)
+
+		for i := 0; i < 3; i++ {
+			w.Write([]byte("chunk"))
+			flusher.Flush()
+		}
+	}))
+	defer backend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCache:          true,
+		EnableCircuitBreaker: true,
+		EnableDedup:          true,
+		CacheMaxSize:         100,
+		CBFailureThreshold:   5,
+		CBSuccessThreshold:   2,
+		CBOpenTimeout:        30 * time.Second,
+		DedupWindow:          100 * time.Millisecond,
+	}
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	req := httptest.NewRequest("POST", "/alt.augur.v2.AugurService/StreamChat", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	// Verify the response contains streamed chunks
+	assert.Contains(t, rec.Body.String(), "chunk")
+	// Streaming responses should NOT have X-Cache header (bypasses BFF features)
+	assert.Empty(t, rec.Header().Get("X-Cache"))
+}
+
+func TestBFFHandler_ServeHTTP_UnaryStillUsesBFFFeatures(t *testing.T) {
+	// Unary requests should still go through BFF features (cache, dedup, etc.)
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer backend.Close()
+
+	secret := []byte("test-secret-key")
+	config := BFFConfig{
+		EnableCache:  true,
+		CacheMaxSize: 100,
+	}
+	handler := createTestBFFHandlerWithBackend(t, backend.URL, secret, config)
+	token := createTestToken(t, secret)
+
+	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(`{}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	// Unary requests should go through BFF path and have X-Cache header
+	assert.Equal(t, "MISS", rec.Header().Get("X-Cache"))
+}
+
 func TestBFFHandler_ApplyConnectTimeout_CappedAt5Minutes(t *testing.T) {
 	handler := createTestBFFHandler(t, BFFConfig{})
 

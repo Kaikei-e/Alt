@@ -24,7 +24,7 @@ func TestNewProxyHandler(t *testing.T) {
 	)
 	secret := []byte("test-secret")
 
-	handler := NewProxyHandler(backendClient, secret, "auth-hub", "alt-backend", nil, 30*time.Second)
+	handler := NewProxyHandler(backendClient, secret, "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	assert.NotNil(t, handler)
 }
@@ -36,7 +36,7 @@ func TestProxyHandler_ApplyConnectTimeout_WithHeader(t *testing.T) {
 		5*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	req.Header.Set("Connect-Timeout-Ms", "120000")
@@ -59,7 +59,7 @@ func TestProxyHandler_ApplyConnectTimeout_WithoutHeader(t *testing.T) {
 		5*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 
@@ -81,7 +81,7 @@ func TestProxyHandler_ApplyConnectTimeout_CappedAt5Minutes(t *testing.T) {
 		5*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	req.Header.Set("Connect-Timeout-Ms", "999999999") // ~277 hours
@@ -95,6 +95,50 @@ func TestProxyHandler_ApplyConnectTimeout_CappedAt5Minutes(t *testing.T) {
 	remaining := time.Until(deadline)
 	assert.Greater(t, remaining, 4*time.Minute+59*time.Second)
 	assert.LessOrEqual(t, remaining, 5*time.Minute)
+}
+
+func TestProxyHandler_ApplyConnectTimeout_StreamingUsesStreamingTimeout(t *testing.T) {
+	backendClient := client.NewBackendClientWithTransport(
+		"http://localhost:9101",
+		30*time.Second,
+		5*time.Minute,
+		http.DefaultTransport,
+	)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+
+	req := httptest.NewRequest(http.MethodPost, "/alt.augur.v2.AugurService/StreamChat", nil)
+
+	newReq, cancel := handler.applyConnectTimeout(req)
+	defer cancel()
+
+	deadline, ok := newReq.Context().Deadline()
+	assert.True(t, ok)
+	// Streaming requests should get streaming timeout (~5 min), not default (~30s)
+	remaining := time.Until(deadline)
+	assert.Greater(t, remaining, 4*time.Minute+59*time.Second)
+	assert.LessOrEqual(t, remaining, 5*time.Minute)
+}
+
+func TestProxyHandler_ApplyConnectTimeout_UnaryUsesDefaultTimeout(t *testing.T) {
+	backendClient := client.NewBackendClientWithTransport(
+		"http://localhost:9101",
+		30*time.Second,
+		5*time.Minute,
+		http.DefaultTransport,
+	)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+
+	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", nil)
+
+	newReq, cancel := handler.applyConnectTimeout(req)
+	defer cancel()
+
+	deadline, ok := newReq.Context().Deadline()
+	assert.True(t, ok)
+	// Unary requests should get default timeout (~30s)
+	remaining := time.Until(deadline)
+	assert.Greater(t, remaining, 29*time.Second)
+	assert.LessOrEqual(t, remaining, 30*time.Second)
 }
 
 func TestProxyHandler_ServeHTTP_Success(t *testing.T) {
@@ -116,7 +160,7 @@ func TestProxyHandler_ServeHTTP_Success(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	// Create request with valid token
 	req := httptest.NewRequest(
@@ -142,7 +186,7 @@ func TestProxyHandler_ServeHTTP_MissingToken(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	recorder := httptest.NewRecorder()
@@ -160,7 +204,7 @@ func TestProxyHandler_ServeHTTP_InvalidToken(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	req.Header.Set("X-Alt-Backend-Token", "invalid-token")
@@ -185,7 +229,7 @@ func TestProxyHandler_ServeHTTP_BackendError(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/test", nil)
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
@@ -218,7 +262,7 @@ func TestProxyHandler_ServeHTTP_StreamingRequest(t *testing.T) {
 		http.DefaultTransport,
 	)
 
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
 
 	req := httptest.NewRequest(
 		http.MethodPost,

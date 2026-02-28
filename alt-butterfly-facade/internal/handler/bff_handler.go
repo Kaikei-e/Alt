@@ -62,8 +62,9 @@ func NewBFFHandler(
 	config BFFConfig,
 ) *BFFHandler {
 	defaultTimeout := backendClient.DefaultTimeout()
+	streamingTimeout := backendClient.StreamingTimeout()
 	h := &BFFHandler{
-		proxyHandler:    NewProxyHandler(backendClient, secret, issuer, audience, logger, defaultTimeout),
+		proxyHandler:    NewProxyHandler(backendClient, secret, issuer, audience, logger, defaultTimeout, streamingTimeout),
 		backendClient:   backendClient,
 		authInterceptor: middleware.NewAuthInterceptor(logger, secret, issuer, audience),
 		logger:          logger,
@@ -116,7 +117,14 @@ func (h *BFFHandler) applyConnectTimeout(r *http.Request) (*http.Request, contex
 
 // ServeHTTP implements http.Handler.
 func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Apply Connect-Timeout-Ms based context deadline
+	// Streaming requests bypass BFF features (cache, dedup, circuit breaker)
+	// and use ProxyHandler which properly streams response chunks with flushing.
+	if isStreamingProcedure(r.URL.Path) {
+		h.proxyHandler.ServeHTTP(w, r)
+		return
+	}
+
+	// Apply Connect-Timeout-Ms based context deadline (unary only)
 	r, cancel := h.applyConnectTimeout(r)
 	defer cancel()
 

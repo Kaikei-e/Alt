@@ -28,10 +28,11 @@ var streamingProcedures = map[string]bool{
 
 // ProxyHandler proxies Connect-RPC requests to the backend.
 type ProxyHandler struct {
-	backendClient   *client.BackendClient
-	authInterceptor *middleware.AuthInterceptor
-	logger          *slog.Logger
-	defaultTimeout  time.Duration
+	backendClient    *client.BackendClient
+	authInterceptor  *middleware.AuthInterceptor
+	logger           *slog.Logger
+	defaultTimeout   time.Duration
+	streamingTimeout time.Duration
 }
 
 // NewProxyHandler creates a new proxy handler.
@@ -41,20 +42,28 @@ func NewProxyHandler(
 	issuer, audience string,
 	logger *slog.Logger,
 	defaultTimeout time.Duration,
+	streamingTimeout time.Duration,
 ) *ProxyHandler {
 	return &ProxyHandler{
-		backendClient:   backendClient,
-		authInterceptor: middleware.NewAuthInterceptor(logger, secret, issuer, audience),
-		logger:          logger,
-		defaultTimeout:  defaultTimeout,
+		backendClient:    backendClient,
+		authInterceptor:  middleware.NewAuthInterceptor(logger, secret, issuer, audience),
+		logger:           logger,
+		defaultTimeout:   defaultTimeout,
+		streamingTimeout: streamingTimeout,
 	}
 }
 
 // applyConnectTimeout parses the Connect-Timeout-Ms header and sets a context
 // deadline on the request. If the header is absent or invalid, defaultTimeout
-// is used. The timeout is capped at maxConnectTimeout (5 min).
+// is used (or streamingTimeout for streaming procedures).
+// The timeout is capped at maxConnectTimeout (5 min).
 func (h *ProxyHandler) applyConnectTimeout(r *http.Request) (*http.Request, context.CancelFunc) {
 	timeout := h.defaultTimeout
+
+	// Use streaming timeout for streaming procedures
+	if isStreamingProcedure(r.URL.Path) {
+		timeout = h.streamingTimeout
+	}
 
 	if ms := r.Header.Get("Connect-Timeout-Ms"); ms != "" {
 		if parsed, err := strconv.ParseInt(ms, 10, 64); err == nil && parsed > 0 {
