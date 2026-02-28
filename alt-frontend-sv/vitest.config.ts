@@ -39,6 +39,16 @@ export default defineConfig({
 					environment: "node",
 					include: ["src/**/*.{test,spec}.{ts,tsx}"],
 					exclude: ["src/**/*.svelte.{test,spec}.{ts,tsx}"],
+					coverage: {
+						provider: "v8",
+						include: ["src/lib/**/*.ts", "src/lib/**/*.svelte"],
+						exclude: ["src/lib/gen/**"],
+						thresholds: {
+							lines: 60,
+							branches: 50,
+							functions: 55,
+						},
+					},
 				},
 			},
 		],

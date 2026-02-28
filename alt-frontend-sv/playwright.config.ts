@@ -50,6 +50,29 @@ export default defineConfig({
 			},
 		},
 
+		// Integration E2E tests (against real backend on runtime machine)
+		{
+			name: "integration",
+			testMatch: /integration\/.*\.spec\.ts/,
+			use: {
+				...devices["Desktop Chrome"],
+				baseURL:
+					process.env.ALT_RUNTIME_URL || "http://localhost:4173/sv/",
+			},
+			globalSetup: "./tests/e2e/integration/global-setup",
+			globalTeardown: "./tests/e2e/integration/global-teardown",
+		},
+
+		// Visual regression tests
+		{
+			name: "visual-regression",
+			testMatch: /visual\/.*\.spec\.ts/,
+			use: {
+				...devices["Desktop Chrome"],
+				viewport: { width: 1280, height: 720 },
+			},
+		},
+
 		// Desktop tests - Chromium
 		{
 			name: "desktop-chromium",
