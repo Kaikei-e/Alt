@@ -12,9 +12,9 @@ import (
 // This port abstracts the Connect-RPC communication with rag-orchestrator.
 type RagStreamPort interface {
 	// StreamChat opens a streaming chat connection to the RAG service.
-	// Returns a server stream that yields StreamChatEvent messages.
+	// Returns a server stream that yields StreamChatResponse messages.
 	StreamChat(
 		ctx context.Context,
 		req *connect.Request[augurv2.StreamChatRequest],
-	) (*connect.ServerStreamForClient[augurv2.StreamChatEvent], error)
+	) (*connect.ServerStreamForClient[augurv2.StreamChatResponse], error)
 }

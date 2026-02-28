@@ -61,12 +61,12 @@ type MQHubServiceClient interface {
 	// CreateConsumerGroup creates a consumer group for a stream.
 	CreateConsumerGroup(context.Context, *connect.Request[v1.CreateConsumerGroupRequest]) (*connect.Response[v1.CreateConsumerGroupResponse], error)
 	// GetStreamInfo returns information about a stream.
-	GetStreamInfo(context.Context, *connect.Request[v1.StreamInfoRequest]) (*connect.Response[v1.StreamInfoResponse], error)
+	GetStreamInfo(context.Context, *connect.Request[v1.GetStreamInfoRequest]) (*connect.Response[v1.GetStreamInfoResponse], error)
 	// HealthCheck checks the health of the service.
 	HealthCheck(context.Context, *connect.Request[v1.HealthCheckRequest]) (*connect.Response[v1.HealthCheckResponse], error)
 	// GenerateTagsForArticle synchronously generates tags for an article.
 	// Uses request-reply pattern over Redis Streams with tag-generator service.
-	GenerateTagsForArticle(context.Context, *connect.Request[v1.GenerateTagsRequest]) (*connect.Response[v1.GenerateTagsResponse], error)
+	GenerateTagsForArticle(context.Context, *connect.Request[v1.GenerateTagsForArticleRequest]) (*connect.Response[v1.GenerateTagsForArticleResponse], error)
 }
 
 // NewMQHubServiceClient constructs a client for the services.mqhub.v1.MQHubService service. By
@@ -98,7 +98,7 @@ func NewMQHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(mQHubServiceMethods.ByName("CreateConsumerGroup")),
 			connect.WithClientOptions(opts...),
 		),
-		getStreamInfo: connect.NewClient[v1.StreamInfoRequest, v1.StreamInfoResponse](
+		getStreamInfo: connect.NewClient[v1.GetStreamInfoRequest, v1.GetStreamInfoResponse](
 			httpClient,
 			baseURL+MQHubServiceGetStreamInfoProcedure,
 			connect.WithSchema(mQHubServiceMethods.ByName("GetStreamInfo")),
@@ -110,7 +110,7 @@ func NewMQHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(mQHubServiceMethods.ByName("HealthCheck")),
 			connect.WithClientOptions(opts...),
 		),
-		generateTagsForArticle: connect.NewClient[v1.GenerateTagsRequest, v1.GenerateTagsResponse](
+		generateTagsForArticle: connect.NewClient[v1.GenerateTagsForArticleRequest, v1.GenerateTagsForArticleResponse](
 			httpClient,
 			baseURL+MQHubServiceGenerateTagsForArticleProcedure,
 			connect.WithSchema(mQHubServiceMethods.ByName("GenerateTagsForArticle")),
@@ -124,9 +124,9 @@ type mQHubServiceClient struct {
 	publish                *connect.Client[v1.PublishRequest, v1.PublishResponse]
 	publishBatch           *connect.Client[v1.PublishBatchRequest, v1.PublishBatchResponse]
 	createConsumerGroup    *connect.Client[v1.CreateConsumerGroupRequest, v1.CreateConsumerGroupResponse]
-	getStreamInfo          *connect.Client[v1.StreamInfoRequest, v1.StreamInfoResponse]
+	getStreamInfo          *connect.Client[v1.GetStreamInfoRequest, v1.GetStreamInfoResponse]
 	healthCheck            *connect.Client[v1.HealthCheckRequest, v1.HealthCheckResponse]
-	generateTagsForArticle *connect.Client[v1.GenerateTagsRequest, v1.GenerateTagsResponse]
+	generateTagsForArticle *connect.Client[v1.GenerateTagsForArticleRequest, v1.GenerateTagsForArticleResponse]
 }
 
 // Publish calls services.mqhub.v1.MQHubService.Publish.
@@ -145,7 +145,7 @@ func (c *mQHubServiceClient) CreateConsumerGroup(ctx context.Context, req *conne
 }
 
 // GetStreamInfo calls services.mqhub.v1.MQHubService.GetStreamInfo.
-func (c *mQHubServiceClient) GetStreamInfo(ctx context.Context, req *connect.Request[v1.StreamInfoRequest]) (*connect.Response[v1.StreamInfoResponse], error) {
+func (c *mQHubServiceClient) GetStreamInfo(ctx context.Context, req *connect.Request[v1.GetStreamInfoRequest]) (*connect.Response[v1.GetStreamInfoResponse], error) {
 	return c.getStreamInfo.CallUnary(ctx, req)
 }
 
@@ -155,7 +155,7 @@ func (c *mQHubServiceClient) HealthCheck(ctx context.Context, req *connect.Reque
 }
 
 // GenerateTagsForArticle calls services.mqhub.v1.MQHubService.GenerateTagsForArticle.
-func (c *mQHubServiceClient) GenerateTagsForArticle(ctx context.Context, req *connect.Request[v1.GenerateTagsRequest]) (*connect.Response[v1.GenerateTagsResponse], error) {
+func (c *mQHubServiceClient) GenerateTagsForArticle(ctx context.Context, req *connect.Request[v1.GenerateTagsForArticleRequest]) (*connect.Response[v1.GenerateTagsForArticleResponse], error) {
 	return c.generateTagsForArticle.CallUnary(ctx, req)
 }
 
@@ -168,12 +168,12 @@ type MQHubServiceHandler interface {
 	// CreateConsumerGroup creates a consumer group for a stream.
 	CreateConsumerGroup(context.Context, *connect.Request[v1.CreateConsumerGroupRequest]) (*connect.Response[v1.CreateConsumerGroupResponse], error)
 	// GetStreamInfo returns information about a stream.
-	GetStreamInfo(context.Context, *connect.Request[v1.StreamInfoRequest]) (*connect.Response[v1.StreamInfoResponse], error)
+	GetStreamInfo(context.Context, *connect.Request[v1.GetStreamInfoRequest]) (*connect.Response[v1.GetStreamInfoResponse], error)
 	// HealthCheck checks the health of the service.
 	HealthCheck(context.Context, *connect.Request[v1.HealthCheckRequest]) (*connect.Response[v1.HealthCheckResponse], error)
 	// GenerateTagsForArticle synchronously generates tags for an article.
 	// Uses request-reply pattern over Redis Streams with tag-generator service.
-	GenerateTagsForArticle(context.Context, *connect.Request[v1.GenerateTagsRequest]) (*connect.Response[v1.GenerateTagsResponse], error)
+	GenerateTagsForArticle(context.Context, *connect.Request[v1.GenerateTagsForArticleRequest]) (*connect.Response[v1.GenerateTagsForArticleResponse], error)
 }
 
 // NewMQHubServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -254,7 +254,7 @@ func (UnimplementedMQHubServiceHandler) CreateConsumerGroup(context.Context, *co
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.mqhub.v1.MQHubService.CreateConsumerGroup is not implemented"))
 }
 
-func (UnimplementedMQHubServiceHandler) GetStreamInfo(context.Context, *connect.Request[v1.StreamInfoRequest]) (*connect.Response[v1.StreamInfoResponse], error) {
+func (UnimplementedMQHubServiceHandler) GetStreamInfo(context.Context, *connect.Request[v1.GetStreamInfoRequest]) (*connect.Response[v1.GetStreamInfoResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.mqhub.v1.MQHubService.GetStreamInfo is not implemented"))
 }
 
@@ -262,6 +262,6 @@ func (UnimplementedMQHubServiceHandler) HealthCheck(context.Context, *connect.Re
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.mqhub.v1.MQHubService.HealthCheck is not implemented"))
 }
 
-func (UnimplementedMQHubServiceHandler) GenerateTagsForArticle(context.Context, *connect.Request[v1.GenerateTagsRequest]) (*connect.Response[v1.GenerateTagsResponse], error) {
+func (UnimplementedMQHubServiceHandler) GenerateTagsForArticle(context.Context, *connect.Request[v1.GenerateTagsForArticleRequest]) (*connect.Response[v1.GenerateTagsForArticleResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.mqhub.v1.MQHubService.GenerateTagsForArticle is not implemented"))
 }

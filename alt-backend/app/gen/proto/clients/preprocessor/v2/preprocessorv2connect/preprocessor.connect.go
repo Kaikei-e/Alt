@@ -55,9 +55,9 @@ type PreProcessorServiceClient interface {
 	// StreamSummarize performs streaming article summarization
 	StreamSummarize(context.Context, *connect.Request[v2.StreamSummarizeRequest]) (*connect.ServerStreamForClient[v2.StreamSummarizeResponse], error)
 	// QueueSummarize submits an article for async summarization
-	QueueSummarize(context.Context, *connect.Request[v2.SummarizeQueueRequest]) (*connect.Response[v2.SummarizeQueueResponse], error)
+	QueueSummarize(context.Context, *connect.Request[v2.QueueSummarizeRequest]) (*connect.Response[v2.QueueSummarizeResponse], error)
 	// GetSummarizeStatus checks the status of a summarization job
-	GetSummarizeStatus(context.Context, *connect.Request[v2.SummarizeStatusRequest]) (*connect.Response[v2.SummarizeStatusResponse], error)
+	GetSummarizeStatus(context.Context, *connect.Request[v2.GetSummarizeStatusRequest]) (*connect.Response[v2.GetSummarizeStatusResponse], error)
 }
 
 // NewPreProcessorServiceClient constructs a client for the
@@ -84,13 +84,13 @@ func NewPreProcessorServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(preProcessorServiceMethods.ByName("StreamSummarize")),
 			connect.WithClientOptions(opts...),
 		),
-		queueSummarize: connect.NewClient[v2.SummarizeQueueRequest, v2.SummarizeQueueResponse](
+		queueSummarize: connect.NewClient[v2.QueueSummarizeRequest, v2.QueueSummarizeResponse](
 			httpClient,
 			baseURL+PreProcessorServiceQueueSummarizeProcedure,
 			connect.WithSchema(preProcessorServiceMethods.ByName("QueueSummarize")),
 			connect.WithClientOptions(opts...),
 		),
-		getSummarizeStatus: connect.NewClient[v2.SummarizeStatusRequest, v2.SummarizeStatusResponse](
+		getSummarizeStatus: connect.NewClient[v2.GetSummarizeStatusRequest, v2.GetSummarizeStatusResponse](
 			httpClient,
 			baseURL+PreProcessorServiceGetSummarizeStatusProcedure,
 			connect.WithSchema(preProcessorServiceMethods.ByName("GetSummarizeStatus")),
@@ -103,8 +103,8 @@ func NewPreProcessorServiceClient(httpClient connect.HTTPClient, baseURL string,
 type preProcessorServiceClient struct {
 	summarize          *connect.Client[v2.SummarizeRequest, v2.SummarizeResponse]
 	streamSummarize    *connect.Client[v2.StreamSummarizeRequest, v2.StreamSummarizeResponse]
-	queueSummarize     *connect.Client[v2.SummarizeQueueRequest, v2.SummarizeQueueResponse]
-	getSummarizeStatus *connect.Client[v2.SummarizeStatusRequest, v2.SummarizeStatusResponse]
+	queueSummarize     *connect.Client[v2.QueueSummarizeRequest, v2.QueueSummarizeResponse]
+	getSummarizeStatus *connect.Client[v2.GetSummarizeStatusRequest, v2.GetSummarizeStatusResponse]
 }
 
 // Summarize calls clients.preprocessor.v2.PreProcessorService.Summarize.
@@ -118,12 +118,12 @@ func (c *preProcessorServiceClient) StreamSummarize(ctx context.Context, req *co
 }
 
 // QueueSummarize calls clients.preprocessor.v2.PreProcessorService.QueueSummarize.
-func (c *preProcessorServiceClient) QueueSummarize(ctx context.Context, req *connect.Request[v2.SummarizeQueueRequest]) (*connect.Response[v2.SummarizeQueueResponse], error) {
+func (c *preProcessorServiceClient) QueueSummarize(ctx context.Context, req *connect.Request[v2.QueueSummarizeRequest]) (*connect.Response[v2.QueueSummarizeResponse], error) {
 	return c.queueSummarize.CallUnary(ctx, req)
 }
 
 // GetSummarizeStatus calls clients.preprocessor.v2.PreProcessorService.GetSummarizeStatus.
-func (c *preProcessorServiceClient) GetSummarizeStatus(ctx context.Context, req *connect.Request[v2.SummarizeStatusRequest]) (*connect.Response[v2.SummarizeStatusResponse], error) {
+func (c *preProcessorServiceClient) GetSummarizeStatus(ctx context.Context, req *connect.Request[v2.GetSummarizeStatusRequest]) (*connect.Response[v2.GetSummarizeStatusResponse], error) {
 	return c.getSummarizeStatus.CallUnary(ctx, req)
 }
 
@@ -135,9 +135,9 @@ type PreProcessorServiceHandler interface {
 	// StreamSummarize performs streaming article summarization
 	StreamSummarize(context.Context, *connect.Request[v2.StreamSummarizeRequest], *connect.ServerStream[v2.StreamSummarizeResponse]) error
 	// QueueSummarize submits an article for async summarization
-	QueueSummarize(context.Context, *connect.Request[v2.SummarizeQueueRequest]) (*connect.Response[v2.SummarizeQueueResponse], error)
+	QueueSummarize(context.Context, *connect.Request[v2.QueueSummarizeRequest]) (*connect.Response[v2.QueueSummarizeResponse], error)
 	// GetSummarizeStatus checks the status of a summarization job
-	GetSummarizeStatus(context.Context, *connect.Request[v2.SummarizeStatusRequest]) (*connect.Response[v2.SummarizeStatusResponse], error)
+	GetSummarizeStatus(context.Context, *connect.Request[v2.GetSummarizeStatusRequest]) (*connect.Response[v2.GetSummarizeStatusResponse], error)
 }
 
 // NewPreProcessorServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -198,10 +198,10 @@ func (UnimplementedPreProcessorServiceHandler) StreamSummarize(context.Context, 
 	return connect.NewError(connect.CodeUnimplemented, errors.New("clients.preprocessor.v2.PreProcessorService.StreamSummarize is not implemented"))
 }
 
-func (UnimplementedPreProcessorServiceHandler) QueueSummarize(context.Context, *connect.Request[v2.SummarizeQueueRequest]) (*connect.Response[v2.SummarizeQueueResponse], error) {
+func (UnimplementedPreProcessorServiceHandler) QueueSummarize(context.Context, *connect.Request[v2.QueueSummarizeRequest]) (*connect.Response[v2.QueueSummarizeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clients.preprocessor.v2.PreProcessorService.QueueSummarize is not implemented"))
 }
 
-func (UnimplementedPreProcessorServiceHandler) GetSummarizeStatus(context.Context, *connect.Request[v2.SummarizeStatusRequest]) (*connect.Response[v2.SummarizeStatusResponse], error) {
+func (UnimplementedPreProcessorServiceHandler) GetSummarizeStatus(context.Context, *connect.Request[v2.GetSummarizeStatusRequest]) (*connect.Response[v2.GetSummarizeStatusResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("clients.preprocessor.v2.PreProcessorService.GetSummarizeStatus is not implemented"))
 }

@@ -444,7 +444,7 @@ func (h *Handler) FetchRandomFeed(
 func (h *Handler) StreamArticleTags(
 	ctx context.Context,
 	req *connect.Request[articlesv2.StreamArticleTagsRequest],
-	stream *connect.ServerStream[articlesv2.ArticleTagEvent],
+	stream *connect.ServerStream[articlesv2.StreamArticleTagsResponse],
 ) error {
 	_, err := middleware.GetUserContext(ctx)
 	if err != nil {
@@ -461,10 +461,10 @@ func (h *Handler) StreamArticleTags(
 
 	if h.container.StreamArticleTagsUsecase == nil {
 		h.logger.WarnContext(ctx, "StreamArticleTagsUsecase not available, returning empty tags", "articleID", articleID)
-		return stream.Send(&articlesv2.ArticleTagEvent{
+		return stream.Send(&articlesv2.StreamArticleTagsResponse{
 			ArticleId: articleID,
 			Tags:      []*articlesv2.ArticleTagItem{},
-			EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED,
+			EventType: articlesv2.StreamArticleTagsResponse_EVENT_TYPE_COMPLETED,
 			Message:   stringPtr("Tag generation not available"),
 		})
 	}
@@ -472,31 +472,31 @@ func (h *Handler) StreamArticleTags(
 	result, err := h.container.StreamArticleTagsUsecase.Execute(ctx, articleID)
 	if err != nil {
 		h.logger.WarnContext(ctx, "tag resolution failed", "articleID", articleID, "error", err)
-		return stream.Send(&articlesv2.ArticleTagEvent{
+		return stream.Send(&articlesv2.StreamArticleTagsResponse{
 			ArticleId: articleID,
 			Tags:      []*articlesv2.ArticleTagItem{},
-			EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED,
+			EventType: articlesv2.StreamArticleTagsResponse_EVENT_TYPE_COMPLETED,
 			Message:   stringPtr("Tag generation temporarily unavailable"),
 		})
 	}
 
 	if len(result.Tags) == 0 {
 		h.logger.InfoContext(ctx, "no tags found or generated", "articleID", articleID)
-		return stream.Send(&articlesv2.ArticleTagEvent{
+		return stream.Send(&articlesv2.StreamArticleTagsResponse{
 			ArticleId: articleID,
 			Tags:      []*articlesv2.ArticleTagItem{},
-			EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED,
+			EventType: articlesv2.StreamArticleTagsResponse_EVENT_TYPE_COMPLETED,
 			Message:   stringPtr("No tags generated"),
 		})
 	}
 
-	eventType := articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED
+	eventType := articlesv2.StreamArticleTagsResponse_EVENT_TYPE_COMPLETED
 	if result.IsCached {
-		eventType = articlesv2.ArticleTagEvent_EVENT_TYPE_CACHED
+		eventType = articlesv2.StreamArticleTagsResponse_EVENT_TYPE_CACHED
 	}
 
 	h.logger.InfoContext(ctx, "returning tags", "articleID", articleID, "tagCount", len(result.Tags), "cached", result.IsCached)
-	return stream.Send(&articlesv2.ArticleTagEvent{
+	return stream.Send(&articlesv2.StreamArticleTagsResponse{
 		ArticleId: articleID,
 		Tags:      convertTagsToProto(result.Tags),
 		EventType: eventType,

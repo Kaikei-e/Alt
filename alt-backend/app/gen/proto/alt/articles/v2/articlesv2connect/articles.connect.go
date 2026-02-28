@@ -87,7 +87,7 @@ type ArticleServiceClient interface {
 	FetchRandomFeed(context.Context, *connect.Request[v2.FetchRandomFeedRequest]) (*connect.Response[v2.FetchRandomFeedResponse], error)
 	// StreamArticleTags streams real-time tag updates for an article
 	// Returns cached tags immediately if available, otherwise streams generation progress
-	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest]) (*connect.ServerStreamForClient[v2.ArticleTagEvent], error)
+	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest]) (*connect.ServerStreamForClient[v2.StreamArticleTagsResponse], error)
 	// BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
 	BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error)
 }
@@ -145,7 +145,7 @@ func NewArticleServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(articleServiceMethods.ByName("FetchRandomFeed")),
 			connect.WithClientOptions(opts...),
 		),
-		streamArticleTags: connect.NewClient[v2.StreamArticleTagsRequest, v2.ArticleTagEvent](
+		streamArticleTags: connect.NewClient[v2.StreamArticleTagsRequest, v2.StreamArticleTagsResponse](
 			httpClient,
 			baseURL+ArticleServiceStreamArticleTagsProcedure,
 			connect.WithSchema(articleServiceMethods.ByName("StreamArticleTags")),
@@ -169,7 +169,7 @@ type articleServiceClient struct {
 	fetchArticlesByTag  *connect.Client[v2.FetchArticlesByTagRequest, v2.FetchArticlesByTagResponse]
 	fetchArticleTags    *connect.Client[v2.FetchArticleTagsRequest, v2.FetchArticleTagsResponse]
 	fetchRandomFeed     *connect.Client[v2.FetchRandomFeedRequest, v2.FetchRandomFeedResponse]
-	streamArticleTags   *connect.Client[v2.StreamArticleTagsRequest, v2.ArticleTagEvent]
+	streamArticleTags   *connect.Client[v2.StreamArticleTagsRequest, v2.StreamArticleTagsResponse]
 	batchPrefetchImages *connect.Client[v2.BatchPrefetchImagesRequest, v2.BatchPrefetchImagesResponse]
 }
 
@@ -209,7 +209,7 @@ func (c *articleServiceClient) FetchRandomFeed(ctx context.Context, req *connect
 }
 
 // StreamArticleTags calls alt.articles.v2.ArticleService.StreamArticleTags.
-func (c *articleServiceClient) StreamArticleTags(ctx context.Context, req *connect.Request[v2.StreamArticleTagsRequest]) (*connect.ServerStreamForClient[v2.ArticleTagEvent], error) {
+func (c *articleServiceClient) StreamArticleTags(ctx context.Context, req *connect.Request[v2.StreamArticleTagsRequest]) (*connect.ServerStreamForClient[v2.StreamArticleTagsResponse], error) {
 	return c.streamArticleTags.CallServerStream(ctx, req)
 }
 
@@ -243,7 +243,7 @@ type ArticleServiceHandler interface {
 	FetchRandomFeed(context.Context, *connect.Request[v2.FetchRandomFeedRequest]) (*connect.Response[v2.FetchRandomFeedResponse], error)
 	// StreamArticleTags streams real-time tag updates for an article
 	// Returns cached tags immediately if available, otherwise streams generation progress
-	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest], *connect.ServerStream[v2.ArticleTagEvent]) error
+	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest], *connect.ServerStream[v2.StreamArticleTagsResponse]) error
 	// BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
 	BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error)
 }
@@ -366,7 +366,7 @@ func (UnimplementedArticleServiceHandler) FetchRandomFeed(context.Context, *conn
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.FetchRandomFeed is not implemented"))
 }
 
-func (UnimplementedArticleServiceHandler) StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest], *connect.ServerStream[v2.ArticleTagEvent]) error {
+func (UnimplementedArticleServiceHandler) StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest], *connect.ServerStream[v2.StreamArticleTagsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.StreamArticleTags is not implemented"))
 }
 

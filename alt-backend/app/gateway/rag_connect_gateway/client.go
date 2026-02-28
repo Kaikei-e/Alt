@@ -38,12 +38,12 @@ func NewClient(baseURL string, logger *slog.Logger) *Client {
 }
 
 // StreamChat connects to rag-orchestrator and returns a server stream.
-// The stream directly provides StreamChatEvent proto messages, eliminating
+// The stream directly provides StreamChatResponse proto messages, eliminating
 // the need for SSE parsing.
 func (c *Client) StreamChat(
 	ctx context.Context,
 	req *connect.Request[augurv2.StreamChatRequest],
-) (*connect.ServerStreamForClient[augurv2.StreamChatEvent], error) {
+) (*connect.ServerStreamForClient[augurv2.StreamChatResponse], error) {
 	c.logger.Info("calling rag-orchestrator Augur.StreamChat",
 		slog.Int("message_count", len(req.Msg.Messages)))
 

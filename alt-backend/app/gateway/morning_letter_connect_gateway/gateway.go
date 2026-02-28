@@ -40,7 +40,7 @@ func (g *Gateway) StreamChat(
 	ctx context.Context,
 	messages []*morningletterv2.ChatMessage,
 	withinHours int32,
-) (*connect.ServerStreamForClient[morningletterv2.StreamChatEvent], error) {
+) (*connect.ServerStreamForClient[morningletterv2.StreamChatResponse], error) {
 	req := &morningletterv2.StreamChatRequest{
 		Messages:    messages,
 		WithinHours: withinHours,

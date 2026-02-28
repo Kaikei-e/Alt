@@ -37,7 +37,7 @@ func NewHandler(
 func (h *Handler) StreamChat(
 	ctx context.Context,
 	req *connect.Request[morningletterv2.StreamChatRequest],
-	stream *connect.ServerStream[morningletterv2.StreamChatEvent],
+	stream *connect.ServerStream[morningletterv2.StreamChatResponse],
 ) error {
 	// Authentication check (handled by interceptor, but double-check)
 	_, err := domain.GetUserFromContext(ctx)

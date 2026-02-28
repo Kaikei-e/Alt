@@ -43,7 +43,7 @@ func NewHandler(
 func (h *Handler) StreamChat(
 	ctx context.Context,
 	req *connect.Request[augurv2.StreamChatRequest],
-	stream *connect.ServerStream[augurv2.StreamChatEvent],
+	stream *connect.ServerStream[augurv2.StreamChatResponse],
 ) error {
 	// Authentication check (handled by interceptor, but double-check)
 	_, err := domain.GetUserFromContext(ctx)
@@ -101,7 +101,7 @@ func (h *Handler) StreamChat(
 
 // sanitizeMetaEvent creates a sanitized copy of the meta event,
 // keeping only safe fields (URL, Title, PublishedAt) in citations.
-func (h *Handler) sanitizeMetaEvent(event *augurv2.StreamChatEvent) *augurv2.StreamChatEvent {
+func (h *Handler) sanitizeMetaEvent(event *augurv2.StreamChatResponse) *augurv2.StreamChatResponse {
 	meta := event.GetMeta()
 	if meta == nil {
 		return event
@@ -118,9 +118,9 @@ func (h *Handler) sanitizeMetaEvent(event *augurv2.StreamChatEvent) *augurv2.Str
 		})
 	}
 
-	return &augurv2.StreamChatEvent{
+	return &augurv2.StreamChatResponse{
 		Kind: "meta",
-		Payload: &augurv2.StreamChatEvent_Meta{
+		Payload: &augurv2.StreamChatResponse_Meta{
 			Meta: &augurv2.MetaPayload{
 				Citations: sanitizedCitations,
 			},

@@ -215,7 +215,7 @@ func (c *Client) GenerateTagsForArticle(ctx context.Context, req GenerateTagsReq
 		}, nil
 	}
 
-	protoReq := &mqhubv1.GenerateTagsRequest{
+	protoReq := &mqhubv1.GenerateTagsForArticleRequest{
 		ArticleId: req.ArticleID,
 		Title:     req.Title,
 		Content:   req.Content,

@@ -43,10 +43,10 @@ func (m *MockStreamChatPort) EXPECT() *MockStreamChatPortMockRecorder {
 }
 
 // StreamChat mocks base method.
-func (m *MockStreamChatPort) StreamChat(ctx context.Context, messages []*v2.ChatMessage, withinHours int32) (*connect.ServerStreamForClient[v2.StreamChatEvent], error) {
+func (m *MockStreamChatPort) StreamChat(ctx context.Context, messages []*v2.ChatMessage, withinHours int32) (*connect.ServerStreamForClient[v2.StreamChatResponse], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StreamChat", ctx, messages, withinHours)
-	ret0, _ := ret[0].(*connect.ServerStreamForClient[v2.StreamChatEvent])
+	ret0, _ := ret[0].(*connect.ServerStreamForClient[v2.StreamChatResponse])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

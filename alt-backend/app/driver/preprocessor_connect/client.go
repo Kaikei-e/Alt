@@ -64,7 +64,7 @@ func (c *ConnectPreProcessorClient) StreamSummarize(ctx context.Context, content
 
 // QueueSummarize submits an article for async summarization via Connect-RPC.
 func (c *ConnectPreProcessorClient) QueueSummarize(ctx context.Context, articleID, title string) (string, error) {
-	resp, err := c.client.QueueSummarize(ctx, connect.NewRequest(&ppv2.SummarizeQueueRequest{
+	resp, err := c.client.QueueSummarize(ctx, connect.NewRequest(&ppv2.QueueSummarizeRequest{
 		ArticleId: articleID,
 		Title:     title,
 	}))
@@ -76,7 +76,7 @@ func (c *ConnectPreProcessorClient) QueueSummarize(ctx context.Context, articleI
 
 // GetSummarizeStatus checks the status of a summarization job via Connect-RPC.
 func (c *ConnectPreProcessorClient) GetSummarizeStatus(ctx context.Context, jobID string) (*SummarizeStatus, error) {
-	resp, err := c.client.GetSummarizeStatus(ctx, connect.NewRequest(&ppv2.SummarizeStatusRequest{
+	resp, err := c.client.GetSummarizeStatus(ctx, connect.NewRequest(&ppv2.GetSummarizeStatusRequest{
 		JobId: jobID,
 	}))
 	if err != nil {

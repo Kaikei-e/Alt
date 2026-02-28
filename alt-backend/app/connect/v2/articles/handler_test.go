@@ -431,17 +431,17 @@ func TestFetchArticleSummary_RequiresAuth(t *testing.T) {
 // StreamArticleTags Handler Tests (TDD)
 // =============================================================================
 
-func TestArticleTagEvent_Construction(t *testing.T) {
+func TestStreamArticleTagsResponse_Construction(t *testing.T) {
 	// Test EventType enum values
-	assert.Equal(t, articlesv2.ArticleTagEvent_EVENT_TYPE_UNSPECIFIED, articlesv2.ArticleTagEvent_EventType(0))
-	assert.Equal(t, articlesv2.ArticleTagEvent_EVENT_TYPE_CACHED, articlesv2.ArticleTagEvent_EventType(1))
-	assert.Equal(t, articlesv2.ArticleTagEvent_EVENT_TYPE_GENERATING, articlesv2.ArticleTagEvent_EventType(2))
-	assert.Equal(t, articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED, articlesv2.ArticleTagEvent_EventType(3))
-	assert.Equal(t, articlesv2.ArticleTagEvent_EVENT_TYPE_ERROR, articlesv2.ArticleTagEvent_EventType(4))
+	assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_UNSPECIFIED, articlesv2.StreamArticleTagsResponse_EventType(0))
+	assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_CACHED, articlesv2.StreamArticleTagsResponse_EventType(1))
+	assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_GENERATING, articlesv2.StreamArticleTagsResponse_EventType(2))
+	assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_COMPLETED, articlesv2.StreamArticleTagsResponse_EventType(3))
+	assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_ERROR, articlesv2.StreamArticleTagsResponse_EventType(4))
 
 	// Test event construction
 	msg := "Generating tags..."
-	event := &articlesv2.ArticleTagEvent{
+	event := &articlesv2.StreamArticleTagsResponse{
 		ArticleId: "article-123",
 		Tags: []*articlesv2.ArticleTagItem{
 			{
@@ -450,13 +450,13 @@ func TestArticleTagEvent_Construction(t *testing.T) {
 				CreatedAt: time.Now().Format(time.RFC3339),
 			},
 		},
-		EventType: articlesv2.ArticleTagEvent_EVENT_TYPE_CACHED,
+		EventType: articlesv2.StreamArticleTagsResponse_EVENT_TYPE_CACHED,
 		Message:   &msg,
 	}
 
 	assert.Equal(t, "article-123", event.ArticleId)
 	assert.Len(t, event.Tags, 1)
-	assert.Equal(t, articlesv2.ArticleTagEvent_EVENT_TYPE_CACHED, event.EventType)
+	assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_CACHED, event.EventType)
 	assert.NotNil(t, event.Message)
 	assert.Equal(t, "Generating tags...", *event.Message)
 }
@@ -568,16 +568,16 @@ func TestStreamArticleTags_EventTypes_Documented(t *testing.T) {
 	// Document the expected event types for StreamArticleTags
 	t.Run("event_type_semantics", func(t *testing.T) {
 		// EVENT_TYPE_CACHED: Tags found in DB (immediate return)
-		assert.Equal(t, articlesv2.ArticleTagEvent_EVENT_TYPE_CACHED, articlesv2.ArticleTagEvent_EventType(1))
+		assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_CACHED, articlesv2.StreamArticleTagsResponse_EventType(1))
 
 		// EVENT_TYPE_GENERATING: Heartbeat during generation (future use)
-		assert.Equal(t, articlesv2.ArticleTagEvent_EVENT_TYPE_GENERATING, articlesv2.ArticleTagEvent_EventType(2))
+		assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_GENERATING, articlesv2.StreamArticleTagsResponse_EventType(2))
 
 		// EVENT_TYPE_COMPLETED: Generation finished (with or without tags)
-		assert.Equal(t, articlesv2.ArticleTagEvent_EVENT_TYPE_COMPLETED, articlesv2.ArticleTagEvent_EventType(3))
+		assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_COMPLETED, articlesv2.StreamArticleTagsResponse_EventType(3))
 
 		// EVENT_TYPE_ERROR: Error during generation
-		assert.Equal(t, articlesv2.ArticleTagEvent_EVENT_TYPE_ERROR, articlesv2.ArticleTagEvent_EventType(4))
+		assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_ERROR, articlesv2.StreamArticleTagsResponse_EventType(4))
 	})
 
 	t.Run("fail_open_behavior", func(t *testing.T) {
