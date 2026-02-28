@@ -1,0 +1,62 @@
+name: Proto Contract Validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'proto/**'
+      - 'alt-frontend-sv/src/lib/gen/**'
+      - 'alt-frontend-sv/src/test/contracts/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'proto/**'
+      - 'alt-frontend-sv/src/lib/gen/**'
+      - 'alt-frontend-sv/src/test/contracts/**'
+
+permissions:
+  contents: read
+
+jobs:
+  buf-lint-breaking:
+    name: Buf Lint & Breaking Change Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: latest
+
+      - name: Buf lint
+        working-directory: proto
+        run: buf lint
+
+      - name: Buf breaking change detection
+        if: github.event_name == 'pull_request'
+        working-directory: proto
+        run: buf breaking --against '.git#branch=main'
+
+  contract-conformance:
+    name: Contract Conformance Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: alt-frontend-sv
+        run: bun install
+
+      - name: Run contract tests
+        working-directory: alt-frontend-sv
+        run: bun test src/test/contracts/
