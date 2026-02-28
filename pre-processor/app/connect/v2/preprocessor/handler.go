@@ -167,8 +167,8 @@ func mapDomainError(err error, articleID string) error {
 // QueueSummarize submits an article for async summarization.
 func (h *Handler) QueueSummarize(
 	ctx context.Context,
-	req *connect.Request[preprocessorv2.SummarizeQueueRequest],
-) (*connect.Response[preprocessorv2.SummarizeQueueResponse], error) {
+	req *connect.Request[preprocessorv2.QueueSummarizeRequest],
+) (*connect.Response[preprocessorv2.QueueSummarizeResponse], error) {
 	articleID := req.Msg.ArticleId
 
 	// Validate required fields
@@ -187,7 +187,7 @@ func (h *Handler) QueueSummarize(
 
 	h.logger.InfoContext(ctx, "summarization job queued successfully", "job_id", jobID, "article_id", articleID)
 
-	return connect.NewResponse(&preprocessorv2.SummarizeQueueResponse{
+	return connect.NewResponse(&preprocessorv2.QueueSummarizeResponse{
 		JobId:   jobID,
 		Status:  "pending",
 		Message: "Summarization job queued successfully",
@@ -197,8 +197,8 @@ func (h *Handler) QueueSummarize(
 // GetSummarizeStatus checks the status of a summarization job.
 func (h *Handler) GetSummarizeStatus(
 	ctx context.Context,
-	req *connect.Request[preprocessorv2.SummarizeStatusRequest],
-) (*connect.Response[preprocessorv2.SummarizeStatusResponse], error) {
+	req *connect.Request[preprocessorv2.GetSummarizeStatusRequest],
+) (*connect.Response[preprocessorv2.GetSummarizeStatusResponse], error) {
 	jobID := req.Msg.JobId
 
 	// Validate required fields
@@ -214,7 +214,7 @@ func (h *Handler) GetSummarizeStatus(
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("job not found"))
 	}
 
-	response := &preprocessorv2.SummarizeStatusResponse{
+	response := &preprocessorv2.GetSummarizeStatusResponse{
 		JobId:     job.JobID.String(),
 		Status:    string(job.Status),
 		ArticleId: job.ArticleID,
