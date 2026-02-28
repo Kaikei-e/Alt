@@ -43,7 +43,7 @@ const (
 type MorningLetterServiceClient interface {
 	// StreamChat performs a streaming chat with RAG context, filtered by time window.
 	// Returns a stream of events: delta (text chunks), meta (citations + time window), done (completion), or error.
-	StreamChat(context.Context, *connect.Request[v2.StreamChatRequest]) (*connect.ServerStreamForClient[v2.StreamChatEvent], error)
+	StreamChat(context.Context, *connect.Request[v2.StreamChatRequest]) (*connect.ServerStreamForClient[v2.StreamChatResponse], error)
 }
 
 // NewMorningLetterServiceClient constructs a client for the
@@ -57,7 +57,7 @@ func NewMorningLetterServiceClient(httpClient connect.HTTPClient, baseURL string
 	baseURL = strings.TrimRight(baseURL, "/")
 	morningLetterServiceMethods := v2.File_alt_morning_letter_v2_morning_letter_proto.Services().ByName("MorningLetterService").Methods()
 	return &morningLetterServiceClient{
-		streamChat: connect.NewClient[v2.StreamChatRequest, v2.StreamChatEvent](
+		streamChat: connect.NewClient[v2.StreamChatRequest, v2.StreamChatResponse](
 			httpClient,
 			baseURL+MorningLetterServiceStreamChatProcedure,
 			connect.WithSchema(morningLetterServiceMethods.ByName("StreamChat")),
@@ -68,11 +68,11 @@ func NewMorningLetterServiceClient(httpClient connect.HTTPClient, baseURL string
 
 // morningLetterServiceClient implements MorningLetterServiceClient.
 type morningLetterServiceClient struct {
-	streamChat *connect.Client[v2.StreamChatRequest, v2.StreamChatEvent]
+	streamChat *connect.Client[v2.StreamChatRequest, v2.StreamChatResponse]
 }
 
 // StreamChat calls alt.morning_letter.v2.MorningLetterService.StreamChat.
-func (c *morningLetterServiceClient) StreamChat(ctx context.Context, req *connect.Request[v2.StreamChatRequest]) (*connect.ServerStreamForClient[v2.StreamChatEvent], error) {
+func (c *morningLetterServiceClient) StreamChat(ctx context.Context, req *connect.Request[v2.StreamChatRequest]) (*connect.ServerStreamForClient[v2.StreamChatResponse], error) {
 	return c.streamChat.CallServerStream(ctx, req)
 }
 
@@ -81,7 +81,7 @@ func (c *morningLetterServiceClient) StreamChat(ctx context.Context, req *connec
 type MorningLetterServiceHandler interface {
 	// StreamChat performs a streaming chat with RAG context, filtered by time window.
 	// Returns a stream of events: delta (text chunks), meta (citations + time window), done (completion), or error.
-	StreamChat(context.Context, *connect.Request[v2.StreamChatRequest], *connect.ServerStream[v2.StreamChatEvent]) error
+	StreamChat(context.Context, *connect.Request[v2.StreamChatRequest], *connect.ServerStream[v2.StreamChatResponse]) error
 }
 
 // NewMorningLetterServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -110,6 +110,6 @@ func NewMorningLetterServiceHandler(svc MorningLetterServiceHandler, opts ...con
 // UnimplementedMorningLetterServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedMorningLetterServiceHandler struct{}
 
-func (UnimplementedMorningLetterServiceHandler) StreamChat(context.Context, *connect.Request[v2.StreamChatRequest], *connect.ServerStream[v2.StreamChatEvent]) error {
+func (UnimplementedMorningLetterServiceHandler) StreamChat(context.Context, *connect.Request[v2.StreamChatRequest], *connect.ServerStream[v2.StreamChatResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.morning_letter.v2.MorningLetterService.StreamChat is not implemented"))
 }

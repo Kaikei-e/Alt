@@ -44,7 +44,7 @@ const (
 type AugurServiceClient interface {
 	// StreamChat performs a streaming chat with RAG context.
 	// Returns a stream of events: delta (text chunks), meta (citations), done (completion), or error.
-	StreamChat(context.Context, *connect.Request[v2.StreamChatRequest]) (*connect.ServerStreamForClient[v2.StreamChatEvent], error)
+	StreamChat(context.Context, *connect.Request[v2.StreamChatRequest]) (*connect.ServerStreamForClient[v2.StreamChatResponse], error)
 	// RetrieveContext retrieves relevant context for a query without generating an answer.
 	// Useful for debugging or showing sources before chat.
 	RetrieveContext(context.Context, *connect.Request[v2.RetrieveContextRequest]) (*connect.Response[v2.RetrieveContextResponse], error)
@@ -61,7 +61,7 @@ func NewAugurServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 	baseURL = strings.TrimRight(baseURL, "/")
 	augurServiceMethods := v2.File_alt_augur_v2_augur_proto.Services().ByName("AugurService").Methods()
 	return &augurServiceClient{
-		streamChat: connect.NewClient[v2.StreamChatRequest, v2.StreamChatEvent](
+		streamChat: connect.NewClient[v2.StreamChatRequest, v2.StreamChatResponse](
 			httpClient,
 			baseURL+AugurServiceStreamChatProcedure,
 			connect.WithSchema(augurServiceMethods.ByName("StreamChat")),
@@ -78,12 +78,12 @@ func NewAugurServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // augurServiceClient implements AugurServiceClient.
 type augurServiceClient struct {
-	streamChat      *connect.Client[v2.StreamChatRequest, v2.StreamChatEvent]
+	streamChat      *connect.Client[v2.StreamChatRequest, v2.StreamChatResponse]
 	retrieveContext *connect.Client[v2.RetrieveContextRequest, v2.RetrieveContextResponse]
 }
 
 // StreamChat calls alt.augur.v2.AugurService.StreamChat.
-func (c *augurServiceClient) StreamChat(ctx context.Context, req *connect.Request[v2.StreamChatRequest]) (*connect.ServerStreamForClient[v2.StreamChatEvent], error) {
+func (c *augurServiceClient) StreamChat(ctx context.Context, req *connect.Request[v2.StreamChatRequest]) (*connect.ServerStreamForClient[v2.StreamChatResponse], error) {
 	return c.streamChat.CallServerStream(ctx, req)
 }
 
@@ -96,7 +96,7 @@ func (c *augurServiceClient) RetrieveContext(ctx context.Context, req *connect.R
 type AugurServiceHandler interface {
 	// StreamChat performs a streaming chat with RAG context.
 	// Returns a stream of events: delta (text chunks), meta (citations), done (completion), or error.
-	StreamChat(context.Context, *connect.Request[v2.StreamChatRequest], *connect.ServerStream[v2.StreamChatEvent]) error
+	StreamChat(context.Context, *connect.Request[v2.StreamChatRequest], *connect.ServerStream[v2.StreamChatResponse]) error
 	// RetrieveContext retrieves relevant context for a query without generating an answer.
 	// Useful for debugging or showing sources before chat.
 	RetrieveContext(context.Context, *connect.Request[v2.RetrieveContextRequest]) (*connect.Response[v2.RetrieveContextResponse], error)
@@ -136,7 +136,7 @@ func NewAugurServiceHandler(svc AugurServiceHandler, opts ...connect.HandlerOpti
 // UnimplementedAugurServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedAugurServiceHandler struct{}
 
-func (UnimplementedAugurServiceHandler) StreamChat(context.Context, *connect.Request[v2.StreamChatRequest], *connect.ServerStream[v2.StreamChatEvent]) error {
+func (UnimplementedAugurServiceHandler) StreamChat(context.Context, *connect.Request[v2.StreamChatRequest], *connect.ServerStream[v2.StreamChatResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.augur.v2.AugurService.StreamChat is not implemented"))
 }
 

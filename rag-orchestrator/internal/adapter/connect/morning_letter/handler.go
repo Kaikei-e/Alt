@@ -41,7 +41,7 @@ func NewHandler(
 func (h *Handler) StreamChat(
 	ctx context.Context,
 	req *connect.Request[morningletterv2.StreamChatRequest],
-	stream *connect.ServerStream[morningletterv2.StreamChatEvent],
+	stream *connect.ServerStream[morningletterv2.StreamChatResponse],
 ) error {
 	// Extract last user message as query
 	var query string
@@ -94,9 +94,9 @@ func (h *Handler) StreamChat(
 	}
 
 	// 3. Send meta event with time window info
-	metaEvent := &morningletterv2.StreamChatEvent{
+	metaEvent := &morningletterv2.StreamChatResponse{
 		Kind: "meta",
-		Payload: &morningletterv2.StreamChatEvent_Meta{
+		Payload: &morningletterv2.StreamChatResponse_Meta{
 			Meta: &morningletterv2.MetaPayload{
 				Citations: nil, // Will be populated after retrieval
 				TimeWindow: &morningletterv2.TimeWindow{
@@ -146,17 +146,17 @@ func (h *Handler) StreamChat(
 	return nil
 }
 
-// convertStreamEvent converts usecase.StreamEvent to morningletterv2.StreamChatEvent
-func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*morningletterv2.StreamChatEvent, bool) {
+// convertStreamEvent converts usecase.StreamEvent to morningletterv2.StreamChatResponse
+func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*morningletterv2.StreamChatResponse, bool) {
 	switch event.Kind {
 	case usecase.StreamEventKindDelta:
 		delta, ok := event.Payload.(string)
 		if !ok {
 			return nil, true
 		}
-		return &morningletterv2.StreamChatEvent{
+		return &morningletterv2.StreamChatResponse{
 			Kind: "delta",
-			Payload: &morningletterv2.StreamChatEvent_Delta{
+			Payload: &morningletterv2.StreamChatResponse_Delta{
 				Delta: delta,
 			},
 		}, true
@@ -167,9 +167,9 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*morningletterv
 			return nil, true
 		}
 		citations := h.convertContextsToCitations(meta.Contexts)
-		return &morningletterv2.StreamChatEvent{
+		return &morningletterv2.StreamChatResponse{
 			Kind: "meta",
-			Payload: &morningletterv2.StreamChatEvent_Meta{
+			Payload: &morningletterv2.StreamChatResponse_Meta{
 				Meta: &morningletterv2.MetaPayload{
 					Citations: citations,
 				},
@@ -183,9 +183,9 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*morningletterv
 		}
 		// Use output.Citations (only citations LLM actually used) instead of output.Contexts (all search results)
 		citations := h.convertCitationsToProtoCitations(output.Citations)
-		return &morningletterv2.StreamChatEvent{
+		return &morningletterv2.StreamChatResponse{
 			Kind: "done",
-			Payload: &morningletterv2.StreamChatEvent_Done{
+			Payload: &morningletterv2.StreamChatResponse_Done{
 				Done: &morningletterv2.DonePayload{
 					Answer:    output.Answer,
 					Citations: citations,
@@ -195,18 +195,18 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*morningletterv
 
 	case usecase.StreamEventKindFallback:
 		reason, _ := event.Payload.(string)
-		return &morningletterv2.StreamChatEvent{
+		return &morningletterv2.StreamChatResponse{
 			Kind: "fallback",
-			Payload: &morningletterv2.StreamChatEvent_FallbackCode{
+			Payload: &morningletterv2.StreamChatResponse_FallbackCode{
 				FallbackCode: reason,
 			},
 		}, false
 
 	case usecase.StreamEventKindError:
 		errMsg, _ := event.Payload.(string)
-		return &morningletterv2.StreamChatEvent{
+		return &morningletterv2.StreamChatResponse{
 			Kind: "error",
-			Payload: &morningletterv2.StreamChatEvent_ErrorMessage{
+			Payload: &morningletterv2.StreamChatResponse_ErrorMessage{
 				ErrorMessage: errMsg,
 			},
 		}, false
@@ -244,10 +244,10 @@ func (h *Handler) convertCitationsToProtoCitations(citations []usecase.Citation)
 }
 
 // sendErrorEvent sends an error event to the stream
-func (h *Handler) sendErrorEvent(stream *connect.ServerStream[morningletterv2.StreamChatEvent], message string) error {
-	event := &morningletterv2.StreamChatEvent{
+func (h *Handler) sendErrorEvent(stream *connect.ServerStream[morningletterv2.StreamChatResponse], message string) error {
+	event := &morningletterv2.StreamChatResponse{
 		Kind: "error",
-		Payload: &morningletterv2.StreamChatEvent_ErrorMessage{
+		Payload: &morningletterv2.StreamChatResponse_ErrorMessage{
 			ErrorMessage: message,
 		},
 	}
@@ -258,10 +258,10 @@ func (h *Handler) sendErrorEvent(stream *connect.ServerStream[morningletterv2.St
 }
 
 // sendFallbackEvent sends a fallback event to the stream
-func (h *Handler) sendFallbackEvent(stream *connect.ServerStream[morningletterv2.StreamChatEvent], code string) error {
-	event := &morningletterv2.StreamChatEvent{
+func (h *Handler) sendFallbackEvent(stream *connect.ServerStream[morningletterv2.StreamChatResponse], code string) error {
+	event := &morningletterv2.StreamChatResponse{
 		Kind: "fallback",
-		Payload: &morningletterv2.StreamChatEvent_FallbackCode{
+		Payload: &morningletterv2.StreamChatResponse_FallbackCode{
 			FallbackCode: code,
 		},
 	}

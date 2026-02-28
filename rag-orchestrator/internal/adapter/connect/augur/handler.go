@@ -48,7 +48,7 @@ func NewHandler(
 func (h *Handler) StreamChat(
 	ctx context.Context,
 	req *connect.Request[augurv2.StreamChatRequest],
-	stream *connect.ServerStream[augurv2.StreamChatEvent],
+	stream *connect.ServerStream[augurv2.StreamChatResponse],
 ) error {
 	// Extract last user message as query
 	var query string
@@ -102,17 +102,17 @@ func (h *Handler) StreamChat(
 	return nil
 }
 
-// convertStreamEvent converts usecase.StreamEvent to augurv2.StreamChatEvent
-func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.StreamChatEvent, bool) {
+// convertStreamEvent converts usecase.StreamEvent to augurv2.StreamChatResponse
+func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.StreamChatResponse, bool) {
 	switch event.Kind {
 	case usecase.StreamEventKindDelta:
 		delta, ok := event.Payload.(string)
 		if !ok {
 			return nil, true
 		}
-		return &augurv2.StreamChatEvent{
+		return &augurv2.StreamChatResponse{
 			Kind: "delta",
-			Payload: &augurv2.StreamChatEvent_Delta{
+			Payload: &augurv2.StreamChatResponse_Delta{
 				Delta: sanitizeUTF8(delta),
 			},
 		}, true
@@ -123,9 +123,9 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 			return nil, true
 		}
 		citations := h.convertContextsToCitations(meta.Contexts)
-		return &augurv2.StreamChatEvent{
+		return &augurv2.StreamChatResponse{
 			Kind: "meta",
-			Payload: &augurv2.StreamChatEvent_Meta{
+			Payload: &augurv2.StreamChatResponse_Meta{
 				Meta: &augurv2.MetaPayload{
 					Citations: citations,
 				},
@@ -140,9 +140,9 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 		// ADR 000093: Use output.Citations (only citations LLM actually used)
 		// instead of output.Contexts (all search results)
 		citations := h.convertCitationsToProtoCitations(output.Citations)
-		return &augurv2.StreamChatEvent{
+		return &augurv2.StreamChatResponse{
 			Kind: "done",
-			Payload: &augurv2.StreamChatEvent_Done{
+			Payload: &augurv2.StreamChatResponse_Done{
 				Done: &augurv2.DonePayload{
 					Answer:    sanitizeUTF8(output.Answer),
 					Citations: citations,
@@ -152,18 +152,18 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 
 	case usecase.StreamEventKindFallback:
 		reason, _ := event.Payload.(string)
-		return &augurv2.StreamChatEvent{
+		return &augurv2.StreamChatResponse{
 			Kind: "fallback",
-			Payload: &augurv2.StreamChatEvent_FallbackCode{
+			Payload: &augurv2.StreamChatResponse_FallbackCode{
 				FallbackCode: sanitizeUTF8(reason),
 			},
 		}, false
 
 	case usecase.StreamEventKindError:
 		errMsg, _ := event.Payload.(string)
-		return &augurv2.StreamChatEvent{
+		return &augurv2.StreamChatResponse{
 			Kind: "error",
-			Payload: &augurv2.StreamChatEvent_ErrorMessage{
+			Payload: &augurv2.StreamChatResponse_ErrorMessage{
 				ErrorMessage: sanitizeUTF8(errMsg),
 			},
 		}, false
@@ -173,17 +173,17 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 		if !ok {
 			return nil, true
 		}
-		return &augurv2.StreamChatEvent{
+		return &augurv2.StreamChatResponse{
 			Kind: "thinking",
-			Payload: &augurv2.StreamChatEvent_ThinkingDelta{
+			Payload: &augurv2.StreamChatResponse_ThinkingDelta{
 				ThinkingDelta: sanitizeUTF8(thinking),
 			},
 		}, true
 
 	case usecase.StreamEventKindHeartbeat:
-		return &augurv2.StreamChatEvent{
+		return &augurv2.StreamChatResponse{
 			Kind: "heartbeat",
-			Payload: &augurv2.StreamChatEvent_Delta{
+			Payload: &augurv2.StreamChatResponse_Delta{
 				Delta: "",
 			},
 		}, true
@@ -195,9 +195,9 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 		}
 		// Reuse delta payload as carrier for progress messages (e.g. "searching", "generating").
 		// The kind field distinguishes this from actual content deltas.
-		return &augurv2.StreamChatEvent{
+		return &augurv2.StreamChatResponse{
 			Kind: "progress",
-			Payload: &augurv2.StreamChatEvent_Delta{
+			Payload: &augurv2.StreamChatResponse_Delta{
 				Delta: sanitizeUTF8(progress),
 			},
 		}, true

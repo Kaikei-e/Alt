@@ -51,13 +51,13 @@ const (
 type JobStatusServiceClient interface {
 	// StreamJobProgress streams real-time job progress updates (authentication required)
 	// Sends updates every 2 seconds while connected
-	StreamJobProgress(context.Context, *connect.Request[v2.StreamJobProgressRequest]) (*connect.ServerStreamForClient[v2.JobProgressEvent], error)
+	StreamJobProgress(context.Context, *connect.Request[v2.StreamJobProgressRequest]) (*connect.ServerStreamForClient[v2.StreamJobProgressResponse], error)
 	// TriggerUserRecap triggers a new recap job for a specific user
 	TriggerUserRecap(context.Context, *connect.Request[v2.TriggerUserRecapRequest]) (*connect.Response[v2.TriggerUserRecapResponse], error)
 	// RetryJob retries a failed job
 	RetryJob(context.Context, *connect.Request[v2.RetryJobRequest]) (*connect.Response[v2.RetryJobResponse], error)
 	// GetJobProgress returns current job progress (non-streaming)
-	GetJobProgress(context.Context, *connect.Request[v2.GetJobProgressRequest]) (*connect.Response[v2.JobProgressEvent], error)
+	GetJobProgress(context.Context, *connect.Request[v2.GetJobProgressRequest]) (*connect.Response[v2.GetJobProgressResponse], error)
 }
 
 // NewJobStatusServiceClient constructs a client for the alt.recap.v2.JobStatusService service. By
@@ -71,7 +71,7 @@ func NewJobStatusServiceClient(httpClient connect.HTTPClient, baseURL string, op
 	baseURL = strings.TrimRight(baseURL, "/")
 	jobStatusServiceMethods := v2.File_alt_recap_v2_job_status_proto.Services().ByName("JobStatusService").Methods()
 	return &jobStatusServiceClient{
-		streamJobProgress: connect.NewClient[v2.StreamJobProgressRequest, v2.JobProgressEvent](
+		streamJobProgress: connect.NewClient[v2.StreamJobProgressRequest, v2.StreamJobProgressResponse](
 			httpClient,
 			baseURL+JobStatusServiceStreamJobProgressProcedure,
 			connect.WithSchema(jobStatusServiceMethods.ByName("StreamJobProgress")),
@@ -89,7 +89,7 @@ func NewJobStatusServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(jobStatusServiceMethods.ByName("RetryJob")),
 			connect.WithClientOptions(opts...),
 		),
-		getJobProgress: connect.NewClient[v2.GetJobProgressRequest, v2.JobProgressEvent](
+		getJobProgress: connect.NewClient[v2.GetJobProgressRequest, v2.GetJobProgressResponse](
 			httpClient,
 			baseURL+JobStatusServiceGetJobProgressProcedure,
 			connect.WithSchema(jobStatusServiceMethods.ByName("GetJobProgress")),
@@ -100,14 +100,14 @@ func NewJobStatusServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // jobStatusServiceClient implements JobStatusServiceClient.
 type jobStatusServiceClient struct {
-	streamJobProgress *connect.Client[v2.StreamJobProgressRequest, v2.JobProgressEvent]
+	streamJobProgress *connect.Client[v2.StreamJobProgressRequest, v2.StreamJobProgressResponse]
 	triggerUserRecap  *connect.Client[v2.TriggerUserRecapRequest, v2.TriggerUserRecapResponse]
 	retryJob          *connect.Client[v2.RetryJobRequest, v2.RetryJobResponse]
-	getJobProgress    *connect.Client[v2.GetJobProgressRequest, v2.JobProgressEvent]
+	getJobProgress    *connect.Client[v2.GetJobProgressRequest, v2.GetJobProgressResponse]
 }
 
 // StreamJobProgress calls alt.recap.v2.JobStatusService.StreamJobProgress.
-func (c *jobStatusServiceClient) StreamJobProgress(ctx context.Context, req *connect.Request[v2.StreamJobProgressRequest]) (*connect.ServerStreamForClient[v2.JobProgressEvent], error) {
+func (c *jobStatusServiceClient) StreamJobProgress(ctx context.Context, req *connect.Request[v2.StreamJobProgressRequest]) (*connect.ServerStreamForClient[v2.StreamJobProgressResponse], error) {
 	return c.streamJobProgress.CallServerStream(ctx, req)
 }
 
@@ -122,7 +122,7 @@ func (c *jobStatusServiceClient) RetryJob(ctx context.Context, req *connect.Requ
 }
 
 // GetJobProgress calls alt.recap.v2.JobStatusService.GetJobProgress.
-func (c *jobStatusServiceClient) GetJobProgress(ctx context.Context, req *connect.Request[v2.GetJobProgressRequest]) (*connect.Response[v2.JobProgressEvent], error) {
+func (c *jobStatusServiceClient) GetJobProgress(ctx context.Context, req *connect.Request[v2.GetJobProgressRequest]) (*connect.Response[v2.GetJobProgressResponse], error) {
 	return c.getJobProgress.CallUnary(ctx, req)
 }
 
@@ -130,13 +130,13 @@ func (c *jobStatusServiceClient) GetJobProgress(ctx context.Context, req *connec
 type JobStatusServiceHandler interface {
 	// StreamJobProgress streams real-time job progress updates (authentication required)
 	// Sends updates every 2 seconds while connected
-	StreamJobProgress(context.Context, *connect.Request[v2.StreamJobProgressRequest], *connect.ServerStream[v2.JobProgressEvent]) error
+	StreamJobProgress(context.Context, *connect.Request[v2.StreamJobProgressRequest], *connect.ServerStream[v2.StreamJobProgressResponse]) error
 	// TriggerUserRecap triggers a new recap job for a specific user
 	TriggerUserRecap(context.Context, *connect.Request[v2.TriggerUserRecapRequest]) (*connect.Response[v2.TriggerUserRecapResponse], error)
 	// RetryJob retries a failed job
 	RetryJob(context.Context, *connect.Request[v2.RetryJobRequest]) (*connect.Response[v2.RetryJobResponse], error)
 	// GetJobProgress returns current job progress (non-streaming)
-	GetJobProgress(context.Context, *connect.Request[v2.GetJobProgressRequest]) (*connect.Response[v2.JobProgressEvent], error)
+	GetJobProgress(context.Context, *connect.Request[v2.GetJobProgressRequest]) (*connect.Response[v2.GetJobProgressResponse], error)
 }
 
 // NewJobStatusServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -189,7 +189,7 @@ func NewJobStatusServiceHandler(svc JobStatusServiceHandler, opts ...connect.Han
 // UnimplementedJobStatusServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedJobStatusServiceHandler struct{}
 
-func (UnimplementedJobStatusServiceHandler) StreamJobProgress(context.Context, *connect.Request[v2.StreamJobProgressRequest], *connect.ServerStream[v2.JobProgressEvent]) error {
+func (UnimplementedJobStatusServiceHandler) StreamJobProgress(context.Context, *connect.Request[v2.StreamJobProgressRequest], *connect.ServerStream[v2.StreamJobProgressResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.recap.v2.JobStatusService.StreamJobProgress is not implemented"))
 }
 
@@ -201,6 +201,6 @@ func (UnimplementedJobStatusServiceHandler) RetryJob(context.Context, *connect.R
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.recap.v2.JobStatusService.RetryJob is not implemented"))
 }
 
-func (UnimplementedJobStatusServiceHandler) GetJobProgress(context.Context, *connect.Request[v2.GetJobProgressRequest]) (*connect.Response[v2.JobProgressEvent], error) {
+func (UnimplementedJobStatusServiceHandler) GetJobProgress(context.Context, *connect.Request[v2.GetJobProgressRequest]) (*connect.Response[v2.GetJobProgressResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.recap.v2.JobStatusService.GetJobProgress is not implemented"))
 }

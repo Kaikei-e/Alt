@@ -45,7 +45,7 @@ const (
 // TTSServiceClient is a client for the alt.tts.v1.TTSService service.
 type TTSServiceClient interface {
 	Synthesize(context.Context, *connect.Request[v1.SynthesizeRequest]) (*connect.Response[v1.SynthesizeResponse], error)
-	SynthesizeStream(context.Context, *connect.Request[v1.SynthesizeRequest]) (*connect.ServerStreamForClient[v1.SynthesizeResponse], error)
+	SynthesizeStream(context.Context, *connect.Request[v1.SynthesizeStreamRequest]) (*connect.ServerStreamForClient[v1.SynthesizeStreamResponse], error)
 	ListVoices(context.Context, *connect.Request[v1.ListVoicesRequest]) (*connect.Response[v1.ListVoicesResponse], error)
 }
 
@@ -66,7 +66,7 @@ func NewTTSServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(tTSServiceMethods.ByName("Synthesize")),
 			connect.WithClientOptions(opts...),
 		),
-		synthesizeStream: connect.NewClient[v1.SynthesizeRequest, v1.SynthesizeResponse](
+		synthesizeStream: connect.NewClient[v1.SynthesizeStreamRequest, v1.SynthesizeStreamResponse](
 			httpClient,
 			baseURL+TTSServiceSynthesizeStreamProcedure,
 			connect.WithSchema(tTSServiceMethods.ByName("SynthesizeStream")),
@@ -84,7 +84,7 @@ func NewTTSServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 // tTSServiceClient implements TTSServiceClient.
 type tTSServiceClient struct {
 	synthesize       *connect.Client[v1.SynthesizeRequest, v1.SynthesizeResponse]
-	synthesizeStream *connect.Client[v1.SynthesizeRequest, v1.SynthesizeResponse]
+	synthesizeStream *connect.Client[v1.SynthesizeStreamRequest, v1.SynthesizeStreamResponse]
 	listVoices       *connect.Client[v1.ListVoicesRequest, v1.ListVoicesResponse]
 }
 
@@ -94,7 +94,7 @@ func (c *tTSServiceClient) Synthesize(ctx context.Context, req *connect.Request[
 }
 
 // SynthesizeStream calls alt.tts.v1.TTSService.SynthesizeStream.
-func (c *tTSServiceClient) SynthesizeStream(ctx context.Context, req *connect.Request[v1.SynthesizeRequest]) (*connect.ServerStreamForClient[v1.SynthesizeResponse], error) {
+func (c *tTSServiceClient) SynthesizeStream(ctx context.Context, req *connect.Request[v1.SynthesizeStreamRequest]) (*connect.ServerStreamForClient[v1.SynthesizeStreamResponse], error) {
 	return c.synthesizeStream.CallServerStream(ctx, req)
 }
 
@@ -106,7 +106,7 @@ func (c *tTSServiceClient) ListVoices(ctx context.Context, req *connect.Request[
 // TTSServiceHandler is an implementation of the alt.tts.v1.TTSService service.
 type TTSServiceHandler interface {
 	Synthesize(context.Context, *connect.Request[v1.SynthesizeRequest]) (*connect.Response[v1.SynthesizeResponse], error)
-	SynthesizeStream(context.Context, *connect.Request[v1.SynthesizeRequest], *connect.ServerStream[v1.SynthesizeResponse]) error
+	SynthesizeStream(context.Context, *connect.Request[v1.SynthesizeStreamRequest], *connect.ServerStream[v1.SynthesizeStreamResponse]) error
 	ListVoices(context.Context, *connect.Request[v1.ListVoicesRequest]) (*connect.Response[v1.ListVoicesResponse], error)
 }
 
@@ -156,7 +156,7 @@ func (UnimplementedTTSServiceHandler) Synthesize(context.Context, *connect.Reque
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.tts.v1.TTSService.Synthesize is not implemented"))
 }
 
-func (UnimplementedTTSServiceHandler) SynthesizeStream(context.Context, *connect.Request[v1.SynthesizeRequest], *connect.ServerStream[v1.SynthesizeResponse]) error {
+func (UnimplementedTTSServiceHandler) SynthesizeStream(context.Context, *connect.Request[v1.SynthesizeStreamRequest], *connect.ServerStream[v1.SynthesizeStreamResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.tts.v1.TTSService.SynthesizeStream is not implemented"))
 }
 
