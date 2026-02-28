@@ -9,7 +9,7 @@ import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
 import {
 	MorningLetterService,
-	type StreamChatEvent,
+	type StreamChatResponse,
 	type Citation as ProtoCitation,
 } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
 
@@ -132,7 +132,7 @@ export function streamMorningLetterChat(
 			);
 
 			for await (const rawEvent of stream) {
-				const event = rawEvent as StreamChatEvent;
+				const event = rawEvent as StreamChatResponse;
 				const { payload } = event;
 
 				switch (payload.case) {

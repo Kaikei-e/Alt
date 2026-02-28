@@ -10,6 +10,7 @@ import type { Client, Transport } from "@connectrpc/connect";
 import {
 	TTSService,
 	type SynthesizeResponse,
+	type SynthesizeStreamResponse,
 	type ListVoicesResponse,
 } from "$lib/gen/alt/tts/v1/tts_pb";
 
@@ -93,7 +94,7 @@ export async function* synthesizeSpeechStream(
 	});
 
 	for await (const rawResponse of stream) {
-		const response = rawResponse as SynthesizeResponse;
+		const response = rawResponse as SynthesizeStreamResponse;
 		yield {
 			audioWav: response.audioWav,
 			sampleRate: response.sampleRate,

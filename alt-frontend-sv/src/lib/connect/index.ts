@@ -57,8 +57,8 @@ export {
 	fetchRandomFeed,
 	// Streaming Tag Trail
 	streamArticleTags,
-	type ArticleTagEventType,
-	type StreamingArticleTagEvent,
+	type StreamArticleTagsResponseType,
+	type StreamingStreamArticleTagsResponse,
 	type TagTrailArticle,
 	type TagTrailTag,
 	type RandomFeed,

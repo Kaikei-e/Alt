@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/augur/v2/augur.proto.
  */
 export const file_alt_augur_v2_augur: GenFile = /*@__PURE__*/
-  fileDesc("ChhhbHQvYXVndXIvdjIvYXVndXIucHJvdG8SDGFsdC5hdWd1ci52MiJAChFTdHJlYW1DaGF0UmVxdWVzdBIrCghtZXNzYWdlcxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZSIsCgtDaGF0TWVzc2FnZRIMCgRyb2xlGAEgASgJEg8KB2NvbnRlbnQYAiABKAki3QEKD1N0cmVhbUNoYXRFdmVudBIMCgRraW5kGAEgASgJEg8KBWRlbHRhGAIgASgJSAASKQoEbWV0YRgDIAEoCzIZLmFsdC5hdWd1ci52Mi5NZXRhUGF5bG9hZEgAEikKBGRvbmUYBCABKAsyGS5hbHQuYXVndXIudjIuRG9uZVBheWxvYWRIABIXCg1mYWxsYmFja19jb2RlGAUgASgJSAASFwoNZXJyb3JfbWVzc2FnZRgGIAEoCUgAEhgKDnRoaW5raW5nX2RlbHRhGAcgASgJSABCCQoHcGF5bG9hZCI4CgtNZXRhUGF5bG9hZBIpCgljaXRhdGlvbnMYASADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24iPAoIQ2l0YXRpb24SCwoDdXJsGAEgASgJEg0KBXRpdGxlGAIgASgJEhQKDHB1Ymxpc2hlZF9hdBgDIAEoCSJICgtEb25lUGF5bG9hZBIOCgZhbnN3ZXIYASABKAkSKQoJY2l0YXRpb25zGAIgAygLMhYuYWx0LmF1Z3VyLnYyLkNpdGF0aW9uIjYKFlJldHJpZXZlQ29udGV4dFJlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFbGltaXQYAiABKAUiRgoXUmV0cmlldmVDb250ZXh0UmVzcG9uc2USKwoIY29udGV4dHMYASADKAsyGS5hbHQuYXVndXIudjIuQ29udGV4dEl0ZW0iTgoLQ29udGV4dEl0ZW0SCwoDdXJsGAEgASgJEg0KBXRpdGxlGAIgASgJEhQKDHB1Ymxpc2hlZF9hdBgDIAEoCRINCgVzY29yZRgEIAEoAjK+AQoMQXVndXJTZXJ2aWNlEk4KClN0cmVhbUNoYXQSHy5hbHQuYXVndXIudjIuU3RyZWFtQ2hhdFJlcXVlc3QaHS5hbHQuYXVndXIudjIuU3RyZWFtQ2hhdEV2ZW50MAESXgoPUmV0cmlldmVDb250ZXh0EiQuYWx0LmF1Z3VyLnYyLlJldHJpZXZlQ29udGV4dFJlcXVlc3QaJS5hbHQuYXVndXIudjIuUmV0cmlldmVDb250ZXh0UmVzcG9uc2VCJFoiYWx0L2dlbi9wcm90by9hbHQvYXVndXIvdjI7YXVndXJ2MmIGcHJvdG8z");
+  fileDesc("ChhhbHQvYXVndXIvdjIvYXVndXIucHJvdG8SDGFsdC5hdWd1ci52MiJAChFTdHJlYW1DaGF0UmVxdWVzdBIrCghtZXNzYWdlcxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZSIsCgtDaGF0TWVzc2FnZRIMCgRyb2xlGAEgASgJEg8KB2NvbnRlbnQYAiABKAki4AEKElN0cmVhbUNoYXRSZXNwb25zZRIMCgRraW5kGAEgASgJEg8KBWRlbHRhGAIgASgJSAASKQoEbWV0YRgDIAEoCzIZLmFsdC5hdWd1ci52Mi5NZXRhUGF5bG9hZEgAEikKBGRvbmUYBCABKAsyGS5hbHQuYXVndXIudjIuRG9uZVBheWxvYWRIABIXCg1mYWxsYmFja19jb2RlGAUgASgJSAASFwoNZXJyb3JfbWVzc2FnZRgGIAEoCUgAEhgKDnRoaW5raW5nX2RlbHRhGAcgASgJSABCCQoHcGF5bG9hZCI4CgtNZXRhUGF5bG9hZBIpCgljaXRhdGlvbnMYASADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24iPAoIQ2l0YXRpb24SCwoDdXJsGAEgASgJEg0KBXRpdGxlGAIgASgJEhQKDHB1Ymxpc2hlZF9hdBgDIAEoCSJICgtEb25lUGF5bG9hZBIOCgZhbnN3ZXIYASABKAkSKQoJY2l0YXRpb25zGAIgAygLMhYuYWx0LmF1Z3VyLnYyLkNpdGF0aW9uIjYKFlJldHJpZXZlQ29udGV4dFJlcXVlc3QSDQoFcXVlcnkYASABKAkSDQoFbGltaXQYAiABKAUiRgoXUmV0cmlldmVDb250ZXh0UmVzcG9uc2USKwoIY29udGV4dHMYASADKAsyGS5hbHQuYXVndXIudjIuQ29udGV4dEl0ZW0iTgoLQ29udGV4dEl0ZW0SCwoDdXJsGAEgASgJEg0KBXRpdGxlGAIgASgJEhQKDHB1Ymxpc2hlZF9hdBgDIAEoCRINCgVzY29yZRgEIAEoAjLBAQoMQXVndXJTZXJ2aWNlElEKClN0cmVhbUNoYXQSHy5hbHQuYXVndXIudjIuU3RyZWFtQ2hhdFJlcXVlc3QaIC5hbHQuYXVndXIudjIuU3RyZWFtQ2hhdFJlc3BvbnNlMAESXgoPUmV0cmlldmVDb250ZXh0EiQuYWx0LmF1Z3VyLnYyLlJldHJpZXZlQ29udGV4dFJlcXVlc3QaJS5hbHQuYXVndXIudjIuUmV0cmlldmVDb250ZXh0UmVzcG9uc2VCJFoiYWx0L2dlbi9wcm90by9hbHQvYXVndXIvdjI7YXVndXJ2MmIGcHJvdG8z");
 
 /**
  * StreamChatRequest is the request for streaming chat.
@@ -62,12 +62,12 @@ export const ChatMessageSchema: GenMessage<ChatMessage> = /*@__PURE__*/
   messageDesc(file_alt_augur_v2_augur, 1);
 
 /**
- * StreamChatEvent is a single event in the streaming response.
+ * StreamChatResponse is a single event in the streaming response.
  * Each event has a kind and a corresponding payload.
  *
- * @generated from message alt.augur.v2.StreamChatEvent
+ * @generated from message alt.augur.v2.StreamChatResponse
  */
-export type StreamChatEvent = Message<"alt.augur.v2.StreamChatEvent"> & {
+export type StreamChatResponse = Message<"alt.augur.v2.StreamChatResponse"> & {
   /**
    * Event kind: "delta", "meta", "done", "fallback", "error", "thinking"
    *
@@ -78,7 +78,7 @@ export type StreamChatEvent = Message<"alt.augur.v2.StreamChatEvent"> & {
   /**
    * Payload based on kind (only one will be set)
    *
-   * @generated from oneof alt.augur.v2.StreamChatEvent.payload
+   * @generated from oneof alt.augur.v2.StreamChatResponse.payload
    */
   payload: {
     /**
@@ -132,10 +132,10 @@ export type StreamChatEvent = Message<"alt.augur.v2.StreamChatEvent"> & {
 };
 
 /**
- * Describes the message alt.augur.v2.StreamChatEvent.
- * Use `create(StreamChatEventSchema)` to create a new message.
+ * Describes the message alt.augur.v2.StreamChatResponse.
+ * Use `create(StreamChatResponseSchema)` to create a new message.
  */
-export const StreamChatEventSchema: GenMessage<StreamChatEvent> = /*@__PURE__*/
+export const StreamChatResponseSchema: GenMessage<StreamChatResponse> = /*@__PURE__*/
   messageDesc(file_alt_augur_v2_augur, 2);
 
 /**
@@ -326,7 +326,7 @@ export const AugurService: GenService<{
   streamChat: {
     methodKind: "server_streaming";
     input: typeof StreamChatRequestSchema;
-    output: typeof StreamChatEventSchema;
+    output: typeof StreamChatResponseSchema;
   },
   /**
    * RetrieveContext retrieves relevant context for a query without generating an answer.

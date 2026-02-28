@@ -8,7 +8,7 @@ import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
 import {
 	AugurService,
-	type StreamChatEvent,
+	type StreamChatResponse,
 	type RetrieveContextResponse,
 	type Citation as ProtoCitation,
 	type ContextItem as ProtoContextItem,
@@ -121,7 +121,7 @@ export function streamAugurChat(
 			);
 
 			for await (const rawEvent of stream) {
-				const event = rawEvent as StreamChatEvent;
+				const event = rawEvent as StreamChatResponse;
 				const { payload } = event;
 
 				// Heartbeat events keep the connection alive through Cloudflare Tunnel

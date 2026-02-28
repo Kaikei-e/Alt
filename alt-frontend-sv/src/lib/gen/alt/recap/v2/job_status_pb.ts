@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/recap/v2/job_status.proto.
  */
 export const file_alt_recap_v2_job_status: GenFile = /*@__PURE__*/
-  fileDesc("Ch1hbHQvcmVjYXAvdjIvam9iX3N0YXR1cy5wcm90bxIMYWx0LnJlY2FwLnYyImwKGFN0cmVhbUpvYlByb2dyZXNzUmVxdWVzdBIUCgd1c2VyX2lkGAEgASgJSACIAQESGwoOd2luZG93X3NlY29uZHMYAiABKANIAYgBAUIKCghfdXNlcl9pZEIRCg9fd2luZG93X3NlY29uZHMiVgoXVHJpZ2dlclVzZXJSZWNhcFJlcXVlc3QSDwoHdXNlcl9pZBgBIAEoCRIOCgZnZW5yZXMYAiADKAkSEQoEbm90ZRgDIAEoCUgAiAEBQgcKBV9ub3RlIiEKD1JldHJ5Sm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiaQoVR2V0Sm9iUHJvZ3Jlc3NSZXF1ZXN0EhQKB3VzZXJfaWQYASABKAlIAIgBARIbCg53aW5kb3dfc2Vjb25kcxgCIAEoA0gBiAEBQgoKCF91c2VyX2lkQhEKD193aW5kb3dfc2Vjb25kcyI7ChhUcmlnZ2VyVXNlclJlY2FwUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEg8KB21lc3NhZ2UYAiABKAkiNAoQUmV0cnlKb2JSZXNwb25zZRIPCgdzdWNjZXNzGAEgASgIEg8KB21lc3NhZ2UYAiABKAki/QEKEEpvYlByb2dyZXNzRXZlbnQSNAoKYWN0aXZlX2pvYhgBIAEoCzIbLmFsdC5yZWNhcC52Mi5BY3RpdmVKb2JJbmZvSACIAQESMwoLcmVjZW50X2pvYnMYAiADKAsyHi5hbHQucmVjYXAudjIuUmVjZW50Sm9iU3VtbWFyeRIlCgVzdGF0cxgDIAEoCzIWLmFsdC5yZWNhcC52Mi5Kb2JTdGF0cxI3Cgx1c2VyX2NvbnRleHQYBCABKAsyHC5hbHQucmVjYXAudjIuVXNlckpvYkNvbnRleHRIAYgBAUINCgtfYWN0aXZlX2pvYkIPCg1fdXNlcl9jb250ZXh0Ir4DCg1BY3RpdmVKb2JJbmZvEg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSGgoNY3VycmVudF9zdGFnZRgDIAEoCUgAiAEBEhMKC3N0YWdlX2luZGV4GAQgASgFEhgKEHN0YWdlc19jb21wbGV0ZWQYBSADKAkSRgoOZ2VucmVfcHJvZ3Jlc3MYBiADKAsyLi5hbHQucmVjYXAudjIuQWN0aXZlSm9iSW5mby5HZW5yZVByb2dyZXNzRW50cnkSGwoOdG90YWxfYXJ0aWNsZXMYByABKAVIAYgBARIfChJ1c2VyX2FydGljbGVfY291bnQYCCABKAVIAogBARIRCglraWNrZWRfYXQYCSABKAkSFgoOdHJpZ2dlcl9zb3VyY2UYCiABKAkaVQoSR2VucmVQcm9ncmVzc0VudHJ5EgsKA2tleRgBIAEoCRIuCgV2YWx1ZRgCIAEoCzIfLmFsdC5yZWNhcC52Mi5HZW5yZVByb2dyZXNzSW5mbzoCOAFCEAoOX2N1cnJlbnRfc3RhZ2VCEQoPX3RvdGFsX2FydGljbGVzQhUKE191c2VyX2FydGljbGVfY291bnQifwoRR2VucmVQcm9ncmVzc0luZm8SDgoGc3RhdHVzGAEgASgJEhoKDWNsdXN0ZXJfY291bnQYAiABKAVIAIgBARIaCg1hcnRpY2xlX2NvdW50GAMgASgFSAGIAQFCEAoOX2NsdXN0ZXJfY291bnRCEAoOX2FydGljbGVfY291bnQi6QEKEFJlY2VudEpvYlN1bW1hcnkSDgoGam9iX2lkGAEgASgJEg4KBnN0YXR1cxgCIAEoCRIXCgpsYXN0X3N0YWdlGAMgASgJSACIAQESEQoJa2lja2VkX2F0GAQgASgJEhIKCnVwZGF0ZWRfYXQYBSABKAkSGgoNZHVyYXRpb25fc2VjcxgGIAEoA0gBiAEBEhYKDnRyaWdnZXJfc291cmNlGAcgASgJEhQKB3VzZXJfaWQYCCABKAlIAogBAUINCgtfbGFzdF9zdGFnZUIQCg5fZHVyYXRpb25fc2Vjc0IKCghfdXNlcl9pZCKhAQoISm9iU3RhdHMSGAoQc3VjY2Vzc19yYXRlXzI0aBgBIAEoARIeChFhdmdfZHVyYXRpb25fc2VjcxgCIAEoA0gAiAEBEhYKDnRvdGFsX2pvYnNfMjRoGAMgASgFEhQKDHJ1bm5pbmdfam9icxgEIAEoBRIXCg9mYWlsZWRfam9ic18yNGgYBSABKAVCFAoSX2F2Z19kdXJhdGlvbl9zZWNzIlwKDlVzZXJKb2JDb250ZXh0EhoKEnVzZXJfYXJ0aWNsZV9jb3VudBgBIAEoBRIXCg91c2VyX2pvYnNfY291bnQYAiABKAUSFQoNdXNlcl9mZWVkX2lkcxgDIAMoCTL2AgoQSm9iU3RhdHVzU2VydmljZRJdChFTdHJlYW1Kb2JQcm9ncmVzcxImLmFsdC5yZWNhcC52Mi5TdHJlYW1Kb2JQcm9ncmVzc1JlcXVlc3QaHi5hbHQucmVjYXAudjIuSm9iUHJvZ3Jlc3NFdmVudDABEmEKEFRyaWdnZXJVc2VyUmVjYXASJS5hbHQucmVjYXAudjIuVHJpZ2dlclVzZXJSZWNhcFJlcXVlc3QaJi5hbHQucmVjYXAudjIuVHJpZ2dlclVzZXJSZWNhcFJlc3BvbnNlEkkKCFJldHJ5Sm9iEh0uYWx0LnJlY2FwLnYyLlJldHJ5Sm9iUmVxdWVzdBoeLmFsdC5yZWNhcC52Mi5SZXRyeUpvYlJlc3BvbnNlElUKDkdldEpvYlByb2dyZXNzEiMuYWx0LnJlY2FwLnYyLkdldEpvYlByb2dyZXNzUmVxdWVzdBoeLmFsdC5yZWNhcC52Mi5Kb2JQcm9ncmVzc0V2ZW50QiRaImFsdC9nZW4vcHJvdG8vYWx0L3JlY2FwL3YyO3JlY2FwdjJiBnByb3RvMw");
+  fileDesc("Ch1hbHQvcmVjYXAvdjIvam9iX3N0YXR1cy5wcm90bxIMYWx0LnJlY2FwLnYyImwKGFN0cmVhbUpvYlByb2dyZXNzUmVxdWVzdBIUCgd1c2VyX2lkGAEgASgJSACIAQESGwoOd2luZG93X3NlY29uZHMYAiABKANIAYgBAUIKCghfdXNlcl9pZEIRCg9fd2luZG93X3NlY29uZHMiVgoXVHJpZ2dlclVzZXJSZWNhcFJlcXVlc3QSDwoHdXNlcl9pZBgBIAEoCRIOCgZnZW5yZXMYAiADKAkSEQoEbm90ZRgDIAEoCUgAiAEBQgcKBV9ub3RlIiEKD1JldHJ5Sm9iUmVxdWVzdBIOCgZqb2JfaWQYASABKAkiaQoVR2V0Sm9iUHJvZ3Jlc3NSZXF1ZXN0EhQKB3VzZXJfaWQYASABKAlIAIgBARIbCg53aW5kb3dfc2Vjb25kcxgCIAEoA0gBiAEBQgoKCF91c2VyX2lkQhEKD193aW5kb3dfc2Vjb25kcyI7ChhUcmlnZ2VyVXNlclJlY2FwUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEg8KB21lc3NhZ2UYAiABKAkiNAoQUmV0cnlKb2JSZXNwb25zZRIPCgdzdWNjZXNzGAEgASgIEg8KB21lc3NhZ2UYAiABKAkihgIKGVN0cmVhbUpvYlByb2dyZXNzUmVzcG9uc2USNAoKYWN0aXZlX2pvYhgBIAEoCzIbLmFsdC5yZWNhcC52Mi5BY3RpdmVKb2JJbmZvSACIAQESMwoLcmVjZW50X2pvYnMYAiADKAsyHi5hbHQucmVjYXAudjIuUmVjZW50Sm9iU3VtbWFyeRIlCgVzdGF0cxgDIAEoCzIWLmFsdC5yZWNhcC52Mi5Kb2JTdGF0cxI3Cgx1c2VyX2NvbnRleHQYBCABKAsyHC5hbHQucmVjYXAudjIuVXNlckpvYkNvbnRleHRIAYgBAUINCgtfYWN0aXZlX2pvYkIPCg1fdXNlcl9jb250ZXh0IoMCChZHZXRKb2JQcm9ncmVzc1Jlc3BvbnNlEjQKCmFjdGl2ZV9qb2IYASABKAsyGy5hbHQucmVjYXAudjIuQWN0aXZlSm9iSW5mb0gAiAEBEjMKC3JlY2VudF9qb2JzGAIgAygLMh4uYWx0LnJlY2FwLnYyLlJlY2VudEpvYlN1bW1hcnkSJQoFc3RhdHMYAyABKAsyFi5hbHQucmVjYXAudjIuSm9iU3RhdHMSNwoMdXNlcl9jb250ZXh0GAQgASgLMhwuYWx0LnJlY2FwLnYyLlVzZXJKb2JDb250ZXh0SAGIAQFCDQoLX2FjdGl2ZV9qb2JCDwoNX3VzZXJfY29udGV4dCK+AwoNQWN0aXZlSm9iSW5mbxIOCgZqb2JfaWQYASABKAkSDgoGc3RhdHVzGAIgASgJEhoKDWN1cnJlbnRfc3RhZ2UYAyABKAlIAIgBARITCgtzdGFnZV9pbmRleBgEIAEoBRIYChBzdGFnZXNfY29tcGxldGVkGAUgAygJEkYKDmdlbnJlX3Byb2dyZXNzGAYgAygLMi4uYWx0LnJlY2FwLnYyLkFjdGl2ZUpvYkluZm8uR2VucmVQcm9ncmVzc0VudHJ5EhsKDnRvdGFsX2FydGljbGVzGAcgASgFSAGIAQESHwoSdXNlcl9hcnRpY2xlX2NvdW50GAggASgFSAKIAQESEQoJa2lja2VkX2F0GAkgASgJEhYKDnRyaWdnZXJfc291cmNlGAogASgJGlUKEkdlbnJlUHJvZ3Jlc3NFbnRyeRILCgNrZXkYASABKAkSLgoFdmFsdWUYAiABKAsyHy5hbHQucmVjYXAudjIuR2VucmVQcm9ncmVzc0luZm86AjgBQhAKDl9jdXJyZW50X3N0YWdlQhEKD190b3RhbF9hcnRpY2xlc0IVChNfdXNlcl9hcnRpY2xlX2NvdW50In8KEUdlbnJlUHJvZ3Jlc3NJbmZvEg4KBnN0YXR1cxgBIAEoCRIaCg1jbHVzdGVyX2NvdW50GAIgASgFSACIAQESGgoNYXJ0aWNsZV9jb3VudBgDIAEoBUgBiAEBQhAKDl9jbHVzdGVyX2NvdW50QhAKDl9hcnRpY2xlX2NvdW50IukBChBSZWNlbnRKb2JTdW1tYXJ5Eg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSFwoKbGFzdF9zdGFnZRgDIAEoCUgAiAEBEhEKCWtpY2tlZF9hdBgEIAEoCRISCgp1cGRhdGVkX2F0GAUgASgJEhoKDWR1cmF0aW9uX3NlY3MYBiABKANIAYgBARIWCg50cmlnZ2VyX3NvdXJjZRgHIAEoCRIUCgd1c2VyX2lkGAggASgJSAKIAQFCDQoLX2xhc3Rfc3RhZ2VCEAoOX2R1cmF0aW9uX3NlY3NCCgoIX3VzZXJfaWQioQEKCEpvYlN0YXRzEhgKEHN1Y2Nlc3NfcmF0ZV8yNGgYASABKAESHgoRYXZnX2R1cmF0aW9uX3NlY3MYAiABKANIAIgBARIWCg50b3RhbF9qb2JzXzI0aBgDIAEoBRIUCgxydW5uaW5nX2pvYnMYBCABKAUSFwoPZmFpbGVkX2pvYnNfMjRoGAUgASgFQhQKEl9hdmdfZHVyYXRpb25fc2VjcyJcCg5Vc2VySm9iQ29udGV4dBIaChJ1c2VyX2FydGljbGVfY291bnQYASABKAUSFwoPdXNlcl9qb2JzX2NvdW50GAIgASgFEhUKDXVzZXJfZmVlZF9pZHMYAyADKAkyhQMKEEpvYlN0YXR1c1NlcnZpY2USZgoRU3RyZWFtSm9iUHJvZ3Jlc3MSJi5hbHQucmVjYXAudjIuU3RyZWFtSm9iUHJvZ3Jlc3NSZXF1ZXN0GicuYWx0LnJlY2FwLnYyLlN0cmVhbUpvYlByb2dyZXNzUmVzcG9uc2UwARJhChBUcmlnZ2VyVXNlclJlY2FwEiUuYWx0LnJlY2FwLnYyLlRyaWdnZXJVc2VyUmVjYXBSZXF1ZXN0GiYuYWx0LnJlY2FwLnYyLlRyaWdnZXJVc2VyUmVjYXBSZXNwb25zZRJJCghSZXRyeUpvYhIdLmFsdC5yZWNhcC52Mi5SZXRyeUpvYlJlcXVlc3QaHi5hbHQucmVjYXAudjIuUmV0cnlKb2JSZXNwb25zZRJbCg5HZXRKb2JQcm9ncmVzcxIjLmFsdC5yZWNhcC52Mi5HZXRKb2JQcm9ncmVzc1JlcXVlc3QaJC5hbHQucmVjYXAudjIuR2V0Sm9iUHJvZ3Jlc3NSZXNwb25zZUIkWiJhbHQvZ2VuL3Byb3RvL2FsdC9yZWNhcC92MjtyZWNhcHYyYgZwcm90bzM");
 
 /**
  * StreamJobProgressRequest is the request for streaming job progress
@@ -181,11 +181,11 @@ export const RetryJobResponseSchema: GenMessage<RetryJobResponse> = /*@__PURE__*
   messageDesc(file_alt_recap_v2_job_status, 5);
 
 /**
- * JobProgressEvent is streamed to clients with current job status
+ * StreamJobProgressResponse is streamed to clients with current job status
  *
- * @generated from message alt.recap.v2.JobProgressEvent
+ * @generated from message alt.recap.v2.StreamJobProgressResponse
  */
-export type JobProgressEvent = Message<"alt.recap.v2.JobProgressEvent"> & {
+export type StreamJobProgressResponse = Message<"alt.recap.v2.StreamJobProgressResponse"> & {
   /**
    * Currently running job (if any)
    *
@@ -216,11 +216,53 @@ export type JobProgressEvent = Message<"alt.recap.v2.JobProgressEvent"> & {
 };
 
 /**
- * Describes the message alt.recap.v2.JobProgressEvent.
- * Use `create(JobProgressEventSchema)` to create a new message.
+ * Describes the message alt.recap.v2.StreamJobProgressResponse.
+ * Use `create(StreamJobProgressResponseSchema)` to create a new message.
  */
-export const JobProgressEventSchema: GenMessage<JobProgressEvent> = /*@__PURE__*/
+export const StreamJobProgressResponseSchema: GenMessage<StreamJobProgressResponse> = /*@__PURE__*/
   messageDesc(file_alt_recap_v2_job_status, 6);
+
+/**
+ * GetJobProgressResponse contains current job progress (non-streaming)
+ *
+ * @generated from message alt.recap.v2.GetJobProgressResponse
+ */
+export type GetJobProgressResponse = Message<"alt.recap.v2.GetJobProgressResponse"> & {
+  /**
+   * Currently running job (if any)
+   *
+   * @generated from field: optional alt.recap.v2.ActiveJobInfo active_job = 1;
+   */
+  activeJob?: ActiveJobInfo;
+
+  /**
+   * Recent job history
+   *
+   * @generated from field: repeated alt.recap.v2.RecentJobSummary recent_jobs = 2;
+   */
+  recentJobs: RecentJobSummary[];
+
+  /**
+   * Statistics for the time window
+   *
+   * @generated from field: alt.recap.v2.JobStats stats = 3;
+   */
+  stats?: JobStats;
+
+  /**
+   * User-specific context (populated when user_id provided)
+   *
+   * @generated from field: optional alt.recap.v2.UserJobContext user_context = 4;
+   */
+  userContext?: UserJobContext;
+};
+
+/**
+ * Describes the message alt.recap.v2.GetJobProgressResponse.
+ * Use `create(GetJobProgressResponseSchema)` to create a new message.
+ */
+export const GetJobProgressResponseSchema: GenMessage<GetJobProgressResponse> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_job_status, 7);
 
 /**
  * ActiveJobInfo contains details about a running job
@@ -304,7 +346,7 @@ export type ActiveJobInfo = Message<"alt.recap.v2.ActiveJobInfo"> & {
  * Use `create(ActiveJobInfoSchema)` to create a new message.
  */
 export const ActiveJobInfoSchema: GenMessage<ActiveJobInfo> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 7);
+  messageDesc(file_alt_recap_v2_job_status, 8);
 
 /**
  * GenreProgressInfo contains progress for a specific genre
@@ -339,7 +381,7 @@ export type GenreProgressInfo = Message<"alt.recap.v2.GenreProgressInfo"> & {
  * Use `create(GenreProgressInfoSchema)` to create a new message.
  */
 export const GenreProgressInfoSchema: GenMessage<GenreProgressInfo> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 8);
+  messageDesc(file_alt_recap_v2_job_status, 9);
 
 /**
  * RecentJobSummary is a summary of a recent job
@@ -409,7 +451,7 @@ export type RecentJobSummary = Message<"alt.recap.v2.RecentJobSummary"> & {
  * Use `create(RecentJobSummarySchema)` to create a new message.
  */
 export const RecentJobSummarySchema: GenMessage<RecentJobSummary> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 9);
+  messageDesc(file_alt_recap_v2_job_status, 10);
 
 /**
  * JobStats contains statistics for the dashboard
@@ -458,7 +500,7 @@ export type JobStats = Message<"alt.recap.v2.JobStats"> & {
  * Use `create(JobStatsSchema)` to create a new message.
  */
 export const JobStatsSchema: GenMessage<JobStats> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 10);
+  messageDesc(file_alt_recap_v2_job_status, 11);
 
 /**
  * UserJobContext contains user-specific job information
@@ -493,7 +535,7 @@ export type UserJobContext = Message<"alt.recap.v2.UserJobContext"> & {
  * Use `create(UserJobContextSchema)` to create a new message.
  */
 export const UserJobContextSchema: GenMessage<UserJobContext> = /*@__PURE__*/
-  messageDesc(file_alt_recap_v2_job_status, 11);
+  messageDesc(file_alt_recap_v2_job_status, 12);
 
 /**
  * JobStatusService provides real-time job status monitoring for recap jobs
@@ -510,7 +552,7 @@ export const JobStatusService: GenService<{
   streamJobProgress: {
     methodKind: "server_streaming";
     input: typeof StreamJobProgressRequestSchema;
-    output: typeof JobProgressEventSchema;
+    output: typeof StreamJobProgressResponseSchema;
   },
   /**
    * TriggerUserRecap triggers a new recap job for a specific user
@@ -540,7 +582,7 @@ export const JobStatusService: GenService<{
   getJobProgress: {
     methodKind: "unary";
     input: typeof GetJobProgressRequestSchema;
-    output: typeof JobProgressEventSchema;
+    output: typeof GetJobProgressResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_recap_v2_job_status, 0);

@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/preprocessor/v2/preprocessor.proto.
  */
 export const file_alt_preprocessor_v2_preprocessor: GenFile = /*@__PURE__*/
-  fileDesc("CiZhbHQvcHJlcHJvY2Vzc29yL3YyL3ByZXByb2Nlc3Nvci5wcm90bxITYWx0LnByZXByb2Nlc3Nvci52MiJGChBTdW1tYXJpemVSZXF1ZXN0EhIKCmFydGljbGVfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSDwoHY29udGVudBgDIAEoCSJJChFTdW1tYXJpemVSZXNwb25zZRIPCgdzdWNjZXNzGAEgASgIEg8KB3N1bW1hcnkYAiABKAkSEgoKYXJ0aWNsZV9pZBgDIAEoCSJMChZTdHJlYW1TdW1tYXJpemVSZXF1ZXN0EhIKCmFydGljbGVfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSDwoHY29udGVudBgDIAEoCSI6ChdTdHJlYW1TdW1tYXJpemVSZXNwb25zZRINCgVjaHVuaxgBIAEoCRIQCghpc19maW5hbBgCIAEoCCI6ChVTdW1tYXJpemVRdWV1ZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCSJJChZTdW1tYXJpemVRdWV1ZVJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSDwoHbWVzc2FnZRgDIAEoCSIoChZTdW1tYXJpemVTdGF0dXNSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSJ1ChdTdW1tYXJpemVTdGF0dXNSZXNwb25zZRIOCgZqb2JfaWQYASABKAkSDgoGc3RhdHVzGAIgASgJEg8KB3N1bW1hcnkYAyABKAkSFQoNZXJyb3JfbWVzc2FnZRgEIAEoCRISCgphcnRpY2xlX2lkGAUgASgJMr0DChNQcmVQcm9jZXNzb3JTZXJ2aWNlEloKCVN1bW1hcml6ZRIlLmFsdC5wcmVwcm9jZXNzb3IudjIuU3VtbWFyaXplUmVxdWVzdBomLmFsdC5wcmVwcm9jZXNzb3IudjIuU3VtbWFyaXplUmVzcG9uc2USbgoPU3RyZWFtU3VtbWFyaXplEisuYWx0LnByZXByb2Nlc3Nvci52Mi5TdHJlYW1TdW1tYXJpemVSZXF1ZXN0GiwuYWx0LnByZXByb2Nlc3Nvci52Mi5TdHJlYW1TdW1tYXJpemVSZXNwb25zZTABEmkKDlF1ZXVlU3VtbWFyaXplEiouYWx0LnByZXByb2Nlc3Nvci52Mi5TdW1tYXJpemVRdWV1ZVJlcXVlc3QaKy5hbHQucHJlcHJvY2Vzc29yLnYyLlN1bW1hcml6ZVF1ZXVlUmVzcG9uc2USbwoSR2V0U3VtbWFyaXplU3RhdHVzEisuYWx0LnByZXByb2Nlc3Nvci52Mi5TdW1tYXJpemVTdGF0dXNSZXF1ZXN0GiwuYWx0LnByZXByb2Nlc3Nvci52Mi5TdW1tYXJpemVTdGF0dXNSZXNwb25zZUIyWjBhbHQvZ2VuL3Byb3RvL2FsdC9wcmVwcm9jZXNzb3IvdjI7cHJlcHJvY2Vzc29ydjJiBnByb3RvMw");
+  fileDesc("CiZhbHQvcHJlcHJvY2Vzc29yL3YyL3ByZXByb2Nlc3Nvci5wcm90bxITYWx0LnByZXByb2Nlc3Nvci52MiJGChBTdW1tYXJpemVSZXF1ZXN0EhIKCmFydGljbGVfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSDwoHY29udGVudBgDIAEoCSJJChFTdW1tYXJpemVSZXNwb25zZRIPCgdzdWNjZXNzGAEgASgIEg8KB3N1bW1hcnkYAiABKAkSEgoKYXJ0aWNsZV9pZBgDIAEoCSJMChZTdHJlYW1TdW1tYXJpemVSZXF1ZXN0EhIKCmFydGljbGVfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSDwoHY29udGVudBgDIAEoCSI6ChdTdHJlYW1TdW1tYXJpemVSZXNwb25zZRINCgVjaHVuaxgBIAEoCRIQCghpc19maW5hbBgCIAEoCCI6ChVRdWV1ZVN1bW1hcml6ZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCSJJChZRdWV1ZVN1bW1hcml6ZVJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSDwoHbWVzc2FnZRgDIAEoCSIrChlHZXRTdW1tYXJpemVTdGF0dXNSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSJ4ChpHZXRTdW1tYXJpemVTdGF0dXNSZXNwb25zZRIOCgZqb2JfaWQYASABKAkSDgoGc3RhdHVzGAIgASgJEg8KB3N1bW1hcnkYAyABKAkSFQoNZXJyb3JfbWVzc2FnZRgEIAEoCRISCgphcnRpY2xlX2lkGAUgASgJMsMDChNQcmVQcm9jZXNzb3JTZXJ2aWNlEloKCVN1bW1hcml6ZRIlLmFsdC5wcmVwcm9jZXNzb3IudjIuU3VtbWFyaXplUmVxdWVzdBomLmFsdC5wcmVwcm9jZXNzb3IudjIuU3VtbWFyaXplUmVzcG9uc2USbgoPU3RyZWFtU3VtbWFyaXplEisuYWx0LnByZXByb2Nlc3Nvci52Mi5TdHJlYW1TdW1tYXJpemVSZXF1ZXN0GiwuYWx0LnByZXByb2Nlc3Nvci52Mi5TdHJlYW1TdW1tYXJpemVSZXNwb25zZTABEmkKDlF1ZXVlU3VtbWFyaXplEiouYWx0LnByZXByb2Nlc3Nvci52Mi5RdWV1ZVN1bW1hcml6ZVJlcXVlc3QaKy5hbHQucHJlcHJvY2Vzc29yLnYyLlF1ZXVlU3VtbWFyaXplUmVzcG9uc2USdQoSR2V0U3VtbWFyaXplU3RhdHVzEi4uYWx0LnByZXByb2Nlc3Nvci52Mi5HZXRTdW1tYXJpemVTdGF0dXNSZXF1ZXN0Gi8uYWx0LnByZXByb2Nlc3Nvci52Mi5HZXRTdW1tYXJpemVTdGF0dXNSZXNwb25zZUIyWjBhbHQvZ2VuL3Byb3RvL2FsdC9wcmVwcm9jZXNzb3IvdjI7cHJlcHJvY2Vzc29ydjJiBnByb3RvMw");
 
 /**
  * SummarizeRequest is the request for synchronous article summarization
@@ -146,11 +146,11 @@ export const StreamSummarizeResponseSchema: GenMessage<StreamSummarizeResponse> 
   messageDesc(file_alt_preprocessor_v2_preprocessor, 3);
 
 /**
- * SummarizeQueueRequest is the request for async queue submission
+ * QueueSummarizeRequest is the request for async queue submission
  *
- * @generated from message alt.preprocessor.v2.SummarizeQueueRequest
+ * @generated from message alt.preprocessor.v2.QueueSummarizeRequest
  */
-export type SummarizeQueueRequest = Message<"alt.preprocessor.v2.SummarizeQueueRequest"> & {
+export type QueueSummarizeRequest = Message<"alt.preprocessor.v2.QueueSummarizeRequest"> & {
   /**
    * Article ID (required)
    *
@@ -167,18 +167,18 @@ export type SummarizeQueueRequest = Message<"alt.preprocessor.v2.SummarizeQueueR
 };
 
 /**
- * Describes the message alt.preprocessor.v2.SummarizeQueueRequest.
- * Use `create(SummarizeQueueRequestSchema)` to create a new message.
+ * Describes the message alt.preprocessor.v2.QueueSummarizeRequest.
+ * Use `create(QueueSummarizeRequestSchema)` to create a new message.
  */
-export const SummarizeQueueRequestSchema: GenMessage<SummarizeQueueRequest> = /*@__PURE__*/
+export const QueueSummarizeRequestSchema: GenMessage<QueueSummarizeRequest> = /*@__PURE__*/
   messageDesc(file_alt_preprocessor_v2_preprocessor, 4);
 
 /**
- * SummarizeQueueResponse contains the job creation result
+ * QueueSummarizeResponse contains the job creation result
  *
- * @generated from message alt.preprocessor.v2.SummarizeQueueResponse
+ * @generated from message alt.preprocessor.v2.QueueSummarizeResponse
  */
-export type SummarizeQueueResponse = Message<"alt.preprocessor.v2.SummarizeQueueResponse"> & {
+export type QueueSummarizeResponse = Message<"alt.preprocessor.v2.QueueSummarizeResponse"> & {
   /**
    * Created job ID
    *
@@ -202,18 +202,18 @@ export type SummarizeQueueResponse = Message<"alt.preprocessor.v2.SummarizeQueue
 };
 
 /**
- * Describes the message alt.preprocessor.v2.SummarizeQueueResponse.
- * Use `create(SummarizeQueueResponseSchema)` to create a new message.
+ * Describes the message alt.preprocessor.v2.QueueSummarizeResponse.
+ * Use `create(QueueSummarizeResponseSchema)` to create a new message.
  */
-export const SummarizeQueueResponseSchema: GenMessage<SummarizeQueueResponse> = /*@__PURE__*/
+export const QueueSummarizeResponseSchema: GenMessage<QueueSummarizeResponse> = /*@__PURE__*/
   messageDesc(file_alt_preprocessor_v2_preprocessor, 5);
 
 /**
- * SummarizeStatusRequest is the request for checking job status
+ * GetSummarizeStatusRequest is the request for checking job status
  *
- * @generated from message alt.preprocessor.v2.SummarizeStatusRequest
+ * @generated from message alt.preprocessor.v2.GetSummarizeStatusRequest
  */
-export type SummarizeStatusRequest = Message<"alt.preprocessor.v2.SummarizeStatusRequest"> & {
+export type GetSummarizeStatusRequest = Message<"alt.preprocessor.v2.GetSummarizeStatusRequest"> & {
   /**
    * Job ID to check (required)
    *
@@ -223,18 +223,18 @@ export type SummarizeStatusRequest = Message<"alt.preprocessor.v2.SummarizeStatu
 };
 
 /**
- * Describes the message alt.preprocessor.v2.SummarizeStatusRequest.
- * Use `create(SummarizeStatusRequestSchema)` to create a new message.
+ * Describes the message alt.preprocessor.v2.GetSummarizeStatusRequest.
+ * Use `create(GetSummarizeStatusRequestSchema)` to create a new message.
  */
-export const SummarizeStatusRequestSchema: GenMessage<SummarizeStatusRequest> = /*@__PURE__*/
+export const GetSummarizeStatusRequestSchema: GenMessage<GetSummarizeStatusRequest> = /*@__PURE__*/
   messageDesc(file_alt_preprocessor_v2_preprocessor, 6);
 
 /**
- * SummarizeStatusResponse contains the job status
+ * GetSummarizeStatusResponse contains the job status
  *
- * @generated from message alt.preprocessor.v2.SummarizeStatusResponse
+ * @generated from message alt.preprocessor.v2.GetSummarizeStatusResponse
  */
-export type SummarizeStatusResponse = Message<"alt.preprocessor.v2.SummarizeStatusResponse"> & {
+export type GetSummarizeStatusResponse = Message<"alt.preprocessor.v2.GetSummarizeStatusResponse"> & {
   /**
    * Job ID
    *
@@ -272,10 +272,10 @@ export type SummarizeStatusResponse = Message<"alt.preprocessor.v2.SummarizeStat
 };
 
 /**
- * Describes the message alt.preprocessor.v2.SummarizeStatusResponse.
- * Use `create(SummarizeStatusResponseSchema)` to create a new message.
+ * Describes the message alt.preprocessor.v2.GetSummarizeStatusResponse.
+ * Use `create(GetSummarizeStatusResponseSchema)` to create a new message.
  */
-export const SummarizeStatusResponseSchema: GenMessage<SummarizeStatusResponse> = /*@__PURE__*/
+export const GetSummarizeStatusResponseSchema: GenMessage<GetSummarizeStatusResponse> = /*@__PURE__*/
   messageDesc(file_alt_preprocessor_v2_preprocessor, 7);
 
 /**
@@ -314,8 +314,8 @@ export const PreProcessorService: GenService<{
    */
   queueSummarize: {
     methodKind: "unary";
-    input: typeof SummarizeQueueRequestSchema;
-    output: typeof SummarizeQueueResponseSchema;
+    input: typeof QueueSummarizeRequestSchema;
+    output: typeof QueueSummarizeResponseSchema;
   },
   /**
    * GetSummarizeStatus checks the status of a summarization job
@@ -325,8 +325,8 @@ export const PreProcessorService: GenService<{
    */
   getSummarizeStatus: {
     methodKind: "unary";
-    input: typeof SummarizeStatusRequestSchema;
-    output: typeof SummarizeStatusResponseSchema;
+    input: typeof GetSummarizeStatusRequestSchema;
+    output: typeof GetSummarizeStatusResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_preprocessor_v2_preprocessor, 0);

@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/tts/v1/tts.proto.
  */
 export const file_alt_tts_v1_tts: GenFile = /*@__PURE__*/
-  fileDesc("ChRhbHQvdHRzL3YxL3R0cy5wcm90bxIKYWx0LnR0cy52MSI/ChFTeW50aGVzaXplUmVxdWVzdBIMCgR0ZXh0GAEgASgJEg0KBXZvaWNlGAIgASgJEg0KBXNwZWVkGAMgASgBIlYKElN5bnRoZXNpemVSZXNwb25zZRIRCglhdWRpb193YXYYASABKAwSEwoLc2FtcGxlX3JhdGUYAiABKAUSGAoQZHVyYXRpb25fc2Vjb25kcxgDIAEoASIxCgVWb2ljZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmdlbmRlchgDIAEoCSITChFMaXN0Vm9pY2VzUmVxdWVzdCI3ChJMaXN0Vm9pY2VzUmVzcG9uc2USIQoGdm9pY2VzGAEgAygLMhEuYWx0LnR0cy52MS5Wb2ljZTL7AQoKVFRTU2VydmljZRJLCgpTeW50aGVzaXplEh0uYWx0LnR0cy52MS5TeW50aGVzaXplUmVxdWVzdBoeLmFsdC50dHMudjEuU3ludGhlc2l6ZVJlc3BvbnNlElMKEFN5bnRoZXNpemVTdHJlYW0SHS5hbHQudHRzLnYxLlN5bnRoZXNpemVSZXF1ZXN0Gh4uYWx0LnR0cy52MS5TeW50aGVzaXplUmVzcG9uc2UwARJLCgpMaXN0Vm9pY2VzEh0uYWx0LnR0cy52MS5MaXN0Vm9pY2VzUmVxdWVzdBoeLmFsdC50dHMudjEuTGlzdFZvaWNlc1Jlc3BvbnNlQiBaHmFsdC9nZW4vcHJvdG8vYWx0L3R0cy92MTt0dHN2MWIGcHJvdG8z");
+  fileDesc("ChRhbHQvdHRzL3YxL3R0cy5wcm90bxIKYWx0LnR0cy52MSI/ChFTeW50aGVzaXplUmVxdWVzdBIMCgR0ZXh0GAEgASgJEg0KBXZvaWNlGAIgASgJEg0KBXNwZWVkGAMgASgBIlYKElN5bnRoZXNpemVSZXNwb25zZRIRCglhdWRpb193YXYYASABKAwSEwoLc2FtcGxlX3JhdGUYAiABKAUSGAoQZHVyYXRpb25fc2Vjb25kcxgDIAEoASJFChdTeW50aGVzaXplU3RyZWFtUmVxdWVzdBIMCgR0ZXh0GAEgASgJEg0KBXZvaWNlGAIgASgJEg0KBXNwZWVkGAMgASgBIlwKGFN5bnRoZXNpemVTdHJlYW1SZXNwb25zZRIRCglhdWRpb193YXYYASABKAwSEwoLc2FtcGxlX3JhdGUYAiABKAUSGAoQZHVyYXRpb25fc2Vjb25kcxgDIAEoASIxCgVWb2ljZRIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEg4KBmdlbmRlchgDIAEoCSITChFMaXN0Vm9pY2VzUmVxdWVzdCI3ChJMaXN0Vm9pY2VzUmVzcG9uc2USIQoGdm9pY2VzGAEgAygLMhEuYWx0LnR0cy52MS5Wb2ljZTKHAgoKVFRTU2VydmljZRJLCgpTeW50aGVzaXplEh0uYWx0LnR0cy52MS5TeW50aGVzaXplUmVxdWVzdBoeLmFsdC50dHMudjEuU3ludGhlc2l6ZVJlc3BvbnNlEl8KEFN5bnRoZXNpemVTdHJlYW0SIy5hbHQudHRzLnYxLlN5bnRoZXNpemVTdHJlYW1SZXF1ZXN0GiQuYWx0LnR0cy52MS5TeW50aGVzaXplU3RyZWFtUmVzcG9uc2UwARJLCgpMaXN0Vm9pY2VzEh0uYWx0LnR0cy52MS5MaXN0Vm9pY2VzUmVxdWVzdBoeLmFsdC50dHMudjEuTGlzdFZvaWNlc1Jlc3BvbnNlQiBaHmFsdC9nZW4vcHJvdG8vYWx0L3R0cy92MTt0dHN2MWIGcHJvdG8z");
 
 /**
  * @generated from message alt.tts.v1.SynthesizeRequest
@@ -67,6 +67,60 @@ export const SynthesizeResponseSchema: GenMessage<SynthesizeResponse> = /*@__PUR
   messageDesc(file_alt_tts_v1_tts, 1);
 
 /**
+ * @generated from message alt.tts.v1.SynthesizeStreamRequest
+ */
+export type SynthesizeStreamRequest = Message<"alt.tts.v1.SynthesizeStreamRequest"> & {
+  /**
+   * @generated from field: string text = 1;
+   */
+  text: string;
+
+  /**
+   * @generated from field: string voice = 2;
+   */
+  voice: string;
+
+  /**
+   * @generated from field: double speed = 3;
+   */
+  speed: number;
+};
+
+/**
+ * Describes the message alt.tts.v1.SynthesizeStreamRequest.
+ * Use `create(SynthesizeStreamRequestSchema)` to create a new message.
+ */
+export const SynthesizeStreamRequestSchema: GenMessage<SynthesizeStreamRequest> = /*@__PURE__*/
+  messageDesc(file_alt_tts_v1_tts, 2);
+
+/**
+ * @generated from message alt.tts.v1.SynthesizeStreamResponse
+ */
+export type SynthesizeStreamResponse = Message<"alt.tts.v1.SynthesizeStreamResponse"> & {
+  /**
+   * @generated from field: bytes audio_wav = 1;
+   */
+  audioWav: Uint8Array;
+
+  /**
+   * @generated from field: int32 sample_rate = 2;
+   */
+  sampleRate: number;
+
+  /**
+   * @generated from field: double duration_seconds = 3;
+   */
+  durationSeconds: number;
+};
+
+/**
+ * Describes the message alt.tts.v1.SynthesizeStreamResponse.
+ * Use `create(SynthesizeStreamResponseSchema)` to create a new message.
+ */
+export const SynthesizeStreamResponseSchema: GenMessage<SynthesizeStreamResponse> = /*@__PURE__*/
+  messageDesc(file_alt_tts_v1_tts, 3);
+
+/**
  * @generated from message alt.tts.v1.Voice
  */
 export type Voice = Message<"alt.tts.v1.Voice"> & {
@@ -91,7 +145,7 @@ export type Voice = Message<"alt.tts.v1.Voice"> & {
  * Use `create(VoiceSchema)` to create a new message.
  */
 export const VoiceSchema: GenMessage<Voice> = /*@__PURE__*/
-  messageDesc(file_alt_tts_v1_tts, 2);
+  messageDesc(file_alt_tts_v1_tts, 4);
 
 /**
  * @generated from message alt.tts.v1.ListVoicesRequest
@@ -104,7 +158,7 @@ export type ListVoicesRequest = Message<"alt.tts.v1.ListVoicesRequest"> & {
  * Use `create(ListVoicesRequestSchema)` to create a new message.
  */
 export const ListVoicesRequestSchema: GenMessage<ListVoicesRequest> = /*@__PURE__*/
-  messageDesc(file_alt_tts_v1_tts, 3);
+  messageDesc(file_alt_tts_v1_tts, 5);
 
 /**
  * @generated from message alt.tts.v1.ListVoicesResponse
@@ -121,7 +175,7 @@ export type ListVoicesResponse = Message<"alt.tts.v1.ListVoicesResponse"> & {
  * Use `create(ListVoicesResponseSchema)` to create a new message.
  */
 export const ListVoicesResponseSchema: GenMessage<ListVoicesResponse> = /*@__PURE__*/
-  messageDesc(file_alt_tts_v1_tts, 4);
+  messageDesc(file_alt_tts_v1_tts, 6);
 
 /**
  * @generated from service alt.tts.v1.TTSService
@@ -140,8 +194,8 @@ export const TTSService: GenService<{
    */
   synthesizeStream: {
     methodKind: "server_streaming";
-    input: typeof SynthesizeRequestSchema;
-    output: typeof SynthesizeResponseSchema;
+    input: typeof SynthesizeStreamRequestSchema;
+    output: typeof SynthesizeStreamResponseSchema;
   },
   /**
    * @generated from rpc alt.tts.v1.TTSService.ListVoices

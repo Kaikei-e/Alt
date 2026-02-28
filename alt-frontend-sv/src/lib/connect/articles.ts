@@ -8,8 +8,8 @@ import { createClient } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
 import {
 	ArticleService,
-	ArticleTagEvent_EventType,
-	type ArticleTagEvent,
+	StreamArticleTagsResponse_EventType,
+	type StreamArticleTagsResponse,
 	type FetchArticleContentResponse,
 	type ArchiveArticleResponse,
 	type FetchArticlesCursorResponse,
@@ -434,7 +434,7 @@ export async function fetchRandomFeed(
 /**
  * Event types for article tag streaming
  */
-export type ArticleTagEventType =
+export type StreamArticleTagsResponseType =
 	| "cached"
 	| "generating"
 	| "completed"
@@ -443,10 +443,10 @@ export type ArticleTagEventType =
 /**
  * Streaming tag event payload
  */
-export interface StreamingArticleTagEvent {
+export interface StreamingStreamArticleTagsResponse {
 	articleId: string;
 	tags: TagTrailTag[];
-	eventType: ArticleTagEventType;
+	eventType: StreamArticleTagsResponseType;
 	message?: string;
 }
 
@@ -454,16 +454,16 @@ export interface StreamingArticleTagEvent {
  * Maps proto EventType to string literal for easier handling.
  */
 function mapEventType(
-	protoEventType: ArticleTagEvent_EventType,
-): ArticleTagEventType {
+	protoEventType: StreamArticleTagsResponse_EventType,
+): StreamArticleTagsResponseType {
 	switch (protoEventType) {
-		case ArticleTagEvent_EventType.CACHED:
+		case StreamArticleTagsResponse_EventType.CACHED:
 			return "cached";
-		case ArticleTagEvent_EventType.GENERATING:
+		case StreamArticleTagsResponse_EventType.GENERATING:
 			return "generating";
-		case ArticleTagEvent_EventType.COMPLETED:
+		case StreamArticleTagsResponse_EventType.COMPLETED:
 			return "completed";
-		case ArticleTagEvent_EventType.ERROR:
+		case StreamArticleTagsResponse_EventType.ERROR:
 			return "error";
 		default:
 			return "error";
@@ -506,7 +506,7 @@ function mapEventType(
 export function streamArticleTags(
 	transport: Transport,
 	articleId: string,
-	onEvent: (event: StreamingArticleTagEvent) => void,
+	onEvent: (event: StreamingStreamArticleTagsResponse) => void,
 	onError?: (error: Error) => void,
 ): AbortController {
 	const client = createArticleClient(transport);
@@ -521,7 +521,7 @@ export function streamArticleTags(
 			);
 
 			for await (const rawEvent of stream) {
-				const event = rawEvent as ArticleTagEvent;
+				const event = rawEvent as StreamArticleTagsResponse;
 				const tags: TagTrailTag[] = event.tags.map(
 					(item: ProtoArticleTagItem): TagTrailTag => ({
 						id: item.id,

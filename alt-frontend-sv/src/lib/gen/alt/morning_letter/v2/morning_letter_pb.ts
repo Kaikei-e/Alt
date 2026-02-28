@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/morning_letter/v2/morning_letter.proto.
  */
 export const file_alt_morning_letter_v2_morning_letter: GenFile = /*@__PURE__*/
-  fileDesc("CiphbHQvbW9ybmluZ19sZXR0ZXIvdjIvbW9ybmluZ19sZXR0ZXIucHJvdG8SFWFsdC5tb3JuaW5nX2xldHRlci52MiJfChFTdHJlYW1DaGF0UmVxdWVzdBI0CghtZXNzYWdlcxgBIAMoCzIiLmFsdC5tb3JuaW5nX2xldHRlci52Mi5DaGF0TWVzc2FnZRIUCgx3aXRoaW5faG91cnMYAiABKAUiLAoLQ2hhdE1lc3NhZ2USDAoEcm9sZRgBIAEoCRIPCgdjb250ZW50GAIgASgJItUBCg9TdHJlYW1DaGF0RXZlbnQSDAoEa2luZBgBIAEoCRIPCgVkZWx0YRgCIAEoCUgAEjIKBG1ldGEYAyABKAsyIi5hbHQubW9ybmluZ19sZXR0ZXIudjIuTWV0YVBheWxvYWRIABIyCgRkb25lGAQgASgLMiIuYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkRvbmVQYXlsb2FkSAASFwoNZmFsbGJhY2tfY29kZRgFIAEoCUgAEhcKDWVycm9yX21lc3NhZ2UYBiABKAlIAEIJCgdwYXlsb2FkIpMBCgtNZXRhUGF5bG9hZBIyCgljaXRhdGlvbnMYASADKAsyHy5hbHQubW9ybmluZ19sZXR0ZXIudjIuQ2l0YXRpb24SNgoLdGltZV93aW5kb3cYAiABKAsyIS5hbHQubW9ybmluZ19sZXR0ZXIudjIuVGltZVdpbmRvdxIYChBhcnRpY2xlc19zY2FubmVkGAMgASgFIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiKgoKVGltZVdpbmRvdxINCgVzaW5jZRgBIAEoCRINCgV1bnRpbBgCIAEoCSJRCgtEb25lUGF5bG9hZBIOCgZhbnN3ZXIYASABKAkSMgoJY2l0YXRpb25zGAIgAygLMh8uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkNpdGF0aW9uMngKFE1vcm5pbmdMZXR0ZXJTZXJ2aWNlEmAKClN0cmVhbUNoYXQSKC5hbHQubW9ybmluZ19sZXR0ZXIudjIuU3RyZWFtQ2hhdFJlcXVlc3QaJi5hbHQubW9ybmluZ19sZXR0ZXIudjIuU3RyZWFtQ2hhdEV2ZW50MAFCNVozYWx0L2dlbi9wcm90by9hbHQvbW9ybmluZ19sZXR0ZXIvdjI7bW9ybmluZ2xldHRlcnYyYgZwcm90bzM");
+  fileDesc("CiphbHQvbW9ybmluZ19sZXR0ZXIvdjIvbW9ybmluZ19sZXR0ZXIucHJvdG8SFWFsdC5tb3JuaW5nX2xldHRlci52MiJfChFTdHJlYW1DaGF0UmVxdWVzdBI0CghtZXNzYWdlcxgBIAMoCzIiLmFsdC5tb3JuaW5nX2xldHRlci52Mi5DaGF0TWVzc2FnZRIUCgx3aXRoaW5faG91cnMYAiABKAUiLAoLQ2hhdE1lc3NhZ2USDAoEcm9sZRgBIAEoCRIPCgdjb250ZW50GAIgASgJItgBChJTdHJlYW1DaGF0UmVzcG9uc2USDAoEa2luZBgBIAEoCRIPCgVkZWx0YRgCIAEoCUgAEjIKBG1ldGEYAyABKAsyIi5hbHQubW9ybmluZ19sZXR0ZXIudjIuTWV0YVBheWxvYWRIABIyCgRkb25lGAQgASgLMiIuYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkRvbmVQYXlsb2FkSAASFwoNZmFsbGJhY2tfY29kZRgFIAEoCUgAEhcKDWVycm9yX21lc3NhZ2UYBiABKAlIAEIJCgdwYXlsb2FkIpMBCgtNZXRhUGF5bG9hZBIyCgljaXRhdGlvbnMYASADKAsyHy5hbHQubW9ybmluZ19sZXR0ZXIudjIuQ2l0YXRpb24SNgoLdGltZV93aW5kb3cYAiABKAsyIS5hbHQubW9ybmluZ19sZXR0ZXIudjIuVGltZVdpbmRvdxIYChBhcnRpY2xlc19zY2FubmVkGAMgASgFIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiKgoKVGltZVdpbmRvdxINCgVzaW5jZRgBIAEoCRINCgV1bnRpbBgCIAEoCSJRCgtEb25lUGF5bG9hZBIOCgZhbnN3ZXIYASABKAkSMgoJY2l0YXRpb25zGAIgAygLMh8uYWx0Lm1vcm5pbmdfbGV0dGVyLnYyLkNpdGF0aW9uMnsKFE1vcm5pbmdMZXR0ZXJTZXJ2aWNlEmMKClN0cmVhbUNoYXQSKC5hbHQubW9ybmluZ19sZXR0ZXIudjIuU3RyZWFtQ2hhdFJlcXVlc3QaKS5hbHQubW9ybmluZ19sZXR0ZXIudjIuU3RyZWFtQ2hhdFJlc3BvbnNlMAFCNVozYWx0L2dlbi9wcm90by9hbHQvbW9ybmluZ19sZXR0ZXIvdjI7bW9ybmluZ2xldHRlcnYyYgZwcm90bzM");
 
 /**
  * StreamChatRequest is the request for streaming chat with time filtering.
@@ -69,12 +69,12 @@ export const ChatMessageSchema: GenMessage<ChatMessage> = /*@__PURE__*/
   messageDesc(file_alt_morning_letter_v2_morning_letter, 1);
 
 /**
- * StreamChatEvent is a single event in the streaming response.
+ * StreamChatResponse is a single event in the streaming response.
  * Each event has a kind and a corresponding payload.
  *
- * @generated from message alt.morning_letter.v2.StreamChatEvent
+ * @generated from message alt.morning_letter.v2.StreamChatResponse
  */
-export type StreamChatEvent = Message<"alt.morning_letter.v2.StreamChatEvent"> & {
+export type StreamChatResponse = Message<"alt.morning_letter.v2.StreamChatResponse"> & {
   /**
    * Event kind: "delta", "meta", "done", "fallback", "error"
    *
@@ -85,7 +85,7 @@ export type StreamChatEvent = Message<"alt.morning_letter.v2.StreamChatEvent"> &
   /**
    * Payload based on kind (only one will be set)
    *
-   * @generated from oneof alt.morning_letter.v2.StreamChatEvent.payload
+   * @generated from oneof alt.morning_letter.v2.StreamChatResponse.payload
    */
   payload: {
     /**
@@ -131,10 +131,10 @@ export type StreamChatEvent = Message<"alt.morning_letter.v2.StreamChatEvent"> &
 };
 
 /**
- * Describes the message alt.morning_letter.v2.StreamChatEvent.
- * Use `create(StreamChatEventSchema)` to create a new message.
+ * Describes the message alt.morning_letter.v2.StreamChatResponse.
+ * Use `create(StreamChatResponseSchema)` to create a new message.
  */
-export const StreamChatEventSchema: GenMessage<StreamChatEvent> = /*@__PURE__*/
+export const StreamChatResponseSchema: GenMessage<StreamChatResponse> = /*@__PURE__*/
   messageDesc(file_alt_morning_letter_v2_morning_letter, 2);
 
 /**
@@ -276,7 +276,7 @@ export const MorningLetterService: GenService<{
   streamChat: {
     methodKind: "server_streaming";
     input: typeof StreamChatRequestSchema;
-    output: typeof StreamChatEventSchema;
+    output: typeof StreamChatResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_morning_letter_v2_morning_letter, 0);
