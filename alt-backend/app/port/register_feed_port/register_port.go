@@ -10,5 +10,5 @@ type RegisterFeedLinkPort interface {
 }
 
 type RegisterFeedsPort interface {
-	RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) error
+	RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]string, error)
 }

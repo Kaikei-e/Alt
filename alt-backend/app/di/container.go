@@ -322,6 +322,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	imageFetchUsecase := image_fetch_usecase.NewImageFetchUsecase(imageFetchGateway)
 
 	// Image proxy components
+	// Image CDNs are designed for high throughput; use a dedicated rate limiter
+	// with a shorter interval (3s) instead of sharing the RSS feed limiter (10s).
+	imageProxyRateLimiter := rate_limiter.NewHostRateLimiter(3 * time.Second)
 	var imageProxyUsecaseInstance *image_proxy_usecase.ImageProxyUsecase
 	if cfg.ImageProxy.Enabled && cfg.ImageProxy.Secret != "" {
 		imageProxySigner := image_proxy.NewSigner(cfg.ImageProxy.Secret)
@@ -334,7 +337,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 			imageProxyCacheGateway,
 			imageProxySigner,
 			imageProxyDynamicDomainGateway,
-			rateLimiter,
+			imageProxyRateLimiter,
 			cfg.ImageProxy.MaxWidth,
 			cfg.ImageProxy.WebPQuality,
 			cfg.ImageProxy.CacheTTLMin,
@@ -414,6 +417,11 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	listSubscriptionsUsecase := subscription_usecase.NewListSubscriptionsUsecase(subscriptionGatewayImpl)
 	subscribeUsecase := subscription_usecase.NewSubscribeUsecase(subscriptionGatewayImpl)
 	unsubscribeUsecase := subscription_usecase.NewUnsubscribeUsecase(subscriptionGatewayImpl)
+
+	// Wire auto-subscribe: Usecase delegates subscription to SubscriptionPort
+	registerFeedsUsecase.SetSubscriptionPort(subscriptionGatewayImpl)
+	// Wire event publisher: Usecase publishes ArticleCreated events (fire-and-forget)
+	registerFeedsUsecase.SetEventPublisher(eventPublisherGatewayImpl)
 
 	return &ApplicationComponents{
 		// Ports

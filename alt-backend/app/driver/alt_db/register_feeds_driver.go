@@ -35,14 +35,14 @@ func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.F
 	return nil
 }
 
-func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []models.Feed) error {
+func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []models.Feed) ([]string, error) {
 	if len(feeds) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 
 	defer func() {
@@ -53,6 +53,7 @@ func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []mod
 
 	// Batch UPSERT: eliminates N+1 SELECT→INSERT/UPDATE pattern
 	// COALESCE preserves existing og_image_url/feed_link_id if already set
+	// RETURNING id: returns the id for both INSERT and ON CONFLICT UPDATE cases
 	const upsertQuery = `
 		INSERT INTO feeds (title, description, link, pub_date, created_at, updated_at, feed_link_id, og_image_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -63,6 +64,7 @@ func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []mod
 			updated_at = EXCLUDED.updated_at,
 			feed_link_id = COALESCE(feeds.feed_link_id, EXCLUDED.feed_link_id),
 			og_image_url = COALESCE(EXCLUDED.og_image_url, feeds.og_image_url)
+		RETURNING id
 	`
 
 	batch := &pgx.Batch{}
@@ -71,20 +73,23 @@ func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []mod
 	}
 
 	br := tx.SendBatch(ctx, batch)
+	var ids []string
 	for range feeds {
-		if _, err := br.Exec(); err != nil {
+		var id string
+		if err := br.QueryRow().Scan(&id); err != nil {
 			br.Close()
-			return fmt.Errorf("batch upsert feed: %w", err)
+			return nil, fmt.Errorf("batch upsert feed: %w", err)
 		}
+		ids = append(ids, id)
 	}
 	if err := br.Close(); err != nil {
-		return fmt.Errorf("close batch: %w", err)
+		return nil, fmt.Errorf("close batch: %w", err)
 	}
 
 	if err = tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit tx: %w", err)
+		return nil, fmt.Errorf("commit tx: %w", err)
 	}
 
 	logger.Logger.InfoContext(ctx, "Multiple feeds registered successfully", "count", len(feeds))
-	return nil
+	return ids, nil
 }

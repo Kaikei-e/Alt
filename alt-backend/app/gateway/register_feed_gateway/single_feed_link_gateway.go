@@ -1,7 +1,6 @@
 package register_feed_gateway
 
 import (
-	"alt/domain"
 	"alt/driver/alt_db"
 	"alt/utils/constants"
 	"alt/utils/errors"
@@ -23,7 +22,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
@@ -394,10 +392,6 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 		}
 		logger.SafeInfoContext(ctx, "RSS feed link registered", "link", link)
 
-		// Auto-subscribe the authenticated user to the newly registered feed link.
-		// This is best-effort: failures are logged but do not fail the registration.
-		g.autoSubscribeUser(ctx, feed.FeedLink)
-
 		return nil
 	})
 
@@ -414,36 +408,6 @@ func (g *RegisterFeedGateway) RegisterRSSFeedLink(ctx context.Context, link stri
 	g.metricsCollector.RecordSuccess()
 	logger.SafeInfoContext(ctx, "RSS feed registration successful", "url", link, "response_time", responseTime)
 	return nil
-}
-
-// autoSubscribeUser subscribes the authenticated user to a feed link.
-// This is best-effort: if user context is unavailable or the DB call fails,
-// the error is logged but does not propagate.
-func (g *RegisterFeedGateway) autoSubscribeUser(ctx context.Context, feedLinkURL string) {
-	userCtx, err := domain.GetUserFromContext(ctx)
-	if err != nil {
-		logger.SafeInfoContext(ctx, "Skipping auto-subscribe: no user context", "error", err)
-		return
-	}
-
-	feedLinkIDStr, err := g.alt_db.FetchFeedLinkIDByURL(ctx, feedLinkURL)
-	if err != nil || feedLinkIDStr == nil {
-		logger.SafeWarnContext(ctx, "Skipping auto-subscribe: feed_link_id not found", "url", feedLinkURL, "error", err)
-		return
-	}
-
-	feedLinkID, err := uuid.Parse(*feedLinkIDStr)
-	if err != nil {
-		logger.SafeWarnContext(ctx, "Skipping auto-subscribe: invalid feed_link_id", "feed_link_id", *feedLinkIDStr, "error", err)
-		return
-	}
-
-	if err := g.alt_db.InsertSubscription(ctx, userCtx.UserID, feedLinkID); err != nil {
-		logger.SafeWarnContext(ctx, "Auto-subscribe failed", "user_id", userCtx.UserID, "feed_link_id", feedLinkID, "error", err)
-		return
-	}
-
-	logger.SafeInfoContext(ctx, "User auto-subscribed to feed link", "user_id", userCtx.UserID, "feed_link_id", feedLinkID, "url", feedLinkURL)
 }
 
 // GetMetrics returns the current metrics collector for monitoring and testing

@@ -110,7 +110,7 @@ func TestRegisterFeedsGateway_RegisterFeeds(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := gateway.RegisterFeeds(tt.args.ctx, tt.args.feeds)
+			_, err := gateway.RegisterFeeds(tt.args.ctx, tt.args.feeds)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RegisterFeedsGateway.RegisterFeeds() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -259,7 +259,7 @@ func TestRegisterFeedsGateway_ValidationEdgeCases(t *testing.T) {
 		},
 	}
 
-	err := gateway.RegisterFeeds(context.Background(), edgeCaseFeeds)
+	_, err := gateway.RegisterFeeds(context.Background(), edgeCaseFeeds)
 	if err == nil {
 		t.Error("RegisterFeedsGateway.RegisterFeeds() expected error with nil database, got nil")
 	}
@@ -281,7 +281,7 @@ func TestRegisterFeedsGateway_LargeDataset(t *testing.T) {
 		})
 	}
 
-	err := gateway.RegisterFeeds(context.Background(), largeFeeds)
+	_, err := gateway.RegisterFeeds(context.Background(), largeFeeds)
 	if err == nil {
 		t.Error("RegisterFeedsGateway.RegisterFeeds() expected error with nil database, got nil")
 	}

@@ -83,7 +83,7 @@ func TestRegisterFeedsGateway_RegisterFeeds_MemoryTest(t *testing.T) {
 		},
 	}
 
-	err := gateway.RegisterFeeds(ctx, testFeeds)
+	_, err := gateway.RegisterFeeds(ctx, testFeeds)
 
 	// Should get database connection error
 	if err == nil {

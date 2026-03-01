@@ -86,23 +86,23 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 				// 3. Feed items should be stored in database
 				mockRegisterFeedsGateway.EXPECT().
 					RegisterFeeds(ctx, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, feedItems []*domain.FeedItem) error {
+					DoAndReturn(func(ctx context.Context, feedItems []*domain.FeedItem) ([]string, error) {
 						// Verify that feed items are passed correctly
 						if len(feedItems) != 2 {
-							return fmt.Errorf("expected 2 feed items, got %d", len(feedItems))
+							return nil, fmt.Errorf("expected 2 feed items, got %d", len(feedItems))
 						}
 
 						// Verify first item
 						if feedItems[0].Title != "Test Article 1" {
-							return fmt.Errorf("expected first item title 'Test Article 1', got %s", feedItems[0].Title)
+							return nil, fmt.Errorf("expected first item title 'Test Article 1', got %s", feedItems[0].Title)
 						}
 
 						// Verify second item
 						if feedItems[1].Title != "Test Article 2" {
-							return fmt.Errorf("expected second item title 'Test Article 2', got %s", feedItems[1].Title)
+							return nil, fmt.Errorf("expected second item title 'Test Article 2', got %s", feedItems[1].Title)
 						}
 
-						return nil
+						return []string{"id-1", "id-2"}, nil
 					}).
 					Times(1)
 			},
@@ -192,7 +192,7 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 				// Feed storage fails
 				mockRegisterFeedsGateway.EXPECT().
 					RegisterFeeds(ctx, gomock.Any()).
-					Return(fmt.Errorf("database write failed")).
+					Return(nil, fmt.Errorf("database write failed")).
 					Times(1)
 			},
 			wantErr: true,
@@ -289,11 +289,15 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 
 		mockRegisterFeedsGateway.EXPECT().
 			RegisterFeeds(ctx, gomock.Any()).
-			DoAndReturn(func(ctx context.Context, feedItems []*domain.FeedItem) error {
+			DoAndReturn(func(ctx context.Context, feedItems []*domain.FeedItem) ([]string, error) {
 				if len(feedItems) != 100 {
-					return fmt.Errorf("expected 100 feed items, got %d", len(feedItems))
+					return nil, fmt.Errorf("expected 100 feed items, got %d", len(feedItems))
 				}
-				return nil
+				ids := make([]string, len(feedItems))
+				for i := range feedItems {
+					ids[i] = fmt.Sprintf("id-%d", i+1)
+				}
+				return ids, nil
 			}).
 			Times(1)
 
@@ -334,7 +338,7 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 
 		mockRegisterFeedsGateway.EXPECT().
 			RegisterFeeds(ctx, gomock.Any()).
-			Return(nil).
+			Return([]string{"id-1"}, nil).
 			Times(1)
 
 		usecase := NewRegisterFeedsUsecase(
