@@ -41,3 +41,25 @@ export async function createServerTransport(
 		],
 	});
 }
+
+/**
+ * Creates a server-side transport using a pre-fetched backend token.
+ * Avoids redundant auth-hub /session calls when the token is already
+ * available (e.g. from hooks.server.ts locals.backendToken).
+ *
+ * @param backendToken - The backend token from locals.backendToken
+ * @returns A configured Connect transport
+ */
+export function createServerTransportWithToken(
+	backendToken: string,
+): Transport {
+	return createConnectTransport({
+		baseUrl: BACKEND_CONNECT_URL,
+		interceptors: [
+			(next) => async (req) => {
+				req.header.set("X-Alt-Backend-Token", backendToken);
+				return next(req);
+			},
+		],
+	});
+}

@@ -24,6 +24,10 @@ export interface ConnectFeedItem {
 	articleId?: string;
 	/** Whether this feed has been read by the current user. */
 	isRead: boolean;
+	/** OGP image URL extracted from RSS feed. */
+	ogImageUrl?: string;
+	/** HMAC-signed proxy URL for the OGP image (pre-warmed cache). */
+	ogImageProxyUrl?: string;
 }
 
 /**
@@ -64,6 +68,8 @@ export function convertProtoFeed(proto: {
 	author: string;
 	articleId?: string;
 	isRead: boolean;
+	ogImageUrl?: string;
+	ogImageProxyUrl?: string;
 }): ConnectFeedItem {
 	return {
 		id: proto.id,
@@ -75,6 +81,8 @@ export function convertProtoFeed(proto: {
 		author: proto.author,
 		articleId: proto.articleId || undefined,
 		isRead: proto.isRead,
+		ogImageUrl: proto.ogImageUrl || undefined,
+		ogImageProxyUrl: proto.ogImageProxyUrl || undefined,
 	};
 }
 
