@@ -26,6 +26,7 @@ export type RenderFeed = Feed & {
 	mergedTagsLabel: string;
 	normalizedUrl: string;
 	excerpt: string;
+	ogImageProxyUrl?: string;
 };
 
 export interface BackendFeedItem {
@@ -43,4 +44,5 @@ export interface BackendFeedItem {
 	}>;
 	tags?: string[];
 	article_id?: string;
+	og_image_proxy_url?: string;
 }

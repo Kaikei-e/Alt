@@ -16,6 +16,9 @@ export class ArticlePrefetcher {
 		| ((feedUrl: string, content: string) => void)
 		| null = null;
 	private onOgImageFetched: (() => void) | null = null;
+	private onArticleIdCached:
+		| ((feedUrl: string, articleId: string) => void)
+		| null = null;
 
 	public setOnContentFetched(
 		cb: ((feedUrl: string, content: string) => void) | null,
@@ -25,6 +28,12 @@ export class ArticlePrefetcher {
 
 	public setOnOgImageFetched(cb: (() => void) | null): void {
 		this.onOgImageFetched = cb;
+	}
+
+	public setOnArticleIdCached(
+		cb: ((feedUrl: string, articleId: string) => void) | null,
+	): void {
+		this.onArticleIdCached = cb;
 	}
 
 	/**
@@ -64,9 +73,10 @@ export class ArticlePrefetcher {
 				this.contentCache.delete(cacheKey);
 			}
 
-			// Cache article_id if present
+			// Cache article_id if present and notify listeners
 			if (response.article_id) {
 				this.articleIdCache.set(cacheKey, response.article_id);
+				this.onArticleIdCached?.(cacheKey, response.article_id);
 			}
 
 			// Cache raw og_image_url; proxy URL comes from BatchPrefetchImages
