@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	// テナント関連エラー
@@ -38,4 +41,14 @@ type ComplianceError struct {
 
 func (e *ComplianceError) Error() string {
 	return e.Message
+}
+
+// ExternalHTTPError represents an unexpected HTTP status from an external site.
+type ExternalHTTPError struct {
+	StatusCode int
+	URL        string
+}
+
+func (e *ExternalHTTPError) Error() string {
+	return fmt.Sprintf("unexpected status code %d for %q", e.StatusCode, e.URL)
 }
