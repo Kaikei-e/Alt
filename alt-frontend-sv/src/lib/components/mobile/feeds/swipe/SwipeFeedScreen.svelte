@@ -45,7 +45,9 @@ const PAGE_SIZE = 20;
 // State - initialize directly from props (not via $effect to avoid circular deps)
 let feeds = $state<RenderFeed[]>([...(initialFeeds ?? [])]);
 let cursor = $state<string | null>(initialNextCursor ?? null);
-let hasMore = $state(!!initialNextCursor);
+// When SSR fails, initialFeeds is empty and initialNextCursor is null.
+// In that case, assume hasMore=true so loadMore() fires as client-side fallback.
+let hasMore = $state(initialFeeds.length > 0 ? !!initialNextCursor : true);
 let isLoading = $state(false);
 let error = $state<string | null>(null);
 let readFeeds = $state<Set<string>>(new Set());
@@ -118,6 +120,33 @@ onMount(() => {
 	return () => articlePrefetcher.setOnOgImageFetched(null);
 });
 
+// Wire articleId callback to trigger batch image prefetch in visual-preview mode.
+// When prefetchContent resolves an article_id, batch-prefetch its OGP proxy image.
+onMount(() => {
+	if (!isVisualPreview) return;
+
+	articlePrefetcher.setOnArticleIdCached((feedUrl, articleId) => {
+		batchPrefetchImagesClient([articleId])
+			.then((results) => {
+				for (const info of results) {
+					if (info.articleId === articleId && info.proxyUrl) {
+						articlePrefetcher.seedCache(
+							feedUrl,
+							articlePrefetcher.getCachedContent(feedUrl) || "",
+							articleId,
+							null,
+							info.proxyUrl,
+						);
+					}
+				}
+			})
+			.catch((err) => {
+				console.warn("[SwipeFeedScreen] Batch image prefetch for new articleId failed:", err);
+			});
+	});
+	return () => articlePrefetcher.setOnArticleIdCached(null);
+});
+
 // Re-evaluate OGP image when activeFeed changes or cache updates
 // Use SSR-provided initialOgImageUrl for first card before prefetcher cache is populated
 const currentOgImage = $derived.by(() => {
@@ -125,6 +154,8 @@ const currentOgImage = $derived.by(() => {
 	if (!activeFeed) return null;
 	const cached = articlePrefetcher.getCachedOgImage(activeFeed.normalizedUrl);
 	if (cached) return cached;
+	// Use pre-fetched OGP proxy URL from feed collection (no extra HTTP needed)
+	if (activeFeed.ogImageProxyUrl) return activeFeed.ogImageProxyUrl;
 	// SSR fallback: use server-provided URL for the first card
 	if (activeIndex === 0 && initialOgImageUrl) return initialOgImageUrl;
 	return null;

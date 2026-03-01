@@ -45,6 +45,7 @@ function connectFeedToRenderFeed(item: ConnectFeedItem): RenderFeed {
 		mergedTagsLabel: "", // Tags not available in Connect-RPC response
 		normalizedUrl: normalizeUrl(item.link),
 		excerpt: generateExcerptFromDescription(item.description),
+		ogImageProxyUrl: item.ogImageProxyUrl,
 	};
 }
 

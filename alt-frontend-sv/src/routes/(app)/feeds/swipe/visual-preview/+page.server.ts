@@ -1,6 +1,9 @@
 import type { ServerLoad } from "@sveltejs/kit";
 import { getFeedsWithCursor } from "$lib/server/feed-api";
-import { createServerTransport } from "$lib/connect/transport-server";
+import {
+	createServerTransport,
+	createServerTransportWithToken,
+} from "$lib/connect/transport-server";
 import {
 	batchPrefetchImages,
 	fetchArticleContent,
@@ -8,14 +11,16 @@ import {
 import type { BackendFeedItem } from "$lib/schema/feed";
 import { sanitizeFeed, toRenderFeed } from "$lib/schema/feed";
 
-export const load: ServerLoad = async ({ request }) => {
+export const load: ServerLoad = async ({ request, locals }) => {
+	const backendToken = locals.backendToken;
 	const cookie = request.headers.get("cookie") || "";
 
 	try {
-		const feedsData = await getFeedsWithCursor(cookie, undefined, 3);
-		const feeds = (feedsData.data as BackendFeedItem[]).map((item) =>
-			toRenderFeed(sanitizeFeed(item), item.tags),
-		);
+		const feedsData = await getFeedsWithCursor(cookie, undefined, 3, backendToken);
+		const feeds = (feedsData.data as BackendFeedItem[]).map((item) => ({
+			...toRenderFeed(sanitizeFeed(item), item.tags),
+			ogImageProxyUrl: item.og_image_proxy_url,
+		}));
 
 		// Streamed data: article content is below-the-fold, so defer it
 		// to reduce initial SSR HTML size (improves FCP)
@@ -23,7 +28,10 @@ export const load: ServerLoad = async ({ request }) => {
 			feeds.length > 0
 				? (async () => {
 						try {
-							const transport = await createServerTransport(cookie);
+							// Reuse cached token to avoid extra auth-hub /session calls
+							const transport = backendToken
+								? createServerTransportWithToken(backendToken)
+								: await createServerTransport(cookie);
 							const article = await fetchArticleContent(
 								transport,
 								feeds[0].link,

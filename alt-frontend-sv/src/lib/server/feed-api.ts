@@ -1,4 +1,7 @@
-import { createServerTransport } from "$lib/connect/transport-server";
+import {
+	createServerTransport,
+	createServerTransportWithToken,
+} from "$lib/connect/transport-server";
 import {
 	getUnreadFeeds as getUnreadFeedsConnect,
 	getReadFeeds as getReadFeedsConnect,
@@ -35,6 +38,8 @@ function connectFeedToBackendFormat(item: ConnectFeedItem): unknown {
 		author: item.author ? { name: item.author } : undefined,
 		// Article ID in the articles table - required for mark-as-read functionality
 		article_id: item.articleId,
+		// OGP image proxy URL for pre-fetched image display
+		og_image_proxy_url: item.ogImageProxyUrl,
 	};
 }
 
@@ -63,13 +68,19 @@ export async function getTodayUnreadCount(
 /**
  * カーソルベースでフィードを取得
  * Connect-RPC を使用
+ *
+ * @param backendToken - Optional pre-fetched backend token from locals.backendToken.
+ *   When provided, skips the auth-hub /session call (avoids rate limit issues).
  */
 export async function getFeedsWithCursor(
 	cookie: string | null,
 	cursor?: string,
 	limit: number = 20,
+	backendToken?: string | null,
 ): Promise<CursorResponse<unknown>> {
-	const transport = await createServerTransport(cookie);
+	const transport = backendToken
+		? createServerTransportWithToken(backendToken)
+		: await createServerTransport(cookie);
 	const response = await getUnreadFeedsConnect(transport, cursor, limit);
 
 	return {
