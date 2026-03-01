@@ -64,6 +64,10 @@ type FeedItem struct {
 	IsRead bool `json:"isRead,omitempty"`
 	// FeedLinkID is the feed_links.id for the RSS source this item belongs to.
 	FeedLinkID *string `json:"feedLinkId,omitempty"`
+	// OgImageURL is the image URL extracted from RSS Item.Image / Enclosures / media extensions.
+	OgImageURL string `json:"ogImageUrl,omitempty"`
+	// OgImageProxyURL is the HMAC-signed proxy URL for the OGP image (populated at response time).
+	OgImageProxyURL string `json:"ogImageProxyUrl,omitempty"`
 }
 
 type Author struct {

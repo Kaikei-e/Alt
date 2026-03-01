@@ -272,6 +272,7 @@ func ConvertFeedToFeedItem(feeds []*rssFeed.Feed) []*domain.FeedItem {
 				PublishedParsed: publishedParsed,
 				Author:          author,
 				Authors:         authors,
+				OgImageURL:      ExtractImageURL(item),
 			})
 		}
 	}

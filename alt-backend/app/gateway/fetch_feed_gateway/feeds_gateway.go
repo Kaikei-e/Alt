@@ -197,6 +197,7 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
 			IsRead:          feed.IsRead,
+			OgImageURL:      derefString(feed.OgImageURL),
 		}
 
 		if feed.ArticleID != nil {
@@ -248,6 +249,7 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 			Link:            feed.Link,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
+			OgImageURL:      derefString(feed.OgImageURL),
 		}
 
 		// Set ArticleID if article exists in database
@@ -307,6 +309,7 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 			Link:            feed.Link,
 			Published:       publishedTime.Format(time.RFC3339),
 			PublishedParsed: publishedTime,
+			OgImageURL:      derefString(feed.OgImageURL),
 		}
 		if feed.ArticleID != nil {
 			feedItem.ArticleID = *feed.ArticleID
@@ -315,4 +318,12 @@ func (g *FetchFeedsGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cu
 	}
 
 	return feedItems, nil
+}
+
+// derefString safely dereferences a *string, returning "" if nil.
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

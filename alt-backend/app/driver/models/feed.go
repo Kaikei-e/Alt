@@ -16,6 +16,8 @@ type Feed struct {
 	IsRead bool `db:"is_read"`
 	// FeedLinkID is the ID of the feed_links entry this feed belongs to (nullable)
 	FeedLinkID *string `db:"feed_link_id"`
+	// OgImageURL is the image URL extracted from RSS (nullable)
+	OgImageURL *string `db:"og_image_url"`
 }
 
 type FeedAndArticle struct {

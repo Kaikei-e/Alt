@@ -55,6 +55,7 @@ type ArticleContent struct {
 	Title   string
 	Content string
 	URL     string
+	UserID  string
 }
 
 // CheckArticleExistsPort checks if an article exists by URL and feed.

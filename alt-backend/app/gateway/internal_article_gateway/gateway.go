@@ -138,6 +138,7 @@ func (g *Gateway) GetArticleContent(ctx context.Context, articleID string) (*int
 		Title:   ac.Title,
 		Content: ac.Content,
 		URL:     ac.URL,
+		UserID:  ac.UserID,
 	}, nil
 }
 
