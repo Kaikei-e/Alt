@@ -80,6 +80,24 @@ func (h *Handler) FetchArticleContent(
 				fmt.Errorf("%s", complianceErr.Message))
 		}
 
+		var httpErr *domain.ExternalHTTPError
+		if errors.As(err, &httpErr) {
+			switch {
+			case httpErr.StatusCode == 404 || httpErr.StatusCode == 410:
+				return nil, connect.NewError(connect.CodeNotFound,
+					fmt.Errorf("article not found"))
+			case httpErr.StatusCode == 403 || httpErr.StatusCode == 401:
+				return nil, connect.NewError(connect.CodePermissionDenied,
+					fmt.Errorf("access denied by external site"))
+			case httpErr.StatusCode == 429:
+				return nil, connect.NewError(connect.CodeResourceExhausted,
+					fmt.Errorf("rate limited by external site"))
+			default:
+				return nil, connect.NewError(connect.CodeUnavailable,
+					fmt.Errorf("external site returned %d", httpErr.StatusCode))
+			}
+		}
+
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, connect.NewError(connect.CodeDeadlineExceeded,
 				fmt.Errorf("request timeout"))

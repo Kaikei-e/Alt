@@ -3,6 +3,7 @@ package articles
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"testing"
@@ -587,6 +588,137 @@ func TestStreamArticleTags_EventTypes_Documented(t *testing.T) {
 		assert.NotNil(t, err)
 		// Expected: EVENT_TYPE_COMPLETED with empty tags, not EVENT_TYPE_ERROR
 	})
+}
+
+// =============================================================================
+// FetchArticleContent ExternalHTTPError Mapping Tests (ADR-311)
+// =============================================================================
+
+// mockArticleUsecase implements fetch_article_usecase.ArticleUsecase for testing.
+type mockArticleUsecase struct {
+	content    string
+	articleID  string
+	ogImageURL string
+	err        error
+}
+
+func (m *mockArticleUsecase) Execute(ctx context.Context, articleURL string) (*string, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &m.content, nil
+}
+
+func (m *mockArticleUsecase) FetchCompliantArticle(ctx context.Context, articleURL *url.URL, userContext domain.UserContext) (string, string, string, error) {
+	if m.err != nil {
+		return "", "", "", m.err
+	}
+	return m.content, m.articleID, m.ogImageURL, nil
+}
+
+func TestFetchArticleContent_ExternalHTTPError_404_ReturnsNotFound(t *testing.T) {
+	mockUsecase := &mockArticleUsecase{
+		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 404, URL: "https://example.com/deleted"}),
+	}
+	container := &di.ApplicationComponents{
+		ArticleUsecase: mockUsecase,
+	}
+	handler := NewHandler(container, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
+		Url: "https://example.com/deleted",
+	})
+	_, err := handler.FetchArticleContent(ctx, req)
+
+	require.Error(t, err)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeNotFound, connectErr.Code())
+}
+
+func TestFetchArticleContent_ExternalHTTPError_410_ReturnsNotFound(t *testing.T) {
+	mockUsecase := &mockArticleUsecase{
+		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 410, URL: "https://example.com/gone"}),
+	}
+	container := &di.ApplicationComponents{
+		ArticleUsecase: mockUsecase,
+	}
+	handler := NewHandler(container, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
+		Url: "https://example.com/gone",
+	})
+	_, err := handler.FetchArticleContent(ctx, req)
+
+	require.Error(t, err)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeNotFound, connectErr.Code())
+}
+
+func TestFetchArticleContent_ExternalHTTPError_403_ReturnsPermissionDenied(t *testing.T) {
+	mockUsecase := &mockArticleUsecase{
+		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 403, URL: "https://example.com/forbidden"}),
+	}
+	container := &di.ApplicationComponents{
+		ArticleUsecase: mockUsecase,
+	}
+	handler := NewHandler(container, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
+		Url: "https://example.com/forbidden",
+	})
+	_, err := handler.FetchArticleContent(ctx, req)
+
+	require.Error(t, err)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodePermissionDenied, connectErr.Code())
+}
+
+func TestFetchArticleContent_ExternalHTTPError_429_ReturnsResourceExhausted(t *testing.T) {
+	mockUsecase := &mockArticleUsecase{
+		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 429, URL: "https://example.com/ratelimited"}),
+	}
+	container := &di.ApplicationComponents{
+		ArticleUsecase: mockUsecase,
+	}
+	handler := NewHandler(container, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
+		Url: "https://example.com/ratelimited",
+	})
+	_, err := handler.FetchArticleContent(ctx, req)
+
+	require.Error(t, err)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeResourceExhausted, connectErr.Code())
+}
+
+func TestFetchArticleContent_ExternalHTTPError_500_ReturnsUnavailable(t *testing.T) {
+	mockUsecase := &mockArticleUsecase{
+		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 500, URL: "https://example.com/broken"}),
+	}
+	container := &di.ApplicationComponents{
+		ArticleUsecase: mockUsecase,
+	}
+	handler := NewHandler(container, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
+		Url: "https://example.com/broken",
+	})
+	_, err := handler.FetchArticleContent(ctx, req)
+
+	require.Error(t, err)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeUnavailable, connectErr.Code())
 }
 
 // =============================================================================
