@@ -76,7 +76,7 @@ type ImageProxyConfig struct {
 	Enabled     bool   `json:"enabled" env:"IMAGE_PROXY_ENABLED" default:"true"`
 	Secret      string `json:"secret" env:"IMAGE_PROXY_SECRET"`
 	SecretFile  string `json:"-" env:"IMAGE_PROXY_SECRET_FILE"`
-	CacheTTLMin int    `json:"cache_ttl_min" env:"IMAGE_PROXY_CACHE_TTL_MINUTES" default:"720"`
+	CacheTTLMin int    `json:"cache_ttl_min" env:"IMAGE_PROXY_CACHE_TTL_MINUTES" default:"1440"`
 	MaxWidth    int    `json:"max_width" env:"IMAGE_PROXY_MAX_WIDTH" default:"600"`
 	WebPQuality int    `json:"webp_quality" env:"IMAGE_PROXY_WEBP_QUALITY" default:"80"`
 }
