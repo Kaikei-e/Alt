@@ -192,13 +192,12 @@ func TestSSRFValidator_PathTraversal(t *testing.T) {
 			name:      "URL encoded dot attack",
 			url:       "https://example.com/%2e%2e/admin",
 			wantErr:   true,
-			errorType: "URL_ENCODING_BLOCKED",
+			errorType: "PATH_TRAVERSAL_BLOCKED",
 		},
 		{
-			name:      "URL encoded slash attack",
-			url:       "https://example.com/test%2fmalicious",
-			wantErr:   true,
-			errorType: "URL_ENCODING_BLOCKED",
+			name:    "URL encoded slash in path (legitimate CDN pattern)",
+			url:     "https://example.com/test%2fmalicious",
+			wantErr: false,
 		},
 		{
 			name:    "safe path",
@@ -213,6 +212,11 @@ func TestSSRFValidator_PathTraversal(t *testing.T) {
 		{
 			name:    "complex redirect URL in query parameters (allowed)",
 			url:     "https://medium.com/m/global-identity-2?redirectUrl=https%3A%2F%2Fuxplanet.org%2Frobots.txt",
+			wantErr: false,
+		},
+		{
+			name:    "CDN URL with encoded commas and slashes in path (dev.to)",
+			url:     "https://93.184.216.34/dynamic/image/width=800%2Cheight=%2Cfit=scale-down/https%3A%2F%2Fexample.com%2Fimage.jpg",
 			wantErr: false,
 		},
 	}
@@ -648,9 +652,9 @@ func TestSSRFValidator_ComprehensiveAttackScenarios(t *testing.T) {
 		{
 			name:        "URL encoded path traversal",
 			url:         "https://example.com/%2e%2e%2f%2e%2e%2fadmin",
-			description: "Encoded path traversal",
+			description: "Encoded path traversal (Go decodes %2e to dot, caught by decoded-path check)",
 			wantErr:     true,
-			errorType:   "URL_ENCODING_BLOCKED",
+			errorType:   "PATH_TRAVERSAL_BLOCKED",
 		},
 		{
 			name:        "Suspicious port access",

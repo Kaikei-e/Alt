@@ -181,12 +181,15 @@ func (v *SSRFValidator) validatePath(u *url.URL) error {
 		pathToCheck = u.RawPath
 	}
 
+	// Only block control characters and backslash encoding in paths.
+	// Encoded dots (%2e) and slashes (%2f) are NOT blocked here because:
+	//   1. CDN URLs (dev.to, Cloudinary, Imgix) legitimately use %2F/%2C in paths
+	//   2. Path traversal via %2e%2e is caught by the decoded-path ".." check below
+	//   3. Go's url.Parse decodes %2e%2e → ".." which the next check detects
 	suspiciousPatterns := []string{
 		"%00",        // null byte
 		"%0a", "%0A", // newline
 		"%0d", "%0D", // carriage return
-		"%2e", "%2E", // encoded dot
-		"%2f", "%2F", // encoded forward slash
 		"%5c", "%5C", // encoded backslash
 	}
 
