@@ -29,7 +29,7 @@ type ImageProxyCacheEntry struct {
 
 const (
 	// ImageProxyCacheTTL is the default TTL for cached images.
-	ImageProxyCacheTTL = 12 * time.Hour
+	ImageProxyCacheTTL = 24 * time.Hour
 
 	// ImageProxyMaxWidth is the maximum width for resized images.
 	ImageProxyMaxWidth = 600

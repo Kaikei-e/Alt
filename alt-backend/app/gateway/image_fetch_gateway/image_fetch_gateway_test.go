@@ -238,11 +238,10 @@ func TestValidateImageURLWithTestOverride_SecurityEnhancements(t *testing.T) {
 			expectedErrMessage:    "path traversal patterns not allowed",
 		},
 		{
-			name:                  "URL encoding forward slash attack",
-			inputURL:              "https://example.com/test%2fmalicious",
+			name:                  "URL encoded slash in path (legitimate CDN pattern)",
+			inputURL:              "https://example.com/test%2fpath",
 			allowTestingLocalhost: false,
-			wantErr:               true,
-			expectedErrMessage:    "URL encoding attacks not allowed",
+			wantErr:               false,
 		},
 		{
 			name:                  "empty host validation",

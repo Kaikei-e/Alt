@@ -89,11 +89,15 @@ func validateImageURLWithTestOverride(u *url.URL, allowTestingLocalhost bool) er
 		return fmt.Errorf("path traversal patterns not allowed")
 	}
 
-	// Check for URL encoding attacks by examining the raw URL
+	// Check for URL encoding attacks by examining the raw URL.
+	// Only block control characters and backslash encoding — encoded dots (%2e) and
+	// slashes (%2f) are NOT blocked because CDN URLs legitimately use them, and path
+	// traversal via %2e%2e is already caught by the decoded-path ".." check above.
 	rawURL := u.String()
-	if strings.Contains(rawURL, "%2e") || strings.Contains(rawURL, "%2E") ||
-		strings.Contains(rawURL, "%2f") || strings.Contains(rawURL, "%2F") ||
-		strings.Contains(rawURL, "%5c") || strings.Contains(rawURL, "%5C") {
+	if strings.Contains(rawURL, "%5c") || strings.Contains(rawURL, "%5C") ||
+		strings.Contains(rawURL, "%00") ||
+		strings.Contains(rawURL, "%0a") || strings.Contains(rawURL, "%0A") ||
+		strings.Contains(rawURL, "%0d") || strings.Contains(rawURL, "%0D") {
 		return fmt.Errorf("URL encoding attacks not allowed")
 	}
 

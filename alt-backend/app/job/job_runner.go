@@ -53,6 +53,7 @@ func CollectFeedsJob(r *alt_db.AltDBRepository) func(ctx context.Context) error 
 				CreatedAt:   time.Now().UTC(),
 				UpdatedAt:   time.Now().UTC(),
 				FeedLinkID:  feedItem.FeedLinkID,
+				OgImageURL:  stringPtrOrNil(feedItem.OgImageURL),
 			}
 		}
 
@@ -62,6 +63,14 @@ func CollectFeedsJob(r *alt_db.AltDBRepository) func(ctx context.Context) error 
 
 		return nil
 	}
+}
+
+// stringPtrOrNil returns a pointer to s if non-empty, or nil otherwise.
+func stringPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // HourlyJobRunner is kept for backward compatibility but delegates to CollectFeedsJob.

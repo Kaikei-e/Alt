@@ -86,6 +86,12 @@ func main() {
 		Timeout:  30 * time.Second,
 		Fn:       job.OutboxWorkerJob(container.AltDBRepository, container.RagIntegration),
 	})
+	scheduler.Add(job.Job{
+		Name:     "ogp-image-warmer",
+		Interval: 1 * time.Hour,
+		Timeout:  20 * time.Minute,
+		Fn:       job.OgpImageWarmerJob(container.AltDBRepository, container.ImageProxyUsecase),
+	})
 	scheduler.Start(ctx)
 
 	e := echo.New()
