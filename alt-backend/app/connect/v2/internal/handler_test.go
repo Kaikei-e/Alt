@@ -444,7 +444,7 @@ func TestGetArticleContent_Success(t *testing.T) {
 	mockContent.EXPECT().
 		GetArticleContent(gomock.Any(), "article-1").
 		Return(&internal_article_port.ArticleContent{
-			ID: "article-1", Title: "Title", Content: "Body", URL: "http://example.com",
+			ID: "article-1", Title: "Title", Content: "Body", URL: "http://example.com", UserID: "user-123",
 		}, nil)
 
 	req := connect.NewRequest(&backendv1.GetArticleContentRequest{ArticleId: "article-1"})
@@ -457,6 +457,9 @@ func TestGetArticleContent_Success(t *testing.T) {
 	}
 	if resp.Msg.Title != "Title" {
 		t.Errorf("expected title Title, got %s", resp.Msg.Title)
+	}
+	if resp.Msg.UserId != "user-123" {
+		t.Errorf("expected user_id user-123, got %s", resp.Msg.UserId)
 	}
 }
 

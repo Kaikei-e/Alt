@@ -48,6 +48,18 @@ func NewHandler(container *di.ApplicationComponents, cfg *config.Config, logger 
 // Verify interface implementation at compile time.
 var _ feedsv2connect.FeedServiceHandler = (*Handler)(nil)
 
+// enrichWithProxyURLs sets OgImageProxyURL on each feed item using the image proxy signer.
+func (h *Handler) enrichWithProxyURLs(feeds []*domain.FeedItem) {
+	if h.container.ImageProxyUsecase == nil {
+		return
+	}
+	for _, feed := range feeds {
+		if feed.OgImageURL != "" {
+			feed.OgImageProxyURL = h.container.ImageProxyUsecase.GenerateProxyURL(feed.OgImageURL)
+		}
+	}
+}
+
 // GetFeedStats returns basic feed statistics (feed count, summarized count).
 func (h *Handler) GetFeedStats(
 	ctx context.Context,
@@ -288,6 +300,8 @@ func (h *Handler) GetUnreadFeeds(
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetUnreadFeeds")
 	}
 
+	h.enrichWithProxyURLs(feeds)
+
 	return connect.NewResponse(&feedsv2.GetUnreadFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
 		NextCursor: deriveNextCursor(feeds, hasMore),
@@ -345,6 +359,8 @@ func (h *Handler) GetAllFeeds(
 	// Determine hasMore based on result count vs requested limit
 	hasMore := len(feeds) >= limit
 
+	h.enrichWithProxyURLs(feeds)
+
 	return connect.NewResponse(&feedsv2.GetAllFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
 		NextCursor: deriveNextCursor(feeds, hasMore),
@@ -392,6 +408,8 @@ func (h *Handler) GetReadFeeds(
 	// Determine hasMore based on result count vs requested limit
 	hasMore := len(feeds) >= limit
 
+	h.enrichWithProxyURLs(feeds)
+
 	return connect.NewResponse(&feedsv2.GetReadFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
 		NextCursor: deriveNextCursor(feeds, hasMore),
@@ -438,6 +456,8 @@ func (h *Handler) GetFavoriteFeeds(
 
 	// Determine hasMore based on result count vs requested limit
 	hasMore := len(feeds) >= limit
+
+	h.enrichWithProxyURLs(feeds)
 
 	return connect.NewResponse(&feedsv2.GetFavoriteFeedsResponse{
 		Data:       convertFeedsToProto(feeds),

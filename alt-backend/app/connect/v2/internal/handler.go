@@ -392,6 +392,7 @@ func (h *Handler) GetArticleContent(ctx context.Context, req *connect.Request[ba
 		Title:     content.Title,
 		Content:   content.Content,
 		Url:       content.URL,
+		UserId:    content.UserID,
 	}), nil
 }
 

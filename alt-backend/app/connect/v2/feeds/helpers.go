@@ -26,14 +26,16 @@ func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 			id = feed.ArticleID
 		}
 		item := &feedsv2.FeedItem{
-			Id:          id,
-			Title:       feed.Title,
-			Description: sanitizeDescription(feed.Description),
-			Link:        feed.Link,
-			Published:   formatTimeAgo(feed.PublishedParsed),
-			CreatedAt:   feed.PublishedParsed.Format(time.RFC3339),
-			Author:      formatAuthor(feed.Author, feed.Authors),
-			IsRead:      feed.IsRead,
+			Id:              id,
+			Title:           feed.Title,
+			Description:     sanitizeDescription(feed.Description),
+			Link:            feed.Link,
+			Published:       formatTimeAgo(feed.PublishedParsed),
+			CreatedAt:       feed.PublishedParsed.Format(time.RFC3339),
+			Author:          formatAuthor(feed.Author, feed.Authors),
+			IsRead:          feed.IsRead,
+			OgImageUrl:      feed.OgImageURL,
+			OgImageProxyUrl: feed.OgImageProxyURL,
 		}
 
 		// Set ArticleId if article exists in database
