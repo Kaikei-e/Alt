@@ -95,6 +95,10 @@ message FeedItem {
   optional string article_id = 8;
   // Whether this feed has been read by the current user
   bool is_read = 9;
+  // OGP image URL extracted from RSS feed (from feeds.og_image_url)
+  string og_image_url = 10;
+  // HMAC-signed proxy URL for the OGP image (pre-warmed cache)
+  string og_image_proxy_url = 11;
 }
 
 // =============================================================================

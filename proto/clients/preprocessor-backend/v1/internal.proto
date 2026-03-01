@@ -155,6 +155,7 @@ message GetArticleContentResponse {
   string title = 2;
   string content = 3;
   string url = 4;
+  string user_id = 5;
 }
 
 // =============================================================================
