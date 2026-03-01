@@ -76,13 +76,35 @@ func (g *DynamicDomainGateway) IsAllowedImageDomain(ctx context.Context, hostnam
 		}
 	}
 
-	// Check subscription domains (cached)
+	// Check subscription domains (cached) — exact match and subdomain match.
+	// Image CDN subdomains (e.g. media2.dev.to) should be allowed when the
+	// parent domain (dev.to) is a subscribed feed source.
 	subscriptionDomains, err := g.getSubscriptionDomains(ctx)
 	if err != nil {
 		return false, err
 	}
 
-	return subscriptionDomains[hostname], nil
+	if subscriptionDomains[hostname] {
+		return true, nil
+	}
+
+	// Subdomain match: walk up the hostname (media2.dev.to → dev.to)
+	for h := hostname; ; {
+		dot := strings.Index(h, ".")
+		if dot < 0 {
+			break
+		}
+		parent := h[dot+1:]
+		if parent == "" {
+			break
+		}
+		if subscriptionDomains[parent] {
+			return true, nil
+		}
+		h = parent
+	}
+
+	return false, nil
 }
 
 // getSubscriptionDomains returns cached subscription domains, refreshing if expired.
@@ -113,9 +135,27 @@ func (g *DynamicDomainGateway) getSubscriptionDomains(ctx context.Context) (map[
 		return nil, err
 	}
 
-	domainSet := make(map[string]bool, len(feedDomains))
+	domainSet := make(map[string]bool, len(feedDomains)*2)
 	for _, d := range feedDomains {
-		domainSet[strings.ToLower(d.Domain)] = true
+		domain := strings.ToLower(d.Domain)
+		domainSet[domain] = true
+
+		// Also index parent domains so that subdomain matching works
+		// across sibling subdomains (e.g. www.wired.com → wired.com
+		// allows media.wired.com). Stop at 2-label domains to avoid
+		// over-permissive entries like "co.uk" or "com".
+		for h := domain; ; {
+			dot := strings.Index(h, ".")
+			if dot < 0 {
+				break
+			}
+			parent := h[dot+1:]
+			// Only add parents with 2+ labels (e.g. wired.com, bbci.co.uk)
+			if strings.Contains(parent, ".") {
+				domainSet[parent] = true
+			}
+			h = parent
+		}
 	}
 
 	g.cachedDomains = domainSet

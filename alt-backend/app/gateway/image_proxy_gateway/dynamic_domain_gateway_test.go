@@ -65,7 +65,10 @@ func TestDynamicDomainGateway_SubscriptionDomains(t *testing.T) {
 	}{
 		{"blog.example.com", true},
 		{"news.example.org", true},
-		{"other.example.com", false},
+		// Sibling subdomains are allowed (share parent example.com)
+		{"other.example.com", true},
+		// Completely unrelated domains are not
+		{"evil.unrelated.net", false},
 	}
 
 	for _, tt := range tests {
@@ -104,6 +107,51 @@ func TestDynamicDomainGateway_OGPImageDomains(t *testing.T) {
 		{"cdn.example.org", true},
 		{"ogp.example.net", true},
 		{"evil.attacker.example.invalid", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.hostname, func(t *testing.T) {
+			allowed, err := gw.IsAllowedImageDomain(context.Background(), tt.hostname)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if allowed != tt.allowed {
+				t.Errorf("IsAllowedImageDomain(%q) = %v, want %v", tt.hostname, allowed, tt.allowed)
+			}
+		})
+	}
+}
+
+func TestDynamicDomainGateway_SubdomainMatching(t *testing.T) {
+	// Image CDN subdomains (e.g. media2.dev.to, cdn.hackernoon.com)
+	// should be allowed when their parent domain (dev.to, hackernoon.com)
+	// is in the subscription list.
+	gw := NewDynamicDomainGateway(&mockDomainLister{
+		domains: []domain.FeedLinkDomain{
+			{Domain: "dev.to", Scheme: "https"},
+			{Domain: "hackernoon.com", Scheme: "https"},
+			{Domain: "www.wired.com", Scheme: "https"},
+			{Domain: "feeds.bbci.co.uk", Scheme: "https"},
+		},
+	})
+
+	tests := []struct {
+		hostname string
+		allowed  bool
+	}{
+		// Exact match
+		{"dev.to", true},
+		{"hackernoon.com", true},
+		// Subdomains of subscription domains
+		{"media2.dev.to", true},
+		{"cdn.hackernoon.com", true},
+		{"media.wired.com", true},
+		{"ichef.bbci.co.uk", true},
+		// Not a subdomain of any subscription domain
+		{"evil.example.com", false},
+		{"dev.to.evil.com", false},
+		// Bare TLD should not match
+		{"com", false},
 	}
 
 	for _, tt := range tests {
