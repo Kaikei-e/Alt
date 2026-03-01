@@ -186,6 +186,7 @@ func (r *ArticleRepository) FindByID(ctx context.Context, articleID string) (*do
 		Title:   resp.Msg.Title,
 		Content: resp.Msg.Content,
 		URL:     resp.Msg.Url,
+		UserID:  resp.Msg.UserId,
 	}, nil
 }
 
