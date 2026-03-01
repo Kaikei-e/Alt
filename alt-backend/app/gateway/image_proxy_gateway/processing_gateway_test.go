@@ -1,12 +1,13 @@
 package image_proxy_gateway
 
 import (
+	"bytes"
 	"context"
 	"image"
 	"image/color"
 	"image/jpeg"
 	"image/png"
-	"bytes"
+	"os"
 	"testing"
 )
 
@@ -75,6 +76,34 @@ func TestProcessingGateway_ProcessImage_InvalidData(t *testing.T) {
 	_, err := gw.ProcessImage(context.Background(), []byte("not an image"), "image/jpeg", 600, 80)
 	if err == nil {
 		t.Fatal("expected error for invalid image data")
+	}
+}
+
+func TestProcessingGateway_ProcessImage_WebP(t *testing.T) {
+	gw := NewProcessingGateway()
+
+	// Load a real WebP test file (lossy VP8 format, from golang.org/x/image testdata)
+	webpData, err := os.ReadFile("testdata/test.webp")
+	if err != nil {
+		t.Fatalf("failed to read WebP test file: %v", err)
+	}
+
+	result, err := gw.ProcessImage(context.Background(), webpData, "image/webp", 600, 80)
+	if err != nil {
+		t.Fatalf("ProcessImage failed for WebP input: %v", err)
+	}
+
+	if result.ContentType != "image/jpeg" {
+		t.Errorf("expected output content type image/jpeg, got %s", result.ContentType)
+	}
+	if result.Width == 0 || result.Height == 0 {
+		t.Errorf("expected non-zero dimensions, got %dx%d", result.Width, result.Height)
+	}
+	if result.SizeBytes != len(result.Data) {
+		t.Errorf("SizeBytes mismatch: %d vs len %d", result.SizeBytes, len(result.Data))
+	}
+	if result.ETag == "" {
+		t.Error("expected non-empty ETag")
 	}
 }
 

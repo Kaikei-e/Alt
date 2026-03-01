@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"golang.org/x/image/draw"
+	_ "golang.org/x/image/webp" // Register WebP decoder for image.Decode()
+
 )
 
 // ProcessingGateway implements ImageProcessingPort for resizing and JPEG compression.

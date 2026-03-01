@@ -1,9 +1,11 @@
 package fetch_article_gateway
 
 import (
+	"alt/domain"
 	"alt/utils/rate_limiter"
 	"alt/utils/security"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -64,6 +66,52 @@ func TestFetchArticleGateway_InvalidURL(t *testing.T) {
 	_, err := gw.FetchArticleContents(context.Background(), "://bad-url")
 	if err == nil {
 		t.Fatalf("expected error for invalid URL, got nil")
+	}
+}
+
+func TestFetchArticleGateway_NonSuccessStatus_ReturnsExternalHTTPError(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+	}{
+		{"404 Not Found", 404},
+		{"403 Forbidden", 403},
+		{"410 Gone", 410},
+		{"429 Too Many Requests", 429},
+		{"500 Internal Server Error", 500},
+		{"503 Service Unavailable", 503},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rl := rate_limiter.NewHostRateLimiter(1 * time.Millisecond)
+			rt := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: tt.statusCode,
+					Body:       io.NopCloser(strings.NewReader("error")),
+					Header:     make(http.Header),
+				}, nil
+			})
+			httpClient := &http.Client{Timeout: 2 * time.Second, Transport: rt}
+			validator := security.NewSSRFValidator()
+			gw := NewFetchArticleGatewayWithDeps(rl, httpClient, validator)
+
+			_, err := gw.FetchArticleContents(context.Background(), "https://93.184.216.34/article")
+			if err == nil {
+				t.Fatalf("expected error for status %d, got nil", tt.statusCode)
+			}
+
+			var httpErr *domain.ExternalHTTPError
+			if !errors.As(err, &httpErr) {
+				t.Fatalf("expected ExternalHTTPError, got %T: %v", err, err)
+			}
+			if httpErr.StatusCode != tt.statusCode {
+				t.Errorf("expected status %d, got %d", tt.statusCode, httpErr.StatusCode)
+			}
+			if httpErr.URL == "" {
+				t.Error("expected non-empty URL in ExternalHTTPError")
+			}
+		})
 	}
 }
 

@@ -280,7 +280,7 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 
 	// Set appropriate headers for image fetching
 	req.Header.Set("User-Agent", "Alt-RSS-Reader/1.0 (+https://alt.example.com)")
-	req.Header.Set("Accept", "image/*")
+	req.Header.Set("Accept", "image/webp, image/jpeg, image/png, image/gif")
 	req.Header.Set("Accept-Encoding", "gzip, deflate")
 	req.Header.Set("Cache-Control", "no-cache")
 

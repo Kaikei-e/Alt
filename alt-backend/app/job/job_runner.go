@@ -57,7 +57,7 @@ func CollectFeedsJob(r *alt_db.AltDBRepository) func(ctx context.Context) error 
 			}
 		}
 
-		if err := r.RegisterMultipleFeeds(ctx, feedModels); err != nil {
+		if _, err := r.RegisterMultipleFeeds(ctx, feedModels); err != nil {
 			return err
 		}
 

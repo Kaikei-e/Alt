@@ -1,6 +1,7 @@
 package fetch_article_gateway
 
 import (
+	"alt/domain"
 	"alt/utils/rate_limiter"
 	"alt/utils/security"
 	"bufio"
@@ -112,7 +113,7 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 
 	// Validate HTTP status
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("unexpected status code %d for %q", resp.StatusCode, parsedURL.String())
+		return nil, &domain.ExternalHTTPError{StatusCode: resp.StatusCode, URL: parsedURL.String()}
 	}
 
 	// Decode body to UTF-8 to prevent mojibake
