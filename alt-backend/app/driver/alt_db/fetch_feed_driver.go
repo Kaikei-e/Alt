@@ -191,7 +191,8 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       f.og_image_url
 			FROM feeds f
 			WHERE NOT EXISTS (
 				SELECT 1
@@ -210,7 +211,8 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       f.og_image_url
 			FROM feeds f
 			WHERE NOT EXISTS (
 				SELECT 1
@@ -237,7 +239,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.OgImageURL)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning unread feeds with cursor", "error", err)
 			return nil, errors.New("error scanning feeds list")
@@ -268,7 +270,8 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
-			       COALESCE(rs.is_read, FALSE) AS is_read
+			       COALESCE(rs.is_read, FALSE) AS is_read,
+			       f.og_image_url
 			FROM feeds f
 			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $2
 			WHERE (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
@@ -282,7 +285,8 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
-			       COALESCE(rs.is_read, FALSE) AS is_read
+			       COALESCE(rs.is_read, FALSE) AS is_read,
+			       f.og_image_url
 			FROM feeds f
 			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $3
 			WHERE (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
@@ -303,7 +307,7 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.IsRead)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.IsRead, &feed.OgImageURL)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning all feeds with cursor", "error", err)
 			return nil, errors.New("error scanning feeds list")
@@ -387,7 +391,8 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
 	if cursor == nil {
 		query = `
                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id
+                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+                              f.og_image_url
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
                        WHERE ff.user_id = $2
@@ -399,7 +404,8 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
 	} else {
 		query = `
                        SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
-                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id
+                              (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+                              f.og_image_url
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
                        WHERE ff.user_id = $3 AND ff.created_at < $1
@@ -420,7 +426,7 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID)
+		err := rows.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.Link, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.OgImageURL)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning favorite feeds with cursor", "error", err)
 			return nil, errors.New("error scanning favorite feeds list")

@@ -14,18 +14,19 @@ func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.F
 	// Use ON CONFLICT for atomic upsert, eliminating TOCTOU race condition.
 	// Same pattern as RegisterMultipleFeeds.
 	const upsertQuery = `
-		INSERT INTO feeds (title, description, link, pub_date, created_at, updated_at, feed_link_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO feeds (title, description, link, pub_date, created_at, updated_at, feed_link_id, og_image_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (link) DO UPDATE SET
 			title = EXCLUDED.title,
 			description = EXCLUDED.description,
 			pub_date = EXCLUDED.pub_date,
 			updated_at = EXCLUDED.updated_at,
-			feed_link_id = COALESCE(feeds.feed_link_id, EXCLUDED.feed_link_id)
+			feed_link_id = COALESCE(feeds.feed_link_id, EXCLUDED.feed_link_id),
+			og_image_url = COALESCE(EXCLUDED.og_image_url, feeds.og_image_url)
 	`
 
 	if _, err := r.pool.Exec(ctx, upsertQuery,
-		feed.Title, feed.Description, feed.Link, feed.PubDate, feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID,
+		feed.Title, feed.Description, feed.Link, feed.PubDate, feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID, feed.OgImageURL,
 	); err != nil {
 		return fmt.Errorf("upsert feed: %w", err)
 	}
@@ -51,21 +52,22 @@ func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []mod
 	}()
 
 	// Batch UPSERT: eliminates N+1 SELECT→INSERT/UPDATE pattern
-	// COALESCE preserves existing feed_link_id if already set (prevents overwrite)
+	// COALESCE preserves existing og_image_url/feed_link_id if already set
 	const upsertQuery = `
-		INSERT INTO feeds (title, description, link, pub_date, created_at, updated_at, feed_link_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO feeds (title, description, link, pub_date, created_at, updated_at, feed_link_id, og_image_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (link) DO UPDATE SET
 			title = EXCLUDED.title,
 			description = EXCLUDED.description,
 			pub_date = EXCLUDED.pub_date,
 			updated_at = EXCLUDED.updated_at,
-			feed_link_id = COALESCE(feeds.feed_link_id, EXCLUDED.feed_link_id)
+			feed_link_id = COALESCE(feeds.feed_link_id, EXCLUDED.feed_link_id),
+			og_image_url = COALESCE(EXCLUDED.og_image_url, feeds.og_image_url)
 	`
 
 	batch := &pgx.Batch{}
 	for _, feed := range feeds {
-		batch.Queue(upsertQuery, feed.Title, feed.Description, feed.Link, feed.PubDate, feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID)
+		batch.Queue(upsertQuery, feed.Title, feed.Description, feed.Link, feed.PubDate, feed.CreatedAt, feed.UpdatedAt, feed.FeedLinkID, feed.OgImageURL)
 	}
 
 	br := tx.SendBatch(ctx, batch)

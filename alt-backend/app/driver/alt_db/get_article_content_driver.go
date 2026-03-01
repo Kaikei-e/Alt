@@ -13,6 +13,7 @@ type InternalArticleContent struct {
 	Title   string
 	Content string
 	URL     string
+	UserID  string
 }
 
 // GetArticleContent retrieves article content by ID for summarization.
@@ -21,11 +22,11 @@ func (r *AltDBRepository) GetArticleContent(ctx context.Context, articleID strin
 		return nil, errors.New("database connection not available")
 	}
 
-	query := `SELECT id, title, content, url FROM articles WHERE id = $1 AND deleted_at IS NULL`
+	query := `SELECT id, title, content, url, user_id FROM articles WHERE id = $1 AND deleted_at IS NULL`
 
 	var article InternalArticleContent
 	err := r.pool.QueryRow(ctx, query, articleID).Scan(
-		&article.ID, &article.Title, &article.Content, &article.URL,
+		&article.ID, &article.Title, &article.Content, &article.URL, &article.UserID,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
