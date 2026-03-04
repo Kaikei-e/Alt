@@ -136,7 +136,10 @@ class TestSanitizedTagExtraction:
             patch.object(tag_extractor, "_detect_language", return_value="ja"),
             patch.object(tag_extractor, "_extract_keywords_japanese") as mock_extract,
         ):
-            mock_extract.return_value = (["機械学習", "基礎"], {"機械学習": 0.9, "基礎": 0.7})
+            mock_extract.return_value = (
+                ["機械学習", "基礎", "概念"],
+                {"機械学習": 0.9, "基礎": 0.7, "概念": 0.6},
+            )
 
             outcome = tag_extractor.extract_tags_with_metrics(title, content)
 

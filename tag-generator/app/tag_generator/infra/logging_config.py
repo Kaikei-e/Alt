@@ -37,6 +37,7 @@ def add_business_context(
     Transforms:
     - article_id -> alt.article.id
     - feed_id -> alt.feed.id
+    - processing_stage -> alt.processing.stage
 
     Also adds alt.ai.pipeline = 'tag-extraction' for all logs.
     """
@@ -45,6 +46,8 @@ def add_business_context(
         event_dict["alt.article.id"] = event_dict.pop("article_id")
     if "feed_id" in event_dict:
         event_dict["alt.feed.id"] = event_dict.pop("feed_id")
+    if "processing_stage" in event_dict:
+        event_dict["alt.processing.stage"] = event_dict.pop("processing_stage")
 
     # Always add AI pipeline identifier
     event_dict["alt.ai.pipeline"] = "tag-extraction"

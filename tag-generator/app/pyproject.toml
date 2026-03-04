@@ -38,7 +38,7 @@ dependencies = [
 
     # Connect-RPC (typed backend API client)
     "connect-python>=0.8.1",
-    "protobuf>=5.0.0",
+    "protobuf>=6.33.5,<7.0",
 
     # Authentication and API
     "fastapi>=0.100.0",
@@ -119,7 +119,7 @@ ml-extended = [
 # For development: uv sync --group ml
 
 [tool.uv]
-constraint-dependencies = ["protobuf>=6.33.5"]
+constraint-dependencies = ["protobuf>=6.33.5,<7.0"]
 
 [tool.setuptools.packages]
 find = { include = [

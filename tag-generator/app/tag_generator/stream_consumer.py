@@ -40,6 +40,23 @@ class ConsumerConfig:
             enabled=os.getenv("CONSUMER_ENABLED", "false").lower() == "true",
         )
 
+    @classmethod
+    def tags_stream_from_env(cls) -> "ConsumerConfig":
+        """Create config for the dedicated tags stream (on-the-fly tag generation).
+
+        Uses low batch_size and short block_timeout for low-latency response.
+        """
+        return cls(
+            redis_url=os.getenv("REDIS_STREAMS_URL", "redis://localhost:6379"),
+            group_name=os.getenv("TAGS_CONSUMER_GROUP", "tag-generator-tags-group"),
+            consumer_name=os.getenv("TAGS_CONSUMER_NAME", f"tag-generator-tags-{os.getpid()}"),
+            stream_key="alt:events:tags",
+            batch_size=1,
+            block_timeout_ms=1000,
+            claim_idle_time_ms=int(os.getenv("CONSUMER_CLAIM_IDLE_TIME_MS", "30000")),
+            enabled=os.getenv("CONSUMER_ENABLED", "false").lower() == "true",
+        )
+
 
 @dataclass
 class Event:

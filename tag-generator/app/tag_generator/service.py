@@ -73,6 +73,7 @@ class TagGeneratorService:
 
         # Initialize dependencies (shared across modes)
         self.tag_extractor = TagExtractor()
+        self.tag_extractor.warmup()
         self.cascade_controller = CascadeController()
 
         # Initialize managers

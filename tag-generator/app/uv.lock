@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.13"
 
 [manifest]
-constraints = [{ name = "protobuf", specifier = ">=6.33.5" }]
+constraints = [{ name = "protobuf", specifier = ">=6.33.5,<7.0" }]
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -2439,7 +2439,7 @@ requires-dist = [
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.29.0" },
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.50b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.29.0" },
-    { name = "protobuf", specifier = ">=5.0.0" },
+    { name = "protobuf", specifier = ">=6.33.5,<7.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.0" },
     { name = "psycopg-pool", specifier = ">=3.2.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.0" },

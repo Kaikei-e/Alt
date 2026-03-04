@@ -326,6 +326,35 @@ def _run_background_tag_generation():
         else:
             logger.info("redis_streams_consumer_disabled")
 
+        # Initialize dedicated tags stream consumer for on-the-fly tag generation
+        tags_consumer_config = ConsumerConfig.tags_stream_from_env()
+        if tags_consumer_config.enabled:
+            logger.info(
+                "initializing_tags_stream_consumer",
+                stream=tags_consumer_config.stream_key,
+                group=tags_consumer_config.group_name,
+                consumer=tags_consumer_config.consumer_name,
+            )
+            tags_event_handler = TagGeneratorEventHandler(_background_tag_service)
+            tags_consumer = StreamConsumer(tags_consumer_config, tags_event_handler)
+            tags_event_handler.stream_consumer = tags_consumer
+
+            def run_tags_consumer() -> None:
+                try:
+                    asyncio.run(tags_consumer.start())
+                except Exception as e:
+                    logger.error("Tags consumer thread error", error=str(e))
+
+            tags_consumer_thread = threading.Thread(
+                target=run_tags_consumer,
+                daemon=True,
+                name="redis-streams-tags-consumer",
+            )
+            tags_consumer_thread.start()
+            logger.info("tags_stream_consumer_started")
+        else:
+            logger.info("tags_stream_consumer_disabled")
+
         # Run batch processing service (blocking)
         _background_tag_service.run_service()
     except Exception as e:

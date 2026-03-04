@@ -33,13 +33,14 @@ def main() -> int:
     logger.info("Hello from tag-generator!")
 
     consumer: StreamConsumer | None = None
+    tags_consumer: StreamConsumer | None = None
 
     try:
         # Create and configure service
         config = TagGeneratorConfig()
         service = TagGeneratorService(config)
 
-        # Initialize Redis Streams consumer (if enabled)
+        # Initialize Redis Streams consumer for articles (if enabled)
         consumer_config = ConsumerConfig.from_env()
         if consumer_config.enabled:
             logger.info(
@@ -66,6 +67,30 @@ def main() -> int:
         else:
             logger.info("redis_streams_consumer_disabled")
 
+        # Initialize dedicated tags stream consumer for on-the-fly tag generation
+        tags_consumer_config = ConsumerConfig.tags_stream_from_env()
+        if tags_consumer_config.enabled:
+            logger.info(
+                "initializing_tags_stream_consumer",
+                stream=tags_consumer_config.stream_key,
+                group=tags_consumer_config.group_name,
+                consumer=tags_consumer_config.consumer_name,
+            )
+            tags_event_handler = TagGeneratorEventHandler(service)
+            tags_consumer = StreamConsumer(tags_consumer_config, tags_event_handler)
+
+            # Set stream_consumer reference for reply publishing
+            tags_event_handler.stream_consumer = tags_consumer
+
+            tags_consumer_thread = threading.Thread(
+                target=run_consumer,
+                args=(tags_consumer,),
+                daemon=True,
+                name="redis-streams-tags-consumer",
+            )
+            tags_consumer_thread.start()
+            logger.info("tags_stream_consumer_started")
+
         # Run service (blocking)
         service.run_service()
 
@@ -73,9 +98,11 @@ def main() -> int:
         logger.error("Failed to start service", error=e)
         return 1
     finally:
-        # Stop consumer if running
+        # Stop consumers if running
         if consumer is not None:
             asyncio.run(consumer.stop())
+        if tags_consumer is not None:
+            asyncio.run(tags_consumer.stop())
 
         # Shutdown OTel providers
         otel_shutdown()

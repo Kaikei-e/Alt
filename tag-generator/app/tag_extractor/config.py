@@ -64,6 +64,11 @@ class TagExtractionConfig(BaseModel):
         default=0.5, ge=0.0, le=1.0, description="MMR diversity for Japanese KeyBERT scoring"
     )
     max_tag_length: int = Field(default=15, gt=0, description="Maximum tag length for quality filtering")
+    min_primary_tags: int = Field(
+        default=3,
+        gt=0,
+        description="Minimum tags from primary extraction before fallback is invoked",
+    )
 
     @model_validator(mode="after")
     def resolve_env_overrides(self) -> "TagExtractionConfig":
