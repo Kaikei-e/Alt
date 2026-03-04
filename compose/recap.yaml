@@ -111,6 +111,9 @@ services:
       - PULSE_ENABLED=true
       - PULSE_ROLLOUT_PERCENT=100
       - PULSE_VERSION=v4
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=recap-worker
     secrets:
       - recap_db_password
       - service_secret
@@ -175,6 +178,9 @@ services:
       - RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS=${RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS:-300}
       # Classification (Learning Machine) - CPU使用でOOM回避
       - RECAP_SUBWORKER_CLASSIFICATION_DEVICE=cpu
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=recap-subworker
     ports:
       - "8002:8002"
     secrets:
@@ -264,6 +270,9 @@ services:
       - EVALUATION_SCHEDULE=0 6 * * *
       - LOG_LEVEL=INFO
       - LOG_FORMAT=json
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=recap-evaluator
     ports:
       - "8085:8080"
     depends_on:

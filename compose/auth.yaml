@@ -132,6 +132,9 @@ services:
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BACKEND_TOKEN_TTL=5m
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=auth-hub
     secrets:
       - csrf_secret
       - auth_shared_secret

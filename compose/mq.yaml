@@ -46,6 +46,10 @@ services:
       - REDIS_URL=redis://redis-streams:6379
       - CONNECT_PORT=9500
       - LOG_LEVEL=info
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=mq-hub
+      - REDIS_POOL_SIZE=50
     depends_on:
       redis-streams:
         condition: service_healthy

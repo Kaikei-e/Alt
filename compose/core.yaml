@@ -184,6 +184,9 @@ services:
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub:9500
       - IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=alt-backend
     secrets:
       - auth_shared_secret
       - backend_token_secret

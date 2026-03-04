@@ -69,6 +69,9 @@ services:
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=search-indexer-group
       - CONSUMER_NAME=search-indexer-1
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=search-indexer
     secrets:
       - service_secret
       - meili_master_key
