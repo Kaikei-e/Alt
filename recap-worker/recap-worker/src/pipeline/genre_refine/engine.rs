@@ -594,8 +594,8 @@ mod tests {
     #[test]
     fn config_defaults_have_correct_values() {
         let config = RefineConfig::new(false);
-        assert_eq!(config.boost_threshold, 0.1);
-        assert_eq!(config.min_classifier_confidence, 0.15);
-        assert_eq!(config.graph_margin, 0.15);
+        assert!((config.boost_threshold - 0.1).abs() < f32::EPSILON);
+        assert!((config.min_classifier_confidence - 0.15).abs() < f32::EPSILON);
+        assert!((config.graph_margin - 0.15).abs() < f32::EPSILON);
     }
 }
