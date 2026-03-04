@@ -5,6 +5,7 @@ type ArticleContent struct {
 	Title   string
 	Content string
 	URL     string
+	FeedID  string
 }
 
 // ArticleHead stores the <head> section and extracted OGP metadata for an article.

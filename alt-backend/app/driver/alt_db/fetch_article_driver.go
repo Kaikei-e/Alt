@@ -12,7 +12,7 @@ import (
 )
 
 const fetchArticleByURLQuery = `
-	SELECT id, title, content, url
+	SELECT id, title, content, url, COALESCE(feed_id::text, '') AS feed_id
 	FROM articles
 	WHERE url = $1 AND deleted_at IS NULL
 `
@@ -34,6 +34,7 @@ func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL stri
 		&article.Title,
 		&article.Content,
 		&article.URL,
+		&article.FeedID,
 	)
 
 	if err != nil {
@@ -51,7 +52,7 @@ func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL stri
 }
 
 const fetchArticleByIDQuery = `
-	SELECT id, title, content, url
+	SELECT id, title, content, url, COALESCE(feed_id::text, '') AS feed_id
 	FROM articles
 	WHERE id = $1 AND deleted_at IS NULL
 `
@@ -73,6 +74,7 @@ func (r *AltDBRepository) FetchArticleByID(ctx context.Context, articleID string
 		&article.Title,
 		&article.Content,
 		&article.URL,
+		&article.FeedID,
 	)
 
 	if err != nil {
