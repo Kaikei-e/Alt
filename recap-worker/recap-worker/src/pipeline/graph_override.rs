@@ -16,6 +16,7 @@ pub(crate) struct GraphOverrideSettings {
     pub tag_confidence_gate: Option<f32>,
     pub boost_threshold: Option<f32>,
     pub tag_count_threshold: Option<usize>,
+    pub min_classifier_confidence: Option<f32>,
 }
 
 impl GraphOverrideSettings {

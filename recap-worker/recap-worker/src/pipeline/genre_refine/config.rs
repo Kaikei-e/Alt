@@ -9,6 +9,7 @@ pub(crate) struct RefineConfig {
     pub(crate) boost_threshold: f32,
     pub(crate) tag_count_threshold: usize,
     pub(crate) weighted_tie_break_margin: f32,
+    pub(crate) min_classifier_confidence: f32,
     pub(crate) fallback_genre: String,
 }
 
@@ -19,9 +20,10 @@ impl RefineConfig {
             require_tags,
             tag_confidence_gate: 0.6,
             graph_margin: 0.15,
-            boost_threshold: 0.0,
+            boost_threshold: 0.1,
             tag_count_threshold: 0,
             weighted_tie_break_margin: 0.05,
+            min_classifier_confidence: 0.15,
             fallback_genre: "other".to_string(),
         }
     }

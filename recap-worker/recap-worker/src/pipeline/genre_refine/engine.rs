@@ -350,10 +350,11 @@ impl RefineEngine for DefaultRefineEngine {
             if margin >= config.graph_margin
                 && top_boost >= config.boost_threshold
                 && tag_count >= config.tag_count_threshold
+                && top.0.classifier_confidence >= config.min_classifier_confidence
             {
                 return Ok(RefineOutcome::new(
                     top.0.name.clone(),
-                    (top.0.classifier_confidence + top_boost).clamp(0.0, 1.0),
+                    (0.6 * top.0.classifier_confidence + 0.4 * top_boost).clamp(0.0, 1.0),
                     RefineStrategy::GraphBoost,
                     None,
                     graph_boosts_to_owned(&graph_boosts),
@@ -398,8 +399,10 @@ impl RefineEngine for DefaultRefineEngine {
             }
         }
 
-        // Determine actual strategy: GraphBoost only if boost is active
-        let actual_strategy = if top_boost > 0.0 {
+        // Determine actual strategy: GraphBoost only if boost is active and classifier is confident
+        let actual_strategy = if top_boost > 0.0
+            && top.0.classifier_confidence >= config.min_classifier_confidence
+        {
             RefineStrategy::GraphBoost
         } else {
             RefineStrategy::CoarseOnly
@@ -411,5 +414,188 @@ impl RefineEngine for DefaultRefineEngine {
             None,
             graph_boosts_to_owned(&graph_boosts),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pipeline::genre_refine::cache::{LabelEdge, StaticTagLabelGraphSource, TagLabelGraphCache};
+
+    fn make_config() -> RefineConfig {
+        RefineConfig::new(false)
+    }
+
+    fn make_candidate(name: &str, score: f32, confidence: f32) -> GenreCandidate {
+        GenreCandidate {
+            name: name.to_string(),
+            score,
+            keyword_support: 1,
+            classifier_confidence: confidence,
+        }
+    }
+
+    fn make_tag(label: &str, confidence: f32) -> crate::pipeline::tag_signal::TagSignal {
+        crate::pipeline::tag_signal::TagSignal {
+            label: label.to_string(),
+            confidence,
+            source: None,
+            source_ts: None,
+        }
+    }
+
+    fn make_graph(edges: &[(&str, &str, f32)]) -> TagLabelGraphCache {
+        let label_edges: Vec<LabelEdge> = edges
+            .iter()
+            .map(|(genre, tag, weight)| LabelEdge::new(*genre, *tag, *weight))
+            .collect();
+        TagLabelGraphCache::from_edges(&label_edges)
+    }
+
+    fn make_article(id: &str) -> crate::pipeline::dedup::DeduplicatedArticle {
+        crate::pipeline::dedup::DeduplicatedArticle {
+            id: id.to_string(),
+            title: Some("Test".to_string()),
+            sentences: vec![],
+            sentence_hashes: vec![],
+            language: "en".to_string(),
+            published_at: None,
+            source_url: None,
+            tags: vec![],
+            duplicates: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn graph_boost_confidence_uses_weighted_blend() {
+        // Scenario: classifier_confidence=0.06, graph_boost=0.79
+        // Old: 0.06 + 0.79 = 0.85 (inflated!)
+        // New: 0.6*0.06 + 0.4*0.79 = 0.036 + 0.316 = 0.352 (realistic)
+        let mut config = make_config();
+        config.min_classifier_confidence = 0.0; // Don't block for this test
+        config.boost_threshold = 0.0;
+        config.tag_count_threshold = 0;
+        config.graph_margin = 0.01;
+
+        let graph = make_graph(&[
+            ("cybersecurity", "security", 0.9),
+            ("cybersecurity", "cyber", 0.8),
+        ]);
+        let graph_source: Arc<dyn TagLabelGraphSource> =
+            Arc::new(StaticTagLabelGraphSource::new(graph));
+        let engine = DefaultRefineEngine::new(config, graph_source);
+
+        let job = JobContext::new(uuid::Uuid::new_v4(), vec![]);
+        let article = make_article("test-article");
+        let candidates = vec![
+            make_candidate("cybersecurity", 0.1, 0.06),
+            make_candidate("ai_data", 0.09, 0.098),
+        ];
+        let tags = vec![make_tag("security", 0.9), make_tag("cyber", 0.8)];
+        let tag_profile = TagProfile::from_signals(&tags);
+
+        let input = RefineInput {
+            job: &job,
+            article: &article,
+            candidates: &candidates,
+            tag_profile: &tag_profile,
+            fallback: TagFallbackMode::AllowRefine,
+        };
+
+        let outcome = engine.refine(input).await.unwrap();
+
+        // Confidence should be a weighted blend, not an additive sum
+        assert!(
+            outcome.confidence < 0.85,
+            "confidence should use weighted blend, not additive. Got: {}",
+            outcome.confidence
+        );
+    }
+
+    #[tokio::test]
+    async fn low_classifier_confidence_blocks_graph_boost_strategy() {
+        // When classifier_confidence < 0.15, GraphBoost strategy should not fire
+        let mut config = make_config();
+        config.min_classifier_confidence = 0.15;
+        config.graph_margin = 0.01;
+        config.boost_threshold = 0.01;
+        config.tag_count_threshold = 0;
+
+        let graph = make_graph(&[("cybersecurity", "security", 0.9)]);
+        let graph_source: Arc<dyn TagLabelGraphSource> =
+            Arc::new(StaticTagLabelGraphSource::new(graph));
+        let engine = DefaultRefineEngine::new(config, graph_source);
+
+        let job = JobContext::new(uuid::Uuid::new_v4(), vec![]);
+        let article = make_article("test-article-2");
+        // classifier_confidence of 0.06 is below the 0.15 threshold
+        let candidates = vec![
+            make_candidate("cybersecurity", 0.1, 0.06),
+            make_candidate("ai_data", 0.05, 0.05),
+        ];
+        let tags = vec![make_tag("security", 0.9)];
+        let tag_profile = TagProfile::from_signals(&tags);
+
+        let input = RefineInput {
+            job: &job,
+            article: &article,
+            candidates: &candidates,
+            tag_profile: &tag_profile,
+            fallback: TagFallbackMode::AllowRefine,
+        };
+
+        let outcome = engine.refine(input).await.unwrap();
+
+        // Should NOT use GraphBoost since classifier confidence is too low
+        assert_ne!(
+            outcome.strategy,
+            RefineStrategy::GraphBoost,
+            "GraphBoost should not fire when classifier_confidence (0.06) < min_classifier_confidence (0.15)",
+        );
+    }
+
+    #[tokio::test]
+    async fn sufficient_classifier_confidence_allows_graph_boost() {
+        let mut config = make_config();
+        config.min_classifier_confidence = 0.15;
+        config.graph_margin = 0.01;
+        config.boost_threshold = 0.01;
+        config.tag_count_threshold = 0;
+
+        let graph = make_graph(&[("cybersecurity", "security", 0.9)]);
+        let graph_source: Arc<dyn TagLabelGraphSource> =
+            Arc::new(StaticTagLabelGraphSource::new(graph));
+        let engine = DefaultRefineEngine::new(config, graph_source);
+
+        let job = JobContext::new(uuid::Uuid::new_v4(), vec![]);
+        let article = make_article("test-article-3");
+        // classifier_confidence of 0.25 is above the 0.15 threshold
+        let candidates = vec![
+            make_candidate("cybersecurity", 0.1, 0.25),
+            make_candidate("ai_data", 0.05, 0.05),
+        ];
+        let tags = vec![make_tag("security", 0.9)];
+        let tag_profile = TagProfile::from_signals(&tags);
+
+        let input = RefineInput {
+            job: &job,
+            article: &article,
+            candidates: &candidates,
+            tag_profile: &tag_profile,
+            fallback: TagFallbackMode::AllowRefine,
+        };
+
+        let outcome = engine.refine(input).await.unwrap();
+
+        // With sufficient classifier confidence, cybersecurity should win
+        assert_eq!(outcome.final_genre, "cybersecurity");
+    }
+
+    #[test]
+    fn config_defaults_have_correct_values() {
+        let config = RefineConfig::new(false);
+        assert_eq!(config.boost_threshold, 0.1);
+        assert_eq!(config.min_classifier_confidence, 0.15);
+        assert_eq!(config.graph_margin, 0.15);
     }
 }

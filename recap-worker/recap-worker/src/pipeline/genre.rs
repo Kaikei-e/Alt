@@ -732,12 +732,16 @@ impl GenreStage for TwoStageGenreStage {
         if let Some(value) = overrides.tag_count_threshold {
             refine_config.tag_count_threshold = value;
         }
+        if let Some(value) = overrides.min_classifier_confidence {
+            refine_config.min_classifier_confidence = value;
+        }
         tracing::info!(
             graph_margin = refine_config.graph_margin,
             boost_threshold = refine_config.boost_threshold,
             tag_count_threshold = refine_config.tag_count_threshold,
             weighted_tie_break_margin = refine_config.weighted_tie_break_margin,
             tag_confidence_gate = refine_config.tag_confidence_gate,
+            min_classifier_confidence = refine_config.min_classifier_confidence,
             "updating refine engine config with overrides"
         );
         self.refine_engine.update_config(refine_config).await;

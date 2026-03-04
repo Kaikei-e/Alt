@@ -244,9 +244,9 @@ pub(crate) fn tag_consistency_score(
 
 /// 重み付きスコアリングでタイブレークを決定する。
 /// 各候補に対して以下の要素を重み付きで評価：
-/// - keyword_support (重み: 0.25)
-/// - classifier_confidence (重み: 0.30)
-/// - graph_boost (重み: 0.25)
+/// - keyword_support (重み: 0.20)
+/// - classifier_confidence (重み: 0.40)
+/// - graph_boost (重み: 0.20)
 /// - tag_consistency_score (重み: 0.20)
 pub(crate) fn compute_weighted_tie_break_score(
     _config: &RefineConfig,
@@ -261,7 +261,7 @@ pub(crate) fn compute_weighted_tie_break_score(
     let tag_score = tag_consistency.clamp(0.0, 1.0);
 
     // 重み付き合計
-    keyword_score * 0.25 + classifier_score * 0.30 + graph_score * 0.25 + tag_score * 0.20
+    keyword_score * 0.20 + classifier_score * 0.40 + graph_score * 0.20 + tag_score * 0.20
 }
 
 /// Convert FxHashMap boosts to owned HashMap.
@@ -270,4 +270,68 @@ pub(crate) fn graph_boosts_to_owned(boosts: &FxHashMap<String, f32>) -> HashMap<
         .iter()
         .map(|(k, v)| (k.clone(), *v))
         .collect::<HashMap<_, _>>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_candidate(name: &str, confidence: f32, keyword_support: usize) -> GenreCandidate {
+        GenreCandidate {
+            name: name.to_string(),
+            classifier_confidence: confidence,
+            score: 0.0,
+            keyword_support,
+        }
+    }
+
+    #[test]
+    fn weighted_score_classifier_weight_is_dominant() {
+        let config = RefineConfig::new(false);
+        // High classifier confidence, low graph boost
+        let candidate = make_candidate("ai_data", 0.9, 3);
+        let score_high_classifier =
+            compute_weighted_tie_break_score(&config, &candidate, 0.1, 0.1);
+
+        // Low classifier confidence, high graph boost
+        let candidate_low = make_candidate("cybersecurity", 0.1, 3);
+        let score_high_graph =
+            compute_weighted_tie_break_score(&config, &candidate_low, 0.9, 0.1);
+
+        // With classifier weight 0.40 vs graph weight 0.20, high classifier should win
+        assert!(
+            score_high_classifier > score_high_graph,
+            "classifier-confident candidate ({score_high_classifier}) should score higher than graph-boosted candidate ({score_high_graph})"
+        );
+    }
+
+    #[test]
+    fn weighted_score_weights_sum_to_one() {
+        let config = RefineConfig::new(false);
+        // All components at 1.0 should yield 1.0
+        let candidate = make_candidate("test", 1.0, 10);
+        let score = compute_weighted_tie_break_score(&config, &candidate, 1.0, 1.0);
+        assert!(
+            (score - 1.0).abs() < f32::EPSILON,
+            "weights should sum to 1.0, got {score}"
+        );
+    }
+
+    #[test]
+    fn weighted_score_graph_boost_cannot_dominate() {
+        let config = RefineConfig::new(false);
+        // Scenario from the bug: classifier gives near-random confidence
+        // but graph_boost is high
+        let candidate = make_candidate("cybersecurity", 0.063, 1);
+        let score = compute_weighted_tie_break_score(&config, &candidate, 0.795, 0.0);
+
+        // With the new weights (graph=0.20), max contribution from graph alone is 0.159
+        // classifier contribution is 0.063 * 0.40 = 0.0252
+        // keyword contribution is 0.1 * 0.20 = 0.02
+        // Total ≈ 0.204
+        assert!(
+            score < 0.3,
+            "low-confidence candidate with high graph boost should have low weighted score, got {score}"
+        );
+    }
 }
