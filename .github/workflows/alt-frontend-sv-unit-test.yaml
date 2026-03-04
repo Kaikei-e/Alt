@@ -60,6 +60,10 @@ jobs:
         working-directory: alt-frontend-sv
         run: bun install
 
+      - name: Type check
+        working-directory: alt-frontend-sv
+        run: bun run check
+
       - name: Run Vitest
         working-directory: alt-frontend-sv
         run: bun run test
