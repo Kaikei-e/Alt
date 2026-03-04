@@ -51,16 +51,18 @@ export default defineConfig({
 		},
 
 		// Integration E2E tests (against real backend on runtime machine)
+		// globalSetup/globalTeardown per-project is supported at runtime but not yet in Playwright's type defs
 		{
 			name: "integration",
 			testMatch: /integration\/.*\.spec\.ts/,
 			use: {
 				...devices["Desktop Chrome"],
-				baseURL:
-					process.env.ALT_RUNTIME_URL || "http://localhost:4173/sv/",
+				baseURL: process.env.ALT_RUNTIME_URL || "http://localhost:4173/sv/",
 			},
-			globalSetup: "./tests/e2e/integration/global-setup",
-			globalTeardown: "./tests/e2e/integration/global-teardown",
+			...({
+				globalSetup: "./tests/e2e/integration/global-setup",
+				globalTeardown: "./tests/e2e/integration/global-teardown",
+			} as Record<string, string>),
 		},
 
 		// Visual regression tests
