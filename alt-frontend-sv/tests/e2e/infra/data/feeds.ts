@@ -131,6 +131,22 @@ export const CONNECT_ARTICLE_CONTENT: ConnectArticleContent = {
 };
 
 // =============================================================================
+// Connect-RPC Tag Trail Feed Data
+// =============================================================================
+
+export const CONNECT_TAG_TRAIL_FEED = {
+	id: "trail-feed-1",
+	url: "https://example.com/trail-feed",
+	title: "Random Trail Feed",
+	description: "A randomly selected feed for tag exploration.",
+	tags: [
+		{ id: "tag-1", name: "AI", createdAt: "2026-01-01T00:00:00Z" },
+		{ id: "tag-2", name: "Machine Learning", createdAt: "2026-01-01T00:00:00Z" },
+		{ id: "tag-3", name: "Technology", createdAt: "2026-01-01T00:00:00Z" },
+	],
+};
+
+// =============================================================================
 // RSS Feed Link Data
 // =============================================================================
 

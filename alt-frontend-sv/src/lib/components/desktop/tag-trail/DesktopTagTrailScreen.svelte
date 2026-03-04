@@ -51,6 +51,7 @@ $effect(() => {
 let feedTags = $state<TagTrailTag[]>([]);
 let isLoadingFeedTags = $state(false);
 let isLoadingFeed = $state(false);
+let refreshError = $state<string | null>(null);
 let feedTagsError = $state<string | null>(null);
 let feedTagsTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -247,6 +248,7 @@ async function handleRefresh() {
 	}
 	try {
 		const feed = await fetchRandomFeed(transport);
+		refreshError = null;
 		currentFeed = feed;
 		feedTags = feed.tags ?? [];
 		selectedTag = null;
@@ -260,6 +262,7 @@ async function handleRefresh() {
 		loadingArticleTags = new Set();
 	} catch (error) {
 		console.error("Failed to get random feed:", error);
+		refreshError = "Failed to load feed. Please try again.";
 	} finally {
 		isLoadingFeed = false;
 	}
@@ -374,6 +377,17 @@ const formatDate = (dateStr: string) => {
 				{#if isLoadingFeed}
 					<div class="flex items-center justify-center py-12">
 						<Loader2 size={32} class="animate-spin text-[var(--alt-primary)]" />
+					</div>
+				{:else if refreshError}
+					<div class="text-center py-8">
+						<p class="text-sm text-red-500">{refreshError}</p>
+						<button
+							type="button"
+							onclick={handleRefresh}
+							class="mt-2 text-xs text-[var(--alt-primary)] hover:underline"
+						>
+							Try again
+						</button>
 					</div>
 				{:else if currentFeed}
 					<!-- Feed Info -->

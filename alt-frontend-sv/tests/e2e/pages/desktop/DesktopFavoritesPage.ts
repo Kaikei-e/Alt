@@ -17,7 +17,7 @@ export class DesktopFavoritesPage extends BasePage {
 		this.pageTitle = page.getByRole("heading", { name: /favorites/i }).first();
 		this.feedGrid = page.locator(".grid");
 		this.loadingSpinner = page.locator(".animate-spin").first();
-		this.emptyState = page.getByText(/no favorite feeds/i);
+		this.emptyState = page.getByText(/no feeds/i);
 		this.noMoreFeeds = page.getByText(/no more feeds/i);
 	}
 

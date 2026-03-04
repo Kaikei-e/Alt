@@ -1,7 +1,7 @@
 import { test, expect } from "../../fixtures/pomFixtures";
 import {
 	fulfillJson,
-	fulfillError,
+	fulfillConnectError,
 	fulfillConnectStream,
 } from "../../utils/mockHelpers";
 import {
@@ -103,15 +103,19 @@ test.describe("Desktop Tag Trail", () => {
 		page,
 		desktopTagTrailPage,
 	}) => {
+		await desktopTagTrailPage.goto();
+		await desktopTagTrailPage.waitForFeedLoaded();
+
+		// Override route to return error for refresh
 		await page.route(CONNECT_TAG_TRAIL_PATHS.fetchRandomFeed, (route) =>
-			fulfillError(route, "Server error", 500),
+			fulfillConnectError(route, "Server error"),
 		);
 
-		await desktopTagTrailPage.goto();
-		// Should show some error indication
+		await desktopTagTrailPage.refreshButton.click();
+
 		await expect(
 			desktopTagTrailPage.errorMessage
-				.or(page.getByText(/error|failed/i))
+				.or(page.getByText(/failed|error/i))
 				.first(),
 		).toBeVisible({ timeout: 10000 });
 	});

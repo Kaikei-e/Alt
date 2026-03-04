@@ -16,6 +16,7 @@ import {
 	CONNECT_DETAILED_STATS,
 	CONNECT_UNREAD_COUNT,
 	CONNECT_ARTICLE_CONTENT,
+	CONNECT_TAG_TRAIL_FEED,
 } from "../data/feeds";
 import {
 	RECAP_RESPONSE,
@@ -218,6 +219,14 @@ export function createBackendServer(): http.Server {
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(JSON.stringify(CONNECT_UNREAD_COUNT));
+			return;
+		}
+
+		// FetchRandomFeed
+		if (path === "/alt.feeds.v2.FeedService/FetchRandomFeed") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(CONNECT_TAG_TRAIL_FEED));
 			return;
 		}
 
