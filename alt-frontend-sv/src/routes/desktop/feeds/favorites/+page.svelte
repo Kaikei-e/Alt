@@ -30,5 +30,5 @@ function handleSelectFeed(feed: RenderFeed) {
 <FeedDetailModal
 	bind:open={isModalOpen}
 	feed={selectedFeed}
-	onOpenChange={(open) => (isModalOpen = open)}
+	onOpenChange={(open: boolean) => (isModalOpen = open)}
 />

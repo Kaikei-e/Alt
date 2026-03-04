@@ -17,6 +17,7 @@ import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
 import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
 import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
+import type { TimeWindow } from "$lib/schema/stats";
 
 // Mobile deps
 import {
@@ -185,7 +186,7 @@ $effect(() => {
 			</h2>
 			<TimeWindowSelector
 				selected={trendStats.currentWindow}
-				onchange={(window) => trendStats.setWindow(window)}
+				onchange={(window: TimeWindow) => trendStats.setWindow(window)}
 			/>
 		</div>
 

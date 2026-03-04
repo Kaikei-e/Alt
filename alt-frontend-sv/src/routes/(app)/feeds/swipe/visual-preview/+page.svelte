@@ -32,7 +32,11 @@ onMount(() => {
 		resolvedArticleData = articleData;
 
 		// Seed cache once
-		if (!cacheSeeded && data.initialFeeds.length > 0 && articleData.firstArticleId) {
+		if (
+			!cacheSeeded &&
+			data.initialFeeds.length > 0 &&
+			articleData.firstArticleId
+		) {
 			cacheSeeded = true;
 			const feedUrl = data.initialFeeds[0].normalizedUrl;
 			articlePrefetcher.seedCache(

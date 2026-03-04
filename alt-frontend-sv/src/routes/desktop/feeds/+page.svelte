@@ -6,9 +6,8 @@ import {
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
-import FeedGrid, {
-	type FeedGridApi,
-} from "$lib/components/desktop/feeds/FeedGrid.svelte";
+import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
+import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
@@ -48,7 +47,7 @@ const selectedFeed = $derived.by(() => {
 const currentIndex = $derived.by(() => {
 	if (!selectedFeedUrl || !feedGridApi) return -1;
 	const feeds = feedGridApi.getVisibleFeeds();
-	return feeds.findIndex((f) => f.normalizedUrl === selectedFeedUrl);
+	return feeds.findIndex((f: RenderFeed) => f.normalizedUrl === selectedFeedUrl);
 });
 
 const totalCount = $derived(feedGridApi?.getVisibleFeeds().length ?? 0);
@@ -108,7 +107,7 @@ function handleMarkAsRead(feedUrl: string) {
 
 	// Check current position BEFORE removal
 	const currentFeeds = feedGridApi.getVisibleFeeds();
-	const currentIdx = currentFeeds.findIndex((f) => f.normalizedUrl === feedUrl);
+	const currentIdx = currentFeeds.findIndex((f: RenderFeed) => f.normalizedUrl === feedUrl);
 	const isLastFeed = currentIdx === currentFeeds.length - 1;
 
 	// Remove the feed
@@ -165,7 +164,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 <FeedDetailModal
 	bind:open={isModalOpen}
 	feed={selectedFeed}
-	onOpenChange={(open) => (isModalOpen = open)}
+	onOpenChange={(open: boolean) => (isModalOpen = open)}
 	{hasPrevious}
 	{hasNext}
 	onPrevious={handlePrevious}

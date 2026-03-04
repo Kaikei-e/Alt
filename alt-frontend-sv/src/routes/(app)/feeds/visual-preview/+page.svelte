@@ -4,16 +4,13 @@ import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "$lib/api/client/feeds";
-// Desktop components
+import { batchPrefetchImagesClient } from "$lib/api/client/articles";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
 import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
+import VisualFeedCard from "$lib/components/desktop/feeds/VisualFeedCard.svelte";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-// Mobile components
-import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
-import MobileFeedExcludeFilter from "$lib/components/mobile/feeds/MobileFeedExcludeFilter.svelte";
-import MobileFeedsHero from "$lib/components/mobile/MobileFeedsHero.svelte";
 import { Button } from "$lib/components/ui/button";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
@@ -26,9 +23,6 @@ interface PageData {
 
 const { data }: { data: PageData } = $props();
 const { isDesktop } = useViewport();
-
-// --- Mobile state ---
-let mobileExcludedFeedLinkId = $state<string | null>(null);
 
 // --- Desktop state ---
 let selectedFeedUrl = $state<string | null>(null);
@@ -43,12 +37,47 @@ let feedSources = $state<ConnectFeedSource[]>([]);
 let isProcessingMarkAsRead = $state(false);
 let isMarkingAsRead = $state(false);
 
+// --- OG Image prefetch tracking ---
+let prefetchedCount = $state(0);
+
 onMount(async () => {
 	try {
 		feedSources = await listSubscriptionsClient();
 	} catch (e) {
 		console.error("Failed to load feed sources:", e);
 	}
+});
+
+// Batch prefetch OG images for visible feeds that have articleId but no ogImageProxyUrl
+$effect(() => {
+	if (!feedGridApi) return;
+	const visibleFeeds = feedGridApi.getVisibleFeeds();
+	// Only trigger when feed count changes (new page loaded)
+	if (visibleFeeds.length === prefetchedCount) return;
+
+	const needsPrefetch = visibleFeeds.filter(
+		(f: RenderFeed) => f.articleId && !f.ogImageProxyUrl,
+	);
+
+	if (needsPrefetch.length > 0) {
+		const articleIds = needsPrefetch.map((f: RenderFeed) => f.articleId!);
+		batchPrefetchImagesClient(articleIds)
+			.then((results) => {
+				for (const result of results) {
+					const feed = visibleFeeds.find(
+						(f: RenderFeed) => f.articleId === result.articleId,
+					);
+					if (feed) {
+						feed.ogImageProxyUrl = result.proxyUrl;
+					}
+				}
+			})
+			.catch((err) => {
+				console.error("Failed to prefetch OG images:", err);
+			});
+	}
+
+	prefetchedCount = visibleFeeds.length;
 });
 
 const selectedFeed = $derived.by(() => {
@@ -141,12 +170,12 @@ function handleFeedGridReady(api: FeedGridApi) {
 </script>
 
 <svelte:head>
-	<title>Feeds - Alt</title>
+	<title>Visual Preview - Alt</title>
 </svelte:head>
 
 {#if isDesktop}
-	<!-- Desktop: Grid view with modal -->
-	<PageHeader title="Feeds" description="Browse all RSS feeds" />
+	<!-- Desktop: Visual card grid with modal -->
+	<PageHeader title="Visual Preview" description="Browse feeds with image thumbnails" />
 
 	<FeedFilters
 		unreadOnly={filters.unreadOnly}
@@ -162,7 +191,12 @@ function handleFeedGridReady(api: FeedGridApi) {
 		sortBy={filters.sortBy}
 		excludedFeedLinkId={filters.excludedFeedLinkId}
 		onReady={handleFeedGridReady}
-	/>
+		gridClass="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
+	>
+		{#snippet cardRenderer({ feed, index, isRead, onSelect }: { feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void })}
+			<VisualFeedCard {feed} {isRead} {onSelect} />
+		{/snippet}
+	</FeedGrid>
 
 	<FeedDetailModal
 		bind:open={isModalOpen}
@@ -186,23 +220,20 @@ function handleFeedGridReady(api: FeedGridApi) {
 		{/snippet}
 	</FeedDetailModal>
 {:else}
-	<!-- Mobile: Swipe card layout -->
-	<div
-		class="h-screen overflow-hidden flex flex-col"
-		style="background: var(--app-bg);"
-	>
-		<MobileFeedsHero />
-		<MobileFeedExcludeFilter
-			sources={feedSources}
-			excludedSourceId={mobileExcludedFeedLinkId}
-			onExclude={(id: string) => (mobileExcludedFeedLinkId = id)}
-			onClearExclusion={() => (mobileExcludedFeedLinkId = null)}
-		/>
-		<div class="flex-1 min-h-0 flex flex-col">
-			<FeedsClient
-				initialFeeds={data.initialFeeds || []}
-				excludeFeedLinkId={mobileExcludedFeedLinkId}
-			/>
-		</div>
+	<!-- Mobile: Redirect to swipe visual-preview -->
+	<div class="flex flex-col items-center justify-center py-24 text-center">
+		<p class="text-lg font-medium text-[var(--text-primary)] mb-2">
+			Visual Preview has a swipe interface on mobile
+		</p>
+		<p class="text-sm text-[var(--text-secondary)] mb-6">
+			Tap below to use the mobile-optimized experience.
+		</p>
+		<a
+			href="/sv/feeds/swipe/visual-preview"
+			class="px-4 py-2 text-sm font-medium transition-colors hover:opacity-90"
+			style="background: var(--accent-primary); color: var(--accent-primary-foreground);"
+		>
+			Go to Swipe Visual Preview
+		</a>
 	</div>
 {/if}

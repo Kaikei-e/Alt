@@ -122,7 +122,7 @@ function handleNext() {
 		{:else}
 			<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
 				{#each feeds as feed, index (feed.id)}
-					<DesktopFeedCard {feed} onSelect={(f) => handleSelectFeed(f, index)} isRead={true} />
+					<DesktopFeedCard {feed} onSelect={(f: RenderFeed) => handleSelectFeed(f, index)} isRead={true} />
 				{/each}
 			</div>
 
@@ -149,7 +149,7 @@ function handleNext() {
 	<FeedDetailModal
 		bind:open={isModalOpen}
 		feed={selectedFeed}
-		onOpenChange={(open) => (isModalOpen = open)}
+		onOpenChange={(open: boolean) => (isModalOpen = open)}
 		{hasPrevious}
 		{hasNext}
 		onPrevious={handlePrevious}

@@ -16,7 +16,12 @@ export const load: ServerLoad = async ({ request, locals }) => {
 	const cookie = request.headers.get("cookie") || "";
 
 	try {
-		const feedsData = await getFeedsWithCursor(cookie, undefined, 3, backendToken);
+		const feedsData = await getFeedsWithCursor(
+			cookie,
+			undefined,
+			3,
+			backendToken,
+		);
 		const feeds = (feedsData.data as BackendFeedItem[]).map((item) => ({
 			...toRenderFeed(sanitizeFeed(item), item.tags),
 			ogImageProxyUrl: item.og_image_proxy_url,
@@ -39,20 +44,14 @@ export const load: ServerLoad = async ({ request, locals }) => {
 
 							// og_image_proxy_url is no longer in FetchArticleContent response.
 							// Use BatchPrefetchImages for proxy URL.
-							let firstArticleImageUrl =
-								article.ogImageUrl || null;
+							let firstArticleImageUrl = article.ogImageUrl || null;
 							if (article.articleId) {
 								try {
-									const images = await batchPrefetchImages(
-										transport,
-										[article.articleId],
-									);
-									if (
-										images.length > 0 &&
-										images[0].proxyUrl
-									) {
-										firstArticleImageUrl =
-											images[0].proxyUrl;
+									const images = await batchPrefetchImages(transport, [
+										article.articleId,
+									]);
+									if (images.length > 0 && images[0].proxyUrl) {
+										firstArticleImageUrl = images[0].proxyUrl;
 									}
 								} catch {
 									// Fall back to raw og_image_url

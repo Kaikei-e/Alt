@@ -209,7 +209,7 @@ async function handleNext() {
 		</div>
 		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
 			{#each feeds as feed, index (feed.id)}
-				<DesktopFeedCard {feed} onSelect={(f) => handleSelectFeed(f, index)} />
+				<DesktopFeedCard {feed} onSelect={(f: RenderFeed) => handleSelectFeed(f, index)} />
 			{/each}
 		</div>
 
@@ -236,7 +236,7 @@ async function handleNext() {
 <FeedDetailModal
 	bind:open={isModalOpen}
 	feed={selectedFeed}
-	onOpenChange={(open) => (isModalOpen = open)}
+	onOpenChange={(open: boolean) => (isModalOpen = open)}
 	{hasPrevious}
 	hasNext={hasNextFeed}
 	onPrevious={handlePrevious}

@@ -11,6 +11,7 @@ import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
 import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
 import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
+import type { TimeWindow } from "$lib/schema/stats";
 
 // Lazy load chart.js (heavy dependency) - only loaded when stats page is visited
 const TrendChartPromise = import(
@@ -117,7 +118,7 @@ onMount(() => {
 		</h2>
 		<TimeWindowSelector
 			selected={trendStats.currentWindow}
-			onchange={(window) => trendStats.setWindow(window)}
+			onchange={(window: TimeWindow) => trendStats.setWindow(window)}
 		/>
 	</div>
 

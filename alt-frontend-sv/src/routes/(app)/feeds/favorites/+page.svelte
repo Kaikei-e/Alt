@@ -5,9 +5,8 @@ import { Loader2 } from "@lucide/svelte";
 // Desktop components
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
-import FeedGrid, {
-	type FeedGridApi,
-} from "$lib/components/desktop/feeds/FeedGrid.svelte";
+import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
+import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
 
 // Mobile components
 import FeedCard from "$lib/components/mobile/FeedCard.svelte";
@@ -34,7 +33,7 @@ const selectedFeed = $derived.by(() => {
 const currentIndex = $derived.by(() => {
 	if (!selectedFeedUrl || !feedGridApi) return -1;
 	const feeds = feedGridApi.getVisibleFeeds();
-	return feeds.findIndex((f) => f.normalizedUrl === selectedFeedUrl);
+	return feeds.findIndex((f: RenderFeed) => f.normalizedUrl === selectedFeedUrl);
 });
 
 const totalCount = $derived(feedGridApi?.getVisibleFeeds().length ?? 0);
@@ -137,7 +136,7 @@ onMount(async () => {
 	<FeedDetailModal
 		bind:open={isModalOpen}
 		feed={selectedFeed}
-		onOpenChange={(open) => (isModalOpen = open)}
+		onOpenChange={(open: boolean) => (isModalOpen = open)}
 		{hasPrevious}
 		{hasNext}
 		onPrevious={handlePrevious}
