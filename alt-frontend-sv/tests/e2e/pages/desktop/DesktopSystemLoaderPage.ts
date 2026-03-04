@@ -16,7 +16,9 @@ export class DesktopSystemLoaderPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 
-		this.pageTitle = page.getByRole("heading", { name: /system|loading/i }).first();
+		this.pageTitle = page
+			.getByRole("heading", { name: /system|loading/i })
+			.first();
 		this.loadingSpinner = page.locator(".animate-spin").first();
 		this.progressBar = page.locator("[role='progressbar']");
 		this.statusMessage = page.getByTestId("status-message");
@@ -28,7 +30,10 @@ export class DesktopSystemLoaderPage extends BasePage {
 		return "./system-loader";
 	}
 
-	async waitForLoadingComplete(timeout = 30000): Promise<void> {
+	async waitForLoadingComplete(
+		_spinnerSelector?: string,
+		timeout = 30000,
+	): Promise<void> {
 		await expect(this.loadingSpinner).not.toBeVisible({ timeout });
 	}
 

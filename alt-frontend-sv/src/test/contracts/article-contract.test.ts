@@ -5,9 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
-import {
-	FetchArticleContentResponseSchema,
-} from "$lib/gen/alt/articles/v2/articles_pb";
+import { FetchArticleContentResponseSchema } from "$lib/gen/alt/articles/v2/articles_pb";
 import { buildConnectArticleContent } from "../../../tests/e2e/fixtures/factories";
 
 describe("Article API Contract", () => {
@@ -32,10 +30,7 @@ describe("Article API Contract", () => {
 		});
 
 		const binary = toBinary(FetchArticleContentResponseSchema, original);
-		const deserialized = fromBinary(
-			FetchArticleContentResponseSchema,
-			binary,
-		);
+		const deserialized = fromBinary(FetchArticleContentResponseSchema, binary);
 
 		expect(deserialized.url).toBe(original.url);
 		expect(deserialized.content).toBe(original.content);

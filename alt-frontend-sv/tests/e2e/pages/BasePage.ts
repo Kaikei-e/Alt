@@ -28,11 +28,12 @@ export abstract class BasePage {
 	 * Wait for the page to fully load.
 	 */
 	async waitForLoad(): Promise<void> {
-		await this.page.waitForLoadState("networkidle");
+		await this.page.waitForLoadState("domcontentloaded");
 	}
 
 	/**
 	 * Assert that a locator is visible.
+	 * @deprecated POMs should expose locators; tests own assertions. Use `expect(pom.locator).toBeVisible()` directly.
 	 */
 	async expectVisible(locator: Locator): Promise<void> {
 		await expect(locator).toBeVisible();
@@ -40,6 +41,7 @@ export abstract class BasePage {
 
 	/**
 	 * Assert that a locator is not visible.
+	 * @deprecated POMs should expose locators; tests own assertions. Use `expect(pom.locator).not.toBeVisible()` directly.
 	 */
 	async expectNotVisible(locator: Locator): Promise<void> {
 		await expect(locator).not.toBeVisible();
@@ -47,6 +49,7 @@ export abstract class BasePage {
 
 	/**
 	 * Assert that a locator has specific text.
+	 * @deprecated POMs should expose locators; tests own assertions. Use `expect(pom.locator).toContainText()` directly.
 	 */
 	async expectText(locator: Locator, text: string | RegExp): Promise<void> {
 		await expect(locator).toContainText(text);

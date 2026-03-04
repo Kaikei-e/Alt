@@ -17,7 +17,9 @@ export class MobileStatsPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 
-		this.pageTitle = page.getByRole("heading", { name: /stats|statistics/i }).first();
+		this.pageTitle = page
+			.getByRole("heading", { name: /stats|statistics/i })
+			.first();
 		this.loadingSpinner = page.locator(".animate-spin").first();
 
 		this.totalFeeds = page.getByTestId("stat-total-feeds");

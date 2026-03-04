@@ -23,7 +23,9 @@ export class DesktopSettingsPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 
-		this.pageTitle = page.getByRole("heading", { name: /settings|feeds/i }).first();
+		this.pageTitle = page
+			.getByRole("heading", { name: /settings|feeds/i })
+			.first();
 		this.loadingSpinner = page.locator(".animate-spin").first();
 
 		this.feedList = page.locator("[data-testid='feed-list']");
@@ -32,7 +34,9 @@ export class DesktopSettingsPage extends BasePage {
 		this.emptyState = page.getByText(/no feeds registered/i);
 
 		this.confirmDialog = page.locator('[role="alertdialog"]');
-		this.confirmButton = page.getByRole("button", { name: /confirm|delete|yes/i });
+		this.confirmButton = page.getByRole("button", {
+			name: /confirm|delete|yes/i,
+		});
 		this.cancelButton = page.getByRole("button", { name: /cancel|no/i });
 	}
 
@@ -59,7 +63,9 @@ export class DesktopSettingsPage extends BasePage {
 
 	async deleteFeed(url: string): Promise<void> {
 		const feedItem = this.getFeedByUrl(url);
-		const deleteButton = feedItem.locator("..").getByRole("button", { name: /delete|remove/i });
+		const deleteButton = feedItem
+			.locator("..")
+			.getByRole("button", { name: /delete|remove/i });
 		await deleteButton.click();
 		await expect(this.confirmDialog).toBeVisible();
 		await this.confirmButton.click();

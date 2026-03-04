@@ -5,10 +5,11 @@
  */
 import { describe, it, expect } from "vitest";
 import { create, toBinary, fromBinary } from "@bufbuild/protobuf";
+import { GetSevenDayRecapResponseSchema } from "$lib/gen/alt/recap/v2/recap_pb";
 import {
-	GetSevenDayRecapResponseSchema,
-} from "$lib/gen/alt/recap/v2/recap_pb";
-import { buildConnectRecapResponse, buildRecapGenre } from "../../../tests/e2e/fixtures/factories";
+	buildConnectRecapResponse,
+	buildRecapGenre,
+} from "../../../tests/e2e/fixtures/factories";
 
 describe("Recap API Contract", () => {
 	it("GetSevenDayRecapResponse conforms to proto schema", () => {
@@ -70,10 +71,7 @@ describe("Recap API Contract", () => {
 		});
 
 		const binary = toBinary(GetSevenDayRecapResponseSchema, original);
-		const deserialized = fromBinary(
-			GetSevenDayRecapResponseSchema,
-			binary,
-		);
+		const deserialized = fromBinary(GetSevenDayRecapResponseSchema, binary);
 
 		expect(deserialized.genres).toHaveLength(1);
 		expect(deserialized.genres[0].genre).toBe("Tech");
