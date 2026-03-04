@@ -861,10 +861,10 @@ func TestResolveArticle_DBContentPrioritizedOverRequestContent(t *testing.T) {
 	dbURL := "https://example.com/article"
 
 	// Expected query for FetchArticleByID
-	mock.ExpectQuery(`SELECT id, title, content, url FROM articles WHERE id = \$1`).
+	mock.ExpectQuery(`SELECT id, title, content, url, COALESCE\(feed_id::text, ''\) AS feed_id FROM articles WHERE id = \$1 AND deleted_at IS NULL`).
 		WithArgs(articleID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url"}).
-			AddRow(articleID, dbTitle, dbContent, dbURL))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url", "feed_id"}).
+			AddRow(articleID, dbTitle, dbContent, dbURL, ""))
 
 	// Call resolveArticle with both articleID and request content (which should be ignored)
 	requestContent := "<html><body>This is raw HTML content from request that should be IGNORED</body></html>"
@@ -912,10 +912,10 @@ func TestResolveArticle_FallbackToRequestContentWhenDBEmpty(t *testing.T) {
 	dbURL := "https://example.com/article"
 
 	// Expected query for FetchArticleByID
-	mock.ExpectQuery(`SELECT id, title, content, url FROM articles WHERE id = \$1`).
+	mock.ExpectQuery(`SELECT id, title, content, url, COALESCE\(feed_id::text, ''\) AS feed_id FROM articles WHERE id = \$1 AND deleted_at IS NULL`).
 		WithArgs(articleID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url"}).
-			AddRow(articleID, dbTitle, dbContent, dbURL))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url", "feed_id"}).
+			AddRow(articleID, dbTitle, dbContent, dbURL, ""))
 
 	// Call resolveArticle with both articleID and request content
 	requestContent := "Request content as fallback"
@@ -962,10 +962,10 @@ func TestResolveArticle_ErrorWhenDBEmptyAndNoRequestContent(t *testing.T) {
 	dbURL := "https://example.com/article"
 
 	// Expected query for FetchArticleByID
-	mock.ExpectQuery(`SELECT id, title, content, url FROM articles WHERE id = \$1`).
+	mock.ExpectQuery(`SELECT id, title, content, url, COALESCE\(feed_id::text, ''\) AS feed_id FROM articles WHERE id = \$1 AND deleted_at IS NULL`).
 		WithArgs(articleID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url"}).
-			AddRow(articleID, dbTitle, dbContent, dbURL))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url", "feed_id"}).
+			AddRow(articleID, dbTitle, dbContent, dbURL, ""))
 
 	// Call resolveArticle with articleID but no request content
 	resolvedArticleID, resolvedTitle, resolvedContent, err := handler.resolveArticle(ctx, "", articleID, "", "")
@@ -1009,9 +1009,9 @@ func TestResolveArticle_FallbackToRequestContentWhenArticleNotInDB(t *testing.T)
 	articleID := "non-existent-article-id"
 
 	// Expected query for FetchArticleByID - returns empty result
-	mock.ExpectQuery(`SELECT id, title, content, url FROM articles WHERE id = \$1`).
+	mock.ExpectQuery(`SELECT id, title, content, url, COALESCE\(feed_id::text, ''\) AS feed_id FROM articles WHERE id = \$1 AND deleted_at IS NULL`).
 		WithArgs(articleID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url"}))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "title", "content", "url", "feed_id"}))
 
 	// Call resolveArticle with articleID and request content
 	requestContent := "Fallback content when article not in DB"
