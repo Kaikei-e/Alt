@@ -16,9 +16,10 @@ bun run test:e2e          # E2E (requires stack)
 # Dev
 bun dev
 
-# Lint & Build
+# Lint & Type Check & Build
 bun run lint && bun run format
-bun run check && bun run build
+bun run check && bun run build   # tsgo-based type check (fast)
+bun run check:legacy             # tsc-based type check (fallback)
 ```
 
 ## TDD Workflow
