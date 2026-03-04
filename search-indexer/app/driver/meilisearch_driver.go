@@ -3,6 +3,7 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/meilisearch/meilisearch-go"
 )
@@ -33,7 +34,7 @@ func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDoc
 	}
 
 	// Wait for the indexing task to complete
-	_, err = d.index.WaitForTask(task.TaskUID, 15*1000) // 15 seconds timeout
+	_, err = d.index.WaitForTask(task.TaskUID, 15 * time.Second) // 15 seconds timeout
 	if err != nil {
 		return &DriverError{
 			Op:  "IndexDocuments",
@@ -58,7 +59,7 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 	}
 
 	// Wait for the deletion task to complete
-	_, err = d.index.WaitForTask(task.TaskUID, 15*1000) // 15 seconds timeout
+	_, err = d.index.WaitForTask(task.TaskUID, 15 * time.Second) // 15 seconds timeout
 	if err != nil {
 		return &DriverError{
 			Op:  "DeleteDocuments",
@@ -155,7 +156,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		}
 
 		// Wait for index creation
-		_, err = d.index.WaitForTask(task.TaskUID, 15*1000)
+		_, err = d.index.WaitForTask(task.TaskUID, 15 * time.Second)
 		if err != nil {
 			return &DriverError{
 				Op:  "EnsureIndex",
@@ -166,7 +167,7 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		// Delete the dummy document
 		deleteTask, err := d.index.DeleteDocument("init", nil)
 		if err == nil {
-			_, _ = d.index.WaitForTask(deleteTask.TaskUID, 15*1000)
+			_, _ = d.index.WaitForTask(deleteTask.TaskUID, 15 * time.Second)
 		}
 	}
 
@@ -287,7 +288,7 @@ func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[s
 		}
 	}
 
-	_, err = d.index.WaitForTask(task.TaskUID, 15*1000)
+	_, err = d.index.WaitForTask(task.TaskUID, 15 * time.Second)
 	if err != nil {
 		return &DriverError{
 			Op:  "RegisterSynonyms",
