@@ -389,7 +389,7 @@ def run_bayes_optimization(
         )
         space = [
             Real(0.05, 0.25, name="graph_margin"),
-            Real(0.0, 5.0, name="boost_threshold"),
+            Real(0.1, 5.0, name="boost_threshold"),
             Integer(0, 10, name="tag_count_threshold"),
         ]
         result = gp_minimize(
@@ -416,7 +416,7 @@ def run_bayes_optimization(
 
     space = [
         Real(0.05, 0.25, name="graph_margin"),
-        Real(0.0, 5.0, name="boost_threshold"),
+        Real(0.1, 5.0, name="boost_threshold"),
         Integer(0, 10, name="tag_count_threshold"),
     ]
 

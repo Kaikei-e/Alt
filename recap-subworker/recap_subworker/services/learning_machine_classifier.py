@@ -269,6 +269,7 @@ class LearningMachineStudentClassifier:
                 "confidence": top_confidence,
                 "scores": scores,
                 "candidates": candidates[:top_k],
+                "below_threshold": top_confidence < default_threshold,
             })
 
         return results
