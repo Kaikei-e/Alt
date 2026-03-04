@@ -23,7 +23,7 @@ function handleSelectFeed(feed: RenderFeed) {
 
 <div class="text-center py-12">
 	<p class="text-[var(--text-secondary)] text-sm">
-		Favorites feature coming soon
+		No favorite feeds yet
 	</p>
 </div>
 

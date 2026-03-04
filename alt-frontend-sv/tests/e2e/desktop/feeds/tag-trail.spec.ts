@@ -26,9 +26,15 @@ test.describe("Desktop Tag Trail", () => {
 		// Mock streaming tags response
 		await page.route(CONNECT_TAG_TRAIL_PATHS.streamArticleTags, (route) =>
 			fulfillConnectStream(route, [
-				{ kind: "tag", tag: "AI" },
-				{ kind: "tag", tag: "Machine Learning" },
-				{ kind: "tag", tag: "Technology" },
+				{
+					articleId: "article-123",
+					tags: [
+						{ id: "tag-1", name: "AI", createdAt: "2026-01-01T00:00:00Z" },
+						{ id: "tag-2", name: "Machine Learning", createdAt: "2026-01-01T00:00:00Z" },
+						{ id: "tag-3", name: "Technology", createdAt: "2026-01-01T00:00:00Z" },
+					],
+					eventType: "EVENT_TYPE_COMPLETED",
+				},
 			]),
 		);
 	});
