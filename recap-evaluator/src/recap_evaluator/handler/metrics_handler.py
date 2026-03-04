@@ -27,5 +27,23 @@ async def get_latest_metrics(request: Request):
 
 
 @router.get("/metrics/trends", response_model=TrendsResponse)
-async def get_metrics_trends(window_days: int = 30):
-    return TrendsResponse(trends=[], window_days=window_days)
+async def get_metrics_trends(request: Request, window_days: int = 30):
+    get_metrics = request.app.state.get_metrics
+    raw_trends = await get_metrics.get_trends(window_days=window_days)
+
+    from recap_evaluator.handler.schemas import MetricTrend, TrendDataPoint
+
+    trends = [
+        MetricTrend(
+            metric_name=t["metric_name"],
+            data_points=[
+                TrendDataPoint(timestamp=dp["timestamp"], value=dp["value"])
+                for dp in t["data_points"]
+            ],
+            current_value=t["current_value"],
+            change_7d=t.get("change_7d"),
+            change_30d=t.get("change_30d"),
+        )
+        for t in raw_trends
+    ]
+    return TrendsResponse(trends=trends, window_days=window_days)

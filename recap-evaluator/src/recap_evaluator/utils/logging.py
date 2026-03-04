@@ -44,6 +44,7 @@ def add_business_context(
     Transforms:
     - job_id -> alt.job.id
     - processing_stage -> alt.processing.stage
+    - article_id -> alt.article.id
 
     Also adds alt.ai.pipeline = 'recap-evaluation' for all logs.
     """
@@ -52,6 +53,8 @@ def add_business_context(
         event_dict["alt.job.id"] = event_dict.pop("job_id")
     if "processing_stage" in event_dict:
         event_dict["alt.processing.stage"] = event_dict.pop("processing_stage")
+    if "article_id" in event_dict:
+        event_dict["alt.article.id"] = event_dict.pop("article_id")
 
     # Always add AI pipeline identifier
     event_dict["alt.ai.pipeline"] = "recap-evaluation"

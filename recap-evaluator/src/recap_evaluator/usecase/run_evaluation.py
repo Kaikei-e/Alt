@@ -72,6 +72,9 @@ class RunEvaluationUsecase:
 
         if include_cluster and job_ids:
             run.cluster_metrics = await self._cluster.evaluate_batch(job_ids)
+            if run.cluster_metrics:
+                cluster_alerts = [m.alert_level for m in run.cluster_metrics.values()]
+                alert_levels.append(AlertResolver.resolve(cluster_alerts))
 
         if include_summary and job_ids:
             run.summary_metrics = await self._summary.evaluate_batch(
@@ -86,6 +89,16 @@ class RunEvaluationUsecase:
                 alert_levels.append(run.pipeline_metrics.alert_level)
 
         run.overall_alert_level = AlertResolver.resolve(alert_levels)
+
+        if job_ids:
+            metrics = run.to_metrics_dict()
+            await self._db.save_evaluation_run(
+                evaluation_id=run.evaluation_id,
+                evaluation_type=run.evaluation_type.value,
+                job_ids=run.job_ids,
+                metrics=metrics,
+                created_at=run.created_at,
+            )
 
         logger.info(
             "Full evaluation completed",

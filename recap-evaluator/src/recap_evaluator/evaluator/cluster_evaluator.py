@@ -150,6 +150,16 @@ class ClusterEvaluator:
             if not metrics_list:
                 continue
 
+            sil = float(np.mean([m.silhouette_score for m in metrics_list]))
+            warn = self._thresholds.get_warn("clustering_silhouette")
+            critical = self._thresholds.get_critical("clustering_silhouette")
+            if critical is not None and sil < critical:
+                alert = AlertLevel.CRITICAL
+            elif warn is not None and sil < warn:
+                alert = AlertLevel.WARN
+            else:
+                alert = AlertLevel.OK
+
             aggregated[genre] = ClusterMetrics(
                 num_clusters=int(np.mean([m.num_clusters for m in metrics_list])),
                 avg_cluster_size=float(
@@ -157,9 +167,8 @@ class ClusterEvaluator:
                 ),
                 min_cluster_size=int(np.min([m.min_cluster_size for m in metrics_list])),
                 max_cluster_size=int(np.max([m.max_cluster_size for m in metrics_list])),
-                silhouette_score=float(
-                    np.mean([m.silhouette_score for m in metrics_list])
-                ),
+                silhouette_score=sil,
+                alert_level=alert,
             )
 
         logger.info(

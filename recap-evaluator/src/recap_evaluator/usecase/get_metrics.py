@@ -1,5 +1,6 @@
 """Get metrics usecase — retrieves latest metrics and trends."""
 
+from datetime import datetime
 from uuid import UUID
 
 import structlog
@@ -10,6 +11,22 @@ from recap_evaluator.evaluator.pipeline_evaluator import PipelineEvaluator
 from recap_evaluator.port.database_port import DatabasePort
 
 logger = structlog.get_logger()
+
+# Key metrics to extract from saved evaluation JSONB
+_TREND_METRICS = {
+    "genre_macro_f1": lambda m: m.get("genre", {}).get("macro_f1"),
+    "cluster_avg_silhouette": lambda m: _avg_cluster_silhouette(m),
+    "pipeline_success_rate": lambda m: m.get("pipeline", {}).get("success_rate"),
+    "overall_quality_score": lambda m: m.get("summary", {}).get("overall_quality_score"),
+}
+
+
+def _avg_cluster_silhouette(metrics: dict) -> float | None:
+    cluster = metrics.get("cluster")
+    if not cluster:
+        return None
+    scores = [g.get("silhouette_score", 0) for g in cluster.values()]
+    return sum(scores) / len(scores) if scores else None
 
 
 class GetMetricsUsecase:
@@ -72,3 +89,67 @@ class GetMetricsUsecase:
         return await self._db.fetch_evaluation_history(
             evaluation_type=evaluation_type, limit=limit
         )
+
+    async def get_trends(self, window_days: int = 30) -> list[dict]:
+        """Get metric trends from saved evaluation history."""
+        history = await self._db.fetch_evaluation_history(limit=window_days)
+
+        if not history:
+            return []
+
+        # Build time-series for each key metric
+        trends: list[dict] = []
+        for metric_name, extractor in _TREND_METRICS.items():
+            data_points: list[dict] = []
+            for record in reversed(history):  # oldest first
+                metrics = record.get("metrics")
+                if not metrics or not isinstance(metrics, dict):
+                    continue
+                value = extractor(metrics)
+                if value is not None:
+                    data_points.append({
+                        "timestamp": record["created_at"],
+                        "value": value,
+                    })
+
+            if not data_points:
+                continue
+
+            current = data_points[-1]["value"]
+            change_7d = self._compute_change(data_points, 7, current)
+            change_30d = self._compute_change(data_points, 30, current)
+
+            trends.append({
+                "metric_name": metric_name,
+                "data_points": data_points,
+                "current_value": current,
+                "change_7d": change_7d,
+                "change_30d": change_30d,
+            })
+
+        return trends
+
+    @staticmethod
+    def _compute_change(
+        data_points: list[dict], days: int, current: float
+    ) -> float | None:
+        """Compute relative change over the given window."""
+        if len(data_points) < 2:
+            return None
+
+        now = data_points[-1]["timestamp"]
+        if isinstance(now, str):
+            return None
+
+        from datetime import timedelta
+
+        cutoff = now - timedelta(days=days)
+        # Find the oldest point within the window
+        for point in data_points:
+            ts = point["timestamp"]
+            if isinstance(ts, datetime) and ts >= cutoff:
+                old_value = point["value"]
+                if old_value == 0:
+                    return None
+                return (current - old_value) / abs(old_value)
+        return None
