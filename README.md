@@ -8,14 +8,17 @@
 [![Rag-orchestrator Quality Gates](https://github.com/Kaikei-e/Alt/actions/workflows/rag-orchestrator.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/rag-orchestrator.yml)
 [![Rask Log Aggregator](https://github.com/Kaikei-e/Alt/actions/workflows/rask-log-aggregator.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/rask-log-aggregator.yaml)
 [![Rask Log Forwarder Tests](https://github.com/Kaikei-e/Alt/actions/workflows/rask-log-forwarder.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/rask-log-forwarder.yml)
+[![Build and Push Docker Images](https://github.com/Kaikei-e/Alt/actions/workflows/docker-build.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/docker-build.yaml)
+[![Proto Contract Validation](https://github.com/Kaikei-e/Alt/actions/workflows/proto-contract.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/proto-contract.yaml)
+[![Metrics Health Analyzer CI](https://github.com/Kaikei-e/Alt/actions/workflows/metrics-workflow.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/metrics-workflow.yaml)
 
 # Alt – Compose-First AI Knowledge Platform
 
-_Last reviewed on February 15, 2026._
+_Last reviewed on March 4, 2026._
 
 > A Compose-first knowledge platform that ingests RSS content, enriches it with AI (LLM summaries, tag extraction, RAG-powered Q&A), and serves curated insights through Go, Python, Rust, and TypeScript services.
 
-**Key Capabilities:** RSS Ingestion • AI Enrichment • Full-Text Search • RAG Q&A • 7-Day Recap Summaries • Evening Pulse • TDD-First Development
+**Key Capabilities:** RSS Ingestion • AI Enrichment • Full-Text Search • RAG Q&A • 7-Day Recap Summaries • Evening Pulse • Japanese TTS • TDD-First Development
 
 ---
 
@@ -41,9 +44,11 @@ _Last reviewed on February 15, 2026._
 
 - **Docker Desktop 4.36+** (or Colima/Lima with Compose v2.27+) – 4 CPU / 8 GB memory minimum
 - **Node.js 24 LTS** with `pnpm` ≥10 (`corepack enable pnpm`)
-- **Go 1.24+** with `GOBIN` on `PATH`
+- **Go 1.25+** with `GOBIN` on `PATH`
 - **Python 3.12/3.13** with `uv` for environment management
 - **Rust 1.87** (2024 edition) for recap-worker and rask services
+- **Bun 1.x** for alt-frontend-sv development
+- **.NET 10 SDK** for F# services (future use)
 - _Optional:_ GPU runtime (CUDA 12+) for local Ollama inference
 
 ### First-Time Setup
@@ -53,7 +58,7 @@ _Last reviewed on February 15, 2026._
 pnpm -C alt-frontend install
 uv sync --project tag-generator/app
 uv sync --project news-creator/app
-go mod download ./...
+cd alt-backend/app && go mod download && cd ../..
 
 # 2. Prepare environment
 cp .env.template .env   # Edit with your local settings
@@ -213,7 +218,7 @@ flowchart TD
 
     subgraph Log["Logging"]
         Rask[rask-log-aggregator<br/>:9600 / :4317 / :4318]:::log
-        Fwds[log-forwarders x13]:::log
+        Fwds[log-forwarders x14]:::log
         CH[(clickhouse :8123)]:::data
     end
     Fwds --> Rask
@@ -757,15 +762,17 @@ flowchart TD
 |-------|--------------|---------|-------|
 | Web UI (Next.js) | Next.js 16, React 19.2, TypeScript 5.9 | Node.js 24 LTS | Chakra UI 3.30; App Router; Playwright + Vitest |
 | Web UI (SvelteKit) | SvelteKit 2.49, Svelte 5.46, TailwindCSS v4 | Node.js 24 LTS | Svelte 5 Runes; `/sv` base; Connect-RPC client |
-| Go API & RPC | Go 1.24/1.25, Echo 4.14, Connect-RPC 1.19 | Port 9000/9101 | Clean Architecture; GoMock; `make buf-generate` |
-| Go Data Pipeline | Go 1.24/1.25, circuitbreaker, singleflight | — | Pre-processor, scheduler, search-indexer |
+| Go API & RPC | Go 1.25, Echo 4.14, Connect-RPC 1.19 | Port 9000/9101 | Clean Architecture; GoMock; `make buf-generate` |
+| Go Data Pipeline | Go 1.25, circuitbreaker, singleflight | — | Pre-processor, scheduler, search-indexer |
 | RAG Pipeline | Go 1.25, pgvector, Ollama | Port 9010 | Chunk-based retrieval with LLM generation |
 | Python AI Services | Python 3.11-3.13, FastAPI, Ollama (Gemma 3 4B QAT), `uv` | — | news-creator, recap-subworker, tag-generator |
 | Recap Pipeline | Rust 1.87, Axum, Tokio, sqlx | 2024 edition | recap-worker orchestration |
 | Identity & Tokens | Ory Kratos 1.3.0, auth-hub (Go) | — | 5-min TTL cache; `X-Alt-*` headers |
 | Observability | Rust 1.87, ClickHouse 25.9 | — | OTLP log forwarder; Axum aggregator |
 | Storage & Search | PostgreSQL 17/18, Meilisearch 1.27.0 | — | Atlas migrations; pgvector for RAG |
-| Orchestration | Docker Desktop 4.36+, Compose v2.27+, altctl | — | Profiles: ollama, logging, recap, rag-extension |
+| TTS | Python 3.12, Starlette, Kokoro-82M | Port 9700 | Japanese TTS via Connect-RPC; iGPU/CPU inference |
+| F# Services | F# 10, .NET 10, Giraffe | — | Feed validation (future) |
+| Orchestration | Docker Desktop 4.36+, Compose v2.27+, altctl | — | Compose includes: db, auth, core, bff, mq, workers, ai, rag, recap, logging, observability |
 
 > **Version cadence:** Go/Rust track stable releases quarterly; Next.js/SvelteKit follow LTS adoption; Python runtimes are pinned per service.
 
@@ -779,16 +786,16 @@ Each service maintains a `CLAUDE.md` for workflow guidelines and a `docs/<servic
 |---------|----------|-------------|-------------|
 | alt-frontend | TypeScript | [docs/alt-frontend.md](docs/alt-frontend.md) | Next.js 16 + React 19 UI with Chakra themes |
 | alt-frontend-sv | TypeScript | [docs/alt-frontend-sv.md](docs/alt-frontend-sv.md) | SvelteKit `/sv` with Runes, TailwindCSS, Connect-RPC |
-| alt-butterfly-facade | Go 1.24+ | [docs/alt-butterfly-facade.md](docs/alt-butterfly-facade.md) | HTTP/2 h2c BFF for SvelteKit with JWT validation |
-| alt-backend | Go 1.24+ | [docs/alt-backend.md](docs/alt-backend.md) | Clean Architecture REST + Connect-RPC API with job scheduler |
+| alt-butterfly-facade | Go 1.25+ | [docs/alt-butterfly-facade.md](docs/alt-butterfly-facade.md) | HTTP/2 h2c BFF for SvelteKit with JWT validation |
+| alt-backend | Go 1.25+ | [docs/alt-backend.md](docs/alt-backend.md) | Clean Architecture REST + Connect-RPC API with job scheduler |
 | sidecar-proxy | Go 1.24+ | [docs/sidecar-proxy.md](docs/sidecar-proxy.md) | Egress proxy with HTTPS allowlists |
 | mq-hub | Go 1.24+ | [docs/mq-hub.md](docs/mq-hub.md) | Redis Streams event broker with graceful shutdown, OTel metrics, connection pooling |
-| pre-processor | Go 1.24+ | [docs/pre-processor.md](docs/pre-processor.md) | RSS ingestion with dedupe, circuit breakers, and dead letter queue |
-| pre-processor-sidecar | Go 1.24+ | [docs/pre-processor-sidecar.md](docs/pre-processor-sidecar.md) | Scheduler for Inoreader token refresh |
+| pre-processor | Go 1.25+ | [docs/pre-processor.md](docs/pre-processor.md) | RSS ingestion with dedupe, circuit breakers, and dead letter queue |
+| pre-processor-sidecar | Go 1.25+ | [docs/pre-processor-sidecar.md](docs/pre-processor-sidecar.md) | Scheduler for Inoreader token refresh |
 | news-creator | Python 3.11+ | [docs/news-creator.md](docs/news-creator.md) | FastAPI Ollama orchestrator with RT/BE priority scheduling |
 | tag-generator | Python 3.13+ | [docs/tag-generator.md](docs/tag-generator.md) | ONNX-backed tag extraction pipeline |
-| search-indexer | Go 1.24+ | [docs/search-indexer.md](docs/search-indexer.md) | Meilisearch indexer with bootstrap DI, OTel metrics, Redis event batching |
-| auth-hub | Go 1.24+ | [docs/auth-hub.md](docs/auth-hub.md) | Kratos-aware IAP with session caching |
+| search-indexer | Go 1.25+ | [docs/search-indexer.md](docs/search-indexer.md) | Meilisearch indexer with bootstrap DI, OTel metrics, Redis event batching |
+| auth-hub | Go 1.25+ | [docs/auth-hub.md](docs/auth-hub.md) | Kratos-aware IAP with session caching |
 | auth-token-manager | Deno 2.x | [docs/auth-token-manager.md](docs/auth-token-manager.md) | OAuth2 CLI for Inoreader tokens |
 | rask-log-forwarder | Rust 1.87+ | [docs/rask-log-forwarder.md](docs/rask-log-forwarder.md) | OTLP Protocol Buffers log forwarder |
 | rask-log-aggregator | Rust 1.87+ | [docs/rask-log-aggregator.md](docs/rask-log-aggregator.md) | Axum API for ClickHouse ingestion |
@@ -797,8 +804,12 @@ Each service maintains a `CLAUDE.md` for workflow guidelines and a `docs/<servic
 | recap-db | PostgreSQL 18 | [docs/recap-db.md](docs/recap-db.md) | Recap jobs, evidence, and learning results |
 | rag-orchestrator | Go 1.25+ | [docs/rag-orchestrator.md](docs/rag-orchestrator.md) | RAG indexing, retrieval, and generation |
 | rag-db | PostgreSQL 18 | [docs/rag-db.md](docs/rag-db.md) | pgvector for RAG documents and chunks |
-| altctl | Go 1.24+ | [altctl/CLAUDE.md](altctl/CLAUDE.md) | CLI for Docker Compose orchestration |
+| altctl | Go 1.25+ | [altctl/CLAUDE.md](altctl/CLAUDE.md) | CLI for Docker Compose orchestration |
 | alt-perf | Deno 2.x | [alt-perf/CLAUDE.md](alt-perf/CLAUDE.md) | E2E performance measurement tool |
+| tts-speaker | Python 3.12 | [tts-speaker/CLAUDE.md](tts-speaker/CLAUDE.md) | Japanese TTS (Kokoro-82M, Connect-RPC, iGPU/CPU) |
+| dashboard | Python 3.12+ | — | Streamlit platform monitoring |
+| metrics | Python 3.13+ | [metrics/CLAUDE.md](metrics/CLAUDE.md) | System health analyzer CLI (ClickHouse) |
+| recap-evaluator | Python 3.13+ | — | Recap quality evaluation (ROUGE, BERTScore) |
 
 ---
 
@@ -833,9 +844,8 @@ The 7-day recap feature condenses articles into genre cards with evidence links 
 # 1. Apply migrations
 make recap-migrate
 
-# 2. Start services
-docker compose --profile recap --profile ollama up \
-  recap-worker recap-subworker recap-db news-creator -d
+# 2. Start services (recap and ai are auto-included)
+altctl up recap ai
 
 # 3. Trigger a job (or wait for 04:00 JST scheduler)
 curl -X POST http://localhost:9005/v1/generate/recaps/7days \
@@ -907,12 +917,12 @@ Evening Pulse data is stored in the `pulse_generations` table within recap-db. T
 
 ### Environment Setup Checklist
 
-1. **Install toolchains** – Docker Desktop/Colima, Go 1.24+, Node.js 24 + pnpm, Python 3.12/3.13 with uv, Rust 1.87
+1. **Install toolchains** – Docker Desktop/Colima, Go 1.25+, Node.js 24 + pnpm, Python 3.12/3.13 with uv, Rust 1.87, Bun 1.x, .NET 10 SDK
 2. **Bootstrap dependencies:**
    ```bash
    pnpm -C alt-frontend install
    uv sync --project tag-generator/app
-   go mod download ./...
+   cd alt-backend/app && go mod download && cd ../..
    cargo fetch
    ```
 3. **Prepare environment** – Copy `.env.template` to `.env`, run `scripts/check-env.js`
@@ -926,22 +936,42 @@ Evening Pulse data is stored in the `pulse_generations` table within recap-db. T
    ```
 5. **Align practices** – Read service `CLAUDE.md` files, enable format-on-save, keep credentials out of git
 
-### Compose Profiles
+### Compose Structure
 
-| Profile | Services Added | Use Case |
-|---------|---------------|----------|
-| (default) | Frontend, backend, PostgreSQL, Kratos, Meilisearch, search-indexer, tag-generator | Core development |
-| `ollama` | news-creator, pre-processor | AI summarization |
-| `logging` | rask-log-forwarder sidecars (8) | Observability |
-| `recap` | recap-worker, recap-subworker, recap-db | Recap pipeline |
-| `rag-extension` | rag-orchestrator, rag-db, knowledge-* | RAG Q&A |
-| `backup` | restic-backup | Automated 3-2-1 backup via supercronic |
+Alt uses **compose file includes** (not Docker `--profile`) for service groups. The main `compose.yaml` auto-includes all YAML files below; only `backup` and `perf` use Docker profiles.
+
+**Compose YAML files (auto-included via `compose.yaml`):**
+
+| File | Services | Description |
+|------|----------|-------------|
+| `db.yaml` | db, meilisearch, clickhouse, pre-processor-db | Data stores |
+| `auth.yaml` | kratos, kratos-db, auth-hub | Identity & auth |
+| `core.yaml` | nginx, alt-frontend, alt-frontend-sv, alt-backend | Core app |
+| `bff.yaml` | alt-butterfly-facade | BFF for SvelteKit |
+| `mq.yaml` | redis-streams, mq-hub | Event broker |
+| `workers.yaml` | search-indexer, tag-generator, auth-token-manager, pre-processor-sidecar | Background workers |
+| `ai.yaml` | news-creator, news-creator-backend, pre-processor, redis-cache | AI/LLM pipeline |
+| `rag.yaml` | rag-orchestrator, rag-db | RAG pipeline |
+| `recap.yaml` | recap-worker, recap-subworker, recap-db, dashboard, recap-evaluator | Recap pipeline |
+| `logging.yaml` | rask-log-aggregator, 14x log-forwarders | Log collection |
+| `observability.yaml` | prometheus, grafana, cadvisor, nginx-exporter | Metrics & dashboards |
+
+**Opt-in stacks:**
+
+| File | Activation | Services |
+|------|------------|----------|
+| `backup.yaml` | `--profile backup` | restic-backup |
+| `perf.yaml` | `--profile perf` | alt-perf, k6 |
+| `dev.yaml` | standalone | mock-auth, simplified dev stack |
+| `frontend-dev.yaml` | standalone | mock-auth, SvelteKit HMR |
 
 ```bash
 # Examples
-docker compose --profile ollama --profile logging up -d
-docker compose --profile recap --profile ollama up -d
-docker compose --profile rag-extension up -d
+altctl up                                         # Start all default stacks
+altctl up core workers                            # Start specific stacks
+docker compose -f compose/compose.yaml -p alt up -d  # Raw compose command
+docker compose --profile backup up -d             # Enable backup (opt-in)
+docker compose --profile perf up -d               # Enable perf testing (opt-in)
 ```
 
 ### Testing
@@ -955,6 +985,9 @@ docker compose --profile rag-extension up -d
 | Go services | `go test ./...` | Add `-race -cover` for concurrency |
 | Python services | `uv run pytest` | pytest-asyncio; Ruff gates |
 | Rust services | `cargo test -p <crate>` | `cargo bench` for hot paths |
+| SvelteKit unit | `cd alt-frontend-sv && bun test` | Vitest + Testing Library |
+| F# services | `cd feed-validator && dotnet test` | xUnit + FsUnit |
+| recap-evaluator | `cd recap-evaluator && uv run pytest` | pytest + asyncio |
 | Deno service | `deno test` | BDD-style with `@std/testing/bdd` |
 | Compose smoke | `make up` + curl health | Validates migrations, settings, auth |
 
@@ -1050,6 +1083,7 @@ Alt follows a **3-2-1-1-0** backup strategy:
 | RAG Orchestrator | `http://localhost:9010/health` | HTTP 200 |
 | Connect-RPC | `http://localhost:9101` | gRPC-Web endpoint |
 | alt-frontend-sv | `http://localhost:4173/sv` | SvelteKit UI |
+| tts-speaker | `http://localhost:9700/health` | HTTP 200 + model/device info |
 | ClickHouse | `http://localhost:8123/ping` | HTTP 200 |
 
 ### Observability
@@ -1073,7 +1107,7 @@ All services are instrumented with OpenTelemetry SDKs:
 | Language | Services | Key Libraries |
 |----------|----------|---------------|
 | Go | alt-backend, pre-processor, search-indexer, auth-hub, mq-hub, rag-orchestrator | go.opentelemetry.io/otel |
-| Python | tag-generator, news-creator, recap-subworker | opentelemetry-sdk |
+| Python | tag-generator, news-creator, recap-subworker, recap-evaluator, dashboard | opentelemetry-sdk |
 | Rust | recap-worker, rask-log-aggregator, rask-log-forwarder | opentelemetry, tracing-opentelemetry |
 | TypeScript/Deno | alt-perf, auth-token-manager | @opentelemetry/sdk-node |
 
@@ -1105,8 +1139,8 @@ Key environment variables:
 # Start observability services
 docker compose -f compose/observability.yaml up -d
 
-# Start log forwarders
-docker compose --profile logging up -d
+# Log forwarders start automatically via compose includes
+altctl logs rask-log-aggregator -f
 
 # Access dashboards
 open http://localhost:3001  # Grafana (admin/admin)
@@ -1158,7 +1192,7 @@ Monitor these metrics for system health:
 |---------|-------|------------|
 | `pnpm dev` missing env vars | `.env` not aligned | Re-run `cp .env.template .env`, check `scripts/check-env.js` |
 | Backend returns 401 | auth-hub cache stale or Kratos offline | Restart auth-hub; verify Kratos `/sessions/whoami` |
-| Recap dashboard shows skeletons | recap profile not running or job failed | Start `--profile recap --profile ollama`; check logs |
+| Recap dashboard shows skeletons | recap services not running or job failed | Run `altctl up recap ai`; check logs |
 | Recap evidence duplicates | Migrations missing or graph cache expired | Run `make recap-migrate`; refresh tag graph |
 | Meilisearch empty after ingest | search-indexer not running | Check `docker compose logs search-indexer` |
 | Ollama summary timeouts | Model not pulled or GPU unavailable | Run `ollama pull gemma3:4b-it-qat`; verify GPU drivers |
@@ -1172,6 +1206,8 @@ Monitor these metrics for system health:
 | Articles stuck in processing | Exceeded max retries → dead letter | Check `dead_letter` status in pre-processor; re-enqueue if needed |
 | nginx 502 after container restart | Stale DNS resolution | nginx uses `resolver` directive for dynamic DNS; restart nginx |
 | altctl ignores `.env` | Old binary without `--env-file` | Rebuild: `cd altctl && make build && make install-local` |
+| F# build errors | Missing .NET SDK or wrong version | Install .NET 10 SDK; run `dotnet restore` in feed-validator/ |
+| TTS model download fails | Network or disk space issue | Manually download Kokoro-82M; place in tts-speaker model cache dir |
 
 **General tip:** Use `docker compose ps` and `docker compose logs -f <service>` for debugging.
 
@@ -1235,13 +1271,17 @@ Monitor these metrics for system health:
 | Term | Definition |
 |------|------------|
 | Alt | The Compose-first AI knowledge platform |
+| Atlas | PostgreSQL schema migration tool used for recap-db and main DB migrations |
+| BFF | Backend for Frontend; alt-butterfly-facade aggregates and transforms API calls for SvelteKit |
 | Clean Architecture | Layered approach: interface → business logic → infrastructure |
 | Dead Letter Queue | Terminal status for jobs that exhaust retries; prevents infinite reprocessing |
 | Compose profile | Named service group toggled via `docker compose --profile` |
 | Evening Pulse | Daily curated digest with NeedToKnow, Trend, and Serendipity perspectives |
 | Connect-RPC | Type-safe RPC using Protocol Buffers (port 9101) |
+| Giraffe | F# web framework built on ASP.NET Core; used by feed-validator |
 | Golden dataset | Curated inputs/outputs for regression detection |
 | IAP | Identity-Aware Proxy (auth-hub centralizes authentication) |
+| Kokoro | Japanese TTS model (82M parameters) used by tts-speaker |
 | LLM | Large Language Model (Ollama-powered Gemma 3 4B QAT) |
 | Meilisearch | Lightweight search engine for full-text indexing |
 | OTLP | OpenTelemetry Protocol; standard for traces, metrics, and logs export |
@@ -1251,6 +1291,7 @@ Monitor these metrics for system health:
 | Rask | Rust observability services (forwarder + aggregator) |
 | Recap | 7-day batch summarization feature |
 | Runes | Svelte 5 reactive primitives (`$state`, `$derived`, `$effect`) |
+| SIMD | Single Instruction Multiple Data; rask-log-forwarder uses SIMD for >4 GB/s parse throughput |
 | Singleflight | Go concurrency primitive for deduplicating requests |
 | supercronic | Cron scheduler designed for containers; used for backup scheduling |
 | SvelteKit | Modern web framework powering alt-frontend-sv |
@@ -1288,20 +1329,21 @@ altctl exec <service> -- <cmd>                 # Execute command in container
 altctl restart <stack>                         # Restart stack (down + up)
 altctl migrate status                          # Check backup health
 
-# Profiles
-docker compose --profile ollama up -d          # AI services
-docker compose --profile recap --profile ollama up -d  # Recap pipeline
-docker compose --profile rag-extension up -d   # RAG services
-docker compose --profile logging up -d         # Observability
+# Opt-in profiles (only backup and perf use --profile)
+docker compose --profile backup up -d          # Backup services
+docker compose --profile perf up -d            # Performance testing
 
 # Testing
 pnpm -C alt-frontend test                      # Next.js tests
 pnpm -C alt-frontend-sv check                  # SvelteKit type check
+cd alt-frontend-sv && bun test                 # SvelteKit unit tests
 cd alt-backend/app && go test ./...            # Go tests
+cd recap-evaluator && uv run pytest            # recap-evaluator tests
+cd feed-validator && dotnet test               # F# tests
 
 # Migrations
 make recap-migrate                             # Recap DB migrations
-docker compose --profile rag-extension up rag-db-migrator  # RAG migrations
+docker compose -f compose/compose.yaml -p alt up rag-db-migrator  # RAG migrations
 
 # Code generation
 make buf-generate                              # Proto → Go + TypeScript
@@ -1317,7 +1359,12 @@ curl http://localhost:9000/v1/pulse/evening    # Evening Pulse
 ### External Resources
 
 - [Next.js Documentation](https://nextjs.org/docs)
+- [SvelteKit Documentation](https://svelte.dev/docs/kit)
 - [Go 1.25 Release Notes](https://go.dev/doc/devel/release)
+- [Rust / Axum](https://docs.rs/axum/latest/axum/)
+- [Connect-RPC](https://connectrpc.com/docs/)
+- [F# / Giraffe](https://giraffe.wiki/)
+- [.NET 10](https://learn.microsoft.com/en-us/dotnet/)
 - [Meilisearch Documentation](https://www.meilisearch.com/docs)
 - [ClickHouse Documentation](https://clickhouse.com/docs)
 - [Ollama](https://ollama.com/)
