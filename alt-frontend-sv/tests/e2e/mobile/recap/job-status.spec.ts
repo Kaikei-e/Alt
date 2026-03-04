@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {
 	JOB_PROGRESS_RESPONSE,
@@ -20,44 +20,50 @@ test.describe("Mobile Recap Job Status", () => {
 		);
 	}
 
-	test("renders page header and stats row", async ({ page }) => {
+	test("renders page header and stats row", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for page to load
-		await expect(
-			page.getByRole("heading", { name: "Job Status" }),
-		).toBeVisible();
+		await expect(mobileJobStatusPage.pageTitle).toBeVisible();
 
 		// Verify stats are visible (horizontally scrollable)
-		await expect(page.getByText("Success Rate")).toBeVisible();
-		await expect(page.getByText("Jobs Today")).toBeVisible();
+		await expect(mobileJobStatusPage.successRate).toBeVisible();
+		await expect(mobileJobStatusPage.jobsToday).toBeVisible();
 	});
 
-	test("stats row is horizontally scrollable", async ({ page }) => {
+	test("stats row is horizontally scrollable", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for stats row
-		await expect(page.getByText("Success Rate")).toBeVisible();
+		await expect(mobileJobStatusPage.successRate).toBeVisible();
 
 		// The stats row container should have horizontal scroll
-		const statsRow = page.getByTestId("mobile-stats-row");
-		await expect(statsRow).toBeVisible();
+		await expect(mobileJobStatusPage.statsRow).toBeVisible();
 
 		// Verify scroll behavior by checking overflow property
-		const overflow = await statsRow.evaluate(
+		const overflow = await mobileJobStatusPage.statsRow.evaluate(
 			(el) => window.getComputedStyle(el).overflowX,
 		);
 		expect(["auto", "scroll"]).toContain(overflow);
 	});
 
-	test("displays job history as card list", async ({ page }) => {
+	test("displays job history as card list", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for job cards to appear
-		await expect(page.getByTestId("mobile-job-card").first()).toBeVisible();
+		await expect(mobileJobStatusPage.jobCards.first()).toBeVisible();
 
 		// Verify job ID is shown (truncated)
 		await expect(page.getByText("job-001-")).toBeVisible();
@@ -66,24 +72,29 @@ test.describe("Mobile Recap Job Status", () => {
 		await expect(page.getByText("Completed")).toBeVisible();
 	});
 
-	test("tapping job card opens detail sheet", async ({ page }) => {
+	test("tapping job card opens detail sheet", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for first job card
-		const firstCard = page.getByTestId("mobile-job-card").first();
-		await expect(firstCard).toBeVisible();
+		await expect(mobileJobStatusPage.jobCards.first()).toBeVisible();
 
 		// Tap on the job card
-		await firstCard.click();
+		await mobileJobStatusPage.jobCards.first().click();
 
 		// Verify bottom sheet opens with job details
-		await expect(page.getByTestId("mobile-job-detail-sheet")).toBeVisible();
+		await expect(mobileJobStatusPage.detailSheet).toBeVisible();
 		await expect(page.getByText("Stage Duration Breakdown")).toBeVisible();
 		await expect(page.getByText("Status History")).toBeVisible();
 	});
 
-	test("displays active job when running", async ({ page }) => {
+	test("displays active job when running", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		// Set up mock with active job
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
@@ -92,17 +103,20 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for stats to load
-		await expect(page.getByText("Success Rate")).toBeVisible();
+		await expect(mobileJobStatusPage.successRate).toBeVisible();
 
 		// Active job panel should be visible and expanded
-		await expect(page.getByTestId("mobile-active-job-panel")).toBeVisible();
+		await expect(mobileJobStatusPage.activeJobPanel).toBeVisible();
 		await expect(page.getByText("Active Job")).toBeVisible();
 
 		// Pipeline progress should show vertical stepper
-		await expect(page.getByTestId("mobile-pipeline-progress")).toBeVisible();
+		await expect(mobileJobStatusPage.pipelineProgress).toBeVisible();
 	});
 
-	test("active job panel is collapsible", async ({ page }) => {
+	test("active job panel is collapsible", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
@@ -110,38 +124,38 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for active job panel
-		const panel = page.getByTestId("mobile-active-job-panel");
-		await expect(panel).toBeVisible();
+		await expect(mobileJobStatusPage.activeJobPanel).toBeVisible();
 
 		// Find and click the collapse button
-		const collapseButton = page.getByTestId("active-job-collapse-toggle");
-		await expect(collapseButton).toBeVisible();
-		await collapseButton.click();
+		await expect(mobileJobStatusPage.collapseToggle).toBeVisible();
+		await mobileJobStatusPage.collapseToggle.click();
 
 		// Pipeline should be hidden when collapsed
-		await expect(
-			page.getByTestId("mobile-pipeline-progress"),
-		).not.toBeVisible();
+		await expect(mobileJobStatusPage.pipelineProgress).not.toBeVisible();
 
 		// Click again to expand
-		await collapseButton.click();
-		await expect(page.getByTestId("mobile-pipeline-progress")).toBeVisible();
+		await mobileJobStatusPage.collapseToggle.click();
+		await expect(mobileJobStatusPage.pipelineProgress).toBeVisible();
 	});
 
-	test("shows no job running message when no active job", async ({ page }) => {
+	test("shows no job running message when no active job", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for page to load
-		await expect(
-			page.getByRole("heading", { name: "Job Status" }),
-		).toBeVisible();
+		await expect(mobileJobStatusPage.pageTitle).toBeVisible();
 
 		// Verify no active job message
-		await expect(page.getByText("No job currently running")).toBeVisible();
+		await expect(mobileJobStatusPage.noJobRunning).toBeVisible();
 	});
 
-	test("shows empty state when no jobs", async ({ page }) => {
+	test("shows empty state when no jobs", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_EMPTY),
 		);
@@ -149,38 +163,37 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for page title
-		await expect(
-			page.getByRole("heading", { name: "Job Status" }),
-		).toBeVisible();
+		await expect(mobileJobStatusPage.pageTitle).toBeVisible();
 
 		// Verify empty state message
-		await expect(page.getByText("No jobs found")).toBeVisible();
+		await expect(mobileJobStatusPage.emptyState).toBeVisible();
 	});
 
 	test("time window selector works with horizontal scroll", async ({
 		page,
+		mobileJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for time window selector
-		await expect(page.getByRole("button", { name: "24h" })).toBeVisible();
+		await expect(mobileJobStatusPage.timeWindow24h).toBeVisible();
 
 		// Verify initial state
-		await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute(
+		await expect(mobileJobStatusPage.timeWindow24h).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);
 
 		// Click on 7d
-		await page.getByRole("button", { name: "7d" }).click();
+		await mobileJobStatusPage.timeWindow7d.click();
 
 		// Verify selection changed
-		await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute(
+		await expect(mobileJobStatusPage.timeWindow7d).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);
-		await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute(
+		await expect(mobileJobStatusPage.timeWindow24h).toHaveAttribute(
 			"aria-pressed",
 			"false",
 		);
@@ -188,33 +201,29 @@ test.describe("Mobile Recap Job Status", () => {
 
 	test("fixed bottom control bar has refresh and start buttons", async ({
 		page,
+		mobileJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for control bar
-		const controlBar = page.getByTestId("mobile-control-bar");
-		await expect(controlBar).toBeVisible();
+		await expect(mobileJobStatusPage.controlBar).toBeVisible();
 
 		// Verify buttons are present (use aria-label for accessibility)
-		await expect(
-			controlBar.getByRole("button", { name: /Refresh job data/i }),
-		).toBeVisible();
-		await expect(
-			controlBar.getByRole("button", { name: /Start new recap job/i }),
-		).toBeVisible();
+		await expect(mobileJobStatusPage.refreshButton).toBeVisible();
+		await expect(mobileJobStatusPage.startJobButton).toBeVisible();
 
 		// Verify buttons are touch-friendly (at least 44px height)
-		const startButton = controlBar.getByRole("button", {
-			name: /Start new recap job/i,
-		});
-		const height = await startButton.evaluate(
+		const height = await mobileJobStatusPage.startJobButton.evaluate(
 			(el) => el.getBoundingClientRect().height,
 		);
 		expect(height).toBeGreaterThanOrEqual(44);
 	});
 
-	test("refresh button triggers data reload", async ({ page }) => {
+	test("refresh button triggers data reload", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		let callCount = 0;
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, async (route) => {
 			callCount++;
@@ -224,14 +233,11 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for initial load
-		await expect(page.getByText("Success Rate")).toBeVisible();
+		await expect(mobileJobStatusPage.successRate).toBeVisible();
 		const initialCallCount = callCount;
 
 		// Click refresh button in control bar
-		const refreshButton = page
-			.getByTestId("mobile-control-bar")
-			.getByRole("button", { name: /Refresh job data/i });
-		await refreshButton.click();
+		await mobileJobStatusPage.refreshButton.click();
 
 		// Verify API was called again
 		await expect(async () => {
@@ -239,7 +245,10 @@ test.describe("Mobile Recap Job Status", () => {
 		}).toPass({ timeout: 5000 });
 	});
 
-	test("start job button triggers job and shows feedback", async ({ page }) => {
+	test("start job button triggers job and shows feedback", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await setupDefaultMock(page);
 
 		// Mock trigger endpoint (default is 3days endpoint)
@@ -254,13 +263,10 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for control bar
-		const startButton = page
-			.getByTestId("mobile-control-bar")
-			.getByRole("button", { name: /Start new recap job/i });
-		await expect(startButton).toBeEnabled();
+		await expect(mobileJobStatusPage.startJobButton).toBeEnabled();
 
 		// Click start job
-		await startButton.click();
+		await mobileJobStatusPage.startJobButton.click();
 
 		// Verify success feedback appears (format: "Job XXXXXXXX... started")
 		await expect(page.getByText(/Job.*started/i)).toBeVisible({
@@ -268,7 +274,10 @@ test.describe("Mobile Recap Job Status", () => {
 		});
 	});
 
-	test("start job button disabled when job is running", async ({ page }) => {
+	test("start job button disabled when job is running", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
@@ -276,13 +285,13 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for control bar
-		const startButton = page
-			.getByTestId("mobile-control-bar")
-			.getByRole("button", { name: /Start new recap job/i });
-		await expect(startButton).toBeDisabled();
+		await expect(mobileJobStatusPage.startJobButton).toBeDisabled();
 	});
 
-	test("shows error state on API failure", async ({ page }) => {
+	test("shows error state on API failure", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillError(route, "Server error", 500),
 		);
@@ -290,12 +299,15 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for error message
-		await expect(page.getByText(/Error loading/i)).toBeVisible({
+		await expect(mobileJobStatusPage.errorMessage).toBeVisible({
 			timeout: 5000,
 		});
 	});
 
-	test("pipeline progress shows vertical stepper format", async ({ page }) => {
+	test("pipeline progress shows vertical stepper format", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
@@ -303,8 +315,7 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for pipeline progress
-		const pipeline = page.getByTestId("mobile-pipeline-progress");
-		await expect(pipeline).toBeVisible();
+		await expect(mobileJobStatusPage.pipelineProgress).toBeVisible();
 
 		// Verify stages are displayed vertically
 		await expect(page.getByText("Fetch")).toBeVisible();
@@ -312,11 +323,16 @@ test.describe("Mobile Recap Job Status", () => {
 		await expect(page.getByText("Evidence")).toBeVisible();
 
 		// Current stage should have spinner
-		const currentStage = pipeline.locator('[data-stage-status="running"]');
+		const currentStage = mobileJobStatusPage.pipelineProgress.locator(
+			'[data-stage-status="running"]',
+		);
 		await expect(currentStage).toBeVisible();
 	});
 
-	test("genre progress shows in 2-column grid", async ({ page }) => {
+	test("genre progress shows in 2-column grid", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
@@ -324,8 +340,7 @@ test.describe("Mobile Recap Job Status", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for genre grid
-		const genreGrid = page.getByTestId("mobile-genre-progress-grid");
-		await expect(genreGrid).toBeVisible();
+		await expect(mobileJobStatusPage.genreProgressGrid).toBeVisible();
 
 		// Verify genre items are shown
 		await expect(page.getByText("tech")).toBeVisible();
@@ -337,7 +352,10 @@ test.describe("Mobile Job Status - Accessibility", () => {
 		viewport: { width: 375, height: 812 },
 	});
 
-	test("job cards are keyboard navigable", async ({ page }) => {
+	test("job cards are keyboard navigable", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
@@ -345,23 +363,25 @@ test.describe("Mobile Job Status - Accessibility", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for job cards
-		const firstCard = page.getByTestId("mobile-job-card").first();
-		await expect(firstCard).toBeVisible();
+		await expect(mobileJobStatusPage.jobCards.first()).toBeVisible();
 
 		// Focus on card
-		await firstCard.focus();
-		await expect(firstCard).toBeFocused();
+		await mobileJobStatusPage.jobCards.first().focus();
+		await expect(mobileJobStatusPage.jobCards.first()).toBeFocused();
 
 		// Press Enter to open detail sheet
 		await page.keyboard.press("Enter");
-		await expect(page.getByTestId("mobile-job-detail-sheet")).toBeVisible();
+		await expect(mobileJobStatusPage.detailSheet).toBeVisible();
 
 		// Press Escape to close
 		await page.keyboard.press("Escape");
-		await expect(page.getByTestId("mobile-job-detail-sheet")).not.toBeVisible();
+		await expect(mobileJobStatusPage.detailSheet).not.toBeVisible();
 	});
 
-	test("control bar buttons have proper labels", async ({ page }) => {
+	test("control bar buttons have proper labels", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
@@ -369,16 +389,15 @@ test.describe("Mobile Job Status - Accessibility", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Wait for control bar
-		const controlBar = page.getByTestId("mobile-control-bar");
-		await expect(controlBar).toBeVisible();
+		await expect(mobileJobStatusPage.controlBar).toBeVisible();
 
 		// Verify accessible labels
-		await expect(
-			controlBar.getByRole("button", { name: /Refresh job data/i }),
-		).toHaveAccessibleName(/Refresh job data/i);
-		await expect(
-			controlBar.getByRole("button", { name: /Start new recap job/i }),
-		).toHaveAccessibleName(/Start new recap job/i);
+		await expect(mobileJobStatusPage.refreshButton).toHaveAccessibleName(
+			/Refresh job data/i,
+		);
+		await expect(mobileJobStatusPage.startJobButton).toHaveAccessibleName(
+			/Start new recap job/i,
+		);
 	});
 });
 
@@ -388,7 +407,10 @@ test.describe("Mobile Job Status - Touch Interactions", () => {
 		hasTouch: true,
 	});
 
-	test("bottom sheet can be dismissed by swipe down", async ({ page }) => {
+	test("bottom sheet can be dismissed by swipe down", async ({
+		page,
+		mobileJobStatusPage,
+	}) => {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
@@ -396,17 +418,17 @@ test.describe("Mobile Job Status - Touch Interactions", () => {
 		await page.goto("./mobile/recap/job-status");
 
 		// Open detail sheet
-		const firstCard = page.getByTestId("mobile-job-card").first();
-		await firstCard.click();
+		await mobileJobStatusPage.jobCards.first().click();
 
 		// Wait for sheet to open
-		const sheet = page.getByTestId("mobile-job-detail-sheet");
-		await expect(sheet).toBeVisible();
+		await expect(mobileJobStatusPage.detailSheet).toBeVisible();
 
 		// Close button should work (swipe is harder to test)
-		const closeButton = sheet.getByRole("button", { name: /close/i });
+		const closeButton = mobileJobStatusPage.detailSheet.getByRole("button", {
+			name: /close/i,
+		});
 		await closeButton.click();
 
-		await expect(sheet).not.toBeVisible();
+		await expect(mobileJobStatusPage.detailSheet).not.toBeVisible();
 	});
 });

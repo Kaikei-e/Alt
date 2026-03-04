@@ -7,8 +7,7 @@ export default async function globalTeardown(): Promise<void> {
 	console.log("\n=== Integration E2E Global Teardown ===");
 
 	// Clean up test data created during integration tests
-	const backendUrl =
-		process.env.ALT_BACKEND_URL || "http://localhost:9000";
+	const backendUrl = process.env.ALT_BACKEND_URL || "http://localhost:9000";
 
 	try {
 		// Future: call a test cleanup endpoint

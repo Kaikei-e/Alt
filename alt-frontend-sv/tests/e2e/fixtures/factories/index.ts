@@ -36,3 +36,24 @@ export {
 	buildRegistrationFlow,
 	buildAuthHubSession,
 } from "./sessionFactory";
+
+// Pulse factories
+export {
+	buildPulseTopic,
+	buildEveningPulseResponse,
+	buildQuietDayResponse,
+	resetPulseCounter,
+	type PulseTopic,
+	type EveningPulseResponse,
+} from "./pulseFactory";
+
+// Tag Trail factories
+export {
+	buildTagTrailFeed,
+	buildTagTrailArticle,
+	buildArticlesByTagResponse,
+	buildTagStreamMessages,
+	resetTrailCounter,
+	type TagTrailFeed,
+	type TagTrailArticle,
+} from "./tagTrailFactory";

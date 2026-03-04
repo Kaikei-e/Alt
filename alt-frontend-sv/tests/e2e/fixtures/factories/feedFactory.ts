@@ -75,7 +75,10 @@ export function buildFeedsV1Response(
 	cursor: string | null = null,
 ) {
 	return {
-		data: feeds ?? [buildFeedV1({ title: "AI Trends" }), buildFeedV1({ title: "Svelte 5 Tips" })],
+		data: feeds ?? [
+			buildFeedV1({ title: "AI Trends" }),
+			buildFeedV1({ title: "Svelte 5 Tips" }),
+		],
 		next_cursor: cursor,
 		has_more: hasMore,
 	};
@@ -96,7 +99,9 @@ export function buildConnectFeedsResponse(
 	};
 }
 
-export function buildConnectArticleContent(overrides: Record<string, unknown> = {}) {
+export function buildConnectArticleContent(
+	overrides: Record<string, unknown> = {},
+) {
 	return {
 		url: "https://example.com/article",
 		content: "<p>Mocked article content for E2E testing.</p>",

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { test, expect } from "../fixtures/pomFixtures";
 import { fulfillJson } from "../utils/mockHelpers";
 
 // Auth tests need to run without pre-authenticated storage
@@ -67,30 +67,6 @@ const KRATOS_REGISTRATION_FLOW_WITH_ERROR = {
 	},
 };
 
-/**
- * Helper to wait for form or detect external auth
- */
-async function waitForRegisterForm(
-	page: import("@playwright/test").Page,
-): Promise<boolean> {
-	const heading = page.getByRole("heading", { name: /register/i });
-	const redirecting = page.getByText("Redirecting...");
-	const externalAuth = page.getByText(/send me a code|cloudflare/i);
-
-	try {
-		await expect(heading.or(redirecting).or(externalAuth).first()).toBeVisible({
-			timeout: 10000,
-		});
-
-		if (await externalAuth.isVisible()) {
-			return false;
-		}
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 test.describe("Register Page", () => {
 	test.beforeEach(async ({ page }) => {
 		// Mock Kratos registration flow
@@ -102,10 +78,13 @@ test.describe("Register Page", () => {
 		);
 	});
 
-	test("renders registration form with title", async ({ page }) => {
+	test("renders registration form with title", async ({
+		page,
+		registerPage,
+	}) => {
 		await page.goto("./register");
 
-		const formReady = await waitForRegisterForm(page);
+		const formReady = await registerPage.waitForFormReady();
 
 		if (!formReady) {
 			test.skip(true, "External authentication in use");
@@ -113,92 +92,82 @@ test.describe("Register Page", () => {
 		}
 
 		// Check if we got the form
-		const title = page.getByRole("heading", { name: /register/i });
-		if (await title.isVisible()) {
-			await expect(title).toContainText("Register");
+		if (await registerPage.cardTitle.isVisible()) {
+			await expect(registerPage.cardTitle).toContainText("Register");
 		}
 	});
 
-	test("has email and password fields", async ({ page }) => {
+	test("has email and password fields", async ({ page, registerPage }) => {
 		await page.goto("./register");
-		const formReady = await waitForRegisterForm(page);
+		const formReady = await registerPage.waitForFormReady();
 
 		if (!formReady) {
 			test.skip(true, "External authentication in use");
 			return;
 		}
 
-		const emailInput = page.getByLabel(/email/i);
-		const passwordInput = page.getByLabel(/password/i);
-
-		await expect(emailInput).toBeVisible();
-		await expect(passwordInput).toBeVisible();
+		await expect(registerPage.emailInput).toBeVisible();
+		await expect(registerPage.passwordInput).toBeVisible();
 	});
 
-	test("has submit button", async ({ page }) => {
+	test("has submit button", async ({ page, registerPage }) => {
 		await page.goto("./register");
-		const formReady = await waitForRegisterForm(page);
+		const formReady = await registerPage.waitForFormReady();
 
 		if (!formReady) {
 			test.skip(true, "External authentication in use");
 			return;
 		}
 
-		const submitButton = page.getByRole("button", { name: /register/i });
-		await expect(submitButton).toBeVisible();
+		await expect(registerPage.submitButton).toBeVisible();
 	});
 
-	test("has link to login page", async ({ page }) => {
+	test("has link to login page", async ({ page, registerPage }) => {
 		await page.goto("./register");
-		const formReady = await waitForRegisterForm(page);
+		const formReady = await registerPage.waitForFormReady();
 
 		if (!formReady) {
 			test.skip(true, "External authentication in use");
 			return;
 		}
 
-		const loginLink = page.getByRole("link", { name: /login/i });
-		await expect(loginLink).toBeVisible();
-		await expect(loginLink).toContainText("Login");
+		await expect(registerPage.loginLink).toBeVisible();
+		await expect(registerPage.loginLink).toContainText("Login");
 	});
 
-	test("navigates to login page", async ({ page }) => {
+	test("navigates to login page", async ({ page, registerPage }) => {
 		await page.goto("./register");
-		const formReady = await waitForRegisterForm(page);
+		const formReady = await registerPage.waitForFormReady();
 
 		if (!formReady) {
 			test.skip(true, "External authentication in use");
 			return;
 		}
 
-		const loginLink = page.getByRole("link", { name: /login/i });
-		await loginLink.click();
+		await registerPage.loginLink.click();
 		await expect(page).toHaveURL(/\/login/);
 	});
 
-	test("can fill registration form", async ({ page }) => {
+	test("can fill registration form", async ({ page, registerPage }) => {
 		await page.goto("./register");
-		const formReady = await waitForRegisterForm(page);
+		const formReady = await registerPage.waitForFormReady();
 
 		if (!formReady) {
 			test.skip(true, "External authentication in use");
 			return;
 		}
 
-		const emailInput = page.getByLabel(/email/i);
-		const passwordInput = page.getByLabel(/password/i);
+		await registerPage.emailInput.fill("newuser@example.com");
+		await registerPage.passwordInput.fill("SecurePassword123!");
 
-		await emailInput.fill("newuser@example.com");
-		await passwordInput.fill("SecurePassword123!");
-
-		await expect(emailInput).toHaveValue("newuser@example.com");
+		await expect(registerPage.emailInput).toHaveValue("newuser@example.com");
 	});
 });
 
 test.describe("Register Page - Validation", () => {
 	test.use({ storageState: { cookies: [], origins: [] } });
 
-	test("shows error for existing email", async ({ page }) => {
+	test("shows error for existing email", async ({ page, registerPage }) => {
 		// Note: This test uses Playwright route mocking for error responses.
 		// In SSR environments, server-side requests bypass Playwright's route interception,
 		// so error messages from Kratos may not be visible. We check if error is visible
@@ -208,7 +177,7 @@ test.describe("Register Page - Validation", () => {
 		);
 
 		await page.goto("./register");
-		const formReady = await waitForRegisterForm(page);
+		const formReady = await registerPage.waitForFormReady();
 
 		if (!formReady) {
 			test.skip(true, "External authentication in use");
@@ -217,8 +186,7 @@ test.describe("Register Page - Validation", () => {
 
 		// Check for error message if form is visible
 		// In SSR mode, the mock may not apply to server-side requests
-		const errorMessage = page.locator('[style*="color: #dc2626"]');
-		const hasError = await errorMessage
+		const hasError = await registerPage.errorMessage
 			.first()
 			.isVisible()
 			.catch(() => false);
@@ -231,20 +199,20 @@ test.describe("Register Page - Validation", () => {
 			return;
 		}
 
-		await expect(errorMessage.first()).toBeVisible();
+		await expect(registerPage.errorMessage.first()).toBeVisible();
 	});
 });
 
 test.describe("Register Page - Accessibility", () => {
 	test.use({ storageState: { cookies: [], origins: [] } });
 
-	test("form inputs have labels", async ({ page }) => {
+	test("form inputs have labels", async ({ page, registerPage }) => {
 		await page.route("**/self-service/registration**", (route) =>
 			fulfillJson(route, KRATOS_REGISTRATION_FLOW),
 		);
 
 		await page.goto("./register");
-		const formReady = await waitForRegisterForm(page);
+		const formReady = await registerPage.waitForFormReady();
 
 		if (!formReady) {
 			test.skip(true, "External authentication in use");

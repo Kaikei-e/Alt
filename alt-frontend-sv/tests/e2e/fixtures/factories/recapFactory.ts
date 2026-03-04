@@ -22,7 +22,9 @@ export interface RecapGenre {
 	references: unknown[];
 }
 
-export function buildEvidenceLink(overrides: Partial<EvidenceLink> = {}): EvidenceLink {
+export function buildEvidenceLink(
+	overrides: Partial<EvidenceLink> = {},
+): EvidenceLink {
 	return {
 		articleId: "art-1",
 		title: "Sample Article",
@@ -73,7 +75,9 @@ export function buildConnectRecapResponse(genres?: RecapGenre[]) {
 	};
 }
 
-export function buildAugurStreamMessages(text = "AI development is accelerating.") {
+export function buildAugurStreamMessages(
+	text = "AI development is accelerating.",
+) {
 	const words = text.split(" ");
 	const chunks = [];
 	for (let i = 0; i < words.length; i += 3) {
@@ -98,7 +102,9 @@ export function buildAugurStreamMessages(text = "AI development is accelerating.
 	return chunks;
 }
 
-export function buildMorningLetterStreamMessages(text = "Here is your morning briefing.") {
+export function buildMorningLetterStreamMessages(
+	text = "Here is your morning briefing.",
+) {
 	return [
 		{
 			kind: "meta" as const,

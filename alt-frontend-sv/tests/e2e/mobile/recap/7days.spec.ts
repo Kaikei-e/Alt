@@ -1,5 +1,4 @@
-import { expect, test } from "@playwright/test";
-import { gotoMobileRoute } from "../../helpers/navigation";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {
 	CONNECT_RECAP_RESPONSE,
@@ -15,7 +14,10 @@ test.describe("Mobile Recap 7-Days", () => {
 		);
 	});
 
-	test("shows loading skeleton initially", async ({ page }) => {
+	test("shows loading skeleton initially", async ({
+		page,
+		mobile3DayRecapPage,
+	}) => {
 		// Delay response to observe loading state
 		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
 			await new Promise((resolve) => setTimeout(resolve, 500));
@@ -25,15 +27,17 @@ test.describe("Mobile Recap 7-Days", () => {
 		await page.goto("./recap?window=7");
 
 		// Loading skeleton should be visible
-		const skeleton = page.getByTestId("recap-skeleton-container");
-		await expect(skeleton).toBeVisible();
+		await expect(mobile3DayRecapPage.skeletonContainer).toBeVisible();
 	});
 
-	test("displays recap content after loading", async ({ page }) => {
+	test("displays recap content after loading", async ({
+		page,
+		mobile3DayRecapPage,
+	}) => {
 		await page.goto("./recap?window=7");
 
 		// Wait for loading to complete
-		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
+		await expect(mobile3DayRecapPage.skeletonContainer).not.toBeVisible({
 			timeout: 15000,
 		});
 
@@ -42,7 +46,10 @@ test.describe("Mobile Recap 7-Days", () => {
 		await expect(page.locator("body")).not.toContainText("Error loading recap");
 	});
 
-	test("shows empty state when no recap data", async ({ page }) => {
+	test("shows empty state when no recap data", async ({
+		page,
+		mobile3DayRecapPage,
+	}) => {
 		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, (route) =>
 			fulfillJson(route, CONNECT_RECAP_EMPTY_RESPONSE),
 		);
@@ -50,15 +57,20 @@ test.describe("Mobile Recap 7-Days", () => {
 		await page.goto("./recap?window=7");
 
 		// Wait for loading to complete
-		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
+		await expect(mobile3DayRecapPage.skeletonContainer).not.toBeVisible({
 			timeout: 15000,
 		});
 
 		// Empty state should be visible (RecapEmptyState component)
-		await expect(page.getByText("No Recap Yet")).toBeVisible({ timeout: 5000 });
+		await expect(mobile3DayRecapPage.emptyState).toBeVisible({
+			timeout: 5000,
+		});
 	});
 
-	test("shows error state on API failure", async ({ page }) => {
+	test("shows error state on API failure", async ({
+		page,
+		mobile3DayRecapPage,
+	}) => {
 		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, (route) =>
 			fulfillError(route, "Server error", 500),
 		);
@@ -66,15 +78,15 @@ test.describe("Mobile Recap 7-Days", () => {
 		await page.goto("./recap?window=7");
 
 		// Wait for loading to complete
-		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
+		await expect(mobile3DayRecapPage.skeletonContainer).not.toBeVisible({
 			timeout: 15000,
 		});
 
 		// Error message should be visible
-		await expect(page.getByText("Error loading recap")).toBeVisible();
+		await expect(mobile3DayRecapPage.errorMessage).toBeVisible();
 	});
 
-	test("has retry button on error", async ({ page }) => {
+	test("has retry button on error", async ({ page, mobile3DayRecapPage }) => {
 		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, (route) =>
 			fulfillError(route, "Server error", 500),
 		);
@@ -82,16 +94,18 @@ test.describe("Mobile Recap 7-Days", () => {
 		await page.goto("./recap?window=7");
 
 		// Wait for loading to complete
-		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
+		await expect(mobile3DayRecapPage.skeletonContainer).not.toBeVisible({
 			timeout: 15000,
 		});
 
 		// Retry button should be visible
-		const retryButton = page.getByRole("button", { name: /retry/i });
-		await expect(retryButton).toBeVisible();
+		await expect(mobile3DayRecapPage.retryButton).toBeVisible();
 	});
 
-	test("retry button fetches data again", async ({ page }) => {
+	test("retry button fetches data again", async ({
+		page,
+		mobile3DayRecapPage,
+	}) => {
 		let requestCount = 0;
 
 		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
@@ -108,35 +122,37 @@ test.describe("Mobile Recap 7-Days", () => {
 		await page.goto("./recap?window=7");
 
 		// Wait for error state
-		await expect(page.getByText("Error loading recap")).toBeVisible({
+		await expect(mobile3DayRecapPage.errorMessage).toBeVisible({
 			timeout: 15000,
 		});
 
 		// Click retry
-		const retryButton = page.getByRole("button", { name: /retry/i });
-		await retryButton.click();
+		await mobile3DayRecapPage.retryButton.click();
 
 		// Should show loading or success
-		await expect(page.getByText("Error loading recap")).not.toBeVisible({
+		await expect(mobile3DayRecapPage.errorMessage).not.toBeVisible({
 			timeout: 15000,
 		});
 	});
 
-	test("has floating menu", async ({ page }) => {
+	test("has floating menu", async ({ page, mobile3DayRecapPage }) => {
 		await page.goto("./recap?window=7");
 
 		// Wait for page to load
-		await expect(page.getByTestId("recap-skeleton-container")).not.toBeVisible({
+		await expect(mobile3DayRecapPage.skeletonContainer).not.toBeVisible({
 			timeout: 15000,
 		});
 
 		// FloatingMenu component should be present
-		await expect(page.getByLabel("Open floating menu")).toBeVisible();
+		await expect(mobile3DayRecapPage.floatingMenu).toBeVisible();
 	});
 });
 
 test.describe("Mobile Recap 7-Days - Navigation", () => {
-	test("can navigate from feeds to recap", async ({ page }) => {
+	test("can navigate from feeds to recap", async ({
+		page,
+		mobileFeedsPage,
+	}) => {
 		// Mock feeds endpoint
 		await page.route("**/api/v1/feeds/fetch/cursor**", (route) =>
 			fulfillJson(route, { data: [], next_cursor: null, has_more: false }),
@@ -147,7 +163,7 @@ test.describe("Mobile Recap 7-Days - Navigation", () => {
 		);
 
 		// Start from feeds page
-		await gotoMobileRoute(page, "feeds");
+		await mobileFeedsPage.goto();
 
 		// Navigate to recap (through floating menu or navigation)
 		await page.goto("./recap?window=7");

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { test, expect } from "../../fixtures/pomFixtures";
 import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
 import {
 	JOB_PROGRESS_RESPONSE,
@@ -15,30 +15,32 @@ test.describe("Desktop Recap Job Status", () => {
 		);
 	}
 
-	test("renders page title and stats cards", async ({ page }) => {
+	test("renders page title and stats cards", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for page title to be visible instead of networkidle
-		await expect(
-			page.getByRole("heading", { name: "Recap Job Status" }),
-		).toBeVisible();
+		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
 
 		// Verify stats cards
-		await expect(page.getByText("Success Rate")).toBeVisible();
-		await expect(page.getByText("Avg Duration")).toBeVisible();
-		await expect(page.getByText("Jobs Today")).toBeVisible();
-		await expect(page.getByText("Failed Jobs")).toBeVisible();
+		await expect(desktopJobStatusPage.successRateCard).toBeVisible();
+		await expect(desktopJobStatusPage.avgDurationCard).toBeVisible();
+		await expect(desktopJobStatusPage.jobsTodayCard).toBeVisible();
+		await expect(desktopJobStatusPage.failedJobsCard).toBeVisible();
 	});
 
-	test("displays recent jobs in table", async ({ page }) => {
+	test("displays recent jobs in table", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for heading to be visible
-		await expect(
-			page.getByRole("heading", { name: "Recent Jobs" }),
-		).toBeVisible();
+		await expect(desktopJobStatusPage.recentJobsHeading).toBeVisible();
 
 		// Verify table headers
 		await expect(
@@ -122,7 +124,10 @@ test.describe("Desktop Recap Job Status", () => {
 		await expect(page.getByText("Total")).toBeVisible();
 	});
 
-	test("displays active job when running", async ({ page }) => {
+	test("displays active job when running", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
 		// Set up mock with active job data
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
@@ -131,31 +136,33 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for page to load - check for stats cards first
-		await expect(page.getByText("Success Rate")).toBeVisible();
+		await expect(desktopJobStatusPage.successRateCard).toBeVisible();
 
 		// Wait for heading to be visible
-		await expect(
-			page.getByRole("heading", { name: "Currently Running" }),
-		).toBeVisible();
+		await expect(desktopJobStatusPage.activeJobHeading).toBeVisible();
 
 		// Verify active job details - use first() since there might be multiple "Running" texts
 		await expect(page.getByText("Running").first()).toBeVisible();
 	});
 
-	test("shows no job running message when no active job", async ({ page }) => {
+	test("shows no job running message when no active job", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for page to be loaded by checking for a key element
-		await expect(
-			page.getByRole("heading", { name: "Recap Job Status" }),
-		).toBeVisible();
+		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
 
 		// Verify no job running message
-		await expect(page.getByText("No job currently running")).toBeVisible();
+		await expect(desktopJobStatusPage.noJobRunning).toBeVisible();
 	});
 
-	test("shows empty state when no jobs", async ({ page }) => {
+	test("shows empty state when no jobs", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
 		// Set up mock with empty job data
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_EMPTY),
@@ -164,17 +171,16 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for page title
-		await expect(
-			page.getByRole("heading", { name: "Recap Job Status" }),
-		).toBeVisible();
+		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
 
 		// Verify empty state message
-		await expect(
-			page.getByText("No jobs found in the selected time window"),
-		).toBeVisible();
+		await expect(desktopJobStatusPage.emptyState).toBeVisible();
 	});
 
-	test("time window selector changes data", async ({ page }) => {
+	test("time window selector changes data", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./desktop/recap/job-status");
 
@@ -182,23 +188,28 @@ test.describe("Desktop Recap Job Status", () => {
 		await expect(page.getByText("Time Window:")).toBeVisible();
 
 		// Verify time window buttons using data-testid
-		await expect(page.locator('[data-testid="time-window-24h"]')).toBeVisible();
-		await expect(page.locator('[data-testid="time-window-7d"]')).toBeVisible();
+		await expect(desktopJobStatusPage.timeWindow24h).toBeVisible();
+		await expect(desktopJobStatusPage.timeWindow7d).toBeVisible();
 
 		// Click on 7d time window
-		await page.locator('[data-testid="time-window-7d"]').click();
+		await desktopJobStatusPage.timeWindow7d.click();
 
 		// Verify the button is now pressed (selected state)
-		await expect(
-			page.locator('[data-testid="time-window-7d"]'),
-		).toHaveAttribute("aria-pressed", "true");
+		await expect(desktopJobStatusPage.timeWindow7d).toHaveAttribute(
+			"aria-pressed",
+			"true",
+		);
 		// Verify the previously selected button is no longer pressed
-		await expect(
-			page.locator('[data-testid="time-window-24h"]'),
-		).toHaveAttribute("aria-pressed", "false");
+		await expect(desktopJobStatusPage.timeWindow24h).toHaveAttribute(
+			"aria-pressed",
+			"false",
+		);
 	});
 
-	test("refresh button reloads data", async ({ page }) => {
+	test("refresh button reloads data", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
 		let callCount = 0;
 		// Set up mock that tracks call count
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, async (route) => {
@@ -209,13 +220,13 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for page to load - check for stats cards which appear when data loads
-		await expect(page.getByText("Success Rate")).toBeVisible();
+		await expect(desktopJobStatusPage.successRateCard).toBeVisible();
 
 		// Turn off auto-refresh if it's on to avoid interference
-		const autoRefreshBtn = page.getByRole("button", { name: /Auto-refresh/i });
-		const autoRefreshText = await autoRefreshBtn.textContent();
+		const autoRefreshText =
+			await desktopJobStatusPage.autoRefreshButton.textContent();
 		if (autoRefreshText?.includes("ON")) {
-			await autoRefreshBtn.click();
+			await desktopJobStatusPage.autoRefreshButton.click();
 			// Wait for auto-refresh to be turned off
 			await expect(
 				page.getByRole("button", { name: /Auto-refresh OFF/i }),
@@ -225,7 +236,7 @@ test.describe("Desktop Recap Job Status", () => {
 		const initialCallCount = callCount;
 
 		// Click refresh button (use regex to avoid matching "Auto-refresh")
-		await page.getByRole("button", { name: /^Refresh$/i }).click();
+		await desktopJobStatusPage.refreshButton.click();
 
 		// Wait for API call to complete using Playwright's retry mechanism
 		await expect(async () => {
@@ -233,7 +244,10 @@ test.describe("Desktop Recap Job Status", () => {
 		}).toPass({ timeout: 5000 });
 	});
 
-	test("shows error state on API failure", async ({ page }) => {
+	test("shows error state on API failure", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
 		// Set up mock that returns an error
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillError(route, "Server error", 500),
@@ -242,7 +256,7 @@ test.describe("Desktop Recap Job Status", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for error message to appear with extended timeout
-		await expect(page.getByText(/Error loading job data/)).toBeVisible({
+		await expect(desktopJobStatusPage.errorMessage).toBeVisible({
 			timeout: 5000,
 		});
 	});
@@ -269,6 +283,7 @@ test.describe("Desktop Recap Job Status", () => {
 test.describe("Desktop Job Status - Job Trigger", () => {
 	test("Start Job button is disabled when a job is already running", async ({
 		page,
+		desktopJobStatusPage,
 	}) => {
 		// Mock job progress with an active job
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
@@ -278,17 +293,15 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for page to load
-		await expect(
-			page.getByRole("heading", { name: "Recap Job Status" }),
-		).toBeVisible();
+		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
 
-		const startButton = page.getByRole("button", { name: "Start Job" });
 		// Button should be disabled when a job is running
-		await expect(startButton).toBeDisabled();
+		await expect(desktopJobStatusPage.startJobButton).toBeDisabled();
 	});
 
 	test("Start Job button is enabled when no job is running", async ({
 		page,
+		desktopJobStatusPage,
 	}) => {
 		// Mock job progress without active job
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
@@ -298,16 +311,16 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 		await page.goto("./desktop/recap/job-status");
 
 		// Wait for page to load
-		await expect(
-			page.getByRole("heading", { name: "Recap Job Status" }),
-		).toBeVisible();
+		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
 
-		const startButton = page.getByRole("button", { name: "Start Job" });
 		// Button should be enabled when no job is running
-		await expect(startButton).toBeEnabled();
+		await expect(desktopJobStatusPage.startJobButton).toBeEnabled();
 	});
 
-	test("shows success feedback after starting job", async ({ page }) => {
+	test("shows success feedback after starting job", async ({
+		page,
+		desktopJobStatusPage,
+	}) => {
 		// Mock job progress (no active job initially)
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
@@ -324,11 +337,10 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 
 		await page.goto("./desktop/recap/job-status");
 
-		const startButton = page.getByRole("button", { name: "Start Job" });
-		await expect(startButton).toBeEnabled();
+		await expect(desktopJobStatusPage.startJobButton).toBeEnabled();
 
 		// Click start button
-		await startButton.click();
+		await desktopJobStatusPage.startJobButton.click();
 
 		// Should show success message with job ID
 		await expect(page.getByText(/Job.*started/i)).toBeVisible({

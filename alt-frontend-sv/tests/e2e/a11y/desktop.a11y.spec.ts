@@ -15,7 +15,17 @@ import {
 	CONNECT_RPC_PATHS,
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_TAG_TRAIL_PATHS,
+	CONNECT_TAG_TRAIL_FEED_RESPONSE,
+	CONNECT_EVENING_PULSE_PATH,
+	CONNECT_EVENING_PULSE_RESPONSE,
+	CONNECT_TREND_STATS_PATH,
+	CONNECT_TREND_STATS_RESPONSE,
 } from "../fixtures/mockData";
+import {
+	fulfillConnectStream,
+	createMockEventSourceScript,
+} from "../utils/mockHelpers";
 
 // Test data for mocking
 const MOCK_FEEDS = {
@@ -89,6 +99,24 @@ test.describe("Desktop Pages Accessibility", () => {
 		await page.route("**/api/v2/recap*", (route) =>
 			fulfillJson(route, MOCK_RECAP),
 		);
+		// Tag Trail mocks
+		await page.route(CONNECT_TAG_TRAIL_PATHS.fetchRandomFeed, (route) =>
+			fulfillJson(route, CONNECT_TAG_TRAIL_FEED_RESPONSE),
+		);
+		await page.route(CONNECT_TAG_TRAIL_PATHS.streamArticleTags, (route) =>
+			fulfillConnectStream(route, [
+				{ kind: "tag", tag: "AI" },
+				{ kind: "tag", tag: "Web" },
+			]),
+		);
+		// Evening Pulse mock
+		await page.route(CONNECT_EVENING_PULSE_PATH, (route) =>
+			fulfillJson(route, CONNECT_EVENING_PULSE_RESPONSE),
+		);
+		// Trend stats mock
+		await page.route(CONNECT_TREND_STATS_PATH, (route) =>
+			fulfillJson(route, CONNECT_TREND_STATS_RESPONSE),
+		);
 		// Mock SSE endpoints to prevent networkidle timeout
 		await page.route("**/api/v1/sse/**", (route) => {
 			route.fulfill({
@@ -97,6 +125,8 @@ test.describe("Desktop Pages Accessibility", () => {
 				body: "event: message\ndata: {}\n\n",
 			});
 		});
+		// Mock EventSource
+		await page.addInitScript(createMockEventSourceScript());
 	});
 
 	test.describe("Desktop Feeds Page (/desktop/feeds)", () => {
@@ -271,6 +301,46 @@ test.describe("Desktop Pages Accessibility", () => {
 				await page.keyboard.type("Hello");
 				await expect(chatInput.first()).toHaveValue("Hello");
 			}
+		});
+	});
+
+	test.describe("Desktop Tag Trail Page (/desktop/feeds/tag-trail)", () => {
+		test("has no critical accessibility violations", async ({ page }) => {
+			await gotoDesktopRoute(page, "feeds/tag-trail");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByRole("heading").first()).toBeVisible();
+
+			await checkAccessibility(page, a11yOptions);
+		});
+	});
+
+	test.describe("Desktop Favorites Page (/desktop/feeds/favorites)", () => {
+		test("has no critical accessibility violations", async ({ page }) => {
+			await gotoDesktopRoute(page, "feeds/favorites");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByRole("heading").first()).toBeVisible();
+
+			await checkAccessibility(page, a11yOptions);
+		});
+	});
+
+	test.describe("Desktop Viewed Page (/desktop/feeds/viewed)", () => {
+		test("has no critical accessibility violations", async ({ page }) => {
+			await gotoDesktopRoute(page, "feeds/viewed");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByRole("heading").first()).toBeVisible();
+
+			await checkAccessibility(page, a11yOptions);
+		});
+	});
+
+	test.describe("Desktop Evening Pulse Page (/desktop/recap/evening-pulse)", () => {
+		test("has no critical accessibility violations", async ({ page }) => {
+			await gotoDesktopRoute(page, "recap/evening-pulse");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByRole("heading").first()).toBeVisible();
+
+			await checkAccessibility(page, a11yOptions);
 		});
 	});
 });

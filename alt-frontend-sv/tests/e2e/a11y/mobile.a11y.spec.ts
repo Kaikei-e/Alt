@@ -15,7 +15,13 @@ import {
 	CONNECT_RPC_PATHS,
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
+	CONNECT_TAG_TRAIL_PATHS,
+	CONNECT_TAG_TRAIL_FEED_RESPONSE,
+	CONNECT_EVENING_PULSE_PATH,
+	CONNECT_EVENING_PULSE_RESPONSE,
+	CONNECT_MORNING_LETTER_STREAM_MESSAGES,
 } from "../fixtures/mockData";
+import { fulfillConnectStream } from "../utils/mockHelpers";
 
 // Test data for mocking
 const MOCK_FEEDS = {
@@ -73,6 +79,35 @@ test.describe("Mobile Pages Accessibility", () => {
 		);
 		await page.route(CONNECT_RPC_PATHS.getDetailedFeedStats, (route) =>
 			fulfillJson(route, MOCK_STATS),
+		);
+		// Tag Trail mocks
+		await page.route(CONNECT_TAG_TRAIL_PATHS.fetchRandomFeed, (route) =>
+			fulfillJson(route, CONNECT_TAG_TRAIL_FEED_RESPONSE),
+		);
+		await page.route(CONNECT_TAG_TRAIL_PATHS.streamArticleTags, (route) =>
+			fulfillConnectStream(route, [
+				{ kind: "tag", tag: "AI" },
+				{ kind: "tag", tag: "Web" },
+			]),
+		);
+		// Evening Pulse mock
+		await page.route(CONNECT_EVENING_PULSE_PATH, (route) =>
+			fulfillJson(route, CONNECT_EVENING_PULSE_RESPONSE),
+		);
+		// Morning Letter mock
+		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, (route) =>
+			fulfillConnectStream(route, CONNECT_MORNING_LETTER_STREAM_MESSAGES),
+		);
+		// Recap mock
+		await page.route(CONNECT_RPC_PATHS.getThreeDayRecap, (route) =>
+			fulfillJson(route, {
+				jobId: "test",
+				executedAt: "",
+				windowStart: "",
+				windowEnd: "",
+				totalArticles: 0,
+				genres: [],
+			}),
 		);
 		// Mock SSE endpoints to prevent networkidle timeout
 		await page.route("**/api/v1/sse/**", (route) => {
@@ -235,6 +270,52 @@ test.describe("Mobile Pages Accessibility", () => {
 			await page.waitForLoadState("domcontentloaded");
 			// Wait for page heading or content
 			await expect(page.getByRole("heading").first()).toBeVisible();
+
+			await checkAccessibility(page, a11yOptions);
+		});
+	});
+
+	test.describe("Mobile Tag Trail Page (/mobile/feeds/tag-trail)", () => {
+		test("has no critical accessibility violations", async ({ page }) => {
+			await gotoMobileRoute(page, "feeds/tag-trail");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByRole("heading").first()).toBeVisible();
+
+			await checkAccessibility(page, a11yOptions);
+		});
+	});
+
+	test.describe("Mobile Morning Letter Page (/mobile/recap/morning-letter)", () => {
+		test("has no critical accessibility violations", async ({ page }) => {
+			await gotoMobileRoute(page, "recap/morning-letter");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByRole("heading").first()).toBeVisible();
+
+			await checkAccessibility(page, a11yOptions);
+		});
+	});
+
+	test.describe("Mobile Evening Pulse Page (/mobile/recap/evening-pulse)", () => {
+		test("has no critical accessibility violations", async ({ page }) => {
+			await gotoMobileRoute(page, "recap/evening-pulse");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(page.getByRole("heading").first()).toBeVisible();
+
+			await checkAccessibility(page, a11yOptions);
+		});
+	});
+
+	test.describe("Mobile 3-Day Recap Page (/mobile/recap?window=3)", () => {
+		test("has no critical accessibility violations", async ({ page }) => {
+			await page.goto("./recap?window=3");
+			await page.waitForLoadState("domcontentloaded");
+			// Wait for page to load (skeleton disappears or content appears)
+			await expect(
+				page
+					.getByRole("heading")
+					.or(page.getByTestId("recap-skeleton-container"))
+					.first(),
+			).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});

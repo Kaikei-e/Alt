@@ -1,19 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
 
 test.describe("mobile feeds routes - manage", () => {
-	test("manage page can open the add feed form", async ({ page }) => {
-		await page.goto("./settings/feeds");
+	test("manage page can open the add feed form", async ({
+		mobileManagePage,
+	}) => {
+		await mobileManagePage.goto();
 
-		await expect(page.getByText("Feed Management")).toBeVisible();
+		await expect(mobileManagePage.pageTitle).toBeVisible();
 
-		await page.getByRole("button", { name: "Add a new feed" }).click();
-		await expect(
-			page.getByPlaceholder("https://example.com/feed.xml"),
-		).toBeVisible();
+		await mobileManagePage.addFeedButton.click();
+		await expect(mobileManagePage.feedUrlInput).toBeVisible();
 
-		await page.getByRole("button", { name: "Add feed" }).click();
-		await expect(
-			page.getByText("Please enter the RSS URL.", { exact: true }),
-		).toBeVisible();
+		await mobileManagePage.submitButton.click();
+		await expect(mobileManagePage.validationError).toBeVisible();
 	});
 });

@@ -1,4 +1,5 @@
-import { expect, type Route, test } from "@playwright/test";
+import { expect, test } from "../../fixtures/pomFixtures";
+import { fulfillJson } from "../../utils/mockHelpers";
 
 // Connect-RPC response format (camelCase)
 const CONNECT_STATS_RESPONSE = {
@@ -11,18 +12,6 @@ const CONNECT_UNREAD_RESPONSE = {
 	count: 42,
 };
 
-const fulfillJson = async (
-	route: Route,
-	body: unknown,
-	status: number = 200,
-) => {
-	await route.fulfill({
-		status,
-		contentType: "application/json",
-		body: JSON.stringify(body),
-	});
-};
-
 test.describe("mobile feeds routes - stats", () => {
 	// Skip this test in CI - the mobile stats page uses Connect-RPC client-side calls
 	// that are difficult to mock reliably. The page works correctly in production.
@@ -31,7 +20,7 @@ test.describe("mobile feeds routes - stats", () => {
 		"Skip in CI - Connect-RPC client mocking is unreliable",
 	);
 
-	test("stats page renders counters", async ({ page }) => {
+	test("stats page renders counters", async ({ page, mobileStatsPage }) => {
 		// Mock EventSource to prevent SSE connections from interfering
 		await page.addInitScript(() => {
 			class MockEventSource {

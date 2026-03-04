@@ -1,5 +1,4 @@
-import { expect, test } from "@playwright/test";
-import { gotoMobileRoute } from "../../helpers/navigation";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { fulfillJson } from "../../utils/mockHelpers";
 import {
 	CONNECT_FEEDS_RESPONSE,
@@ -8,7 +7,10 @@ import {
 } from "../../fixtures/mockData";
 
 test.describe("mobile feeds routes", () => {
-	test("feeds list renders with multiple cards", async ({ page }) => {
+	test("feeds list renders with multiple cards", async ({
+		page,
+		mobileFeedsPage,
+	}) => {
 		// Mock Connect-RPC endpoints
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_RESPONSE),
@@ -17,7 +19,7 @@ test.describe("mobile feeds routes", () => {
 			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
 		);
 
-		await gotoMobileRoute(page, "feeds");
+		await mobileFeedsPage.goto();
 
 		// Wait for feed cards to render (auto-waits through SystemLoader)
 		const cards = page.getByTestId("feed-card");
@@ -45,7 +47,7 @@ test.describe("mobile feeds routes", () => {
 		await expect(markAsReadButton).toBeEnabled();
 	});
 
-	test("feed card has external link", async ({ page }) => {
+	test("feed card has external link", async ({ page, mobileFeedsPage }) => {
 		// Mock Connect-RPC endpoints
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_RESPONSE),
@@ -54,7 +56,7 @@ test.describe("mobile feeds routes", () => {
 			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
 		);
 
-		await gotoMobileRoute(page, "feeds");
+		await mobileFeedsPage.goto();
 
 		// Wait for cards to load
 		const firstCard = page.getByRole("article", {
@@ -74,7 +76,10 @@ test.describe("mobile feeds routes", () => {
 		await expect(externalLink).toHaveAttribute("target", "_blank");
 	});
 
-	test("feed card has show details button", async ({ page }) => {
+	test("feed card has show details button", async ({
+		page,
+		mobileFeedsPage,
+	}) => {
 		// Mock Connect-RPC endpoints
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
 			fulfillJson(route, CONNECT_FEEDS_RESPONSE),
@@ -83,7 +88,7 @@ test.describe("mobile feeds routes", () => {
 			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
 		);
 
-		await gotoMobileRoute(page, "feeds");
+		await mobileFeedsPage.goto();
 
 		// Wait for cards to load
 		const firstCard = page.getByRole("article", {

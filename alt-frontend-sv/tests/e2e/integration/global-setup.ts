@@ -3,10 +3,8 @@
  * Runs against real backend services on the runtime machine.
  */
 
-const RUNTIME_URL =
-	process.env.ALT_RUNTIME_URL || "http://localhost:4173/sv/";
-const BACKEND_URL =
-	process.env.ALT_BACKEND_URL || "http://localhost:9000";
+const RUNTIME_URL = process.env.ALT_RUNTIME_URL || "http://localhost:4173/sv/";
+const BACKEND_URL = process.env.ALT_BACKEND_URL || "http://localhost:9000";
 const MAX_RETRIES = 30;
 const RETRY_INTERVAL_MS = 2000;
 
@@ -26,7 +24,7 @@ async function waitForService(url: string, name: string): Promise<void> {
 		}
 	}
 	throw new Error(
-		`${name} at ${url} did not become healthy after ${MAX_RETRIES * RETRY_INTERVAL_MS / 1000}s`,
+		`${name} at ${url} did not become healthy after ${(MAX_RETRIES * RETRY_INTERVAL_MS) / 1000}s`,
 	);
 }
 

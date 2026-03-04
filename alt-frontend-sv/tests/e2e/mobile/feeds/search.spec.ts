@@ -1,5 +1,4 @@
-import { expect, test } from "@playwright/test";
-import { gotoMobileRoute } from "../../helpers/navigation";
+import { expect, test } from "../../fixtures/pomFixtures";
 import { fulfillJson } from "../../utils/mockHelpers";
 import {
 	CONNECT_SEARCH_RESPONSE,
@@ -7,49 +6,51 @@ import {
 } from "../../fixtures/mockData";
 
 test.describe("mobile feeds routes - search", () => {
-	test("search page shows results for a valid query", async ({ page }) => {
+	test("search page shows results for a valid query", async ({
+		page,
+		mobileSearchPage,
+	}) => {
 		// Mock Connect-RPC search endpoint
 		await page.route(CONNECT_RPC_PATHS.searchFeeds, (route) =>
 			fulfillJson(route, CONNECT_SEARCH_RESPONSE),
 		);
 
-		await gotoMobileRoute(page, "feeds/search");
+		await mobileSearchPage.goto();
 
 		// Use pressSequentially to properly trigger Svelte reactive updates
-		const searchInput = page.getByTestId("search-input");
-		await searchInput.click();
-		await searchInput.pressSequentially("AI", { delay: 50 });
+		await mobileSearchPage.searchInput.click();
+		await mobileSearchPage.searchInput.pressSequentially("AI", {
+			delay: 50,
+		});
 
 		// Wait for button to be enabled (state has propagated)
-		const searchButton = page.getByRole("button", { name: "Search" });
-		await expect(searchButton).toBeEnabled();
-		await searchButton.click();
+		await expect(mobileSearchPage.searchButton).toBeEnabled();
+		await mobileSearchPage.searchButton.click();
 
-		const results = page.getByTestId("search-result-item");
-		await expect(results).toHaveCount(1);
+		await expect(mobileSearchPage.resultItems).toHaveCount(1);
 		await expect(page.getByRole("link", { name: "AI Weekly" })).toBeVisible();
 		await expect(page.getByText("Search Results (1)")).toBeVisible();
 	});
 
 	test("search page shows validation errors on short queries", async ({
-		page,
+		mobileSearchPage,
 	}) => {
-		await gotoMobileRoute(page, "feeds/search");
+		await mobileSearchPage.goto();
 
 		// Use pressSequentially to properly trigger Svelte reactive updates
-		const searchInput = page.getByTestId("search-input");
-		await searchInput.click();
-		await searchInput.pressSequentially("A", { delay: 50 });
+		await mobileSearchPage.searchInput.click();
+		await mobileSearchPage.searchInput.pressSequentially("A", { delay: 50 });
 
 		// Submit the form using Enter key since button may be disabled for single char
-		await searchInput.press("Enter");
+		await mobileSearchPage.searchInput.press("Enter");
 
-		await expect(
-			page.getByText("Search query must be at least 2 characters"),
-		).toBeVisible();
+		await expect(mobileSearchPage.validationError).toBeVisible();
 	});
 
-	test("search page loads more results on scroll", async ({ page }) => {
+	test("search page loads more results on scroll", async ({
+		page,
+		mobileSearchPage,
+	}) => {
 		// Create mock data for pagination
 		// Multiple items ensure the sentinel is below the viewport initially
 		const firstPageResponse = {
@@ -112,32 +113,32 @@ test.describe("mobile feeds routes - search", () => {
 			}
 		});
 
-		await gotoMobileRoute(page, "feeds/search");
+		await mobileSearchPage.goto();
 
 		// Perform search
-		const searchInput = page.getByTestId("search-input");
-		await searchInput.click();
-		await searchInput.pressSequentially("AI", { delay: 50 });
+		await mobileSearchPage.searchInput.click();
+		await mobileSearchPage.searchInput.pressSequentially("AI", {
+			delay: 50,
+		});
 
-		const searchButton = page.getByRole("button", { name: "Search" });
-		await expect(searchButton).toBeEnabled();
-		await searchButton.click();
+		await expect(mobileSearchPage.searchButton).toBeEnabled();
+		await mobileSearchPage.searchButton.click();
 
 		// Wait for first page results
 		await expect(page.getByText("AI Weekly Issue 1")).toBeVisible();
-		await expect(page.getByTestId("search-result-item")).toHaveCount(3);
+		await expect(mobileSearchPage.resultItems).toHaveCount(3);
 
 		// Scroll sentinel into view to trigger infinite scroll
-		await page.getByTestId("infinite-scroll-sentinel").scrollIntoViewIfNeeded();
+		await mobileSearchPage.infiniteScrollSentinel.scrollIntoViewIfNeeded();
 
 		// Wait for second page to load
 		await expect(page.getByText("AI Weekly Issue 4")).toBeVisible();
-		await expect(page.getByTestId("search-result-item")).toHaveCount(4);
+		await expect(mobileSearchPage.resultItems).toHaveCount(4);
 
 		// Verify "Loading more..." appears during loading
 		// Note: This might be hard to catch due to timing, so we skip this assertion
 
 		// Verify "No more results" message appears
-		await expect(page.getByText("No more results to load")).toBeVisible();
+		await expect(mobileSearchPage.noMoreResults).toBeVisible();
 	});
 });
