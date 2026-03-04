@@ -62,9 +62,8 @@ const baseFeed: RenderFeed = {
 	author: "Author",
 	publishedAtFormatted: "2026-01-01",
 	mergedTagsLabel: "",
-	feedName: "Test Feed",
-	isRead: false,
-	isBookmarked: false,
+	description: "",
+	published: "",
 };
 
 describe("FeedDetailModal TTS integration", () => {

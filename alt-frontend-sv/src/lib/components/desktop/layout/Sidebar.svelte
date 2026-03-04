@@ -17,6 +17,7 @@ import {
 	Sparkles,
 	Shuffle,
 	Compass,
+	GalleryVerticalEnd,
 } from "@lucide/svelte";
 import { page } from "$app/state";
 import { cn } from "$lib/utils";
@@ -39,6 +40,11 @@ const menuItems = [
 				label: "Unread Feeds",
 				href: `${svBasePath}/feeds`,
 				icon: Rss,
+			},
+			{
+				label: "Visual Preview",
+				href: `${svBasePath}/feeds/visual-preview`,
+				icon: GalleryVerticalEnd,
 			},
 			{
 				label: "Read History",

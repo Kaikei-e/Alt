@@ -17,7 +17,7 @@ import {
 	type TagTrailArticle,
 	type TagTrailTag,
 } from "$lib/connect";
-import { onDestroy } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import type { TagTrailHop } from "$lib/schema/tagTrail";
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 
@@ -51,6 +51,8 @@ $effect(() => {
 let feedTags = $state<TagTrailTag[]>([]);
 let isLoadingFeedTags = $state(false);
 let isLoadingFeed = $state(false);
+let feedTagsError = $state<string | null>(null);
+let feedTagsTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
 let selectedTag = $state<TagTrailTag | null>(null);
 let articles = $state<TagTrailArticle[]>([]);
@@ -65,13 +67,17 @@ let articleTagsCache = $state<Map<string, TagTrailTag[]>>(new Map());
 let loadingArticleTags = $state<Set<string>>(new Set());
 
 // Track active streaming abort controllers for cleanup
-let activeStreamControllers = $state<Map<string, AbortController>>(new Map());
+let activeStreamControllers: Map<string, AbortController> = new Map();
 
 onDestroy(() => {
 	for (const controller of activeStreamControllers.values()) {
 		controller.abort();
 	}
 	activeStreamControllers = new Map();
+	if (feedTagsTimeoutId) {
+		clearTimeout(feedTagsTimeoutId);
+		feedTagsTimeoutId = null;
+	}
 });
 
 // Set tags from currentFeed when it changes
@@ -82,15 +88,39 @@ $effect(() => {
 			isLoadingFeedTags = false;
 		} else {
 			isLoadingFeedTags = true;
-			loadFeedTagsAsync(currentFeed.url);
+			const feedUrl = currentFeed.url;
+			untrack(() => loadFeedTagsAsync(feedUrl));
 		}
 	}
 });
 
 async function loadFeedTagsAsync(feedUrl: string) {
+	feedTagsError = null;
+
+	// Clear any existing timeout
+	if (feedTagsTimeoutId) {
+		clearTimeout(feedTagsTimeoutId);
+		feedTagsTimeoutId = null;
+	}
+
 	try {
 		const result = await fetchArticleContent(transport, feedUrl);
 		if (result.articleId) {
+			// Set a 45-second timeout for tag generation
+			feedTagsTimeoutId = setTimeout(() => {
+				if (isLoadingFeedTags) {
+					feedTagsError = "タグ生成がタイムアウトしました。更新してください。";
+					isLoadingFeedTags = false;
+					// Abort the stream
+					const ctrl = activeStreamControllers.get(result.articleId);
+					if (ctrl) {
+						ctrl.abort();
+						activeStreamControllers.delete(result.articleId);
+						activeStreamControllers = new Map(activeStreamControllers);
+					}
+				}
+			}, 45000);
+
 			const controller = streamArticleTags(
 				transport,
 				result.articleId,
@@ -98,11 +128,28 @@ async function loadFeedTagsAsync(feedUrl: string) {
 					if (event.eventType === "cached" || event.eventType === "completed") {
 						feedTags = event.tags;
 						isLoadingFeedTags = false;
+						feedTagsError = null;
+						if (feedTagsTimeoutId) {
+							clearTimeout(feedTagsTimeoutId);
+							feedTagsTimeoutId = null;
+						}
+					} else if (event.eventType === "error") {
+						feedTagsError = event.message || "タグの生成に失敗しました。";
+						isLoadingFeedTags = false;
+						if (feedTagsTimeoutId) {
+							clearTimeout(feedTagsTimeoutId);
+							feedTagsTimeoutId = null;
+						}
 					}
 				},
 				(error) => {
 					console.error("Failed to stream feed tags:", error);
+					feedTagsError = "タグの読み込みに失敗しました。更新してください。";
 					isLoadingFeedTags = false;
+					if (feedTagsTimeoutId) {
+						clearTimeout(feedTagsTimeoutId);
+						feedTagsTimeoutId = null;
+					}
 				},
 			);
 			activeStreamControllers = new Map([
@@ -114,17 +161,20 @@ async function loadFeedTagsAsync(feedUrl: string) {
 		}
 	} catch (error) {
 		console.error("Failed to load feed tags:", error);
+		feedTagsError = "タグの読み込みに失敗しました。更新してください。";
 		isLoadingFeedTags = false;
 	}
 }
 
 // Load tags when articles are loaded
+// Guard reads use untrack() to prevent $effect re-firing when loadArticleTags()
+// mutates articleTagsCache/loadingArticleTags (new object references trigger reactivity).
 $effect(() => {
 	if (articles.length > 0) {
 		for (const article of articles) {
 			if (
-				!articleTagsCache.has(article.id) &&
-				!loadingArticleTags.has(article.id)
+				!untrack(() => articleTagsCache.has(article.id)) &&
+				!untrack(() => loadingArticleTags.has(article.id))
 			) {
 				loadArticleTags(article.id);
 			}
@@ -190,6 +240,11 @@ function getArticleTags(articleId: string): TagTrailTag[] {
 
 async function handleRefresh() {
 	isLoadingFeed = true;
+	feedTagsError = null;
+	if (feedTagsTimeoutId) {
+		clearTimeout(feedTagsTimeoutId);
+		feedTagsTimeoutId = null;
+	}
 	try {
 		const feed = await fetchRandomFeed(transport);
 		currentFeed = feed;
@@ -349,7 +404,18 @@ const formatDate = (dateStr: string) => {
 						<h3 class="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-3">
 							Click a tag to explore
 						</h3>
-						{#if isLoadingFeedTags}
+						{#if feedTagsError}
+							<div class="space-y-2">
+								<p class="text-sm text-[var(--text-secondary)]">{feedTagsError}</p>
+								<button
+									type="button"
+									onclick={handleRefresh}
+									class="text-xs text-[var(--alt-primary)] hover:underline"
+								>
+									Refresh
+								</button>
+							</div>
+						{:else if isLoadingFeedTags}
 							<div class="flex flex-wrap gap-2">
 								{#each [1, 2, 3, 4] as i}
 									<div

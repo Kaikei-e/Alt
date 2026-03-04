@@ -1,26 +1,13 @@
 <script lang="ts" module>
-import type { RenderFeed } from "$lib/schema/feed";
-
-export type RemoveFeedResult = {
-	nextFeedUrl: string | null;
-	totalCount: number;
-};
-
-export type FeedGridApi = {
-	/** Synchronously removes a feed and returns navigation info */
-	removeFeedByUrl: (url: string) => RemoveFeedResult;
-	/** Get all currently visible feeds */
-	getVisibleFeeds: () => RenderFeed[];
-	/** Get a specific feed by URL */
-	getFeedByUrl: (url: string) => RenderFeed | null;
-	/** Fetch a replacement feed in the background (fire-and-forget) */
-	fetchReplacementFeed: () => void;
-};
+export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 </script>
 
 <script lang="ts">
+	import type { Snippet } from "svelte";
 	import { Loader2 } from "@lucide/svelte";
 	import { getFeedsWithCursorClient, getAllFeedsWithCursorClient } from "$lib/api/client/feeds";
+	import type { RenderFeed } from "$lib/schema/feed";
+	import type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 	import DesktopFeedCard from "./DesktopFeedCard.svelte";
 	import { onMount } from "svelte";
 	import { infiniteScroll } from "$lib/actions/infinite-scroll";
@@ -32,9 +19,11 @@ export type FeedGridApi = {
 		excludedFeedLinkId?: string | null;
 		onReady?: (api: FeedGridApi) => void;
 		fetchFn?: (cursor?: string, limit?: number) => Promise<import("$lib/api").CursorResponse<RenderFeed>>;
+		cardRenderer?: Snippet<[{ feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void }]>;
+		gridClass?: string;
 	}
 
-	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkId = null, onReady, fetchFn }: Props = $props();
+	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkId = null, onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4" }: Props = $props();
 
 	// Simple state for infinite scroll
 	let feeds = $state<RenderFeed[]>([]);
@@ -277,9 +266,13 @@ export type FeedGridApi = {
 		</div>
 	{:else}
 		<!-- Grid layout -->
-		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
+		<div class={gridClass}>
 			{#each visibleFeeds as feed, index (feed.id)}
-				<DesktopFeedCard {feed} isRead={feed.isRead ?? false} onSelect={(f) => onSelectFeed(f, index, visibleFeeds.length)} />
+				{#if cardRenderer}
+					{@render cardRenderer({ feed, index, isRead: feed.isRead ?? false, onSelect: (f) => onSelectFeed(f, index, visibleFeeds.length) })}
+				{:else}
+					<DesktopFeedCard {feed} isRead={feed.isRead ?? false} onSelect={(f) => onSelectFeed(f, index, visibleFeeds.length)} />
+				{/if}
 			{/each}
 		</div>
 
