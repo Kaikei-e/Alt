@@ -141,9 +141,72 @@ export const CONNECT_TAG_TRAIL_FEED = {
 	description: "A randomly selected feed for tag exploration.",
 	tags: [
 		{ id: "tag-1", name: "AI", createdAt: "2026-01-01T00:00:00Z" },
-		{ id: "tag-2", name: "Machine Learning", createdAt: "2026-01-01T00:00:00Z" },
+		{
+			id: "tag-2",
+			name: "Machine Learning",
+			createdAt: "2026-01-01T00:00:00Z",
+		},
 		{ id: "tag-3", name: "Technology", createdAt: "2026-01-01T00:00:00Z" },
 	],
+};
+
+// =============================================================================
+// Connect-RPC Evening Pulse Data (proto JSON wire format)
+// =============================================================================
+
+export const CONNECT_EVENING_PULSE = {
+	jobId: "pulse-job-123",
+	date: "2026-01-15",
+	generatedAt: new Date().toISOString(),
+	status: 1, // PULSE_STATUS_NORMAL
+	topics: [
+		{
+			clusterId: "1",
+			role: 1,
+			title: "AI Breakthrough",
+			rationale: { text: "Major advances in AI this week.", confidence: 1 },
+			articleCount: 5,
+			sourceCount: 3,
+			timeAgo: "3 hours ago",
+			genre: "Technology",
+			articleIds: ["art-1", "art-2"],
+			representativeArticles: [
+				{
+					articleId: "art-1",
+					title: "GPT-5 Announced",
+					sourceUrl: "https://example.com/gpt5",
+					sourceName: "TechNews",
+					publishedAt: "2026-01-15T10:00:00Z",
+				},
+			],
+			topEntities: ["AI", "GPT", "LLM"],
+			sourceNames: ["TechNews", "AIDaily"],
+		},
+	],
+};
+
+// =============================================================================
+// Connect-RPC Tag Trail Articles Data
+// =============================================================================
+
+export const CONNECT_TAG_TRAIL_ARTICLES = {
+	articles: [
+		{
+			id: "trail-art-1",
+			title: "AI Trends in 2026",
+			link: "https://example.com/ai-trends-2026",
+			publishedAt: "2026-01-15T10:00:00Z",
+			feedTitle: "TechBlog",
+		},
+		{
+			id: "trail-art-2",
+			title: "Machine Learning Basics",
+			link: "https://example.com/ml-basics",
+			publishedAt: "2026-01-15T07:00:00Z",
+			feedTitle: "AI Weekly",
+		},
+	],
+	hasMore: false,
 };
 
 // =============================================================================

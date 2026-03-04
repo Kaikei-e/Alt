@@ -886,32 +886,69 @@ export const JOB_DASHBOARD_PATHS = {
 
 /**
  * Connect-RPC path for Evening Pulse service
+ * RPC is alt.recap.v2.RecapService/GetEveningPulse
  */
 export const CONNECT_EVENING_PULSE_PATH =
-	"**/alt.evening_pulse.v2.EveningPulseService/GetEveningPulse";
+	"**/api/v2/alt.recap.v2.RecapService/GetEveningPulse";
 
 /**
- * Evening Pulse response with topics
+ * Evening Pulse response with topics (proto JSON wire format)
+ * PulseStatus: UNSPECIFIED=0, NORMAL=1, PARTIAL=2, QUIET_DAY=3, ERROR=4
+ * TopicRole: UNSPECIFIED=0, NEED_TO_KNOW=1, TREND=2, SERENDIPITY=3
+ * Confidence: UNSPECIFIED=0, HIGH=1, MEDIUM=2, LOW=3
  */
 export const CONNECT_EVENING_PULSE_RESPONSE = {
+	jobId: "pulse-job-123",
+	date: "2026-01-15",
 	generatedAt: new Date().toISOString(),
-	status: "ready",
+	status: 1, // PULSE_STATUS_NORMAL
 	topics: [
 		{
-			clusterId: 1,
+			clusterId: "1", // bigint wire format = string
+			role: 1, // NEED_TO_KNOW
 			title: "AI Breakthrough",
-			summary: "Major advances in artificial intelligence this week.",
-			genre: "Technology",
+			rationale: { text: "Major advances in AI this week.", confidence: 1 },
 			articleCount: 5,
-			topTerms: ["AI", "GPT", "LLM"],
+			sourceCount: 3,
+			timeAgo: "3 hours ago",
+			genre: "Technology",
+			articleIds: ["art-1", "art-2"],
+			representativeArticles: [
+				{
+					articleId: "art-1",
+					title: "GPT-5 Announced",
+					sourceUrl: "https://example.com/gpt5",
+					sourceName: "TechNews",
+					publishedAt: "2026-01-15T10:00:00Z",
+				},
+			],
+			topEntities: ["AI", "GPT", "LLM"],
+			sourceNames: ["TechNews", "AIDaily"],
 		},
 		{
-			clusterId: 2,
+			clusterId: "2",
+			role: 2, // TREND
 			title: "Web Standards Update",
-			summary: "New web platform features landing in browsers.",
-			genre: "Web Development",
+			rationale: {
+				text: "New web platform features landing in browsers.",
+				confidence: 2,
+			},
 			articleCount: 3,
-			topTerms: ["CSS", "HTML", "Web"],
+			sourceCount: 2,
+			timeAgo: "5 hours ago",
+			genre: "Web Development",
+			articleIds: ["art-3"],
+			representativeArticles: [
+				{
+					articleId: "art-3",
+					title: "CSS Nesting Ships",
+					sourceUrl: "https://example.com/css",
+					sourceName: "WebDev",
+					publishedAt: "2026-01-15T08:00:00Z",
+				},
+			],
+			topEntities: ["CSS", "HTML", "Web"],
+			sourceNames: ["WebDev"],
 		},
 	],
 };
@@ -920,9 +957,15 @@ export const CONNECT_EVENING_PULSE_RESPONSE = {
  * Evening Pulse quiet day response (no significant topics)
  */
 export const CONNECT_EVENING_PULSE_QUIET_RESPONSE = {
+	jobId: "pulse-job-quiet",
+	date: "2026-01-15",
 	generatedAt: new Date().toISOString(),
-	status: "quiet_day",
+	status: 3, // PULSE_STATUS_QUIET_DAY
 	topics: [],
+	quietDay: {
+		message: "It's a quiet news day. Here are some highlights from this week.",
+		weeklyHighlights: [],
+	},
 };
 
 // =============================================================================
@@ -933,7 +976,7 @@ export const CONNECT_EVENING_PULSE_QUIET_RESPONSE = {
  * Connect-RPC paths for Tag Trail related services
  */
 export const CONNECT_TAG_TRAIL_PATHS = {
-	fetchRandomFeed: "**/api/v2/alt.feeds.v2.FeedService/FetchRandomFeed",
+	fetchRandomFeed: "**/api/v2/alt.articles.v2.ArticleService/FetchRandomFeed",
 	fetchArticlesByTag:
 		"**/api/v2/alt.articles.v2.ArticleService/FetchArticlesByTag",
 	streamArticleTags:
@@ -941,13 +984,22 @@ export const CONNECT_TAG_TRAIL_PATHS = {
 };
 
 /**
- * Tag Trail random feed response
+ * Tag Trail random feed response (FetchRandomFeedResponse proto format)
  */
 export const CONNECT_TAG_TRAIL_FEED_RESPONSE = {
 	id: "trail-feed-1",
 	url: "https://example.com/trail-feed",
 	title: "Random Trail Feed",
 	description: "A randomly selected feed for tag exploration.",
+	tags: [
+		{ id: "tag-1", name: "AI", createdAt: "2026-01-01T00:00:00Z" },
+		{
+			id: "tag-2",
+			name: "Machine Learning",
+			createdAt: "2026-01-01T00:00:00Z",
+		},
+		{ id: "tag-3", name: "Technology", createdAt: "2026-01-01T00:00:00Z" },
+	],
 };
 
 /**
@@ -956,24 +1008,21 @@ export const CONNECT_TAG_TRAIL_FEED_RESPONSE = {
 export const CONNECT_TAG_TRAIL_ARTICLES_RESPONSE = {
 	articles: [
 		{
-			articleId: "trail-art-1",
+			id: "trail-art-1",
 			title: "AI Trends in 2026",
-			description: "Deep dive into current AI trends.",
 			link: "https://example.com/ai-trends-2026",
-			published: "2 hours ago",
-			author: "Alice",
+			publishedAt: "2026-01-15T10:00:00Z",
+			feedTitle: "TechBlog",
 		},
 		{
-			articleId: "trail-art-2",
+			id: "trail-art-2",
 			title: "Machine Learning Basics",
-			description: "Introduction to ML concepts.",
 			link: "https://example.com/ml-basics",
-			published: "5 hours ago",
-			author: "Bob",
+			publishedAt: "2026-01-15T07:00:00Z",
+			feedTitle: "AI Weekly",
 		},
 	],
 	hasMore: false,
-	nextCursor: "",
 };
 
 // =============================================================================

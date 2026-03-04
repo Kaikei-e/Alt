@@ -5,7 +5,6 @@
  * based on the USE_CONNECT_STREAMING environment variable.
  */
 
-import { env } from "$env/dynamic/public";
 import { useSSEFeedsStats } from "./useSSEFeedsStats.svelte";
 import { useStreamingFeedStats } from "./useStreamingFeedStats.svelte";
 
@@ -19,6 +18,30 @@ interface FeedStatsState {
 }
 
 /**
+ * Safely read PUBLIC_USE_CONNECT_STREAMING.
+ *
+ * $env/dynamic/public compiles to `globalThis.__sveltekit_<hash>.env` which
+ * throws if the SvelteKit bootstrap hasn't run yet. We lazy-import to avoid
+ * crashing at module-evaluation time.
+ */
+async function getUseStreaming(): Promise<boolean> {
+	try {
+		const { env } = await import("$env/dynamic/public");
+		return env?.PUBLIC_USE_CONNECT_STREAMING === "true";
+	} catch {
+		return false;
+	}
+}
+
+// Cache the resolved value so the hook stays synchronous after first call
+let _streamingResolved = false;
+let _useStreaming = false;
+getUseStreaming().then((v) => {
+	_useStreaming = v;
+	_streamingResolved = true;
+});
+
+/**
  * Unified hook for feed statistics.
  *
  * Uses Connect-RPC Streaming if PUBLIC_USE_CONNECT_STREAMING=true,
@@ -27,11 +50,8 @@ interface FeedStatsState {
  * @returns Feed stats state
  */
 export function useFeedStats(): FeedStatsState {
-	const useStreaming = env.PUBLIC_USE_CONNECT_STREAMING === "true";
-
-	if (useStreaming) {
+	if (_streamingResolved && _useStreaming) {
 		return useStreamingFeedStats();
-	} else {
-		return useSSEFeedsStats();
 	}
+	return useSSEFeedsStats();
 }

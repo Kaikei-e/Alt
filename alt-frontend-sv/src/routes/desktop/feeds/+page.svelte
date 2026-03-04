@@ -47,7 +47,9 @@ const selectedFeed = $derived.by(() => {
 const currentIndex = $derived.by(() => {
 	if (!selectedFeedUrl || !feedGridApi) return -1;
 	const feeds = feedGridApi.getVisibleFeeds();
-	return feeds.findIndex((f: RenderFeed) => f.normalizedUrl === selectedFeedUrl);
+	return feeds.findIndex(
+		(f: RenderFeed) => f.normalizedUrl === selectedFeedUrl,
+	);
 });
 
 const totalCount = $derived(feedGridApi?.getVisibleFeeds().length ?? 0);
@@ -107,7 +109,9 @@ function handleMarkAsRead(feedUrl: string) {
 
 	// Check current position BEFORE removal
 	const currentFeeds = feedGridApi.getVisibleFeeds();
-	const currentIdx = currentFeeds.findIndex((f: RenderFeed) => f.normalizedUrl === feedUrl);
+	const currentIdx = currentFeeds.findIndex(
+		(f: RenderFeed) => f.normalizedUrl === feedUrl,
+	);
 	const isLastFeed = currentIdx === currentFeeds.length - 1;
 
 	// Remove the feed

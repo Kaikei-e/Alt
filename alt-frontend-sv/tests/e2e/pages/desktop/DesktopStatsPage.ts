@@ -28,7 +28,7 @@ export class DesktopStatsPage extends BasePage {
 
 		this.feedCountCard = page.getByText("Feed Count");
 		this.totalArticlesCard = page.getByText("Total Articles");
-		this.summarizedCard = page.getByText("Summarized");
+		this.summarizedCard = page.getByText("Summarized").first();
 
 		this.connectionStatus = page.getByText(/connected|disconnected/i).first();
 		this.reconnectButton = page.getByRole("button", {

@@ -17,6 +17,8 @@ import {
 	CONNECT_UNREAD_COUNT,
 	CONNECT_ARTICLE_CONTENT,
 	CONNECT_TAG_TRAIL_FEED,
+	CONNECT_EVENING_PULSE,
+	CONNECT_TAG_TRAIL_ARTICLES,
 } from "../data/feeds";
 import {
 	RECAP_RESPONSE,
@@ -222,11 +224,46 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
-		// FetchRandomFeed
-		if (path === "/alt.feeds.v2.FeedService/FetchRandomFeed") {
+		// FetchRandomFeed (ArticleService, not FeedService)
+		if (path === "/alt.articles.v2.ArticleService/FetchRandomFeed") {
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(JSON.stringify(CONNECT_TAG_TRAIL_FEED));
+			return;
+		}
+
+		// FetchArticlesByTag
+		if (path === "/alt.articles.v2.ArticleService/FetchArticlesByTag") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(CONNECT_TAG_TRAIL_ARTICLES));
+			return;
+		}
+
+		// StreamArticleTags (Connect-RPC streaming)
+		if (path === "/alt.articles.v2.ArticleService/StreamArticleTags") {
+			res.setHeader("Content-Type", "application/connect+json");
+			res.setHeader("Connect-Content-Encoding", "identity");
+			res.setHeader("Connect-Accept-Encoding", "identity");
+			res.writeHead(200);
+			const msg = {
+				articleId: "article-123",
+				tags: [
+					{ id: "tag-1", name: "AI", createdAt: "2026-01-01T00:00:00Z" },
+					{
+						id: "tag-2",
+						name: "Machine Learning",
+						createdAt: "2026-01-01T00:00:00Z",
+					},
+					{
+						id: "tag-3",
+						name: "Technology",
+						createdAt: "2026-01-01T00:00:00Z",
+					},
+				],
+				eventType: "EVENT_TYPE_COMPLETED",
+			};
+			res.end(JSON.stringify(msg) + "\n");
 			return;
 		}
 
@@ -264,6 +301,14 @@ export function createBackendServer(): http.Server {
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(JSON.stringify(CONNECT_RECAP_RESPONSE));
+			return;
+		}
+
+		// GetEveningPulse (Connect-RPC)
+		if (path === "/alt.recap.v2.RecapService/GetEveningPulse") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify(CONNECT_EVENING_PULSE));
 			return;
 		}
 

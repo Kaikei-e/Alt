@@ -30,8 +30,16 @@ test.describe("Desktop Tag Trail", () => {
 					articleId: "article-123",
 					tags: [
 						{ id: "tag-1", name: "AI", createdAt: "2026-01-01T00:00:00Z" },
-						{ id: "tag-2", name: "Machine Learning", createdAt: "2026-01-01T00:00:00Z" },
-						{ id: "tag-3", name: "Technology", createdAt: "2026-01-01T00:00:00Z" },
+						{
+							id: "tag-2",
+							name: "Machine Learning",
+							createdAt: "2026-01-01T00:00:00Z",
+						},
+						{
+							id: "tag-3",
+							name: "Technology",
+							createdAt: "2026-01-01T00:00:00Z",
+						},
 					],
 					eventType: "EVENT_TYPE_COMPLETED",
 				},
