@@ -10,7 +10,7 @@ import {
 	type TagTrailArticle,
 	type TagTrailTag,
 } from "$lib/connect";
-import { onDestroy } from "svelte";
+import { onDestroy, untrack } from "svelte";
 import type { TagTrailHop } from "$lib/schema/tagTrail";
 import RandomFeedCard from "./RandomFeedCard.svelte";
 import TagArticleList from "./TagArticleList.svelte";
@@ -60,7 +60,7 @@ let articleTagsCache = $state<Map<string, TagTrailTag[]>>(new Map());
 let loadingArticleTags = $state<Set<string>>(new Set());
 
 // Track active streaming abort controllers for cleanup
-let activeStreamControllers = $state<Map<string, AbortController>>(new Map());
+let activeStreamControllers: Map<string, AbortController> = new Map();
 
 // Cleanup on component destroy
 onDestroy(() => {
@@ -85,7 +85,8 @@ $effect(() => {
 			// No tags: backend has triggered async article fetch
 			// We poll via fetchArticleContent -> streamArticleTags
 			isLoadingFeedTags = true;
-			loadFeedTagsAsync(currentFeed.url);
+			const feedUrl = currentFeed.url;
+			untrack(() => loadFeedTagsAsync(feedUrl));
 		}
 	}
 });
@@ -137,8 +138,8 @@ $effect(() => {
 	if (articles.length > 0) {
 		for (const article of articles) {
 			if (
-				!articleTagsCache.has(article.id) &&
-				!loadingArticleTags.has(article.id)
+				!untrack(() => articleTagsCache.has(article.id)) &&
+				!untrack(() => loadingArticleTags.has(article.id))
 			) {
 				loadArticleTags(article.id);
 			}

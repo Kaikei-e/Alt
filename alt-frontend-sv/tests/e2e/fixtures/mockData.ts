@@ -879,3 +879,119 @@ export const JOB_DASHBOARD_PATHS = {
 	jobStats: "**/api/v1/dashboard/job-stats",
 	triggerJob: "**/api/v1/generate/recaps/7days",
 };
+
+// =============================================================================
+// Evening Pulse Mock Data
+// =============================================================================
+
+/**
+ * Connect-RPC path for Evening Pulse service
+ */
+export const CONNECT_EVENING_PULSE_PATH =
+	"**/alt.evening_pulse.v2.EveningPulseService/GetEveningPulse";
+
+/**
+ * Evening Pulse response with topics
+ */
+export const CONNECT_EVENING_PULSE_RESPONSE = {
+	generatedAt: new Date().toISOString(),
+	status: "ready",
+	topics: [
+		{
+			clusterId: 1,
+			title: "AI Breakthrough",
+			summary: "Major advances in artificial intelligence this week.",
+			genre: "Technology",
+			articleCount: 5,
+			topTerms: ["AI", "GPT", "LLM"],
+		},
+		{
+			clusterId: 2,
+			title: "Web Standards Update",
+			summary: "New web platform features landing in browsers.",
+			genre: "Web Development",
+			articleCount: 3,
+			topTerms: ["CSS", "HTML", "Web"],
+		},
+	],
+};
+
+/**
+ * Evening Pulse quiet day response (no significant topics)
+ */
+export const CONNECT_EVENING_PULSE_QUIET_RESPONSE = {
+	generatedAt: new Date().toISOString(),
+	status: "quiet_day",
+	topics: [],
+};
+
+// =============================================================================
+// Tag Trail Mock Data
+// =============================================================================
+
+/**
+ * Connect-RPC paths for Tag Trail related services
+ */
+export const CONNECT_TAG_TRAIL_PATHS = {
+	fetchRandomFeed: "**/api/v2/alt.feeds.v2.FeedService/FetchRandomFeed",
+	fetchArticlesByTag:
+		"**/api/v2/alt.articles.v2.ArticleService/FetchArticlesByTag",
+	streamArticleTags:
+		"**/api/v2/alt.articles.v2.ArticleService/StreamArticleTags",
+};
+
+/**
+ * Tag Trail random feed response
+ */
+export const CONNECT_TAG_TRAIL_FEED_RESPONSE = {
+	id: "trail-feed-1",
+	url: "https://example.com/trail-feed",
+	title: "Random Trail Feed",
+	description: "A randomly selected feed for tag exploration.",
+};
+
+/**
+ * Tag Trail articles response
+ */
+export const CONNECT_TAG_TRAIL_ARTICLES_RESPONSE = {
+	articles: [
+		{
+			articleId: "trail-art-1",
+			title: "AI Trends in 2026",
+			description: "Deep dive into current AI trends.",
+			link: "https://example.com/ai-trends-2026",
+			published: "2 hours ago",
+			author: "Alice",
+		},
+		{
+			articleId: "trail-art-2",
+			title: "Machine Learning Basics",
+			description: "Introduction to ML concepts.",
+			link: "https://example.com/ml-basics",
+			published: "5 hours ago",
+			author: "Bob",
+		},
+	],
+	hasMore: false,
+	nextCursor: "",
+};
+
+// =============================================================================
+// Trend Stats Mock Data
+// =============================================================================
+
+/**
+ * API path for trend statistics
+ */
+export const CONNECT_TREND_STATS_PATH = "**/api/v1/feeds/stats/trends*";
+
+/**
+ * Trend stats response
+ */
+export const CONNECT_TREND_STATS_RESPONSE = {
+	trends: [
+		{ date: "2025-12-14", articles: 45, summarized: 40, feeds: 12 },
+		{ date: "2025-12-15", articles: 52, summarized: 48, feeds: 14 },
+		{ date: "2025-12-16", articles: 38, summarized: 35, feeds: 11 },
+	],
+};

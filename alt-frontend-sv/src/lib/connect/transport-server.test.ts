@@ -38,7 +38,9 @@ describe("createServerTransportWithToken", () => {
 
 		// Verify interceptor sets the token header
 		const interceptors = lastTransportConfig!.interceptors as Array<
-			(next: (req: unknown) => Promise<unknown>) => (req: unknown) => Promise<unknown>
+			(
+				next: (req: unknown) => Promise<unknown>,
+			) => (req: unknown) => Promise<unknown>
 		>;
 		expect(interceptors).toHaveLength(1);
 
