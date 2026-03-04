@@ -91,3 +91,37 @@ class TestEvaluationRun:
         )
         assert run.genre_metrics is None
         assert run.overall_alert_level == AlertLevel.OK
+
+    def test_to_metrics_dict_empty(self):
+        run = EvaluationRun(
+            evaluation_id=uuid4(),
+            evaluation_type=EvaluationType.FULL,
+            job_ids=[],
+            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            window_days=7,
+        )
+        metrics = run.to_metrics_dict()
+        assert metrics["overall_alert_level"] == "ok"
+        assert "genre" not in metrics
+        assert "summary" not in metrics
+
+    def test_to_metrics_dict_with_all_dimensions(self):
+        run = EvaluationRun(
+            evaluation_id=uuid4(),
+            evaluation_type=EvaluationType.FULL,
+            job_ids=[uuid4()],
+            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            window_days=7,
+            genre_metrics=GenreEvaluationResult(macro_f1=0.82),
+            cluster_metrics={
+                "tech": ClusterMetrics(silhouette_score=0.35),
+            },
+            summary_metrics=SummaryMetrics(overall_quality_score=0.7),
+            pipeline_metrics=PipelineMetrics(success_rate=0.95),
+            overall_alert_level=AlertLevel.OK,
+        )
+        metrics = run.to_metrics_dict()
+        assert metrics["genre"]["macro_f1"] == 0.82
+        assert metrics["cluster"]["tech"]["silhouette_score"] == 0.35
+        assert metrics["summary"]["overall_quality_score"] == 0.7
+        assert metrics["pipeline"]["success_rate"] == 0.95

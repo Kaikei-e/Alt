@@ -1,5 +1,6 @@
 """Tests for GetMetricsUsecase."""
 
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -97,3 +98,45 @@ class TestGetMetricsUsecase:
         mock_db.fetch_evaluation_history.assert_called_once_with(
             evaluation_type=None, limit=10
         )
+
+    async def test_get_trends_returns_metrics_from_history(
+        self, get_metrics_uc, mock_db
+    ):
+        ts1 = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        ts2 = datetime(2025, 1, 2, tzinfo=timezone.utc)
+        mock_db.fetch_evaluation_history.return_value = [
+            {
+                "created_at": ts2,
+                "metrics": {
+                    "genre": {"macro_f1": 0.85},
+                    "pipeline": {"success_rate": 0.96},
+                    "summary": {"overall_quality_score": 0.72},
+                },
+            },
+            {
+                "created_at": ts1,
+                "metrics": {
+                    "genre": {"macro_f1": 0.80},
+                    "pipeline": {"success_rate": 0.94},
+                    "summary": {"overall_quality_score": 0.70},
+                },
+            },
+        ]
+
+        trends = await get_metrics_uc.get_trends(window_days=7)
+
+        assert len(trends) >= 2
+        metric_names = {t["metric_name"] for t in trends}
+        assert "genre_macro_f1" in metric_names
+        assert "pipeline_success_rate" in metric_names
+
+        genre_trend = next(t for t in trends if t["metric_name"] == "genre_macro_f1")
+        assert genre_trend["current_value"] == 0.85
+        assert len(genre_trend["data_points"]) == 2
+
+    async def test_get_trends_empty_history(self, get_metrics_uc, mock_db):
+        mock_db.fetch_evaluation_history.return_value = []
+
+        trends = await get_metrics_uc.get_trends(window_days=30)
+
+        assert trends == []

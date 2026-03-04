@@ -53,10 +53,36 @@ class TestGetLatestMetrics:
 
 
 class TestGetMetricsTrends:
-    def test_returns_empty_trends(self, client):
+    def test_returns_empty_trends(self, client, app):
+        app.state.get_metrics.get_trends.return_value = []
+
         resp = client.get("/api/v1/metrics/trends")
 
         assert resp.status_code == 200
         data = resp.json()
         assert data["trends"] == []
         assert data["window_days"] == 30
+
+    def test_returns_trends_from_history(self, client, app):
+        app.state.get_metrics.get_trends.return_value = [
+            {
+                "metric_name": "genre_macro_f1",
+                "data_points": [
+                    {"timestamp": "2025-01-01T00:00:00+00:00", "value": 0.80},
+                    {"timestamp": "2025-01-02T00:00:00+00:00", "value": 0.82},
+                ],
+                "current_value": 0.82,
+                "change_7d": 0.025,
+                "change_30d": None,
+            }
+        ]
+
+        resp = client.get("/api/v1/metrics/trends?window_days=7")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["trends"]) == 1
+        assert data["trends"][0]["metric_name"] == "genre_macro_f1"
+        assert data["trends"][0]["current_value"] == 0.82
+        assert len(data["trends"][0]["data_points"]) == 2
+        assert data["window_days"] == 7

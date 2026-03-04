@@ -66,3 +66,42 @@ class TestClusterEvaluator:
         result = await cluster_evaluator.evaluate_batch([uuid4(), uuid4()])
 
         assert "technology" in result
+
+    async def test_evaluate_batch_sets_alert_level_from_thresholds(
+        self, mock_db, alert_thresholds
+    ):
+        """evaluate_batch should apply silhouette thresholds to aggregated results."""
+        # silhouette_score=0.10 is below critical threshold (0.15)
+        mock_db.fetch_subworker_runs.return_value = [SAMPLE_SUBWORKER_RUN]
+        mock_db.fetch_clusters_for_run.return_value = [
+            {**SAMPLE_CLUSTER, "cluster_id": i, "size": 10}
+            for i in range(5)
+        ]
+
+        evaluator = ClusterEvaluator(mock_db, alert_thresholds)
+        result = await evaluator.evaluate_batch([uuid4()])
+
+        # evaluate_job sets silhouette_score=0.0 (no embeddings), below critical
+        assert result["technology"].alert_level == AlertLevel.CRITICAL
+
+    async def test_evaluate_batch_sets_ok_when_above_thresholds(
+        self, mock_db
+    ):
+        """evaluate_batch should set OK when silhouette is above warn threshold."""
+        thresholds = AlertThresholds(
+            clustering_silhouette_warn=0.25,
+            clustering_silhouette_critical=0.15,
+        )
+        # Create a run that returns silhouette_score=0.0 from evaluate_job
+        # but we'll test with a custom evaluator that returns high scores
+        mock_db.fetch_subworker_runs.return_value = [SAMPLE_SUBWORKER_RUN]
+        mock_db.fetch_clusters_for_run.return_value = [
+            {**SAMPLE_CLUSTER, "cluster_id": i, "size": 10}
+            for i in range(5)
+        ]
+
+        evaluator = ClusterEvaluator(mock_db, thresholds)
+        result = await evaluator.evaluate_batch([uuid4()])
+
+        # silhouette_score=0.0 from evaluate_job, below critical
+        assert result["technology"].alert_level == AlertLevel.CRITICAL

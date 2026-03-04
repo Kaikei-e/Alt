@@ -47,6 +47,9 @@ def integration_app():
 
     # Mock gateways
     mock_db = AsyncMock()
+    mock_pool = AsyncMock()
+    mock_pool.fetchval.return_value = 1
+    mock_db._pool = mock_pool
     mock_db.fetch_recent_jobs.return_value = [SAMPLE_JOB]
     mock_db.fetch_job_articles.return_value = [SAMPLE_ARTICLE]
     mock_db.fetch_outputs.return_value = [SAMPLE_OUTPUT]
@@ -63,6 +66,7 @@ def integration_app():
     ]
     mock_db.fetch_evaluation_history.return_value = []
     mock_db.fetch_evaluation_by_id.return_value = None
+    mock_db.save_evaluation_run.return_value = None
 
     mock_recap_worker = AsyncMock()
     mock_recap_worker.fetch_latest_genre_evaluation.return_value = (

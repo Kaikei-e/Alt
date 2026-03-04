@@ -6,6 +6,7 @@ import pytest
 
 from recap_evaluator.domain.models import (
     AlertLevel,
+    ClusterMetrics,
     EvaluationType,
     GenreEvaluationResult,
     PipelineMetrics,
@@ -74,6 +75,19 @@ class TestRunEvaluationUsecase:
         assert run.summary_metrics is not None
         assert run.pipeline_metrics is not None
         assert run.overall_alert_level == AlertLevel.OK
+        mock_db.save_evaluation_run.assert_called_once()
+
+    async def test_execute_saves_metrics_structure(self, run_evaluation_uc, mock_db):
+        mock_db.fetch_recent_jobs.return_value = [SAMPLE_JOB]
+
+        await run_evaluation_uc.execute(window_days=7)
+
+        call_kwargs = mock_db.save_evaluation_run.call_args
+        metrics = call_kwargs.kwargs["metrics"]
+        assert "overall_alert_level" in metrics
+        assert "genre" in metrics
+        assert "summary" in metrics
+        assert "pipeline" in metrics
 
     async def test_execute_no_jobs_found(self, run_evaluation_uc, mock_db):
         mock_db.fetch_recent_jobs.return_value = []
@@ -82,6 +96,7 @@ class TestRunEvaluationUsecase:
 
         assert run.job_ids == []
         assert run.cluster_metrics == {}
+        mock_db.save_evaluation_run.assert_not_called()
 
     async def test_execute_propagates_critical_alert(
         self, mock_genre_eval, mock_cluster_eval, mock_summary_eval,
@@ -91,6 +106,24 @@ class TestRunEvaluationUsecase:
             success_rate=0.5, alert_level=AlertLevel.CRITICAL
         )
 
+        uc = RunEvaluationUsecase(
+            mock_genre_eval, mock_cluster_eval, mock_summary_eval,
+            mock_pipeline_eval, mock_db,
+        )
+        mock_db.fetch_recent_jobs.return_value = [SAMPLE_JOB]
+        run = await uc.execute()
+
+        assert run.overall_alert_level == AlertLevel.CRITICAL
+
+    async def test_cluster_critical_propagates_to_overall(
+        self, mock_genre_eval, mock_cluster_eval, mock_summary_eval,
+        mock_pipeline_eval, mock_db
+    ):
+        mock_cluster_eval.evaluate_batch.return_value = {
+            "technology": ClusterMetrics(
+                silhouette_score=0.05, alert_level=AlertLevel.CRITICAL
+            ),
+        }
         uc = RunEvaluationUsecase(
             mock_genre_eval, mock_cluster_eval, mock_summary_eval,
             mock_pipeline_eval, mock_db,
