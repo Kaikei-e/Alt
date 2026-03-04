@@ -1,5 +1,12 @@
 <script lang="ts">
-import { ArrowUpDown, Ban, Check, Search, SlidersHorizontal, X } from "@lucide/svelte";
+import {
+	ArrowUpDown,
+	Ban,
+	Check,
+	Search,
+	SlidersHorizontal,
+	X,
+} from "@lucide/svelte";
 import * as Sheet from "$lib/components/ui/sheet";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import { useKeyboardOffset } from "$lib/hooks/useKeyboardOffset.svelte";

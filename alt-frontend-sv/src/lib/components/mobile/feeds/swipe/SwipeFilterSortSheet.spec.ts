@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	extractDomain,
-	filterSources,
-} from "$lib/utils/feed-source-filter";
+import { extractDomain, filterSources } from "$lib/utils/feed-source-filter";
 
 /**
  * Tests for SwipeFilterSortSheet logic.
@@ -84,9 +81,7 @@ describe("SwipeFilterSortSheet logic", () => {
 
 		it("extracts hostname from complex URL", () => {
 			expect(
-				extractDomain(
-					"https://feeds.arstechnica.com/arstechnica/index",
-				),
+				extractDomain("https://feeds.arstechnica.com/arstechnica/index"),
 			).toBe("feeds.arstechnica.com");
 		});
 
@@ -98,9 +93,7 @@ describe("SwipeFilterSortSheet logic", () => {
 	describe("excluded source lookup", () => {
 		it("finds excluded source by ID", () => {
 			const excludedSourceId = "uuid-1";
-			const excluded = mockSources.find(
-				(s) => s.id === excludedSourceId,
-			);
+			const excluded = mockSources.find((s) => s.id === excludedSourceId);
 			expect(excluded).toBeDefined();
 			expect(excluded?.url).toBe("https://techcrunch.com/feed");
 			expect(extractDomain(excluded?.url ?? "")).toBe("techcrunch.com");

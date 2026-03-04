@@ -243,13 +243,7 @@ function handleGenerateAISummary() {
 			tick,
 			typewriter: true,
 			typewriterDelay: 10,
-			onChunk: (
-				chunkCount,
-				chunkSize,
-				decodedLength,
-				totalLength,
-				preview,
-			) => {
+			onChunk: (chunkCount, chunkSize, decodedLength, totalLength, preview) => {
 				if (chunkCount === 1) {
 					isSummarizing = false;
 				}

@@ -111,7 +111,6 @@ onMount(async () => {
 	}
 });
 
-
 // Wire OGP image callback for reactivity
 onMount(() => {
 	articlePrefetcher.setOnOgImageFetched(() => {
@@ -141,7 +140,10 @@ onMount(() => {
 				}
 			})
 			.catch((err) => {
-				console.warn("[SwipeFeedScreen] Batch image prefetch for new articleId failed:", err);
+				console.warn(
+					"[SwipeFeedScreen] Batch image prefetch for new articleId failed:",
+					err,
+				);
 			});
 	});
 	return () => articlePrefetcher.setOnArticleIdCached(null);

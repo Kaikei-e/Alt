@@ -267,9 +267,7 @@ describe("SwipeFeedCard", () => {
 
 	describe("summary abort on destroy", () => {
 		it("aborts summary stream when component is destroyed", async () => {
-			const { streamSummarizeWithAbortAdapter } = await import(
-				"$lib/connect"
-			);
+			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
 			const mockAbortController = new AbortController();
 			const abortSpy = vi.spyOn(mockAbortController, "abort");
 

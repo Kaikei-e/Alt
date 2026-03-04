@@ -163,7 +163,9 @@ describe("VisualPreviewCard", () => {
 			});
 
 			const img = page.getByTestId("thumbnail-image");
-			await expect.element(img).toHaveAttribute("src", defaultProps.thumbnailUrl);
+			await expect
+				.element(img)
+				.toHaveAttribute("src", defaultProps.thumbnailUrl);
 		});
 
 		it("thumbnail image has lazy loading", async () => {
