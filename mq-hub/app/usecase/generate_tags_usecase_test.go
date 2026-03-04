@@ -47,7 +47,7 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 		}
 
 		// Expect Publish to be called with TagGenerationRequested event
-		mockPort.On("Publish", ctx, domain.StreamKeyArticles, mock.MatchedBy(func(e *domain.Event) bool {
+		mockPort.On("Publish", ctx, domain.StreamKeyTags, mock.MatchedBy(func(e *domain.Event) bool {
 			return e.EventType == domain.EventTypeTagGenerationRequested &&
 				e.Metadata["reply_to"] != "" &&
 				e.Metadata["correlation_id"] != ""
@@ -88,7 +88,7 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 			TimeoutMs: 5000,
 		}
 
-		mockPort.On("Publish", ctx, domain.StreamKeyArticles, mock.AnythingOfType("*domain.Event")).
+		mockPort.On("Publish", ctx, domain.StreamKeyTags, mock.AnythingOfType("*domain.Event")).
 			Return("", errors.New("redis error"))
 
 		// Cleanup should still be attempted
@@ -115,7 +115,7 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 			TimeoutMs: 1000,
 		}
 
-		mockPort.On("Publish", ctx, domain.StreamKeyArticles, mock.AnythingOfType("*domain.Event")).
+		mockPort.On("Publish", ctx, domain.StreamKeyTags, mock.AnythingOfType("*domain.Event")).
 			Return("1234567890123-0", nil)
 
 		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 1*time.Second).
@@ -155,11 +155,11 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 			Payload:   replyPayload,
 		}
 
-		mockPort.On("Publish", ctx, domain.StreamKeyArticles, mock.AnythingOfType("*domain.Event")).
+		mockPort.On("Publish", ctx, domain.StreamKeyTags, mock.AnythingOfType("*domain.Event")).
 			Return("123-0", nil)
 
-		// Default timeout should be 30 seconds
-		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 30*time.Second).
+		// Default timeout should be 60 seconds
+		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 60*time.Second).
 			Return(replyEvent, nil)
 
 		mockPort.On("DeleteStream", ctx, mock.AnythingOfType("domain.StreamKey")).Return(nil)
@@ -195,7 +195,7 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 			Payload:   replyPayload,
 		}
 
-		mockPort.On("Publish", ctx, domain.StreamKeyArticles, mock.AnythingOfType("*domain.Event")).
+		mockPort.On("Publish", ctx, domain.StreamKeyTags, mock.AnythingOfType("*domain.Event")).
 			Return("123-0", nil)
 
 		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 5*time.Second).
@@ -224,7 +224,7 @@ func TestGenerateTagsUsecase_GenerateTagsForArticle(t *testing.T) {
 			TimeoutMs: 1000,
 		}
 
-		mockPort.On("Publish", ctx, domain.StreamKeyArticles, mock.AnythingOfType("*domain.Event")).
+		mockPort.On("Publish", ctx, domain.StreamKeyTags, mock.AnythingOfType("*domain.Event")).
 			Return("123-0", nil)
 
 		mockPort.On("SubscribeWithTimeout", ctx, mock.AnythingOfType("domain.StreamKey"), 1*time.Second).

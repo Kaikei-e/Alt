@@ -15,7 +15,7 @@ import (
 
 const (
 	// DefaultTagGenerationTimeoutMs is the default timeout for tag generation.
-	DefaultTagGenerationTimeoutMs = 30000
+	DefaultTagGenerationTimeoutMs = 60000
 	// ReplyStreamPrefix is the prefix for reply streams.
 	ReplyStreamPrefix = "alt:replies:tags:"
 )
@@ -100,8 +100,8 @@ func (u *GenerateTagsUsecase) GenerateTagsForArticle(ctx context.Context, req *G
 		}, fmt.Errorf("create event: %w", err)
 	}
 
-	// Publish request to articles stream
-	_, err = u.streamPort.Publish(ctx, domain.StreamKeyArticles, event)
+	// Publish request to dedicated tags stream
+	_, err = u.streamPort.Publish(ctx, domain.StreamKeyTags, event)
 	if err != nil {
 		return &GenerateTagsResponse{
 			Success:      false,
