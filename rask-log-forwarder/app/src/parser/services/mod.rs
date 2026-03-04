@@ -3,6 +3,8 @@
 //! This module provides parsers for different service types:
 //! - Nginx (access and error logs)
 //! - Go structured logs (JSON format)
+//! - Python structlog logs (JSONRenderer format)
+//! - Rust tracing logs (tracing_subscriber fmt().json() format)
 //! - PostgreSQL logs
 //! - Meilisearch logs
 
@@ -10,6 +12,8 @@ mod go;
 mod meilisearch;
 mod nginx;
 mod postgres;
+mod python_structlog;
+mod rust_tracing;
 
 use super::docker::ParseError;
 use chrono::{DateTime, Utc};
@@ -20,6 +24,8 @@ pub use go::GoStructuredParser;
 pub use meilisearch::MeilisearchParser;
 pub use nginx::NginxParser;
 pub use postgres::PostgresParser;
+pub use python_structlog::PythonStructlogParser;
+pub use rust_tracing::RustTracingParser;
 
 // Re-export domain LogLevel for backward compatibility
 pub use crate::domain::LogLevel;

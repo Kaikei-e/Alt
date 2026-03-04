@@ -4,7 +4,7 @@ use super::{
     schema::NginxLogEntry,
     services::{
         GoStructuredParser, LogLevel, MeilisearchParser, NginxParser, ParsedLogEntry,
-        PostgresParser, ServiceParser,
+        PostgresParser, PythonStructlogParser, RustTracingParser, ServiceParser,
     },
 };
 use crate::collector::ContainerInfo;
@@ -113,6 +113,8 @@ impl UniversalParser {
         // Register built-in parsers
         registry.register_parser("nginx", NginxParser::new());
         registry.register_parser("go", GoStructuredParser::new());
+        registry.register_parser("python-structlog", PythonStructlogParser::new());
+        registry.register_parser("rust-tracing", RustTracingParser::new());
         registry.register_parser("postgres", PostgresParser::new());
         registry.register_parser("meilisearch", MeilisearchParser::new());
 
@@ -125,6 +127,13 @@ impl UniversalParser {
         registry.map_service("tag-generator", "go");
         registry.map_service("news-creator", "go");
         registry.map_service("auth-hub", "go");
+        registry.map_service("mq-hub", "go");
+        registry.map_service("rag-orchestrator", "go");
+        registry.map_service("news-creator-backend", "go");
+        registry.map_service("recap-subworker", "python-structlog");
+        registry.map_service("recap-evaluator", "python-structlog");
+        registry.map_service("dashboard", "go");
+        registry.map_service("recap-worker", "rust-tracing");
         registry.map_service("db", "postgres");
         registry.map_service("postgres", "postgres");
         registry.map_service("postgresql", "postgres");
@@ -577,6 +586,92 @@ mod tests {
         assert!(results.iter().all(|r| r.is_ok()));
     }
 
+    #[test]
+    fn test_registry_maps_all_services() {
+        let parser = UniversalParser::new();
+        let registry = parser.registry();
+
+        // Verify all Go services have explicit parser mappings
+        let expected_go_services = [
+            "alt-backend",
+            "alt-frontend",
+            "pre-processor",
+            "search-indexer",
+            "tag-generator",
+            "news-creator",
+            "auth-hub",
+            "mq-hub",
+            "rag-orchestrator",
+            "news-creator-backend",
+            "dashboard",
+        ];
+
+        for service in &expected_go_services {
+            let p = registry
+                .get_parser_for_service(service)
+                .unwrap_or_else(|| panic!("Service '{service}' should have a parser mapping"));
+            assert_eq!(
+                p.service_type(),
+                "go",
+                "Service '{service}' should map to go parser"
+            );
+        }
+
+        // recap-worker should map to rust-tracing
+        let recap_parser = registry
+            .get_parser_for_service("recap-worker")
+            .expect("recap-worker should have a parser");
+        assert_eq!(recap_parser.service_type(), "rust-tracing");
+
+        // recap-subworker and recap-evaluator should map to python-structlog
+        for service in &["recap-subworker", "recap-evaluator"] {
+            let p = registry
+                .get_parser_for_service(service)
+                .unwrap_or_else(|| panic!("Service '{service}' should have a parser mapping"));
+            assert_eq!(
+                p.service_type(),
+                "python-structlog",
+                "Service '{service}' should map to python-structlog parser"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_universal_parser_with_rust_tracing_recap_worker() {
+        let container_info = ContainerInfo {
+            id: "recap123".to_string(),
+            service_name: "recap-worker".to_string(),
+            labels: {
+                let mut l = HashMap::new();
+                l.insert("rask.group".to_string(), "recap-worker".to_string());
+                l
+            },
+            group: Some("recap-worker".to_string()),
+        };
+        let parser = UniversalParser::new();
+
+        // Rust tracing fmt().json() format as Docker JSON
+        let docker_log = r#"{"log":"{\"timestamp\":\"2026-03-04T10:00:00Z\",\"level\":\"INFO\",\"fields\":{\"message\":\"Processing recap job\",\"alt.job.id\":\"abc-123\",\"alt.processing.stage\":\"clustering\"}}\n","stream":"stdout","time":"2026-03-04T10:00:00Z"}"#;
+
+        let entry = parser
+            .parse_docker_log(docker_log.as_bytes(), &container_info)
+            .await
+            .expect("Failed to parse Rust tracing docker log");
+
+        assert_eq!(entry.service_type, "recap-worker");
+        assert_eq!(entry.log_type, "structured");
+        assert_eq!(entry.level, Some(LogLevel::Info));
+        assert_eq!(entry.message, "Processing recap job");
+        assert_eq!(
+            entry.fields.get("alt.job.id"),
+            Some(&"abc-123".to_string())
+        );
+        assert_eq!(
+            entry.fields.get("alt.processing.stage"),
+            Some(&"clustering".to_string())
+        );
+    }
+
     #[tokio::test]
     async fn test_trace_context_extraction() {
         let container_info = create_go_backend_container_info();
@@ -600,5 +695,75 @@ mod tests {
         // Verify trace_id and span_id are NOT in the fields map (removed during extraction)
         assert!(!entry.fields.contains_key("trace_id"));
         assert!(!entry.fields.contains_key("span_id"));
+    }
+
+    #[tokio::test]
+    async fn test_universal_parser_with_python_structlog_recap_evaluator() {
+        let container_info = ContainerInfo {
+            id: "eval123".to_string(),
+            service_name: "recap-evaluator".to_string(),
+            labels: {
+                let mut l = HashMap::new();
+                l.insert("rask.group".to_string(), "recap-evaluator".to_string());
+                l
+            },
+            group: Some("recap-evaluator".to_string()),
+        };
+        let parser = UniversalParser::new();
+
+        // Python structlog JSONRenderer() format as Docker JSON
+        let docker_log = r#"{"log":"{\"event\":\"recap-evaluator started successfully\",\"alt.ai.pipeline\":\"recap-evaluation\",\"timestamp\":\"2026-03-03T17:38:47.998241Z\",\"service\":\"recap-evaluator\",\"level\":\"info\"}\n","stream":"stdout","time":"2026-03-03T17:38:48Z"}"#;
+
+        let entry = parser
+            .parse_docker_log(docker_log.as_bytes(), &container_info)
+            .await
+            .expect("Failed to parse Python structlog docker log");
+
+        assert_eq!(entry.service_type, "recap-evaluator");
+        assert_eq!(entry.log_type, "structured");
+        assert_eq!(entry.level, Some(LogLevel::Info));
+        assert_eq!(entry.message, "recap-evaluator started successfully");
+        assert_eq!(
+            entry.fields.get("alt.ai.pipeline"),
+            Some(&"recap-evaluation".to_string())
+        );
+        assert_eq!(
+            entry.fields.get("service"),
+            Some(&"recap-evaluator".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn test_universal_parser_with_python_structlog_recap_subworker() {
+        let container_info = ContainerInfo {
+            id: "sub456".to_string(),
+            service_name: "recap-subworker".to_string(),
+            labels: {
+                let mut l = HashMap::new();
+                l.insert("rask.group".to_string(), "recap-subworker".to_string());
+                l
+            },
+            group: Some("recap-subworker".to_string()),
+        };
+        let parser = UniversalParser::new();
+
+        let docker_log = r#"{"log":"{\"event\":\"Embedding generation completed\",\"alt.ai.pipeline\":\"recap-subwork\",\"embedding_count\":128,\"timestamp\":\"2026-03-03T18:00:00Z\",\"service\":\"recap-subworker\",\"level\":\"info\"}\n","stream":"stdout","time":"2026-03-03T18:00:00Z"}"#;
+
+        let entry = parser
+            .parse_docker_log(docker_log.as_bytes(), &container_info)
+            .await
+            .expect("Failed to parse Python structlog docker log");
+
+        assert_eq!(entry.service_type, "recap-subworker");
+        assert_eq!(entry.log_type, "structured");
+        assert_eq!(entry.message, "Embedding generation completed");
+        assert_eq!(
+            entry.fields.get("alt.ai.pipeline"),
+            Some(&"recap-subwork".to_string())
+        );
+        assert_eq!(
+            entry.fields.get("embedding_count"),
+            Some(&"128".to_string())
+        );
     }
 }
