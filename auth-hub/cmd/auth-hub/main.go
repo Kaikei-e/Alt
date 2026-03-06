@@ -26,6 +26,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 func main() {
@@ -136,9 +137,17 @@ func main() {
 	e.Use(middleware.Recover())
 
 	// Rate limiters per endpoint group
-	validateRL := appmiddleware.NewRateLimiter(100.0/60.0, 10) // 100 req/min
+	validateBurst := int(cfg.ValidateRateLimit * 10) // burst = 10x rate
+	if validateBurst < 10 {
+		validateBurst = 10
+	}
+	validateRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.ValidateRateLimit), validateBurst)
 	sessionRL := appmiddleware.NewRateLimiter(30.0/60.0, 5)    // 30 req/min
-	csrfRL := appmiddleware.NewRateLimiter(10.0/60.0, 3)       // 10 req/min
+	csrfBurst := int(cfg.CSRFRateLimit * 10)
+	if csrfBurst < 10 {
+		csrfBurst = 10
+	}
+	csrfRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.CSRFRateLimit), csrfBurst)
 	internalRL := appmiddleware.NewRateLimiter(10.0/60.0, 3)   // 10 req/min
 
 	// Public routes

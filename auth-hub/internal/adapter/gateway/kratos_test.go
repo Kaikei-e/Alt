@@ -66,6 +66,19 @@ func TestKratosGateway_GetFirstIdentityID_ServerError(t *testing.T) {
 	assert.True(t, errors.Is(err, domain.ErrKratosUnavailable))
 }
 
+func TestKratosGateway_ValidateSession_429_ReturnsRateLimited(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	gw := NewKratosGateway(server.URL, "", 5*time.Second)
+	identity, err := gw.ValidateSession(context.Background(), "ory_kratos_session=test-cookie")
+
+	assert.Nil(t, identity)
+	assert.True(t, errors.Is(err, domain.ErrRateLimited))
+}
+
 func TestKratosGateway_ValidateSession_EmptyCookie(t *testing.T) {
 	gw := NewKratosGateway("http://unused", "", 5*time.Second)
 	identity, err := gw.ValidateSession(context.Background(), "")

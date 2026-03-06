@@ -27,8 +27,8 @@ func NewKratosGateway(baseURL, adminBaseURL string, timeout time.Duration) *Krat
 	}
 
 	transport := &http.Transport{
-		MaxIdleConns:        100,
-		MaxIdleConnsPerHost: 20,
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 50,
 		IdleConnTimeout:     90 * time.Second,
 	}
 
@@ -59,6 +59,9 @@ func (g *KratosGateway) ValidateSession(ctx context.Context, cookie string) (*do
 		if resp != nil {
 			if resp.StatusCode == http.StatusUnauthorized {
 				return nil, domain.ErrAuthFailed
+			}
+			if resp.StatusCode == http.StatusTooManyRequests {
+				return nil, fmt.Errorf("%w: kratos returned status 429", domain.ErrRateLimited)
 			}
 			return nil, fmt.Errorf("%w: kratos returned status %d", domain.ErrKratosUnavailable, resp.StatusCode)
 		}

@@ -118,6 +118,94 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+func TestLoad_ValidateRateLimit_Default(t *testing.T) {
+	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	defer func() {
+		os.Unsetenv("CSRF_SECRET")
+		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("VALIDATE_RATE_LIMIT")
+	}()
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.InDelta(t, 100.0/60.0, cfg.ValidateRateLimit, 0.001)
+}
+
+func TestLoad_ValidateRateLimit_EnvOverride(t *testing.T) {
+	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("VALIDATE_RATE_LIMIT", "50.0")
+	defer func() {
+		os.Unsetenv("CSRF_SECRET")
+		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("VALIDATE_RATE_LIMIT")
+	}()
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.InDelta(t, 50.0, cfg.ValidateRateLimit, 0.001)
+}
+
+func TestLoad_ValidateRateLimit_Invalid(t *testing.T) {
+	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("VALIDATE_RATE_LIMIT", "not-a-number")
+	defer func() {
+		os.Unsetenv("CSRF_SECRET")
+		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("VALIDATE_RATE_LIMIT")
+	}()
+
+	_, err := Load()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid VALIDATE_RATE_LIMIT")
+}
+
+func TestLoad_CSRFRateLimit_Default(t *testing.T) {
+	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	defer func() {
+		os.Unsetenv("CSRF_SECRET")
+		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("CSRF_RATE_LIMIT")
+	}()
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.InDelta(t, 100.0, cfg.CSRFRateLimit, 0.001)
+}
+
+func TestLoad_CSRFRateLimit_EnvOverride(t *testing.T) {
+	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("CSRF_RATE_LIMIT", "50.0")
+	defer func() {
+		os.Unsetenv("CSRF_SECRET")
+		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("CSRF_RATE_LIMIT")
+	}()
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.InDelta(t, 50.0, cfg.CSRFRateLimit, 0.001)
+}
+
+func TestLoad_CSRFRateLimit_Invalid(t *testing.T) {
+	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	os.Setenv("BACKEND_TOKEN_SECRET", "this-is-a-valid-backend-token-secret-32-chars-long")
+	os.Setenv("CSRF_RATE_LIMIT", "not-a-number")
+	defer func() {
+		os.Unsetenv("CSRF_SECRET")
+		os.Unsetenv("BACKEND_TOKEN_SECRET")
+		os.Unsetenv("CSRF_RATE_LIMIT")
+	}()
+
+	_, err := Load()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid CSRF_RATE_LIMIT")
+}
+
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
 		name        string

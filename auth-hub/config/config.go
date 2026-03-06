@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,6 +20,8 @@ type Config struct {
 	BackendTokenIssuer   string        // JWT issuer claim
 	BackendTokenAudience string        // JWT audience claim
 	BackendTokenTTL      time.Duration // JWT token TTL
+	ValidateRateLimit    float64       // Validate endpoint: requests per second (default: 100/60 ≈ 1.67)
+	CSRFRateLimit        float64       // CSRF endpoint: requests per second (default: 100)
 }
 
 // Load reads configuration from environment variables with sensible defaults
@@ -34,6 +37,8 @@ func Load() (*Config, error) {
 		BackendTokenIssuer:   getEnv("BACKEND_TOKEN_ISSUER", "auth-hub"),
 		BackendTokenAudience: getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
 		BackendTokenTTL:      5 * time.Minute, // Default 5 minutes
+		ValidateRateLimit:    100.0 / 60.0,    // Default: ~1.67 req/s (100 req/min)
+		CSRFRateLimit:        100.0,           // Default: 100 req/s
 	}
 
 	// Parse CACHE_TTL if provided
@@ -43,6 +48,24 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("invalid CACHE_TTL format: %w", err)
 		}
 		config.CacheTTL = duration
+	}
+
+	// Parse VALIDATE_RATE_LIMIT if provided (requests per second)
+	if v := os.Getenv("VALIDATE_RATE_LIMIT"); v != "" {
+		r, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid VALIDATE_RATE_LIMIT: %w", err)
+		}
+		config.ValidateRateLimit = r
+	}
+
+	// Parse CSRF_RATE_LIMIT if provided (requests per second)
+	if v := os.Getenv("CSRF_RATE_LIMIT"); v != "" {
+		r, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CSRF_RATE_LIMIT: %w", err)
+		}
+		config.CSRFRateLimit = r
 	}
 
 	// Parse BACKEND_TOKEN_TTL if provided
