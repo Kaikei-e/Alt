@@ -1,0 +1,85 @@
+# compose/pgbouncer.yaml - PgBouncer connection pooling
+# Transaction-mode pooling to reduce PostgreSQL connection count
+
+include:
+  - base.yaml
+
+services:
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    restart: always
+    environment:
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${POSTGRES_DB}
+      - LISTEN_PORT=6432
+      - AUTH_TYPE=plain
+      - POOL_MODE=transaction
+      - DEFAULT_POOL_SIZE=30
+      - MIN_POOL_SIZE=5
+      - MAX_DB_CONNECTIONS=100
+      - MAX_CLIENT_CONN=1000
+      - MAX_PREPARED_STATEMENTS=0
+      - SERVER_RESET_QUERY=DISCARD ALL
+      - IGNORE_STARTUP_PARAMETERS=extra_float_digits,search_path,prepared_statements
+      - QUERY_WAIT_TIMEOUT=30
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U ${DB_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    labels:
+      - rask.group=pgbouncer
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  pgbouncer-kratos:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    restart: always
+    environment:
+      - DATABASE_URL=postgres://${KRATOS_DB_USER:-kratos_user}:${KRATOS_DB_PASSWORD}@kratos-db:5432/${KRATOS_DB_NAME:-kratos}
+      - LISTEN_PORT=6432
+      - AUTH_TYPE=plain
+      - POOL_MODE=transaction
+      - DEFAULT_POOL_SIZE=20
+      - MIN_POOL_SIZE=5
+      - MAX_DB_CONNECTIONS=60
+      - MAX_CLIENT_CONN=500
+      # PgBouncer 1.21+: prepared statement tracking for transaction pooling
+      - MAX_PREPARED_STATEMENTS=256
+      - SERVER_RESET_QUERY=DISCARD ALL
+      - IGNORE_STARTUP_PARAMETERS=extra_float_digits,search_path,prepared_statements
+      - QUERY_WAIT_TIMEOUT=30
+    depends_on:
+      kratos-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -p 6432"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - alt-network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    labels:
+      - rask.group=pgbouncer-kratos
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

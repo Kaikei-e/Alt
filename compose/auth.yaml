@@ -48,8 +48,9 @@ services:
     environment:
       - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
       - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password
-      - KRATOS_DB_HOST=${KRATOS_DB_HOST:-kratos-db}
-      - KRATOS_DB_PORT=${KRATOS_DB_PORT:-5432}
+      # マイグレーションはPgBouncerをバイパスし直接DBに接続（DDL/session-level lock必要）
+      - KRATOS_DB_HOST=kratos-db
+      - KRATOS_DB_PORT=5432
       - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
       - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
     secrets:
@@ -74,8 +75,8 @@ services:
     environment:
       - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
       - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password
-      - KRATOS_DB_HOST=${KRATOS_DB_HOST:-kratos-db}
-      - KRATOS_DB_PORT=${KRATOS_DB_PORT:-5432}
+      - KRATOS_DB_HOST=pgbouncer-kratos
+      - KRATOS_DB_PORT=6432
       - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
       - KRATOS_DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
@@ -103,7 +104,7 @@ services:
       - ../kratos/entrypoint.sh:/entrypoint.sh:ro
     entrypoint: ["/entrypoint.sh"]
     depends_on:
-      kratos-db:
+      pgbouncer-kratos:
         condition: service_healthy
       kratos-migrate:
         condition: service_completed_successfully

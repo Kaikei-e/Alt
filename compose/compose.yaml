@@ -15,6 +15,7 @@ include:
   - mq.yaml
   - observability.yaml
   - perf.yaml
+  - pgbouncer.yaml
   - rag.yaml
   - recap.yaml
   - workers.yaml

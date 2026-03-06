@@ -166,10 +166,12 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      pgbouncer:
+        condition: service_healthy
     environment:
       - CONNECT_PORT=9101
-      - DB_HOST=db
-      - DB_PORT=5432
+      - DB_HOST=pgbouncer
+      - DB_PORT=6432
       - DB_USER=${DB_USER}
       - DB_PASSWORD_FILE=/run/secrets/db_password
       - DB_NAME=${POSTGRES_DB}
@@ -183,6 +185,8 @@ services:
       - AUTH_HUB_URL=http://auth-hub:8888
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub:9500
+      - DB_MAX_CONNS=30
+      - DB_MIN_CONNS=5
       - IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
