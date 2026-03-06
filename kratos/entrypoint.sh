@@ -22,7 +22,12 @@ DB_PORT=${KRATOS_DB_PORT:-5432}
 DB_NAME=${KRATOS_DB_NAME:-kratos}
 DB_SSLMODE=${KRATOS_DB_SSLMODE:-disable}
 
-export DSN="postgres://${DB_USER}:${KRATOS_DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=${DB_SSLMODE}"
+# PgBouncer経由（port 6432）の場合はprepared_statementsを無効化
+DSN_PARAMS="sslmode=${DB_SSLMODE}&max_conns=30&max_idle_conns=15"
+if [ "$DB_PORT" = "6432" ]; then
+    DSN_PARAMS="${DSN_PARAMS}&prepared_statements=false"
+fi
+export DSN="postgres://${DB_USER}:${KRATOS_DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?${DSN_PARAMS}"
 
 # Expand environment variables in kratos.yml using sed
 if [ -f /etc/config/kratos/kratos.yml ]; then
