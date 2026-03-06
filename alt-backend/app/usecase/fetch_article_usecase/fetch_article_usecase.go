@@ -156,9 +156,9 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 		return "", "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
 	}
 
-	// 4. Fetch from Web (with 15s timeout to prevent snowball latency)
+	// 4. Fetch from Web (with 25s timeout to absorb rate limiter wait + HTTP fetch)
 	logger.Logger.InfoContext(ctx, "Fetching article from Web", "url", urlStr)
-	fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
+	fetchCtx, fetchCancel := context.WithTimeout(ctx, 25*time.Second)
 	defer fetchCancel()
 	contentPtr, err := u.articleFetcher.FetchArticleContents(fetchCtx, urlStr)
 	if err != nil {

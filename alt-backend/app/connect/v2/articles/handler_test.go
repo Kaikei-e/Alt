@@ -616,6 +616,28 @@ func (m *mockArticleUsecase) FetchCompliantArticle(ctx context.Context, articleU
 	return m.content, m.articleID, m.ogImageURL, nil
 }
 
+func TestFetchArticleContent_RateLimitWaitFailed_ReturnsResourceExhausted(t *testing.T) {
+	mockUsecase := &mockArticleUsecase{
+		err: fmt.Errorf("fetch failed: rate limit wait failed for %q: %w", "https://zenn.dev/article", context.DeadlineExceeded),
+	}
+	container := &di.ApplicationComponents{
+		ArticleUsecase: mockUsecase,
+	}
+	handler := NewHandler(container, &config.Config{}, slog.Default())
+	ctx := createAuthContext()
+
+	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
+		Url: "https://zenn.dev/article",
+	})
+	_, err := handler.FetchArticleContent(ctx, req)
+
+	require.Error(t, err)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeResourceExhausted, connectErr.Code())
+	assert.Contains(t, connectErr.Message(), "rate limited")
+}
+
 func TestFetchArticleContent_ExternalHTTPError_404_ReturnsNotFound(t *testing.T) {
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 404, URL: "https://example.com/deleted"}),

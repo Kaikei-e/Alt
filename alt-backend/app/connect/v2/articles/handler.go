@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -96,6 +97,11 @@ func (h *Handler) FetchArticleContent(
 				return nil, connect.NewError(connect.CodeUnavailable,
 					fmt.Errorf("external site returned %d", httpErr.StatusCode))
 			}
+		}
+
+		if strings.Contains(err.Error(), "rate limit wait failed") {
+			return nil, connect.NewError(connect.CodeResourceExhausted,
+				fmt.Errorf("rate limited: please wait before fetching another article from this site"))
 		}
 
 		if errors.Is(err, context.DeadlineExceeded) {

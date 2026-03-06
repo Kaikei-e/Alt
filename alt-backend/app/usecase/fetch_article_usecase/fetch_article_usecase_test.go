@@ -533,20 +533,20 @@ func TestFetchCompliantArticle_WebFetchTimeout(t *testing.T) {
 	mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
 	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
 
-	// Simulate a fetch that respects context cancellation (the 15s usecase timeout)
+	// Simulate a fetch that respects context cancellation (the 25s usecase timeout)
 	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).DoAndReturn(
 		func(ctx context.Context, _ string) (*string, error) {
-			// Verify that the context has a deadline (from the 15s timeout)
+			// Verify that the context has a deadline (from the 25s timeout)
 			deadline, ok := ctx.Deadline()
 			if !ok {
 				t.Error("Expected context to have a deadline from web fetch timeout")
 				content := "no deadline"
 				return &content, nil
 			}
-			// The deadline should be ~15s from now (give or take)
+			// The deadline should be ~25s from now (give or take)
 			remaining := time.Until(deadline)
-			if remaining > 16*time.Second || remaining < 10*time.Second {
-				t.Errorf("Expected ~15s timeout, got remaining %v", remaining)
+			if remaining > 26*time.Second || remaining < 20*time.Second {
+				t.Errorf("Expected ~25s timeout, got remaining %v", remaining)
 			}
 			return nil, context.DeadlineExceeded
 		},
