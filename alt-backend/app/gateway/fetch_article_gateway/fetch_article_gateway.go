@@ -20,6 +20,7 @@ type FetchArticleGateway struct {
 	rateLimiter   *rate_limiter.HostRateLimiter
 	httpClient    *http.Client
 	ssrfValidator *security.SSRFValidator
+	fetchSem      chan struct{}
 }
 
 func NewFetchArticleGateway(rateLimiter *rate_limiter.HostRateLimiter, httpClient *http.Client) *FetchArticleGateway {
@@ -37,6 +38,7 @@ func NewFetchArticleGateway(rateLimiter *rate_limiter.HostRateLimiter, httpClien
 		rateLimiter:   rateLimiter,
 		httpClient:    secureClient,
 		ssrfValidator: validator,
+		fetchSem:      make(chan struct{}, 3),
 	}
 }
 
@@ -57,10 +59,21 @@ func NewFetchArticleGatewayWithDeps(rateLimiter *rate_limiter.HostRateLimiter, h
 		rateLimiter:   rateLimiter,
 		httpClient:    client,
 		ssrfValidator: validator,
+		fetchSem:      make(chan struct{}, 3),
 	}
 }
 
 func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleURL string) (*string, error) {
+	// Acquire global fetch semaphore to limit concurrent external fetches
+	if g.fetchSem != nil {
+		select {
+		case g.fetchSem <- struct{}{}:
+			defer func() { <-g.fetchSem }()
+		case <-ctx.Done():
+			return nil, fmt.Errorf("semaphore wait cancelled for %q: %w", articleURL, ctx.Err())
+		}
+	}
+
 	// Rate limit per host
 	if g.rateLimiter != nil {
 		if err := g.rateLimiter.WaitForHost(ctx, articleURL); err != nil {

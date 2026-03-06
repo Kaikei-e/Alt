@@ -226,8 +226,8 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		// Expect Commit
 		mockPool.ExpectCommit()
 
-		// Expect UpsertArticle to be called (best effort, so ignore error return)
-		mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+		// RAG upsert is async (goroutine); use AnyTimes to avoid race with ctrl.Finish
+		mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 		handler := handleFetchArticle(container)
 		err := handler(c)
@@ -235,6 +235,9 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "Content") // Extracted text
+
+		// Allow async RAG goroutine to complete before checking pool expectations
+		time.Sleep(50 * time.Millisecond)
 
 		if err := mockPool.ExpectationsWereMet(); err != nil {
 			t.Errorf("there were unfulfilled expectations: %s", err)

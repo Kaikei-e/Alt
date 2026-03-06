@@ -83,13 +83,7 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer func() {
-		if err != nil {
-			if rbErr := tx.Rollback(ctx); rbErr != nil {
-				logger.SafeErrorContext(ctx, "failed to rollback transaction", "error", rbErr, "original_error", err)
-			}
-		}
-	}()
+	defer tx.Rollback(ctx) // Always rollback - no-op after successful Commit
 
 	// 1. Upsert Article
 	articleID, err := r.UpsertArticleWithTx(ctx, tx, cleanTitle, cleanContent, cleanURL, userContext.UserID, feedID)

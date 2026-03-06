@@ -17,7 +17,7 @@ const insertOutboxQuery = `
 
 // SaveOutboxEventWithTx inserts an event into the outbox table using a provided transaction.
 func (r *AltDBRepository) SaveOutboxEventWithTx(ctx context.Context, tx pgx.Tx, eventType string, payload []byte) error {
-	if _, err := tx.Exec(ctx, insertOutboxQuery, eventType, payload); err != nil {
+	if _, err := tx.Exec(ctx, insertOutboxQuery, eventType, string(payload)); err != nil {
 		err = fmt.Errorf("failed to insert outbox event: %w", err)
 		// We can't log article_id easily here without parsing payload, so general error log
 		logger.SafeErrorContext(ctx, "failed to save outbox event", "event_type", eventType, "error", err)

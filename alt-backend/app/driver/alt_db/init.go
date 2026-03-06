@@ -9,6 +9,7 @@ import (
 
 	"alt/utils/logger"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -40,6 +41,10 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 		minConns = math.MaxInt32
 	}
 	config.MinConns = int32(minConns)
+
+	// PgBouncer transaction pooling互換: simple protocolを使用
+	// 拡張プロトコルのprepared statementキャッシュがtransaction poolingで問題になるのを回避
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 
 	maxConnLifetime, _ := time.ParseDuration(getEnvOrDefault("DB_MAX_CONN_LIFE", "1h"))
 	config.MaxConnLifetime = maxConnLifetime

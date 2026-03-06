@@ -156,9 +156,11 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 		return "", "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
 	}
 
-	// 4. Fetch from Web
+	// 4. Fetch from Web (with 15s timeout to prevent snowball latency)
 	logger.Logger.InfoContext(ctx, "Fetching article from Web", "url", urlStr)
-	contentPtr, err := u.articleFetcher.FetchArticleContents(ctx, urlStr)
+	fetchCtx, fetchCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer fetchCancel()
+	contentPtr, err := u.articleFetcher.FetchArticleContents(fetchCtx, urlStr)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to fetch article content", "error", err, "url", urlStr)
 		return "", "", "", fmt.Errorf("fetch failed: %w", err)
@@ -196,9 +198,7 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 			}
 		}
 
-		// 8. Upsert to RAG (Step A: Direct Call)
-		// Using time.Now() for PublishedAt as a temporary measure until HTML parser supports date extraction
-
+		// 8. Upsert to RAG (async, fire-and-forget)
 		t := time.Now()
 		upsertInput := rag_integration_port.UpsertArticleInput{
 			ArticleID:   newID,
@@ -208,12 +208,15 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 			PublishedAt: &t,
 			UserID:      userContext.UserID.String(),
 		}
-		if err := u.ragIntegration.UpsertArticle(ctx, upsertInput); err != nil {
-			// Log error but do not fail the request, as Article is already saved
-			logger.Logger.ErrorContext(ctx, "Failed to upsert article to RAG", "error", err, "article_id", newID)
-		} else {
-			logger.Logger.InfoContext(ctx, "Article upserted to RAG", "article_id", newID)
-		}
+		go func() {
+			ragCtx, ragCancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer ragCancel()
+			if ragErr := u.ragIntegration.UpsertArticle(ragCtx, upsertInput); ragErr != nil {
+				logger.Logger.Error("Failed to upsert article to RAG (async)", "error", ragErr, "article_id", newID)
+			} else {
+				logger.Logger.Info("Article upserted to RAG (async)", "article_id", newID)
+			}
+		}()
 	}
 
 	return contentStr, newID, extractedOgImage, nil
