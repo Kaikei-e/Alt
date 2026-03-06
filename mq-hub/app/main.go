@@ -34,7 +34,8 @@ func main() {
 
 	// Initialize Redis driver with connection pool
 	redisDriver, err := driver.NewRedisDriverWithURLAndOptions(cfg.RedisURL, &driver.RedisDriverOptions{
-		PoolSize: cfg.RedisPoolSize,
+		PoolSize:     cfg.RedisPoolSize,
+		StreamMaxLen: cfg.StreamMaxLen,
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to connect to Redis", "error", err)

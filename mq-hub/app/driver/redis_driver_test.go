@@ -2,6 +2,7 @@ package driver
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -94,6 +95,95 @@ func TestRedisDriver_PublishBatch(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Empty(t, messageIDs)
+	})
+}
+
+func TestRedisDriver_Publish_WithMaxLen(t *testing.T) {
+	t.Run("trims stream to approximate max length", func(t *testing.T) {
+		mr := NewMiniredis(t)
+		driver, err := NewRedisDriverWithOptions(mr.Addr(), &RedisDriverOptions{
+			StreamMaxLen: 5,
+		})
+		require.NoError(t, err)
+		defer func() {
+			driver.Close()
+			mr.Close()
+		}()
+
+		ctx := context.Background()
+		for i := 0; i < 10; i++ {
+			event := &domain.Event{
+				EventID:   fmt.Sprintf("evt-%d", i),
+				EventType: domain.EventTypeArticleCreated,
+				Source:    "test",
+				CreatedAt: time.Now(),
+			}
+			_, err := driver.Publish(ctx, domain.StreamKeyArticles, event)
+			require.NoError(t, err)
+		}
+
+		info, err := driver.GetStreamInfo(ctx, domain.StreamKeyArticles)
+		require.NoError(t, err)
+		// Approximate trimming allows some extra, but should be less than 10
+		assert.LessOrEqual(t, info.Length, int64(10))
+	})
+
+	t.Run("no trimming when StreamMaxLen is 0", func(t *testing.T) {
+		mr := NewMiniredis(t)
+		driver, err := NewRedisDriver(mr.Addr())
+		require.NoError(t, err)
+		defer func() {
+			driver.Close()
+			mr.Close()
+		}()
+
+		ctx := context.Background()
+		for i := 0; i < 10; i++ {
+			event := &domain.Event{
+				EventID:   fmt.Sprintf("evt-%d", i),
+				EventType: domain.EventTypeArticleCreated,
+				Source:    "test",
+				CreatedAt: time.Now(),
+			}
+			_, err := driver.Publish(ctx, domain.StreamKeyArticles, event)
+			require.NoError(t, err)
+		}
+
+		info, err := driver.GetStreamInfo(ctx, domain.StreamKeyArticles)
+		require.NoError(t, err)
+		assert.Equal(t, int64(10), info.Length)
+	})
+}
+
+func TestRedisDriver_PublishBatch_WithMaxLen(t *testing.T) {
+	t.Run("trims stream to approximate max length", func(t *testing.T) {
+		mr := NewMiniredis(t)
+		driver, err := NewRedisDriverWithOptions(mr.Addr(), &RedisDriverOptions{
+			StreamMaxLen: 5,
+		})
+		require.NoError(t, err)
+		defer func() {
+			driver.Close()
+			mr.Close()
+		}()
+
+		ctx := context.Background()
+		events := make([]*domain.Event, 10)
+		for i := 0; i < 10; i++ {
+			events[i] = &domain.Event{
+				EventID:   fmt.Sprintf("evt-%d", i),
+				EventType: domain.EventTypeArticleCreated,
+				Source:    "test",
+				CreatedAt: time.Now(),
+			}
+		}
+
+		_, err = driver.PublishBatch(ctx, domain.StreamKeyArticles, events)
+		require.NoError(t, err)
+
+		info, err := driver.GetStreamInfo(ctx, domain.StreamKeyArticles)
+		require.NoError(t, err)
+		assert.LessOrEqual(t, info.Length, int64(10))
 	})
 }
 

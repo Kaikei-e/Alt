@@ -15,12 +15,14 @@ import (
 
 // RedisDriver implements StreamPort using Redis Streams.
 type RedisDriver struct {
-	client *redis.Client
+	client       *redis.Client
+	streamMaxLen int64
 }
 
 // RedisDriverOptions contains configuration for Redis driver.
 type RedisDriverOptions struct {
-	PoolSize int
+	PoolSize     int
+	StreamMaxLen int64
 }
 
 // NewRedisDriver creates a new Redis driver.
@@ -40,7 +42,12 @@ func NewRedisDriverWithOptions(addr string, opts *RedisDriverOptions) (*RedisDri
 
 	client := redis.NewClient(redisOpts)
 
-	return &RedisDriver{client: client}, nil
+	d := &RedisDriver{client: client}
+	if opts != nil && opts.StreamMaxLen > 0 {
+		d.streamMaxLen = opts.StreamMaxLen
+	}
+
+	return d, nil
 }
 
 // NewRedisDriverWithURL creates a new Redis driver from a URL.
@@ -61,7 +68,12 @@ func NewRedisDriverWithURLAndOptions(url string, driverOpts *RedisDriverOptions)
 
 	client := redis.NewClient(opts)
 
-	return &RedisDriver{client: client}, nil
+	d := &RedisDriver{client: client}
+	if driverOpts != nil && driverOpts.StreamMaxLen > 0 {
+		d.streamMaxLen = driverOpts.StreamMaxLen
+	}
+
+	return d, nil
 }
 
 // Close closes the Redis connection.
@@ -77,10 +89,16 @@ func (d *RedisDriver) Publish(ctx context.Context, stream domain.StreamKey, even
 
 	values := d.eventToValues(event)
 
-	result, err := d.client.XAdd(ctx, &redis.XAddArgs{
+	args := &redis.XAddArgs{
 		Stream: stream.String(),
 		Values: values,
-	}).Result()
+	}
+	if d.streamMaxLen > 0 {
+		args.MaxLen = d.streamMaxLen
+		args.Approx = true
+	}
+
+	result, err := d.client.XAdd(ctx, args).Result()
 	if err != nil {
 		return "", err
 	}
@@ -105,10 +123,15 @@ func (d *RedisDriver) PublishBatch(ctx context.Context, stream domain.StreamKey,
 			continue
 		}
 		values := d.eventToValues(event)
-		cmds[i] = pipe.XAdd(ctx, &redis.XAddArgs{
+		args := &redis.XAddArgs{
 			Stream: stream.String(),
 			Values: values,
-		})
+		}
+		if d.streamMaxLen > 0 {
+			args.MaxLen = d.streamMaxLen
+			args.Approx = true
+		}
+		cmds[i] = pipe.XAdd(ctx, args)
 	}
 
 	_, err := pipe.Exec(ctx)

@@ -18,6 +18,9 @@ type Config struct {
 	RedisPoolSize int
 	// MaxBatchSize is the maximum number of events in a batch.
 	MaxBatchSize int
+	// StreamMaxLen is the approximate max length for Redis Streams trimming via XADD MAXLEN ~.
+	// 0 means no trimming.
+	StreamMaxLen int64
 }
 
 // NewConfig creates a new Config from environment variables.
@@ -25,6 +28,7 @@ func NewConfig() *Config {
 	port, _ := strconv.Atoi(getEnvOrDefault("CONNECT_PORT", "9500"))
 	poolSize, _ := strconv.Atoi(getEnvOrDefault("REDIS_POOL_SIZE", "10"))
 	maxBatchSize, _ := strconv.Atoi(getEnvOrDefault("MAX_BATCH_SIZE", "1000"))
+	streamMaxLen, _ := strconv.ParseInt(getEnvOrDefault("STREAM_MAX_LEN", "10000"), 10, 64)
 
 	return &Config{
 		RedisURL:      getEnvOrDefault("REDIS_URL", "redis://localhost:6379"),
@@ -32,6 +36,7 @@ func NewConfig() *Config {
 		LogLevel:      getEnvOrDefault("LOG_LEVEL", "info"),
 		RedisPoolSize: poolSize,
 		MaxBatchSize:  maxBatchSize,
+		StreamMaxLen:  streamMaxLen,
 	}
 }
 
