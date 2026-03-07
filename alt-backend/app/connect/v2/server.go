@@ -32,11 +32,15 @@ import (
 
 // SetupConnectHandlers registers all Connect-RPC handlers with the HTTP mux.
 func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) {
-	// Create auth interceptor
+	// Create interceptors
+	cancelInterceptor := middleware.NewContextCancelInterceptor(logger)
 	authInterceptor := middleware.NewAuthInterceptor(logger, cfg)
 
-	// Handler options with auth interceptor
-	opts := connect.WithInterceptors(authInterceptor.Interceptor())
+	// Handler options with interceptors (cancelInterceptor outermost: catches all errors)
+	opts := connect.WithInterceptors(
+		cancelInterceptor.Interceptor(),
+		authInterceptor.Interceptor(),
+	)
 
 	// Register Feed service
 	feedHandler := feeds.NewHandler(container, cfg, logger)
@@ -77,7 +81,10 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 
 	// Register BackendInternalService (service-to-service API, uses service token auth)
 	serviceAuthInterceptor := middleware.NewServiceAuthInterceptor(logger, cfg.InternalAPI.ServiceSecret)
-	internalOpts := connect.WithInterceptors(serviceAuthInterceptor.Interceptor())
+	internalOpts := connect.WithInterceptors(
+		cancelInterceptor.Interceptor(),
+		serviceAuthInterceptor.Interceptor(),
+	)
 	gw := container.InternalArticleGateway
 	internalHandler := internalhandler.NewHandler(
 		gw, gw, gw, gw, gw,

@@ -175,11 +175,6 @@ func (h *Handler) StreamFeedStats(
 
 	// Send initial data immediately
 	if err := h.sendStatsUpdate(ctx, stream, false); err != nil {
-		if ctx.Err() != nil {
-			h.logger.InfoContext(ctx, "stats stream ended during init", "reason", ctx.Err())
-		} else {
-			h.logger.ErrorContext(ctx, "failed to send initial stats", "error", err)
-		}
 		return err
 	}
 
@@ -194,22 +189,12 @@ func (h *Handler) StreamFeedStats(
 		case <-updateTicker.C:
 			// Send periodic data update
 			if err := h.sendStatsUpdate(ctx, stream, false); err != nil {
-				if ctx.Err() != nil {
-					h.logger.InfoContext(ctx, "stats stream ended", "reason", ctx.Err())
-				} else {
-					h.logger.ErrorContext(ctx, "failed to send stats update", "error", err)
-				}
 				return err
 			}
 
 		case <-heartbeatTicker.C:
 			// Send heartbeat to keep connection alive
 			if err := h.sendStatsUpdate(ctx, stream, true); err != nil {
-				if ctx.Err() != nil {
-					h.logger.InfoContext(ctx, "stats stream ended", "reason", ctx.Err())
-				} else {
-					h.logger.ErrorContext(ctx, "failed to send heartbeat", "error", err)
-				}
 				return err
 			}
 		}
@@ -233,32 +218,17 @@ func (h *Handler) sendStatsUpdate(
 		// Fetch actual stats from usecases
 		feedCount, err := h.container.FeedAmountUsecase.Execute(ctx)
 		if err != nil {
-			if ctx.Err() != nil {
-				h.logger.InfoContext(ctx, "feed stats query cancelled", "error", err)
-			} else {
-				h.logger.ErrorContext(ctx, "failed to get feed count", "error", err)
-			}
-			return err
+			return fmt.Errorf("get feed count: %w", err)
 		}
 
 		unsummarized, err := h.container.UnsummarizedArticlesCountUsecase.Execute(ctx)
 		if err != nil {
-			if ctx.Err() != nil {
-				h.logger.InfoContext(ctx, "feed stats query cancelled", "error", err)
-			} else {
-				h.logger.ErrorContext(ctx, "failed to get unsummarized count", "error", err)
-			}
-			return err
+			return fmt.Errorf("get unsummarized count: %w", err)
 		}
 
 		totalArticles, err := h.container.TotalArticlesCountUsecase.Execute(ctx)
 		if err != nil {
-			if ctx.Err() != nil {
-				h.logger.InfoContext(ctx, "feed stats query cancelled", "error", err)
-			} else {
-				h.logger.ErrorContext(ctx, "failed to get total articles", "error", err)
-			}
-			return err
+			return fmt.Errorf("get total articles: %w", err)
 		}
 
 		resp.FeedAmount = int64(feedCount)

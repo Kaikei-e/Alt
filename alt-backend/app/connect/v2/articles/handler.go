@@ -104,11 +104,6 @@ func (h *Handler) FetchArticleContent(
 				fmt.Errorf("rate limited: please wait before fetching another article from this site"))
 		}
 
-		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, connect.NewError(connect.CodeDeadlineExceeded,
-				fmt.Errorf("request timeout"))
-		}
-
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleContent")
 	}
 
