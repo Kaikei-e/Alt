@@ -5,6 +5,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"fmt"
 )
 
 type FeedURLToIDGateway struct {
@@ -27,8 +28,12 @@ func (g *FeedURLToIDGateway) GetFeedIDByURL(ctx context.Context, feedURL string)
 	// Call driver layer to get feed ID
 	feedID, err := g.alt_db.GetFeedIDByURL(ctx, feedURL)
 	if err != nil {
+		if errors.Is(err, alt_db.ErrFeedNotFoundByURL) {
+			logger.Logger.InfoContext(ctx, "feed not registered", "feedURL", feedURL)
+			return "", err
+		}
 		logger.Logger.ErrorContext(ctx, "failed to get feed ID by URL", "error", err, "feedURL", feedURL)
-		return "", errors.New("error getting feed ID by URL")
+		return "", fmt.Errorf("GetFeedID: %w", err)
 	}
 
 	logger.Logger.InfoContext(ctx, "successfully retrieved feed ID", "feedID", feedID)

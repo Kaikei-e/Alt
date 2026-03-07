@@ -979,6 +979,42 @@ func TestResolveArticle_ErrorWhenDBEmptyAndNoRequestContent(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// =============================================================================
+// mapPreProcessorHTTPError Tests
+// =============================================================================
+
+func TestMapPreProcessorHTTPError_ValidationError(t *testing.T) {
+	body := []byte(`{"error":{"code":"VALIDATION_ERROR","message":"content too short for summarization"}}`)
+	err := mapPreProcessorHTTPError(400, body)
+
+	require.NotNil(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, err.Code())
+	assert.Equal(t, "content too short for summarization", err.Message())
+}
+
+func TestMapPreProcessorHTTPError_ConflictError(t *testing.T) {
+	body := []byte(`{"error":{"code":"CONFLICT_ERROR","message":"article is already being summarized"}}`)
+	err := mapPreProcessorHTTPError(409, body)
+
+	require.NotNil(t, err)
+	assert.Equal(t, connect.CodeAlreadyExists, err.Code())
+	assert.Equal(t, "article is already being summarized", err.Message())
+}
+
+func TestMapPreProcessorHTTPError_UnknownCode(t *testing.T) {
+	body := []byte(`{"error":{"code":"SOME_UNKNOWN_CODE","message":"something happened"}}`)
+	err := mapPreProcessorHTTPError(500, body)
+
+	assert.Nil(t, err, "Unknown error codes should return nil to fall through to generic handling")
+}
+
+func TestMapPreProcessorHTTPError_InvalidJSON(t *testing.T) {
+	body := []byte(`not valid json`)
+	err := mapPreProcessorHTTPError(400, body)
+
+	assert.Nil(t, err, "Invalid JSON should return nil to fall through to generic handling")
+}
+
 func TestResolveArticle_FallbackToRequestContentWhenArticleNotInDB(t *testing.T) {
 	// Initialize logger
 	logger.InitLogger()

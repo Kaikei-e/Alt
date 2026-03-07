@@ -2,8 +2,10 @@ package alt_db
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	pgxmock "github.com/pashagolub/pgxmock/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,10 +39,32 @@ func TestGetFeedIDByURL_NotFound(t *testing.T) {
 
 	mock.ExpectQuery(`SELECT f\.id FROM feeds f INNER JOIN feed_links fl ON f\.feed_link_id = fl\.id WHERE fl\.url = \$1`).
 		WithArgs("https://nonexistent.com/rss").
-		WillReturnRows(pgxmock.NewRows([]string{"id"}))
+		WillReturnError(pgx.ErrNoRows)
 
 	_, err = repo.GetFeedIDByURL(context.Background(), "https://nonexistent.com/rss")
 	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrFeedNotFoundByURL, "Should return ErrFeedNotFoundByURL for missing feeds")
+	assert.NotErrorIs(t, err, pgx.ErrNoRows, "Should not expose pgx.ErrNoRows")
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestGetFeedIDByURL_DatabaseError(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+
+	dbErr := fmt.Errorf("connection reset by peer")
+	mock.ExpectQuery(`SELECT f\.id FROM feeds f INNER JOIN feed_links fl ON f\.feed_link_id = fl\.id WHERE fl\.url = \$1`).
+		WithArgs("https://example.com/rss").
+		WillReturnError(dbErr)
+
+	_, err = repo.GetFeedIDByURL(context.Background(), "https://example.com/rss")
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrFeedNotFoundByURL, "Should not return ErrFeedNotFoundByURL for DB errors")
+	assert.Contains(t, err.Error(), "error getting feed ID by URL")
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }

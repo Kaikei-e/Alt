@@ -175,7 +175,11 @@ func (h *Handler) StreamFeedStats(
 
 	// Send initial data immediately
 	if err := h.sendStatsUpdate(ctx, stream, false); err != nil {
-		h.logger.ErrorContext(ctx, "failed to send initial stats", "error", err)
+		if ctx.Err() != nil {
+			h.logger.InfoContext(ctx, "stats stream ended during init", "reason", ctx.Err())
+		} else {
+			h.logger.ErrorContext(ctx, "failed to send initial stats", "error", err)
+		}
 		return err
 	}
 
@@ -190,14 +194,22 @@ func (h *Handler) StreamFeedStats(
 		case <-updateTicker.C:
 			// Send periodic data update
 			if err := h.sendStatsUpdate(ctx, stream, false); err != nil {
-				h.logger.ErrorContext(ctx, "failed to send stats update", "error", err)
+				if ctx.Err() != nil {
+					h.logger.InfoContext(ctx, "stats stream ended", "reason", ctx.Err())
+				} else {
+					h.logger.ErrorContext(ctx, "failed to send stats update", "error", err)
+				}
 				return err
 			}
 
 		case <-heartbeatTicker.C:
 			// Send heartbeat to keep connection alive
 			if err := h.sendStatsUpdate(ctx, stream, true); err != nil {
-				h.logger.ErrorContext(ctx, "failed to send heartbeat", "error", err)
+				if ctx.Err() != nil {
+					h.logger.InfoContext(ctx, "stats stream ended", "reason", ctx.Err())
+				} else {
+					h.logger.ErrorContext(ctx, "failed to send heartbeat", "error", err)
+				}
 				return err
 			}
 		}
@@ -221,19 +233,31 @@ func (h *Handler) sendStatsUpdate(
 		// Fetch actual stats from usecases
 		feedCount, err := h.container.FeedAmountUsecase.Execute(ctx)
 		if err != nil {
-			h.logger.ErrorContext(ctx, "failed to get feed count", "error", err)
+			if ctx.Err() != nil {
+				h.logger.InfoContext(ctx, "feed stats query cancelled", "error", err)
+			} else {
+				h.logger.ErrorContext(ctx, "failed to get feed count", "error", err)
+			}
 			return err
 		}
 
 		unsummarized, err := h.container.UnsummarizedArticlesCountUsecase.Execute(ctx)
 		if err != nil {
-			h.logger.ErrorContext(ctx, "failed to get unsummarized count", "error", err)
+			if ctx.Err() != nil {
+				h.logger.InfoContext(ctx, "feed stats query cancelled", "error", err)
+			} else {
+				h.logger.ErrorContext(ctx, "failed to get unsummarized count", "error", err)
+			}
 			return err
 		}
 
 		totalArticles, err := h.container.TotalArticlesCountUsecase.Execute(ctx)
 		if err != nil {
-			h.logger.ErrorContext(ctx, "failed to get total articles", "error", err)
+			if ctx.Err() != nil {
+				h.logger.InfoContext(ctx, "feed stats query cancelled", "error", err)
+			} else {
+				h.logger.ErrorContext(ctx, "failed to get total articles", "error", err)
+			}
 			return err
 		}
 
@@ -601,6 +625,14 @@ func (h *Handler) StreamSummarize(
 	// Stream from pre-processor
 	preProcessorStream, err := h.streamPreProcessorSummarize(ctx, resolvedContent, resolvedArticleID, resolvedTitle)
 	if err != nil {
+		var connectErr *connect.Error
+		if errors.As(err, &connectErr) {
+			h.logger.InfoContext(ctx, "pre-processor returned client error",
+				"article_id", resolvedArticleID,
+				"code", connectErr.Code(),
+				"message", connectErr.Message())
+			return connectErr
+		}
 		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamSummarize.StartStream")
 	}
 	defer func() {
@@ -849,6 +881,9 @@ func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, arti
 			// Log but don't fail - error response has been read
 			_ = closeErr
 		}
+		if connectErr := mapPreProcessorHTTPError(resp.StatusCode, bodyBytes); connectErr != nil {
+			return nil, connectErr
+		}
 		return nil, fmt.Errorf("pre-processor returned status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
@@ -1094,6 +1129,31 @@ func (h *Handler) Subscribe(
 	return connect.NewResponse(&feedsv2.SubscribeResponse{
 		Message: "Subscribed successfully",
 	}), nil
+}
+
+// preProcessorErrorResponse represents the JSON error response from pre-processor.
+type preProcessorErrorResponse struct {
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// mapPreProcessorHTTPError maps pre-processor HTTP error responses to Connect-RPC errors.
+// Returns nil if the error cannot be mapped (caller should fall back to generic error).
+func mapPreProcessorHTTPError(statusCode int, body []byte) *connect.Error {
+	var errResp preProcessorErrorResponse
+	if err := json.Unmarshal(body, &errResp); err != nil {
+		return nil
+	}
+	switch errResp.Error.Code {
+	case "VALIDATION_ERROR":
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%s", errResp.Error.Message))
+	case "CONFLICT_ERROR":
+		return connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("%s", errResp.Error.Message))
+	default:
+		return nil
+	}
 }
 
 // Unsubscribe unsubscribes the current user from a feed source.
