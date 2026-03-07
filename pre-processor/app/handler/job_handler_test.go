@@ -45,10 +45,10 @@ func (m *mockArticleSummarizer) ResetPagination() error {
 
 // mockQualityChecker tracks calls for testing cursor reset behavior.
 type mockQualityChecker struct {
-	result        *service.QualityResult
-	err           error
-	resetCalled   bool
-	checkCalled   bool
+	result      *service.QualityResult
+	err         error
+	resetCalled bool
+	checkCalled bool
 }
 
 func (m *mockQualityChecker) CheckQuality(_ context.Context, _ int) (*service.QualityResult, error) {
