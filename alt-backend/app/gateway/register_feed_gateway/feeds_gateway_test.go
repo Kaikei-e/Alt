@@ -206,6 +206,50 @@ func TestRegisterFeedsGateway_LargeDataset(t *testing.T) {
 	}
 }
 
+func TestBuildFeedModels_OgImageURL(t *testing.T) {
+	imgURL := "https://example.com/image.jpg"
+
+	tests := []struct {
+		name           string
+		ogImageURL     string
+		wantOgImageURL *string
+	}{
+		{
+			name:           "OgImageURL is mapped when non-empty",
+			ogImageURL:     imgURL,
+			wantOgImageURL: &imgURL,
+		},
+		{
+			name:           "OgImageURL is nil when empty",
+			ogImageURL:     "",
+			wantOgImageURL: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			feeds := []*domain.FeedItem{
+				{
+					Title:       "Test Feed",
+					Description: "Test Description",
+					Link:        "https://example.com/feed1",
+					OgImageURL:  tt.ogImageURL,
+				},
+			}
+
+			models := buildFeedModels(context.Background(), feeds)
+			assert.Len(t, models, 1)
+
+			if tt.wantOgImageURL == nil {
+				assert.Nil(t, models[0].OgImageURL)
+			} else {
+				assert.NotNil(t, models[0].OgImageURL)
+				assert.Equal(t, *tt.wantOgImageURL, *models[0].OgImageURL)
+			}
+		})
+	}
+}
+
 // Proxy/fetcher tests remain here as they test types defined in this package
 
 func TestDefaultRSSFeedFetcher_WithProxy_Success(t *testing.T) {

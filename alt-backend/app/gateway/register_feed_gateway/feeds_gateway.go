@@ -22,10 +22,7 @@ func NewRegisterFeedsGateway(pool *pgxpool.Pool) *RegisterFeedsGateway {
 	return &RegisterFeedsGateway{alt_db: alt_db.NewAltDBRepositoryWithPool(pool)}
 }
 
-func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]string, error) {
-	if g.alt_db == nil {
-		return nil, errors.New("database connection not available")
-	}
+func buildFeedModels(ctx context.Context, feeds []*domain.FeedItem) []models.Feed {
 	var items []models.Feed
 	for _, feedItem := range feeds {
 		// Additional validation: Skip feeds with empty titles as a safety net
@@ -54,10 +51,21 @@ func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domai
 			UpdatedAt:   time.Now(),
 			FeedLinkID:  feedItem.FeedLinkID,
 		}
+		if feedItem.OgImageURL != "" {
+			feedModel.OgImageURL = &feedItem.OgImageURL
+		}
 
 		logger.SafeInfoContext(ctx, "Feed model link", "feedModel", feedModel.Link)
 		items = append(items, *feedModel)
 	}
+	return items
+}
+
+func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]string, error) {
+	if g.alt_db == nil {
+		return nil, errors.New("database connection not available")
+	}
+	items := buildFeedModels(ctx, feeds)
 
 	ids, err := g.alt_db.RegisterMultipleFeeds(ctx, items)
 	if err != nil {

@@ -323,9 +323,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	imageFetchUsecase := image_fetch_usecase.NewImageFetchUsecase(imageFetchGateway)
 
 	// Image proxy components
-	// Image CDNs are designed for high throughput; use a dedicated rate limiter
-	// with a shorter interval (5s) instead of sharing the RSS feed limiter (10s).
-	imageProxyRateLimiter := rate_limiter.NewHostRateLimiter(5 * time.Second)
+	// CDN public images are fetched on-demand per user action, not crawled.
+	// 1 req/s/host is conservative enough and avoids context deadline exceeded
+	// when multiple images from the same host are requested concurrently.
+	imageProxyRateLimiter := rate_limiter.NewHostRateLimiter(1 * time.Second)
 	var imageProxyUsecaseInstance *image_proxy_usecase.ImageProxyUsecase
 	if cfg.ImageProxy.Enabled && cfg.ImageProxy.Secret != "" {
 		imageProxySigner := image_proxy.NewSigner(cfg.ImageProxy.Secret)
