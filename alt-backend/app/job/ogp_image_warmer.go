@@ -3,11 +3,9 @@ package job
 import (
 	"alt/driver/alt_db"
 	"alt/usecase/image_proxy_usecase"
-	"alt/utils/rate_limiter"
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 )
 
 const ogpWarmerBatchLimit = 100
@@ -25,7 +23,7 @@ type imageWarmer interface {
 
 // OgpImageWarmerJob returns a function suitable for the JobScheduler that
 // pre-fetches OGP images for recently collected feeds and caches them.
-// It uses its own HostRateLimiter, completely independent of feed collection.
+// Rate limiting is handled by the DI-injected ImageProxyUsecase.
 func OgpImageWarmerJob(r *alt_db.AltDBRepository, imageProxy *image_proxy_usecase.ImageProxyUsecase) func(ctx context.Context) error {
 	if imageProxy == nil {
 		return func(ctx context.Context) error {
@@ -33,9 +31,6 @@ func OgpImageWarmerJob(r *alt_db.AltDBRepository, imageProxy *image_proxy_usecas
 			return nil
 		}
 	}
-
-	// Independent rate limiter — does not share with feed collection or on-demand proxy
-	_ = rate_limiter.NewHostRateLimiter(5 * time.Second)
 
 	return ogpImageWarmerJobFn(r, imageProxy)
 }

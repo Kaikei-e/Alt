@@ -205,18 +205,25 @@ func (r *AltDBRepository) SaveScrapingDomain(ctx context.Context, sd *domain.Scr
 	sd.UpdatedAt = now
 
 	// Convert to JSONB for robots_disallow_paths
-	disallowPathsJSON, err := json.Marshal(sd.RobotsDisallowPaths)
+	// nil → []string{} to produce "[]" instead of "null"
+	paths := sd.RobotsDisallowPaths
+	if paths == nil {
+		paths = []string{}
+	}
+	disallowPathsJSON, err := json.Marshal(paths)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error marshaling robots_disallow_paths", "error", err)
 		return errors.New("error marshaling robots_disallow_paths")
 	}
 
+	// Pass as string so pgx v5 encodes it as text (→ JSONB cast works).
+	// []byte would be encoded as bytea, causing "invalid input syntax for type json".
 	_, err = r.pool.Exec(ctx, query,
 		sd.ID, sd.Domain, sd.Scheme,
 		sd.AllowFetchBody, sd.AllowMLTraining, sd.AllowCacheDays,
 		sd.ForceRespectRobots, sd.RobotsTxtURL, sd.RobotsTxtContent,
 		sd.RobotsTxtFetchedAt, sd.RobotsTxtLastStatus, sd.RobotsCrawlDelaySec,
-		disallowPathsJSON, sd.CreatedAt, sd.UpdatedAt,
+		string(disallowPathsJSON), sd.CreatedAt, sd.UpdatedAt,
 	)
 
 	if err != nil {
