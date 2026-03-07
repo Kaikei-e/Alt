@@ -34,8 +34,8 @@ func handleImageProxy(container *di.ApplicationComponents) echo.HandlerFunc {
 			return c.String(http.StatusBadRequest, "missing parameters")
 		}
 
-		// Add 25s timeout to fit within nginx's 30s proxy_read_timeout
-		ctx, cancel := context.WithTimeout(c.Request().Context(), 25*time.Second)
+		// 10s timeout to fit within nginx's 15s proxy_read_timeout
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
 		defer cancel()
 
 		result, err := container.ImageProxyUsecase.ProxyImage(ctx, sig, encodedURL)
@@ -47,19 +47,18 @@ func handleImageProxy(container *di.ApplicationComponents) echo.HandlerFunc {
 			if strings.Contains(errMsg, "domain not allowed") {
 				return c.String(http.StatusForbidden, "domain not allowed")
 			}
-			if errors.Is(err, context.DeadlineExceeded) {
-				slog.WarnContext(c.Request().Context(), "image proxy timeout",
-					"error", err,
-				)
-				return c.String(http.StatusGatewayTimeout, "image proxy timeout")
-			}
-			if errors.Is(err, context.Canceled) {
+			if context.Cause(ctx) == context.Canceled {
 				return c.NoContent(499)
 			}
-			slog.ErrorContext(c.Request().Context(), "image proxy error",
-				"error", err,
-			)
-			return c.String(http.StatusBadGateway, "image proxy error")
+			if errors.Is(err, context.DeadlineExceeded) {
+				slog.WarnContext(c.Request().Context(), "image proxy timeout", "error", err)
+				return c.NoContent(http.StatusGatewayTimeout)
+			}
+			if strings.Contains(errMsg, "rate limit") || strings.Contains(errMsg, "would exceed context deadline") {
+				return c.NoContent(http.StatusTooManyRequests)
+			}
+			slog.WarnContext(c.Request().Context(), "image proxy error", "error", err)
+			return c.NoContent(http.StatusBadGateway)
 		}
 
 		// Check If-None-Match for 304
@@ -68,9 +67,9 @@ func handleImageProxy(container *di.ApplicationComponents) echo.HandlerFunc {
 			return c.NoContent(http.StatusNotModified)
 		}
 
-		// Set cache headers
+		// Set cache headers — 7 day browser cache, immutable
 		c.Response().Header().Set("Content-Type", result.ContentType)
-		c.Response().Header().Set("Cache-Control", "public, max-age=43200, immutable")
+		c.Response().Header().Set("Cache-Control", "public, max-age=604800, immutable")
 		c.Response().Header().Set("ETag", `"`+result.ETag+`"`)
 		c.Response().Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
 		c.Response().Header().Set("Vary", "Accept-Encoding")
