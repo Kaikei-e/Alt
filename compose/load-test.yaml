@@ -1,0 +1,27 @@
+# compose/load-test.yaml - Load testing overrides
+# Adds mock-rss-server and configures alt-backend SSRF allowlist.
+#
+# Usage:
+#   docker compose -f compose/compose.yaml -f compose/load-test.yaml -f compose/perf.yaml -p alt up -d mock-rss-server
+#   docker compose -f compose/compose.yaml -f compose/load-test.yaml -f compose/perf.yaml -p alt \
+#     run --rm k6 run /scripts/scenarios/feed-registration.js
+
+include:
+  - base.yaml
+
+services:
+  mock-rss-server:
+    build:
+      context: ../alt-perf/k6/mock-rss-server
+    ports:
+      - "8090:8090"
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8090/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    profiles:
+      - load-test
+
