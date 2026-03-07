@@ -1,7 +1,7 @@
 import { getFeedContentOnTheFlyClient } from "$lib/api/client";
 import type { RenderFeed } from "$lib/schema/feed";
 
-const MAX_CACHE_SIZE = 10;
+const MAX_CACHE_SIZE = 30;
 const PREFETCH_DELAY = 500; // ms
 const DISMISSED_CLEANUP_DELAY = 3000; // ms
 

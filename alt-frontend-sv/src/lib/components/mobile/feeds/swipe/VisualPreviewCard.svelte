@@ -70,6 +70,13 @@ let favoriteError = $state<string | null>(null);
 let imgLoaded = $state(false);
 let imgError = $state(false);
 
+// Reset error/loaded state when thumbnailUrl changes (e.g. raw URL → proxy URL)
+$effect(() => {
+	void thumbnailUrl;
+	imgError = false;
+	imgLoaded = false;
+});
+
 // Swipe state with Spring
 const SWIPE_THRESHOLD = 60;
 let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });

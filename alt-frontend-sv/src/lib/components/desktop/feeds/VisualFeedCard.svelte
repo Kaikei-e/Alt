@@ -14,6 +14,13 @@ let { feed, onSelect, isRead = false }: Props = $props();
 let imageLoaded = $state(false);
 let imageError = $state(false);
 
+// Reset error/loaded state when ogImageProxyUrl changes (e.g. raw URL → proxy URL)
+$effect(() => {
+	void feed.ogImageProxyUrl;
+	imageError = false;
+	imageLoaded = false;
+});
+
 function handleClick() {
 	onSelect(feed);
 }

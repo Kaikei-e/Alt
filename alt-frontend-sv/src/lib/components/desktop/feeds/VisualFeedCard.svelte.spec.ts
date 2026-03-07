@@ -83,6 +83,33 @@ describe("VisualFeedCard", () => {
 				.toHaveAttribute("src", "https://proxy.example.com/image.jpg");
 		});
 
+		it("resets imageError when ogImageProxyUrl changes", async () => {
+			const feed = $state(
+				createMockFeed({ ogImageProxyUrl: "https://proxy.example.com/bad.jpg" }),
+			);
+			render(VisualFeedCard as any, {
+				props: { feed, onSelect: vi.fn() },
+			});
+
+			// Simulate image load error
+			const img = page.getByTestId("card-image");
+			await img.element().dispatchEvent(new Event("error"));
+
+			// After error, fallback should show
+			await expect
+				.element(page.getByTestId("image-fallback"))
+				.toBeInTheDocument();
+
+			// Update ogImageProxyUrl — imageError should reset, image should render again
+			feed.ogImageProxyUrl = "https://proxy.example.com/good.jpg";
+
+			const newImg = page.getByTestId("card-image");
+			await expect.element(newImg).toBeInTheDocument();
+			await expect
+				.element(newImg)
+				.toHaveAttribute("src", "https://proxy.example.com/good.jpg");
+		});
+
 		it("shows fallback when no image URL provided", async () => {
 			const feed = createMockFeed({ ogImageProxyUrl: undefined });
 			render(VisualFeedCard as any, { props: { feed, onSelect: vi.fn() } });
