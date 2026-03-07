@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"pre-processor/domain"
@@ -21,9 +22,13 @@ type stubJobRepo struct {
 	cancelOnGet bool // cancel context after returning jobs
 	cancelFunc  context.CancelFunc
 	updateCalls int
+	getErr      error // error to return from GetPendingJobs
 }
 
 func (m *stubJobRepo) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
 	if m.cancelOnGet && m.cancelFunc != nil {
 		m.cancelFunc()
 	}
@@ -188,5 +193,37 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 
 		assert.Equal(t, 0, articleRepo.findCalls,
 			"no articles should be fetched when context is already canceled")
+	})
+}
+
+func TestSummarizeQueueWorker_HasPendingJobs(t *testing.T) {
+	t.Run("returns false when queue is empty", func(t *testing.T) {
+		jobRepo := &stubJobRepo{jobs: []*domain.SummarizeJob{}}
+		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger(), 10)
+
+		hasPending, err := worker.HasPendingJobs(context.Background())
+		assert.NoError(t, err)
+		assert.False(t, hasPending)
+	})
+
+	t.Run("returns true when queue has jobs", func(t *testing.T) {
+		jobRepo := &stubJobRepo{jobs: []*domain.SummarizeJob{
+			{JobID: uuid.New(), ArticleID: "article-1"},
+		}}
+		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger(), 10)
+
+		hasPending, err := worker.HasPendingJobs(context.Background())
+		assert.NoError(t, err)
+		assert.True(t, hasPending)
+	})
+
+	t.Run("propagates repository error", func(t *testing.T) {
+		jobRepo := &stubJobRepo{getErr: fmt.Errorf("db connection failed")}
+		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger(), 10)
+
+		hasPending, err := worker.HasPendingJobs(context.Background())
+		assert.Error(t, err)
+		assert.False(t, hasPending)
+		assert.Contains(t, err.Error(), "db connection failed")
 	})
 }

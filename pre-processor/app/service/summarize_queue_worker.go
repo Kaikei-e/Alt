@@ -42,6 +42,15 @@ func NewSummarizeQueueWorker(
 	}
 }
 
+// HasPendingJobs checks if there are any pending summarization jobs in the queue.
+func (w *SummarizeQueueWorker) HasPendingJobs(ctx context.Context) (bool, error) {
+	jobs, err := w.jobRepo.GetPendingJobs(ctx, 1)
+	if err != nil {
+		return false, fmt.Errorf("failed to check pending jobs: %w", err)
+	}
+	return len(jobs) > 0, nil
+}
+
 // ProcessQueue processes pending jobs from the queue
 func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 	// Get pending jobs

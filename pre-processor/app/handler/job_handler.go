@@ -156,6 +156,19 @@ func (h *jobHandler) processSummarizationBatch(ctx context.Context) error {
 
 // processQualityCheckBatch processes a batch of articles for quality checking.
 func (h *jobHandler) processQualityCheckBatch(ctx context.Context) error {
+	// Skip quality check when summarization queue has pending jobs (ADR-265 follow-up).
+	// Quality check competes with summarization for the same BE semaphore slot,
+	// so we yield to summarization when there's work to do.
+	if h.queueWorker != nil {
+		hasPending, err := h.queueWorker.HasPendingJobs(ctx)
+		if err != nil {
+			h.logger.WarnContext(ctx, "failed to check pending jobs, proceeding with quality check", "error", err)
+		} else if hasPending {
+			h.logger.InfoContext(ctx, "skipping quality check: summarization queue has pending jobs")
+			return nil
+		}
+	}
+
 	result, err := h.qualityChecker.CheckQuality(ctx, h.batchSize)
 	if err != nil {
 		return err

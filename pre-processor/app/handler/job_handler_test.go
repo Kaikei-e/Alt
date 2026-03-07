@@ -2,12 +2,14 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"testing"
 
 	"pre-processor/domain"
 	"pre-processor/orchestrator"
+	"pre-processor/repository"
 	"pre-processor/service"
 
 	"github.com/stretchr/testify/assert"
@@ -43,12 +45,14 @@ func (m *mockArticleSummarizer) ResetPagination() error {
 
 // mockQualityChecker tracks calls for testing cursor reset behavior.
 type mockQualityChecker struct {
-	result      *service.QualityResult
-	err         error
-	resetCalled bool
+	result        *service.QualityResult
+	err           error
+	resetCalled   bool
+	checkCalled   bool
 }
 
 func (m *mockQualityChecker) CheckQuality(_ context.Context, _ int) (*service.QualityResult, error) {
+	m.checkCalled = true
 	return m.result, m.err
 }
 
@@ -201,5 +205,122 @@ func TestProcessQualityCheckBatch_CursorReset(t *testing.T) {
 		err := h.processQualityCheckBatch(ctx)
 		assert.NoError(t, err)
 		assert.False(t, mock.resetCalled, "should not reset pagination when there are more articles")
+	})
+}
+
+// stubJobRepoForHandler is a minimal stub for SummarizeJobRepository used to construct SummarizeQueueWorker in handler tests.
+type stubJobRepoForHandler struct {
+	repository.SummarizeJobRepository
+	jobs   []*domain.SummarizeJob
+	getErr error
+}
+
+func (m *stubJobRepoForHandler) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	return m.jobs, nil
+}
+
+func newQueueWorkerWithJobs(jobs []*domain.SummarizeJob) *service.SummarizeQueueWorker {
+	return service.NewSummarizeQueueWorker(
+		&stubJobRepoForHandler{jobs: jobs},
+		nil, nil, nil,
+		testJobHandlerLogger(),
+		10,
+	)
+}
+
+func newQueueWorkerWithError(err error) *service.SummarizeQueueWorker {
+	return service.NewSummarizeQueueWorker(
+		&stubJobRepoForHandler{getErr: err},
+		nil, nil, nil,
+		testJobHandlerLogger(),
+		10,
+	)
+}
+
+func TestProcessQualityCheckBatch_SkipsWhenSummarizationPending(t *testing.T) {
+	t.Run("skips quality check when summarization queue has pending jobs", func(t *testing.T) {
+		ctx := context.Background()
+		qcMock := &mockQualityChecker{
+			result: &service.QualityResult{
+				ProcessedCount: 5,
+				HasMore:        false,
+			},
+		}
+		h := &jobHandler{
+			qualityChecker: qcMock,
+			queueWorker:    newQueueWorkerWithJobs([]*domain.SummarizeJob{{ArticleID: "a1"}}),
+			logger:         testJobHandlerLogger(),
+			jobGroup:       orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:      10,
+		}
+
+		err := h.processQualityCheckBatch(ctx)
+		assert.NoError(t, err)
+		assert.False(t, qcMock.checkCalled, "CheckQuality should not have been called when summarization has pending jobs")
+	})
+
+	t.Run("runs quality check when summarization queue is empty", func(t *testing.T) {
+		ctx := context.Background()
+		qcMock := &mockQualityChecker{
+			result: &service.QualityResult{
+				ProcessedCount: 5,
+				HasMore:        true,
+			},
+		}
+		h := &jobHandler{
+			qualityChecker: qcMock,
+			queueWorker:    newQueueWorkerWithJobs([]*domain.SummarizeJob{}),
+			logger:         testJobHandlerLogger(),
+			jobGroup:       orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:      10,
+		}
+
+		err := h.processQualityCheckBatch(ctx)
+		assert.NoError(t, err)
+		assert.False(t, qcMock.resetCalled, "should not reset when HasMore=true")
+	})
+
+	t.Run("proceeds with quality check when HasPendingJobs returns error", func(t *testing.T) {
+		ctx := context.Background()
+		qcMock := &mockQualityChecker{
+			result: &service.QualityResult{
+				ProcessedCount: 3,
+				HasMore:        false,
+			},
+		}
+		h := &jobHandler{
+			qualityChecker: qcMock,
+			queueWorker:    newQueueWorkerWithError(fmt.Errorf("db error")),
+			logger:         testJobHandlerLogger(),
+			jobGroup:       orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:      10,
+		}
+
+		err := h.processQualityCheckBatch(ctx)
+		assert.NoError(t, err)
+		assert.True(t, qcMock.resetCalled, "should reset pagination since HasMore=false")
+	})
+
+	t.Run("runs quality check when queueWorker is nil", func(t *testing.T) {
+		ctx := context.Background()
+		qcMock := &mockQualityChecker{
+			result: &service.QualityResult{
+				ProcessedCount: 2,
+				HasMore:        true,
+			},
+		}
+		h := &jobHandler{
+			qualityChecker: qcMock,
+			queueWorker:    nil,
+			logger:         testJobHandlerLogger(),
+			jobGroup:       orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:      10,
+		}
+
+		err := h.processQualityCheckBatch(ctx)
+		assert.NoError(t, err)
 	})
 }
