@@ -71,6 +71,7 @@ volumes:
   grafana_data:
   pre_processor_db_data:
   redis-streams-data:
+  nginx-image-cache:
 
 x-rask-env: &rask-env
   environment:
