@@ -41,18 +41,18 @@ func (m *MockRegisterFeedLinkPort) EXPECT() *MockRegisterFeedLinkPortMockRecorde
 	return m.recorder
 }
 
-// RegisterRSSFeedLink mocks base method.
-func (m *MockRegisterFeedLinkPort) RegisterRSSFeedLink(ctx context.Context, link string) error {
+// RegisterFeedLink mocks base method.
+func (m *MockRegisterFeedLinkPort) RegisterFeedLink(ctx context.Context, link string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RegisterRSSFeedLink", ctx, link)
+	ret := m.ctrl.Call(m, "RegisterFeedLink", ctx, link)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// RegisterRSSFeedLink indicates an expected call of RegisterRSSFeedLink.
-func (mr *MockRegisterFeedLinkPortMockRecorder) RegisterRSSFeedLink(ctx, link any) *gomock.Call {
+// RegisterFeedLink indicates an expected call of RegisterFeedLink.
+func (mr *MockRegisterFeedLinkPortMockRecorder) RegisterFeedLink(ctx, link any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterRSSFeedLink", reflect.TypeOf((*MockRegisterFeedLinkPort)(nil).RegisterRSSFeedLink), ctx, link)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterFeedLink", reflect.TypeOf((*MockRegisterFeedLinkPort)(nil).RegisterFeedLink), ctx, link)
 }
 
 // MockRegisterFeedsPort is a mock of RegisterFeedsPort interface.

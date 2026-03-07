@@ -6,7 +6,9 @@ import (
 )
 
 type RegisterFeedLinkPort interface {
-	RegisterRSSFeedLink(ctx context.Context, link string) error
+	// RegisterFeedLink inserts a feed link URL into the database.
+	// This is a DB-only operation — no external HTTP fetching.
+	RegisterFeedLink(ctx context.Context, link string) error
 }
 
 type RegisterFeedsPort interface {

@@ -3,9 +3,9 @@ package register_feed_usecase
 import (
 	"alt/domain"
 	"alt/port/event_publisher_port"
-	"alt/port/fetch_feed_port"
 	"alt/port/register_feed_port"
 	"alt/port/subscription_port"
+	"alt/port/validate_fetch_rss_port"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -19,19 +19,23 @@ type FeedLinkIDResolver interface {
 }
 
 type RegisterFeedsUsecase struct {
-	registerFeedLinkGateway register_feed_port.RegisterFeedLinkPort
-	registerFeedsGateway    register_feed_port.RegisterFeedsPort
-	fetchFeedGateway        fetch_feed_port.FetchFeedsPort
-	feedLinkIDResolver      FeedLinkIDResolver
-	subscriptionPort        subscription_port.SubscriptionPort
-	eventPublisher          event_publisher_port.EventPublisherPort
+	validateAndFetchPort   validate_fetch_rss_port.ValidateAndFetchRSSPort
+	registerFeedLinkPort   register_feed_port.RegisterFeedLinkPort
+	registerFeedsGateway   register_feed_port.RegisterFeedsPort
+	feedLinkIDResolver     FeedLinkIDResolver
+	subscriptionPort       subscription_port.SubscriptionPort
+	eventPublisher         event_publisher_port.EventPublisherPort
 }
 
-func NewRegisterFeedsUsecase(registerFeedLinkGateway register_feed_port.RegisterFeedLinkPort, registerFeedsGateway register_feed_port.RegisterFeedsPort, fetchFeedGateway fetch_feed_port.FetchFeedsPort) *RegisterFeedsUsecase {
+func NewRegisterFeedsUsecase(
+	validateAndFetchPort validate_fetch_rss_port.ValidateAndFetchRSSPort,
+	registerFeedLinkPort register_feed_port.RegisterFeedLinkPort,
+	registerFeedsGateway register_feed_port.RegisterFeedsPort,
+) *RegisterFeedsUsecase {
 	return &RegisterFeedsUsecase{
-		registerFeedLinkGateway: registerFeedLinkGateway,
-		registerFeedsGateway:    registerFeedsGateway,
-		fetchFeedGateway:        fetchFeedGateway,
+		validateAndFetchPort: validateAndFetchPort,
+		registerFeedLinkPort: registerFeedLinkPort,
+		registerFeedsGateway: registerFeedsGateway,
 	}
 }
 
@@ -51,59 +55,44 @@ func (r *RegisterFeedsUsecase) SetEventPublisher(port event_publisher_port.Event
 }
 
 func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
-	err := r.registerFeedLinkGateway.RegisterRSSFeedLink(ctx, link)
+	// 1. Validate URL + fetch RSS (single external HTTP call)
+	parsedFeed, err := r.validateAndFetchPort.ValidateAndFetch(ctx, link)
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to register RSS feed link", "error", err)
-		if errors.Is(err, errors.New("RSS feed link cannot be empty")) {
-			return errors.New("RSS feed link cannot be empty")
-		}
+		logger.Logger.ErrorContext(ctx, "Failed to validate and fetch RSS feed", "error", err)
 		return errors.New("failed to register RSS feed link")
 	}
 
-	// Look up feed_link_id for this URL to associate feeds with their source
+	// 2. Register feed_link in DB (DB-only operation)
+	err = r.registerFeedLinkPort.RegisterFeedLink(ctx, parsedFeed.FeedLink)
+	if err != nil {
+		logger.Logger.ErrorContext(ctx, "Failed to register feed link", "error", err)
+		return errors.New("failed to register RSS feed link")
+	}
+
+	// 3. Look up feed_link_id for this URL to associate feeds with their source
 	var feedLinkID *string
 	if r.feedLinkIDResolver != nil {
-		feedLinkID, _ = r.feedLinkIDResolver.FetchFeedLinkIDByURL(ctx, link)
+		feedLinkID, _ = r.feedLinkIDResolver.FetchFeedLinkIDByURL(ctx, parsedFeed.FeedLink)
 	}
 
-	feeds, err := r.fetchFeedGateway.FetchFeeds(ctx, link)
-	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to fetch feeds", "error", err)
-		return errors.New("failed to fetch feeds")
+	// 4. Set FeedLinkID on all items
+	for _, item := range parsedFeed.Items {
+		item.FeedLinkID = feedLinkID
 	}
 
-	var feedItems []*domain.FeedItem
-	for _, feed := range feeds {
-		feedItems = append(feedItems, &domain.FeedItem{
-			Title:           feed.Title,
-			Description:     feed.Description,
-			Link:            feed.Link,
-			Published:       feed.Published,
-			PublishedParsed: feed.PublishedParsed,
-			Author: domain.Author{
-				Name: feed.Author.Name,
-			},
-			Authors: []domain.Author{
-				{
-					Name: feed.Author.Name,
-				},
-			},
-			Links:      feed.Links,
-			FeedLinkID: feedLinkID,
-		})
-	}
+	logger.Logger.InfoContext(ctx, "Feed items", "count", len(parsedFeed.Items))
 
-	logger.Logger.InfoContext(ctx, "Feed items", "count", len(feedItems))
-
-	ids, err := r.registerFeedsGateway.RegisterFeeds(ctx, feedItems)
+	// 5. Register feed items in DB
+	ids, err := r.registerFeedsGateway.RegisterFeeds(ctx, parsedFeed.Items)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to register feeds", "error", err)
 		return errors.New("failed to register feeds")
 	}
 
-	logger.Logger.InfoContext(ctx, "Feed items", "count", len(feedItems))
+	logger.Logger.InfoContext(ctx, "Feed items registered", "count", len(parsedFeed.Items))
 
-	r.publishFeedEvents(ctx, ids, feedItems, feedLinkID)
+	// 6. Fire-and-forget: event publishing + auto-subscribe
+	r.publishFeedEvents(ctx, ids, parsedFeed.Items, feedLinkID)
 	r.autoSubscribeUser(ctx, feedLinkID)
 
 	return nil

@@ -3,6 +3,8 @@ package resilience
 import (
 	"context"
 	"errors"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -23,12 +25,34 @@ type CircuitBreakerConfig struct {
 	MaxConcurrentRequests int           `json:"max_concurrent_requests"`
 }
 
-// DefaultCircuitBreakerConfig returns default configuration
+// DefaultCircuitBreakerConfig returns default configuration.
+// Values can be overridden via environment variables:
+//   - CB_FAILURE_THRESHOLD (int, default 5)
+//   - CB_MAX_CONCURRENT (int, default 100)
+//   - CB_RESET_TIMEOUT (duration string, default "60s")
 func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
+	failureThreshold := 5
+	if v := os.Getenv("CB_FAILURE_THRESHOLD"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			failureThreshold = n
+		}
+	}
+	maxConcurrent := 100
+	if v := os.Getenv("CB_MAX_CONCURRENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxConcurrent = n
+		}
+	}
+	resetTimeout := 60 * time.Second
+	if v := os.Getenv("CB_RESET_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			resetTimeout = d
+		}
+	}
 	return &CircuitBreakerConfig{
-		FailureThreshold:      5,
-		ResetTimeout:          60 * time.Second,
-		MaxConcurrentRequests: 10,
+		FailureThreshold:      failureThreshold,
+		ResetTimeout:          resetTimeout,
+		MaxConcurrentRequests: maxConcurrent,
 	}
 }
 

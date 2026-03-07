@@ -13,22 +13,18 @@ import (
 )
 
 func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
-	// Initialize logger to prevent nil pointer issues
 	logger.InitLogger()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	ctx := context.Background()
 
-	// Mock dependencies
+	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
 	mockRegisterFeedLinkGateway := mocks.NewMockRegisterFeedLinkPort(ctrl)
 	mockRegisterFeedsGateway := mocks.NewMockRegisterFeedsPort(ctrl)
-	mockFetchFeedGateway := mocks.NewMockFetchFeedsPort(ctrl)
 
-	// Test data
 	rssURL := "https://example.com/feed.xml"
 
-	// Mock feed items that should be fetched from external URL
 	mockFeedItems := []*domain.FeedItem{
 		{
 			Title:           "Test Article 1",
@@ -36,13 +32,9 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 			Link:            "https://example.com/article1",
 			Published:       "2025-01-13T10:00:00Z",
 			PublishedParsed: time.Date(2025, 1, 13, 10, 0, 0, 0, time.UTC),
-			Author: domain.Author{
-				Name: "Test Author",
-			},
-			Authors: []domain.Author{
-				{Name: "Test Author"},
-			},
-			Links: []string{"https://example.com/article1"},
+			Author:          domain.Author{Name: "Test Author"},
+			Authors:         []domain.Author{{Name: "Test Author"}},
+			Links:           []string{"https://example.com/article1"},
 		},
 		{
 			Title:           "Test Article 2",
@@ -50,13 +42,9 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 			Link:            "https://example.com/article2",
 			Published:       "2025-01-13T11:00:00Z",
 			PublishedParsed: time.Date(2025, 1, 13, 11, 0, 0, 0, time.UTC),
-			Author: domain.Author{
-				Name: "Test Author",
-			},
-			Authors: []domain.Author{
-				{Name: "Test Author"},
-			},
-			Links: []string{"https://example.com/article2"},
+			Author:          domain.Author{Name: "Test Author"},
+			Authors:         []domain.Author{{Name: "Test Author"}},
+			Links:           []string{"https://example.com/article2"},
 		},
 	}
 
@@ -71,40 +59,23 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 			name:   "successful_complete_flow",
 			rssURL: rssURL,
 			mockSetup: func() {
-				// 1. RSS feed link registration should succeed
-				mockRegisterFeedLinkGateway.EXPECT().
-					RegisterRSSFeedLink(ctx, rssURL).
-					Return(nil).
-					Times(1)
-
-				// 2. External feed fetching should succeed
-				mockFetchFeedGateway.EXPECT().
-					FetchFeeds(ctx, rssURL).
-					Return(mockFeedItems, nil).
-					Times(1)
-
-				// 3. Feed items should be stored in database
+				pf := &domain.ParsedFeed{FeedLink: rssURL, Items: mockFeedItems}
+				mockValidateFetch.EXPECT().ValidateAndFetch(ctx, rssURL).Return(pf, nil).Times(1)
+				mockRegisterFeedLinkGateway.EXPECT().RegisterFeedLink(ctx, rssURL).Return(nil).Times(1)
 				mockRegisterFeedsGateway.EXPECT().
 					RegisterFeeds(ctx, gomock.Any()).
 					DoAndReturn(func(ctx context.Context, feedItems []*domain.FeedItem) ([]string, error) {
-						// Verify that feed items are passed correctly
 						if len(feedItems) != 2 {
 							return nil, fmt.Errorf("expected 2 feed items, got %d", len(feedItems))
 						}
-
-						// Verify first item
 						if feedItems[0].Title != "Test Article 1" {
 							return nil, fmt.Errorf("expected first item title 'Test Article 1', got %s", feedItems[0].Title)
 						}
-
-						// Verify second item
 						if feedItems[1].Title != "Test Article 2" {
 							return nil, fmt.Errorf("expected second item title 'Test Article 2', got %s", feedItems[1].Title)
 						}
-
 						return []string{"id-1", "id-2"}, nil
-					}).
-					Times(1)
+					}).Times(1)
 			},
 			wantErr: false,
 			validate: func(t *testing.T, err error) {
@@ -114,23 +85,28 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 			},
 		},
 		{
+			name:   "validate_and_fetch_fails",
+			rssURL: rssURL,
+			mockSetup: func() {
+				mockValidateFetch.EXPECT().ValidateAndFetch(ctx, rssURL).Return(nil, fmt.Errorf("network timeout")).Times(1)
+			},
+			wantErr: true,
+			validate: func(t *testing.T, err error) {
+				if err == nil {
+					t.Error("Expected error for failed validate+fetch")
+				}
+				if err.Error() != "failed to register RSS feed link" {
+					t.Errorf("Expected specific error message, got: %s", err.Error())
+				}
+			},
+		},
+		{
 			name:   "feed_link_registration_fails",
 			rssURL: rssURL,
 			mockSetup: func() {
-				// RSS feed link registration fails
-				mockRegisterFeedLinkGateway.EXPECT().
-					RegisterRSSFeedLink(ctx, rssURL).
-					Return(fmt.Errorf("database connection failed")).
-					Times(1)
-
-				// Other methods should not be called
-				mockFetchFeedGateway.EXPECT().
-					FetchFeeds(gomock.Any(), gomock.Any()).
-					Times(0)
-
-				mockRegisterFeedsGateway.EXPECT().
-					RegisterFeeds(gomock.Any(), gomock.Any()).
-					Times(0)
+				pf := &domain.ParsedFeed{FeedLink: rssURL, Items: mockFeedItems}
+				mockValidateFetch.EXPECT().ValidateAndFetch(ctx, rssURL).Return(pf, nil).Times(1)
+				mockRegisterFeedLinkGateway.EXPECT().RegisterFeedLink(ctx, rssURL).Return(fmt.Errorf("database connection failed")).Times(1)
 			},
 			wantErr: true,
 			validate: func(t *testing.T, err error) {
@@ -143,57 +119,15 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 			},
 		},
 		{
-			name:   "external_feed_fetch_fails",
-			rssURL: rssURL,
-			mockSetup: func() {
-				// RSS feed link registration succeeds
-				mockRegisterFeedLinkGateway.EXPECT().
-					RegisterRSSFeedLink(ctx, rssURL).
-					Return(nil).
-					Times(1)
-
-				// External feed fetching fails
-				mockFetchFeedGateway.EXPECT().
-					FetchFeeds(ctx, rssURL).
-					Return(nil, fmt.Errorf("network timeout")).
-					Times(1)
-
-				// Feed storage should not be called
-				mockRegisterFeedsGateway.EXPECT().
-					RegisterFeeds(gomock.Any(), gomock.Any()).
-					Times(0)
-			},
-			wantErr: true,
-			validate: func(t *testing.T, err error) {
-				if err == nil {
-					t.Error("Expected error for failed external feed fetch")
-				}
-				if err.Error() != "failed to fetch feeds" {
-					t.Errorf("Expected specific error message, got: %s", err.Error())
-				}
-			},
-		},
-		{
 			name:   "feed_storage_fails",
 			rssURL: rssURL,
 			mockSetup: func() {
-				// RSS feed link registration succeeds
-				mockRegisterFeedLinkGateway.EXPECT().
-					RegisterRSSFeedLink(ctx, rssURL).
-					Return(nil).
-					Times(1)
-
-				// External feed fetching succeeds
-				mockFetchFeedGateway.EXPECT().
-					FetchFeeds(ctx, rssURL).
-					Return(mockFeedItems, nil).
-					Times(1)
-
-				// Feed storage fails
+				pf := &domain.ParsedFeed{FeedLink: rssURL, Items: mockFeedItems}
+				mockValidateFetch.EXPECT().ValidateAndFetch(ctx, rssURL).Return(pf, nil).Times(1)
+				mockRegisterFeedLinkGateway.EXPECT().RegisterFeedLink(ctx, rssURL).Return(nil).Times(1)
 				mockRegisterFeedsGateway.EXPECT().
 					RegisterFeeds(ctx, gomock.Any()).
-					Return(nil, fmt.Errorf("database write failed")).
-					Times(1)
+					Return(nil, fmt.Errorf("database write failed")).Times(1)
 			},
 			wantErr: true,
 			validate: func(t *testing.T, err error) {
@@ -209,11 +143,7 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 			name:   "empty_url_should_fail",
 			rssURL: "",
 			mockSetup: func() {
-				// Empty URL should fail validation
-				mockRegisterFeedLinkGateway.EXPECT().
-					RegisterRSSFeedLink(ctx, "").
-					Return(fmt.Errorf("RSS feed link cannot be empty")).
-					Times(1)
+				mockValidateFetch.EXPECT().ValidateAndFetch(ctx, "").Return(nil, fmt.Errorf("RSS feed link cannot be empty")).Times(1)
 			},
 			wantErr: true,
 			validate: func(t *testing.T, err error) {
@@ -226,20 +156,16 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup mocks for this test case
 			tt.mockSetup()
 
-			// Create usecase with mocked dependencies
 			usecase := NewRegisterFeedsUsecase(
+				mockValidateFetch,
 				mockRegisterFeedLinkGateway,
 				mockRegisterFeedsGateway,
-				mockFetchFeedGateway,
 			)
 
-			// Execute the usecase
 			err := usecase.Execute(ctx, tt.rssURL)
 
-			// Validate results
 			if (err != nil) != tt.wantErr {
 				t.Errorf("RegisterFeedsUsecase.Execute() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -250,22 +176,19 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 }
 
 func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
-	// Initialize logger
 	logger.InitLogger()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	ctx := context.Background()
 
-	// Mock dependencies
+	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
 	mockRegisterFeedLinkGateway := mocks.NewMockRegisterFeedLinkPort(ctrl)
 	mockRegisterFeedsGateway := mocks.NewMockRegisterFeedsPort(ctrl)
-	mockFetchFeedGateway := mocks.NewMockFetchFeedsPort(ctrl)
 
 	t.Run("large_feed_with_many_items", func(t *testing.T) {
 		rssURL := "https://news.ycombinator.com/rss"
 
-		// Create 100 mock feed items
 		largeFeedItems := make([]*domain.FeedItem, 100)
 		for i := 0; i < 100; i++ {
 			largeFeedItems[i] = &domain.FeedItem{
@@ -277,16 +200,9 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 			}
 		}
 
-		mockRegisterFeedLinkGateway.EXPECT().
-			RegisterRSSFeedLink(ctx, rssURL).
-			Return(nil).
-			Times(1)
-
-		mockFetchFeedGateway.EXPECT().
-			FetchFeeds(ctx, rssURL).
-			Return(largeFeedItems, nil).
-			Times(1)
-
+		pf := &domain.ParsedFeed{FeedLink: rssURL, Items: largeFeedItems}
+		mockValidateFetch.EXPECT().ValidateAndFetch(ctx, rssURL).Return(pf, nil).Times(1)
+		mockRegisterFeedLinkGateway.EXPECT().RegisterFeedLink(ctx, rssURL).Return(nil).Times(1)
 		mockRegisterFeedsGateway.EXPECT().
 			RegisterFeeds(ctx, gomock.Any()).
 			DoAndReturn(func(ctx context.Context, feedItems []*domain.FeedItem) ([]string, error) {
@@ -298,13 +214,12 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 					ids[i] = fmt.Sprintf("id-%d", i+1)
 				}
 				return ids, nil
-			}).
-			Times(1)
+			}).Times(1)
 
 		usecase := NewRegisterFeedsUsecase(
+			mockValidateFetch,
 			mockRegisterFeedLinkGateway,
 			mockRegisterFeedsGateway,
-			mockFetchFeedGateway,
 		)
 
 		err := usecase.Execute(ctx, rssURL)
@@ -318,7 +233,7 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 
 		specialFeedItems := []*domain.FeedItem{
 			{
-				Title:           "記事タイトル with émojis 🚀 and <script>tags</script>",
+				Title:           "記事タイトル with émojis and <script>tags</script>",
 				Description:     "Description with special chars: ñáéíóú & HTML <b>tags</b>",
 				Link:            "https://example.com/記事/1",
 				Published:       time.Now().Format(time.RFC3339),
@@ -326,25 +241,17 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 			},
 		}
 
-		mockRegisterFeedLinkGateway.EXPECT().
-			RegisterRSSFeedLink(ctx, rssURL).
-			Return(nil).
-			Times(1)
-
-		mockFetchFeedGateway.EXPECT().
-			FetchFeeds(ctx, rssURL).
-			Return(specialFeedItems, nil).
-			Times(1)
-
+		pf := &domain.ParsedFeed{FeedLink: rssURL, Items: specialFeedItems}
+		mockValidateFetch.EXPECT().ValidateAndFetch(ctx, rssURL).Return(pf, nil).Times(1)
+		mockRegisterFeedLinkGateway.EXPECT().RegisterFeedLink(ctx, rssURL).Return(nil).Times(1)
 		mockRegisterFeedsGateway.EXPECT().
 			RegisterFeeds(ctx, gomock.Any()).
-			Return([]string{"id-1"}, nil).
-			Times(1)
+			Return([]string{"id-1"}, nil).Times(1)
 
 		usecase := NewRegisterFeedsUsecase(
+			mockValidateFetch,
 			mockRegisterFeedLinkGateway,
 			mockRegisterFeedsGateway,
-			mockFetchFeedGateway,
 		)
 
 		err := usecase.Execute(ctx, rssURL)

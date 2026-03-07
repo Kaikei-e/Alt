@@ -46,6 +46,7 @@ import (
 	"alt/gateway/trend_stats_gateway"
 	"alt/gateway/update_feed_status_gateway"
 	"alt/gateway/user_feed_gateway"
+	"alt/gateway/validate_fetch_rss_gateway"
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
 	"alt/port/event_publisher_port"
@@ -208,11 +209,11 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	fetchReadFeedsListCursorUsecase := fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 	fetchFavoriteFeedsListCursorUsecase := fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 
+	validateAndFetchRSSGatewayImpl := validate_fetch_rss_gateway.NewValidateAndFetchRSSGateway()
 	registerFeedLinkGatewayImpl := register_feed_gateway.NewRegisterFeedLinkGateway(pool)
 	registerFeedsGatewayImpl := register_feed_gateway.NewRegisterFeedsGateway(pool)
 	registerFavoriteFeedGatewayImpl := register_favorite_feed_gateway.NewRegisterFavoriteFeedGateway(pool)
-	fetchFeedsGatewayImpl := fetch_feed_gateway.NewFetchFeedsGatewayWithRateLimiter(pool, rateLimiter)
-	registerFeedsUsecase := register_feed_usecase.NewRegisterFeedsUsecase(registerFeedLinkGatewayImpl, registerFeedsGatewayImpl, fetchFeedsGatewayImpl)
+	registerFeedsUsecase := register_feed_usecase.NewRegisterFeedsUsecase(validateAndFetchRSSGatewayImpl, registerFeedLinkGatewayImpl, registerFeedsGatewayImpl)
 	registerFeedsUsecase.SetFeedLinkIDResolver(altDBRepository)
 	registerFavoriteFeedUsecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(registerFavoriteFeedGatewayImpl)
 	feedLinkGatewayImpl := feed_link_gateway.NewFeedLinkGateway(pool)
@@ -323,8 +324,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// Image proxy components
 	// Image CDNs are designed for high throughput; use a dedicated rate limiter
-	// with a shorter interval (3s) instead of sharing the RSS feed limiter (10s).
-	imageProxyRateLimiter := rate_limiter.NewHostRateLimiter(3 * time.Second)
+	// with a shorter interval (5s) instead of sharing the RSS feed limiter (10s).
+	imageProxyRateLimiter := rate_limiter.NewHostRateLimiter(5 * time.Second)
 	var imageProxyUsecaseInstance *image_proxy_usecase.ImageProxyUsecase
 	if cfg.ImageProxy.Enabled && cfg.ImageProxy.Secret != "" {
 		imageProxySigner := image_proxy.NewSigner(cfg.ImageProxy.Secret)
