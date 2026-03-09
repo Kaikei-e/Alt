@@ -3,10 +3,12 @@ package register_feed_usecase
 import (
 	"alt/domain"
 	"alt/mocks"
+	"alt/port/event_publisher_port"
 	"alt/usecase/testutil"
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -222,7 +224,15 @@ func TestRegisterFeedUsecase_AutoSubscribe_Success(t *testing.T) {
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
 	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"id-1", "id-2"}, nil).Times(1)
-	mockSubscriptionPort.EXPECT().Subscribe(gomock.Any(), userID, feedLinkID).Return(nil).Times(1)
+
+	// Use WaitGroup to wait for async Subscribe goroutine
+	var wg sync.WaitGroup
+	wg.Add(1)
+	mockSubscriptionPort.EXPECT().Subscribe(gomock.Any(), userID, feedLinkID).
+		DoAndReturn(func(_ context.Context, _ uuid.UUID, _ uuid.UUID) error {
+			defer wg.Done()
+			return nil
+		}).Times(1)
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
 	r.SetSubscriptionPort(mockSubscriptionPort)
@@ -235,6 +245,7 @@ func TestRegisterFeedUsecase_AutoSubscribe_Success(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
+	wg.Wait()
 }
 
 func TestRegisterFeedUsecase_AutoSubscribe_NoUserContext(t *testing.T) {
@@ -269,6 +280,8 @@ func TestRegisterFeedUsecase_AutoSubscribe_NoUserContext(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
+	// Give goroutine time to run (autoSubscribeUser exits early with no user context)
+	time.Sleep(50 * time.Millisecond)
 }
 
 func TestRegisterFeedUsecase_AutoSubscribe_SubscribeError(t *testing.T) {
@@ -291,8 +304,15 @@ func TestRegisterFeedUsecase_AutoSubscribe_SubscribeError(t *testing.T) {
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
 	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"id-1", "id-2"}, nil).Times(1)
+
 	// Subscribe fails, but Execute should still succeed
-	mockSubscriptionPort.EXPECT().Subscribe(gomock.Any(), userID, feedLinkID).Return(errors.New("subscription error")).Times(1)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	mockSubscriptionPort.EXPECT().Subscribe(gomock.Any(), userID, feedLinkID).
+		DoAndReturn(func(_ context.Context, _ uuid.UUID, _ uuid.UUID) error {
+			defer wg.Done()
+			return errors.New("subscription error")
+		}).Times(1)
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
 	r.SetSubscriptionPort(mockSubscriptionPort)
@@ -305,6 +325,7 @@ func TestRegisterFeedUsecase_AutoSubscribe_SubscribeError(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error even when subscribe fails, got %v", err)
 	}
+	wg.Wait()
 }
 
 func TestRegisterFeedUsecase_EventPublishing_Success(t *testing.T) {
@@ -325,9 +346,22 @@ func TestRegisterFeedUsecase_EventPublishing_Success(t *testing.T) {
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
 	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"art-1", "art-2"}, nil).Times(1)
 
-	// Event publisher is enabled and should be called for each ID
+	// Event publisher is enabled and should be called for each ID (async via goroutine)
+	var wg sync.WaitGroup
+	wg.Add(1) // 1 for IsEnabled + publishFeedEvents goroutine completion
 	mockEventPublisher.EXPECT().IsEnabled().Return(true).Times(1)
-	mockEventPublisher.EXPECT().PublishArticleCreated(gomock.Any(), gomock.Any()).Return(nil).Times(2)
+	callCount := 0
+	var mu sync.Mutex
+	mockEventPublisher.EXPECT().PublishArticleCreated(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ event_publisher_port.ArticleCreatedEvent) error {
+			mu.Lock()
+			callCount++
+			if callCount == 2 {
+				wg.Done()
+			}
+			mu.Unlock()
+			return nil
+		}).Times(2)
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
 	r.SetEventPublisher(mockEventPublisher)
@@ -339,6 +373,7 @@ func TestRegisterFeedUsecase_EventPublishing_Success(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
+	wg.Wait()
 }
 
 func TestRegisterFeedUsecase_EventPublishing_Disabled(t *testing.T) {
@@ -367,6 +402,8 @@ func TestRegisterFeedUsecase_EventPublishing_Disabled(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
+	// Give goroutine time to run (returns early since disabled)
+	time.Sleep(50 * time.Millisecond)
 }
 
 func TestRegisterFeedUsecase_EventPublishing_NotSet(t *testing.T) {
@@ -409,9 +446,22 @@ func TestRegisterFeedUsecase_EventPublishing_FailureNonFatal(t *testing.T) {
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
 	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"art-1", "art-2"}, nil).Times(1)
 
-	// Event publisher is enabled but PublishArticleCreated fails
+	// Event publisher is enabled but PublishArticleCreated fails (async via goroutine)
+	var wg sync.WaitGroup
+	wg.Add(1)
 	mockEventPublisher.EXPECT().IsEnabled().Return(true).Times(1)
-	mockEventPublisher.EXPECT().PublishArticleCreated(gomock.Any(), gomock.Any()).Return(errors.New("publish failed")).Times(2)
+	callCount := 0
+	var mu sync.Mutex
+	mockEventPublisher.EXPECT().PublishArticleCreated(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ event_publisher_port.ArticleCreatedEvent) error {
+			mu.Lock()
+			callCount++
+			if callCount == 2 {
+				wg.Done()
+			}
+			mu.Unlock()
+			return errors.New("publish failed")
+		}).Times(2)
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
 	r.SetEventPublisher(mockEventPublisher)
@@ -421,4 +471,5 @@ func TestRegisterFeedUsecase_EventPublishing_FailureNonFatal(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected no error even when event publishing fails, got %v", err)
 	}
+	wg.Wait()
 }

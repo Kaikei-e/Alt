@@ -1,9 +1,12 @@
 package validate_fetch_rss_gateway
 
 import (
+	"alt/utils/metrics"
 	"context"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -166,7 +169,7 @@ func TestValidateAndFetchRSSGateway_Semaphore_ContextCancellation(t *testing.T) 
 		feedFetcher:      fetcher,
 		urlValidator:     nil, // Skip validation for this test
 		circuitBreaker:   nil,
-		metricsCollector: nil,
+		metricsCollector: metrics.NewBasicMetricsCollector(),
 		fetchSem:         make(chan struct{}, 1),
 	}
 
@@ -209,4 +212,65 @@ func TestValidateAndFetchRSSGateway_Metrics(t *testing.T) {
 
 	assert.Equal(t, int64(1), metrics.GetSuccessfulRequests())
 	assert.Equal(t, int64(1), metrics.GetFailedRequests())
+}
+
+// countingFetcher tracks how many times FetchRSSFeed is actually called.
+type countingFetcher struct {
+	callCount atomic.Int32
+	delay     time.Duration
+}
+
+func (m *countingFetcher) FetchRSSFeed(ctx context.Context, link string) (*gofeed.Feed, error) {
+	m.callCount.Add(1)
+	if m.delay > 0 {
+		time.Sleep(m.delay)
+	}
+	return &gofeed.Feed{
+		Title:    "Test Feed",
+		Link:     link,
+		FeedLink: link,
+		Items: []*gofeed.Item{
+			{Title: "Item 1", Link: link + "/1"},
+		},
+	}, nil
+}
+
+func TestValidateAndFetchRSSGateway_Singleflight_DeduplicatesConcurrentFetches(t *testing.T) {
+	fetcher := &countingFetcher{delay: 50 * time.Millisecond}
+	gw := NewValidateAndFetchRSSGatewayWithFetcher(fetcher)
+
+	const concurrency = 5
+	var wg sync.WaitGroup
+	errs := make([]error, concurrency)
+	results := make([]*struct{ feedLink string }, concurrency)
+
+	// Launch 5 concurrent requests for the same URL
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			result, err := gw.ValidateAndFetch(context.Background(), "https://example.com/feed.xml")
+			errs[idx] = err
+			if result != nil {
+				results[idx] = &struct{ feedLink string }{feedLink: result.FeedLink}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// All requests should succeed
+	for i, err := range errs {
+		assert.NoError(t, err, "request %d failed", i)
+	}
+
+	// All should get the same result
+	for i, r := range results {
+		require.NotNil(t, r, "result %d is nil", i)
+		assert.Equal(t, "https://example.com/feed.xml", r.feedLink, "result %d has wrong feed link", i)
+	}
+
+	// singleflight should deduplicate: only 1 actual fetch call
+	assert.Equal(t, int32(1), fetcher.callCount.Load(),
+		"expected exactly 1 fetch call due to singleflight dedup, got %d", fetcher.callCount.Load())
 }

@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"alt/gateway/register_feed_gateway"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // ValidateAndFetchRSSGateway validates an RSS URL and fetches the feed in a single
@@ -26,6 +28,7 @@ type ValidateAndFetchRSSGateway struct {
 	circuitBreaker   *resilience.SimpleCircuitBreaker
 	metricsCollector *metrics.BasicMetricsCollector
 	fetchSem         chan struct{}
+	sfGroup          singleflight.Group // deduplicates concurrent fetches for the same URL
 }
 
 func NewValidateAndFetchRSSGateway() *ValidateAndFetchRSSGateway {
@@ -74,61 +77,69 @@ func (g *ValidateAndFetchRSSGateway) ValidateAndFetch(ctx context.Context, link 
 		}
 	}
 
-	// Semaphore: limit concurrent external fetches
-	select {
-	case g.fetchSem <- struct{}{}:
-		defer func() { <-g.fetchSem }()
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-
-	var result *domain.ParsedFeed
-
-	// Circuit breaker wrapping
-	err := g.circuitBreaker.Execute(ctx, func() error {
-		parsedURL, err := url.Parse(link)
-		if err != nil {
-			return errors.New("invalid URL format")
-		}
-		if parsedURL.Scheme == "" {
-			return errors.New("URL must include a scheme (http or https)")
+	// singleflight: deduplicate concurrent fetches for the same URL
+	val, err, shared := g.sfGroup.Do(link, func() (interface{}, error) {
+		// Semaphore: limit concurrent external fetches
+		select {
+		case g.fetchSem <- struct{}{}:
+			defer func() { <-g.fetchSem }()
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 
-		feed, err := g.feedFetcher.FetchRSSFeed(ctx, link)
-		if err != nil {
-			return classifyFetchError(ctx, link, err)
-		}
+		var result *domain.ParsedFeed
 
-		feedLink := feed.FeedLink
-		if feedLink == "" {
-			feedLink = link
-		}
-
-		// Convert gofeed items to domain FeedItems
-		items := make([]*domain.FeedItem, 0, len(feed.Items))
-		for _, item := range feed.Items {
-			fi := &domain.FeedItem{
-				Title:       item.Title,
-				Description: item.Description,
-				Link:        item.Link,
-				Published:   item.Published,
-				Links:       item.Links,
+		// Circuit breaker wrapping
+		cbErr := g.circuitBreaker.Execute(ctx, func() error {
+			parsedURL, err := url.Parse(link)
+			if err != nil {
+				return errors.New("invalid URL format")
 			}
-			if item.PublishedParsed != nil {
-				fi.PublishedParsed = *item.PublishedParsed
+			if parsedURL.Scheme == "" {
+				return errors.New("URL must include a scheme (http or https)")
 			}
-			if item.Author != nil {
-				fi.Author = domain.Author{Name: item.Author.Name}
-				fi.Authors = []domain.Author{{Name: item.Author.Name}}
-			}
-			items = append(items, fi)
-		}
 
-		result = &domain.ParsedFeed{
-			FeedLink: feedLink,
-			Items:    items,
+			feed, err := g.feedFetcher.FetchRSSFeed(ctx, link)
+			if err != nil {
+				return classifyFetchError(ctx, link, err)
+			}
+
+			feedLink := feed.FeedLink
+			if feedLink == "" {
+				feedLink = link
+			}
+
+			// Convert gofeed items to domain FeedItems
+			items := make([]*domain.FeedItem, 0, len(feed.Items))
+			for _, item := range feed.Items {
+				fi := &domain.FeedItem{
+					Title:       item.Title,
+					Description: item.Description,
+					Link:        item.Link,
+					Published:   item.Published,
+					Links:       item.Links,
+				}
+				if item.PublishedParsed != nil {
+					fi.PublishedParsed = *item.PublishedParsed
+				}
+				if item.Author != nil {
+					fi.Author = domain.Author{Name: item.Author.Name}
+					fi.Authors = []domain.Author{{Name: item.Author.Name}}
+				}
+				items = append(items, fi)
+			}
+
+			result = &domain.ParsedFeed{
+				FeedLink: feedLink,
+				Items:    items,
+			}
+			return nil
+		})
+
+		if cbErr != nil {
+			return nil, cbErr
 		}
-		return nil
+		return result, nil
 	})
 
 	responseTime := time.Since(start)
@@ -140,6 +151,10 @@ func (g *ValidateAndFetchRSSGateway) ValidateAndFetch(ctx context.Context, link 
 		return nil, err
 	}
 
+	result := val.(*domain.ParsedFeed)
+	if shared {
+		logger.SafeInfoContext(ctx, "RSS feed fetch deduplicated via singleflight", "url", link, "response_time", responseTime)
+	}
 	g.metricsCollector.RecordSuccess()
 	logger.SafeInfoContext(ctx, "RSS feed validation+fetch successful", "url", link, "items", len(result.Items), "response_time", responseTime)
 	return result, nil

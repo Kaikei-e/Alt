@@ -78,20 +78,19 @@ type DefaultRSSFeedFetcher struct {
 	proxyConfig      *ProxyConfig
 	envoyProxyConfig *EnvoyProxyConfig
 	proxyStrategy    *proxy.Strategy
+	httpClient       *http.Client // shared HTTP client with connection pooling
 }
 
 // NewDefaultRSSFeedFetcher creates a new DefaultRSSFeedFetcher with proxy configuration
 func NewDefaultRSSFeedFetcher() *DefaultRSSFeedFetcher {
 	strategy := proxy.GetStrategy()
-	return &DefaultRSSFeedFetcher{
+	f := &DefaultRSSFeedFetcher{
 		proxyConfig:      getProxyConfigFromEnv(),
 		envoyProxyConfig: getEnvoyProxyConfigFromEnv(),
 		proxyStrategy:    strategy,
 	}
-}
 
-// createHTTPClient creates an HTTP client with HTTPS direct connection
-func (f *DefaultRSSFeedFetcher) createHTTPClient(ctx context.Context) *http.Client {
+	// Create shared HTTP client with connection pooling (goroutine-safe)
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: false,
@@ -101,25 +100,21 @@ func (f *DefaultRSSFeedFetcher) createHTTPClient(ctx context.Context) *http.Clie
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-		MaxIdleConns:        100,
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 50,
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 30 * time.Second,
 	}
 
-	if f.proxyConfig != nil && f.proxyConfig.Enabled && f.proxyConfig.ProxyURL != "" {
-		logger.SafeInfoContext(ctx, "Using direct HTTPS connection due to proxy CONNECT method limitation",
-			"proxy_enabled", f.proxyConfig.Enabled,
-			"proxy_url", f.proxyConfig.ProxyURL,
-			"reason", "nginx-external does not support CONNECT method for HTTPS tunneling")
-	}
-
 	roundTripper := proxy.WrapTransportForProxy(transport, f.proxyStrategy)
-
-	return &http.Client{
+	f.httpClient = &http.Client{
 		Timeout:   60 * time.Second,
 		Transport: roundTripper,
 	}
+
+	return f
 }
+
 
 func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (*gofeed.Feed, error) {
 	if f.proxyStrategy == nil {
@@ -168,10 +163,8 @@ func isRetryableError(err error) bool {
 
 // fetchRSSFeedWithRetry performs RSS feed fetching with exponential backoff retry
 func (f *DefaultRSSFeedFetcher) fetchRSSFeedWithRetry(ctx context.Context, link string) (*gofeed.Feed, error) {
-	httpClient := f.createHTTPClient(ctx)
-
 	fp := gofeed.NewParser()
-	fp.Client = httpClient
+	fp.Client = f.httpClient
 	fp.UserAgent = "Alt-RSS-Reader/1.0 (+https://alt.example.com)"
 
 	feedCtx, cancel := context.WithTimeout(ctx, 60*time.Second)

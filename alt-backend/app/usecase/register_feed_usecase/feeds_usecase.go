@@ -91,9 +91,12 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 
 	logger.Logger.InfoContext(ctx, "Feed items registered", "count", len(parsedFeed.Items))
 
-	// 6. Fire-and-forget: event publishing + auto-subscribe
-	r.publishFeedEvents(ctx, ids, parsedFeed.Items, feedLinkID)
-	r.autoSubscribeUser(ctx, feedLinkID)
+	// 6. Fire-and-forget: event publishing + auto-subscribe (truly async)
+	// Use context.WithoutCancel so goroutines survive after HTTP response is sent.
+	// Both operations already log errors without propagating them.
+	bgCtx := context.WithoutCancel(ctx)
+	go r.publishFeedEvents(bgCtx, ids, parsedFeed.Items, feedLinkID)
+	go r.autoSubscribeUser(bgCtx, feedLinkID)
 
 	return nil
 }

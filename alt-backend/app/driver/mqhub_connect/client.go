@@ -44,8 +44,16 @@ func NewClient(baseURL string, enabled bool) *Client {
 		return &Client{enabled: false}
 	}
 
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 50,
+			IdleConnTimeout:     90 * time.Second,
+		},
+		Timeout: 30 * time.Second,
+	}
 	client := mqhubv1connect.NewMQHubServiceClient(
-		http.DefaultClient,
+		httpClient,
 		baseURL,
 	)
 	return &Client{
