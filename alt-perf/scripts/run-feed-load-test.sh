@@ -112,8 +112,8 @@ if [ "$USER_COUNT" -gt 1000 ]; then
 
   pgbouncer:
     environment:
-      - DEFAULT_POOL_SIZE=50
-      - MAX_DB_CONNECTIONS=130
+      - DEFAULT_POOL_SIZE=80
+      - MAX_DB_CONNECTIONS=200
       - MAX_CLIENT_CONN=2000
       - QUERY_WAIT_TIMEOUT=120
     deploy:
@@ -133,7 +133,7 @@ if [ "$USER_COUNT" -gt 1000 ]; then
       - FEED_ALLOWED_HOSTS=${ALLOWED_HOSTS}
       - DB_HOST=pgbouncer
       - DB_PORT=6432
-      - DB_MAX_CONNS=100
+      - DB_MAX_CONNS=200
       - DB_MIN_CONNS=10
       - DOS_PROTECTION_RATE_LIMIT=10000
       - DOS_PROTECTION_BURST_LIMIT=20000
