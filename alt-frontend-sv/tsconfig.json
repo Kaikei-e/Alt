@@ -5,12 +5,10 @@
 		"allowJs": true,
 		"checkJs": true,
 		"esModuleInterop": true,
-		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"skipLibCheck": true,
 		"sourceMap": true,
-		"strict": true,
-		"moduleResolution": "bundler"
+		"strict": true
 	},
 	"include": [
 		".svelte-kit/ambient.d.ts",

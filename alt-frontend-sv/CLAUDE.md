@@ -2,7 +2,7 @@
 
 ## Overview
 
-Next-gen frontend. **SvelteKit 2.x**, **Svelte 5 Runes**, **TailwindCSS v4**. Serves under `/sv` base path.
+Next-gen frontend. **SvelteKit 2.x**, **Svelte 5 Runes**, **TailwindCSS v4**, **TypeScript 7 (tsgo)**. Serves under `/sv` base path.
 
 > Details: `docs/services/alt-frontend-sv.md`
 
@@ -18,8 +18,8 @@ bun dev
 
 # Lint & Type Check & Build
 bun run lint && bun run format
-bun run check && bun run build   # tsgo-based type check (fast)
-bun run check:legacy             # tsc-based type check (fallback)
+bun run check && bun run build   # tsgo-based type check (primary, 10x fast)
+bun run check:tsc                # tsc-based type check (TS5.9 fallback)
 ```
 
 ## TDD Workflow
