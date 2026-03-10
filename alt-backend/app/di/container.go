@@ -68,8 +68,10 @@ import (
 	"alt/usecase/fetch_random_subscription_usecase"
 	"alt/usecase/fetch_articles_by_tag_usecase"
 	"alt/usecase/fetch_article_tags_usecase"
+	"alt/usecase/fetch_tag_cloud_usecase"
 	"alt/gateway/fetch_random_subscription_gateway"
 	"alt/gateway/fetch_articles_by_tag_gateway"
+	"alt/gateway/fetch_tag_cloud_gateway"
 	"alt/gateway/article_summary_gateway"
 	"alt/gateway/cached_article_tags_gateway"
 	"alt/gateway/dashboard_gateway"
@@ -173,6 +175,7 @@ type ApplicationComponents struct {
 	FetchLatestArticleUsecase           *fetch_latest_article_usecase.FetchLatestArticleUsecase
 	FetchArticleSummaryUsecase          *fetch_article_summary_usecase.FetchArticleSummaryUsecase
 	StreamArticleTagsUsecase            *stream_article_tags_usecase.StreamArticleTagsUsecase
+	FetchTagCloudUsecase                *fetch_tag_cloud_usecase.FetchTagCloudUsecase
 
 	// Image Proxy
 	ImageProxyUsecase                   *image_proxy_usecase.ImageProxyUsecase
@@ -305,7 +308,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	recapArticlesUsecase := recap_articles_usecase.NewRecapArticlesUsecase(recapArticlesGateway, recapUsecaseCfg)
 
 	// Recap 7-day summary components
-	recapGateway := recap_gateway.NewRecapGateway()
+	recapGateway := recap_gateway.NewRecapGateway(searchIndexerDriver)
 	recapUsecase := recap_usecase.NewRecapUsecase(recapGateway)
 
 	// Fetch inoreader summary components
@@ -379,6 +382,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	// Articles by tag components (for Tag Trail feature)
 	fetchArticlesByTagGatewayImpl := fetch_articles_by_tag_gateway.NewFetchArticlesByTagGateway(altDBRepository)
 	fetchArticlesByTagUsecase := fetch_articles_by_tag_usecase.NewFetchArticlesByTagUsecase(fetchArticlesByTagGatewayImpl)
+
+	// Tag cloud components (for Tag Verse feature)
+	fetchTagCloudGatewayImpl := fetch_tag_cloud_gateway.NewFetchTagCloudGateway(altDBRepository)
+	fetchTagCloudUsecase := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(fetchTagCloudGatewayImpl)
 
 	// Article tags components (for Tag Trail feature)
 	// Use gateway with mq-hub client to enable on-the-fly tag generation (ADR-168)
@@ -495,6 +502,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchLatestArticleUsecase:           fetchLatestArticleUsecase,
 		FetchArticleSummaryUsecase:          fetchArticleSummaryUsecase,
 		StreamArticleTagsUsecase:            streamArticleTagsUsecase,
+		FetchTagCloudUsecase:                fetchTagCloudUsecase,
 
 		// Image Proxy
 		ImageProxyUsecase:                   imageProxyUsecaseInstance,

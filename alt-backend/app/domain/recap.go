@@ -81,4 +81,16 @@ type ClusterArticle struct {
 	TopTags        []string `json:"top_tags"`
 }
 
+// RecapSearchResult represents a genre from a completed recap job found by tag search.
+type RecapSearchResult struct {
+	JobID      string   `json:"job_id"`
+	ExecutedAt string   `json:"executed_at"`
+	WindowDays int      `json:"window_days"`
+	Genre      string   `json:"genre"`
+	Summary    string   `json:"summary"`
+	TopTerms   []string `json:"top_terms"`
+	Tags       []string `json:"tags"`
+	Bullets    []string `json:"bullets"`
+}
+
 var ErrRecapNotFound = errors.New("recap not found")
