@@ -8,8 +8,8 @@ import (
 
 	"connectrpc.com/connect"
 
-	ppv2 "alt/gen/proto/clients/preprocessor/v2"
-	"alt/gen/proto/clients/preprocessor/v2/preprocessorv2connect"
+	ppv2 "alt/gen/proto/services/preprocessor/v2"
+	"alt/gen/proto/services/preprocessor/v2/preprocessorv2connect"
 )
 
 // SummarizeStatus represents the status of a summarization job.

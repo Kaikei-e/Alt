@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/port/search_indexer_port"
 	"context"
+	"fmt"
 )
 
 type HTTPSearchIndexerDriver struct{}
@@ -56,4 +57,10 @@ func (d *HTTPSearchIndexerDriver) SearchArticlesWithPagination(ctx context.Conte
 		return hits[start:end], totalCount, nil
 	}
 	return []domain.SearchIndexerArticleHit{}, totalCount, nil
+}
+
+// SearchRecapsByTag is not supported by the REST driver.
+// Use the Connect-RPC driver for recap search via Meilisearch.
+func (d *HTTPSearchIndexerDriver) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
+	return nil, fmt.Errorf("SearchRecapsByTag not supported by HTTP driver, use Connect-RPC driver")
 }

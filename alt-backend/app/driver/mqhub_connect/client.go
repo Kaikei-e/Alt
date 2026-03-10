@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	mqhubv1 "alt/gen/proto/clients/mqhub/v1"
-	"alt/gen/proto/clients/mqhub/v1/mqhubv1connect"
+	mqhubv1 "alt/gen/proto/services/mqhub/v1"
+	"alt/gen/proto/services/mqhub/v1/mqhubv1connect"
 )
 
 // StreamKey constants matching mq-hub domain.

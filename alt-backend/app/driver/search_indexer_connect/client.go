@@ -8,8 +8,8 @@ import (
 	"connectrpc.com/connect"
 
 	"alt/domain"
-	searchv2 "alt/gen/proto/clients/search/v2"
-	"alt/gen/proto/clients/search/v2/searchv2connect"
+	searchv2 "alt/gen/proto/services/search/v2"
+	"alt/gen/proto/services/search/v2/searchv2connect"
 	"alt/port/search_indexer_port"
 )
 
@@ -76,4 +76,31 @@ func (d *ConnectSearchIndexerDriver) SearchArticlesWithPagination(ctx context.Co
 	}
 
 	return hits, resp.Msg.EstimatedTotalHits, nil
+}
+
+// SearchRecapsByTag searches recap genres by tag name via search-indexer's Meilisearch.
+func (d *ConnectSearchIndexerDriver) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
+	resp, err := d.client.SearchRecaps(ctx, connect.NewRequest(&searchv2.SearchRecapsRequest{
+		TagName: tagName,
+		Limit:   int32(limit),
+	}))
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]*domain.RecapSearchResult, len(resp.Msg.Hits))
+	for i, hit := range resp.Msg.Hits {
+		results[i] = &domain.RecapSearchResult{
+			JobID:      hit.JobId,
+			ExecutedAt: hit.ExecutedAt,
+			WindowDays: int(hit.WindowDays),
+			Genre:      hit.Genre,
+			Summary:    hit.Summary,
+			TopTerms:   hit.TopTerms,
+			Tags:       hit.Tags,
+			Bullets:    hit.Bullets,
+		}
+	}
+
+	return results, nil
 }
