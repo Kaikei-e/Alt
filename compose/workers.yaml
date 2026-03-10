@@ -69,6 +69,8 @@ services:
       - CONSUMER_ENABLED=true
       - CONSUMER_GROUP=search-indexer-group
       - CONSUMER_NAME=search-indexer-1
+      # Recap indexing (polls recap-worker for Meilisearch indexing)
+      - RECAP_WORKER_URL=http://recap-worker:9005
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=search-indexer
