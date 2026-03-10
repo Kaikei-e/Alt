@@ -71,3 +71,18 @@ func (mr *MockSearchIndexerPortMockRecorder) SearchArticlesWithPagination(ctx, q
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchArticlesWithPagination", reflect.TypeOf((*MockSearchIndexerPort)(nil).SearchArticlesWithPagination), ctx, query, userID, offset, limit)
 }
+
+// SearchRecapsByTag mocks base method.
+func (m *MockSearchIndexerPort) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchRecapsByTag", ctx, tagName, limit)
+	ret0, _ := ret[0].([]*domain.RecapSearchResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchRecapsByTag indicates an expected call of SearchRecapsByTag.
+func (mr *MockSearchIndexerPortMockRecorder) SearchRecapsByTag(ctx, tagName, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecapsByTag", reflect.TypeOf((*MockSearchIndexerPort)(nil).SearchRecapsByTag), ctx, tagName, limit)
+}
