@@ -2393,6 +2393,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "bandit" },
+    { name = "httpx" },
     { name = "hypothesis" },
     { name = "langdetect" },
     { name = "psutil" },
@@ -2455,6 +2456,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "bandit", specifier = ">=1.8.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "hypothesis", specifier = ">=6.100.0" },
     { name = "langdetect", specifier = ">=1.0.9" },
     { name = "psutil", specifier = ">=5.9.0" },

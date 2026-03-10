@@ -505,6 +505,46 @@ async def fetch_tags_batch(
         raise HTTPException(status_code=500, detail=f"Failed to fetch tags: {str(e)}") from e
 
 
+class ExtractTagsRequest(BaseModel):
+    """Request model for text-based tag extraction."""
+
+    title: str
+    content: str
+
+
+@app.post("/api/v1/extract-tags")
+async def extract_tags_endpoint(
+    request: Request,
+    body: ExtractTagsRequest,
+) -> dict[str, Any]:
+    """
+    Extract semantic tags from arbitrary text.
+    Service-to-service endpoint (requires X-Service-Token header).
+    Used by recap-worker to tag recap genre outputs.
+    """
+    verify_service_token(request)
+
+    if _background_tag_service is None:
+        raise HTTPException(status_code=503, detail="Tag extraction service not ready")
+
+    try:
+        outcome = _background_tag_service.tag_extractor.extract_tags_with_metrics(
+            body.title, body.content
+        )
+
+        return {
+            "success": True,
+            "tags": outcome.tags,
+            "confidence": outcome.confidence,
+            "inference_ms": outcome.inference_ms,
+            "language": outcome.language,
+        }
+
+    except Exception as e:
+        logger.error("Tag extraction failed", error=str(e), title=body.title[:50])
+        raise HTTPException(status_code=500, detail=f"Tag extraction failed: {str(e)}") from e
+
+
 if __name__ == "__main__":
     import uvicorn
 

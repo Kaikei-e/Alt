@@ -178,16 +178,18 @@ class GetArticleContentRequest(_message.Message):
     def __init__(self, article_id: _Optional[str] = ...) -> None: ...
 
 class GetArticleContentResponse(_message.Message):
-    __slots__ = ("article_id", "title", "content", "url")
+    __slots__ = ("article_id", "title", "content", "url", "user_id")
     ARTICLE_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     CONTENT_FIELD_NUMBER: _ClassVar[int]
     URL_FIELD_NUMBER: _ClassVar[int]
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     article_id: str
     title: str
     content: str
     url: str
-    def __init__(self, article_id: _Optional[str] = ..., title: _Optional[str] = ..., content: _Optional[str] = ..., url: _Optional[str] = ...) -> None: ...
+    user_id: str
+    def __init__(self, article_id: _Optional[str] = ..., title: _Optional[str] = ..., content: _Optional[str] = ..., url: _Optional[str] = ..., user_id: _Optional[str] = ...) -> None: ...
 
 class GetFeedIDRequest(_message.Message):
     __slots__ = ("feed_url",)

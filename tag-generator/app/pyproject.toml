@@ -65,22 +65,19 @@ dev = [
     "pytest-cov>=6.0.0",
     "pytest-mock>=3.14.1",
     "pytest-timeout>=2.4.0",
-
     # Code Quality Tools
     "ruff>=0.12.1",
     "bandit>=1.8.0",
     "pytest-asyncio>=0.24.0",
-
     # Property-based testing
     "hypothesis>=6.100.0",
-
     # Type Checking
     "pyrefly>=0.42.0",
     "types-psycopg2>=2.9.21.20250516",
-
     # Additional test dependencies for CI
     "langdetect>=1.0.9",
     "psutil>=5.9.0",
+    "httpx>=0.28.1",
 ]
 
 # ML dependencies for production and testing
