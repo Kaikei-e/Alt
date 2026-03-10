@@ -57,6 +57,25 @@ func TestRSSFeedLink_Construction(t *testing.T) {
 	assert.Equal(t, "https://example.com/feed.xml", link.Url)
 }
 
+func TestRSSFeedLink_ConstructionWithHealth(t *testing.T) {
+	id := uuid.New().String()
+	link := &rssv2.RSSFeedLink{
+		Id:                  id,
+		Url:                 "https://example.com/feed.xml",
+		HealthStatus:        "warning",
+		ConsecutiveFailures: 2,
+		LastFailureReason:   "connection timeout",
+		IsActive:            true,
+	}
+
+	assert.Equal(t, id, link.Id)
+	assert.Equal(t, "https://example.com/feed.xml", link.Url)
+	assert.Equal(t, "warning", link.HealthStatus)
+	assert.Equal(t, int32(2), link.ConsecutiveFailures)
+	assert.Equal(t, "connection timeout", link.LastFailureReason)
+	assert.True(t, link.IsActive)
+}
+
 func TestListRSSFeedLinksResponse_Construction(t *testing.T) {
 	id1 := uuid.New().String()
 	id2 := uuid.New().String()
@@ -64,12 +83,18 @@ func TestListRSSFeedLinksResponse_Construction(t *testing.T) {
 	resp := &rssv2.ListRSSFeedLinksResponse{
 		Links: []*rssv2.RSSFeedLink{
 			{
-				Id:  id1,
-				Url: "https://example.com/feed1.xml",
+				Id:           id1,
+				Url:          "https://example.com/feed1.xml",
+				HealthStatus: "healthy",
+				IsActive:     true,
 			},
 			{
-				Id:  id2,
-				Url: "https://example.com/feed2.xml",
+				Id:                  id2,
+				Url:                 "https://example.com/feed2.xml",
+				HealthStatus:        "error",
+				ConsecutiveFailures: 5,
+				LastFailureReason:   "timeout",
+				IsActive:            true,
 			},
 		},
 	}
@@ -77,8 +102,11 @@ func TestListRSSFeedLinksResponse_Construction(t *testing.T) {
 	assert.Len(t, resp.Links, 2)
 	assert.Equal(t, id1, resp.Links[0].Id)
 	assert.Equal(t, "https://example.com/feed1.xml", resp.Links[0].Url)
+	assert.Equal(t, "healthy", resp.Links[0].HealthStatus)
 	assert.Equal(t, id2, resp.Links[1].Id)
 	assert.Equal(t, "https://example.com/feed2.xml", resp.Links[1].Url)
+	assert.Equal(t, "error", resp.Links[1].HealthStatus)
+	assert.Equal(t, int32(5), resp.Links[1].ConsecutiveFailures)
 }
 
 func TestListRSSFeedLinksResponse_Empty(t *testing.T) {
@@ -213,43 +241,91 @@ func TestRegisterFavoriteFeedRequest_Validation(t *testing.T) {
 // Domain Conversion Tests
 // =============================================================================
 
-func TestFeedLinkToProto_Conversion(t *testing.T) {
+func TestFeedLinkWithHealthToProto_Conversion(t *testing.T) {
 	id := uuid.New()
-	domainLink := domain.FeedLink{
-		ID:  id,
-		URL: "https://example.com/feed.xml",
+	reason := "connection timeout"
+	domainLink := &domain.FeedLinkWithHealth{
+		FeedLink: domain.FeedLink{ID: id, URL: "https://example.com/feed.xml"},
+		Availability: &domain.FeedLinkAvailability{
+			FeedLinkID:          id,
+			IsActive:            true,
+			ConsecutiveFailures: 2,
+			LastFailureReason:   &reason,
+		},
 	}
 
 	// Simulate the conversion done in handler
 	protoLink := &rssv2.RSSFeedLink{
-		Id:  domainLink.ID.String(),
-		Url: domainLink.URL,
+		Id:                  domainLink.ID.String(),
+		Url:                 domainLink.URL,
+		HealthStatus:        string(domainLink.GetHealthStatus()),
+		ConsecutiveFailures: int32(domainLink.Availability.ConsecutiveFailures),
+		IsActive:            domainLink.Availability.IsActive,
+	}
+	if domainLink.Availability.LastFailureReason != nil {
+		protoLink.LastFailureReason = *domainLink.Availability.LastFailureReason
 	}
 
 	assert.Equal(t, id.String(), protoLink.Id)
 	assert.Equal(t, "https://example.com/feed.xml", protoLink.Url)
+	assert.Equal(t, "warning", protoLink.HealthStatus)
+	assert.Equal(t, int32(2), protoLink.ConsecutiveFailures)
+	assert.True(t, protoLink.IsActive)
+	assert.Equal(t, "connection timeout", protoLink.LastFailureReason)
 }
 
-func TestFeedLinksToProto_Conversion(t *testing.T) {
+func TestFeedLinkWithHealthToProto_NilAvailability(t *testing.T) {
+	id := uuid.New()
+	domainLink := &domain.FeedLinkWithHealth{
+		FeedLink:     domain.FeedLink{ID: id, URL: "https://example.com/feed.xml"},
+		Availability: nil,
+	}
+
+	protoLink := &rssv2.RSSFeedLink{
+		Id:           domainLink.ID.String(),
+		Url:          domainLink.URL,
+		HealthStatus: string(domainLink.GetHealthStatus()),
+	}
+
+	assert.Equal(t, "unknown", protoLink.HealthStatus)
+	assert.Equal(t, int32(0), protoLink.ConsecutiveFailures)
+	assert.False(t, protoLink.IsActive)
+}
+
+func TestFeedLinksWithHealthToProto_Conversion(t *testing.T) {
 	id1 := uuid.New()
 	id2 := uuid.New()
-	domainLinks := []*domain.FeedLink{
-		{ID: id1, URL: "https://example.com/feed1.xml"},
-		{ID: id2, URL: "https://example.com/feed2.xml"},
+	domainLinks := []*domain.FeedLinkWithHealth{
+		{
+			FeedLink:     domain.FeedLink{ID: id1, URL: "https://example.com/feed1.xml"},
+			Availability: &domain.FeedLinkAvailability{IsActive: true, ConsecutiveFailures: 0},
+		},
+		{
+			FeedLink:     domain.FeedLink{ID: id2, URL: "https://example.com/feed2.xml"},
+			Availability: nil,
+		},
 	}
 
 	// Simulate the conversion done in handler
 	protoLinks := make([]*rssv2.RSSFeedLink, 0, len(domainLinks))
 	for _, link := range domainLinks {
-		protoLinks = append(protoLinks, &rssv2.RSSFeedLink{
-			Id:  link.ID.String(),
-			Url: link.URL,
-		})
+		protoLink := &rssv2.RSSFeedLink{
+			Id:           link.ID.String(),
+			Url:          link.URL,
+			HealthStatus: string(link.GetHealthStatus()),
+		}
+		if link.Availability != nil {
+			protoLink.ConsecutiveFailures = int32(link.Availability.ConsecutiveFailures)
+			protoLink.IsActive = link.Availability.IsActive
+		}
+		protoLinks = append(protoLinks, protoLink)
 	}
 
 	assert.Len(t, protoLinks, 2)
 	assert.Equal(t, id1.String(), protoLinks[0].Id)
+	assert.Equal(t, "healthy", protoLinks[0].HealthStatus)
 	assert.Equal(t, id2.String(), protoLinks[1].Id)
+	assert.Equal(t, "unknown", protoLinks[1].HealthStatus)
 }
 
 // =============================================================================

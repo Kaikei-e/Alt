@@ -65,11 +65,35 @@ func RestHandleRegisterRSSFeed(container *di.ApplicationComponents) echo.Handler
 
 func RestHandleListRSSFeedLinks(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		links, err := container.ListFeedLinksUsecase.Execute(c.Request().Context())
+		links, err := container.ListFeedLinksWithHealthUsecase.Execute(c.Request().Context())
 		if err != nil {
 			return HandleError(c, err, "list_feed_links")
 		}
-		return c.JSON(http.StatusOK, links)
+
+		type feedLinkResponse struct {
+			ID                  string  `json:"id"`
+			URL                 string  `json:"url"`
+			HealthStatus        string  `json:"health_status"`
+			ConsecutiveFailures int     `json:"consecutive_failures"`
+			IsActive            bool    `json:"is_active"`
+			LastFailureReason   *string `json:"last_failure_reason,omitempty"`
+		}
+
+		result := make([]feedLinkResponse, 0, len(links))
+		for _, link := range links {
+			resp := feedLinkResponse{
+				ID:           link.ID.String(),
+				URL:          link.URL,
+				HealthStatus: string(link.GetHealthStatus()),
+			}
+			if link.Availability != nil {
+				resp.ConsecutiveFailures = link.Availability.ConsecutiveFailures
+				resp.IsActive = link.Availability.IsActive
+				resp.LastFailureReason = link.Availability.LastFailureReason
+			}
+			result = append(result, resp)
+		}
+		return c.JSON(http.StatusOK, result)
 	}
 }
 

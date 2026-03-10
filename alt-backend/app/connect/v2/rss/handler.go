@@ -90,8 +90,8 @@ func (h *Handler) ListRSSFeedLinks(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	// Call usecase
-	links, err := h.container.ListFeedLinksUsecase.Execute(ctx)
+	// Call usecase (with health data)
+	links, err := h.container.ListFeedLinksWithHealthUsecase.Execute(ctx)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListRSSFeedLinks")
 	}
@@ -99,10 +99,19 @@ func (h *Handler) ListRSSFeedLinks(
 	// Convert to proto
 	protoLinks := make([]*rssv2.RSSFeedLink, 0, len(links))
 	for _, link := range links {
-		protoLinks = append(protoLinks, &rssv2.RSSFeedLink{
-			Id:  link.ID.String(),
-			Url: link.URL,
-		})
+		protoLink := &rssv2.RSSFeedLink{
+			Id:           link.ID.String(),
+			Url:          link.URL,
+			HealthStatus: string(link.GetHealthStatus()),
+		}
+		if link.Availability != nil {
+			protoLink.ConsecutiveFailures = int32(link.Availability.ConsecutiveFailures)
+			protoLink.IsActive = link.Availability.IsActive
+			if link.Availability.LastFailureReason != nil {
+				protoLink.LastFailureReason = *link.Availability.LastFailureReason
+			}
+		}
+		protoLinks = append(protoLinks, protoLink)
 	}
 
 	return connect.NewResponse(&rssv2.ListRSSFeedLinksResponse{

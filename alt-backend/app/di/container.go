@@ -133,6 +133,7 @@ type ApplicationComponents struct {
 	RegisterFeedsUsecase                *register_feed_usecase.RegisterFeedsUsecase
 	RegisterFavoriteFeedUsecase         *register_favorite_feed_usecase.RegisterFavoriteFeedUsecase
 	ListFeedLinksUsecase                *feed_link_usecase.ListFeedLinksUsecase
+	ListFeedLinksWithHealthUsecase       *feed_link_usecase.ListFeedLinksWithHealthUsecase
 	DeleteFeedLinkUsecase               *feed_link_usecase.DeleteFeedLinkUsecase
 	FeedsReadingStatusUsecase           *reading_status.FeedsReadingStatusUsecase
 	ArticlesReadingStatusUsecase        *reading_status.ArticlesReadingStatusUsecase
@@ -218,6 +219,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	registerFavoriteFeedUsecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(registerFavoriteFeedGatewayImpl)
 	feedLinkGatewayImpl := feed_link_gateway.NewFeedLinkGateway(pool)
 	listFeedLinksUsecase := feed_link_usecase.NewListFeedLinksUsecase(feedLinkGatewayImpl)
+	listFeedLinksWithHealthUsecase := feed_link_usecase.NewListFeedLinksWithHealthUsecase(feedLinkGatewayImpl)
 	deleteFeedLinkUsecase := feed_link_usecase.NewDeleteFeedLinkUsecase(feedLinkGatewayImpl)
 
 	updateFeedStatusGatewayImpl := update_feed_status_gateway.NewUpdateFeedStatusGateway(pool)
@@ -453,6 +455,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		RegisterFeedsUsecase:                registerFeedsUsecase,
 		RegisterFavoriteFeedUsecase:         registerFavoriteFeedUsecase,
 		ListFeedLinksUsecase:                listFeedLinksUsecase,
+		ListFeedLinksWithHealthUsecase:       listFeedLinksWithHealthUsecase,
 		DeleteFeedLinkUsecase:               deleteFeedLinkUsecase,
 		FeedsReadingStatusUsecase:           feedsReadingStatusUsecase,
 		ArticlesReadingStatusUsecase:        articlesReadingStatusUsecase,

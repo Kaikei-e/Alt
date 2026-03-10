@@ -5,6 +5,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -45,6 +46,58 @@ func (r *AltDBRepository) FetchFeedLinkIDByURL(ctx context.Context, feedURL stri
 		return nil, nil
 	}
 	return &id, nil
+}
+
+func (r *AltDBRepository) FetchFeedLinksWithAvailability(ctx context.Context) ([]*domain.FeedLinkWithHealth, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT fl.id, fl.url, fla.is_active, fla.consecutive_failures, fla.last_failure_at, fla.last_failure_reason FROM feed_links fl LEFT JOIN feed_link_availability fla ON fl.id = fla.feed_link_id ORDER BY fl.url ASC`)
+	if err != nil {
+		logger.SafeErrorContext(ctx, "Error fetching feed links with availability", "error", err)
+		return nil, errors.New("error fetching feed links with availability")
+	}
+	defer rows.Close()
+
+	links := make([]*domain.FeedLinkWithHealth, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		var url string
+		var isActive *bool
+		var consecutiveFailures *int
+		var lastFailureAt *time.Time
+		var lastFailureReason *string
+
+		if err := rows.Scan(&id, &url, &isActive, &consecutiveFailures, &lastFailureAt, &lastFailureReason); err != nil {
+			logger.SafeErrorContext(ctx, "Error scanning feed link with availability", "error", err)
+			return nil, errors.New("error scanning feed links with availability")
+		}
+
+		link := &domain.FeedLinkWithHealth{
+			FeedLink: domain.FeedLink{ID: id, URL: url},
+		}
+
+		if isActive != nil {
+			cf := 0
+			if consecutiveFailures != nil {
+				cf = *consecutiveFailures
+			}
+			link.Availability = &domain.FeedLinkAvailability{
+				FeedLinkID:          id,
+				IsActive:            *isActive,
+				ConsecutiveFailures: cf,
+				LastFailureAt:       lastFailureAt,
+				LastFailureReason:   lastFailureReason,
+			}
+		}
+
+		links = append(links, link)
+	}
+
+	if err := rows.Err(); err != nil {
+		logger.SafeErrorContext(ctx, "Row iteration error", "error", err)
+		return nil, errors.New("error iterating feed links with availability")
+	}
+
+	return links, nil
 }
 
 func (r *AltDBRepository) DeleteFeedLink(ctx context.Context, id uuid.UUID) error {

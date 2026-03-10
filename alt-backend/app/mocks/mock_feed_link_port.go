@@ -56,6 +56,21 @@ func (mr *MockFeedLinkPortMockRecorder) DeleteFeedLink(ctx, id any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteFeedLink", reflect.TypeOf((*MockFeedLinkPort)(nil).DeleteFeedLink), ctx, id)
 }
 
+// ListFeedLinksWithHealth mocks base method.
+func (m *MockFeedLinkPort) ListFeedLinksWithHealth(ctx context.Context) ([]*domain.FeedLinkWithHealth, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFeedLinksWithHealth", ctx)
+	ret0, _ := ret[0].([]*domain.FeedLinkWithHealth)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFeedLinksWithHealth indicates an expected call of ListFeedLinksWithHealth.
+func (mr *MockFeedLinkPortMockRecorder) ListFeedLinksWithHealth(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFeedLinksWithHealth", reflect.TypeOf((*MockFeedLinkPort)(nil).ListFeedLinksWithHealth), ctx)
+}
+
 // ListFeedLinks mocks base method.
 func (m *MockFeedLinkPort) ListFeedLinks(ctx context.Context) ([]*domain.FeedLink, error) {
 	m.ctrl.T.Helper()

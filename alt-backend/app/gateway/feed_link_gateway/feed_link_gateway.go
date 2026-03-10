@@ -25,6 +25,13 @@ func (g *FeedLinkGateway) ListFeedLinks(ctx context.Context) ([]*domain.FeedLink
 	return g.altDB.FetchFeedLinks(ctx)
 }
 
+func (g *FeedLinkGateway) ListFeedLinksWithHealth(ctx context.Context) ([]*domain.FeedLinkWithHealth, error) {
+	if g.altDB == nil {
+		return nil, errors.New("database connection not available")
+	}
+	return g.altDB.FetchFeedLinksWithAvailability(ctx)
+}
+
 func (g *FeedLinkGateway) DeleteFeedLink(ctx context.Context, id uuid.UUID) error {
 	if g.altDB == nil {
 		return errors.New("database connection not available")
