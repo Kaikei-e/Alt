@@ -14,7 +14,7 @@ import (
 )
 
 // CreateConnectServer creates the Connect-RPC server with HTTP/2 support.
-func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase) http.Handler {
+func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase) http.Handler {
 	mux := http.NewServeMux()
 
 	// Add health check endpoint for Connect-RPC server
@@ -25,7 +25,7 @@ func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase) http.
 	})
 
 	// Register Search service (no auth interceptor for internal service communication)
-	searchHandler := search.NewHandler(searchByUserUsecase)
+	searchHandler := search.NewHandler(searchByUserUsecase, searchRecapsUsecase)
 	searchPath, searchServiceHandler := searchv2connect.NewSearchServiceHandler(searchHandler)
 	mux.Handle(searchPath, searchServiceHandler)
 	logger.Logger.Info("Registered Connect-RPC SearchService", "path", searchPath)

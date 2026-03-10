@@ -41,8 +41,8 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, otelCfg app
 }
 
 // newConnectServer creates the Connect-RPC server.
-func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase) *http.Server {
-	handler := connectv2.CreateConnectServer(searchByUserUsecase)
+func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase) *http.Server {
+	handler := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase)
 
 	return &http.Server{
 		Addr:              config.ConnectAddr,

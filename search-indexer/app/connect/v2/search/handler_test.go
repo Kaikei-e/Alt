@@ -61,7 +61,7 @@ func TestHandler_SearchArticles_Success(t *testing.T) {
 		estimatedTotal: 1,
 	}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc)
+	handler := NewHandler(uc, nil)
 
 	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
 		Query:  "test",
@@ -91,7 +91,7 @@ func TestHandler_SearchArticles_Success(t *testing.T) {
 func TestHandler_SearchArticles_EmptyQuery(t *testing.T) {
 	se := &mockSearchEngine{}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc)
+	handler := NewHandler(uc, nil)
 
 	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
 		Query:  "",
@@ -119,7 +119,7 @@ func TestHandler_SearchArticles_EmptyQuery(t *testing.T) {
 func TestHandler_SearchArticles_EmptyUserID(t *testing.T) {
 	se := &mockSearchEngine{}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc)
+	handler := NewHandler(uc, nil)
 
 	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
 		Query:  "test",
@@ -138,7 +138,7 @@ func TestHandler_SearchArticles_SearchError(t *testing.T) {
 		err: &domain.SearchEngineError{Op: "Search", Err: "search failed"},
 	}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc)
+	handler := NewHandler(uc, nil)
 
 	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
 		Query:  "test",
@@ -166,7 +166,7 @@ func TestHandler_SearchArticles_NilTags(t *testing.T) {
 		estimatedTotal: 1,
 	}
 	uc := usecase.NewSearchByUserUsecase(se)
-	handler := NewHandler(uc)
+	handler := NewHandler(uc, nil)
 
 	req := connect.NewRequest(&searchv2.SearchArticlesRequest{
 		Query:  "test",

@@ -9,6 +9,7 @@ import (
 	"search-indexer/config"
 	"search-indexer/consumer"
 	"search-indexer/driver"
+	"search-indexer/driver/recap_api"
 	"search-indexer/gateway"
 	"search-indexer/logger"
 	"search-indexer/tokenize"
@@ -86,6 +87,28 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
+	// ── Recap drivers & gateways ──
+	var indexRecapsUsecase *usecase.IndexRecapsUsecase
+	var searchRecapsUsecase *usecase.SearchRecapsUsecase
+
+	if config.RecapWorkerURL != "" {
+		recapClient := recap_api.NewClient(config.RecapWorkerURL)
+		recapDriver := driver.NewMeilisearchRecapDriver(msClient)
+		recapRepo := gateway.NewRecapRepositoryGateway(recapClient)
+		recapSearchEngine := gateway.NewRecapSearchEngineGateway(recapDriver)
+
+		if err := recapSearchEngine.EnsureRecapIndex(ctx); err != nil {
+			logger.Logger.Error("Failed to ensure recap search index", "err", err)
+			// Non-fatal: continue without recap indexing
+		} else {
+			indexRecapsUsecase = usecase.NewIndexRecapsUsecase(recapRepo, recapSearchEngine)
+			searchRecapsUsecase = usecase.NewSearchRecapsUsecase(recapSearchEngine)
+			logger.Logger.Info("Recap indexing enabled", "recap_worker_url", config.RecapWorkerURL)
+		}
+	} else {
+		logger.Logger.Info("Recap indexing disabled (RECAP_WORKER_URL not set)")
+	}
+
 	// ── Use cases (application layer) ──
 	indexUsecase := usecase.NewIndexArticlesUsecase(articleRepo, searchEngine, tokenizer)
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(searchEngine)
@@ -115,10 +138,15 @@ func Run(ctx context.Context) error {
 	// ── Batch indexer (polling fallback) ──
 	go runIndexLoop(ctx, indexUsecase)
 
+	// ── Recap indexer ──
+	if indexRecapsUsecase != nil {
+		go runRecapIndexLoop(ctx, indexRecapsUsecase)
+	}
+
 	// ── Servers ──
 	app := &App{
 		httpServer:    newHTTPServer(searchByUserUsecase, otelCfg),
-		connectServer: newConnectServer(searchByUserUsecase),
+		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase),
 		driverClose:   driverClose,
 		redisConsumer: redisConsumer,
 		otelShutdown:  otelShutdown,
@@ -292,6 +320,98 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 
 		select {
 		case <-time.After(config.IndexInterval):
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// runRecapIndexLoop runs dual-phase indexing for recap genres.
+// Phase 1: Backfill all existing recap genres.
+// Phase 2: Incremental polling for new recap genres.
+func runRecapIndexLoop(ctx context.Context, indexRecapsUsecase *usecase.IndexRecapsUsecase) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Logger.Error("recap index loop panic", "err", r)
+		}
+	}()
+
+	// Phase 1: Backfill
+	logger.Logger.Info("starting Recap Phase 1: Backfill")
+
+	bo := newRetryBackoff()
+	var lastSince string
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		start := time.Now()
+		result, err := indexRecapsUsecase.ExecuteBackfill(ctx, lastSince, config.RecapIndexBatchSize)
+		if err != nil {
+			recordError(ctx, "recap_backfill")
+			delay := bo.NextBackOff()
+			logger.Logger.Error("recap backfill error, retrying", "err", err, "retry_in", delay)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return
+			}
+			continue
+		}
+		bo.Reset()
+		recordBatch(ctx, "recap_backfill", result.IndexedCount, 0, time.Since(start))
+
+		if result.LastSince != "" {
+			lastSince = result.LastSince
+		}
+
+		if !result.HasMore {
+			logger.Logger.Info("Recap Phase 1 complete: backfill done", "indexed_last_batch", result.IndexedCount)
+			break
+		}
+
+		logger.Logger.Info("recap backfill indexed", "count", result.IndexedCount)
+	}
+
+	// Phase 2: Incremental
+	logger.Logger.Info("starting Recap Phase 2: Incremental", "since", lastSince)
+
+	bo.Reset()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		start := time.Now()
+		result, err := indexRecapsUsecase.ExecuteIncremental(ctx, lastSince, config.RecapIndexBatchSize)
+		if err != nil {
+			recordError(ctx, "recap_incremental")
+			delay := bo.NextBackOff()
+			logger.Logger.Error("recap incremental error, retrying", "err", err, "retry_in", delay)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return
+			}
+			continue
+		}
+		bo.Reset()
+		recordBatch(ctx, "recap_incremental", result.IndexedCount, 0, time.Since(start))
+
+		if result.IndexedCount > 0 {
+			logger.Logger.Info("recap incremental indexed", "count", result.IndexedCount)
+			lastSince = result.LastSince
+		} else {
+			logger.Logger.Info("no new recap genres")
+		}
+
+		select {
+		case <-time.After(config.RecapIndexInterval):
 		case <-ctx.Done():
 			return
 		}

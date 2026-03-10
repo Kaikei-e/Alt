@@ -15,6 +15,9 @@ var (
 	ConnectAddr        = stringEnv("CONNECT_ADDR", ":9301")
 	DBTimeout          = durationEnv("DB_TIMEOUT", 10*time.Second)
 	MeiliTimeout       = durationEnv("MEILI_TIMEOUT", 15*time.Second)
+	RecapWorkerURL     = stringEnv("RECAP_WORKER_URL", "")
+	RecapIndexInterval = durationEnv("RECAP_INDEX_INTERVAL", 5*time.Minute)
+	RecapIndexBatchSize = intEnv("RECAP_INDEX_BATCH_SIZE", 200)
 )
 
 func stringEnv(key, defaultVal string) string {

@@ -15,12 +15,16 @@ import (
 
 // Handler implements the SearchService Connect-RPC handler.
 type Handler struct {
-	searchByUserUsecase *usecase.SearchByUserUsecase
+	searchByUserUsecase  *usecase.SearchByUserUsecase
+	searchRecapsUsecase  *usecase.SearchRecapsUsecase
 }
 
 // NewHandler creates a new search handler.
-func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase) *Handler {
-	return &Handler{searchByUserUsecase: searchByUserUsecase}
+func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase) *Handler {
+	return &Handler{
+		searchByUserUsecase: searchByUserUsecase,
+		searchRecapsUsecase: searchRecapsUsecase,
+	}
 }
 
 // Compile-time check that Handler implements SearchServiceHandler.
@@ -67,6 +71,63 @@ func (h *Handler) SearchArticles(
 
 	return connect.NewResponse(&searchv2.SearchArticlesResponse{
 		Query:              query,
+		Hits:               hits,
+		EstimatedTotalHits: result.EstimatedTotalHits,
+	}), nil
+}
+
+// SearchRecaps searches recap genres by tag name via Meilisearch.
+func (h *Handler) SearchRecaps(
+	ctx context.Context,
+	req *connect.Request[searchv2.SearchRecapsRequest],
+) (*connect.Response[searchv2.SearchRecapsResponse], error) {
+	if h.searchRecapsUsecase == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("recap search not configured"))
+	}
+
+	tagName := req.Msg.TagName
+	limit := int(req.Msg.Limit)
+
+	if tagName == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("tag_name is required"))
+	}
+
+	result, err := h.searchRecapsUsecase.Execute(ctx, tagName, limit)
+	if err != nil {
+		logger.Logger.Error("recap search failed", "err", err, "tag_name", tagName)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("recap search failed"))
+	}
+
+	hits := make([]*searchv2.RecapSearchHit, 0, len(result.Hits))
+	for _, doc := range result.Hits {
+		topTerms := doc.TopTerms
+		if topTerms == nil {
+			topTerms = []string{}
+		}
+		bullets := doc.Bullets
+		if bullets == nil {
+			bullets = []string{}
+		}
+		tags := doc.Tags
+		if tags == nil {
+			tags = []string{}
+		}
+		hits = append(hits, &searchv2.RecapSearchHit{
+			Id:         doc.ID,
+			JobId:      doc.JobID,
+			ExecutedAt: doc.ExecutedAt,
+			WindowDays: int32(doc.WindowDays),
+			Genre:      doc.Genre,
+			Summary:    doc.Summary,
+			TopTerms:   topTerms,
+			Bullets:    bullets,
+			Tags:       tags,
+		})
+	}
+
+	logger.Logger.Info("recap search ok", "tag_name", tagName, "count", len(hits), "estimated_total", result.EstimatedTotalHits)
+
+	return connect.NewResponse(&searchv2.SearchRecapsResponse{
 		Hits:               hits,
 		EstimatedTotalHits: result.EstimatedTotalHits,
 	}), nil

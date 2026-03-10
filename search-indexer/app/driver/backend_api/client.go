@@ -11,8 +11,8 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	backendv1 "search-indexer/gen/proto/clients/backend/v1"
-	"search-indexer/gen/proto/clients/backend/v1/backendv1connect"
+	backendv1 "search-indexer/gen/proto/services/backend/v1"
+	"search-indexer/gen/proto/services/backend/v1/backendv1connect"
 
 	"search-indexer/driver"
 )

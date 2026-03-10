@@ -36,12 +36,18 @@ const (
 	// SearchServiceSearchArticlesProcedure is the fully-qualified name of the SearchService's
 	// SearchArticles RPC.
 	SearchServiceSearchArticlesProcedure = "/services.search.v2.SearchService/SearchArticles"
+	// SearchServiceSearchRecapsProcedure is the fully-qualified name of the SearchService's
+	// SearchRecaps RPC.
+	SearchServiceSearchRecapsProcedure = "/services.search.v2.SearchService/SearchRecaps"
 )
 
 // SearchServiceClient is a client for the services.search.v2.SearchService service.
 type SearchServiceClient interface {
 	// SearchArticles searches for articles matching the query
 	SearchArticles(context.Context, *connect.Request[v2.SearchArticlesRequest]) (*connect.Response[v2.SearchArticlesResponse], error)
+	// SearchRecaps searches recap genres by tag name via Meilisearch
+	// Used by Tag Verse to show historical recaps for a specific tag
+	SearchRecaps(context.Context, *connect.Request[v2.SearchRecapsRequest]) (*connect.Response[v2.SearchRecapsResponse], error)
 }
 
 // NewSearchServiceClient constructs a client for the services.search.v2.SearchService service. By
@@ -61,12 +67,19 @@ func NewSearchServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(searchServiceMethods.ByName("SearchArticles")),
 			connect.WithClientOptions(opts...),
 		),
+		searchRecaps: connect.NewClient[v2.SearchRecapsRequest, v2.SearchRecapsResponse](
+			httpClient,
+			baseURL+SearchServiceSearchRecapsProcedure,
+			connect.WithSchema(searchServiceMethods.ByName("SearchRecaps")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // searchServiceClient implements SearchServiceClient.
 type searchServiceClient struct {
 	searchArticles *connect.Client[v2.SearchArticlesRequest, v2.SearchArticlesResponse]
+	searchRecaps   *connect.Client[v2.SearchRecapsRequest, v2.SearchRecapsResponse]
 }
 
 // SearchArticles calls services.search.v2.SearchService.SearchArticles.
@@ -74,10 +87,18 @@ func (c *searchServiceClient) SearchArticles(ctx context.Context, req *connect.R
 	return c.searchArticles.CallUnary(ctx, req)
 }
 
+// SearchRecaps calls services.search.v2.SearchService.SearchRecaps.
+func (c *searchServiceClient) SearchRecaps(ctx context.Context, req *connect.Request[v2.SearchRecapsRequest]) (*connect.Response[v2.SearchRecapsResponse], error) {
+	return c.searchRecaps.CallUnary(ctx, req)
+}
+
 // SearchServiceHandler is an implementation of the services.search.v2.SearchService service.
 type SearchServiceHandler interface {
 	// SearchArticles searches for articles matching the query
 	SearchArticles(context.Context, *connect.Request[v2.SearchArticlesRequest]) (*connect.Response[v2.SearchArticlesResponse], error)
+	// SearchRecaps searches recap genres by tag name via Meilisearch
+	// Used by Tag Verse to show historical recaps for a specific tag
+	SearchRecaps(context.Context, *connect.Request[v2.SearchRecapsRequest]) (*connect.Response[v2.SearchRecapsResponse], error)
 }
 
 // NewSearchServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -93,10 +114,18 @@ func NewSearchServiceHandler(svc SearchServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(searchServiceMethods.ByName("SearchArticles")),
 		connect.WithHandlerOptions(opts...),
 	)
+	searchServiceSearchRecapsHandler := connect.NewUnaryHandler(
+		SearchServiceSearchRecapsProcedure,
+		svc.SearchRecaps,
+		connect.WithSchema(searchServiceMethods.ByName("SearchRecaps")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.search.v2.SearchService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SearchServiceSearchArticlesProcedure:
 			searchServiceSearchArticlesHandler.ServeHTTP(w, r)
+		case SearchServiceSearchRecapsProcedure:
+			searchServiceSearchRecapsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -108,4 +137,8 @@ type UnimplementedSearchServiceHandler struct{}
 
 func (UnimplementedSearchServiceHandler) SearchArticles(context.Context, *connect.Request[v2.SearchArticlesRequest]) (*connect.Response[v2.SearchArticlesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.search.v2.SearchService.SearchArticles is not implemented"))
+}
+
+func (UnimplementedSearchServiceHandler) SearchRecaps(context.Context, *connect.Request[v2.SearchRecapsRequest]) (*connect.Response[v2.SearchRecapsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.search.v2.SearchService.SearchRecaps is not implemented"))
 }
