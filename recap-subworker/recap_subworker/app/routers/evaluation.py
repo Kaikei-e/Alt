@@ -171,8 +171,8 @@ async def evaluate_genres(
             n_folds=request.n_folds,
         )
 
-        # 評価を実行
-        results = service.evaluate(str(golden_data_path), language=language)
+        # 評価を実行（検証済みPathをそのまま渡す）
+        results = service.evaluate(golden_data_path, language=language)
 
         # データベースに保存
         run_id: UUID | None = None

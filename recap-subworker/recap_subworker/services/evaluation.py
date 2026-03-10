@@ -139,7 +139,7 @@ class EvaluationService:
              if not self.classifier_en:
                  self.classifier_en = self.classifier_default
 
-    def evaluate(self, golden_data_path: str, language: Optional[str] = None) -> Dict[str, Any]:
+    def evaluate(self, golden_data_path: str | Path, language: Optional[str] = None) -> Dict[str, Any]:
         """
         Evaluate classifier against golden dataset.
 
@@ -148,7 +148,10 @@ class EvaluationService:
             language: Optional language filter ("ja" or "en"). If None, evaluates all languages.
         """
         # Validate path to prevent path traversal attacks
-        golden_path = validate_path(golden_data_path)
+        if isinstance(golden_data_path, Path):
+            golden_path = golden_data_path  # 既にバリデーション済み
+        else:
+            golden_path = validate_path(golden_data_path)  # defense-in-depth
         if not golden_path.exists():
             raise FileNotFoundError(f"Golden data not found: {golden_path}")
 
@@ -343,7 +346,7 @@ class EvaluationService:
 
         return results
 
-    def evaluate_by_language(self, golden_data_path: str) -> Dict[str, Any]:
+    def evaluate_by_language(self, golden_data_path: str | Path) -> Dict[str, Any]:
         """Evaluate classifier separately for each language (ja, en).
 
         Returns:

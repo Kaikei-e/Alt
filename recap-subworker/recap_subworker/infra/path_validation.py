@@ -45,26 +45,20 @@ def validate_path(user_path: str, base_dirs: List[Path] | None = None) -> Path:
     # パスを文字列として正規化
     normalized = os.path.normpath(user_path)
 
-    # 絶対パスかどうかで分岐
-    if os.path.isabs(normalized):
-        full_path = Path(normalized)
-    else:
-        # 相対パスの場合は最初の許可ディレクトリをベースとして使用
-        full_path = Path(base_dirs[0]) / normalized
-        full_path = Path(os.path.normpath(str(full_path)))
+    # 相対パスの場合は最初の許可ディレクトリをベースとして使用
+    if not os.path.isabs(normalized):
+        normalized = os.path.normpath(os.path.join(str(base_dirs[0]), normalized))
 
-    # resolve() してシンボリックリンクなども解決したうえでチェック
-    full_path_resolved = full_path.resolve()
+    # realpath() でシンボリックリンクを解決し正規化
+    # NOTE: CodeQL は os.path.realpath() + startswith() を sanitizer として認識する
+    real_path = os.path.realpath(normalized)
 
     for base_dir in base_dirs:
-        base_dir_resolved = base_dir.resolve()
-        try:
-            # パスがベースディレクトリ内にあるか確認
-            full_path_resolved.relative_to(base_dir_resolved)
-            return full_path_resolved
-        except ValueError:
-            # このベースディレクトリには含まれていない
-            continue
+        real_base = os.path.realpath(str(base_dir))
+        # startswith に trailing separator を付けて prefix attack を防止
+        # (例: /app/data-evil が /app/data にマッチしないようにする)
+        if real_path == real_base or real_path.startswith(real_base + os.sep):
+            return Path(real_path)
 
     # どの許可ディレクトリにも含まれていない
     raise ValueError(
