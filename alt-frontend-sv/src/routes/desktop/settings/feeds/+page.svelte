@@ -165,7 +165,7 @@ function handleDialogOpenChange(open: boolean) {
 			background: {actionMessage.type === 'success'
 				? 'var(--alt-success)'
 				: 'var(--alt-error)'};
-			color: white;
+			color: {actionMessage.type === 'success' ? 'black' : 'white'};
 		"
 	>
 		<div class="flex gap-3 items-center">
