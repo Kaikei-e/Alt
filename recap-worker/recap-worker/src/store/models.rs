@@ -20,6 +20,18 @@ pub(crate) struct GenreWithSummary {
     pub(crate) summary_ja: Option<String>,
 }
 
+/// Recap search hit — a genre from a completed job matching a search term.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct RecapSearchHit {
+    pub(crate) job_id: Uuid,
+    pub(crate) executed_at: DateTime<Utc>,
+    pub(crate) window_days: i32,
+    pub(crate) genre: String,
+    pub(crate) summary_ja: Option<String>,
+    pub(crate) top_terms: Vec<String>,
+    pub(crate) tags: Vec<String>,
+}
+
 // Cluster with evidence
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ClusterWithEvidence {
@@ -319,6 +331,7 @@ pub(crate) struct RecapOutput {
     pub(crate) summary_ja: String,
     pub(crate) bullets_ja: Value,
     pub(crate) body_json: Value,
+    pub(crate) tags: Vec<String>,
 }
 
 #[allow(dead_code)]
@@ -341,7 +354,14 @@ impl RecapOutput {
             summary_ja: summary_ja.into(),
             bullets_ja,
             body_json,
+            tags: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub(crate) fn with_tags(mut self, tags: Vec<String>) -> Self {
+        self.tags = tags;
+        self
     }
 }
 

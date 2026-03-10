@@ -18,7 +18,7 @@ use crate::store::models::{
     ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
     GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, JobStats,
     NewSubworkerRun, PersistedCluster, PersistedGenre, PulseGenerationRow, RawArticle, RecapJob,
-    SubworkerRunStatus,
+    RecapSearchHit, SubworkerRunStatus,
 };
 
 #[cfg(test)]
@@ -331,6 +331,14 @@ impl RecapDao for MockRecapDao {
         _job_id: Uuid,
     ) -> Result<std::collections::HashMap<String, Vec<ClusterWithEvidence>>> {
         Ok(std::collections::HashMap::new())
+    }
+
+    async fn search_recaps_by_term(
+        &self,
+        _term: &str,
+        _limit: i32,
+    ) -> Result<Vec<RecapSearchHit>> {
+        Ok(vec![])
     }
 
     // Subworker

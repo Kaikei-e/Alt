@@ -21,7 +21,7 @@ use crate::store::models::{
     ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
     GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, JobStats,
     NewSubworkerRun, PersistedCluster, PersistedGenre, PreprocessMetrics, PulseGenerationRow,
-    RawArticle, RecapFinalSection, RecapJob, RecapOutput, SubworkerRunStatus,
+    RawArticle, RecapFinalSection, RecapJob, RecapOutput, RecapSearchHit, SubworkerRunStatus,
 };
 
 /// Unified DAO implementation that combines all DAO traits
@@ -347,6 +347,14 @@ impl OutputDao for UnifiedDao {
         job_id: Uuid,
     ) -> Result<HashMap<String, Vec<ClusterWithEvidence>>> {
         crate::store::dao::output::RecapDao::get_clusters_by_job(&self.pool, job_id).await
+    }
+
+    async fn search_recaps_by_term(
+        &self,
+        term: &str,
+        limit: i32,
+    ) -> Result<Vec<RecapSearchHit>> {
+        crate::store::dao::output::RecapDao::search_recaps_by_term(&self.pool, term, limit).await
     }
 }
 

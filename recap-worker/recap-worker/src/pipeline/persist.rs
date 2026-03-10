@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use tracing::{debug, info, warn};
 
+use crate::clients::tag_generator::TagGeneratorClient;
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
 use crate::store::models::RecapOutput;
@@ -44,11 +45,15 @@ pub(crate) trait PersistStage: Send + Sync {
 #[allow(dead_code)]
 pub(crate) struct FinalSectionPersistStage {
     dao: Arc<dyn RecapDao>,
+    tag_generator: Option<Arc<TagGeneratorClient>>,
 }
 
 impl FinalSectionPersistStage {
-    pub(crate) fn new(dao: Arc<dyn RecapDao>) -> Self {
-        Self { dao }
+    pub(crate) fn new(
+        dao: Arc<dyn RecapDao>,
+        tag_generator: Option<Arc<TagGeneratorClient>>,
+    ) -> Self {
+        Self { dao, tag_generator }
     }
 }
 
@@ -307,6 +312,37 @@ impl PersistStage for FinalSectionPersistStage {
             let sanitized_title = sanitize_title(&summary_title);
             let sanitized_summary = sanitize_title(&summary_text);
 
+            // tag-generatorでセマンティックタグを抽出
+            let tags = if let Some(ref tg) = self.tag_generator {
+                let tag_content = format!(
+                    "{}\n{}",
+                    sanitized_summary,
+                    summary_bullets.join("\n")
+                );
+                match tg.extract_tags(genre.as_str(), &tag_content).await {
+                    Ok(tags) => {
+                        debug!(
+                            job_id = %job.job_id,
+                            genre = %genre,
+                            tag_count = tags.len(),
+                            "extracted semantic tags for genre"
+                        );
+                        tags
+                    }
+                    Err(e) => {
+                        warn!(
+                            job_id = %job.job_id,
+                            genre = %genre,
+                            error = ?e,
+                            "failed to extract semantic tags, continuing without tags"
+                        );
+                        Vec::new()
+                    }
+                }
+            } else {
+                Vec::new()
+            };
+
             let output = RecapOutput::new(
                 job.job_id,
                 genre.as_str(),
@@ -315,7 +351,8 @@ impl PersistStage for FinalSectionPersistStage {
                 sanitized_summary,
                 bullets_json,
                 body_json,
-            );
+            )
+            .with_tags(tags);
 
             let mut persisted_successfully = true;
 

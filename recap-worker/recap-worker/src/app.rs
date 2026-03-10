@@ -27,6 +27,7 @@ pub struct ComponentRegistry {
     news_creator_client: Arc<NewsCreatorClient>,
     subworker_client: Arc<SubworkerClient>,
     recap_dao: Arc<dyn RecapDao>,
+    recap_pool: sqlx::PgPool,
 }
 
 impl AppState {
@@ -58,6 +59,10 @@ impl AppState {
 
     pub(crate) fn dao(&self) -> Arc<dyn RecapDao> {
         Arc::clone(&self.registry.recap_dao)
+    }
+
+    pub(crate) fn pool(&self) -> &sqlx::PgPool {
+        &self.registry.recap_pool
     }
 }
 
@@ -130,6 +135,7 @@ impl ComponentRegistry {
             news_creator_client,
             subworker_client,
             recap_dao,
+            recap_pool,
         })
     }
 

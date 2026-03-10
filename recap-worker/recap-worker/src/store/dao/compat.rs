@@ -21,7 +21,7 @@ use crate::store::models::{
     ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
     GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, JobStats,
     NewSubworkerRun, PersistedCluster, PersistedGenre, PreprocessMetrics, PulseGenerationRow,
-    RawArticle, RecapFinalSection, RecapJob, RecapOutput, SubworkerRunStatus,
+    RawArticle, RecapFinalSection, RecapJob, RecapOutput, RecapSearchHit, SubworkerRunStatus,
 };
 
 /// RecapDao - Backward-compatible composite trait combining all focused DAO traits
@@ -259,6 +259,12 @@ pub trait RecapDao: Send + Sync {
         &self,
         job_id: Uuid,
     ) -> anyhow::Result<HashMap<String, Vec<ClusterWithEvidence>>>;
+
+    async fn search_recaps_by_term(
+        &self,
+        term: &str,
+        limit: i32,
+    ) -> anyhow::Result<Vec<RecapSearchHit>>;
 
     // === SubworkerDao methods ===
     async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> anyhow::Result<i64>;
@@ -660,6 +666,14 @@ where
         job_id: Uuid,
     ) -> anyhow::Result<HashMap<String, Vec<ClusterWithEvidence>>> {
         OutputDao::get_clusters_by_job(self, job_id).await
+    }
+
+    async fn search_recaps_by_term(
+        &self,
+        term: &str,
+        limit: i32,
+    ) -> anyhow::Result<Vec<RecapSearchHit>> {
+        OutputDao::search_recaps_by_term(self, term, limit).await
     }
 
     async fn insert_subworker_run(&self, run: &NewSubworkerRun) -> anyhow::Result<i64> {

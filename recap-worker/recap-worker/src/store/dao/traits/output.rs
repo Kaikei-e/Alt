@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::store::models::{
     ClusterWithEvidence, GenreWithSummary, RecapFinalSection, RecapJob, RecapOutput,
+    RecapSearchHit,
 };
 
 /// OutputDao - リキャップ出力のためのデータアクセス層
@@ -47,4 +48,11 @@ pub trait OutputDao: Send + Sync {
         &self,
         job_id: Uuid,
     ) -> impl Future<Output = Result<HashMap<String, Vec<ClusterWithEvidence>>>> + Send;
+
+    /// top_termsでRecapジャンルを横断検索する
+    fn search_recaps_by_term(
+        &self,
+        term: &str,
+        limit: i32,
+    ) -> impl Future<Output = Result<Vec<RecapSearchHit>>> + Send;
 }

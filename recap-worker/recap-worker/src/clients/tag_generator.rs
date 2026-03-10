@@ -164,6 +164,83 @@ impl TagGeneratorClient {
 
         Ok(result)
     }
+
+    /// テキストからセマンティックタグを抽出する。
+    ///
+    /// recap出力（summary + bullets）のテキストに対してtag-generatorの
+    /// KeyBERT抽出を適用し、タグ名のリストを返す。
+    ///
+    /// # Arguments
+    /// * `title` - タイトル（ジャンル名など）
+    /// * `content` - コンテンツ（サマリー + バレット）
+    ///
+    /// # Errors
+    /// HTTPリクエストまたはレスポンスのパースに失敗した場合はエラーを返します。
+    pub(crate) async fn extract_tags(&self, title: &str, content: &str) -> Result<Vec<String>> {
+        let url = self
+            .base_url
+            .join("api/v1/extract-tags")
+            .context("failed to build extract-tags URL")?;
+
+        let request_body = ExtractTagsRequest {
+            title: title.to_string(),
+            content: content.to_string(),
+        };
+
+        let mut request = self.client.post(url).json(&request_body);
+
+        if let Some(ref token) = self.service_token {
+            request = request.header("X-Service-Token", token);
+        }
+
+        let response = request
+            .send()
+            .await
+            .context("tag-generator extract-tags request failed")?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            anyhow::bail!(
+                "tag-generator extract-tags returned error status {}: {}",
+                status,
+                error_body
+            );
+        }
+
+        let extract_response: ExtractTagsResponse = response
+            .json()
+            .await
+            .context("failed to deserialize tag-generator extract-tags response")?;
+
+        if !extract_response.success {
+            anyhow::bail!("tag-generator extract-tags returned success=false");
+        }
+
+        debug!(
+            tag_count = extract_response.tags.len(),
+            confidence = extract_response.confidence,
+            "extracted tags from text"
+        );
+
+        Ok(extract_response.tags)
+    }
+}
+
+/// tag-generatorのテキストベースタグ抽出リクエスト。
+#[derive(Debug, Serialize)]
+struct ExtractTagsRequest {
+    title: String,
+    content: String,
+}
+
+/// tag-generatorのテキストベースタグ抽出レスポンス。
+#[derive(Debug, Deserialize)]
+struct ExtractTagsResponse {
+    success: bool,
+    tags: Vec<String>,
+    #[serde(default)]
+    confidence: f64,
 }
 
 #[cfg(test)]
@@ -243,5 +320,53 @@ mod tests {
             .expect("fetch should succeed");
 
         assert_eq!(tags.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn extract_tags_returns_tags() {
+        let server = MockServer::start().await;
+
+        let response_body = serde_json::json!({
+            "success": true,
+            "tags": ["artificial-intelligence", "machine-learning", "gpu-computing"],
+            "confidence": 0.85,
+            "inference_ms": 150.0,
+            "language": "en"
+        });
+
+        Mock::given(method("POST"))
+            .and(path("/api/v1/extract-tags"))
+            .and(header("X-Service-Token", "test-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
+            .mount(&server)
+            .await;
+
+        let client =
+            TagGeneratorClient::new(test_config(server.uri())).expect("client should build");
+        let tags = client
+            .extract_tags("Technology", "AI and ML are transforming GPU computing")
+            .await
+            .expect("extract should succeed");
+
+        assert_eq!(tags.len(), 3);
+        assert!(tags.contains(&"artificial-intelligence".to_string()));
+        assert!(tags.contains(&"machine-learning".to_string()));
+    }
+
+    #[tokio::test]
+    async fn extract_tags_handles_server_error() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/api/v1/extract-tags"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("service unavailable"))
+            .mount(&server)
+            .await;
+
+        let client =
+            TagGeneratorClient::new(test_config(server.uri())).expect("client should build");
+        let result = client.extract_tags("Test", "content").await;
+
+        assert!(result.is_err());
     }
 }

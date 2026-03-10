@@ -207,6 +207,169 @@ struct ErrorResponse {
     error: String,
 }
 
+// =============================================================================
+// Search recaps by term
+// =============================================================================
+
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct SearchRecapsQuery {
+    term: String,
+    limit: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct RecapSearchHitResponse {
+    job_id: String,
+    executed_at: String,
+    window_days: i32,
+    genre: String,
+    summary: String,
+    top_terms: Vec<String>,
+    tags: Vec<String>,
+    bullets: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SearchRecapsResponse {
+    results: Vec<RecapSearchHitResponse>,
+}
+
+/// GET /v1/recaps/search?term=LLM&limit=50
+/// Search across all completed recap jobs for genres matching the given term in top_terms.
+pub(crate) async fn search_recaps(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<SearchRecapsQuery>,
+) -> impl IntoResponse {
+    let term = query.term.trim();
+    if term.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "term parameter is required".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    let limit = query.limit.unwrap_or(50).min(200);
+    let dao = state.dao();
+
+    match dao.search_recaps_by_term(term, limit).await {
+        Ok(hits) => {
+            let results: Vec<RecapSearchHitResponse> = hits
+                .into_iter()
+                .map(|hit| {
+                    let summary = normalize_summary_text(hit.summary_ja.as_deref().unwrap_or_default());
+                    let bullets = extract_bullets_from_payload(hit.summary_ja.as_deref().unwrap_or_default());
+                    RecapSearchHitResponse {
+                        job_id: hit.job_id.to_string(),
+                        executed_at: hit.executed_at.to_rfc3339(),
+                        window_days: hit.window_days,
+                        genre: hit.genre,
+                        summary,
+                        top_terms: hit.top_terms,
+                        tags: hit.tags,
+                        bullets,
+                    }
+                })
+                .collect();
+
+            info!("Search recaps: term='{}', found {} results", term, results.len());
+            (StatusCode::OK, Json(SearchRecapsResponse { results })).into_response()
+        }
+        Err(e) => {
+            error!("Failed to search recaps by term '{}': {}", term, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to search recaps".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+// =============================================================================
+// Indexable genres (for search-indexer Meilisearch indexing)
+// =============================================================================
+
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct IndexableGenresQuery {
+    since: Option<String>,
+    limit: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct IndexableGenresResponse {
+    results: Vec<RecapSearchHitResponse>,
+    has_more: bool,
+}
+
+/// GET /v1/recaps/genres/indexable?since=<RFC3339>&limit=200
+/// Returns all completed recap genres suitable for Meilisearch indexing.
+pub(crate) async fn get_indexable_genres(
+    State(state): State<AppState>,
+    axum::extract::Query(query): axum::extract::Query<IndexableGenresQuery>,
+) -> impl IntoResponse {
+    let limit = query.limit.unwrap_or(200).min(1000);
+    let since = query.since.as_deref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+
+    let pool = state.pool();
+
+    match crate::store::dao::output::RecapDao::fetch_indexable_genres(pool, since, limit).await {
+        Ok(hits) => {
+            let has_more = hits.len() == limit as usize;
+            let results: Vec<RecapSearchHitResponse> = hits
+                .into_iter()
+                .map(|hit| {
+                    let summary =
+                        normalize_summary_text(hit.summary_ja.as_deref().unwrap_or_default());
+                    let bullets = extract_bullets_from_payload(
+                        hit.summary_ja.as_deref().unwrap_or_default(),
+                    );
+                    RecapSearchHitResponse {
+                        job_id: hit.job_id.to_string(),
+                        executed_at: hit.executed_at.to_rfc3339(),
+                        window_days: hit.window_days,
+                        genre: hit.genre,
+                        summary,
+                        top_terms: hit.top_terms,
+                        tags: hit.tags,
+                        bullets,
+                    }
+                })
+                .collect();
+
+            info!(
+                "Indexable genres: since={:?}, returned {} results, has_more={}",
+                query.since,
+                results.len(),
+                has_more
+            );
+            (
+                StatusCode::OK,
+                Json(IndexableGenresResponse { results, has_more }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            error!("Failed to fetch indexable genres: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch indexable genres".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
 /// GET /v1/recaps/7days
 /// 最新の7日間Recapデータを取得する
 pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoResponse {

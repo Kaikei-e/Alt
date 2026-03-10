@@ -121,6 +121,7 @@ async fn setup_recap_tables(pool: &PgPool) -> anyhow::Result<()> {
             summary_ja TEXT NOT NULL,
             bullets_ja JSONB NOT NULL,
             body_json JSONB NOT NULL,
+            tags JSONB NOT NULL DEFAULT '[]'::jsonb,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY (job_id, genre)

@@ -170,6 +170,7 @@ impl PipelineOrchestrator {
         let subgenre_max_k = config.subgenre_max_k();
 
         let config_for_dispatch = Arc::clone(&config);
+        let tag_generator_for_persist = tag_generator_client.clone();
         Ok(PipelineBuilder::new(config)
             .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
                 alt_backend_client,
@@ -205,6 +206,7 @@ impl PipelineOrchestrator {
             )))
             .with_persist_stage(Arc::new(persist::FinalSectionPersistStage::new(
                 Arc::clone(&recap_dao),
+                tag_generator_for_persist,
             )))
             .with_pulse_stage(pulse_stage)
             .with_pulse_rollout(pulse_rollout)

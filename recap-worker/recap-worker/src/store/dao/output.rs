@@ -6,7 +6,9 @@ use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::super::models::{ClusterEvidence, ClusterWithEvidence, GenreWithSummary, RecapJob};
+use super::super::models::{
+    ClusterEvidence, ClusterWithEvidence, GenreWithSummary, RecapJob, RecapSearchHit,
+};
 
 pub(crate) struct RecapDao;
 
@@ -51,17 +53,19 @@ impl RecapDao {
         pool: &PgPool,
         output: &crate::store::models::RecapOutput,
     ) -> Result<()> {
+        let tags_json = serde_json::to_value(&output.tags).unwrap_or_default();
         sqlx::query(
             r"
             INSERT INTO recap_outputs
-                (job_id, genre, response_id, title_ja, summary_ja, bullets_ja, body_json)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+                (job_id, genre, response_id, title_ja, summary_ja, bullets_ja, body_json, tags)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (job_id, genre) DO UPDATE SET
                 response_id = EXCLUDED.response_id,
                 title_ja = EXCLUDED.title_ja,
                 summary_ja = EXCLUDED.summary_ja,
                 bullets_ja = EXCLUDED.bullets_ja,
                 body_json = EXCLUDED.body_json,
+                tags = EXCLUDED.tags,
                 updated_at = NOW()
             ",
         )
@@ -72,6 +76,7 @@ impl RecapDao {
         .bind(&output.summary_ja)
         .bind(Json(output.bullets_ja.clone()))
         .bind(Json(output.body_json.clone()))
+        .bind(Json(tags_json))
         .execute(pool)
         .await
         .context("failed to upsert recap_outputs record")?;
@@ -306,6 +311,156 @@ impl RecapDao {
         }
 
         Ok(genre_map)
+    }
+
+    /// Search across all completed recap jobs for genres whose clusters contain the given term in top_terms.
+    pub(crate) async fn search_recaps_by_term(
+        pool: &PgPool,
+        term: &str,
+        limit: i32,
+    ) -> Result<Vec<RecapSearchHit>> {
+        let rows = sqlx::query(
+            r"
+            SELECT DISTINCT ON (rj.job_id, ro.genre)
+                rj.job_id,
+                rj.kicked_at,
+                rj.window_days,
+                ro.genre,
+                ro.summary_ja,
+                ro.tags AS output_tags,
+                c.top_terms
+            FROM recap_jobs rj
+            JOIN recap_outputs ro ON rj.job_id = ro.job_id
+            JOIN recap_subworker_runs sr
+                ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
+            JOIN recap_subworker_clusters c ON c.run_id = sr.id
+            WHERE rj.status = 'completed'
+              AND EXISTS (
+                SELECT 1 FROM jsonb_array_elements_text(c.top_terms) AS t
+                WHERE t ILIKE '%' || $1 || '%'
+              )
+            ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+            ",
+        )
+        .bind(term)
+        .fetch_all(pool)
+        .await
+        .context("failed to search recaps by term")?;
+
+        let mut hits = Vec::new();
+        for row in rows {
+            let top_terms_json: Json<Value> = row.try_get("top_terms")?;
+            let top_terms: Vec<String> =
+                serde_json::from_value(top_terms_json.0).unwrap_or_default();
+            let tags: Vec<String> = row
+                .try_get::<Option<Json<Value>>, _>("output_tags")
+                .ok()
+                .flatten()
+                .and_then(|j| serde_json::from_value(j.0).ok())
+                .unwrap_or_default();
+            hits.push(RecapSearchHit {
+                job_id: row.try_get("job_id")?,
+                executed_at: row.try_get("kicked_at")?,
+                window_days: row.try_get::<Option<i32>, _>("window_days")?.unwrap_or(7),
+                genre: row.try_get("genre")?,
+                summary_ja: row.try_get("summary_ja").ok(),
+                top_terms,
+                tags,
+            });
+        }
+
+        // Sort by date descending and apply limit
+        hits.sort_by(|a, b| b.executed_at.cmp(&a.executed_at));
+        hits.truncate(limit as usize);
+
+        Ok(hits)
+    }
+
+    /// Fetch all completed recap genres for Meilisearch indexing.
+    /// Optionally filter by `since` timestamp for incremental indexing.
+    pub(crate) async fn fetch_indexable_genres(
+        pool: &PgPool,
+        since: Option<DateTime<Utc>>,
+        limit: i32,
+    ) -> Result<Vec<RecapSearchHit>> {
+        let rows = if let Some(since_ts) = since {
+            sqlx::query(
+                r"
+                SELECT DISTINCT ON (rj.job_id, ro.genre)
+                    rj.job_id,
+                    rj.kicked_at,
+                    rj.window_days,
+                    ro.genre,
+                    ro.summary_ja,
+                    ro.tags AS output_tags,
+                    c.top_terms
+                FROM recap_jobs rj
+                JOIN recap_outputs ro ON rj.job_id = ro.job_id
+                JOIN recap_subworker_runs sr
+                    ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
+                JOIN recap_subworker_clusters c ON c.run_id = sr.id
+                WHERE rj.status = 'completed'
+                  AND rj.kicked_at > $1
+                ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+                LIMIT $2
+                ",
+            )
+            .bind(since_ts)
+            .bind(limit)
+            .fetch_all(pool)
+            .await
+            .context("failed to fetch indexable genres (incremental)")?
+        } else {
+            sqlx::query(
+                r"
+                SELECT DISTINCT ON (rj.job_id, ro.genre)
+                    rj.job_id,
+                    rj.kicked_at,
+                    rj.window_days,
+                    ro.genre,
+                    ro.summary_ja,
+                    ro.tags AS output_tags,
+                    c.top_terms
+                FROM recap_jobs rj
+                JOIN recap_outputs ro ON rj.job_id = ro.job_id
+                JOIN recap_subworker_runs sr
+                    ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
+                JOIN recap_subworker_clusters c ON c.run_id = sr.id
+                WHERE rj.status = 'completed'
+                ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+                LIMIT $1
+                ",
+            )
+            .bind(limit)
+            .fetch_all(pool)
+            .await
+            .context("failed to fetch indexable genres (backfill)")?
+        };
+
+        let mut hits = Vec::new();
+        for row in rows {
+            let top_terms_json: Json<Value> = row.try_get("top_terms")?;
+            let top_terms: Vec<String> =
+                serde_json::from_value(top_terms_json.0).unwrap_or_default();
+            let tags: Vec<String> = row
+                .try_get::<Option<Json<Value>>, _>("output_tags")
+                .ok()
+                .flatten()
+                .and_then(|j| serde_json::from_value(j.0).ok())
+                .unwrap_or_default();
+            hits.push(RecapSearchHit {
+                job_id: row.try_get("job_id")?,
+                executed_at: row.try_get("kicked_at")?,
+                window_days: row.try_get::<Option<i32>, _>("window_days")?.unwrap_or(7),
+                genre: row.try_get("genre")?,
+                summary_ja: row.try_get("summary_ja").ok(),
+                top_terms,
+                tags,
+            });
+        }
+
+        hits.sort_by(|a, b| b.executed_at.cmp(&a.executed_at));
+        Ok(hits)
     }
 }
 
