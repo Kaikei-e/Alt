@@ -22,6 +22,8 @@ import {
 	type ArticleTagItem as ProtoArticleTagItem,
 	type BatchPrefetchImagesResponse,
 	type ImageProxyInfo as ProtoImageProxyInfo,
+	type FetchTagCloudResponse,
+	type TagCloudItem as ProtoTagCloudItem,
 } from "$lib/gen/alt/articles/v2/articles_pb";
 
 /** Type-safe ArticleService client */
@@ -549,4 +551,46 @@ export function streamArticleTags(
 	})();
 
 	return abortController;
+}
+
+// =============================================================================
+// Tag Verse API Functions (Tag Cloud)
+// =============================================================================
+
+/**
+ * Tag cloud item representing a tag with its article count
+ */
+export interface TagCloudItem {
+	tagName: string;
+	articleCount: number;
+	positionX: number;
+	positionY: number;
+	positionZ: number;
+}
+
+/**
+ * Fetches tag cloud data for Tag Verse visualization via Connect-RPC.
+ *
+ * @param transport - The Connect transport to use
+ * @param limit - Maximum number of tags to return (default: 200, max: 500)
+ * @returns Tag cloud items sorted by article count (descending)
+ */
+export async function fetchTagCloud(
+	transport: Transport,
+	limit = 200,
+): Promise<TagCloudItem[]> {
+	const client = createArticleClient(transport);
+	const response = (await client.fetchTagCloud({
+		limit,
+	})) as FetchTagCloudResponse;
+
+	return response.tags.map(
+		(item: ProtoTagCloudItem): TagCloudItem => ({
+			tagName: item.tagName,
+			articleCount: item.articleCount,
+			positionX: item.positionX,
+			positionY: item.positionY,
+			positionZ: item.positionZ,
+		}),
+	);
 }

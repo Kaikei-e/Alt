@@ -1,4 +1,9 @@
-export type FeedHealthStatus = "healthy" | "warning" | "error" | "inactive" | "unknown";
+export type FeedHealthStatus =
+	| "healthy"
+	| "warning"
+	| "error"
+	| "inactive"
+	| "unknown";
 
 export interface FeedLink {
 	id: string;

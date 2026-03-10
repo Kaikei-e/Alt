@@ -65,12 +65,12 @@ describe("getHealthLabel", () => {
 		["error", "Error"],
 		["inactive", "Inactive"],
 		["unknown", "Unknown"],
-	] as [FeedHealthStatus, string][])(
-		"returns %s for %s status",
-		(status, label) => {
-			expect(getHealthLabel(status)).toBe(label);
-		},
-	);
+	] as [
+		FeedHealthStatus,
+		string,
+	][])("returns %s for %s status", (status, label) => {
+		expect(getHealthLabel(status)).toBe(label);
+	});
 });
 
 describe("summarizeHealth", () => {

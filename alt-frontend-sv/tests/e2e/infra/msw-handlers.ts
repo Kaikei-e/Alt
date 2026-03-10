@@ -102,7 +102,10 @@ export const kratosHandlers = [
 	// Login POST
 	http.post("*/self-service/login", ({ request }) => {
 		const url = new URL(request.url);
-		const returnTo = validateRedirectUrl(url.searchParams.get("return_to"), "/sv/home");
+		const returnTo = validateRedirectUrl(
+			url.searchParams.get("return_to"),
+			"/sv/home",
+		);
 		return new HttpResponse(null, {
 			status: 303,
 			headers: {
@@ -115,7 +118,10 @@ export const kratosHandlers = [
 	// Registration POST
 	http.post("*/self-service/registration", ({ request }) => {
 		const url = new URL(request.url);
-		const returnTo = validateRedirectUrl(url.searchParams.get("return_to"), "/sv/home");
+		const returnTo = validateRedirectUrl(
+			url.searchParams.get("return_to"),
+			"/sv/home",
+		);
 		return new HttpResponse(null, {
 			status: 303,
 			headers: {
@@ -128,7 +134,10 @@ export const kratosHandlers = [
 	// Login flow browser redirect
 	http.get("*/self-service/login/browser", ({ request }) => {
 		const url = new URL(request.url);
-		const returnTo = validateRedirectUrl(url.searchParams.get("return_to"), "/sv/home");
+		const returnTo = validateRedirectUrl(
+			url.searchParams.get("return_to"),
+			"/sv/home",
+		);
 		const returnToUrl = new URL(returnTo, request.url);
 		const redirectUrl = `${returnToUrl.origin}/sv/auth/login?flow=flow-e2e-mock`;
 		return new HttpResponse(null, {
@@ -152,7 +161,10 @@ export const kratosHandlers = [
 	// Registration flow browser redirect
 	http.get("*/self-service/registration/browser", ({ request }) => {
 		const url = new URL(request.url);
-		const returnTo = validateRedirectUrl(url.searchParams.get("return_to"), "/sv/home");
+		const returnTo = validateRedirectUrl(
+			url.searchParams.get("return_to"),
+			"/sv/home",
+		);
 		const returnToUrl = new URL(returnTo, request.url);
 		const redirectUrl = `${returnToUrl.origin}/sv/register?flow=flow-e2e-mock-reg`;
 		return new HttpResponse(null, {

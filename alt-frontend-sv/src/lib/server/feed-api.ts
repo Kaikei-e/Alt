@@ -142,7 +142,8 @@ export async function getFeedLinks(
 	return raw.map((r) => ({
 		id: r.id,
 		url: r.url,
-		healthStatus: (r.health_status ?? "unknown") as import("$lib/schema/feedLink").FeedHealthStatus,
+		healthStatus: (r.health_status ??
+			"unknown") as import("$lib/schema/feedLink").FeedHealthStatus,
 		consecutiveFailures: r.consecutive_failures ?? 0,
 		isActive: r.is_active ?? true,
 		lastFailureReason: r.last_failure_reason ?? "",

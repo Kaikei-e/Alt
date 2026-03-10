@@ -28,6 +28,7 @@ const RESPONSIVE_REDIRECTS: Record<string, string> = {
 	"/sv/mobile/recap/morning-letter": "/sv/recap/morning-letter",
 	"/sv/desktop/feeds/tag-trail": "/sv/feeds/tag-trail",
 	"/sv/mobile/feeds/tag-trail": "/sv/feeds/tag-trail",
+	"/sv/desktop/feeds/tag-verse": "/sv/feeds/tag-verse",
 	"/sv/desktop/feeds/favorites": "/sv/feeds/favorites",
 	// Batch B
 	"/sv/desktop/feeds/search": "/sv/feeds/search",

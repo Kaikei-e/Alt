@@ -89,9 +89,9 @@ describe("ArticlePrefetcher", () => {
 			}
 
 			// Active card's OG image must survive with 11 entries (well under MAX_CACHE_SIZE=30)
-			expect(
-				prefetcher2.getCachedOgImage("https://example.com/current"),
-			).toBe("https://proxy/current.jpg");
+			expect(prefetcher2.getCachedOgImage("https://example.com/current")).toBe(
+				"https://proxy/current.jpg",
+			);
 			expect(prefetcher2.getCachedContent("https://example.com/current")).toBe(
 				"<p>Current</p>",
 			);

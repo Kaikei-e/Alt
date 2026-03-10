@@ -18,6 +18,7 @@ import {
 	Infinity as InfinityIcon,
 	Moon,
 	Globe,
+	Orbit,
 } from "@lucide/svelte";
 import type { Component } from "svelte";
 
@@ -121,6 +122,11 @@ export const desktopNavigation: Array<
 				label: "Tag Trail",
 				href: `${svBasePath}/feeds/tag-trail`,
 				icon: Shuffle,
+			},
+			{
+				label: "Tag Verse",
+				href: `${svBasePath}/feeds/tag-verse`,
+				icon: Orbit,
 			},
 		],
 	},

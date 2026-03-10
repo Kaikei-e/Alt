@@ -11,6 +11,8 @@ import {
 	RecapService,
 	type GetSevenDayRecapResponse,
 	type GetThreeDayRecapResponse,
+	type SearchRecapsByTagResponse,
+	type RecapSearchResultItem as ProtoRecapSearchResultItem,
 } from "$lib/gen/alt/recap/v2/recap_pb";
 import type { RecapSummary, RecapGenre, EvidenceLink } from "$lib/schema/recap";
 
@@ -172,4 +174,53 @@ function convertProtoReference(proto: {
 		domain: proto.domain,
 		articleId: proto.articleId || undefined,
 	};
+}
+
+// =============================================================================
+// Search Recaps by Tag (Tag Verse)
+// =============================================================================
+
+/**
+ * Recap search result item from cross-job tag search
+ */
+export interface RecapSearchResultItem {
+	jobId: string;
+	executedAt: string;
+	windowDays: number;
+	genre: string;
+	summary: string;
+	topTerms: string[];
+	bullets: string[];
+}
+
+/**
+ * Searches across all completed recap jobs for genres matching a tag name.
+ *
+ * @param transport - The Connect transport to use (must include auth)
+ * @param tagName - Tag name to search for
+ * @param limit - Maximum results (default: 50, max: 200)
+ * @returns Matching recap genres sorted by date descending
+ */
+export async function searchRecapsByTag(
+	transport: Transport,
+	tagName: string,
+	limit = 50,
+): Promise<RecapSearchResultItem[]> {
+	const client = createRecapClient(transport);
+	const response = (await client.searchRecapsByTag({
+		tagName,
+		limit,
+	})) as SearchRecapsByTagResponse;
+
+	return response.results.map(
+		(item: ProtoRecapSearchResultItem): RecapSearchResultItem => ({
+			jobId: item.jobId,
+			executedAt: item.executedAt,
+			windowDays: item.windowDays,
+			genre: item.genre,
+			summary: item.summary,
+			topTerms: [...item.topTerms],
+			bullets: [...item.bullets],
+		}),
+	);
 }

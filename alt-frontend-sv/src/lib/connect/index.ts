@@ -63,6 +63,9 @@ export {
 	type TagTrailTag,
 	type RandomFeed,
 	type TagTrailArticlesResponse,
+	// Tag Verse (Tag Cloud)
+	fetchTagCloud,
+	type TagCloudItem,
 } from "./articles";
 
 // RSSService client (Phase 5)
@@ -119,9 +122,11 @@ export {
 	createRecapClient,
 	getSevenDayRecap,
 	getThreeDayRecap,
+	searchRecapsByTag,
 	type RecapReference,
 	type RecapGenreWithReferences,
 	type RecapSummaryWithReferences,
+	type RecapSearchResultItem,
 } from "./recap";
 
 // Evening Pulse client
