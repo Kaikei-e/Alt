@@ -1,0 +1,26 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package
+      path: services/search/v2/search.proto
+      value: alt/gen/proto/services/search/v2;searchv2
+    - file_option: go_package
+      path: services/mqhub/v1/mqhub.proto
+      value: alt/gen/proto/services/mqhub/v1;mqhubv1
+    - file_option: go_package
+      path: services/preprocessor/v2/preprocessor.proto
+      value: alt/gen/proto/services/preprocessor/v2;preprocessorv2
+inputs:
+  - directory: .
+    paths:
+      - services/search
+      - services/mqhub
+      - services/preprocessor
+plugins:
+  - local: protoc-gen-go
+    out: ../alt-backend/app/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../alt-backend/app/gen/proto
+    opt: paths=source_relative

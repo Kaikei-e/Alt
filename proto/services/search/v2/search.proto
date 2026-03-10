@@ -50,4 +50,50 @@ message SearchArticlesResponse {
 service SearchService {
   // SearchArticles searches for articles matching the query
   rpc SearchArticles(SearchArticlesRequest) returns (SearchArticlesResponse);
+
+  // SearchRecaps searches recap genres by tag name via Meilisearch
+  // Used by Tag Verse to show historical recaps for a specific tag
+  rpc SearchRecaps(SearchRecapsRequest) returns (SearchRecapsResponse);
+}
+
+// =============================================================================
+// Search Recaps Messages
+// =============================================================================
+
+// SearchRecapsRequest is the request for searching recap genres by tag
+message SearchRecapsRequest {
+  // Tag name to search for in recap top_terms
+  string tag_name = 1;
+  // Maximum number of results to return (default: 50, max: 200)
+  int32 limit = 2;
+}
+
+// RecapSearchHit represents a matched recap genre
+message RecapSearchHit {
+  // Composite document ID (job_id__genre)
+  string id = 1;
+  // Recap job ID
+  string job_id = 2;
+  // Execution timestamp (RFC3339)
+  string executed_at = 3;
+  // Window days (3 or 7)
+  int32 window_days = 4;
+  // Genre name
+  string genre = 5;
+  // Summary text
+  string summary = 6;
+  // Top terms/keywords from the matching cluster
+  repeated string top_terms = 7;
+  // Bullet points extracted from the summary
+  repeated string bullets = 8;
+  // Semantic tags from tag-generator (KeyBERT)
+  repeated string tags = 9;
+}
+
+// SearchRecapsResponse contains matching recap genres
+message SearchRecapsResponse {
+  // Matching recap genres sorted by relevance
+  repeated RecapSearchHit hits = 1;
+  // Estimated total number of matching documents
+  int64 estimated_total_hits = 2;
 }

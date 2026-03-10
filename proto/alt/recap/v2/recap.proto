@@ -21,6 +21,10 @@ service RecapService {
   // GetEveningPulse returns Evening Pulse data (authentication required)
   // Evening Pulse provides 3 key topics for quick daily catch-up
   rpc GetEveningPulse(GetEveningPulseRequest) returns (GetEveningPulseResponse);
+
+  // SearchRecapsByTag searches across all completed recap jobs for genres matching a tag
+  // Used by Tag Verse to show historical recaps for a specific tag
+  rpc SearchRecapsByTag(SearchRecapsByTagRequest) returns (SearchRecapsByTagResponse);
 }
 
 // =============================================================================
@@ -337,4 +341,40 @@ message WeeklyHighlight {
   string date = 3;
   // Original role of the topic
   string role = 4;
+}
+
+// =============================================================================
+// Search Recaps by Tag Messages
+// =============================================================================
+
+// SearchRecapsByTagRequest is the request for searching recaps by tag name
+message SearchRecapsByTagRequest {
+  // Tag name to search for in recap cluster top_terms
+  string tag_name = 1;
+  // Maximum number of results to return (default: 50, max: 200)
+  int32 limit = 2;
+}
+
+// RecapSearchResultItem represents a genre from a completed recap job matching the search
+message RecapSearchResultItem {
+  // Recap job ID
+  string job_id = 1;
+  // Execution timestamp (RFC3339)
+  string executed_at = 2;
+  // Window days (3 or 7)
+  int32 window_days = 3;
+  // Genre name
+  string genre = 4;
+  // Summary text
+  string summary = 5;
+  // Top terms/keywords from the matching cluster
+  repeated string top_terms = 6;
+  // Bullet points extracted from the summary
+  repeated string bullets = 7;
+}
+
+// SearchRecapsByTagResponse contains matching recap genres across all completed jobs
+message SearchRecapsByTagResponse {
+  // Matching recap genres sorted by date descending
+  repeated RecapSearchResultItem results = 1;
 }

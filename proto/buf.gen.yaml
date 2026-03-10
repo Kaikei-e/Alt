@@ -6,7 +6,7 @@ inputs:
       - alt/tts
 plugins:
   # ============================================================================
-  # alt-backend (public protos only, clients are generated separately)
+  # alt-backend (public protos)
   # ============================================================================
   - local: protoc-gen-go
     out: ../alt-backend/app/gen/proto

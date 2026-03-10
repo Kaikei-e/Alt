@@ -269,6 +269,36 @@ message StreamArticleTagsResponse {
 }
 
 // =============================================================================
+// Tag Verse Messages (Tag Cloud Visualization)
+// =============================================================================
+
+// FetchTagCloudRequest is the request for fetching tag cloud data
+message FetchTagCloudRequest {
+  // Maximum number of tags to return (default: 200, max: 500)
+  int32 limit = 1;
+}
+
+// TagCloudItem represents a single tag with its article count and 3D position
+message TagCloudItem {
+  // Tag name
+  string tag_name = 1;
+  // Number of articles associated with this tag
+  int32 article_count = 2;
+  // 3D position computed by server-side force-directed graph layout
+  float position_x = 3;
+  float position_y = 4;
+  float position_z = 5;
+}
+
+// FetchTagCloudResponse contains tag cloud data
+message FetchTagCloudResponse {
+  // Tag cloud items sorted by article count (descending)
+  repeated TagCloudItem tags = 1;
+  // Total number of tags in the system
+  int32 total_tags = 2;
+}
+
+// =============================================================================
 // ArticleService Definition
 // =============================================================================
 
@@ -308,4 +338,8 @@ service ArticleService {
 
   // BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
   rpc BatchPrefetchImages(BatchPrefetchImagesRequest) returns (BatchPrefetchImagesResponse);
+
+  // FetchTagCloud fetches tag cloud data (tag names with article counts)
+  // Used by Tag Verse 3D visualization
+  rpc FetchTagCloud(FetchTagCloudRequest) returns (FetchTagCloudResponse);
 }

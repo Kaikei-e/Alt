@@ -3,17 +3,20 @@ managed:
   enabled: true
   override:
     - file_option: go_package
+      path: services/mqhub/v1/mqhub.proto
+      value: pre-processor/gen/proto/services/mqhub/v1;mqhubv1
+    - file_option: go_package
       path: services/backend/v1/internal.proto
-      value: search-indexer/gen/proto/services/backend/v1;backendv1
+      value: pre-processor/gen/proto/services/backend/v1;backendv1
 inputs:
   - directory: .
     paths:
-      - services/search
+      - services/mqhub
       - services/backend
 plugins:
   - local: protoc-gen-go
-    out: ../search-indexer/app/gen/proto
+    out: ../pre-processor/app/gen/proto
     opt: paths=source_relative
   - local: protoc-gen-connect-go
-    out: ../search-indexer/app/gen/proto
+    out: ../pre-processor/app/gen/proto
     opt: paths=source_relative
