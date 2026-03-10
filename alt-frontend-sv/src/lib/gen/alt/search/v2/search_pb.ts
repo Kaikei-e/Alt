@@ -2,70 +2,57 @@
 // @generated from file alt/search/v2/search.proto (package alt.search.v2, syntax proto3)
 /* eslint-disable */
 
-import type {
-	GenFile,
-	GenMessage,
-	GenService,
-} from "@bufbuild/protobuf/codegenv2";
-import {
-	fileDesc,
-	messageDesc,
-	serviceDesc,
-} from "@bufbuild/protobuf/codegenv2";
+import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/search/v2/search.proto.
  */
-export const file_alt_search_v2_search: GenFile =
-	/*@__PURE__*/
-	fileDesc(
-		"ChphbHQvc2VhcmNoL3YyL3NlYXJjaC5wcm90bxINYWx0LnNlYXJjaC52MiJWChVTZWFyY2hBcnRpY2xlc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDwoHdXNlcl9pZBgCIAEoCRINCgVsaW1pdBgDIAEoBRIOCgZvZmZzZXQYBCABKAUiRQoJU2VhcmNoSGl0EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB2NvbnRlbnQYAyABKAkSDAoEdGFncxgEIAMoCSJPChZTZWFyY2hBcnRpY2xlc1Jlc3BvbnNlEg0KBXF1ZXJ5GAEgASgJEiYKBGhpdHMYAiADKAsyGC5hbHQuc2VhcmNoLnYyLlNlYXJjaEhpdDJuCg1TZWFyY2hTZXJ2aWNlEl0KDlNlYXJjaEFydGljbGVzEiQuYWx0LnNlYXJjaC52Mi5TZWFyY2hBcnRpY2xlc1JlcXVlc3QaJS5hbHQuc2VhcmNoLnYyLlNlYXJjaEFydGljbGVzUmVzcG9uc2VCJlokYWx0L2dlbi9wcm90by9hbHQvc2VhcmNoL3YyO3NlYXJjaHYyYgZwcm90bzM",
-	);
+export const file_alt_search_v2_search: GenFile = /*@__PURE__*/
+  fileDesc("ChphbHQvc2VhcmNoL3YyL3NlYXJjaC5wcm90bxINYWx0LnNlYXJjaC52MiJWChVTZWFyY2hBcnRpY2xlc1JlcXVlc3QSDQoFcXVlcnkYASABKAkSDwoHdXNlcl9pZBgCIAEoCRINCgVsaW1pdBgDIAEoBRIOCgZvZmZzZXQYBCABKAUiRQoJU2VhcmNoSGl0EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB2NvbnRlbnQYAyABKAkSDAoEdGFncxgEIAMoCSJPChZTZWFyY2hBcnRpY2xlc1Jlc3BvbnNlEg0KBXF1ZXJ5GAEgASgJEiYKBGhpdHMYAiADKAsyGC5hbHQuc2VhcmNoLnYyLlNlYXJjaEhpdDJuCg1TZWFyY2hTZXJ2aWNlEl0KDlNlYXJjaEFydGljbGVzEiQuYWx0LnNlYXJjaC52Mi5TZWFyY2hBcnRpY2xlc1JlcXVlc3QaJS5hbHQuc2VhcmNoLnYyLlNlYXJjaEFydGljbGVzUmVzcG9uc2VCJlokYWx0L2dlbi9wcm90by9hbHQvc2VhcmNoL3YyO3NlYXJjaHYyYgZwcm90bzM");
 
 /**
  * SearchArticlesRequest is the request for searching articles
  *
  * @generated from message alt.search.v2.SearchArticlesRequest
  */
-export type SearchArticlesRequest =
-	Message<"alt.search.v2.SearchArticlesRequest"> & {
-		/**
-		 * Search query string (required)
-		 *
-		 * @generated from field: string query = 1;
-		 */
-		query: string;
+export type SearchArticlesRequest = Message<"alt.search.v2.SearchArticlesRequest"> & {
+  /**
+   * Search query string (required)
+   *
+   * @generated from field: string query = 1;
+   */
+  query: string;
 
-		/**
-		 * User ID for filtering results (required)
-		 *
-		 * @generated from field: string user_id = 2;
-		 */
-		userId: string;
+  /**
+   * User ID for filtering results (required)
+   *
+   * @generated from field: string user_id = 2;
+   */
+  userId: string;
 
-		/**
-		 * Maximum number of results to return (default: 20, max: 100)
-		 *
-		 * @generated from field: int32 limit = 3;
-		 */
-		limit: number;
+  /**
+   * Maximum number of results to return (default: 20, max: 100)
+   *
+   * @generated from field: int32 limit = 3;
+   */
+  limit: number;
 
-		/**
-		 * Offset for pagination (default: 0)
-		 *
-		 * @generated from field: int32 offset = 4;
-		 */
-		offset: number;
-	};
+  /**
+   * Offset for pagination (default: 0)
+   *
+   * @generated from field: int32 offset = 4;
+   */
+  offset: number;
+};
 
 /**
  * Describes the message alt.search.v2.SearchArticlesRequest.
  * Use `create(SearchArticlesRequestSchema)` to create a new message.
  */
-export const SearchArticlesRequestSchema: GenMessage<SearchArticlesRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_search, 0);
+export const SearchArticlesRequestSchema: GenMessage<SearchArticlesRequest> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_search, 0);
 
 /**
  * SearchHit represents a single search result
@@ -73,72 +60,69 @@ export const SearchArticlesRequestSchema: GenMessage<SearchArticlesRequest> =
  * @generated from message alt.search.v2.SearchHit
  */
 export type SearchHit = Message<"alt.search.v2.SearchHit"> & {
-	/**
-	 * Article ID
-	 *
-	 * @generated from field: string id = 1;
-	 */
-	id: string;
+  /**
+   * Article ID
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
 
-	/**
-	 * Article title
-	 *
-	 * @generated from field: string title = 2;
-	 */
-	title: string;
+  /**
+   * Article title
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
 
-	/**
-	 * Article content snippet
-	 *
-	 * @generated from field: string content = 3;
-	 */
-	content: string;
+  /**
+   * Article content snippet
+   *
+   * @generated from field: string content = 3;
+   */
+  content: string;
 
-	/**
-	 * Tags associated with the article
-	 *
-	 * @generated from field: repeated string tags = 4;
-	 */
-	tags: string[];
+  /**
+   * Tags associated with the article
+   *
+   * @generated from field: repeated string tags = 4;
+   */
+  tags: string[];
 };
 
 /**
  * Describes the message alt.search.v2.SearchHit.
  * Use `create(SearchHitSchema)` to create a new message.
  */
-export const SearchHitSchema: GenMessage<SearchHit> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_search, 1);
+export const SearchHitSchema: GenMessage<SearchHit> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_search, 1);
 
 /**
  * SearchArticlesResponse contains search results
  *
  * @generated from message alt.search.v2.SearchArticlesResponse
  */
-export type SearchArticlesResponse =
-	Message<"alt.search.v2.SearchArticlesResponse"> & {
-		/**
-		 * Original search query
-		 *
-		 * @generated from field: string query = 1;
-		 */
-		query: string;
+export type SearchArticlesResponse = Message<"alt.search.v2.SearchArticlesResponse"> & {
+  /**
+   * Original search query
+   *
+   * @generated from field: string query = 1;
+   */
+  query: string;
 
-		/**
-		 * Search results
-		 *
-		 * @generated from field: repeated alt.search.v2.SearchHit hits = 2;
-		 */
-		hits: SearchHit[];
-	};
+  /**
+   * Search results
+   *
+   * @generated from field: repeated alt.search.v2.SearchHit hits = 2;
+   */
+  hits: SearchHit[];
+};
 
 /**
  * Describes the message alt.search.v2.SearchArticlesResponse.
  * Use `create(SearchArticlesResponseSchema)` to create a new message.
  */
-export const SearchArticlesResponseSchema: GenMessage<SearchArticlesResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_search, 2);
+export const SearchArticlesResponseSchema: GenMessage<SearchArticlesResponse> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_search, 2);
 
 /**
  * SearchService provides article search operations
@@ -146,15 +130,17 @@ export const SearchArticlesResponseSchema: GenMessage<SearchArticlesResponse> =
  * @generated from service alt.search.v2.SearchService
  */
 export const SearchService: GenService<{
-	/**
-	 * SearchArticles searches for articles matching the query
-	 * Replaces GET /v1/search?q=<query>&user_id=<user_id>
-	 *
-	 * @generated from rpc alt.search.v2.SearchService.SearchArticles
-	 */
-	searchArticles: {
-		methodKind: "unary";
-		input: typeof SearchArticlesRequestSchema;
-		output: typeof SearchArticlesResponseSchema;
-	};
-}> = /*@__PURE__*/ serviceDesc(file_alt_search_v2_search, 0);
+  /**
+   * SearchArticles searches for articles matching the query
+   * Replaces GET /v1/search?q=<query>&user_id=<user_id>
+   *
+   * @generated from rpc alt.search.v2.SearchService.SearchArticles
+   */
+  searchArticles: {
+    methodKind: "unary";
+    input: typeof SearchArticlesRequestSchema;
+    output: typeof SearchArticlesResponseSchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_alt_search_v2_search, 0);
+

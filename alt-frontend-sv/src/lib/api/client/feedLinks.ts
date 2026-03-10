@@ -13,6 +13,10 @@ export async function listFeedLinksClient(): Promise<FeedLink[]> {
 	return response.links.map((link) => ({
 		id: link.id,
 		url: link.url,
+		healthStatus: (link.healthStatus as import("$lib/schema/feedLink").FeedHealthStatus) ?? "unknown",
+		consecutiveFailures: link.consecutiveFailures ?? 0,
+		lastFailureReason: link.lastFailureReason ?? "",
+		isActive: link.isActive ?? true,
 	}));
 }
 

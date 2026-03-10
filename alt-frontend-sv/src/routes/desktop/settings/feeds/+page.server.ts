@@ -1,8 +1,9 @@
 import type { ServerLoad } from "@sveltejs/kit";
 import { getFeedLinks } from "$lib/api";
+import type { FeedLink } from "$lib/schema/feedLink";
 
 interface PageData {
-	feedLinks: Array<{ id: string; url: string }>;
+	feedLinks: FeedLink[];
 	error?: string;
 }
 

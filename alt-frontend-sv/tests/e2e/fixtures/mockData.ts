@@ -170,14 +170,26 @@ export const RSS_FEED_LINKS_LIST_RESPONSE = {
 		{
 			id: "feed-link-1",
 			url: "https://example.com/feed.xml",
+			healthStatus: "healthy",
+			consecutiveFailures: 0,
+			lastFailureReason: "",
+			isActive: true,
 		},
 		{
 			id: "feed-link-2",
 			url: "https://blog.example.org/rss",
+			healthStatus: "warning",
+			consecutiveFailures: 2,
+			lastFailureReason: "connection timeout",
+			isActive: true,
 		},
 		{
 			id: "feed-link-3",
 			url: "https://news.site.com/atom.xml",
+			healthStatus: "error",
+			consecutiveFailures: 5,
+			lastFailureReason: "HTTP 404",
+			isActive: true,
 		},
 	],
 };

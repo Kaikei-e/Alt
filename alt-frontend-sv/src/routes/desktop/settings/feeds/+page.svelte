@@ -12,6 +12,8 @@ import { Input } from "$lib/components/ui/input";
 import * as Dialog from "$lib/components/ui/dialog";
 import type { FeedLink } from "$lib/schema/feedLink";
 import { feedUrlSchema } from "$lib/schema/validation/feedUrlSchema";
+import FeedHealthBadge from "$lib/components/feeds/FeedHealthBadge.svelte";
+import HealthSummaryBar from "$lib/components/feeds/HealthSummaryBar.svelte";
 
 interface PageData {
 	feedLinks: FeedLink[];
@@ -182,6 +184,13 @@ function handleDialogOpenChange(open: boolean) {
 	</div>
 {/if}
 
+<!-- Health Summary Bar -->
+{#if sortedLinks.length > 0}
+	<div class="mb-6">
+		<HealthSummaryBar feeds={sortedLinks} />
+	</div>
+{/if}
+
 <!-- Two Column Layout -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 	<!-- Add Feed Form Panel -->
@@ -323,13 +332,23 @@ function handleDialogOpenChange(open: boolean) {
 							border-color: var(--surface-border);
 						"
 					>
-						<p
-							class="text-sm font-medium truncate mr-3 flex-1"
-							style="color: var(--text-primary);"
-							title={link.url}
-						>
-							{link.url}
-						</p>
+						<div class="flex items-center gap-2 flex-1 min-w-0 mr-3">
+							<span class="shrink-0">
+								<FeedHealthBadge
+									status={link.healthStatus}
+									lastFailureReason={link.lastFailureReason}
+									consecutiveFailures={link.consecutiveFailures}
+									compact
+								/>
+							</span>
+							<p
+								class="text-sm font-medium truncate"
+								style="color: var(--text-primary);"
+								title={link.url}
+							>
+								{link.url}
+							</p>
+						</div>
 						<Button
 							variant="ghost"
 							size="icon"

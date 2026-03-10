@@ -2,204 +2,183 @@
 // @generated from file alt/recap/v2/recap.proto (package alt.recap.v2, syntax proto3)
 /* eslint-disable */
 
-import type {
-	GenEnum,
-	GenFile,
-	GenMessage,
-	GenService,
-} from "@bufbuild/protobuf/codegenv2";
-import {
-	enumDesc,
-	fileDesc,
-	messageDesc,
-	serviceDesc,
-} from "@bufbuild/protobuf/codegenv2";
+import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/recap/v2/recap.proto.
  */
-export const file_alt_recap_v2_recap: GenFile =
-	/*@__PURE__*/
-	fileDesc(
-		"ChhhbHQvcmVjYXAvdjIvcmVjYXAucHJvdG8SDGFsdC5yZWNhcC52MiJJChdHZXRTZXZlbkRheVJlY2FwUmVxdWVzdBIbCg5nZW5yZV9kcmFmdF9pZBgBIAEoCUgAiAEBQhEKD19nZW5yZV9kcmFmdF9pZCL1AQoYR2V0U2V2ZW5EYXlSZWNhcFJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRITCgtleGVjdXRlZF9hdBgCIAEoCRIUCgx3aW5kb3dfc3RhcnQYAyABKAkSEgoKd2luZG93X2VuZBgEIAEoCRIWCg50b3RhbF9hcnRpY2xlcxgFIAEoBRIoCgZnZW5yZXMYBiADKAsyGC5hbHQucmVjYXAudjIuUmVjYXBHZW5yZRI2Cg1jbHVzdGVyX2RyYWZ0GAcgASgLMhouYWx0LnJlY2FwLnYyLkNsdXN0ZXJEcmFmdEgAiAEBQhAKDl9jbHVzdGVyX2RyYWZ0IkkKF0dldFRocmVlRGF5UmVjYXBSZXF1ZXN0EhsKDmdlbnJlX2RyYWZ0X2lkGAEgASgJSACIAQFCEQoPX2dlbnJlX2RyYWZ0X2lkIvUBChhHZXRUaHJlZURheVJlY2FwUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEhMKC2V4ZWN1dGVkX2F0GAIgASgJEhQKDHdpbmRvd19zdGFydBgDIAEoCRISCgp3aW5kb3dfZW5kGAQgASgJEhYKDnRvdGFsX2FydGljbGVzGAUgASgFEigKBmdlbnJlcxgGIAMoCzIYLmFsdC5yZWNhcC52Mi5SZWNhcEdlbnJlEjYKDWNsdXN0ZXJfZHJhZnQYByABKAsyGi5hbHQucmVjYXAudjIuQ2x1c3RlckRyYWZ0SACIAQFCEAoOX2NsdXN0ZXJfZHJhZnQi3wEKClJlY2FwR2VucmUSDQoFZ2VucmUYASABKAkSDwoHc3VtbWFyeRgCIAEoCRIRCgl0b3BfdGVybXMYAyADKAkSFQoNYXJ0aWNsZV9jb3VudBgEIAEoBRIVCg1jbHVzdGVyX2NvdW50GAUgASgFEjIKDmV2aWRlbmNlX2xpbmtzGAYgAygLMhouYWx0LnJlY2FwLnYyLkV2aWRlbmNlTGluaxIPCgdidWxsZXRzGAcgAygJEisKCnJlZmVyZW5jZXMYCCADKAsyFy5hbHQucmVjYXAudjIuUmVmZXJlbmNlImkKDEV2aWRlbmNlTGluaxISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEhIKCnNvdXJjZV91cmwYAyABKAkSFAoMcHVibGlzaGVkX2F0GAQgASgJEgwKBGxhbmcYBSABKAkiXAoJUmVmZXJlbmNlEgoKAmlkGAEgASgFEgsKA3VybBgCIAEoCRIOCgZkb21haW4YAyABKAkSFwoKYXJ0aWNsZV9pZBgEIAEoCUgAiAEBQg0KC19hcnRpY2xlX2lkIp4BCgxDbHVzdGVyRHJhZnQSEAoIZHJhZnRfaWQYASABKAkSEwoLZGVzY3JpcHRpb24YAiABKAkSDgoGc291cmNlGAMgASgJEhQKDGdlbmVyYXRlZF9hdBgEIAEoCRIVCg10b3RhbF9lbnRyaWVzGAUgASgFEioKBmdlbnJlcxgGIAMoCzIaLmFsdC5yZWNhcC52Mi5DbHVzdGVyR2VucmUieQoMQ2x1c3RlckdlbnJlEg0KBWdlbnJlGAEgASgJEhMKC3NhbXBsZV9zaXplGAIgASgFEhUKDWNsdXN0ZXJfY291bnQYAyABKAUSLgoIY2x1c3RlcnMYBCADKAsyHC5hbHQucmVjYXAudjIuQ2x1c3RlclNlZ21lbnQiqwIKDkNsdXN0ZXJTZWdtZW50EhIKCmNsdXN0ZXJfaWQYASABKAkSDQoFbGFiZWwYAiABKAkSDQoFY291bnQYAyABKAUSEwoLbWFyZ2luX21lYW4YBCABKAESEgoKbWFyZ2luX3N0ZBgFIAEoARIWCg50b3BfYm9vc3RfbWVhbhgGIAEoARIjChtncmFwaF9ib29zdF9hdmFpbGFibGVfcmF0aW8YByABKAESFgoOdGFnX2NvdW50X21lYW4YCCABKAESGAoQdGFnX2VudHJvcHlfbWVhbhgJIAEoARIQCgh0b3BfdGFncxgKIAMoCRI9ChdyZXByZXNlbnRhdGl2ZV9hcnRpY2xlcxgLIAMoCzIcLmFsdC5yZWNhcC52Mi5DbHVzdGVyQXJ0aWNsZSKXAQoOQ2x1c3RlckFydGljbGUSEgoKYXJ0aWNsZV9pZBgBIAEoCRIOCgZtYXJnaW4YAiABKAESEQoJdG9wX2Jvb3N0GAMgASgBEhAKCHN0cmF0ZWd5GAQgASgJEhEKCXRhZ19jb3VudBgFIAEoBRIXCg9jYW5kaWRhdGVfY291bnQYBiABKAUSEAoIdG9wX3RhZ3MYByADKAkiNAoWR2V0RXZlbmluZ1B1bHNlUmVxdWVzdBIRCgRkYXRlGAEgASgJSACIAQFCBwoFX2RhdGUi5AEKF0dldEV2ZW5pbmdQdWxzZVJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRIMCgRkYXRlGAIgASgJEhQKDGdlbmVyYXRlZF9hdBgDIAEoCRIpCgZzdGF0dXMYBCABKA4yGS5hbHQucmVjYXAudjIuUHVsc2VTdGF0dXMSKAoGdG9waWNzGAUgAygLMhguYWx0LnJlY2FwLnYyLlB1bHNlVG9waWMSMgoJcXVpZXRfZGF5GAYgASgLMhouYWx0LnJlY2FwLnYyLlF1aWV0RGF5SW5mb0gAiAEBQgwKCl9xdWlldF9kYXkiyQMKClB1bHNlVG9waWMSEgoKY2x1c3Rlcl9pZBgBIAEoAxIlCgRyb2xlGAIgASgOMhcuYWx0LnJlY2FwLnYyLlRvcGljUm9sZRINCgV0aXRsZRgDIAEoCRIvCglyYXRpb25hbGUYBCABKAsyHC5hbHQucmVjYXAudjIuUHVsc2VSYXRpb25hbGUSFQoNYXJ0aWNsZV9jb3VudBgFIAEoBRIUCgxzb3VyY2VfY291bnQYBiABKAUSGAoLdGllcjFfY291bnQYByABKAVIAIgBARIQCgh0aW1lX2FnbxgIIAEoCRIdChB0cmVuZF9tdWx0aXBsaWVyGAkgASgBSAGIAQESEgoFZ2VucmUYCiABKAlIAogBARITCgthcnRpY2xlX2lkcxgLIAMoCRJEChdyZXByZXNlbnRhdGl2ZV9hcnRpY2xlcxgMIAMoCzIjLmFsdC5yZWNhcC52Mi5SZXByZXNlbnRhdGl2ZUFydGljbGUSFAoMdG9wX2VudGl0aWVzGA0gAygJEhQKDHNvdXJjZV9uYW1lcxgOIAMoCUIOCgxfdGllcjFfY291bnRCEwoRX3RyZW5kX211bHRpcGxpZXJCCAoGX2dlbnJlInkKFVJlcHJlc2VudGF0aXZlQXJ0aWNsZRISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEhIKCnNvdXJjZV91cmwYAyABKAkSEwoLc291cmNlX25hbWUYBCABKAkSFAoMcHVibGlzaGVkX2F0GAUgASgJIkwKDlB1bHNlUmF0aW9uYWxlEgwKBHRleHQYASABKAkSLAoKY29uZmlkZW5jZRgCIAEoDjIYLmFsdC5yZWNhcC52Mi5Db25maWRlbmNlIlkKDFF1aWV0RGF5SW5mbxIPCgdtZXNzYWdlGAEgASgJEjgKEXdlZWtseV9oaWdobGlnaHRzGAIgAygLMh0uYWx0LnJlY2FwLnYyLldlZWtseUhpZ2hsaWdodCJICg9XZWVrbHlIaWdobGlnaHQSCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSDAoEZGF0ZRgDIAEoCRIMCgRyb2xlGAQgASgJKpIBCgtQdWxzZVN0YXR1cxIcChhQVUxTRV9TVEFUVVNfVU5TUEVDSUZJRUQQABIXChNQVUxTRV9TVEFUVVNfTk9STUFMEAESGAoUUFVMU0VfU1RBVFVTX1BBUlRJQUwQAhIaChZQVUxTRV9TVEFUVVNfUVVJRVRfREFZEAMSFgoSUFVMU0VfU1RBVFVTX0VSUk9SEAQqdgoJVG9waWNSb2xlEhoKFlRPUElDX1JPTEVfVU5TUEVDSUZJRUQQABIbChdUT1BJQ19ST0xFX05FRURfVE9fS05PVxABEhQKEFRPUElDX1JPTEVfVFJFTkQQAhIaChZUT1BJQ19ST0xFX1NFUkVORElQSVRZEAMqaAoKQ29uZmlkZW5jZRIaChZDT05GSURFTkNFX1VOU1BFQ0lGSUVEEAASEwoPQ09ORklERU5DRV9ISUdIEAESFQoRQ09ORklERU5DRV9NRURJVU0QAhISCg5DT05GSURFTkNFX0xPVxADMrQCCgxSZWNhcFNlcnZpY2USYQoQR2V0U2V2ZW5EYXlSZWNhcBIlLmFsdC5yZWNhcC52Mi5HZXRTZXZlbkRheVJlY2FwUmVxdWVzdBomLmFsdC5yZWNhcC52Mi5HZXRTZXZlbkRheVJlY2FwUmVzcG9uc2USYQoQR2V0VGhyZWVEYXlSZWNhcBIlLmFsdC5yZWNhcC52Mi5HZXRUaHJlZURheVJlY2FwUmVxdWVzdBomLmFsdC5yZWNhcC52Mi5HZXRUaHJlZURheVJlY2FwUmVzcG9uc2USXgoPR2V0RXZlbmluZ1B1bHNlEiQuYWx0LnJlY2FwLnYyLkdldEV2ZW5pbmdQdWxzZVJlcXVlc3QaJS5hbHQucmVjYXAudjIuR2V0RXZlbmluZ1B1bHNlUmVzcG9uc2VCJFoiYWx0L2dlbi9wcm90by9hbHQvcmVjYXAvdjI7cmVjYXB2MmIGcHJvdG8z",
-	);
+export const file_alt_recap_v2_recap: GenFile = /*@__PURE__*/
+  fileDesc("ChhhbHQvcmVjYXAvdjIvcmVjYXAucHJvdG8SDGFsdC5yZWNhcC52MiJJChdHZXRTZXZlbkRheVJlY2FwUmVxdWVzdBIbCg5nZW5yZV9kcmFmdF9pZBgBIAEoCUgAiAEBQhEKD19nZW5yZV9kcmFmdF9pZCL1AQoYR2V0U2V2ZW5EYXlSZWNhcFJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRITCgtleGVjdXRlZF9hdBgCIAEoCRIUCgx3aW5kb3dfc3RhcnQYAyABKAkSEgoKd2luZG93X2VuZBgEIAEoCRIWCg50b3RhbF9hcnRpY2xlcxgFIAEoBRIoCgZnZW5yZXMYBiADKAsyGC5hbHQucmVjYXAudjIuUmVjYXBHZW5yZRI2Cg1jbHVzdGVyX2RyYWZ0GAcgASgLMhouYWx0LnJlY2FwLnYyLkNsdXN0ZXJEcmFmdEgAiAEBQhAKDl9jbHVzdGVyX2RyYWZ0IkkKF0dldFRocmVlRGF5UmVjYXBSZXF1ZXN0EhsKDmdlbnJlX2RyYWZ0X2lkGAEgASgJSACIAQFCEQoPX2dlbnJlX2RyYWZ0X2lkIvUBChhHZXRUaHJlZURheVJlY2FwUmVzcG9uc2USDgoGam9iX2lkGAEgASgJEhMKC2V4ZWN1dGVkX2F0GAIgASgJEhQKDHdpbmRvd19zdGFydBgDIAEoCRISCgp3aW5kb3dfZW5kGAQgASgJEhYKDnRvdGFsX2FydGljbGVzGAUgASgFEigKBmdlbnJlcxgGIAMoCzIYLmFsdC5yZWNhcC52Mi5SZWNhcEdlbnJlEjYKDWNsdXN0ZXJfZHJhZnQYByABKAsyGi5hbHQucmVjYXAudjIuQ2x1c3RlckRyYWZ0SACIAQFCEAoOX2NsdXN0ZXJfZHJhZnQi3wEKClJlY2FwR2VucmUSDQoFZ2VucmUYASABKAkSDwoHc3VtbWFyeRgCIAEoCRIRCgl0b3BfdGVybXMYAyADKAkSFQoNYXJ0aWNsZV9jb3VudBgEIAEoBRIVCg1jbHVzdGVyX2NvdW50GAUgASgFEjIKDmV2aWRlbmNlX2xpbmtzGAYgAygLMhouYWx0LnJlY2FwLnYyLkV2aWRlbmNlTGluaxIPCgdidWxsZXRzGAcgAygJEisKCnJlZmVyZW5jZXMYCCADKAsyFy5hbHQucmVjYXAudjIuUmVmZXJlbmNlImkKDEV2aWRlbmNlTGluaxISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEhIKCnNvdXJjZV91cmwYAyABKAkSFAoMcHVibGlzaGVkX2F0GAQgASgJEgwKBGxhbmcYBSABKAkiXAoJUmVmZXJlbmNlEgoKAmlkGAEgASgFEgsKA3VybBgCIAEoCRIOCgZkb21haW4YAyABKAkSFwoKYXJ0aWNsZV9pZBgEIAEoCUgAiAEBQg0KC19hcnRpY2xlX2lkIp4BCgxDbHVzdGVyRHJhZnQSEAoIZHJhZnRfaWQYASABKAkSEwoLZGVzY3JpcHRpb24YAiABKAkSDgoGc291cmNlGAMgASgJEhQKDGdlbmVyYXRlZF9hdBgEIAEoCRIVCg10b3RhbF9lbnRyaWVzGAUgASgFEioKBmdlbnJlcxgGIAMoCzIaLmFsdC5yZWNhcC52Mi5DbHVzdGVyR2VucmUieQoMQ2x1c3RlckdlbnJlEg0KBWdlbnJlGAEgASgJEhMKC3NhbXBsZV9zaXplGAIgASgFEhUKDWNsdXN0ZXJfY291bnQYAyABKAUSLgoIY2x1c3RlcnMYBCADKAsyHC5hbHQucmVjYXAudjIuQ2x1c3RlclNlZ21lbnQiqwIKDkNsdXN0ZXJTZWdtZW50EhIKCmNsdXN0ZXJfaWQYASABKAkSDQoFbGFiZWwYAiABKAkSDQoFY291bnQYAyABKAUSEwoLbWFyZ2luX21lYW4YBCABKAESEgoKbWFyZ2luX3N0ZBgFIAEoARIWCg50b3BfYm9vc3RfbWVhbhgGIAEoARIjChtncmFwaF9ib29zdF9hdmFpbGFibGVfcmF0aW8YByABKAESFgoOdGFnX2NvdW50X21lYW4YCCABKAESGAoQdGFnX2VudHJvcHlfbWVhbhgJIAEoARIQCgh0b3BfdGFncxgKIAMoCRI9ChdyZXByZXNlbnRhdGl2ZV9hcnRpY2xlcxgLIAMoCzIcLmFsdC5yZWNhcC52Mi5DbHVzdGVyQXJ0aWNsZSKXAQoOQ2x1c3RlckFydGljbGUSEgoKYXJ0aWNsZV9pZBgBIAEoCRIOCgZtYXJnaW4YAiABKAESEQoJdG9wX2Jvb3N0GAMgASgBEhAKCHN0cmF0ZWd5GAQgASgJEhEKCXRhZ19jb3VudBgFIAEoBRIXCg9jYW5kaWRhdGVfY291bnQYBiABKAUSEAoIdG9wX3RhZ3MYByADKAkiNAoWR2V0RXZlbmluZ1B1bHNlUmVxdWVzdBIRCgRkYXRlGAEgASgJSACIAQFCBwoFX2RhdGUi5AEKF0dldEV2ZW5pbmdQdWxzZVJlc3BvbnNlEg4KBmpvYl9pZBgBIAEoCRIMCgRkYXRlGAIgASgJEhQKDGdlbmVyYXRlZF9hdBgDIAEoCRIpCgZzdGF0dXMYBCABKA4yGS5hbHQucmVjYXAudjIuUHVsc2VTdGF0dXMSKAoGdG9waWNzGAUgAygLMhguYWx0LnJlY2FwLnYyLlB1bHNlVG9waWMSMgoJcXVpZXRfZGF5GAYgASgLMhouYWx0LnJlY2FwLnYyLlF1aWV0RGF5SW5mb0gAiAEBQgwKCl9xdWlldF9kYXkiyQMKClB1bHNlVG9waWMSEgoKY2x1c3Rlcl9pZBgBIAEoAxIlCgRyb2xlGAIgASgOMhcuYWx0LnJlY2FwLnYyLlRvcGljUm9sZRINCgV0aXRsZRgDIAEoCRIvCglyYXRpb25hbGUYBCABKAsyHC5hbHQucmVjYXAudjIuUHVsc2VSYXRpb25hbGUSFQoNYXJ0aWNsZV9jb3VudBgFIAEoBRIUCgxzb3VyY2VfY291bnQYBiABKAUSGAoLdGllcjFfY291bnQYByABKAVIAIgBARIQCgh0aW1lX2FnbxgIIAEoCRIdChB0cmVuZF9tdWx0aXBsaWVyGAkgASgBSAGIAQESEgoFZ2VucmUYCiABKAlIAogBARITCgthcnRpY2xlX2lkcxgLIAMoCRJEChdyZXByZXNlbnRhdGl2ZV9hcnRpY2xlcxgMIAMoCzIjLmFsdC5yZWNhcC52Mi5SZXByZXNlbnRhdGl2ZUFydGljbGUSFAoMdG9wX2VudGl0aWVzGA0gAygJEhQKDHNvdXJjZV9uYW1lcxgOIAMoCUIOCgxfdGllcjFfY291bnRCEwoRX3RyZW5kX211bHRpcGxpZXJCCAoGX2dlbnJlInkKFVJlcHJlc2VudGF0aXZlQXJ0aWNsZRISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEhIKCnNvdXJjZV91cmwYAyABKAkSEwoLc291cmNlX25hbWUYBCABKAkSFAoMcHVibGlzaGVkX2F0GAUgASgJIkwKDlB1bHNlUmF0aW9uYWxlEgwKBHRleHQYASABKAkSLAoKY29uZmlkZW5jZRgCIAEoDjIYLmFsdC5yZWNhcC52Mi5Db25maWRlbmNlIlkKDFF1aWV0RGF5SW5mbxIPCgdtZXNzYWdlGAEgASgJEjgKEXdlZWtseV9oaWdobGlnaHRzGAIgAygLMh0uYWx0LnJlY2FwLnYyLldlZWtseUhpZ2hsaWdodCJICg9XZWVrbHlIaWdobGlnaHQSCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSDAoEZGF0ZRgDIAEoCRIMCgRyb2xlGAQgASgJKpIBCgtQdWxzZVN0YXR1cxIcChhQVUxTRV9TVEFUVVNfVU5TUEVDSUZJRUQQABIXChNQVUxTRV9TVEFUVVNfTk9STUFMEAESGAoUUFVMU0VfU1RBVFVTX1BBUlRJQUwQAhIaChZQVUxTRV9TVEFUVVNfUVVJRVRfREFZEAMSFgoSUFVMU0VfU1RBVFVTX0VSUk9SEAQqdgoJVG9waWNSb2xlEhoKFlRPUElDX1JPTEVfVU5TUEVDSUZJRUQQABIbChdUT1BJQ19ST0xFX05FRURfVE9fS05PVxABEhQKEFRPUElDX1JPTEVfVFJFTkQQAhIaChZUT1BJQ19ST0xFX1NFUkVORElQSVRZEAMqaAoKQ29uZmlkZW5jZRIaChZDT05GSURFTkNFX1VOU1BFQ0lGSUVEEAASEwoPQ09ORklERU5DRV9ISUdIEAESFQoRQ09ORklERU5DRV9NRURJVU0QAhISCg5DT05GSURFTkNFX0xPVxADMrQCCgxSZWNhcFNlcnZpY2USYQoQR2V0U2V2ZW5EYXlSZWNhcBIlLmFsdC5yZWNhcC52Mi5HZXRTZXZlbkRheVJlY2FwUmVxdWVzdBomLmFsdC5yZWNhcC52Mi5HZXRTZXZlbkRheVJlY2FwUmVzcG9uc2USYQoQR2V0VGhyZWVEYXlSZWNhcBIlLmFsdC5yZWNhcC52Mi5HZXRUaHJlZURheVJlY2FwUmVxdWVzdBomLmFsdC5yZWNhcC52Mi5HZXRUaHJlZURheVJlY2FwUmVzcG9uc2USXgoPR2V0RXZlbmluZ1B1bHNlEiQuYWx0LnJlY2FwLnYyLkdldEV2ZW5pbmdQdWxzZVJlcXVlc3QaJS5hbHQucmVjYXAudjIuR2V0RXZlbmluZ1B1bHNlUmVzcG9uc2VCJFoiYWx0L2dlbi9wcm90by9hbHQvcmVjYXAvdjI7cmVjYXB2MmIGcHJvdG8z");
 
 /**
  * GetSevenDayRecapRequest is the request for getting 7-day recap
  *
  * @generated from message alt.recap.v2.GetSevenDayRecapRequest
  */
-export type GetSevenDayRecapRequest =
-	Message<"alt.recap.v2.GetSevenDayRecapRequest"> & {
-		/**
-		 * Optional draft ID for cluster draft attachment (replaces X-Genre-Draft-Id header)
-		 *
-		 * @generated from field: optional string genre_draft_id = 1;
-		 */
-		genreDraftId?: string;
-	};
+export type GetSevenDayRecapRequest = Message<"alt.recap.v2.GetSevenDayRecapRequest"> & {
+  /**
+   * Optional draft ID for cluster draft attachment (replaces X-Genre-Draft-Id header)
+   *
+   * @generated from field: optional string genre_draft_id = 1;
+   */
+  genreDraftId?: string;
+};
 
 /**
  * Describes the message alt.recap.v2.GetSevenDayRecapRequest.
  * Use `create(GetSevenDayRecapRequestSchema)` to create a new message.
  */
-export const GetSevenDayRecapRequestSchema: GenMessage<GetSevenDayRecapRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 0);
+export const GetSevenDayRecapRequestSchema: GenMessage<GetSevenDayRecapRequest> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 0);
 
 /**
  * GetSevenDayRecapResponse contains the 7-day recap summary
  *
  * @generated from message alt.recap.v2.GetSevenDayRecapResponse
  */
-export type GetSevenDayRecapResponse =
-	Message<"alt.recap.v2.GetSevenDayRecapResponse"> & {
-		/**
-		 * Recap job ID
-		 *
-		 * @generated from field: string job_id = 1;
-		 */
-		jobId: string;
+export type GetSevenDayRecapResponse = Message<"alt.recap.v2.GetSevenDayRecapResponse"> & {
+  /**
+   * Recap job ID
+   *
+   * @generated from field: string job_id = 1;
+   */
+  jobId: string;
 
-		/**
-		 * Execution timestamp (RFC3339)
-		 *
-		 * @generated from field: string executed_at = 2;
-		 */
-		executedAt: string;
+  /**
+   * Execution timestamp (RFC3339)
+   *
+   * @generated from field: string executed_at = 2;
+   */
+  executedAt: string;
 
-		/**
-		 * Window start timestamp (RFC3339)
-		 *
-		 * @generated from field: string window_start = 3;
-		 */
-		windowStart: string;
+  /**
+   * Window start timestamp (RFC3339)
+   *
+   * @generated from field: string window_start = 3;
+   */
+  windowStart: string;
 
-		/**
-		 * Window end timestamp (RFC3339)
-		 *
-		 * @generated from field: string window_end = 4;
-		 */
-		windowEnd: string;
+  /**
+   * Window end timestamp (RFC3339)
+   *
+   * @generated from field: string window_end = 4;
+   */
+  windowEnd: string;
 
-		/**
-		 * Total number of articles in the recap
-		 *
-		 * @generated from field: int32 total_articles = 5;
-		 */
-		totalArticles: number;
+  /**
+   * Total number of articles in the recap
+   *
+   * @generated from field: int32 total_articles = 5;
+   */
+  totalArticles: number;
 
-		/**
-		 * Recap by genre
-		 *
-		 * @generated from field: repeated alt.recap.v2.RecapGenre genres = 6;
-		 */
-		genres: RecapGenre[];
+  /**
+   * Recap by genre
+   *
+   * @generated from field: repeated alt.recap.v2.RecapGenre genres = 6;
+   */
+  genres: RecapGenre[];
 
-		/**
-		 * Optional cluster draft (populated if genre_draft_id provided)
-		 *
-		 * @generated from field: optional alt.recap.v2.ClusterDraft cluster_draft = 7;
-		 */
-		clusterDraft?: ClusterDraft;
-	};
+  /**
+   * Optional cluster draft (populated if genre_draft_id provided)
+   *
+   * @generated from field: optional alt.recap.v2.ClusterDraft cluster_draft = 7;
+   */
+  clusterDraft?: ClusterDraft;
+};
 
 /**
  * Describes the message alt.recap.v2.GetSevenDayRecapResponse.
  * Use `create(GetSevenDayRecapResponseSchema)` to create a new message.
  */
-export const GetSevenDayRecapResponseSchema: GenMessage<GetSevenDayRecapResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 1);
+export const GetSevenDayRecapResponseSchema: GenMessage<GetSevenDayRecapResponse> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 1);
 
 /**
  * GetThreeDayRecapRequest is the request for getting 3-day recap
  *
  * @generated from message alt.recap.v2.GetThreeDayRecapRequest
  */
-export type GetThreeDayRecapRequest =
-	Message<"alt.recap.v2.GetThreeDayRecapRequest"> & {
-		/**
-		 * Optional draft ID for cluster draft attachment (replaces X-Genre-Draft-Id header)
-		 *
-		 * @generated from field: optional string genre_draft_id = 1;
-		 */
-		genreDraftId?: string;
-	};
+export type GetThreeDayRecapRequest = Message<"alt.recap.v2.GetThreeDayRecapRequest"> & {
+  /**
+   * Optional draft ID for cluster draft attachment (replaces X-Genre-Draft-Id header)
+   *
+   * @generated from field: optional string genre_draft_id = 1;
+   */
+  genreDraftId?: string;
+};
 
 /**
  * Describes the message alt.recap.v2.GetThreeDayRecapRequest.
  * Use `create(GetThreeDayRecapRequestSchema)` to create a new message.
  */
-export const GetThreeDayRecapRequestSchema: GenMessage<GetThreeDayRecapRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 2);
+export const GetThreeDayRecapRequestSchema: GenMessage<GetThreeDayRecapRequest> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 2);
 
 /**
  * GetThreeDayRecapResponse contains the 3-day recap summary
  *
  * @generated from message alt.recap.v2.GetThreeDayRecapResponse
  */
-export type GetThreeDayRecapResponse =
-	Message<"alt.recap.v2.GetThreeDayRecapResponse"> & {
-		/**
-		 * Recap job ID
-		 *
-		 * @generated from field: string job_id = 1;
-		 */
-		jobId: string;
+export type GetThreeDayRecapResponse = Message<"alt.recap.v2.GetThreeDayRecapResponse"> & {
+  /**
+   * Recap job ID
+   *
+   * @generated from field: string job_id = 1;
+   */
+  jobId: string;
 
-		/**
-		 * Execution timestamp (RFC3339)
-		 *
-		 * @generated from field: string executed_at = 2;
-		 */
-		executedAt: string;
+  /**
+   * Execution timestamp (RFC3339)
+   *
+   * @generated from field: string executed_at = 2;
+   */
+  executedAt: string;
 
-		/**
-		 * Window start timestamp (RFC3339)
-		 *
-		 * @generated from field: string window_start = 3;
-		 */
-		windowStart: string;
+  /**
+   * Window start timestamp (RFC3339)
+   *
+   * @generated from field: string window_start = 3;
+   */
+  windowStart: string;
 
-		/**
-		 * Window end timestamp (RFC3339)
-		 *
-		 * @generated from field: string window_end = 4;
-		 */
-		windowEnd: string;
+  /**
+   * Window end timestamp (RFC3339)
+   *
+   * @generated from field: string window_end = 4;
+   */
+  windowEnd: string;
 
-		/**
-		 * Total number of articles in the recap
-		 *
-		 * @generated from field: int32 total_articles = 5;
-		 */
-		totalArticles: number;
+  /**
+   * Total number of articles in the recap
+   *
+   * @generated from field: int32 total_articles = 5;
+   */
+  totalArticles: number;
 
-		/**
-		 * Recap by genre
-		 *
-		 * @generated from field: repeated alt.recap.v2.RecapGenre genres = 6;
-		 */
-		genres: RecapGenre[];
+  /**
+   * Recap by genre
+   *
+   * @generated from field: repeated alt.recap.v2.RecapGenre genres = 6;
+   */
+  genres: RecapGenre[];
 
-		/**
-		 * Optional cluster draft (populated if genre_draft_id provided)
-		 *
-		 * @generated from field: optional alt.recap.v2.ClusterDraft cluster_draft = 7;
-		 */
-		clusterDraft?: ClusterDraft;
-	};
+  /**
+   * Optional cluster draft (populated if genre_draft_id provided)
+   *
+   * @generated from field: optional alt.recap.v2.ClusterDraft cluster_draft = 7;
+   */
+  clusterDraft?: ClusterDraft;
+};
 
 /**
  * Describes the message alt.recap.v2.GetThreeDayRecapResponse.
  * Use `create(GetThreeDayRecapResponseSchema)` to create a new message.
  */
-export const GetThreeDayRecapResponseSchema: GenMessage<GetThreeDayRecapResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 3);
+export const GetThreeDayRecapResponseSchema: GenMessage<GetThreeDayRecapResponse> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 3);
 
 /**
  * RecapGenre represents a summary for a specific genre
@@ -207,70 +186,69 @@ export const GetThreeDayRecapResponseSchema: GenMessage<GetThreeDayRecapResponse
  * @generated from message alt.recap.v2.RecapGenre
  */
 export type RecapGenre = Message<"alt.recap.v2.RecapGenre"> & {
-	/**
-	 * Genre name
-	 *
-	 * @generated from field: string genre = 1;
-	 */
-	genre: string;
+  /**
+   * Genre name
+   *
+   * @generated from field: string genre = 1;
+   */
+  genre: string;
 
-	/**
-	 * Summary text for this genre
-	 *
-	 * @generated from field: string summary = 2;
-	 */
-	summary: string;
+  /**
+   * Summary text for this genre
+   *
+   * @generated from field: string summary = 2;
+   */
+  summary: string;
 
-	/**
-	 * Top terms/keywords for this genre
-	 *
-	 * @generated from field: repeated string top_terms = 3;
-	 */
-	topTerms: string[];
+  /**
+   * Top terms/keywords for this genre
+   *
+   * @generated from field: repeated string top_terms = 3;
+   */
+  topTerms: string[];
 
-	/**
-	 * Number of articles in this genre
-	 *
-	 * @generated from field: int32 article_count = 4;
-	 */
-	articleCount: number;
+  /**
+   * Number of articles in this genre
+   *
+   * @generated from field: int32 article_count = 4;
+   */
+  articleCount: number;
 
-	/**
-	 * Number of clusters in this genre
-	 *
-	 * @generated from field: int32 cluster_count = 5;
-	 */
-	clusterCount: number;
+  /**
+   * Number of clusters in this genre
+   *
+   * @generated from field: int32 cluster_count = 5;
+   */
+  clusterCount: number;
 
-	/**
-	 * Evidence links to source articles
-	 *
-	 * @generated from field: repeated alt.recap.v2.EvidenceLink evidence_links = 6;
-	 */
-	evidenceLinks: EvidenceLink[];
+  /**
+   * Evidence links to source articles
+   *
+   * @generated from field: repeated alt.recap.v2.EvidenceLink evidence_links = 6;
+   */
+  evidenceLinks: EvidenceLink[];
 
-	/**
-	 * Bullet points extracted from the summary
-	 *
-	 * @generated from field: repeated string bullets = 7;
-	 */
-	bullets: string[];
+  /**
+   * Bullet points extracted from the summary
+   *
+   * @generated from field: repeated string bullets = 7;
+   */
+  bullets: string[];
 
-	/**
-	 * References with URLs
-	 *
-	 * @generated from field: repeated alt.recap.v2.Reference references = 8;
-	 */
-	references: Reference[];
+  /**
+   * References with URLs
+   *
+   * @generated from field: repeated alt.recap.v2.Reference references = 8;
+   */
+  references: Reference[];
 };
 
 /**
  * Describes the message alt.recap.v2.RecapGenre.
  * Use `create(RecapGenreSchema)` to create a new message.
  */
-export const RecapGenreSchema: GenMessage<RecapGenre> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 4);
+export const RecapGenreSchema: GenMessage<RecapGenre> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 4);
 
 /**
  * EvidenceLink represents a link to a source article
@@ -278,49 +256,48 @@ export const RecapGenreSchema: GenMessage<RecapGenre> =
  * @generated from message alt.recap.v2.EvidenceLink
  */
 export type EvidenceLink = Message<"alt.recap.v2.EvidenceLink"> & {
-	/**
-	 * Article ID
-	 *
-	 * @generated from field: string article_id = 1;
-	 */
-	articleId: string;
+  /**
+   * Article ID
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
 
-	/**
-	 * Article title
-	 *
-	 * @generated from field: string title = 2;
-	 */
-	title: string;
+  /**
+   * Article title
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
 
-	/**
-	 * Source URL
-	 *
-	 * @generated from field: string source_url = 3;
-	 */
-	sourceUrl: string;
+  /**
+   * Source URL
+   *
+   * @generated from field: string source_url = 3;
+   */
+  sourceUrl: string;
 
-	/**
-	 * Published timestamp (RFC3339)
-	 *
-	 * @generated from field: string published_at = 4;
-	 */
-	publishedAt: string;
+  /**
+   * Published timestamp (RFC3339)
+   *
+   * @generated from field: string published_at = 4;
+   */
+  publishedAt: string;
 
-	/**
-	 * Language code
-	 *
-	 * @generated from field: string lang = 5;
-	 */
-	lang: string;
+  /**
+   * Language code
+   *
+   * @generated from field: string lang = 5;
+   */
+  lang: string;
 };
 
 /**
  * Describes the message alt.recap.v2.EvidenceLink.
  * Use `create(EvidenceLinkSchema)` to create a new message.
  */
-export const EvidenceLinkSchema: GenMessage<EvidenceLink> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 5);
+export const EvidenceLinkSchema: GenMessage<EvidenceLink> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 5);
 
 /**
  * Reference represents a URL reference in the summary
@@ -328,42 +305,41 @@ export const EvidenceLinkSchema: GenMessage<EvidenceLink> =
  * @generated from message alt.recap.v2.Reference
  */
 export type Reference = Message<"alt.recap.v2.Reference"> & {
-	/**
-	 * Reference ID (1-indexed)
-	 *
-	 * @generated from field: int32 id = 1;
-	 */
-	id: number;
+  /**
+   * Reference ID (1-indexed)
+   *
+   * @generated from field: int32 id = 1;
+   */
+  id: number;
 
-	/**
-	 * Full URL
-	 *
-	 * @generated from field: string url = 2;
-	 */
-	url: string;
+  /**
+   * Full URL
+   *
+   * @generated from field: string url = 2;
+   */
+  url: string;
 
-	/**
-	 * Domain extracted from URL
-	 *
-	 * @generated from field: string domain = 3;
-	 */
-	domain: string;
+  /**
+   * Domain extracted from URL
+   *
+   * @generated from field: string domain = 3;
+   */
+  domain: string;
 
-	/**
-	 * Optional article ID if linked to an article
-	 *
-	 * @generated from field: optional string article_id = 4;
-	 */
-	articleId?: string;
+  /**
+   * Optional article ID if linked to an article
+   *
+   * @generated from field: optional string article_id = 4;
+   */
+  articleId?: string;
 };
 
 /**
  * Describes the message alt.recap.v2.Reference.
  * Use `create(ReferenceSchema)` to create a new message.
  */
-export const ReferenceSchema: GenMessage<Reference> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 6);
+export const ReferenceSchema: GenMessage<Reference> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 6);
 
 /**
  * ClusterDraft contains clustering metadata for recap analysis
@@ -371,56 +347,55 @@ export const ReferenceSchema: GenMessage<Reference> =
  * @generated from message alt.recap.v2.ClusterDraft
  */
 export type ClusterDraft = Message<"alt.recap.v2.ClusterDraft"> & {
-	/**
-	 * Draft ID
-	 *
-	 * @generated from field: string draft_id = 1;
-	 */
-	draftId: string;
+  /**
+   * Draft ID
+   *
+   * @generated from field: string draft_id = 1;
+   */
+  draftId: string;
 
-	/**
-	 * Description of the draft
-	 *
-	 * @generated from field: string description = 2;
-	 */
-	description: string;
+  /**
+   * Description of the draft
+   *
+   * @generated from field: string description = 2;
+   */
+  description: string;
 
-	/**
-	 * Source identifier
-	 *
-	 * @generated from field: string source = 3;
-	 */
-	source: string;
+  /**
+   * Source identifier
+   *
+   * @generated from field: string source = 3;
+   */
+  source: string;
 
-	/**
-	 * Generation timestamp (RFC3339)
-	 *
-	 * @generated from field: string generated_at = 4;
-	 */
-	generatedAt: string;
+  /**
+   * Generation timestamp (RFC3339)
+   *
+   * @generated from field: string generated_at = 4;
+   */
+  generatedAt: string;
 
-	/**
-	 * Total number of entries
-	 *
-	 * @generated from field: int32 total_entries = 5;
-	 */
-	totalEntries: number;
+  /**
+   * Total number of entries
+   *
+   * @generated from field: int32 total_entries = 5;
+   */
+  totalEntries: number;
 
-	/**
-	 * Genres with cluster data
-	 *
-	 * @generated from field: repeated alt.recap.v2.ClusterGenre genres = 6;
-	 */
-	genres: ClusterGenre[];
+  /**
+   * Genres with cluster data
+   *
+   * @generated from field: repeated alt.recap.v2.ClusterGenre genres = 6;
+   */
+  genres: ClusterGenre[];
 };
 
 /**
  * Describes the message alt.recap.v2.ClusterDraft.
  * Use `create(ClusterDraftSchema)` to create a new message.
  */
-export const ClusterDraftSchema: GenMessage<ClusterDraft> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 7);
+export const ClusterDraftSchema: GenMessage<ClusterDraft> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 7);
 
 /**
  * ClusterGenre contains clustering data for a genre
@@ -428,42 +403,41 @@ export const ClusterDraftSchema: GenMessage<ClusterDraft> =
  * @generated from message alt.recap.v2.ClusterGenre
  */
 export type ClusterGenre = Message<"alt.recap.v2.ClusterGenre"> & {
-	/**
-	 * Genre name
-	 *
-	 * @generated from field: string genre = 1;
-	 */
-	genre: string;
+  /**
+   * Genre name
+   *
+   * @generated from field: string genre = 1;
+   */
+  genre: string;
 
-	/**
-	 * Sample size used for clustering
-	 *
-	 * @generated from field: int32 sample_size = 2;
-	 */
-	sampleSize: number;
+  /**
+   * Sample size used for clustering
+   *
+   * @generated from field: int32 sample_size = 2;
+   */
+  sampleSize: number;
 
-	/**
-	 * Number of clusters
-	 *
-	 * @generated from field: int32 cluster_count = 3;
-	 */
-	clusterCount: number;
+  /**
+   * Number of clusters
+   *
+   * @generated from field: int32 cluster_count = 3;
+   */
+  clusterCount: number;
 
-	/**
-	 * Individual clusters
-	 *
-	 * @generated from field: repeated alt.recap.v2.ClusterSegment clusters = 4;
-	 */
-	clusters: ClusterSegment[];
+  /**
+   * Individual clusters
+   *
+   * @generated from field: repeated alt.recap.v2.ClusterSegment clusters = 4;
+   */
+  clusters: ClusterSegment[];
 };
 
 /**
  * Describes the message alt.recap.v2.ClusterGenre.
  * Use `create(ClusterGenreSchema)` to create a new message.
  */
-export const ClusterGenreSchema: GenMessage<ClusterGenre> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 8);
+export const ClusterGenreSchema: GenMessage<ClusterGenre> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 8);
 
 /**
  * ClusterSegment represents a single cluster
@@ -471,91 +445,90 @@ export const ClusterGenreSchema: GenMessage<ClusterGenre> =
  * @generated from message alt.recap.v2.ClusterSegment
  */
 export type ClusterSegment = Message<"alt.recap.v2.ClusterSegment"> & {
-	/**
-	 * Cluster ID
-	 *
-	 * @generated from field: string cluster_id = 1;
-	 */
-	clusterId: string;
+  /**
+   * Cluster ID
+   *
+   * @generated from field: string cluster_id = 1;
+   */
+  clusterId: string;
 
-	/**
-	 * Human-readable label
-	 *
-	 * @generated from field: string label = 2;
-	 */
-	label: string;
+  /**
+   * Human-readable label
+   *
+   * @generated from field: string label = 2;
+   */
+  label: string;
 
-	/**
-	 * Number of items in cluster
-	 *
-	 * @generated from field: int32 count = 3;
-	 */
-	count: number;
+  /**
+   * Number of items in cluster
+   *
+   * @generated from field: int32 count = 3;
+   */
+  count: number;
 
-	/**
-	 * Average margin score
-	 *
-	 * @generated from field: double margin_mean = 4;
-	 */
-	marginMean: number;
+  /**
+   * Average margin score
+   *
+   * @generated from field: double margin_mean = 4;
+   */
+  marginMean: number;
 
-	/**
-	 * Margin standard deviation
-	 *
-	 * @generated from field: double margin_std = 5;
-	 */
-	marginStd: number;
+  /**
+   * Margin standard deviation
+   *
+   * @generated from field: double margin_std = 5;
+   */
+  marginStd: number;
 
-	/**
-	 * Average top boost score
-	 *
-	 * @generated from field: double top_boost_mean = 6;
-	 */
-	topBoostMean: number;
+  /**
+   * Average top boost score
+   *
+   * @generated from field: double top_boost_mean = 6;
+   */
+  topBoostMean: number;
 
-	/**
-	 * Ratio of articles with graph boost available
-	 *
-	 * @generated from field: double graph_boost_available_ratio = 7;
-	 */
-	graphBoostAvailableRatio: number;
+  /**
+   * Ratio of articles with graph boost available
+   *
+   * @generated from field: double graph_boost_available_ratio = 7;
+   */
+  graphBoostAvailableRatio: number;
 
-	/**
-	 * Average tag count
-	 *
-	 * @generated from field: double tag_count_mean = 8;
-	 */
-	tagCountMean: number;
+  /**
+   * Average tag count
+   *
+   * @generated from field: double tag_count_mean = 8;
+   */
+  tagCountMean: number;
 
-	/**
-	 * Average tag entropy
-	 *
-	 * @generated from field: double tag_entropy_mean = 9;
-	 */
-	tagEntropyMean: number;
+  /**
+   * Average tag entropy
+   *
+   * @generated from field: double tag_entropy_mean = 9;
+   */
+  tagEntropyMean: number;
 
-	/**
-	 * Top tags for this cluster
-	 *
-	 * @generated from field: repeated string top_tags = 10;
-	 */
-	topTags: string[];
+  /**
+   * Top tags for this cluster
+   *
+   * @generated from field: repeated string top_tags = 10;
+   */
+  topTags: string[];
 
-	/**
-	 * Representative articles
-	 *
-	 * @generated from field: repeated alt.recap.v2.ClusterArticle representative_articles = 11;
-	 */
-	representativeArticles: ClusterArticle[];
+  /**
+   * Representative articles
+   *
+   * @generated from field: repeated alt.recap.v2.ClusterArticle representative_articles = 11;
+   */
+  representativeArticles: ClusterArticle[];
 };
 
 /**
  * Describes the message alt.recap.v2.ClusterSegment.
  * Use `create(ClusterSegmentSchema)` to create a new message.
  */
-export const ClusterSegmentSchema: GenMessage<ClusterSegment> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 9);
+export const ClusterSegmentSchema: GenMessage<ClusterSegment> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 9);
 
 /**
  * ClusterArticle represents an article in a cluster
@@ -563,144 +536,139 @@ export const ClusterSegmentSchema: GenMessage<ClusterSegment> =
  * @generated from message alt.recap.v2.ClusterArticle
  */
 export type ClusterArticle = Message<"alt.recap.v2.ClusterArticle"> & {
-	/**
-	 * Article ID
-	 *
-	 * @generated from field: string article_id = 1;
-	 */
-	articleId: string;
+  /**
+   * Article ID
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
 
-	/**
-	 * Margin score
-	 *
-	 * @generated from field: double margin = 2;
-	 */
-	margin: number;
+  /**
+   * Margin score
+   *
+   * @generated from field: double margin = 2;
+   */
+  margin: number;
 
-	/**
-	 * Top boost score
-	 *
-	 * @generated from field: double top_boost = 3;
-	 */
-	topBoost: number;
+  /**
+   * Top boost score
+   *
+   * @generated from field: double top_boost = 3;
+   */
+  topBoost: number;
 
-	/**
-	 * Strategy used
-	 *
-	 * @generated from field: string strategy = 4;
-	 */
-	strategy: string;
+  /**
+   * Strategy used
+   *
+   * @generated from field: string strategy = 4;
+   */
+  strategy: string;
 
-	/**
-	 * Number of tags
-	 *
-	 * @generated from field: int32 tag_count = 5;
-	 */
-	tagCount: number;
+  /**
+   * Number of tags
+   *
+   * @generated from field: int32 tag_count = 5;
+   */
+  tagCount: number;
 
-	/**
-	 * Number of candidates
-	 *
-	 * @generated from field: int32 candidate_count = 6;
-	 */
-	candidateCount: number;
+  /**
+   * Number of candidates
+   *
+   * @generated from field: int32 candidate_count = 6;
+   */
+  candidateCount: number;
 
-	/**
-	 * Top tags for this article
-	 *
-	 * @generated from field: repeated string top_tags = 7;
-	 */
-	topTags: string[];
+  /**
+   * Top tags for this article
+   *
+   * @generated from field: repeated string top_tags = 7;
+   */
+  topTags: string[];
 };
 
 /**
  * Describes the message alt.recap.v2.ClusterArticle.
  * Use `create(ClusterArticleSchema)` to create a new message.
  */
-export const ClusterArticleSchema: GenMessage<ClusterArticle> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 10);
+export const ClusterArticleSchema: GenMessage<ClusterArticle> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 10);
 
 /**
  * GetEveningPulseRequest is the request for getting Evening Pulse
  *
  * @generated from message alt.recap.v2.GetEveningPulseRequest
  */
-export type GetEveningPulseRequest =
-	Message<"alt.recap.v2.GetEveningPulseRequest"> & {
-		/**
-		 * Optional target date in YYYY-MM-DD format. Defaults to today.
-		 *
-		 * @generated from field: optional string date = 1;
-		 */
-		date?: string;
-	};
+export type GetEveningPulseRequest = Message<"alt.recap.v2.GetEveningPulseRequest"> & {
+  /**
+   * Optional target date in YYYY-MM-DD format. Defaults to today.
+   *
+   * @generated from field: optional string date = 1;
+   */
+  date?: string;
+};
 
 /**
  * Describes the message alt.recap.v2.GetEveningPulseRequest.
  * Use `create(GetEveningPulseRequestSchema)` to create a new message.
  */
-export const GetEveningPulseRequestSchema: GenMessage<GetEveningPulseRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 11);
+export const GetEveningPulseRequestSchema: GenMessage<GetEveningPulseRequest> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 11);
 
 /**
  * GetEveningPulseResponse contains the Evening Pulse data
  *
  * @generated from message alt.recap.v2.GetEveningPulseResponse
  */
-export type GetEveningPulseResponse =
-	Message<"alt.recap.v2.GetEveningPulseResponse"> & {
-		/**
-		 * Job ID
-		 *
-		 * @generated from field: string job_id = 1;
-		 */
-		jobId: string;
+export type GetEveningPulseResponse = Message<"alt.recap.v2.GetEveningPulseResponse"> & {
+  /**
+   * Job ID
+   *
+   * @generated from field: string job_id = 1;
+   */
+  jobId: string;
 
-		/**
-		 * Target date (YYYY-MM-DD)
-		 *
-		 * @generated from field: string date = 2;
-		 */
-		date: string;
+  /**
+   * Target date (YYYY-MM-DD)
+   *
+   * @generated from field: string date = 2;
+   */
+  date: string;
 
-		/**
-		 * Generation timestamp (RFC3339)
-		 *
-		 * @generated from field: string generated_at = 3;
-		 */
-		generatedAt: string;
+  /**
+   * Generation timestamp (RFC3339)
+   *
+   * @generated from field: string generated_at = 3;
+   */
+  generatedAt: string;
 
-		/**
-		 * Pulse status
-		 *
-		 * @generated from field: alt.recap.v2.PulseStatus status = 4;
-		 */
-		status: PulseStatus;
+  /**
+   * Pulse status
+   *
+   * @generated from field: alt.recap.v2.PulseStatus status = 4;
+   */
+  status: PulseStatus;
 
-		/**
-		 * Selected topics (0-3)
-		 *
-		 * @generated from field: repeated alt.recap.v2.PulseTopic topics = 5;
-		 */
-		topics: PulseTopic[];
+  /**
+   * Selected topics (0-3)
+   *
+   * @generated from field: repeated alt.recap.v2.PulseTopic topics = 5;
+   */
+  topics: PulseTopic[];
 
-		/**
-		 * Quiet day info (only present when status is QUIET_DAY)
-		 *
-		 * @generated from field: optional alt.recap.v2.QuietDayInfo quiet_day = 6;
-		 */
-		quietDay?: QuietDayInfo;
-	};
+  /**
+   * Quiet day info (only present when status is QUIET_DAY)
+   *
+   * @generated from field: optional alt.recap.v2.QuietDayInfo quiet_day = 6;
+   */
+  quietDay?: QuietDayInfo;
+};
 
 /**
  * Describes the message alt.recap.v2.GetEveningPulseResponse.
  * Use `create(GetEveningPulseResponseSchema)` to create a new message.
  */
-export const GetEveningPulseResponseSchema: GenMessage<GetEveningPulseResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 12);
+export const GetEveningPulseResponseSchema: GenMessage<GetEveningPulseResponse> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 12);
 
 /**
  * PulseTopic represents a selected topic for Evening Pulse
@@ -708,163 +676,160 @@ export const GetEveningPulseResponseSchema: GenMessage<GetEveningPulseResponse> 
  * @generated from message alt.recap.v2.PulseTopic
  */
 export type PulseTopic = Message<"alt.recap.v2.PulseTopic"> & {
-	/**
-	 * Cluster ID
-	 *
-	 * @generated from field: int64 cluster_id = 1;
-	 */
-	clusterId: bigint;
+  /**
+   * Cluster ID
+   *
+   * @generated from field: int64 cluster_id = 1;
+   */
+  clusterId: bigint;
 
-	/**
-	 * Topic role
-	 *
-	 * @generated from field: alt.recap.v2.TopicRole role = 2;
-	 */
-	role: TopicRole;
+  /**
+   * Topic role
+   *
+   * @generated from field: alt.recap.v2.TopicRole role = 2;
+   */
+  role: TopicRole;
 
-	/**
-	 * Topic title (cluster label)
-	 *
-	 * @generated from field: string title = 3;
-	 */
-	title: string;
+  /**
+   * Topic title (cluster label)
+   *
+   * @generated from field: string title = 3;
+   */
+  title: string;
 
-	/**
-	 * Selection rationale
-	 *
-	 * @generated from field: alt.recap.v2.PulseRationale rationale = 4;
-	 */
-	rationale?: PulseRationale;
+  /**
+   * Selection rationale
+   *
+   * @generated from field: alt.recap.v2.PulseRationale rationale = 4;
+   */
+  rationale?: PulseRationale;
 
-	/**
-	 * Number of articles in the cluster
-	 *
-	 * @generated from field: int32 article_count = 5;
-	 */
-	articleCount: number;
+  /**
+   * Number of articles in the cluster
+   *
+   * @generated from field: int32 article_count = 5;
+   */
+  articleCount: number;
 
-	/**
-	 * Number of unique sources
-	 *
-	 * @generated from field: int32 source_count = 6;
-	 */
-	sourceCount: number;
+  /**
+   * Number of unique sources
+   *
+   * @generated from field: int32 source_count = 6;
+   */
+  sourceCount: number;
 
-	/**
-	 * Number of Tier1 sources (optional)
-	 *
-	 * @generated from field: optional int32 tier1_count = 7;
-	 */
-	tier1Count?: number;
+  /**
+   * Number of Tier1 sources (optional)
+   *
+   * @generated from field: optional int32 tier1_count = 7;
+   */
+  tier1Count?: number;
 
-	/**
-	 * Human-readable time ago string (e.g., "3時間前")
-	 *
-	 * @generated from field: string time_ago = 8;
-	 */
-	timeAgo: string;
+  /**
+   * Human-readable time ago string (e.g., "3時間前")
+   *
+   * @generated from field: string time_ago = 8;
+   */
+  timeAgo: string;
 
-	/**
-	 * Trend multiplier for trending topics (optional)
-	 *
-	 * @generated from field: optional double trend_multiplier = 9;
-	 */
-	trendMultiplier?: number;
+  /**
+   * Trend multiplier for trending topics (optional)
+   *
+   * @generated from field: optional double trend_multiplier = 9;
+   */
+  trendMultiplier?: number;
 
-	/**
-	 * Genre name (optional)
-	 *
-	 * @generated from field: optional string genre = 10;
-	 */
-	genre?: string;
+  /**
+   * Genre name (optional)
+   *
+   * @generated from field: optional string genre = 10;
+   */
+  genre?: string;
 
-	/**
-	 * Article IDs for this topic
-	 *
-	 * @generated from field: repeated string article_ids = 11;
-	 */
-	articleIds: string[];
+  /**
+   * Article IDs for this topic
+   *
+   * @generated from field: repeated string article_ids = 11;
+   */
+  articleIds: string[];
 
-	/**
-	 * Representative articles (top 3 headlines with sources)
-	 *
-	 * @generated from field: repeated alt.recap.v2.RepresentativeArticle representative_articles = 12;
-	 */
-	representativeArticles: RepresentativeArticle[];
+  /**
+   * Representative articles (top 3 headlines with sources)
+   *
+   * @generated from field: repeated alt.recap.v2.RepresentativeArticle representative_articles = 12;
+   */
+  representativeArticles: RepresentativeArticle[];
 
-	/**
-	 * Top entities extracted from the cluster
-	 *
-	 * @generated from field: repeated string top_entities = 13;
-	 */
-	topEntities: string[];
+  /**
+   * Top entities extracted from the cluster
+   *
+   * @generated from field: repeated string top_entities = 13;
+   */
+  topEntities: string[];
 
-	/**
-	 * Unique source names in this topic
-	 *
-	 * @generated from field: repeated string source_names = 14;
-	 */
-	sourceNames: string[];
+  /**
+   * Unique source names in this topic
+   *
+   * @generated from field: repeated string source_names = 14;
+   */
+  sourceNames: string[];
 };
 
 /**
  * Describes the message alt.recap.v2.PulseTopic.
  * Use `create(PulseTopicSchema)` to create a new message.
  */
-export const PulseTopicSchema: GenMessage<PulseTopic> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 13);
+export const PulseTopicSchema: GenMessage<PulseTopic> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 13);
 
 /**
  * RepresentativeArticle represents a key article for display in topic cards
  *
  * @generated from message alt.recap.v2.RepresentativeArticle
  */
-export type RepresentativeArticle =
-	Message<"alt.recap.v2.RepresentativeArticle"> & {
-		/**
-		 * Article ID
-		 *
-		 * @generated from field: string article_id = 1;
-		 */
-		articleId: string;
+export type RepresentativeArticle = Message<"alt.recap.v2.RepresentativeArticle"> & {
+  /**
+   * Article ID
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
 
-		/**
-		 * Article title/headline
-		 *
-		 * @generated from field: string title = 2;
-		 */
-		title: string;
+  /**
+   * Article title/headline
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
 
-		/**
-		 * Source URL
-		 *
-		 * @generated from field: string source_url = 3;
-		 */
-		sourceUrl: string;
+  /**
+   * Source URL
+   *
+   * @generated from field: string source_url = 3;
+   */
+  sourceUrl: string;
 
-		/**
-		 * Source name (e.g., "Reuters", "BBC")
-		 *
-		 * @generated from field: string source_name = 4;
-		 */
-		sourceName: string;
+  /**
+   * Source name (e.g., "Reuters", "BBC")
+   *
+   * @generated from field: string source_name = 4;
+   */
+  sourceName: string;
 
-		/**
-		 * Published timestamp (RFC3339)
-		 *
-		 * @generated from field: string published_at = 5;
-		 */
-		publishedAt: string;
-	};
+  /**
+   * Published timestamp (RFC3339)
+   *
+   * @generated from field: string published_at = 5;
+   */
+  publishedAt: string;
+};
 
 /**
  * Describes the message alt.recap.v2.RepresentativeArticle.
  * Use `create(RepresentativeArticleSchema)` to create a new message.
  */
-export const RepresentativeArticleSchema: GenMessage<RepresentativeArticle> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 14);
+export const RepresentativeArticleSchema: GenMessage<RepresentativeArticle> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 14);
 
 /**
  * PulseRationale explains why a topic was selected
@@ -872,28 +837,27 @@ export const RepresentativeArticleSchema: GenMessage<RepresentativeArticle> =
  * @generated from message alt.recap.v2.PulseRationale
  */
 export type PulseRationale = Message<"alt.recap.v2.PulseRationale"> & {
-	/**
-	 * Human-readable explanation text
-	 *
-	 * @generated from field: string text = 1;
-	 */
-	text: string;
+  /**
+   * Human-readable explanation text
+   *
+   * @generated from field: string text = 1;
+   */
+  text: string;
 
-	/**
-	 * Confidence level of the selection
-	 *
-	 * @generated from field: alt.recap.v2.Confidence confidence = 2;
-	 */
-	confidence: Confidence;
+  /**
+   * Confidence level of the selection
+   *
+   * @generated from field: alt.recap.v2.Confidence confidence = 2;
+   */
+  confidence: Confidence;
 };
 
 /**
  * Describes the message alt.recap.v2.PulseRationale.
  * Use `create(PulseRationaleSchema)` to create a new message.
  */
-export const PulseRationaleSchema: GenMessage<PulseRationale> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 15);
+export const PulseRationaleSchema: GenMessage<PulseRationale> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 15);
 
 /**
  * QuietDayInfo provides fallback content when no topics are available
@@ -901,28 +865,27 @@ export const PulseRationaleSchema: GenMessage<PulseRationale> =
  * @generated from message alt.recap.v2.QuietDayInfo
  */
 export type QuietDayInfo = Message<"alt.recap.v2.QuietDayInfo"> & {
-	/**
-	 * Message explaining the quiet day
-	 *
-	 * @generated from field: string message = 1;
-	 */
-	message: string;
+  /**
+   * Message explaining the quiet day
+   *
+   * @generated from field: string message = 1;
+   */
+  message: string;
 
-	/**
-	 * Weekly highlights as fallback content
-	 *
-	 * @generated from field: repeated alt.recap.v2.WeeklyHighlight weekly_highlights = 2;
-	 */
-	weeklyHighlights: WeeklyHighlight[];
+  /**
+   * Weekly highlights as fallback content
+   *
+   * @generated from field: repeated alt.recap.v2.WeeklyHighlight weekly_highlights = 2;
+   */
+  weeklyHighlights: WeeklyHighlight[];
 };
 
 /**
  * Describes the message alt.recap.v2.QuietDayInfo.
  * Use `create(QuietDayInfoSchema)` to create a new message.
  */
-export const QuietDayInfoSchema: GenMessage<QuietDayInfo> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 16);
+export const QuietDayInfoSchema: GenMessage<QuietDayInfo> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 16);
 
 /**
  * WeeklyHighlight represents a notable topic from the past week
@@ -930,42 +893,41 @@ export const QuietDayInfoSchema: GenMessage<QuietDayInfo> =
  * @generated from message alt.recap.v2.WeeklyHighlight
  */
 export type WeeklyHighlight = Message<"alt.recap.v2.WeeklyHighlight"> & {
-	/**
-	 * Highlight ID
-	 *
-	 * @generated from field: string id = 1;
-	 */
-	id: string;
+  /**
+   * Highlight ID
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
 
-	/**
-	 * Topic title
-	 *
-	 * @generated from field: string title = 2;
-	 */
-	title: string;
+  /**
+   * Topic title
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
 
-	/**
-	 * Date of the highlight (YYYY-MM-DD)
-	 *
-	 * @generated from field: string date = 3;
-	 */
-	date: string;
+  /**
+   * Date of the highlight (YYYY-MM-DD)
+   *
+   * @generated from field: string date = 3;
+   */
+  date: string;
 
-	/**
-	 * Original role of the topic
-	 *
-	 * @generated from field: string role = 4;
-	 */
-	role: string;
+  /**
+   * Original role of the topic
+   *
+   * @generated from field: string role = 4;
+   */
+  role: string;
 };
 
 /**
  * Describes the message alt.recap.v2.WeeklyHighlight.
  * Use `create(WeeklyHighlightSchema)` to create a new message.
  */
-export const WeeklyHighlightSchema: GenMessage<WeeklyHighlight> =
-	/*@__PURE__*/
-	messageDesc(file_alt_recap_v2_recap, 17);
+export const WeeklyHighlightSchema: GenMessage<WeeklyHighlight> = /*@__PURE__*/
+  messageDesc(file_alt_recap_v2_recap, 17);
 
 /**
  * PulseStatus represents the status of Evening Pulse generation
@@ -973,48 +935,47 @@ export const WeeklyHighlightSchema: GenMessage<WeeklyHighlight> =
  * @generated from enum alt.recap.v2.PulseStatus
  */
 export enum PulseStatus {
-	/**
-	 * Unspecified status
-	 *
-	 * @generated from enum value: PULSE_STATUS_UNSPECIFIED = 0;
-	 */
-	UNSPECIFIED = 0,
+  /**
+   * Unspecified status
+   *
+   * @generated from enum value: PULSE_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
 
-	/**
-	 * Normal: 3 topics selected
-	 *
-	 * @generated from enum value: PULSE_STATUS_NORMAL = 1;
-	 */
-	NORMAL = 1,
+  /**
+   * Normal: 3 topics selected
+   *
+   * @generated from enum value: PULSE_STATUS_NORMAL = 1;
+   */
+  NORMAL = 1,
 
-	/**
-	 * Partial: 1-2 topics selected
-	 *
-	 * @generated from enum value: PULSE_STATUS_PARTIAL = 2;
-	 */
-	PARTIAL = 2,
+  /**
+   * Partial: 1-2 topics selected
+   *
+   * @generated from enum value: PULSE_STATUS_PARTIAL = 2;
+   */
+  PARTIAL = 2,
 
-	/**
-	 * Quiet day: 0 topics, showing weekly highlights instead
-	 *
-	 * @generated from enum value: PULSE_STATUS_QUIET_DAY = 3;
-	 */
-	QUIET_DAY = 3,
+  /**
+   * Quiet day: 0 topics, showing weekly highlights instead
+   *
+   * @generated from enum value: PULSE_STATUS_QUIET_DAY = 3;
+   */
+  QUIET_DAY = 3,
 
-	/**
-	 * Error: generation failed
-	 *
-	 * @generated from enum value: PULSE_STATUS_ERROR = 4;
-	 */
-	ERROR = 4,
+  /**
+   * Error: generation failed
+   *
+   * @generated from enum value: PULSE_STATUS_ERROR = 4;
+   */
+  ERROR = 4,
 }
 
 /**
  * Describes the enum alt.recap.v2.PulseStatus.
  */
-export const PulseStatusSchema: GenEnum<PulseStatus> =
-	/*@__PURE__*/
-	enumDesc(file_alt_recap_v2_recap, 0);
+export const PulseStatusSchema: GenEnum<PulseStatus> = /*@__PURE__*/
+  enumDesc(file_alt_recap_v2_recap, 0);
 
 /**
  * TopicRole represents the role of a topic in Evening Pulse
@@ -1022,41 +983,40 @@ export const PulseStatusSchema: GenEnum<PulseStatus> =
  * @generated from enum alt.recap.v2.TopicRole
  */
 export enum TopicRole {
-	/**
-	 * Unspecified role
-	 *
-	 * @generated from enum value: TOPIC_ROLE_UNSPECIFIED = 0;
-	 */
-	UNSPECIFIED = 0,
+  /**
+   * Unspecified role
+   *
+   * @generated from enum value: TOPIC_ROLE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
 
-	/**
-	 * Need to know: High-impact news from authoritative sources
-	 *
-	 * @generated from enum value: TOPIC_ROLE_NEED_TO_KNOW = 1;
-	 */
-	NEED_TO_KNOW = 1,
+  /**
+   * Need to know: High-impact news from authoritative sources
+   *
+   * @generated from enum value: TOPIC_ROLE_NEED_TO_KNOW = 1;
+   */
+  NEED_TO_KNOW = 1,
 
-	/**
-	 * Trend: Rapidly growing topic
-	 *
-	 * @generated from enum value: TOPIC_ROLE_TREND = 2;
-	 */
-	TREND = 2,
+  /**
+   * Trend: Rapidly growing topic
+   *
+   * @generated from enum value: TOPIC_ROLE_TREND = 2;
+   */
+  TREND = 2,
 
-	/**
-	 * Serendipity: Interesting topic from unexpected genre
-	 *
-	 * @generated from enum value: TOPIC_ROLE_SERENDIPITY = 3;
-	 */
-	SERENDIPITY = 3,
+  /**
+   * Serendipity: Interesting topic from unexpected genre
+   *
+   * @generated from enum value: TOPIC_ROLE_SERENDIPITY = 3;
+   */
+  SERENDIPITY = 3,
 }
 
 /**
  * Describes the enum alt.recap.v2.TopicRole.
  */
-export const TopicRoleSchema: GenEnum<TopicRole> =
-	/*@__PURE__*/
-	enumDesc(file_alt_recap_v2_recap, 1);
+export const TopicRoleSchema: GenEnum<TopicRole> = /*@__PURE__*/
+  enumDesc(file_alt_recap_v2_recap, 1);
 
 /**
  * Confidence represents the confidence level of a selection
@@ -1064,41 +1024,40 @@ export const TopicRoleSchema: GenEnum<TopicRole> =
  * @generated from enum alt.recap.v2.Confidence
  */
 export enum Confidence {
-	/**
-	 * Unspecified confidence
-	 *
-	 * @generated from enum value: CONFIDENCE_UNSPECIFIED = 0;
-	 */
-	UNSPECIFIED = 0,
+  /**
+   * Unspecified confidence
+   *
+   * @generated from enum value: CONFIDENCE_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
 
-	/**
-	 * High confidence
-	 *
-	 * @generated from enum value: CONFIDENCE_HIGH = 1;
-	 */
-	HIGH = 1,
+  /**
+   * High confidence
+   *
+   * @generated from enum value: CONFIDENCE_HIGH = 1;
+   */
+  HIGH = 1,
 
-	/**
-	 * Medium confidence
-	 *
-	 * @generated from enum value: CONFIDENCE_MEDIUM = 2;
-	 */
-	MEDIUM = 2,
+  /**
+   * Medium confidence
+   *
+   * @generated from enum value: CONFIDENCE_MEDIUM = 2;
+   */
+  MEDIUM = 2,
 
-	/**
-	 * Low confidence
-	 *
-	 * @generated from enum value: CONFIDENCE_LOW = 3;
-	 */
-	LOW = 3,
+  /**
+   * Low confidence
+   *
+   * @generated from enum value: CONFIDENCE_LOW = 3;
+   */
+  LOW = 3,
 }
 
 /**
  * Describes the enum alt.recap.v2.Confidence.
  */
-export const ConfidenceSchema: GenEnum<Confidence> =
-	/*@__PURE__*/
-	enumDesc(file_alt_recap_v2_recap, 2);
+export const ConfidenceSchema: GenEnum<Confidence> = /*@__PURE__*/
+  enumDesc(file_alt_recap_v2_recap, 2);
 
 /**
  * RecapService provides recap-related operations
@@ -1106,37 +1065,39 @@ export const ConfidenceSchema: GenEnum<Confidence> =
  * @generated from service alt.recap.v2.RecapService
  */
 export const RecapService: GenService<{
-	/**
-	 * GetSevenDayRecap returns 7-day recap summary (authentication required)
-	 * Replaces GET /api/v1/recap/7days
-	 *
-	 * @generated from rpc alt.recap.v2.RecapService.GetSevenDayRecap
-	 */
-	getSevenDayRecap: {
-		methodKind: "unary";
-		input: typeof GetSevenDayRecapRequestSchema;
-		output: typeof GetSevenDayRecapResponseSchema;
-	};
-	/**
-	 * GetThreeDayRecap returns 3-day recap summary (authentication required)
-	 * Faster processing with smaller prompt sizes for daily use
-	 *
-	 * @generated from rpc alt.recap.v2.RecapService.GetThreeDayRecap
-	 */
-	getThreeDayRecap: {
-		methodKind: "unary";
-		input: typeof GetThreeDayRecapRequestSchema;
-		output: typeof GetThreeDayRecapResponseSchema;
-	};
-	/**
-	 * GetEveningPulse returns Evening Pulse data (authentication required)
-	 * Evening Pulse provides 3 key topics for quick daily catch-up
-	 *
-	 * @generated from rpc alt.recap.v2.RecapService.GetEveningPulse
-	 */
-	getEveningPulse: {
-		methodKind: "unary";
-		input: typeof GetEveningPulseRequestSchema;
-		output: typeof GetEveningPulseResponseSchema;
-	};
-}> = /*@__PURE__*/ serviceDesc(file_alt_recap_v2_recap, 0);
+  /**
+   * GetSevenDayRecap returns 7-day recap summary (authentication required)
+   * Replaces GET /api/v1/recap/7days
+   *
+   * @generated from rpc alt.recap.v2.RecapService.GetSevenDayRecap
+   */
+  getSevenDayRecap: {
+    methodKind: "unary";
+    input: typeof GetSevenDayRecapRequestSchema;
+    output: typeof GetSevenDayRecapResponseSchema;
+  },
+  /**
+   * GetThreeDayRecap returns 3-day recap summary (authentication required)
+   * Faster processing with smaller prompt sizes for daily use
+   *
+   * @generated from rpc alt.recap.v2.RecapService.GetThreeDayRecap
+   */
+  getThreeDayRecap: {
+    methodKind: "unary";
+    input: typeof GetThreeDayRecapRequestSchema;
+    output: typeof GetThreeDayRecapResponseSchema;
+  },
+  /**
+   * GetEveningPulse returns Evening Pulse data (authentication required)
+   * Evening Pulse provides 3 key topics for quick daily catch-up
+   *
+   * @generated from rpc alt.recap.v2.RecapService.GetEveningPulse
+   */
+  getEveningPulse: {
+    methodKind: "unary";
+    input: typeof GetEveningPulseRequestSchema;
+    output: typeof GetEveningPulseResponseSchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_alt_recap_v2_recap, 0);
+

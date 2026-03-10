@@ -28,6 +28,10 @@ type RSSClient = Client<typeof RSSService>;
 export interface RSSFeedLink {
 	id: string;
 	url: string;
+	healthStatus: string;
+	consecutiveFailures: number;
+	lastFailureReason: string;
+	isActive: boolean;
 }
 
 /**
@@ -112,6 +116,10 @@ export async function listRSSFeedLinks(
 		links: response.links.map((link: ProtoRSSFeedLink) => ({
 			id: link.id,
 			url: link.url,
+			healthStatus: link.healthStatus || "unknown",
+			consecutiveFailures: link.consecutiveFailures || 0,
+			lastFailureReason: link.lastFailureReason || "",
+			isActive: link.isActive ?? true,
 		})),
 	};
 }

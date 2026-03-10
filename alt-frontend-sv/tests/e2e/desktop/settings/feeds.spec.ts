@@ -236,6 +236,43 @@ test.describe("desktop settings feeds - manage feed links", () => {
 		await expect(page.getByText("Feed link deleted.")).toBeVisible();
 	});
 
+	test("displays health status badges after refresh", async ({ page }) => {
+		await gotoDesktopRoute(page, "settings/feeds");
+
+		// Click refresh to load feeds
+		await page.getByRole("button", { name: "Refresh feed list" }).click();
+
+		// Wait for feeds to load
+		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible({
+			timeout: 10000,
+		});
+
+		// Verify health badges are present via aria-labels
+		await expect(page.getByLabel("Healthy status").first()).toBeVisible();
+		await expect(page.getByLabel("Warning status").first()).toBeVisible();
+		await expect(page.getByLabel("Error status").first()).toBeVisible();
+	});
+
+	test("displays health summary bar after refresh", async ({ page }) => {
+		await gotoDesktopRoute(page, "settings/feeds");
+
+		// Click refresh to load feeds
+		await page.getByRole("button", { name: "Refresh feed list" }).click();
+
+		// Wait for feeds to load
+		await expect(page.getByText("https://example.com/feed.xml")).toBeVisible({
+			timeout: 10000,
+		});
+
+		// Summary bar should show feed count and health breakdown
+		const summaryBar = page.getByLabel("Feed health summary");
+		await expect(summaryBar).toBeVisible();
+		await expect(summaryBar.getByText("3 feeds")).toBeVisible();
+		await expect(summaryBar.getByText("1 healthy")).toBeVisible();
+		await expect(summaryBar.getByText("1 warning")).toBeVisible();
+		await expect(summaryBar.getByText("1 error")).toBeVisible();
+	});
+
 	test("refresh button reloads feed list", async ({ page }) => {
 		let requestCount = 0;
 		await page.route(CONNECT_RSS_PATHS.listRSSFeedLinks, async (route) => {

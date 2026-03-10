@@ -127,10 +127,26 @@ export async function updateFeedReadStatus(
 export async function getFeedLinks(
 	cookie: string | null,
 ): Promise<import("$lib/schema/feedLink").FeedLink[]> {
-	return callBackendAPI<import("$lib/schema/feedLink").FeedLink[]>(
+	interface RawFeedLink {
+		id: string;
+		url: string;
+		health_status?: string;
+		consecutive_failures?: number;
+		is_active?: boolean;
+		last_failure_reason?: string | null;
+	}
+	const raw = await callBackendAPI<RawFeedLink[]>(
 		"/v1/rss-feed-link/list",
 		cookie,
 	);
+	return raw.map((r) => ({
+		id: r.id,
+		url: r.url,
+		healthStatus: (r.health_status ?? "unknown") as import("$lib/schema/feedLink").FeedHealthStatus,
+		consecutiveFailures: r.consecutive_failures ?? 0,
+		isActive: r.is_active ?? true,
+		lastFailureReason: r.last_failure_reason ?? "",
+	}));
 }
 
 /**
