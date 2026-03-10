@@ -1,0 +1,169 @@
+<script lang="ts">
+import { T } from "@threlte/core";
+import { OrbitControls, interactivity } from "@threlte/extras";
+import type { TagCloudItem } from "$lib/connect";
+import TagAsteroid from "./TagAsteroid.svelte";
+import StarBackground from "./StarBackground.svelte";
+import PostProcessing from "./PostProcessing.svelte";
+import * as THREE from "three";
+
+interface Props {
+	tags: TagCloudItem[];
+	onTagSelect: (tagName: string) => void;
+}
+
+let { tags, onTagSelect }: Props = $props();
+
+// Enable pointer events on 3D objects (required by Threlte v8)
+interactivity();
+
+// Compute color and emissive intensity from article count
+function computeColor(
+	articleCount: number,
+	maxCount: number,
+): { color: THREE.Color; emissiveIntensity: number } {
+	const t = (articleCount / Math.max(maxCount, 1)) ** 0.5;
+
+	const colorLow = new THREE.Color("#2a6a9c");
+	const colorMid = new THREE.Color("#00d4ff");
+	const colorHigh = new THREE.Color("#ff8c00");
+
+	let color: THREE.Color;
+	let emissiveIntensity: number;
+
+	if (t < 0.5) {
+		const localT = t * 2;
+		color = new THREE.Color().lerpColors(colorLow, colorMid, localT);
+		emissiveIntensity = 0.4 + localT * 0.2;
+	} else {
+		const localT = (t - 0.5) * 2;
+		color = new THREE.Color().lerpColors(colorMid, colorHigh, localT);
+		emissiveIntensity = 0.6 + localT * 0.4;
+	}
+
+	return { color, emissiveIntensity };
+}
+
+// Compute radius from article count using power scale
+function computeRadius(articleCount: number, maxCount: number): number {
+	const minRadius = 0.3;
+	const maxRadius = 3.0;
+	const normalized = (articleCount / Math.max(maxCount, 1)) ** 0.4;
+	return minRadius + normalized * (maxRadius - minRadius);
+}
+
+// Compute label font size proportional to radius
+function computeLabelFontSize(articleCount: number, maxCount: number): number {
+	const minSize = 11;
+	const maxSize = 16;
+	const normalized = (articleCount / Math.max(maxCount, 1)) ** 0.4;
+	return minSize + normalized * (maxSize - minSize);
+}
+
+// Check if server provided positions
+const hasServerPositions = $derived(
+	tags.some((t) => t.positionX !== 0 || t.positionY !== 0 || t.positionZ !== 0),
+);
+
+// Fibonacci sphere fallback
+function fibonacciSphere(
+	count: number,
+	radius: number,
+): [number, number, number][] {
+	const points: [number, number, number][] = [];
+	const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+	for (let i = 0; i < count; i++) {
+		const y = 1 - (i / Math.max(count - 1, 1)) * 2;
+		const radiusAtY = Math.sqrt(1 - y * y);
+		const theta = goldenAngle * i;
+		const x = Math.cos(theta) * radiusAtY;
+		const z = Math.sin(theta) * radiusAtY;
+		points.push([x * radius, y * radius, z * radius]);
+	}
+	return points;
+}
+
+// Precompute tag data
+const maxCount = $derived(
+	tags.length > 0 ? Math.max(...tags.map((t) => t.articleCount)) : 1,
+);
+
+// Cloud radius from server positions or fallback
+const cloudRadius = $derived(
+	hasServerPositions
+		? Math.max(
+				60,
+				Math.max(
+					...tags.map((t) =>
+						Math.sqrt(
+							t.positionX ** 2 + t.positionY ** 2 + t.positionZ ** 2,
+						),
+					),
+				) * 1.2,
+			)
+		: Math.max(15, Math.sqrt(tags.length) * 3),
+);
+
+// Fallback positions (only computed when server positions not available)
+const fallbackPositions = $derived(
+	hasServerPositions ? null : fibonacciSphere(tags.length, cloudRadius),
+);
+
+function getPosition(tag: TagCloudItem, index: number): [number, number, number] {
+	if (hasServerPositions) {
+		return [tag.positionX, tag.positionY, tag.positionZ];
+	}
+	return fallbackPositions![index];
+}
+
+function handleTagSelect(tag: TagCloudItem) {
+	onTagSelect(tag.tagName);
+}
+</script>
+
+<T.PerspectiveCamera
+	makeDefault
+	position={[0, 0, cloudRadius * 1.5]}
+	fov={60}
+>
+	<OrbitControls
+		enableDamping
+		dampingFactor={0.05}
+		autoRotate
+		autoRotateSpeed={0.3}
+		minDistance={cloudRadius * 0.3}
+		maxDistance={cloudRadius * 5}
+		enablePan={false}
+	/>
+</T.PerspectiveCamera>
+
+<!-- Lighting -->
+<T.AmbientLight intensity={0.5} color="#6688cc" />
+<T.PointLight position={[20, 20, 20]} intensity={1.2} color="#ffffff" />
+<T.PointLight position={[-15, -10, 15]} intensity={0.6} color="#4488ff" />
+
+<!-- Fog for depth (reduced density for better visibility) -->
+<T.FogExp2 attach="fog" args={["#000000", 0.002]} />
+
+<!-- Background -->
+<T.Color attach="background" args={["#000000"]} />
+
+<!-- Stars -->
+<StarBackground />
+
+<!-- Tag Asteroids -->
+{#each tags as tag, i (tag.tagName)}
+	{@const tagColor = computeColor(tag.articleCount, maxCount)}
+	<TagAsteroid
+		{tag}
+		position={getPosition(tag, i)}
+		radius={computeRadius(tag.articleCount, maxCount)}
+		color={tagColor.color}
+		emissiveIntensity={tagColor.emissiveIntensity}
+		labelFontSize={computeLabelFontSize(tag.articleCount, maxCount)}
+		onSelect={handleTagSelect}
+	/>
+{/each}
+
+<!-- Post processing -->
+<PostProcessing />

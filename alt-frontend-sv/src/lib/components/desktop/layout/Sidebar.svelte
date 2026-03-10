@@ -18,6 +18,7 @@ import {
 	Shuffle,
 	Compass,
 	GalleryVerticalEnd,
+	Orbit,
 } from "@lucide/svelte";
 import { page } from "$app/state";
 import { cn } from "$lib/utils";
@@ -99,6 +100,11 @@ const menuItems = [
 				label: "Tag Trail",
 				href: `${svBasePath}/feeds/tag-trail`,
 				icon: Shuffle,
+			},
+			{
+				label: "Tag Verse",
+				href: `${svBasePath}/feeds/tag-verse`,
+				icon: Orbit,
 			},
 		],
 	},
