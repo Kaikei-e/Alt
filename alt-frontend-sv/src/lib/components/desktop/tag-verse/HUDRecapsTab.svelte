@@ -6,6 +6,7 @@ import {
 	type RecapSearchResultItem,
 } from "$lib/connect";
 import { Loader2 } from "@lucide/svelte";
+import RecapDetailModal from "./RecapDetailModal.svelte";
 
 interface Props {
 	tagName: string;
@@ -16,6 +17,8 @@ let { tagName }: Props = $props();
 let results = $state<RecapSearchResultItem[]>([]);
 let isLoading = $state(true);
 let error = $state<string | null>(null);
+let selectedRecap = $state<RecapSearchResultItem | null>(null);
+let modalOpen = $state(false);
 
 interface DateGroup {
 	date: string;
@@ -95,7 +98,11 @@ $effect(() => {
 			</div>
 
 			{#each group.items as item (item.jobId + item.genre)}
-				<div class="rounded-lg border border-white/10 bg-white/5 p-4">
+				<button
+					type="button"
+					class="rounded-lg border border-white/10 bg-white/5 p-4 text-left w-full cursor-pointer transition-colors hover:bg-white/10 hover:border-white/20"
+					onclick={() => { selectedRecap = item; modalOpen = true; }}
+				>
 					<h4 class="text-sm font-semibold text-cyan-300 mb-2">
 						{item.genre}
 					</h4>
@@ -123,8 +130,10 @@ $effect(() => {
 							{/each}
 						</div>
 					{/if}
-				</div>
+				</button>
 			{/each}
 		{/each}
 	{/if}
 </div>
+
+<RecapDetailModal recap={selectedRecap} open={modalOpen} onOpenChange={(v) => { modalOpen = v; }} />
