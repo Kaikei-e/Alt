@@ -40,6 +40,7 @@ type RecapUsecaseInterface interface {
 	GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 	GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 	GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error)
+	SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error)
 }
 
 // NewHandler creates a new Recap service handler.
@@ -431,6 +432,54 @@ func representativeArticlesToProto(articles []domain.RepresentativeArticle) []*r
 		}
 	}
 	return result
+}
+
+// SearchRecapsByTag searches across all completed recaps for genres matching a tag.
+func (h *Handler) SearchRecapsByTag(
+	ctx context.Context,
+	req *connect.Request[recapv2.SearchRecapsByTagRequest],
+) (*connect.Response[recapv2.SearchRecapsByTagResponse], error) {
+	// Authentication check
+	userCtx, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	h.logger.InfoContext(ctx, "SearchRecapsByTag called", "user_id", userCtx.UserID, "tag_name", req.Msg.TagName)
+
+	tagName := req.Msg.TagName
+	if tagName == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("tag_name is required"))
+	}
+
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	results, err := h.getRecapUsecase().SearchRecapsByTag(ctx, tagName, limit)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "SearchRecapsByTag")
+	}
+
+	protoResults := make([]*recapv2.RecapSearchResultItem, len(results))
+	for i, r := range results {
+		protoResults[i] = &recapv2.RecapSearchResultItem{
+			JobId:      r.JobID,
+			ExecutedAt: r.ExecutedAt,
+			WindowDays: int32(r.WindowDays),
+			Genre:      r.Genre,
+			Summary:    r.Summary,
+			TopTerms:   r.TopTerms,
+			Bullets:    r.Bullets,
+		}
+	}
+
+	return connect.NewResponse(&recapv2.SearchRecapsByTagResponse{
+		Results: protoResults,
+	}), nil
 }
 
 func quietDayToProto(qd *domain.QuietDayInfo) *recapv2.QuietDayInfo {

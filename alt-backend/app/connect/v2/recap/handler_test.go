@@ -48,6 +48,14 @@ func (m *MockRecapUsecase) GetEveningPulse(ctx context.Context, date string) (*d
 	return args.Get(0).(*domain.EveningPulse), args.Error(1)
 }
 
+func (m *MockRecapUsecase) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
+	args := m.Called(ctx, tagName, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.RecapSearchResult), args.Error(1)
+}
+
 func TestHandler_GetEveningPulse(t *testing.T) {
 	logger := slog.Default()
 

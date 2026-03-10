@@ -535,6 +535,46 @@ func convertTagsToProto(tags []*domain.FeedTag) []*articlesv2.ArticleTagItem {
 	return result
 }
 
+// FetchTagCloud fetches tag cloud data for Tag Verse visualization.
+func (h *Handler) FetchTagCloud(
+	ctx context.Context,
+	req *connect.Request[articlesv2.FetchTagCloudRequest],
+) (*connect.Response[articlesv2.FetchTagCloudResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	items, err := h.container.FetchTagCloudUsecase.Execute(ctx, limit)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchTagCloud")
+	}
+
+	protoItems := make([]*articlesv2.TagCloudItem, 0, len(items))
+	for _, item := range items {
+		protoItems = append(protoItems, &articlesv2.TagCloudItem{
+			TagName:      item.TagName,
+			ArticleCount: int32(item.ArticleCount),
+			PositionX:    float32(item.PositionX),
+			PositionY:    float32(item.PositionY),
+			PositionZ:    float32(item.PositionZ),
+		})
+	}
+
+	return connect.NewResponse(&articlesv2.FetchTagCloudResponse{
+		Tags:      protoItems,
+		TotalTags: int32(len(protoItems)),
+	}), nil
+}
+
 // stringPtr returns a pointer to a string.
 func stringPtr(s string) *string {
 	return &s
