@@ -22,6 +22,47 @@ function log(msg: string) {
 	console.log(`[Mock Kratos] ${msg}`);
 }
 
+/** E2Eテストで許可されるリダイレクト先オリジン */
+const ALLOWED_REDIRECT_ORIGINS = [
+	"http://127.0.0.1:5173",
+	"http://127.0.0.1:4174",
+	"http://localhost:5173",
+	"http://localhost:4174",
+];
+
+/**
+ * return_to パラメータを検証し、許可されたオリジンのみリダイレクトを許可する。
+ * 不正な URL の場合はデフォルト値にフォールバック。(CWE-601 対策)
+ *
+ * 防御対象:
+ * - 外部オリジンへの絶対URL (http://evil.com)
+ * - プロトコル相対URL (//evil.com) → ブラウザが http://evil.com にリダイレクト
+ * - javascript:/data: スキーム
+ * - 認証情報付きURL (http://legit@evil.com)
+ */
+function validateRedirectUrl(
+	returnTo: string | null,
+	defaultUrl: string,
+): string {
+	if (!returnTo) return defaultUrl;
+	try {
+		const url = new URL(returnTo);
+		if (ALLOWED_REDIRECT_ORIGINS.includes(url.origin)) {
+			return returnTo;
+		}
+		log(`Blocked redirect to disallowed origin: ${url.origin}`);
+		return defaultUrl;
+	} catch {
+		// 相対パスは "/" で始まり "//" で始まらないもののみ許可
+		// "//" はプロトコル相対URL（//evil.com → http://evil.com）なので拒否
+		if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
+			return returnTo;
+		}
+		log(`Blocked invalid redirect URL: ${returnTo}`);
+		return defaultUrl;
+	}
+}
+
 /**
  * Create the Kratos mock server
  */
@@ -73,8 +114,10 @@ export function createKratosServer(): http.Server {
 		// Login POST - handle form submission
 		if (req.method === "POST" && path.startsWith("/self-service/login")) {
 			log("POST login - setting session cookie");
-			const returnTo =
-				url.searchParams.get("return_to") || "http://127.0.0.1:5173/sv/home";
+			const returnTo = validateRedirectUrl(
+				url.searchParams.get("return_to"),
+				"http://127.0.0.1:5173/sv/home",
+			);
 
 			res.writeHead(303, {
 				Location: returnTo,
@@ -90,8 +133,10 @@ export function createKratosServer(): http.Server {
 			path.startsWith("/self-service/registration")
 		) {
 			log("POST registration - setting session cookie");
-			const returnTo =
-				url.searchParams.get("return_to") || "http://127.0.0.1:5173/sv/home";
+			const returnTo = validateRedirectUrl(
+				url.searchParams.get("return_to"),
+				"http://127.0.0.1:5173/sv/home",
+			);
 
 			res.writeHead(303, {
 				Location: returnTo,
@@ -109,8 +154,10 @@ export function createKratosServer(): http.Server {
 
 			// /self-service/login/browser - redirects to the app with flow parameter
 			if (path === "/self-service/login/browser") {
-				const returnTo =
-					url.searchParams.get("return_to") || "http://127.0.0.1:4174/sv/home";
+				const returnTo = validateRedirectUrl(
+					url.searchParams.get("return_to"),
+					"http://127.0.0.1:4174/sv/home",
+				);
 				const returnToUrl = new URL(returnTo);
 				const redirectUrl = `${returnToUrl.origin}/sv/auth/login?flow=${loginFlow.id}`;
 				log(`Redirecting to: ${redirectUrl}`);
@@ -140,8 +187,10 @@ export function createKratosServer(): http.Server {
 
 			// /self-service/registration/browser - redirects to the app with flow parameter
 			if (path === "/self-service/registration/browser") {
-				const returnTo =
-					url.searchParams.get("return_to") || "http://127.0.0.1:4174/sv/home";
+				const returnTo = validateRedirectUrl(
+					url.searchParams.get("return_to"),
+					"http://127.0.0.1:4174/sv/home",
+				);
 				const returnToUrl = new URL(returnTo);
 				const redirectUrl = `${returnToUrl.origin}/sv/register?flow=${registrationFlow.id}`;
 				log(`Redirecting to: ${redirectUrl}`);

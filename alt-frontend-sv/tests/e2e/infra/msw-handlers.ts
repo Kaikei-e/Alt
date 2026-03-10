@@ -40,6 +40,41 @@ import {
 } from "./data/recap";
 
 // =============================================================================
+// URL Redirect Validation (CWE-601 対策)
+// =============================================================================
+
+/** E2Eテストで許可されるリダイレクト先オリジン */
+const ALLOWED_REDIRECT_ORIGINS = [
+	"http://127.0.0.1:5173",
+	"http://127.0.0.1:4174",
+	"http://localhost:5173",
+	"http://localhost:4174",
+];
+
+/**
+ * return_to パラメータを検証（CWE-601 対策）
+ */
+function validateRedirectUrl(
+	returnTo: string | null,
+	defaultUrl: string,
+): string {
+	if (!returnTo) return defaultUrl;
+	try {
+		const url = new URL(returnTo);
+		if (ALLOWED_REDIRECT_ORIGINS.includes(url.origin)) {
+			return returnTo;
+		}
+		return defaultUrl;
+	} catch {
+		// 相対パスは "/" で始まり "//" で始まらないもののみ許可
+		if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
+			return returnTo;
+		}
+		return defaultUrl;
+	}
+}
+
+// =============================================================================
 // Kratos Handlers
 // =============================================================================
 
@@ -67,7 +102,7 @@ export const kratosHandlers = [
 	// Login POST
 	http.post("*/self-service/login", ({ request }) => {
 		const url = new URL(request.url);
-		const returnTo = url.searchParams.get("return_to") || "/sv/home";
+		const returnTo = validateRedirectUrl(url.searchParams.get("return_to"), "/sv/home");
 		return new HttpResponse(null, {
 			status: 303,
 			headers: {
@@ -80,7 +115,7 @@ export const kratosHandlers = [
 	// Registration POST
 	http.post("*/self-service/registration", ({ request }) => {
 		const url = new URL(request.url);
-		const returnTo = url.searchParams.get("return_to") || "/sv/home";
+		const returnTo = validateRedirectUrl(url.searchParams.get("return_to"), "/sv/home");
 		return new HttpResponse(null, {
 			status: 303,
 			headers: {
@@ -93,7 +128,7 @@ export const kratosHandlers = [
 	// Login flow browser redirect
 	http.get("*/self-service/login/browser", ({ request }) => {
 		const url = new URL(request.url);
-		const returnTo = url.searchParams.get("return_to") || "/sv/home";
+		const returnTo = validateRedirectUrl(url.searchParams.get("return_to"), "/sv/home");
 		const returnToUrl = new URL(returnTo, request.url);
 		const redirectUrl = `${returnToUrl.origin}/sv/auth/login?flow=flow-e2e-mock`;
 		return new HttpResponse(null, {
@@ -117,7 +152,7 @@ export const kratosHandlers = [
 	// Registration flow browser redirect
 	http.get("*/self-service/registration/browser", ({ request }) => {
 		const url = new URL(request.url);
-		const returnTo = url.searchParams.get("return_to") || "/sv/home";
+		const returnTo = validateRedirectUrl(url.searchParams.get("return_to"), "/sv/home");
 		const returnToUrl = new URL(returnTo, request.url);
 		const redirectUrl = `${returnToUrl.origin}/sv/register?flow=flow-e2e-mock-reg`;
 		return new HttpResponse(null, {
