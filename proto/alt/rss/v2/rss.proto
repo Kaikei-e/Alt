@@ -33,6 +33,14 @@ message RSSFeedLink {
   string id = 1;
   // Feed URL
   string url = 2;
+  // Health status: "healthy", "warning", "error", "inactive", "unknown"
+  string health_status = 3;
+  // Number of consecutive fetch failures
+  int32 consecutive_failures = 4;
+  // Last failure reason (empty if healthy)
+  string last_failure_reason = 5;
+  // Whether the feed is actively being fetched
+  bool is_active = 6;
 }
 
 // ListRSSFeedLinksResponse contains all registered feed links
