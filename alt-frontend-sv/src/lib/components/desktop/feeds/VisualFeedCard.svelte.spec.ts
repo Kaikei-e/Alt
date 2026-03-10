@@ -85,7 +85,9 @@ describe("VisualFeedCard", () => {
 
 		it("resets imageError when ogImageProxyUrl changes", async () => {
 			const feed = $state(
-				createMockFeed({ ogImageProxyUrl: "https://proxy.example.com/bad.jpg" }),
+				createMockFeed({
+					ogImageProxyUrl: "https://proxy.example.com/bad.jpg",
+				}),
 			);
 			render(VisualFeedCard as any, {
 				props: { feed, onSelect: vi.fn() },

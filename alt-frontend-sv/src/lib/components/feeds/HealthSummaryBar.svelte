@@ -1,6 +1,10 @@
 <script lang="ts">
 import type { FeedLink, FeedHealthStatus } from "$lib/schema/feedLink";
-import { summarizeHealth, getHealthColor, getHealthLabel } from "$lib/utils/feedHealth";
+import {
+	summarizeHealth,
+	getHealthColor,
+	getHealthLabel,
+} from "$lib/utils/feedHealth";
 
 interface Props {
 	feeds: FeedLink[];
@@ -11,9 +15,9 @@ const { feeds }: Props = $props();
 const counts = $derived(summarizeHealth(feeds));
 
 const visibleStatuses = $derived(
-	(["healthy", "warning", "error", "inactive", "unknown"] as FeedHealthStatus[]).filter(
-		(s) => counts[s] > 0,
-	),
+	(
+		["healthy", "warning", "error", "inactive", "unknown"] as FeedHealthStatus[]
+	).filter((s) => counts[s] > 0),
 );
 </script>
 
