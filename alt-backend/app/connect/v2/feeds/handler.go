@@ -26,6 +26,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/utils/html_parser"
+	"alt/utils/security"
 	"alt/utils/url_validator"
 )
 
@@ -730,23 +731,30 @@ func (h *Handler) fetchArticleContent(ctx context.Context, urlStr string) (strin
 		return "", "", fmt.Errorf("invalid URL: %w", err)
 	}
 
-	// SSRF protection
+	// SSRF protection: basic validation
 	if err := url_validator.IsAllowedURL(parsedURL); err != nil {
 		return "", "", fmt.Errorf("URL not allowed: %w", err)
 	}
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
+	// SSRF protection: comprehensive validation with DNS rebinding prevention
+	ssrfValidator := security.NewSSRFValidator()
+	if err := ssrfValidator.ValidateURL(ctx, parsedURL); err != nil {
+		return "", "", fmt.Errorf("ssrf validation failed: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+	// Create secure HTTP client with connection-time IP validation
+	secureClient := ssrfValidator.CreateSecureHTTPClient(10 * time.Second)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AltBot/1.0; +http://alt.com/bot)")
 
-	resp, err := client.Do(req)
+	// SSRF protection: URL validated by url_validator.IsAllowedURL() and SSRFValidator.ValidateURL().
+	// secureClient created via SSRFValidator.CreateSecureHTTPClient() validates IPs at connection time.
+	resp, err := secureClient.Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to fetch URL: %w", err)
 	}

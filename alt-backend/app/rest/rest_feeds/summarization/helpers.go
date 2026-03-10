@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"alt/utils/html_parser"
 	"alt/utils/logger"
 	"alt/utils/security"
+	"alt/utils/url_validator"
 
 	"github.com/labstack/echo/v4"
 )
@@ -356,7 +356,7 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 		return "", "", "", fmt.Errorf("invalid url: %w", err)
 	}
 
-	if err := isAllowedURL(parsedURL); err != nil {
+	if err := url_validator.IsAllowedURL(parsedURL); err != nil {
 		return "", "", "", fmt.Errorf("url not allowed: %w", err)
 	}
 
@@ -366,14 +366,14 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	}
 
 	secureClient := ssrfValidator.CreateSecureHTTPClient(10 * time.Second)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsedURL.String(), nil)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; AltBot/1.0; +http://alt.com/bot)")
 
-	// SSRF protection: URL validated by isAllowedURL() (line 360) and SSRFValidator.ValidateURL() (line 365).
+	// SSRF protection: URL validated by url_validator.IsAllowedURL() and SSRFValidator.ValidateURL().
 	// secureClient created via SSRFValidator.CreateSecureHTTPClient() validates IPs at connection time.
 	// codeql[go/request-forgery]
 	resp, err := secureClient.Do(req)
@@ -436,20 +436,3 @@ func generateArticleID(feedURL string) string {
 	return fmt.Sprintf("article_%s", strings.ReplaceAll(feedURL, "/", "_"))
 }
 
-func isAllowedURL(u *url.URL) error {
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("scheme not allowed: %s", u.Scheme)
-	}
-
-	ips, err := net.LookupIP(u.Hostname())
-	if err != nil {
-		return fmt.Errorf("could not resolve hostname: %w", err)
-	}
-
-	for _, ip := range ips {
-		if ip.IsLoopback() || ip.IsPrivate() {
-			return fmt.Errorf("private IP not allowed: %s", ip.String())
-		}
-	}
-	return nil
-}

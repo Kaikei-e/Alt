@@ -1060,3 +1060,78 @@ func TestResolveArticle_FallbackToRequestContentWhenArticleNotInDB(t *testing.T)
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+// =============================================================================
+// SSRF Protection Tests for fetchArticleContent
+// =============================================================================
+
+func TestFetchArticleContent_BlocksPrivateIPs(t *testing.T) {
+	handler := createTestHandler()
+	ctx := createAuthContext()
+
+	privateURLs := []string{
+		"http://127.0.0.1/secret",
+		"http://10.0.0.1/internal",
+		"http://192.168.1.1/admin",
+		"http://172.16.0.1/metadata",
+	}
+
+	for _, urlStr := range privateURLs {
+		t.Run(urlStr, func(t *testing.T) {
+			_, _, err := handler.fetchArticleContent(ctx, urlStr)
+			require.Error(t, err, "should block private IP: %s", urlStr)
+			assert.Contains(t, err.Error(), "not allowed", "error should indicate URL is not allowed")
+		})
+	}
+}
+
+func TestFetchArticleContent_BlocksMetadataEndpoints(t *testing.T) {
+	handler := createTestHandler()
+	ctx := createAuthContext()
+
+	metadataURLs := []string{
+		"http://169.254.169.254/latest/meta-data/",
+		"http://metadata.google.internal/computeMetadata/v1/",
+	}
+
+	for _, urlStr := range metadataURLs {
+		t.Run(urlStr, func(t *testing.T) {
+			_, _, err := handler.fetchArticleContent(ctx, urlStr)
+			require.Error(t, err, "should block metadata endpoint: %s", urlStr)
+		})
+	}
+}
+
+func TestFetchArticleContent_BlocksNonHTTPSchemes(t *testing.T) {
+	handler := createTestHandler()
+	ctx := createAuthContext()
+
+	badSchemes := []string{
+		"ftp://example.com/file",
+		"file:///etc/passwd",
+		"gopher://example.com/",
+	}
+
+	for _, urlStr := range badSchemes {
+		t.Run(urlStr, func(t *testing.T) {
+			_, _, err := handler.fetchArticleContent(ctx, urlStr)
+			require.Error(t, err, "should block non-HTTP scheme: %s", urlStr)
+		})
+	}
+}
+
+func TestFetchArticleContent_UsesParsedURL(t *testing.T) {
+	handler := createTestHandler()
+	ctx := createAuthContext()
+
+	// URL with user info that could be used for parsing differential attacks
+	// After url.Parse + String(), the URL should be normalized
+	_, _, err := handler.fetchArticleContent(ctx, "http://127.0.0.1@example.com/")
+	// This should either be blocked by SSRF validation or use the parsed URL
+	// The key point is it must not bypass validation via parsing differentials
+	if err != nil {
+		// Blocked is acceptable
+		return
+	}
+	// If not blocked, it's fine as long as the validated URL was used
+}

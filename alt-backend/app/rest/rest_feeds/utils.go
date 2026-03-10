@@ -267,7 +267,7 @@ func FetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 	secureClient := ssrfValidator.CreateSecureHTTPClient(10 * time.Second)
 
 	// Create request
-	req, err := http.NewRequestWithContext(ctx, "GET", urlStr, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", parsedURL.String(), nil)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to create request: %w", err)
 	}
