@@ -14,7 +14,7 @@ import (
 
 	"pre-processor/domain"
 	"pre-processor/driver"
-	backendv1 "pre-processor/gen/proto/clients/preprocessor-backend/v1"
+	backendv1 "pre-processor/gen/proto/services/backend/v1"
 )
 
 // ArticleRepository implements repository.ArticleRepository using the backend API.

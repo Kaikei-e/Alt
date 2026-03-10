@@ -6,7 +6,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"pre-processor/gen/proto/clients/preprocessor-backend/v1/backendv1connect"
+	"pre-processor/gen/proto/services/backend/v1/backendv1connect"
 )
 
 const serviceTokenHeader = "X-Service-Token"

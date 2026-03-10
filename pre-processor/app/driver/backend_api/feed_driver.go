@@ -8,7 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	backendv1 "pre-processor/gen/proto/clients/preprocessor-backend/v1"
+	backendv1 "pre-processor/gen/proto/services/backend/v1"
 
 	"pre-processor/domain"
 )

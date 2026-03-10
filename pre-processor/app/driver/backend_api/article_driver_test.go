@@ -10,8 +10,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"pre-processor/domain"
-	backendv1 "pre-processor/gen/proto/clients/preprocessor-backend/v1"
-	"pre-processor/gen/proto/clients/preprocessor-backend/v1/backendv1connect"
+	backendv1 "pre-processor/gen/proto/services/backend/v1"
+	"pre-processor/gen/proto/services/backend/v1/backendv1connect"
 )
 
 // mockBackendClient implements backendv1connect.BackendInternalServiceClient for testing.
