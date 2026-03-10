@@ -60,6 +60,9 @@ const (
 	// ArticleServiceBatchPrefetchImagesProcedure is the fully-qualified name of the ArticleService's
 	// BatchPrefetchImages RPC.
 	ArticleServiceBatchPrefetchImagesProcedure = "/alt.articles.v2.ArticleService/BatchPrefetchImages"
+	// ArticleServiceFetchTagCloudProcedure is the fully-qualified name of the ArticleService's
+	// FetchTagCloud RPC.
+	ArticleServiceFetchTagCloudProcedure = "/alt.articles.v2.ArticleService/FetchTagCloud"
 )
 
 // ArticleServiceClient is a client for the alt.articles.v2.ArticleService service.
@@ -90,6 +93,9 @@ type ArticleServiceClient interface {
 	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest]) (*connect.ServerStreamForClient[v2.StreamArticleTagsResponse], error)
 	// BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
 	BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error)
+	// FetchTagCloud fetches tag cloud data (tag names with article counts)
+	// Used by Tag Verse 3D visualization
+	FetchTagCloud(context.Context, *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error)
 }
 
 // NewArticleServiceClient constructs a client for the alt.articles.v2.ArticleService service. By
@@ -157,6 +163,12 @@ func NewArticleServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(articleServiceMethods.ByName("BatchPrefetchImages")),
 			connect.WithClientOptions(opts...),
 		),
+		fetchTagCloud: connect.NewClient[v2.FetchTagCloudRequest, v2.FetchTagCloudResponse](
+			httpClient,
+			baseURL+ArticleServiceFetchTagCloudProcedure,
+			connect.WithSchema(articleServiceMethods.ByName("FetchTagCloud")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -171,6 +183,7 @@ type articleServiceClient struct {
 	fetchRandomFeed     *connect.Client[v2.FetchRandomFeedRequest, v2.FetchRandomFeedResponse]
 	streamArticleTags   *connect.Client[v2.StreamArticleTagsRequest, v2.StreamArticleTagsResponse]
 	batchPrefetchImages *connect.Client[v2.BatchPrefetchImagesRequest, v2.BatchPrefetchImagesResponse]
+	fetchTagCloud       *connect.Client[v2.FetchTagCloudRequest, v2.FetchTagCloudResponse]
 }
 
 // FetchArticleContent calls alt.articles.v2.ArticleService.FetchArticleContent.
@@ -218,6 +231,11 @@ func (c *articleServiceClient) BatchPrefetchImages(ctx context.Context, req *con
 	return c.batchPrefetchImages.CallUnary(ctx, req)
 }
 
+// FetchTagCloud calls alt.articles.v2.ArticleService.FetchTagCloud.
+func (c *articleServiceClient) FetchTagCloud(ctx context.Context, req *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error) {
+	return c.fetchTagCloud.CallUnary(ctx, req)
+}
+
 // ArticleServiceHandler is an implementation of the alt.articles.v2.ArticleService service.
 type ArticleServiceHandler interface {
 	// FetchArticleContent fetches and extracts compliant article content
@@ -246,6 +264,9 @@ type ArticleServiceHandler interface {
 	StreamArticleTags(context.Context, *connect.Request[v2.StreamArticleTagsRequest], *connect.ServerStream[v2.StreamArticleTagsResponse]) error
 	// BatchPrefetchImages generates proxy URLs and optionally warms cache for OGP images
 	BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error)
+	// FetchTagCloud fetches tag cloud data (tag names with article counts)
+	// Used by Tag Verse 3D visualization
+	FetchTagCloud(context.Context, *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error)
 }
 
 // NewArticleServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -309,6 +330,12 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 		connect.WithSchema(articleServiceMethods.ByName("BatchPrefetchImages")),
 		connect.WithHandlerOptions(opts...),
 	)
+	articleServiceFetchTagCloudHandler := connect.NewUnaryHandler(
+		ArticleServiceFetchTagCloudProcedure,
+		svc.FetchTagCloud,
+		connect.WithSchema(articleServiceMethods.ByName("FetchTagCloud")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.articles.v2.ArticleService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ArticleServiceFetchArticleContentProcedure:
@@ -329,6 +356,8 @@ func NewArticleServiceHandler(svc ArticleServiceHandler, opts ...connect.Handler
 			articleServiceStreamArticleTagsHandler.ServeHTTP(w, r)
 		case ArticleServiceBatchPrefetchImagesProcedure:
 			articleServiceBatchPrefetchImagesHandler.ServeHTTP(w, r)
+		case ArticleServiceFetchTagCloudProcedure:
+			articleServiceFetchTagCloudHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -372,4 +401,8 @@ func (UnimplementedArticleServiceHandler) StreamArticleTags(context.Context, *co
 
 func (UnimplementedArticleServiceHandler) BatchPrefetchImages(context.Context, *connect.Request[v2.BatchPrefetchImagesRequest]) (*connect.Response[v2.BatchPrefetchImagesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.BatchPrefetchImages is not implemented"))
+}
+
+func (UnimplementedArticleServiceHandler) FetchTagCloud(context.Context, *connect.Request[v2.FetchTagCloudRequest]) (*connect.Response[v2.FetchTagCloudResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.articles.v2.ArticleService.FetchTagCloud is not implemented"))
 }
