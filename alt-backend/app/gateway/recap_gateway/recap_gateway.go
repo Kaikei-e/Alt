@@ -11,14 +11,16 @@ import (
 
 	"alt/domain"
 	"alt/port/recap_port"
+	"alt/port/search_indexer_port"
 )
 
 type RecapGateway struct {
-	httpClient     *http.Client
-	recapWorkerURL string
+	httpClient      *http.Client
+	recapWorkerURL  string
+	searchIndexer   search_indexer_port.SearchIndexerPort
 }
 
-func NewRecapGateway() recap_port.RecapPort {
+func NewRecapGateway(searchIndexer search_indexer_port.SearchIndexerPort) recap_port.RecapPort {
 	recapWorkerURL := os.Getenv("RECAP_WORKER_URL")
 	if recapWorkerURL == "" {
 		recapWorkerURL = "http://recap-worker:9005"
@@ -28,7 +30,8 @@ func NewRecapGateway() recap_port.RecapPort {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		recapWorkerURL: recapWorkerURL,
+		recapWorkerURL:  recapWorkerURL,
+		searchIndexer:   searchIndexer,
 	}
 }
 
@@ -75,6 +78,11 @@ func (g *RecapGateway) getRecapByWindow(ctx context.Context, windowDays int) (*d
 	}
 
 	return &recapSummary, nil
+}
+
+// SearchRecapsByTag searches recaps by tag name via search-indexer (Meilisearch).
+func (g *RecapGateway) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
+	return g.searchIndexer.SearchRecapsByTag(ctx, tagName, limit)
 }
 
 // GetEveningPulse fetches Evening Pulse data from recap-worker
