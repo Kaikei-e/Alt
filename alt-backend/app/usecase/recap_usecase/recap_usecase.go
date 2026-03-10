@@ -28,3 +28,7 @@ func (u *RecapUsecase) GetThreeDayRecap(ctx context.Context) (*domain.RecapSumma
 func (u *RecapUsecase) GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error) {
 	return u.recapPort.GetEveningPulse(ctx, date)
 }
+
+func (u *RecapUsecase) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
+	return u.recapPort.SearchRecapsByTag(ctx, tagName, limit)
+}

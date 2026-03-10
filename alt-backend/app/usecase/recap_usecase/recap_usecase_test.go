@@ -42,6 +42,14 @@ func (m *MockRecapPort) GetEveningPulse(ctx context.Context, date string) (*doma
 	return args.Get(0).(*domain.EveningPulse), args.Error(1)
 }
 
+func (m *MockRecapPort) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
+	args := m.Called(ctx, tagName, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.RecapSearchResult), args.Error(1)
+}
+
 func TestRecapUsecase_GetEveningPulse(t *testing.T) {
 	t.Run("success - delegates to port and returns result", func(t *testing.T) {
 		mockPort := new(MockRecapPort)
