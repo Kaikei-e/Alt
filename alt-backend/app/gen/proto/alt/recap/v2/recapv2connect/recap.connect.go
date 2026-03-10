@@ -42,6 +42,9 @@ const (
 	// RecapServiceGetEveningPulseProcedure is the fully-qualified name of the RecapService's
 	// GetEveningPulse RPC.
 	RecapServiceGetEveningPulseProcedure = "/alt.recap.v2.RecapService/GetEveningPulse"
+	// RecapServiceSearchRecapsByTagProcedure is the fully-qualified name of the RecapService's
+	// SearchRecapsByTag RPC.
+	RecapServiceSearchRecapsByTagProcedure = "/alt.recap.v2.RecapService/SearchRecapsByTag"
 )
 
 // RecapServiceClient is a client for the alt.recap.v2.RecapService service.
@@ -55,6 +58,9 @@ type RecapServiceClient interface {
 	// GetEveningPulse returns Evening Pulse data (authentication required)
 	// Evening Pulse provides 3 key topics for quick daily catch-up
 	GetEveningPulse(context.Context, *connect.Request[v2.GetEveningPulseRequest]) (*connect.Response[v2.GetEveningPulseResponse], error)
+	// SearchRecapsByTag searches across all completed recap jobs for genres matching a tag
+	// Used by Tag Verse to show historical recaps for a specific tag
+	SearchRecapsByTag(context.Context, *connect.Request[v2.SearchRecapsByTagRequest]) (*connect.Response[v2.SearchRecapsByTagResponse], error)
 }
 
 // NewRecapServiceClient constructs a client for the alt.recap.v2.RecapService service. By default,
@@ -86,14 +92,21 @@ func NewRecapServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(recapServiceMethods.ByName("GetEveningPulse")),
 			connect.WithClientOptions(opts...),
 		),
+		searchRecapsByTag: connect.NewClient[v2.SearchRecapsByTagRequest, v2.SearchRecapsByTagResponse](
+			httpClient,
+			baseURL+RecapServiceSearchRecapsByTagProcedure,
+			connect.WithSchema(recapServiceMethods.ByName("SearchRecapsByTag")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // recapServiceClient implements RecapServiceClient.
 type recapServiceClient struct {
-	getSevenDayRecap *connect.Client[v2.GetSevenDayRecapRequest, v2.GetSevenDayRecapResponse]
-	getThreeDayRecap *connect.Client[v2.GetThreeDayRecapRequest, v2.GetThreeDayRecapResponse]
-	getEveningPulse  *connect.Client[v2.GetEveningPulseRequest, v2.GetEveningPulseResponse]
+	getSevenDayRecap  *connect.Client[v2.GetSevenDayRecapRequest, v2.GetSevenDayRecapResponse]
+	getThreeDayRecap  *connect.Client[v2.GetThreeDayRecapRequest, v2.GetThreeDayRecapResponse]
+	getEveningPulse   *connect.Client[v2.GetEveningPulseRequest, v2.GetEveningPulseResponse]
+	searchRecapsByTag *connect.Client[v2.SearchRecapsByTagRequest, v2.SearchRecapsByTagResponse]
 }
 
 // GetSevenDayRecap calls alt.recap.v2.RecapService.GetSevenDayRecap.
@@ -111,6 +124,11 @@ func (c *recapServiceClient) GetEveningPulse(ctx context.Context, req *connect.R
 	return c.getEveningPulse.CallUnary(ctx, req)
 }
 
+// SearchRecapsByTag calls alt.recap.v2.RecapService.SearchRecapsByTag.
+func (c *recapServiceClient) SearchRecapsByTag(ctx context.Context, req *connect.Request[v2.SearchRecapsByTagRequest]) (*connect.Response[v2.SearchRecapsByTagResponse], error) {
+	return c.searchRecapsByTag.CallUnary(ctx, req)
+}
+
 // RecapServiceHandler is an implementation of the alt.recap.v2.RecapService service.
 type RecapServiceHandler interface {
 	// GetSevenDayRecap returns 7-day recap summary (authentication required)
@@ -122,6 +140,9 @@ type RecapServiceHandler interface {
 	// GetEveningPulse returns Evening Pulse data (authentication required)
 	// Evening Pulse provides 3 key topics for quick daily catch-up
 	GetEveningPulse(context.Context, *connect.Request[v2.GetEveningPulseRequest]) (*connect.Response[v2.GetEveningPulseResponse], error)
+	// SearchRecapsByTag searches across all completed recap jobs for genres matching a tag
+	// Used by Tag Verse to show historical recaps for a specific tag
+	SearchRecapsByTag(context.Context, *connect.Request[v2.SearchRecapsByTagRequest]) (*connect.Response[v2.SearchRecapsByTagResponse], error)
 }
 
 // NewRecapServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -149,6 +170,12 @@ func NewRecapServiceHandler(svc RecapServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(recapServiceMethods.ByName("GetEveningPulse")),
 		connect.WithHandlerOptions(opts...),
 	)
+	recapServiceSearchRecapsByTagHandler := connect.NewUnaryHandler(
+		RecapServiceSearchRecapsByTagProcedure,
+		svc.SearchRecapsByTag,
+		connect.WithSchema(recapServiceMethods.ByName("SearchRecapsByTag")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.recap.v2.RecapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RecapServiceGetSevenDayRecapProcedure:
@@ -157,6 +184,8 @@ func NewRecapServiceHandler(svc RecapServiceHandler, opts ...connect.HandlerOpti
 			recapServiceGetThreeDayRecapHandler.ServeHTTP(w, r)
 		case RecapServiceGetEveningPulseProcedure:
 			recapServiceGetEveningPulseHandler.ServeHTTP(w, r)
+		case RecapServiceSearchRecapsByTagProcedure:
+			recapServiceSearchRecapsByTagHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -176,4 +205,8 @@ func (UnimplementedRecapServiceHandler) GetThreeDayRecap(context.Context, *conne
 
 func (UnimplementedRecapServiceHandler) GetEveningPulse(context.Context, *connect.Request[v2.GetEveningPulseRequest]) (*connect.Response[v2.GetEveningPulseResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.recap.v2.RecapService.GetEveningPulse is not implemented"))
+}
+
+func (UnimplementedRecapServiceHandler) SearchRecapsByTag(context.Context, *connect.Request[v2.SearchRecapsByTagRequest]) (*connect.Response[v2.SearchRecapsByTagResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.recap.v2.RecapService.SearchRecapsByTag is not implemented"))
 }
