@@ -137,4 +137,10 @@ echo "Ensuring pre-processor-sidecar role '${PRE_PROCESSOR_SIDECAR_USER}' exists
 create_or_update_role "$PRE_PROCESSOR_SIDECAR_USER" "$PRE_PROCESSOR_SIDECAR_PASSWORD"
 grant_basic_access "$PRE_PROCESSOR_SIDECAR_USER"
 
+# Enable pg_stat_statements extension for query performance analysis
+echo "Enabling pg_stat_statements extension..."
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$PRIMARY_DB" <<-EOSQL
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+EOSQL
+
 echo "Database role provisioning completed."
