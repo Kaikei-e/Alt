@@ -528,9 +528,7 @@ async def extract_tags_endpoint(
         raise HTTPException(status_code=503, detail="Tag extraction service not ready")
 
     try:
-        outcome = _background_tag_service.tag_extractor.extract_tags_with_metrics(
-            body.title, body.content
-        )
+        outcome = _background_tag_service.tag_extractor.extract_tags_with_metrics(body.title, body.content)
 
         return {
             "success": True,
