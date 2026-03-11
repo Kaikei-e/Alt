@@ -44,3 +44,28 @@ func (g *RegisterFavoriteFeedGateway) RegisterFavoriteFeed(ctx context.Context, 
 	logger.SafeInfoContext(ctx, "favorite feed registered", "url", url)
 	return nil
 }
+
+func (g *RegisterFavoriteFeedGateway) RemoveFavoriteFeed(ctx context.Context, url string) error {
+	if g.alt_db == nil {
+		return errors.New("database connection not available")
+	}
+	parsed, err := urlpkg.Parse(url)
+	if err != nil || parsed.Scheme == "" {
+		return errors.New("invalid URL format")
+	}
+	err = g.alt_db.RemoveFavoriteFeed(ctx, strings.TrimSpace(url))
+	if err != nil {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return errors.New("favorite feed not found")
+		case errors.Is(err, pgx.ErrTxClosed):
+			logger.SafeErrorContext(ctx, "failed to remove favorite feed", "error", err)
+			return errors.New("failed to remove favorite feed")
+		default:
+			logger.SafeErrorContext(ctx, "error removing favorite feed", "error", err)
+			return err
+		}
+	}
+	logger.SafeInfoContext(ctx, "favorite feed removed", "url", url)
+	return nil
+}

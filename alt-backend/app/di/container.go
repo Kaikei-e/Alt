@@ -91,6 +91,7 @@ import (
 	"alt/usecase/recap_articles_usecase"
 	"alt/usecase/recap_usecase"
 	"alt/usecase/register_favorite_feed_usecase"
+	"alt/usecase/remove_favorite_feed_usecase"
 	"alt/usecase/register_feed_usecase"
 	"alt/usecase/retrieve_context_usecase"
 	"alt/usecase/scraping_domain_usecase"
@@ -134,6 +135,7 @@ type ApplicationComponents struct {
 	FetchFavoriteFeedsListCursorUsecase *fetch_feed_usecase.FetchFavoriteFeedsListCursorUsecase
 	RegisterFeedsUsecase                *register_feed_usecase.RegisterFeedsUsecase
 	RegisterFavoriteFeedUsecase         *register_favorite_feed_usecase.RegisterFavoriteFeedUsecase
+	RemoveFavoriteFeedUsecase          *remove_favorite_feed_usecase.RemoveFavoriteFeedUsecase
 	ListFeedLinksUsecase                *feed_link_usecase.ListFeedLinksUsecase
 	ListFeedLinksWithHealthUsecase       *feed_link_usecase.ListFeedLinksWithHealthUsecase
 	DeleteFeedLinkUsecase               *feed_link_usecase.DeleteFeedLinkUsecase
@@ -220,6 +222,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	registerFeedsUsecase := register_feed_usecase.NewRegisterFeedsUsecase(validateAndFetchRSSGatewayImpl, registerFeedLinkGatewayImpl, registerFeedsGatewayImpl)
 	registerFeedsUsecase.SetFeedLinkIDResolver(altDBRepository)
 	registerFavoriteFeedUsecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(registerFavoriteFeedGatewayImpl)
+	removeFavoriteFeedUsecase := remove_favorite_feed_usecase.NewRemoveFavoriteFeedUsecase(registerFavoriteFeedGatewayImpl)
 	feedLinkGatewayImpl := feed_link_gateway.NewFeedLinkGateway(pool)
 	listFeedLinksUsecase := feed_link_usecase.NewListFeedLinksUsecase(feedLinkGatewayImpl)
 	listFeedLinksWithHealthUsecase := feed_link_usecase.NewListFeedLinksWithHealthUsecase(feedLinkGatewayImpl)
@@ -461,6 +464,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchFavoriteFeedsListCursorUsecase: fetchFavoriteFeedsListCursorUsecase,
 		RegisterFeedsUsecase:                registerFeedsUsecase,
 		RegisterFavoriteFeedUsecase:         registerFavoriteFeedUsecase,
+		RemoveFavoriteFeedUsecase:          removeFavoriteFeedUsecase,
 		ListFeedLinksUsecase:                listFeedLinksUsecase,
 		ListFeedLinksWithHealthUsecase:       listFeedLinksWithHealthUsecase,
 		DeleteFeedLinkUsecase:               deleteFeedLinkUsecase,

@@ -61,3 +61,56 @@ func (r *AltDBRepository) RegisterFavoriteFeed(ctx context.Context, url string) 
 
 	return nil
 }
+
+func (r *AltDBRepository) RemoveFavoriteFeed(ctx context.Context, url string) (err error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		logger.SafeErrorContext(ctx, "user context not found", "error", err)
+		return errors.New("authentication required")
+	}
+
+	cleanURL := strings.TrimSpace(url)
+	if cleanURL == "" {
+		logger.SafeErrorContext(ctx, "cannot remove empty favorite feed url")
+		return errors.New("empty url")
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		logger.SafeErrorContext(ctx, "Error starting transaction", "error", err)
+		return pgx.ErrTxClosed
+	}
+	defer func() {
+		if err != nil {
+			if rbErr := tx.Rollback(ctx); rbErr != nil && rbErr.Error() != "tx is closed" {
+				logger.SafeWarnContext(ctx, "Error rolling back transaction", "error", rbErr)
+			}
+		}
+	}()
+
+	var feedID string
+	err = tx.QueryRow(ctx, "SELECT id FROM feeds WHERE link = $1", cleanURL).Scan(&feedID)
+	if err != nil {
+		logger.SafeErrorContext(ctx, "feed not found for URL", "error", err, "url", cleanURL)
+		return pgx.ErrNoRows
+	}
+
+	result, err := tx.Exec(ctx,
+		"DELETE FROM favorite_feeds WHERE user_id = $1 AND feed_id = $2",
+		user.UserID, feedID)
+	if err != nil {
+		logger.SafeErrorContext(ctx, "Error deleting favorite feed", "error", err, "user_id", user.UserID)
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		logger.SafeErrorContext(ctx, "Error committing transaction", "error", err)
+		return err
+	}
+
+	return nil
+}

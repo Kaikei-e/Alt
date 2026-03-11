@@ -53,3 +53,17 @@ func (mr *MockRegisterFavoriteFeedPortMockRecorder) RegisterFavoriteFeed(ctx, ur
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterFavoriteFeed", reflect.TypeOf((*MockRegisterFavoriteFeedPort)(nil).RegisterFavoriteFeed), ctx, url)
 }
+
+// RemoveFavoriteFeed mocks base method.
+func (m *MockRegisterFavoriteFeedPort) RemoveFavoriteFeed(ctx context.Context, url string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveFavoriteFeed", ctx, url)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemoveFavoriteFeed indicates an expected call of RemoveFavoriteFeed.
+func (mr *MockRegisterFavoriteFeedPortMockRecorder) RemoveFavoriteFeed(ctx, url any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveFavoriteFeed", reflect.TypeOf((*MockRegisterFavoriteFeedPort)(nil).RemoveFavoriteFeed), ctx, url)
+}

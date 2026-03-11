@@ -6,4 +6,5 @@ import "context"
 
 type RegisterFavoriteFeedPort interface {
 	RegisterFavoriteFeed(ctx context.Context, url string) error
+	RemoveFavoriteFeed(ctx context.Context, url string) error
 }
