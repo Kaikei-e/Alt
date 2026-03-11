@@ -386,22 +386,27 @@ impl RecapDao {
         let rows = if let Some(since_ts) = since {
             sqlx::query(
                 r"
-                SELECT DISTINCT ON (rj.job_id, ro.genre)
-                    rj.job_id,
-                    rj.kicked_at,
-                    rj.window_days,
-                    ro.genre,
-                    ro.summary_ja,
-                    ro.tags AS output_tags,
-                    c.top_terms
-                FROM recap_jobs rj
-                JOIN recap_outputs ro ON rj.job_id = ro.job_id
-                JOIN recap_subworker_runs sr
-                    ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
-                JOIN recap_subworker_clusters c ON c.run_id = sr.id
-                WHERE rj.status = 'completed'
-                  AND rj.kicked_at > $1
-                ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+                SELECT sub.job_id, sub.kicked_at, sub.window_days,
+                       sub.genre, sub.summary_ja, sub.output_tags, sub.top_terms
+                FROM (
+                    SELECT DISTINCT ON (rj.job_id, ro.genre)
+                        rj.job_id,
+                        rj.kicked_at,
+                        rj.window_days,
+                        ro.genre,
+                        ro.summary_ja,
+                        ro.tags AS output_tags,
+                        c.top_terms
+                    FROM recap_jobs rj
+                    JOIN recap_outputs ro ON rj.job_id = ro.job_id
+                    JOIN recap_subworker_runs sr
+                        ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
+                    JOIN recap_subworker_clusters c ON c.run_id = sr.id
+                    WHERE rj.status = 'completed'
+                      AND rj.kicked_at >= $1
+                    ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+                ) sub
+                ORDER BY sub.kicked_at ASC
                 LIMIT $2
                 ",
             )
@@ -413,21 +418,26 @@ impl RecapDao {
         } else {
             sqlx::query(
                 r"
-                SELECT DISTINCT ON (rj.job_id, ro.genre)
-                    rj.job_id,
-                    rj.kicked_at,
-                    rj.window_days,
-                    ro.genre,
-                    ro.summary_ja,
-                    ro.tags AS output_tags,
-                    c.top_terms
-                FROM recap_jobs rj
-                JOIN recap_outputs ro ON rj.job_id = ro.job_id
-                JOIN recap_subworker_runs sr
-                    ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
-                JOIN recap_subworker_clusters c ON c.run_id = sr.id
-                WHERE rj.status = 'completed'
-                ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+                SELECT sub.job_id, sub.kicked_at, sub.window_days,
+                       sub.genre, sub.summary_ja, sub.output_tags, sub.top_terms
+                FROM (
+                    SELECT DISTINCT ON (rj.job_id, ro.genre)
+                        rj.job_id,
+                        rj.kicked_at,
+                        rj.window_days,
+                        ro.genre,
+                        ro.summary_ja,
+                        ro.tags AS output_tags,
+                        c.top_terms
+                    FROM recap_jobs rj
+                    JOIN recap_outputs ro ON rj.job_id = ro.job_id
+                    JOIN recap_subworker_runs sr
+                        ON rj.job_id = sr.job_id AND ro.genre = sr.genre AND sr.status = 'succeeded'
+                    JOIN recap_subworker_clusters c ON c.run_id = sr.id
+                    WHERE rj.status = 'completed'
+                    ORDER BY rj.job_id, ro.genre, rj.kicked_at DESC
+                ) sub
+                ORDER BY sub.kicked_at ASC
                 LIMIT $1
                 ",
             )
