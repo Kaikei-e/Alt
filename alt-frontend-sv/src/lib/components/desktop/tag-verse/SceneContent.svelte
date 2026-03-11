@@ -17,31 +17,26 @@ let { tags, onTagSelect }: Props = $props();
 // Enable pointer events on 3D objects (required by Threlte v8)
 interactivity();
 
-// Compute color and emissive intensity from article count
+// Compute color and emissive intensity from article count (5-level discrete scale)
 function computeColor(
 	articleCount: number,
 	maxCount: number,
 ): { color: THREE.Color; emissiveIntensity: number } {
 	const t = (articleCount / Math.max(maxCount, 1)) ** 0.5;
 
-	const colorLow = new THREE.Color("#2a6a9c");
-	const colorMid = new THREE.Color("#00d4ff");
-	const colorHigh = new THREE.Color("#ff8c00");
-
-	let color: THREE.Color;
-	let emissiveIntensity: number;
-
-	if (t < 0.5) {
-		const localT = t * 2;
-		color = new THREE.Color().lerpColors(colorLow, colorMid, localT);
-		emissiveIntensity = 0.4 + localT * 0.2;
-	} else {
-		const localT = (t - 0.5) * 2;
-		color = new THREE.Color().lerpColors(colorMid, colorHigh, localT);
-		emissiveIntensity = 0.6 + localT * 0.4;
+	if (t < 0.2) {
+		return { color: new THREE.Color("#2a4a7a"), emissiveIntensity: 0.3 };
 	}
-
-	return { color, emissiveIntensity };
+	if (t < 0.4) {
+		return { color: new THREE.Color("#2a8a9c"), emissiveIntensity: 0.45 };
+	}
+	if (t < 0.6) {
+		return { color: new THREE.Color("#00d4ff"), emissiveIntensity: 0.6 };
+	}
+	if (t < 0.8) {
+		return { color: new THREE.Color("#f0a030"), emissiveIntensity: 0.75 };
+	}
+	return { color: new THREE.Color("#ff4500"), emissiveIntensity: 0.9 };
 }
 
 // Compute radius from article count using power scale

@@ -18,16 +18,20 @@ const HIDE_FLOATING_MENU_PATHS = [
 	"/sv/feeds/search",
 ];
 
+/** Routes that need full-bleed layout (no padding) */
+const FULL_BLEED_PATHS = ["/sv/feeds/tag-verse"];
+
 const showFloatingMenu = $derived(
 	!HIDE_FLOATING_MENU_PATHS.includes(page.url.pathname),
 );
+const isFullBleed = $derived(FULL_BLEED_PATHS.includes(page.url.pathname));
 </script>
 
 {#if isDesktop}
 	<!-- Desktop: Sidebar + main content area (matches DesktopLayout pattern) -->
 	<div class="flex min-h-screen bg-[var(--surface-bg)]">
 		<Sidebar />
-		<main class={cn("flex-1", className || "p-6")}>
+		<main class={cn("flex-1", className || (isFullBleed ? "p-0" : "p-6"))}>
 			{@render children()}
 		</main>
 	</div>

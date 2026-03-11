@@ -572,12 +572,12 @@ export interface TagCloudItem {
  * Fetches tag cloud data for Tag Verse visualization via Connect-RPC.
  *
  * @param transport - The Connect transport to use
- * @param limit - Maximum number of tags to return (default: 200, max: 500)
+ * @param limit - Maximum number of tags to return (default: 300, max: 500)
  * @returns Tag cloud items sorted by article count (descending)
  */
 export async function fetchTagCloud(
 	transport: Transport,
-	limit = 200,
+	limit = 300,
 ): Promise<TagCloudItem[]> {
 	const client = createArticleClient(transport);
 	const response = (await client.fetchTagCloud({

@@ -23,7 +23,7 @@ onMount(async () => {
 	if (!browser) return;
 	try {
 		const transport = createClientTransport();
-		tags = await fetchTagCloud(transport, 200);
+		tags = await fetchTagCloud(transport, 300);
 	} catch (e) {
 		error = e instanceof Error ? e.message : "Failed to load tags";
 	} finally {
