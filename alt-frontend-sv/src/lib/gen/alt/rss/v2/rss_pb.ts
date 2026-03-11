@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/rss/v2/rss.proto.
  */
 export const file_alt_rss_v2_rss: GenFile = /*@__PURE__*/
-  fileDesc("ChRhbHQvcnNzL3YyL3Jzcy5wcm90bxIKYWx0LnJzcy52MiIlChZSZWdpc3RlclJTU0ZlZWRSZXF1ZXN0EgsKA3VybBgBIAEoCSIqChdSZWdpc3RlclJTU0ZlZWRSZXNwb25zZRIPCgdtZXNzYWdlGAEgASgJIhkKF0xpc3RSU1NGZWVkTGlua3NSZXF1ZXN0IosBCgtSU1NGZWVkTGluaxIKCgJpZBgBIAEoCRILCgN1cmwYAiABKAkSFQoNaGVhbHRoX3N0YXR1cxgDIAEoCRIcChRjb25zZWN1dGl2ZV9mYWlsdXJlcxgEIAEoBRIbChNsYXN0X2ZhaWx1cmVfcmVhc29uGAUgASgJEhEKCWlzX2FjdGl2ZRgGIAEoCCJCChhMaXN0UlNTRmVlZExpbmtzUmVzcG9uc2USJgoFbGlua3MYASADKAsyFy5hbHQucnNzLnYyLlJTU0ZlZWRMaW5rIiYKGERlbGV0ZVJTU0ZlZWRMaW5rUmVxdWVzdBIKCgJpZBgBIAEoCSIsChlEZWxldGVSU1NGZWVkTGlua1Jlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiKgobUmVnaXN0ZXJGYXZvcml0ZUZlZWRSZXF1ZXN0EgsKA3VybBgBIAEoCSIvChxSZWdpc3RlckZhdm9yaXRlRmVlZFJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkylAMKClJTU1NlcnZpY2USWgoPUmVnaXN0ZXJSU1NGZWVkEiIuYWx0LnJzcy52Mi5SZWdpc3RlclJTU0ZlZWRSZXF1ZXN0GiMuYWx0LnJzcy52Mi5SZWdpc3RlclJTU0ZlZWRSZXNwb25zZRJdChBMaXN0UlNTRmVlZExpbmtzEiMuYWx0LnJzcy52Mi5MaXN0UlNTRmVlZExpbmtzUmVxdWVzdBokLmFsdC5yc3MudjIuTGlzdFJTU0ZlZWRMaW5rc1Jlc3BvbnNlEmAKEURlbGV0ZVJTU0ZlZWRMaW5rEiQuYWx0LnJzcy52Mi5EZWxldGVSU1NGZWVkTGlua1JlcXVlc3QaJS5hbHQucnNzLnYyLkRlbGV0ZVJTU0ZlZWRMaW5rUmVzcG9uc2USaQoUUmVnaXN0ZXJGYXZvcml0ZUZlZWQSJy5hbHQucnNzLnYyLlJlZ2lzdGVyRmF2b3JpdGVGZWVkUmVxdWVzdBooLmFsdC5yc3MudjIuUmVnaXN0ZXJGYXZvcml0ZUZlZWRSZXNwb25zZUIgWh5hbHQvZ2VuL3Byb3RvL2FsdC9yc3MvdjI7cnNzdjJiBnByb3RvMw");
+  fileDesc("ChRhbHQvcnNzL3YyL3Jzcy5wcm90bxIKYWx0LnJzcy52MiIlChZSZWdpc3RlclJTU0ZlZWRSZXF1ZXN0EgsKA3VybBgBIAEoCSIqChdSZWdpc3RlclJTU0ZlZWRSZXNwb25zZRIPCgdtZXNzYWdlGAEgASgJIhkKF0xpc3RSU1NGZWVkTGlua3NSZXF1ZXN0IosBCgtSU1NGZWVkTGluaxIKCgJpZBgBIAEoCRILCgN1cmwYAiABKAkSFQoNaGVhbHRoX3N0YXR1cxgDIAEoCRIcChRjb25zZWN1dGl2ZV9mYWlsdXJlcxgEIAEoBRIbChNsYXN0X2ZhaWx1cmVfcmVhc29uGAUgASgJEhEKCWlzX2FjdGl2ZRgGIAEoCCJCChhMaXN0UlNTRmVlZExpbmtzUmVzcG9uc2USJgoFbGlua3MYASADKAsyFy5hbHQucnNzLnYyLlJTU0ZlZWRMaW5rIiYKGERlbGV0ZVJTU0ZlZWRMaW5rUmVxdWVzdBIKCgJpZBgBIAEoCSIsChlEZWxldGVSU1NGZWVkTGlua1Jlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiKgobUmVnaXN0ZXJGYXZvcml0ZUZlZWRSZXF1ZXN0EgsKA3VybBgBIAEoCSIvChxSZWdpc3RlckZhdm9yaXRlRmVlZFJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiKAoZUmVtb3ZlRmF2b3JpdGVGZWVkUmVxdWVzdBILCgN1cmwYASABKAkiLQoaUmVtb3ZlRmF2b3JpdGVGZWVkUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCTL5AwoKUlNTU2VydmljZRJaCg9SZWdpc3RlclJTU0ZlZWQSIi5hbHQucnNzLnYyLlJlZ2lzdGVyUlNTRmVlZFJlcXVlc3QaIy5hbHQucnNzLnYyLlJlZ2lzdGVyUlNTRmVlZFJlc3BvbnNlEl0KEExpc3RSU1NGZWVkTGlua3MSIy5hbHQucnNzLnYyLkxpc3RSU1NGZWVkTGlua3NSZXF1ZXN0GiQuYWx0LnJzcy52Mi5MaXN0UlNTRmVlZExpbmtzUmVzcG9uc2USYAoRRGVsZXRlUlNTRmVlZExpbmsSJC5hbHQucnNzLnYyLkRlbGV0ZVJTU0ZlZWRMaW5rUmVxdWVzdBolLmFsdC5yc3MudjIuRGVsZXRlUlNTRmVlZExpbmtSZXNwb25zZRJpChRSZWdpc3RlckZhdm9yaXRlRmVlZBInLmFsdC5yc3MudjIuUmVnaXN0ZXJGYXZvcml0ZUZlZWRSZXF1ZXN0GiguYWx0LnJzcy52Mi5SZWdpc3RlckZhdm9yaXRlRmVlZFJlc3BvbnNlEmMKElJlbW92ZUZhdm9yaXRlRmVlZBIlLmFsdC5yc3MudjIuUmVtb3ZlRmF2b3JpdGVGZWVkUmVxdWVzdBomLmFsdC5yc3MudjIuUmVtb3ZlRmF2b3JpdGVGZWVkUmVzcG9uc2VCIFoeYWx0L2dlbi9wcm90by9hbHQvcnNzL3YyO3Jzc3YyYgZwcm90bzM");
 
 /**
  * RegisterRSSFeedRequest is the request for registering a new RSS feed
@@ -231,6 +231,48 @@ export const RegisterFavoriteFeedResponseSchema: GenMessage<RegisterFavoriteFeed
   messageDesc(file_alt_rss_v2_rss, 8);
 
 /**
+ * RemoveFavoriteFeedRequest is the request for removing a feed from favorites
+ *
+ * @generated from message alt.rss.v2.RemoveFavoriteFeedRequest
+ */
+export type RemoveFavoriteFeedRequest = Message<"alt.rss.v2.RemoveFavoriteFeedRequest"> & {
+  /**
+   * Feed URL to remove from favorites (required)
+   *
+   * @generated from field: string url = 1;
+   */
+  url: string;
+};
+
+/**
+ * Describes the message alt.rss.v2.RemoveFavoriteFeedRequest.
+ * Use `create(RemoveFavoriteFeedRequestSchema)` to create a new message.
+ */
+export const RemoveFavoriteFeedRequestSchema: GenMessage<RemoveFavoriteFeedRequest> = /*@__PURE__*/
+  messageDesc(file_alt_rss_v2_rss, 9);
+
+/**
+ * RemoveFavoriteFeedResponse contains the result of removal
+ *
+ * @generated from message alt.rss.v2.RemoveFavoriteFeedResponse
+ */
+export type RemoveFavoriteFeedResponse = Message<"alt.rss.v2.RemoveFavoriteFeedResponse"> & {
+  /**
+   * Success message
+   *
+   * @generated from field: string message = 1;
+   */
+  message: string;
+};
+
+/**
+ * Describes the message alt.rss.v2.RemoveFavoriteFeedResponse.
+ * Use `create(RemoveFavoriteFeedResponseSchema)` to create a new message.
+ */
+export const RemoveFavoriteFeedResponseSchema: GenMessage<RemoveFavoriteFeedResponse> = /*@__PURE__*/
+  messageDesc(file_alt_rss_v2_rss, 10);
+
+/**
  * RSSService provides RSS feed link management operations
  *
  * @generated from service alt.rss.v2.RSSService
@@ -279,6 +321,16 @@ export const RSSService: GenService<{
     methodKind: "unary";
     input: typeof RegisterFavoriteFeedRequestSchema;
     output: typeof RegisterFavoriteFeedResponseSchema;
+  },
+  /**
+   * RemoveFavoriteFeed removes a feed from favorites
+   *
+   * @generated from rpc alt.rss.v2.RSSService.RemoveFavoriteFeed
+   */
+  removeFavoriteFeed: {
+    methodKind: "unary";
+    input: typeof RemoveFavoriteFeedRequestSchema;
+    output: typeof RemoveFavoriteFeedResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_rss_v2_rss, 0);

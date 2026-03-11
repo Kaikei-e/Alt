@@ -850,7 +850,7 @@ export const StreamArticleTagsResponse_EventTypeSchema: GenEnum<StreamArticleTag
  */
 export type FetchTagCloudRequest = Message<"alt.articles.v2.FetchTagCloudRequest"> & {
   /**
-   * Maximum number of tags to return (default: 200, max: 500)
+   * Maximum number of tags to return (default: 300, max: 500)
    *
    * @generated from field: int32 limit = 1;
    */

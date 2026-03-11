@@ -45,6 +45,9 @@ const (
 	// RSSServiceRegisterFavoriteFeedProcedure is the fully-qualified name of the RSSService's
 	// RegisterFavoriteFeed RPC.
 	RSSServiceRegisterFavoriteFeedProcedure = "/alt.rss.v2.RSSService/RegisterFavoriteFeed"
+	// RSSServiceRemoveFavoriteFeedProcedure is the fully-qualified name of the RSSService's
+	// RemoveFavoriteFeed RPC.
+	RSSServiceRemoveFavoriteFeedProcedure = "/alt.rss.v2.RSSService/RemoveFavoriteFeed"
 )
 
 // RSSServiceClient is a client for the alt.rss.v2.RSSService service.
@@ -61,6 +64,8 @@ type RSSServiceClient interface {
 	// RegisterFavoriteFeed marks a feed as favorite
 	// Replaces POST /v1/feeds/register/favorite
 	RegisterFavoriteFeed(context.Context, *connect.Request[v2.RegisterFavoriteFeedRequest]) (*connect.Response[v2.RegisterFavoriteFeedResponse], error)
+	// RemoveFavoriteFeed removes a feed from favorites
+	RemoveFavoriteFeed(context.Context, *connect.Request[v2.RemoveFavoriteFeedRequest]) (*connect.Response[v2.RemoveFavoriteFeedResponse], error)
 }
 
 // NewRSSServiceClient constructs a client for the alt.rss.v2.RSSService service. By default, it
@@ -98,6 +103,12 @@ func NewRSSServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(rSSServiceMethods.ByName("RegisterFavoriteFeed")),
 			connect.WithClientOptions(opts...),
 		),
+		removeFavoriteFeed: connect.NewClient[v2.RemoveFavoriteFeedRequest, v2.RemoveFavoriteFeedResponse](
+			httpClient,
+			baseURL+RSSServiceRemoveFavoriteFeedProcedure,
+			connect.WithSchema(rSSServiceMethods.ByName("RemoveFavoriteFeed")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -107,6 +118,7 @@ type rSSServiceClient struct {
 	listRSSFeedLinks     *connect.Client[v2.ListRSSFeedLinksRequest, v2.ListRSSFeedLinksResponse]
 	deleteRSSFeedLink    *connect.Client[v2.DeleteRSSFeedLinkRequest, v2.DeleteRSSFeedLinkResponse]
 	registerFavoriteFeed *connect.Client[v2.RegisterFavoriteFeedRequest, v2.RegisterFavoriteFeedResponse]
+	removeFavoriteFeed   *connect.Client[v2.RemoveFavoriteFeedRequest, v2.RemoveFavoriteFeedResponse]
 }
 
 // RegisterRSSFeed calls alt.rss.v2.RSSService.RegisterRSSFeed.
@@ -129,6 +141,11 @@ func (c *rSSServiceClient) RegisterFavoriteFeed(ctx context.Context, req *connec
 	return c.registerFavoriteFeed.CallUnary(ctx, req)
 }
 
+// RemoveFavoriteFeed calls alt.rss.v2.RSSService.RemoveFavoriteFeed.
+func (c *rSSServiceClient) RemoveFavoriteFeed(ctx context.Context, req *connect.Request[v2.RemoveFavoriteFeedRequest]) (*connect.Response[v2.RemoveFavoriteFeedResponse], error) {
+	return c.removeFavoriteFeed.CallUnary(ctx, req)
+}
+
 // RSSServiceHandler is an implementation of the alt.rss.v2.RSSService service.
 type RSSServiceHandler interface {
 	// RegisterRSSFeed registers a new RSS feed link
@@ -143,6 +160,8 @@ type RSSServiceHandler interface {
 	// RegisterFavoriteFeed marks a feed as favorite
 	// Replaces POST /v1/feeds/register/favorite
 	RegisterFavoriteFeed(context.Context, *connect.Request[v2.RegisterFavoriteFeedRequest]) (*connect.Response[v2.RegisterFavoriteFeedResponse], error)
+	// RemoveFavoriteFeed removes a feed from favorites
+	RemoveFavoriteFeed(context.Context, *connect.Request[v2.RemoveFavoriteFeedRequest]) (*connect.Response[v2.RemoveFavoriteFeedResponse], error)
 }
 
 // NewRSSServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -176,6 +195,12 @@ func NewRSSServiceHandler(svc RSSServiceHandler, opts ...connect.HandlerOption) 
 		connect.WithSchema(rSSServiceMethods.ByName("RegisterFavoriteFeed")),
 		connect.WithHandlerOptions(opts...),
 	)
+	rSSServiceRemoveFavoriteFeedHandler := connect.NewUnaryHandler(
+		RSSServiceRemoveFavoriteFeedProcedure,
+		svc.RemoveFavoriteFeed,
+		connect.WithSchema(rSSServiceMethods.ByName("RemoveFavoriteFeed")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.rss.v2.RSSService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RSSServiceRegisterRSSFeedProcedure:
@@ -186,6 +211,8 @@ func NewRSSServiceHandler(svc RSSServiceHandler, opts ...connect.HandlerOption) 
 			rSSServiceDeleteRSSFeedLinkHandler.ServeHTTP(w, r)
 		case RSSServiceRegisterFavoriteFeedProcedure:
 			rSSServiceRegisterFavoriteFeedHandler.ServeHTTP(w, r)
+		case RSSServiceRemoveFavoriteFeedProcedure:
+			rSSServiceRemoveFavoriteFeedHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -209,4 +236,8 @@ func (UnimplementedRSSServiceHandler) DeleteRSSFeedLink(context.Context, *connec
 
 func (UnimplementedRSSServiceHandler) RegisterFavoriteFeed(context.Context, *connect.Request[v2.RegisterFavoriteFeedRequest]) (*connect.Response[v2.RegisterFavoriteFeedResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.rss.v2.RSSService.RegisterFavoriteFeed is not implemented"))
+}
+
+func (UnimplementedRSSServiceHandler) RemoveFavoriteFeed(context.Context, *connect.Request[v2.RemoveFavoriteFeedRequest]) (*connect.Response[v2.RemoveFavoriteFeedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.rss.v2.RSSService.RemoveFavoriteFeed is not implemented"))
 }

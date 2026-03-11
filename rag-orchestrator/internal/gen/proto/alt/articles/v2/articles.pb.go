@@ -1528,7 +1528,7 @@ func (x *StreamArticleTagsResponse) GetMessage() string {
 // FetchTagCloudRequest is the request for fetching tag cloud data
 type FetchTagCloudRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Maximum number of tags to return (default: 200, max: 500)
+	// Maximum number of tags to return (default: 300, max: 500)
 	Limit         int32 `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

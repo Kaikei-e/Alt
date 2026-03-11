@@ -82,6 +82,22 @@ message RegisterFavoriteFeedResponse {
 }
 
 // =============================================================================
+// Remove Favorite Feed Messages
+// =============================================================================
+
+// RemoveFavoriteFeedRequest is the request for removing a feed from favorites
+message RemoveFavoriteFeedRequest {
+  // Feed URL to remove from favorites (required)
+  string url = 1;
+}
+
+// RemoveFavoriteFeedResponse contains the result of removal
+message RemoveFavoriteFeedResponse {
+  // Success message
+  string message = 1;
+}
+
+// =============================================================================
 // RSSService Definition
 // =============================================================================
 
@@ -102,4 +118,7 @@ service RSSService {
   // RegisterFavoriteFeed marks a feed as favorite
   // Replaces POST /v1/feeds/register/favorite
   rpc RegisterFavoriteFeed(RegisterFavoriteFeedRequest) returns (RegisterFavoriteFeedResponse);
+
+  // RemoveFavoriteFeed removes a feed from favorites
+  rpc RemoveFavoriteFeed(RemoveFavoriteFeedRequest) returns (RemoveFavoriteFeedResponse);
 }

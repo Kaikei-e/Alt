@@ -179,3 +179,27 @@ func (h *Handler) RegisterFavoriteFeed(
 		Message: "favorite feed registered",
 	}), nil
 }
+
+// RemoveFavoriteFeed removes a feed from favorites.
+func (h *Handler) RemoveFavoriteFeed(
+	ctx context.Context,
+	req *connect.Request[rssv2.RemoveFavoriteFeedRequest],
+) (*connect.Response[rssv2.RemoveFavoriteFeedResponse], error) {
+	_, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	if strings.TrimSpace(req.Msg.Url) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("url is required"))
+	}
+
+	if err := h.container.RemoveFavoriteFeedUsecase.Execute(ctx, req.Msg.Url); err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RemoveFavoriteFeed")
+	}
+
+	return connect.NewResponse(&rssv2.RemoveFavoriteFeedResponse{
+		Message: "favorite feed removed",
+	}), nil
+}
