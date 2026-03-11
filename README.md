@@ -784,26 +784,26 @@ Each service maintains a `CLAUDE.md` for workflow guidelines and a `docs/<servic
 
 | Service | Language | Primary Doc | Description |
 |---------|----------|-------------|-------------|
-| alt-frontend | TypeScript | [docs/alt-frontend.md](docs/alt-frontend.md) | Next.js 16 + React 19 UI with Chakra themes |
-| alt-frontend-sv | TypeScript | [docs/alt-frontend-sv.md](docs/alt-frontend-sv.md) | SvelteKit `/sv` with Runes, TailwindCSS, Connect-RPC |
-| alt-butterfly-facade | Go 1.25+ | [docs/alt-butterfly-facade.md](docs/alt-butterfly-facade.md) | HTTP/2 h2c BFF for SvelteKit with JWT validation |
-| alt-backend | Go 1.25+ | [docs/alt-backend.md](docs/alt-backend.md) | Clean Architecture REST + Connect-RPC API with job scheduler |
-| sidecar-proxy | Go 1.24+ | [docs/sidecar-proxy.md](docs/sidecar-proxy.md) | Egress proxy with HTTPS allowlists |
-| mq-hub | Go 1.24+ | [docs/mq-hub.md](docs/mq-hub.md) | Redis Streams event broker with graceful shutdown, OTel metrics, connection pooling |
-| pre-processor | Go 1.25+ | [docs/pre-processor.md](docs/pre-processor.md) | RSS ingestion with dedupe, circuit breakers, and dead letter queue |
-| pre-processor-sidecar | Go 1.25+ | [docs/pre-processor-sidecar.md](docs/pre-processor-sidecar.md) | Scheduler for Inoreader token refresh |
-| news-creator | Python 3.11+ | [docs/news-creator.md](docs/news-creator.md) | FastAPI Ollama orchestrator with RT/BE priority scheduling |
-| tag-generator | Python 3.13+ | [docs/tag-generator.md](docs/tag-generator.md) | ONNX-backed tag extraction pipeline |
-| search-indexer | Go 1.25+ | [docs/search-indexer.md](docs/search-indexer.md) | Meilisearch indexer with bootstrap DI, OTel metrics, Redis event batching |
-| auth-hub | Go 1.25+ | [docs/auth-hub.md](docs/auth-hub.md) | Kratos-aware IAP with session caching |
-| auth-token-manager | Deno 2.x | [docs/auth-token-manager.md](docs/auth-token-manager.md) | OAuth2 CLI for Inoreader tokens |
-| rask-log-forwarder | Rust 1.87+ | [docs/rask-log-forwarder.md](docs/rask-log-forwarder.md) | OTLP Protocol Buffers log forwarder |
-| rask-log-aggregator | Rust 1.87+ | [docs/rask-log-aggregator.md](docs/rask-log-aggregator.md) | Axum API for ClickHouse ingestion |
-| recap-worker | Rust 1.87+ | [docs/recap-worker.md](docs/recap-worker.md) | 7-day recap + Evening Pulse pipeline orchestrator |
-| recap-subworker | Python 3.12+ | [docs/recap-subworker.md](docs/recap-subworker.md) | Clustering and classification worker |
-| recap-db | PostgreSQL 18 | [docs/recap-db.md](docs/recap-db.md) | Recap jobs, evidence, and learning results |
-| rag-orchestrator | Go 1.25+ | [docs/rag-orchestrator.md](docs/rag-orchestrator.md) | RAG indexing, retrieval, and generation |
-| rag-db | PostgreSQL 18 | [docs/rag-db.md](docs/rag-db.md) | pgvector for RAG documents and chunks |
+| alt-frontend | TypeScript | [docs/services/alt-frontend.md](docs/services/alt-frontend.md) | Next.js 16 + React 19 UI with Chakra themes |
+| alt-frontend-sv | TypeScript | [docs/services/alt-frontend-sv.md](docs/services/alt-frontend-sv.md) | SvelteKit `/sv` with Runes, TailwindCSS, Connect-RPC |
+| alt-butterfly-facade | Go 1.25+ | [docs/services/alt-butterfly-facade.md](docs/services/alt-butterfly-facade.md) | HTTP/2 h2c BFF for SvelteKit with JWT validation |
+| alt-backend | Go 1.25+ | [docs/services/alt-backend.md](docs/services/alt-backend.md) | Clean Architecture REST + Connect-RPC API with job scheduler |
+| sidecar-proxy | Go 1.24+ | [docs/services/sidecar-proxy.md](docs/services/sidecar-proxy.md) | Egress proxy with HTTPS allowlists |
+| mq-hub | Go 1.24+ | [docs/services/mq-hub.md](docs/services/mq-hub.md) | Redis Streams event broker with graceful shutdown, OTel metrics, connection pooling |
+| pre-processor | Go 1.25+ | [docs/services/pre-processor.md](docs/services/pre-processor.md) | RSS ingestion with dedupe, circuit breakers, and dead letter queue |
+| pre-processor-sidecar | Go 1.25+ | [docs/services/pre-processor-sidecar.md](docs/services/pre-processor-sidecar.md) | Scheduler for Inoreader token refresh |
+| news-creator | Python 3.11+ | [docs/services/news-creator.md](docs/services/news-creator.md) | FastAPI Ollama orchestrator with RT/BE priority scheduling |
+| tag-generator | Python 3.13+ | [docs/services/tag-generator.md](docs/services/tag-generator.md) | ONNX-backed tag extraction pipeline |
+| search-indexer | Go 1.25+ | [docs/services/search-indexer.md](docs/services/search-indexer.md) | Meilisearch indexer with bootstrap DI, OTel metrics, Redis event batching |
+| auth-hub | Go 1.25+ | [docs/services/auth-hub.md](docs/services/auth-hub.md) | Kratos-aware IAP with session caching |
+| auth-token-manager | Deno 2.x | [docs/services/auth-token-manager.md](docs/services/auth-token-manager.md) | OAuth2 CLI for Inoreader tokens |
+| rask-log-forwarder | Rust 1.87+ | [docs/services/rask-log-forwarder.md](docs/services/rask-log-forwarder.md) | OTLP Protocol Buffers log forwarder |
+| rask-log-aggregator | Rust 1.87+ | [docs/services/rask-log-aggregator.md](docs/services/rask-log-aggregator.md) | Axum API for ClickHouse ingestion |
+| recap-worker | Rust 1.87+ | [docs/services/recap-worker.md](docs/services/recap-worker.md) | 7-day recap + Evening Pulse pipeline orchestrator |
+| recap-subworker | Python 3.12+ | [docs/services/recap-subworker.md](docs/services/recap-subworker.md) | Clustering and classification worker |
+| recap-db | PostgreSQL 18 | [docs/services/recap-db.md](docs/services/recap-db.md) | Recap jobs, evidence, and learning results |
+| rag-orchestrator | Go 1.25+ | [docs/services/rag-orchestrator.md](docs/services/rag-orchestrator.md) | RAG indexing, retrieval, and generation |
+| rag-db | PostgreSQL 18 | [docs/services/rag-db.md](docs/services/rag-db.md) | pgvector for RAG documents and chunks |
 | altctl | Go 1.25+ | [altctl/CLAUDE.md](altctl/CLAUDE.md) | CLI for Docker Compose orchestration |
 | alt-perf | Deno 2.x | [alt-perf/CLAUDE.md](alt-perf/CLAUDE.md) | E2E performance measurement tool |
 | tts-speaker | Python 3.12 | [tts-speaker/CLAUDE.md](tts-speaker/CLAUDE.md) | Japanese TTS (Kokoro-82M, Connect-RPC, iGPU/CPU) |
