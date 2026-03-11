@@ -61,6 +61,7 @@ services:
       - K6_TEST_USER_EMAIL=${K6_TEST_USER_EMAIL:-}
     secrets:
       - auth_shared_secret
+      - backend_token_secret
     volumes:
       - ../alt-perf/k6:/scripts:ro
       - ../alt-perf/reports:/app/reports
