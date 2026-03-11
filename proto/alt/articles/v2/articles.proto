@@ -274,7 +274,7 @@ message StreamArticleTagsResponse {
 
 // FetchTagCloudRequest is the request for fetching tag cloud data
 message FetchTagCloudRequest {
-  // Maximum number of tags to return (default: 200, max: 500)
+  // Maximum number of tags to return (default: 300, max: 500)
   int32 limit = 1;
 }
 
