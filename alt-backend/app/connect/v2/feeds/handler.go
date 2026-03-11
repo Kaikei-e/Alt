@@ -26,6 +26,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/utils/html_parser"
+	"alt/utils/perf"
 	"alt/utils/security"
 	"alt/utils/url_validator"
 )
@@ -290,18 +291,28 @@ func (h *Handler) GetUnreadFeeds(
 	}
 
 	// Call usecase
+	timer := perf.NewFeedReadTimer("GetUnreadFeeds")
+
+	stopUsecase := timer.StartPhase(ctx, "usecase")
 	feeds, hasMore, err := h.container.FetchUnreadFeedsListCursorUsecase.Execute(ctx, cursor, limit, excludeFeedLinkID)
+	stopUsecase()
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetUnreadFeeds")
 	}
 
 	h.enrichWithProxyURLs(feeds)
 
-	return connect.NewResponse(&feedsv2.GetUnreadFeedsResponse{
+	stopMarshal := timer.StartPhase(ctx, "marshal")
+	resp := connect.NewResponse(&feedsv2.GetUnreadFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
 		NextCursor: deriveNextCursor(feeds, hasMore),
 		HasMore:    hasMore,
-	}), nil
+	})
+	stopMarshal()
+
+	timer.SetRowCount(len(feeds))
+	timer.Log(ctx)
+	return resp, nil
 }
 
 // GetAllFeeds returns all feeds (read + unread) with cursor-based pagination.
@@ -346,7 +357,11 @@ func (h *Handler) GetAllFeeds(
 	}
 
 	// Call usecase (all feeds, no read status filter)
+	timer := perf.NewFeedReadTimer("GetAllFeeds")
+
+	stopUsecase := timer.StartPhase(ctx, "usecase")
 	feeds, err := h.container.FetchFeedsListCursorUsecase.Execute(ctx, cursor, limit, excludeFeedLinkID)
+	stopUsecase()
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetAllFeeds")
 	}
@@ -356,11 +371,17 @@ func (h *Handler) GetAllFeeds(
 
 	h.enrichWithProxyURLs(feeds)
 
-	return connect.NewResponse(&feedsv2.GetAllFeedsResponse{
+	stopMarshal := timer.StartPhase(ctx, "marshal")
+	resp := connect.NewResponse(&feedsv2.GetAllFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
 		NextCursor: deriveNextCursor(feeds, hasMore),
 		HasMore:    hasMore,
-	}), nil
+	})
+	stopMarshal()
+
+	timer.SetRowCount(len(feeds))
+	timer.Log(ctx)
+	return resp, nil
 }
 
 // GetReadFeeds returns read/viewed feeds with cursor-based pagination.
@@ -395,7 +416,11 @@ func (h *Handler) GetReadFeeds(
 	}
 
 	// Call usecase
+	timer := perf.NewFeedReadTimer("GetReadFeeds")
+
+	stopUsecase := timer.StartPhase(ctx, "usecase")
 	feeds, err := h.container.FetchReadFeedsListCursorUsecase.Execute(ctx, cursor, limit)
+	stopUsecase()
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetReadFeeds")
 	}
@@ -405,11 +430,17 @@ func (h *Handler) GetReadFeeds(
 
 	h.enrichWithProxyURLs(feeds)
 
-	return connect.NewResponse(&feedsv2.GetReadFeedsResponse{
+	stopMarshal := timer.StartPhase(ctx, "marshal")
+	resp := connect.NewResponse(&feedsv2.GetReadFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
 		NextCursor: deriveNextCursor(feeds, hasMore),
 		HasMore:    hasMore,
-	}), nil
+	})
+	stopMarshal()
+
+	timer.SetRowCount(len(feeds))
+	timer.Log(ctx)
+	return resp, nil
 }
 
 // GetFavoriteFeeds returns favorite feeds with cursor-based pagination.
@@ -444,7 +475,11 @@ func (h *Handler) GetFavoriteFeeds(
 	}
 
 	// Call usecase
+	timer := perf.NewFeedReadTimer("GetFavoriteFeeds")
+
+	stopUsecase := timer.StartPhase(ctx, "usecase")
 	feeds, err := h.container.FetchFavoriteFeedsListCursorUsecase.Execute(ctx, cursor, limit)
+	stopUsecase()
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetFavoriteFeeds")
 	}
@@ -454,11 +489,17 @@ func (h *Handler) GetFavoriteFeeds(
 
 	h.enrichWithProxyURLs(feeds)
 
-	return connect.NewResponse(&feedsv2.GetFavoriteFeedsResponse{
+	stopMarshal := timer.StartPhase(ctx, "marshal")
+	resp := connect.NewResponse(&feedsv2.GetFavoriteFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
 		NextCursor: deriveNextCursor(feeds, hasMore),
 		HasMore:    hasMore,
-	}), nil
+	})
+	stopMarshal()
+
+	timer.SetRowCount(len(feeds))
+	timer.Log(ctx)
+	return resp, nil
 }
 
 // =============================================================================

@@ -3,6 +3,7 @@ package otel
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -41,10 +42,27 @@ func ConfigFromEnv() Config {
 // ShutdownFunc is a function to shutdown providers
 type ShutdownFunc func(context.Context) error
 
+// InitResult holds the result of OpenTelemetry initialization.
+type InitResult struct {
+	Shutdown       ShutdownFunc
+	MetricsHandler http.Handler
+}
+
 // InitProvider initializes OpenTelemetry providers
 func InitProvider(ctx context.Context, cfg Config) (ShutdownFunc, error) {
+	result, err := InitProviderWithMetrics(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return result.Shutdown, nil
+}
+
+// InitProviderWithMetrics initializes OpenTelemetry providers and returns a Prometheus metrics handler.
+func InitProviderWithMetrics(ctx context.Context, cfg Config) (*InitResult, error) {
 	if !cfg.Enabled {
-		return func(ctx context.Context) error { return nil }, nil
+		return &InitResult{
+			Shutdown: func(ctx context.Context) error { return nil },
+		}, nil
 	}
 
 	// Create resource
@@ -81,19 +99,32 @@ func InitProvider(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	}
 	global.SetLoggerProvider(loggerProvider)
 
-	// Return shutdown function
-	return func(ctx context.Context) error {
-		var errs []error
-		if err := tracerProvider.Shutdown(ctx); err != nil {
-			errs = append(errs, err)
-		}
-		if err := loggerProvider.Shutdown(ctx); err != nil {
-			errs = append(errs, err)
-		}
-		if len(errs) > 0 {
-			return fmt.Errorf("shutdown errors: %v", errs)
-		}
-		return nil
+	// Initialize Meter Provider with Prometheus exporter
+	meterProvider, metricsHandler, err := InitMeterProvider()
+	if err != nil {
+		return nil, fmt.Errorf("failed to init meter provider: %w", err)
+	}
+	otel.SetMeterProvider(meterProvider)
+
+	// Return shutdown function and metrics handler
+	return &InitResult{
+		Shutdown: func(ctx context.Context) error {
+			var errs []error
+			if err := tracerProvider.Shutdown(ctx); err != nil {
+				errs = append(errs, err)
+			}
+			if err := loggerProvider.Shutdown(ctx); err != nil {
+				errs = append(errs, err)
+			}
+			if err := meterProvider.Shutdown(ctx); err != nil {
+				errs = append(errs, err)
+			}
+			if len(errs) > 0 {
+				return fmt.Errorf("shutdown errors: %v", errs)
+			}
+			return nil
+		},
+		MetricsHandler: metricsHandler,
 	}, nil
 }
 

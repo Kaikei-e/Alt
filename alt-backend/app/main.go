@@ -35,16 +35,19 @@ func main() {
 
 	// Initialize OpenTelemetry
 	otelCfg := altotel.ConfigFromEnv()
-	otelShutdown, err := altotel.InitProvider(ctx, otelCfg)
+	otelResult, err := altotel.InitProviderWithMetrics(ctx, otelCfg)
 	if err != nil {
 		fmt.Printf("Failed to initialize OpenTelemetry: %v\n", err)
 		// Continue without OTel - non-fatal
 		otelCfg.Enabled = false
+		otelResult = &altotel.InitResult{
+			Shutdown: func(ctx context.Context) error { return nil },
+		}
 	}
 	defer func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
-		if err := otelShutdown(shutdownCtx); err != nil {
+		if err := otelResult.Shutdown(shutdownCtx); err != nil {
 			fmt.Printf("Failed to shutdown OpenTelemetry: %v\n", err)
 		}
 	}()
@@ -127,6 +130,11 @@ func main() {
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 		IdleTimeout:  cfg.Server.IdleTimeout,
+	}
+
+	// Register Prometheus metrics endpoint
+	if otelResult.MetricsHandler != nil {
+		e.GET("/metrics", echo.WrapHandler(otelResult.MetricsHandler))
 	}
 
 	rest.RegisterRoutes(e, container, cfg)

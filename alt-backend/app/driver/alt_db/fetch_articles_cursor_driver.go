@@ -9,6 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // ArticleWithTags represents an article with its associated tags
@@ -25,6 +27,9 @@ type ArticleWithTags struct {
 // FetchArticlesWithCursor retrieves articles using cursor-based pagination
 // Includes tags from tag-generator via article_tags and tags tables
 func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.Article, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchArticlesWithCursor")
+	defer span.End()
+
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
@@ -130,6 +135,7 @@ func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *t
 		return nil, errors.New("error processing articles list")
 	}
 
+	span.SetAttributes(attribute.Int("db.row_count", len(articles)))
 	logger.Logger.InfoContext(ctx, "fetched articles with cursor", "count", len(articles), "user_id", user.UserID)
 	return articles, nil
 }

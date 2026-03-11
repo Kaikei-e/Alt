@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel"
 )
 
 type FetchArticlesGateway struct {
@@ -23,6 +24,9 @@ func NewFetchArticlesGateway(pool *pgxpool.Pool) *FetchArticlesGateway {
 
 // FetchArticlesWithCursor retrieves articles with tags using cursor-based pagination
 func (g *FetchArticlesGateway) FetchArticlesWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.Article, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchArticlesWithCursor")
+	defer span.End()
+
 	if g.alt_db == nil {
 		return nil, errors.New("database connection not available")
 	}

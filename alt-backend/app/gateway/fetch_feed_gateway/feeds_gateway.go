@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mmcdole/gofeed"
+	"go.opentelemetry.io/otel"
 )
 
 type FetchFeedsGateway struct {
@@ -176,6 +177,9 @@ func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([
 }
 
 func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchFeedsListCursor")
+	defer span.End()
+
 	if g.alt_db == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -211,6 +215,9 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 }
 
 func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchUnreadFeedsListCursor")
+	defer span.End()
+
 	if g.alt_db == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -264,6 +271,9 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 }
 
 func (g *FetchFeedsGateway) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchReadFeedsListCursor")
+	defer span.End()
+
 	if g.alt_db == nil {
 		return nil, errors.New("database connection not available")
 	}

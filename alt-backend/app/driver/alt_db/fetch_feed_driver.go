@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error) {
@@ -172,6 +174,9 @@ func buildExcludeClause(args []any, excludeFeedLinkID *uuid.UUID) (string, []any
 }
 
 func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*models.Feed, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchUnreadFeedsListCursor")
+	defer span.End()
+
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
@@ -247,6 +252,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 		feeds = append(feeds, &feed)
 	}
 
+	span.SetAttributes(attribute.Int("db.row_count", len(feeds)))
 	return feeds, nil
 }
 
@@ -254,6 +260,9 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 // Unlike FetchUnreadFeedsListCursor, this does not filter by read status but includes
 // the read status via LEFT JOIN so the frontend can visually distinguish read/unread feeds.
 func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*models.Feed, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchAllFeedsListCursor")
+	defer span.End()
+
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
@@ -315,12 +324,16 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 		feeds = append(feeds, &feed)
 	}
 
+	span.SetAttributes(attribute.Int("db.row_count", len(feeds)))
 	return feeds, nil
 }
 
 // FetchReadFeedsListCursor retrieves read feeds using cursor-based pagination
 // This method uses INNER JOIN with read_status table for better performance
 func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchReadFeedsListCursor")
+	defer span.End()
+
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
@@ -375,6 +388,7 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 		feeds = append(feeds, &feed)
 	}
 
+	span.SetAttributes(attribute.Int("db.row_count", len(feeds)))
 	return feeds, nil
 }
 

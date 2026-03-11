@@ -21,6 +21,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/usecase/archive_article_usecase"
+	"alt/utils/perf"
 	"alt/utils/url_validator"
 )
 
@@ -198,7 +199,11 @@ func (h *Handler) FetchArticlesCursor(
 	}
 
 	// Call usecase (request limit+1 to determine hasMore)
+	timer := perf.NewFeedReadTimer("FetchArticlesCursor")
+
+	stopUsecase := timer.StartPhase(ctx, "usecase")
 	articles, err := h.container.FetchArticlesCursorUsecase.Execute(ctx, cursor, limit+1)
+	stopUsecase()
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticlesCursor")
 	}
@@ -210,6 +215,7 @@ func (h *Handler) FetchArticlesCursor(
 	}
 
 	// Convert to proto
+	stopMarshal := timer.StartPhase(ctx, "marshal")
 	protoArticles := convertArticlesToProto(articles)
 
 	// Derive next cursor
@@ -220,11 +226,16 @@ func (h *Handler) FetchArticlesCursor(
 		nextCursor = &cursorStr
 	}
 
-	return connect.NewResponse(&articlesv2.FetchArticlesCursorResponse{
+	resp := connect.NewResponse(&articlesv2.FetchArticlesCursorResponse{
 		Data:       protoArticles,
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
-	}), nil
+	})
+	stopMarshal()
+
+	timer.SetRowCount(len(articles))
+	timer.Log(ctx)
+	return resp, nil
 }
 
 // convertArticlesToProto converts domain articles to proto format.
