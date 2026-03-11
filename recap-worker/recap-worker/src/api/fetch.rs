@@ -323,7 +323,7 @@ pub(crate) async fn get_indexable_genres(
 
     match crate::store::dao::output::RecapDao::fetch_indexable_genres(pool, since, limit).await {
         Ok(hits) => {
-            let has_more = hits.len() == limit as usize;
+            let has_more = hits.len() == usize::try_from(limit).unwrap_or(0);
             let results: Vec<RecapSearchHitResponse> = hits
                 .into_iter()
                 .map(|hit| {

@@ -371,7 +371,7 @@ impl RecapDao {
 
         // Sort by date descending and apply limit
         hits.sort_by(|a, b| b.executed_at.cmp(&a.executed_at));
-        hits.truncate(limit as usize);
+        hits.truncate(usize::try_from(limit).unwrap_or(0));
 
         Ok(hits)
     }
