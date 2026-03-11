@@ -12,6 +12,7 @@ import {
 	type ListRSSFeedLinksResponse,
 	type DeleteRSSFeedLinkResponse,
 	type RegisterFavoriteFeedResponse,
+	type RemoveFavoriteFeedResponse,
 	type RSSFeedLink as ProtoRSSFeedLink,
 } from "$lib/gen/alt/rss/v2/rss_pb";
 
@@ -59,6 +60,13 @@ export interface DeleteRSSFeedLinkResult {
  * Register favorite feed response
  */
 export interface RegisterFavoriteFeedResult {
+	message: string;
+}
+
+/**
+ * Remove favorite feed response
+ */
+export interface RemoveFavoriteFeedResult {
 	message: string;
 }
 
@@ -160,6 +168,27 @@ export async function registerFavoriteFeed(
 	const response = (await client.registerFavoriteFeed({
 		url,
 	})) as RegisterFavoriteFeedResponse;
+
+	return {
+		message: response.message,
+	};
+}
+
+/**
+ * Removes a feed from favorites via Connect-RPC.
+ *
+ * @param transport - The Connect transport to use
+ * @param url - The feed URL to remove from favorites
+ * @returns The removal result message
+ */
+export async function removeFavoriteFeed(
+	transport: Transport,
+	url: string,
+): Promise<RemoveFavoriteFeedResult> {
+	const client = createRSSClient(transport);
+	const response = (await client.removeFavoriteFeed({
+		url,
+	})) as RemoveFavoriteFeedResponse;
 
 	return {
 		message: response.message,

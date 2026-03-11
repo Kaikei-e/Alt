@@ -14,6 +14,7 @@ export {
 	getFeedContentOnTheFlyClient,
 	type MessageResponse,
 	registerFavoriteFeedClient,
+	removeFavoriteFeedClient,
 	type SummarizeArticleResponse,
 	summarizeArticleClient,
 } from "./articles";

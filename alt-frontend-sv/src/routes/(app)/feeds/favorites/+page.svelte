@@ -9,11 +9,11 @@ import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
 
 // Mobile components
-import FeedCard from "$lib/components/mobile/FeedCard.svelte";
+import FavoriteCard from "$lib/components/mobile/FavoriteCard.svelte";
 
 // API
 import { getFavoriteFeedsWithCursorClient } from "$lib/api/client/feeds";
-import { updateFeedReadStatusClient } from "$lib/api/client/feeds";
+import { removeFavoriteFeedClient } from "$lib/api/client";
 import { infiniteScroll } from "$lib/actions/infinite-scroll";
 
 import type { RenderFeed } from "$lib/schema/feed";
@@ -74,7 +74,6 @@ let mobileIsFetchingNext = $state(false);
 let mobileError = $state<Error | null>(null);
 let mobileNextCursor = $state<string | undefined>(undefined);
 let mobileHasMore = $state(true);
-let mobileReadUrls = $state<Set<string>>(new Set());
 
 async function loadMobileFeeds(cursor?: string) {
 	try {
@@ -101,11 +100,13 @@ async function loadMoreMobile() {
 	}
 }
 
-function handleSetIsReadStatus(feedLink: string) {
-	mobileReadUrls = new Set(mobileReadUrls).add(feedLink);
-	updateFeedReadStatusClient(feedLink).catch((err) => {
-		console.error("Failed to mark feed as read:", err);
-	});
+async function handleRemoveFavorite(feedUrl: string) {
+	try {
+		await removeFavoriteFeedClient(feedUrl);
+		mobileFeeds = mobileFeeds.filter((f) => f.normalizedUrl !== feedUrl);
+	} catch (err) {
+		console.error("Failed to remove favorite:", err);
+	}
 }
 
 import { onMount } from "svelte";
@@ -173,10 +174,9 @@ onMount(async () => {
 		{:else}
 			<div class="flex flex-col items-center gap-4 px-4 pb-8">
 				{#each mobileFeeds as feed (feed.id)}
-					<FeedCard
+					<FavoriteCard
 						{feed}
-						isReadStatus={mobileReadUrls.has(feed.normalizedUrl)}
-						setIsReadStatus={handleSetIsReadStatus}
+						onRemove={handleRemoveFavorite}
 					/>
 				{/each}
 			</div>

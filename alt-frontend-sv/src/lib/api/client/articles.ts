@@ -335,3 +335,19 @@ export async function registerFavoriteFeedClient(
 		message: response.message,
 	};
 }
+
+/**
+ * Remove favorite feed (クライアントサイド)
+ * Connect-RPC を使用
+ */
+export async function removeFavoriteFeedClient(
+	url: string,
+): Promise<MessageResponse> {
+	const transport = createClientTransport();
+	const { removeFavoriteFeed } = await import("$lib/connect/rss");
+	const response = await removeFavoriteFeed(transport, url);
+
+	return {
+		message: response.message,
+	};
+}
