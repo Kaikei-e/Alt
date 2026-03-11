@@ -128,3 +128,43 @@ func TestComputeLayout_Deterministic(t *testing.T) {
 		}
 	}
 }
+
+func makeTestItems(n int) []*domain.TagCloudItem {
+	items := make([]*domain.TagCloudItem, n)
+	for i := range items {
+		items[i] = &domain.TagCloudItem{
+			TagName:      "tag" + string(rune('A'+i%26)) + string(rune('0'+i/26)),
+			ArticleCount: i + 1,
+		}
+	}
+	return items
+}
+
+func makeTestEdges(n int) []*domain.TagCooccurrence {
+	edges := make([]*domain.TagCooccurrence, 0, n/2)
+	items := makeTestItems(n)
+	for i := 0; i < n-1; i += 2 {
+		edges = append(edges, &domain.TagCooccurrence{
+			TagNameA:    items[i].TagName,
+			TagNameB:    items[i+1].TagName,
+			SharedCount: 5,
+		})
+	}
+	return edges
+}
+
+func BenchmarkComputeLayout_200Nodes(b *testing.B) {
+	for b.Loop() {
+		items := makeTestItems(200)
+		edges := makeTestEdges(200)
+		ComputeLayout(items, edges)
+	}
+}
+
+func BenchmarkComputeLayout_500Nodes(b *testing.B) {
+	for b.Loop() {
+		items := makeTestItems(500)
+		edges := makeTestEdges(500)
+		ComputeLayout(items, edges)
+	}
+}

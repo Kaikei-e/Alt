@@ -5,7 +5,9 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // mockFetchTagCloudPort implements fetch_tag_cloud_port.FetchTagCloudPort for testing.
@@ -14,10 +16,21 @@ type mockFetchTagCloudPort struct {
 	err           error
 	cooccurrences []*domain.TagCooccurrence
 	cooccErr      error
+	callCount     atomic.Int32
 }
 
 func (m *mockFetchTagCloudPort) FetchTagCloud(_ context.Context, _ int) ([]*domain.TagCloudItem, error) {
-	return m.items, m.err
+	m.callCount.Add(1)
+	// Return deep copies to simulate real DB behavior
+	if m.items == nil {
+		return nil, m.err
+	}
+	copies := make([]*domain.TagCloudItem, len(m.items))
+	for i, item := range m.items {
+		cp := *item
+		copies[i] = &cp
+	}
+	return copies, m.err
 }
 
 func (m *mockFetchTagCloudPort) FetchTagCooccurrences(_ context.Context, _ []string) ([]*domain.TagCooccurrence, error) {
@@ -87,7 +100,7 @@ func TestFetchTagCloudUsecase_Execute(t *testing.T) {
 				err:   tt.mockErr,
 			}
 
-			usecase := NewFetchTagCloudUsecase(port)
+			usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
 			got, err := usecase.Execute(ctx, tt.limit)
 
 			if (err != nil) != tt.wantErr {
@@ -100,4 +113,97 @@ func TestFetchTagCloudUsecase_Execute(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFetchTagCloudUsecase_Cache(t *testing.T) {
+	logger.InitLogger()
+	ctx := context.Background()
+
+	t.Run("second call uses cache", func(t *testing.T) {
+		port := &mockFetchTagCloudPort{
+			items: []*domain.TagCloudItem{
+				{TagName: "AI", ArticleCount: 100},
+				{TagName: "Go", ArticleCount: 50},
+			},
+		}
+
+		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+
+		// First call: fetches from port
+		got1, err := usecase.Execute(ctx, 300)
+		if err != nil {
+			t.Fatalf("first call: %v", err)
+		}
+		if len(got1) != 2 {
+			t.Fatalf("first call: want 2 items, got %d", len(got1))
+		}
+		if port.callCount.Load() != 1 {
+			t.Errorf("first call: want 1 port call, got %d", port.callCount.Load())
+		}
+
+		// Second call: should use cache (same limit)
+		got2, err := usecase.Execute(ctx, 300)
+		if err != nil {
+			t.Fatalf("second call: %v", err)
+		}
+		if len(got2) != 2 {
+			t.Fatalf("second call: want 2 items, got %d", len(got2))
+		}
+		if port.callCount.Load() != 1 {
+			t.Errorf("second call: port should not be called again, got %d calls", port.callCount.Load())
+		}
+	})
+
+	t.Run("cache returns deep copy", func(t *testing.T) {
+		port := &mockFetchTagCloudPort{
+			items: []*domain.TagCloudItem{
+				{TagName: "AI", ArticleCount: 100},
+			},
+		}
+
+		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+
+		got1, _ := usecase.Execute(ctx, 300)
+		got1[0].ArticleCount = 999 // Mutate returned copy
+
+		got2, _ := usecase.Execute(ctx, 300)
+		if got2[0].ArticleCount == 999 {
+			t.Error("cache should return deep copy, mutation leaked through")
+		}
+	})
+
+	t.Run("different limit bypasses cache", func(t *testing.T) {
+		port := &mockFetchTagCloudPort{
+			items: []*domain.TagCloudItem{
+				{TagName: "AI", ArticleCount: 100},
+			},
+		}
+
+		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+
+		usecase.Execute(ctx, 300)
+		usecase.Execute(ctx, 100) // Different limit
+
+		if port.callCount.Load() != 2 {
+			t.Errorf("different limit should bypass cache, got %d port calls", port.callCount.Load())
+		}
+	})
+
+	t.Run("expired cache refetches", func(t *testing.T) {
+		port := &mockFetchTagCloudPort{
+			items: []*domain.TagCloudItem{
+				{TagName: "AI", ArticleCount: 100},
+			},
+		}
+
+		usecase := NewFetchTagCloudUsecase(port, 1*time.Millisecond)
+
+		usecase.Execute(ctx, 300)
+		time.Sleep(5 * time.Millisecond) // Wait for cache expiry
+		usecase.Execute(ctx, 300)
+
+		if port.callCount.Load() != 2 {
+			t.Errorf("expired cache should refetch, got %d port calls", port.callCount.Load())
+		}
+	})
 }

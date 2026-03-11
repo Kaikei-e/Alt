@@ -85,26 +85,14 @@ func ComputeLayout(items []*domain.TagCloudItem, edges []*domain.TagCooccurrence
 			nodes[i].vz = 0
 		}
 
-		// Repulsion between all pairs (Coulomb-like)
-		for i := 0; i < n; i++ {
-			for j := i + 1; j < n; j++ {
-				dx := nodes[i].x - nodes[j].x
-				dy := nodes[i].y - nodes[j].y
-				dz := nodes[i].z - nodes[j].z
-				dist := math.Sqrt(dx*dx + dy*dy + dz*dz)
-				if dist < minDistance {
-					dist = minDistance
-				}
-				force := repulsionConstant / (dist * dist)
-				fx := force * dx / dist
-				fy := force * dy / dist
-				fz := force * dz / dist
+		// Repulsion via Barnes-Hut approximation O(n log n)
+		tree := buildOctree(nodes)
+		if tree != nil {
+			for i := range nodes {
+				fx, fy, fz := tree.computeForce(i, nodes[i].x, nodes[i].y, nodes[i].z, barnesHutTheta)
 				nodes[i].vx += fx
 				nodes[i].vy += fy
 				nodes[i].vz += fz
-				nodes[j].vx -= fx
-				nodes[j].vy -= fy
-				nodes[j].vz -= fz
 			}
 		}
 

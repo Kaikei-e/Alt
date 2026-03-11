@@ -385,7 +385,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// Tag cloud components (for Tag Verse feature)
 	fetchTagCloudGatewayImpl := fetch_tag_cloud_gateway.NewFetchTagCloudGateway(altDBRepository)
-	fetchTagCloudUsecase := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(fetchTagCloudGatewayImpl)
+	fetchTagCloudUsecase := fetch_tag_cloud_usecase.NewFetchTagCloudUsecase(fetchTagCloudGatewayImpl, 30*time.Minute)
 
 	// Article tags components (for Tag Trail feature)
 	// Use gateway with mq-hub client to enable on-the-fly tag generation (ADR-168)

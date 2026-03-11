@@ -14,16 +14,20 @@ func (r *AltDBRepository) FetchTagCooccurrences(ctx context.Context, tagNames []
 		return nil, nil
 	}
 
+	// CTE-based query: filter feed_tags first to reduce self-join scope.
+	// This avoids scanning the full article_tags table when the target tag set is small.
 	query := `
-		SELECT ft1.tag_name AS tag_a, ft2.tag_name AS tag_b,
+		WITH target_tags AS (
+			SELECT id, tag_name FROM feed_tags WHERE tag_name = ANY($1)
+		)
+		SELECT tt1.tag_name AS tag_a, tt2.tag_name AS tag_b,
 		       COUNT(DISTINCT at1.article_id) AS shared_count
 		FROM article_tags at1
+		INNER JOIN target_tags tt1 ON at1.feed_tag_id = tt1.id
 		INNER JOIN article_tags at2
 		  ON at1.article_id = at2.article_id AND at1.feed_tag_id < at2.feed_tag_id
-		INNER JOIN feed_tags ft1 ON at1.feed_tag_id = ft1.id
-		INNER JOIN feed_tags ft2 ON at2.feed_tag_id = ft2.id
-		WHERE ft1.tag_name = ANY($1) AND ft2.tag_name = ANY($1)
-		GROUP BY ft1.tag_name, ft2.tag_name
+		INNER JOIN target_tags tt2 ON at2.feed_tag_id = tt2.id
+		GROUP BY tt1.tag_name, tt2.tag_name
 		HAVING COUNT(DISTINCT at1.article_id) >= 2
 		ORDER BY shared_count DESC
 		LIMIT 2000

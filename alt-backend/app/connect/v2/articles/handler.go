@@ -547,7 +547,7 @@ func (h *Handler) FetchTagCloud(
 
 	limit := int(req.Msg.Limit)
 	if limit <= 0 {
-		limit = 200
+		limit = 300
 	}
 	if limit > 500 {
 		limit = 500
