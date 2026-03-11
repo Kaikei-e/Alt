@@ -458,3 +458,4 @@ curl http://localhost:9500/health              # mq-hub
 - alt-backend は alt-db の唯一のデータオーナー。search-indexer, tag-generator, pre-processor は Connect-RPC Internal API (:9101) 経由でデータアクセス (ADR-000241)
 - GPU 要件: news-creator, recap-subworker (NVIDIA GPU); tts-speaker, knowledge-augur (AMD ROCm iGPU, CPU fallback 可)
 - ログ集約は rask-log-forwarder → rask-log-aggregator → ClickHouse
+- Tag Verse (3D タグクラウド): alt-backend `FetchTagCloud` RPC → Barnes-Hut O(n log n) サーバーサイドレイアウト → alt-frontend-sv (Three.js/Threlte v8 WebGPU); タグ共起データは PostgreSQL `feed_tags` × `article_tags` から CTE クエリで取得、30 分 TTL キャッシュ

@@ -87,6 +87,7 @@ The app uses SvelteKit file-system routing under the `/sv` base path. The `(app)
 | `/feeds/swipe` | Swipe-based feed reader | `(app)` |
 | `/feeds/swipe/visual-preview` | Visual preview for swipe cards | `(app)` |
 | `/feeds/tag-trail` | Tag-based feed browsing | `(app)` |
+| `/feeds/tag-verse` | 3D tag cloud visualization (Tag Verse) | `(app)` |
 | `/settings/feeds` | RSS feed management (add/remove/subscribe) | `(app)` |
 | `/augur` | AI chat interface (Ask Augur) | `(app)` |
 | `/recap` | 3-day / 7-day recap viewer | `(app)` |
@@ -148,7 +149,7 @@ Located in `src/lib/connect/`:
 | Module | Description |
 |--------|-------------|
 | `feeds.ts` | Feed stats, unread/read/favorite feeds, search, streaming, mark-as-read |
-| `articles.ts` | Article operations (fetch, update, favorite) |
+| `articles.ts` | Article operations (fetch, update, favorite, fetchTagCloud) |
 | `recap.ts` | 7-day recap generation and retrieval |
 | `augur.ts` | AI chat streaming interface |
 | `rss.ts` | RSS feed management (add, remove, import OPML) |
@@ -176,6 +177,7 @@ The feature flag system (`src/lib/features/flags.ts`) enables gradual migration 
 - `recap/`: Recap display components
 - `settings/`: User settings
 - `stats/`: Statistics visualizations
+- `tag-verse/`: Tag Verse 3D visualization (Three.js/Threlte v8, WebGPU with WebGL fallback, HUD panel)
 
 ### Mobile Components (`src/lib/components/mobile/`)
 - `feeds/`: Mobile feed reader with swipe

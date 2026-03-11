@@ -75,7 +75,15 @@ Connect-RPC provides a modern, type-safe RPC layer for service-to-service commun
 ### ArticleService
 - **Handler**: `connect/v2/articles/handler.go`
 - **Proto**: `gen/proto/alt/articles/v2`
-- Operations: `ListArticles`, `GetArticle`, `SearchArticles`, `MarkAsRead`, `MarkAsUnread`
+- Operations: `ListArticles`, `GetArticle`, `SearchArticles`, `MarkAsRead`, `MarkAsUnread`, `FetchTagCloud`
+
+### Tag Cloud (Tag Verse)
+- **RPC**: `FetchTagCloud` in ArticleService — returns tag names, article counts, and pre-computed 3D positions
+- **Parameters**: `limit` (default 300, max 500)
+- **Usecase**: `usecase/fetch_tag_cloud_usecase/usecase.go` — fetches tags + co-occurrences, computes 3D layout, caches results
+- **Layout**: `usecase/fetch_tag_cloud_usecase/layout.go` — force-directed graph with Barnes-Hut O(n log n) optimization (`layout_octree.go`), 300 iterations, deterministic seed (42)
+- **Cache**: In-memory TTL cache (30 min) with `sync.RWMutex`; returns deep copy for mutation safety
+- **Driver**: `driver/alt_db/fetch_tag_cloud_driver.go` — CTE-based co-occurrence query with covering index on `article_tags(feed_tag_id, article_id)`
 
 ### RSSService
 - **Handler**: `connect/v2/rss/handler.go`

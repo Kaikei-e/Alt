@@ -18,7 +18,7 @@ _Last reviewed on March 4, 2026._
 
 > A Compose-first knowledge platform that ingests RSS content, enriches it with AI (LLM summaries, tag extraction, RAG-powered Q&A), and serves curated insights through Go, Python, Rust, and TypeScript services.
 
-**Key Capabilities:** RSS Ingestion • AI Enrichment • Full-Text Search • RAG Q&A • 7-Day Recap Summaries • Evening Pulse • Japanese TTS • TDD-First Development
+**Key Capabilities:** RSS Ingestion • AI Enrichment • Full-Text Search • RAG Q&A • 7-Day Recap Summaries • Evening Pulse • 3D Tag Verse • Japanese TTS • TDD-First Development
 
 ---
 
@@ -511,7 +511,7 @@ Alt runs REST (port 9000) and Connect-RPC (port 9101) in parallel, enabling grad
 
 | Service | Methods | Streaming | Description |
 |---------|---------|-----------|-------------|
-| ArticleService | 5 | No | ListArticles, GetArticle, SearchArticles, MarkAsRead, MarkAsUnread |
+| ArticleService | 6 | No | ListArticles, GetArticle, SearchArticles, MarkAsRead, MarkAsUnread, FetchTagCloud |
 | FeedService | 7 | Yes | ListFeeds, GetFeed, CreateFeed, UpdateFeed, DeleteFeed, SubscribeFeed, UnsubscribeFeed |
 | RSSService | 2 | No | ValidateRSS, PreviewFeed |
 | RecapService | 2 | No | GetWeeklyRecap, GetRecapArticles |
@@ -810,6 +810,51 @@ Each service maintains a `CLAUDE.md` for workflow guidelines and a `docs/<servic
 | dashboard | Python 3.12+ | — | Streamlit platform monitoring |
 | metrics | Python 3.13+ | [metrics/CLAUDE.md](metrics/CLAUDE.md) | System health analyzer CLI (ClickHouse) |
 | recap-evaluator | Python 3.13+ | — | Recap quality evaluation (ROUGE, BERTScore) |
+
+---
+
+## Tag Verse
+
+Tag Verse is an interactive 3D tag cloud that lets users explore tags in a three-dimensional space. Each tag appears as a "planet" sized by article count and colored on a 5-level discrete scale. Tags that co-occur frequently in articles are positioned closer together via server-side force-directed layout.
+
+**Key Features:**
+- Server-side Barnes-Hut O(n log n) force-directed layout with deterministic seed
+- In-memory TTL cache (30 min) for computed layouts
+- WebGPU renderer with WebGL fallback (Three.js + Threlte v8)
+- HUD panel for browsing articles and Recap summaries by selected tag
+- 5-level discrete color scale (deep blue → teal → cyan → amber → orange-red)
+
+**Performance:**
+
+| Metric | Value |
+|--------|-------|
+| Default limit | 300 tags |
+| Max limit | 500 tags |
+| Cache TTL | 30 minutes |
+| Layout algorithm | Barnes-Hut O(n log n), 300 iterations |
+| 200 nodes layout | ~36 ms |
+| 500 nodes layout | ~336 ms |
+
+**Data Flow:**
+
+```mermaid
+flowchart LR
+    classDef be fill:#e8eaf6,stroke:#3f51b5,color:#1a237e
+    classDef fe fill:#e3f2fd,stroke:#1976d2,color:#0d47a1
+    classDef data fill:#fff8e1,stroke:#ffa000,color:#ff6f00
+
+    DB[(PostgreSQL<br/>feed_tags ×<br/>article_tags)]:::data
+    Backend["alt-backend :9101<br/>FetchTagCloud RPC<br/>Barnes-Hut layout"]:::be
+    Frontend["alt-frontend-sv :4173<br/>Three.js / Threlte v8<br/>WebGPU + HUD"]:::fe
+
+    DB -->|tag counts +<br/>co-occurrences| Backend
+    Backend -->|"TagCloudItem[]\nname, count, x, y, z"| Frontend
+```
+
+**Route:** `/sv/feeds/tag-verse`
+**Proto:** `proto/alt/articles/v2/articles.proto` — `FetchTagCloudRequest` / `FetchTagCloudResponse`
+**Backend:** `alt-backend/app/usecase/fetch_tag_cloud_usecase/` (layout + octree + cache)
+**Frontend:** `alt-frontend-sv/src/lib/components/desktop/tag-verse/` (scene, asteroids, HUD)
 
 ---
 
