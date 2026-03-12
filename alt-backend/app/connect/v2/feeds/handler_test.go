@@ -213,10 +213,11 @@ func TestStreamFeedStats_HeartbeatConstruction(t *testing.T) {
 
 func createSampleFeeds() []*domain.FeedItem {
 	now := time.Now()
+	// Descriptions are pre-sanitized at the gateway layer, so test data uses plain text.
 	return []*domain.FeedItem{
 		{
 			Title:           "Test Feed 1",
-			Description:     "<p>Test Description 1</p>",
+			Description:     "Test Description 1",
 			Link:            "https://example.com/feed1",
 			Published:       now.Format(time.RFC3339),
 			PublishedParsed: now,
@@ -224,7 +225,7 @@ func createSampleFeeds() []*domain.FeedItem {
 		},
 		{
 			Title:           "Test Feed 2",
-			Description:     "<p>Test Description 2</p>",
+			Description:     "Test Description 2",
 			Link:            "https://example.com/feed2",
 			Published:       now.Add(-time.Hour).Format(time.RFC3339),
 			PublishedParsed: now.Add(-time.Hour),
@@ -310,41 +311,7 @@ func TestDeriveNextCursor_EmptyFeeds(t *testing.T) {
 	assert.Nil(t, cursor)
 }
 
-func TestSanitizeDescription(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "removes HTML tags",
-			input:    "<p>Hello <strong>World</strong></p>",
-			expected: "Hello World",
-		},
-		{
-			name:     "handles empty string",
-			input:    "",
-			expected: "",
-		},
-		{
-			name:     "collapses whitespace",
-			input:    "Hello    World",
-			expected: "Hello World",
-		},
-		{
-			name:     "removes script tags",
-			input:    "<script>alert('xss')</script>Hello",
-			expected: "Hello",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := sanitizeDescription(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
+// sanitizeDescription tests moved to utils/sanitize/sanitize_test.go
 
 func TestFormatTimeAgo(t *testing.T) {
 	now := time.Now()

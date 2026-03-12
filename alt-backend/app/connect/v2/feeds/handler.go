@@ -29,6 +29,8 @@ import (
 	"alt/utils/perf"
 	"alt/utils/security"
 	"alt/utils/url_validator"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // Handler implements the FeedService Connect-RPC service.
@@ -294,7 +296,7 @@ func (h *Handler) GetUnreadFeeds(
 	timer := perf.NewFeedReadTimer("GetUnreadFeeds")
 
 	stopUsecase := timer.StartPhase(ctx, "usecase")
-	feeds, hasMore, err := h.container.FetchUnreadFeedsListCursorUsecase.Execute(ctx, cursor, limit, excludeFeedLinkID)
+	feeds, hasMore, err := h.container.CachedFeedListUsecase.FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkID)
 	stopUsecase()
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetUnreadFeeds")
@@ -303,14 +305,16 @@ func (h *Handler) GetUnreadFeeds(
 	h.enrichWithProxyURLs(feeds)
 
 	stopMarshal := timer.StartPhase(ctx, "marshal")
-	resp := connect.NewResponse(&feedsv2.GetUnreadFeedsResponse{
+	respMsg := &feedsv2.GetUnreadFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
 		NextCursor: deriveNextCursor(feeds, hasMore),
 		HasMore:    hasMore,
-	})
+	}
+	resp := connect.NewResponse(respMsg)
 	stopMarshal()
 
 	timer.SetRowCount(len(feeds))
+	timer.SetPayloadBytes(int64(proto.Size(respMsg)))
 	timer.Log(ctx)
 	return resp, nil
 }
@@ -360,7 +364,7 @@ func (h *Handler) GetAllFeeds(
 	timer := perf.NewFeedReadTimer("GetAllFeeds")
 
 	stopUsecase := timer.StartPhase(ctx, "usecase")
-	feeds, err := h.container.FetchFeedsListCursorUsecase.Execute(ctx, cursor, limit, excludeFeedLinkID)
+	feeds, err := h.container.CachedFeedListUsecase.FetchAllFeedsListCursor(ctx, cursor, limit, excludeFeedLinkID)
 	stopUsecase()
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetAllFeeds")
@@ -372,14 +376,16 @@ func (h *Handler) GetAllFeeds(
 	h.enrichWithProxyURLs(feeds)
 
 	stopMarshal := timer.StartPhase(ctx, "marshal")
-	resp := connect.NewResponse(&feedsv2.GetAllFeedsResponse{
+	respMsg := &feedsv2.GetAllFeedsResponse{
 		Data:       convertFeedsToProto(feeds),
 		NextCursor: deriveNextCursor(feeds, hasMore),
 		HasMore:    hasMore,
-	})
+	}
+	resp := connect.NewResponse(respMsg)
 	stopMarshal()
 
 	timer.SetRowCount(len(feeds))
+	timer.SetPayloadBytes(int64(proto.Size(respMsg)))
 	timer.Log(ctx)
 	return resp, nil
 }

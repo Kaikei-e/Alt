@@ -3,13 +3,10 @@ package feeds
 
 import (
 	"fmt"
-	"html"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/microcosm-cc/bluemonday"
 
 	"alt/domain"
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
@@ -28,7 +25,7 @@ func convertFeedsToProto(feeds []*domain.FeedItem) []*feedsv2.FeedItem {
 		item := &feedsv2.FeedItem{
 			Id:              id,
 			Title:           feed.Title,
-			Description:     sanitizeDescription(feed.Description),
+			Description:     feed.Description,
 			Link:            feed.Link,
 			Published:       formatTimeAgo(feed.PublishedParsed),
 			CreatedAt:       feed.PublishedParsed.Format(time.RFC3339),
@@ -72,30 +69,6 @@ func deriveNextCursor(feeds []*domain.FeedItem, hasMore bool) *string {
 
 	cursor := parsed.Format(time.RFC3339)
 	return &cursor
-}
-
-// spaceCollapseRe pre-compiles the whitespace collapsing regex.
-var spaceCollapseRe = regexp.MustCompile(`\s+`)
-
-// sanitizeDescription removes HTML tags, decodes HTML entities, and returns plain text.
-func sanitizeDescription(rawHTML string) string {
-	if rawHTML == "" {
-		return ""
-	}
-
-	p := bluemonday.StrictPolicy()
-	text := p.Sanitize(rawHTML)
-
-	// Decode HTML entities (e.g. &#39; -> ', &amp; -> &)
-	text = html.UnescapeString(text)
-
-	// Trimming whitespace
-	text = strings.TrimSpace(text)
-
-	// Collapse multiple spaces
-	text = spaceCollapseRe.ReplaceAllString(text, " ")
-
-	return text
 }
 
 // formatTimeAgo formats the time as a relative string (e.g., "2 hours ago").

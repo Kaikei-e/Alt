@@ -23,6 +23,8 @@ import (
 	"alt/usecase/archive_article_usecase"
 	"alt/utils/perf"
 	"alt/utils/url_validator"
+
+	"google.golang.org/protobuf/proto"
 )
 
 // Handler implements the ArticleService Connect-RPC service.
@@ -214,6 +216,12 @@ func (h *Handler) FetchArticlesCursor(
 		articles = articles[:limit]
 	}
 
+	// Count tags across all articles
+	tagCount := 0
+	for _, a := range articles {
+		tagCount += len(a.Tags)
+	}
+
 	// Convert to proto
 	stopMarshal := timer.StartPhase(ctx, "marshal")
 	protoArticles := convertArticlesToProto(articles)
@@ -226,14 +234,17 @@ func (h *Handler) FetchArticlesCursor(
 		nextCursor = &cursorStr
 	}
 
-	resp := connect.NewResponse(&articlesv2.FetchArticlesCursorResponse{
+	respMsg := &articlesv2.FetchArticlesCursorResponse{
 		Data:       protoArticles,
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
-	})
+	}
+	resp := connect.NewResponse(respMsg)
 	stopMarshal()
 
 	timer.SetRowCount(len(articles))
+	timer.SetPayloadBytes(int64(proto.Size(respMsg)))
+	timer.SetTagCount(tagCount)
 	timer.Log(ctx)
 	return resp, nil
 }
