@@ -15,6 +15,7 @@ var CommandHints = map[string][]string{
 	"config":          {"list", "up"},
 	"logs":            {"status"},
 	"restart":         {"status", "logs <service>"},
+	"init":            {"up", "status", "list"},
 	"deploy":          {"status", "logs <service>", "down"},
 	"migrate backup":  {"migrate verify", "migrate list", "migrate status"},
 	"migrate restore": {"migrate verify", "status"},
