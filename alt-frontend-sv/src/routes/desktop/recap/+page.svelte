@@ -166,7 +166,7 @@ function formatArticleCount(count: number): string {
 		</div>
 
 		<!-- Detail view (right columns, 2/3 width) -->
-		<div class="col-span-2">
+		<div class="col-span-2 h-full overflow-y-auto">
 			<RecapDetail genre={selectedGenre} />
 		</div>
 	</div>

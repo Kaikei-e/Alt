@@ -200,7 +200,7 @@ onMount(() => {
 			<div class="col-span-1 h-full overflow-y-auto">
 				<RecapGenreList {genres} {selectedGenre} onSelectGenre={handleSelectGenre} />
 			</div>
-			<div class="col-span-2">
+			<div class="col-span-2 h-full overflow-y-auto">
 				<RecapDetail genre={selectedGenre} />
 			</div>
 		</div>
