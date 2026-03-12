@@ -166,6 +166,21 @@ func TestFeedRegistrationValidator_Validate(t *testing.T) {
 	}
 }
 
+func TestFeedRegistrationValidator_Validate_AllowsConfiguredFeedHosts(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "mock-rss-001,mock-rss-002")
+
+	validator := &FeedRegistrationValidator{}
+	ctx := context.Background()
+
+	result := validator.Validate(ctx, map[string]interface{}{
+		"url": "http://mock-rss-001/feed.xml",
+	})
+
+	if !result.Valid {
+		t.Fatalf("expected configured feed host to be allowed, got errors: %+v", result.Errors)
+	}
+}
+
 func TestFeedDetailValidator_Validate(t *testing.T) {
 	validator := &FeedDetailValidator{}
 	ctx := context.Background()

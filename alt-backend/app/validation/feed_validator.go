@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"alt/utils/security"
 	"context"
 	"net"
 	"net/url"
@@ -69,6 +70,10 @@ func (v *FeedRegistrationValidator) Validate(ctx context.Context, value interfac
 
 	// Check for localhost
 	hostname := strings.ToLower(parsedURL.Hostname())
+	if security.IsFeedHostAllowed(hostname) {
+		return result
+	}
+
 	if hostname == "localhost" || hostname == "127.0.0.1" || strings.HasPrefix(hostname, "127.") {
 		result.Valid = false
 		result.Errors = append(result.Errors, ValidationError{
