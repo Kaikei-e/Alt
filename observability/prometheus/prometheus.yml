@@ -69,3 +69,12 @@ scrape_configs:
           service: 'recap-subworker'
     scrape_interval: 15s
     metrics_path: /metrics
+
+  # alt-backend feed read performance metrics (Go/OTel Prometheus exporter)
+  - job_name: 'alt-backend'
+    static_configs:
+      - targets: ['alt-backend:9000']
+        labels:
+          service: 'alt-backend'
+    scrape_interval: 15s
+    metrics_path: /metrics
