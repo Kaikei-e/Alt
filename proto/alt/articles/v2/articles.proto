@@ -225,6 +225,8 @@ message FetchRandomFeedResponse {
   string description = 4;
   // Tags for the feed (generated on-the-fly if not in DB, ADR-173)
   repeated ArticleTagItem tags = 5;
+  // Latest article ID for direct tag streaming (avoids FetchArticleContent roundtrip)
+  string latest_article_id = 6;
 }
 
 // =============================================================================
