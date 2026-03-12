@@ -15,6 +15,18 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+type FeedPageRow struct {
+	FeedID      uuid.UUID
+	Title       string
+	Description string
+	Link        string
+	PubDate     time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	ArticleID   *string
+	OgImageURL  *string
+}
+
 func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error) {
 	query := `
 		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT 1
@@ -152,23 +164,12 @@ func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int
 }
 
 // buildExcludeClause builds a NOT EXISTS clause that excludes feeds matching
-// the given feed_link_id, with domain-based fallback for feeds without feed_link_id.
+// the given feed_link_id.
 func buildExcludeClause(args []any, excludeFeedLinkID *uuid.UUID) (string, []any) {
 	if excludeFeedLinkID == nil {
 		return "", args
 	}
-	clause := fmt.Sprintf(`AND NOT EXISTS (
-				SELECT 1 FROM feed_links fl
-				WHERE fl.id = $%d
-				AND (
-					f.feed_link_id = fl.id
-					OR (
-						f.feed_link_id IS NULL
-						AND split_part(split_part(f.link, '://', 2), '/', 1)
-						  = split_part(split_part(fl.url, '://', 2), '/', 1)
-					)
-				)
-			)`, len(args)+1)
+	clause := fmt.Sprintf(`AND f.feed_link_id != $%d`, len(args)+1)
 	args = append(args, *excludeFeedLinkID)
 	return clause, args
 }
@@ -206,7 +207,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				AND rs.user_id = $2
 				AND rs.is_read = TRUE
 			)
-			AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
+			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2)
 			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
@@ -226,7 +227,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 				AND rs.user_id = $3
 				AND rs.is_read = TRUE
 			)
-			AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
+			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3)
 			AND f.created_at < $1
 			%s
 			ORDER BY f.created_at DESC, f.id DESC
@@ -283,7 +284,7 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 			       f.og_image_url
 			FROM feeds f
 			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $2
-			WHERE (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
+			WHERE f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2)
 			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
@@ -298,7 +299,7 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 			       f.og_image_url
 			FROM feeds f
 			LEFT JOIN read_status rs ON rs.feed_id = f.id AND rs.user_id = $3
-			WHERE (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
+			WHERE f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3)
 			AND f.created_at < $1
 			%s
 			ORDER BY f.created_at DESC, f.id DESC
@@ -350,7 +351,7 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
 			AND rs.user_id = $2
-			AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
+			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2)
 			ORDER BY rs.read_at DESC, f.id DESC
 			LIMIT $1
 		`
@@ -362,7 +363,7 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 			INNER JOIN read_status rs ON rs.feed_id = f.id
 			WHERE rs.is_read = TRUE
 			AND rs.user_id = $3
-			AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
+			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3)
 			AND rs.read_at < $1
 			ORDER BY rs.read_at DESC, f.id DESC
 			LIMIT $2
@@ -410,7 +411,7 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
                        WHERE ff.user_id = $2
-                       AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2) OR f.feed_link_id IS NULL)
+                       AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2)
                        ORDER BY ff.created_at DESC, f.id DESC
                        LIMIT $1
                `
@@ -423,7 +424,7 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
                        FROM feeds f
                        INNER JOIN favorite_feeds ff ON ff.feed_id = f.id
                        WHERE ff.user_id = $3 AND ff.created_at < $1
-                       AND (f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3) OR f.feed_link_id IS NULL)
+                       AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3)
                        ORDER BY ff.created_at DESC, f.id DESC
                        LIMIT $2
                `
@@ -449,4 +450,104 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
 	}
 
 	return feeds, nil
+}
+
+func (r *AltDBRepository) FetchFeedsByFeedLinkID(ctx context.Context, feedLinkID uuid.UUID) ([]*FeedPageRow, error) {
+	query := `
+		SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
+		       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL
+		        ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+		       f.og_image_url
+		FROM feeds f
+		WHERE f.feed_link_id = $1
+		ORDER BY f.created_at DESC, f.id DESC
+		LIMIT 200
+	`
+
+	rows, err := r.pool.Query(ctx, query, feedLinkID)
+	if err != nil {
+		return nil, fmt.Errorf("query feeds by feed_link_id: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]*FeedPageRow, 0)
+	for rows.Next() {
+		var row FeedPageRow
+		if err := rows.Scan(&row.FeedID, &row.Title, &row.Description, &row.Link, &row.PubDate, &row.CreatedAt, &row.UpdatedAt, &row.ArticleID, &row.OgImageURL); err != nil {
+			return nil, fmt.Errorf("scan feed page row: %w", err)
+		}
+		result = append(result, &row)
+	}
+	return result, rows.Err()
+}
+
+func (r *AltDBRepository) GetReadFeedIDs(ctx context.Context, userID uuid.UUID, feedIDs []uuid.UUID) (map[uuid.UUID]bool, error) {
+	query := `
+		SELECT feed_id FROM read_status
+		WHERE user_id = $1 AND feed_id = ANY($2::uuid[]) AND is_read = TRUE
+	`
+
+	feedIDStrings := make([]string, 0, len(feedIDs))
+	for _, feedID := range feedIDs {
+		feedIDStrings = append(feedIDStrings, feedID.String())
+	}
+
+	rows, err := r.pool.Query(ctx, query, userID, feedIDStrings)
+	if err != nil {
+		return nil, fmt.Errorf("query read feed ids: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[uuid.UUID]bool, len(feedIDs))
+	for rows.Next() {
+		var feedID uuid.UUID
+		if err := rows.Scan(&feedID); err != nil {
+			return nil, fmt.Errorf("scan read feed id: %w", err)
+		}
+		result[feedID] = true
+	}
+	return result, rows.Err()
+}
+
+func (r *AltDBRepository) GetAllReadFeedIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]bool, error) {
+	query := `
+		SELECT feed_id FROM read_status
+		WHERE user_id = $1 AND is_read = TRUE
+	`
+
+	rows, err := r.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query all read feed ids: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[uuid.UUID]bool)
+	for rows.Next() {
+		var feedID uuid.UUID
+		if err := rows.Scan(&feedID); err != nil {
+			return nil, fmt.Errorf("scan read feed id: %w", err)
+		}
+		result[feedID] = true
+	}
+	return result, rows.Err()
+}
+
+func (r *AltDBRepository) GetUserSubscriptions(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	query := `SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $1`
+
+	rows, err := r.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query user subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var feedLinkID uuid.UUID
+		if err := rows.Scan(&feedLinkID); err != nil {
+			return nil, fmt.Errorf("scan user subscription: %w", err)
+		}
+		result = append(result, feedLinkID)
+	}
+	return result, rows.Err()
 }

@@ -107,3 +107,59 @@ func TestAltDBRepository_FetchReadFeedsListCursor_OrdersByReadAt(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
+
+func TestAltDBRepository_GetAllReadFeedIDs_QueriesWithoutFeedIDArray(t *testing.T) {
+	var buf bytes.Buffer
+	testLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger.Logger = testLogger
+
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+	userID := uuid.New()
+	feedID1 := uuid.New()
+	feedID2 := uuid.New()
+
+	mock.ExpectQuery("SELECT feed_id FROM read_status").
+		WithArgs(userID).
+		WillReturnRows(
+			pgxmock.NewRows([]string{"feed_id"}).
+				AddRow(feedID1).
+				AddRow(feedID2),
+		)
+
+	got, err := repo.GetAllReadFeedIDs(context.Background(), userID)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.True(t, got[feedID1])
+	require.True(t, got[feedID2])
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAltDBRepository_GetReadFeedIDs_UsesUUIDArrayCast(t *testing.T) {
+	var buf bytes.Buffer
+	testLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger.Logger = testLogger
+
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+	userID := uuid.New()
+	feedID := uuid.New()
+
+	mock.ExpectQuery("SELECT feed_id FROM read_status").
+		WithArgs(userID, []string{feedID.String()}).
+		WillReturnRows(
+			pgxmock.NewRows([]string{"feed_id"}).
+				AddRow(feedID),
+		)
+
+	got, err := repo.GetReadFeedIDs(context.Background(), userID, []uuid.UUID{feedID})
+	require.NoError(t, err)
+	require.True(t, got[feedID])
+	require.NoError(t, mock.ExpectationsWereMet())
+}

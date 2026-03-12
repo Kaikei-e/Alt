@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type RSSFeed struct {
 	Title         string            `json:"title"`
@@ -57,6 +61,8 @@ type FeedItem struct {
 	PublishedParsed time.Time `json:"publishedParsed"`
 	Author          Author    `json:"author"`
 	Authors         []Author  `json:"authors"`
+	// FeedID is the UUID of the feed in the feeds table (set for cached feed entries).
+	FeedID uuid.UUID `json:"-"`
 	// ArticleID is the ID of the corresponding article in the articles table.
 	// Empty string if no article exists for this feed item.
 	ArticleID string `json:"articleId,omitempty"`

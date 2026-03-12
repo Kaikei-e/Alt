@@ -8,6 +8,8 @@ import (
 
 	"alt/domain"
 	"alt/mocks"
+
+	"github.com/google/uuid"
 )
 
 // インターフェース契約のテスト
@@ -120,7 +122,11 @@ func (m *mockFetchFeedsPort) FetchFeedsListPage(ctx context.Context, page int) (
 	return nil, nil
 }
 
-func (m *mockFetchFeedsPort) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
+func (m *mockFetchFeedsPort) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
+	return nil, nil
+}
+
+func (m *mockFetchFeedsPort) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
 	return nil, nil
 }
 

@@ -139,3 +139,48 @@ func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *t
 	logger.Logger.InfoContext(ctx, "fetched articles with cursor", "count", len(articles), "user_id", user.UserID)
 	return articles, nil
 }
+
+func (r *AltDBRepository) FetchArticleIDsWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]uuid.UUID, error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, errors.New("authentication required")
+	}
+
+	var query string
+	var args []interface{}
+	if cursor == nil {
+		query = `
+			SELECT id
+			FROM articles
+			WHERE user_id = $1 AND deleted_at IS NULL
+			ORDER BY created_at DESC, id DESC
+			LIMIT $2
+		`
+		args = []interface{}{user.UserID, limit}
+	} else {
+		query = `
+			SELECT id
+			FROM articles
+			WHERE user_id = $1 AND deleted_at IS NULL AND created_at < $2
+			ORDER BY created_at DESC, id DESC
+			LIMIT $3
+		`
+		args = []interface{}{user.UserID, cursor, limit}
+	}
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, errors.New("error fetching article ids")
+	}
+	defer rows.Close()
+
+	ids := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, errors.New("error scanning article ids")
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

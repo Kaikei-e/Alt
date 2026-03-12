@@ -6,8 +6,11 @@ import (
 	"alt/domain"
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type FetchArticlesPort interface {
 	FetchArticlesWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.Article, error)
+	FetchArticleIDsWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]uuid.UUID, error)
 }

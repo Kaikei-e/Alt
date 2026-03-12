@@ -33,6 +33,7 @@ type ServerTimeouts struct {
 // RateLimitConfig holds rate limiting configuration
 type RateLimitConfig struct {
 	ExternalAPIInterval time.Duration
+	ExternalAPIBurst    int
 	FeedFetchLimit      int
 	EnablePerHostLimit  bool
 }
