@@ -98,6 +98,88 @@ describe("ArticlePrefetcher", () => {
 		});
 	});
 
+	describe("same-host prefetch limiting", () => {
+		it("skips prefetch when another fetch for the same host is in-flight", async () => {
+			let resolveFirst: (value: any) => void;
+			const firstCallPromise = new Promise((resolve) => {
+				resolveFirst = resolve;
+			});
+
+			// Only mock the first call — the second should be skipped entirely
+			mockedGetContent.mockImplementationOnce(
+				() => firstCallPromise as Promise<any>,
+			);
+
+			const feeds = [
+				makeFeed("0", "https://example.com/active"),
+				makeFeed("1", "https://zenn.dev/article-1"),
+				makeFeed("2", "https://zenn.dev/article-2"),
+			];
+
+			// Prefetch next 2 articles (both on zenn.dev)
+			prefetcher.triggerPrefetch(feeds, 0, 2);
+
+			// Advance past both PREFETCH_DELAY windows (500ms, 1000ms)
+			// Use async to flush microtasks between timer steps
+			await vi.advanceTimersByTimeAsync(1100);
+
+			// Only 1 call should have been made (second skipped due to same host)
+			expect(mockedGetContent).toHaveBeenCalledTimes(1);
+			expect(mockedGetContent).toHaveBeenCalledWith("https://zenn.dev/article-1");
+
+			// Resolve the first call
+			resolveFirst!({
+				content: "<p>First</p>",
+				article_id: "art-1",
+				og_image_url: null,
+			});
+
+			await vi.waitFor(() => {
+				expect(
+					prefetcher.getCachedContent("https://zenn.dev/article-1"),
+				).toBe("<p>First</p>");
+			});
+		});
+
+		it("allows prefetch for different hosts concurrently", async () => {
+			mockedGetContent
+				.mockResolvedValueOnce({
+					content: "<p>Zenn</p>",
+					article_id: "art-z",
+					og_image_url: null,
+				} as any)
+				.mockResolvedValueOnce({
+					content: "<p>Example</p>",
+					article_id: "art-e",
+					og_image_url: null,
+				} as any);
+
+			const feeds = [
+				makeFeed("0", "https://active.com/page"),
+				makeFeed("1", "https://zenn.dev/article-1"),
+				makeFeed("2", "https://example.com/article-2"),
+			];
+
+			prefetcher.triggerPrefetch(feeds, 0, 2);
+
+			// Use async timer advancement to flush microtasks between timer steps
+			await vi.advanceTimersByTimeAsync(1100);
+
+			// Wait for both fetches to fully complete (cache populated)
+			await vi.waitFor(() => {
+				expect(
+					prefetcher.getCachedContent("https://zenn.dev/article-1"),
+				).toBe("<p>Zenn</p>");
+				expect(
+					prefetcher.getCachedContent("https://example.com/article-2"),
+				).toBe("<p>Example</p>");
+			});
+
+			// Both calls should have been made (different hosts)
+			expect(mockedGetContent).toHaveBeenCalledTimes(2);
+		});
+	});
+
 	describe("onArticleIdCached callback", () => {
 		it("fires when prefetchContent resolves with an article_id", async () => {
 			const callback = vi.fn();

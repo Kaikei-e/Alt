@@ -12,6 +12,7 @@ export class ArticlePrefetcher {
 	private prefetchTimeouts: ReturnType<typeof setTimeout>[] = [];
 	private dismissedArticles = new Set<string>();
 	private dismissalTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+	private activeHostFetches = new Set<string>();
 	private onContentFetched:
 		| ((feedUrl: string, content: string) => void)
 		| null = null;
@@ -59,9 +60,21 @@ export class ArticlePrefetcher {
 			return;
 		}
 
+		// Skip if another fetch for the same host is in-flight (prevent rate limit exhaustion)
+		let host: string;
+		try {
+			host = new URL(cacheKey).host;
+		} catch {
+			return;
+		}
+		if (this.activeHostFetches.has(host)) {
+			return;
+		}
+
 		try {
 			// Mark as loading
 			this.contentCache.set(cacheKey, "loading");
+			this.activeHostFetches.add(host);
 
 			// Fetch content using normalizedUrl for consistent caching
 			const response = await getFeedContentOnTheFlyClient(cacheKey);
@@ -90,6 +103,8 @@ export class ArticlePrefetcher {
 				`[ArticlePrefetcher] Failed to prefetch content: ${cacheKey}`,
 				error,
 			);
+		} finally {
+			this.activeHostFetches.delete(host);
 		}
 	}
 

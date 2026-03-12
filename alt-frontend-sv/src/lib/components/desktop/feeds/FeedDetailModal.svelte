@@ -216,8 +216,11 @@ async function handleFetchFullArticle() {
 		articleContent = response.content || null;
 		articleID = response.article_id || null;
 	} catch (err) {
-		// Ignore AbortError (user cancelled)
-		if (err instanceof Error && err.name === "AbortError") return;
+		// Ignore AbortError and ConnectError wrapping abort (user cancelled)
+		if (err instanceof Error) {
+			if (err.name === "AbortError") return;
+			if (err.message.includes("abort") || err.message.includes("cancel")) return;
+		}
 
 		// Only set error if feed hasn't changed
 		if (feed.normalizedUrl === targetFeedUrl) {
@@ -264,18 +267,27 @@ async function handleSummarize() {
 				abortController = null;
 			},
 			(error) => {
-				// onError
-				if (error.name !== "AbortError") {
-					summaryError = error.message || "Failed to generate summary";
+				// onError — ignore abort/cancel errors (user navigation)
+				if (error.name === "AbortError") {
+					isSummarizing = false;
+					abortController = null;
+					return;
 				}
+				if (error.message?.includes("abort") || error.message?.includes("cancel")) {
+					isSummarizing = false;
+					abortController = null;
+					return;
+				}
+				summaryError = error.message || "Failed to generate summary";
 				isSummarizing = false;
 				abortController = null;
 			},
 		);
 	} catch (err) {
-		if (err instanceof Error && err.name === "AbortError") {
-			// User cancelled, ignore
-			return;
+		// Ignore abort/cancel errors (user navigation)
+		if (err instanceof Error) {
+			if (err.name === "AbortError") return;
+			if (err.message.includes("abort") || err.message.includes("cancel")) return;
 		}
 		summaryError =
 			err instanceof Error ? err.message : "Failed to generate summary";
