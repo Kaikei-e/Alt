@@ -15,7 +15,16 @@ function createRenderer(canvas: HTMLCanvasElement) {
 	const renderer = new WebGPURenderer({ canvas, antialias: true });
 	// Bind dispose so Threlte's unbound `const dispose = renderer.dispose; dispose()` works.
 	// WebGPURenderer.dispose is a prototype method that needs `this`.
-	renderer.dispose = renderer.dispose.bind(renderer);
+	const boundDispose = renderer.dispose.bind(renderer);
+	// Guard against Three.js WebGPU NodeManager cleanup race condition where
+	// internal node references are cleared before material disposal completes.
+	renderer.dispose = () => {
+		try {
+			boundDispose();
+		} catch {
+			// WebGPURenderer teardown order bug — safe to ignore
+		}
+	};
 	return renderer;
 }
 </script>

@@ -1,6 +1,7 @@
 <script lang="ts">
-import { T } from "@threlte/core";
+import { T, useThrelte } from "@threlte/core";
 import { OrbitControls, interactivity } from "@threlte/extras";
+import { onDestroy } from "svelte";
 import type { TagCloudItem } from "$lib/connect";
 import TagAsteroid from "./TagAsteroid.svelte";
 import StarBackground from "./StarBackground.svelte";
@@ -14,8 +15,29 @@ interface Props {
 
 let { tags, onTagSelect }: Props = $props();
 
+const { scene } = useThrelte();
+
 // Enable pointer events on 3D objects (required by Threlte v8)
 interactivity();
+
+// Dispose all scene materials BEFORE Canvas teardown (renderer.dispose()).
+// Renderer.dispose() clears NodeManager's WeakMap, but Threlte's separate
+// cleanup later dispatches material 'dispose' events that trigger
+// NodeManager.delete on stale data → "Cannot read 'usedTimes' of undefined".
+// By disposing materials here (while NodeManager data is still valid),
+// RenderObject removes its event listeners, preventing the later crash.
+onDestroy(() => {
+	scene.traverse((obj) => {
+		if ("material" in obj && obj.material) {
+			const mat = obj.material as THREE.Material | THREE.Material[];
+			if (Array.isArray(mat)) {
+				for (const m of mat) m.dispose();
+			} else {
+				mat.dispose();
+			}
+		}
+	});
+});
 
 // Compute color and emissive intensity from article count (5-level discrete scale)
 function computeColor(

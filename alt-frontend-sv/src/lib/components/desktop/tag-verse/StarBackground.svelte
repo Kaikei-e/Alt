@@ -25,19 +25,26 @@ const geometry = new THREE.BufferGeometry();
 geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
 geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
 
+// Manage material manually so it is disposed before WebGPURenderer teardown.
+// WebGPURenderer.dispose() clears NodeManager internals before iterating
+// tracked materials, causing "Cannot read properties of undefined ('usedTimes')"
+// when PointsMaterial.dispose triggers NodeManager.delete on stale references.
+const material = new THREE.PointsMaterial({
+	color: "#ffffff",
+	size: 0.12,
+	transparent: true,
+	opacity: 0.8,
+	sizeAttenuation: true,
+	depthWrite: false,
+});
+
 onDestroy(() => {
+	material.dispose();
 	geometry.dispose();
 });
 </script>
 
 <T.Points>
 	<T is={geometry} />
-	<T.PointsMaterial
-		color="#ffffff"
-		size={0.12}
-		transparent
-		opacity={0.8}
-		sizeAttenuation
-		depthWrite={false}
-	/>
+	<T is={material} />
 </T.Points>
