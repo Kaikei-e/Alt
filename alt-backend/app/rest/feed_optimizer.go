@@ -3,11 +3,8 @@ package rest
 import (
 	"alt/domain"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
-
-	"github.com/microcosm-cc/bluemonday"
 )
 
 // OptimizeFeedsResponse transforms domain feeds into a client-optimized structure
@@ -17,7 +14,7 @@ func OptimizeFeedsResponse(feeds []*domain.FeedItem) []map[string]interface{} {
 		optimized = append(optimized, map[string]interface{}{
 			"id":          feed.Link, // Use Link as ID for consistency with frontend
 			"title":       feed.Title,
-			"description": sanitizeDescription(feed.Description),
+			"description": feed.Description,
 			"link":        feed.Link,
 			"published":   formatTimeAgo(feed.PublishedParsed),
 			"created_at":  feed.PublishedParsed.Format(time.RFC3339),
@@ -25,38 +22,6 @@ func OptimizeFeedsResponse(feeds []*domain.FeedItem) []map[string]interface{} {
 		})
 	}
 	return optimized
-}
-
-// sanitizeDescription removes HTML tags, specifically ensuring <img> tags are removed.
-// It returns plain text.
-func sanitizeDescription(html string) string {
-	if html == "" {
-		return ""
-	}
-
-	// Use bluemonday for secure sanitization
-	// UGCPolicy allows a broad selection of HTML elements that are safe for user generated content.
-	// However, we want to strip ALL tags to get plain text, or at least strip <img> tags.
-	// The user request was "remove <img> tags", but the previous regex was removing ALL tags.
-	// If we want plain text, we should use StrictPolicy().
-	// If we want to keep some formatting but remove images, we can use UGCPolicy() and disallow "img".
-
-	// Given the context of "optimizing payload" and "plain text" for the feed description in the swipe view,
-	// usually we want to strip everything or keep minimal formatting like <p>, <br>.
-	// The previous regex `<[^>]*>` stripped EVERYTHING.
-	// So StrictPolicy() is the closest equivalent but secure.
-
-	p := bluemonday.StrictPolicy()
-	text := p.Sanitize(html)
-
-	// Trimming whitespace
-	text = strings.TrimSpace(text)
-
-	// Collapse multiple spaces
-	spaceRe := regexp.MustCompile(`\s+`)
-	text = spaceRe.ReplaceAllString(text, " ")
-
-	return text
 }
 
 // formatTimeAgo formats the time as a relative string (e.g., "2 hours ago")

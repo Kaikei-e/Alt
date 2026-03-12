@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/microcosm-cc/bluemonday"
 )
 
 // HandleError converts errors to appropriate HTTP responses using enhanced error handling.
@@ -122,7 +121,7 @@ func OptimizeFeedsResponse(feeds []*domain.FeedItem) []map[string]interface{} {
 		optimized = append(optimized, map[string]interface{}{
 			"id":          feed.Link, // Use Link as ID for consistency with frontend
 			"title":       feed.Title,
-			"description": sanitizeDescription(feed.Description),
+			"description": feed.Description,
 			"link":        feed.Link,
 			"published":   formatTimeAgo(feed.PublishedParsed),
 			"created_at":  feed.PublishedParsed.Format(time.RFC3339),
@@ -130,26 +129,6 @@ func OptimizeFeedsResponse(feeds []*domain.FeedItem) []map[string]interface{} {
 		})
 	}
 	return optimized
-}
-
-// sanitizeDescription removes HTML tags, specifically ensuring <img> tags are removed.
-// It returns plain text.
-func sanitizeDescription(html string) string {
-	if html == "" {
-		return ""
-	}
-
-	p := bluemonday.StrictPolicy()
-	text := p.Sanitize(html)
-
-	// Trimming whitespace
-	text = strings.TrimSpace(text)
-
-	// Collapse multiple spaces
-	spaceRe := regexp.MustCompile(`\s+`)
-	text = spaceRe.ReplaceAllString(text, " ")
-
-	return text
 }
 
 // formatTimeAgo formats the time as a relative string (e.g., "2 hours ago")
