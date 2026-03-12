@@ -43,17 +43,20 @@ func (r *AltDBRepository) FetchRandomFeedLink(ctx context.Context) (*domain.Feed
 	return &domain.FeedLink{ID: id, URL: url}, nil
 }
 
-// FetchRandomFeed retrieves a random feed from the feeds table.
+// FetchRandomFeed retrieves a random feed that has at least one tagged article.
+// JOINs with articles and article_tags to guarantee tags exist for the feed.
 // Returns the feed with title, description, and link for Tag Trail feature.
-// Uses PostgreSQL's RANDOM() function to select a random row.
 func (r *AltDBRepository) FetchRandomFeed(ctx context.Context) (*domain.Feed, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
 
 	query := `
-		SELECT id, title, description, link
-		FROM feeds
+		SELECT f.id, f.title, f.description, f.link
+		FROM feeds f
+		INNER JOIN articles a ON a.feed_id = f.id
+		INNER JOIN article_tags at ON at.article_id = a.id
+		GROUP BY f.id, f.title, f.description, f.link
 		ORDER BY RANDOM()
 		LIMIT 1
 	`
@@ -68,7 +71,7 @@ func (r *AltDBRepository) FetchRandomFeed(ctx context.Context) (*domain.Feed, er
 	err := row.Scan(&id, &title, &description, &link)
 	if err != nil {
 		if err.Error() == "no rows in result set" {
-			logger.Logger.InfoContext(ctx, "no feeds found")
+			logger.Logger.InfoContext(ctx, "no feeds found with tagged articles")
 			return nil, nil
 		}
 		logger.SafeErrorContext(ctx, "error fetching random feed", "error", err)

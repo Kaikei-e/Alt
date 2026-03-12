@@ -404,6 +404,7 @@ func (h *Handler) FetchRandomFeed(
 
 	// Fetch tags for the feed's latest article (ADR-173)
 	var protoTags []*articlesv2.ArticleTagItem
+	var latestArticleID string
 
 	if h.container.FetchLatestArticleUsecase != nil {
 		// Get the latest article for this feed
@@ -412,13 +413,14 @@ func (h *Handler) FetchRandomFeed(
 			h.logger.WarnContext(ctx, "failed to fetch latest article for feed", "feedID", feed.ID, "error", err)
 			// Continue without tags - fail-open
 		} else if latestArticle != nil {
+			latestArticleID = latestArticle.ID
 			h.logger.InfoContext(ctx, "found latest article for feed", "feedID", feed.ID, "articleID", latestArticle.ID)
 
 			// Use FetchArticleTagsUsecase for on-the-fly generation (ADR-168)
 			tags, err := h.container.FetchArticleTagsUsecase.Execute(ctx, latestArticle.ID)
 			if err != nil {
 				h.logger.WarnContext(ctx, "failed to fetch/generate tags for article", "articleID", latestArticle.ID, "error", err)
-				// Continue without tags - fail-open
+				// Continue without tags - fail-open (frontend can use latestArticleId for streaming)
 			} else {
 				protoTags = convertTagsToProto(tags)
 				h.logger.InfoContext(ctx, "fetched tags for feed's latest article",
@@ -427,55 +429,17 @@ func (h *Handler) FetchRandomFeed(
 					"tagCount", len(protoTags))
 			}
 		} else {
-			h.logger.InfoContext(ctx, "no articles found for feed, triggering async fetch", "feedID", feed.ID)
-
-			// Capture user before goroutine (user context will be lost after response)
-			user, _ := middleware.GetUserContext(ctx)
-			if user != nil {
-				userCopy := *user
-				feedIDCopy := feed.ID
-				feedLinkCopy := feed.Link
-
-				// Async article fetch + tag generation (non-blocking)
-				go func() {
-					bgCtx := context.Background()
-					parsedURL, err := url.Parse(feedLinkCopy)
-					if err != nil {
-						h.logger.Warn("failed to parse feed link for async fetch", "feedID", feedIDCopy, "error", err)
-						return
-					}
-					if err := url_validator.IsAllowedURL(parsedURL); err != nil {
-						h.logger.Warn("feed link not allowed for async fetch", "feedID", feedIDCopy, "error", err)
-						return
-					}
-					if h.container.ArticleUsecase == nil {
-						return
-					}
-					_, newArticleID, _, fetchErr := h.container.ArticleUsecase.FetchCompliantArticle(bgCtx, parsedURL, userCopy)
-					if fetchErr != nil {
-						h.logger.Warn("async article fetch failed", "feedID", feedIDCopy, "error", fetchErr)
-						return
-					}
-					h.logger.Info("async article fetch succeeded", "feedID", feedIDCopy, "articleID", newArticleID)
-					if newArticleID != "" {
-						_, tagErr := h.container.FetchArticleTagsUsecase.Execute(bgCtx, newArticleID)
-						if tagErr != nil {
-							h.logger.Warn("async tag fetch failed", "feedID", feedIDCopy, "articleID", newArticleID, "error", tagErr)
-						} else {
-							h.logger.Info("async tag fetch succeeded", "feedID", feedIDCopy, "articleID", newArticleID)
-						}
-					}
-				}()
-			}
+			h.logger.InfoContext(ctx, "no articles found for feed", "feedID", feed.ID)
 		}
 	}
 
 	return connect.NewResponse(&articlesv2.FetchRandomFeedResponse{
-		Id:          feed.ID.String(),
-		Url:         feed.Link, // Site URL (feeds.link)
-		Title:       feed.Title,
-		Description: feed.Description,
-		Tags:        protoTags,
+		Id:              feed.ID.String(),
+		Url:             feed.Link, // Site URL (feeds.link)
+		Title:           feed.Title,
+		Description:     feed.Description,
+		Tags:            protoTags,
+		LatestArticleId: latestArticleID,
 	}), nil
 }
 

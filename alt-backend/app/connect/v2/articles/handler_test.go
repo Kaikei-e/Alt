@@ -749,6 +749,7 @@ func TestFetchArticleContent_ExternalHTTPError_500_ReturnsUnavailable(t *testing
 
 func TestFetchRandomFeedResponse_Construction(t *testing.T) {
 	id := uuid.New().String()
+	articleID := uuid.New().String()
 	resp := &articlesv2.FetchRandomFeedResponse{
 		Id:          id,
 		Url:         "https://example.com",
@@ -761,6 +762,7 @@ func TestFetchRandomFeedResponse_Construction(t *testing.T) {
 				CreatedAt: time.Now().Format(time.RFC3339),
 			},
 		},
+		LatestArticleId: articleID,
 	}
 
 	assert.Equal(t, id, resp.Id)
@@ -769,6 +771,21 @@ func TestFetchRandomFeedResponse_Construction(t *testing.T) {
 	assert.Equal(t, "A test feed", resp.Description)
 	assert.Len(t, resp.Tags, 1)
 	assert.Equal(t, "Go", resp.Tags[0].Name)
+	assert.Equal(t, articleID, resp.LatestArticleId)
+}
+
+func TestFetchRandomFeedResponse_LatestArticleIdEmpty(t *testing.T) {
+	// When no latest article exists, LatestArticleId should be empty string
+	resp := &articlesv2.FetchRandomFeedResponse{
+		Id:              uuid.New().String(),
+		Url:             "https://example.com",
+		Title:           "Test Feed",
+		Description:     "A test feed",
+		Tags:            nil,
+		LatestArticleId: "",
+	}
+
+	assert.Empty(t, resp.LatestArticleId)
 }
 
 func TestFetchRandomFeedResponse_WithEmptyTags(t *testing.T) {
