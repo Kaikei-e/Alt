@@ -48,29 +48,44 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-EOSQL
     \$\$;
 EOSQL
 
-# Helper to upsert a login role with password
+# Helper to upsert a login role with optional password.
+# If password is empty, a NOLOGIN role is created (sufficient for GRANT/OWNER).
 create_or_update_role() {
     local role_name="$1"
-    local role_password="$2"
+    local role_password="${2:-}"
 
-    if [[ -z "$role_name" || -z "$role_password" ]]; then
+    if [[ -z "$role_name" ]]; then
         return
     fi
 
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$PRIMARY_DB" <<-EOSQL
-        DO \$\$
-        DECLARE
-            target_role text := '${role_name}';
-            target_password text := '${role_password}';
-        BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = target_role) THEN
-                EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', target_role, target_password);
-            ELSE
-                EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', target_role, target_password);
-            END IF;
-        END;
-        \$\$;
+    if [[ -n "$role_password" ]]; then
+        psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$PRIMARY_DB" <<-EOSQL
+            DO \$\$
+            DECLARE
+                target_role text := '${role_name}';
+                target_password text := '${role_password}';
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = target_role) THEN
+                    EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', target_role, target_password);
+                ELSE
+                    EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', target_role, target_password);
+                END IF;
+            END;
+            \$\$;
 EOSQL
+    else
+        psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$PRIMARY_DB" <<-EOSQL
+            DO \$\$
+            DECLARE
+                target_role text := '${role_name}';
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = target_role) THEN
+                    EXECUTE format('CREATE ROLE %I', target_role);
+                END IF;
+            END;
+            \$\$;
+EOSQL
+    fi
 }
 
 # Grant baseline privileges for service accounts
@@ -99,7 +114,8 @@ EOSQL
 }
 
 # Provision the main application user if configured separately from the superuser
-if [[ -n "$APP_DB_USER" && -n "$APP_DB_PASSWORD" ]]; then
+# Skip when DB_USER == POSTGRES_USER: the password is already set via POSTGRES_PASSWORD_FILE
+if [[ -n "$APP_DB_USER" && "$APP_DB_USER" != "$POSTGRES_USER" && -n "$APP_DB_PASSWORD" ]]; then
     echo "Ensuring application role '$APP_DB_USER' exists..."
     create_or_update_role "$APP_DB_USER" "$APP_DB_PASSWORD"
 
@@ -120,6 +136,15 @@ if [[ -n "$APP_DB_USER" && -n "$APP_DB_PASSWORD" ]]; then
         \$\$;
 EOSQL
 fi
+
+# Create migration-referenced roles that are legacy names from earlier schema versions.
+# Migrations contain "OWNER TO alt_db_user" and "GRANT ... TO alt_appuser" statements
+# that require these roles to exist. They are NOLOGIN roles — no password needed.
+for alias_role in alt_db_user alt_appuser; do
+    echo "Ensuring migration-referenced role '${alias_role}' exists..."
+    create_or_update_role "$alias_role"
+    grant_basic_access "$alias_role"
+done
 
 echo "Ensuring pre-processor role '${PREPROCESSOR_USER}' exists..."
 create_or_update_role "$PREPROCESSOR_USER" "$PREPROCESSOR_PASSWORD"
