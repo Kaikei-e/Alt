@@ -513,6 +513,75 @@ func TestFetchCompliantArticle_RAGUpsertIsAsync(t *testing.T) {
 	ctrl.Finish()
 }
 
+func TestFetchCompliantArticle_SingleflightDeduplicates(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
+
+	articleURLStr := "https://zenn.dev/test/articles/duplicate-fetch"
+	articleURL, _ := url.Parse(articleURLStr)
+	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	userContext := domain.UserContext{UserID: userID}
+	rawHTML := "<html><body><p>Article content needs to be very long. We are adding more text to satisfy the 100 char limit. This is a very interesting article about singleflight deduplication testing.</p></body></html>"
+	articleID := "article-sf"
+
+	// DB lookup: both goroutines will find no article
+	mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(nil, nil).Times(2)
+	mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).Times(2)
+	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
+
+	// KEY ASSERTION: FetchArticleContents must be called ONLY ONCE thanks to singleflight
+	fetchStarted := make(chan struct{})
+	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).DoAndReturn(
+		func(ctx context.Context, _ string) (*string, error) {
+			close(fetchStarted)
+			// Simulate slow fetch so second request arrives during first
+			time.Sleep(100 * time.Millisecond)
+			return &rawHTML, nil
+		},
+	).Times(1)
+
+	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).Return(articleID, nil).Times(1)
+	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	// Run two concurrent calls for the same URL
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	contents := make([]string, 2)
+
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			content, _, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+			errs[idx] = err
+			contents[idx] = content
+		}(i)
+	}
+
+	wg.Wait()
+	time.Sleep(50 * time.Millisecond) // allow async goroutine
+
+	// Both calls should succeed with the same content
+	for i := 0; i < 2; i++ {
+		if errs[i] != nil {
+			t.Errorf("goroutine %d: unexpected error: %v", i, errs[i])
+		}
+		if contents[i] == "" {
+			t.Errorf("goroutine %d: expected non-empty content", i)
+		}
+	}
+	if contents[0] != contents[1] {
+		t.Errorf("expected identical content from both calls")
+	}
+	ctrl.Finish()
+}
+
 func TestFetchCompliantArticle_WebFetchTimeout(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

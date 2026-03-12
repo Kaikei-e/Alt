@@ -15,6 +15,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 // ArticleUsecase defines the business logic for fetching articles
@@ -34,12 +36,20 @@ type ArticleRepository interface {
 	FetchOgImageURLByArticleID(ctx context.Context, articleID string) (string, error)
 }
 
+// fetchResult holds the result of a singleflight web fetch.
+type fetchResult struct {
+	content    string
+	articleID  string
+	ogImageURL string
+}
+
 type ArticleUsecaseImpl struct {
 	articleFetcher     fetch_article_port.FetchArticlePort
 	robotsTxt          robots_txt_port.RobotsTxtPort
 	repo               ArticleRepository
 	ragIntegration     rag_integration_port.RagIntegrationPort
 	scrapingPolicyPort scraping_policy_port.ScrapingPolicyPort // optional, nil = fallback to robotsTxt
+	fetchGroup         singleflight.Group                      // deduplicates concurrent fetches for the same URL
 }
 
 func NewArticleUsecase(
@@ -156,68 +166,76 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 		return "", "", "", &domain.ComplianceError{Code: http.StatusForbidden, Message: "The request was declined. Please visit the site."}
 	}
 
-	// 4. Fetch from Web (with 25s timeout to absorb rate limiter wait + HTTP fetch)
+	// 4-7. Fetch from Web, extract, save — deduplicated via singleflight
+	// Concurrent requests for the same URL share a single in-flight fetch.
 	logger.Logger.InfoContext(ctx, "Fetching article from Web", "url", urlStr)
-	fetchCtx, fetchCancel := context.WithTimeout(ctx, 25*time.Second)
-	defer fetchCancel()
-	contentPtr, err := u.articleFetcher.FetchArticleContents(fetchCtx, urlStr)
+	resultIface, err, _ := u.fetchGroup.Do(urlStr, func() (interface{}, error) {
+		fetchCtx, fetchCancel := context.WithTimeout(ctx, 25*time.Second)
+		defer fetchCancel()
+		contentPtr, fetchErr := u.articleFetcher.FetchArticleContents(fetchCtx, urlStr)
+		if fetchErr != nil {
+			logger.Logger.ErrorContext(ctx, "Failed to fetch article content", "error", fetchErr, "url", urlStr)
+			return nil, fmt.Errorf("fetch failed: %w", fetchErr)
+		}
+		if contentPtr == nil || *contentPtr == "" {
+			return nil, fmt.Errorf("fetched content is empty")
+		}
+		htmlContent := *contentPtr
+
+		// 5. Extract <head> and og:image from raw HTML (before sanitization removes them)
+		headHTML := html_parser.ExtractHead(htmlContent)
+		extractedOgImage := html_parser.ExtractOgImageURL(htmlContent)
+
+		// 6. Extract Title and Rich HTML Content
+		fetchedTitle := html_parser.ExtractTitle(htmlContent)
+		contentStr := html_parser.ExtractArticleHTML(htmlContent)
+
+		if contentStr == "" {
+			logger.Logger.WarnContext(ctx, "failed to extract article HTML from content, falling back to sanitized HTML",
+				"url", urlStr, "html_size_bytes", len(htmlContent))
+			contentStr = html_parser.SanitizeHTML(htmlContent)
+		}
+
+		// 7. Save to Database
+		newID, saveErr := u.repo.SaveArticle(ctx, urlStr, fetchedTitle, contentStr)
+		if saveErr != nil {
+			logger.Logger.ErrorContext(ctx, "Failed to save article to database", "error", saveErr, "url", urlStr)
+		} else {
+			logger.Logger.InfoContext(ctx, "Article content saved", "url", urlStr, "new_id", newID)
+
+			// 7a. Save article head (best-effort, don't fail the request)
+			if headHTML != "" {
+				if headErr := u.repo.SaveArticleHead(ctx, newID, headHTML, extractedOgImage); headErr != nil {
+					logger.Logger.ErrorContext(ctx, "Failed to save article head", "error", headErr, "article_id", newID)
+				}
+			}
+
+			// 8. Upsert to RAG (async, fire-and-forget)
+			now := time.Now()
+			upsertInput := rag_integration_port.UpsertArticleInput{
+				ArticleID:   newID,
+				Title:       fetchedTitle,
+				Body:        contentStr,
+				URL:         urlStr,
+				PublishedAt: &now,
+				UserID:      userContext.UserID.String(),
+			}
+			go func() {
+				ragCtx, ragCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer ragCancel()
+				if ragErr := u.ragIntegration.UpsertArticle(ragCtx, upsertInput); ragErr != nil {
+					logger.Logger.Error("Failed to upsert article to RAG (async)", "error", ragErr, "article_id", newID)
+				} else {
+					logger.Logger.Info("Article upserted to RAG (async)", "article_id", newID)
+				}
+			}()
+		}
+
+		return &fetchResult{content: contentStr, articleID: newID, ogImageURL: extractedOgImage}, nil
+	})
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to fetch article content", "error", err, "url", urlStr)
-		return "", "", "", fmt.Errorf("fetch failed: %w", err)
+		return "", "", "", err
 	}
-	if contentPtr == nil || *contentPtr == "" {
-		return "", "", "", fmt.Errorf("fetched content is empty")
-	}
-	htmlContent := *contentPtr
-
-	// 5. Extract <head> and og:image from raw HTML (before sanitization removes them)
-	headHTML := html_parser.ExtractHead(htmlContent)
-	extractedOgImage := html_parser.ExtractOgImageURL(htmlContent)
-
-	// 6. Extract Title and Rich HTML Content
-	fetchedTitle := html_parser.ExtractTitle(htmlContent)
-	contentStr := html_parser.ExtractArticleHTML(htmlContent)
-
-	if contentStr == "" {
-		logger.Logger.WarnContext(ctx, "failed to extract article HTML from content, falling back to sanitized HTML",
-			"url", urlStr, "html_size_bytes", len(htmlContent))
-		contentStr = html_parser.SanitizeHTML(htmlContent)
-	}
-
-	// 7. Save to Database
-	newID, saveErr := u.repo.SaveArticle(ctx, urlStr, fetchedTitle, contentStr)
-	if saveErr != nil {
-		logger.Logger.ErrorContext(ctx, "Failed to save article to database", "error", saveErr, "url", urlStr)
-	} else {
-		logger.Logger.InfoContext(ctx, "Article content saved", "url", urlStr, "new_id", newID)
-
-		// 7a. Save article head (best-effort, don't fail the request)
-		if headHTML != "" {
-			if headErr := u.repo.SaveArticleHead(ctx, newID, headHTML, extractedOgImage); headErr != nil {
-				logger.Logger.ErrorContext(ctx, "Failed to save article head", "error", headErr, "article_id", newID)
-			}
-		}
-
-		// 8. Upsert to RAG (async, fire-and-forget)
-		t := time.Now()
-		upsertInput := rag_integration_port.UpsertArticleInput{
-			ArticleID:   newID,
-			Title:       fetchedTitle,
-			Body:        contentStr,
-			URL:         urlStr,
-			PublishedAt: &t,
-			UserID:      userContext.UserID.String(),
-		}
-		go func() {
-			ragCtx, ragCancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer ragCancel()
-			if ragErr := u.ragIntegration.UpsertArticle(ragCtx, upsertInput); ragErr != nil {
-				logger.Logger.Error("Failed to upsert article to RAG (async)", "error", ragErr, "article_id", newID)
-			} else {
-				logger.Logger.Info("Article upserted to RAG (async)", "article_id", newID)
-			}
-		}()
-	}
-
-	return contentStr, newID, extractedOgImage, nil
+	result := resultIface.(*fetchResult)
+	return result.content, result.articleID, result.ogImageURL, nil
 }

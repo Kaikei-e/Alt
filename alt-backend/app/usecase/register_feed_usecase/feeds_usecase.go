@@ -19,12 +19,15 @@ type FeedLinkIDResolver interface {
 }
 
 type RegisterFeedsUsecase struct {
-	validateAndFetchPort   validate_fetch_rss_port.ValidateAndFetchRSSPort
-	registerFeedLinkPort   register_feed_port.RegisterFeedLinkPort
-	registerFeedsGateway   register_feed_port.RegisterFeedsPort
-	feedLinkIDResolver     FeedLinkIDResolver
-	subscriptionPort       subscription_port.SubscriptionPort
-	eventPublisher         event_publisher_port.EventPublisherPort
+	validateAndFetchPort validate_fetch_rss_port.ValidateAndFetchRSSPort
+	registerFeedLinkPort register_feed_port.RegisterFeedLinkPort
+	registerFeedsGateway register_feed_port.RegisterFeedsPort
+	feedLinkIDResolver   FeedLinkIDResolver
+	subscriptionPort     subscription_port.SubscriptionPort
+	eventPublisher       event_publisher_port.EventPublisherPort
+	feedPageInvalidator  interface {
+		InvalidateFeedPage(ctx context.Context, feedLinkID uuid.UUID) error
+	}
 }
 
 func NewRegisterFeedsUsecase(
@@ -54,6 +57,12 @@ func (r *RegisterFeedsUsecase) SetEventPublisher(port event_publisher_port.Event
 	r.eventPublisher = port
 }
 
+func (r *RegisterFeedsUsecase) SetFeedPageInvalidator(invalidator interface {
+	InvalidateFeedPage(ctx context.Context, feedLinkID uuid.UUID) error
+}) {
+	r.feedPageInvalidator = invalidator
+}
+
 func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 	// 1. Validate URL + fetch RSS (single external HTTP call)
 	parsedFeed, err := r.validateAndFetchPort.ValidateAndFetch(ctx, link)
@@ -78,6 +87,12 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 	// 4. Set FeedLinkID on all items
 	for _, item := range parsedFeed.Items {
 		item.FeedLinkID = feedLinkID
+	}
+
+	if feedLinkID != nil && r.feedPageInvalidator != nil {
+		if parsedID, parseErr := uuid.Parse(*feedLinkID); parseErr == nil {
+			_ = r.feedPageInvalidator.InvalidateFeedPage(ctx, parsedID)
+		}
 	}
 
 	logger.Logger.InfoContext(ctx, "Feed items", "count", len(parsedFeed.Items))
