@@ -2,7 +2,6 @@
 import { ArrowLeft, Loader2, Shuffle } from "@lucide/svelte";
 import {
 	createClientTransport,
-	fetchArticleContent,
 	fetchArticlesByTag,
 	fetchRandomFeed,
 	streamArticleTags,
@@ -25,6 +24,7 @@ interface FeedData {
 	title?: string;
 	description?: string;
 	tags?: TagTrailTag[];
+	latestArticleId?: string;
 }
 
 interface Props {
@@ -74,63 +74,48 @@ onDestroy(() => {
 const isShowingArticles = $derived(selectedTag !== null);
 
 // Set tags from currentFeed when it changes (ADR-173: tags come from fetchRandomFeed response)
-// If no tags, trigger async fetch via fetchArticleContent -> streamArticleTags
 $effect(() => {
 	if (currentFeed) {
 		if (currentFeed.tags && currentFeed.tags.length > 0) {
 			// Tags available from backend (existing article had tags)
 			feedTags = currentFeed.tags;
 			isLoadingFeedTags = false;
-		} else {
-			// No tags: backend has triggered async article fetch
-			// We poll via fetchArticleContent -> streamArticleTags
+		} else if (currentFeed.latestArticleId) {
+			// Tags not included but we have article ID — stream tags directly
 			isLoadingFeedTags = true;
-			const feedUrl = currentFeed.url;
-			untrack(() => loadFeedTagsAsync(feedUrl));
+			const articleId = currentFeed.latestArticleId;
+			untrack(() => streamFeedTags(articleId));
+		} else {
+			// No tags and no article ID — nothing to load
+			feedTags = [];
+			isLoadingFeedTags = false;
 		}
 	}
 });
 
 /**
- * Async load feed tags when backend returned no tags.
- * Backend has already triggered async article fetch in goroutine.
- * We call fetchArticleContent to get articleId, then stream tags.
+ * Stream tags for a feed's latest article using its article ID directly.
+ * Avoids the FetchArticleContent roundtrip that returned unnecessary HTML.
  */
-async function loadFeedTagsAsync(feedUrl: string) {
-	try {
-		// 1. Fetch article content to get articleId
-		const result = await fetchArticleContent(transport, feedUrl);
-		if (result.articleId) {
-			// 2. Stream tags for the article
-			const controller = streamArticleTags(
-				transport,
-				result.articleId,
-				(event) => {
-					if (event.eventType === "cached" || event.eventType === "completed") {
-						feedTags = event.tags;
-						isLoadingFeedTags = false;
-					}
-					// generating: keep loading state
-					// error: handled below
-				},
-				(error) => {
-					console.error("Failed to stream feed tags:", error);
-					isLoadingFeedTags = false;
-				},
-			);
-			// Track for cleanup on refresh/navigation
-			activeStreamControllers = new Map([
-				...activeStreamControllers,
-				[result.articleId, controller],
-			]);
-		} else {
-			// No articleId returned (rare edge case)
+function streamFeedTags(articleId: string) {
+	const controller = streamArticleTags(
+		transport,
+		articleId,
+		(event) => {
+			if (event.eventType === "cached" || event.eventType === "completed") {
+				feedTags = event.tags;
+				isLoadingFeedTags = false;
+			}
+		},
+		(error) => {
+			console.error("Failed to stream feed tags:", error);
 			isLoadingFeedTags = false;
-		}
-	} catch (error) {
-		console.error("Failed to load feed tags:", error);
-		isLoadingFeedTags = false;
-	}
+		},
+	);
+	activeStreamControllers = new Map([
+		...activeStreamControllers,
+		[articleId, controller],
+	]);
 }
 
 // Load tags when articles are loaded

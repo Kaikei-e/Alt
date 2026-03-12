@@ -129,6 +129,7 @@ export interface RandomFeed {
 	title: string;
 	description: string;
 	tags: TagTrailTag[];
+	latestArticleId?: string;
 }
 
 /**
@@ -426,6 +427,7 @@ export async function fetchRandomFeed(
 				createdAt: item.createdAt,
 			}),
 		),
+		latestArticleId: response.latestArticleId || undefined,
 	};
 }
 

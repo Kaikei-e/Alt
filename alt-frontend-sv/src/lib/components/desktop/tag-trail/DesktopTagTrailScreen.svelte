@@ -10,7 +10,6 @@ import {
 } from "@lucide/svelte";
 import {
 	createClientTransport,
-	fetchArticleContent,
 	fetchArticlesByTag,
 	fetchRandomFeed,
 	streamArticleTags,
@@ -30,6 +29,7 @@ interface FeedData {
 	title?: string;
 	description?: string;
 	tags?: TagTrailTag[];
+	latestArticleId?: string;
 }
 
 interface Props {
@@ -87,15 +87,20 @@ $effect(() => {
 		if (currentFeed.tags && currentFeed.tags.length > 0) {
 			feedTags = currentFeed.tags;
 			isLoadingFeedTags = false;
-		} else {
+		} else if (currentFeed.latestArticleId) {
+			// Tags not included in response but we have the article ID — stream tags directly
 			isLoadingFeedTags = true;
-			const feedUrl = currentFeed.url;
-			untrack(() => loadFeedTagsAsync(feedUrl));
+			const articleId = currentFeed.latestArticleId;
+			untrack(() => streamFeedTags(articleId));
+		} else {
+			// No tags and no article ID — nothing to load
+			feedTags = [];
+			isLoadingFeedTags = false;
 		}
 	}
 });
 
-async function loadFeedTagsAsync(feedUrl: string) {
+function streamFeedTags(articleId: string) {
 	feedTagsError = null;
 
 	// Clear any existing timeout
@@ -104,67 +109,55 @@ async function loadFeedTagsAsync(feedUrl: string) {
 		feedTagsTimeoutId = null;
 	}
 
-	try {
-		const result = await fetchArticleContent(transport, feedUrl);
-		if (result.articleId) {
-			// Set a 45-second timeout for tag generation
-			feedTagsTimeoutId = setTimeout(() => {
-				if (isLoadingFeedTags) {
-					feedTagsError = "タグ生成がタイムアウトしました。更新してください。";
-					isLoadingFeedTags = false;
-					// Abort the stream
-					const ctrl = activeStreamControllers.get(result.articleId);
-					if (ctrl) {
-						ctrl.abort();
-						activeStreamControllers.delete(result.articleId);
-						activeStreamControllers = new Map(activeStreamControllers);
-					}
-				}
-			}, 45000);
-
-			const controller = streamArticleTags(
-				transport,
-				result.articleId,
-				(event) => {
-					if (event.eventType === "cached" || event.eventType === "completed") {
-						feedTags = event.tags;
-						isLoadingFeedTags = false;
-						feedTagsError = null;
-						if (feedTagsTimeoutId) {
-							clearTimeout(feedTagsTimeoutId);
-							feedTagsTimeoutId = null;
-						}
-					} else if (event.eventType === "error") {
-						feedTagsError = event.message || "タグの生成に失敗しました。";
-						isLoadingFeedTags = false;
-						if (feedTagsTimeoutId) {
-							clearTimeout(feedTagsTimeoutId);
-							feedTagsTimeoutId = null;
-						}
-					}
-				},
-				(error) => {
-					console.error("Failed to stream feed tags:", error);
-					feedTagsError = "タグの読み込みに失敗しました。更新してください。";
-					isLoadingFeedTags = false;
-					if (feedTagsTimeoutId) {
-						clearTimeout(feedTagsTimeoutId);
-						feedTagsTimeoutId = null;
-					}
-				},
-			);
-			activeStreamControllers = new Map([
-				...activeStreamControllers,
-				[result.articleId, controller],
-			]);
-		} else {
+	// Set a 45-second timeout for tag generation
+	feedTagsTimeoutId = setTimeout(() => {
+		if (isLoadingFeedTags) {
+			feedTagsError = "タグ生成がタイムアウトしました。更新してください。";
 			isLoadingFeedTags = false;
+			const ctrl = activeStreamControllers.get(articleId);
+			if (ctrl) {
+				ctrl.abort();
+				activeStreamControllers.delete(articleId);
+				activeStreamControllers = new Map(activeStreamControllers);
+			}
 		}
-	} catch (error) {
-		console.error("Failed to load feed tags:", error);
-		feedTagsError = "タグの読み込みに失敗しました。更新してください。";
-		isLoadingFeedTags = false;
-	}
+	}, 45000);
+
+	const controller = streamArticleTags(
+		transport,
+		articleId,
+		(event) => {
+			if (event.eventType === "cached" || event.eventType === "completed") {
+				feedTags = event.tags;
+				isLoadingFeedTags = false;
+				feedTagsError = null;
+				if (feedTagsTimeoutId) {
+					clearTimeout(feedTagsTimeoutId);
+					feedTagsTimeoutId = null;
+				}
+			} else if (event.eventType === "error") {
+				feedTagsError = event.message || "タグの生成に失敗しました。";
+				isLoadingFeedTags = false;
+				if (feedTagsTimeoutId) {
+					clearTimeout(feedTagsTimeoutId);
+					feedTagsTimeoutId = null;
+				}
+			}
+		},
+		(error) => {
+			console.error("Failed to stream feed tags:", error);
+			feedTagsError = "タグの読み込みに失敗しました。更新してください。";
+			isLoadingFeedTags = false;
+			if (feedTagsTimeoutId) {
+				clearTimeout(feedTagsTimeoutId);
+				feedTagsTimeoutId = null;
+			}
+		},
+	);
+	activeStreamControllers = new Map([
+		...activeStreamControllers,
+		[articleId, controller],
+	]);
 }
 
 // Load tags when articles are loaded
