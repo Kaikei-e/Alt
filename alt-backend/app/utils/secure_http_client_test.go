@@ -157,6 +157,15 @@ func TestSecureHTTPClient_BackwardCompatibility(t *testing.T) {
 	}
 }
 
+func TestValidateTarget_AllowsConfiguredFeedHosts(t *testing.T) {
+	t.Setenv("FEED_ALLOWED_HOSTS", "mock-rss-001,mock-rss-002")
+
+	err := validateTarget("mock-rss-001", "80")
+	if err != nil {
+		t.Fatalf("expected configured feed host to be allowed, got error: %v", err)
+	}
+}
+
 // RED: Test for Envoy proxy request transformation - this should fail initially
 func TestHTTPClientFactory_EnvoyProxyRequestTransformation(t *testing.T) {
 	// Setup environment for Envoy proxy strategy

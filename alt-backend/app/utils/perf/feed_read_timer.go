@@ -14,12 +14,16 @@ import (
 )
 
 var (
-	meterOnce      sync.Once
-	usecaseHist    otelmetric.Float64Histogram
-	marshalHist    otelmetric.Float64Histogram
-	totalHist      otelmetric.Float64Histogram
-	rowCountHist   otelmetric.Float64Histogram
-	cacheMissCount otelmetric.Int64Counter
+	meterOnce        sync.Once
+	usecaseHist      otelmetric.Float64Histogram
+	marshalHist      otelmetric.Float64Histogram
+	totalHist        otelmetric.Float64Histogram
+	rowCountHist     otelmetric.Float64Histogram
+	cacheMissCount   otelmetric.Int64Counter
+	dbHist           otelmetric.Float64Histogram
+	mergeHist        otelmetric.Float64Histogram
+	payloadBytesHist otelmetric.Float64Histogram
+	tagCountHist     otelmetric.Float64Histogram
 )
 
 func initMetrics() {
@@ -38,6 +42,17 @@ func initMetrics() {
 			otelmetric.WithDescription("Number of rows returned"))
 		cacheMissCount, _ = meter.Int64Counter("alt_feed_read_cache_miss_total",
 			otelmetric.WithDescription("Cache miss count (always increments until cache is implemented)"))
+		dbHist, _ = meter.Float64Histogram("alt_feed_read_db_duration_ms",
+			otelmetric.WithDescription("DB query duration per endpoint"),
+			otelmetric.WithUnit("ms"))
+		mergeHist, _ = meter.Float64Histogram("alt_feed_read_merge_duration_ms",
+			otelmetric.WithDescription("Merge/enrichment duration per endpoint"),
+			otelmetric.WithUnit("ms"))
+		payloadBytesHist, _ = meter.Float64Histogram("alt_feed_read_payload_bytes",
+			otelmetric.WithDescription("Estimated response payload size in bytes"),
+			otelmetric.WithUnit("By"))
+		tagCountHist, _ = meter.Float64Histogram("alt_feed_read_tag_count",
+			otelmetric.WithDescription("Total tags across all rows"))
 	})
 }
 
@@ -51,6 +66,11 @@ type FeedReadTimings struct {
 	// Phase 1 cache fields (always 0/false until cache is implemented)
 	CacheMs  int64
 	CacheHit bool
+	// Phase 0 instrumentation fields
+	DBMs         int64 // DB query time
+	MergeMs      int64 // merge/enrichment time
+	PayloadBytes int64 // estimated response payload size
+	TagCount     int   // total tags across all rows
 }
 
 // FeedReadTimer measures per-phase durations and emits OTel spans + structured logs.
@@ -108,6 +128,10 @@ func (t *FeedReadTimer) StartPhase(ctx context.Context, name string) func() {
 			t.timings.MarshalMs = elapsed
 		case "cache":
 			t.timings.CacheMs = elapsed
+		case "db":
+			t.timings.DBMs = elapsed
+		case "merge":
+			t.timings.MergeMs = elapsed
 		}
 	}
 }
@@ -115,6 +139,16 @@ func (t *FeedReadTimer) StartPhase(ctx context.Context, name string) func() {
 // SetRowCount records the number of rows returned.
 func (t *FeedReadTimer) SetRowCount(n int) {
 	t.timings.RowCount = n
+}
+
+// SetPayloadBytes records the estimated response payload size.
+func (t *FeedReadTimer) SetPayloadBytes(n int64) {
+	t.timings.PayloadBytes = n
+}
+
+// SetTagCount records the total tag count across all rows.
+func (t *FeedReadTimer) SetTagCount(n int) {
+	t.timings.TagCount = n
 }
 
 // Log emits a single structured log line with all timing fields and records OTel metrics.
@@ -132,6 +166,10 @@ func (t *FeedReadTimer) Log(ctx context.Context) {
 	marshalHist.Record(ctx, float64(t.timings.MarshalMs), endpointAttr)
 	totalHist.Record(ctx, float64(t.timings.TotalMs), endpointAttr)
 	rowCountHist.Record(ctx, float64(t.timings.RowCount), endpointAttr)
+	dbHist.Record(ctx, float64(t.timings.DBMs), endpointAttr)
+	mergeHist.Record(ctx, float64(t.timings.MergeMs), endpointAttr)
+	payloadBytesHist.Record(ctx, float64(t.timings.PayloadBytes), endpointAttr)
+	tagCountHist.Record(ctx, float64(t.timings.TagCount), endpointAttr)
 	if !t.timings.CacheHit {
 		cacheMissCount.Add(ctx, 1, endpointAttr)
 	}
@@ -146,6 +184,10 @@ func (t *FeedReadTimer) Log(ctx context.Context) {
 		slog.Int("row_count", t.timings.RowCount),
 		slog.Int64("cache_ms", t.timings.CacheMs),
 		slog.Bool("cache_hit", t.timings.CacheHit),
+		slog.Int64("db_ms", t.timings.DBMs),
+		slog.Int64("merge_ms", t.timings.MergeMs),
+		slog.Int64("payload_bytes", t.timings.PayloadBytes),
+		slog.Int("tag_count", t.timings.TagCount),
 	}
 
 	if span.SpanContext().HasTraceID() {

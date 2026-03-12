@@ -288,6 +288,10 @@ func validateTarget(host, port string) error {
 		return errors.New("access to this port is not allowed")
 	}
 
+	if security.IsFeedHostAllowed(host) {
+		return nil
+	}
+
 	// Check if the host resolves to a private IP
 	if isPrivateHost(host) {
 		return errors.New("access to private networks not allowed")

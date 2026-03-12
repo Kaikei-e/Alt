@@ -256,6 +256,60 @@ func TestHostRateLimiter_RecordRateLimitHit(t *testing.T) {
 	}
 }
 
+func TestHostRateLimiter_BurstAllowsMultipleImmediateRequests(t *testing.T) {
+	// burst=3 should allow 3 consecutive requests to the same host without waiting
+	limiter := NewHostRateLimiter(200*time.Millisecond, 3)
+	ctx := context.Background()
+
+	url1 := "https://example.com/article-1"
+	url2 := "https://example.com/article-2"
+	url3 := "https://example.com/article-3"
+
+	start := time.Now()
+
+	// All 3 calls should complete immediately (within burst capacity)
+	for i, u := range []string{url1, url2, url3} {
+		if err := limiter.WaitForHost(ctx, u); err != nil {
+			t.Fatalf("Call %d WaitForHost() failed: %v", i+1, err)
+		}
+	}
+
+	elapsed := time.Since(start)
+	if elapsed > 50*time.Millisecond {
+		t.Errorf("3 burst requests took %v, expected < 50ms", elapsed)
+	}
+
+	// 4th call should be rate limited (burst exhausted)
+	start = time.Now()
+	if err := limiter.WaitForHost(ctx, "https://example.com/article-4"); err != nil {
+		t.Fatalf("4th WaitForHost() failed: %v", err)
+	}
+	fourthDuration := time.Since(start)
+	if fourthDuration < 150*time.Millisecond {
+		t.Errorf("4th request was not rate limited, took only %v", fourthDuration)
+	}
+}
+
+func TestHostRateLimiter_DefaultBurstIsOne(t *testing.T) {
+	// Without burst parameter, behavior should match burst=1 (backward compatible)
+	limiter := NewHostRateLimiter(200 * time.Millisecond)
+	ctx := context.Background()
+
+	// First call: immediate
+	if err := limiter.WaitForHost(ctx, "https://example.com/a"); err != nil {
+		t.Fatalf("First call failed: %v", err)
+	}
+
+	// Second call: should be rate limited
+	start := time.Now()
+	if err := limiter.WaitForHost(ctx, "https://example.com/b"); err != nil {
+		t.Fatalf("Second call failed: %v", err)
+	}
+	if time.Since(start) < 150*time.Millisecond {
+		t.Errorf("Second call was not rate limited with default burst=1: %v", time.Since(start))
+	}
+}
+
 func TestHostRateLimiter_RecordRateLimitHit_IncreasesBackoff(t *testing.T) {
 	limiter := NewHostRateLimiter(100 * time.Millisecond)
 	ctx := context.Background()

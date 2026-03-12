@@ -1,6 +1,7 @@
 package url_validator
 
 import (
+	"alt/utils/security"
 	"fmt"
 	"net"
 	"net/url"
@@ -11,6 +12,10 @@ func IsAllowedURL(u *url.URL) error {
 	// Allow http and https
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return fmt.Errorf("scheme not allowed: %s", u.Scheme)
+	}
+
+	if security.IsFeedHostAllowed(u.Hostname()) {
+		return nil
 	}
 
 	// Resolve IP

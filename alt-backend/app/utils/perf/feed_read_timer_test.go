@@ -180,3 +180,103 @@ func TestFeedReadTimer_CacheFieldsDefaultToZero(t *testing.T) {
 		t.Errorf("expected cache_hit=false, got %v", timer.timings.CacheHit)
 	}
 }
+
+func TestFeedReadTimer_DBAndMergePhases(t *testing.T) {
+	setupTestTracer(t)
+	timer := NewFeedReadTimer("GetUnreadFeeds")
+	ctx := context.Background()
+
+	stopDB := timer.StartPhase(ctx, "db")
+	time.Sleep(5 * time.Millisecond)
+	stopDB()
+
+	stopMerge := timer.StartPhase(ctx, "merge")
+	time.Sleep(5 * time.Millisecond)
+	stopMerge()
+
+	if timer.timings.DBMs < 5 {
+		t.Errorf("expected db_ms >= 5, got %d", timer.timings.DBMs)
+	}
+	if timer.timings.MergeMs < 5 {
+		t.Errorf("expected merge_ms >= 5, got %d", timer.timings.MergeMs)
+	}
+}
+
+func TestFeedReadTimer_SetPayloadBytes(t *testing.T) {
+	timer := NewFeedReadTimer("GetUnreadFeeds")
+	timer.SetPayloadBytes(12345)
+	if timer.timings.PayloadBytes != 12345 {
+		t.Errorf("expected payload_bytes=12345, got %d", timer.timings.PayloadBytes)
+	}
+}
+
+func TestFeedReadTimer_SetTagCount(t *testing.T) {
+	timer := NewFeedReadTimer("GetUnreadFeeds")
+	timer.SetTagCount(99)
+	if timer.timings.TagCount != 99 {
+		t.Errorf("expected tag_count=99, got %d", timer.timings.TagCount)
+	}
+}
+
+func TestFeedReadTimer_Log_EmitsNewFields(t *testing.T) {
+	setupTestTracer(t)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+
+	timer := NewFeedReadTimerWithLogger("GetUnreadFeeds", logger)
+	ctx := context.Background()
+
+	stopDB := timer.StartPhase(ctx, "db")
+	stopDB()
+
+	stopMerge := timer.StartPhase(ctx, "merge")
+	stopMerge()
+
+	timer.SetPayloadBytes(5000)
+	timer.SetTagCount(15)
+	timer.SetRowCount(10)
+
+	stopUsecase := timer.StartPhase(ctx, "usecase")
+	stopUsecase()
+
+	stopMarshal := timer.StartPhase(ctx, "marshal")
+	stopMarshal()
+
+	timer.Log(ctx)
+
+	var logEntry map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
+		t.Fatalf("failed to parse log output: %v\nbuf: %s", err, buf.String())
+	}
+
+	newFields := []string{"db_ms", "merge_ms", "payload_bytes", "tag_count"}
+	for _, field := range newFields {
+		if _, ok := logEntry[field]; !ok {
+			t.Errorf("expected field %q in log output, got: %v", field, logEntry)
+		}
+	}
+
+	if logEntry["payload_bytes"] != float64(5000) {
+		t.Errorf("expected payload_bytes=5000, got %v", logEntry["payload_bytes"])
+	}
+	if logEntry["tag_count"] != float64(15) {
+		t.Errorf("expected tag_count=15, got %v", logEntry["tag_count"])
+	}
+}
+
+func TestFeedReadTimer_NewFieldsDefaultToZero(t *testing.T) {
+	timer := NewFeedReadTimer("GetUnreadFeeds")
+	if timer.timings.DBMs != 0 {
+		t.Errorf("expected db_ms=0, got %d", timer.timings.DBMs)
+	}
+	if timer.timings.MergeMs != 0 {
+		t.Errorf("expected merge_ms=0, got %d", timer.timings.MergeMs)
+	}
+	if timer.timings.PayloadBytes != 0 {
+		t.Errorf("expected payload_bytes=0, got %d", timer.timings.PayloadBytes)
+	}
+	if timer.timings.TagCount != 0 {
+		t.Errorf("expected tag_count=0, got %d", timer.timings.TagCount)
+	}
+}

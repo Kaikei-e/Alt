@@ -19,15 +19,22 @@ type HostRateLimiter struct {
 	limiters map[string]*rate.Limiter
 	mu       sync.RWMutex
 	interval time.Duration
+	burst    int
 }
 
 // NewHostRateLimiter creates a new HostRateLimiter with the specified interval
 // between requests to the same host. The interval should be at least 5 seconds
-// for external API compliance.
-func NewHostRateLimiter(interval time.Duration) *HostRateLimiter {
+// for external API compliance. An optional burst parameter controls how many
+// requests can be made immediately before rate limiting kicks in (default: 1).
+func NewHostRateLimiter(interval time.Duration, burst ...int) *HostRateLimiter {
+	b := 1
+	if len(burst) > 0 && burst[0] > 0 {
+		b = burst[0]
+	}
 	return &HostRateLimiter{
 		limiters: make(map[string]*rate.Limiter),
 		interval: interval,
+		burst:    b,
 	}
 }
 
@@ -67,7 +74,7 @@ func (h *HostRateLimiter) getLimiterForHost(host string) *rate.Limiter {
 		return limiter
 	}
 
-	limiter = rate.NewLimiter(rate.Every(h.interval), 1)
+	limiter = rate.NewLimiter(rate.Every(h.interval), h.burst)
 	h.limiters[host] = limiter
 	return limiter
 }
@@ -90,5 +97,5 @@ func (h *HostRateLimiter) RecordRateLimitHit(host string, retryAfter time.Durati
 		backoff = time.Hour
 	}
 
-	h.limiters[host] = rate.NewLimiter(rate.Every(backoff), 1)
+	h.limiters[host] = rate.NewLimiter(rate.Every(backoff), h.burst)
 }
