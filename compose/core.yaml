@@ -135,7 +135,7 @@ services:
           memory: 256M
     tty: true
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4173/sv/health | grep -q 'OK' || exit 1"]
+      test: ["CMD-SHELL", "bun -e \"const n=require('net');const s=n.createConnection(4173,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))\""]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -174,7 +174,7 @@ services:
       - DB_HOST=pgbouncer
       - DB_PORT=6432
       - DB_USER=${DB_USER}
-      - DB_PASSWORD_FILE=/run/secrets/db_password
+      - DB_PASSWORD_FILE=/run/secrets/postgres_password
       - DB_NAME=${POSTGRES_DB}
       - DB_SSL_MODE=prefer
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
@@ -195,7 +195,7 @@ services:
     secrets:
       - auth_shared_secret
       - backend_token_secret
-      - db_password
+      - postgres_password
       - csrf_secret
       - service_secret
       - image_proxy_secret
@@ -233,14 +233,20 @@ services:
       context: ../migrations-atlas
       dockerfile: docker/Dockerfile
     container_name: db_migrator
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        DB_PASS=$$(cat /run/secrets/postgres_password)
+        export DATABASE_URL="postgres://$${DB_USER}:$${DB_PASS}@$${DB_HOST}:$${DB_PORT}/$${DB_NAME}?sslmode=disable"
+        exec /scripts/migrate.sh "$$@"
+      - --
     command: ["apply"]
     environment:
-      # Database credentials - password read from secret file
       DB_HOST: db
-      DB_PORT: 5432
+      DB_PORT: "5432"
       DB_USER: ${POSTGRES_USER}
       DB_NAME: ${POSTGRES_DB}
-      DB_PASSWORD_FILE: /run/secrets/postgres_password
       MIGRATE_MAX_RETRIES: "12"
       MIGRATE_RETRY_INTERVAL: "5"
       MIGRATE_BASELINE_VERSION: ${MIGRATE_BASELINE_VERSION:-}

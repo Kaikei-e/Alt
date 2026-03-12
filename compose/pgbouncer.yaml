@@ -1,5 +1,7 @@
 # compose/pgbouncer.yaml - PgBouncer connection pooling
 # Transaction-mode pooling to reduce PostgreSQL connection count
+#
+# Reads passwords from Docker secrets at startup via wrapper entrypoint.
 
 include:
   - base.yaml
@@ -8,8 +10,16 @@ services:
   pgbouncer:
     image: edoburu/pgbouncer:v1.25.1-p0
     restart: always
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        DB_PASS=$$(cat /run/secrets/postgres_password)
+        export DATABASE_URL="postgres://$${DB_USER}:$${DB_PASS}@db:5432/$${POSTGRES_DB}"
+        exec /entrypoint.sh /usr/bin/pgbouncer /etc/pgbouncer/pgbouncer.ini
     environment:
-      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${POSTGRES_DB}
+      - DB_USER=${DB_USER}
+      - POSTGRES_DB=${POSTGRES_DB}
       - LISTEN_PORT=6432
       - AUTH_TYPE=plain
       - POOL_MODE=transaction
@@ -21,6 +31,8 @@ services:
       - SERVER_RESET_QUERY=DISCARD ALL
       - IGNORE_STARTUP_PARAMETERS=extra_float_digits,search_path,prepared_statements
       - QUERY_WAIT_TIMEOUT=30
+    secrets:
+      - postgres_password
     depends_on:
       db:
         condition: service_healthy
@@ -47,8 +59,16 @@ services:
   pgbouncer-kratos:
     image: edoburu/pgbouncer:v1.25.1-p0
     restart: always
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        KRATOS_PASS=$$(cat /run/secrets/kratos_db_password)
+        export DATABASE_URL="postgres://$${KRATOS_DB_USER}:$${KRATOS_PASS}@kratos-db:5432/$${KRATOS_DB_NAME}"
+        exec /entrypoint.sh /usr/bin/pgbouncer /etc/pgbouncer/pgbouncer.ini
     environment:
-      - DATABASE_URL=postgres://${KRATOS_DB_USER:-kratos_user}:${KRATOS_DB_PASSWORD}@kratos-db:5432/${KRATOS_DB_NAME:-kratos}
+      - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
+      - KRATOS_DB_NAME=${KRATOS_DB_NAME:-kratos}
       - LISTEN_PORT=6432
       - AUTH_TYPE=plain
       - POOL_MODE=transaction
@@ -61,6 +81,8 @@ services:
       - SERVER_RESET_QUERY=DISCARD ALL
       - IGNORE_STARTUP_PARAMETERS=extra_float_digits,search_path,prepared_statements
       - QUERY_WAIT_TIMEOUT=30
+    secrets:
+      - kratos_db_password
     depends_on:
       kratos-db:
         condition: service_healthy
