@@ -12,25 +12,36 @@ import (
 	"alt/driver/recap_job_driver"
 	"alt/driver/search_indexer_connect"
 	"alt/gateway/archive_article_gateway"
+	"alt/gateway/article_content_cache_gateway"
 	"alt/gateway/article_gateway"
+	"alt/gateway/article_summary_gateway"
+	"alt/gateway/cached_article_tags_gateway"
 	"alt/gateway/config_gateway"
 	"alt/gateway/csrf_token_gateway"
+	"alt/gateway/dashboard_gateway"
 	"alt/gateway/error_handler_gateway"
 	"alt/gateway/event_publisher_gateway"
 	"alt/gateway/feed_link_domain_gateway"
 	"alt/gateway/feed_link_gateway"
+	"alt/gateway/feed_page_cache_gateway"
 	"alt/gateway/feed_search_gateway"
 	"alt/gateway/feed_stats_gateway"
 	"alt/gateway/feed_url_link_gateway"
 	"alt/gateway/feed_url_to_id_gateway"
 	"alt/gateway/fetch_article_gateway"
+	"alt/gateway/fetch_article_tags_gateway"
+	"alt/gateway/fetch_articles_by_tag_gateway"
 	"alt/gateway/fetch_feed_detail_gateway"
 	"alt/gateway/fetch_feed_gateway"
 	"alt/gateway/fetch_feed_tags_gateway"
 	"alt/gateway/fetch_inoreader_summary_gateway"
+	"alt/gateway/fetch_random_subscription_gateway"
 	"alt/gateway/fetch_recent_articles_gateway"
+	"alt/gateway/fetch_tag_cloud_gateway"
 	"alt/gateway/image_fetch_gateway"
 	"alt/gateway/image_proxy_gateway"
+	"alt/gateway/internal_article_gateway"
+	"alt/gateway/latest_article_gateway"
 	"alt/gateway/morning_gateway"
 	"alt/gateway/morning_letter_connect_gateway"
 	"alt/gateway/rag_connect_gateway"
@@ -43,9 +54,11 @@ import (
 	"alt/gateway/robots_txt_gateway"
 	"alt/gateway/scraping_domain_gateway"
 	"alt/gateway/scraping_policy_gateway"
+	"alt/gateway/subscription_gateway"
 	"alt/gateway/trend_stats_gateway"
 	"alt/gateway/update_feed_status_gateway"
 	"alt/gateway/user_feed_gateway"
+	"alt/gateway/user_read_state_gateway"
 	"alt/gateway/validate_fetch_rss_gateway"
 	"alt/port/config_port"
 	"alt/port/error_handler_port"
@@ -55,34 +68,24 @@ import (
 	"alt/port/rate_limiter_port"
 	"alt/usecase/answer_chat_usecase"
 	"alt/usecase/archive_article_usecase"
+	"alt/usecase/cached_feed_list_usecase"
 	"alt/usecase/csrf_token_usecase"
 	dashboard_usecase "alt/usecase/dashboard"
 	"alt/usecase/feed_link_usecase"
+	"alt/usecase/fetch_article_summary_usecase"
+	"alt/usecase/fetch_article_tags_usecase"
 	"alt/usecase/fetch_article_usecase"
+	"alt/usecase/fetch_articles_by_tag_usecase"
 	"alt/usecase/fetch_articles_usecase"
 	"alt/usecase/fetch_feed_details_usecase"
 	"alt/usecase/fetch_feed_stats_usecase"
 	"alt/usecase/fetch_feed_tags_usecase"
 	"alt/usecase/fetch_feed_usecase"
 	"alt/usecase/fetch_inoreader_summary_usecase"
-	"alt/usecase/fetch_random_subscription_usecase"
-	"alt/usecase/fetch_articles_by_tag_usecase"
-	"alt/usecase/fetch_article_tags_usecase"
-	"alt/usecase/fetch_tag_cloud_usecase"
-	"alt/gateway/fetch_random_subscription_gateway"
-	"alt/gateway/fetch_articles_by_tag_gateway"
-	"alt/gateway/fetch_tag_cloud_gateway"
-	"alt/gateway/article_summary_gateway"
-	"alt/gateway/cached_article_tags_gateway"
-	"alt/gateway/dashboard_gateway"
-	"alt/gateway/fetch_article_tags_gateway"
-	"alt/gateway/internal_article_gateway"
-	"alt/gateway/latest_article_gateway"
-	"alt/gateway/subscription_gateway"
-	"alt/usecase/fetch_article_summary_usecase"
 	"alt/usecase/fetch_latest_article_usecase"
-	"alt/usecase/stream_article_tags_usecase"
+	"alt/usecase/fetch_random_subscription_usecase"
 	"alt/usecase/fetch_recent_articles_usecase"
+	"alt/usecase/fetch_tag_cloud_usecase"
 	"alt/usecase/fetch_trend_stats_usecase"
 	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/image_proxy_usecase"
@@ -91,12 +94,13 @@ import (
 	"alt/usecase/recap_articles_usecase"
 	"alt/usecase/recap_usecase"
 	"alt/usecase/register_favorite_feed_usecase"
-	"alt/usecase/remove_favorite_feed_usecase"
 	"alt/usecase/register_feed_usecase"
+	"alt/usecase/remove_favorite_feed_usecase"
 	"alt/usecase/retrieve_context_usecase"
 	"alt/usecase/scraping_domain_usecase"
 	"alt/usecase/search_article_usecase"
 	"alt/usecase/search_feed_usecase"
+	"alt/usecase/stream_article_tags_usecase"
 	"alt/usecase/subscription_usecase"
 	"alt/utils"
 	"alt/utils/batch_article_fetcher"
@@ -121,7 +125,7 @@ type ApplicationComponents struct {
 	KratosClient kratos_client.KratosClient
 
 	// Ports
-	RagIntegration rag_integration_port.RagIntegrationPort
+	RagIntegration   rag_integration_port.RagIntegrationPort
 	RagConnectClient *rag_connect_gateway.Client
 	StreamChatPort   morning_letter_port.StreamChatPort
 	EventPublisher   event_publisher_port.EventPublisherPort
@@ -131,13 +135,14 @@ type ApplicationComponents struct {
 	FetchFeedsListUsecase               *fetch_feed_usecase.FetchFeedsListUsecase
 	FetchFeedsListCursorUsecase         *fetch_feed_usecase.FetchFeedsListCursorUsecase
 	FetchUnreadFeedsListCursorUsecase   *fetch_feed_usecase.FetchUnreadFeedsListCursorUsecase
+	CachedFeedListUsecase               *cached_feed_list_usecase.CachedFeedListUsecase
 	FetchReadFeedsListCursorUsecase     *fetch_feed_usecase.FetchReadFeedsListCursorUsecase
 	FetchFavoriteFeedsListCursorUsecase *fetch_feed_usecase.FetchFavoriteFeedsListCursorUsecase
 	RegisterFeedsUsecase                *register_feed_usecase.RegisterFeedsUsecase
 	RegisterFavoriteFeedUsecase         *register_favorite_feed_usecase.RegisterFavoriteFeedUsecase
-	RemoveFavoriteFeedUsecase          *remove_favorite_feed_usecase.RemoveFavoriteFeedUsecase
+	RemoveFavoriteFeedUsecase           *remove_favorite_feed_usecase.RemoveFavoriteFeedUsecase
 	ListFeedLinksUsecase                *feed_link_usecase.ListFeedLinksUsecase
-	ListFeedLinksWithHealthUsecase       *feed_link_usecase.ListFeedLinksWithHealthUsecase
+	ListFeedLinksWithHealthUsecase      *feed_link_usecase.ListFeedLinksWithHealthUsecase
 	DeleteFeedLinkUsecase               *feed_link_usecase.DeleteFeedLinkUsecase
 	FeedsReadingStatusUsecase           *reading_status.FeedsReadingStatusUsecase
 	ArticlesReadingStatusUsecase        *reading_status.ArticlesReadingStatusUsecase
@@ -173,17 +178,17 @@ type ApplicationComponents struct {
 	SubscribeUsecase                    *subscription_usecase.SubscribeUsecase
 	UnsubscribeUsecase                  *subscription_usecase.UnsubscribeUsecase
 
-	DashboardMetricsUsecase             *dashboard_usecase.DashboardMetricsUsecase
-	FetchLatestArticleUsecase           *fetch_latest_article_usecase.FetchLatestArticleUsecase
-	FetchArticleSummaryUsecase          *fetch_article_summary_usecase.FetchArticleSummaryUsecase
-	StreamArticleTagsUsecase            *stream_article_tags_usecase.StreamArticleTagsUsecase
-	FetchTagCloudUsecase                *fetch_tag_cloud_usecase.FetchTagCloudUsecase
+	DashboardMetricsUsecase    *dashboard_usecase.DashboardMetricsUsecase
+	FetchLatestArticleUsecase  *fetch_latest_article_usecase.FetchLatestArticleUsecase
+	FetchArticleSummaryUsecase *fetch_article_summary_usecase.FetchArticleSummaryUsecase
+	StreamArticleTagsUsecase   *stream_article_tags_usecase.StreamArticleTagsUsecase
+	FetchTagCloudUsecase       *fetch_tag_cloud_usecase.FetchTagCloudUsecase
 
 	// Image Proxy
-	ImageProxyUsecase                   *image_proxy_usecase.ImageProxyUsecase
+	ImageProxyUsecase *image_proxy_usecase.ImageProxyUsecase
 
 	// Internal API gateway (service-to-service)
-	InternalArticleGateway              *internal_article_gateway.Gateway
+	InternalArticleGateway *internal_article_gateway.Gateway
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -202,16 +207,19 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// Create rate limiter with configuration from port
 	rateLimitConfig := configPort.GetRateLimitConfig()
-	rateLimiter := rate_limiter.NewHostRateLimiter(rateLimitConfig.ExternalAPIInterval)
+	rateLimiter := rate_limiter.NewHostRateLimiter(rateLimitConfig.ExternalAPIInterval, rateLimitConfig.ExternalAPIBurst)
 	rateLimiterPort := rate_limiter_gateway.NewRateLimiterGateway(rateLimiter)
 
 	// Create the concrete gateway implementations with rate limiting
 	feedFetcherGatewayImpl := fetch_feed_gateway.NewSingleFeedGatewayWithRateLimiter(pool, rateLimiter)
 	fetchFeedsListGatewayImpl := fetch_feed_gateway.NewFetchFeedsGatewayWithRateLimiter(pool, rateLimiter)
+	feedPageCacheGatewayImpl := feed_page_cache_gateway.NewGateway(altDBRepository)
+	userReadStateGatewayImpl := user_read_state_gateway.NewGateway(altDBRepository)
 	fetchSingleFeedUsecase := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGatewayImpl)
 	fetchFeedsListUsecase := fetch_feed_usecase.NewFetchFeedsListUsecase(fetchFeedsListGatewayImpl)
 	fetchFeedsListCursorUsecase := fetch_feed_usecase.NewFetchFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 	fetchUnreadFeedsListCursorUsecase := fetch_feed_usecase.NewFetchUnreadFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
+	cachedFeedListUsecase := cached_feed_list_usecase.NewCachedFeedListUsecase(feedPageCacheGatewayImpl, userReadStateGatewayImpl, fetchFeedsListGatewayImpl)
 	fetchReadFeedsListCursorUsecase := fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 	fetchFavoriteFeedsListCursorUsecase := fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(fetchFeedsListGatewayImpl)
 
@@ -221,6 +229,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	registerFavoriteFeedGatewayImpl := register_favorite_feed_gateway.NewRegisterFavoriteFeedGateway(pool)
 	registerFeedsUsecase := register_feed_usecase.NewRegisterFeedsUsecase(validateAndFetchRSSGatewayImpl, registerFeedLinkGatewayImpl, registerFeedsGatewayImpl)
 	registerFeedsUsecase.SetFeedLinkIDResolver(altDBRepository)
+	registerFeedsUsecase.SetFeedPageInvalidator(feedPageCacheGatewayImpl)
 	registerFavoriteFeedUsecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(registerFavoriteFeedGatewayImpl)
 	removeFavoriteFeedUsecase := remove_favorite_feed_usecase.NewRemoveFavoriteFeedUsecase(registerFavoriteFeedGatewayImpl)
 	feedLinkGatewayImpl := feed_link_gateway.NewFeedLinkGateway(pool)
@@ -297,7 +306,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// Fetch articles with cursor components
 	fetchArticlesGatewayImpl := article_gateway.NewFetchArticlesGateway(pool)
-	fetchArticlesCursorUsecase := fetch_articles_usecase.NewFetchArticlesCursorUsecase(fetchArticlesGatewayImpl)
+	articleContentCacheGatewayImpl := article_content_cache_gateway.NewGateway(altDBRepository)
+	fetchArticlesCursorUsecase := fetch_articles_usecase.NewFetchArticlesCursorUsecaseWithCache(fetchArticlesGatewayImpl, articleContentCacheGatewayImpl)
 
 	// Fetch recent articles components (for rag-orchestrator temporal topics)
 	fetchRecentArticlesGatewayImpl := fetch_recent_articles_gateway.NewFetchRecentArticlesGateway(pool)
@@ -450,7 +460,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		KratosClient: kratosClientImpl,
 
 		// Ports
-		RagIntegration: ragAdapterImpl,
+		RagIntegration:   ragAdapterImpl,
 		RagConnectClient: ragConnectClient,
 		StreamChatPort:   morningLetterConnectGateway,
 		EventPublisher:   eventPublisherGatewayImpl,
@@ -460,13 +470,14 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchFeedsListUsecase:               fetchFeedsListUsecase,
 		FetchFeedsListCursorUsecase:         fetchFeedsListCursorUsecase,
 		FetchUnreadFeedsListCursorUsecase:   fetchUnreadFeedsListCursorUsecase,
+		CachedFeedListUsecase:               cachedFeedListUsecase,
 		FetchReadFeedsListCursorUsecase:     fetchReadFeedsListCursorUsecase,
 		FetchFavoriteFeedsListCursorUsecase: fetchFavoriteFeedsListCursorUsecase,
 		RegisterFeedsUsecase:                registerFeedsUsecase,
 		RegisterFavoriteFeedUsecase:         registerFavoriteFeedUsecase,
-		RemoveFavoriteFeedUsecase:          removeFavoriteFeedUsecase,
+		RemoveFavoriteFeedUsecase:           removeFavoriteFeedUsecase,
 		ListFeedLinksUsecase:                listFeedLinksUsecase,
-		ListFeedLinksWithHealthUsecase:       listFeedLinksWithHealthUsecase,
+		ListFeedLinksWithHealthUsecase:      listFeedLinksWithHealthUsecase,
 		DeleteFeedLinkUsecase:               deleteFeedLinkUsecase,
 		FeedsReadingStatusUsecase:           feedsReadingStatusUsecase,
 		ArticlesReadingStatusUsecase:        articlesReadingStatusUsecase,
@@ -502,16 +513,16 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		SubscribeUsecase:                    subscribeUsecase,
 		UnsubscribeUsecase:                  unsubscribeUsecase,
 
-		DashboardMetricsUsecase:             dashboardMetricsUsecase,
-		FetchLatestArticleUsecase:           fetchLatestArticleUsecase,
-		FetchArticleSummaryUsecase:          fetchArticleSummaryUsecase,
-		StreamArticleTagsUsecase:            streamArticleTagsUsecase,
-		FetchTagCloudUsecase:                fetchTagCloudUsecase,
+		DashboardMetricsUsecase:    dashboardMetricsUsecase,
+		FetchLatestArticleUsecase:  fetchLatestArticleUsecase,
+		FetchArticleSummaryUsecase: fetchArticleSummaryUsecase,
+		StreamArticleTagsUsecase:   streamArticleTagsUsecase,
+		FetchTagCloudUsecase:       fetchTagCloudUsecase,
 
 		// Image Proxy
-		ImageProxyUsecase:                   imageProxyUsecaseInstance,
+		ImageProxyUsecase: imageProxyUsecaseInstance,
 
 		// Internal API gateway
-		InternalArticleGateway:              internalArticleGatewayImpl,
+		InternalArticleGateway: internalArticleGatewayImpl,
 	}
 }

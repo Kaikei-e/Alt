@@ -35,6 +35,7 @@ func (c *ConfigGateway) GetServerTimeouts() config_port.ServerTimeouts {
 func (c *ConfigGateway) GetRateLimitConfig() config_port.RateLimitConfig {
 	return config_port.RateLimitConfig{
 		ExternalAPIInterval: c.config.RateLimit.ExternalAPIInterval,
+		ExternalAPIBurst:    c.config.RateLimit.ExternalAPIBurst,
 		FeedFetchLimit:      c.config.RateLimit.FeedFetchLimit,
 		EnablePerHostLimit:  true, // Default to per-host limiting
 	}

@@ -108,6 +108,7 @@ type ServerConfig struct {
 
 type RateLimitConfig struct {
 	ExternalAPIInterval time.Duration `json:"external_api_interval" env:"RATE_LIMIT_EXTERNAL_API_INTERVAL" default:"10s"`
+	ExternalAPIBurst    int           `json:"external_api_burst" env:"RATE_LIMIT_EXTERNAL_API_BURST" default:"3"`
 	FeedFetchLimit      int           `json:"feed_fetch_limit" env:"RATE_LIMIT_FEED_FETCH_LIMIT" default:"100"`
 
 	// DOS Protection Configuration

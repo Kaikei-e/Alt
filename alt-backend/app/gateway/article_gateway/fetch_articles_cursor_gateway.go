@@ -8,6 +8,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
 )
@@ -38,4 +39,21 @@ func (g *FetchArticlesGateway) FetchArticlesWithCursor(ctx context.Context, curs
 	}
 
 	return articles, nil
+}
+
+func (g *FetchArticlesGateway) FetchArticleIDsWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]uuid.UUID, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchArticleIDsWithCursor")
+	defer span.End()
+
+	if g.alt_db == nil {
+		return nil, errors.New("database connection not available")
+	}
+
+	ids, err := g.alt_db.FetchArticleIDsWithCursor(ctx, cursor, limit)
+	if err != nil {
+		logger.SafeErrorContext(ctx, "Error fetching article ids with cursor", "error", err)
+		return nil, errors.New("error fetching article ids with cursor")
+	}
+
+	return ids, nil
 }
