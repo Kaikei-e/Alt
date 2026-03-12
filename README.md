@@ -14,11 +14,11 @@
 
 # Alt – Compose-First AI Knowledge Platform
 
-_Last reviewed on March 4, 2026._
+_Last reviewed on March 12, 2026._
 
-> A Compose-first knowledge platform that ingests RSS content, enriches it with AI (LLM summaries, tag extraction, RAG-powered Q&A), and serves curated insights through Go, Python, Rust, and TypeScript services.
+> An ambitious solo project aiming for production quality — a Compose-first knowledge platform that covers every step of information consumption, from RSS ingestion and AI enrichment (LLM summaries, tag extraction, RAG-powered Q&A) through discovery, reading, and recap, all the way to audio playback. Built with Go, Python, Rust, TypeScript, Deno, and F#.
 
-**Key Capabilities:** RSS Ingestion • AI Enrichment • Full-Text Search • RAG Q&A • 7-Day Recap Summaries • Evening Pulse • 3D Tag Verse • Japanese TTS • TDD-First Development
+**Key Capabilities:** RSS Ingestion • AI Enrichment • Full-Text Search • RAG Q&A (Ask Augur) • 3/7-Day Recaps • Morning Letter & Evening Pulse • Tag Verse (3D) & Tag Trail • Swipe Mode • Japanese TTS • Local LLM (Ollama) • ClickHouse Analytics • TDD-First Development
 
 ---
 
