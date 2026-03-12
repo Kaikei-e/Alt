@@ -14,7 +14,17 @@ CREATE TABLE IF NOT EXISTS api_usage_tracking (
 );
 
 -- Create unique constraint to ensure one record per date
-ALTER TABLE api_usage_tracking ADD CONSTRAINT uq_api_usage_tracking_date UNIQUE (date);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'uq_api_usage_tracking_date'
+          AND conrelid = 'api_usage_tracking'::regclass
+    ) THEN
+        ALTER TABLE api_usage_tracking ADD CONSTRAINT uq_api_usage_tracking_date UNIQUE (date);
+    END IF;
+END;
+$$;
 
 -- Create indexes for performance
 CREATE INDEX IF NOT EXISTS idx_api_usage_tracking_date ON api_usage_tracking(date DESC);

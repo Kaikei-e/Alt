@@ -27,11 +27,20 @@ BEGIN
     END IF;
 END $$;
 
--- Step 2: Add foreign key constraint with ON DELETE CASCADE
--- This ensures summaries are automatically deleted when their article is deleted
-ALTER TABLE article_summaries
-ADD CONSTRAINT fk_article_summaries_article_id
-FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE;
+-- Step 2: Add foreign key constraint with ON DELETE CASCADE (skip if already present)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fk_article_summaries_article_id'
+          AND conrelid = 'article_summaries'::regclass
+    ) THEN
+        ALTER TABLE article_summaries
+        ADD CONSTRAINT fk_article_summaries_article_id
+        FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE;
+    END IF;
+END;
+$$;
 
 -- Step 3: Add index on article_id for foreign key performance (if not exists)
 -- Note: The unique index idx_article_summaries_article_user already covers this

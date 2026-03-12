@@ -14,6 +14,15 @@ WHERE a.article_id = b.article_id
   AND a.feed_tag_id = b.feed_tag_id
   AND a.ctid <> b.min_ctid;
 
--- Step 2: Add primary key constraint
-ALTER TABLE article_tags
-    ADD PRIMARY KEY (article_id, feed_tag_id);
+-- Step 2: Add primary key constraint (skip if already present from CREATE TABLE)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'article_tags'::regclass
+          AND contype = 'p'
+    ) THEN
+        ALTER TABLE article_tags ADD PRIMARY KEY (article_id, feed_tag_id);
+    END IF;
+END;
+$$;
