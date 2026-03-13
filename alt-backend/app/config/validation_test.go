@@ -13,19 +13,8 @@ func TestValidateAuthConfig_ProductionRequiresSecrets(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name: "production without shared secret fails",
-			config: AuthConfig{
-				SharedSecret:       "",
-				BackendTokenSecret: "this-is-a-very-long-secret-for-testing-purposes",
-			},
-			env:     "production",
-			wantErr: true,
-			errMsg:  "AUTH_SHARED_SECRET is required in production",
-		},
-		{
 			name: "production without backend token secret fails",
 			config: AuthConfig{
-				SharedSecret:       "this-is-a-very-long-secret-for-testing-purposes",
 				BackendTokenSecret: "",
 			},
 			env:     "production",
@@ -33,19 +22,8 @@ func TestValidateAuthConfig_ProductionRequiresSecrets(t *testing.T) {
 			errMsg:  "BACKEND_TOKEN_SECRET is required in production",
 		},
 		{
-			name: "production with short shared secret fails",
-			config: AuthConfig{
-				SharedSecret:       "short",
-				BackendTokenSecret: "this-is-a-very-long-secret-for-testing-purposes",
-			},
-			env:     "production",
-			wantErr: true,
-			errMsg:  "AUTH_SHARED_SECRET must be at least 32 characters",
-		},
-		{
 			name: "production with short backend token secret fails",
 			config: AuthConfig{
-				SharedSecret:       "this-is-a-very-long-secret-for-testing-purposes",
 				BackendTokenSecret: "short",
 			},
 			env:     "production",
@@ -53,9 +31,8 @@ func TestValidateAuthConfig_ProductionRequiresSecrets(t *testing.T) {
 			errMsg:  "BACKEND_TOKEN_SECRET must be at least 32 characters",
 		},
 		{
-			name: "production with valid secrets passes",
+			name: "production with valid secret passes",
 			config: AuthConfig{
-				SharedSecret:       "this-is-a-very-long-secret-for-testing-purposes",
 				BackendTokenSecret: "this-is-another-very-long-secret-for-testing-12",
 			},
 			env:     "production",
@@ -91,7 +68,6 @@ func TestValidateAuthConfig_DevelopmentAllowsEmptySecrets(t *testing.T) {
 		{
 			name: "development without secrets is OK",
 			config: AuthConfig{
-				SharedSecret:       "",
 				BackendTokenSecret: "",
 			},
 			env:     "development",
@@ -100,7 +76,6 @@ func TestValidateAuthConfig_DevelopmentAllowsEmptySecrets(t *testing.T) {
 		{
 			name: "empty env (defaults to development) without secrets is OK",
 			config: AuthConfig{
-				SharedSecret:       "",
 				BackendTokenSecret: "",
 			},
 			env:     "",
@@ -133,19 +108,8 @@ func TestValidateAuthConfig_ShortSecretInDevelopment(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name: "development with too short shared secret fails",
-			config: AuthConfig{
-				SharedSecret:       "tooshort",
-				BackendTokenSecret: "",
-			},
-			env:     "development",
-			wantErr: true,
-			errMsg:  "AUTH_SHARED_SECRET is too short",
-		},
-		{
 			name: "development with too short backend token secret fails",
 			config: AuthConfig{
-				SharedSecret:       "",
 				BackendTokenSecret: "tooshort",
 			},
 			env:     "development",
@@ -153,9 +117,8 @@ func TestValidateAuthConfig_ShortSecretInDevelopment(t *testing.T) {
 			errMsg:  "BACKEND_TOKEN_SECRET is too short",
 		},
 		{
-			name: "development with 16+ char secrets passes",
+			name: "development with 16+ char secret passes",
 			config: AuthConfig{
-				SharedSecret:       "exactly-16-chars!",
 				BackendTokenSecret: "exactly-16-chars!",
 			},
 			env:     "development",

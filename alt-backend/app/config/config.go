@@ -89,8 +89,6 @@ type InternalAPIConfig struct {
 }
 
 type AuthConfig struct {
-	SharedSecret           string `json:"shared_secret" env:"AUTH_SHARED_SECRET"`
-	SharedSecretFile       string `json:"-" env:"AUTH_SHARED_SECRET_FILE"`
 	BackendTokenSecret     string `json:"backend_token_secret" env:"BACKEND_TOKEN_SECRET"`
 	BackendTokenSecretFile string `json:"-" env:"BACKEND_TOKEN_SECRET_FILE"`
 	BackendTokenIssuer     string `json:"backend_token_issuer" env:"BACKEND_TOKEN_ISSUER"`
@@ -165,15 +163,6 @@ func NewConfig() (*Config, error) {
 
 	if err := validateConfig(config); err != nil {
 		return nil, err
-	}
-
-	// Load shared secret from file if configured (Docker Secrets support)
-	if config.Auth.SharedSecretFile != "" {
-		content, err := os.ReadFile(config.Auth.SharedSecretFile)
-		if err == nil {
-			config.Auth.SharedSecret = strings.TrimSpace(string(content))
-		}
-		// If file read fails, we fall back to the env var value (if any) or keep it empty
 	}
 
 	// Load service secret from file if configured (Docker Secrets support)

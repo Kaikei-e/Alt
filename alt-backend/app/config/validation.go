@@ -274,13 +274,6 @@ func validateCircuitBreakerConfig(config *CircuitBreakerConfig) error {
 func validateAuthConfig(config *AuthConfig, env string) error {
 	// Production environment requires strict validation
 	if env == "production" {
-		if config.SharedSecret == "" {
-			return fmt.Errorf("AUTH_SHARED_SECRET is required in production")
-		}
-		if len(config.SharedSecret) < 32 {
-			return fmt.Errorf("AUTH_SHARED_SECRET must be at least 32 characters")
-		}
-
 		if config.BackendTokenSecret == "" {
 			return fmt.Errorf("BACKEND_TOKEN_SECRET is required in production")
 		}
@@ -290,9 +283,6 @@ func validateAuthConfig(config *AuthConfig, env string) error {
 	}
 
 	// In any environment, if secrets are provided they must meet minimum length
-	if config.SharedSecret != "" && len(config.SharedSecret) < 16 {
-		return fmt.Errorf("AUTH_SHARED_SECRET is too short (minimum 16 characters)")
-	}
 	if config.BackendTokenSecret != "" && len(config.BackendTokenSecret) < 16 {
 		return fmt.Errorf("BACKEND_TOKEN_SECRET is too short (minimum 16 characters)")
 	}
