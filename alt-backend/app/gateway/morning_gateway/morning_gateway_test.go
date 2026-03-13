@@ -78,7 +78,7 @@ func TestGetArticleGroups(t *testing.T) {
 	)
 
 	mockPool.ExpectQuery("SELECT.*FROM articles a.*WHERE a.id = ANY").
-		WithArgs([]uuid.UUID{articleID}).
+		WithArgs([]string{articleID.String()}).
 		WillReturnRows(rows)
 
 	// Execute

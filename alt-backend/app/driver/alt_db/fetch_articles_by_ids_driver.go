@@ -23,6 +23,13 @@ func (r *AltDBRepository) FetchArticlesByIDs(ctx context.Context, articleIDs []u
 
 	logger.Logger.InfoContext(ctx, "Fetching articles by IDs", "article_count", len(articleIDs))
 
+	// Convert []uuid.UUID to []string for PgBouncer simple protocol compatibility.
+	// Same pattern as GetReadFeedIDs — pgx SimpleProtocol can't encode google/uuid arrays.
+	stringIDs := make([]string, len(articleIDs))
+	for i, id := range articleIDs {
+		stringIDs[i] = id.String()
+	}
+
 	query := `
 		SELECT
 			a.id,
@@ -35,11 +42,11 @@ func (r *AltDBRepository) FetchArticlesByIDs(ctx context.Context, articleIDs []u
 		FROM articles a
 		LEFT JOIN article_tags at ON a.id = at.article_id
 		LEFT JOIN feed_tags ft ON at.feed_tag_id = ft.id
-		WHERE a.id = ANY($1) AND a.deleted_at IS NULL
+		WHERE a.id = ANY($1::uuid[]) AND a.deleted_at IS NULL
 		GROUP BY a.id
 	`
 
-	rows, err := r.pool.Query(ctx, query, articleIDs)
+	rows, err := r.pool.Query(ctx, query, stringIDs)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to query articles by IDs", "error", err, "article_count", len(articleIDs))
 		return nil, errors.New("error fetching articles by IDs")
