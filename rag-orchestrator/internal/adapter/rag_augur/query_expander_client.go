@@ -22,10 +22,10 @@ type ConversationMessage struct {
 
 // ExpandQueryRequest is the request payload for the query expansion endpoint.
 type ExpandQueryRequest struct {
-	Query               string                 `json:"query"`
-	JapaneseCount       int                    `json:"japanese_count"`
-	EnglishCount        int                    `json:"english_count"`
-	ConversationHistory []ConversationMessage   `json:"conversation_history,omitempty"`
+	Query               string                `json:"query"`
+	JapaneseCount       int                   `json:"japanese_count"`
+	EnglishCount        int                   `json:"english_count"`
+	ConversationHistory []ConversationMessage `json:"conversation_history,omitempty"`
 }
 
 // ExpandQueryResponse is the response from the query expansion endpoint.
