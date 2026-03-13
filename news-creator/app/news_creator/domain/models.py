@@ -217,12 +217,22 @@ class RecapSummaryResponse(BaseModel):
 # ============================================================================
 
 
+class ConversationMessage(BaseModel):
+    """A single message in a conversation history."""
+
+    role: str = Field(description="Message role: 'user' or 'assistant'")
+    content: str = Field(description="Message content")
+
+
 class ExpandQueryRequest(BaseModel):
     """Request model for query expansion."""
 
     query: str = Field(min_length=1, description="Original user query to expand")
     japanese_count: int = Field(default=1, ge=0, le=5, description="Number of Japanese query variations")
     english_count: int = Field(default=3, ge=0, le=10, description="Number of English query variations")
+    conversation_history: Optional[List[ConversationMessage]] = Field(
+        default=None, description="Recent conversation turns for coreference resolution"
+    )
 
 
 class ExpandQueryResponse(BaseModel):

@@ -6,11 +6,12 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Tuple, Optional
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.models import ConversationMessage
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
 
-# Prompt template for query expansion
+# Prompt template for query expansion (single-turn)
 EXPAND_QUERY_PROMPT_TEMPLATE = """You are an expert search query generator for a knowledge retrieval system.
 Current Date: {current_date}
 
@@ -29,6 +30,31 @@ Output Japanese queries first, then English queries.
 
 User Input: {query}"""
 
+# Prompt template for multi-turn expansion with coreference resolution
+EXPAND_QUERY_WITH_HISTORY_TEMPLATE = """You are an expert search query generator for a knowledge retrieval system.
+Current Date: {current_date}
+
+The user is in a multi-turn conversation. First resolve any coreferences
+(e.g., "that", "it", "tell me more") using the conversation history,
+then generate search query variations based on the resolved meaning.
+
+Conversation:
+{conversation_history}
+
+Latest query: {query}
+
+Requirements:
+- Generate exactly {japanese_count} Japanese query variation(s)
+- Generate exactly {english_count} English query variation(s)
+- Resolve pronouns and references using the conversation context above
+- If the input is Japanese, translate it to English for English variations
+- If the input is English, translate it to Japanese for Japanese variations
+- Focus on different aspects: main keywords, synonyms, related concepts
+
+Output ONLY the generated queries, one per line.
+Do not add numbering, bullets, labels, or explanations.
+Japanese queries first, then English queries."""
+
 
 class ExpandQueryUsecase:
     """Usecase for generating expanded search queries for RAG retrieval."""
@@ -46,6 +72,7 @@ class ExpandQueryUsecase:
         query: str,
         japanese_count: int = 1,
         english_count: int = 3,
+        conversation_history: Optional[List[ConversationMessage]] = None,
     ) -> Tuple[List[str], str, Optional[float]]:
         """
         Generate expanded search queries from a user query.
@@ -71,12 +98,26 @@ class ExpandQueryUsecase:
         jst = timezone(timedelta(hours=9))
         current_date = datetime.now(jst).strftime("%Y-%m-%d")
 
-        prompt = EXPAND_QUERY_PROMPT_TEMPLATE.format(
-            current_date=current_date,
-            japanese_count=japanese_count,
-            english_count=english_count,
-            query=query.strip(),
-        )
+        if conversation_history:
+            # Multi-turn: include conversation context for coreference resolution
+            history_lines = "\n".join(
+                f"{msg.role}: {msg.content[:200]}"
+                for msg in conversation_history[-6:]  # Last 3 turns max
+            )
+            prompt = EXPAND_QUERY_WITH_HISTORY_TEMPLATE.format(
+                current_date=current_date,
+                conversation_history=history_lines,
+                japanese_count=japanese_count,
+                english_count=english_count,
+                query=query.strip(),
+            )
+        else:
+            prompt = EXPAND_QUERY_PROMPT_TEMPLATE.format(
+                current_date=current_date,
+                japanese_count=japanese_count,
+                english_count=english_count,
+                query=query.strip(),
+            )
 
         total_queries = japanese_count + english_count
         # Estimate max tokens: ~50 tokens per query should be sufficient

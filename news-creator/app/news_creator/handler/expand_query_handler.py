@@ -60,6 +60,7 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
                 query=request.query,
                 japanese_count=request.japanese_count,
                 english_count=request.english_count,
+                conversation_history=request.conversation_history,
             )
 
             return ExpandQueryResponse(
