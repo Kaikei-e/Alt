@@ -5,6 +5,7 @@ import (
 
 	"rag-orchestrator/internal/usecase"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -215,6 +216,61 @@ func TestOutputValidator_Validate_WhitespaceOnlyAnswerRejection(t *testing.T) {
 	result, err := validator.Validate(input, nil)
 	assert.Error(t, err, "should reject whitespace-only answer without fallback")
 	assert.Nil(t, result)
+}
+
+func TestOutputValidator_Validate_IndexBasedCitations(t *testing.T) {
+	validator := usecase.NewOutputValidator()
+
+	contexts := []usecase.ContextItem{
+		{ChunkText: "chunk1 text", Title: "Article 1"},
+		{ChunkText: "chunk2 text", Title: "Article 2"},
+		{ChunkText: "chunk3 text", Title: "Article 3"},
+	}
+	// Set ChunkIDs (UUIDs won't match "1", "2", "3")
+	for i := range contexts {
+		contexts[i].ChunkID = uuid.New()
+	}
+
+	input := `{
+		"answer": "Some answer referencing [1] and [2].",
+		"citations": [
+			{"chunk_id": "1", "reason": "main source"},
+			{"chunk_id": "2", "reason": "supporting source"}
+		],
+		"fallback": false,
+		"reason": ""
+	}`
+
+	result, err := validator.Validate(input, contexts)
+	require.NoError(t, err)
+	assert.False(t, result.Fallback)
+	assert.Len(t, result.Citations, 2, "index-based citations (1, 2) should be preserved")
+	assert.Equal(t, "1", result.Citations[0].ChunkID)
+	assert.Equal(t, "2", result.Citations[1].ChunkID)
+}
+
+func TestOutputValidator_Validate_IndexBasedCitationsOutOfRange(t *testing.T) {
+	validator := usecase.NewOutputValidator()
+
+	contexts := []usecase.ContextItem{
+		{ChunkText: "chunk1 text", Title: "Article 1"},
+	}
+	contexts[0].ChunkID = uuid.New()
+
+	input := `{
+		"answer": "Answer with [1] and [99].",
+		"citations": [
+			{"chunk_id": "1", "reason": "valid"},
+			{"chunk_id": "99", "reason": "out of range"}
+		],
+		"fallback": false,
+		"reason": ""
+	}`
+
+	result, err := validator.Validate(input, contexts)
+	require.NoError(t, err)
+	assert.Len(t, result.Citations, 1, "only valid index citation should be kept")
+	assert.Equal(t, "1", result.Citations[0].ChunkID)
 }
 
 func TestOutputValidator_ConvertLiteralEscapes_OnlyNewlines(t *testing.T) {

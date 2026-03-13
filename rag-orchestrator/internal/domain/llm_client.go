@@ -41,4 +41,10 @@ type QueryExpander interface {
 	// japaneseCount: number of Japanese query variations to generate
 	// englishCount: number of English query variations to generate
 	ExpandQuery(ctx context.Context, query string, japaneseCount, englishCount int) ([]string, error)
+
+	// ExpandQueryWithHistory generates search query variations with conversation context.
+	// The LLM resolves coreferences (e.g., "tell me more about that") using the history
+	// before generating search variations. This merges query rewriting and expansion
+	// into a single fast LLM call (4B model) instead of a separate slow rewrite (12B model).
+	ExpandQueryWithHistory(ctx context.Context, query string, history []Message, japaneseCount, englishCount int) ([]string, error)
 }

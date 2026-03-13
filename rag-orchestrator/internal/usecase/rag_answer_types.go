@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+
+	"rag-orchestrator/internal/domain"
 )
 
 // AnswerWithRAGInput encapsulates the parameters that drive a RAG answer request.
@@ -12,6 +14,7 @@ type AnswerWithRAGInput struct {
 	MaxTokens           int
 	UserID              string
 	Locale              string
+	ConversationHistory []domain.Message // Recent chat turns for multi-turn context
 }
 
 // AnswerWithRAGOutput represents the normalized answer response returned to API clients.

@@ -19,12 +19,13 @@ type PromptContext struct {
 
 // PromptInput contains the pieces that feed into the prompt builder.
 type PromptInput struct {
-	Query         string
-	Locale        string
-	PromptVersion string
-	Contexts      []PromptContext
-	Stage         string   // "citations" or "answer" (empty = combined)
-	Citations     []string // For "answer" stage, pass previously extracted citations
+	Query               string
+	Locale              string
+	PromptVersion       string
+	Contexts            []PromptContext
+	Stage               string           // "citations" or "answer" (empty = combined)
+	Citations           []string         // For "answer" stage, pass previously extracted citations
+	ConversationHistory []domain.Message // Recent chat turns for multi-turn context
 }
 
 // PromptBuilder builds the chat messages sent to the LLM.
@@ -85,6 +86,25 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 	sb.WriteString("{\"answer\":\"## 概要\\n...\\n## 詳細\\n...\\n## まとめ\\n...\",")
 	sb.WriteString("\"citations\":[{\"chunk_id\":\"1\",\"reason\":\"引用理由\"}],\"fallback\":false,\"reason\":\"\"}\n\n")
 	sb.WriteString("コンテキストが不十分な場合は fallback=true とし、reason に理由を記述してください。\n\n")
+
+	// Conversation History (for multi-turn context)
+	if len(input.ConversationHistory) > 0 {
+		sb.WriteString("### 会話履歴\n")
+		// Include last 3 turns max (6 messages)
+		maxMsgs := 6
+		start := 0
+		if len(input.ConversationHistory) > maxMsgs {
+			start = len(input.ConversationHistory) - maxMsgs
+		}
+		for _, msg := range input.ConversationHistory[start:] {
+			content := msg.Content
+			if len(content) > 300 {
+				content = content[:300] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, content))
+		}
+		sb.WriteString("\n")
+	}
 
 	// Context
 	sb.WriteString("### Context\n")

@@ -12,6 +12,7 @@ type StageContext struct {
 	RetrievalID         string
 	Query               string
 	CandidateArticleIDs []string
+	ConversationHistory []domain.Message // Recent turns for multi-turn query rewriting
 
 	// Stage 1 outputs
 	OriginalEmbedding []float32

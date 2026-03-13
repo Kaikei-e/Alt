@@ -4,10 +4,12 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"unicode"
 
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 
+	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
 
 	"connectrpc.com/connect"
@@ -50,12 +52,12 @@ func (h *Handler) StreamChat(
 	req *connect.Request[augurv2.StreamChatRequest],
 	stream *connect.ServerStream[augurv2.StreamChatResponse],
 ) error {
-	// Extract last user message as query
+	// Extract last user message as query and build conversation history
 	var query string
+	var conversationHistory []domain.Message
 	for i := len(req.Msg.Messages) - 1; i >= 0; i-- {
-		if req.Msg.Messages[i].Role == "user" {
+		if req.Msg.Messages[i].Role == "user" && query == "" {
 			query = req.Msg.Messages[i].Content
-			break
 		}
 	}
 
@@ -64,13 +66,33 @@ func (h *Handler) StreamChat(
 		return connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
+	// Build conversation history (all messages except the last user message)
+	// Limit to last 6 messages (3 turns) for efficiency
+	allMsgs := req.Msg.Messages
+	if len(allMsgs) > 1 {
+		historyMsgs := allMsgs[:len(allMsgs)-1] // Exclude last message (the query)
+		start := 0
+		if len(historyMsgs) > 6 {
+			start = len(historyMsgs) - 6
+		}
+		for _, msg := range historyMsgs[start:] {
+			conversationHistory = append(conversationHistory, domain.Message{
+				Role:    msg.Role,
+				Content: msg.Content,
+			})
+		}
+	}
+
 	h.logger.Info("starting augur stream chat",
-		slog.String("query", query))
+		slog.String("query", query),
+		slog.Int("history_turns", len(conversationHistory)))
 
 	// Build input for AnswerWithRAGUsecase
+	locale := detectLocale(query)
 	input := usecase.AnswerWithRAGInput{
-		Query:  query,
-		Locale: "ja", // Default to Japanese
+		Query:               query,
+		Locale:              locale,
+		ConversationHistory: conversationHistory,
 	}
 
 	// Stream answer using AnswerWithRAGUsecase
@@ -279,4 +301,30 @@ func (h *Handler) RetrieveContext(
 	return connect.NewResponse(&augurv2.RetrieveContextResponse{
 		Contexts: contexts,
 	}), nil
+}
+
+// detectLocale determines the response language based on query content.
+// Uses Unicode range heuristics: if Japanese characters (Hiragana, Katakana, CJK)
+// make up a significant portion, the locale is "ja"; otherwise "en".
+func detectLocale(query string) string {
+	if query == "" {
+		return "ja" // Default
+	}
+	jaCount := 0
+	total := 0
+	for _, r := range query {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			total++
+			if unicode.In(r, unicode.Hiragana, unicode.Katakana, unicode.Han) {
+				jaCount++
+			}
+		}
+	}
+	if total == 0 {
+		return "ja"
+	}
+	if float64(jaCount)/float64(total) > 0.3 {
+		return "ja"
+	}
+	return "en"
 }

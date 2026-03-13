@@ -43,6 +43,14 @@ func (m *MockQueryExpander) ExpandQuery(ctx context.Context, query string, japan
 	return args.Get(0).([]string), args.Error(1)
 }
 
+func (m *MockQueryExpander) ExpandQueryWithHistory(ctx context.Context, query string, history []domain.Message, japaneseCount, englishCount int) ([]string, error) {
+	args := m.Called(ctx, query, history, japaneseCount, englishCount)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]string), args.Error(1)
+}
+
 func TestRetrieveContext_Execute_Success(t *testing.T) {
 	mockChunkRepo := new(MockRagChunkRepository)
 	mockDocRepo := new(MockRagDocumentRepository)
@@ -68,7 +76,7 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 		"variation 3",
 	}, nil)
 	// Legacy expansion runs in parallel — mock the Generate call so it doesn't panic.
-	mockLLM.On("Generate", mock.Anything, mock.Anything, 200).Return(&domain.LLMResponse{
+	mockLLM.On("Generate", mock.Anything, mock.Anything, 100).Return(&domain.LLMResponse{
 		Text: "legacy query 1\nlegacy query 2",
 	}, nil).Maybe()
 

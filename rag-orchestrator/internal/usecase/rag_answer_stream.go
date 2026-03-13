@@ -182,14 +182,15 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			}
 		}
 
-		var builder strings.Builder
+		var builder strings.Builder // Full response for final validation
 		hasData := false
 		chunkStream := chunkCh
 		errStream := errCh
 		done := false
 
-		// Parsing state
-		scanOffset := 0
+		// Parsing state — O(n) incremental parser.
+		// `pending` holds only unprocessed bytes (not the full accumulated text).
+		var pending strings.Builder
 		inAnswer := false
 		isEscaped := false
 		answerCompletelyStreamed := false
@@ -220,40 +221,47 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 					hasData = true
 					builder.WriteString(chunk.Response)
 
-					// Partial Parsing Logic
+					// Partial Parsing Logic — only process new chunk data
 					if !answerCompletelyStreamed {
-						fullStr := builder.String()
+						pending.WriteString(chunk.Response)
+						pendingStr := pending.String()
+						processed := 0
+
 						if !inAnswer {
-							searchArea := fullStr[scanOffset:]
-							idx := strings.Index(searchArea, "\"answer\"")
+							idx := strings.Index(pendingStr, "\"answer\"")
 							if idx != -1 {
-								absoluteIdx := scanOffset + idx + 8
-								remainder := fullStr[absoluteIdx:]
-								startQuoteIdx := -1
+								// Find the opening quote of the value
+								remainder := pendingStr[idx+8:]
+								startOffset := -1
 								for i, r := range remainder {
 									if r == ' ' || r == '\n' || r == '\t' || r == '\r' || r == ':' {
 										continue
 									}
 									if r == '"' {
-										startQuoteIdx = absoluteIdx + i + 1
+										startOffset = idx + 8 + i + len(string(r))
 										break
 									}
 									break
 								}
-								if startQuoteIdx != -1 {
+								if startOffset != -1 {
 									inAnswer = true
-									scanOffset = startQuoteIdx
+									processed = startOffset
 								} else {
-									scanOffset += idx
+									// Keep tail for cross-chunk matching
+									if len(pendingStr) > 20 {
+										processed = len(pendingStr) - 20
+									}
 								}
 							} else {
-								if len(searchArea) > 20 {
-									scanOffset += len(searchArea) - 20
+								// Keep tail for cross-chunk matching of "answer" key
+								if len(pendingStr) > 20 {
+									processed = len(pendingStr) - 20
 								}
 							}
 						}
+
 						if inAnswer {
-							strToScan := fullStr[scanOffset:]
+							strToScan := pendingStr[processed:]
 							var contentBuilder strings.Builder
 							advanceBytes := 0
 							for i, char := range strToScan {
@@ -292,10 +300,8 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 								contentBuilder.WriteRune(char)
 								advanceBytes = i + charLen
 							}
-							if !answerCompletelyStreamed {
-								if isEscaped {
-									advanceBytes -= 1
-								}
+							if !answerCompletelyStreamed && isEscaped {
+								advanceBytes -= 1
 							}
 							strToStream := contentBuilder.String()
 							if strToStream != "" {
@@ -306,8 +312,13 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 									return
 								}
 							}
-							scanOffset += advanceBytes
+							processed += advanceBytes
 						}
+
+						// Keep only unprocessed tail in pending buffer
+						remaining := pendingStr[processed:]
+						pending.Reset()
+						pending.WriteString(remaining)
 					}
 				}
 				if chunk.Done {

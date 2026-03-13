@@ -12,6 +12,56 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// RewriteQueryWithHistory rewrites a user query using conversation history
+// so it becomes self-contained for retrieval. E.g., "Tell me more about that"
+// becomes "Tell me more about Russia oil sanctions" based on prior context.
+func RewriteQueryWithHistory(ctx context.Context, query string, history []domain.Message, llmClient domain.LLMClient, logger *slog.Logger) string {
+	if len(history) == 0 {
+		return query
+	}
+
+	// Build a compact conversation summary (last 3 turns max)
+	maxTurns := 6 // 3 user + 3 assistant
+	start := 0
+	if len(history) > maxTurns {
+		start = len(history) - maxTurns
+	}
+	var historyLines strings.Builder
+	for _, msg := range history[start:] {
+		// Truncate long messages
+		content := msg.Content
+		if len(content) > 200 {
+			content = content[:200] + "..."
+		}
+		historyLines.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, content))
+	}
+
+	prompt := fmt.Sprintf(`Rewrite the latest user query as a self-contained search query using the conversation context.
+Output ONLY the rewritten query on a single line. No explanation.
+
+Conversation:
+%s
+Latest query: %s
+
+Rewritten query:`, historyLines.String(), query)
+
+	resp, err := llmClient.Generate(ctx, prompt, 60)
+	if err != nil {
+		logger.Warn("query_rewrite_failed", slog.String("error", err.Error()))
+		return query // Fallback to original
+	}
+
+	rewritten := strings.TrimSpace(resp.Text)
+	if rewritten == "" {
+		return query
+	}
+
+	logger.Info("query_rewritten",
+		slog.String("original", query),
+		slog.String("rewritten", rewritten))
+	return rewritten
+}
+
 // ExpandQueries runs query expansion, tag search, and original embedding in parallel (Stage 1).
 func ExpandQueries(
 	ctx context.Context,
@@ -22,11 +72,16 @@ func ExpandQueries(
 	encoder domain.VectorEncoder,
 	logger *slog.Logger,
 ) error {
+	// Multi-turn: conversation history is passed to the expansion step directly,
+	// so the fast 4B model handles both coreference resolution and query expansion
+	// in a single call. This replaces the separate RewriteQueryWithHistory (12B model, 27s)
+	// with an integrated approach (~3s via news-creator).
+
 	g, gctx := errgroup.WithContext(ctx)
 
-	// goroutine A: Query Expansion
+	// goroutine A: Query Expansion (with optional conversation history)
 	g.Go(func() error {
-		expanded, err := expandQuery(gctx, sc.Query, queryExpander, llmClient, logger)
+		expanded, err := expandQuery(gctx, sc.Query, sc.ConversationHistory, queryExpander, llmClient, logger)
 		if err != nil {
 			logger.Warn("expansion_failed",
 				slog.String("retrieval_id", sc.RetrievalID),
@@ -35,6 +90,7 @@ func ExpandQueries(
 			return nil // non-fatal
 		}
 		if len(expanded) > 0 {
+			expanded = filterExpandedQueries(expanded)
 			sc.ExpandedQueries = expanded
 			logger.Info("query_expanded",
 				slog.String("retrieval_id", sc.RetrievalID),
@@ -102,10 +158,14 @@ func ExpandQueries(
 	return g.Wait()
 }
 
-func expandQuery(ctx context.Context, query string, queryExpander domain.QueryExpander, llmClient domain.LLMClient, logger *slog.Logger) ([]string, error) {
+func expandQuery(ctx context.Context, query string, history []domain.Message, queryExpander domain.QueryExpander, llmClient domain.LLMClient, logger *slog.Logger) ([]string, error) {
 	if queryExpander == nil {
-		return expandQueryLegacy(ctx, query, llmClient)
+		return expandQueryLegacy(ctx, query, history, llmClient)
 	}
+
+	// Use cancellable context so the loser is cancelled once a winner is found
+	raceCtx, raceCancel := context.WithCancel(ctx)
+	defer raceCancel()
 
 	type result struct {
 		queries []string
@@ -115,12 +175,19 @@ func expandQuery(ctx context.Context, query string, queryExpander domain.QueryEx
 	ch := make(chan result, 2)
 
 	go func() {
-		expansions, err := queryExpander.ExpandQuery(ctx, query, 1, 3)
+		var expansions []string
+		var err error
+		if len(history) > 0 {
+			// Multi-turn: use history-aware expansion (coreference resolution + expansion in one call)
+			expansions, err = queryExpander.ExpandQueryWithHistory(raceCtx, query, history, 1, 3)
+		} else {
+			expansions, err = queryExpander.ExpandQuery(raceCtx, query, 1, 3)
+		}
 		ch <- result{expansions, err, "news-creator"}
 	}()
 
 	go func() {
-		expansions, err := expandQueryLegacy(ctx, query, llmClient)
+		expansions, err := expandQueryLegacy(raceCtx, query, history, llmClient)
 		ch <- result{expansions, err, "ollama-legacy"}
 	}()
 
@@ -131,6 +198,7 @@ func expandQuery(ctx context.Context, query string, queryExpander domain.QueryEx
 			logger.Info("query_expansion_completed",
 				slog.String("source", r.source),
 				slog.Int("count", len(r.queries)))
+			raceCancel() // Cancel the loser
 			return r.queries, nil
 		}
 		if r.err != nil {
@@ -143,20 +211,108 @@ func expandQuery(ctx context.Context, query string, queryExpander domain.QueryEx
 	return nil, fmt.Errorf("all expansion methods failed: %w", lastErr)
 }
 
-func expandQueryLegacy(ctx context.Context, query string, llmClient domain.LLMClient) ([]string, error) {
-	currentDate := time.Now().Format("2006-01-02")
-	prompt := fmt.Sprintf(`You are an expert search query generator.
-Current Date: %s
+// maxExpandedQueries caps the number of expanded queries to limit embedding + vector search cost.
+const maxExpandedQueries = 8
 
-Generate 3 to 5 diverse English search queries to find information related to the user's input.
-If the input is Japanese, translate it and also generate variations.
-If the user specifies a time (e.g., "December" or "this month"), interpret it based on the Current Date.
-Focus on different aspects like main keywords, synonyms, and specific events.
-Output ONLY the generated queries, one per line. Do not add numbering or bullets or explanations.
+// filterExpandedQueries removes useless romanized Japanese queries and caps the result count.
+// LLMs sometimes generate romanized Japanese (e.g., "Sei-sai naiyō Rosia") which
+// matches neither Japanese nor English articles in search.
+func filterExpandedQueries(queries []string) []string {
+	if len(queries) == 0 {
+		return []string{}
+	}
+	filtered := make([]string, 0, len(queries))
+	for _, q := range queries {
+		if isRomanizedJapanese(q) {
+			continue
+		}
+		filtered = append(filtered, q)
+		if len(filtered) >= maxExpandedQueries {
+			break
+		}
+	}
+	return filtered
+}
+
+// isRomanizedJapanese detects romanized Japanese strings like "Sei-sai naiyō Rosia Amerika".
+// Uses two signals: (1) macron diacritics (ō, ū, ā) typical of romaji long vowels,
+// (2) multiple hyphenated words typical of syllable-split romanization.
+func isRomanizedJapanese(q string) bool {
+	if q == "" {
+		return false
+	}
+	hasMacron := false
+	for _, r := range q {
+		// CJK characters mean real Japanese text, not romanized
+		if (r >= 0x3040 && r <= 0x309F) || // Hiragana
+			(r >= 0x30A0 && r <= 0x30FF) || // Katakana
+			(r >= 0x4E00 && r <= 0x9FFF) { // CJK Unified Ideographs
+			return false
+		}
+		// Macron vowels are a strong signal of romanized Japanese
+		switch r {
+		case 'ō', 'ū', 'ā', 'ē', 'ī', 'Ō', 'Ū', 'Ā', 'Ē', 'Ī':
+			hasMacron = true
+		}
+	}
+	if hasMacron {
+		return true
+	}
+	// Multiple hyphenated words (e.g., "sei-sai", "Roshi-a") without CJK → romanized
+	words := strings.Fields(q)
+	hyphenatedWords := 0
+	for _, w := range words {
+		w = strings.Trim(w, "-")
+		if strings.Contains(w, "-") {
+			hyphenatedWords++
+		}
+	}
+	return hyphenatedWords >= 2
+}
+
+func expandQueryLegacy(ctx context.Context, query string, history []domain.Message, llmClient domain.LLMClient) ([]string, error) {
+	currentDate := time.Now().Format("2006-01-02")
+
+	var prompt string
+	if len(history) > 0 {
+		// Multi-turn: include conversation context for coreference resolution
+		maxTurns := 6
+		start := 0
+		if len(history) > maxTurns {
+			start = len(history) - maxTurns
+		}
+		var historyLines strings.Builder
+		for _, msg := range history[start:] {
+			content := msg.Content
+			if len(content) > 200 {
+				content = content[:200] + "..."
+			}
+			fmt.Fprintf(&historyLines, "%s: %s\n", msg.Role, content)
+		}
+		prompt = fmt.Sprintf(`You are a search query generator. Current Date: %s
+
+The user is in a conversation. Resolve coreferences using the context, then generate queries.
+
+Conversation:
+%s
+Latest query: %s
+
+Generate 3 to 5 diverse search queries based on the resolved meaning.
+Include 1-2 Japanese and 2-3 English variations.
+Output ONLY queries, one per line. No numbering, bullets, or explanations.`, currentDate, historyLines.String(), query)
+	} else {
+		prompt = fmt.Sprintf(`You are a search query generator. Current Date: %s
+
+Generate 3 to 5 diverse search queries for the user's input.
+If the input is Japanese, include 1-2 Japanese variations and 2-3 English translations.
+If the input is English, generate English variations.
+Interpret relative dates based on Current Date.
+Output ONLY queries, one per line. No numbering, bullets, or explanations.
 
 User Input: %s`, currentDate, query)
+	}
 
-	resp, err := llmClient.Generate(ctx, prompt, 200)
+	resp, err := llmClient.Generate(ctx, prompt, 100)
 	if err != nil {
 		return nil, err
 	}

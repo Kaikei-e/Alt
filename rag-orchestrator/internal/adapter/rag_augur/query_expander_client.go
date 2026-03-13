@@ -10,13 +10,22 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"rag-orchestrator/internal/domain"
 )
+
+// ConversationMessage represents a single message in conversation history.
+type ConversationMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
 
 // ExpandQueryRequest is the request payload for the query expansion endpoint.
 type ExpandQueryRequest struct {
-	Query         string `json:"query"`
-	JapaneseCount int    `json:"japanese_count"`
-	EnglishCount  int    `json:"english_count"`
+	Query               string                 `json:"query"`
+	JapaneseCount       int                    `json:"japanese_count"`
+	EnglishCount        int                    `json:"english_count"`
+	ConversationHistory []ConversationMessage   `json:"conversation_history,omitempty"`
 }
 
 // ExpandQueryResponse is the response from the query expansion endpoint.
@@ -102,6 +111,82 @@ func (c *QueryExpanderClient) ExpandQuery(ctx context.Context, query string, jap
 
 	elapsedMs := time.Since(startTime).Milliseconds()
 	c.logger.Info("query_expansion_completed",
+		slog.Int("expanded_count", len(expandResp.ExpandedQueries)),
+		slog.String("model", expandResp.Model),
+		slog.Int64("elapsed_ms", elapsedMs))
+
+	return expandResp.ExpandedQueries, nil
+}
+
+// ExpandQueryWithHistory calls the news-creator expand-query endpoint with conversation history.
+// The LLM resolves coreferences using the conversation context and generates search variations
+// in a single call, replacing the separate query rewrite step.
+func (c *QueryExpanderClient) ExpandQueryWithHistory(ctx context.Context, query string, history []domain.Message, japaneseCount, englishCount int) ([]string, error) {
+	startTime := time.Now()
+
+	c.logger.Info("query_expansion_with_history_started",
+		slog.String("query", truncateString(query, 100)),
+		slog.Int("history_turns", len(history)),
+		slog.Int("japanese_count", japaneseCount),
+		slog.Int("english_count", englishCount))
+
+	// Convert domain messages to API format
+	convHistory := make([]ConversationMessage, len(history))
+	for i, msg := range history {
+		content := msg.Content
+		if len(content) > 200 {
+			content = content[:200] + "..."
+		}
+		convHistory[i] = ConversationMessage{
+			Role:    msg.Role,
+			Content: content,
+		}
+	}
+
+	reqBody := ExpandQueryRequest{
+		Query:               query,
+		JapaneseCount:       japaneseCount,
+		EnglishCount:        englishCount,
+		ConversationHistory: convHistory,
+	}
+
+	jsonPayload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal expand query request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/expand-query", c.BaseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonPayload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create expand query request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.Client.Do(req)
+	if err != nil {
+		c.logger.Warn("query_expansion_with_history_failed",
+			slog.String("error", err.Error()),
+			slog.Int64("elapsed_ms", time.Since(startTime).Milliseconds()))
+		return nil, fmt.Errorf("failed to call expand query endpoint: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		c.logger.Warn("query_expansion_with_history_failed",
+			slog.Int("status_code", resp.StatusCode),
+			slog.String("body", truncateString(string(body), 500)),
+			slog.Int64("elapsed_ms", time.Since(startTime).Milliseconds()))
+		return nil, fmt.Errorf("expand query endpoint returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var expandResp ExpandQueryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&expandResp); err != nil {
+		return nil, fmt.Errorf("failed to decode expand query response: %w", err)
+	}
+
+	elapsedMs := time.Since(startTime).Milliseconds()
+	c.logger.Info("query_expansion_with_history_completed",
 		slog.Int("expanded_count", len(expandResp.ExpandedQueries)),
 		slog.String("model", expandResp.Model),
 		slog.Int64("elapsed_ms", elapsedMs))

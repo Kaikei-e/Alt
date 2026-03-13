@@ -47,9 +47,12 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 
 	// Validate Citations if present
 	if len(contexts) > 0 {
-		allowed := make(map[string]struct{}, len(contexts))
-		for _, ctx := range contexts {
+		allowed := make(map[string]struct{}, len(contexts)*2)
+		for i, ctx := range contexts {
 			allowed[ctx.ChunkID.String()] = struct{}{}
+			// Also allow 1-based index citations (e.g., "1", "2", "3")
+			// which the prompt instructs the LLM to use
+			allowed[fmt.Sprintf("%d", i+1)] = struct{}{}
 		}
 		// Validate citations - filter out invalid ones
 		validCitations := make([]LLMCitation, 0, len(answer.Citations))

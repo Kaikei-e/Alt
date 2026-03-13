@@ -344,7 +344,8 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	}
 
 	retrieveInput := RetrieveContextInput{
-		Query: input.Query,
+		Query:               input.Query,
+		ConversationHistory: input.ConversationHistory,
 	}
 	if len(input.CandidateArticleIDs) > 0 {
 		retrieveInput.CandidateArticleIDs = input.CandidateArticleIDs
@@ -411,10 +412,11 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	}
 
 	promptInput := PromptInput{
-		Query:         input.Query,
-		Locale:        locale,
-		PromptVersion: u.promptVersion,
-		Contexts:      promptContexts,
+		Query:               input.Query,
+		Locale:              locale,
+		PromptVersion:       u.promptVersion,
+		Contexts:            promptContexts,
+		ConversationHistory: input.ConversationHistory,
 	}
 
 	messages, err := u.promptBuilder.Build(promptInput)
@@ -423,7 +425,6 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	}
 
 	result.messages = messages
-	// Helper to extract PromptContexts
 	return result, nil
 }
 
