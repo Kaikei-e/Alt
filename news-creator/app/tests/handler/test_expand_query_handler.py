@@ -37,6 +37,7 @@ def test_expand_query_handler_success():
         query="AI技術のトレンド",
         japanese_count=1,
         english_count=3,
+        conversation_history=None,
     )
 
 
@@ -62,7 +63,42 @@ def test_expand_query_handler_default_counts():
         query="test query",
         japanese_count=1,
         english_count=3,
+        conversation_history=None,
     )
+
+
+def test_expand_query_handler_with_conversation_history():
+    """Test query expansion with conversation history for coreference resolution."""
+    usecase = AsyncMock()
+    usecase.expand_query.return_value = (
+        ["expanded query 1", "expanded query 2"],
+        "gemma3-4b-8k",
+        200.0,
+    )
+
+    app = FastAPI()
+    app.include_router(create_expand_query_router(usecase))
+    client = TestClient(app)
+
+    payload = {
+        "query": "tell me more about that",
+        "japanese_count": 1,
+        "english_count": 3,
+        "conversation_history": [
+            {"role": "user", "content": "What is machine learning?"},
+            {"role": "assistant", "content": "Machine learning is a subset of AI..."},
+        ],
+    }
+    resp = client.post("/api/v1/expand-query", json=payload)
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["expanded_queries"]) == 2
+
+    # Verify conversation_history was passed through
+    call_kwargs = usecase.expand_query.call_args.kwargs
+    assert call_kwargs["conversation_history"] is not None
+    assert len(call_kwargs["conversation_history"]) == 2
 
 
 def test_expand_query_handler_value_error():
