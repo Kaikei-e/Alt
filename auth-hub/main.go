@@ -75,8 +75,8 @@ func main() {
 		"admin_url", cfg.KratosAdminURL)
 
 	// Initialize handlers
-	validateHandler := handler.NewValidateHandler(kratosClient, sessionCache)
-	sessionHandler := handler.NewSessionHandler(kratosClient, sessionCache, cfg.AuthSharedSecret, cfg)
+	validateHandler := handler.NewValidateHandler(kratosClient, sessionCache, cfg)
+	sessionHandler := handler.NewSessionHandler(kratosClient, sessionCache, cfg)
 	csrfHandler := handler.NewCSRFHandler(kratosClient, cfg)
 	healthHandler := handler.NewHealthHandler()
 	internalHandler := handler.NewInternalHandler(kratosClient)

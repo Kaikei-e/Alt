@@ -10,7 +10,9 @@ import (
 
 	"auth-hub/cache"
 	"auth-hub/client"
+	"auth-hub/config"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -29,12 +31,25 @@ func (m *MockKratosClient) Whoami(ctx context.Context, cookie string) (*client.I
 	return args.Get(0).(*client.Identity), args.Error(1)
 }
 
+func testConfig() *config.Config {
+	return &config.Config{
+		KratosURL:            "http://kratos:4433",
+		Port:                 "8888",
+		CacheTTL:             5 * time.Minute,
+		CSRFSecret:           "test-csrf-secret-minimum-32-chars!",
+		BackendTokenSecret:   "test-backend-token-secret-min-32c!",
+		BackendTokenIssuer:   "auth-hub",
+		BackendTokenAudience: "alt-backend",
+		BackendTokenTTL:      5 * time.Minute,
+	}
+}
+
 func TestNewValidateHandler(t *testing.T) {
 	t.Run("creates handler with dependencies", func(t *testing.T) {
 		mockClient := new(MockKratosClient)
 		sessionCache := cache.NewSessionCache(5 * time.Minute)
 
-		handler := NewValidateHandler(mockClient, sessionCache)
+		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
 
 		assert.NotNil(t, handler)
 	})
@@ -48,7 +63,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 		// Pre-populate cache
 		sessionCache.Set("session-123", "user-456", "tenant-789", "user@example.com")
 
-		handler := NewValidateHandler(mockClient, sessionCache)
+		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
 
 		// Create request with session cookie
 		e := echo.New()
@@ -85,7 +100,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 				Email: "test@example.com",
 			}, nil)
 
-		handler := NewValidateHandler(mockClient, sessionCache)
+		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
 
 		// Create request
 		e := echo.New()
@@ -119,7 +134,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 	t.Run("missing session cookie returns 401", func(t *testing.T) {
 		mockClient := new(MockKratosClient)
 		sessionCache := cache.NewSessionCache(5 * time.Minute)
-		handler := NewValidateHandler(mockClient, sessionCache)
+		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/validate", nil)
@@ -144,7 +159,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 		mockClient.On("Whoami", mock.Anything, "ory_kratos_session=invalid-session").
 			Return(nil, errors.New("authentication failed: session invalid or expired"))
 
-		handler := NewValidateHandler(mockClient, sessionCache)
+		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/validate", nil)
@@ -171,7 +186,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 		mockClient.On("Whoami", mock.Anything, "ory_kratos_session=valid-session").
 			Return(nil, errors.New("kratos returned status 500"))
 
-		handler := NewValidateHandler(mockClient, sessionCache)
+		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/validate", nil)
@@ -207,7 +222,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 				Email: "new@example.com",
 			}, nil)
 
-		handler := NewValidateHandler(mockClient, sessionCache)
+		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/validate", nil)
@@ -238,7 +253,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 				Email: "multi@example.com",
 			}, nil)
 
-		handler := NewValidateHandler(mockClient, sessionCache)
+		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/validate", nil)
@@ -253,5 +268,103 @@ func TestValidateHandler_Handle(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, "user-789", rec.Header().Get("X-Alt-User-Id"))
+	})
+
+	t.Run("returns X-Alt-Backend-Token JWT on cache hit", func(t *testing.T) {
+		mockClient := new(MockKratosClient)
+		sessionCache := cache.NewSessionCache(5 * time.Minute)
+		cfg := testConfig()
+
+		sessionCache.Set("session-jwt", "user-100", "user-100", "jwt@example.com")
+
+		handler := NewValidateHandler(mockClient, sessionCache, cfg)
+
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/validate", nil)
+		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "session-jwt"})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := handler.Handle(c)
+
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		// Verify JWT backend token is present
+		tokenStr := rec.Header().Get("X-Alt-Backend-Token")
+		assert.NotEmpty(t, tokenStr, "X-Alt-Backend-Token header should be present")
+
+		// Parse and validate JWT claims
+		parsed, parseErr := jwt.ParseWithClaims(tokenStr, &jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
+			return []byte(cfg.BackendTokenSecret), nil
+		})
+		assert.NoError(t, parseErr)
+		assert.True(t, parsed.Valid)
+
+		claims := *parsed.Claims.(*jwt.MapClaims)
+		assert.Equal(t, "user-100", claims["sub"])
+		assert.Equal(t, "jwt@example.com", claims["email"])
+		assert.Equal(t, "auth-hub", claims["iss"])
+	})
+
+	t.Run("returns X-Alt-Backend-Token JWT on cache miss", func(t *testing.T) {
+		mockClient := new(MockKratosClient)
+		sessionCache := cache.NewSessionCache(5 * time.Minute)
+		cfg := testConfig()
+
+		mockClient.On("Whoami", mock.Anything, "ory_kratos_session=fresh-session").
+			Return(&client.Identity{
+				ID:        "user-200",
+				Email:     "fresh@example.com",
+				SessionID: "kratos-sid-200",
+			}, nil)
+
+		handler := NewValidateHandler(mockClient, sessionCache, cfg)
+
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/validate", nil)
+		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "fresh-session"})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := handler.Handle(c)
+
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+
+		// Verify JWT backend token is present
+		tokenStr := rec.Header().Get("X-Alt-Backend-Token")
+		assert.NotEmpty(t, tokenStr, "X-Alt-Backend-Token header should be present")
+
+		// Parse and validate JWT claims
+		parsed, parseErr := jwt.ParseWithClaims(tokenStr, &jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
+			return []byte(cfg.BackendTokenSecret), nil
+		})
+		assert.NoError(t, parseErr)
+		assert.True(t, parsed.Valid)
+
+		claims := *parsed.Claims.(*jwt.MapClaims)
+		assert.Equal(t, "user-200", claims["sub"])
+		assert.Equal(t, "fresh@example.com", claims["email"])
+	})
+
+	t.Run("does not return X-Alt-Shared-Secret header", func(t *testing.T) {
+		mockClient := new(MockKratosClient)
+		sessionCache := cache.NewSessionCache(5 * time.Minute)
+
+		sessionCache.Set("session-nosecret", "user-300", "user-300", "nosecret@example.com")
+
+		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
+
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/validate", nil)
+		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "session-nosecret"})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := handler.Handle(c)
+
+		assert.NoError(t, err)
+		assert.Empty(t, rec.Header().Get("X-Alt-Shared-Secret"), "X-Alt-Shared-Secret should not be present")
 	})
 }

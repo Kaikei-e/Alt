@@ -83,8 +83,8 @@ func main() {
 	systemUserUC := usecase.NewGetSystemUser(kratosGateway, slog.Default())
 
 	// Handlers
-	validateHandler := adapterhandler.NewValidateHandler(validateUC)
-	sessionHandler := adapterhandler.NewSessionHandler(sessionUC, cfg.AuthSharedSecret)
+	validateHandler := adapterhandler.NewValidateHandler(validateUC, jwtIssuer)
+	sessionHandler := adapterhandler.NewSessionHandler(sessionUC)
 	csrfHandler := adapterhandler.NewCSRFHandler(csrfUC)
 	healthHandler := adapterhandler.NewHealthHandler()
 	internalHandler := adapterhandler.NewInternalHandler(systemUserUC)
@@ -142,7 +142,11 @@ func main() {
 		validateBurst = 10
 	}
 	validateRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.ValidateRateLimit), validateBurst)
-	sessionRL := appmiddleware.NewRateLimiter(30.0/60.0, 5)    // 30 req/min
+	sessionBurst := int(cfg.SessionRateLimit * 10) // burst = 10x rate
+	if sessionBurst < 5 {
+		sessionBurst = 5
+	}
+	sessionRL := appmiddleware.NewRateLimiter(rate.Limit(cfg.SessionRateLimit), sessionBurst)
 	csrfBurst := int(cfg.CSRFRateLimit * 10)
 	if csrfBurst < 10 {
 		csrfBurst = 10
@@ -160,8 +164,8 @@ func main() {
 	internalGroup := e.Group("/internal",
 		internalRL.Middleware(),
 	)
-	if cfg.AuthSharedSecret != "" {
-		internalGroup.Use(appmiddleware.InternalAuth(cfg.AuthSharedSecret))
+	if cfg.BackendTokenSecret != "" {
+		internalGroup.Use(appmiddleware.InternalAuth(cfg.BackendTokenSecret))
 	}
 	internalGroup.GET("/system-user", internalHandler.HandleSystemUser)
 

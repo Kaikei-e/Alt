@@ -3,11 +3,14 @@ package handler
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"auth-hub/cache"
 	"auth-hub/client"
+	"auth-hub/config"
+	"auth-hub/token"
 
 	"github.com/labstack/echo/v4"
 )
@@ -21,13 +24,15 @@ type KratosClient interface {
 type ValidateHandler struct {
 	kratosClient KratosClient
 	sessionCache *cache.SessionCache
+	config       *config.Config
 }
 
 // NewValidateHandler creates a new validate handler
-func NewValidateHandler(kratosClient KratosClient, sessionCache *cache.SessionCache) *ValidateHandler {
+func NewValidateHandler(kratosClient KratosClient, sessionCache *cache.SessionCache, cfg *config.Config) *ValidateHandler {
 	return &ValidateHandler{
 		kratosClient: kratosClient,
 		sessionCache: sessionCache,
+		config:       cfg,
 	}
 }
 
@@ -47,6 +52,16 @@ func (h *ValidateHandler) Handle(c echo.Context) error {
 		c.Response().Header().Set("X-Alt-User-Id", entry.UserID)
 		c.Response().Header().Set("X-Alt-Tenant-Id", entry.TenantID)
 		c.Response().Header().Set("X-Alt-User-Email", entry.Email)
+
+		// Issue JWT backend token
+		identity := &client.Identity{ID: entry.UserID, Email: entry.Email, SessionID: sessionID}
+		backendToken, err := token.IssueBackendToken(h.config, identity, sessionID)
+		if err != nil {
+			slog.ErrorContext(c.Request().Context(), "failed to issue backend token in validate", "error", err)
+		} else {
+			c.Response().Header().Set("X-Alt-Backend-Token", backendToken)
+		}
+
 		return c.NoContent(http.StatusOK)
 	}
 
@@ -64,6 +79,14 @@ func (h *ValidateHandler) Handle(c echo.Context) error {
 	// Cache the validated session
 	// Using UserID as TenantID (single-tenant architecture)
 	h.sessionCache.Set(sessionID, identity.ID, identity.ID, identity.Email)
+
+	// Issue JWT backend token
+	backendToken, tokenErr := token.IssueBackendToken(h.config, identity, identity.SessionID)
+	if tokenErr != nil {
+		slog.ErrorContext(c.Request().Context(), "failed to issue backend token in validate", "error", tokenErr)
+	} else {
+		c.Response().Header().Set("X-Alt-Backend-Token", backendToken)
+	}
 
 	// Return identity headers
 	c.Response().Header().Set("X-Alt-User-Id", identity.ID)

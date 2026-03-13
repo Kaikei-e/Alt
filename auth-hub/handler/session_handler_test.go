@@ -28,7 +28,7 @@ func TestNewSessionHandler(t *testing.T) {
 			BackendTokenTTL:      5 * time.Minute,
 		}
 
-		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
+		handler := NewSessionHandler(mockClient, sessionCache, cfg)
 
 		assert.NotNil(t, handler)
 	})
@@ -48,7 +48,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 			BackendTokenAudience: "alt-backend",
 			BackendTokenTTL:      5 * time.Minute,
 		}
-		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
+		handler := NewSessionHandler(mockClient, sessionCache, cfg)
 
 		// Create request with session cookie
 		e := echo.New()
@@ -106,7 +106,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 			BackendTokenAudience: "alt-backend",
 			BackendTokenTTL:      5 * time.Minute,
 		}
-		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
+		handler := NewSessionHandler(mockClient, sessionCache, cfg)
 
 		// Create request
 		e := echo.New()
@@ -154,7 +154,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 			BackendTokenAudience: "alt-backend",
 			BackendTokenTTL:      5 * time.Minute,
 		}
-		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
+		handler := NewSessionHandler(mockClient, sessionCache, cfg)
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/session", nil)
@@ -184,7 +184,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 			BackendTokenAudience: "alt-backend",
 			BackendTokenTTL:      5 * time.Minute,
 		}
-		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
+		handler := NewSessionHandler(mockClient, sessionCache, cfg)
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/session", nil)
@@ -217,7 +217,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 			BackendTokenAudience: "alt-backend",
 			BackendTokenTTL:      5 * time.Minute,
 		}
-		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
+		handler := NewSessionHandler(mockClient, sessionCache, cfg)
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/session", nil)
@@ -234,6 +234,34 @@ func TestSessionHandler_Handle(t *testing.T) {
 		httpErr, ok := err.(*echo.HTTPError)
 		assert.True(t, ok)
 		assert.Equal(t, http.StatusBadGateway, httpErr.Code)
+	})
+
+	t.Run("does not return X-Alt-Shared-Secret header", func(t *testing.T) {
+		mockClient := new(MockKratosClient)
+		sessionCache := cache.NewSessionCache(5 * time.Minute)
+
+		sessionCache.Set("session-nosecret", "user-nosecret", "user-nosecret", "nosecret@example.com")
+
+		cfg := &config.Config{
+			BackendTokenSecret:   "test-secret-minimum-32-characters!",
+			BackendTokenIssuer:   "auth-hub",
+			BackendTokenAudience: "alt-backend",
+			BackendTokenTTL:      5 * time.Minute,
+		}
+		handler := NewSessionHandler(mockClient, sessionCache, cfg)
+
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/session", nil)
+		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "session-nosecret"})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := handler.Handle(c)
+
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Empty(t, rec.Header().Get("X-Alt-Shared-Secret"), "X-Alt-Shared-Secret should not be present")
+		assert.NotEmpty(t, rec.Header().Get("X-Alt-Backend-Token"), "X-Alt-Backend-Token should be present")
 	})
 
 	t.Run("expired cache entry triggers kratos call", func(t *testing.T) {
@@ -259,7 +287,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 			BackendTokenAudience: "alt-backend",
 			BackendTokenTTL:      5 * time.Minute,
 		}
-		handler := NewSessionHandler(mockClient, sessionCache, "", cfg)
+		handler := NewSessionHandler(mockClient, sessionCache, cfg)
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/session", nil)

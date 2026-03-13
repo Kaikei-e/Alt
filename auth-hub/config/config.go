@@ -15,12 +15,12 @@ type Config struct {
 	Port                 string        // Service port
 	CacheTTL             time.Duration // Session cache TTL
 	CSRFSecret           string        // CSRF secret for token generation
-	AuthSharedSecret     string        // Shared secret for backend authentication
 	BackendTokenSecret   string        // Secret for signing backend JWT tokens
 	BackendTokenIssuer   string        // JWT issuer claim
 	BackendTokenAudience string        // JWT audience claim
 	BackendTokenTTL      time.Duration // JWT token TTL
 	ValidateRateLimit    float64       // Validate endpoint: requests per second (default: 100/60 ≈ 1.67)
+	SessionRateLimit     float64       // Session endpoint: requests per second (default: 30/60 = 0.5)
 	CSRFRateLimit        float64       // CSRF endpoint: requests per second (default: 100)
 }
 
@@ -32,12 +32,12 @@ func Load() (*Config, error) {
 		Port:                 getEnv("PORT", "8888"),
 		CacheTTL:             5 * time.Minute, // Default 5 minutes
 		CSRFSecret:           getEnv("CSRF_SECRET", ""),
-		AuthSharedSecret:     getEnv("AUTH_SHARED_SECRET", ""),
 		BackendTokenSecret:   getEnv("BACKEND_TOKEN_SECRET", ""),
 		BackendTokenIssuer:   getEnv("BACKEND_TOKEN_ISSUER", "auth-hub"),
 		BackendTokenAudience: getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
 		BackendTokenTTL:      5 * time.Minute, // Default 5 minutes
 		ValidateRateLimit:    100.0 / 60.0,    // Default: ~1.67 req/s (100 req/min)
+		SessionRateLimit:     30.0 / 60.0,     // Default: 0.5 req/s (30 req/min)
 		CSRFRateLimit:        100.0,           // Default: 100 req/s
 	}
 
@@ -57,6 +57,15 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("invalid VALIDATE_RATE_LIMIT: %w", err)
 		}
 		config.ValidateRateLimit = r
+	}
+
+	// Parse SESSION_RATE_LIMIT if provided (requests per second)
+	if v := os.Getenv("SESSION_RATE_LIMIT"); v != "" {
+		r, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SESSION_RATE_LIMIT: %w", err)
+		}
+		config.SessionRateLimit = r
 	}
 
 	// Parse CSRF_RATE_LIMIT if provided (requests per second)

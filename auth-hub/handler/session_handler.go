@@ -17,19 +17,17 @@ import (
 
 // SessionHandler handles /session endpoint for frontend JSON responses
 type SessionHandler struct {
-	kratosClient     KratosClient
-	sessionCache     *cache.SessionCache
-	authSharedSecret string
-	config           *config.Config
+	kratosClient KratosClient
+	sessionCache *cache.SessionCache
+	config       *config.Config
 }
 
 // NewSessionHandler creates a new session handler
-func NewSessionHandler(kratosClient KratosClient, sessionCache *cache.SessionCache, authSharedSecret string, cfg *config.Config) *SessionHandler {
+func NewSessionHandler(kratosClient KratosClient, sessionCache *cache.SessionCache, cfg *config.Config) *SessionHandler {
 	return &SessionHandler{
-		kratosClient:     kratosClient,
-		sessionCache:     sessionCache,
-		authSharedSecret: authSharedSecret,
-		config:           cfg,
+		kratosClient: kratosClient,
+		sessionCache: sessionCache,
+		config:       cfg,
 	}
 }
 
@@ -91,11 +89,6 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 		// Add backend token to response header
 		c.Response().Header().Set("X-Alt-Backend-Token", backendToken)
 
-		// Legacy: Add shared secret header if configured (for backward compatibility during migration)
-		if h.authSharedSecret != "" {
-			c.Response().Header().Set("X-Alt-Shared-Secret", h.authSharedSecret)
-		}
-
 		response := SessionResponse{
 			OK: true,
 			User: User{
@@ -138,11 +131,6 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 
 	// Add backend token to response header
 	c.Response().Header().Set("X-Alt-Backend-Token", backendToken)
-
-	// Legacy: Add shared secret header if configured (for backward compatibility during migration)
-	if h.authSharedSecret != "" {
-		c.Response().Header().Set("X-Alt-Shared-Secret", h.authSharedSecret)
-	}
 
 	// Return identity as JSON
 	response := SessionResponse{

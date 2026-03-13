@@ -11,13 +11,12 @@ import (
 
 // SessionHandler handles /session endpoint returning JSON for the frontend.
 type SessionHandler struct {
-	uc               *usecase.GetSession
-	authSharedSecret string
+	uc *usecase.GetSession
 }
 
 // NewSessionHandler creates a new session handler.
-func NewSessionHandler(uc *usecase.GetSession, authSharedSecret string) *SessionHandler {
-	return &SessionHandler{uc: uc, authSharedSecret: authSharedSecret}
+func NewSessionHandler(uc *usecase.GetSession) *SessionHandler {
+	return &SessionHandler{uc: uc}
 }
 
 // sessionUser represents the user object in the response.
@@ -56,11 +55,6 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 	}
 
 	c.Response().Header().Set("X-Alt-Backend-Token", result.BackendToken)
-
-	// Legacy: shared secret header for backward compatibility
-	if h.authSharedSecret != "" {
-		c.Response().Header().Set("X-Alt-Shared-Secret", h.authSharedSecret)
-	}
 
 	return c.JSON(http.StatusOK, sessionResponse{
 		OK: true,
