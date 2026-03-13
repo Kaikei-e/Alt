@@ -2,6 +2,7 @@
  * Session & Authentication Mock Data
  */
 
+import { readFileSync } from "node:fs";
 import type {
 	KratosSession,
 	KratosFlow,
@@ -13,9 +14,20 @@ import type {
 // Constants
 // =============================================================================
 
+function loadSecret(): string {
+	const file = process.env.BACKEND_TOKEN_SECRET_FILE;
+	if (file) {
+		try {
+			return readFileSync(file, "utf-8").trim();
+		} catch {
+			console.warn(`Failed to read secret from ${file}, falling back to env`);
+		}
+	}
+	return process.env.BACKEND_TOKEN_SECRET || "dev-secret-for-local";
+}
+
 export const DEV_USER_ID = "00000000-0000-0000-0000-000000000001";
-export const DEV_JWT_SECRET =
-	process.env.BACKEND_TOKEN_SECRET || "dev-secret-for-local";
+export const DEV_JWT_SECRET = loadSecret();
 export const DEV_JWT_ISSUER = "auth-hub";
 export const DEV_JWT_AUDIENCE = "alt-backend";
 

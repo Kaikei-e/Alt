@@ -11,7 +11,7 @@
 import { createConnectTransport } from "@connectrpc/connect-web";
 import type { Transport } from "@connectrpc/connect";
 import { env } from "$env/dynamic/private";
-import { getBackendToken } from "$lib/api";
+import { getBackendToken } from "$lib/server/auth";
 
 // Connect-RPC server URL (server-side internal URL)
 const BACKEND_CONNECT_URL =

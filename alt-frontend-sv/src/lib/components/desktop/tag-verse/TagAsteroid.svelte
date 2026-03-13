@@ -1,9 +1,10 @@
 <script lang="ts">
-import { T, useTask, useThrelte } from "@threlte/core";
+import { T, useTask } from "@threlte/core";
 import { HTML } from "@threlte/extras";
 import { onDestroy } from "svelte";
 import * as THREE from "three";
 import type { TagCloudItem } from "$lib/connect";
+import type { CameraFrameData } from "./SceneContent.svelte";
 
 interface Props {
 	tag: TagCloudItem;
@@ -13,16 +14,15 @@ interface Props {
 	emissiveIntensity: number;
 	labelFontSize: number;
 	onSelect: (tag: TagCloudItem) => void;
+	cameraFrameData: CameraFrameData;
 }
 
-let { tag, position, radius, color, emissiveIntensity, labelFontSize, onSelect }: Props =
+let { tag, position, radius, color, emissiveIntensity, labelFontSize, onSelect, cameraFrameData }: Props =
 	$props();
 
 let hovered = $state(false);
 let labelVisible = $state(true);
 let meshRef = $state<THREE.Mesh | undefined>(undefined);
-
-const { camera } = useThrelte();
 
 onDestroy(() => {
 	if (hovered) {
@@ -38,28 +38,22 @@ const rotationAxis = new THREE.Vector3(
 	Math.random() - 0.5,
 ).normalize();
 
-// Reusable vectors (avoid per-frame allocation)
-const _lookDir = new THREE.Vector3();
-const _toObject = new THREE.Vector3();
-const _worldPos = new THREE.Vector3();
-
 useTask((delta) => {
 	if (meshRef) {
 		meshRef.rotateOnAxis(rotationAxis, rotationSpeed * delta);
 	}
 
-	// Hide label when planet is on the far side of the scene
-	const cam = camera.current;
-	cam.getWorldDirection(_lookDir);
-	_worldPos.set(position[0], position[1], position[2]);
-	_toObject.subVectors(_worldPos, cam.position);
-
-	const depthOfPlanet = _toObject.dot(_lookDir);
-	// Center is at origin, so depth = (-camPos).dot(lookDir)
-	const depthOfCenter = -cam.position.dot(_lookDir);
+	// Far-side label occlusion using pre-computed camera data from parent
+	const toX = position[0] - cameraFrameData.camPosX;
+	const toY = position[1] - cameraFrameData.camPosY;
+	const toZ = position[2] - cameraFrameData.camPosZ;
+	const depthOfPlanet =
+		toX * cameraFrameData.lookDirX +
+		toY * cameraFrameData.lookDirY +
+		toZ * cameraFrameData.lookDirZ;
 
 	// Show label only if planet is in front half (with 15% margin past center)
-	labelVisible = depthOfPlanet <= depthOfCenter * 1.15;
+	labelVisible = depthOfPlanet <= cameraFrameData.depthOfCenter * 1.15;
 });
 
 function handlePointerEnter() {
@@ -87,7 +81,7 @@ const scale = $derived(hovered ? 1.15 : 1.0);
 		onpointerleave={handlePointerLeave}
 		onclick={handleClick}
 	>
-		<T.SphereGeometry args={[1, 32, 32]} />
+		<T.SphereGeometry args={[1, 16, 16]} />
 		<T.MeshStandardMaterial
 			color={color}
 			metalness={0.3}

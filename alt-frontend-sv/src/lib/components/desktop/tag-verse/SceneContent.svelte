@@ -1,5 +1,5 @@
 <script lang="ts">
-import { T, useThrelte } from "@threlte/core";
+import { T, useThrelte, useTask } from "@threlte/core";
 import { OrbitControls, interactivity } from "@threlte/extras";
 import { onDestroy } from "svelte";
 import type { TagCloudItem } from "$lib/connect";
@@ -15,7 +15,50 @@ interface Props {
 
 let { tags, onTagSelect }: Props = $props();
 
-const { scene } = useThrelte();
+const { scene, camera } = useThrelte();
+
+/**
+ * Shared camera data computed once per frame instead of per-tag (300x reduction).
+ * Plain object mutated in-place — children read it in their own useTask.
+ * Parent useTask runs first (registered before children mount).
+ */
+export type CameraFrameData = {
+	lookDirX: number;
+	lookDirY: number;
+	lookDirZ: number;
+	camPosX: number;
+	camPosY: number;
+	camPosZ: number;
+	depthOfCenter: number;
+};
+
+const cameraFrameData: CameraFrameData = {
+	lookDirX: 0,
+	lookDirY: 0,
+	lookDirZ: 0,
+	camPosX: 0,
+	camPosY: 0,
+	camPosZ: 0,
+	depthOfCenter: 0,
+};
+
+const _lookDir = new THREE.Vector3();
+
+useTask(() => {
+	const cam = camera.current;
+	cam.getWorldDirection(_lookDir);
+	cameraFrameData.lookDirX = _lookDir.x;
+	cameraFrameData.lookDirY = _lookDir.y;
+	cameraFrameData.lookDirZ = _lookDir.z;
+	cameraFrameData.camPosX = cam.position.x;
+	cameraFrameData.camPosY = cam.position.y;
+	cameraFrameData.camPosZ = cam.position.z;
+	cameraFrameData.depthOfCenter = -(
+		cam.position.x * _lookDir.x +
+		cam.position.y * _lookDir.y +
+		cam.position.z * _lookDir.z
+	);
+});
 
 // Enable pointer events on 3D objects (required by Threlte v8)
 interactivity();
@@ -179,6 +222,7 @@ function handleTagSelect(tag: TagCloudItem) {
 		emissiveIntensity={tagColor.emissiveIntensity}
 		labelFontSize={computeLabelFontSize(tag.articleCount, maxCount)}
 		onSelect={handleTagSelect}
+		{cameraFrameData}
 	/>
 {/each}
 

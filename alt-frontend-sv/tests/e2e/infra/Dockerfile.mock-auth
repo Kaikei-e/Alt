@@ -15,10 +15,15 @@ COPY package.json bun.lock ./
 # Using npm since this is a lightweight container
 RUN npm install --production=false
 
-# Copy only the mock server
+# Copy mock server and its dependencies
 COPY tests/e2e/infra/mock-server.ts ./
+COPY tests/e2e/infra/data/ ./data/
+COPY tests/e2e/infra/handlers/ ./handlers/
+COPY tests/e2e/infra/types/ ./types/
 
 # Environment variables for JWT generation
+# Prefer BACKEND_TOKEN_SECRET_FILE (Docker secrets pattern)
+ENV BACKEND_TOKEN_SECRET_FILE=""
 ENV BACKEND_TOKEN_SECRET=""
 ENV NODE_ENV=development
 

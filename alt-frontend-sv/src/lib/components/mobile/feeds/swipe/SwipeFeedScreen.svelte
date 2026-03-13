@@ -43,15 +43,19 @@ const prefetchAhead = $derived(isVisualPreview ? 10 : 2);
 const PAGE_SIZE = 20;
 
 // State - initialize directly from props (not via $effect to avoid circular deps)
+// svelte-ignore state_referenced_locally
 let feeds = $state<RenderFeed[]>([...(initialFeeds ?? [])]);
+// svelte-ignore state_referenced_locally
 let cursor = $state<string | null>(initialNextCursor ?? null);
 // When SSR fails, initialFeeds is empty and initialNextCursor is null.
 // In that case, assume hasMore=true so loadMore() fires as client-side fallback.
+// svelte-ignore state_referenced_locally
 let hasMore = $state(initialFeeds.length > 0 ? !!initialNextCursor : true);
 let isLoading = $state(false);
 let error = $state<string | null>(null);
 let readFeeds = $state<Set<string>>(new Set());
 let activeIndex = $state(0);
+// svelte-ignore state_referenced_locally
 let isInitialLoading = $state((initialFeeds ?? []).length === 0);
 let liveRegionMessage = $state("");
 
