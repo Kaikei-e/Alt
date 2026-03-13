@@ -21,7 +21,7 @@ import (
 )
 
 func fetchArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
-	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret, cfg)
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())
 	articles.GET("/fetch/content", handleFetchArticle(container))
 	articles.GET("/fetch/cursor", handleFetchArticlesCursor(container))
@@ -125,7 +125,7 @@ func returnArticleResponse(c echo.Context, articleURL *url.URL, content string, 
 }
 
 func registerArticleRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
-	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg.Auth.SharedSecret, cfg)
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
 	articles := v1.Group("/articles", authMiddleware.RequireAuth())
 	articles.GET("/search", handleSearchArticles(container))
 }

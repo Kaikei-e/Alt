@@ -15,6 +15,11 @@ const (
 	minDistance         = 1.0
 	positionBound      = 100.0
 	layoutSeed         = 42
+
+	// Early convergence: stop when max displacement stays below threshold
+	// for stableRuns consecutive iterations.
+	convergenceRatio = 0.005 // relative to initialRadius
+	stableRuns       = 5
 )
 
 type node struct {
@@ -26,6 +31,20 @@ type node struct {
 // Positions are written directly to the items' PositionX/Y/Z fields.
 // The algorithm is deterministic (seeded RNG).
 func ComputeLayout(items []*domain.TagCloudItem, edges []*domain.TagCooccurrence) {
+	computeLayoutInternal(items, edges, nil)
+}
+
+// ComputeLayoutWithProfile computes the layout and returns the max displacement per iteration.
+// Used for convergence analysis and benchmark tuning.
+func ComputeLayoutWithProfile(items []*domain.TagCloudItem, edges []*domain.TagCooccurrence) []float64 {
+	profile := make([]float64, 0, layoutIterations)
+	computeLayoutInternal(items, edges, &profile)
+	return profile
+}
+
+// computeLayoutInternal is the shared implementation.
+// If profile is non-nil, max displacement per iteration is appended to it.
+func computeLayoutInternal(items []*domain.TagCloudItem, edges []*domain.TagCooccurrence, profile *[]float64) {
 	n := len(items)
 	if n == 0 {
 		return
@@ -73,8 +92,10 @@ func ComputeLayout(items []*domain.TagCloudItem, edges []*domain.TagCooccurrence
 		}
 	}
 
-	// Force-directed iterations
-	for iter := 0; iter < layoutIterations; iter++ {
+	// Force-directed iterations with early convergence
+	convergenceThreshold := initialRadius * convergenceRatio
+	stableCount := 0
+	for iter := range layoutIterations {
 		temperature := 1.0 - float64(iter)/float64(layoutIterations) // cooling
 		maxDisplacement := initialRadius * 0.1 * temperature
 
@@ -127,6 +148,7 @@ func ComputeLayout(items []*domain.TagCloudItem, edges []*domain.TagCooccurrence
 		}
 
 		// Apply forces with damping and max displacement
+		iterMaxDisp := 0.0
 		for i := range nodes {
 			nodes[i].vx *= dampingFactor
 			nodes[i].vy *= dampingFactor
@@ -139,11 +161,28 @@ func ComputeLayout(items []*domain.TagCloudItem, edges []*domain.TagCooccurrence
 				nodes[i].vx *= scale
 				nodes[i].vy *= scale
 				nodes[i].vz *= scale
+				disp = maxDisplacement
 			}
+			iterMaxDisp = max(iterMaxDisp, disp)
 
 			nodes[i].x += nodes[i].vx
 			nodes[i].y += nodes[i].vy
 			nodes[i].z += nodes[i].vz
+		}
+
+		// Record max displacement for convergence profiling
+		if profile != nil {
+			*profile = append(*profile, iterMaxDisp)
+		}
+
+		// Early convergence: stop when max displacement stays below threshold
+		if iterMaxDisp < convergenceThreshold {
+			stableCount++
+			if stableCount >= stableRuns {
+				break
+			}
+		} else {
+			stableCount = 0
 		}
 	}
 

@@ -121,6 +121,12 @@ func main() {
 		Timeout:  20 * time.Minute,
 		Fn:       job.OgpImageWarmerJob(container.AltDBRepository, container.ImageProxyUsecase),
 	})
+	scheduler.Add(job.Job{
+		Name:     "tag-cloud-cache-warmer",
+		Interval: 24 * time.Minute,
+		Timeout:  2 * time.Minute,
+		Fn:       job.TagCloudCacheWarmerJob(container.FetchTagCloudUsecase),
+	})
 	scheduler.Start(ctx)
 
 	e := echo.New()
