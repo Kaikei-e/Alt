@@ -24,8 +24,6 @@ services:
       - ../nginx/docker-entrypoint.d:/docker-entrypoint.d:ro
       - ../alt-frontend/public/favicon.ico:/usr/share/nginx/html/favicon.ico:ro
       - nginx-image-cache:/var/cache/nginx/image_proxy
-    secrets:
-      - auth_shared_secret
     depends_on:
       alt-frontend:
         condition: service_healthy
@@ -179,7 +177,6 @@ services:
       - DB_SSL_MODE=prefer
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
-      - AUTH_SHARED_SECRET_FILE=/run/secrets/auth_shared_secret
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
@@ -193,7 +190,6 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=alt-backend
     secrets:
-      - auth_shared_secret
       - backend_token_secret
       - postgres_password
       - csrf_secret

@@ -6,6 +6,7 @@
 #   altctl up frontend-dev
 #
 # Services:
+#   - dev-secret-init: Generates random JWT secret if not configured
 #   - mock-auth: Mock Kratos + AuthHub + Backend with real JWT generation
 #   - alt-frontend-sv: SvelteKit frontend with HMR
 #
@@ -14,18 +15,33 @@
 name: alt-frontend-dev
 
 services:
+  # Init container: generates a random JWT secret for dev environment
+  dev-secret-init:
+    image: alpine:3.20
+    command: >
+      sh -c 'if [ ! -f /secrets/dev_jwt_secret.txt ]; then
+        head -c 32 /dev/urandom | base64 > /secrets/dev_jwt_secret.txt;
+        echo "Generated dev JWT secret"; fi'
+    volumes:
+      - dev_secrets:/secrets
+
   # Mock servers (Kratos + AuthHub + Backend)
-  # Generates real JWT tokens signed with shared secret
+  # Generates real JWT tokens signed with random secret
   mock-auth:
     build:
       context: ../alt-frontend-sv
       dockerfile: tests/e2e/infra/Dockerfile.mock-auth
     environment:
-      - BACKEND_TOKEN_SECRET=${DEV_JWT_SECRET:-dev-secret-for-local}
+      - BACKEND_TOKEN_SECRET_FILE=/secrets/dev_jwt_secret.txt
+    volumes:
+      - dev_secrets:/secrets:ro
     ports:
       - "4001:4001"  # Mock Kratos
       - "4002:4002"  # Mock AuthHub
       - "4003:4003"  # Mock Backend (REST + Connect-RPC)
+    depends_on:
+      dev-secret-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4001/health || exit 1"]
       interval: 5s
@@ -78,3 +94,6 @@ services:
 networks:
   default:
     name: alt-frontend-dev-network
+
+volumes:
+  dev_secrets:

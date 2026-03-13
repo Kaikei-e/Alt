@@ -71,7 +71,6 @@ services:
     command: ["kratos", "serve", "all", "--config", "/etc/config/kratos/kratos.yml"]
     ports:
       - "4433:4433"
-      - "4434:4434"
     environment:
       - KRATOS_DB_USER=${KRATOS_DB_USER:-kratos_user}
       - KRATOS_DB_PASSWORD_FILE=/run/secrets/kratos_db_password
@@ -128,7 +127,6 @@ services:
       - PORT=8888
       - CACHE_TTL=5m
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
-      - AUTH_SHARED_SECRET_FILE=/run/secrets/auth_shared_secret
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
@@ -138,7 +136,6 @@ services:
       - OTEL_SERVICE_NAME=auth-hub
     secrets:
       - csrf_secret
-      - auth_shared_secret
       - backend_token_secret
     depends_on:
       kratos:

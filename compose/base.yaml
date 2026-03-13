@@ -5,8 +5,6 @@
 name: alt
 
 secrets:
-  auth_shared_secret:
-    file: ../secrets/auth_shared_secret.txt
   backend_token_secret:
     file: ../secrets/backend_token_secret.txt
   postgres_password:
