@@ -106,6 +106,7 @@ export function streamAugurChat(
 	// Track accumulated text for complete result
 	let accumulatedText = "";
 	let latestCitations: AugurCitation[] = [];
+	let completeCalled = false;
 
 	// Start streaming in background
 	(async () => {
@@ -180,7 +181,8 @@ export function streamAugurChat(
 							);
 							// Use final answer from done payload if available
 							const finalAnswer = payload.value.answer || accumulatedText;
-							if (onComplete) {
+							if (onComplete && !completeCalled) {
+								completeCalled = true;
 								onComplete({
 									answer: finalAnswer,
 									citations: citations.length > 0 ? citations : latestCitations,
@@ -204,7 +206,8 @@ export function streamAugurChat(
 			}
 
 			// If stream completes without done event, call onComplete with accumulated data
-			if (!abortController.signal.aborted && onComplete && accumulatedText) {
+			if (!abortController.signal.aborted && onComplete && accumulatedText && !completeCalled) {
+				completeCalled = true;
 				onComplete({
 					answer: accumulatedText,
 					citations: latestCitations,

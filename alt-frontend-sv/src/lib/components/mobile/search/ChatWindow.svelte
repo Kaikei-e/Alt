@@ -29,7 +29,20 @@ type Message = {
 let messages: Message[] = $state([]);
 let inputValue = $state("");
 let isLoading = $state(false);
+let progressStage = $state<string>("");
 let messagesEndRef: HTMLDivElement;
+let messagesContainer: HTMLDivElement;
+
+// Auto-scroll: throttled, suppressed when user scrolls up
+let lastScrollTime = 0;
+const SCROLL_THROTTLE_MS = 500;
+let userScrolledUp = false;
+
+function handleScroll() {
+	if (!messagesContainer) return;
+	const { scrollTop, scrollHeight, clientHeight } = messagesContainer;
+	userScrolledUp = scrollHeight - scrollTop - clientHeight > 100;
+}
 
 // Auto-scroll to bottom
 const scrollToBottom = async () => {
@@ -38,6 +51,15 @@ const scrollToBottom = async () => {
 		messagesEndRef.scrollIntoView({ behavior: "smooth" });
 	}
 };
+
+function throttledScrollToBottom() {
+	if (userScrolledUp) return;
+	const now = Date.now();
+	if (now - lastScrollTime > SCROLL_THROTTLE_MS) {
+		lastScrollTime = now;
+		scrollToBottom();
+	}
+}
 
 const handleSubmit = async () => {
 	if (!inputValue.trim() || isLoading) return;
@@ -60,6 +82,9 @@ const handleSubmit = async () => {
 	let lastUpdateTime = 0;
 	const THROTTLE_MS = 50;
 
+	progressStage = "";
+	userScrolledUp = false;
+
 	try {
 		const transport = createClientTransport();
 
@@ -74,6 +99,7 @@ const handleSubmit = async () => {
 			{ messages: chatMessages },
 			// onDelta: text chunks
 			(text) => {
+				progressStage = "";
 				bufferedContent += text;
 
 				const now = Date.now();
@@ -84,9 +110,10 @@ const handleSubmit = async () => {
 						content: bufferedContent,
 					};
 					lastUpdateTime = now;
+					throttledScrollToBottom();
 				}
 			},
-			// onThinking: not displayed in UI
+			// onThinking: not displayed
 			undefined,
 			// onMeta: citations
 			(citations: AugurCitation[]) => {
@@ -116,6 +143,7 @@ const handleSubmit = async () => {
 					})),
 				};
 				isLoading = false;
+				progressStage = "";
 				scrollToBottom();
 			},
 			// onFallback: insufficient evidence
@@ -128,6 +156,7 @@ const handleSubmit = async () => {
 					content: fallbackMessage,
 				};
 				isLoading = false;
+				progressStage = "";
 				scrollToBottom();
 			},
 			// onError: error handling
@@ -139,7 +168,12 @@ const handleSubmit = async () => {
 					content: "Sorry, something went wrong. Please try again.",
 				};
 				isLoading = false;
+				progressStage = "";
 				scrollToBottom();
+			},
+			// onProgress: stage updates
+			(stage) => {
+				progressStage = stage;
 			},
 		);
 	} catch (error) {
@@ -157,7 +191,7 @@ const handleSubmit = async () => {
 
 <div class="flex flex-col h-full bg-background relative">
   <!-- Messages Area -->
-  <div class="flex-1 overflow-y-auto p-4 space-y-4 pb-20">
+  <div bind:this={messagesContainer} class="flex-1 overflow-y-auto p-4 space-y-4 pb-20" onscroll={handleScroll}>
     {#if messages.length === 0}
       <div class="flex flex-col items-center justify-center h-full text-muted-foreground opacity-50">
         <img src={augurPlaceholder} alt="Augur" class="w-32 h-32 mb-4 rounded-full opacity-50 grayscale" />
@@ -189,10 +223,17 @@ const handleSubmit = async () => {
                 : 'bg-muted/50 text-foreground rounded-bl-none border border-border/50'}
             ">
                 {#if message.role === 'assistant' && !message.content && isLoading && !message.citations}
-                    <span class="flex gap-1 items-center h-5">
-                        <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-0"></span>
-                        <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-150"></span>
-                        <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-300"></span>
+                    <span class="flex gap-2 items-center h-5">
+                        <span class="flex gap-1 items-center">
+                            <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-0"></span>
+                            <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-150"></span>
+                            <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-300"></span>
+                        </span>
+                        {#if progressStage === "searching"}
+                            <span class="text-xs text-muted-foreground">Searching...</span>
+                        {:else if progressStage === "generating"}
+                            <span class="text-xs text-muted-foreground">Generating...</span>
+                        {/if}
                     </span>
                 {:else}
                 <div class="text-foreground">

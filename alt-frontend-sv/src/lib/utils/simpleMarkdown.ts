@@ -169,6 +169,8 @@ export function parseMarkdown(text: string): string {
 }
 
 function parseInline(text: string): string {
+	// Escape HTML first to prevent XSS via LLM output
+	text = escapeHtml(text);
 	// Bold
 	text = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
 	// Italic

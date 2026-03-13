@@ -23,7 +23,6 @@ type Message = {
 	role: "user" | "assistant";
 	timestamp: string;
 	citations?: Citation[];
-	thinking?: string;
 };
 
 let messages = $state<Message[]>([
@@ -36,9 +35,20 @@ let messages = $state<Message[]>([
 ]);
 
 let isLoading = $state(false);
-let isThinking = $state(false);
+let progressStage = $state<string>("");
 let chatContainer: HTMLDivElement;
 let currentAbortController: AbortController | null = null;
+
+// Auto-scroll: throttled, suppressed when user scrolls up
+let lastScrollTime = 0;
+const SCROLL_THROTTLE_MS = 500;
+let userScrolledUp = false;
+
+function handleScroll() {
+	if (!chatContainer) return;
+	const { scrollTop, scrollHeight, clientHeight } = chatContainer;
+	userScrolledUp = scrollHeight - scrollTop - clientHeight > 100;
+}
 
 async function scrollToBottom() {
 	await tick();
@@ -46,6 +56,15 @@ async function scrollToBottom() {
 		setTimeout(() => {
 			chatContainer.scrollTop = chatContainer.scrollHeight;
 		}, 100);
+	}
+}
+
+function throttledScrollToBottom() {
+	if (userScrolledUp) return;
+	const now = Date.now();
+	if (now - lastScrollTime > SCROLL_THROTTLE_MS) {
+		lastScrollTime = now;
+		scrollToBottom();
 	}
 }
 
@@ -94,10 +113,11 @@ async function handleSend(messageText: string) {
 
 	// Throttling state for delta updates
 	let bufferedContent = "";
-	let bufferedThinking = "";
 	let lastUpdateTime = 0;
-	let lastThinkingUpdateTime = 0;
 	const THROTTLE_MS = 50;
+
+	progressStage = "";
+	userScrolledUp = false;
 
 	try {
 		const transport = createClientTransport();
@@ -113,10 +133,7 @@ async function handleSend(messageText: string) {
 			{ messages: chatHistory },
 			// onDelta: text chunk received
 			(text) => {
-				// Once we receive content, stop showing "thinking" spinner
-				if (isThinking) {
-					isThinking = false;
-				}
+				progressStage = "";
 				bufferedContent += text;
 
 				const now = Date.now();
@@ -126,24 +143,11 @@ async function handleSend(messageText: string) {
 						message: bufferedContent,
 					};
 					lastUpdateTime = now;
+					throttledScrollToBottom();
 				}
 			},
-			// onThinking: reasoning chunk received
-			(text) => {
-				if (!isThinking) {
-					isThinking = true;
-				}
-				bufferedThinking += text;
-
-				const now = Date.now();
-				if (now - lastThinkingUpdateTime > THROTTLE_MS) {
-					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex],
-						thinking: bufferedThinking,
-					};
-					lastThinkingUpdateTime = now;
-				}
-			},
+			// onThinking: not displayed
+			undefined,
 			// onMeta: citations received
 			(citations) => {
 				messages[currentAssistantMessageIndex] = {
@@ -157,15 +161,13 @@ async function handleSend(messageText: string) {
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex],
 					message: result.answer || bufferedContent,
-					thinking:
-						bufferedThinking || messages[currentAssistantMessageIndex].thinking,
 					citations:
 						result.citations.length > 0
 							? convertCitations(result.citations)
 							: messages[currentAssistantMessageIndex].citations,
 				};
 				isLoading = false;
-				isThinking = false;
+				progressStage = "";
 				currentAbortController = null;
 				scrollToBottom();
 			},
@@ -175,11 +177,9 @@ async function handleSend(messageText: string) {
 					...messages[currentAssistantMessageIndex],
 					message:
 						"I apologize, but I couldn't find enough information in my knowledge base to answer that properly.",
-					thinking:
-						bufferedThinking || messages[currentAssistantMessageIndex].thinking,
 				};
 				isLoading = false;
-				isThinking = false;
+				progressStage = "";
 				currentAbortController = null;
 				scrollToBottom();
 			},
@@ -189,13 +189,15 @@ async function handleSend(messageText: string) {
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex],
 					message: `Error: ${error.message}. Please try again.`,
-					thinking:
-						bufferedThinking || messages[currentAssistantMessageIndex].thinking,
 				};
 				isLoading = false;
-				isThinking = false;
+				progressStage = "";
 				currentAbortController = null;
 				scrollToBottom();
+			},
+			// onProgress: stage updates
+			(stage) => {
+				progressStage = stage;
 			},
 		);
 	} catch (error) {
@@ -223,15 +225,13 @@ onMount(() => {
 
 <div class="flex flex-col h-[calc(100vh-12rem)] max-w-4xl mx-auto border border-border bg-background rounded-lg overflow-hidden">
 	<!-- Chat messages -->
-	<div bind:this={chatContainer} class="flex-1 overflow-y-auto p-6">
+	<div bind:this={chatContainer} class="flex-1 overflow-y-auto p-6" onscroll={handleScroll}>
 		{#each messages as msg, idx (msg.id)}
 			<ChatMessage
 				message={msg.message}
 				role={msg.role}
 				timestamp={msg.timestamp}
 				citations={msg.citations}
-				thinking={msg.thinking}
-				isThinking={isThinking && idx === messages.length - 1 && msg.role === "assistant"}
 			/>
 		{/each}
 
@@ -245,8 +245,10 @@ onMount(() => {
 				</div>
 				<div class="bg-muted/50 p-3 text-sm rounded-2xl rounded-bl-none shadow-sm border border-border/50">
 					<p class="text-muted-foreground">
-						{#if isThinking}
-							Augur is reasoning...
+						{#if progressStage === "searching"}
+							Searching knowledge base...
+						{:else if progressStage === "generating"}
+							Generating answer...
 						{:else}
 							Augur is thinking...
 						{/if}

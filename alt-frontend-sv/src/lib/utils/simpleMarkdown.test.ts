@@ -185,6 +185,46 @@ describe("parseMarkdown", () => {
 		});
 	});
 
+	describe("XSS prevention", () => {
+		it("escapes script tags in inline text", () => {
+			const result = parseMarkdown('<script>alert("xss")</script>');
+			expect(result).not.toContain("<script>");
+			expect(result).toContain("&lt;script&gt;");
+		});
+
+		it("escapes img onerror XSS vectors", () => {
+			const result = parseMarkdown('<img onerror="alert(1)" src=x>');
+			expect(result).not.toContain("<img");
+			expect(result).toContain("&lt;img");
+		});
+
+		it("escapes event handlers in tags", () => {
+			const result = parseMarkdown('<div onmouseover="alert(1)">hover me</div>');
+			// The tag itself is escaped so onmouseover cannot execute
+			expect(result).not.toContain("<div onmouseover");
+			expect(result).toContain("&lt;div");
+		});
+
+		it("escapes HTML in header content", () => {
+			const result = parseMarkdown('## <script>alert("xss")</script>');
+			expect(result).toContain("<h2");
+			expect(result).not.toContain("<script>");
+			expect(result).toContain("&lt;script&gt;");
+		});
+
+		it("escapes HTML in list items", () => {
+			const result = parseMarkdown('- <img src=x onerror=alert(1)>');
+			expect(result).toContain("<li>");
+			expect(result).not.toContain("<img");
+		});
+
+		it("preserves markdown formatting while escaping HTML", () => {
+			const result = parseMarkdown("**bold** and <script>xss</script>");
+			expect(result).toContain("<strong>bold</strong>");
+			expect(result).not.toContain("<script>");
+		});
+	});
+
 	describe("complex content", () => {
 		it("handles mixed content types", () => {
 			const markdown = `# Title

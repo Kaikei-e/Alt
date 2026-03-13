@@ -1,4 +1,4 @@
-import type { CursorResponse } from "$lib/api";
+import type { CursorResponse } from "$lib/server/feed-api";
 import type { RenderFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import type { FeedSearchResult, SearchFeedItem } from "$lib/schema/search";
