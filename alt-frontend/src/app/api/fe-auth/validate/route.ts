@@ -46,14 +46,7 @@ export async function GET(req: NextRequest) {
       const data = await response.json();
       console.log(`[API] [${requestId}] Auth-hub success`);
 
-      // Forward X-Alt-Shared-Secret header from auth-hub if present
-      const sharedSecret = response.headers.get("X-Alt-Shared-Secret");
-      const headers = new Headers();
-      if (sharedSecret) {
-        headers.set("X-Alt-Shared-Secret", sharedSecret);
-      }
-
-      return NextResponse.json(data, { headers });
+      return NextResponse.json(data);
     }
 
     // If auth-hub returns 401 or other error, forward it
