@@ -32,5 +32,17 @@ export default defineConfig({
 		// ビルドパフォーマンスの最適化
 		target: "esnext",
 		minify: "oxc",
+		chunkSizeWarningLimit: 6000,
+		rollupOptions: {
+			onwarn(warning, defaultHandler) {
+				if (
+					warning.code === "CIRCULAR_DEPENDENCY" &&
+					warning.ids?.every((id) => id.includes("node_modules"))
+				) {
+					return;
+				}
+				defaultHandler(warning);
+			},
+		},
 	},
 });
