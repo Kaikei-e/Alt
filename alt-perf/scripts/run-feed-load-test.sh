@@ -23,6 +23,8 @@ FEED_COUNT="${FEED_COUNT:-100}"
 DURATION="${DURATION:-60}"
 RAMP_UP="${RAMP_UP:-30}"
 MOCK_REPLICAS="${MOCK_REPLICAS:-1}"
+DB_USER="${POSTGRES_USER:-alt_db_user}"
+DB_NAME="${POSTGRES_DB:-alt}"
 K6_SCENARIO="/scripts/scenarios/feed-registration.js"
 GENERATED_OVERLAY="compose/load-test-generated.yaml"
 
@@ -253,7 +255,7 @@ fi
 
 echo "Waiting for mock-rss-server health..."
 for i in $(seq 1 30); do
-  if $COMPOSE exec -T mock-rss-server wget --spider -q http://localhost:8090/health 2>/dev/null; then
+  if $COMPOSE exec -T mock-rss-server wget --spider -q http://localhost:8080/health 2>/dev/null; then
     echo "  mock-rss-server is healthy (${MOCK_REPLICAS} replica(s))"
     break
   fi
@@ -361,13 +363,13 @@ $COMPOSE exec -T pgbouncer psql -h localhost -p 6432 pgbouncer -c "SHOW STATS;" 
   > /tmp/pgbouncer-stats-loadtest.log 2>&1 || true
 
 # DB connection count
-$COMPOSE exec -T db psql -U alt_db_user -d alt -c \
+$COMPOSE exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c \
   "SELECT count(*) as active_connections FROM pg_stat_activity WHERE state = 'active';" \
   > /tmp/db-connections-loadtest.log 2>&1 || true
 
 # Feed registration count (verification)
-$COMPOSE exec -T db psql -U alt_db_user -d alt -c \
-  "SELECT count(*) as total_feed_links FROM feed_links WHERE url LIKE 'http://mock-rss-%:8090/%';" \
+$COMPOSE exec -T db psql -U "$DB_USER" -d "$DB_NAME" -c \
+  "SELECT count(*) as total_feed_links FROM feed_links WHERE url LIKE 'http://mock-rss-%:8080/%';" \
   > /tmp/feed-count-loadtest.log 2>&1 || true
 
 echo "  Metrics saved to /tmp/*-loadtest.log"

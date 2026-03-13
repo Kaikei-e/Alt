@@ -22,7 +22,7 @@ export const PUBLIC_ENDPOINTS = [
   { method: "GET", path: "/v1/dashboard/metrics", name: "dashboard-metrics" },
 ];
 
-/** Authenticated endpoints (require shared-secret headers) */
+/** Authenticated endpoints (require JWT token) */
 export const AUTH_ENDPOINTS = [
   // Feeds
   { method: "GET", path: "/v1/feeds/fetch/cursor", name: "feeds-cursor", group: "feeds" },

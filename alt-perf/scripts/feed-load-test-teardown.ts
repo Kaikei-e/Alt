@@ -90,14 +90,14 @@ async function cleanupDatabase(): Promise<void> {
     ${setTimeoutSQL}
     DELETE FROM feeds
     WHERE feed_link_id IN (
-      SELECT id FROM feed_links WHERE url LIKE 'http://mock-rss-%:8090/%'
+      SELECT id FROM feed_links WHERE url LIKE 'http://mock-rss-%:8080/%'
     );
   `;
 
   // Step 3b: Delete feed_links (cascades to user_feed_subscriptions, feed_link_availability)
   const deleteFeedLinksSQL = `
     ${setTimeoutSQL}
-    DELETE FROM feed_links WHERE url LIKE 'http://mock-rss-%:8090/%';
+    DELETE FROM feed_links WHERE url LIKE 'http://mock-rss-%:8080/%';
   `;
 
   const composeParts = COMPOSE_CMD.split(" ");

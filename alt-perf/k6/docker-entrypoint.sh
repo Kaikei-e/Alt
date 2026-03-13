@@ -6,8 +6,8 @@
 
 set -e
 
-if [ -f /run/secrets/auth_shared_secret ]; then
-  export K6_AUTH_SECRET=$(cat /run/secrets/auth_shared_secret)
+if [ -f /run/secrets/backend_token_secret ]; then
+  export K6_BACKEND_TOKEN_SECRET=$(cat /run/secrets/backend_token_secret)
 fi
 
 exec k6 "$@"

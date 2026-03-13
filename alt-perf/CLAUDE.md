@@ -47,7 +47,7 @@ docker compose -f compose/compose.yaml -p alt run --rm k6 run /scripts/scenarios
 
 - Scenarios: smoke, load, stress, soak, spike
 - Targets alt-backend directly (port 9000, no nginx)
-- Uses `X-Alt-Shared-Secret` fallback auth
+- Uses `X-Alt-Backend-Token` (JWT) auth
 - Whitelist-only endpoints (no external API calls)
 - 10-second cooldown per iteration (rate limiting)
 - Reports: `reports/k6-*.json`

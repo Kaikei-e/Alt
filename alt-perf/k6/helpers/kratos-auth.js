@@ -95,7 +95,7 @@ export function kratosLogin(email, password) {
   }
 
   // Step 3: Extract session cookie from Set-Cookie headers
-  // Cookie domain (.curionoah.com) may not match nginx hostname,
+  // Cookie domain may not match nginx hostname in the load-test environment,
   // so we extract manually from response headers.
   const setCookies = loginRes.headers["Set-Cookie"];
   if (!setCookies) {

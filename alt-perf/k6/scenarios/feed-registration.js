@@ -160,7 +160,7 @@ export default function () {
   // Each VU maps to a DNS alias bucket (10k VUs share 1k aliases)
   const aliasBucket = ((__VU - 1) % ALIAS_COUNT) + 1;
   const vuId = String(aliasBucket).padStart(String(ALIAS_COUNT).length, "0");
-  const feedUrl = `http://mock-rss-${vuId}:8090/feeds/${feedId}/rss.xml`;
+  const feedUrl = `http://mock-rss-${vuId}:8080/feeds/${feedId}/rss.xml`;
 
   // Use cached CSRF token; fallback fetch only if cache is empty
   let csrfToken = vuCsrfToken;
