@@ -14,11 +14,11 @@ services:
     build:
       context: ../alt-perf/k6/mock-rss-server
     ports:
-      - "8090:8090"
+      - "8091:8080"
     networks:
       - alt-network
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8090/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
       interval: 5s
       timeout: 3s
       retries: 3
