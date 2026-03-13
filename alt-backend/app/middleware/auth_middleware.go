@@ -4,7 +4,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"alt/config"
@@ -18,12 +17,11 @@ import (
 // These headers are set by the edge proxy (nginx) after validating the user session.
 
 const (
-	userIDHeader       = "X-Alt-User-Id"
-	tenantIDHeader     = "X-Alt-Tenant-Id"
-	userEmailHeader    = "X-Alt-User-Email"
-	userRoleHeader     = "X-Alt-User-Role"
-	sessionIDHeader    = "X-Alt-Session-Id"
-	sharedSecretHeader = "X-Alt-Shared-Secret"
+	userIDHeader    = "X-Alt-User-Id"
+	tenantIDHeader  = "X-Alt-Tenant-Id"
+	userEmailHeader = "X-Alt-User-Email"
+	userRoleHeader  = "X-Alt-User-Role"
+	sessionIDHeader = "X-Alt-Session-Id"
 )
 
 // Authentication error types.
@@ -31,82 +29,51 @@ var (
 	errMissingHeaders = errors.New("missing authentication headers")
 	errInvalidUserID  = errors.New("invalid user identifier")
 	errInvalidTenant  = errors.New("invalid tenant identifier")
-	errInvalidSecret  = errors.New("invalid shared secret") //nolint:unused // Reserved for future use
 )
 
-// AuthMiddleware validates lightweight identity headers provided by the frontend.
-// The backend no longer performs calls to external auth services and simply trusts
-// the identity information forwarded by the edge components.
-// During migration, supports both JWT tokens and shared secret authentication.
+// AuthMiddleware validates JWT tokens provided by the edge proxy or frontend.
+// JWT is the sole authentication method.
 type AuthMiddleware struct {
 	logger        *slog.Logger
-	sharedSecret  string
 	jwtMiddleware *JWTAuthMiddleware
 	config        *config.Config
 }
 
 // NewAuthMiddleware constructs an AuthMiddleware instance.
-func NewAuthMiddleware(logger *slog.Logger, sharedSecret string, cfg *config.Config) *AuthMiddleware {
+func NewAuthMiddleware(logger *slog.Logger, cfg *config.Config) *AuthMiddleware {
 	return &AuthMiddleware{
 		logger:        logger,
-		sharedSecret:  sharedSecret,
 		jwtMiddleware: NewJWTAuthMiddleware(logger, cfg),
 		config:        cfg,
 	}
 }
 
-// RequireAuth ensures that identity headers are present and valid before
-// allowing the request to proceed.
-// During migration, supports both JWT tokens (preferred) and shared secret (legacy).
+// RequireAuth ensures that a valid JWT token is present before allowing the request to proceed.
 func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// Try JWT authentication first (new method)
-			if jwtUserCtx, err := m.jwtMiddleware.validateJWT(c); err == nil {
-				// JWT validation succeeded - convert to domain.UserContext
-				userID, _ := uuid.Parse(jwtUserCtx.ID)
-				tenantID, _ := uuid.Parse(jwtUserCtx.ID) // Single-tenant: use userID as tenantID
-				domainCtx := &domain.UserContext{
-					UserID:    userID,
-					Email:     jwtUserCtx.Email,
-					Role:      parseRole(jwtUserCtx.Role),
-					TenantID:  tenantID,
-					SessionID: jwtUserCtx.Sid,
-					LoginAt:   time.Now().UTC(),
-					ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
-				}
-				m.attachContext(c, domainCtx)
-				if m.logger != nil {
-					m.logger.Debug("request authenticated via JWT",
-						"user_id", domainCtx.UserID,
-						"tenant_id", domainCtx.TenantID,
-					)
-				}
-				return next(c)
-			}
-
-			// Fallback to shared secret authentication (legacy method)
-			if !m.validateSharedSecret(c) {
+			jwtUserCtx, err := m.jwtMiddleware.validateJWT(c)
+			if err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid authentication")
 			}
 
-			userContext, err := m.extractUserContext(c)
-			if err != nil {
-				switch {
-				case errors.Is(err, errMissingHeaders):
-					return echo.NewHTTPError(http.StatusUnauthorized, "missing authentication headers")
-				case errors.Is(err, errInvalidUserID), errors.Is(err, errInvalidTenant):
-					return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-				default:
-					return echo.NewHTTPError(http.StatusUnauthorized, "invalid authentication headers")
-				}
+			// JWT validation succeeded - convert to domain.UserContext
+			userID, _ := uuid.Parse(jwtUserCtx.ID)
+			tenantID, _ := uuid.Parse(jwtUserCtx.ID) // Single-tenant: use userID as tenantID
+			domainCtx := &domain.UserContext{
+				UserID:    userID,
+				Email:     jwtUserCtx.Email,
+				Role:      parseRole(jwtUserCtx.Role),
+				TenantID:  tenantID,
+				SessionID: jwtUserCtx.Sid,
+				LoginAt:   time.Now().UTC(),
+				ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
 			}
-
-			m.attachContext(c, userContext)
+			m.attachContext(c, domainCtx)
 			if m.logger != nil {
-				m.logger.Debug("request authenticated via shared secret (legacy)",
-					"user_id", userContext.UserID,
-					"tenant_id", userContext.TenantID,
+				m.logger.Debug("request authenticated via JWT",
+					"user_id", domainCtx.UserID,
+					"tenant_id", domainCtx.TenantID,
 				)
 			}
 			return next(c)
@@ -114,86 +81,56 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	}
 }
 
-// OptionalAuth attaches a user context only when identity headers are present.
-// Requests without headers continue unauthenticated.
-// V-005 Security: If authentication headers are present, the shared secret MUST be valid.
-// This prevents attackers from injecting fake identity headers without going through the proxy.
+// OptionalAuth attaches a user context only when a valid JWT token is present.
+// Requests without tokens continue unauthenticated.
+// V-005 Security: If a JWT token is present but invalid, the request continues as anonymous.
 func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// V-005: Check if auth headers are present
-			// If headers exist, shared secret validation is required to prevent spoofing
-			if m.hasAuthHeaders(c) {
-				if !m.validateSharedSecret(c) {
-					// Security: Auth headers present but no valid secret
-					// Log warning for security monitoring, then continue as anonymous
-					if m.logger != nil {
-						m.logger.Warn("auth headers present without valid shared secret",
-							"path", c.Request().URL.Path,
-							"remote_addr", c.RealIP(),
-						)
+			// Check if JWT token is present
+			if c.Request().Header.Get(backendTokenHeader) != "" {
+				if jwtUserCtx, err := m.jwtMiddleware.validateJWT(c); err == nil {
+					// Valid JWT - attach user context
+					userID, _ := uuid.Parse(jwtUserCtx.ID)
+					tenantID, _ := uuid.Parse(jwtUserCtx.ID) // Single-tenant
+					domainCtx := &domain.UserContext{
+						UserID:    userID,
+						Email:     jwtUserCtx.Email,
+						Role:      parseRole(jwtUserCtx.Role),
+						TenantID:  tenantID,
+						SessionID: jwtUserCtx.Sid,
+						LoginAt:   time.Now().UTC(),
+						ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
 					}
-					// Continue as anonymous - do NOT trust the headers
+					m.attachContext(c, domainCtx)
 					return next(c)
 				}
-
-				// Valid secret - extract and attach user context
-				userContext, err := m.extractUserContext(c)
-				if err != nil {
-					if errors.Is(err, errMissingHeaders) {
-						return next(c)
-					}
-					if m.logger != nil {
-						m.logger.Debug("optional auth rejected identity headers", "error", err)
-					}
-					return echo.NewHTTPError(http.StatusUnauthorized, "invalid authentication headers")
+				// Invalid JWT - continue as anonymous (V-005 equivalent)
+				if m.logger != nil {
+					m.logger.Warn("invalid JWT token, continuing as anonymous",
+						"path", c.Request().URL.Path,
+						"remote_addr", c.RealIP(),
+					)
 				}
-				m.attachContext(c, userContext)
 				return next(c)
 			}
 
-			// No auth headers - anonymous request, continue without context
+			// Check if identity headers are present without JWT (possible injection attempt)
+			if m.hasAuthHeaders(c) {
+				if m.logger != nil {
+					m.logger.Warn("auth headers present without JWT token",
+						"path", c.Request().URL.Path,
+						"remote_addr", c.RealIP(),
+					)
+				}
+				// Continue as anonymous - do NOT trust the headers
+				return next(c)
+			}
+
+			// No auth headers - anonymous request
 			return next(c)
 		}
 	}
-}
-
-func (m *AuthMiddleware) extractUserContext(c echo.Context) (*domain.UserContext, error) {
-	requestHeaders := c.Request().Header
-	userIDValue := strings.TrimSpace(requestHeaders.Get(userIDHeader))
-	tenantIDValue := strings.TrimSpace(requestHeaders.Get(tenantIDHeader))
-
-	if userIDValue == "" && tenantIDValue == "" {
-		return nil, errMissingHeaders
-	}
-
-	if userIDValue == "" || tenantIDValue == "" {
-		return nil, errMissingHeaders
-	}
-
-	userID, err := uuid.Parse(userIDValue)
-	if err != nil {
-		return nil, errInvalidUserID
-	}
-
-	tenantID, err := uuid.Parse(tenantIDValue)
-	if err != nil {
-		return nil, errInvalidTenant
-	}
-
-	email := strings.TrimSpace(requestHeaders.Get(userEmailHeader))
-	role := parseRole(strings.TrimSpace(requestHeaders.Get(userRoleHeader)))
-	sessionID := strings.TrimSpace(requestHeaders.Get(sessionIDHeader))
-
-	return &domain.UserContext{
-		UserID:    userID,
-		Email:     email,
-		Role:      role,
-		TenantID:  tenantID,
-		SessionID: sessionID,
-		LoginAt:   time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(24 * time.Hour),
-	}, nil
 }
 
 func (m *AuthMiddleware) attachContext(c echo.Context, user *domain.UserContext) {
@@ -203,7 +140,7 @@ func (m *AuthMiddleware) attachContext(c echo.Context, user *domain.UserContext)
 	c.Set("auth.valid", true)
 
 	if m.logger != nil {
-		m.logger.Debug("request authenticated via headers",
+		m.logger.Debug("request authenticated via JWT",
 			"user_id", user.UserID,
 			"tenant_id", user.TenantID,
 			"role", user.Role,
@@ -216,7 +153,7 @@ func parseRole(raw string) domain.UserRole {
 		return domain.UserRoleUser
 	}
 
-	switch strings.ToLower(raw) {
+	switch raw {
 	case string(domain.UserRoleAdmin):
 		return domain.UserRoleAdmin
 	case string(domain.UserRoleTenantAdmin):
@@ -226,20 +163,6 @@ func parseRole(raw string) domain.UserRole {
 	default:
 		return domain.UserRoleUser
 	}
-}
-
-func (m *AuthMiddleware) validateSharedSecret(c echo.Context) bool {
-	// If no secret is configured, we default to insecure (open) mode?
-	// Or we fail open?
-	// Implementation Plan says: "If this secret is not configured, the backend will reject all authenticated requests."
-	// So if m.sharedSecret is empty, we should probably fail secure.
-	if m.sharedSecret == "" {
-		// Log warning?
-		return false
-	}
-
-	providedSecret := c.Request().Header.Get(sharedSecretHeader)
-	return providedSecret == m.sharedSecret
 }
 
 // hasAuthHeaders checks if any authentication identity headers are present.
