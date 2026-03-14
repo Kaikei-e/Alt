@@ -138,3 +138,5 @@ pre-processor-sidecar/setup-oauth.sh
 pre-processor-sidecar/cmd/oauth-initializer/
 migrations-atlas/migrations/atlas.sum
 rag-orchestrator/start_backfill.sh
+.obsidian/
+docs/vault/.obsidian/
