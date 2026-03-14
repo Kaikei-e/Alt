@@ -1,4 +1,16 @@
-# ADR-NNNN: タイトル（動詞始まりの行動指向で記述）
+---
+title: タイトル（動詞始まりの行動指向で記述）
+date: YYYY-MM-DD
+status: proposed
+tags:
+  -
+affected_services:
+  -
+aliases:
+  - ADR-NNNN
+  - ADR-000NNN
+---
+# ADR-000NNN: タイトル（動詞始まりの行動指向で記述）
 
 <!-- 例: ADR-0033: singleflightパターンによるフィード登録の重複リクエスト排除 -->
 
@@ -41,7 +53,8 @@ Proposed
 
 ## Related ADRs
 
-<!-- 関連するADRへのリンク。なければ「なし」と記載 -->
-<!-- 例: ADR-0030 (PgBouncer導入), ADR-0031 (Circuit Breaker適用) -->
+<!-- wikilink形式で記載。Obsidianのグラフビュー・バックリンクが自動生成される -->
+<!-- 例: - [[000030]] PgBouncer導入 -->
+<!-- 例: - [[000031]] Circuit Breaker適用 -->
 
 - なし
