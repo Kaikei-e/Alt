@@ -1,11 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"encoding/xml"
 	"fmt"
+	"html"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +21,7 @@ var (
 	articleDelay     = envInt("MOCK_ARTICLE_DELAY_MS", 350)
 	delayJitter      = envInt("MOCK_DELAY_JITTER_MS", 75)
 	defaultImagePath = "/images/og-default.png"
+	validFeedID      = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 )
 
 func main() {
@@ -55,6 +60,12 @@ func applyDelay(baseMs int) {
 	time.Sleep(time.Duration(baseMs+jitter) * time.Millisecond)
 }
 
+func xmlEscape(s string) string {
+	var buf bytes.Buffer
+	_ = xml.EscapeText(&buf, []byte(s))
+	return buf.String()
+}
+
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -73,12 +84,17 @@ func handleFeed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	feedID := parts[1]
+	if !validFeedID.MatchString(feedID) {
+		http.NotFound(w, r)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 
 	pubDate := time.Now().UTC().Format(time.RFC1123Z)
-	host := r.Host // e.g. "mock-rss-001:8080"
+	safeFeedID := xmlEscape(feedID)
+	safeHost := xmlEscape(r.Host)
 
 	var items strings.Builder
 	for i := 1; i <= 10; i++ {
@@ -89,7 +105,7 @@ func handleFeed(w http.ResponseWriter, r *http.Request) {
       <pubDate>%s</pubDate>
       <guid isPermaLink="true">http://%s/articles/feed-%s/item-%d</guid>
     </item>
-`, feedID, i, host, feedID, i, i, feedID, pubDate, host, feedID, i))
+`, safeFeedID, i, safeHost, safeFeedID, i, i, safeFeedID, pubDate, safeHost, safeFeedID, i))
 	}
 
 	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
@@ -101,7 +117,7 @@ func handleFeed(w http.ResponseWriter, r *http.Request) {
     <lastBuildDate>%s</lastBuildDate>
 %s  </channel>
 </rss>
-`, feedID, host, feedID, feedID, pubDate, items.String())
+`, safeFeedID, safeHost, safeFeedID, safeFeedID, pubDate, items.String())
 }
 
 // handleArticle serves /articles/feed-{id}/item-{n} as simple HTML.
@@ -123,11 +139,20 @@ func handleArticle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	feedID := strings.TrimPrefix(feedPart, "feed-")
+	if !validFeedID.MatchString(feedID) {
+		http.NotFound(w, r)
+		return
+	}
+
 	itemNum := strings.TrimPrefix(itemPart, "item-")
 	if _, err := strconv.Atoi(itemNum); err != nil {
 		http.NotFound(w, r)
 		return
 	}
+
+	safeFeedID := html.EscapeString(feedID)
+	safeItemNum := html.EscapeString(itemNum)
+	safeHost := html.EscapeString(r.Host)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!DOCTYPE html>
@@ -148,7 +173,7 @@ func handleArticle(w http.ResponseWriter, r *http.Request) {
 </article>
 </body>
 </html>
-`, feedID, itemNum, feedID, itemNum, r.Host, defaultImagePath, itemNum, feedID, feedID, itemNum, feedID, itemNum)
+`, safeFeedID, safeItemNum, safeFeedID, safeItemNum, safeHost, defaultImagePath, safeItemNum, safeFeedID, safeFeedID, safeItemNum, safeFeedID, safeItemNum)
 }
 
 func handleImage(w http.ResponseWriter, r *http.Request) {

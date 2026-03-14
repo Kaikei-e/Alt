@@ -256,5 +256,5 @@ func (r *responseRecorder) WriteHeader(statusCode int) {
 
 func (r *responseRecorder) Write(b []byte) (int, error) {
 	r.body.Write(b)
-	return r.ResponseWriter.Write(b)
+	return r.ResponseWriter.Write(b) // lgtm[go/reflected-xss]
 }

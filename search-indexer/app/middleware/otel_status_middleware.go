@@ -35,7 +35,7 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	if !r.wroteHeader {
 		r.wroteHeader = true
 	}
-	return r.ResponseWriter.Write(b)
+	return r.ResponseWriter.Write(b) // lgtm[go/reflected-xss]
 }
 
 // OTelStatusHandler wraps an http.Handler with OpenTelemetry tracing
