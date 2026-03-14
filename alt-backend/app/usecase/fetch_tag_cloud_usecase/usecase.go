@@ -31,6 +31,16 @@ func NewFetchTagCloudUsecase(port fetch_tag_cloud_port.FetchTagCloudPort, cacheT
 
 // Execute fetches tag cloud data with validation and caching.
 func (u *FetchTagCloudUsecase) Execute(ctx context.Context, limit int) ([]*domain.TagCloudItem, error) {
+	return u.execute(ctx, limit, false)
+}
+
+// Refresh always recomputes the tag cloud (bypasses cache).
+// Used by the cache warmer to guarantee fresh data and reset TTL.
+func (u *FetchTagCloudUsecase) Refresh(ctx context.Context, limit int) ([]*domain.TagCloudItem, error) {
+	return u.execute(ctx, limit, true)
+}
+
+func (u *FetchTagCloudUsecase) execute(ctx context.Context, limit int, forceRefresh bool) ([]*domain.TagCloudItem, error) {
 	if limit <= 0 {
 		limit = 300
 	}
@@ -39,13 +49,15 @@ func (u *FetchTagCloudUsecase) Execute(ctx context.Context, limit int) ([]*domai
 		return nil, errors.New("limit cannot exceed 500")
 	}
 
-	// Check cache
-	if cached := u.getCached(limit); cached != nil {
-		logger.Logger.InfoContext(ctx, "tag cloud cache hit", "limit", limit)
-		return cached, nil
+	// Check cache (skip when force-refreshing)
+	if !forceRefresh {
+		if cached := u.getCached(limit); cached != nil {
+			logger.Logger.InfoContext(ctx, "tag cloud cache hit", "limit", limit)
+			return cached, nil
+		}
 	}
 
-	logger.Logger.InfoContext(ctx, "fetching tag cloud", "limit", limit)
+	logger.Logger.InfoContext(ctx, "fetching tag cloud", "limit", limit, "forceRefresh", forceRefresh)
 
 	items, err := u.fetchTagCloudPort.FetchTagCloud(ctx, limit)
 	if err != nil {
@@ -62,13 +74,23 @@ func (u *FetchTagCloudUsecase) Execute(ctx context.Context, limit int) ([]*domai
 			tagNames[i] = item.TagName
 		}
 
+		cooccStart := time.Now()
 		cooccurrences, err := u.fetchTagCloudPort.FetchTagCooccurrences(ctx, tagNames)
 		if err != nil {
 			logger.Logger.WarnContext(ctx, "failed to fetch cooccurrences, using layout without edges", "error", err)
 			cooccurrences = nil
 		}
+		cooccMs := time.Since(cooccStart).Milliseconds()
 
+		layoutStart := time.Now()
 		ComputeLayout(items, cooccurrences)
+		layoutMs := time.Since(layoutStart).Milliseconds()
+
+		logger.Logger.InfoContext(ctx, "tag cloud computation complete",
+			"cooccurrence_ms", cooccMs,
+			"layout_ms", layoutMs,
+			"edge_count", len(cooccurrences),
+		)
 	}
 
 	// Store in cache

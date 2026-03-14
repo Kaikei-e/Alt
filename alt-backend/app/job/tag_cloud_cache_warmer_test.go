@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
-// mockTagCloudWarmer implements tagCloudExecutor for testing.
+// mockTagCloudWarmer implements tagCloudRefresher for testing.
 type mockTagCloudWarmer struct {
 	callCount atomic.Int32
 	lastLimit int
 	err       error
 }
 
-func (m *mockTagCloudWarmer) Execute(ctx context.Context, limit int) (any, error) {
+func (m *mockTagCloudWarmer) Refresh(ctx context.Context, limit int) (any, error) {
 	m.callCount.Add(1)
 	m.lastLimit = limit
 	if m.err != nil {
@@ -50,7 +50,7 @@ func TestTagCloudCacheWarmerJob_UsecaseError(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 	if err.Error() != "tag cloud cache warm: database error" {
-		t.Fatalf("unexpected error: %v", err)
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 

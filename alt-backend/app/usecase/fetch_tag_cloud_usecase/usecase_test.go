@@ -207,3 +207,65 @@ func TestFetchTagCloudUsecase_Cache(t *testing.T) {
 		}
 	})
 }
+
+func TestFetchTagCloudUsecase_Refresh(t *testing.T) {
+	logger.InitLogger()
+	ctx := context.Background()
+
+	t.Run("Refresh always recomputes even with valid cache", func(t *testing.T) {
+		port := &mockFetchTagCloudPort{
+			items: []*domain.TagCloudItem{
+				{TagName: "AI", ArticleCount: 100},
+				{TagName: "Go", ArticleCount: 50},
+			},
+		}
+
+		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+
+		// First call populates cache
+		_, err := usecase.Execute(ctx, 300)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if port.callCount.Load() != 1 {
+			t.Fatalf("want 1 port call, got %d", port.callCount.Load())
+		}
+
+		// Refresh must bypass cache and recompute
+		got, err := usecase.Refresh(ctx, 300)
+		if err != nil {
+			t.Fatalf("Refresh: %v", err)
+		}
+		if len(got) != 2 {
+			t.Errorf("Refresh: want 2 items, got %d", len(got))
+		}
+		if port.callCount.Load() != 2 {
+			t.Errorf("Refresh should always fetch from port, got %d calls", port.callCount.Load())
+		}
+	})
+
+	t.Run("Refresh updates cache for subsequent Execute", func(t *testing.T) {
+		port := &mockFetchTagCloudPort{
+			items: []*domain.TagCloudItem{
+				{TagName: "AI", ArticleCount: 100},
+			},
+		}
+
+		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
+
+		// Refresh populates cache
+		_, err := usecase.Refresh(ctx, 300)
+		if err != nil {
+			t.Fatalf("Refresh: %v", err)
+		}
+
+		// Execute should use the cache populated by Refresh
+		_, err = usecase.Execute(ctx, 300)
+		if err != nil {
+			t.Fatalf("Execute: %v", err)
+		}
+		if port.callCount.Load() != 1 {
+			t.Errorf("Execute after Refresh should use cache, got %d port calls", port.callCount.Load())
+		}
+	})
+}
