@@ -18,3 +18,8 @@ type GetFeedIDPort interface {
 type ListFeedURLsPort interface {
 	ListFeedURLs(ctx context.Context, cursor string, limit int) (feeds []FeedURL, nextCursor string, hasMore bool, err error)
 }
+
+// GetEmptyFeedIDPort returns a feed ID with no articles for the given feed URL.
+type GetEmptyFeedIDPort interface {
+	GetEmptyFeedID(ctx context.Context, feedURL string) (string, error)
+}

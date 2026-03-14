@@ -43,21 +43,6 @@ func (m *MockFetchArticlesPort) EXPECT() *MockFetchArticlesPortMockRecorder {
 	return m.recorder
 }
 
-// FetchArticlesWithCursor mocks base method.
-func (m *MockFetchArticlesPort) FetchArticlesWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.Article, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FetchArticlesWithCursor", ctx, cursor, limit)
-	ret0, _ := ret[0].([]*domain.Article)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// FetchArticlesWithCursor indicates an expected call of FetchArticlesWithCursor.
-func (mr *MockFetchArticlesPortMockRecorder) FetchArticlesWithCursor(ctx, cursor, limit any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchArticlesWithCursor", reflect.TypeOf((*MockFetchArticlesPort)(nil).FetchArticlesWithCursor), ctx, cursor, limit)
-}
-
 // FetchArticleIDsWithCursor mocks base method.
 func (m *MockFetchArticlesPort) FetchArticleIDsWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]uuid.UUID, error) {
 	m.ctrl.T.Helper()
@@ -71,4 +56,19 @@ func (m *MockFetchArticlesPort) FetchArticleIDsWithCursor(ctx context.Context, c
 func (mr *MockFetchArticlesPortMockRecorder) FetchArticleIDsWithCursor(ctx, cursor, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchArticleIDsWithCursor", reflect.TypeOf((*MockFetchArticlesPort)(nil).FetchArticleIDsWithCursor), ctx, cursor, limit)
+}
+
+// FetchArticlesWithCursor mocks base method.
+func (m *MockFetchArticlesPort) FetchArticlesWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.Article, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchArticlesWithCursor", ctx, cursor, limit)
+	ret0, _ := ret[0].([]*domain.Article)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchArticlesWithCursor indicates an expected call of FetchArticlesWithCursor.
+func (mr *MockFetchArticlesPortMockRecorder) FetchArticlesWithCursor(ctx, cursor, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchArticlesWithCursor", reflect.TypeOf((*MockFetchArticlesPort)(nil).FetchArticlesWithCursor), ctx, cursor, limit)
 }

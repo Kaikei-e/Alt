@@ -46,10 +46,14 @@ func (r *AltDBRepository) IncrementFeedLinkFailures(ctx context.Context, feedURL
 }
 
 // ResetFeedLinkFailures resets the failure count on successful fetch.
+// It uses UPSERT to create the availability row if it doesn't exist yet
+// (e.g., feeds registered after the initial migration).
 func (r *AltDBRepository) ResetFeedLinkFailures(ctx context.Context, feedURL string) error {
 	query := `
-		UPDATE feed_link_availability SET consecutive_failures = 0
-		WHERE feed_link_id IN (SELECT id FROM feed_links WHERE url = $1)`
+		INSERT INTO feed_link_availability (feed_link_id, is_active, consecutive_failures)
+		SELECT id, true, 0 FROM feed_links WHERE url = $1
+		ON CONFLICT (feed_link_id) DO UPDATE SET
+			consecutive_failures = 0`
 	_, err := r.pool.Exec(ctx, query, feedURL)
 	return err
 }

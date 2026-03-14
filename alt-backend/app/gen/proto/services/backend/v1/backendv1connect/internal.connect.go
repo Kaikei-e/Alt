@@ -90,6 +90,9 @@ const (
 	// BackendInternalServiceHasUnsummarizedArticlesProcedure is the fully-qualified name of the
 	// BackendInternalService's HasUnsummarizedArticles RPC.
 	BackendInternalServiceHasUnsummarizedArticlesProcedure = "/services.backend.v1.BackendInternalService/HasUnsummarizedArticles"
+	// BackendInternalServiceGetEmptyFeedIDProcedure is the fully-qualified name of the
+	// BackendInternalService's GetEmptyFeedID RPC.
+	BackendInternalServiceGetEmptyFeedIDProcedure = "/services.backend.v1.BackendInternalService/GetEmptyFeedID"
 )
 
 // BackendInternalServiceClient is a client for the services.backend.v1.BackendInternalService
@@ -135,6 +138,9 @@ type BackendInternalServiceClient interface {
 	ListUnsummarizedArticles(context.Context, *connect.Request[v1.ListUnsummarizedArticlesRequest]) (*connect.Response[v1.ListUnsummarizedArticlesResponse], error)
 	// HasUnsummarizedArticles checks if any articles lack summaries.
 	HasUnsummarizedArticles(context.Context, *connect.Request[v1.HasUnsummarizedArticlesRequest]) (*connect.Response[v1.HasUnsummarizedArticlesResponse], error)
+	// GetEmptyFeedID returns a feed ID that has no articles for the given feed URL.
+	// Returns empty feed_id if all feeds for this URL already have articles.
+	GetEmptyFeedID(context.Context, *connect.Request[v1.GetEmptyFeedIDRequest]) (*connect.Response[v1.GetEmptyFeedIDResponse], error)
 }
 
 // NewBackendInternalServiceClient constructs a client for the
@@ -262,6 +268,12 @@ func NewBackendInternalServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(backendInternalServiceMethods.ByName("HasUnsummarizedArticles")),
 			connect.WithClientOptions(opts...),
 		),
+		getEmptyFeedID: connect.NewClient[v1.GetEmptyFeedIDRequest, v1.GetEmptyFeedIDResponse](
+			httpClient,
+			baseURL+BackendInternalServiceGetEmptyFeedIDProcedure,
+			connect.WithSchema(backendInternalServiceMethods.ByName("GetEmptyFeedID")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -286,6 +298,7 @@ type backendInternalServiceClient struct {
 	findArticlesWithSummaries   *connect.Client[v1.FindArticlesWithSummariesRequest, v1.FindArticlesWithSummariesResponse]
 	listUnsummarizedArticles    *connect.Client[v1.ListUnsummarizedArticlesRequest, v1.ListUnsummarizedArticlesResponse]
 	hasUnsummarizedArticles     *connect.Client[v1.HasUnsummarizedArticlesRequest, v1.HasUnsummarizedArticlesResponse]
+	getEmptyFeedID              *connect.Client[v1.GetEmptyFeedIDRequest, v1.GetEmptyFeedIDResponse]
 }
 
 // ListArticlesWithTags calls services.backend.v1.BackendInternalService.ListArticlesWithTags.
@@ -388,6 +401,11 @@ func (c *backendInternalServiceClient) HasUnsummarizedArticles(ctx context.Conte
 	return c.hasUnsummarizedArticles.CallUnary(ctx, req)
 }
 
+// GetEmptyFeedID calls services.backend.v1.BackendInternalService.GetEmptyFeedID.
+func (c *backendInternalServiceClient) GetEmptyFeedID(ctx context.Context, req *connect.Request[v1.GetEmptyFeedIDRequest]) (*connect.Response[v1.GetEmptyFeedIDResponse], error) {
+	return c.getEmptyFeedID.CallUnary(ctx, req)
+}
+
 // BackendInternalServiceHandler is an implementation of the
 // services.backend.v1.BackendInternalService service.
 type BackendInternalServiceHandler interface {
@@ -431,6 +449,9 @@ type BackendInternalServiceHandler interface {
 	ListUnsummarizedArticles(context.Context, *connect.Request[v1.ListUnsummarizedArticlesRequest]) (*connect.Response[v1.ListUnsummarizedArticlesResponse], error)
 	// HasUnsummarizedArticles checks if any articles lack summaries.
 	HasUnsummarizedArticles(context.Context, *connect.Request[v1.HasUnsummarizedArticlesRequest]) (*connect.Response[v1.HasUnsummarizedArticlesResponse], error)
+	// GetEmptyFeedID returns a feed ID that has no articles for the given feed URL.
+	// Returns empty feed_id if all feeds for this URL already have articles.
+	GetEmptyFeedID(context.Context, *connect.Request[v1.GetEmptyFeedIDRequest]) (*connect.Response[v1.GetEmptyFeedIDResponse], error)
 }
 
 // NewBackendInternalServiceHandler builds an HTTP handler from the service implementation. It
@@ -554,6 +575,12 @@ func NewBackendInternalServiceHandler(svc BackendInternalServiceHandler, opts ..
 		connect.WithSchema(backendInternalServiceMethods.ByName("HasUnsummarizedArticles")),
 		connect.WithHandlerOptions(opts...),
 	)
+	backendInternalServiceGetEmptyFeedIDHandler := connect.NewUnaryHandler(
+		BackendInternalServiceGetEmptyFeedIDProcedure,
+		svc.GetEmptyFeedID,
+		connect.WithSchema(backendInternalServiceMethods.ByName("GetEmptyFeedID")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.backend.v1.BackendInternalService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BackendInternalServiceListArticlesWithTagsProcedure:
@@ -594,6 +621,8 @@ func NewBackendInternalServiceHandler(svc BackendInternalServiceHandler, opts ..
 			backendInternalServiceListUnsummarizedArticlesHandler.ServeHTTP(w, r)
 		case BackendInternalServiceHasUnsummarizedArticlesProcedure:
 			backendInternalServiceHasUnsummarizedArticlesHandler.ServeHTTP(w, r)
+		case BackendInternalServiceGetEmptyFeedIDProcedure:
+			backendInternalServiceGetEmptyFeedIDHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -677,4 +706,8 @@ func (UnimplementedBackendInternalServiceHandler) ListUnsummarizedArticles(conte
 
 func (UnimplementedBackendInternalServiceHandler) HasUnsummarizedArticles(context.Context, *connect.Request[v1.HasUnsummarizedArticlesRequest]) (*connect.Response[v1.HasUnsummarizedArticlesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.HasUnsummarizedArticles is not implemented"))
+}
+
+func (UnimplementedBackendInternalServiceHandler) GetEmptyFeedID(context.Context, *connect.Request[v1.GetEmptyFeedIDRequest]) (*connect.Response[v1.GetEmptyFeedIDResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.GetEmptyFeedID is not implemented"))
 }

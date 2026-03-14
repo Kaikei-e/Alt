@@ -51,6 +51,9 @@ type Handler struct {
 	listUnsummarized internal_article_port.ListUnsummarizedArticlesPort
 	hasUnsummarized  internal_article_port.HasUnsummarizedArticlesPort
 
+	// Backfill (pre-processor split-DB)
+	getEmptyFeedID internal_feed_port.GetEmptyFeedIDPort
+
 	// Event publishing
 	eventPublisher event_publisher_port.EventPublisherPort
 
@@ -136,6 +139,15 @@ func WithSummarizationPorts(
 func WithEventPublisher(ep event_publisher_port.EventPublisherPort) HandlerOption {
 	return func(h *Handler) {
 		h.eventPublisher = ep
+	}
+}
+
+// WithBackfillPorts configures ports for backfill-related RPCs.
+func WithBackfillPorts(
+	getEmptyFeedID internal_feed_port.GetEmptyFeedIDPort,
+) HandlerOption {
+	return func(h *Handler) {
+		h.getEmptyFeedID = getEmptyFeedID
 	}
 }
 
@@ -673,6 +685,27 @@ func (h *Handler) HasUnsummarizedArticles(ctx context.Context, _ *connect.Reques
 
 	return connect.NewResponse(&backendv1.HasUnsummarizedArticlesResponse{
 		HasUnsummarized: has,
+	}), nil
+}
+
+// ── Backfill operations (pre-processor split-DB) ──
+
+func (h *Handler) GetEmptyFeedID(ctx context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error) {
+	if h.getEmptyFeedID == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
+	}
+	if req.Msg.FeedUrl == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_url is required"))
+	}
+
+	feedID, err := h.getEmptyFeedID.GetEmptyFeedID(ctx, req.Msg.FeedUrl)
+	if err != nil {
+		h.logger.Error("GetEmptyFeedID failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get empty feed ID"))
+	}
+
+	return connect.NewResponse(&backendv1.GetEmptyFeedIDResponse{
+		FeedId: feedID,
 	}), nil
 }
 

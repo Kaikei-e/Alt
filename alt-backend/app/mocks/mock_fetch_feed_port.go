@@ -201,4 +201,3 @@ func (mr *MockFetchFeedsPortMockRecorder) FetchUnreadFeedsListCursor(ctx, cursor
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchUnreadFeedsListCursor", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchUnreadFeedsListCursor), ctx, cursor, limit, excludeFeedLinkID)
 }
-

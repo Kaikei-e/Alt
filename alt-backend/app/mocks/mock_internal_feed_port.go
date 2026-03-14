@@ -96,3 +96,42 @@ func (mr *MockListFeedURLsPortMockRecorder) ListFeedURLs(ctx, cursor, limit any)
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFeedURLs", reflect.TypeOf((*MockListFeedURLsPort)(nil).ListFeedURLs), ctx, cursor, limit)
 }
+
+// MockGetEmptyFeedIDPort is a mock of GetEmptyFeedIDPort interface.
+type MockGetEmptyFeedIDPort struct {
+	ctrl     *gomock.Controller
+	recorder *MockGetEmptyFeedIDPortMockRecorder
+	isgomock struct{}
+}
+
+// MockGetEmptyFeedIDPortMockRecorder is the mock recorder for MockGetEmptyFeedIDPort.
+type MockGetEmptyFeedIDPortMockRecorder struct {
+	mock *MockGetEmptyFeedIDPort
+}
+
+// NewMockGetEmptyFeedIDPort creates a new mock instance.
+func NewMockGetEmptyFeedIDPort(ctrl *gomock.Controller) *MockGetEmptyFeedIDPort {
+	mock := &MockGetEmptyFeedIDPort{ctrl: ctrl}
+	mock.recorder = &MockGetEmptyFeedIDPortMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockGetEmptyFeedIDPort) EXPECT() *MockGetEmptyFeedIDPortMockRecorder {
+	return m.recorder
+}
+
+// GetEmptyFeedID mocks base method.
+func (m *MockGetEmptyFeedIDPort) GetEmptyFeedID(ctx context.Context, feedURL string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEmptyFeedID", ctx, feedURL)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetEmptyFeedID indicates an expected call of GetEmptyFeedID.
+func (mr *MockGetEmptyFeedIDPortMockRecorder) GetEmptyFeedID(ctx, feedURL any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEmptyFeedID", reflect.TypeOf((*MockGetEmptyFeedIDPort)(nil).GetEmptyFeedID), ctx, feedURL)
+}

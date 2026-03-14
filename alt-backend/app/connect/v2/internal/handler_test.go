@@ -883,6 +883,101 @@ func TestCreateArticle_EventPublisherDisabled(t *testing.T) {
 	}
 }
 
+// ── GetEmptyFeedID RPC tests ──
+
+func TestGetEmptyFeedID_Found(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockGet := mocks.NewMockGetEmptyFeedIDPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithBackfillPorts(mockGet))
+
+	mockGet.EXPECT().
+		GetEmptyFeedID(gomock.Any(), "http://example.com/feed.xml").
+		Return("empty-feed-123", nil)
+
+	req := connect.NewRequest(&backendv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
+	resp, err := h.GetEmptyFeedID(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Msg.FeedId != "empty-feed-123" {
+		t.Errorf("expected feed_id empty-feed-123, got %s", resp.Msg.FeedId)
+	}
+}
+
+func TestGetEmptyFeedID_NotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockGet := mocks.NewMockGetEmptyFeedIDPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithBackfillPorts(mockGet))
+
+	mockGet.EXPECT().
+		GetEmptyFeedID(gomock.Any(), "http://example.com/feed.xml").
+		Return("", nil)
+
+	req := connect.NewRequest(&backendv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
+	resp, err := h.GetEmptyFeedID(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Msg.FeedId != "" {
+		t.Errorf("expected empty feed_id, got %s", resp.Msg.FeedId)
+	}
+}
+
+func TestGetEmptyFeedID_EmptyFeedURL(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockGet := mocks.NewMockGetEmptyFeedIDPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithBackfillPorts(mockGet))
+
+	req := connect.NewRequest(&backendv1.GetEmptyFeedIDRequest{FeedUrl: ""})
+	_, err := h.GetEmptyFeedID(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Errorf("expected CodeInvalidArgument, got %v", connect.CodeOf(err))
+	}
+}
+
+func TestGetEmptyFeedID_Error(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockGet := mocks.NewMockGetEmptyFeedIDPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithBackfillPorts(mockGet))
+
+	mockGet.EXPECT().
+		GetEmptyFeedID(gomock.Any(), "http://example.com/feed.xml").
+		Return("", errors.New("db error"))
+
+	req := connect.NewRequest(&backendv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
+	_, err := h.GetEmptyFeedID(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeInternal {
+		t.Errorf("expected CodeInternal, got %v", connect.CodeOf(err))
+	}
+}
+
+func TestGetEmptyFeedID_Unimplemented(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, nil, nil)
+
+	req := connect.NewRequest(&backendv1.GetEmptyFeedIDRequest{FeedUrl: "http://example.com/feed.xml"})
+	_, err := h.GetEmptyFeedID(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
+	}
+}
+
 func TestClampLimit(t *testing.T) {
 	tests := []struct {
 		input    int

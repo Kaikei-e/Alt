@@ -303,6 +303,15 @@ func (g *Gateway) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
 	return has, nil
 }
 
+// GetEmptyFeedID implements GetEmptyFeedIDPort.
+func (g *Gateway) GetEmptyFeedID(ctx context.Context, feedURL string) (string, error) {
+	feedID, err := g.repo.GetEmptyFeedID(ctx, feedURL)
+	if err != nil {
+		return "", fmt.Errorf("GetEmptyFeedID: %w", err)
+	}
+	return feedID, nil
+}
+
 func toPortArticle(da *alt_db.InternalArticleWithTags) *internal_article_port.ArticleWithTags {
 	return &internal_article_port.ArticleWithTags{
 		ID:        da.ID,
