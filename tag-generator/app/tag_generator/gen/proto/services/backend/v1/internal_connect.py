@@ -73,6 +73,9 @@ class BackendInternalService(Protocol):
     async def has_unsummarized_articles(self, request: services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def get_empty_feed_i_d(self, request: services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
 
 class BackendInternalServiceASGIApplication(ConnectASGIApplication[BackendInternalService]):
     def __init__(self, service: BackendInternalService | AsyncGenerator[BackendInternalService], *, interceptors: Iterable[Interceptor]=(), read_max_bytes: int | None = None) -> None:
@@ -268,6 +271,16 @@ class BackendInternalServiceASGIApplication(ConnectASGIApplication[BackendIntern
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.has_unsummarized_articles,
+                ),
+                "/services.backend.v1.BackendInternalService/GetEmptyFeedID": Endpoint.unary(
+                    method=MethodInfo(
+                        name="GetEmptyFeedID",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.get_empty_feed_i_d,
                 ),
             },
             interceptors=interceptors,
@@ -661,6 +674,26 @@ class BackendInternalServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def get_empty_feed_i_d(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetEmptyFeedID",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
 
 class BackendInternalServiceSync(Protocol):
     def list_articles_with_tags(self, request: services_dot_backend_dot_v1_dot_internal__pb2.ListArticlesWithTagsRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.ListArticlesWithTagsResponse:
@@ -700,6 +733,8 @@ class BackendInternalServiceSync(Protocol):
     def list_unsummarized_articles(self, request: services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.ListUnsummarizedArticlesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def has_unsummarized_articles(self, request: services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def get_empty_feed_i_d(self, request: services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDRequest, ctx: RequestContext) -> services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
 
@@ -896,6 +931,16 @@ class BackendInternalServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.has_unsummarized_articles,
+                ),
+                "/services.backend.v1.BackendInternalService/GetEmptyFeedID": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="GetEmptyFeedID",
+                        service_name="services.backend.v1.BackendInternalService",
+                        input=services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDRequest,
+                        output=services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.get_empty_feed_i_d,
                 ),
             },
             interceptors=interceptors,
@@ -1283,6 +1328,26 @@ class BackendInternalServiceClientSync(ConnectClientSync):
                 service_name="services.backend.v1.BackendInternalService",
                 input=services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesRequest,
                 output=services_dot_backend_dot_v1_dot_internal__pb2.HasUnsummarizedArticlesResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def get_empty_feed_i_d(
+        self,
+        request: services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetEmptyFeedID",
+                service_name="services.backend.v1.BackendInternalService",
+                input=services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDRequest,
+                output=services_dot_backend_dot_v1_dot_internal__pb2.GetEmptyFeedIDResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

@@ -392,3 +392,15 @@ class HasUnsummarizedArticlesResponse(_message.Message):
     HAS_UNSUMMARIZED_FIELD_NUMBER: _ClassVar[int]
     has_unsummarized: bool
     def __init__(self, has_unsummarized: _Optional[bool] = ...) -> None: ...
+
+class GetEmptyFeedIDRequest(_message.Message):
+    __slots__ = ("feed_url",)
+    FEED_URL_FIELD_NUMBER: _ClassVar[int]
+    feed_url: str
+    def __init__(self, feed_url: _Optional[str] = ...) -> None: ...
+
+class GetEmptyFeedIDResponse(_message.Message):
+    __slots__ = ("feed_id",)
+    FEED_ID_FIELD_NUMBER: _ClassVar[int]
+    feed_id: str
+    def __init__(self, feed_id: _Optional[str] = ...) -> None: ...
