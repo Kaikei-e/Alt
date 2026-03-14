@@ -307,6 +307,18 @@ message HasUnsummarizedArticlesResponse {
 }
 
 // =============================================================================
+// GetEmptyFeedID - For backfill empty-feed filtering (split-DB)
+// =============================================================================
+
+message GetEmptyFeedIDRequest {
+  string feed_url = 1;
+}
+
+message GetEmptyFeedIDResponse {
+  string feed_id = 1;  // empty string = no empty feed found
+}
+
+// =============================================================================
 // BackendInternalService - Internal API for service-to-service communication
 // =============================================================================
 
@@ -381,4 +393,10 @@ service BackendInternalService {
 
   // HasUnsummarizedArticles checks if any articles lack summaries.
   rpc HasUnsummarizedArticles(HasUnsummarizedArticlesRequest) returns (HasUnsummarizedArticlesResponse);
+
+  // ── Backfill Operations (pre-processor split-DB) ──
+
+  // GetEmptyFeedID returns a feed ID that has no articles for the given feed URL.
+  // Returns empty feed_id if all feeds for this URL already have articles.
+  rpc GetEmptyFeedID(GetEmptyFeedIDRequest) returns (GetEmptyFeedIDResponse);
 }
