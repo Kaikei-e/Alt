@@ -13,11 +13,11 @@ import (
 
 // ArticleSyncService implementation.
 type articleSyncService struct {
-	articleRepo          repository.ArticleRepository
-	externalAPIRepo      repository.ExternalAPIRepository
-	sanitizer            *utils.Sanitizer
-	logger               *slog.Logger
-	userID               string    // Cached system UserID
+	articleRepo           repository.ArticleRepository
+	externalAPIRepo       repository.ExternalAPIRepository
+	sanitizer             *utils.Sanitizer
+	logger                *slog.Logger
+	userID                string    // Cached system UserID
 	lastBackfillFetchedAt time.Time // Cursor for backfill progress (advances with each batch)
 }
 
