@@ -199,7 +199,9 @@ describe("parseMarkdown", () => {
 		});
 
 		it("escapes event handlers in tags", () => {
-			const result = parseMarkdown('<div onmouseover="alert(1)">hover me</div>');
+			const result = parseMarkdown(
+				'<div onmouseover="alert(1)">hover me</div>',
+			);
 			// The tag itself is escaped so onmouseover cannot execute
 			expect(result).not.toContain("<div onmouseover");
 			expect(result).toContain("&lt;div");
@@ -213,7 +215,7 @@ describe("parseMarkdown", () => {
 		});
 
 		it("escapes HTML in list items", () => {
-			const result = parseMarkdown('- <img src=x onerror=alert(1)>');
+			const result = parseMarkdown("- <img src=x onerror=alert(1)>");
 			expect(result).toContain("<li>");
 			expect(result).not.toContain("<img");
 		});

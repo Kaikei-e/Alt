@@ -18,8 +18,7 @@ type Props = {
 	citations?: Citation[];
 };
 
-let { message, role, timestamp, citations }: Props =
-	$props();
+let { message, role, timestamp, citations }: Props = $props();
 
 let isUser = $derived(role === "user");
 </script>

@@ -313,6 +313,154 @@ describe("SwipeFeedCard", () => {
 		});
 	});
 
+	describe("article retry", () => {
+		it("shows error state on Article button when content fetch fails", async () => {
+			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				new Error("Server error"),
+			);
+
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			// Click Article button to trigger fetch
+			const articleButton = page.getByRole("button", { name: /article/i });
+			await articleButton.click();
+
+			// Wait for error state
+			await new Promise((resolve) => setTimeout(resolve, 200));
+
+			// Button should show "Try again"
+			await expect
+				.element(page.getByRole("button", { name: /try again/i }))
+				.toBeInTheDocument();
+		});
+
+		it("retries content fetch when error button is clicked", async () => {
+			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			vi.mocked(getFeedContentOnTheFlyClient)
+				.mockRejectedValueOnce(new Error("Server error"))
+				.mockResolvedValueOnce({
+					content: "<p>Loaded content</p>",
+					article_id: "art-1",
+					og_image_url: "",
+					og_image_proxy_url: "",
+				});
+
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			// Click Article button
+			const articleButton = page.getByRole("button", { name: /article/i });
+			await articleButton.click();
+
+			// Wait for error state
+			await new Promise((resolve) => setTimeout(resolve, 200));
+
+			// Click retry
+			const retryButton = page.getByRole("button", { name: /try again/i });
+			await retryButton.click();
+
+			// Wait for success
+			await new Promise((resolve) => setTimeout(resolve, 200));
+
+			// Content section should be visible
+			await expect
+				.element(page.getByTestId("content-section"))
+				.toBeInTheDocument();
+		});
+
+		it("shows content error with role='alert'", async () => {
+			const { getFeedContentOnTheFlyClient } = await import("$lib/api/client");
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				new Error("Server error"),
+			);
+
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			const articleButton = page.getByRole("button", { name: /article/i });
+			await articleButton.click();
+
+			await new Promise((resolve) => setTimeout(resolve, 200));
+
+			await expect.element(page.getByRole("alert")).toBeInTheDocument();
+		});
+	});
+
+	describe("summary retry", () => {
+		it("shows error state on Summary button when summarization fails", async () => {
+			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+
+			// Make stream fail with non-transient error
+			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementation(
+				(
+					_transport: unknown,
+					_options: unknown,
+					_onChunk: unknown,
+					_rendererOptions: unknown,
+					_onComplete?: unknown,
+					onError?: (error: Error) => void,
+				) => {
+					setTimeout(() => {
+						onError?.(new Error("500 Internal Server Error"));
+					}, 10);
+					return new AbortController();
+				},
+			);
+
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			// Click Summary button
+			const summaryButton = page.getByRole("button", { name: /summary/i });
+			await summaryButton.click();
+
+			// Wait for error
+			await new Promise((resolve) => setTimeout(resolve, 200));
+
+			// Button should show "Try again"
+			await expect
+				.element(page.getByRole("button", { name: /try again/i }))
+				.toBeInTheDocument();
+		});
+
+		it("shows summary error with role='alert'", async () => {
+			const { streamSummarizeWithAbortAdapter } = await import("$lib/connect");
+
+			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementation(
+				(
+					_transport: unknown,
+					_options: unknown,
+					_onChunk: unknown,
+					_rendererOptions: unknown,
+					_onComplete?: unknown,
+					onError?: (error: Error) => void,
+				) => {
+					setTimeout(() => {
+						onError?.(new Error("500 Internal Server Error"));
+					}, 10);
+					return new AbortController();
+				},
+			);
+
+			render(SwipeFeedCard as any, {
+				props: defaultProps,
+			});
+
+			const summaryButton = page.getByRole("button", { name: /summary/i });
+			await summaryButton.click();
+
+			await new Promise((resolve) => setTimeout(resolve, 200));
+
+			await expect.element(page.getByRole("alert")).toBeInTheDocument();
+		});
+	});
+
 	describe("favorite button", () => {
 		it("renders Favorite button", async () => {
 			render(SwipeFeedCard as any, {

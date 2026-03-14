@@ -1,5 +1,10 @@
 <script lang="ts">
-import { BookOpen, ExternalLink, StarOff, SquareArrowOutUpRight } from "@lucide/svelte";
+import {
+	BookOpen,
+	ExternalLink,
+	StarOff,
+	SquareArrowOutUpRight,
+} from "@lucide/svelte";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
 import FeedDetails from "./FeedDetails.svelte";

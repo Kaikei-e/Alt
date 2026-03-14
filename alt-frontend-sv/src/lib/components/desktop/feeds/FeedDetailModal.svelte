@@ -6,6 +6,7 @@ import {
 	ExternalLink,
 	FileText,
 	Loader2,
+	RefreshCw,
 	Sparkles,
 	Volume2,
 	Square,
@@ -21,6 +22,7 @@ import {
 import type { Snippet } from "svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
+import { isTransientError } from "$lib/utils/errorClassification";
 import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 
 interface Props {
@@ -75,6 +77,24 @@ let abortController = $state<AbortController | null>(null);
 // Content fetch abort controller
 let contentAbortController = $state<AbortController | null>(null);
 
+// Retry counters
+let contentRetryCount = $state(0);
+let summaryRetryCount = $state(0);
+
+// Derived button states
+const articleButtonState = $derived.by(() => {
+	if (isFetchingContent) return "loading" as const;
+	if (articleContent) return "success" as const;
+	if (contentError) return "error" as const;
+	return "idle" as const;
+});
+
+const summaryButtonState = $derived.by(() => {
+	if (isSummarizing) return "loading" as const;
+	if (summaryError) return "error" as const;
+	return "idle" as const;
+});
+
 // Track previous feed URL to detect actual feed changes
 let previousFeedUrl = $state<string | null>(null);
 
@@ -101,6 +121,8 @@ $effect(() => {
 		isSummarizing = false;
 		contentError = null;
 		summaryError = null;
+		contentRetryCount = 0;
+		summaryRetryCount = 0;
 		previousFeedUrl = null;
 	}
 });
@@ -134,6 +156,8 @@ $effect(() => {
 	isSummarizing = false;
 	contentError = null;
 	summaryError = null;
+	contentRetryCount = 0;
+	summaryRetryCount = 0;
 });
 
 // Auto-fetch article content when modal opens
@@ -196,22 +220,18 @@ async function handleFetchFullArticle() {
 		contentAbortController.abort();
 	}
 	contentAbortController = new AbortController();
-	const currentController = contentAbortController;
+
+	isFetchingContent = true;
+	contentError = null;
 
 	try {
-		isFetchingContent = true;
-		contentError = null;
-
 		// Use normalizedUrl for API call (consistent with prefetcher)
 		const response = await getFeedContentOnTheFlyClient(targetFeedUrl, {
-			signal: currentController.signal,
+			signal: contentAbortController.signal,
 		});
 
 		// Defensive validation: discard stale response if feed changed
-		if (feed.normalizedUrl !== targetFeedUrl) {
-			console.log("[FeedDetailModal] Feed changed, discarding stale response");
-			return;
-		}
+		if (feed.normalizedUrl !== targetFeedUrl) return;
 
 		articleContent = response.content || null;
 		articleID = response.article_id || null;
@@ -219,20 +239,53 @@ async function handleFetchFullArticle() {
 		// Ignore AbortError and ConnectError wrapping abort (user cancelled)
 		if (err instanceof Error) {
 			if (err.name === "AbortError") return;
-			if (err.message.includes("abort") || err.message.includes("cancel")) return;
+			if (err.message.includes("abort") || err.message.includes("cancel"))
+				return;
 		}
 
-		// Only set error if feed hasn't changed
-		if (feed.normalizedUrl === targetFeedUrl) {
-			contentError =
-				err instanceof Error ? err.message : "Failed to fetch article";
+		if (feed.normalizedUrl !== targetFeedUrl) return;
+
+		// Auto-retry for transient errors (1 attempt only)
+		if (isTransientError(err) && contentRetryCount < 1) {
+			contentRetryCount++;
+			try {
+				await new Promise((resolve) => setTimeout(resolve, 500));
+				if (feed.normalizedUrl !== targetFeedUrl) return;
+
+				contentAbortController = new AbortController();
+				const response = await getFeedContentOnTheFlyClient(targetFeedUrl, {
+					signal: contentAbortController.signal,
+				});
+
+				if (feed.normalizedUrl !== targetFeedUrl) return;
+
+				articleContent = response.content || null;
+				articleID = response.article_id || null;
+				return;
+			} catch (retryErr) {
+				if (retryErr instanceof Error) {
+					if (retryErr.name === "AbortError") return;
+					if (
+						retryErr.message.includes("abort") ||
+						retryErr.message.includes("cancel")
+					)
+						return;
+				}
+				if (feed.normalizedUrl === targetFeedUrl) {
+					contentError =
+						retryErr instanceof Error
+							? retryErr.message
+							: "Failed to fetch article";
+				}
+				return;
+			}
 		}
+
+		contentError =
+			err instanceof Error ? err.message : "Failed to fetch article";
 	} finally {
-		// Only update state if this is still the current controller
-		if (contentAbortController === currentController) {
-			isFetchingContent = false;
-			contentAbortController = null;
-		}
+		isFetchingContent = false;
+		contentAbortController = null;
 	}
 }
 
@@ -273,11 +326,26 @@ async function handleSummarize() {
 					abortController = null;
 					return;
 				}
-				if (error.message?.includes("abort") || error.message?.includes("cancel")) {
+				if (
+					error.message?.includes("abort") ||
+					error.message?.includes("cancel")
+				) {
 					isSummarizing = false;
 					abortController = null;
 					return;
 				}
+
+				// Auto-retry for transient errors (1 attempt only)
+				if (isTransientError(error) && summaryRetryCount < 1) {
+					summaryRetryCount++;
+					abortController = null;
+					setTimeout(() => {
+						isSummarizing = false;
+						handleSummarize();
+					}, 500);
+					return;
+				}
+
 				summaryError = error.message || "Failed to generate summary";
 				isSummarizing = false;
 				abortController = null;
@@ -287,7 +355,8 @@ async function handleSummarize() {
 		// Ignore abort/cancel errors (user navigation)
 		if (err instanceof Error) {
 			if (err.name === "AbortError") return;
-			if (err.message.includes("abort") || err.message.includes("cancel")) return;
+			if (err.message.includes("abort") || err.message.includes("cancel"))
+				return;
 		}
 		summaryError =
 			err instanceof Error ? err.message : "Failed to generate summary";
@@ -391,7 +460,7 @@ async function handleSummarize() {
 							/>
 						</div>
 					{:else if contentError}
-						<div class="mb-6 p-4 bg-red-50 border border-red-200 rounded">
+						<div class="mb-6 p-4 bg-white border-2 border-destructive rounded" role="alert">
 							<p class="text-red-600 text-sm">{contentError}</p>
 						</div>
 					{/if}
@@ -429,7 +498,7 @@ async function handleSummarize() {
 							{/if}
 						</div>
 					{:else if summaryError}
-						<div class="mb-6 p-4 bg-red-50 border border-red-200 rounded">
+						<div class="mb-6 p-4 bg-white border-2 border-destructive rounded" role="alert">
 							<p class="text-red-600 text-sm">{summaryError}</p>
 						</div>
 					{/if}
@@ -442,16 +511,19 @@ async function handleSummarize() {
 						<!-- Full Article Button -->
 						<Button
 							onclick={handleFetchFullArticle}
-							disabled={isFetchingContent || !!articleContent}
+							disabled={articleButtonState === 'loading' || articleButtonState === 'success'}
 							class="flex items-center gap-2"
-							variant="outline"
+							variant={articleButtonState === 'error' ? 'destructive' : 'outline'}
 						>
-							{#if isFetchingContent}
+							{#if articleButtonState === 'loading'}
 								<Loader2 class="h-4 w-4 animate-spin" />
 								<span>Loading...</span>
-							{:else if articleContent}
+							{:else if articleButtonState === 'success'}
 								<Check class="h-4 w-4" />
 								<span>Article Loaded</span>
+							{:else if articleButtonState === 'error'}
+								<RefreshCw class="h-4 w-4" />
+								<span>Try again</span>
 							{:else}
 								<FileText class="h-4 w-4" />
 								<span>Full Article</span>
@@ -461,12 +533,16 @@ async function handleSummarize() {
 						<!-- Summarize Button -->
 						<Button
 							onclick={handleSummarize}
-							disabled={isSummarizing || !articleContent}
-							class="flex items-center gap-2 bg-[#2f4f4f] text-white hover:bg-[#2f4f4f]/90 hover:text-white disabled:opacity-50"
+							disabled={summaryButtonState === 'loading' || (!articleContent && summaryButtonState !== 'error')}
+							variant={summaryButtonState === 'error' ? 'destructive' : undefined}
+							class={summaryButtonState === 'error' ? 'flex items-center gap-2' : 'flex items-center gap-2 bg-[#2f4f4f] text-white hover:bg-[#2f4f4f]/90 hover:text-white disabled:opacity-50'}
 						>
-							{#if isSummarizing}
+							{#if summaryButtonState === 'loading'}
 								<Loader2 class="h-4 w-4 animate-spin" />
 								<span>Summarizing...</span>
+							{:else if summaryButtonState === 'error'}
+								<RefreshCw class="h-4 w-4" />
+								<span>Try again</span>
 							{:else}
 								<Sparkles class="h-4 w-4" />
 								<span>Summarize By AI</span>

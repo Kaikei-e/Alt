@@ -155,9 +155,7 @@ const cloudRadius = $derived(
 				60,
 				Math.max(
 					...tags.map((t) =>
-						Math.sqrt(
-							t.positionX ** 2 + t.positionY ** 2 + t.positionZ ** 2,
-						),
+						Math.sqrt(t.positionX ** 2 + t.positionY ** 2 + t.positionZ ** 2),
 					),
 				) * 1.2,
 			)
@@ -169,7 +167,10 @@ const fallbackPositions = $derived(
 	hasServerPositions ? null : fibonacciSphere(tags.length, cloudRadius),
 );
 
-function getPosition(tag: TagCloudItem, index: number): [number, number, number] {
+function getPosition(
+	tag: TagCloudItem,
+	index: number,
+): [number, number, number] {
 	if (hasServerPositions) {
 		return [tag.positionX, tag.positionY, tag.positionZ];
 	}

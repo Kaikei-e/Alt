@@ -17,8 +17,16 @@ interface Props {
 	cameraFrameData: CameraFrameData;
 }
 
-let { tag, position, radius, color, emissiveIntensity, labelFontSize, onSelect, cameraFrameData }: Props =
-	$props();
+let {
+	tag,
+	position,
+	radius,
+	color,
+	emissiveIntensity,
+	labelFontSize,
+	onSelect,
+	cameraFrameData,
+}: Props = $props();
 
 let hovered = $state(false);
 let labelVisible = $state(true);

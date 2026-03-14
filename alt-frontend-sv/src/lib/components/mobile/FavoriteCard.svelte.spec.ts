@@ -32,9 +32,7 @@ describe("FavoriteCard", () => {
 			props: { feed: readFeed },
 		});
 
-		await expect
-			.element(page.getByTestId("favorite-card"))
-			.toBeInTheDocument();
+		await expect.element(page.getByTestId("favorite-card")).toBeInTheDocument();
 		await expect
 			.element(page.getByText(renderFeedFixture.title))
 			.toBeInTheDocument();
@@ -46,9 +44,7 @@ describe("FavoriteCard", () => {
 			props: { feed: readFeed },
 		});
 
-		await expect
-			.element(page.getByText("Read"))
-			.toBeInTheDocument();
+		await expect.element(page.getByText("Read")).toBeInTheDocument();
 	});
 
 	it("does not show Read badge when feed.isRead is false", async () => {
@@ -57,9 +53,7 @@ describe("FavoriteCard", () => {
 			props: { feed: unreadFeed },
 		});
 
-		await expect
-			.element(page.getByText("Read"))
-			.not.toBeInTheDocument();
+		await expect.element(page.getByText("Read")).not.toBeInTheDocument();
 	});
 
 	it("does NOT have a Mark as read button", async () => {
@@ -79,9 +73,7 @@ describe("FavoriteCard", () => {
 			props: { feed: unreadFeed },
 		});
 
-		await expect
-			.element(page.getByText("Details"))
-			.toBeInTheDocument();
+		await expect.element(page.getByText("Details")).toBeInTheDocument();
 	});
 
 	it("has an Open link pointing to normalizedUrl", async () => {
@@ -95,9 +87,7 @@ describe("FavoriteCard", () => {
 		await expect
 			.element(openLink)
 			.toHaveAttribute("href", renderFeedFixture.normalizedUrl);
-		await expect
-			.element(openLink)
-			.toHaveAttribute("target", "_blank");
+		await expect.element(openLink).toHaveAttribute("target", "_blank");
 	});
 
 	it("shows Remove button and calls onRemove when clicked", async () => {

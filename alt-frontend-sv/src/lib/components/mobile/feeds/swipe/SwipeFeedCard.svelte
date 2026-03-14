@@ -2,6 +2,7 @@
 import {
 	BookOpen,
 	Loader,
+	RefreshCw,
 	Sparkles,
 	SquareArrowOutUpRight,
 	Star,
@@ -18,6 +19,7 @@ import {
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
+import { isTransientError } from "$lib/utils/errorClassification";
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
@@ -63,6 +65,10 @@ let isFavoriting = $state(false);
 let isFavorited = $state(false);
 let favoriteError = $state<string | null>(null);
 
+// Retry counters
+let contentRetryCount = $state(0);
+let summaryRetryCount = $state(0);
+
 // Swipe state with Spring
 const SWIPE_THRESHOLD = 60;
 const HORIZONTAL_SWIPE_THRESHOLD = 10; // 横スワイプ検出の閾値（px）
@@ -100,6 +106,19 @@ const publishedLabel = $derived.by(() => {
 	} catch {
 		return feed.published;
 	}
+});
+
+// Derived button states
+const articleButtonState = $derived.by(() => {
+	if (isLoadingContent) return "loading" as const;
+	if (contentError) return "error" as const;
+	return "idle" as const;
+});
+
+const summaryButtonState = $derived.by(() => {
+	if (isSummarizing) return "loading" as const;
+	if (summaryError && !aiSummary) return "error" as const;
+	return "idle" as const;
 });
 
 // Auto-fetch content
@@ -188,7 +207,57 @@ $effect(() => {
 	};
 });
 
+async function fetchArticleContent(): Promise<boolean> {
+	try {
+		const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
+		if (res.content) {
+			fullContent = res.content;
+			if (res.article_id && onArticleIdResolved) {
+				onArticleIdResolved(feed.link, res.article_id);
+			}
+			return true;
+		}
+		contentError = "Could not fetch article content";
+		return false;
+	} catch (err) {
+		// Auto-retry for transient errors (1 attempt only)
+		if (isTransientError(err) && contentRetryCount < 1) {
+			contentRetryCount++;
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			try {
+				const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
+				if (res.content) {
+					fullContent = res.content;
+					if (res.article_id && onArticleIdResolved) {
+						onArticleIdResolved(feed.link, res.article_id);
+					}
+					return true;
+				}
+				contentError = "Could not fetch article content";
+				return false;
+			} catch {
+				contentError = "Could not fetch article content";
+				return false;
+			}
+		}
+		contentError = "Could not fetch article content";
+		return false;
+	}
+}
+
 async function handleToggleContent() {
+	// If there's an error, retry the fetch (don't toggle)
+	if (contentError && !isLoadingContent) {
+		isLoadingContent = true;
+		contentError = null;
+		const success = await fetchArticleContent();
+		isLoadingContent = false;
+		if (success) {
+			isContentExpanded = true;
+		}
+		return;
+	}
+
 	if (!isContentExpanded && !fullContent) {
 		// Use normalizedUrl for cache access (consistent with articlePrefetcher)
 		const cached = getCachedContent?.(feed.normalizedUrl);
@@ -200,26 +269,18 @@ async function handleToggleContent() {
 
 		isLoadingContent = true;
 		contentError = null;
-
-		try {
-			// Use normalizedUrl for API call
-			const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
-			if (res.content) {
-				fullContent = res.content;
-			} else {
-				contentError = "Could not fetch article content";
-			}
-		} catch (err) {
-			console.error("Error fetching content:", err);
-			contentError = "Could not fetch article content";
-		} finally {
-			isLoadingContent = false;
-		}
+		await fetchArticleContent();
+		isLoadingContent = false;
 	}
 	isContentExpanded = !isContentExpanded;
 }
 
 function handleGenerateAISummary() {
+	// If there's a summary error (and no partial data), allow retry
+	if (summaryError && !aiSummary) {
+		summaryError = null;
+	}
+
 	// Hide existing SUMMARY section
 	isAISummaryRequested = true;
 	isSummarizing = true;
@@ -305,6 +366,16 @@ function handleGenerateAISummary() {
 				);
 				summaryError = "Stream interrupted. Summary may be incomplete.";
 				isSummarizing = false;
+				return;
+			}
+
+			// Auto-retry for transient errors (1 attempt only)
+			if (isTransientError(err) && summaryRetryCount < 1) {
+				summaryRetryCount++;
+				setTimeout(() => {
+					isSummarizing = false;
+					handleGenerateAISummary();
+				}, 500);
 				return;
 			}
 
@@ -467,18 +538,22 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
                 >Now summarizing ....</span
               >
             </div>
-          {:else if summaryError}
-            <p
-              class="text-[var(--alt-text-secondary)] text-sm text-center py-4"
+          {:else if summaryError && !aiSummary}
+            <div
+              class="text-[var(--alt-text-secondary)] text-sm text-center py-4 bg-red-500/10 rounded-lg border border-red-500/20 p-3"
+              role="alert"
             >
               {summaryError}
-            </p>
+            </div>
           {:else if aiSummary}
             <p
               class="text-sm text-[var(--alt-text-primary)] leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere"
             >
               {aiSummary}
             </p>
+            {#if summaryError}
+              <p class="text-xs text-red-400 mt-2" role="alert">{summaryError}</p>
+            {/if}
           {/if}
         </div>
       {/if}
@@ -505,9 +580,9 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
               >
             </div>
           {:else if contentError}
-            <p class="text-[var(--alt-text-secondary)] text-sm text-center">
+            <div class="text-[var(--alt-text-secondary)] text-sm text-center bg-red-500/10 rounded-lg border border-red-500/20 p-3" role="alert">
               {contentError}
-            </p>
+            </div>
           {:else if sanitizedFullContent}
             <div
               class="text-sm text-[var(--alt-text-primary)] leading-[1.7] prose prose-invert max-w-none break-words overflow-wrap-anywhere overflow-x-hidden"
@@ -528,22 +603,28 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
         <Button
           onclick={handleToggleContent}
           size="sm"
-          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isContentExpanded
-            ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
-            : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
+          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg min-h-[44px] {articleButtonState === 'error'
+            ? 'bg-red-500/80 shadow-red-500/50'
+            : isContentExpanded
+              ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
+              : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
           disabled={isLoadingContent}
         >
-          <BookOpen class="mr-2 h-4 w-4" />
-          {isLoadingContent
-            ? "Loading..."
-            : isContentExpanded
-              ? "Hide"
-              : "Article"}
+          {#if articleButtonState === 'loading'}
+            <Loader class="mr-2 h-4 w-4 animate-spin" />
+            Loading...
+          {:else if articleButtonState === 'error'}
+            <RefreshCw class="mr-2 h-4 w-4" />
+            Try again
+          {:else}
+            <BookOpen class="mr-2 h-4 w-4" />
+            {isContentExpanded ? "Hide" : "Article"}
+          {/if}
         </Button>
         <Button
           onclick={handleFavorite}
           size="sm"
-          class="rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isFavorited
+          class="rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg min-h-[44px] {isFavorited
             ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
             : favoriteError
               ? 'bg-red-500/80 shadow-red-500/50'
@@ -560,17 +641,23 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
         <Button
           onclick={handleGenerateAISummary}
           size="sm"
-          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isAISummaryRequested
-            ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
-            : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
+          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg min-h-[44px] {summaryButtonState === 'error'
+            ? 'bg-red-500/80 shadow-red-500/50'
+            : isAISummaryRequested
+              ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
+              : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
           disabled={isSummarizing}
         >
-          <Sparkles class="mr-2 h-4 w-4" />
-          {isSummarizing
-            ? "Summarizing..."
-            : isAISummaryRequested
-              ? "Summary"
-              : "Summary"}
+          {#if summaryButtonState === 'loading'}
+            <Sparkles class="mr-2 h-4 w-4" />
+            Summarizing...
+          {:else if summaryButtonState === 'error'}
+            <RefreshCw class="mr-2 h-4 w-4" />
+            Try again
+          {:else}
+            <Sparkles class="mr-2 h-4 w-4" />
+            Summary
+          {/if}
         </Button>
       </div>
     </div>

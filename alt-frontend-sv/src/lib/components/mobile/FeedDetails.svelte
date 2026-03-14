@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Archive, Loader2, Sparkles, Star } from "@lucide/svelte";
+import { Archive, Loader2, RefreshCw, Sparkles, Star } from "@lucide/svelte";
 import { tick, untrack } from "svelte";
 import { fade } from "svelte/transition";
 import { browser } from "$app/environment";
@@ -18,6 +18,7 @@ import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
+import { isTransientError } from "$lib/utils/errorClassification";
 import RenderFeedDetails from "./RenderFeedDetails.svelte";
 
 interface Props {
@@ -67,6 +68,17 @@ let feedDetails = $state<FeedContentOnTheFlyResponse | null>(
 		return null;
 	})(),
 );
+
+// Retry counters
+let contentRetryCount = $state(0);
+let summaryRetryCount = $state(0);
+
+// Derived button state for summary
+const summaryButtonState = $derived.by(() => {
+	if (isSummarizing) return "loading" as const;
+	if (summaryError && !summary) return "error" as const;
+	return "idle" as const;
+});
 
 // Create unique test ID based on feedURL (capture initial value)
 const uniqueId = $derived(feedURL ? btoa(feedURL).slice(0, 8) : "default");
@@ -151,6 +163,8 @@ $effect(() => {
 		isFavoriting = false;
 		isArchiving = false;
 		isArchived = false;
+		contentRetryCount = 0;
+		summaryRetryCount = 0;
 
 		// Update tracker
 		previousFeedUrl = feedURL;
@@ -246,6 +260,134 @@ const handleShowDetails = async () => {
 		onOpenChange(true);
 	}
 };
+
+async function handleSummarize() {
+	if (!feedURL || isSummarizing) return;
+
+	if (abortController) {
+		abortController.abort();
+	}
+
+	isSummarizing = true;
+	summaryError = null;
+	summary = ""; // Reset summary
+
+	try {
+		const transport = createClientTransport();
+		abortController = streamSummarizeWithAbortAdapter(
+			transport,
+			{
+				feedUrl: feedURL,
+				articleId: articleSummary?.matched_articles?.[0]?.source_id,
+				title: feedTitle,
+			},
+			(chunk) => {
+				summary = (summary || "") + chunk;
+			},
+			{
+				tick,
+				typewriter: true,
+				typewriterDelay: 10, // 10ms delay ~100 chars/sec for responsive reading
+				onChunk: (chunkCount) => {
+					// Hide "Summarizing..." when first chunk arrives
+					if (chunkCount === 1) {
+						isSummarizing = false;
+						// Scroll to summary section after first chunk
+						setTimeout(() => {
+							const summaryEl = document.getElementById("summary-section");
+							summaryEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+						}, 100);
+					}
+				},
+			},
+			(result) => {
+				// onComplete
+				isSummarizing = false;
+				abortController = null;
+			},
+			async (error) => {
+				// onError
+				if (error.name === "AbortError") {
+					console.log("[StreamSummarize] Stream aborted by user");
+					return;
+				}
+
+				const errorMessage = error.message;
+				const isAuthError =
+					errorMessage.includes("403") ||
+					errorMessage.includes("401") ||
+					errorMessage.includes("Forbidden") ||
+					errorMessage.includes("Authentication") ||
+					errorMessage.includes("unauthenticated");
+
+				console.error("[StreamSummarize] Error streaming summary:", {
+					error: errorMessage,
+					isAuthError,
+					hasPartialData: !!summary && summary.length > 0,
+				});
+
+				// Don't retry on authentication errors - user needs to re-authenticate
+				if (isAuthError) {
+					summaryError =
+						"Authentication failed. Please refresh the page and try again.";
+					isSummarizing = false;
+					abortController = null;
+					return;
+				}
+
+				// If we have partial data, don't fallback - show what we have
+				if (summary && summary.length > 0) {
+					console.warn(
+						"[StreamSummarize] Using partial summary due to stream error",
+					);
+					summaryError = "Stream interrupted. Summary may be incomplete.";
+					isSummarizing = false;
+					abortController = null;
+					return;
+				}
+
+				// Auto-retry for transient errors (1 attempt only)
+				if (isTransientError(error) && summaryRetryCount < 1) {
+					summaryRetryCount++;
+					abortController = null;
+					setTimeout(() => {
+						isSummarizing = false;
+						handleSummarize();
+					}, 500);
+					return;
+				}
+
+				// Fallback to legacy endpoint only if no data was received
+				console.log("[StreamSummarize] Falling back to legacy endpoint");
+				try {
+					const result = await summarizeArticleClient(feedURL);
+					const trimmedSummary = result.summary?.trim();
+
+					if (trimmedSummary) {
+						summary = trimmedSummary;
+						summaryError = null;
+					} else {
+						summaryError = "Failed to get summary. Please try again.";
+					}
+				} catch (fallbackErr) {
+					console.error(
+						"[StreamSummarize] Legacy endpoint also failed:",
+						fallbackErr,
+					);
+					summaryError = "Failed to summarize article. Please try again.";
+				}
+				isSummarizing = false;
+				abortController = null;
+			},
+		);
+	} catch (e) {
+		// Synchronous error during setup
+		console.error("[StreamSummarize] Setup error:", e);
+		summaryError = "Failed to start summarization. Please try again.";
+		isSummarizing = false;
+		abortController = null;
+	}
+}
 </script>
 
 {#if showButton && !isOpen}
@@ -320,6 +462,7 @@ const handleShowDetails = async () => {
 			{#if summaryError}
 				<div
 					class="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center"
+					role="alert"
 				>
 					{summaryError}
 				</div>
@@ -333,7 +476,7 @@ const handleShowDetails = async () => {
 			<Button
 				variant="outline"
 				size="sm"
-				class="rounded-full border-alt-secondary text-text-primary hover:bg-alt-secondary hover:text-white min-w-[100px] transition-all duration-200"
+				class="rounded-full border-alt-secondary text-text-primary hover:bg-alt-secondary hover:text-white min-w-[100px] min-h-[44px] transition-all duration-200"
 				onclick={async () => {
 					if (!feedURL) return;
 					isFavoriting = true;
@@ -355,7 +498,7 @@ const handleShowDetails = async () => {
 			<Button
 				variant="outline"
 				size="sm"
-				class="rounded-full border-alt-secondary text-text-primary hover:bg-alt-secondary hover:text-white min-w-[100px] transition-all duration-200"
+				class="rounded-full border-alt-secondary text-text-primary hover:bg-alt-secondary hover:text-white min-w-[100px] min-h-[44px] transition-all duration-200"
 				onclick={async () => {
 					if (!feedURL) return;
 					isArchiving = true;
@@ -376,131 +519,19 @@ const handleShowDetails = async () => {
 
 			<Button
 				size="sm"
-				class="rounded-full font-bold min-w-[120px] bg-alt-primary text-white hover:bg-alt-secondary active:scale-95 transition-all duration-200"
-				onclick={async () => {
-					if (!feedURL) return;
-
-					if (abortController) {
-						abortController.abort();
-					}
-
-					isSummarizing = true;
-					summaryError = null;
-					summary = ""; // Reset summary
-
-					// NOTE: 500ms debounce removed for TTFT optimization.
-					// If Cloudflare WAF 403 errors occur, consider request batching instead.
-
-					try {
-						const transport = createClientTransport();
-						abortController = streamSummarizeWithAbortAdapter(
-							transport,
-							{
-								feedUrl: feedURL,
-								articleId: articleSummary?.matched_articles?.[0]?.source_id,
-								title: feedTitle,
-							},
-							(chunk) => {
-								summary = (summary || "") + chunk;
-							},
-							{
-								tick,
-								typewriter: true,
-								typewriterDelay: 10, // 10ms delay ~100 chars/sec for responsive reading
-								onChunk: (chunkCount) => {
-									// Hide "Summarizing..." when first chunk arrives
-									if (chunkCount === 1) {
-										isSummarizing = false;
-										// Scroll to summary section after first chunk
-										setTimeout(() => {
-											const summaryEl = document.getElementById('summary-section');
-											summaryEl?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-										}, 100);
-									}
-								},
-							},
-							(result) => {
-								// onComplete
-								isSummarizing = false;
-								abortController = null;
-							},
-							async (error) => {
-								// onError
-								if (error.name === "AbortError") {
-									console.log("[StreamSummarize] Stream aborted by user");
-									return;
-								}
-
-								const errorMessage = error.message;
-								const isAuthError =
-									errorMessage.includes("403") ||
-									errorMessage.includes("401") ||
-									errorMessage.includes("Forbidden") ||
-									errorMessage.includes("Authentication") ||
-									errorMessage.includes("unauthenticated");
-
-								console.error("[StreamSummarize] Error streaming summary:", {
-									error: errorMessage,
-									isAuthError,
-									hasPartialData: !!summary && summary.length > 0,
-								});
-
-								// Don't retry on authentication errors - user needs to re-authenticate
-								if (isAuthError) {
-									summaryError =
-										"Authentication failed. Please refresh the page and try again.";
-									isSummarizing = false;
-									abortController = null;
-									return;
-								}
-
-								// If we have partial data, don't fallback - show what we have
-								if (summary && summary.length > 0) {
-									console.warn(
-										"[StreamSummarize] Using partial summary due to stream error",
-									);
-									summaryError = "Stream interrupted. Summary may be incomplete.";
-									isSummarizing = false;
-									abortController = null;
-									return;
-								}
-
-								// Fallback to legacy endpoint only if no data was received
-								console.log("[StreamSummarize] Falling back to legacy endpoint");
-								try {
-									const result = await summarizeArticleClient(feedURL);
-									const trimmedSummary = result.summary?.trim();
-
-									if (trimmedSummary) {
-										summary = trimmedSummary;
-										summaryError = null;
-									} else {
-										summaryError = "Failed to get summary. Please try again.";
-									}
-								} catch (fallbackErr) {
-									console.error(
-										"[StreamSummarize] Legacy endpoint also failed:",
-										fallbackErr,
-									);
-									summaryError = "Failed to summarize article. Please try again.";
-								}
-								isSummarizing = false;
-								abortController = null;
-							}
-						);
-					} catch (e) {
-						// Synchronous error during setup
-						console.error("[StreamSummarize] Setup error:", e);
-						summaryError = "Failed to start summarization. Please try again.";
-						isSummarizing = false;
-						abortController = null;
-					}
-				}}
+				variant={summaryButtonState === 'error' ? 'destructive' : undefined}
+				class={summaryButtonState === 'error'
+					? 'rounded-full font-bold min-w-[120px] min-h-[44px] active:scale-95 transition-all duration-200'
+					: 'rounded-full font-bold min-w-[120px] min-h-[44px] bg-alt-primary text-white hover:bg-alt-secondary active:scale-95 transition-all duration-200'}
+				onclick={handleSummarize}
 				disabled={isSummarizing}
 			>
-				{#if isSummarizing}
+				{#if summaryButtonState === 'loading'}
 					<Loader2 size={14} class="mr-1.5 animate-spin" />
 					Summarizing
+				{:else if summaryButtonState === 'error'}
+					<RefreshCw size={14} class="mr-1.5" />
+					Try again
 				{:else}
 					<Sparkles size={14} class="mr-1.5" />
 					Summary

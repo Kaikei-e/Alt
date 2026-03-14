@@ -125,7 +125,9 @@ describe("ArticlePrefetcher", () => {
 
 			// Only 1 call should have been made (second skipped due to same host)
 			expect(mockedGetContent).toHaveBeenCalledTimes(1);
-			expect(mockedGetContent).toHaveBeenCalledWith("https://zenn.dev/article-1");
+			expect(mockedGetContent).toHaveBeenCalledWith(
+				"https://zenn.dev/article-1",
+			);
 
 			// Resolve the first call
 			resolveFirst!({
@@ -135,9 +137,9 @@ describe("ArticlePrefetcher", () => {
 			});
 
 			await vi.waitFor(() => {
-				expect(
-					prefetcher.getCachedContent("https://zenn.dev/article-1"),
-				).toBe("<p>First</p>");
+				expect(prefetcher.getCachedContent("https://zenn.dev/article-1")).toBe(
+					"<p>First</p>",
+				);
 			});
 		});
 
@@ -167,9 +169,9 @@ describe("ArticlePrefetcher", () => {
 
 			// Wait for both fetches to fully complete (cache populated)
 			await vi.waitFor(() => {
-				expect(
-					prefetcher.getCachedContent("https://zenn.dev/article-1"),
-				).toBe("<p>Zenn</p>");
+				expect(prefetcher.getCachedContent("https://zenn.dev/article-1")).toBe(
+					"<p>Zenn</p>",
+				);
 				expect(
 					prefetcher.getCachedContent("https://example.com/article-2"),
 				).toBe("<p>Example</p>");
