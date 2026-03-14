@@ -44,13 +44,22 @@ func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string
 
 	query := `
 		INSERT INTO summarize_job_queue (article_id, status)
-		VALUES ($1, 'pending')
+		SELECT $1, 'pending'
+		WHERE NOT EXISTS (
+			SELECT 1 FROM summarize_job_queue
+			WHERE article_id = $1
+			  AND status IN ('pending', 'running')
+		)
 		RETURNING job_id
 	`
 
 	var jobID uuid.UUID
 	err := r.db.QueryRow(ctx, query, articleID).Scan(&jobID)
 	if err != nil {
+		if err == pgx.ErrNoRows {
+			r.logger.InfoContext(ctx, "skipping duplicate job, pending/running job already exists", "article_id", articleID)
+			return "", nil
+		}
 		r.logger.ErrorContext(ctx, "failed to create summarization job", "error", err, "article_id", articleID)
 		return "", fmt.Errorf("failed to create summarization job: %w", err)
 	}
@@ -180,6 +189,13 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 			WHERE job_id = $3
 		`
 		args = []interface{}{errorMessage, now, jobID}
+	case domain.SummarizeJobStatusDeadLetter:
+		query = `
+			UPDATE summarize_job_queue
+			SET status = $1, error_message = $2, completed_at = $3
+			WHERE job_id = $4
+		`
+		args = []interface{}{string(status), errorMessage, now, jobID}
 	default:
 		query = `
 			UPDATE summarize_job_queue
@@ -306,4 +322,31 @@ func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) 
 		r.logger.InfoContext(ctx, "retrieved pending summarization jobs", "count", len(jobs))
 	}
 	return jobs, nil
+}
+
+// RecoverStuckJobs resets jobs stuck in 'running' status for more than 10 minutes back to 'pending'.
+func (r *summarizeJobRepository) RecoverStuckJobs(ctx context.Context) (int64, error) {
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return 0, fmt.Errorf("database connection is nil")
+	}
+
+	query := `
+		UPDATE summarize_job_queue
+		SET status = 'pending', started_at = NULL
+		WHERE status = 'running'
+		  AND started_at < NOW() - interval '10 minutes'
+	`
+
+	result, err := r.db.Exec(ctx, query)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "failed to recover stuck jobs", "error", err)
+		return 0, fmt.Errorf("failed to recover stuck jobs: %w", err)
+	}
+
+	recovered := result.RowsAffected()
+	if recovered > 0 {
+		r.logger.WarnContext(ctx, "recovered stuck running jobs", "count", recovered)
+	}
+	return recovered, nil
 }

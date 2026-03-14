@@ -85,6 +85,14 @@ func TestSummarizeJobRepository_UpdateJobStatus(t *testing.T) {
 		assert.Contains(t, err.Error(), "job ID cannot be empty")
 	})
 
+	t.Run("should handle dead_letter status with error message on nil database", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		err := repo.UpdateJobStatus(context.Background(), "test-job-id", domain.SummarizeJobStatusDeadLetter, "", "max retries exceeded")
+
+		assert.Error(t, err)
+	})
+
 	// Note: The following integration tests should verify the dead_letter transition logic:
 	// - When a job fails and retry_count + 1 >= max_retries, status becomes dead_letter
 	// - When a job fails and retry_count + 1 < max_retries, status becomes pending (for retry)
@@ -115,4 +123,29 @@ func TestSummarizeJobRepository_GetPendingJobs(t *testing.T) {
 	// processes the most recently created jobs first. This optimizes for swipe-feed UIs
 	// where the user's current view should get priority.
 	// Full ordering verification requires integration tests with a real database.
+}
+
+func TestSummarizeJobRepository_RecoverStuckJobs(t *testing.T) {
+	t.Run("should handle nil database gracefully", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		recovered, err := repo.RecoverStuckJobs(context.Background())
+
+		assert.Error(t, err)
+		assert.Equal(t, int64(0), recovered)
+	})
+
+	// Note: Integration tests should verify:
+	// - Jobs stuck in 'running' for >10 minutes are reset to 'pending'
+	// - Jobs running for <10 minutes are not affected
+	// - started_at is set to NULL on recovery
+	// - Returns count of recovered jobs
+}
+
+func TestSummarizeJobRepository_CreateJob_Idempotent(t *testing.T) {
+	// Note: Integration tests should verify:
+	// - First insert for an article_id creates a new job
+	// - Second insert for same article_id with existing pending job is skipped (returns "", nil)
+	// - Second insert for same article_id with existing running job is skipped (returns "", nil)
+	// - Insert succeeds if existing jobs are completed/failed/dead_letter
 }

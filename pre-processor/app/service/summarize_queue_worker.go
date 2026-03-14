@@ -15,12 +15,13 @@ import (
 
 // SummarizeQueueWorker handles processing of queued summarization jobs
 type SummarizeQueueWorker struct {
-	jobRepo     repository.SummarizeJobRepository
-	articleRepo repository.ArticleRepository
-	apiRepo     repository.ExternalAPIRepository
-	summaryRepo repository.SummaryRepository
-	logger      *slog.Logger
-	batchSize   int
+	jobRepo         repository.SummarizeJobRepository
+	articleRepo     repository.ArticleRepository
+	apiRepo         repository.ExternalAPIRepository
+	summaryRepo     repository.SummaryRepository
+	logger          *slog.Logger
+	batchSize       int
+	lastRecoveryRun time.Time
 }
 
 // NewSummarizeQueueWorker creates a new summarize queue worker
@@ -51,8 +52,28 @@ func (w *SummarizeQueueWorker) HasPendingJobs(ctx context.Context) (bool, error)
 	return len(jobs) > 0, nil
 }
 
+// RecoverStuckJobs recovers jobs stuck in 'running' state, throttled to once per 5 minutes.
+func (w *SummarizeQueueWorker) RecoverStuckJobs(ctx context.Context) {
+	if time.Since(w.lastRecoveryRun) < 5*time.Minute {
+		return
+	}
+	w.lastRecoveryRun = time.Now()
+
+	recovered, err := w.jobRepo.RecoverStuckJobs(ctx)
+	if err != nil {
+		w.logger.ErrorContext(ctx, "failed to recover stuck jobs", "error", err)
+		return
+	}
+	if recovered > 0 {
+		w.logger.WarnContext(ctx, "recovered stuck running jobs", "count", recovered)
+	}
+}
+
 // ProcessQueue processes pending jobs from the queue
 func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
+	// Recover stuck running jobs (throttled to once per 5 minutes)
+	w.RecoverStuckJobs(ctx)
+
 	// Get pending jobs
 	jobs, err := w.jobRepo.GetPendingJobs(ctx, w.batchSize)
 	if err != nil {
@@ -159,8 +180,19 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to generate summary: %v", err)
 
-		// Handle non-retryable errors: immediately move to dead_letter
-		if errors.Is(err, domain.ErrContentNotProcessable) || errors.Is(err, domain.ErrContentTooShort) {
+		// Handle non-retryable content errors
+		if errors.Is(err, domain.ErrContentTooShort) {
+			// Short content is expected for RSS feeds that only provide excerpts — skip gracefully
+			w.logger.InfoContext(ctx, "skipping short content article",
+				"job_id", job.JobID,
+				"article_id", job.ArticleID,
+				"duration_ms", summarizeDuration.Milliseconds())
+			if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, "", "skipped: content too short for summarization"); updateErr != nil {
+				w.logger.ErrorContext(ctx, "failed to update job status", "error", updateErr, "job_id", job.JobID)
+			}
+			return nil
+		}
+		if errors.Is(err, domain.ErrContentNotProcessable) {
 			w.logger.WarnContext(ctx, "non-retryable summarization error, moving to dead_letter immediately",
 				"job_id", job.JobID,
 				"article_id", job.ArticleID,

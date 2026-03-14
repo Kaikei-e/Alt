@@ -467,6 +467,21 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) GetPendingJobs(ctx, limit any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPendingJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).GetPendingJobs), ctx, limit)
 }
 
+// RecoverStuckJobs mocks base method.
+func (m *MockSummarizeJobRepository) RecoverStuckJobs(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecoverStuckJobs", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RecoverStuckJobs indicates an expected call of RecoverStuckJobs.
+func (mr *MockSummarizeJobRepositoryMockRecorder) RecoverStuckJobs(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecoverStuckJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).RecoverStuckJobs), ctx)
+}
+
 // UpdateJobStatus mocks base method.
 func (m *MockSummarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID string, status domain.SummarizeJobStatus, summary, errorMessage string) error {
 	m.ctrl.T.Helper()
