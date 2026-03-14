@@ -129,6 +129,7 @@ metrics/scripts/reports/
 .claude/
 .agent/
 .serena/
+docs/vault/
 
 # ============================================
 # Misc
