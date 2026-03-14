@@ -1,3 +1,94 @@
-# Ignore large compose.yaml to reduce token consumption
-# Use compose/ directory files instead (managed by altctl)
-compose.yaml
+# ============================================
+# Dependencies
+# ============================================
+node_modules/
+.venv/
+vendor/
+.pnpm-store/
+
+# ============================================
+# Build artifacts
+# ============================================
+dist/
+build/
+.next/
+.svelte-kit/
+__pycache__/
+*.pyc
+target/           # Rust build output
+bin/              # Go build output (if local)
+tmp/
+
+# ============================================
+# Docker / Compose (large, auto-generated)
+# ============================================
+compose.yaml      # Generated merged compose — use compose/ dir instead
+
+# ============================================
+# Generated / lock files
+# ============================================
+*.lock
+!uv.lock          # uv.lock is small and useful for Python dep context
+pnpm-lock.yaml
+package-lock.json
+Cargo.lock
+*.min.js
+*.min.css
+*.map
+
+# ============================================
+# Test / coverage output
+# ============================================
+coverage/
+htmlcov/
+.coverage
+*.test
+*.out
+
+# ============================================
+# Profiling data
+# ============================================
+*.pprof
+*.prof
+*.trace
+*.pb.gz
+
+# ============================================
+# Binary / media assets
+# ============================================
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.svg
+*.woff
+*.woff2
+*.ttf
+*.eot
+*.mp3
+*.mp4
+*.zip
+*.tar.gz
+*.db
+*.sqlite
+
+# ============================================
+# IDE / OS
+# ============================================
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# ============================================
+# Git internals
+# ============================================
+.git/
+
+# ============================================
+# Logs
+# ============================================
+*.log
+logs/

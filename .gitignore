@@ -93,3 +93,8 @@ htmlcov/
 
 # Load test data (credentials)
 alt-perf/k6/data/load-test-users.*
+
+# Load test generated compose overlays
+compose/*-generated.yaml
+
+.fake
