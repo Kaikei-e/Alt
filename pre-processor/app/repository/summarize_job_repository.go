@@ -165,10 +165,10 @@ func (r *summarizeJobRepository) UpdateJobStatus(ctx context.Context, jobID stri
 	case domain.SummarizeJobStatusCompleted:
 		query = `
 			UPDATE summarize_job_queue
-			SET status = $1, summary = $2, completed_at = $3
-			WHERE job_id = $4
+			SET status = $1, summary = $2, completed_at = $3, error_message = $4
+			WHERE job_id = $5
 		`
-		args = []interface{}{string(status), summary, now, jobID}
+		args = []interface{}{string(status), summary, now, errorMessage, jobID}
 	case domain.SummarizeJobStatusFailed:
 		// When a job fails:
 		// - If retry_count + 1 >= max_retries: move to dead_letter (permanent failure)
