@@ -318,7 +318,7 @@ table "summarize_job_queue" {
     null    = false
     type    = character_varying(20)
     default = "pending"
-    comment = "Job status: pending, running, completed, failed"
+    comment = "Job status: pending, running, completed, failed, dead_letter"
   }
   column "summary" {
     null    = true
@@ -375,7 +375,7 @@ table "summarize_job_queue" {
     columns = [column.job_id]
   }
   check "summarize_job_queue_status_check" {
-    expr = "((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('running'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text]))"
+    expr = "((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('running'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text, ('dead_letter'::character varying)::text]))"
   }
 }
 
