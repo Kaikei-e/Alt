@@ -26,6 +26,7 @@ type ExpandQueryRequest struct {
 	JapaneseCount       int                   `json:"japanese_count"`
 	EnglishCount        int                   `json:"english_count"`
 	ConversationHistory []ConversationMessage `json:"conversation_history,omitempty"`
+	Priority            string                `json:"priority"`
 }
 
 // ExpandQueryResponse is the response from the query expansion endpoint.
@@ -72,6 +73,7 @@ func (c *QueryExpanderClient) ExpandQuery(ctx context.Context, query string, jap
 		Query:         query,
 		JapaneseCount: japaneseCount,
 		EnglishCount:  englishCount,
+		Priority:      "high",
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
@@ -148,6 +150,7 @@ func (c *QueryExpanderClient) ExpandQueryWithHistory(ctx context.Context, query 
 		JapaneseCount:       japaneseCount,
 		EnglishCount:        englishCount,
 		ConversationHistory: convHistory,
+		Priority:            "high",
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
