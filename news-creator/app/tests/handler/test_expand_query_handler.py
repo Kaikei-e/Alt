@@ -38,6 +38,7 @@ def test_expand_query_handler_success():
         japanese_count=1,
         english_count=3,
         conversation_history=None,
+        priority="high",
     )
 
 
@@ -64,6 +65,7 @@ def test_expand_query_handler_default_counts():
         japanese_count=1,
         english_count=3,
         conversation_history=None,
+        priority="high",
     )
 
 
@@ -165,3 +167,48 @@ def test_expand_query_handler_validation_min_length():
 
     # Pydantic validation error returns 422
     assert resp.status_code == 422
+
+
+def test_expand_query_handler_with_priority():
+    """Test that priority field is passed through to usecase."""
+    usecase = AsyncMock()
+    usecase.expand_query.return_value = (
+        ["expanded query 1"],
+        "gemma3-4b-8k",
+        100.0,
+    )
+
+    app = FastAPI()
+    app.include_router(create_expand_query_router(usecase))
+    client = TestClient(app)
+
+    payload = {
+        "query": "test query",
+        "priority": "high",
+    }
+    resp = client.post("/api/v1/expand-query", json=payload)
+
+    assert resp.status_code == 200
+    call_kwargs = usecase.expand_query.call_args.kwargs
+    assert call_kwargs["priority"] == "high"
+
+
+def test_expand_query_handler_default_priority():
+    """Test that priority defaults to high when not provided."""
+    usecase = AsyncMock()
+    usecase.expand_query.return_value = (
+        ["expanded query 1"],
+        "gemma3-4b-8k",
+        100.0,
+    )
+
+    app = FastAPI()
+    app.include_router(create_expand_query_router(usecase))
+    client = TestClient(app)
+
+    payload = {"query": "test query"}
+    resp = client.post("/api/v1/expand-query", json=payload)
+
+    assert resp.status_code == 200
+    call_kwargs = usecase.expand_query.call_args.kwargs
+    assert call_kwargs["priority"] == "high"

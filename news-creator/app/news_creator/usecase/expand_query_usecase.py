@@ -73,6 +73,7 @@ class ExpandQueryUsecase:
         japanese_count: int = 1,
         english_count: int = 3,
         conversation_history: Optional[List[ConversationMessage]] = None,
+        priority: str = "low",
     ) -> Tuple[List[str], str, Optional[float]]:
         """
         Generate expanded search queries from a user query.
@@ -145,6 +146,7 @@ class ExpandQueryUsecase:
                 model=self.EXPANSION_MODEL,
                 num_predict=max_tokens,
                 options=llm_options,
+                priority=priority,
             )
 
             # Parse response: split by newlines and filter empty lines

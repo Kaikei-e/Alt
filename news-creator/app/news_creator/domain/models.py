@@ -233,6 +233,11 @@ class ExpandQueryRequest(BaseModel):
     conversation_history: Optional[List[ConversationMessage]] = Field(
         default=None, description="Recent conversation turns for coreference resolution"
     )
+    priority: str = Field(
+        default="high",
+        pattern="^(high|low)$",
+        description="Request priority. Defaults to high so query expansion bypasses summarization queue.",
+    )
 
 
 class ExpandQueryResponse(BaseModel):

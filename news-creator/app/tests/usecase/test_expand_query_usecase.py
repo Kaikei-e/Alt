@@ -152,3 +152,50 @@ async def test_expand_query_low_temperature():
     call_args = llm_provider.generate.call_args
     options = call_args.kwargs.get("options", {})
     assert options.get("temperature") == 0.3
+
+
+@pytest.mark.asyncio
+async def test_expand_query_passes_priority_to_llm():
+    """Test that query expansion passes priority to LLM provider."""
+    config = Mock()
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="test query result",
+        model="gemma3-4b-8k",
+        prompt_eval_count=100,
+        eval_count=20,
+        total_duration=100_000_000,
+    )
+
+    usecase = ExpandQueryUsecase(config=config, llm_provider=llm_provider)
+
+    await usecase.expand_query(
+        query="test",
+        japanese_count=1,
+        english_count=1,
+        priority="high",
+    )
+
+    call_args = llm_provider.generate.call_args
+    assert call_args.kwargs.get("priority") == "high"
+
+
+@pytest.mark.asyncio
+async def test_expand_query_default_priority_is_low():
+    """Test that query expansion defaults to low priority when not specified."""
+    config = Mock()
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="test query result",
+        model="gemma3-4b-8k",
+        prompt_eval_count=100,
+        eval_count=20,
+        total_duration=100_000_000,
+    )
+
+    usecase = ExpandQueryUsecase(config=config, llm_provider=llm_provider)
+
+    await usecase.expand_query(query="test", japanese_count=1, english_count=1)
+
+    call_args = llm_provider.generate.call_args
+    assert call_args.kwargs.get("priority") == "low"
