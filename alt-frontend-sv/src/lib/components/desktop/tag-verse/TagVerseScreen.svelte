@@ -6,13 +6,15 @@ import {
 	fetchTagCloud,
 	type TagCloudItem,
 } from "$lib/connect";
+import { detectGPUBackend } from "$lib/utils/gpuCapability";
 import TagVerseScene from "./TagVerseScene.svelte";
 import TagVerseHUD from "./TagVerseHUD.svelte";
-import { Loader2, AlertCircle } from "@lucide/svelte";
+import { Loader2, AlertCircle, MonitorX } from "@lucide/svelte";
 
 let tags = $state<TagCloudItem[]>([]);
 let isLoading = $state(true);
 let error = $state<string | null>(null);
+let gpuUnsupported = $state(false);
 let selectedTag = $state<string | null>(null);
 
 const selectedTagData = $derived(
@@ -21,6 +23,11 @@ const selectedTagData = $derived(
 
 onMount(async () => {
 	if (!browser) return;
+	if (detectGPUBackend() === "none") {
+		gpuUnsupported = true;
+		isLoading = false;
+		return;
+	}
 	try {
 		const transport = createClientTransport();
 		tags = await fetchTagCloud(transport, 300);
@@ -38,6 +45,18 @@ onMount(async () => {
 		<div class="flex flex-col items-center justify-center h-full gap-4">
 			<Loader2 class="h-8 w-8 animate-spin text-cyan-400" />
 			<p class="text-white/60 text-sm">Loading Tag Verse...</p>
+		</div>
+	{:else if gpuUnsupported}
+		<!-- GPU Unsupported Screen -->
+		<div class="flex flex-col items-center justify-center h-full gap-4 max-w-md mx-auto text-center">
+			<MonitorX class="h-10 w-10 text-amber-400" />
+			<p class="text-white/70 text-sm">
+				Tag Verse requires WebGPU or WebGL2, which are not available in this browser.
+			</p>
+			<p class="text-white/40 text-xs">
+				Try updating your browser or GPU drivers. On Windows ARM devices, enable
+				<code class="bg-white/10 px-1 rounded">chrome://flags/#enable-unsafe-webgpu</code>.
+			</p>
 		</div>
 	{:else if error}
 		<!-- Error Screen -->

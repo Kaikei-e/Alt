@@ -12,7 +12,10 @@ interface Props {
 let { tags, onTagSelect }: Props = $props();
 
 function createRenderer(canvas: HTMLCanvasElement) {
-	const renderer = new WebGPURenderer({ canvas, antialias: true });
+	// Fall back to WebGL2 backend when WebGPU API is unavailable
+	// (e.g. Windows ARM64 / Qualcomm Adreno where WebGPU is not enabled by default)
+	const forceWebGL = !navigator.gpu;
+	const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL });
 	// Bind dispose so Threlte's unbound `const dispose = renderer.dispose; dispose()` works.
 	// WebGPURenderer.dispose is a prototype method that needs `this`.
 	const boundDispose = renderer.dispose.bind(renderer);
