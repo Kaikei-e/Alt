@@ -206,7 +206,12 @@ export function streamAugurChat(
 			}
 
 			// If stream completes without done event, call onComplete with accumulated data
-			if (!abortController.signal.aborted && onComplete && accumulatedText && !completeCalled) {
+			if (
+				!abortController.signal.aborted &&
+				onComplete &&
+				accumulatedText &&
+				!completeCalled
+			) {
 				completeCalled = true;
 				onComplete({
 					answer: accumulatedText,
