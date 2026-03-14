@@ -88,6 +88,21 @@ func (mr *MockArticleRepositoryMockRecorder) FetchInoreaderArticles(ctx, since a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchInoreaderArticles", reflect.TypeOf((*MockArticleRepository)(nil).FetchInoreaderArticles), ctx, since)
 }
 
+// FetchInoreaderArticlesForEmptyFeeds mocks base method.
+func (m *MockArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchInoreaderArticlesForEmptyFeeds", ctx, fetchedAfter, limit)
+	ret0, _ := ret[0].([]*domain.Article)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchInoreaderArticlesForEmptyFeeds indicates an expected call of FetchInoreaderArticlesForEmptyFeeds.
+func (mr *MockArticleRepositoryMockRecorder) FetchInoreaderArticlesForEmptyFeeds(ctx, fetchedAfter, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchInoreaderArticlesForEmptyFeeds", reflect.TypeOf((*MockArticleRepository)(nil).FetchInoreaderArticlesForEmptyFeeds), ctx, fetchedAfter, limit)
+}
+
 // FindByID mocks base method.
 func (m *MockArticleRepository) FindByID(ctx context.Context, articleID string) (*domain.Article, error) {
 	m.ctrl.T.Helper()
@@ -146,6 +161,20 @@ func (m *MockArticleRepository) UpsertArticles(ctx context.Context, articles []*
 func (mr *MockArticleRepositoryMockRecorder) UpsertArticles(ctx, articles any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertArticles", reflect.TypeOf((*MockArticleRepository)(nil).UpsertArticles), ctx, articles)
+}
+
+// UpsertArticlesWithFeedID mocks base method.
+func (m *MockArticleRepository) UpsertArticlesWithFeedID(ctx context.Context, articles []*domain.Article) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertArticlesWithFeedID", ctx, articles)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertArticlesWithFeedID indicates an expected call of UpsertArticlesWithFeedID.
+func (mr *MockArticleRepositoryMockRecorder) UpsertArticlesWithFeedID(ctx, articles any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertArticlesWithFeedID", reflect.TypeOf((*MockArticleRepository)(nil).UpsertArticlesWithFeedID), ctx, articles)
 }
 
 // MockFeedRepository is a mock of FeedRepository interface.
@@ -242,32 +271,32 @@ func (mr *MockSummaryRepositoryMockRecorder) Create(ctx, summary any) *gomock.Ca
 }
 
 // Delete mocks base method.
-func (m *MockSummaryRepository) Delete(ctx context.Context, summaryID string) error {
+func (m *MockSummaryRepository) Delete(ctx context.Context, articleID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, summaryID)
+	ret := m.ctrl.Call(m, "Delete", ctx, articleID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Delete indicates an expected call of Delete.
-func (mr *MockSummaryRepositoryMockRecorder) Delete(ctx, summaryID any) *gomock.Call {
+func (mr *MockSummaryRepositoryMockRecorder) Delete(ctx, articleID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockSummaryRepository)(nil).Delete), ctx, summaryID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockSummaryRepository)(nil).Delete), ctx, articleID)
 }
 
 // Exists mocks base method.
-func (m *MockSummaryRepository) Exists(ctx context.Context, summaryID string) (bool, error) {
+func (m *MockSummaryRepository) Exists(ctx context.Context, articleID string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Exists", ctx, summaryID)
+	ret := m.ctrl.Call(m, "Exists", ctx, articleID)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Exists indicates an expected call of Exists.
-func (mr *MockSummaryRepositoryMockRecorder) Exists(ctx, summaryID any) *gomock.Call {
+func (mr *MockSummaryRepositoryMockRecorder) Exists(ctx, articleID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exists", reflect.TypeOf((*MockSummaryRepository)(nil).Exists), ctx, summaryID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exists", reflect.TypeOf((*MockSummaryRepository)(nil).Exists), ctx, articleID)
 }
 
 // FindArticlesWithSummaries mocks base method.

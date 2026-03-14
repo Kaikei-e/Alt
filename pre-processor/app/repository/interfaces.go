@@ -19,7 +19,9 @@ type ArticleRepository interface {
 	HasUnsummarizedArticles(ctx context.Context) (bool, error)
 	FindByID(ctx context.Context, articleID string) (*domain.Article, error)
 	FetchInoreaderArticles(ctx context.Context, since time.Time) ([]*domain.Article, error)
+	FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, error)
 	UpsertArticles(ctx context.Context, articles []*domain.Article) error
+	UpsertArticlesWithFeedID(ctx context.Context, articles []*domain.Article) error
 }
 
 // FeedRepository handles feed data persistence.

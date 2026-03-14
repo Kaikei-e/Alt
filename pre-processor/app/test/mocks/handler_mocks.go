@@ -54,6 +54,20 @@ func (mr *MockJobHandlerMockRecorder) StartArticleSyncJob(ctx any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartArticleSyncJob", reflect.TypeOf((*MockJobHandler)(nil).StartArticleSyncJob), ctx)
 }
 
+// StartBackfillJob mocks base method.
+func (m *MockJobHandler) StartBackfillJob(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StartBackfillJob", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// StartBackfillJob indicates an expected call of StartBackfillJob.
+func (mr *MockJobHandlerMockRecorder) StartBackfillJob(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StartBackfillJob", reflect.TypeOf((*MockJobHandler)(nil).StartBackfillJob), ctx)
+}
+
 // StartQualityCheckJob mocks base method.
 func (m *MockJobHandler) StartQualityCheckJob(ctx context.Context) error {
 	m.ctrl.T.Helper()

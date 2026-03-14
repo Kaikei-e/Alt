@@ -197,6 +197,69 @@ func (r *articleRepository) FetchInoreaderArticles(ctx context.Context, since ti
 	return articles, nil
 }
 
+// FetchInoreaderArticlesForEmptyFeeds fetches inoreader articles for feeds with no articles.
+// In legacy mode (single DB), fetchedAfter is ignored because the NOT EXISTS filter is sufficient.
+func (r *articleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, _ time.Time, limit int) ([]*domain.Article, error) {
+	r.logger.InfoContext(ctx, "fetching inoreader articles for empty feeds", "limit", limit)
+
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return nil, fmt.Errorf("failed to fetch inoreader articles for empty feeds: database connection is nil")
+	}
+
+	articles, err := driver.GetInoreaderArticlesForEmptyFeeds(ctx, r.db, limit)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "failed to fetch inoreader articles for empty feeds", "error", err)
+		return nil, fmt.Errorf("failed to fetch inoreader articles for empty feeds: %w", err)
+	}
+
+	r.logger.InfoContext(ctx, "fetched inoreader articles for empty feeds", "count", len(articles))
+	return articles, nil
+}
+
+// UpsertArticlesWithFeedID batch upserts articles that already have FeedID resolved.
+// Unlike UpsertArticles, this skips feed URL resolution.
+func (r *articleRepository) UpsertArticlesWithFeedID(ctx context.Context, articles []*domain.Article) error {
+	r.logger.InfoContext(ctx, "upserting articles with pre-resolved FeedID", "count", len(articles))
+
+	if len(articles) == 0 {
+		return nil
+	}
+
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return fmt.Errorf("failed to upsert articles: database connection is nil")
+	}
+
+	// Filter out articles without FeedID or UserID
+	validArticles := make([]*domain.Article, 0, len(articles))
+	for _, article := range articles {
+		if article.FeedID == "" {
+			r.logger.WarnContext(ctx, "skipping article with empty FeedID", "url", article.URL)
+			continue
+		}
+		if article.UserID == "" {
+			r.logger.WarnContext(ctx, "skipping article with empty UserID", "url", article.URL)
+			continue
+		}
+		validArticles = append(validArticles, article)
+	}
+
+	if len(validArticles) == 0 {
+		r.logger.InfoContext(ctx, "no valid articles after FeedID/UserID check")
+		return nil
+	}
+
+	err := driver.InsertArticlesBatchNoConflict(ctx, r.db, validArticles)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "failed to insert backfill articles", "error", err)
+		return fmt.Errorf("failed to insert backfill articles: %w", err)
+	}
+
+	r.logger.InfoContext(ctx, "backfill articles inserted successfully (skipped existing)", "count", len(validArticles))
+	return nil
+}
+
 // UpsertArticles batch upserts articles into the database.
 // It resolves FeedID from FeedURL for each article and skips articles with empty FeedURL.
 func (r *articleRepository) UpsertArticles(ctx context.Context, articles []*domain.Article) error {

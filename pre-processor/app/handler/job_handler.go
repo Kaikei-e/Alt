@@ -61,6 +61,21 @@ func (h *jobHandler) StartArticleSyncJob(ctx context.Context) error {
 	return nil
 }
 
+// StartBackfillJob starts the article backfill job for empty feeds.
+func (h *jobHandler) StartBackfillJob(ctx context.Context) error {
+	h.logger.InfoContext(ctx, "starting article backfill job")
+
+	h.jobGroup.Add(orchestrator.NewJobRunner(orchestrator.JobConfig{
+		Name:           "article-backfill",
+		Interval:       1 * time.Hour,
+		RunImmediately: true,
+	}, func(ctx context.Context) error {
+		return h.articleSync.BackfillEmptyFeeds(ctx)
+	}, h.logger))
+
+	return nil
+}
+
 // StartSummarizationJob starts the article summarization job.
 func (h *jobHandler) StartSummarizationJob(ctx context.Context) error {
 	h.logger.InfoContext(ctx, "starting summarization job")

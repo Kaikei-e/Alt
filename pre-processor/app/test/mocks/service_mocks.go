@@ -350,6 +350,20 @@ func (m *MockArticleSyncService) EXPECT() *MockArticleSyncServiceMockRecorder {
 	return m.recorder
 }
 
+// BackfillEmptyFeeds mocks base method.
+func (m *MockArticleSyncService) BackfillEmptyFeeds(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BackfillEmptyFeeds", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// BackfillEmptyFeeds indicates an expected call of BackfillEmptyFeeds.
+func (mr *MockArticleSyncServiceMockRecorder) BackfillEmptyFeeds(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BackfillEmptyFeeds", reflect.TypeOf((*MockArticleSyncService)(nil).BackfillEmptyFeeds), ctx)
+}
+
 // SyncArticles mocks base method.
 func (m *MockArticleSyncService) SyncArticles(ctx context.Context) error {
 	m.ctrl.T.Helper()

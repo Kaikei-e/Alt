@@ -317,6 +317,185 @@ func GetInoreaderArticles(ctx context.Context, db *pgxpool.Pool, since time.Time
 	return articles, nil
 }
 
+// GetInoreaderArticlesForEmptyFeeds fetches inoreader articles whose corresponding
+// core feed has zero articles. Feed ID is resolved via feed_links JOIN.
+// NOTE: This query requires all tables (inoreader_*, feed_links, feeds, articles)
+// to be in the same database. For split-DB deployments, use GetInoreaderArticlesForBackfill instead.
+func GetInoreaderArticlesForEmptyFeeds(ctx context.Context, db *pgxpool.Pool, limit int) ([]*domain.Article, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database connection is nil")
+	}
+
+	query := `
+		SELECT
+			ia.id,
+			ia.article_url,
+			ia.title,
+			ia.content,
+			ia.published_at,
+			ia.fetched_at,
+			f.id AS feed_id
+		FROM inoreader_articles ia
+		INNER JOIN inoreader_subscriptions isub ON ia.subscription_id = isub.id
+		INNER JOIN feed_links fl ON isub.feed_url = fl.url
+		INNER JOIN feeds f ON f.feed_link_id = fl.id
+		WHERE NOT EXISTS (
+			SELECT 1 FROM articles a
+			WHERE a.feed_id = f.id AND a.deleted_at IS NULL
+		)
+		AND ia.content IS NOT NULL
+		AND ia.content_length > 0
+		ORDER BY ia.fetched_at ASC
+		LIMIT $1
+	`
+
+	rows, err := db.Query(ctx, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query inoreader articles for empty feeds: %w", err)
+	}
+	defer rows.Close()
+
+	var articles []*domain.Article
+	for rows.Next() {
+		var a domain.Article
+		var publishedAt time.Time
+		var fetchedAt time.Time
+
+		err := rows.Scan(
+			&a.InoreaderID,
+			&a.URL,
+			&a.Title,
+			&a.Content,
+			&publishedAt,
+			&fetchedAt,
+			&a.FeedID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan inoreader article for backfill: %w", err)
+		}
+
+		a.PublishedAt = publishedAt
+		a.CreatedAt = fetchedAt
+
+		articles = append(articles, &a)
+	}
+
+	return articles, nil
+}
+
+// GetInoreaderArticlesForBackfill fetches inoreader articles with their feed URLs
+// for cross-DB backfill scenarios. Only queries inoreader_* tables (pre-processor-db).
+// FeedID resolution is deferred to the caller (via backend API).
+// Uses fetchedAfter as a cursor to avoid re-processing the same articles.
+func GetInoreaderArticlesForBackfill(ctx context.Context, db *pgxpool.Pool, fetchedAfter time.Time, limit int) ([]*domain.Article, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database connection is nil")
+	}
+
+	query := `
+		SELECT
+			ia.id,
+			ia.article_url,
+			ia.title,
+			ia.content,
+			ia.published_at,
+			COALESCE(isub.feed_url, '') AS feed_url,
+			ia.fetched_at
+		FROM inoreader_articles ia
+		INNER JOIN inoreader_subscriptions isub ON ia.subscription_id = isub.id
+		WHERE ia.content IS NOT NULL
+		AND ia.content_length > 0
+		AND ia.fetched_at > $1
+		ORDER BY ia.fetched_at ASC
+		LIMIT $2
+	`
+
+	rows, err := db.Query(ctx, query, fetchedAfter, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query inoreader articles for backfill: %w", err)
+	}
+	defer rows.Close()
+
+	var articles []*domain.Article
+	for rows.Next() {
+		var a domain.Article
+		var publishedAt time.Time
+		var fetchedAt time.Time
+		var feedURL string
+
+		err := rows.Scan(
+			&a.InoreaderID,
+			&a.URL,
+			&a.Title,
+			&a.Content,
+			&publishedAt,
+			&feedURL,
+			&fetchedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan inoreader article for backfill: %w", err)
+		}
+
+		a.PublishedAt = publishedAt
+		a.CreatedAt = fetchedAt
+		a.FeedURL = feedURL
+
+		articles = append(articles, &a)
+	}
+
+	return articles, nil
+}
+
+// InsertArticlesBatchNoConflict batch inserts articles, skipping any that already exist (ON CONFLICT DO NOTHING).
+// Used by backfill to avoid overwriting full-text articles with Inoreader RSS summaries.
+func InsertArticlesBatchNoConflict(ctx context.Context, db *pgxpool.Pool, articles []*domain.Article) (err error) {
+	if len(articles) == 0 {
+		return nil
+	}
+
+	batch := &pgx.Batch{}
+	query := `
+		INSERT INTO articles (title, content, url, feed_id, user_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (url) DO NOTHING
+	`
+
+	for _, a := range articles {
+		if a.UserID == "" || a.FeedID == "" {
+			continue
+		}
+		batch.Queue(query, a.Title, a.Content, a.URL, a.FeedID, a.UserID, a.CreatedAt)
+	}
+
+	if batch.Len() == 0 {
+		return nil
+	}
+
+	if db == nil {
+		return fmt.Errorf("database connection is nil")
+	}
+
+	br := db.SendBatch(ctx, batch)
+	defer func() {
+		if cerr := br.Close(); cerr != nil {
+			if err != nil {
+				err = fmt.Errorf("%w; batch close failed: %v", err, cerr)
+			} else {
+				err = fmt.Errorf("failed to close batch: %w", cerr)
+			}
+		}
+	}()
+
+	for i := 0; i < batch.Len(); i++ {
+		_, execErr := br.Exec()
+		if execErr != nil {
+			return fmt.Errorf("failed to execute batch insert: %w", execErr)
+		}
+	}
+
+	return nil
+}
+
 // UpsertArticlesBatch batches upsert articles
 func UpsertArticlesBatch(ctx context.Context, db *pgxpool.Pool, articles []*domain.Article) (err error) {
 	if len(articles) == 0 {

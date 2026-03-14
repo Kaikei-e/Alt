@@ -18,10 +18,11 @@ import (
 type mockBackendClient struct {
 	backendv1connect.UnimplementedBackendInternalServiceHandler
 
-	getFeedIDFunc        func(ctx context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error)
-	createArticleFunc    func(ctx context.Context, req *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error)
-	listUnsummarizedFunc func(ctx context.Context, req *connect.Request[backendv1.ListUnsummarizedArticlesRequest]) (*connect.Response[backendv1.ListUnsummarizedArticlesResponse], error)
-	hasUnsummarizedFunc  func(ctx context.Context, req *connect.Request[backendv1.HasUnsummarizedArticlesRequest]) (*connect.Response[backendv1.HasUnsummarizedArticlesResponse], error)
+	getFeedIDFunc             func(ctx context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error)
+	createArticleFunc         func(ctx context.Context, req *connect.Request[backendv1.CreateArticleRequest]) (*connect.Response[backendv1.CreateArticleResponse], error)
+	listUnsummarizedFunc      func(ctx context.Context, req *connect.Request[backendv1.ListUnsummarizedArticlesRequest]) (*connect.Response[backendv1.ListUnsummarizedArticlesResponse], error)
+	hasUnsummarizedFunc       func(ctx context.Context, req *connect.Request[backendv1.HasUnsummarizedArticlesRequest]) (*connect.Response[backendv1.HasUnsummarizedArticlesResponse], error)
+	getEmptyFeedIDFunc        func(ctx context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error)
 }
 
 func (m *mockBackendClient) GetFeedID(ctx context.Context, req *connect.Request[backendv1.GetFeedIDRequest]) (*connect.Response[backendv1.GetFeedIDResponse], error) {
@@ -50,6 +51,13 @@ func (m *mockBackendClient) HasUnsummarizedArticles(ctx context.Context, req *co
 		return m.hasUnsummarizedFunc(ctx, req)
 	}
 	return connect.NewResponse(&backendv1.HasUnsummarizedArticlesResponse{}), nil
+}
+
+func (m *mockBackendClient) GetEmptyFeedID(ctx context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error) {
+	if m.getEmptyFeedIDFunc != nil {
+		return m.getEmptyFeedIDFunc(ctx, req)
+	}
+	return connect.NewResponse(&backendv1.GetEmptyFeedIDResponse{}), nil
 }
 
 func newTestRepo(mock *mockBackendClient) *ArticleRepository {
@@ -333,6 +341,59 @@ func TestHasUnsummarizedArticles_Error(t *testing.T) {
 	repo := newTestRepo(mock)
 
 	_, err := repo.HasUnsummarizedArticles(context.Background())
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+// ── GetEmptyFeedID helper tests ──
+
+func TestGetEmptyFeedID_Found(t *testing.T) {
+	mock := &mockBackendClient{
+		getEmptyFeedIDFunc: func(_ context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error) {
+			if req.Msg.FeedUrl != "http://example.com/feed.xml" {
+				t.Errorf("expected feed_url http://example.com/feed.xml, got %s", req.Msg.FeedUrl)
+			}
+			return connect.NewResponse(&backendv1.GetEmptyFeedIDResponse{FeedId: "empty-feed-123"}), nil
+		},
+	}
+	repo := newTestRepo(mock)
+
+	feedID, err := repo.getEmptyFeedID(context.Background(), "http://example.com/feed.xml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if feedID != "empty-feed-123" {
+		t.Errorf("expected empty-feed-123, got %s", feedID)
+	}
+}
+
+func TestGetEmptyFeedID_NotFound(t *testing.T) {
+	mock := &mockBackendClient{
+		getEmptyFeedIDFunc: func(_ context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error) {
+			return connect.NewResponse(&backendv1.GetEmptyFeedIDResponse{FeedId: ""}), nil
+		},
+	}
+	repo := newTestRepo(mock)
+
+	feedID, err := repo.getEmptyFeedID(context.Background(), "http://example.com/feed.xml")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if feedID != "" {
+		t.Errorf("expected empty string, got %s", feedID)
+	}
+}
+
+func TestGetEmptyFeedID_Error(t *testing.T) {
+	mock := &mockBackendClient{
+		getEmptyFeedIDFunc: func(_ context.Context, req *connect.Request[backendv1.GetEmptyFeedIDRequest]) (*connect.Response[backendv1.GetEmptyFeedIDResponse], error) {
+			return nil, connect.NewError(connect.CodeInternal, errors.New("server error"))
+		},
+	}
+	repo := newTestRepo(mock)
+
+	_, err := repo.getEmptyFeedID(context.Background(), "http://example.com/feed.xml")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

@@ -196,6 +196,52 @@ func (r *ArticleRepository) FetchInoreaderArticles(ctx context.Context, since ti
 	return driver.GetInoreaderArticles(ctx, r.dbPool, since)
 }
 
+// FetchInoreaderArticlesForEmptyFeeds fetches inoreader articles for backfill.
+// In API mode (split-DB), queries inoreader tables from pre-processor-db and
+// resolves empty feedIDs via backend API using push-down anti-join.
+// Only articles for feeds with zero existing articles are returned.
+func (r *ArticleRepository) FetchInoreaderArticlesForEmptyFeeds(ctx context.Context, fetchedAfter time.Time, limit int) ([]*domain.Article, error) {
+	// Get inoreader articles with feed_urls (pre-processor-db only)
+	candidates, err := driver.GetInoreaderArticlesForBackfill(ctx, r.dbPool, fetchedAfter, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	// feed_url → feedID (empty feed) cache
+	emptyFeedCache := make(map[string]string) // feedURL → feedID ("" = no empty feed)
+
+	var result []*domain.Article
+	for _, article := range candidates {
+		if article.FeedURL == "" {
+			continue
+		}
+
+		feedID, cached := emptyFeedCache[article.FeedURL]
+		if !cached {
+			feedID, err = r.getEmptyFeedID(ctx, article.FeedURL)
+			if err != nil {
+				slog.WarnContext(ctx, "failed to get empty feed ID, skipping",
+					"feedURL", article.FeedURL, "error", err)
+				emptyFeedCache[article.FeedURL] = ""
+				continue
+			}
+			emptyFeedCache[article.FeedURL] = feedID
+		}
+		if feedID == "" {
+			continue // no empty feed → skip
+		}
+
+		article.FeedID = feedID
+		result = append(result, article)
+	}
+
+	return result, nil
+}
+
 // UpsertArticles batch upserts articles.
 // Articles with unresolvable feeds are skipped (matching legacy DB behavior),
 // while real errors (network, auth) abort the batch immediately.
@@ -238,6 +284,55 @@ func (r *ArticleRepository) UpsertArticles(ctx context.Context, articles []*doma
 
 	slog.InfoContext(ctx, "articles upserted via API", "created", created, "total", len(articles))
 	return nil
+}
+
+// UpsertArticlesWithFeedID batch inserts articles that already have FeedID resolved.
+// Skips articles that already exist (DO NOTHING semantics) to avoid overwriting
+// full-text articles with Inoreader RSS summaries.
+func (r *ArticleRepository) UpsertArticlesWithFeedID(ctx context.Context, articles []*domain.Article) error {
+	if len(articles) == 0 {
+		return nil
+	}
+
+	var created, skipped int
+	for _, article := range articles {
+		if article.FeedID == "" || article.UserID == "" {
+			slog.WarnContext(ctx, "skipping article with empty FeedID or UserID", "url", article.URL)
+			continue
+		}
+
+		// Check existence first to avoid overwriting (ON CONFLICT DO NOTHING semantics)
+		exists, err := r.CheckExists(ctx, []string{article.URL})
+		if err != nil {
+			slog.WarnContext(ctx, "failed to check article existence, skipping", "url", article.URL, "error", err)
+			skipped++
+			continue
+		}
+		if exists {
+			skipped++
+			continue
+		}
+
+		if err := r.Create(ctx, article); err != nil {
+			return fmt.Errorf("insert backfill article %s: %w", article.URL, err)
+		}
+		created++
+	}
+
+	slog.InfoContext(ctx, "backfill articles inserted via API (skipped existing)", "created", created, "skipped", skipped, "total", len(articles))
+	return nil
+}
+
+func (r *ArticleRepository) getEmptyFeedID(ctx context.Context, feedURL string) (string, error) {
+	protoReq := &backendv1.GetEmptyFeedIDRequest{FeedUrl: feedURL}
+	req := connect.NewRequest(protoReq)
+	r.client.addAuth(req)
+
+	resp, err := r.client.client.GetEmptyFeedID(ctx, req)
+	if err != nil {
+		return "", err
+	}
+	return resp.Msg.FeedId, nil
 }
 
 func (r *ArticleRepository) getFeedID(ctx context.Context, feedURL string) (string, error) {
