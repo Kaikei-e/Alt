@@ -12,4 +12,4 @@ dependencies = [
 ]
 
 [tool.uv]
-constraint-dependencies = ["Pillow>=12.1.1"]
+constraint-dependencies = ["Pillow>=12.1.1", "tornado>=6.5.5"]

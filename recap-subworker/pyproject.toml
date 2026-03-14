@@ -11,7 +11,7 @@ dependencies = [
   "gunicorn>=22.0.0",
   "pydantic>=2.9.0",
   "pydantic-settings>=2.3.0",
-  "orjson==3.11.4",
+  "orjson>=3.11.6",
   "prometheus-fastapi-instrumentator==7.1.0",
   "opentelemetry-sdk>=1.29.0",
   "opentelemetry-exporter-otlp-proto-http>=1.29.0",
@@ -63,7 +63,7 @@ recap-subworker = "recap_subworker.__main__:main"
 
 [tool.uv]
 package = true
-constraint-dependencies = ["wheel>=0.46.2", "protobuf>=6.33.5", "Pillow>=12.1.1"]
+constraint-dependencies = ["wheel>=0.46.2", "protobuf>=6.33.5", "Pillow>=12.1.1", "lxml-html-clean>=0.4.4"]
 
 [tool.setuptools]
 packages = ["recap_subworker"]
