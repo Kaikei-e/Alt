@@ -78,6 +78,9 @@ func startJobs(ctx context.Context, deps *Dependencies, log *slog.Logger) error 
 	if err := deps.JobHandler.StartArticleSyncJob(ctx); err != nil {
 		return fmt.Errorf("failed to start article sync job: %w", err)
 	}
+	if err := deps.JobHandler.StartBackfillJob(ctx); err != nil {
+		return fmt.Errorf("failed to start backfill job: %w", err)
+	}
 	if err := deps.JobHandler.StartSummarizationJob(ctx); err != nil {
 		return fmt.Errorf("failed to start summarization job: %w", err)
 	}

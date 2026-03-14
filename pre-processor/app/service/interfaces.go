@@ -44,6 +44,7 @@ type HealthCheckerService interface {
 // ArticleSyncService handles article synchronization business logic.
 type ArticleSyncService interface {
 	SyncArticles(ctx context.Context) error
+	BackfillEmptyFeeds(ctx context.Context) error
 }
 
 // ProcessingResult represents the result of feed processing.
