@@ -1,20 +1,7 @@
+# ============================================
+# Secrets & credentials
+# ============================================
 .env
-alt-backend/app/datastore/output.json
-alt-backend/app/alt-backend-optimized
-/out
-test-results/.last-run.json
-
-news-creator/cached_models/*
-news-creator/models/*
-
-recap-subworker/recap_subworker/learning_machine/data/
-recap_subworker/recap_subworker/learning_machine/artifacts/
-recap-subworker/recap_subworker/learning_machine/artifacts/
-
-
-*.tar
-
-# secrets
 secrets/
 *.crt
 *.key
@@ -24,77 +11,130 @@ secrets/
 *.p12
 *.srl
 
-*.har
+# ============================================
+# Go
+# ============================================
+# Binary output (service-specific)
+alt-backend/app/alt-backend-optimized
 
-# real data
+# ============================================
+# Rust
+# ============================================
+# target/ is per-service, handled by each service's own .gitignore
+# But offline SQLX cache with credentials should be ignored:
+recap-worker/recap-worker/.sqlx/offline.toml
+
+# ============================================
+# Python
+# ============================================
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+.coverage
+.pytest_cache/
+htmlcov/
+
+# ML models & training data (large binaries)
+news-creator/cached_models/
+news-creator/models/
+tag-generator/models/
+recap-subworker/recap_subworker/learning_machine/data/
+recap-subworker/recap_subworker/learning_machine/artifacts/
+recap-subworker/data/
+
+# ============================================
+# TypeScript / Node
+# ============================================
+node_modules/
+
+# ============================================
+# SvelteKit (alt-frontend-sv)
+# ============================================
+alt-frontend-sv/.svelte-kit/
+alt-frontend-sv/playwright-report/
+alt-frontend-sv/test-results/
+alt-frontend-sv/mock-server.log
+
+# Playwright (alt-frontend)
+alt-frontend/playwright-report/
+test-results/.last-run.json
+
+# ============================================
+# Build artifacts & output
+# ============================================
+/out
+*.tar
+
+# ============================================
+# Docker / Compose
+# ============================================
+compose/*-generated.yaml
+
+# ============================================
+# Logs
+# ============================================
+*.log
+rask-log-aggregator/logs/
+
+# ============================================
+# Data & backups
+# ============================================
 backup.sql
-rask-log-aggregator/logs/*
-
-__pycache__
-.vscode/settings.json
-.idea/
+backups/
+pv-data/
+*.har
 error.json
-
-
-# k8s
-k8s-manifests/k8s/backups/*
-x-setup/
 error.txt
 
-# SSL certificates (development)
-docker/postgres/ssl/
-k8s-manifests/scripts/ssl-certs/
+# Backend output
+alt-backend/app/datastore/output.json
 
-k8s-manifests/ssl-certs/*
-k8s/base/core/database/postgres/ssl-certs/*
+# ============================================
+# SSL certificates (development)
+# ============================================
+docker/postgres/ssl/
+
+# ============================================
+# K8s manifests & secrets
+# ============================================
+k8s-manifests/k8s/backups/
+k8s-manifests/scripts/ssl-certs/
+k8s-manifests/ssl-certs/
 k8s-manifests/deploy-cli/deploy-cli
 k8s-manifests/deploy-cli/deploy-cli/build
-
-pv-data/
-
-# SSL configuration files
+k8s/base/core/database/postgres/ssl-certs/
 */values-ssl.yaml
-log.txt
 argocd/
-node_modules/
+x-setup/
+auth-service/deployments/k8s/base/kratos-secrets.yaml
+kratos/kratos.yml
+
+# ============================================
+# Load testing
+# ============================================
+alt-perf/k6/data/load-test-users.*
+metrics/scripts/reports/
+
+# ============================================
+# IDE & OS
+# ============================================
+.vscode/
+.idea/
+
+# ============================================
+# AI agents / Claude Code
+# ============================================
+.claude/
+.agent/
+.serena/
+
+# ============================================
+# Misc
+# ============================================
+.fake
 pre-processor-sidecar/setup-oauth.sh
 pre-processor-sidecar/cmd/oauth-initializer/
 migrations-atlas/migrations/atlas.sum
-auth-service/deployments/k8s/base/kratos-secrets.yaml
-.serena/
-alt-frontend/playwright-report/index.html
-kratos/kratos.yml
-backups/
-.vscode/tasks.json
-recap-worker/recap-worker/.sqlx/offline.toml
-recap-worker/.vscode/settings.json
-recap-subworker/recap_subworker.egg-info
-tag-generator/models/
-recap-subworker/data
-recap-worker/recap-worker/tests/data/golden_classification.json
-alt-frontend-sv/playwright-report/*
-alt-frontend-sv/test-results/*
-alt-frontend-sv/.svelte-kit/
-failed.log
 rag-orchestrator/start_backfill.sh
-alt-frontend-sv/mock-server.log
-
-# Claude Code local files
-.claude/
-.agent/
-metrics/scripts/reports/
-
-# Python test/development artifacts
-.coverage
-.pytest_cache/
-.venv/
-*.egg-info/
-htmlcov/
-
-# Load test data (credentials)
-alt-perf/k6/data/load-test-users.*
-
-# Load test generated compose overlays
-compose/*-generated.yaml
-
-.fake
