@@ -113,10 +113,10 @@ type stubJobRepoTracking struct {
 }
 
 type updateJobStatusCall struct {
-	jobID      string
-	status     domain.SummarizeJobStatus
-	summary    string
-	errorMsg   string
+	jobID    string
+	status   domain.SummarizeJobStatus
+	summary  string
+	errorMsg string
 }
 
 func (m *stubJobRepoTracking) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
