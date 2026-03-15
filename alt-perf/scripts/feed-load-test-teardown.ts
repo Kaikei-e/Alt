@@ -2,7 +2,12 @@
 // feed-load-test-teardown.ts - Clean up load test data
 //
 // 1. Delete Kratos identities
-// 2. Clean up DB records (feeds, feed_links created by mock-rss-server)
+// 2. Clean up DB records:
+//    a. Export mock article IDs from alt-db
+//    b. Delete rag_documents from rag-db (CASCADE: versions, chunks, events)
+//    c. Delete articles from alt-db (CASCADE: article_heads, summaries)
+//    d. Delete feeds linked to mock-rss feed_links
+//    e. Delete feed_links (CASCADE: subscriptions, availability)
 // 3. Remove credential files
 //
 // Usage:
@@ -78,66 +83,173 @@ async function deleteKratosUsers(users: TestUser[]): Promise<void> {
   );
 }
 
+async function execSQL(
+  composeParts: string[],
+  label: string,
+  service: string,
+  user: string,
+  db: string,
+  sql: string,
+): Promise<{ success: boolean; stdout: string }> {
+  console.log(`  Deleting ${label}...`);
+  const cmd = new Deno.Command(composeParts[0], {
+    args: [
+      ...composeParts.slice(1),
+      "exec",
+      "-T",
+      service,
+      "psql",
+      "-U",
+      user,
+      "-d",
+      db,
+      "-c",
+      sql.trim(),
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  });
+
+  const output = await cmd.output();
+  const stdout = new TextDecoder().decode(output.stdout);
+  const stderr = new TextDecoder().decode(output.stderr);
+
+  if (output.success) {
+    console.log(`  ${label}: ${stdout.trim()}`);
+    return { success: true, stdout };
+  } else {
+    console.error(`  ${label} failed: ${stderr}`);
+    return { success: false, stdout: "" };
+  }
+}
+
 async function cleanupDatabase(): Promise<void> {
   console.log("Cleaning up database records...");
 
-  // Extend statement_timeout for large-scale teardown (1M+ rows)
   const setTimeoutSQL = `SET statement_timeout = '300s';`;
-
-  // Step 3a: Delete feeds linked to mock-rss-server feed_links
-  // feeds.feed_link_id has ON DELETE SET NULL, so we must delete feeds first
-  const deleteFeedsSQL = `
-    ${setTimeoutSQL}
-    DELETE FROM feeds
-    WHERE feed_link_id IN (
-      SELECT id FROM feed_links WHERE url LIKE 'http://mock-rss-%:8080/%'
-    );
-  `;
-
-  // Step 3b: Delete feed_links (cascades to user_feed_subscriptions, feed_link_availability)
-  const deleteFeedLinksSQL = `
-    ${setTimeoutSQL}
-    DELETE FROM feed_links WHERE url LIKE 'http://mock-rss-%:8080/%';
-  `;
-
   const composeParts = COMPOSE_CMD.split(" ");
+  const mockUrlPattern = "http://mock-rss-%:8080/%";
 
-  for (const [label, sql] of [
-    ["feeds", deleteFeedsSQL],
-    ["feed_links", deleteFeedLinksSQL],
-  ] as const) {
-    console.log(`  Deleting ${label}...`);
-    const dbService = Deno.env.get("DB_SERVICE") || "db";
-    const dbUser = Deno.env.get("POSTGRES_USER") || "alt_db_user";
-    const dbName = Deno.env.get("POSTGRES_DB") || "alt";
-    const cmd = new Deno.Command(composeParts[0], {
+  const dbService = Deno.env.get("DB_SERVICE") || "db";
+  const dbUser = Deno.env.get("POSTGRES_USER") || "alt_db_user";
+  const dbName = Deno.env.get("POSTGRES_DB") || "alt";
+  const ragDbService = Deno.env.get("RAG_DB_SERVICE") || "rag-db";
+  const ragDbUser = Deno.env.get("RAG_DB_USER") || "rag_user";
+  const ragDbName = Deno.env.get("RAG_DB_NAME") || "rag_db";
+
+  // Step 3a: Export mock article IDs from alt-db
+  console.log("  Exporting mock article IDs from alt-db...");
+  const exportSQL = `${setTimeoutSQL}
+    COPY (SELECT id::text FROM articles WHERE url LIKE '${mockUrlPattern}') TO '/tmp/mock_article_ids.txt';`;
+  const exportResult = await execSQL(
+    composeParts,
+    "export mock article IDs",
+    dbService,
+    dbUser,
+    dbName,
+    exportSQL,
+  );
+
+  if (exportResult.success) {
+    // Step 3b: Copy mock IDs from alt-db to rag-db container via pipe
+    const catCmd = new Deno.Command(composeParts[0], {
       args: [
         ...composeParts.slice(1),
         "exec",
         "-T",
         dbService,
-        "psql",
-        "-U",
-        dbUser,
-        "-d",
-        dbName,
-        "-c",
-        sql.trim(),
+        "cat",
+        "/tmp/mock_article_ids.txt",
       ],
       stdout: "piped",
       stderr: "piped",
     });
+    const catOutput = await catCmd.output();
 
-    const output = await cmd.output();
-    const stdout = new TextDecoder().decode(output.stdout);
-    const stderr = new TextDecoder().decode(output.stderr);
+    if (catOutput.success && catOutput.stdout.length > 0) {
+      console.log("  Copying mock IDs to rag-db container...");
+      const copyCmd = new Deno.Command(composeParts[0], {
+        args: [
+          ...composeParts.slice(1),
+          "exec",
+          "-T",
+          ragDbService,
+          "bash",
+          "-c",
+          "cat > /tmp/mock_article_ids.txt",
+        ],
+        stdin: "piped",
+        stdout: "piped",
+        stderr: "piped",
+      });
+      const copyProc = copyCmd.spawn();
+      const writer = copyProc.stdin.getWriter();
+      await writer.write(catOutput.stdout);
+      await writer.close();
+      const copyResult = await copyProc.output();
 
-    if (output.success) {
-      console.log(`  ${label}: ${stdout.trim()}`);
+      if (copyResult.success) {
+        // Step 3c: Delete rag_documents from rag-db
+        const ragDeleteSQL = `${setTimeoutSQL}
+          CREATE TEMP TABLE mock_ids (article_id text);
+          COPY mock_ids FROM '/tmp/mock_article_ids.txt';
+          DELETE FROM rag_documents WHERE article_id IN (SELECT article_id FROM mock_ids);`;
+        await execSQL(
+          composeParts,
+          "rag_documents (CASCADE: versions, chunks, events)",
+          ragDbService,
+          ragDbUser,
+          ragDbName,
+          ragDeleteSQL,
+        );
+      } else {
+        const stderr = new TextDecoder().decode(copyResult.stderr);
+        console.error(`  Failed to copy mock IDs to rag-db: ${stderr}`);
+      }
     } else {
-      console.error(`  ${label} failed: ${stderr}`);
+      console.log("  No mock article IDs found, skipping rag-db cleanup");
     }
   }
+
+  // Step 3d: Delete articles from alt-db (CASCADE: article_heads, article_summaries)
+  const deleteArticlesSQL = `${setTimeoutSQL}
+    DELETE FROM articles WHERE url LIKE '${mockUrlPattern}';`;
+  await execSQL(
+    composeParts,
+    "articles (CASCADE: article_heads, summaries)",
+    dbService,
+    dbUser,
+    dbName,
+    deleteArticlesSQL,
+  );
+
+  // Step 3e: Delete feeds linked to mock-rss-server feed_links
+  // feeds.feed_link_id has ON DELETE SET NULL, so we must delete feeds first
+  const deleteFeedsSQL = `${setTimeoutSQL}
+    DELETE FROM feeds
+    WHERE feed_link_id IN (
+      SELECT id FROM feed_links WHERE url LIKE '${mockUrlPattern}'
+    );`;
+  await execSQL(
+    composeParts,
+    "feeds",
+    dbService,
+    dbUser,
+    dbName,
+    deleteFeedsSQL,
+  );
+
+  // Step 3f: Delete feed_links (CASCADE: user_feed_subscriptions, feed_link_availability)
+  const deleteFeedLinksSQL = `${setTimeoutSQL}
+    DELETE FROM feed_links WHERE url LIKE '${mockUrlPattern}';`;
+  await execSQL(
+    composeParts,
+    "feed_links (CASCADE: subscriptions, availability)",
+    dbService,
+    dbUser,
+    dbName,
+    deleteFeedLinksSQL,
+  );
 }
 
 async function removeDataFiles(): Promise<void> {
