@@ -68,9 +68,9 @@ test.describe("Desktop Feeds", () => {
 
 		// Verify action buttons are present
 		await expect(feedsPage.markAsReadButton).toBeVisible();
-		// Article button shows "Full Article" or "Article Loaded" depending on auto-fetch state
+		// Article button shows "Full Article" (idle) or "Re-fetch Article" (after auto-fetch)
 		await expect(
-			page.getByRole("button", { name: /full article|article loaded/i }),
+			page.getByRole("button", { name: /full article|re-fetch article/i }),
 		).toBeVisible();
 	});
 
@@ -178,9 +178,9 @@ test.describe("Desktop Feeds", () => {
 		// Open modal - article should be auto-fetched (mock is set in beforeEach)
 		await feedsPage.selectFeed("AI Trends");
 
-		// Wait for button state to change (showing "Article Loaded") without clicking
+		// Wait for button state to change to "Re-fetch Article" (= content loaded) without clicking
 		await expect(
-			feedsPage.page.getByRole("button", { name: /article loaded/i }),
+			feedsPage.page.getByRole("button", { name: /re-fetch article/i }),
 		).toBeVisible({ timeout: 10000 });
 	});
 
