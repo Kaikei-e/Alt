@@ -129,7 +129,8 @@ metrics/scripts/reports/
 .claude/
 .agent/
 .serena/
-docs/vault/
+docs/.obsidian/
+docs/daily/
 
 # ============================================
 # Misc
@@ -140,4 +141,3 @@ pre-processor-sidecar/cmd/oauth-initializer/
 migrations-atlas/migrations/atlas.sum
 rag-orchestrator/start_backfill.sh
 .obsidian/
-docs/vault/.obsidian/
