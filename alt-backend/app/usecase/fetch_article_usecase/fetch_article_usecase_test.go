@@ -582,6 +582,87 @@ func TestFetchCompliantArticle_SingleflightDeduplicates(t *testing.T) {
 	ctrl.Finish()
 }
 
+func TestFetchCompliantArticleWithRefresh_ForceRefreshSkipsDBCache(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
+
+	articleURLStr := "https://example.com/article"
+	articleURL, _ := url.Parse(articleURLStr)
+	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	userContext := domain.UserContext{UserID: userID}
+	rawHTML := "<html><body><p>Article content needs to be very long. We are adding more text to satisfy the 100 char limit. This is a refreshed article about testing Go code.</p></body></html>"
+	articleID := "article-refresh"
+
+	// KEY: FetchArticleByURL should NOT be called when forceRefresh=true
+	// (no mockRepo.EXPECT().FetchArticleByURL)
+	mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
+	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
+	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), gomock.Any()).Return(articleID, nil)
+	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	content, retID, _, err := usecase.FetchCompliantArticleWithRefresh(context.Background(), articleURL, userContext, true)
+
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if content == "" {
+		t.Error("Expected non-empty content")
+	}
+	if retID != articleID {
+		t.Errorf("Expected article ID %s, got %s", articleID, retID)
+	}
+	time.Sleep(50 * time.Millisecond)
+	ctrl.Finish()
+}
+
+func TestFetchCompliantArticleWithRefresh_NoForceRefreshUsesDBCache(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
+
+	articleURLStr := "https://example.com/article"
+	articleURL, _ := url.Parse(articleURLStr)
+	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	userContext := domain.UserContext{UserID: userID}
+
+	existingArticle := &domain.ArticleContent{
+		ID:      "existing-article-id",
+		Content: "cached article content",
+	}
+
+	// DB lookup returns existing article
+	mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(existingArticle, nil)
+	mockRepo.EXPECT().FetchOgImageURLByArticleID(gomock.Any(), existingArticle.ID).Return("", nil)
+
+	// KEY: FetchArticleContents should NOT be called when forceRefresh=false and article exists
+	// (no mockArticleFetcher.EXPECT().FetchArticleContents)
+
+	content, retID, _, err := usecase.FetchCompliantArticleWithRefresh(context.Background(), articleURL, userContext, false)
+
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if content != existingArticle.Content {
+		t.Errorf("Expected cached content %q, got %q", existingArticle.Content, content)
+	}
+	if retID != existingArticle.ID {
+		t.Errorf("Expected article ID %s, got %s", existingArticle.ID, retID)
+	}
+}
+
 func TestFetchCompliantArticle_WebFetchTimeout(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

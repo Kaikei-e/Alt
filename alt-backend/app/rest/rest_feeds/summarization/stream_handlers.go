@@ -99,10 +99,14 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 			return handleValidationError(c, "Content cannot be empty for streaming", "content", "empty")
 		}
 
-		existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(ctx, req.ArticleID)
-		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
-			logger.Logger.InfoContext(ctx, "Found existing summary in database for streaming", "article_id", req.ArticleID)
-			return streamCachedSummary(ctx, c, existingSummary.Summary, req.ArticleID)
+		if !req.ForceRefresh {
+			existingSummary, err := container.AltDBRepository.FetchArticleSummaryByArticleID(ctx, req.ArticleID)
+			if err == nil && existingSummary != nil && existingSummary.Summary != "" {
+				logger.Logger.InfoContext(ctx, "Found existing summary in database for streaming", "article_id", req.ArticleID)
+				return streamCachedSummary(ctx, c, existingSummary.Summary, req.ArticleID)
+			}
+		} else {
+			logger.Logger.InfoContext(ctx, "Force refresh: skipping summary cache", "article_id", req.ArticleID)
 		}
 
 		logger.Logger.InfoContext(ctx, "Starting stream summarization", "article_id", req.ArticleID, "content_length", len(req.Content))

@@ -74,6 +74,23 @@ func (mr *MockArticleUsecaseMockRecorder) FetchCompliantArticle(ctx, articleURL,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchCompliantArticle", reflect.TypeOf((*MockArticleUsecase)(nil).FetchCompliantArticle), ctx, articleURL, userContext)
 }
 
+// FetchCompliantArticleWithRefresh mocks base method.
+func (m *MockArticleUsecase) FetchCompliantArticleWithRefresh(ctx context.Context, articleURL *url.URL, userContext domain.UserContext, forceRefresh bool) (string, string, string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchCompliantArticleWithRefresh", ctx, articleURL, userContext, forceRefresh)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(string)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
+}
+
+// FetchCompliantArticleWithRefresh indicates an expected call of FetchCompliantArticleWithRefresh.
+func (mr *MockArticleUsecaseMockRecorder) FetchCompliantArticleWithRefresh(ctx, articleURL, userContext, forceRefresh any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchCompliantArticleWithRefresh", reflect.TypeOf((*MockArticleUsecase)(nil).FetchCompliantArticleWithRefresh), ctx, articleURL, userContext, forceRefresh)
+}
+
 // MockArticleRepository is a mock of ArticleRepository interface.
 type MockArticleRepository struct {
 	ctrl     *gomock.Controller

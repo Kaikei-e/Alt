@@ -23,6 +23,7 @@ import (
 type ArticleUsecase interface {
 	Execute(ctx context.Context, articleURL string) (*string, error)
 	FetchCompliantArticle(ctx context.Context, articleURL *url.URL, userContext domain.UserContext) (content string, articleID string, ogImageURL string, err error)
+	FetchCompliantArticleWithRefresh(ctx context.Context, articleURL *url.URL, userContext domain.UserContext, forceRefresh bool) (content string, articleID string, ogImageURL string, err error)
 }
 
 // ArticleRepository defines the data access interface needed by this usecase
@@ -102,25 +103,33 @@ func (u *ArticleUsecaseImpl) Execute(ctx context.Context, articleURL string) (*s
 }
 
 func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetURL *url.URL, userContext domain.UserContext) (content string, articleID string, ogImageURL string, err error) {
+	return u.FetchCompliantArticleWithRefresh(ctx, targetURL, userContext, false)
+}
+
+func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Context, targetURL *url.URL, userContext domain.UserContext, forceRefresh bool) (content string, articleID string, ogImageURL string, err error) {
 	urlStr := targetURL.String()
 	domainStr := targetURL.Hostname()
 
-	// 1. Check if article already exists in DB
-	existingArticle, err := u.repo.FetchArticleByURL(ctx, urlStr)
-	if err != nil {
-		// Log error but generally fail if DB is down.
-		// Note via driver: returns nil, nil if Not Found.
-		return "", "", "", fmt.Errorf("failed to check existing article: %w", err)
-	}
-
-	if existingArticle != nil {
-		logger.Logger.InfoContext(ctx, "Article found in database", "url", urlStr, "id", existingArticle.ID)
-		// Try to retrieve cached og:image (lightweight query, no head_html)
-		cachedOgImage, ogErr := u.repo.FetchOgImageURLByArticleID(ctx, existingArticle.ID)
-		if ogErr != nil {
-			logger.Logger.WarnContext(ctx, "Failed to fetch og_image_url", "error", ogErr, "article_id", existingArticle.ID)
+	// 1. Check if article already exists in DB (skip when force refresh)
+	if !forceRefresh {
+		existingArticle, err := u.repo.FetchArticleByURL(ctx, urlStr)
+		if err != nil {
+			// Log error but generally fail if DB is down.
+			// Note via driver: returns nil, nil if Not Found.
+			return "", "", "", fmt.Errorf("failed to check existing article: %w", err)
 		}
-		return existingArticle.Content, existingArticle.ID, cachedOgImage, nil
+
+		if existingArticle != nil {
+			logger.Logger.InfoContext(ctx, "Article found in database", "url", urlStr, "id", existingArticle.ID)
+			// Try to retrieve cached og:image (lightweight query, no head_html)
+			cachedOgImage, ogErr := u.repo.FetchOgImageURLByArticleID(ctx, existingArticle.ID)
+			if ogErr != nil {
+				logger.Logger.WarnContext(ctx, "Failed to fetch og_image_url", "error", ogErr, "article_id", existingArticle.ID)
+			}
+			return existingArticle.Content, existingArticle.ID, cachedOgImage, nil
+		}
+	} else {
+		logger.Logger.InfoContext(ctx, "Force refresh: skipping DB cache", "url", urlStr)
 	}
 
 	// 2. Check if the domain is in the declined_domains table for this user
@@ -168,8 +177,13 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticle(ctx context.Context, targetUR
 
 	// 4-7. Fetch from Web, extract, save — deduplicated via singleflight
 	// Concurrent requests for the same URL share a single in-flight fetch.
-	logger.Logger.InfoContext(ctx, "Fetching article from Web", "url", urlStr)
-	resultIface, err, _ := u.fetchGroup.Do(urlStr, func() (interface{}, error) {
+	// Use separate singleflight key for force refresh to avoid sharing with normal fetches.
+	sfKey := urlStr
+	if forceRefresh {
+		sfKey = urlStr + ":refresh"
+	}
+	logger.Logger.InfoContext(ctx, "Fetching article from Web", "url", urlStr, "force_refresh", forceRefresh)
+	resultIface, err, _ := u.fetchGroup.Do(sfKey, func() (interface{}, error) {
 		fetchCtx, fetchCancel := context.WithTimeout(ctx, 25*time.Second)
 		defer fetchCancel()
 		contentPtr, fetchErr := u.articleFetcher.FetchArticleContents(fetchCtx, urlStr)
