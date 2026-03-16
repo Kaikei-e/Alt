@@ -221,6 +221,8 @@ message StreamSummarizeRequest {
   optional string content = 3;
   // Article title (optional)
   optional string title = 4;
+  // Force re-summarize, bypassing summary cache
+  optional bool force_refresh = 5;
 }
 
 // StreamSummarizeResponse contains a chunk of the summarization stream

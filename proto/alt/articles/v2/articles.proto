@@ -12,6 +12,8 @@ option go_package = "alt/gen/proto/alt/articles/v2;articlesv2";
 message FetchArticleContentRequest {
   // Article URL (required)
   string url = 1;
+  // Force re-fetch from web, bypassing DB cache
+  optional bool force_refresh = 2;
 }
 
 // FetchArticleContentResponse contains the fetched article content
