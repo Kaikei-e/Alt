@@ -622,18 +622,23 @@ func (h *Handler) StreamSummarize(
 			fmt.Errorf("content cannot be empty for summarization"))
 	}
 
-	// Check cache for existing summary
-	existingSummary, err := h.container.AltDBRepository.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
-	if err == nil && existingSummary != nil && existingSummary.Summary != "" {
-		h.logger.InfoContext(ctx, "returning cached summary", "article_id", resolvedArticleID)
-		// Return cached summary immediately
-		return stream.Send(&feedsv2.StreamSummarizeResponse{
-			Chunk:       "",
-			IsFinal:     true,
-			ArticleId:   resolvedArticleID,
-			IsCached:    true,
-			FullSummary: &existingSummary.Summary,
-		})
+	// Check cache for existing summary (skip when force refresh)
+	forceRefresh := req.Msg.ForceRefresh != nil && *req.Msg.ForceRefresh
+	if !forceRefresh {
+		existingSummary, err := h.container.AltDBRepository.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
+		if err == nil && existingSummary != nil && existingSummary.Summary != "" {
+			h.logger.InfoContext(ctx, "returning cached summary", "article_id", resolvedArticleID)
+			// Return cached summary immediately
+			return stream.Send(&feedsv2.StreamSummarizeResponse{
+				Chunk:       "",
+				IsFinal:     true,
+				ArticleId:   resolvedArticleID,
+				IsCached:    true,
+				FullSummary: &existingSummary.Summary,
+			})
+		}
+	} else {
+		h.logger.InfoContext(ctx, "force refresh: skipping summary cache", "article_id", resolvedArticleID)
 	}
 
 	h.logger.InfoContext(ctx, "starting stream summarization",

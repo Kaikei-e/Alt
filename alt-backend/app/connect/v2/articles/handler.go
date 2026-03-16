@@ -76,7 +76,8 @@ func (h *Handler) FetchArticleContent(
 	}
 
 	// Call usecase
-	content, articleID, ogImageURL, err := h.container.ArticleUsecase.FetchCompliantArticle(ctx, parsedURL, *user)
+	forceRefresh := req.Msg.ForceRefresh != nil && *req.Msg.ForceRefresh
+	content, articleID, ogImageURL, err := h.container.ArticleUsecase.FetchCompliantArticleWithRefresh(ctx, parsedURL, *user, forceRefresh)
 	if err != nil {
 		var complianceErr *domain.ComplianceError
 		if errors.As(err, &complianceErr) {

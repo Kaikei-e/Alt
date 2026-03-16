@@ -616,6 +616,13 @@ func (m *mockArticleUsecase) FetchCompliantArticle(ctx context.Context, articleU
 	return m.content, m.articleID, m.ogImageURL, nil
 }
 
+func (m *mockArticleUsecase) FetchCompliantArticleWithRefresh(ctx context.Context, articleURL *url.URL, userContext domain.UserContext, forceRefresh bool) (string, string, string, error) {
+	if m.err != nil {
+		return "", "", "", m.err
+	}
+	return m.content, m.articleID, m.ogImageURL, nil
+}
+
 func TestFetchArticleContent_RateLimitWaitFailed_ReturnsResourceExhausted(t *testing.T) {
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: rate limit wait failed for %q: %w", "https://zenn.dev/article", context.DeadlineExceeded),
