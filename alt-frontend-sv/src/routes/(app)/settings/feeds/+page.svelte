@@ -20,6 +20,7 @@ import type { FeedLink } from "$lib/schema/feedLink";
 import { feedUrlSchema } from "$lib/schema/validation/feedUrlSchema";
 import FeedHealthBadge from "$lib/components/feeds/FeedHealthBadge.svelte";
 import HealthSummaryBar from "$lib/components/feeds/HealthSummaryBar.svelte";
+import OpmlSection from "$lib/components/feeds/OpmlSection.svelte";
 
 const { isDesktop } = useViewport();
 
@@ -449,6 +450,15 @@ function handleBackToHome() {
 		</div>
 	</div>
 
+	<!-- OPML Import / Export -->
+	<div class="mt-6">
+		<OpmlSection
+			feedCount={sortedLinks.length}
+			{isDesktop}
+			onImportComplete={() => loadFeedLinks()}
+		/>
+	</div>
+
 	<!-- Delete Confirmation Dialog (Desktop) -->
 	<Dialog.Root open={isDeleteDialogOpen} onOpenChange={handleDialogOpenChange}>
 		<Dialog.Portal>
@@ -573,6 +583,15 @@ function handleBackToHome() {
 						<HealthSummaryBar feeds={sortedLinks} />
 					</section>
 				{/if}
+
+				<!-- OPML Import / Export (Mobile) -->
+				<section>
+					<OpmlSection
+						feedCount={sortedLinks.length}
+						{isDesktop}
+						onImportComplete={() => loadFeedLinks()}
+					/>
+				</section>
 
 				<!-- Add Feed Button / Form -->
 				<section class="space-y-3">

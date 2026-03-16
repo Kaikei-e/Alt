@@ -14,6 +14,7 @@ import type { FeedLink } from "$lib/schema/feedLink";
 import { feedUrlSchema } from "$lib/schema/validation/feedUrlSchema";
 import FeedHealthBadge from "$lib/components/feeds/FeedHealthBadge.svelte";
 import HealthSummaryBar from "$lib/components/feeds/HealthSummaryBar.svelte";
+import OpmlSection from "$lib/components/feeds/OpmlSection.svelte";
 
 interface PageData {
 	feedLinks: FeedLink[];
@@ -364,6 +365,15 @@ function handleDialogOpenChange(open: boolean) {
 			</div>
 		{/if}
 	</div>
+</div>
+
+<!-- OPML Import / Export -->
+<div class="mt-6">
+	<OpmlSection
+		feedCount={sortedLinks.length}
+		isDesktop={true}
+		onImportComplete={() => loadFeedLinks()}
+	/>
 </div>
 
 <!-- Delete Confirmation Dialog -->
