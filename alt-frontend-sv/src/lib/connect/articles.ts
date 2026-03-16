@@ -168,10 +168,11 @@ export async function fetchArticleContent(
 	transport: Transport,
 	url: string,
 	signal?: AbortSignal,
+	forceRefresh?: boolean,
 ): Promise<FetchArticleContentResult> {
 	const client = createArticleClient(transport);
 	const response = (await client.fetchArticleContent(
-		{ url },
+		{ url, forceRefresh },
 		{ timeoutMs: 120_000, ...(signal ? { signal } : {}) },
 	)) as FetchArticleContentResponse;
 

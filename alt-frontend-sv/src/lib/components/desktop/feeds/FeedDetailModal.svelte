@@ -1,6 +1,5 @@
 <script lang="ts">
 import {
-	Check,
 	ChevronLeft,
 	ChevronRight,
 	ExternalLink,
@@ -92,6 +91,7 @@ const articleButtonState = $derived.by(() => {
 const summaryButtonState = $derived.by(() => {
 	if (isSummarizing) return "loading" as const;
 	if (summaryError) return "error" as const;
+	if (summary) return "success" as const;
 	return "idle" as const;
 });
 
@@ -198,21 +198,33 @@ $effect(() => {
 	}
 });
 
-async function handleFetchFullArticle() {
+async function handleRefetchArticle() {
+	// Clear existing content and summary, then re-fetch with force refresh
+	articleContent = null;
+	articleID = null;
+	summary = null;
+	summaryError = null;
+	contentError = null;
+	await handleFetchFullArticle(true);
+}
+
+async function handleFetchFullArticle(forceRefresh = false) {
 	if (!feed?.normalizedUrl || isFetchingContent) return;
 
 	const targetFeedUrl = feed.normalizedUrl; // Capture for stale response validation
 
-	// Check prefetch cache first (using normalizedUrl for consistency)
-	const cachedContent = articlePrefetcher.getCachedContent(targetFeedUrl);
-	const cachedArticleId = articlePrefetcher.getCachedArticleId(targetFeedUrl);
+	// Check prefetch cache first (using normalizedUrl for consistency), skip when force refreshing
+	if (!forceRefresh) {
+		const cachedContent = articlePrefetcher.getCachedContent(targetFeedUrl);
+		const cachedArticleId = articlePrefetcher.getCachedArticleId(targetFeedUrl);
 
-	if (cachedContent) {
-		// Validate feed hasn't changed before applying cached content
-		if (feed.normalizedUrl !== targetFeedUrl) return;
-		articleContent = cachedContent;
-		articleID = cachedArticleId;
-		return;
+		if (cachedContent) {
+			// Validate feed hasn't changed before applying cached content
+			if (feed.normalizedUrl !== targetFeedUrl) return;
+			articleContent = cachedContent;
+			articleID = cachedArticleId;
+			return;
+		}
 	}
 
 	// Cancel previous content fetch request
@@ -228,6 +240,7 @@ async function handleFetchFullArticle() {
 		// Use normalizedUrl for API call (consistent with prefetcher)
 		const response = await getFeedContentOnTheFlyClient(targetFeedUrl, {
 			signal: contentAbortController.signal,
+			forceRefresh,
 		});
 
 		// Defensive validation: discard stale response if feed changed
@@ -289,7 +302,7 @@ async function handleFetchFullArticle() {
 	}
 }
 
-async function handleSummarize() {
+async function handleSummarize(forceRefresh = false) {
 	if (!feed?.link || isSummarizing) return;
 
 	// Cancel previous request
@@ -309,6 +322,7 @@ async function handleSummarize() {
 				feedUrl: feed.link,
 				articleId: articleID || undefined,
 				title: feed.title,
+				forceRefresh,
 			},
 			(chunk: string) => {
 				summary = (summary || "") + chunk;
@@ -510,8 +524,8 @@ async function handleSummarize() {
 					<div class="flex gap-3 flex-1 min-w-0">
 						<!-- Full Article Button -->
 						<Button
-							onclick={handleFetchFullArticle}
-							disabled={articleButtonState === 'loading' || articleButtonState === 'success'}
+							onclick={articleButtonState === 'success' ? handleRefetchArticle : () => handleFetchFullArticle()}
+							disabled={articleButtonState === 'loading'}
 							class="flex items-center gap-2"
 							variant={articleButtonState === 'error' ? 'destructive' : 'outline'}
 						>
@@ -519,8 +533,8 @@ async function handleSummarize() {
 								<Loader2 class="h-4 w-4 animate-spin" />
 								<span>Loading...</span>
 							{:else if articleButtonState === 'success'}
-								<Check class="h-4 w-4" />
-								<span>Article Loaded</span>
+								<RefreshCw class="h-4 w-4" />
+								<span>Re-fetch Article</span>
 							{:else if articleButtonState === 'error'}
 								<RefreshCw class="h-4 w-4" />
 								<span>Try again</span>
@@ -532,8 +546,8 @@ async function handleSummarize() {
 
 						<!-- Summarize Button -->
 						<Button
-							onclick={handleSummarize}
-							disabled={summaryButtonState === 'loading' || (!articleContent && summaryButtonState !== 'error')}
+							onclick={() => handleSummarize(summaryButtonState === 'success')}
+							disabled={summaryButtonState === 'loading' || (!articleContent && summaryButtonState !== 'error' && summaryButtonState !== 'success')}
 							variant={summaryButtonState === 'error' ? 'destructive' : undefined}
 							class={summaryButtonState === 'error' ? 'flex items-center gap-2' : 'flex items-center gap-2 bg-[#2f4f4f] text-white hover:bg-[#2f4f4f]/90 hover:text-white disabled:opacity-50'}
 						>
@@ -543,6 +557,9 @@ async function handleSummarize() {
 							{:else if summaryButtonState === 'error'}
 								<RefreshCw class="h-4 w-4" />
 								<span>Try again</span>
+							{:else if summaryButtonState === 'success'}
+								<RefreshCw class="h-4 w-4" />
+								<span>Re-summarize</span>
 							{:else}
 								<Sparkles class="h-4 w-4" />
 								<span>Summarize By AI</span>

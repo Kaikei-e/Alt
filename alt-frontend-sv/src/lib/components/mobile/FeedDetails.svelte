@@ -77,6 +77,7 @@ let summaryRetryCount = $state(0);
 const summaryButtonState = $derived.by(() => {
 	if (isSummarizing) return "loading" as const;
 	if (summaryError && !summary) return "error" as const;
+	if (summary) return "success" as const;
 	return "idle" as const;
 });
 
@@ -261,7 +262,7 @@ const handleShowDetails = async () => {
 	}
 };
 
-async function handleSummarize() {
+async function handleSummarize(forceRefresh = false) {
 	if (!feedURL || isSummarizing) return;
 
 	if (abortController) {
@@ -280,6 +281,7 @@ async function handleSummarize() {
 				feedUrl: feedURL,
 				articleId: articleSummary?.matched_articles?.[0]?.source_id,
 				title: feedTitle,
+				forceRefresh,
 			},
 			(chunk) => {
 				summary = (summary || "") + chunk;
@@ -523,7 +525,7 @@ async function handleSummarize() {
 				class={summaryButtonState === 'error'
 					? 'rounded-full font-bold min-w-[120px] min-h-[44px] active:scale-95 transition-all duration-200'
 					: 'rounded-full font-bold min-w-[120px] min-h-[44px] bg-alt-primary text-white hover:bg-alt-secondary active:scale-95 transition-all duration-200'}
-				onclick={handleSummarize}
+				onclick={() => handleSummarize(summaryButtonState === 'success')}
 				disabled={isSummarizing}
 			>
 				{#if summaryButtonState === 'loading'}
@@ -532,6 +534,9 @@ async function handleSummarize() {
 				{:else if summaryButtonState === 'error'}
 					<RefreshCw size={14} class="mr-1.5" />
 					Try again
+				{:else if summaryButtonState === 'success'}
+					<RefreshCw size={14} class="mr-1.5" />
+					Re-summarize
 				{:else}
 					<Sparkles size={14} class="mr-1.5" />
 					Summary

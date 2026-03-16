@@ -33,6 +33,8 @@ export interface StreamSummarizeAdapterOptions {
 	content?: string;
 	/** Article title (optional) */
 	title?: string;
+	/** Force re-summarize, bypassing summary cache */
+	forceRefresh?: boolean;
 }
 
 /**
@@ -129,6 +131,7 @@ export async function streamSummarizeWithRenderer(
 				articleId: options.articleId,
 				content: options.content,
 				title: options.title,
+				forceRefresh: options.forceRefresh,
 			},
 			processor.processChunk,
 			(result: StreamSummarizeResult) => {
@@ -172,6 +175,7 @@ export function streamSummarizeWithAbortAdapter(
 			articleId: options.articleId,
 			content: options.content,
 			title: options.title,
+			forceRefresh: options.forceRefresh,
 		},
 		processor.processChunk,
 		(result: StreamSummarizeResult) => {

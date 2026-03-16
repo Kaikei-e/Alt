@@ -123,6 +123,8 @@ export interface StreamSummarizeOptions {
 	content?: string;
 	/** Article title (optional) */
 	title?: string;
+	/** Force re-summarize, bypassing summary cache */
+	forceRefresh?: boolean;
 	/**
 	 * Enable automatic retry on 409 Conflict errors.
 	 * When another request is processing the same article, this will wait and retry.
@@ -253,6 +255,7 @@ export async function streamSummarize(
 				articleId: options.articleId,
 				content: options.content,
 				title: options.title,
+				forceRefresh: options.forceRefresh,
 			});
 
 			for await (const rawResponse of stream) {
@@ -346,6 +349,7 @@ export function streamSummarizeWithAbort(
 					articleId: options.articleId,
 					content: options.content,
 					title: options.title,
+					forceRefresh: options.forceRefresh,
 				},
 				{ signal: abortController.signal },
 			);

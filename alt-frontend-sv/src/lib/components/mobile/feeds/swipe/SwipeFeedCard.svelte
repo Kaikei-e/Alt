@@ -207,9 +207,9 @@ $effect(() => {
 	};
 });
 
-async function fetchArticleContent(): Promise<boolean> {
+async function fetchArticleContent(forceRefresh = false): Promise<boolean> {
 	try {
-		const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
+		const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl, { forceRefresh });
 		if (res.content) {
 			fullContent = res.content;
 			if (res.article_id && onArticleIdResolved) {
@@ -245,6 +245,20 @@ async function fetchArticleContent(): Promise<boolean> {
 	}
 }
 
+async function handleRefetchContent() {
+	// Force re-fetch: clear content, summary, and fetch again
+	fullContent = null;
+	aiSummary = null;
+	summaryError = null;
+	contentError = null;
+	isLoadingContent = true;
+	const success = await fetchArticleContent(true);
+	isLoadingContent = false;
+	if (success) {
+		isContentExpanded = true;
+	}
+}
+
 async function handleToggleContent() {
 	// If there's an error, retry the fetch (don't toggle)
 	if (contentError && !isLoadingContent) {
@@ -275,7 +289,7 @@ async function handleToggleContent() {
 	isContentExpanded = !isContentExpanded;
 }
 
-function handleGenerateAISummary() {
+function handleGenerateAISummary(forceRefresh = false) {
 	// If there's a summary error (and no partial data), allow retry
 	if (summaryError && !aiSummary) {
 		summaryError = null;
@@ -296,6 +310,7 @@ function handleGenerateAISummary() {
 		{
 			feedUrl: feed.link,
 			title: feed.title,
+			forceRefresh,
 		},
 		(chunk) => {
 			aiSummary = (aiSummary || "") + chunk;
@@ -601,7 +616,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     >
       <div class="flex gap-2 w-full justify-between">
         <Button
-          onclick={handleToggleContent}
+          onclick={isContentExpanded ? handleRefetchContent : handleToggleContent}
           size="sm"
           class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg min-h-[44px] {articleButtonState === 'error'
             ? 'bg-red-500/80 shadow-red-500/50'
@@ -616,9 +631,12 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
           {:else if articleButtonState === 'error'}
             <RefreshCw class="mr-2 h-4 w-4" />
             Try again
+          {:else if isContentExpanded}
+            <RefreshCw class="mr-2 h-4 w-4" />
+            Re-fetch
           {:else}
             <BookOpen class="mr-2 h-4 w-4" />
-            {isContentExpanded ? "Hide" : "Article"}
+            Article
           {/if}
         </Button>
         <Button
@@ -639,7 +657,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
           {/if}
         </Button>
         <Button
-          onclick={handleGenerateAISummary}
+          onclick={() => handleGenerateAISummary(!!aiSummary)}
           size="sm"
           class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg min-h-[44px] {summaryButtonState === 'error'
             ? 'bg-red-500/80 shadow-red-500/50'
@@ -654,6 +672,9 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
           {:else if summaryButtonState === 'error'}
             <RefreshCw class="mr-2 h-4 w-4" />
             Try again
+          {:else if aiSummary}
+            <RefreshCw class="mr-2 h-4 w-4" />
+            Re-summarize
           {:else}
             <Sparkles class="mr-2 h-4 w-4" />
             Summary
