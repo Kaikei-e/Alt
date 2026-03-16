@@ -55,4 +55,6 @@ func RegisterFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg
 	rss.GET("/list", RestHandleListRSSFeedLinks(container))
 	rss.GET("/random", RestHandleFetchRandomSubscription(container))
 	rss.DELETE("/:id", RestHandleDeleteRSSFeedLink(container))
+	rss.GET("/export/opml", RestHandleExportOPML(container))
+	rss.POST("/import/opml", RestHandleImportOPML(container))
 }

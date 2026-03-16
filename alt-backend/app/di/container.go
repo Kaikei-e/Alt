@@ -50,6 +50,7 @@ import (
 	"alt/gateway/recap_articles_gateway"
 	"alt/gateway/recap_gateway"
 	"alt/gateway/register_favorite_feed_gateway"
+	"alt/gateway/opml_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/robots_txt_gateway"
 	"alt/gateway/scraping_domain_gateway"
@@ -101,6 +102,7 @@ import (
 	"alt/usecase/search_article_usecase"
 	"alt/usecase/search_feed_usecase"
 	"alt/usecase/stream_article_tags_usecase"
+	"alt/usecase/opml_usecase"
 	"alt/usecase/subscription_usecase"
 	"alt/utils"
 	"alt/utils/batch_article_fetcher"
@@ -183,6 +185,10 @@ type ApplicationComponents struct {
 	FetchArticleSummaryUsecase *fetch_article_summary_usecase.FetchArticleSummaryUsecase
 	StreamArticleTagsUsecase   *stream_article_tags_usecase.StreamArticleTagsUsecase
 	FetchTagCloudUsecase       *fetch_tag_cloud_usecase.FetchTagCloudUsecase
+
+	// OPML
+	ExportOPMLUsecase *opml_usecase.ExportOPMLUsecase
+	ImportOPMLUsecase *opml_usecase.ImportOPMLUsecase
 
 	// Image Proxy
 	ImageProxyUsecase *image_proxy_usecase.ImageProxyUsecase
@@ -442,6 +448,12 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	subscribeUsecase := subscription_usecase.NewSubscribeUsecase(subscriptionGatewayImpl)
 	unsubscribeUsecase := subscription_usecase.NewUnsubscribeUsecase(subscriptionGatewayImpl)
 
+	// OPML components
+	opmlExportGateway := opml_gateway.NewExportGateway(pool)
+	opmlImportGateway := opml_gateway.NewImportGateway(pool)
+	exportOPMLUsecase := opml_usecase.NewExportOPMLUsecase(opmlExportGateway)
+	importOPMLUsecase := opml_usecase.NewImportOPMLUsecase(opmlImportGateway)
+
 	// Wire auto-subscribe: Usecase delegates subscription to SubscriptionPort
 	registerFeedsUsecase.SetSubscriptionPort(subscriptionGatewayImpl)
 	// Wire event publisher: Usecase publishes ArticleCreated events (fire-and-forget)
@@ -518,6 +530,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		FetchArticleSummaryUsecase: fetchArticleSummaryUsecase,
 		StreamArticleTagsUsecase:   streamArticleTagsUsecase,
 		FetchTagCloudUsecase:       fetchTagCloudUsecase,
+
+		// OPML
+		ExportOPMLUsecase: exportOPMLUsecase,
+		ImportOPMLUsecase: importOPMLUsecase,
 
 		// Image Proxy
 		ImageProxyUsecase: imageProxyUsecaseInstance,
