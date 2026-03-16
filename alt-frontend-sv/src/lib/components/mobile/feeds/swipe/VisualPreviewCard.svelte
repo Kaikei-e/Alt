@@ -520,7 +520,7 @@ function handleImgError() {
 
     <!-- Footer -->
     <div
-      class="relative z-[2] bg-[rgba(0,0,0,0.25)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 py-3 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
+      class="relative z-[2] bg-[rgba(0,0,0,0.25)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
       data-testid="action-footer"
     >
       <div class="flex gap-2 w-full justify-between">

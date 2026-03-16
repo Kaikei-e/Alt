@@ -209,7 +209,9 @@ $effect(() => {
 
 async function fetchArticleContent(forceRefresh = false): Promise<boolean> {
 	try {
-		const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl, { forceRefresh });
+		const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl, {
+			forceRefresh,
+		});
 		if (res.content) {
 			fullContent = res.content;
 			if (res.article_id && onArticleIdResolved) {
@@ -611,14 +613,14 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
     <!-- Footer -->
     <div
-      class="relative z-[2] bg-[rgba(0,0,0,0.25)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 py-3 rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
+      class="relative z-[2] bg-[rgba(0,0,0,0.25)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
       data-testid="action-footer"
     >
       <div class="flex gap-2 w-full justify-between">
         <Button
           onclick={isContentExpanded ? handleRefetchContent : handleToggleContent}
           size="sm"
-          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg min-h-[44px] {articleButtonState === 'error'
+          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {articleButtonState === 'error'
             ? 'bg-red-500/80 shadow-red-500/50'
             : isContentExpanded
               ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
@@ -642,7 +644,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
         <Button
           onclick={handleFavorite}
           size="sm"
-          class="rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg min-h-[44px] {isFavorited
+          class="rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isFavorited
             ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
             : favoriteError
               ? 'bg-red-500/80 shadow-red-500/50'
@@ -659,7 +661,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
         <Button
           onclick={() => handleGenerateAISummary(!!aiSummary)}
           size="sm"
-          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg min-h-[44px] {summaryButtonState === 'error'
+          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {summaryButtonState === 'error'
             ? 'bg-red-500/80 shadow-red-500/50'
             : isAISummaryRequested
               ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
