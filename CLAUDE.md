@@ -9,7 +9,7 @@ Monorepo with 20+ microservices. Docker Compose-first orchestration, TDD-first d
 | Go 1.24+ | alt-backend, auth-hub, pre-processor, search-indexer, mq-hub, altctl | `go test ./...` | `go build ./...` |
 | Python 3.11+ | news-creator, tag-generator, metrics, recap-subworker, recap-evaluator | `uv run pytest` | — |
 | Rust 1.87+ | rask-log-aggregator, rask-log-forwarder, recap-worker | `cargo test` | `cargo build` |
-| TypeScript | alt-frontend, alt-frontend-sv | `pnpm test` / `bun test` | `pnpm build` |
+| TypeScript | alt-frontend-sv | `bun test` | `bun run build` |
 | Deno 2.x | auth-token-manager, alt-perf | `deno test` | — |
 
 Each service has its own `CLAUDE.md` with service-specific guidance. See `docs/services/MICROSERVICES.md` for the full reference.
@@ -36,8 +36,9 @@ Profiles: `db` | `auth` | `core` | `workers` | `ai` | `rag` | `recap` | `logging
 ### Verifying changes
 
 ```bash
-curl http://localhost:3000/api/health   # Frontend
+curl http://localhost/health             # Frontend (via nginx)
 curl http://localhost:9000/v1/health    # Backend
+curl http://localhost:9250/health       # BFF
 curl http://localhost:7700/health       # Meilisearch
 ```
 
