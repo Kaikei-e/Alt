@@ -16,12 +16,10 @@ class HealthMonitor:
     def __init__(
         self,
         config: "TagGeneratorConfig",
-        database_manager: Any,
         article_fetcher: Any,
     ):
         """Initialize health monitor with dependencies."""
         self.config = config
-        self.database_manager = database_manager
         self.article_fetcher = article_fetcher
 
         # Health monitoring state
@@ -52,16 +50,15 @@ class HealthMonitor:
         # Warning for too many empty cycles
         if self.consecutive_empty_cycles >= self.config.max_consecutive_empty_cycles:
             logger.warning(
-                f"⚠️  SERVICE HEALTH WARNING: {self.consecutive_empty_cycles} consecutive empty cycles detected!"
+                f"SERVICE HEALTH WARNING: {self.consecutive_empty_cycles} consecutive empty cycles detected!"
             )
-            logger.warning("This may indicate cursor poisoning, database issues, or no untagged articles available")
-            logger.warning("Consider investigating database state or restarting service if issues persist")
+            logger.warning("This may indicate cursor poisoning, API issues, or no untagged articles available")
+            logger.warning("Consider investigating service state or restarting if issues persist")
 
-            # Try to get untagged article count for diagnosis
+            # Try to get untagged article count for diagnosis via API
             try:
-                with self.database_manager.get_connection() as conn:
-                    untagged_count = self.article_fetcher.count_untagged_articles(conn)
-                    logger.info(f"Diagnostic: {untagged_count} untagged articles found in database")
+                untagged_count = self.article_fetcher.count_untagged_articles(None)
+                logger.info(f"Diagnostic: {untagged_count} untagged articles found via API")
             except Exception as e:
                 logger.error(f"Failed to get untagged article count for diagnostics: {e}")
 

@@ -3,14 +3,13 @@
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from psycopg2.extensions import connection as Connection
 
 logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     from tag_extractor.extract import TagExtractor
     from tag_generator.cascade import CascadeController
-    from tag_inserter.upsert_tags import TagInserter
+    from tag_generator.ports import TagInserterPort
 
 
 class ArticleProcessor:
@@ -19,7 +18,7 @@ class ArticleProcessor:
     def __init__(
         self,
         tag_extractor: "TagExtractor",
-        tag_inserter: "TagInserter",
+        tag_inserter: "TagInserterPort",
         cascade_controller: "CascadeController",
     ):
         """Initialize article processor with dependencies."""
@@ -27,56 +26,12 @@ class ArticleProcessor:
         self.tag_inserter = tag_inserter
         self.cascade_controller = cascade_controller
 
-    def get_feed_id_from_url(self, conn: Connection, article_url: str) -> str | None:
-        """
-        Get feed_id from article URL by matching domain with feed.link domain.
-
-        Article URLs differ from feed URLs (e.g., article at https://example.com/articles/123
-        may belong to feed at https://example.com/feed.xml), so we match by domain.
-
-        Args:
-            conn: Database connection
-            article_url: Article URL string
-
-        Returns:
-            Feed ID as string if found, None otherwise
-        """
-        try:
-            from urllib.parse import urlparse
-
-            parsed = urlparse(article_url)
-            domain = parsed.netloc
-
-            if not domain:
-                logger.warning("Could not parse domain from article URL", url=article_url)
-                return None
-
-            with conn.cursor() as cursor:
-                # Match by domain (netloc) instead of exact URL
-                cursor.execute(
-                    """
-                    SELECT id::text
-                    FROM feeds
-                    WHERE link LIKE %s
-                    ORDER BY created_at DESC, id DESC
-                    LIMIT 1
-                    """,
-                    (f"%{domain}%",),
-                )
-                result = cursor.fetchone()
-                if result:
-                    return result[0]
-                return None
-        except Exception as e:
-            logger.warning("Failed to get feed_id from URL", url=article_url, error=str(e))
-            return None
-
-    def process_single_article(self, conn: Connection, article: dict[str, Any]) -> bool:
+    def process_single_article(self, conn: Any, article: dict[str, Any]) -> bool:
         """
         Process a single article for tag extraction and insertion.
 
         Args:
-            conn: Database connection
+            conn: Connection (unused in API mode, kept for interface compatibility)
             article: Article dictionary with id, title, content, created_at, feed_id, url
 
         Returns:
@@ -86,20 +41,12 @@ class ArticleProcessor:
         title = article["title"]
         content = article["content"]
         feed_id = article.get("feed_id")
-        article_url = article.get("url")
 
-        # If feed_id is missing, try to get it from article URL
-        if not feed_id and article_url:
-            feed_id = self.get_feed_id_from_url(conn, article_url)
-            if feed_id:
-                logger.info("Resolved feed_id from article URL", article_id=article_id, feed_id=feed_id)
-
-        # Skip if feed_id is still missing
+        # Skip if feed_id is missing
         if not feed_id:
             logger.warning(
-                "Skipping article: feed_id is missing and could not be resolved from URL",
+                "Skipping article: feed_id is missing",
                 article_id=article_id,
-                url=article_url,
             )
             return False
 

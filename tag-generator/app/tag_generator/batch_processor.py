@@ -4,7 +4,6 @@ import gc
 from typing import TYPE_CHECKING, Any, cast
 
 import structlog
-from psycopg2.extensions import connection as Connection
 
 from tag_generator.exceptions import BatchProcessingError, TagExtractionError
 
@@ -47,47 +46,12 @@ class BatchProcessor:
         if self.config.enable_gc_collection:
             gc.collect()
 
-    def _fetch_untagged_articles_fallback(self, conn: Connection) -> list[dict[str, Any]]:
-        """
-        Fallback method to fetch untagged articles when cursor pagination fails.
-
-        Args:
-            conn: Database connection
-
-        Returns:
-            List of untagged articles
-        """
-        try:
-            # Use the ArticleFetcher's method for fetching untagged articles
-            untagged_articles = self.article_fetcher.fetch_articles_by_status(
-                conn, has_tags=False, limit=self.config.batch_limit
-            )
-
-            logger.info("Fallback method retrieved untagged articles", article_count=len(untagged_articles))
-            return untagged_articles
-
-        except Exception as e:
-            logger.error("Fallback method failed to fetch untagged articles", error=str(e))
-            return []
-
-    def _has_existing_tags(self, conn: Connection) -> bool:
-        """Check whether any tags already exist in the database."""
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT EXISTS (SELECT 1 FROM article_tags)")
-                result = cursor.fetchone()
-                return bool(result and result[0])
-        except Exception as exc:
-            logger.warning("Failed to check existing tags", error=str(exc))
-            return False
-
-    def process_articles_as_batch(self, conn: Connection, articles: list[dict[str, Any]]) -> dict[str, Any]:
+    def process_articles_as_batch(self, conn: Any, articles: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Process multiple articles as a single batch transaction.
-        Note: Transaction management is handled by the caller.
 
         Args:
-            conn: Database connection (should already be in transaction mode)
+            conn: Database connection (unused in API mode, kept for interface compatibility)
             articles: List of articles to process
 
         Returns:
@@ -154,12 +118,11 @@ class BatchProcessor:
             refine_candidates=cascade_refine_requests,
         )
 
-        # Perform batch upsert of all tags in the current transaction
+        # Perform batch upsert of all tags
         if article_tags_batch:
             try:
-                logger.info("Upserting tags in current transaction", article_count=len(article_tags_batch))
+                logger.info("Upserting tags via API", article_count=len(article_tags_batch))
 
-                # Use the batch upsert method (transaction managed by caller)
                 result = self.tag_inserter.batch_upsert_tags_no_commit(conn, article_tags_batch)
 
                 batch_stats["successful"] = result.get("processed_articles", 0)
@@ -170,7 +133,6 @@ class BatchProcessor:
                     logger.info("Successfully batch processed articles", successful=batch_stats["successful"])
                 else:
                     logger.warning("Batch processing completed with failures", failed=batch_stats["failed"])
-                    # If batch processing failed, raise exception to trigger rollback
                     if batch_stats["failed"] > 0:
                         raise BatchProcessingError(f"Batch processing failed for {batch_stats['failed']} articles")
 
@@ -178,7 +140,6 @@ class BatchProcessor:
                 logger.error("Batch upsert failed", error=str(e))
                 batch_stats["failed"] = len(articles)
                 batch_stats["total_processed"] = len(articles)
-                # Re-raise to trigger transaction rollback at higher level
                 raise
         else:
             logger.warning("No articles with tags to process")
@@ -187,13 +148,13 @@ class BatchProcessor:
         return batch_stats
 
     def process_article_batch_forward(
-        self, conn: Connection, cursor_manager: "CursorManager", _from_backfill: bool = False
+        self, conn: Any, cursor_manager: "CursorManager", _from_backfill: bool = False
     ) -> dict[str, Any]:
         """Process articles newer than the current forward cursor.
         If no new articles are found and backfill is not completed, fall back to backfill processing.
 
         Args:
-            conn: Database connection
+            conn: Connection (unused in API mode, kept for interface compatibility)
             cursor_manager: Cursor manager for position tracking
             _from_backfill: Internal flag to prevent recursive call back to backfill
         """
@@ -222,57 +183,34 @@ class BatchProcessor:
                 logger.debug("Called from backfill, skipping backfill fallback to prevent recursion")
             return batch_stats
 
-        try:
-            if conn is not None and conn.autocommit:
-                conn.autocommit = False
+        batch_stats = self.process_articles_as_batch(conn, articles)
 
-            batch_stats = self.process_articles_as_batch(conn, articles)
+        last_article = articles[-1]
+        latest_created_at = (
+            last_article["created_at"]
+            if isinstance(last_article["created_at"], str)
+            else last_article["created_at"].isoformat()
+        )
 
-            last_article = articles[-1]
-            latest_created_at = (
-                last_article["created_at"]
-                if isinstance(last_article["created_at"], str)
-                else last_article["created_at"].isoformat()
-            )
+        batch_stats["last_created_at"] = latest_created_at
+        batch_stats["last_id"] = last_article["id"]
+        batch_stats["has_more_pending"] = len(articles) >= self.config.batch_limit
 
-            batch_stats["last_created_at"] = latest_created_at
-            batch_stats["last_id"] = last_article["id"]
-            batch_stats["has_more_pending"] = len(articles) >= self.config.batch_limit
-
-            if cast(int, batch_stats.get("successful", 0)) > 0:
-                cursor_manager.update_forward_cursor_position(latest_created_at, last_article["id"])
-                cursor_manager.update_cursor_position(latest_created_at, last_article["id"])
-                if conn is not None:
-                    conn.commit()
-            else:
-                if conn is not None:
-                    conn.rollback()
-                logger.warning("Transaction rolled back due to forward batch failure")
-        except Exception as exc:
-            logger.error("Error during forward batch processing", error=str(exc))
-            try:
-                if conn is not None:
-                    conn.rollback()
-            except Exception as rollback_error:
-                logger.error("Failed to rollback forward transaction", error=str(rollback_error))
-            raise
-        finally:
-            try:
-                if conn is not None and not conn.autocommit:
-                    conn.autocommit = True
-            except Exception as exc:
-                logger.warning("Failed to restore autocommit mode after forward batch", error=str(exc))
+        if cast(int, batch_stats.get("successful", 0)) > 0:
+            cursor_manager.update_forward_cursor_position(latest_created_at, last_article["id"])
+            cursor_manager.update_cursor_position(latest_created_at, last_article["id"])
+        else:
+            logger.warning("Forward batch had no successful articles")
 
         return batch_stats
 
-    def process_article_batch_backfill(self, conn: Connection, cursor_manager: "CursorManager") -> dict[str, Any]:
+    def process_article_batch_backfill(self, conn: Any, cursor_manager: "CursorManager") -> dict[str, Any]:
         """
         Process a batch of articles for tag generation using true batch processing.
         In hybrid mode, checks for new articles first, then processes backfill.
-        Includes fallback mechanism for cursor pagination failures.
 
         Args:
-            conn: Database connection
+            conn: Connection (unused in API mode, kept for interface compatibility)
             cursor_manager: Cursor manager for position tracking
 
         Returns:
@@ -323,9 +261,8 @@ class BatchProcessor:
         except Exception as exc:
             logger.warning("Could not count untagged articles before backfill", error=str(exc))
 
-        # Collect articles for batch processing (keep autocommit for fetching)
+        # Collect articles for batch processing
         articles_to_process: list[dict[str, Any]] = []
-        fetch_attempts = 0
 
         while len(articles_to_process) < int(self.config.batch_limit):
             try:
@@ -333,58 +270,20 @@ class BatchProcessor:
                 articles = self.article_fetcher.fetch_articles(conn, last_created_at, last_id)
 
                 if not articles:
-                    fetch_attempts += 1
                     self.consecutive_empty_backfill_fetches += 1
-                    logger.info("No articles found with cursor pagination", attempt=fetch_attempts)
+                    logger.info("No articles found with cursor pagination")
 
                     # Check if backfill should be considered complete
                     if self.consecutive_empty_backfill_fetches >= self.max_empty_backfill_fetches:
                         if not self.backfill_completed:
                             logger.info("Backfill completed: no more articles found in consecutive fetches")
                             self.backfill_completed = True
-                        # Try fallback approach when cursor pagination fails to find articles
-                        # Note: fetch_attempts is local and resets each call, so we use
-                        # consecutive_empty_backfill_fetches (class-level) to track across calls
-                        if len(articles_to_process) == 0:
-                            logger.warning(
-                                "Cursor pagination consistently failing, switching to untagged article fallback"
-                            )
-                            fallback_articles = self._fetch_untagged_articles_fallback(conn)
-                            if fallback_articles:
-                                articles_to_process.extend(fallback_articles[: self.config.batch_limit])
-                                logger.info(
-                                    "Fallback method found untagged articles",
-                                    article_count=len(fallback_articles),
-                                )
-                                # Update cursor based on the last article processed
-                                if articles_to_process:
-                                    last_article = articles_to_process[-1]
-                                    if isinstance(last_article["created_at"], str):
-                                        last_created_at = last_article["created_at"]
-                                    else:
-                                        last_created_at = last_article["created_at"].isoformat()
-                                    last_id = last_article["id"]
-                                # Reset backfill completion since we found articles
-                                self.backfill_completed = False
-                                self.consecutive_empty_backfill_fetches = 0
-                                break
-                            else:
-                                logger.info("No untagged articles found via fallback method")
-                                break
-                        else:
-                            logger.info(
-                                "No more articles found",
-                                collected=len(articles_to_process),
-                            )
-                            break
-                    else:
-                        logger.info(
-                            f"No more articles found. Collected {len(articles_to_process)} articles for batch processing"
-                        )
-                        break
+                    logger.info(
+                        f"No more articles found. Collected {len(articles_to_process)} articles for batch processing"
+                    )
+                    break
 
                 logger.debug("Fetched articles", article_count=len(articles))
-                fetch_attempts = 0  # Reset counter on successful fetch
                 self.consecutive_empty_backfill_fetches = 0  # Reset backfill completion counter
 
                 # Add articles to batch, respecting the batch limit
@@ -408,96 +307,53 @@ class BatchProcessor:
 
             except Exception as e:
                 logger.error("Error during article collection", error=str(e))
-                # Try fallback method on exception
-                if len(articles_to_process) == 0:
-                    logger.warning("Attempting fallback method due to fetch error")
-                    try:
-                        fallback_articles = self._fetch_untagged_articles_fallback(conn)
-                        if fallback_articles:
-                            articles_to_process.extend(fallback_articles[: self.config.batch_limit])
-                            logger.info("Fallback method recovered articles", article_count=len(fallback_articles))
-                    except Exception as fallback_error:
-                        logger.error("Fallback method also failed", error=str(fallback_error))
                 break
 
-        # Start explicit transaction for batch processing only
-        try:
-            if conn is not None and conn.autocommit:
-                conn.autocommit = False
+        if articles_to_process:
+            logger.info("Processing batch", article_count=len(articles_to_process))
+            batch_stats = self.process_articles_as_batch(conn, articles_to_process)
+            # Ensure string format for batch stats
+            batch_stats["last_created_at"] = last_created_at
+            batch_stats["last_id"] = last_id
+            batch_stats["has_more_pending"] = len(articles_to_process) >= self.config.batch_limit
 
-            if articles_to_process:
-                logger.info("Processing batch", article_count=len(articles_to_process))
-                batch_stats = self.process_articles_as_batch(conn, articles_to_process)
-                # Ensure string format for batch stats
-                batch_stats["last_created_at"] = last_created_at
-                batch_stats["last_id"] = last_id
-                batch_stats["has_more_pending"] = len(articles_to_process) >= self.config.batch_limit
+            total_processed = cast(int, batch_stats.get("total_processed", 0))
+            failed = cast(int, batch_stats.get("failed", 0))
+            successful = cast(int, batch_stats.get("successful", 0))
 
-                # Commit the transaction if articles were processed (including skipped)
-                # Only rollback on actual errors (failed > 0)
-                total_processed = cast(int, batch_stats.get("total_processed", 0))
-                failed = cast(int, batch_stats.get("failed", 0))
-                successful = cast(int, batch_stats.get("successful", 0))
-
-                if total_processed > 0 and failed == 0:
-                    # Update cursor even if all articles were skipped (no tags extracted)
-                    cursor_manager.update_cursor_position(last_created_at, last_id)
-                    newest_article = articles_to_process[0]
-                    newest_created_at = (
-                        newest_article["created_at"]
-                        if isinstance(newest_article["created_at"], str)
-                        else newest_article["created_at"].isoformat()
-                    )
-                    cursor_manager.update_forward_cursor_position(newest_created_at, newest_article["id"])
-                    logger.info(
-                        "Cursor advanced",
-                        total_processed=total_processed,
-                        successful=successful,
-                        position=last_created_at,
-                        last_id=last_id,
-                    )
-                    if conn is not None:
-                        conn.commit()
-                elif failed > 0:
-                    if conn is not None:
-                        conn.rollback()
-                    logger.warning("Transaction rolled back due to processing errors", failed=failed)
-                else:
-                    if conn is not None:
-                        conn.commit()  # No articles processed, commit cleanly
-            else:
-                # No articles to process, still commit to end transaction cleanly
-                if conn is not None:
-                    conn.commit()
-                # If we processed new articles in hybrid mode, return those stats
-                if new_articles_processed > 0:
-                    batch_stats["total_processed"] = new_articles_processed
-                    batch_stats["successful"] = new_articles_processed
-                    batch_stats["failed"] = 0
-                    return batch_stats
-
-        except Exception as e:
-            logger.error("Error during batch processing", error=str(e))
-            try:
-                if conn is not None:
-                    conn.rollback()
-            except Exception as rollback_error:
-                logger.error("Failed to rollback transaction", error=str(rollback_error))
-            raise
-        finally:
-            # Reset autocommit mode
-            try:
-                if conn is not None and not conn.autocommit:
-                    conn.autocommit = True
-            except Exception as e:
-                logger.warning("Failed to restore autocommit mode", error=str(e))
+            if total_processed > 0 and failed == 0:
+                # Update cursor even if all articles were skipped (no tags extracted)
+                cursor_manager.update_cursor_position(last_created_at, last_id)
+                newest_article = articles_to_process[0]
+                newest_created_at = (
+                    newest_article["created_at"]
+                    if isinstance(newest_article["created_at"], str)
+                    else newest_article["created_at"].isoformat()
+                )
+                cursor_manager.update_forward_cursor_position(newest_created_at, newest_article["id"])
+                logger.info(
+                    "Cursor advanced",
+                    total_processed=total_processed,
+                    successful=successful,
+                    position=last_created_at,
+                    last_id=last_id,
+                )
+            elif failed > 0:
+                logger.warning("Batch had processing errors", failed=failed)
+        else:
+            # No articles to process
+            if new_articles_processed > 0:
+                batch_stats["total_processed"] = new_articles_processed
+                batch_stats["successful"] = new_articles_processed
+                batch_stats["failed"] = 0
+                return batch_stats
 
         return batch_stats
 
-    def process_article_batch(self, conn: Connection, cursor_manager: "CursorManager") -> dict[str, Any]:
+    def process_article_batch(self, conn: Any, cursor_manager: "CursorManager") -> dict[str, Any]:
         """Choose processing strategy based on tagging state and backfill completion."""
         # If backfill is completed, prioritize forward processing
-        if self.backfill_completed and self._has_existing_tags(conn):
+        if self.backfill_completed:
             return self.process_article_batch_forward(conn, cursor_manager)
 
         # If backfill is not completed, do backfill processing
@@ -506,7 +362,7 @@ class BatchProcessor:
 
     def process_regeneration_batch(
         self,
-        conn: Connection,
+        conn: Any,
         confidence_threshold: float = 0.5,
     ) -> dict[str, Any]:
         """
@@ -517,7 +373,7 @@ class BatchProcessor:
         is higher than the existing one.
 
         Args:
-            conn: Database connection
+            conn: Connection (unused in API mode, kept for interface compatibility)
             confidence_threshold: Maximum average confidence to include (default: 0.5)
 
         Returns:
@@ -628,13 +484,8 @@ class BatchProcessor:
         # Perform batch upsert with confidence comparison
         if article_tags_batch:
             try:
-                # Start transaction
-                if conn is not None and conn.autocommit:
-                    conn.autocommit = False
-
                 logger.info("Upserting regenerated tags", article_count=len(article_tags_batch))
 
-                # Use the comparison-based batch upsert method
                 result = self.tag_inserter.batch_upsert_tags_with_comparison(conn, article_tags_batch)
 
                 batch_stats["successful"] = result.get("processed_articles", 0)
@@ -644,8 +495,6 @@ class BatchProcessor:
                 batch_stats["updated_higher_confidence"] = result.get("updated_higher_confidence", 0)
 
                 if result.get("success"):
-                    if conn is not None:
-                        conn.commit()
                     logger.info(
                         "Successfully regenerated tags",
                         processed=batch_stats["successful"],
@@ -653,8 +502,6 @@ class BatchProcessor:
                         skipped=batch_stats.get("skipped_lower_confidence", 0),
                     )
                 else:
-                    if conn is not None:
-                        conn.rollback()
                     logger.warning(
                         "Regeneration batch completed with failures",
                         failed=batch_stats["failed"],
@@ -662,20 +509,9 @@ class BatchProcessor:
 
             except Exception as e:
                 logger.error("Regeneration batch upsert failed", error=str(e))
-                try:
-                    if conn is not None:
-                        conn.rollback()
-                except Exception as rollback_error:
-                    logger.error("Failed to rollback transaction", error=str(rollback_error))
                 batch_stats["failed"] = len(articles)
                 batch_stats["total_processed"] = len(articles)
                 batch_stats["error"] = str(e)
-            finally:
-                try:
-                    if conn is not None and not conn.autocommit:
-                        conn.autocommit = True
-                except Exception as e:
-                    logger.warning("Failed to restore autocommit mode", error=str(e))
         else:
             logger.warning("No articles with regenerated tags to process")
             batch_stats["total_processed"] = len(articles)

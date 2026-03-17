@@ -108,32 +108,11 @@ class RegenerateTagsUsecase:
 
         if article_tags_batch:
             try:
-                if conn is not None and conn.autocommit:
-                    conn.autocommit = False
-
                 upsert_result = self._tag_repo.batch_upsert_tags_with_comparison(conn, article_tags_batch)
                 result.successful = upsert_result.get("processed_articles", 0)
                 result.failed += upsert_result.get("failed_articles", 0)
-
-                if upsert_result.get("success"):
-                    if conn is not None:
-                        conn.commit()
-                else:
-                    if conn is not None:
-                        conn.rollback()
             except Exception as e:
                 logger.error("Regeneration batch upsert failed", error=str(e))
-                try:
-                    if conn is not None:
-                        conn.rollback()
-                except Exception:
-                    pass
                 result.failed = len(articles)
-            finally:
-                try:
-                    if conn is not None and not conn.autocommit:
-                        conn.autocommit = True
-                except Exception:
-                    pass
 
         return result

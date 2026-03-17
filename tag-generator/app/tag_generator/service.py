@@ -2,41 +2,22 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from typing import Any
 
 import structlog
-from psycopg2.extensions import connection as Connection
 
-from article_fetcher.fetch import ArticleFetcher
 from tag_extractor.extract import TagExtractionOutcome, TagExtractor
 from tag_generator.batch_processor import BatchProcessor
 from tag_generator.cascade import CascadeController
 from tag_generator.config import TagGeneratorConfig
 from tag_generator.cursor_manager import CursorManager
-from tag_generator.database import DatabaseManager
 from tag_generator.domain.models import TagExtractionResult
 from tag_generator.driver.connect_client_factory import create_backend_client
 from tag_generator.exceptions import TagExtractionError
 from tag_generator.health_monitor import HealthMonitor
 from tag_generator.scheduler import ProcessingScheduler
-from tag_inserter.upsert_tags import TagInserter
 
 logger = structlog.get_logger(__name__)
-
-
-class _NullDatabaseManager:
-    """Dummy database manager for API mode. Returns a no-op connection context."""
-
-    def __init__(self, config: TagGeneratorConfig) -> None:
-        self.config = config
-
-    def get_database_dsn(self) -> str:
-        return ""
-
-    @contextmanager
-    def get_connection(self):
-        yield None  # type: ignore[misc]
 
 
 class TagGeneratorService:
@@ -46,16 +27,13 @@ class TagGeneratorService:
         """Initialize tag generator service with configuration."""
         self.config = config or TagGeneratorConfig()
 
-        # Pluggable drivers — concrete type depends on API vs legacy DB mode.
+        # Pluggable drivers — always use Connect-RPC client.
         self.article_fetcher: Any
         self.tag_inserter: Any
-        self.database_manager: Any
 
-        # Check for API mode
         result = create_backend_client()
 
         if result is not None:
-            # API mode: use typed Connect-RPC client for article fetching and tag upserting
             client, auth_headers = result
             from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
             from tag_generator.driver.connect_tag_inserter import ConnectTagInserter
@@ -63,13 +41,12 @@ class TagGeneratorService:
             logger.info("Using backend API mode for article/tag operations")
             self.article_fetcher = ConnectArticleFetcher(client, auth_headers)
             self.tag_inserter = ConnectTagInserter(client, auth_headers)
-            self.database_manager = _NullDatabaseManager(self.config)
         else:
-            # Legacy DB mode
-            logger.info("Using legacy database mode for article/tag operations")
-            self.article_fetcher = ArticleFetcher()
-            self.tag_inserter = TagInserter()
-            self.database_manager = DatabaseManager(self.config)
+            raise RuntimeError(
+                "Backend API client could not be created. "
+                "Ensure BACKEND_API_URL and SERVICE_SECRET environment variables are set. "
+                "Legacy database mode has been removed."
+            )
 
         # Initialize dependencies (shared across modes)
         self.tag_extractor = TagExtractor()
@@ -77,7 +54,7 @@ class TagGeneratorService:
         self.cascade_controller = CascadeController()
 
         # Initialize managers
-        self.cursor_manager = CursorManager(self.database_manager)
+        self.cursor_manager = CursorManager()
         self.batch_processor = BatchProcessor(
             self.config,
             self.article_fetcher,
@@ -86,24 +63,16 @@ class TagGeneratorService:
             self.cascade_controller,
             self.cursor_manager,
         )
-        self.health_monitor = HealthMonitor(self.config, self.database_manager, self.article_fetcher)
+        self.health_monitor = HealthMonitor(self.config, self.article_fetcher)
 
         logger.info("Tag Generator Service initialized")
         logger.info("Tag Generator Service configured", config=str(self.config))
 
     # ------------------------------------------------------------------
-    # Database helpers
-    # ------------------------------------------------------------------
-
-    def _get_database_dsn(self) -> str:
-        """Build database DSN using the DatabaseManager."""
-        return self.database_manager.get_database_dsn()
-
-    # ------------------------------------------------------------------
     # Article processing
     # ------------------------------------------------------------------
 
-    def _process_single_article(self, conn: Connection, article: dict[str, Any]) -> bool:
+    def _process_single_article(self, conn: Any, article: dict[str, Any]) -> bool:
         """Process a single article for tag extraction and insertion.
 
         Used by StreamEventHandler for real-time event-driven tag generation.
@@ -157,7 +126,7 @@ class TagGeneratorService:
 
     def run_processing_cycle(self) -> dict[str, Any]:
         """
-        Run a single processing cycle with explicit transaction management.
+        Run a single processing cycle.
 
         Returns:
             Dictionary with cycle results
@@ -173,36 +142,26 @@ class TagGeneratorService:
         }
 
         try:
-            # Use database connection
-            logger.info("Acquiring database connection...")
+            # Process articles batch (conn=None, API mode handles everything)
+            logger.info("Starting article batch processing...")
+            processing_stats = self.batch_processor.process_article_batch(None, self.cursor_manager)
 
-            with self.database_manager.get_connection() as conn:
-                logger.info("Database connection acquired successfully")
+            # Update batch stats with processing results
+            batch_stats.update(processing_stats)
+            # Success if:
+            # - At least one article was successfully processed, OR
+            # - No articles were processed (nothing to do), OR
+            # - No articles failed (all were skipped or tags couldn't be extracted)
+            batch_stats["success"] = (
+                processing_stats.get("successful", 0) > 0
+                or processing_stats.get("total_processed", 0) == 0
+                or processing_stats.get("failed", 0) == 0
+            )
 
-                # Ensure connection starts in autocommit mode
-                if conn is not None and not conn.autocommit:
-                    conn.autocommit = True
+            logger.info("Article batch processing completed")
+            self._log_batch_summary(batch_stats)
 
-                # Process articles batch (handles its own transaction)
-                logger.info("Starting article batch processing...")
-                processing_stats = self.batch_processor.process_article_batch(conn, self.cursor_manager)
-
-                # Update batch stats with processing results
-                batch_stats.update(processing_stats)
-                # Success if:
-                # - At least one article was successfully processed, OR
-                # - No articles were processed (nothing to do), OR
-                # - No articles failed (all were skipped or tags couldn't be extracted)
-                batch_stats["success"] = (
-                    processing_stats.get("successful", 0) > 0
-                    or processing_stats.get("total_processed", 0) == 0
-                    or processing_stats.get("failed", 0) == 0
-                )
-
-                logger.info("Article batch processing completed")
-                self._log_batch_summary(batch_stats)
-
-                return batch_stats
+            return batch_stats
 
         except Exception as e:
             logger.error("Processing cycle failed", error=str(e))

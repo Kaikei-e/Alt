@@ -10,18 +10,16 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from psycopg2.extensions import connection as Connection
-
 from tag_extractor.extract import TagExtractionOutcome
 from tag_inserter.upsert_tags import BatchResult
 
 
 class ArticleFetcherPort(Protocol):
-    """Port for fetching articles from the database."""
+    """Port for fetching articles from the backend API."""
 
     def fetch_articles(
         self,
-        conn: Connection,
+        conn: Any,
         last_created_at: str,
         last_id: str,
         custom_batch_size: int | None = None,
@@ -30,26 +28,26 @@ class ArticleFetcherPort(Protocol):
 
     def fetch_new_articles(
         self,
-        conn: Connection,
+        conn: Any,
         last_created_at: str,
         last_id: str,
         custom_batch_size: int | None = None,
     ) -> list[dict[str, Any]]: ...
 
-    def count_untagged_articles(self, conn: Connection) -> int: ...
+    def count_untagged_articles(self, conn: Any) -> int: ...
 
     def fetch_articles_by_status(
-        self, conn: Connection, has_tags: bool = False, limit: int | None = None
+        self, conn: Any, has_tags: bool = False, limit: int | None = None
     ) -> list[dict[str, Any]]: ...
 
     def fetch_low_confidence_articles(
         self,
-        conn: Connection,
+        conn: Any,
         confidence_threshold: float = 0.5,
         limit: int | None = None,
     ) -> list[dict[str, Any]]: ...
 
-    def fetch_article_by_id(self, conn: Connection, article_id: str) -> dict[str, Any] | None: ...
+    def fetch_article_by_id(self, conn: Any, article_id: str) -> dict[str, Any] | None: ...
 
 
 class TagExtractorPort(Protocol):
@@ -59,19 +57,17 @@ class TagExtractorPort(Protocol):
 
 
 class TagInserterPort(Protocol):
-    """Port for persisting extracted tags to the database."""
+    """Port for persisting extracted tags via the backend API."""
 
     def upsert_tags(
         self,
-        conn: Connection,
+        conn: Any,
         article_id: str,
         tags: list[str],
         feed_id: str,
         tag_confidences: dict[str, float] | None = None,
     ) -> dict[str, Any]: ...
 
-    def batch_upsert_tags_no_commit(self, conn: Connection, article_tags: list[dict[str, Any]]) -> BatchResult: ...
+    def batch_upsert_tags_no_commit(self, conn: Any, article_tags: list[dict[str, Any]]) -> BatchResult: ...
 
-    def batch_upsert_tags_with_comparison(
-        self, conn: Connection, article_tags: list[dict[str, Any]]
-    ) -> BatchResult: ...
+    def batch_upsert_tags_with_comparison(self, conn: Any, article_tags: list[dict[str, Any]]) -> BatchResult: ...

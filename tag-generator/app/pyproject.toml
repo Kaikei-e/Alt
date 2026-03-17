@@ -139,7 +139,7 @@ find = { include = [
 [tool.ruff]
 target-version = "py313"
 line-length = 120
-exclude = [".git", "__pycache__", ".venv", "build", "dist", "*.egg-info", "tag_generator/gen"]
+exclude = [".git", "__pycache__", ".venv", "build", "dist", "*.egg-info", "tag_generator/gen", "test_unit.py"]
 
 [tool.ruff.lint]
 select = [
@@ -187,6 +187,7 @@ project-excludes = [
     "**/dist",
     "**/*.egg-info",
     "tag_generator/gen/**",
+    "**/test_unit.py",
 ]
 python-version = "3.13"
 

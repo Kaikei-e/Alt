@@ -96,26 +96,25 @@ class TagGeneratorEventHandler(EventHandler):
 
     def _process_article_sync(self, article_id: str) -> None:
         """Synchronous wrapper for processing an article."""
-        with self.service.database_manager.get_connection() as conn:
-            # Fetch article by ID
-            article = self.service.article_fetcher.fetch_article_by_id(conn, article_id)
-            if article:
-                success = self.service._process_single_article(conn, article)
-                if success:
-                    logger.info(
-                        "article_processed_for_tags",
-                        article_id=article_id,
-                    )
-                else:
-                    logger.warning(
-                        "article_tag_processing_failed",
-                        article_id=article_id,
-                    )
-            else:
-                logger.warning(
-                    "article_not_found",
+        # API mode: conn is None, backend handles everything
+        article = self.service.article_fetcher.fetch_article_by_id(None, article_id)
+        if article:
+            success = self.service._process_single_article(None, article)
+            if success:
+                logger.info(
+                    "article_processed_for_tags",
                     article_id=article_id,
                 )
+            else:
+                logger.warning(
+                    "article_tag_processing_failed",
+                    article_id=article_id,
+                )
+        else:
+            logger.warning(
+                "article_not_found",
+                article_id=article_id,
+            )
 
     async def _handle_tag_generation_requested(self, event: Event) -> None:
         """Handle a synchronous tag generation request with reply.

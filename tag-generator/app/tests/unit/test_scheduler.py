@@ -1,33 +1,47 @@
 from unittest.mock import Mock, patch
 
-from main import TagGeneratorService
+import pytest
+
 from tag_generator.scheduler import ProcessingScheduler
+
+
+@pytest.fixture(autouse=True)
+def _set_backend_env(monkeypatch):
+    """Ensure backend API env vars are set for TagGeneratorService init."""
+    monkeypatch.setenv("BACKEND_API_URL", "http://localhost:9000")
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
+
+
+def _make_service():
+    from main import TagGeneratorService
+
+    return TagGeneratorService()
 
 
 class TestProcessingScheduler:
     def test_calculate_next_sleep_immediate_after_work(self):
-        service = TagGeneratorService()
+        service = _make_service()
         scheduler = ProcessingScheduler(service, sleep_fn=Mock())
         stats = {"total_processed": 3, "successful": 3, "failed": 0, "has_more_pending": False}
 
         assert scheduler.calculate_next_sleep(stats) == service.config.active_processing_interval
 
     def test_calculate_next_sleep_respects_interval_when_idle(self):
-        service = TagGeneratorService()
+        service = _make_service()
         scheduler = ProcessingScheduler(service, sleep_fn=Mock())
         stats = {"total_processed": 0, "successful": 0, "failed": 0, "has_more_pending": False}
 
         assert scheduler.calculate_next_sleep(stats) == service.config.processing_interval
 
     def test_calculate_next_sleep_immediate_when_more_pending(self):
-        service = TagGeneratorService()
+        service = _make_service()
         scheduler = ProcessingScheduler(service, sleep_fn=Mock())
         stats = {"total_processed": 0, "successful": 0, "failed": 0, "has_more_pending": True}
 
         assert scheduler.calculate_next_sleep(stats) == service.config.active_processing_interval
 
     def test_run_cycle_updates_health_and_returns_interval(self):
-        service = TagGeneratorService()
+        service = _make_service()
         scheduler = ProcessingScheduler(service, sleep_fn=Mock())
         stats = {"success": True, "successful": 0, "total_processed": 0, "failed": 0}
 
@@ -40,7 +54,7 @@ class TestProcessingScheduler:
         assert service.health_monitor.consecutive_empty_cycles == 1
 
     def test_run_cycle_resets_empty_counter_on_work(self):
-        service = TagGeneratorService()
+        service = _make_service()
         service.health_monitor.consecutive_empty_cycles = 3
         scheduler = ProcessingScheduler(service, sleep_fn=Mock())
         stats = {"success": True, "successful": 2, "total_processed": 2, "failed": 0}
@@ -53,7 +67,7 @@ class TestProcessingScheduler:
         assert service.health_monitor.total_articles_processed == 2
 
     def test_run_cycle_handles_failures_with_retry_delay(self):
-        service = TagGeneratorService()
+        service = _make_service()
         scheduler = ProcessingScheduler(service, sleep_fn=Mock())
         stats = {"success": False, "successful": 0, "total_processed": 0, "failed": 1, "error": "boom"}
 

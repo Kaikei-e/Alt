@@ -1,5 +1,5 @@
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 import structlog
@@ -12,6 +12,9 @@ def setup_test_logging(monkeypatch):
     """Override conftest.py's logging configuration to use stdlib logger for caplog."""
     # Set service name for tests via environment variable
     monkeypatch.setenv("SERVICE_NAME", "tag-generator-test")
+    # Backend API URL is required (legacy DB mode removed)
+    monkeypatch.setenv("BACKEND_API_URL", "http://localhost:9101")
+    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     # Configure structlog to use standard logging (allows caplog to capture)
     structlog.configure(
@@ -55,10 +58,6 @@ def mock_tag_generator_service():
         connection_retry_delay=0.1,
     )
     service = TagGeneratorService(config)
-    # Mock database connection and related methods
-    service.database_manager.get_connection = MagicMock()
-    service.database_manager.get_connection.return_value.__enter__.return_value = MagicMock()
-    service.database_manager.get_database_dsn = MagicMock(return_value="mock_dsn")
     service.article_fetcher = MagicMock()
     service.tag_extractor = MagicMock()
     service.tag_inserter = MagicMock()
@@ -100,46 +99,3 @@ def test_tag_generator_service_initialization_logs(mock_tag_generator_service, c
                     f"Service name should appear in log. Message: {record.getMessage()}, "
                     f"Extra: {getattr(record, '__dict__', {})}"
                 )
-
-
-def test_tag_generator_service_error_logging(mock_tag_generator_service, caplog):
-    """Test that TagGeneratorService logs errors properly."""
-    with caplog.at_level(logging.ERROR):
-        caplog.clear()
-
-        # Test error logging by calling a method that logs errors
-        # Use the actual _create_direct_connection method but with broken DSN
-        with patch.object(
-            mock_tag_generator_service.database_manager,
-            "get_database_dsn",
-            return_value="invalid://dsn",
-        ):
-            try:
-                mock_tag_generator_service.database_manager._create_direct_connection()
-            except Exception:
-                pass  # Expected to fail - testing error logging behavior
-
-        # Check if any error logs were captured
-        error_records = [record for record in caplog.records if record.levelno >= logging.ERROR]
-
-        assert len(error_records) > 0, (
-            f"Should capture error logs. All records: {[r.getMessage() for r in caplog.records]}"
-        )
-
-        error_log = error_records[0]
-        error_message = error_log.getMessage().lower()
-
-        # Verify error content
-        assert (
-            "connection failed" in error_message
-            or "failed to connect" in error_message
-            or "database connection failed" in error_message
-        ), f"Error message should mention connection failure: {error_message}"
-
-        # Verify structured logging context appears in log record (check extra attributes)
-        service_in_message = "tag-generator-test" in error_log.getMessage()
-        service_in_extra = hasattr(error_log, "service") and error_log.service == "tag-generator-test"
-        assert service_in_message or service_in_extra, (
-            f"Service name should appear in error log. Message: {error_log.getMessage()}, "
-            f"Extra: {getattr(error_log, '__dict__', {})}"
-        )
