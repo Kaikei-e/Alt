@@ -50,6 +50,12 @@ export interface KnowledgeHomeItemData {
 	score: number;
 }
 
+/** Feature flag status */
+export interface FeatureFlagData {
+	name: string;
+	enabled: boolean;
+}
+
 /** Result from getKnowledgeHome */
 export interface KnowledgeHomeResult {
 	items: KnowledgeHomeItemData[];
@@ -58,6 +64,7 @@ export interface KnowledgeHomeResult {
 	hasMore: boolean;
 	degraded: boolean;
 	generatedAt: string;
+	featureFlags: FeatureFlagData[];
 }
 
 /**
@@ -130,6 +137,10 @@ export async function getKnowledgeHome(
 		hasMore: response.hasMore,
 		degraded: response.degradedMode,
 		generatedAt: response.generatedAt,
+		featureFlags: (response.featureFlags ?? []).map((f) => ({
+			name: f.name,
+			enabled: f.enabled,
+		})),
 	};
 }
 

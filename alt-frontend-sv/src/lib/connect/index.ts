@@ -153,4 +153,16 @@ export {
 	type TodayDigestData,
 	type KnowledgeHomeItemData,
 	type KnowledgeHomeResult,
+	type FeatureFlagData,
 } from "./knowledge_home";
+
+// KnowledgeHomeAdminService client
+export {
+	getProjectionHealth,
+	getFeatureFlags,
+	triggerBackfill,
+	type ProjectionHealthData,
+	type FeatureFlagsConfigData,
+	type BackfillJobData,
+	type KnowledgeHomeAdminData,
+} from "./knowledge_home_admin";
