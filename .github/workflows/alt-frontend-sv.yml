@@ -86,6 +86,9 @@ jobs:
 
           echo "::endgroup::"
 
+      - name: Install unzip (required by setup-bun in Playwright container)
+        run: apt-get update && apt-get install -y unzip
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
