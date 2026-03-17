@@ -19,6 +19,7 @@ import {
 	Compass,
 	GalleryVerticalEnd,
 	Orbit,
+	Lightbulb,
 } from "@lucide/svelte";
 import { page } from "$app/state";
 import { cn } from "$lib/utils";
@@ -26,6 +27,12 @@ import { cn } from "$lib/utils";
 const svBasePath = "";
 
 const menuItems = [
+	{
+		label: "Knowledge Home",
+		href: `${svBasePath}/home`,
+		icon: Lightbulb,
+		category: "main",
+	},
 	{
 		label: "Dashboard",
 		href: `${svBasePath}/dashboard`,

@@ -19,6 +19,7 @@ import {
 	Moon,
 	Globe,
 	Orbit,
+	Lightbulb,
 } from "@lucide/svelte";
 import type { Component } from "svelte";
 
@@ -53,6 +54,12 @@ export const desktopNavigation: Array<
 	| { label: string; href: string; icon: IconComponent; category: string }
 	| NavigationSection
 > = [
+	{
+		label: "Knowledge Home",
+		href: `${svBasePath}/home`,
+		icon: Lightbulb,
+		category: "main",
+	},
 	{
 		label: "Dashboard",
 		href: `${svBasePath}/dashboard`,
@@ -272,6 +279,13 @@ export const mobileMenuItems = [
 		category: "other",
 		icon: ChartBar,
 		description: "Analytics & insights",
+	},
+	{
+		label: "Knowledge Home",
+		href: `${svBasePath}/home`,
+		category: "other",
+		icon: Lightbulb,
+		description: "Today's knowledge starting point",
 	},
 	{
 		label: "Home",
