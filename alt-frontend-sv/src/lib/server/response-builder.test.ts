@@ -43,24 +43,24 @@ describe("buildApiErrorResponse", () => {
 });
 
 describe("buildRedirectUrl", () => {
-	it("should redirect /sv to /sv/home", () => {
-		const url = buildRedirectUrl("/sv", "http://localhost:3000");
+	it("should redirect / to /feeds", () => {
+		const url = buildRedirectUrl("/", "http://localhost:3000");
 		expect(url).toBe(
-			`/sv/login?return_to=${encodeURIComponent("http://localhost:3000/sv/home")}`,
+			`/login?return_to=${encodeURIComponent("http://localhost:3000/feeds")}`,
 		);
 	});
 
-	it("should redirect /sv/ to /sv/home", () => {
-		const url = buildRedirectUrl("/sv/", "http://localhost:3000");
+	it("should redirect empty path to /feeds", () => {
+		const url = buildRedirectUrl("", "http://localhost:3000");
 		expect(url).toBe(
-			`/sv/login?return_to=${encodeURIComponent("http://localhost:3000/sv/home")}`,
+			`/login?return_to=${encodeURIComponent("http://localhost:3000/feeds")}`,
 		);
 	});
 
 	it("should redirect arbitrary paths with encoded pathname", () => {
-		const url = buildRedirectUrl("/sv/desktop/feeds", "http://localhost:3000");
+		const url = buildRedirectUrl("/desktop/feeds", "http://localhost:3000");
 		expect(url).toBe(
-			`/sv/login?return_to=${encodeURIComponent("/sv/desktop/feeds")}`,
+			`/login?return_to=${encodeURIComponent("/desktop/feeds")}`,
 		);
 	});
 });

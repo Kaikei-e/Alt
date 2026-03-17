@@ -366,7 +366,7 @@ function handleBack() {
 							No subscriptions found. Add some feeds to start exploring!
 						</p>
 						<a
-							href="/sv/mobile/feeds/manage"
+							href="/mobile/feeds/manage"
 							class="px-4 py-2 rounded-lg font-medium min-h-[44px] flex items-center"
 							style="background: var(--alt-primary); color: var(--text-primary);"
 						>

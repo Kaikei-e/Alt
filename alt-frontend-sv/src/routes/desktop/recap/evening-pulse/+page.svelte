@@ -14,7 +14,7 @@ const pulse = usePulse();
 let isPanelOpen = $state(false);
 
 const navigateToRecap = () => {
-	goto("/sv/desktop/recap");
+	goto("/desktop/recap");
 };
 
 const handleTopicClick = (clusterId: number) => {
@@ -33,11 +33,11 @@ const handleNavigateToRecap = (clusterId: number, genre?: string) => {
 	if (genre) {
 		params.set("genre", genre);
 	}
-	goto(`/sv/desktop/recap?${params.toString()}`);
+	goto(`/desktop/recap?${params.toString()}`);
 };
 
 const handleHighlightClick = (id: string) => {
-	goto(`/sv/desktop/recap?highlight=${id}`);
+	goto(`/desktop/recap?highlight=${id}`);
 };
 
 onMount(() => {

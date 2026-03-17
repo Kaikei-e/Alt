@@ -149,11 +149,11 @@ function handleDeleteCancel() {
 }
 
 function handleBackToFeeds() {
-	void goto("/sv/mobile/feeds");
+	void goto("/mobile/feeds");
 }
 
 function handleBackToHome() {
-	void goto("/sv");
+	void goto("/");
 }
 </script>
 

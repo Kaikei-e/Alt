@@ -31,7 +31,7 @@ let isPanelOpen = $state(false);
 let isSheetOpen = $state(false);
 
 const navigateToRecap = () => {
-	goto("/sv/recap");
+	goto("/recap");
 };
 
 const handleTopicClick = (clusterId: number) => {

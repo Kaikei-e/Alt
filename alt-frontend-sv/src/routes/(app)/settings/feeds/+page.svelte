@@ -208,11 +208,11 @@ function handleDialogOpenChange(open: boolean) {
 }
 
 function handleBackToFeeds() {
-	void goto("/sv/feeds");
+	void goto("/feeds");
 }
 
 function handleBackToHome() {
-	void goto("/sv");
+	void goto("/");
 }
 </script>
 

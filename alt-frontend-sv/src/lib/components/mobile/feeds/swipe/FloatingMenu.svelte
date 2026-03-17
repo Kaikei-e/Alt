@@ -64,7 +64,7 @@ $effect(() => {
 	};
 });
 
-const svBasePath = "/sv";
+const svBasePath = "";
 
 const menuItems = [
 	{

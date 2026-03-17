@@ -2,7 +2,7 @@ import { json, type RequestHandler } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { getBackendToken } from "$lib/api";
 
-const BACKEND_BASE_URL = env.BACKEND_BASE_URL || "http://alt-backend:9000";
+const BACKEND_URL = env.BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
 
 export const GET: RequestHandler = async ({ request, url }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
@@ -24,7 +24,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	}
 
 	const queryString = params.toString();
-	const backendEndpoint = `${BACKEND_BASE_URL}/v1/dashboard/metrics${
+	const backendEndpoint = `${BACKEND_URL}/v1/dashboard/metrics${
 		queryString ? `?${queryString}` : ""
 	}`;
 

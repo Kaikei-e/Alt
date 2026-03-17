@@ -41,7 +41,7 @@ import { Button } from "$lib/components/ui/button";
 		</div>
 
 		<!-- Call to Action Button -->
-		<a href="/sv/mobile/feeds/manage">
+		<a href="/mobile/feeds/manage">
 			<Button
 				size="lg"
 				class="rounded-2xl font-bold px-8"

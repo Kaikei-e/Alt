@@ -43,7 +43,7 @@ export type NavigationEntry =
 	| { type: "link"; item: NavigationItem & { category: string } }
 	| { type: "section"; section: NavigationSection };
 
-const svBasePath = "/sv";
+const svBasePath = "";
 
 /**
  * Sidebar navigation items for desktop.

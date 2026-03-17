@@ -31,8 +31,8 @@ export function buildApiErrorResponse(options: ApiErrorOptions): Response {
 }
 
 export function buildRedirectUrl(pathname: string, origin: string): string {
-	if (pathname === "/sv" || pathname === "/sv/") {
-		return `/sv/login?return_to=${encodeURIComponent(`${origin}/sv/home`)}`;
+	if (pathname === "/" || pathname === "") {
+		return `/login?return_to=${encodeURIComponent(`${origin}/feeds`)}`;
 	}
-	return `/sv/login?return_to=${encodeURIComponent(pathname)}`;
+	return `/login?return_to=${encodeURIComponent(pathname)}`;
 }

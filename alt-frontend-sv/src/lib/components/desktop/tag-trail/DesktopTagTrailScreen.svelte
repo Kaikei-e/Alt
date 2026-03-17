@@ -457,7 +457,7 @@ const formatDate = (dateStr: string) => {
 							No subscriptions found. Add some feeds to start exploring!
 						</p>
 						<a
-							href="/sv/desktop/settings/feeds"
+							href="/desktop/settings/feeds"
 							class="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium
 								bg-[var(--alt-primary)] text-white hover:opacity-90 transition-opacity"
 						>

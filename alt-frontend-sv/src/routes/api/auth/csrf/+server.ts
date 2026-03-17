@@ -2,7 +2,7 @@ import { json, type RequestHandler } from "@sveltejs/kit";
 import { getCSRFToken } from "$lib/api";
 
 /**
- * GET /sv/api/auth/csrf
+ * GET /api/auth/csrf
  * Returns CSRF token for authenticated users
  * V-004: CSRF protection support
  */

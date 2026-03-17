@@ -23,7 +23,7 @@ export function isPublicRoute(pathname: string): boolean {
 }
 
 export function isApiRoute(pathname: string): boolean {
-	return pathname.startsWith("/sv/api/") || pathname.startsWith("/api/");
+	return pathname.startsWith("/api/");
 }
 
 export function isStreamEndpoint(pathname: string): boolean {

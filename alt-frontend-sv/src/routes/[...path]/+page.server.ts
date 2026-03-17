@@ -1,7 +1,7 @@
 import { redirect } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
 
-const FALLBACK_REDIRECT = "/sv/home";
+const FALLBACK_REDIRECT = "/feeds";
 
 export function _getNotFoundRedirectTarget(_pathname: string): string {
 	return FALLBACK_REDIRECT;

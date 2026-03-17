@@ -4,7 +4,7 @@ import { getFeedsWithCursorClient } from "$lib/api/client/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
 import { onMount } from "svelte";
 
-const svBasePath = "/sv";
+const svBasePath = "";
 
 // Simple state without TanStack Query
 let feeds = $state<RenderFeed[]>([]);

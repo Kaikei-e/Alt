@@ -7,7 +7,7 @@ import type { PageServerLoad } from "./$types";
 const kratosPublicUrl = env.KRATOS_PUBLIC_URL || "http://localhost/ory";
 // アプリケーションのベースURL
 const appOrigin = env.ORIGIN || "http://localhost:4173";
-const basePath = "/sv";
+const basePath = "";
 
 // 絶対URLかどうかをチェックするヘルパー関数
 function isAbsoluteUrl(url: string): boolean {
@@ -17,7 +17,7 @@ function isAbsoluteUrl(url: string): boolean {
 // return_toをサニタイズして、ループを防ぐ
 function sanitizeReturnTo(returnTo: string | null, origin: string): string {
 	if (!returnTo) {
-		return `${origin}/sv/home`;
+		return `${origin}/feeds`;
 	}
 
 	// 絶対URLの場合はそのまま使用、相対URLの場合はoriginを追加
@@ -31,9 +31,9 @@ function sanitizeReturnTo(returnTo: string | null, origin: string): string {
 	// return_toからクエリパラメータを削除（ループを防ぐため）
 	cleanUrl = cleanUrl.split("?")[0];
 
-	// /register を /sv/home に変換（ループ防止）
-	if (cleanUrl.endsWith("/register") || cleanUrl.includes("/sv/register")) {
-		return `${origin}/sv/home`;
+	// /register を /feeds に変換（ループ防止）
+	if (cleanUrl.endsWith("/register") || cleanUrl.includes("/register")) {
+		return `${origin}/feeds`;
 	}
 
 	return cleanUrl;
@@ -51,7 +51,7 @@ export const load: PageServerLoad = async ({ url, locals, request }) => {
 
 	// If no flow, initiate registration flow
 	if (!flow) {
-		// return_toをサニタイズしてループを防ぐ（/sv/registerは/sv/homeに変換）
+		// return_toをサニタイズしてループを防ぐ（/registerは/feedsに変換）
 		const returnUrl = sanitizeReturnTo(returnTo, appOrigin);
 		const initUrl = new URL(
 			`${kratosPublicUrl}/self-service/registration/browser`,

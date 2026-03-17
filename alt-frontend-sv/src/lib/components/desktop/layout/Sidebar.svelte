@@ -23,7 +23,7 @@ import {
 import { page } from "$app/state";
 import { cn } from "$lib/utils";
 
-const svBasePath = "/sv";
+const svBasePath = "";
 
 const menuItems = [
 	{

@@ -1,9 +1,16 @@
 <script lang="ts">
+import { goto } from "$app/navigation";
 import logo from "$lib/assets/favicon.svg";
 import { Button } from "$lib/components/ui/button";
 import { getAuthStore } from "$lib/stores/auth.svelte";
 
 const auth = getAuthStore();
+
+$effect(() => {
+	if (auth.isAuthenticated) {
+		goto("/feeds", { replaceState: true });
+	}
+});
 </script>
 
 <div class="p-8 max-w-2xl mx-auto">
@@ -25,7 +32,7 @@ const auth = getAuthStore();
             Embark on a Journey of Discovery
           </p>
           <Button
-            href="/sv/home"
+            href="/feeds"
             size="lg"
             class="w-full sm:w-auto"
             variant="secondary"

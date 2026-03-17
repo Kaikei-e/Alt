@@ -14,7 +14,7 @@ const pulse = usePulse();
 let isSheetOpen = $state(false);
 
 const navigateToRecap = () => {
-	goto("/sv/mobile/recap/3days");
+	goto("/mobile/recap/3days");
 };
 
 const handleTopicClick = (clusterId: number) => {
@@ -30,7 +30,7 @@ const handleCloseSheet = () => {
 
 const handleNavigateToRecap = (clusterId: number) => {
 	isSheetOpen = false;
-	goto(`/sv/mobile/recap/3days?cluster=${clusterId}`);
+	goto(`/mobile/recap/3days?cluster=${clusterId}`);
 };
 
 onMount(() => {

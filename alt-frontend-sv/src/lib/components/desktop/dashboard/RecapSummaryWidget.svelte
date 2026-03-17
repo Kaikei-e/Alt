@@ -5,7 +5,7 @@ import { createClientTransport, getThreeDayRecap } from "$lib/connect";
 import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
 import { onMount } from "svelte";
 
-const svBasePath = "/sv";
+const svBasePath = "";
 
 // Simple state without TanStack Query
 let recapData = $state<RecapSummary | null>(null);

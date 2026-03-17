@@ -2,7 +2,7 @@
 
 ## Overview
 
-Next-gen frontend. **SvelteKit 2.x**, **Svelte 5 Runes**, **TailwindCSS v4**, **TypeScript 7 (tsgo)**. Serves under `/sv` base path.
+Primary frontend. **SvelteKit 2.x**, **Svelte 5 Runes**, **TailwindCSS v4**, **TypeScript 7 (tsgo)**. Serves at root path (`/`).
 
 > Details: `docs/services/alt-frontend-sv.md`
 
@@ -34,6 +34,6 @@ bun run check:tsc                # tsc-based type check (TS5.9 fallback)
 
 1. **TDD First**: No implementation without failing tests
 2. **Runes Only**: Use `$state`, `$derived`, `$effect`, `$props` - NEVER legacy syntax
-3. **Base Path**: App runs under `/sv` - always use relative paths or `$app/paths`
+3. **Root Path**: App runs at `/` - use relative paths or `$app/paths`
 4. **TailwindCSS v4**: CSS-first config in `src/app.css` - no `tailwind.config.js`
 5. **Biome**: Run `bun run lint && bun run format` before commits

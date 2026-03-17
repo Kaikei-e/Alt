@@ -233,7 +233,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 			Tap below to use the mobile-optimized experience.
 		</p>
 		<a
-			href="/sv/feeds/swipe/visual-preview"
+			href="/feeds/swipe/visual-preview"
 			class="px-4 py-2 text-sm font-medium transition-colors hover:opacity-90"
 			style="background: var(--accent-primary); color: var(--accent-primary-foreground);"
 		>

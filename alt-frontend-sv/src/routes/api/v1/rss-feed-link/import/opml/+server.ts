@@ -2,7 +2,7 @@ import { json, type RequestHandler } from "@sveltejs/kit";
 import { env } from "$env/dynamic/private";
 import { getBackendToken, getCSRFToken } from "$lib/server/auth";
 
-const BACKEND_BASE_URL = env.BACKEND_BASE_URL || "http://alt-backend:9000";
+const BACKEND_URL = env.BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
 
 export const POST: RequestHandler = async ({ request }) => {
 	const cookieHeader = request.headers.get("cookie") || "";
@@ -36,7 +36,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		const response = await fetch(
-			`${BACKEND_BASE_URL}/v1/rss-feed-link/import/opml`,
+			`${BACKEND_URL}/v1/rss-feed-link/import/opml`,
 			{
 				method: "POST",
 				headers,

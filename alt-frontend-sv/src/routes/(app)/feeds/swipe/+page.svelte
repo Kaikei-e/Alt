@@ -36,7 +36,7 @@ $effect(() => {
 			Use a mobile device or resize your browser window to use the swipe interface.
 		</p>
 		<a
-			href="/sv/feeds"
+			href="/feeds"
 			class="px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:opacity-90"
 			style="background: var(--accent-primary); color: var(--accent-primary-foreground);"
 		>

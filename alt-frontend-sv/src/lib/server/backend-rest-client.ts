@@ -1,7 +1,7 @@
 import { env } from "$env/dynamic/private";
 import { getBackendToken } from "./auth";
 
-const BACKEND_BASE_URL = env.BACKEND_BASE_URL || "http://alt-backend:9000";
+const BACKEND_URL = env.BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
 
 /**
  * バックエンドAPIを呼び出す (GET, JSON レスポンス)
@@ -21,7 +21,7 @@ export async function callBackendAPI<T>(
 		headers["X-Alt-Backend-Token"] = token;
 	}
 
-	const url = `${BACKEND_BASE_URL}${endpoint}`;
+	const url = `${BACKEND_URL}${endpoint}`;
 	try {
 		const response = await fetch(url, {
 			headers,
@@ -95,7 +95,7 @@ export async function callBackendAPI<T>(
 			url,
 			message: errorMessage,
 			stack: errorStack,
-			backendBaseUrl: BACKEND_BASE_URL,
+			backendBaseUrl: BACKEND_URL,
 			hasToken: !!token,
 		});
 		throw new Error(`Failed to connect to backend: ${errorMessage}`);
@@ -121,7 +121,7 @@ export async function callBackendAPIWithBody(
 		headers["X-Alt-Backend-Token"] = token;
 	}
 
-	const url = `${BACKEND_BASE_URL}${endpoint}`;
+	const url = `${BACKEND_URL}${endpoint}`;
 
 	try {
 		const response = await fetch(url, {
@@ -154,7 +154,7 @@ export async function callBackendAPIWithBody(
 		console.error("Network error calling backend API:", {
 			url,
 			message: errorMessage,
-			backendBaseUrl: BACKEND_BASE_URL,
+			backendBaseUrl: BACKEND_URL,
 		});
 		throw new Error(`Failed to connect to backend: ${errorMessage}`);
 	}

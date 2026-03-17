@@ -13,7 +13,7 @@ const { isDesktop } = useViewport();
 
 onMount(() => {
 	if (!isDesktop) {
-		goto("/sv/feeds", { replaceState: true });
+		goto("/feeds", { replaceState: true });
 	}
 });
 </script>
