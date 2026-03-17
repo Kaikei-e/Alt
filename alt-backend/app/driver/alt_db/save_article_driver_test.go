@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,6 +49,48 @@ func TestAltDBRepository_SaveArticle_Success(t *testing.T) {
 	_, err = repo.SaveArticle(ctx, "https://example.com/article", "Example Title", "<p>content</p>")
 	require.Error(t, err)
 	require.ErrorContains(t, err, "db failed")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAltDBRepository_SaveArticle_AppendsKnowledgeEvent(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	userCtx := &domain.UserContext{
+		UserID:    userID,
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  tenantID,
+		LoginAt:   time.Now(),
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+	ctx := domain.SetUserContext(context.Background(), userCtx)
+
+	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
+		WithArgs("https://example.com/article").
+		WillReturnError(errors.New("no rows"))
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(upsertArticleQuery)).
+		WithArgs("Example Title", strings.Repeat("x", 120), "https://example.com/article", userID, nil).
+		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(uuid.New()))
+	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO knowledge_events
+		(event_id, occurred_at, tenant_id, user_id, actor_type, actor_id,
+		 event_type, aggregate_type, aggregate_id, correlation_id, causation_id,
+		 dedupe_key, payload)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		ON CONFLICT (dedupe_key) DO NOTHING`)).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectExec(`INSERT INTO event_outbox`).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mock.ExpectCommit()
+
+	_, err = repo.SaveArticle(ctx, "https://example.com/article", "Example Title", strings.Repeat("x", 120))
+	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

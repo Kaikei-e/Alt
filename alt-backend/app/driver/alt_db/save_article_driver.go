@@ -91,7 +91,15 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 		return "", err
 	}
 
-	// 2. Insert Outbox Event
+	knowledgeEvent, err := buildArticleCreatedKnowledgeEvent(articleID, userContext.TenantID, &userContext.UserID, cleanTitle, nil)
+	if err != nil {
+		return "", err
+	}
+	if err := appendKnowledgeEventWithExec(ctx, tx, knowledgeEvent); err != nil {
+		return "", err
+	}
+
+	// 3. Insert Outbox Event
 	eventPayload := map[string]interface{}{
 		"article_id": articleID.String(),
 		"url":        cleanURL,

@@ -18,19 +18,7 @@ func (r *AltDBRepository) AppendKnowledgeEvent(ctx context.Context, event domain
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.AppendKnowledgeEvent")
 	defer span.End()
 
-	query := `INSERT INTO knowledge_events
-		(event_id, occurred_at, tenant_id, user_id, actor_type, actor_id,
-		 event_type, aggregate_type, aggregate_id, correlation_id, causation_id,
-		 dedupe_key, payload)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (dedupe_key) DO NOTHING`
-
-	_, err := r.pool.Exec(ctx, query,
-		event.EventID, event.OccurredAt, event.TenantID, event.UserID,
-		event.ActorType, event.ActorID, event.EventType, event.AggregateType,
-		event.AggregateID, event.CorrelationID, event.CausationID,
-		event.DedupeKey, event.Payload,
-	)
+	err := appendKnowledgeEventWithExec(ctx, r.pool, event)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {

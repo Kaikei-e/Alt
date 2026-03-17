@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // CreateArticleParams holds parameters for creating an article via internal API.
@@ -23,6 +25,12 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 		return "", errors.New("database connection not available")
 	}
 
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
 	query := `
 		INSERT INTO articles (title, content, url, feed_id, user_id, published_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
@@ -35,7 +43,7 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 	`
 
 	var articleID string
-	err := r.pool.QueryRow(ctx, query,
+	err = tx.QueryRow(ctx, query,
 		params.Title,
 		params.Content,
 		params.URL,
@@ -44,6 +52,31 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 		params.PublishedAt,
 	).Scan(&articleID)
 	if err != nil {
+		return "", err
+	}
+
+	parsedArticleID, err := uuid.Parse(articleID)
+	if err != nil {
+		return "", err
+	}
+	parsedUserID, err := uuid.Parse(params.UserID)
+	if err != nil {
+		return "", err
+	}
+
+	var publishedAt *time.Time
+	if !params.PublishedAt.IsZero() {
+		publishedAt = &params.PublishedAt
+	}
+	knowledgeEvent, err := buildArticleCreatedKnowledgeEvent(parsedArticleID, parsedUserID, &parsedUserID, params.Title, publishedAt)
+	if err != nil {
+		return "", err
+	}
+	if err := appendKnowledgeEventWithExec(ctx, tx, knowledgeEvent); err != nil {
+		return "", err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return "", err
 	}
 
