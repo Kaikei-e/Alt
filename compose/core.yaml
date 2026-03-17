@@ -22,11 +22,9 @@ services:
       - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ../nginx/conf.d:/etc/nginx/conf.d:rw
       - ../nginx/docker-entrypoint.d:/docker-entrypoint.d:ro
-      - ../alt-frontend/public/favicon.ico:/usr/share/nginx/html/favicon.ico:ro
+      - ../alt-frontend-sv/static/favicon.svg:/usr/share/nginx/html/favicon.svg:ro
       - nginx-image-cache:/var/cache/nginx/image_proxy
     depends_on:
-      alt-frontend:
-        condition: service_healthy
       alt-frontend-sv:
         condition: service_healthy
       alt-backend:
@@ -54,52 +52,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  alt-frontend:
-    env_file:
-      - ../.env
-    build:
-      context: ../alt-frontend
-      dockerfile: Dockerfile.frontend
-      x-bake:
-        platforms: ["linux/amd64"]
-      args:
-        - NEXT_PUBLIC_API_BASE_URL=/api
-        - API_URL=http://alt-backend:9000
-        - NEXT_PUBLIC_IDP_ORIGIN=${NEXT_PUBLIC_IDP_ORIGIN}
-        - NEXT_PUBLIC_KRATOS_PUBLIC_URL=${NEXT_PUBLIC_KRATOS_PUBLIC_URL}
-        - NEXT_PUBLIC_APP_ORIGIN=${NEXT_PUBLIC_APP_ORIGIN}
-        - NEXT_PUBLIC_RETURN_TO_DEFAULT=${NEXT_PUBLIC_RETURN_TO_DEFAULT}
-        - KRATOS_INTERNAL_URL=${KRATOS_INTERNAL_URL}
-        - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL}
-    environment:
-      - NEXT_PUBLIC_API_BASE_URL=/api
-      - API_URL=http://alt-backend:9000
-      - NEXT_PUBLIC_APP_ORIGIN=${NEXT_PUBLIC_APP_ORIGIN}
-      - NEXT_PUBLIC_RETURN_TO_DEFAULT=${NEXT_PUBLIC_RETURN_TO_DEFAULT}
-      - KRATOS_INTERNAL_URL=${KRATOS_INTERNAL_URL}
-      - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL}
-      - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL}
-      - NODE_ENV=production
-      - PORT=3000
-    ports:
-      - "3000:3000"
-    restart: always
-    networks:
-      - alt-network
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-        reservations:
-          memory: 512M
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q '\"status\":\"ok\"' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    tty: true
-
   alt-frontend-sv:
     env_file:
       - ../.env
@@ -113,7 +65,6 @@ services:
       - KRATOS_INTERNAL_URL=${KRATOS_INTERNAL_URL:-http://kratos:4433}
       - KRATOS_PUBLIC_URL=${KRATOS_PUBLIC_URL:-http://localhost/ory}
       - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL:-http://localhost:9000}
-      - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://alt-backend:9000}
       - BACKEND_CONNECT_URL=${BACKEND_CONNECT_URL:-http://alt-butterfly-facade:9250}
       - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:-http://auth-hub:8888}
       - PUBLIC_USE_CONNECT_STREAMING=${PUBLIC_USE_CONNECT_STREAMING:-false}
