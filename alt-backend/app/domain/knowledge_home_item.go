@@ -47,6 +47,16 @@ type KnowledgeHomeItem struct {
 	PublishedAt     *time.Time `json:"published_at" db:"published_at"`
 	LastInteractedAt *time.Time `json:"last_interacted_at" db:"last_interacted_at"`
 	GeneratedAt      time.Time  `json:"generated_at" db:"generated_at"`
-	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
-	ProjectionVersion int       `json:"projection_version" db:"projection_version"`
+	UpdatedAt         time.Time  `json:"updated_at" db:"updated_at"`
+	ProjectionVersion int        `json:"projection_version" db:"projection_version"`
+	SupersedeState    string     `json:"supersede_state,omitempty" db:"supersede_state"`
+	SupersededAt      *time.Time `json:"superseded_at,omitempty" db:"superseded_at"`
+	PreviousRefJSON   string     `json:"previous_ref_json,omitempty" db:"previous_ref_json"`
 }
+
+// Supersede state constants.
+const (
+	SupersedeSummaryUpdated = "summary_updated"
+	SupersedeTagsUpdated    = "tags_updated"
+	SupersedeBothUpdated    = "both_updated"
+)

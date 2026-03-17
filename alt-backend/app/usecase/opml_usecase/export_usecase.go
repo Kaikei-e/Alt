@@ -3,9 +3,11 @@ package opml_usecase
 import (
 	"alt/domain"
 	"alt/port/opml_port"
+	"alt/utils"
 	"context"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"time"
 )
 
@@ -24,15 +26,37 @@ func (u *ExportOPMLUsecase) Execute(ctx context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("fetch feed links for export: %w", err)
 	}
 
+	links = deduplicateLinks(links)
 	doc := buildOPMLDocument(links)
 	return marshalOPML(doc)
+}
+
+// deduplicateLinks strips tracking parameters and removes duplicates that
+// differ only by tracking params. The first occurrence wins.
+func deduplicateLinks(links []*domain.FeedLinkForExport) []*domain.FeedLinkForExport {
+	seen := make(map[string]struct{})
+	result := make([]*domain.FeedLinkForExport, 0, len(links))
+	for _, link := range links {
+		cleaned, err := utils.StripTrackingParams(link.URL)
+		if err != nil {
+			cleaned = link.URL
+		}
+		if _, exists := seen[cleaned]; !exists {
+			seen[cleaned] = struct{}{}
+			result = append(result, &domain.FeedLinkForExport{
+				URL:   cleaned,
+				Title: link.Title,
+			})
+		}
+	}
+	return result
 }
 
 func buildOPMLDocument(links []*domain.FeedLinkForExport) *opmlXML {
 	outlines := make([]outlineXML, 0, len(links))
 	for _, link := range links {
 		outlines = append(outlines, outlineXML{
-			Text:   link.Title,
+			Text:   html.UnescapeString(link.Title),
 			Type:   "rss",
 			XMLURL: link.URL,
 		})

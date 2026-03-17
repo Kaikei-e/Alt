@@ -1,0 +1,53 @@
+package select_lens_usecase
+
+import (
+	"alt/domain"
+	"alt/port/knowledge_lens_port"
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+type SelectLensUsecase struct {
+	getLens     knowledge_lens_port.GetLensPort
+	getVersion knowledge_lens_port.GetCurrentLensVersionPort
+	selectPort knowledge_lens_port.SelectCurrentLensPort
+}
+
+func NewSelectLensUsecase(
+	getLens knowledge_lens_port.GetLensPort,
+	getVersion knowledge_lens_port.GetCurrentLensVersionPort,
+	selectPort knowledge_lens_port.SelectCurrentLensPort,
+) *SelectLensUsecase {
+	return &SelectLensUsecase{
+		getLens:    getLens,
+		getVersion: getVersion,
+		selectPort: selectPort,
+	}
+}
+
+func (u *SelectLensUsecase) Execute(ctx context.Context, userID uuid.UUID, lensID uuid.UUID) error {
+	lens, err := u.getLens.GetLens(ctx, lensID)
+	if err != nil {
+		return fmt.Errorf("get lens: %w", err)
+	}
+	if lens.UserID != userID {
+		return fmt.Errorf("lens does not belong to user")
+	}
+
+	version, err := u.getVersion.GetCurrentLensVersion(ctx, lensID)
+	if err != nil {
+		return fmt.Errorf("get current lens version: %w", err)
+	}
+
+	current := domain.KnowledgeCurrentLens{
+		UserID:        userID,
+		LensID:        lensID,
+		LensVersionID: version.LensVersionID,
+		SelectedAt:    time.Now(),
+	}
+
+	return u.selectPort.SelectCurrentLens(ctx, current)
+}

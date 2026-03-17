@@ -2,6 +2,7 @@ package register_feed_gateway
 
 import (
 	"alt/driver/alt_db"
+	"alt/utils"
 	"alt/utils/constants"
 	"alt/utils/logger"
 	"alt/utils/proxy"
@@ -230,12 +231,19 @@ func NewRegisterFeedLinkGateway(pool *pgxpool.Pool) *RegisterFeedGateway {
 
 // RegisterFeedLink inserts a feed link URL into the database.
 // This is a DB-only operation — no external HTTP fetching.
+// Tracking parameters (utm_source, fbclid, etc.) are stripped before registration.
 func (g *RegisterFeedGateway) RegisterFeedLink(ctx context.Context, link string) error {
 	if g.alt_db == nil {
 		return stderrors.New("database connection not available")
 	}
 
-	err := g.alt_db.RegisterRSSFeedLink(ctx, link)
+	sanitized, sanitizeErr := utils.StripTrackingParams(link)
+	if sanitizeErr != nil {
+		logger.SafeWarnContext(ctx, "Failed to strip tracking params, using original", "error", sanitizeErr)
+		sanitized = link
+	}
+
+	err := g.alt_db.RegisterRSSFeedLink(ctx, sanitized)
 	if err != nil {
 		if stderrors.Is(err, pgx.ErrTxClosed) {
 			logger.SafeErrorContext(ctx, "Failed to register RSS feed link", "error", err)
@@ -244,7 +252,7 @@ func (g *RegisterFeedGateway) RegisterFeedLink(ctx context.Context, link string)
 		logger.SafeErrorContext(ctx, "Error registering RSS feed link", "error", err)
 		return stderrors.New("failed to register RSS feed link")
 	}
-	logger.SafeInfoContext(ctx, "RSS feed link registered", "link", link)
+	logger.SafeInfoContext(ctx, "RSS feed link registered", "link", sanitized)
 	return nil
 }
 

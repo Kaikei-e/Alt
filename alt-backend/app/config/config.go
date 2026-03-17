@@ -84,11 +84,15 @@ type ImageProxyConfig struct {
 
 // KnowledgeHomeConfig holds configuration for Knowledge Home feature flags.
 type KnowledgeHomeConfig struct {
-	EnableHomePage     bool   `json:"enable_home_page" env:"KNOWLEDGE_HOME_ENABLE_PAGE" default:"false"`
-	EnableTracking     bool   `json:"enable_tracking" env:"KNOWLEDGE_HOME_ENABLE_TRACKING" default:"false"`
-	EnableProjectionV2 bool   `json:"enable_projection_v2" env:"KNOWLEDGE_HOME_ENABLE_PROJECTION_V2" default:"false"`
-	RolloutPercentage  int    `json:"rollout_percentage" env:"KNOWLEDGE_HOME_ROLLOUT_PERCENTAGE" default:"0"`
-	AllowedUserIDs     string `json:"allowed_user_ids" env:"KNOWLEDGE_HOME_ALLOWED_USER_IDS" default:""`
+	EnableHomePage      bool   `json:"enable_home_page" env:"KNOWLEDGE_HOME_ENABLE_PAGE" default:"false"`
+	EnableTracking      bool   `json:"enable_tracking" env:"KNOWLEDGE_HOME_ENABLE_TRACKING" default:"false"`
+	EnableProjectionV2  bool   `json:"enable_projection_v2" env:"KNOWLEDGE_HOME_ENABLE_PROJECTION_V2" default:"false"`
+	RolloutPercentage   int    `json:"rollout_percentage" env:"KNOWLEDGE_HOME_ROLLOUT_PERCENTAGE" default:"0"`
+	AllowedUserIDs      string `json:"allowed_user_ids" env:"KNOWLEDGE_HOME_ALLOWED_USER_IDS" default:""`
+	EnableRecallRail    bool   `json:"enable_recall_rail" env:"KNOWLEDGE_HOME_ENABLE_RECALL_RAIL" default:"false"`
+	EnableLens          bool   `json:"enable_lens" env:"KNOWLEDGE_HOME_ENABLE_LENS" default:"false"`
+	EnableStreamUpdates bool   `json:"enable_stream_updates" env:"KNOWLEDGE_HOME_ENABLE_STREAM_UPDATES" default:"false"`
+	EnableSupersedeUX   bool   `json:"enable_supersede_ux" env:"KNOWLEDGE_HOME_ENABLE_SUPERSEDE_UX" default:"false"`
 }
 
 // InternalAPIConfig holds configuration for the internal service-to-service API.

@@ -17,6 +17,11 @@ const (
 	EventHomeItemDismissed     = "HomeItemDismissed"
 	EventHomeItemAsked         = "HomeItemAsked"
 	EventHomeItemListened      = "HomeItemListened"
+	EventRecallSnoozed         = "RecallSnoozed"
+	EventRecallDismissed       = "RecallDismissed"
+	EventSummarySuperseded     = "SummarySuperseded"
+	EventTagSetSuperseded      = "TagSetSuperseded"
+	EventHomeItemSuperseded    = "HomeItemSuperseded"
 )
 
 // Actor type constants.

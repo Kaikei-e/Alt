@@ -122,6 +122,17 @@ import (
 	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/track_home_action_usecase"
 	"alt/usecase/track_home_seen_usecase"
+	"alt/usecase/recall_rail_usecase"
+	"alt/usecase/recall_snooze_usecase"
+	"alt/usecase/recall_dismiss_usecase"
+	"alt/usecase/create_lens_usecase"
+	"alt/usecase/update_lens_usecase"
+	"alt/usecase/list_lenses_usecase"
+	"alt/usecase/select_lens_usecase"
+	"alt/usecase/archive_lens_usecase"
+	"alt/gateway/recall_signal_gateway"
+	"alt/gateway/recall_candidate_gateway"
+	"alt/gateway/knowledge_lens_gateway"
 	"alt/utils"
 	"alt/utils/batch_article_fetcher"
 	"alt/utils/image_proxy"
@@ -230,6 +241,19 @@ type ApplicationComponents struct {
 	KnowledgeProjectionVersionGateway   *knowledge_projection_version_gateway.Gateway
 	KnowledgeBackfillUsecase            *knowledge_backfill_usecase.Usecase
 	KnowledgeProjectionHealthUsecase    *knowledge_projection_health_usecase.Usecase
+
+	// Phase 4: RecallRail, Lens, Stream, Supersede
+	RecallRailUsecase                   *recall_rail_usecase.RecallRailUsecase
+	RecallSnoozeUsecase                 *recall_snooze_usecase.RecallSnoozeUsecase
+	RecallDismissUsecase                *recall_dismiss_usecase.RecallDismissUsecase
+	CreateLensUsecase                   *create_lens_usecase.CreateLensUsecase
+	UpdateLensUsecase                   *update_lens_usecase.UpdateLensUsecase
+	ListLensesUsecase                   *list_lenses_usecase.ListLensesUsecase
+	SelectLensUsecase                   *select_lens_usecase.SelectLensUsecase
+	ArchiveLensUsecase                  *archive_lens_usecase.ArchiveLensUsecase
+	RecallSignalGateway                 *recall_signal_gateway.Gateway
+	RecallCandidateGateway              *recall_candidate_gateway.Gateway
+	KnowledgeLensGateway                *knowledge_lens_gateway.Gateway
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -510,6 +534,20 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	knowledgeBackfillUsecase := knowledge_backfill_usecase.NewUsecase(knowledgeBackfillGw, knowledgeBackfillGw, knowledgeBackfillGw, knowledgeBackfillGw, knowledgeEventGw)
 	knowledgeProjectionHealthUsecase := knowledge_projection_health_usecase.NewUsecase(knowledgeProjectionVersionGw, knowledgeProjectionGw, knowledgeBackfillGw)
 
+	// Phase 4: RecallRail, Lens, Stream, Supersede components
+	recallSignalGw := recall_signal_gateway.NewGateway(altDBRepository)
+	recallCandidateGw := recall_candidate_gateway.NewGateway(altDBRepository)
+	knowledgeLensGw := knowledge_lens_gateway.NewGateway(altDBRepository)
+
+	recallRailUsecase := recall_rail_usecase.NewRecallRailUsecase(recallCandidateGw, featureFlagGw)
+	recallSnoozeUsecase := recall_snooze_usecase.NewRecallSnoozeUsecase(recallCandidateGw, knowledgeEventGw)
+	recallDismissUsecase := recall_dismiss_usecase.NewRecallDismissUsecase(recallCandidateGw, knowledgeEventGw)
+	createLensUsecase := create_lens_usecase.NewCreateLensUsecase(knowledgeLensGw, knowledgeLensGw)
+	updateLensUsecase := update_lens_usecase.NewUpdateLensUsecase(knowledgeLensGw, knowledgeLensGw)
+	listLensesUsecase := list_lenses_usecase.NewListLensesUsecase(knowledgeLensGw)
+	selectLensUsecase := select_lens_usecase.NewSelectLensUsecase(knowledgeLensGw, knowledgeLensGw, knowledgeLensGw)
+	archiveLensUsecase := archive_lens_usecase.NewArchiveLensUsecase(knowledgeLensGw, knowledgeLensGw)
+
 	// Wire auto-subscribe: Usecase delegates subscription to SubscriptionPort
 	registerFeedsUsecase.SetSubscriptionPort(subscriptionGatewayImpl)
 	// Wire event publisher: Usecase publishes ArticleCreated events (fire-and-forget)
@@ -613,5 +651,18 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		KnowledgeProjectionVersionGateway: knowledgeProjectionVersionGw,
 		KnowledgeBackfillUsecase:          knowledgeBackfillUsecase,
 		KnowledgeProjectionHealthUsecase:  knowledgeProjectionHealthUsecase,
+
+		// Phase 4
+		RecallRailUsecase:          recallRailUsecase,
+		RecallSnoozeUsecase:        recallSnoozeUsecase,
+		RecallDismissUsecase:       recallDismissUsecase,
+		CreateLensUsecase:          createLensUsecase,
+		UpdateLensUsecase:          updateLensUsecase,
+		ListLensesUsecase:          listLensesUsecase,
+		SelectLensUsecase:          selectLensUsecase,
+		ArchiveLensUsecase:         archiveLensUsecase,
+		RecallSignalGateway:        recallSignalGw,
+		RecallCandidateGateway:     recallCandidateGw,
+		KnowledgeLensGateway:       knowledgeLensGw,
 	}
 }

@@ -58,6 +58,14 @@ func (g *Gateway) isFlagGloballyEnabled(flagName string) bool {
 		return g.cfg.EnableTracking
 	case domain.FlagKnowledgeHomeProjectionV2:
 		return g.cfg.EnableProjectionV2
+	case domain.FlagRecallRail:
+		return g.cfg.EnableRecallRail
+	case domain.FlagLensV0:
+		return g.cfg.EnableLens
+	case domain.FlagStreamUpdates:
+		return g.cfg.EnableStreamUpdates
+	case domain.FlagSupersedeUX:
+		return g.cfg.EnableSupersedeUX
 	default:
 		return false
 	}
