@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { useKnowledgeHomeAdmin } from "./useKnowledgeHomeAdmin.svelte";
+import {
+	useKnowledgeHomeAdmin,
+	type KnowledgeHomeAdminSnapshot,
+} from "./useKnowledgeHomeAdmin.svelte";
 
-const initialSnapshot = {
+const initialSnapshot: KnowledgeHomeAdminSnapshot = {
 	health: {
 		activeVersion: 1,
 		checkpointSeq: 42,
@@ -34,28 +37,14 @@ describe("useKnowledgeHomeAdmin", () => {
 	});
 
 	it("sets refreshing state without clearing existing data", async () => {
-		let resolveFetch:
-			| ((value: {
-					health: {
-						activeVersion: number;
-						checkpointSeq: number;
-						lastUpdated: string;
-						backfillJobs: [];
-					};
-					flags: {
-						enableHomePage: boolean;
-						enableTracking: boolean;
-						enableProjectionV2: boolean;
-						rolloutPercentage: number;
-					};
-			  }) => void)
-			| null = null;
-		const fetcher = vi.fn(
-			() =>
-				new Promise((resolve) => {
-					resolveFetch = resolve as typeof resolveFetch;
-				}),
-		);
+		let resolveFetch!: (
+			value: KnowledgeHomeAdminSnapshot | PromiseLike<KnowledgeHomeAdminSnapshot>,
+		) => void;
+		const fetcherImpl = () =>
+			new Promise<KnowledgeHomeAdminSnapshot>((resolve) => {
+				resolveFetch = resolve;
+			});
+		const fetcher = vi.fn(fetcherImpl);
 
 		const admin = useKnowledgeHomeAdmin(fetcher);
 		admin.seed({
@@ -77,7 +66,7 @@ describe("useKnowledgeHomeAdmin", () => {
 		expect(admin.refreshing).toBe(true);
 		expect(admin.health?.checkpointSeq).toBe(5);
 
-		resolveFetch?.({
+		resolveFetch({
 			health: {
 				activeVersion: 2,
 				checkpointSeq: 6,

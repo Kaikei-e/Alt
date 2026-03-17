@@ -8,6 +8,8 @@ interface Snapshot {
 	flags: FeatureFlagsConfigData | null;
 }
 
+export type KnowledgeHomeAdminSnapshot = Snapshot;
+
 export function useKnowledgeHomeAdmin(fetcher: () => Promise<Snapshot>) {
 	let health = $state<ProjectionHealthData | null>(null);
 	let flags = $state<FeatureFlagsConfigData | null>(null);

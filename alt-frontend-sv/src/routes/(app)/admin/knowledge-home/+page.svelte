@@ -17,9 +17,6 @@ let { data } = $props<{
 	};
 }>();
 
-const initialAdminData = data.adminData;
-const initialError = data.error;
-
 const admin = useKnowledgeHomeAdmin(async () => {
 	const response = await fetch("/api/admin/knowledge-home", {
 		credentials: "include",
@@ -31,7 +28,9 @@ const admin = useKnowledgeHomeAdmin(async () => {
 	return await response.json();
 });
 
-admin.seed(initialAdminData, initialError ? new Error(initialError) : null);
+$effect(() => {
+	admin.seed(data.adminData, data.error ? new Error(data.error) : null);
+});
 
 onMount(() => {
 	if (browser) {
