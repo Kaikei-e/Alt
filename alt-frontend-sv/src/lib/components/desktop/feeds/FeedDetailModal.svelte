@@ -127,6 +127,16 @@ $effect(() => {
 	}
 });
 
+// Manual scroll lock: only set overflow hidden (no pointer-events manipulation)
+$effect(() => {
+	if (!open) return;
+	const originalOverflow = document.body.style.overflow;
+	document.body.style.overflow = 'hidden';
+	return () => {
+		document.body.style.overflow = originalOverflow;
+	};
+});
+
 // Reset content states when feed changes (for arrow navigation)
 $effect(() => {
 	const currentFeedUrl = feed?.normalizedUrl ?? null;
@@ -385,6 +395,7 @@ async function handleSummarize(forceRefresh = false) {
 	<DialogPrimitive.Portal>
 		<DialogPrimitive.Overlay class="fixed inset-0 bg-black/50 z-50" />
 		<DialogPrimitive.Content
+			preventScroll={false}
 			class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[75vw] sm:max-w-[1800px] h-[75vh] bg-white rounded-lg shadow-xl overflow-hidden flex flex-col z-50"
 		>
 			<!-- Navigation Arrows (inside modal at edges) -->
@@ -519,7 +530,7 @@ async function handleSummarize(forceRefresh = false) {
 				</div>
 
 				<!-- Footer Actions -->
-				<div class="relative z-10 shrink-0 py-4 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-3 items-center" style="padding-left: 70px; padding-right: 70px;">
+				<div class="shrink-0 py-4 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-3 items-center" style="padding-left: 70px; padding-right: 70px;">
 					<!-- 左側グループ: アクションボタン -->
 					<div class="flex gap-3 flex-1 min-w-0">
 						<!-- Full Article Button -->
