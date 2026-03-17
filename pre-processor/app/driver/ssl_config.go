@@ -31,26 +31,6 @@ type DatabaseConfig struct {
 	MaxConnIdleTime string
 }
 
-func NewDatabaseConfig() *DatabaseConfig {
-	return &DatabaseConfig{
-		Host:     getEnvOrDefault("DB_HOST", "localhost"),
-		Port:     getEnvOrDefault("DB_PORT", "5432"),
-		User:     getEnvOrDefault("PRE_PROCESSOR_DB_USER", "devuser"),
-		Password: getEnvOrDefault("PRE_PROCESSOR_DB_PASSWORD", "devpassword"),
-		DBName:   getEnvOrDefault("DB_NAME", "devdb"),
-		SSL: DatabaseSSLConfig{
-			Mode:     getEnvOrDefault("DB_SSL_MODE", "prefer"),
-			RootCert: getEnvOrDefault("DB_SSL_ROOT_CERT", ""),
-			Cert:     getEnvOrDefault("DB_SSL_CERT", ""),
-			Key:      getEnvOrDefault("DB_SSL_KEY", ""),
-		},
-		MaxConns:        getEnvAsInt32OrDefault("DB_MAX_CONNS", 20),
-		MinConns:        getEnvAsInt32OrDefault("DB_MIN_CONNS", 5),
-		MaxConnLifetime: getEnvOrDefault("DB_MAX_CONN_LIFETIME", "1h"),
-		MaxConnIdleTime: getEnvOrDefault("DB_MAX_CONN_IDLE_TIME", "30m"),
-	}
-}
-
 func (dc *DatabaseConfig) BuildConnectionString() string {
 	baseConn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
@@ -163,6 +143,13 @@ func getEnvAsInt32OrDefault(key string, defaultValue int32) int32 {
 		if intValue, err := strconv.ParseInt(value, 10, 32); err == nil {
 			return int32(intValue)
 		}
+	}
+	return defaultValue
+}
+
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
 	return defaultValue
 }

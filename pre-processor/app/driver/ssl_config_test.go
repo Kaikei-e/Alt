@@ -60,27 +60,6 @@ func TestDatabaseConfig_BuildConnectionString(t *testing.T) {
 	}
 }
 
-func TestNewDatabaseConfig(t *testing.T) {
-	// 環境変数をクリア
-	os.Clearenv()
-
-	// テスト用環境変数設定
-	_ = os.Setenv("DB_HOST", "testhost")
-	_ = os.Setenv("DB_SSL_MODE", "require")
-	_ = os.Setenv("DB_MAX_CONNS", "15")
-
-	defer func() {
-		os.Clearenv()
-	}()
-
-	config := NewDatabaseConfig()
-
-	assert.Equal(t, "testhost", config.Host)
-	assert.Equal(t, "require", config.SSL.Mode)
-	assert.Equal(t, int32(15), config.MaxConns)
-	assert.Equal(t, "5432", config.Port) // デフォルト値
-}
-
 func TestNewDatabaseConfigWithPrefix(t *testing.T) {
 	os.Clearenv()
 
