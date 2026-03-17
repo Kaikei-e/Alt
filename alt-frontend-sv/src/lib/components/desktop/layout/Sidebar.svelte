@@ -131,6 +131,11 @@ const menuItems = [
 				href: `${svBasePath}/settings/feeds`,
 				icon: LinkIcon,
 			},
+			{
+				label: "KH Admin",
+				href: `${svBasePath}/settings/knowledge-home-admin`,
+				icon: Activity,
+			},
 		],
 	},
 	{
