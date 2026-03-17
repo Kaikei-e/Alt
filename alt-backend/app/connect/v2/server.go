@@ -24,6 +24,7 @@ import (
 	"alt/connect/v2/feeds"
 	internalhandler "alt/connect/v2/internal"
 	knowledge_home "alt/connect/v2/knowledge_home"
+	"alt/connect/v2/knowledge_home_admin"
 	"alt/connect/v2/middleware"
 	"alt/connect/v2/morning_letter"
 	"alt/connect/v2/recap"
@@ -86,14 +87,30 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		container.GetKnowledgeHomeUsecase,
 		container.TrackHomeSeenUsecase,
 		container.TrackHomeActionUsecase,
+		container.FeatureFlagGateway,
 		logger,
 	)
 	khPath, khServiceHandler := knowledgehomev1connect.NewKnowledgeHomeServiceHandler(knowledgeHomeHandler, opts)
 	mux.Handle(khPath, khServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeHomeService", "path", khPath)
 
-	// Register BackendInternalService (service-to-service API, uses service token auth)
+	// Register KnowledgeHomeAdminService (service-to-service API, uses service token auth)
 	serviceAuthInterceptor := middleware.NewServiceAuthInterceptor(logger, cfg.InternalAPI.ServiceSecret)
+	adminOpts := connect.WithInterceptors(
+		cancelInterceptor.Interceptor(),
+		serviceAuthInterceptor.Interceptor(),
+	)
+	khAdminHandler := knowledge_home_admin.NewHandler(
+		container.KnowledgeBackfillUsecase,
+		container.KnowledgeProjectionHealthUsecase,
+		&cfg.KnowledgeHome,
+		logger,
+	)
+	khAdminPath, khAdminServiceHandler := knowledgehomev1connect.NewKnowledgeHomeAdminServiceHandler(khAdminHandler, adminOpts)
+	mux.Handle(khAdminPath, khAdminServiceHandler)
+	logger.Info("Registered Connect-RPC KnowledgeHomeAdminService", "path", khAdminPath)
+
+	// Register BackendInternalService (service-to-service API, uses service token auth)
 	internalOpts := connect.WithInterceptors(
 		cancelInterceptor.Interceptor(),
 		serviceAuthInterceptor.Interceptor(),

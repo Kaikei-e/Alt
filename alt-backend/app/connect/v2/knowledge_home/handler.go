@@ -9,11 +9,13 @@ import (
 
 	"connectrpc.com/connect"
 
+	"alt/domain"
 	knowledgehomev1 "alt/gen/proto/alt/knowledge_home/v1"
 	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
 
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
+	"alt/port/feature_flag_port"
 	"alt/usecase/get_knowledge_home_usecase"
 	"alt/usecase/track_home_action_usecase"
 	"alt/usecase/track_home_seen_usecase"
@@ -24,6 +26,7 @@ type Handler struct {
 	getHomeUsecase     *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
 	trackSeenUsecase   *track_home_seen_usecase.TrackHomeSeenUsecase
 	trackActionUsecase *track_home_action_usecase.TrackHomeActionUsecase
+	featureFlagPort    feature_flag_port.FeatureFlagPort
 	logger             *slog.Logger
 }
 
@@ -35,12 +38,14 @@ func NewHandler(
 	getHome *get_knowledge_home_usecase.GetKnowledgeHomeUsecase,
 	trackSeen *track_home_seen_usecase.TrackHomeSeenUsecase,
 	trackAction *track_home_action_usecase.TrackHomeActionUsecase,
+	featureFlag feature_flag_port.FeatureFlagPort,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
 		getHomeUsecase:     getHome,
 		trackSeenUsecase:   trackSeen,
 		trackActionUsecase: trackAction,
+		featureFlagPort:    featureFlag,
 		logger:             logger,
 	}
 }
@@ -53,6 +58,12 @@ func (h *Handler) GetKnowledgeHome(
 	user, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	// Feature flag guard: deny access if Knowledge Home page is disabled for this user
+	if h.featureFlagPort != nil && !h.featureFlagPort.IsEnabled(domain.FlagKnowledgeHomePage, user.UserID) {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			fmt.Errorf("knowledge home is not enabled for this user"))
 	}
 
 	limit := int(req.Msg.Limit)
@@ -140,6 +151,22 @@ func (h *Handler) GetKnowledgeHome(
 		EveningPulseAvailable: result.Digest.EveningPulseAvailable,
 	}
 
+	// Build feature flag statuses for the response
+	var featureFlags []*knowledgehomev1.FeatureFlagStatus
+	if h.featureFlagPort != nil {
+		flags := []string{
+			domain.FlagKnowledgeHomePage,
+			domain.FlagKnowledgeHomeTracking,
+			domain.FlagKnowledgeHomeProjectionV2,
+		}
+		for _, flag := range flags {
+			featureFlags = append(featureFlags, &knowledgehomev1.FeatureFlagStatus{
+				Name:    flag,
+				Enabled: h.featureFlagPort.IsEnabled(flag, user.UserID),
+			})
+		}
+	}
+
 	return connect.NewResponse(&knowledgehomev1.GetKnowledgeHomeResponse{
 		TodayDigest:  digest,
 		Items:        protoItems,
@@ -147,6 +174,7 @@ func (h *Handler) GetKnowledgeHome(
 		HasMore:      result.HasMore,
 		DegradedMode: result.Degraded,
 		GeneratedAt:  result.GeneratedAt.Format(time.RFC3339),
+		FeatureFlags: featureFlags,
 	}), nil
 }
 

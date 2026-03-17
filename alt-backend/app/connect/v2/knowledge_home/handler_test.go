@@ -59,7 +59,37 @@ func (m *mockKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, _ domai
 	return m.err
 }
 
+// mockFeatureFlagPort implements feature_flag_port.FeatureFlagPort.
+type mockFeatureFlagPort struct {
+	enabledFlags map[string]bool
+}
+
+func (m *mockFeatureFlagPort) IsEnabled(flagName string, _ uuid.UUID) bool {
+	if m == nil || m.enabledFlags == nil {
+		return true
+	}
+	return m.enabledFlags[flagName]
+}
+
+// testUserContext creates a context with an authenticated user for testing.
+func testUserContext() context.Context {
+	user := &domain.UserContext{
+		UserID:    uuid.New(),
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  uuid.New(),
+		SessionID: "test-session",
+		LoginAt:   time.Now(),
+		ExpiresAt: time.Now().Add(1 * time.Hour),
+	}
+	return domain.SetUserContext(context.Background(), user)
+}
+
 func setupHandler() (*Handler, *mockHomeItemsPort, *mockTodayDigestPort) {
+	return setupHandlerWithFlags(nil)
+}
+
+func setupHandlerWithFlags(flagPort *mockFeatureFlagPort) (*Handler, *mockHomeItemsPort, *mockTodayDigestPort) {
 	homePort := &mockHomeItemsPort{
 		items: []domain.KnowledgeHomeItem{
 			{
@@ -84,10 +114,10 @@ func setupHandler() (*Handler, *mockHomeItemsPort, *mockTodayDigestPort) {
 	knowledgeEventPort := &mockKnowledgeEventPort{}
 
 	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort)
-	trackSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(userEventPort)
-	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort)
+	trackSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(userEventPort, flagPort)
+	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, flagPort)
 
-	handler := NewHandler(getHomeUsecase, trackSeenUsecase, trackActionUsecase, slog.Default())
+	handler := NewHandler(getHomeUsecase, trackSeenUsecase, trackActionUsecase, flagPort, slog.Default())
 	return handler, homePort, digestPort
 }
 
@@ -106,6 +136,63 @@ func TestHandler_GetKnowledgeHome_Unauthenticated(t *testing.T) {
 	connectErr, ok := err.(*connect.Error)
 	require.True(t, ok)
 	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+func TestHandler_GetKnowledgeHome_FlagDisabled(t *testing.T) {
+	logger.InitLogger()
+	flagPort := &mockFeatureFlagPort{
+		enabledFlags: map[string]bool{
+			domain.FlagKnowledgeHomePage: false,
+		},
+	}
+	handler, _, _ := setupHandlerWithFlags(flagPort)
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{
+		Limit: 20,
+	})
+
+	_, err := handler.GetKnowledgeHome(ctx, req)
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodePermissionDenied, connectErr.Code())
+}
+
+func TestHandler_GetKnowledgeHome_FlagEnabled(t *testing.T) {
+	logger.InitLogger()
+	flagPort := &mockFeatureFlagPort{
+		enabledFlags: map[string]bool{
+			domain.FlagKnowledgeHomePage: true,
+		},
+	}
+	handler, _, _ := setupHandlerWithFlags(flagPort)
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{
+		Limit: 20,
+	})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Items, 1)
+	assert.True(t, resp.Msg.HasMore)
+}
+
+func TestHandler_GetKnowledgeHome_NilFlagPort(t *testing.T) {
+	logger.InitLogger()
+	// nil flag port means no flag guard — should work as before
+	handler, _, _ := setupHandler()
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{
+		Limit: 20,
+	})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Items, 1)
 }
 
 func TestHandler_TrackHomeAction_Validation(t *testing.T) {

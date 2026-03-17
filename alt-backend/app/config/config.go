@@ -22,7 +22,8 @@ type Config struct {
 	AuthHub       AuthHubConfig       `json:"auth_hub"`
 	MQHub         MQHubConfig         `json:"mq_hub"`
 	InternalAPI   InternalAPIConfig   `json:"internal_api"`
-	ImageProxy    ImageProxyConfig    `json:"image_proxy"`
+	ImageProxy     ImageProxyConfig     `json:"image_proxy"`
+	KnowledgeHome  KnowledgeHomeConfig  `json:"knowledge_home"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -79,6 +80,15 @@ type ImageProxyConfig struct {
 	CacheTTLMin int    `json:"cache_ttl_min" env:"IMAGE_PROXY_CACHE_TTL_MINUTES" default:"10080"`
 	MaxWidth    int    `json:"max_width" env:"IMAGE_PROXY_MAX_WIDTH" default:"600"`
 	WebPQuality int    `json:"webp_quality" env:"IMAGE_PROXY_WEBP_QUALITY" default:"80"`
+}
+
+// KnowledgeHomeConfig holds configuration for Knowledge Home feature flags.
+type KnowledgeHomeConfig struct {
+	EnableHomePage     bool   `json:"enable_home_page" env:"KNOWLEDGE_HOME_ENABLE_PAGE" default:"false"`
+	EnableTracking     bool   `json:"enable_tracking" env:"KNOWLEDGE_HOME_ENABLE_TRACKING" default:"false"`
+	EnableProjectionV2 bool   `json:"enable_projection_v2" env:"KNOWLEDGE_HOME_ENABLE_PROJECTION_V2" default:"false"`
+	RolloutPercentage  int    `json:"rollout_percentage" env:"KNOWLEDGE_HOME_ROLLOUT_PERCENTAGE" default:"0"`
+	AllowedUserIDs     string `json:"allowed_user_ids" env:"KNOWLEDGE_HOME_ALLOWED_USER_IDS" default:""`
 }
 
 // InternalAPIConfig holds configuration for the internal service-to-service API.
