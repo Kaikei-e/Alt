@@ -34,6 +34,10 @@ type Config struct {
 	TTSConnectURL string
 	// TTSServiceSecret is the shared secret for authenticating with the TTS service
 	TTSServiceSecret string
+	// ServiceSecretFile is the file path for internal service auth secret
+	ServiceSecretFile string
+	// ServiceSecret is the shared secret for backend admin/internal calls
+	ServiceSecret string
 
 	// BFF Feature Flags
 	// EnableCache enables response caching
@@ -79,6 +83,8 @@ func NewConfig() *Config {
 		StreamingTimeout:       getDurationEnv("BFF_STREAMING_TIMEOUT", 5*time.Minute),
 		TTSConnectURL:          getEnv("TTS_CONNECT_URL", ""),
 		TTSServiceSecret:       getEnv("TTS_SERVICE_SECRET", ""),
+		ServiceSecretFile:      getEnv("SERVICE_SECRET_FILE", ""),
+		ServiceSecret:          getEnv("SERVICE_SECRET", ""),
 
 		// BFF Feature Flags (all enabled by default)
 		EnableCache:              true,
@@ -119,6 +125,18 @@ func (c *Config) LoadBackendTokenSecret() ([]byte, error) {
 	return nil, errors.New("backend token secret not configured: set BACKEND_TOKEN_SECRET_FILE or BACKEND_TOKEN_SECRET")
 }
 
+// LoadServiceSecret loads the internal service secret from file or environment.
+func (c *Config) LoadServiceSecret() (string, error) {
+	if c.ServiceSecretFile != "" {
+		data, err := os.ReadFile(c.ServiceSecretFile)
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(data)), nil
+	}
+	return c.ServiceSecret, nil
+}
+
 // Validate validates the configuration.
 func (c *Config) Validate() error {
 	if c.Port == "" {
@@ -147,4 +165,3 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	}
 	return defaultValue
 }
-

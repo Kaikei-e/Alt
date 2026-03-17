@@ -32,6 +32,7 @@ type Config struct {
 	StreamingTimeout time.Duration
 	TTSConnectURL    string
 	TTSServiceSecret string
+	ServiceSecret    string
 
 	// BFF Feature Configuration
 	BFFConfig handler.BFFConfig
@@ -175,6 +176,22 @@ func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.Roun
 		mux.Handle("/alt.tts.v1.TTSService/", ttsHandler)
 	}
 
+	// Knowledge Home admin routing (before catch-all).
+	// Requests are authenticated as admin users at the BFF boundary, then
+	// forwarded to alt-backend with service-token auth.
+	if cfg.ServiceSecret != "" {
+		adminProxy := handler.NewAdminProxyHandler(
+			backendClient,
+			cfg.Secret,
+			cfg.Issuer,
+			cfg.Audience,
+			cfg.ServiceSecret,
+			logger,
+			cfg.RequestTimeout,
+		)
+		mux.Handle("/alt.knowledge_home.v1.KnowledgeHomeAdminService/", adminProxy)
+	}
+
 	// Register proxy handler for all other paths
 	// Connect-RPC uses paths like /alt.feeds.v2.FeedService/GetFeedStats
 	mux.Handle("/", mainHandler)
@@ -233,4 +250,3 @@ func createQueryFetcher(backendClient *client.BackendClient) handler.QueryFetche
 		}, nil
 	}
 }
-

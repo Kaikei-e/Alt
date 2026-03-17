@@ -105,6 +105,25 @@ func (c *BackendClient) ForwardStreamingRequest(req *http.Request, token string)
 	return c.streamingClient.Do(backendReq)
 }
 
+// ForwardServiceRequest forwards a Connect-RPC request to the backend using
+// service-token authentication instead of a user backend token.
+func (c *BackendClient) ForwardServiceRequest(req *http.Request, serviceToken string) (*http.Response, error) {
+	backendURL := c.BuildBackendURL(req.URL.Path)
+
+	backendReq, err := http.NewRequestWithContext(req.Context(), req.Method, backendURL, req.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	copyHeaders(req.Header, backendReq.Header)
+	backendReq.Header.Del(middleware.BackendTokenHeader)
+	if serviceToken != "" {
+		backendReq.Header.Set("X-Service-Token", serviceToken)
+	}
+
+	return c.httpClient.Do(backendReq)
+}
+
 // ForwardRESTRequest forwards a REST API request to the backend.
 // Unlike ForwardRequest (which copies only Connect-RPC headers),
 // this copies all relevant HTTP headers for REST compatibility.

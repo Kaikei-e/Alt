@@ -52,6 +52,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	serviceSecret, err := cfg.LoadServiceSecret()
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to load service secret", "error", err)
+		os.Exit(1)
+	}
+
 	// Create server configuration
 	serverCfg := server.Config{
 		BackendURL:       cfg.BackendConnectURL,
@@ -63,6 +69,7 @@ func main() {
 		StreamingTimeout: cfg.StreamingTimeout,
 		TTSConnectURL:    cfg.TTSConnectURL,
 		TTSServiceSecret: cfg.TTSServiceSecret,
+		ServiceSecret:    serviceSecret,
 	}
 
 	// Create HTTP server
