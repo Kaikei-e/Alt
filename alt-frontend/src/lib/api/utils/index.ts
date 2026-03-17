@@ -1,1 +1,0 @@
-export { serverFetch } from "./serverFetch";
