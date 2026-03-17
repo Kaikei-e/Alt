@@ -104,9 +104,12 @@ import (
 	"alt/usecase/stream_article_tags_usecase"
 	"alt/usecase/opml_usecase"
 	"alt/usecase/subscription_usecase"
+	"alt/gateway/feature_flag_gateway"
+	"alt/gateway/knowledge_backfill_gateway"
 	"alt/gateway/knowledge_event_gateway"
 	"alt/gateway/knowledge_home_gateway"
 	"alt/gateway/knowledge_projection_gateway"
+	"alt/gateway/knowledge_projection_version_gateway"
 	"alt/gateway/knowledge_user_event_gateway"
 	"alt/gateway/summary_version_gateway"
 	"alt/gateway/tag_set_version_gateway"
@@ -115,6 +118,8 @@ import (
 	"alt/usecase/create_summary_version_usecase"
 	"alt/usecase/create_tag_set_version_usecase"
 	"alt/usecase/get_knowledge_home_usecase"
+	"alt/usecase/knowledge_backfill_usecase"
+	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/track_home_action_usecase"
 	"alt/usecase/track_home_seen_usecase"
 	"alt/utils"
@@ -210,16 +215,21 @@ type ApplicationComponents struct {
 	InternalArticleGateway *internal_article_gateway.Gateway
 
 	// Knowledge Home
-	GetKnowledgeHomeUsecase        *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
-	TrackHomeSeenUsecase           *track_home_seen_usecase.TrackHomeSeenUsecase
-	TrackHomeActionUsecase         *track_home_action_usecase.TrackHomeActionUsecase
-	AppendKnowledgeEventUsecase    *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
-	CreateSummaryVersionUsecase    *create_summary_version_usecase.CreateSummaryVersionUsecase
-	CreateTagSetVersionUsecase     *create_tag_set_version_usecase.CreateTagSetVersionUsecase
-	KnowledgeEventGateway          *knowledge_event_gateway.Gateway
-	KnowledgeProjectionGateway     *knowledge_projection_gateway.Gateway
-	KnowledgeHomeGateway           *knowledge_home_gateway.Gateway
-	TodayDigestGateway             *today_digest_gateway.Gateway
+	GetKnowledgeHomeUsecase             *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
+	TrackHomeSeenUsecase                *track_home_seen_usecase.TrackHomeSeenUsecase
+	TrackHomeActionUsecase              *track_home_action_usecase.TrackHomeActionUsecase
+	AppendKnowledgeEventUsecase         *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
+	CreateSummaryVersionUsecase         *create_summary_version_usecase.CreateSummaryVersionUsecase
+	CreateTagSetVersionUsecase          *create_tag_set_version_usecase.CreateTagSetVersionUsecase
+	KnowledgeEventGateway               *knowledge_event_gateway.Gateway
+	KnowledgeProjectionGateway          *knowledge_projection_gateway.Gateway
+	KnowledgeHomeGateway                *knowledge_home_gateway.Gateway
+	TodayDigestGateway                  *today_digest_gateway.Gateway
+	FeatureFlagGateway                  *feature_flag_gateway.Gateway
+	KnowledgeBackfillGateway            *knowledge_backfill_gateway.Gateway
+	KnowledgeProjectionVersionGateway   *knowledge_projection_version_gateway.Gateway
+	KnowledgeBackfillUsecase            *knowledge_backfill_usecase.Usecase
+	KnowledgeProjectionHealthUsecase    *knowledge_projection_health_usecase.Usecase
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -487,13 +497,18 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	summaryVersionGw := summary_version_gateway.NewGateway(altDBRepository)
 	tagSetVersionGw := tag_set_version_gateway.NewGateway(altDBRepository)
 	knowledgeProjectionGw := knowledge_projection_gateway.NewGateway(altDBRepository)
+	featureFlagGw := feature_flag_gateway.NewGateway(&cfg.KnowledgeHome)
+	knowledgeBackfillGw := knowledge_backfill_gateway.NewGateway(altDBRepository)
+	knowledgeProjectionVersionGw := knowledge_projection_version_gateway.NewGateway(altDBRepository)
 
 	getKnowledgeHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(knowledgeHomeGw, todayDigestGw)
-	trackHomeSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(knowledgeUserEventGw)
-	trackHomeActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(knowledgeUserEventGw, knowledgeEventGw)
+	trackHomeSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(knowledgeUserEventGw, featureFlagGw)
+	trackHomeActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(knowledgeUserEventGw, knowledgeEventGw, featureFlagGw)
 	appendKnowledgeEventUsecase := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(knowledgeEventGw)
 	createSummaryVersionUsecase := create_summary_version_usecase.NewCreateSummaryVersionUsecase(summaryVersionGw, knowledgeEventGw)
 	createTagSetVersionUsecase := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetVersionGw, knowledgeEventGw)
+	knowledgeBackfillUsecase := knowledge_backfill_usecase.NewUsecase(knowledgeBackfillGw, knowledgeBackfillGw, knowledgeBackfillGw, knowledgeBackfillGw, knowledgeEventGw)
+	knowledgeProjectionHealthUsecase := knowledge_projection_health_usecase.NewUsecase(knowledgeProjectionVersionGw, knowledgeProjectionGw, knowledgeBackfillGw)
 
 	// Wire auto-subscribe: Usecase delegates subscription to SubscriptionPort
 	registerFeedsUsecase.SetSubscriptionPort(subscriptionGatewayImpl)
@@ -583,15 +598,20 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		InternalArticleGateway: internalArticleGatewayImpl,
 
 		// Knowledge Home
-		GetKnowledgeHomeUsecase:     getKnowledgeHomeUsecase,
-		TrackHomeSeenUsecase:        trackHomeSeenUsecase,
-		TrackHomeActionUsecase:      trackHomeActionUsecase,
-		AppendKnowledgeEventUsecase: appendKnowledgeEventUsecase,
-		CreateSummaryVersionUsecase: createSummaryVersionUsecase,
-		CreateTagSetVersionUsecase:  createTagSetVersionUsecase,
-		KnowledgeEventGateway:       knowledgeEventGw,
-		KnowledgeProjectionGateway:  knowledgeProjectionGw,
-		KnowledgeHomeGateway:        knowledgeHomeGw,
-		TodayDigestGateway:          todayDigestGw,
+		GetKnowledgeHomeUsecase:           getKnowledgeHomeUsecase,
+		TrackHomeSeenUsecase:              trackHomeSeenUsecase,
+		TrackHomeActionUsecase:            trackHomeActionUsecase,
+		AppendKnowledgeEventUsecase:       appendKnowledgeEventUsecase,
+		CreateSummaryVersionUsecase:       createSummaryVersionUsecase,
+		CreateTagSetVersionUsecase:        createTagSetVersionUsecase,
+		KnowledgeEventGateway:             knowledgeEventGw,
+		KnowledgeProjectionGateway:        knowledgeProjectionGw,
+		KnowledgeHomeGateway:              knowledgeHomeGw,
+		TodayDigestGateway:                todayDigestGw,
+		FeatureFlagGateway:                featureFlagGw,
+		KnowledgeBackfillGateway:          knowledgeBackfillGw,
+		KnowledgeProjectionVersionGateway: knowledgeProjectionVersionGw,
+		KnowledgeBackfillUsecase:          knowledgeBackfillUsecase,
+		KnowledgeProjectionHealthUsecase:  knowledgeProjectionHealthUsecase,
 	}
 }

@@ -2,6 +2,7 @@ package track_home_seen_usecase
 
 import (
 	"alt/domain"
+	"alt/port/feature_flag_port"
 	"alt/port/knowledge_user_event_port"
 	"alt/utils/logger"
 	"context"
@@ -14,21 +15,29 @@ import (
 
 // TrackHomeSeenUsecase records impression events for knowledge home items.
 type TrackHomeSeenUsecase struct {
-	userEventPort knowledge_user_event_port.AppendKnowledgeUserEventPort
+	userEventPort   knowledge_user_event_port.AppendKnowledgeUserEventPort
+	featureFlagPort feature_flag_port.FeatureFlagPort
 }
 
 // NewTrackHomeSeenUsecase creates a new TrackHomeSeenUsecase.
 func NewTrackHomeSeenUsecase(
 	userEventPort knowledge_user_event_port.AppendKnowledgeUserEventPort,
+	featureFlagPort feature_flag_port.FeatureFlagPort,
 ) *TrackHomeSeenUsecase {
 	return &TrackHomeSeenUsecase{
-		userEventPort: userEventPort,
+		userEventPort:   userEventPort,
+		featureFlagPort: featureFlagPort,
 	}
 }
 
 // Execute records that items were seen on the knowledge home.
 func (u *TrackHomeSeenUsecase) Execute(ctx context.Context, userID uuid.UUID, tenantID uuid.UUID, itemKeys []string, exposureSessionID string) error {
 	if len(itemKeys) == 0 {
+		return nil
+	}
+
+	// Skip tracking if tracking flag is disabled
+	if u.featureFlagPort != nil && !u.featureFlagPort.IsEnabled(domain.FlagKnowledgeHomeTracking, userID) {
 		return nil
 	}
 

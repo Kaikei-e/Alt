@@ -39,6 +39,18 @@ func (m *mockKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event d
 	return nil
 }
 
+// mockFeatureFlagPort implements feature_flag_port.FeatureFlagPort.
+type mockFeatureFlagPort struct {
+	enabled bool
+}
+
+func (m *mockFeatureFlagPort) IsEnabled(_ string, _ uuid.UUID) bool {
+	if m == nil {
+		return true
+	}
+	return m.enabled
+}
+
 func TestTrackHomeActionUsecase_Execute(t *testing.T) {
 	logger.InitLogger()
 
@@ -52,22 +64,31 @@ func TestTrackHomeActionUsecase_Execute(t *testing.T) {
 		metadataJSON    string
 		userEventPort   *mockUserEventPort
 		knowledgePort   *mockKnowledgeEventPort
+		flagPort        *mockFeatureFlagPort
 		wantErr         bool
 		wantErrContains string
+		wantUserEvents  int
+		wantKnEvents    int
 	}{
 		{
-			name:          "success - open action",
-			actionType:    "open",
-			itemKey:       "article:test-uuid",
-			userEventPort: &mockUserEventPort{},
-			knowledgePort: &mockKnowledgeEventPort{},
+			name:           "success - open action",
+			actionType:     "open",
+			itemKey:        "article:test-uuid",
+			userEventPort:  &mockUserEventPort{},
+			knowledgePort:  &mockKnowledgeEventPort{},
+			flagPort:       nil,
+			wantUserEvents: 1,
+			wantKnEvents:   1,
 		},
 		{
-			name:          "success - dismiss action",
-			actionType:    "dismiss",
-			itemKey:       "article:test-uuid",
-			userEventPort: &mockUserEventPort{},
-			knowledgePort: &mockKnowledgeEventPort{},
+			name:           "success - dismiss action",
+			actionType:     "dismiss",
+			itemKey:        "article:test-uuid",
+			userEventPort:  &mockUserEventPort{},
+			knowledgePort:  &mockKnowledgeEventPort{},
+			flagPort:       nil,
+			wantUserEvents: 1,
+			wantKnEvents:   1,
 		},
 		{
 			name:            "error - invalid action type",
@@ -75,6 +96,7 @@ func TestTrackHomeActionUsecase_Execute(t *testing.T) {
 			itemKey:         "article:test-uuid",
 			userEventPort:   &mockUserEventPort{},
 			knowledgePort:   &mockKnowledgeEventPort{},
+			flagPort:        nil,
 			wantErr:         true,
 			wantErrContains: "invalid action type",
 		},
@@ -84,14 +106,35 @@ func TestTrackHomeActionUsecase_Execute(t *testing.T) {
 			itemKey:         "",
 			userEventPort:   &mockUserEventPort{},
 			knowledgePort:   &mockKnowledgeEventPort{},
+			flagPort:        nil,
 			wantErr:         true,
 			wantErrContains: "item_key is required",
+		},
+		{
+			name:           "tracking disabled - no events",
+			actionType:     "open",
+			itemKey:        "article:test-uuid",
+			userEventPort:  &mockUserEventPort{},
+			knowledgePort:  &mockKnowledgeEventPort{},
+			flagPort:       &mockFeatureFlagPort{enabled: false},
+			wantUserEvents: 0,
+			wantKnEvents:   0,
+		},
+		{
+			name:           "tracking enabled - events recorded",
+			actionType:     "open",
+			itemKey:        "article:test-uuid",
+			userEventPort:  &mockUserEventPort{},
+			knowledgePort:  &mockKnowledgeEventPort{},
+			flagPort:       &mockFeatureFlagPort{enabled: true},
+			wantUserEvents: 1,
+			wantKnEvents:   1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewTrackHomeActionUsecase(tt.userEventPort, tt.knowledgePort)
+			uc := NewTrackHomeActionUsecase(tt.userEventPort, tt.knowledgePort, tt.flagPort)
 			err := uc.Execute(context.Background(), userID, tenantID, tt.actionType, tt.itemKey, tt.metadataJSON)
 
 			if tt.wantErr {
@@ -101,8 +144,8 @@ func TestTrackHomeActionUsecase_Execute(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Len(t, tt.userEventPort.appendedEvents, 1)
-			assert.Len(t, tt.knowledgePort.appendedEvents, 1)
+			assert.Len(t, tt.userEventPort.appendedEvents, tt.wantUserEvents)
+			assert.Len(t, tt.knowledgePort.appendedEvents, tt.wantKnEvents)
 		})
 	}
 }

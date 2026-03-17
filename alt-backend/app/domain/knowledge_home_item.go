@@ -46,6 +46,7 @@ type KnowledgeHomeItem struct {
 	FreshnessAt     *time.Time `json:"freshness_at" db:"freshness_at"`
 	PublishedAt     *time.Time `json:"published_at" db:"published_at"`
 	LastInteractedAt *time.Time `json:"last_interacted_at" db:"last_interacted_at"`
-	GeneratedAt     time.Time  `json:"generated_at" db:"generated_at"`
-	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
+	GeneratedAt      time.Time  `json:"generated_at" db:"generated_at"`
+	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
+	ProjectionVersion int       `json:"projection_version" db:"projection_version"`
 }

@@ -102,8 +102,9 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 	query := `INSERT INTO knowledge_home_items
 		(user_id, tenant_id, item_key, item_type, primary_ref_id,
 		 title, summary_excerpt, tags_json, why_json, score,
-		 freshness_at, published_at, last_interacted_at, generated_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		 freshness_at, published_at, last_interacted_at, generated_at, updated_at,
+		 projection_version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		ON CONFLICT (user_id, item_key) DO UPDATE SET
 		 title = EXCLUDED.title,
 		 summary_excerpt = EXCLUDED.summary_excerpt,
@@ -113,12 +114,14 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 		 freshness_at = EXCLUDED.freshness_at,
 		 published_at = EXCLUDED.published_at,
 		 last_interacted_at = EXCLUDED.last_interacted_at,
-		 updated_at = EXCLUDED.updated_at`
+		 updated_at = EXCLUDED.updated_at,
+		 projection_version = EXCLUDED.projection_version`
 
 	_, err := r.pool.Exec(ctx, query,
 		item.UserID, item.TenantID, item.ItemKey, item.ItemType, item.PrimaryRefID,
 		item.Title, item.SummaryExcerpt, tagsJSON, whyJSON, item.Score,
 		item.FreshnessAt, item.PublishedAt, item.LastInteractedAt, item.GeneratedAt, item.UpdatedAt,
+		item.ProjectionVersion,
 	)
 	if err != nil {
 		return fmt.Errorf("UpsertKnowledgeHomeItem: %w", err)

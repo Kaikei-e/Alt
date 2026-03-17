@@ -2,6 +2,7 @@ package track_home_action_usecase
 
 import (
 	"alt/domain"
+	"alt/port/feature_flag_port"
 	"alt/port/knowledge_event_port"
 	"alt/port/knowledge_user_event_port"
 	"alt/utils/logger"
@@ -28,16 +29,19 @@ var validActionTypes = map[string]string{
 type TrackHomeActionUsecase struct {
 	userEventPort      knowledge_user_event_port.AppendKnowledgeUserEventPort
 	knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort
+	featureFlagPort    feature_flag_port.FeatureFlagPort
 }
 
 // NewTrackHomeActionUsecase creates a new TrackHomeActionUsecase.
 func NewTrackHomeActionUsecase(
 	userEventPort knowledge_user_event_port.AppendKnowledgeUserEventPort,
 	knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort,
+	featureFlagPort feature_flag_port.FeatureFlagPort,
 ) *TrackHomeActionUsecase {
 	return &TrackHomeActionUsecase{
 		userEventPort:      userEventPort,
 		knowledgeEventPort: knowledgeEventPort,
+		featureFlagPort:    featureFlagPort,
 	}
 }
 
@@ -50,6 +54,11 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 
 	if itemKey == "" {
 		return errors.New("item_key is required")
+	}
+
+	// Skip tracking if tracking flag is disabled
+	if u.featureFlagPort != nil && !u.featureFlagPort.IsEnabled(domain.FlagKnowledgeHomeTracking, userID) {
+		return nil
 	}
 
 	now := time.Now()

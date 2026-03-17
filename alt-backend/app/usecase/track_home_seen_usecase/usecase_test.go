@@ -25,6 +25,18 @@ func (m *mockUserEventPort) AppendKnowledgeUserEvent(_ context.Context, event do
 	return nil
 }
 
+// mockFeatureFlagPort implements feature_flag_port.FeatureFlagPort.
+type mockFeatureFlagPort struct {
+	enabled bool
+}
+
+func (m *mockFeatureFlagPort) IsEnabled(_ string, _ uuid.UUID) bool {
+	if m == nil {
+		return true
+	}
+	return m.enabled
+}
+
 func TestTrackHomeSeenUsecase_Execute(t *testing.T) {
 	logger.InitLogger()
 
@@ -36,6 +48,7 @@ func TestTrackHomeSeenUsecase_Execute(t *testing.T) {
 		itemKeys          []string
 		exposureSessionID string
 		port              *mockUserEventPort
+		flagPort          *mockFeatureFlagPort
 		wantEventCount    int
 		wantErr           bool
 	}{
@@ -44,6 +57,7 @@ func TestTrackHomeSeenUsecase_Execute(t *testing.T) {
 			itemKeys:          []string{"article:1", "article:2", "article:3"},
 			exposureSessionID: "session-123",
 			port:              &mockUserEventPort{},
+			flagPort:          nil, // nil = no flag guard
 			wantEventCount:    3,
 		},
 		{
@@ -51,6 +65,7 @@ func TestTrackHomeSeenUsecase_Execute(t *testing.T) {
 			itemKeys:          []string{},
 			exposureSessionID: "session-123",
 			port:              &mockUserEventPort{},
+			flagPort:          nil,
 			wantEventCount:    0,
 		},
 		{
@@ -58,13 +73,30 @@ func TestTrackHomeSeenUsecase_Execute(t *testing.T) {
 			itemKeys:          []string{"article:1"},
 			exposureSessionID: "session-456",
 			port:              &mockUserEventPort{},
+			flagPort:          nil,
+			wantEventCount:    1,
+		},
+		{
+			name:              "tracking disabled - no events recorded",
+			itemKeys:          []string{"article:1", "article:2"},
+			exposureSessionID: "session-789",
+			port:              &mockUserEventPort{},
+			flagPort:          &mockFeatureFlagPort{enabled: false},
+			wantEventCount:    0,
+		},
+		{
+			name:              "tracking enabled - events recorded",
+			itemKeys:          []string{"article:1"},
+			exposureSessionID: "session-111",
+			port:              &mockUserEventPort{},
+			flagPort:          &mockFeatureFlagPort{enabled: true},
 			wantEventCount:    1,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewTrackHomeSeenUsecase(tt.port)
+			uc := NewTrackHomeSeenUsecase(tt.port, tt.flagPort)
 			err := uc.Execute(context.Background(), userID, tenantID, tt.itemKeys, tt.exposureSessionID)
 
 			if tt.wantErr {
