@@ -12,6 +12,24 @@ service KnowledgeHomeService {
   rpc TrackHomeItemsSeen(TrackHomeItemsSeenRequest) returns (TrackHomeItemsSeenResponse);
   // TrackHomeAction records a user action on a home item.
   rpc TrackHomeAction(TrackHomeActionRequest) returns (TrackHomeActionResponse);
+  // GetRecallRail returns recall candidates for the user.
+  rpc GetRecallRail(GetRecallRailRequest) returns (GetRecallRailResponse);
+  // TrackRecallAction records a recall action (snooze/dismiss/open).
+  rpc TrackRecallAction(TrackRecallActionRequest) returns (TrackRecallActionResponse);
+  // CreateLens creates a new saved viewpoint.
+  rpc CreateLens(CreateLensRequest) returns (CreateLensResponse);
+  // UpdateLens creates a new version of an existing lens.
+  rpc UpdateLens(UpdateLensRequest) returns (UpdateLensResponse);
+  // DeleteLens archives a lens (soft delete).
+  rpc DeleteLens(DeleteLensRequest) returns (DeleteLensResponse);
+  // ListLenses returns all active lenses for the user.
+  rpc ListLenses(ListLensesRequest) returns (ListLensesResponse);
+  // SelectLens sets the active lens for the user.
+  rpc SelectLens(SelectLensRequest) returns (SelectLensResponse);
+  // StreamKnowledgeHomeUpdates streams real-time updates for the home feed.
+  rpc StreamKnowledgeHomeUpdates(StreamKnowledgeHomeUpdatesRequest) returns (stream StreamKnowledgeHomeUpdatesResponse);
+  // StreamRecallRailUpdates streams real-time updates for the recall rail.
+  rpc StreamRecallRailUpdates(StreamRecallRailUpdatesRequest) returns (stream StreamRecallRailUpdatesResponse);
 }
 
 // GetKnowledgeHomeRequest is the request for GetKnowledgeHome.
@@ -22,6 +40,8 @@ message GetKnowledgeHomeRequest {
   int32 limit = 2;
   // Date for today_digest in RFC3339 format (defaults to today)
   optional string date = 3;
+  // Optional lens ID to filter items
+  optional string lens_id = 4;
 }
 
 // GetKnowledgeHomeResponse is the response for GetKnowledgeHome.
@@ -40,6 +60,8 @@ message GetKnowledgeHomeResponse {
   string generated_at = 6;
   // Feature flag states for the requesting user
   repeated FeatureFlagStatus feature_flags = 7;
+  // Recall candidates (embedded for initial load optimization)
+  repeated RecallCandidate recall_candidates = 8;
 }
 
 // FeatureFlagStatus represents the state of a feature flag.
@@ -90,6 +112,8 @@ message KnowledgeHomeItem {
   repeated WhyReason why = 9;
   // Relevance score (higher = more relevant)
   double score = 10;
+  // Supersede information (set when item has been updated)
+  optional SupersedeInfo supersede_info = 11;
 }
 
 // WhyReason explains why an item appears in the Knowledge Home.
@@ -100,6 +124,102 @@ message WhyReason {
   optional string ref_id = 2;
   // Optional tag name (for tag_hotspot)
   optional string tag = 3;
+}
+
+// SupersedeInfo describes version changes to an item.
+message SupersedeInfo {
+  // State: summary_updated, tags_updated, both_updated
+  string state = 1;
+  // When the supersede occurred (RFC3339)
+  string superseded_at = 2;
+  // Previous summary excerpt (if summary was updated)
+  optional string previous_summary_excerpt = 3;
+  // Previous tags (if tags were updated)
+  repeated string previous_tags = 4;
+}
+
+// RecallCandidate represents an item the user should recall.
+message RecallCandidate {
+  // The item key being recalled
+  string item_key = 1;
+  // Recall score (higher = more relevant to recall)
+  double recall_score = 2;
+  // Reasons this item is being recalled
+  repeated RecallReason reasons = 3;
+  // When this item first became eligible for recall (RFC3339)
+  string first_eligible_at = 4;
+  // Next suggested recall time (RFC3339)
+  string next_suggest_at = 5;
+  // The full item data (optional, included for initial load)
+  optional KnowledgeHomeItem item = 6;
+}
+
+// RecallReason explains why an item is being recalled.
+message RecallReason {
+  // Reason type code
+  string type = 1;
+  // Human-readable description
+  string description = 2;
+  // Optional source item key that triggered this recall
+  optional string source_item_key = 3;
+}
+
+// Lens represents a saved viewpoint for filtering the knowledge stream.
+message Lens {
+  // Unique lens ID
+  string lens_id = 1;
+  // Display name
+  string name = 2;
+  // Optional description
+  string description = 3;
+  // When created (RFC3339)
+  string created_at = 4;
+  // When last updated (RFC3339)
+  string updated_at = 5;
+  // Current version configuration
+  LensVersion current_version = 6;
+}
+
+// LensVersion represents a version of a lens configuration.
+message LensVersion {
+  // Version ID
+  string version_id = 1;
+  // Optional text query
+  string query_text = 2;
+  // Tag IDs to filter by
+  repeated string tag_ids = 3;
+  // Time window (e.g., "7d", "30d")
+  string time_window = 4;
+  // Whether to include recap items
+  bool include_recap = 5;
+  // Whether to include pulse items
+  bool include_pulse = 6;
+  // Sort mode: relevance, chronological, trending
+  string sort_mode = 7;
+}
+
+// StreamKnowledgeHomeUpdatesResponse is a real-time update for the home feed.
+message StreamKnowledgeHomeUpdatesResponse {
+  // Event type: item_added, item_updated, item_removed, digest_changed, recall_changed
+  string event_type = 1;
+  // Updated item (for item events)
+  optional KnowledgeHomeItem item = 2;
+  // Updated digest (for digest events)
+  optional TodayDigest digest_change = 3;
+  // Updated recall candidate (for recall events)
+  optional RecallCandidate recall_change = 4;
+  // When the event occurred (RFC3339)
+  string occurred_at = 5;
+}
+
+// StreamRecallRailUpdatesResponse is a real-time update for the recall rail.
+message StreamRecallRailUpdatesResponse {
+  // Event type: candidate_added, candidate_removed, candidate_updated
+  string event_type = 1;
+  // The affected recall candidate
+  RecallCandidate candidate = 2;
+  // When the event occurred (RFC3339)
+  string occurred_at = 3;
 }
 
 // TrackHomeItemsSeenRequest records which items were visible on screen.
@@ -127,3 +247,95 @@ message TrackHomeActionRequest {
 
 // TrackHomeActionResponse is empty on success.
 message TrackHomeActionResponse {}
+
+// GetRecallRailRequest is the request for GetRecallRail.
+message GetRecallRailRequest {
+  // Maximum number of candidates (default: 5, max: 20)
+  int32 limit = 1;
+}
+
+// GetRecallRailResponse is the response for GetRecallRail.
+message GetRecallRailResponse {
+  // Recall candidates ordered by score
+  repeated RecallCandidate candidates = 1;
+}
+
+// TrackRecallActionRequest records a recall action.
+message TrackRecallActionRequest {
+  // Action type: snooze, dismiss, open
+  string action_type = 1;
+  // The item key being acted upon
+  string item_key = 2;
+  // Snooze duration in hours (only for snooze action)
+  optional int32 snooze_hours = 3;
+}
+
+// TrackRecallActionResponse is empty on success.
+message TrackRecallActionResponse {}
+
+// CreateLensRequest creates a new lens.
+message CreateLensRequest {
+  // Display name
+  string name = 1;
+  // Optional description
+  string description = 2;
+  // Initial version configuration
+  LensVersion version = 3;
+}
+
+// CreateLensResponse returns the created lens.
+message CreateLensResponse {
+  Lens lens = 1;
+}
+
+// UpdateLensRequest creates a new version of an existing lens.
+message UpdateLensRequest {
+  // Lens ID to update
+  string lens_id = 1;
+  // Optional new name
+  optional string name = 2;
+  // Optional new description
+  optional string description = 3;
+  // New version configuration
+  LensVersion version = 4;
+}
+
+// UpdateLensResponse returns the updated lens.
+message UpdateLensResponse {
+  Lens lens = 1;
+}
+
+// DeleteLensRequest archives a lens.
+message DeleteLensRequest {
+  // Lens ID to archive
+  string lens_id = 1;
+}
+
+// DeleteLensResponse is empty on success.
+message DeleteLensResponse {}
+
+// ListLensesRequest lists all active lenses.
+message ListLensesRequest {}
+
+// ListLensesResponse returns the user's lenses.
+message ListLensesResponse {
+  repeated Lens lenses = 1;
+}
+
+// SelectLensRequest sets the active lens.
+message SelectLensRequest {
+  // Lens ID to activate (empty string to clear)
+  string lens_id = 1;
+}
+
+// SelectLensResponse is empty on success.
+message SelectLensResponse {}
+
+// StreamKnowledgeHomeUpdatesRequest initiates a streaming connection.
+message StreamKnowledgeHomeUpdatesRequest {
+  // Optional lens ID to filter updates
+  optional string lens_id = 1;
+}
+
+// StreamRecallRailUpdatesRequest initiates a recall rail streaming connection.
+message StreamRecallRailUpdatesRequest {}

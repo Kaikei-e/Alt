@@ -77,6 +77,10 @@ message GetFeatureFlagsResponse {
   bool enable_tracking = 2;
   bool enable_projection_v2 = 3;
   int32 rollout_percentage = 4;
+  bool enable_recall_rail = 5;
+  bool enable_lens = 6;
+  bool enable_stream_updates = 7;
+  bool enable_supersede_ux = 8;
 }
 
 // BackfillJob represents a backfill job status.
