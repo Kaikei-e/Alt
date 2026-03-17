@@ -115,11 +115,6 @@ services:
       - BACKEND_API_URL=http://alt-backend:9101
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
-      - DB_TAG_GENERATOR_PASSWORD_FILE=/run/secrets/postgres_password
-      - DB_HOST=pgbouncer
-      - DB_PORT=6432
-      - DB_NAME=${POSTGRES_DB}
-      - DB_TAG_GENERATOR_USER=${POSTGRES_USER}
       - PORT=9400
       - CUDA_VISIBLE_DEVICES=""
       - REDIS_STREAMS_URL=redis://redis-streams:6379
@@ -136,7 +131,6 @@ services:
       - OTEL_SERVICE_NAME=tag-generator
     secrets:
       - service_secret
-      - postgres_password
     volumes:
       - ../scripts:/scripts:ro
       - ../tag-generator/models/onnx:/models/onnx:ro

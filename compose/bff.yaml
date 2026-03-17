@@ -12,6 +12,7 @@ services:
     environment:
       - BFF_PORT=9250
       - BACKEND_CONNECT_URL=http://alt-backend:9101
+      - BACKEND_REST_URL=http://alt-backend:9000
       - AUTH_HUB_INTERNAL_URL=http://auth-hub:8888
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub

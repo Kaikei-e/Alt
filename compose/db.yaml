@@ -22,16 +22,11 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD_FILE: /run/secrets/db_password
       DB_NAME: ${DB_NAME}
-      PRE_PROCESSOR_DB_USER: ${PRE_PROCESSOR_DB_USER}
-      PRE_PROCESSOR_DB_PASSWORD_FILE: /run/secrets/pre_processor_db_password
       PRE_PROCESSOR_SIDECAR_DB_USER: ${PRE_PROCESSOR_SIDECAR_DB_USER}
       PRE_PROCESSOR_SIDECAR_DB_PASSWORD_FILE: /run/secrets/pre_processor_sidecar_db_password
-      # DB_TAG_GENERATOR_USER and SEARCH_INDEXER_DB_USER removed:
-      # these services now use BACKEND_API_URL (Connect-RPC) instead of direct DB access
     secrets:
       - postgres_password
       - db_password
-      - pre_processor_db_password
       - pre_processor_sidecar_db_password
       - pp_db_password
     volumes:
