@@ -14,6 +14,8 @@ type Config struct {
 	Port string
 	// BackendConnectURL is the URL of the alt-backend Connect-RPC service
 	BackendConnectURL string
+	// BackendRESTURL is the URL of the alt-backend REST API service
+	BackendRESTURL string
 	// AuthHubURL is the URL of the auth-hub service
 	AuthHubURL string
 	// BackendTokenSecretFile is the path to the backend token secret file
@@ -67,6 +69,7 @@ func NewConfig() *Config {
 	return &Config{
 		Port:                   getEnv("BFF_PORT", "9200"),
 		BackendConnectURL:      getEnv("BACKEND_CONNECT_URL", "http://alt-backend:9101"),
+		BackendRESTURL:         getEnv("BACKEND_REST_URL", "http://alt-backend:9000"),
 		AuthHubURL:             getEnv("AUTH_HUB_INTERNAL_URL", "http://auth-hub:8888"),
 		BackendTokenSecretFile: getEnv("BACKEND_TOKEN_SECRET_FILE", ""),
 		BackendTokenSecret:     getEnv("BACKEND_TOKEN_SECRET", ""),

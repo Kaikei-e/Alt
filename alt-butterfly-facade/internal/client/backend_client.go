@@ -105,6 +105,57 @@ func (c *BackendClient) ForwardStreamingRequest(req *http.Request, token string)
 	return c.streamingClient.Do(backendReq)
 }
 
+// ForwardRESTRequest forwards a REST API request to the backend.
+// Unlike ForwardRequest (which copies only Connect-RPC headers),
+// this copies all relevant HTTP headers for REST compatibility.
+func (c *BackendClient) ForwardRESTRequest(req *http.Request, token string) (*http.Response, error) {
+	backendURL := c.BuildBackendURL(req.URL.Path)
+	if req.URL.RawQuery != "" {
+		backendURL += "?" + req.URL.RawQuery
+	}
+
+	backendReq, err := http.NewRequestWithContext(req.Context(), req.Method, backendURL, req.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Copy all request headers except hop-by-hop
+	copyRESTHeaders(req.Header, backendReq.Header)
+
+	// Set authentication token
+	backendReq.Header.Set(middleware.BackendTokenHeader, token)
+
+	// Preserve Content-Length for proper body forwarding
+	backendReq.ContentLength = req.ContentLength
+
+	return c.httpClient.Do(backendReq)
+}
+
+// copyRESTHeaders copies all headers except hop-by-hop headers.
+func copyRESTHeaders(src, dst http.Header) {
+	hopByHop := map[string]bool{
+		"Connection":          true,
+		"Keep-Alive":          true,
+		"Proxy-Authenticate":  true,
+		"Proxy-Authorization": true,
+		"Te":                  true,
+		"Trailer":             true,
+		"Transfer-Encoding":   true,
+		"Upgrade":             true,
+		"Host":                true,
+		"Cookie":              true,
+	}
+
+	for key, values := range src {
+		if hopByHop[http.CanonicalHeaderKey(key)] {
+			continue
+		}
+		for _, v := range values {
+			dst.Add(key, v)
+		}
+	}
+}
+
 // BuildBackendURL constructs the full backend URL from a path.
 func (c *BackendClient) BuildBackendURL(path string) string {
 	if strings.HasPrefix(path, "/") {

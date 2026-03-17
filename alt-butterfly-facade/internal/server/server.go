@@ -24,6 +24,7 @@ type HealthResponse struct {
 // Config holds server configuration.
 type Config struct {
 	BackendURL       string
+	BackendRESTURL   string
 	Secret           []byte
 	Issuer           string
 	Audience         string
@@ -125,6 +126,25 @@ func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.Roun
 
 	// Register aggregation endpoint
 	mux.Handle("/v1/aggregate", aggregationHandler)
+
+	// REST API proxy routing (before catch-all)
+	// Uses HTTP/1.1 transport because alt-backend REST API does not use h2c.
+	if cfg.BackendRESTURL != "" {
+		restTransport := transport
+		if restTransport == nil {
+			restTransport = http.DefaultTransport
+		}
+		restClient := client.NewBackendClientWithTransport(
+			cfg.BackendRESTURL,
+			cfg.RequestTimeout,
+			cfg.StreamingTimeout,
+			restTransport,
+		)
+		restProxy := handler.NewRESTProxyHandler(
+			restClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger, cfg.RequestTimeout,
+		)
+		mux.Handle("/v1/", restProxy)
+	}
 
 	// TTS service routing (before catch-all)
 	// Uses HTTP/1.1 transport because tts-speaker (uvicorn) does not support h2c.
