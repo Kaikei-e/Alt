@@ -21,10 +21,12 @@ services:
       - BFF_STREAMING_TIMEOUT=5m
       - TTS_CONNECT_URL=${TTS_CONNECT_URL:-}
       - TTS_SERVICE_SECRET=${TTS_SERVICE_SECRET:-}
+      - SERVICE_SECRET_FILE=/run/secrets/service_secret
     extra_hosts:
       - "tts-external:${TTS_EXTERNAL_HOST:-127.0.0.1}"
     secrets:
       - backend_token_secret
+      - service_secret
     ports:
       - "9250:9250"
     depends_on:
