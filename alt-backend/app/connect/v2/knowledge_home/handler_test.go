@@ -117,7 +117,13 @@ func setupHandlerWithFlags(flagPort *mockFeatureFlagPort) (*Handler, *mockHomeIt
 	trackSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(userEventPort, flagPort)
 	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, flagPort)
 
-	handler := NewHandler(getHomeUsecase, trackSeenUsecase, trackActionUsecase, flagPort, slog.Default())
+	handler := NewHandler(
+		getHomeUsecase, trackSeenUsecase, trackActionUsecase,
+		nil, nil, nil, // recall: rail, snooze, dismiss
+		nil, nil, nil, nil, nil, // lens: create, update, list, select, archive
+		nil, // eventsPort
+		flagPort, slog.Default(),
+	)
 	return handler, homePort, digestPort
 }
 

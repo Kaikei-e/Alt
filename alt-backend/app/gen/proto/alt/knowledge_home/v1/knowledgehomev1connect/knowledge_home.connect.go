@@ -42,6 +42,33 @@ const (
 	// KnowledgeHomeServiceTrackHomeActionProcedure is the fully-qualified name of the
 	// KnowledgeHomeService's TrackHomeAction RPC.
 	KnowledgeHomeServiceTrackHomeActionProcedure = "/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction"
+	// KnowledgeHomeServiceGetRecallRailProcedure is the fully-qualified name of the
+	// KnowledgeHomeService's GetRecallRail RPC.
+	KnowledgeHomeServiceGetRecallRailProcedure = "/alt.knowledge_home.v1.KnowledgeHomeService/GetRecallRail"
+	// KnowledgeHomeServiceTrackRecallActionProcedure is the fully-qualified name of the
+	// KnowledgeHomeService's TrackRecallAction RPC.
+	KnowledgeHomeServiceTrackRecallActionProcedure = "/alt.knowledge_home.v1.KnowledgeHomeService/TrackRecallAction"
+	// KnowledgeHomeServiceCreateLensProcedure is the fully-qualified name of the KnowledgeHomeService's
+	// CreateLens RPC.
+	KnowledgeHomeServiceCreateLensProcedure = "/alt.knowledge_home.v1.KnowledgeHomeService/CreateLens"
+	// KnowledgeHomeServiceUpdateLensProcedure is the fully-qualified name of the KnowledgeHomeService's
+	// UpdateLens RPC.
+	KnowledgeHomeServiceUpdateLensProcedure = "/alt.knowledge_home.v1.KnowledgeHomeService/UpdateLens"
+	// KnowledgeHomeServiceDeleteLensProcedure is the fully-qualified name of the KnowledgeHomeService's
+	// DeleteLens RPC.
+	KnowledgeHomeServiceDeleteLensProcedure = "/alt.knowledge_home.v1.KnowledgeHomeService/DeleteLens"
+	// KnowledgeHomeServiceListLensesProcedure is the fully-qualified name of the KnowledgeHomeService's
+	// ListLenses RPC.
+	KnowledgeHomeServiceListLensesProcedure = "/alt.knowledge_home.v1.KnowledgeHomeService/ListLenses"
+	// KnowledgeHomeServiceSelectLensProcedure is the fully-qualified name of the KnowledgeHomeService's
+	// SelectLens RPC.
+	KnowledgeHomeServiceSelectLensProcedure = "/alt.knowledge_home.v1.KnowledgeHomeService/SelectLens"
+	// KnowledgeHomeServiceStreamKnowledgeHomeUpdatesProcedure is the fully-qualified name of the
+	// KnowledgeHomeService's StreamKnowledgeHomeUpdates RPC.
+	KnowledgeHomeServiceStreamKnowledgeHomeUpdatesProcedure = "/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates"
+	// KnowledgeHomeServiceStreamRecallRailUpdatesProcedure is the fully-qualified name of the
+	// KnowledgeHomeService's StreamRecallRailUpdates RPC.
+	KnowledgeHomeServiceStreamRecallRailUpdatesProcedure = "/alt.knowledge_home.v1.KnowledgeHomeService/StreamRecallRailUpdates"
 )
 
 // KnowledgeHomeServiceClient is a client for the alt.knowledge_home.v1.KnowledgeHomeService
@@ -53,6 +80,24 @@ type KnowledgeHomeServiceClient interface {
 	TrackHomeItemsSeen(context.Context, *connect.Request[v1.TrackHomeItemsSeenRequest]) (*connect.Response[v1.TrackHomeItemsSeenResponse], error)
 	// TrackHomeAction records a user action on a home item.
 	TrackHomeAction(context.Context, *connect.Request[v1.TrackHomeActionRequest]) (*connect.Response[v1.TrackHomeActionResponse], error)
+	// GetRecallRail returns recall candidates for the user.
+	GetRecallRail(context.Context, *connect.Request[v1.GetRecallRailRequest]) (*connect.Response[v1.GetRecallRailResponse], error)
+	// TrackRecallAction records a recall action (snooze/dismiss/open).
+	TrackRecallAction(context.Context, *connect.Request[v1.TrackRecallActionRequest]) (*connect.Response[v1.TrackRecallActionResponse], error)
+	// CreateLens creates a new saved viewpoint.
+	CreateLens(context.Context, *connect.Request[v1.CreateLensRequest]) (*connect.Response[v1.CreateLensResponse], error)
+	// UpdateLens creates a new version of an existing lens.
+	UpdateLens(context.Context, *connect.Request[v1.UpdateLensRequest]) (*connect.Response[v1.UpdateLensResponse], error)
+	// DeleteLens archives a lens (soft delete).
+	DeleteLens(context.Context, *connect.Request[v1.DeleteLensRequest]) (*connect.Response[v1.DeleteLensResponse], error)
+	// ListLenses returns all active lenses for the user.
+	ListLenses(context.Context, *connect.Request[v1.ListLensesRequest]) (*connect.Response[v1.ListLensesResponse], error)
+	// SelectLens sets the active lens for the user.
+	SelectLens(context.Context, *connect.Request[v1.SelectLensRequest]) (*connect.Response[v1.SelectLensResponse], error)
+	// StreamKnowledgeHomeUpdates streams real-time updates for the home feed.
+	StreamKnowledgeHomeUpdates(context.Context, *connect.Request[v1.StreamKnowledgeHomeUpdatesRequest]) (*connect.ServerStreamForClient[v1.StreamKnowledgeHomeUpdatesResponse], error)
+	// StreamRecallRailUpdates streams real-time updates for the recall rail.
+	StreamRecallRailUpdates(context.Context, *connect.Request[v1.StreamRecallRailUpdatesRequest]) (*connect.ServerStreamForClient[v1.StreamRecallRailUpdatesResponse], error)
 }
 
 // NewKnowledgeHomeServiceClient constructs a client for the
@@ -84,14 +129,77 @@ func NewKnowledgeHomeServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(knowledgeHomeServiceMethods.ByName("TrackHomeAction")),
 			connect.WithClientOptions(opts...),
 		),
+		getRecallRail: connect.NewClient[v1.GetRecallRailRequest, v1.GetRecallRailResponse](
+			httpClient,
+			baseURL+KnowledgeHomeServiceGetRecallRailProcedure,
+			connect.WithSchema(knowledgeHomeServiceMethods.ByName("GetRecallRail")),
+			connect.WithClientOptions(opts...),
+		),
+		trackRecallAction: connect.NewClient[v1.TrackRecallActionRequest, v1.TrackRecallActionResponse](
+			httpClient,
+			baseURL+KnowledgeHomeServiceTrackRecallActionProcedure,
+			connect.WithSchema(knowledgeHomeServiceMethods.ByName("TrackRecallAction")),
+			connect.WithClientOptions(opts...),
+		),
+		createLens: connect.NewClient[v1.CreateLensRequest, v1.CreateLensResponse](
+			httpClient,
+			baseURL+KnowledgeHomeServiceCreateLensProcedure,
+			connect.WithSchema(knowledgeHomeServiceMethods.ByName("CreateLens")),
+			connect.WithClientOptions(opts...),
+		),
+		updateLens: connect.NewClient[v1.UpdateLensRequest, v1.UpdateLensResponse](
+			httpClient,
+			baseURL+KnowledgeHomeServiceUpdateLensProcedure,
+			connect.WithSchema(knowledgeHomeServiceMethods.ByName("UpdateLens")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteLens: connect.NewClient[v1.DeleteLensRequest, v1.DeleteLensResponse](
+			httpClient,
+			baseURL+KnowledgeHomeServiceDeleteLensProcedure,
+			connect.WithSchema(knowledgeHomeServiceMethods.ByName("DeleteLens")),
+			connect.WithClientOptions(opts...),
+		),
+		listLenses: connect.NewClient[v1.ListLensesRequest, v1.ListLensesResponse](
+			httpClient,
+			baseURL+KnowledgeHomeServiceListLensesProcedure,
+			connect.WithSchema(knowledgeHomeServiceMethods.ByName("ListLenses")),
+			connect.WithClientOptions(opts...),
+		),
+		selectLens: connect.NewClient[v1.SelectLensRequest, v1.SelectLensResponse](
+			httpClient,
+			baseURL+KnowledgeHomeServiceSelectLensProcedure,
+			connect.WithSchema(knowledgeHomeServiceMethods.ByName("SelectLens")),
+			connect.WithClientOptions(opts...),
+		),
+		streamKnowledgeHomeUpdates: connect.NewClient[v1.StreamKnowledgeHomeUpdatesRequest, v1.StreamKnowledgeHomeUpdatesResponse](
+			httpClient,
+			baseURL+KnowledgeHomeServiceStreamKnowledgeHomeUpdatesProcedure,
+			connect.WithSchema(knowledgeHomeServiceMethods.ByName("StreamKnowledgeHomeUpdates")),
+			connect.WithClientOptions(opts...),
+		),
+		streamRecallRailUpdates: connect.NewClient[v1.StreamRecallRailUpdatesRequest, v1.StreamRecallRailUpdatesResponse](
+			httpClient,
+			baseURL+KnowledgeHomeServiceStreamRecallRailUpdatesProcedure,
+			connect.WithSchema(knowledgeHomeServiceMethods.ByName("StreamRecallRailUpdates")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // knowledgeHomeServiceClient implements KnowledgeHomeServiceClient.
 type knowledgeHomeServiceClient struct {
-	getKnowledgeHome   *connect.Client[v1.GetKnowledgeHomeRequest, v1.GetKnowledgeHomeResponse]
-	trackHomeItemsSeen *connect.Client[v1.TrackHomeItemsSeenRequest, v1.TrackHomeItemsSeenResponse]
-	trackHomeAction    *connect.Client[v1.TrackHomeActionRequest, v1.TrackHomeActionResponse]
+	getKnowledgeHome           *connect.Client[v1.GetKnowledgeHomeRequest, v1.GetKnowledgeHomeResponse]
+	trackHomeItemsSeen         *connect.Client[v1.TrackHomeItemsSeenRequest, v1.TrackHomeItemsSeenResponse]
+	trackHomeAction            *connect.Client[v1.TrackHomeActionRequest, v1.TrackHomeActionResponse]
+	getRecallRail              *connect.Client[v1.GetRecallRailRequest, v1.GetRecallRailResponse]
+	trackRecallAction          *connect.Client[v1.TrackRecallActionRequest, v1.TrackRecallActionResponse]
+	createLens                 *connect.Client[v1.CreateLensRequest, v1.CreateLensResponse]
+	updateLens                 *connect.Client[v1.UpdateLensRequest, v1.UpdateLensResponse]
+	deleteLens                 *connect.Client[v1.DeleteLensRequest, v1.DeleteLensResponse]
+	listLenses                 *connect.Client[v1.ListLensesRequest, v1.ListLensesResponse]
+	selectLens                 *connect.Client[v1.SelectLensRequest, v1.SelectLensResponse]
+	streamKnowledgeHomeUpdates *connect.Client[v1.StreamKnowledgeHomeUpdatesRequest, v1.StreamKnowledgeHomeUpdatesResponse]
+	streamRecallRailUpdates    *connect.Client[v1.StreamRecallRailUpdatesRequest, v1.StreamRecallRailUpdatesResponse]
 }
 
 // GetKnowledgeHome calls alt.knowledge_home.v1.KnowledgeHomeService.GetKnowledgeHome.
@@ -109,6 +217,52 @@ func (c *knowledgeHomeServiceClient) TrackHomeAction(ctx context.Context, req *c
 	return c.trackHomeAction.CallUnary(ctx, req)
 }
 
+// GetRecallRail calls alt.knowledge_home.v1.KnowledgeHomeService.GetRecallRail.
+func (c *knowledgeHomeServiceClient) GetRecallRail(ctx context.Context, req *connect.Request[v1.GetRecallRailRequest]) (*connect.Response[v1.GetRecallRailResponse], error) {
+	return c.getRecallRail.CallUnary(ctx, req)
+}
+
+// TrackRecallAction calls alt.knowledge_home.v1.KnowledgeHomeService.TrackRecallAction.
+func (c *knowledgeHomeServiceClient) TrackRecallAction(ctx context.Context, req *connect.Request[v1.TrackRecallActionRequest]) (*connect.Response[v1.TrackRecallActionResponse], error) {
+	return c.trackRecallAction.CallUnary(ctx, req)
+}
+
+// CreateLens calls alt.knowledge_home.v1.KnowledgeHomeService.CreateLens.
+func (c *knowledgeHomeServiceClient) CreateLens(ctx context.Context, req *connect.Request[v1.CreateLensRequest]) (*connect.Response[v1.CreateLensResponse], error) {
+	return c.createLens.CallUnary(ctx, req)
+}
+
+// UpdateLens calls alt.knowledge_home.v1.KnowledgeHomeService.UpdateLens.
+func (c *knowledgeHomeServiceClient) UpdateLens(ctx context.Context, req *connect.Request[v1.UpdateLensRequest]) (*connect.Response[v1.UpdateLensResponse], error) {
+	return c.updateLens.CallUnary(ctx, req)
+}
+
+// DeleteLens calls alt.knowledge_home.v1.KnowledgeHomeService.DeleteLens.
+func (c *knowledgeHomeServiceClient) DeleteLens(ctx context.Context, req *connect.Request[v1.DeleteLensRequest]) (*connect.Response[v1.DeleteLensResponse], error) {
+	return c.deleteLens.CallUnary(ctx, req)
+}
+
+// ListLenses calls alt.knowledge_home.v1.KnowledgeHomeService.ListLenses.
+func (c *knowledgeHomeServiceClient) ListLenses(ctx context.Context, req *connect.Request[v1.ListLensesRequest]) (*connect.Response[v1.ListLensesResponse], error) {
+	return c.listLenses.CallUnary(ctx, req)
+}
+
+// SelectLens calls alt.knowledge_home.v1.KnowledgeHomeService.SelectLens.
+func (c *knowledgeHomeServiceClient) SelectLens(ctx context.Context, req *connect.Request[v1.SelectLensRequest]) (*connect.Response[v1.SelectLensResponse], error) {
+	return c.selectLens.CallUnary(ctx, req)
+}
+
+// StreamKnowledgeHomeUpdates calls
+// alt.knowledge_home.v1.KnowledgeHomeService.StreamKnowledgeHomeUpdates.
+func (c *knowledgeHomeServiceClient) StreamKnowledgeHomeUpdates(ctx context.Context, req *connect.Request[v1.StreamKnowledgeHomeUpdatesRequest]) (*connect.ServerStreamForClient[v1.StreamKnowledgeHomeUpdatesResponse], error) {
+	return c.streamKnowledgeHomeUpdates.CallServerStream(ctx, req)
+}
+
+// StreamRecallRailUpdates calls alt.knowledge_home.v1.KnowledgeHomeService.StreamRecallRailUpdates.
+func (c *knowledgeHomeServiceClient) StreamRecallRailUpdates(ctx context.Context, req *connect.Request[v1.StreamRecallRailUpdatesRequest]) (*connect.ServerStreamForClient[v1.StreamRecallRailUpdatesResponse], error) {
+	return c.streamRecallRailUpdates.CallServerStream(ctx, req)
+}
+
 // KnowledgeHomeServiceHandler is an implementation of the
 // alt.knowledge_home.v1.KnowledgeHomeService service.
 type KnowledgeHomeServiceHandler interface {
@@ -118,6 +272,24 @@ type KnowledgeHomeServiceHandler interface {
 	TrackHomeItemsSeen(context.Context, *connect.Request[v1.TrackHomeItemsSeenRequest]) (*connect.Response[v1.TrackHomeItemsSeenResponse], error)
 	// TrackHomeAction records a user action on a home item.
 	TrackHomeAction(context.Context, *connect.Request[v1.TrackHomeActionRequest]) (*connect.Response[v1.TrackHomeActionResponse], error)
+	// GetRecallRail returns recall candidates for the user.
+	GetRecallRail(context.Context, *connect.Request[v1.GetRecallRailRequest]) (*connect.Response[v1.GetRecallRailResponse], error)
+	// TrackRecallAction records a recall action (snooze/dismiss/open).
+	TrackRecallAction(context.Context, *connect.Request[v1.TrackRecallActionRequest]) (*connect.Response[v1.TrackRecallActionResponse], error)
+	// CreateLens creates a new saved viewpoint.
+	CreateLens(context.Context, *connect.Request[v1.CreateLensRequest]) (*connect.Response[v1.CreateLensResponse], error)
+	// UpdateLens creates a new version of an existing lens.
+	UpdateLens(context.Context, *connect.Request[v1.UpdateLensRequest]) (*connect.Response[v1.UpdateLensResponse], error)
+	// DeleteLens archives a lens (soft delete).
+	DeleteLens(context.Context, *connect.Request[v1.DeleteLensRequest]) (*connect.Response[v1.DeleteLensResponse], error)
+	// ListLenses returns all active lenses for the user.
+	ListLenses(context.Context, *connect.Request[v1.ListLensesRequest]) (*connect.Response[v1.ListLensesResponse], error)
+	// SelectLens sets the active lens for the user.
+	SelectLens(context.Context, *connect.Request[v1.SelectLensRequest]) (*connect.Response[v1.SelectLensResponse], error)
+	// StreamKnowledgeHomeUpdates streams real-time updates for the home feed.
+	StreamKnowledgeHomeUpdates(context.Context, *connect.Request[v1.StreamKnowledgeHomeUpdatesRequest], *connect.ServerStream[v1.StreamKnowledgeHomeUpdatesResponse]) error
+	// StreamRecallRailUpdates streams real-time updates for the recall rail.
+	StreamRecallRailUpdates(context.Context, *connect.Request[v1.StreamRecallRailUpdatesRequest], *connect.ServerStream[v1.StreamRecallRailUpdatesResponse]) error
 }
 
 // NewKnowledgeHomeServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -145,6 +317,60 @@ func NewKnowledgeHomeServiceHandler(svc KnowledgeHomeServiceHandler, opts ...con
 		connect.WithSchema(knowledgeHomeServiceMethods.ByName("TrackHomeAction")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeHomeServiceGetRecallRailHandler := connect.NewUnaryHandler(
+		KnowledgeHomeServiceGetRecallRailProcedure,
+		svc.GetRecallRail,
+		connect.WithSchema(knowledgeHomeServiceMethods.ByName("GetRecallRail")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeServiceTrackRecallActionHandler := connect.NewUnaryHandler(
+		KnowledgeHomeServiceTrackRecallActionProcedure,
+		svc.TrackRecallAction,
+		connect.WithSchema(knowledgeHomeServiceMethods.ByName("TrackRecallAction")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeServiceCreateLensHandler := connect.NewUnaryHandler(
+		KnowledgeHomeServiceCreateLensProcedure,
+		svc.CreateLens,
+		connect.WithSchema(knowledgeHomeServiceMethods.ByName("CreateLens")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeServiceUpdateLensHandler := connect.NewUnaryHandler(
+		KnowledgeHomeServiceUpdateLensProcedure,
+		svc.UpdateLens,
+		connect.WithSchema(knowledgeHomeServiceMethods.ByName("UpdateLens")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeServiceDeleteLensHandler := connect.NewUnaryHandler(
+		KnowledgeHomeServiceDeleteLensProcedure,
+		svc.DeleteLens,
+		connect.WithSchema(knowledgeHomeServiceMethods.ByName("DeleteLens")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeServiceListLensesHandler := connect.NewUnaryHandler(
+		KnowledgeHomeServiceListLensesProcedure,
+		svc.ListLenses,
+		connect.WithSchema(knowledgeHomeServiceMethods.ByName("ListLenses")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeServiceSelectLensHandler := connect.NewUnaryHandler(
+		KnowledgeHomeServiceSelectLensProcedure,
+		svc.SelectLens,
+		connect.WithSchema(knowledgeHomeServiceMethods.ByName("SelectLens")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeServiceStreamKnowledgeHomeUpdatesHandler := connect.NewServerStreamHandler(
+		KnowledgeHomeServiceStreamKnowledgeHomeUpdatesProcedure,
+		svc.StreamKnowledgeHomeUpdates,
+		connect.WithSchema(knowledgeHomeServiceMethods.ByName("StreamKnowledgeHomeUpdates")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeServiceStreamRecallRailUpdatesHandler := connect.NewServerStreamHandler(
+		KnowledgeHomeServiceStreamRecallRailUpdatesProcedure,
+		svc.StreamRecallRailUpdates,
+		connect.WithSchema(knowledgeHomeServiceMethods.ByName("StreamRecallRailUpdates")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.knowledge_home.v1.KnowledgeHomeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeHomeServiceGetKnowledgeHomeProcedure:
@@ -153,6 +379,24 @@ func NewKnowledgeHomeServiceHandler(svc KnowledgeHomeServiceHandler, opts ...con
 			knowledgeHomeServiceTrackHomeItemsSeenHandler.ServeHTTP(w, r)
 		case KnowledgeHomeServiceTrackHomeActionProcedure:
 			knowledgeHomeServiceTrackHomeActionHandler.ServeHTTP(w, r)
+		case KnowledgeHomeServiceGetRecallRailProcedure:
+			knowledgeHomeServiceGetRecallRailHandler.ServeHTTP(w, r)
+		case KnowledgeHomeServiceTrackRecallActionProcedure:
+			knowledgeHomeServiceTrackRecallActionHandler.ServeHTTP(w, r)
+		case KnowledgeHomeServiceCreateLensProcedure:
+			knowledgeHomeServiceCreateLensHandler.ServeHTTP(w, r)
+		case KnowledgeHomeServiceUpdateLensProcedure:
+			knowledgeHomeServiceUpdateLensHandler.ServeHTTP(w, r)
+		case KnowledgeHomeServiceDeleteLensProcedure:
+			knowledgeHomeServiceDeleteLensHandler.ServeHTTP(w, r)
+		case KnowledgeHomeServiceListLensesProcedure:
+			knowledgeHomeServiceListLensesHandler.ServeHTTP(w, r)
+		case KnowledgeHomeServiceSelectLensProcedure:
+			knowledgeHomeServiceSelectLensHandler.ServeHTTP(w, r)
+		case KnowledgeHomeServiceStreamKnowledgeHomeUpdatesProcedure:
+			knowledgeHomeServiceStreamKnowledgeHomeUpdatesHandler.ServeHTTP(w, r)
+		case KnowledgeHomeServiceStreamRecallRailUpdatesProcedure:
+			knowledgeHomeServiceStreamRecallRailUpdatesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -172,4 +416,40 @@ func (UnimplementedKnowledgeHomeServiceHandler) TrackHomeItemsSeen(context.Conte
 
 func (UnimplementedKnowledgeHomeServiceHandler) TrackHomeAction(context.Context, *connect.Request[v1.TrackHomeActionRequest]) (*connect.Response[v1.TrackHomeActionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeService.TrackHomeAction is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeServiceHandler) GetRecallRail(context.Context, *connect.Request[v1.GetRecallRailRequest]) (*connect.Response[v1.GetRecallRailResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeService.GetRecallRail is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeServiceHandler) TrackRecallAction(context.Context, *connect.Request[v1.TrackRecallActionRequest]) (*connect.Response[v1.TrackRecallActionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeService.TrackRecallAction is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeServiceHandler) CreateLens(context.Context, *connect.Request[v1.CreateLensRequest]) (*connect.Response[v1.CreateLensResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeService.CreateLens is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeServiceHandler) UpdateLens(context.Context, *connect.Request[v1.UpdateLensRequest]) (*connect.Response[v1.UpdateLensResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeService.UpdateLens is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeServiceHandler) DeleteLens(context.Context, *connect.Request[v1.DeleteLensRequest]) (*connect.Response[v1.DeleteLensResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeService.DeleteLens is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeServiceHandler) ListLenses(context.Context, *connect.Request[v1.ListLensesRequest]) (*connect.Response[v1.ListLensesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeService.ListLenses is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeServiceHandler) SelectLens(context.Context, *connect.Request[v1.SelectLensRequest]) (*connect.Response[v1.SelectLensResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeService.SelectLens is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeServiceHandler) StreamKnowledgeHomeUpdates(context.Context, *connect.Request[v1.StreamKnowledgeHomeUpdatesRequest], *connect.ServerStream[v1.StreamKnowledgeHomeUpdatesResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeService.StreamKnowledgeHomeUpdates is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeServiceHandler) StreamRecallRailUpdates(context.Context, *connect.Request[v1.StreamRecallRailUpdatesRequest], *connect.ServerStream[v1.StreamRecallRailUpdatesResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeService.StreamRecallRailUpdates is not implemented"))
 }
