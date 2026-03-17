@@ -35,6 +35,16 @@ const WHY_REASON_MAP: Record<string, WhyReasonDisplay> = {
 		iconName: "Activity",
 		colorClass: "text-orange-400 border-orange-400/30 bg-orange-400/10",
 	},
+	recent_interest_match: {
+		label: "Interest",
+		iconName: "Star",
+		colorClass: "text-yellow-400 border-yellow-400/30 bg-yellow-400/10",
+	},
+	related_to_recent_search: {
+		label: "Search related",
+		iconName: "Search",
+		colorClass: "text-blue-400 border-blue-400/30 bg-blue-400/10",
+	},
 };
 
 const FALLBACK: WhyReasonDisplay = {
