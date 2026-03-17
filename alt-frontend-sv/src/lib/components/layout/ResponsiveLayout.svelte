@@ -12,11 +12,7 @@ let { children, class: className = "" }: { children: Snippet; class?: string } =
 const { isDesktop } = useViewport();
 
 /** Routes where FloatingMenu should be hidden (full-screen interactive pages) */
-const HIDE_FLOATING_MENU_PATHS = [
-	"/augur",
-	"/feeds/swipe",
-	"/feeds/search",
-];
+const HIDE_FLOATING_MENU_PATHS = ["/augur", "/feeds/swipe", "/feeds/search"];
 
 /** Routes that need full-bleed layout (no padding) */
 const FULL_BLEED_PATHS = ["/feeds/tag-verse"];
