@@ -114,3 +114,19 @@ export async function triggerBackfill(
 		completedAt: j.completedAt,
 	};
 }
+
+export async function pauseBackfill(
+	transport: Transport,
+	jobId: string,
+): Promise<void> {
+	const client = createAdminClient(transport);
+	await client.pauseBackfill({ jobId });
+}
+
+export async function resumeBackfill(
+	transport: Transport,
+	jobId: string,
+): Promise<void> {
+	const client = createAdminClient(transport);
+	await client.resumeBackfill({ jobId });
+}

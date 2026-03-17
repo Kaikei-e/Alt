@@ -7,6 +7,9 @@ import type {
 import {
 	getFeatureFlags,
 	getProjectionHealth,
+	pauseBackfill,
+	resumeBackfill,
+	triggerBackfill,
 } from "$lib/connect/knowledge_home_admin";
 
 const BFF_CONNECT_URL =
@@ -42,4 +45,28 @@ export async function fetchKnowledgeHomeAdminSnapshot(
 		health,
 		flags,
 	};
+}
+
+export async function triggerKnowledgeHomeBackfill(
+	backendToken: string,
+	projectionVersion: number,
+) {
+	const transport = createBffTransport(backendToken);
+	return triggerBackfill(transport, projectionVersion);
+}
+
+export async function pauseKnowledgeHomeBackfill(
+	backendToken: string,
+	jobId: string,
+) {
+	const transport = createBffTransport(backendToken);
+	return pauseBackfill(transport, jobId);
+}
+
+export async function resumeKnowledgeHomeBackfill(
+	backendToken: string,
+	jobId: string,
+) {
+	const transport = createBffTransport(backendToken);
+	return resumeBackfill(transport, jobId);
 }

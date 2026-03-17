@@ -174,6 +174,8 @@ export {
 	getProjectionHealth,
 	getFeatureFlags,
 	triggerBackfill,
+	pauseBackfill,
+	resumeBackfill,
 	type ProjectionHealthData,
 	type FeatureFlagsConfigData,
 	type BackfillJobData,

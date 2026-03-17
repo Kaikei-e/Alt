@@ -1,7 +1,20 @@
 <script lang="ts">
 import type { BackfillJobData } from "$lib/connect/knowledge_home_admin";
+import { Button } from "$lib/components/ui/button";
 
-let { jobs }: { jobs: BackfillJobData[] } = $props();
+let {
+	jobs,
+	disableActions = false,
+	activeJobId = null,
+	onPause,
+	onResume,
+}: {
+	jobs: BackfillJobData[];
+	disableActions?: boolean;
+	activeJobId?: string | null;
+	onPause?: (job: BackfillJobData) => Promise<void> | void;
+	onResume?: (job: BackfillJobData) => Promise<void> | void;
+} = $props();
 
 const statusColor = (status: string) => {
 	switch (status) {
@@ -22,6 +35,9 @@ const progressPercent = (job: BackfillJobData) => {
 	if (job.totalEvents === 0) return 0;
 	return Math.round((job.processedEvents / job.totalEvents) * 100);
 };
+
+const canPause = (job: BackfillJobData) => job.status === "running";
+const canResume = (job: BackfillJobData) => job.status === "paused";
 </script>
 
 <div class="flex flex-col gap-3">
@@ -44,6 +60,7 @@ const progressPercent = (job: BackfillJobData) => {
 						<th class="px-3 py-2 text-left">Progress</th>
 						<th class="px-3 py-2 text-left">Created</th>
 						<th class="px-3 py-2 text-left">Error</th>
+						<th class="px-3 py-2 text-left">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -67,6 +84,26 @@ const progressPercent = (job: BackfillJobData) => {
 							</td>
 							<td class="px-3 py-2 max-w-48 truncate" title={job.errorMessage}>
 								{job.errorMessage || "—"}
+							</td>
+							<td class="px-3 py-2">
+								<div class="flex gap-2">
+									<Button
+										variant="outline"
+										size="sm"
+										disabled={disableActions || activeJobId === job.jobId || !canPause(job)}
+										onclick={() => void onPause?.(job)}
+									>
+										{activeJobId === job.jobId && canPause(job) ? "Pausing..." : "Pause"}
+									</Button>
+									<Button
+										variant="outline"
+										size="sm"
+										disabled={disableActions || activeJobId === job.jobId || !canResume(job)}
+										onclick={() => void onResume?.(job)}
+									>
+										{activeJobId === job.jobId && canResume(job) ? "Resuming..." : "Resume"}
+									</Button>
+								</div>
 							</td>
 						</tr>
 					{/each}
