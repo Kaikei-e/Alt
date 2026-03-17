@@ -39,14 +39,18 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 	var tenantID string
 	var createdAt time.Time
 
+	var role string
+
 	// Check cache first
 	if cached, found := uc.cache.Get(cookieValue); found {
 		identity = &domain.Identity{
 			UserID:    cached.UserID,
 			Email:     cached.Email,
+			Role:      cached.Role,
 			SessionID: cookieValue,
 		}
 		tenantID = cached.TenantID
+		role = cached.Role
 		createdAt = time.Now().Add(-24 * time.Hour) // Approximate from cache
 	} else {
 		// Cache miss – validate with Kratos
@@ -59,6 +63,7 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 		identity = kratosIdentity
 		identity.SessionID = cookieValue
 		tenantID = identity.UserID // Single-tenant
+		role = identity.Role
 		createdAt = identity.CreatedAt
 
 		// Populate cache
@@ -66,6 +71,7 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 			UserID:   identity.UserID,
 			TenantID: tenantID,
 			Email:    identity.Email,
+			Role:     identity.Role,
 		})
 	}
 
@@ -76,11 +82,15 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 		return nil, fmt.Errorf("%w: %w", domain.ErrTokenGeneration, err)
 	}
 
+	if role == "" {
+		role = "user"
+	}
+
 	return &SessionResult{
 		UserID:       identity.UserID,
 		TenantID:     tenantID,
 		Email:        identity.Email,
-		Role:         "user", // Default role
+		Role:         role,
 		SessionID:    cookieValue,
 		CreatedAt:    createdAt,
 		BackendToken: backendToken,

@@ -37,10 +37,15 @@ func NewJWTIssuer(cfg JWTConfig) *JWTIssuer {
 
 // IssueBackendToken generates a signed JWT token.
 func (j *JWTIssuer) IssueBackendToken(identity *domain.Identity, sessionID string) (string, error) {
+	role := identity.Role
+	if role == "" {
+		role = "user"
+	}
+
 	now := time.Now()
 	claims := backendClaims{
 		Email: identity.Email,
-		Role:  "user",
+		Role:  role,
 		Sid:   sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    j.cfg.Issuer,

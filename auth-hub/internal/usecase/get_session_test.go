@@ -84,6 +84,70 @@ func TestGetSession_KratosError(t *testing.T) {
 	assert.True(t, errors.Is(err, domain.ErrAuthFailed))
 }
 
+func TestGetSession_AdminRole_CacheMiss(t *testing.T) {
+	cache := newMockCache()
+	validator := &mockValidator{
+		identity: &domain.Identity{
+			UserID: "admin-001",
+			Email:  "admin@example.com",
+			Role:   "admin",
+		},
+	}
+	tokenIssuer := &mockTokenIssuer{token: "jwt-admin-token"}
+	logger := slog.Default()
+
+	uc := NewGetSession(validator, cache, tokenIssuer, logger)
+	result, err := uc.Execute(context.Background(), "admin-session")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "admin", result.Role)
+	assert.Equal(t, "jwt-admin-token", result.BackendToken)
+
+	// Verify cache was populated with role
+	cached, found := cache.Get("admin-session")
+	assert.True(t, found)
+	assert.Equal(t, "admin", cached.Role)
+}
+
+func TestGetSession_AdminRole_CacheHit(t *testing.T) {
+	cache := newMockCache()
+	cache.Set("admin-session", domain.CachedSession{
+		UserID:   "admin-001",
+		TenantID: "admin-001",
+		Email:    "admin@example.com",
+		Role:     "admin",
+	})
+	validator := &mockValidator{}
+	tokenIssuer := &mockTokenIssuer{token: "jwt-admin-cached"}
+	logger := slog.Default()
+
+	uc := NewGetSession(validator, cache, tokenIssuer, logger)
+	result, err := uc.Execute(context.Background(), "admin-session")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "admin", result.Role)
+	assert.False(t, validator.called)
+}
+
+func TestGetSession_EmptyRole_DefaultsToUser(t *testing.T) {
+	cache := newMockCache()
+	validator := &mockValidator{
+		identity: &domain.Identity{
+			UserID: "user-789",
+			Email:  "norol@example.com",
+			Role:   "",
+		},
+	}
+	tokenIssuer := &mockTokenIssuer{token: "jwt-default-role"}
+	logger := slog.Default()
+
+	uc := NewGetSession(validator, cache, tokenIssuer, logger)
+	result, err := uc.Execute(context.Background(), "session-norole")
+
+	assert.NoError(t, err)
+	assert.Equal(t, "user", result.Role)
+}
+
 func TestGetSession_TokenGenerationError(t *testing.T) {
 	cache := newMockCache()
 	cache.Set("session-abc", domain.CachedSession{

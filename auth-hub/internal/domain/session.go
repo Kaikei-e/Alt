@@ -6,6 +6,7 @@ import "time"
 type Identity struct {
 	UserID    string
 	Email     string
+	Role      string
 	SessionID string
 	CreatedAt time.Time
 }
@@ -15,4 +16,5 @@ type CachedSession struct {
 	UserID   string
 	TenantID string
 	Email    string
+	Role     string
 }

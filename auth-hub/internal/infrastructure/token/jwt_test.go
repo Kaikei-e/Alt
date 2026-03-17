@@ -43,6 +43,58 @@ func TestJWTIssuer_IssueBackendToken(t *testing.T) {
 	assert.Contains(t, claims.Audience, "alt-backend")
 }
 
+func TestJWTIssuer_AdminRole(t *testing.T) {
+	issuer := NewJWTIssuer(JWTConfig{
+		Secret:   "this-is-a-valid-backend-token-secret-32-chars-long",
+		Issuer:   "auth-hub",
+		Audience: "alt-backend",
+		TTL:      5 * time.Minute,
+	})
+
+	identity := &domain.Identity{
+		UserID: "admin-001",
+		Email:  "admin@example.com",
+		Role:   "admin",
+	}
+
+	tokenStr, err := issuer.IssueBackendToken(identity, "session-admin")
+	assert.NoError(t, err)
+
+	parsed, err := jwt.ParseWithClaims(tokenStr, &backendClaims{}, func(token *jwt.Token) (any, error) {
+		return []byte("this-is-a-valid-backend-token-secret-32-chars-long"), nil
+	})
+	assert.NoError(t, err)
+
+	claims := parsed.Claims.(*backendClaims)
+	assert.Equal(t, "admin", claims.Role)
+}
+
+func TestJWTIssuer_EmptyRole_DefaultsToUser(t *testing.T) {
+	issuer := NewJWTIssuer(JWTConfig{
+		Secret:   "this-is-a-valid-backend-token-secret-32-chars-long",
+		Issuer:   "auth-hub",
+		Audience: "alt-backend",
+		TTL:      5 * time.Minute,
+	})
+
+	identity := &domain.Identity{
+		UserID: "user-123",
+		Email:  "test@example.com",
+		Role:   "",
+	}
+
+	tokenStr, err := issuer.IssueBackendToken(identity, "session-abc")
+	assert.NoError(t, err)
+
+	parsed, err := jwt.ParseWithClaims(tokenStr, &backendClaims{}, func(token *jwt.Token) (any, error) {
+		return []byte("this-is-a-valid-backend-token-secret-32-chars-long"), nil
+	})
+	assert.NoError(t, err)
+
+	claims := parsed.Claims.(*backendClaims)
+	assert.Equal(t, "user", claims.Role)
+}
+
 func TestJWTIssuer_ExpiredToken(t *testing.T) {
 	issuer := NewJWTIssuer(JWTConfig{
 		Secret:   "this-is-a-valid-backend-token-secret-32-chars-long",

@@ -77,10 +77,16 @@ func (g *KratosGateway) ValidateSession(ctx context.Context, cookie string) (*do
 	}
 
 	email := ""
+	role := "user"
 	if traits, ok := session.Identity.Traits.(map[string]interface{}); ok {
 		if emailVal, ok := traits["email"]; ok {
 			if emailStr, ok := emailVal.(string); ok {
 				email = emailStr
+			}
+		}
+		if roleVal, ok := traits["role"]; ok {
+			if roleStr, ok := roleVal.(string); ok && roleStr == "admin" {
+				role = "admin"
 			}
 		}
 	}
@@ -93,6 +99,7 @@ func (g *KratosGateway) ValidateSession(ctx context.Context, cookie string) (*do
 	return &domain.Identity{
 		UserID:    session.Identity.Id,
 		Email:     email,
+		Role:      role,
 		SessionID: session.Id,
 		CreatedAt: createdAt,
 	}, nil
