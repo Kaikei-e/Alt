@@ -1,7 +1,8 @@
 import { env } from "$env/dynamic/private";
 import { getBackendToken } from "./auth";
 
-const BACKEND_URL = env.BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
+const BACKEND_URL =
+	env.BACKEND_CONNECT_URL || "http://alt-butterfly-facade:9250";
 
 /**
  * バックエンドAPIを呼び出す (GET, JSON レスポンス)

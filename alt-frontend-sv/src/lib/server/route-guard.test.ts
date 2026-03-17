@@ -22,12 +22,14 @@ describe("route-guard", () => {
 			expect(isPublicRoute(pathname)).toBe(true);
 		});
 
-		it.each(["/feeds", "/desktop/feeds", "/api/articles", "/mobile/recap"])(
-			"should return false for protected route: %s",
-			(pathname) => {
-				expect(isPublicRoute(pathname)).toBe(false);
-			},
-		);
+		it.each([
+			"/feeds",
+			"/desktop/feeds",
+			"/api/articles",
+			"/mobile/recap",
+		])("should return false for protected route: %s", (pathname) => {
+			expect(isPublicRoute(pathname)).toBe(false);
+		});
 	});
 
 	describe("isApiRoute", () => {
