@@ -38,6 +38,16 @@ message GetKnowledgeHomeResponse {
   bool degraded_mode = 5;
   // When the response was generated (RFC3339)
   string generated_at = 6;
+  // Feature flag states for the requesting user
+  repeated FeatureFlagStatus feature_flags = 7;
+}
+
+// FeatureFlagStatus represents the state of a feature flag.
+message FeatureFlagStatus {
+  // Flag name (e.g., "enable_knowledge_home_page")
+  string name = 1;
+  // Whether the flag is enabled for the requesting user
+  bool enabled = 2;
 }
 
 // TodayDigest contains daily summary statistics.

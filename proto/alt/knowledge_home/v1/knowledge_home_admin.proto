@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package alt.knowledge_home.v1;
+
+option go_package = "alt/gen/proto/alt/knowledge_home/v1;knowledgehomev1";
+
+// KnowledgeHomeAdminService provides admin operations for Knowledge Home.
+// Protected by ServiceAuthInterceptor (service-token authentication).
+service KnowledgeHomeAdminService {
+  // TriggerBackfill starts a new backfill job for the given projection version.
+  rpc TriggerBackfill(TriggerBackfillRequest) returns (TriggerBackfillResponse);
+  // PauseBackfill pauses a running backfill job.
+  rpc PauseBackfill(PauseBackfillRequest) returns (PauseBackfillResponse);
+  // ResumeBackfill resumes a paused backfill job.
+  rpc ResumeBackfill(ResumeBackfillRequest) returns (ResumeBackfillResponse);
+  // GetBackfillStatus returns the status of a backfill job.
+  rpc GetBackfillStatus(GetBackfillStatusRequest) returns (GetBackfillStatusResponse);
+  // GetProjectionHealth returns projection health metrics.
+  rpc GetProjectionHealth(GetProjectionHealthRequest) returns (GetProjectionHealthResponse);
+  // GetFeatureFlags returns the current feature flag configuration.
+  rpc GetFeatureFlags(GetFeatureFlagsRequest) returns (GetFeatureFlagsResponse);
+}
+
+// TriggerBackfillRequest starts a backfill job.
+message TriggerBackfillRequest {
+  int32 projection_version = 1;
+}
+
+// TriggerBackfillResponse returns the created job.
+message TriggerBackfillResponse {
+  BackfillJob job = 1;
+}
+
+// PauseBackfillRequest pauses a job by ID.
+message PauseBackfillRequest {
+  string job_id = 1;
+}
+
+// PauseBackfillResponse is empty on success.
+message PauseBackfillResponse {}
+
+// ResumeBackfillRequest resumes a job by ID.
+message ResumeBackfillRequest {
+  string job_id = 1;
+}
+
+// ResumeBackfillResponse is empty on success.
+message ResumeBackfillResponse {}
+
+// GetBackfillStatusRequest queries a job by ID.
+message GetBackfillStatusRequest {
+  string job_id = 1;
+}
+
+// GetBackfillStatusResponse returns the job status.
+message GetBackfillStatusResponse {
+  BackfillJob job = 1;
+}
+
+// GetProjectionHealthRequest is empty.
+message GetProjectionHealthRequest {}
+
+// GetProjectionHealthResponse returns projection health.
+message GetProjectionHealthResponse {
+  int32 active_version = 1;
+  int64 checkpoint_seq = 2;
+  string last_updated = 3;
+  repeated BackfillJob backfill_jobs = 4;
+}
+
+// GetFeatureFlagsRequest is empty.
+message GetFeatureFlagsRequest {}
+
+// GetFeatureFlagsResponse returns feature flag states.
+message GetFeatureFlagsResponse {
+  bool enable_home_page = 1;
+  bool enable_tracking = 2;
+  bool enable_projection_v2 = 3;
+  int32 rollout_percentage = 4;
+}
+
+// BackfillJob represents a backfill job status.
+message BackfillJob {
+  string job_id = 1;
+  string status = 2;
+  int32 projection_version = 3;
+  int32 total_events = 4;
+  int32 processed_events = 5;
+  string error_message = 6;
+  string created_at = 7;
+  string started_at = 8;
+  string completed_at = 9;
+}
