@@ -455,7 +455,7 @@ async function handleSummarize(forceRefresh = false) {
 				</div>
 
 				<!-- Scrollable Content Section -->
-				<div class="flex-1 overflow-y-auto py-6 bg-[#f8f8f8]" style="padding-left: 70px; padding-right: 70px;">
+				<div class="min-h-0 flex-1 overflow-y-auto py-6 bg-[#f8f8f8]" style="padding-left: 70px; padding-right: 70px;">
 					<!-- Excerpt (always visible) -->
 					{#if feed.excerpt}
 						<div class="mb-6 p-4 bg-white rounded border border-gray-200">
@@ -519,7 +519,7 @@ async function handleSummarize(forceRefresh = false) {
 				</div>
 
 				<!-- Footer Actions -->
-				<div class="py-4 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-3 items-center" style="padding-left: 70px; padding-right: 70px;">
+				<div class="relative z-10 shrink-0 py-4 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-3 items-center" style="padding-left: 70px; padding-right: 70px;">
 					<!-- 左側グループ: アクションボタン -->
 					<div class="flex gap-3 flex-1 min-w-0">
 						<!-- Full Article Button -->
