@@ -1,44 +1,50 @@
-/**
- * Headless composable for Knowledge Home Admin data fetching.
- * Polls every 10s for health status.
- */
-import { createClientTransport } from "$lib/connect";
-import {
-	getProjectionHealth,
-	getFeatureFlags,
-	type ProjectionHealthData,
-	type FeatureFlagsConfigData,
+import type {
+	FeatureFlagsConfigData,
+	ProjectionHealthData,
 } from "$lib/connect/knowledge_home_admin";
 
-export function useKnowledgeHomeAdmin() {
+interface Snapshot {
+	health: ProjectionHealthData | null;
+	flags: FeatureFlagsConfigData | null;
+}
+
+export function useKnowledgeHomeAdmin(fetcher: () => Promise<Snapshot>) {
 	let health = $state<ProjectionHealthData | null>(null);
 	let flags = $state<FeatureFlagsConfigData | null>(null);
-	let loading = $state(false);
 	let error = $state<Error | null>(null);
+	let refreshing = $state(false);
+	let lastUpdatedAt = $state<Date | null>(null);
 
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
+	let inFlight: Promise<void> | null = null;
 
 	const fetchData = async () => {
+		if (inFlight) {
+			return inFlight;
+		}
+
+		inFlight = (async () => {
 		try {
-			loading = true;
+			refreshing = true;
+			const snapshot = await fetcher();
+			health = snapshot.health;
+			flags = snapshot.flags;
 			error = null;
-			const transport = createClientTransport();
-			const [healthData, flagsData] = await Promise.all([
-				getProjectionHealth(transport),
-				getFeatureFlags(transport),
-			]);
-			health = healthData;
-			flags = flagsData;
+			lastUpdatedAt = new Date();
 		} catch (err) {
 			error = err instanceof Error ? err : new Error("Unknown error");
 		} finally {
-			loading = false;
+			refreshing = false;
+			inFlight = null;
 		}
+		})();
+
+		return inFlight;
 	};
 
 	const startPolling = (intervalMs = 10000) => {
 		stopPolling();
-		fetchData();
+		void fetchData();
 		pollTimer = setInterval(fetchData, intervalMs);
 	};
 
@@ -49,18 +55,30 @@ export function useKnowledgeHomeAdmin() {
 		}
 	};
 
+	const seed = (snapshot: Snapshot, seedError: Error | null = null) => {
+		health = snapshot.health;
+		flags = snapshot.flags;
+		error = seedError;
+		lastUpdatedAt = new Date();
+	};
+
 	return {
+		seed,
 		get health() {
 			return health;
 		},
 		get flags() {
 			return flags;
 		},
-		get loading() {
-			return loading;
-		},
 		get error() {
 			return error;
+		},
+		get refreshing() {
+			return refreshing;
+		},
+		get lastUpdatedLabel() {
+			if (!lastUpdatedAt) return "never";
+			return lastUpdatedAt.toLocaleTimeString("ja-JP");
 		},
 		fetchData,
 		startPolling,

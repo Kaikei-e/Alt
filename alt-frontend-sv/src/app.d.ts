@@ -11,6 +11,7 @@ declare global {
 		}
 		interface PageData {
 			user: import("@ory/client").Identity | null;
+			userRole?: "admin" | "user";
 		}
 		// interface PageState {}
 		// interface Platform {}

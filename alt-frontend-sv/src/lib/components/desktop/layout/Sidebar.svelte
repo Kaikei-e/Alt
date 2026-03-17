@@ -26,7 +26,7 @@ import { cn } from "$lib/utils";
 
 const svBasePath = "";
 
-const menuItems = [
+const baseMenuItems = [
 	{
 		label: "Knowledge Home",
 		href: `${svBasePath}/home`,
@@ -131,9 +131,16 @@ const menuItems = [
 				href: `${svBasePath}/settings/feeds`,
 				icon: LinkIcon,
 			},
+		],
+	},
+	{
+		label: "Admin",
+		category: "admin",
+		icon: Activity,
+		children: [
 			{
-				label: "KH Admin",
-				href: `${svBasePath}/settings/knowledge-home-admin`,
+				label: "Knowledge Home Ops",
+				href: `${svBasePath}/admin/knowledge-home`,
 				icon: Activity,
 			},
 		],
@@ -146,11 +153,18 @@ const menuItems = [
 	},
 ];
 
+const menuItems = $derived(
+	page.data.userRole === "admin"
+		? baseMenuItems
+		: baseMenuItems.filter((item) => item.category !== "admin"),
+);
+
 let expandedSections = $state<string[]>([
 	"feeds",
 	"explore",
 	"recap",
 	"settings",
+	"admin",
 ]);
 
 function toggleSection(category: string) {
