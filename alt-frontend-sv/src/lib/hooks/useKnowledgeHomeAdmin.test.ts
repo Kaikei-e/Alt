@@ -1,24 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
 import { useKnowledgeHomeAdmin } from "./useKnowledgeHomeAdmin.svelte";
 
+const initialSnapshot = {
+	health: {
+		activeVersion: 1,
+		checkpointSeq: 42,
+		lastUpdated: "2026-03-18T00:00:00Z",
+		backfillJobs: [],
+	},
+	flags: {
+		enableHomePage: true,
+		enableTracking: true,
+		enableProjectionV2: false,
+		rolloutPercentage: 10,
+	},
+};
+
 describe("useKnowledgeHomeAdmin", () => {
 	it("keeps stale data when refresh fails", async () => {
 		const fetcher = vi
 			.fn()
-			.mockResolvedValueOnce({
-				health: {
-					activeVersion: 1,
-					checkpointSeq: 42,
-					lastUpdated: "2026-03-18T00:00:00Z",
-					backfillJobs: [],
-				},
-				flags: {
-					enableHomePage: true,
-					enableTracking: true,
-					enableProjectionV2: false,
-					rolloutPercentage: 10,
-				},
-			})
+			.mockResolvedValueOnce(initialSnapshot)
 			.mockRejectedValueOnce(new Error("network failed"));
 
 		const admin = useKnowledgeHomeAdmin(fetcher);
@@ -32,8 +34,22 @@ describe("useKnowledgeHomeAdmin", () => {
 	});
 
 	it("sets refreshing state without clearing existing data", async () => {
-		let resolveFetch: ((value: Awaited<ReturnType<typeof Promise.resolve>>) => void) | null =
-			null;
+		let resolveFetch:
+			| ((value: {
+					health: {
+						activeVersion: number;
+						checkpointSeq: number;
+						lastUpdated: string;
+						backfillJobs: [];
+					};
+					flags: {
+						enableHomePage: boolean;
+						enableTracking: boolean;
+						enableProjectionV2: boolean;
+						rolloutPercentage: number;
+					};
+			  }) => void)
+			| null = null;
 		const fetcher = vi.fn(
 			() =>
 				new Promise((resolve) => {
@@ -41,7 +57,7 @@ describe("useKnowledgeHomeAdmin", () => {
 				}),
 		);
 
-		const admin = useKnowledgeHomeAdmin(fetcher as () => Promise<never>);
+		const admin = useKnowledgeHomeAdmin(fetcher);
 		admin.seed({
 			health: {
 				activeVersion: 1,

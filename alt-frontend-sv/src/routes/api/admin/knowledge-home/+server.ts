@@ -1,8 +1,8 @@
-import { json } from "@sveltejs/kit";
+import { json, type RequestHandler } from "@sveltejs/kit";
 import { fetchKnowledgeHomeAdminSnapshot } from "$lib/server/knowledge-home-admin";
 import { getUserRole } from "$lib/server/user-role";
 
-export const GET = async ({ locals }) => {
+export const GET: RequestHandler = async ({ locals }) => {
 	if (getUserRole(locals.user) !== "admin") {
 		return json({ error: "Admin access required." }, { status: 403 });
 	}
