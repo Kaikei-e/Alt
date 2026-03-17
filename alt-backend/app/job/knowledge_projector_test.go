@@ -63,6 +63,15 @@ func (m *mockDigestPort) UpsertTodayDigest(_ context.Context, digest domain.Toda
 	return nil
 }
 
+type mockActiveVersionPort struct {
+	version *domain.KnowledgeProjectionVersion
+	err     error
+}
+
+func (m *mockActiveVersionPort) GetActiveVersion(_ context.Context) (*domain.KnowledgeProjectionVersion, error) {
+	return m.version, m.err
+}
+
 func TestKnowledgeProjectorJob_NoEvents(t *testing.T) {
 	logger.InitLogger()
 
@@ -71,7 +80,7 @@ func TestKnowledgeProjectorJob_NoEvents(t *testing.T) {
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -108,7 +117,7 @@ func TestKnowledgeProjectorJob_ArticleCreated(t *testing.T) {
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -119,6 +128,7 @@ func TestKnowledgeProjectorJob_ArticleCreated(t *testing.T) {
 	assert.Len(t, homeItemsPort.upserted[0].WhyReasons, 1)
 	assert.Equal(t, domain.WhyNewUnread, homeItemsPort.upserted[0].WhyReasons[0].Code)
 	assert.Equal(t, int64(1), checkpointPort.updatedSeq)
+	assert.Equal(t, 1, homeItemsPort.upserted[0].ProjectionVersion) // default version
 }
 
 func TestKnowledgeProjectorJob_CheckpointAdvances(t *testing.T) {
@@ -144,10 +154,40 @@ func TestKnowledgeProjectorJob_CheckpointAdvances(t *testing.T) {
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(10), checkpointPort.updatedSeq) // Checkpoint advances to max seq
 	assert.Len(t, homeItemsPort.upserted, 2)
+}
+
+func TestKnowledgeProjectorJob_UsesActiveVersion(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	payload, _ := json.Marshal(articleCreatedPayload{
+		ArticleID: articleID.String(),
+		Title:     "Test Article V2",
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventArticleCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: payload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	versionPort := &mockActiveVersionPort{
+		version: &domain.KnowledgeProjectionVersion{Version: 2, Status: "active"},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, versionPort)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, 2, homeItemsPort.upserted[0].ProjectionVersion)
 }

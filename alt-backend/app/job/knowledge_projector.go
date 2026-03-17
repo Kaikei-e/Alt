@@ -5,6 +5,7 @@ import (
 	"alt/port/knowledge_event_port"
 	"alt/port/knowledge_home_port"
 	"alt/port/knowledge_projection_port"
+	"alt/port/knowledge_projection_version_port"
 	"alt/port/today_digest_port"
 	"alt/utils/logger"
 	"context"
@@ -28,9 +29,20 @@ func KnowledgeProjectorJob(
 	updateCheckpointPort knowledge_projection_port.UpdateProjectionCheckpointPort,
 	homeItemsPort knowledge_home_port.UpsertKnowledgeHomeItemPort,
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
+	activeVersionPort knowledge_projection_version_port.GetActiveVersionPort,
 ) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		return processKnowledgeEvents(ctx, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort)
+		// Resolve active projection version
+		projectionVersion := 1
+		if activeVersionPort != nil {
+			v, err := activeVersionPort.GetActiveVersion(ctx)
+			if err != nil {
+				logger.Logger.ErrorContext(ctx, "failed to get active projection version, using default", "error", err)
+			} else if v != nil {
+				projectionVersion = v.Version
+			}
+		}
+		return processKnowledgeEvents(ctx, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, projectionVersion)
 	}
 }
 
@@ -41,6 +53,7 @@ func processKnowledgeEvents(
 	updateCheckpointPort knowledge_projection_port.UpdateProjectionCheckpointPort,
 	homeItemsPort knowledge_home_port.UpsertKnowledgeHomeItemPort,
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
+	projectionVersion int,
 ) error {
 	// Get current checkpoint
 	lastSeq, err := checkpointPort.GetProjectionCheckpoint(ctx, projectorName)
@@ -65,7 +78,7 @@ func processKnowledgeEvents(
 
 	var maxSeq int64
 	for _, event := range events {
-		if err := projectEvent(ctx, event, homeItemsPort, todayDigestPort); err != nil {
+		if err := projectEvent(ctx, event, homeItemsPort, todayDigestPort, projectionVersion); err != nil {
 			logger.Logger.ErrorContext(ctx, "failed to project event",
 				"error", err, "event_id", event.EventID, "event_type", event.EventType)
 			// Continue with other events (best effort)
@@ -93,16 +106,17 @@ func projectEvent(
 	event domain.KnowledgeEvent,
 	homeItemsPort knowledge_home_port.UpsertKnowledgeHomeItemPort,
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
+	projectionVersion int,
 ) error {
 	switch event.EventType {
 	case domain.EventArticleCreated:
-		return projectArticleCreated(ctx, event, homeItemsPort)
+		return projectArticleCreated(ctx, event, homeItemsPort, projectionVersion)
 	case domain.EventSummaryVersionCreated:
-		return projectSummaryVersionCreated(ctx, event, homeItemsPort)
+		return projectSummaryVersionCreated(ctx, event, homeItemsPort, projectionVersion)
 	case domain.EventTagSetVersionCreated:
-		return projectTagSetVersionCreated(ctx, event, homeItemsPort)
+		return projectTagSetVersionCreated(ctx, event, homeItemsPort, projectionVersion)
 	case domain.EventHomeItemOpened:
-		return projectHomeItemOpened(ctx, event, homeItemsPort)
+		return projectHomeItemOpened(ctx, event, homeItemsPort, projectionVersion)
 	default:
 		// Unknown event types are silently skipped
 		return nil
@@ -117,7 +131,7 @@ type articleCreatedPayload struct {
 	TenantID    string `json:"tenant_id"`
 }
 
-func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort) error {
+func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
 	var payload articleCreatedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal ArticleCreated payload: %w", err)
@@ -149,18 +163,19 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 	}
 
 	item := domain.KnowledgeHomeItem{
-		UserID:      event.TenantID, // tenant as user for now
-		TenantID:    event.TenantID,
-		ItemKey:     fmt.Sprintf("article:%s", articleID),
-		ItemType:    domain.ItemArticle,
-		PrimaryRefID: &articleID,
-		Title:       payload.Title,
-		WhyReasons:  []domain.WhyReason{{Code: domain.WhyNewUnread}},
-		Score:       score,
-		FreshnessAt: &now,
-		PublishedAt: publishedAt,
-		GeneratedAt: now,
-		UpdatedAt:   now,
+		UserID:            event.TenantID, // tenant as user for now
+		TenantID:          event.TenantID,
+		ItemKey:           fmt.Sprintf("article:%s", articleID),
+		ItemType:          domain.ItemArticle,
+		PrimaryRefID:      &articleID,
+		Title:             payload.Title,
+		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}},
+		Score:             score,
+		FreshnessAt:       &now,
+		PublishedAt:       publishedAt,
+		GeneratedAt:       now,
+		UpdatedAt:         now,
+		ProjectionVersion: projectionVersion,
 	}
 
 	if event.UserID != nil {
@@ -175,7 +190,7 @@ type summaryVersionPayload struct {
 	ArticleID        string `json:"article_id"`
 }
 
-func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort) error {
+func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
 	var payload summaryVersionPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal SummaryVersionCreated payload: %w", err)
@@ -192,16 +207,17 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 
 	now := time.Now()
 	item := domain.KnowledgeHomeItem{
-		UserID:      event.TenantID,
-		TenantID:    event.TenantID,
-		ItemKey:     fmt.Sprintf("article:%s", articleID),
-		ItemType:    domain.ItemArticle,
-		PrimaryRefID: &articleID,
-		Title:       "", // Will be preserved by ON CONFLICT DO UPDATE only for non-empty
-		WhyReasons:  []domain.WhyReason{{Code: domain.WhyNewUnread}, {Code: domain.WhySummaryCompleted}},
-		Score:       0.8, // Boost for having a summary
-		GeneratedAt: now,
-		UpdatedAt:   now,
+		UserID:            event.TenantID,
+		TenantID:          event.TenantID,
+		ItemKey:           fmt.Sprintf("article:%s", articleID),
+		ItemType:          domain.ItemArticle,
+		PrimaryRefID:      &articleID,
+		Title:             "", // Will be preserved by ON CONFLICT DO UPDATE only for non-empty
+		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}, {Code: domain.WhySummaryCompleted}},
+		Score:             0.8, // Boost for having a summary
+		GeneratedAt:       now,
+		UpdatedAt:         now,
+		ProjectionVersion: projectionVersion,
 	}
 
 	if event.UserID != nil {
@@ -216,7 +232,7 @@ type tagSetVersionPayload struct {
 	ArticleID       string `json:"article_id"`
 }
 
-func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort) error {
+func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
 	var payload tagSetVersionPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal TagSetVersionCreated payload: %w", err)
@@ -229,16 +245,17 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 
 	now := time.Now()
 	item := domain.KnowledgeHomeItem{
-		UserID:      event.TenantID,
-		TenantID:    event.TenantID,
-		ItemKey:     fmt.Sprintf("article:%s", articleID),
-		ItemType:    domain.ItemArticle,
-		PrimaryRefID: &articleID,
-		Title:       "",
-		WhyReasons:  []domain.WhyReason{{Code: domain.WhyNewUnread}},
-		Score:       0.7,
-		GeneratedAt: now,
-		UpdatedAt:   now,
+		UserID:            event.TenantID,
+		TenantID:          event.TenantID,
+		ItemKey:           fmt.Sprintf("article:%s", articleID),
+		ItemType:          domain.ItemArticle,
+		PrimaryRefID:      &articleID,
+		Title:             "",
+		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}},
+		Score:             0.7,
+		GeneratedAt:       now,
+		UpdatedAt:         now,
+		ProjectionVersion: projectionVersion,
 	}
 
 	if event.UserID != nil {
@@ -252,7 +269,7 @@ type homeItemOpenedPayload struct {
 	ItemKey string `json:"item_key"`
 }
 
-func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort) error {
+func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
 	var payload homeItemOpenedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal HomeItemOpened payload: %w", err)
@@ -261,16 +278,17 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 	// Reduce score for opened items (interaction suppression)
 	now := time.Now()
 	item := domain.KnowledgeHomeItem{
-		UserID:          event.TenantID,
-		TenantID:        event.TenantID,
-		ItemKey:         payload.ItemKey,
-		ItemType:        domain.ItemArticle,
-		Title:           "",
-		WhyReasons:      []domain.WhyReason{{Code: domain.WhyNewUnread}},
-		Score:           0.1, // Suppressed score
-		LastInteractedAt: &now,
-		GeneratedAt:     now,
-		UpdatedAt:       now,
+		UserID:            event.TenantID,
+		TenantID:          event.TenantID,
+		ItemKey:           payload.ItemKey,
+		ItemType:          domain.ItemArticle,
+		Title:             "",
+		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}},
+		Score:             0.1, // Suppressed score
+		LastInteractedAt:  &now,
+		GeneratedAt:       now,
+		UpdatedAt:         now,
+		ProjectionVersion: projectionVersion,
 	}
 
 	if event.UserID != nil {
