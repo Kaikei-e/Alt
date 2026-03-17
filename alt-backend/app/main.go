@@ -127,6 +127,18 @@ func main() {
 		Timeout:  2 * time.Minute,
 		Fn:       job.TagCloudCacheWarmerJob(container.FetchTagCloudUsecase),
 	})
+	scheduler.Add(job.Job{
+		Name:     "knowledge-projector",
+		Interval: 30 * time.Second,
+		Timeout:  25 * time.Second,
+		Fn: job.KnowledgeProjectorJob(
+			container.KnowledgeEventGateway,
+			container.KnowledgeProjectionGateway,
+			container.KnowledgeProjectionGateway,
+			container.KnowledgeHomeGateway,
+			container.TodayDigestGateway,
+		),
+	})
 	scheduler.Start(ctx)
 
 	e := echo.New()
