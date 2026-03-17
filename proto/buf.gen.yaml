@@ -4,6 +4,7 @@ inputs:
     paths:
       - alt
       - alt/tts
+      - alt/knowledge_home
 plugins:
   # ============================================================================
   # alt-backend (public protos)

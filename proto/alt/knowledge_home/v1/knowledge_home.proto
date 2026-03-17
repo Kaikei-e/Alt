@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package alt.knowledge_home.v1;
+
+option go_package = "alt/gen/proto/alt/knowledge_home/v1;knowledgehomev1";
+
+// KnowledgeHomeService provides the Knowledge Home API.
+service KnowledgeHomeService {
+  // GetKnowledgeHome returns the main Knowledge Home feed with today's digest.
+  rpc GetKnowledgeHome(GetKnowledgeHomeRequest) returns (GetKnowledgeHomeResponse);
+  // TrackHomeItemsSeen records batch impression events.
+  rpc TrackHomeItemsSeen(TrackHomeItemsSeenRequest) returns (TrackHomeItemsSeenResponse);
+  // TrackHomeAction records a user action on a home item.
+  rpc TrackHomeAction(TrackHomeActionRequest) returns (TrackHomeActionResponse);
+}
+
+// GetKnowledgeHomeRequest is the request for GetKnowledgeHome.
+message GetKnowledgeHomeRequest {
+  // Cursor for pagination (opaque string from previous response)
+  optional string cursor = 1;
+  // Maximum number of items to return (default: 20, max: 100)
+  int32 limit = 2;
+  // Date for today_digest in RFC3339 format (defaults to today)
+  optional string date = 3;
+}
+
+// GetKnowledgeHomeResponse is the response for GetKnowledgeHome.
+message GetKnowledgeHomeResponse {
+  // Today's digest summary
+  TodayDigest today_digest = 1;
+  // Knowledge home items ordered by score
+  repeated KnowledgeHomeItem items = 2;
+  // Cursor for the next page
+  string next_cursor = 3;
+  // Whether there are more items available
+  bool has_more = 4;
+  // True if some data sources failed (partial response)
+  bool degraded_mode = 5;
+  // When the response was generated (RFC3339)
+  string generated_at = 6;
+}
+
+// TodayDigest contains daily summary statistics.
+message TodayDigest {
+  // Date in YYYY-MM-DD format
+  string date = 1;
+  // Number of new articles today
+  int32 new_articles = 2;
+  // Number of summarized articles today
+  int32 summarized_articles = 3;
+  // Number of unsummarized articles today
+  int32 unsummarized_articles = 4;
+  // Top tags for today
+  repeated string top_tags = 5;
+  // Whether a weekly recap is available
+  bool weekly_recap_available = 6;
+  // Whether an evening pulse is available
+  bool evening_pulse_available = 7;
+}
+
+// KnowledgeHomeItem represents a single item in the Knowledge Home feed.
+message KnowledgeHomeItem {
+  // Unique key for this item (e.g., "article:{uuid}")
+  string item_key = 1;
+  // Type of item: article, recap_anchor, pulse_anchor
+  string item_type = 2;
+  // Article ID (set when item_type is article)
+  optional string article_id = 3;
+  // Recap ID (set when item_type is recap_anchor)
+  optional string recap_id = 4;
+  // Display title
+  string title = 5;
+  // Published timestamp (RFC3339)
+  string published_at = 6;
+  // Summary excerpt (may be empty if not yet summarized)
+  optional string summary_excerpt = 7;
+  // Tags associated with this item
+  repeated string tags = 8;
+  // Why this item appears in the feed
+  repeated WhyReason why = 9;
+  // Relevance score (higher = more relevant)
+  double score = 10;
+}
+
+// WhyReason explains why an item appears in the Knowledge Home.
+message WhyReason {
+  // Reason code: new_unread, in_weekly_recap, pulse_need_to_know, tag_hotspot, etc.
+  string code = 1;
+  // Optional reference ID (e.g., recap_id for in_weekly_recap)
+  optional string ref_id = 2;
+  // Optional tag name (for tag_hotspot)
+  optional string tag = 3;
+}
+
+// TrackHomeItemsSeenRequest records which items were visible on screen.
+message TrackHomeItemsSeenRequest {
+  // Item keys that were visible
+  repeated string item_keys = 1;
+  // Session ID for deduplication
+  string exposure_session_id = 2;
+}
+
+// TrackHomeItemsSeenResponse is empty on success.
+message TrackHomeItemsSeenResponse {}
+
+// TrackHomeActionRequest records a user action on a home item.
+message TrackHomeActionRequest {
+  // Action type: open, dismiss, ask, listen, open_recap, open_search
+  string action_type = 1;
+  // The item key being acted upon
+  string item_key = 2;
+  // Optional context lens ID
+  optional string context_lens_id = 3;
+  // Optional metadata as JSON string
+  optional string metadata_json = 4;
+}
+
+// TrackHomeActionResponse is empty on success.
+message TrackHomeActionResponse {}
