@@ -12,6 +12,7 @@ import (
 	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
+	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
 	"alt/gen/proto/alt/rss/v2/rssv2connect"
@@ -22,6 +23,7 @@ import (
 	"alt/connect/v2/augur"
 	"alt/connect/v2/feeds"
 	internalhandler "alt/connect/v2/internal"
+	knowledge_home "alt/connect/v2/knowledge_home"
 	"alt/connect/v2/middleware"
 	"alt/connect/v2/morning_letter"
 	"alt/connect/v2/recap"
@@ -78,6 +80,17 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	recapPath, recapServiceHandler := recapv2connect.NewRecapServiceHandler(recapHandler, opts)
 	mux.Handle(recapPath, recapServiceHandler)
 	logger.Info("Registered Connect-RPC RecapService", "path", recapPath)
+
+	// Register KnowledgeHome service
+	knowledgeHomeHandler := knowledge_home.NewHandler(
+		container.GetKnowledgeHomeUsecase,
+		container.TrackHomeSeenUsecase,
+		container.TrackHomeActionUsecase,
+		logger,
+	)
+	khPath, khServiceHandler := knowledgehomev1connect.NewKnowledgeHomeServiceHandler(knowledgeHomeHandler, opts)
+	mux.Handle(khPath, khServiceHandler)
+	logger.Info("Registered Connect-RPC KnowledgeHomeService", "path", khPath)
 
 	// Register BackendInternalService (service-to-service API, uses service token auth)
 	serviceAuthInterceptor := middleware.NewServiceAuthInterceptor(logger, cfg.InternalAPI.ServiceSecret)
