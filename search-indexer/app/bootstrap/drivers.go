@@ -1,14 +1,12 @@
 package bootstrap
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"search-indexer/config"
-	"search-indexer/driver"
 	"search-indexer/driver/backend_api"
 	"search-indexer/gateway"
 	"search-indexer/logger"
@@ -16,26 +14,13 @@ import (
 	"github.com/meilisearch/meilisearch-go"
 )
 
-// initArticleDriver creates the appropriate article driver based on configuration.
-// When BACKEND_API_URL is set, it returns a backend API client (no DB needed).
-// Otherwise, it falls back to the legacy database driver.
-func initArticleDriver(ctx context.Context, cfg *config.Config) (gateway.ArticleDriver, func(), error) {
-	if cfg.UseBackendAPI() {
-		logger.Logger.Info("Using backend API driver",
-			"url", cfg.BackendAPI.URL,
-		)
-		client := backend_api.NewClient(cfg.BackendAPI.URL, cfg.BackendAPI.ServiceToken)
-		noop := func() {} // no connection to close
-		return client, noop, nil
-	}
-
-	logger.Logger.Info("Using legacy database driver")
-	dbDriver, err := driver.NewDatabaseDriverFromConfig(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("database init: %w", err)
-	}
-	closer := func() { dbDriver.Close() }
-	return dbDriver, closer, nil
+// initArticleDriver creates the backend API article driver.
+func initArticleDriver(cfg *config.Config) (gateway.ArticleDriver, error) {
+	logger.Logger.Info("Using backend API driver",
+		"url", cfg.BackendAPI.URL,
+	)
+	client := backend_api.NewClient(cfg.BackendAPI.URL, cfg.BackendAPI.ServiceToken)
+	return client, nil
 }
 
 // initMeilisearchClient initializes the Meilisearch client with retry logic.

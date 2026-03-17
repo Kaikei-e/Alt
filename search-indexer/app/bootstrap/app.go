@@ -25,7 +25,6 @@ import (
 type App struct {
 	httpServer    *http.Server
 	connectServer *http.Server
-	driverClose   func() // closes the article driver (DB pool or noop for API)
 	redisConsumer *consumer.Consumer
 	otelShutdown  appOtel.ShutdownFunc
 }
@@ -63,7 +62,7 @@ func Run(ctx context.Context) error {
 	}
 
 	// ── Drivers (infrastructure layer) ──
-	articleDriver, driverClose, err := initArticleDriver(ctx, appCfg)
+	articleDriver, err := initArticleDriver(appCfg)
 	if err != nil {
 		logger.Logger.Error("Failed to initialize article driver", "err", err)
 		return err
@@ -72,7 +71,6 @@ func Run(ctx context.Context) error {
 	msClient, err := initMeilisearchClient()
 	if err != nil {
 		logger.Logger.Error("Failed to initialize Meilisearch", "err", err)
-		driverClose()
 		return err
 	}
 	searchDriver := driver.NewMeilisearchDriver(msClient, "articles")
@@ -83,7 +81,6 @@ func Run(ctx context.Context) error {
 
 	if err := searchEngine.EnsureIndex(ctx); err != nil {
 		logger.Logger.Error("Failed to ensure search index", "err", err)
-		driverClose()
 		return err
 	}
 
@@ -147,7 +144,6 @@ func Run(ctx context.Context) error {
 	app := &App{
 		httpServer:    newHTTPServer(searchByUserUsecase, otelCfg),
 		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase),
-		driverClose:   driverClose,
 		redisConsumer: redisConsumer,
 		otelShutdown:  otelShutdown,
 	}
@@ -185,9 +181,6 @@ func (a *App) shutdown() {
 	}
 	if a.redisConsumer != nil {
 		a.redisConsumer.Stop()
-	}
-	if a.driverClose != nil {
-		a.driverClose()
 	}
 
 	otelCtx, otelCancel := context.WithTimeout(context.Background(), 5*time.Second)
