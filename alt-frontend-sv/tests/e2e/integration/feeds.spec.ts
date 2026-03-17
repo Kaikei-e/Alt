@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 /**
  * Integration E2E: Feed operations against real backend + DB.
- * Run with: ALT_RUNTIME_URL=http://<IP>:4173/sv/ bun run test:e2e:integration
+ * Run with: ALT_RUNTIME_URL=http://<IP>:4173/ bun run test:e2e:integration
  */
 test.describe("Feeds Integration", () => {
 	test("loads feed list from real backend", async ({ page }) => {

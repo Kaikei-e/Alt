@@ -10,7 +10,7 @@ import { expect, test } from "@playwright/test";
 test.describe("Desktop Feeds Search - Error Handling", () => {
 	test.beforeEach(async ({ page }) => {
 		// Navigate to search page
-		await page.goto("/sv/desktop/feeds/search");
+		await page.goto("./desktop/feeds/search");
 	});
 
 	test("displays search input and button", async ({ page }) => {

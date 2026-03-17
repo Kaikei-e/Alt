@@ -104,7 +104,7 @@ export const kratosHandlers = [
 		const url = new URL(request.url);
 		const returnTo = validateRedirectUrl(
 			url.searchParams.get("return_to"),
-			"/sv/home",
+			"/home",
 		);
 		return new HttpResponse(null, {
 			status: 303,
@@ -120,7 +120,7 @@ export const kratosHandlers = [
 		const url = new URL(request.url);
 		const returnTo = validateRedirectUrl(
 			url.searchParams.get("return_to"),
-			"/sv/home",
+			"/home",
 		);
 		return new HttpResponse(null, {
 			status: 303,
@@ -136,10 +136,10 @@ export const kratosHandlers = [
 		const url = new URL(request.url);
 		const returnTo = validateRedirectUrl(
 			url.searchParams.get("return_to"),
-			"/sv/home",
+			"/home",
 		);
 		const returnToUrl = new URL(returnTo, request.url);
-		const redirectUrl = `${returnToUrl.origin}/sv/auth/login?flow=flow-e2e-mock`;
+		const redirectUrl = `${returnToUrl.origin}/auth/login?flow=flow-e2e-mock`;
 		return new HttpResponse(null, {
 			status: 303,
 			headers: { Location: redirectUrl },
@@ -163,10 +163,10 @@ export const kratosHandlers = [
 		const url = new URL(request.url);
 		const returnTo = validateRedirectUrl(
 			url.searchParams.get("return_to"),
-			"/sv/home",
+			"/home",
 		);
 		const returnToUrl = new URL(returnTo, request.url);
-		const redirectUrl = `${returnToUrl.origin}/sv/register?flow=flow-e2e-mock-reg`;
+		const redirectUrl = `${returnToUrl.origin}/register?flow=flow-e2e-mock-reg`;
 		return new HttpResponse(null, {
 			status: 303,
 			headers: { Location: redirectUrl },

@@ -25,7 +25,7 @@ async function globalSetup(config: FullConfig) {
 	console.log("Creating authenticated storage state...");
 	const browser = await chromium.launch();
 	const context = await browser.newContext({
-		baseURL: config.projects[0]?.use?.baseURL || "http://127.0.0.1:4174/sv/",
+		baseURL: config.projects[0]?.use?.baseURL || "http://127.0.0.1:4174/",
 	});
 
 	// Set the session cookie that mock-server.ts expects

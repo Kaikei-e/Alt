@@ -3,7 +3,7 @@
  * Runs against real backend services on the runtime machine.
  */
 
-const RUNTIME_URL = process.env.ALT_RUNTIME_URL || "http://localhost:4173/sv/";
+const RUNTIME_URL = process.env.ALT_RUNTIME_URL || "http://localhost:4173/";
 const BACKEND_URL = process.env.ALT_BACKEND_URL || "http://localhost:9000";
 const MAX_RETRIES = 30;
 const RETRY_INTERVAL_MS = 2000;

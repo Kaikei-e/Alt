@@ -5,7 +5,7 @@ export default defineConfig({
 	fullyParallel: true,
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 2 : 0,
-	workers: process.env.CI ? 1 : undefined,
+	workers: process.env.CI ? 2 : undefined,
 
 	// CI-optimized timeouts
 	timeout: process.env.CI ? 60_000 : 30_000,
@@ -18,7 +18,10 @@ export default defineConfig({
 		["list"],
 		["html", { open: "never" }],
 		...(process.env.CI
-			? [["json", { outputFile: "test-results/results.json" }] as const]
+			? [
+					["github"] as const,
+					["json", { outputFile: "test-results/results.json" }] as const,
+				]
 			: []),
 	],
 
@@ -35,7 +38,7 @@ export default defineConfig({
 		screenshot: "only-on-failure",
 		video: "retain-on-failure",
 
-		baseURL: "http://127.0.0.1:4174/sv/",
+		baseURL: "http://127.0.0.1:4174/",
 		storageState: "tests/e2e/.auth/storage.json",
 	},
 
@@ -57,7 +60,7 @@ export default defineConfig({
 			testMatch: /integration\/.*\.spec\.ts/,
 			use: {
 				...devices["Desktop Chrome"],
-				baseURL: process.env.ALT_RUNTIME_URL || "http://localhost:4173/sv/",
+				baseURL: process.env.ALT_RUNTIME_URL || "http://localhost:4173/",
 			},
 			...({
 				globalSetup: "./tests/e2e/integration/global-setup",
@@ -132,7 +135,7 @@ export default defineConfig({
 
 	webServer: {
 		command: "bun run build && node build",
-		url: "http://127.0.0.1:4174/sv/health",
+		url: "http://127.0.0.1:4174/health",
 		reuseExistingServer: !process.env.CI,
 		stdout: "pipe",
 		stderr: "pipe",

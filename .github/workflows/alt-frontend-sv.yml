@@ -17,14 +17,6 @@ on:
       working-directory:
         required: true
         type: string
-      node-version:
-        required: false
-        type: string
-        default: "24"
-      pnpm-version:
-        required: false
-        type: string
-        default: "10"
       test-type:
         required: false
         type: string
@@ -36,16 +28,6 @@ on:
         required: true
         type: string
         default: "alt-frontend-sv"
-      node-version:
-        description: "Node.js version to use"
-        required: false
-        type: string
-        default: "24"
-      pnpm-version:
-        description: "pnpm version to use"
-        required: false
-        type: string
-        default: "10"
       test-type:
         description: "Type of test to run"
         required: false
@@ -54,7 +36,7 @@ on:
 
 jobs:
   test:
-    timeout-minutes: 60
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -72,7 +54,6 @@ jobs:
     steps:
       - name: Pre-checkout cleanup
         run: |
-          # Clean workspace - running as root in container so we can remove any files
           if [ -d "$GITHUB_WORKSPACE" ]; then
             rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* 2>/dev/null || true
           fi
@@ -85,48 +66,53 @@ jobs:
         run: |
           echo "::group::Masking Configuration"
 
-          # Mask Runner Identity
           echo "::add-mask::$(hostname)"
           echo "::add-mask::$(whoami)"
 
-          # Mask Absolute Paths
-          # Best Practice: Mask full paths instead of components to avoid masking common words like 'home' or 'opt'
           [ -n "$HOME" ] && echo "::add-mask::$HOME"
           [ -n "$GITHUB_WORKSPACE" ] && echo "::add-mask::$GITHUB_WORKSPACE"
           [ -n "$RUNNER_TEMP" ] && echo "::add-mask::$RUNNER_TEMP"
 
-          # Mask Git PII (now available after checkout)
           if command -v git >/dev/null 2>&1; then
-            echo "::add-mask::$(git log -1 --pretty=format:'%an' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ae' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%cn' 2>/dev/null || echo '')"
-            echo "::add-mask::$(git log -1 --pretty=format:'%ce' 2>/dev/null || echo '')"
+            GIT_AN="$(git log -1 --pretty=format:'%an' 2>/dev/null || true)"
+            GIT_AE="$(git log -1 --pretty=format:'%ae' 2>/dev/null || true)"
+            GIT_CN="$(git log -1 --pretty=format:'%cn' 2>/dev/null || true)"
+            GIT_CE="$(git log -1 --pretty=format:'%ce' 2>/dev/null || true)"
+            [ -n "$GIT_AN" ] && echo "::add-mask::$GIT_AN"
+            [ -n "$GIT_AE" ] && echo "::add-mask::$GIT_AE"
+            [ -n "$GIT_CN" ] && echo "::add-mask::$GIT_CN"
+            [ -n "$GIT_CE" ] && echo "::add-mask::$GIT_CE"
           fi
 
           echo "::endgroup::"
 
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ inputs.node-version || '24' }}
-
-      - name: Install unzip
-        run: apt-get update && apt-get install -y unzip
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.2.14
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('alt-frontend-sv/bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
       - name: Install dependencies
         run: bun install
         working-directory: ${{ inputs.working-directory || 'alt-frontend-sv' }}
+
       - name: Run Playwright tests
-        run: npx playwright test --project=auth --project=desktop-chromium --project=mobile-chrome --reporter=list --shard=${{ matrix.shard }}
+        run: bunx playwright test --project=auth --project=desktop-chromium --project=mobile-chrome --shard=${{ matrix.shard }}
         working-directory: ${{ inputs.working-directory || 'alt-frontend-sv' }}
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
           name: playwright-report-${{ strategy.job-index }}
-          path: ${{ inputs.working-directory || 'alt-frontend-sv' }}/playwright-report/
+          path: |
+            ${{ inputs.working-directory || 'alt-frontend-sv' }}/playwright-report/
+            ${{ inputs.working-directory || 'alt-frontend-sv' }}/test-results/
           retention-days: 30

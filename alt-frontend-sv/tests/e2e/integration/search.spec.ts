@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 /**
  * Integration E2E: Search operations against real Meilisearch.
- * Run with: ALT_RUNTIME_URL=http://<IP>:4173/sv/ bun run test:e2e:integration
+ * Run with: ALT_RUNTIME_URL=http://<IP>:4173/ bun run test:e2e:integration
  */
 test.describe("Search Integration", () => {
 	test("search page loads without error", async ({ page }) => {
