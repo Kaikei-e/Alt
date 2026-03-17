@@ -40,7 +40,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 		sessionCache := cache.NewSessionCache(5 * time.Minute)
 
 		// Pre-populate cache
-		sessionCache.Set("session-123", "user-456", "tenant-789", "user@example.com")
+		sessionCache.Set("session-123", "user-456", "tenant-789", "user@example.com", "admin")
 
 		cfg := &config.Config{
 			BackendTokenSecret:   "test-secret",
@@ -79,7 +79,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 		assert.Equal(t, "user-456", user["id"])
 		assert.Equal(t, "tenant-789", user["tenantId"])
 		assert.Equal(t, "user@example.com", user["email"])
-		assert.Equal(t, "user", user["role"])
+		assert.Equal(t, "admin", user["role"])
 
 		// Check session object - session ID is the cookie value, not user ID
 		session := response["session"].(map[string]interface{})
@@ -98,6 +98,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 			Return(&client.Identity{
 				ID:    "user-123",
 				Email: "test@example.com",
+				Role:  "admin",
 			}, nil)
 
 		cfg := &config.Config{
@@ -135,6 +136,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 		assert.Equal(t, "user-123", user["id"])
 		assert.Equal(t, "user-123", user["tenantId"])
 		assert.Equal(t, "test@example.com", user["email"])
+		assert.Equal(t, "admin", user["role"])
 
 		// Kratos client should be called
 		mockClient.AssertCalled(t, "Whoami", mock.Anything, "ory_kratos_session=valid-session")
@@ -143,6 +145,7 @@ func TestSessionHandler_Handle(t *testing.T) {
 		entry, found := sessionCache.Get("valid-session")
 		assert.True(t, found)
 		assert.Equal(t, "user-123", entry.UserID)
+		assert.Equal(t, "admin", entry.Role)
 	})
 
 	t.Run("missing session cookie returns 401 JSON error", func(t *testing.T) {

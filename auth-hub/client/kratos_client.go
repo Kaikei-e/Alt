@@ -14,6 +14,7 @@ import (
 type Identity struct {
 	ID        string
 	Email     string
+	Role      string
 	CreatedAt time.Time
 	SessionID string // Kratos session ID
 }
@@ -81,10 +82,16 @@ func (c *KratosClient) Whoami(ctx context.Context, cookie string) (*Identity, er
 
 	// Extract email from traits
 	email := ""
+	role := "user"
 	if traits, ok := session.Identity.Traits.(map[string]interface{}); ok {
 		if emailVal, ok := traits["email"]; ok {
 			if emailStr, ok := emailVal.(string); ok {
 				email = emailStr
+			}
+		}
+		if roleVal, ok := traits["role"]; ok {
+			if roleStr, ok := roleVal.(string); ok && roleStr == "admin" {
+				role = "admin"
 			}
 		}
 	}
@@ -100,6 +107,7 @@ func (c *KratosClient) Whoami(ctx context.Context, cookie string) (*Identity, er
 	return &Identity{
 		ID:        session.Identity.Id,
 		Email:     email,
+		Role:      role,
 		CreatedAt: createdAt,
 		SessionID: sessionID, // Set Kratos session ID
 	}, nil

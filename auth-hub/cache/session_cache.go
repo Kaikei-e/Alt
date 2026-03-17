@@ -10,6 +10,7 @@ type cacheEntry struct {
 	UserID    string
 	TenantID  string
 	Email     string
+	Role      string
 	ExpiresAt time.Time
 }
 
@@ -34,14 +35,20 @@ func NewSessionCache(ttl time.Duration) *SessionCache {
 }
 
 // Set stores session identity information in the cache
-func (c *SessionCache) Set(sessionID, userID, tenantID, email string) {
+func (c *SessionCache) Set(sessionID, userID, tenantID, email string, roles ...string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	role := "user"
+	if len(roles) > 0 && roles[0] != "" {
+		role = roles[0]
+	}
 
 	c.entries[sessionID] = &cacheEntry{
 		UserID:    userID,
 		TenantID:  tenantID,
 		Email:     email,
+		Role:      role,
 		ExpiresAt: time.Now().Add(c.ttl),
 	}
 }

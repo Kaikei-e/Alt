@@ -52,9 +52,10 @@ func (h *ValidateHandler) Handle(c echo.Context) error {
 		c.Response().Header().Set("X-Alt-User-Id", entry.UserID)
 		c.Response().Header().Set("X-Alt-Tenant-Id", entry.TenantID)
 		c.Response().Header().Set("X-Alt-User-Email", entry.Email)
+		c.Response().Header().Set("X-Alt-User-Role", entry.Role)
 
 		// Issue JWT backend token
-		identity := &client.Identity{ID: entry.UserID, Email: entry.Email, SessionID: sessionID}
+		identity := &client.Identity{ID: entry.UserID, Email: entry.Email, Role: entry.Role, SessionID: sessionID}
 		backendToken, err := token.IssueBackendToken(h.config, identity, sessionID)
 		if err != nil {
 			slog.ErrorContext(c.Request().Context(), "failed to issue backend token in validate", "error", err)
@@ -78,7 +79,7 @@ func (h *ValidateHandler) Handle(c echo.Context) error {
 
 	// Cache the validated session
 	// Using UserID as TenantID (single-tenant architecture)
-	h.sessionCache.Set(sessionID, identity.ID, identity.ID, identity.Email)
+	h.sessionCache.Set(sessionID, identity.ID, identity.ID, identity.Email, identity.Role)
 
 	// Issue JWT backend token
 	backendToken, tokenErr := token.IssueBackendToken(h.config, identity, identity.SessionID)
@@ -92,6 +93,7 @@ func (h *ValidateHandler) Handle(c echo.Context) error {
 	c.Response().Header().Set("X-Alt-User-Id", identity.ID)
 	c.Response().Header().Set("X-Alt-Tenant-Id", identity.ID)
 	c.Response().Header().Set("X-Alt-User-Email", identity.Email)
+	c.Response().Header().Set("X-Alt-User-Role", identity.Role)
 
 	return c.NoContent(http.StatusOK)
 }

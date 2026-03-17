@@ -75,6 +75,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 		identity := &client.Identity{
 			ID:        entry.UserID,
 			Email:     entry.Email,
+			Role:      entry.Role,
 			CreatedAt: time.Now().Add(-24 * time.Hour), // Approximate
 			SessionID: sessionID,
 		}
@@ -95,7 +96,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 				ID:          entry.UserID,
 				TenantID:    entry.TenantID,
 				Email:       entry.Email,
-				Role:        "user",                          // Default role
+				Role:        entry.Role,
 				CreatedAt:   time.Now().Add(-24 * time.Hour), // Approximate (cache doesn't store CreatedAt)
 				LastLoginAt: time.Now(),                      // Current session validation time
 			},
@@ -120,7 +121,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 
 	// Cache the validated session
 	// Using UserID as TenantID (single-tenant architecture)
-	h.sessionCache.Set(sessionID, identity.ID, identity.ID, identity.Email)
+	h.sessionCache.Set(sessionID, identity.ID, identity.ID, identity.Email, identity.Role)
 
 	// Generate backend token
 	backendToken, err := token.IssueBackendToken(h.config, identity, identity.SessionID)
@@ -139,7 +140,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 			ID:          identity.ID,
 			TenantID:    identity.ID,
 			Email:       identity.Email,
-			Role:        "user", // Default role
+			Role:        identity.Role,
 			CreatedAt:   identity.CreatedAt,
 			LastLoginAt: time.Now(), // Current session validation time
 		},

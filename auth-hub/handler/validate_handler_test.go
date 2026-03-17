@@ -61,7 +61,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 		sessionCache := cache.NewSessionCache(5 * time.Minute)
 
 		// Pre-populate cache
-		sessionCache.Set("session-123", "user-456", "tenant-789", "user@example.com")
+		sessionCache.Set("session-123", "user-456", "tenant-789", "user@example.com", "admin")
 
 		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
 
@@ -84,6 +84,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 		assert.Equal(t, "user-456", rec.Header().Get("X-Alt-User-Id"))
 		assert.Equal(t, "tenant-789", rec.Header().Get("X-Alt-Tenant-Id"))
 		assert.Equal(t, "user@example.com", rec.Header().Get("X-Alt-User-Email"))
+		assert.Equal(t, "admin", rec.Header().Get("X-Alt-User-Role"))
 
 		// Kratos client should not be called on cache hit
 		mockClient.AssertNotCalled(t, "Whoami")
@@ -98,6 +99,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 			Return(&client.Identity{
 				ID:    "user-123",
 				Email: "test@example.com",
+				Role:  "admin",
 			}, nil)
 
 		handler := NewValidateHandler(mockClient, sessionCache, testConfig())
@@ -121,6 +123,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 		assert.Equal(t, "user-123", rec.Header().Get("X-Alt-User-Id"))
 		assert.Equal(t, "user-123", rec.Header().Get("X-Alt-Tenant-Id"))
 		assert.Equal(t, "test@example.com", rec.Header().Get("X-Alt-User-Email"))
+		assert.Equal(t, "admin", rec.Header().Get("X-Alt-User-Role"))
 
 		// Kratos client should be called
 		mockClient.AssertCalled(t, "Whoami", mock.Anything, "ory_kratos_session=valid-session")
@@ -129,6 +132,7 @@ func TestValidateHandler_Handle(t *testing.T) {
 		entry, found := sessionCache.Get("valid-session")
 		assert.True(t, found)
 		assert.Equal(t, "user-123", entry.UserID)
+		assert.Equal(t, "admin", entry.Role)
 	})
 
 	t.Run("missing session cookie returns 401", func(t *testing.T) {

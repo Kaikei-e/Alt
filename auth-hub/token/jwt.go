@@ -22,7 +22,7 @@ func IssueBackendToken(cfg *config.Config, identity *client.Identity, sessionID 
 	now := time.Now()
 	claims := BackendClaims{
 		Email: identity.Email,
-		Role:  "user", // Default role, can be extended if identity has role field
+		Role:  normalizeRole(identity.Role),
 		Sid:   sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    cfg.BackendTokenIssuer,
@@ -35,4 +35,11 @@ func IssueBackendToken(cfg *config.Config, identity *client.Identity, sessionID 
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(cfg.BackendTokenSecret))
+}
+
+func normalizeRole(role string) string {
+	if role == "admin" {
+		return "admin"
+	}
+	return "user"
 }
