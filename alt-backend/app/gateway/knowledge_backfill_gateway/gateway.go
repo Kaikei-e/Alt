@@ -5,6 +5,7 @@ import (
 	"alt/driver/alt_db"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -49,4 +50,20 @@ func (g *Gateway) ListBackfillJobs(ctx context.Context) ([]domain.KnowledgeBackf
 		return nil, fmt.Errorf("ListBackfillJobs: database connection not available")
 	}
 	return g.repo.ListBackfillJobs(ctx)
+}
+
+// ListBackfillArticles implements knowledge_backfill_port.ListBackfillArticlesPort.
+func (g *Gateway) ListBackfillArticles(ctx context.Context, lastCreatedAt *time.Time, lastArticleID *uuid.UUID, limit int) ([]domain.KnowledgeBackfillArticle, error) {
+	if g.repo == nil {
+		return nil, fmt.Errorf("ListBackfillArticles: database connection not available")
+	}
+	return g.repo.ListBackfillArticles(ctx, lastCreatedAt, lastArticleID, limit)
+}
+
+// CountBackfillArticles implements knowledge_backfill_port.CountBackfillArticlesPort.
+func (g *Gateway) CountBackfillArticles(ctx context.Context) (int, error) {
+	if g.repo == nil {
+		return 0, fmt.Errorf("CountBackfillArticles: database connection not available")
+	}
+	return g.repo.CountBackfillArticles(ctx)
 }

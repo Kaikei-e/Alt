@@ -21,6 +21,7 @@ import (
 	"alt/gateway/dashboard_gateway"
 	"alt/gateway/error_handler_gateway"
 	"alt/gateway/event_publisher_gateway"
+	"alt/gateway/feature_flag_gateway"
 	"alt/gateway/feed_link_domain_gateway"
 	"alt/gateway/feed_link_gateway"
 	"alt/gateway/feed_page_cache_gateway"
@@ -41,21 +42,33 @@ import (
 	"alt/gateway/image_fetch_gateway"
 	"alt/gateway/image_proxy_gateway"
 	"alt/gateway/internal_article_gateway"
+	"alt/gateway/knowledge_backfill_gateway"
+	"alt/gateway/knowledge_event_gateway"
+	"alt/gateway/knowledge_home_gateway"
+	"alt/gateway/knowledge_lens_gateway"
+	"alt/gateway/knowledge_projection_gateway"
+	"alt/gateway/knowledge_projection_version_gateway"
+	"alt/gateway/knowledge_user_event_gateway"
 	"alt/gateway/latest_article_gateway"
 	"alt/gateway/morning_gateway"
 	"alt/gateway/morning_letter_connect_gateway"
+	"alt/gateway/opml_gateway"
 	"alt/gateway/rag_connect_gateway"
 	"alt/gateway/rag_gateway"
 	"alt/gateway/rate_limiter_gateway"
+	"alt/gateway/recall_candidate_gateway"
+	"alt/gateway/recall_signal_gateway"
 	"alt/gateway/recap_articles_gateway"
 	"alt/gateway/recap_gateway"
 	"alt/gateway/register_favorite_feed_gateway"
-	"alt/gateway/opml_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/robots_txt_gateway"
 	"alt/gateway/scraping_domain_gateway"
 	"alt/gateway/scraping_policy_gateway"
 	"alt/gateway/subscription_gateway"
+	"alt/gateway/summary_version_gateway"
+	"alt/gateway/tag_set_version_gateway"
+	"alt/gateway/today_digest_gateway"
 	"alt/gateway/trend_stats_gateway"
 	"alt/gateway/update_feed_status_gateway"
 	"alt/gateway/user_feed_gateway"
@@ -68,8 +81,13 @@ import (
 	"alt/port/rag_integration_port"
 	"alt/port/rate_limiter_port"
 	"alt/usecase/answer_chat_usecase"
+	"alt/usecase/append_knowledge_event_usecase"
 	"alt/usecase/archive_article_usecase"
+	"alt/usecase/archive_lens_usecase"
 	"alt/usecase/cached_feed_list_usecase"
+	"alt/usecase/create_lens_usecase"
+	"alt/usecase/create_summary_version_usecase"
+	"alt/usecase/create_tag_set_version_usecase"
 	"alt/usecase/csrf_token_usecase"
 	dashboard_usecase "alt/usecase/dashboard"
 	"alt/usecase/feed_link_usecase"
@@ -88,10 +106,18 @@ import (
 	"alt/usecase/fetch_recent_articles_usecase"
 	"alt/usecase/fetch_tag_cloud_usecase"
 	"alt/usecase/fetch_trend_stats_usecase"
+	"alt/usecase/get_knowledge_home_usecase"
 	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/image_proxy_usecase"
+	"alt/usecase/knowledge_backfill_usecase"
+	"alt/usecase/knowledge_projection_health_usecase"
+	"alt/usecase/list_lenses_usecase"
 	"alt/usecase/morning_usecase"
+	"alt/usecase/opml_usecase"
 	"alt/usecase/reading_status"
+	"alt/usecase/recall_dismiss_usecase"
+	"alt/usecase/recall_rail_usecase"
+	"alt/usecase/recall_snooze_usecase"
 	"alt/usecase/recap_articles_usecase"
 	"alt/usecase/recap_usecase"
 	"alt/usecase/register_favorite_feed_usecase"
@@ -101,38 +127,12 @@ import (
 	"alt/usecase/scraping_domain_usecase"
 	"alt/usecase/search_article_usecase"
 	"alt/usecase/search_feed_usecase"
+	"alt/usecase/select_lens_usecase"
 	"alt/usecase/stream_article_tags_usecase"
-	"alt/usecase/opml_usecase"
 	"alt/usecase/subscription_usecase"
-	"alt/gateway/feature_flag_gateway"
-	"alt/gateway/knowledge_backfill_gateway"
-	"alt/gateway/knowledge_event_gateway"
-	"alt/gateway/knowledge_home_gateway"
-	"alt/gateway/knowledge_projection_gateway"
-	"alt/gateway/knowledge_projection_version_gateway"
-	"alt/gateway/knowledge_user_event_gateway"
-	"alt/gateway/summary_version_gateway"
-	"alt/gateway/tag_set_version_gateway"
-	"alt/gateway/today_digest_gateway"
-	"alt/usecase/append_knowledge_event_usecase"
-	"alt/usecase/create_summary_version_usecase"
-	"alt/usecase/create_tag_set_version_usecase"
-	"alt/usecase/get_knowledge_home_usecase"
-	"alt/usecase/knowledge_backfill_usecase"
-	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/track_home_action_usecase"
 	"alt/usecase/track_home_seen_usecase"
-	"alt/usecase/recall_rail_usecase"
-	"alt/usecase/recall_snooze_usecase"
-	"alt/usecase/recall_dismiss_usecase"
-	"alt/usecase/create_lens_usecase"
 	"alt/usecase/update_lens_usecase"
-	"alt/usecase/list_lenses_usecase"
-	"alt/usecase/select_lens_usecase"
-	"alt/usecase/archive_lens_usecase"
-	"alt/gateway/recall_signal_gateway"
-	"alt/gateway/recall_candidate_gateway"
-	"alt/gateway/knowledge_lens_gateway"
 	"alt/utils"
 	"alt/utils/batch_article_fetcher"
 	"alt/utils/image_proxy"
@@ -226,34 +226,34 @@ type ApplicationComponents struct {
 	InternalArticleGateway *internal_article_gateway.Gateway
 
 	// Knowledge Home
-	GetKnowledgeHomeUsecase             *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
-	TrackHomeSeenUsecase                *track_home_seen_usecase.TrackHomeSeenUsecase
-	TrackHomeActionUsecase              *track_home_action_usecase.TrackHomeActionUsecase
-	AppendKnowledgeEventUsecase         *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
-	CreateSummaryVersionUsecase         *create_summary_version_usecase.CreateSummaryVersionUsecase
-	CreateTagSetVersionUsecase          *create_tag_set_version_usecase.CreateTagSetVersionUsecase
-	KnowledgeEventGateway               *knowledge_event_gateway.Gateway
-	KnowledgeProjectionGateway          *knowledge_projection_gateway.Gateway
-	KnowledgeHomeGateway                *knowledge_home_gateway.Gateway
-	TodayDigestGateway                  *today_digest_gateway.Gateway
-	FeatureFlagGateway                  *feature_flag_gateway.Gateway
-	KnowledgeBackfillGateway            *knowledge_backfill_gateway.Gateway
-	KnowledgeProjectionVersionGateway   *knowledge_projection_version_gateway.Gateway
-	KnowledgeBackfillUsecase            *knowledge_backfill_usecase.Usecase
-	KnowledgeProjectionHealthUsecase    *knowledge_projection_health_usecase.Usecase
+	GetKnowledgeHomeUsecase           *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
+	TrackHomeSeenUsecase              *track_home_seen_usecase.TrackHomeSeenUsecase
+	TrackHomeActionUsecase            *track_home_action_usecase.TrackHomeActionUsecase
+	AppendKnowledgeEventUsecase       *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
+	CreateSummaryVersionUsecase       *create_summary_version_usecase.CreateSummaryVersionUsecase
+	CreateTagSetVersionUsecase        *create_tag_set_version_usecase.CreateTagSetVersionUsecase
+	KnowledgeEventGateway             *knowledge_event_gateway.Gateway
+	KnowledgeProjectionGateway        *knowledge_projection_gateway.Gateway
+	KnowledgeHomeGateway              *knowledge_home_gateway.Gateway
+	TodayDigestGateway                *today_digest_gateway.Gateway
+	FeatureFlagGateway                *feature_flag_gateway.Gateway
+	KnowledgeBackfillGateway          *knowledge_backfill_gateway.Gateway
+	KnowledgeProjectionVersionGateway *knowledge_projection_version_gateway.Gateway
+	KnowledgeBackfillUsecase          *knowledge_backfill_usecase.Usecase
+	KnowledgeProjectionHealthUsecase  *knowledge_projection_health_usecase.Usecase
 
 	// Phase 4: RecallRail, Lens, Stream, Supersede
-	RecallRailUsecase                   *recall_rail_usecase.RecallRailUsecase
-	RecallSnoozeUsecase                 *recall_snooze_usecase.RecallSnoozeUsecase
-	RecallDismissUsecase                *recall_dismiss_usecase.RecallDismissUsecase
-	CreateLensUsecase                   *create_lens_usecase.CreateLensUsecase
-	UpdateLensUsecase                   *update_lens_usecase.UpdateLensUsecase
-	ListLensesUsecase                   *list_lenses_usecase.ListLensesUsecase
-	SelectLensUsecase                   *select_lens_usecase.SelectLensUsecase
-	ArchiveLensUsecase                  *archive_lens_usecase.ArchiveLensUsecase
-	RecallSignalGateway                 *recall_signal_gateway.Gateway
-	RecallCandidateGateway              *recall_candidate_gateway.Gateway
-	KnowledgeLensGateway                *knowledge_lens_gateway.Gateway
+	RecallRailUsecase      *recall_rail_usecase.RecallRailUsecase
+	RecallSnoozeUsecase    *recall_snooze_usecase.RecallSnoozeUsecase
+	RecallDismissUsecase   *recall_dismiss_usecase.RecallDismissUsecase
+	CreateLensUsecase      *create_lens_usecase.CreateLensUsecase
+	UpdateLensUsecase      *update_lens_usecase.UpdateLensUsecase
+	ListLensesUsecase      *list_lenses_usecase.ListLensesUsecase
+	SelectLensUsecase      *select_lens_usecase.SelectLensUsecase
+	ArchiveLensUsecase     *archive_lens_usecase.ArchiveLensUsecase
+	RecallSignalGateway    *recall_signal_gateway.Gateway
+	RecallCandidateGateway *recall_candidate_gateway.Gateway
+	KnowledgeLensGateway   *knowledge_lens_gateway.Gateway
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -531,7 +531,14 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	appendKnowledgeEventUsecase := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(knowledgeEventGw)
 	createSummaryVersionUsecase := create_summary_version_usecase.NewCreateSummaryVersionUsecase(summaryVersionGw, knowledgeEventGw)
 	createTagSetVersionUsecase := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetVersionGw, knowledgeEventGw)
-	knowledgeBackfillUsecase := knowledge_backfill_usecase.NewUsecase(knowledgeBackfillGw, knowledgeBackfillGw, knowledgeBackfillGw, knowledgeBackfillGw, knowledgeEventGw)
+	knowledgeBackfillUsecase := knowledge_backfill_usecase.NewUsecase(
+		knowledgeBackfillGw,
+		knowledgeBackfillGw,
+		knowledgeBackfillGw,
+		knowledgeBackfillGw,
+		knowledgeBackfillGw,
+		knowledgeEventGw,
+	)
 	knowledgeProjectionHealthUsecase := knowledge_projection_health_usecase.NewUsecase(knowledgeProjectionVersionGw, knowledgeProjectionGw, knowledgeBackfillGw)
 
 	// Phase 4: RecallRail, Lens, Stream, Supersede components
@@ -653,16 +660,16 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		KnowledgeProjectionHealthUsecase:  knowledgeProjectionHealthUsecase,
 
 		// Phase 4
-		RecallRailUsecase:          recallRailUsecase,
-		RecallSnoozeUsecase:        recallSnoozeUsecase,
-		RecallDismissUsecase:       recallDismissUsecase,
-		CreateLensUsecase:          createLensUsecase,
-		UpdateLensUsecase:          updateLensUsecase,
-		ListLensesUsecase:          listLensesUsecase,
-		SelectLensUsecase:          selectLensUsecase,
-		ArchiveLensUsecase:         archiveLensUsecase,
-		RecallSignalGateway:        recallSignalGw,
-		RecallCandidateGateway:     recallCandidateGw,
-		KnowledgeLensGateway:       knowledgeLensGw,
+		RecallRailUsecase:      recallRailUsecase,
+		RecallSnoozeUsecase:    recallSnoozeUsecase,
+		RecallDismissUsecase:   recallDismissUsecase,
+		CreateLensUsecase:      createLensUsecase,
+		UpdateLensUsecase:      updateLensUsecase,
+		ListLensesUsecase:      listLensesUsecase,
+		SelectLensUsecase:      selectLensUsecase,
+		ArchiveLensUsecase:     archiveLensUsecase,
+		RecallSignalGateway:    recallSignalGw,
+		RecallCandidateGateway: recallCandidateGw,
+		KnowledgeLensGateway:   knowledgeLensGw,
 	}
 }

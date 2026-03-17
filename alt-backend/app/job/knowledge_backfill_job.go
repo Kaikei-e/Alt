@@ -19,10 +19,11 @@ func KnowledgeBackfillJob(
 	getJobPort knowledge_backfill_port.GetBackfillJobPort,
 	updateJobPort knowledge_backfill_port.UpdateBackfillJobPort,
 	listJobsPort knowledge_backfill_port.ListBackfillJobsPort,
+	listArticlesPort knowledge_backfill_port.ListBackfillArticlesPort,
 	eventPort knowledge_event_port.AppendKnowledgeEventPort,
 ) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		return processBackfillBatch(ctx, getJobPort, updateJobPort, listJobsPort, eventPort)
+		return processBackfillBatch(ctx, getJobPort, updateJobPort, listJobsPort, listArticlesPort, eventPort)
 	}
 }
 
@@ -31,6 +32,7 @@ func processBackfillBatch(
 	_ knowledge_backfill_port.GetBackfillJobPort,
 	updateJobPort knowledge_backfill_port.UpdateBackfillJobPort,
 	listJobsPort knowledge_backfill_port.ListBackfillJobsPort,
+	listArticlesPort knowledge_backfill_port.ListBackfillArticlesPort,
 	eventPort knowledge_event_port.AppendKnowledgeEventPort,
 ) error {
 	// Find the first running or pending job
@@ -61,17 +63,19 @@ func processBackfillBatch(
 		}
 	}
 
-	// Generate a synthetic ArticleCreated event as a placeholder batch step
-	// Real implementation would query historical articles, summaries, tags
-	// and emit corresponding events in batches
+	articles, err := listArticlesPort.ListBackfillArticles(ctx, activeJob.CursorDate, activeJob.CursorArticleID, batchSize)
+	if err != nil {
+		return fmt.Errorf("list backfill articles: %w", err)
+	}
+
 	logger.Logger.InfoContext(ctx, "backfill job processing",
 		"job_id", activeJob.JobID,
 		"processed", activeJob.ProcessedEvents,
 		"total", activeJob.TotalEvents,
+		"batch_size", len(articles),
 	)
 
-	// If no work remaining, mark completed
-	if activeJob.ProcessedEvents >= activeJob.TotalEvents && activeJob.TotalEvents > 0 {
+	if len(articles) == 0 {
 		now := time.Now()
 		activeJob.Status = domain.BackfillStatusCompleted
 		activeJob.CompletedAt = &now
@@ -79,9 +83,30 @@ func processBackfillBatch(
 			return fmt.Errorf("complete backfill job: %w", err)
 		}
 		logger.Logger.InfoContext(ctx, "backfill job completed", "job_id", activeJob.JobID)
+		return nil
 	}
 
-	_ = eventPort // Used during actual event generation
+	for _, article := range articles {
+		articleID := article.ArticleID
+		userID := article.UserID
+		event := GenerateBackfillEvent(userID, &userID, articleID, article.Title, article.PublishedAt)
+		if err := eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
+			return fmt.Errorf("append backfill event: %w", err)
+		}
+		activeJob.ProcessedEvents++
+		activeJob.CursorArticleID = &articleID
+		activeJob.CursorDate = &article.CreatedAt
+	}
+
+	if activeJob.TotalEvents > 0 && activeJob.ProcessedEvents >= activeJob.TotalEvents {
+		now := time.Now()
+		activeJob.Status = domain.BackfillStatusCompleted
+		activeJob.CompletedAt = &now
+	}
+
+	if err := updateJobPort.UpdateBackfillJob(ctx, *activeJob); err != nil {
+		return fmt.Errorf("update backfill job: %w", err)
+	}
 
 	return nil
 }

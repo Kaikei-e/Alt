@@ -32,3 +32,13 @@ type KnowledgeBackfillJob struct {
 	CompletedAt       *time.Time `json:"completed_at" db:"completed_at"`
 	UpdatedAt         time.Time  `json:"updated_at" db:"updated_at"`
 }
+
+// KnowledgeBackfillArticle represents a historical article to be replayed into
+// the knowledge event store for projection backfill.
+type KnowledgeBackfillArticle struct {
+	ArticleID   uuid.UUID
+	UserID      uuid.UUID
+	CreatedAt   time.Time
+	PublishedAt time.Time
+	Title       string
+}

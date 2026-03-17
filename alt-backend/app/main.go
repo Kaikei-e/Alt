@@ -140,6 +140,18 @@ func main() {
 			container.KnowledgeProjectionVersionGateway,
 		),
 	})
+	scheduler.Add(job.Job{
+		Name:     "knowledge-backfill",
+		Interval: 15 * time.Second,
+		Timeout:  25 * time.Second,
+		Fn: job.KnowledgeBackfillJob(
+			container.KnowledgeBackfillGateway,
+			container.KnowledgeBackfillGateway,
+			container.KnowledgeBackfillGateway,
+			container.KnowledgeBackfillGateway,
+			container.KnowledgeEventGateway,
+		),
+	})
 	scheduler.Start(ctx)
 
 	e := echo.New()

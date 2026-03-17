@@ -3,6 +3,7 @@ package knowledge_backfill_port
 import (
 	"alt/domain"
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -25,4 +26,14 @@ type UpdateBackfillJobPort interface {
 // ListBackfillJobsPort lists backfill jobs.
 type ListBackfillJobsPort interface {
 	ListBackfillJobs(ctx context.Context) ([]domain.KnowledgeBackfillJob, error)
+}
+
+// ListBackfillArticlesPort lists historical articles in ascending order for replay.
+type ListBackfillArticlesPort interface {
+	ListBackfillArticles(ctx context.Context, lastCreatedAt *time.Time, lastArticleID *uuid.UUID, limit int) ([]domain.KnowledgeBackfillArticle, error)
+}
+
+// CountBackfillArticlesPort counts replayable historical articles.
+type CountBackfillArticlesPort interface {
+	CountBackfillArticles(ctx context.Context) (int, error)
 }

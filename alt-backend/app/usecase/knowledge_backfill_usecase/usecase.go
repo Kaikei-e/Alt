@@ -13,11 +13,12 @@ import (
 
 // Usecase orchestrates backfill job lifecycle.
 type Usecase struct {
-	createPort   knowledge_backfill_port.CreateBackfillJobPort
-	getPort      knowledge_backfill_port.GetBackfillJobPort
-	updatePort   knowledge_backfill_port.UpdateBackfillJobPort
-	listPort     knowledge_backfill_port.ListBackfillJobsPort
-	eventPort    knowledge_event_port.AppendKnowledgeEventPort
+	createPort knowledge_backfill_port.CreateBackfillJobPort
+	getPort    knowledge_backfill_port.GetBackfillJobPort
+	updatePort knowledge_backfill_port.UpdateBackfillJobPort
+	listPort   knowledge_backfill_port.ListBackfillJobsPort
+	countPort  knowledge_backfill_port.CountBackfillArticlesPort
+	eventPort  knowledge_event_port.AppendKnowledgeEventPort
 }
 
 // NewUsecase creates a new backfill usecase.
@@ -26,6 +27,7 @@ func NewUsecase(
 	getPort knowledge_backfill_port.GetBackfillJobPort,
 	updatePort knowledge_backfill_port.UpdateBackfillJobPort,
 	listPort knowledge_backfill_port.ListBackfillJobsPort,
+	countPort knowledge_backfill_port.CountBackfillArticlesPort,
 	eventPort knowledge_event_port.AppendKnowledgeEventPort,
 ) *Usecase {
 	return &Usecase{
@@ -33,6 +35,7 @@ func NewUsecase(
 		getPort:    getPort,
 		updatePort: updatePort,
 		listPort:   listPort,
+		countPort:  countPort,
 		eventPort:  eventPort,
 	}
 }
@@ -40,10 +43,19 @@ func NewUsecase(
 // StartBackfill creates a new pending backfill job for the given projection version.
 func (u *Usecase) StartBackfill(ctx context.Context, projectionVersion int) (*domain.KnowledgeBackfillJob, error) {
 	now := time.Now()
+	totalEvents := 0
+	if u.countPort != nil {
+		count, err := u.countPort.CountBackfillArticles(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("count backfill articles: %w", err)
+		}
+		totalEvents = count
+	}
 	job := domain.KnowledgeBackfillJob{
 		JobID:             uuid.New(),
 		Status:            domain.BackfillStatusPending,
 		ProjectionVersion: projectionVersion,
+		TotalEvents:       totalEvents,
 		CreatedAt:         now,
 		UpdatedAt:         now,
 	}
