@@ -51,7 +51,6 @@ jobs:
           # Service directories with Dockerfiles
           SERVICES=(
             "alt-backend"
-            "alt-frontend"
             "alt-frontend-sv"
             "pre-processor"
             "pre-processor-sidecar"

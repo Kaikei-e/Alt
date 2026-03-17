@@ -29,7 +29,7 @@ on:
         description: "Working directory for the test"
         required: true
         type: string
-        default: "alt-frontend"
+        default: "alt-frontend-sv"
       node-version:
         description: "Node.js version to use"
         required: false
