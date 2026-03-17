@@ -142,3 +142,15 @@ export {
 	type SynthesizeOptions,
 	type TtsVoice,
 } from "./tts";
+
+// KnowledgeHomeService client
+export {
+	createKnowledgeHomeClient,
+	getKnowledgeHome,
+	trackHomeItemsSeen,
+	trackHomeAction,
+	type WhyReasonData,
+	type TodayDigestData,
+	type KnowledgeHomeItemData,
+	type KnowledgeHomeResult,
+} from "./knowledge_home";
