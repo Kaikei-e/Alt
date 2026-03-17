@@ -38,6 +38,10 @@ export interface FeatureFlagsConfigData {
 	enableTracking: boolean;
 	enableProjectionV2: boolean;
 	rolloutPercentage: number;
+	enableRecallRail: boolean;
+	enableLens: boolean;
+	enableStreamUpdates: boolean;
+	enableSupersedeUx: boolean;
 }
 
 /** Combined admin dashboard data */
@@ -83,6 +87,10 @@ export async function getFeatureFlags(
 		enableTracking: response.enableTracking,
 		enableProjectionV2: response.enableProjectionV2,
 		rolloutPercentage: response.rolloutPercentage,
+		enableRecallRail: response.enableRecallRail,
+		enableLens: response.enableLens,
+		enableStreamUpdates: response.enableStreamUpdates,
+		enableSupersedeUx: response.enableSupersedeUx,
 	};
 }
 

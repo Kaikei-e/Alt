@@ -13,6 +13,9 @@ import {
 	type KnowledgeHomeItem as ProtoKnowledgeHomeItem,
 	type TodayDigest as ProtoTodayDigest,
 	type WhyReason as ProtoWhyReason,
+	type RecallCandidate as ProtoRecallCandidate,
+	type Lens as ProtoLens,
+	type SupersedeInfo as ProtoSupersedeInfo,
 } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_pb";
 
 /** Type-safe KnowledgeHomeService client */
@@ -48,6 +51,60 @@ export interface KnowledgeHomeItemData {
 	tags: string[];
 	why: WhyReasonData[];
 	score: number;
+	supersedeInfo?: SupersedeInfoData;
+}
+
+/** Supersede info for version changes */
+export interface SupersedeInfoData {
+	state: string;
+	supersededAt: string;
+	previousSummaryExcerpt?: string;
+	previousTags: string[];
+}
+
+/** A recall candidate */
+export interface RecallCandidateData {
+	itemKey: string;
+	recallScore: number;
+	reasons: RecallReasonData[];
+	firstEligibleAt: string;
+	nextSuggestAt: string;
+	item?: KnowledgeHomeItemData;
+}
+
+/** Recall reason */
+export interface RecallReasonData {
+	type: string;
+	description: string;
+	sourceItemKey?: string;
+}
+
+/** A saved lens viewpoint */
+export interface LensData {
+	lensId: string;
+	name: string;
+	description: string;
+	createdAt: string;
+	updatedAt: string;
+	currentVersion?: LensVersionData;
+}
+
+/** Lens version configuration */
+export interface LensVersionData {
+	versionId: string;
+	queryText: string;
+	tagIds: string[];
+	timeWindow: string;
+	includeRecap: boolean;
+	includePulse: boolean;
+	sortMode: string;
+}
+
+/** Stream home update event */
+export interface StreamHomeUpdate {
+	eventType: string;
+	item?: KnowledgeHomeItemData;
+	occurredAt: string;
 }
 
 /** Feature flag status */
@@ -65,6 +122,7 @@ export interface KnowledgeHomeResult {
 	degraded: boolean;
 	generatedAt: string;
 	featureFlags: FeatureFlagData[];
+	recallCandidates: RecallCandidateData[];
 }
 
 /**
@@ -108,6 +166,12 @@ function convertItem(proto: ProtoKnowledgeHomeItem): KnowledgeHomeItemData {
 		tags: [...proto.tags],
 		why: proto.why.map(convertWhyReason),
 		score: proto.score,
+		supersedeInfo: proto.supersedeInfo ? {
+			state: proto.supersedeInfo.state,
+			supersededAt: proto.supersedeInfo.supersededAt,
+			previousSummaryExcerpt: proto.supersedeInfo.previousSummaryExcerpt || undefined,
+			previousTags: [...(proto.supersedeInfo.previousTags || [])],
+		} : undefined,
 	};
 }
 
@@ -123,11 +187,13 @@ export async function getKnowledgeHome(
 	transport: Transport,
 	cursor?: string,
 	limit: number = 20,
+	lensId?: string,
 ): Promise<KnowledgeHomeResult> {
 	const client = createKnowledgeHomeClient(transport);
 	const response = (await client.getKnowledgeHome({
 		cursor,
 		limit,
+		lensId,
 	})) as GetKnowledgeHomeResponse;
 
 	return {
@@ -141,6 +207,7 @@ export async function getKnowledgeHome(
 			name: f.name,
 			enabled: f.enabled,
 		})),
+		recallCandidates: (response.recallCandidates ?? []).map(convertRecallCandidate),
 	};
 }
 
@@ -183,4 +250,117 @@ export async function trackHomeAction(
 		itemKey,
 		metadataJson,
 	});
+}
+
+function convertRecallCandidate(proto: ProtoRecallCandidate): RecallCandidateData {
+	return {
+		itemKey: proto.itemKey,
+		recallScore: proto.recallScore,
+		reasons: proto.reasons.map(r => ({
+			type: r.type,
+			description: r.description,
+			sourceItemKey: r.sourceItemKey || undefined,
+		})),
+		firstEligibleAt: proto.firstEligibleAt,
+		nextSuggestAt: proto.nextSuggestAt,
+		item: proto.item ? convertItem(proto.item) : undefined,
+	};
+}
+
+function convertLens(proto: ProtoLens): LensData {
+	return {
+		lensId: proto.lensId,
+		name: proto.name,
+		description: proto.description,
+		createdAt: proto.createdAt,
+		updatedAt: proto.updatedAt,
+		currentVersion: proto.currentVersion ? {
+			versionId: proto.currentVersion.versionId,
+			queryText: proto.currentVersion.queryText,
+			tagIds: [...proto.currentVersion.tagIds],
+			timeWindow: proto.currentVersion.timeWindow,
+			includeRecap: proto.currentVersion.includeRecap,
+			includePulse: proto.currentVersion.includePulse,
+			sortMode: proto.currentVersion.sortMode,
+		} : undefined,
+	};
+}
+
+export async function getRecallRailCandidates(
+	transport: Transport,
+	limit: number = 5,
+): Promise<RecallCandidateData[]> {
+	const client = createKnowledgeHomeClient(transport);
+	const response = await client.getRecallRail({ limit });
+	return response.candidates.map(convertRecallCandidate);
+}
+
+export async function snoozeRecallItem(
+	transport: Transport,
+	itemKey: string,
+	snoozeHours: number = 24,
+): Promise<void> {
+	const client = createKnowledgeHomeClient(transport);
+	await client.trackRecallAction({
+		actionType: "snooze",
+		itemKey,
+		snoozeHours,
+	});
+}
+
+export async function dismissRecallItem(
+	transport: Transport,
+	itemKey: string,
+): Promise<void> {
+	const client = createKnowledgeHomeClient(transport);
+	await client.trackRecallAction({
+		actionType: "dismiss",
+		itemKey,
+	});
+}
+
+export async function listLenses(
+	transport: Transport,
+): Promise<LensData[]> {
+	const client = createKnowledgeHomeClient(transport);
+	const response = await client.listLenses({});
+	return response.lenses.map(convertLens);
+}
+
+export async function createLens(
+	transport: Transport,
+	name: string,
+	description: string,
+	version: Omit<LensVersionData, "versionId">,
+): Promise<LensData | null> {
+	const client = createKnowledgeHomeClient(transport);
+	const response = await client.createLens({
+		name,
+		description,
+		version: {
+			queryText: version.queryText,
+			tagIds: version.tagIds,
+			timeWindow: version.timeWindow,
+			includeRecap: version.includeRecap,
+			includePulse: version.includePulse,
+			sortMode: version.sortMode,
+		},
+	});
+	return response.lens ? convertLens(response.lens) : null;
+}
+
+export async function deleteLens(
+	transport: Transport,
+	lensId: string,
+): Promise<void> {
+	const client = createKnowledgeHomeClient(transport);
+	await client.deleteLens({ lensId });
+}
+
+export async function selectLens(
+	transport: Transport,
+	lensId: string,
+): Promise<void> {
+	const client = createKnowledgeHomeClient(transport);
+	await client.selectLens({ lensId });
 }

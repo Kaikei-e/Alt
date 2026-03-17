@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/knowledge_home/v1/knowledge_home.proto.
  */
 export const file_alt_knowledge_home_v1_knowledge_home: GenFile = /*@__PURE__*/
-  fileDesc("CiphbHQva25vd2xlZGdlX2hvbWUvdjEva25vd2xlZGdlX2hvbWUucHJvdG8SFWFsdC5rbm93bGVkZ2VfaG9tZS52MSJkChdHZXRLbm93bGVkZ2VIb21lUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBRIRCgRkYXRlGAMgASgJSAGIAQFCCQoHX2N1cnNvckIHCgVfZGF0ZSKiAgoYR2V0S25vd2xlZGdlSG9tZVJlc3BvbnNlEjgKDHRvZGF5X2RpZ2VzdBgBIAEoCzIiLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Ub2RheURpZ2VzdBI3CgVpdGVtcxgCIAMoCzIoLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Lbm93bGVkZ2VIb21lSXRlbRITCgtuZXh0X2N1cnNvchgDIAEoCRIQCghoYXNfbW9yZRgEIAEoCBIVCg1kZWdyYWRlZF9tb2RlGAUgASgIEhQKDGdlbmVyYXRlZF9hdBgGIAEoCRI/Cg1mZWF0dXJlX2ZsYWdzGAcgAygLMiguYWx0Lmtub3dsZWRnZV9ob21lLnYxLkZlYXR1cmVGbGFnU3RhdHVzIjIKEUZlYXR1cmVGbGFnU3RhdHVzEgwKBG5hbWUYASABKAkSDwoHZW5hYmxlZBgCIAEoCCLAAQoLVG9kYXlEaWdlc3QSDAoEZGF0ZRgBIAEoCRIUCgxuZXdfYXJ0aWNsZXMYAiABKAUSGwoTc3VtbWFyaXplZF9hcnRpY2xlcxgDIAEoBRIdChV1bnN1bW1hcml6ZWRfYXJ0aWNsZXMYBCABKAUSEAoIdG9wX3RhZ3MYBSADKAkSHgoWd2Vla2x5X3JlY2FwX2F2YWlsYWJsZRgGIAEoCBIfChdldmVuaW5nX3B1bHNlX2F2YWlsYWJsZRgHIAEoCCKnAgoRS25vd2xlZGdlSG9tZUl0ZW0SEAoIaXRlbV9rZXkYASABKAkSEQoJaXRlbV90eXBlGAIgASgJEhcKCmFydGljbGVfaWQYAyABKAlIAIgBARIVCghyZWNhcF9pZBgEIAEoCUgBiAEBEg0KBXRpdGxlGAUgASgJEhQKDHB1Ymxpc2hlZF9hdBgGIAEoCRIcCg9zdW1tYXJ5X2V4Y2VycHQYByABKAlIAogBARIMCgR0YWdzGAggAygJEi0KA3doeRgJIAMoCzIgLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5XaHlSZWFzb24SDQoFc2NvcmUYCiABKAFCDQoLX2FydGljbGVfaWRCCwoJX3JlY2FwX2lkQhIKEF9zdW1tYXJ5X2V4Y2VycHQiUwoJV2h5UmVhc29uEgwKBGNvZGUYASABKAkSEwoGcmVmX2lkGAIgASgJSACIAQESEAoDdGFnGAMgASgJSAGIAQFCCQoHX3JlZl9pZEIGCgRfdGFnIksKGVRyYWNrSG9tZUl0ZW1zU2VlblJlcXVlc3QSEQoJaXRlbV9rZXlzGAEgAygJEhsKE2V4cG9zdXJlX3Nlc3Npb25faWQYAiABKAkiHAoaVHJhY2tIb21lSXRlbXNTZWVuUmVzcG9uc2UinwEKFlRyYWNrSG9tZUFjdGlvblJlcXVlc3QSEwoLYWN0aW9uX3R5cGUYASABKAkSEAoIaXRlbV9rZXkYAiABKAkSHAoPY29udGV4dF9sZW5zX2lkGAMgASgJSACIAQESGgoNbWV0YWRhdGFfanNvbhgEIAEoCUgBiAEBQhIKEF9jb250ZXh0X2xlbnNfaWRCEAoOX21ldGFkYXRhX2pzb24iGQoXVHJhY2tIb21lQWN0aW9uUmVzcG9uc2Uy+AIKFEtub3dsZWRnZUhvbWVTZXJ2aWNlEnMKEEdldEtub3dsZWRnZUhvbWUSLi5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0S25vd2xlZGdlSG9tZVJlcXVlc3QaLy5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0S25vd2xlZGdlSG9tZVJlc3BvbnNlEnkKElRyYWNrSG9tZUl0ZW1zU2VlbhIwLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5UcmFja0hvbWVJdGVtc1NlZW5SZXF1ZXN0GjEuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlRyYWNrSG9tZUl0ZW1zU2VlblJlc3BvbnNlEnAKD1RyYWNrSG9tZUFjdGlvbhItLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5UcmFja0hvbWVBY3Rpb25SZXF1ZXN0Gi4uYWx0Lmtub3dsZWRnZV9ob21lLnYxLlRyYWNrSG9tZUFjdGlvblJlc3BvbnNlQjVaM2FsdC9nZW4vcHJvdG8vYWx0L2tub3dsZWRnZV9ob21lL3YxO2tub3dsZWRnZWhvbWV2MWIGcHJvdG8z");
+  fileDesc("CiphbHQva25vd2xlZGdlX2hvbWUvdjEva25vd2xlZGdlX2hvbWUucHJvdG8SFWFsdC5rbm93bGVkZ2VfaG9tZS52MSKGAQoXR2V0S25vd2xlZGdlSG9tZVJlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEQoEZGF0ZRgDIAEoCUgBiAEBEhQKB2xlbnNfaWQYBCABKAlIAogBAUIJCgdfY3Vyc29yQgcKBV9kYXRlQgoKCF9sZW5zX2lkIuUCChhHZXRLbm93bGVkZ2VIb21lUmVzcG9uc2USOAoMdG9kYXlfZGlnZXN0GAEgASgLMiIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlRvZGF5RGlnZXN0EjcKBWl0ZW1zGAIgAygLMiguYWx0Lmtub3dsZWRnZV9ob21lLnYxLktub3dsZWRnZUhvbWVJdGVtEhMKC25leHRfY3Vyc29yGAMgASgJEhAKCGhhc19tb3JlGAQgASgIEhUKDWRlZ3JhZGVkX21vZGUYBSABKAgSFAoMZ2VuZXJhdGVkX2F0GAYgASgJEj8KDWZlYXR1cmVfZmxhZ3MYByADKAsyKC5hbHQua25vd2xlZGdlX2hvbWUudjEuRmVhdHVyZUZsYWdTdGF0dXMSQQoRcmVjYWxsX2NhbmRpZGF0ZXMYCCADKAsyJi5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVjYWxsQ2FuZGlkYXRlIjIKEUZlYXR1cmVGbGFnU3RhdHVzEgwKBG5hbWUYASABKAkSDwoHZW5hYmxlZBgCIAEoCCLAAQoLVG9kYXlEaWdlc3QSDAoEZGF0ZRgBIAEoCRIUCgxuZXdfYXJ0aWNsZXMYAiABKAUSGwoTc3VtbWFyaXplZF9hcnRpY2xlcxgDIAEoBRIdChV1bnN1bW1hcml6ZWRfYXJ0aWNsZXMYBCABKAUSEAoIdG9wX3RhZ3MYBSADKAkSHgoWd2Vla2x5X3JlY2FwX2F2YWlsYWJsZRgGIAEoCBIfChdldmVuaW5nX3B1bHNlX2F2YWlsYWJsZRgHIAEoCCL9AgoRS25vd2xlZGdlSG9tZUl0ZW0SEAoIaXRlbV9rZXkYASABKAkSEQoJaXRlbV90eXBlGAIgASgJEhcKCmFydGljbGVfaWQYAyABKAlIAIgBARIVCghyZWNhcF9pZBgEIAEoCUgBiAEBEg0KBXRpdGxlGAUgASgJEhQKDHB1Ymxpc2hlZF9hdBgGIAEoCRIcCg9zdW1tYXJ5X2V4Y2VycHQYByABKAlIAogBARIMCgR0YWdzGAggAygJEi0KA3doeRgJIAMoCzIgLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5XaHlSZWFzb24SDQoFc2NvcmUYCiABKAESQQoOc3VwZXJzZWRlX2luZm8YCyABKAsyJC5hbHQua25vd2xlZGdlX2hvbWUudjEuU3VwZXJzZWRlSW5mb0gDiAEBQg0KC19hcnRpY2xlX2lkQgsKCV9yZWNhcF9pZEISChBfc3VtbWFyeV9leGNlcnB0QhEKD19zdXBlcnNlZGVfaW5mbyJTCglXaHlSZWFzb24SDAoEY29kZRgBIAEoCRITCgZyZWZfaWQYAiABKAlIAIgBARIQCgN0YWcYAyABKAlIAYgBAUIJCgdfcmVmX2lkQgYKBF90YWcikAEKDVN1cGVyc2VkZUluZm8SDQoFc3RhdGUYASABKAkSFQoNc3VwZXJzZWRlZF9hdBgCIAEoCRIlChhwcmV2aW91c19zdW1tYXJ5X2V4Y2VycHQYAyABKAlIAIgBARIVCg1wcmV2aW91c190YWdzGAQgAygJQhsKGV9wcmV2aW91c19zdW1tYXJ5X2V4Y2VycHQi6QEKD1JlY2FsbENhbmRpZGF0ZRIQCghpdGVtX2tleRgBIAEoCRIUCgxyZWNhbGxfc2NvcmUYAiABKAESNAoHcmVhc29ucxgDIAMoCzIjLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZWNhbGxSZWFzb24SGQoRZmlyc3RfZWxpZ2libGVfYXQYBCABKAkSFwoPbmV4dF9zdWdnZXN0X2F0GAUgASgJEjsKBGl0ZW0YBiABKAsyKC5hbHQua25vd2xlZGdlX2hvbWUudjEuS25vd2xlZGdlSG9tZUl0ZW1IAIgBAUIHCgVfaXRlbSJjCgxSZWNhbGxSZWFzb24SDAoEdHlwZRgBIAEoCRITCgtkZXNjcmlwdGlvbhgCIAEoCRIcCg9zb3VyY2VfaXRlbV9rZXkYAyABKAlIAIgBAUISChBfc291cmNlX2l0ZW1fa2V5Ip8BCgRMZW5zEg8KB2xlbnNfaWQYASABKAkSDAoEbmFtZRgCIAEoCRITCgtkZXNjcmlwdGlvbhgDIAEoCRISCgpjcmVhdGVkX2F0GAQgASgJEhIKCnVwZGF0ZWRfYXQYBSABKAkSOwoPY3VycmVudF92ZXJzaW9uGAYgASgLMiIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkxlbnNWZXJzaW9uIpwBCgtMZW5zVmVyc2lvbhISCgp2ZXJzaW9uX2lkGAEgASgJEhIKCnF1ZXJ5X3RleHQYAiABKAkSDwoHdGFnX2lkcxgDIAMoCRITCgt0aW1lX3dpbmRvdxgEIAEoCRIVCg1pbmNsdWRlX3JlY2FwGAUgASgIEhUKDWluY2x1ZGVfcHVsc2UYBiABKAgSEQoJc29ydF9tb2RlGAcgASgJIrsCCiJTdHJlYW1Lbm93bGVkZ2VIb21lVXBkYXRlc1Jlc3BvbnNlEhIKCmV2ZW50X3R5cGUYASABKAkSOwoEaXRlbRgCIAEoCzIoLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Lbm93bGVkZ2VIb21lSXRlbUgAiAEBEj4KDWRpZ2VzdF9jaGFuZ2UYAyABKAsyIi5hbHQua25vd2xlZGdlX2hvbWUudjEuVG9kYXlEaWdlc3RIAYgBARJCCg1yZWNhbGxfY2hhbmdlGAQgASgLMiYuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJlY2FsbENhbmRpZGF0ZUgCiAEBEhMKC29jY3VycmVkX2F0GAUgASgJQgcKBV9pdGVtQhAKDl9kaWdlc3RfY2hhbmdlQhAKDl9yZWNhbGxfY2hhbmdlIoUBCh9TdHJlYW1SZWNhbGxSYWlsVXBkYXRlc1Jlc3BvbnNlEhIKCmV2ZW50X3R5cGUYASABKAkSOQoJY2FuZGlkYXRlGAIgASgLMiYuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJlY2FsbENhbmRpZGF0ZRITCgtvY2N1cnJlZF9hdBgDIAEoCSJLChlUcmFja0hvbWVJdGVtc1NlZW5SZXF1ZXN0EhEKCWl0ZW1fa2V5cxgBIAMoCRIbChNleHBvc3VyZV9zZXNzaW9uX2lkGAIgASgJIhwKGlRyYWNrSG9tZUl0ZW1zU2VlblJlc3BvbnNlIp8BChZUcmFja0hvbWVBY3Rpb25SZXF1ZXN0EhMKC2FjdGlvbl90eXBlGAEgASgJEhAKCGl0ZW1fa2V5GAIgASgJEhwKD2NvbnRleHRfbGVuc19pZBgDIAEoCUgAiAEBEhoKDW1ldGFkYXRhX2pzb24YBCABKAlIAYgBAUISChBfY29udGV4dF9sZW5zX2lkQhAKDl9tZXRhZGF0YV9qc29uIhkKF1RyYWNrSG9tZUFjdGlvblJlc3BvbnNlIiUKFEdldFJlY2FsbFJhaWxSZXF1ZXN0Eg0KBWxpbWl0GAEgASgFIlMKFUdldFJlY2FsbFJhaWxSZXNwb25zZRI6CgpjYW5kaWRhdGVzGAEgAygLMiYuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJlY2FsbENhbmRpZGF0ZSJtChhUcmFja1JlY2FsbEFjdGlvblJlcXVlc3QSEwoLYWN0aW9uX3R5cGUYASABKAkSEAoIaXRlbV9rZXkYAiABKAkSGQoMc25vb3plX2hvdXJzGAMgASgFSACIAQFCDwoNX3Nub296ZV9ob3VycyIbChlUcmFja1JlY2FsbEFjdGlvblJlc3BvbnNlImsKEUNyZWF0ZUxlbnNSZXF1ZXN0EgwKBG5hbWUYASABKAkSEwoLZGVzY3JpcHRpb24YAiABKAkSMwoHdmVyc2lvbhgDIAEoCzIiLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5MZW5zVmVyc2lvbiI/ChJDcmVhdGVMZW5zUmVzcG9uc2USKQoEbGVucxgBIAEoCzIbLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5MZW5zIp8BChFVcGRhdGVMZW5zUmVxdWVzdBIPCgdsZW5zX2lkGAEgASgJEhEKBG5hbWUYAiABKAlIAIgBARIYCgtkZXNjcmlwdGlvbhgDIAEoCUgBiAEBEjMKB3ZlcnNpb24YBCABKAsyIi5hbHQua25vd2xlZGdlX2hvbWUudjEuTGVuc1ZlcnNpb25CBwoFX25hbWVCDgoMX2Rlc2NyaXB0aW9uIj8KElVwZGF0ZUxlbnNSZXNwb25zZRIpCgRsZW5zGAEgASgLMhsuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkxlbnMiJAoRRGVsZXRlTGVuc1JlcXVlc3QSDwoHbGVuc19pZBgBIAEoCSIUChJEZWxldGVMZW5zUmVzcG9uc2UiEwoRTGlzdExlbnNlc1JlcXVlc3QiQQoSTGlzdExlbnNlc1Jlc3BvbnNlEisKBmxlbnNlcxgBIAMoCzIbLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5MZW5zIiQKEVNlbGVjdExlbnNSZXF1ZXN0Eg8KB2xlbnNfaWQYASABKAkiFAoSU2VsZWN0TGVuc1Jlc3BvbnNlIkUKIVN0cmVhbUtub3dsZWRnZUhvbWVVcGRhdGVzUmVxdWVzdBIUCgdsZW5zX2lkGAEgASgJSACIAQFCCgoIX2xlbnNfaWQiIAoeU3RyZWFtUmVjYWxsUmFpbFVwZGF0ZXNSZXF1ZXN0Mu4KChRLbm93bGVkZ2VIb21lU2VydmljZRJzChBHZXRLbm93bGVkZ2VIb21lEi4uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldEtub3dsZWRnZUhvbWVSZXF1ZXN0Gi8uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldEtub3dsZWRnZUhvbWVSZXNwb25zZRJ5ChJUcmFja0hvbWVJdGVtc1NlZW4SMC5hbHQua25vd2xlZGdlX2hvbWUudjEuVHJhY2tIb21lSXRlbXNTZWVuUmVxdWVzdBoxLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5UcmFja0hvbWVJdGVtc1NlZW5SZXNwb25zZRJwCg9UcmFja0hvbWVBY3Rpb24SLS5hbHQua25vd2xlZGdlX2hvbWUudjEuVHJhY2tIb21lQWN0aW9uUmVxdWVzdBouLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5UcmFja0hvbWVBY3Rpb25SZXNwb25zZRJqCg1HZXRSZWNhbGxSYWlsEisuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFJlY2FsbFJhaWxSZXF1ZXN0GiwuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFJlY2FsbFJhaWxSZXNwb25zZRJ2ChFUcmFja1JlY2FsbEFjdGlvbhIvLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5UcmFja1JlY2FsbEFjdGlvblJlcXVlc3QaMC5hbHQua25vd2xlZGdlX2hvbWUudjEuVHJhY2tSZWNhbGxBY3Rpb25SZXNwb25zZRJhCgpDcmVhdGVMZW5zEiguYWx0Lmtub3dsZWRnZV9ob21lLnYxLkNyZWF0ZUxlbnNSZXF1ZXN0GikuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkNyZWF0ZUxlbnNSZXNwb25zZRJhCgpVcGRhdGVMZW5zEiguYWx0Lmtub3dsZWRnZV9ob21lLnYxLlVwZGF0ZUxlbnNSZXF1ZXN0GikuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlVwZGF0ZUxlbnNSZXNwb25zZRJhCgpEZWxldGVMZW5zEiguYWx0Lmtub3dsZWRnZV9ob21lLnYxLkRlbGV0ZUxlbnNSZXF1ZXN0GikuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkRlbGV0ZUxlbnNSZXNwb25zZRJhCgpMaXN0TGVuc2VzEiguYWx0Lmtub3dsZWRnZV9ob21lLnYxLkxpc3RMZW5zZXNSZXF1ZXN0GikuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkxpc3RMZW5zZXNSZXNwb25zZRJhCgpTZWxlY3RMZW5zEiguYWx0Lmtub3dsZWRnZV9ob21lLnYxLlNlbGVjdExlbnNSZXF1ZXN0GikuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlNlbGVjdExlbnNSZXNwb25zZRKTAQoaU3RyZWFtS25vd2xlZGdlSG9tZVVwZGF0ZXMSOC5hbHQua25vd2xlZGdlX2hvbWUudjEuU3RyZWFtS25vd2xlZGdlSG9tZVVwZGF0ZXNSZXF1ZXN0GjkuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlN0cmVhbUtub3dsZWRnZUhvbWVVcGRhdGVzUmVzcG9uc2UwARKKAQoXU3RyZWFtUmVjYWxsUmFpbFVwZGF0ZXMSNS5hbHQua25vd2xlZGdlX2hvbWUudjEuU3RyZWFtUmVjYWxsUmFpbFVwZGF0ZXNSZXF1ZXN0GjYuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlN0cmVhbVJlY2FsbFJhaWxVcGRhdGVzUmVzcG9uc2UwAUI1WjNhbHQvZ2VuL3Byb3RvL2FsdC9rbm93bGVkZ2VfaG9tZS92MTtrbm93bGVkZ2Vob21ldjFiBnByb3RvMw");
 
 /**
  * GetKnowledgeHomeRequest is the request for GetKnowledgeHome.
@@ -38,6 +38,13 @@ export type GetKnowledgeHomeRequest = Message<"alt.knowledge_home.v1.GetKnowledg
    * @generated from field: optional string date = 3;
    */
   date?: string;
+
+  /**
+   * Optional lens ID to filter items
+   *
+   * @generated from field: optional string lens_id = 4;
+   */
+  lensId?: string;
 };
 
 /**
@@ -101,6 +108,13 @@ export type GetKnowledgeHomeResponse = Message<"alt.knowledge_home.v1.GetKnowled
    * @generated from field: repeated alt.knowledge_home.v1.FeatureFlagStatus feature_flags = 7;
    */
   featureFlags: FeatureFlagStatus[];
+
+  /**
+   * Recall candidates (embedded for initial load optimization)
+   *
+   * @generated from field: repeated alt.knowledge_home.v1.RecallCandidate recall_candidates = 8;
+   */
+  recallCandidates: RecallCandidate[];
 };
 
 /**
@@ -276,6 +290,13 @@ export type KnowledgeHomeItem = Message<"alt.knowledge_home.v1.KnowledgeHomeItem
    * @generated from field: double score = 10;
    */
   score: number;
+
+  /**
+   * Supersede information (set when item has been updated)
+   *
+   * @generated from field: optional alt.knowledge_home.v1.SupersedeInfo supersede_info = 11;
+   */
+  supersedeInfo?: SupersedeInfo;
 };
 
 /**
@@ -321,6 +342,342 @@ export const WhyReasonSchema: GenMessage<WhyReason> = /*@__PURE__*/
   messageDesc(file_alt_knowledge_home_v1_knowledge_home, 5);
 
 /**
+ * SupersedeInfo describes version changes to an item.
+ *
+ * @generated from message alt.knowledge_home.v1.SupersedeInfo
+ */
+export type SupersedeInfo = Message<"alt.knowledge_home.v1.SupersedeInfo"> & {
+  /**
+   * State: summary_updated, tags_updated, both_updated
+   *
+   * @generated from field: string state = 1;
+   */
+  state: string;
+
+  /**
+   * When the supersede occurred (RFC3339)
+   *
+   * @generated from field: string superseded_at = 2;
+   */
+  supersededAt: string;
+
+  /**
+   * Previous summary excerpt (if summary was updated)
+   *
+   * @generated from field: optional string previous_summary_excerpt = 3;
+   */
+  previousSummaryExcerpt?: string;
+
+  /**
+   * Previous tags (if tags were updated)
+   *
+   * @generated from field: repeated string previous_tags = 4;
+   */
+  previousTags: string[];
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.SupersedeInfo.
+ * Use `create(SupersedeInfoSchema)` to create a new message.
+ */
+export const SupersedeInfoSchema: GenMessage<SupersedeInfo> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 6);
+
+/**
+ * RecallCandidate represents an item the user should recall.
+ *
+ * @generated from message alt.knowledge_home.v1.RecallCandidate
+ */
+export type RecallCandidate = Message<"alt.knowledge_home.v1.RecallCandidate"> & {
+  /**
+   * The item key being recalled
+   *
+   * @generated from field: string item_key = 1;
+   */
+  itemKey: string;
+
+  /**
+   * Recall score (higher = more relevant to recall)
+   *
+   * @generated from field: double recall_score = 2;
+   */
+  recallScore: number;
+
+  /**
+   * Reasons this item is being recalled
+   *
+   * @generated from field: repeated alt.knowledge_home.v1.RecallReason reasons = 3;
+   */
+  reasons: RecallReason[];
+
+  /**
+   * When this item first became eligible for recall (RFC3339)
+   *
+   * @generated from field: string first_eligible_at = 4;
+   */
+  firstEligibleAt: string;
+
+  /**
+   * Next suggested recall time (RFC3339)
+   *
+   * @generated from field: string next_suggest_at = 5;
+   */
+  nextSuggestAt: string;
+
+  /**
+   * The full item data (optional, included for initial load)
+   *
+   * @generated from field: optional alt.knowledge_home.v1.KnowledgeHomeItem item = 6;
+   */
+  item?: KnowledgeHomeItem;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.RecallCandidate.
+ * Use `create(RecallCandidateSchema)` to create a new message.
+ */
+export const RecallCandidateSchema: GenMessage<RecallCandidate> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 7);
+
+/**
+ * RecallReason explains why an item is being recalled.
+ *
+ * @generated from message alt.knowledge_home.v1.RecallReason
+ */
+export type RecallReason = Message<"alt.knowledge_home.v1.RecallReason"> & {
+  /**
+   * Reason type code
+   *
+   * @generated from field: string type = 1;
+   */
+  type: string;
+
+  /**
+   * Human-readable description
+   *
+   * @generated from field: string description = 2;
+   */
+  description: string;
+
+  /**
+   * Optional source item key that triggered this recall
+   *
+   * @generated from field: optional string source_item_key = 3;
+   */
+  sourceItemKey?: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.RecallReason.
+ * Use `create(RecallReasonSchema)` to create a new message.
+ */
+export const RecallReasonSchema: GenMessage<RecallReason> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 8);
+
+/**
+ * Lens represents a saved viewpoint for filtering the knowledge stream.
+ *
+ * @generated from message alt.knowledge_home.v1.Lens
+ */
+export type Lens = Message<"alt.knowledge_home.v1.Lens"> & {
+  /**
+   * Unique lens ID
+   *
+   * @generated from field: string lens_id = 1;
+   */
+  lensId: string;
+
+  /**
+   * Display name
+   *
+   * @generated from field: string name = 2;
+   */
+  name: string;
+
+  /**
+   * Optional description
+   *
+   * @generated from field: string description = 3;
+   */
+  description: string;
+
+  /**
+   * When created (RFC3339)
+   *
+   * @generated from field: string created_at = 4;
+   */
+  createdAt: string;
+
+  /**
+   * When last updated (RFC3339)
+   *
+   * @generated from field: string updated_at = 5;
+   */
+  updatedAt: string;
+
+  /**
+   * Current version configuration
+   *
+   * @generated from field: alt.knowledge_home.v1.LensVersion current_version = 6;
+   */
+  currentVersion?: LensVersion;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.Lens.
+ * Use `create(LensSchema)` to create a new message.
+ */
+export const LensSchema: GenMessage<Lens> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 9);
+
+/**
+ * LensVersion represents a version of a lens configuration.
+ *
+ * @generated from message alt.knowledge_home.v1.LensVersion
+ */
+export type LensVersion = Message<"alt.knowledge_home.v1.LensVersion"> & {
+  /**
+   * Version ID
+   *
+   * @generated from field: string version_id = 1;
+   */
+  versionId: string;
+
+  /**
+   * Optional text query
+   *
+   * @generated from field: string query_text = 2;
+   */
+  queryText: string;
+
+  /**
+   * Tag IDs to filter by
+   *
+   * @generated from field: repeated string tag_ids = 3;
+   */
+  tagIds: string[];
+
+  /**
+   * Time window (e.g., "7d", "30d")
+   *
+   * @generated from field: string time_window = 4;
+   */
+  timeWindow: string;
+
+  /**
+   * Whether to include recap items
+   *
+   * @generated from field: bool include_recap = 5;
+   */
+  includeRecap: boolean;
+
+  /**
+   * Whether to include pulse items
+   *
+   * @generated from field: bool include_pulse = 6;
+   */
+  includePulse: boolean;
+
+  /**
+   * Sort mode: relevance, chronological, trending
+   *
+   * @generated from field: string sort_mode = 7;
+   */
+  sortMode: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.LensVersion.
+ * Use `create(LensVersionSchema)` to create a new message.
+ */
+export const LensVersionSchema: GenMessage<LensVersion> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 10);
+
+/**
+ * StreamKnowledgeHomeUpdatesResponse is a real-time update for the home feed.
+ *
+ * @generated from message alt.knowledge_home.v1.StreamKnowledgeHomeUpdatesResponse
+ */
+export type StreamKnowledgeHomeUpdatesResponse = Message<"alt.knowledge_home.v1.StreamKnowledgeHomeUpdatesResponse"> & {
+  /**
+   * Event type: item_added, item_updated, item_removed, digest_changed, recall_changed
+   *
+   * @generated from field: string event_type = 1;
+   */
+  eventType: string;
+
+  /**
+   * Updated item (for item events)
+   *
+   * @generated from field: optional alt.knowledge_home.v1.KnowledgeHomeItem item = 2;
+   */
+  item?: KnowledgeHomeItem;
+
+  /**
+   * Updated digest (for digest events)
+   *
+   * @generated from field: optional alt.knowledge_home.v1.TodayDigest digest_change = 3;
+   */
+  digestChange?: TodayDigest;
+
+  /**
+   * Updated recall candidate (for recall events)
+   *
+   * @generated from field: optional alt.knowledge_home.v1.RecallCandidate recall_change = 4;
+   */
+  recallChange?: RecallCandidate;
+
+  /**
+   * When the event occurred (RFC3339)
+   *
+   * @generated from field: string occurred_at = 5;
+   */
+  occurredAt: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.StreamKnowledgeHomeUpdatesResponse.
+ * Use `create(StreamKnowledgeHomeUpdatesResponseSchema)` to create a new message.
+ */
+export const StreamKnowledgeHomeUpdatesResponseSchema: GenMessage<StreamKnowledgeHomeUpdatesResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 11);
+
+/**
+ * StreamRecallRailUpdatesResponse is a real-time update for the recall rail.
+ *
+ * @generated from message alt.knowledge_home.v1.StreamRecallRailUpdatesResponse
+ */
+export type StreamRecallRailUpdatesResponse = Message<"alt.knowledge_home.v1.StreamRecallRailUpdatesResponse"> & {
+  /**
+   * Event type: candidate_added, candidate_removed, candidate_updated
+   *
+   * @generated from field: string event_type = 1;
+   */
+  eventType: string;
+
+  /**
+   * The affected recall candidate
+   *
+   * @generated from field: alt.knowledge_home.v1.RecallCandidate candidate = 2;
+   */
+  candidate?: RecallCandidate;
+
+  /**
+   * When the event occurred (RFC3339)
+   *
+   * @generated from field: string occurred_at = 3;
+   */
+  occurredAt: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.StreamRecallRailUpdatesResponse.
+ * Use `create(StreamRecallRailUpdatesResponseSchema)` to create a new message.
+ */
+export const StreamRecallRailUpdatesResponseSchema: GenMessage<StreamRecallRailUpdatesResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 12);
+
+/**
  * TrackHomeItemsSeenRequest records which items were visible on screen.
  *
  * @generated from message alt.knowledge_home.v1.TrackHomeItemsSeenRequest
@@ -346,7 +703,7 @@ export type TrackHomeItemsSeenRequest = Message<"alt.knowledge_home.v1.TrackHome
  * Use `create(TrackHomeItemsSeenRequestSchema)` to create a new message.
  */
 export const TrackHomeItemsSeenRequestSchema: GenMessage<TrackHomeItemsSeenRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 6);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 13);
 
 /**
  * TrackHomeItemsSeenResponse is empty on success.
@@ -361,7 +718,7 @@ export type TrackHomeItemsSeenResponse = Message<"alt.knowledge_home.v1.TrackHom
  * Use `create(TrackHomeItemsSeenResponseSchema)` to create a new message.
  */
 export const TrackHomeItemsSeenResponseSchema: GenMessage<TrackHomeItemsSeenResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 7);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 14);
 
 /**
  * TrackHomeActionRequest records a user action on a home item.
@@ -403,7 +760,7 @@ export type TrackHomeActionRequest = Message<"alt.knowledge_home.v1.TrackHomeAct
  * Use `create(TrackHomeActionRequestSchema)` to create a new message.
  */
 export const TrackHomeActionRequestSchema: GenMessage<TrackHomeActionRequest> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 8);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 15);
 
 /**
  * TrackHomeActionResponse is empty on success.
@@ -418,7 +775,356 @@ export type TrackHomeActionResponse = Message<"alt.knowledge_home.v1.TrackHomeAc
  * Use `create(TrackHomeActionResponseSchema)` to create a new message.
  */
 export const TrackHomeActionResponseSchema: GenMessage<TrackHomeActionResponse> = /*@__PURE__*/
-  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 9);
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 16);
+
+/**
+ * GetRecallRailRequest is the request for GetRecallRail.
+ *
+ * @generated from message alt.knowledge_home.v1.GetRecallRailRequest
+ */
+export type GetRecallRailRequest = Message<"alt.knowledge_home.v1.GetRecallRailRequest"> & {
+  /**
+   * Maximum number of candidates (default: 5, max: 20)
+   *
+   * @generated from field: int32 limit = 1;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.GetRecallRailRequest.
+ * Use `create(GetRecallRailRequestSchema)` to create a new message.
+ */
+export const GetRecallRailRequestSchema: GenMessage<GetRecallRailRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 17);
+
+/**
+ * GetRecallRailResponse is the response for GetRecallRail.
+ *
+ * @generated from message alt.knowledge_home.v1.GetRecallRailResponse
+ */
+export type GetRecallRailResponse = Message<"alt.knowledge_home.v1.GetRecallRailResponse"> & {
+  /**
+   * Recall candidates ordered by score
+   *
+   * @generated from field: repeated alt.knowledge_home.v1.RecallCandidate candidates = 1;
+   */
+  candidates: RecallCandidate[];
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.GetRecallRailResponse.
+ * Use `create(GetRecallRailResponseSchema)` to create a new message.
+ */
+export const GetRecallRailResponseSchema: GenMessage<GetRecallRailResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 18);
+
+/**
+ * TrackRecallActionRequest records a recall action.
+ *
+ * @generated from message alt.knowledge_home.v1.TrackRecallActionRequest
+ */
+export type TrackRecallActionRequest = Message<"alt.knowledge_home.v1.TrackRecallActionRequest"> & {
+  /**
+   * Action type: snooze, dismiss, open
+   *
+   * @generated from field: string action_type = 1;
+   */
+  actionType: string;
+
+  /**
+   * The item key being acted upon
+   *
+   * @generated from field: string item_key = 2;
+   */
+  itemKey: string;
+
+  /**
+   * Snooze duration in hours (only for snooze action)
+   *
+   * @generated from field: optional int32 snooze_hours = 3;
+   */
+  snoozeHours?: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.TrackRecallActionRequest.
+ * Use `create(TrackRecallActionRequestSchema)` to create a new message.
+ */
+export const TrackRecallActionRequestSchema: GenMessage<TrackRecallActionRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 19);
+
+/**
+ * TrackRecallActionResponse is empty on success.
+ *
+ * @generated from message alt.knowledge_home.v1.TrackRecallActionResponse
+ */
+export type TrackRecallActionResponse = Message<"alt.knowledge_home.v1.TrackRecallActionResponse"> & {
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.TrackRecallActionResponse.
+ * Use `create(TrackRecallActionResponseSchema)` to create a new message.
+ */
+export const TrackRecallActionResponseSchema: GenMessage<TrackRecallActionResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 20);
+
+/**
+ * CreateLensRequest creates a new lens.
+ *
+ * @generated from message alt.knowledge_home.v1.CreateLensRequest
+ */
+export type CreateLensRequest = Message<"alt.knowledge_home.v1.CreateLensRequest"> & {
+  /**
+   * Display name
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Optional description
+   *
+   * @generated from field: string description = 2;
+   */
+  description: string;
+
+  /**
+   * Initial version configuration
+   *
+   * @generated from field: alt.knowledge_home.v1.LensVersion version = 3;
+   */
+  version?: LensVersion;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.CreateLensRequest.
+ * Use `create(CreateLensRequestSchema)` to create a new message.
+ */
+export const CreateLensRequestSchema: GenMessage<CreateLensRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 21);
+
+/**
+ * CreateLensResponse returns the created lens.
+ *
+ * @generated from message alt.knowledge_home.v1.CreateLensResponse
+ */
+export type CreateLensResponse = Message<"alt.knowledge_home.v1.CreateLensResponse"> & {
+  /**
+   * @generated from field: alt.knowledge_home.v1.Lens lens = 1;
+   */
+  lens?: Lens;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.CreateLensResponse.
+ * Use `create(CreateLensResponseSchema)` to create a new message.
+ */
+export const CreateLensResponseSchema: GenMessage<CreateLensResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 22);
+
+/**
+ * UpdateLensRequest creates a new version of an existing lens.
+ *
+ * @generated from message alt.knowledge_home.v1.UpdateLensRequest
+ */
+export type UpdateLensRequest = Message<"alt.knowledge_home.v1.UpdateLensRequest"> & {
+  /**
+   * Lens ID to update
+   *
+   * @generated from field: string lens_id = 1;
+   */
+  lensId: string;
+
+  /**
+   * Optional new name
+   *
+   * @generated from field: optional string name = 2;
+   */
+  name?: string;
+
+  /**
+   * Optional new description
+   *
+   * @generated from field: optional string description = 3;
+   */
+  description?: string;
+
+  /**
+   * New version configuration
+   *
+   * @generated from field: alt.knowledge_home.v1.LensVersion version = 4;
+   */
+  version?: LensVersion;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.UpdateLensRequest.
+ * Use `create(UpdateLensRequestSchema)` to create a new message.
+ */
+export const UpdateLensRequestSchema: GenMessage<UpdateLensRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 23);
+
+/**
+ * UpdateLensResponse returns the updated lens.
+ *
+ * @generated from message alt.knowledge_home.v1.UpdateLensResponse
+ */
+export type UpdateLensResponse = Message<"alt.knowledge_home.v1.UpdateLensResponse"> & {
+  /**
+   * @generated from field: alt.knowledge_home.v1.Lens lens = 1;
+   */
+  lens?: Lens;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.UpdateLensResponse.
+ * Use `create(UpdateLensResponseSchema)` to create a new message.
+ */
+export const UpdateLensResponseSchema: GenMessage<UpdateLensResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 24);
+
+/**
+ * DeleteLensRequest archives a lens.
+ *
+ * @generated from message alt.knowledge_home.v1.DeleteLensRequest
+ */
+export type DeleteLensRequest = Message<"alt.knowledge_home.v1.DeleteLensRequest"> & {
+  /**
+   * Lens ID to archive
+   *
+   * @generated from field: string lens_id = 1;
+   */
+  lensId: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.DeleteLensRequest.
+ * Use `create(DeleteLensRequestSchema)` to create a new message.
+ */
+export const DeleteLensRequestSchema: GenMessage<DeleteLensRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 25);
+
+/**
+ * DeleteLensResponse is empty on success.
+ *
+ * @generated from message alt.knowledge_home.v1.DeleteLensResponse
+ */
+export type DeleteLensResponse = Message<"alt.knowledge_home.v1.DeleteLensResponse"> & {
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.DeleteLensResponse.
+ * Use `create(DeleteLensResponseSchema)` to create a new message.
+ */
+export const DeleteLensResponseSchema: GenMessage<DeleteLensResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 26);
+
+/**
+ * ListLensesRequest lists all active lenses.
+ *
+ * @generated from message alt.knowledge_home.v1.ListLensesRequest
+ */
+export type ListLensesRequest = Message<"alt.knowledge_home.v1.ListLensesRequest"> & {
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.ListLensesRequest.
+ * Use `create(ListLensesRequestSchema)` to create a new message.
+ */
+export const ListLensesRequestSchema: GenMessage<ListLensesRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 27);
+
+/**
+ * ListLensesResponse returns the user's lenses.
+ *
+ * @generated from message alt.knowledge_home.v1.ListLensesResponse
+ */
+export type ListLensesResponse = Message<"alt.knowledge_home.v1.ListLensesResponse"> & {
+  /**
+   * @generated from field: repeated alt.knowledge_home.v1.Lens lenses = 1;
+   */
+  lenses: Lens[];
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.ListLensesResponse.
+ * Use `create(ListLensesResponseSchema)` to create a new message.
+ */
+export const ListLensesResponseSchema: GenMessage<ListLensesResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 28);
+
+/**
+ * SelectLensRequest sets the active lens.
+ *
+ * @generated from message alt.knowledge_home.v1.SelectLensRequest
+ */
+export type SelectLensRequest = Message<"alt.knowledge_home.v1.SelectLensRequest"> & {
+  /**
+   * Lens ID to activate (empty string to clear)
+   *
+   * @generated from field: string lens_id = 1;
+   */
+  lensId: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.SelectLensRequest.
+ * Use `create(SelectLensRequestSchema)` to create a new message.
+ */
+export const SelectLensRequestSchema: GenMessage<SelectLensRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 29);
+
+/**
+ * SelectLensResponse is empty on success.
+ *
+ * @generated from message alt.knowledge_home.v1.SelectLensResponse
+ */
+export type SelectLensResponse = Message<"alt.knowledge_home.v1.SelectLensResponse"> & {
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.SelectLensResponse.
+ * Use `create(SelectLensResponseSchema)` to create a new message.
+ */
+export const SelectLensResponseSchema: GenMessage<SelectLensResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 30);
+
+/**
+ * StreamKnowledgeHomeUpdatesRequest initiates a streaming connection.
+ *
+ * @generated from message alt.knowledge_home.v1.StreamKnowledgeHomeUpdatesRequest
+ */
+export type StreamKnowledgeHomeUpdatesRequest = Message<"alt.knowledge_home.v1.StreamKnowledgeHomeUpdatesRequest"> & {
+  /**
+   * Optional lens ID to filter updates
+   *
+   * @generated from field: optional string lens_id = 1;
+   */
+  lensId?: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.StreamKnowledgeHomeUpdatesRequest.
+ * Use `create(StreamKnowledgeHomeUpdatesRequestSchema)` to create a new message.
+ */
+export const StreamKnowledgeHomeUpdatesRequestSchema: GenMessage<StreamKnowledgeHomeUpdatesRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 31);
+
+/**
+ * StreamRecallRailUpdatesRequest initiates a recall rail streaming connection.
+ *
+ * @generated from message alt.knowledge_home.v1.StreamRecallRailUpdatesRequest
+ */
+export type StreamRecallRailUpdatesRequest = Message<"alt.knowledge_home.v1.StreamRecallRailUpdatesRequest"> & {
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.StreamRecallRailUpdatesRequest.
+ * Use `create(StreamRecallRailUpdatesRequestSchema)` to create a new message.
+ */
+export const StreamRecallRailUpdatesRequestSchema: GenMessage<StreamRecallRailUpdatesRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home, 32);
 
 /**
  * KnowledgeHomeService provides the Knowledge Home API.
@@ -455,6 +1161,96 @@ export const KnowledgeHomeService: GenService<{
     methodKind: "unary";
     input: typeof TrackHomeActionRequestSchema;
     output: typeof TrackHomeActionResponseSchema;
+  },
+  /**
+   * GetRecallRail returns recall candidates for the user.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeService.GetRecallRail
+   */
+  getRecallRail: {
+    methodKind: "unary";
+    input: typeof GetRecallRailRequestSchema;
+    output: typeof GetRecallRailResponseSchema;
+  },
+  /**
+   * TrackRecallAction records a recall action (snooze/dismiss/open).
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeService.TrackRecallAction
+   */
+  trackRecallAction: {
+    methodKind: "unary";
+    input: typeof TrackRecallActionRequestSchema;
+    output: typeof TrackRecallActionResponseSchema;
+  },
+  /**
+   * CreateLens creates a new saved viewpoint.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeService.CreateLens
+   */
+  createLens: {
+    methodKind: "unary";
+    input: typeof CreateLensRequestSchema;
+    output: typeof CreateLensResponseSchema;
+  },
+  /**
+   * UpdateLens creates a new version of an existing lens.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeService.UpdateLens
+   */
+  updateLens: {
+    methodKind: "unary";
+    input: typeof UpdateLensRequestSchema;
+    output: typeof UpdateLensResponseSchema;
+  },
+  /**
+   * DeleteLens archives a lens (soft delete).
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeService.DeleteLens
+   */
+  deleteLens: {
+    methodKind: "unary";
+    input: typeof DeleteLensRequestSchema;
+    output: typeof DeleteLensResponseSchema;
+  },
+  /**
+   * ListLenses returns all active lenses for the user.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeService.ListLenses
+   */
+  listLenses: {
+    methodKind: "unary";
+    input: typeof ListLensesRequestSchema;
+    output: typeof ListLensesResponseSchema;
+  },
+  /**
+   * SelectLens sets the active lens for the user.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeService.SelectLens
+   */
+  selectLens: {
+    methodKind: "unary";
+    input: typeof SelectLensRequestSchema;
+    output: typeof SelectLensResponseSchema;
+  },
+  /**
+   * StreamKnowledgeHomeUpdates streams real-time updates for the home feed.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeService.StreamKnowledgeHomeUpdates
+   */
+  streamKnowledgeHomeUpdates: {
+    methodKind: "server_streaming";
+    input: typeof StreamKnowledgeHomeUpdatesRequestSchema;
+    output: typeof StreamKnowledgeHomeUpdatesResponseSchema;
+  },
+  /**
+   * StreamRecallRailUpdates streams real-time updates for the recall rail.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeService.StreamRecallRailUpdates
+   */
+  streamRecallRailUpdates: {
+    methodKind: "server_streaming";
+    input: typeof StreamRecallRailUpdatesRequestSchema;
+    output: typeof StreamRecallRailUpdatesResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_knowledge_home_v1_knowledge_home, 0);
