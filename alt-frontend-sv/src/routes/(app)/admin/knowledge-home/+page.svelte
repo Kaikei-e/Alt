@@ -76,9 +76,8 @@ onDestroy(() => {
 	{#snippet actions()}
 		<div class="flex items-center gap-3 text-right">
 			<Button
-				variant="outline"
+				variant="default"
 				size="sm"
-				class="hover:bg-[var(--alt-primary)] hover:text-[var(--surface-bg)] hover:border-[var(--alt-primary)]"
 				disabled={admin.acting || !admin.health}
 				onclick={() => void admin.triggerBackfill(admin.health?.activeVersion ?? 1)}
 			>
