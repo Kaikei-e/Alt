@@ -10,6 +10,12 @@ import {
 } from "$lib/connect";
 import augurAvatar from "$lib/assets/augur-chat.webp";
 
+interface Props {
+	initialContext?: string;
+}
+
+const { initialContext = "" }: Props = $props();
+
 type Citation = {
 	URL: string;
 	Title: string;
@@ -259,5 +265,5 @@ onMount(() => {
 	</div>
 
 	<!-- Input -->
-	<ChatInput onSend={handleSend} disabled={isLoading} />
+	<ChatInput onSend={handleSend} disabled={isLoading} {initialContext} />
 </div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+import { page } from "$app/stores";
 import { useViewport } from "$lib/stores/viewport.svelte";
 
 // Desktop components
@@ -9,6 +10,8 @@ import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
 import ChatWindow from "$lib/components/mobile/search/ChatWindow.svelte";
 
 const { isDesktop } = useViewport();
+
+const initialContext = $derived($page.url.searchParams.get("context") ?? "");
 </script>
 
 <svelte:head>
@@ -17,9 +20,9 @@ const { isDesktop } = useViewport();
 
 {#if isDesktop}
 	<PageHeader title="Ask Augur" description="Query your knowledge base with AI" />
-	<AugurChat />
+	<AugurChat {initialContext} />
 {:else}
 	<div class="h-[calc(100vh-64px)] md:h-[calc(100vh-80px)] w-full overflow-hidden">
-		<ChatWindow />
+		<ChatWindow {initialContext} />
 	</div>
 {/if}

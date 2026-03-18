@@ -6,11 +6,12 @@ import { Textarea } from "$lib/components/ui/textarea";
 type Props = {
 	onSend: (message: string) => void;
 	disabled?: boolean;
+	initialContext?: string;
 };
 
-let { onSend, disabled = false }: Props = $props();
+let { onSend, disabled = false, initialContext = "" }: Props = $props();
 
-let inputValue = $state("");
+let inputValue = $state(initialContext);
 
 function handleSubmit() {
 	const trimmed = inputValue.trim();

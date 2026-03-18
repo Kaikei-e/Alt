@@ -25,9 +25,15 @@ type Message = {
 	citations?: Citation[];
 };
 
+interface Props {
+	initialContext?: string;
+}
+
+const { initialContext = "" }: Props = $props();
+
 // State
 let messages: Message[] = $state([]);
-let inputValue = $state("");
+let inputValue = $state(initialContext);
 let isLoading = $state(false);
 let progressStage = $state<string>("");
 let messagesEndRef: HTMLDivElement;
