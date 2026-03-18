@@ -26,13 +26,13 @@ export function useKnowledgeHome() {
 	let nextCursor = $state("");
 	let serviceQuality = $state<ServiceQuality>("full");
 
-	const fetchData = async (reset = false) => {
+	const fetchData = async (reset = false, lensId?: string | null) => {
 		try {
 			loading = true;
 			error = null;
 			const transport = createClientTransport();
-			const cursor = reset ? undefined : undefined;
-			const result = await getKnowledgeHome(transport, cursor);
+			const cursor = reset ? undefined : nextCursor || undefined;
+			const result = await getKnowledgeHome(transport, cursor, 20, lensId ?? undefined);
 			items = result.items;
 			digest = result.digest;
 			hasMore = result.hasMore;
@@ -53,12 +53,12 @@ export function useKnowledgeHome() {
 		}
 	};
 
-	const loadMore = async () => {
+	const loadMore = async (lensId?: string | null) => {
 		if (!hasMore || loading) return;
 		try {
 			loading = true;
 			const transport = createClientTransport();
-			const result = await getKnowledgeHome(transport, nextCursor);
+			const result = await getKnowledgeHome(transport, nextCursor, 20, lensId ?? undefined);
 			items = [...items, ...result.items];
 			hasMore = result.hasMore;
 			nextCursor = result.nextCursor;

@@ -102,10 +102,16 @@ export interface LensVersionData {
 	versionId: string;
 	queryText: string;
 	tagIds: string[];
+	feedIds: string[];
 	timeWindow: string;
 	includeRecap: boolean;
 	includePulse: boolean;
 	sortMode: string;
+}
+
+export interface ListLensesResult {
+	lenses: LensData[];
+	activeLensId: string | null;
 }
 
 /** Stream home update event */
@@ -306,6 +312,7 @@ function convertLens(proto: ProtoLens): LensData {
 			versionId: proto.currentVersion.versionId,
 			queryText: proto.currentVersion.queryText,
 			tagIds: [...proto.currentVersion.tagIds],
+			feedIds: [...proto.currentVersion.feedIds],
 			timeWindow: proto.currentVersion.timeWindow,
 			includeRecap: proto.currentVersion.includeRecap,
 			includePulse: proto.currentVersion.includePulse,
@@ -349,10 +356,13 @@ export async function dismissRecallItem(
 
 export async function listLenses(
 	transport: Transport,
-): Promise<LensData[]> {
+): Promise<ListLensesResult> {
 	const client = createKnowledgeHomeClient(transport);
 	const response = await client.listLenses({});
-	return response.lenses.map(convertLens);
+	return {
+		lenses: response.lenses.map(convertLens),
+		activeLensId: response.activeLensId || null,
+	};
 }
 
 export async function createLens(
@@ -368,6 +378,7 @@ export async function createLens(
 		version: {
 			queryText: version.queryText,
 			tagIds: version.tagIds,
+			feedIds: version.feedIds,
 			timeWindow: version.timeWindow,
 			includeRecap: version.includeRecap,
 			includePulse: version.includePulse,
@@ -387,8 +398,8 @@ export async function deleteLens(
 
 export async function selectLens(
 	transport: Transport,
-	lensId: string,
+	lensId: string | null,
 ): Promise<void> {
 	const client = createKnowledgeHomeClient(transport);
-	await client.selectLens({ lensId });
+	await client.selectLens({ lensId: lensId ?? "" });
 }

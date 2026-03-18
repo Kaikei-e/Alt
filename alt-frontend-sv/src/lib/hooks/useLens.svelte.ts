@@ -22,7 +22,9 @@ export function useLens() {
 			loading = true;
 			error = null;
 			const transport = createClientTransport();
-			lenses = await listLenses(transport);
+			const result = await listLenses(transport);
+			lenses = result.lenses;
+			activeLensId = result.activeLensId;
 		} catch (err) {
 			if (err instanceof ConnectError && err.code === Code.PermissionDenied) {
 				lenses = [];
@@ -64,13 +66,11 @@ export function useLens() {
 
 	const select = async (lensId: string | null) => {
 		activeLensId = lensId;
-		if (lensId) {
-			try {
-				const transport = createClientTransport();
-				await selectLens(transport, lensId);
-			} catch {
-				// Fire-and-forget
-			}
+		try {
+			const transport = createClientTransport();
+			await selectLens(transport, lensId);
+		} catch {
+			// Fire-and-forget
 		}
 	};
 

@@ -10,12 +10,14 @@ interface Props {
 	items: KnowledgeHomeItemData[];
 	loading: boolean;
 	hasMore: boolean;
+	activeLensName?: string | null;
 	onAction: (type: string, item: KnowledgeHomeItemData) => void;
 	onLoadMore: () => void;
 	onItemsVisible: (itemKeys: string[]) => void;
+	onClearLens?: () => void;
 }
 
-const { items, loading, hasMore, onAction, onLoadMore, onItemsVisible }: Props =
+const { items, loading, hasMore, activeLensName = null, onAction, onLoadMore, onItemsVisible, onClearLens }: Props =
 	$props();
 
 let streamRef: HTMLDivElement | undefined = $state();
@@ -113,7 +115,7 @@ onMount(() => {
 {#if loading && items.length === 0}
 	<KnowledgeHomeSkeleton />
 {:else if !loading && items.length === 0}
-	<KnowledgeHomeEmpty />
+	<KnowledgeHomeEmpty {activeLensName} {onClearLens} />
 {:else}
 	<div class="flex flex-col gap-3" bind:this={streamRef}>
 		{#each items as item (item.itemKey)}

@@ -16,6 +16,8 @@ import {
 	trackHomeItemsSeen,
 	trackHomeAction,
 	createKnowledgeHomeClient,
+	listLenses,
+	selectLens,
 } from "./knowledge_home";
 
 describe("knowledge_home client", () => {
@@ -24,6 +26,8 @@ describe("knowledge_home client", () => {
 		getKnowledgeHome: ReturnType<typeof vi.fn>;
 		trackHomeItemsSeen: ReturnType<typeof vi.fn>;
 		trackHomeAction: ReturnType<typeof vi.fn>;
+		listLenses: ReturnType<typeof vi.fn>;
+		selectLens: ReturnType<typeof vi.fn>;
 	};
 
 	beforeEach(() => {
@@ -32,6 +36,8 @@ describe("knowledge_home client", () => {
 			getKnowledgeHome: vi.fn(),
 			trackHomeItemsSeen: vi.fn(),
 			trackHomeAction: vi.fn(),
+			listLenses: vi.fn(),
+			selectLens: vi.fn(),
 		};
 		(createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue(
 			mockClient as never,
@@ -124,6 +130,24 @@ describe("knowledge_home client", () => {
 			});
 		});
 
+		it("passes lens id when provided", async () => {
+			mockClient.getKnowledgeHome.mockResolvedValue({
+				items: [],
+				nextCursor: "",
+				hasMore: false,
+				degradedMode: false,
+				generatedAt: "2026-03-17T10:00:00Z",
+			});
+
+			await getKnowledgeHome(mockTransport, undefined, 20, "lens-123");
+
+			expect(mockClient.getKnowledgeHome).toHaveBeenCalledWith({
+				cursor: undefined,
+				limit: 20,
+				lensId: "lens-123",
+			});
+		});
+
 		it("returns null digest when not present", async () => {
 			mockClient.getKnowledgeHome.mockResolvedValue({
 				todayDigest: undefined,
@@ -201,6 +225,48 @@ describe("knowledge_home client", () => {
 				actionType: "dismiss",
 				itemKey: "article:abc-123",
 				metadataJson: '{"reason":"not_interested"}',
+			});
+		});
+	});
+
+	describe("lens helpers", () => {
+		it("returns active lens id from listLenses", async () => {
+			mockClient.listLenses = vi.fn().mockResolvedValue({
+				lenses: [
+					{
+						lensId: "lens-123",
+						name: "AI",
+						description: "AI articles",
+						createdAt: "2026-03-17T10:00:00Z",
+						updatedAt: "2026-03-17T10:00:00Z",
+						currentVersion: {
+							versionId: "version-1",
+							queryText: "",
+							tagIds: ["AI"],
+							feedIds: ["feed-1"],
+							timeWindow: "7d",
+							includeRecap: false,
+							includePulse: false,
+							sortMode: "relevance",
+						},
+					},
+				],
+				activeLensId: "lens-123",
+			});
+
+			const result = await listLenses(mockTransport);
+
+			expect(result.activeLensId).toBe("lens-123");
+			expect(result.lenses[0].currentVersion?.feedIds).toEqual(["feed-1"]);
+		});
+
+		it("clears selected lens when null is passed", async () => {
+			mockClient.selectLens = vi.fn().mockResolvedValue({});
+
+			await selectLens(mockTransport, null);
+
+			expect(mockClient.selectLens).toHaveBeenCalledWith({
+				lensId: "",
 			});
 		});
 	});

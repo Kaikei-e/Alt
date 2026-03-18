@@ -14,6 +14,8 @@ import {
 	StreamKnowledgeHomeUpdatesResponseSchema,
 	TrackHomeActionRequestSchema,
 	RecallCandidateSchema,
+	LensVersionSchema,
+	ListLensesResponseSchema,
 } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_pb";
 
 describe("Knowledge Home API Contract", () => {
@@ -243,6 +245,32 @@ describe("Knowledge Home API Contract", () => {
 				expect(req.actionType).toBe(actionType);
 				expect(req.itemKey).toBe("article:1");
 			}
+		});
+	});
+
+	describe("LensVersion", () => {
+		it("supports feed-based filtering fields", () => {
+			const lensVersion = create(LensVersionSchema, {
+				versionId: "version-1",
+				tagIds: ["AI"],
+				feedIds: ["feed-1"],
+				timeWindow: "7d",
+				sortMode: "relevance",
+			});
+
+			const response = create(ListLensesResponseSchema, {
+				lenses: [
+					{
+						lensId: "lens-1",
+						name: "AI Lens",
+						currentVersion: lensVersion,
+					},
+				],
+				activeLensId: "lens-1",
+			});
+
+			expect(response.activeLensId).toBe("lens-1");
+			expect(response.lenses[0]?.currentVersion?.feedIds).toEqual(["feed-1"]);
 		});
 	});
 

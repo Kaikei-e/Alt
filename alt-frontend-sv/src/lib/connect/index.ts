@@ -167,6 +167,7 @@ export {
 	type RecallReasonData,
 	type LensData,
 	type LensVersionData,
+	type ListLensesResult,
 	type StreamHomeUpdate,
 } from "./knowledge_home";
 
