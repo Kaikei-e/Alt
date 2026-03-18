@@ -96,6 +96,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		container.SelectLensUsecase,
 		container.ArchiveLensUsecase,
 		container.KnowledgeEventGateway,
+		container.KnowledgeEventGateway,
 		container.FeatureFlagGateway,
 		logger,
 	)

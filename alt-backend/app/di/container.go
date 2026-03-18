@@ -540,8 +540,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	trackHomeSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(knowledgeUserEventGw, featureFlagGw)
 	trackHomeActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(knowledgeUserEventGw, knowledgeEventGw, featureFlagGw)
 	appendKnowledgeEventUsecase := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(knowledgeEventGw)
-	createSummaryVersionUsecase := create_summary_version_usecase.NewCreateSummaryVersionUsecase(summaryVersionGw, knowledgeEventGw)
-	createTagSetVersionUsecase := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetVersionGw, knowledgeEventGw)
+	createSummaryVersionUsecase := create_summary_version_usecase.NewCreateSummaryVersionUsecase(summaryVersionGw, knowledgeEventGw, summaryVersionGw)
+	createTagSetVersionUsecase := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetVersionGw, knowledgeEventGw, tagSetVersionGw)
 	knowledgeBackfillUsecase := knowledge_backfill_usecase.NewUsecase(
 		knowledgeBackfillGw,
 		knowledgeBackfillGw,

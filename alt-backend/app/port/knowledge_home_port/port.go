@@ -16,3 +16,8 @@ type GetKnowledgeHomeItemsPort interface {
 type UpsertKnowledgeHomeItemPort interface {
 	UpsertKnowledgeHomeItem(ctx context.Context, item domain.KnowledgeHomeItem) error
 }
+
+// ClearSupersedeStatePort clears supersede state for an item after user acknowledgement (e.g. open).
+type ClearSupersedeStatePort interface {
+	ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string) error
+}

@@ -3,6 +3,7 @@ package knowledge_home
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -46,6 +47,7 @@ type Handler struct {
 	selectLensUsecase    *select_lens_usecase.SelectLensUsecase
 	archiveLensUsecase   *archive_lens_usecase.ArchiveLensUsecase
 	eventsPort           knowledge_event_port.ListKnowledgeEventsPort
+	eventsForUserPort    knowledge_event_port.ListKnowledgeEventsForUserPort
 	featureFlagPort      feature_flag_port.FeatureFlagPort
 	logger               *slog.Logger
 }
@@ -67,6 +69,7 @@ func NewHandler(
 	selectLens *select_lens_usecase.SelectLensUsecase,
 	archiveLens *archive_lens_usecase.ArchiveLensUsecase,
 	eventsPort knowledge_event_port.ListKnowledgeEventsPort,
+	eventsForUserPort knowledge_event_port.ListKnowledgeEventsForUserPort,
 	featureFlag feature_flag_port.FeatureFlagPort,
 	logger *slog.Logger,
 ) *Handler {
@@ -83,6 +86,7 @@ func NewHandler(
 		selectLensUsecase:    selectLens,
 		archiveLensUsecase:   archiveLens,
 		eventsPort:           eventsPort,
+		eventsForUserPort:    eventsForUserPort,
 		featureFlagPort:      featureFlag,
 		logger:               logger,
 	}
@@ -581,10 +585,10 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 			return nil
 
 		case <-updateTicker.C:
-			if h.eventsPort == nil {
+			if h.eventsForUserPort == nil {
 				continue
 			}
-			events, err := h.eventsPort.ListKnowledgeEventsSince(ctx, lastSeq, 50)
+			events, err := h.eventsForUserPort.ListKnowledgeEventsSinceForUser(ctx, user.UserID, lastSeq, 50)
 			if err != nil {
 				consecutiveErrors++
 				h.logger.ErrorContext(ctx, "stream: failed to fetch events", "error", err, "consecutive_errors", consecutiveErrors)
@@ -740,6 +744,25 @@ func convertHomeItemToProto(item domain.KnowledgeHomeItem) *knowledgehomev1.Know
 		if item.SupersededAt != nil {
 			info.SupersededAt = item.SupersededAt.Format(time.RFC3339)
 		}
+		// Parse previous_ref_json for detail fields
+		if item.PreviousRefJSON != "" {
+			var prevRef struct {
+				PreviousSummaryExcerpt string   `json:"previous_summary_excerpt"`
+				PreviousTags           []string `json:"previous_tags"`
+				PreviousWhyCodes       []string `json:"previous_why_codes"`
+			}
+			if json.Unmarshal([]byte(item.PreviousRefJSON), &prevRef) == nil {
+				if prevRef.PreviousSummaryExcerpt != "" {
+					info.PreviousSummaryExcerpt = &prevRef.PreviousSummaryExcerpt
+				}
+				if len(prevRef.PreviousTags) > 0 {
+					info.PreviousTags = prevRef.PreviousTags
+				}
+				if len(prevRef.PreviousWhyCodes) > 0 {
+					info.PreviousWhyCodes = prevRef.PreviousWhyCodes
+				}
+			}
+		}
 		protoItem.SupersedeInfo = info
 	}
 
@@ -814,7 +837,8 @@ func mapToCanonicalStreamType(eventType string) string {
 		domain.EventTagSetVersionCreated,
 		domain.EventSummarySuperseded,
 		domain.EventTagSetSuperseded,
-		domain.EventHomeItemSuperseded:
+		domain.EventHomeItemSuperseded,
+		domain.EventReasonMerged:
 		return "item_updated"
 	default:
 		// System/user interaction events trigger digest re-fetch only

@@ -65,7 +65,10 @@ const (
 
 // Supersede state constants.
 const (
-	SupersedeSummaryUpdated = "summary_updated"
-	SupersedeTagsUpdated    = "tags_updated"
-	SupersedeBothUpdated    = "both_updated"
+	SupersedeSummaryUpdated  = "summary_updated"
+	SupersedeTagsUpdated     = "tags_updated"
+	SupersedeReasonUpdated   = "reason_updated"
+	SupersedeMultipleUpdated = "multiple_updated"
+	// Deprecated: use SupersedeMultipleUpdated instead.
+	SupersedeBothUpdated = "both_updated"
 )

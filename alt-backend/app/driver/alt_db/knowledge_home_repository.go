@@ -30,7 +30,8 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 	query.WriteString(`SELECT khi.user_id, khi.tenant_id, khi.item_key, khi.item_type, khi.primary_ref_id,
 		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,
 		khi.freshness_at, khi.published_at, khi.last_interacted_at, khi.generated_at, khi.updated_at,
-		khi.summary_state, COALESCE(art.url, '') AS link
+		khi.summary_state, COALESCE(art.url, '') AS link,
+		khi.supersede_state, khi.superseded_at, khi.previous_ref_json
 		FROM knowledge_home_items khi
 		LEFT JOIN articles art ON khi.primary_ref_id = art.id AND art.deleted_at IS NULL
 		WHERE khi.user_id = $1`)
@@ -93,17 +94,25 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 	for rows.Next() {
 		var item domain.KnowledgeHomeItem
 		var tagsJSON, whyJSON []byte
+		var supersedeState, previousRefJSON *string
 		err := rows.Scan(
 			&item.UserID, &item.TenantID, &item.ItemKey, &item.ItemType, &item.PrimaryRefID,
 			&item.Title, &item.SummaryExcerpt, &tagsJSON, &whyJSON, &item.Score,
 			&item.FreshnessAt, &item.PublishedAt, &item.LastInteractedAt, &item.GeneratedAt, &item.UpdatedAt,
 			&item.SummaryState, &item.Link,
+			&supersedeState, &item.SupersededAt, &previousRefJSON,
 		)
 		if err != nil {
 			return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems scan: %w", err)
 		}
 		_ = json.Unmarshal(tagsJSON, &item.Tags)
 		_ = json.Unmarshal(whyJSON, &item.WhyReasons)
+		if supersedeState != nil {
+			item.SupersedeState = *supersedeState
+		}
+		if previousRefJSON != nil {
+			item.PreviousRefJSON = *previousRefJSON
+		}
 		items = append(items, item)
 	}
 
@@ -146,12 +155,23 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 	tagsJSON, _ := json.Marshal(item.Tags)
 	whyJSON, _ := json.Marshal(item.WhyReasons)
 
+	// Convert supersede fields to nullable pointers for SQL
+	var supersedeState *string
+	if item.SupersedeState != "" {
+		supersedeState = &item.SupersedeState
+	}
+	var previousRefJSON *string
+	if item.PreviousRefJSON != "" {
+		previousRefJSON = &item.PreviousRefJSON
+	}
+
 	query := `INSERT INTO knowledge_home_items
 		(user_id, tenant_id, item_key, item_type, primary_ref_id,
 		 title, summary_excerpt, tags_json, why_json, score,
 		 freshness_at, published_at, last_interacted_at, generated_at, updated_at,
-		 projection_version, summary_state)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		 projection_version, summary_state,
+		 supersede_state, superseded_at, previous_ref_json)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		ON CONFLICT (user_id, item_key) DO UPDATE SET
 		 title = CASE WHEN EXCLUDED.title != '' THEN EXCLUDED.title ELSE knowledge_home_items.title END,
 		 summary_excerpt = CASE WHEN EXCLUDED.summary_excerpt != '' THEN EXCLUDED.summary_excerpt ELSE knowledge_home_items.summary_excerpt END,
@@ -179,16 +199,41 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 		 last_interacted_at = COALESCE(EXCLUDED.last_interacted_at, knowledge_home_items.last_interacted_at),
 		 updated_at = EXCLUDED.updated_at,
 		 projection_version = EXCLUDED.projection_version,
-		 summary_state = CASE WHEN EXCLUDED.summary_state = 'ready' THEN 'ready' WHEN EXCLUDED.summary_state != 'missing' THEN EXCLUDED.summary_state ELSE knowledge_home_items.summary_state END`
+		 summary_state = CASE WHEN EXCLUDED.summary_state = 'ready' THEN 'ready' WHEN EXCLUDED.summary_state != 'missing' THEN EXCLUDED.summary_state ELSE knowledge_home_items.summary_state END,
+		 supersede_state = COALESCE(EXCLUDED.supersede_state, knowledge_home_items.supersede_state),
+		 superseded_at = COALESCE(EXCLUDED.superseded_at, knowledge_home_items.superseded_at),
+		 previous_ref_json = CASE
+			 WHEN EXCLUDED.previous_ref_json IS NOT NULL THEN COALESCE(knowledge_home_items.previous_ref_json, '{}'::jsonb) || EXCLUDED.previous_ref_json
+			 ELSE knowledge_home_items.previous_ref_json
+		 END`
 
 	_, err := r.pool.Exec(ctx, query,
 		item.UserID, item.TenantID, item.ItemKey, item.ItemType, item.PrimaryRefID,
 		item.Title, item.SummaryExcerpt, string(tagsJSON), string(whyJSON), item.Score,
 		item.FreshnessAt, item.PublishedAt, item.LastInteractedAt, item.GeneratedAt, item.UpdatedAt,
 		item.ProjectionVersion, item.SummaryState,
+		supersedeState, item.SupersededAt, previousRefJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("UpsertKnowledgeHomeItem: %w", err)
+	}
+
+	return nil
+}
+
+// ClearSupersedeState clears the supersede state for a specific item.
+// Idempotent: no-op if supersede_state is already NULL.
+func (r *AltDBRepository) ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string) error {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.ClearSupersedeState")
+	defer span.End()
+
+	query := `UPDATE knowledge_home_items
+		SET supersede_state = NULL, superseded_at = NULL, previous_ref_json = NULL
+		WHERE user_id = $1 AND item_key = $2 AND supersede_state IS NOT NULL`
+
+	_, err := r.pool.Exec(ctx, query, userID, itemKey)
+	if err != nil {
+		return fmt.Errorf("ClearSupersedeState: %w", err)
 	}
 
 	return nil

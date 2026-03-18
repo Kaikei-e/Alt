@@ -34,3 +34,11 @@ func (g *Gateway) UpsertKnowledgeHomeItem(ctx context.Context, item domain.Knowl
 	}
 	return g.repo.UpsertKnowledgeHomeItem(ctx, item)
 }
+
+// ClearSupersedeState implements knowledge_home_port.ClearSupersedeStatePort.
+func (g *Gateway) ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string) error {
+	if g.repo == nil {
+		return fmt.Errorf("ClearSupersedeState: database connection not available")
+	}
+	return g.repo.ClearSupersedeState(ctx, userID, itemKey)
+}

@@ -5,6 +5,8 @@ import (
 	"alt/driver/alt_db"
 	"context"
 	"fmt"
+
+	"github.com/google/uuid"
 )
 
 // Gateway implements knowledge event port interfaces using AltDBRepository.
@@ -31,4 +33,12 @@ func (g *Gateway) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, 
 		return nil, fmt.Errorf("ListKnowledgeEventsSince: database connection not available")
 	}
 	return g.repo.ListKnowledgeEventsSince(ctx, afterSeq, limit)
+}
+
+// ListKnowledgeEventsSinceForUser implements knowledge_event_port.ListKnowledgeEventsForUserPort.
+func (g *Gateway) ListKnowledgeEventsSinceForUser(ctx context.Context, userID uuid.UUID, afterSeq int64, limit int) ([]domain.KnowledgeEvent, error) {
+	if g.repo == nil {
+		return nil, fmt.Errorf("ListKnowledgeEventsSinceForUser: database connection not available")
+	}
+	return g.repo.ListKnowledgeEventsSinceForUser(ctx, userID, afterSeq, limit)
 }

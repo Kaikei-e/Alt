@@ -22,6 +22,7 @@ const (
 	EventSummarySuperseded     = "SummarySuperseded"
 	EventTagSetSuperseded      = "TagSetSuperseded"
 	EventHomeItemSuperseded    = "HomeItemSuperseded"
+	EventReasonMerged          = "ReasonMerged"
 )
 
 // Actor type constants.

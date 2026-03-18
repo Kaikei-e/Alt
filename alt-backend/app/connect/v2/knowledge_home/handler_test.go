@@ -123,6 +123,7 @@ func setupHandlerWithFlags(flagPort *mockFeatureFlagPort) (*Handler, *mockHomeIt
 		nil, nil, nil, // recall: rail, snooze, dismiss
 		nil, nil, nil, nil, nil, // lens: create, update, list, select, archive
 		nil, // eventsPort
+		nil, // eventsForUserPort
 		flagPort, slog.Default(),
 	)
 	return handler, homePort, digestPort
@@ -364,6 +365,77 @@ func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
 	})
 }
 
+func TestConvertHomeItemToProto_SupersedeInfo(t *testing.T) {
+	t.Run("summary_updated with previous excerpt", func(t *testing.T) {
+		now := time.Now()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:         "article:test-1",
+			ItemType:        "article",
+			Title:           "Test",
+			Score:           0.9,
+			SupersedeState:  domain.SupersedeSummaryUpdated,
+			SupersededAt:    &now,
+			PreviousRefJSON: `{"previous_summary_excerpt":"Old summary text"}`,
+			WhyReasons:      []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		require.NotNil(t, proto.SupersedeInfo)
+		assert.Equal(t, "summary_updated", proto.SupersedeInfo.State)
+		require.NotNil(t, proto.SupersedeInfo.PreviousSummaryExcerpt)
+		assert.Equal(t, "Old summary text", *proto.SupersedeInfo.PreviousSummaryExcerpt)
+		assert.Empty(t, proto.SupersedeInfo.PreviousTags)
+		assert.Empty(t, proto.SupersedeInfo.PreviousWhyCodes)
+	})
+
+	t.Run("tags_updated with previous tags", func(t *testing.T) {
+		now := time.Now()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:         "article:test-1",
+			ItemType:        "article",
+			Title:           "Test",
+			Score:           0.9,
+			SupersedeState:  domain.SupersedeTagsUpdated,
+			SupersededAt:    &now,
+			PreviousRefJSON: `{"previous_tags":["go","rust"]}`,
+			WhyReasons:      []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		require.NotNil(t, proto.SupersedeInfo)
+		assert.Equal(t, "tags_updated", proto.SupersedeInfo.State)
+		assert.Equal(t, []string{"go", "rust"}, proto.SupersedeInfo.PreviousTags)
+	})
+
+	t.Run("reason_updated with previous why codes", func(t *testing.T) {
+		now := time.Now()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:         "article:test-1",
+			ItemType:        "article",
+			Title:           "Test",
+			Score:           0.9,
+			SupersedeState:  domain.SupersedeReasonUpdated,
+			SupersededAt:    &now,
+			PreviousRefJSON: `{"previous_why_codes":["new_unread","tag_hotspot"]}`,
+			WhyReasons:      []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		require.NotNil(t, proto.SupersedeInfo)
+		assert.Equal(t, "reason_updated", proto.SupersedeInfo.State)
+		assert.Equal(t, []string{"new_unread", "tag_hotspot"}, proto.SupersedeInfo.PreviousWhyCodes)
+	})
+
+	t.Run("no supersede state", func(t *testing.T) {
+		item := domain.KnowledgeHomeItem{
+			ItemKey:    "article:test-1",
+			ItemType:   "article",
+			Title:      "Test",
+			Score:      0.9,
+			WhyReasons: []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		assert.Nil(t, proto.SupersedeInfo)
+	})
+}
+
 // mockListEventsPort implements knowledge_event_port.ListKnowledgeEventsPort.
 type mockListEventsPort struct {
 	events []domain.KnowledgeEvent
@@ -391,6 +463,7 @@ func TestMapToCanonicalStreamType(t *testing.T) {
 		{domain.EventHomeItemAsked, "digest_changed"},
 		{domain.EventHomeItemListened, "digest_changed"},
 		{domain.EventRecallSnoozed, "digest_changed"},
+		{domain.EventReasonMerged, "item_updated"},
 		{domain.EventRecallDismissed, "digest_changed"},
 		{"UnknownEventType", "digest_changed"},
 	}
@@ -529,6 +602,7 @@ func newStreamTestHandler(flagPort *mockFeatureFlagPort, eventsPort *mockListEve
 		nil, nil, nil, // recall: rail, snooze, dismiss
 		nil, nil, nil, nil, nil, // lens: create, update, list, select, archive
 		eventsPort,
+		nil, // eventsForUserPort
 		flagPort, slog.Default(),
 	)
 	return handler
