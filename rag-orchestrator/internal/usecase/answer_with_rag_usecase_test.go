@@ -104,7 +104,9 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
 		return len(msgs) == 1 && msgs[0].Role == "user" &&
 			contains(msgs[0].Content, "リサーチアナリスト") &&
-			contains(msgs[0].Content, "500文字以上")
+			contains(msgs[0].Content, "500文字以上") &&
+			contains(msgs[0].Content, "結論を最初に") &&
+			contains(msgs[0].Content, "引用は[番号]形式")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})

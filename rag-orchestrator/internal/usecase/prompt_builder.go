@@ -61,12 +61,13 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 	sb.WriteString("ユーザーの質問に対して包括的で詳細な回答を生成してください。\n\n")
 
 	sb.WriteString("## 回答の品質基準\n")
+	sb.WriteString("- 結論を最初に述べ、その後で根拠と詳細を説明すること\n")
 	sb.WriteString("- 回答は500文字以上で、具体的な事実・データ・事例を含むこと\n")
 	sb.WriteString("- コンテキストの情報を最大限に活用し、複数のソースを統合すること\n")
 	sb.WriteString("- ソース引用は[番号]形式（例: [1], [2]）で必ず付与すること\n\n")
 
 	sb.WriteString("## 回答構造\n")
-	sb.WriteString("1. **概要**: トピックの全体像を2-3文で説明\n")
+	sb.WriteString("1. **概要**: 結論と全体像を2-3文で説明\n")
 	sb.WriteString("2. **詳細**: 具体的な事実・データ・事例を含む本文（最も重要なセクション）\n")
 	sb.WriteString("   - 背景情報と現状\n")
 	sb.WriteString("   - 具体的な内容・データ\n")

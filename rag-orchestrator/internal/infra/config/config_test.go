@@ -211,7 +211,7 @@ func TestLoad_RAGDefaultMaxTokens_UpdatedDefault(t *testing.T) {
 
 	cfg := Load()
 
-	assert.Equal(t, 6144, cfg.RAG.MaxTokens, "RAG default max tokens should default to 6144")
+	assert.Equal(t, 2048, cfg.RAG.MaxTokens, "RAG default max tokens should default to 2048")
 }
 
 func TestLoad_AugurKnowledgeModel_Default(t *testing.T) {
@@ -219,7 +219,7 @@ func TestLoad_AugurKnowledgeModel_Default(t *testing.T) {
 
 	cfg := Load()
 
-	assert.Equal(t, "gemma3-12b-rag", cfg.Augur.Model, "AUGUR_KNOWLEDGE_MODEL should default to gemma3-12b-rag")
+	assert.Equal(t, "gemma3-4b-rag", cfg.Augur.Model, "AUGUR_KNOWLEDGE_MODEL should default to gemma3-4b-rag")
 }
 
 func TestLoad_AugurKnowledgeModel_FromEnv(t *testing.T) {

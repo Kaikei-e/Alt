@@ -205,7 +205,7 @@ func Load() *Config {
 		},
 		Augur: AugurConfig{
 			URL:     getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://augur-external:11435"),
-			Model:   getEnv("AUGUR_KNOWLEDGE_MODEL", "gemma3-12b-rag"),
+			Model:   getEnv("AUGUR_KNOWLEDGE_MODEL", "gemma3-4b-rag"),
 			Timeout: getEnvInt("OLLAMA_TIMEOUT", 300),
 		},
 		Search: SearchConfig{
@@ -222,7 +222,7 @@ func Load() *Config {
 			QuotaExpanded:                    getEnvInt("RAG_QUOTA_EXPANDED", defaultRAGQuotaExpanded),
 			RRFK:                             getEnvFloat64("RAG_RRF_K", defaultRAGRRFK),
 			MaxChunks:                        getEnvInt("RAG_DEFAULT_MAX_CHUNKS", 7),
-			MaxTokens:                        getEnvInt("RAG_DEFAULT_MAX_TOKENS", 6144),
+			MaxTokens:                        getEnvInt("RAG_DEFAULT_MAX_TOKENS", 2048),
 			MorningLetterMaxTokens:           getEnvInt("MORNING_LETTER_MAX_TOKENS", 4096),
 			MaxPromptTokens:                  getEnvInt("RAG_MAX_PROMPT_TOKENS", 6000),
 			Locale:                           getEnv("RAG_DEFAULT_LOCALE", "ja"),

@@ -13,8 +13,8 @@ import (
 
 func TestBuildOptions_GemmaModel(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-12b-rag", 100, testLogger)
-	opts := gen.buildOptions(4096)
+	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-4b-rag", 100, testLogger)
+	opts := gen.buildOptions(2048)
 
 	if opts["temperature"] != 0.7 {
 		t.Fatalf("expected temperature 0.7, got %v", opts["temperature"])
@@ -31,8 +31,8 @@ func TestBuildOptions_GemmaModel(t *testing.T) {
 	if opts["repeat_penalty"] != 1.15 {
 		t.Fatalf("expected repeat_penalty 1.15, got %v", opts["repeat_penalty"])
 	}
-	if opts["num_predict"] != 4096 {
-		t.Fatalf("expected num_predict 4096, got %v", opts["num_predict"])
+	if opts["num_predict"] != 2048 {
+		t.Fatalf("expected num_predict 2048, got %v", opts["num_predict"])
 	}
 }
 
@@ -51,7 +51,7 @@ func TestBuildOptions_SwallowModel(t *testing.T) {
 
 func TestGetThinkParam_GemmaReturnsNil(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-12b-rag", 100, testLogger)
+	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-4b-rag", 100, testLogger)
 	result := gen.getThinkParam(4096)
 
 	if result != nil {
