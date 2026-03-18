@@ -150,7 +150,7 @@ onMount(async () => {
 			/>
 		</div>
 		<div class="w-80 flex-shrink-0">
-			{#if recallEnabled && recall.candidates.length > 0}
+			{#if recallEnabled}
 				<RecallRail
 					candidates={recall.candidates}
 					onSnooze={(key: string) => recall.snooze(key)}

@@ -93,7 +93,7 @@ function handleAction(type: string) {
 				{/each}
 				{#if remainingTagCount > 0}
 					<span class="px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
-						+{remainingTagCount}
+						+{remainingTagCount} tags
 					</span>
 				{/if}
 			</div>
