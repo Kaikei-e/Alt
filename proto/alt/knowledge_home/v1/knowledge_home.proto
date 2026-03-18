@@ -62,6 +62,8 @@ message GetKnowledgeHomeResponse {
   repeated FeatureFlagStatus feature_flags = 7;
   // Recall candidates (embedded for initial load optimization)
   repeated RecallCandidate recall_candidates = 8;
+  // Service quality: "full", "degraded", "fallback" (Phase 5 3-tier mode)
+  optional string service_quality = 9;
 }
 
 // FeatureFlagStatus represents the state of a feature flag.
@@ -210,6 +212,8 @@ message StreamKnowledgeHomeUpdatesResponse {
   optional RecallCandidate recall_change = 4;
   // When the event occurred (RFC3339)
   string occurred_at = 5;
+  // Reconnect hint in milliseconds (set on terminal events like stream_expired)
+  optional int32 reconnect_after_ms = 6;
 }
 
 // StreamRecallRailUpdatesResponse is a real-time update for the recall rail.

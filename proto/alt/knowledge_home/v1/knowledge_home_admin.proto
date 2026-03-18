@@ -19,6 +19,28 @@ service KnowledgeHomeAdminService {
   rpc GetProjectionHealth(GetProjectionHealthRequest) returns (GetProjectionHealthResponse);
   // GetFeatureFlags returns the current feature flag configuration.
   rpc GetFeatureFlags(GetFeatureFlagsRequest) returns (GetFeatureFlagsResponse);
+
+  // Phase 5: Reproject operations
+  // StartReproject initiates a new projection re-build run.
+  rpc StartReproject(StartReprojectRequest) returns (StartReprojectResponse);
+  // GetReprojectStatus returns the status of a reproject run.
+  rpc GetReprojectStatus(GetReprojectStatusRequest) returns (GetReprojectStatusResponse);
+  // ListReprojectRuns returns all reproject runs.
+  rpc ListReprojectRuns(ListReprojectRunsRequest) returns (ListReprojectRunsResponse);
+  // CompareReproject compares two projection versions from a reproject run.
+  rpc CompareReproject(CompareReprojectRequest) returns (CompareReprojectResponse);
+  // SwapReproject swaps the active projection version.
+  rpc SwapReproject(SwapReprojectRequest) returns (SwapReprojectResponse);
+  // RollbackReproject rolls back to the previous projection version.
+  rpc RollbackReproject(RollbackReprojectRequest) returns (RollbackReprojectResponse);
+
+  // Phase 5: SLO / Health
+  // GetSLOStatus returns current SLO status and error budget.
+  rpc GetSLOStatus(GetSLOStatusRequest) returns (GetSLOStatusResponse);
+
+  // Phase 5: Audit
+  // RunProjectionAudit samples items and verifies projection correctness.
+  rpc RunProjectionAudit(RunProjectionAuditRequest) returns (RunProjectionAuditResponse);
 }
 
 // TriggerBackfillRequest starts a backfill job.
@@ -94,4 +116,172 @@ message BackfillJob {
   string created_at = 7;
   string started_at = 8;
   string completed_at = 9;
+}
+
+// --- Phase 5: Reproject messages ---
+
+// StartReprojectRequest initiates a projection re-build.
+message StartReprojectRequest {
+  // Mode: dry_run, user_subset, time_range, full
+  string mode = 1;
+  // Target projection version to build
+  string to_version = 2;
+  // Source projection version
+  string from_version = 3;
+  // Optional time range (only for time_range mode)
+  optional string range_start = 4;
+  optional string range_end = 5;
+}
+
+// StartReprojectResponse returns the created reproject run.
+message StartReprojectResponse {
+  ReprojectRun run = 1;
+}
+
+// GetReprojectStatusRequest queries a reproject run by ID.
+message GetReprojectStatusRequest {
+  string reproject_run_id = 1;
+}
+
+// GetReprojectStatusResponse returns the reproject run status.
+message GetReprojectStatusResponse {
+  ReprojectRun run = 1;
+}
+
+// ListReprojectRunsRequest lists all reproject runs.
+message ListReprojectRunsRequest {
+  // Optional status filter
+  optional string status_filter = 1;
+  int32 limit = 2;
+}
+
+// ListReprojectRunsResponse returns reproject runs.
+message ListReprojectRunsResponse {
+  repeated ReprojectRun runs = 1;
+}
+
+// CompareReprojectRequest compares projection versions.
+message CompareReprojectRequest {
+  string reproject_run_id = 1;
+}
+
+// CompareReprojectResponse returns a diff summary.
+message CompareReprojectResponse {
+  ReprojectDiffSummary diff = 1;
+}
+
+// SwapReprojectRequest swaps the active projection version.
+message SwapReprojectRequest {
+  string reproject_run_id = 1;
+}
+
+// SwapReprojectResponse is empty on success.
+message SwapReprojectResponse {}
+
+// RollbackReprojectRequest rolls back to the previous version.
+message RollbackReprojectRequest {
+  string reproject_run_id = 1;
+}
+
+// RollbackReprojectResponse is empty on success.
+message RollbackReprojectResponse {}
+
+// ReprojectRun represents a single reproject operation.
+message ReprojectRun {
+  string reproject_run_id = 1;
+  string projection_name = 2;
+  string from_version = 3;
+  string to_version = 4;
+  string initiated_by = 5;
+  string mode = 6;
+  string status = 7;
+  string range_start = 8;
+  string range_end = 9;
+  string stats_json = 10;
+  string diff_summary_json = 11;
+  string created_at = 12;
+  string started_at = 13;
+  string finished_at = 14;
+}
+
+// ReprojectDiffSummary contains comparison metrics between two projection versions.
+message ReprojectDiffSummary {
+  int64 from_item_count = 1;
+  int64 to_item_count = 2;
+  int64 from_empty_count = 3;
+  int64 to_empty_count = 4;
+  double from_avg_score = 5;
+  double to_avg_score = 6;
+  // JSON-encoded why code distribution for each version
+  string from_why_distribution = 7;
+  string to_why_distribution = 8;
+}
+
+// --- Phase 5: SLO messages ---
+
+// GetSLOStatusRequest is empty.
+message GetSLOStatusRequest {}
+
+// GetSLOStatusResponse returns SLO health status.
+message GetSLOStatusResponse {
+  // Overall health: healthy, at_risk, breaching
+  string overall_health = 1;
+  // Individual SLI statuses
+  repeated SLIStatus slis = 2;
+  // Error budget window in days
+  int32 error_budget_window_days = 3;
+  // Active alert summaries
+  repeated AlertSummary active_alerts = 4;
+  // When this status was computed (RFC3339)
+  string computed_at = 5;
+}
+
+// SLIStatus represents the status of a single SLI.
+message SLIStatus {
+  // SLI name: availability, freshness, action_durability, stream_continuity, correctness_proxy
+  string name = 1;
+  // Current value (e.g., 99.7)
+  double current_value = 2;
+  // Target value (e.g., 99.5)
+  double target_value = 3;
+  // Unit (e.g., "%", "seconds")
+  string unit = 4;
+  // Status: meeting, burning, breached
+  string status = 5;
+  // Error budget consumed percentage (0-100)
+  double error_budget_consumed_pct = 6;
+}
+
+// AlertSummary represents an active alert.
+message AlertSummary {
+  string alert_name = 1;
+  string severity = 2;
+  string status = 3;
+  string fired_at = 4;
+  string description = 5;
+}
+
+// --- Phase 5: Audit messages ---
+
+// RunProjectionAuditRequest runs a projection audit.
+message RunProjectionAuditRequest {
+  string projection_name = 1;
+  string projection_version = 2;
+  int32 sample_size = 3;
+}
+
+// RunProjectionAuditResponse returns audit results.
+message RunProjectionAuditResponse {
+  ProjectionAudit audit = 1;
+}
+
+// ProjectionAudit represents an audit result.
+message ProjectionAudit {
+  string audit_id = 1;
+  string projection_name = 2;
+  string projection_version = 3;
+  string checked_at = 4;
+  int32 sample_size = 5;
+  int32 mismatch_count = 6;
+  string details_json = 7;
 }
