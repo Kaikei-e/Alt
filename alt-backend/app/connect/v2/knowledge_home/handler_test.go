@@ -28,7 +28,7 @@ type mockHomeItemsPort struct {
 	err        error
 }
 
-func (m *mockHomeItemsPort) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ string, _ int) ([]domain.KnowledgeHomeItem, string, bool, error) {
+func (m *mockHomeItemsPort) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ string, _ int, _ *domain.KnowledgeHomeLensFilter) ([]domain.KnowledgeHomeItem, string, bool, error) {
 	return m.items, m.nextCursor, m.hasMore, m.err
 }
 
@@ -114,7 +114,7 @@ func setupHandlerWithFlags(flagPort *mockFeatureFlagPort) (*Handler, *mockHomeIt
 	userEventPort := &mockUserEventPort{}
 	knowledgeEventPort := &mockKnowledgeEventPort{}
 
-	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort)
+	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil)
 	trackSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(userEventPort, flagPort)
 	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, flagPort)
 

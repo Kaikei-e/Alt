@@ -34,20 +34,20 @@ import (
 
 // Handler implements KnowledgeHomeServiceHandler.
 type Handler struct {
-	getHomeUsecase      *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
-	trackSeenUsecase    *track_home_seen_usecase.TrackHomeSeenUsecase
-	trackActionUsecase  *track_home_action_usecase.TrackHomeActionUsecase
-	recallRailUsecase   *recall_rail_usecase.RecallRailUsecase
-	recallSnoozeUsecase *recall_snooze_usecase.RecallSnoozeUsecase
+	getHomeUsecase       *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
+	trackSeenUsecase     *track_home_seen_usecase.TrackHomeSeenUsecase
+	trackActionUsecase   *track_home_action_usecase.TrackHomeActionUsecase
+	recallRailUsecase    *recall_rail_usecase.RecallRailUsecase
+	recallSnoozeUsecase  *recall_snooze_usecase.RecallSnoozeUsecase
 	recallDismissUsecase *recall_dismiss_usecase.RecallDismissUsecase
-	createLensUsecase   *create_lens_usecase.CreateLensUsecase
-	updateLensUsecase   *update_lens_usecase.UpdateLensUsecase
-	listLensesUsecase   *list_lenses_usecase.ListLensesUsecase
-	selectLensUsecase   *select_lens_usecase.SelectLensUsecase
-	archiveLensUsecase  *archive_lens_usecase.ArchiveLensUsecase
-	eventsPort          knowledge_event_port.ListKnowledgeEventsPort
-	featureFlagPort     feature_flag_port.FeatureFlagPort
-	logger              *slog.Logger
+	createLensUsecase    *create_lens_usecase.CreateLensUsecase
+	updateLensUsecase    *update_lens_usecase.UpdateLensUsecase
+	listLensesUsecase    *list_lenses_usecase.ListLensesUsecase
+	selectLensUsecase    *select_lens_usecase.SelectLensUsecase
+	archiveLensUsecase   *archive_lens_usecase.ArchiveLensUsecase
+	eventsPort           knowledge_event_port.ListKnowledgeEventsPort
+	featureFlagPort      feature_flag_port.FeatureFlagPort
+	logger               *slog.Logger
 }
 
 // Compile-time interface verification.
@@ -127,7 +127,16 @@ func (h *Handler) GetKnowledgeHome(
 		date = parsed
 	}
 
-	result, err := h.getHomeUsecase.Execute(ctx, user.UserID, cursor, limit, date)
+	var lensID *uuid.UUID
+	if req.Msg.LensId != nil && *req.Msg.LensId != "" {
+		parsedLensID, err := parseUUID(*req.Msg.LensId, "lens_id")
+		if err != nil {
+			return nil, err
+		}
+		lensID = &parsedLensID
+	}
+
+	result, err := h.getHomeUsecase.Execute(ctx, user.UserID, cursor, limit, date, lensID)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetKnowledgeHome")
 	}
@@ -373,6 +382,7 @@ func (h *Handler) CreateLens(
 	if req.Msg.Version != nil {
 		input.QueryText = req.Msg.Version.QueryText
 		input.TagIDs = req.Msg.Version.TagIds
+		input.FeedIDs = req.Msg.Version.FeedIds
 		input.TimeWindow = req.Msg.Version.TimeWindow
 		input.IncludeRecap = req.Msg.Version.IncludeRecap
 		input.IncludePulse = req.Msg.Version.IncludePulse
@@ -417,6 +427,7 @@ func (h *Handler) UpdateLens(
 	if req.Msg.Version != nil {
 		input.QueryText = req.Msg.Version.QueryText
 		input.TagIDs = req.Msg.Version.TagIds
+		input.FeedIDs = req.Msg.Version.FeedIds
 		input.TimeWindow = req.Msg.Version.TimeWindow
 		input.IncludeRecap = req.Msg.Version.IncludeRecap
 		input.IncludePulse = req.Msg.Version.IncludePulse
@@ -478,19 +489,22 @@ func (h *Handler) ListLenses(
 			fmt.Errorf("lens feature is not enabled for this user"))
 	}
 
-	lenses, err := h.listLensesUsecase.Execute(ctx, user.UserID)
+	result, err := h.listLensesUsecase.Execute(ctx, user.UserID)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListLenses")
 	}
 
-	protoLenses := make([]*knowledgehomev1.Lens, 0, len(lenses))
-	for _, l := range lenses {
+	protoLenses := make([]*knowledgehomev1.Lens, 0, len(result.Lenses))
+	for _, l := range result.Lenses {
 		protoLenses = append(protoLenses, convertLensToProto(l, l.CurrentVersion))
 	}
 
-	return connect.NewResponse(&knowledgehomev1.ListLensesResponse{
-		Lenses: protoLenses,
-	}), nil
+	resp := &knowledgehomev1.ListLensesResponse{Lenses: protoLenses}
+	if result.ActiveLensID != nil {
+		activeLensID := result.ActiveLensID.String()
+		resp.ActiveLensId = &activeLensID
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // SelectLens sets the active lens for the user.
@@ -508,9 +522,13 @@ func (h *Handler) SelectLens(
 			fmt.Errorf("lens feature is not enabled for this user"))
 	}
 
-	lensID, err := parseUUID(req.Msg.LensId, "lens_id")
-	if err != nil {
-		return nil, err
+	lensID := uuid.Nil
+	if req.Msg.LensId != "" {
+		parsedLensID, err := parseUUID(req.Msg.LensId, "lens_id")
+		if err != nil {
+			return nil, err
+		}
+		lensID = parsedLensID
 	}
 
 	if err := h.selectLensUsecase.Execute(ctx, user.UserID, lensID); err != nil {
@@ -791,6 +809,7 @@ func convertLensVersionToProto(v domain.KnowledgeLensVersion) *knowledgehomev1.L
 		VersionId:    v.LensVersionID.String(),
 		QueryText:    v.QueryText,
 		TagIds:       v.TagIDs,
+		FeedIds:      v.FeedIDs,
 		TimeWindow:   v.TimeWindow,
 		IncludeRecap: v.IncludeRecap,
 		IncludePulse: v.IncludePulse,
