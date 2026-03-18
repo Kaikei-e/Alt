@@ -11,6 +11,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+func jsonbStringOrEmptyObject(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return "{}"
+	}
+	return string(raw)
+}
+
 // CreateReprojectRun inserts a new reproject run.
 // JSONB columns are written as string(jsonBytes) for PgBouncer compatibility (ADR-417).
 func (r *AltDBRepository) CreateReprojectRun(ctx context.Context, run *domain.ReprojectRun) error {
@@ -26,7 +33,9 @@ func (r *AltDBRepository) CreateReprojectRun(ctx context.Context, run *domain.Re
 	_, err := r.pool.Exec(ctx, query,
 		run.ReprojectRunID, run.ProjectionName, run.FromVersion, run.ToVersion, run.InitiatedBy,
 		run.Mode, run.Status, run.RangeStart, run.RangeEnd,
-		string(run.CheckpointPayload), string(run.StatsJSON), string(run.DiffSummaryJSON),
+		jsonbStringOrEmptyObject(run.CheckpointPayload),
+		jsonbStringOrEmptyObject(run.StatsJSON),
+		jsonbStringOrEmptyObject(run.DiffSummaryJSON),
 		run.CreatedAt, run.StartedAt, run.FinishedAt,
 	)
 	if err != nil {
@@ -71,7 +80,8 @@ func (r *AltDBRepository) UpdateReprojectRun(ctx context.Context, run *domain.Re
 	_, err := r.pool.Exec(ctx, query,
 		run.ReprojectRunID,
 		run.Status,
-		string(run.StatsJSON), string(run.DiffSummaryJSON),
+		jsonbStringOrEmptyObject(run.StatsJSON),
+		jsonbStringOrEmptyObject(run.DiffSummaryJSON),
 		run.StartedAt, run.FinishedAt,
 	)
 	if err != nil {

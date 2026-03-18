@@ -49,15 +49,15 @@ describe("Knowledge Home API Contract", () => {
 				hasMore: true,
 				degradedMode: false,
 				generatedAt: "2026-03-18T12:00:00Z",
-				featureFlags: [
-					{ name: "enable_knowledge_home_page", enabled: true },
-				],
+				featureFlags: [{ name: "enable_knowledge_home_page", enabled: true }],
 				serviceQuality: "full",
 			});
 
 			expect(response.todayDigest).toBeDefined();
 			expect(response.todayDigest?.digestFreshness).toBe("fresh");
-			expect(response.todayDigest?.lastProjectedAt).toBe("2026-03-18T12:00:00Z");
+			expect(response.todayDigest?.lastProjectedAt).toBe(
+				"2026-03-18T12:00:00Z",
+			);
 			expect(response.items).toHaveLength(1);
 			expect(response.items[0].itemKey).toBe("article:123");
 			expect(response.generatedAt).toBeTruthy();
@@ -125,10 +125,7 @@ describe("Knowledge Home API Contract", () => {
 			});
 
 			const binary = toBinary(GetKnowledgeHomeResponseSchema, original);
-			const deserialized = fromBinary(
-				GetKnowledgeHomeResponseSchema,
-				binary,
-			);
+			const deserialized = fromBinary(GetKnowledgeHomeResponseSchema, binary);
 
 			expect(deserialized.items).toHaveLength(1);
 			expect(deserialized.items[0].title).toBe("Round-trip Test");
@@ -168,11 +165,7 @@ describe("Knowledge Home API Contract", () => {
 		});
 
 		it("validates supersede states", () => {
-			const states = [
-				"summary_updated",
-				"tags_updated",
-				"both_updated",
-			];
+			const states = ["summary_updated", "tags_updated", "both_updated"];
 			for (const state of states) {
 				const info = create(SupersedeInfoSchema, {
 					state,
@@ -194,13 +187,10 @@ describe("Knowledge Home API Contract", () => {
 				"stream_expired",
 			];
 			for (const eventType of eventTypes) {
-				const event = create(
-					StreamKnowledgeHomeUpdatesResponseSchema,
-					{
-						eventType,
-						occurredAt: "2026-03-18T12:00:00Z",
-					},
-				);
+				const event = create(StreamKnowledgeHomeUpdatesResponseSchema, {
+					eventType,
+					occurredAt: "2026-03-18T12:00:00Z",
+				});
 				expect(event.eventType).toBe(eventType);
 			}
 		});
@@ -208,40 +198,31 @@ describe("Knowledge Home API Contract", () => {
 		it("allows compatibility-only stream event types during transition", () => {
 			const compatibilityEventTypes = ["heartbeat", "fallback_to_unary"];
 			for (const eventType of compatibilityEventTypes) {
-				const event = create(
-					StreamKnowledgeHomeUpdatesResponseSchema,
-					{
-						eventType,
-						occurredAt: "2026-03-18T12:00:00Z",
-					},
-				);
+				const event = create(StreamKnowledgeHomeUpdatesResponseSchema, {
+					eventType,
+					occurredAt: "2026-03-18T12:00:00Z",
+				});
 				expect(event.eventType).toBe(eventType);
 			}
 		});
 
 		it("includes reconnect_after_ms for terminal events", () => {
-			const event = create(
-				StreamKnowledgeHomeUpdatesResponseSchema,
-				{
-					eventType: "stream_expired",
-					occurredAt: "2026-03-18T12:00:00Z",
-					reconnectAfterMs: 5000,
-				},
-			);
+			const event = create(StreamKnowledgeHomeUpdatesResponseSchema, {
+				eventType: "stream_expired",
+				occurredAt: "2026-03-18T12:00:00Z",
+				reconnectAfterMs: 5000,
+			});
 			expect(event.reconnectAfterMs).toBe(5000);
 		});
 
 		it("item_added event carries minimal item with item_key", () => {
-			const event = create(
-				StreamKnowledgeHomeUpdatesResponseSchema,
-				{
-					eventType: "item_added",
-					occurredAt: "2026-03-18T12:00:00Z",
-					item: {
-						itemKey: "article:abc-123",
-					},
+			const event = create(StreamKnowledgeHomeUpdatesResponseSchema, {
+				eventType: "item_added",
+				occurredAt: "2026-03-18T12:00:00Z",
+				item: {
+					itemKey: "article:abc-123",
 				},
-			);
+			});
 			expect(event.eventType).toBe("item_added");
 			expect(event.item).toBeDefined();
 			expect(event.item?.itemKey).toBe("article:abc-123");
@@ -250,42 +231,33 @@ describe("Knowledge Home API Contract", () => {
 		});
 
 		it("item_updated event carries minimal item with item_key", () => {
-			const event = create(
-				StreamKnowledgeHomeUpdatesResponseSchema,
-				{
-					eventType: "item_updated",
-					occurredAt: "2026-03-18T12:00:00Z",
-					item: {
-						itemKey: "article:def-456",
-					},
+			const event = create(StreamKnowledgeHomeUpdatesResponseSchema, {
+				eventType: "item_updated",
+				occurredAt: "2026-03-18T12:00:00Z",
+				item: {
+					itemKey: "article:def-456",
 				},
-			);
+			});
 			expect(event.eventType).toBe("item_updated");
 			expect(event.item?.itemKey).toBe("article:def-456");
 		});
 
 		it("digest_changed event has no digest_change (trigger-only)", () => {
-			const event = create(
-				StreamKnowledgeHomeUpdatesResponseSchema,
-				{
-					eventType: "digest_changed",
-					occurredAt: "2026-03-18T12:00:00Z",
-				},
-			);
+			const event = create(StreamKnowledgeHomeUpdatesResponseSchema, {
+				eventType: "digest_changed",
+				occurredAt: "2026-03-18T12:00:00Z",
+			});
 			expect(event.eventType).toBe("digest_changed");
 			expect(event.digestChange).toBeUndefined();
 			expect(event.item).toBeUndefined();
 		});
 
 		it("fallback_to_unary includes reconnect_after_ms", () => {
-			const event = create(
-				StreamKnowledgeHomeUpdatesResponseSchema,
-				{
-					eventType: "fallback_to_unary",
-					occurredAt: "2026-03-18T12:00:00Z",
-					reconnectAfterMs: 10000,
-				},
-			);
+			const event = create(StreamKnowledgeHomeUpdatesResponseSchema, {
+				eventType: "fallback_to_unary",
+				occurredAt: "2026-03-18T12:00:00Z",
+				reconnectAfterMs: 10000,
+			});
 			expect(event.eventType).toBe("fallback_to_unary");
 			expect(event.reconnectAfterMs).toBe(10000);
 		});

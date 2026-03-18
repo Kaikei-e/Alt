@@ -326,3 +326,40 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		assert.Equal(t, "", result.Digest.DigestFreshness)
 	})
 }
+
+func TestGetKnowledgeHomeUsecase_Execute_ReturnsCancellationErrors(t *testing.T) {
+	logger.InitLogger()
+
+	userID := uuid.New()
+	now := time.Now()
+
+	t.Run("returns context canceled when item fetch is canceled", func(t *testing.T) {
+		uc := NewGetKnowledgeHomeUsecase(
+			&mockHomeItemsPort{err: context.Canceled},
+			&mockTodayDigestPort{digest: domain.TodayDigest{}},
+			nil,
+			nil,
+			nil,
+		)
+
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.ErrorIs(t, err, context.Canceled)
+		require.Nil(t, result)
+	})
+
+	t.Run("returns deadline exceeded when digest fetch times out", func(t *testing.T) {
+		uc := NewGetKnowledgeHomeUsecase(
+			&mockHomeItemsPort{items: []domain.KnowledgeHomeItem{{ItemKey: "article:1"}}},
+			&mockTodayDigestPort{err: context.DeadlineExceeded},
+			nil,
+			nil,
+			nil,
+		)
+
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.Nil(t, result)
+	})
+}

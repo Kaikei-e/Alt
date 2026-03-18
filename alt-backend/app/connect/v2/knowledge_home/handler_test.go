@@ -72,6 +72,15 @@ func (m *mockFeatureFlagPort) IsEnabled(flagName string, _ uuid.UUID) bool {
 	return m.enabledFlags[flagName]
 }
 
+type mockLatestSeqPort struct {
+	seq int64
+	err error
+}
+
+func (m *mockLatestSeqPort) GetLatestKnowledgeEventSeqForUser(_ context.Context, _ uuid.UUID) (int64, error) {
+	return m.seq, m.err
+}
+
 // testUserContext creates a context with an authenticated user for testing.
 func testUserContext() context.Context {
 	user := &domain.UserContext{
@@ -448,7 +457,7 @@ func (m *mockListEventsPort) ListKnowledgeEventsSince(_ context.Context, _ int64
 
 func TestMapToCanonicalStreamType(t *testing.T) {
 	tests := []struct {
-		domainEvent  string
+		domainEvent   string
 		canonicalType string
 	}{
 		{domain.EventArticleCreated, "item_added"},
@@ -606,6 +615,38 @@ func newStreamTestHandler(flagPort *mockFeatureFlagPort, eventsPort *mockListEve
 		flagPort, slog.Default(),
 	)
 	return handler
+}
+
+func TestHandler_StreamKnowledgeHomeUpdates_InvalidLensID(t *testing.T) {
+	logger.InitLogger()
+	handler := newStreamTestHandler(nil, nil)
+
+	req := connect.NewRequest(&knowledgehomev1.StreamKnowledgeHomeUpdatesRequest{
+		LensId: func() *string {
+			value := "not-a-uuid"
+			return &value
+		}(),
+	})
+
+	err := handler.StreamKnowledgeHomeUpdates(testUserContext(), req, nil)
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
+}
+
+func TestHandler_InitialStreamSeq_UsesLatestKnownSeq(t *testing.T) {
+	logger.InitLogger()
+	handler := &Handler{
+		latestSeqPort: &mockLatestSeqPort{seq: 42},
+		logger:        slog.Default(),
+	}
+
+	seq, err := handler.initialStreamSeq(context.Background(), uuid.New())
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), seq)
 }
 
 func TestHandler_TrackHomeAction_Validation(t *testing.T) {

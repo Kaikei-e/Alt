@@ -42,3 +42,11 @@ func (g *Gateway) ListKnowledgeEventsSinceForUser(ctx context.Context, userID uu
 	}
 	return g.repo.ListKnowledgeEventsSinceForUser(ctx, userID, afterSeq, limit)
 }
+
+// GetLatestKnowledgeEventSeqForUser implements knowledge_event_port.LatestKnowledgeEventSeqForUserPort.
+func (g *Gateway) GetLatestKnowledgeEventSeqForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	if g.repo == nil {
+		return 0, fmt.Errorf("GetLatestKnowledgeEventSeqForUser: database connection not available")
+	}
+	return g.repo.GetLatestKnowledgeEventSeqForUser(ctx, userID)
+}

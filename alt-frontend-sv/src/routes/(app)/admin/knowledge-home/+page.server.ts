@@ -25,7 +25,10 @@ export const load = async ({ locals }) => {
 			error: null,
 		};
 	} catch (error) {
-		console.error("[knowledge-home-admin] Failed to load admin snapshot:", error);
+		console.error(
+			"[knowledge-home-admin] Failed to load admin snapshot:",
+			error,
+		);
 		return {
 			adminData: {
 				health: null,

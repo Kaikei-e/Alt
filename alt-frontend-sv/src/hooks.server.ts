@@ -11,54 +11,18 @@ import {
 	buildApiErrorResponse,
 	buildRedirectUrl,
 } from "$lib/server/response-builder";
+import { resolveResponsiveRedirect } from "$lib/server/redirect-resolver";
 
 const resolveOptions = {
 	filterSerializedResponseHeaders: (name: string) => name === "content-type",
-};
-
-// Redirect map: old path-based routes -> unified responsive routes
-const RESPONSIVE_REDIRECTS: Record<string, string> = {
-	// Phase 1 (completed)
-	"/desktop/feeds": "/feeds",
-	"/mobile/feeds": "/feeds",
-	// Batch A
-	"/desktop/augur": "/augur",
-	"/mobile/retrieve/ask-augur": "/augur",
-	"/desktop/recap/morning-letter": "/recap/morning-letter",
-	"/mobile/recap/morning-letter": "/recap/morning-letter",
-	"/desktop/feeds/tag-trail": "/feeds/tag-trail",
-	"/mobile/feeds/tag-trail": "/feeds/tag-trail",
-	"/desktop/feeds/tag-verse": "/feeds/tag-verse",
-	"/desktop/feeds/favorites": "/feeds/favorites",
-	// Batch B
-	"/desktop/feeds/search": "/feeds/search",
-	"/mobile/feeds/search": "/feeds/search",
-	"/desktop/feeds/viewed": "/feeds/viewed",
-	"/mobile/feeds/viewed": "/feeds/viewed",
-	// Batch C
-	"/desktop/recap/evening-pulse": "/recap/evening-pulse",
-	"/mobile/recap/evening-pulse": "/recap/evening-pulse",
-	"/desktop/recap": "/recap",
-	"/mobile/recap/3days": "/recap",
-	"/mobile/recap/7days": "/recap?window=7",
-	"/desktop/recap/job-status": "/recap/job-status",
-	"/mobile/recap/job-status": "/recap/job-status",
-	// Batch D
-	"/desktop/settings/feeds": "/settings/feeds",
-	"/mobile/feeds/manage": "/settings/feeds",
-	"/desktop/stats": "/stats",
-	"/mobile/feeds/stats": "/stats",
-	// Batch E
-	"/mobile/feeds/swipe": "/feeds/swipe",
-	"/desktop": "/dashboard",
 };
 
 export const handle: Handle = async ({ event, resolve: resolveEvent }) => {
 	const { url } = event;
 	const pathname = url.pathname;
 
-	// Redirect old path-based routes to unified responsive routes
-	const redirectTarget = RESPONSIVE_REDIRECTS[pathname];
+	// Redirect old path-based routes to unified responsive routes (preserving query params)
+	const redirectTarget = resolveResponsiveRedirect(pathname, url.search);
 	if (redirectTarget) {
 		throw redirect(301, redirectTarget);
 	}

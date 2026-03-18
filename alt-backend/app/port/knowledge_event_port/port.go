@@ -21,3 +21,8 @@ type ListKnowledgeEventsPort interface {
 type ListKnowledgeEventsForUserPort interface {
 	ListKnowledgeEventsSinceForUser(ctx context.Context, userID uuid.UUID, afterSeq int64, limit int) ([]domain.KnowledgeEvent, error)
 }
+
+// LatestKnowledgeEventSeqForUserPort returns the latest sequence visible to a user.
+type LatestKnowledgeEventSeqForUserPort interface {
+	GetLatestKnowledgeEventSeqForUser(ctx context.Context, userID uuid.UUID) (int64, error)
+}

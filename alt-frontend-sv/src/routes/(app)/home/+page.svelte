@@ -10,7 +10,10 @@ import { useRecallRail } from "$lib/hooks/useRecallRail.svelte";
 import { useLens } from "$lib/hooks/useLens.svelte";
 import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 import { useStreamUpdates } from "$lib/hooks/useStreamUpdates.svelte";
-import type { KnowledgeHomeItemData, LensVersionData } from "$lib/connect/knowledge_home";
+import type {
+	KnowledgeHomeItemData,
+	LensVersionData,
+} from "$lib/connect/knowledge_home";
 
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
@@ -40,7 +43,8 @@ const lensEnabled = $derived(flags.isEnabled("enable_lens"));
 const streamEnabled = $derived(flags.isEnabled("enable_stream_updates"));
 const activeLensName = $derived(
 	lens.activeLensId
-		? lens.lenses.find((entry) => entry.lensId === lens.activeLensId)?.name ?? null
+		? (lens.lenses.find((entry) => entry.lensId === lens.activeLensId)?.name ??
+				null)
 		: null,
 );
 
@@ -68,6 +72,19 @@ async function syncLensQuery(lensId: string | null) {
 function handleAction(type: string, item: KnowledgeHomeItemData) {
 	const itemKey = item.itemKey;
 
+	if (type === "dismiss") {
+		if (flags.trackingEnabled) {
+			const metadata = JSON.stringify({
+				articleId: item.articleId,
+				title: item.title,
+				summaryExcerpt: item.summaryExcerpt,
+			});
+			home.trackAction(type, itemKey, metadata);
+		}
+		home.dismissItem(itemKey);
+		return;
+	}
+
 	if (flags.trackingEnabled) {
 		const metadata = JSON.stringify({
 			articleId: item.articleId,
@@ -75,11 +92,6 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 			summaryExcerpt: item.summaryExcerpt,
 		});
 		home.trackAction(type, itemKey, metadata);
-	}
-
-	if (type === "dismiss") {
-		home.dismissItem(itemKey);
-		return;
 	}
 
 	// Extract articleId from itemKey (format: "article:{id}")
@@ -137,7 +149,11 @@ async function handleCreateLens(payload: {
 	description: string;
 	version: Omit<LensVersionData, "versionId">;
 }) {
-	const created = await lens.create(payload.name, payload.description, payload.version);
+	const created = await lens.create(
+		payload.name,
+		payload.description,
+		payload.version,
+	);
 	if (!created) {
 		return;
 	}
@@ -183,9 +199,9 @@ onMount(async () => {
 		description="Today's knowledge starting point"
 	/>
 
-	{#if home.degraded}
+	{#if home.serviceQuality !== "full"}
 		<div class="mb-3">
-			<DegradedModeBanner />
+			<DegradedModeBanner serviceQuality={home.serviceQuality} />
 		</div>
 	{/if}
 
@@ -245,9 +261,9 @@ onMount(async () => {
 {:else}
 	<!-- Mobile: Compact layout -->
 	<div class="min-h-[100dvh]" style="background: var(--app-bg);">
-		{#if home.degraded}
+		{#if home.serviceQuality !== "full"}
 			<div class="px-3 pt-2">
-				<DegradedModeBanner />
+				<DegradedModeBanner serviceQuality={home.serviceQuality} />
 			</div>
 		{/if}
 

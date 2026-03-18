@@ -50,12 +50,9 @@ const modeLabel = (mode: string) => {
 	}
 };
 
-const canCompare = (run: ReprojectRunData) =>
-	run.status === "completed";
-const canSwap = (run: ReprojectRunData) =>
-	run.status === "completed";
-const canRollback = (run: ReprojectRunData) =>
-	run.status === "swapped";
+const canCompare = (run: ReprojectRunData) => run.status === "completed";
+const canSwap = (run: ReprojectRunData) => run.status === "completed";
+const canRollback = (run: ReprojectRunData) => run.status === "swapped";
 </script>
 
 <div class="flex flex-col gap-3">

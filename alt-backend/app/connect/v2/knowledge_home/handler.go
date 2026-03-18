@@ -48,6 +48,7 @@ type Handler struct {
 	archiveLensUsecase   *archive_lens_usecase.ArchiveLensUsecase
 	eventsPort           knowledge_event_port.ListKnowledgeEventsPort
 	eventsForUserPort    knowledge_event_port.ListKnowledgeEventsForUserPort
+	latestSeqPort        knowledge_event_port.LatestKnowledgeEventSeqForUserPort
 	featureFlagPort      feature_flag_port.FeatureFlagPort
 	logger               *slog.Logger
 }
@@ -73,6 +74,11 @@ func NewHandler(
 	featureFlag feature_flag_port.FeatureFlagPort,
 	logger *slog.Logger,
 ) *Handler {
+	var latestSeqPort knowledge_event_port.LatestKnowledgeEventSeqForUserPort
+	if provider, ok := eventsForUserPort.(knowledge_event_port.LatestKnowledgeEventSeqForUserPort); ok {
+		latestSeqPort = provider
+	}
+
 	return &Handler{
 		getHomeUsecase:       getHome,
 		trackSeenUsecase:     trackSeen,
@@ -87,6 +93,7 @@ func NewHandler(
 		archiveLensUsecase:   archiveLens,
 		eventsPort:           eventsPort,
 		eventsForUserPort:    eventsForUserPort,
+		latestSeqPort:        latestSeqPort,
 		featureFlagPort:      featureFlag,
 		logger:               logger,
 	}
@@ -547,8 +554,24 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 	}
 	user, _ := middleware.GetUserContext(ctx)
 
+	var lensID string
+	if req.Msg.LensId != nil && *req.Msg.LensId != "" {
+		parsedLensID, err := parseUUID(*req.Msg.LensId, "lens_id")
+		if err != nil {
+			return err
+		}
+		lensID = parsedLensID.String()
+	}
+
+	lastSeq, err := h.initialStreamSeq(ctx, user.UserID)
+	if err != nil {
+		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamKnowledgeHomeUpdates")
+	}
+
 	h.logger.InfoContext(ctx, "alt.knowledge_home.stream_started",
-		"user_id", user.UserID)
+		"user_id", user.UserID,
+		"lens_id", lensID,
+		"start_seq", lastSeq)
 
 	updateTicker := time.NewTicker(5 * time.Second)
 	defer updateTicker.Stop()
@@ -560,7 +583,6 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 	staleTimer := time.NewTimer(30 * time.Minute)
 	defer staleTimer.Stop()
 
-	var lastSeq int64
 	var consecutiveErrors int
 
 	for {
@@ -627,6 +649,14 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 			}
 		}
 	}
+}
+
+func (h *Handler) initialStreamSeq(ctx context.Context, userID uuid.UUID) (int64, error) {
+	if h.latestSeqPort == nil {
+		return 0, nil
+	}
+
+	return h.latestSeqPort.GetLatestKnowledgeEventSeqForUser(ctx, userID)
 }
 
 // StreamRecallRailUpdates streams real-time updates for the recall rail.

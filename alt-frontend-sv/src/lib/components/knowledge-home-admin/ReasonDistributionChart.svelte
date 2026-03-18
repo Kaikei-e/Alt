@@ -1,5 +1,6 @@
 <script lang="ts">
-let { distribution }: { distribution: { code: string; count: number }[] } = $props();
+let { distribution }: { distribution: { code: string; count: number }[] } =
+	$props();
 
 const maxCount = $derived(
 	distribution.length > 0 ? Math.max(...distribution.map((d) => d.count)) : 1,
@@ -13,7 +14,8 @@ const reasonColors: Record<string, string> = {
 	pulse_need_to_know: "var(--accent-orange, #f97316)",
 };
 
-const getColor = (code: string) => reasonColors[code] ?? "var(--text-secondary)";
+const getColor = (code: string) =>
+	reasonColors[code] ?? "var(--text-secondary)";
 </script>
 
 <div class="flex flex-col gap-3">

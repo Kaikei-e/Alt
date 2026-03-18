@@ -17,8 +17,16 @@ interface Props {
 	onClearLens?: () => void;
 }
 
-const { items, loading, hasMore, activeLensName = null, onAction, onLoadMore, onItemsVisible, onClearLens }: Props =
-	$props();
+const {
+	items,
+	loading,
+	hasMore,
+	activeLensName = null,
+	onAction,
+	onLoadMore,
+	onItemsVisible,
+	onClearLens,
+}: Props = $props();
 
 let streamRef: HTMLDivElement | undefined = $state();
 let sentinelRef: HTMLDivElement | undefined = $state();

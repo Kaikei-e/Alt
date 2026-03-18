@@ -1,10 +1,5 @@
 <script lang="ts">
-import {
-	Newspaper,
-	BirdIcon,
-	Shuffle,
-	Orbit,
-} from "@lucide/svelte";
+import { Newspaper, BirdIcon, Shuffle, Orbit } from "@lucide/svelte";
 import type { TodayDigestData } from "$lib/connect/knowledge_home";
 
 interface Props {

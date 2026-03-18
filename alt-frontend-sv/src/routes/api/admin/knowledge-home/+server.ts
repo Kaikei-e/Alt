@@ -24,7 +24,10 @@ export const GET: RequestHandler = async ({ locals }) => {
 		const snapshot = await fetchKnowledgeHomeAdminSnapshot(locals.backendToken);
 		return json(snapshot, { headers: { "Cache-Control": "no-store" } });
 	} catch (error) {
-		console.error("[api/admin/knowledge-home] Failed to refresh snapshot:", error);
+		console.error(
+			"[api/admin/knowledge-home] Failed to refresh snapshot:",
+			error,
+		);
 		return json({ error: "Failed to load admin data." }, { status: 502 });
 	}
 };
@@ -58,7 +61,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				locals.backendToken,
 				body.projectionVersion,
 			);
-			return json({ ok: true, job }, { headers: { "Cache-Control": "no-store" } });
+			return json(
+				{ ok: true, job },
+				{ headers: { "Cache-Control": "no-store" } },
+			);
 		}
 
 		if (
@@ -113,7 +119,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				rangeStart,
 				rangeEnd,
 			);
-			return json({ ok: true, run }, { headers: { "Cache-Control": "no-store" } });
+			return json(
+				{ ok: true, run },
+				{ headers: { "Cache-Control": "no-store" } },
+			);
 		}
 
 		if (
@@ -128,7 +137,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				locals.backendToken,
 				body.reprojectRunId,
 			);
-			return json({ ok: true, diff }, { headers: { "Cache-Control": "no-store" } });
+			return json(
+				{ ok: true, diff },
+				{ headers: { "Cache-Control": "no-store" } },
+			);
 		}
 
 		if (
@@ -139,7 +151,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			"reprojectRunId" in body &&
 			typeof body.reprojectRunId === "string"
 		) {
-			await swapKnowledgeHomeReproject(locals.backendToken, body.reprojectRunId);
+			await swapKnowledgeHomeReproject(
+				locals.backendToken,
+				body.reprojectRunId,
+			);
 			return json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 		}
 
@@ -151,13 +166,19 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			"reprojectRunId" in body &&
 			typeof body.reprojectRunId === "string"
 		) {
-			await rollbackKnowledgeHomeReproject(locals.backendToken, body.reprojectRunId);
+			await rollbackKnowledgeHomeReproject(
+				locals.backendToken,
+				body.reprojectRunId,
+			);
 			return json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 		}
 
 		return json({ error: "Invalid admin action." }, { status: 400 });
 	} catch (error) {
-		console.error("[api/admin/knowledge-home] Failed to run admin action:", error);
+		console.error(
+			"[api/admin/knowledge-home] Failed to run admin action:",
+			error,
+		);
 		return json({ error: "Failed to run admin action." }, { status: 502 });
 	}
 };

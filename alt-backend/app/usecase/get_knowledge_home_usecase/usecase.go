@@ -77,9 +77,9 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 	}
 
 	// Fetch items
-	items, nextCursor, hasMore, err := u.homeItemsPort.GetKnowledgeHomeItems(ctx, userID, cursor, limit, lensFilter)
-	if err != nil {
-		logger.Logger.ErrorContext(ctx, "failed to fetch knowledge home items", "error", err)
+	items, nextCursor, hasMore, itemsErr := u.homeItemsPort.GetKnowledgeHomeItems(ctx, userID, cursor, limit, lensFilter)
+	if itemsErr != nil {
+		logger.Logger.ErrorContext(ctx, "failed to fetch knowledge home items", "error", itemsErr)
 		result.Degraded = true
 	} else {
 		result.Items = items
@@ -88,16 +88,15 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 	}
 
 	// Fetch today digest
-	digest, err := u.todayDigestPort.GetTodayDigest(ctx, userID, date)
-	if err != nil {
-		logger.Logger.ErrorContext(ctx, "failed to fetch today digest", "error", err)
+	digest, digestErr := u.todayDigestPort.GetTodayDigest(ctx, userID, date)
+	if digestErr != nil {
+		logger.Logger.ErrorContext(ctx, "failed to fetch today digest", "error", digestErr)
 		result.Degraded = true
 	} else {
 		result.Digest = digest
 	}
 
-	// Both failed = return error
-	if result.Items == nil && errors.Is(err, context.Canceled) {
+	if err := requestContextError(itemsErr, digestErr); err != nil {
 		return nil, err
 	}
 
@@ -105,6 +104,18 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 	u.enrichDigest(ctx, result, userID, date)
 
 	return result, nil
+}
+
+func requestContextError(errs ...error) error {
+	for _, err := range errs {
+		switch {
+		case errors.Is(err, context.Canceled):
+			return context.Canceled
+		case errors.Is(err, context.DeadlineExceeded):
+			return context.DeadlineExceeded
+		}
+	}
+	return nil
 }
 
 // enrichDigest populates freshness and accurate count on the digest.

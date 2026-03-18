@@ -67,6 +67,45 @@ func TestAltDBRepository_CreateReprojectRun_Success(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestAltDBRepository_CreateReprojectRun_EmptyJSONFields_DefaultToEmptyObjects(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+
+	runID := uuid.New()
+	now := time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC)
+
+	run := &domain.ReprojectRun{
+		ReprojectRunID: runID,
+		ProjectionName: "knowledge_home",
+		FromVersion:    "v1",
+		ToVersion:      "v2",
+		Mode:           domain.ReprojectModeFull,
+		Status:         domain.ReprojectStatusPending,
+		CreatedAt:      now,
+	}
+
+	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO knowledge_reproject_runs
+		(reproject_run_id, projection_name, from_version, to_version, initiated_by,
+		 mode, status, range_start, range_end, checkpoint_payload,
+		 stats_json, diff_summary_json, created_at, started_at, finished_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`)).
+		WithArgs(
+			runID, "knowledge_home", "v1", "v2", (*uuid.UUID)(nil),
+			domain.ReprojectModeFull, domain.ReprojectStatusPending,
+			(*time.Time)(nil), (*time.Time)(nil),
+			`{}`, `{}`, `{}`,
+			now, (*time.Time)(nil), (*time.Time)(nil),
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	err = repo.CreateReprojectRun(context.Background(), run)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestAltDBRepository_GetReprojectRun_Success(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
@@ -160,6 +199,38 @@ func TestAltDBRepository_UpdateReprojectRun_Success(t *testing.T) {
 			`{"events_processed":500,"events_total":500}`,
 			`{"from_item_count":100,"to_item_count":105}`,
 			&startedAt, &now,
+		).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	err = repo.UpdateReprojectRun(context.Background(), run)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAltDBRepository_UpdateReprojectRun_EmptyJSONFields_DefaultToEmptyObjects(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+
+	runID := uuid.New()
+
+	run := &domain.ReprojectRun{
+		ReprojectRunID: runID,
+		Status:         domain.ReprojectStatusPending,
+	}
+
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE knowledge_reproject_runs SET
+		status = $2, stats_json = $3, diff_summary_json = $4,
+		started_at = $5, finished_at = $6
+		WHERE reproject_run_id = $1`)).
+		WithArgs(
+			runID,
+			domain.ReprojectStatusPending,
+			`{}`,
+			`{}`,
+			(*time.Time)(nil), (*time.Time)(nil),
 		).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 

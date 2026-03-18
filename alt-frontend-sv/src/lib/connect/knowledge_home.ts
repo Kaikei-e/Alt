@@ -205,13 +205,16 @@ function convertItem(proto: ProtoKnowledgeHomeItem): KnowledgeHomeItemData {
 		tags: [...proto.tags],
 		why: proto.why.map(convertWhyReason),
 		score: proto.score,
-		supersedeInfo: proto.supersedeInfo ? {
-			state: proto.supersedeInfo.state,
-			supersededAt: proto.supersedeInfo.supersededAt,
-			previousSummaryExcerpt: proto.supersedeInfo.previousSummaryExcerpt || undefined,
-			previousTags: [...(proto.supersedeInfo.previousTags || [])],
-			previousWhyCodes: [...(proto.supersedeInfo.previousWhyCodes || [])],
-		} : undefined,
+		supersedeInfo: proto.supersedeInfo
+			? {
+					state: proto.supersedeInfo.state,
+					supersededAt: proto.supersedeInfo.supersededAt,
+					previousSummaryExcerpt:
+						proto.supersedeInfo.previousSummaryExcerpt || undefined,
+					previousTags: [...(proto.supersedeInfo.previousTags || [])],
+					previousWhyCodes: [...(proto.supersedeInfo.previousWhyCodes || [])],
+				}
+			: undefined,
 		link: proto.link || undefined,
 	};
 }
@@ -248,7 +251,9 @@ export async function getKnowledgeHome(
 			name: f.name,
 			enabled: f.enabled,
 		})),
-		recallCandidates: (response.recallCandidates ?? []).map(convertRecallCandidate),
+		recallCandidates: (response.recallCandidates ?? []).map(
+			convertRecallCandidate,
+		),
 		serviceQuality: normalizeServiceQuality(
 			response.serviceQuality,
 			response.degradedMode,
@@ -297,11 +302,13 @@ export async function trackHomeAction(
 	});
 }
 
-function convertRecallCandidate(proto: ProtoRecallCandidate): RecallCandidateData {
+function convertRecallCandidate(
+	proto: ProtoRecallCandidate,
+): RecallCandidateData {
 	return {
 		itemKey: proto.itemKey,
 		recallScore: proto.recallScore,
-		reasons: proto.reasons.map(r => ({
+		reasons: proto.reasons.map((r) => ({
 			type: r.type,
 			description: r.description,
 			sourceItemKey: r.sourceItemKey || undefined,
@@ -319,16 +326,18 @@ function convertLens(proto: ProtoLens): LensData {
 		description: proto.description,
 		createdAt: proto.createdAt,
 		updatedAt: proto.updatedAt,
-		currentVersion: proto.currentVersion ? {
-			versionId: proto.currentVersion.versionId,
-			queryText: proto.currentVersion.queryText,
-			tagIds: [...proto.currentVersion.tagIds],
-			feedIds: [...proto.currentVersion.feedIds],
-			timeWindow: proto.currentVersion.timeWindow,
-			includeRecap: proto.currentVersion.includeRecap,
-			includePulse: proto.currentVersion.includePulse,
-			sortMode: proto.currentVersion.sortMode,
-		} : undefined,
+		currentVersion: proto.currentVersion
+			? {
+					versionId: proto.currentVersion.versionId,
+					queryText: proto.currentVersion.queryText,
+					tagIds: [...proto.currentVersion.tagIds],
+					feedIds: [...proto.currentVersion.feedIds],
+					timeWindow: proto.currentVersion.timeWindow,
+					includeRecap: proto.currentVersion.includeRecap,
+					includePulse: proto.currentVersion.includePulse,
+					sortMode: proto.currentVersion.sortMode,
+				}
+			: undefined,
 	};
 }
 

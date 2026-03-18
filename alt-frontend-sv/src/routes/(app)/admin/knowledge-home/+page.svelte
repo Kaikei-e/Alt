@@ -25,9 +25,15 @@ import type {
 let { data } = $props<{
 	data: {
 		adminData: {
-			health: import("$lib/connect/knowledge_home_admin").ProjectionHealthData | null;
-			flags: import("$lib/connect/knowledge_home_admin").FeatureFlagsConfigData | null;
-			sloStatus: import("$lib/connect/knowledge_home_admin").SLOStatusData | null;
+			health:
+				| import("$lib/connect/knowledge_home_admin").ProjectionHealthData
+				| null;
+			flags:
+				| import("$lib/connect/knowledge_home_admin").FeatureFlagsConfigData
+				| null;
+			sloStatus:
+				| import("$lib/connect/knowledge_home_admin").SLOStatusData
+				| null;
 			reprojectRuns: import("$lib/connect/knowledge_home_admin").ReprojectRunData[];
 		};
 		error: string | null;

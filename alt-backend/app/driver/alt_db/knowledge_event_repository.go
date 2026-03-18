@@ -70,6 +70,23 @@ func (r *AltDBRepository) ListKnowledgeEventsSinceForUser(ctx context.Context, u
 	return events, nil
 }
 
+// GetLatestKnowledgeEventSeqForUser returns the highest event_seq visible to a user.
+func (r *AltDBRepository) GetLatestKnowledgeEventSeqForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetLatestKnowledgeEventSeqForUser")
+	defer span.End()
+
+	query := `SELECT COALESCE(MAX(event_seq), 0)
+		FROM knowledge_events
+		WHERE user_id = $1 OR user_id IS NULL`
+
+	var latestSeq int64
+	if err := r.pool.QueryRow(ctx, query, userID).Scan(&latestSeq); err != nil {
+		return 0, fmt.Errorf("GetLatestKnowledgeEventSeqForUser: %w", err)
+	}
+
+	return latestSeq, nil
+}
+
 // ListKnowledgeEventsSince returns events with event_seq > afterSeq, ordered by event_seq ASC.
 func (r *AltDBRepository) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]domain.KnowledgeEvent, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.ListKnowledgeEventsSince")

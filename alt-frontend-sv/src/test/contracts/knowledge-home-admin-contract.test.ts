@@ -228,8 +228,7 @@ describe("Knowledge Home Admin API Contract - Phase 5", () => {
 					checkedAt: "2026-03-18T12:00:00Z",
 					sampleSize: 100,
 					mismatchCount: 2,
-					detailsJson:
-						'{"mismatched_items":["article:1","article:2"]}',
+					detailsJson: '{"mismatched_items":["article:1","article:2"]}',
 				},
 			});
 
