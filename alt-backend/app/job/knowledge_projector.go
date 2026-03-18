@@ -36,7 +36,12 @@ func KnowledgeProjectorJob(
 	summaryVersionPort summary_version_port.GetLatestSummaryVersionPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
 	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
+	clearSupersedePort ...knowledge_home_port.ClearSupersedeStatePort,
 ) func(ctx context.Context) error {
+	var clearPort knowledge_home_port.ClearSupersedeStatePort
+	if len(clearSupersedePort) > 0 {
+		clearPort = clearSupersedePort[0]
+	}
 	return func(ctx context.Context) error {
 		// Resolve active projection version
 		projectionVersion := 1
@@ -48,7 +53,7 @@ func KnowledgeProjectorJob(
 				projectionVersion = v.Version
 			}
 		}
-		return processKnowledgeEvents(ctx, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, projectionVersion)
+		return processKnowledgeEvents(ctx, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, clearPort, projectionVersion)
 	}
 }
 
@@ -62,6 +67,7 @@ func processKnowledgeEvents(
 	summaryVersionPort summary_version_port.GetLatestSummaryVersionPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
 	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
+	clearSupersedePort knowledge_home_port.ClearSupersedeStatePort,
 	projectionVersion int,
 ) error {
 	// Get current checkpoint
@@ -92,7 +98,7 @@ func processKnowledgeEvents(
 
 	var maxSeq int64
 	for _, event := range events {
-		if err := projectEvent(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, projectionVersion); err != nil {
+		if err := projectEvent(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, clearSupersedePort, projectionVersion); err != nil {
 			logger.Logger.ErrorContext(ctx, "failed to project event",
 				"error", err, "event_id", event.EventID, "event_type", event.EventType)
 			// Continue with other events (best effort)
@@ -123,6 +129,7 @@ func projectEvent(
 	summaryVersionPort summary_version_port.GetLatestSummaryVersionPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
 	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
+	clearSupersedePort knowledge_home_port.ClearSupersedeStatePort,
 	projectionVersion int,
 ) error {
 	switch event.EventType {
@@ -133,7 +140,13 @@ func projectEvent(
 	case domain.EventTagSetVersionCreated:
 		return projectTagSetVersionCreated(ctx, event, homeItemsPort, tagSetVersionPort, projectionVersion)
 	case domain.EventHomeItemOpened:
-		return projectHomeItemOpened(ctx, event, homeItemsPort, recallCandidatePort, projectionVersion)
+		return projectHomeItemOpened(ctx, event, homeItemsPort, recallCandidatePort, clearSupersedePort, projectionVersion)
+	case domain.EventSummarySuperseded:
+		return projectSummarySuperseded(ctx, event, homeItemsPort, projectionVersion)
+	case domain.EventTagSetSuperseded:
+		return projectTagSetSuperseded(ctx, event, homeItemsPort, projectionVersion)
+	case domain.EventReasonMerged:
+		return projectReasonMerged(ctx, event, homeItemsPort, projectionVersion)
 	default:
 		// Unknown event types are silently skipped
 		return nil
@@ -415,7 +428,7 @@ type homeItemOpenedPayload struct {
 	ItemKey string `json:"item_key"`
 }
 
-func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort, projectionVersion int) error {
+func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort, clearSupersedePort knowledge_home_port.ClearSupersedeStatePort, projectionVersion int) error {
 	var payload homeItemOpenedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal HomeItemOpened payload: %w", err)
@@ -446,6 +459,14 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 		return err
 	}
 
+	// Clear supersede state on open (acknowledgement)
+	if clearSupersedePort != nil {
+		if err := clearSupersedePort.ClearSupersedeState(ctx, userID, payload.ItemKey); err != nil {
+			logger.Logger.ErrorContext(ctx, "failed to clear supersede state on open", "error", err, "item_key", payload.ItemKey)
+			// Non-fatal
+		}
+	}
+
 	// Create recall candidate: eligible after 24h
 	if recallCandidatePort != nil {
 		eligibleAt := now.Add(24 * time.Hour)
@@ -466,4 +487,143 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 	}
 
 	return nil
+}
+
+// ── Supersede projection handlers ──
+
+type summarySupersededPayload struct {
+	ArticleID              string `json:"article_id"`
+	NewSummaryVersionID    string `json:"new_summary_version_id"`
+	OldSummaryVersionID    string `json:"old_summary_version_id"`
+	PreviousSummaryExcerpt string `json:"previous_summary_excerpt"`
+}
+
+func projectSummarySuperseded(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
+	var payload summarySupersededPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal SummarySuperseded payload: %w", err)
+	}
+
+	articleID, err := uuid.Parse(payload.ArticleID)
+	if err != nil {
+		return fmt.Errorf("parse article_id: %w", err)
+	}
+
+	userID := event.TenantID
+	if event.UserID != nil {
+		userID = *event.UserID
+	}
+
+	prevRef, _ := json.Marshal(map[string]string{
+		"previous_summary_excerpt": payload.PreviousSummaryExcerpt,
+	})
+
+	now := time.Now()
+	item := domain.KnowledgeHomeItem{
+		UserID:            userID,
+		TenantID:          event.TenantID,
+		ItemKey:           fmt.Sprintf("article:%s", articleID),
+		ItemType:          domain.ItemArticle,
+		SupersedeState:    domain.SupersedeSummaryUpdated,
+		SupersededAt:      &now,
+		PreviousRefJSON:   string(prevRef),
+		GeneratedAt:       now,
+		UpdatedAt:         now,
+		ProjectionVersion: projectionVersion,
+	}
+
+	return port.UpsertKnowledgeHomeItem(ctx, item)
+}
+
+type tagSetSupersededPayload struct {
+	ArticleID          string   `json:"article_id"`
+	NewTagSetVersionID string   `json:"new_tag_set_version_id"`
+	OldTagSetVersionID string   `json:"old_tag_set_version_id"`
+	PreviousTags       []string `json:"previous_tags"`
+}
+
+func projectTagSetSuperseded(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
+	var payload tagSetSupersededPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal TagSetSuperseded payload: %w", err)
+	}
+
+	articleID, err := uuid.Parse(payload.ArticleID)
+	if err != nil {
+		return fmt.Errorf("parse article_id: %w", err)
+	}
+
+	userID := event.TenantID
+	if event.UserID != nil {
+		userID = *event.UserID
+	}
+
+	prevRef, _ := json.Marshal(map[string][]string{
+		"previous_tags": payload.PreviousTags,
+	})
+
+	now := time.Now()
+	item := domain.KnowledgeHomeItem{
+		UserID:            userID,
+		TenantID:          event.TenantID,
+		ItemKey:           fmt.Sprintf("article:%s", articleID),
+		ItemType:          domain.ItemArticle,
+		SupersedeState:    domain.SupersedeTagsUpdated,
+		SupersededAt:      &now,
+		PreviousRefJSON:   string(prevRef),
+		GeneratedAt:       now,
+		UpdatedAt:         now,
+		ProjectionVersion: projectionVersion,
+	}
+
+	return port.UpsertKnowledgeHomeItem(ctx, item)
+}
+
+type reasonMergedPayload struct {
+	ArticleID        string   `json:"article_id"`
+	ItemKey          string   `json:"item_key"`
+	AddedCodes       []string `json:"added_codes"`
+	PreviousWhyCodes []string `json:"previous_why_codes"`
+}
+
+func projectReasonMerged(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
+	var payload reasonMergedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal ReasonMerged payload: %w", err)
+	}
+
+	articleID, err := uuid.Parse(payload.ArticleID)
+	if err != nil {
+		return fmt.Errorf("parse article_id: %w", err)
+	}
+
+	userID := event.TenantID
+	if event.UserID != nil {
+		userID = *event.UserID
+	}
+
+	itemKey := payload.ItemKey
+	if itemKey == "" {
+		itemKey = fmt.Sprintf("article:%s", articleID)
+	}
+
+	prevRef, _ := json.Marshal(map[string][]string{
+		"previous_why_codes": payload.PreviousWhyCodes,
+	})
+
+	now := time.Now()
+	item := domain.KnowledgeHomeItem{
+		UserID:            userID,
+		TenantID:          event.TenantID,
+		ItemKey:           itemKey,
+		ItemType:          domain.ItemArticle,
+		SupersedeState:    domain.SupersedeReasonUpdated,
+		SupersededAt:      &now,
+		PreviousRefJSON:   string(prevRef),
+		GeneratedAt:       now,
+		UpdatedAt:         now,
+		ProjectionVersion: projectionVersion,
+	}
+
+	return port.UpsertKnowledgeHomeItem(ctx, item)
 }

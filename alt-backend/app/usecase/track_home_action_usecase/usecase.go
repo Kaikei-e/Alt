@@ -90,6 +90,8 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		"action_type": actionType,
 		"item_key":    itemKey,
 		"user_id":     userID.String(),
+		"tenant_id":   tenantID.String(),
+		"opened_at":   now.Format(time.RFC3339),
 	})
 
 	knowledgeEvent := domain.KnowledgeEvent{

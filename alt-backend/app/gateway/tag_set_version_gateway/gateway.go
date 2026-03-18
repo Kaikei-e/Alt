@@ -34,3 +34,11 @@ func (g *Gateway) GetTagSetVersionByID(ctx context.Context, tagSetVersionID uuid
 	}
 	return g.repo.GetTagSetVersionByID(ctx, tagSetVersionID)
 }
+
+// MarkTagSetVersionSuperseded implements tag_set_version_port.MarkTagSetVersionSupersededPort.
+func (g *Gateway) MarkTagSetVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.TagSetVersion, error) {
+	if g.repo == nil {
+		return nil, fmt.Errorf("MarkTagSetVersionSuperseded: database connection not available")
+	}
+	return g.repo.MarkTagSetVersionSuperseded(ctx, articleID, newVersionID)
+}

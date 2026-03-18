@@ -766,6 +766,155 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_NilPort_FallsBackGracefully(
 	assert.Equal(t, domain.WhyNewUnread, homeItemsPort.upserted[0].WhyReasons[0].Code)
 }
 
+// ── Supersede projection tests ──
+
+type mockClearSupersedePort struct {
+	cleared []struct {
+		userID  uuid.UUID
+		itemKey string
+	}
+	err error
+}
+
+func (m *mockClearSupersedePort) ClearSupersedeState(_ context.Context, userID uuid.UUID, itemKey string) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.cleared = append(m.cleared, struct {
+		userID  uuid.UUID
+		itemKey string
+	}{userID, itemKey})
+	return nil
+}
+
+func TestKnowledgeProjectorJob_SummarySuperseded_ProjectsSupersedeState(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+
+	supersedePayload, _ := json.Marshal(map[string]string{
+		"article_id":               articleID.String(),
+		"new_summary_version_id":   uuid.New().String(),
+		"old_summary_version_id":   uuid.New().String(),
+		"previous_summary_excerpt": "Old summary text",
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, UserID: &userID, EventType: domain.EventSummarySuperseded, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: supersedePayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, domain.SupersedeSummaryUpdated, homeItemsPort.upserted[0].SupersedeState)
+	assert.NotNil(t, homeItemsPort.upserted[0].SupersededAt)
+	assert.Contains(t, homeItemsPort.upserted[0].PreviousRefJSON, "previous_summary_excerpt")
+}
+
+func TestKnowledgeProjectorJob_TagSetSuperseded_ProjectsSupersedeState(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+
+	supersedePayload, _ := json.Marshal(map[string]interface{}{
+		"article_id":             articleID.String(),
+		"new_tag_set_version_id": uuid.New().String(),
+		"old_tag_set_version_id": uuid.New().String(),
+		"previous_tags":          []string{"old-tag1", "old-tag2"},
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, UserID: &userID, EventType: domain.EventTagSetSuperseded, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: supersedePayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, domain.SupersedeTagsUpdated, homeItemsPort.upserted[0].SupersedeState)
+	assert.Contains(t, homeItemsPort.upserted[0].PreviousRefJSON, "previous_tags")
+}
+
+func TestKnowledgeProjectorJob_ReasonMerged_ProjectsSupersedeState(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+
+	reasonPayload, _ := json.Marshal(map[string]interface{}{
+		"article_id":        articleID.String(),
+		"item_key":          "article:" + articleID.String(),
+		"added_codes":       []string{"in_weekly_recap"},
+		"previous_why_codes": []string{"new_unread", "tag_hotspot"},
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, UserID: &userID, EventType: domain.EventReasonMerged, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: reasonPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, domain.SupersedeReasonUpdated, homeItemsPort.upserted[0].SupersedeState)
+	assert.Contains(t, homeItemsPort.upserted[0].PreviousRefJSON, "previous_why_codes")
+}
+
+func TestKnowledgeProjectorJob_HomeItemOpened_ClearsSupersedeState(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	itemKey := "article:" + uuid.New().String()
+
+	openedPayload, _ := json.Marshal(homeItemOpenedPayload{
+		ItemKey: itemKey,
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, UserID: &userID, EventType: domain.EventHomeItemOpened, AggregateType: domain.AggregateHomeSession, AggregateID: itemKey, Payload: openedPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	recallPort := &mockRecallCandidatePort{}
+	clearPort := &mockClearSupersedePort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, recallPort, nil, clearPort)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, clearPort.cleared, 1, "HomeItemOpened should clear supersede state")
+	assert.Equal(t, userID, clearPort.cleared[0].userID)
+	assert.Equal(t, itemKey, clearPort.cleared[0].itemKey)
+}
+
 func TestKnowledgeProjectorJob_TagSetVersionCreated_UppercaseKeys(t *testing.T) {
 	logger.InitLogger()
 

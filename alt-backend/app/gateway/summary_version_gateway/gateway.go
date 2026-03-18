@@ -34,3 +34,11 @@ func (g *Gateway) GetLatestSummaryVersion(ctx context.Context, articleID uuid.UU
 	}
 	return g.repo.GetLatestSummaryVersion(ctx, articleID)
 }
+
+// MarkSummaryVersionSuperseded implements summary_version_port.MarkSummaryVersionSupersededPort.
+func (g *Gateway) MarkSummaryVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.SummaryVersion, error) {
+	if g.repo == nil {
+		return nil, fmt.Errorf("MarkSummaryVersionSuperseded: database connection not available")
+	}
+	return g.repo.MarkSummaryVersionSuperseded(ctx, articleID, newVersionID)
+}

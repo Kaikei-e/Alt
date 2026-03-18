@@ -16,3 +16,9 @@ type CreateTagSetVersionPort interface {
 type GetTagSetVersionByIDPort interface {
 	GetTagSetVersionByID(ctx context.Context, tagSetVersionID uuid.UUID) (domain.TagSetVersion, error)
 }
+
+// MarkTagSetVersionSupersededPort marks all non-superseded versions as superseded by the new version.
+// Returns the previous latest version (before marking), or nil if none existed.
+type MarkTagSetVersionSupersededPort interface {
+	MarkTagSetVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.TagSetVersion, error)
+}

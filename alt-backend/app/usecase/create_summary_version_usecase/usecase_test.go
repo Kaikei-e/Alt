@@ -37,6 +37,15 @@ func (m *mockEventPort) AppendKnowledgeEvent(_ context.Context, event domain.Kno
 	return nil
 }
 
+type mockMarkSupersededPort struct {
+	prev *domain.SummaryVersion
+	err  error
+}
+
+func (m *mockMarkSupersededPort) MarkSummaryVersionSuperseded(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*domain.SummaryVersion, error) {
+	return m.prev, m.err
+}
+
 func TestCreateSummaryVersionUsecase_Execute(t *testing.T) {
 	logger.InitLogger()
 
@@ -83,7 +92,7 @@ func TestCreateSummaryVersionUsecase_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewCreateSummaryVersionUsecase(tt.summaryPort, tt.eventPort)
+			uc := NewCreateSummaryVersionUsecase(tt.summaryPort, tt.eventPort, nil)
 			err := uc.Execute(context.Background(), tt.sv)
 
 			if tt.wantErr {
@@ -97,4 +106,58 @@ func TestCreateSummaryVersionUsecase_Execute(t *testing.T) {
 			assert.Equal(t, domain.EventSummaryVersionCreated, tt.eventPort.appended[0].EventType)
 		})
 	}
+}
+
+func TestCreateSummaryVersionUsecase_FirstVersion_NoSupersedeEvent(t *testing.T) {
+	logger.InitLogger()
+
+	summaryPort := &mockSummaryPort{}
+	eventPort := &mockEventPort{}
+	markPort := &mockMarkSupersededPort{prev: nil} // No previous version
+
+	uc := NewCreateSummaryVersionUsecase(summaryPort, eventPort, markPort)
+	err := uc.Execute(context.Background(), domain.SummaryVersion{
+		ArticleID:   uuid.New(),
+		UserID:      uuid.New(),
+		SummaryText: "First summary",
+	})
+
+	require.NoError(t, err)
+	assert.Len(t, eventPort.appended, 1, "first version: only SummaryVersionCreated, no SummarySuperseded")
+	assert.Equal(t, domain.EventSummaryVersionCreated, eventPort.appended[0].EventType)
+}
+
+func TestCreateSummaryVersionUsecase_SecondVersion_EmitsSupersedeEvent(t *testing.T) {
+	logger.InitLogger()
+
+	articleID := uuid.New()
+	userID := uuid.New()
+	oldVersionID := uuid.New()
+
+	summaryPort := &mockSummaryPort{}
+	eventPort := &mockEventPort{}
+	markPort := &mockMarkSupersededPort{
+		prev: &domain.SummaryVersion{
+			SummaryVersionID: oldVersionID,
+			ArticleID:        articleID,
+			UserID:           userID,
+			SummaryText:      "Old summary text that was previously the latest version",
+		},
+	}
+
+	uc := NewCreateSummaryVersionUsecase(summaryPort, eventPort, markPort)
+	err := uc.Execute(context.Background(), domain.SummaryVersion{
+		ArticleID:   articleID,
+		UserID:      userID,
+		SummaryText: "New improved summary",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, eventPort.appended, 2, "second version: SummaryVersionCreated + SummarySuperseded")
+	assert.Equal(t, domain.EventSummaryVersionCreated, eventPort.appended[0].EventType)
+	assert.Equal(t, domain.EventSummarySuperseded, eventPort.appended[1].EventType)
+
+	// Verify supersede event payload contains previous excerpt
+	assert.Contains(t, string(eventPort.appended[1].Payload), "previous_summary_excerpt")
+	assert.Contains(t, string(eventPort.appended[1].Payload), "Old summary text")
 }

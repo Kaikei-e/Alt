@@ -38,6 +38,15 @@ func (m *mockEventPort) AppendKnowledgeEvent(_ context.Context, event domain.Kno
 	return nil
 }
 
+type mockMarkTagSupersededPort struct {
+	prev *domain.TagSetVersion
+	err  error
+}
+
+func (m *mockMarkTagSupersededPort) MarkTagSetVersionSuperseded(_ context.Context, _ uuid.UUID, _ uuid.UUID) (*domain.TagSetVersion, error) {
+	return m.prev, m.err
+}
+
 func TestCreateTagSetVersionUsecase_Execute(t *testing.T) {
 	logger.InitLogger()
 
@@ -84,7 +93,7 @@ func TestCreateTagSetVersionUsecase_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewCreateTagSetVersionUsecase(tt.tagSetPort, tt.eventPort)
+			uc := NewCreateTagSetVersionUsecase(tt.tagSetPort, tt.eventPort, nil)
 			err := uc.Execute(context.Background(), tt.tsv)
 
 			if tt.wantErr {
@@ -98,4 +107,55 @@ func TestCreateTagSetVersionUsecase_Execute(t *testing.T) {
 			assert.Equal(t, domain.EventTagSetVersionCreated, tt.eventPort.appended[0].EventType)
 		})
 	}
+}
+
+func TestCreateTagSetVersionUsecase_FirstVersion_NoSupersedeEvent(t *testing.T) {
+	logger.InitLogger()
+
+	tagSetPort := &mockTagSetPort{}
+	eventPort := &mockEventPort{}
+	markPort := &mockMarkTagSupersededPort{prev: nil}
+
+	uc := NewCreateTagSetVersionUsecase(tagSetPort, eventPort, markPort)
+	err := uc.Execute(context.Background(), domain.TagSetVersion{
+		ArticleID: uuid.New(),
+		UserID:    uuid.New(),
+		TagsJSON:  json.RawMessage(`[{"name":"go","confidence":0.9}]`),
+	})
+
+	require.NoError(t, err)
+	assert.Len(t, eventPort.appended, 1, "first version: only TagSetVersionCreated")
+	assert.Equal(t, domain.EventTagSetVersionCreated, eventPort.appended[0].EventType)
+}
+
+func TestCreateTagSetVersionUsecase_SecondVersion_EmitsSupersedeEvent(t *testing.T) {
+	logger.InitLogger()
+
+	articleID := uuid.New()
+	userID := uuid.New()
+	oldVersionID := uuid.New()
+
+	tagSetPort := &mockTagSetPort{}
+	eventPort := &mockEventPort{}
+	markPort := &mockMarkTagSupersededPort{
+		prev: &domain.TagSetVersion{
+			TagSetVersionID: oldVersionID,
+			ArticleID:       articleID,
+			UserID:          userID,
+			TagsJSON:        json.RawMessage(`[{"name":"old-tag","confidence":0.8}]`),
+		},
+	}
+
+	uc := NewCreateTagSetVersionUsecase(tagSetPort, eventPort, markPort)
+	err := uc.Execute(context.Background(), domain.TagSetVersion{
+		ArticleID: articleID,
+		UserID:    userID,
+		TagsJSON:  json.RawMessage(`[{"name":"new-tag","confidence":0.9}]`),
+	})
+
+	require.NoError(t, err)
+	require.Len(t, eventPort.appended, 2, "second version: TagSetVersionCreated + TagSetSuperseded")
+	assert.Equal(t, domain.EventTagSetVersionCreated, eventPort.appended[0].EventType)
+	assert.Equal(t, domain.EventTagSetSuperseded, eventPort.appended[1].EventType)
+	assert.Contains(t, string(eventPort.appended[1].Payload), "previous_tags")
 }
