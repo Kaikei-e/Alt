@@ -44,10 +44,70 @@ export interface FeatureFlagsConfigData {
 	enableSupersedeUx: boolean;
 }
 
+/** SLI status data */
+export interface SLIStatusData {
+	name: string;
+	currentValue: number;
+	targetValue: number;
+	unit: string;
+	status: string;
+	errorBudgetConsumedPct: number;
+}
+
+/** Alert summary data */
+export interface AlertSummaryData {
+	alertName: string;
+	severity: string;
+	status: string;
+	firedAt: string;
+	description: string;
+}
+
+/** SLO status data */
+export interface SLOStatusData {
+	overallHealth: string;
+	slis: SLIStatusData[];
+	errorBudgetWindowDays: number;
+	activeAlerts: AlertSummaryData[];
+	computedAt: string;
+}
+
+/** Reproject run data */
+export interface ReprojectRunData {
+	reprojectRunId: string;
+	projectionName: string;
+	fromVersion: string;
+	toVersion: string;
+	initiatedBy: string;
+	mode: string;
+	status: string;
+	rangeStart: string;
+	rangeEnd: string;
+	statsJson: string;
+	diffSummaryJson: string;
+	createdAt: string;
+	startedAt: string;
+	finishedAt: string;
+}
+
+/** Reproject diff summary data */
+export interface ReprojectDiffSummaryData {
+	fromItemCount: number;
+	toItemCount: number;
+	fromEmptyCount: number;
+	toEmptyCount: number;
+	fromAvgScore: number;
+	toAvgScore: number;
+	fromWhyDistribution: string;
+	toWhyDistribution: string;
+}
+
 /** Combined admin dashboard data */
 export interface KnowledgeHomeAdminData {
 	health: ProjectionHealthData | null;
 	flags: FeatureFlagsConfigData | null;
+	sloStatus: SLOStatusData | null;
+	reprojectRuns: ReprojectRunData[];
 }
 
 function createAdminClient(transport: Transport): KnowledgeHomeAdminClient {
@@ -129,4 +189,129 @@ export async function resumeBackfill(
 ): Promise<void> {
 	const client = createAdminClient(transport);
 	await client.resumeBackfill({ jobId });
+}
+
+export async function getSLOStatus(
+	transport: Transport,
+): Promise<SLOStatusData> {
+	const client = createAdminClient(transport);
+	const response = await client.getSLOStatus({});
+	return {
+		overallHealth: response.overallHealth,
+		slis: response.slis.map((s) => ({
+			name: s.name,
+			currentValue: s.currentValue,
+			targetValue: s.targetValue,
+			unit: s.unit,
+			status: s.status,
+			errorBudgetConsumedPct: s.errorBudgetConsumedPct,
+		})),
+		errorBudgetWindowDays: response.errorBudgetWindowDays,
+		activeAlerts: response.activeAlerts.map((a) => ({
+			alertName: a.alertName,
+			severity: a.severity,
+			status: a.status,
+			firedAt: a.firedAt,
+			description: a.description,
+		})),
+		computedAt: response.computedAt,
+	};
+}
+
+export async function listReprojectRuns(
+	transport: Transport,
+	limit = 20,
+): Promise<ReprojectRunData[]> {
+	const client = createAdminClient(transport);
+	const response = await client.listReprojectRuns({ limit });
+	return response.runs.map(convertReprojectRun);
+}
+
+export async function startReproject(
+	transport: Transport,
+	mode: string,
+	fromVersion: string,
+	toVersion: string,
+	rangeStart?: string,
+	rangeEnd?: string,
+): Promise<ReprojectRunData | null> {
+	const client = createAdminClient(transport);
+	const response = await client.startReproject({
+		mode,
+		fromVersion,
+		toVersion,
+		rangeStart,
+		rangeEnd,
+	});
+	if (!response.run) return null;
+	return convertReprojectRun(response.run);
+}
+
+export async function compareReproject(
+	transport: Transport,
+	reprojectRunId: string,
+): Promise<ReprojectDiffSummaryData | null> {
+	const client = createAdminClient(transport);
+	const response = await client.compareReproject({ reprojectRunId });
+	if (!response.diff) return null;
+	return {
+		fromItemCount: Number(response.diff.fromItemCount),
+		toItemCount: Number(response.diff.toItemCount),
+		fromEmptyCount: Number(response.diff.fromEmptyCount),
+		toEmptyCount: Number(response.diff.toEmptyCount),
+		fromAvgScore: response.diff.fromAvgScore,
+		toAvgScore: response.diff.toAvgScore,
+		fromWhyDistribution: response.diff.fromWhyDistribution,
+		toWhyDistribution: response.diff.toWhyDistribution,
+	};
+}
+
+export async function swapReproject(
+	transport: Transport,
+	reprojectRunId: string,
+): Promise<void> {
+	const client = createAdminClient(transport);
+	await client.swapReproject({ reprojectRunId });
+}
+
+export async function rollbackReproject(
+	transport: Transport,
+	reprojectRunId: string,
+): Promise<void> {
+	const client = createAdminClient(transport);
+	await client.rollbackReproject({ reprojectRunId });
+}
+
+function convertReprojectRun(r: {
+	reprojectRunId: string;
+	projectionName: string;
+	fromVersion: string;
+	toVersion: string;
+	initiatedBy: string;
+	mode: string;
+	status: string;
+	rangeStart: string;
+	rangeEnd: string;
+	statsJson: string;
+	diffSummaryJson: string;
+	createdAt: string;
+	startedAt: string;
+	finishedAt: string;
+}): ReprojectRunData {
+	return {
+		reprojectRunId: r.reprojectRunId,
+		projectionName: r.projectionName,
+		fromVersion: r.fromVersion,
+		toVersion: r.toVersion,
+		initiatedBy: r.initiatedBy,
+		mode: r.mode,
+		status: r.status,
+		rangeStart: r.rangeStart,
+		rangeEnd: r.rangeEnd,
+		statsJson: r.statsJson,
+		diffSummaryJson: r.diffSummaryJson,
+		createdAt: r.createdAt,
+		startedAt: r.startedAt,
+		finishedAt: r.finishedAt,
+	};
 }

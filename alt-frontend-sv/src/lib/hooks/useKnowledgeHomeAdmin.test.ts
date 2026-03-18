@@ -22,6 +22,8 @@ const initialSnapshot: KnowledgeHomeAdminSnapshot = {
 		enableStreamUpdates: true,
 		enableSupersedeUx: true,
 	},
+	sloStatus: null,
+	reprojectRuns: [],
 };
 
 describe("useKnowledgeHomeAdmin", () => {
@@ -69,6 +71,8 @@ describe("useKnowledgeHomeAdmin", () => {
 				enableStreamUpdates: false,
 				enableSupersedeUx: false,
 			},
+			sloStatus: null,
+			reprojectRuns: [],
 		});
 
 		const pending = admin.fetchData();
@@ -92,6 +96,8 @@ describe("useKnowledgeHomeAdmin", () => {
 				enableStreamUpdates: true,
 				enableSupersedeUx: true,
 			},
+			sloStatus: null,
+			reprojectRuns: [],
 		});
 		await pending;
 
@@ -120,6 +126,8 @@ describe("useKnowledgeHomeAdmin", () => {
 				],
 			},
 			flags: initialSnapshot.flags,
+			sloStatus: null,
+			reprojectRuns: [],
 		};
 		const fetcher = vi.fn().mockResolvedValue(refreshedSnapshot);
 		const actionRunner = vi.fn<

@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/knowledge_home/v1/knowledge_home_admin.proto.
  */
 export const file_alt_knowledge_home_v1_knowledge_home_admin: GenFile = /*@__PURE__*/
-  fileDesc("CjBhbHQva25vd2xlZGdlX2hvbWUvdjEva25vd2xlZGdlX2hvbWVfYWRtaW4ucHJvdG8SFWFsdC5rbm93bGVkZ2VfaG9tZS52MSI0ChZUcmlnZ2VyQmFja2ZpbGxSZXF1ZXN0EhoKEnByb2plY3Rpb25fdmVyc2lvbhgBIAEoBSJKChdUcmlnZ2VyQmFja2ZpbGxSZXNwb25zZRIvCgNqb2IYASABKAsyIi5hbHQua25vd2xlZGdlX2hvbWUudjEuQmFja2ZpbGxKb2IiJgoUUGF1c2VCYWNrZmlsbFJlcXVlc3QSDgoGam9iX2lkGAEgASgJIhcKFVBhdXNlQmFja2ZpbGxSZXNwb25zZSInChVSZXN1bWVCYWNrZmlsbFJlcXVlc3QSDgoGam9iX2lkGAEgASgJIhgKFlJlc3VtZUJhY2tmaWxsUmVzcG9uc2UiKgoYR2V0QmFja2ZpbGxTdGF0dXNSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSJMChlHZXRCYWNrZmlsbFN0YXR1c1Jlc3BvbnNlEi8KA2pvYhgBIAEoCzIiLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5CYWNrZmlsbEpvYiIcChpHZXRQcm9qZWN0aW9uSGVhbHRoUmVxdWVzdCKeAQobR2V0UHJvamVjdGlvbkhlYWx0aFJlc3BvbnNlEhYKDmFjdGl2ZV92ZXJzaW9uGAEgASgFEhYKDmNoZWNrcG9pbnRfc2VxGAIgASgDEhQKDGxhc3RfdXBkYXRlZBgDIAEoCRI5Cg1iYWNrZmlsbF9qb2JzGAQgAygLMiIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkJhY2tmaWxsSm9iIhgKFkdldEZlYXR1cmVGbGFnc1JlcXVlc3Qi8wEKF0dldEZlYXR1cmVGbGFnc1Jlc3BvbnNlEhgKEGVuYWJsZV9ob21lX3BhZ2UYASABKAgSFwoPZW5hYmxlX3RyYWNraW5nGAIgASgIEhwKFGVuYWJsZV9wcm9qZWN0aW9uX3YyGAMgASgIEhoKEnJvbGxvdXRfcGVyY2VudGFnZRgEIAEoBRIaChJlbmFibGVfcmVjYWxsX3JhaWwYBSABKAgSEwoLZW5hYmxlX2xlbnMYBiABKAgSHQoVZW5hYmxlX3N0cmVhbV91cGRhdGVzGAcgASgIEhsKE2VuYWJsZV9zdXBlcnNlZGVfdXgYCCABKAgizgEKC0JhY2tmaWxsSm9iEg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSGgoScHJvamVjdGlvbl92ZXJzaW9uGAMgASgFEhQKDHRvdGFsX2V2ZW50cxgEIAEoBRIYChBwcm9jZXNzZWRfZXZlbnRzGAUgASgFEhUKDWVycm9yX21lc3NhZ2UYBiABKAkSEgoKY3JlYXRlZF9hdBgHIAEoCRISCgpzdGFydGVkX2F0GAggASgJEhQKDGNvbXBsZXRlZF9hdBgJIAEoCTLQBQoZS25vd2xlZGdlSG9tZUFkbWluU2VydmljZRJwCg9UcmlnZ2VyQmFja2ZpbGwSLS5hbHQua25vd2xlZGdlX2hvbWUudjEuVHJpZ2dlckJhY2tmaWxsUmVxdWVzdBouLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5UcmlnZ2VyQmFja2ZpbGxSZXNwb25zZRJqCg1QYXVzZUJhY2tmaWxsEisuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlBhdXNlQmFja2ZpbGxSZXF1ZXN0GiwuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlBhdXNlQmFja2ZpbGxSZXNwb25zZRJtCg5SZXN1bWVCYWNrZmlsbBIsLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXN1bWVCYWNrZmlsbFJlcXVlc3QaLS5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVzdW1lQmFja2ZpbGxSZXNwb25zZRJ2ChFHZXRCYWNrZmlsbFN0YXR1cxIvLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRCYWNrZmlsbFN0YXR1c1JlcXVlc3QaMC5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0QmFja2ZpbGxTdGF0dXNSZXNwb25zZRJ8ChNHZXRQcm9qZWN0aW9uSGVhbHRoEjEuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFByb2plY3Rpb25IZWFsdGhSZXF1ZXN0GjIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFByb2plY3Rpb25IZWFsdGhSZXNwb25zZRJwCg9HZXRGZWF0dXJlRmxhZ3MSLS5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0RmVhdHVyZUZsYWdzUmVxdWVzdBouLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRGZWF0dXJlRmxhZ3NSZXNwb25zZUI1WjNhbHQvZ2VuL3Byb3RvL2FsdC9rbm93bGVkZ2VfaG9tZS92MTtrbm93bGVkZ2Vob21ldjFiBnByb3RvMw");
+  fileDesc("CjBhbHQva25vd2xlZGdlX2hvbWUvdjEva25vd2xlZGdlX2hvbWVfYWRtaW4ucHJvdG8SFWFsdC5rbm93bGVkZ2VfaG9tZS52MSI0ChZUcmlnZ2VyQmFja2ZpbGxSZXF1ZXN0EhoKEnByb2plY3Rpb25fdmVyc2lvbhgBIAEoBSJKChdUcmlnZ2VyQmFja2ZpbGxSZXNwb25zZRIvCgNqb2IYASABKAsyIi5hbHQua25vd2xlZGdlX2hvbWUudjEuQmFja2ZpbGxKb2IiJgoUUGF1c2VCYWNrZmlsbFJlcXVlc3QSDgoGam9iX2lkGAEgASgJIhcKFVBhdXNlQmFja2ZpbGxSZXNwb25zZSInChVSZXN1bWVCYWNrZmlsbFJlcXVlc3QSDgoGam9iX2lkGAEgASgJIhgKFlJlc3VtZUJhY2tmaWxsUmVzcG9uc2UiKgoYR2V0QmFja2ZpbGxTdGF0dXNSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSJMChlHZXRCYWNrZmlsbFN0YXR1c1Jlc3BvbnNlEi8KA2pvYhgBIAEoCzIiLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5CYWNrZmlsbEpvYiIcChpHZXRQcm9qZWN0aW9uSGVhbHRoUmVxdWVzdCKeAQobR2V0UHJvamVjdGlvbkhlYWx0aFJlc3BvbnNlEhYKDmFjdGl2ZV92ZXJzaW9uGAEgASgFEhYKDmNoZWNrcG9pbnRfc2VxGAIgASgDEhQKDGxhc3RfdXBkYXRlZBgDIAEoCRI5Cg1iYWNrZmlsbF9qb2JzGAQgAygLMiIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkJhY2tmaWxsSm9iIhgKFkdldEZlYXR1cmVGbGFnc1JlcXVlc3Qi8wEKF0dldEZlYXR1cmVGbGFnc1Jlc3BvbnNlEhgKEGVuYWJsZV9ob21lX3BhZ2UYASABKAgSFwoPZW5hYmxlX3RyYWNraW5nGAIgASgIEhwKFGVuYWJsZV9wcm9qZWN0aW9uX3YyGAMgASgIEhoKEnJvbGxvdXRfcGVyY2VudGFnZRgEIAEoBRIaChJlbmFibGVfcmVjYWxsX3JhaWwYBSABKAgSEwoLZW5hYmxlX2xlbnMYBiABKAgSHQoVZW5hYmxlX3N0cmVhbV91cGRhdGVzGAcgASgIEhsKE2VuYWJsZV9zdXBlcnNlZGVfdXgYCCABKAgizgEKC0JhY2tmaWxsSm9iEg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSGgoScHJvamVjdGlvbl92ZXJzaW9uGAMgASgFEhQKDHRvdGFsX2V2ZW50cxgEIAEoBRIYChBwcm9jZXNzZWRfZXZlbnRzGAUgASgFEhUKDWVycm9yX21lc3NhZ2UYBiABKAkSEgoKY3JlYXRlZF9hdBgHIAEoCRISCgpzdGFydGVkX2F0GAggASgJEhQKDGNvbXBsZXRlZF9hdBgJIAEoCSKfAQoVU3RhcnRSZXByb2plY3RSZXF1ZXN0EgwKBG1vZGUYASABKAkSEgoKdG9fdmVyc2lvbhgCIAEoCRIUCgxmcm9tX3ZlcnNpb24YAyABKAkSGAoLcmFuZ2Vfc3RhcnQYBCABKAlIAIgBARIWCglyYW5nZV9lbmQYBSABKAlIAYgBAUIOCgxfcmFuZ2Vfc3RhcnRCDAoKX3JhbmdlX2VuZCJKChZTdGFydFJlcHJvamVjdFJlc3BvbnNlEjAKA3J1bhgBIAEoCzIjLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXByb2plY3RSdW4iNQoZR2V0UmVwcm9qZWN0U3RhdHVzUmVxdWVzdBIYChByZXByb2plY3RfcnVuX2lkGAEgASgJIk4KGkdldFJlcHJvamVjdFN0YXR1c1Jlc3BvbnNlEjAKA3J1bhgBIAEoCzIjLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXByb2plY3RSdW4iVwoYTGlzdFJlcHJvamVjdFJ1bnNSZXF1ZXN0EhoKDXN0YXR1c19maWx0ZXIYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBUIQCg5fc3RhdHVzX2ZpbHRlciJOChlMaXN0UmVwcm9qZWN0UnVuc1Jlc3BvbnNlEjEKBHJ1bnMYASADKAsyIy5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVwcm9qZWN0UnVuIjMKF0NvbXBhcmVSZXByb2plY3RSZXF1ZXN0EhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkiVQoYQ29tcGFyZVJlcHJvamVjdFJlc3BvbnNlEjkKBGRpZmYYASABKAsyKy5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVwcm9qZWN0RGlmZlN1bW1hcnkiMAoUU3dhcFJlcHJvamVjdFJlcXVlc3QSGAoQcmVwcm9qZWN0X3J1bl9pZBgBIAEoCSIXChVTd2FwUmVwcm9qZWN0UmVzcG9uc2UiNAoYUm9sbGJhY2tSZXByb2plY3RSZXF1ZXN0EhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkiGwoZUm9sbGJhY2tSZXByb2plY3RSZXNwb25zZSKzAgoMUmVwcm9qZWN0UnVuEhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkSFwoPcHJvamVjdGlvbl9uYW1lGAIgASgJEhQKDGZyb21fdmVyc2lvbhgDIAEoCRISCgp0b192ZXJzaW9uGAQgASgJEhQKDGluaXRpYXRlZF9ieRgFIAEoCRIMCgRtb2RlGAYgASgJEg4KBnN0YXR1cxgHIAEoCRITCgtyYW5nZV9zdGFydBgIIAEoCRIRCglyYW5nZV9lbmQYCSABKAkSEgoKc3RhdHNfanNvbhgKIAEoCRIZChFkaWZmX3N1bW1hcnlfanNvbhgLIAEoCRISCgpjcmVhdGVkX2F0GAwgASgJEhIKCnN0YXJ0ZWRfYXQYDSABKAkSEwoLZmluaXNoZWRfYXQYDiABKAki4gEKFFJlcHJvamVjdERpZmZTdW1tYXJ5EhcKD2Zyb21faXRlbV9jb3VudBgBIAEoAxIVCg10b19pdGVtX2NvdW50GAIgASgDEhgKEGZyb21fZW1wdHlfY291bnQYAyABKAMSFgoOdG9fZW1wdHlfY291bnQYBCABKAMSFgoOZnJvbV9hdmdfc2NvcmUYBSABKAESFAoMdG9fYXZnX3Njb3JlGAYgASgBEh0KFWZyb21fd2h5X2Rpc3RyaWJ1dGlvbhgHIAEoCRIbChN0b193aHlfZGlzdHJpYnV0aW9uGAggASgJIhUKE0dldFNMT1N0YXR1c1JlcXVlc3Qi0QEKFEdldFNMT1N0YXR1c1Jlc3BvbnNlEhYKDm92ZXJhbGxfaGVhbHRoGAEgASgJEi4KBHNsaXMYAiADKAsyIC5hbHQua25vd2xlZGdlX2hvbWUudjEuU0xJU3RhdHVzEiAKGGVycm9yX2J1ZGdldF93aW5kb3dfZGF5cxgDIAEoBRI6Cg1hY3RpdmVfYWxlcnRzGAQgAygLMiMuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkFsZXJ0U3VtbWFyeRITCgtjb21wdXRlZF9hdBgFIAEoCSKHAQoJU0xJU3RhdHVzEgwKBG5hbWUYASABKAkSFQoNY3VycmVudF92YWx1ZRgCIAEoARIUCgx0YXJnZXRfdmFsdWUYAyABKAESDAoEdW5pdBgEIAEoCRIOCgZzdGF0dXMYBSABKAkSIQoZZXJyb3JfYnVkZ2V0X2NvbnN1bWVkX3BjdBgGIAEoASJrCgxBbGVydFN1bW1hcnkSEgoKYWxlcnRfbmFtZRgBIAEoCRIQCghzZXZlcml0eRgCIAEoCRIOCgZzdGF0dXMYAyABKAkSEAoIZmlyZWRfYXQYBCABKAkSEwoLZGVzY3JpcHRpb24YBSABKAkiZQoZUnVuUHJvamVjdGlvbkF1ZGl0UmVxdWVzdBIXCg9wcm9qZWN0aW9uX25hbWUYASABKAkSGgoScHJvamVjdGlvbl92ZXJzaW9uGAIgASgJEhMKC3NhbXBsZV9zaXplGAMgASgFIlMKGlJ1blByb2plY3Rpb25BdWRpdFJlc3BvbnNlEjUKBWF1ZGl0GAEgASgLMiYuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlByb2plY3Rpb25BdWRpdCKvAQoPUHJvamVjdGlvbkF1ZGl0EhAKCGF1ZGl0X2lkGAEgASgJEhcKD3Byb2plY3Rpb25fbmFtZRgCIAEoCRIaChJwcm9qZWN0aW9uX3ZlcnNpb24YAyABKAkSEgoKY2hlY2tlZF9hdBgEIAEoCRITCgtzYW1wbGVfc2l6ZRgFIAEoBRIWCg5taXNtYXRjaF9jb3VudBgGIAEoBRIUCgxkZXRhaWxzX2pzb24YByABKAky7wwKGUtub3dsZWRnZUhvbWVBZG1pblNlcnZpY2UScAoPVHJpZ2dlckJhY2tmaWxsEi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLlRyaWdnZXJCYWNrZmlsbFJlcXVlc3QaLi5hbHQua25vd2xlZGdlX2hvbWUudjEuVHJpZ2dlckJhY2tmaWxsUmVzcG9uc2USagoNUGF1c2VCYWNrZmlsbBIrLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5QYXVzZUJhY2tmaWxsUmVxdWVzdBosLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5QYXVzZUJhY2tmaWxsUmVzcG9uc2USbQoOUmVzdW1lQmFja2ZpbGwSLC5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVzdW1lQmFja2ZpbGxSZXF1ZXN0Gi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJlc3VtZUJhY2tmaWxsUmVzcG9uc2USdgoRR2V0QmFja2ZpbGxTdGF0dXMSLy5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0QmFja2ZpbGxTdGF0dXNSZXF1ZXN0GjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldEJhY2tmaWxsU3RhdHVzUmVzcG9uc2USfAoTR2V0UHJvamVjdGlvbkhlYWx0aBIxLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRQcm9qZWN0aW9uSGVhbHRoUmVxdWVzdBoyLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRQcm9qZWN0aW9uSGVhbHRoUmVzcG9uc2UScAoPR2V0RmVhdHVyZUZsYWdzEi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldEZlYXR1cmVGbGFnc1JlcXVlc3QaLi5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0RmVhdHVyZUZsYWdzUmVzcG9uc2USbQoOU3RhcnRSZXByb2plY3QSLC5hbHQua25vd2xlZGdlX2hvbWUudjEuU3RhcnRSZXByb2plY3RSZXF1ZXN0Gi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLlN0YXJ0UmVwcm9qZWN0UmVzcG9uc2USeQoSR2V0UmVwcm9qZWN0U3RhdHVzEjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFJlcHJvamVjdFN0YXR1c1JlcXVlc3QaMS5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0UmVwcm9qZWN0U3RhdHVzUmVzcG9uc2USdgoRTGlzdFJlcHJvamVjdFJ1bnMSLy5hbHQua25vd2xlZGdlX2hvbWUudjEuTGlzdFJlcHJvamVjdFJ1bnNSZXF1ZXN0GjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkxpc3RSZXByb2plY3RSdW5zUmVzcG9uc2UScwoQQ29tcGFyZVJlcHJvamVjdBIuLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Db21wYXJlUmVwcm9qZWN0UmVxdWVzdBovLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Db21wYXJlUmVwcm9qZWN0UmVzcG9uc2USagoNU3dhcFJlcHJvamVjdBIrLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Td2FwUmVwcm9qZWN0UmVxdWVzdBosLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Td2FwUmVwcm9qZWN0UmVzcG9uc2USdgoRUm9sbGJhY2tSZXByb2plY3QSLy5hbHQua25vd2xlZGdlX2hvbWUudjEuUm9sbGJhY2tSZXByb2plY3RSZXF1ZXN0GjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJvbGxiYWNrUmVwcm9qZWN0UmVzcG9uc2USZwoMR2V0U0xPU3RhdHVzEiouYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFNMT1N0YXR1c1JlcXVlc3QaKy5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0U0xPU3RhdHVzUmVzcG9uc2USeQoSUnVuUHJvamVjdGlvbkF1ZGl0EjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJ1blByb2plY3Rpb25BdWRpdFJlcXVlc3QaMS5hbHQua25vd2xlZGdlX2hvbWUudjEuUnVuUHJvamVjdGlvbkF1ZGl0UmVzcG9uc2VCNVozYWx0L2dlbi9wcm90by9hbHQva25vd2xlZGdlX2hvbWUvdjE7a25vd2xlZGdlaG9tZXYxYgZwcm90bzM");
 
 /**
  * TriggerBackfillRequest starts a backfill job.
@@ -334,6 +334,657 @@ export const BackfillJobSchema: GenMessage<BackfillJob> = /*@__PURE__*/
   messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 12);
 
 /**
+ * StartReprojectRequest initiates a projection re-build.
+ *
+ * @generated from message alt.knowledge_home.v1.StartReprojectRequest
+ */
+export type StartReprojectRequest = Message<"alt.knowledge_home.v1.StartReprojectRequest"> & {
+  /**
+   * Mode: dry_run, user_subset, time_range, full
+   *
+   * @generated from field: string mode = 1;
+   */
+  mode: string;
+
+  /**
+   * Target projection version to build
+   *
+   * @generated from field: string to_version = 2;
+   */
+  toVersion: string;
+
+  /**
+   * Source projection version
+   *
+   * @generated from field: string from_version = 3;
+   */
+  fromVersion: string;
+
+  /**
+   * Optional time range (only for time_range mode)
+   *
+   * @generated from field: optional string range_start = 4;
+   */
+  rangeStart?: string;
+
+  /**
+   * @generated from field: optional string range_end = 5;
+   */
+  rangeEnd?: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.StartReprojectRequest.
+ * Use `create(StartReprojectRequestSchema)` to create a new message.
+ */
+export const StartReprojectRequestSchema: GenMessage<StartReprojectRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 13);
+
+/**
+ * StartReprojectResponse returns the created reproject run.
+ *
+ * @generated from message alt.knowledge_home.v1.StartReprojectResponse
+ */
+export type StartReprojectResponse = Message<"alt.knowledge_home.v1.StartReprojectResponse"> & {
+  /**
+   * @generated from field: alt.knowledge_home.v1.ReprojectRun run = 1;
+   */
+  run?: ReprojectRun;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.StartReprojectResponse.
+ * Use `create(StartReprojectResponseSchema)` to create a new message.
+ */
+export const StartReprojectResponseSchema: GenMessage<StartReprojectResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 14);
+
+/**
+ * GetReprojectStatusRequest queries a reproject run by ID.
+ *
+ * @generated from message alt.knowledge_home.v1.GetReprojectStatusRequest
+ */
+export type GetReprojectStatusRequest = Message<"alt.knowledge_home.v1.GetReprojectStatusRequest"> & {
+  /**
+   * @generated from field: string reproject_run_id = 1;
+   */
+  reprojectRunId: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.GetReprojectStatusRequest.
+ * Use `create(GetReprojectStatusRequestSchema)` to create a new message.
+ */
+export const GetReprojectStatusRequestSchema: GenMessage<GetReprojectStatusRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 15);
+
+/**
+ * GetReprojectStatusResponse returns the reproject run status.
+ *
+ * @generated from message alt.knowledge_home.v1.GetReprojectStatusResponse
+ */
+export type GetReprojectStatusResponse = Message<"alt.knowledge_home.v1.GetReprojectStatusResponse"> & {
+  /**
+   * @generated from field: alt.knowledge_home.v1.ReprojectRun run = 1;
+   */
+  run?: ReprojectRun;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.GetReprojectStatusResponse.
+ * Use `create(GetReprojectStatusResponseSchema)` to create a new message.
+ */
+export const GetReprojectStatusResponseSchema: GenMessage<GetReprojectStatusResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 16);
+
+/**
+ * ListReprojectRunsRequest lists all reproject runs.
+ *
+ * @generated from message alt.knowledge_home.v1.ListReprojectRunsRequest
+ */
+export type ListReprojectRunsRequest = Message<"alt.knowledge_home.v1.ListReprojectRunsRequest"> & {
+  /**
+   * Optional status filter
+   *
+   * @generated from field: optional string status_filter = 1;
+   */
+  statusFilter?: string;
+
+  /**
+   * @generated from field: int32 limit = 2;
+   */
+  limit: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.ListReprojectRunsRequest.
+ * Use `create(ListReprojectRunsRequestSchema)` to create a new message.
+ */
+export const ListReprojectRunsRequestSchema: GenMessage<ListReprojectRunsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 17);
+
+/**
+ * ListReprojectRunsResponse returns reproject runs.
+ *
+ * @generated from message alt.knowledge_home.v1.ListReprojectRunsResponse
+ */
+export type ListReprojectRunsResponse = Message<"alt.knowledge_home.v1.ListReprojectRunsResponse"> & {
+  /**
+   * @generated from field: repeated alt.knowledge_home.v1.ReprojectRun runs = 1;
+   */
+  runs: ReprojectRun[];
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.ListReprojectRunsResponse.
+ * Use `create(ListReprojectRunsResponseSchema)` to create a new message.
+ */
+export const ListReprojectRunsResponseSchema: GenMessage<ListReprojectRunsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 18);
+
+/**
+ * CompareReprojectRequest compares projection versions.
+ *
+ * @generated from message alt.knowledge_home.v1.CompareReprojectRequest
+ */
+export type CompareReprojectRequest = Message<"alt.knowledge_home.v1.CompareReprojectRequest"> & {
+  /**
+   * @generated from field: string reproject_run_id = 1;
+   */
+  reprojectRunId: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.CompareReprojectRequest.
+ * Use `create(CompareReprojectRequestSchema)` to create a new message.
+ */
+export const CompareReprojectRequestSchema: GenMessage<CompareReprojectRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 19);
+
+/**
+ * CompareReprojectResponse returns a diff summary.
+ *
+ * @generated from message alt.knowledge_home.v1.CompareReprojectResponse
+ */
+export type CompareReprojectResponse = Message<"alt.knowledge_home.v1.CompareReprojectResponse"> & {
+  /**
+   * @generated from field: alt.knowledge_home.v1.ReprojectDiffSummary diff = 1;
+   */
+  diff?: ReprojectDiffSummary;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.CompareReprojectResponse.
+ * Use `create(CompareReprojectResponseSchema)` to create a new message.
+ */
+export const CompareReprojectResponseSchema: GenMessage<CompareReprojectResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 20);
+
+/**
+ * SwapReprojectRequest swaps the active projection version.
+ *
+ * @generated from message alt.knowledge_home.v1.SwapReprojectRequest
+ */
+export type SwapReprojectRequest = Message<"alt.knowledge_home.v1.SwapReprojectRequest"> & {
+  /**
+   * @generated from field: string reproject_run_id = 1;
+   */
+  reprojectRunId: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.SwapReprojectRequest.
+ * Use `create(SwapReprojectRequestSchema)` to create a new message.
+ */
+export const SwapReprojectRequestSchema: GenMessage<SwapReprojectRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 21);
+
+/**
+ * SwapReprojectResponse is empty on success.
+ *
+ * @generated from message alt.knowledge_home.v1.SwapReprojectResponse
+ */
+export type SwapReprojectResponse = Message<"alt.knowledge_home.v1.SwapReprojectResponse"> & {
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.SwapReprojectResponse.
+ * Use `create(SwapReprojectResponseSchema)` to create a new message.
+ */
+export const SwapReprojectResponseSchema: GenMessage<SwapReprojectResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 22);
+
+/**
+ * RollbackReprojectRequest rolls back to the previous version.
+ *
+ * @generated from message alt.knowledge_home.v1.RollbackReprojectRequest
+ */
+export type RollbackReprojectRequest = Message<"alt.knowledge_home.v1.RollbackReprojectRequest"> & {
+  /**
+   * @generated from field: string reproject_run_id = 1;
+   */
+  reprojectRunId: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.RollbackReprojectRequest.
+ * Use `create(RollbackReprojectRequestSchema)` to create a new message.
+ */
+export const RollbackReprojectRequestSchema: GenMessage<RollbackReprojectRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 23);
+
+/**
+ * RollbackReprojectResponse is empty on success.
+ *
+ * @generated from message alt.knowledge_home.v1.RollbackReprojectResponse
+ */
+export type RollbackReprojectResponse = Message<"alt.knowledge_home.v1.RollbackReprojectResponse"> & {
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.RollbackReprojectResponse.
+ * Use `create(RollbackReprojectResponseSchema)` to create a new message.
+ */
+export const RollbackReprojectResponseSchema: GenMessage<RollbackReprojectResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 24);
+
+/**
+ * ReprojectRun represents a single reproject operation.
+ *
+ * @generated from message alt.knowledge_home.v1.ReprojectRun
+ */
+export type ReprojectRun = Message<"alt.knowledge_home.v1.ReprojectRun"> & {
+  /**
+   * @generated from field: string reproject_run_id = 1;
+   */
+  reprojectRunId: string;
+
+  /**
+   * @generated from field: string projection_name = 2;
+   */
+  projectionName: string;
+
+  /**
+   * @generated from field: string from_version = 3;
+   */
+  fromVersion: string;
+
+  /**
+   * @generated from field: string to_version = 4;
+   */
+  toVersion: string;
+
+  /**
+   * @generated from field: string initiated_by = 5;
+   */
+  initiatedBy: string;
+
+  /**
+   * @generated from field: string mode = 6;
+   */
+  mode: string;
+
+  /**
+   * @generated from field: string status = 7;
+   */
+  status: string;
+
+  /**
+   * @generated from field: string range_start = 8;
+   */
+  rangeStart: string;
+
+  /**
+   * @generated from field: string range_end = 9;
+   */
+  rangeEnd: string;
+
+  /**
+   * @generated from field: string stats_json = 10;
+   */
+  statsJson: string;
+
+  /**
+   * @generated from field: string diff_summary_json = 11;
+   */
+  diffSummaryJson: string;
+
+  /**
+   * @generated from field: string created_at = 12;
+   */
+  createdAt: string;
+
+  /**
+   * @generated from field: string started_at = 13;
+   */
+  startedAt: string;
+
+  /**
+   * @generated from field: string finished_at = 14;
+   */
+  finishedAt: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.ReprojectRun.
+ * Use `create(ReprojectRunSchema)` to create a new message.
+ */
+export const ReprojectRunSchema: GenMessage<ReprojectRun> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 25);
+
+/**
+ * ReprojectDiffSummary contains comparison metrics between two projection versions.
+ *
+ * @generated from message alt.knowledge_home.v1.ReprojectDiffSummary
+ */
+export type ReprojectDiffSummary = Message<"alt.knowledge_home.v1.ReprojectDiffSummary"> & {
+  /**
+   * @generated from field: int64 from_item_count = 1;
+   */
+  fromItemCount: bigint;
+
+  /**
+   * @generated from field: int64 to_item_count = 2;
+   */
+  toItemCount: bigint;
+
+  /**
+   * @generated from field: int64 from_empty_count = 3;
+   */
+  fromEmptyCount: bigint;
+
+  /**
+   * @generated from field: int64 to_empty_count = 4;
+   */
+  toEmptyCount: bigint;
+
+  /**
+   * @generated from field: double from_avg_score = 5;
+   */
+  fromAvgScore: number;
+
+  /**
+   * @generated from field: double to_avg_score = 6;
+   */
+  toAvgScore: number;
+
+  /**
+   * JSON-encoded why code distribution for each version
+   *
+   * @generated from field: string from_why_distribution = 7;
+   */
+  fromWhyDistribution: string;
+
+  /**
+   * @generated from field: string to_why_distribution = 8;
+   */
+  toWhyDistribution: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.ReprojectDiffSummary.
+ * Use `create(ReprojectDiffSummarySchema)` to create a new message.
+ */
+export const ReprojectDiffSummarySchema: GenMessage<ReprojectDiffSummary> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 26);
+
+/**
+ * GetSLOStatusRequest is empty.
+ *
+ * @generated from message alt.knowledge_home.v1.GetSLOStatusRequest
+ */
+export type GetSLOStatusRequest = Message<"alt.knowledge_home.v1.GetSLOStatusRequest"> & {
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.GetSLOStatusRequest.
+ * Use `create(GetSLOStatusRequestSchema)` to create a new message.
+ */
+export const GetSLOStatusRequestSchema: GenMessage<GetSLOStatusRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 27);
+
+/**
+ * GetSLOStatusResponse returns SLO health status.
+ *
+ * @generated from message alt.knowledge_home.v1.GetSLOStatusResponse
+ */
+export type GetSLOStatusResponse = Message<"alt.knowledge_home.v1.GetSLOStatusResponse"> & {
+  /**
+   * Overall health: healthy, at_risk, breaching
+   *
+   * @generated from field: string overall_health = 1;
+   */
+  overallHealth: string;
+
+  /**
+   * Individual SLI statuses
+   *
+   * @generated from field: repeated alt.knowledge_home.v1.SLIStatus slis = 2;
+   */
+  slis: SLIStatus[];
+
+  /**
+   * Error budget window in days
+   *
+   * @generated from field: int32 error_budget_window_days = 3;
+   */
+  errorBudgetWindowDays: number;
+
+  /**
+   * Active alert summaries
+   *
+   * @generated from field: repeated alt.knowledge_home.v1.AlertSummary active_alerts = 4;
+   */
+  activeAlerts: AlertSummary[];
+
+  /**
+   * When this status was computed (RFC3339)
+   *
+   * @generated from field: string computed_at = 5;
+   */
+  computedAt: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.GetSLOStatusResponse.
+ * Use `create(GetSLOStatusResponseSchema)` to create a new message.
+ */
+export const GetSLOStatusResponseSchema: GenMessage<GetSLOStatusResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 28);
+
+/**
+ * SLIStatus represents the status of a single SLI.
+ *
+ * @generated from message alt.knowledge_home.v1.SLIStatus
+ */
+export type SLIStatus = Message<"alt.knowledge_home.v1.SLIStatus"> & {
+  /**
+   * SLI name: availability, freshness, action_durability, stream_continuity, correctness_proxy
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * Current value (e.g., 99.7)
+   *
+   * @generated from field: double current_value = 2;
+   */
+  currentValue: number;
+
+  /**
+   * Target value (e.g., 99.5)
+   *
+   * @generated from field: double target_value = 3;
+   */
+  targetValue: number;
+
+  /**
+   * Unit (e.g., "%", "seconds")
+   *
+   * @generated from field: string unit = 4;
+   */
+  unit: string;
+
+  /**
+   * Status: meeting, burning, breached
+   *
+   * @generated from field: string status = 5;
+   */
+  status: string;
+
+  /**
+   * Error budget consumed percentage (0-100)
+   *
+   * @generated from field: double error_budget_consumed_pct = 6;
+   */
+  errorBudgetConsumedPct: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.SLIStatus.
+ * Use `create(SLIStatusSchema)` to create a new message.
+ */
+export const SLIStatusSchema: GenMessage<SLIStatus> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 29);
+
+/**
+ * AlertSummary represents an active alert.
+ *
+ * @generated from message alt.knowledge_home.v1.AlertSummary
+ */
+export type AlertSummary = Message<"alt.knowledge_home.v1.AlertSummary"> & {
+  /**
+   * @generated from field: string alert_name = 1;
+   */
+  alertName: string;
+
+  /**
+   * @generated from field: string severity = 2;
+   */
+  severity: string;
+
+  /**
+   * @generated from field: string status = 3;
+   */
+  status: string;
+
+  /**
+   * @generated from field: string fired_at = 4;
+   */
+  firedAt: string;
+
+  /**
+   * @generated from field: string description = 5;
+   */
+  description: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.AlertSummary.
+ * Use `create(AlertSummarySchema)` to create a new message.
+ */
+export const AlertSummarySchema: GenMessage<AlertSummary> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 30);
+
+/**
+ * RunProjectionAuditRequest runs a projection audit.
+ *
+ * @generated from message alt.knowledge_home.v1.RunProjectionAuditRequest
+ */
+export type RunProjectionAuditRequest = Message<"alt.knowledge_home.v1.RunProjectionAuditRequest"> & {
+  /**
+   * @generated from field: string projection_name = 1;
+   */
+  projectionName: string;
+
+  /**
+   * @generated from field: string projection_version = 2;
+   */
+  projectionVersion: string;
+
+  /**
+   * @generated from field: int32 sample_size = 3;
+   */
+  sampleSize: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.RunProjectionAuditRequest.
+ * Use `create(RunProjectionAuditRequestSchema)` to create a new message.
+ */
+export const RunProjectionAuditRequestSchema: GenMessage<RunProjectionAuditRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 31);
+
+/**
+ * RunProjectionAuditResponse returns audit results.
+ *
+ * @generated from message alt.knowledge_home.v1.RunProjectionAuditResponse
+ */
+export type RunProjectionAuditResponse = Message<"alt.knowledge_home.v1.RunProjectionAuditResponse"> & {
+  /**
+   * @generated from field: alt.knowledge_home.v1.ProjectionAudit audit = 1;
+   */
+  audit?: ProjectionAudit;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.RunProjectionAuditResponse.
+ * Use `create(RunProjectionAuditResponseSchema)` to create a new message.
+ */
+export const RunProjectionAuditResponseSchema: GenMessage<RunProjectionAuditResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 32);
+
+/**
+ * ProjectionAudit represents an audit result.
+ *
+ * @generated from message alt.knowledge_home.v1.ProjectionAudit
+ */
+export type ProjectionAudit = Message<"alt.knowledge_home.v1.ProjectionAudit"> & {
+  /**
+   * @generated from field: string audit_id = 1;
+   */
+  auditId: string;
+
+  /**
+   * @generated from field: string projection_name = 2;
+   */
+  projectionName: string;
+
+  /**
+   * @generated from field: string projection_version = 3;
+   */
+  projectionVersion: string;
+
+  /**
+   * @generated from field: string checked_at = 4;
+   */
+  checkedAt: string;
+
+  /**
+   * @generated from field: int32 sample_size = 5;
+   */
+  sampleSize: number;
+
+  /**
+   * @generated from field: int32 mismatch_count = 6;
+   */
+  mismatchCount: number;
+
+  /**
+   * @generated from field: string details_json = 7;
+   */
+  detailsJson: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.ProjectionAudit.
+ * Use `create(ProjectionAuditSchema)` to create a new message.
+ */
+export const ProjectionAuditSchema: GenMessage<ProjectionAudit> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 33);
+
+/**
  * KnowledgeHomeAdminService provides admin operations for Knowledge Home.
  * Protected by ServiceAuthInterceptor (service-token authentication).
  *
@@ -399,6 +1050,89 @@ export const KnowledgeHomeAdminService: GenService<{
     methodKind: "unary";
     input: typeof GetFeatureFlagsRequestSchema;
     output: typeof GetFeatureFlagsResponseSchema;
+  },
+  /**
+   * Phase 5: Reproject operations
+   * StartReproject initiates a new projection re-build run.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeAdminService.StartReproject
+   */
+  startReproject: {
+    methodKind: "unary";
+    input: typeof StartReprojectRequestSchema;
+    output: typeof StartReprojectResponseSchema;
+  },
+  /**
+   * GetReprojectStatus returns the status of a reproject run.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeAdminService.GetReprojectStatus
+   */
+  getReprojectStatus: {
+    methodKind: "unary";
+    input: typeof GetReprojectStatusRequestSchema;
+    output: typeof GetReprojectStatusResponseSchema;
+  },
+  /**
+   * ListReprojectRuns returns all reproject runs.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeAdminService.ListReprojectRuns
+   */
+  listReprojectRuns: {
+    methodKind: "unary";
+    input: typeof ListReprojectRunsRequestSchema;
+    output: typeof ListReprojectRunsResponseSchema;
+  },
+  /**
+   * CompareReproject compares two projection versions from a reproject run.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeAdminService.CompareReproject
+   */
+  compareReproject: {
+    methodKind: "unary";
+    input: typeof CompareReprojectRequestSchema;
+    output: typeof CompareReprojectResponseSchema;
+  },
+  /**
+   * SwapReproject swaps the active projection version.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeAdminService.SwapReproject
+   */
+  swapReproject: {
+    methodKind: "unary";
+    input: typeof SwapReprojectRequestSchema;
+    output: typeof SwapReprojectResponseSchema;
+  },
+  /**
+   * RollbackReproject rolls back to the previous projection version.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeAdminService.RollbackReproject
+   */
+  rollbackReproject: {
+    methodKind: "unary";
+    input: typeof RollbackReprojectRequestSchema;
+    output: typeof RollbackReprojectResponseSchema;
+  },
+  /**
+   * Phase 5: SLO / Health
+   * GetSLOStatus returns current SLO status and error budget.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeAdminService.GetSLOStatus
+   */
+  getSLOStatus: {
+    methodKind: "unary";
+    input: typeof GetSLOStatusRequestSchema;
+    output: typeof GetSLOStatusResponseSchema;
+  },
+  /**
+   * Phase 5: Audit
+   * RunProjectionAudit samples items and verifies projection correctness.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeAdminService.RunProjectionAudit
+   */
+  runProjectionAudit: {
+    methodKind: "unary";
+    input: typeof RunProjectionAuditRequestSchema;
+    output: typeof RunProjectionAuditResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 0);

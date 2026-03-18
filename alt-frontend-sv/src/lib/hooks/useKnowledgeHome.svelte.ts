@@ -23,6 +23,7 @@ export function useKnowledgeHome() {
 	let degraded = $state(false);
 	let hasMore = $state(false);
 	let nextCursor = $state("");
+	let serviceQuality = $state<"full" | "degraded" | "fallback">("full");
 
 	const fetchData = async (reset = false) => {
 		try {
@@ -36,6 +37,17 @@ export function useKnowledgeHome() {
 			hasMore = result.hasMore;
 			degraded = result.degraded;
 			nextCursor = result.nextCursor;
+			// Derive service quality from response
+			if ((result as { serviceQuality?: string }).serviceQuality) {
+				const sq = (result as { serviceQuality?: string }).serviceQuality;
+				if (sq === "fallback" || sq === "degraded") {
+					serviceQuality = sq;
+				} else {
+					serviceQuality = "full";
+				}
+			} else {
+				serviceQuality = result.degraded ? "degraded" : "full";
+			}
 		} catch (err) {
 			if (err instanceof ConnectError) {
 				if (err.code === Code.Unauthenticated) {
@@ -106,6 +118,9 @@ export function useKnowledgeHome() {
 		},
 		get degraded() {
 			return degraded;
+		},
+		get serviceQuality() {
+			return serviceQuality;
 		},
 		get hasMore() {
 			return hasMore;
