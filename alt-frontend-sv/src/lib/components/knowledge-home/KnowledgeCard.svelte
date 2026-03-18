@@ -2,6 +2,7 @@
 import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
 import WhySurfacedBadge from "./WhySurfacedBadge.svelte";
 import SummaryStateChip from "./SummaryStateChip.svelte";
+import SupersedeBadge from "./SupersedeBadge.svelte";
 import QuickActionRow from "./QuickActionRow.svelte";
 
 interface Props {
@@ -42,11 +43,18 @@ function handleAction(type: string) {
 	class="rounded-lg border p-4 bg-[var(--surface-bg)] border-[var(--surface-border)] hover:border-[var(--interactive-text)] transition-colors duration-200 shadow-[var(--shadow-sm)]"
 	data-item-key={item.itemKey}
 >
-	<!-- Header: Title + Relative Time -->
+	<!-- Header: Title + Supersede Badge + Relative Time -->
 	<div class="flex items-start justify-between gap-2 mb-2">
-		<h3 class="text-sm font-semibold text-[var(--text-primary)] line-clamp-2 flex-1">
-			{item.title}
-		</h3>
+		<div class="flex-1 min-w-0">
+			<h3 class="text-sm font-semibold text-[var(--text-primary)] line-clamp-2">
+				{item.title}
+			</h3>
+			{#if item.supersedeInfo}
+				<div class="mt-1">
+					<SupersedeBadge info={item.supersedeInfo} />
+				</div>
+			{/if}
+		</div>
 		<time
 			class="text-xs text-[var(--text-secondary)] whitespace-nowrap flex-shrink-0"
 			datetime={item.publishedAt}

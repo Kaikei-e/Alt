@@ -19,6 +19,16 @@ const SUPERSEDE_MAP: Record<string, SupersedeDisplay> = {
 		iconName: "Tag",
 		colorClass: "text-indigo-400 border-indigo-400/30 bg-indigo-400/10",
 	},
+	reason_updated: {
+		label: "Reasons changed",
+		iconName: "Info",
+		colorClass: "text-amber-400 border-amber-400/30 bg-amber-400/10",
+	},
+	multiple_updated: {
+		label: "Updated",
+		iconName: "ArrowUpCircle",
+		colorClass: "text-sky-400 border-sky-400/30 bg-sky-400/10",
+	},
 	both_updated: {
 		label: "Updated",
 		iconName: "ArrowUpCircle",

@@ -1,6 +1,7 @@
 <script lang="ts">
-import { ArrowUpCircle } from "@lucide/svelte";
+import { ArrowUpCircle, FileText, Tag, Info } from "@lucide/svelte";
 import type { SupersedeInfoData } from "$lib/connect/knowledge_home";
+import { resolveSupersede } from "./supersede-display-map";
 
 interface Props {
 	info: SupersedeInfoData;
@@ -8,20 +9,21 @@ interface Props {
 
 const { info }: Props = $props();
 
-const label = $derived(() => {
-	switch (info.state) {
-		case "summary_updated": return "Summary updated";
-		case "tags_updated": return "Tags updated";
-		case "both_updated": return "Updated";
-		default: return "Updated";
-	}
-});
+const display = $derived(resolveSupersede(info.state));
+
+const iconMap: Record<string, typeof ArrowUpCircle> = {
+	FileText,
+	Tag,
+	Info,
+	ArrowUpCircle,
+};
+const Icon = $derived(iconMap[display.iconName] ?? ArrowUpCircle);
 </script>
 
 <span
-	class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded border text-sky-400 border-sky-400/30 bg-sky-400/10"
+	class={`inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded border ${display.colorClass}`}
 	title={`Updated at ${info.supersededAt}`}
 >
-	<ArrowUpCircle class="h-3 w-3" />
-	{label()}
+	<Icon class="h-3 w-3" />
+	{display.label}
 </span>

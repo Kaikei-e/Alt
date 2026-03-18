@@ -74,6 +74,7 @@ export interface SupersedeInfoData {
 	supersededAt: string;
 	previousSummaryExcerpt?: string;
 	previousTags: string[];
+	previousWhyCodes: string[];
 }
 
 /** A recall candidate */
@@ -209,6 +210,7 @@ function convertItem(proto: ProtoKnowledgeHomeItem): KnowledgeHomeItemData {
 			supersededAt: proto.supersedeInfo.supersededAt,
 			previousSummaryExcerpt: proto.supersedeInfo.previousSummaryExcerpt || undefined,
 			previousTags: [...(proto.supersedeInfo.previousTags || [])],
+			previousWhyCodes: [...(proto.supersedeInfo.previousWhyCodes || [])],
 		} : undefined,
 		link: proto.link || undefined,
 	};
