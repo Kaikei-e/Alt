@@ -11,9 +11,10 @@ interface Props {
 
 const { item, onAction }: Props = $props();
 
-const displayTags = $derived(item.tags.slice(0, 3));
+const nonEmptyTags = $derived(item.tags.filter((t) => t.trim() !== ""));
+const displayTags = $derived(nonEmptyTags.slice(0, 3));
 const remainingTagCount = $derived(
-	item.tags.length > 3 ? item.tags.length - 3 : 0,
+	nonEmptyTags.length > 3 ? nonEmptyTags.length - 3 : 0,
 );
 const displayReasons = $derived(item.why.slice(0, 2));
 

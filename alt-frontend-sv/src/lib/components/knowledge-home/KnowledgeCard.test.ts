@@ -57,6 +57,35 @@ describe("KnowledgeCard data", () => {
 		expect(displayTags).toHaveLength(3);
 	});
 
+	it("filters out empty string tags before display", () => {
+		const item = makeItem({
+			tags: ["", "", "AI", "Go", ""],
+		});
+		const nonEmptyTags = item.tags.filter((t) => t.trim() !== "");
+		const displayTags = nonEmptyTags.slice(0, 3);
+		expect(displayTags).toEqual(["AI", "Go"]);
+	});
+
+	it("remainingTagCount excludes empty tags", () => {
+		const item = makeItem({
+			tags: ["", "AI", "Go", "Rust", "Python", ""],
+		});
+		const nonEmptyTags = item.tags.filter((t) => t.trim() !== "");
+		const displayTags = nonEmptyTags.slice(0, 3);
+		const remainingTagCount =
+			nonEmptyTags.length > 3 ? nonEmptyTags.length - 3 : 0;
+		expect(displayTags).toEqual(["AI", "Go", "Rust"]);
+		expect(remainingTagCount).toBe(1);
+	});
+
+	it("shows no tags when all tags are empty strings", () => {
+		const item = makeItem({
+			tags: ["", " ", "  "],
+		});
+		const nonEmptyTags = item.tags.filter((t) => t.trim() !== "");
+		expect(nonEmptyTags).toHaveLength(0);
+	});
+
 	it("formats relative time from publishedAt", () => {
 		const item = makeItem();
 		const publishedDate = new Date(item.publishedAt);
