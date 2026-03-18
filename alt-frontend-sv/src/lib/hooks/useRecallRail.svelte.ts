@@ -56,11 +56,17 @@ export function useRecallRail() {
 		}
 	};
 
+	/** Inject initial candidates from Home response (single-fetch contract). */
+	const setCandidates = (data: RecallCandidateData[]) => {
+		candidates = data;
+	};
+
 	return {
 		get candidates() { return candidates; },
 		get loading() { return loading; },
 		get error() { return error; },
 		fetchCandidates,
+		setCandidates,
 		snooze,
 		dismiss,
 	};

@@ -126,6 +126,10 @@ async function handleLensSelect(lensId: string | null) {
 	await syncLensQuery(lensId);
 	// Re-fetch with the new lens
 	await home.fetchData(true, lensId);
+	// Re-inject recall candidates from fresh response
+	if (recallEnabled) {
+		recall.setCandidates(home.recallCandidates);
+	}
 }
 
 async function handleCreateLens(payload: {
@@ -144,11 +148,6 @@ onMount(async () => {
 	if (browser) {
 		exposureSessionId = crypto.randomUUID();
 
-		// Fetch recall candidates if enabled
-		if (recallEnabled) {
-			recall.fetchCandidates();
-		}
-
 		// Fetch lenses if enabled
 		if (lensEnabled) {
 			await lens.fetchLenses();
@@ -165,6 +164,11 @@ onMount(async () => {
 
 		// Sync feature flags from the response
 		flags.setFlags(home.featureFlags);
+
+		// Inject recall candidates from Home response (single-fetch contract)
+		if (recallEnabled) {
+			recall.setCandidates(home.recallCandidates);
+		}
 	}
 });
 </script>

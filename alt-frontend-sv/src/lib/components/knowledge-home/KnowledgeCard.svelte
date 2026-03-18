@@ -3,6 +3,7 @@ import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
 import WhySurfacedBadge from "./WhySurfacedBadge.svelte";
 import SummaryStateChip from "./SummaryStateChip.svelte";
 import SupersedeBadge from "./SupersedeBadge.svelte";
+import SupersedeDetail from "./SupersedeDetail.svelte";
 import QuickActionRow from "./QuickActionRow.svelte";
 
 interface Props {
@@ -18,6 +19,7 @@ const remainingTagCount = $derived(
 	nonEmptyTags.length > 3 ? nonEmptyTags.length - 3 : 0,
 );
 const displayReasons = $derived(item.why.slice(0, 2));
+let supersedeExpanded = $state(false);
 
 function formatRelativeTime(isoString: string): string {
 	if (!isoString) return "recent";
@@ -51,8 +53,15 @@ function handleAction(type: string) {
 			</h3>
 			{#if item.supersedeInfo}
 				<div class="mt-1">
-					<SupersedeBadge info={item.supersedeInfo} />
+					<SupersedeBadge
+						info={item.supersedeInfo}
+						expanded={supersedeExpanded}
+						onToggle={() => { supersedeExpanded = !supersedeExpanded; }}
+					/>
 				</div>
+				{#if supersedeExpanded}
+					<SupersedeDetail info={item.supersedeInfo} />
+				{/if}
 			{/if}
 		</div>
 		<time

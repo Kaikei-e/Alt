@@ -13,6 +13,7 @@ import {
 import type {
 	FeatureFlagData,
 	KnowledgeHomeItemData,
+	RecallCandidateData,
 	ServiceQuality,
 	TodayDigestData,
 } from "$lib/connect/knowledge_home";
@@ -27,6 +28,7 @@ export function useKnowledgeHome() {
 	let nextCursor = $state("");
 	let serviceQuality = $state<ServiceQuality>("full");
 	let featureFlags = $state<FeatureFlagData[]>([]);
+	let recallCandidates = $state<RecallCandidateData[]>([]);
 
 	const fetchData = async (reset = false, lensId?: string | null) => {
 		try {
@@ -42,6 +44,7 @@ export function useKnowledgeHome() {
 			nextCursor = result.nextCursor;
 			serviceQuality = result.serviceQuality;
 			featureFlags = result.featureFlags;
+			recallCandidates = result.recallCandidates;
 		} catch (err) {
 			if (err instanceof ConnectError) {
 				if (err.code === Code.Unauthenticated) {
@@ -122,6 +125,9 @@ export function useKnowledgeHome() {
 		},
 		get featureFlags() {
 			return featureFlags;
+		},
+		get recallCandidates() {
+			return recallCandidates;
 		},
 		fetchData,
 		loadMore,
