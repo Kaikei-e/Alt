@@ -12,6 +12,8 @@ export const load = async ({ locals }) => {
 			adminData: {
 				health: null,
 				flags: null,
+				sloStatus: null,
+				reprojectRuns: [],
 			},
 			error: "Failed to load admin data.",
 		};
@@ -28,6 +30,8 @@ export const load = async ({ locals }) => {
 			adminData: {
 				health: null,
 				flags: null,
+				sloStatus: null,
+				reprojectRuns: [],
 			},
 			error: "Failed to load admin data.",
 		};

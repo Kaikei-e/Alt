@@ -4,6 +4,10 @@ import {
 	pauseKnowledgeHomeBackfill,
 	resumeKnowledgeHomeBackfill,
 	triggerKnowledgeHomeBackfill,
+	startKnowledgeHomeReproject,
+	compareKnowledgeHomeReproject,
+	swapKnowledgeHomeReproject,
+	rollbackKnowledgeHomeReproject,
 } from "$lib/server/knowledge-home-admin";
 import { getUserRole } from "$lib/server/user-role";
 
@@ -78,6 +82,76 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 			typeof body.jobId === "string"
 		) {
 			await resumeKnowledgeHomeBackfill(locals.backendToken, body.jobId);
+			return json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+		}
+
+		if (
+			typeof body === "object" &&
+			body !== null &&
+			"action" in body &&
+			body.action === "start_reproject" &&
+			"mode" in body &&
+			typeof body.mode === "string" &&
+			"fromVersion" in body &&
+			typeof body.fromVersion === "string" &&
+			"toVersion" in body &&
+			typeof body.toVersion === "string"
+		) {
+			const rangeStart =
+				"rangeStart" in body && typeof body.rangeStart === "string"
+					? body.rangeStart
+					: undefined;
+			const rangeEnd =
+				"rangeEnd" in body && typeof body.rangeEnd === "string"
+					? body.rangeEnd
+					: undefined;
+			const run = await startKnowledgeHomeReproject(
+				locals.backendToken,
+				body.mode,
+				body.fromVersion,
+				body.toVersion,
+				rangeStart,
+				rangeEnd,
+			);
+			return json({ ok: true, run }, { headers: { "Cache-Control": "no-store" } });
+		}
+
+		if (
+			typeof body === "object" &&
+			body !== null &&
+			"action" in body &&
+			body.action === "compare_reproject" &&
+			"reprojectRunId" in body &&
+			typeof body.reprojectRunId === "string"
+		) {
+			const diff = await compareKnowledgeHomeReproject(
+				locals.backendToken,
+				body.reprojectRunId,
+			);
+			return json({ ok: true, diff }, { headers: { "Cache-Control": "no-store" } });
+		}
+
+		if (
+			typeof body === "object" &&
+			body !== null &&
+			"action" in body &&
+			body.action === "swap_reproject" &&
+			"reprojectRunId" in body &&
+			typeof body.reprojectRunId === "string"
+		) {
+			await swapKnowledgeHomeReproject(locals.backendToken, body.reprojectRunId);
+			return json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+		}
+
+		if (
+			typeof body === "object" &&
+			body !== null &&
+			"action" in body &&
+			body.action === "rollback_reproject" &&
+			"reprojectRunId" in body &&
+			typeof body.reprojectRunId === "string"
+		) {
+			await rollbackKnowledgeHomeReproject(locals.backendToken, body.reprojectRunId);
 			return json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 		}
 
