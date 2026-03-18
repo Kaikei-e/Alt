@@ -308,9 +308,42 @@ type tagSetVersionPayload struct {
 }
 
 // tagItem mirrors the JSON shape stored in TagsJSON.
+// Supports both Go-default keys (Name/Confidence) and explicit json-tagged keys (name/confidence).
 type tagItem struct {
 	Name       string  `json:"name"`
 	Confidence float32 `json:"confidence"`
+}
+
+// parseTagNames extracts tag names from TagsJSON, handling both
+// {"Name":"x"} (Go default) and {"name":"x"} (json-tagged) key formats.
+func parseTagNames(raw json.RawMessage) []string {
+	// Try structured parse first (handles both key casings via json:"name")
+	var items []tagItem
+	if err := json.Unmarshal(raw, &items); err == nil {
+		var names []string
+		for _, t := range items {
+			if t.Name != "" {
+				names = append(names, t.Name)
+			}
+		}
+		if len(names) > 0 {
+			return names
+		}
+	}
+	// Fallback: parse as generic maps to handle uppercase keys
+	var maps []map[string]interface{}
+	if err := json.Unmarshal(raw, &maps); err == nil {
+		var names []string
+		for _, m := range maps {
+			if name, ok := m["Name"].(string); ok && name != "" {
+				names = append(names, name)
+			} else if name, ok := m["name"].(string); ok && name != "" {
+				names = append(names, name)
+			}
+		}
+		return names
+	}
+	return nil
 }
 
 func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort, projectionVersion int) error {
@@ -333,12 +366,7 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 		if parseErr == nil {
 			tsv, tsvErr := tagSetVersionPort.GetTagSetVersionByID(ctx, tsvID)
 			if tsvErr == nil && len(tsv.TagsJSON) > 0 {
-				var items []tagItem
-				if jsonErr := json.Unmarshal(tsv.TagsJSON, &items); jsonErr == nil {
-					for _, t := range items {
-						tags = append(tags, t.Name)
-					}
-				}
+				tags = parseTagNames(tsv.TagsJSON)
 				if len(tags) > 0 {
 					whyReasons = append(whyReasons, domain.WhyReason{
 						Code: domain.WhyTagHotspot,

@@ -662,3 +662,51 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_NilPort_FallsBackGracefully(
 	assert.Len(t, homeItemsPort.upserted[0].WhyReasons, 1, "only new_unread, no tag_hotspot")
 	assert.Equal(t, domain.WhyNewUnread, homeItemsPort.upserted[0].WhyReasons[0].Code)
 }
+
+func TestKnowledgeProjectorJob_TagSetVersionCreated_UppercaseKeys(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	tsvID := uuid.New()
+
+	// Simulate Go-default marshaling (uppercase keys, no json tags)
+	type UpperTag struct {
+		Name       string
+		Confidence float32
+	}
+	tagsJSON, _ := json.Marshal([]UpperTag{
+		{Name: "flowers", Confidence: 0.5},
+		{Name: "history", Confidence: 0.5},
+	})
+
+	tagPayload, _ := json.Marshal(tagSetVersionPayload{
+		TagSetVersionID: tsvID.String(),
+		ArticleID:       articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventTagSetVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: tagPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	tagSetVersionPort := &mockTagSetVersionPort{
+		tsv: domain.TagSetVersion{
+			TagSetVersionID: tsvID,
+			ArticleID:       articleID,
+			TagsJSON:        tagsJSON,
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, tagSetVersionPort)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, []string{"flowers", "history"}, homeItemsPort.upserted[0].Tags, "should parse uppercase-keyed TagsJSON")
+	assert.Len(t, homeItemsPort.upserted[0].WhyReasons, 2)
+	assert.Equal(t, "flowers", homeItemsPort.upserted[0].WhyReasons[1].Tag)
+}
