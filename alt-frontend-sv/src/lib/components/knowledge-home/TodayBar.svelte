@@ -24,7 +24,7 @@ const { digest }: Props = $props();
 		<div class="flex items-center gap-2 px-4 py-2 border-b border-[var(--surface-border)]/50">
 			<a
 				href="/recap/morning-letter"
-				class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+				class="inline-flex items-center gap-1.5 rounded-md border border-[var(--chip-border)] bg-[var(--action-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--interactive-text)] hover:bg-[var(--action-surface-hover)] hover:text-[var(--interactive-text-hover)] transition-colors"
 			>
 				<Newspaper class="h-3.5 w-3.5" />
 				Morning Letter
@@ -33,7 +33,7 @@ const { digest }: Props = $props();
 			{#if digest.eveningPulseAvailable}
 				<a
 					href="/recap/evening-pulse"
-					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+					class="inline-flex items-center gap-1.5 rounded-md border border-[var(--chip-border)] bg-[var(--action-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--interactive-text)] hover:bg-[var(--action-surface-hover)] hover:text-[var(--interactive-text-hover)] transition-colors"
 				>
 					<Activity class="h-3.5 w-3.5" />
 					Pulse
@@ -48,7 +48,7 @@ const { digest }: Props = $props();
 				</a>
 			{:else}
 				<span
-					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md text-[var(--text-secondary)]/50 cursor-default"
+					class="inline-flex cursor-default items-center gap-1.5 rounded-md border border-[var(--surface-border)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)]/55"
 				>
 					<Activity class="h-3.5 w-3.5" />
 					Pulse
@@ -58,14 +58,14 @@ const { digest }: Props = $props();
 			{#if digest.weeklyRecapAvailable}
 				<a
 					href="/recap"
-					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+					class="inline-flex items-center gap-1.5 rounded-md border border-[var(--chip-border)] bg-[var(--action-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--interactive-text)] hover:bg-[var(--action-surface-hover)] hover:text-[var(--interactive-text-hover)] transition-colors"
 				>
 					<CalendarRange class="h-3.5 w-3.5" />
 					Recap
 				</a>
 			{:else}
 				<span
-					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md text-[var(--text-secondary)]/50 cursor-default"
+					class="inline-flex cursor-default items-center gap-1.5 rounded-md border border-[var(--surface-border)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)]/55"
 				>
 					<CalendarRange class="h-3.5 w-3.5" />
 					Recap
@@ -98,7 +98,7 @@ const { digest }: Props = $props();
 				<div class="flex items-center gap-1 ml-auto">
 					{#each digest.topTags.slice(0, 5) as tag}
 						<span
-							class="px-1.5 py-0.5 text-xs rounded bg-[var(--surface-hover)] text-[var(--text-secondary)]"
+							class="rounded border border-[var(--chip-border)] bg-[var(--chip-bg)] px-2 py-0.5 text-xs font-medium text-[var(--chip-text)]"
 						>
 							{tag}
 						</span>

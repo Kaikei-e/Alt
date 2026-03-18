@@ -184,6 +184,13 @@
 		var(--alt-secondary),
 		var(--alt-tertiary)
 	);
+	--interactive-text: rgba(255, 255, 255, 0.92);
+	--interactive-text-hover: #ffffff;
+	--chip-bg: rgba(255, 255, 255, 0.12);
+	--chip-border: rgba(255, 255, 255, 0.24);
+	--chip-text: rgba(255, 255, 255, 0.88);
+	--action-surface: rgba(255, 255, 255, 0.08);
+	--action-surface-hover: rgba(255, 255, 255, 0.16);
 }
 
 /* Liquid-Beige Theme (Earthy Luxury) */
@@ -217,6 +224,13 @@
 		var(--alt-secondary) 50%,
 		var(--alt-tertiary) 100%
 	);
+	--interactive-text: #5d4b41;
+	--interactive-text-hover: #47372f;
+	--chip-bg: rgba(255, 250, 243, 0.9);
+	--chip-border: rgba(139, 119, 101, 0.24);
+	--chip-text: #5b5046;
+	--action-surface: rgba(255, 250, 243, 0.6);
+	--action-surface-hover: rgba(255, 250, 243, 0.85);
 }
 
 /* Alt-Paper Theme (Newspaper Style) - Default */
@@ -249,6 +263,13 @@
 	--text-primary: #1a1a1a;
 	--text-secondary: #333333;
 	--text-muted: #666666;
+	--interactive-text: #2f4f4f;
+	--interactive-text-hover: #223b3b;
+	--chip-bg: #ebe7df;
+	--chip-border: #d0c8bb;
+	--chip-text: #49443d;
+	--action-surface: #ebe8e1;
+	--action-surface-hover: #e0dbd2;
 
 	/* Paper-specific shadows - subtle and minimal */
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);

@@ -160,6 +160,7 @@ export {
 	type TodayDigestData,
 	type KnowledgeHomeItemData,
 	type KnowledgeHomeResult,
+	type ServiceQuality,
 	type FeatureFlagData,
 	type SupersedeInfoData,
 	type RecallCandidateData,

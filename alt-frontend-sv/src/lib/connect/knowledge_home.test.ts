@@ -33,7 +33,9 @@ describe("knowledge_home client", () => {
 			trackHomeItemsSeen: vi.fn(),
 			trackHomeAction: vi.fn(),
 		};
-		vi.mocked(createClient).mockReturnValue(mockClient as never);
+		(createClient as unknown as ReturnType<typeof vi.fn>).mockReturnValue(
+			mockClient as never,
+		);
 	});
 
 	describe("createKnowledgeHomeClient", () => {
@@ -80,6 +82,7 @@ describe("knowledge_home client", () => {
 				hasMore: true,
 				degradedMode: false,
 				generatedAt: "2026-03-17T10:05:00Z",
+				serviceQuality: "full",
 			});
 
 			const result = await getKnowledgeHome(mockTransport);
@@ -101,6 +104,7 @@ describe("knowledge_home client", () => {
 			expect(result.nextCursor).toBe("cursor-abc");
 			expect(result.hasMore).toBe(true);
 			expect(result.degraded).toBe(false);
+			expect(result.serviceQuality).toBe("full");
 		});
 
 		it("passes cursor and limit parameters", async () => {
@@ -128,12 +132,28 @@ describe("knowledge_home client", () => {
 				hasMore: false,
 				degradedMode: true,
 				generatedAt: "2026-03-17T10:00:00Z",
+				serviceQuality: "fallback",
 			});
 
 			const result = await getKnowledgeHome(mockTransport);
 
 			expect(result.digest).toBeNull();
 			expect(result.degraded).toBe(true);
+			expect(result.serviceQuality).toBe("fallback");
+		});
+
+		it("falls back to degraded flag when service quality is omitted", async () => {
+			mockClient.getKnowledgeHome.mockResolvedValue({
+				items: [],
+				nextCursor: "",
+				hasMore: false,
+				degradedMode: true,
+				generatedAt: "2026-03-17T10:00:00Z",
+			});
+
+			const result = await getKnowledgeHome(mockTransport);
+
+			expect(result.serviceQuality).toBe("degraded");
 		});
 	});
 

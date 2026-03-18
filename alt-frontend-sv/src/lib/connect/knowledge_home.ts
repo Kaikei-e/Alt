@@ -40,6 +40,9 @@ export interface TodayDigestData {
 	needToKnowCount: number;
 }
 
+/** Service quality level returned by Knowledge Home API */
+export type ServiceQuality = "full" | "degraded" | "fallback";
+
 /** Summary processing state */
 export type SummaryState = "missing" | "pending" | "ready";
 
@@ -109,7 +112,10 @@ export interface LensVersionData {
 export interface StreamHomeUpdate {
 	eventType: string;
 	item?: KnowledgeHomeItemData;
+	digestChange?: TodayDigestData;
+	recallChange?: RecallCandidateData;
 	occurredAt: string;
+	reconnectAfterMs?: number;
 }
 
 /** Feature flag status */
@@ -128,6 +134,7 @@ export interface KnowledgeHomeResult {
 	generatedAt: string;
 	featureFlags: FeatureFlagData[];
 	recallCandidates: RecallCandidateData[];
+	serviceQuality: ServiceQuality;
 }
 
 /**
@@ -158,6 +165,16 @@ function convertDigest(proto: ProtoTodayDigest): TodayDigestData {
 		eveningPulseAvailable: proto.eveningPulseAvailable,
 		needToKnowCount: proto.needToKnowCount,
 	};
+}
+
+function normalizeServiceQuality(
+	serviceQuality: string | undefined,
+	degraded: boolean,
+): ServiceQuality {
+	if (serviceQuality === "degraded" || serviceQuality === "fallback") {
+		return serviceQuality;
+	}
+	return degraded ? "degraded" : "full";
 }
 
 function convertItem(proto: ProtoKnowledgeHomeItem): KnowledgeHomeItemData {
@@ -215,6 +232,10 @@ export async function getKnowledgeHome(
 			enabled: f.enabled,
 		})),
 		recallCandidates: (response.recallCandidates ?? []).map(convertRecallCandidate),
+		serviceQuality: normalizeServiceQuality(
+			response.serviceQuality,
+			response.degradedMode,
+		),
 	};
 }
 

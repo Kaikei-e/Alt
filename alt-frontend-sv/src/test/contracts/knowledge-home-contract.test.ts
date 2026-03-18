@@ -150,6 +150,9 @@ describe("Knowledge Home API Contract", () => {
 				"in_weekly_recap",
 				"pulse_need_to_know",
 				"tag_hotspot",
+				"recent_interest_match",
+				"related_to_recent_search",
+				"summary_completed",
 			];
 			for (const code of knownCodes) {
 				const reason = create(WhyReasonSchema, { code });
@@ -174,18 +177,30 @@ describe("Knowledge Home API Contract", () => {
 	});
 
 	describe("StreamKnowledgeHomeUpdatesResponse", () => {
-		it("validates stream event types", () => {
+		it("validates canonical stream event types", () => {
 			const eventTypes = [
 				"item_added",
 				"item_updated",
 				"item_removed",
 				"digest_changed",
 				"recall_changed",
-				"heartbeat",
 				"stream_expired",
-				"fallback_to_unary",
 			];
 			for (const eventType of eventTypes) {
+				const event = create(
+					StreamKnowledgeHomeUpdatesResponseSchema,
+					{
+						eventType,
+						occurredAt: "2026-03-18T12:00:00Z",
+					},
+				);
+				expect(event.eventType).toBe(eventType);
+			}
+		});
+
+		it("allows compatibility-only stream event types during transition", () => {
+			const compatibilityEventTypes = ["heartbeat", "fallback_to_unary"];
+			for (const eventType of compatibilityEventTypes) {
 				const event = create(
 					StreamKnowledgeHomeUpdatesResponseSchema,
 					{

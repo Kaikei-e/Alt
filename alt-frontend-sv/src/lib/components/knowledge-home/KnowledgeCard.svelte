@@ -38,7 +38,7 @@ function handleAction(type: string) {
 </script>
 
 <article
-	class="border-2 rounded-lg p-4 bg-[var(--surface-bg)] border-[var(--surface-border)] hover:border-[var(--accent-primary)] transition-colors duration-200"
+	class="rounded-lg border p-4 bg-[var(--surface-bg)] border-[var(--surface-border)] hover:border-[var(--interactive-text)] transition-colors duration-200 shadow-[var(--shadow-sm)]"
 	data-item-key={item.itemKey}
 >
 	<!-- Header: Title + Relative Time -->
@@ -66,7 +66,7 @@ function handleAction(type: string) {
 
 	<!-- Summary Excerpt or Skeleton -->
 	{#if item.summaryState === "ready" && item.summaryExcerpt}
-		<p class="text-xs text-[var(--text-secondary)] line-clamp-2 mb-2">
+		<p class="mb-2 text-xs leading-5 text-[var(--text-secondary)] line-clamp-2">
 			{item.summaryExcerpt}
 		</p>
 	{:else if item.summaryState === "pending" || item.summaryState === "missing"}
@@ -75,7 +75,7 @@ function handleAction(type: string) {
 			<div class="h-3 w-2/3 rounded bg-[var(--surface-hover)] animate-pulse"></div>
 		</div>
 	{:else}
-		<p class="text-xs text-[var(--text-secondary)] line-clamp-2 mb-2">
+		<p class="mb-2 text-xs leading-5 text-[var(--text-secondary)] line-clamp-2">
 			{item.summaryExcerpt}
 		</p>
 	{/if}
@@ -86,13 +86,15 @@ function handleAction(type: string) {
 			<div class="flex flex-wrap gap-1 min-w-0">
 				{#each displayTags as tag}
 					<span
-						class="px-1.5 py-0.5 text-xs rounded bg-[var(--surface-hover)] text-[var(--text-secondary)]"
+						class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)]"
 					>
 						{tag}
 					</span>
 				{/each}
 				{#if remainingTagCount > 0}
-					<span class="px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
+					<span
+						class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)]"
+					>
 						+{remainingTagCount} tags
 					</span>
 				{/if}

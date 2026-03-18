@@ -12,6 +12,7 @@ import {
 } from "$lib/connect";
 import type {
 	KnowledgeHomeItemData,
+	ServiceQuality,
 	TodayDigestData,
 } from "$lib/connect/knowledge_home";
 
@@ -23,7 +24,7 @@ export function useKnowledgeHome() {
 	let degraded = $state(false);
 	let hasMore = $state(false);
 	let nextCursor = $state("");
-	let serviceQuality = $state<"full" | "degraded" | "fallback">("full");
+	let serviceQuality = $state<ServiceQuality>("full");
 
 	const fetchData = async (reset = false) => {
 		try {
@@ -37,17 +38,7 @@ export function useKnowledgeHome() {
 			hasMore = result.hasMore;
 			degraded = result.degraded;
 			nextCursor = result.nextCursor;
-			// Derive service quality from response
-			if ((result as { serviceQuality?: string }).serviceQuality) {
-				const sq = (result as { serviceQuality?: string }).serviceQuality;
-				if (sq === "fallback" || sq === "degraded") {
-					serviceQuality = sq;
-				} else {
-					serviceQuality = "full";
-				}
-			} else {
-				serviceQuality = result.degraded ? "degraded" : "full";
-			}
+			serviceQuality = result.serviceQuality;
 		} catch (err) {
 			if (err instanceof ConnectError) {
 				if (err.code === Code.Unauthenticated) {
@@ -71,6 +62,7 @@ export function useKnowledgeHome() {
 			items = [...items, ...result.items];
 			hasMore = result.hasMore;
 			nextCursor = result.nextCursor;
+			serviceQuality = result.serviceQuality;
 		} catch (err) {
 			if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
 				goto("/login");
