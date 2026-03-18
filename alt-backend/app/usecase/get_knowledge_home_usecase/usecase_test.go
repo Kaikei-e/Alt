@@ -19,10 +19,21 @@ type mockHomeItemsPort struct {
 	nextCursor string
 	hasMore    bool
 	err        error
+	lastFilter *domain.KnowledgeHomeLensFilter
 }
 
-func (m *mockHomeItemsPort) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ string, _ int) ([]domain.KnowledgeHomeItem, string, bool, error) {
+func (m *mockHomeItemsPort) GetKnowledgeHomeItems(_ context.Context, _ uuid.UUID, _ string, _ int, filter *domain.KnowledgeHomeLensFilter) ([]domain.KnowledgeHomeItem, string, bool, error) {
+	m.lastFilter = filter
 	return m.items, m.nextCursor, m.hasMore, m.err
+}
+
+type mockResolveLensPort struct {
+	filter *domain.KnowledgeHomeLensFilter
+	err    error
+}
+
+func (m *mockResolveLensPort) ResolveKnowledgeHomeLens(_ context.Context, _ uuid.UUID, _ *uuid.UUID) (*domain.KnowledgeHomeLensFilter, error) {
+	return m.filter, m.err
 }
 
 // mockTodayDigestPort implements today_digest_port.GetTodayDigestPort.
@@ -42,15 +53,18 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name           string
-		cursor         string
-		limit          int
-		date           time.Time
-		homeItems      *mockHomeItemsPort
-		todayDigest    *mockTodayDigestPort
-		wantDegraded   bool
-		wantItemCount  int
-		wantErr        bool
+		name          string
+		cursor        string
+		limit         int
+		date          time.Time
+		homeItems     *mockHomeItemsPort
+		todayDigest   *mockTodayDigestPort
+		resolveLens   *mockResolveLensPort
+		lensID        *uuid.UUID
+		wantDegraded  bool
+		wantItemCount int
+		wantFilter    *domain.KnowledgeHomeLensFilter
+		wantErr       bool
 	}{
 		{
 			name:   "success - returns items and digest",
@@ -71,6 +85,7 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 					NewArticles: 5,
 				},
 			},
+			resolveLens:   &mockResolveLensPort{},
 			wantDegraded:  false,
 			wantItemCount: 2,
 		},
@@ -85,6 +100,7 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 			todayDigest: &mockTodayDigestPort{
 				digest: domain.TodayDigest{NewArticles: 3},
 			},
+			resolveLens:   &mockResolveLensPort{},
 			wantDegraded:  true,
 			wantItemCount: 0,
 		},
@@ -101,6 +117,7 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 			todayDigest: &mockTodayDigestPort{
 				err: errors.New("db error"),
 			},
+			resolveLens:   &mockResolveLensPort{},
 			wantDegraded:  true,
 			wantItemCount: 1,
 		},
@@ -115,6 +132,7 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 			todayDigest: &mockTodayDigestPort{
 				digest: domain.TodayDigest{},
 			},
+			resolveLens:   &mockResolveLensPort{},
 			wantDegraded:  false,
 			wantItemCount: 0,
 		},
@@ -129,6 +147,7 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 			todayDigest: &mockTodayDigestPort{
 				digest: domain.TodayDigest{},
 			},
+			resolveLens:   &mockResolveLensPort{},
 			wantDegraded:  false,
 			wantItemCount: 0,
 		},
@@ -143,15 +162,46 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 			todayDigest: &mockTodayDigestPort{
 				digest: domain.TodayDigest{},
 			},
+			resolveLens:   &mockResolveLensPort{},
 			wantDegraded:  false,
 			wantItemCount: 0,
+		},
+		{
+			name:   "applies resolved lens filter",
+			cursor: "",
+			limit:  20,
+			date:   now,
+			homeItems: &mockHomeItemsPort{
+				items: []domain.KnowledgeHomeItem{
+					{ItemKey: "article:1", Title: "Filtered", Score: 1.0},
+				},
+			},
+			todayDigest: &mockTodayDigestPort{
+				digest: domain.TodayDigest{},
+			},
+			resolveLens: &mockResolveLensPort{
+				filter: &domain.KnowledgeHomeLensFilter{
+					LensID:     uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+					TagNames:   []string{"AI"},
+					FeedIDs:    []uuid.UUID{uuid.MustParse("22222222-2222-2222-2222-222222222222")},
+					TimeWindow: "7d",
+				},
+			},
+			wantDegraded:  false,
+			wantItemCount: 1,
+			wantFilter: &domain.KnowledgeHomeLensFilter{
+				LensID:     uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+				TagNames:   []string{"AI"},
+				FeedIDs:    []uuid.UUID{uuid.MustParse("22222222-2222-2222-2222-222222222222")},
+				TimeWindow: "7d",
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewGetKnowledgeHomeUsecase(tt.homeItems, tt.todayDigest)
-			result, err := uc.Execute(context.Background(), userID, tt.cursor, tt.limit, tt.date)
+			uc := NewGetKnowledgeHomeUsecase(tt.homeItems, tt.todayDigest, tt.resolveLens)
+			result, err := uc.Execute(context.Background(), userID, tt.cursor, tt.limit, tt.date, tt.lensID)
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -162,6 +212,7 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 			require.NotNil(t, result)
 			assert.Equal(t, tt.wantDegraded, result.Degraded)
 			assert.Len(t, result.Items, tt.wantItemCount)
+			assert.Equal(t, tt.wantFilter, tt.homeItems.lastFilter)
 		})
 	}
 }

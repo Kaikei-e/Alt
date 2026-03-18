@@ -26,16 +26,17 @@ func NewCreateLensUsecase(
 }
 
 type CreateLensInput struct {
-	UserID      uuid.UUID
-	TenantID    uuid.UUID
-	Name        string
-	Description string
-	QueryText   string
-	TagIDs      []string
-	TimeWindow  string
+	UserID       uuid.UUID
+	TenantID     uuid.UUID
+	Name         string
+	Description  string
+	QueryText    string
+	TagIDs       []string
+	FeedIDs      []string
+	TimeWindow   string
 	IncludeRecap bool
 	IncludePulse bool
-	SortMode    string
+	SortMode     string
 }
 
 type CreateLensResult struct {
@@ -56,13 +57,13 @@ func (u *CreateLensUsecase) Execute(ctx context.Context, input CreateLensInput) 
 	versionID := uuid.New()
 
 	lens := domain.KnowledgeLens{
-		LensID:    lensID,
-		UserID:    input.UserID,
-		TenantID:  input.TenantID,
-		Name:      input.Name,
+		LensID:      lensID,
+		UserID:      input.UserID,
+		TenantID:    input.TenantID,
+		Name:        input.Name,
 		Description: input.Description,
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 
 	if err := u.lensPort.CreateLens(ctx, lens); err != nil {
@@ -75,6 +76,7 @@ func (u *CreateLensUsecase) Execute(ctx context.Context, input CreateLensInput) 
 		CreatedAt:     now,
 		QueryText:     input.QueryText,
 		TagIDs:        input.TagIDs,
+		FeedIDs:       input.FeedIDs,
 		TimeWindow:    input.TimeWindow,
 		IncludeRecap:  input.IncludeRecap,
 		IncludePulse:  input.IncludePulse,

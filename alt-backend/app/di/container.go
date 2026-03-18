@@ -45,10 +45,10 @@ import (
 	"alt/gateway/knowledge_backfill_gateway"
 	"alt/gateway/knowledge_event_gateway"
 	"alt/gateway/knowledge_home_gateway"
-	"alt/gateway/knowledge_reproject_gateway"
 	"alt/gateway/knowledge_lens_gateway"
 	"alt/gateway/knowledge_projection_gateway"
 	"alt/gateway/knowledge_projection_version_gateway"
+	"alt/gateway/knowledge_reproject_gateway"
 	"alt/gateway/knowledge_user_event_gateway"
 	"alt/gateway/latest_article_gateway"
 	"alt/gateway/morning_gateway"
@@ -261,9 +261,9 @@ type ApplicationComponents struct {
 	ArchiveLensUsecase     *archive_lens_usecase.ArchiveLensUsecase
 	RecallSignalGateway    *recall_signal_gateway.Gateway
 	RecallCandidateGateway *recall_candidate_gateway.Gateway
-	SummaryVersionGateway    *summary_version_gateway.Gateway
-	TagSetVersionGateway     *tag_set_version_gateway.Gateway
-	KnowledgeLensGateway     *knowledge_lens_gateway.Gateway
+	SummaryVersionGateway  *summary_version_gateway.Gateway
+	TagSetVersionGateway   *tag_set_version_gateway.Gateway
+	KnowledgeLensGateway   *knowledge_lens_gateway.Gateway
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -534,8 +534,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	featureFlagGw := feature_flag_gateway.NewGateway(&cfg.KnowledgeHome)
 	knowledgeBackfillGw := knowledge_backfill_gateway.NewGateway(altDBRepository)
 	knowledgeProjectionVersionGw := knowledge_projection_version_gateway.NewGateway(altDBRepository)
+	knowledgeLensGw := knowledge_lens_gateway.NewGateway(altDBRepository)
 
-	getKnowledgeHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(knowledgeHomeGw, todayDigestGw)
+	getKnowledgeHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(knowledgeHomeGw, todayDigestGw, knowledgeLensGw)
 	trackHomeSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(knowledgeUserEventGw, featureFlagGw)
 	trackHomeActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(knowledgeUserEventGw, knowledgeEventGw, featureFlagGw)
 	appendKnowledgeEventUsecase := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(knowledgeEventGw)
@@ -568,15 +569,14 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	// Phase 4: RecallRail, Lens, Stream, Supersede components
 	recallSignalGw := recall_signal_gateway.NewGateway(altDBRepository)
 	recallCandidateGw := recall_candidate_gateway.NewGateway(altDBRepository)
-	knowledgeLensGw := knowledge_lens_gateway.NewGateway(altDBRepository)
 
 	recallRailUsecase := recall_rail_usecase.NewRecallRailUsecase(recallCandidateGw, featureFlagGw)
 	recallSnoozeUsecase := recall_snooze_usecase.NewRecallSnoozeUsecase(recallCandidateGw, knowledgeEventGw)
 	recallDismissUsecase := recall_dismiss_usecase.NewRecallDismissUsecase(recallCandidateGw, knowledgeEventGw)
 	createLensUsecase := create_lens_usecase.NewCreateLensUsecase(knowledgeLensGw, knowledgeLensGw)
 	updateLensUsecase := update_lens_usecase.NewUpdateLensUsecase(knowledgeLensGw, knowledgeLensGw)
-	listLensesUsecase := list_lenses_usecase.NewListLensesUsecase(knowledgeLensGw)
-	selectLensUsecase := select_lens_usecase.NewSelectLensUsecase(knowledgeLensGw, knowledgeLensGw, knowledgeLensGw)
+	listLensesUsecase := list_lenses_usecase.NewListLensesUsecase(knowledgeLensGw, knowledgeLensGw)
+	selectLensUsecase := select_lens_usecase.NewSelectLensUsecase(knowledgeLensGw, knowledgeLensGw, knowledgeLensGw, knowledgeLensGw)
 	archiveLensUsecase := archive_lens_usecase.NewArchiveLensUsecase(knowledgeLensGw, knowledgeLensGw)
 
 	// Wire auto-subscribe: Usecase delegates subscription to SubscriptionPort
@@ -698,8 +698,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ArchiveLensUsecase:     archiveLensUsecase,
 		RecallSignalGateway:    recallSignalGw,
 		RecallCandidateGateway: recallCandidateGw,
-		SummaryVersionGateway:    summaryVersionGw,
-		TagSetVersionGateway:     tagSetVersionGw,
-		KnowledgeLensGateway:     knowledgeLensGw,
+		SummaryVersionGateway:  summaryVersionGw,
+		TagSetVersionGateway:   tagSetVersionGw,
+		KnowledgeLensGateway:   knowledgeLensGw,
 	}
 }

@@ -11,24 +11,33 @@ import (
 )
 
 type SelectLensUsecase struct {
-	getLens     knowledge_lens_port.GetLensPort
+	getLens    knowledge_lens_port.GetLensPort
 	getVersion knowledge_lens_port.GetCurrentLensVersionPort
 	selectPort knowledge_lens_port.SelectCurrentLensPort
+	clearPort  knowledge_lens_port.ClearCurrentLensPort
 }
 
 func NewSelectLensUsecase(
 	getLens knowledge_lens_port.GetLensPort,
 	getVersion knowledge_lens_port.GetCurrentLensVersionPort,
 	selectPort knowledge_lens_port.SelectCurrentLensPort,
+	clearPort knowledge_lens_port.ClearCurrentLensPort,
 ) *SelectLensUsecase {
 	return &SelectLensUsecase{
 		getLens:    getLens,
 		getVersion: getVersion,
 		selectPort: selectPort,
+		clearPort:  clearPort,
 	}
 }
 
 func (u *SelectLensUsecase) Execute(ctx context.Context, userID uuid.UUID, lensID uuid.UUID) error {
+	if lensID == uuid.Nil {
+		if u.clearPort == nil {
+			return nil
+		}
+		return u.clearPort.ClearCurrentLens(ctx, userID)
+	}
 	lens, err := u.getLens.GetLens(ctx, lensID)
 	if err != nil {
 		return fmt.Errorf("get lens: %w", err)

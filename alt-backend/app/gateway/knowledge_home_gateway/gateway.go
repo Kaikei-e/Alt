@@ -20,11 +20,11 @@ func NewGateway(repo *alt_db.AltDBRepository) *Gateway {
 }
 
 // GetKnowledgeHomeItems implements knowledge_home_port.GetKnowledgeHomeItemsPort.
-func (g *Gateway) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cursor string, limit int) ([]domain.KnowledgeHomeItem, string, bool, error) {
+func (g *Gateway) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cursor string, limit int, filter *domain.KnowledgeHomeLensFilter) ([]domain.KnowledgeHomeItem, string, bool, error) {
 	if g.repo == nil {
 		return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems: database connection not available")
 	}
-	return g.repo.GetKnowledgeHomeItems(ctx, userID, cursor, limit)
+	return g.repo.GetKnowledgeHomeItems(ctx, userID, cursor, limit, filter)
 }
 
 // UpsertKnowledgeHomeItem implements knowledge_home_port.UpsertKnowledgeHomeItemPort.

@@ -38,6 +38,13 @@ func (g *Gateway) ListLenses(ctx context.Context, userID uuid.UUID) ([]domain.Kn
 	return g.repo.ListLenses(ctx, userID)
 }
 
+func (g *Gateway) GetCurrentLensSelection(ctx context.Context, userID uuid.UUID) (*domain.KnowledgeCurrentLens, error) {
+	if g.repo == nil {
+		return nil, fmt.Errorf("GetCurrentLensSelection: database connection not available")
+	}
+	return g.repo.GetCurrentLensSelection(ctx, userID)
+}
+
 func (g *Gateway) GetLens(ctx context.Context, lensID uuid.UUID) (*domain.KnowledgeLens, error) {
 	if g.repo == nil {
 		return nil, fmt.Errorf("GetLens: database connection not available")
@@ -59,9 +66,23 @@ func (g *Gateway) SelectCurrentLens(ctx context.Context, current domain.Knowledg
 	return g.repo.SelectCurrentLens(ctx, current)
 }
 
+func (g *Gateway) ClearCurrentLens(ctx context.Context, userID uuid.UUID) error {
+	if g.repo == nil {
+		return fmt.Errorf("ClearCurrentLens: database connection not available")
+	}
+	return g.repo.ClearCurrentLens(ctx, userID)
+}
+
 func (g *Gateway) ArchiveLens(ctx context.Context, lensID uuid.UUID) error {
 	if g.repo == nil {
 		return fmt.Errorf("ArchiveLens: database connection not available")
 	}
 	return g.repo.ArchiveLens(ctx, lensID)
+}
+
+func (g *Gateway) ResolveKnowledgeHomeLens(ctx context.Context, userID uuid.UUID, lensID *uuid.UUID) (*domain.KnowledgeHomeLensFilter, error) {
+	if g.repo == nil {
+		return nil, fmt.Errorf("ResolveKnowledgeHomeLens: database connection not available")
+	}
+	return g.repo.ResolveKnowledgeHomeLens(ctx, userID, lensID)
 }

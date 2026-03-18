@@ -22,6 +22,11 @@ type ListLensesPort interface {
 	ListLenses(ctx context.Context, userID uuid.UUID) ([]domain.KnowledgeLens, error)
 }
 
+// GetCurrentLensSelectionPort returns the active lens selection for a user.
+type GetCurrentLensSelectionPort interface {
+	GetCurrentLensSelection(ctx context.Context, userID uuid.UUID) (*domain.KnowledgeCurrentLens, error)
+}
+
 // GetLensPort gets a single lens by ID.
 type GetLensPort interface {
 	GetLens(ctx context.Context, lensID uuid.UUID) (*domain.KnowledgeLens, error)
@@ -37,7 +42,17 @@ type SelectCurrentLensPort interface {
 	SelectCurrentLens(ctx context.Context, current domain.KnowledgeCurrentLens) error
 }
 
+// ClearCurrentLensPort clears the user's active lens selection.
+type ClearCurrentLensPort interface {
+	ClearCurrentLens(ctx context.Context, userID uuid.UUID) error
+}
+
 // ArchiveLensPort archives a lens (soft delete).
 type ArchiveLensPort interface {
 	ArchiveLens(ctx context.Context, lensID uuid.UUID) error
+}
+
+// ResolveKnowledgeHomeLensPort resolves the effective lens filter for the home read path.
+type ResolveKnowledgeHomeLensPort interface {
+	ResolveKnowledgeHomeLens(ctx context.Context, userID uuid.UUID, lensID *uuid.UUID) (*domain.KnowledgeHomeLensFilter, error)
 }

@@ -9,13 +9,34 @@ import (
 )
 
 type ListLensesUsecase struct {
-	listPort knowledge_lens_port.ListLensesPort
+	listPort    knowledge_lens_port.ListLensesPort
+	currentPort knowledge_lens_port.GetCurrentLensSelectionPort
 }
 
-func NewListLensesUsecase(listPort knowledge_lens_port.ListLensesPort) *ListLensesUsecase {
-	return &ListLensesUsecase{listPort: listPort}
+type Result struct {
+	Lenses       []domain.KnowledgeLens
+	ActiveLensID *uuid.UUID
 }
 
-func (u *ListLensesUsecase) Execute(ctx context.Context, userID uuid.UUID) ([]domain.KnowledgeLens, error) {
-	return u.listPort.ListLenses(ctx, userID)
+func NewListLensesUsecase(
+	listPort knowledge_lens_port.ListLensesPort,
+	currentPort knowledge_lens_port.GetCurrentLensSelectionPort,
+) *ListLensesUsecase {
+	return &ListLensesUsecase{listPort: listPort, currentPort: currentPort}
+}
+
+func (u *ListLensesUsecase) Execute(ctx context.Context, userID uuid.UUID) (*Result, error) {
+	lenses, err := u.listPort.ListLenses(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &Result{Lenses: lenses}
+	if u.currentPort != nil {
+		current, err := u.currentPort.GetCurrentLensSelection(ctx, userID)
+		if err == nil && current != nil {
+			result.ActiveLensID = &current.LensID
+		}
+	}
+	return result, nil
 }

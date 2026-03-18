@@ -9,7 +9,7 @@ import (
 
 // GetKnowledgeHomeItemsPort reads items from the knowledge home projection.
 type GetKnowledgeHomeItemsPort interface {
-	GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cursor string, limit int) ([]domain.KnowledgeHomeItem, string, bool, error)
+	GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cursor string, limit int, filter *domain.KnowledgeHomeLensFilter) ([]domain.KnowledgeHomeItem, string, bool, error)
 }
 
 // UpsertKnowledgeHomeItemPort writes items to the knowledge home projection.

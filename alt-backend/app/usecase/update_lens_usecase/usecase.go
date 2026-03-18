@@ -26,16 +26,17 @@ func NewUpdateLensUsecase(
 }
 
 type UpdateLensInput struct {
-	LensID      uuid.UUID
-	UserID      uuid.UUID
-	Name        string
-	Description string
-	QueryText   string
-	TagIDs      []string
-	TimeWindow  string
+	LensID       uuid.UUID
+	UserID       uuid.UUID
+	Name         string
+	Description  string
+	QueryText    string
+	TagIDs       []string
+	FeedIDs      []string
+	TimeWindow   string
 	IncludeRecap bool
 	IncludePulse bool
-	SortMode    string
+	SortMode     string
 }
 
 func (u *UpdateLensUsecase) Execute(ctx context.Context, input UpdateLensInput) (*domain.KnowledgeLensVersion, error) {
@@ -57,6 +58,7 @@ func (u *UpdateLensUsecase) Execute(ctx context.Context, input UpdateLensInput) 
 		CreatedAt:     time.Now(),
 		QueryText:     input.QueryText,
 		TagIDs:        input.TagIDs,
+		FeedIDs:       input.FeedIDs,
 		TimeWindow:    input.TimeWindow,
 		IncludeRecap:  input.IncludeRecap,
 		IncludePulse:  input.IncludePulse,

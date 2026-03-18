@@ -17,45 +17,72 @@ import (
 
 // GetKnowledgeHomeItems returns paginated items for a user, ordered by score DESC, published_at DESC.
 // Returns items, nextCursor, hasMore, error.
-func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cursor string, limit int) ([]domain.KnowledgeHomeItem, string, bool, error) {
+func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cursor string, limit int, filter *domain.KnowledgeHomeLensFilter) ([]domain.KnowledgeHomeItem, string, bool, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetKnowledgeHomeItems")
 	defer span.End()
 
-	var query string
-	var args []interface{}
+	var query strings.Builder
+	args := []interface{}{userID}
 
 	// Fetch limit+1 to determine hasMore
 	fetchLimit := limit + 1
 
-	if cursor == "" {
-		query = `SELECT user_id, tenant_id, item_key, item_type, primary_ref_id,
-			title, summary_excerpt, tags_json, why_json, score,
-			freshness_at, published_at, last_interacted_at, generated_at, updated_at,
-			summary_state
-			FROM knowledge_home_items
-			WHERE user_id = $1
-			ORDER BY score DESC, published_at DESC
-			LIMIT $2`
-		args = []interface{}{userID, fetchLimit}
-	} else {
+	query.WriteString(`SELECT user_id, tenant_id, item_key, item_type, primary_ref_id,
+		title, summary_excerpt, tags_json, why_json, score,
+		freshness_at, published_at, last_interacted_at, generated_at, updated_at,
+		summary_state
+		FROM knowledge_home_items
+		WHERE user_id = $1`)
+
+	argPos := 2
+	if filter != nil {
+		if len(filter.TagNames) > 0 || len(filter.FeedIDs) > 0 || filter.TimeWindow != "" {
+			query.WriteString(` AND item_type = 'article'`)
+		}
+		if len(filter.TagNames) > 0 {
+			query.WriteString(fmt.Sprintf(` AND EXISTS (
+				SELECT 1 FROM jsonb_array_elements_text(knowledge_home_items.tags_json) AS tag_name
+				WHERE tag_name = ANY($%d)
+			)`, argPos))
+			args = append(args, filter.TagNames)
+			argPos++
+		}
+		if len(filter.FeedIDs) > 0 {
+			query.WriteString(fmt.Sprintf(` AND EXISTS (
+				SELECT 1 FROM articles a
+				WHERE a.id = knowledge_home_items.primary_ref_id
+				  AND a.feed_id = ANY($%d)
+			)`, argPos))
+			args = append(args, filter.FeedIDs)
+			argPos++
+		}
+		if filter.TimeWindow != "" {
+			cutoff, err := cutoffFromTimeWindow(filter.TimeWindow)
+			if err != nil {
+				return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems: %w", err)
+			}
+			query.WriteString(fmt.Sprintf(` AND published_at >= $%d`, argPos))
+			args = append(args, cutoff)
+			argPos++
+		}
+	}
+
+	if cursor != "" {
 		cursorScore, cursorPublishedAt, cursorItemKey, err := decodeCursor(cursor)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "invalid cursor", "error", err)
 			return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems: invalid cursor: %w", err)
 		}
-		query = `SELECT user_id, tenant_id, item_key, item_type, primary_ref_id,
-			title, summary_excerpt, tags_json, why_json, score,
-			freshness_at, published_at, last_interacted_at, generated_at, updated_at,
-			summary_state
-			FROM knowledge_home_items
-			WHERE user_id = $1
-			  AND (score, published_at, item_key) < ($2, $3, $4)
-			ORDER BY score DESC, published_at DESC
-			LIMIT $5`
-		args = []interface{}{userID, cursorScore, cursorPublishedAt, cursorItemKey, fetchLimit}
+		query.WriteString(fmt.Sprintf(` AND (score, published_at, item_key) < ($%d, $%d, $%d)`,
+			argPos, argPos+1, argPos+2))
+		args = append(args, cursorScore, cursorPublishedAt, cursorItemKey)
+		argPos += 3
 	}
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	query.WriteString(fmt.Sprintf(` ORDER BY score DESC, published_at DESC, item_key DESC LIMIT $%d`, argPos))
+	args = append(args, fetchLimit)
+
+	rows, err := r.pool.Query(ctx, query.String(), args...)
 	if err != nil {
 		return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems: %w", err)
 	}
@@ -92,6 +119,22 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 
 	span.SetAttributes(attribute.Int("db.row_count", len(items)))
 	return items, nextCursor, hasMore, nil
+}
+
+func cutoffFromTimeWindow(window string) (time.Time, error) {
+	now := time.Now().UTC()
+	switch window {
+	case "7d":
+		return now.Add(-7 * 24 * time.Hour), nil
+	case "30d":
+		return now.Add(-30 * 24 * time.Hour), nil
+	case "90d":
+		return now.Add(-90 * 24 * time.Hour), nil
+	case "":
+		return time.Time{}, nil
+	default:
+		return time.Time{}, fmt.Errorf("unsupported time window: %s", window)
+	}
 }
 
 // UpsertKnowledgeHomeItem inserts or updates a knowledge home item.
