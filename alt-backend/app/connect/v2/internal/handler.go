@@ -3,19 +3,24 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	backendv1 "alt/gen/proto/services/backend/v1"
 	"alt/gen/proto/services/backend/v1/backendv1connect"
+	"alt/domain"
 	"alt/port/event_publisher_port"
 	"alt/port/internal_article_port"
 	"alt/port/internal_feed_port"
 	"alt/port/internal_tag_port"
+	"alt/usecase/create_summary_version_usecase"
+	"alt/usecase/create_tag_set_version_usecase"
 )
 
 const maxLimit = 500
@@ -56,6 +61,10 @@ type Handler struct {
 
 	// Event publishing
 	eventPublisher event_publisher_port.EventPublisherPort
+
+	// Knowledge version usecases
+	createSummaryVersionUsecase *create_summary_version_usecase.CreateSummaryVersionUsecase
+	createTagSetVersionUsecase  *create_tag_set_version_usecase.CreateTagSetVersionUsecase
 
 	logger *slog.Logger
 }
@@ -148,6 +157,17 @@ func WithBackfillPorts(
 ) HandlerOption {
 	return func(h *Handler) {
 		h.getEmptyFeedID = getEmptyFeedID
+	}
+}
+
+// WithKnowledgeVersionUsecases configures usecases for Knowledge Home version tracking.
+func WithKnowledgeVersionUsecases(
+	summaryVersion *create_summary_version_usecase.CreateSummaryVersionUsecase,
+	tagSetVersion *create_tag_set_version_usecase.CreateTagSetVersionUsecase,
+) HandlerOption {
+	return func(h *Handler) {
+		h.createSummaryVersionUsecase = summaryVersion
+		h.createTagSetVersionUsecase = tagSetVersion
 	}
 }
 
@@ -377,6 +397,23 @@ func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[b
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to save article summary"))
 	}
 
+	// Also create summary version + knowledge event for Knowledge Home
+	if h.createSummaryVersionUsecase != nil {
+		articleUUID, parseErr := uuid.Parse(req.Msg.ArticleId)
+		userUUID, userParseErr := uuid.Parse(req.Msg.UserId)
+		if parseErr == nil && userParseErr == nil {
+			sv := domain.SummaryVersion{
+				ArticleID:   articleUUID,
+				UserID:      userUUID,
+				SummaryText: req.Msg.Summary,
+				Model:       "pre-processor",
+			}
+			if svErr := h.createSummaryVersionUsecase.Execute(ctx, sv); svErr != nil {
+				h.logger.Error("failed to create summary version", "error", svErr, "article_id", req.Msg.ArticleId)
+			}
+		}
+	}
+
 	return connect.NewResponse(&backendv1.SaveArticleSummaryResponse{
 		Success: true,
 	}), nil
@@ -473,6 +510,22 @@ func (h *Handler) UpsertArticleTags(ctx context.Context, req *connect.Request[ba
 	if err != nil {
 		h.logger.Error("UpsertArticleTags failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to upsert article tags"))
+	}
+
+	// Also create tag set version + knowledge event for Knowledge Home
+	if h.createTagSetVersionUsecase != nil && len(tags) > 0 {
+		articleUUID, parseErr := uuid.Parse(req.Msg.ArticleId)
+		if parseErr == nil {
+			tagsJSON, _ := json.Marshal(tags)
+			tsv := domain.TagSetVersion{
+				ArticleID: articleUUID,
+				Generator: "tag-generator",
+				TagsJSON:  tagsJSON,
+			}
+			if tsvErr := h.createTagSetVersionUsecase.Execute(ctx, tsv); tsvErr != nil {
+				h.logger.Error("failed to create tag set version", "error", tsvErr, "article_id", req.Msg.ArticleId)
+			}
+		}
 	}
 
 	return connect.NewResponse(&backendv1.UpsertArticleTagsResponse{

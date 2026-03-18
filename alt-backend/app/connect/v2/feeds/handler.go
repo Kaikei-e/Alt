@@ -677,6 +677,22 @@ func (h *Handler) StreamSummarize(
 			// Don't return error, streaming was successful
 		} else {
 			h.logger.InfoContext(ctx, "summary saved", "article_id", resolvedArticleID, "summary_length", len(fullSummary))
+
+			// Also create summary version + knowledge event for Knowledge Home
+			if h.container.CreateSummaryVersionUsecase != nil {
+				articleUUID, parseErr := uuid.Parse(resolvedArticleID)
+				if parseErr == nil {
+					sv := domain.SummaryVersion{
+						ArticleID:   articleUUID,
+						UserID:      userCtx.UserID,
+						SummaryText: fullSummary,
+						Model:       "stream-summarize",
+					}
+					if svErr := h.container.CreateSummaryVersionUsecase.Execute(ctx, sv); svErr != nil {
+						h.logger.ErrorContext(ctx, "failed to create summary version", "error", svErr, "article_id", resolvedArticleID)
+					}
+				}
+			}
 		}
 	}
 
