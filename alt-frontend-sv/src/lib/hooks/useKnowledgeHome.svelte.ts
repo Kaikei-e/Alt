@@ -11,6 +11,7 @@ import {
 	trackHomeAction,
 } from "$lib/connect";
 import type {
+	FeatureFlagData,
 	KnowledgeHomeItemData,
 	ServiceQuality,
 	TodayDigestData,
@@ -25,6 +26,7 @@ export function useKnowledgeHome() {
 	let hasMore = $state(false);
 	let nextCursor = $state("");
 	let serviceQuality = $state<ServiceQuality>("full");
+	let featureFlags = $state<FeatureFlagData[]>([]);
 
 	const fetchData = async (reset = false, lensId?: string | null) => {
 		try {
@@ -39,6 +41,7 @@ export function useKnowledgeHome() {
 			degraded = result.degraded;
 			nextCursor = result.nextCursor;
 			serviceQuality = result.serviceQuality;
+			featureFlags = result.featureFlags;
 		} catch (err) {
 			if (err instanceof ConnectError) {
 				if (err.code === Code.Unauthenticated) {
@@ -116,6 +119,9 @@ export function useKnowledgeHome() {
 		},
 		get hasMore() {
 			return hasMore;
+		},
+		get featureFlags() {
+			return featureFlags;
 		},
 		fetchData,
 		loadMore,

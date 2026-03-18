@@ -230,6 +230,65 @@ describe("Knowledge Home API Contract", () => {
 			);
 			expect(event.reconnectAfterMs).toBe(5000);
 		});
+
+		it("item_added event carries minimal item with item_key", () => {
+			const event = create(
+				StreamKnowledgeHomeUpdatesResponseSchema,
+				{
+					eventType: "item_added",
+					occurredAt: "2026-03-18T12:00:00Z",
+					item: {
+						itemKey: "article:abc-123",
+					},
+				},
+			);
+			expect(event.eventType).toBe("item_added");
+			expect(event.item).toBeDefined();
+			expect(event.item?.itemKey).toBe("article:abc-123");
+			// Minimal item: only item_key is required
+			expect(event.item?.title).toBe("");
+		});
+
+		it("item_updated event carries minimal item with item_key", () => {
+			const event = create(
+				StreamKnowledgeHomeUpdatesResponseSchema,
+				{
+					eventType: "item_updated",
+					occurredAt: "2026-03-18T12:00:00Z",
+					item: {
+						itemKey: "article:def-456",
+					},
+				},
+			);
+			expect(event.eventType).toBe("item_updated");
+			expect(event.item?.itemKey).toBe("article:def-456");
+		});
+
+		it("digest_changed event has no digest_change (trigger-only)", () => {
+			const event = create(
+				StreamKnowledgeHomeUpdatesResponseSchema,
+				{
+					eventType: "digest_changed",
+					occurredAt: "2026-03-18T12:00:00Z",
+				},
+			);
+			expect(event.eventType).toBe("digest_changed");
+			expect(event.digestChange).toBeUndefined();
+			expect(event.item).toBeUndefined();
+		});
+
+		it("fallback_to_unary includes reconnect_after_ms", () => {
+			const event = create(
+				StreamKnowledgeHomeUpdatesResponseSchema,
+				{
+					eventType: "fallback_to_unary",
+					occurredAt: "2026-03-18T12:00:00Z",
+					reconnectAfterMs: 10000,
+				},
+			);
+			expect(event.eventType).toBe("fallback_to_unary");
+			expect(event.reconnectAfterMs).toBe(10000);
+		});
 	});
 
 	describe("TrackHomeActionRequest", () => {

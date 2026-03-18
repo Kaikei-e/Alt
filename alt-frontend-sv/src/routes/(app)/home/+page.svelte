@@ -9,12 +9,14 @@ import { useFeatureFlags } from "$lib/hooks/useFeatureFlags.svelte";
 import { useRecallRail } from "$lib/hooks/useRecallRail.svelte";
 import { useLens } from "$lib/hooks/useLens.svelte";
 import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
+import { useStreamUpdates } from "$lib/hooks/useStreamUpdates.svelte";
 import type { KnowledgeHomeItemData, LensVersionData } from "$lib/connect/knowledge_home";
 
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
 import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.svelte";
 import KnowledgeStream from "$lib/components/knowledge-home/KnowledgeStream.svelte";
+import StreamUpdateBar from "$lib/components/knowledge-home/StreamUpdateBar.svelte";
 import MiniRecallPanel from "$lib/components/knowledge-home/MiniRecallPanel.svelte";
 import RecallRail from "$lib/components/knowledge-home/recall-rail/RecallRail.svelte";
 import RecallRailCollapsible from "$lib/components/knowledge-home/recall-rail/RecallRailCollapsible.svelte";
@@ -35,11 +37,19 @@ let lensModalOpen = $state(false);
 // Feature flag checks
 const recallEnabled = $derived(flags.isEnabled("enable_recall_rail"));
 const lensEnabled = $derived(flags.isEnabled("enable_lens"));
+const streamEnabled = $derived(flags.isEnabled("enable_stream_updates"));
 const activeLensName = $derived(
 	lens.activeLensId
 		? lens.lenses.find((entry) => entry.lensId === lens.activeLensId)?.name ?? null
 		: null,
 );
+
+// Stream updates — gated by feature flag, refreshes home data on apply
+const stream = useStreamUpdates({
+	enabled: streamEnabled,
+	lensId: lens.activeLensId ?? undefined,
+	onRefresh: () => home.fetchData(true, lens.activeLensId),
+});
 
 async function syncLensQuery(lensId: string | null) {
 	const url = new URL(page.url);
@@ -149,10 +159,12 @@ onMount(async () => {
 			}
 			await syncLensQuery(initialLensId);
 			await home.fetchData(true, initialLensId);
-			return;
+		} else {
+			await home.fetchData(true);
 		}
 
-		await home.fetchData(true);
+		// Sync feature flags from the response
+		flags.setFlags(home.featureFlags);
 	}
 });
 </script>
@@ -185,6 +197,17 @@ onMount(async () => {
 				onCreateClick={() => {
 					lensModalOpen = true;
 				}}
+			/>
+		</div>
+	{/if}
+
+	{#if streamEnabled}
+		<div class="mt-3">
+			<StreamUpdateBar
+				pendingCount={stream.pendingCount}
+				isConnected={stream.isConnected}
+				isFallback={stream.isFallback}
+				onApply={() => stream.applyUpdates()}
 			/>
 		</div>
 	{/if}
@@ -247,6 +270,17 @@ onMount(async () => {
 					onCreateClick={() => {
 						lensModalOpen = true;
 					}}
+				/>
+			</div>
+		{/if}
+
+		{#if streamEnabled}
+			<div class="px-3 pt-2">
+				<StreamUpdateBar
+					pendingCount={stream.pendingCount}
+					isConnected={stream.isConnected}
+					isFallback={stream.isFallback}
+					onApply={() => stream.applyUpdates()}
 				/>
 			</div>
 		{/if}

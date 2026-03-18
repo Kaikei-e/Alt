@@ -71,29 +71,29 @@ async function submit() {
 		<div class="space-y-4 py-2">
 			<label class="block space-y-1">
 				<span class="text-sm text-[var(--text-primary)]">Name</span>
-				<input bind:value={name} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-1)] px-3 py-2 text-sm outline-none" placeholder="AI sources" />
+				<input bind:value={name} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none" placeholder="AI sources" />
 			</label>
 
 			<label class="block space-y-1">
 				<span class="text-sm text-[var(--text-primary)]">Description</span>
-				<textarea bind:value={description} class="min-h-20 w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-1)] px-3 py-2 text-sm outline-none" placeholder="Optional note for this view"></textarea>
+				<textarea bind:value={description} class="min-h-20 w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none" placeholder="Optional note for this view"></textarea>
 			</label>
 
 			<label class="block space-y-1">
 				<span class="text-sm text-[var(--text-primary)]">Tags</span>
-				<input bind:value={tagInput} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-1)] px-3 py-2 text-sm outline-none" placeholder="AI, Rust, Agents" />
+				<input bind:value={tagInput} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none" placeholder="AI, Rust, Agents" />
 				<span class="text-xs text-[var(--text-secondary)]">Comma-separated tag names</span>
 			</label>
 
 			<label class="block space-y-1">
 				<span class="text-sm text-[var(--text-primary)]">Feed IDs</span>
-				<input bind:value={feedInput} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-1)] px-3 py-2 text-sm outline-none" placeholder="uuid-1, uuid-2" />
+				<input bind:value={feedInput} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none" placeholder="uuid-1, uuid-2" />
 				<span class="text-xs text-[var(--text-secondary)]">Comma-separated feed UUIDs</span>
 			</label>
 
 			<label class="block space-y-1">
 				<span class="text-sm text-[var(--text-primary)]">Recent window</span>
-				<select bind:value={timeWindow} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-1)] px-3 py-2 text-sm outline-none">
+				<select bind:value={timeWindow} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none">
 					<option value="7d">Last 7 days</option>
 					<option value="30d">Last 30 days</option>
 					<option value="90d">Last 90 days</option>
