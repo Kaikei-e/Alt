@@ -26,6 +26,32 @@ type KnowledgeHomeMetrics struct {
 
 	// Backfill metrics
 	BackfillEventsGenerated metric.Int64Counter
+
+	// SLI-A: availability
+	RequestsTotal          metric.Int64Counter
+	RequestDurationSeconds metric.Float64Histogram
+	DegradedResponsesTotal metric.Int64Counter
+	ProjectionAgeSeconds   metric.Float64Gauge
+
+	// SLI-C: durability
+	TrackingReceivedTotal  metric.Int64Counter
+	TrackingPersistedTotal metric.Int64Counter
+	TrackingFailedTotal    metric.Int64Counter
+
+	// SLI-D: stream
+	StreamConnectionsTotal  metric.Int64Counter
+	StreamDisconnectsTotal  metric.Int64Counter
+	StreamReconnectsTotal   metric.Int64Counter
+	StreamUpdateLagSeconds  metric.Float64Histogram
+
+	// SLI-E: correctness
+	EmptyResponsesTotal    metric.Int64Counter
+	MalformedWhyTotal      metric.Int64Counter
+	OrphanItemsTotal       metric.Int64Counter
+	SupersedeMismatchTotal metric.Int64Counter
+
+	// Reproject
+	ReprojectEventsTotal metric.Int64Counter
 }
 
 // NewKnowledgeHomeMetrics initializes all Knowledge Home OTel metrics.
@@ -88,6 +114,96 @@ func NewKnowledgeHomeMetrics() (*KnowledgeHomeMetrics, error) {
 	// Backfill
 	m.BackfillEventsGenerated, err = meter.Int64Counter("alt.home.backfill.events_generated",
 		metric.WithDescription("Number of backfill events generated"))
+	if err != nil {
+		return nil, err
+	}
+
+	// SLI-A: availability
+	m.RequestsTotal, err = meter.Int64Counter("alt_home_requests_total",
+		metric.WithDescription("SLI-A: availability"))
+	if err != nil {
+		return nil, err
+	}
+	m.RequestDurationSeconds, err = meter.Float64Histogram("alt_home_request_duration_seconds",
+		metric.WithDescription("latency budget"))
+	if err != nil {
+		return nil, err
+	}
+	m.DegradedResponsesTotal, err = meter.Int64Counter("alt_home_degraded_responses_total",
+		metric.WithDescription("degraded tracking"))
+	if err != nil {
+		return nil, err
+	}
+	m.ProjectionAgeSeconds, err = meter.Float64Gauge("alt_home_projection_age_seconds",
+		metric.WithDescription("freshness"))
+	if err != nil {
+		return nil, err
+	}
+
+	// SLI-C: durability
+	m.TrackingReceivedTotal, err = meter.Int64Counter("alt_home_tracking_received_total",
+		metric.WithDescription("SLI-C: durability"))
+	if err != nil {
+		return nil, err
+	}
+	m.TrackingPersistedTotal, err = meter.Int64Counter("alt_home_tracking_persisted_total",
+		metric.WithDescription("durability"))
+	if err != nil {
+		return nil, err
+	}
+	m.TrackingFailedTotal, err = meter.Int64Counter("alt_home_tracking_failed_total",
+		metric.WithDescription("durability"))
+	if err != nil {
+		return nil, err
+	}
+
+	// SLI-D: stream
+	m.StreamConnectionsTotal, err = meter.Int64Counter("alt_home_stream_connections_total",
+		metric.WithDescription("SLI-D: stream"))
+	if err != nil {
+		return nil, err
+	}
+	m.StreamDisconnectsTotal, err = meter.Int64Counter("alt_home_stream_disconnects_total",
+		metric.WithDescription("stream"))
+	if err != nil {
+		return nil, err
+	}
+	m.StreamReconnectsTotal, err = meter.Int64Counter("alt_home_stream_reconnects_total",
+		metric.WithDescription("stream"))
+	if err != nil {
+		return nil, err
+	}
+	m.StreamUpdateLagSeconds, err = meter.Float64Histogram("alt_home_stream_update_lag_seconds",
+		metric.WithDescription("stream"))
+	if err != nil {
+		return nil, err
+	}
+
+	// SLI-E: correctness
+	m.EmptyResponsesTotal, err = meter.Int64Counter("alt_home_empty_responses_total",
+		metric.WithDescription("SLI-E: correctness"))
+	if err != nil {
+		return nil, err
+	}
+	m.MalformedWhyTotal, err = meter.Int64Counter("alt_home_malformed_why_total",
+		metric.WithDescription("correctness"))
+	if err != nil {
+		return nil, err
+	}
+	m.OrphanItemsTotal, err = meter.Int64Counter("alt_home_orphan_items_total",
+		metric.WithDescription("correctness"))
+	if err != nil {
+		return nil, err
+	}
+	m.SupersedeMismatchTotal, err = meter.Int64Counter("alt_home_supersede_mismatch_total",
+		metric.WithDescription("correctness"))
+	if err != nil {
+		return nil, err
+	}
+
+	// Reproject
+	m.ReprojectEventsTotal, err = meter.Int64Counter("alt_home_reproject_events_total",
+		metric.WithDescription("reproject"))
 	if err != nil {
 		return nil, err
 	}

@@ -152,6 +152,21 @@ func main() {
 			container.KnowledgeEventGateway,
 		),
 	})
+	scheduler.Add(job.Job{
+		Name:     "knowledge-reproject",
+		Interval: 30 * time.Second,
+		Timeout:  25 * time.Second,
+		Fn: job.KnowledgeReprojectJob(
+			container.KnowledgeReprojectGateway,
+			container.KnowledgeReprojectGateway,
+			container.KnowledgeReprojectGateway,
+			container.KnowledgeEventGateway,
+			container.KnowledgeProjectionGateway,
+			container.KnowledgeProjectionGateway,
+			container.KnowledgeHomeGateway,
+			container.TodayDigestGateway,
+		),
+	})
 	scheduler.Start(ctx)
 
 	e := echo.New()

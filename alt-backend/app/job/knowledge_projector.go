@@ -70,6 +70,11 @@ func processKnowledgeEvents(
 	}
 
 	if len(events) == 0 {
+		// Heartbeat: touch checkpoint updated_at so freshness SLI stays accurate
+		// even when no new events are arriving.
+		if err := updateCheckpointPort.UpdateProjectionCheckpoint(ctx, projectorName, lastSeq); err != nil {
+			logger.Logger.ErrorContext(ctx, "failed to heartbeat projection checkpoint", "error", err)
+		}
 		return nil
 	}
 

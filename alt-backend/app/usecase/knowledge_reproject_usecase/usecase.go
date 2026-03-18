@@ -1,0 +1,169 @@
+package knowledge_reproject_usecase
+
+import (
+	"alt/domain"
+	"alt/port/knowledge_projection_version_port"
+	"alt/port/knowledge_reproject_port"
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Usecase orchestrates reproject run lifecycle.
+type Usecase struct {
+	createRunPort       knowledge_reproject_port.CreateReprojectRunPort
+	getRunPort          knowledge_reproject_port.GetReprojectRunPort
+	updateRunPort       knowledge_reproject_port.UpdateReprojectRunPort
+	listRunsPort        knowledge_reproject_port.ListReprojectRunsPort
+	comparePort         knowledge_reproject_port.CompareProjectionsPort
+	activeVersionPort   knowledge_projection_version_port.GetActiveVersionPort
+	activateVersionPort knowledge_projection_version_port.ActivateVersionPort
+}
+
+// NewUsecase creates a new reproject usecase.
+func NewUsecase(
+	createRunPort knowledge_reproject_port.CreateReprojectRunPort,
+	getRunPort knowledge_reproject_port.GetReprojectRunPort,
+	updateRunPort knowledge_reproject_port.UpdateReprojectRunPort,
+	listRunsPort knowledge_reproject_port.ListReprojectRunsPort,
+	comparePort knowledge_reproject_port.CompareProjectionsPort,
+	activeVersionPort knowledge_projection_version_port.GetActiveVersionPort,
+	activateVersionPort knowledge_projection_version_port.ActivateVersionPort,
+) *Usecase {
+	return &Usecase{
+		createRunPort:       createRunPort,
+		getRunPort:          getRunPort,
+		updateRunPort:       updateRunPort,
+		listRunsPort:        listRunsPort,
+		comparePort:         comparePort,
+		activeVersionPort:   activeVersionPort,
+		activateVersionPort: activateVersionPort,
+	}
+}
+
+// StartReproject validates the mode and creates a pending reproject run.
+func (u *Usecase) StartReproject(ctx context.Context, mode, fromVersion, toVersion string, rangeStart, rangeEnd *time.Time) (*domain.ReprojectRun, error) {
+	if !domain.IsValidReprojectMode(mode) {
+		return nil, fmt.Errorf("invalid reproject mode %q", mode)
+	}
+
+	if mode == domain.ReprojectModeTimeRange {
+		if rangeStart == nil || rangeEnd == nil {
+			return nil, fmt.Errorf("range_start and range_end are required for time_range mode")
+		}
+	}
+
+	now := time.Now()
+	run := &domain.ReprojectRun{
+		ReprojectRunID: uuid.New(),
+		ProjectionName: "knowledge_home",
+		FromVersion:    fromVersion,
+		ToVersion:      toVersion,
+		Mode:           mode,
+		Status:         domain.ReprojectStatusPending,
+		RangeStart:     rangeStart,
+		RangeEnd:       rangeEnd,
+		CreatedAt:      now,
+	}
+
+	if err := u.createRunPort.CreateReprojectRun(ctx, run); err != nil {
+		return nil, fmt.Errorf("create reproject run: %w", err)
+	}
+
+	return run, nil
+}
+
+// GetReprojectStatus returns the current status of a reproject run.
+func (u *Usecase) GetReprojectStatus(ctx context.Context, runID uuid.UUID) (*domain.ReprojectRun, error) {
+	run, err := u.getRunPort.GetReprojectRun(ctx, runID)
+	if err != nil {
+		return nil, fmt.Errorf("get reproject status: %w", err)
+	}
+	return run, nil
+}
+
+// ListReprojectRuns returns reproject runs with optional status filter.
+func (u *Usecase) ListReprojectRuns(ctx context.Context, statusFilter string, limit int) ([]domain.ReprojectRun, error) {
+	runs, err := u.listRunsPort.ListReprojectRuns(ctx, statusFilter, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list reproject runs: %w", err)
+	}
+	return runs, nil
+}
+
+// CompareReproject validates that the run is in validating or swappable status, runs the comparison,
+// and updates the run to swappable with the diff summary.
+func (u *Usecase) CompareReproject(ctx context.Context, runID uuid.UUID) (*domain.ReprojectDiffSummary, error) {
+	run, err := u.getRunPort.GetReprojectRun(ctx, runID)
+	if err != nil {
+		return nil, fmt.Errorf("compare reproject get run: %w", err)
+	}
+
+	if run.Status != domain.ReprojectStatusValidating && run.Status != domain.ReprojectStatusSwappable {
+		return nil, fmt.Errorf("cannot compare run in status %q; must be validating or swappable", run.Status)
+	}
+
+	diff, err := u.comparePort.CompareProjections(ctx, run.FromVersion, run.ToVersion)
+	if err != nil {
+		return nil, fmt.Errorf("compare projections: %w", err)
+	}
+
+	diffJSON, err := json.Marshal(diff)
+	if err != nil {
+		return nil, fmt.Errorf("marshal diff summary: %w", err)
+	}
+
+	run.DiffSummaryJSON = diffJSON
+	run.Status = domain.ReprojectStatusSwappable
+
+	if err := u.updateRunPort.UpdateReprojectRun(ctx, run); err != nil {
+		return nil, fmt.Errorf("update reproject run after compare: %w", err)
+	}
+
+	return diff, nil
+}
+
+// SwapReproject validates the run is swappable, activates the new version, and marks the run as swapped.
+func (u *Usecase) SwapReproject(ctx context.Context, runID uuid.UUID) error {
+	run, err := u.getRunPort.GetReprojectRun(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("swap reproject get run: %w", err)
+	}
+
+	if run.Status != domain.ReprojectStatusSwappable {
+		return fmt.Errorf("cannot swap run in status %q; must be swappable", run.Status)
+	}
+
+	now := time.Now()
+	run.Status = domain.ReprojectStatusSwapped
+	run.FinishedAt = &now
+
+	if err := u.updateRunPort.UpdateReprojectRun(ctx, run); err != nil {
+		return fmt.Errorf("update reproject run after swap: %w", err)
+	}
+
+	return nil
+}
+
+// RollbackReproject validates the run is swapped, reverts to the previous version, and marks the run as cancelled.
+func (u *Usecase) RollbackReproject(ctx context.Context, runID uuid.UUID) error {
+	run, err := u.getRunPort.GetReprojectRun(ctx, runID)
+	if err != nil {
+		return fmt.Errorf("rollback reproject get run: %w", err)
+	}
+
+	if run.Status != domain.ReprojectStatusSwapped {
+		return fmt.Errorf("cannot rollback run in status %q; must be swapped", run.Status)
+	}
+
+	run.Status = domain.ReprojectStatusCancelled
+
+	if err := u.updateRunPort.UpdateReprojectRun(ctx, run); err != nil {
+		return fmt.Errorf("update reproject run after rollback: %w", err)
+	}
+
+	return nil
+}
