@@ -76,7 +76,10 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 	const articleId = itemKey.startsWith("article:") ? itemKey.slice(8) : null;
 
 	if (type === "open" && articleId) {
-		goto(`/feeds?article=${articleId}`);
+		if (item.link) {
+			goto(`/articles/${articleId}?url=${encodeURIComponent(item.link)}`);
+		}
+		return;
 	} else if (type === "ask") {
 		const context = item.summaryExcerpt || item.title;
 		if (context) {
@@ -94,8 +97,11 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 
 function handleRecallOpen(itemKey: string) {
 	const articleId = itemKey.startsWith("article:") ? itemKey.slice(8) : null;
-	if (articleId) {
-		goto(`/feeds?article=${articleId}`);
+	if (!articleId) return;
+	const candidate = recall.candidates.find((c) => c.itemKey === itemKey);
+	const link = candidate?.item?.link;
+	if (link) {
+		goto(`/articles/${articleId}?url=${encodeURIComponent(link)}`);
 	}
 }
 

@@ -65,6 +65,7 @@ export interface KnowledgeHomeItemData {
 	why: WhyReasonData[];
 	score: number;
 	supersedeInfo?: SupersedeInfoData;
+	link?: string;
 }
 
 /** Supersede info for version changes */
@@ -209,6 +210,7 @@ function convertItem(proto: ProtoKnowledgeHomeItem): KnowledgeHomeItemData {
 			previousSummaryExcerpt: proto.supersedeInfo.previousSummaryExcerpt || undefined,
 			previousTags: [...(proto.supersedeInfo.previousTags || [])],
 		} : undefined,
+		link: proto.link || undefined,
 	};
 }
 
