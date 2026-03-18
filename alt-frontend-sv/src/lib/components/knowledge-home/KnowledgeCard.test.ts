@@ -63,3 +63,44 @@ describe("KnowledgeCard data", () => {
 		expect(publishedDate.getTime()).not.toBeNaN();
 	});
 });
+
+/**
+ * Tests for formatRelativeTime logic extracted from KnowledgeCard.
+ * Bug 4: "NaNd ago" must never appear.
+ */
+describe("formatRelativeTime", () => {
+	// Re-implement here for unit testing (mirrors KnowledgeCard.svelte logic)
+	function formatRelativeTime(isoString: string): string {
+		if (!isoString) return "recent";
+		const date = new Date(isoString);
+		if (Number.isNaN(date.getTime())) return "recent";
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffMins = Math.floor(diffMs / 60000);
+		if (diffMins < 1) return "just now";
+		if (diffMins < 60) return `${diffMins}m ago`;
+		const diffHours = Math.floor(diffMins / 60);
+		if (diffHours < 24) return `${diffHours}h ago`;
+		const diffDays = Math.floor(diffHours / 24);
+		return `${diffDays}d ago`;
+	}
+
+	it("returns 'recent' for empty string", () => {
+		expect(formatRelativeTime("")).toBe("recent");
+	});
+
+	it("returns 'recent' for invalid ISO string", () => {
+		expect(formatRelativeTime("not-a-date")).toBe("recent");
+	});
+
+	it("never returns NaNd ago", () => {
+		const result = formatRelativeTime("");
+		expect(result).not.toContain("NaN");
+	});
+
+	it("returns valid relative time for valid ISO string", () => {
+		const result = formatRelativeTime("2026-03-17T10:00:00Z");
+		expect(result).not.toContain("NaN");
+		expect(result).toMatch(/^\d+[dhm] ago$|^just now$|^recent$/);
+	});
+});

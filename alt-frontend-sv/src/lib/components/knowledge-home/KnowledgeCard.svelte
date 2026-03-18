@@ -17,7 +17,9 @@ const remainingTagCount = $derived(
 const displayReasons = $derived(item.why.slice(0, 2));
 
 function formatRelativeTime(isoString: string): string {
+	if (!isoString) return "recent";
 	const date = new Date(isoString);
+	if (Number.isNaN(date.getTime())) return "recent";
 	const now = new Date();
 	const diffMs = now.getTime() - date.getTime();
 	const diffMins = Math.floor(diffMs / 60000);
@@ -62,7 +64,7 @@ function handleAction(type: string) {
 
 	<!-- Summary Excerpt -->
 	<p class="text-xs text-[var(--text-secondary)] line-clamp-2 mb-2">
-		{item.summaryExcerpt ?? "Summarizing..."}
+		{item.summaryExcerpt || "Summarizing..."}
 	</p>
 
 	<!-- Tags -->
