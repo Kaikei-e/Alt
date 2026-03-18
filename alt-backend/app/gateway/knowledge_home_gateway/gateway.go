@@ -37,17 +37,17 @@ func (g *Gateway) UpsertKnowledgeHomeItem(ctx context.Context, item domain.Knowl
 }
 
 // DismissKnowledgeHomeItem implements knowledge_home_port.DismissKnowledgeHomeItemPort.
-func (g *Gateway) DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID, itemKey string, dismissedAt time.Time) error {
+func (g *Gateway) DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int, dismissedAt time.Time) error {
 	if g.repo == nil {
 		return fmt.Errorf("DismissKnowledgeHomeItem: database connection not available")
 	}
-	return g.repo.DismissKnowledgeHomeItem(ctx, userID, itemKey, dismissedAt)
+	return g.repo.DismissKnowledgeHomeItem(ctx, userID, itemKey, projectionVersion, dismissedAt)
 }
 
 // ClearSupersedeState implements knowledge_home_port.ClearSupersedeStatePort.
-func (g *Gateway) ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string) error {
+func (g *Gateway) ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int) error {
 	if g.repo == nil {
 		return fmt.Errorf("ClearSupersedeState: database connection not available")
 	}
-	return g.repo.ClearSupersedeState(ctx, userID, itemKey)
+	return g.repo.ClearSupersedeState(ctx, userID, itemKey, projectionVersion)
 }

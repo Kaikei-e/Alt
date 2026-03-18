@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -73,13 +75,14 @@ func (r *AltDBRepository) UpdateReprojectRun(ctx context.Context, run *domain.Re
 	defer span.End()
 
 	query := `UPDATE knowledge_reproject_runs SET
-		status = $2, stats_json = $3, diff_summary_json = $4,
-		started_at = $5, finished_at = $6
+		status = $2, checkpoint_payload = $3, stats_json = $4, diff_summary_json = $5,
+		started_at = $6, finished_at = $7
 		WHERE reproject_run_id = $1`
 
 	_, err := r.pool.Exec(ctx, query,
 		run.ReprojectRunID,
 		run.Status,
+		jsonbStringOrEmptyObject(run.CheckpointPayload),
 		jsonbStringOrEmptyObject(run.StatsJSON),
 		jsonbStringOrEmptyObject(run.DiffSummaryJSON),
 		run.StartedAt, run.FinishedAt,
@@ -182,8 +185,28 @@ func (r *AltDBRepository) CompareProjections(ctx context.Context, fromVersion, t
 	return summary, nil
 }
 
+func parseProjectionVersionLabel(version string) (int, error) {
+	trimmed := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(version), "v"))
+	if trimmed == "" {
+		return 0, fmt.Errorf("empty projection version")
+	}
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, fmt.Errorf("parse projection version %q: %w", version, err)
+	}
+	if parsed <= 0 {
+		return 0, fmt.Errorf("projection version must be positive: %q", version)
+	}
+	return parsed, nil
+}
+
 // queryVersionStats fetches aggregate stats for a given projection version.
 func (r *AltDBRepository) queryVersionStats(ctx context.Context, version string) (int64, float64, int64, error) {
+	projectionVersion, err := parseProjectionVersionLabel(version)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
 	query := `SELECT COUNT(*) AS item_count,
 		COALESCE(AVG(score), 0) AS avg_score,
 		COUNT(*) FILTER (WHERE summary_excerpt = '' OR summary_excerpt IS NULL) AS empty_count
@@ -191,7 +214,7 @@ func (r *AltDBRepository) queryVersionStats(ctx context.Context, version string)
 
 	var itemCount, emptyCount int64
 	var avgScore float64
-	err := r.pool.QueryRow(ctx, query, version).Scan(&itemCount, &avgScore, &emptyCount)
+	err = r.pool.QueryRow(ctx, query, projectionVersion).Scan(&itemCount, &avgScore, &emptyCount)
 	if err != nil {
 		return 0, 0, 0, err
 	}
@@ -200,12 +223,17 @@ func (r *AltDBRepository) queryVersionStats(ctx context.Context, version string)
 
 // queryWhyDistribution fetches the why-reason code distribution for a given projection version.
 func (r *AltDBRepository) queryWhyDistribution(ctx context.Context, version string) (map[string]int64, error) {
+	projectionVersion, err := parseProjectionVersionLabel(version)
+	if err != nil {
+		return nil, err
+	}
+
 	query := `SELECT r.value->>'code' AS reason_code, COUNT(*) AS count
 		FROM knowledge_home_items i, jsonb_array_elements(i.why_json) AS r(value)
 		WHERE i.projection_version = $1
 		GROUP BY reason_code`
 
-	rows, err := r.pool.Query(ctx, query, version)
+	rows, err := r.pool.Query(ctx, query, projectionVersion)
 	if err != nil {
 		return nil, err
 	}

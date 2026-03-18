@@ -22,7 +22,7 @@ var upsertSQL = regexp.QuoteMeta(`INSERT INTO knowledge_home_items
 		 projection_version, summary_state,
 		 supersede_state, superseded_at, previous_ref_json)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-		ON CONFLICT (user_id, item_key) DO UPDATE SET
+		ON CONFLICT (user_id, item_key, projection_version) DO UPDATE SET
 		 title = CASE WHEN EXCLUDED.title != '' THEN EXCLUDED.title ELSE knowledge_home_items.title END,
 		 summary_excerpt = CASE WHEN EXCLUDED.summary_excerpt != '' THEN EXCLUDED.summary_excerpt ELSE knowledge_home_items.summary_excerpt END,
 		 tags_json = CASE WHEN EXCLUDED.tags_json != '[]'::jsonb THEN EXCLUDED.tags_json ELSE knowledge_home_items.tags_json END,
@@ -203,7 +203,7 @@ func TestAltDBRepository_GetKnowledgeHomeItems_ExcludesDismissedItems(t *testing
 		"summary_state", "link", "supersede_state", "superseded_at", "previous_ref_json",
 	})
 
-	mock.ExpectQuery(`(?s)FROM knowledge_home_items khi.*WHERE khi.user_id = \$1 AND khi.dismissed_at IS NULL.*ORDER BY khi.score DESC, khi.published_at DESC, khi.item_key DESC LIMIT \$2`).
+	mock.ExpectQuery(`(?s)FROM knowledge_home_items khi.*WHERE khi.user_id = \$1.*khi\.projection_version = COALESCE\(\(.*knowledge_projection_versions.*status = 'active'.*\), 1\).*AND khi.dismissed_at IS NULL.*ORDER BY khi.score DESC, khi.published_at DESC, khi.item_key DESC LIMIT \$2`).
 		WithArgs(userID, 21).
 		WillReturnRows(rows)
 
@@ -226,11 +226,11 @@ func TestAltDBRepository_DismissKnowledgeHomeItem_UpdatesDismissedAt(t *testing.
 
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE knowledge_home_items
 		SET dismissed_at = $1, updated_at = $1
-		WHERE user_id = $2 AND item_key = $3`)).
-		WithArgs(now, userID, "article:abc").
+		WHERE user_id = $2 AND item_key = $3 AND projection_version = $4`)).
+		WithArgs(now, userID, "article:abc", 1).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
-	err = repo.DismissKnowledgeHomeItem(context.Background(), userID, "article:abc", now)
+	err = repo.DismissKnowledgeHomeItem(context.Background(), userID, "article:abc", 1, now)
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

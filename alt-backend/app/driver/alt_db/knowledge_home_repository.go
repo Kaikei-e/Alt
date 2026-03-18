@@ -36,6 +36,12 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 		FROM knowledge_home_items khi
 		LEFT JOIN articles art ON khi.primary_ref_id = art.id AND art.deleted_at IS NULL
 		WHERE khi.user_id = $1
+		  AND khi.projection_version = COALESCE((
+		  	SELECT version FROM knowledge_projection_versions
+		  	WHERE status = 'active'
+		  	ORDER BY version DESC
+		  	LIMIT 1
+		  ), 1)
 		  AND khi.dismissed_at IS NULL`)
 
 	argPos := 2
@@ -175,7 +181,7 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 		 projection_version, summary_state,
 		 supersede_state, superseded_at, previous_ref_json)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-		ON CONFLICT (user_id, item_key) DO UPDATE SET
+		ON CONFLICT (user_id, item_key, projection_version) DO UPDATE SET
 		 title = CASE WHEN EXCLUDED.title != '' THEN EXCLUDED.title ELSE knowledge_home_items.title END,
 		 summary_excerpt = CASE WHEN EXCLUDED.summary_excerpt != '' THEN EXCLUDED.summary_excerpt ELSE knowledge_home_items.summary_excerpt END,
 		 tags_json = CASE WHEN EXCLUDED.tags_json != '[]'::jsonb THEN EXCLUDED.tags_json ELSE knowledge_home_items.tags_json END,
@@ -237,15 +243,15 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 
 // ClearSupersedeState clears the supersede state for a specific item.
 // Idempotent: no-op if supersede_state is already NULL.
-func (r *AltDBRepository) ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string) error {
+func (r *AltDBRepository) ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int) error {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.ClearSupersedeState")
 	defer span.End()
 
 	query := `UPDATE knowledge_home_items
 		SET supersede_state = NULL, superseded_at = NULL, previous_ref_json = NULL
-		WHERE user_id = $1 AND item_key = $2 AND supersede_state IS NOT NULL`
+		WHERE user_id = $1 AND item_key = $2 AND projection_version = $3 AND supersede_state IS NOT NULL`
 
-	_, err := r.pool.Exec(ctx, query, userID, itemKey)
+	_, err := r.pool.Exec(ctx, query, userID, itemKey, projectionVersion)
 	if err != nil {
 		return fmt.Errorf("ClearSupersedeState: %w", err)
 	}
@@ -254,15 +260,15 @@ func (r *AltDBRepository) ClearSupersedeState(ctx context.Context, userID uuid.U
 }
 
 // DismissKnowledgeHomeItem marks an item as dismissed so it stays hidden across reloads.
-func (r *AltDBRepository) DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID, itemKey string, dismissedAt time.Time) error {
+func (r *AltDBRepository) DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int, dismissedAt time.Time) error {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.DismissKnowledgeHomeItem")
 	defer span.End()
 
 	query := `UPDATE knowledge_home_items
 		SET dismissed_at = $1, updated_at = $1
-		WHERE user_id = $2 AND item_key = $3`
+		WHERE user_id = $2 AND item_key = $3 AND projection_version = $4`
 
-	_, err := r.pool.Exec(ctx, query, dismissedAt, userID, itemKey)
+	_, err := r.pool.Exec(ctx, query, dismissedAt, userID, itemKey, projectionVersion)
 	if err != nil {
 		return fmt.Errorf("DismissKnowledgeHomeItem: %w", err)
 	}

@@ -20,10 +20,10 @@ type UpsertKnowledgeHomeItemPort interface {
 
 // DismissKnowledgeHomeItemPort marks an item as dismissed so it no longer appears in Home.
 type DismissKnowledgeHomeItemPort interface {
-	DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID, itemKey string, dismissedAt time.Time) error
+	DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int, dismissedAt time.Time) error
 }
 
 // ClearSupersedeStatePort clears supersede state for an item after user acknowledgement (e.g. open).
 type ClearSupersedeStatePort interface {
-	ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string) error
+	ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int) error
 }

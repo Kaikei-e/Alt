@@ -83,7 +83,7 @@ func (m *mockHomeItemsPort) UpsertKnowledgeHomeItem(_ context.Context, item doma
 	return nil
 }
 
-func (m *mockHomeItemsPort) DismissKnowledgeHomeItem(_ context.Context, userID uuid.UUID, itemKey string, dismissedAt time.Time) error {
+func (m *mockHomeItemsPort) DismissKnowledgeHomeItem(_ context.Context, userID uuid.UUID, itemKey string, _ int, dismissedAt time.Time) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -99,6 +99,10 @@ func (m *mockHomeItemsPort) DismissKnowledgeHomeItem(_ context.Context, userID u
 		}
 	}
 	return nil
+}
+
+func (m *mockHomeItemsPort) ClearSupersedeState(_ context.Context, _ uuid.UUID, _ string, _ int) error {
+	return m.err
 }
 
 func mergeWhyReasons(newReasons []domain.WhyReason, existingReasons []domain.WhyReason) []domain.WhyReason {
@@ -1002,7 +1006,7 @@ type mockClearSupersedePort struct {
 	err error
 }
 
-func (m *mockClearSupersedePort) ClearSupersedeState(_ context.Context, userID uuid.UUID, itemKey string) error {
+func (m *mockClearSupersedePort) ClearSupersedeState(_ context.Context, userID uuid.UUID, itemKey string, _ int) error {
 	if m.err != nil {
 		return m.err
 	}

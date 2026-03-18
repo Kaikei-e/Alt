@@ -6,11 +6,15 @@ import (
 	"alt/port/knowledge_home_port"
 	"alt/port/knowledge_projection_port"
 	"alt/port/knowledge_reproject_port"
+	"alt/port/summary_version_port"
+	"alt/port/tag_set_version_port"
 	"alt/port/today_digest_port"
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -23,11 +27,17 @@ func KnowledgeReprojectJob(
 	eventsPort knowledge_event_port.ListKnowledgeEventsPort,
 	checkpointPort knowledge_projection_port.GetProjectionCheckpointPort,
 	updateCheckpointPort knowledge_projection_port.UpdateProjectionCheckpointPort,
-	homeItemsPort knowledge_home_port.UpsertKnowledgeHomeItemPort,
+	homeItemsPort interface {
+		knowledge_home_port.UpsertKnowledgeHomeItemPort
+		knowledge_home_port.DismissKnowledgeHomeItemPort
+		knowledge_home_port.ClearSupersedeStatePort
+	},
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
+	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
+	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
 ) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		return processReprojectBatch(ctx, listRunsPort, getRunPort, updateRunPort, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort)
+		return processReprojectBatch(ctx, listRunsPort, getRunPort, updateRunPort, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, tagSetVersionPort)
 	}
 }
 
@@ -39,8 +49,14 @@ func processReprojectBatch(
 	eventsPort knowledge_event_port.ListKnowledgeEventsPort,
 	_ knowledge_projection_port.GetProjectionCheckpointPort,
 	_ knowledge_projection_port.UpdateProjectionCheckpointPort,
-	_ knowledge_home_port.UpsertKnowledgeHomeItemPort,
+	homeItemsPort interface {
+		knowledge_home_port.UpsertKnowledgeHomeItemPort
+		knowledge_home_port.DismissKnowledgeHomeItemPort
+		knowledge_home_port.ClearSupersedeStatePort
+	},
 	_ today_digest_port.UpsertTodayDigestPort,
+	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
+	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
 ) error {
 	// Find pending or running reproject runs
 	runs, err := listRunsPort.ListReprojectRuns(ctx, "", 10)
@@ -92,6 +108,15 @@ func processReprojectBatch(
 		return nil
 	}
 
+	targetVersion, err := parseReprojectVersion(activeRun.ToVersion)
+	if err != nil {
+		activeRun.Status = domain.ReprojectStatusFailed
+		if updateErr := updateRunPort.UpdateReprojectRun(ctx, activeRun); updateErr != nil {
+			logger.Logger.ErrorContext(ctx, "failed to persist reproject failure", "error", updateErr, "run_id", activeRun.ReprojectRunID)
+		}
+		return fmt.Errorf("parse reproject target version: %w", err)
+	}
+
 	// Process a batch of events for the target version
 	var checkpoint struct {
 		LastEventSeq int64 `json:"last_event_seq"`
@@ -120,8 +145,17 @@ func processReprojectBatch(
 	// The actual projection logic is the same as the regular projector
 	// but targets a different projection_version
 	var processedCount int64
+	var errorCount int64
 	for _, event := range events {
-		// Best-effort processing: log errors but continue
+		if err := projectEvent(ctx, event, homeItemsPort, nil, summaryVersionPort, nil, tagSetVersionPort, homeItemsPort, targetVersion); err != nil {
+			errorCount++
+			logger.Logger.ErrorContext(ctx, "failed to replay reproject event",
+				"error", err,
+				"run_id", activeRun.ReprojectRunID,
+				"event_id", event.EventID,
+				"event_type", event.EventType,
+				"event_seq", event.EventSeq)
+		}
 		if event.EventSeq > checkpoint.LastEventSeq {
 			checkpoint.LastEventSeq = event.EventSeq
 		}
@@ -136,6 +170,7 @@ func processReprojectBatch(
 	var stats domain.ReprojectStats
 	_ = json.Unmarshal(activeRun.StatsJSON, &stats)
 	stats.EventsProcessed += processedCount
+	stats.ErrorCount += errorCount
 	statsJSON, _ := json.Marshal(stats)
 	activeRun.StatsJSON = statsJSON
 
@@ -149,4 +184,19 @@ func processReprojectBatch(
 		"total_processed", stats.EventsProcessed)
 
 	return nil
+}
+
+func parseReprojectVersion(version string) (int, error) {
+	trimmed := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(version), "v"))
+	if trimmed == "" {
+		return 0, fmt.Errorf("empty projection version")
+	}
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, fmt.Errorf("invalid projection version %q: %w", version, err)
+	}
+	if parsed <= 0 {
+		return 0, fmt.Errorf("projection version must be positive: %q", version)
+	}
+	return parsed, nil
 }

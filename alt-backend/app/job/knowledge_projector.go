@@ -152,7 +152,7 @@ func projectEvent(
 	case domain.EventHomeItemOpened:
 		return projectHomeItemOpened(ctx, event, homeItemsPort, recallCandidatePort, clearSupersedePort, projectionVersion)
 	case domain.EventHomeItemDismissed:
-		return projectHomeItemDismissed(ctx, event, homeItemsPort)
+		return projectHomeItemDismissed(ctx, event, homeItemsPort, projectionVersion)
 	case domain.EventSummarySuperseded:
 		return projectSummarySuperseded(ctx, event, homeItemsPort, projectionVersion)
 	case domain.EventTagSetSuperseded:
@@ -475,7 +475,7 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 
 	// Clear supersede state on open (acknowledgement)
 	if clearSupersedePort != nil {
-		if err := clearSupersedePort.ClearSupersedeState(ctx, userID, payload.ItemKey); err != nil {
+		if err := clearSupersedePort.ClearSupersedeState(ctx, userID, payload.ItemKey, projectionVersion); err != nil {
 			logger.Logger.ErrorContext(ctx, "failed to clear supersede state on open", "error", err, "item_key", payload.ItemKey)
 			// Non-fatal
 		}
@@ -507,7 +507,7 @@ type homeItemDismissedPayload struct {
 	ItemKey string `json:"item_key"`
 }
 
-func projectHomeItemDismissed(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.DismissKnowledgeHomeItemPort) error {
+func projectHomeItemDismissed(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.DismissKnowledgeHomeItemPort, projectionVersion int) error {
 	var payload homeItemDismissedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal HomeItemDismissed payload: %w", err)
@@ -529,7 +529,7 @@ func projectHomeItemDismissed(ctx context.Context, event domain.KnowledgeEvent, 
 		dismissedAt = time.Now()
 	}
 
-	return port.DismissKnowledgeHomeItem(ctx, userID, payload.ItemKey, dismissedAt)
+	return port.DismissKnowledgeHomeItem(ctx, userID, payload.ItemKey, projectionVersion, dismissedAt)
 }
 
 // ── Supersede projection handlers ──

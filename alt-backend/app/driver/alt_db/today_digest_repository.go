@@ -38,6 +38,12 @@ func (r *AltDBRepository) CountNeedToKnowItems(ctx context.Context, userID uuid.
 
 	query := `SELECT COUNT(*) FROM knowledge_home_items
 		WHERE user_id = $1
+		AND projection_version = COALESCE((
+			SELECT version FROM knowledge_projection_versions
+			WHERE status = 'active'
+			ORDER BY version DESC
+			LIMIT 1
+		), 1)
 		AND dismissed_at IS NULL
 		AND published_at >= $2::date
 		AND published_at < ($2::date + INTERVAL '1 day')

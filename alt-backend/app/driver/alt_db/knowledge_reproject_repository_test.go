@@ -181,21 +181,23 @@ func TestAltDBRepository_UpdateReprojectRun_Success(t *testing.T) {
 	startedAt := time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC)
 
 	run := &domain.ReprojectRun{
-		ReprojectRunID:  runID,
-		Status:          domain.ReprojectStatusSwappable,
-		StatsJSON:       json.RawMessage(`{"events_processed":500,"events_total":500}`),
-		DiffSummaryJSON: json.RawMessage(`{"from_item_count":100,"to_item_count":105}`),
-		StartedAt:       &startedAt,
-		FinishedAt:      &now,
+		ReprojectRunID:    runID,
+		Status:            domain.ReprojectStatusSwappable,
+		CheckpointPayload: json.RawMessage(`{"last_event_seq":500}`),
+		StatsJSON:         json.RawMessage(`{"events_processed":500,"events_total":500}`),
+		DiffSummaryJSON:   json.RawMessage(`{"from_item_count":100,"to_item_count":105}`),
+		StartedAt:         &startedAt,
+		FinishedAt:        &now,
 	}
 
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE knowledge_reproject_runs SET
-		status = $2, stats_json = $3, diff_summary_json = $4,
-		started_at = $5, finished_at = $6
+		status = $2, checkpoint_payload = $3, stats_json = $4, diff_summary_json = $5,
+		started_at = $6, finished_at = $7
 		WHERE reproject_run_id = $1`)).
 		WithArgs(
 			runID,
 			domain.ReprojectStatusSwappable,
+			`{"last_event_seq":500}`,
 			`{"events_processed":500,"events_total":500}`,
 			`{"from_item_count":100,"to_item_count":105}`,
 			&startedAt, &now,
@@ -222,12 +224,13 @@ func TestAltDBRepository_UpdateReprojectRun_EmptyJSONFields_DefaultToEmptyObject
 	}
 
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE knowledge_reproject_runs SET
-		status = $2, stats_json = $3, diff_summary_json = $4,
-		started_at = $5, finished_at = $6
+		status = $2, checkpoint_payload = $3, stats_json = $4, diff_summary_json = $5,
+		started_at = $6, finished_at = $7
 		WHERE reproject_run_id = $1`)).
 		WithArgs(
 			runID,
 			domain.ReprojectStatusPending,
+			`{}`,
 			`{}`,
 			`{}`,
 			(*time.Time)(nil), (*time.Time)(nil),
@@ -341,7 +344,7 @@ func TestAltDBRepository_CompareProjections_Success(t *testing.T) {
 		COALESCE(AVG(score), 0) AS avg_score,
 		COUNT(*) FILTER (WHERE summary_excerpt = '' OR summary_excerpt IS NULL) AS empty_count
 		FROM knowledge_home_items WHERE projection_version = $1`)).
-		WithArgs("v1").
+		WithArgs(1).
 		WillReturnRows(fromStatsRows)
 
 	// Mock "from" why distribution
@@ -353,7 +356,7 @@ func TestAltDBRepository_CompareProjections_Success(t *testing.T) {
 		FROM knowledge_home_items i, jsonb_array_elements(i.why_json) AS r(value)
 		WHERE i.projection_version = $1
 		GROUP BY reason_code`)).
-		WithArgs("v1").
+		WithArgs(1).
 		WillReturnRows(fromWhyRows)
 
 	// Mock "to" version stats
@@ -365,7 +368,7 @@ func TestAltDBRepository_CompareProjections_Success(t *testing.T) {
 		COALESCE(AVG(score), 0) AS avg_score,
 		COUNT(*) FILTER (WHERE summary_excerpt = '' OR summary_excerpt IS NULL) AS empty_count
 		FROM knowledge_home_items WHERE projection_version = $1`)).
-		WithArgs("v2").
+		WithArgs(2).
 		WillReturnRows(toStatsRows)
 
 	// Mock "to" why distribution
@@ -377,7 +380,7 @@ func TestAltDBRepository_CompareProjections_Success(t *testing.T) {
 		FROM knowledge_home_items i, jsonb_array_elements(i.why_json) AS r(value)
 		WHERE i.projection_version = $1
 		GROUP BY reason_code`)).
-		WithArgs("v2").
+		WithArgs(2).
 		WillReturnRows(toWhyRows)
 
 	result, err := repo.CompareProjections(context.Background(), "v1", "v2")
@@ -406,7 +409,7 @@ func TestAltDBRepository_CompareProjections_QueryError(t *testing.T) {
 		COALESCE(AVG(score), 0) AS avg_score,
 		COUNT(*) FILTER (WHERE summary_excerpt = '' OR summary_excerpt IS NULL) AS empty_count
 		FROM knowledge_home_items WHERE projection_version = $1`)).
-		WithArgs("v1").
+		WithArgs(1).
 		WillReturnError(fmt.Errorf("connection error"))
 
 	result, err := repo.CompareProjections(context.Background(), "v1", "v2")

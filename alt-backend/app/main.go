@@ -169,6 +169,8 @@ func main() {
 			container.KnowledgeProjectionGateway,
 			container.KnowledgeHomeGateway,
 			container.TodayDigestGateway,
+			container.SummaryVersionGateway,
+			container.TagSetVersionGateway,
 		),
 	})
 	scheduler.Start(ctx)
