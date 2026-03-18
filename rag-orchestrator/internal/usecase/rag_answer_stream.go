@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"rag-orchestrator/internal/domain"
 )
@@ -393,6 +394,13 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			slog.String("reason", parsedAnswer.Reason),
 			slog.Int("answer_length", len(parsedAnswer.Answer)),
 			slog.Int("citations_count", len(parsedAnswer.Citations)))
+
+		if parsedAnswer.ShortAnswer {
+			u.logger.Warn("stream_short_answer_detected",
+				slog.String("retrieval_set_id", promptData.retrievalSetID),
+				slog.Int("answer_rune_length", utf8.RuneCountInString(parsedAnswer.Answer)),
+				slog.String("query", input.Query))
+		}
 
 		if parsedAnswer.Fallback {
 			u.logger.Warn("stream_answer_fallback_triggered",

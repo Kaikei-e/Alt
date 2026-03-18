@@ -5,14 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // OutputValidator ensures the LLM output follows expected structure and references retrieved chunks.
-type OutputValidator struct{}
+type OutputValidator struct {
+	minAnswerLength int
+}
 
-// NewOutputValidator creates a validator instance (currently stateless).
-func NewOutputValidator() OutputValidator {
-	return OutputValidator{}
+// NewOutputValidator creates a validator instance.
+// minAnswerLength sets the minimum rune count for answers; 0 disables the check.
+func NewOutputValidator(minAnswerLength int) OutputValidator {
+	return OutputValidator{minAnswerLength: minAnswerLength}
 }
 
 // Validate parses and checks the JSON output emitted by the LLM.
@@ -79,6 +83,12 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 	// section headings but runs out of tokens before filling content.
 	if answer.Answer == "" && !answer.Fallback {
 		return nil, errors.New("llm returned empty answer without fallback flag")
+	}
+
+	// Soft validation: flag short answers (rune count) but don't reject.
+	// 8B models may produce shorter answers for narrow queries.
+	if v.minAnswerLength > 0 && utf8.RuneCountInString(answer.Answer) < v.minAnswerLength {
+		answer.ShortAnswer = true
 	}
 
 	return &answer, nil
@@ -180,10 +190,11 @@ func extractAnswerOnly(raw string) string {
 
 // LLMAnswer models the JSON output the prompt format section enforces.
 type LLMAnswer struct {
-	Answer    string        `json:"answer"`
-	Citations []LLMCitation `json:"citations"`
-	Fallback  bool          `json:"fallback"`
-	Reason    string        `json:"reason"`
+	Answer      string        `json:"answer"`
+	Citations   []LLMCitation `json:"citations"`
+	Fallback    bool          `json:"fallback"`
+	Reason      string        `json:"reason"`
+	ShortAnswer bool          // Internal flag: true when answer is below minAnswerLength (rune count)
 }
 
 // LLMCitation declares the chunks referenced in the final answer.

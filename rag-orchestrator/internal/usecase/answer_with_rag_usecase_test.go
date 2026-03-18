@@ -75,7 +75,7 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 	builder := usecase.NewXMLPromptBuilder()
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 10, 512, 6000, "alpha-v1", "ja", testLogger)
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
 	chunkID := uuid.New()
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
@@ -104,7 +104,7 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
 		return len(msgs) == 1 && msgs[0].Role == "user" &&
 			contains(msgs[0].Content, "リサーチアナリスト") &&
-			contains(msgs[0].Content, "500文字以上") &&
+			contains(msgs[0].Content, "800文字以上") &&
 			contains(msgs[0].Content, "結論を最初に") &&
 			contains(msgs[0].Content, "引用は[番号]形式")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
@@ -124,7 +124,7 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 	builder := usecase.NewXMLPromptBuilder()
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 7, 512, 6000, "alpha-v1", "ja", testLogger)
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 7, 512, 6000, "alpha-v1", "ja", testLogger)
 
 	chunkID := uuid.New()
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
@@ -172,7 +172,7 @@ func TestStream_SendsThinkingEventFirst(t *testing.T) {
 	builder := usecase.NewXMLPromptBuilder()
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(), 10, 512, 6000, "alpha-v1", "ja", testLogger)
+	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
 	chunkID := uuid.New()
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
@@ -239,7 +239,7 @@ func TestStream_HeartbeatDuringSlowBuildPrompt(t *testing.T) {
 
 	// Use a short heartbeat interval for testing (100ms instead of 5s)
 	uc := usecase.NewAnswerWithRAGUsecase(
-		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(),
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0),
 		10, 512, 6000, "alpha-v1", "ja", testLogger,
 		usecase.WithHeartbeatInterval(100*time.Millisecond),
 	)
@@ -321,7 +321,7 @@ func TestStream_NoHeartbeatWhenBuildPromptFast(t *testing.T) {
 
 	// Use a long heartbeat interval so no heartbeats fire during fast buildPrompt
 	uc := usecase.NewAnswerWithRAGUsecase(
-		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(),
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0),
 		10, 512, 6000, "alpha-v1", "ja", testLogger,
 		usecase.WithHeartbeatInterval(10*time.Second),
 	)
@@ -383,7 +383,7 @@ func TestStream_HeartbeatDuringChatStreamSetup(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
 	uc := usecase.NewAnswerWithRAGUsecase(
-		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(),
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0),
 		10, 512, 6000, "alpha-v1", "ja", testLogger,
 		usecase.WithHeartbeatInterval(100*time.Millisecond),
 	)
@@ -455,7 +455,7 @@ func TestStream_HeartbeatDuringLLMStreaming(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
 	uc := usecase.NewAnswerWithRAGUsecase(
-		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(),
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0),
 		10, 512, 6000, "alpha-v1", "ja", testLogger,
 		usecase.WithHeartbeatInterval(100*time.Millisecond),
 	)
@@ -517,4 +517,46 @@ func TestStream_HeartbeatDuringLLMStreaming(t *testing.T) {
 	// Verify stream completes
 	lastEvent := events[len(events)-1]
 	assert.Equal(t, usecase.StreamEventKindDone, lastEvent.Kind, "stream should complete with done event")
+}
+
+func TestPromptBuilder_ContainsGroundingInstructions(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "test query",
+		Locale:        "ja",
+		PromptVersion: "alpha-v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test", ChunkText: "content"},
+		},
+	})
+	assert.NoError(t, err)
+	assert.Len(t, messages, 1)
+
+	content := messages[0].Content
+	assert.Contains(t, content, "提供されたコンテキスト情報のみに基づいて回答すること")
+	assert.Contains(t, content, "推測・捏造しないこと")
+	assert.Contains(t, content, "情報が不十分な場合は、不足している点を明示すること")
+}
+
+func TestPromptBuilder_MultiTurnCoreferenceInstruction(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "それについて詳しく教えて",
+		Locale:        "ja",
+		PromptVersion: "alpha-v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test", ChunkText: "content"},
+		},
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: "AIについて教えて"},
+			{Role: "assistant", Content: "AIとは人工知能のことです。"},
+		},
+	})
+	assert.NoError(t, err)
+	assert.Len(t, messages, 1)
+
+	content := messages[0].Content
+	assert.Contains(t, content, "指示代名詞（「それ」「この件」等）を解決してください")
 }

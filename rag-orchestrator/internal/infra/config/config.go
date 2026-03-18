@@ -60,6 +60,11 @@ const (
 	defaultDBMinConns int32 = 5
 )
 
+// RAG answer quality defaults.
+const (
+	defaultRAGMinAnswerLength = 800 // Minimum rune count for quality answers
+)
+
 // Cache defaults.
 const (
 	defaultCacheSize = 256
@@ -128,6 +133,7 @@ type RAGConfig struct {
 	Locale                           string
 	PromptVersion                    string
 	DynamicLanguageAllocationEnabled bool
+	MinAnswerLength                  int
 }
 
 // RerankConfig holds cross-encoder reranking settings.
@@ -228,6 +234,7 @@ func Load() *Config {
 			Locale:                           getEnv("RAG_DEFAULT_LOCALE", "ja"),
 			PromptVersion:                    getEnv("RAG_PROMPT_VERSION", "alpha-v1"),
 			DynamicLanguageAllocationEnabled: getEnvBool("RAG_DYNAMIC_LANGUAGE_ALLOCATION", defaultDynamicLanguageAllocationEnabled),
+			MinAnswerLength:                  getEnvInt("RAG_MIN_ANSWER_LENGTH", defaultRAGMinAnswerLength),
 		},
 		Rerank: RerankConfig{
 			Enabled: getEnvBool("RERANK_ENABLED", defaultRerankEnabled),

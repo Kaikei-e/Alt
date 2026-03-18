@@ -1,6 +1,7 @@
 package usecase_test
 
 import (
+	"strings"
 	"testing"
 
 	"rag-orchestrator/internal/usecase"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestOutputValidator_Validate_EscapeSequences(t *testing.T) {
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 
 	tests := []struct {
 		name           string
@@ -98,7 +99,7 @@ func TestOutputValidator_Validate_EscapeSequences(t *testing.T) {
 
 func TestExtractAnswerOnly_EscapeSequences(t *testing.T) {
 	// This tests the fallback extraction path when JSON parsing fails
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 
 	// Truncated JSON that would trigger extractAnswerOnly
 	tests := []struct {
@@ -150,7 +151,7 @@ func TestExtractAnswerOnly_EscapeSequences(t *testing.T) {
 
 func TestOutputValidator_Validate_LiteralBackslashN(t *testing.T) {
 	// Test that literal \n in model output (not JSON escape) gets converted
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 
 	// This simulates what GPT-OSS might output - literal backslash-n in the text
 	// Note: In Go raw string literal, \\n represents literal \n (two characters)
@@ -170,7 +171,7 @@ func TestOutputValidator_Validate_LiteralBackslashN(t *testing.T) {
 }
 
 func TestOutputValidator_Validate_EmptyAnswerRejection(t *testing.T) {
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 
 	// Empty answer without fallback flag should be rejected
 	input := `{
@@ -187,7 +188,7 @@ func TestOutputValidator_Validate_EmptyAnswerRejection(t *testing.T) {
 }
 
 func TestOutputValidator_Validate_EmptyAnswerWithFallback(t *testing.T) {
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 
 	// Empty answer WITH fallback flag is valid
 	input := `{
@@ -203,7 +204,7 @@ func TestOutputValidator_Validate_EmptyAnswerWithFallback(t *testing.T) {
 }
 
 func TestOutputValidator_Validate_WhitespaceOnlyAnswerRejection(t *testing.T) {
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 
 	// Whitespace-only answer should also be rejected
 	input := `{
@@ -219,7 +220,7 @@ func TestOutputValidator_Validate_WhitespaceOnlyAnswerRejection(t *testing.T) {
 }
 
 func TestOutputValidator_Validate_IndexBasedCitations(t *testing.T) {
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 
 	contexts := []usecase.ContextItem{
 		{ChunkText: "chunk1 text", Title: "Article 1"},
@@ -250,7 +251,7 @@ func TestOutputValidator_Validate_IndexBasedCitations(t *testing.T) {
 }
 
 func TestOutputValidator_Validate_IndexBasedCitationsOutOfRange(t *testing.T) {
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 
 	contexts := []usecase.ContextItem{
 		{ChunkText: "chunk1 text", Title: "Article 1"},
@@ -273,10 +274,46 @@ func TestOutputValidator_Validate_IndexBasedCitationsOutOfRange(t *testing.T) {
 	assert.Equal(t, "1", result.Citations[0].ChunkID)
 }
 
+func TestOutputValidator_Validate_ShortAnswerFlag(t *testing.T) {
+	validator := usecase.NewOutputValidator(800)
+
+	// 799 runes — should be flagged as short
+	shortAnswer := strings.Repeat("あ", 799)
+	input := `{"answer": "` + shortAnswer + `", "citations": [], "fallback": false, "reason": ""}`
+
+	result, err := validator.Validate(input, nil)
+	require.NoError(t, err)
+	assert.True(t, result.ShortAnswer, "answer with 799 runes should be flagged as short")
+}
+
+func TestOutputValidator_Validate_LongAnswerNoFlag(t *testing.T) {
+	validator := usecase.NewOutputValidator(800)
+
+	// Exactly 800 runes — should NOT be flagged
+	longAnswer := strings.Repeat("あ", 800)
+	input := `{"answer": "` + longAnswer + `", "citations": [], "fallback": false, "reason": ""}`
+
+	result, err := validator.Validate(input, nil)
+	require.NoError(t, err)
+	assert.False(t, result.ShortAnswer, "answer with 800 runes should not be flagged as short")
+}
+
+func TestOutputValidator_Validate_RuneCountNotByteCount(t *testing.T) {
+	validator := usecase.NewOutputValidator(100)
+
+	// 100 Japanese characters = 300 bytes but 100 runes
+	japaneseText := strings.Repeat("日", 100)
+	input := `{"answer": "` + japaneseText + `", "citations": [], "fallback": false, "reason": ""}`
+
+	result, err := validator.Validate(input, nil)
+	require.NoError(t, err)
+	assert.False(t, result.ShortAnswer, "should count runes not bytes; 100 Japanese chars = 100 runes >= 100 min")
+}
+
 func TestOutputValidator_ConvertLiteralEscapes_OnlyNewlines(t *testing.T) {
 	// Test that convertLiteralEscapes only converts \n, not \t or \r
 	// This is important to avoid breaking paths like C:\temp
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 
 	// Model outputs text with literal \n but also \t should not be converted
 	// Note: We use \\n in Go string to represent literal backslash-n (2 chars)

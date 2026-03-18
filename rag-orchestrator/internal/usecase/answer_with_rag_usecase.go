@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"rag-orchestrator/internal/domain"
 
@@ -222,6 +223,14 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		slog.String("request_id", requestID),
 		slog.Bool("is_fallback", parsedAnswer.Fallback),
 		slog.Int("citations_count", len(parsedAnswer.Citations)))
+
+	if parsedAnswer.ShortAnswer {
+		u.logger.Warn("short_answer_detected",
+			slog.String("request_id", requestID),
+			slog.String("retrieval_set_id", promptData.retrievalSetID),
+			slog.Int("answer_rune_length", utf8.RuneCountInString(parsedAnswer.Answer)),
+			slog.String("query", input.Query))
+	}
 
 	if parsedAnswer.Fallback {
 		u.logger.Warn("answer_fallback_triggered",

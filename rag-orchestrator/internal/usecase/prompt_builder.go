@@ -62,16 +62,19 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 
 	sb.WriteString("## 回答の品質基準\n")
 	sb.WriteString("- 結論を最初に述べ、その後で根拠と詳細を説明すること\n")
-	sb.WriteString("- 回答は500文字以上で、具体的な事実・データ・事例を含むこと\n")
+	sb.WriteString("- 回答は800文字以上で、具体的な事実・データ・事例を含むこと\n")
 	sb.WriteString("- コンテキストの情報を最大限に活用し、複数のソースを統合すること\n")
-	sb.WriteString("- ソース引用は[番号]形式（例: [1], [2]）で必ず付与すること\n\n")
+	sb.WriteString("- ソース引用は[番号]形式（例: [1], [2]）で必ず付与すること\n")
+	sb.WriteString("- 提供されたコンテキスト情報のみに基づいて回答すること（外部知識を使わない）\n")
+	sb.WriteString("- コンテキストに記載のない事実や数値を推測・捏造しないこと\n")
+	sb.WriteString("- 情報が不十分な場合は、不足している点を明示すること\n\n")
 
 	sb.WriteString("## 回答構造\n")
-	sb.WriteString("1. **概要**: 結論と全体像を2-3文で説明\n")
+	sb.WriteString("1. **概要**: 結論と全体像を2-3文で説明（最重要ポイントを冒頭に）\n")
 	sb.WriteString("2. **詳細**: 具体的な事実・データ・事例を含む本文（最も重要なセクション）\n")
-	sb.WriteString("   - 背景情報と現状\n")
-	sb.WriteString("   - 具体的な内容・データ\n")
-	sb.WriteString("   - 影響と意味合い\n")
+	sb.WriteString("   - 背景情報と現状（コンテキストから引用、[番号]で出典明記）\n")
+	sb.WriteString("   - 具体的な内容・データ（数値・日付・固有名詞を正確に引用）\n")
+	sb.WriteString("   - 影響と意味合い（複数ソースの情報を統合して分析）\n")
 	sb.WriteString("3. **まとめ**: 重要ポイントの整理と今後の展望\n\n")
 
 	if len(b.additionalInstructions) > 0 {
@@ -91,6 +94,7 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 	// Conversation History (for multi-turn context)
 	if len(input.ConversationHistory) > 0 {
 		sb.WriteString("### 会話履歴\n")
+		sb.WriteString("以下の会話履歴を参考に、指示代名詞（「それ」「この件」等）を解決してください。\n")
 		// Include last 3 turns max (6 messages)
 		maxMsgs := 6
 		start := 0
@@ -99,8 +103,8 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 		}
 		for _, msg := range input.ConversationHistory[start:] {
 			content := msg.Content
-			if len(content) > 300 {
-				content = content[:300] + "..."
+			if len(content) > 500 {
+				content = content[:500] + "..."
 			}
 			sb.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, content))
 		}

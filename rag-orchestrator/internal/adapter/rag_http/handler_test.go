@@ -100,7 +100,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		retrieve,
 		usecase.NewXMLPromptBuilder("Answer in Japanese."),
 		&stubLLMClient{response: llmResponse},
-		usecase.NewOutputValidator(),
+		usecase.NewOutputValidator(0),
 		5,
 		256,
 		6000,

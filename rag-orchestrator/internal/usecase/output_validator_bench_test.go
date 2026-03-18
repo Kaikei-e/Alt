@@ -11,7 +11,7 @@ import (
 )
 
 func BenchmarkOutputValidator_ShortAnswer(b *testing.B) {
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 	input := `{"answer": "Short answer about AI.", "citations": [], "fallback": false, "reason": ""}`
 
 	b.ResetTimer()
@@ -21,7 +21,7 @@ func BenchmarkOutputValidator_ShortAnswer(b *testing.B) {
 }
 
 func BenchmarkOutputValidator_LongAnswer(b *testing.B) {
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 	longAnswer := strings.Repeat("This is a detailed answer about artificial intelligence. ", 100)
 	input := fmt.Sprintf(`{"answer": "%s", "citations": [], "fallback": false, "reason": ""}`, longAnswer)
 
@@ -32,7 +32,7 @@ func BenchmarkOutputValidator_LongAnswer(b *testing.B) {
 }
 
 func BenchmarkOutputValidator_WithCitations(b *testing.B) {
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 	chunkIDs := make([]uuid.UUID, 10)
 	contexts := make([]usecase.ContextItem, 10)
 	var citationsJSON strings.Builder
@@ -59,7 +59,7 @@ func BenchmarkOutputValidator_WithCitations(b *testing.B) {
 }
 
 func BenchmarkOutputValidator_RepairJSON(b *testing.B) {
-	validator := usecase.NewOutputValidator()
+	validator := usecase.NewOutputValidator(0)
 	// Truncated JSON that needs repair
 	input := `{"answer": "This is a truncated answer about technology`
 
