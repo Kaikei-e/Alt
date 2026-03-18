@@ -45,6 +45,7 @@ import (
 	"alt/gateway/knowledge_backfill_gateway"
 	"alt/gateway/knowledge_event_gateway"
 	"alt/gateway/knowledge_home_gateway"
+	"alt/gateway/knowledge_reproject_gateway"
 	"alt/gateway/knowledge_lens_gateway"
 	"alt/gateway/knowledge_projection_gateway"
 	"alt/gateway/knowledge_projection_version_gateway"
@@ -109,8 +110,11 @@ import (
 	"alt/usecase/get_knowledge_home_usecase"
 	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/image_proxy_usecase"
+	"alt/usecase/knowledge_audit_usecase"
 	"alt/usecase/knowledge_backfill_usecase"
 	"alt/usecase/knowledge_projection_health_usecase"
+	"alt/usecase/knowledge_reproject_usecase"
+	"alt/usecase/knowledge_slo_usecase"
 	"alt/usecase/list_lenses_usecase"
 	"alt/usecase/morning_usecase"
 	"alt/usecase/opml_usecase"
@@ -241,6 +245,10 @@ type ApplicationComponents struct {
 	KnowledgeProjectionVersionGateway *knowledge_projection_version_gateway.Gateway
 	KnowledgeBackfillUsecase          *knowledge_backfill_usecase.Usecase
 	KnowledgeProjectionHealthUsecase  *knowledge_projection_health_usecase.Usecase
+	KnowledgeReprojectGateway         *knowledge_reproject_gateway.Gateway
+	ReprojectUsecase                  *knowledge_reproject_usecase.Usecase
+	SLOUsecase                        *knowledge_slo_usecase.Usecase
+	AuditUsecase                      *knowledge_audit_usecase.Usecase
 
 	// Phase 4: RecallRail, Lens, Stream, Supersede
 	RecallRailUsecase      *recall_rail_usecase.RecallRailUsecase
@@ -541,6 +549,20 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	)
 	knowledgeProjectionHealthUsecase := knowledge_projection_health_usecase.NewUsecase(knowledgeProjectionVersionGw, knowledgeProjectionGw, knowledgeBackfillGw)
 
+	// Phase 5: Reproject, SLO, Audit components
+	knowledgeReprojectGw := knowledge_reproject_gateway.NewGateway(altDBRepository)
+	reprojectUsecase := knowledge_reproject_usecase.NewUsecase(
+		knowledgeReprojectGw,
+		knowledgeReprojectGw,
+		knowledgeReprojectGw,
+		knowledgeReprojectGw,
+		knowledgeReprojectGw,
+		knowledgeProjectionVersionGw,
+		knowledgeProjectionVersionGw,
+	)
+	sloUsecase := knowledge_slo_usecase.NewUsecase(altDBRepository)
+	auditUsecase := knowledge_audit_usecase.NewUsecase(knowledgeReprojectGw, knowledgeReprojectGw)
+
 	// Phase 4: RecallRail, Lens, Stream, Supersede components
 	recallSignalGw := recall_signal_gateway.NewGateway(altDBRepository)
 	recallCandidateGw := recall_candidate_gateway.NewGateway(altDBRepository)
@@ -658,6 +680,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		KnowledgeProjectionVersionGateway: knowledgeProjectionVersionGw,
 		KnowledgeBackfillUsecase:          knowledgeBackfillUsecase,
 		KnowledgeProjectionHealthUsecase:  knowledgeProjectionHealthUsecase,
+		KnowledgeReprojectGateway:         knowledgeReprojectGw,
+		ReprojectUsecase:                  reprojectUsecase,
+		SLOUsecase:                        sloUsecase,
+		AuditUsecase:                      auditUsecase,
 
 		// Phase 4
 		RecallRailUsecase:      recallRailUsecase,
