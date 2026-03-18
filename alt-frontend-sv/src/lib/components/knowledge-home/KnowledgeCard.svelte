@@ -6,7 +6,7 @@ import QuickActionRow from "./QuickActionRow.svelte";
 
 interface Props {
 	item: KnowledgeHomeItemData;
-	onAction: (type: string, itemKey: string) => void;
+	onAction: (type: string, item: KnowledgeHomeItemData) => void;
 }
 
 const { item, onAction }: Props = $props();
@@ -33,7 +33,7 @@ function formatRelativeTime(isoString: string): string {
 }
 
 function handleAction(type: string) {
-	onAction(type, item.itemKey);
+	onAction(type, item);
 }
 </script>
 

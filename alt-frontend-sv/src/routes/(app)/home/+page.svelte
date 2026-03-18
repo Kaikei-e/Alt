@@ -7,6 +7,8 @@ import { useKnowledgeHome } from "$lib/hooks/useKnowledgeHome.svelte";
 import { useFeatureFlags } from "$lib/hooks/useFeatureFlags.svelte";
 import { useRecallRail } from "$lib/hooks/useRecallRail.svelte";
 import { useLens } from "$lib/hooks/useLens.svelte";
+import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
+import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
 
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
@@ -24,6 +26,7 @@ const home = useKnowledgeHome();
 const flags = useFeatureFlags();
 const recall = useRecallRail();
 const lens = useLens();
+const tts = useTtsPlayback();
 
 let exposureSessionId = $state("");
 
@@ -31,9 +34,16 @@ let exposureSessionId = $state("");
 const recallEnabled = $derived(flags.isEnabled("enable_recall_rail"));
 const lensEnabled = $derived(flags.isEnabled("enable_lens"));
 
-function handleAction(type: string, itemKey: string) {
+function handleAction(type: string, item: KnowledgeHomeItemData) {
+	const itemKey = item.itemKey;
+
 	if (flags.trackingEnabled) {
-		home.trackAction(type, itemKey);
+		const metadata = JSON.stringify({
+			articleId: item.articleId,
+			title: item.title,
+			summaryExcerpt: item.summaryExcerpt,
+		});
+		home.trackAction(type, itemKey, metadata);
 	}
 
 	if (type === "dismiss") {
@@ -47,7 +57,17 @@ function handleAction(type: string, itemKey: string) {
 	if (type === "open" && articleId) {
 		goto(`/feeds?article=${articleId}`);
 	} else if (type === "ask") {
-		goto("/augur");
+		const context = item.summaryExcerpt || item.title;
+		if (context) {
+			goto(`/augur?context=${encodeURIComponent(context)}`);
+		} else {
+			goto("/augur");
+		}
+	} else if (type === "listen") {
+		const text = item.summaryExcerpt || item.title;
+		if (text) {
+			tts.play(text);
+		}
 	}
 }
 

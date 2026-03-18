@@ -10,7 +10,7 @@ interface Props {
 	items: KnowledgeHomeItemData[];
 	loading: boolean;
 	hasMore: boolean;
-	onAction: (type: string, itemKey: string) => void;
+	onAction: (type: string, item: KnowledgeHomeItemData) => void;
 	onLoadMore: () => void;
 	onItemsVisible: (itemKeys: string[]) => void;
 }
