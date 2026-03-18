@@ -57,6 +57,7 @@ describe("knowledge_home client", () => {
 					topTags: ["AI", "Go"],
 					weeklyRecapAvailable: true,
 					eveningPulseAvailable: false,
+					needToKnowCount: 3,
 				},
 				items: [
 					{
@@ -66,6 +67,7 @@ describe("knowledge_home client", () => {
 						title: "Test Article",
 						publishedAt: "2026-03-17T10:00:00Z",
 						summaryExcerpt: "A test excerpt",
+						summaryState: "ready",
 						tags: ["AI", "ML"],
 						why: [
 							{ code: "new_unread", refId: undefined, tag: undefined },
@@ -91,9 +93,11 @@ describe("knowledge_home client", () => {
 			expect(result.items[0].why).toHaveLength(2);
 			expect(result.items[0].why[0].code).toBe("new_unread");
 			expect(result.items[0].why[1].tag).toBe("AI");
+			expect(result.items[0].summaryState).toBe("ready");
 			expect(result.digest).not.toBeNull();
 			expect(result.digest!.newArticles).toBe(42);
 			expect(result.digest!.topTags).toEqual(["AI", "Go"]);
+			expect(result.digest!.needToKnowCount).toBe(3);
 			expect(result.nextCursor).toBe("cursor-abc");
 			expect(result.hasMore).toBe(true);
 			expect(result.degraded).toBe(false);

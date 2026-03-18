@@ -37,7 +37,11 @@ export interface TodayDigestData {
 	topTags: string[];
 	weeklyRecapAvailable: boolean;
 	eveningPulseAvailable: boolean;
+	needToKnowCount: number;
 }
+
+/** Summary processing state */
+export type SummaryState = "missing" | "pending" | "ready";
 
 /** A single Knowledge Home item */
 export interface KnowledgeHomeItemData {
@@ -48,6 +52,7 @@ export interface KnowledgeHomeItemData {
 	title: string;
 	publishedAt: string;
 	summaryExcerpt?: string;
+	summaryState: SummaryState;
 	tags: string[];
 	why: WhyReasonData[];
 	score: number;
@@ -151,6 +156,7 @@ function convertDigest(proto: ProtoTodayDigest): TodayDigestData {
 		topTags: [...proto.topTags],
 		weeklyRecapAvailable: proto.weeklyRecapAvailable,
 		eveningPulseAvailable: proto.eveningPulseAvailable,
+		needToKnowCount: proto.needToKnowCount,
 	};
 }
 
@@ -163,6 +169,7 @@ function convertItem(proto: ProtoKnowledgeHomeItem): KnowledgeHomeItemData {
 		title: proto.title,
 		publishedAt: proto.publishedAt,
 		summaryExcerpt: proto.summaryExcerpt || undefined,
+		summaryState: (proto.summaryState || "missing") as SummaryState,
 		tags: [...proto.tags],
 		why: proto.why.map(convertWhyReason),
 		score: proto.score,
