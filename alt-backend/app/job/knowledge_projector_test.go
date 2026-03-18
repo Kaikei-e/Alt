@@ -40,6 +40,10 @@ func (m *mockCheckpointPort) UpdateProjectionCheckpoint(_ context.Context, _ str
 
 type mockHomeItemsPort struct {
 	upserted []domain.KnowledgeHomeItem
+	dismissed []struct {
+		userID  uuid.UUID
+		itemKey string
+	}
 	err      error
 	items    map[string]domain.KnowledgeHomeItem
 }
@@ -71,6 +75,24 @@ func (m *mockHomeItemsPort) UpsertKnowledgeHomeItem(_ context.Context, item doma
 		return nil
 	}
 	m.items[item.ItemKey] = item
+	return nil
+}
+
+func (m *mockHomeItemsPort) DismissKnowledgeHomeItem(_ context.Context, userID uuid.UUID, itemKey string, dismissedAt time.Time) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.dismissed = append(m.dismissed, struct {
+		userID  uuid.UUID
+		itemKey string
+	}{userID, itemKey})
+	if m.items != nil {
+		existing, ok := m.items[itemKey]
+		if ok {
+			existing.DismissedAt = &dismissedAt
+			m.items[itemKey] = existing
+		}
+	}
 	return nil
 }
 
@@ -475,6 +497,46 @@ func TestKnowledgeProjectorJob_HomeItemOpened_CreatesRecallCandidate(t *testing.
 	require.NoError(t, err)
 	require.Len(t, recallPort.upserted, 1, "HomeItemOpened should create recall candidate")
 	assert.Equal(t, 0.5, recallPort.upserted[0].RecallScore)
+}
+
+func TestKnowledgeProjectorJob_HomeItemDismissed_DismissesReadModelItem(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	itemKey := "article:" + uuid.New().String()
+	dismissPayload, _ := json.Marshal(map[string]string{
+		"item_key": itemKey,
+	})
+
+	homeItemsPort := &mockHomeItemsPort{
+		items: map[string]domain.KnowledgeHomeItem{
+			itemKey: {
+				UserID:   userID,
+				TenantID: tenantID,
+				ItemKey:  itemKey,
+				ItemType: domain.ItemArticle,
+				Title:    "Dismiss me",
+			},
+		},
+	}
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, UserID: &userID, EventType: domain.EventHomeItemDismissed, AggregateType: domain.AggregateHomeSession, AggregateID: itemKey, Payload: dismissPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	digestPort := &mockDigestPort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.dismissed, 1)
+	assert.Equal(t, userID, homeItemsPort.dismissed[0].userID)
+	assert.Equal(t, itemKey, homeItemsPort.dismissed[0].itemKey)
+	assert.Empty(t, homeItemsPort.upserted, "dismiss should not upsert a replacement row")
+	assert.NotNil(t, homeItemsPort.items[itemKey].DismissedAt)
 }
 
 func TestKnowledgeProjectorJob_ArticleCreated_SetsSummaryStatePending(t *testing.T) {
