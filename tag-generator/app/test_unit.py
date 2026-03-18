@@ -443,7 +443,10 @@ class TestTagGeneratorService:
 
     def test_should_initialize_with_default_config(self):
         """TagGeneratorService should initialize with default configuration."""
-        service = TagGeneratorService()
+        with patch("tag_generator.service.create_backend_client") as mock_create:
+            mock_client = Mock()
+            mock_create.return_value = (mock_client, {"X-Service-Token": "test"})
+            service = TagGeneratorService()
         assert service.config.batch_limit == 75
         # Default processing interval should match TagGeneratorConfig
         assert service.config.processing_interval == 300
@@ -452,7 +455,10 @@ class TestTagGeneratorService:
     def test_should_process_single_article_successfully(self):
         """Should process a single article successfully."""
         mock_conn = Mock()
-        service = TagGeneratorService()
+        with patch("tag_generator.service.create_backend_client") as mock_create:
+            mock_client = Mock()
+            mock_create.return_value = (mock_client, {"X-Service-Token": "test"})
+            service = TagGeneratorService()
 
         article = {
             "id": "test-uuid",
@@ -496,7 +502,10 @@ class TestTagGeneratorService:
     def test_should_handle_article_processing_errors(self):
         """Should handle errors during article processing gracefully."""
         mock_conn = Mock()
-        service = TagGeneratorService()
+        with patch("tag_generator.service.create_backend_client") as mock_create:
+            mock_client = Mock()
+            mock_create.return_value = (mock_client, {"X-Service-Token": "test"})
+            service = TagGeneratorService()
 
         article = {
             "id": "test-uuid",
