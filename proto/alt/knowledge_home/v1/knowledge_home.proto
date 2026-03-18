@@ -87,12 +87,16 @@ message TodayDigest {
   int32 unsummarized_articles = 4;
   // Top tags for today
   repeated string top_tags = 5;
-  // Whether a weekly recap is available
+  // Whether backend has determined that recap link should be active
   bool weekly_recap_available = 6;
-  // Whether an evening pulse is available
+  // Whether backend has determined that pulse link should be active
   bool evening_pulse_available = 7;
-  // Number of need-to-know articles from Evening Pulse
+  // Backend-authoritative count of need-to-know items (page-independent)
   int32 need_to_know_count = 8;
+  // Digest freshness indicator: "fresh", "stale", "unknown"
+  string digest_freshness = 9;
+  // When the projector last updated this digest (RFC3339)
+  string last_projected_at = 10;
 }
 
 // KnowledgeHomeItem represents a single item in the Knowledge Home feed.
