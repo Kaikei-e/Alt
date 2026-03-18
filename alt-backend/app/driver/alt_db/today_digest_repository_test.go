@@ -28,11 +28,11 @@ func TestAltDBRepository_UpsertTodayDigest_PassesJSONAsTextForPgBouncerCompat(t 
 		 unsummarized_articles, top_tags_json, pulse_refs_json, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (user_id, digest_date) DO UPDATE SET
-		 new_articles = EXCLUDED.new_articles,
-		 summarized_articles = EXCLUDED.summarized_articles,
-		 unsummarized_articles = EXCLUDED.unsummarized_articles,
-		 top_tags_json = EXCLUDED.top_tags_json,
-		 pulse_refs_json = EXCLUDED.pulse_refs_json,
+		 new_articles = today_digest_view.new_articles + EXCLUDED.new_articles,
+		 summarized_articles = today_digest_view.summarized_articles + EXCLUDED.summarized_articles,
+		 unsummarized_articles = CASE WHEN EXCLUDED.unsummarized_articles > 0 THEN EXCLUDED.unsummarized_articles ELSE today_digest_view.unsummarized_articles END,
+		 top_tags_json = CASE WHEN EXCLUDED.top_tags_json != '[]'::jsonb THEN EXCLUDED.top_tags_json ELSE today_digest_view.top_tags_json END,
+		 pulse_refs_json = CASE WHEN EXCLUDED.pulse_refs_json != '[]'::jsonb THEN EXCLUDED.pulse_refs_json ELSE today_digest_view.pulse_refs_json END,
 		 updated_at = EXCLUDED.updated_at`)).
 		WithArgs(
 			userID,

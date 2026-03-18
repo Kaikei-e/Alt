@@ -106,14 +106,14 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 		 projection_version)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 		ON CONFLICT (user_id, item_key) DO UPDATE SET
-		 title = EXCLUDED.title,
-		 summary_excerpt = EXCLUDED.summary_excerpt,
-		 tags_json = EXCLUDED.tags_json,
+		 title = CASE WHEN EXCLUDED.title != '' THEN EXCLUDED.title ELSE knowledge_home_items.title END,
+		 summary_excerpt = CASE WHEN EXCLUDED.summary_excerpt != '' THEN EXCLUDED.summary_excerpt ELSE knowledge_home_items.summary_excerpt END,
+		 tags_json = CASE WHEN EXCLUDED.tags_json != '[]'::jsonb THEN EXCLUDED.tags_json ELSE knowledge_home_items.tags_json END,
 		 why_json = EXCLUDED.why_json,
-		 score = EXCLUDED.score,
-		 freshness_at = EXCLUDED.freshness_at,
-		 published_at = EXCLUDED.published_at,
-		 last_interacted_at = EXCLUDED.last_interacted_at,
+		 score = GREATEST(EXCLUDED.score, knowledge_home_items.score),
+		 freshness_at = COALESCE(EXCLUDED.freshness_at, knowledge_home_items.freshness_at),
+		 published_at = COALESCE(EXCLUDED.published_at, knowledge_home_items.published_at),
+		 last_interacted_at = COALESCE(EXCLUDED.last_interacted_at, knowledge_home_items.last_interacted_at),
 		 updated_at = EXCLUDED.updated_at,
 		 projection_version = EXCLUDED.projection_version`
 
