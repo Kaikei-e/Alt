@@ -14,11 +14,16 @@
 
 # Alt – Compose-First AI Knowledge Platform
 
-_Last reviewed on March 12, 2026._
+_Last reviewed on March 18, 2026._
 
-> An ambitious solo project aiming for production quality — a Compose-first knowledge platform that covers every step of information consumption, from RSS ingestion and AI enrichment (LLM summaries, tag extraction, RAG-powered Q&A) through discovery, reading, and recap, all the way to audio playback. Built with Go, Python, Rust, TypeScript, Deno, and F#.
+**Alt is a Compose-first knowledge platform built for turning information into reusable knowledge.**
+Starting from RSS ingestion, Alt runs a local-first AI pipeline for summarization, tag extraction, search, recap, and RAG-powered Q&A, then brings the results together in **Knowledge Home** — the main surface for discovering, understanding, recalling, and revisiting what matters.
 
-**Key Capabilities:** RSS Ingestion • AI Enrichment • Full-Text Search • RAG Q&A (Ask Augur) • 3/7-Day Recaps • Morning Letter & Evening Pulse • Tag Verse (3D) & Tag Trail • Swipe Mode • Japanese TTS • Local LLM (Ollama) • ClickHouse Analytics • TDD-First Development
+Built as an ambitious solo project with production-quality goals, Alt treats **privacy**, **observability**, and **system boundaries as product features**, not afterthoughts. It is designed around a clear stance: not a lightweight RSS reader, but a local-first knowledge operations system for people who want to ingest information, structure it, and find it again later.
+
+**Key Capabilities:** RSS Ingestion • Knowledge Home (event-sourced discovery and recall surface) • AI Enrichment (LLM Summaries, Tag Extraction, Query Expansion, Re-ranking) • Full-Text Search • RAG Q&A (Ask Augur) • 3/7-Day Recaps • Morning Letter & Evening Pulse • Tag Verse (3D) & Tag Trail • Swipe Mode • Japanese TTS • Local LLM (Ollama) • ClickHouse Analytics • TDD-First Development
+
+**Tech Stack:** Go • Python • Rust • TypeScript • Deno • F# • Docker Compose
 
 ---
 
@@ -516,6 +521,8 @@ Alt runs REST (port 9000) and Connect-RPC (port 9101) in parallel, enabling grad
 | RSSService | 2 | No | ValidateRSS, PreviewFeed |
 | RecapService | 2 | No | GetWeeklyRecap, GetRecapArticles |
 | BackendInternalService | — | No | Internal API for search-indexer, tag-generator, pre-processor |
+| KnowledgeHomeService | 12 | Yes | GetKnowledgeHome, TrackHomeItemsSeen, TrackHomeAction, GetRecallRail, TrackRecallAction, CreateLens, UpdateLens, DeleteLens, ListLenses, SelectLens, StreamKnowledgeHomeUpdates, StreamRecallRailUpdates |
+| KnowledgeHomeAdminService | 14 | No | TriggerBackfill, PauseBackfill, ResumeBackfill, GetBackfillStatus, GetProjectionHealth, GetFeatureFlags, StartReproject, GetReprojectStatus, ListReprojectRuns, CompareReproject, SwapReproject, RollbackReproject, GetSLOStatus, RunProjectionAudit |
 | AugurService | 2 | Yes | StreamChat (RAG Q&A), RetrieveContext |
 | MorningLetterService | 1 | Yes | StreamChat (via rag-orchestrator :9010) |
 
@@ -535,6 +542,8 @@ flowchart TD
             AugurSvc[AugurService<br/>2 methods ★stream]
             MLGateway[MorningLetterService<br/>Gateway → rag-orchestrator]
             InternalSvc[BackendInternalService<br/>Internal API]
+            KHSvc[KnowledgeHomeService<br/>12 methods ★stream]
+            KHAdminSvc[KnowledgeHomeAdminService<br/>14 methods]
         end
     end
     subgraph Workers
@@ -554,6 +563,8 @@ flowchart TD
     SvelteKit --> RSSSvc
     SvelteKit --> RecapSvc
     SvelteKit --> AugurSvc
+    SvelteKit --> KHSvc
+    BFF -->|service-token| KHAdminSvc
     SearchIdx -->|Connect-RPC| InternalSvc
     TagGen -->|Connect-RPC| InternalSvc
     PreProc -->|Connect-RPC| InternalSvc
@@ -804,7 +815,7 @@ Each service maintains a `CLAUDE.md` for workflow guidelines and a `docs/<servic
 | recap-db | PostgreSQL 18 | [docs/services/recap-db.md](docs/services/recap-db.md) | Recap jobs, evidence, and learning results |
 | rag-orchestrator | Go 1.25+ | [docs/services/rag-orchestrator.md](docs/services/rag-orchestrator.md) | RAG indexing, retrieval, and generation |
 | rag-db | PostgreSQL 18 | [docs/services/rag-db.md](docs/services/rag-db.md) | pgvector for RAG documents and chunks |
-| altctl | Go 1.25+ | [altctl/CLAUDE.md](altctl/CLAUDE.md) | CLI for Docker Compose orchestration |
+| altctl | Go 1.25+ | [docs/services/altctl.md](docs/services/altctl.md) | CLI for Docker Compose orchestration + Knowledge Home operations |
 | alt-perf | Deno 2.x | [alt-perf/CLAUDE.md](alt-perf/CLAUDE.md) | E2E performance measurement tool |
 | tts-speaker | Python 3.12 | [tts-speaker/CLAUDE.md](tts-speaker/CLAUDE.md) | Japanese TTS (Kokoro-82M, Connect-RPC, iGPU/CPU) |
 | dashboard | Python 3.12+ | — | Streamlit platform monitoring |
@@ -1050,7 +1061,7 @@ docker compose --profile perf up -d               # Enable perf testing (opt-in)
 
 | Store | Purpose | Volume |
 |-------|---------|--------|
-| PostgreSQL 17 (db) | Canonical entities: feeds, articles, summaries, tags | `db_data_17` |
+| PostgreSQL 17 (db) | Canonical entities: feeds, articles, summaries, tags, Knowledge Home (9 tables) | `db_data_17` |
 | PostgreSQL 18 (recap-db) | Recap jobs, evidence, tag graphs, learning results | `recap_db_data` |
 | PostgreSQL 18 (rag-db) | RAG documents, chunks, embeddings (pgvector) | `rag_db_data` |
 | Kratos | Identity state | `kratos_db_data` |
@@ -1079,6 +1090,11 @@ erDiagram
     RECAP_JOBS ||--o{ RECAP_GENRE_LEARNING_RESULTS : learns_from
     PULSE_GENERATIONS ||--o{ PULSE_CLUSTER_DIAGNOSTICS : diagnosed_by
     PULSE_GENERATIONS ||--o{ PULSE_SELECTION_LOG : selected_by
+
+    ARTICLES ||--o{ KNOWLEDGE_EVENTS : "event sourced"
+    KNOWLEDGE_EVENTS ||--o{ KNOWLEDGE_HOME_ITEMS : "projected to"
+    KNOWLEDGE_HOME_ITEMS ||--o{ KNOWLEDGE_USER_EVENTS : "tracked by"
+    KNOWLEDGE_HOME_ITEMS ||--o{ KNOWLEDGE_LENSES : "filtered by"
 
     ARTICLES ||--o{ RAG_DOCUMENTS : indexed_as
     RAG_DOCUMENTS ||--o{ RAG_DOCUMENT_VERSIONS : versioned_by
@@ -1230,6 +1246,8 @@ Monitor these metrics for system health:
 - `search_indexer_indexed_total`, `search_indexer_deleted_total`, `search_indexer_errors_total` — search-indexer OTel counters
 - `search_indexer_batch_duration`, `search_indexer_search_duration` — search-indexer OTel histograms
 - `mq_hub_*` — mq-hub connection pool and message throughput metrics
+- `alt.home.projector.*` — Knowledge Home projector lag, events processed, errors
+- `alt_home_*` — Knowledge Home SLI metrics (availability, freshness, durability, stream, correctness)
 
 ### Troubleshooting
 
@@ -1326,6 +1344,7 @@ Monitor these metrics for system health:
 | Giraffe | F# web framework built on ASP.NET Core; used by feed-validator |
 | Golden dataset | Curated inputs/outputs for regression detection |
 | IAP | Identity-Aware Proxy (auth-hub centralizes authentication) |
+| Knowledge Home | Event-sourced personalized feed with CQRS projection, recall rail (spaced repetition), lenses (saved views), and SLO monitoring |
 | Kokoro | Japanese TTS model (82M parameters) used by tts-speaker |
 | LLM | Large Language Model (Ollama-powered Gemma 3 4B QAT) |
 | Meilisearch | Lightweight search engine for full-text indexing |
@@ -1373,6 +1392,9 @@ altctl logs <service> -f                       # Stream logs
 altctl exec <service> -- <cmd>                 # Execute command in container
 altctl restart <stack>                         # Restart stack (down + up)
 altctl migrate status                          # Check backup health
+altctl home reproject start --mode dry_run     # Start Knowledge Home reproject
+altctl home reproject status --run-id UUID     # Check reproject status
+altctl home slo                                # View Knowledge Home SLO status
 
 # Opt-in profiles (only backup and perf use --profile)
 docker compose --profile backup up -d          # Backup services
@@ -1417,6 +1439,7 @@ curl http://localhost:9000/v1/pulse/evening    # Evening Pulse
 
 ### Roadmap
 
+- Knowledge Home: lens versioning, collaborative feeds
 - Extend auth-hub with tenant scoping
 - Harden ClickHouse dashboards
 - Expand Evening Pulse perspective algorithms
