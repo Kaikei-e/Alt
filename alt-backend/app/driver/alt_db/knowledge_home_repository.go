@@ -119,7 +119,7 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 
 	_, err := r.pool.Exec(ctx, query,
 		item.UserID, item.TenantID, item.ItemKey, item.ItemType, item.PrimaryRefID,
-		item.Title, item.SummaryExcerpt, tagsJSON, whyJSON, item.Score,
+		item.Title, item.SummaryExcerpt, string(tagsJSON), string(whyJSON), item.Score,
 		item.FreshnessAt, item.PublishedAt, item.LastInteractedAt, item.GeneratedAt, item.UpdatedAt,
 		item.ProjectionVersion,
 	)

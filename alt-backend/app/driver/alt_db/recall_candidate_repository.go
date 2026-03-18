@@ -65,7 +65,7 @@ func (r *AltDBRepository) UpsertRecallCandidate(ctx context.Context, candidate d
 		  projection_version = EXCLUDED.projection_version`
 
 	_, err := r.pool.Exec(ctx, query,
-		candidate.UserID, candidate.ItemKey, candidate.RecallScore, reasonJSON,
+		candidate.UserID, candidate.ItemKey, candidate.RecallScore, string(reasonJSON),
 		candidate.NextSuggestAt, candidate.FirstEligibleAt, candidate.UpdatedAt, candidate.ProjectionVersion,
 	)
 	if err != nil {

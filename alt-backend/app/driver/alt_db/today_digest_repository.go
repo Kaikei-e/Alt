@@ -69,7 +69,7 @@ func (r *AltDBRepository) UpsertTodayDigest(ctx context.Context, digest domain.T
 	_, err := r.pool.Exec(ctx, query,
 		digest.UserID, digest.DigestDate.Format("2006-01-02"),
 		digest.NewArticles, digest.SummarizedArticles,
-		digest.UnsummarizedArticles, topTagsJSON, pulseRefsJSON,
+		digest.UnsummarizedArticles, string(topTagsJSON), string(pulseRefsJSON),
 		digest.UpdatedAt,
 	)
 	if err != nil {
