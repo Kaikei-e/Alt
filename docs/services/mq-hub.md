@@ -1,6 +1,6 @@
 # MQ Hub
 
-_Last reviewed: February 28, 2026_
+_Last reviewed: March 18, 2026_
 
 **Location:** `mq-hub`
 
@@ -67,6 +67,8 @@ flowchart TB
 | IndexArticle | search-indexer | search-indexer | |
 | TagGenerationRequested | mq-hub | tag-generator | 同期タグ生成の request-reply パターン |
 | TagGenerationCompleted | tag-generator | mq-hub | TagGenerationRequested への応答 |
+
+> **Note:** Knowledge Home events (`SummaryVersionCreated`, `TagSetVersionCreated`, etc.) are internal to alt-backend's event sourcing system (`knowledge_events` table) and do NOT flow through mq-hub or Redis Streams. They are created as side effects when `SaveArticleSummary` or `UpsertArticleTags` is called via the Internal API.
 
 ## Event Structure
 

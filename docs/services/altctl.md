@@ -1,6 +1,6 @@
 # altctl
 
-_Last reviewed: February 28, 2026_
+_Last reviewed: March 18, 2026_
 
 **Location:** `altctl/`
 
@@ -25,6 +25,9 @@ main.go
     cmd/version.go     versionCmd
     cmd/completion.go  completionCmd [bash|zsh|fish|powershell]
     cmd/docs.go        docsCmd      (hidden)
+    cmd/home.go        homeCmd           Knowledge Home operations
+      cmd/home_reproject.go  home reproject [start|status|compare|swap|rollback]
+      cmd/home_slo.go        home slo
     cmd/migrate.go     migrateCmd
       cmd/migrate_backup.go   migrate backup
       cmd/migrate_restore.go  migrate restore
@@ -42,6 +45,7 @@ Internal packages:
 | `internal/config` | Viper-based configuration loading (.altctl.yaml) |
 | `internal/output` | Printer, table rendering, colored output, structured CLIError |
 | `internal/migrate` | Volume backup/restore (pg_dump, tar) for migration |
+| `internal/adminclient` | HTTP client for Knowledge Home Admin API (Connect-RPC over HTTP/1.1 + JSON, X-Service-Token auth, 30s timeout) |
 
 ## Stack Definitions (16 stacks)
 
@@ -131,6 +135,15 @@ altctl migrate restore --from DIR  # Restore from backup
 altctl migrate list                # List available backups
 altctl migrate verify --backup DIR # Verify backup integrity
 altctl migrate status              # Show migration status
+
+# Knowledge Home
+altctl home reproject start --mode [dry_run|shadow|live] --from V --to V  # Start reproject
+altctl home reproject status --run-id UUID       # Query run status
+altctl home reproject compare --run-id UUID      # Compare projection versions
+altctl home reproject swap --run-id UUID         # Activate shadow projection
+altctl home reproject rollback --run-id UUID     # Revert swapped projection
+altctl home slo                                  # Show SLO status (SLI Name, Current, Target, Status, Budget Used)
+# All home commands require --service-token (or SERVICE_TOKEN env) and --backend-url (default: http://localhost:9001)
 
 # Utility
 altctl config [--json|--path]      # Show current configuration

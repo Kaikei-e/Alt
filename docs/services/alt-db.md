@@ -1,6 +1,6 @@
 # alt-db (Main PostgreSQL Database)
 
-_Last reviewed: February 28, 2026_
+_Last reviewed: March 18, 2026_
 
 PostgreSQL 17 database serving as the central data store for RSS feeds, articles, user status, and related data.
 
@@ -167,6 +167,119 @@ erDiagram
     }
 ```
 
+### Knowledge Home Tables (Event Sourcing + CQRS)
+
+```mermaid
+erDiagram
+    knowledge_events ||--o{ knowledge_home_items : "projects"
+    knowledge_events ||--o{ knowledge_user_events : "tracks"
+    knowledge_home_items ||--o{ knowledge_projection_checkpoints : "checkpointed"
+
+    knowledge_events {
+        bigserial seq PK
+        uuid user_id
+        text event_type
+        text aggregate_type
+        text aggregate_id
+        jsonb payload
+        timestamptz occurred_at
+        text dedupe_key UK
+    }
+
+    knowledge_home_items {
+        uuid user_id PK
+        text item_key PK
+        int projection_version PK
+        text item_type
+        uuid article_id
+        uuid recap_id
+        text title
+        timestamptz published_at
+        text summary_excerpt
+        text[] tags
+        jsonb why
+        real score
+        jsonb supersede_info
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    knowledge_user_events {
+        bigserial id PK
+        uuid user_id
+        text item_key
+        text action_type
+        text session_id
+        jsonb metadata
+        timestamptz created_at
+    }
+
+    knowledge_projection_checkpoints {
+        text projection_name PK
+        int projection_version PK
+        bigint last_event_seq
+        timestamptz updated_at
+    }
+
+    knowledge_backfill_jobs {
+        uuid job_id PK
+        int projection_version
+        text status
+        uuid cursor_user_id
+        date cursor_date
+        uuid cursor_article_id
+        bigint total_events
+        bigint processed_events
+        timestamptz created_at
+        timestamptz started_at
+        timestamptz completed_at
+    }
+
+    knowledge_projection_versions {
+        int version PK
+        text status
+        timestamptz activated_at
+        timestamptz created_at
+    }
+
+    knowledge_lenses {
+        uuid lens_id PK
+        uuid user_id
+        text name
+        text description
+        jsonb current_version
+        timestamptz archived_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    knowledge_reproject_runs {
+        uuid reproject_run_id PK
+        text projection_name
+        int from_version
+        int to_version
+        text initiated_by
+        text mode
+        text status
+        timestamptz range_start
+        timestamptz range_end
+        jsonb checkpoint_payload
+        jsonb stats_json
+        jsonb diff_summary_json
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    knowledge_projection_audits {
+        uuid audit_id PK
+        int projection_version
+        int sample_size
+        int mismatches
+        jsonb details
+        timestamptz created_at
+    }
+```
+
 ## Table Categories
 
 | Category | Tables | Description |
@@ -176,6 +289,7 @@ erDiagram
 | User Status | `read_status`, `user_reading_status`, `favorite_feeds` | User reading state tracking |
 | Inoreader | `inoreader_subscriptions`, `inoreader_articles`, `sync_state`, `api_usage_tracking` | Inoreader API sync |
 | Domain | `scraping_domains`, `declined_domains` | Domain management and scraping policy |
+| Knowledge Home | `knowledge_events`, `knowledge_home_items`, `knowledge_user_events`, `knowledge_projection_checkpoints`, `knowledge_backfill_jobs`, `knowledge_projection_versions`, `knowledge_lenses`, `knowledge_reproject_runs`, `knowledge_projection_audits` | Event sourcing + CQRS for Knowledge Home |
 | Jobs | `summarize_job_queue`, `outbox_events`, `feed_link_availability` | Async job queues |
 
 ## Table Details

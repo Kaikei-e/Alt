@@ -1,6 +1,6 @@
 # Alt Backend
 
-_Last reviewed: February 28, 2026_
+_Last reviewed: March 18, 2026_
 
 **Location:** `alt-backend/app`
 
@@ -116,9 +116,65 @@ Connect-RPC provides a modern, type-safe RPC layer for service-to-service commun
 - Phase 3 (tag-generator): `UpsertArticleTags`, `BatchUpsertArticleTags`, `ListUntaggedArticles`
 - **HandlerOption pattern**: `WithPhase2Ports`, `WithPhase3Ports` で Phase ごとに Port を注入
 
+### KnowledgeHomeService
+- **Handler**: `connect/v2/knowledge_home/handler.go`
+- **Proto**: `gen/proto/alt/knowledge_home/v1`
+- Operations:
+  - `GetKnowledgeHome` - Main feed retrieval (cursor, limit 1-100, optional date/lens_id; feature flag: `enable_knowledge_home_page`; 3-tier service quality assessment)
+  - `TrackHomeItemsSeen` - Batch impression recording (fire-and-forget)
+  - `TrackHomeAction` - User action tracking (open, dismiss, ask, listen, open_recap, open_search)
+  - `GetRecallRail` - Recall candidates (spaced repetition, limit 1-20)
+  - `TrackRecallAction` - Recall interactions (snooze/dismiss/open with optional duration)
+  - `CreateLens` - Save viewpoint (feature flag: `enable_lens_v0`; query_text, tag_ids, time_window, include_recap, include_pulse, sort_mode)
+  - `UpdateLens` - Create new lens version (immutable versioning)
+  - `DeleteLens` - Archive lens (soft delete)
+  - `ListLenses` - List active lenses
+  - `SelectLens` - Set active lens
+  - `StreamKnowledgeHomeUpdates` - Real-time stream (5s update tick, 10s heartbeat, 30min max connection, event coalescing with dedup by aggregate_id, fallback to unary after 3 consecutive errors, reconnect hints with 5-8s jitter)
+  - `StreamRecallRailUpdates` - Recall rail stream (30s update tick, 10s heartbeat)
+- **Event Sourcing**: CQRS pattern — `knowledge_events` projected to `knowledge_home_items`
+- **3-Tier Service Quality**: full (<5min lag), degraded (>5min lag or errors), fallback (critical failure)
+- **Supersede UX**: Retains previous_summary_excerpt and previous_tags on summary/tag updates
+
+### KnowledgeHomeAdminService (Internal API)
+- **Handler**: `connect/v2/knowledge_home_admin/handler.go`
+- **Authentication**: `service_auth_interceptor` (X-Service-Token)
+- **Backfill Operations**:
+  - `TriggerBackfill` - Start new backfill job
+  - `PauseBackfill` - Pause running job
+  - `ResumeBackfill` - Resume paused job
+  - `GetBackfillStatus` - Query job status
+- **Projection Health**:
+  - `GetProjectionHealth` - Active version, checkpoint seq, backfill jobs list
+  - `GetFeatureFlags` - Feature flags retrieval (enable_home_page, enable_tracking, enable_projection_v2, rollout_percentage, enable_recall_rail, enable_lens, enable_stream_updates, enable_supersede_ux)
+- **Reproject Operations**:
+  - `StartReproject` - Start projection rebuild (mode: dry_run, user_subset, time_range, full)
+  - `GetReprojectStatus` - Query reproject run status
+  - `ListReprojectRuns` - List runs with optional status filter and limit
+  - `CompareReproject` - Compare versions (from/to item_count, empty_count, avg_score, why_distribution)
+  - `SwapReproject` - Activate new version (requires swappable status)
+  - `RollbackReproject` - Revert to previous (requires swapped status)
+- **SLO & Audit**:
+  - `GetSLOStatus` - SLO health aggregation (5 SLIs + error budget + active alerts)
+  - `RunProjectionAudit` - Sample-based correctness verification
+
 ## Background Jobs
 - `job.HourlyJobRunner` (`job/job_runner.go:13`) loads RSS URLs from Postgres, spins a host-aware rate limiter (5s per host), and loops every hour, calling `CollectMultipleFeeds` (`job/feed_collector.go:18`) to validate, rate-limit, and parse feeds before persisting them through `AltDBRepository`.
 - `job.DailyScrapingPolicyJobRunner` (`job/daily_scraping_policy_job.go:16`) immediately materializes domains from `feed_links`, refreshes robots.txt, and repeats every 24 hours to keep scraping rules up to date.
+- `job.KnowledgeProjectorJob` (`job/knowledge_projector.go`): Event sourcing projector (batch size: 100)
+  - Projects `knowledge_events` to `knowledge_home_items`, today_digest, recall_candidates
+  - Event types: EventArticleCreated (freshness score with 24h decay 1.0→0.5), EventSummaryVersionCreated (excerpt 200 char max, score 0.8), EventTagSetVersionCreated (score 0.7), EventHomeItemOpened (score suppression to 0.1, recall candidate creation with 24h eligibility)
+  - Projection version support, checkpoint-based resume
+  - Heartbeats checkpoint even with zero events (for freshness SLI)
+- `job.KnowledgeBackfillJob` (`job/knowledge_backfill_job.go`): Historical event replay for initial data construction
+  - pending → running transition, cursor-based batch processing (date + article_id)
+  - Generates synthetic ArticleCreated events (dedupe_key = `backfill:<article_id>`)
+  - pause/resume support, progress tracking (total_events / processed_events)
+- `job.KnowledgeReprojectJob` (`job/knowledge_reproject_job.go`): Projection rebuild
+  - Processes pending/running reproject runs in batches
+  - dry_run mode: skip to swappable immediately
+  - compare/swap/rollback workflow (swappable → swapped → cancelled)
+  - DiffSummaryJSON for old/new version comparison
 - `job.OutboxWorkerRunner` (`job/outbox_worker.go:12`) polls the `outbox_events` table every 5 seconds, processing `ARTICLE_UPSERT` events by upserting articles to the RAG Orchestrator via `RagIntegrationPort`. This ensures eventual consistency for RAG indexing even if the initial direct call fails.
 
 ## Integrations & Data Flow
@@ -153,6 +209,46 @@ Connect-RPC provides a modern, type-safe RPC layer for service-to-service commun
 | `RECAP_MAX_ARTICLE_BYTES` | Maximum article size for recap processing | `2097152` (2MB) (`config/config.go:49`). |
 | `RECAP_MAX_RANGE_DAYS` | Maximum range in days for recap queries | `8` (`config/config.go:46`). |
 | `CIRCUIT_BREAKER_*` | Circuit breaker settings for DOS protection (`ENABLED`, `FAILURE_THRESHOLD`, `TIMEOUT_DURATION`, `RECOVERY_TIMEOUT`) | Various defaults in `config/config.go:106-111`. |
+
+### Knowledge Home Configuration
+
+| Environment | Purpose | Default / Notes |
+| --- | --- | --- |
+| `KNOWLEDGE_HOME_ENABLED` | Enable Knowledge Home feature | Controlled via feature flags |
+| `KNOWLEDGE_PROJECTOR_BATCH_SIZE` | Projector batch size | `100` |
+| `KNOWLEDGE_PROJECTOR_INTERVAL` | Projector polling interval | Tick-based |
+
+### Knowledge Home Observability
+
+**OTel Metrics** (`utils/otel/knowledge_home_metrics.go`):
+
+| Category | Metric | Type |
+|----------|--------|------|
+| Projector | `alt.home.projector.events_processed` | Counter |
+| Projector | `alt.home.projector.lag_seconds` | Gauge |
+| Projector | `alt.home.projector.batch_duration_ms` | Histogram |
+| Projector | `alt.home.projector.errors` | Counter |
+| Handler | `alt.home.page.served` | Counter |
+| Handler | `alt.home.page.degraded` | Counter |
+| Tracking | `alt.home.items.exposed` / `opened` / `dismissed` | Counter |
+| Backfill | `alt.home.backfill.events_generated` | Counter |
+| SLI-A | `alt_home_requests_total`, `alt_home_request_duration_seconds`, `alt_home_degraded_responses_total`, `alt_home_projection_age_seconds` | Counter/Histogram/Gauge |
+| SLI-C | `alt_home_tracking_received_total`, `alt_home_tracking_persisted_total`, `alt_home_tracking_failed_total` | Counter |
+| SLI-D | `alt_home_stream_connections_total`, `alt_home_stream_disconnects_total`, `alt_home_stream_reconnects_total`, `alt_home_stream_update_lag_seconds` | Counter/Gauge |
+| SLI-E | `alt_home_empty_responses_total`, `alt_home_malformed_why_total`, `alt_home_orphan_items_total`, `alt_home_supersede_mismatch_total` | Counter |
+| Reproject | `alt_home_reproject_events_total` | Counter |
+
+**SLO Framework** (`domain/knowledge_slo.go`):
+
+| SLI | Target | Window |
+|-----|--------|--------|
+| availability | 99.9% | 30 days |
+| freshness | 300s (5min) | 30 days |
+| action_durability | 99.99% | 30 days |
+| stream_continuity | 99.5% | 30 days |
+| correctness_proxy | 99.0% | 30 days |
+
+Overall health: breaching > at_risk > healthy. Multi-window multi-burn-rate alerting (`observability/prometheus/rules/knowledge-home-slo-alerts.yml`).
 
 ## Operational Notes
 - Start the stack with `altctl up` (Compose builds Go+Python/Rust services) and run `ALt` back end tests with `cd alt-backend/app && go test ./...`.

@@ -1,6 +1,6 @@
 # Search Indexer
 
-_Last reviewed: February 28, 2026_
+_Last reviewed: March 18, 2026_
 
 **Location:** `search-indexer/app`
 

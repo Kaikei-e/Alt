@@ -1,6 +1,6 @@
 # Alt Butterfly Facade
 
-_Last reviewed: February 28, 2026_
+_Last reviewed: March 18, 2026_
 
 **Location:** `alt-butterfly-facade`
 
@@ -48,7 +48,8 @@ flowchart LR
 - `GET /v1/bff/stats` - BFF 機能統計 (キャッシュ hit/miss、サーキットブレーカー状態)
 - `POST /v1/aggregate` - 複数クエリ並列集約 (最大 10 クエリ)
 - `/alt.tts.v1.TTSService/*` - TTS サービスへのルーティング (TTS_CONNECT_URL 設定時のみ)
-- `/* (proxy)` - 全 Connect-RPC リクエストを alt-backend へ転送
+- `/alt.knowledge_home.v1.KnowledgeHomeAdminService/*` - Knowledge Home Admin API routing to alt-backend (service-token authentication)
+- `/* (proxy)` - All other Connect-RPC requests forwarded to alt-backend
 
 ### Streaming Procedures
 以下のプロシージャは拡張タイムアウト (5分) で処理:
@@ -57,6 +58,8 @@ flowchart LR
 - `/alt.augur.v2.AugurService/StreamChat`
 - `/alt.morning_letter.v2.MorningLetterService/StreamChat`
 - `/alt.tts.v1.TTSService/SynthesizeStream`
+- `/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates`
+- `/alt.knowledge_home.v1.KnowledgeHomeService/StreamRecallRailUpdates`
 
 ## Configuration & Env
 

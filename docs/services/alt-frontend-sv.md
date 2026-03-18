@@ -1,6 +1,6 @@
 # Alt Frontend SV
 
-_Last reviewed: February 28, 2026_
+_Last reviewed: March 18, 2026_
 
 **Location:** `alt-frontend-sv`
 **Base Path:** `/sv`
@@ -96,6 +96,7 @@ The app uses SvelteKit file-system routing under the `/sv` base path. The `(app)
 | `/recap/job-status` | Recap generation job status | `(app)` |
 | `/dashboard` | System admin dashboard (desktop only; mobile redirects to feeds) | `(app)` |
 | `/stats` | Feed analytics and trend charts | `(app)` |
+| `/admin/knowledge-home` | Knowledge Home admin dashboard (SLO, Reproject, Backfill, Projection Health) | `(app)` |
 | `/eval-dashboard` | Evaluation metrics dashboard (classification, clustering, summarization) | root |
 | `/[...path]` | Catch-all: redirects unknown paths to `/home` | root |
 
@@ -140,7 +141,7 @@ The app uses SvelteKit file-system routing under the `/sv` base path. The `(app)
     - `schema/`: Validation schemas using Valibot.
     - `components/`: Reusable UI components (Atomic design-ish).
     - `stores/`: Global state using Runes (e.g., `auth.svelte.ts`).
-    - `hooks/`: Custom Svelte hooks (e.g., `useSSEFeedsStats.svelte.ts`).
+    - `hooks/`: Custom Svelte hooks (e.g., `useSSEFeedsStats.svelte.ts`, `useKnowledgeHome.svelte.ts`, `useKnowledgeHomeAdmin.svelte.ts`).
 
 ## Connect-RPC Modules
 
@@ -154,6 +155,7 @@ Located in `src/lib/connect/`:
 | `augur.ts` | AI chat streaming interface |
 | `rss.ts` | RSS feed management (add, remove, import OPML) |
 | `morning_letter.ts` | Morning letter generation and retrieval |
+| `knowledge_home_admin.ts` | Knowledge Home Admin API client (projection health, feature flags, backfill, SLO, reproject operations) |
 | `streamingAdapter.ts` | Streaming support utilities for Connect-RPC |
 
 ## Feature Flags
@@ -184,6 +186,19 @@ The feature flag system (`src/lib/features/flags.ts`) enables gradual migration 
 - `morning-letter/`: Mobile morning letter
 - `recap/`: Mobile recap views
 - `search/`: Mobile search interface
+
+### Knowledge Home Components (`src/lib/components/knowledge-home/`)
+- `KnowledgeCard` - Knowledge home item card
+- `DegradedModeBanner` - Service quality degradation banner
+
+### Knowledge Home Admin Components (`src/lib/components/knowledge-home-admin/`)
+- `AdminTabNavigation` - Admin tab navigation
+- `AlertStatusPanel` - Active alert display
+- `DiffSummaryPanel` - Reproject version diff summary
+- `ErrorBudgetGauge` - SLO error budget gauge
+- `ReprojectActions` - Reproject workflow actions (start/compare/swap/rollback)
+- `ReprojectRunsTable` - Reproject execution history table
+- `SLOSummaryPanel` - SLO status summary panel
 
 ### Dashboard Tabs (`src/lib/components/dashboard/`)
 - `OverviewTab`: System overview

@@ -1,6 +1,6 @@
 # Recap Database Schema Contract
 
-_Last reviewed: February 28, 2026_
+_Last reviewed: March 18, 2026_
 
 **Location:** `recap-db`, `recap-migration-atlas`
 
