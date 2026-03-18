@@ -189,6 +189,7 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 		Title:             payload.Title,
 		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}},
 		Score:             score,
+		SummaryState:      domain.SummaryStatePending,
 		FreshnessAt:       &now,
 		PublishedAt:       publishedAt,
 		GeneratedAt:       now,
@@ -254,6 +255,12 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 		userID = *event.UserID
 	}
 
+	// Determine summary state from excerpt
+	summaryState := domain.SummaryStatePending
+	if summaryExcerpt != "" {
+		summaryState = domain.SummaryStateReady
+	}
+
 	now := time.Now()
 	item := domain.KnowledgeHomeItem{
 		UserID:            userID,
@@ -263,6 +270,7 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 		PrimaryRefID:      &articleID,
 		Title:             "", // Preserved by merge-safe upsert
 		SummaryExcerpt:    summaryExcerpt,
+		SummaryState:      summaryState,
 		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}, {Code: domain.WhySummaryCompleted}},
 		Score:             0.8, // Boost for having a summary
 		GeneratedAt:       now,

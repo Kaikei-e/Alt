@@ -16,5 +16,6 @@ type TodayDigest struct {
 	TopTags               []string  `json:"top_tags"`
 	WeeklyRecapAvailable  bool      `json:"weekly_recap_available"`
 	EveningPulseAvailable bool      `json:"evening_pulse_available"`
+	NeedToKnowCount       int       `json:"need_to_know_count"`
 	UpdatedAt             time.Time `json:"updated_at" db:"updated_at"`
 }

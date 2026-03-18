@@ -201,6 +201,91 @@ func TestHandler_GetKnowledgeHome_NilFlagPort(t *testing.T) {
 	assert.Len(t, resp.Msg.Items, 1)
 }
 
+func TestHandler_GetKnowledgeHome_SummaryStateMapping(t *testing.T) {
+	logger.InitLogger()
+	handler, homePort, _ := setupHandler()
+
+	homePort.items = []domain.KnowledgeHomeItem{
+		{
+			ItemKey:      "article:ready-1",
+			ItemType:     "article",
+			Title:        "Ready Article",
+			Score:        1.0,
+			SummaryState: domain.SummaryStateReady,
+			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
+		},
+		{
+			ItemKey:      "article:pending-1",
+			ItemType:     "article",
+			Title:        "Pending Article",
+			Score:        0.9,
+			SummaryState: domain.SummaryStatePending,
+			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
+		},
+		{
+			ItemKey:      "article:missing-1",
+			ItemType:     "article",
+			Title:        "Missing Article",
+			Score:        0.8,
+			SummaryState: domain.SummaryStateMissing,
+			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
+		},
+	}
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Items, 3)
+
+	assert.Equal(t, "ready", resp.Msg.Items[0].SummaryState)
+	assert.Equal(t, "pending", resp.Msg.Items[1].SummaryState)
+	assert.Equal(t, "missing", resp.Msg.Items[2].SummaryState)
+}
+
+func TestHandler_GetKnowledgeHome_NeedToKnowCount(t *testing.T) {
+	logger.InitLogger()
+	handler, homePort, _ := setupHandler()
+
+	homePort.items = []domain.KnowledgeHomeItem{
+		{
+			ItemKey:  "article:1",
+			ItemType: "article",
+			Title:    "Important Article",
+			Score:    1.0,
+			WhyReasons: []domain.WhyReason{
+				{Code: domain.WhyPulseNeedToKnow},
+				{Code: domain.WhyNewUnread},
+			},
+		},
+		{
+			ItemKey:    "article:2",
+			ItemType:   "article",
+			Title:      "Regular Article",
+			Score:      0.9,
+			WhyReasons: []domain.WhyReason{{Code: domain.WhyNewUnread}},
+		},
+		{
+			ItemKey:  "article:3",
+			ItemType: "article",
+			Title:    "Another Important Article",
+			Score:    0.8,
+			WhyReasons: []domain.WhyReason{
+				{Code: domain.WhyPulseNeedToKnow},
+			},
+		},
+	}
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+
+	assert.Equal(t, int32(2), resp.Msg.TodayDigest.NeedToKnowCount, "Should count 2 items with pulse_need_to_know why code")
+}
+
 func TestHandler_TrackHomeAction_Validation(t *testing.T) {
 	logger.InitLogger()
 	handler, _, _ := setupHandler()

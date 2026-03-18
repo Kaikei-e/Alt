@@ -49,10 +49,18 @@ type KnowledgeHomeItem struct {
 	GeneratedAt      time.Time  `json:"generated_at" db:"generated_at"`
 	UpdatedAt         time.Time  `json:"updated_at" db:"updated_at"`
 	ProjectionVersion int        `json:"projection_version" db:"projection_version"`
+	SummaryState      string     `json:"summary_state" db:"summary_state"`
 	SupersedeState    string     `json:"supersede_state,omitempty" db:"supersede_state"`
 	SupersededAt      *time.Time `json:"superseded_at,omitempty" db:"superseded_at"`
 	PreviousRefJSON   string     `json:"previous_ref_json,omitempty" db:"previous_ref_json"`
 }
+
+// Summary state constants.
+const (
+	SummaryStateMissing = "missing"
+	SummaryStatePending = "pending"
+	SummaryStateReady   = "ready"
+)
 
 // Supersede state constants.
 const (

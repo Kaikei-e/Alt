@@ -138,6 +138,17 @@ func (h *Handler) GetKnowledgeHome(
 		protoItems = append(protoItems, convertHomeItemToProto(item))
 	}
 
+	// Count need-to-know items from the current result set
+	needToKnowCount := int32(0)
+	for _, item := range result.Items {
+		for _, why := range item.WhyReasons {
+			if why.Code == domain.WhyPulseNeedToKnow {
+				needToKnowCount++
+				break
+			}
+		}
+	}
+
 	digest := &knowledgehomev1.TodayDigest{
 		Date:                  result.Digest.DigestDate.Format("2006-01-02"),
 		NewArticles:           int32(result.Digest.NewArticles),
@@ -146,6 +157,7 @@ func (h *Handler) GetKnowledgeHome(
 		TopTags:               result.Digest.TopTags,
 		WeeklyRecapAvailable:  result.Digest.WeeklyRecapAvailable,
 		EveningPulseAvailable: result.Digest.EveningPulseAvailable,
+		NeedToKnowCount:       needToKnowCount,
 	}
 
 	// Build feature flag statuses for the response
@@ -674,11 +686,12 @@ func (h *Handler) StreamRecallRailUpdates(
 
 func convertHomeItemToProto(item domain.KnowledgeHomeItem) *knowledgehomev1.KnowledgeHomeItem {
 	protoItem := &knowledgehomev1.KnowledgeHomeItem{
-		ItemKey:  item.ItemKey,
-		ItemType: item.ItemType,
-		Title:    item.Title,
-		Tags:     item.Tags,
-		Score:    item.Score,
+		ItemKey:      item.ItemKey,
+		ItemType:     item.ItemType,
+		Title:        item.Title,
+		Tags:         item.Tags,
+		Score:        item.Score,
+		SummaryState: item.SummaryState,
 	}
 
 	if item.PrimaryRefID != nil {

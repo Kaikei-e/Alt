@@ -90,6 +90,8 @@ message TodayDigest {
   bool weekly_recap_available = 6;
   // Whether an evening pulse is available
   bool evening_pulse_available = 7;
+  // Number of need-to-know articles from Evening Pulse
+  int32 need_to_know_count = 8;
 }
 
 // KnowledgeHomeItem represents a single item in the Knowledge Home feed.
@@ -116,6 +118,8 @@ message KnowledgeHomeItem {
   double score = 10;
   // Supersede information (set when item has been updated)
   optional SupersedeInfo supersede_info = 11;
+  // Summary processing state: missing, pending, ready
+  string summary_state = 12;
 }
 
 // WhyReason explains why an item appears in the Knowledge Home.

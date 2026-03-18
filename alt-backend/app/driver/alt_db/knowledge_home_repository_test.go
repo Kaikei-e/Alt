@@ -27,8 +27,8 @@ func TestAltDBRepository_UpsertKnowledgeHomeItem_PassesJSONAsTextForPgBouncerCom
 		(user_id, tenant_id, item_key, item_type, primary_ref_id,
 		 title, summary_excerpt, tags_json, why_json, score,
 		 freshness_at, published_at, last_interacted_at, generated_at, updated_at,
-		 projection_version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		 projection_version, summary_state)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 		ON CONFLICT (user_id, item_key) DO UPDATE SET
 		 title = CASE WHEN EXCLUDED.title != '' THEN EXCLUDED.title ELSE knowledge_home_items.title END,
 		 summary_excerpt = CASE WHEN EXCLUDED.summary_excerpt != '' THEN EXCLUDED.summary_excerpt ELSE knowledge_home_items.summary_excerpt END,
@@ -39,7 +39,8 @@ func TestAltDBRepository_UpsertKnowledgeHomeItem_PassesJSONAsTextForPgBouncerCom
 		 published_at = COALESCE(EXCLUDED.published_at, knowledge_home_items.published_at),
 		 last_interacted_at = COALESCE(EXCLUDED.last_interacted_at, knowledge_home_items.last_interacted_at),
 		 updated_at = EXCLUDED.updated_at,
-		 projection_version = EXCLUDED.projection_version`)).
+		 projection_version = EXCLUDED.projection_version,
+		 summary_state = CASE WHEN EXCLUDED.summary_state = 'ready' THEN 'ready' WHEN EXCLUDED.summary_state != 'missing' THEN EXCLUDED.summary_state ELSE knowledge_home_items.summary_state END`)).
 		WithArgs(
 			userID,
 			userID,
@@ -57,6 +58,7 @@ func TestAltDBRepository_UpsertKnowledgeHomeItem_PassesJSONAsTextForPgBouncerCom
 			now,
 			now,
 			2,
+			domain.SummaryStateReady,
 		).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -68,6 +70,7 @@ func TestAltDBRepository_UpsertKnowledgeHomeItem_PassesJSONAsTextForPgBouncerCom
 		PrimaryRefID:      &refID,
 		Title:             "PgBouncer-safe item",
 		SummaryExcerpt:    "Summary",
+		SummaryState:      domain.SummaryStateReady,
 		Tags:              []string{"pg", "jsonb"},
 		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}, {Code: domain.WhySummaryCompleted}},
 		Score:             0.9,

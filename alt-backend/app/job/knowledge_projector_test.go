@@ -320,6 +320,104 @@ func TestKnowledgeProjectorJob_HomeItemOpened_CreatesRecallCandidate(t *testing.
 	assert.Equal(t, 0.5, recallPort.upserted[0].RecallScore)
 }
 
+func TestKnowledgeProjectorJob_ArticleCreated_SetsSummaryStatePending(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	payload, _ := json.Marshal(articleCreatedPayload{
+		ArticleID:   articleID.String(),
+		Title:       "Test Article",
+		PublishedAt: "2026-03-17T10:00:00Z",
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventArticleCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: payload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, domain.SummaryStatePending, homeItemsPort.upserted[0].SummaryState, "ArticleCreated should set summary_state to pending")
+}
+
+func TestKnowledgeProjectorJob_SummaryVersionCreated_SetsSummaryStateReady(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	svID := uuid.New()
+	summaryPayload, _ := json.Marshal(summaryVersionPayload{
+		SummaryVersionID: svID.String(),
+		ArticleID:        articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventSummaryVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: summaryPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	summaryVersionPort := &mockSummaryVersionPort{
+		sv: domain.SummaryVersion{
+			SummaryVersionID: svID,
+			ArticleID:        articleID,
+			SummaryText:      "Complete summary text here.",
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, domain.SummaryStateReady, homeItemsPort.upserted[0].SummaryState, "SummaryVersionCreated with text should set summary_state to ready")
+}
+
+func TestKnowledgeProjectorJob_SummaryVersionCreated_EmptySummary_SetsPending(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	svID := uuid.New()
+	summaryPayload, _ := json.Marshal(summaryVersionPayload{
+		SummaryVersionID: svID.String(),
+		ArticleID:        articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventSummaryVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: summaryPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	summaryVersionPort := &mockSummaryVersionPort{
+		sv: domain.SummaryVersion{
+			SummaryVersionID: svID,
+			ArticleID:        articleID,
+			SummaryText:      "", // Empty summary
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, domain.SummaryStatePending, homeItemsPort.upserted[0].SummaryState, "SummaryVersionCreated with empty text should set summary_state to pending")
+}
+
 func TestKnowledgeProjectorJob_UsesActiveVersion(t *testing.T) {
 	logger.InitLogger()
 
