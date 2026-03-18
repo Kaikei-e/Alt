@@ -538,15 +538,10 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 	req *connect.Request[knowledgehomev1.StreamKnowledgeHomeUpdatesRequest],
 	stream *connect.ServerStream[knowledgehomev1.StreamKnowledgeHomeUpdatesResponse],
 ) error {
-	user, err := middleware.GetUserContext(ctx)
-	if err != nil {
-		return connect.NewError(connect.CodeUnauthenticated, nil)
+	if err := h.streamFlagGuard(ctx); err != nil {
+		return err
 	}
-
-	if h.featureFlagPort != nil && !h.featureFlagPort.IsEnabled(domain.FlagStreamUpdates, user.UserID) {
-		return connect.NewError(connect.CodePermissionDenied,
-			fmt.Errorf("stream updates is not enabled for this user"))
-	}
+	user, _ := middleware.GetUserContext(ctx)
 
 	h.logger.InfoContext(ctx, "alt.knowledge_home.stream_started",
 		"user_id", user.UserID)
@@ -610,10 +605,7 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 			// Phase 5: Coalesce events - deduplicate by item_key, keep latest
 			coalesced := coalesceStreamEvents(events)
 			for _, event := range coalesced {
-				update := &knowledgehomev1.StreamKnowledgeHomeUpdatesResponse{
-					EventType:  event.EventType,
-					OccurredAt: event.OccurredAt.Format(time.RFC3339),
-				}
+				update := buildStreamResponse(event)
 				if err := stream.Send(update); err != nil {
 					return err
 				}
@@ -810,6 +802,54 @@ func convertLensVersionToProto(v domain.KnowledgeLensVersion) *knowledgehomev1.L
 		IncludePulse: v.IncludePulse,
 		SortMode:     v.SortMode,
 	}
+}
+
+// mapToCanonicalStreamType converts a domain event type to a canonical stream event type.
+// See ADR-434 Phase 0 canonical contract for the mapping.
+func mapToCanonicalStreamType(eventType string) string {
+	switch eventType {
+	case domain.EventArticleCreated:
+		return "item_added"
+	case domain.EventSummaryVersionCreated,
+		domain.EventTagSetVersionCreated,
+		domain.EventSummarySuperseded,
+		domain.EventTagSetSuperseded,
+		domain.EventHomeItemSuperseded:
+		return "item_updated"
+	default:
+		// System/user interaction events trigger digest re-fetch only
+		return "digest_changed"
+	}
+}
+
+// buildStreamResponse creates a StreamKnowledgeHomeUpdatesResponse from a domain event.
+// For item_added/item_updated, it includes a minimal KnowledgeHomeItem with item_key only.
+// For digest_changed, no payload is included (frontend re-fetches via unary).
+func buildStreamResponse(event domain.KnowledgeEvent) *knowledgehomev1.StreamKnowledgeHomeUpdatesResponse {
+	canonicalType := mapToCanonicalStreamType(event.EventType)
+	resp := &knowledgehomev1.StreamKnowledgeHomeUpdatesResponse{
+		EventType:  canonicalType,
+		OccurredAt: event.OccurredAt.Format(time.RFC3339),
+	}
+	if canonicalType == "item_added" || canonicalType == "item_updated" {
+		itemKey := event.AggregateType + ":" + event.AggregateID
+		resp.Item = &knowledgehomev1.KnowledgeHomeItem{ItemKey: itemKey}
+	}
+	return resp
+}
+
+// streamFlagGuard checks authentication and feature flag for stream access.
+// Extracted to allow unit testing without a real ServerStream.
+func (h *Handler) streamFlagGuard(ctx context.Context) error {
+	user, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	if h.featureFlagPort != nil && !h.featureFlagPort.IsEnabled(domain.FlagStreamUpdates, user.UserID) {
+		return connect.NewError(connect.CodePermissionDenied,
+			fmt.Errorf("stream updates is not enabled for this user"))
+	}
+	return nil
 }
 
 // coalesceStreamEvents deduplicates events by aggregate_id within a batch,

@@ -364,6 +364,176 @@ func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
 	})
 }
 
+// mockListEventsPort implements knowledge_event_port.ListKnowledgeEventsPort.
+type mockListEventsPort struct {
+	events []domain.KnowledgeEvent
+	err    error
+}
+
+func (m *mockListEventsPort) ListKnowledgeEventsSince(_ context.Context, _ int64, _ int) ([]domain.KnowledgeEvent, error) {
+	return m.events, m.err
+}
+
+func TestMapToCanonicalStreamType(t *testing.T) {
+	tests := []struct {
+		domainEvent  string
+		canonicalType string
+	}{
+		{domain.EventArticleCreated, "item_added"},
+		{domain.EventSummaryVersionCreated, "item_updated"},
+		{domain.EventTagSetVersionCreated, "item_updated"},
+		{domain.EventSummarySuperseded, "item_updated"},
+		{domain.EventTagSetSuperseded, "item_updated"},
+		{domain.EventHomeItemSuperseded, "item_updated"},
+		{domain.EventHomeItemsSeen, "digest_changed"},
+		{domain.EventHomeItemOpened, "digest_changed"},
+		{domain.EventHomeItemDismissed, "digest_changed"},
+		{domain.EventHomeItemAsked, "digest_changed"},
+		{domain.EventHomeItemListened, "digest_changed"},
+		{domain.EventRecallSnoozed, "digest_changed"},
+		{domain.EventRecallDismissed, "digest_changed"},
+		{"UnknownEventType", "digest_changed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.domainEvent, func(t *testing.T) {
+			result := mapToCanonicalStreamType(tt.domainEvent)
+			assert.Equal(t, tt.canonicalType, result, "event %s should map to %s", tt.domainEvent, tt.canonicalType)
+		})
+	}
+}
+
+func TestStreamPayload_ItemAdded_ContainsItemKey(t *testing.T) {
+	aggID := uuid.New().String()
+	event := domain.KnowledgeEvent{
+		EventType:     domain.EventArticleCreated,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   aggID,
+		OccurredAt:    time.Now(),
+	}
+
+	canonicalType := mapToCanonicalStreamType(event.EventType)
+	assert.Equal(t, "item_added", canonicalType)
+
+	update := buildStreamResponse(event)
+	assert.Equal(t, "item_added", update.EventType)
+	require.NotNil(t, update.Item, "item_added should include Item")
+	assert.Equal(t, "article:"+aggID, update.Item.ItemKey)
+}
+
+func TestStreamPayload_ItemUpdated_ContainsItemKey(t *testing.T) {
+	aggID := uuid.New().String()
+	event := domain.KnowledgeEvent{
+		EventType:     domain.EventSummaryVersionCreated,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   aggID,
+		OccurredAt:    time.Now(),
+	}
+
+	update := buildStreamResponse(event)
+	assert.Equal(t, "item_updated", update.EventType)
+	require.NotNil(t, update.Item, "item_updated should include Item")
+	assert.Equal(t, "article:"+aggID, update.Item.ItemKey)
+}
+
+func TestStreamPayload_DigestChanged_NoItem(t *testing.T) {
+	event := domain.KnowledgeEvent{
+		EventType:     domain.EventHomeItemOpened,
+		AggregateType: domain.AggregateHomeSession,
+		AggregateID:   uuid.New().String(),
+		OccurredAt:    time.Now(),
+	}
+
+	update := buildStreamResponse(event)
+	assert.Equal(t, "digest_changed", update.EventType)
+	assert.Nil(t, update.Item, "digest_changed should NOT include Item")
+	assert.Nil(t, update.DigestChange, "digest_changed should NOT include DigestChange")
+}
+
+func TestCoalesceStreamEvents_EmptyInput(t *testing.T) {
+	result := coalesceStreamEvents(nil)
+	assert.Nil(t, result)
+
+	result = coalesceStreamEvents([]domain.KnowledgeEvent{})
+	assert.Empty(t, result)
+}
+
+func TestCoalesceStreamEvents_SingleEvent(t *testing.T) {
+	events := []domain.KnowledgeEvent{
+		{EventType: domain.EventArticleCreated, AggregateType: "article", AggregateID: "1", EventSeq: 1},
+	}
+	result := coalesceStreamEvents(events)
+	assert.Len(t, result, 1)
+	assert.Equal(t, "1", result[0].AggregateID)
+}
+
+func TestCoalesceStreamEvents_DeduplicatesByAggregate(t *testing.T) {
+	events := []domain.KnowledgeEvent{
+		{EventType: domain.EventArticleCreated, AggregateType: "article", AggregateID: "1", EventSeq: 1},
+		{EventType: domain.EventSummaryVersionCreated, AggregateType: "article", AggregateID: "1", EventSeq: 2},
+		{EventType: domain.EventTagSetVersionCreated, AggregateType: "article", AggregateID: "1", EventSeq: 3},
+	}
+	result := coalesceStreamEvents(events)
+	assert.Len(t, result, 1, "same aggregate should be deduplicated to one event")
+	assert.Equal(t, int64(3), result[0].EventSeq, "should keep the latest event")
+}
+
+func TestCoalesceStreamEvents_MultipleAggregates(t *testing.T) {
+	events := []domain.KnowledgeEvent{
+		{AggregateType: "article", AggregateID: "1", EventSeq: 1},
+		{AggregateType: "article", AggregateID: "2", EventSeq: 2},
+		{AggregateType: "recap", AggregateID: "3", EventSeq: 3},
+	}
+	result := coalesceStreamEvents(events)
+	assert.Len(t, result, 3, "different aggregates should all remain")
+}
+
+func TestStreamKnowledgeHomeUpdates_FeatureFlagDisabled(t *testing.T) {
+	logger.InitLogger()
+	flagPort := &mockFeatureFlagPort{
+		enabledFlags: map[string]bool{
+			domain.FlagStreamUpdates: false,
+		},
+	}
+	eventsPort := &mockListEventsPort{}
+	handler := newStreamTestHandler(flagPort, eventsPort)
+
+	ctx := testUserContext()
+	// StreamKnowledgeHomeUpdates receives *connect.ServerStream which is a concrete type.
+	// We test the feature flag guard by checking the error return before streaming starts.
+	// The handler returns connect.CodePermissionDenied before touching the stream.
+	err := handler.streamFlagGuard(ctx)
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodePermissionDenied, connectErr.Code())
+}
+
+func TestStreamKnowledgeHomeUpdates_Unauthenticated(t *testing.T) {
+	logger.InitLogger()
+	handler := newStreamTestHandler(nil, nil)
+
+	err := handler.streamFlagGuard(context.Background())
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+// newStreamTestHandler creates a handler with eventsPort and featureFlags for stream tests.
+func newStreamTestHandler(flagPort *mockFeatureFlagPort, eventsPort *mockListEventsPort) *Handler {
+	handler := NewHandler(
+		nil, nil, nil, // home, seen, action
+		nil, nil, nil, // recall: rail, snooze, dismiss
+		nil, nil, nil, nil, nil, // lens: create, update, list, select, archive
+		eventsPort,
+		flagPort, slog.Default(),
+	)
+	return handler
+}
+
 func TestHandler_TrackHomeAction_Validation(t *testing.T) {
 	logger.InitLogger()
 	handler, _, _ := setupHandler()
