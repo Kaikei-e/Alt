@@ -22,6 +22,7 @@ WORKDIR /home/ollama-user
 COPY --chown=ollama-user:ollama-user Modelfile.gpt-oss20b-cpu /home/ollama-user/
 COPY --chown=ollama-user:ollama-user Modelfile.gpt-oss20b-igpu /home/ollama-user/
 COPY --chown=ollama-user:ollama-user Modelfile.qwen3-8b-rag /home/ollama-user/
+COPY --chown=ollama-user:ollama-user Modelfile.gemma3-4b-rag /home/ollama-user/
 
 # ---- Environment configuration -------------------------------------------
 ENV OLLAMA_HOST=0.0.0.0:11434

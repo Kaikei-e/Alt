@@ -91,6 +91,19 @@ else
   echo "  Model qwen3:8b already exists"
 fi
 
+# Ensure gemma3:4b-it-qat base model exists
+echo "Ensuring gemma3:4b-it-qat model is available..."
+if ! ollama list 2>/dev/null | grep -q "gemma3:4b-it-qat"; then
+  echo "Pulling gemma3:4b-it-qat model (this will take a while)..."
+  if ollama pull gemma3:4b-it-qat; then
+      echo "  Model gemma3:4b-it-qat pulled successfully"
+  else
+      echo "  Error: Failed to pull gemma3:4b-it-qat"
+  fi
+else
+  echo "  Model gemma3:4b-it-qat already exists"
+fi
+
 # Create custom models
 # Always try to create/update to capture Modelfile changes
 
@@ -132,8 +145,20 @@ else
   echo "  Warning: Modelfile.qwen3-8b-rag not found, skipping"
 fi
 
-# Preload model based on environment variable (default: gpt-oss20b-igpu)
-PRELOAD_MODEL="${AUGUR_KNOWLEDGE_MODEL:-gpt-oss20b-igpu}"
+# gemma3 4B RAG model
+echo "Creating/Updating custom model gemma3-4b-rag..."
+if [ -f "/home/ollama-user/Modelfile.gemma3-4b-rag" ]; then
+  if ollama create gemma3-4b-rag -f /home/ollama-user/Modelfile.gemma3-4b-rag; then
+    echo "  Model gemma3-4b-rag created/updated successfully"
+  else
+    echo "  Error: Failed to create gemma3-4b-rag"
+  fi
+else
+  echo "  Warning: Modelfile.gemma3-4b-rag not found, skipping"
+fi
+
+# Preload model based on environment variable (default: gemma3-4b-rag)
+PRELOAD_MODEL="${AUGUR_KNOWLEDGE_MODEL:-gemma3-4b-rag}"
 echo "Preloading model ${PRELOAD_MODEL}..."
 curl -s http://127.0.0.1:11434/api/chat \
   -d "{\"model\":\"${PRELOAD_MODEL}\",\"keep_alive\":-1}" >/dev/null
