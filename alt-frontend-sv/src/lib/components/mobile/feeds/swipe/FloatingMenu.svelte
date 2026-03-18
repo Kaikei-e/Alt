@@ -14,7 +14,6 @@ import {
 	Menu,
 	Moon,
 	Newspaper,
-	Plus,
 	Rss,
 	Search,
 	Shuffle,
@@ -101,13 +100,6 @@ const menuItems = [
 		category: "feeds",
 		icon: Star,
 		description: "Favorited articles",
-	},
-	{
-		label: "Register Feed",
-		href: `${svBasePath}/mobile/feeds/register`,
-		category: "feeds",
-		icon: Plus,
-		description: "Add new RSS feed",
 	},
 	{
 		label: "Manage Feeds Links",
