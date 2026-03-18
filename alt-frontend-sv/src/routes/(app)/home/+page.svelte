@@ -131,8 +131,8 @@ onMount(async () => {
 			{#if recallEnabled && recall.candidates.length > 0}
 				<RecallRail
 					candidates={recall.candidates}
-					onSnooze={(key) => recall.snooze(key)}
-					onDismiss={(key) => recall.dismiss(key)}
+					onSnooze={(key: string) => recall.snooze(key)}
+					onDismiss={(key: string) => recall.dismiss(key)}
 					onOpen={handleRecallOpen}
 				/>
 			{:else}
@@ -155,8 +155,8 @@ onMount(async () => {
 			<div class="px-3 pt-2">
 				<RecallRailCollapsible
 					candidates={recall.candidates}
-					onSnooze={(key) => recall.snooze(key)}
-					onDismiss={(key) => recall.dismiss(key)}
+					onSnooze={(key: string) => recall.snooze(key)}
+					onDismiss={(key: string) => recall.dismiss(key)}
 					onOpen={handleRecallOpen}
 				/>
 			</div>
