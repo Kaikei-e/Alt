@@ -62,7 +62,8 @@ message GetKnowledgeHomeResponse {
   repeated FeatureFlagStatus feature_flags = 7;
   // Recall candidates (embedded for initial load optimization)
   repeated RecallCandidate recall_candidates = 8;
-  // Service quality: "full", "degraded", "fallback" (Phase 5 3-tier mode)
+  // Canonical service quality: "full", "degraded", "fallback".
+  // Clients should prefer this over degraded_mode when present.
   optional string service_quality = 9;
 }
 
@@ -206,7 +207,10 @@ message LensVersion {
 
 // StreamKnowledgeHomeUpdatesResponse is a real-time update for the home feed.
 message StreamKnowledgeHomeUpdatesResponse {
-  // Event type: item_added, item_updated, item_removed, digest_changed, recall_changed
+  // Canonical business event type: item_added, item_updated, item_removed,
+  // digest_changed, recall_changed, stream_expired.
+  // Compatibility event types may also appear during transition
+  // (for example heartbeat, fallback_to_unary).
   string event_type = 1;
   // Updated item (for item events)
   optional KnowledgeHomeItem item = 2;
