@@ -17,6 +17,12 @@ type GetLatestSummaryVersionPort interface {
 	GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error)
 }
 
+// GetSummaryVersionByIDPort gets a specific summary version by its ID.
+// Used by the projector to ensure reproject-safe resolution (not latest).
+type GetSummaryVersionByIDPort interface {
+	GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error)
+}
+
 // MarkSummaryVersionSupersededPort marks all non-superseded versions as superseded by the new version.
 // Returns the previous latest version (before marking), or nil if none existed.
 type MarkSummaryVersionSupersededPort interface {

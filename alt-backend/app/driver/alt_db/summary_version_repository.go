@@ -74,6 +74,34 @@ func (r *AltDBRepository) MarkSummaryVersionSuperseded(ctx context.Context, arti
 	return &prev, nil
 }
 
+// GetSummaryVersionByID returns a specific summary version by its ID.
+// This is reproject-safe: replaying an old event will always fetch the correct version.
+func (r *AltDBRepository) GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetSummaryVersionByID")
+	defer span.End()
+
+	query := `SELECT summary_version_id, article_id, user_id, generated_at,
+		model, prompt_version, input_hash, quality_score,
+		summary_text, superseded_by
+		FROM summary_versions
+		WHERE summary_version_id = $1`
+
+	var sv domain.SummaryVersion
+	err := r.pool.QueryRow(ctx, query, summaryVersionID).Scan(
+		&sv.SummaryVersionID, &sv.ArticleID, &sv.UserID, &sv.GeneratedAt,
+		&sv.Model, &sv.PromptVersion, &sv.InputHash, &sv.QualityScore,
+		&sv.SummaryText, &sv.SupersededBy,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return domain.SummaryVersion{}, fmt.Errorf("no summary version found for id %s", summaryVersionID)
+		}
+		return domain.SummaryVersion{}, fmt.Errorf("GetSummaryVersionByID: %w", err)
+	}
+
+	return sv, nil
+}
+
 // GetLatestSummaryVersion returns the latest non-superseded summary version for an article.
 func (r *AltDBRepository) GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetLatestSummaryVersion")

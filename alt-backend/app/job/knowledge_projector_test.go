@@ -111,11 +111,13 @@ func (m *mockActiveVersionPort) GetActiveVersion(_ context.Context) (*domain.Kno
 }
 
 type mockSummaryVersionPort struct {
-	sv  domain.SummaryVersion
-	err error
+	sv       domain.SummaryVersion
+	err      error
+	calledID uuid.UUID // tracks the ID passed to GetSummaryVersionByID
 }
 
-func (m *mockSummaryVersionPort) GetLatestSummaryVersion(_ context.Context, _ uuid.UUID) (domain.SummaryVersion, error) {
+func (m *mockSummaryVersionPort) GetSummaryVersionByID(_ context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error) {
+	m.calledID = summaryVersionID
 	return m.sv, m.err
 }
 
@@ -275,6 +277,50 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_PopulatesExcerpt(t *testing
 	// Second upsert is the summary version event - should have excerpt
 	assert.NotEmpty(t, homeItemsPort.upserted[1].SummaryExcerpt, "SummaryVersionCreated should populate summary_excerpt")
 	assert.Contains(t, homeItemsPort.upserted[1].SummaryExcerpt, "This is a detailed summary")
+}
+
+func TestKnowledgeProjectorJob_SummaryVersionCreated_ReplaySafe(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	oldSvID := uuid.New()
+	newSvID := uuid.New()
+
+	// Replay an OLD event whose summary_version_id points to an older version.
+	// The projector must use the event's summary_version_id, not "latest".
+	summaryPayload, _ := json.Marshal(summaryVersionPayload{
+		SummaryVersionID: oldSvID.String(),
+		ArticleID:        articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventSummaryVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: summaryPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+
+	// Mock returns old version text — the projector must request oldSvID, not newSvID.
+	summaryVersionPort := &mockSummaryVersionPort{
+		sv: domain.SummaryVersion{
+			SummaryVersionID: oldSvID,
+			ArticleID:        articleID,
+			SummaryText:      "Old version excerpt that should be used on replay.",
+		},
+	}
+	_ = newSvID // newer version exists but must NOT be fetched
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	// Verify the projector called GetSummaryVersionByID with the event's summary_version_id
+	assert.Equal(t, oldSvID, summaryVersionPort.calledID, "projector must use event's summary_version_id, not latest")
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Contains(t, homeItemsPort.upserted[0].SummaryExcerpt, "Old version excerpt")
 }
 
 func TestKnowledgeProjectorJob_TagSetVersionCreated_PreservesSummaryCompletedReason(t *testing.T) {

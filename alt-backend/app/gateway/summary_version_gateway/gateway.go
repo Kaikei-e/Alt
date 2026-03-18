@@ -35,6 +35,14 @@ func (g *Gateway) GetLatestSummaryVersion(ctx context.Context, articleID uuid.UU
 	return g.repo.GetLatestSummaryVersion(ctx, articleID)
 }
 
+// GetSummaryVersionByID implements summary_version_port.GetSummaryVersionByIDPort.
+func (g *Gateway) GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error) {
+	if g.repo == nil {
+		return domain.SummaryVersion{}, fmt.Errorf("GetSummaryVersionByID: database connection not available")
+	}
+	return g.repo.GetSummaryVersionByID(ctx, summaryVersionID)
+}
+
 // MarkSummaryVersionSuperseded implements summary_version_port.MarkSummaryVersionSupersededPort.
 func (g *Gateway) MarkSummaryVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.SummaryVersion, error) {
 	if g.repo == nil {

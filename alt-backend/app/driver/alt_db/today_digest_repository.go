@@ -57,7 +57,8 @@ func (r *AltDBRepository) GetTodayDigest(ctx context.Context, userID uuid.UUID, 
 	defer span.End()
 
 	query := `SELECT user_id, digest_date, new_articles, summarized_articles,
-		unsummarized_articles, top_tags_json, pulse_refs_json, updated_at
+		unsummarized_articles, top_tags_json, pulse_refs_json, updated_at,
+		weekly_recap_available, evening_pulse_available
 		FROM today_digest_view
 		WHERE user_id = $1 AND digest_date = $2`
 
@@ -68,6 +69,7 @@ func (r *AltDBRepository) GetTodayDigest(ctx context.Context, userID uuid.UUID, 
 		&digest.UserID, &digest.DigestDate, &digest.NewArticles,
 		&digest.SummarizedArticles, &digest.UnsummarizedArticles,
 		&topTagsJSON, &pulseRefsJSON, &digest.UpdatedAt,
+		&digest.WeeklyRecapAvailable, &digest.EveningPulseAvailable,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -99,21 +101,25 @@ func (r *AltDBRepository) UpsertTodayDigest(ctx context.Context, digest domain.T
 
 	query := `INSERT INTO today_digest_view
 		(user_id, digest_date, new_articles, summarized_articles,
-		 unsummarized_articles, top_tags_json, pulse_refs_json, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 unsummarized_articles, top_tags_json, pulse_refs_json, updated_at,
+		 weekly_recap_available, evening_pulse_available)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (user_id, digest_date) DO UPDATE SET
 		 new_articles = today_digest_view.new_articles + EXCLUDED.new_articles,
 		 summarized_articles = today_digest_view.summarized_articles + EXCLUDED.summarized_articles,
 		 unsummarized_articles = GREATEST(0, today_digest_view.unsummarized_articles + EXCLUDED.unsummarized_articles),
 		 top_tags_json = CASE WHEN EXCLUDED.top_tags_json != '[]'::jsonb THEN EXCLUDED.top_tags_json ELSE today_digest_view.top_tags_json END,
 		 pulse_refs_json = CASE WHEN EXCLUDED.pulse_refs_json != '[]'::jsonb THEN EXCLUDED.pulse_refs_json ELSE today_digest_view.pulse_refs_json END,
-		 updated_at = EXCLUDED.updated_at`
+		 updated_at = EXCLUDED.updated_at,
+		 weekly_recap_available = EXCLUDED.weekly_recap_available OR today_digest_view.weekly_recap_available,
+		 evening_pulse_available = EXCLUDED.evening_pulse_available OR today_digest_view.evening_pulse_available`
 
 	_, err := r.pool.Exec(ctx, query,
 		digest.UserID, digest.DigestDate.Format("2006-01-02"),
 		digest.NewArticles, digest.SummarizedArticles,
 		digest.UnsummarizedArticles, string(topTagsJSON), string(pulseRefsJSON),
 		digest.UpdatedAt,
+		digest.WeeklyRecapAvailable, digest.EveningPulseAvailable,
 	)
 	if err != nil {
 		return fmt.Errorf("UpsertTodayDigest: %w", err)

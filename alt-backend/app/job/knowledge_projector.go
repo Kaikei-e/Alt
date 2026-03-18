@@ -33,7 +33,7 @@ func KnowledgeProjectorJob(
 	homeItemsPort knowledge_home_port.UpsertKnowledgeHomeItemPort,
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	activeVersionPort knowledge_projection_version_port.GetActiveVersionPort,
-	summaryVersionPort summary_version_port.GetLatestSummaryVersionPort,
+	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
 	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
 	clearSupersedePort ...knowledge_home_port.ClearSupersedeStatePort,
@@ -64,7 +64,7 @@ func processKnowledgeEvents(
 	updateCheckpointPort knowledge_projection_port.UpdateProjectionCheckpointPort,
 	homeItemsPort knowledge_home_port.UpsertKnowledgeHomeItemPort,
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
-	summaryVersionPort summary_version_port.GetLatestSummaryVersionPort,
+	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
 	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
 	clearSupersedePort knowledge_home_port.ClearSupersedeStatePort,
@@ -126,7 +126,7 @@ func projectEvent(
 	event domain.KnowledgeEvent,
 	homeItemsPort knowledge_home_port.UpsertKnowledgeHomeItemPort,
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
-	summaryVersionPort summary_version_port.GetLatestSummaryVersionPort,
+	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
 	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
 	clearSupersedePort knowledge_home_port.ClearSupersedeStatePort,
@@ -243,7 +243,7 @@ type summaryVersionPayload struct {
 
 const maxExcerptLen = 200
 
-func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, todayDigestPort today_digest_port.UpsertTodayDigestPort, summaryVersionPort summary_version_port.GetLatestSummaryVersionPort, projectionVersion int) error {
+func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, todayDigestPort today_digest_port.UpsertTodayDigestPort, summaryVersionPort summary_version_port.GetSummaryVersionByIDPort, projectionVersion int) error {
 	var payload summaryVersionPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal SummaryVersionCreated payload: %w", err)
@@ -254,12 +254,17 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 		return fmt.Errorf("parse article_id: %w", err)
 	}
 
-	// Fetch summary text to generate excerpt
+	// Fetch summary text by the specific version ID from the event payload (reproject-safe).
+	svID, err := uuid.Parse(payload.SummaryVersionID)
+	if err != nil {
+		return fmt.Errorf("parse summary_version_id: %w", err)
+	}
+
 	var summaryExcerpt string
 	if summaryVersionPort != nil {
-		sv, err := summaryVersionPort.GetLatestSummaryVersion(ctx, articleID)
+		sv, err := summaryVersionPort.GetSummaryVersionByID(ctx, svID)
 		if err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to get summary version for excerpt", "error", err, "article_id", articleID)
+			logger.Logger.ErrorContext(ctx, "failed to get summary version for excerpt", "error", err, "summary_version_id", svID)
 		} else if sv.SummaryText != "" {
 			summaryExcerpt = sv.SummaryText
 			if len(summaryExcerpt) > maxExcerptLen {
