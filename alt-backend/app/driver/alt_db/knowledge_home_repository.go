@@ -30,11 +30,13 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 	query.WriteString(`SELECT khi.user_id, khi.tenant_id, khi.item_key, khi.item_type, khi.primary_ref_id,
 		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,
 		khi.freshness_at, khi.published_at, khi.last_interacted_at, khi.generated_at, khi.updated_at,
+		khi.dismissed_at,
 		khi.summary_state, COALESCE(art.url, '') AS link,
 		khi.supersede_state, khi.superseded_at, khi.previous_ref_json
 		FROM knowledge_home_items khi
 		LEFT JOIN articles art ON khi.primary_ref_id = art.id AND art.deleted_at IS NULL
-		WHERE khi.user_id = $1`)
+		WHERE khi.user_id = $1
+		  AND khi.dismissed_at IS NULL`)
 
 	argPos := 2
 	if filter != nil {
@@ -99,6 +101,7 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 			&item.UserID, &item.TenantID, &item.ItemKey, &item.ItemType, &item.PrimaryRefID,
 			&item.Title, &item.SummaryExcerpt, &tagsJSON, &whyJSON, &item.Score,
 			&item.FreshnessAt, &item.PublishedAt, &item.LastInteractedAt, &item.GeneratedAt, &item.UpdatedAt,
+			&item.DismissedAt,
 			&item.SummaryState, &item.Link,
 			&supersedeState, &item.SupersededAt, &previousRefJSON,
 		)
@@ -168,10 +171,10 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 	query := `INSERT INTO knowledge_home_items
 		(user_id, tenant_id, item_key, item_type, primary_ref_id,
 		 title, summary_excerpt, tags_json, why_json, score,
-		 freshness_at, published_at, last_interacted_at, generated_at, updated_at,
+		 freshness_at, published_at, last_interacted_at, generated_at, updated_at, dismissed_at,
 		 projection_version, summary_state,
 		 supersede_state, superseded_at, previous_ref_json)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 		ON CONFLICT (user_id, item_key) DO UPDATE SET
 		 title = CASE WHEN EXCLUDED.title != '' THEN EXCLUDED.title ELSE knowledge_home_items.title END,
 		 summary_excerpt = CASE WHEN EXCLUDED.summary_excerpt != '' THEN EXCLUDED.summary_excerpt ELSE knowledge_home_items.summary_excerpt END,
@@ -184,10 +187,20 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 					 SELECT DISTINCT ON (candidate.code) candidate.code, candidate.reason
 					 FROM (
 						 SELECT reason->>'code' AS code, reason, 0 AS source_rank
-						 FROM jsonb_array_elements(EXCLUDED.why_json) AS reason
+						 FROM jsonb_array_elements(
+						 	CASE
+						 		WHEN jsonb_typeof(EXCLUDED.why_json) = 'array' THEN EXCLUDED.why_json
+						 		ELSE '[]'::jsonb
+						 	END
+						 ) AS reason
 						 UNION ALL
 						 SELECT reason->>'code' AS code, reason, 1 AS source_rank
-						 FROM jsonb_array_elements(COALESCE(knowledge_home_items.why_json, '[]'::jsonb)) AS reason
+						 FROM jsonb_array_elements(
+						 	CASE
+						 		WHEN jsonb_typeof(COALESCE(knowledge_home_items.why_json, '[]'::jsonb)) = 'array' THEN COALESCE(knowledge_home_items.why_json, '[]'::jsonb)
+						 		ELSE '[]'::jsonb
+						 	END
+						 ) AS reason
 					 ) AS candidate
 					 ORDER BY candidate.code, candidate.source_rank
 				 ) AS merged
@@ -198,6 +211,7 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 		 published_at = COALESCE(EXCLUDED.published_at, knowledge_home_items.published_at),
 		 last_interacted_at = COALESCE(EXCLUDED.last_interacted_at, knowledge_home_items.last_interacted_at),
 		 updated_at = EXCLUDED.updated_at,
+		 dismissed_at = COALESCE(knowledge_home_items.dismissed_at, EXCLUDED.dismissed_at),
 		 projection_version = EXCLUDED.projection_version,
 		 summary_state = CASE WHEN EXCLUDED.summary_state = 'ready' THEN 'ready' WHEN EXCLUDED.summary_state != 'missing' THEN EXCLUDED.summary_state ELSE knowledge_home_items.summary_state END,
 		 supersede_state = COALESCE(EXCLUDED.supersede_state, knowledge_home_items.supersede_state),
@@ -210,7 +224,7 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 	_, err := r.pool.Exec(ctx, query,
 		item.UserID, item.TenantID, item.ItemKey, item.ItemType, item.PrimaryRefID,
 		item.Title, item.SummaryExcerpt, string(tagsJSON), string(whyJSON), item.Score,
-		item.FreshnessAt, item.PublishedAt, item.LastInteractedAt, item.GeneratedAt, item.UpdatedAt,
+		item.FreshnessAt, item.PublishedAt, item.LastInteractedAt, item.GeneratedAt, item.UpdatedAt, item.DismissedAt,
 		item.ProjectionVersion, item.SummaryState,
 		supersedeState, item.SupersededAt, previousRefJSON,
 	)
@@ -234,6 +248,23 @@ func (r *AltDBRepository) ClearSupersedeState(ctx context.Context, userID uuid.U
 	_, err := r.pool.Exec(ctx, query, userID, itemKey)
 	if err != nil {
 		return fmt.Errorf("ClearSupersedeState: %w", err)
+	}
+
+	return nil
+}
+
+// DismissKnowledgeHomeItem marks an item as dismissed so it stays hidden across reloads.
+func (r *AltDBRepository) DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID, itemKey string, dismissedAt time.Time) error {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.DismissKnowledgeHomeItem")
+	defer span.End()
+
+	query := `UPDATE knowledge_home_items
+		SET dismissed_at = $1, updated_at = $1
+		WHERE user_id = $2 AND item_key = $3`
+
+	_, err := r.pool.Exec(ctx, query, dismissedAt, userID, itemKey)
+	if err != nil {
+		return fmt.Errorf("DismissKnowledgeHomeItem: %w", err)
 	}
 
 	return nil

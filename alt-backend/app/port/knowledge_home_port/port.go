@@ -3,6 +3,7 @@ package knowledge_home_port
 import (
 	"alt/domain"
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -15,6 +16,11 @@ type GetKnowledgeHomeItemsPort interface {
 // UpsertKnowledgeHomeItemPort writes items to the knowledge home projection.
 type UpsertKnowledgeHomeItemPort interface {
 	UpsertKnowledgeHomeItem(ctx context.Context, item domain.KnowledgeHomeItem) error
+}
+
+// DismissKnowledgeHomeItemPort marks an item as dismissed so it no longer appears in Home.
+type DismissKnowledgeHomeItemPort interface {
+	DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID, itemKey string, dismissedAt time.Time) error
 }
 
 // ClearSupersedeStatePort clears supersede state for an item after user acknowledgement (e.g. open).

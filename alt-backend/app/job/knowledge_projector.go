@@ -31,7 +31,10 @@ func KnowledgeProjectorJob(
 	eventsPort knowledge_event_port.ListKnowledgeEventsPort,
 	checkpointPort knowledge_projection_port.GetProjectionCheckpointPort,
 	updateCheckpointPort knowledge_projection_port.UpdateProjectionCheckpointPort,
-	homeItemsPort knowledge_home_port.UpsertKnowledgeHomeItemPort,
+	homeItemsPort interface {
+		knowledge_home_port.UpsertKnowledgeHomeItemPort
+		knowledge_home_port.DismissKnowledgeHomeItemPort
+	},
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	activeVersionPort knowledge_projection_version_port.GetActiveVersionPort,
 	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
@@ -63,7 +66,10 @@ func processKnowledgeEvents(
 	eventsPort knowledge_event_port.ListKnowledgeEventsPort,
 	checkpointPort knowledge_projection_port.GetProjectionCheckpointPort,
 	updateCheckpointPort knowledge_projection_port.UpdateProjectionCheckpointPort,
-	homeItemsPort knowledge_home_port.UpsertKnowledgeHomeItemPort,
+	homeItemsPort interface {
+		knowledge_home_port.UpsertKnowledgeHomeItemPort
+		knowledge_home_port.DismissKnowledgeHomeItemPort
+	},
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
@@ -125,7 +131,10 @@ func processKnowledgeEvents(
 func projectEvent(
 	ctx context.Context,
 	event domain.KnowledgeEvent,
-	homeItemsPort knowledge_home_port.UpsertKnowledgeHomeItemPort,
+	homeItemsPort interface {
+		knowledge_home_port.UpsertKnowledgeHomeItemPort
+		knowledge_home_port.DismissKnowledgeHomeItemPort
+	},
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
@@ -142,6 +151,8 @@ func projectEvent(
 		return projectTagSetVersionCreated(ctx, event, homeItemsPort, tagSetVersionPort, projectionVersion)
 	case domain.EventHomeItemOpened:
 		return projectHomeItemOpened(ctx, event, homeItemsPort, recallCandidatePort, clearSupersedePort, projectionVersion)
+	case domain.EventHomeItemDismissed:
+		return projectHomeItemDismissed(ctx, event, homeItemsPort)
 	case domain.EventSummarySuperseded:
 		return projectSummarySuperseded(ctx, event, homeItemsPort, projectionVersion)
 	case domain.EventTagSetSuperseded:
@@ -490,6 +501,35 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 	}
 
 	return nil
+}
+
+type homeItemDismissedPayload struct {
+	ItemKey string `json:"item_key"`
+}
+
+func projectHomeItemDismissed(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.DismissKnowledgeHomeItemPort) error {
+	var payload homeItemDismissedPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal HomeItemDismissed payload: %w", err)
+	}
+	if payload.ItemKey == "" {
+		payload.ItemKey = event.AggregateID
+	}
+	if payload.ItemKey == "" {
+		return fmt.Errorf("home item dismiss payload missing item_key")
+	}
+
+	userID := event.TenantID
+	if event.UserID != nil {
+		userID = *event.UserID
+	}
+
+	dismissedAt := event.OccurredAt
+	if dismissedAt.IsZero() {
+		dismissedAt = time.Now()
+	}
+
+	return port.DismissKnowledgeHomeItem(ctx, userID, payload.ItemKey, dismissedAt)
 }
 
 // ── Supersede projection handlers ──

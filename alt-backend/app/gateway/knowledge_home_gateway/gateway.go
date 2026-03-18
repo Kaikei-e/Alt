@@ -5,6 +5,7 @@ import (
 	"alt/driver/alt_db"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -33,6 +34,14 @@ func (g *Gateway) UpsertKnowledgeHomeItem(ctx context.Context, item domain.Knowl
 		return fmt.Errorf("UpsertKnowledgeHomeItem: database connection not available")
 	}
 	return g.repo.UpsertKnowledgeHomeItem(ctx, item)
+}
+
+// DismissKnowledgeHomeItem implements knowledge_home_port.DismissKnowledgeHomeItemPort.
+func (g *Gateway) DismissKnowledgeHomeItem(ctx context.Context, userID uuid.UUID, itemKey string, dismissedAt time.Time) error {
+	if g.repo == nil {
+		return fmt.Errorf("DismissKnowledgeHomeItem: database connection not available")
+	}
+	return g.repo.DismissKnowledgeHomeItem(ctx, userID, itemKey, dismissedAt)
 }
 
 // ClearSupersedeState implements knowledge_home_port.ClearSupersedeStatePort.

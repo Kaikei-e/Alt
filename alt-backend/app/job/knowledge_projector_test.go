@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -39,13 +40,13 @@ func (m *mockCheckpointPort) UpdateProjectionCheckpoint(_ context.Context, _ str
 }
 
 type mockHomeItemsPort struct {
-	upserted []domain.KnowledgeHomeItem
+	upserted  []domain.KnowledgeHomeItem
 	dismissed []struct {
 		userID  uuid.UUID
 		itemKey string
 	}
-	err      error
-	items    map[string]domain.KnowledgeHomeItem
+	err   error
+	items map[string]domain.KnowledgeHomeItem
 }
 
 func (m *mockHomeItemsPort) UpsertKnowledgeHomeItem(_ context.Context, item domain.KnowledgeHomeItem) error {
@@ -58,6 +59,9 @@ func (m *mockHomeItemsPort) UpsertKnowledgeHomeItem(_ context.Context, item doma
 	}
 	existing, ok := m.items[item.ItemKey]
 	if ok {
+		if existing.DismissedAt != nil && item.DismissedAt == nil {
+			item.DismissedAt = existing.DismissedAt
+		}
 		existing.WhyReasons = mergeWhyReasons(item.WhyReasons, existing.WhyReasons)
 		if item.Title != "" {
 			existing.Title = item.Title
@@ -71,6 +75,7 @@ func (m *mockHomeItemsPort) UpsertKnowledgeHomeItem(_ context.Context, item doma
 		if item.SummaryState == domain.SummaryStateReady || (item.SummaryState != "" && item.SummaryState != domain.SummaryStateMissing) {
 			existing.SummaryState = item.SummaryState
 		}
+		existing.DismissedAt = item.DismissedAt
 		m.items[item.ItemKey] = existing
 		return nil
 	}
@@ -537,6 +542,76 @@ func TestKnowledgeProjectorJob_HomeItemDismissed_DismissesReadModelItem(t *testi
 	assert.Equal(t, itemKey, homeItemsPort.dismissed[0].itemKey)
 	assert.Empty(t, homeItemsPort.upserted, "dismiss should not upsert a replacement row")
 	assert.NotNil(t, homeItemsPort.items[itemKey].DismissedAt)
+}
+
+func TestKnowledgeProjectorJob_DismissedItemStaysDismissedAfterLaterUpsert(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+	itemKey := "article:" + articleID.String()
+	dismissedAt := time.Date(2026, 3, 18, 14, 21, 33, 0, time.UTC)
+
+	dismissPayload, _ := json.Marshal(map[string]string{
+		"item_key": itemKey,
+	})
+	summaryPayload, _ := json.Marshal(summaryVersionPayload{
+		SummaryVersionID: uuid.New().String(),
+		ArticleID:        articleID.String(),
+	})
+
+	homeItemsPort := &mockHomeItemsPort{
+		items: map[string]domain.KnowledgeHomeItem{
+			itemKey: {
+				UserID:   userID,
+				TenantID: tenantID,
+				ItemKey:  itemKey,
+				ItemType: domain.ItemArticle,
+				Title:    "Dismiss me",
+			},
+		},
+	}
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{
+				EventID:       uuid.New(),
+				EventSeq:      1,
+				TenantID:      tenantID,
+				UserID:        &userID,
+				EventType:     domain.EventHomeItemDismissed,
+				AggregateType: domain.AggregateHomeSession,
+				AggregateID:   itemKey,
+				Payload:       dismissPayload,
+				OccurredAt:    dismissedAt,
+			},
+			{
+				EventID:       uuid.New(),
+				EventSeq:      2,
+				TenantID:      tenantID,
+				UserID:        &userID,
+				EventType:     domain.EventSummaryVersionCreated,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   articleID.String(),
+				Payload:       summaryPayload,
+			},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	digestPort := &mockDigestPort{}
+	summaryVersionPort := &mockSummaryVersionPort{
+		sv: domain.SummaryVersion{
+			SummaryText: "Refreshed summary",
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.NotNil(t, homeItemsPort.items[itemKey].DismissedAt)
+	assert.True(t, homeItemsPort.items[itemKey].DismissedAt.Equal(dismissedAt))
+	assert.Equal(t, "Refreshed summary", homeItemsPort.items[itemKey].SummaryExcerpt)
 }
 
 func TestKnowledgeProjectorJob_ArticleCreated_SetsSummaryStatePending(t *testing.T) {
