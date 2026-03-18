@@ -27,21 +27,22 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 	// Fetch limit+1 to determine hasMore
 	fetchLimit := limit + 1
 
-	query.WriteString(`SELECT user_id, tenant_id, item_key, item_type, primary_ref_id,
-		title, summary_excerpt, tags_json, why_json, score,
-		freshness_at, published_at, last_interacted_at, generated_at, updated_at,
-		summary_state
-		FROM knowledge_home_items
-		WHERE user_id = $1`)
+	query.WriteString(`SELECT khi.user_id, khi.tenant_id, khi.item_key, khi.item_type, khi.primary_ref_id,
+		khi.title, khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score,
+		khi.freshness_at, khi.published_at, khi.last_interacted_at, khi.generated_at, khi.updated_at,
+		khi.summary_state, COALESCE(art.url, '') AS link
+		FROM knowledge_home_items khi
+		LEFT JOIN articles art ON khi.primary_ref_id = art.id AND art.deleted_at IS NULL
+		WHERE khi.user_id = $1`)
 
 	argPos := 2
 	if filter != nil {
 		if len(filter.TagNames) > 0 || len(filter.FeedIDs) > 0 || filter.TimeWindow != "" {
-			query.WriteString(` AND item_type = 'article'`)
+			query.WriteString(` AND khi.item_type = 'article'`)
 		}
 		if len(filter.TagNames) > 0 {
 			query.WriteString(fmt.Sprintf(` AND EXISTS (
-				SELECT 1 FROM jsonb_array_elements_text(knowledge_home_items.tags_json) AS tag_name
+				SELECT 1 FROM jsonb_array_elements_text(khi.tags_json) AS tag_name
 				WHERE tag_name = ANY($%d)
 			)`, argPos))
 			args = append(args, filter.TagNames)
@@ -50,7 +51,7 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 		if len(filter.FeedIDs) > 0 {
 			query.WriteString(fmt.Sprintf(` AND EXISTS (
 				SELECT 1 FROM articles a
-				WHERE a.id = knowledge_home_items.primary_ref_id
+				WHERE a.id = khi.primary_ref_id
 				  AND a.feed_id = ANY($%d)
 			)`, argPos))
 			args = append(args, filter.FeedIDs)
@@ -61,7 +62,7 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 			if err != nil {
 				return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems: %w", err)
 			}
-			query.WriteString(fmt.Sprintf(` AND published_at >= $%d`, argPos))
+			query.WriteString(fmt.Sprintf(` AND khi.published_at >= $%d`, argPos))
 			args = append(args, cutoff)
 			argPos++
 		}
@@ -73,13 +74,13 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 			logger.Logger.ErrorContext(ctx, "invalid cursor", "error", err)
 			return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems: invalid cursor: %w", err)
 		}
-		query.WriteString(fmt.Sprintf(` AND (score, published_at, item_key) < ($%d, $%d, $%d)`,
+		query.WriteString(fmt.Sprintf(` AND (khi.score, khi.published_at, khi.item_key) < ($%d, $%d, $%d)`,
 			argPos, argPos+1, argPos+2))
 		args = append(args, cursorScore, cursorPublishedAt, cursorItemKey)
 		argPos += 3
 	}
 
-	query.WriteString(fmt.Sprintf(` ORDER BY score DESC, published_at DESC, item_key DESC LIMIT $%d`, argPos))
+	query.WriteString(fmt.Sprintf(` ORDER BY khi.score DESC, khi.published_at DESC, khi.item_key DESC LIMIT $%d`, argPos))
 	args = append(args, fetchLimit)
 
 	rows, err := r.pool.Query(ctx, query.String(), args...)
@@ -96,7 +97,7 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 			&item.UserID, &item.TenantID, &item.ItemKey, &item.ItemType, &item.PrimaryRefID,
 			&item.Title, &item.SummaryExcerpt, &tagsJSON, &whyJSON, &item.Score,
 			&item.FreshnessAt, &item.PublishedAt, &item.LastInteractedAt, &item.GeneratedAt, &item.UpdatedAt,
-			&item.SummaryState,
+			&item.SummaryState, &item.Link,
 		)
 		if err != nil {
 			return nil, "", false, fmt.Errorf("GetKnowledgeHomeItems scan: %w", err)

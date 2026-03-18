@@ -315,6 +315,55 @@ func TestHandler_GetKnowledgeHome_ServiceQualityDegraded(t *testing.T) {
 	assert.Equal(t, "degraded", *resp.Msg.ServiceQuality)
 }
 
+func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
+	t.Run("article with link", func(t *testing.T) {
+		refID := uuid.New()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:      "article:" + refID.String(),
+			ItemType:     "article",
+			PrimaryRefID: &refID,
+			Title:        "Article with Link",
+			Score:        0.9,
+			Link:         "https://example.com/article",
+			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		assert.Equal(t, "https://example.com/article", proto.Link)
+		require.NotNil(t, proto.ArticleId)
+		assert.Equal(t, refID.String(), *proto.ArticleId)
+	})
+
+	t.Run("article without link", func(t *testing.T) {
+		refID := uuid.New()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:      "article:" + refID.String(),
+			ItemType:     "article",
+			PrimaryRefID: &refID,
+			Title:        "Article without Link",
+			Score:        0.8,
+			Link:         "",
+			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
+		}
+		proto := convertHomeItemToProto(item)
+		assert.Empty(t, proto.Link)
+	})
+
+	t.Run("recap anchor has no link", func(t *testing.T) {
+		refID := uuid.New()
+		item := domain.KnowledgeHomeItem{
+			ItemKey:      "recap:" + refID.String(),
+			ItemType:     "recap_anchor",
+			PrimaryRefID: &refID,
+			Title:        "Weekly Recap",
+			Score:        0.7,
+			WhyReasons:   []domain.WhyReason{{Code: "in_weekly_recap"}},
+		}
+		proto := convertHomeItemToProto(item)
+		assert.Empty(t, proto.Link)
+		require.NotNil(t, proto.RecapId)
+	})
+}
+
 func TestHandler_TrackHomeAction_Validation(t *testing.T) {
 	logger.InitLogger()
 	handler, _, _ := setupHandler()
