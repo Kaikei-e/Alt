@@ -51,7 +51,11 @@ func (r *AltDBRepository) UpsertTodayDigest(ctx context.Context, digest domain.T
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.UpsertTodayDigest")
 	defer span.End()
 
-	topTagsJSON, _ := json.Marshal(digest.TopTags)
+	topTags := digest.TopTags
+	if topTags == nil {
+		topTags = []string{}
+	}
+	topTagsJSON, _ := json.Marshal(topTags)
 	pulseRefsJSON := []byte("[]")
 
 	query := `INSERT INTO today_digest_view
@@ -61,7 +65,7 @@ func (r *AltDBRepository) UpsertTodayDigest(ctx context.Context, digest domain.T
 		ON CONFLICT (user_id, digest_date) DO UPDATE SET
 		 new_articles = today_digest_view.new_articles + EXCLUDED.new_articles,
 		 summarized_articles = today_digest_view.summarized_articles + EXCLUDED.summarized_articles,
-		 unsummarized_articles = CASE WHEN EXCLUDED.unsummarized_articles > 0 THEN EXCLUDED.unsummarized_articles ELSE today_digest_view.unsummarized_articles END,
+		 unsummarized_articles = GREATEST(0, today_digest_view.unsummarized_articles + EXCLUDED.unsummarized_articles),
 		 top_tags_json = CASE WHEN EXCLUDED.top_tags_json != '[]'::jsonb THEN EXCLUDED.top_tags_json ELSE today_digest_view.top_tags_json END,
 		 pulse_refs_json = CASE WHEN EXCLUDED.pulse_refs_json != '[]'::jsonb THEN EXCLUDED.pulse_refs_json ELSE today_digest_view.pulse_refs_json END,
 		 updated_at = EXCLUDED.updated_at`

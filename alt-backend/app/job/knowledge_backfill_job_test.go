@@ -96,3 +96,15 @@ func TestProcessBackfillBatch_CompletesWhenNoArticlesRemain(t *testing.T) {
 	require.Len(t, updatePort.updated, 1)
 	assert.Equal(t, domain.BackfillStatusCompleted, updatePort.updated[0].Status)
 }
+
+func TestGenerateBackfillEvent_UsesCanonicalArticleCreatedDedupeKey(t *testing.T) {
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+	publishedAt := time.Date(2026, 3, 18, 9, 0, 0, 0, time.UTC)
+
+	event := GenerateBackfillEvent(tenantID, &userID, articleID, "Backfilled Article", publishedAt)
+
+	assert.Equal(t, "article-created:"+articleID.String(), event.DedupeKey)
+	assert.Equal(t, articleID.String(), event.AggregateID)
+}

@@ -7,6 +7,7 @@ import (
 	"alt/usecase/track_home_seen_usecase"
 	"alt/utils/logger"
 	"context"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -184,6 +185,8 @@ func TestHandler_GetKnowledgeHome_FlagEnabled(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, resp.Msg.Items, 1)
 	assert.True(t, resp.Msg.HasMore)
+	require.NotNil(t, resp.Msg.ServiceQuality)
+	assert.Equal(t, "full", *resp.Msg.ServiceQuality)
 }
 
 func TestHandler_GetKnowledgeHome_NilFlagPort(t *testing.T) {
@@ -284,6 +287,21 @@ func TestHandler_GetKnowledgeHome_NeedToKnowCount(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, int32(2), resp.Msg.TodayDigest.NeedToKnowCount, "Should count 2 items with pulse_need_to_know why code")
+}
+
+func TestHandler_GetKnowledgeHome_ServiceQualityDegraded(t *testing.T) {
+	logger.InitLogger()
+	handler, _, digestPort := setupHandler()
+	digestPort.err = errors.New("digest unavailable")
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Msg.ServiceQuality)
+	assert.True(t, resp.Msg.DegradedMode)
+	assert.Equal(t, "degraded", *resp.Msg.ServiceQuality)
 }
 
 func TestHandler_TrackHomeAction_Validation(t *testing.T) {

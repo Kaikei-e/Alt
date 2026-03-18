@@ -208,10 +208,11 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 	// Update today digest: increment new_articles
 	if todayDigestPort != nil {
 		digest := domain.TodayDigest{
-			UserID:      userID,
-			DigestDate:  now,
-			NewArticles: 1,
-			UpdatedAt:   now,
+			UserID:               userID,
+			DigestDate:           now,
+			NewArticles:          1,
+			UnsummarizedArticles: 1,
+			UpdatedAt:            now,
 		}
 		if err := todayDigestPort.UpsertTodayDigest(ctx, digest); err != nil {
 			logger.Logger.ErrorContext(ctx, "failed to update today digest for ArticleCreated", "error", err)
@@ -288,11 +289,19 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 
 	// Update today digest: increment summarized_articles
 	if todayDigestPort != nil {
+		summarizedArticles := 0
+		unsummarizedDelta := 0
+		if summaryState == domain.SummaryStateReady {
+			summarizedArticles = 1
+			unsummarizedDelta = -1
+		}
+
 		digest := domain.TodayDigest{
-			UserID:              userID,
-			DigestDate:          now,
-			SummarizedArticles:  1,
-			UpdatedAt:           now,
+			UserID:               userID,
+			DigestDate:           now,
+			SummarizedArticles:   summarizedArticles,
+			UnsummarizedArticles: unsummarizedDelta,
+			UpdatedAt:            now,
 		}
 		if err := todayDigestPort.UpsertTodayDigest(ctx, digest); err != nil {
 			logger.Logger.ErrorContext(ctx, "failed to update today digest for SummaryVersionCreated", "error", err)

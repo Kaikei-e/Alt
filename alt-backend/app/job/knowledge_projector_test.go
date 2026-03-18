@@ -364,6 +364,7 @@ func TestKnowledgeProjectorJob_ArticleCreated_UpdatesTodayDigest(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, digestPort.upserted, 1, "ArticleCreated should update today digest")
 	assert.Equal(t, 1, digestPort.upserted[0].NewArticles)
+	assert.Equal(t, 1, digestPort.upserted[0].UnsummarizedArticles)
 }
 
 func TestKnowledgeProjectorJob_SummaryVersionCreated_UpdatesTodayDigest(t *testing.T) {
@@ -399,6 +400,7 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_UpdatesTodayDigest(t *testi
 	require.NoError(t, err)
 	require.Len(t, digestPort.upserted, 1, "SummaryVersionCreated should update today digest")
 	assert.Equal(t, 1, digestPort.upserted[0].SummarizedArticles)
+	assert.Equal(t, -1, digestPort.upserted[0].UnsummarizedArticles)
 }
 
 func TestKnowledgeProjectorJob_HomeItemOpened_CreatesRecallCandidate(t *testing.T) {
@@ -524,6 +526,8 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_EmptySummary_SetsPending(t 
 	require.NoError(t, err)
 	require.Len(t, homeItemsPort.upserted, 1)
 	assert.Equal(t, domain.SummaryStatePending, homeItemsPort.upserted[0].SummaryState, "SummaryVersionCreated with empty text should set summary_state to pending")
+	require.Len(t, digestPort.upserted, 1)
+	assert.Equal(t, 0, digestPort.upserted[0].UnsummarizedArticles, "empty summaries must not reduce pending count")
 }
 
 func TestKnowledgeProjectorJob_UsesActiveVersion(t *testing.T) {

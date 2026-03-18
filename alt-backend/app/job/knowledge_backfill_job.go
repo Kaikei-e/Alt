@@ -131,7 +131,7 @@ func GenerateBackfillEvent(tenantID uuid.UUID, userID *uuid.UUID, articleID uuid
 		EventType:     domain.EventArticleCreated,
 		AggregateType: domain.AggregateArticle,
 		AggregateID:   articleID.String(),
-		DedupeKey:     fmt.Sprintf("backfill:%s", articleID),
+		DedupeKey:     fmt.Sprintf("article-created:%s", articleID),
 		Payload:       payload,
 	}
 }
