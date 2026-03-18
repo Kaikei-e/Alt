@@ -110,9 +110,30 @@
 	--color-sidebar-border: var(--sidebar-border);
 	--color-sidebar-ring: var(--sidebar-ring);
 
-	body {
-		@apply bg-background text-foreground;
-	}
+	/* Alt Design System Colors */
+	--color-alt-pink: var(--alt-pink);
+	--color-alt-purple: var(--alt-purple);
+	--color-alt-blue: var(--alt-blue);
+	--color-alt-terracotta: var(--alt-terracotta);
+	--color-alt-sage: var(--alt-sage);
+	--color-alt-sand: var(--alt-sand);
+	--color-alt-charcoal: var(--alt-charcoal);
+	--color-alt-slate: var(--alt-slate);
+	--color-alt-ash: var(--alt-ash);
+	--color-alt-primary: var(--alt-primary);
+	--color-alt-secondary: var(--alt-secondary);
+	--color-alt-tertiary: var(--alt-tertiary);
+	--color-alt-success: var(--alt-success);
+	--color-alt-error: var(--alt-error);
+	--color-alt-warning: var(--alt-warning);
+	--color-alt-glass: var(--alt-glass);
+
+	--color-text-primary: var(--text-primary);
+	--color-text-secondary: var(--text-secondary);
+	--color-text-muted: var(--text-muted);
+	--color-surface-bg: var(--surface-bg);
+	--color-surface-border: var(--surface-border);
+	--color-surface-hover: var(--surface-hover);
 }
 
 /* --- Base Brand Colors (Vaporwave) --- */
@@ -240,8 +261,8 @@
 	--alt-secondary: #696969;
 	--alt-tertiary: #808080;
 
-	--surface-bg: #dedede;
-	--surface-border: #e0e0e0;
+	--surface-bg: #ffffff;
+	--surface-border: #c8c8c8;
 	--surface-hover: #f8f8f8;
 	--surface-blur: 0px;
 
@@ -251,7 +272,7 @@
 	--alt-glass-blur: 0px;
 	--alt-glass-shadow: rgba(0, 0, 0, 0.08);
 
-	--app-bg: #e4e3e3;
+	--app-bg: #ffffff;
 	--accent-gradient: linear-gradient(
 		135deg,
 		var(--alt-primary) 0%,
@@ -294,5 +315,8 @@
 @layer base {
 	* {
 		@apply border-border outline-ring/50;
+	}
+	body {
+		@apply bg-background text-foreground;
 	}
 }
