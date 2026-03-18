@@ -13,9 +13,10 @@ let isFetching = $state(false);
 let articleContent = $state<string | null>(null);
 let fetchedArticleId = $state<string | null>(null);
 let contentError = $state<string | null>(null);
+let previousUrl = $state<string | null>(null);
 
 async function fetchContent() {
-	if (!articleUrl || isFetching) return;
+	if (!articleUrl) return;
 
 	isFetching = true;
 	contentError = null;
@@ -32,8 +33,20 @@ async function fetchContent() {
 	}
 }
 
+// Reset state when articleUrl changes
 $effect(() => {
-	if (articleUrl) {
+	if (articleUrl !== previousUrl) {
+		previousUrl = articleUrl;
+		articleContent = null;
+		fetchedArticleId = null;
+		contentError = null;
+		isFetching = false;
+	}
+});
+
+// Fetch content only when idle and no result/error yet
+$effect(() => {
+	if (articleUrl && !articleContent && !isFetching && !contentError) {
 		fetchContent();
 	}
 });
