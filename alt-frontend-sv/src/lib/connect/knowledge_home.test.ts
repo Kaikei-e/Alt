@@ -66,6 +66,8 @@ describe("knowledge_home client", () => {
 					weeklyRecapAvailable: true,
 					eveningPulseAvailable: false,
 					needToKnowCount: 3,
+					digestFreshness: "fresh",
+					lastProjectedAt: "2026-03-17T10:00:00Z",
 				},
 				items: [
 					{
@@ -107,6 +109,8 @@ describe("knowledge_home client", () => {
 			expect(result.digest!.newArticles).toBe(42);
 			expect(result.digest!.topTags).toEqual(["AI", "Go"]);
 			expect(result.digest!.needToKnowCount).toBe(3);
+			expect(result.digest!.digestFreshness).toBe("fresh");
+			expect(result.digest!.lastProjectedAt).toBe("2026-03-17T10:00:00Z");
 			expect(result.nextCursor).toBe("cursor-abc");
 			expect(result.hasMore).toBe(true);
 			expect(result.degraded).toBe(false);

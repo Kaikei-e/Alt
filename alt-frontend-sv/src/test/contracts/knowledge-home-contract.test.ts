@@ -16,6 +16,7 @@ import {
 	RecallCandidateSchema,
 	LensVersionSchema,
 	ListLensesResponseSchema,
+	TodayDigestSchema,
 } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_pb";
 
 describe("Knowledge Home API Contract", () => {
@@ -30,6 +31,8 @@ describe("Knowledge Home API Contract", () => {
 					topTags: ["AI", "Rust"],
 					weeklyRecapAvailable: true,
 					eveningPulseAvailable: false,
+					digestFreshness: "fresh",
+					lastProjectedAt: "2026-03-18T12:00:00Z",
 				},
 				items: [
 					{
@@ -53,6 +56,8 @@ describe("Knowledge Home API Contract", () => {
 			});
 
 			expect(response.todayDigest).toBeDefined();
+			expect(response.todayDigest?.digestFreshness).toBe("fresh");
+			expect(response.todayDigest?.lastProjectedAt).toBe("2026-03-18T12:00:00Z");
 			expect(response.items).toHaveLength(1);
 			expect(response.items[0].itemKey).toBe("article:123");
 			expect(response.generatedAt).toBeTruthy();
@@ -300,6 +305,49 @@ describe("Knowledge Home API Contract", () => {
 			expect(candidate.reasons).toHaveLength(1);
 			expect(candidate.item).toBeDefined();
 			expect(candidate.item?.title).toBe("Recalled Article");
+		});
+	});
+
+	describe("TodayDigest freshness fields", () => {
+		it("supports digest_freshness and last_projected_at fields", () => {
+			const digest = create(TodayDigestSchema, {
+				date: "2026-03-18",
+				newArticles: 5,
+				summarizedArticles: 3,
+				unsummarizedArticles: 2,
+				topTags: ["AI"],
+				digestFreshness: "fresh",
+				lastProjectedAt: "2026-03-18T12:00:00Z",
+			});
+
+			expect(digest.digestFreshness).toBe("fresh");
+			expect(digest.lastProjectedAt).toBe("2026-03-18T12:00:00Z");
+		});
+
+		it("validates all freshness states", () => {
+			for (const state of ["fresh", "stale", "unknown"]) {
+				const digest = create(TodayDigestSchema, {
+					date: "2026-03-18",
+					digestFreshness: state,
+				});
+				expect(digest.digestFreshness).toBe(state);
+			}
+		});
+
+		it("round-trips freshness fields through serialization", () => {
+			const original = create(TodayDigestSchema, {
+				date: "2026-03-18",
+				digestFreshness: "stale",
+				lastProjectedAt: "2026-03-18T11:50:00Z",
+				needToKnowCount: 7,
+			});
+
+			const binary = toBinary(TodayDigestSchema, original);
+			const deserialized = fromBinary(TodayDigestSchema, binary);
+
+			expect(deserialized.digestFreshness).toBe("stale");
+			expect(deserialized.lastProjectedAt).toBe("2026-03-18T11:50:00Z");
+			expect(deserialized.needToKnowCount).toBe(7);
 		});
 	});
 });

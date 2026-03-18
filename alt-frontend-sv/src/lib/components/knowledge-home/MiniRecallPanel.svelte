@@ -1,7 +1,5 @@
 <script lang="ts">
 import {
-	CalendarRange,
-	Activity,
 	Newspaper,
 	BirdIcon,
 	Shuffle,
@@ -40,7 +38,7 @@ const { digest }: Props = $props();
 			</div>
 		{/if}
 
-		<!-- Quick Links -->
+		<!-- Quick Links (navigation only, no digest-dependent conditionals) -->
 		<div class="p-4">
 			<h3
 				class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2"
@@ -55,24 +53,6 @@ const { digest }: Props = $props();
 					<Newspaper class="h-4 w-4" />
 					Morning Letter
 				</a>
-				{#if digest.weeklyRecapAvailable}
-					<a
-						href="/recap"
-						class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[var(--interactive-text)] hover:bg-[var(--action-surface)] hover:text-[var(--interactive-text-hover)] transition-colors"
-					>
-						<CalendarRange class="h-4 w-4" />
-						View Recap
-					</a>
-				{/if}
-				{#if digest.eveningPulseAvailable}
-					<a
-						href="/recap/evening-pulse"
-						class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[var(--interactive-text)] hover:bg-[var(--action-surface)] hover:text-[var(--interactive-text-hover)] transition-colors"
-					>
-						<Activity class="h-4 w-4" />
-						Evening Pulse
-					</a>
-				{/if}
 				<a
 					href="/augur"
 					class="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-[var(--interactive-text)] hover:bg-[var(--action-surface)] hover:text-[var(--interactive-text-hover)] transition-colors"

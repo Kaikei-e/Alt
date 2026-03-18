@@ -6,6 +6,7 @@ import {
 	CalendarRange,
 	Activity,
 	Sparkles,
+	Clock,
 } from "@lucide/svelte";
 import type { TodayDigestData } from "$lib/connect/knowledge_home";
 
@@ -49,6 +50,7 @@ const { digest }: Props = $props();
 			{:else}
 				<span
 					class="inline-flex cursor-default items-center gap-1.5 rounded-md border border-[var(--surface-border)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)]/55"
+					title="No pulse content available today"
 				>
 					<Activity class="h-3.5 w-3.5" />
 					Pulse
@@ -66,9 +68,20 @@ const { digest }: Props = $props();
 			{:else}
 				<span
 					class="inline-flex cursor-default items-center gap-1.5 rounded-md border border-[var(--surface-border)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)]/55"
+					title="No recap available today"
 				>
 					<CalendarRange class="h-3.5 w-3.5" />
 					Recap
+				</span>
+			{/if}
+
+			{#if digest.digestFreshness === "stale"}
+				<span
+					class="inline-flex items-center gap-1 ml-auto text-xs text-amber-400"
+					title="Data may be outdated"
+				>
+					<Clock class="h-3 w-3" />
+					Stale
 				</span>
 			{/if}
 		</div>

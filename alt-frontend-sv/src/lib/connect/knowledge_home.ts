@@ -28,6 +28,9 @@ export interface WhyReasonData {
 	tag?: string;
 }
 
+/** Digest freshness indicator */
+export type DigestFreshness = "fresh" | "stale" | "unknown";
+
 /** Today's digest summary */
 export interface TodayDigestData {
 	date: string;
@@ -38,6 +41,8 @@ export interface TodayDigestData {
 	weeklyRecapAvailable: boolean;
 	eveningPulseAvailable: boolean;
 	needToKnowCount: number;
+	digestFreshness: DigestFreshness;
+	lastProjectedAt: string | null;
 }
 
 /** Service quality level returned by Knowledge Home API */
@@ -170,6 +175,8 @@ function convertDigest(proto: ProtoTodayDigest): TodayDigestData {
 		weeklyRecapAvailable: proto.weeklyRecapAvailable,
 		eveningPulseAvailable: proto.eveningPulseAvailable,
 		needToKnowCount: proto.needToKnowCount,
+		digestFreshness: (proto.digestFreshness || "unknown") as DigestFreshness,
+		lastProjectedAt: proto.lastProjectedAt || null,
 	};
 }
 

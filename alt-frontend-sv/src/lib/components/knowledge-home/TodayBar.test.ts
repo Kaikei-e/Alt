@@ -16,6 +16,8 @@ function makeDigest(overrides: Partial<TodayDigestData> = {}): TodayDigestData {
 		weeklyRecapAvailable: true,
 		eveningPulseAvailable: false,
 		needToKnowCount: 0,
+		digestFreshness: "fresh",
+		lastProjectedAt: null,
 		...overrides,
 	};
 }
@@ -92,5 +94,40 @@ describe("TodayBar data", () => {
 		});
 		expect(digest.eveningPulseAvailable).toBe(true);
 		expect(digest.needToKnowCount).toBe(5);
+	});
+
+	it("digestFreshness defaults to fresh", () => {
+		const digest = makeDigest();
+		expect(digest.digestFreshness).toBe("fresh");
+	});
+
+	it("supports stale freshness state", () => {
+		const digest = makeDigest({ digestFreshness: "stale" });
+		expect(digest.digestFreshness).toBe("stale");
+	});
+
+	it("supports unknown freshness state", () => {
+		const digest = makeDigest({ digestFreshness: "unknown" });
+		expect(digest.digestFreshness).toBe("unknown");
+	});
+
+	it("stale does not override availability", () => {
+		const digest = makeDigest({
+			digestFreshness: "stale",
+			weeklyRecapAvailable: true,
+			eveningPulseAvailable: true,
+		});
+		// Stale indicator is separate from CTA activity
+		expect(digest.weeklyRecapAvailable).toBe(true);
+		expect(digest.eveningPulseAvailable).toBe(true);
+		expect(digest.digestFreshness).toBe("stale");
+	});
+
+	it("lastProjectedAt is nullable", () => {
+		const digest = makeDigest({ lastProjectedAt: null });
+		expect(digest.lastProjectedAt).toBeNull();
+
+		const withTime = makeDigest({ lastProjectedAt: "2026-03-18T12:00:00Z" });
+		expect(withTime.lastProjectedAt).toBe("2026-03-18T12:00:00Z");
 	});
 });
