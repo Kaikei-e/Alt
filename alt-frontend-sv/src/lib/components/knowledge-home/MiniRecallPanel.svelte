@@ -1,5 +1,12 @@
 <script lang="ts">
-import { CalendarRange, Activity } from "@lucide/svelte";
+import {
+	CalendarRange,
+	Activity,
+	Newspaper,
+	BirdIcon,
+	Shuffle,
+	Orbit,
+} from "@lucide/svelte";
 import type { TodayDigestData } from "$lib/connect/knowledge_home";
 
 interface Props {
@@ -11,16 +18,16 @@ const { digest }: Props = $props();
 
 {#if digest}
 	<aside
-		class="border rounded-lg p-4 bg-[var(--surface-bg)] border-[var(--surface-border)]"
+		class="border rounded-lg bg-[var(--surface-bg)] border-[var(--surface-border)] divide-y divide-[var(--surface-border)]"
 	>
-		<h3 class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
-			Quick Access
-		</h3>
-
 		<!-- Top Tags -->
 		{#if digest.topTags.length > 0}
-			<div class="mb-4">
-				<p class="text-xs text-[var(--text-secondary)] mb-2">Top Tags</p>
+			<div class="p-4">
+				<h3
+					class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2"
+				>
+					Today's Tags
+				</h3>
 				<div class="flex flex-wrap gap-1">
 					{#each digest.topTags as tag}
 						<span
@@ -33,26 +40,72 @@ const { digest }: Props = $props();
 			</div>
 		{/if}
 
-		<!-- Shortcuts -->
-		<div class="flex flex-col gap-1">
-			{#if digest.weeklyRecapAvailable}
+		<!-- Quick Links -->
+		<div class="p-4">
+			<h3
+				class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2"
+			>
+				Quick Links
+			</h3>
+			<div class="flex flex-col gap-0.5">
 				<a
-					href="/recap"
+					href="/recap/morning-letter"
 					class="flex items-center gap-2 px-3 py-2 text-sm rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
 				>
-					<CalendarRange class="h-4 w-4" />
-					View Recap
+					<Newspaper class="h-4 w-4" />
+					Morning Letter
 				</a>
-			{/if}
-			{#if digest.eveningPulseAvailable}
+				{#if digest.weeklyRecapAvailable}
+					<a
+						href="/recap"
+						class="flex items-center gap-2 px-3 py-2 text-sm rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+					>
+						<CalendarRange class="h-4 w-4" />
+						View Recap
+					</a>
+				{/if}
+				{#if digest.eveningPulseAvailable}
+					<a
+						href="/recap/evening-pulse"
+						class="flex items-center gap-2 px-3 py-2 text-sm rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+					>
+						<Activity class="h-4 w-4" />
+						Evening Pulse
+					</a>
+				{/if}
 				<a
-					href="/recap/evening-pulse"
+					href="/augur"
 					class="flex items-center gap-2 px-3 py-2 text-sm rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
 				>
-					<Activity class="h-4 w-4" />
-					Evening Pulse
+					<BirdIcon class="h-4 w-4" />
+					Ask Augur
 				</a>
-			{/if}
+			</div>
+		</div>
+
+		<!-- Explore -->
+		<div class="p-4">
+			<h3
+				class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2"
+			>
+				Explore
+			</h3>
+			<div class="flex flex-col gap-0.5">
+				<a
+					href="/feeds/tag-trail"
+					class="flex items-center gap-2 px-3 py-2 text-sm rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+				>
+					<Shuffle class="h-4 w-4" />
+					Tag Trail
+				</a>
+				<a
+					href="/feeds/tag-verse"
+					class="flex items-center gap-2 px-3 py-2 text-sm rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] transition-colors"
+				>
+					<Orbit class="h-4 w-4" />
+					Tag Verse
+				</a>
+			</div>
 		</div>
 	</aside>
 {/if}

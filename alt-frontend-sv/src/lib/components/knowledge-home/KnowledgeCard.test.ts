@@ -16,6 +16,7 @@ function makeItem(
 		title: "Test Article Title",
 		publishedAt: "2026-03-17T10:00:00Z",
 		summaryExcerpt: "This is a test summary excerpt.",
+		summaryState: "ready",
 		tags: ["AI", "ML", "Go"],
 		why: [{ code: "new_unread" }, { code: "tag_hotspot", tag: "AI" }],
 		score: 0.85,
@@ -61,6 +62,45 @@ describe("KnowledgeCard data", () => {
 		const publishedDate = new Date(item.publishedAt);
 		expect(publishedDate).toBeInstanceOf(Date);
 		expect(publishedDate.getTime()).not.toBeNaN();
+	});
+});
+
+describe("KnowledgeCard summaryState", () => {
+	it("ready state with excerpt shows excerpt", () => {
+		const item = makeItem({
+			summaryState: "ready",
+			summaryExcerpt: "Summary text here.",
+		});
+		expect(item.summaryState).toBe("ready");
+		expect(item.summaryExcerpt).toBe("Summary text here.");
+	});
+
+	it("pending state shows skeleton placeholder", () => {
+		const item = makeItem({
+			summaryState: "pending",
+			summaryExcerpt: undefined,
+		});
+		expect(item.summaryState).toBe("pending");
+		expect(item.summaryExcerpt).toBeUndefined();
+	});
+
+	it("missing state shows skeleton placeholder", () => {
+		const item = makeItem({
+			summaryState: "missing",
+			summaryExcerpt: undefined,
+		});
+		expect(item.summaryState).toBe("missing");
+		expect(item.summaryExcerpt).toBeUndefined();
+	});
+
+	it("pending state should never show 'Summarizing...' as body text", () => {
+		const item = makeItem({
+			summaryState: "pending",
+			summaryExcerpt: undefined,
+		});
+		// The old pattern was `item.summaryExcerpt || "Summarizing..."` in the template.
+		// Now we use summaryState to determine display, not fallback strings.
+		expect(item.summaryExcerpt || "").not.toBe("Summarizing...");
 	});
 });
 

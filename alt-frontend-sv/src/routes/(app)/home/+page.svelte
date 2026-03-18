@@ -10,6 +10,7 @@ import { useLens } from "$lib/hooks/useLens.svelte";
 
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
+import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.svelte";
 import KnowledgeStream from "$lib/components/knowledge-home/KnowledgeStream.svelte";
 import MiniRecallPanel from "$lib/components/knowledge-home/MiniRecallPanel.svelte";
 import RecallRail from "$lib/components/knowledge-home/recall-rail/RecallRail.svelte";
@@ -104,6 +105,7 @@ onMount(async () => {
 	{/if}
 
 	<TodayBar digest={home.digest} />
+	<UnifiedIntentBox />
 
 	{#if lensEnabled}
 		<div class="mt-3">
@@ -150,6 +152,7 @@ onMount(async () => {
 		{/if}
 
 		<TodayBar digest={home.digest} />
+		<UnifiedIntentBox />
 
 		{#if recallEnabled}
 			<div class="px-3 pt-2">

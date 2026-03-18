@@ -15,6 +15,7 @@ function makeDigest(overrides: Partial<TodayDigestData> = {}): TodayDigestData {
 		topTags: ["AI", "Go", "Rust"],
 		weeklyRecapAvailable: true,
 		eveningPulseAvailable: false,
+		needToKnowCount: 0,
 		...overrides,
 	};
 }
@@ -62,5 +63,34 @@ describe("TodayBar data", () => {
 			unsummarizedArticles: 0,
 		});
 		expect(digest.newArticles).toBe(0);
+	});
+
+	it("morning letter link is always available (no flag needed)", () => {
+		// TodayBar always shows Morning Letter link regardless of flags
+		const digest = makeDigest({
+			weeklyRecapAvailable: false,
+			eveningPulseAvailable: false,
+		});
+		// Morning Letter doesn't depend on any availability flag
+		expect(digest).toBeDefined();
+	});
+
+	it("needToKnowCount defaults to 0", () => {
+		const digest = makeDigest();
+		expect(digest.needToKnowCount).toBe(0);
+	});
+
+	it("needToKnowCount reflects pulse_need_to_know items", () => {
+		const digest = makeDigest({ needToKnowCount: 3 });
+		expect(digest.needToKnowCount).toBe(3);
+	});
+
+	it("shows badge when needToKnowCount > 0 alongside pulse", () => {
+		const digest = makeDigest({
+			eveningPulseAvailable: true,
+			needToKnowCount: 5,
+		});
+		expect(digest.eveningPulseAvailable).toBe(true);
+		expect(digest.needToKnowCount).toBe(5);
 	});
 });

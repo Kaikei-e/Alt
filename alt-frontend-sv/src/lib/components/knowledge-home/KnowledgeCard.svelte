@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
 import WhySurfacedBadge from "./WhySurfacedBadge.svelte";
+import SummaryStateChip from "./SummaryStateChip.svelte";
 import QuickActionRow from "./QuickActionRow.svelte";
 
 interface Props {
@@ -53,43 +54,57 @@ function handleAction(type: string) {
 		</time>
 	</div>
 
-	<!-- Why Badges -->
-	{#if displayReasons.length > 0}
-		<div class="flex flex-wrap gap-1 mb-2">
+	<!-- Why Badges + SummaryStateChip -->
+	{#if displayReasons.length > 0 || item.summaryState === "pending"}
+		<div class="flex flex-wrap items-center gap-1 mb-2">
 			{#each displayReasons as reason}
 				<WhySurfacedBadge {reason} />
 			{/each}
+			<SummaryStateChip state={item.summaryState} />
 		</div>
 	{/if}
 
-	<!-- Summary Excerpt -->
-	<p class="text-xs text-[var(--text-secondary)] line-clamp-2 mb-2">
-		{item.summaryExcerpt || "Summarizing..."}
-	</p>
-
-	<!-- Tags -->
-	{#if displayTags.length > 0}
-		<div class="flex flex-wrap gap-1 mb-3">
-			{#each displayTags as tag}
-				<span
-					class="px-1.5 py-0.5 text-xs rounded bg-[var(--surface-hover)] text-[var(--text-secondary)]"
-				>
-					{tag}
-				</span>
-			{/each}
-			{#if remainingTagCount > 0}
-				<span class="px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
-					+{remainingTagCount}
-				</span>
-			{/if}
+	<!-- Summary Excerpt or Skeleton -->
+	{#if item.summaryState === "ready" && item.summaryExcerpt}
+		<p class="text-xs text-[var(--text-secondary)] line-clamp-2 mb-2">
+			{item.summaryExcerpt}
+		</p>
+	{:else if item.summaryState === "pending" || item.summaryState === "missing"}
+		<div class="space-y-1 mb-2">
+			<div class="h-3 w-full rounded bg-[var(--surface-hover)] animate-pulse"></div>
+			<div class="h-3 w-2/3 rounded bg-[var(--surface-hover)] animate-pulse"></div>
 		</div>
+	{:else}
+		<p class="text-xs text-[var(--text-secondary)] line-clamp-2 mb-2">
+			{item.summaryExcerpt}
+		</p>
 	{/if}
 
-	<!-- Actions -->
-	<QuickActionRow
-		itemKey={item.itemKey}
-		itemType={item.itemType}
-		articleId={item.articleId}
-		onAction={handleAction}
-	/>
+	<!-- Bottom Row: Tags (left) + Actions (right) -->
+	<div class="flex items-center justify-between gap-2">
+		{#if displayTags.length > 0}
+			<div class="flex flex-wrap gap-1 min-w-0">
+				{#each displayTags as tag}
+					<span
+						class="px-1.5 py-0.5 text-xs rounded bg-[var(--surface-hover)] text-[var(--text-secondary)]"
+					>
+						{tag}
+					</span>
+				{/each}
+				{#if remainingTagCount > 0}
+					<span class="px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
+						+{remainingTagCount}
+					</span>
+				{/if}
+			</div>
+		{:else}
+			<div></div>
+		{/if}
+		<QuickActionRow
+			itemKey={item.itemKey}
+			itemType={item.itemType}
+			articleId={item.articleId}
+			onAction={handleAction}
+		/>
+	</div>
 </article>
