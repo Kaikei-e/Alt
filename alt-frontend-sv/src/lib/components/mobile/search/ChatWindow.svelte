@@ -242,7 +242,7 @@ const handleSubmit = async () => {
                         {/if}
                     </span>
                 {:else}
-                <div class="text-foreground">
+                <div>
                     {#if message.role === 'assistant'}
                         {@html parseMarkdown(message.content)}
                     {:else}
