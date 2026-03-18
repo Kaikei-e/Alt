@@ -95,7 +95,14 @@ export async function startKnowledgeHomeReproject(
 	rangeEnd?: string,
 ) {
 	const transport = createBffTransport(backendToken);
-	return startReproject(transport, mode, fromVersion, toVersion, rangeStart, rangeEnd);
+	return startReproject(
+		transport,
+		mode,
+		fromVersion,
+		toVersion,
+		rangeStart,
+		rangeEnd,
+	);
 }
 
 export async function compareKnowledgeHomeReproject(

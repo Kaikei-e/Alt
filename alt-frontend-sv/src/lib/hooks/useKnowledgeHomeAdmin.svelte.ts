@@ -68,21 +68,21 @@ export function useKnowledgeHomeAdmin(
 		}
 
 		inFlight = (async () => {
-		try {
-			refreshing = true;
-			const snapshot = await fetcher();
-			health = snapshot.health;
-			flags = snapshot.flags;
-			sloStatus = snapshot.sloStatus;
-			reprojectRuns = snapshot.reprojectRuns;
-			error = null;
-			lastUpdatedAt = new Date();
-		} catch (err) {
-			error = err instanceof Error ? err : new Error("Unknown error");
-		} finally {
-			refreshing = false;
-			inFlight = null;
-		}
+			try {
+				refreshing = true;
+				const snapshot = await fetcher();
+				health = snapshot.health;
+				flags = snapshot.flags;
+				sloStatus = snapshot.sloStatus;
+				reprojectRuns = snapshot.reprojectRuns;
+				error = null;
+				lastUpdatedAt = new Date();
+			} catch (err) {
+				error = err instanceof Error ? err : new Error("Unknown error");
+			} finally {
+				refreshing = false;
+				inFlight = null;
+			}
 		})();
 
 		return inFlight;

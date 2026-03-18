@@ -1,4 +1,6 @@
 <script lang="ts">
+import { onMount } from "svelte";
+import { page } from "$app/state";
 import { useViewport } from "$lib/stores/viewport.svelte";
 
 // Desktop components & deps
@@ -17,10 +19,13 @@ import SearchFeedsClient from "$lib/components/mobile/search/SearchFeedsClient.s
 
 const { isDesktop } = useViewport();
 
+// --- URL query param ---
+const initialQuery = page.url.searchParams.get("q")?.trim() ?? "";
+
 // --- Desktop state ---
 let selectedFeed = $state<RenderFeed | null>(null);
 let isModalOpen = $state(false);
-let searchQuery = $state("");
+let searchQuery = $state(initialQuery);
 let lastSearchedQuery = $state("");
 
 let feeds = $state<RenderFeed[]>([]);
@@ -112,6 +117,13 @@ function handleKeyDown(event: KeyboardEvent) {
 		handleSearch();
 	}
 }
+
+// Auto-search when navigated with ?q= param (e.g., from Knowledge Home)
+onMount(() => {
+	if (initialQuery) {
+		handleSearch();
+	}
+});
 
 // Navigation state
 let currentIndex = $state(-1);
@@ -258,5 +270,5 @@ async function handleNext() {
 		{currentIndex}
 	/>
 {:else}
-	<SearchFeedsClient />
+	<SearchFeedsClient {initialQuery} />
 {/if}

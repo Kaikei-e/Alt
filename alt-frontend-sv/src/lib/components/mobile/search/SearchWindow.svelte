@@ -1,4 +1,5 @@
 <script lang="ts">
+import { onMount } from "svelte";
 import { Loader } from "@lucide/svelte";
 import * as v from "valibot";
 import { searchFeedsClient } from "$lib/api/client";
@@ -9,6 +10,7 @@ import { transformFeedSearchResult } from "$lib/utils/transformFeedSearchResult"
 
 interface Props {
 	searchQuery: SearchQuery;
+	autoSearch?: boolean;
 	setSearchQuery: (query: SearchQuery) => void;
 	setFeedResults: (results: SearchFeedItem[]) => void;
 	setCursor: (cursor: string | null) => void;
@@ -20,6 +22,7 @@ interface Props {
 
 const {
 	searchQuery,
+	autoSearch = false,
 	setSearchQuery,
 	setFeedResults,
 	setCursor,
@@ -28,6 +31,13 @@ const {
 	setIsLoading,
 	setSearchTime,
 }: Props = $props();
+
+// Auto-trigger search when navigated with a pre-filled query (e.g., from Knowledge Home)
+onMount(() => {
+	if (autoSearch && searchQuery.query?.trim()) {
+		handleSearch();
+	}
+});
 
 let error = $state<string | null>(null);
 let validationError = $state<string | null>(null);

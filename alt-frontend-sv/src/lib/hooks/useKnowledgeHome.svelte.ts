@@ -36,7 +36,12 @@ export function useKnowledgeHome() {
 			error = null;
 			const transport = createClientTransport();
 			const cursor = reset ? undefined : nextCursor || undefined;
-			const result = await getKnowledgeHome(transport, cursor, 20, lensId ?? undefined);
+			const result = await getKnowledgeHome(
+				transport,
+				cursor,
+				20,
+				lensId ?? undefined,
+			);
 			items = result.items;
 			digest = result.digest;
 			hasMore = result.hasMore;
@@ -64,7 +69,12 @@ export function useKnowledgeHome() {
 		try {
 			loading = true;
 			const transport = createClientTransport();
-			const result = await getKnowledgeHome(transport, nextCursor, 20, lensId ?? undefined);
+			const result = await getKnowledgeHome(
+				transport,
+				nextCursor,
+				20,
+				lensId ?? undefined,
+			);
 			items = [...items, ...result.items];
 			hasMore = result.hasMore;
 			nextCursor = result.nextCursor;
@@ -98,7 +108,6 @@ export function useKnowledgeHome() {
 	const dismissItem = (itemKey: string) => {
 		// Optimistic removal
 		items = items.filter((item) => item.itemKey !== itemKey);
-		trackAction("dismiss", itemKey);
 	};
 
 	return {

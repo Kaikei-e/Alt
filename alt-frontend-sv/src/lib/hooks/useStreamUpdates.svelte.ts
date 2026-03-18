@@ -56,7 +56,10 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 	let suspended = false;
 
 	// Multi-tab leader election state
-	const tabId = typeof crypto !== "undefined" ? crypto.randomUUID() : Math.random().toString(36);
+	const tabId =
+		typeof crypto !== "undefined"
+			? crypto.randomUUID()
+			: Math.random().toString(36);
 	let isLeader = false;
 	let channel: BroadcastChannel | null = null;
 	let leaderHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -112,7 +115,7 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 					eventType: event.eventType,
 					occurredAt: event.occurredAt,
 					item: event.item
-						? { itemKey: event.item.itemKey } as StreamHomeUpdate["item"]
+						? ({ itemKey: event.item.itemKey } as StreamHomeUpdate["item"])
 						: undefined,
 					reconnectAfterMs: event.reconnectAfterMs ?? undefined,
 				};

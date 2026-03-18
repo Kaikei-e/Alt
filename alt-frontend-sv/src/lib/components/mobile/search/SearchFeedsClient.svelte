@@ -6,7 +6,12 @@ import FloatingMenu from "../feeds/swipe/FloatingMenu.svelte";
 import SearchResults from "./SearchResults.svelte";
 import SearchWindow from "./SearchWindow.svelte";
 
-let searchQuery = $state<SearchQuery>({ query: "" });
+interface Props {
+	initialQuery?: string;
+}
+const { initialQuery = "" }: Props = $props();
+
+let searchQuery = $state<SearchQuery>({ query: initialQuery });
 let results = $state<SearchFeedItem[]>([]);
 let isLoading = $state(false);
 let searchTime = $state<number | undefined>(undefined);
@@ -53,6 +58,7 @@ onMount(() => {
 		>
 			<SearchWindow
 				{searchQuery}
+				autoSearch={!!initialQuery.trim()}
 				setSearchQuery={(query) => {
 					searchQuery = query;
 				}}

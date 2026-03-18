@@ -36,7 +36,11 @@ export function useLens() {
 		}
 	};
 
-	const create = async (name: string, description: string, version: Omit<LensVersionData, "versionId">) => {
+	const create = async (
+		name: string,
+		description: string,
+		version: Omit<LensVersionData, "versionId">,
+	) => {
 		try {
 			const transport = createClientTransport();
 			const lens = await createLens(transport, name, description, version);
@@ -79,10 +83,18 @@ export function useLens() {
 	};
 
 	return {
-		get lenses() { return lenses; },
-		get activeLensId() { return activeLensId; },
-		get loading() { return loading; },
-		get error() { return error; },
+		get lenses() {
+			return lenses;
+		},
+		get activeLensId() {
+			return activeLensId;
+		},
+		get loading() {
+			return loading;
+		},
+		get error() {
+			return error;
+		},
 		fetchLenses,
 		create,
 		remove,

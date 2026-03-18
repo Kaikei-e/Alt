@@ -62,9 +62,15 @@ export function useRecallRail() {
 	};
 
 	return {
-		get candidates() { return candidates; },
-		get loading() { return loading; },
-		get error() { return error; },
+		get candidates() {
+			return candidates;
+		},
+		get loading() {
+			return loading;
+		},
+		get error() {
+			return error;
+		},
 		fetchCandidates,
 		setCandidates,
 		snooze,

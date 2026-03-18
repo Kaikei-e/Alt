@@ -45,7 +45,9 @@ describe("useKnowledgeHomeAdmin", () => {
 
 	it("sets refreshing state without clearing existing data", async () => {
 		let resolveFetch!: (
-			value: KnowledgeHomeAdminSnapshot | PromiseLike<KnowledgeHomeAdminSnapshot>,
+			value:
+				| KnowledgeHomeAdminSnapshot
+				| PromiseLike<KnowledgeHomeAdminSnapshot>,
 		) => void;
 		const fetcherImpl = () =>
 			new Promise<KnowledgeHomeAdminSnapshot>((resolve) => {
@@ -130,9 +132,9 @@ describe("useKnowledgeHomeAdmin", () => {
 			reprojectRuns: [],
 		};
 		const fetcher = vi.fn().mockResolvedValue(refreshedSnapshot);
-		const actionRunner = vi.fn<
-			(action: KnowledgeHomeAdminActionRequest) => Promise<void>
-		>().mockResolvedValue(undefined);
+		const actionRunner = vi
+			.fn<(action: KnowledgeHomeAdminActionRequest) => Promise<void>>()
+			.mockResolvedValue(undefined);
 
 		const admin = useKnowledgeHomeAdmin(fetcher, actionRunner);
 		admin.seed(initialSnapshot);
@@ -150,9 +152,9 @@ describe("useKnowledgeHomeAdmin", () => {
 
 	it("keeps stale data when a backfill action fails", async () => {
 		const fetcher = vi.fn().mockResolvedValue(initialSnapshot);
-		const actionRunner = vi.fn<
-			(action: KnowledgeHomeAdminActionRequest) => Promise<void>
-		>().mockRejectedValue(new Error("trigger failed"));
+		const actionRunner = vi
+			.fn<(action: KnowledgeHomeAdminActionRequest) => Promise<void>>()
+			.mockRejectedValue(new Error("trigger failed"));
 
 		const admin = useKnowledgeHomeAdmin(fetcher, actionRunner);
 		admin.seed(initialSnapshot);
