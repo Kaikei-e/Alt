@@ -125,6 +125,8 @@ message KnowledgeHomeItem {
   optional SupersedeInfo supersede_info = 11;
   // Summary processing state: missing, pending, ready
   string summary_state = 12;
+  // Original article URL enriched from articles at read time
+  string link = 13;
 }
 
 // WhyReason explains why an item appears in the Knowledge Home.
