@@ -536,7 +536,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	knowledgeProjectionVersionGw := knowledge_projection_version_gateway.NewGateway(altDBRepository)
 	knowledgeLensGw := knowledge_lens_gateway.NewGateway(altDBRepository)
 
-	getKnowledgeHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(knowledgeHomeGw, todayDigestGw, knowledgeLensGw)
+	getKnowledgeHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(knowledgeHomeGw, todayDigestGw, knowledgeLensGw, todayDigestGw, todayDigestGw)
 	trackHomeSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(knowledgeUserEventGw, featureFlagGw)
 	trackHomeActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(knowledgeUserEventGw, knowledgeEventGw, featureFlagGw)
 	appendKnowledgeEventUsecase := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(knowledgeEventGw)

@@ -114,7 +114,7 @@ func setupHandlerWithFlags(flagPort *mockFeatureFlagPort) (*Handler, *mockHomeIt
 	userEventPort := &mockUserEventPort{}
 	knowledgeEventPort := &mockKnowledgeEventPort{}
 
-	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil)
+	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil, nil, nil)
 	trackSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(userEventPort, flagPort)
 	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, flagPort)
 
@@ -247,37 +247,25 @@ func TestHandler_GetKnowledgeHome_SummaryStateMapping(t *testing.T) {
 	assert.Equal(t, "missing", resp.Msg.Items[2].SummaryState)
 }
 
-func TestHandler_GetKnowledgeHome_NeedToKnowCount(t *testing.T) {
+func TestHandler_GetKnowledgeHome_NeedToKnowCountFromDigest(t *testing.T) {
 	logger.InitLogger()
-	handler, homePort, _ := setupHandler()
+	handler, homePort, digestPort := setupHandler()
 
+	// Items have pulse_need_to_know but handler should NOT count them
 	homePort.items = []domain.KnowledgeHomeItem{
 		{
-			ItemKey:  "article:1",
-			ItemType: "article",
-			Title:    "Important Article",
-			Score:    1.0,
-			WhyReasons: []domain.WhyReason{
-				{Code: domain.WhyPulseNeedToKnow},
-				{Code: domain.WhyNewUnread},
-			},
-		},
-		{
-			ItemKey:    "article:2",
+			ItemKey:    "article:1",
 			ItemType:   "article",
-			Title:      "Regular Article",
-			Score:      0.9,
-			WhyReasons: []domain.WhyReason{{Code: domain.WhyNewUnread}},
+			Title:      "Important Article",
+			Score:      1.0,
+			WhyReasons: []domain.WhyReason{{Code: domain.WhyPulseNeedToKnow}},
 		},
-		{
-			ItemKey:  "article:3",
-			ItemType: "article",
-			Title:    "Another Important Article",
-			Score:    0.8,
-			WhyReasons: []domain.WhyReason{
-				{Code: domain.WhyPulseNeedToKnow},
-			},
-		},
+	}
+
+	// Backend-authoritative count set on digest (e.g. via usecase enrichment)
+	digestPort.digest = domain.TodayDigest{
+		NewArticles:     5,
+		NeedToKnowCount: 7,
 	}
 
 	ctx := testUserContext()
@@ -286,7 +274,30 @@ func TestHandler_GetKnowledgeHome_NeedToKnowCount(t *testing.T) {
 	resp, err := handler.GetKnowledgeHome(ctx, req)
 	require.NoError(t, err)
 
-	assert.Equal(t, int32(2), resp.Msg.TodayDigest.NeedToKnowCount, "Should count 2 items with pulse_need_to_know why code")
+	// Should use digest value (7), NOT page-scan count (1)
+	assert.Equal(t, int32(7), resp.Msg.TodayDigest.NeedToKnowCount,
+		"Should use backend-authoritative count from digest, not page scan")
+}
+
+func TestHandler_GetKnowledgeHome_FreshnessMapping(t *testing.T) {
+	logger.InitLogger()
+	handler, _, digestPort := setupHandler()
+
+	projectedAt := time.Now().Add(-2 * time.Minute)
+	digestPort.digest = domain.TodayDigest{
+		NewArticles:     3,
+		DigestFreshness: domain.FreshnessStale,
+		LastProjectedAt: &projectedAt,
+	}
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+
+	assert.Equal(t, "stale", resp.Msg.TodayDigest.DigestFreshness)
+	assert.NotEmpty(t, resp.Msg.TodayDigest.LastProjectedAt)
 }
 
 func TestHandler_GetKnowledgeHome_ServiceQualityDegraded(t *testing.T) {

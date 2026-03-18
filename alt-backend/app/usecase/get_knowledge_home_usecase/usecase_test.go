@@ -46,6 +46,26 @@ func (m *mockTodayDigestPort) GetTodayDigest(_ context.Context, _ uuid.UUID, _ t
 	return m.digest, m.err
 }
 
+// mockProjectionFreshnessPort implements today_digest_port.GetProjectionFreshnessPort.
+type mockProjectionFreshnessPort struct {
+	updatedAt *time.Time
+	err       error
+}
+
+func (m *mockProjectionFreshnessPort) GetProjectionFreshness(_ context.Context, _ string) (*time.Time, error) {
+	return m.updatedAt, m.err
+}
+
+// mockCountNeedToKnowPort implements today_digest_port.CountNeedToKnowItemsPort.
+type mockCountNeedToKnowPort struct {
+	count int
+	err   error
+}
+
+func (m *mockCountNeedToKnowPort) CountNeedToKnowItems(_ context.Context, _ uuid.UUID, _ time.Time) (int, error) {
+	return m.count, m.err
+}
+
 func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 	logger.InitLogger()
 
@@ -200,7 +220,7 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewGetKnowledgeHomeUsecase(tt.homeItems, tt.todayDigest, tt.resolveLens)
+			uc := NewGetKnowledgeHomeUsecase(tt.homeItems, tt.todayDigest, tt.resolveLens, nil, nil)
 			result, err := uc.Execute(context.Background(), userID, tt.cursor, tt.limit, tt.date, tt.lensID)
 
 			if tt.wantErr {
@@ -215,4 +235,94 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 			assert.Equal(t, tt.wantFilter, tt.homeItems.lastFilter)
 		})
 	}
+}
+
+func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
+	logger.InitLogger()
+
+	userID := uuid.New()
+	now := time.Now()
+	recentTime := now.Add(-1 * time.Minute)
+	staleTime := now.Add(-10 * time.Minute)
+
+	t.Run("enriches needToKnowCount from backend query", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{items: []domain.KnowledgeHomeItem{}}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{NeedToKnowCount: 0}}
+		countPort := &mockCountNeedToKnowPort{count: 7}
+		freshnessPort := &mockProjectionFreshnessPort{updatedAt: &recentTime}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, countPort)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, 7, result.Digest.NeedToKnowCount)
+	})
+
+	t.Run("enriches freshness as fresh when projector is recent", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{items: []domain.KnowledgeHomeItem{}}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
+		freshnessPort := &mockProjectionFreshnessPort{updatedAt: &recentTime}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, nil)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, domain.FreshnessFresh, result.Digest.DigestFreshness)
+		require.NotNil(t, result.Digest.LastProjectedAt)
+	})
+
+	t.Run("enriches freshness as stale when projector is old", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{items: []domain.KnowledgeHomeItem{}}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
+		freshnessPort := &mockProjectionFreshnessPort{updatedAt: &staleTime}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, nil)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, domain.FreshnessStale, result.Digest.DigestFreshness)
+	})
+
+	t.Run("freshness is unknown when checkpoint not found", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{items: []domain.KnowledgeHomeItem{}}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
+		freshnessPort := &mockProjectionFreshnessPort{updatedAt: nil}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, nil)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, domain.FreshnessUnknown, result.Digest.DigestFreshness)
+	})
+
+	t.Run("enrichment failure does not hard fail", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{
+			items: []domain.KnowledgeHomeItem{{ItemKey: "article:1", Title: "Test"}},
+		}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{NewArticles: 5}}
+		freshnessPort := &mockProjectionFreshnessPort{err: errors.New("db error")}
+		countPort := &mockCountNeedToKnowPort{err: errors.New("db error")}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, countPort)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		assert.Len(t, result.Items, 1)
+		assert.Equal(t, 5, result.Digest.NewArticles)
+		assert.Equal(t, domain.FreshnessUnknown, result.Digest.DigestFreshness)
+		assert.Equal(t, 0, result.Digest.NeedToKnowCount)
+	})
+
+	t.Run("nil enrichment ports skip enrichment gracefully", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{items: []domain.KnowledgeHomeItem{}}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{NeedToKnowCount: 3}}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		// Without enrichment ports, digest keeps original values
+		assert.Equal(t, 3, result.Digest.NeedToKnowCount)
+		assert.Equal(t, "", result.Digest.DigestFreshness)
+	})
 }

@@ -17,3 +17,13 @@ type GetTodayDigestPort interface {
 type UpsertTodayDigestPort interface {
 	UpsertTodayDigest(ctx context.Context, digest domain.TodayDigest) error
 }
+
+// GetProjectionFreshnessPort returns the last updated_at for a projector checkpoint.
+type GetProjectionFreshnessPort interface {
+	GetProjectionFreshness(ctx context.Context, projectorName string) (*time.Time, error)
+}
+
+// CountNeedToKnowItemsPort counts items with pulse_need_to_know why code (page-independent).
+type CountNeedToKnowItemsPort interface {
+	CountNeedToKnowItems(ctx context.Context, userID uuid.UUID, date time.Time) (int, error)
+}

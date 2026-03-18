@@ -13,11 +13,16 @@ import (
 	"github.com/google/uuid"
 )
 
+// projectorName is the canonical projector name used for freshness checks.
+const projectorName = "knowledge-home-projector"
+
 // GetKnowledgeHomeUsecase orchestrates fetching the Knowledge Home data.
 type GetKnowledgeHomeUsecase struct {
-	homeItemsPort   knowledge_home_port.GetKnowledgeHomeItemsPort
-	todayDigestPort today_digest_port.GetTodayDigestPort
-	resolveLensPort knowledge_lens_port.ResolveKnowledgeHomeLensPort
+	homeItemsPort       knowledge_home_port.GetKnowledgeHomeItemsPort
+	todayDigestPort     today_digest_port.GetTodayDigestPort
+	resolveLensPort     knowledge_lens_port.ResolveKnowledgeHomeLensPort
+	freshnessPort       today_digest_port.GetProjectionFreshnessPort
+	needToKnowCountPort today_digest_port.CountNeedToKnowItemsPort
 }
 
 // NewGetKnowledgeHomeUsecase creates a new GetKnowledgeHomeUsecase.
@@ -25,11 +30,15 @@ func NewGetKnowledgeHomeUsecase(
 	homeItemsPort knowledge_home_port.GetKnowledgeHomeItemsPort,
 	todayDigestPort today_digest_port.GetTodayDigestPort,
 	resolveLensPort knowledge_lens_port.ResolveKnowledgeHomeLensPort,
+	freshnessPort today_digest_port.GetProjectionFreshnessPort,
+	needToKnowCountPort today_digest_port.CountNeedToKnowItemsPort,
 ) *GetKnowledgeHomeUsecase {
 	return &GetKnowledgeHomeUsecase{
-		homeItemsPort:   homeItemsPort,
-		todayDigestPort: todayDigestPort,
-		resolveLensPort: resolveLensPort,
+		homeItemsPort:       homeItemsPort,
+		todayDigestPort:     todayDigestPort,
+		resolveLensPort:     resolveLensPort,
+		freshnessPort:       freshnessPort,
+		needToKnowCountPort: needToKnowCountPort,
 	}
 }
 
@@ -92,5 +101,36 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 		return nil, err
 	}
 
+	// Enrich digest with backend-authoritative values
+	u.enrichDigest(ctx, result, userID, date)
+
 	return result, nil
+}
+
+// enrichDigest populates freshness and accurate count on the digest.
+// Failures are logged but do not hard-fail the request.
+func (u *GetKnowledgeHomeUsecase) enrichDigest(ctx context.Context, result *Result, userID uuid.UUID, date time.Time) {
+	// Enrich needToKnowCount from backend query
+	if u.needToKnowCountPort != nil {
+		count, err := u.needToKnowCountPort.CountNeedToKnowItems(ctx, userID, date)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "failed to count need-to-know items", "error", err)
+			// Keep original value (which may be 0 from the digest)
+			result.Digest.NeedToKnowCount = 0
+		} else {
+			result.Digest.NeedToKnowCount = count
+		}
+	}
+
+	// Enrich freshness from projector checkpoint
+	if u.freshnessPort != nil {
+		updatedAt, err := u.freshnessPort.GetProjectionFreshness(ctx, projectorName)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "failed to get projection freshness", "error", err)
+			result.Digest.DigestFreshness = domain.FreshnessUnknown
+		} else {
+			result.Digest.LastProjectedAt = updatedAt
+			result.Digest.DigestFreshness = result.Digest.ComputeFreshness(time.Now())
+		}
+	}
 }

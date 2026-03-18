@@ -35,3 +35,19 @@ func (g *Gateway) UpsertTodayDigest(ctx context.Context, digest domain.TodayDige
 	}
 	return g.repo.UpsertTodayDigest(ctx, digest)
 }
+
+// GetProjectionFreshness implements today_digest_port.GetProjectionFreshnessPort.
+func (g *Gateway) GetProjectionFreshness(ctx context.Context, projectorName string) (*time.Time, error) {
+	if g.repo == nil {
+		return nil, fmt.Errorf("GetProjectionFreshness: database connection not available")
+	}
+	return g.repo.GetProjectionFreshness(ctx, projectorName)
+}
+
+// CountNeedToKnowItems implements today_digest_port.CountNeedToKnowItemsPort.
+func (g *Gateway) CountNeedToKnowItems(ctx context.Context, userID uuid.UUID, date time.Time) (int, error) {
+	if g.repo == nil {
+		return 0, fmt.Errorf("CountNeedToKnowItems: database connection not available")
+	}
+	return g.repo.CountNeedToKnowItems(ctx, userID, date)
+}

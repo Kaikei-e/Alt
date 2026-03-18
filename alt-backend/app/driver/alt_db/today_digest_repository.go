@@ -12,6 +12,45 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
+// GetProjectionFreshness returns the updated_at timestamp from the projection checkpoint.
+func (r *AltDBRepository) GetProjectionFreshness(ctx context.Context, projectorName string) (*time.Time, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetProjectionFreshness")
+	defer span.End()
+
+	query := `SELECT updated_at FROM knowledge_projection_checkpoints WHERE projector_name = $1`
+
+	var updatedAt time.Time
+	err := r.pool.QueryRow(ctx, query, projectorName).Scan(&updatedAt)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetProjectionFreshness: %w", err)
+	}
+
+	return &updatedAt, nil
+}
+
+// CountNeedToKnowItems counts items with pulse_need_to_know in why_json for a user and date.
+func (r *AltDBRepository) CountNeedToKnowItems(ctx context.Context, userID uuid.UUID, date time.Time) (int, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.CountNeedToKnowItems")
+	defer span.End()
+
+	query := `SELECT COUNT(*) FROM knowledge_home_items
+		WHERE user_id = $1
+		AND published_at >= $2::date
+		AND published_at < ($2::date + INTERVAL '1 day')
+		AND why_json @> '[{"code":"pulse_need_to_know"}]'`
+
+	var count int
+	err := r.pool.QueryRow(ctx, query, userID, date.Format("2006-01-02")).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("CountNeedToKnowItems: %w", err)
+	}
+
+	return count, nil
+}
+
 // GetTodayDigest returns the today digest for a user and date.
 func (r *AltDBRepository) GetTodayDigest(ctx context.Context, userID uuid.UUID, date time.Time) (domain.TodayDigest, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetTodayDigest")

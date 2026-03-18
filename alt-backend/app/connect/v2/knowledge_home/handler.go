@@ -147,17 +147,7 @@ func (h *Handler) GetKnowledgeHome(
 		protoItems = append(protoItems, convertHomeItemToProto(item))
 	}
 
-	// Count need-to-know items from the current result set
-	needToKnowCount := int32(0)
-	for _, item := range result.Items {
-		for _, why := range item.WhyReasons {
-			if why.Code == domain.WhyPulseNeedToKnow {
-				needToKnowCount++
-				break
-			}
-		}
-	}
-
+	// Map digest from usecase (needToKnowCount is backend-authoritative, not page-scanned)
 	digest := &knowledgehomev1.TodayDigest{
 		Date:                  result.Digest.DigestDate.Format("2006-01-02"),
 		NewArticles:           int32(result.Digest.NewArticles),
@@ -166,7 +156,11 @@ func (h *Handler) GetKnowledgeHome(
 		TopTags:               result.Digest.TopTags,
 		WeeklyRecapAvailable:  result.Digest.WeeklyRecapAvailable,
 		EveningPulseAvailable: result.Digest.EveningPulseAvailable,
-		NeedToKnowCount:       needToKnowCount,
+		NeedToKnowCount:       int32(result.Digest.NeedToKnowCount),
+		DigestFreshness:       result.Digest.DigestFreshness,
+	}
+	if result.Digest.LastProjectedAt != nil {
+		digest.LastProjectedAt = result.Digest.LastProjectedAt.Format(time.RFC3339)
 	}
 
 	// Build feature flag statuses for the response
