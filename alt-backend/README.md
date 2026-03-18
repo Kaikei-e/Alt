@@ -54,14 +54,15 @@ go test ./...
 # Run with coverage
 go test -race -cover ./...
 
-# Generate mocks
-make generate-mocks
-
 # Start service
 go run main.go
 
 # Health check
 curl http://localhost:9000/v1/health
+
+# From the repository root, regenerate mocks when interfaces change
+cd ../..
+make generate-mocks
 ```
 
 ## API Surface

@@ -1,6 +1,6 @@
 # News Creator Service
 
-LLM-based content generation service for the Alt RSS Reader project. Generates Japanese summaries and derivative content from English articles using local LLM (Ollama/Gemma).
+LLM-based generation service for Alt. It handles article summarization, recap summary generation, query expansion, and reranking, with a FastAPI app in front of an Ollama-backed gateway.
 
 ## 🏗️ Architecture
 
@@ -23,34 +23,36 @@ For detailed architecture documentation, see [CLAUDE.md](CLAUDE.md).
 ### Prerequisites
 
 - Python 3.11+
-- Ollama running locally or accessible via network
-- Service secret key
+- `uv` for dependency management
+- Ollama running locally or reachable over the network
+- `SERVICE_SECRET` configured
 
 ### Installation
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+uv sync
 
 # Set required environment variables
 export SERVICE_SECRET=your-secret-key
 export LLM_SERVICE_URL=http://localhost:11434
 export LLM_MODEL=gemma3:4b
 
-# Run the service
-python main.py
+# Run the service in standalone mode
+uv run python main.py
 ```
 
-The service will start on `http://localhost:8001`.
+The standalone server listens on `http://localhost:8001`.
+
+When started through Docker Compose, the `news-creator` service is exposed on `http://localhost:11434` and talks to the separate `news-creator-backend` Ollama container.
 
 ### Docker
 
 ```bash
 # Build image
-docker build -t news-creator:latest .
+docker build -f ../Dockerfile.app -t news-creator:latest ..
 
 # Run container
-docker run -p 8001:8001 \
+docker run -p 11434:11434 \
   -e SERVICE_SECRET=your-secret-key \
   -e LLM_SERVICE_URL=http://host.docker.internal:11434 \
   news-creator:latest
@@ -93,6 +95,30 @@ curl -X POST http://localhost:8001/api/generate \
     "options": {
       "temperature": 0.7
     }
+  }'
+```
+
+### Recap Summary Generation
+
+```bash
+curl -X POST http://localhost:8001/v1/summary/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "job_id": "11111111-1111-1111-1111-111111111111",
+    "genre": "tech",
+    "clusters": []
+  }'
+```
+
+### Query Expansion
+
+```bash
+curl -X POST http://localhost:8001/api/v1/expand-query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "latest local llm tooling",
+    "japanese_count": 2,
+    "english_count": 2
   }'
 ```
 
@@ -147,29 +173,29 @@ All configuration is done via environment variables:
 ### Run All Tests
 
 ```bash
-SERVICE_SECRET=test-secret pytest
+SERVICE_SECRET=test-secret uv run pytest
 ```
 
 ### Run Tests by Layer
 
 ```bash
 # Config layer
-SERVICE_SECRET=test-secret pytest tests/config/
+SERVICE_SECRET=test-secret uv run pytest tests/config/
 
 # Domain layer
-SERVICE_SECRET=test-secret pytest tests/domain/
+SERVICE_SECRET=test-secret uv run pytest tests/domain/
 
 # Usecase layer
-SERVICE_SECRET=test-secret pytest tests/usecase/
+SERVICE_SECRET=test-secret uv run pytest tests/usecase/
 
 # Handler layer
-SERVICE_SECRET=test-secret pytest tests/handler/
+SERVICE_SECRET=test-secret uv run pytest tests/handler/
 ```
 
 ### Coverage Report
 
 ```bash
-SERVICE_SECRET=test-secret pytest --cov=news_creator --cov-report=html
+SERVICE_SECRET=test-secret uv run pytest --cov=news_creator --cov-report=html
 ```
 
 ## 📁 Project Structure
@@ -177,7 +203,8 @@ SERVICE_SECRET=test-secret pytest --cov=news_creator --cov-report=html
 ```
 news-creator/app/
 ├── main.py                          # FastAPI app + DI Container
-├── requirements.txt                 # Python dependencies
+├── pyproject.toml                   # Project metadata and dependencies
+├── uv.lock                          # Locked dependency graph
 ├── CLAUDE.md                        # Detailed architecture docs
 ├── README.md                        # This file
 ├── news_creator/                    # Main package
@@ -189,6 +216,7 @@ news-creator/app/
 │   ├── port/                        # Port interfaces
 │   │   ├── llm_provider_port.py
 │   │   ├── auth_port.py
+│   │   ├── cache_port.py
 │   │   └── user_preferences_port.py
 │   ├── driver/                      # External API clients
 │   │   └── ollama_driver.py
@@ -199,6 +227,9 @@ news-creator/app/
 │   └── handler/                     # REST endpoints
 │       ├── summarize_handler.py
 │       ├── generate_handler.py
+│       ├── recap_summary_handler.py
+│       ├── expand_query_handler.py
+│       ├── rerank_handler.py
 │       └── health_handler.py
 └── tests/                           # Test suite
     ├── config/
@@ -294,7 +325,7 @@ curl http://localhost:8001/health
 
 ## 📄 License
 
-Part of the Alt RSS Reader project.
+Licensed under the Apache License 2.0. See the project root [LICENSE](../../LICENSE).
 
 ## 🐛 Troubleshooting
 
@@ -329,10 +360,10 @@ python main.py
 export SERVICE_SECRET=test-secret
 
 # Run with verbose output
-pytest -v -s
+uv run pytest -v -s
 
 # Check specific test
-pytest tests/usecase/test_summarize_usecase.py -v
+uv run pytest tests/usecase/test_summarize_usecase.py -v
 ```
 
 ## 📊 Performance

@@ -60,7 +60,7 @@ What makes it different:
 At a high level, Alt is structured into five layers:
 
 - Edge and auth: `nginx`, `auth-hub`, Kratos
-- Frontends: `alt-frontend`, `alt-frontend-sv`
+- Frontends: `alt-frontend-sv`
 - Core platform: `alt-backend`, `alt-butterfly-facade`, `mq-hub`
 - AI and processing: `pre-processor`, `news-creator`, `tag-generator`, `search-indexer`, `recap-worker`, `rag-orchestrator`, `tts-speaker`
 - Data and observability: PostgreSQL, Meilisearch, Redis, ClickHouse, `rask-*`
@@ -109,7 +109,6 @@ These are the main entry points for new contributors:
 
 - Docker Desktop or a compatible Docker Engine + Compose v2 setup
 - Go 1.24+
-- Node.js with `pnpm`
 - Python 3.12 or 3.13 with `uv`
 - Rust 1.87+
 - Deno 2.x
@@ -147,11 +146,13 @@ docker compose -f compose/compose.yaml -p alt up -d
 
 ### 4. Check health
 
+Open the product at `http://localhost/` or `http://localhost:4173/`, then verify the core services:
+
 ```bash
-curl http://localhost:3000/api/health
 curl http://localhost:9000/v1/health
 curl http://localhost:7700/health
 curl http://localhost:8888/health
+curl http://localhost:9250/health
 ```
 
 ### 5. Stop or reset
@@ -204,7 +205,7 @@ The monorepo has many services, but these are the most important ones to underst
 
 ### Product surface
 
-- `alt-frontend` and `alt-frontend-sv`: user-facing frontends
+- `alt-frontend-sv`: current user-facing frontend
 - `alt-butterfly-facade`: BFF for frontend-specific aggregation
 
 ### Core platform
@@ -238,11 +239,9 @@ Alt is a polyglot monorepo. The smallest useful test for the affected area shoul
 ### Frontend
 
 ```bash
-pnpm -C alt-frontend test
-pnpm -C alt-frontend lint
-pnpm -C alt-frontend fmt
-
 cd alt-frontend-sv && bun test
+cd alt-frontend-sv && bun run check
+cd alt-frontend-sv && bun run build
 ```
 
 ### Go services
@@ -257,9 +256,9 @@ cd auth-hub && go test ./...
 ### Python services
 
 ```bash
-SERVICE_SECRET=test-secret pytest
+SERVICE_SECRET=test-secret uv run pytest
 uv run pytest
-uv run mypy
+uv run pyrefly .
 uv run ruff check
 ```
 

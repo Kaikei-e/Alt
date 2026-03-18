@@ -66,7 +66,7 @@ altctl list
 | base | (shared resources) | - | no |
 | db | db, meilisearch, clickhouse | base | no |
 | auth | kratos-db, kratos-migrate, kratos, auth-hub | base | no |
-| core | nginx, alt-frontend, alt-frontend-sv, alt-backend, migrate | base, db, auth | no |
+| core | nginx, alt-frontend-sv, alt-backend, migrate | base, db, auth | no |
 | workers | pre-processor-sidecar, search-indexer, tag-generator, oauth-token-init, auth-token-manager | base, db, core | no |
 | ai | redis-cache, news-creator-backend, news-creator, news-creator-volume-init, pre-processor | base, db, core | yes (GPU) |
 | recap | recap-db, recap-db-migrator, recap-worker, recap-subworker, dashboard, recap-evaluator | base, db, core | yes |
@@ -82,7 +82,7 @@ altctl list
 
 ## Migration Guide
 
-See [Migration Runbook](../docs/altctl-migration-runbook.md) for detailed backup/restore procedures.
+See [Backup & Restore Runbook](../docs/runbooks/backup-restore.md) for detailed backup and recovery procedures.
 
 ### Quick Backup
 
@@ -166,4 +166,4 @@ altctl version --json       # JSON format (useful for CI/CD)
 
 ## License
 
-Internal use only - Alt Project
+Licensed under the Apache License 2.0. See the project root [LICENSE](../LICENSE).

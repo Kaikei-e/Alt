@@ -13,7 +13,7 @@ Recap Worker is Alt's Rust 2024 batch processor that turns articles into curated
 
 ## System Flow
 
-**詳細なパイプラインフロー図**: 実装に基づいた詳細なフロー図は [`PIPELINE_FLOW.md`](recap-worker/PIPELINE_FLOW.md) を参照してください。
+**詳細なパイプラインフロー図**: 実装に基づいた詳細なフロー図は [`PIPELINE_FLOW.md`](./recap-worker/PIPELINE_FLOW.md) を参照してください。
 
 ```mermaid
 flowchart TD
@@ -48,16 +48,16 @@ flowchart TD
 ## Key Modules & Directories
 | Path | Purpose |
 | --- | --- |
-| [`recap-worker/src/app.rs`](recap-worker/src/app.rs) | Component registry (Config, DAO, telemetry, scheduler, HTTP clients, two pipeline orchestrators). |
-| [`recap-worker/src/api/*.rs`](recap-worker/src/api) | Axum handlers for health, metrics, admin retry, fetch, manual generation, evaluation, and learning. |
-| [`recap-worker/src/pipeline/`](recap-worker/src/pipeline) | Pipeline stages (`fetch`, `preprocess`, `dedup`, `genre`, `select`, `dispatch`, `persist`, `evidence`, `morning`). |
-| [`recap-worker/src/clients/`](recap-worker/src/clients) | HTTP clients for alt-backend, tag-generator, recap-subworker, and news-creator (with JSON Schema validation). |
-| [`recap-worker/src/classifier/`](recap-worker/src/classifier) | Centroid-based classification (Rocchio with multi-centroid, temperature scaling) + Graph label propagation hybrid pipeline. |
-| [`recap-worker/src/classification/`](recap-worker/src/classification) | Feature extraction, tokenization utilities, and feature vector construction for classification. |
-| [`recap-worker/src/observability/`](recap-worker/src/observability) | Prometheus metrics, structured logging, tracing bootstrap. |
-| [`recap-worker/src/store/`](recap-worker/src/store) | `RecapDao`, data models, advisory-lock helpers, persistence logic. |
+| [`recap-worker/recap-worker/src/app.rs`](./recap-worker/src/app.rs) | Component registry (Config, DAO, telemetry, scheduler, HTTP clients, two pipeline orchestrators). |
+| [`recap-worker/recap-worker/src/api/*.rs`](./recap-worker/src/api) | Axum handlers for health, metrics, admin retry, fetch, manual generation, evaluation, and learning. |
+| [`recap-worker/recap-worker/src/pipeline/`](./recap-worker/src/pipeline) | Pipeline stages (`fetch`, `preprocess`, `dedup`, `genre`, `select`, `dispatch`, `persist`, `evidence`, `morning`). |
+| [`recap-worker/recap-worker/src/clients/`](./recap-worker/src/clients) | HTTP clients for alt-backend, tag-generator, recap-subworker, and news-creator (with JSON Schema validation). |
+| [`recap-worker/recap-worker/src/classifier/`](./recap-worker/src/classifier) | Centroid-based classification (Rocchio with multi-centroid, temperature scaling) + Graph label propagation hybrid pipeline. |
+| [`recap-worker/recap-worker/src/classification/`](./recap-worker/src/classification) | Feature extraction, tokenization utilities, and feature vector construction for classification. |
+| [`recap-worker/recap-worker/src/observability/`](./recap-worker/src/observability) | Prometheus metrics, structured logging, tracing bootstrap. |
+| [`recap-worker/recap-worker/src/store/`](./recap-worker/src/store) | `RecapDao`, data models, advisory-lock helpers, persistence logic. |
 | [`recap-migration-atlas/`](../recap-migration-atlas) | Source of truth Atlas migrations, Dockerized runner, and schema definitions. |
-| [`docs/`](recap-worker/docs) | Deep dives (`dedup_analysis.md`, `dedup_optimization_design.md`, `subworker_404_investigation.md`). |
+| [`recap-worker/docs/`](./recap-worker/docs) | Deep dives (`dedup_analysis.md`, `dedup_optimization_design.md`, `subworker_404_investigation.md`). |
 | [`docs/services/recap-worker.md`](../docs/services/recap-worker.md) | High-level service snapshot, runbook, integrations, and LLM notes (recommended entry point). |
 
 ## Control Plane APIs
