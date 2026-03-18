@@ -40,6 +40,7 @@ func (m *mockCheckpointPort) UpdateProjectionCheckpoint(_ context.Context, _ str
 type mockHomeItemsPort struct {
 	upserted []domain.KnowledgeHomeItem
 	err      error
+	items    map[string]domain.KnowledgeHomeItem
 }
 
 func (m *mockHomeItemsPort) UpsertKnowledgeHomeItem(_ context.Context, item domain.KnowledgeHomeItem) error {
@@ -47,7 +48,44 @@ func (m *mockHomeItemsPort) UpsertKnowledgeHomeItem(_ context.Context, item doma
 		return m.err
 	}
 	m.upserted = append(m.upserted, item)
+	if m.items == nil {
+		m.items = make(map[string]domain.KnowledgeHomeItem)
+	}
+	existing, ok := m.items[item.ItemKey]
+	if ok {
+		existing.WhyReasons = mergeWhyReasons(item.WhyReasons, existing.WhyReasons)
+		if item.Title != "" {
+			existing.Title = item.Title
+		}
+		if item.SummaryExcerpt != "" {
+			existing.SummaryExcerpt = item.SummaryExcerpt
+		}
+		if len(item.Tags) > 0 {
+			existing.Tags = item.Tags
+		}
+		if item.SummaryState == domain.SummaryStateReady || (item.SummaryState != "" && item.SummaryState != domain.SummaryStateMissing) {
+			existing.SummaryState = item.SummaryState
+		}
+		m.items[item.ItemKey] = existing
+		return nil
+	}
+	m.items[item.ItemKey] = item
 	return nil
+}
+
+func mergeWhyReasons(newReasons []domain.WhyReason, existingReasons []domain.WhyReason) []domain.WhyReason {
+	merged := make(map[string]domain.WhyReason, len(newReasons)+len(existingReasons))
+	for _, reason := range existingReasons {
+		merged[reason.Code] = reason
+	}
+	for _, reason := range newReasons {
+		merged[reason.Code] = reason
+	}
+	result := make([]domain.WhyReason, 0, len(merged))
+	for _, reason := range merged {
+		result = append(result, reason)
+	}
+	return result
 }
 
 type mockDigestPort struct {
@@ -237,6 +275,67 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_PopulatesExcerpt(t *testing
 	// Second upsert is the summary version event - should have excerpt
 	assert.NotEmpty(t, homeItemsPort.upserted[1].SummaryExcerpt, "SummaryVersionCreated should populate summary_excerpt")
 	assert.Contains(t, homeItemsPort.upserted[1].SummaryExcerpt, "This is a detailed summary")
+}
+
+func TestKnowledgeProjectorJob_TagSetVersionCreated_PreservesSummaryCompletedReason(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	summaryVersionID := uuid.New()
+	tagSetVersionID := uuid.New()
+
+	articlePayload, _ := json.Marshal(articleCreatedPayload{
+		ArticleID:   articleID.String(),
+		Title:       "Test Article",
+		PublishedAt: "2026-03-17T10:00:00Z",
+	})
+	summaryPayload, _ := json.Marshal(summaryVersionPayload{
+		SummaryVersionID: summaryVersionID.String(),
+		ArticleID:        articleID.String(),
+	})
+	tagPayload, _ := json.Marshal(tagSetVersionPayload{
+		TagSetVersionID: tagSetVersionID.String(),
+		ArticleID:       articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventArticleCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: articlePayload},
+			{EventID: uuid.New(), EventSeq: 2, TenantID: tenantID, EventType: domain.EventSummaryVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: summaryPayload},
+			{EventID: uuid.New(), EventSeq: 3, TenantID: tenantID, EventType: domain.EventTagSetVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: tagPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	summaryVersionPort := &mockSummaryVersionPort{
+		sv: domain.SummaryVersion{
+			SummaryVersionID: summaryVersionID,
+			ArticleID:        articleID,
+			SummaryText:      "This is a detailed summary of the test article covering important topics.",
+		},
+	}
+	tagSetVersionPort := &mockTagSetVersionPort{
+		tsv: domain.TagSetVersion{
+			TagSetVersionID: tagSetVersionID,
+			ArticleID:       articleID,
+			TagsJSON:        json.RawMessage(`[{"name":"AI"},{"name":"ML"}]`),
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, tagSetVersionPort)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	current, ok := homeItemsPort.items["article:"+articleID.String()]
+	require.True(t, ok)
+	assert.ElementsMatch(t, []domain.WhyReason{
+		{Code: domain.WhyNewUnread},
+		{Code: domain.WhySummaryCompleted},
+		{Code: domain.WhyTagHotspot, Tag: "AI"},
+	}, current.WhyReasons)
+	assert.Equal(t, []string{"AI", "ML"}, current.Tags)
 }
 
 func TestKnowledgeProjectorJob_ArticleCreated_UpdatesTodayDigest(t *testing.T) {

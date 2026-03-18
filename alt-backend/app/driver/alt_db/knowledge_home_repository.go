@@ -112,7 +112,23 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 		 title = CASE WHEN EXCLUDED.title != '' THEN EXCLUDED.title ELSE knowledge_home_items.title END,
 		 summary_excerpt = CASE WHEN EXCLUDED.summary_excerpt != '' THEN EXCLUDED.summary_excerpt ELSE knowledge_home_items.summary_excerpt END,
 		 tags_json = CASE WHEN EXCLUDED.tags_json != '[]'::jsonb THEN EXCLUDED.tags_json ELSE knowledge_home_items.tags_json END,
-		 why_json = EXCLUDED.why_json,
+		 why_json = CASE
+			 WHEN EXCLUDED.why_json = '[]'::jsonb THEN knowledge_home_items.why_json
+			 ELSE (
+				 SELECT COALESCE(jsonb_agg(merged.reason ORDER BY merged.code), '[]'::jsonb)
+				 FROM (
+					 SELECT DISTINCT ON (candidate.code) candidate.code, candidate.reason
+					 FROM (
+						 SELECT reason->>'code' AS code, reason, 0 AS source_rank
+						 FROM jsonb_array_elements(EXCLUDED.why_json) AS reason
+						 UNION ALL
+						 SELECT reason->>'code' AS code, reason, 1 AS source_rank
+						 FROM jsonb_array_elements(COALESCE(knowledge_home_items.why_json, '[]'::jsonb)) AS reason
+					 ) AS candidate
+					 ORDER BY candidate.code, candidate.source_rank
+				 ) AS merged
+			 )
+		 END,
 		 score = GREATEST(EXCLUDED.score, knowledge_home_items.score),
 		 freshness_at = COALESCE(EXCLUDED.freshness_at, knowledge_home_items.freshness_at),
 		 published_at = COALESCE(EXCLUDED.published_at, knowledge_home_items.published_at),
