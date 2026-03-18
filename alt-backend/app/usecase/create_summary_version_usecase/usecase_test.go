@@ -4,7 +4,9 @@ import (
 	"alt/domain"
 	"alt/utils/logger"
 	"context"
+	"encoding/json"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -160,4 +162,46 @@ func TestCreateSummaryVersionUsecase_SecondVersion_EmitsSupersedeEvent(t *testin
 	// Verify supersede event payload contains previous excerpt
 	assert.Contains(t, string(eventPort.appended[1].Payload), "previous_summary_excerpt")
 	assert.Contains(t, string(eventPort.appended[1].Payload), "Old summary text")
+}
+
+func TestCreateSummaryVersionUsecase_SecondVersion_TruncatesPreviousExcerptUTF8Safely(t *testing.T) {
+	logger.InitLogger()
+
+	articleID := uuid.New()
+	userID := uuid.New()
+	oldVersionID := uuid.New()
+
+	longJapaneseSummary := "あ"
+	for len([]rune(longJapaneseSummary)) <= maxPreviousExcerptLen {
+		longJapaneseSummary += "更新"
+	}
+
+	summaryPort := &mockSummaryPort{}
+	eventPort := &mockEventPort{}
+	markPort := &mockMarkSupersededPort{
+		prev: &domain.SummaryVersion{
+			SummaryVersionID: oldVersionID,
+			ArticleID:        articleID,
+			UserID:           userID,
+			SummaryText:      longJapaneseSummary,
+		},
+	}
+
+	uc := NewCreateSummaryVersionUsecase(summaryPort, eventPort, markPort)
+	err := uc.Execute(context.Background(), domain.SummaryVersion{
+		ArticleID:   articleID,
+		UserID:      userID,
+		SummaryText: "New improved summary",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, eventPort.appended, 2)
+
+	var payload map[string]string
+	require.NoError(t, json.Unmarshal(eventPort.appended[1].Payload, &payload))
+
+	previousExcerpt := payload["previous_summary_excerpt"]
+	assert.NotEmpty(t, previousExcerpt)
+	assert.True(t, utf8.ValidString(previousExcerpt), "previous excerpt must remain valid UTF-8")
+	assert.LessOrEqual(t, len([]rune(previousExcerpt)), maxPreviousExcerptLen+1)
 }

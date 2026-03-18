@@ -5,6 +5,7 @@ import (
 	"alt/port/knowledge_event_port"
 	"alt/port/summary_version_port"
 	"alt/utils/logger"
+	"alt/utils/textutil"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,8 +19,8 @@ const maxPreviousExcerptLen = 200
 
 // CreateSummaryVersionUsecase creates a new summary version and emits an event.
 type CreateSummaryVersionUsecase struct {
-	summaryPort      summary_version_port.CreateSummaryVersionPort
-	eventPort        knowledge_event_port.AppendKnowledgeEventPort
+	summaryPort        summary_version_port.CreateSummaryVersionPort
+	eventPort          knowledge_event_port.AppendKnowledgeEventPort
 	markSupersededPort summary_version_port.MarkSummaryVersionSupersededPort
 }
 
@@ -95,10 +96,7 @@ func (u *CreateSummaryVersionUsecase) Execute(ctx context.Context, sv domain.Sum
 			// Non-fatal: the version was already created
 		} else if prev != nil {
 			// Previous version existed — emit SummarySuperseded event
-			excerpt := prev.SummaryText
-			if len(excerpt) > maxPreviousExcerptLen {
-				excerpt = excerpt[:maxPreviousExcerptLen] + "…"
-			}
+			excerpt := textutil.TruncateValidUTF8(prev.SummaryText, maxPreviousExcerptLen)
 
 			supersedePayload, _ := json.Marshal(map[string]string{
 				"article_id":               sv.ArticleID.String(),

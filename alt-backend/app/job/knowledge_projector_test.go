@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -539,6 +540,48 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_SetsSummaryStateReady(t *te
 	assert.Equal(t, domain.SummaryStateReady, homeItemsPort.upserted[0].SummaryState, "SummaryVersionCreated with text should set summary_state to ready")
 }
 
+func TestKnowledgeProjectorJob_SummaryVersionCreated_TruncatesUTF8Safely(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	svID := uuid.New()
+	summaryPayload, _ := json.Marshal(summaryVersionPayload{
+		SummaryVersionID: svID.String(),
+		ArticleID:        articleID.String(),
+	})
+
+	longJapaneseSummary := "あ"
+	for len([]rune(longJapaneseSummary)) <= maxExcerptLen {
+		longJapaneseSummary += "要約"
+	}
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventSummaryVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: summaryPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	summaryVersionPort := &mockSummaryVersionPort{
+		sv: domain.SummaryVersion{
+			SummaryVersionID: svID,
+			ArticleID:        articleID,
+			SummaryText:      longJapaneseSummary,
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.True(t, utf8.ValidString(homeItemsPort.upserted[0].SummaryExcerpt), "truncated excerpt must remain valid UTF-8")
+	assert.LessOrEqual(t, len([]rune(homeItemsPort.upserted[0].SummaryExcerpt)), maxExcerptLen+1)
+	assert.Equal(t, domain.SummaryStateReady, homeItemsPort.upserted[0].SummaryState)
+}
+
 func TestKnowledgeProjectorJob_SummaryVersionCreated_EmptySummary_SetsPending(t *testing.T) {
 	logger.InitLogger()
 
@@ -906,9 +949,9 @@ func TestKnowledgeProjectorJob_ReasonMerged_ProjectsSupersedeState(t *testing.T)
 	articleID := uuid.New()
 
 	reasonPayload, _ := json.Marshal(map[string]interface{}{
-		"article_id":        articleID.String(),
-		"item_key":          "article:" + articleID.String(),
-		"added_codes":       []string{"in_weekly_recap"},
+		"article_id":         articleID.String(),
+		"item_key":           "article:" + articleID.String(),
+		"added_codes":        []string{"in_weekly_recap"},
 		"previous_why_codes": []string{"new_unread", "tag_hotspot"},
 	})
 

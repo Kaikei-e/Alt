@@ -11,6 +11,7 @@ import (
 	"alt/port/tag_set_version_port"
 	"alt/port/today_digest_port"
 	"alt/utils/logger"
+	"alt/utils/textutil"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -266,10 +267,7 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "failed to get summary version for excerpt", "error", err, "summary_version_id", svID)
 		} else if sv.SummaryText != "" {
-			summaryExcerpt = sv.SummaryText
-			if len(summaryExcerpt) > maxExcerptLen {
-				summaryExcerpt = summaryExcerpt[:maxExcerptLen] + "…"
-			}
+			summaryExcerpt = textutil.TruncateValidUTF8(sv.SummaryText, maxExcerptLen)
 		}
 	}
 
