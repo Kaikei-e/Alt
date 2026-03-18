@@ -261,6 +261,7 @@ type ApplicationComponents struct {
 	ArchiveLensUsecase     *archive_lens_usecase.ArchiveLensUsecase
 	RecallSignalGateway    *recall_signal_gateway.Gateway
 	RecallCandidateGateway *recall_candidate_gateway.Gateway
+	SummaryVersionGateway  *summary_version_gateway.Gateway
 	KnowledgeLensGateway   *knowledge_lens_gateway.Gateway
 }
 
@@ -696,6 +697,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ArchiveLensUsecase:     archiveLensUsecase,
 		RecallSignalGateway:    recallSignalGw,
 		RecallCandidateGateway: recallCandidateGw,
+		SummaryVersionGateway:  summaryVersionGw,
 		KnowledgeLensGateway:   knowledgeLensGw,
 	}
 }

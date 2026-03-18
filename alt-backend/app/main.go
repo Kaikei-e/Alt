@@ -138,6 +138,8 @@ func main() {
 			container.KnowledgeHomeGateway,
 			container.TodayDigestGateway,
 			container.KnowledgeProjectionVersionGateway,
+			container.SummaryVersionGateway,
+			container.RecallCandidateGateway,
 		),
 	})
 	scheduler.Add(job.Job{
