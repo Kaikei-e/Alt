@@ -141,7 +141,7 @@ message WhyReason {
 
 // SupersedeInfo describes version changes to an item.
 message SupersedeInfo {
-  // State: summary_updated, tags_updated, both_updated
+  // State: summary_updated, tags_updated, reason_updated, multiple_updated
   string state = 1;
   // When the supersede occurred (RFC3339)
   string superseded_at = 2;
@@ -149,6 +149,8 @@ message SupersedeInfo {
   optional string previous_summary_excerpt = 3;
   // Previous tags (if tags were updated)
   repeated string previous_tags = 4;
+  // Previous why codes (if reason was updated)
+  repeated string previous_why_codes = 5;
 }
 
 // RecallCandidate represents an item the user should recall.
