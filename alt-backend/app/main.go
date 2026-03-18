@@ -140,6 +140,7 @@ func main() {
 			container.KnowledgeProjectionVersionGateway,
 			container.SummaryVersionGateway,
 			container.RecallCandidateGateway,
+			container.TagSetVersionGateway,
 		),
 	})
 	scheduler.Add(job.Job{

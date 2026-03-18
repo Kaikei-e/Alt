@@ -522,6 +522,18 @@ func (h *Handler) UpsertArticleTags(ctx context.Context, req *connect.Request[ba
 				Generator: "tag-generator",
 				TagsJSON:  tagsJSON,
 			}
+			// Resolve UserID from article
+			if h.getArticleByID != nil {
+				article, artErr := h.getArticleByID.GetArticleByID(ctx, req.Msg.ArticleId)
+				if artErr == nil && article != nil {
+					userUUID, uErr := uuid.Parse(article.UserID)
+					if uErr == nil {
+						tsv.UserID = userUUID
+					}
+				} else {
+					h.logger.Warn("could not resolve user for tag set version", "article_id", req.Msg.ArticleId, "error", artErr)
+				}
+			}
 			if tsvErr := h.createTagSetVersionUsecase.Execute(ctx, tsv); tsvErr != nil {
 				h.logger.Error("failed to create tag set version", "error", tsvErr, "article_id", req.Msg.ArticleId)
 			}
@@ -556,6 +568,42 @@ func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Reque
 	if err != nil {
 		h.logger.Error("BatchUpsertArticleTags failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to batch upsert article tags"))
+	}
+
+	// Create tag set version + knowledge event for each article
+	if h.createTagSetVersionUsecase != nil {
+		for _, item := range req.Msg.Items {
+			if len(item.Tags) == 0 {
+				continue
+			}
+			articleUUID, parseErr := uuid.Parse(item.ArticleId)
+			if parseErr != nil {
+				continue
+			}
+			batchTags := make([]internal_tag_port.TagItem, len(item.Tags))
+			for j, t := range item.Tags {
+				batchTags[j] = internal_tag_port.TagItem{Name: t.Name, Confidence: t.Confidence}
+			}
+			tagsJSON, _ := json.Marshal(batchTags)
+			tsv := domain.TagSetVersion{
+				ArticleID: articleUUID,
+				Generator: "tag-generator",
+				TagsJSON:  tagsJSON,
+			}
+			// Resolve UserID from article
+			if h.getArticleByID != nil {
+				article, artErr := h.getArticleByID.GetArticleByID(ctx, item.ArticleId)
+				if artErr == nil && article != nil {
+					userUUID, uErr := uuid.Parse(article.UserID)
+					if uErr == nil {
+						tsv.UserID = userUUID
+					}
+				}
+			}
+			if tsvErr := h.createTagSetVersionUsecase.Execute(ctx, tsv); tsvErr != nil {
+				h.logger.Error("failed to create tag set version in batch", "error", tsvErr, "article_id", item.ArticleId)
+			}
+		}
 	}
 
 	return connect.NewResponse(&backendv1.BatchUpsertArticleTagsResponse{

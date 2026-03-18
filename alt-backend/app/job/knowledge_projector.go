@@ -8,6 +8,7 @@ import (
 	"alt/port/knowledge_projection_version_port"
 	"alt/port/recall_candidate_port"
 	"alt/port/summary_version_port"
+	"alt/port/tag_set_version_port"
 	"alt/port/today_digest_port"
 	"alt/utils/logger"
 	"context"
@@ -34,6 +35,7 @@ func KnowledgeProjectorJob(
 	activeVersionPort knowledge_projection_version_port.GetActiveVersionPort,
 	summaryVersionPort summary_version_port.GetLatestSummaryVersionPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
+	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
 ) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		// Resolve active projection version
@@ -46,7 +48,7 @@ func KnowledgeProjectorJob(
 				projectionVersion = v.Version
 			}
 		}
-		return processKnowledgeEvents(ctx, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, projectionVersion)
+		return processKnowledgeEvents(ctx, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, projectionVersion)
 	}
 }
 
@@ -59,6 +61,7 @@ func processKnowledgeEvents(
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	summaryVersionPort summary_version_port.GetLatestSummaryVersionPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
+	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
 	projectionVersion int,
 ) error {
 	// Get current checkpoint
@@ -89,7 +92,7 @@ func processKnowledgeEvents(
 
 	var maxSeq int64
 	for _, event := range events {
-		if err := projectEvent(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, projectionVersion); err != nil {
+		if err := projectEvent(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, projectionVersion); err != nil {
 			logger.Logger.ErrorContext(ctx, "failed to project event",
 				"error", err, "event_id", event.EventID, "event_type", event.EventType)
 			// Continue with other events (best effort)
@@ -119,6 +122,7 @@ func projectEvent(
 	todayDigestPort today_digest_port.UpsertTodayDigestPort,
 	summaryVersionPort summary_version_port.GetLatestSummaryVersionPort,
 	recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort,
+	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
 	projectionVersion int,
 ) error {
 	switch event.EventType {
@@ -127,7 +131,7 @@ func projectEvent(
 	case domain.EventSummaryVersionCreated:
 		return projectSummaryVersionCreated(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, projectionVersion)
 	case domain.EventTagSetVersionCreated:
-		return projectTagSetVersionCreated(ctx, event, homeItemsPort, projectionVersion)
+		return projectTagSetVersionCreated(ctx, event, homeItemsPort, tagSetVersionPort, projectionVersion)
 	case domain.EventHomeItemOpened:
 		return projectHomeItemOpened(ctx, event, homeItemsPort, recallCandidatePort, projectionVersion)
 	default:
@@ -303,7 +307,13 @@ type tagSetVersionPayload struct {
 	ArticleID       string `json:"article_id"`
 }
 
-func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
+// tagItem mirrors the JSON shape stored in TagsJSON.
+type tagItem struct {
+	Name       string  `json:"name"`
+	Confidence float32 `json:"confidence"`
+}
+
+func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort, projectionVersion int) error {
 	var payload tagSetVersionPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal TagSetVersionCreated payload: %w", err)
@@ -314,6 +324,33 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 		return fmt.Errorf("parse article_id: %w", err)
 	}
 
+	// Read tags from the specific version referenced by the event
+	var tags []string
+	whyReasons := []domain.WhyReason{{Code: domain.WhyNewUnread}}
+
+	if tagSetVersionPort != nil && payload.TagSetVersionID != "" {
+		tsvID, parseErr := uuid.Parse(payload.TagSetVersionID)
+		if parseErr == nil {
+			tsv, tsvErr := tagSetVersionPort.GetTagSetVersionByID(ctx, tsvID)
+			if tsvErr == nil && len(tsv.TagsJSON) > 0 {
+				var items []tagItem
+				if jsonErr := json.Unmarshal(tsv.TagsJSON, &items); jsonErr == nil {
+					for _, t := range items {
+						tags = append(tags, t.Name)
+					}
+				}
+				if len(tags) > 0 {
+					whyReasons = append(whyReasons, domain.WhyReason{
+						Code: domain.WhyTagHotspot,
+						Tag:  tags[0],
+					})
+				}
+			} else if tsvErr != nil {
+				logger.Logger.ErrorContext(ctx, "failed to get tag set version for projection", "error", tsvErr, "tag_set_version_id", tsvID)
+			}
+		}
+	}
+
 	now := time.Now()
 	item := domain.KnowledgeHomeItem{
 		UserID:            event.TenantID,
@@ -321,8 +358,9 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
 		ItemType:          domain.ItemArticle,
 		PrimaryRefID:      &articleID,
-		Title:             "",
-		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}},
+		Title:             "", // Preserved by merge-safe upsert
+		Tags:              tags,
+		WhyReasons:        whyReasons,
 		Score:             0.7,
 		GeneratedAt:       now,
 		UpdatedAt:         now,

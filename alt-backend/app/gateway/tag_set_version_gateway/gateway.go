@@ -5,6 +5,8 @@ import (
 	"alt/driver/alt_db"
 	"context"
 	"fmt"
+
+	"github.com/google/uuid"
 )
 
 // Gateway implements tag set version port interfaces using AltDBRepository.
@@ -23,4 +25,12 @@ func (g *Gateway) CreateTagSetVersion(ctx context.Context, tsv domain.TagSetVers
 		return fmt.Errorf("CreateTagSetVersion: database connection not available")
 	}
 	return g.repo.CreateTagSetVersion(ctx, tsv)
+}
+
+// GetTagSetVersionByID implements tag_set_version_port.GetTagSetVersionByIDPort.
+func (g *Gateway) GetTagSetVersionByID(ctx context.Context, tagSetVersionID uuid.UUID) (domain.TagSetVersion, error) {
+	if g.repo == nil {
+		return domain.TagSetVersion{}, fmt.Errorf("GetTagSetVersionByID: database connection not available")
+	}
+	return g.repo.GetTagSetVersionByID(ctx, tagSetVersionID)
 }

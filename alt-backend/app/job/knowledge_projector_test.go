@@ -72,6 +72,37 @@ func (m *mockActiveVersionPort) GetActiveVersion(_ context.Context) (*domain.Kno
 	return m.version, m.err
 }
 
+type mockSummaryVersionPort struct {
+	sv  domain.SummaryVersion
+	err error
+}
+
+func (m *mockSummaryVersionPort) GetLatestSummaryVersion(_ context.Context, _ uuid.UUID) (domain.SummaryVersion, error) {
+	return m.sv, m.err
+}
+
+type mockRecallCandidatePort struct {
+	upserted []domain.RecallCandidate
+	err      error
+}
+
+func (m *mockRecallCandidatePort) UpsertRecallCandidate(_ context.Context, c domain.RecallCandidate) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.upserted = append(m.upserted, c)
+	return nil
+}
+
+type mockTagSetVersionPort struct {
+	tsv domain.TagSetVersion
+	err error
+}
+
+func (m *mockTagSetVersionPort) GetTagSetVersionByID(_ context.Context, _ uuid.UUID) (domain.TagSetVersion, error) {
+	return m.tsv, m.err
+}
+
 func TestKnowledgeProjectorJob_NoEvents(t *testing.T) {
 	logger.InitLogger()
 
@@ -80,7 +111,7 @@ func TestKnowledgeProjectorJob_NoEvents(t *testing.T) {
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -117,7 +148,7 @@ func TestKnowledgeProjectorJob_ArticleCreated(t *testing.T) {
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -154,34 +185,12 @@ func TestKnowledgeProjectorJob_CheckpointAdvances(t *testing.T) {
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(10), checkpointPort.updatedSeq) // Checkpoint advances to max seq
 	assert.Len(t, homeItemsPort.upserted, 2)
-}
-
-type mockSummaryVersionPort struct {
-	sv  domain.SummaryVersion
-	err error
-}
-
-func (m *mockSummaryVersionPort) GetLatestSummaryVersion(_ context.Context, _ uuid.UUID) (domain.SummaryVersion, error) {
-	return m.sv, m.err
-}
-
-type mockRecallCandidatePort struct {
-	upserted []domain.RecallCandidate
-	err      error
-}
-
-func (m *mockRecallCandidatePort) UpsertRecallCandidate(_ context.Context, c domain.RecallCandidate) error {
-	if m.err != nil {
-		return m.err
-	}
-	m.upserted = append(m.upserted, c)
-	return nil
 }
 
 func TestKnowledgeProjectorJob_SummaryVersionCreated_PopulatesExcerpt(t *testing.T) {
@@ -220,7 +229,7 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_PopulatesExcerpt(t *testing
 		},
 	}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -250,7 +259,7 @@ func TestKnowledgeProjectorJob_ArticleCreated_UpdatesTodayDigest(t *testing.T) {
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -285,7 +294,7 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_UpdatesTodayDigest(t *testi
 		},
 	}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -312,7 +321,7 @@ func TestKnowledgeProjectorJob_HomeItemOpened_CreatesRecallCandidate(t *testing.
 	digestPort := &mockDigestPort{}
 	recallPort := &mockRecallCandidatePort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, recallPort)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, recallPort, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -340,7 +349,7 @@ func TestKnowledgeProjectorJob_ArticleCreated_SetsSummaryStatePending(t *testing
 	homeItemsPort := &mockHomeItemsPort{}
 	digestPort := &mockDigestPort{}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -375,7 +384,7 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_SetsSummaryStateReady(t *te
 		},
 	}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -410,7 +419,7 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_EmptySummary_SetsPending(t 
 		},
 	}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
@@ -440,10 +449,216 @@ func TestKnowledgeProjectorJob_UsesActiveVersion(t *testing.T) {
 		version: &domain.KnowledgeProjectionVersion{Version: 2, Status: "active"},
 	}
 
-	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, versionPort, nil, nil)
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, versionPort, nil, nil, nil)
 	err := fn(context.Background())
 
 	require.NoError(t, err)
 	require.Len(t, homeItemsPort.upserted, 1)
 	assert.Equal(t, 2, homeItemsPort.upserted[0].ProjectionVersion)
+}
+
+// ── Step C tests: TagSetVersionCreated tag projection ──
+
+func TestKnowledgeProjectorJob_TagSetVersionCreated_ProjectsTags(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+	tsvID := uuid.New()
+
+	tagsJSON, _ := json.Marshal([]tagItem{
+		{Name: "golang", Confidence: 0.95},
+		{Name: "architecture", Confidence: 0.8},
+	})
+
+	tagPayload, _ := json.Marshal(tagSetVersionPayload{
+		TagSetVersionID: tsvID.String(),
+		ArticleID:       articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, UserID: &userID, EventType: domain.EventTagSetVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: tagPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	tagSetVersionPort := &mockTagSetVersionPort{
+		tsv: domain.TagSetVersion{
+			TagSetVersionID: tsvID,
+			ArticleID:       articleID,
+			UserID:          userID,
+			Generator:       "tag-generator",
+			TagsJSON:        tagsJSON,
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, tagSetVersionPort)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+
+	item := homeItemsPort.upserted[0]
+	assert.Equal(t, "article:"+articleID.String(), item.ItemKey)
+	assert.Equal(t, []string{"golang", "architecture"}, item.Tags, "tags should be projected from version")
+	assert.Equal(t, "", item.Title, "title should be empty (preserved by merge-safe upsert)")
+	assert.Equal(t, userID, item.UserID)
+}
+
+func TestKnowledgeProjectorJob_TagSetVersionCreated_AddsTagHotspot(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	tsvID := uuid.New()
+
+	tagsJSON, _ := json.Marshal([]tagItem{
+		{Name: "rust", Confidence: 0.9},
+	})
+
+	tagPayload, _ := json.Marshal(tagSetVersionPayload{
+		TagSetVersionID: tsvID.String(),
+		ArticleID:       articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventTagSetVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: tagPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	tagSetVersionPort := &mockTagSetVersionPort{
+		tsv: domain.TagSetVersion{
+			TagSetVersionID: tsvID,
+			ArticleID:       articleID,
+			TagsJSON:        tagsJSON,
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, tagSetVersionPort)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+
+	item := homeItemsPort.upserted[0]
+	require.Len(t, item.WhyReasons, 2, "should have new_unread + tag_hotspot")
+	assert.Equal(t, domain.WhyNewUnread, item.WhyReasons[0].Code)
+	assert.Equal(t, domain.WhyTagHotspot, item.WhyReasons[1].Code)
+	assert.Equal(t, "rust", item.WhyReasons[1].Tag, "tag_hotspot should reference first tag")
+}
+
+func TestKnowledgeProjectorJob_TagSetVersionCreated_DoesNotOverwriteTitleOrSummary(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	tsvID := uuid.New()
+
+	tagsJSON, _ := json.Marshal([]tagItem{{Name: "ai", Confidence: 0.9}})
+
+	tagPayload, _ := json.Marshal(tagSetVersionPayload{
+		TagSetVersionID: tsvID.String(),
+		ArticleID:       articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventTagSetVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: tagPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	tagSetVersionPort := &mockTagSetVersionPort{
+		tsv: domain.TagSetVersion{TagSetVersionID: tsvID, ArticleID: articleID, TagsJSON: tagsJSON},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, tagSetVersionPort)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+
+	item := homeItemsPort.upserted[0]
+	assert.Equal(t, "", item.Title, "title should be empty for merge-safe upsert")
+	assert.Equal(t, "", item.SummaryExcerpt, "summary_excerpt should be empty for merge-safe upsert")
+	assert.Equal(t, "", item.SummaryState, "summary_state should not be set by tag event")
+}
+
+func TestKnowledgeProjectorJob_TagSetVersionCreated_UsesEventVersionNotLatest(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	tsvID := uuid.New()
+
+	// Mock returns a specific version matching the event's tag_set_version_id
+	tagsJSON, _ := json.Marshal([]tagItem{{Name: "event-tag", Confidence: 0.9}})
+
+	tagPayload, _ := json.Marshal(tagSetVersionPayload{
+		TagSetVersionID: tsvID.String(),
+		ArticleID:       articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventTagSetVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: tagPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	// Even if a newer version exists, the projector should use the event's version
+	tagSetVersionPort := &mockTagSetVersionPort{
+		tsv: domain.TagSetVersion{
+			TagSetVersionID: tsvID,
+			ArticleID:       articleID,
+			TagsJSON:        tagsJSON,
+		},
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, tagSetVersionPort)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, []string{"event-tag"}, homeItemsPort.upserted[0].Tags, "should use tags from the event's specific version")
+}
+
+func TestKnowledgeProjectorJob_TagSetVersionCreated_NilPort_FallsBackGracefully(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	tsvID := uuid.New()
+
+	tagPayload, _ := json.Marshal(tagSetVersionPayload{
+		TagSetVersionID: tsvID.String(),
+		ArticleID:       articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventTagSetVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: tagPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+
+	// Pass nil tagSetVersionPort - should still work without tags
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Empty(t, homeItemsPort.upserted[0].Tags, "tags should be empty when port is nil")
+	assert.Len(t, homeItemsPort.upserted[0].WhyReasons, 1, "only new_unread, no tag_hotspot")
+	assert.Equal(t, domain.WhyNewUnread, homeItemsPort.upserted[0].WhyReasons[0].Code)
 }
