@@ -8,6 +8,9 @@ global:
     environment: 'docker'
     platform: 'alt'
 
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
   # Self-monitoring
   - job_name: 'prometheus'

@@ -1,0 +1,183 @@
+# Prometheus alerting rules for Knowledge Home SLO monitoring
+# These rules use OTel metrics exported by alt-backend via /metrics endpoint.
+# Metric source: alt-backend/app/utils/otel/knowledge_home_metrics.go
+#
+# SLO budget: 99.5% availability (30-day window)
+# Related: ADR-418, docs/runbooks/knowledge-home-*.md
+
+groups:
+  - name: knowledge_home_slo
+    interval: 15s
+    rules:
+      # ---------------------------------------------------------------
+      # SLI-A: Availability - multi-window multi-burn-rate
+      # ---------------------------------------------------------------
+
+      # Page: 14.4x burn rate consumes 30-day budget in ~2 hours
+      - alert: KnowledgeHomeAvailabilityBurnRateHigh
+        expr: |
+          (
+            sum(rate(alt_home_requests_total{status="error"}[5m])) /
+            sum(rate(alt_home_requests_total[5m]))
+          ) > 14.4 * (1 - 0.995)
+          and
+          (
+            sum(rate(alt_home_requests_total{status="error"}[1h])) /
+            sum(rate(alt_home_requests_total[1h]))
+          ) > 14.4 * (1 - 0.995)
+        for: 2m
+        labels:
+          severity: page
+          sli: availability
+          service: alt-backend
+          domain: knowledge-home
+        annotations:
+          summary: "Knowledge Home availability burn rate is critical"
+          description: "Error rate exceeds 14.4x burn rate across both 5m and 1h windows. 30-day budget will be exhausted in ~2 hours at this rate."
+          runbook_url: "docs/runbooks/knowledge-home-degraded-mode.md"
+
+      # Ticket: 6x burn rate consumes 30-day budget in ~5 hours
+      - alert: KnowledgeHomeAvailabilityBurnRateElevated
+        expr: |
+          (
+            sum(rate(alt_home_requests_total{status="error"}[30m])) /
+            sum(rate(alt_home_requests_total[30m]))
+          ) > 6 * (1 - 0.995)
+          and
+          (
+            sum(rate(alt_home_requests_total{status="error"}[6h])) /
+            sum(rate(alt_home_requests_total[6h]))
+          ) > 6 * (1 - 0.995)
+        for: 5m
+        labels:
+          severity: ticket
+          sli: availability
+          service: alt-backend
+          domain: knowledge-home
+        annotations:
+          summary: "Knowledge Home availability burn rate is elevated"
+          description: "Error rate exceeds 6x burn rate across both 30m and 6h windows."
+          runbook_url: "docs/runbooks/knowledge-home-degraded-mode.md"
+
+      # ---------------------------------------------------------------
+      # SLI-B: Freshness - projection lag
+      # ---------------------------------------------------------------
+
+      # Ticket: lag > 10 minutes
+      - alert: KnowledgeHomeFreshnessStale
+        expr: alt_home_projector_lag_seconds > 600
+        for: 5m
+        labels:
+          severity: ticket
+          sli: freshness
+          service: alt-backend
+          domain: knowledge-home
+        annotations:
+          summary: "Knowledge Home projection lag exceeds 10 minutes"
+          description: "Projector lag is {{ $value | humanizeDuration }}. Users may see stale Knowledge Home data. Check projector logs and DB connectivity."
+          runbook_url: "docs/runbooks/knowledge-home-projection-recovery.md"
+
+      # Page: lag > 30 minutes
+      - alert: KnowledgeHomeFreshnessCritical
+        expr: alt_home_projector_lag_seconds > 1800
+        for: 2m
+        labels:
+          severity: page
+          sli: freshness
+          service: alt-backend
+          domain: knowledge-home
+        annotations:
+          summary: "Knowledge Home projection lag exceeds 30 minutes"
+          description: "Projector lag is {{ $value | humanizeDuration }}. Degraded mode likely active. Immediate investigation required."
+          runbook_url: "docs/runbooks/knowledge-home-projection-recovery.md"
+
+      # ---------------------------------------------------------------
+      # SLI-C: Action Durability - tracking persistence
+      # ---------------------------------------------------------------
+
+      - alert: KnowledgeHomeTrackingFailureHigh
+        expr: |
+          sum(rate(alt_home_tracking_failed_total[5m])) /
+          (sum(rate(alt_home_tracking_received_total[5m])) > 0) > 0.05
+        for: 5m
+        labels:
+          severity: page
+          sli: action_durability
+          service: alt-backend
+          domain: knowledge-home
+        annotations:
+          summary: "Knowledge Home tracking failure rate exceeds 5%"
+          description: "User actions (open, dismiss, expose) are failing to persist at {{ $value | humanizePercentage }}. Personalization accuracy will degrade."
+          runbook_url: "docs/runbooks/knowledge-home-degraded-mode.md"
+
+      # ---------------------------------------------------------------
+      # SLI-D: Stream Continuity
+      # ---------------------------------------------------------------
+
+      - alert: KnowledgeHomeStreamDisconnectSurge
+        expr: |
+          sum(rate(alt_home_stream_disconnects_total{reason!="client_close"}[5m])) /
+          (sum(rate(alt_home_stream_connections_total[5m])) > 0) > 0.8
+        for: 5m
+        labels:
+          severity: page
+          sli: stream_continuity
+          service: alt-backend
+          domain: knowledge-home
+        annotations:
+          summary: "Knowledge Home stream disconnect rate exceeds 80%"
+          description: "Server-side stream disconnects are at {{ $value | humanizePercentage }}. Users will fall back to unary polling. Check alt-backend memory, PgBouncer, and network."
+          runbook_url: "docs/runbooks/knowledge-home-stream-disconnect-surge.md"
+
+      # ---------------------------------------------------------------
+      # SLI-E: Correctness Proxy
+      # ---------------------------------------------------------------
+
+      - alert: KnowledgeHomeEmptyResponseHigh
+        expr: |
+          sum(rate(alt_home_empty_responses_total[15m])) /
+          (sum(rate(alt_home_requests_total[15m])) > 0) > 0.01
+        for: 10m
+        labels:
+          severity: ticket
+          sli: correctness_proxy
+          service: alt-backend
+          domain: knowledge-home
+        annotations:
+          summary: "Knowledge Home empty response rate exceeds 1%"
+          description: "{{ $value | humanizePercentage }} of responses are empty. Projector may be behind, or event store may be unhealthy."
+          runbook_url: "docs/runbooks/knowledge-home-empty-spike.md"
+
+      - alert: KnowledgeHomeMalformedWhyHigh
+        expr: |
+          sum(rate(alt_home_malformed_why_total[15m])) /
+          (sum(rate(alt_home_requests_total[15m])) > 0) > 0.001
+        for: 10m
+        labels:
+          severity: ticket
+          sli: correctness_proxy
+          service: alt-backend
+          domain: knowledge-home
+        annotations:
+          summary: "Knowledge Home malformed why rate exceeds 0.1%"
+          description: "Why-recommended explanations are malformed at {{ $value | humanizePercentage }}. Check recent projector changes and event payloads."
+          runbook_url: "docs/runbooks/knowledge-home-malformed-why-spike.md"
+
+      # ---------------------------------------------------------------
+      # Degraded mode tracking
+      # ---------------------------------------------------------------
+
+      - alert: KnowledgeHomeDegradedResponseHigh
+        expr: |
+          sum(rate(alt_home_degraded_responses_total[15m])) /
+          (sum(rate(alt_home_requests_total[15m])) > 0) > 0.05
+        for: 10m
+        labels:
+          severity: ticket
+          sli: availability
+          service: alt-backend
+          domain: knowledge-home
+        annotations:
+          summary: "Knowledge Home degraded response rate exceeds 5%"
+          description: "{{ $value | humanizePercentage }} of responses are served in degraded mode. Check projection freshness and DB health."
+          runbook_url: "docs/runbooks/knowledge-home-degraded-mode.md"

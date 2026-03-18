@@ -1,0 +1,556 @@
+# Grafana alerting rules for Knowledge Home SLO monitoring
+# Note: These rules are designed for Grafana Unified Alerting
+# Import via Grafana UI: Alerting > Alert rules > Import
+#
+# Metric source: alt-backend/app/utils/otel/knowledge_home_metrics.go
+# Related: ADR-418, docs/runbooks/knowledge-home-*.md
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: knowledge-home-slo
+    folder: KnowledgeHome
+    interval: 15s
+    rules:
+      # SLI-A: Availability - 14.4x burn rate (page)
+      - uid: kh-availability-burn-high
+        title: Knowledge Home Availability Burn Rate High
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: |
+                (
+                  sum(rate(alt_home_requests_total{status="error"}[5m])) /
+                  sum(rate(alt_home_requests_total[5m]))
+                ) > 14.4 * (1 - 0.995)
+                and
+                (
+                  sum(rate(alt_home_requests_total{status="error"}[1h])) /
+                  sum(rate(alt_home_requests_total[1h]))
+                ) > 14.4 * (1 - 0.995)
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "Knowledge Home availability burn rate is critical"
+          description: |
+            Error rate exceeds 14.4x burn rate across both 5m and 1h windows.
+            30-day SLO budget will be exhausted in ~2 hours at this rate.
+            See docs/runbooks/knowledge-home-degraded-mode.md
+        labels:
+          severity: page
+          sli: availability
+          service: alt-backend
+
+      # SLI-A: Availability - 6x burn rate (ticket)
+      - uid: kh-availability-burn-elevated
+        title: Knowledge Home Availability Burn Rate Elevated
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 21600
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: |
+                (
+                  sum(rate(alt_home_requests_total{status="error"}[30m])) /
+                  sum(rate(alt_home_requests_total[30m]))
+                ) > 6 * (1 - 0.995)
+                and
+                (
+                  sum(rate(alt_home_requests_total{status="error"}[6h])) /
+                  sum(rate(alt_home_requests_total[6h]))
+                ) > 6 * (1 - 0.995)
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 21600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 21600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Knowledge Home availability burn rate is elevated"
+          description: |
+            Error rate exceeds 6x burn rate across both 30m and 6h windows.
+            See docs/runbooks/knowledge-home-degraded-mode.md
+        labels:
+          severity: ticket
+          sli: availability
+          service: alt-backend
+
+      # SLI-B: Freshness - projection lag > 10 min (ticket)
+      - uid: kh-freshness-stale
+        title: Knowledge Home Freshness Stale (10 min)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: alt_home_projector_lag_seconds
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 600
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Knowledge Home projection lag exceeds 10 minutes"
+          description: |
+            Projector is behind. Users may see stale data.
+            See docs/runbooks/knowledge-home-projection-recovery.md
+        labels:
+          severity: ticket
+          sli: freshness
+          service: alt-backend
+
+      # SLI-B: Freshness - projection lag > 30 min (page)
+      - uid: kh-freshness-critical
+        title: Knowledge Home Freshness Critical (30 min)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: alt_home_projector_lag_seconds
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 1800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 1800
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "Knowledge Home projection lag exceeds 30 minutes"
+          description: |
+            Degraded mode likely active. Immediate investigation required.
+            See docs/runbooks/knowledge-home-projection-recovery.md
+        labels:
+          severity: page
+          sli: freshness
+          service: alt-backend
+
+      # SLI-C: Action Durability - tracking failure > 5%
+      - uid: kh-tracking-failure-high
+        title: Knowledge Home Tracking Failure High
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: |
+                sum(rate(alt_home_tracking_failed_total[5m])) /
+                (sum(rate(alt_home_tracking_received_total[5m])) > 0)
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.05
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Knowledge Home tracking failure rate exceeds 5%"
+          description: |
+            User actions are failing to persist. Personalization accuracy will degrade.
+            See docs/runbooks/knowledge-home-degraded-mode.md
+        labels:
+          severity: page
+          sli: action_durability
+          service: alt-backend
+
+      # SLI-D: Stream Continuity - disconnect surge > 80%
+      - uid: kh-stream-disconnect-surge
+        title: Knowledge Home Stream Disconnect Surge
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: |
+                sum(rate(alt_home_stream_disconnects_total{reason!="client_close"}[5m])) /
+                (sum(rate(alt_home_stream_connections_total[5m])) > 0)
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.8
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Knowledge Home stream disconnect rate exceeds 80%"
+          description: |
+            Server-side stream disconnects are critical. Users will fall back to unary polling.
+            See docs/runbooks/knowledge-home-stream-disconnect-surge.md
+        labels:
+          severity: page
+          sli: stream_continuity
+          service: alt-backend
+
+      # SLI-E: Correctness - empty response > 1%
+      - uid: kh-empty-response-high
+        title: Knowledge Home Empty Response High
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: |
+                sum(rate(alt_home_empty_responses_total[15m])) /
+                (sum(rate(alt_home_requests_total[15m])) > 0)
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.01
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "Knowledge Home empty response rate exceeds 1%"
+          description: |
+            Users are receiving empty Knowledge Home responses.
+            See docs/runbooks/knowledge-home-empty-spike.md
+        labels:
+          severity: ticket
+          sli: correctness_proxy
+          service: alt-backend
+
+      # SLI-E: Correctness - malformed why > 0.1%
+      - uid: kh-malformed-why-high
+        title: Knowledge Home Malformed Why High
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: |
+                sum(rate(alt_home_malformed_why_total[15m])) /
+                (sum(rate(alt_home_requests_total[15m])) > 0)
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.001
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "Knowledge Home malformed why rate exceeds 0.1%"
+          description: |
+            Why-recommended explanations are malformed.
+            See docs/runbooks/knowledge-home-malformed-why-spike.md
+        labels:
+          severity: ticket
+          sli: correctness_proxy
+          service: alt-backend
+
+      # Degraded mode - degraded response > 5%
+      - uid: kh-degraded-response-high
+        title: Knowledge Home Degraded Response High
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: DS_PROMETHEUS
+            model:
+              expr: |
+                sum(rate(alt_home_degraded_responses_total[15m])) /
+                (sum(rate(alt_home_requests_total[15m])) > 0)
+              intervalMs: 1000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              expression: A
+              reducer: last
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0.05
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: []
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: B
+              type: threshold
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: "Knowledge Home degraded response rate exceeds 5%"
+          description: |
+            Responses are served in degraded mode. Check projection freshness and DB health.
+            See docs/runbooks/knowledge-home-degraded-mode.md
+        labels:
+          severity: ticket
+          sli: availability
+          service: alt-backend
