@@ -168,14 +168,21 @@ func (h *Handler) GetKnowledgeHome(
 		}
 	}
 
+	// Determine 3-tier service quality
+	serviceQuality := "full"
+	if result.Degraded {
+		serviceQuality = "degraded"
+	}
+
 	resp := &knowledgehomev1.GetKnowledgeHomeResponse{
-		TodayDigest:  digest,
-		Items:        protoItems,
-		NextCursor:   result.NextCursor,
-		HasMore:      result.HasMore,
-		DegradedMode: result.Degraded,
-		GeneratedAt:  result.GeneratedAt.Format(time.RFC3339),
-		FeatureFlags: featureFlags,
+		TodayDigest:    digest,
+		Items:          protoItems,
+		NextCursor:     result.NextCursor,
+		HasMore:        result.HasMore,
+		DegradedMode:   result.Degraded,
+		GeneratedAt:    result.GeneratedAt.Format(time.RFC3339),
+		FeatureFlags:   featureFlags,
+		ServiceQuality: &serviceQuality,
 	}
 
 	// Embed recall candidates if recall rail is enabled
@@ -526,7 +533,12 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 	heartbeatTicker := time.NewTicker(10 * time.Second)
 	defer heartbeatTicker.Stop()
 
+	// Phase 5: Stale stream disconnect after 30 minutes
+	staleTimer := time.NewTimer(30 * time.Minute)
+	defer staleTimer.Stop()
+
 	var lastSeq int64
+	var consecutiveErrors int
 
 	for {
 		select {
@@ -535,16 +547,45 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 				"user_id", user.UserID, "reason", ctx.Err())
 			return nil
 
+		case <-staleTimer.C:
+			// Phase 5: Send stream_expired event and close
+			reconnectMs := int32(5000 + time.Now().UnixMilli()%3000) // 5-8s jitter
+			if err := stream.Send(&knowledgehomev1.StreamKnowledgeHomeUpdatesResponse{
+				EventType:        "stream_expired",
+				OccurredAt:       time.Now().Format(time.RFC3339),
+				ReconnectAfterMs: &reconnectMs,
+			}); err != nil {
+				return err
+			}
+			h.logger.InfoContext(ctx, "alt.knowledge_home.stream_expired",
+				"user_id", user.UserID, "reconnect_ms", reconnectMs)
+			return nil
+
 		case <-updateTicker.C:
 			if h.eventsPort == nil {
 				continue
 			}
 			events, err := h.eventsPort.ListKnowledgeEventsSince(ctx, lastSeq, 50)
 			if err != nil {
-				h.logger.ErrorContext(ctx, "stream: failed to fetch events", "error", err)
+				consecutiveErrors++
+				h.logger.ErrorContext(ctx, "stream: failed to fetch events", "error", err, "consecutive_errors", consecutiveErrors)
+				// Phase 5: After 3 consecutive errors, suggest fallback to unary
+				if consecutiveErrors >= 3 {
+					reconnectMs := int32(10000)
+					_ = stream.Send(&knowledgehomev1.StreamKnowledgeHomeUpdatesResponse{
+						EventType:        "fallback_to_unary",
+						OccurredAt:       time.Now().Format(time.RFC3339),
+						ReconnectAfterMs: &reconnectMs,
+					})
+					return nil
+				}
 				continue
 			}
-			for _, event := range events {
+			consecutiveErrors = 0
+
+			// Phase 5: Coalesce events - deduplicate by item_key, keep latest
+			coalesced := coalesceStreamEvents(events)
+			for _, event := range coalesced {
 				update := &knowledgehomev1.StreamKnowledgeHomeUpdatesResponse{
 					EventType:  event.EventType,
 					OccurredAt: event.OccurredAt.Format(time.RFC3339),
@@ -742,6 +783,31 @@ func convertLensVersionToProto(v domain.KnowledgeLensVersion) *knowledgehomev1.L
 		IncludePulse: v.IncludePulse,
 		SortMode:     v.SortMode,
 	}
+}
+
+// coalesceStreamEvents deduplicates events by aggregate_id within a batch,
+// keeping only the latest event for each aggregate. This reduces wire traffic
+// when multiple updates arrive for the same item within a 5-second window.
+func coalesceStreamEvents(events []domain.KnowledgeEvent) []domain.KnowledgeEvent {
+	if len(events) <= 1 {
+		return events
+	}
+
+	seen := make(map[string]int, len(events))
+	result := make([]domain.KnowledgeEvent, 0, len(events))
+
+	for _, event := range events {
+		key := event.AggregateType + ":" + event.AggregateID
+		if idx, exists := seen[key]; exists {
+			// Replace with later event (higher seq)
+			result[idx] = event
+		} else {
+			seen[key] = len(result)
+			result = append(result, event)
+		}
+	}
+
+	return result
 }
 
 func parseUUID(s string, field string) (uuid.UUID, error) {

@@ -52,6 +52,30 @@ const (
 	// KnowledgeHomeAdminServiceGetFeatureFlagsProcedure is the fully-qualified name of the
 	// KnowledgeHomeAdminService's GetFeatureFlags RPC.
 	KnowledgeHomeAdminServiceGetFeatureFlagsProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetFeatureFlags"
+	// KnowledgeHomeAdminServiceStartReprojectProcedure is the fully-qualified name of the
+	// KnowledgeHomeAdminService's StartReproject RPC.
+	KnowledgeHomeAdminServiceStartReprojectProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/StartReproject"
+	// KnowledgeHomeAdminServiceGetReprojectStatusProcedure is the fully-qualified name of the
+	// KnowledgeHomeAdminService's GetReprojectStatus RPC.
+	KnowledgeHomeAdminServiceGetReprojectStatusProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetReprojectStatus"
+	// KnowledgeHomeAdminServiceListReprojectRunsProcedure is the fully-qualified name of the
+	// KnowledgeHomeAdminService's ListReprojectRuns RPC.
+	KnowledgeHomeAdminServiceListReprojectRunsProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/ListReprojectRuns"
+	// KnowledgeHomeAdminServiceCompareReprojectProcedure is the fully-qualified name of the
+	// KnowledgeHomeAdminService's CompareReproject RPC.
+	KnowledgeHomeAdminServiceCompareReprojectProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/CompareReproject"
+	// KnowledgeHomeAdminServiceSwapReprojectProcedure is the fully-qualified name of the
+	// KnowledgeHomeAdminService's SwapReproject RPC.
+	KnowledgeHomeAdminServiceSwapReprojectProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/SwapReproject"
+	// KnowledgeHomeAdminServiceRollbackReprojectProcedure is the fully-qualified name of the
+	// KnowledgeHomeAdminService's RollbackReproject RPC.
+	KnowledgeHomeAdminServiceRollbackReprojectProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/RollbackReproject"
+	// KnowledgeHomeAdminServiceGetSLOStatusProcedure is the fully-qualified name of the
+	// KnowledgeHomeAdminService's GetSLOStatus RPC.
+	KnowledgeHomeAdminServiceGetSLOStatusProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetSLOStatus"
+	// KnowledgeHomeAdminServiceRunProjectionAuditProcedure is the fully-qualified name of the
+	// KnowledgeHomeAdminService's RunProjectionAudit RPC.
+	KnowledgeHomeAdminServiceRunProjectionAuditProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/RunProjectionAudit"
 )
 
 // KnowledgeHomeAdminServiceClient is a client for the
@@ -69,6 +93,25 @@ type KnowledgeHomeAdminServiceClient interface {
 	GetProjectionHealth(context.Context, *connect.Request[v1.GetProjectionHealthRequest]) (*connect.Response[v1.GetProjectionHealthResponse], error)
 	// GetFeatureFlags returns the current feature flag configuration.
 	GetFeatureFlags(context.Context, *connect.Request[v1.GetFeatureFlagsRequest]) (*connect.Response[v1.GetFeatureFlagsResponse], error)
+	// Phase 5: Reproject operations
+	// StartReproject initiates a new projection re-build run.
+	StartReproject(context.Context, *connect.Request[v1.StartReprojectRequest]) (*connect.Response[v1.StartReprojectResponse], error)
+	// GetReprojectStatus returns the status of a reproject run.
+	GetReprojectStatus(context.Context, *connect.Request[v1.GetReprojectStatusRequest]) (*connect.Response[v1.GetReprojectStatusResponse], error)
+	// ListReprojectRuns returns all reproject runs.
+	ListReprojectRuns(context.Context, *connect.Request[v1.ListReprojectRunsRequest]) (*connect.Response[v1.ListReprojectRunsResponse], error)
+	// CompareReproject compares two projection versions from a reproject run.
+	CompareReproject(context.Context, *connect.Request[v1.CompareReprojectRequest]) (*connect.Response[v1.CompareReprojectResponse], error)
+	// SwapReproject swaps the active projection version.
+	SwapReproject(context.Context, *connect.Request[v1.SwapReprojectRequest]) (*connect.Response[v1.SwapReprojectResponse], error)
+	// RollbackReproject rolls back to the previous projection version.
+	RollbackReproject(context.Context, *connect.Request[v1.RollbackReprojectRequest]) (*connect.Response[v1.RollbackReprojectResponse], error)
+	// Phase 5: SLO / Health
+	// GetSLOStatus returns current SLO status and error budget.
+	GetSLOStatus(context.Context, *connect.Request[v1.GetSLOStatusRequest]) (*connect.Response[v1.GetSLOStatusResponse], error)
+	// Phase 5: Audit
+	// RunProjectionAudit samples items and verifies projection correctness.
+	RunProjectionAudit(context.Context, *connect.Request[v1.RunProjectionAuditRequest]) (*connect.Response[v1.RunProjectionAuditResponse], error)
 }
 
 // NewKnowledgeHomeAdminServiceClient constructs a client for the
@@ -119,6 +162,54 @@ func NewKnowledgeHomeAdminServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("GetFeatureFlags")),
 			connect.WithClientOptions(opts...),
 		),
+		startReproject: connect.NewClient[v1.StartReprojectRequest, v1.StartReprojectResponse](
+			httpClient,
+			baseURL+KnowledgeHomeAdminServiceStartReprojectProcedure,
+			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("StartReproject")),
+			connect.WithClientOptions(opts...),
+		),
+		getReprojectStatus: connect.NewClient[v1.GetReprojectStatusRequest, v1.GetReprojectStatusResponse](
+			httpClient,
+			baseURL+KnowledgeHomeAdminServiceGetReprojectStatusProcedure,
+			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("GetReprojectStatus")),
+			connect.WithClientOptions(opts...),
+		),
+		listReprojectRuns: connect.NewClient[v1.ListReprojectRunsRequest, v1.ListReprojectRunsResponse](
+			httpClient,
+			baseURL+KnowledgeHomeAdminServiceListReprojectRunsProcedure,
+			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("ListReprojectRuns")),
+			connect.WithClientOptions(opts...),
+		),
+		compareReproject: connect.NewClient[v1.CompareReprojectRequest, v1.CompareReprojectResponse](
+			httpClient,
+			baseURL+KnowledgeHomeAdminServiceCompareReprojectProcedure,
+			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("CompareReproject")),
+			connect.WithClientOptions(opts...),
+		),
+		swapReproject: connect.NewClient[v1.SwapReprojectRequest, v1.SwapReprojectResponse](
+			httpClient,
+			baseURL+KnowledgeHomeAdminServiceSwapReprojectProcedure,
+			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("SwapReproject")),
+			connect.WithClientOptions(opts...),
+		),
+		rollbackReproject: connect.NewClient[v1.RollbackReprojectRequest, v1.RollbackReprojectResponse](
+			httpClient,
+			baseURL+KnowledgeHomeAdminServiceRollbackReprojectProcedure,
+			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("RollbackReproject")),
+			connect.WithClientOptions(opts...),
+		),
+		getSLOStatus: connect.NewClient[v1.GetSLOStatusRequest, v1.GetSLOStatusResponse](
+			httpClient,
+			baseURL+KnowledgeHomeAdminServiceGetSLOStatusProcedure,
+			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("GetSLOStatus")),
+			connect.WithClientOptions(opts...),
+		),
+		runProjectionAudit: connect.NewClient[v1.RunProjectionAuditRequest, v1.RunProjectionAuditResponse](
+			httpClient,
+			baseURL+KnowledgeHomeAdminServiceRunProjectionAuditProcedure,
+			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("RunProjectionAudit")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -130,6 +221,14 @@ type knowledgeHomeAdminServiceClient struct {
 	getBackfillStatus   *connect.Client[v1.GetBackfillStatusRequest, v1.GetBackfillStatusResponse]
 	getProjectionHealth *connect.Client[v1.GetProjectionHealthRequest, v1.GetProjectionHealthResponse]
 	getFeatureFlags     *connect.Client[v1.GetFeatureFlagsRequest, v1.GetFeatureFlagsResponse]
+	startReproject      *connect.Client[v1.StartReprojectRequest, v1.StartReprojectResponse]
+	getReprojectStatus  *connect.Client[v1.GetReprojectStatusRequest, v1.GetReprojectStatusResponse]
+	listReprojectRuns   *connect.Client[v1.ListReprojectRunsRequest, v1.ListReprojectRunsResponse]
+	compareReproject    *connect.Client[v1.CompareReprojectRequest, v1.CompareReprojectResponse]
+	swapReproject       *connect.Client[v1.SwapReprojectRequest, v1.SwapReprojectResponse]
+	rollbackReproject   *connect.Client[v1.RollbackReprojectRequest, v1.RollbackReprojectResponse]
+	getSLOStatus        *connect.Client[v1.GetSLOStatusRequest, v1.GetSLOStatusResponse]
+	runProjectionAudit  *connect.Client[v1.RunProjectionAuditRequest, v1.RunProjectionAuditResponse]
 }
 
 // TriggerBackfill calls alt.knowledge_home.v1.KnowledgeHomeAdminService.TriggerBackfill.
@@ -162,6 +261,46 @@ func (c *knowledgeHomeAdminServiceClient) GetFeatureFlags(ctx context.Context, r
 	return c.getFeatureFlags.CallUnary(ctx, req)
 }
 
+// StartReproject calls alt.knowledge_home.v1.KnowledgeHomeAdminService.StartReproject.
+func (c *knowledgeHomeAdminServiceClient) StartReproject(ctx context.Context, req *connect.Request[v1.StartReprojectRequest]) (*connect.Response[v1.StartReprojectResponse], error) {
+	return c.startReproject.CallUnary(ctx, req)
+}
+
+// GetReprojectStatus calls alt.knowledge_home.v1.KnowledgeHomeAdminService.GetReprojectStatus.
+func (c *knowledgeHomeAdminServiceClient) GetReprojectStatus(ctx context.Context, req *connect.Request[v1.GetReprojectStatusRequest]) (*connect.Response[v1.GetReprojectStatusResponse], error) {
+	return c.getReprojectStatus.CallUnary(ctx, req)
+}
+
+// ListReprojectRuns calls alt.knowledge_home.v1.KnowledgeHomeAdminService.ListReprojectRuns.
+func (c *knowledgeHomeAdminServiceClient) ListReprojectRuns(ctx context.Context, req *connect.Request[v1.ListReprojectRunsRequest]) (*connect.Response[v1.ListReprojectRunsResponse], error) {
+	return c.listReprojectRuns.CallUnary(ctx, req)
+}
+
+// CompareReproject calls alt.knowledge_home.v1.KnowledgeHomeAdminService.CompareReproject.
+func (c *knowledgeHomeAdminServiceClient) CompareReproject(ctx context.Context, req *connect.Request[v1.CompareReprojectRequest]) (*connect.Response[v1.CompareReprojectResponse], error) {
+	return c.compareReproject.CallUnary(ctx, req)
+}
+
+// SwapReproject calls alt.knowledge_home.v1.KnowledgeHomeAdminService.SwapReproject.
+func (c *knowledgeHomeAdminServiceClient) SwapReproject(ctx context.Context, req *connect.Request[v1.SwapReprojectRequest]) (*connect.Response[v1.SwapReprojectResponse], error) {
+	return c.swapReproject.CallUnary(ctx, req)
+}
+
+// RollbackReproject calls alt.knowledge_home.v1.KnowledgeHomeAdminService.RollbackReproject.
+func (c *knowledgeHomeAdminServiceClient) RollbackReproject(ctx context.Context, req *connect.Request[v1.RollbackReprojectRequest]) (*connect.Response[v1.RollbackReprojectResponse], error) {
+	return c.rollbackReproject.CallUnary(ctx, req)
+}
+
+// GetSLOStatus calls alt.knowledge_home.v1.KnowledgeHomeAdminService.GetSLOStatus.
+func (c *knowledgeHomeAdminServiceClient) GetSLOStatus(ctx context.Context, req *connect.Request[v1.GetSLOStatusRequest]) (*connect.Response[v1.GetSLOStatusResponse], error) {
+	return c.getSLOStatus.CallUnary(ctx, req)
+}
+
+// RunProjectionAudit calls alt.knowledge_home.v1.KnowledgeHomeAdminService.RunProjectionAudit.
+func (c *knowledgeHomeAdminServiceClient) RunProjectionAudit(ctx context.Context, req *connect.Request[v1.RunProjectionAuditRequest]) (*connect.Response[v1.RunProjectionAuditResponse], error) {
+	return c.runProjectionAudit.CallUnary(ctx, req)
+}
+
 // KnowledgeHomeAdminServiceHandler is an implementation of the
 // alt.knowledge_home.v1.KnowledgeHomeAdminService service.
 type KnowledgeHomeAdminServiceHandler interface {
@@ -177,6 +316,25 @@ type KnowledgeHomeAdminServiceHandler interface {
 	GetProjectionHealth(context.Context, *connect.Request[v1.GetProjectionHealthRequest]) (*connect.Response[v1.GetProjectionHealthResponse], error)
 	// GetFeatureFlags returns the current feature flag configuration.
 	GetFeatureFlags(context.Context, *connect.Request[v1.GetFeatureFlagsRequest]) (*connect.Response[v1.GetFeatureFlagsResponse], error)
+	// Phase 5: Reproject operations
+	// StartReproject initiates a new projection re-build run.
+	StartReproject(context.Context, *connect.Request[v1.StartReprojectRequest]) (*connect.Response[v1.StartReprojectResponse], error)
+	// GetReprojectStatus returns the status of a reproject run.
+	GetReprojectStatus(context.Context, *connect.Request[v1.GetReprojectStatusRequest]) (*connect.Response[v1.GetReprojectStatusResponse], error)
+	// ListReprojectRuns returns all reproject runs.
+	ListReprojectRuns(context.Context, *connect.Request[v1.ListReprojectRunsRequest]) (*connect.Response[v1.ListReprojectRunsResponse], error)
+	// CompareReproject compares two projection versions from a reproject run.
+	CompareReproject(context.Context, *connect.Request[v1.CompareReprojectRequest]) (*connect.Response[v1.CompareReprojectResponse], error)
+	// SwapReproject swaps the active projection version.
+	SwapReproject(context.Context, *connect.Request[v1.SwapReprojectRequest]) (*connect.Response[v1.SwapReprojectResponse], error)
+	// RollbackReproject rolls back to the previous projection version.
+	RollbackReproject(context.Context, *connect.Request[v1.RollbackReprojectRequest]) (*connect.Response[v1.RollbackReprojectResponse], error)
+	// Phase 5: SLO / Health
+	// GetSLOStatus returns current SLO status and error budget.
+	GetSLOStatus(context.Context, *connect.Request[v1.GetSLOStatusRequest]) (*connect.Response[v1.GetSLOStatusResponse], error)
+	// Phase 5: Audit
+	// RunProjectionAudit samples items and verifies projection correctness.
+	RunProjectionAudit(context.Context, *connect.Request[v1.RunProjectionAuditRequest]) (*connect.Response[v1.RunProjectionAuditResponse], error)
 }
 
 // NewKnowledgeHomeAdminServiceHandler builds an HTTP handler from the service implementation. It
@@ -222,6 +380,54 @@ func NewKnowledgeHomeAdminServiceHandler(svc KnowledgeHomeAdminServiceHandler, o
 		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("GetFeatureFlags")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeHomeAdminServiceStartReprojectHandler := connect.NewUnaryHandler(
+		KnowledgeHomeAdminServiceStartReprojectProcedure,
+		svc.StartReproject,
+		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("StartReproject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeAdminServiceGetReprojectStatusHandler := connect.NewUnaryHandler(
+		KnowledgeHomeAdminServiceGetReprojectStatusProcedure,
+		svc.GetReprojectStatus,
+		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("GetReprojectStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeAdminServiceListReprojectRunsHandler := connect.NewUnaryHandler(
+		KnowledgeHomeAdminServiceListReprojectRunsProcedure,
+		svc.ListReprojectRuns,
+		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("ListReprojectRuns")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeAdminServiceCompareReprojectHandler := connect.NewUnaryHandler(
+		KnowledgeHomeAdminServiceCompareReprojectProcedure,
+		svc.CompareReproject,
+		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("CompareReproject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeAdminServiceSwapReprojectHandler := connect.NewUnaryHandler(
+		KnowledgeHomeAdminServiceSwapReprojectProcedure,
+		svc.SwapReproject,
+		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("SwapReproject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeAdminServiceRollbackReprojectHandler := connect.NewUnaryHandler(
+		KnowledgeHomeAdminServiceRollbackReprojectProcedure,
+		svc.RollbackReproject,
+		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("RollbackReproject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeAdminServiceGetSLOStatusHandler := connect.NewUnaryHandler(
+		KnowledgeHomeAdminServiceGetSLOStatusProcedure,
+		svc.GetSLOStatus,
+		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("GetSLOStatus")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeHomeAdminServiceRunProjectionAuditHandler := connect.NewUnaryHandler(
+		KnowledgeHomeAdminServiceRunProjectionAuditProcedure,
+		svc.RunProjectionAudit,
+		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("RunProjectionAudit")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.knowledge_home.v1.KnowledgeHomeAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeHomeAdminServiceTriggerBackfillProcedure:
@@ -236,6 +442,22 @@ func NewKnowledgeHomeAdminServiceHandler(svc KnowledgeHomeAdminServiceHandler, o
 			knowledgeHomeAdminServiceGetProjectionHealthHandler.ServeHTTP(w, r)
 		case KnowledgeHomeAdminServiceGetFeatureFlagsProcedure:
 			knowledgeHomeAdminServiceGetFeatureFlagsHandler.ServeHTTP(w, r)
+		case KnowledgeHomeAdminServiceStartReprojectProcedure:
+			knowledgeHomeAdminServiceStartReprojectHandler.ServeHTTP(w, r)
+		case KnowledgeHomeAdminServiceGetReprojectStatusProcedure:
+			knowledgeHomeAdminServiceGetReprojectStatusHandler.ServeHTTP(w, r)
+		case KnowledgeHomeAdminServiceListReprojectRunsProcedure:
+			knowledgeHomeAdminServiceListReprojectRunsHandler.ServeHTTP(w, r)
+		case KnowledgeHomeAdminServiceCompareReprojectProcedure:
+			knowledgeHomeAdminServiceCompareReprojectHandler.ServeHTTP(w, r)
+		case KnowledgeHomeAdminServiceSwapReprojectProcedure:
+			knowledgeHomeAdminServiceSwapReprojectHandler.ServeHTTP(w, r)
+		case KnowledgeHomeAdminServiceRollbackReprojectProcedure:
+			knowledgeHomeAdminServiceRollbackReprojectHandler.ServeHTTP(w, r)
+		case KnowledgeHomeAdminServiceGetSLOStatusProcedure:
+			knowledgeHomeAdminServiceGetSLOStatusHandler.ServeHTTP(w, r)
+		case KnowledgeHomeAdminServiceRunProjectionAuditProcedure:
+			knowledgeHomeAdminServiceRunProjectionAuditHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -267,4 +489,36 @@ func (UnimplementedKnowledgeHomeAdminServiceHandler) GetProjectionHealth(context
 
 func (UnimplementedKnowledgeHomeAdminServiceHandler) GetFeatureFlags(context.Context, *connect.Request[v1.GetFeatureFlagsRequest]) (*connect.Response[v1.GetFeatureFlagsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.GetFeatureFlags is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeAdminServiceHandler) StartReproject(context.Context, *connect.Request[v1.StartReprojectRequest]) (*connect.Response[v1.StartReprojectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.StartReproject is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeAdminServiceHandler) GetReprojectStatus(context.Context, *connect.Request[v1.GetReprojectStatusRequest]) (*connect.Response[v1.GetReprojectStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.GetReprojectStatus is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeAdminServiceHandler) ListReprojectRuns(context.Context, *connect.Request[v1.ListReprojectRunsRequest]) (*connect.Response[v1.ListReprojectRunsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.ListReprojectRuns is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeAdminServiceHandler) CompareReproject(context.Context, *connect.Request[v1.CompareReprojectRequest]) (*connect.Response[v1.CompareReprojectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.CompareReproject is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeAdminServiceHandler) SwapReproject(context.Context, *connect.Request[v1.SwapReprojectRequest]) (*connect.Response[v1.SwapReprojectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.SwapReproject is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeAdminServiceHandler) RollbackReproject(context.Context, *connect.Request[v1.RollbackReprojectRequest]) (*connect.Response[v1.RollbackReprojectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.RollbackReproject is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeAdminServiceHandler) GetSLOStatus(context.Context, *connect.Request[v1.GetSLOStatusRequest]) (*connect.Response[v1.GetSLOStatusResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.GetSLOStatus is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeAdminServiceHandler) RunProjectionAudit(context.Context, *connect.Request[v1.RunProjectionAuditRequest]) (*connect.Response[v1.RunProjectionAuditResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.RunProjectionAudit is not implemented"))
 }
