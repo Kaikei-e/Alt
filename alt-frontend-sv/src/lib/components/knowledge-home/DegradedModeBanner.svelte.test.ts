@@ -30,7 +30,7 @@ describe("DegradedModeBanner", () => {
 		await expect
 			.element(
 				page.getByText(
-					"Service is running in fallback mode. Showing cached snapshot. Some features may be unavailable.",
+					"Service is running in fallback mode. Some sections may be unavailable or stale.",
 				),
 			)
 			.toBeInTheDocument();

@@ -40,7 +40,7 @@ const isFallback = $derived(
 	>
 		<AlertCircle class="h-4 w-4 text-amber-400" />
 		<span class="text-sm text-[var(--text-secondary)]"
-			>Digest temporarily unavailable</span
+			>Digest section is temporarily unavailable or stale.</span
 		>
 	</div>
 {:else}

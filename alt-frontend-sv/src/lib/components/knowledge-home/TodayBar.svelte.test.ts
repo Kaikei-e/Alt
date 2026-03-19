@@ -64,7 +64,9 @@ describe("TodayBar", () => {
 		});
 
 		await expect
-			.element(page.getByText("Digest temporarily unavailable"))
+			.element(
+				page.getByText("Digest section is temporarily unavailable or stale."),
+			)
 			.toBeInTheDocument();
 	});
 
@@ -73,8 +75,8 @@ describe("TodayBar", () => {
 			props: { digest: makeDigest({ topTags: ["AI", "Go"] }) },
 		});
 
-		await expect.element(page.getByText("AI")).toBeInTheDocument();
-		await expect.element(page.getByText("Go")).toBeInTheDocument();
+		await expect.element(page.getByText("AI", { exact: true })).toBeInTheDocument();
+		await expect.element(page.getByText("Go", { exact: true })).toBeInTheDocument();
 	});
 
 	it("renders morning letter link always", async () => {

@@ -37,8 +37,8 @@ const { serviceQuality = "full", onDismiss }: Props = $props();
 	>
 		<ShieldAlert size={16} class="flex-shrink-0" />
 		<span class="flex-1"
-			>Service is running in fallback mode. Showing cached snapshot. Some
-			features may be unavailable.</span
+			>Service is running in fallback mode. Some sections may be unavailable
+			or stale.</span
 		>
 		{#if onDismiss}
 			<button
