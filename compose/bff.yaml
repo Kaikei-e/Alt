@@ -18,7 +18,7 @@ services:
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
       - BFF_REQUEST_TIMEOUT=30s
-      - BFF_STREAMING_TIMEOUT=5m
+      - BFF_STREAMING_TIMEOUT=40m
       - TTS_CONNECT_URL=${TTS_CONNECT_URL:-}
       - TTS_SERVICE_SECRET=${TTS_SERVICE_SECRET:-}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
