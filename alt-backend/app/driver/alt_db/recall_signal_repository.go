@@ -16,13 +16,17 @@ func (r *AltDBRepository) AppendRecallSignal(ctx context.Context, signal domain.
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.AppendRecallSignal")
 	defer span.End()
 
-	payloadJSON, _ := json.Marshal(signal.Payload)
+	payload := signal.Payload
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	payloadJSON, _ := json.Marshal(payload)
 
 	query := `INSERT INTO recall_signals (signal_id, user_id, item_key, signal_type, signal_strength, occurred_at, payload)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := r.pool.Exec(ctx, query,
 		signal.SignalID, signal.UserID, signal.ItemKey, signal.SignalType,
-		signal.SignalStrength, signal.OccurredAt, payloadJSON,
+		signal.SignalStrength, signal.OccurredAt, string(payloadJSON),
 	)
 	if err != nil {
 		return fmt.Errorf("AppendRecallSignal: %w", err)
