@@ -71,9 +71,11 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		return errors.New("item_key is required")
 	}
 
-	// Skip tracking if tracking flag is disabled
+	// Skip tracking if tracking flag is disabled, but always allow dismiss
 	if u.featureFlagPort != nil && !u.featureFlagPort.IsEnabled(domain.FlagKnowledgeHomeTracking, userID) {
-		return nil
+		if actionType != "dismiss" {
+			return nil
+		}
 	}
 
 	now := time.Now()

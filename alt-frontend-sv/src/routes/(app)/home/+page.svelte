@@ -73,14 +73,12 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 	const itemKey = item.itemKey;
 
 	if (type === "dismiss") {
-		if (flags.trackingEnabled) {
-			const metadata = JSON.stringify({
-				articleId: item.articleId,
-				title: item.title,
-				summaryExcerpt: item.summaryExcerpt,
-			});
-			home.trackAction(type, itemKey, metadata);
-		}
+		const metadata = JSON.stringify({
+			articleId: item.articleId,
+			title: item.title,
+			summaryExcerpt: item.summaryExcerpt,
+		});
+		home.trackAction(type, itemKey, metadata);
 		home.dismissItem(itemKey);
 		return;
 	}

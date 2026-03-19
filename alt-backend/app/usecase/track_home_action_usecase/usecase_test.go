@@ -145,6 +145,16 @@ func TestTrackHomeActionUsecase_Execute(t *testing.T) {
 			wantUserEvents: 1,
 			wantKnEvents:   1,
 		},
+		{
+			name:           "tracking disabled - dismiss still appends events",
+			actionType:     "dismiss",
+			itemKey:        "article:test-uuid",
+			userEventPort:  &mockUserEventPort{},
+			knowledgePort:  &mockKnowledgeEventPort{},
+			flagPort:       &mockFeatureFlagPort{enabled: false},
+			wantUserEvents: 1,
+			wantKnEvents:   1,
+		},
 	}
 
 	for _, tt := range tests {
