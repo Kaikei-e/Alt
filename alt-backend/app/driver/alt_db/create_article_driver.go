@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // CreateArticleParams holds parameters for creating an article via internal API.
@@ -20,6 +21,7 @@ type CreateArticleParams struct {
 
 // CreateArticleInternal creates a new article and returns its ID.
 // This is used by the internal API (service-to-service), not the user-facing API.
+// If an existing article has longer content, only metadata is updated (content preserved).
 func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params CreateArticleParams) (string, error) {
 	if r.pool == nil {
 		return "", errors.New("database connection not available")
@@ -31,7 +33,23 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 	}
 	defer tx.Rollback(ctx)
 
-	query := `
+	// 1. Check existing content length
+	existingLen, err := r.getArticleContentLength(ctx, tx, params.URL, params.UserID)
+
+	// 2. Choose query: skip content update if existing is longer
+	var query string
+	if err == nil && existingLen > len(params.Content) {
+		query = `
+		INSERT INTO articles (title, content, url, feed_id, user_id, published_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (url, user_id) DO UPDATE SET
+			title = EXCLUDED.title,
+			feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id),
+			published_at = EXCLUDED.published_at
+		RETURNING id
+	`
+	} else {
+		query = `
 		INSERT INTO articles (title, content, url, feed_id, user_id, published_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (url, user_id) DO UPDATE SET
@@ -41,7 +59,9 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 			published_at = EXCLUDED.published_at
 		RETURNING id
 	`
+	}
 
+	// 3. Execute upsert
 	var articleID string
 	err = tx.QueryRow(ctx, query,
 		params.Title,
@@ -81,4 +101,14 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 	}
 
 	return articleID, nil
+}
+
+// getArticleContentLength returns the content length of an existing article within a transaction.
+func (r *AltDBRepository) getArticleContentLength(ctx context.Context, tx pgx.Tx, url, userID string) (int, error) {
+	var contentLen int
+	err := tx.QueryRow(ctx,
+		"SELECT COALESCE(LENGTH(content), 0) FROM articles WHERE url = $1 AND user_id = $2 AND deleted_at IS NULL",
+		url, userID,
+	).Scan(&contentLen)
+	return contentLen, err
 }

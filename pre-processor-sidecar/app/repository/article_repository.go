@@ -32,6 +32,7 @@ func NewPostgreSQLArticleRepository(db *sql.DB, logger *slog.Logger) ArticleRepo
 // UpsertResult represents the result of an upsert operation
 type UpsertResult struct {
 	WasInserted bool // true if new record was inserted, false if existing record was updated
+	ContentKept bool // true if existing longer content was preserved
 }
 
 // Create creates a new article in the database using UPSERT for idempotency
@@ -40,14 +41,84 @@ func (r *PostgreSQLArticleRepository) Create(ctx context.Context, article *model
 	return err
 }
 
-// CreateWithResult creates an article and returns whether it was inserted or updated
+// CreateWithResult creates an article and returns whether it was inserted or updated.
+// If an existing article has longer content, only metadata is updated (content preserved).
 func (r *PostgreSQLArticleRepository) CreateWithResult(ctx context.Context, article *models.Article) (*UpsertResult, error) {
-	query := `
-		INSERT INTO inoreader_articles (
+	// 1. Check existing content length
+	existingLength, err := r.getExistingContentLength(ctx, article.InoreaderID)
+	if err == nil && existingLength > article.ContentLength {
+		// 2. Existing content is longer → metadata-only update
+		r.logger.Info("Kept longer existing content",
+			"inoreader_id", article.InoreaderID,
+			"existing_length", existingLength,
+			"incoming_length", article.ContentLength)
+		return r.updateMetadataOnly(ctx, article)
+	}
+
+	// 3. New article or longer/equal content → full upsert
+	return r.upsertFull(ctx, article)
+}
+
+// getExistingContentLength returns the content_length of an existing article.
+// Returns sql.ErrNoRows if the article does not exist.
+func (r *PostgreSQLArticleRepository) getExistingContentLength(ctx context.Context, inoreaderID string) (int, error) {
+	var contentLength int
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COALESCE(content_length, 0) FROM inoreader_articles WHERE inoreader_id = $1",
+		inoreaderID,
+	).Scan(&contentLength)
+	return contentLength, err
+}
+
+// updateMetadataOnly updates metadata fields without overwriting content.
+func (r *PostgreSQLArticleRepository) updateMetadataOnly(ctx context.Context, article *models.Article) (*UpsertResult, error) {
+	query := `UPDATE inoreader_articles SET
+			subscription_id = $2,
+			article_url = $3,
+			title = $4,
+			author = $5,
+			published_at = $6,
+			fetched_at = $7
+		WHERE inoreader_id = $1`
+
+	result, err := r.db.ExecContext(ctx, query,
+		article.InoreaderID,
+		article.SubscriptionID,
+		article.ArticleURL,
+		article.Title,
+		article.Author,
+		article.PublishedAt,
+		article.FetchedAt,
+	)
+	if err != nil {
+		r.logger.Error("Failed to update article metadata",
+			"inoreader_id", article.InoreaderID,
+			"error", err)
+		return nil, fmt.Errorf("failed to update article metadata: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get affected rows: %w", err)
+	}
+	if rowsAffected == 0 {
+		return nil, fmt.Errorf("article not found for metadata update: %s", article.InoreaderID)
+	}
+
+	r.logger.Debug("Updated article metadata only (content preserved)",
+		"inoreader_id", article.InoreaderID,
+		"subscription_id", article.SubscriptionID)
+
+	return &UpsertResult{WasInserted: false, ContentKept: true}, nil
+}
+
+// upsertFull performs a full INSERT ... ON CONFLICT DO UPDATE for all fields.
+func (r *PostgreSQLArticleRepository) upsertFull(ctx context.Context, article *models.Article) (*UpsertResult, error) {
+	query := `INSERT INTO inoreader_articles (
 			id, inoreader_id, subscription_id, article_url, title, author,
 			published_at, fetched_at, processed, content, content_length, content_type
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-		ON CONFLICT (inoreader_id) 
+		ON CONFLICT (inoreader_id)
 		DO UPDATE SET
 			subscription_id = EXCLUDED.subscription_id,
 			article_url = EXCLUDED.article_url,
@@ -98,11 +169,12 @@ func (r *PostgreSQLArticleRepository) CreateWithResult(ctx context.Context, arti
 
 // BatchResult contains statistics about batch operation
 type BatchResult struct {
-	Total     int
-	Inserted  int
-	Updated   int
-	Failed    int
-	LastError error
+	Total       int
+	Inserted    int
+	Updated     int
+	ContentKept int // count of updates where existing longer content was preserved
+	Failed      int
+	LastError   error
 }
 
 // CreateBatch creates multiple articles using UPSERT for efficient duplicate handling
@@ -149,11 +221,15 @@ func (r *PostgreSQLArticleRepository) CreateBatchWithResult(ctx context.Context,
 		} else {
 			result.Updated++
 		}
+		if upsertResult.ContentKept {
+			result.ContentKept++
+		}
 
 		r.logger.Debug("Article upserted successfully",
 			"inoreader_id", article.InoreaderID,
 			"subscription_id", article.SubscriptionID,
 			"was_new", upsertResult.WasInserted,
+			"content_kept", upsertResult.ContentKept,
 			"progress", fmt.Sprintf("%d/%d", i+1, len(articles)))
 	}
 
@@ -162,6 +238,7 @@ func (r *PostgreSQLArticleRepository) CreateBatchWithResult(ctx context.Context,
 		"total_articles", result.Total,
 		"inserted", result.Inserted,
 		"updated", result.Updated,
+		"content_kept", result.ContentKept,
 		"failed", result.Failed,
 		"success_rate", fmt.Sprintf("%.1f%%", float64(successCount)/float64(result.Total)*100),
 		"new_vs_duplicate_ratio", fmt.Sprintf("%d:%d", result.Inserted, result.Updated))
