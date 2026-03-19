@@ -13,18 +13,34 @@ interface Props {
 const { candidate, onSnooze, onDismiss, onOpen }: Props = $props();
 
 const title = $derived(candidate.item?.title ?? candidate.itemKey);
+const summaryExcerpt = $derived(
+	candidate.item?.summaryState === "ready"
+		? (candidate.item.summaryExcerpt ?? "")
+		: "",
+);
+const displayTags = $derived(
+	(candidate.item?.tags ?? []).filter((tag) => tag.trim() !== "").slice(0, 2),
+);
+const dateSource = $derived(
+	candidate.item?.publishedAt || candidate.firstEligibleAt || "",
+);
 
-function formatAge(dateStr: string): string {
-	const diff = Date.now() - new Date(dateStr).getTime();
-	const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-	if (days === 0) return "today";
-	if (days === 1) return "1d ago";
-	return `${days}d ago`;
+function formatRelativeTime(isoString: string): string {
+	if (!isoString) return "recent";
+	const date = new Date(isoString);
+	if (Number.isNaN(date.getTime())) return "recent";
+	const now = new Date();
+	const diffMs = now.getTime() - date.getTime();
+	const diffMins = Math.floor(diffMs / 60000);
+	if (diffMins < 1) return "just now";
+	if (diffMins < 60) return `${diffMins}m ago`;
+	const diffHours = Math.floor(diffMins / 60);
+	if (diffHours < 24) return `${diffHours}h ago`;
+	const diffDays = Math.floor(diffHours / 24);
+	return `${diffDays}d ago`;
 }
 
-const age = $derived(
-	candidate.firstEligibleAt ? formatAge(candidate.firstEligibleAt) : "",
-);
+const age = $derived(formatRelativeTime(dateSource));
 </script>
 
 <div
@@ -51,6 +67,24 @@ const age = $derived(
 			<RecallReasonBadge reasonType={reason.type} />
 		{/each}
 	</div>
+
+	{#if summaryExcerpt}
+		<p class="mb-2 text-xs leading-5 text-[var(--text-secondary)] line-clamp-2">
+			{summaryExcerpt}
+		</p>
+	{/if}
+
+	{#if displayTags.length > 0}
+		<div class="flex flex-wrap gap-1 mb-2">
+			{#each displayTags as tag}
+				<span
+					class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)]"
+				>
+					{tag}
+				</span>
+			{/each}
+		</div>
+	{/if}
 
 	<div class="flex items-center gap-1 mt-2">
 		<button

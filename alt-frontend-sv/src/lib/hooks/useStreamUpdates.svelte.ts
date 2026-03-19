@@ -10,7 +10,6 @@
  * - Client-side coalescing (3s window)
  * - Exponential backoff reconnection
  */
-import { onDestroy } from "svelte";
 import { createClient } from "@connectrpc/connect";
 import { createClientTransport } from "$lib/connect/transport-client";
 import { KnowledgeHomeService } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_pb";
@@ -25,8 +24,8 @@ const LEADER_HEARTBEAT_INTERVAL = 5000;
 const LEADER_HEARTBEAT_TIMEOUT = 10000;
 
 interface StreamUpdateOptions {
-	enabled: boolean;
-	lensId?: string;
+	get enabled(): boolean;
+	get lensId(): string | undefined;
 	onRefresh?: () => void;
 }
 
@@ -363,20 +362,29 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 		isLeader = false;
 	}
 
-	// --- Initialization ---
-	if (opts.enabled) {
+	// --- Initialization (reactive) ---
+	$effect(() => {
+		const enabled = opts.enabled;
+		const _lensId = opts.lensId; // re-connect on lensId change
+
+		if (!enabled) return;
+
 		if (typeof document !== "undefined") {
 			document.addEventListener("visibilitychange", onVisibilityChange);
 		}
 		initChannel();
-	}
 
-	onDestroy(() => {
-		disconnect();
-		closeChannel();
-		if (typeof document !== "undefined") {
-			document.removeEventListener("visibilitychange", onVisibilityChange);
-		}
+		return () => {
+			disconnect();
+			closeChannel();
+			if (typeof document !== "undefined") {
+				document.removeEventListener("visibilitychange", onVisibilityChange);
+			}
+			// clean re-init state
+			retryCount = 0;
+			isFallback = false;
+			suspended = false;
+		};
 	});
 
 	return {

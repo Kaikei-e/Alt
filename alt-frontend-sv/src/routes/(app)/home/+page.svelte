@@ -50,8 +50,8 @@ const activeLensName = $derived(
 
 // Stream updates — gated by feature flag, refreshes home data on apply
 const stream = useStreamUpdates({
-	enabled: streamEnabled,
-	lensId: lens.activeLensId ?? undefined,
+	get enabled() { return streamEnabled; },
+	get lensId() { return lens.activeLensId ?? undefined; },
 	onRefresh: () => home.fetchData(true, lens.activeLensId),
 });
 
