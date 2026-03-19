@@ -3,6 +3,7 @@ package alt_db
 import (
 	"alt/domain"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -16,14 +17,29 @@ func (r *AltDBRepository) GetRecallCandidates(ctx context.Context, userID uuid.U
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetRecallCandidates")
 	defer span.End()
 
-	query := `SELECT user_id, item_key, recall_score, reason_json, next_suggest_at,
-		first_eligible_at, snoozed_until, updated_at, projection_version
-		FROM recall_candidate_view
-		WHERE user_id = $1
-		  AND (snoozed_until IS NULL OR snoozed_until < now())
-		  AND next_suggest_at IS NOT NULL
-		  AND next_suggest_at <= now()
-		ORDER BY recall_score DESC
+	query := `SELECT rc.user_id, rc.item_key, rc.recall_score, rc.reason_json, rc.next_suggest_at,
+		rc.first_eligible_at, rc.snoozed_until, rc.updated_at, rc.projection_version,
+		khi.item_key, khi.tenant_id, khi.item_type, khi.primary_ref_id, khi.title,
+		khi.summary_excerpt, khi.tags_json, khi.why_json, khi.score, khi.published_at,
+		khi.summary_state, COALESCE(art.url, '') AS link
+		FROM recall_candidate_view rc
+		LEFT JOIN knowledge_home_items khi
+		  ON khi.user_id = rc.user_id
+		  AND khi.item_key = rc.item_key
+		  AND khi.projection_version = COALESCE((
+		  	SELECT version FROM knowledge_projection_versions
+		  	WHERE status = 'active'
+		  	ORDER BY version DESC
+		  	LIMIT 1
+		  ), 1)
+		  AND khi.dismissed_at IS NULL
+		LEFT JOIN articles art
+		  ON khi.primary_ref_id = art.id AND art.deleted_at IS NULL
+		WHERE rc.user_id = $1
+		  AND (rc.snoozed_until IS NULL OR rc.snoozed_until < now())
+		  AND rc.next_suggest_at IS NOT NULL
+		  AND rc.next_suggest_at <= now()
+		ORDER BY rc.recall_score DESC
 		LIMIT $2`
 
 	rows, err := r.pool.Query(ctx, query, userID, limit)
@@ -36,12 +52,76 @@ func (r *AltDBRepository) GetRecallCandidates(ctx context.Context, userID uuid.U
 	for rows.Next() {
 		var c domain.RecallCandidate
 		var reasonJSON []byte
+		var homeItemKey sql.NullString
+		var tenantID sql.NullString
+		var itemType sql.NullString
+		var primaryRefID sql.NullString
+		var title sql.NullString
+		var summaryExcerpt sql.NullString
+		var tagsJSON []byte
+		var whyJSON []byte
+		var itemScore sql.NullFloat64
+		var publishedAt sql.NullTime
+		var summaryState sql.NullString
+		var link sql.NullString
 		if err := rows.Scan(&c.UserID, &c.ItemKey, &c.RecallScore, &reasonJSON,
-			&c.NextSuggestAt, &c.FirstEligibleAt, &c.SnoozedUntil, &c.UpdatedAt, &c.ProjectionVersion); err != nil {
+			&c.NextSuggestAt, &c.FirstEligibleAt, &c.SnoozedUntil, &c.UpdatedAt, &c.ProjectionVersion,
+			&homeItemKey, &tenantID, &itemType, &primaryRefID, &title,
+			&summaryExcerpt, &tagsJSON, &whyJSON, &itemScore, &publishedAt,
+			&summaryState, &link); err != nil {
 			return nil, fmt.Errorf("GetRecallCandidates scan: %w", err)
 		}
 		_ = json.Unmarshal(reasonJSON, &c.Reasons)
+		if homeItemKey.Valid {
+			item := domain.KnowledgeHomeItem{
+				UserID:       c.UserID,
+				ItemKey:      homeItemKey.String,
+			}
+			if tenantID.Valid {
+				if parsedTenantID, err := uuid.Parse(tenantID.String); err == nil {
+					item.TenantID = parsedTenantID
+				}
+			}
+			if itemType.Valid {
+				item.ItemType = itemType.String
+			}
+			if primaryRefID.Valid {
+				if parsedPrimaryRefID, err := uuid.Parse(primaryRefID.String); err == nil {
+					item.PrimaryRefID = &parsedPrimaryRefID
+				}
+			}
+			if title.Valid {
+				item.Title = title.String
+			}
+			if summaryExcerpt.Valid {
+				item.SummaryExcerpt = summaryExcerpt.String
+			}
+			if len(tagsJSON) > 0 {
+				_ = json.Unmarshal(tagsJSON, &item.Tags)
+			}
+			if len(whyJSON) > 0 {
+				_ = json.Unmarshal(whyJSON, &item.WhyReasons)
+			}
+			if itemScore.Valid {
+				item.Score = itemScore.Float64
+			}
+			if publishedAt.Valid {
+				item.PublishedAt = &publishedAt.Time
+			}
+			if summaryState.Valid {
+				item.SummaryState = summaryState.String
+			} else {
+				item.SummaryState = domain.SummaryStateMissing
+			}
+			if link.Valid {
+				item.Link = link.String
+			}
+			c.Item = &item
+		}
 		candidates = append(candidates, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetRecallCandidates rows: %w", err)
 	}
 
 	span.SetAttributes(attribute.Int("db.row_count", len(candidates)))
