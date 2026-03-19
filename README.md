@@ -23,6 +23,8 @@ Built as an ambitious solo project with production-quality goals, Alt treats **p
 
 **Key Capabilities:** RSS Ingestion • Knowledge Home (event-sourced discovery and recall surface) • AI Enrichment (LLM Summaries, Tag Extraction, Query Expansion, Re-ranking) • Full-Text Search • RAG Q&A (Ask Augur) • 3/7-Day Recaps • Morning Letter & Evening Pulse • Tag Verse (3D) & Tag Trail • Swipe Mode • Japanese TTS • Local LLM (Ollama) • ClickHouse Analytics • TDD-First Development
 
+![Knowledge Home — Desktop](docs/images/knowledge-home-desktop.webp)
+
 Alt is organized as a Compose-first monorepo with Go, Python, Rust, TypeScript, Deno, and F# services. Docker Compose is the source of truth for local orchestration. Historical Kubernetes assets under `stopped-using-k8s/` are reference-only.
 
 ## Table of Contents
