@@ -18,6 +18,11 @@ import (
 	"time"
 )
 
+const (
+	reprojectBatchSize         = 2000
+	reprojectLoopSafetyMargin  = 3 * time.Second
+)
+
 // KnowledgeReprojectJob returns a function suitable for the JobScheduler that
 // processes pending/running reproject runs. Designed to be called periodically.
 func KnowledgeReprojectJob(
@@ -117,71 +122,89 @@ func processReprojectBatch(
 		return fmt.Errorf("parse reproject target version: %w", err)
 	}
 
-	// Process a batch of events for the target version
+	// Process batches of events for the target version in a loop until
+	// events are exhausted or the context deadline approaches.
 	var checkpoint struct {
 		LastEventSeq int64 `json:"last_event_seq"`
 	}
 	_ = json.Unmarshal(activeRun.CheckpointPayload, &checkpoint)
 
-	events, err := eventsPort.ListKnowledgeEventsSince(ctx, checkpoint.LastEventSeq, batchSize)
-	if err != nil {
-		return fmt.Errorf("fetch events for reproject: %w", err)
+	var stats domain.ReprojectStats
+	_ = json.Unmarshal(activeRun.StatsJSON, &stats)
+
+	completed := false
+	tickStart := time.Now()
+
+	for {
+		// Stop if context deadline is approaching
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < reprojectLoopSafetyMargin {
+			break
+		}
+
+		events, err := eventsPort.ListKnowledgeEventsSince(ctx, checkpoint.LastEventSeq, reprojectBatchSize)
+		if err != nil {
+			return fmt.Errorf("fetch events for reproject: %w", err)
+		}
+
+		if len(events) == 0 {
+			completed = true
+			break
+		}
+
+		// Process events (project to target version)
+		var processedCount int64
+		var errorCount int64
+		for _, event := range events {
+			if err := projectEvent(ctx, event, homeItemsPort, nil, summaryVersionPort, nil, tagSetVersionPort, homeItemsPort, targetVersion); err != nil {
+				errorCount++
+				logger.Logger.ErrorContext(ctx, "failed to replay reproject event",
+					"error", err,
+					"run_id", activeRun.ReprojectRunID,
+					"event_id", event.EventID,
+					"event_type", event.EventType,
+					"event_seq", event.EventSeq)
+			}
+			if event.EventSeq > checkpoint.LastEventSeq {
+				checkpoint.LastEventSeq = event.EventSeq
+			}
+			processedCount++
+		}
+
+		stats.EventsProcessed += processedCount
+		stats.ErrorCount += errorCount
+
+		// Persist checkpoint after each batch
+		checkpointJSON, _ := json.Marshal(checkpoint)
+		activeRun.CheckpointPayload = checkpointJSON
+		statsJSON, _ := json.Marshal(stats)
+		activeRun.StatsJSON = statsJSON
+
+		if err := updateRunPort.UpdateReprojectRun(ctx, activeRun); err != nil {
+			return fmt.Errorf("update reproject checkpoint: %w", err)
+		}
+
+		logger.Logger.InfoContext(ctx, "reproject batch processed",
+			"run_id", activeRun.ReprojectRunID,
+			"batch_size", len(events),
+			"total_processed", stats.EventsProcessed,
+			"elapsed", time.Since(tickStart).String())
 	}
 
-	if len(events) == 0 {
-		// No more events to process - transition to swappable
+	if completed {
 		now := time.Now()
 		activeRun.Status = domain.ReprojectStatusSwappable
 		activeRun.FinishedAt = &now
+		// Final stats update
+		statsJSON, _ := json.Marshal(stats)
+		activeRun.StatsJSON = statsJSON
 		if err := updateRunPort.UpdateReprojectRun(ctx, activeRun); err != nil {
 			return fmt.Errorf("complete reproject: %w", err)
 		}
 		logger.Logger.InfoContext(ctx, "reproject completed, ready for swap",
-			"run_id", activeRun.ReprojectRunID)
-		return nil
+			"run_id", activeRun.ReprojectRunID,
+			"total_processed", stats.EventsProcessed,
+			"elapsed", time.Since(tickStart).String())
 	}
-
-	// Process events (project to target version)
-	// The actual projection logic is the same as the regular projector
-	// but targets a different projection_version
-	var processedCount int64
-	var errorCount int64
-	for _, event := range events {
-		if err := projectEvent(ctx, event, homeItemsPort, nil, summaryVersionPort, nil, tagSetVersionPort, homeItemsPort, targetVersion); err != nil {
-			errorCount++
-			logger.Logger.ErrorContext(ctx, "failed to replay reproject event",
-				"error", err,
-				"run_id", activeRun.ReprojectRunID,
-				"event_id", event.EventID,
-				"event_type", event.EventType,
-				"event_seq", event.EventSeq)
-		}
-		if event.EventSeq > checkpoint.LastEventSeq {
-			checkpoint.LastEventSeq = event.EventSeq
-		}
-		processedCount++
-	}
-
-	// Update checkpoint
-	checkpointJSON, _ := json.Marshal(checkpoint)
-	activeRun.CheckpointPayload = checkpointJSON
-
-	// Update stats
-	var stats domain.ReprojectStats
-	_ = json.Unmarshal(activeRun.StatsJSON, &stats)
-	stats.EventsProcessed += processedCount
-	stats.ErrorCount += errorCount
-	statsJSON, _ := json.Marshal(stats)
-	activeRun.StatsJSON = statsJSON
-
-	if err := updateRunPort.UpdateReprojectRun(ctx, activeRun); err != nil {
-		return fmt.Errorf("update reproject checkpoint: %w", err)
-	}
-
-	logger.Logger.InfoContext(ctx, "reproject batch processed",
-		"run_id", activeRun.ReprojectRunID,
-		"batch_size", len(events),
-		"total_processed", stats.EventsProcessed)
 
 	return nil
 }

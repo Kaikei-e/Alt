@@ -18,7 +18,7 @@ let {
 
 const statusColor = (status: string) => {
 	switch (status) {
-		case "completed":
+		case "swappable":
 			return "var(--accent-green, #22c55e)";
 		case "running":
 			return "var(--accent-blue, #3b82f6)";
@@ -50,8 +50,8 @@ const modeLabel = (mode: string) => {
 	}
 };
 
-const canCompare = (run: ReprojectRunData) => run.status === "completed";
-const canSwap = (run: ReprojectRunData) => run.status === "completed";
+const canCompare = (run: ReprojectRunData) => run.status === "swappable";
+const canSwap = (run: ReprojectRunData) => run.status === "swappable";
 const canRollback = (run: ReprojectRunData) => run.status === "swapped";
 </script>
 

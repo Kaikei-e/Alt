@@ -269,7 +269,7 @@ func TestCompareReproject(t *testing.T) {
 func TestSwapReproject(t *testing.T) {
 	logger.InitLogger()
 
-	t.Run("swaps swappable run", func(t *testing.T) {
+	t.Run("swaps swappable run and activates version", func(t *testing.T) {
 		runID := uuid.New()
 		getPort := &mockGetReprojectRunPort{
 			run: &domain.ReprojectRun{
@@ -284,9 +284,51 @@ func TestSwapReproject(t *testing.T) {
 
 		err := uc.SwapReproject(context.Background(), runID)
 		require.NoError(t, err)
+		// ActivateVersion must be called with parsed version number
+		assert.Equal(t, 2, activatePort.activated)
 		require.NotNil(t, updatePort.updated)
 		assert.Equal(t, domain.ReprojectStatusSwapped, updatePort.updated.Status)
 		assert.NotNil(t, updatePort.updated.FinishedAt)
+	})
+
+	t.Run("does not swap when ActivateVersion fails", func(t *testing.T) {
+		runID := uuid.New()
+		getPort := &mockGetReprojectRunPort{
+			run: &domain.ReprojectRun{
+				ReprojectRunID: runID,
+				Status:         domain.ReprojectStatusSwappable,
+				ToVersion:      "v2",
+			},
+		}
+		updatePort := &mockUpdateReprojectRunPort{}
+		activatePort := &mockActivateVersionPort{err: assert.AnError}
+		uc := NewUsecase(nil, getPort, updatePort, nil, nil, nil, activatePort)
+
+		err := uc.SwapReproject(context.Background(), runID)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "activate version")
+		// Run should NOT have been updated to swapped
+		assert.Nil(t, updatePort.updated)
+	})
+
+	t.Run("fails with invalid version format", func(t *testing.T) {
+		runID := uuid.New()
+		getPort := &mockGetReprojectRunPort{
+			run: &domain.ReprojectRun{
+				ReprojectRunID: runID,
+				Status:         domain.ReprojectStatusSwappable,
+				ToVersion:      "invalid",
+			},
+		}
+		updatePort := &mockUpdateReprojectRunPort{}
+		activatePort := &mockActivateVersionPort{}
+		uc := NewUsecase(nil, getPort, updatePort, nil, nil, nil, activatePort)
+
+		err := uc.SwapReproject(context.Background(), runID)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "parse version")
+		assert.Equal(t, 0, activatePort.activated)
+		assert.Nil(t, updatePort.updated)
 	})
 
 	t.Run("rejects non-swappable run", func(t *testing.T) {

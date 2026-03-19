@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -135,6 +137,15 @@ func (u *Usecase) SwapReproject(ctx context.Context, runID uuid.UUID) error {
 
 	if run.Status != domain.ReprojectStatusSwappable {
 		return fmt.Errorf("cannot swap run in status %q; must be swappable", run.Status)
+	}
+
+	version, err := strconv.Atoi(strings.TrimPrefix(strings.ToLower(run.ToVersion), "v"))
+	if err != nil {
+		return fmt.Errorf("parse version for activation %q: %w", run.ToVersion, err)
+	}
+
+	if err := u.activateVersionPort.ActivateVersion(ctx, version); err != nil {
+		return fmt.Errorf("activate version %d: %w", version, err)
 	}
 
 	now := time.Now()
