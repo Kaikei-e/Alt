@@ -55,6 +55,30 @@ docker compose -f compose/compose.yaml up --build -d <service>
 4. **No Secrets in Code** — Use `.env` and Docker secrets. Never hardcode credentials.
 5. **Service-specific rules** — Always check `<service>/CLAUDE.md` before modifying a service.
 
+## Planning with Obsidian
+
+Obsidian vault (docs/) contains 466+ ADRs, plans, runbooks, reviews.
+When planning or designing features:
+
+1. Search relevant ADRs via Obsidian MCP (`mcp__obsidian__get_workspace_files`, `mcp__obsidian__view`)
+2. Check canonical contracts in `plan/` for the affected domain
+3. Read `review/` for known issues and remediation directives
+4. Read latest `daily/` notes for current work context
+
+Key documents:
+- `plan/IMPL_BASE.md` — Immutable data model design (append-first, versioned artifacts, projections)
+- `plan/knowledge-home-phase0-canonical-contract.md` — Knowledge Home canonical contract
+- `plan/alt_knowledge_home_phase_plan.md` — Full phase plan (Phase 0-7)
+- `review/knowledge-home-phase1-5-remediation-directives-2026-03-18.md` — Remediation directives
+
+## Immutable Data Model Invariants
+
+- **Append-first**: State via events, not mutable flags. `knowledge_events` is INSERT-only.
+- **Reproject-safe**: Projectors use event payload only, never latest state queries.
+- **Versioned artifacts**: Summaries/tags use `summary_versions`/`tag_set_versions`.
+- **Why as first-class**: Every Home item must explain why it was surfaced.
+- **Disposable projections**: Read models (`knowledge_home_items`, `today_digest_view`, `recall_candidate_view`) can be rebuilt from the event log.
+
 ## Common Pitfalls
 
 | Issue | Fix |
@@ -64,3 +88,4 @@ docker compose -f compose/compose.yaml up --build -d <service>
 | Rate limit errors from external APIs | Verify 5-second intervals between calls |
 | Import cycles (Go) | Check Clean Architecture layer dependencies |
 | Changes not taking effect | Forgot `--build` — rebuild the service |
+| Planning without ADR context | Run `/plan-context-loader` to load relevant ADRs first |
