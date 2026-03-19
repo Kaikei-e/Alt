@@ -459,7 +459,8 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 	}
 
 	// Reduce score for opened items (interaction suppression)
-	now := time.Now()
+	// Use event.OccurredAt for reproject-safety (immutable data model invariant)
+	eventTime := event.OccurredAt
 	item := domain.KnowledgeHomeItem{
 		UserID:            userID,
 		TenantID:          event.TenantID,
@@ -468,9 +469,9 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 		Title:             "",
 		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}},
 		Score:             0.1, // Suppressed score
-		LastInteractedAt:  &now,
-		GeneratedAt:       now,
-		UpdatedAt:         now,
+		LastInteractedAt:  &eventTime,
+		GeneratedAt:       time.Now(),
+		UpdatedAt:         time.Now(),
 		ProjectionVersion: projectionVersion,
 	}
 
@@ -486,9 +487,9 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 		}
 	}
 
-	// Create recall candidate: eligible after 24h
+	// Create recall candidate: eligible after 24h (reproject-safe: based on event time)
 	if recallCandidatePort != nil {
-		eligibleAt := now.Add(24 * time.Hour)
+		eligibleAt := eventTime.Add(24 * time.Hour)
 		candidate := domain.RecallCandidate{
 			UserID:            userID,
 			ItemKey:           payload.ItemKey,
@@ -496,7 +497,7 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 			Reasons:           []domain.RecallReason{{Type: domain.ReasonOpenedNotRevisited, Description: "Opened but not revisited"}},
 			FirstEligibleAt:   &eligibleAt,
 			NextSuggestAt:     &eligibleAt,
-			UpdatedAt:         now,
+			UpdatedAt:         time.Now(),
 			ProjectionVersion: projectionVersion,
 		}
 		if err := recallCandidatePort.UpsertRecallCandidate(ctx, candidate); err != nil {

@@ -2,10 +2,12 @@ package job
 
 import (
 	"alt/domain"
+	"alt/port/knowledge_home_port"
 	"alt/port/recall_candidate_port"
 	"alt/port/recall_signal_port"
 	"alt/utils/logger"
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -29,25 +31,29 @@ const (
 )
 
 // RecallProjectorJob returns a function that scores recall candidates from signals.
-// allowedUserIDs is the bootstrap set of user IDs to scan (from config AllowedUserIDs).
-// A future ListDistinctUserIDs port will replace this.
+// Users are dynamically discovered via ListDistinctUserIDsPort (from knowledge_home_items).
 func RecallProjectorJob(
-	allowedUserIDs []uuid.UUID,
+	listUsersPort knowledge_home_port.ListDistinctUserIDsPort,
 	signalPort recall_signal_port.ListRecallSignalsByUserPort,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
 ) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		return processRecallSignals(ctx, allowedUserIDs, signalPort, candidatePort, nil)
+		return processRecallSignals(ctx, listUsersPort, signalPort, candidatePort, nil)
 	}
 }
 
 func processRecallSignals(
 	ctx context.Context,
-	userIDs []uuid.UUID,
+	listUsersPort knowledge_home_port.ListDistinctUserIDsPort,
 	signalPort recall_signal_port.ListRecallSignalsByUserPort,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
 	_ interface{}, // reserved for homeItemsPort (future enrichment)
 ) error {
+	userIDs, err := listUsersPort.ListDistinctUserIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("recall projector: list distinct user IDs: %w", err)
+	}
+
 	logger.Logger.InfoContext(ctx, "recall projector: starting signal processing",
 		slog.Int("user_count", len(userIDs)))
 

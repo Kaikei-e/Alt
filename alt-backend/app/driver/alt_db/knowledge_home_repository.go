@@ -276,6 +276,34 @@ func (r *AltDBRepository) DismissKnowledgeHomeItem(ctx context.Context, userID u
 	return nil
 }
 
+// ListDistinctUserIDs returns distinct user IDs from knowledge_home_items.
+// Excludes the nil UUID (system/anonymous entries).
+func (r *AltDBRepository) ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.ListDistinctUserIDs")
+	defer span.End()
+
+	query := `SELECT DISTINCT user_id FROM knowledge_home_items
+		WHERE user_id != '00000000-0000-0000-0000-000000000000'`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("ListDistinctUserIDs: %w", err)
+	}
+	defer rows.Close()
+
+	var userIDs []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("ListDistinctUserIDs scan: %w", err)
+		}
+		userIDs = append(userIDs, id)
+	}
+
+	span.SetAttributes(attribute.Int("db.row_count", len(userIDs)))
+	return userIDs, nil
+}
+
 // encodeCursor encodes a cursor from score, publishedAt, and itemKey.
 func encodeCursor(score float64, publishedAt *time.Time, itemKey string) string {
 	var pubStr string

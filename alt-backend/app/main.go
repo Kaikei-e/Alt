@@ -17,11 +17,9 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
@@ -176,22 +174,12 @@ func main() {
 		),
 	})
 
-	// Parse allowed user IDs for recall projector bootstrap
-	var recallUserIDs []uuid.UUID
-	if cfg.KnowledgeHome.AllowedUserIDs != "" {
-		for _, idStr := range strings.Split(cfg.KnowledgeHome.AllowedUserIDs, ",") {
-			idStr = strings.TrimSpace(idStr)
-			if id, err := uuid.Parse(idStr); err == nil {
-				recallUserIDs = append(recallUserIDs, id)
-			}
-		}
-	}
 	scheduler.Add(job.Job{
 		Name:     "recall-projector",
 		Interval: 60 * time.Second,
 		Timeout:  30 * time.Second,
 		Fn: job.RecallProjectorJob(
-			recallUserIDs,
+			container.KnowledgeHomeGateway,
 			container.RecallSignalGateway,
 			container.RecallCandidateGateway,
 		),
@@ -201,7 +189,7 @@ func main() {
 		Interval: 5 * time.Minute,
 		Timeout:  30 * time.Second,
 		Fn: job.DigestAvailabilityReconcileJob(
-			recallUserIDs,
+			container.KnowledgeHomeGateway,
 			container.RecapUsecase,
 			container.TodayDigestGateway,
 		),

@@ -12,6 +12,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// mockListDistinctUserIDsPort implements knowledge_home_port.ListDistinctUserIDsPort.
+type mockListDistinctUserIDsPort struct {
+	userIDs []uuid.UUID
+	err     error
+}
+
+func (m *mockListDistinctUserIDsPort) ListDistinctUserIDs(_ context.Context) ([]uuid.UUID, error) {
+	return m.userIDs, m.err
+}
+
 // mockListRecallSignalsByUserPort implements recall_signal_port.ListRecallSignalsByUserPort.
 type mockListRecallSignalsByUserPort struct {
 	signalsByUser map[uuid.UUID][]domain.RecallSignal
@@ -42,27 +52,40 @@ func (m *mockUpsertRecallCandidatePort) UpsertRecallCandidate(_ context.Context,
 func TestProcessRecallSignals(t *testing.T) {
 	userID := uuid.New()
 
-	t.Run("no allowed users - no candidates", func(t *testing.T) {
+	t.Run("no users from port - no candidates", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: nil}
 		signalPort := &mockListRecallSignalsByUserPort{}
 		candidatePort := &mockUpsertRecallCandidatePort{}
 
-		err := processRecallSignals(context.Background(), nil, signalPort, candidatePort, nil)
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
 		assert.Empty(t, candidatePort.upserted)
 	})
 
+	t.Run("list users port error returns error", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{err: errors.New("db error")}
+		signalPort := &mockListRecallSignalsByUserPort{}
+		candidatePort := &mockUpsertRecallCandidatePort{}
+
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "list distinct user IDs")
+	})
+
 	t.Run("user with no signals - no candidates", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		signalPort := &mockListRecallSignalsByUserPort{
 			signalsByUser: map[uuid.UUID][]domain.RecallSignal{},
 		}
 		candidatePort := &mockUpsertRecallCandidatePort{}
 
-		err := processRecallSignals(context.Background(), []uuid.UUID{userID}, signalPort, candidatePort, nil)
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
 		assert.Empty(t, candidatePort.upserted)
 	})
 
 	t.Run("SignalOpened older than 48h creates ReasonOpenedNotRevisited candidate", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		oldSignal := domain.RecallSignal{
 			SignalID:   uuid.New(),
 			UserID:     userID,
@@ -77,7 +100,7 @@ func TestProcessRecallSignals(t *testing.T) {
 		}
 		candidatePort := &mockUpsertRecallCandidatePort{}
 
-		err := processRecallSignals(context.Background(), []uuid.UUID{userID}, signalPort, candidatePort, nil)
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
 		require.Len(t, candidatePort.upserted, 1)
 		assert.Equal(t, "article:old-item", candidatePort.upserted[0].ItemKey)
@@ -86,6 +109,7 @@ func TestProcessRecallSignals(t *testing.T) {
 	})
 
 	t.Run("SignalOpened younger than 48h - below minRecallScore - no candidate", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		recentSignal := domain.RecallSignal{
 			SignalID:   uuid.New(),
 			UserID:     userID,
@@ -100,12 +124,13 @@ func TestProcessRecallSignals(t *testing.T) {
 		}
 		candidatePort := &mockUpsertRecallCandidatePort{}
 
-		err := processRecallSignals(context.Background(), []uuid.UUID{userID}, signalPort, candidatePort, nil)
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
 		assert.Empty(t, candidatePort.upserted)
 	})
 
 	t.Run("SignalAugurReferenced creates ReasonRelatedToAugurQ candidate", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		signal := domain.RecallSignal{
 			SignalID:   uuid.New(),
 			UserID:     userID,
@@ -120,7 +145,7 @@ func TestProcessRecallSignals(t *testing.T) {
 		}
 		candidatePort := &mockUpsertRecallCandidatePort{}
 
-		err := processRecallSignals(context.Background(), []uuid.UUID{userID}, signalPort, candidatePort, nil)
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
 		require.Len(t, candidatePort.upserted, 1)
 		assert.Equal(t, domain.ReasonRelatedToAugurQ, candidatePort.upserted[0].Reasons[0].Type)
@@ -128,6 +153,7 @@ func TestProcessRecallSignals(t *testing.T) {
 	})
 
 	t.Run("signal below minRecallScore is skipped", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		signal := domain.RecallSignal{
 			SignalID:   uuid.New(),
 			UserID:     userID,
@@ -142,7 +168,7 @@ func TestProcessRecallSignals(t *testing.T) {
 		}
 		candidatePort := &mockUpsertRecallCandidatePort{}
 
-		err := processRecallSignals(context.Background(), []uuid.UUID{userID}, signalPort, candidatePort, nil)
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
 		// weightTagInterest = 0.15, which is below minRecallScore = 0.2
 		assert.Empty(t, candidatePort.upserted)
@@ -150,15 +176,17 @@ func TestProcessRecallSignals(t *testing.T) {
 
 	t.Run("list signals error continues to next user", func(t *testing.T) {
 		user2 := uuid.New()
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID, user2}}
 		signalPort := &mockListRecallSignalsByUserPort{err: errors.New("db error")}
 		candidatePort := &mockUpsertRecallCandidatePort{}
 
-		err := processRecallSignals(context.Background(), []uuid.UUID{userID, user2}, signalPort, candidatePort, nil)
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
 		assert.Empty(t, candidatePort.upserted)
 	})
 
 	t.Run("upsert error continues to next item", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		signals := []domain.RecallSignal{
 			{
 				SignalID:   uuid.New(),
@@ -182,13 +210,14 @@ func TestProcessRecallSignals(t *testing.T) {
 		}
 		candidatePort := &mockUpsertRecallCandidatePort{err: errors.New("upsert failed")}
 
-		err := processRecallSignals(context.Background(), []uuid.UUID{userID}, signalPort, candidatePort, nil)
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
 		// Both items attempted but both failed - no items in upserted
 	})
 
-	t.Run("processes multiple users", func(t *testing.T) {
+	t.Run("processes multiple users from port", func(t *testing.T) {
 		user2 := uuid.New()
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID, user2}}
 		signalPort := &mockListRecallSignalsByUserPort{
 			signalsByUser: map[uuid.UUID][]domain.RecallSignal{
 				userID: {
@@ -209,7 +238,7 @@ func TestProcessRecallSignals(t *testing.T) {
 		}
 		candidatePort := &mockUpsertRecallCandidatePort{}
 
-		err := processRecallSignals(context.Background(), []uuid.UUID{userID, user2}, signalPort, candidatePort, nil)
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
 		require.Len(t, candidatePort.upserted, 2)
 	})

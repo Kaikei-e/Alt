@@ -55,13 +55,14 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 	userID := uuid.New()
 
 	t.Run("recap available - sets WeeklyRecapAvailable true", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		recapPort := &mockRecapPortForDigest{
 			sevenDayRecap:   &domain.RecapSummary{JobID: "job-1"},
 			eveningPulseErr: domain.ErrEveningPulseNotFound,
 		}
 		digestPort := &mockDigestUpsertPort{}
 
-		err := digestAvailabilityReconcile(context.Background(), []uuid.UUID{userID}, recapPort, digestPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
 		require.NoError(t, err)
 		require.Len(t, digestPort.upserted, 1)
 		assert.True(t, digestPort.upserted[0].WeeklyRecapAvailable)
@@ -70,31 +71,34 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 	})
 
 	t.Run("recap ErrRecapNotFound - sets WeeklyRecapAvailable false", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		recapPort := &mockRecapPortForDigest{
 			sevenDayErr:     domain.ErrRecapNotFound,
 			eveningPulseErr: domain.ErrEveningPulseNotFound,
 		}
 		digestPort := &mockDigestUpsertPort{}
 
-		err := digestAvailabilityReconcile(context.Background(), []uuid.UUID{userID}, recapPort, digestPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
 		require.NoError(t, err)
 		require.Len(t, digestPort.upserted, 1)
 		assert.False(t, digestPort.upserted[0].WeeklyRecapAvailable)
 	})
 
 	t.Run("both transient errors - UpsertTodayDigest not called", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		recapPort := &mockRecapPortForDigest{
 			sevenDayErr:     errors.New("connection refused"),
 			eveningPulseErr: errors.New("timeout"),
 		}
 		digestPort := &mockDigestUpsertPort{}
 
-		err := digestAvailabilityReconcile(context.Background(), []uuid.UUID{userID}, recapPort, digestPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
 		require.NoError(t, err)
 		assert.Empty(t, digestPort.upserted)
 	})
 
 	t.Run("pulse PulseStatusError - sets EveningPulseAvailable false", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		recapPort := &mockRecapPortForDigest{
 			sevenDayErr: domain.ErrRecapNotFound,
 			eveningPulse: &domain.EveningPulse{
@@ -103,13 +107,14 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 		}
 		digestPort := &mockDigestUpsertPort{}
 
-		err := digestAvailabilityReconcile(context.Background(), []uuid.UUID{userID}, recapPort, digestPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
 		require.NoError(t, err)
 		require.Len(t, digestPort.upserted, 1)
 		assert.False(t, digestPort.upserted[0].EveningPulseAvailable)
 	})
 
 	t.Run("pulse PulseStatusNormal - sets EveningPulseAvailable true", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		recapPort := &mockRecapPortForDigest{
 			sevenDayErr: domain.ErrRecapNotFound,
 			eveningPulse: &domain.EveningPulse{
@@ -118,13 +123,14 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 		}
 		digestPort := &mockDigestUpsertPort{}
 
-		err := digestAvailabilityReconcile(context.Background(), []uuid.UUID{userID}, recapPort, digestPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
 		require.NoError(t, err)
 		require.Len(t, digestPort.upserted, 1)
 		assert.True(t, digestPort.upserted[0].EveningPulseAvailable)
 	})
 
 	t.Run("pulse PulseStatusQuietDay - sets EveningPulseAvailable true", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		recapPort := &mockRecapPortForDigest{
 			sevenDayErr: domain.ErrRecapNotFound,
 			eveningPulse: &domain.EveningPulse{
@@ -133,13 +139,14 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 		}
 		digestPort := &mockDigestUpsertPort{}
 
-		err := digestAvailabilityReconcile(context.Background(), []uuid.UUID{userID}, recapPort, digestPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
 		require.NoError(t, err)
 		require.Len(t, digestPort.upserted, 1)
 		assert.True(t, digestPort.upserted[0].EveningPulseAvailable)
 	})
 
 	t.Run("pulse PulseStatusPartial - sets EveningPulseAvailable true", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		recapPort := &mockRecapPortForDigest{
 			sevenDayErr: domain.ErrRecapNotFound,
 			eveningPulse: &domain.EveningPulse{
@@ -148,23 +155,35 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 		}
 		digestPort := &mockDigestUpsertPort{}
 
-		err := digestAvailabilityReconcile(context.Background(), []uuid.UUID{userID}, recapPort, digestPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
 		require.NoError(t, err)
 		require.Len(t, digestPort.upserted, 1)
 		assert.True(t, digestPort.upserted[0].EveningPulseAvailable)
 	})
 
-	t.Run("no allowed users - no-op", func(t *testing.T) {
+	t.Run("no users from port - no-op", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: nil}
 		recapPort := &mockRecapPortForDigest{}
 		digestPort := &mockDigestUpsertPort{}
 
-		err := digestAvailabilityReconcile(context.Background(), nil, recapPort, digestPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
 		require.NoError(t, err)
 		assert.Empty(t, digestPort.upserted)
 	})
 
+	t.Run("list users port error returns error", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{err: errors.New("db error")}
+		recapPort := &mockRecapPortForDigest{}
+		digestPort := &mockDigestUpsertPort{}
+
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "list distinct user IDs")
+	})
+
 	t.Run("multiple users - upserts for each", func(t *testing.T) {
 		user2 := uuid.New()
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID, user2}}
 		recapPort := &mockRecapPortForDigest{
 			sevenDayRecap: &domain.RecapSummary{JobID: "job-1"},
 			eveningPulse: &domain.EveningPulse{
@@ -173,7 +192,7 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 		}
 		digestPort := &mockDigestUpsertPort{}
 
-		err := digestAvailabilityReconcile(context.Background(), []uuid.UUID{userID, user2}, recapPort, digestPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
 		require.NoError(t, err)
 		require.Len(t, digestPort.upserted, 2)
 		assert.True(t, digestPort.upserted[0].WeeklyRecapAvailable)
@@ -183,6 +202,7 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 	})
 
 	t.Run("recap transient error but pulse available - partial reconcile", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		recapPort := &mockRecapPortForDigest{
 			sevenDayErr: errors.New("connection refused"),
 			eveningPulse: &domain.EveningPulse{
@@ -191,7 +211,7 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 		}
 		digestPort := &mockDigestUpsertPort{}
 
-		err := digestAvailabilityReconcile(context.Background(), []uuid.UUID{userID}, recapPort, digestPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, digestPort)
 		require.NoError(t, err)
 		require.Len(t, digestPort.upserted, 1)
 		// recap skipped → false (OR merge preserves existing true in DB)
@@ -202,6 +222,7 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 
 	t.Run("upsert error for one user - continues to next", func(t *testing.T) {
 		user2 := uuid.New()
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID, user2}}
 		recapPort := &mockRecapPortForDigest{
 			sevenDayRecap: &domain.RecapSummary{JobID: "job-1"},
 			eveningPulse: &domain.EveningPulse{
@@ -211,7 +232,7 @@ func TestDigestAvailabilityReconcile(t *testing.T) {
 		// Use a custom mock that fails on first call
 		customPort := &mockDigestUpsertPortWithCounter{failOnCall: 1}
 
-		err := digestAvailabilityReconcile(context.Background(), []uuid.UUID{userID, user2}, recapPort, customPort)
+		err := digestAvailabilityReconcile(context.Background(), listUsersPort, recapPort, customPort)
 		require.NoError(t, err)
 		// First user failed, second user succeeded
 		require.Len(t, customPort.upserted, 1)

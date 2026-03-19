@@ -514,6 +514,44 @@ func TestKnowledgeProjectorJob_HomeItemOpened_CreatesRecallCandidate(t *testing.
 	assert.Equal(t, 0.5, recallPort.upserted[0].RecallScore)
 }
 
+func TestKnowledgeProjectorJob_HomeItemOpened_ReprojectSafe(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	itemKey := "article:" + uuid.New().String()
+	openedPayload, _ := json.Marshal(homeItemOpenedPayload{ItemKey: itemKey})
+
+	// Event occurred 25 hours ago
+	eventTime := time.Now().Add(-25 * time.Hour)
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, UserID: &userID, EventType: domain.EventHomeItemOpened, AggregateType: domain.AggregateArticle, AggregateID: "a1", Payload: openedPayload, OccurredAt: eventTime},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	recallPort := &mockRecallCandidatePort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, recallPort, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+
+	// Recall candidate eligibleAt should be based on event time, not time.Now()
+	require.Len(t, recallPort.upserted, 1)
+	candidate := recallPort.upserted[0]
+	expectedEligibleAt := eventTime.Add(24 * time.Hour)
+	assert.WithinDuration(t, expectedEligibleAt, *candidate.FirstEligibleAt, time.Second, "eligibleAt should be event time + 24h, not now + 24h")
+	assert.WithinDuration(t, expectedEligibleAt, *candidate.NextSuggestAt, time.Second, "nextSuggestAt should be event time + 24h")
+
+	// LastInteractedAt should be event time, not time.Now()
+	require.Len(t, homeItemsPort.upserted, 1)
+	item := homeItemsPort.upserted[0]
+	assert.WithinDuration(t, eventTime, *item.LastInteractedAt, time.Second, "LastInteractedAt should be event time")
+}
+
 func TestKnowledgeProjectorJob_HomeItemDismissed_DismissesReadModelItem(t *testing.T) {
 	logger.InitLogger()
 

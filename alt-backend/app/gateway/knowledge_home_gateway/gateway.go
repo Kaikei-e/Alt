@@ -51,3 +51,11 @@ func (g *Gateway) ClearSupersedeState(ctx context.Context, userID uuid.UUID, ite
 	}
 	return g.repo.ClearSupersedeState(ctx, userID, itemKey, projectionVersion)
 }
+
+// ListDistinctUserIDs implements knowledge_home_port.ListDistinctUserIDsPort.
+func (g *Gateway) ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error) {
+	if g.repo == nil {
+		return nil, fmt.Errorf("ListDistinctUserIDs: database connection not available")
+	}
+	return g.repo.ListDistinctUserIDs(ctx)
+}

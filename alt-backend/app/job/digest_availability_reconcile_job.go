@@ -2,35 +2,41 @@ package job
 
 import (
 	"alt/domain"
+	"alt/port/knowledge_home_port"
 	"alt/port/recap_port"
 	"alt/port/today_digest_port"
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // DigestAvailabilityReconcileJob returns a scheduled function that reconciles
 // Recap and Evening Pulse availability into today_digest_view.
+// Users are dynamically discovered via ListDistinctUserIDsPort.
 func DigestAvailabilityReconcileJob(
-	allowedUserIDs []uuid.UUID,
+	listUsersPort knowledge_home_port.ListDistinctUserIDsPort,
 	recapPort recap_port.RecapPort,
 	digestPort today_digest_port.UpsertTodayDigestPort,
 ) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		return digestAvailabilityReconcile(ctx, allowedUserIDs, recapPort, digestPort)
+		return digestAvailabilityReconcile(ctx, listUsersPort, recapPort, digestPort)
 	}
 }
 
 func digestAvailabilityReconcile(
 	ctx context.Context,
-	userIDs []uuid.UUID,
+	listUsersPort knowledge_home_port.ListDistinctUserIDsPort,
 	recapPort recap_port.RecapPort,
 	digestPort today_digest_port.UpsertTodayDigestPort,
 ) error {
+	userIDs, err := listUsersPort.ListDistinctUserIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("digest availability reconcile: list distinct user IDs: %w", err)
+	}
+
 	if len(userIDs) == 0 {
 		return nil
 	}
@@ -41,7 +47,7 @@ func digestAvailabilityReconcile(
 	// Check recap availability (global, once)
 	recapAvailable := false
 	recapSkip := false
-	_, err := recapPort.GetSevenDayRecap(ctx)
+	_, err = recapPort.GetSevenDayRecap(ctx)
 	if err == nil {
 		recapAvailable = true
 	} else if errors.Is(err, domain.ErrRecapNotFound) {

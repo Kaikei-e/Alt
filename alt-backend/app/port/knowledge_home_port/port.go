@@ -27,3 +27,10 @@ type DismissKnowledgeHomeItemPort interface {
 type ClearSupersedeStatePort interface {
 	ClearSupersedeState(ctx context.Context, userID uuid.UUID, itemKey string, projectionVersion int) error
 }
+
+// ListDistinctUserIDsPort returns distinct user IDs that have knowledge home items.
+// Used by scheduled jobs (RecallProjector, DigestReconcile) to discover active users
+// instead of relying on static AllowedUserIDs from configuration.
+type ListDistinctUserIDsPort interface {
+	ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error)
+}
