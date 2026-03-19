@@ -55,11 +55,6 @@ function handleAction(type: string) {
 			<h3 class="text-sm font-semibold text-[var(--text-primary)] line-clamp-2">
 				{item.title}
 			</h3>
-			{#if item.sourceName}
-				<p class="mt-0.5 text-xs text-[var(--text-secondary)]">
-					{item.sourceName}
-				</p>
-			{/if}
 			{#if item.supersedeInfo}
 				<div class="mt-1">
 					<SupersedeBadge
@@ -139,7 +134,6 @@ function handleAction(type: string) {
 			itemKey={item.itemKey}
 			itemType={item.itemType}
 			articleId={item.articleId}
-			isSaved={item.isSaved}
 			onAction={handleAction}
 		/>
 	</div>

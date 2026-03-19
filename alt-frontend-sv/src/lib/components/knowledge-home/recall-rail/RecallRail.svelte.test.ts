@@ -45,6 +45,8 @@ describe("RecallRail", () => {
 			},
 		});
 
-		await expect.element(page.getByText("Recall")).toBeInTheDocument();
+		await expect
+			.element(page.getByRole("heading", { name: "Recall" }))
+			.toBeInTheDocument();
 	});
 });

@@ -11,7 +11,11 @@ type Props = {
 
 let { onSend, disabled = false, initialContext = "" }: Props = $props();
 
-let inputValue = $state(initialContext);
+let inputValue = $state("");
+
+$effect(() => {
+	inputValue = initialContext;
+});
 
 function handleSubmit() {
 	const trimmed = inputValue.trim();

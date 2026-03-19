@@ -5,16 +5,27 @@ import RecallCandidateCard from "./RecallCandidateCard.svelte";
 
 interface Props {
 	candidates: RecallCandidateData[];
+	unavailable?: boolean;
 	onSnooze: (itemKey: string) => void;
 	onDismiss: (itemKey: string) => void;
 	onOpen: (itemKey: string) => void;
 }
 
-const { candidates, onSnooze, onDismiss, onOpen }: Props = $props();
+const {
+	candidates,
+	unavailable = false,
+	onSnooze,
+	onDismiss,
+	onOpen,
+}: Props = $props();
 let expanded = $state(false);
 </script>
 
-{#if candidates.length > 0}
+{#if unavailable}
+	<div class="border rounded-lg bg-[var(--surface-bg)] border-[var(--surface-border)] px-4 py-3">
+		<p class="text-sm text-[var(--text-tertiary)]">Recall is temporarily unavailable.</p>
+	</div>
+{:else if candidates.length > 0}
 	<div class="border rounded-lg bg-[var(--surface-bg)] border-[var(--surface-border)]">
 		<button
 			class="w-full flex items-center justify-between px-4 py-3 text-sm"

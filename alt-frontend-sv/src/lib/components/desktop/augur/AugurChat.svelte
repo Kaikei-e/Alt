@@ -12,9 +12,10 @@ import augurAvatar from "$lib/assets/augur-chat.webp";
 
 interface Props {
 	initialContext?: string;
+	initialQuestion?: string;
 }
 
-const { initialContext = "" }: Props = $props();
+const { initialContext = "", initialQuestion = "" }: Props = $props();
 
 type Citation = {
 	URL: string;
@@ -44,6 +45,7 @@ let isLoading = $state(false);
 let progressStage = $state<string>("");
 let chatContainer: HTMLDivElement;
 let currentAbortController: AbortController | null = null;
+let lastAutoSentQuestion = $state("");
 
 // Auto-scroll: throttled, suppressed when user scrolls up
 let lastScrollTime = 0;
@@ -226,6 +228,17 @@ onMount(() => {
 			currentAbortController.abort();
 		}
 	};
+});
+
+$effect(() => {
+	if (!initialQuestion.trim()) {
+		return;
+	}
+	if (initialQuestion === lastAutoSentQuestion) {
+		return;
+	}
+	lastAutoSentQuestion = initialQuestion;
+	void handleSend(initialQuestion);
 });
 </script>
 

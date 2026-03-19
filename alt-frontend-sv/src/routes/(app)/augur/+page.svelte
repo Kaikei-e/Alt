@@ -1,6 +1,7 @@
 <script lang="ts">
 import { page } from "$app/stores";
 import { useViewport } from "$lib/stores/viewport.svelte";
+import { resolveAugurEntry } from "$lib/utils/augur-entry";
 
 // Desktop components
 import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
@@ -11,7 +12,12 @@ import ChatWindow from "$lib/components/mobile/search/ChatWindow.svelte";
 
 const { isDesktop } = useViewport();
 
-const initialContext = $derived($page.url.searchParams.get("context") ?? "");
+const augurEntry = $derived(
+	resolveAugurEntry({
+		q: $page.url.searchParams.get("q"),
+		context: $page.url.searchParams.get("context"),
+	}),
+);
 </script>
 
 <svelte:head>
@@ -20,9 +26,15 @@ const initialContext = $derived($page.url.searchParams.get("context") ?? "");
 
 {#if isDesktop}
 	<PageHeader title="Ask Augur" description="Query your knowledge base with AI" />
-	<AugurChat {initialContext} />
+	<AugurChat
+		initialContext={augurEntry.initialDraft}
+		initialQuestion={augurEntry.initialMessage}
+	/>
 {:else}
 	<div class="h-[calc(100vh-64px)] md:h-[calc(100vh-80px)] w-full overflow-hidden">
-		<ChatWindow {initialContext} />
+		<ChatWindow
+			initialContext={augurEntry.initialDraft}
+			initialQuestion={augurEntry.initialMessage}
+		/>
 	</div>
 {/if}

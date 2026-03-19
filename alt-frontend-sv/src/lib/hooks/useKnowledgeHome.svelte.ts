@@ -175,19 +175,9 @@ export function useKnowledgeHome() {
 		});
 	};
 
-	const setSaved = (itemKey: string, isSaved: boolean) => {
-		items = items.map((item) =>
-			item.itemKey === itemKey ? { ...item, isSaved } : item,
-		);
-	};
-
 	const dismissItem = (itemKey: string) => {
 		// Optimistic removal
-		items = items
-			.map((item) =>
-				item.itemKey === itemKey ? { ...item, isDismissed: true } : item,
-			)
-			.filter((item) => item.itemKey !== itemKey);
+		items = items.filter((item) => item.itemKey !== itemKey);
 	};
 
 	return {
@@ -234,7 +224,6 @@ export function useKnowledgeHome() {
 		loadMore,
 		trackSeen,
 		trackAction,
-		setSaved,
 		dismissItem,
 	};
 }

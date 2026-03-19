@@ -27,17 +27,19 @@ type Message = {
 
 interface Props {
 	initialContext?: string;
+	initialQuestion?: string;
 }
 
-const { initialContext = "" }: Props = $props();
+const { initialContext = "", initialQuestion = "" }: Props = $props();
 
 // State
 let messages: Message[] = $state([]);
-let inputValue = $state(initialContext);
+let inputValue = $state("");
 let isLoading = $state(false);
 let progressStage = $state<string>("");
 let messagesEndRef: HTMLDivElement;
 let messagesContainer: HTMLDivElement;
+let lastAutoSentQuestion = $state("");
 
 // Auto-scroll: throttled, suppressed when user scrolls up
 let lastScrollTime = 0;
@@ -67,11 +69,13 @@ function throttledScrollToBottom() {
 	}
 }
 
-const handleSubmit = async () => {
-	if (!inputValue.trim() || isLoading) return;
+const handleSubmit = async (messageOverride?: string) => {
+	const userMessage = (messageOverride ?? inputValue).trim();
+	if (!userMessage || isLoading) return;
 
-	const userMessage = inputValue.trim();
-	inputValue = "";
+	if (!messageOverride) {
+		inputValue = "";
+	}
 
 	// Add user message
 	messages = [...messages, { role: "user", content: userMessage }];
@@ -193,6 +197,20 @@ const handleSubmit = async () => {
 		await scrollToBottom();
 	}
 };
+
+$effect(() => {
+	if (!initialQuestion.trim()) {
+		if (messages.length === 0) {
+			inputValue = initialContext;
+		}
+		return;
+	}
+	if (initialQuestion === lastAutoSentQuestion) {
+		return;
+	}
+	lastAutoSentQuestion = initialQuestion;
+	void handleSubmit(initialQuestion);
+});
 </script>
 
 <div class="flex flex-col h-full bg-background relative">

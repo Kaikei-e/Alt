@@ -12,9 +12,9 @@ const { open, scopeTitle, scopeContext, onClose, onSubmit }: Props = $props();
 let question = $state("");
 
 const suggestions = [
-	"この要点は何？",
-	"何が新しい？",
-	"関連する記事を教えて",
+	"What is the key point?",
+	"What is new here?",
+	"What should I read next?",
 ] as const;
 
 function submit() {
@@ -75,7 +75,7 @@ function submit() {
 			</div>
 
 			<div class="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] p-3 text-xs text-[var(--text-secondary)]">
-				Home 内回答 API は未接続です。現在は文脈を渡して Augur へ引き継ぎます。
+				This opens Augur with the current Knowledge Home context attached.
 			</div>
 
 			<div class="flex justify-end">
@@ -84,7 +84,7 @@ function submit() {
 					class="rounded-lg bg-[var(--interactive-text)] px-3 py-2 text-sm font-medium text-white"
 					onclick={submit}
 				>
-					Open in Augur
+					Ask in Augur
 				</button>
 			</div>
 		</div>

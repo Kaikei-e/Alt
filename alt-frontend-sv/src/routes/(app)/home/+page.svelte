@@ -163,14 +163,6 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 		return;
 	}
 
-	if (type === "save" || type === "unsave") {
-		const nextSaved = type === "save";
-		home.trackAction(type, itemKey, metadata);
-		home.setSaved(itemKey, nextSaved);
-		toast.push(nextSaved ? "Saved for later." : "Removed from saved items.", "success");
-		return;
-	}
-
 	if (flags.trackingEnabled) {
 		home.trackAction(type, itemKey, metadata);
 	}
@@ -237,13 +229,22 @@ function submitAsk(question: string) {
 	goto(`/augur?${params.toString()}`);
 }
 
+async function syncRecallState() {
+	if (!recallEnabled) {
+		return;
+	}
+	if (home.recallCandidates.length > 0) {
+		recall.setCandidates(home.recallCandidates);
+		return;
+	}
+	await recall.fetchCandidates();
+}
+
 async function handleLensSelect(lensId: string | null) {
 	await lens.select(lensId);
 	await syncLensQuery(lensId);
 	await home.fetchData(true, lensId);
-	if (recallEnabled) {
-		recall.setCandidates(home.recallCandidates);
-	}
+	await syncRecallState();
 }
 
 async function handleCreateLens(payload: {
@@ -281,9 +282,7 @@ onMount(async () => {
 
 		flags.setFlags(home.featureFlags);
 
-		if (recallEnabled) {
-			recall.setCandidates(home.recallCandidates);
-		}
+		await syncRecallState();
 	}
 });
 </script>
@@ -359,13 +358,14 @@ onMount(async () => {
 			/>
 		</div>
 		<div class="w-80 flex-shrink-0">
-			{#if recallEnabled}
-				<RecallRail
-					candidates={recall.candidates}
-					onSnooze={(key: string) => recall.snooze(key)}
-					onDismiss={(key: string) => recall.dismiss(key)}
-					onOpen={handleRecallOpen}
-				/>
+				{#if recallEnabled}
+					<RecallRail
+						candidates={recall.candidates}
+						unavailable={Boolean(recall.error)}
+						onSnooze={(key: string) => recall.snooze(key)}
+						onDismiss={(key: string) => recall.dismiss(key)}
+						onOpen={handleRecallOpen}
+					/>
 			{:else}
 				<MiniRecallPanel digest={home.digest} />
 			{/if}
@@ -393,13 +393,14 @@ onMount(async () => {
 		/>
 
 		{#if recallEnabled}
-			<div class="px-3 pt-2">
-				<RecallRailCollapsible
-					candidates={recall.candidates}
-					onSnooze={(key: string) => recall.snooze(key)}
-					onDismiss={(key: string) => recall.dismiss(key)}
-					onOpen={handleRecallOpen}
-				/>
+				<div class="px-3 pt-2">
+					<RecallRailCollapsible
+						candidates={recall.candidates}
+						unavailable={Boolean(recall.error)}
+						onSnooze={(key: string) => recall.snooze(key)}
+						onDismiss={(key: string) => recall.dismiss(key)}
+						onOpen={handleRecallOpen}
+					/>
 			</div>
 		{/if}
 

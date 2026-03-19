@@ -1,8 +1,6 @@
 <script lang="ts">
 import {
 	BirdIcon,
-	Bookmark,
-	BookmarkCheck,
 	ExternalLink,
 	Headphones,
 	X,
@@ -12,19 +10,13 @@ interface Props {
 	itemKey: string;
 	itemType: string;
 	articleId?: string;
-	isSaved?: boolean;
 	onAction: (type: string) => void;
 }
 
-const { onAction, isSaved = false }: Props = $props();
+const { onAction }: Props = $props();
 
 const primaryActions = $derived([
 	{ type: "open", icon: ExternalLink, label: "Open" },
-	{
-		type: isSaved ? "unsave" : "save",
-		icon: isSaved ? BookmarkCheck : Bookmark,
-		label: isSaved ? "Saved" : "Save",
-	},
 	{ type: "ask", icon: BirdIcon, label: "Ask" },
 	{ type: "listen", icon: Headphones, label: "Listen" },
 ]);
