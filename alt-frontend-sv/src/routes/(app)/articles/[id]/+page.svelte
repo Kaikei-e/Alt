@@ -8,6 +8,7 @@ import {
 	Loader2,
 	Sparkles,
 	RefreshCw,
+	Download,
 } from "@lucide/svelte";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
@@ -26,18 +27,25 @@ let previousUrl = $state<string | null>(null);
 
 const summarizer = useSummarize();
 
+const fetchButtonState = $derived.by(() => {
+	if (isFetching) return "loading" as const;
+	if (contentError) return "error" as const;
+	if (articleContent) return "success" as const;
+	return "idle" as const;
+});
+
 onDestroy(() => {
 	summarizer.abort();
 });
 
-async function fetchContent() {
+async function fetchContent(forceRefresh = false) {
 	if (!articleUrl) return;
 
 	isFetching = true;
 	contentError = null;
 
 	try {
-		const response = await getFeedContentOnTheFlyClient(articleUrl);
+		const response = await getFeedContentOnTheFlyClient(articleUrl, { forceRefresh });
 		articleContent = response.content || null;
 		fetchedArticleId = response.article_id || null;
 	} catch (err) {
@@ -46,6 +54,14 @@ async function fetchContent() {
 	} finally {
 		isFetching = false;
 	}
+}
+
+function handleFetch() {
+	const isRefetch = fetchButtonState === "success";
+	if (isRefetch) {
+		summarizer.reset();
+	}
+	fetchContent(isRefetch);
 }
 
 function handleSummarize() {
@@ -103,6 +119,27 @@ $effect(() => {
 			Back to Home
 		</Button>
 		<div class="ml-auto flex items-center gap-3">
+			<!-- Fetch/Re-fetch Button -->
+			<Button
+				data-testid="fetch-button"
+				onclick={handleFetch}
+				disabled={fetchButtonState === 'loading'}
+				variant={fetchButtonState === 'error' ? 'destructive' : 'outline'}
+			>
+				{#if fetchButtonState === 'loading'}
+					<Loader2 class="h-4 w-4 animate-spin" />
+					<span>Fetching...</span>
+				{:else if fetchButtonState === 'error'}
+					<RefreshCw class="h-4 w-4" />
+					<span>Try again</span>
+				{:else if fetchButtonState === 'success'}
+					<RefreshCw class="h-4 w-4" />
+					<span>Re-fetch</span>
+				{:else}
+					<Download class="h-4 w-4" />
+					<span>Fetch Article</span>
+				{/if}
+			</Button>
 			<!-- Summarize Button -->
 			<Button
 				onclick={handleSummarize}
@@ -173,7 +210,7 @@ $effect(() => {
 	{:else if contentError}
 		<div class="text-center py-12">
 			<p class="text-red-600 mb-4">{contentError}</p>
-			<Button variant="outline" onclick={fetchContent}>
+			<Button variant="outline" onclick={() => fetchContent()}>
 				Try again
 			</Button>
 		</div>
