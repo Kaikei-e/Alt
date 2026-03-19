@@ -325,6 +325,25 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		assert.Equal(t, 3, result.Digest.NeedToKnowCount)
 		assert.Equal(t, "", result.Digest.DigestFreshness)
 	})
+
+	t.Run("enrichDigest preserves availability flags from read model", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{items: []domain.KnowledgeHomeItem{}}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{
+			WeeklyRecapAvailable:  true,
+			EveningPulseAvailable: true,
+		}}
+		countPort := &mockCountNeedToKnowPort{count: 2}
+		freshnessPort := &mockProjectionFreshnessPort{updatedAt: &recentTime}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, countPort)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		// enrichDigest must NOT overwrite availability flags
+		assert.True(t, result.Digest.WeeklyRecapAvailable)
+		assert.True(t, result.Digest.EveningPulseAvailable)
+		assert.Equal(t, 2, result.Digest.NeedToKnowCount)
+	})
 }
 
 func TestGetKnowledgeHomeUsecase_Execute_ReturnsCancellationErrors(t *testing.T) {
