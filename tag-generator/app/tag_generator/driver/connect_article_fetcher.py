@@ -89,8 +89,15 @@ class ConnectArticleFetcher:
         last_id: str,
         custom_batch_size: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Fetch new articles — delegates to fetch_articles in API mode."""
-        return self.fetch_articles(conn, last_created_at, last_id, custom_batch_size, untagged_only=False)
+        """Fetch new untagged articles — always requests first page (newest).
+
+        The forward processing path needs the newest untagged articles,
+        not articles older than the cursor. With backward keyset pagination,
+        the first page (no cursor) returns the newest results.
+        """
+        return self.fetch_articles(
+            conn, self._FIRST_PAGE_SENTINEL, "", custom_batch_size, untagged_only=False
+        )
 
     def count_untagged_articles(self, conn: Any) -> int:
         """Count untagged articles via ListUntaggedArticles RPC."""

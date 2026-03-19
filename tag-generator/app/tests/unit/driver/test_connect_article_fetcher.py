@@ -124,6 +124,25 @@ class TestFetchArticles:
         assert req.last_id == ""
 
 
+class TestFetchNewArticles:
+    """Tests for fetch_new_articles method."""
+
+    def test_always_requests_first_page_regardless_of_cursor(self, fetcher, mock_client) -> None:
+        """Forward processing should always get the newest untagged articles (first page)."""
+        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+            articles=[], total_count=0
+        )
+
+        # Even when caller passes a cursor, fetch_new_articles should NOT forward it
+        fetcher.fetch_new_articles(None, "2026-03-14T00:39:08Z", "some-article-id", custom_batch_size=75)
+
+        req = mock_client.list_untagged_articles.call_args[0][0]
+        assert req.limit == 75
+        # Must NOT set cursor — first page returns newest articles
+        assert not req.HasField("last_created_at")
+        assert req.last_id == ""
+
+
 class TestCountUntaggedArticles:
     """Tests for count_untagged_articles method."""
 
