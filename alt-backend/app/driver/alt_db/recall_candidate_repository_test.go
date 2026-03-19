@@ -33,7 +33,7 @@ func TestAltDBRepository_GetRecallCandidates_EnrichesWithHomeItem(t *testing.T) 
 		"first_eligible_at", "snoozed_until", "updated_at", "projection_version",
 		"home_item_key", "tenant_id", "item_type", "primary_ref_id", "title",
 		"summary_excerpt", "tags_json", "why_json", "item_score", "published_at",
-		"summary_state", "link",
+		"summary_state", "link", "fb_title", "fb_url", "fb_published_at",
 	}).AddRow(
 		userID,
 		"article:"+articleID.String(),
@@ -56,9 +56,12 @@ func TestAltDBRepository_GetRecallCandidates_EnrichesWithHomeItem(t *testing.T) 
 		publishedAt,
 		domain.SummaryStateReady,
 		"https://example.com/article",
+		nil,
+		nil,
+		nil,
 	)
 
-	mock.ExpectQuery(`(?s)FROM recall_candidate_view rc.*LEFT JOIN knowledge_home_items khi.*khi\.projection_version = COALESCE\(\(\s*SELECT version FROM knowledge_projection_versions\s*WHERE status = 'active'\s*ORDER BY version DESC\s*LIMIT 1\s*\), 1\).*LEFT JOIN articles art.*WHERE rc\.user_id = \$1.*ORDER BY rc\.recall_score DESC.*LIMIT \$2`).
+	mock.ExpectQuery(`(?s)FROM recall_candidate_view rc.*LEFT JOIN knowledge_home_items khi.*khi\.projection_version = COALESCE\(\(\s*SELECT version FROM knowledge_projection_versions\s*WHERE status = 'active'\s*ORDER BY version DESC\s*LIMIT 1\s*\), 1\).*LEFT JOIN articles art.*LEFT JOIN articles art_fallback.*WHERE rc\.user_id = \$1.*ORDER BY rc\.recall_score DESC.*LIMIT \$2`).
 		WithArgs(userID, 5).
 		WillReturnRows(rows)
 
@@ -94,7 +97,7 @@ func TestAltDBRepository_GetRecallCandidates_LeavesItemNilWhenNoHomeItemMatch(t 
 		"first_eligible_at", "snoozed_until", "updated_at", "projection_version",
 		"home_item_key", "tenant_id", "item_type", "primary_ref_id", "title",
 		"summary_excerpt", "tags_json", "why_json", "item_score", "published_at",
-		"summary_state", "link",
+		"summary_state", "link", "fb_title", "fb_url", "fb_published_at",
 	}).AddRow(
 		userID,
 		"article:missing",
@@ -117,9 +120,12 @@ func TestAltDBRepository_GetRecallCandidates_LeavesItemNilWhenNoHomeItemMatch(t 
 		nil,
 		nil,
 		nil,
+		nil,
+		nil,
+		nil,
 	)
 
-	mock.ExpectQuery(`(?s)FROM recall_candidate_view rc.*LEFT JOIN knowledge_home_items khi.*LEFT JOIN articles art.*WHERE rc\.user_id = \$1.*ORDER BY rc\.recall_score DESC.*LIMIT \$2`).
+	mock.ExpectQuery(`(?s)FROM recall_candidate_view rc.*LEFT JOIN knowledge_home_items khi.*LEFT JOIN articles art.*LEFT JOIN articles art_fallback.*WHERE rc\.user_id = \$1.*ORDER BY rc\.recall_score DESC.*LIMIT \$2`).
 		WithArgs(userID, 5).
 		WillReturnRows(rows)
 
@@ -128,6 +134,71 @@ func TestAltDBRepository_GetRecallCandidates_LeavesItemNilWhenNoHomeItemMatch(t 
 	require.Len(t, candidates, 1)
 	require.Nil(t, candidates[0].Item)
 	require.Equal(t, "article:missing", candidates[0].ItemKey)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAltDBRepository_GetRecallCandidates_FallsBackToArticlesWhenHomeItemMissing(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+	userID := uuid.New()
+	articleID := uuid.New()
+	now := time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)
+	firstEligibleAt := now.Add(-24 * time.Hour)
+	nextSuggestAt := now.Add(-1 * time.Hour)
+	updatedAt := now.Add(-15 * time.Minute)
+	publishedAt := now.Add(-7 * 24 * time.Hour)
+
+	rows := pgxmock.NewRows([]string{
+		"user_id", "item_key", "recall_score", "reason_json", "next_suggest_at",
+		"first_eligible_at", "snoozed_until", "updated_at", "projection_version",
+		"home_item_key", "tenant_id", "item_type", "primary_ref_id", "title",
+		"summary_excerpt", "tags_json", "why_json", "item_score", "published_at",
+		"summary_state", "link", "fb_title", "fb_url", "fb_published_at",
+	}).AddRow(
+		userID,
+		"article:"+articleID.String(),
+		0.73,
+		[]byte(`[{"type":"opened_before_but_not_revisited","description":"Opened before"}]`),
+		&nextSuggestAt,
+		&firstEligibleAt,
+		nil,
+		updatedAt,
+		3,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		"Fallback article title",
+		"https://example.com/fallback",
+		publishedAt,
+	)
+
+	mock.ExpectQuery(`(?s)FROM recall_candidate_view rc.*LEFT JOIN knowledge_home_items khi.*LEFT JOIN articles art.*LEFT JOIN articles art_fallback.*WHERE rc\.user_id = \$1.*ORDER BY rc\.recall_score DESC.*LIMIT \$2`).
+		WithArgs(userID, 5).
+		WillReturnRows(rows)
+
+	candidates, err := repo.GetRecallCandidates(context.Background(), userID, 5)
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.NotNil(t, candidates[0].Item)
+	require.Equal(t, "article:"+articleID.String(), candidates[0].Item.ItemKey)
+	require.Equal(t, domain.ItemArticle, candidates[0].Item.ItemType)
+	require.Equal(t, "Fallback article title", candidates[0].Item.Title)
+	require.Equal(t, "https://example.com/fallback", candidates[0].Item.Link)
+	require.Equal(t, domain.SummaryStateMissing, candidates[0].Item.SummaryState)
+	require.NotNil(t, candidates[0].Item.PublishedAt)
+	require.Equal(t, publishedAt, *candidates[0].Item.PublishedAt)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

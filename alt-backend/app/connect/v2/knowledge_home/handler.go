@@ -33,6 +33,11 @@ import (
 	"alt/usecase/update_lens_usecase"
 )
 
+// streamHighWaterMark is the threshold above which coalesced events
+// are collapsed into a single digest_changed event to avoid flooding
+// the client with too many individual updates in one batch.
+const streamHighWaterMark = 10
+
 // Handler implements KnowledgeHomeServiceHandler.
 type Handler struct {
 	getHomeUsecase       *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
@@ -630,8 +635,24 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 
 			// Phase 5: Coalesce events - deduplicate by item_key, keep latest
 			coalesced := coalesceStreamEvents(events)
+
+			// High-water mark: if too many distinct items changed, send a single
+			// digest_changed so the client re-fetches instead of processing N updates.
+			if len(coalesced) > streamHighWaterMark {
+				update := &knowledgehomev1.StreamKnowledgeHomeUpdatesResponse{
+					EventType:  "digest_changed",
+					OccurredAt: time.Now().Format(time.RFC3339),
+				}
+				if err := stream.Send(update); err != nil {
+					return err
+				}
+				lastSeq = events[len(events)-1].EventSeq
+				continue
+			}
+
 			for _, event := range coalesced {
 				update := buildStreamResponse(event)
+				h.enrichRecallChangedUpdate(ctx, user.UserID, update)
 				if err := stream.Send(update); err != nil {
 					return err
 				}
@@ -863,6 +884,9 @@ func mapToCanonicalStreamType(eventType string) string {
 	switch eventType {
 	case domain.EventArticleCreated:
 		return "item_added"
+	case domain.EventRecallSnoozed,
+		domain.EventRecallDismissed:
+		return "recall_changed"
 	case domain.EventSummaryVersionCreated,
 		domain.EventTagSetVersionCreated,
 		domain.EventSummarySuperseded,
@@ -879,6 +903,7 @@ func mapToCanonicalStreamType(eventType string) string {
 // buildStreamResponse creates a StreamKnowledgeHomeUpdatesResponse from a domain event.
 // For item_added/item_updated, it includes a minimal KnowledgeHomeItem with item_key only.
 // For digest_changed, no payload is included (frontend re-fetches via unary).
+// For recall_changed, a minimal RecallChange is included and may be enriched later.
 func buildStreamResponse(event domain.KnowledgeEvent) *knowledgehomev1.StreamKnowledgeHomeUpdatesResponse {
 	canonicalType := mapToCanonicalStreamType(event.EventType)
 	resp := &knowledgehomev1.StreamKnowledgeHomeUpdatesResponse{
@@ -888,8 +913,34 @@ func buildStreamResponse(event domain.KnowledgeEvent) *knowledgehomev1.StreamKno
 	if canonicalType == "item_added" || canonicalType == "item_updated" {
 		itemKey := event.AggregateType + ":" + event.AggregateID
 		resp.Item = &knowledgehomev1.KnowledgeHomeItem{ItemKey: itemKey}
+	} else if canonicalType == "recall_changed" {
+		itemKey := event.AggregateType + ":" + event.AggregateID
+		resp.RecallChange = &knowledgehomev1.RecallCandidate{ItemKey: itemKey}
 	}
 	return resp
+}
+
+func (h *Handler) enrichRecallChangedUpdate(
+	ctx context.Context,
+	userID uuid.UUID,
+	update *knowledgehomev1.StreamKnowledgeHomeUpdatesResponse,
+) {
+	if update == nil || update.EventType != "recall_changed" || update.RecallChange == nil || h.recallRailUsecase == nil {
+		return
+	}
+
+	candidates, err := h.recallRailUsecase.Execute(ctx, userID, 5)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "stream: failed to fetch recall candidates", "error", err)
+		return
+	}
+
+	for _, candidate := range candidates {
+		if candidate.ItemKey == update.RecallChange.ItemKey {
+			update.RecallChange = convertRecallCandidateToProto(candidate)
+			return
+		}
+	}
 }
 
 // streamFlagGuard checks authentication and feature flag for stream access.

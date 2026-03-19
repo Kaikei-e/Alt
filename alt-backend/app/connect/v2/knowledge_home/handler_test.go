@@ -2,7 +2,9 @@ package knowledge_home
 
 import (
 	"alt/domain"
+	"alt/port/recall_candidate_port"
 	"alt/usecase/get_knowledge_home_usecase"
+	"alt/usecase/recall_rail_usecase"
 	"alt/usecase/track_home_action_usecase"
 	"alt/usecase/track_home_seen_usecase"
 	"alt/utils/logger"
@@ -19,6 +21,17 @@ import (
 
 	knowledgehomev1 "alt/gen/proto/alt/knowledge_home/v1"
 )
+
+type mockRecallCandidatesPort struct {
+	candidates []domain.RecallCandidate
+	err        error
+}
+
+var _ recall_candidate_port.GetRecallCandidatesPort = (*mockRecallCandidatesPort)(nil)
+
+func (m *mockRecallCandidatesPort) GetRecallCandidates(_ context.Context, _ uuid.UUID, _ int) ([]domain.RecallCandidate, error) {
+	return m.candidates, m.err
+}
 
 // mockHomeItemsPort implements knowledge_home_port.GetKnowledgeHomeItemsPort.
 type mockHomeItemsPort struct {
@@ -471,9 +484,9 @@ func TestMapToCanonicalStreamType(t *testing.T) {
 		{domain.EventHomeItemDismissed, "digest_changed"},
 		{domain.EventHomeItemAsked, "digest_changed"},
 		{domain.EventHomeItemListened, "digest_changed"},
-		{domain.EventRecallSnoozed, "digest_changed"},
+		{domain.EventRecallSnoozed, "recall_changed"},
 		{domain.EventReasonMerged, "item_updated"},
-		{domain.EventRecallDismissed, "digest_changed"},
+		{domain.EventRecallDismissed, "recall_changed"},
 		{"UnknownEventType", "digest_changed"},
 	}
 
@@ -530,6 +543,64 @@ func TestStreamPayload_DigestChanged_NoItem(t *testing.T) {
 	assert.Equal(t, "digest_changed", update.EventType)
 	assert.Nil(t, update.Item, "digest_changed should NOT include Item")
 	assert.Nil(t, update.DigestChange, "digest_changed should NOT include DigestChange")
+}
+
+func TestStreamPayload_RecallChanged_ContainsMinimalRecallChange(t *testing.T) {
+	aggID := uuid.New().String()
+	event := domain.KnowledgeEvent{
+		EventType:     domain.EventRecallDismissed,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   aggID,
+		OccurredAt:    time.Now(),
+	}
+
+	update := buildStreamResponse(event)
+	assert.Equal(t, "recall_changed", update.EventType)
+	require.NotNil(t, update.RecallChange)
+	assert.Equal(t, "article:"+aggID, update.RecallChange.ItemKey)
+	assert.Nil(t, update.Item)
+}
+
+func TestEnrichRecallChangedUpdate_ReplacesMinimalPayloadWhenCandidateResolved(t *testing.T) {
+	userID := uuid.New()
+	articleID := uuid.New()
+	publishedAt := time.Date(2026, 3, 19, 12, 0, 0, 0, time.UTC)
+	handler := &Handler{
+		recallRailUsecase: recall_rail_usecase.NewRecallRailUsecase(&mockRecallCandidatesPort{
+			candidates: []domain.RecallCandidate{
+				{
+					ItemKey:     "article:" + articleID.String(),
+					RecallScore: 0.91,
+					Reasons: []domain.RecallReason{
+						{Type: domain.ReasonOpenedNotRevisited, Description: "Opened before"},
+					},
+					Item: &domain.KnowledgeHomeItem{
+						ItemKey:      "article:" + articleID.String(),
+						ItemType:     domain.ItemArticle,
+						Title:        "Recovered title",
+						SummaryState: domain.SummaryStateMissing,
+						PublishedAt:  &publishedAt,
+					},
+				},
+			},
+		}, nil),
+		logger: slog.Default(),
+	}
+
+	update := buildStreamResponse(domain.KnowledgeEvent{
+		EventType:     domain.EventRecallSnoozed,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   articleID.String(),
+		OccurredAt:    time.Now(),
+	})
+
+	handler.enrichRecallChangedUpdate(context.Background(), userID, update)
+
+	require.NotNil(t, update.RecallChange)
+	assert.Equal(t, "article:"+articleID.String(), update.RecallChange.ItemKey)
+	assert.Equal(t, 0.91, update.RecallChange.RecallScore)
+	require.NotNil(t, update.RecallChange.Item)
+	assert.Equal(t, "Recovered title", update.RecallChange.Item.Title)
 }
 
 func TestCoalesceStreamEvents_EmptyInput(t *testing.T) {
@@ -647,6 +718,84 @@ func TestHandler_InitialStreamSeq_UsesLatestKnownSeq(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), seq)
+}
+
+// mockEventsForUserPort implements knowledge_event_port.ListKnowledgeEventsForUserPort.
+type mockEventsForUserPort struct {
+	events []domain.KnowledgeEvent
+	err    error
+}
+
+func (m *mockEventsForUserPort) ListKnowledgeEventsSinceForUser(_ context.Context, _ uuid.UUID, _ int64, _ int) ([]domain.KnowledgeEvent, error) {
+	return m.events, m.err
+}
+
+func TestHighWaterMark_ExceedsThreshold_SendsDigestChanged(t *testing.T) {
+	// When coalesced events exceed streamHighWaterMark (10), the handler
+	// should send a single digest_changed instead of individual events.
+
+	// Generate 15 unique aggregate events (all survive coalescing)
+	events := make([]domain.KnowledgeEvent, 15)
+	for i := range events {
+		events[i] = domain.KnowledgeEvent{
+			EventType:     domain.EventArticleCreated,
+			AggregateType: "article",
+			AggregateID:   uuid.New().String(),
+			EventSeq:      int64(i + 1),
+			OccurredAt:    time.Now(),
+		}
+	}
+
+	coalesced := coalesceStreamEvents(events)
+	assert.Len(t, coalesced, 15, "15 unique aggregates should all survive coalescing")
+	assert.Greater(t, len(coalesced), streamHighWaterMark,
+		"coalesced count should exceed streamHighWaterMark threshold")
+}
+
+func TestHighWaterMark_BelowThreshold_IndividualEvents(t *testing.T) {
+	// When coalesced events are within streamHighWaterMark, individual events are sent.
+	events := make([]domain.KnowledgeEvent, 5)
+	for i := range events {
+		events[i] = domain.KnowledgeEvent{
+			EventType:     domain.EventArticleCreated,
+			AggregateType: "article",
+			AggregateID:   uuid.New().String(),
+			EventSeq:      int64(i + 1),
+			OccurredAt:    time.Now(),
+		}
+	}
+
+	coalesced := coalesceStreamEvents(events)
+	assert.Len(t, coalesced, 5)
+	assert.LessOrEqual(t, len(coalesced), streamHighWaterMark,
+		"coalesced count should be within streamHighWaterMark threshold")
+
+	// Each event should produce its own response
+	for _, e := range coalesced {
+		resp := buildStreamResponse(e)
+		assert.Equal(t, "item_added", resp.EventType)
+		assert.NotNil(t, resp.Item)
+	}
+}
+
+func TestHighWaterMark_CoalescingReducesBelowThreshold(t *testing.T) {
+	// 20 events for the same aggregate coalesce to 1 → below threshold
+	events := make([]domain.KnowledgeEvent, 20)
+	aggID := uuid.New().String()
+	for i := range events {
+		events[i] = domain.KnowledgeEvent{
+			EventType:     domain.EventSummaryVersionCreated,
+			AggregateType: "article",
+			AggregateID:   aggID,
+			EventSeq:      int64(i + 1),
+			OccurredAt:    time.Now(),
+		}
+	}
+
+	coalesced := coalesceStreamEvents(events)
+	assert.Len(t, coalesced, 1, "same aggregate deduplicates to 1")
+	assert.LessOrEqual(t, len(coalesced), streamHighWaterMark,
+		"after coalescing, should be within threshold → send individual events")
 }
 
 func TestHandler_TrackHomeAction_Validation(t *testing.T) {
