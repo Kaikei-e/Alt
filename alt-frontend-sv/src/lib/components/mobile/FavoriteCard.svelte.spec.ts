@@ -82,7 +82,7 @@ describe("FavoriteCard", () => {
 			props: { feed: unreadFeed },
 		});
 
-		const openLink = page.getByRole("link", { name: /open/i });
+		const openLink = page.getByRole("link", { name: "Open article" });
 		await expect.element(openLink).toBeInTheDocument();
 		await expect
 			.element(openLink)

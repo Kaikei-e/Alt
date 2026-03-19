@@ -202,8 +202,9 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 			resolveLens: &mockResolveLensPort{
 				filter: &domain.KnowledgeHomeLensFilter{
 					LensID:     uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+					QueryText:  "agents",
 					TagNames:   []string{"AI"},
-					FeedIDs:    []uuid.UUID{uuid.MustParse("22222222-2222-2222-2222-222222222222")},
+					SourceIDs:  []uuid.UUID{uuid.MustParse("22222222-2222-2222-2222-222222222222")},
 					TimeWindow: "7d",
 				},
 			},
@@ -211,8 +212,9 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 			wantItemCount: 1,
 			wantFilter: &domain.KnowledgeHomeLensFilter{
 				LensID:     uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+				QueryText:  "agents",
 				TagNames:   []string{"AI"},
-				FeedIDs:    []uuid.UUID{uuid.MustParse("22222222-2222-2222-2222-222222222222")},
+				SourceIDs:  []uuid.UUID{uuid.MustParse("22222222-2222-2222-2222-222222222222")},
 				TimeWindow: "7d",
 			},
 		},

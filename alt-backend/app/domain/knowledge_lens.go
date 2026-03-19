@@ -27,7 +27,7 @@ type KnowledgeLensVersion struct {
 	CreatedAt     time.Time  `json:"created_at" db:"created_at"`
 	QueryText     string     `json:"query_text" db:"query_text"`
 	TagIDs        []string   `json:"tag_ids"`
-	FeedIDs       []string   `json:"feed_ids"`
+	SourceIDs     []string   `json:"source_ids"`
 	TimeWindow    string     `json:"time_window" db:"time_window"`
 	IncludeRecap  bool       `json:"include_recap" db:"include_recap"`
 	IncludePulse  bool       `json:"include_pulse" db:"include_pulse"`

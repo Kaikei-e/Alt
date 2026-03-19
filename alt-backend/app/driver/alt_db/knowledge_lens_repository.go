@@ -32,18 +32,18 @@ func (r *AltDBRepository) CreateLensVersion(ctx context.Context, version domain.
 	defer span.End()
 
 	tagIDsJSON, _ := json.Marshal(version.TagIDs)
-	feedIDsJSON, _ := json.Marshal(version.FeedIDs)
+	sourceIDsJSON, _ := json.Marshal(version.SourceIDs)
 	var timeWindowJSON []byte
 	if version.TimeWindow != "" {
 		timeWindowJSON, _ = json.Marshal(version.TimeWindow)
 	}
 
 	query := `INSERT INTO knowledge_lens_versions
-		(lens_version_id, lens_id, created_at, query_text, tag_ids_json, feed_ids_json, time_window_json, include_recap, include_pulse, sort_mode)
+		(lens_version_id, lens_id, created_at, query_text, tag_ids_json, source_ids_json, time_window_json, include_recap, include_pulse, sort_mode)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 	_, err := r.pool.Exec(ctx, query,
 		version.LensVersionID, version.LensID, version.CreatedAt,
-		version.QueryText, tagIDsJSON, feedIDsJSON, timeWindowJSON,
+		version.QueryText, tagIDsJSON, sourceIDsJSON, timeWindowJSON,
 		version.IncludeRecap, version.IncludePulse, version.SortMode,
 	)
 	if err != nil {
@@ -57,12 +57,12 @@ func (r *AltDBRepository) ListLenses(ctx context.Context, userID uuid.UUID) ([]d
 	defer span.End()
 
 	query := `SELECT l.lens_id, l.user_id, l.tenant_id, l.name, l.description, l.created_at, l.updated_at,
-		v.lens_version_id, v.created_at, v.query_text, v.tag_ids_json, v.feed_ids_json,
+		v.lens_version_id, v.created_at, v.query_text, v.tag_ids_json, v.source_ids_json,
 		v.time_window_json, v.include_recap, v.include_pulse, v.sort_mode, v.superseded_by
 		FROM knowledge_lenses
 		AS l
 		LEFT JOIN LATERAL (
-			SELECT lens_version_id, created_at, query_text, tag_ids_json, feed_ids_json,
+			SELECT lens_version_id, created_at, query_text, tag_ids_json, source_ids_json,
 				time_window_json, include_recap, include_pulse, sort_mode, superseded_by
 			FROM knowledge_lens_versions
 			WHERE lens_id = l.lens_id AND superseded_by IS NULL
@@ -82,18 +82,18 @@ func (r *AltDBRepository) ListLenses(ctx context.Context, userID uuid.UUID) ([]d
 	for rows.Next() {
 		var l domain.KnowledgeLens
 		var (
-			version                                 domain.KnowledgeLensVersion
-			versionID                               *uuid.UUID
-			versionCreatedAt                        *time.Time
-			queryText                               *string
-			tagIDsJSON, feedIDsJSON, timeWindowJSON []byte
-			includeRecap, includePulse              *bool
-			sortMode                                *string
-			supersededBy                            *uuid.UUID
+			version                                   domain.KnowledgeLensVersion
+			versionID                                 *uuid.UUID
+			versionCreatedAt                          *time.Time
+			queryText                                 *string
+			tagIDsJSON, sourceIDsJSON, timeWindowJSON []byte
+			includeRecap, includePulse                *bool
+			sortMode                                  *string
+			supersededBy                              *uuid.UUID
 		)
 		if err := rows.Scan(
 			&l.LensID, &l.UserID, &l.TenantID, &l.Name, &l.Description, &l.CreatedAt, &l.UpdatedAt,
-			&versionID, &versionCreatedAt, &queryText, &tagIDsJSON, &feedIDsJSON,
+			&versionID, &versionCreatedAt, &queryText, &tagIDsJSON, &sourceIDsJSON,
 			&timeWindowJSON, &includeRecap, &includePulse, &sortMode, &supersededBy,
 		); err != nil {
 			return nil, fmt.Errorf("ListLenses scan: %w", err)
@@ -108,7 +108,7 @@ func (r *AltDBRepository) ListLenses(ctx context.Context, userID uuid.UUID) ([]d
 				version.QueryText = *queryText
 			}
 			_ = json.Unmarshal(tagIDsJSON, &version.TagIDs)
-			_ = json.Unmarshal(feedIDsJSON, &version.FeedIDs)
+			_ = json.Unmarshal(sourceIDsJSON, &version.SourceIDs)
 			if timeWindowJSON != nil {
 				_ = json.Unmarshal(timeWindowJSON, &version.TimeWindow)
 			}
@@ -153,22 +153,22 @@ func (r *AltDBRepository) GetCurrentLensVersion(ctx context.Context, lensID uuid
 	defer span.End()
 
 	query := `SELECT lens_version_id, lens_id, created_at, query_text, tag_ids_json,
-		feed_ids_json, time_window_json, include_recap, include_pulse, sort_mode, superseded_by
+		source_ids_json, time_window_json, include_recap, include_pulse, sort_mode, superseded_by
 		FROM knowledge_lens_versions
 		WHERE lens_id = $1 AND superseded_by IS NULL
 		ORDER BY created_at DESC LIMIT 1`
 
 	var v domain.KnowledgeLensVersion
-	var tagIDsJSON, feedIDsJSON, timeWindowJSON []byte
+	var tagIDsJSON, sourceIDsJSON, timeWindowJSON []byte
 	err := r.pool.QueryRow(ctx, query, lensID).Scan(
 		&v.LensVersionID, &v.LensID, &v.CreatedAt, &v.QueryText,
-		&tagIDsJSON, &feedIDsJSON, &timeWindowJSON, &v.IncludeRecap, &v.IncludePulse, &v.SortMode, &v.SupersededBy,
+		&tagIDsJSON, &sourceIDsJSON, &timeWindowJSON, &v.IncludeRecap, &v.IncludePulse, &v.SortMode, &v.SupersededBy,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("GetCurrentLensVersion: %w", err)
 	}
 	_ = json.Unmarshal(tagIDsJSON, &v.TagIDs)
-	_ = json.Unmarshal(feedIDsJSON, &v.FeedIDs)
+	_ = json.Unmarshal(sourceIDsJSON, &v.SourceIDs)
 	if timeWindowJSON != nil {
 		_ = json.Unmarshal(timeWindowJSON, &v.TimeWindow)
 	}
@@ -263,15 +263,16 @@ func (r *AltDBRepository) ResolveKnowledgeHomeLens(ctx context.Context, userID u
 
 	filter := &domain.KnowledgeHomeLensFilter{
 		LensID:     *targetLensID,
+		QueryText:  version.QueryText,
 		TagNames:   append([]string(nil), version.TagIDs...),
 		TimeWindow: version.TimeWindow,
 	}
-	for _, rawFeedID := range version.FeedIDs {
-		feedID, err := uuid.Parse(rawFeedID)
+	for _, rawSourceID := range version.SourceIDs {
+		sourceID, err := uuid.Parse(rawSourceID)
 		if err != nil {
 			continue
 		}
-		filter.FeedIDs = append(filter.FeedIDs, feedID)
+		filter.SourceIDs = append(filter.SourceIDs, sourceID)
 	}
 	return filter, nil
 }

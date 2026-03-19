@@ -203,8 +203,8 @@ message LensVersion {
   string query_text = 2;
   // Tag IDs to filter by
   repeated string tag_ids = 3;
-  // Feed IDs to filter by
-  repeated string feed_ids = 8;
+  // Source IDs to filter by
+  repeated string source_ids = 8;
   // Time window (e.g., "7d", "30d")
   string time_window = 4;
   // Whether to include recap items

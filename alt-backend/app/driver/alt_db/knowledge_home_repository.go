@@ -47,8 +47,20 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 
 	argPos := 2
 	if filter != nil {
-		if len(filter.TagNames) > 0 || len(filter.FeedIDs) > 0 || filter.TimeWindow != "" {
+		if filter.QueryText != "" || len(filter.TagNames) > 0 || len(filter.SourceIDs) > 0 || filter.TimeWindow != "" {
 			query.WriteString(` AND khi.item_type = 'article'`)
+		}
+		if filter.QueryText != "" {
+			query.WriteString(fmt.Sprintf(` AND (
+				khi.title ILIKE $%d
+				OR COALESCE(khi.summary_excerpt, '') ILIKE $%d
+				OR EXISTS (
+					SELECT 1 FROM jsonb_array_elements_text(khi.tags_json) AS tag_name
+					WHERE tag_name ILIKE $%d
+				)
+			)`, argPos, argPos, argPos))
+			args = append(args, "%"+filter.QueryText+"%")
+			argPos++
 		}
 		if len(filter.TagNames) > 0 {
 			query.WriteString(fmt.Sprintf(` AND EXISTS (
@@ -58,13 +70,13 @@ func (r *AltDBRepository) GetKnowledgeHomeItems(ctx context.Context, userID uuid
 			args = append(args, filter.TagNames)
 			argPos++
 		}
-		if len(filter.FeedIDs) > 0 {
+		if len(filter.SourceIDs) > 0 {
 			query.WriteString(fmt.Sprintf(` AND EXISTS (
 				SELECT 1 FROM articles a
 				WHERE a.id = khi.primary_ref_id
 				  AND a.feed_id = ANY($%d)
 			)`, argPos))
-			args = append(args, filter.FeedIDs)
+			args = append(args, filter.SourceIDs)
 			argPos++
 		}
 		if filter.TimeWindow != "" {

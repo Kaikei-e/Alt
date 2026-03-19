@@ -216,6 +216,46 @@ func TestAltDBRepository_GetKnowledgeHomeItems_ExcludesDismissedItems(t *testing
 	assert.False(t, hasMore)
 }
 
+func TestAltDBRepository_GetKnowledgeHomeItems_AppliesQueryAndSourceFilters(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+	userID := uuid.New()
+	sourceID := uuid.New()
+
+	rows := pgxmock.NewRows([]string{
+		"user_id", "tenant_id", "item_key", "item_type", "primary_ref_id",
+		"title", "summary_excerpt", "tags_json", "why_json", "score",
+		"freshness_at", "published_at", "last_interacted_at", "generated_at", "updated_at",
+		"dismissed_at", "summary_state", "link", "supersede_state", "superseded_at", "previous_ref_json",
+	})
+
+	mock.ExpectQuery(`(?s)FROM knowledge_home_items khi.*khi\.item_type = 'article'.*khi\.title ILIKE \$2.*khi\.summary_excerpt.*jsonb_array_elements_text\(khi\.tags_json\).*a\.feed_id = ANY\(\$4\).*LIMIT \$6`).
+		WithArgs(
+			userID,
+			"%agents%",
+			[]string{"AI"},
+			[]uuid.UUID{sourceID},
+			pgxmock.AnyArg(),
+			21,
+		).
+		WillReturnRows(rows)
+
+	items, nextCursor, hasMore, err := repo.GetKnowledgeHomeItems(context.Background(), userID, "", 20, &domain.KnowledgeHomeLensFilter{
+		QueryText:  "agents",
+		TagNames:   []string{"AI"},
+		SourceIDs:  []uuid.UUID{sourceID},
+		TimeWindow: "7d",
+	})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+	assert.Empty(t, items)
+	assert.Empty(t, nextCursor)
+	assert.False(t, hasMore)
+}
+
 func TestAltDBRepository_DismissKnowledgeHomeItem_UpdatesDismissedAt(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)

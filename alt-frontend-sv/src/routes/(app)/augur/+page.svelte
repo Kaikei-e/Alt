@@ -16,6 +16,7 @@ const augurEntry = $derived(
 	resolveAugurEntry({
 		q: $page.url.searchParams.get("q"),
 		context: $page.url.searchParams.get("context"),
+		articleId: $page.url.searchParams.get("articleId"),
 	}),
 );
 </script>

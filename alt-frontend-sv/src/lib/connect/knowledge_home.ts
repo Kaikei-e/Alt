@@ -110,7 +110,7 @@ export interface LensVersionData {
 	versionId: string;
 	queryText: string;
 	tagIds: string[];
-	feedIds: string[];
+	sourceIds: string[];
 	timeWindow: string;
 	includeRecap: boolean;
 	includePulse: boolean;
@@ -333,7 +333,7 @@ function convertLens(proto: ProtoLens): LensData {
 					versionId: proto.currentVersion.versionId,
 					queryText: proto.currentVersion.queryText,
 					tagIds: [...proto.currentVersion.tagIds],
-					feedIds: [...proto.currentVersion.feedIds],
+					sourceIds: [...proto.currentVersion.sourceIds],
 					timeWindow: proto.currentVersion.timeWindow,
 					includeRecap: proto.currentVersion.includeRecap,
 					includePulse: proto.currentVersion.includePulse,
@@ -400,7 +400,7 @@ export async function createLens(
 		version: {
 			queryText: version.queryText,
 			tagIds: version.tagIds,
-			feedIds: version.feedIds,
+			sourceIds: version.sourceIds,
 			timeWindow: version.timeWindow,
 			includeRecap: version.includeRecap,
 			includePulse: version.includePulse,

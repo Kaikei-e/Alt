@@ -9,6 +9,7 @@
  * (useSSEFeedsStats, useStreamingFeedStats) have their own tests.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { useFeedStats } from "./useFeedStats.svelte";
 
 // Mock the underlying hooks to prevent actual connections
 vi.mock("./useSSEFeedsStats.svelte", () => ({
@@ -45,7 +46,6 @@ describe("useFeedStats", () => {
 
 	describe("interface", () => {
 		it("should return feedAmount property", async () => {
-			const { useFeedStats } = await import("./useFeedStats.svelte");
 			const result = useFeedStats();
 
 			expect(result).toHaveProperty("feedAmount");
@@ -53,7 +53,6 @@ describe("useFeedStats", () => {
 		});
 
 		it("should return unsummarizedArticlesAmount property", async () => {
-			const { useFeedStats } = await import("./useFeedStats.svelte");
 			const result = useFeedStats();
 
 			expect(result).toHaveProperty("unsummarizedArticlesAmount");
@@ -61,7 +60,6 @@ describe("useFeedStats", () => {
 		});
 
 		it("should return totalArticlesAmount property", async () => {
-			const { useFeedStats } = await import("./useFeedStats.svelte");
 			const result = useFeedStats();
 
 			expect(result).toHaveProperty("totalArticlesAmount");
@@ -69,7 +67,6 @@ describe("useFeedStats", () => {
 		});
 
 		it("should return isConnected property", async () => {
-			const { useFeedStats } = await import("./useFeedStats.svelte");
 			const result = useFeedStats();
 
 			expect(result).toHaveProperty("isConnected");
@@ -77,7 +74,6 @@ describe("useFeedStats", () => {
 		});
 
 		it("should return retryCount property", async () => {
-			const { useFeedStats } = await import("./useFeedStats.svelte");
 			const result = useFeedStats();
 
 			expect(result).toHaveProperty("retryCount");
@@ -87,7 +83,6 @@ describe("useFeedStats", () => {
 
 	describe("SSE mode (default)", () => {
 		it("should call useSSEFeedsStats when PUBLIC_USE_CONNECT_STREAMING is false", async () => {
-			const { useFeedStats } = await import("./useFeedStats.svelte");
 			const { useSSEFeedsStats } = await import("./useSSEFeedsStats.svelte");
 
 			useFeedStats();
@@ -96,7 +91,6 @@ describe("useFeedStats", () => {
 		});
 
 		it("should return values from SSE implementation", async () => {
-			const { useFeedStats } = await import("./useFeedStats.svelte");
 			const result = useFeedStats();
 
 			// Values come from the mocked useSSEFeedsStats
@@ -108,7 +102,6 @@ describe("useFeedStats", () => {
 
 	describe("interface consistency", () => {
 		it("should return all required properties in the interface", async () => {
-			const { useFeedStats } = await import("./useFeedStats.svelte");
 			const result = useFeedStats();
 
 			const expectedKeys = [

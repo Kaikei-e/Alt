@@ -305,11 +305,11 @@ describe("Knowledge Home API Contract", () => {
 	});
 
 	describe("LensVersion", () => {
-		it("supports feed-based filtering fields", () => {
+		it("supports source-based filtering fields", () => {
 			const lensVersion = create(LensVersionSchema, {
 				versionId: "version-1",
 				tagIds: ["AI"],
-				feedIds: ["feed-1"],
+				sourceIds: ["feed-1"],
 				timeWindow: "7d",
 				sortMode: "relevance",
 			});
@@ -326,7 +326,7 @@ describe("Knowledge Home API Contract", () => {
 			});
 
 			expect(response.activeLensId).toBe("lens-1");
-			expect(response.lenses[0]?.currentVersion?.feedIds).toEqual(["feed-1"]);
+			expect(response.lenses[0]?.currentVersion?.sourceIds).toEqual(["feed-1"]);
 		});
 	});
 

@@ -405,6 +405,7 @@ function handleImgError() {
             href={feed.link}
             target="_blank"
             rel="noopener noreferrer"
+            aria-label="Open article"
             class="flex items-center gap-2 text-[var(--alt-text-primary)] min-w-0 hover:opacity-80 transition-opacity"
           >
             <div class="shrink-0">

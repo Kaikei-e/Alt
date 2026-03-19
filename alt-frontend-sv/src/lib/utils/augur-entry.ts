@@ -1,11 +1,13 @@
 interface ResolveAugurEntryInput {
 	q?: string | null;
 	context?: string | null;
+	articleId?: string | null;
 }
 
 export function buildAugurInitialMessage(
 	question: string,
 	context?: string | null,
+	articleId?: string | null,
 ): string {
 	const trimmedQuestion = question.trim();
 	const trimmedContext = context?.trim() ?? "";
@@ -14,12 +16,17 @@ export function buildAugurInitialMessage(
 		return trimmedQuestion;
 	}
 
+	if (articleId) {
+		return `Regarding the article: ${trimmedContext} [articleId: ${articleId}]\n\nQuestion:\n${trimmedQuestion}`;
+	}
+
 	return `Context:\n${trimmedContext}\n\nQuestion:\n${trimmedQuestion}`;
 }
 
 export function resolveAugurEntry({
 	q,
 	context,
+	articleId,
 }: ResolveAugurEntryInput): {
 	initialDraft: string;
 	initialMessage: string;
@@ -30,7 +37,11 @@ export function resolveAugurEntry({
 	if (trimmedQuestion) {
 		return {
 			initialDraft: "",
-			initialMessage: buildAugurInitialMessage(trimmedQuestion, trimmedContext),
+			initialMessage: buildAugurInitialMessage(
+				trimmedQuestion,
+				trimmedContext,
+				articleId,
+			),
 		};
 	}
 

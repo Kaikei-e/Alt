@@ -13,9 +13,9 @@ function makeLens(overrides: Partial<LensData> = {}): LensData {
 		updatedAt: "2026-03-17T10:00:00Z",
 		currentVersion: {
 			versionId: "v1",
-			queryText: "",
+			queryText: "agents",
 			tagIds: ["AI"],
-			feedIds: [],
+			sourceIds: [],
 			timeWindow: "",
 			includeRecap: false,
 			includePulse: false,
@@ -93,6 +93,23 @@ describe("LensSelector", () => {
 			},
 		});
 
-		await expect.element(page.getByText("Save view")).toBeInTheDocument();
+		await expect
+			.element(page.getByText("Save current view"))
+			.toBeInTheDocument();
+	});
+
+	it("shows active lens search summary when query is present", async () => {
+		render(LensSelector as never, {
+			props: {
+				lenses: [makeLens()],
+				activeLensId: "lens-1",
+				onSelect: vi.fn(),
+				onCreateClick: vi.fn(),
+			},
+		});
+
+		await expect
+			.element(page.getByText('Search: "agents"'))
+			.toBeInTheDocument();
 	});
 });

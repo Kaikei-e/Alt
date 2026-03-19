@@ -21,6 +21,30 @@ const {
 const activeLens = $derived(
 	activeLensId ? lenses.find((l) => l.lensId === activeLensId) : null,
 );
+const activeSummary = $derived.by(() => {
+	if (!activeLens?.currentVersion) return [];
+	const parts: string[] = [];
+	if (matchCount != null) {
+		parts.push(`${matchCount} matches`);
+	}
+	if (activeLens.currentVersion.queryText) {
+		parts.push(`Search: "${activeLens.currentVersion.queryText}"`);
+	}
+	if (activeLens.currentVersion.tagIds.length) {
+		parts.push(`Tags: ${activeLens.currentVersion.tagIds.join(", ")}`);
+	}
+	if (activeLens.currentVersion.sourceIds.length) {
+		const count = activeLens.currentVersion.sourceIds.length;
+		parts.push(`Sources: ${count} selected`);
+	}
+	if (activeLens.currentVersion.timeWindow) {
+		parts.push(`Window: ${activeLens.currentVersion.timeWindow}`);
+	}
+	if (parts.length === 0) {
+		parts.push("Server-side filtered view");
+	}
+	return parts;
+});
 </script>
 
 <div class="space-y-2">
@@ -53,7 +77,7 @@ const activeLens = $derived(
 		onclick={onCreateClick}
 	>
 		<Plus class="h-3.5 w-3.5" />
-		Save view
+		Save current view
 	</button>
 	</div>
 
@@ -64,19 +88,7 @@ const activeLens = $derived(
 					<p class="text-sm font-medium text-[var(--text-primary)]">
 						Active lens: {activeLens.name}
 					</p>
-					<p class="text-xs text-[var(--text-secondary)]">
-						{#if matchCount != null}
-							{matchCount} matches
-						{:else if activeLens.currentVersion?.tagIds.length}
-							Tags: {activeLens.currentVersion.tagIds.join(", ")}
-						{:else if activeLens.currentVersion?.feedIds.length}
-							Sources: {activeLens.currentVersion.feedIds.length} feed{activeLens.currentVersion.feedIds.length === 1 ? "" : "s"}
-						{:else if activeLens.currentVersion?.timeWindow}
-							Window: {activeLens.currentVersion.timeWindow}
-						{:else}
-							Server-side filtered view
-						{/if}
-					</p>
+					<p class="text-xs text-[var(--text-secondary)]">{activeSummary.join(" · ")}</p>
 				</div>
 				<button
 					class="shrink-0 rounded-full border border-[var(--surface-border)] px-3 py-1 text-xs text-[var(--text-primary)] transition-colors hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"

@@ -32,7 +32,7 @@ type CreateLensInput struct {
 	Description  string
 	QueryText    string
 	TagIDs       []string
-	FeedIDs      []string
+	SourceIDs    []string
 	TimeWindow   string
 	IncludeRecap bool
 	IncludePulse bool
@@ -76,7 +76,7 @@ func (u *CreateLensUsecase) Execute(ctx context.Context, input CreateLensInput) 
 		CreatedAt:     now,
 		QueryText:     input.QueryText,
 		TagIDs:        input.TagIDs,
-		FeedIDs:       input.FeedIDs,
+		SourceIDs:     input.SourceIDs,
 		TimeWindow:    input.TimeWindow,
 		IncludeRecap:  input.IncludeRecap,
 		IncludePulse:  input.IncludePulse,

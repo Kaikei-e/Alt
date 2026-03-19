@@ -245,9 +245,9 @@ describe("knowledge_home client", () => {
 						updatedAt: "2026-03-17T10:00:00Z",
 						currentVersion: {
 							versionId: "version-1",
-							queryText: "",
+							queryText: "agents",
 							tagIds: ["AI"],
-							feedIds: ["feed-1"],
+							sourceIds: ["feed-1"],
 							timeWindow: "7d",
 							includeRecap: false,
 							includePulse: false,
@@ -261,7 +261,8 @@ describe("knowledge_home client", () => {
 			const result = await listLenses(mockTransport);
 
 			expect(result.activeLensId).toBe("lens-123");
-			expect(result.lenses[0].currentVersion?.feedIds).toEqual(["feed-1"]);
+			expect(result.lenses[0].currentVersion?.sourceIds).toEqual(["feed-1"]);
+			expect(result.lenses[0].currentVersion?.queryText).toBe("agents");
 		});
 
 		it("clears selected lens when null is passed", async () => {

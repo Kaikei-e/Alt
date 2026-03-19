@@ -435,7 +435,7 @@ func (h *Handler) CreateLens(
 	if req.Msg.Version != nil {
 		input.QueryText = req.Msg.Version.QueryText
 		input.TagIDs = req.Msg.Version.TagIds
-		input.FeedIDs = req.Msg.Version.FeedIds
+		input.SourceIDs = req.Msg.Version.SourceIds
 		input.TimeWindow = req.Msg.Version.TimeWindow
 		input.IncludeRecap = req.Msg.Version.IncludeRecap
 		input.IncludePulse = req.Msg.Version.IncludePulse
@@ -480,7 +480,7 @@ func (h *Handler) UpdateLens(
 	if req.Msg.Version != nil {
 		input.QueryText = req.Msg.Version.QueryText
 		input.TagIDs = req.Msg.Version.TagIds
-		input.FeedIDs = req.Msg.Version.FeedIds
+		input.SourceIDs = req.Msg.Version.SourceIds
 		input.TimeWindow = req.Msg.Version.TimeWindow
 		input.IncludeRecap = req.Msg.Version.IncludeRecap
 		input.IncludePulse = req.Msg.Version.IncludePulse
@@ -934,7 +934,7 @@ func convertLensVersionToProto(v domain.KnowledgeLensVersion) *knowledgehomev1.L
 		VersionId:    v.LensVersionID.String(),
 		QueryText:    v.QueryText,
 		TagIds:       v.TagIDs,
-		FeedIds:      v.FeedIDs,
+		SourceIds:    v.SourceIDs,
 		TimeWindow:   v.TimeWindow,
 		IncludeRecap: v.IncludeRecap,
 		IncludePulse: v.IncludePulse,

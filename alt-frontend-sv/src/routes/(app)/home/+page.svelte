@@ -17,6 +17,11 @@ import RecallRailCollapsible from "$lib/components/knowledge-home/recall-rail/Re
 import StreamUpdateBar from "$lib/components/knowledge-home/StreamUpdateBar.svelte";
 import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
 import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.svelte";
+import {
+	createClientTransport,
+	listSubscriptions,
+	type ConnectFeedSource,
+} from "$lib/connect";
 import type {
 	KnowledgeHomeItemData,
 	LensVersionData,
@@ -45,9 +50,22 @@ let bannerDismissed = $state(false);
 let askSheetOpen = $state(false);
 let askScopeTitle = $state("");
 let askScopeContext = $state("");
+let askScopeArticleId = $state<string | undefined>(undefined);
+let askScopeTags = $state<string[]>([]);
 let searchQuery = $state("");
 let listenQueue = $state<{ id: string; title: string; text: string }[]>([]);
 let isQueueProcessing = $state(false);
+let lensSources = $state<ConnectFeedSource[]>([]);
+let lensSourcesLoading = $state(false);
+let lensDraft = $state<Omit<LensVersionData, "versionId">>({
+	queryText: "",
+	tagIds: [],
+	sourceIds: [],
+	timeWindow: "7d",
+	includeRecap: false,
+	includePulse: false,
+	sortMode: "relevance",
+});
 
 const recallEnabled = $derived(flags.isEnabled("enable_recall_rail"));
 const lensEnabled = $derived(flags.isEnabled("enable_lens"));
@@ -82,7 +100,11 @@ const visibleItems = $derived.by(() => {
 	});
 });
 const emptyReason = $derived.by(() => {
-	if (streamMode === "search" && searchQuery.trim() && visibleItems.length === 0) {
+	if (
+		streamMode === "search" &&
+		searchQuery.trim() &&
+		visibleItems.length === 0
+	) {
 		return "search_strict";
 	}
 	if (home.pageState === "degraded" && visibleItems.length === 0) {
@@ -91,6 +113,9 @@ const emptyReason = $derived.by(() => {
 	return home.emptyReason;
 });
 const currentQueueTitle = $derived(listenQueue[0]?.title ?? null);
+const subscribedLensSources = $derived(
+	lensSources.filter((source) => source.isSubscribed),
+);
 
 const stream = useStreamUpdates({
 	get enabled() {
@@ -126,10 +151,7 @@ function enqueueListen(title: string, text: string) {
 		toast.push("No audio-ready summary is available yet.", "error", 3000);
 		return;
 	}
-	listenQueue = [
-		...listenQueue,
-		{ id: crypto.randomUUID(), title, text },
-	];
+	listenQueue = [...listenQueue, { id: crypto.randomUUID(), title, text }];
 	toast.push("Added to listen queue.", "success");
 	void processQueue();
 }
@@ -180,7 +202,9 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 
 	if (type === "ask") {
 		askScopeTitle = item.title;
-		askScopeContext = item.summaryExcerpt || item.title;
+		askScopeContext = item.title;
+		askScopeArticleId = item.articleId;
+		askScopeTags = item.tags?.slice(0, 3) ?? [];
 		askSheetOpen = true;
 		return;
 	}
@@ -210,15 +234,19 @@ function handleItemsVisible(itemKeys: string[]) {
 
 function handleSearchSubmit(query: string) {
 	searchQuery = query;
+	lensDraft = { ...lensDraft, queryText: query.trim() };
 }
 
 function handleSearchClear() {
 	searchQuery = "";
+	lensDraft = { ...lensDraft, queryText: "" };
 }
 
 function handleAskFromHome(query: string) {
 	askScopeTitle = query.trim() ? query : "Knowledge Home";
 	askScopeContext = query.trim();
+	askScopeArticleId = undefined;
+	askScopeTags = [];
 	askSheetOpen = true;
 }
 
@@ -226,6 +254,7 @@ function submitAsk(question: string) {
 	const params = new URLSearchParams();
 	if (question.trim()) params.set("q", question.trim());
 	if (askScopeContext.trim()) params.set("context", askScopeContext.trim());
+	if (askScopeArticleId) params.set("articleId", askScopeArticleId);
 	goto(`/augur?${params.toString()}`);
 }
 
@@ -242,6 +271,32 @@ async function syncRecallState() {
 
 async function handleLensSelect(lensId: string | null) {
 	await lens.select(lensId);
+	const selectedLens = lensId
+		? lens.lenses.find((entry) => entry.lensId === lensId)
+		: null;
+	if (selectedLens?.currentVersion) {
+		searchQuery = selectedLens.currentVersion.queryText;
+		lensDraft = {
+			queryText: selectedLens.currentVersion.queryText,
+			tagIds: [...selectedLens.currentVersion.tagIds],
+			sourceIds: [...selectedLens.currentVersion.sourceIds],
+			timeWindow: selectedLens.currentVersion.timeWindow || "7d",
+			includeRecap: selectedLens.currentVersion.includeRecap,
+			includePulse: selectedLens.currentVersion.includePulse,
+			sortMode: selectedLens.currentVersion.sortMode || "relevance",
+		};
+	} else if (lensId === null) {
+		searchQuery = "";
+		lensDraft = {
+			queryText: "",
+			tagIds: [],
+			sourceIds: [],
+			timeWindow: "7d",
+			includeRecap: false,
+			includePulse: false,
+			sortMode: "relevance",
+		};
+	}
 	await syncLensQuery(lensId);
 	await home.fetchData(true, lensId);
 	await syncRecallState();
@@ -263,16 +318,46 @@ async function handleCreateLens(payload: {
 	await handleLensSelect(created.lensId);
 }
 
+async function loadLensSources() {
+	try {
+		lensSourcesLoading = true;
+		const transport = createClientTransport();
+		lensSources = await listSubscriptions(transport);
+	} catch {
+		lensSources = [];
+	} finally {
+		lensSourcesLoading = false;
+	}
+}
+
 onMount(async () => {
 	if (browser) {
 		exposureSessionId = crypto.randomUUID();
 
 		if (lensEnabled) {
+			await loadLensSources();
 			await lens.fetchLenses();
 			const urlLensId = page.url.searchParams.get("lens");
 			const initialLensId = urlLensId ?? lens.activeLensId;
 			if (urlLensId && urlLensId !== lens.activeLensId) {
 				await lens.select(urlLensId);
+			}
+			if (initialLensId) {
+				const initialLens = lens.lenses.find(
+					(entry) => entry.lensId === initialLensId,
+				);
+				if (initialLens?.currentVersion) {
+					searchQuery = initialLens.currentVersion.queryText;
+					lensDraft = {
+						queryText: initialLens.currentVersion.queryText,
+						tagIds: [...initialLens.currentVersion.tagIds],
+						sourceIds: [...initialLens.currentVersion.sourceIds],
+						timeWindow: initialLens.currentVersion.timeWindow || "7d",
+						includeRecap: initialLens.currentVersion.includeRecap,
+						includePulse: initialLens.currentVersion.includePulse,
+						sortMode: initialLens.currentVersion.sortMode || "relevance",
+					};
+				}
 			}
 			await syncLensQuery(initialLensId);
 			await home.fetchData(true, initialLensId);
@@ -451,6 +536,8 @@ onMount(async () => {
 	open={askSheetOpen}
 	scopeTitle={askScopeTitle}
 	scopeContext={askScopeContext}
+	scopeArticleId={askScopeArticleId}
+	scopeTags={askScopeTags}
 	onClose={() => {
 		askSheetOpen = false;
 	}}
@@ -481,6 +568,9 @@ onMount(async () => {
 {#if lensEnabled}
 	<LensModal
 		open={lensModalOpen}
+		version={lensDraft}
+		availableSources={subscribedLensSources}
+		loadingSources={lensSourcesLoading}
 		onOpenChange={(open: boolean) => {
 			lensModalOpen = open;
 		}}

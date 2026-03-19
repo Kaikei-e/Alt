@@ -50,8 +50,8 @@ describe("KnowledgeStream", () => {
 			},
 		});
 
-		const pulses = container.querySelectorAll(".animate-pulse");
-		expect(pulses.length).toBeGreaterThan(0);
+		const shimmerBlocks = container.querySelectorAll(".animate-shimmer");
+		expect(shimmerBlocks.length).toBeGreaterThan(0);
 	});
 
 	it("shows empty state with correct reason", async () => {

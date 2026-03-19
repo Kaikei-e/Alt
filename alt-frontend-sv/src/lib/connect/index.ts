@@ -38,7 +38,9 @@ export {
 	type StreamSummarizeResult,
 	// Phase 7: Mark As Read
 	markAsRead,
+	listSubscriptions,
 	type MarkAsReadResult,
+	type ConnectFeedSource,
 } from "./feeds";
 
 // ArticleService client (Phase 4)

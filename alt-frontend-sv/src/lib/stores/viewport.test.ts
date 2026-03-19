@@ -1,4 +1,5 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it } from "vitest";
+import { BREAKPOINT, createViewportState } from "./viewport.svelte";
 
 /**
  * Note: MediaQuery from svelte/reactivity requires a browser environment
@@ -10,23 +11,20 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
 describe("Viewport Store", () => {
 	describe("BREAKPOINT", () => {
-		it("should export BREAKPOINT as 768", async () => {
-			const { BREAKPOINT } = await import("./viewport.svelte");
+		it("should export BREAKPOINT as 768", () => {
 			expect(BREAKPOINT).toBe(768);
 		});
 	});
 
 	describe("createViewportState", () => {
-		it("should return an object with isDesktop and isMobile properties", async () => {
-			const { createViewportState } = await import("./viewport.svelte");
+		it("should return an object with isDesktop and isMobile properties", () => {
 			const state = createViewportState();
 
 			expect(state).toHaveProperty("isDesktop");
 			expect(state).toHaveProperty("isMobile");
 		});
 
-		it("should default to mobile (isDesktop=false, isMobile=true) for SSR fallback", async () => {
-			const { createViewportState } = await import("./viewport.svelte");
+		it("should default to mobile (isDesktop=false, isMobile=true) for SSR fallback", () => {
 			const state = createViewportState();
 
 			// In Node (non-browser), MediaQuery falls back to false for min-width
@@ -35,8 +33,7 @@ describe("Viewport Store", () => {
 			expect(state.isMobile).toBe(true);
 		});
 
-		it("should return complementary values (isDesktop and isMobile are opposite)", async () => {
-			const { createViewportState } = await import("./viewport.svelte");
+		it("should return complementary values (isDesktop and isMobile are opposite)", () => {
 			const state = createViewportState();
 
 			expect(state.isDesktop).toBe(!state.isMobile);
