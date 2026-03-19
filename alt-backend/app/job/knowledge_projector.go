@@ -293,6 +293,11 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 		summaryState = domain.SummaryStateReady
 	}
 
+	whyReasons := []domain.WhyReason{{Code: domain.WhyNewUnread}}
+	if summaryExcerpt != "" {
+		whyReasons = append(whyReasons, domain.WhyReason{Code: domain.WhySummaryCompleted})
+	}
+
 	now := time.Now()
 	item := domain.KnowledgeHomeItem{
 		UserID:            userID,
@@ -303,7 +308,7 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 		Title:             "", // Preserved by merge-safe upsert
 		SummaryExcerpt:    summaryExcerpt,
 		SummaryState:      summaryState,
-		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}, {Code: domain.WhySummaryCompleted}},
+		WhyReasons:        whyReasons,
 		Score:             0.8, // Boost for having a summary
 		GeneratedAt:       now,
 		UpdatedAt:         now,

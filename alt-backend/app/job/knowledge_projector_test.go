@@ -19,8 +19,14 @@ type mockEventsPort struct {
 	err    error
 }
 
-func (m *mockEventsPort) ListKnowledgeEventsSince(_ context.Context, _ int64, _ int) ([]domain.KnowledgeEvent, error) {
-	return m.events, m.err
+func (m *mockEventsPort) ListKnowledgeEventsSince(_ context.Context, since int64, _ int) ([]domain.KnowledgeEvent, error) {
+	var result []domain.KnowledgeEvent
+	for _, e := range m.events {
+		if e.EventSeq > since {
+			result = append(result, e)
+		}
+	}
+	return result, m.err
 }
 
 type mockCheckpointPort struct {
@@ -756,8 +762,41 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_EmptySummary_SetsPending(t 
 	require.NoError(t, err)
 	require.Len(t, homeItemsPort.upserted, 1)
 	assert.Equal(t, domain.SummaryStatePending, homeItemsPort.upserted[0].SummaryState, "SummaryVersionCreated with empty text should set summary_state to pending")
+	assert.NotContains(t, homeItemsPort.upserted[0].WhyReasons, domain.WhyReason{Code: domain.WhySummaryCompleted}, "empty summaries must not add summary_completed")
 	require.Len(t, digestPort.upserted, 1)
 	assert.Equal(t, 0, digestPort.upserted[0].UnsummarizedArticles, "empty summaries must not reduce pending count")
+}
+
+func TestKnowledgeProjectorJob_SummaryVersionCreated_PortError_DoesNotAddSummaryCompletedReason(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	svID := uuid.New()
+	summaryPayload, _ := json.Marshal(summaryVersionPayload{
+		SummaryVersionID: svID.String(),
+		ArticleID:        articleID.String(),
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, EventType: domain.EventSummaryVersionCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: summaryPayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+	summaryVersionPort := &mockSummaryVersionPort{
+		err: assert.AnError,
+	}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, domain.SummaryStatePending, homeItemsPort.upserted[0].SummaryState)
+	assert.NotContains(t, homeItemsPort.upserted[0].WhyReasons, domain.WhyReason{Code: domain.WhySummaryCompleted}, "failed summary fetch must not add summary_completed")
 }
 
 func TestKnowledgeProjectorJob_UsesActiveVersion(t *testing.T) {
