@@ -6,6 +6,7 @@ import (
 
 	"alt/driver/alt_db"
 	"alt/driver/models"
+	"alt/usecase/auto_fulltext_fetch_usecase"
 	"alt/utils"
 	"alt/utils/logger"
 	"alt/utils/rate_limiter"
@@ -13,7 +14,7 @@ import (
 
 // CollectFeedsJob returns a function suitable for the JobScheduler that
 // collects feeds from all registered RSS URLs and upserts them into the DB.
-func CollectFeedsJob(r *alt_db.AltDBRepository) func(ctx context.Context) error {
+func CollectFeedsJob(r *alt_db.AltDBRepository, autoFulltextFetch *auto_fulltext_fetch_usecase.AutoFulltextFetchUsecase) func(ctx context.Context) error {
 	// Create rate limiter with 5-second minimum interval for external API calls
 	rateLimiter := rate_limiter.NewHostRateLimiter(5 * time.Second)
 
@@ -57,8 +58,15 @@ func CollectFeedsJob(r *alt_db.AltDBRepository) func(ctx context.Context) error 
 			}
 		}
 
-		if _, err := r.RegisterMultipleFeeds(ctx, feedModels); err != nil {
+		feedIDs, err := r.RegisterMultipleFeeds(ctx, feedModels)
+		if err != nil {
 			return err
+		}
+
+		if autoFulltextFetch != nil {
+			if err := autoFulltextFetch.Process(ctx, feedItems, feedIDs); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -76,7 +84,7 @@ func stringPtrOrNil(s string) *string {
 // HourlyJobRunner is kept for backward compatibility but delegates to CollectFeedsJob.
 // Deprecated: Use CollectFeedsJob with JobScheduler instead.
 func HourlyJobRunner(ctx context.Context, r *alt_db.AltDBRepository) {
-	if err := CollectFeedsJob(r)(ctx); err != nil {
+	if err := CollectFeedsJob(r, nil)(ctx); err != nil {
 		logger.Logger.ErrorContext(ctx, "Error in feed collection", "error", err)
 	}
 }

@@ -101,7 +101,7 @@ func main() {
 		Name:     "hourly-feed-collector",
 		Interval: 1 * time.Hour,
 		Timeout:  30 * time.Minute,
-		Fn:       job.CollectFeedsJob(container.AltDBRepository),
+		Fn:       job.CollectFeedsJob(container.AltDBRepository, container.AutoFulltextFetchUsecase),
 	})
 	scheduler.Add(job.Job{
 		Name:     "daily-scraping-policy",

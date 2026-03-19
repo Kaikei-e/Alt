@@ -85,6 +85,7 @@ import (
 	"alt/usecase/append_knowledge_event_usecase"
 	"alt/usecase/archive_article_usecase"
 	"alt/usecase/archive_lens_usecase"
+	"alt/usecase/auto_fulltext_fetch_usecase"
 	"alt/usecase/cached_feed_list_usecase"
 	"alt/usecase/create_lens_usecase"
 	"alt/usecase/create_summary_version_usecase"
@@ -195,6 +196,7 @@ type ApplicationComponents struct {
 	ImageFetchUsecase                   image_fetch_usecase.ImageFetchUsecaseInterface
 	CSRFTokenUsecase                    *csrf_token_usecase.CSRFTokenUsecase
 	ArticleUsecase                      fetch_article_usecase.ArticleUsecase
+	AutoFulltextFetchUsecase            *auto_fulltext_fetch_usecase.AutoFulltextFetchUsecase
 	ArchiveArticleUsecase               *archive_article_usecase.ArchiveArticleUsecase
 	FetchArticlesCursorUsecase          *fetch_articles_usecase.FetchArticlesCursorUsecase
 	FetchRecentArticlesUsecase          *fetch_recent_articles_usecase.FetchRecentArticlesUsecase
@@ -491,6 +493,13 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// Internal article API gateway (for BackendInternalService)
 	internalArticleGatewayImpl := internal_article_gateway.NewGateway(altDBRepository)
+	autoFulltextFetchUsecase := auto_fulltext_fetch_usecase.NewAutoFulltextFetchUsecase(
+		fetchArticleGatewayImpl,
+		scrapingPolicyGatewayImpl,
+		internalArticleGatewayImpl,
+		altDBRepository,
+		ragAdapterImpl,
+	)
 
 	// Dashboard metrics components
 	dashboardGatewayImpl := dashboard_gateway.NewDashboardGateway()
@@ -636,6 +645,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ImageFetchUsecase:                   imageFetchUsecase,
 		CSRFTokenUsecase:                    csrfTokenUsecase,
 		ArticleUsecase:                      fetchArticleUsecase,
+		AutoFulltextFetchUsecase:            autoFulltextFetchUsecase,
 		ArchiveArticleUsecase:               archiveArticleUsecase,
 		FetchArticlesCursorUsecase:          fetchArticlesCursorUsecase,
 		FetchRecentArticlesUsecase:          fetchRecentArticlesUsecase,
