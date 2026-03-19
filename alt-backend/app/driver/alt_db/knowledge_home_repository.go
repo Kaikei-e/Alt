@@ -219,7 +219,7 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 		 updated_at = EXCLUDED.updated_at,
 		 dismissed_at = COALESCE(knowledge_home_items.dismissed_at, EXCLUDED.dismissed_at),
 		 projection_version = EXCLUDED.projection_version,
-		 summary_state = CASE WHEN EXCLUDED.summary_state = 'ready' THEN 'ready' WHEN EXCLUDED.summary_state != 'missing' THEN EXCLUDED.summary_state ELSE knowledge_home_items.summary_state END,
+		 summary_state = CASE WHEN EXCLUDED.summary_state = 'ready' THEN 'ready' WHEN EXCLUDED.summary_state NOT IN ('', 'missing') THEN EXCLUDED.summary_state ELSE knowledge_home_items.summary_state END,
 		 supersede_state = COALESCE(EXCLUDED.supersede_state, knowledge_home_items.supersede_state),
 		 superseded_at = COALESCE(EXCLUDED.superseded_at, knowledge_home_items.superseded_at),
 		 previous_ref_json = CASE

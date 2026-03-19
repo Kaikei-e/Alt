@@ -60,7 +60,7 @@ var upsertSQL = regexp.QuoteMeta(`INSERT INTO knowledge_home_items
 		 updated_at = EXCLUDED.updated_at,
 		 dismissed_at = COALESCE(knowledge_home_items.dismissed_at, EXCLUDED.dismissed_at),
 		 projection_version = EXCLUDED.projection_version,
-		 summary_state = CASE WHEN EXCLUDED.summary_state = 'ready' THEN 'ready' WHEN EXCLUDED.summary_state != 'missing' THEN EXCLUDED.summary_state ELSE knowledge_home_items.summary_state END,
+		 summary_state = CASE WHEN EXCLUDED.summary_state = 'ready' THEN 'ready' WHEN EXCLUDED.summary_state NOT IN ('', 'missing') THEN EXCLUDED.summary_state ELSE knowledge_home_items.summary_state END,
 		 supersede_state = COALESCE(EXCLUDED.supersede_state, knowledge_home_items.supersede_state),
 		 superseded_at = COALESCE(EXCLUDED.superseded_at, knowledge_home_items.superseded_at),
 		 previous_ref_json = CASE
@@ -346,6 +346,60 @@ func TestAltDBRepository_UpsertKnowledgeHomeItem_PreservesDismissedAtOnConflict(
 		GeneratedAt:       now,
 		UpdatedAt:         now,
 		ProjectionVersion: 3,
+	})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAltDBRepository_UpsertKnowledgeHomeItem_PreservesReadySummaryStateWhenIncomingStateEmpty(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+	now := time.Date(2026, 3, 18, 13, 0, 0, 0, time.UTC)
+	userID := uuid.New()
+	refID := uuid.New()
+
+	mock.ExpectExec(`(?s)summary_state = CASE WHEN EXCLUDED\.summary_state = 'ready' THEN 'ready' WHEN EXCLUDED\.summary_state NOT IN \('', 'missing'\) THEN EXCLUDED\.summary_state ELSE knowledge_home_items\.summary_state END`).
+		WithArgs(
+			userID,
+			userID,
+			"article:"+refID.String(),
+			domain.ItemArticle,
+			&refID,
+			"",
+			"",
+			`["ai"]`,
+			`[{"code":"tag_hotspot","tag":"AI"}]`,
+			0.2,
+			(*time.Time)(nil),
+			(*time.Time)(nil),
+			(*time.Time)(nil),
+			now,
+			now,
+			(*time.Time)(nil),
+			2,
+			"",
+			(*string)(nil),
+			(*time.Time)(nil),
+			(*string)(nil),
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	err = repo.UpsertKnowledgeHomeItem(context.Background(), domain.KnowledgeHomeItem{
+		UserID:            userID,
+		TenantID:          userID,
+		ItemKey:           "article:" + refID.String(),
+		ItemType:          domain.ItemArticle,
+		PrimaryRefID:      &refID,
+		Tags:              []string{"ai"},
+		WhyReasons:        []domain.WhyReason{{Code: domain.WhyTagHotspot, Tag: "AI"}},
+		Score:             0.2,
+		GeneratedAt:       now,
+		UpdatedAt:         now,
+		ProjectionVersion: 2,
+		SummaryState:      "",
 	})
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
