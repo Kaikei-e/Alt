@@ -22,6 +22,7 @@ const remainingTagCount = $derived(
 const displayReasons = $derived(
 	item.why.length > 0 ? item.why.slice(0, 2) : [{ code: "new_unread" }],
 );
+const isNeedToKnow = $derived(item.why.some(r => r.code === 'pulse_need_to_know'));
 let supersedeExpanded = $state(false);
 let whyExpanded = $state(false);
 
@@ -46,13 +47,13 @@ function handleAction(type: string) {
 </script>
 
 <article
-	class="rounded-lg border-l-4 p-4 bg-[var(--surface-bg)] border-[var(--surface-border)] border-l-[var(--interactive-text)] hover:border-[var(--interactive-text)] transition-colors duration-200 shadow-[var(--shadow-sm)]"
+	class="rounded-lg border-l-[3px] px-5 py-4 bg-[var(--surface-bg)] border-[var(--surface-border)] border-l-[var(--interactive-text)] hover:border-[var(--interactive-text)] transition-all duration-200 hover:shadow-[var(--card-hover-shadow)] hover:-translate-y-0.5 shadow-[var(--shadow-sm)] {isNeedToKnow ? 'ring-1 ring-[var(--badge-orange-border)] border-l-[var(--badge-orange-text)]' : ''}"
 	data-item-key={item.itemKey}
 >
 	<!-- Header: Title + Supersede Badge + Relative Time -->
 	<div class="flex items-start justify-between gap-2 mb-2">
 		<div class="flex-1 min-w-0">
-			<h3 class="text-sm font-semibold text-[var(--text-primary)] line-clamp-2">
+			<h3 class="text-base font-semibold leading-snug text-[var(--text-primary)] line-clamp-2">
 				{item.title}
 			</h3>
 			{#if item.supersedeInfo}
@@ -82,19 +83,28 @@ function handleAction(type: string) {
 		</time>
 	</div>
 
-	<!-- Why Badges + SummaryStateChip -->
+	<!-- Why Badges + SummaryStateChip + Explain why -->
 	{#if displayReasons.length > 0 || item.summaryState === "pending"}
 		<div class="flex flex-wrap items-center gap-1 mb-2">
 			{#each displayReasons as reason}
 				<WhySurfacedBadge {reason} />
 			{/each}
 			<SummaryStateChip state={item.summaryState} />
+			<button
+				type="button"
+				class="rounded-full border border-[var(--surface-border)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-muted)] hover:border-[var(--interactive-text)] hover:text-[var(--interactive-text)] transition-colors ml-auto"
+				onclick={() => {
+					whyExpanded = !whyExpanded;
+				}}
+			>
+				{whyExpanded ? "Hide why" : "Explain why"}
+			</button>
 		</div>
 	{/if}
 
 	<!-- Summary Excerpt or Skeleton -->
 	{#if item.summaryState === "ready" && item.summaryExcerpt}
-		<p class="mb-2 text-xs leading-5 text-[var(--text-secondary)] line-clamp-2">
+		<p class="mb-2 text-sm leading-relaxed text-[var(--text-secondary)] line-clamp-2">
 			{item.summaryExcerpt}
 		</p>
 	{:else if item.summaryState === "pending" || item.summaryState === "missing"}
@@ -103,13 +113,13 @@ function handleAction(type: string) {
 			<div class="h-3 w-2/3 rounded bg-[var(--surface-hover)] animate-pulse"></div>
 		</div>
 	{:else}
-		<p class="mb-2 text-xs leading-5 text-[var(--text-secondary)] line-clamp-2">
+		<p class="mb-2 text-sm leading-relaxed text-[var(--text-secondary)] line-clamp-2">
 			{item.summaryExcerpt}
 		</p>
 	{/if}
 
 	<!-- Bottom Row: Tags (left) + Actions (right) -->
-	<div class="flex items-center justify-between gap-2">
+	<div class="flex items-center justify-between gap-2 border-t border-[var(--surface-border)]/40 pt-3 mt-3">
 		{#if displayTags.length > 0}
 			<div class="flex flex-wrap gap-1 min-w-0">
 				{#each displayTags as tag}
@@ -136,17 +146,5 @@ function handleAction(type: string) {
 			articleId={item.articleId}
 			onAction={handleAction}
 		/>
-	</div>
-
-	<div class="mt-2 flex justify-end">
-		<button
-			type="button"
-			class="text-xs text-[var(--text-secondary)] hover:text-[var(--interactive-text)]"
-			onclick={() => {
-				whyExpanded = !whyExpanded;
-			}}
-		>
-			{whyExpanded ? "Hide why" : "Explain why"}
-		</button>
 	</div>
 </article>

@@ -13,44 +13,44 @@ const WHY_REASON_MAP: Record<string, WhyReasonDisplay> = {
 	new_unread: {
 		label: "New",
 		iconName: "Sparkles",
-		colorClass: "text-blue-400 border-blue-400/30 bg-blue-400/10",
+		colorClass: "text-[var(--badge-blue-text)] border-[var(--badge-blue-border)] bg-[var(--badge-blue-bg)]",
 	},
 	in_weekly_recap: {
 		label: "In Recap",
 		iconName: "CalendarRange",
-		colorClass: "text-purple-400 border-purple-400/30 bg-purple-400/10",
+		colorClass: "text-[var(--badge-purple-text)] border-[var(--badge-purple-border)] bg-[var(--badge-purple-bg)]",
 	},
 	tag_hotspot: {
 		label: "Trending",
 		iconName: "Tag",
-		colorClass: "text-green-400 border-green-400/30 bg-green-400/10",
+		colorClass: "text-[var(--badge-green-text)] border-[var(--badge-green-border)] bg-[var(--badge-green-bg)]",
 	},
 	summary_completed: {
 		label: "Summarized",
 		iconName: "FileText",
-		colorClass: "text-teal-400 border-teal-400/30 bg-teal-400/10",
+		colorClass: "text-[var(--badge-teal-text)] border-[var(--badge-teal-border)] bg-[var(--badge-teal-bg)]",
 	},
 	pulse_need_to_know: {
 		label: "Need to Know",
 		iconName: "Activity",
-		colorClass: "text-orange-400 border-orange-400/30 bg-orange-400/10",
+		colorClass: "text-[var(--badge-orange-text)] border-[var(--badge-orange-border)] bg-[var(--badge-orange-bg)]",
 	},
 	recent_interest_match: {
 		label: "Interest",
 		iconName: "Star",
-		colorClass: "text-yellow-400 border-yellow-400/30 bg-yellow-400/10",
+		colorClass: "text-[var(--badge-yellow-text)] border-[var(--badge-yellow-border)] bg-[var(--badge-yellow-bg)]",
 	},
 	related_to_recent_search: {
 		label: "Search related",
 		iconName: "Search",
-		colorClass: "text-blue-400 border-blue-400/30 bg-blue-400/10",
+		colorClass: "text-[var(--badge-blue-text)] border-[var(--badge-blue-border)] bg-[var(--badge-blue-bg)]",
 	},
 };
 
 const FALLBACK: WhyReasonDisplay = {
 	label: "Info",
 	iconName: "Info",
-	colorClass: "text-gray-400 border-gray-400/30 bg-gray-400/10",
+	colorClass: "text-[var(--badge-gray-text)] border-[var(--badge-gray-border)] bg-[var(--badge-gray-bg)]",
 };
 
 /**

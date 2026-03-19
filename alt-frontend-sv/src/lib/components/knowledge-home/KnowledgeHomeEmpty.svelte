@@ -81,14 +81,14 @@ const config = $derived.by(() => {
 });
 </script>
 
-<div class="flex flex-col items-center justify-center py-16 text-center">
+<div class="flex flex-col items-center justify-center py-20 text-center">
 	<config.icon
-		class="h-10 w-10 text-[var(--text-secondary)] mb-4 {reason === 'ingest_pending' ? 'animate-spin' : ''}"
+		class="h-12 w-12 text-[var(--text-secondary)] mb-4 {reason === 'ingest_pending' ? 'animate-spin' : ''}"
 	/>
 	<h3 class="text-base font-medium text-[var(--text-primary)] mb-1">
 		{config.title}
 	</h3>
-	<p class="text-sm text-[var(--text-secondary)] max-w-sm">
+	<p class="text-sm text-[var(--text-secondary)] max-w-md">
 		{config.description}
 	</p>
 	{#if config.showClearLens && onClearLens}

@@ -44,7 +44,7 @@ const age = $derived(formatRelativeTime(dateSource));
 </script>
 
 <div
-	class="border rounded-lg p-3 bg-[var(--surface-bg)] border-[var(--surface-border)] hover:border-[var(--accent-primary)] transition-colors cursor-pointer"
+	class="border rounded-md p-3 bg-[var(--surface-bg)] border-[var(--surface-border)] hover:border-[var(--accent-primary)] transition-all duration-200 cursor-pointer"
 	role="button"
 	tabindex="0"
 	onclick={() => onOpen(candidate.itemKey)}
@@ -88,14 +88,14 @@ const age = $derived(formatRelativeTime(dateSource));
 
 	<div class="flex items-center gap-1 mt-2">
 		<button
-			class="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
+			class="p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
 			title="Snooze for 24 hours"
 			onclick={(e) => { e.stopPropagation(); onSnooze(candidate.itemKey); }}
 		>
 			<AlarmClockOff class="h-3.5 w-3.5" />
 		</button>
 		<button
-			class="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
+			class="p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
 			title="Dismiss"
 			onclick={(e) => { e.stopPropagation(); onDismiss(candidate.itemKey); }}
 		>

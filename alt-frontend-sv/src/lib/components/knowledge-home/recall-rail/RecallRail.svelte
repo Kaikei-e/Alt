@@ -20,9 +20,9 @@ const {
 }: Props = $props();
 </script>
 
-<aside class="border rounded-lg p-4 bg-[var(--surface-bg)] border-[var(--surface-border)]">
+<aside class="sticky top-4 border rounded-xl p-4 bg-[var(--surface-2,var(--surface-bg))] border-[var(--surface-border)]">
 	<h3 class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3 flex items-center gap-1.5">
-		<Brain class="h-3.5 w-3.5" />
+		<Brain class="h-3.5 w-3.5 text-[var(--accent-primary,var(--interactive-text))]" />
 		Recall
 	</h3>
 
@@ -31,7 +31,7 @@ const {
 	{:else if candidates.length === 0}
 		<p class="text-sm text-[var(--text-tertiary)]">Nothing to recall right now.</p>
 	{:else}
-		<div class="flex flex-col gap-2">
+		<div class="flex flex-col gap-3">
 			{#each candidates as candidate (candidate.itemKey)}
 				<RecallCandidateCard
 					{candidate}

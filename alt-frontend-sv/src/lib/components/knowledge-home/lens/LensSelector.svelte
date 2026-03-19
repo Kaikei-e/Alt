@@ -28,7 +28,7 @@ const activeLens = $derived(
 	<button
 		class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border transition-colors
 			{activeLensId === null
-				? 'border-[var(--accent-primary)] text-[var(--accent-primary)] bg-[var(--accent-primary)]/10'
+				? 'border-[var(--accent-primary)] text-[var(--accent-primary)] bg-[var(--accent-primary)]/15'
 				: 'border-[var(--surface-border)] text-[var(--text-secondary)] hover:border-[var(--text-secondary)]'}"
 		onclick={() => onSelect(null)}
 	>
@@ -40,7 +40,7 @@ const activeLens = $derived(
 		<button
 			class="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-full border transition-colors
 				{activeLensId === lens.lensId
-					? 'border-[var(--accent-primary)] text-[var(--accent-primary)] bg-[var(--accent-primary)]/10'
+					? 'border-[var(--accent-primary)] text-[var(--accent-primary)] bg-[var(--accent-primary)]/15'
 					: 'border-[var(--surface-border)] text-[var(--text-secondary)] hover:border-[var(--text-secondary)]'}"
 			onclick={() => onSelect(lens.lensId)}
 		>

@@ -212,6 +212,21 @@
 	--chip-text: rgba(255, 255, 255, 0.88);
 	--action-surface: rgba(255, 255, 255, 0.08);
 	--action-surface-hover: rgba(255, 255, 255, 0.16);
+
+	--text-tertiary: rgba(255, 255, 255, 0.5);
+	--card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+
+	/* Neon badge colors */
+	--badge-blue-text: #60a5fa; --badge-blue-bg: rgba(96, 165, 250, 0.1); --badge-blue-border: rgba(96, 165, 250, 0.3);
+	--badge-purple-text: #a78bfa; --badge-purple-bg: rgba(167, 139, 250, 0.1); --badge-purple-border: rgba(167, 139, 250, 0.3);
+	--badge-green-text: #4ade80; --badge-green-bg: rgba(74, 222, 128, 0.1); --badge-green-border: rgba(74, 222, 128, 0.3);
+	--badge-orange-text: #fb923c; --badge-orange-bg: rgba(251, 146, 60, 0.1); --badge-orange-border: rgba(251, 146, 60, 0.3);
+	--badge-amber-text: #fbbf24; --badge-amber-bg: rgba(251, 191, 36, 0.1); --badge-amber-border: rgba(251, 191, 36, 0.3);
+	--badge-teal-text: #2dd4bf; --badge-teal-bg: rgba(45, 212, 191, 0.1); --badge-teal-border: rgba(45, 212, 191, 0.3);
+	--badge-yellow-text: #facc15; --badge-yellow-bg: rgba(250, 204, 21, 0.1); --badge-yellow-border: rgba(250, 204, 21, 0.3);
+	--badge-sky-text: #38bdf8; --badge-sky-bg: rgba(56, 189, 248, 0.1); --badge-sky-border: rgba(56, 189, 248, 0.3);
+	--badge-gray-text: rgba(255, 255, 255, 0.6); --badge-gray-bg: rgba(255, 255, 255, 0.05); --badge-gray-border: rgba(255, 255, 255, 0.15);
+	--badge-indigo-text: #818cf8; --badge-indigo-bg: rgba(129, 140, 248, 0.1); --badge-indigo-border: rgba(129, 140, 248, 0.3);
 }
 
 /* Liquid-Beige Theme (Earthy Luxury) */
@@ -252,6 +267,21 @@
 	--chip-text: #5b5046;
 	--action-surface: rgba(255, 250, 243, 0.6);
 	--action-surface-hover: rgba(255, 250, 243, 0.85);
+
+	--text-tertiary: #9c8e80;
+	--card-hover-shadow: 0 4px 12px rgba(139, 119, 101, 0.12), 0 2px 4px rgba(139, 119, 101, 0.06);
+
+	/* Warm earth-tone badge colors */
+	--badge-blue-text: #4a7c9b; --badge-blue-bg: rgba(74, 124, 155, 0.08); --badge-blue-border: rgba(74, 124, 155, 0.25);
+	--badge-purple-text: #8b6fa8; --badge-purple-bg: rgba(139, 111, 168, 0.08); --badge-purple-border: rgba(139, 111, 168, 0.25);
+	--badge-green-text: #6a8f5e; --badge-green-bg: rgba(106, 143, 94, 0.08); --badge-green-border: rgba(106, 143, 94, 0.25);
+	--badge-orange-text: #c06c3a; --badge-orange-bg: rgba(192, 108, 58, 0.08); --badge-orange-border: rgba(192, 108, 58, 0.25);
+	--badge-amber-text: #b5873a; --badge-amber-bg: rgba(181, 135, 58, 0.08); --badge-amber-border: rgba(181, 135, 58, 0.25);
+	--badge-teal-text: #4d8f85; --badge-teal-bg: rgba(77, 143, 133, 0.08); --badge-teal-border: rgba(77, 143, 133, 0.25);
+	--badge-yellow-text: #a68b2e; --badge-yellow-bg: rgba(166, 139, 46, 0.08); --badge-yellow-border: rgba(166, 139, 46, 0.25);
+	--badge-sky-text: #5090b0; --badge-sky-bg: rgba(80, 144, 176, 0.08); --badge-sky-border: rgba(80, 144, 176, 0.25);
+	--badge-gray-text: #8b7d6e; --badge-gray-bg: rgba(139, 125, 110, 0.06); --badge-gray-border: rgba(139, 125, 110, 0.2);
+	--badge-indigo-text: #6b6ea8; --badge-indigo-bg: rgba(107, 110, 168, 0.08); --badge-indigo-border: rgba(107, 110, 168, 0.25);
 }
 
 /* Alt-Paper Theme (Newspaper Style) - Default */
@@ -261,9 +291,10 @@
 	--alt-secondary: #696969;
 	--alt-tertiary: #808080;
 
-	--surface-bg: #ffffff;
+	--surface-bg: #faf9f7;
+	--surface-2: #f5f4f1;
 	--surface-border: #c8c8c8;
-	--surface-hover: #f8f8f8;
+	--surface-hover: #f3f1ed;
 	--surface-blur: 0px;
 
 	--alt-glass: var(--surface-bg);
@@ -272,7 +303,7 @@
 	--alt-glass-blur: 0px;
 	--alt-glass-shadow: rgba(0, 0, 0, 0.08);
 
-	--app-bg: #ffffff;
+	--app-bg: #faf9f7;
 	--accent-gradient: linear-gradient(
 		135deg,
 		var(--alt-primary) 0%,
@@ -283,6 +314,7 @@
 	/* Text colors - high contrast black on white */
 	--text-primary: #1a1a1a;
 	--text-secondary: #333333;
+	--text-tertiary: #888888;
 	--text-muted: #666666;
 	--interactive-text: #2f4f4f;
 	--interactive-text-hover: #223b3b;
@@ -296,6 +328,19 @@
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
 	--shadow-md: 0 2px 4px rgba(0, 0, 0, 0.08);
 	--shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.12);
+	--card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+
+	/* Semantic badge colors */
+	--badge-blue-text: #2563eb; --badge-blue-bg: #eff6ff; --badge-blue-border: #bfdbfe;
+	--badge-purple-text: #7c3aed; --badge-purple-bg: #f5f3ff; --badge-purple-border: #ddd6fe;
+	--badge-green-text: #16a34a; --badge-green-bg: #f0fdf4; --badge-green-border: #bbf7d0;
+	--badge-orange-text: #ea580c; --badge-orange-bg: #fff7ed; --badge-orange-border: #fed7aa;
+	--badge-amber-text: #d97706; --badge-amber-bg: #fffbeb; --badge-amber-border: #fde68a;
+	--badge-teal-text: #0d9488; --badge-teal-bg: #f0fdfa; --badge-teal-border: #99f6e4;
+	--badge-yellow-text: #ca8a04; --badge-yellow-bg: #fefce8; --badge-yellow-border: #fef08a;
+	--badge-sky-text: #0284c7; --badge-sky-bg: #f0f9ff; --badge-sky-border: #bae6fd;
+	--badge-gray-text: #4b5563; --badge-gray-bg: #f9fafb; --badge-gray-border: #e5e7eb;
+	--badge-indigo-text: #4f46e5; --badge-indigo-bg: #eef2ff; --badge-indigo-border: #c7d2fe;
 }
 
 /* Utility Classes for Glassmorphism */
@@ -311,6 +356,33 @@
 .glass:hover {
 	background: var(--alt-glass-hover);
 }
+
+/* Animation keyframes */
+@keyframes shimmer {
+	0% { background-position: -200% 0; }
+	100% { background-position: 200% 0; }
+}
+@keyframes fade-up {
+	from { opacity: 0; transform: translateY(8px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-right {
+	from { opacity: 0; transform: translateX(12px); }
+	to { opacity: 1; transform: translateX(0); }
+}
+@keyframes slide-in-bottom {
+	from { opacity: 0; transform: translateY(100%); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-shimmer {
+	background: linear-gradient(90deg, var(--surface-hover) 25%, var(--surface-bg) 50%, var(--surface-hover) 75%);
+	background-size: 200% 100%;
+	animation: shimmer 1.5s ease-in-out infinite;
+}
+.animate-fade-up { animation: fade-up 0.3s ease-out both; }
+.animate-slide-in-right { animation: slide-in-right 0.25s ease-out both; }
+.animate-slide-in-bottom { animation: slide-in-bottom 0.3s ease-out both; }
 
 @layer base {
 	* {

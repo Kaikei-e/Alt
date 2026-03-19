@@ -62,7 +62,7 @@ const categorized = $derived.by(() => {
 });
 </script>
 
-<div class="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] p-3">
+<div class="animate-fade-up rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] p-3">
 	<h4 class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
 		<Info class="h-3.5 w-3.5" />
 		Why this was surfaced
@@ -72,32 +72,32 @@ const categorized = $derived.by(() => {
 		<div class="space-y-3">
 			{#each categorized as group}
 				<div class="space-y-1.5">
-					<p class="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+					<p class="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
 						{group.label}
 					</p>
 					<div class="space-y-1.5">
 						{#each group.items as reason}
-							<div class="rounded-md border border-[var(--surface-border)] bg-[var(--surface-hover)] px-2.5 py-2">
+							<div class="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2.5">
 								<p class="text-xs font-medium text-[var(--text-primary)]">
 									{resolveWhyReason(reason.code, reason.tag).label}
 								</p>
-								<p class="mt-0.5 text-xs text-[var(--text-secondary)]">
+								<p class="mt-0.5 text-xs leading-relaxed text-[var(--text-secondary)]">
 									{#if reason.code === "new_unread"}
-										新着候補として surfacing されています。
+										Surfaced as a new, unread candidate.
 									{:else if reason.code === "in_weekly_recap"}
-										Recap に含まれた話題との接続があります。
+										Connected to a topic covered in the weekly Recap.
 									{:else if reason.code === "tag_hotspot" && reason.tag}
-										直近で増加しているタグ「{reason.tag}」に関連します。
+										Related to the trending tag "{reason.tag}".
 									{:else if reason.code === "pulse_need_to_know"}
-										今日の注目候補として優先されています。
+										Prioritized as a need-to-know candidate for today.
 									{:else if reason.code === "recent_interest_match"}
-										最近の行動と近いテーマとして選ばれています。
+										Selected based on themes similar to your recent activity.
 									{:else if reason.code === "related_to_recent_search"}
-										最近の検索文脈に関連する候補です。
+										Related to your recent search context.
 									{:else if reason.code === "summary_completed"}
-										要約生成が完了し、意味がつかみやすくなりました。
+										Summary generation completed — key points are now available.
 									{:else}
-										Home の関連性判断に基づいて表示されています。
+										Displayed based on Home's relevance assessment.
 									{/if}
 								</p>
 							</div>

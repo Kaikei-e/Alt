@@ -132,9 +132,9 @@ onMount(() => {
 });
 </script>
 
-<div class="mb-3 flex items-center justify-between gap-3">
+<div class="pb-3 mb-5 border-b border-[var(--surface-border)]/30 flex items-center justify-between gap-3">
 	<div>
-		<h2 class="text-sm font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+		<h2 class="text-lg font-bold text-[var(--text-primary)] tracking-tight">
 			{#if streamMode === "search"}
 				Search results
 			{:else if streamMode === "lens" && activeLensName}
@@ -145,7 +145,7 @@ onMount(() => {
 				Latest
 			{/if}
 		</h2>
-		<p class="mt-0.5 text-xs text-[var(--text-secondary)]">
+		<p class="mt-1 text-sm text-[var(--text-muted)]">
 			{#if streamMode === "search" && searchQuery}
 				Query: "{searchQuery}"
 			{:else if streamMode === "lens" && activeLensName}
@@ -162,7 +162,7 @@ onMount(() => {
 {:else if !loading && items.length === 0}
 	<KnowledgeHomeEmpty reason={emptyReason} {activeLensName} {onClearLens} />
 {:else}
-	<div class="flex flex-col gap-3" bind:this={streamRef}>
+	<div class="flex flex-col gap-4" bind:this={streamRef}>
 		{#if degradedNote}
 			<div class="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-400">
 				{degradedNote}

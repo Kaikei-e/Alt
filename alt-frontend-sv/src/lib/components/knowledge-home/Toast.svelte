@@ -10,8 +10,8 @@ const { items, onDismiss }: Props = $props();
 
 const kindClass: Record<ToastItem["kind"], string> = {
 	success:
-		"border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
-	error: "border-red-400/30 bg-red-400/10 text-red-200",
+		"border-[var(--badge-green-border)] bg-[var(--badge-green-bg)] text-[var(--badge-green-text)]",
+	error: "border-[var(--badge-orange-border)] bg-[var(--badge-orange-bg)] text-[var(--badge-orange-text)]",
 	info: "border-[var(--surface-border)] bg-[var(--surface-bg)] text-[var(--text-primary)]",
 };
 </script>
@@ -20,7 +20,7 @@ const kindClass: Record<ToastItem["kind"], string> = {
 	<div class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2">
 		{#each items as item (item.id)}
 			<div
-				class="pointer-events-auto rounded-lg border px-3 py-2 text-sm shadow-lg {kindClass[item.kind]}"
+				class="pointer-events-auto animate-slide-in-right rounded-xl border px-3 py-2 text-sm shadow-xl {kindClass[item.kind]}"
 			>
 				<div class="flex items-start justify-between gap-3">
 					<p>{item.message}</p>

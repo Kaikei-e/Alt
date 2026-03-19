@@ -25,9 +25,9 @@ function submit() {
 </script>
 
 {#if open}
-	<div class="fixed inset-0 z-40 bg-black/40" role="presentation" onclick={onClose}></div>
+	<div class="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" role="presentation" onclick={onClose}></div>
 	<div
-		class="fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-bg)] p-4 shadow-2xl md:left-auto md:right-4 md:top-4 md:bottom-4 md:w-96"
+		class="fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-bg)] p-4 shadow-2xl animate-slide-in-bottom md:animate-slide-in-right md:left-auto md:right-4 md:top-4 md:bottom-4 md:w-96"
 	>
 		<div class="mb-3 flex items-start justify-between gap-3">
 			<div>

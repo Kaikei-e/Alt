@@ -84,7 +84,7 @@ function handleKeydown(e: KeyboardEvent) {
 }
 </script>
 
-<div class="space-y-3 border-b border-[var(--surface-border)] bg-[var(--surface-bg)] px-4 py-3">
+<div class="space-y-3 bg-[var(--surface-bg)] px-4 py-3">
 	<div class="relative flex items-center gap-2">
 		<div class="relative flex-1">
 			<input
@@ -92,7 +92,7 @@ function handleKeydown(e: KeyboardEvent) {
 				bind:value={query}
 				onkeydown={handleKeydown}
 				placeholder="Search articles or ask a question..."
-				class="w-full rounded-lg border border-transparent bg-[var(--surface-hover)] px-3 py-2 pl-9 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:border-[var(--accent-primary)] focus:outline-none transition-colors"
+				class="w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] px-4 py-2.5 pl-9 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] shadow-[var(--shadow-sm)] focus:border-[var(--accent-primary)] focus:ring-2 focus:ring-[var(--accent-primary,var(--interactive-text))]/20 focus:outline-none transition-colors"
 			/>
 			<Search
 				class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-secondary)]"
@@ -110,7 +110,7 @@ function handleKeydown(e: KeyboardEvent) {
 		<button
 			type="button"
 			onclick={handleAsk}
-			class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] transition-colors"
+			class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-border)] px-3 py-2 text-sm font-medium text-[var(--interactive-text)] hover:bg-[var(--surface-hover)] hover:text-[var(--interactive-text-hover)] transition-colors"
 			title="Ask Augur"
 			aria-label="Ask Augur"
 		>
@@ -127,7 +127,7 @@ function handleKeydown(e: KeyboardEvent) {
 			{#each recentQueries as recent}
 				<button
 					type="button"
-					class="rounded-full border border-[var(--surface-border)] px-3 py-1 text-xs text-[var(--text-secondary)] hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+					class="rounded-full bg-[var(--surface-hover)] border border-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--action-surface)] hover:text-[var(--text-primary)]"
 					onclick={() => {
 						query = recent;
 						onSearchSubmit?.(recent);

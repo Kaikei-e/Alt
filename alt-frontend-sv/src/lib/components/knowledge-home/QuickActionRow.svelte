@@ -29,21 +29,21 @@ const primaryActions = $derived([
 		<button
 			type="button"
 			onclick={() => onAction(action.type)}
-			class="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-[var(--interactive-text)] hover:bg-[var(--action-surface-hover)] hover:text-[var(--interactive-text-hover)] transition-colors duration-150"
+			class="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-[var(--interactive-text)] hover:bg-[var(--action-surface-hover)] hover:text-[var(--interactive-text-hover)] transition-colors duration-150"
 			title={action.label}
 			aria-label={action.label}
 		>
-			<action.icon class="h-3.5 w-3.5" />
+			<action.icon class="h-4 w-4" />
 			<span class="hidden md:inline">{action.label}</span>
 		</button>
 	{/each}
 	<button
 		type="button"
 		onclick={() => onAction("dismiss")}
-		class="ml-1 rounded-md p-1 text-[var(--text-secondary)]/70 hover:bg-[var(--action-surface-hover)] hover:text-[var(--text-primary)] transition-colors duration-150"
+		class="ml-2 border-l border-[var(--surface-border)]/50 pl-2 rounded-md p-1.5 text-[var(--text-secondary)]/70 hover:bg-[var(--action-surface-hover)] hover:text-[var(--text-primary)] transition-colors duration-150"
 		title="Dismiss"
 		aria-label="Dismiss"
 	>
-		<X class="h-3.5 w-3.5" />
+		<X class="h-4 w-4" />
 	</button>
 </div>

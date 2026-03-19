@@ -341,7 +341,7 @@ onMount(async () => {
 		</div>
 	{/if}
 
-	<div class="mt-4 flex gap-6">
+	<div class="mt-6 flex gap-8">
 		<div class="min-w-0 flex-1">
 			<KnowledgeStream
 				items={visibleItems}
