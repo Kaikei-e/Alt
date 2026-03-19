@@ -208,24 +208,25 @@ func (g *Gateway) BatchUpsertArticleTags(ctx context.Context, items []internal_t
 }
 
 // ListUntaggedArticles implements ListUntaggedArticlesPort.
-func (g *Gateway) ListUntaggedArticles(ctx context.Context, limit int, offset int) ([]internal_tag_port.UntaggedArticle, int32, error) {
-	driverArticles, totalCount, err := g.repo.ListUntaggedArticles(ctx, limit, offset)
+func (g *Gateway) ListUntaggedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]internal_tag_port.UntaggedArticle, *time.Time, string, int32, error) {
+	driverArticles, nextCreatedAt, nextID, totalCount, err := g.repo.ListUntaggedArticles(ctx, lastCreatedAt, lastID, limit)
 	if err != nil {
-		return nil, 0, fmt.Errorf("ListUntaggedArticles: %w", err)
+		return nil, nil, "", 0, fmt.Errorf("ListUntaggedArticles: %w", err)
 	}
 
 	articles := make([]internal_tag_port.UntaggedArticle, len(driverArticles))
 	for i, da := range driverArticles {
 		articles[i] = internal_tag_port.UntaggedArticle{
-			ID:      da.ID,
-			Title:   da.Title,
-			Content: da.Content,
-			UserID:  da.UserID,
-			FeedID:  da.FeedID,
+			ID:        da.ID,
+			Title:     da.Title,
+			Content:   da.Content,
+			UserID:    da.UserID,
+			FeedID:    da.FeedID,
+			CreatedAt: da.CreatedAt,
 		}
 	}
 
-	return articles, totalCount, nil
+	return articles, nextCreatedAt, nextID, totalCount, nil
 }
 
 // ── Phase 4: Summary quality operations ──

@@ -14,6 +14,7 @@ import (
 	"alt/port/event_publisher_port"
 	"alt/port/internal_article_port"
 	"alt/port/internal_feed_port"
+	"alt/port/internal_tag_port"
 
 	"go.uber.org/mock/gomock"
 )
@@ -973,6 +974,139 @@ func TestGetEmptyFeedID_Unimplemented(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
+	}
+}
+
+// ── Phase 3: ListUntaggedArticles RPC tests ──
+
+func TestListUntaggedArticles_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockList := mocks.NewMockListUntaggedArticlesPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithPhase3Ports(nil, nil, mockList))
+
+	now := time.Now()
+	feedID := "feed-1"
+	expected := []internal_tag_port.UntaggedArticle{
+		{ID: "a1", Title: "Title 1", Content: "Content 1", UserID: "u1", FeedID: &feedID, CreatedAt: now},
+		{ID: "a2", Title: "Title 2", Content: "Content 2", UserID: "u1", FeedID: &feedID, CreatedAt: now.Add(-time.Hour)},
+	}
+
+	mockList.EXPECT().
+		ListUntaggedArticles(gomock.Any(), (*time.Time)(nil), "", 200).
+		Return(expected, &now, "a2", int32(5), nil)
+
+	req := connect.NewRequest(&backendv1.ListUntaggedArticlesRequest{Limit: 200})
+	resp, err := h.ListUntaggedArticles(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Msg.Articles) != 2 {
+		t.Fatalf("expected 2 articles, got %d", len(resp.Msg.Articles))
+	}
+	if resp.Msg.Articles[0].Id != "a1" {
+		t.Errorf("expected first article ID a1, got %s", resp.Msg.Articles[0].Id)
+	}
+	if resp.Msg.Articles[0].CreatedAt == nil {
+		t.Error("expected created_at to be set on article")
+	}
+	if resp.Msg.NextId != "a2" {
+		t.Errorf("expected next_id a2, got %s", resp.Msg.NextId)
+	}
+	if resp.Msg.NextCreatedAt == nil {
+		t.Fatal("expected next_created_at to be set")
+	}
+	if resp.Msg.TotalCount != 5 {
+		t.Errorf("expected total_count 5, got %d", resp.Msg.TotalCount)
+	}
+}
+
+func TestListUntaggedArticles_WithCursor(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockList := mocks.NewMockListUntaggedArticlesPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithPhase3Ports(nil, nil, mockList))
+
+	cursorTime := time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC)
+
+	mockList.EXPECT().
+		ListUntaggedArticles(gomock.Any(), gomock.Any(), "prev-id", 100).
+		Return([]internal_tag_port.UntaggedArticle{}, (*time.Time)(nil), "", int32(0), nil)
+
+	req := connect.NewRequest(&backendv1.ListUntaggedArticlesRequest{
+		LastCreatedAt: timestamppb.New(cursorTime),
+		LastId:        "prev-id",
+		Limit:         100,
+	})
+
+	resp, err := h.ListUntaggedArticles(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Msg.Articles) != 0 {
+		t.Fatalf("expected 0 articles, got %d", len(resp.Msg.Articles))
+	}
+}
+
+func TestListUntaggedArticles_Unimplemented(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, nil, nil)
+
+	req := connect.NewRequest(&backendv1.ListUntaggedArticlesRequest{Limit: 10})
+	_, err := h.ListUntaggedArticles(context.Background(), req)
+	if connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
+	}
+}
+
+// ── BatchUpsertArticleTags: basic success without TSV ──
+
+func TestBatchUpsertArticleTags_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockBatchUpsert := mocks.NewMockBatchUpsertArticleTagsPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithPhase3Ports(nil, mockBatchUpsert, nil))
+
+	mockBatchUpsert.EXPECT().
+		BatchUpsertArticleTags(gomock.Any(), gomock.Any()).
+		Return(int32(3), nil)
+
+	req := connect.NewRequest(&backendv1.BatchUpsertArticleTagsRequest{
+		Items: []*backendv1.UpsertArticleTagsRequest{
+			{
+				ArticleId: "art-1",
+				FeedId:    "feed-1",
+				Tags:      []*backendv1.TagItem{{Name: "go", Confidence: 0.9}},
+			},
+			{
+				ArticleId: "art-2",
+				FeedId:    "", // empty feed_id
+				Tags:      []*backendv1.TagItem{{Name: "rust", Confidence: 0.8}},
+			},
+		},
+	})
+
+	resp, err := h.BatchUpsertArticleTags(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Msg.Success {
+		t.Error("expected success to be true")
+	}
+	if resp.Msg.TotalUpserted != 3 {
+		t.Errorf("expected total_upserted 3, got %d", resp.Msg.TotalUpserted)
+	}
+}
+
+func TestBatchUpsertArticleTags_Unimplemented(t *testing.T) {
+	h := NewHandler(nil, nil, nil, nil, nil, nil)
+
+	req := connect.NewRequest(&backendv1.BatchUpsertArticleTagsRequest{})
+	_, err := h.BatchUpsertArticleTags(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeUnimplemented {
 		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
 	}

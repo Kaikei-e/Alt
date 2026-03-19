@@ -31,10 +31,25 @@ def fetcher(mock_client, auth_headers) -> ConnectArticleFetcher:
 class TestFetchArticles:
     """Tests for fetch_articles method."""
 
-    def test_calls_list_untagged_articles_with_correct_request(self, fetcher, mock_client, auth_headers) -> None:
-        """Calls list_untagged_articles RPC with correct limit and offset."""
+    def test_first_page_omits_cursor(self, fetcher, mock_client, auth_headers) -> None:
+        """First page request should NOT set cursor fields."""
+        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+            articles=[], total_count=0
+        )
+
+        fetcher.fetch_articles(None, "9999-12-31T23:59:59Z", "zzzzz", custom_batch_size=50)
+
+        call_args = mock_client.list_untagged_articles.call_args
+        req = call_args[0][0]
+        assert req.limit == 50
+        # Cursor fields should NOT be set on first page
+        assert not req.HasField("last_created_at")
+        assert req.last_id == ""
+
+    def test_passes_cursor_params_to_rpc(self, fetcher, mock_client, auth_headers) -> None:
+        """When cursor is provided, it should be passed in the request."""
         ts = Timestamp()
-        ts.FromJsonString("2024-01-15T10:00:00Z")
+        ts.FromJsonString("2026-03-17T12:00:00Z")
         article = internal_pb2.ArticleWithTags(
             id="art-1",
             title="Test",
@@ -46,13 +61,14 @@ class TestFetchArticles:
             articles=[article], total_count=1
         )
 
-        fetcher.fetch_articles(None, "2024-01-01", "zzz", custom_batch_size=50)
+        fetcher.fetch_articles(None, "2026-03-17T12:00:00Z", "prev-art-id", custom_batch_size=50)
 
-        mock_client.list_untagged_articles.assert_called_once()
         call_args = mock_client.list_untagged_articles.call_args
         req = call_args[0][0]
         assert req.limit == 50
-        assert req.offset == 0
+        # Cursor fields should be set
+        assert req.HasField("last_created_at")
+        assert req.last_id == "prev-art-id"
         assert call_args[1]["headers"] == auth_headers
         assert call_args[1]["timeout_ms"] == 30000
 
@@ -94,6 +110,18 @@ class TestFetchArticles:
 
         req = mock_client.list_untagged_articles.call_args[0][0]
         assert req.limit == 75
+
+    def test_empty_cursor_does_not_set_fields(self, fetcher, mock_client) -> None:
+        """Empty string cursor should not set cursor fields."""
+        mock_client.list_untagged_articles.return_value = internal_pb2.ListUntaggedArticlesResponse(
+            articles=[], total_count=0
+        )
+
+        fetcher.fetch_articles(None, "", "")
+
+        req = mock_client.list_untagged_articles.call_args[0][0]
+        assert not req.HasField("last_created_at")
+        assert req.last_id == ""
 
 
 class TestCountUntaggedArticles:

@@ -576,6 +576,10 @@ func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Reque
 			if len(item.Tags) == 0 {
 				continue
 			}
+			if item.FeedId == "" {
+				h.logger.Warn("skipping tag set version creation for article without feed_id", "article_id", item.ArticleId)
+				continue
+			}
 			articleUUID, parseErr := uuid.Parse(item.ArticleId)
 			if parseErr != nil {
 				continue
@@ -619,7 +623,13 @@ func (h *Handler) ListUntaggedArticles(ctx context.Context, req *connect.Request
 
 	limit := clampLimit(int(req.Msg.Limit))
 
-	articles, totalCount, err := h.listUntaggedArticles.ListUntaggedArticles(ctx, limit, int(req.Msg.Offset))
+	var lastCreatedAt *time.Time
+	if req.Msg.LastCreatedAt != nil {
+		t := req.Msg.LastCreatedAt.AsTime()
+		lastCreatedAt = &t
+	}
+
+	articles, nextCreatedAt, nextID, totalCount, err := h.listUntaggedArticles.ListUntaggedArticles(ctx, lastCreatedAt, req.Msg.LastId, limit)
 	if err != nil {
 		h.logger.Error("ListUntaggedArticles failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list untagged articles"))
@@ -632,18 +642,25 @@ func (h *Handler) ListUntaggedArticles(ctx context.Context, req *connect.Request
 			feedID = *a.FeedID
 		}
 		protoArticles[i] = &backendv1.ArticleWithTags{
-			Id:      a.ID,
-			Title:   a.Title,
-			Content: a.Content,
-			UserId:  a.UserID,
-			FeedId:  feedID,
+			Id:        a.ID,
+			Title:     a.Title,
+			Content:   a.Content,
+			UserId:    a.UserID,
+			FeedId:    feedID,
+			CreatedAt: timestamppb.New(a.CreatedAt),
 		}
 	}
 
-	return connect.NewResponse(&backendv1.ListUntaggedArticlesResponse{
+	resp := &backendv1.ListUntaggedArticlesResponse{
 		Articles:   protoArticles,
 		TotalCount: totalCount,
-	}), nil
+		NextId:     nextID,
+	}
+	if nextCreatedAt != nil {
+		resp.NextCreatedAt = timestamppb.New(*nextCreatedAt)
+	}
+
+	return connect.NewResponse(resp), nil
 }
 
 // ── Phase 4: Summary quality operations (quality checker) ──

@@ -270,20 +270,28 @@ class BatchUpsertArticleTagsResponse(_message.Message):
     def __init__(self, success: _Optional[bool] = ..., total_upserted: _Optional[int] = ...) -> None: ...
 
 class ListUntaggedArticlesRequest(_message.Message):
-    __slots__ = ("limit", "offset")
+    __slots__ = ("limit", "offset", "last_created_at", "last_id")
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
+    LAST_CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    LAST_ID_FIELD_NUMBER: _ClassVar[int]
     limit: int
     offset: int
-    def __init__(self, limit: _Optional[int] = ..., offset: _Optional[int] = ...) -> None: ...
+    last_created_at: _timestamp_pb2.Timestamp
+    last_id: str
+    def __init__(self, limit: _Optional[int] = ..., offset: _Optional[int] = ..., last_created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., last_id: _Optional[str] = ...) -> None: ...
 
 class ListUntaggedArticlesResponse(_message.Message):
-    __slots__ = ("articles", "total_count")
+    __slots__ = ("articles", "total_count", "next_created_at", "next_id")
     ARTICLES_FIELD_NUMBER: _ClassVar[int]
     TOTAL_COUNT_FIELD_NUMBER: _ClassVar[int]
+    NEXT_CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    NEXT_ID_FIELD_NUMBER: _ClassVar[int]
     articles: _containers.RepeatedCompositeFieldContainer[ArticleWithTags]
     total_count: int
-    def __init__(self, articles: _Optional[_Iterable[_Union[ArticleWithTags, _Mapping]]] = ..., total_count: _Optional[int] = ...) -> None: ...
+    next_created_at: _timestamp_pb2.Timestamp
+    next_id: str
+    def __init__(self, articles: _Optional[_Iterable[_Union[ArticleWithTags, _Mapping]]] = ..., total_count: _Optional[int] = ..., next_created_at: _Optional[_Union[datetime.datetime, _timestamp_pb2.Timestamp, _Mapping]] = ..., next_id: _Optional[str] = ...) -> None: ...
 
 class DeleteArticleSummaryRequest(_message.Message):
     __slots__ = ("article_id",)

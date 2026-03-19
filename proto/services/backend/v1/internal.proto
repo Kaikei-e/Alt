@@ -221,12 +221,20 @@ message BatchUpsertArticleTagsResponse {
 
 message ListUntaggedArticlesRequest {
   int32 limit = 1;
+  // DEPRECATED: offset pagination — use cursor fields instead.
   int32 offset = 2;
+  // Cursor: last created_at from previous page (omit for first page)
+  optional google.protobuf.Timestamp last_created_at = 3;
+  // Cursor: last article ID from previous page
+  string last_id = 4;
 }
 
 message ListUntaggedArticlesResponse {
   repeated ArticleWithTags articles = 1;
   int32 total_count = 2;
+  // Cursor for next page
+  optional google.protobuf.Timestamp next_created_at = 3;
+  string next_id = 4;
 }
 
 // =============================================================================

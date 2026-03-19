@@ -10,6 +10,7 @@ from typing import Any
 
 import structlog
 from connectrpc.errors import ConnectError
+from google.protobuf.timestamp_pb2 import Timestamp
 
 from tag_generator.gen.proto.services.backend.v1 import internal_pb2
 from tag_generator.gen.proto.services.backend.v1.internal_connect import (
@@ -32,6 +33,9 @@ class ConnectArticleFetcher:
         self.client = client
         self.auth_headers = auth_headers
 
+    # Sentinel value indicating "first page" (no cursor yet).
+    _FIRST_PAGE_SENTINEL = "9999-12-31T23:59:59Z"
+
     def fetch_articles(
         self,
         conn: Any,
@@ -40,9 +44,18 @@ class ConnectArticleFetcher:
         custom_batch_size: int | None = None,
         untagged_only: bool = True,
     ) -> list[dict[str, Any]]:
-        """Fetch articles using ListUntaggedArticles RPC."""
+        """Fetch articles using ListUntaggedArticles RPC with keyset pagination."""
         limit = custom_batch_size or 75
-        req = internal_pb2.ListUntaggedArticlesRequest(limit=limit, offset=0)
+
+        req = internal_pb2.ListUntaggedArticlesRequest(limit=limit)
+
+        # Pass cursor to backend for keyset pagination (skip on first page)
+        if last_created_at and last_created_at != self._FIRST_PAGE_SENTINEL:
+            ts = Timestamp()
+            ts.FromJsonString(last_created_at)
+            req.last_created_at.CopyFrom(ts)
+            req.last_id = last_id
+
         resp = self.client.list_untagged_articles(
             req,
             headers=self.auth_headers,
@@ -81,7 +94,7 @@ class ConnectArticleFetcher:
 
     def count_untagged_articles(self, conn: Any) -> int:
         """Count untagged articles via ListUntaggedArticles RPC."""
-        req = internal_pb2.ListUntaggedArticlesRequest(limit=1, offset=0)
+        req = internal_pb2.ListUntaggedArticlesRequest(limit=1)
         resp = self.client.list_untagged_articles(
             req,
             headers=self.auth_headers,

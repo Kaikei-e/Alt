@@ -1,7 +1,10 @@
 // Package internal_tag_port defines interfaces for internal tag API operations.
 package internal_tag_port
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // TagItem represents a single tag with its confidence score.
 type TagItem struct {
@@ -28,14 +31,15 @@ type BatchUpsertArticleTagsPort interface {
 
 // UntaggedArticle represents an article without tags.
 type UntaggedArticle struct {
-	ID      string
-	Title   string
-	Content string
-	UserID  string
-	FeedID  *string
+	ID        string
+	Title     string
+	Content   string
+	UserID    string
+	FeedID    *string
+	CreatedAt time.Time
 }
 
-// ListUntaggedArticlesPort returns articles without tags.
+// ListUntaggedArticlesPort returns articles without tags using keyset pagination.
 type ListUntaggedArticlesPort interface {
-	ListUntaggedArticles(ctx context.Context, limit int, offset int) (articles []UntaggedArticle, totalCount int32, err error)
+	ListUntaggedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) (articles []UntaggedArticle, nextCreatedAt *time.Time, nextID string, totalCount int32, err error)
 }

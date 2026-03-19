@@ -13,6 +13,7 @@ import (
 	internal_tag_port "alt/port/internal_tag_port"
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -120,17 +121,19 @@ func (m *MockListUntaggedArticlesPort) EXPECT() *MockListUntaggedArticlesPortMoc
 }
 
 // ListUntaggedArticles mocks base method.
-func (m *MockListUntaggedArticlesPort) ListUntaggedArticles(ctx context.Context, limit, offset int) ([]internal_tag_port.UntaggedArticle, int32, error) {
+func (m *MockListUntaggedArticlesPort) ListUntaggedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]internal_tag_port.UntaggedArticle, *time.Time, string, int32, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListUntaggedArticles", ctx, limit, offset)
+	ret := m.ctrl.Call(m, "ListUntaggedArticles", ctx, lastCreatedAt, lastID, limit)
 	ret0, _ := ret[0].([]internal_tag_port.UntaggedArticle)
-	ret1, _ := ret[1].(int32)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
+	ret1, _ := ret[1].(*time.Time)
+	ret2, _ := ret[2].(string)
+	ret3, _ := ret[3].(int32)
+	ret4, _ := ret[4].(error)
+	return ret0, ret1, ret2, ret3, ret4
 }
 
 // ListUntaggedArticles indicates an expected call of ListUntaggedArticles.
-func (mr *MockListUntaggedArticlesPortMockRecorder) ListUntaggedArticles(ctx, limit, offset any) *gomock.Call {
+func (mr *MockListUntaggedArticlesPortMockRecorder) ListUntaggedArticles(ctx, lastCreatedAt, lastID, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUntaggedArticles", reflect.TypeOf((*MockListUntaggedArticlesPort)(nil).ListUntaggedArticles), ctx, limit, offset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListUntaggedArticles", reflect.TypeOf((*MockListUntaggedArticlesPort)(nil).ListUntaggedArticles), ctx, lastCreatedAt, lastID, limit)
 }
