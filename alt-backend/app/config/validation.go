@@ -36,6 +36,10 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("recap config validation failed: %w", err)
 	}
 
+	if err := validateKnowledgeHomeConfig(&config.KnowledgeHome); err != nil {
+		return fmt.Errorf("knowledge home config validation failed: %w", err)
+	}
+
 	return nil
 }
 
@@ -233,6 +237,22 @@ func validateRecapConfig(config *RecapConfig) error {
 	}
 	if strings.TrimSpace(config.ClusterDraftPath) == "" {
 		return fmt.Errorf("cluster draft path must be provided")
+	}
+	return nil
+}
+
+func validateKnowledgeHomeConfig(config *KnowledgeHomeConfig) error {
+	if config.ProjectorPollInterval <= 0 {
+		return fmt.Errorf("projector poll interval must be positive, got %v", config.ProjectorPollInterval)
+	}
+	if config.ProjectorTimeout <= 0 {
+		return fmt.Errorf("projector timeout must be positive, got %v", config.ProjectorTimeout)
+	}
+	if config.ProjectorBatchSize <= 0 {
+		return fmt.Errorf("projector batch size must be positive, got %d", config.ProjectorBatchSize)
+	}
+	if strings.TrimSpace(config.ProjectorNotifyChannel) == "" {
+		return fmt.Errorf("projector notify channel must not be empty")
 	}
 	return nil
 }

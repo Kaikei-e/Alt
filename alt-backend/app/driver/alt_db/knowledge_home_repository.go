@@ -2,6 +2,7 @@ package alt_db
 
 import (
 	"alt/domain"
+	"alt/port/knowledge_home_port"
 	"alt/utils/logger"
 	"context"
 	"encoding/base64"
@@ -268,9 +269,12 @@ func (r *AltDBRepository) DismissKnowledgeHomeItem(ctx context.Context, userID u
 		SET dismissed_at = $1, updated_at = $1
 		WHERE user_id = $2 AND item_key = $3 AND projection_version = $4`
 
-	_, err := r.pool.Exec(ctx, query, dismissedAt, userID, itemKey, projectionVersion)
+	commandTag, err := r.pool.Exec(ctx, query, dismissedAt, userID, itemKey, projectionVersion)
 	if err != nil {
 		return fmt.Errorf("DismissKnowledgeHomeItem: %w", err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return knowledge_home_port.ErrDismissTargetNotFound
 	}
 
 	return nil

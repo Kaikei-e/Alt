@@ -17,13 +17,18 @@ import (
 type mockEventsPort struct {
 	events []domain.KnowledgeEvent
 	err    error
+	calls  int
 }
 
-func (m *mockEventsPort) ListKnowledgeEventsSince(_ context.Context, since int64, _ int) ([]domain.KnowledgeEvent, error) {
+func (m *mockEventsPort) ListKnowledgeEventsSince(_ context.Context, since int64, limit int) ([]domain.KnowledgeEvent, error) {
+	m.calls++
 	var result []domain.KnowledgeEvent
 	for _, e := range m.events {
 		if e.EventSeq > since {
 			result = append(result, e)
+			if limit > 0 && len(result) >= limit {
+				break
+			}
 		}
 	}
 	return result, m.err
@@ -269,6 +274,41 @@ func TestKnowledgeProjectorJob_CheckpointAdvances(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(10), checkpointPort.updatedSeq) // Checkpoint advances to max seq
 	assert.Len(t, homeItemsPort.upserted, 2)
+}
+
+func TestKnowledgeProjectorJob_DrainsMultipleBatchesWithinSingleRun(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	events := make([]domain.KnowledgeEvent, 0, 150)
+	for i := 0; i < 150; i++ {
+		payload, _ := json.Marshal(articleCreatedPayload{
+			ArticleID: uuid.New().String(),
+			Title:     "Article",
+		})
+		events = append(events, domain.KnowledgeEvent{
+			EventID:       uuid.New(),
+			EventSeq:      int64(i + 1),
+			TenantID:      tenantID,
+			EventType:     domain.EventArticleCreated,
+			AggregateType: domain.AggregateArticle,
+			AggregateID:   uuid.New().String(),
+			Payload:       payload,
+		})
+	}
+
+	eventsPort := &mockEventsPort{events: events}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	assert.Len(t, homeItemsPort.upserted, 150)
+	assert.Equal(t, int64(150), checkpointPort.updatedSeq)
+	assert.GreaterOrEqual(t, eventsPort.calls, 2)
 }
 
 func TestKnowledgeProjectorJob_SummaryVersionCreated_PopulatesExcerpt(t *testing.T) {

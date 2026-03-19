@@ -43,6 +43,21 @@ func (dc *DatabaseConfig) BuildConnectionString() string {
 	)
 }
 
+func (dc *DatabaseConfig) BuildDirectConnectionString(hostOverride string, portOverride string) string {
+	direct := *dc
+	if strings.TrimSpace(hostOverride) != "" {
+		direct.Host = hostOverride
+	} else if direct.Host == "pgbouncer" {
+		direct.Host = "db"
+	}
+	if strings.TrimSpace(portOverride) != "" {
+		direct.Port = portOverride
+	} else if direct.Port == "6432" && direct.Host == "db" {
+		direct.Port = "5432"
+	}
+	return direct.BuildConnectionString()
+}
+
 func getEnvOrDefault(key, defaultValue string) string {
 	// Check for _FILE suffix (Docker Secrets support)
 	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {

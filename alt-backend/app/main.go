@@ -128,23 +128,6 @@ func main() {
 		Fn:       job.TagCloudCacheWarmerJob(container.FetchTagCloudUsecase),
 	})
 	scheduler.Add(job.Job{
-		Name:     "knowledge-projector",
-		Interval: 30 * time.Second,
-		Timeout:  25 * time.Second,
-		Fn: job.KnowledgeProjectorJob(
-			container.KnowledgeEventGateway,
-			container.KnowledgeProjectionGateway,
-			container.KnowledgeProjectionGateway,
-			container.KnowledgeHomeGateway,
-			container.TodayDigestGateway,
-			container.KnowledgeProjectionVersionGateway,
-			container.SummaryVersionGateway,
-			container.RecallCandidateGateway,
-			container.TagSetVersionGateway,
-			container.KnowledgeHomeGateway,
-		),
-	})
-	scheduler.Add(job.Job{
 		Name:     "knowledge-backfill",
 		Interval: 15 * time.Second,
 		Timeout:  25 * time.Second,
@@ -195,6 +178,40 @@ func main() {
 		),
 	})
 	scheduler.Start(ctx)
+
+	projectorProcess := job.KnowledgeProjectorJobWithConfig(
+		container.KnowledgeEventGateway,
+		container.KnowledgeProjectionGateway,
+		container.KnowledgeProjectionGateway,
+		container.KnowledgeHomeGateway,
+		container.TodayDigestGateway,
+		container.KnowledgeProjectionVersionGateway,
+		container.SummaryVersionGateway,
+		container.RecallCandidateGateway,
+		container.TagSetVersionGateway,
+		job.KnowledgeProjectorConfig{
+			BatchSize: cfg.KnowledgeHome.ProjectorBatchSize,
+		},
+		container.KnowledgeHomeGateway,
+	)
+	projectorConnString := alt_db.NewDatabaseConfigFromEnv().BuildDirectConnectionString(
+		cfg.KnowledgeHome.ProjectorDirectDBHost,
+		cfg.KnowledgeHome.ProjectorDirectDBPort,
+	)
+	projectorRunner := job.NewKnowledgeProjectorRunner(job.KnowledgeProjectorRunnerConfig{
+		PollInterval: cfg.KnowledgeHome.ProjectorPollInterval,
+		Timeout:      cfg.KnowledgeHome.ProjectorTimeout,
+		Process:      projectorProcess,
+		ListenerFactory: job.NewPGKnowledgeProjectorListenerFactory(
+			projectorConnString,
+			cfg.KnowledgeHome.ProjectorNotifyChannel,
+		),
+	})
+	go func() {
+		if err := projectorRunner.Run(ctx); err != nil && ctx.Err() == nil {
+			logger.Logger.ErrorContext(ctx, "knowledge projector runner stopped unexpectedly", "error", err)
+		}
+	}()
 
 	e := echo.New()
 

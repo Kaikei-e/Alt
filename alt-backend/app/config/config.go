@@ -93,6 +93,12 @@ type KnowledgeHomeConfig struct {
 	EnableLens          bool   `json:"enable_lens" env:"KNOWLEDGE_HOME_ENABLE_LENS" default:"false"`
 	EnableStreamUpdates bool   `json:"enable_stream_updates" env:"KNOWLEDGE_HOME_ENABLE_STREAM_UPDATES" default:"false"`
 	EnableSupersedeUX   bool   `json:"enable_supersede_ux" env:"KNOWLEDGE_HOME_ENABLE_SUPERSEDE_UX" default:"false"`
+	ProjectorPollInterval time.Duration `json:"projector_poll_interval" env:"KNOWLEDGE_HOME_PROJECTOR_POLL_INTERVAL" default:"5s"`
+	ProjectorTimeout      time.Duration `json:"projector_timeout" env:"KNOWLEDGE_HOME_PROJECTOR_TIMEOUT" default:"25s"`
+	ProjectorBatchSize    int           `json:"projector_batch_size" env:"KNOWLEDGE_HOME_PROJECTOR_BATCH_SIZE" default:"500"`
+	ProjectorNotifyChannel string       `json:"projector_notify_channel" env:"KNOWLEDGE_HOME_PROJECTOR_NOTIFY_CHANNEL" default:"knowledge_projector"`
+	ProjectorDirectDBHost string        `json:"projector_direct_db_host" env:"KNOWLEDGE_HOME_PROJECTOR_DIRECT_DB_HOST" default:""`
+	ProjectorDirectDBPort string        `json:"projector_direct_db_port" env:"KNOWLEDGE_HOME_PROJECTOR_DIRECT_DB_PORT" default:""`
 }
 
 // InternalAPIConfig holds configuration for the internal service-to-service API.

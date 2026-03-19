@@ -581,6 +581,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// Wire recall signal port: TrackHomeAction appends recall signals (fire-and-forget)
 	trackHomeActionUsecase.SetRecallSignalPort(recallSignalGw)
+	trackHomeActionUsecase.SetDismissPort(knowledgeHomeGw, knowledgeProjectionVersionGw)
 
 	// Wire auto-subscribe: Usecase delegates subscription to SubscriptionPort
 	registerFeedsUsecase.SetSubscriptionPort(subscriptionGatewayImpl)

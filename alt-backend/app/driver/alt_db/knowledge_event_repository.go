@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -30,6 +31,15 @@ func (r *AltDBRepository) AppendKnowledgeEvent(ctx context.Context, event domain
 	}
 
 	span.SetAttributes(attribute.String("event.type", event.EventType))
+
+	channel := os.Getenv("KNOWLEDGE_HOME_PROJECTOR_NOTIFY_CHANNEL")
+	if channel == "" {
+		channel = "knowledge_projector"
+	}
+	if _, notifyErr := r.pool.Exec(ctx, `SELECT pg_notify($1, $2)`, channel, event.EventType); notifyErr != nil {
+		logger.Logger.WarnContext(ctx, "failed to notify knowledge projector", "error", notifyErr, "channel", channel)
+	}
+
 	return nil
 }
 

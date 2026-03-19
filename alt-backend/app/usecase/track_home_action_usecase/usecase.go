@@ -4,6 +4,8 @@ import (
 	"alt/domain"
 	"alt/port/feature_flag_port"
 	"alt/port/knowledge_event_port"
+	"alt/port/knowledge_home_port"
+	"alt/port/knowledge_projection_version_port"
 	"alt/port/knowledge_user_event_port"
 	"alt/port/recall_signal_port"
 	"alt/utils/logger"
@@ -40,11 +42,22 @@ type TrackHomeActionUsecase struct {
 	knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort
 	featureFlagPort    feature_flag_port.FeatureFlagPort
 	recallSignalPort   recall_signal_port.AppendRecallSignalPort
+	dismissPort        knowledge_home_port.DismissKnowledgeHomeItemPort
+	activeVersionPort  knowledge_projection_version_port.GetActiveVersionPort
 }
 
 // SetRecallSignalPort wires the optional recall signal port.
 func (u *TrackHomeActionUsecase) SetRecallSignalPort(port recall_signal_port.AppendRecallSignalPort) {
 	u.recallSignalPort = port
+}
+
+// SetDismissPort wires the optional synchronous dismiss fast-path and projection version lookup.
+func (u *TrackHomeActionUsecase) SetDismissPort(
+	port knowledge_home_port.DismissKnowledgeHomeItemPort,
+	versionPort knowledge_projection_version_port.GetActiveVersionPort,
+) {
+	u.dismissPort = port
+	u.activeVersionPort = versionPort
 }
 
 // NewTrackHomeActionUsecase creates a new TrackHomeActionUsecase.
@@ -129,6 +142,29 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		logger.Logger.ErrorContext(ctx, "failed to append knowledge event for action",
 			"error", err, "action_type", actionType)
 		// Non-fatal: user event was already recorded
+	}
+
+	if actionType == "dismiss" && u.dismissPort != nil {
+		projectionVersion := 1
+		if u.activeVersionPort != nil {
+			v, err := u.activeVersionPort.GetActiveVersion(ctx)
+			if err != nil {
+				logger.Logger.WarnContext(ctx, "failed to resolve active projection version for dismiss write-through",
+					"error", err, "item_key", itemKey)
+			} else if v != nil {
+				projectionVersion = v.Version
+			}
+		}
+
+		if err := u.dismissPort.DismissKnowledgeHomeItem(ctx, userID, itemKey, projectionVersion, now); err != nil {
+			if errors.Is(err, knowledge_home_port.ErrDismissTargetNotFound) {
+				logger.Logger.WarnContext(ctx, "dismiss write-through skipped because read model target was not found",
+					"item_key", itemKey, "projection_version", projectionVersion)
+			} else {
+				logger.Logger.ErrorContext(ctx, "failed to dismiss read model synchronously",
+					"error", err, "item_key", itemKey, "projection_version", projectionVersion)
+			}
+		}
 	}
 
 	// Append recall signal for eligible action types (non-fatal)

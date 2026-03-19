@@ -2,10 +2,12 @@ package track_home_action_usecase
 
 import (
 	"alt/domain"
+	"alt/port/knowledge_home_port"
 	"alt/utils/logger"
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -64,6 +66,40 @@ func (m *mockFeatureFlagPort) IsEnabled(_ string, _ uuid.UUID) bool {
 		return true
 	}
 	return m.enabled
+}
+
+type mockDismissPort struct {
+	calls []struct {
+		userID            uuid.UUID
+		itemKey           string
+		projectionVersion int
+		dismissedAt       time.Time
+	}
+	err error
+}
+
+func (m *mockDismissPort) DismissKnowledgeHomeItem(_ context.Context, userID uuid.UUID, itemKey string, projectionVersion int, dismissedAt time.Time) error {
+	m.calls = append(m.calls, struct {
+		userID            uuid.UUID
+		itemKey           string
+		projectionVersion int
+		dismissedAt       time.Time
+	}{
+		userID:            userID,
+		itemKey:           itemKey,
+		projectionVersion: projectionVersion,
+		dismissedAt:       dismissedAt,
+	})
+	return m.err
+}
+
+type mockActiveProjectionVersionPort struct {
+	version *domain.KnowledgeProjectionVersion
+	err     error
+}
+
+func (m *mockActiveProjectionVersionPort) GetActiveVersion(_ context.Context) (*domain.KnowledgeProjectionVersion, error) {
+	return m.version, m.err
 }
 
 func TestTrackHomeActionUsecase_Execute(t *testing.T) {
@@ -252,5 +288,72 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
 		require.NoError(t, err)
 		assert.Empty(t, recallPort.appendedSignals)
+	})
+}
+
+func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
+	logger.InitLogger()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	itemKey := "article:test-uuid"
+
+	t.Run("dismiss action updates read model synchronously", func(t *testing.T) {
+		dismissPort := &mockDismissPort{}
+		versionPort := &mockActiveProjectionVersionPort{
+			version: &domain.KnowledgeProjectionVersion{Version: 7},
+		}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetDismissPort(dismissPort, versionPort)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
+		require.NoError(t, err)
+		require.Len(t, dismissPort.calls, 1)
+		assert.Equal(t, userID, dismissPort.calls[0].userID)
+		assert.Equal(t, itemKey, dismissPort.calls[0].itemKey)
+		assert.Equal(t, 7, dismissPort.calls[0].projectionVersion)
+		assert.False(t, dismissPort.calls[0].dismissedAt.IsZero())
+	})
+
+	t.Run("dismiss read model failure is non fatal", func(t *testing.T) {
+		dismissPort := &mockDismissPort{err: errors.New("db failed")}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetDismissPort(dismissPort, &mockActiveProjectionVersionPort{})
+
+		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
+		require.NoError(t, err)
+		require.Len(t, dismissPort.calls, 1)
+	})
+
+	t.Run("dismiss target not found is non fatal", func(t *testing.T) {
+		dismissPort := &mockDismissPort{err: knowledge_home_port.ErrDismissTargetNotFound}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetDismissPort(dismissPort, &mockActiveProjectionVersionPort{})
+
+		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
+		require.NoError(t, err)
+		require.Len(t, dismissPort.calls, 1)
+	})
+
+	t.Run("non dismiss actions skip read model update", func(t *testing.T) {
+		dismissPort := &mockDismissPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetDismissPort(dismissPort, &mockActiveProjectionVersionPort{})
+
+		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
+		require.NoError(t, err)
+		assert.Empty(t, dismissPort.calls)
+	})
+
+	t.Run("dismiss falls back to default projection version when lookup fails", func(t *testing.T) {
+		dismissPort := &mockDismissPort{}
+		versionPort := &mockActiveProjectionVersionPort{err: errors.New("lookup failed")}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetDismissPort(dismissPort, versionPort)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
+		require.NoError(t, err)
+		require.Len(t, dismissPort.calls, 1)
+		assert.Equal(t, 1, dismissPort.calls[0].projectionVersion)
 	})
 }

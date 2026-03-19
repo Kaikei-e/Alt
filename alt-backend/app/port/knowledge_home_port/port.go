@@ -3,10 +3,13 @@ package knowledge_home_port
 import (
 	"alt/domain"
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+var ErrDismissTargetNotFound = errors.New("knowledge home dismiss target not found")
 
 // GetKnowledgeHomeItemsPort reads items from the knowledge home projection.
 type GetKnowledgeHomeItemsPort interface {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"alt/domain"
+	"alt/port/knowledge_home_port"
 
 	"github.com/google/uuid"
 	pgxmock "github.com/pashagolub/pgxmock/v3"
@@ -232,6 +233,26 @@ func TestAltDBRepository_DismissKnowledgeHomeItem_UpdatesDismissedAt(t *testing.
 
 	err = repo.DismissKnowledgeHomeItem(context.Background(), userID, "article:abc", 1, now)
 	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAltDBRepository_DismissKnowledgeHomeItem_ReturnsNotFoundWhenNoRowsUpdated(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+	now := time.Date(2026, 3, 18, 12, 0, 0, 0, time.UTC)
+	userID := uuid.New()
+
+	mock.ExpectExec(`UPDATE knowledge_home_items
+		SET dismissed_at = \$1, updated_at = \$1
+		WHERE user_id = \$2 AND item_key = \$3 AND projection_version = \$4`).
+		WithArgs(now, userID, "article:missing", 7).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	err = repo.DismissKnowledgeHomeItem(context.Background(), userID, "article:missing", 7, now)
+	require.ErrorIs(t, err, knowledge_home_port.ErrDismissTargetNotFound)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
