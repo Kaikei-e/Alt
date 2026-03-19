@@ -52,7 +52,11 @@ func NewBackendClientWithTransport(baseURL string, requestTimeout, streamingTime
 		},
 		streamingClient: &http.Client{
 			Transport: transport,
-			Timeout:   streamingTimeout,
+			// Timeout is intentionally not set (0 = no timeout).
+			// http.Client.Timeout includes reading the entire response body,
+			// which kills server-streaming responses after the deadline.
+			// Lifetime is controlled per-request via context deadline,
+			// derived from applyConnectTimeout in the handler layer.
 		},
 		requestTimeout:   requestTimeout,
 		streamingTimeout: streamingTimeout,

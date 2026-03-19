@@ -14,8 +14,13 @@ import (
 	"alt-butterfly-facade/internal/middleware"
 )
 
-// maxConnectTimeout is the upper bound for Connect-Timeout-Ms to prevent abuse.
+// maxConnectTimeout is the upper bound for unary Connect-Timeout-Ms to prevent abuse.
 const maxConnectTimeout = 5 * time.Minute
+
+// maxStreamingTimeout is the upper bound for server-streaming requests.
+// Set higher than the backend's stale timer (30 min) so BFF never kills
+// a stream that the backend would still serve.
+const maxStreamingTimeout = 40 * time.Minute
 
 // streamingProcedures lists Connect-RPC procedures that use server streaming
 var streamingProcedures = map[string]bool{
@@ -58,7 +63,8 @@ func NewProxyHandler(
 // applyConnectTimeout parses the Connect-Timeout-Ms header and sets a context
 // deadline on the request. If the header is absent or invalid, defaultTimeout
 // is used (or streamingTimeout for streaming procedures).
-// The timeout is capped at maxConnectTimeout (5 min).
+// Unary requests are capped at maxConnectTimeout (5 min).
+// Streaming requests are capped at maxStreamingTimeout (40 min).
 func (h *ProxyHandler) applyConnectTimeout(r *http.Request) (*http.Request, context.CancelFunc) {
 	timeout := h.defaultTimeout
 
@@ -73,7 +79,11 @@ func (h *ProxyHandler) applyConnectTimeout(r *http.Request) (*http.Request, cont
 		}
 	}
 
-	if timeout > maxConnectTimeout {
+	if isStreamingProcedure(r.URL.Path) {
+		if timeout > maxStreamingTimeout {
+			timeout = maxStreamingTimeout
+		}
+	} else if timeout > maxConnectTimeout {
 		timeout = maxConnectTimeout
 	}
 

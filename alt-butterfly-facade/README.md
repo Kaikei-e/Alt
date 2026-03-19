@@ -52,7 +52,7 @@ curl http://localhost:9200/health
 | `BACKEND_TOKEN_ISSUER` | auth-hub | Expected JWT issuer |
 | `BACKEND_TOKEN_AUDIENCE` | alt-backend | Expected JWT audience |
 | `BFF_REQUEST_TIMEOUT` | 30s | Timeout for unary requests |
-| `BFF_STREAMING_TIMEOUT` | 5m | Timeout for streaming requests |
+| `BFF_STREAMING_TIMEOUT` | 40m | Default context deadline for streaming requests |
 
 ## Streaming Endpoints
 
@@ -62,6 +62,15 @@ The following endpoints use server streaming with extended timeout:
 - `/alt.feeds.v2.FeedService/StreamSummarize`
 - `/alt.augur.v2.AugurService/StreamChat`
 - `/alt.morning_letter.v2.MorningLetterService/StreamChat`
+- `/alt.tts.v1.TTSService/SynthesizeStream`
+- `/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates`
+- `/alt.knowledge_home.v1.KnowledgeHomeService/StreamRecallRailUpdates`
+
+### Timeout design
+
+- **Unary requests**: capped at 5 minutes (`maxConnectTimeout`). `Connect-Timeout-Ms` header respected up to the cap.
+- **Streaming requests**: capped at 40 minutes (`maxStreamingTimeout`). This exceeds the backend's 30-minute stale timer so the BFF never kills a stream the backend would still serve.
+- **`http.Client.Timeout`**: disabled (0) for both unary and streaming clients. Lifetime is controlled per-request via context deadline.
 
 ## Docker Deployment
 

@@ -34,6 +34,16 @@ func TestBackendClient_HttpClientTimeout_IsZero(t *testing.T) {
 		"httpClient.Timeout should be 0; timeout is controlled via context deadline from Connect-Timeout-Ms")
 }
 
+func TestBackendClient_StreamingClientTimeout_IsZero(t *testing.T) {
+	// streamingClient.Timeout must be 0 (disabled) so that server-streaming
+	// responses are not killed by a hard http.Client deadline.
+	// Lifetime is controlled via context deadline from applyConnectTimeout.
+	client := NewBackendClientWithTransport("http://localhost:9101", 30*time.Second, 40*time.Minute, http.DefaultTransport)
+
+	assert.Equal(t, time.Duration(0), client.streamingClient.Timeout,
+		"streamingClient.Timeout should be 0; server-streaming lifetime is controlled via context deadline")
+}
+
 func TestBackendClient_DefaultTimeout(t *testing.T) {
 	client := NewBackendClientWithTransport("http://localhost:9101", 30*time.Second, 5*time.Minute, http.DefaultTransport)
 

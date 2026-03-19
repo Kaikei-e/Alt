@@ -80,7 +80,7 @@ func NewConfig() *Config {
 		BackendTokenIssuer:     getEnv("BACKEND_TOKEN_ISSUER", "auth-hub"),
 		BackendTokenAudience:   getEnv("BACKEND_TOKEN_AUDIENCE", "alt-backend"),
 		RequestTimeout:         getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
-		StreamingTimeout:       getDurationEnv("BFF_STREAMING_TIMEOUT", 5*time.Minute),
+		StreamingTimeout:       getDurationEnv("BFF_STREAMING_TIMEOUT", 40*time.Minute),
 		TTSConnectURL:          getEnv("TTS_CONNECT_URL", ""),
 		TTSServiceSecret:       getEnv("TTS_SERVICE_SECRET", ""),
 		ServiceSecretFile:      getEnv("SERVICE_SECRET_FILE", ""),

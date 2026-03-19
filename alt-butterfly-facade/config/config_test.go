@@ -21,7 +21,7 @@ func TestNewConfig_Defaults(t *testing.T) {
 	assert.Equal(t, "auth-hub", cfg.BackendTokenIssuer)
 	assert.Equal(t, "alt-backend", cfg.BackendTokenAudience)
 	assert.Equal(t, 30*time.Second, cfg.RequestTimeout)
-	assert.Equal(t, 5*time.Minute, cfg.StreamingTimeout)
+	assert.Equal(t, 40*time.Minute, cfg.StreamingTimeout)
 	assert.Equal(t, "", cfg.TTSConnectURL)
 }
 
@@ -57,7 +57,7 @@ func TestNewConfig_InvalidDuration_UsesDefault(t *testing.T) {
 	cfg := NewConfig()
 
 	assert.Equal(t, 30*time.Second, cfg.RequestTimeout)
-	assert.Equal(t, 5*time.Minute, cfg.StreamingTimeout)
+	assert.Equal(t, 40*time.Minute, cfg.StreamingTimeout)
 }
 
 func TestConfig_LoadBackendTokenSecret_FromFile(t *testing.T) {

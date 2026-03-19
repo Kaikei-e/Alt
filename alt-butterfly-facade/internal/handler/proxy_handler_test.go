@@ -101,10 +101,10 @@ func TestProxyHandler_ApplyConnectTimeout_StreamingUsesStreamingTimeout(t *testi
 	backendClient := client.NewBackendClientWithTransport(
 		"http://localhost:9101",
 		30*time.Second,
-		5*time.Minute,
+		40*time.Minute,
 		http.DefaultTransport,
 	)
-	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 5*time.Minute)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 40*time.Minute)
 
 	req := httptest.NewRequest(http.MethodPost, "/alt.augur.v2.AugurService/StreamChat", nil)
 
@@ -113,10 +113,58 @@ func TestProxyHandler_ApplyConnectTimeout_StreamingUsesStreamingTimeout(t *testi
 
 	deadline, ok := newReq.Context().Deadline()
 	assert.True(t, ok)
-	// Streaming requests should get streaming timeout (~5 min), not default (~30s)
+	// Streaming requests should get streaming timeout (~40 min), not default (~30s)
 	remaining := time.Until(deadline)
-	assert.Greater(t, remaining, 4*time.Minute+59*time.Second)
-	assert.LessOrEqual(t, remaining, 5*time.Minute)
+	assert.Greater(t, remaining, 39*time.Minute+59*time.Second)
+	assert.LessOrEqual(t, remaining, 40*time.Minute)
+}
+
+func TestProxyHandler_ApplyConnectTimeout_StreamingNotCappedAtUnaryMax(t *testing.T) {
+	backendClient := client.NewBackendClientWithTransport(
+		"http://localhost:9101",
+		30*time.Second,
+		40*time.Minute,
+		http.DefaultTransport,
+	)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 40*time.Minute)
+
+	// Streaming request with Connect-Timeout-Ms = 10 minutes (exceeds unary 5 min cap)
+	req := httptest.NewRequest(http.MethodPost, "/alt.knowledge_home.v1.KnowledgeHomeService/StreamKnowledgeHomeUpdates", nil)
+	req.Header.Set("Connect-Timeout-Ms", "600000") // 10 min
+
+	newReq, cancel := handler.applyConnectTimeout(req)
+	defer cancel()
+
+	deadline, ok := newReq.Context().Deadline()
+	assert.True(t, ok)
+	// Should be ~10 min, NOT capped at 5 min (unary cap)
+	remaining := time.Until(deadline)
+	assert.Greater(t, remaining, 9*time.Minute+59*time.Second)
+	assert.LessOrEqual(t, remaining, 10*time.Minute)
+}
+
+func TestProxyHandler_ApplyConnectTimeout_StreamingCappedAtStreamingMax(t *testing.T) {
+	backendClient := client.NewBackendClientWithTransport(
+		"http://localhost:9101",
+		30*time.Second,
+		40*time.Minute,
+		http.DefaultTransport,
+	)
+	handler := NewProxyHandler(backendClient, []byte("test-secret"), "auth-hub", "alt-backend", nil, 30*time.Second, 40*time.Minute)
+
+	// Streaming request with absurdly large Connect-Timeout-Ms
+	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/StreamFeedStats", nil)
+	req.Header.Set("Connect-Timeout-Ms", "999999999") // ~277 hours
+
+	newReq, cancel := handler.applyConnectTimeout(req)
+	defer cancel()
+
+	deadline, ok := newReq.Context().Deadline()
+	assert.True(t, ok)
+	// Should be capped at streaming max (40 min), not unary max (5 min)
+	remaining := time.Until(deadline)
+	assert.Greater(t, remaining, 39*time.Minute+59*time.Second)
+	assert.LessOrEqual(t, remaining, 40*time.Minute)
 }
 
 func TestProxyHandler_ApplyConnectTimeout_UnaryUsesDefaultTimeout(t *testing.T) {
