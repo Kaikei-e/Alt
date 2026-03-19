@@ -5,11 +5,13 @@ import (
 	"alt/port/feature_flag_port"
 	"alt/port/knowledge_event_port"
 	"alt/port/knowledge_user_event_port"
+	"alt/port/recall_signal_port"
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,11 +27,24 @@ var validActionTypes = map[string]string{
 	"open_search": domain.EventHomeItemOpened,
 }
 
+// actionToSignalType maps action types that should generate recall signals.
+var actionToSignalType = map[string]string{
+	"open":   domain.SignalOpened,
+	"ask":    domain.SignalAugurReferenced,
+	"listen": domain.SignalTagInterest,
+}
+
 // TrackHomeActionUsecase records user actions on knowledge home items.
 type TrackHomeActionUsecase struct {
 	userEventPort      knowledge_user_event_port.AppendKnowledgeUserEventPort
 	knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort
 	featureFlagPort    feature_flag_port.FeatureFlagPort
+	recallSignalPort   recall_signal_port.AppendRecallSignalPort
+}
+
+// SetRecallSignalPort wires the optional recall signal port.
+func (u *TrackHomeActionUsecase) SetRecallSignalPort(port recall_signal_port.AppendRecallSignalPort) {
+	u.recallSignalPort = port
 }
 
 // NewTrackHomeActionUsecase creates a new TrackHomeActionUsecase.
@@ -112,6 +127,23 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		logger.Logger.ErrorContext(ctx, "failed to append knowledge event for action",
 			"error", err, "action_type", actionType)
 		// Non-fatal: user event was already recorded
+	}
+
+	// Append recall signal for eligible action types (non-fatal)
+	if signalType, ok := actionToSignalType[actionType]; ok && u.recallSignalPort != nil {
+		signal := domain.RecallSignal{
+			SignalID:       uuid.New(),
+			UserID:         userID,
+			ItemKey:        itemKey,
+			SignalType:     signalType,
+			SignalStrength: 1.0,
+			OccurredAt:     now,
+			Payload:        map[string]any{"source": "home_action", "action_type": actionType},
+		}
+		if err := u.recallSignalPort.AppendRecallSignal(ctx, signal); err != nil {
+			slog.ErrorContext(ctx, "failed to append recall signal",
+				"error", err, "action_type", actionType, "item_key", itemKey)
+		}
 	}
 
 	return nil

@@ -579,6 +579,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	selectLensUsecase := select_lens_usecase.NewSelectLensUsecase(knowledgeLensGw, knowledgeLensGw, knowledgeLensGw, knowledgeLensGw)
 	archiveLensUsecase := archive_lens_usecase.NewArchiveLensUsecase(knowledgeLensGw, knowledgeLensGw)
 
+	// Wire recall signal port: TrackHomeAction appends recall signals (fire-and-forget)
+	trackHomeActionUsecase.SetRecallSignalPort(recallSignalGw)
+
 	// Wire auto-subscribe: Usecase delegates subscription to SubscriptionPort
 	registerFeedsUsecase.SetSubscriptionPort(subscriptionGatewayImpl)
 	// Wire event publisher: Usecase publishes ArticleCreated events (fire-and-forget)

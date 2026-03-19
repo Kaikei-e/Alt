@@ -2,11 +2,11 @@ package job
 
 import (
 	"alt/domain"
-	"alt/port/knowledge_home_port"
 	"alt/port/recall_candidate_port"
 	"alt/port/recall_signal_port"
 	"alt/utils/logger"
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,29 +29,56 @@ const (
 )
 
 // RecallProjectorJob returns a function that scores recall candidates from signals.
+// allowedUserIDs is the bootstrap set of user IDs to scan (from config AllowedUserIDs).
+// A future ListDistinctUserIDs port will replace this.
 func RecallProjectorJob(
+	allowedUserIDs []uuid.UUID,
 	signalPort recall_signal_port.ListRecallSignalsByUserPort,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
-	homeItemsPort knowledge_home_port.GetKnowledgeHomeItemsPort,
 ) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		return processRecallSignals(ctx, signalPort, candidatePort, homeItemsPort)
+		return processRecallSignals(ctx, allowedUserIDs, signalPort, candidatePort, nil)
 	}
 }
 
 func processRecallSignals(
 	ctx context.Context,
+	userIDs []uuid.UUID,
 	signalPort recall_signal_port.ListRecallSignalsByUserPort,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
-	homeItemsPort knowledge_home_port.GetKnowledgeHomeItemsPort,
+	_ interface{}, // reserved for homeItemsPort (future enrichment)
 ) error {
-	// In Phase 4, we process signals for all users who have recent signals.
-	// For now, we use the tenant-as-user pattern (single tenant).
-	// A production implementation would iterate over distinct user_ids from recall_signals.
+	logger.Logger.InfoContext(ctx, "recall projector: starting signal processing",
+		slog.Int("user_count", len(userIDs)))
 
-	// This is a simplified version that processes one batch.
-	// The full implementation would use a cursor over distinct users.
-	logger.Logger.InfoContext(ctx, "recall projector: starting signal processing")
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	var totalCandidates int
+	for _, userID := range userIDs {
+		signals, err := signalPort.ListRecallSignalsByUser(ctx, userID, signalWindowDays)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "recall projector: list signals failed",
+				"error", err, "user_id", userID)
+			continue
+		}
+		if len(signals) == 0 {
+			continue
+		}
+
+		if err := ScoreRecallCandidates(ctx, userID, signals, candidatePort); err != nil {
+			logger.Logger.ErrorContext(ctx, "recall projector: scoring failed",
+				"error", err, "user_id", userID)
+			continue
+		}
+		totalCandidates += len(signals)
+	}
+
+	logger.Logger.InfoContext(ctx, "recall projector: completed",
+		slog.Int("users_processed", len(userIDs)),
+		slog.Int("signals_processed", totalCandidates))
+
 	return nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/utils/logger"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -36,6 +37,20 @@ func (m *mockKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event d
 		return m.err
 	}
 	m.appendedEvents = append(m.appendedEvents, event)
+	return nil
+}
+
+// mockRecallSignalPort implements recall_signal_port.AppendRecallSignalPort.
+type mockRecallSignalPort struct {
+	appendedSignals []domain.RecallSignal
+	err             error
+}
+
+func (m *mockRecallSignalPort) AppendRecallSignal(_ context.Context, signal domain.RecallSignal) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.appendedSignals = append(m.appendedSignals, signal)
 	return nil
 }
 
@@ -148,4 +163,84 @@ func TestTrackHomeActionUsecase_Execute(t *testing.T) {
 			assert.Len(t, tt.knowledgePort.appendedEvents, tt.wantKnEvents)
 		})
 	}
+}
+
+func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
+	logger.InitLogger()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	itemKey := "article:test-uuid"
+
+	t.Run("open action appends SignalOpened", func(t *testing.T) {
+		recallPort := &mockRecallSignalPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetRecallSignalPort(recallPort)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
+		require.NoError(t, err)
+		require.Len(t, recallPort.appendedSignals, 1)
+		assert.Equal(t, domain.SignalOpened, recallPort.appendedSignals[0].SignalType)
+		assert.Equal(t, itemKey, recallPort.appendedSignals[0].ItemKey)
+		assert.Equal(t, userID, recallPort.appendedSignals[0].UserID)
+	})
+
+	t.Run("ask action appends SignalAugurReferenced", func(t *testing.T) {
+		recallPort := &mockRecallSignalPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetRecallSignalPort(recallPort)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "ask", itemKey, "")
+		require.NoError(t, err)
+		require.Len(t, recallPort.appendedSignals, 1)
+		assert.Equal(t, domain.SignalAugurReferenced, recallPort.appendedSignals[0].SignalType)
+	})
+
+	t.Run("listen action appends SignalTagInterest", func(t *testing.T) {
+		recallPort := &mockRecallSignalPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetRecallSignalPort(recallPort)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "listen", itemKey, "")
+		require.NoError(t, err)
+		require.Len(t, recallPort.appendedSignals, 1)
+		assert.Equal(t, domain.SignalTagInterest, recallPort.appendedSignals[0].SignalType)
+	})
+
+	t.Run("dismiss action does not append signal", func(t *testing.T) {
+		recallPort := &mockRecallSignalPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetRecallSignalPort(recallPort)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
+		require.NoError(t, err)
+		assert.Empty(t, recallPort.appendedSignals)
+	})
+
+	t.Run("recall signal failure is non-fatal", func(t *testing.T) {
+		recallPort := &mockRecallSignalPort{err: errors.New("db error")}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetRecallSignalPort(recallPort)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
+		require.NoError(t, err)
+	})
+
+	t.Run("nil recall signal port does not panic", func(t *testing.T) {
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		// No SetRecallSignalPort call
+
+		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
+		require.NoError(t, err)
+	})
+
+	t.Run("tracking disabled skips signal generation", func(t *testing.T) {
+		recallPort := &mockRecallSignalPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, &mockFeatureFlagPort{enabled: false})
+		uc.SetRecallSignalPort(recallPort)
+
+		err := uc.Execute(context.Background(), userID, tenantID, "open", itemKey, "")
+		require.NoError(t, err)
+		assert.Empty(t, recallPort.appendedSignals)
+	})
 }
