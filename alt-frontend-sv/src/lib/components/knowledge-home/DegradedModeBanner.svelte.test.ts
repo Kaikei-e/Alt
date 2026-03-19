@@ -12,7 +12,11 @@ describe("DegradedModeBanner", () => {
 		});
 
 		await expect
-			.element(page.getByText("Some data sources are temporarily unavailable. Showing partial results."))
+			.element(
+				page.getByText(
+					"Some data sources are temporarily unavailable. Showing partial results.",
+				),
+			)
 			.toBeInTheDocument();
 	});
 
@@ -24,7 +28,11 @@ describe("DegradedModeBanner", () => {
 		});
 
 		await expect
-			.element(page.getByText("Service is running in fallback mode. Showing cached snapshot. Some features may be unavailable."))
+			.element(
+				page.getByText(
+					"Service is running in fallback mode. Showing cached snapshot. Some features may be unavailable.",
+				),
+			)
 			.toBeInTheDocument();
 	});
 });
