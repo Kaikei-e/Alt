@@ -5,7 +5,6 @@
 
 import { Code, ConnectError } from "@connectrpc/connect";
 import { goto } from "$app/navigation";
-import type { EmptyReason } from "$lib/components/knowledge-home/KnowledgeHomeEmpty.svelte";
 import {
 	createClientTransport,
 	getKnowledgeHome,
@@ -19,6 +18,14 @@ import type {
 	ServiceQuality,
 	TodayDigestData,
 } from "$lib/connect/knowledge_home";
+
+type EmptyReason =
+	| "no_data"
+	| "ingest_pending"
+	| "lens_strict"
+	| "search_strict"
+	| "degraded"
+	| "hard_error";
 
 export type PageState =
 	| "initial_loading"
@@ -168,9 +175,19 @@ export function useKnowledgeHome() {
 		});
 	};
 
+	const setSaved = (itemKey: string, isSaved: boolean) => {
+		items = items.map((item) =>
+			item.itemKey === itemKey ? { ...item, isSaved } : item,
+		);
+	};
+
 	const dismissItem = (itemKey: string) => {
 		// Optimistic removal
-		items = items.filter((item) => item.itemKey !== itemKey);
+		items = items
+			.map((item) =>
+				item.itemKey === itemKey ? { ...item, isDismissed: true } : item,
+			)
+			.filter((item) => item.itemKey !== itemKey);
 	};
 
 	return {
@@ -217,6 +234,7 @@ export function useKnowledgeHome() {
 		loadMore,
 		trackSeen,
 		trackAction,
+		setSaved,
 		dismissItem,
 	};
 }

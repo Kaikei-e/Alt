@@ -17,6 +17,7 @@ interface Props {
 	activeLensName?: string | null;
 	emptyReason?: EmptyReason | null;
 	streamMode?: StreamMode;
+	searchQuery?: string;
 	degradedNote?: string | null;
 	onAction: (type: string, item: KnowledgeHomeItemData) => void;
 	onLoadMore: () => void;
@@ -31,6 +32,7 @@ const {
 	activeLensName = null,
 	emptyReason = null,
 	streamMode = "default",
+	searchQuery = "",
 	degradedNote = null,
 	onAction,
 	onLoadMore,
@@ -129,6 +131,31 @@ onMount(() => {
 	};
 });
 </script>
+
+<div class="mb-3 flex items-center justify-between gap-3">
+	<div>
+		<h2 class="text-sm font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+			{#if streamMode === "search"}
+				Search results
+			{:else if streamMode === "lens" && activeLensName}
+				{activeLensName}
+			{:else if streamMode === "recap_context"}
+				Recap context
+			{:else}
+				Latest
+			{/if}
+		</h2>
+		<p class="mt-0.5 text-xs text-[var(--text-secondary)]">
+			{#if streamMode === "search" && searchQuery}
+				Query: "{searchQuery}"
+			{:else if streamMode === "lens" && activeLensName}
+				Server-side filtered view
+			{:else}
+				What to look at next, with explanation first.
+			{/if}
+		</p>
+	</div>
+</div>
 
 {#if loading && items.length === 0}
 	<KnowledgeHomeSkeleton />

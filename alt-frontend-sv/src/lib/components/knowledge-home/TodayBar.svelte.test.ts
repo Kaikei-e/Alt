@@ -34,7 +34,7 @@ describe("TodayBar", () => {
 		render(TodayBar as never, { props: { digest: null } });
 
 		await expect
-			.element(page.getByText("Loading today's digest..."))
+			.element(page.getByText("Today's digest is still being prepared."))
 			.toBeInTheDocument();
 	});
 

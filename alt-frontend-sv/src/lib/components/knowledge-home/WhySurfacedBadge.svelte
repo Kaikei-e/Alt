@@ -4,7 +4,9 @@ import {
 	CalendarRange,
 	FileText,
 	Info,
+	Search,
 	Sparkles,
+	Star,
 	Tag,
 } from "@lucide/svelte";
 import type { WhyReasonData } from "$lib/connect/knowledge_home";
@@ -16,6 +18,8 @@ const ICON_MAP: Record<string, typeof Sparkles> = {
 	Tag,
 	FileText,
 	Activity,
+	Star,
+	Search,
 	Info,
 };
 

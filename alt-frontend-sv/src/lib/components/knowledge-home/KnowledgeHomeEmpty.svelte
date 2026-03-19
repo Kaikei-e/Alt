@@ -5,6 +5,8 @@ export type EmptyReason =
 	| "no_data"
 	| "ingest_pending"
 	| "lens_strict"
+	| "search_strict"
+	| "degraded"
 	| "hard_error";
 
 interface Props {
@@ -31,6 +33,24 @@ const config = $derived.by(() => {
 			description:
 				"This lens does not match any articles right now. Clear the lens or adjust its filters.",
 			showClearLens: true,
+		};
+	}
+	if (reason === "search_strict") {
+		return {
+			icon: Sparkles,
+			title: "No matches for this search",
+			description:
+				"Try broadening the query or clearing search mode to return to the main stream.",
+			showClearLens: false,
+		};
+	}
+	if (reason === "degraded") {
+		return {
+			icon: AlertCircle,
+			title: "Only partial candidates are available",
+			description:
+				"Some services are degraded right now, so the stream may be thinner than usual.",
+			showClearLens: false,
 		};
 	}
 	if (reason === "ingest_pending") {

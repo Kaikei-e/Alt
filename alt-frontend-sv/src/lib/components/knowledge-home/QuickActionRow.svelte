@@ -1,9 +1,10 @@
 <script lang="ts">
 import {
 	BirdIcon,
+	Bookmark,
+	BookmarkCheck,
 	ExternalLink,
 	Headphones,
-	Sparkles,
 	X,
 } from "@lucide/svelte";
 
@@ -11,17 +12,22 @@ interface Props {
 	itemKey: string;
 	itemType: string;
 	articleId?: string;
+	isSaved?: boolean;
 	onAction: (type: string) => void;
 }
 
-const { onAction }: Props = $props();
+const { onAction, isSaved = false }: Props = $props();
 
-const primaryActions = [
+const primaryActions = $derived([
 	{ type: "open", icon: ExternalLink, label: "Open" },
-	{ type: "summarize", icon: Sparkles, label: "Summarize" },
+	{
+		type: isSaved ? "unsave" : "save",
+		icon: isSaved ? BookmarkCheck : Bookmark,
+		label: isSaved ? "Saved" : "Save",
+	},
 	{ type: "ask", icon: BirdIcon, label: "Ask" },
 	{ type: "listen", icon: Headphones, label: "Listen" },
-] as const;
+]);
 </script>
 
 <div

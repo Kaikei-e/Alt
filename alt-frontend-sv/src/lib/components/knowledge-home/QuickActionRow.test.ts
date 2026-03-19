@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 describe("QuickActionRow", () => {
 	const actionTypes = [
 		"open",
-		"summarize",
+		"save",
+		"unsave",
 		"ask",
 		"listen",
 		"dismiss",
@@ -15,7 +16,8 @@ describe("QuickActionRow", () => {
 
 	it("supports all expected action types", () => {
 		expect(actionTypes).toContain("open");
-		expect(actionTypes).toContain("summarize");
+		expect(actionTypes).toContain("save");
+		expect(actionTypes).toContain("unsave");
 		expect(actionTypes).toContain("ask");
 		expect(actionTypes).toContain("listen");
 		expect(actionTypes).toContain("dismiss");
@@ -24,7 +26,7 @@ describe("QuickActionRow", () => {
 	it("primary actions have labels", () => {
 		const primaryActions = [
 			{ type: "open", label: "Open" },
-			{ type: "summarize", label: "Summarize" },
+			{ type: "save", label: "Save" },
 			{ type: "ask", label: "Ask" },
 			{ type: "listen", label: "Listen" },
 		];
@@ -34,7 +36,7 @@ describe("QuickActionRow", () => {
 	});
 
 	it("dismiss is separated from primary actions", () => {
-		const primaryActions = ["open", "summarize", "ask", "listen"];
+		const primaryActions = ["open", "save", "ask", "listen"];
 		const secondaryActions = ["dismiss"];
 		expect(primaryActions).not.toContain("dismiss");
 		expect(secondaryActions).toContain("dismiss");

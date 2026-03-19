@@ -43,6 +43,10 @@ export interface TodayDigestData {
 	needToKnowCount: number;
 	digestFreshness: DigestFreshness;
 	lastProjectedAt: string | null;
+	totalItems?: number;
+	unreadCount?: number;
+	primaryTheme?: string;
+	audioAvailable?: boolean;
 }
 
 /** Service quality level returned by Knowledge Home API */
@@ -59,6 +63,7 @@ export interface KnowledgeHomeItemData {
 	recapId?: string;
 	title: string;
 	publishedAt: string;
+	sourceName?: string;
 	summaryExcerpt?: string;
 	summaryState: SummaryState;
 	tags: string[];
@@ -66,6 +71,13 @@ export interface KnowledgeHomeItemData {
 	score: number;
 	supersedeInfo?: SupersedeInfoData;
 	link?: string;
+	summaryVersionId?: string;
+	tagVersionId?: string;
+	recapRefs?: string[];
+	audioState?: "unavailable" | "preparing" | "summary_ready" | "full_ready";
+	isSaved?: boolean;
+	isRead?: boolean;
+	isDismissed?: boolean;
 }
 
 /** Supersede info for version changes */
@@ -179,6 +191,10 @@ function convertDigest(proto: ProtoTodayDigest): TodayDigestData {
 		needToKnowCount: proto.needToKnowCount,
 		digestFreshness: (proto.digestFreshness || "unknown") as DigestFreshness,
 		lastProjectedAt: proto.lastProjectedAt || null,
+		totalItems: undefined,
+		unreadCount: undefined,
+		primaryTheme: proto.topTags[0] || undefined,
+		audioAvailable: proto.weeklyRecapAvailable,
 	};
 }
 
@@ -200,6 +216,7 @@ function convertItem(proto: ProtoKnowledgeHomeItem): KnowledgeHomeItemData {
 		recapId: proto.recapId || undefined,
 		title: proto.title,
 		publishedAt: proto.publishedAt,
+		sourceName: undefined,
 		summaryExcerpt: proto.summaryExcerpt || undefined,
 		summaryState: (proto.summaryState || "missing") as SummaryState,
 		tags: [...proto.tags],
@@ -216,6 +233,13 @@ function convertItem(proto: ProtoKnowledgeHomeItem): KnowledgeHomeItemData {
 				}
 			: undefined,
 		link: proto.link || undefined,
+		summaryVersionId: undefined,
+		tagVersionId: undefined,
+		recapRefs: undefined,
+		audioState: undefined,
+		isSaved: false,
+		isRead: false,
+		isDismissed: false,
 	};
 }
 

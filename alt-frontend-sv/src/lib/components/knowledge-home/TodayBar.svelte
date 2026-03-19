@@ -5,7 +5,6 @@ import {
 	CalendarRange,
 	Clock,
 	FileText,
-	Loader,
 	Newspaper,
 	Sparkles,
 } from "@lucide/svelte";
@@ -30,9 +29,9 @@ const isFallback = $derived(
 	<div
 		class="flex items-center gap-2 px-4 py-3 border-b border-[var(--surface-border)] bg-[var(--surface-bg)]"
 	>
-		<Loader class="h-4 w-4 text-[var(--text-secondary)] animate-spin" />
+		<AlertCircle class="h-4 w-4 text-[var(--text-secondary)]" />
 		<span class="text-sm text-[var(--text-secondary)]"
-			>Loading today's digest...</span
+			>Today's digest is still being prepared.</span
 		>
 	</div>
 {:else if isFallback}
@@ -115,7 +114,7 @@ const isFallback = $derived(
 			{/if}
 		</div>
 
-		<!-- Row 2: Stats + Tags -->
+		<!-- Row 2: Theme + Tags -->
 		<div class="flex flex-wrap items-center gap-3 px-4 py-2">
 			<!-- Stat Chips -->
 			<div class="flex items-center gap-3 flex-wrap">
@@ -146,6 +145,12 @@ const isFallback = $derived(
 					</span>
 				{/if}
 			</div>
+
+			{#if digest.primaryTheme || digest.topTags.length > 0}
+				<p class="text-xs text-[var(--text-secondary)]">
+					{digest.primaryTheme ?? digest.topTags.slice(0, 3).join(", ")}
+				</p>
+			{/if}
 
 			<!-- Top Tags -->
 			{#if digest.topTags.length > 0}

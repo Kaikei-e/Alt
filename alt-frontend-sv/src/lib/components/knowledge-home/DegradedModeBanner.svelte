@@ -11,8 +11,7 @@ const { serviceQuality = "full", onDismiss }: Props = $props();
 
 {#if serviceQuality === "degraded"}
 	<div
-		class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm"
-		style="background: var(--warning-bg, #fef3cd); border-color: var(--warning-border, #ffc107); color: var(--warning-text, #856404);"
+		class="flex items-center gap-2 rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm text-amber-200"
 		role="alert"
 	>
 		<AlertTriangle size={16} class="flex-shrink-0" />
@@ -33,8 +32,7 @@ const { serviceQuality = "full", onDismiss }: Props = $props();
 	</div>
 {:else if serviceQuality === "fallback"}
 	<div
-		class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm"
-		style="background: var(--error-bg, #fee2e2); border-color: var(--error-border, #ef4444); color: var(--error-text, #991b1b);"
+		class="flex items-center gap-2 rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-2 text-sm text-red-200"
 		role="alert"
 	>
 		<ShieldAlert size={16} class="flex-shrink-0" />

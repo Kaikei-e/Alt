@@ -4,6 +4,7 @@ import QuickActionRow from "./QuickActionRow.svelte";
 import SummaryStateChip from "./SummaryStateChip.svelte";
 import SupersedeBadge from "./SupersedeBadge.svelte";
 import SupersedeDetail from "./SupersedeDetail.svelte";
+import WhyPanel from "./WhyPanel.svelte";
 import WhySurfacedBadge from "./WhySurfacedBadge.svelte";
 
 interface Props {
@@ -18,8 +19,11 @@ const displayTags = $derived(nonEmptyTags.slice(0, 3));
 const remainingTagCount = $derived(
 	nonEmptyTags.length > 3 ? nonEmptyTags.length - 3 : 0,
 );
-const displayReasons = $derived(item.why.slice(0, 2));
+const displayReasons = $derived(
+	item.why.length > 0 ? item.why.slice(0, 2) : [{ code: "new_unread" }],
+);
 let supersedeExpanded = $state(false);
+let whyExpanded = $state(false);
 
 function formatRelativeTime(isoString: string): string {
 	if (!isoString) return "recent";
@@ -42,7 +46,7 @@ function handleAction(type: string) {
 </script>
 
 <article
-	class="rounded-lg border p-4 bg-[var(--surface-bg)] border-[var(--surface-border)] hover:border-[var(--interactive-text)] transition-colors duration-200 shadow-[var(--shadow-sm)]"
+	class="rounded-lg border-l-4 p-4 bg-[var(--surface-bg)] border-[var(--surface-border)] border-l-[var(--interactive-text)] hover:border-[var(--interactive-text)] transition-colors duration-200 shadow-[var(--shadow-sm)]"
 	data-item-key={item.itemKey}
 >
 	<!-- Header: Title + Supersede Badge + Relative Time -->
@@ -51,6 +55,11 @@ function handleAction(type: string) {
 			<h3 class="text-sm font-semibold text-[var(--text-primary)] line-clamp-2">
 				{item.title}
 			</h3>
+			{#if item.sourceName}
+				<p class="mt-0.5 text-xs text-[var(--text-secondary)]">
+					{item.sourceName}
+				</p>
+			{/if}
 			{#if item.supersedeInfo}
 				<div class="mt-1">
 					<SupersedeBadge
@@ -62,8 +71,14 @@ function handleAction(type: string) {
 				{#if supersedeExpanded}
 					<SupersedeDetail info={item.supersedeInfo} />
 				{/if}
-			{/if}
+		{/if}
+	</div>
+
+	{#if whyExpanded}
+		<div class="mb-3">
+			<WhyPanel reasons={item.why.length > 0 ? item.why : displayReasons} />
 		</div>
+	{/if}
 		<time
 			class="text-xs text-[var(--text-secondary)] whitespace-nowrap flex-shrink-0"
 			datetime={item.publishedAt}
@@ -124,7 +139,20 @@ function handleAction(type: string) {
 			itemKey={item.itemKey}
 			itemType={item.itemType}
 			articleId={item.articleId}
+			isSaved={item.isSaved}
 			onAction={handleAction}
 		/>
+	</div>
+
+	<div class="mt-2 flex justify-end">
+		<button
+			type="button"
+			class="text-xs text-[var(--text-secondary)] hover:text-[var(--interactive-text)]"
+			onclick={() => {
+				whyExpanded = !whyExpanded;
+			}}
+		>
+			{whyExpanded ? "Hide why" : "Explain why"}
+		</button>
 	</div>
 </article>
