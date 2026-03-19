@@ -1,16 +1,23 @@
 <script lang="ts">
 import { Brain } from "@lucide/svelte";
-import RecallCandidateCard from "./RecallCandidateCard.svelte";
 import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import RecallCandidateCard from "./RecallCandidateCard.svelte";
 
 interface Props {
 	candidates: RecallCandidateData[];
+	unavailable?: boolean;
 	onSnooze: (itemKey: string) => void;
 	onDismiss: (itemKey: string) => void;
 	onOpen: (itemKey: string) => void;
 }
 
-const { candidates, onSnooze, onDismiss, onOpen }: Props = $props();
+const {
+	candidates,
+	unavailable = false,
+	onSnooze,
+	onDismiss,
+	onOpen,
+}: Props = $props();
 </script>
 
 <aside class="border rounded-lg p-4 bg-[var(--surface-bg)] border-[var(--surface-border)]">
@@ -19,7 +26,9 @@ const { candidates, onSnooze, onDismiss, onOpen }: Props = $props();
 		Recall
 	</h3>
 
-	{#if candidates.length === 0}
+	{#if unavailable}
+		<p class="text-sm text-[var(--text-tertiary)]">Recall is temporarily unavailable.</p>
+	{:else if candidates.length === 0}
 		<p class="text-sm text-[var(--text-tertiary)]">Nothing to recall right now.</p>
 	{:else}
 		<div class="flex flex-col gap-2">

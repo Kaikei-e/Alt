@@ -1,7 +1,7 @@
 <script lang="ts">
-import { ChevronDown, ChevronUp, Brain } from "@lucide/svelte";
-import RecallCandidateCard from "./RecallCandidateCard.svelte";
+import { Brain, ChevronDown, ChevronUp } from "@lucide/svelte";
 import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import RecallCandidateCard from "./RecallCandidateCard.svelte";
 
 interface Props {
 	candidates: RecallCandidateData[];

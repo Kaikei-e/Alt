@@ -3,30 +3,29 @@ import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { useViewport } from "$lib/stores/viewport.svelte";
-import { useKnowledgeHome } from "$lib/hooks/useKnowledgeHome.svelte";
-import { useFeatureFlags } from "$lib/hooks/useFeatureFlags.svelte";
-import { useRecallRail } from "$lib/hooks/useRecallRail.svelte";
-import { useLens } from "$lib/hooks/useLens.svelte";
-import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
-import { useStreamUpdates } from "$lib/hooks/useStreamUpdates.svelte";
-import { refreshHomeWithRecallSync } from "./stream-refresh";
+import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
+import DegradedModeBanner from "$lib/components/knowledge-home/DegradedModeBanner.svelte";
+import KnowledgeStream from "$lib/components/knowledge-home/KnowledgeStream.svelte";
+import LensModal from "$lib/components/knowledge-home/lens/LensModal.svelte";
+import LensSelector from "$lib/components/knowledge-home/lens/LensSelector.svelte";
+import MiniRecallPanel from "$lib/components/knowledge-home/MiniRecallPanel.svelte";
+import RecallRail from "$lib/components/knowledge-home/recall-rail/RecallRail.svelte";
+import RecallRailCollapsible from "$lib/components/knowledge-home/recall-rail/RecallRailCollapsible.svelte";
+import StreamUpdateBar from "$lib/components/knowledge-home/StreamUpdateBar.svelte";
+import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
+import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.svelte";
 import type {
 	KnowledgeHomeItemData,
 	LensVersionData,
 } from "$lib/connect/knowledge_home";
-
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
-import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.svelte";
-import KnowledgeStream from "$lib/components/knowledge-home/KnowledgeStream.svelte";
-import StreamUpdateBar from "$lib/components/knowledge-home/StreamUpdateBar.svelte";
-import MiniRecallPanel from "$lib/components/knowledge-home/MiniRecallPanel.svelte";
-import RecallRail from "$lib/components/knowledge-home/recall-rail/RecallRail.svelte";
-import RecallRailCollapsible from "$lib/components/knowledge-home/recall-rail/RecallRailCollapsible.svelte";
-import LensSelector from "$lib/components/knowledge-home/lens/LensSelector.svelte";
-import LensModal from "$lib/components/knowledge-home/lens/LensModal.svelte";
-import DegradedModeBanner from "$lib/components/knowledge-home/DegradedModeBanner.svelte";
+import { useFeatureFlags } from "$lib/hooks/useFeatureFlags.svelte";
+import { useKnowledgeHome } from "$lib/hooks/useKnowledgeHome.svelte";
+import { useLens } from "$lib/hooks/useLens.svelte";
+import { useRecallRail } from "$lib/hooks/useRecallRail.svelte";
+import { useStreamUpdates } from "$lib/hooks/useStreamUpdates.svelte";
+import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
+import { useViewport } from "$lib/stores/viewport.svelte";
+import { refreshHomeWithRecallSync } from "./stream-refresh";
 
 const { isDesktop } = useViewport();
 const home = useKnowledgeHome();
@@ -37,6 +36,7 @@ const tts = useTtsPlayback();
 
 let exposureSessionId = $state("");
 let lensModalOpen = $state(false);
+let bannerDismissed = $state(false);
 
 // Feature flag checks
 const recallEnabled = $derived(flags.isEnabled("enable_recall_rail"));
@@ -49,17 +49,25 @@ const activeLensName = $derived(
 		: null,
 );
 
+// Lens match count: when a lens is active, the number of items is the match count
+const lensMatchCount = $derived(lens.activeLensId ? home.items.length : null);
+
+// Show degraded banner based on pageState (not dismissed)
+const showBanner = $derived(
+	!bannerDismissed &&
+		(home.pageState === "degraded" || home.pageState === "fallback"),
+);
+
 // Stream updates — gated by feature flag, refreshes home data on apply
 const stream = useStreamUpdates({
-	get enabled() { return streamEnabled; },
-	get lensId() { return lens.activeLensId ?? undefined; },
+	get enabled() {
+		return streamEnabled;
+	},
+	get lensId() {
+		return lens.activeLensId ?? undefined;
+	},
 	onRefresh: () =>
-		refreshHomeWithRecallSync(
-			home,
-			recall,
-			recallEnabled,
-			lens.activeLensId,
-		),
+		refreshHomeWithRecallSync(home, recall, recallEnabled, lens.activeLensId),
 });
 
 async function syncLensQuery(lensId: string | null) {
@@ -215,13 +223,16 @@ onMount(async () => {
 		description="Today's knowledge starting point"
 	/>
 
-	{#if home.serviceQuality !== "full"}
+	{#if showBanner}
 		<div class="mb-3">
-			<DegradedModeBanner serviceQuality={home.serviceQuality} />
+			<DegradedModeBanner
+				serviceQuality={home.serviceQuality}
+				onDismiss={() => { bannerDismissed = true; }}
+			/>
 		</div>
 	{/if}
 
-	<TodayBar digest={home.digest} />
+	<TodayBar digest={home.digest} serviceQuality={home.serviceQuality} />
 	<UnifiedIntentBox />
 
 	{#if lensEnabled}
@@ -229,6 +240,7 @@ onMount(async () => {
 			<LensSelector
 				lenses={lens.lenses}
 				activeLensId={lens.activeLensId}
+				matchCount={lensMatchCount}
 				onSelect={handleLensSelect}
 				onCreateClick={() => {
 					lensModalOpen = true;
@@ -255,6 +267,7 @@ onMount(async () => {
 				loading={home.loading}
 				hasMore={home.hasMore}
 				{activeLensName}
+				emptyReason={home.emptyReason}
 				onAction={handleAction}
 				onLoadMore={() => home.loadMore(lens.activeLensId)}
 				onItemsVisible={handleItemsVisible}
@@ -277,13 +290,16 @@ onMount(async () => {
 {:else}
 	<!-- Mobile: Compact layout -->
 	<div class="min-h-[100dvh]" style="background: var(--app-bg);">
-		{#if home.serviceQuality !== "full"}
+		{#if showBanner}
 			<div class="px-3 pt-2">
-				<DegradedModeBanner serviceQuality={home.serviceQuality} />
+				<DegradedModeBanner
+					serviceQuality={home.serviceQuality}
+					onDismiss={() => { bannerDismissed = true; }}
+				/>
 			</div>
 		{/if}
 
-		<TodayBar digest={home.digest} />
+		<TodayBar digest={home.digest} serviceQuality={home.serviceQuality} />
 		<UnifiedIntentBox />
 
 		{#if recallEnabled}
@@ -302,6 +318,7 @@ onMount(async () => {
 				<LensSelector
 					lenses={lens.lenses}
 					activeLensId={lens.activeLensId}
+					matchCount={lensMatchCount}
 					onSelect={handleLensSelect}
 					onCreateClick={() => {
 						lensModalOpen = true;
@@ -327,6 +344,7 @@ onMount(async () => {
 				loading={home.loading}
 				hasMore={home.hasMore}
 				{activeLensName}
+				emptyReason={home.emptyReason}
 				onAction={handleAction}
 				onLoadMore={() => home.loadMore(lens.activeLensId)}
 				onItemsVisible={handleItemsVisible}

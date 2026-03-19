@@ -1,7 +1,7 @@
 <script lang="ts">
 import {
-	ExternalLink,
 	BirdIcon,
+	ExternalLink,
 	Headphones,
 	Sparkles,
 	X,

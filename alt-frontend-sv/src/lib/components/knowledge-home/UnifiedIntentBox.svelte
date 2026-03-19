@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Search, BirdIcon } from "@lucide/svelte";
+import { BirdIcon, Search } from "@lucide/svelte";
 import { goto } from "$app/navigation";
 
 let query = $state("");

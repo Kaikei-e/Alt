@@ -1,10 +1,10 @@
 <script lang="ts">
 import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
-import WhySurfacedBadge from "./WhySurfacedBadge.svelte";
+import QuickActionRow from "./QuickActionRow.svelte";
 import SummaryStateChip from "./SummaryStateChip.svelte";
 import SupersedeBadge from "./SupersedeBadge.svelte";
 import SupersedeDetail from "./SupersedeDetail.svelte";
-import QuickActionRow from "./QuickActionRow.svelte";
+import WhySurfacedBadge from "./WhySurfacedBadge.svelte";
 
 interface Props {
 	item: KnowledgeHomeItemData;

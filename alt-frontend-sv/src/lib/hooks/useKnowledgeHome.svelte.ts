@@ -2,13 +2,15 @@
  * Headless composable for Knowledge Home data fetching and state management.
  * Follows the usePulse.svelte.ts Runes pattern.
  */
+
+import { Code, ConnectError } from "@connectrpc/connect";
 import { goto } from "$app/navigation";
-import { ConnectError, Code } from "@connectrpc/connect";
+import type { EmptyReason } from "$lib/components/knowledge-home/KnowledgeHomeEmpty.svelte";
 import {
 	createClientTransport,
 	getKnowledgeHome,
-	trackHomeItemsSeen,
 	trackHomeAction,
+	trackHomeItemsSeen,
 } from "$lib/connect";
 import type {
 	FeatureFlagData,
@@ -17,6 +19,14 @@ import type {
 	ServiceQuality,
 	TodayDigestData,
 } from "$lib/connect/knowledge_home";
+
+export type PageState =
+	| "initial_loading"
+	| "ready"
+	| "refreshing"
+	| "degraded"
+	| "fallback"
+	| "hard_error";
 
 export function useKnowledgeHome() {
 	let items = $state<KnowledgeHomeItemData[]>([]);
@@ -29,11 +39,51 @@ export function useKnowledgeHome() {
 	let serviceQuality = $state<ServiceQuality>("full");
 	let featureFlags = $state<FeatureFlagData[]>([]);
 	let recallCandidates = $state<RecallCandidateData[]>([]);
+	let hasEverLoaded = $state(false);
+	let pageState = $state<PageState>("initial_loading");
+
+	function computePageState(opts: {
+		loading: boolean;
+		hasEverLoaded: boolean;
+		error: Error | null;
+		serviceQuality: ServiceQuality;
+	}): PageState {
+		if (opts.error) return "hard_error";
+		if (opts.loading && !opts.hasEverLoaded) return "initial_loading";
+		if (opts.loading && opts.hasEverLoaded) return "refreshing";
+		if (opts.serviceQuality === "fallback") return "fallback";
+		if (opts.serviceQuality === "degraded") return "degraded";
+		return "ready";
+	}
+
+	function computeEmptyReason(
+		items: KnowledgeHomeItemData[],
+		error: Error | null,
+		hasEverLoaded: boolean,
+		lensActive: boolean,
+		digest: TodayDigestData | null,
+	): EmptyReason | null {
+		if (items.length > 0) return null;
+		if (error) return "hard_error";
+		if (!hasEverLoaded) return null;
+		if (lensActive) return "lens_strict";
+		if (digest && digest.unsummarizedArticles > 0) return "ingest_pending";
+		return "no_data";
+	}
+
+	let activeLensId: string | null = null;
 
 	const fetchData = async (reset = false, lensId?: string | null) => {
 		try {
 			loading = true;
 			error = null;
+			activeLensId = lensId ?? null;
+			pageState = computePageState({
+				loading: true,
+				hasEverLoaded,
+				error: null,
+				serviceQuality,
+			});
 			const transport = createClientTransport();
 			const cursor = reset ? undefined : nextCursor || undefined;
 			const result = await getKnowledgeHome(
@@ -50,6 +100,13 @@ export function useKnowledgeHome() {
 			serviceQuality = result.serviceQuality;
 			featureFlags = result.featureFlags;
 			recallCandidates = result.recallCandidates;
+			hasEverLoaded = true;
+			pageState = computePageState({
+				loading: false,
+				hasEverLoaded: true,
+				error: null,
+				serviceQuality: result.serviceQuality,
+			});
 		} catch (err) {
 			if (err instanceof ConnectError) {
 				if (err.code === Code.Unauthenticated) {
@@ -59,6 +116,12 @@ export function useKnowledgeHome() {
 			}
 			error = err instanceof Error ? err : new Error("Unknown error");
 			items = [];
+			pageState = computePageState({
+				loading: false,
+				hasEverLoaded,
+				error,
+				serviceQuality,
+			});
 		} finally {
 			loading = false;
 		}
@@ -137,6 +200,18 @@ export function useKnowledgeHome() {
 		},
 		get recallCandidates() {
 			return recallCandidates;
+		},
+		get pageState() {
+			return pageState;
+		},
+		get emptyReason(): EmptyReason | null {
+			return computeEmptyReason(
+				items,
+				error,
+				hasEverLoaded,
+				activeLensId !== null,
+				digest,
+			);
 		},
 		fetchData,
 		loadMore,

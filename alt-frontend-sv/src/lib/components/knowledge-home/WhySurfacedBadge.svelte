@@ -1,11 +1,11 @@
 <script lang="ts">
 import {
-	Sparkles,
-	CalendarRange,
-	Tag,
-	FileText,
 	Activity,
+	CalendarRange,
+	FileText,
 	Info,
+	Sparkles,
+	Tag,
 } from "@lucide/svelte";
 import type { WhyReasonData } from "$lib/connect/knowledge_home";
 import { resolveWhyReason } from "./why-reason-map";

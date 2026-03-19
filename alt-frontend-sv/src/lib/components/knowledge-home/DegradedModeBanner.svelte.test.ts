@@ -1,6 +1,6 @@
-import { render } from "vitest-browser-svelte";
+import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
-import { describe, expect, it } from "vitest";
+import { render } from "vitest-browser-svelte";
 import DegradedModeBanner from "./DegradedModeBanner.svelte";
 
 describe("DegradedModeBanner", () => {
@@ -34,5 +34,36 @@ describe("DegradedModeBanner", () => {
 				),
 			)
 			.toBeInTheDocument();
+	});
+
+	it("renders nothing when service quality is full", async () => {
+		const { container } = render(DegradedModeBanner as never, {
+			props: {
+				serviceQuality: "full",
+			},
+		});
+
+		expect(container.textContent?.trim()).toBe("");
+	});
+
+	it("shows dismiss button when onDismiss is provided", async () => {
+		render(DegradedModeBanner as never, {
+			props: {
+				serviceQuality: "degraded",
+				onDismiss: vi.fn(),
+			},
+		});
+
+		await expect.element(page.getByTitle("Dismiss")).toBeInTheDocument();
+	});
+
+	it("does not show dismiss button when onDismiss is not provided", async () => {
+		render(DegradedModeBanner as never, {
+			props: {
+				serviceQuality: "degraded",
+			},
+		});
+
+		await expect.element(page.getByTitle("Dismiss")).not.toBeInTheDocument();
 	});
 });

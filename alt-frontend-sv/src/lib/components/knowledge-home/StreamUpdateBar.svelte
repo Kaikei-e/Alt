@@ -1,5 +1,5 @@
 <script lang="ts">
-import { RefreshCw } from "@lucide/svelte";
+import { AlertCircle, RefreshCw, WifiOff } from "@lucide/svelte";
 
 interface Props {
 	pendingCount: number;
@@ -25,5 +25,15 @@ const indicatorColor = $derived(
 			<RefreshCw class="h-3.5 w-3.5" />
 			{pendingCount} {pendingCount === 1 ? 'item' : 'items'} updated
 		</button>
+	</div>
+{:else if isFallback}
+	<div class="w-full flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-orange-400/30 bg-orange-400/5">
+		<AlertCircle class="h-3.5 w-3.5 text-orange-400 flex-shrink-0" />
+		<span class="text-[var(--text-secondary)]">Live updates unavailable</span>
+	</div>
+{:else if !isConnected}
+	<div class="w-full flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)]">
+		<WifiOff class="h-3.5 w-3.5 text-[var(--text-tertiary)] flex-shrink-0" />
+		<span class="text-[var(--text-tertiary)]">Reconnecting...</span>
 	</div>
 {/if}

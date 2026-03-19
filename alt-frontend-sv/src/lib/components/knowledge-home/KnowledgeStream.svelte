@@ -3,14 +3,21 @@ import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import type { KnowledgeHomeItemData } from "$lib/connect/knowledge_home";
 import KnowledgeCard from "./KnowledgeCard.svelte";
+import KnowledgeHomeEmpty, {
+	type EmptyReason,
+} from "./KnowledgeHomeEmpty.svelte";
 import KnowledgeHomeSkeleton from "./KnowledgeHomeSkeleton.svelte";
-import KnowledgeHomeEmpty from "./KnowledgeHomeEmpty.svelte";
+
+export type StreamMode = "default" | "lens" | "search" | "recap_context";
 
 interface Props {
 	items: KnowledgeHomeItemData[];
 	loading: boolean;
 	hasMore: boolean;
 	activeLensName?: string | null;
+	emptyReason?: EmptyReason | null;
+	streamMode?: StreamMode;
+	degradedNote?: string | null;
 	onAction: (type: string, item: KnowledgeHomeItemData) => void;
 	onLoadMore: () => void;
 	onItemsVisible: (itemKeys: string[]) => void;
@@ -22,6 +29,9 @@ const {
 	loading,
 	hasMore,
 	activeLensName = null,
+	emptyReason = null,
+	streamMode = "default",
+	degradedNote = null,
 	onAction,
 	onLoadMore,
 	onItemsVisible,
@@ -123,9 +133,14 @@ onMount(() => {
 {#if loading && items.length === 0}
 	<KnowledgeHomeSkeleton />
 {:else if !loading && items.length === 0}
-	<KnowledgeHomeEmpty {activeLensName} {onClearLens} />
+	<KnowledgeHomeEmpty reason={emptyReason} {activeLensName} {onClearLens} />
 {:else}
 	<div class="flex flex-col gap-3" bind:this={streamRef}>
+		{#if degradedNote}
+			<div class="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-400">
+				{degradedNote}
+			</div>
+		{/if}
 		{#each items as item (item.itemKey)}
 			<KnowledgeCard {item} {onAction} />
 		{/each}

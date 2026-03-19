@@ -1,7 +1,7 @@
 <script lang="ts">
-import { Clock, X, AlarmClockOff } from "@lucide/svelte";
-import RecallReasonBadge from "./RecallReasonBadge.svelte";
+import { AlarmClockOff, Clock, X } from "@lucide/svelte";
 import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import RecallReasonBadge from "./RecallReasonBadge.svelte";
 
 interface Props {
 	candidate: RecallCandidateData;

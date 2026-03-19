@@ -5,11 +5,18 @@ import type { LensData } from "$lib/connect/knowledge_home";
 interface Props {
 	lenses: LensData[];
 	activeLensId: string | null;
+	matchCount?: number | null;
 	onSelect: (lensId: string | null) => void;
 	onCreateClick: () => void;
 }
 
-const { lenses, activeLensId, onSelect, onCreateClick }: Props = $props();
+const {
+	lenses,
+	activeLensId,
+	matchCount = null,
+	onSelect,
+	onCreateClick,
+}: Props = $props();
 
 const activeLens = $derived(
 	activeLensId ? lenses.find((l) => l.lensId === activeLensId) : null,
@@ -58,7 +65,9 @@ const activeLens = $derived(
 						Active lens: {activeLens.name}
 					</p>
 					<p class="text-xs text-[var(--text-secondary)]">
-						{#if activeLens.currentVersion?.tagIds.length}
+						{#if matchCount != null}
+							{matchCount} matches
+						{:else if activeLens.currentVersion?.tagIds.length}
 							Tags: {activeLens.currentVersion.tagIds.join(", ")}
 						{:else if activeLens.currentVersion?.feedIds.length}
 							Sources: {activeLens.currentVersion.feedIds.length} feed{activeLens.currentVersion.feedIds.length === 1 ? "" : "s"}

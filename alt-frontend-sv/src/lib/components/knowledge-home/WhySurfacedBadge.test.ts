@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { resolveWhyReason } from "./why-reason-map";
 
 describe("WhySurfacedBadge reason mapping", () => {

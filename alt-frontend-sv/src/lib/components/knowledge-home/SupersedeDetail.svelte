@@ -9,6 +9,18 @@ interface Props {
 const { info }: Props = $props();
 const display = $derived(resolveSupersede(info.state));
 
+const CHANGE_DESCRIPTIONS: Record<string, string> = {
+	summary_updated: "The summary was regenerated with updated content.",
+	tags_updated: "Tags were recalculated based on new analysis.",
+	both_updated: "Both summary and tags were updated.",
+	reason_updated: "The surfacing reasons changed.",
+	multiple_updated: "Multiple aspects of this item were updated.",
+};
+
+const changeDescription = $derived(
+	CHANGE_DESCRIPTIONS[info.state] ?? "This item was updated.",
+);
+
 function formatTime(isoString: string): string {
 	if (!isoString) return "";
 	const date = new Date(isoString);
@@ -26,6 +38,10 @@ function formatTime(isoString: string): string {
 			<span>&middot; {formatTime(info.supersededAt)}</span>
 		{/if}
 	</div>
+
+	<p class="text-[var(--text-tertiary)]">
+		{changeDescription}
+	</p>
 
 	{#if info.previousSummaryExcerpt}
 		<div>

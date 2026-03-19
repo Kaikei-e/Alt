@@ -1,28 +1,57 @@
 <script lang="ts">
 import {
-	Newspaper,
-	FileText,
+	Activity,
 	AlertCircle,
 	CalendarRange,
-	Activity,
-	Sparkles,
 	Clock,
+	FileText,
+	Loader,
+	Newspaper,
+	Sparkles,
 } from "@lucide/svelte";
-import type { TodayDigestData } from "$lib/connect/knowledge_home";
+import type {
+	ServiceQuality,
+	TodayDigestData,
+} from "$lib/connect/knowledge_home";
 
 interface Props {
 	digest: TodayDigestData | null;
+	serviceQuality?: ServiceQuality;
 }
 
-const { digest }: Props = $props();
+const { digest, serviceQuality = "full" }: Props = $props();
+
+const isFallback = $derived(
+	serviceQuality === "fallback" && digest?.digestFreshness === "unknown",
+);
 </script>
 
-{#if digest}
+{#if !digest}
+	<div
+		class="flex items-center gap-2 px-4 py-3 border-b border-[var(--surface-border)] bg-[var(--surface-bg)]"
+	>
+		<Loader class="h-4 w-4 text-[var(--text-secondary)] animate-spin" />
+		<span class="text-sm text-[var(--text-secondary)]"
+			>Loading today's digest...</span
+		>
+	</div>
+{:else if isFallback}
+	<div
+		class="flex items-center gap-2 px-4 py-3 border-b border-[var(--surface-border)] bg-[var(--surface-bg)]"
+	>
+		<AlertCircle class="h-4 w-4 text-amber-400" />
+		<span class="text-sm text-[var(--text-secondary)]"
+			>Digest temporarily unavailable</span
+		>
+	</div>
+{:else}
 	<div
 		class="flex flex-col border-b border-[var(--surface-border)] bg-[var(--surface-bg)]"
 	>
 		<!-- Row 1: Action Shortcuts -->
-		<div class="flex items-center gap-2 px-4 py-2 border-b border-[var(--surface-border)]/50">
+		<div
+			class="flex items-center gap-2 px-4 py-2 border-b border-[var(--surface-border)]/50"
+		>
 			<a
 				href="/recap/morning-letter"
 				class="inline-flex items-center gap-1.5 rounded-md border border-[var(--chip-border)] bg-[var(--action-surface)] px-2.5 py-1.5 text-xs font-medium text-[var(--interactive-text)] hover:bg-[var(--action-surface-hover)] hover:text-[var(--interactive-text-hover)] transition-colors"
@@ -90,18 +119,30 @@ const { digest }: Props = $props();
 		<div class="flex flex-wrap items-center gap-3 px-4 py-2">
 			<!-- Stat Chips -->
 			<div class="flex items-center gap-3 flex-wrap">
-				<span class="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+				<span
+					class="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"
+				>
 					<Sparkles class="h-3.5 w-3.5 text-blue-400" />
-					<span class="font-medium text-[var(--text-primary)]">{digest.newArticles}</span> new
+					<span class="font-medium text-[var(--text-primary)]"
+						>{digest.newArticles}</span
+					> new
 				</span>
-				<span class="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+				<span
+					class="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"
+				>
 					<FileText class="h-3.5 w-3.5 text-teal-400" />
-					<span class="font-medium text-[var(--text-primary)]">{digest.summarizedArticles}</span> summarized
+					<span class="font-medium text-[var(--text-primary)]"
+						>{digest.summarizedArticles}</span
+					> summarized
 				</span>
 				{#if digest.unsummarizedArticles > 0}
-					<span class="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+					<span
+						class="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)]"
+					>
 						<AlertCircle class="h-3.5 w-3.5 text-amber-400" />
-						<span class="font-medium text-[var(--text-primary)]">{digest.unsummarizedArticles}</span> pending
+						<span class="font-medium text-[var(--text-primary)]"
+							>{digest.unsummarizedArticles}</span
+						> pending
 					</span>
 				{/if}
 			</div>

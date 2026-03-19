@@ -1,11 +1,11 @@
 <script lang="ts">
 import {
 	ArrowUpCircle,
-	FileText,
-	Tag,
-	Info,
 	ChevronDown,
 	ChevronUp,
+	FileText,
+	Info,
+	Tag,
 } from "@lucide/svelte";
 import type { SupersedeInfoData } from "$lib/connect/knowledge_home";
 import { resolveSupersede } from "./supersede-display-map";

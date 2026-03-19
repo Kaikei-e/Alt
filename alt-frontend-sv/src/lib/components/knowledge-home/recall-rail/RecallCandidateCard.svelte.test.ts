@@ -1,8 +1,8 @@
-import { render } from "vitest-browser-svelte";
-import { page } from "vitest/browser";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import RecallCandidateCard from "./RecallCandidateCard.svelte";
+import { page } from "vitest/browser";
+import { render } from "vitest-browser-svelte";
 import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import RecallCandidateCard from "./RecallCandidateCard.svelte";
 
 function makeCandidate(
 	overrides: Partial<RecallCandidateData> = {},
@@ -75,8 +75,12 @@ describe("RecallCandidateCard", () => {
 			},
 		});
 
-		await expect.element(page.getByText("AI", { exact: true })).toBeInTheDocument();
-		await expect.element(page.getByText("Go", { exact: true })).toBeInTheDocument();
+		await expect
+			.element(page.getByText("AI", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("Go", { exact: true }))
+			.toBeInTheDocument();
 		await expect
 			.element(page.getByText("Rust", { exact: true }))
 			.not.toBeInTheDocument();
@@ -112,7 +116,9 @@ describe("RecallCandidateCard", () => {
 			},
 		});
 
-		await expect.element(page.getByText("article:test-123")).toBeInTheDocument();
+		await expect
+			.element(page.getByText("article:test-123"))
+			.toBeInTheDocument();
 	});
 
 	it("keeps snooze and dismiss clicks from triggering open", async () => {
