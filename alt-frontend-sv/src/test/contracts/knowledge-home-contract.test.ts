@@ -252,6 +252,26 @@ describe("Knowledge Home API Contract", () => {
 			expect(event.item).toBeUndefined();
 		});
 
+		it("recall_changed event carries recall_change payload", () => {
+			const event = create(StreamKnowledgeHomeUpdatesResponseSchema, {
+				eventType: "recall_changed",
+				occurredAt: "2026-03-18T12:00:00Z",
+				recallChange: {
+					itemKey: "article:recall-1",
+					recallScore: 0.81,
+					reasons: [
+						{
+							type: "opened_before_but_not_revisited",
+							description: "Opened before",
+						},
+					],
+				},
+			});
+			expect(event.eventType).toBe("recall_changed");
+			expect(event.recallChange?.itemKey).toBe("article:recall-1");
+			expect(event.item).toBeUndefined();
+		});
+
 		it("fallback_to_unary includes reconnect_after_ms", () => {
 			const event = create(StreamKnowledgeHomeUpdatesResponseSchema, {
 				eventType: "fallback_to_unary",

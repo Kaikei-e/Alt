@@ -10,6 +10,7 @@ import { useRecallRail } from "$lib/hooks/useRecallRail.svelte";
 import { useLens } from "$lib/hooks/useLens.svelte";
 import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 import { useStreamUpdates } from "$lib/hooks/useStreamUpdates.svelte";
+import { refreshHomeWithRecallSync } from "./stream-refresh";
 import type {
 	KnowledgeHomeItemData,
 	LensVersionData,
@@ -52,7 +53,13 @@ const activeLensName = $derived(
 const stream = useStreamUpdates({
 	get enabled() { return streamEnabled; },
 	get lensId() { return lens.activeLensId ?? undefined; },
-	onRefresh: () => home.fetchData(true, lens.activeLensId),
+	onRefresh: () =>
+		refreshHomeWithRecallSync(
+			home,
+			recall,
+			recallEnabled,
+			lens.activeLensId,
+		),
 });
 
 async function syncLensQuery(lensId: string | null) {

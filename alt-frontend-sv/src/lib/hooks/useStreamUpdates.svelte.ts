@@ -2,7 +2,7 @@
  * Hook for streaming Knowledge Home updates via Connect-RPC.
  *
  * Features:
- * - Canonical event type handling (item_added, item_updated, digest_changed)
+ * - Canonical event type handling (item_added, item_updated, digest_changed, recall_changed)
  * - Terminal event handling (stream_expired, fallback_to_unary)
  * - Tab visibility handling (pause on hidden, resume on visible)
  * - Multi-tab leader election via BroadcastChannel
@@ -26,7 +26,7 @@ const LEADER_HEARTBEAT_TIMEOUT = 10000;
 interface StreamUpdateOptions {
 	get enabled(): boolean;
 	get lensId(): string | undefined;
-	onRefresh?: () => void;
+	onRefresh?: () => void | Promise<void>;
 }
 
 interface BroadcastMessage {
@@ -115,6 +115,43 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 					occurredAt: event.occurredAt,
 					item: event.item
 						? ({ itemKey: event.item.itemKey } as StreamHomeUpdate["item"])
+						: undefined,
+					recallChange: event.recallChange
+						? {
+								itemKey: event.recallChange.itemKey,
+								recallScore: event.recallChange.recallScore,
+								reasons: event.recallChange.reasons.map((reason) => ({
+									type: reason.type,
+									description: reason.description,
+									sourceItemKey: reason.sourceItemKey || undefined,
+								})),
+								firstEligibleAt: event.recallChange.firstEligibleAt,
+								nextSuggestAt: event.recallChange.nextSuggestAt,
+								item: event.recallChange.item
+									? {
+											itemKey: event.recallChange.item.itemKey,
+											itemType: event.recallChange.item.itemType,
+											articleId:
+												event.recallChange.item.articleId || undefined,
+											recapId: event.recallChange.item.recapId || undefined,
+											title: event.recallChange.item.title,
+											publishedAt: event.recallChange.item.publishedAt,
+											summaryExcerpt:
+												event.recallChange.item.summaryExcerpt || undefined,
+											summaryState:
+												(event.recallChange.item.summaryState ||
+													"missing") as "missing" | "pending" | "ready",
+											tags: [...event.recallChange.item.tags],
+											why: event.recallChange.item.why.map((why) => ({
+												code: why.code,
+												refId: why.refId || undefined,
+												tag: why.tag || undefined,
+											})),
+											score: event.recallChange.item.score,
+											link: event.recallChange.item.link || undefined,
+										}
+									: undefined,
+							}
 						: undefined,
 					reconnectAfterMs: event.reconnectAfterMs ?? undefined,
 				};

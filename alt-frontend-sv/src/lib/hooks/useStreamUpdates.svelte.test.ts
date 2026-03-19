@@ -235,6 +235,56 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		restore();
 	});
 
+	it("preserves recall_changed payloads", { timeout: 10000 }, async () => {
+		const restore = disableBroadcastChannel();
+		const events = [
+			{
+				eventType: "recall_changed",
+				occurredAt: "2026-03-18T12:00:01Z",
+				recallChange: {
+					itemKey: "article:1",
+					recallScore: 0.88,
+					reasons: [
+						{
+							type: "opened_before_but_not_revisited",
+							description: "Opened before",
+						},
+					],
+					firstEligibleAt: "2026-03-17T12:00:01Z",
+					nextSuggestAt: "2026-03-18T12:00:01Z",
+					item: {
+						itemKey: "article:1",
+						itemType: "article",
+						title: "Recovered title",
+						publishedAt: "2026-03-10T12:00:01Z",
+						summaryState: "missing",
+						tags: [],
+						why: [],
+						score: 0,
+					},
+				},
+			},
+		];
+		mockStreamFn.mockReturnValue(createHangingMockStream(events));
+
+		const { stream, cleanup } = createHook({
+			get enabled() { return true; },
+			get lensId() { return undefined; },
+		});
+
+		await waitForEffect(() => {
+			expect(stream.pendingCount).toBe(1);
+		});
+		expect(stream.pendingUpdates[0].eventType).toBe("recall_changed");
+		expect(stream.pendingUpdates[0].recallChange?.itemKey).toBe("article:1");
+		expect(stream.pendingUpdates[0].recallChange?.item?.title).toBe(
+			"Recovered title",
+		);
+
+		cleanup();
+		restore();
+	});
+
 	it("should coalesce updates within delay window", { timeout: 10000 }, async () => {
 		const restore = disableBroadcastChannel();
 		const events = [
