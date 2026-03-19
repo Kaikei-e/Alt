@@ -8,6 +8,7 @@ import (
 	"alt/utils/logger"
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,14 +43,26 @@ func NewGetKnowledgeHomeUsecase(
 	}
 }
 
+// Service quality constants for the 3-tier quality model.
+const (
+	ServiceQualityFull     = "full"
+	ServiceQualityDegraded = "degraded"
+	ServiceQualityFallback = "fallback"
+)
+
+// degradedStalenessThreshold is the projection age beyond which we consider
+// the data stale enough to downgrade service quality.
+const degradedStalenessThreshold = 15 * time.Minute
+
 // Result holds the output of GetKnowledgeHome.
 type Result struct {
-	Items       []domain.KnowledgeHomeItem
-	Digest      domain.TodayDigest
-	NextCursor  string
-	HasMore     bool
-	Degraded    bool
-	GeneratedAt time.Time
+	Items          []domain.KnowledgeHomeItem
+	Digest         domain.TodayDigest
+	NextCursor     string
+	HasMore        bool
+	Degraded       bool
+	ServiceQuality string
+	GeneratedAt    time.Time
 }
 
 // Execute fetches the Knowledge Home data for a user.
@@ -99,11 +112,38 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 	if err := requestContextError(itemsErr, digestErr); err != nil {
 		return nil, err
 	}
+	if itemsErr != nil && digestErr != nil {
+		return nil, fmt.Errorf("get knowledge home: items unavailable: %w; digest unavailable: %v", itemsErr, digestErr)
+	}
 
 	// Enrich digest with backend-authoritative values
 	u.enrichDigest(ctx, result, userID, date)
 
+	// Compute 3-tier service quality
+	result.ServiceQuality = computeServiceQuality(itemsErr, result)
+
 	return result, nil
+}
+
+// computeServiceQuality determines the 3-tier service quality based on error state.
+//   - full: all read sources succeeded
+//   - degraded: partial failure or stale projection, but the page can still render normally
+//   - fallback: one of the read sections had to be dropped, but we still have a usable partial response
+func computeServiceQuality(itemsErr error, result *Result) string {
+	if itemsErr != nil {
+		return ServiceQualityFallback
+	}
+	// Projection staleness downgrades quality, but is not itself a fallback response.
+	if result.Digest.LastProjectedAt != nil {
+		age := time.Since(*result.Digest.LastProjectedAt)
+		if age > degradedStalenessThreshold {
+			return ServiceQualityDegraded
+		}
+	}
+	if result.Degraded {
+		return ServiceQualityDegraded
+	}
+	return ServiceQualityFull
 }
 
 func requestContextError(errs ...error) error {

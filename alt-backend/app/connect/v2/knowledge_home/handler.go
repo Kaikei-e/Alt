@@ -31,6 +31,7 @@ import (
 	"alt/usecase/track_home_action_usecase"
 	"alt/usecase/track_home_seen_usecase"
 	"alt/usecase/update_lens_usecase"
+	altotel "alt/utils/otel"
 )
 
 // streamHighWaterMark is the threshold above which coalesced events
@@ -55,6 +56,7 @@ type Handler struct {
 	eventsForUserPort    knowledge_event_port.ListKnowledgeEventsForUserPort
 	latestSeqPort        knowledge_event_port.LatestKnowledgeEventSeqForUserPort
 	featureFlagPort      feature_flag_port.FeatureFlagPort
+	metrics              *altotel.KnowledgeHomeMetrics
 	logger               *slog.Logger
 }
 
@@ -77,6 +79,7 @@ func NewHandler(
 	eventsPort knowledge_event_port.ListKnowledgeEventsPort,
 	eventsForUserPort knowledge_event_port.ListKnowledgeEventsForUserPort,
 	featureFlag feature_flag_port.FeatureFlagPort,
+	metrics *altotel.KnowledgeHomeMetrics,
 	logger *slog.Logger,
 ) *Handler {
 	var latestSeqPort knowledge_event_port.LatestKnowledgeEventSeqForUserPort
@@ -100,6 +103,7 @@ func NewHandler(
 		eventsForUserPort:    eventsForUserPort,
 		latestSeqPort:        latestSeqPort,
 		featureFlagPort:      featureFlag,
+		metrics:              metrics,
 		logger:               logger,
 	}
 }
@@ -109,6 +113,7 @@ func (h *Handler) GetKnowledgeHome(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.GetKnowledgeHomeRequest],
 ) (*connect.Response[knowledgehomev1.GetKnowledgeHomeResponse], error) {
+	start := time.Now()
 	user, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
@@ -200,9 +205,13 @@ func (h *Handler) GetKnowledgeHome(
 	}
 
 	// Determine 3-tier service quality
-	serviceQuality := "full"
-	if result.Degraded {
-		serviceQuality = "degraded"
+	serviceQuality := result.ServiceQuality
+	if serviceQuality == "" {
+		// Backward compatibility: derive from Degraded flag
+		serviceQuality = "full"
+		if result.Degraded {
+			serviceQuality = "degraded"
+		}
 	}
 
 	resp := &knowledgehomev1.GetKnowledgeHomeResponse{
@@ -214,6 +223,19 @@ func (h *Handler) GetKnowledgeHome(
 		GeneratedAt:    result.GeneratedAt.Format(time.RFC3339),
 		FeatureFlags:   featureFlags,
 		ServiceQuality: &serviceQuality,
+	}
+
+	// Record metrics
+	if h.metrics != nil {
+		duration := time.Since(start).Seconds()
+		h.metrics.RequestsTotal.Add(ctx, 1)
+		h.metrics.RequestDurationSeconds.Record(ctx, duration)
+		if serviceQuality == "degraded" || serviceQuality == "fallback" {
+			h.metrics.DegradedResponsesTotal.Add(ctx, 1)
+		}
+		if len(result.Items) == 0 {
+			h.metrics.EmptyResponsesTotal.Add(ctx, 1)
+		}
 	}
 
 	// Embed recall candidates if recall rail is enabled
@@ -244,8 +266,20 @@ func (h *Handler) TrackHomeItemsSeen(
 			fmt.Errorf("item_keys is required"))
 	}
 
+	if h.metrics != nil {
+		h.metrics.TrackingReceivedTotal.Add(ctx, 1)
+		h.metrics.ItemsExposed.Add(ctx, int64(len(req.Msg.ItemKeys)))
+	}
+
 	if err := h.trackSeenUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ItemKeys, req.Msg.ExposureSessionId); err != nil {
+		if h.metrics != nil {
+			h.metrics.TrackingFailedTotal.Add(ctx, 1)
+		}
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeItemsSeen")
+	}
+
+	if h.metrics != nil {
+		h.metrics.TrackingPersistedTotal.Add(ctx, 1)
 	}
 
 	return connect.NewResponse(&knowledgehomev1.TrackHomeItemsSeenResponse{}), nil
@@ -277,6 +311,15 @@ func (h *Handler) TrackHomeAction(
 
 	if err := h.trackActionUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ActionType, req.Msg.ItemKey, metadataJSON); err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeAction")
+	}
+
+	if h.metrics != nil {
+		switch req.Msg.ActionType {
+		case "open", "open_recap", "open_search":
+			h.metrics.ItemsOpened.Add(ctx, 1)
+		case "dismiss":
+			h.metrics.ItemsDismissed.Add(ctx, 1)
+		}
 	}
 
 	return connect.NewResponse(&knowledgehomev1.TrackHomeActionResponse{}), nil
@@ -573,6 +616,16 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamKnowledgeHomeUpdates")
 	}
 
+	if h.metrics != nil {
+		h.metrics.StreamConnectionsTotal.Add(ctx, 1)
+	}
+
+	recordDelivery := func() {
+		if h.metrics != nil {
+			h.metrics.StreamDeliveriesTotal.Add(ctx, 1)
+		}
+	}
+
 	h.logger.InfoContext(ctx, "alt.knowledge_home.stream_started",
 		"user_id", user.UserID,
 		"lens_id", lensID,
@@ -593,6 +646,9 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 	for {
 		select {
 		case <-ctx.Done():
+			if h.metrics != nil {
+				h.metrics.StreamDisconnectsTotal.Add(ctx, 1)
+			}
 			h.logger.InfoContext(ctx, "alt.knowledge_home.stream_ended",
 				"user_id", user.UserID, "reason", ctx.Err())
 			return nil
@@ -607,6 +663,7 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 			}); err != nil {
 				return err
 			}
+			recordDelivery()
 			h.logger.InfoContext(ctx, "alt.knowledge_home.stream_expired",
 				"user_id", user.UserID, "reconnect_ms", reconnectMs)
 			return nil
@@ -622,11 +679,13 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 				// Phase 5: After 3 consecutive errors, suggest fallback to unary
 				if consecutiveErrors >= 3 {
 					reconnectMs := int32(10000)
-					_ = stream.Send(&knowledgehomev1.StreamKnowledgeHomeUpdatesResponse{
+					if err := stream.Send(&knowledgehomev1.StreamKnowledgeHomeUpdatesResponse{
 						EventType:        "fallback_to_unary",
 						OccurredAt:       time.Now().Format(time.RFC3339),
 						ReconnectAfterMs: &reconnectMs,
-					})
+					}); err == nil {
+						recordDelivery()
+					}
 					return nil
 				}
 				continue
@@ -646,6 +705,7 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 				if err := stream.Send(update); err != nil {
 					return err
 				}
+				recordDelivery()
 				lastSeq = events[len(events)-1].EventSeq
 				continue
 			}
@@ -655,6 +715,10 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 				h.enrichRecallChangedUpdate(ctx, user.UserID, update)
 				if err := stream.Send(update); err != nil {
 					return err
+				}
+				recordDelivery()
+				if h.metrics != nil {
+					h.metrics.StreamUpdateLagSeconds.Record(ctx, time.Since(event.OccurredAt).Seconds())
 				}
 				if event.EventSeq > lastSeq {
 					lastSeq = event.EventSeq

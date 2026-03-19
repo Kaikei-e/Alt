@@ -191,6 +191,7 @@ func main() {
 		container.TagSetVersionGateway,
 		job.KnowledgeProjectorConfig{
 			BatchSize: cfg.KnowledgeHome.ProjectorBatchSize,
+			Metrics:   container.KnowledgeHomeMetrics,
 		},
 		container.KnowledgeHomeGateway,
 	)

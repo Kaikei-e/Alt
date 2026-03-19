@@ -52,7 +52,7 @@ func (r *KnowledgeProjectorRunner) Run(ctx context.Context) error {
 	}
 
 	if err := r.runOnce(ctx); err != nil && ctx.Err() == nil {
-		logger.Logger.ErrorContext(ctx, "knowledge projector initial drain failed", "error", err)
+		logger.ErrorContext(ctx, "knowledge projector initial drain failed", "error", err)
 	}
 
 	var listener KnowledgeProjectorListener
@@ -70,7 +70,7 @@ func (r *KnowledgeProjectorRunner) Run(ctx context.Context) error {
 		if listener == nil && r.listenerFactory != nil {
 			created, err := r.listenerFactory(ctx)
 			if err != nil {
-				logger.Logger.WarnContext(ctx, "knowledge projector listener unavailable; falling back to polling", "error", err)
+				logger.WarnContext(ctx, "knowledge projector listener unavailable; falling back to polling", "error", err)
 			} else {
 				listener = created
 			}
@@ -82,7 +82,7 @@ func (r *KnowledgeProjectorRunner) Run(ctx context.Context) error {
 				return nil
 			case <-time.After(r.pollInterval):
 				if err := r.runOnce(ctx); err != nil && ctx.Err() == nil {
-					logger.Logger.ErrorContext(ctx, "knowledge projector poll run failed", "error", err)
+					logger.ErrorContext(ctx, "knowledge projector poll run failed", "error", err)
 				}
 			}
 			continue
@@ -94,7 +94,7 @@ func (r *KnowledgeProjectorRunner) Run(ctx context.Context) error {
 
 		if err == nil || errors.Is(err, context.DeadlineExceeded) {
 			if runErr := r.runOnce(ctx); runErr != nil && ctx.Err() == nil {
-				logger.Logger.ErrorContext(ctx, "knowledge projector wake run failed", "error", runErr)
+				logger.ErrorContext(ctx, "knowledge projector wake run failed", "error", runErr)
 			}
 			continue
 		}
@@ -103,12 +103,12 @@ func (r *KnowledgeProjectorRunner) Run(ctx context.Context) error {
 			return nil
 		}
 
-		logger.Logger.WarnContext(ctx, "knowledge projector listener failed; switching to poll fallback", "error", err)
+		logger.WarnContext(ctx, "knowledge projector listener failed; switching to poll fallback", "error", err)
 		_ = listener.Close(context.Background())
 		listener = nil
 
 		if runErr := r.runOnce(ctx); runErr != nil && ctx.Err() == nil {
-			logger.Logger.ErrorContext(ctx, "knowledge projector recovery run failed", "error", runErr)
+			logger.ErrorContext(ctx, "knowledge projector recovery run failed", "error", runErr)
 		}
 	}
 }

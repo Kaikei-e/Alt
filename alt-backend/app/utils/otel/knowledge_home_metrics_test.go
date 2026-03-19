@@ -86,6 +86,9 @@ func TestNewKnowledgeHomeMetrics_AllFieldsInitialized(t *testing.T) {
 	if m.StreamReconnectsTotal == nil {
 		t.Error("StreamReconnectsTotal is nil")
 	}
+	if m.StreamDeliveriesTotal == nil {
+		t.Error("StreamDeliveriesTotal is nil")
+	}
 	if m.StreamUpdateLagSeconds == nil {
 		t.Error("StreamUpdateLagSeconds is nil")
 	}

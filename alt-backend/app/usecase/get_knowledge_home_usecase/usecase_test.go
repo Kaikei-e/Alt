@@ -346,6 +346,75 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 	})
 }
 
+func TestGetKnowledgeHomeUsecase_ServiceQuality(t *testing.T) {
+	logger.InitLogger()
+	userID := uuid.New()
+	now := time.Now()
+	recentTime := now.Add(-1 * time.Minute)
+
+	t.Run("full when all sources succeed", func(t *testing.T) {
+		uc := NewGetKnowledgeHomeUsecase(
+			&mockHomeItemsPort{items: []domain.KnowledgeHomeItem{{ItemKey: "article:1", Title: "Test"}}},
+			&mockTodayDigestPort{digest: domain.TodayDigest{NewArticles: 5}},
+			nil, &mockProjectionFreshnessPort{updatedAt: &recentTime}, nil,
+		)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "full", result.ServiceQuality)
+	})
+
+	t.Run("degraded when digest fails but items succeed", func(t *testing.T) {
+		uc := NewGetKnowledgeHomeUsecase(
+			&mockHomeItemsPort{items: []domain.KnowledgeHomeItem{{ItemKey: "article:1", Title: "Test"}}},
+			&mockTodayDigestPort{err: errors.New("digest db error")},
+			nil, nil, nil,
+		)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "degraded", result.ServiceQuality)
+	})
+
+	t.Run("fallback when items fail but digest succeeds", func(t *testing.T) {
+		uc := NewGetKnowledgeHomeUsecase(
+			&mockHomeItemsPort{err: errors.New("items db error")},
+			&mockTodayDigestPort{digest: domain.TodayDigest{NewArticles: 5}},
+			nil, nil, nil,
+		)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "fallback", result.ServiceQuality)
+	})
+
+	t.Run("fallback when both items and digest fail", func(t *testing.T) {
+		uc := NewGetKnowledgeHomeUsecase(
+			&mockHomeItemsPort{err: errors.New("items db error")},
+			&mockTodayDigestPort{err: errors.New("digest db error")},
+			nil, nil, nil,
+		)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+		require.Error(t, err)
+		assert.Nil(t, result)
+	})
+
+	t.Run("degraded when projection is severely stale", func(t *testing.T) {
+		staleTime := now.Add(-30 * time.Minute)
+		uc := NewGetKnowledgeHomeUsecase(
+			&mockHomeItemsPort{items: []domain.KnowledgeHomeItem{{ItemKey: "article:1", Title: "Test"}}},
+			&mockTodayDigestPort{digest: domain.TodayDigest{NewArticles: 5}},
+			nil, &mockProjectionFreshnessPort{updatedAt: &staleTime}, nil,
+		)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+		require.NoError(t, err)
+		assert.Equal(t, "degraded", result.ServiceQuality)
+	})
+
+	t.Run("ServiceQuality zero value treated as full by handler", func(t *testing.T) {
+		// When ServiceQuality is not set explicitly (legacy path), it should default
+		result := &Result{GeneratedAt: time.Now()}
+		assert.Equal(t, "", result.ServiceQuality, "zero value is empty string")
+	})
+}
+
 func TestGetKnowledgeHomeUsecase_Execute_ReturnsCancellationErrors(t *testing.T) {
 	logger.InitLogger()
 

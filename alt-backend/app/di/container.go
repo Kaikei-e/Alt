@@ -141,6 +141,7 @@ import (
 	"alt/utils"
 	"alt/utils/batch_article_fetcher"
 	"alt/utils/image_proxy"
+	altotel "alt/utils/otel"
 	"alt/utils/rate_limiter"
 	"net/http"
 	"time"
@@ -266,6 +267,9 @@ type ApplicationComponents struct {
 	SummaryVersionGateway  *summary_version_gateway.Gateway
 	TagSetVersionGateway   *tag_set_version_gateway.Gateway
 	KnowledgeLensGateway   *knowledge_lens_gateway.Gateway
+
+	// Observability
+	KnowledgeHomeMetrics *altotel.KnowledgeHomeMetrics
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -588,6 +592,14 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	selectLensUsecase := select_lens_usecase.NewSelectLensUsecase(knowledgeLensGw, knowledgeLensGw, knowledgeLensGw, knowledgeLensGw)
 	archiveLensUsecase := archive_lens_usecase.NewArchiveLensUsecase(knowledgeLensGw, knowledgeLensGw)
 
+	// Knowledge Home metrics (optional, fail-open)
+	var knowledgeHomeMetrics *altotel.KnowledgeHomeMetrics
+	if m, err := altotel.NewKnowledgeHomeMetrics(); err != nil {
+		slog.Warn("failed to initialize KnowledgeHomeMetrics, continuing without metrics", "error", err)
+	} else {
+		knowledgeHomeMetrics = m
+	}
+
 	// Wire recall signal port: TrackHomeAction appends recall signals (fire-and-forget)
 	trackHomeActionUsecase.SetRecallSignalPort(recallSignalGw)
 	trackHomeActionUsecase.SetDismissPort(knowledgeHomeGw, knowledgeProjectionVersionGw)
@@ -715,5 +727,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		SummaryVersionGateway:  summaryVersionGw,
 		TagSetVersionGateway:   tagSetVersionGw,
 		KnowledgeLensGateway:   knowledgeLensGw,
+
+		// Observability
+		KnowledgeHomeMetrics: knowledgeHomeMetrics,
 	}
 }

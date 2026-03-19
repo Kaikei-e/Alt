@@ -16,12 +16,12 @@ type KnowledgeHomeMetrics struct {
 	ProjectorErrors          metric.Int64Counter
 
 	// Handler metrics
-	PageServed  metric.Int64Counter
+	PageServed   metric.Int64Counter
 	PageDegraded metric.Int64Counter
 
 	// Tracking metrics
-	ItemsExposed  metric.Int64Counter
-	ItemsOpened   metric.Int64Counter
+	ItemsExposed   metric.Int64Counter
+	ItemsOpened    metric.Int64Counter
 	ItemsDismissed metric.Int64Counter
 
 	// Backfill metrics
@@ -39,10 +39,11 @@ type KnowledgeHomeMetrics struct {
 	TrackingFailedTotal    metric.Int64Counter
 
 	// SLI-D: stream
-	StreamConnectionsTotal  metric.Int64Counter
-	StreamDisconnectsTotal  metric.Int64Counter
-	StreamReconnectsTotal   metric.Int64Counter
-	StreamUpdateLagSeconds  metric.Float64Histogram
+	StreamConnectionsTotal metric.Int64Counter
+	StreamDisconnectsTotal metric.Int64Counter
+	StreamReconnectsTotal  metric.Int64Counter
+	StreamDeliveriesTotal  metric.Int64Counter
+	StreamUpdateLagSeconds metric.Float64Histogram
 
 	// SLI-E: correctness
 	EmptyResponsesTotal    metric.Int64Counter
@@ -170,6 +171,11 @@ func NewKnowledgeHomeMetrics() (*KnowledgeHomeMetrics, error) {
 	}
 	m.StreamReconnectsTotal, err = meter.Int64Counter("alt_home_stream_reconnects_total",
 		metric.WithDescription("stream"))
+	if err != nil {
+		return nil, err
+	}
+	m.StreamDeliveriesTotal, err = meter.Int64Counter("alt_home_stream_deliveries_total",
+		metric.WithDescription("successful non-heartbeat stream deliveries"))
 	if err != nil {
 		return nil, err
 	}

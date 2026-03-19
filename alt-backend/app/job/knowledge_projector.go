@@ -11,6 +11,7 @@ import (
 	"alt/port/tag_set_version_port"
 	"alt/port/today_digest_port"
 	"alt/utils/logger"
+	altotel "alt/utils/otel"
 	"alt/utils/textutil"
 	"context"
 	"encoding/json"
@@ -28,6 +29,7 @@ const (
 
 type KnowledgeProjectorConfig struct {
 	BatchSize int
+	Metrics   *altotel.KnowledgeHomeMetrics
 }
 
 // KnowledgeProjectorJob returns a function suitable for the JobScheduler that
@@ -88,7 +90,7 @@ func KnowledgeProjectorJobWithConfig(
 		if activeVersionPort != nil {
 			v, err := activeVersionPort.GetActiveVersion(ctx)
 			if err != nil {
-				logger.Logger.ErrorContext(ctx, "failed to get active projection version, using default", "error", err)
+				logger.ErrorContext(ctx, "failed to get active projection version, using default", "error", err)
 			} else if v != nil {
 				projectionVersion = v.Version
 			}
@@ -97,7 +99,7 @@ func KnowledgeProjectorJobWithConfig(
 		if effectiveBatchSize <= 0 {
 			effectiveBatchSize = batchSize
 		}
-		return processKnowledgeEvents(ctx, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, clearPort, projectionVersion, effectiveBatchSize)
+		return processKnowledgeEvents(ctx, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, clearPort, projectionVersion, effectiveBatchSize, config.Metrics)
 	}
 }
 
@@ -117,11 +119,12 @@ func processKnowledgeEvents(
 	clearSupersedePort knowledge_home_port.ClearSupersedeStatePort,
 	projectionVersion int,
 	batchLimit int,
+	metrics *altotel.KnowledgeHomeMetrics,
 ) error {
 	// Get current checkpoint
 	lastSeq, err := checkpointPort.GetProjectionCheckpoint(ctx, projectorName)
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "failed to get projection checkpoint", "error", err)
+		logger.ErrorContext(ctx, "failed to get projection checkpoint", "error", err)
 		return fmt.Errorf("get checkpoint: %w", err)
 	}
 
@@ -133,7 +136,7 @@ func processKnowledgeEvents(
 
 		events, err := eventsPort.ListKnowledgeEventsSince(ctx, lastSeq, batchLimit)
 		if err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to fetch knowledge events", "error", err)
+			logger.ErrorContext(ctx, "failed to fetch knowledge events", "error", err)
 			return fmt.Errorf("fetch events: %w", err)
 		}
 
@@ -142,21 +145,24 @@ func processKnowledgeEvents(
 				// Heartbeat: touch checkpoint updated_at so freshness SLI stays accurate
 				// even when no new events are arriving.
 				if err := updateCheckpointPort.UpdateProjectionCheckpoint(ctx, projectorName, lastSeq); err != nil {
-					logger.Logger.ErrorContext(ctx, "failed to heartbeat projection checkpoint", "error", err)
+					logger.ErrorContext(ctx, "failed to heartbeat projection checkpoint", "error", err)
 				}
 			}
 			return nil
 		}
 
 		processedAny = true
-		logger.Logger.InfoContext(ctx, "processing knowledge events",
+		batchStart := time.Now()
+		logger.InfoContext(ctx, "processing knowledge events",
 			"count", len(events), "from_seq", lastSeq)
 
 		var maxSeq int64
+		var errorCount int64
 		for _, event := range events {
 			if err := projectEvent(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, clearSupersedePort, projectionVersion); err != nil {
-				logger.Logger.ErrorContext(ctx, "failed to project event",
+				logger.ErrorContext(ctx, "failed to project event",
 					"error", err, "event_id", event.EventID, "event_type", event.EventType)
+				errorCount++
 				// Continue with other events (best effort)
 			}
 			if event.EventSeq > maxSeq {
@@ -164,13 +170,30 @@ func processKnowledgeEvents(
 			}
 		}
 
+		// Record batch metrics
+		if metrics != nil {
+			batchDuration := float64(time.Since(batchStart).Milliseconds())
+			metrics.ProjectorEventsProcessed.Add(ctx, int64(len(events)))
+			metrics.ProjectorBatchDurationMs.Record(ctx, batchDuration)
+			if errorCount > 0 {
+				metrics.ProjectorErrors.Add(ctx, errorCount)
+			}
+		}
+
 		if maxSeq > 0 {
 			if err := updateCheckpointPort.UpdateProjectionCheckpoint(ctx, projectorName, maxSeq); err != nil {
-				logger.Logger.ErrorContext(ctx, "failed to update projection checkpoint",
+				logger.ErrorContext(ctx, "failed to update projection checkpoint",
 					"error", err, "max_seq", maxSeq)
 				return fmt.Errorf("update checkpoint: %w", err)
 			}
 			lastSeq = maxSeq
+
+			// Record projector lag: time since the latest event was created
+			if metrics != nil {
+				latestEvent := events[len(events)-1]
+				lag := time.Since(latestEvent.OccurredAt).Seconds()
+				metrics.ProjectorLagSeconds.Record(ctx, lag)
+			}
 		}
 
 		if len(events) < batchLimit {
@@ -293,7 +316,7 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 			UpdatedAt:            now,
 		}
 		if err := todayDigestPort.UpsertTodayDigest(ctx, digest); err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to update today digest for ArticleCreated", "error", err)
+			logger.ErrorContext(ctx, "failed to update today digest for ArticleCreated", "error", err)
 			// Non-fatal: don't fail the projection
 		}
 	}
@@ -329,7 +352,7 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 	if summaryVersionPort != nil {
 		sv, err := summaryVersionPort.GetSummaryVersionByID(ctx, svID)
 		if err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to get summary version for excerpt", "error", err, "summary_version_id", svID)
+			logger.ErrorContext(ctx, "failed to get summary version for excerpt", "error", err, "summary_version_id", svID)
 		} else if sv.SummaryText != "" {
 			summaryExcerpt = textutil.TruncateValidUTF8(sv.SummaryText, maxExcerptLen)
 		}
@@ -389,7 +412,7 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 			UpdatedAt:            now,
 		}
 		if err := todayDigestPort.UpsertTodayDigest(ctx, digest); err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to update today digest for SummaryVersionCreated", "error", err)
+			logger.ErrorContext(ctx, "failed to update today digest for SummaryVersionCreated", "error", err)
 		}
 	}
 
@@ -468,7 +491,7 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 					})
 				}
 			} else if tsvErr != nil {
-				logger.Logger.ErrorContext(ctx, "failed to get tag set version for projection", "error", tsvErr, "tag_set_version_id", tsvID)
+				logger.ErrorContext(ctx, "failed to get tag set version for projection", "error", tsvErr, "tag_set_version_id", tsvID)
 			}
 		}
 	}
@@ -535,7 +558,7 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 	// Clear supersede state on open (acknowledgement)
 	if clearSupersedePort != nil {
 		if err := clearSupersedePort.ClearSupersedeState(ctx, userID, payload.ItemKey, projectionVersion); err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to clear supersede state on open", "error", err, "item_key", payload.ItemKey)
+			logger.ErrorContext(ctx, "failed to clear supersede state on open", "error", err, "item_key", payload.ItemKey)
 			// Non-fatal
 		}
 	}
@@ -554,7 +577,7 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 			ProjectionVersion: projectionVersion,
 		}
 		if err := recallCandidatePort.UpsertRecallCandidate(ctx, candidate); err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to create recall candidate", "error", err)
+			logger.ErrorContext(ctx, "failed to create recall candidate", "error", err)
 			// Non-fatal
 		}
 	}

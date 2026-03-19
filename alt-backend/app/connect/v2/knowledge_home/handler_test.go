@@ -8,6 +8,7 @@ import (
 	"alt/usecase/track_home_action_usecase"
 	"alt/usecase/track_home_seen_usecase"
 	"alt/utils/logger"
+	altotel "alt/utils/otel"
 	"context"
 	"errors"
 	"log/slog"
@@ -146,7 +147,9 @@ func setupHandlerWithFlags(flagPort *mockFeatureFlagPort) (*Handler, *mockHomeIt
 		nil, nil, nil, nil, nil, // lens: create, update, list, select, archive
 		nil, // eventsPort
 		nil, // eventsForUserPort
-		flagPort, slog.Default(),
+		flagPort,
+		nil, // metrics
+		slog.Default(),
 	)
 	return handler, homePort, digestPort
 }
@@ -336,6 +339,73 @@ func TestHandler_GetKnowledgeHome_ServiceQualityDegraded(t *testing.T) {
 	require.NotNil(t, resp.Msg.ServiceQuality)
 	assert.True(t, resp.Msg.DegradedMode)
 	assert.Equal(t, "degraded", *resp.Msg.ServiceQuality)
+}
+
+func TestHandler_GetKnowledgeHome_WithMetrics_DoesNotPanic(t *testing.T) {
+	logger.InitLogger()
+	metrics, err := altotel.NewKnowledgeHomeMetrics()
+	require.NoError(t, err)
+
+	homePort := &mockHomeItemsPort{
+		items: []domain.KnowledgeHomeItem{
+			{ItemKey: "article:1", ItemType: "article", Title: "Test", Score: 1.0, WhyReasons: []domain.WhyReason{{Code: "new_unread"}}},
+		},
+	}
+	digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{NewArticles: 5}}
+	userEventPort := &mockUserEventPort{}
+	knowledgeEventPort := &mockKnowledgeEventPort{}
+
+	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil, nil, nil)
+	trackSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(userEventPort, nil)
+	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, nil)
+
+	handler := NewHandler(
+		getHomeUsecase, trackSeenUsecase, trackActionUsecase,
+		nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil,
+		metrics,
+		slog.Default(),
+	)
+
+	ctx := testUserContext()
+	resp, err := handler.GetKnowledgeHome(ctx, connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20}))
+	require.NoError(t, err)
+	assert.Len(t, resp.Msg.Items, 1)
+	require.NotNil(t, resp.Msg.ServiceQuality)
+	assert.Equal(t, "full", *resp.Msg.ServiceQuality)
+}
+
+func TestHandler_GetKnowledgeHome_ServiceQualityFallback(t *testing.T) {
+	logger.InitLogger()
+	handler, homePort, _ := setupHandler()
+	homePort.items = nil
+	homePort.err = errors.New("items unavailable")
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	resp, err := handler.GetKnowledgeHome(ctx, req)
+	require.NoError(t, err)
+	require.NotNil(t, resp.Msg.ServiceQuality)
+	assert.Equal(t, "fallback", *resp.Msg.ServiceQuality)
+}
+
+func TestHandler_GetKnowledgeHome_BothReadModelsFail_ReturnsInternalError(t *testing.T) {
+	logger.InitLogger()
+	handler, homePort, digestPort := setupHandler()
+	homePort.items = nil
+	homePort.err = errors.New("items unavailable")
+	digestPort.err = errors.New("digest unavailable")
+
+	ctx := testUserContext()
+	req := connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20})
+
+	_, err := handler.GetKnowledgeHome(ctx, req)
+	require.Error(t, err)
+
+	connectErr, ok := err.(*connect.Error)
+	require.True(t, ok)
+	assert.Equal(t, connect.CodeInternal, connectErr.Code())
 }
 
 func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
@@ -683,7 +753,9 @@ func newStreamTestHandler(flagPort *mockFeatureFlagPort, eventsPort *mockListEve
 		nil, nil, nil, nil, nil, // lens: create, update, list, select, archive
 		eventsPort,
 		nil, // eventsForUserPort
-		flagPort, slog.Default(),
+		flagPort,
+		nil, // metrics
+		slog.Default(),
 	)
 	return handler
 }

@@ -98,6 +98,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		container.KnowledgeEventGateway,
 		container.KnowledgeEventGateway,
 		container.FeatureFlagGateway,
+		container.KnowledgeHomeMetrics,
 		logger,
 	)
 	khPath, khServiceHandler := knowledgehomev1connect.NewKnowledgeHomeServiceHandler(knowledgeHomeHandler, opts)
