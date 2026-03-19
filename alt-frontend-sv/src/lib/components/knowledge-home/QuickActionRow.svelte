@@ -1,5 +1,11 @@
 <script lang="ts">
-import { ExternalLink, BirdIcon, Headphones, X } from "@lucide/svelte";
+import {
+	ExternalLink,
+	BirdIcon,
+	Headphones,
+	Sparkles,
+	X,
+} from "@lucide/svelte";
 
 interface Props {
 	itemKey: string;
@@ -12,6 +18,7 @@ const { onAction }: Props = $props();
 
 const primaryActions = [
 	{ type: "open", icon: ExternalLink, label: "Open" },
+	{ type: "summarize", icon: Sparkles, label: "Summarize" },
 	{ type: "ask", icon: BirdIcon, label: "Ask" },
 	{ type: "listen", icon: Headphones, label: "Listen" },
 ] as const;

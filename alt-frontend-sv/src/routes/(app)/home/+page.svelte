@@ -99,8 +99,17 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 
 	if (type === "open" && articleId) {
 		if (item.link) {
-			goto(`/articles/${articleId}?url=${encodeURIComponent(item.link)}`);
+			const params = new URLSearchParams({ url: item.link });
+			if (item.title) params.set("title", item.title);
+			goto(`/articles/${articleId}?${params.toString()}`);
 		}
+		return;
+	} else if (type === "summarize" && articleId) {
+		const params = new URLSearchParams();
+		if (item.link) params.set("url", item.link);
+		if (item.title) params.set("title", item.title);
+		params.set("summarize", "true");
+		goto(`/articles/${articleId}?${params.toString()}`);
 		return;
 	} else if (type === "ask") {
 		const context = item.summaryExcerpt || item.title;
@@ -123,7 +132,9 @@ function handleRecallOpen(itemKey: string) {
 	const candidate = recall.candidates.find((c) => c.itemKey === itemKey);
 	const link = candidate?.item?.link;
 	if (link) {
-		goto(`/articles/${articleId}?url=${encodeURIComponent(link)}`);
+		const params = new URLSearchParams({ url: link });
+		if (candidate?.item?.title) params.set("title", candidate.item.title);
+		goto(`/articles/${articleId}?${params.toString()}`);
 	}
 }
 
