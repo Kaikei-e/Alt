@@ -67,10 +67,12 @@ class TagGeneratorEventHandler(EventHandler):
             title=title[:50] if title else "",
         )
 
+        feed_id = event.payload.get("feed_id", "")
+
         try:
             # Process article for tag generation
             # The service will fetch content from DB and generate tags
-            await self._process_article(article_id)
+            await self._process_article(article_id, feed_id=feed_id)
         except Exception as e:
             logger.error(
                 "tag_generation_failed",
@@ -79,7 +81,7 @@ class TagGeneratorEventHandler(EventHandler):
             )
             raise
 
-    async def _process_article(self, article_id: str) -> None:
+    async def _process_article(self, article_id: str, *, feed_id: str = "") -> None:
         """Process a single article for tag generation.
 
         This delegates to the TagGeneratorService for the actual processing.
@@ -92,13 +94,16 @@ class TagGeneratorEventHandler(EventHandler):
             None,
             self._process_article_sync,
             article_id,
+            feed_id,
         )
 
-    def _process_article_sync(self, article_id: str) -> None:
+    def _process_article_sync(self, article_id: str, feed_id: str = "") -> None:
         """Synchronous wrapper for processing an article."""
         # API mode: conn is None, backend handles everything
         article = self.service.article_fetcher.fetch_article_by_id(None, article_id)
         if article:
+            if feed_id and not article.get("feed_id"):
+                article["feed_id"] = feed_id
             success = self.service._process_single_article(None, article)
             if success:
                 logger.info(

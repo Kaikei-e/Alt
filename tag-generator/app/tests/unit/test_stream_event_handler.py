@@ -169,6 +169,98 @@ class TestTagGeneratorEventHandler:
         assert "Invalid payload" in event_data["payload"]["error_message"]
 
     @pytest.mark.anyio
+    async def test_handle_article_created_passes_feed_id(self, handler, mock_service):
+        """Test that feed_id from event payload is supplemented into the article dict."""
+        event = Event(
+            message_id="msg-1",
+            event_id="evt-1",
+            event_type="ArticleCreated",
+            source="alt-backend",
+            created_at=datetime.now(),
+            payload={
+                "article_id": "article-123",
+                "title": "Test Article",
+                "feed_id": "feed-456",
+            },
+            metadata={},
+        )
+
+        # fetch_article_by_id returns article without feed_id (simulating GetArticleContent RPC)
+        mock_service.article_fetcher.fetch_article_by_id.return_value = {
+            "article_id": "article-123",
+            "title": "Test Article",
+            "content": "Some content",
+        }
+        mock_service._process_single_article.return_value = True
+
+        await handler._handle_article_created(event)
+
+        # Verify _process_single_article received article with feed_id supplemented
+        mock_service._process_single_article.assert_called_once()
+        article_arg = mock_service._process_single_article.call_args[0][1]
+        assert article_arg["feed_id"] == "feed-456"
+
+    @pytest.mark.anyio
+    async def test_handle_article_created_without_feed_id(self, handler, mock_service):
+        """Test that missing feed_id in payload preserves existing behavior."""
+        event = Event(
+            message_id="msg-1",
+            event_id="evt-1",
+            event_type="ArticleCreated",
+            source="alt-backend",
+            created_at=datetime.now(),
+            payload={
+                "article_id": "article-123",
+                "title": "Test Article",
+            },
+            metadata={},
+        )
+
+        mock_service.article_fetcher.fetch_article_by_id.return_value = {
+            "article_id": "article-123",
+            "title": "Test Article",
+            "content": "Some content",
+        }
+        mock_service._process_single_article.return_value = True
+
+        await handler._handle_article_created(event)
+
+        # Article should not have feed_id added
+        article_arg = mock_service._process_single_article.call_args[0][1]
+        assert "feed_id" not in article_arg
+
+    @pytest.mark.anyio
+    async def test_handle_article_created_does_not_overwrite_existing_feed_id(self, handler, mock_service):
+        """Test that existing feed_id on article is not overwritten."""
+        event = Event(
+            message_id="msg-1",
+            event_id="evt-1",
+            event_type="ArticleCreated",
+            source="alt-backend",
+            created_at=datetime.now(),
+            payload={
+                "article_id": "article-123",
+                "title": "Test Article",
+                "feed_id": "feed-new",
+            },
+            metadata={},
+        )
+
+        # Article already has feed_id
+        mock_service.article_fetcher.fetch_article_by_id.return_value = {
+            "article_id": "article-123",
+            "title": "Test Article",
+            "content": "Some content",
+            "feed_id": "feed-existing",
+        }
+        mock_service._process_single_article.return_value = True
+
+        await handler._handle_article_created(event)
+
+        article_arg = mock_service._process_single_article.call_args[0][1]
+        assert article_arg["feed_id"] == "feed-existing"
+
+    @pytest.mark.anyio
     async def test_handle_event_ignores_unknown_events(self, handler, mock_stream_consumer):
         """Test that unknown events are ignored."""
         event = Event(
