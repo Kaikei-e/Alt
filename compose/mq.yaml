@@ -42,6 +42,7 @@ services:
       context: ../mq-hub
       dockerfile: Dockerfile
     container_name: mq-hub
+    mem_limit: 128m
     environment:
       - REDIS_URL=redis://redis-streams:6379
       - CONNECT_PORT=9500

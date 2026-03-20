@@ -11,6 +11,7 @@ services:
       dockerfile: Dockerfile
     container_name: rag-db
     restart: always
+    mem_limit: 512m
     command: >
       postgres
       -c config_file=/etc/postgresql/postgresql.conf
@@ -75,6 +76,7 @@ services:
     build:
       context: ../rag-orchestrator
       dockerfile: Dockerfile
+    mem_limit: 128m
     environment:
       - ENV=production
       - PORT=9010
@@ -86,8 +88,10 @@ services:
       - DB_NAME=${RAG_DB_NAME:-rag_db}
       - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL}
       - EMBEDDER_TIMEOUT=30
-      - AUGUR_EXTERNAL=${AUGUR_EXTERNAL}
-      - AUGUR_KNOWLEDGE_MODEL=${AUGUR_KNOWLEDGE_MODEL:-gemma3-4b-rag}
+      # RAG answer generation: local-first (ADR-497 follow-up)
+      # Override AUGUR_EXTERNAL in .env to route to remote Mac if needed
+      - AUGUR_EXTERNAL=${AUGUR_EXTERNAL:-http://news-creator-backend:11435}
+      - AUGUR_KNOWLEDGE_MODEL=${AUGUR_KNOWLEDGE_MODEL:-gemma3-4b-8k}
       - SEARCH_INDEXER_URL=http://search-indexer:9300
       - QUERY_EXPANSION_URL=http://news-creator:11434
       - QUERY_EXPANSION_TIMEOUT=15
@@ -113,7 +117,7 @@ services:
       - rask.group=rag-orchestrator
     extra_hosts:
       - "embedder-external:${EMBEDDER_EXTERNAL_HOST}"
-      - "augur-external:${AUGUR_EXTERNAL_HOST}"
+      - "augur-external:${AUGUR_EXTERNAL_HOST:-127.0.0.1}"
       - "rerank-external:${RERANK_EXTERNAL_HOST:-127.0.0.1}"
     logging:
       driver: "json-file"

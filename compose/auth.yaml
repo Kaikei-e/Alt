@@ -8,6 +8,7 @@ services:
   kratos-db:
     image: postgres:16-alpine
     restart: always
+    mem_limit: 128m
     command: >
       postgres
       -c config_file=/etc/postgresql/postgresql.conf
@@ -68,6 +69,7 @@ services:
 
   kratos:
     image: oryd/kratos:v1.3.0
+    mem_limit: 128m
     command: ["kratos", "serve", "all", "--config", "/etc/config/kratos/kratos.yml"]
     ports:
       - "4433:4433"
@@ -147,12 +149,11 @@ services:
       retries: 3
       start_period: 5s
     restart: unless-stopped
+    mem_limit: 128m
     networks:
       - alt-network
     deploy:
       resources:
-        limits:
-          memory: 128M
         reservations:
           memory: 64M
     labels:

@@ -10,6 +10,7 @@ services:
       context: ../rask-log-aggregator
       dockerfile: Dockerfile.rask-log-aggregator
     restart: unless-stopped
+    mem_limit: 128m
     ports:
       - "9600:9600"   # HTTP API (既存)
       - "4317:4317"   # OTLP gRPC
@@ -48,6 +49,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 128m
     networks:
       - alt-network
     depends_on:
@@ -74,6 +76,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:
@@ -100,6 +103,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:
@@ -126,6 +130,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 128m
     networks:
       - alt-network
     depends_on:
@@ -152,6 +157,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:
@@ -178,6 +184,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:
@@ -204,6 +211,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:
@@ -231,6 +239,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 128m
     networks:
       - alt-network
     depends_on:
@@ -261,6 +270,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:
@@ -287,6 +297,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:
@@ -313,6 +324,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:
@@ -339,6 +351,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:
@@ -367,6 +380,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:
@@ -393,6 +407,7 @@ services:
     build:
       context: ../rask-log-forwarder
       dockerfile: Dockerfile.rask-log-forwarder
+    mem_limit: 64m
     networks:
       - alt-network
     depends_on:

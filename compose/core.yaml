@@ -9,6 +9,7 @@ services:
   nginx:
     image: nginx:latest
     restart: always
+    mem_limit: 512m
     healthcheck:
       test: ["CMD-SHELL", "pidof nginx || exit 1"]
       interval: 10s
@@ -35,8 +36,6 @@ services:
       - alt-network
     deploy:
       resources:
-        limits:
-          memory: 512M
         reservations:
           memory: 256M
     ulimits:
@@ -71,6 +70,7 @@ services:
     ports:
       - "4173:4173"
     restart: always
+    mem_limit: 512m
     depends_on:
       alt-butterfly-facade:
         condition: service_healthy
@@ -78,8 +78,6 @@ services:
       - alt-network
     deploy:
       resources:
-        limits:
-          memory: 512M
         reservations:
           memory: 256M
     tty: true
@@ -149,7 +147,6 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
           cpus: '4.0'
         reservations:
           memory: 2G

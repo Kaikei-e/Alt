@@ -10,6 +10,7 @@ services:
   pgbouncer:
     image: edoburu/pgbouncer:v1.25.1-p0
     restart: always
+    mem_limit: 256m
     entrypoint:
       - /bin/sh
       - -c
@@ -44,10 +45,6 @@ services:
       start_period: 10s
     networks:
       - alt-network
-    deploy:
-      resources:
-        limits:
-          memory: 256M
     labels:
       - rask.group=pgbouncer
     logging:
@@ -59,6 +56,7 @@ services:
   pgbouncer-kratos:
     image: edoburu/pgbouncer:v1.25.1-p0
     restart: always
+    mem_limit: 128m
     entrypoint:
       - /bin/sh
       - -c
@@ -94,10 +92,6 @@ services:
       start_period: 10s
     networks:
       - alt-network
-    deploy:
-      resources:
-        limits:
-          memory: 128M
     labels:
       - rask.group=pgbouncer-kratos
     logging:

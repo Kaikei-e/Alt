@@ -41,12 +41,11 @@ services:
       retries: 3
       start_period: 5s
     restart: unless-stopped
+    mem_limit: 128m
     networks:
       - alt-network
     deploy:
       resources:
-        limits:
-          memory: 128M
         reservations:
           memory: 64M
     labels:

@@ -31,6 +31,7 @@ services:
   # Ollama server (separated from news-creator for faster deployments)
   news-creator-backend:
     container_name: news-creator-backend
+    mem_limit: 4g
     env_file:
       - ../.env
     build:
@@ -93,6 +94,7 @@ services:
   # FastAPI application (lightweight, separated from Ollama)
   news-creator:
     container_name: news-creator
+    mem_limit: 128m
     env_file:
       - ../.env
     build:
@@ -127,6 +129,14 @@ services:
       - MAX_QUEUE_DEPTH=${MAX_QUEUE_DEPTH:-10}
       # LIFO scheduling: newest summary requests processed first (swipe-feed optimization)
       - SCHEDULING_RT_MODE=${SCHEDULING_RT_MODE:-lifo}
+      # Distributed BE dispatch: offload batch summarization to remote Ollama instances
+      - DISTRIBUTED_BE_ENABLED=${DISTRIBUTED_BE_ENABLED:-false}
+      - DISTRIBUTED_BE_REMOTES=${DISTRIBUTED_BE_REMOTES:-}
+      - DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS=${DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS:-30}
+      - DISTRIBUTED_BE_TIMEOUT_SECONDS=${DISTRIBUTED_BE_TIMEOUT_SECONDS:-300}
+      - DISTRIBUTED_BE_COOLDOWN_SECONDS=${DISTRIBUTED_BE_COOLDOWN_SECONDS:-60}
+      - DISTRIBUTED_BE_REMOTE_MODEL=${DISTRIBUTED_BE_REMOTE_MODEL:-gemma3:4b-it-qat}
+      - DISTRIBUTED_BE_MODEL_OVERRIDES=${DISTRIBUTED_BE_MODEL_OVERRIDES:-}
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=news-creator
@@ -174,6 +184,7 @@ services:
   pre-processor:
     env_file:
       - ../.env
+    mem_limit: 128m
     build:
       context: ../pre-processor
       dockerfile: Dockerfile
