@@ -27,8 +27,13 @@ def create_health_router(ollama_gateway: Optional[Any] = None) -> APIRouter:
         Returns:
             Dict with queue depths, available slots, and accepting state
         """
-        if ollama_gateway is not None and hasattr(ollama_gateway, "_semaphore"):
-            return ollama_gateway._semaphore.queue_status()
+        if ollama_gateway is not None:
+            # OllamaGateway: read from _semaphore
+            if hasattr(ollama_gateway, "_semaphore"):
+                return ollama_gateway._semaphore.queue_status()
+            # DistributingGateway exposes queue_status() directly
+            if callable(getattr(ollama_gateway, "queue_status", None)):
+                return ollama_gateway.queue_status()
         return {
             "rt_queue": 0,
             "be_queue": 0,

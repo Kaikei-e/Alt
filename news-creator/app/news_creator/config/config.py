@@ -175,6 +175,35 @@ class NewsCreatorConfig:
         # where the user's current view should get priority
         self.scheduling_rt_mode = os.getenv("SCHEDULING_RT_MODE", "fifo").lower()
 
+        # Distributed BE dispatch (default OFF for OSS compatibility)
+        self.distributed_be_enabled = (
+            os.getenv("DISTRIBUTED_BE_ENABLED", "false").lower() == "true"
+        )
+        self.distributed_be_remotes = self._parse_remote_urls(
+            os.getenv("DISTRIBUTED_BE_REMOTES", "")
+        )
+        self.distributed_be_health_interval_seconds = self._get_int(
+            "DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS", 30
+        )
+        self.distributed_be_timeout_seconds = self._get_int(
+            "DISTRIBUTED_BE_TIMEOUT_SECONDS", 300
+        )
+        self.distributed_be_cooldown_seconds = self._get_int(
+            "DISTRIBUTED_BE_COOLDOWN_SECONDS", 60
+        )
+        self.distributed_be_remote_model = os.getenv(
+            "DISTRIBUTED_BE_REMOTE_MODEL", "gemma3:4b-it-qat"
+        ).strip()
+        self.distributed_be_model_overrides = self._parse_model_overrides(
+            os.getenv("DISTRIBUTED_BE_MODEL_OVERRIDES", "")
+        )
+
+        if self.distributed_be_enabled and not self.distributed_be_remotes:
+            logger.warning(
+                "DISTRIBUTED_BE_ENABLED=true but DISTRIBUTED_BE_REMOTES is empty; "
+                "distributed dispatch will be effectively disabled"
+            )
+
         # Build bucket model names set for quick lookup
         self._bucket_model_names = {
             self.model_8k_name,
@@ -242,6 +271,38 @@ class NewsCreatorConfig:
         else:
             # Unknown model: use default keep_alive (backward compatibility)
             return self.llm_keep_alive
+
+    def _parse_model_overrides(self, raw: str) -> dict[str, str]:
+        """Parse comma-separated url=model overrides into a dict."""
+        overrides: dict[str, str] = {}
+        for part in raw.split(","):
+            part = part.strip()
+            if not part or "=" not in part:
+                continue
+            url, model = part.split("=", 1)
+            url = url.strip().rstrip("/")
+            model = model.strip()
+            if url and model:
+                overrides[url] = model
+        return overrides
+
+    def _parse_remote_urls(self, raw: str) -> list[str]:
+        """Parse comma-separated remote URLs, stripping whitespace and trailing slashes."""
+        urls = []
+        seen: set[str] = set()
+        for part in raw.split(","):
+            url = part.strip().rstrip("/")
+            if not url:
+                continue
+            if url in seen:
+                logger.warning("Duplicate remote URL ignored: %s", url)
+                continue
+            if not url.startswith("http://") and not url.startswith("https://"):
+                logger.warning("Remote URL missing scheme, ignored: %s", url)
+                continue
+            seen.add(url)
+            urls.append(url)
+        return urls
 
     def _get_int(self, name: str, default: int) -> int:
         """Get integer value from environment variable with fallback."""
