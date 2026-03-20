@@ -95,9 +95,7 @@ class ConnectArticleFetcher:
         not articles older than the cursor. With backward keyset pagination,
         the first page (no cursor) returns the newest results.
         """
-        return self.fetch_articles(
-            conn, self._FIRST_PAGE_SENTINEL, "", custom_batch_size, untagged_only=False
-        )
+        return self.fetch_articles(conn, self._FIRST_PAGE_SENTINEL, "", custom_batch_size, untagged_only=False)
 
     def count_untagged_articles(self, conn: Any) -> int:
         """Count untagged articles via ListUntaggedArticles RPC."""
