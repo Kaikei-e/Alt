@@ -17,6 +17,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/mocks"
+	"alt/usecase/feed_link_usecase"
 	"alt/usecase/register_favorite_feed_usecase"
 )
 
@@ -120,10 +121,10 @@ func TestListRSSFeedLinksResponse_Empty(t *testing.T) {
 
 func TestDeleteRSSFeedLinkResponse_Construction(t *testing.T) {
 	resp := &rssv2.DeleteRSSFeedLinkResponse{
-		Message: "Feed link deleted",
+		Message: "Feed unsubscribed",
 	}
 
-	assert.Equal(t, "Feed link deleted", resp.Message)
+	assert.Equal(t, "Feed unsubscribed", resp.Message)
 }
 
 func TestRegisterFavoriteFeedResponse_Construction(t *testing.T) {
@@ -459,4 +460,43 @@ func TestRegisterFavoriteFeed_UsecaseError(t *testing.T) {
 
 	_, err := h.RegisterFavoriteFeed(ctx, req)
 	assert.Error(t, err)
+}
+
+func TestDeleteRSSFeedLink_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	ctx := createAuthContext()
+	userCtx, err := domain.GetUserFromContext(ctx)
+	assert.NoError(t, err)
+
+	feedLinkID := uuid.New()
+	mockPort := mocks.NewMockSubscriptionPort(ctrl)
+	mockPort.EXPECT().Unsubscribe(gomock.Any(), userCtx.UserID, feedLinkID).Return(nil)
+
+	usecase := feed_link_usecase.NewDeleteFeedLinkUsecase(mockPort)
+	container := &di.ApplicationComponents{
+		DeleteFeedLinkUsecase: usecase,
+	}
+	h := newTestHandler(t, container)
+
+	req := connect.NewRequest(&rssv2.DeleteRSSFeedLinkRequest{
+		Id: feedLinkID.String(),
+	})
+
+	resp, err := h.DeleteRSSFeedLink(ctx, req)
+	assert.NoError(t, err)
+	assert.Equal(t, "Feed unsubscribed", resp.Msg.Message)
+}
+
+func TestDeleteRSSFeedLink_InvalidID(t *testing.T) {
+	h := newTestHandler(t, &di.ApplicationComponents{})
+
+	req := connect.NewRequest(&rssv2.DeleteRSSFeedLinkRequest{
+		Id: "not-a-uuid",
+	})
+
+	_, err := h.DeleteRSSFeedLink(createAuthContext(), req)
+	assert.Error(t, err)
+	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }

@@ -316,7 +316,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	feedLinkGatewayImpl := feed_link_gateway.NewFeedLinkGateway(pool)
 	listFeedLinksUsecase := feed_link_usecase.NewListFeedLinksUsecase(feedLinkGatewayImpl)
 	listFeedLinksWithHealthUsecase := feed_link_usecase.NewListFeedLinksWithHealthUsecase(feedLinkGatewayImpl)
-	deleteFeedLinkUsecase := feed_link_usecase.NewDeleteFeedLinkUsecase(feedLinkGatewayImpl)
 
 	updateFeedStatusGatewayImpl := update_feed_status_gateway.NewUpdateFeedStatusGateway(pool)
 	feedsReadingStatusUsecase := reading_status.NewFeedsReadingStatusUsecase(updateFeedStatusGatewayImpl)
@@ -529,6 +528,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	listSubscriptionsUsecase := subscription_usecase.NewListSubscriptionsUsecase(subscriptionGatewayImpl)
 	subscribeUsecase := subscription_usecase.NewSubscribeUsecase(subscriptionGatewayImpl)
 	unsubscribeUsecase := subscription_usecase.NewUnsubscribeUsecase(subscriptionGatewayImpl)
+	deleteFeedLinkUsecase := feed_link_usecase.NewDeleteFeedLinkUsecase(subscriptionGatewayImpl)
 
 	// OPML components
 	opmlExportGateway := opml_gateway.NewExportGateway(pool)

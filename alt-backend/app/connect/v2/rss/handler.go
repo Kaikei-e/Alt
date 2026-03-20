@@ -125,7 +125,7 @@ func (h *Handler) DeleteRSSFeedLink(
 	ctx context.Context,
 	req *connect.Request[rssv2.DeleteRSSFeedLinkRequest],
 ) (*connect.Response[rssv2.DeleteRSSFeedLinkResponse], error) {
-	_, err := middleware.GetUserContext(ctx)
+	userCtx, err := middleware.GetUserContext(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
@@ -143,12 +143,12 @@ func (h *Handler) DeleteRSSFeedLink(
 	}
 
 	// Call usecase
-	if err := h.container.DeleteFeedLinkUsecase.Execute(ctx, linkID); err != nil {
+	if err := h.container.DeleteFeedLinkUsecase.Execute(ctx, userCtx.UserID, linkID); err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "DeleteRSSFeedLink")
 	}
 
 	return connect.NewResponse(&rssv2.DeleteRSSFeedLinkResponse{
-		Message: "Feed link deleted",
+		Message: "Feed unsubscribed",
 	}), nil
 }
 

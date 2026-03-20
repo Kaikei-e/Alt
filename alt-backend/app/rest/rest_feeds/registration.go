@@ -2,6 +2,7 @@ package rest_feeds
 
 import (
 	"alt/di"
+	"alt/domain"
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"net/http"
@@ -99,17 +100,23 @@ func RestHandleListRSSFeedLinks(container *di.ApplicationComponents) echo.Handle
 
 func RestHandleDeleteRSSFeedLink(container *di.ApplicationComponents) echo.HandlerFunc {
 	return func(c echo.Context) error {
+		ctx := c.Request().Context()
 		idParam := c.Param("id")
 		linkID, err := uuid.Parse(idParam)
 		if err != nil {
 			return HandleValidationError(c, "Invalid feed link ID", "id", idParam)
 		}
 
-		if err := container.DeleteFeedLinkUsecase.Execute(c.Request().Context(), linkID); err != nil {
+		userCtx, err := domain.GetUserFromContext(ctx)
+		if err != nil {
+			return HandleError(c, err, "delete_feed_link")
+		}
+
+		if err := container.DeleteFeedLinkUsecase.Execute(ctx, userCtx.UserID, linkID); err != nil {
 			return HandleError(c, err, "delete_feed_link")
 		}
 
 		c.Response().Header().Set("Cache-Control", "no-cache")
-		return c.JSON(http.StatusOK, map[string]string{"message": "Feed link deleted"})
+		return c.JSON(http.StatusOK, map[string]string{"message": "Feed unsubscribed"})
 	}
 }
