@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"pre-processor/domain"
 	"pre-processor/orchestrator"
@@ -26,11 +27,13 @@ type mockArticleSummarizer struct {
 	result             *service.SummarizationResult
 	err                error
 	resetCalled        bool
+	summarizeCalled    bool
 	hasUnsummarized    bool
 	hasUnsummarizedErr error
 }
 
 func (m *mockArticleSummarizer) SummarizeArticles(_ context.Context, _ int) (*service.SummarizationResult, error) {
+	m.summarizeCalled = true
 	return m.result, m.err
 }
 
@@ -326,5 +329,123 @@ func TestProcessQualityCheckBatch_SkipsWhenSummarizationPending(t *testing.T) {
 
 		err := h.processQualityCheckBatch(ctx)
 		assert.NoError(t, err)
+	})
+}
+
+func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
+	t.Run("defers batch when queue has pending jobs", func(t *testing.T) {
+		ctx := context.Background()
+		mock := &mockArticleSummarizer{
+			result: &service.SummarizationResult{
+				ProcessedCount: 5,
+				SuccessCount:   5,
+				HasMore:        false,
+			},
+		}
+		h := &jobHandler{
+			articleSummarizer:       mock,
+			queueWorker:            newQueueWorkerWithJobs([]*domain.SummarizeJob{{ArticleID: "a1"}}),
+			logger:                 testJobHandlerLogger(),
+			jobGroup:               orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:              10,
+			batchSweepForceInterval: 30 * time.Minute,
+		}
+
+		err := h.processSummarizationBatch(ctx)
+		assert.NoError(t, err)
+		assert.False(t, mock.summarizeCalled, "SummarizeArticles should not be called when queue has pending jobs")
+	})
+
+	t.Run("runs batch when queue is empty", func(t *testing.T) {
+		ctx := context.Background()
+		mock := &mockArticleSummarizer{
+			result: &service.SummarizationResult{
+				ProcessedCount: 5,
+				SuccessCount:   5,
+				HasMore:        true,
+			},
+		}
+		h := &jobHandler{
+			articleSummarizer:       mock,
+			queueWorker:            newQueueWorkerWithJobs([]*domain.SummarizeJob{}),
+			logger:                 testJobHandlerLogger(),
+			jobGroup:               orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:              10,
+			batchSweepForceInterval: 30 * time.Minute,
+		}
+
+		err := h.processSummarizationBatch(ctx)
+		assert.NoError(t, err)
+		assert.True(t, mock.summarizeCalled, "SummarizeArticles should be called when queue is empty")
+	})
+
+	t.Run("proceeds with batch when HasPendingJobs returns error (fail-open)", func(t *testing.T) {
+		ctx := context.Background()
+		mock := &mockArticleSummarizer{
+			result: &service.SummarizationResult{
+				ProcessedCount: 3,
+				SuccessCount:   3,
+				HasMore:        false,
+			},
+		}
+		h := &jobHandler{
+			articleSummarizer:       mock,
+			queueWorker:            newQueueWorkerWithError(fmt.Errorf("db error")),
+			logger:                 testJobHandlerLogger(),
+			jobGroup:               orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:              10,
+			batchSweepForceInterval: 30 * time.Minute,
+		}
+
+		err := h.processSummarizationBatch(ctx)
+		assert.NoError(t, err)
+		assert.True(t, mock.summarizeCalled, "SummarizeArticles should be called on HasPendingJobs error (fail-open)")
+	})
+
+	t.Run("force sweeps after interval even with pending jobs", func(t *testing.T) {
+		ctx := context.Background()
+		mock := &mockArticleSummarizer{
+			result: &service.SummarizationResult{
+				ProcessedCount: 2,
+				SuccessCount:   2,
+				HasMore:        true,
+			},
+		}
+		h := &jobHandler{
+			articleSummarizer:       mock,
+			queueWorker:            newQueueWorkerWithJobs([]*domain.SummarizeJob{{ArticleID: "a1"}}),
+			logger:                 testJobHandlerLogger(),
+			jobGroup:               orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:              10,
+			batchSweepForceInterval: 30 * time.Minute,
+			lastBatchSweep:          time.Now().Add(-1 * time.Hour),
+		}
+
+		err := h.processSummarizationBatch(ctx)
+		assert.NoError(t, err)
+		assert.True(t, mock.summarizeCalled, "SummarizeArticles should be called for force sweep after interval")
+	})
+
+	t.Run("runs batch normally when queueWorker is nil", func(t *testing.T) {
+		ctx := context.Background()
+		mock := &mockArticleSummarizer{
+			result: &service.SummarizationResult{
+				ProcessedCount: 5,
+				SuccessCount:   5,
+				HasMore:        true,
+			},
+		}
+		h := &jobHandler{
+			articleSummarizer:       mock,
+			queueWorker:            nil,
+			logger:                 testJobHandlerLogger(),
+			jobGroup:               orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:              10,
+			batchSweepForceInterval: 30 * time.Minute,
+		}
+
+		err := h.processSummarizationBatch(ctx)
+		assert.NoError(t, err)
+		assert.True(t, mock.summarizeCalled, "SummarizeArticles should be called when queueWorker is nil")
 	})
 }

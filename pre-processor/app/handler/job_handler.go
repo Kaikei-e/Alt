@@ -13,14 +13,16 @@ import (
 
 // jobHandler implementation.
 type jobHandler struct {
-	articleSummarizer service.ArticleSummarizerService
-	qualityChecker    service.QualityCheckerService
-	articleSync       service.ArticleSyncService
-	healthChecker     service.HealthCheckerService
-	queueWorker       *service.SummarizeQueueWorker
-	logger            *slog.Logger
-	jobGroup          *orchestrator.JobGroup
-	batchSize         int
+	articleSummarizer       service.ArticleSummarizerService
+	qualityChecker          service.QualityCheckerService
+	articleSync             service.ArticleSyncService
+	healthChecker           service.HealthCheckerService
+	queueWorker             *service.SummarizeQueueWorker
+	logger                  *slog.Logger
+	jobGroup                *orchestrator.JobGroup
+	batchSize               int
+	lastBatchSweep          time.Time
+	batchSweepForceInterval time.Duration
 }
 
 // NewJobHandler creates a new job handler.
@@ -35,14 +37,16 @@ func NewJobHandler(
 	logger *slog.Logger,
 ) JobHandler {
 	return &jobHandler{
-		articleSummarizer: articleSummarizer,
-		qualityChecker:    qualityChecker,
-		articleSync:       articleSync,
-		healthChecker:     healthChecker,
-		queueWorker:       queueWorker,
-		logger:            logger,
-		jobGroup:          orchestrator.NewJobGroup(ctx, logger),
-		batchSize:         batchSize,
+		articleSummarizer:       articleSummarizer,
+		qualityChecker:          qualityChecker,
+		articleSync:             articleSync,
+		healthChecker:           healthChecker,
+		queueWorker:             queueWorker,
+		logger:                  logger,
+		jobGroup:                orchestrator.NewJobGroup(ctx, logger),
+		batchSize:               batchSize,
+		lastBatchSweep:          time.Now(),
+		batchSweepForceInterval: 30 * time.Minute,
 	}
 }
 
@@ -153,11 +157,33 @@ func (h *jobHandler) Stop() error {
 }
 
 // processSummarizationBatch processes a batch of articles for summarization.
+// When the queue worker has pending jobs, the batch is deferred to avoid GPU
+// contention. A periodic force sweep prevents indefinite deferral.
 func (h *jobHandler) processSummarizationBatch(ctx context.Context) error {
+	if h.queueWorker != nil && h.batchSweepForceInterval > 0 {
+		forceSweep := !h.lastBatchSweep.IsZero() &&
+			time.Since(h.lastBatchSweep) >= h.batchSweepForceInterval
+
+		if !forceSweep {
+			hasPending, err := h.queueWorker.HasPendingJobs(ctx)
+			if err != nil {
+				h.logger.WarnContext(ctx, "failed to check pending jobs, proceeding with batch", "error", err)
+			} else if hasPending {
+				h.logger.InfoContext(ctx, "deferring batch safety-net: queue worker has pending jobs")
+				return nil
+			}
+		} else {
+			h.logger.InfoContext(ctx, "force-running batch safety-net sweep",
+				"elapsed_since_last", time.Since(h.lastBatchSweep).String())
+		}
+	}
+
 	result, err := h.articleSummarizer.SummarizeArticles(ctx, h.batchSize)
 	if err != nil {
 		return err
 	}
+
+	h.lastBatchSweep = time.Now()
 
 	if !result.HasMore {
 		h.logger.InfoContext(ctx, "reached end of articles, resetting pagination cursor")
