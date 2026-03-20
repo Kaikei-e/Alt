@@ -81,4 +81,3 @@ func (u *answerWithRAGUsecase) selectStrategy(intentType IntentType) RetrievalSt
 	}
 	return u.generalStrategy
 }
-

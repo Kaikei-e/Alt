@@ -344,10 +344,10 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		}
 		h := &jobHandler{
 			articleSummarizer:       mock,
-			queueWorker:            newQueueWorkerWithJobs([]*domain.SummarizeJob{{ArticleID: "a1"}}),
-			logger:                 testJobHandlerLogger(),
-			jobGroup:               orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
-			batchSize:              10,
+			queueWorker:             newQueueWorkerWithJobs([]*domain.SummarizeJob{{ArticleID: "a1"}}),
+			logger:                  testJobHandlerLogger(),
+			jobGroup:                orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:               10,
 			batchSweepForceInterval: 30 * time.Minute,
 		}
 
@@ -367,10 +367,10 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		}
 		h := &jobHandler{
 			articleSummarizer:       mock,
-			queueWorker:            newQueueWorkerWithJobs([]*domain.SummarizeJob{}),
-			logger:                 testJobHandlerLogger(),
-			jobGroup:               orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
-			batchSize:              10,
+			queueWorker:             newQueueWorkerWithJobs([]*domain.SummarizeJob{}),
+			logger:                  testJobHandlerLogger(),
+			jobGroup:                orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:               10,
 			batchSweepForceInterval: 30 * time.Minute,
 		}
 
@@ -390,10 +390,10 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		}
 		h := &jobHandler{
 			articleSummarizer:       mock,
-			queueWorker:            newQueueWorkerWithError(fmt.Errorf("db error")),
-			logger:                 testJobHandlerLogger(),
-			jobGroup:               orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
-			batchSize:              10,
+			queueWorker:             newQueueWorkerWithError(fmt.Errorf("db error")),
+			logger:                  testJobHandlerLogger(),
+			jobGroup:                orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:               10,
 			batchSweepForceInterval: 30 * time.Minute,
 		}
 
@@ -413,10 +413,10 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		}
 		h := &jobHandler{
 			articleSummarizer:       mock,
-			queueWorker:            newQueueWorkerWithJobs([]*domain.SummarizeJob{{ArticleID: "a1"}}),
-			logger:                 testJobHandlerLogger(),
-			jobGroup:               orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
-			batchSize:              10,
+			queueWorker:             newQueueWorkerWithJobs([]*domain.SummarizeJob{{ArticleID: "a1"}}),
+			logger:                  testJobHandlerLogger(),
+			jobGroup:                orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:               10,
 			batchSweepForceInterval: 30 * time.Minute,
 			lastBatchSweep:          time.Now().Add(-1 * time.Hour),
 		}
@@ -437,10 +437,10 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		}
 		h := &jobHandler{
 			articleSummarizer:       mock,
-			queueWorker:            nil,
-			logger:                 testJobHandlerLogger(),
-			jobGroup:               orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
-			batchSize:              10,
+			queueWorker:             nil,
+			logger:                  testJobHandlerLogger(),
+			jobGroup:                orchestrator.NewJobGroup(ctx, testJobHandlerLogger()),
+			batchSize:               10,
 			batchSweepForceInterval: 30 * time.Minute,
 		}
 
