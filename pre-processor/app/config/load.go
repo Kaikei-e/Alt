@@ -326,6 +326,10 @@ func loadSummarizeQueueConfig(cfg *SummarizeQueueConfig) error {
 		return err
 	}
 
+	if cfg.Concurrency, err = parseIntEnv("SUMMARIZE_QUEUE_CONCURRENCY", cfg.Concurrency); err != nil {
+		return err
+	}
+
 	return nil
 }
 

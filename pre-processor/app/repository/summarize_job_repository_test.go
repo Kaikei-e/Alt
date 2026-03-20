@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"pre-processor/domain"
@@ -119,10 +120,10 @@ func TestSummarizeJobRepository_GetPendingJobs(t *testing.T) {
 		assert.Nil(t, jobs)
 	})
 
-	// Note: GetPendingJobs uses ORDER BY created_at DESC (LIFO) so the queue worker
-	// processes the most recently created jobs first. This optimizes for swipe-feed UIs
-	// where the user's current view should get priority.
-	// Full ordering verification requires integration tests with a real database.
+	t.Run("should query pending jobs oldest first", func(t *testing.T) {
+		assert.True(t, strings.Contains(getPendingJobsQuery, "ORDER BY created_at ASC"),
+			"pending jobs should be dequeued oldest-first to avoid backlog starvation")
+	})
 }
 
 func TestSummarizeJobRepository_RecoverStuckJobs(t *testing.T) {

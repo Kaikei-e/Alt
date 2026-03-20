@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"pre-processor/domain"
@@ -21,6 +23,7 @@ type SummarizeQueueWorker struct {
 	summaryRepo     repository.SummaryRepository
 	logger          *slog.Logger
 	batchSize       int
+	concurrency     int
 	lastRecoveryRun time.Time
 }
 
@@ -40,7 +43,17 @@ func NewSummarizeQueueWorker(
 		summaryRepo: summaryRepo,
 		logger:      logger,
 		batchSize:   batchSize,
+		concurrency: 1,
 	}
+}
+
+// SetConcurrency configures how many queue jobs can be processed concurrently.
+func (w *SummarizeQueueWorker) SetConcurrency(concurrency int) {
+	if concurrency <= 0 {
+		w.concurrency = 1
+		return
+	}
+	w.concurrency = concurrency
 }
 
 // HasPendingJobs checks if there are any pending summarization jobs in the queue.
@@ -88,27 +101,66 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 
 	w.logger.InfoContext(ctx, "processing queued summarization jobs", "count", len(jobs))
 
-	// Process each job
+	workerCount := w.concurrency
+	if workerCount <= 0 {
+		workerCount = 1
+	}
+	if workerCount > len(jobs) {
+		workerCount = len(jobs)
+	}
+
+	jobCh := make(chan *domain.SummarizeJob)
+	var wg sync.WaitGroup
+	var overloadOnce sync.Once
+	var overloaded atomic.Bool
+
+	workerFn := func() {
+		defer wg.Done()
+		for job := range jobCh {
+			if ctx.Err() != nil {
+				continue
+			}
+
+			if err := w.processJob(ctx, job); err != nil {
+				if errors.Is(err, domain.ErrServiceOverloaded) {
+					overloadOnce.Do(func() {
+						overloaded.Store(true)
+						w.logger.WarnContext(ctx, "downstream service overloaded, backing off queue worker",
+							"job_id", job.JobID,
+							"article_id", job.ArticleID)
+					})
+					continue
+				}
+
+				w.logger.ErrorContext(ctx, "failed to process job", "error", err, "job_id", job.JobID, "article_id", job.ArticleID)
+			}
+		}
+	}
+
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go workerFn()
+	}
+
 	for i, job := range jobs {
 		if ctx.Err() != nil {
 			w.logger.WarnContext(ctx, "context canceled, skipping remaining jobs",
 				"remaining", len(jobs)-i)
 			break
 		}
-
-		if err := w.processJob(ctx, job); err != nil {
-			// Check for downstream overload (429) - back off and skip remaining jobs
-			if errors.Is(err, domain.ErrServiceOverloaded) {
-				w.logger.WarnContext(ctx, "downstream service overloaded, backing off and skipping remaining jobs",
-					"job_id", job.JobID,
-					"article_id", job.ArticleID,
-					"remaining", len(jobs)-i-1)
-				return domain.ErrServiceOverloaded
-			}
-			w.logger.ErrorContext(ctx, "failed to process job", "error", err, "job_id", job.JobID, "article_id", job.ArticleID)
-			// Continue processing other jobs even if one fails
-			continue
+		if overloaded.Load() {
+			w.logger.WarnContext(ctx, "downstream service overloaded, skipping remaining queued jobs",
+				"remaining", len(jobs)-i)
+			break
 		}
+		jobCh <- job
+	}
+
+	close(jobCh)
+	wg.Wait()
+
+	if overloaded.Load() {
+		return domain.ErrServiceOverloaded
 	}
 
 	return nil

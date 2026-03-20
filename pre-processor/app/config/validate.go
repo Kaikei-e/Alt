@@ -50,6 +50,10 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("summarize queue polling interval must be positive: %v", config.SummarizeQueue.PollingInterval)
 	}
 
+	if config.SummarizeQueue.Concurrency <= 0 {
+		return fmt.Errorf("summarize queue concurrency must be positive: %d", config.SummarizeQueue.Concurrency)
+	}
+
 	if config.HTTP.MinContentLength < 0 {
 		return fmt.Errorf("min content length must be non-negative: %d", config.HTTP.MinContentLength)
 	}

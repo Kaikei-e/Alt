@@ -80,6 +80,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	healthCheckerService := service.NewHealthCheckerServiceWithFactory(cfg, cfg.NewsCreator.Host, log)
 	articleSyncService := service.NewArticleSyncService(articleRepo, apiRepo, log)
 	summarizeQueueWorker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, batchSize)
+	summarizeQueueWorker.SetConcurrency(cfg.SummarizeQueue.Concurrency)
 
 	// Initialize health metrics collector
 	contextLogger := logger.NewContextLoggerWithOTel(logger.LoadLoggerConfigFromEnv(), otelEnabled)

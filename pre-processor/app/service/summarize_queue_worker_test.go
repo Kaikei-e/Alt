@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"pre-processor/domain"
 	"pre-processor/repository"
@@ -254,6 +256,33 @@ type stubAPIRepoContentTooShortThenSuccess struct {
 	summarizeCalls int
 }
 
+type stubAPIRepoConcurrent struct {
+	repository.ExternalAPIRepository
+	delay       time.Duration
+	inFlight    int32
+	maxInFlight int32
+	calls       int32
+}
+
+func (m *stubAPIRepoConcurrent) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
+	current := atomic.AddInt32(&m.inFlight, 1)
+	atomic.AddInt32(&m.calls, 1)
+	defer atomic.AddInt32(&m.inFlight, -1)
+
+	for {
+		observed := atomic.LoadInt32(&m.maxInFlight)
+		if current <= observed {
+			break
+		}
+		if atomic.CompareAndSwapInt32(&m.maxInFlight, observed, current) {
+			break
+		}
+	}
+
+	time.Sleep(m.delay)
+	return &domain.SummarizedContent{SummaryJapanese: "テスト要約"}, nil
+}
+
 func (m *stubAPIRepoContentTooShortThenSuccess) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
 	m.summarizeCalls++
 	if m.summarizeCalls == 1 {
@@ -427,5 +456,30 @@ func TestSummarizeQueueWorker_HasPendingJobs(t *testing.T) {
 		assert.Error(t, err)
 		assert.False(t, hasPending)
 		assert.Contains(t, err.Error(), "db connection failed")
+	})
+}
+
+func TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency(t *testing.T) {
+	t.Run("processes jobs concurrently when worker concurrency is increased", func(t *testing.T) {
+		jobs := []*domain.SummarizeJob{
+			{JobID: uuid.New(), ArticleID: "article-1", MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-2", MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-3", MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoConcurrent{delay: 40 * time.Millisecond}
+		summaryRepo := &stubSummaryRepoForWorker{}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+		worker.SetConcurrency(3)
+
+		err := worker.ProcessQueue(context.Background())
+
+		assert.NoError(t, err)
+		assert.Equal(t, int32(3), atomic.LoadInt32(&apiRepo.calls))
+		assert.Equal(t, int32(3), atomic.LoadInt32(&apiRepo.maxInFlight),
+			"expected worker to utilize configured concurrency")
 	})
 }

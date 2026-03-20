@@ -94,6 +94,7 @@ type SummarizeQueueConfig struct {
 	WorkerInterval  time.Duration `json:"worker_interval" env:"SUMMARIZE_QUEUE_WORKER_INTERVAL" default:"10s"`
 	MaxRetries      int           `json:"max_retries" env:"SUMMARIZE_QUEUE_MAX_RETRIES" default:"3"`
 	PollingInterval time.Duration `json:"polling_interval" env:"SUMMARIZE_QUEUE_POLLING_INTERVAL" default:"5s"`
+	Concurrency     int           `json:"concurrency" env:"SUMMARIZE_QUEUE_CONCURRENCY" default:"3"`
 }
 
 func defaultConfig() *Config {
@@ -161,6 +162,7 @@ func defaultConfig() *Config {
 			WorkerInterval:  10 * time.Second,
 			MaxRetries:      3,
 			PollingInterval: 5 * time.Second,
+			Concurrency:     3,
 		},
 		AltService: AltServiceConfig{
 			Host:    "http://alt-backend:9000",

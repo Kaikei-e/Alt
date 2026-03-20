@@ -124,6 +124,7 @@ func TestValidateConfig(t *testing.T) {
 					WorkerInterval:  10 * time.Second,
 					MaxRetries:      3,
 					PollingInterval: 5 * time.Second,
+					Concurrency:     3,
 				},
 			},
 			expectError: false,
@@ -222,6 +223,7 @@ func TestConfigManager(t *testing.T) {
 				WorkerInterval:  10 * time.Second,
 				MaxRetries:      3,
 				PollingInterval: 5 * time.Second,
+				Concurrency:     3,
 			},
 		}
 
@@ -243,6 +245,7 @@ func TestConfigManager(t *testing.T) {
 				WorkerInterval:  10 * time.Second,
 				MaxRetries:      3,
 				PollingInterval: 5 * time.Second,
+				Concurrency:     3,
 			},
 		}
 

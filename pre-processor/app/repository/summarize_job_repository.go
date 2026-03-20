@@ -20,6 +20,16 @@ type summarizeJobRepository struct {
 	logger *slog.Logger
 }
 
+const getPendingJobsQuery = `
+		SELECT id, job_id, article_id, status, summary, error_message,
+		       retry_count, max_retries, created_at, started_at, completed_at
+		FROM summarize_job_queue
+		WHERE status = 'pending'
+		ORDER BY created_at ASC
+		LIMIT $1
+		FOR UPDATE SKIP LOCKED
+	`
+
 // NewSummarizeJobRepository creates a new summarize job repository.
 func NewSummarizeJobRepository(db *pgxpool.Pool, logger *slog.Logger) SummarizeJobRepository {
 	return &summarizeJobRepository{
@@ -261,17 +271,7 @@ func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) 
 
 	r.logger.DebugContext(ctx, "getting pending summarization jobs", "limit", limit)
 
-	query := `
-		SELECT id, job_id, article_id, status, summary, error_message,
-		       retry_count, max_retries, created_at, started_at, completed_at
-		FROM summarize_job_queue
-		WHERE status = 'pending'
-		ORDER BY created_at DESC
-		LIMIT $1
-		FOR UPDATE SKIP LOCKED
-	`
-
-	rows, err := r.db.Query(ctx, query, limit)
+	rows, err := r.db.Query(ctx, getPendingJobsQuery, limit)
 	if err != nil {
 		r.logger.ErrorContext(ctx, "failed to get pending jobs", "error", err)
 		return nil, fmt.Errorf("failed to get pending jobs: %w", err)
