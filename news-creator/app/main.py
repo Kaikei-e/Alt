@@ -79,6 +79,38 @@ class DependencyContainer:
         # Gateway layer (ACL)
         self.ollama_gateway = OllamaGateway(self.config)
 
+        # Distributed BE dispatch (optional, default OFF)
+        if self.config.distributed_be_enabled and self.config.distributed_be_remotes:
+            from news_creator.gateway.remote_ollama_driver import RemoteOllamaDriver
+            from news_creator.gateway.remote_health_checker import RemoteHealthChecker
+            from news_creator.gateway.distributing_gateway import DistributingGateway
+
+            remote_driver = RemoteOllamaDriver(
+                timeout_seconds=self.config.distributed_be_timeout_seconds,
+            )
+            health_checker = RemoteHealthChecker(
+                remotes=self.config.distributed_be_remotes,
+                required_model=self.config.distributed_be_remote_model,
+                interval_seconds=self.config.distributed_be_health_interval_seconds,
+                cooldown_seconds=self.config.distributed_be_cooldown_seconds,
+                timeout_seconds=self.config.distributed_be_timeout_seconds,
+                model_overrides=self.config.distributed_be_model_overrides,
+            )
+            self.llm_provider = DistributingGateway(
+                local_gateway=self.ollama_gateway,
+                health_checker=health_checker,
+                remote_driver=remote_driver,
+                enabled=True,
+                remote_model=self.config.distributed_be_remote_model,
+                model_overrides=self.config.distributed_be_model_overrides,
+            )
+            logger.info(
+                "Distributed BE dispatch enabled",
+                extra={"remotes": self.config.distributed_be_remotes},
+            )
+        else:
+            self.llm_provider = self.ollama_gateway
+
         # Service layer
         self.model_warmup_service = ModelWarmupService(
             self.config, self.ollama_gateway.driver
@@ -87,29 +119,29 @@ class DependencyContainer:
         # Usecase layer
         self.summarize_usecase = SummarizeUsecase(
             config=self.config,
-            llm_provider=self.ollama_gateway,
+            llm_provider=self.llm_provider,
         )
         self.recap_summary_usecase = RecapSummaryUsecase(
             config=self.config,
-            llm_provider=self.ollama_gateway,
+            llm_provider=self.llm_provider,
         )
         self.expand_query_usecase = ExpandQueryUsecase(
             config=self.config,
-            llm_provider=self.ollama_gateway,
+            llm_provider=self.llm_provider,
         )
         # Rerank usecase (cross-encoder, no Ollama dependency)
         self.rerank_usecase = RerankUsecase()
 
     async def initialize(self) -> None:
         """Initialize all async resources."""
-        await self.ollama_gateway.initialize()
+        await self.llm_provider.initialize()
         # Warm up models if enabled
         await self.model_warmup_service.warmup_models()
         logger.info("All dependencies initialized")
 
     async def cleanup(self) -> None:
         """Cleanup all async resources."""
-        await self.ollama_gateway.cleanup()
+        await self.llm_provider.cleanup()
         logger.info("All dependencies cleaned up")
 
 
@@ -144,7 +176,7 @@ app.include_router(
     tags=["summarization"]
 )
 app.include_router(
-    create_generate_router(container.ollama_gateway),
+    create_generate_router(container.llm_provider),
     tags=["generation"]
 )
 app.include_router(
@@ -160,7 +192,7 @@ app.include_router(
     tags=["reranking"]
 )
 app.include_router(
-    create_health_router(container.ollama_gateway),
+    create_health_router(container.llm_provider),
     tags=["health"]
 )
 

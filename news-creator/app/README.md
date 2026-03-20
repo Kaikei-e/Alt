@@ -36,6 +36,10 @@ uv sync
 export SERVICE_SECRET=your-secret-key
 export LLM_SERVICE_URL=http://localhost:11434
 export LLM_MODEL=gemma3:4b
+# Optional: distributed BE offload to private-network Ollama remotes
+export DISTRIBUTED_BE_ENABLED=false
+export DISTRIBUTED_BE_REMOTES=
+export DISTRIBUTED_BE_REMOTE_MODEL=gemma3:4b-it-qat
 
 # Run the service in standalone mode
 uv run python main.py
@@ -304,6 +308,24 @@ gunicorn main:app \
   --worker-class uvicorn.workers.UvicornWorker \
   --bind 0.0.0.0:8001
 ```
+
+### Optional: Distributed Batch Summarization
+
+Batch summarization can be offloaded to remote Ollama instances on a private network while keeping RT/streaming requests local.
+
+```bash
+DISTRIBUTED_BE_ENABLED=true
+DISTRIBUTED_BE_REMOTES=http://remote-a:11434,http://remote-b:11434
+DISTRIBUTED_BE_REMOTE_MODEL=gemma3:4b-it-qat
+DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS=30
+DISTRIBUTED_BE_TIMEOUT_SECONDS=300
+DISTRIBUTED_BE_COOLDOWN_SECONDS=60
+```
+
+Notes:
+- Keep this disabled by default for OSS compatibility.
+- Remotes must expose Ollama over your private network and have `gemma3:4b-it-qat` loaded.
+- On remote failure, the service retries the next healthy remote before falling back locally.
 
 ### Health Monitoring
 
