@@ -118,6 +118,30 @@ function getSubscriptionStatus(linkId: string): boolean {
 	return sub?.isSubscribed ?? false;
 }
 
+function setSubscriptionStatus(linkId: string, isSubscribed: boolean) {
+	const existing = subscriptions.find((s) => s.id === linkId);
+	if (existing) {
+		subscriptions = subscriptions.map((s) =>
+			s.id === linkId ? { ...s, isSubscribed } : s,
+		);
+		return;
+	}
+
+	const link = feedLinks.find((item) => item.id === linkId);
+	if (!link) return;
+
+	subscriptions = [
+		...subscriptions,
+		{
+			id: link.id,
+			url: link.url,
+			title: link.url,
+			isSubscribed,
+			createdAt: "",
+		},
+	];
+}
+
 async function handleToggleSubscription(linkId: string) {
 	if (togglingIds.has(linkId)) return;
 
@@ -126,17 +150,16 @@ async function handleToggleSubscription(linkId: string) {
 		const isCurrentlySubscribed = getSubscriptionStatus(linkId);
 		if (isCurrentlySubscribed) {
 			await unsubscribeClient(linkId);
+			setSubscriptionStatus(linkId, false);
 		} else {
 			await subscribeClient(linkId);
+			setSubscriptionStatus(linkId, true);
 		}
-		// Update local state optimistically
-		subscriptions = subscriptions.map((s) =>
-			s.id === linkId ? { ...s, isSubscribed: !s.isSubscribed } : s,
-		);
 	} catch (err) {
 		const message =
 			err instanceof Error ? err.message : "Failed to update subscription.";
 		actionMessage = { type: "error", text: message };
+		await loadSubscriptions();
 	} finally {
 		const next = new Set(togglingIds);
 		next.delete(linkId);
@@ -162,7 +185,7 @@ async function handleSubmit(event: Event) {
 			text: "Feed registered successfully.",
 		};
 		resetForm();
-		await loadFeedLinks();
+		await Promise.all([loadFeedLinks(), loadSubscriptions()]);
 	} catch (err) {
 		let message = "Failed to register feed.";
 		if (err instanceof Error) {
@@ -186,7 +209,7 @@ async function handleDeleteConfirmed() {
 	try {
 		await deleteFeedLinkClient(selectedLink.id);
 		actionMessage = { type: "success", text: "Feed link deleted." };
-		await loadFeedLinks();
+		await Promise.all([loadFeedLinks(), loadSubscriptions()]);
 	} catch (err) {
 		let message = "Failed to delete feed link.";
 		if (err instanceof Error) {
