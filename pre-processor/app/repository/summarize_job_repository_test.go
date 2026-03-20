@@ -126,6 +126,37 @@ func TestSummarizeJobRepository_GetPendingJobs(t *testing.T) {
 	})
 }
 
+func TestSummarizeJobRepository_DequeueJobs(t *testing.T) {
+	t.Run("should handle nil database gracefully", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		jobs, err := repo.DequeueJobs(context.Background(), 10)
+
+		assert.Error(t, err)
+		assert.Nil(t, jobs)
+	})
+
+	t.Run("should reject non-positive limit", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		jobs, err := repo.DequeueJobs(context.Background(), 0)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "limit must be positive")
+		assert.Nil(t, jobs)
+	})
+
+	t.Run("should reject negative limit", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		jobs, err := repo.DequeueJobs(context.Background(), -1)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "limit must be positive")
+		assert.Nil(t, jobs)
+	})
+}
+
 func TestSummarizeJobRepository_RecoverStuckJobs(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())

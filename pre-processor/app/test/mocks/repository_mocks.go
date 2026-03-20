@@ -467,6 +467,21 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) GetPendingJobs(ctx, limit any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPendingJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).GetPendingJobs), ctx, limit)
 }
 
+// DequeueJobs mocks base method.
+func (m *MockSummarizeJobRepository) DequeueJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DequeueJobs", ctx, limit)
+	ret0, _ := ret[0].([]*domain.SummarizeJob)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DequeueJobs indicates an expected call of DequeueJobs.
+func (mr *MockSummarizeJobRepositoryMockRecorder) DequeueJobs(ctx, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DequeueJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).DequeueJobs), ctx, limit)
+}
+
 // RecoverStuckJobs mocks base method.
 func (m *MockSummarizeJobRepository) RecoverStuckJobs(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()

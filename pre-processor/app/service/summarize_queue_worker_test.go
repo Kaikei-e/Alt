@@ -20,18 +20,27 @@ import (
 // stubJobRepo returns a fixed set of pending jobs.
 type stubJobRepo struct {
 	repository.SummarizeJobRepository
-	jobs        []*domain.SummarizeJob
-	cancelOnGet bool // cancel context after returning jobs
-	cancelFunc  context.CancelFunc
-	updateCalls int
-	getErr      error // error to return from GetPendingJobs
+	jobs            []*domain.SummarizeJob
+	cancelOnDequeue bool // cancel context after returning jobs
+	cancelFunc      context.CancelFunc
+	updateCalls     int
+	dequeueCalls    int
+	getErr          error // error to return from DequeueJobs
 }
 
 func (m *stubJobRepo) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
 	}
-	if m.cancelOnGet && m.cancelFunc != nil {
+	return m.jobs, nil
+}
+
+func (m *stubJobRepo) DequeueJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	m.dequeueCalls++
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	if m.cancelOnDequeue && m.cancelFunc != nil {
 		m.cancelFunc()
 	}
 	return m.jobs, nil
@@ -125,6 +134,10 @@ func (m *stubJobRepoTracking) GetPendingJobs(_ context.Context, _ int) ([]*domai
 	return m.jobs, nil
 }
 
+func (m *stubJobRepoTracking) DequeueJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	return m.jobs, nil
+}
+
 func (m *stubJobRepoTracking) UpdateJobStatus(_ context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMsg string) error {
 	m.updateCalls = append(m.updateCalls, updateJobStatusCall{
 		jobID:    jobID,
@@ -207,11 +220,11 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort(t *testing.T) {
 		assert.NoError(t, err, "should not return error for short content skip")
 		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
 
-		// Should have 2 UpdateJobStatus calls: running + completed
-		assert.Equal(t, 2, len(jobRepo.updateCalls), "should have running + completed status updates")
+		// Should have 1 UpdateJobStatus call: completed only (running is handled by DequeueJobs)
+		assert.Equal(t, 1, len(jobRepo.updateCalls), "should have completed status update only")
 
-		// Second call should be completed with skip reason
-		completedCall := jobRepo.updateCalls[1]
+		// The call should be completed with skip reason
+		completedCall := jobRepo.updateCalls[0]
 		assert.Equal(t, domain.SummarizeJobStatusCompleted, completedCall.status,
 			"should mark as completed, not dead_letter")
 		assert.Equal(t, "", completedCall.summary, "summary should be empty for skipped jobs")
@@ -302,9 +315,9 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 		}
 
 		jobRepo := &stubJobRepo{
-			jobs:        jobs,
-			cancelOnGet: true,
-			cancelFunc:  cancel,
+			jobs:            jobs,
+			cancelOnDequeue: true,
+			cancelFunc:      cancel,
 		}
 		articleRepo := &stubArticleRepoForWorker{}
 		apiRepo := &stubAPIRepoForWorker{}
@@ -370,6 +383,13 @@ type stubJobRepoWithRecovery struct {
 }
 
 func (m *stubJobRepoWithRecovery) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	return m.jobs, nil
+}
+
+func (m *stubJobRepoWithRecovery) DequeueJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
 	}
@@ -456,6 +476,117 @@ func TestSummarizeQueueWorker_HasPendingJobs(t *testing.T) {
 		assert.Error(t, err)
 		assert.False(t, hasPending)
 		assert.Contains(t, err.Error(), "db connection failed")
+	})
+}
+
+// stubSummaryRepoFailing always returns an error from Create.
+type stubSummaryRepoFailing struct {
+	repository.SummaryRepository
+	createCalls int
+	createErr   error
+}
+
+func (m *stubSummaryRepoFailing) Create(_ context.Context, _ *domain.ArticleSummary) error {
+	m.createCalls++
+	return m.createErr
+}
+
+func TestSummarizeQueueWorker_ProcessQueue_SummarySaveFailure(t *testing.T) {
+	t.Run("should not mark job completed when summary save fails", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-1", Status: domain.SummarizeJobStatusRunning, MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoForWorker{}
+		summaryRepo := &stubSummaryRepoFailing{createErr: fmt.Errorf("database connection lost")}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		err := worker.ProcessQueue(ctx)
+
+		// ProcessQueue does not propagate individual job errors (only ErrServiceOverloaded)
+		assert.NoError(t, err)
+
+		// summary save was attempted
+		assert.Equal(t, 1, summaryRepo.createCalls, "should attempt to save summary")
+
+		// Job should be marked as failed, NOT completed
+		assert.Equal(t, 1, len(jobRepo.updateCalls), "should have exactly one status update")
+		failedCall := jobRepo.updateCalls[0]
+		assert.Equal(t, domain.SummarizeJobStatusFailed, failedCall.status,
+			"job should be marked as failed when summary save fails, not completed")
+		assert.Contains(t, failedCall.errorMsg, "database connection lost",
+			"error message should describe the save failure")
+	})
+
+	t.Run("should mark job completed when summary saves successfully", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-1", Status: domain.SummarizeJobStatusRunning, MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoForWorker{}
+		summaryRepo := &stubSummaryRepoForWorker{}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		err := worker.ProcessQueue(ctx)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 1, summaryRepo.createCalls, "should save summary")
+
+		// Job should be marked as completed
+		assert.Equal(t, 1, len(jobRepo.updateCalls), "should have exactly one status update")
+		completedCall := jobRepo.updateCalls[0]
+		assert.Equal(t, domain.SummarizeJobStatusCompleted, completedCall.status,
+			"job should be marked as completed when summary saves successfully")
+	})
+}
+
+func TestSummarizeQueueWorker_ProcessQueue_AtomicDequeue(t *testing.T) {
+	t.Run("uses DequeueJobs for atomic pending-to-running transition", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-1", Status: domain.SummarizeJobStatusRunning, MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoForWorker{}
+		summaryRepo := &stubSummaryRepoForWorker{}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		err := worker.ProcessQueue(ctx)
+		assert.NoError(t, err)
+
+		// Verify no UpdateJobStatus call with "running" status — dequeue handles that atomically
+		for _, call := range jobRepo.updateCalls {
+			assert.NotEqual(t, domain.SummarizeJobStatusRunning, call.status,
+				"processJob should not separately transition to running; DequeueJobs does this atomically")
+		}
+	})
+
+	t.Run("DequeueJobs is called instead of GetPendingJobs", func(t *testing.T) {
+		ctx := context.Background()
+
+		jobRepo := &stubJobRepo{jobs: []*domain.SummarizeJob{}}
+
+		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger(), 10)
+
+		_ = worker.ProcessQueue(ctx)
+		assert.Equal(t, 1, jobRepo.dequeueCalls, "ProcessQueue should call DequeueJobs")
 	})
 }
 

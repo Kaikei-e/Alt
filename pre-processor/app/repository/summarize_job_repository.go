@@ -324,6 +324,93 @@ func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) 
 	return jobs, nil
 }
 
+// DequeueJobs atomically selects pending jobs and transitions them to running
+// in a single transaction, preventing duplicate processing under concurrency.
+// Uses FOR UPDATE SKIP LOCKED to avoid contention between concurrent workers.
+func (r *summarizeJobRepository) DequeueJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error) {
+	if limit <= 0 {
+		r.logger.ErrorContext(ctx, "limit must be positive", "limit", limit)
+		return nil, fmt.Errorf("limit must be positive")
+	}
+
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return nil, fmt.Errorf("database connection is nil")
+	}
+
+	r.logger.DebugContext(ctx, "dequeuing summarization jobs", "limit", limit)
+
+	now := time.Now()
+
+	// Atomic dequeue: select pending jobs and set them to running in one statement.
+	// FOR UPDATE SKIP LOCKED ensures concurrent workers don't pick the same rows.
+	query := `
+		UPDATE summarize_job_queue
+		SET status = 'running', started_at = $1
+		WHERE id IN (
+			SELECT id FROM summarize_job_queue
+			WHERE status = 'pending'
+			ORDER BY created_at ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, job_id, article_id, status, summary, error_message,
+		          retry_count, max_retries, created_at, started_at, completed_at
+	`
+
+	rows, err := r.db.Query(ctx, query, now, limit)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "failed to dequeue jobs", "error", err)
+		return nil, fmt.Errorf("failed to dequeue jobs: %w", err)
+	}
+	defer rows.Close()
+
+	jobs := make([]*domain.SummarizeJob, 0, limit)
+	for rows.Next() {
+		var job domain.SummarizeJob
+		var jobIDUUID uuid.UUID
+		var summary sql.NullString
+		var errorMessage sql.NullString
+		err := rows.Scan(
+			&job.ID,
+			&jobIDUUID,
+			&job.ArticleID,
+			&job.Status,
+			&summary,
+			&errorMessage,
+			&job.RetryCount,
+			&job.MaxRetries,
+			&job.CreatedAt,
+			&job.StartedAt,
+			&job.CompletedAt,
+		)
+		if err != nil {
+			r.logger.ErrorContext(ctx, "failed to scan dequeued job row", "error", err)
+			return nil, fmt.Errorf("failed to scan dequeued job row: %w", err)
+		}
+		job.JobID = jobIDUUID
+		if summary.Valid {
+			job.Summary = &summary.String
+		}
+		if errorMessage.Valid {
+			job.ErrorMessage = &errorMessage.String
+		}
+		jobs = append(jobs, &job)
+	}
+
+	if err := rows.Err(); err != nil {
+		r.logger.ErrorContext(ctx, "error iterating dequeued job rows", "error", err)
+		return nil, fmt.Errorf("error iterating dequeued job rows: %w", err)
+	}
+
+	if len(jobs) == 0 {
+		r.logger.DebugContext(ctx, "no pending jobs to dequeue")
+	} else {
+		r.logger.InfoContext(ctx, "dequeued summarization jobs", "count", len(jobs))
+	}
+	return jobs, nil
+}
+
 // RecoverStuckJobs resets jobs stuck in 'running' status for more than 10 minutes back to 'pending'.
 func (r *summarizeJobRepository) RecoverStuckJobs(ctx context.Context) (int64, error) {
 	if r.db == nil {

@@ -52,5 +52,8 @@ type SummarizeJobRepository interface {
 	GetJob(ctx context.Context, jobID string) (*domain.SummarizeJob, error)
 	UpdateJobStatus(ctx context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMessage string) error
 	GetPendingJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error)
+	// DequeueJobs atomically selects pending jobs and transitions them to running
+	// in a single transaction, preventing duplicate processing under concurrency.
+	DequeueJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error)
 	RecoverStuckJobs(ctx context.Context) (int64, error)
 }

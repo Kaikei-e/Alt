@@ -225,6 +225,13 @@ func (m *stubJobRepoForHandler) GetPendingJobs(_ context.Context, _ int) ([]*dom
 	return m.jobs, nil
 }
 
+func (m *stubJobRepoForHandler) DequeueJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	return m.jobs, nil
+}
+
 func (m *stubJobRepoForHandler) RecoverStuckJobs(_ context.Context) (int64, error) {
 	return 0, nil
 }

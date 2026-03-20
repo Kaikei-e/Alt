@@ -87,11 +87,11 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 	// Recover stuck running jobs (throttled to once per 5 minutes)
 	w.RecoverStuckJobs(ctx)
 
-	// Get pending jobs
-	jobs, err := w.jobRepo.GetPendingJobs(ctx, w.batchSize)
+	// Atomically dequeue pending jobs → running in a single transaction
+	jobs, err := w.jobRepo.DequeueJobs(ctx, w.batchSize)
 	if err != nil {
-		w.logger.ErrorContext(ctx, "failed to get pending jobs", "error", err)
-		return fmt.Errorf("failed to get pending jobs: %w", err)
+		w.logger.ErrorContext(ctx, "failed to dequeue jobs", "error", err)
+		return fmt.Errorf("failed to dequeue jobs: %w", err)
 	}
 
 	if len(jobs) == 0 {
@@ -166,14 +166,9 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 	return nil
 }
 
-// processJob processes a single summarization job
+// processJob processes a single summarization job.
+// The job is already in "running" status (set atomically by DequeueJobs).
 func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.SummarizeJob) error {
-	// Update status to running
-	if err := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusRunning, "", ""); err != nil {
-		w.logger.ErrorContext(ctx, "failed to update job status to running", "error", err, "job_id", job.JobID)
-		return fmt.Errorf("failed to update job status: %w", err)
-	}
-
 	w.logger.InfoContext(ctx, "processing summarization job", "job_id", job.JobID, "article_id", job.ArticleID)
 
 	// Fetch article from database
@@ -308,15 +303,19 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 
 	saveSummaryStartTime := time.Now()
 	if err := w.summaryRepo.Create(ctx, articleSummary); err != nil {
+		// Summary save failed — mark job as failed so it can be retried.
+		// Do NOT mark completed without a persisted summary.
+		errorMsg := fmt.Sprintf("Failed to save summary: %v", err)
 		w.logger.ErrorContext(ctx, "failed to save summary to database", "error", err, "article_id", job.ArticleID)
-		// Continue even if save fails - we still have the summary to return
-		w.logger.WarnContext(ctx, "continuing despite DB save failure", "article_id", job.ArticleID)
-	} else {
-		saveSummaryDuration := time.Since(saveSummaryStartTime)
-		w.logger.InfoContext(ctx, "summary saved to database successfully",
-			"article_id", job.ArticleID,
-			"save_duration_ms", saveSummaryDuration.Milliseconds())
+		if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusFailed, "", errorMsg); updateErr != nil {
+			w.logger.ErrorContext(ctx, "failed to update job status to failed after save failure", "error", updateErr, "job_id", job.JobID)
+		}
+		return fmt.Errorf("failed to save summary: %w", err)
 	}
+	saveSummaryDuration := time.Since(saveSummaryStartTime)
+	w.logger.InfoContext(ctx, "summary saved to database successfully",
+		"article_id", job.ArticleID,
+		"save_duration_ms", saveSummaryDuration.Milliseconds())
 
 	// Update job status to completed
 	updateStatusStartTime := time.Now()
