@@ -244,6 +244,63 @@ def test_round_robin_skips_unhealthy(checker, remotes):
     assert results == [remotes[0], remotes[2], remotes[0], remotes[2]]
 
 
+def test_round_robin_recovered_node_rejoins_pool(checker, remotes):
+    """A node that goes unhealthy and recovers is included in round-robin again."""
+    for url in remotes:
+        checker._states[url]["healthy"] = True
+
+    # Consume one call so rr_index advances
+    assert checker.get_healthy_remote() == remotes[0]
+
+    # remote-b goes down
+    checker._states[remotes[1]]["healthy"] = False
+
+    # Next calls rotate among A and C only
+    assert checker.get_healthy_remote() == remotes[2]
+    assert checker.get_healthy_remote() == remotes[0]
+
+    # remote-b recovers
+    checker._states[remotes[1]]["healthy"] = True
+
+    # Now all three should participate again
+    results = [checker.get_healthy_remote() for _ in range(6)]
+    # The healthy list is [A, B, C]; rr_index keeps advancing
+    assert set(results) == set(remotes)
+    assert results.count(remotes[0]) == 2
+    assert results.count(remotes[1]) == 2
+    assert results.count(remotes[2]) == 2
+
+
+def test_round_robin_equal_distribution_long_sample(checker, remotes):
+    """Over a long sample, equal-weight round-robin yields 1:1:1 distribution."""
+    for url in remotes:
+        checker._states[url]["healthy"] = True
+
+    n = 30
+    results = [checker.get_healthy_remote() for _ in range(n)]
+
+    for url in remotes:
+        assert results.count(url) == n // len(remotes)
+
+
+def test_mark_failure_excludes_from_round_robin_and_cascade_uses_priority(checker, remotes):
+    """mark_failure() removes node from round-robin; get_healthy_remotes() keeps priority order for retry."""
+    for url in remotes:
+        checker._states[url]["healthy"] = True
+
+    # Simulate dispatch failure on remote-a
+    checker.mark_failure(remotes[0])
+
+    # round-robin should only return B and C
+    rr_results = [checker.get_healthy_remote() for _ in range(4)]
+    assert remotes[0] not in rr_results
+    assert rr_results == [remotes[1], remotes[2], remotes[1], remotes[2]]
+
+    # retry cascade (get_healthy_remotes) returns remaining in priority order
+    cascade = checker.get_healthy_remotes(exclude={remotes[0]})
+    assert cascade == [remotes[1], remotes[2]]
+
+
 @pytest.mark.asyncio
 async def test_start_performs_initial_probe_before_returning(checker, remotes):
     """start() should perform an initial probe so remotes are available immediately after startup."""
