@@ -310,6 +310,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	registerFavoriteFeedGatewayImpl := register_favorite_feed_gateway.NewRegisterFavoriteFeedGateway(pool)
 	registerFeedsUsecase := register_feed_usecase.NewRegisterFeedsUsecase(validateAndFetchRSSGatewayImpl, registerFeedLinkGatewayImpl, registerFeedsGatewayImpl)
 	registerFeedsUsecase.SetFeedLinkIDResolver(altDBRepository)
+	registerFeedsUsecase.SetFeedLinkAvailabilityPort(altDBRepository)
 	registerFeedsUsecase.SetFeedPageInvalidator(feedPageCacheGatewayImpl)
 	registerFavoriteFeedUsecase := register_favorite_feed_usecase.NewRegisterFavoriteFeedUsecase(registerFavoriteFeedGatewayImpl)
 	removeFavoriteFeedUsecase := remove_favorite_feed_usecase.NewRemoveFavoriteFeedUsecase(registerFavoriteFeedGatewayImpl)

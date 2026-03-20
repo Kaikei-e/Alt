@@ -21,7 +21,10 @@ func TestResetFeedLinkFailures_DuplicateURLs(t *testing.T) {
 		`INSERT INTO feed_link_availability (feed_link_id, is_active, consecutive_failures)
 		SELECT id, true, 0 FROM feed_links WHERE url = $1
 		ON CONFLICT (feed_link_id) DO UPDATE SET
-			consecutive_failures = 0`)).
+			is_active = true,
+			consecutive_failures = 0,
+			last_failure_at = NULL,
+			last_failure_reason = NULL`)).
 		WithArgs("https://hackernoon.com/feed").
 		WillReturnResult(pgxmock.NewResult("INSERT", 2))
 
@@ -43,7 +46,10 @@ func TestResetFeedLinkFailures_CreatesRowIfMissing(t *testing.T) {
 		`INSERT INTO feed_link_availability (feed_link_id, is_active, consecutive_failures)
 		SELECT id, true, 0 FROM feed_links WHERE url = $1
 		ON CONFLICT (feed_link_id) DO UPDATE SET
-			consecutive_failures = 0`)).
+			is_active = true,
+			consecutive_failures = 0,
+			last_failure_at = NULL,
+			last_failure_reason = NULL`)).
 		WithArgs("https://zenn.dev/topics/database/feed").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 

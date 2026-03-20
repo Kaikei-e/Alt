@@ -3,6 +3,7 @@ package register_feed_usecase
 import (
 	"alt/domain"
 	"alt/port/event_publisher_port"
+	"alt/port/feed_link_availability_port"
 	"alt/port/register_feed_port"
 	"alt/port/subscription_port"
 	"alt/port/validate_fetch_rss_port"
@@ -24,6 +25,7 @@ type RegisterFeedsUsecase struct {
 	registerFeedsGateway register_feed_port.RegisterFeedsPort
 	feedLinkIDResolver   FeedLinkIDResolver
 	subscriptionPort     subscription_port.SubscriptionPort
+	availabilityPort     feed_link_availability_port.FeedLinkAvailabilityPort
 	eventPublisher       event_publisher_port.EventPublisherPort
 	feedPageInvalidator  interface {
 		InvalidateFeedPage(ctx context.Context, feedLinkID uuid.UUID) error
@@ -50,6 +52,11 @@ func (r *RegisterFeedsUsecase) SetFeedLinkIDResolver(resolver FeedLinkIDResolver
 // SetSubscriptionPort sets the subscription port for auto-subscribing users.
 func (r *RegisterFeedsUsecase) SetSubscriptionPort(port subscription_port.SubscriptionPort) {
 	r.subscriptionPort = port
+}
+
+// SetFeedLinkAvailabilityPort sets the availability port for initializing feed health.
+func (r *RegisterFeedsUsecase) SetFeedLinkAvailabilityPort(port feed_link_availability_port.FeedLinkAvailabilityPort) {
+	r.availabilityPort = port
 }
 
 // SetEventPublisher sets the event publisher for domain event publishing.
@@ -106,7 +113,15 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 
 	logger.Logger.InfoContext(ctx, "Feed items registered", "count", len(parsedFeed.Items))
 
-	// 6. Fire-and-forget: event publishing + auto-subscribe (truly async)
+	// 6. Initialize feed availability state from the successful registration fetch.
+	if r.availabilityPort != nil {
+		if err := r.availabilityPort.ResetFeedLinkFailures(ctx, parsedFeed.FeedLink); err != nil {
+			logger.Logger.ErrorContext(ctx, "Failed to initialize feed link availability", "feed_link", parsedFeed.FeedLink, "error", err)
+			return errors.New("failed to initialize feed link availability")
+		}
+	}
+
+	// 7. Fire-and-forget: event publishing + auto-subscribe (truly async)
 	// Use context.WithoutCancel so goroutines survive after HTTP response is sent.
 	// Both operations already log errors without propagating them.
 	bgCtx := context.WithoutCancel(ctx)
