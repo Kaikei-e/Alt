@@ -210,8 +210,8 @@ func Load() *Config {
 			Timeout: getEnvInt("EMBEDDER_TIMEOUT", 30),
 		},
 		Augur: AugurConfig{
-			URL:     getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://augur-external:11435"),
-			Model:   getEnv("AUGUR_KNOWLEDGE_MODEL", "gemma3-4b-rag"),
+			URL:     getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://news-creator-backend:11435"),
+			Model:   getEnv("AUGUR_KNOWLEDGE_MODEL", "gemma3-4b-8k"),
 			Timeout: getEnvInt("OLLAMA_TIMEOUT", 300),
 		},
 		Search: SearchConfig{

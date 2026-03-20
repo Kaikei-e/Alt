@@ -232,6 +232,7 @@ func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 	debug := openapi.AnswerDebug{
 		RetrievalSetId: &output.Debug.RetrievalSetID,
 		PromptVersion:  &output.Debug.PromptVersion,
+		StrategyUsed:   &output.Debug.StrategyUsed,
 	}
 
 	var citationsPtr *[]openapi.AnswerCitation

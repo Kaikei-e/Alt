@@ -43,6 +43,7 @@ type AnswerDebug struct {
 	RetrievalSetID  string
 	PromptVersion   string
 	ExpandedQueries []string
+	StrategyUsed    string
 }
 
 // AnswerWithRAGUsecase defines the contract for generating grounded answers.

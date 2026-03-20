@@ -103,6 +103,30 @@ func (r *ragDocumentRepository) GetLatestVersion(ctx context.Context, docID uuid
 	return &ver, nil
 }
 
+func (r *ragDocumentRepository) GetVersionByID(ctx context.Context, versionID uuid.UUID) (*domain.RagDocumentVersion, error) {
+	query := `
+		SELECT id, document_id, version_number, title, url, source_hash, chunker_version, embedder_version, created_at
+		FROM rag_document_versions
+		WHERE id = $1
+	`
+	row := r.getExecutor(ctx).QueryRow(ctx, query, versionID)
+
+	var ver domain.RagDocumentVersion
+	var title, url pgtype.Text
+	err := row.Scan(&ver.ID, &ver.DocumentID, &ver.VersionNumber, &title, &url, &ver.SourceHash, &ver.ChunkerVersion, &ver.EmbedderVersion, &ver.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan version by id: %w", err)
+	}
+
+	ver.Title = title.String
+	ver.URL = url.String
+
+	return &ver, nil
+}
+
 func (r *ragDocumentRepository) CreateVersion(ctx context.Context, version *domain.RagDocumentVersion) error {
 	query := `
 		INSERT INTO rag_document_versions (id, document_id, version_number, title, url, source_hash, chunker_version, embedder_version, created_at)

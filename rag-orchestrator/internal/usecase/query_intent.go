@@ -1,0 +1,94 @@
+package usecase
+
+import (
+	"errors"
+	"strings"
+
+	"rag-orchestrator/internal/domain"
+)
+
+// IntentType classifies the type of user query.
+type IntentType string
+
+const (
+	IntentGeneral       IntentType = "general"
+	IntentArticleScoped IntentType = "article_scoped"
+)
+
+// ErrArticleNotIndexed indicates that the referenced article is not in the RAG index.
+var ErrArticleNotIndexed = errors.New("article not indexed in RAG system")
+
+// QueryIntent holds the parsed intent from a raw user query.
+type QueryIntent struct {
+	IntentType    IntentType
+	ArticleID     string
+	ArticleTitle  string
+	UserQuestion  string // Metadata-stripped question body
+	OriginalQuery string
+}
+
+// ParseQueryIntent parses a raw query to determine intent and extract metadata.
+// Uses step-based parsing (not regex) to handle edge cases like brackets in titles.
+func ParseQueryIntent(rawQuery string) QueryIntent {
+	intent := QueryIntent{
+		IntentType:    IntentGeneral,
+		OriginalQuery: rawQuery,
+		UserQuestion:  rawQuery,
+	}
+
+	// Step 1: prefix check
+	const prefix = "Regarding the article: "
+	if !strings.HasPrefix(rawQuery, prefix) {
+		return intent
+	}
+
+	// Step 2: split at last "\n\nQuestion:\n" occurrence
+	const sep = "\n\nQuestion:\n"
+	sepIdx := strings.LastIndex(rawQuery, sep)
+	if sepIdx < 0 {
+		return intent
+	}
+	headerPart := rawQuery[len(prefix):sepIdx]
+	intent.UserQuestion = strings.TrimSpace(rawQuery[sepIdx+len(sep):])
+
+	// Step 3: detect "[articleId: ...]" from the end of header
+	const artPrefix = "[articleId: "
+	artStart := strings.LastIndex(headerPart, artPrefix)
+	if artStart < 0 {
+		return intent
+	}
+	artEnd := strings.Index(headerPart[artStart:], "]")
+	if artEnd < 0 {
+		return intent
+	}
+	intent.ArticleID = strings.TrimSpace(headerPart[artStart+len(artPrefix) : artStart+artEnd])
+	intent.ArticleTitle = strings.TrimSpace(headerPart[:artStart])
+	intent.IntentType = IntentArticleScoped
+	return intent
+}
+
+// ResolveQueryIntent resolves article scope from the current query first, then
+// falls back to the most recent article-scoped user message in conversation history.
+func ResolveQueryIntent(rawQuery string, history []domain.Message) QueryIntent {
+	current := ParseQueryIntent(rawQuery)
+	if current.IntentType == IntentArticleScoped {
+		return current
+	}
+
+	trimmedQuery := strings.TrimSpace(rawQuery)
+	for i := len(history) - 1; i >= 0; i-- {
+		msg := history[i]
+		if msg.Role != "user" {
+			continue
+		}
+		prev := ParseQueryIntent(msg.Content)
+		if prev.IntentType != IntentArticleScoped {
+			continue
+		}
+		prev.OriginalQuery = rawQuery
+		prev.UserQuestion = trimmedQuery
+		return prev
+	}
+
+	return current
+}

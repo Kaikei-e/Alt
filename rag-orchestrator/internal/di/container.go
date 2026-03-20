@@ -121,11 +121,13 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 
 	// Answer usecase
 	promptBuilder := usecase.NewXMLPromptBuilder("Answer in Japanese.")
+	articleScopedStrategy := usecase.NewArticleScopedStrategy(docRepo, chunkRepo, log)
 	answerUsecase := usecase.NewAnswerWithRAGUsecase(
 		retrieveUsecase, promptBuilder, generator, usecase.NewOutputValidator(cfg.RAG.MinAnswerLength),
 		cfg.RAG.MaxChunks, cfg.RAG.MaxTokens, cfg.RAG.MaxPromptTokens,
 		cfg.RAG.PromptVersion, cfg.RAG.Locale, log,
 		usecase.WithCacheConfig(cfg.Cache.Size, time.Duration(cfg.Cache.TTL)*time.Minute),
+		usecase.WithStrategy(usecase.IntentArticleScoped, articleScopedStrategy),
 	)
 
 	// Morning letter usecase

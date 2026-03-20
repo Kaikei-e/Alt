@@ -219,7 +219,7 @@ func TestLoad_AugurKnowledgeModel_Default(t *testing.T) {
 
 	cfg := Load()
 
-	assert.Equal(t, "gemma3-4b-rag", cfg.Augur.Model, "AUGUR_KNOWLEDGE_MODEL should default to gemma3-4b-rag")
+	assert.Equal(t, "gemma3-4b-8k", cfg.Augur.Model, "AUGUR_KNOWLEDGE_MODEL should default to gemma3-4b-8k (local-first)")
 }
 
 func TestLoad_AugurKnowledgeModel_FromEnv(t *testing.T) {

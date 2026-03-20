@@ -267,3 +267,6 @@ components:
           type: string
         prompt_version:
           type: string
+        strategy_used:
+          type: string
+          description: "Retrieval strategy used (general, article_scoped, article_constrained_fallback, unrestricted_general_fallback)"

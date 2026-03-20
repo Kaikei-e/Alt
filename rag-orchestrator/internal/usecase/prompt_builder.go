@@ -26,6 +26,7 @@ type PromptInput struct {
 	Stage               string           // "citations" or "answer" (empty = combined)
 	Citations           []string         // For "answer" stage, pass previously extracted citations
 	ConversationHistory []domain.Message // Recent chat turns for multi-turn context
+	ArticleContext      *ArticleContext  // Set when query targets a specific article
 }
 
 // PromptBuilder builds the chat messages sent to the LLM.
@@ -61,6 +62,7 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 	sb.WriteString("ユーザーの質問に対して包括的で詳細な回答を生成してください。\n\n")
 
 	sb.WriteString("## 回答の品質基準\n")
+	sb.WriteString("- **必ず日本語で回答すること**。ソース記事が英語であっても、回答は日本語で記述すること\n")
 	sb.WriteString("- 結論を最初に述べ、その後で根拠と詳細を説明すること\n")
 	sb.WriteString("- 回答は800文字以上で、具体的な事実・データ・事例を含むこと\n")
 	sb.WriteString("- コンテキストの情報を最大限に活用し、複数のソースを統合すること\n")
@@ -109,6 +111,15 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 			sb.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, content))
 		}
 		sb.WriteString("\n")
+	}
+
+	// Article-scoped context instruction
+	if input.ArticleContext != nil {
+		if input.ArticleContext.Truncated {
+			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の主要な部分です。この記事に基づいて質問に回答してください。\n\n", input.ArticleContext.Title))
+		} else {
+			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の全内容です。この記事に基づいて質問に回答してください。\n\n", input.ArticleContext.Title))
+		}
 	}
 
 	// Context

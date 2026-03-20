@@ -116,33 +116,18 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		meta := StreamMeta{
 			Contexts: promptData.contexts,
 			Debug: AnswerDebug{
-				RetrievalSetID: promptData.retrievalSetID,
-				PromptVersion:  u.promptVersion,
+				RetrievalSetID:  promptData.retrievalSetID,
+				PromptVersion:   u.promptVersion,
+				ExpandedQueries: promptData.expandedQueries,
+				StrategyUsed:    promptData.strategyUsed,
 			},
 		}
 		if !u.sendStreamEvent(ctx, events, StreamEvent{Kind: StreamEventKindMeta, Payload: meta}) {
 			return
 		}
 
-		// 4. Single Stage Generation (Streaming)
-		promptInput := PromptInput{
-			Query:         input.Query,
-			Locale:        u.defaultLocale,
-			PromptVersion: u.promptVersion,
-			Contexts:      u.toPromptContexts(promptData.contexts),
-		}
-		if input.Locale != "" {
-			promptInput.Locale = input.Locale
-		}
-
-		messages, err := u.promptBuilder.Build(promptInput)
-		if err != nil {
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindFallback,
-				Payload: "failed to build prompt",
-			})
-			return
-		}
+		// 4. Single Stage Generation (Streaming) — use messages from buildPrompt directly
+		messages := promptData.messages
 
 		// Run ChatStream in a goroutine so we can send heartbeats while
 		// waiting for Ollama to accept the connection and start generating.
@@ -425,8 +410,10 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			Fallback:  false,
 			Reason:    "",
 			Debug: AnswerDebug{
-				RetrievalSetID: promptData.retrievalSetID,
-				PromptVersion:  u.promptVersion,
+				RetrievalSetID:  promptData.retrievalSetID,
+				PromptVersion:   u.promptVersion,
+				ExpandedQueries: promptData.expandedQueries,
+				StrategyUsed:    promptData.strategyUsed,
 			},
 		}
 

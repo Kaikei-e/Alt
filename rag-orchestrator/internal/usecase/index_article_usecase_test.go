@@ -44,6 +44,14 @@ func (m *MockRagDocumentRepository) GetLatestVersion(ctx context.Context, docID 
 	return args.Get(0).(*domain.RagDocumentVersion), args.Error(1)
 }
 
+func (m *MockRagDocumentRepository) GetVersionByID(ctx context.Context, versionID uuid.UUID) (*domain.RagDocumentVersion, error) {
+	args := m.Called(ctx, versionID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.RagDocumentVersion), args.Error(1)
+}
+
 func (m *MockRagDocumentRepository) CreateVersion(ctx context.Context, version *domain.RagDocumentVersion) error {
 	args := m.Called(ctx, version)
 	return args.Error(0)

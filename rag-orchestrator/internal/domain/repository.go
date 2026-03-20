@@ -67,6 +67,10 @@ type RagDocumentRepository interface {
 	// Returns nil, nil if no version exists.
 	GetLatestVersion(ctx context.Context, docID uuid.UUID) (*RagDocumentVersion, error)
 
+	// GetVersionByID retrieves a document version by its ID.
+	// Returns nil, nil if not found.
+	GetVersionByID(ctx context.Context, versionID uuid.UUID) (*RagDocumentVersion, error)
+
 	// CreateVersion creates a new document version.
 	CreateVersion(ctx context.Context, version *RagDocumentVersion) error
 }

@@ -29,6 +29,8 @@ type answerWithRAGUsecase struct {
 	heartbeatInterval time.Duration
 	cache             *expirable.LRU[string, *AnswerWithRAGOutput]
 	logger            *slog.Logger
+	strategies        map[IntentType]RetrievalStrategy
+	generalStrategy   RetrievalStrategy
 }
 
 // NewAnswerWithRAGUsecase wires together the components needed to generate a RAG answer.
@@ -53,6 +55,11 @@ func NewAnswerWithRAGUsecase(
 	for _, opt := range opts {
 		opt(&cfg)
 	}
+	generalStrat := NewGeneralStrategy(retrieve)
+	strategies := cfg.strategies
+	if strategies == nil {
+		strategies = make(map[IntentType]RetrievalStrategy)
+	}
 	return &answerWithRAGUsecase{
 		retrieve:          retrieve,
 		promptBuilder:     promptBuilder,
@@ -66,6 +73,8 @@ func NewAnswerWithRAGUsecase(
 		heartbeatInterval: cfg.heartbeatInterval,
 		cache:             expirable.NewLRU[string, *AnswerWithRAGOutput](cfg.cacheSize, nil, cfg.cacheTTL),
 		logger:            logger,
+		strategies:        strategies,
+		generalStrategy:   generalStrat,
 	}
 }
 
@@ -76,6 +85,7 @@ type answerUsecaseConfig struct {
 	cacheSize         int
 	cacheTTL          time.Duration
 	heartbeatInterval time.Duration
+	strategies        map[IntentType]RetrievalStrategy
 }
 
 // WithCacheConfig sets the cache size and TTL.
@@ -91,6 +101,16 @@ func WithCacheConfig(size int, ttl time.Duration) AnswerUsecaseOption {
 func WithHeartbeatInterval(d time.Duration) AnswerUsecaseOption {
 	return func(cfg *answerUsecaseConfig) {
 		cfg.heartbeatInterval = d
+	}
+}
+
+// WithStrategy registers a retrieval strategy for a given intent type.
+func WithStrategy(intentType IntentType, strategy RetrievalStrategy) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		if cfg.strategies == nil {
+			cfg.strategies = make(map[IntentType]RetrievalStrategy)
+		}
+		cfg.strategies[intentType] = strategy
 	}
 }
 
@@ -128,7 +148,14 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("retrieval_set_id", promptData.retrievalSetID),
 			slog.String("reason", err.Error()),
 			slog.Int("contexts_available", len(promptData.contexts)))
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, err.Error(), FallbackRetrievalEmpty)
+		return u.prepareFallback(
+			promptData.contexts,
+			promptData.retrievalSetID,
+			err.Error(),
+			FallbackRetrievalEmpty,
+			promptData.strategyUsed,
+			promptData.expandedQueries,
+		)
 	}
 
 	u.logger.Info("context_retrieved",
@@ -146,27 +173,8 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.Int("chunk_length", len(ctx.ChunkText)))
 	}
 
-	// 3. Single Stage Generation
-	promptInput := PromptInput{
-		Query:         input.Query,
-		Locale:        u.defaultLocale,
-		PromptVersion: u.promptVersion,
-		Contexts:      u.toPromptContexts(promptData.contexts),
-		// Stage and Citations inputs are no longer needed for single phase
-	}
-	if input.Locale != "" {
-		promptInput.Locale = input.Locale
-	}
-
-	messages, err := u.promptBuilder.Build(promptInput)
-	if err != nil {
-		u.logger.Warn("answer_fallback_triggered",
-			slog.String("request_id", requestID),
-			slog.String("retrieval_set_id", promptData.retrievalSetID),
-			slog.String("reason", "failed to build prompt"),
-			slog.Int("contexts_available", len(promptData.contexts)))
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, "failed to build prompt", FallbackGenerationFailed)
-	}
+	// 3. Single Stage Generation — use messages from buildPrompt directly
+	messages := promptData.messages
 
 	// Calculate approximate prompt size
 	promptSize := 0
@@ -199,7 +207,14 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("retrieval_set_id", promptData.retrievalSetID),
 			slog.String("reason", fmt.Sprintf("generation failed: %v", err)),
 			slog.Int("contexts_available", len(promptData.contexts)))
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("generation failed: %v", err), FallbackGenerationFailed)
+		return u.prepareFallback(
+			promptData.contexts,
+			promptData.retrievalSetID,
+			fmt.Sprintf("generation failed: %v", err),
+			FallbackGenerationFailed,
+			promptData.strategyUsed,
+			promptData.expandedQueries,
+		)
 	}
 
 	generationDuration := time.Since(generationStart)
@@ -216,7 +231,14 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("retrieval_set_id", promptData.retrievalSetID),
 			slog.String("reason", fmt.Sprintf("validation failed: %v", err)),
 			slog.Int("contexts_available", len(promptData.contexts)))
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, fmt.Sprintf("validation failed: %v", err), FallbackValidationFailed)
+		return u.prepareFallback(
+			promptData.contexts,
+			promptData.retrievalSetID,
+			fmt.Sprintf("validation failed: %v", err),
+			FallbackValidationFailed,
+			promptData.strategyUsed,
+			promptData.expandedQueries,
+		)
 	}
 
 	u.logger.Info("validation_completed",
@@ -239,7 +261,14 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.String("reason", parsedAnswer.Reason),
 			slog.Int("contexts_available", len(promptData.contexts)),
 			slog.String("llm_raw_response", truncate(resp.Text, 500)))
-		return u.prepareFallback(promptData.contexts, promptData.retrievalSetID, parsedAnswer.Reason, FallbackLLMFallback)
+		return u.prepareFallback(
+			promptData.contexts,
+			promptData.retrievalSetID,
+			parsedAnswer.Reason,
+			FallbackLLMFallback,
+			promptData.strategyUsed,
+			promptData.expandedQueries,
+		)
 	}
 
 	// Build Citations (Hydration)
@@ -255,6 +284,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			RetrievalSetID:  promptData.retrievalSetID,
 			PromptVersion:   u.promptVersion,
 			ExpandedQueries: promptData.expandedQueries,
+			StrategyUsed:    promptData.strategyUsed,
 		},
 	}
 
@@ -266,12 +296,19 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		slog.String("request_id", requestID),
 		slog.Int("answer_length", len(output.Answer)),
 		slog.Int("citations", len(output.Citations)),
+		slog.String("strategy_used", promptData.strategyUsed),
 		slog.Int64("total_duration_ms", executionDuration.Milliseconds()))
 
 	return output, nil
 }
 
-func (u *answerWithRAGUsecase) prepareFallback(contexts []ContextItem, reqID, reason string, category FallbackCategory) (*AnswerWithRAGOutput, error) {
+func (u *answerWithRAGUsecase) prepareFallback(
+	contexts []ContextItem,
+	reqID, reason string,
+	category FallbackCategory,
+	strategyUsed string,
+	expandedQueries []string,
+) (*AnswerWithRAGOutput, error) {
 	return &AnswerWithRAGOutput{
 		Answer:           "",
 		Citations:        nil,
@@ -280,8 +317,10 @@ func (u *answerWithRAGUsecase) prepareFallback(contexts []ContextItem, reqID, re
 		Reason:           reason,
 		FallbackCategory: category,
 		Debug: AnswerDebug{
-			RetrievalSetID: reqID,
-			PromptVersion:  u.promptVersion,
+			RetrievalSetID:  reqID,
+			PromptVersion:   u.promptVersion,
+			ExpandedQueries: expandedQueries,
+			StrategyUsed:    strategyUsed,
 		},
 	}, nil
 }
@@ -329,12 +368,21 @@ func (u *answerWithRAGUsecase) buildCitations(contexts []ContextItem, raw []LLMC
 	return citations
 }
 
+// ArticleContext carries article-scoped metadata into prompt building.
+type ArticleContext struct {
+	ArticleID string
+	Title     string
+	Truncated bool // true if token limits caused chunk truncation
+}
+
 type promptBuildResult struct {
 	retrievalSetID  string
 	contexts        []ContextItem
 	messages        []domain.Message
 	maxTokens       int
 	expandedQueries []string
+	strategyUsed    string
+	articleContext  *ArticleContext
 }
 
 func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWithRAGInput) (*promptBuildResult, error) {
@@ -352,20 +400,54 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		maxTokens:      maxTokens,
 	}
 
+	// Parse intent from raw query
+	intent := ResolveQueryIntent(input.Query, input.ConversationHistory)
+	strategy := u.selectStrategy(intent.IntentType)
+	result.strategyUsed = strategy.Name()
+
+	u.logger.Info("query_intent_parsed",
+		slog.String("intent_type", string(intent.IntentType)),
+		slog.String("article_id", intent.ArticleID),
+		slog.String("strategy", strategy.Name()))
+
+	// Use intent.UserQuestion for retrieval (metadata stripped)
 	retrieveInput := RetrieveContextInput{
-		Query:               input.Query,
+		Query:               intent.UserQuestion,
 		ConversationHistory: input.ConversationHistory,
 	}
 	if len(input.CandidateArticleIDs) > 0 {
 		retrieveInput.CandidateArticleIDs = input.CandidateArticleIDs
 	}
 
-	retrieved, err := u.retrieve.Execute(ctx, retrieveInput)
+	retrieved, err := strategy.Retrieve(ctx, retrieveInput, intent)
+
+	// 2-stage fallback for article_scoped
+	if intent.IntentType == IntentArticleScoped && err != nil && errors.Is(err, ErrArticleNotIndexed) {
+		// Fallback stage 1: article-constrained general retrieval
+		u.logger.Info("article_scoped_fallback_stage1",
+			slog.String("article_id", intent.ArticleID),
+			slog.String("reason", err.Error()))
+		constrainedInput := retrieveInput
+		constrainedInput.CandidateArticleIDs = []string{intent.ArticleID}
+		retrieved, err = u.generalStrategy.Retrieve(ctx, constrainedInput, intent)
+		result.strategyUsed = "article_constrained_fallback"
+
+		if err != nil || (retrieved != nil && len(retrieved.Contexts) == 0) {
+			// Fallback stage 2: unrestricted general (last resort)
+			u.logger.Warn("unrestricted_fallback",
+				slog.String("article_id", intent.ArticleID),
+				slog.String("reason", "article_constrained_returned_empty"))
+			retrieved, err = u.generalStrategy.Retrieve(ctx, retrieveInput, intent)
+			result.strategyUsed = "unrestricted_general_fallback"
+		}
+	}
+
 	if err != nil {
 		return result, fmt.Errorf("failed to retrieve context: %w", err)
 	}
 
 	contexts := retrieved.Contexts
+	originalContextCount := len(contexts)
 
 	// Limit to maxChunks
 	if len(contexts) > maxChunks {
@@ -373,8 +455,6 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	}
 
 	// Dynamic token-based limiting: prevent prompt from exceeding LLM context window.
-	// With num_ctx=8192 and num_predict=4096, we have ~4096 tokens for input.
-	// Reserve headroom for system prompt (~400 tokens) and query (~100 tokens).
 	// Japanese text averages ~3 characters per token.
 	maxPromptTokens := u.maxPromptTokens
 	estimatedTokens := 500 // system prompt + query overhead
@@ -393,10 +473,30 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 			slog.Int("limited_count", len(limitedContexts)),
 			slog.Int("estimated_tokens", estimatedTokens))
 	}
+
+	// Detect truncation for article-scoped context
+	var artCtx *ArticleContext
+	if intent.IntentType == IntentArticleScoped {
+		truncated := len(limitedContexts) < len(contexts) || len(contexts) < originalContextCount
+		if truncated {
+			u.logger.Info("article_scoped_truncated",
+				slog.String("article_id", intent.ArticleID),
+				slog.Int("total_chunks", originalContextCount),
+				slog.Int("used_chunks", len(limitedContexts)))
+		}
+		artCtx = &ArticleContext{
+			ArticleID: intent.ArticleID,
+			Title:     intent.ArticleTitle,
+			Truncated: truncated,
+		}
+		result.articleContext = artCtx
+	}
 	contexts = limitedContexts
 
 	result.contexts = contexts
-	result.expandedQueries = retrieved.ExpandedQueries
+	if retrieved.ExpandedQueries != nil {
+		result.expandedQueries = retrieved.ExpandedQueries
+	}
 
 	if len(contexts) == 0 {
 		return result, errors.New("no context returned from retrieval")
@@ -421,11 +521,12 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	}
 
 	promptInput := PromptInput{
-		Query:               input.Query,
+		Query:               intent.UserQuestion,
 		Locale:              locale,
 		PromptVersion:       u.promptVersion,
 		Contexts:            promptContexts,
 		ConversationHistory: input.ConversationHistory,
+		ArticleContext:      artCtx,
 	}
 
 	messages, err := u.promptBuilder.Build(promptInput)
