@@ -1,6 +1,7 @@
 package feed_stats_gateway
 
 import (
+	"alt/domain"
 	"alt/driver/alt_db"
 	"alt/mocks"
 	"alt/utils/logger"
@@ -8,7 +9,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -47,6 +50,18 @@ func (m *MockPgxIface) Close() {
 	if m.closeFunc != nil {
 		m.closeFunc()
 	}
+}
+
+func authContext() context.Context {
+	return domain.SetUserContext(context.Background(), &domain.UserContext{
+		UserID:    uuid.New(),
+		Email:     "test@example.com",
+		Role:      domain.UserRoleUser,
+		TenantID:  uuid.New(),
+		SessionID: "test-session",
+		LoginAt:   time.Now(),
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
 }
 
 func TestTotalArticlesCountGateway_Execute_Success(t *testing.T) {
@@ -100,7 +115,7 @@ func TestTotalArticlesCountGateway_Execute_Success(t *testing.T) {
 			repo := alt_db.NewAltDBRepository(mockPgx)
 			gateway := &TotalArticlesCountGateway{altDBRepository: repo}
 
-			got, err := gateway.Execute(context.Background())
+			got, err := gateway.Execute(authContext())
 			if (err != nil) != tt.expectedError {
 				t.Errorf("TotalArticlesCountGateway.Execute() error = %v, wantErr %v", err, tt.expectedError)
 				return

@@ -125,19 +125,25 @@ func buildTrendQuery(granularity string) (string, error) {
 	}
 
 	// Query that aggregates articles, summarized articles, and feed activity by time bucket
-	// Uses LEFT JOINs to ensure we get counts even when some data is missing
+	// Uses FULL OUTER JOINs to ensure we get counts even when some data is missing
 	// Note: articles are filtered by user_id for multi-tenant isolation
-	// Note: summarized count is determined by existence of record in article_summaries table
+	// Note: summarized count is aggregated by summary creation time and filtered by user_id
 	return fmt.Sprintf(`
-		WITH time_buckets AS (
+		WITH articles_buckets AS (
 			SELECT date_trunc('%s', a.created_at) AS bucket,
-				   COUNT(DISTINCT a.id) AS articles,
-				   COUNT(DISTINCT asumm.article_id) AS summarized
+				   COUNT(DISTINCT a.id) AS articles
 			FROM articles a
-			LEFT JOIN article_summaries asumm ON a.id = asumm.article_id
 			WHERE a.created_at >= $1
 			  AND a.deleted_at IS NULL
 			  AND a.user_id = $2
+			GROUP BY bucket
+		),
+		summarized_buckets AS (
+			SELECT date_trunc('%s', asumm.created_at) AS bucket,
+				   COUNT(DISTINCT asumm.article_id) AS summarized
+			FROM article_summaries asumm
+			WHERE asumm.created_at >= $1
+			  AND asumm.user_id = $2
 			GROUP BY bucket
 		),
 		feed_activity AS (
@@ -150,12 +156,13 @@ func buildTrendQuery(granularity string) (string, error) {
 			)
 			GROUP BY bucket
 		)
-		SELECT COALESCE(tb.bucket, fa.bucket) AS bucket,
-			   COALESCE(tb.articles, 0) AS articles,
-			   COALESCE(tb.summarized, 0) AS summarized,
+		SELECT COALESCE(ab.bucket, sb.bucket, fa.bucket) AS bucket,
+			   COALESCE(ab.articles, 0) AS articles,
+			   COALESCE(sb.summarized, 0) AS summarized,
 			   COALESCE(fa.feed_count, 0) AS feed_activity
-		FROM time_buckets tb
-		FULL OUTER JOIN feed_activity fa ON tb.bucket = fa.bucket
+		FROM articles_buckets ab
+		FULL OUTER JOIN summarized_buckets sb ON ab.bucket = sb.bucket
+		FULL OUTER JOIN feed_activity fa ON COALESCE(ab.bucket, sb.bucket) = fa.bucket
 		ORDER BY bucket ASC
-	`, truncFunc, truncFunc), nil
+	`, truncFunc, truncFunc, truncFunc), nil
 }

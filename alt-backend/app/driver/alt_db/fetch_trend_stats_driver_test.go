@@ -85,14 +85,16 @@ func TestBuildTrendQuery(t *testing.T) {
 		{"hourly", "hourly", []string{
 			"date_trunc('hour'",
 			"a.user_id = $2",
-			"LEFT JOIN article_summaries asumm ON a.id = asumm.article_id",
 			"COUNT(DISTINCT asumm.article_id) AS summarized",
+			"FULL OUTER JOIN summarized_buckets sb ON ab.bucket = sb.bucket",
+			"FULL OUTER JOIN feed_activity fa ON COALESCE(ab.bucket, sb.bucket) = fa.bucket",
 		}, false},
 		{"daily", "daily", []string{
 			"date_trunc('day'",
 			"a.user_id = $2",
-			"LEFT JOIN article_summaries asumm ON a.id = asumm.article_id",
 			"COUNT(DISTINCT asumm.article_id) AS summarized",
+			"FULL OUTER JOIN summarized_buckets sb ON ab.bucket = sb.bucket",
+			"FULL OUTER JOIN feed_activity fa ON COALESCE(ab.bucket, sb.bucket) = fa.bucket",
 		}, false},
 	}
 
