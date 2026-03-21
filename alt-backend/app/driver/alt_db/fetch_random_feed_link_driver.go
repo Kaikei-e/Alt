@@ -54,9 +54,7 @@ func (r *AltDBRepository) FetchRandomFeed(ctx context.Context) (*domain.Feed, er
 	query := `
 		SELECT f.id, f.title, f.description, f.link
 		FROM feeds f
-		INNER JOIN articles a ON a.feed_id = f.id
-		INNER JOIN article_tags at ON at.article_id = a.id
-		GROUP BY f.id, f.title, f.description, f.link
+		WHERE EXISTS (SELECT 1 FROM feed_tags ft WHERE ft.feed_id = f.id)
 		ORDER BY RANDOM()
 		LIMIT 1
 	`

@@ -31,7 +31,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		expectedDescription := "Test feed description"
 		expectedLink := "https://example.com"
 
-		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.link FROM feeds f INNER JOIN articles a ON a.feed_id = f.id INNER JOIN article_tags at ON at.article_id = a.id GROUP BY f.id, f.title, f.description, f.link ORDER BY RANDOM").
+		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.link FROM feeds f WHERE EXISTS").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link"}).
 				AddRow(feedID, expectedTitle, expectedDescription, expectedLink))
 
@@ -54,7 +54,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		repo := &AltDBRepository{pool: mock}
 		ctx := context.Background()
 
-		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.link FROM feeds f INNER JOIN articles a ON a.feed_id = f.id INNER JOIN article_tags at ON at.article_id = a.id GROUP BY f.id, f.title, f.description, f.link ORDER BY RANDOM").
+		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.link FROM feeds f WHERE EXISTS").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link"}))
 
 		feed, err := repo.FetchRandomFeed(ctx)
@@ -76,7 +76,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		expectedTitle := "Test Feed"
 		expectedLink := "https://example.com"
 
-		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.link FROM feeds f INNER JOIN articles a ON a.feed_id = f.id INNER JOIN article_tags at ON at.article_id = a.id GROUP BY f.id, f.title, f.description, f.link ORDER BY RANDOM").
+		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.link FROM feeds f WHERE EXISTS").
 			WillReturnRows(pgxmock.NewRows([]string{"id", "title", "description", "link"}).
 				AddRow(feedID, expectedTitle, nil, expectedLink))
 
