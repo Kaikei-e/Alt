@@ -10,6 +10,7 @@ services:
     container_name: alt-db
     restart: always
     mem_limit: 768m
+    shm_size: "256m"
     command: >
       postgres
       -c config_file=/etc/postgresql/postgresql.conf
