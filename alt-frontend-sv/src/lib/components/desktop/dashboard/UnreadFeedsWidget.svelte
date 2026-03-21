@@ -30,7 +30,7 @@ onMount(async () => {
 	<div class="flex items-center justify-between mb-4">
 		<h3 class="text-lg font-semibold text-[var(--text-primary)]">Unread Feeds</h3>
 		<a
-			href="{svBasePath}/desktop/feeds"
+			href="{svBasePath}/feeds"
 			class="flex items-center gap-1 text-sm text-[var(--accent-primary)] hover:underline"
 		>
 			View All

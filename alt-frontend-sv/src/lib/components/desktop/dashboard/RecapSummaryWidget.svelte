@@ -46,7 +46,7 @@ onMount(async () => {
 	<div class="flex items-center justify-between mb-4">
 		<h3 class="text-lg font-semibold text-[var(--text-primary)]">3-Day Recap</h3>
 		<a
-			href="{svBasePath}/desktop/recap"
+			href="{svBasePath}/recap"
 			class="flex items-center gap-1 text-sm text-[var(--accent-primary)] hover:underline"
 		>
 			View Details

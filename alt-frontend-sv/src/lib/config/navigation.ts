@@ -252,20 +252,6 @@ export const mobileMenuItems = [
 		description: "Monitor recap job progress",
 	},
 	{
-		label: "View Articles",
-		href: `${svBasePath}/mobile/articles/view`,
-		category: "articles",
-		icon: Newspaper,
-		description: "Browse all articles",
-	},
-	{
-		label: "Search Articles",
-		href: `${svBasePath}/mobile/articles/search`,
-		category: "articles",
-		icon: Search,
-		description: "Search through articles",
-	},
-	{
 		label: "View Stats",
 		href: `${svBasePath}/stats`,
 		category: "other",
@@ -310,11 +296,6 @@ export const mobileCategories = [
 		title: "Recap",
 		items: mobileMenuItems.filter((i) => i.category === "recap"),
 		icon: CalendarRange,
-	},
-	{
-		title: "Articles",
-		items: mobileMenuItems.filter((i) => i.category === "articles"),
-		icon: Newspaper,
 	},
 	{
 		title: "Augur",
