@@ -66,7 +66,11 @@ def _make_local_gateway():
 def _make_health_checker(healthy_url=None):
     """Create a mock RemoteHealthChecker."""
     hc = MagicMock()
-    hc.get_healthy_remote = MagicMock(return_value=healthy_url)
+    hc.acquire_idle_remote = MagicMock(return_value=healthy_url)
+    hc.release_remote = MagicMock()
+    hc.mark_success = MagicMock()
+    hc.mark_failure = MagicMock()
+    hc.get_healthy_remotes = MagicMock(return_value=[])
     hc.start = AsyncMock()
     hc.stop = AsyncMock()
     hc.status.return_value = []
@@ -161,7 +165,7 @@ async def test_feature_off_always_uses_local():
     local.generate_raw.assert_awaited_once()
     driver.generate.assert_not_awaited()
     # Health checker should not be queried
-    hc.get_healthy_remote.assert_not_called()
+    hc.acquire_idle_remote.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -185,14 +189,14 @@ async def test_concurrent_be_requests_use_contextvars():
     urls = ["http://remote-a:11434", "http://remote-b:11434"]
     call_count = 0
 
-    def get_healthy():
+    def acquire_idle():
         nonlocal call_count
         url = urls[call_count % len(urls)]
         call_count += 1
         return url
 
     hc = _make_health_checker()
-    hc.get_healthy_remote = MagicMock(side_effect=get_healthy)
+    hc.acquire_idle_remote = MagicMock(side_effect=acquire_idle)
 
     gw = DistributingGateway(
         local_gateway=local,
@@ -261,7 +265,6 @@ async def test_remote_failure_retries_next_healthy_remote_then_succeeds():
             ["http://remote-b:11434"],
         ]
     )
-    hc.mark_failure = MagicMock()
     driver.generate = AsyncMock(
         side_effect=[
             RuntimeError("remote-a failed"),
@@ -279,6 +282,7 @@ async def test_remote_failure_retries_next_healthy_remote_then_succeeds():
     assert first_call["base_url"] == "http://remote-a:11434"
     assert second_call["base_url"] == "http://remote-b:11434"
     hc.mark_failure.assert_called_once_with("http://remote-a:11434")
+    hc.mark_success.assert_called_once_with("http://remote-b:11434")
 
 
 @pytest.mark.asyncio
@@ -286,7 +290,6 @@ async def test_remote_failure_falls_back_to_local_when_no_other_healthy_remote()
     """If no other healthy remote remains, generate_raw should fall back to local."""
     gw, local, hc, driver = _make_gateway(enabled=True, healthy_url="http://remote-a:11434")
     hc.get_healthy_remotes = MagicMock(return_value=[])
-    hc.mark_failure = MagicMock()
     driver.generate = AsyncMock(side_effect=RuntimeError("remote-a failed"))
 
     async with gw.hold_slot(is_high_priority=False):
@@ -326,7 +329,6 @@ async def test_remote_generate_failure_falls_back_to_local_when_no_backup_remote
     """If the selected remote fails and no backup remote exists, local fallback is used."""
     gw, local, hc, driver = _make_gateway(enabled=True, healthy_url="http://remote:11434")
     hc.get_healthy_remotes = MagicMock(return_value=[])
-    hc.mark_failure = MagicMock()
     driver.generate = AsyncMock(side_effect=RuntimeError("Remote timeout"))
 
     async with gw.hold_slot(is_high_priority=False):
@@ -335,6 +337,45 @@ async def test_remote_generate_failure_falls_back_to_local_when_no_backup_remote
     assert result.response == "local raw response"
     hc.mark_failure.assert_called_once_with("http://remote:11434")
     local.generate_raw.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_be_falls_back_to_local_when_all_remotes_busy():
+    """If all healthy remotes are busy, BE should use the local fallback path."""
+    gw, local, hc, driver = _make_gateway(enabled=True, healthy_url=None)
+
+    async with gw.hold_slot(is_high_priority=False):
+        result = await gw.generate_raw("prompt")
+
+    assert result.response == "local raw response"
+    hc.acquire_idle_remote.assert_called_once()
+    driver.generate.assert_not_awaited()
+    local.generate_raw.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_remote_success_marks_remote_available():
+    """Successful remote execution should mark the remote as available again."""
+    gw, local, hc, driver = _make_gateway(enabled=True, healthy_url="http://remote:11434")
+
+    async with gw.hold_slot(is_high_priority=False):
+        result = await gw.generate_raw("prompt")
+
+    assert result.response == "remote response"
+    hc.mark_success.assert_called_once_with("http://remote:11434")
+    hc.release_remote.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_reserved_remote_is_released_if_context_exits_without_generate():
+    """A reserved remote should not remain busy if generate_raw is never called."""
+    gw, local, hc, driver = _make_gateway(enabled=True, healthy_url="http://remote:11434")
+
+    async with gw.hold_slot(is_high_priority=False):
+        pass
+
+    hc.release_remote.assert_called_once_with("http://remote:11434")
+    hc.mark_success.assert_not_called()
 
 
 @pytest.mark.asyncio

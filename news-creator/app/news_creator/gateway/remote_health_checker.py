@@ -39,36 +39,75 @@ class RemoteHealthChecker:
 
         # Per-remote state
         self._states: Dict[str, Dict[str, Any]] = {}
-        self._rr_index = 0
         for url in remotes:
             self._states[url] = {
                 "healthy": False,
+                "busy": False,
                 "last_checked": 0.0,
                 "last_healthy": 0.0,
+                "last_assigned": 0.0,
+                "last_completed": 0.0,
+                "in_flight_count": 0,
                 "consecutive_failures": 0,
             }
 
-    def get_healthy_remote(self) -> Optional[str]:
-        """Return the next healthy remote via round-robin, or None."""
-        healthy = [url for url in self._remotes if self._states[url]["healthy"]]
-        if not healthy:
+    def acquire_idle_remote(self) -> Optional[str]:
+        """Reserve the next idle healthy remote, or None if all are busy/unhealthy."""
+        idle_healthy = [
+            url for url in self._remotes
+            if self._states[url]["healthy"] and not self._states[url]["busy"]
+        ]
+        if not idle_healthy:
             return None
-        idx = self._rr_index % len(healthy)
-        self._rr_index += 1
-        return healthy[idx]
+
+        # Prefer the remote that has been idle longest.
+        remote_url = min(
+            idle_healthy,
+            key=lambda url: (
+                self._states[url]["last_completed"] > 0.0,
+                self._states[url]["last_completed"],
+                self._states[url]["last_assigned"],
+                self._remotes.index(url),
+            ),
+        )
+        state = self._states[remote_url]
+        state["busy"] = True
+        state["in_flight_count"] += 1
+        state["last_assigned"] = time.monotonic()
+        return remote_url
+
+    def release_remote(self, url: str) -> None:
+        """Release a previously reserved remote without affecting health."""
+        if url not in self._states:
+            return
+        state = self._states[url]
+        state["busy"] = False
+        state["in_flight_count"] = max(0, state["in_flight_count"] - 1)
+
+    def mark_success(self, url: str) -> None:
+        """Release a remote after successful generation."""
+        if url not in self._states:
+            return
+        self.release_remote(url)
+        self._states[url]["last_completed"] = time.monotonic()
 
     def get_healthy_remotes(self, exclude: Optional[set[str]] = None) -> List[str]:
-        """Return healthy remotes in priority order, excluding any specified URLs."""
+        """Return healthy idle remotes in priority order, excluding any specified URLs."""
         excluded = exclude or set()
         return [
             url for url in self._remotes
-            if self._states[url]["healthy"] and url not in excluded
+            if (
+                self._states[url]["healthy"]
+                and not self._states[url]["busy"]
+                and url not in excluded
+            )
         ]
 
     def mark_failure(self, url: str) -> None:
         """Immediately mark a remote unhealthy after a dispatch failure."""
         if url not in self._states:
             return
+        self.release_remote(url)
         state = self._states[url]
         state["healthy"] = False
         state["consecutive_failures"] += 1
@@ -82,8 +121,12 @@ class RemoteHealthChecker:
             result.append({
                 "url": url,
                 "healthy": state["healthy"],
+                "busy": state["busy"],
                 "last_checked": state["last_checked"],
                 "last_healthy": state["last_healthy"],
+                "last_assigned": state["last_assigned"],
+                "last_completed": state["last_completed"],
+                "in_flight_count": state["in_flight_count"],
                 "consecutive_failures": state["consecutive_failures"],
             })
         return result

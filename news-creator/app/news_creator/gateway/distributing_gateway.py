@@ -20,9 +20,9 @@ from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
 
-# Per-coroutine tracking of the remote URL selected during hold_slot()
-_remote_url_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "_remote_url_var", default=None
+# Per-coroutine tracking of the remote reservation selected during hold_slot()
+_dispatch_state_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar(
+    "_dispatch_state_var", default=None
 )
 
 
@@ -105,13 +105,13 @@ class DistributingGateway(LLMProviderPort):
             return
 
         # BE with dispatch enabled → try remote
-        remote_url = self._health_checker.get_healthy_remote()
+        remote_url = self._health_checker.acquire_idle_remote()
 
         if remote_url is None:
             # All remotes down → local fallback
             logger.debug(
-                "No healthy remotes, falling back to local",
-                extra={"dispatch_target": "local", "fallback_reason": "all_remotes_unhealthy"},
+                "No idle healthy remotes, falling back to local",
+                extra={"dispatch_target": "local", "fallback_reason": "all_remotes_busy_or_unhealthy"},
             )
             async with self._local.hold_slot(is_high_priority) as slot:
                 yield slot
@@ -125,11 +125,18 @@ class DistributingGateway(LLMProviderPort):
                 "remote_url": remote_url,
             },
         )
-        token = _remote_url_var.set(remote_url)
+        dispatch_state = {
+            "remote_url": remote_url,
+            "released": False,
+        }
+        token = _dispatch_state_var.set(dispatch_state)
         try:
             yield 0.0, None, None
         finally:
-            _remote_url_var.reset(token)
+            state = _dispatch_state_var.get(None)
+            if state is not None and not state["released"]:
+                self._health_checker.release_remote(state["remote_url"])
+            _dispatch_state_var.reset(token)
 
     # ------------------------------------------------------------------
     # generate_raw() — route based on contextvars set by hold_slot
@@ -147,7 +154,8 @@ class DistributingGateway(LLMProviderPort):
         format: Optional[Union[str, Dict[str, Any]]] = None,
         options: Optional[Dict[str, Any]] = None,
     ) -> LLMGenerateResponse:
-        remote_url = _remote_url_var.get(None)
+        dispatch_state = _dispatch_state_var.get(None)
+        remote_url = dispatch_state["remote_url"] if dispatch_state is not None else None
 
         if remote_url is not None:
             tried: set[str] = set()
@@ -168,13 +176,19 @@ class DistributingGateway(LLMProviderPort):
                     },
                 )
                 try:
-                    return await self._remote_driver.generate(
+                    response = await self._remote_driver.generate(
                         base_url=candidate_url, payload=payload,
                     )
+                    self._health_checker.mark_success(candidate_url)
+                    if dispatch_state is not None and dispatch_state["remote_url"] == candidate_url:
+                        dispatch_state["released"] = True
+                    return response
                 except RuntimeError:
                     failed_url = candidate_url
                     tried.add(candidate_url)
                     self._health_checker.mark_failure(candidate_url)
+                    if dispatch_state is not None and dispatch_state["remote_url"] == candidate_url:
+                        dispatch_state["released"] = True
                     next_candidates = self._health_checker.get_healthy_remotes(exclude=tried)
                     if not next_candidates:
                         logger.warning(
@@ -187,6 +201,12 @@ class DistributingGateway(LLMProviderPort):
                         )
                         break
                     candidate_url = next_candidates[0]
+                    replacement_state = {
+                        "remote_url": candidate_url,
+                        "released": False,
+                    }
+                    _dispatch_state_var.set(replacement_state)
+                    dispatch_state = replacement_state
                     logger.warning(
                         "Remote generation failed; retrying next healthy remote",
                         extra={

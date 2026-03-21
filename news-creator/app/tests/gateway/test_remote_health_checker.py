@@ -30,31 +30,35 @@ def checker(remotes):
     )
 
 
-def test_healthy_remote_returned_in_priority_order(checker, remotes):
-    """When all remotes are healthy, get_healthy_remote returns the first."""
+def test_acquire_idle_remote_prefers_first_never_completed_remote(checker, remotes):
+    """When all remotes are healthy and unused, the first remote is selected."""
     for url in remotes:
         checker._states[url]["healthy"] = True
 
-    result = checker.get_healthy_remote()
+    result = checker.acquire_idle_remote()
     assert result == remotes[0]
+    assert checker._states[remotes[0]]["busy"] is True
+    assert checker._states[remotes[0]]["in_flight_count"] == 1
 
 
-def test_unhealthy_remote_skipped(checker, remotes):
-    """When first remote is unhealthy, the second healthy one is returned."""
-    checker._states[remotes[0]]["healthy"] = False
-    checker._states[remotes[1]]["healthy"] = True
-    checker._states[remotes[2]]["healthy"] = True
+def test_acquire_idle_remote_skips_unhealthy_and_busy(checker, remotes):
+    """Only healthy idle remotes are candidates for selection."""
+    for url in remotes:
+        checker._states[url]["healthy"] = True
+    checker._states[remotes[0]]["busy"] = True
+    checker._states[remotes[0]]["in_flight_count"] = 1
+    checker._states[remotes[1]]["healthy"] = False
 
-    result = checker.get_healthy_remote()
-    assert result == remotes[1]
+    result = checker.acquire_idle_remote()
+    assert result == remotes[2]
 
 
-def test_all_remotes_unhealthy_returns_none(checker, remotes):
-    """When all remotes are unhealthy, returns None."""
+def test_all_remotes_unavailable_returns_none(checker, remotes):
+    """When all remotes are unhealthy or busy, returns None."""
     for url in remotes:
         checker._states[url]["healthy"] = False
 
-    result = checker.get_healthy_remote()
+    result = checker.acquire_idle_remote()
     assert result is None
 
 
@@ -179,6 +183,8 @@ def test_status_returns_all_remote_states(checker, remotes):
     checker._states[remotes[0]]["healthy"] = True
     checker._states[remotes[1]]["healthy"] = False
     checker._states[remotes[2]]["healthy"] = True
+    checker._states[remotes[2]]["busy"] = True
+    checker._states[remotes[2]]["in_flight_count"] = 1
 
     status = checker.status()
 
@@ -189,6 +195,8 @@ def test_status_returns_all_remote_states(checker, remotes):
     assert status[1]["healthy"] is False
     assert status[2]["url"] == remotes[2]
     assert status[2]["healthy"] is True
+    assert status[2]["busy"] is True
+    assert status[2]["in_flight_count"] == 1
 
 
 def test_no_remotes_returns_none():
@@ -200,105 +208,82 @@ def test_no_remotes_returns_none():
         cooldown_seconds=60,
         timeout_seconds=10,
     )
-    assert checker.get_healthy_remote() is None
+    assert checker.acquire_idle_remote() is None
     assert checker.status() == []
 
 
-def test_get_healthy_remotes_respects_priority_and_exclusions(checker, remotes):
-    """Healthy remotes should be returned in order, excluding requested URLs."""
+def test_get_healthy_remotes_excludes_busy_and_requested_urls(checker, remotes):
+    """Healthy idle remotes should be returned in order, excluding requested URLs."""
     for url in remotes:
         checker._states[url]["healthy"] = True
+    checker._states[remotes[1]]["busy"] = True
 
-    assert checker.get_healthy_remotes(exclude={remotes[0]}) == remotes[1:]
+    assert checker.get_healthy_remotes(exclude={remotes[0]}) == [remotes[2]]
 
 
 def test_mark_failure_immediately_marks_remote_unhealthy(checker, remotes):
     """A generation failure should immediately demote the remote."""
     checker._states[remotes[0]]["healthy"] = True
+    checker._states[remotes[0]]["busy"] = True
+    checker._states[remotes[0]]["in_flight_count"] = 1
 
     checker.mark_failure(remotes[0])
 
     assert checker._states[remotes[0]]["healthy"] is False
+    assert checker._states[remotes[0]]["busy"] is False
+    assert checker._states[remotes[0]]["in_flight_count"] == 0
     assert checker._states[remotes[0]]["consecutive_failures"] == 1
 
 
-def test_round_robin_distributes_across_healthy_remotes(checker, remotes):
-    """Round-robin distributes calls across all healthy remotes."""
+def test_acquire_idle_remote_uses_completion_order(checker, remotes):
+    """The remote that has been idle longest should be selected first."""
+    for url in remotes:
+        checker._states[url]["healthy"] = True
+    checker._states[remotes[0]]["last_completed"] = 30.0
+    checker._states[remotes[1]]["last_completed"] = 10.0
+    checker._states[remotes[2]]["last_completed"] = 20.0
+
+    assert checker.acquire_idle_remote() == remotes[1]
+
+
+def test_release_remote_makes_remote_available_again(checker, remotes):
+    """A released remote returns to the idle candidate pool."""
     for url in remotes:
         checker._states[url]["healthy"] = True
 
-    results = [checker.get_healthy_remote() for _ in range(6)]
+    chosen = checker.acquire_idle_remote()
+    assert chosen == remotes[0]
 
-    assert results == [remotes[0], remotes[1], remotes[2],
-                       remotes[0], remotes[1], remotes[2]]
+    checker.release_remote(chosen)
+    assert checker._states[chosen]["busy"] is False
+    assert checker._states[chosen]["in_flight_count"] == 0
+
+    next_candidates = checker.get_healthy_remotes()
+    assert remotes[0] in next_candidates
 
 
-def test_round_robin_skips_unhealthy(checker, remotes):
-    """Round-robin skips unhealthy remotes and rotates among the rest."""
+def test_mark_success_updates_completion_time_and_releases_remote(checker, remotes):
+    """Successful completion should clear busy state and update completion time."""
     checker._states[remotes[0]]["healthy"] = True
-    checker._states[remotes[1]]["healthy"] = False
+    checker._states[remotes[0]]["busy"] = True
+    checker._states[remotes[0]]["in_flight_count"] = 1
+
+    before = time.monotonic()
+    checker.mark_success(remotes[0])
+
+    assert checker._states[remotes[0]]["busy"] is False
+    assert checker._states[remotes[0]]["in_flight_count"] == 0
+    assert checker._states[remotes[0]]["last_completed"] >= before
+
+
+def test_acquire_idle_remote_returns_none_when_all_busy(checker, remotes):
+    """No remote should be selected when every healthy remote is busy."""
+    checker._states[remotes[0]]["healthy"] = True
+    checker._states[remotes[0]]["busy"] = True
     checker._states[remotes[2]]["healthy"] = True
+    checker._states[remotes[2]]["busy"] = True
 
-    results = [checker.get_healthy_remote() for _ in range(4)]
-
-    assert results == [remotes[0], remotes[2], remotes[0], remotes[2]]
-
-
-def test_round_robin_recovered_node_rejoins_pool(checker, remotes):
-    """A node that goes unhealthy and recovers is included in round-robin again."""
-    for url in remotes:
-        checker._states[url]["healthy"] = True
-
-    # Consume one call so rr_index advances
-    assert checker.get_healthy_remote() == remotes[0]
-
-    # remote-b goes down
-    checker._states[remotes[1]]["healthy"] = False
-
-    # Next calls rotate among A and C only
-    assert checker.get_healthy_remote() == remotes[2]
-    assert checker.get_healthy_remote() == remotes[0]
-
-    # remote-b recovers
-    checker._states[remotes[1]]["healthy"] = True
-
-    # Now all three should participate again
-    results = [checker.get_healthy_remote() for _ in range(6)]
-    # The healthy list is [A, B, C]; rr_index keeps advancing
-    assert set(results) == set(remotes)
-    assert results.count(remotes[0]) == 2
-    assert results.count(remotes[1]) == 2
-    assert results.count(remotes[2]) == 2
-
-
-def test_round_robin_equal_distribution_long_sample(checker, remotes):
-    """Over a long sample, equal-weight round-robin yields 1:1:1 distribution."""
-    for url in remotes:
-        checker._states[url]["healthy"] = True
-
-    n = 30
-    results = [checker.get_healthy_remote() for _ in range(n)]
-
-    for url in remotes:
-        assert results.count(url) == n // len(remotes)
-
-
-def test_mark_failure_excludes_from_round_robin_and_cascade_uses_priority(checker, remotes):
-    """mark_failure() removes node from round-robin; get_healthy_remotes() keeps priority order for retry."""
-    for url in remotes:
-        checker._states[url]["healthy"] = True
-
-    # Simulate dispatch failure on remote-a
-    checker.mark_failure(remotes[0])
-
-    # round-robin should only return B and C
-    rr_results = [checker.get_healthy_remote() for _ in range(4)]
-    assert remotes[0] not in rr_results
-    assert rr_results == [remotes[1], remotes[2], remotes[1], remotes[2]]
-
-    # retry cascade (get_healthy_remotes) returns remaining in priority order
-    cascade = checker.get_healthy_remotes(exclude={remotes[0]})
-    assert cascade == [remotes[1], remotes[2]]
+    assert checker.acquire_idle_remote() is None
 
 
 @pytest.mark.asyncio
