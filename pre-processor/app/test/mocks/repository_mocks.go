@@ -437,6 +437,21 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) CreateJob(ctx, articleID any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).CreateJob), ctx, articleID)
 }
 
+// HasRecentSuccessfulJob mocks base method.
+func (m *MockSummarizeJobRepository) HasRecentSuccessfulJob(ctx context.Context, articleID string, since time.Time) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasRecentSuccessfulJob", ctx, articleID, since)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasRecentSuccessfulJob indicates an expected call of HasRecentSuccessfulJob.
+func (mr *MockSummarizeJobRepositoryMockRecorder) HasRecentSuccessfulJob(ctx, articleID, since any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasRecentSuccessfulJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).HasRecentSuccessfulJob), ctx, articleID, since)
+}
+
 // GetJob mocks base method.
 func (m *MockSummarizeJobRepository) GetJob(ctx context.Context, jobID string) (*domain.SummarizeJob, error) {
 	m.ctrl.T.Helper()

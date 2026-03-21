@@ -78,6 +78,40 @@ func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string
 	return jobID.String(), nil
 }
 
+// HasRecentSuccessfulJob reports whether the article has a recently completed job
+// with a non-empty summary payload.
+func (r *summarizeJobRepository) HasRecentSuccessfulJob(ctx context.Context, articleID string, since time.Time) (bool, error) {
+	if articleID == "" {
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
+		return false, fmt.Errorf("article ID cannot be empty")
+	}
+
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return false, fmt.Errorf("database connection is nil")
+	}
+
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM summarize_job_queue
+			WHERE article_id = $1
+			  AND status = 'completed'
+			  AND completed_at >= $2
+			  AND summary IS NOT NULL
+			  AND summary <> ''
+		)
+	`
+
+	var exists bool
+	if err := r.db.QueryRow(ctx, query, articleID, since).Scan(&exists); err != nil {
+		r.logger.ErrorContext(ctx, "failed to check recent successful job", "error", err, "article_id", articleID)
+		return false, fmt.Errorf("failed to check recent successful job: %w", err)
+	}
+
+	return exists, nil
+}
+
 // GetJob retrieves a summarization job by job ID.
 func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*domain.SummarizeJob, error) {
 	if jobID == "" {

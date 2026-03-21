@@ -10,6 +10,7 @@ import (
 
 	"pre-processor/domain"
 	"pre-processor/repository"
+	"pre-processor/service"
 	summarizeuc "pre-processor/usecase/summarize"
 	apperrors "pre-processor/utils/errors"
 
@@ -334,6 +335,23 @@ func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
 	}
 
 	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", req.ArticleID)
+
+	shouldQueue, reason, err := service.ShouldQueueSummarizeJob(ctx, req.ArticleID, h.summaryRepo, h.jobRepo, h.logger)
+	if err != nil {
+		return apperrors.NewDatabaseContextError(
+			"failed to evaluate summarization job creation",
+			"handler", "SummarizeHandler", "HandleSummarizeQueue",
+			err,
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
+	}
+	if !shouldQueue {
+		return c.JSON(http.StatusAccepted, SummarizeQueueResponse{
+			JobID:   "",
+			Status:  "skipped",
+			Message: "Summarization job not queued: " + reason,
+		})
+	}
 
 	// Create job in queue
 	jobID, err := h.jobRepo.CreateJob(ctx, req.ArticleID)

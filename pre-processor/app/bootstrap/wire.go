@@ -102,7 +102,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	summarizeHandler := handler.NewSummarizeHandler(apiRepo, summaryRepo, articleRepo, jobRepo, log)
 
 	// Initialize Redis Streams consumer
-	redisConsumer := buildRedisConsumer(ctx, jobRepo, articleRepo, log)
+	redisConsumer := buildRedisConsumer(ctx, jobRepo, articleRepo, summaryRepo, log)
 
 	cleanup := func() {
 		ppDBPoolCleanup()
@@ -140,7 +140,7 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-func buildRedisConsumer(ctx context.Context, jobRepo repository.SummarizeJobRepository, articleRepo repository.ArticleRepository, log *slog.Logger) *consumer.Consumer {
+func buildRedisConsumer(ctx context.Context, jobRepo repository.SummarizeJobRepository, articleRepo repository.ArticleRepository, summaryRepo repository.SummaryRepository, log *slog.Logger) *consumer.Consumer {
 	consumerCfg := consumer.Config{
 		RedisURL:      getEnvOrDefault("REDIS_STREAMS_URL", "redis://redis-streams:6379"),
 		GroupName:     getEnvOrDefault("CONSUMER_GROUP", "pre-processor-group"),
@@ -152,7 +152,7 @@ func buildRedisConsumer(ctx context.Context, jobRepo repository.SummarizeJobRepo
 		Enabled:       getEnvOrDefault("CONSUMER_ENABLED", "false") == "true",
 	}
 
-	summarizeServiceAdapter := consumer.NewSummarizeServiceAdapter(jobRepo, articleRepo, log)
+	summarizeServiceAdapter := consumer.NewSummarizeServiceAdapter(jobRepo, articleRepo, summaryRepo, log)
 	eventHandler := consumer.NewPreProcessorEventHandler(summarizeServiceAdapter, log)
 	redisConsumer, err := consumer.NewConsumer(consumerCfg, eventHandler, log)
 	if err != nil {

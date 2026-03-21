@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"pre-processor/domain"
 
@@ -44,6 +45,27 @@ func TestSummarizeJobRepository_CreateJob(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "article ID cannot be empty")
 		assert.Empty(t, jobID)
+	})
+}
+
+func TestSummarizeJobRepository_HasRecentSuccessfulJob(t *testing.T) {
+	t.Run("should handle nil database gracefully", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		exists, err := repo.HasRecentSuccessfulJob(context.Background(), "test-article-id", time.Now().Add(-time.Hour))
+
+		assert.Error(t, err)
+		assert.False(t, exists)
+	})
+
+	t.Run("should reject empty article ID", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		exists, err := repo.HasRecentSuccessfulJob(context.Background(), "", time.Now().Add(-time.Hour))
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "article ID cannot be empty")
+		assert.False(t, exists)
 	})
 }
 

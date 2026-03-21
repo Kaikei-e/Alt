@@ -49,6 +49,7 @@ type ExternalAPIRepository interface {
 // SummarizeJobRepository handles summarization job queue persistence.
 type SummarizeJobRepository interface {
 	CreateJob(ctx context.Context, articleID string) (string, error)
+	HasRecentSuccessfulJob(ctx context.Context, articleID string, since time.Time) (bool, error)
 	GetJob(ctx context.Context, jobID string) (*domain.SummarizeJob, error)
 	UpdateJobStatus(ctx context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMessage string) error
 	GetPendingJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error)

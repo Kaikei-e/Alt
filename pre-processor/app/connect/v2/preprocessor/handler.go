@@ -13,6 +13,7 @@ import (
 	preprocessorv2 "pre-processor/gen/proto/services/preprocessor/v2"
 	"pre-processor/gen/proto/services/preprocessor/v2/preprocessorv2connect"
 	"pre-processor/repository"
+	"pre-processor/service"
 	summarizeuc "pre-processor/usecase/summarize"
 )
 
@@ -177,6 +178,20 @@ func (h *Handler) QueueSummarize(
 	}
 
 	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", articleID)
+
+	shouldQueue, reason, err := service.ShouldQueueSummarizeJob(ctx, articleID, h.summaryRepo, h.jobRepo, h.logger)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to evaluate summarization job creation", "error", err, "article_id", articleID)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to queue summarization job"))
+	}
+	if !shouldQueue {
+		h.logger.InfoContext(ctx, "skipping summarization job creation", "article_id", articleID, "reason", reason)
+		return connect.NewResponse(&preprocessorv2.QueueSummarizeResponse{
+			JobId:   "",
+			Status:  "skipped",
+			Message: "Summarization job not queued",
+		}), nil
+	}
 
 	// Create job in queue
 	jobID, err := h.jobRepo.CreateJob(ctx, articleID)
