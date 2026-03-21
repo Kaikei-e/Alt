@@ -39,6 +39,7 @@ require (
 )
 
 require (
+	connectrpc.com/otelconnect v0.9.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect

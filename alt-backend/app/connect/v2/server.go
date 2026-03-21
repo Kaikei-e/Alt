@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"connectrpc.com/connect"
+	"connectrpc.com/otelconnect"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
@@ -38,12 +39,20 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	// Create interceptors
 	cancelInterceptor := middleware.NewContextCancelInterceptor(logger)
 	authInterceptor := middleware.NewAuthInterceptor(logger, cfg)
+	otelInterceptor, err := otelconnect.NewInterceptor()
+	if err != nil {
+		logger.Warn("Failed to create OTel interceptor, proceeding without tracing", "error", err)
+	}
 
 	// Handler options with interceptors (cancelInterceptor outermost: catches all errors)
-	opts := connect.WithInterceptors(
+	interceptors := []connect.Interceptor{
 		cancelInterceptor.Interceptor(),
 		authInterceptor.Interceptor(),
-	)
+	}
+	if otelInterceptor != nil {
+		interceptors = append(interceptors, otelInterceptor)
+	}
+	opts := connect.WithInterceptors(interceptors...)
 
 	// Register Feed service
 	feedHandler := feeds.NewHandler(container, cfg, logger)
