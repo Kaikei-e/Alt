@@ -74,3 +74,8 @@ class TagGeneratorConfig(BaseSettings):
     # Health monitoring
     health_check_interval: int = Field(default=10, gt=0, description="Cycles between health checks")
     max_consecutive_empty_cycles: int = Field(default=20, gt=0, description="Max cycles with 0 articles before warning")
+    max_empty_extraction_retries: int = Field(
+        default=3,
+        gt=0,
+        description="Max consecutive empty-extraction results before skipping an article in this process",
+    )

@@ -41,6 +41,11 @@ class BatchProcessor:
         self.consecutive_empty_backfill_fetches: int = 0
         self.max_empty_backfill_fetches: int = 3  # Consider backfill complete after 3 empty fetches
 
+        # Process-local empty-extraction tracking (poison pill defence).
+        # article_id -> consecutive empty-extraction count.
+        # Cleared on successful extraction; reset on process restart.
+        self._empty_extraction_counts: dict[str, int] = {}
+
     def _cleanup_memory(self) -> None:
         """Explicit memory cleanup to prevent accumulation."""
         if self.config.enable_gc_collection:
@@ -63,6 +68,27 @@ class BatchProcessor:
             "failed": 0,
         }
 
+        # Filter out articles that have exceeded the empty-extraction threshold
+        max_retries = self.config.max_empty_extraction_retries
+        filtered_articles = []
+        skipped_articles = 0
+
+        for article in articles:
+            article_id = article["id"]
+            if self._empty_extraction_counts.get(article_id, 0) >= max_retries:
+                skipped_articles += 1
+                continue
+            filtered_articles.append(article)
+
+        if skipped_articles:
+            logger.info(
+                "Skipped articles after repeated empty extraction",
+                skipped_articles=skipped_articles,
+                threshold=max_retries,
+            )
+
+        articles = filtered_articles
+
         # Prepare batch data for tag insertion
         article_tags_batch = []
         cascade_refine_requests = 0
@@ -77,7 +103,19 @@ class BatchProcessor:
                 outcome = self.tag_extractor.extract_tags_with_metrics(title, content)
 
                 if not outcome.tags:
+                    count = self._empty_extraction_counts.get(article_id, 0) + 1
+                    self._empty_extraction_counts[article_id] = count
+                    if count == max_retries:
+                        logger.warning(
+                            "Article reached empty-extraction skip threshold",
+                            article_id=article_id,
+                            failure_count=count,
+                            threshold=max_retries,
+                        )
                     continue
+
+                # Successful extraction — clear any accumulated empty-extraction count
+                self._empty_extraction_counts.pop(article_id, None)
 
                 decision = self.cascade_controller.evaluate(outcome)
                 if decision.needs_refine:
