@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
+	"strings"
 	"net/http"
 	"rag-orchestrator/internal/domain"
 	"time"
@@ -72,17 +76,21 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 
 	resp, err := e.Client.Do(req)
 	if err != nil {
+		category := classifyTransportError(err)
 		slog.Error("ollama_embed_failed",
+			slog.String("category", category),
 			slog.String("error", err.Error()),
 			slog.Duration("elapsed", time.Since(start)),
 		)
-		return nil, fmt.Errorf("failed to call ollama: %w", err)
+		return nil, fmt.Errorf("failed to call ollama (%s): %w", category, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
 		slog.Error("ollama_embed_bad_status",
 			slog.Int("status", resp.StatusCode),
+			slog.String("body", string(body)),
 			slog.Duration("elapsed", time.Since(start)),
 		)
 		return nil, fmt.Errorf("ollama returned status: %d", resp.StatusCode)
@@ -90,6 +98,11 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 
 	var respBody embedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+		slog.Error("ollama_embed_decode_failed",
+			slog.String("error", err.Error()),
+			slog.String("category", "decode_failure"),
+			slog.Duration("elapsed", time.Since(start)),
+		)
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -103,6 +116,26 @@ func (e *OllamaEmbedder) Encode(ctx context.Context, texts []string) ([][]float3
 
 func (e *OllamaEmbedder) Version() string {
 	return e.Model
+}
+
+// classifyTransportError categorizes a transport error for structured logging.
+// Distinguishes caller context expiry from http.Client.Timeout by inspecting
+// the "Client.Timeout" substring that Go's net/http injects.
+func classifyTransportError(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "context_canceled"
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr.Op == "dial" {
+		return "connection_failed"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		if strings.Contains(err.Error(), "Client.Timeout") {
+			return "client_timeout"
+		}
+		return "context_deadline_exceeded"
+	}
+	return "transport_error"
 }
 
 var _ domain.VectorEncoder = (*OllamaEmbedder)(nil)

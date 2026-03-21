@@ -87,7 +87,7 @@ services:
       - DB_PASSWORD_FILE=/run/secrets/rag_db_password
       - DB_NAME=${RAG_DB_NAME:-rag_db}
       - EMBEDDER_EXTERNAL=${EMBEDDER_EXTERNAL}
-      - EMBEDDER_TIMEOUT=30
+      - EMBEDDER_TIMEOUT=10
       # RAG answer generation: local-first (ADR-497 follow-up)
       # Override AUGUR_EXTERNAL in .env to route to remote Mac if needed
       - AUGUR_EXTERNAL=${AUGUR_EXTERNAL:-http://news-creator-backend:11435}

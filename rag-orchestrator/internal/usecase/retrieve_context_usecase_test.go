@@ -2,6 +2,7 @@ package usecase_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"rag-orchestrator/internal/domain"
@@ -229,6 +230,170 @@ func TestSelectContexts_DynamicAllocation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRetrieveContext_ExpandedEmbeddingFailure_NonFatal(t *testing.T) {
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockEncoder := new(MockVectorEncoder)
+	mockLLM := new(mockLLMClient)
+	mockQueryExpander := new(MockQueryExpander)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, usecase.DefaultRetrievalConfig(), testLogger)
+
+	ctx := context.Background()
+	input := usecase.RetrieveContextInput{
+		Query: "test query",
+	}
+
+	// Query expansion succeeds
+	mockQueryExpander.On("ExpandQuery", mock.Anything, "test query", 1, 3).Return([]string{
+		"expanded query 1",
+		"expanded query 2",
+	}, nil)
+	mockLLM.On("Generate", mock.Anything, mock.Anything, 100).Return(&domain.LLMResponse{
+		Text: "legacy 1",
+	}, nil).Maybe()
+
+	queryVec := []float32{0.1, 0.2, 0.3}
+	// Original query embedding succeeds
+	mockEncoder.On("Encode", mock.Anything, []string{"test query"}).Return([][]float32{queryVec}, nil)
+	// Expanded queries embedding FAILS — this must be non-fatal
+	mockEncoder.On("Encode", mock.Anything, mock.MatchedBy(func(texts []string) bool {
+		return len(texts) > 0 && texts[0] != "test query"
+	})).Return(nil, fmt.Errorf("embedder timeout: context deadline exceeded"))
+
+	// Vector search for original query succeeds
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+		{
+			Chunk: domain.RagChunk{
+				ID:      uuid.New(),
+				Content: "Result from original query",
+			},
+			Score:           0.90,
+			ArticleID:       "art-1",
+			DocumentVersion: 1,
+		},
+	}, nil)
+
+	// Execute — should succeed despite expanded embedding failure
+	output, err := uc.Execute(ctx, input)
+
+	assert.NoError(t, err, "expanded embedding failure should be non-fatal")
+	assert.NotNil(t, output)
+	assert.GreaterOrEqual(t, len(output.Contexts), 1, "should return results from original query")
+}
+
+func TestRetrieveContext_OriginalEmbeddingFailure_Fatal(t *testing.T) {
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockEncoder := new(MockVectorEncoder)
+	mockLLM := new(mockLLMClient)
+	mockQueryExpander := new(MockQueryExpander)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, usecase.DefaultRetrievalConfig(), testLogger)
+
+	ctx := context.Background()
+	input := usecase.RetrieveContextInput{
+		Query: "test query",
+	}
+
+	// Query expansion succeeds
+	mockQueryExpander.On("ExpandQuery", mock.Anything, "test query", 1, 3).Return([]string{
+		"expanded query",
+	}, nil)
+	mockLLM.On("Generate", mock.Anything, mock.Anything, 100).Return(&domain.LLMResponse{
+		Text: "legacy",
+	}, nil).Maybe()
+
+	// Original query embedding FAILS — this must be fatal
+	mockEncoder.On("Encode", mock.Anything, []string{"test query"}).Return(nil, fmt.Errorf("embedder timeout"))
+	// Expanded embedding — allow anything
+	mockEncoder.On("Encode", mock.Anything, mock.MatchedBy(func(texts []string) bool {
+		return len(texts) > 0 && texts[0] != "test query"
+	})).Return(nil, nil).Maybe()
+
+	// Execute — should fail because original embedding failed
+	output, err := uc.Execute(ctx, input)
+
+	assert.Error(t, err, "original embedding failure must be fatal")
+	assert.Nil(t, output)
+	assert.Contains(t, err.Error(), "encode")
+}
+
+// MockBM25Searcher
+type MockBM25Searcher struct {
+	mock.Mock
+}
+
+func (m *MockBM25Searcher) SearchBM25(ctx context.Context, query string, limit int) ([]domain.BM25SearchResult, error) {
+	args := m.Called(ctx, query, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.BM25SearchResult), args.Error(1)
+}
+
+func TestRetrieveContext_BM25AndExpandedBothFail_StillSucceeds(t *testing.T) {
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockEncoder := new(MockVectorEncoder)
+	mockLLM := new(mockLLMClient)
+	mockQueryExpander := new(MockQueryExpander)
+	mockBM25 := new(MockBM25Searcher)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewRetrieveContextUsecase(
+		mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander,
+		usecase.DefaultRetrievalConfig(), testLogger,
+		usecase.WithBM25Searcher(mockBM25),
+	)
+
+	ctx := context.Background()
+	input := usecase.RetrieveContextInput{
+		Query: "test query",
+	}
+
+	// Query expansion succeeds
+	mockQueryExpander.On("ExpandQuery", mock.Anything, "test query", 1, 3).Return([]string{
+		"expanded 1",
+	}, nil)
+	mockLLM.On("Generate", mock.Anything, mock.Anything, 100).Return(&domain.LLMResponse{
+		Text: "legacy",
+	}, nil).Maybe()
+
+	queryVec := []float32{0.1, 0.2, 0.3}
+	// Original query embedding succeeds
+	mockEncoder.On("Encode", mock.Anything, []string{"test query"}).Return([][]float32{queryVec}, nil)
+	// Expanded queries embedding FAILS
+	mockEncoder.On("Encode", mock.Anything, mock.MatchedBy(func(texts []string) bool {
+		return len(texts) > 0 && texts[0] != "test query"
+	})).Return(nil, fmt.Errorf("embedder unavailable"))
+
+	// BM25 search FAILS
+	mockBM25.On("SearchBM25", mock.Anything, "test query", 50).Return(nil, fmt.Errorf("meilisearch down"))
+
+	// Original vector search succeeds
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+		{
+			Chunk: domain.RagChunk{
+				ID:      uuid.New(),
+				Content: "Survived via original vector search",
+			},
+			Score:           0.88,
+			ArticleID:       "art-1",
+			DocumentVersion: 1,
+		},
+	}, nil)
+
+	// Execute — should succeed: both BM25 and expanded embedding are non-fatal
+	output, err := uc.Execute(ctx, input)
+
+	assert.NoError(t, err, "BM25 + expanded embedding failures should both be non-fatal")
+	assert.NotNil(t, output)
+	assert.GreaterOrEqual(t, len(output.Contexts), 1, "should return results from original vector search")
 }
 
 // Test helper types
