@@ -36,7 +36,7 @@ test.describe("Desktop Statistics", () => {
 		await expect(desktopStatsPage.pageTitle).toBeVisible();
 		await expect(desktopStatsPage.feedCountCard).toBeVisible();
 		await expect(desktopStatsPage.totalArticlesCard).toBeVisible();
-		await expect(desktopStatsPage.summarizedCard).toBeVisible();
+		await expect(desktopStatsPage.unsummarizedCard).toBeVisible();
 	});
 
 	test("shows Trend Charts heading", async ({ desktopStatsPage }) => {

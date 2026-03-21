@@ -11,7 +11,7 @@ export class DesktopStatsPage extends BasePage {
 	// Stat cards
 	readonly feedCountCard: Locator;
 	readonly totalArticlesCard: Locator;
-	readonly summarizedCard: Locator;
+	readonly unsummarizedCard: Locator;
 
 	// Connection status
 	readonly connectionStatus: Locator;
@@ -28,7 +28,7 @@ export class DesktopStatsPage extends BasePage {
 
 		this.feedCountCard = page.getByText("Feed Count");
 		this.totalArticlesCard = page.getByText("Total Articles");
-		this.summarizedCard = page.getByText("Summarized").first();
+		this.unsummarizedCard = page.getByText("Unsummarized").first();
 
 		this.connectionStatus = page.getByText(/connected|disconnected/i).first();
 		this.reconnectButton = page.getByRole("button", {
