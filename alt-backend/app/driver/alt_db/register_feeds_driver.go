@@ -10,6 +10,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type FeedRegistrationResult struct {
+	ArticleID string
+	Created   bool
+}
+
 func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.Feed) error {
 	// Use ON CONFLICT for atomic upsert, eliminating TOCTOU race condition.
 	// Same pattern as RegisterMultipleFeeds.
@@ -36,6 +41,20 @@ func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.F
 }
 
 func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []models.Feed) ([]string, error) {
+	results, err := r.RegisterMultipleFeedsWithState(ctx, feeds)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, 0, len(results))
+	for _, result := range results {
+		ids = append(ids, result.ArticleID)
+	}
+
+	return ids, nil
+}
+
+func (r *AltDBRepository) RegisterMultipleFeedsWithState(ctx context.Context, feeds []models.Feed) ([]FeedRegistrationResult, error) {
 	if len(feeds) == 0 {
 		return nil, nil
 	}
@@ -64,7 +83,7 @@ func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []mod
 			updated_at = EXCLUDED.updated_at,
 			feed_link_id = COALESCE(feeds.feed_link_id, EXCLUDED.feed_link_id),
 			og_image_url = COALESCE(EXCLUDED.og_image_url, feeds.og_image_url)
-		RETURNING id
+		RETURNING id, (xmax = 0) AS created
 	`
 
 	batch := &pgx.Batch{}
@@ -73,14 +92,14 @@ func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []mod
 	}
 
 	br := tx.SendBatch(ctx, batch)
-	var ids []string
+	results := make([]FeedRegistrationResult, 0, len(feeds))
 	for range feeds {
-		var id string
-		if err := br.QueryRow().Scan(&id); err != nil {
+		var result FeedRegistrationResult
+		if err := br.QueryRow().Scan(&result.ArticleID, &result.Created); err != nil {
 			br.Close()
 			return nil, fmt.Errorf("batch upsert feed: %w", err)
 		}
-		ids = append(ids, id)
+		results = append(results, result)
 	}
 	if err := br.Close(); err != nil {
 		return nil, fmt.Errorf("close batch: %w", err)
@@ -91,5 +110,5 @@ func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []mod
 	}
 
 	logger.Logger.InfoContext(ctx, "Multiple feeds registered successfully", "count", len(feeds))
-	return ids, nil
+	return results, nil
 }

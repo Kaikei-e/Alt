@@ -133,7 +133,7 @@ func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {
 
 // publishFeedEvents publishes ArticleCreated events for each registered feed item.
 // This is fire-and-forget: failures are logged but do not affect the main operation.
-func (r *RegisterFeedsUsecase) publishFeedEvents(ctx context.Context, ids []string, feedItems []*domain.FeedItem, feedLinkID *string) {
+func (r *RegisterFeedsUsecase) publishFeedEvents(ctx context.Context, results []register_feed_port.RegisterFeedResult, feedItems []*domain.FeedItem, feedLinkID *string) {
 	if r.eventPublisher == nil || !r.eventPublisher.IsEnabled() {
 		return
 	}
@@ -141,21 +141,37 @@ func (r *RegisterFeedsUsecase) publishFeedEvents(ctx context.Context, ids []stri
 	if feedLinkID != nil {
 		feedID = *feedLinkID
 	}
-	for i, id := range ids {
+	for i, result := range results {
 		if i >= len(feedItems) {
 			break
 		}
 		item := feedItems[i]
-		if err := r.eventPublisher.PublishArticleCreated(ctx, event_publisher_port.ArticleCreatedEvent{
-			ArticleID:   id,
+
+		if result.Created {
+			if err := r.eventPublisher.PublishArticleCreated(ctx, event_publisher_port.ArticleCreatedEvent{
+				ArticleID:   result.ArticleID,
+				FeedID:      feedID,
+				Title:       item.Title,
+				URL:         item.Link,
+				Content:     item.Description,
+				PublishedAt: item.PublishedParsed,
+			}); err != nil {
+				logger.Logger.WarnContext(ctx, "failed to publish ArticleCreated event (non-fatal)",
+					"article_id", result.ArticleID, "error", err)
+			}
+			continue
+		}
+
+		if err := r.eventPublisher.PublishArticleUpdated(ctx, event_publisher_port.ArticleUpdatedEvent{
+			ArticleID:   result.ArticleID,
 			FeedID:      feedID,
 			Title:       item.Title,
 			URL:         item.Link,
 			Content:     item.Description,
 			PublishedAt: item.PublishedParsed,
 		}); err != nil {
-			logger.Logger.WarnContext(ctx, "failed to publish ArticleCreated event (non-fatal)",
-				"article_id", id, "error", err)
+			logger.Logger.WarnContext(ctx, "failed to publish ArticleUpdated event (non-fatal)",
+				"article_id", result.ArticleID, "error", err)
 		}
 	}
 }

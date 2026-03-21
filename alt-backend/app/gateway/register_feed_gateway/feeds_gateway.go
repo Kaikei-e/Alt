@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/driver/alt_db"
 	"alt/driver/models"
+	register_feed_port "alt/port/register_feed_port"
 	"alt/utils"
 	"alt/utils/logger"
 	"context"
@@ -61,19 +62,26 @@ func buildFeedModels(ctx context.Context, feeds []*domain.FeedItem) []models.Fee
 	return items
 }
 
-func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]string, error) {
+func (g *RegisterFeedsGateway) RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]register_feed_port.RegisterFeedResult, error) {
 	if g.alt_db == nil {
 		return nil, errors.New("database connection not available")
 	}
 	items := buildFeedModels(ctx, feeds)
 
-	ids, err := g.alt_db.RegisterMultipleFeeds(ctx, items)
+	results, err := g.alt_db.RegisterMultipleFeedsWithState(ctx, items)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error registering multiple feeds", "error", err)
 		return nil, err
 	}
 
 	logger.SafeInfoContext(ctx, "Feeds registered", "number of feeds", len(items))
+	mapped := make([]register_feed_port.RegisterFeedResult, 0, len(results))
+	for _, result := range results {
+		mapped = append(mapped, register_feed_port.RegisterFeedResult{
+			ArticleID: result.ArticleID,
+			Created:   result.Created,
+		})
+	}
 
-	return ids, nil
+	return mapped, nil
 }

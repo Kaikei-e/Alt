@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/mocks"
 	"alt/port/event_publisher_port"
+	register_feed_port "alt/port/register_feed_port"
 	"alt/usecase/testutil"
 	"alt/utils/logger"
 	"context"
@@ -22,6 +23,17 @@ func mockParsedFeed(feedLink string, items []*domain.FeedItem) *domain.ParsedFee
 		FeedLink: feedLink,
 		Items:    items,
 	}
+}
+
+func mockRegisterFeedResults(ids ...string) []register_feed_port.RegisterFeedResult {
+	results := make([]register_feed_port.RegisterFeedResult, 0, len(ids))
+	for _, id := range ids {
+		results = append(results, register_feed_port.RegisterFeedResult{
+			ArticleID: id,
+			Created:   true,
+		})
+	}
+	return results
 }
 
 func TestRegisterFeedUsecase_Execute(t *testing.T) {
@@ -50,7 +62,7 @@ func TestRegisterFeedUsecase_Execute(t *testing.T) {
 				pf := mockParsedFeed("https://example.com/rss/news", mockData)
 				mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 				mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-				mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"id-1", "id-2"}, nil).Times(1)
+				mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1", "id-2"), nil).Times(1)
 			},
 			wantErr: false,
 		},
@@ -63,7 +75,7 @@ func TestRegisterFeedUsecase_Execute(t *testing.T) {
 				pf := mockParsedFeed("https://example.com/rss/empty", emptyFeeds)
 				mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/empty").Return(pf, nil).Times(1)
 				mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/empty").Return(nil).Times(1)
-				mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{}, nil).Times(1)
+				mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]register_feed_port.RegisterFeedResult{}, nil).Times(1)
 			},
 			wantErr: false,
 		},
@@ -158,7 +170,7 @@ func TestRegisterFeedUsecase_UsesResolvedFeedLink(t *testing.T) {
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss").Return(pf, nil).Times(1)
 	// DB registration should use the resolved FeedLink, not the input URL
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/feed.xml").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"id-1", "id-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1", "id-2"), nil).Times(1)
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
 	err := r.Execute(context.Background(), "https://example.com/rss")
@@ -182,7 +194,7 @@ func TestRegisterFeedUsecase_SingleFetchOnly(t *testing.T) {
 	// ValidateAndFetch should be called exactly ONCE
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), gomock.Any()).Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"id-1", "id-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1", "id-2"), nil).Times(1)
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
 	err := r.Execute(context.Background(), "https://example.com/rss")
@@ -223,7 +235,7 @@ func TestRegisterFeedUsecase_AutoSubscribe_Success(t *testing.T) {
 	pf := mockParsedFeed("https://example.com/rss/news", mockData)
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"id-1", "id-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1", "id-2"), nil).Times(1)
 
 	// Use WaitGroup to wait for async Subscribe goroutine
 	var wg sync.WaitGroup
@@ -265,7 +277,7 @@ func TestRegisterFeedUsecase_AutoSubscribe_NoUserContext(t *testing.T) {
 	pf := mockParsedFeed("https://example.com/rss/news", mockData)
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"id-1", "id-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1", "id-2"), nil).Times(1)
 	// Subscribe should NOT be called when there is no user context
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
@@ -303,7 +315,7 @@ func TestRegisterFeedUsecase_AutoSubscribe_SubscribeError(t *testing.T) {
 	pf := mockParsedFeed("https://example.com/rss/news", mockData)
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"id-1", "id-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1", "id-2"), nil).Times(1)
 
 	// Subscribe fails, but Execute should still succeed
 	var wg sync.WaitGroup
@@ -342,7 +354,7 @@ func TestRegisterFeedUsecase_InitializesAvailabilityOnSuccessfulRegistration(t *
 	pf := mockParsedFeed("https://example.com/rss/news", mockData)
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"id-1", "id-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1", "id-2"), nil).Times(1)
 	mockAvailabilityPort.EXPECT().ResetFeedLinkFailures(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
@@ -368,7 +380,7 @@ func TestRegisterFeedUsecase_FailsWhenAvailabilityInitializationFails(t *testing
 	pf := mockParsedFeed("https://example.com/rss/news", mockData)
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"id-1", "id-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("id-1", "id-2"), nil).Times(1)
 	mockAvailabilityPort.EXPECT().ResetFeedLinkFailures(gomock.Any(), "https://example.com/rss/news").Return(errors.New("availability init failed")).Times(1)
 
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
@@ -396,7 +408,7 @@ func TestRegisterFeedUsecase_EventPublishing_Success(t *testing.T) {
 	pf := mockParsedFeed("https://example.com/rss/news", mockData)
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"art-1", "art-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("art-1", "art-2"), nil).Times(1)
 
 	// Event publisher is enabled and should be called for each ID (async via goroutine)
 	var wg sync.WaitGroup
@@ -442,7 +454,7 @@ func TestRegisterFeedUsecase_EventPublishing_Disabled(t *testing.T) {
 	pf := mockParsedFeed("https://example.com/rss/news", mockData)
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"art-1", "art-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("art-1", "art-2"), nil).Times(1)
 
 	// Event publisher is disabled — PublishArticleCreated should NOT be called
 	mockEventPublisher.EXPECT().IsEnabled().Return(false).Times(1)
@@ -471,7 +483,7 @@ func TestRegisterFeedUsecase_EventPublishing_NotSet(t *testing.T) {
 	pf := mockParsedFeed("https://example.com/rss/news", mockData)
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"art-1", "art-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("art-1", "art-2"), nil).Times(1)
 
 	// No event publisher set — should work without error
 	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
@@ -496,7 +508,7 @@ func TestRegisterFeedUsecase_EventPublishing_FailureNonFatal(t *testing.T) {
 	pf := mockParsedFeed("https://example.com/rss/news", mockData)
 	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
 	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
-	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]string{"art-1", "art-2"}, nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return(mockRegisterFeedResults("art-1", "art-2"), nil).Times(1)
 
 	// Event publisher is enabled but PublishArticleCreated fails (async via goroutine)
 	var wg sync.WaitGroup
@@ -522,6 +534,46 @@ func TestRegisterFeedUsecase_EventPublishing_FailureNonFatal(t *testing.T) {
 	err := r.Execute(context.Background(), "https://example.com/rss/news")
 	if err != nil {
 		t.Errorf("Expected no error even when event publishing fails, got %v", err)
+	}
+	wg.Wait()
+}
+
+func TestRegisterFeedUsecase_EventPublishing_SplitsCreatedAndUpdated(t *testing.T) {
+	logger.InitLogger()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockValidateFetch := mocks.NewMockValidateAndFetchRSSPort(ctrl)
+	mockRegisterFeedLinkPort := mocks.NewMockRegisterFeedLinkPort(ctrl)
+	mockRegisterFeedsPort := mocks.NewMockRegisterFeedsPort(ctrl)
+	mockEventPublisher := mocks.NewMockEventPublisherPort(ctrl)
+	mockData := testutil.CreateMockFeedItems()
+
+	pf := mockParsedFeed("https://example.com/rss/news", mockData)
+	mockValidateFetch.EXPECT().ValidateAndFetch(gomock.Any(), "https://example.com/rss/news").Return(pf, nil).Times(1)
+	mockRegisterFeedLinkPort.EXPECT().RegisterFeedLink(gomock.Any(), "https://example.com/rss/news").Return(nil).Times(1)
+	mockRegisterFeedsPort.EXPECT().RegisterFeeds(gomock.Any(), gomock.Any()).Return([]register_feed_port.RegisterFeedResult{
+		{ArticleID: "art-1", Created: true},
+		{ArticleID: "art-2", Created: false},
+	}, nil).Times(1)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	mockEventPublisher.EXPECT().IsEnabled().Return(true).Times(1)
+	mockEventPublisher.EXPECT().PublishArticleCreated(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	mockEventPublisher.EXPECT().PublishArticleUpdated(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ event_publisher_port.ArticleUpdatedEvent) error {
+			wg.Done()
+			return nil
+		},
+	).Times(1)
+
+	r := NewRegisterFeedsUsecase(mockValidateFetch, mockRegisterFeedLinkPort, mockRegisterFeedsPort)
+	r.SetEventPublisher(mockEventPublisher)
+
+	err := r.Execute(context.Background(), "https://example.com/rss/news")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
 	}
 	wg.Wait()
 }

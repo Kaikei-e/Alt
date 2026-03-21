@@ -11,6 +11,7 @@ package mocks
 
 import (
 	domain "alt/domain"
+	register_feed_port "alt/port/register_feed_port"
 	context "context"
 	reflect "reflect"
 
@@ -80,10 +81,10 @@ func (m *MockRegisterFeedsPort) EXPECT() *MockRegisterFeedsPortMockRecorder {
 }
 
 // RegisterFeeds mocks base method.
-func (m *MockRegisterFeedsPort) RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]string, error) {
+func (m *MockRegisterFeedsPort) RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]register_feed_port.RegisterFeedResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RegisterFeeds", ctx, feeds)
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([]register_feed_port.RegisterFeedResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

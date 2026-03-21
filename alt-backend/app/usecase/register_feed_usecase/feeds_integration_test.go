@@ -3,6 +3,7 @@ package register_feed_usecase
 import (
 	"alt/domain"
 	"alt/mocks"
+	register_feed_port "alt/port/register_feed_port"
 	"alt/utils/logger"
 	"context"
 	"fmt"
@@ -11,6 +12,17 @@ import (
 
 	"go.uber.org/mock/gomock"
 )
+
+func integrationRegisterFeedResults(ids ...string) []register_feed_port.RegisterFeedResult {
+	results := make([]register_feed_port.RegisterFeedResult, 0, len(ids))
+	for _, id := range ids {
+		results = append(results, register_feed_port.RegisterFeedResult{
+			ArticleID: id,
+			Created:   true,
+		})
+	}
+	return results
+}
 
 func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 	logger.InitLogger()
@@ -64,7 +76,7 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 				mockRegisterFeedLinkGateway.EXPECT().RegisterFeedLink(ctx, rssURL).Return(nil).Times(1)
 				mockRegisterFeedsGateway.EXPECT().
 					RegisterFeeds(ctx, gomock.Any()).
-					DoAndReturn(func(ctx context.Context, feedItems []*domain.FeedItem) ([]string, error) {
+					DoAndReturn(func(ctx context.Context, feedItems []*domain.FeedItem) ([]register_feed_port.RegisterFeedResult, error) {
 						if len(feedItems) != 2 {
 							return nil, fmt.Errorf("expected 2 feed items, got %d", len(feedItems))
 						}
@@ -74,7 +86,7 @@ func TestRegisterFeedsUsecase_Execute_IntegrationFlow(t *testing.T) {
 						if feedItems[1].Title != "Test Article 2" {
 							return nil, fmt.Errorf("expected second item title 'Test Article 2', got %s", feedItems[1].Title)
 						}
-						return []string{"id-1", "id-2"}, nil
+						return integrationRegisterFeedResults("id-1", "id-2"), nil
 					}).Times(1)
 			},
 			wantErr: false,
@@ -205,15 +217,18 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 		mockRegisterFeedLinkGateway.EXPECT().RegisterFeedLink(ctx, rssURL).Return(nil).Times(1)
 		mockRegisterFeedsGateway.EXPECT().
 			RegisterFeeds(ctx, gomock.Any()).
-			DoAndReturn(func(ctx context.Context, feedItems []*domain.FeedItem) ([]string, error) {
+			DoAndReturn(func(ctx context.Context, feedItems []*domain.FeedItem) ([]register_feed_port.RegisterFeedResult, error) {
 				if len(feedItems) != 100 {
 					return nil, fmt.Errorf("expected 100 feed items, got %d", len(feedItems))
 				}
-				ids := make([]string, len(feedItems))
+				results := make([]register_feed_port.RegisterFeedResult, len(feedItems))
 				for i := range feedItems {
-					ids[i] = fmt.Sprintf("id-%d", i+1)
+					results[i] = register_feed_port.RegisterFeedResult{
+						ArticleID: fmt.Sprintf("id-%d", i+1),
+						Created:   true,
+					}
 				}
-				return ids, nil
+				return results, nil
 			}).Times(1)
 
 		usecase := NewRegisterFeedsUsecase(
@@ -246,7 +261,7 @@ func TestRegisterFeedsUsecase_Execute_RealWorldScenarios(t *testing.T) {
 		mockRegisterFeedLinkGateway.EXPECT().RegisterFeedLink(ctx, rssURL).Return(nil).Times(1)
 		mockRegisterFeedsGateway.EXPECT().
 			RegisterFeeds(ctx, gomock.Any()).
-			Return([]string{"id-1"}, nil).Times(1)
+			Return(integrationRegisterFeedResults("id-1"), nil).Times(1)
 
 		usecase := NewRegisterFeedsUsecase(
 			mockValidateFetch,

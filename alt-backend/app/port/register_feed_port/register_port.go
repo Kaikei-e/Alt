@@ -12,5 +12,10 @@ type RegisterFeedLinkPort interface {
 }
 
 type RegisterFeedsPort interface {
-	RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]string, error)
+	RegisterFeeds(ctx context.Context, feeds []*domain.FeedItem) ([]RegisterFeedResult, error)
+}
+
+type RegisterFeedResult struct {
+	ArticleID string
+	Created   bool
 }
