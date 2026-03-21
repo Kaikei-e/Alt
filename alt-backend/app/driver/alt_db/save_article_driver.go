@@ -21,7 +21,7 @@ const upsertArticleQuery = `
 		content = EXCLUDED.content,
 		user_id = EXCLUDED.user_id,
 		feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id)
-	RETURNING id
+	RETURNING id, (xmax = 0) AS created
 `
 
 // SaveArticle stores or updates article content keyed by URL.
@@ -86,12 +86,17 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 	defer tx.Rollback(ctx) // Always rollback - no-op after successful Commit
 
 	// 1. Upsert Article
-	articleID, err := r.UpsertArticleWithTx(ctx, tx, cleanTitle, cleanContent, cleanURL, userContext.UserID, feedID)
+	articleID, created, err := r.UpsertArticleWithTx(ctx, tx, cleanTitle, cleanContent, cleanURL, userContext.UserID, feedID)
 	if err != nil {
 		return "", err
 	}
 
-	knowledgeEvent, err := buildArticleCreatedKnowledgeEvent(articleID, userContext.TenantID, &userContext.UserID, cleanTitle, nil)
+	var knowledgeEvent domain.KnowledgeEvent
+	if created {
+		knowledgeEvent, err = buildArticleCreatedKnowledgeEvent(articleID, userContext.TenantID, &userContext.UserID, cleanTitle, nil)
+	} else {
+		knowledgeEvent, err = buildArticleUpdatedKnowledgeEvent(articleID, userContext.TenantID, &userContext.UserID, cleanTitle, nil)
+	}
 	if err != nil {
 		return "", err
 	}

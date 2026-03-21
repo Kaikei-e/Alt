@@ -77,7 +77,7 @@ func TestAltDBRepository_SaveArticle_AppendsKnowledgeEvent(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta(upsertArticleQuery)).
 		WithArgs("Example Title", strings.Repeat("x", 120), "https://example.com/article", userID, nil).
-		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(uuid.New()))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow(uuid.New(), true))
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO knowledge_events
 		(event_id, occurred_at, tenant_id, user_id, actor_type, actor_id,
 		 event_type, aggregate_type, aggregate_id, correlation_id, causation_id,

@@ -67,3 +67,33 @@ func buildArticleCreatedKnowledgeEvent(articleID uuid.UUID, tenantID uuid.UUID, 
 		Payload:       payloadBytes,
 	}, nil
 }
+
+func buildArticleUpdatedKnowledgeEvent(articleID uuid.UUID, tenantID uuid.UUID, userID *uuid.UUID, title string, publishedAt *time.Time) (domain.KnowledgeEvent, error) {
+	payload := map[string]string{
+		"article_id": articleID.String(),
+		"title":      title,
+		"tenant_id":  tenantID.String(),
+	}
+	if publishedAt != nil && !publishedAt.IsZero() {
+		payload["published_at"] = publishedAt.Format(time.RFC3339)
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return domain.KnowledgeEvent{}, fmt.Errorf("marshal article updated payload: %w", err)
+	}
+
+	return domain.KnowledgeEvent{
+		EventID:       uuid.New(),
+		OccurredAt:    time.Now(),
+		TenantID:      tenantID,
+		UserID:        userID,
+		ActorType:     domain.ActorService,
+		ActorID:       "article-store",
+		EventType:     domain.EventArticleUpdated,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   articleID.String(),
+		DedupeKey:     "article-updated:" + articleID.String() + ":" + uuid.NewString(),
+		Payload:       payloadBytes,
+	}, nil
+}

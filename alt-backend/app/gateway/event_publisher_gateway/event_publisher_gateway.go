@@ -59,6 +59,39 @@ func (g *EventPublisherGateway) PublishArticleCreated(ctx context.Context, event
 	return nil
 }
 
+// PublishArticleUpdated publishes an ArticleUpdated event.
+func (g *EventPublisherGateway) PublishArticleUpdated(ctx context.Context, event event_publisher_port.ArticleUpdatedEvent) error {
+	if !g.client.IsEnabled() {
+		return nil
+	}
+
+	payload := mqhub_connect.ArticleCreatedPayload{
+		ArticleID:   event.ArticleID,
+		UserID:      event.UserID,
+		FeedID:      event.FeedID,
+		Title:       event.Title,
+		URL:         event.URL,
+		Content:     event.Content,
+		Tags:        event.Tags,
+		PublishedAt: event.PublishedAt,
+	}
+
+	messageID, err := g.client.PublishArticleUpdated(ctx, payload)
+	if err != nil {
+		g.logger.Error("failed to publish ArticleUpdated event",
+			"article_id", event.ArticleID,
+			"error", err,
+		)
+		return err
+	}
+
+	g.logger.Info("published ArticleUpdated event",
+		"article_id", event.ArticleID,
+		"message_id", messageID,
+	)
+	return nil
+}
+
 // PublishSummarizeRequested publishes a SummarizeRequested event.
 func (g *EventPublisherGateway) PublishSummarizeRequested(ctx context.Context, event event_publisher_port.SummarizeRequestedEvent) error {
 	if !g.client.IsEnabled() {

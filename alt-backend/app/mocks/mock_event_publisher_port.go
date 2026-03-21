@@ -69,6 +69,20 @@ func (mr *MockEventPublisherPortMockRecorder) PublishArticleCreated(ctx, event a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishArticleCreated", reflect.TypeOf((*MockEventPublisherPort)(nil).PublishArticleCreated), ctx, event)
 }
 
+// PublishArticleUpdated mocks base method.
+func (m *MockEventPublisherPort) PublishArticleUpdated(ctx context.Context, event event_publisher_port.ArticleUpdatedEvent) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PublishArticleUpdated", ctx, event)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// PublishArticleUpdated indicates an expected call of PublishArticleUpdated.
+func (mr *MockEventPublisherPortMockRecorder) PublishArticleUpdated(ctx, event any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishArticleUpdated", reflect.TypeOf((*MockEventPublisherPort)(nil).PublishArticleUpdated), ctx, event)
+}
+
 // PublishIndexArticle mocks base method.
 func (m *MockEventPublisherPort) PublishIndexArticle(ctx context.Context, event event_publisher_port.IndexArticleEvent) error {
 	m.ctrl.T.Helper()

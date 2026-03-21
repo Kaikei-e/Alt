@@ -25,11 +25,12 @@ const (
 
 // EventType constants matching mq-hub domain.
 const (
-	EventTypeArticleCreated            = "ArticleCreated"
-	EventTypeSummarizeRequested        = "SummarizeRequested"
-	EventTypeIndexArticle              = "IndexArticle"
-	EventTypeTagGenerationRequested    = "TagGenerationRequested"
-	EventTypeTagGenerationCompleted    = "TagGenerationCompleted"
+	EventTypeArticleCreated         = "ArticleCreated"
+	EventTypeArticleUpdated         = "ArticleUpdated"
+	EventTypeSummarizeRequested     = "SummarizeRequested"
+	EventTypeIndexArticle           = "IndexArticle"
+	EventTypeTagGenerationRequested = "TagGenerationRequested"
+	EventTypeTagGenerationCompleted = "TagGenerationCompleted"
 )
 
 // Client provides Connect-RPC client for mq-hub.
@@ -108,6 +109,37 @@ func (c *Client) PublishArticleCreated(ctx context.Context, payload ArticleCreat
 	event := &mqhubv1.Event{
 		EventId:   uuid.New().String(),
 		EventType: EventTypeArticleCreated,
+		Source:    "alt-backend",
+		CreatedAt: timestamppb.Now(),
+		Payload:   payloadBytes,
+		Metadata:  map[string]string{},
+	}
+
+	resp, err := c.client.Publish(ctx, connect.NewRequest(&mqhubv1.PublishRequest{
+		Stream: StreamKeyArticles,
+		Event:  event,
+	}))
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Msg.MessageId, nil
+}
+
+// PublishArticleUpdated publishes an ArticleUpdated event.
+func (c *Client) PublishArticleUpdated(ctx context.Context, payload ArticleCreatedPayload) (string, error) {
+	if !c.enabled {
+		return "", nil
+	}
+
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	event := &mqhubv1.Event{
+		EventId:   uuid.New().String(),
+		EventType: EventTypeArticleUpdated,
 		Source:    "alt-backend",
 		CreatedAt: timestamppb.Now(),
 		Payload:   payloadBytes,

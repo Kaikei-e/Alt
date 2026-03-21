@@ -18,6 +18,18 @@ type ArticleCreatedEvent struct {
 	PublishedAt time.Time
 }
 
+// ArticleUpdatedEvent represents an article update event.
+type ArticleUpdatedEvent struct {
+	ArticleID   string
+	UserID      string
+	FeedID      string
+	Title       string
+	URL         string
+	Content     string
+	Tags        []string
+	PublishedAt time.Time
+}
+
 // SummarizeRequestedEvent represents a summarization request event.
 type SummarizeRequestedEvent struct {
 	ArticleID string
@@ -37,6 +49,9 @@ type IndexArticleEvent struct {
 type EventPublisherPort interface {
 	// PublishArticleCreated publishes an ArticleCreated event.
 	PublishArticleCreated(ctx context.Context, event ArticleCreatedEvent) error
+
+	// PublishArticleUpdated publishes an ArticleUpdated event.
+	PublishArticleUpdated(ctx context.Context, event ArticleUpdatedEvent) error
 
 	// PublishSummarizeRequested publishes a SummarizeRequested event.
 	PublishSummarizeRequested(ctx context.Context, event SummarizeRequestedEvent) error

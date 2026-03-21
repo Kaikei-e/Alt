@@ -75,7 +75,7 @@ type CreateArticleParams struct {
 
 // CreateArticlePort creates a new article.
 type CreateArticlePort interface {
-	CreateArticle(ctx context.Context, params CreateArticleParams) (articleID string, err error)
+	CreateArticle(ctx context.Context, params CreateArticleParams) (articleID string, created bool, err error)
 }
 
 // SaveArticleSummaryPort saves an article summary.

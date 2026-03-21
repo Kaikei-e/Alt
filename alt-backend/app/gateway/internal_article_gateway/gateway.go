@@ -100,8 +100,8 @@ func (g *Gateway) CheckArticleExists(ctx context.Context, url string, feedID str
 }
 
 // CreateArticle implements CreateArticlePort.
-func (g *Gateway) CreateArticle(ctx context.Context, params internal_article_port.CreateArticleParams) (string, error) {
-	articleID, err := g.repo.CreateArticleInternal(ctx, alt_db.CreateArticleParams{
+func (g *Gateway) CreateArticle(ctx context.Context, params internal_article_port.CreateArticleParams) (string, bool, error) {
+	articleID, created, err := g.repo.CreateArticleInternal(ctx, alt_db.CreateArticleParams{
 		Title:       params.Title,
 		URL:         params.URL,
 		Content:     params.Content,
@@ -110,9 +110,9 @@ func (g *Gateway) CreateArticle(ctx context.Context, params internal_article_por
 		PublishedAt: params.PublishedAt,
 	})
 	if err != nil {
-		return "", fmt.Errorf("CreateArticle: %w", err)
+		return "", false, fmt.Errorf("CreateArticle: %w", err)
 	}
-	return articleID, nil
+	return articleID, created, nil
 }
 
 // SaveArticleSummary implements SaveArticleSummaryPort.

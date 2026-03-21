@@ -192,7 +192,7 @@ func (u *AutoFulltextFetchUsecase) processForUser(ctx context.Context, feedItem 
 		publishedAt = time.Now().UTC()
 	}
 
-	newArticleID, err := u.articleCreator.CreateArticle(ctx, internal_article_port.CreateArticleParams{
+	newArticleID, _, err := u.articleCreator.CreateArticle(ctx, internal_article_port.CreateArticleParams{
 		Title:       title,
 		URL:         articleURL,
 		Content:     content,

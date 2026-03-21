@@ -22,7 +22,7 @@ var (
 			content = EXCLUDED.content,
 			feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id),
 			published_at = EXCLUDED.published_at
-		RETURNING id
+		RETURNING id, (xmax = 0) AS created
 	`)
 	metadataOnlyArticleUpsertQuery = regexp.QuoteMeta(`
 		INSERT INTO articles (title, content, url, feed_id, user_id, published_at)
@@ -31,7 +31,7 @@ var (
 			title = EXCLUDED.title,
 			feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id),
 			published_at = EXCLUDED.published_at
-		RETURNING id
+		RETURNING id, (xmax = 0) AS created
 	`)
 	knowledgeEventInsertQuery = regexp.QuoteMeta(`INSERT INTO knowledge_events
 		(event_id, occurred_at, tenant_id, user_id, actor_type, actor_id,
@@ -67,11 +67,11 @@ func TestAltDBRepository_CreateArticleInternal_AppendsKnowledgeEvent(t *testing.
 	// Full upsert (new article)
 	mock.ExpectQuery(fullArticleUpsertQuery).
 		WithArgs("Title", "Body", "https://example.com/article", "feed-1", "00000000-0000-4000-a000-000000000001", publishedAt).
-		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("11111111-1111-4111-a111-111111111111"))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow("11111111-1111-4111-a111-111111111111", true))
 	expectKnowledgeEventInsert(mock)
 	mock.ExpectCommit()
 
-	articleID, err := repo.CreateArticleInternal(t.Context(), CreateArticleParams{
+	articleID, created, err := repo.CreateArticleInternal(t.Context(), CreateArticleParams{
 		Title:       "Title",
 		URL:         "https://example.com/article",
 		Content:     "Body",
@@ -80,6 +80,7 @@ func TestAltDBRepository_CreateArticleInternal_AppendsKnowledgeEvent(t *testing.
 		PublishedAt: publishedAt,
 	})
 	require.NoError(t, err)
+	require.True(t, created)
 	require.Equal(t, "11111111-1111-4111-a111-111111111111", articleID)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -100,11 +101,11 @@ func TestCreateArticleInternal_ShorterContent_PreservesExisting(t *testing.T) {
 	// Metadata-only upsert (content excluded from DO UPDATE SET)
 	mock.ExpectQuery(metadataOnlyArticleUpsertQuery).
 		WithArgs("Title", "Short", "https://example.com/article", "feed-1", "00000000-0000-4000-a000-000000000001", publishedAt).
-		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("11111111-1111-4111-a111-111111111111"))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow("11111111-1111-4111-a111-111111111111", false))
 	expectKnowledgeEventInsert(mock)
 	mock.ExpectCommit()
 
-	articleID, err := repo.CreateArticleInternal(t.Context(), CreateArticleParams{
+	articleID, created, err := repo.CreateArticleInternal(t.Context(), CreateArticleParams{
 		Title:       "Title",
 		URL:         "https://example.com/article",
 		Content:     "Short", // 5 chars < 500 existing
@@ -113,6 +114,7 @@ func TestCreateArticleInternal_ShorterContent_PreservesExisting(t *testing.T) {
 		PublishedAt: publishedAt,
 	})
 	require.NoError(t, err)
+	require.False(t, created)
 	require.Equal(t, "11111111-1111-4111-a111-111111111111", articleID)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

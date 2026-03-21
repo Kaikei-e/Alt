@@ -11,8 +11,10 @@ import (
 )
 
 // UpsertArticleWithTx inserts or updates an article using a provided transaction.
-func (r *AltDBRepository) UpsertArticleWithTx(ctx context.Context, tx pgx.Tx, title, content, url string, userID uuid.UUID, feedID *uuid.UUID) (uuid.UUID, error) {
+// The returned bool is true when a new row was inserted.
+func (r *AltDBRepository) UpsertArticleWithTx(ctx context.Context, tx pgx.Tx, title, content, url string, userID uuid.UUID, feedID *uuid.UUID) (uuid.UUID, bool, error) {
 	var articleID uuid.UUID
+	var created bool
 	var feedIDValue interface{}
 	if feedID != nil {
 		feedIDValue = *feedID
@@ -24,11 +26,11 @@ func (r *AltDBRepository) UpsertArticleWithTx(ctx context.Context, tx pgx.Tx, ti
 	cleanContent := strings.TrimSpace(content)
 	cleanURL := strings.TrimSpace(url)
 
-	if err := tx.QueryRow(ctx, upsertArticleQuery, cleanTitle, cleanContent, cleanURL, userID, feedIDValue).Scan(&articleID); err != nil {
+	if err := tx.QueryRow(ctx, upsertArticleQuery, cleanTitle, cleanContent, cleanURL, userID, feedIDValue).Scan(&articleID, &created); err != nil {
 		err = fmt.Errorf("upsert article content: %w", err)
 		logger.SafeErrorContext(ctx, "failed to save article", "url", cleanURL, "error", err)
-		return uuid.Nil, err
+		return uuid.Nil, false, err
 	}
 
-	return articleID, nil
+	return articleID, created, nil
 }

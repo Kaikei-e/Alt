@@ -10,6 +10,7 @@ import (
 // Event type constants for knowledge events.
 const (
 	EventArticleCreated        = "ArticleCreated"
+	EventArticleUpdated        = "ArticleUpdated"
 	EventSummaryVersionCreated = "SummaryVersionCreated"
 	EventTagSetVersionCreated  = "TagSetVersionCreated"
 	EventHomeItemsSeen         = "HomeItemsSeen"

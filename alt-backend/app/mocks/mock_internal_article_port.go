@@ -283,12 +283,13 @@ func (m *MockCreateArticlePort) EXPECT() *MockCreateArticlePortMockRecorder {
 }
 
 // CreateArticle mocks base method.
-func (m *MockCreateArticlePort) CreateArticle(ctx context.Context, params internal_article_port.CreateArticleParams) (string, error) {
+func (m *MockCreateArticlePort) CreateArticle(ctx context.Context, params internal_article_port.CreateArticleParams) (string, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateArticle", ctx, params)
 	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // CreateArticle indicates an expected call of CreateArticle.

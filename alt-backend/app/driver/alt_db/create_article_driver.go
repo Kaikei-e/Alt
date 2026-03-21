@@ -1,6 +1,7 @@
 package alt_db
 
 import (
+	"alt/domain"
 	"context"
 	"errors"
 	"time"
@@ -22,14 +23,15 @@ type CreateArticleParams struct {
 // CreateArticleInternal creates a new article and returns its ID.
 // This is used by the internal API (service-to-service), not the user-facing API.
 // If an existing article has longer content, only metadata is updated (content preserved).
-func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params CreateArticleParams) (string, error) {
+// The returned bool is true when a new row was inserted.
+func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params CreateArticleParams) (string, bool, error) {
 	if r.pool == nil {
-		return "", errors.New("database connection not available")
+		return "", false, errors.New("database connection not available")
 	}
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	defer tx.Rollback(ctx)
 
@@ -46,7 +48,7 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 			title = EXCLUDED.title,
 			feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id),
 			published_at = EXCLUDED.published_at
-		RETURNING id
+		RETURNING id, (xmax = 0) AS created
 	`
 	} else {
 		query = `
@@ -57,12 +59,13 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 			content = EXCLUDED.content,
 			feed_id = COALESCE(EXCLUDED.feed_id, articles.feed_id),
 			published_at = EXCLUDED.published_at
-		RETURNING id
+		RETURNING id, (xmax = 0) AS created
 	`
 	}
 
 	// 3. Execute upsert
 	var articleID string
+	var created bool
 	err = tx.QueryRow(ctx, query,
 		params.Title,
 		params.Content,
@@ -70,37 +73,42 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 		params.FeedID,
 		params.UserID,
 		params.PublishedAt,
-	).Scan(&articleID)
+	).Scan(&articleID, &created)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	parsedArticleID, err := uuid.Parse(articleID)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	parsedUserID, err := uuid.Parse(params.UserID)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	var publishedAt *time.Time
 	if !params.PublishedAt.IsZero() {
 		publishedAt = &params.PublishedAt
 	}
-	knowledgeEvent, err := buildArticleCreatedKnowledgeEvent(parsedArticleID, parsedUserID, &parsedUserID, params.Title, publishedAt)
+	var knowledgeEvent domain.KnowledgeEvent
+	if created {
+		knowledgeEvent, err = buildArticleCreatedKnowledgeEvent(parsedArticleID, parsedUserID, &parsedUserID, params.Title, publishedAt)
+	} else {
+		knowledgeEvent, err = buildArticleUpdatedKnowledgeEvent(parsedArticleID, parsedUserID, &parsedUserID, params.Title, publishedAt)
+	}
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if err := appendKnowledgeEventWithExec(ctx, tx, knowledgeEvent); err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return "", err
+		return "", false, err
 	}
 
-	return articleID, nil
+	return articleID, created, nil
 }
 
 // getArticleContentLength returns the content length of an existing article within a transaction.

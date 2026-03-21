@@ -356,7 +356,7 @@ func TestCreateArticle_Success(t *testing.T) {
 			FeedID:  "feed-1",
 			UserID:  "user-1",
 		}).
-		Return("new-article-id", nil)
+		Return("new-article-id", true, nil)
 
 	req := connect.NewRequest(&backendv1.CreateArticleRequest{
 		Title:   "Test Article",
@@ -756,7 +756,7 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 			UserID:      "user-1",
 			PublishedAt: publishedAt,
 		}).
-		Return("new-article-id", nil)
+		Return("new-article-id", true, nil)
 
 	mockPublisher.EXPECT().IsEnabled().Return(true)
 	mockPublisher.EXPECT().
@@ -800,7 +800,7 @@ func TestCreateArticle_NilEventPublisher(t *testing.T) {
 
 	mockCreate.EXPECT().
 		CreateArticle(gomock.Any(), gomock.Any()).
-		Return("article-1", nil)
+		Return("article-1", true, nil)
 
 	req := connect.NewRequest(&backendv1.CreateArticleRequest{
 		Title:  "Test",
@@ -829,7 +829,7 @@ func TestCreateArticle_EventPublishFailureDoesNotFailRPC(t *testing.T) {
 
 	mockCreate.EXPECT().
 		CreateArticle(gomock.Any(), gomock.Any()).
-		Return("article-2", nil)
+		Return("article-2", true, nil)
 
 	mockPublisher.EXPECT().IsEnabled().Return(true)
 	mockPublisher.EXPECT().
@@ -852,6 +852,53 @@ func TestCreateArticle_EventPublishFailureDoesNotFailRPC(t *testing.T) {
 	}
 }
 
+func TestCreateArticle_PublishesArticleUpdatedEventForUpsert(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
+	mockPublisher := mocks.NewMockEventPublisherPort(ctrl)
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithEventPublisher(mockPublisher),
+	)
+
+	publishedAt := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	mockCreate.EXPECT().
+		CreateArticle(gomock.Any(), gomock.Any()).
+		Return("existing-article-id", false, nil)
+
+	mockPublisher.EXPECT().IsEnabled().Return(true)
+	mockPublisher.EXPECT().
+		PublishArticleUpdated(gomock.Any(), event_publisher_port.ArticleUpdatedEvent{
+			ArticleID:   "existing-article-id",
+			UserID:      "user-1",
+			FeedID:      "feed-1",
+			Title:       "Updated Article",
+			URL:         "http://example.com/existing",
+			Content:     "Updated body",
+			PublishedAt: publishedAt,
+		}).
+		Return(nil)
+
+	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+		Title:       "Updated Article",
+		Url:         "http://example.com/existing",
+		Content:     "Updated body",
+		FeedId:      "feed-1",
+		UserId:      "user-1",
+		PublishedAt: timestamppb.New(publishedAt),
+	})
+
+	resp, err := h.CreateArticle(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Msg.ArticleId != "existing-article-id" {
+		t.Errorf("expected article_id existing-article-id, got %s", resp.Msg.ArticleId)
+	}
+}
+
 func TestCreateArticle_EventPublisherDisabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
@@ -864,7 +911,7 @@ func TestCreateArticle_EventPublisherDisabled(t *testing.T) {
 
 	mockCreate.EXPECT().
 		CreateArticle(gomock.Any(), gomock.Any()).
-		Return("article-3", nil)
+		Return("article-3", true, nil)
 
 	mockPublisher.EXPECT().IsEnabled().Return(false)
 	// PublishArticleCreated should NOT be called when disabled

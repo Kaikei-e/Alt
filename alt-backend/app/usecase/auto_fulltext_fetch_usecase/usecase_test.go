@@ -39,17 +39,17 @@ type stubArticleCreator struct {
 	err       error
 }
 
-func (s *stubArticleCreator) CreateArticle(ctx context.Context, params internal_article_port.CreateArticleParams) (string, error) {
+func (s *stubArticleCreator) CreateArticle(ctx context.Context, params internal_article_port.CreateArticleParams) (string, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.params = append(s.params, params)
 	if s.err != nil {
-		return "", s.err
+		return "", false, s.err
 	}
 	if s.articleID == "" {
-		return "article-1", nil
+		return "article-1", true, nil
 	}
-	return s.articleID, nil
+	return s.articleID, true, nil
 }
 
 type stubRepo struct {

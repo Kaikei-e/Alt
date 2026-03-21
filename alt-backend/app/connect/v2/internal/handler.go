@@ -12,9 +12,9 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"alt/domain"
 	backendv1 "alt/gen/proto/services/backend/v1"
 	"alt/gen/proto/services/backend/v1/backendv1connect"
-	"alt/domain"
 	"alt/port/event_publisher_port"
 	"alt/port/internal_article_port"
 	"alt/port/internal_feed_port"
@@ -343,7 +343,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[backen
 		publishedAt = req.Msg.PublishedAt.AsTime()
 	}
 
-	articleID, err := h.createArticle.CreateArticle(ctx, internal_article_port.CreateArticleParams{
+	articleID, created, err := h.createArticle.CreateArticle(ctx, internal_article_port.CreateArticleParams{
 		Title:       req.Msg.Title,
 		URL:         req.Msg.Url,
 		Content:     req.Msg.Content,
@@ -358,7 +358,20 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[backen
 
 	// Fire-and-forget: publish ArticleCreated event for downstream consumers
 	if h.eventPublisher != nil && h.eventPublisher.IsEnabled() {
-		if pubErr := h.eventPublisher.PublishArticleCreated(ctx, event_publisher_port.ArticleCreatedEvent{
+		if created {
+			if pubErr := h.eventPublisher.PublishArticleCreated(ctx, event_publisher_port.ArticleCreatedEvent{
+				ArticleID:   articleID,
+				UserID:      req.Msg.UserId,
+				FeedID:      req.Msg.FeedId,
+				Title:       req.Msg.Title,
+				URL:         req.Msg.Url,
+				Content:     req.Msg.Content,
+				PublishedAt: publishedAt,
+			}); pubErr != nil {
+				h.logger.Warn("failed to publish ArticleCreated event (non-fatal)",
+					"article_id", articleID, "error", pubErr)
+			}
+		} else if pubErr := h.eventPublisher.PublishArticleUpdated(ctx, event_publisher_port.ArticleUpdatedEvent{
 			ArticleID:   articleID,
 			UserID:      req.Msg.UserId,
 			FeedID:      req.Msg.FeedId,
@@ -367,7 +380,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[backen
 			Content:     req.Msg.Content,
 			PublishedAt: publishedAt,
 		}); pubErr != nil {
-			h.logger.Warn("failed to publish ArticleCreated event (non-fatal)",
+			h.logger.Warn("failed to publish ArticleUpdated event (non-fatal)",
 				"article_id", articleID, "error", pubErr)
 		}
 	}
