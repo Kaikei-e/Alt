@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 type CachedFeedListUsecase struct {
@@ -122,16 +123,44 @@ func (u *CachedFeedListUsecase) loadMergedFeeds(ctx context.Context, userID uuid
 		return nil, err
 	}
 
-	allFeeds := make([]*domain.FeedItem, 0)
-	for _, feedLinkID := range subscriptions {
-		if excludeFeedLinkID != nil && feedLinkID == *excludeFeedLinkID {
-			continue
+	// Filter excluded subscription
+	filtered := subscriptions
+	if excludeFeedLinkID != nil {
+		filtered = make([]uuid.UUID, 0, len(subscriptions))
+		for _, id := range subscriptions {
+			if id != *excludeFeedLinkID {
+				filtered = append(filtered, id)
+			}
 		}
-		page, pageErr := u.feedPageCache.GetFeedPage(ctx, feedLinkID)
-		if pageErr != nil {
-			return nil, pageErr
-		}
-		allFeeds = append(allFeeds, convertFeedPageEntries(page, &feedLinkID)...)
+	}
+
+	// Parallel fetch with bounded concurrency
+	results := make([][]*domain.FeedItem, len(filtered))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(8)
+
+	for i, feedLinkID := range filtered {
+		g.Go(func() error {
+			page, pageErr := u.feedPageCache.GetFeedPage(gctx, feedLinkID)
+			if pageErr != nil {
+				return pageErr
+			}
+			results[i] = convertFeedPageEntries(page, &feedLinkID)
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	// Merge results
+	total := 0
+	for _, r := range results {
+		total += len(r)
+	}
+	allFeeds := make([]*domain.FeedItem, 0, total)
+	for _, r := range results {
+		allFeeds = append(allFeeds, r...)
 	}
 
 	sort.SliceStable(allFeeds, func(i, j int) bool {
