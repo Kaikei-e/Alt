@@ -3,7 +3,7 @@ import {
 	BarChart3,
 	TrendingUp,
 	FileText,
-	CheckCircle,
+	Layers,
 	RefreshCw,
 } from "@lucide/svelte";
 import { onMount } from "svelte";
@@ -24,9 +24,6 @@ const trendStats = useTrendStats();
 let feedAmount = $derived(stats.feedAmount);
 let totalArticlesAmount = $derived(stats.totalArticlesAmount);
 let unsummarizedArticlesAmount = $derived(stats.unsummarizedArticlesAmount);
-let summarizedArticles = $derived(
-	totalArticlesAmount - unsummarizedArticlesAmount,
-);
 let connectionStatus = $derived(
 	stats.isConnected ? "Connected" : "Disconnected",
 );
@@ -45,9 +42,9 @@ let statCards = $derived([
 		color: "text-green-600",
 	},
 	{
-		label: "Summarized",
-		value: summarizedArticles,
-		icon: CheckCircle,
+		label: "Unsummarized",
+		value: unsummarizedArticlesAmount,
+		icon: Layers,
 		color: "text-purple-600",
 	},
 ]);

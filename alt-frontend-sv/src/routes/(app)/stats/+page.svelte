@@ -7,7 +7,6 @@ import {
 	BarChart3,
 	TrendingUp,
 	FileText,
-	CheckCircle,
 	BookOpen,
 	Rss,
 	Layers,
@@ -42,9 +41,6 @@ const trendStats = useTrendStats();
 let feedAmount = $derived(stats.feedAmount);
 let totalArticlesAmount = $derived(stats.totalArticlesAmount);
 let unsummarizedArticlesAmount = $derived(stats.unsummarizedArticlesAmount);
-let summarizedArticles = $derived(
-	totalArticlesAmount - unsummarizedArticlesAmount,
-);
 let connectionStatus = $derived(
 	stats.isConnected ? "Connected" : "Disconnected",
 );
@@ -63,9 +59,9 @@ let desktopStatCards = $derived([
 		color: "text-green-600",
 	},
 	{
-		label: "Summarized",
-		value: summarizedArticles,
-		icon: CheckCircle,
+		label: "Unsummarized",
+		value: unsummarizedArticlesAmount,
+		icon: Layers,
 		color: "text-purple-600",
 	},
 ]);
