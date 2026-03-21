@@ -25,7 +25,7 @@ test.describe("Mobile Recap Job Status", () => {
 		mobileJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for page to load
 		await expect(mobileJobStatusPage.pageTitle).toBeVisible();
@@ -40,7 +40,7 @@ test.describe("Mobile Recap Job Status", () => {
 		mobileJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for stats row
 		await expect(mobileJobStatusPage.successRate).toBeVisible();
@@ -60,7 +60,7 @@ test.describe("Mobile Recap Job Status", () => {
 		mobileJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for job cards to appear
 		await expect(mobileJobStatusPage.jobCards.first()).toBeVisible();
@@ -77,7 +77,7 @@ test.describe("Mobile Recap Job Status", () => {
 		mobileJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for first job card
 		await expect(mobileJobStatusPage.jobCards.first()).toBeVisible();
@@ -100,7 +100,7 @@ test.describe("Mobile Recap Job Status", () => {
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for stats to load
 		await expect(mobileJobStatusPage.successRate).toBeVisible();
@@ -121,7 +121,7 @@ test.describe("Mobile Recap Job Status", () => {
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for active job panel
 		await expect(mobileJobStatusPage.activeJobPanel).toBeVisible();
@@ -143,7 +143,7 @@ test.describe("Mobile Recap Job Status", () => {
 		mobileJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for page to load
 		await expect(mobileJobStatusPage.pageTitle).toBeVisible();
@@ -160,7 +160,7 @@ test.describe("Mobile Recap Job Status", () => {
 			fulfillJson(route, JOB_PROGRESS_EMPTY),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for page title
 		await expect(mobileJobStatusPage.pageTitle).toBeVisible();
@@ -174,7 +174,7 @@ test.describe("Mobile Recap Job Status", () => {
 		mobileJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for time window selector
 		await expect(mobileJobStatusPage.timeWindow24h).toBeVisible();
@@ -204,7 +204,7 @@ test.describe("Mobile Recap Job Status", () => {
 		mobileJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for control bar
 		await expect(mobileJobStatusPage.controlBar).toBeVisible();
@@ -230,7 +230,7 @@ test.describe("Mobile Recap Job Status", () => {
 			await fulfillJson(route, JOB_PROGRESS_RESPONSE);
 		});
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for initial load
 		await expect(mobileJobStatusPage.successRate).toBeVisible();
@@ -260,7 +260,7 @@ test.describe("Mobile Recap Job Status", () => {
 			}),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for control bar
 		await expect(mobileJobStatusPage.startJobButton).toBeEnabled();
@@ -282,7 +282,7 @@ test.describe("Mobile Recap Job Status", () => {
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for control bar
 		await expect(mobileJobStatusPage.startJobButton).toBeDisabled();
@@ -296,7 +296,7 @@ test.describe("Mobile Recap Job Status", () => {
 			fulfillError(route, "Server error", 500),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for error message
 		await expect(mobileJobStatusPage.errorMessage).toBeVisible({
@@ -312,7 +312,7 @@ test.describe("Mobile Recap Job Status", () => {
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for pipeline progress
 		await expect(mobileJobStatusPage.pipelineProgress).toBeVisible();
@@ -337,7 +337,7 @@ test.describe("Mobile Recap Job Status", () => {
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for genre grid
 		await expect(mobileJobStatusPage.genreProgressGrid).toBeVisible();
@@ -360,7 +360,7 @@ test.describe("Mobile Job Status - Accessibility", () => {
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for job cards
 		await expect(mobileJobStatusPage.jobCards.first()).toBeVisible();
@@ -386,7 +386,7 @@ test.describe("Mobile Job Status - Accessibility", () => {
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for control bar
 		await expect(mobileJobStatusPage.controlBar).toBeVisible();
@@ -415,7 +415,7 @@ test.describe("Mobile Job Status - Touch Interactions", () => {
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
-		await page.goto("./mobile/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Open detail sheet
 		await mobileJobStatusPage.jobCards.first().click();

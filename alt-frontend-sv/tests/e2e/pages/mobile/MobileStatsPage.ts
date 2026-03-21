@@ -28,7 +28,7 @@ export class MobileStatsPage extends BasePage {
 	}
 
 	get url(): string {
-		return "./feeds/stats";
+		return "./stats";
 	}
 
 	async waitForStatsLoaded(): Promise<void> {

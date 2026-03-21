@@ -20,7 +20,7 @@ test.describe("Desktop Recap Job Status", () => {
 		desktopJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for page title to be visible instead of networkidle
 		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
@@ -37,7 +37,7 @@ test.describe("Desktop Recap Job Status", () => {
 		desktopJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for heading to be visible
 		await expect(desktopJobStatusPage.recentJobsHeading).toBeVisible();
@@ -60,7 +60,7 @@ test.describe("Desktop Recap Job Status", () => {
 
 	test("shows stage progress indicator in table", async ({ page }) => {
 		await setupDefaultMock(page);
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for table to be loaded
 		await expect(page.getByText("job-001-")).toBeVisible();
@@ -71,7 +71,7 @@ test.describe("Desktop Recap Job Status", () => {
 
 	test("expands job row to show detailed metrics", async ({ page }) => {
 		await setupDefaultMock(page);
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for first job to be visible
 		const firstJobRow = page
@@ -101,7 +101,7 @@ test.describe("Desktop Recap Job Status", () => {
 		page,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for first job to be visible
 		const firstJobRow = page
@@ -133,7 +133,7 @@ test.describe("Desktop Recap Job Status", () => {
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
 
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for page to load - check for stats cards first
 		await expect(desktopJobStatusPage.successRateCard).toBeVisible();
@@ -150,7 +150,7 @@ test.describe("Desktop Recap Job Status", () => {
 		desktopJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for page to be loaded by checking for a key element
 		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
@@ -168,7 +168,7 @@ test.describe("Desktop Recap Job Status", () => {
 			fulfillJson(route, JOB_PROGRESS_EMPTY),
 		);
 
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for page title
 		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
@@ -182,7 +182,7 @@ test.describe("Desktop Recap Job Status", () => {
 		desktopJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for time window selector
 		await expect(page.getByText("Time Window:")).toBeVisible();
@@ -217,7 +217,7 @@ test.describe("Desktop Recap Job Status", () => {
 			await fulfillJson(route, JOB_PROGRESS_RESPONSE);
 		});
 
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for page to load - check for stats cards which appear when data loads
 		await expect(desktopJobStatusPage.successRateCard).toBeVisible();
@@ -253,7 +253,7 @@ test.describe("Desktop Recap Job Status", () => {
 			fulfillError(route, "Server error", 500),
 		);
 
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for error message to appear with extended timeout
 		await expect(desktopJobStatusPage.errorMessage).toBeVisible({
@@ -263,7 +263,7 @@ test.describe("Desktop Recap Job Status", () => {
 
 	test("failed job shows correct status and stage count", async ({ page }) => {
 		await setupDefaultMock(page);
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for table to load
 		await expect(page.getByText("job-001-")).toBeVisible();
@@ -290,7 +290,7 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
 
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for page to load
 		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
@@ -308,7 +308,7 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for page to load
 		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
@@ -335,7 +335,7 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 			}),
 		);
 
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		await expect(desktopJobStatusPage.startJobButton).toBeEnabled();
 
@@ -355,7 +355,7 @@ test.describe("Desktop Job Status - Accessibility", () => {
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for table to load
 		await expect(page.getByText("job-001-")).toBeVisible();
@@ -385,7 +385,7 @@ test.describe("Desktop Job Status - Accessibility", () => {
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
-		await page.goto("./desktop/recap/job-status");
+		await page.goto("./recap/job-status");
 
 		// Wait for table to load
 		const firstJobRow = page.locator("tr[role='button']").first();

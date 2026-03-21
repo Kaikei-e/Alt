@@ -72,7 +72,7 @@ export class MobileJobStatusPage extends BasePage {
 	}
 
 	get url(): string {
-		return "./mobile/recap/job-status";
+		return "./recap/job-status";
 	}
 
 	/**

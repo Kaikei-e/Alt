@@ -129,7 +129,7 @@ test.describe("Desktop Pages Accessibility", () => {
 		await page.addInitScript(createMockEventSourceScript());
 	});
 
-	test.describe("Desktop Feeds Page (/desktop/feeds)", () => {
+	test.describe("Desktop Feeds Page (/feeds)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoDesktopRoute(page, "feeds");
 			await page.waitForLoadState("domcontentloaded");
@@ -168,7 +168,7 @@ test.describe("Desktop Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Desktop Search Page (/desktop/feeds/search)", () => {
+	test.describe("Desktop Search Page (/feeds/search)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			// Mock search endpoint
 			await page.route("**/api/v2/feeds/search*", (route) =>
@@ -205,7 +205,7 @@ test.describe("Desktop Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Desktop Recap Page (/desktop/recap)", () => {
+	test.describe("Desktop Recap Page (/recap)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoDesktopRoute(page, "recap");
 			await page.waitForLoadState("domcontentloaded");
@@ -216,7 +216,7 @@ test.describe("Desktop Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Desktop Stats Page (/desktop/stats)", () => {
+	test.describe("Desktop Stats Page (/stats)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			// Mock stats endpoints
 			await page.route("**/api/v2/feeds/stats/**", (route) =>
@@ -265,7 +265,7 @@ test.describe("Desktop Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Desktop Augur Chat Page (/desktop/augur)", () => {
+	test.describe("Desktop Augur Chat Page (/augur)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			// Mock chat endpoint
 			await page.route("**/api/v1/augur/**", (route) =>
@@ -304,7 +304,7 @@ test.describe("Desktop Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Desktop Tag Trail Page (/desktop/feeds/tag-trail)", () => {
+	test.describe("Desktop Tag Trail Page (/feeds/tag-trail)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoDesktopRoute(page, "feeds/tag-trail");
 			await page.waitForLoadState("domcontentloaded");
@@ -314,7 +314,7 @@ test.describe("Desktop Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Desktop Favorites Page (/desktop/feeds/favorites)", () => {
+	test.describe("Desktop Favorites Page (/feeds/favorites)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoDesktopRoute(page, "feeds/favorites");
 			await page.waitForLoadState("domcontentloaded");
@@ -324,7 +324,7 @@ test.describe("Desktop Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Desktop Viewed Page (/desktop/feeds/viewed)", () => {
+	test.describe("Desktop Viewed Page (/feeds/viewed)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoDesktopRoute(page, "feeds/viewed");
 			await page.waitForLoadState("domcontentloaded");
@@ -334,7 +334,7 @@ test.describe("Desktop Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Desktop Evening Pulse Page (/desktop/recap/evening-pulse)", () => {
+	test.describe("Desktop Evening Pulse Page (/recap/evening-pulse)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoDesktopRoute(page, "recap/evening-pulse");
 			await page.waitForLoadState("domcontentloaded");

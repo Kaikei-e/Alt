@@ -35,7 +35,7 @@ export class MobileEveningPulsePage extends BasePage {
 	}
 
 	get url(): string {
-		return "./mobile/recap/evening-pulse";
+		return "./recap/evening-pulse";
 	}
 
 	/**

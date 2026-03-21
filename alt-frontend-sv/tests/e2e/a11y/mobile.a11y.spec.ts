@@ -119,7 +119,7 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Mobile Feeds Page (/mobile/feeds)", () => {
+	test.describe("Mobile Feeds Page (/feeds)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoMobileRoute(page, "feeds");
 			await page.waitForLoadState("domcontentloaded");
@@ -156,7 +156,7 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Mobile Swipe Page (/mobile/feeds/swipe)", () => {
+	test.describe("Mobile Swipe Page (/feeds/swipe)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoMobileRoute(page, "feeds/swipe");
 			await page.waitForLoadState("domcontentloaded");
@@ -211,7 +211,7 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Mobile Search Page (/mobile/feeds/search)", () => {
+	test.describe("Mobile Search Page (/feeds/search)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			// Mock search endpoint
 			await page.route("**/api/v2/feeds/search*", (route) =>
@@ -245,7 +245,7 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Mobile Viewed Page (/mobile/feeds/viewed)", () => {
+	test.describe("Mobile Viewed Page (/feeds/viewed)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoMobileRoute(page, "feeds/viewed");
 			await page.waitForLoadState("domcontentloaded");
@@ -256,7 +256,7 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Mobile Stats Page (/mobile/feeds/stats)", () => {
+	test.describe("Mobile Stats Page (/stats)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			// Mock stats endpoints
 			await page.route("**/api/v2/feeds/stats*", (route) =>
@@ -275,7 +275,7 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Mobile Tag Trail Page (/mobile/feeds/tag-trail)", () => {
+	test.describe("Mobile Tag Trail Page (/feeds/tag-trail)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoMobileRoute(page, "feeds/tag-trail");
 			await page.waitForLoadState("domcontentloaded");
@@ -285,7 +285,7 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Mobile Morning Letter Page (/mobile/recap/morning-letter)", () => {
+	test.describe("Mobile Morning Letter Page (/recap/morning-letter)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoMobileRoute(page, "recap/morning-letter");
 			await page.waitForLoadState("domcontentloaded");
@@ -295,7 +295,7 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Mobile Evening Pulse Page (/mobile/recap/evening-pulse)", () => {
+	test.describe("Mobile Evening Pulse Page (/recap/evening-pulse)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoMobileRoute(page, "recap/evening-pulse");
 			await page.waitForLoadState("domcontentloaded");
@@ -305,7 +305,7 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Mobile 3-Day Recap Page (/mobile/recap?window=3)", () => {
+	test.describe("Mobile 3-Day Recap Page (/recap?window=3)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await page.goto("./recap?window=3");
 			await page.waitForLoadState("domcontentloaded");

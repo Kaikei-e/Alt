@@ -74,7 +74,7 @@ export class DesktopJobStatusPage extends BasePage {
 	}
 
 	get url(): string {
-		return "./desktop/recap/job-status";
+		return "./recap/job-status";
 	}
 
 	/**
