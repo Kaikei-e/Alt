@@ -1,7 +1,6 @@
 package alt_db
 
 import (
-	"context"
 	"errors"
 	"regexp"
 	"testing"
@@ -16,17 +15,18 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_Success(t *testing.T) {
 	defer mock.Close()
 
 	repo := &AltDBRepository{pool: mock}
-	ctx := context.Background()
+	ctx := authContext()
 
 	expectedQuery := `
 		SELECT COUNT(*)
 		FROM articles a
-		LEFT JOIN article_summaries s ON a.id = s.article_id
-		WHERE s.article_id IS NULL
+		LEFT JOIN article_summaries s ON a.id = s.article_id AND s.user_id = a.user_id
+		WHERE a.user_id = $1 AND a.deleted_at IS NULL AND s.article_id IS NULL
 	`
 
 	// Test case: 3 unsummarized articles out of 5 total
 	mock.ExpectQuery(regexp.QuoteMeta(expectedQuery)).
+		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(3))
 
 	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
@@ -41,17 +41,18 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_AllSummarized(t *testing
 	defer mock.Close()
 
 	repo := &AltDBRepository{pool: mock}
-	ctx := context.Background()
+	ctx := authContext()
 
 	expectedQuery := `
 		SELECT COUNT(*)
 		FROM articles a
-		LEFT JOIN article_summaries s ON a.id = s.article_id
-		WHERE s.article_id IS NULL
+		LEFT JOIN article_summaries s ON a.id = s.article_id AND s.user_id = a.user_id
+		WHERE a.user_id = $1 AND a.deleted_at IS NULL AND s.article_id IS NULL
 	`
 
 	// Test case: all articles have summaries
 	mock.ExpectQuery(regexp.QuoteMeta(expectedQuery)).
+		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
 	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
@@ -66,17 +67,18 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_NoArticles(t *testing.T)
 	defer mock.Close()
 
 	repo := &AltDBRepository{pool: mock}
-	ctx := context.Background()
+	ctx := authContext()
 
 	expectedQuery := `
 		SELECT COUNT(*)
 		FROM articles a
-		LEFT JOIN article_summaries s ON a.id = s.article_id
-		WHERE s.article_id IS NULL
+		LEFT JOIN article_summaries s ON a.id = s.article_id AND s.user_id = a.user_id
+		WHERE a.user_id = $1 AND a.deleted_at IS NULL AND s.article_id IS NULL
 	`
 
 	// Test case: no articles in database
 	mock.ExpectQuery(regexp.QuoteMeta(expectedQuery)).
+		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
 	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
@@ -91,17 +93,18 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_QueryError(t *testing.T)
 	defer mock.Close()
 
 	repo := &AltDBRepository{pool: mock}
-	ctx := context.Background()
+	ctx := authContext()
 
 	expectedQuery := `
 		SELECT COUNT(*)
 		FROM articles a
-		LEFT JOIN article_summaries s ON a.id = s.article_id
-		WHERE s.article_id IS NULL
+		LEFT JOIN article_summaries s ON a.id = s.article_id AND s.user_id = a.user_id
+		WHERE a.user_id = $1 AND a.deleted_at IS NULL AND s.article_id IS NULL
 	`
 
 	// Test case: database error
 	mock.ExpectQuery(regexp.QuoteMeta(expectedQuery)).
+		WithArgs(pgxmock.AnyArg()).
 		WillReturnError(errors.New("database connection failed"))
 
 	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
@@ -113,7 +116,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_QueryError(t *testing.T)
 
 func TestAltDBRepository_FetchUnsummarizedArticlesCount_NilRepository(t *testing.T) {
 	var repo *AltDBRepository
-	ctx := context.Background()
+	ctx := authContext()
 
 	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
 	require.Error(t, err)
@@ -123,7 +126,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_NilRepository(t *testing
 
 func TestAltDBRepository_FetchUnsummarizedArticlesCount_NilPool(t *testing.T) {
 	repo := &AltDBRepository{}
-	ctx := context.Background()
+	ctx := authContext()
 
 	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
 	require.Error(t, err)
@@ -140,13 +143,13 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_IgnoresOrphanedSummaries
 	defer mock.Close()
 
 	repo := &AltDBRepository{pool: mock}
-	ctx := context.Background()
+	ctx := authContext()
 
 	expectedQuery := `
 		SELECT COUNT(*)
 		FROM articles a
-		LEFT JOIN article_summaries s ON a.id = s.article_id
-		WHERE s.article_id IS NULL
+		LEFT JOIN article_summaries s ON a.id = s.article_id AND s.user_id = a.user_id
+		WHERE a.user_id = $1 AND a.deleted_at IS NULL AND s.article_id IS NULL
 	`
 
 	// Scenario:
@@ -158,6 +161,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_IgnoresOrphanedSummaries
 	//
 	// The query uses LEFT JOIN from articles, so orphaned summaries are automatically ignored
 	mock.ExpectQuery(regexp.QuoteMeta(expectedQuery)).
+		WithArgs(pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(3))
 
 	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
