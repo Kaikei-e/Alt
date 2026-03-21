@@ -517,6 +517,10 @@ class SummarizeUsecase:
         """
         Generate a summary for a large article using Hierarchical (Map-Reduce) strategy.
 
+        Uses hold_slot() + generate_raw() (BE path) instead of generate() (local-only)
+        so that DistributingGateway can dispatch chunks to remote Ollama instances,
+        avoiding local GPU starvation that blocks Ask Augur.
+
         Args:
             article_id: Article identifier
             content: Full article content
@@ -542,7 +546,7 @@ class SummarizeUsecase:
             }
         )
 
-        # Map Phase: Summarize each chunk
+        # Map Phase: Summarize each chunk via hold_slot + generate_raw (BE path)
         chunk_summaries = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
@@ -562,12 +566,15 @@ class SummarizeUsecase:
             }
 
             try:
-                # Use a smaller num_predict for chunks to save time
-                chunk_resp = await self.llm_provider.generate(
-                    prompt,
-                    num_predict=500,
-                    options=llm_options
-                )
+                # Use hold_slot + generate_raw so DistributingGateway can dispatch to remote
+                async with self.llm_provider.hold_slot(is_high_priority=False) as (_wait_time, cancel_event, task_id):
+                    chunk_resp = await self.llm_provider.generate_raw(
+                        prompt,
+                        cancel_event=cancel_event,
+                        task_id=task_id,
+                        num_predict=500,
+                        options=llm_options,
+                    )
                 chunk_text = chunk_resp.response
 
                 # Cleanup chunk summary
@@ -603,11 +610,6 @@ class SummarizeUsecase:
             }
         )
 
-        # We can reuse the standard generate_summary logic for the reduce phase,
-        # but we need to bypass the length check to avoid recursion if combined text is huge
-        # (unlikely given 500 char limit per chunk, but possible).
-        # Instead, just call LLM directly with standard summary prompt.
-
         prompt = SUMMARY_PROMPT_TEMPLATE.format(content=combined_text, current_date=datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d"))
 
         # Use standard summary configuration
@@ -616,11 +618,15 @@ class SummarizeUsecase:
             "repeat_penalty": self.config.llm_repeat_penalty
         }
 
-        final_resp = await self.llm_provider.generate(
-            prompt,
-            num_predict=self.config.summary_num_predict,
-            options=llm_options
-        )
+        # Reduce phase also uses hold_slot + generate_raw (BE path)
+        async with self.llm_provider.hold_slot(is_high_priority=False) as (_wait_time, cancel_event, task_id):
+            final_resp = await self.llm_provider.generate_raw(
+                prompt,
+                cancel_event=cancel_event,
+                task_id=task_id,
+                num_predict=self.config.summary_num_predict,
+                options=llm_options,
+            )
 
         raw_summary = final_resp.response
         cleaned_summary = self._clean_summary_text(raw_summary, article_id)

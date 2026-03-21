@@ -193,6 +193,9 @@ class RecapSummaryUsecase:
     ) -> Optional[IntermediateSummary]:
         """Generate an intermediate summary for a single chunk.
 
+        Uses hold_slot() + generate_raw() (BE path) instead of generate() (local-only)
+        so that DistributingGateway can dispatch to remote Ollama instances.
+
         Args:
             request: Original recap summary request
             chunk_idx: Index of the current chunk (0-based)
@@ -226,12 +229,15 @@ class RecapSummaryUsecase:
         chunk_prompt = self._build_prompt(chunk_request, max_bullets=4, intermediate=True)
 
         try:
-            llm_response = await self.llm_provider.generate(
-                chunk_prompt,
-                num_predict=self.config.summary_num_predict // 2,
-                format=json_schema,
-                options=llm_options,
-            )
+            async with self.llm_provider.hold_slot(is_high_priority=False) as (_wait_time, cancel_event, task_id):
+                llm_response = await self.llm_provider.generate_raw(
+                    chunk_prompt,
+                    cancel_event=cancel_event,
+                    task_id=task_id,
+                    num_predict=self.config.summary_num_predict // 2,
+                    format=json_schema,
+                    options=llm_options,
+                )
 
             # Parse intermediate summary
             parsed = json.loads(llm_response.response)
@@ -434,6 +440,9 @@ class RecapSummaryUsecase:
     ) -> Optional[IntermediateSummary]:
         """Reduce a group of intermediate summaries into one.
 
+        Uses hold_slot() + generate_raw() (BE path) instead of generate() (local-only)
+        so that DistributingGateway can dispatch to remote Ollama instances.
+
         Args:
             group: List of intermediate summaries in this group
             request: Original recap summary request
@@ -459,12 +468,15 @@ class RecapSummaryUsecase:
 JSONで bullets フィールドに要約した要点リストを返してください。"""
 
         try:
-            llm_response = await self.llm_provider.generate(
-                reduce_prompt,
-                num_predict=self.config.summary_num_predict // 2,
-                format=json_schema,
-                options=llm_options,
-            )
+            async with self.llm_provider.hold_slot(is_high_priority=False) as (_wait_time, cancel_event, task_id):
+                llm_response = await self.llm_provider.generate_raw(
+                    reduce_prompt,
+                    cancel_event=cancel_event,
+                    task_id=task_id,
+                    num_predict=self.config.summary_num_predict // 2,
+                    format=json_schema,
+                    options=llm_options,
+                )
 
             parsed = json.loads(llm_response.response)
             return IntermediateSummary(**parsed)

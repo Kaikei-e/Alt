@@ -468,6 +468,8 @@ def test_split_clusters_into_chunks_single_large_cluster():
 @pytest.mark.asyncio
 async def test_recursive_reduce_with_large_intermediate_summaries():
     """Test that large intermediate summaries trigger recursive reduce."""
+    from contextlib import asynccontextmanager
+
     config = Mock()
     config.summary_num_predict = 400
     config.llm_temperature = 0.25
@@ -483,31 +485,33 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
     config.recursive_reduce_max_chars = 500  # Small for testing
     config.recursive_reduce_max_depth = 3
 
-    llm_provider = AsyncMock()
+    llm_provider = Mock()
 
     # Track call count to verify multiple reduce calls
-    call_count = 0
+    generate_raw_call_count = 0
 
-    def mock_generate(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    def mock_generate_raw(prompt, **kwargs):
+        nonlocal generate_raw_call_count
+        generate_raw_call_count += 1
         # Return smaller summaries on each call
-        if call_count <= 4:  # Map phase (initial chunks)
+        if generate_raw_call_count <= 4:  # Map phase (initial chunks)
             return LLMGenerateResponse(
                 response=json.dumps({
-                    "bullets": [f"中間要約{call_count}-1 " + "詳細" * 50, f"中間要約{call_count}-2 " + "詳細" * 50],
+                    "bullets": [f"中間要約{generate_raw_call_count}-1 " + "詳細" * 50, f"中間要約{generate_raw_call_count}-2 " + "詳細" * 50],
                 }),
                 model="gemma3:4b",
                 prompt_eval_count=100,
                 eval_count=50,
                 total_duration=500_000_000,
             )
-        else:  # Reduce phase
+        else:  # Recursive reduce phase
             return LLMGenerateResponse(
                 response=json.dumps({
-                    "title": "最終要約タイトル",
-                    "bullets": ["最終要点1", "最終要点2"],
-                    "language": "ja"
+                    "bullets": ["要約済み要点1", "要約済み要点2"],
                 }),
                 model="gemma3:4b",
                 prompt_eval_count=100,
@@ -515,7 +519,23 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
                 total_duration=500_000_000,
             )
 
-    llm_provider.generate.side_effect = mock_generate
+    # Final reduce goes through _generate_single_shot_summary which uses generate()
+    def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps({
+                "title": "最終要約タイトル",
+                "bullets": ["最終要点1", "最終要点2"],
+                "language": "ja"
+            }),
+            model="gemma3:4b",
+            prompt_eval_count=100,
+            eval_count=50,
+            total_duration=500_000_000,
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
 
     # Create many clusters to trigger hierarchical summarization
     clusters = [
@@ -543,13 +563,15 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
     # Should have completed successfully
     assert response.summary.title is not None
     assert len(response.summary.bullets) >= 1
-    # Map phase + reduce phase(s)
-    assert call_count >= 2
+    # Map phase + reduce phase(s) via generate_raw
+    assert generate_raw_call_count >= 2
 
 
 @pytest.mark.asyncio
 async def test_recursive_reduce_respects_max_depth():
     """Test that recursive reduce stops at max recursion depth."""
+    from contextlib import asynccontextmanager
+
     config = Mock()
     config.summary_num_predict = 400
     config.llm_temperature = 0.25
@@ -564,10 +586,13 @@ async def test_recursive_reduce_respects_max_depth():
     config.recursive_reduce_max_chars = 50  # Very small to force recursion
     config.recursive_reduce_max_depth = 2  # Limited depth
 
-    llm_provider = AsyncMock()
+    llm_provider = Mock()
 
-    # Always return large intermediate summaries
-    llm_provider.generate.return_value = LLMGenerateResponse(
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    large_response = LLMGenerateResponse(
         response=json.dumps({
             "title": "要約タイトル",
             "bullets": ["長い要点" * 20],  # Large output
@@ -578,6 +603,10 @@ async def test_recursive_reduce_respects_max_depth():
         eval_count=50,
         total_duration=500_000_000,
     )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(return_value=large_response)
+    llm_provider.generate = AsyncMock(return_value=large_response)
 
     clusters = [
         RecapClusterInput(
@@ -607,6 +636,8 @@ async def test_recursive_reduce_respects_max_depth():
 @pytest.mark.asyncio
 async def test_small_intermediate_summaries_skip_recursive_reduce():
     """Test that small intermediate summaries go directly to final reduce."""
+    from contextlib import asynccontextmanager
+
     config = Mock()
     config.summary_num_predict = 400
     config.llm_temperature = 0.25
@@ -621,31 +652,39 @@ async def test_small_intermediate_summaries_skip_recursive_reduce():
     config.recursive_reduce_max_chars = 10000  # Large enough to skip recursion
     config.recursive_reduce_max_depth = 3
 
-    llm_provider = AsyncMock()
+    llm_provider = Mock()
 
-    call_count = 0
+    generate_raw_call_count = 0
 
-    def mock_generate(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        if call_count == 1:  # Map phase
-            return LLMGenerateResponse(
-                response=json.dumps({
-                    "bullets": ["短い要点1", "短い要点2"],
-                }),
-                model="gemma3:4b",
-            )
-        else:  # Final reduce
-            return LLMGenerateResponse(
-                response=json.dumps({
-                    "title": "最終要約",
-                    "bullets": ["最終要点1"],
-                    "language": "ja"
-                }),
-                model="gemma3:4b",
-            )
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
 
-    llm_provider.generate.side_effect = mock_generate
+    def mock_generate_raw(prompt, **kwargs):
+        nonlocal generate_raw_call_count
+        generate_raw_call_count += 1
+        # Map phase: return small intermediate summaries
+        return LLMGenerateResponse(
+            response=json.dumps({
+                "bullets": ["短い要点1", "短い要点2"],
+            }),
+            model="gemma3:4b",
+        )
+
+    # Final reduce goes through _generate_single_shot_summary (uses generate())
+    def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps({
+                "title": "最終要約",
+                "bullets": ["最終要点1"],
+                "language": "ja"
+            }),
+            model="gemma3:4b",
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
 
     clusters = [
         RecapClusterInput(
@@ -682,5 +721,191 @@ async def test_small_intermediate_summaries_skip_recursive_reduce():
     # Should complete with minimal calls (map + single reduce)
     assert response.summary.title == "最終要約"
     # 3 clusters with 2000 max chars should fit in 1-2 chunks
-    assert call_count <= 3
+    assert generate_raw_call_count <= 3
+
+
+# ============================================================================
+# Hierarchical BE Path Tests — map/reduce must use hold_slot+generate_raw
+# ============================================================================
+
+
+def _make_recap_config_for_hierarchical():
+    """Config that triggers hierarchical summarization."""
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.25
+    config.max_repetition_retries = 2
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
+    config.hierarchical_threshold_chars = 100  # Very low → always hierarchical
+    config.hierarchical_threshold_clusters = 2  # Low → trigger on 3+ clusters
+    config.hierarchical_chunk_max_chars = 2000
+    config.hierarchical_chunk_overlap_ratio = 0.15
+    config.ollama_request_concurrency = 2
+    config.recursive_reduce_max_chars = 10000
+    config.recursive_reduce_max_depth = 3
+    return config
+
+
+def _make_hierarchical_clusters(count=4):
+    """Create clusters that exceed hierarchical threshold."""
+    return [
+        RecapClusterInput(
+            cluster_id=i,
+            representative_sentences=[
+                RepresentativeSentence(text=f"クラスタ{i}の代表文。テスト用の内容です。" * 5)
+            ],
+            top_terms=[f"term{i}"],
+        )
+        for i in range(count)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_map_phase_uses_hold_slot_generate_raw():
+    """Map phase in recap hierarchical summarization must use hold_slot+generate_raw,
+    not generate() (local-only), to avoid starving local GPU.
+
+    Note: The final reduce step goes through _generate_single_shot_summary which uses
+    generate() — this is acceptable because the final reduce input is small (combined bullets).
+    Only the map and recursive reduce phases need BE dispatch.
+    """
+    from contextlib import asynccontextmanager
+
+    config = _make_recap_config_for_hierarchical()
+    llm_provider = Mock()
+
+    hold_slot_calls = 0
+    generate_raw_calls = 0
+
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        nonlocal hold_slot_calls
+        hold_slot_calls += 1
+        yield 0.0, None, None
+
+    async def mock_generate_raw(prompt, **kwargs):
+        nonlocal generate_raw_calls
+        generate_raw_calls += 1
+        return LLMGenerateResponse(
+            response=json.dumps({
+                "bullets": [f"要点{generate_raw_calls}"],
+            }),
+            model="gemma3:4b",
+            prompt_eval_count=100,
+            eval_count=50,
+            total_duration=500_000_000,
+        )
+
+    # generate() is used by _generate_single_shot_summary for the final reduce
+    async def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps({
+                "title": "最終要約",
+                "bullets": ["最終要点1", "最終要点2"],
+                "language": "ja"
+            }),
+            model="gemma3:4b",
+            prompt_eval_count=100,
+            eval_count=50,
+            total_duration=500_000_000,
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    clusters = _make_hierarchical_clusters(4)
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=clusters,
+        options=RecapSummaryOptions(max_bullets=3),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+
+    response = await usecase.generate_summary(request)
+
+    assert hold_slot_calls >= 1, "hold_slot must be called for hierarchical map chunks"
+    assert generate_raw_calls >= 1, "generate_raw must be used for hierarchical map chunks"
+    assert response.summary is not None
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_reduce_group_uses_hold_slot_generate_raw():
+    """Recursive reduce groups must also use hold_slot+generate_raw."""
+    from contextlib import asynccontextmanager
+
+    config = _make_recap_config_for_hierarchical()
+    # Use small chunk max to force multiple chunks (map produces multiple summaries)
+    config.hierarchical_chunk_max_chars = 300
+    config.recursive_reduce_max_chars = 50  # Very small → force recursive reduce
+    config.recursive_reduce_max_depth = 2
+    llm_provider = Mock()
+
+    generate_raw_calls = 0
+
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    async def mock_generate_raw(prompt, **kwargs):
+        nonlocal generate_raw_calls
+        generate_raw_calls += 1
+        return LLMGenerateResponse(
+            response=json.dumps({
+                "bullets": [f"要点{generate_raw_calls}" + "詳細" * 20],
+            }),
+            model="gemma3:4b",
+            prompt_eval_count=100,
+            eval_count=50,
+            total_duration=500_000_000,
+        )
+
+    # generate() is used by _generate_single_shot_summary for the final reduce
+    async def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps({
+                "title": "最終要約",
+                "bullets": ["最終要点"],
+                "language": "ja"
+            }),
+            model="gemma3:4b",
+            prompt_eval_count=100,
+            eval_count=50,
+            total_duration=500_000_000,
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    # Use many clusters with long text to ensure multiple chunks
+    clusters = [
+        RecapClusterInput(
+            cluster_id=i,
+            representative_sentences=[
+                RepresentativeSentence(text=f"クラスタ{i}の代表文。" * 10)
+            ],
+            top_terms=[f"term{i}"],
+        )
+        for i in range(10)
+    ]
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=clusters,
+        options=RecapSummaryOptions(max_bullets=3),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+
+    response = await usecase.generate_summary(request)
+
+    # Map phase (multiple chunks) + recursive reduce = multiple generate_raw calls
+    assert generate_raw_calls >= 2, (
+        f"Expected at least 2 generate_raw calls (map + reduce phases), got {generate_raw_calls}"
+    )
+    assert response.summary is not None
 

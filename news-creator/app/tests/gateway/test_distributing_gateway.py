@@ -408,3 +408,29 @@ async def test_no_model_override_uses_default():
 
     payload = driver.generate.await_args.kwargs["payload"]
     assert payload["model"] == "gemma3:4b-it-qat"
+
+
+# ============================================================================
+# Contract: generate() is local-only, BE distribution is via hold_slot+generate_raw
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_generate_is_local_only_contract():
+    """generate() MUST always delegate to local gateway, even when distributed BE is enabled.
+
+    This is a contract test — generate() handles streaming, model routing, and
+    local semaphore/cancel semantics. BE distribution is done exclusively through
+    hold_slot() + generate_raw(). Do not add remote dispatch to generate().
+    """
+    gw, local, hc, driver = _make_gateway(enabled=True, healthy_url="http://remote:11434")
+
+    # Call generate with various options
+    await gw.generate("prompt", stream=False, priority="low")
+    await gw.generate("prompt", stream=True, priority="high")
+
+    # All calls must go to local, never to remote driver
+    assert local.generate.await_count == 2
+    driver.generate.assert_not_awaited()
+    # Health checker should never be consulted for generate()
+    hc.acquire_idle_remote.assert_not_called()

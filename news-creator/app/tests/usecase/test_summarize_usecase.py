@@ -135,40 +135,32 @@ class TestTokenBudgetHierarchicalFallback:
         config.hierarchical_single_article_threshold = 100_000
         llm_provider = Mock()
 
-        generate_calls = []
-        hierarchical_generate_calls = []
+        normal_generate_raw_calls = []
+        hierarchical_generate_raw_calls = []
 
         @asynccontextmanager
         async def mock_hold_slot(is_high_priority=False):
             yield 0.0, None, None
 
-        async def mock_generate(prompt, **kwargs):
-            """Track calls from hierarchical path (uses generate, not generate_raw)."""
-            hierarchical_generate_calls.append(prompt)
-            return _make_llm_response()
-
         async def mock_generate_raw(prompt, **kwargs):
-            """Track calls from normal path."""
-            generate_calls.append(prompt)
+            """Track calls — hierarchical uses hold_slot+generate_raw now."""
+            hierarchical_generate_raw_calls.append(prompt)
             return _make_llm_response()
 
         llm_provider.hold_slot = mock_hold_slot
         llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
-        llm_provider.generate = AsyncMock(side_effect=mock_generate)
+        # generate() should NOT be called (hierarchical now uses hold_slot+generate_raw)
+        llm_provider.generate = AsyncMock(side_effect=AssertionError("generate() must not be called"))
 
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
 
-        # 20,000 chars → prompt ~5,000 tokens + predict 1,000 = 6,000
-        # With template overhead (~500 chars = ~125 tokens), total ~5,125 + 1,000 = 6,125
-        # Budget = 75% of 8,192 = 6,144 → borderline
-        # Use 22,000 chars to ensure we exceed budget
+        # 22,000 chars → exceeds token budget → triggers hierarchical
         content = "A" * 22_000
 
         summary, metadata = await usecase.generate_summary("test-article", content)
 
-        # Should have used hierarchical path (generate), not normal path (generate_raw)
-        assert len(generate_calls) == 0 or len(hierarchical_generate_calls) > 0
-        assert len(generate_calls) == 0, "Normal generate_raw should NOT have been called"
+        # Should have used hierarchical path (hold_slot+generate_raw)
+        assert len(hierarchical_generate_raw_calls) > 0, "Hierarchical generate_raw should have been called"
         assert summary
 
     @pytest.mark.asyncio
@@ -209,23 +201,28 @@ class TestTokenBudgetHierarchicalFallback:
         config.hierarchical_single_article_threshold = 20_000
         llm_provider = Mock()
 
-        hierarchical_called = False
+        hierarchical_generate_raw_called = False
 
-        async def mock_generate(prompt, **kwargs):
-            nonlocal hierarchical_called
-            hierarchical_called = True
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        async def mock_generate_raw(prompt, **kwargs):
+            nonlocal hierarchical_generate_raw_called
+            hierarchical_generate_raw_called = True
             return _make_llm_response()
 
-        llm_provider.generate = AsyncMock(side_effect=mock_generate)
-        # generate_raw should NOT be called since char threshold triggers first
-        llm_provider.generate_raw = AsyncMock(side_effect=AssertionError("should not reach normal path"))
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+        # generate() should NOT be called — hierarchical uses hold_slot+generate_raw
+        llm_provider.generate = AsyncMock(side_effect=AssertionError("generate() must not be called"))
 
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
         content = "A" * 25_000
 
         summary, metadata = await usecase.generate_summary("test-article", content)
 
-        assert hierarchical_called, "Char threshold should have triggered hierarchical"
+        assert hierarchical_generate_raw_called, "Char threshold should have triggered hierarchical (hold_slot+generate_raw)"
         assert summary
 
     @pytest.mark.asyncio
@@ -253,4 +250,78 @@ class TestTokenBudgetHierarchicalFallback:
         summary, metadata = await usecase.generate_summary("test-article", content)
 
         assert llm_provider.generate_raw.called
+        assert summary
+
+
+class TestHierarchicalUsesHoldSlotGenerateRaw:
+    """Hierarchical summarization must use hold_slot+generate_raw (BE path),
+    not generate() (local-only), to avoid starving local GPU slots."""
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_map_phase_uses_hold_slot_generate_raw(self):
+        """Map phase chunks must go through hold_slot+generate_raw, not generate()."""
+        config = _make_config()
+        config.hierarchical_single_article_threshold = 1_000
+        config.hierarchical_single_article_chunk_size = 500
+        llm_provider = Mock()
+
+        hold_slot_calls = 0
+        generate_raw_calls = 0
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            nonlocal hold_slot_calls
+            hold_slot_calls += 1
+            yield 0.0, None, None
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(return_value=_make_llm_response("チャンク要約。"))
+        # generate() must NOT be called — if it is, the test should fail
+        llm_provider.generate = AsyncMock(
+            side_effect=AssertionError("generate() must not be called in hierarchical path")
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        content = "A" * 2_000  # Exceeds threshold → triggers hierarchical
+
+        summary, metadata = await usecase.generate_summary("test-article", content)
+
+        assert hold_slot_calls >= 1, "hold_slot must be called for hierarchical chunks"
+        assert llm_provider.generate_raw.called, "generate_raw must be used for hierarchical chunks"
+        assert not llm_provider.generate.called, "generate() must not be called in hierarchical path"
+        assert summary
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_reduce_phase_uses_hold_slot_generate_raw(self):
+        """Reduce phase must also go through hold_slot+generate_raw."""
+        config = _make_config()
+        config.hierarchical_single_article_threshold = 1_000
+        config.hierarchical_single_article_chunk_size = 500
+        llm_provider = Mock()
+
+        generate_raw_calls = []
+
+        @asynccontextmanager
+        async def mock_hold_slot(is_high_priority=False):
+            yield 0.0, None, None
+
+        async def mock_generate_raw(prompt, **kwargs):
+            generate_raw_calls.append(prompt)
+            return _make_llm_response("要約テスト。")
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+        llm_provider.generate = AsyncMock(
+            side_effect=AssertionError("generate() must not be called in hierarchical path")
+        )
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+        content = "A" * 2_000
+
+        summary, metadata = await usecase.generate_summary("test-article", content)
+
+        # Map phase chunks + reduce phase = multiple generate_raw calls
+        assert len(generate_raw_calls) >= 2, (
+            f"Expected at least 2 generate_raw calls (map + reduce), got {len(generate_raw_calls)}"
+        )
         assert summary
