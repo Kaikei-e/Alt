@@ -628,11 +628,11 @@ func (m *stubSummaryRepoWithExists) Create(_ context.Context, _ *domain.ArticleS
 // stubJobRepoWithEnqueue supports guard checks and CreateJob.
 type stubJobRepoWithEnqueue struct {
 	repository.SummarizeJobRepository
-	jobs              []*domain.SummarizeJob
-	recentSuccessMap  map[string]bool
-	createJobCalls    []string // article IDs passed to CreateJob
-	dequeueCalls      int
-	getErr            error
+	jobs             []*domain.SummarizeJob
+	recentSuccessMap map[string]bool
+	createJobCalls   []string // article IDs passed to CreateJob
+	dequeueCalls     int
+	getErr           error
 }
 
 func (m *stubJobRepoWithEnqueue) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {

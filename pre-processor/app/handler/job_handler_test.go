@@ -259,8 +259,8 @@ func newQueueWorkerWithError(err error) *service.SummarizeQueueWorker {
 // stubArticleRepoForEnqueue provides FindForSummarization support.
 type stubArticleRepoForEnqueue struct {
 	repository.ArticleRepository
-	articles          []*domain.Article
-	findForSumCalls   int
+	articles        []*domain.Article
+	findForSumCalls int
 }
 
 func (m *stubArticleRepoForEnqueue) FindForSummarization(_ context.Context, _ *domain.Cursor, _ int) ([]*domain.Article, *domain.Cursor, error) {
