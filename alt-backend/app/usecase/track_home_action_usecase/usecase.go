@@ -6,6 +6,7 @@ import (
 	"alt/port/knowledge_event_port"
 	"alt/port/knowledge_home_port"
 	"alt/port/knowledge_projection_version_port"
+	"alt/port/knowledge_sovereign_port"
 	"alt/port/knowledge_user_event_port"
 	"alt/port/recall_signal_port"
 	"alt/utils/logger"
@@ -44,6 +45,7 @@ type TrackHomeActionUsecase struct {
 	recallSignalPort   recall_signal_port.AppendRecallSignalPort
 	dismissPort        knowledge_home_port.DismissKnowledgeHomeItemPort
 	activeVersionPort  knowledge_projection_version_port.GetActiveVersionPort
+	curationMutator    knowledge_sovereign_port.CurationMutator
 }
 
 // SetRecallSignalPort wires the optional recall signal port.
@@ -58,6 +60,12 @@ func (u *TrackHomeActionUsecase) SetDismissPort(
 ) {
 	u.dismissPort = port
 	u.activeVersionPort = versionPort
+}
+
+// SetCurationMutator wires the optional Knowledge Sovereign curation mutator.
+// When set, dismiss operations route through the Sovereign write path instead of the legacy dismiss port.
+func (u *TrackHomeActionUsecase) SetCurationMutator(port knowledge_sovereign_port.CurationMutator) {
+	u.curationMutator = port
 }
 
 // NewTrackHomeActionUsecase creates a new TrackHomeActionUsecase.
@@ -144,25 +152,42 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 		// Non-fatal: user event was already recorded
 	}
 
-	if actionType == "dismiss" && u.dismissPort != nil {
-		projectionVersion := 1
-		if u.activeVersionPort != nil {
-			v, err := u.activeVersionPort.GetActiveVersion(ctx)
-			if err != nil {
-				logger.Logger.WarnContext(ctx, "failed to resolve active projection version for dismiss write-through",
+	if actionType == "dismiss" {
+		if u.curationMutator != nil {
+			// Sovereign write path
+			dismissPayload, _ := json.Marshal(map[string]any{
+				"user_id":  userID.String(),
+				"item_key": itemKey,
+			})
+			if err := u.curationMutator.ApplyCurationMutation(ctx, knowledge_sovereign_port.CurationMutation{
+				MutationType: knowledge_sovereign_port.MutationDismissCuration,
+				EntityID:     itemKey,
+				Payload:      dismissPayload,
+			}); err != nil {
+				logger.Logger.ErrorContext(ctx, "failed to dismiss via sovereign curation mutator",
 					"error", err, "item_key", itemKey)
-			} else if v != nil {
-				projectionVersion = v.Version
 			}
-		}
+		} else if u.dismissPort != nil {
+			// Legacy dismiss fast-path
+			projectionVersion := 1
+			if u.activeVersionPort != nil {
+				v, err := u.activeVersionPort.GetActiveVersion(ctx)
+				if err != nil {
+					logger.Logger.WarnContext(ctx, "failed to resolve active projection version for dismiss write-through",
+						"error", err, "item_key", itemKey)
+				} else if v != nil {
+					projectionVersion = v.Version
+				}
+			}
 
-		if err := u.dismissPort.DismissKnowledgeHomeItem(ctx, userID, itemKey, projectionVersion, now); err != nil {
-			if errors.Is(err, knowledge_home_port.ErrDismissTargetNotFound) {
-				logger.Logger.WarnContext(ctx, "dismiss write-through skipped because read model target was not found",
-					"item_key", itemKey, "projection_version", projectionVersion)
-			} else {
-				logger.Logger.ErrorContext(ctx, "failed to dismiss read model synchronously",
-					"error", err, "item_key", itemKey, "projection_version", projectionVersion)
+			if err := u.dismissPort.DismissKnowledgeHomeItem(ctx, userID, itemKey, projectionVersion, now); err != nil {
+				if errors.Is(err, knowledge_home_port.ErrDismissTargetNotFound) {
+					logger.Logger.WarnContext(ctx, "dismiss write-through skipped because read model target was not found",
+						"item_key", itemKey, "projection_version", projectionVersion)
+				} else {
+					logger.Logger.ErrorContext(ctx, "failed to dismiss read model synchronously",
+						"error", err, "item_key", itemKey, "projection_version", projectionVersion)
+				}
 			}
 		}
 	}
