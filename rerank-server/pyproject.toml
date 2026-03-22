@@ -1,0 +1,29 @@
+[project]
+name = "rerank-server"
+version = "0.1.0"
+description = "MLX-based rerank server for cross-encoder reranking"
+requires-python = ">=3.12"
+dependencies = [
+    "sentence-transformers>=5.2.3",
+    "fastapi>=0.133.0",
+    "uvicorn>=0.41.0",
+    "torch>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyrefly>=0.42.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pyrefly]
+project-includes = ["."]
+project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
+python-version = "3.12"
+
+[tool.pyrefly.errors]
+missing-import = false
+missing-module-attribute = false
