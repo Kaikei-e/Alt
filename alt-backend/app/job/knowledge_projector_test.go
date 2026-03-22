@@ -1199,6 +1199,44 @@ func TestKnowledgeProjectorJob_TagSetSuperseded_ProjectsSupersedeState(t *testin
 	assert.Contains(t, homeItemsPort.upserted[0].PreviousRefJSON, "previous_tags")
 }
 
+// RED: TagSetSuperseded must set Tags to empty slice (not nil).
+// nil serializes to "null" JSON which bypasses the merge-safe SQL guard
+// and overwrites existing tags with null.
+func TestKnowledgeProjectorJob_TagSetSuperseded_SetsEmptyTagsSlice(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	userID := uuid.New()
+	articleID := uuid.New()
+
+	supersedePayload, _ := json.Marshal(map[string]interface{}{
+		"article_id":             articleID.String(),
+		"new_tag_set_version_id": uuid.New().String(),
+		"old_tag_set_version_id": uuid.New().String(),
+		"previous_tags":          []string{"old-tag1", "old-tag2"},
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{EventID: uuid.New(), EventSeq: 1, TenantID: tenantID, UserID: &userID, EventType: domain.EventTagSetSuperseded, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: supersedePayload},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+
+	item := homeItemsPort.upserted[0]
+	// Tags must be empty slice, not nil. nil → json "null" → overwrites existing tags.
+	assert.NotNil(t, item.Tags, "Tags must not be nil (nil serializes to 'null' JSON)")
+	assert.Empty(t, item.Tags, "Tags should be empty slice (no new tags in supersede)")
+}
+
 func TestKnowledgeProjectorJob_ReasonMerged_ProjectsSupersedeState(t *testing.T) {
 	logger.InitLogger()
 

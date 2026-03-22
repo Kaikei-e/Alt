@@ -174,8 +174,17 @@ func (r *AltDBRepository) UpsertKnowledgeHomeItem(ctx context.Context, item doma
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.UpsertKnowledgeHomeItem")
 	defer span.End()
 
-	tagsJSON, _ := json.Marshal(item.Tags)
-	whyJSON, _ := json.Marshal(item.WhyReasons)
+	tags := item.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	tagsJSON, _ := json.Marshal(tags)
+
+	why := item.WhyReasons
+	if why == nil {
+		why = []domain.WhyReason{}
+	}
+	whyJSON, _ := json.Marshal(why)
 
 	// Convert supersede fields to nullable pointers for SQL
 	var supersedeState *string

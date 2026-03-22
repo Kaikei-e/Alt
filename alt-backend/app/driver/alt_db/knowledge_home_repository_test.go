@@ -296,6 +296,64 @@ func TestAltDBRepository_DismissKnowledgeHomeItem_ReturnsNotFoundWhenNoRowsUpdat
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+// RED: nil Tags must serialize to "[]" (empty JSON array), NOT "null".
+// "null" bypasses the merge-safe SQL guard (EXCLUDED.tags_json != '[]'::jsonb)
+// and overwrites existing tags with null — the root cause of the tag deletion bug.
+func TestAltDBRepository_UpsertKnowledgeHomeItem_NilTagsSerializesToEmptyArray(t *testing.T) {
+	mock, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer mock.Close()
+
+	repo := &AltDBRepository{pool: mock}
+	now := time.Date(2026, 3, 22, 12, 0, 0, 0, time.UTC)
+	userID := uuid.New()
+
+	supersedeState := domain.SupersedeTagsUpdated
+	prevRef := `{"previous_tags":["old-tag"]}`
+
+	mock.ExpectExec(upsertSQL).
+		WithArgs(
+			userID,
+			userID,
+			"article:test-nil-tags",
+			domain.ItemArticle,
+			(*uuid.UUID)(nil),
+			"",
+			"",
+			`[]`,  // KEY: nil Tags must become "[]", not "null"
+			`[]`,  // KEY: nil WhyReasons must become "[]", not "null"
+			0.0,
+			(*time.Time)(nil),
+			(*time.Time)(nil),
+			(*time.Time)(nil),
+			now,
+			now,
+			(*time.Time)(nil),
+			0,
+			"",
+			&supersedeState,
+			&now,
+			&prevRef,
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	err = repo.UpsertKnowledgeHomeItem(context.Background(), domain.KnowledgeHomeItem{
+		UserID:          userID,
+		TenantID:        userID,
+		ItemKey:         "article:test-nil-tags",
+		ItemType:        domain.ItemArticle,
+		Tags:            nil, // nil, NOT []string{} — this is the bug scenario
+		WhyReasons:      nil, // nil, NOT []domain.WhyReason{}
+		SupersedeState:  domain.SupersedeTagsUpdated,
+		SupersededAt:    &now,
+		PreviousRefJSON: prevRef,
+		GeneratedAt:     now,
+		UpdatedAt:       now,
+	})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestAltDBRepository_UpsertKnowledgeHomeItem_WithSupersedeState(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
