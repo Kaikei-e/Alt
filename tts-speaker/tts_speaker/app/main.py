@@ -16,14 +16,14 @@ from .connect_service import TTSConnectService
 from ..gen.proto.alt.tts.v1.tts_connect import TTSServiceASGIApplication
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
     from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: Starlette) -> "AsyncIterator[None]":
+async def lifespan(app: Starlette) -> "AsyncGenerator[None]":
     """Manage TTSPipeline lifecycle."""
     pipeline: TTSPipeline = app.state.pipeline
 

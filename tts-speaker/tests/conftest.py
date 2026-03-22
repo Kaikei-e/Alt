@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -48,7 +49,7 @@ def app(mock_pipeline: MagicMock):
 
 
 @pytest.fixture
-async def client(app) -> AsyncClient:
+async def client(app) -> AsyncGenerator[AsyncClient]:
     """Create an async test client."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

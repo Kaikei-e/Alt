@@ -27,6 +27,7 @@ dev = [
     "pytest-cov>=5.0.0",
     "httpx>=0.27.0",
     "ruff>=0.6.0",
+    "pyrefly>=0.42.0",
 ]
 
 [tool.uv]
@@ -38,6 +39,15 @@ packages = ["tts_speaker"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.pyrefly]
+project-includes = ["."]
+project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist", "**/*.egg-info", "tests/**"]
+python-version = "3.12"
+
+[tool.pyrefly.errors]
+missing-import = false
+missing-module-attribute = false
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore::DeprecationWarning"]
