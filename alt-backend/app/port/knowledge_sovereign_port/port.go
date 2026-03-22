@@ -6,6 +6,27 @@ import (
 	"encoding/json"
 )
 
+// Projection mutation types.
+const (
+	MutationUpsertHomeItem        = "upsert_home_item"
+	MutationDismissHomeItem       = "dismiss_home_item"
+	MutationClearSupersede        = "clear_supersede"
+	MutationUpsertTodayDigest     = "upsert_today_digest"
+	MutationUpsertRecallCandidate = "upsert_recall_candidate"
+)
+
+// Curation mutation types.
+const (
+	MutationDismissCuration = "dismiss_curation"
+)
+
+// Recall mutation types.
+const (
+	MutationUpsertCandidate  = "upsert_candidate"
+	MutationSnoozeCandidate  = "snooze_candidate"
+	MutationDismissCandidate = "dismiss_candidate"
+)
+
 // ProjectionMutation describes a mutation to a projection read model.
 type ProjectionMutation struct {
 	MutationType string          `json:"mutation_type"`
