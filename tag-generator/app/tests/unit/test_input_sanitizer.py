@@ -285,3 +285,71 @@ class TestInputSanitizer:
         assert result.is_valid is True
         assert "AI" in result.sanitized_input.title
         assert "人工知能" in result.sanitized_input.title
+
+
+class TestInputSanitizerHTMLReadability:
+    """RED: Tests for readability-based HTML content extraction.
+
+    Articles stored with HTML content must have readable text extracted
+    before sanitization, otherwise nh3 strips everything to a few chars.
+    """
+
+    @pytest.fixture
+    def sanitizer(self):
+        return InputSanitizer()
+
+    def test_html_article_extracts_readable_text_before_sanitize(self, sanitizer):
+        """HTML-wrapped article content must yield usable text after sanitization,
+        not be reduced to a few characters by nh3 stripping."""
+        html_content = """
+        <div class="article-body">
+            <h2>Introduction to Machine Learning</h2>
+            <p>Machine learning is a branch of artificial intelligence that focuses
+            on building applications that learn from data and improve their accuracy
+            over time without being programmed to do so.</p>
+            <p>Supervised learning uses labeled datasets to train algorithms that
+            classify data or predict outcomes accurately.</p>
+            <div class="sidebar">Related: Deep Learning</div>
+        </div>
+        """
+        result = sanitizer.sanitize(
+            title="ML Introduction",
+            content=html_content,
+        )
+
+        assert result.is_valid is True
+        assert result.sanitized_input is not None
+        # Must extract meaningful text, not just a few chars
+        assert len(result.sanitized_input.content) > 50
+        assert "machine learning" in result.sanitized_input.content.lower()
+
+    def test_large_html_with_code_blocks_is_not_flagged_suspicious(self, sanitizer):
+        """Large HTML/code-heavy articles must not trigger 'Suspicious patterns detected'.
+        The readability step should strip code blocks before security checks."""
+        # Simulate a code-heavy article like the 117K one in production
+        code_block = "<pre><code>" + "var x = 1;\n" * 500 + "</code></pre>"
+        article_body = """
+        <div>
+            <h1>Building a Web App from Scratch</h1>
+            <p>This article describes the architecture of a large web application
+            built over six months. The project contains over 400,000 lines of code
+            across multiple frameworks and languages.</p>
+            <h2>Project Structure</h2>
+            <p>The application uses a modular architecture with clear separation
+            of concerns between the frontend and backend components.</p>
+            {code}
+            <h2>Key Lessons</h2>
+            <p>The most important lesson was maintaining consistent coding standards
+            across the entire codebase to ensure long-term maintainability.</p>
+        </div>
+        """.format(code=code_block)
+
+        result = sanitizer.sanitize(
+            title="Web App Development Guide",
+            content=article_body,
+        )
+
+        assert result.is_valid is True, f"Should not flag as suspicious. Violations: {result.violations}"
+        assert result.sanitized_input is not None
+        # Article text should be preserved, code stripped
+        assert "modular architecture" in result.sanitized_input.content.lower()

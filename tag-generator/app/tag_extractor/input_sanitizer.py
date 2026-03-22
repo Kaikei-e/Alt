@@ -8,6 +8,12 @@ import nh3
 import structlog
 from pydantic import BaseModel, Field, field_validator
 
+# Code block pattern for stripping before readability
+_CODE_BLOCK_PATTERN = re.compile(
+    r"<(pre|code|script|style)\b[^>]*>.*?</\1\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+
 WHITESPACE_PATTERN = re.compile(r"\s+")
 DANGEROUS_ELEMENT_PATTERN = re.compile(
     r"<(script|style|iframe|object|embed)\b[^>]*>.*?(?:</\1\s*>|$)",
@@ -221,6 +227,11 @@ class InputSanitizer:
                     warnings=warnings,
                 )
 
+            # Step 1.5: Extract readable text from HTML content before sanitization
+            # Skip when allow_html is True — caller wants tags preserved
+            if not self.config.allow_html and self._looks_like_html(content):
+                content = self._extract_readable_text(content)
+
             # Step 2: Sanitize content
             sanitized_title = self._sanitize_text(title)
             sanitized_content = self._sanitize_text(content)
@@ -348,6 +359,46 @@ class InputSanitizer:
         )
         # If more than 10% of text is CJK, treat as CJK text
         return cjk_count > len(text) * 0.1
+
+    @staticmethod
+    def _looks_like_html(text: str) -> bool:
+        """Check if text appears to contain significant HTML markup."""
+        if "<" not in text or ">" not in text:
+            return False
+        # Count HTML-like tags; threshold avoids false positives on plain text with angle brackets
+        tag_count = len(re.findall(r"<[a-zA-Z/][^>]*>", text))
+        return tag_count >= 3
+
+    def _extract_readable_text(self, html: str) -> str:
+        """Extract readable article text from HTML using readability-lxml.
+
+        Strips code blocks, then uses readability to isolate main article content,
+        and finally extracts plain text via lxml.
+        """
+        try:
+            from readability import Document
+            from lxml.html import fromstring
+
+            # Strip code blocks before readability to reduce noise
+            cleaned = _CODE_BLOCK_PATTERN.sub(" ", html)
+
+            doc = Document(cleaned)
+            summary_html = doc.summary()
+
+            # Extract plain text from the readability output
+            tree = fromstring(summary_html)
+            text = tree.text_content()
+
+            # Normalize whitespace
+            text = WHITESPACE_PATTERN.sub(" ", text).strip()
+
+            if len(text) > 20:
+                return text
+
+        except Exception as e:
+            logger.warning("readability extraction failed, falling back to raw content", error=str(e))
+
+        return html
 
     def _has_unusual_character_frequency(self, text: str) -> bool:
         """Check for unusual character frequency patterns."""

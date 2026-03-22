@@ -231,3 +231,63 @@ class TestEmptyExtractionTracking:
         assert stats["total_processed"] == 1
         # extract_tags_with_metrics should be called once (for normal-b only)
         h.tag_extractor.extract_tags_with_metrics.assert_called_once()
+
+    # ------------------------------------------------------------------ 8
+    def test_process_articles_as_batch_returns_skipped_count(self):
+        """batch stats must include 'skipped' count for visibility."""
+        h = _Harness(max_retries=1)
+        h.tag_extractor.extract_tags_with_metrics.return_value = _empty_outcome()
+
+        articles = [_make_article("p1"), _make_article("p2")]
+        # First pass: both fail extraction → counts reach threshold
+        h.processor.process_articles_as_batch(None, articles)
+        # Second pass: both should be skipped
+        stats = h.processor.process_articles_as_batch(None, articles)
+        assert stats.get("skipped") == 2
+
+
+class TestForwardHeadOfLineBlocking:
+    """Tests for forward processing pagination past poison pills."""
+
+    # ------------------------------------------------------------------ 9
+    def test_forward_processing_pages_past_known_poison_pills(self):
+        """When all first-page articles are poison-pilled, forward processing
+        must paginate to next pages to find processable articles."""
+        h = _Harness(max_retries=1)
+        h.processor.backfill_completed = True
+
+        poison1 = {**_make_article("poison-1"), "created_at": "2026-03-22T10:00:00Z"}
+        poison2 = {**_make_article("poison-2"), "created_at": "2026-03-21T10:00:00Z"}
+        good1 = {**_make_article("good-1"), "created_at": "2026-03-20T10:00:00Z"}
+
+        # Pre-poison the first two articles
+        h.tag_extractor.extract_tags_with_metrics.return_value = _empty_outcome()
+        h.processor.process_articles_as_batch(None, [poison1, poison2])
+
+        # Setup: forward cursor
+        h.cursor_manager.get_forward_cursor_position.return_value = ("2026-03-23T00:00:00Z", "start")
+
+        # First page (fetch_new_articles): returns the 2 poisons
+        h.article_fetcher.fetch_new_articles.return_value = [poison1, poison2]
+
+        # Second page (fetch_articles with cursor): returns the good article
+        h.article_fetcher.fetch_articles.return_value = [good1]
+
+        # Good article: successful extraction
+        def side_effect(title, content):
+            return _good_outcome()
+
+        h.tag_extractor.extract_tags_with_metrics.side_effect = side_effect
+        h.tag_inserter.batch_upsert_tags_no_commit.return_value = {
+            "success": True,
+            "processed_articles": 1,
+            "failed_articles": 0,
+            "errors": [],
+        }
+
+        stats = h.processor.process_article_batch_forward(None, h.cursor_manager)
+
+        # Good article must have been processed
+        assert stats.get("successful", 0) >= 1
+        # fetch_articles must have been called to get past the poison page
+        h.article_fetcher.fetch_articles.assert_called_once()

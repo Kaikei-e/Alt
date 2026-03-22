@@ -51,6 +51,50 @@ class BatchProcessor:
         if self.config.enable_gc_collection:
             gc.collect()
 
+    def _page_past_poison_pills(self, conn: Any, articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """When all articles on the current page are known poison pills,
+        paginate to the next page using backward keyset pagination.
+
+        Preserves first-page semantics: the newest articles are always
+        checked first. Only pages forward when the entire page is blocked.
+        """
+        max_retries = self.config.max_empty_extraction_retries
+        max_pages = 5  # Safety bound to prevent infinite pagination
+
+        for _ in range(max_pages):
+            # Check if any article on this page is processable
+            has_processable = any(
+                self._empty_extraction_counts.get(a["id"], 0) < max_retries
+                for a in articles
+            )
+            if has_processable:
+                return articles
+
+            # All articles on this page are poison-pilled — get cursor
+            # from the last article and fetch the next page
+            last = articles[-1]
+            last_created_at = (
+                last["created_at"]
+                if isinstance(last["created_at"], str)
+                else last["created_at"].isoformat()
+            )
+
+            logger.info(
+                "All articles on page are poison-pilled, fetching next page",
+                skipped=len(articles),
+                cursor=last_created_at,
+            )
+
+            next_page = self.article_fetcher.fetch_articles(
+                conn, last_created_at, last["id"],
+            )
+            if not next_page:
+                return articles  # No more pages — return what we have
+
+            articles = articles + next_page
+
+        return articles
+
     def process_articles_as_batch(self, conn: Any, articles: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Process multiple articles as a single batch transaction.
@@ -66,6 +110,7 @@ class BatchProcessor:
             "total_processed": 0,
             "successful": 0,
             "failed": 0,
+            "skipped": 0,
         }
 
         # Filter out articles that have exceeded the empty-extraction threshold
@@ -79,6 +124,8 @@ class BatchProcessor:
                 skipped_articles += 1
                 continue
             filtered_articles.append(article)
+
+        batch_stats["skipped"] = skipped_articles
 
         if skipped_articles:
             logger.info(
@@ -221,6 +268,12 @@ class BatchProcessor:
                 logger.debug("Called from backfill, skipping backfill fallback to prevent recursion")
             return batch_stats
 
+        # Head-of-line blocking mitigation: if all first-page articles are
+        # poison-pilled, paginate to next pages using the last article's cursor
+        # to find processable articles.  first-page semantics is preserved —
+        # the newest untagged articles are always checked first.
+        articles = self._page_past_poison_pills(conn, articles)
+
         batch_stats = self.process_articles_as_batch(conn, articles)
 
         last_article = articles[-1]
@@ -238,7 +291,12 @@ class BatchProcessor:
             cursor_manager.update_forward_cursor_position(latest_created_at, last_article["id"])
             cursor_manager.update_cursor_position(latest_created_at, last_article["id"])
         else:
-            logger.warning("Forward batch had no successful articles")
+            logger.warning(
+                "Forward batch had no successful articles",
+                skipped=batch_stats.get("skipped", 0),
+                failed=batch_stats.get("failed", 0),
+                fetched=len(articles),
+            )
 
         return batch_stats
 
