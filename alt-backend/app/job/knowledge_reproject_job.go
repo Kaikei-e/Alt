@@ -155,7 +155,7 @@ func processReprojectBatch(
 		var processedCount int64
 		var errorCount int64
 		for _, event := range events {
-			if err := projectEvent(ctx, event, homeItemsPort, nil, summaryVersionPort, nil, tagSetVersionPort, homeItemsPort, targetVersion); err != nil {
+			if err := projectEvent(ctx, event, homeItemsPort, nil, summaryVersionPort, nil, tagSetVersionPort, homeItemsPort, targetVersion, nil); err != nil {
 				errorCount++
 				logger.Logger.ErrorContext(ctx, "failed to replay reproject event",
 					"error", err,
