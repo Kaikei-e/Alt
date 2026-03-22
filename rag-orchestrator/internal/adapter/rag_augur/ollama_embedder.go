@@ -9,9 +9,9 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"strings"
 	"net/http"
 	"rag-orchestrator/internal/domain"
+	"strings"
 	"time"
 )
 
