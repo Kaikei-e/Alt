@@ -11,7 +11,7 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
 
@@ -24,6 +24,9 @@ except ImportError:
     rouge_scorer = None
     Tokenizer = None
     ROUGE_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from rouge_score import rouge_scorer
 
 logger = structlog.get_logger(__name__)
 
@@ -111,16 +114,17 @@ class ROUGEEvaluator:
             )
 
         self.use_stemmer = use_stemmer
-        self._english_scorer: rouge_scorer.RougeScorer | None = None
-        self._japanese_scorer: rouge_scorer.RougeScorer | None = None
+        self._english_scorer: rouge_scorer.RougeScorer | None = None  # pyrefly: ignore[missing-attribute]
+        self._japanese_scorer: rouge_scorer.RougeScorer | None = None  # pyrefly: ignore[missing-attribute]
 
-    def _get_scorer(self, lang: Literal["en", "ja"]) -> rouge_scorer.RougeScorer:
+    def _get_scorer(self, lang: Literal["en", "ja"]) -> Any:
         """Get or create a ROUGE scorer for the specified language."""
         if not ROUGE_AVAILABLE:
             raise RuntimeError(
                 "rouge-score is not installed. Install with: pip install rouge-score"
             )
 
+        assert rouge_scorer is not None, "rouge_scorer should be available (checked above)"
         if lang == "ja":
             if self._japanese_scorer is None:
                 self._japanese_scorer = rouge_scorer.RougeScorer(
@@ -194,7 +198,7 @@ class ROUGEEvaluator:
         references: list[str],
         lang: Literal["en", "ja"] = "en",
         return_individual: bool = False,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Compute ROUGE scores for a batch of candidate-reference pairs.
 
         Args:
@@ -246,7 +250,7 @@ class ROUGEEvaluator:
                 individual_scores.append(result_dict)
 
         n = len(candidates)
-        avg_result = {key: val / n for key, val in totals.items()}
+        avg_result: dict[str, Any] = {key: val / n for key, val in totals.items()}
         avg_result["num_samples"] = n
 
         if return_individual:

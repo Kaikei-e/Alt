@@ -177,7 +177,7 @@ JSON評価結果:"""
 
         batch = BatchGEvalResult()
         for r in results:
-            if isinstance(r, Exception):
+            if isinstance(r, BaseException):
                 logger.warning("G-Eval item failed", error=str(r))
                 batch.results.append(
                     GEvalResult(

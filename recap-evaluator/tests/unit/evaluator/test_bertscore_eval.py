@@ -108,7 +108,7 @@ class TestBERTScoreEvaluator:
             evaluator.compute_bert_score(
                 candidates=["Text"],
                 references=["Ref"],
-                lang="xx",  # Invalid language
+                lang="xx",  # pyrefly: ignore[bad-argument-type]  # Invalid language
             )
 
     def test_compute_bert_score_with_individual_scores(self, mock_bert_score):

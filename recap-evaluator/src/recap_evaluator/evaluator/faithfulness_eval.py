@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -22,6 +23,9 @@ try:
 except ImportError:
     pipeline = None
     TRANSFORMERS_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from transformers import pipeline
 
 logger = structlog.get_logger(__name__)
 
@@ -77,9 +81,9 @@ class FaithfulnessResult:
     neutral_score: float
     sentence_results: list[SentenceResult] | None = field(default=None)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
-        result = {
+        result: dict[str, Any] = {
             "is_hallucinated": self.is_hallucinated,
             "hallucination_score": self.hallucination_score,
             "faithfulness_score": self.faithfulness_score,
@@ -159,6 +163,7 @@ class FaithfulnessEvaluator:
             raise RuntimeError("transformers not available")
 
         logger.info("Initializing NLI pipeline", model=self._model_name)
+        assert pipeline is not None, "pipeline should be available (checked above)"
         self._nli = pipeline(
             "text-classification",
             model=self._model_name,

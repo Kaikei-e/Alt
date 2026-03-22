@@ -12,7 +12,7 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import structlog
 
@@ -23,6 +23,9 @@ try:
 except ImportError:
     bert_score = None
     BERT_SCORE_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from bert_score import score as bert_score
 
 logger = structlog.get_logger(__name__)
 
@@ -43,9 +46,9 @@ class BERTScoreResult:
     f1: float
     individual_scores: list[dict[str, float]] | None = field(default=None)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
-        result = {
+        result: dict[str, Any] = {
             "precision": self.precision,
             "recall": self.recall,
             "f1": self.f1,
@@ -149,6 +152,7 @@ class BERTScoreEvaluator:
             batch_size=self.batch_size,
         )
 
+        assert bert_score is not None, "bert_score should be available (checked above)"
         P, R, F1 = bert_score(
             candidates,
             references,
@@ -215,7 +219,7 @@ class BERTScoreEvaluator:
         summaries: list[str],
         sources: list[str],
         lang: Literal["ja", "en"] = "ja",
-    ) -> dict[str, float]:
+    ) -> dict[str, Any]:
         """Evaluate a batch of summaries and return aggregate metrics.
 
         Args:

@@ -4,7 +4,7 @@ import asyncio
 import random
 import re
 from concurrent.futures import ThreadPoolExecutor
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 import structlog
@@ -107,7 +107,7 @@ class SummaryEvaluator:
 
         metrics = SummaryMetrics(sample_count=len(eval_items), success_count=0)
 
-        tasks: list[tuple[str, asyncio.Task]] = []
+        tasks: list[tuple[str, asyncio.Future[Any]]] = []
         loop = asyncio.get_event_loop()
 
         # G-Eval (async)
@@ -155,7 +155,7 @@ class SummaryEvaluator:
 
         for i, (name, _) in enumerate(tasks):
             result = results[i]
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"{name} evaluation failed", error=str(result))
                 continue
             self._apply_result(metrics, name, result)

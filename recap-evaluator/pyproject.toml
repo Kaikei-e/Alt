@@ -56,7 +56,7 @@ dev = [
     "ruff>=0.8.0",
 
     # Type Checking
-    "pyrefly>=0.17.0",
+    "pyrefly>=0.42.0",
 ]
 
 [tool.uv]
@@ -95,9 +95,18 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.pyrefly]
-project_includes = ["src"]
-search_path = ["src"]
-python_version = "3.13"
+project-includes = ["src"]
+project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist", "tests/**"]
+search-path = ["src"]
+python-version = "3.13"
+replace-imports-with-any = [
+    "rouge_score.*", "bert_score.*", "transformers.*",
+    "sklearn.*", "numpy.*", "pandas.*",
+]
+
+[tool.pyrefly.errors]
+missing-import = false
+missing-module-attribute = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

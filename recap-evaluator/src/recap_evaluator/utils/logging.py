@@ -111,7 +111,8 @@ def configure_logging(
         try:
             from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
-            LoggingInstrumentor().instrument(set_logging_format=False)
+            instrumentor = LoggingInstrumentor()
+            instrumentor.instrument(set_logging_format=False)  # pyrefly: ignore[missing-attribute]
         except Exception as e:
             sys.stderr.write(f"Failed to initialize OTel LoggingInstrumentor: {e}\n")
 
