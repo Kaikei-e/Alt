@@ -122,3 +122,45 @@ func TestExportScopeResolverInterfaceCompiles(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, expected, got)
 }
+
+// --- mutation type constant tests ---
+
+func TestProjectionMutationTypeConstants(t *testing.T) {
+	tests := []struct {
+		name     string
+		got      string
+		expected string
+	}{
+		{"upsert home item", MutationUpsertHomeItem, "upsert_home_item"},
+		{"dismiss home item", MutationDismissHomeItem, "dismiss_home_item"},
+		{"clear supersede", MutationClearSupersede, "clear_supersede"},
+		{"upsert today digest", MutationUpsertTodayDigest, "upsert_today_digest"},
+		{"upsert recall candidate", MutationUpsertRecallCandidate, "upsert_recall_candidate"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.got)
+		})
+	}
+}
+
+func TestCurationMutationTypeConstants(t *testing.T) {
+	assert.Equal(t, "dismiss_curation", MutationDismissCuration)
+}
+
+func TestRecallMutationTypeConstants(t *testing.T) {
+	tests := []struct {
+		name     string
+		got      string
+		expected string
+	}{
+		{"upsert candidate", MutationUpsertCandidate, "upsert_candidate"},
+		{"snooze candidate", MutationSnoozeCandidate, "snooze_candidate"},
+		{"dismiss candidate", MutationDismissCandidate, "dismiss_candidate"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, tt.got)
+		})
+	}
+}
