@@ -156,9 +156,10 @@ func (h *jobHandler) Stop() error {
 	return nil
 }
 
-// processSummarizationBatch processes a batch of articles for summarization.
-// When the queue worker has pending jobs, the batch is deferred to avoid GPU
-// contention. A periodic force sweep prevents indefinite deferral.
+// processSummarizationBatch enqueues unsummarized articles into the job queue.
+// When the queue worker has pending jobs, the batch is deferred to avoid
+// overwhelming the queue. A periodic force sweep prevents indefinite deferral.
+// Fallback: if queueWorker is nil, falls back to direct LLM summarization.
 func (h *jobHandler) processSummarizationBatch(ctx context.Context) error {
 	if h.queueWorker != nil && h.batchSweepForceInterval > 0 {
 		forceSweep := !h.lastBatchSweep.IsZero() &&
@@ -178,6 +179,25 @@ func (h *jobHandler) processSummarizationBatch(ctx context.Context) error {
 		}
 	}
 
+	// Primary path: enqueue unsummarized articles via guard + CreateJob
+	if h.queueWorker != nil {
+		enqueueResult, err := h.queueWorker.EnqueueUnsummarizedBatch(ctx, h.batchSize)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "failed to enqueue unsummarized batch", "error", err)
+			return err
+		}
+
+		h.lastBatchSweep = time.Now()
+
+		if !enqueueResult.HasMore {
+			h.logger.InfoContext(ctx, "reached end of unsummarized articles, resetting enqueue cursor")
+			h.queueWorker.ResetEnqueueCursor()
+		}
+
+		return nil
+	}
+
+	// Fallback: direct LLM summarization when queueWorker is nil
 	result, err := h.articleSummarizer.SummarizeArticles(ctx, h.batchSize)
 	if err != nil {
 		return err
