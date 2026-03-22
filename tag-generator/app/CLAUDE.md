@@ -16,7 +16,7 @@ uv run pytest
 uv run pytest --cov=tag_generator
 
 # Type check
-uv run mypy src/
+uv run pyrefly check .
 
 # Lint
 uv run ruff check && uv run ruff format
