@@ -63,10 +63,7 @@ class BatchProcessor:
 
         for _ in range(max_pages):
             # Check if any article on this page is processable
-            has_processable = any(
-                self._empty_extraction_counts.get(a["id"], 0) < max_retries
-                for a in articles
-            )
+            has_processable = any(self._empty_extraction_counts.get(a["id"], 0) < max_retries for a in articles)
             if has_processable:
                 return articles
 
@@ -74,9 +71,7 @@ class BatchProcessor:
             # from the last article and fetch the next page
             last = articles[-1]
             last_created_at = (
-                last["created_at"]
-                if isinstance(last["created_at"], str)
-                else last["created_at"].isoformat()
+                last["created_at"] if isinstance(last["created_at"], str) else last["created_at"].isoformat()
             )
 
             logger.info(
@@ -86,7 +81,9 @@ class BatchProcessor:
             )
 
             next_page = self.article_fetcher.fetch_articles(
-                conn, last_created_at, last["id"],
+                conn,
+                last_created_at,
+                last["id"],
             )
             if not next_page:
                 return articles  # No more pages — return what we have
