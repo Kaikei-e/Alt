@@ -1,0 +1,124 @@
+package knowledge_sovereign_port
+
+import (
+	"alt/domain"
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// --- mock implementations ---
+
+type mockProjectionMutator struct {
+	calls []ProjectionMutation
+	err   error
+}
+
+func (m *mockProjectionMutator) ApplyProjectionMutation(_ context.Context, mutation ProjectionMutation) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.calls = append(m.calls, mutation)
+	return nil
+}
+
+type mockRecallMutator struct {
+	calls []RecallMutation
+	err   error
+}
+
+func (m *mockRecallMutator) ApplyRecallMutation(_ context.Context, mutation RecallMutation) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.calls = append(m.calls, mutation)
+	return nil
+}
+
+type mockCurationMutator struct {
+	calls []CurationMutation
+	err   error
+}
+
+func (m *mockCurationMutator) ApplyCurationMutation(_ context.Context, mutation CurationMutation) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.calls = append(m.calls, mutation)
+	return nil
+}
+
+type mockRetentionResolver struct {
+	policy domain.RetentionPolicy
+	err    error
+}
+
+func (m *mockRetentionResolver) ResolveRetentionDecision(_ context.Context, _, _ string) (domain.RetentionPolicy, error) {
+	return m.policy, m.err
+}
+
+type mockExportScopeResolver struct {
+	classification domain.ExportClassification
+	err            error
+}
+
+func (m *mockExportScopeResolver) ResolveExportScope(_ context.Context, _, _ string) (domain.ExportClassification, error) {
+	return m.classification, m.err
+}
+
+// --- interface compile checks ---
+
+func TestProjectionMutatorInterfaceCompiles(t *testing.T) {
+	var iface ProjectionMutator = &mockProjectionMutator{}
+	require.NotNil(t, iface)
+
+	err := iface.ApplyProjectionMutation(context.Background(), ProjectionMutation{
+		MutationType: "upsert_home_item",
+		EntityID:     "article-123",
+	})
+	assert.NoError(t, err)
+}
+
+func TestRecallMutatorInterfaceCompiles(t *testing.T) {
+	var iface RecallMutator = &mockRecallMutator{}
+	require.NotNil(t, iface)
+
+	err := iface.ApplyRecallMutation(context.Background(), RecallMutation{
+		MutationType: "upsert_candidate",
+		EntityID:     "article-123",
+	})
+	assert.NoError(t, err)
+}
+
+func TestCurationMutatorInterfaceCompiles(t *testing.T) {
+	var iface CurationMutator = &mockCurationMutator{}
+	require.NotNil(t, iface)
+
+	err := iface.ApplyCurationMutation(context.Background(), CurationMutation{
+		MutationType: "dismiss",
+		EntityID:     "article-123",
+	})
+	assert.NoError(t, err)
+}
+
+func TestRetentionResolverInterfaceCompiles(t *testing.T) {
+	expected := domain.RetentionPolicy{EntityType: "article_metadata", Tier: domain.RetentionTierHot}
+	var iface RetentionResolver = &mockRetentionResolver{policy: expected}
+	require.NotNil(t, iface)
+
+	got, err := iface.ResolveRetentionDecision(context.Background(), "article_metadata", "article-123")
+	assert.NoError(t, err)
+	assert.Equal(t, expected, got)
+}
+
+func TestExportScopeResolverInterfaceCompiles(t *testing.T) {
+	expected := domain.ExportClassification{EntityType: "feed_subscriptions", Tier: domain.ExportTierA}
+	var iface ExportScopeResolver = &mockExportScopeResolver{classification: expected}
+	require.NotNil(t, iface)
+
+	got, err := iface.ResolveExportScope(context.Background(), "feed_subscriptions", "sub-123")
+	assert.NoError(t, err)
+	assert.Equal(t, expected, got)
+}
