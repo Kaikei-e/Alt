@@ -45,6 +45,7 @@ import (
 	"alt/gateway/knowledge_backfill_gateway"
 	"alt/gateway/knowledge_event_gateway"
 	"alt/gateway/knowledge_home_gateway"
+	"alt/gateway/knowledge_sovereign_gateway"
 	"alt/gateway/knowledge_lens_gateway"
 	"alt/gateway/knowledge_projection_gateway"
 	"alt/gateway/knowledge_projection_version_gateway"
@@ -83,9 +84,9 @@ import (
 	"alt/port/rate_limiter_port"
 	"alt/usecase/answer_chat_usecase"
 	"alt/usecase/append_knowledge_event_usecase"
+	"alt/usecase/knowledge_write_service_usecase"
 	"alt/usecase/archive_article_usecase"
 	"alt/usecase/archive_lens_usecase"
-	"alt/usecase/auto_fulltext_fetch_usecase"
 	"alt/usecase/cached_feed_list_usecase"
 	"alt/usecase/create_lens_usecase"
 	"alt/usecase/create_summary_version_usecase"
@@ -197,7 +198,6 @@ type ApplicationComponents struct {
 	ImageFetchUsecase                   image_fetch_usecase.ImageFetchUsecaseInterface
 	CSRFTokenUsecase                    *csrf_token_usecase.CSRFTokenUsecase
 	ArticleUsecase                      fetch_article_usecase.ArticleUsecase
-	AutoFulltextFetchUsecase            *auto_fulltext_fetch_usecase.AutoFulltextFetchUsecase
 	ArchiveArticleUsecase               *archive_article_usecase.ArchiveArticleUsecase
 	FetchArticlesCursorUsecase          *fetch_articles_usecase.FetchArticlesCursorUsecase
 	FetchRecentArticlesUsecase          *fetch_recent_articles_usecase.FetchRecentArticlesUsecase
@@ -267,6 +267,10 @@ type ApplicationComponents struct {
 	SummaryVersionGateway  *summary_version_gateway.Gateway
 	TagSetVersionGateway   *tag_set_version_gateway.Gateway
 	KnowledgeLensGateway   *knowledge_lens_gateway.Gateway
+
+	// Knowledge Sovereign
+	KnowledgeSovereignGateway    *knowledge_sovereign_gateway.Gateway
+	KnowledgeWriteServiceUsecase *knowledge_write_service_usecase.KnowledgeWriteServiceUsecase
 
 	// Observability
 	KnowledgeHomeMetrics *altotel.KnowledgeHomeMetrics
@@ -497,13 +501,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// Internal article API gateway (for BackendInternalService)
 	internalArticleGatewayImpl := internal_article_gateway.NewGateway(altDBRepository)
-	autoFulltextFetchUsecase := auto_fulltext_fetch_usecase.NewAutoFulltextFetchUsecase(
-		fetchArticleGatewayImpl,
-		scrapingPolicyGatewayImpl,
-		internalArticleGatewayImpl,
-		altDBRepository,
-		ragAdapterImpl,
-	)
 
 	// Dashboard metrics components
 	dashboardGatewayImpl := dashboard_gateway.NewDashboardGateway()
@@ -605,6 +602,14 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	trackHomeActionUsecase.SetRecallSignalPort(recallSignalGw)
 	trackHomeActionUsecase.SetDismissPort(knowledgeHomeGw, knowledgeProjectionVersionGw)
 
+	// Knowledge Sovereign wiring
+	knowledgeSovereignGw := knowledge_sovereign_gateway.NewGateway(altDBRepository)
+	knowledgeWriteServiceUsecase := knowledge_write_service_usecase.NewKnowledgeWriteServiceUsecase(
+		knowledgeSovereignGw, knowledgeSovereignGw, knowledgeSovereignGw,
+		knowledgeSovereignGw, knowledgeSovereignGw,
+	)
+	trackHomeActionUsecase.SetCurationMutator(knowledgeSovereignGw)
+
 	// Wire auto-subscribe: Usecase delegates subscription to SubscriptionPort
 	registerFeedsUsecase.SetSubscriptionPort(subscriptionGatewayImpl)
 	// Wire event publisher: Usecase publishes ArticleCreated events (fire-and-forget)
@@ -658,7 +663,6 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ImageFetchUsecase:                   imageFetchUsecase,
 		CSRFTokenUsecase:                    csrfTokenUsecase,
 		ArticleUsecase:                      fetchArticleUsecase,
-		AutoFulltextFetchUsecase:            autoFulltextFetchUsecase,
 		ArchiveArticleUsecase:               archiveArticleUsecase,
 		FetchArticlesCursorUsecase:          fetchArticlesCursorUsecase,
 		FetchRecentArticlesUsecase:          fetchRecentArticlesUsecase,
@@ -728,6 +732,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		SummaryVersionGateway:  summaryVersionGw,
 		TagSetVersionGateway:   tagSetVersionGw,
 		KnowledgeLensGateway:   knowledgeLensGw,
+
+		// Knowledge Sovereign
+		KnowledgeSovereignGateway:    knowledgeSovereignGw,
+		KnowledgeWriteServiceUsecase: knowledgeWriteServiceUsecase,
 
 		// Observability
 		KnowledgeHomeMetrics: knowledgeHomeMetrics,

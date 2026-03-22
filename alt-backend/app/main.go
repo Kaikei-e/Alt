@@ -101,7 +101,7 @@ func main() {
 		Name:     "hourly-feed-collector",
 		Interval: 1 * time.Hour,
 		Timeout:  30 * time.Minute,
-		Fn:       job.CollectFeedsJob(container.AltDBRepository, container.AutoFulltextFetchUsecase),
+		Fn:       job.CollectFeedsJob(container.AltDBRepository),
 	})
 	scheduler.Add(job.Job{
 		Name:     "daily-scraping-policy",
@@ -165,6 +165,7 @@ func main() {
 			container.KnowledgeHomeGateway,
 			container.RecallSignalGateway,
 			container.RecallCandidateGateway,
+			container.KnowledgeWriteServiceUsecase,
 		),
 	})
 	scheduler.Add(job.Job{
@@ -190,8 +191,9 @@ func main() {
 		container.RecallCandidateGateway,
 		container.TagSetVersionGateway,
 		job.KnowledgeProjectorConfig{
-			BatchSize: cfg.KnowledgeHome.ProjectorBatchSize,
-			Metrics:   container.KnowledgeHomeMetrics,
+			BatchSize:    cfg.KnowledgeHome.ProjectorBatchSize,
+			Metrics:      container.KnowledgeHomeMetrics,
+			WriteService: container.KnowledgeWriteServiceUsecase,
 		},
 		container.KnowledgeHomeGateway,
 	)
