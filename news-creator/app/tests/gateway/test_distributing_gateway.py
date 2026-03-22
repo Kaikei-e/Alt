@@ -175,6 +175,7 @@ async def test_generate_delegates_to_local():
 
     result = await gw.generate("prompt", stream=False)
 
+    assert isinstance(result, LLMGenerateResponse)
     assert result.response == "local response"
     local.generate.assert_awaited_once()
 

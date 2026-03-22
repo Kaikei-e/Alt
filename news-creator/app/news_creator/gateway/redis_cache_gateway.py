@@ -1,7 +1,7 @@
 """Redis Cache Gateway - implements CachePort."""
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 try:
     import redis.asyncio as redis
@@ -24,7 +24,7 @@ class RedisCacheGateway(CachePort):
             config: NewsCreator configuration containing Redis settings
         """
         self.config = config
-        self._client: Optional["redis.Redis"] = None
+        self._client: Optional[Any] = None
         self._enabled = config.cache_enabled
 
         if not self._enabled:
@@ -40,6 +40,7 @@ class RedisCacheGateway(CachePort):
             return
 
         try:
+            assert redis is not None, "redis package not installed"
             self._client = redis.Redis.from_url(
                 self.config.cache_redis_url,
                 decode_responses=True,

@@ -281,7 +281,7 @@ class OllamaGateway(LLMProviderPort):
                         # Map chunk to LLMGenerateResponse
                         yield LLMGenerateResponse(
                             response=chunk.get("response", ""),
-                            model=chunk.get("model", payload["model"]),
+                            model=str(chunk.get("model", payload["model"])),
                             done=chunk.get("done", False),
                             done_reason=chunk.get("done_reason"),
                             prompt_eval_count=chunk.get("prompt_eval_count"),
@@ -423,7 +423,7 @@ class OllamaGateway(LLMProviderPort):
         load_duration = response_data.get("load_duration")
         prompt_eval_duration = response_data.get("prompt_eval_duration")
         eval_duration = response_data.get("eval_duration")
-        actual_model = response_data.get("model", payload["model"])
+        actual_model = str(response_data.get("model", payload["model"]))
 
         # Check if actual model matches requested model (model loading strategy validation)
         requested_model = payload["model"]
@@ -704,7 +704,7 @@ class OllamaGateway(LLMProviderPort):
 
         return LLMGenerateResponse(
             response=response_data.get("response", ""),
-            model=response_data.get("model", payload["model"]),
+            model=str(response_data.get("model", payload["model"])),
             done=response_data.get("done"),
             done_reason=response_data.get("done_reason"),
             prompt_eval_count=response_data.get("prompt_eval_count"),

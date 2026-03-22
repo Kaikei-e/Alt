@@ -1,10 +1,11 @@
 """Summarize usecase - business logic for article summarization."""
 
 import logging
+from typing import Tuple, Dict, Any, List, Optional, AsyncGenerator, AsyncIterator
 from datetime import datetime, timedelta, timezone
-from typing import Tuple, Dict, Any, List, Optional, AsyncIterator
 import aiohttp
 
+from news_creator.domain.models import LLMGenerateResponse
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.prompts import (
     SUMMARY_PROMPT_TEMPLATE,
@@ -648,7 +649,7 @@ class SummarizeUsecase:
 
         return truncated_summary, metadata
 
-    async def generate_summary_stream(self, article_id: str, content: str, priority: str = "low") -> AsyncIterator[str]:
+    async def generate_summary_stream(self, article_id: str, content: str, priority: str = "low") -> AsyncGenerator[str, None]:
         """
         Generate a Japanese summary for an article as a stream of tokens.
 
@@ -741,6 +742,10 @@ class SummarizeUsecase:
             "repeat_penalty": self.config.llm_repeat_penalty,
         }
 
+        tokens_yielded = 0
+        bytes_yielded = 0
+        chunks_received = 0
+
         try:
             logger.info(
                 "Calling LLM provider with streaming",
@@ -751,13 +756,17 @@ class SummarizeUsecase:
                 }
             )
 
-            stream_gen = await self.llm_provider.generate(
+            result = await self.llm_provider.generate(
                 prompt,
                 num_predict=self.config.summary_num_predict,
                 stream=True,
                 options=llm_options,
                 priority=priority,
             )
+
+            # Narrow union type: streaming returns AsyncIterator
+            assert not isinstance(result, LLMGenerateResponse), "Expected AsyncIterator for streaming"
+            stream_gen: AsyncIterator[LLMGenerateResponse] = result
 
             logger.info(
                 "Stream generator obtained from LLM provider",
@@ -775,9 +784,6 @@ class SummarizeUsecase:
                 "<|system|>", "<|user|>", "<|assistant|>"
             }
 
-            tokens_yielded = 0
-            bytes_yielded = 0
-            chunks_received = 0
             has_data = False
 
             try:
@@ -837,7 +843,8 @@ class SummarizeUsecase:
                         }
                     )
             finally:
-                await stream_gen.aclose()
+                if hasattr(stream_gen, 'aclose'):
+                    await stream_gen.aclose()
                 logger.info(
                     "Inner stream generator closed (aclose)",
                     extra={"article_id": article_id}

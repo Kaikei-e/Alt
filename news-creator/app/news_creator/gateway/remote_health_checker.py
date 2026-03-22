@@ -149,6 +149,7 @@ class RemoteHealthChecker:
 
         try:
             tags_url = f"{url.rstrip('/')}/api/tags"
+            assert self._session is not None, "Session not initialized"
             async with self._session.get(tags_url) as response:
                 if response.status != 200:
                     state["healthy"] = False

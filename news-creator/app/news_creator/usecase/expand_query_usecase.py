@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Tuple, Optional
 
 from news_creator.config.config import NewsCreatorConfig
-from news_creator.domain.models import ConversationMessage
+from news_creator.domain.models import ConversationMessage, LLMGenerateResponse
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
@@ -141,13 +141,17 @@ class ExpandQueryUsecase:
                 "repeat_penalty": 1.1,
             }
 
-            llm_response = await self.llm_provider.generate(
+            result = await self.llm_provider.generate(
                 prompt,
                 model=self.EXPANSION_MODEL,
                 num_predict=max_tokens,
                 options=llm_options,
                 priority=priority,
             )
+
+            # Narrow union type: non-streaming returns LLMGenerateResponse
+            assert isinstance(result, LLMGenerateResponse), "Expected non-streaming LLMGenerateResponse"
+            llm_response: LLMGenerateResponse = result
 
             # Parse response: split by newlines and filter empty lines
             raw_text = llm_response.response

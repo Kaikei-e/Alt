@@ -33,7 +33,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
         Configured APIRouter
     """
     @router.post("/api/v1/summarize", response_model=SummarizeResponse)
-    async def summarize_endpoint(request: SummarizeRequest, http_request: Request) -> SummarizeResponse:
+    async def summarize_endpoint(request: SummarizeRequest, http_request: Request) -> SummarizeResponse | StreamingResponse | JSONResponse:
         """
         Generate a Japanese summary using LLM.
 
@@ -115,8 +115,8 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                         to prevent blocking data chunk processing.
                         """
                         heartbeat_interval = 10  # seconds - reduced from 15 to 10 for better responsiveness
-                        data_queue = asyncio.Queue()
-                        heartbeat_queue = asyncio.Queue()
+                        data_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+                        heartbeat_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
                         stopped = asyncio.Event()
                         last_data_time = asyncio.get_event_loop().time()
 

@@ -161,6 +161,7 @@ class FakeLLMProvider(LLMProviderPort):
         keep_alive: Optional[Union[int, str]] = None,
         format: Optional[Union[str, Dict[str, Any]]] = None,
         options: Optional[Dict[str, Any]] = None,
+        priority: str = "low",
     ) -> Union[LLMGenerateResponse, AsyncIterator[LLMGenerateResponse]]:
         """
         Generate a fake response.

@@ -75,6 +75,7 @@ class OllamaStreamDriver:
             f"estimated_tokens={estimated_tokens}, model={model}, payload_size={payload_size_estimate} bytes"
         )
 
+        assert self.session is not None, "Session not initialized. Call initialize() first."
         async with self.session.post(url, json=payload) as response:
 
             if response.status != 200:

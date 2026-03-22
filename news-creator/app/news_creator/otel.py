@@ -75,7 +75,7 @@ def init_otel_provider(config: OTelConfig | None = None) -> Callable[[], None]:
     set_logger_provider(logger_provider)
 
     # Instrument logging to add trace context
-    LoggingInstrumentor().instrument(set_logging_format=False)
+    LoggingInstrumentor().instrument(set_logging_format=False)  # pyrefly: ignore[missing-attribute]
 
     # Add OTel handler to root logger
     otel_handler = LoggingHandler(logger_provider=logger_provider)

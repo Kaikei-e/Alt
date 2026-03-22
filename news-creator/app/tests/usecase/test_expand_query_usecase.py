@@ -33,7 +33,7 @@ generative AI development""",
 
     assert len(expanded_queries) == 4
     assert model == "gemma3-4b-8k"
-    assert elapsed_ms > 0
+    assert elapsed_ms is not None and elapsed_ms > 0
 
     # Verify LLM was called with correct model
     llm_provider.generate.assert_called_once()

@@ -28,10 +28,23 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
     "httpx>=0.27.0",  # Required for FastAPI TestClient
+    "pyrefly>=0.42.0",
 ]
 
 [tool.uv]
 constraint-dependencies = ["protobuf>=6.33.5"]
+
+[tool.pyrefly]
+project-includes = ["."]
+project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist", "**/*.egg-info", "tests/**"]
+python-version = "3.11"
+replace-imports-with-any = [
+    "sentence_transformers.*", "numpy.*",
+]
+
+[tool.pyrefly.errors]
+missing-import = false
+missing-module-attribute = false
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -4,9 +4,9 @@ import asyncio
 import logging
 import aiohttp
 from fastapi import APIRouter, HTTPException
-from typing import Dict, Any
+from typing import AsyncIterator, Dict, Any
 
-from news_creator.domain.models import GenerateRequest
+from news_creator.domain.models import GenerateRequest, LLMGenerateResponse
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
                  raise ValueError(f"Prompt too long ({len(request.prompt)} chars). Max {MAX_PROMPT_LENGTH_CHARS} chars.")
 
             # Call LLM provider
-            llm_response = await llm_provider.generate(
+            result = await llm_provider.generate(
                 prompt=request.prompt.strip(),
                 model=request.model,
                 num_predict=num_predict_override,
@@ -80,8 +80,12 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
                 options=options_override if options_override else None,
             )
 
+            # Narrow the union type: non-streaming returns LLMGenerateResponse
+            assert isinstance(result, LLMGenerateResponse), "Expected non-streaming LLMGenerateResponse"
+            llm_response: LLMGenerateResponse = result
+
             # Format response in Ollama format
-            response_dict = {
+            response_dict: Dict[str, Any] = {
                 "model": llm_response.model,
                 "response": llm_response.response,
                 "done": llm_response.done if llm_response.done is not None else True,

@@ -1,8 +1,9 @@
 """Port interface for LLM provider."""
 
 from abc import ABC, abstractmethod
+from asyncio import Event
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Dict, Any, Optional, Tuple, Union
+from typing import AsyncGenerator, AsyncIterator, Dict, Any, Optional, Tuple, Union
 
 from news_creator.domain.models import LLMGenerateResponse
 
@@ -78,14 +79,20 @@ class LLMProviderPort(ABC):
         pass
 
     @asynccontextmanager
-    async def hold_slot(self, is_high_priority: bool = False):
+    async def hold_slot(
+        self, is_high_priority: bool = False
+    ) -> AsyncGenerator[Tuple[float, Optional[Event], Optional[str]], None]:
         """Hold a semaphore slot for the duration of the context.
 
         Yields:
             Tuple of (wait_time, cancel_event, task_id)
         """
         # Default implementation for backward compat - subclasses override
-        yield 0.0, None, None  # pragma: no cover
+        yield (0.0, None, None)  # pragma: no cover
+
+    async def list_models(self) -> list[Dict[str, Any]]:
+        """List available models. Optional — not all providers support this."""
+        return []  # pragma: no cover
 
     @abstractmethod
     async def initialize(self) -> None:

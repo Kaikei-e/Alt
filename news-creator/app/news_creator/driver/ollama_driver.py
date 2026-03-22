@@ -124,6 +124,7 @@ class OllamaDriver:
                 if payload.get("stream", False):
                     raise ValueError("OllamaDriver does not support streaming. Use OllamaStreamDriver instead.")
 
+                assert self.session is not None, "Session not initialized. Call initialize() first."
                 async with self.session.post(url, json=payload) as response:
 
                     if response.status != 200:
@@ -257,6 +258,7 @@ class OllamaDriver:
         logger.debug("Calling Ollama tags API", extra={"url": url})
 
         try:
+            assert self.session is not None, "Session not initialized. Call initialize() first."
             async with self.session.get(url) as response:
                 text_body = await response.text()
 

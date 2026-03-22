@@ -72,6 +72,7 @@ class RemoteOllamaDriver:
         )
 
         try:
+            assert self._session is not None, "Session not initialized. Call initialize() first."
             async with self._session.post(url, json=payload) as response:
                 text_body = await response.text()
 

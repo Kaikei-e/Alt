@@ -21,6 +21,7 @@ from news_creator.domain.models import (
     BatchRecapSummaryError,
     BatchRecapSummaryRequest,
     BatchRecapSummaryResponse,
+    LLMGenerateResponse,
     RecapClusterInput,
     RecapSummaryRequest,
     RecapSummaryResponse,
@@ -657,12 +658,16 @@ JSONで bullets フィールドに要約した要点リストを返してくだ�
             else:
                 llm_options_retry = {"repeat_penalty": float(current_repeat_penalty)}
 
-            llm_response = await self.llm_provider.generate(
+            result = await self.llm_provider.generate(
                 prompt,
                 num_predict=self.config.summary_num_predict,
                 format=json_schema,
                 options=llm_options_retry,
             )
+
+            # Narrow union type: non-streaming returns LLMGenerateResponse
+            assert isinstance(result, LLMGenerateResponse), "Expected non-streaming LLMGenerateResponse"
+            llm_response: LLMGenerateResponse = result
 
             has_repetition, rep_score, rep_patterns = detect_repetition(
                 llm_response.response,
@@ -916,7 +921,7 @@ JSONで bullets フィールドに要約した要点リストを返してくだ�
         # Actually, @refine_plan4.md says: "Genre Merge Logic: ... collected into mini-summary... input to LLM".
         # So yes, if highlights exist, we use them.
 
-        render_kwargs = {
+        render_kwargs: Dict[str, Any] = {
             "job_id": str(request.job_id),
             "genre": request.genre,
             "max_bullets": max_bullets,

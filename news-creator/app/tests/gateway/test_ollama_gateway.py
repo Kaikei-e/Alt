@@ -1,6 +1,7 @@
 """Tests for Ollama Gateway with semaphore-based request queuing."""
 
 import asyncio
+from typing import AsyncIterator
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
 from news_creator.config.config import NewsCreatorConfig
@@ -430,7 +431,11 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
 
             # Call generate with stream=True
             # This should acquire the semaphore IMMEDIATELY (before iteration)
-            generator = await gateway.generate("Test prompt", stream=True)
+            result = await gateway.generate("Test prompt", stream=True)
+
+            # Narrow union type: streaming returns AsyncIterator
+            assert not isinstance(result, LLMGenerateResponse)
+            generator: AsyncIterator[LLMGenerateResponse] = result
 
             # Verify semaphore was acquired (RT slots decreased since stream=True is high priority)
             assert gateway._semaphore._rt_available < initial_rt_available, \
@@ -481,7 +486,11 @@ async def test_streaming_semaphore_released_on_early_termination(mock_config, mo
             initial_rt_available = gateway._semaphore._rt_available
 
             # Call generate with stream=True
-            generator = await gateway.generate("Test prompt", stream=True)
+            result = await gateway.generate("Test prompt", stream=True)
+
+            # Narrow union type: streaming returns AsyncIterator
+            assert not isinstance(result, LLMGenerateResponse)
+            generator: AsyncIterator[LLMGenerateResponse] = result
 
             # Verify semaphore was acquired
             assert gateway._semaphore._rt_available < initial_rt_available
@@ -530,7 +539,11 @@ async def test_streaming_high_priority_immediate_acquisition(mock_config, mock_d
             await gateway.initialize()
 
             # Call generate with stream=True
-            generator = await gateway.generate("Test prompt", stream=True)
+            result = await gateway.generate("Test prompt", stream=True)
+
+            # Narrow union type: streaming returns AsyncIterator
+            assert not isinstance(result, LLMGenerateResponse)
+            generator: AsyncIterator[LLMGenerateResponse] = result
 
             # Verify log shows HIGH PRIORITY acquisition
             info_records = [r for r in caplog.records if r.levelno == logging.INFO]

@@ -19,6 +19,7 @@ from fastapi import FastAPI
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.ollama_gateway import OllamaGateway
+from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.otel import init_otel_provider, instrument_fastapi, get_otel_logging_handler
 from news_creator.services.model_warmup import ModelWarmupService
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
@@ -80,6 +81,7 @@ class DependencyContainer:
         self.ollama_gateway = OllamaGateway(self.config)
 
         # Distributed BE dispatch (optional, default OFF)
+        self.llm_provider: LLMProviderPort
         if self.config.distributed_be_enabled and self.config.distributed_be_remotes:
             from news_creator.gateway.remote_ollama_driver import RemoteOllamaDriver
             from news_creator.gateway.remote_health_checker import RemoteHealthChecker
