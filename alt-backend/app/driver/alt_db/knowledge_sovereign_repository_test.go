@@ -1,48 +1,88 @@
 package alt_db
 
 import (
+	"alt/domain"
 	"alt/port/knowledge_sovereign_port"
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestKnowledgeSovereign_ApplyProjectionMutation_ReturnsNotImplemented(t *testing.T) {
+// --- ApplyProjectionMutation dispatch ---
+
+func TestApplyProjectionMutation_UnknownType(t *testing.T) {
 	repo := &AltDBRepository{}
 	err := repo.ApplyProjectionMutation(context.Background(), knowledge_sovereign_port.ProjectionMutation{
-		MutationType: "upsert_home_item",
-		EntityID:     "article-123",
+		MutationType: "invalid",
 	})
-	require.ErrorIs(t, err, ErrKnowledgeSovereignNotImplemented)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown projection mutation type")
 }
 
-func TestKnowledgeSovereign_ApplyRecallMutation_ReturnsNotImplemented(t *testing.T) {
+func TestApplyProjectionMutation_InvalidPayload(t *testing.T) {
+	repo := &AltDBRepository{}
+	err := repo.ApplyProjectionMutation(context.Background(), knowledge_sovereign_port.ProjectionMutation{
+		MutationType: knowledge_sovereign_port.MutationUpsertHomeItem,
+		Payload:      []byte(`{invalid`),
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unmarshal")
+}
+
+// --- ApplyRecallMutation dispatch ---
+
+func TestApplyRecallMutation_UnknownType(t *testing.T) {
 	repo := &AltDBRepository{}
 	err := repo.ApplyRecallMutation(context.Background(), knowledge_sovereign_port.RecallMutation{
-		MutationType: "upsert_candidate",
-		EntityID:     "article-123",
+		MutationType: "invalid",
 	})
-	require.ErrorIs(t, err, ErrKnowledgeSovereignNotImplemented)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown recall mutation type")
 }
 
-func TestKnowledgeSovereign_ApplyCurationMutation_ReturnsNotImplemented(t *testing.T) {
+// --- ApplyCurationMutation dispatch ---
+
+func TestApplyCurationMutation_UnknownType(t *testing.T) {
 	repo := &AltDBRepository{}
 	err := repo.ApplyCurationMutation(context.Background(), knowledge_sovereign_port.CurationMutation{
-		MutationType: "dismiss",
-		EntityID:     "article-123",
+		MutationType: "invalid",
 	})
-	require.ErrorIs(t, err, ErrKnowledgeSovereignNotImplemented)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown curation mutation type")
 }
 
-func TestKnowledgeSovereign_ResolveRetentionDecision_ReturnsNotImplemented(t *testing.T) {
+// --- ResolveRetentionDecision ---
+
+func TestResolveRetentionDecision_KnownEntityType(t *testing.T) {
 	repo := &AltDBRepository{}
-	_, err := repo.ResolveRetentionDecision(context.Background(), "article_metadata", "article-123")
-	require.ErrorIs(t, err, ErrKnowledgeSovereignNotImplemented)
+	policy, err := repo.ResolveRetentionDecision(context.Background(), "article_metadata", "article-123")
+	require.NoError(t, err)
+	assert.Equal(t, domain.RetentionTierHot, policy.Tier)
+	assert.Equal(t, "article_metadata", policy.EntityType)
 }
 
-func TestKnowledgeSovereign_ResolveExportScope_ReturnsNotImplemented(t *testing.T) {
+func TestResolveRetentionDecision_UnknownEntityType(t *testing.T) {
 	repo := &AltDBRepository{}
-	_, err := repo.ResolveExportScope(context.Background(), "feed_subscriptions", "sub-123")
-	require.ErrorIs(t, err, ErrKnowledgeSovereignNotImplemented)
+	_, err := repo.ResolveRetentionDecision(context.Background(), "unknown_type", "id-123")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown entity type")
+}
+
+// --- ResolveExportScope ---
+
+func TestResolveExportScope_KnownEntityType(t *testing.T) {
+	repo := &AltDBRepository{}
+	cls, err := repo.ResolveExportScope(context.Background(), "feed_subscriptions", "sub-123")
+	require.NoError(t, err)
+	assert.Equal(t, domain.ExportTierA, cls.Tier)
+	assert.Equal(t, "feed_subscriptions", cls.EntityType)
+}
+
+func TestResolveExportScope_UnknownEntityType(t *testing.T) {
+	repo := &AltDBRepository{}
+	_, err := repo.ResolveExportScope(context.Background(), "unknown_type", "id-123")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown entity type")
 }
