@@ -590,6 +590,245 @@ func TestSummarizeQueueWorker_ProcessQueue_AtomicDequeue(t *testing.T) {
 	})
 }
 
+// --- Stubs for EnqueueUnsummarizedBatch tests ---
+
+// stubArticleRepoWithFind supports FindForSummarization in addition to FindByID.
+type stubArticleRepoWithFind struct {
+	repository.ArticleRepository
+	articles  []*domain.Article
+	cursor    *domain.Cursor
+	findCalls int
+}
+
+func (m *stubArticleRepoWithFind) FindForSummarization(_ context.Context, _ *domain.Cursor, _ int) ([]*domain.Article, *domain.Cursor, error) {
+	m.findCalls++
+	return m.articles, m.cursor, nil
+}
+
+func (m *stubArticleRepoWithFind) FindByID(_ context.Context, _ string) (*domain.Article, error) {
+	return &domain.Article{ID: "test", Title: "Test", Content: "Test content"}, nil
+}
+
+// stubSummaryRepoWithExists supports Exists for guard checks.
+type stubSummaryRepoWithExists struct {
+	repository.SummaryRepository
+	existsMap   map[string]bool
+	createCalls int
+}
+
+func (m *stubSummaryRepoWithExists) Exists(_ context.Context, articleID string) (bool, error) {
+	return m.existsMap[articleID], nil
+}
+
+func (m *stubSummaryRepoWithExists) Create(_ context.Context, _ *domain.ArticleSummary) error {
+	m.createCalls++
+	return nil
+}
+
+// stubJobRepoWithEnqueue supports guard checks and CreateJob.
+type stubJobRepoWithEnqueue struct {
+	repository.SummarizeJobRepository
+	jobs              []*domain.SummarizeJob
+	recentSuccessMap  map[string]bool
+	createJobCalls    []string // article IDs passed to CreateJob
+	dequeueCalls      int
+	getErr            error
+}
+
+func (m *stubJobRepoWithEnqueue) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	return m.jobs, m.getErr
+}
+
+func (m *stubJobRepoWithEnqueue) DequeueJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
+	m.dequeueCalls++
+	return m.jobs, m.getErr
+}
+
+func (m *stubJobRepoWithEnqueue) RecoverStuckJobs(_ context.Context) (int64, error) {
+	return 0, nil
+}
+
+func (m *stubJobRepoWithEnqueue) HasRecentSuccessfulJob(_ context.Context, articleID string, _ time.Time) (bool, error) {
+	return m.recentSuccessMap[articleID], nil
+}
+
+func (m *stubJobRepoWithEnqueue) CreateJob(_ context.Context, articleID string) (string, error) {
+	m.createJobCalls = append(m.createJobCalls, articleID)
+	return uuid.New().String(), nil
+}
+
+func (m *stubJobRepoWithEnqueue) UpdateJobStatus(_ context.Context, _ string, _ domain.SummarizeJobStatus, _ string, _ string) error {
+	return nil
+}
+
+// stubJobRepoWithDuplicate returns empty string from CreateJob (duplicate detected).
+type stubJobRepoWithDuplicate struct {
+	stubJobRepoWithEnqueue
+}
+
+func (m *stubJobRepoWithDuplicate) CreateJob(_ context.Context, articleID string) (string, error) {
+	m.createJobCalls = append(m.createJobCalls, articleID)
+	return "", nil // empty string = duplicate, no error
+}
+
+func TestEnqueueUnsummarizedBatch_EnqueuesViaGuard(t *testing.T) {
+	t.Run("enqueues articles that pass guard checks", func(t *testing.T) {
+		ctx := context.Background()
+
+		articles := []*domain.Article{
+			{ID: "article-1", Title: "Title 1"},
+			{ID: "article-2", Title: "Title 2"},
+		}
+
+		articleRepo := &stubArticleRepoWithFind{articles: articles}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+		jobRepo := &stubJobRepoWithEnqueue{
+			recentSuccessMap: map[string]bool{},
+		}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testLogger(), 10)
+
+		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 2, result.Found)
+		assert.Equal(t, 2, result.Enqueued)
+		assert.Equal(t, 0, result.Skipped)
+		assert.Equal(t, 0, result.Errors)
+		assert.Equal(t, []string{"article-1", "article-2"}, jobRepo.createJobCalls)
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_SkipsSummaryExists(t *testing.T) {
+	t.Run("skips articles that already have summaries", func(t *testing.T) {
+		ctx := context.Background()
+
+		articles := []*domain.Article{
+			{ID: "article-1", Title: "Title 1"},
+			{ID: "article-2", Title: "Title 2"},
+		}
+
+		articleRepo := &stubArticleRepoWithFind{articles: articles}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{
+			"article-1": true, // has summary
+		}}
+		jobRepo := &stubJobRepoWithEnqueue{
+			recentSuccessMap: map[string]bool{},
+		}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testLogger(), 10)
+
+		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 2, result.Found)
+		assert.Equal(t, 1, result.Enqueued)
+		assert.Equal(t, 1, result.Skipped)
+		assert.Equal(t, []string{"article-2"}, jobRepo.createJobCalls)
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_SkipsRecentSuccess(t *testing.T) {
+	t.Run("skips articles with recent successful jobs", func(t *testing.T) {
+		ctx := context.Background()
+
+		articles := []*domain.Article{
+			{ID: "article-1", Title: "Title 1"},
+			{ID: "article-2", Title: "Title 2"},
+		}
+
+		articleRepo := &stubArticleRepoWithFind{articles: articles}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+		jobRepo := &stubJobRepoWithEnqueue{
+			recentSuccessMap: map[string]bool{
+				"article-1": true, // has recent success
+			},
+		}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testLogger(), 10)
+
+		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 2, result.Found)
+		assert.Equal(t, 1, result.Enqueued)
+		assert.Equal(t, 1, result.Skipped)
+		assert.Equal(t, []string{"article-2"}, jobRepo.createJobCalls)
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_NoArticles(t *testing.T) {
+	t.Run("returns zero counts when no unsummarized articles exist", func(t *testing.T) {
+		ctx := context.Background()
+
+		articleRepo := &stubArticleRepoWithFind{articles: []*domain.Article{}}
+		jobRepo := &stubJobRepoWithEnqueue{}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, nil, testLogger(), 10)
+
+		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 0, result.Found)
+		assert.Equal(t, 0, result.Enqueued)
+		assert.Equal(t, 0, result.Skipped)
+		assert.False(t, result.HasMore)
+		assert.Empty(t, jobRepo.createJobCalls)
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_DuplicateHandled(t *testing.T) {
+	t.Run("handles duplicate gracefully when CreateJob returns empty string", func(t *testing.T) {
+		ctx := context.Background()
+
+		articles := []*domain.Article{
+			{ID: "article-1", Title: "Title 1"},
+		}
+
+		articleRepo := &stubArticleRepoWithFind{articles: articles}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+		jobRepo := &stubJobRepoWithDuplicate{
+			stubJobRepoWithEnqueue: stubJobRepoWithEnqueue{
+				recentSuccessMap: map[string]bool{},
+			},
+		}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testLogger(), 10)
+
+		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 1, result.Found)
+		assert.Equal(t, 0, result.Enqueued) // duplicate, not counted as enqueued
+		assert.Equal(t, 1, result.Skipped)  // counted as skipped (already in queue)
+		assert.Equal(t, 0, result.Errors)
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_HasMore(t *testing.T) {
+	t.Run("sets HasMore=true when cursor is returned", func(t *testing.T) {
+		ctx := context.Background()
+
+		articles := []*domain.Article{
+			{ID: "article-1", Title: "Title 1"},
+		}
+		nextCursor := &domain.Cursor{LastID: "article-1"}
+
+		articleRepo := &stubArticleRepoWithFind{articles: articles, cursor: nextCursor}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+		jobRepo := &stubJobRepoWithEnqueue{
+			recentSuccessMap: map[string]bool{},
+		}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testLogger(), 10)
+
+		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
+
+		assert.NoError(t, err)
+		assert.True(t, result.HasMore)
+	})
+}
+
 func TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency(t *testing.T) {
 	t.Run("processes jobs concurrently when worker concurrency is increased", func(t *testing.T) {
 		jobs := []*domain.SummarizeJob{

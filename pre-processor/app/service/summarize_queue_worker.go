@@ -15,6 +15,15 @@ import (
 	"pre-processor/utils/html_parser"
 )
 
+// EnqueueResult represents the result of enqueuing unsummarized articles.
+type EnqueueResult struct {
+	Found    int
+	Enqueued int
+	Skipped  int
+	Errors   int
+	HasMore  bool
+}
+
 // SummarizeQueueWorker handles processing of queued summarization jobs
 type SummarizeQueueWorker struct {
 	jobRepo         repository.SummarizeJobRepository
@@ -25,6 +34,7 @@ type SummarizeQueueWorker struct {
 	batchSize       int
 	concurrency     int
 	lastRecoveryRun time.Time
+	enqueueCursor   *domain.Cursor
 }
 
 // NewSummarizeQueueWorker creates a new summarize queue worker
@@ -333,4 +343,70 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 		"total_duration_ms", totalDuration.Milliseconds(),
 		"completed_at", time.Now().UnixNano())
 	return nil
+}
+
+// EnqueueUnsummarizedBatch fetches unsummarized articles from the backend and
+// enqueues them into the job queue via the standard guard + CreateJob path.
+// This replaces the old batch safety-net that called the LLM directly.
+func (w *SummarizeQueueWorker) EnqueueUnsummarizedBatch(ctx context.Context, batchSize int) (*EnqueueResult, error) {
+	articles, newCursor, err := w.articleRepo.FindForSummarization(ctx, w.enqueueCursor, batchSize)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find unsummarized articles: %w", err)
+	}
+
+	result := &EnqueueResult{
+		Found:   len(articles),
+		HasMore: newCursor != nil,
+	}
+
+	for _, article := range articles {
+		if ctx.Err() != nil {
+			break
+		}
+
+		shouldQueue, reason, guardErr := ShouldQueueSummarizeJob(ctx, article.ID, w.summaryRepo, w.jobRepo, w.logger)
+		if guardErr != nil {
+			w.logger.ErrorContext(ctx, "guard check failed", "article_id", article.ID, "error", guardErr)
+			result.Errors++
+			continue
+		}
+		if !shouldQueue {
+			w.logger.InfoContext(ctx, "batch enqueue skipped by guard", "article_id", article.ID, "reason", reason)
+			result.Skipped++
+			continue
+		}
+
+		jobID, createErr := w.jobRepo.CreateJob(ctx, article.ID)
+		if createErr != nil {
+			w.logger.ErrorContext(ctx, "failed to create job", "article_id", article.ID, "error", createErr)
+			result.Errors++
+			continue
+		}
+
+		if jobID == "" {
+			// Duplicate: pending/running job already exists
+			result.Skipped++
+			continue
+		}
+
+		result.Enqueued++
+	}
+
+	if newCursor != nil {
+		w.enqueueCursor = newCursor
+	}
+
+	w.logger.InfoContext(ctx, "batch enqueue completed",
+		"found", result.Found,
+		"enqueued", result.Enqueued,
+		"skipped", result.Skipped,
+		"errors", result.Errors,
+		"has_more", result.HasMore)
+
+	return result, nil
+}
+
+// ResetEnqueueCursor resets the pagination cursor for unsummarized article scanning.
+func (w *SummarizeQueueWorker) ResetEnqueueCursor() {
+	w.enqueueCursor = nil
 }
