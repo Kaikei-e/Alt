@@ -376,8 +376,8 @@ class InputSanitizer:
         and finally extracts plain text via lxml.
         """
         try:
-            from readability import Document
             from lxml.html import fromstring
+            from readability import Document
 
             # Strip code blocks before readability to reduce noise
             cleaned = _CODE_BLOCK_PATTERN.sub(" ", html)

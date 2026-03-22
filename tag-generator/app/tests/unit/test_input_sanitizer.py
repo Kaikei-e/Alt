@@ -328,7 +328,7 @@ class TestInputSanitizerHTMLReadability:
         The readability step should strip code blocks before security checks."""
         # Simulate a code-heavy article like the 117K one in production
         code_block = "<pre><code>" + "var x = 1;\n" * 500 + "</code></pre>"
-        article_body = """
+        article_body = f"""
         <div>
             <h1>Building a Web App from Scratch</h1>
             <p>This article describes the architecture of a large web application
@@ -337,12 +337,12 @@ class TestInputSanitizerHTMLReadability:
             <h2>Project Structure</h2>
             <p>The application uses a modular architecture with clear separation
             of concerns between the frontend and backend components.</p>
-            {code}
+            {code_block}
             <h2>Key Lessons</h2>
             <p>The most important lesson was maintaining consistent coding standards
             across the entire codebase to ensure long-term maintainability.</p>
         </div>
-        """.format(code=code_block)
+        """
 
         result = sanitizer.sanitize(
             title="Web App Development Guide",
