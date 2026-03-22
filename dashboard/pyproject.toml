@@ -11,5 +11,15 @@ dependencies = [
     "psutil>=5.9.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pyrefly>=0.42.0",
+]
+
 [tool.uv]
 constraint-dependencies = ["Pillow>=12.1.1", "tornado>=6.5.5"]
+
+[tool.pyrefly]
+project-includes = ["."]
+project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
+python-version = "3.12"

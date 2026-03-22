@@ -55,7 +55,7 @@ def fetch_metrics(metric_type: str, window_seconds: int, limit: int = 500) -> pd
     if not df.empty:
         if "job_id" in df.columns:
             df["job_id"] = df["job_id"].astype(str)
-        metrics_df = pd.json_normalize(df["metrics"])
+        metrics_df = pd.json_normalize(df["metrics"].tolist())
         df = pd.concat([df.drop("metrics", axis=1), metrics_df], axis=1)
         df["timestamp"] = pd.to_datetime(df["timestamp"])
     return df

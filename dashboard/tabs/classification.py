@@ -56,7 +56,7 @@ def render_classification(window_seconds: int):
         latest_row = df_cls.iloc[0]
 
         for g in genres_list:
-            row = {"Genre": g}
+            row: dict[str, object] = {"Genre": g}
             # Try to find standard metrics, handling NaN values
             precision_val = latest_row.get(f"per_genre.{g}.precision", 0.0)
             row["Precision"] = 0.0 if pd.isna(precision_val) else precision_val

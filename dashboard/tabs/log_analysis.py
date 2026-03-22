@@ -54,8 +54,7 @@ def render_log_analysis(window_seconds: int):
         st.caption(
             "recap-db の log_errors テーブルにログを書き込むか、期間を広げて再表示してください。"
         )
-        if table_missing:
-            st.caption("テーブルが存在しない場合は、log_errors (timestamp, error_type, error_message/raw_line) を作成してください。")
+        st.caption("テーブルが存在しない場合は、log_errors (timestamp, error_type, error_message/raw_line) を作成してください。")
         return
 
     # Basic Stats
