@@ -11,15 +11,14 @@ import os
 from typing import AsyncIterator
 
 import structlog
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from ..config import Settings, get_settings
 
 logger = structlog.get_logger(__name__)
 
 _ENGINE: AsyncEngine | None = None
-_SESSION_FACTORY: sessionmaker | None = None
+_SESSION_FACTORY: async_sessionmaker[AsyncSession] | None = None
 _ENGINE_PID: int | None = None
 
 
@@ -65,7 +64,7 @@ def get_engine(settings: Settings) -> AsyncEngine:
     return _ENGINE
 
 
-def get_session_factory(settings: Settings) -> sessionmaker:
+def get_session_factory(settings: Settings) -> async_sessionmaker[AsyncSession]:
     """Return a session factory bound to the configured engine."""
 
     global _SESSION_FACTORY, _ENGINE_PID
@@ -82,7 +81,7 @@ def get_session_factory(settings: Settings) -> sessionmaker:
 
     if _SESSION_FACTORY is None:
         engine = get_engine(settings)
-        _SESSION_FACTORY = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+        _SESSION_FACTORY = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
     return _SESSION_FACTORY
 
 

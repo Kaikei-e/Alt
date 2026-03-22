@@ -135,7 +135,7 @@ def make_manager(
     def dao_factory(session):
         return dao
 
-    return RunManager(settings or Settings(), session_factory, dao_factory, pipeline=pipeline, pipeline_runner=pipeline_runner)
+    return RunManager(settings or Settings(), session_factory, dao_factory, pipeline=pipeline, pipeline_runner=pipeline_runner)  # pyrefly: ignore[bad-argument-type]
 
 
 @pytest.mark.asyncio
@@ -293,8 +293,8 @@ async def test_process_run_persists_clusters(payload):
     manager = RunManager(
         Settings(),
         lambda: DummySessionContext(session),
-        lambda _session: dao,
-        pipeline=PipelineStub(pipeline_response),
+        lambda _session: dao,  # pyrefly: ignore[bad-argument-type]
+        pipeline=PipelineStub(pipeline_response),  # pyrefly: ignore[bad-argument-type]
     )
 
     await manager._process_run(1)

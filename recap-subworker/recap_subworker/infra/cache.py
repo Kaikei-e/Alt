@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from threading import Lock
-from typing import Generic, Hashable, Iterator, MutableMapping, TypeVar
+from typing import Generic, Hashable, Iterator, TypeVar
 
 
 K = TypeVar("K", bound=Hashable)
@@ -18,7 +18,7 @@ class LRUCache(Generic[K, V]):
         if capacity < 0:
             raise ValueError("capacity must be non-negative")
         self._capacity = capacity
-        self._store: MutableMapping[K, V] = OrderedDict()
+        self._store: OrderedDict[K, V] = OrderedDict()
         self._lock = Lock()
 
     def __len__(self) -> int:

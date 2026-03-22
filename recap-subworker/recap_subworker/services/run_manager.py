@@ -95,7 +95,7 @@ class RunManager:
         self._classifier = classifier  # Kept for backward compatibility
         self._classification_runner = classification_runner
         self._background_slots = asyncio.Semaphore(settings.max_background_runs)
-        self._run_timeout = settings.run_execution_timeout_seconds
+        self._run_timeout: float = settings.run_execution_timeout_seconds
         self._queue_warning_threshold = settings.queue_warning_threshold
 
     async def create_run(self, submission: RunSubmission) -> RunRecord:
@@ -515,6 +515,7 @@ class RunManager:
                 results = await self._classification_runner.predict_batch(classification_payload.texts)
             else:
                 # Fallback to direct classifier (for backward compatibility)
+                assert self._classifier is not None, "Either classification_runner or classifier must be set"
                 loop = asyncio.get_running_loop()
                 results = await loop.run_in_executor(
                     None, self._classifier.predict_batch, classification_payload.texts
@@ -648,7 +649,7 @@ class RunManager:
                     PersistedEvidence(
                         article_id=sentence.source.source_id,
                         title=None,
-                        source_url=sentence.source.url,
+                        source_url=str(sentence.source.url) if sentence.source.url else None,
                         published_at=None,
                         lang=sentence.lang,
                         rank=idx,
@@ -848,7 +849,7 @@ class RunManager:
         if self._tasks:
             try:
                 await asyncio.wait_for(
-                    asyncio.gather(*self._tasks, return_exceptions=True),
+                    asyncio.gather(*self._tasks, return_exceptions=True),  # pyrefly: ignore[bad-argument-type]
                     timeout=30.0,
                 )
             except asyncio.TimeoutError:

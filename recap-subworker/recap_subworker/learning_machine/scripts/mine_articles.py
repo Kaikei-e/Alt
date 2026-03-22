@@ -79,7 +79,7 @@ async def fetch_articles(db_url: str, limit: int, days: int) -> List[Dict[str, A
 
 def get_db_url_with_password(settings: Settings) -> str:
     """Resolve DB URL with password from secrets if needed."""
-    db_url = settings.db_url
+    db_url: str = settings.db_url_str
 
     # Local execution adjustment (recap-db -> localhost)
     # NOTE: This assumes we are running locally and using the port forwarded/exposed

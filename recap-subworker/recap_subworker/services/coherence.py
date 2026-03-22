@@ -224,6 +224,9 @@ class TopicCoherenceEvaluator:
             coherence_type=self.coherence_type.value,
         )
 
+        assert Dictionary is not None  # guarded by GENSIM_AVAILABLE check above
+        assert CoherenceModel is not None  # guarded by GENSIM_AVAILABLE check above
+
         # Tokenize all texts for the reference corpus
         tokenized_texts = [self._tokenize(text, lang=lang) for text in texts]
 
@@ -341,6 +344,9 @@ class TopicCoherenceEvaluator:
             raise RuntimeError(
                 "gensim is not installed. Install with: pip install gensim"
             )
+
+        assert Dictionary is not None  # guarded by GENSIM_AVAILABLE check above
+        assert CoherenceModel is not None  # guarded by GENSIM_AVAILABLE check above
 
         # Tokenize all texts
         tokenized_texts = [self._tokenize(text, lang=lang) for text in texts]

@@ -118,7 +118,7 @@ async def test_generate_learning_result_with_bayes_optimization(mock_session):
     """Test generating learning result with Bayes optimization enabled."""
     # Create enough sample rows for Bayes optimization
     job_id = uuid4()
-    sample_rows = []
+    sample_rows: list[dict[str, object]] = []
     for i in range(150):
         sample_rows.append(
             {

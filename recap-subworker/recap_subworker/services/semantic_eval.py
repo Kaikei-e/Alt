@@ -42,9 +42,9 @@ class BERTScoreResult:
     f1: float
     individual_scores: Optional[list[dict[str, float]]] = field(default=None)
 
-    def to_dict(self) -> dict[str, float]:
+    def to_dict(self) -> dict[str, float | list[dict[str, float]] | None]:
         """Convert to dictionary representation."""
-        result = {
+        result: dict[str, float | list[dict[str, float]] | None] = {
             "precision": self.precision,
             "recall": self.recall,
             "f1": self.f1,
@@ -127,6 +127,8 @@ class SemanticEvaluator:
             raise RuntimeError(
                 "bert-score is not installed. Install with: pip install bert-score"
             )
+
+        assert bert_score is not None  # guarded by BERT_SCORE_AVAILABLE check above
 
         if len(candidates) != len(references):
             raise ValueError(
@@ -211,7 +213,7 @@ class SemanticEvaluator:
         summaries: list[str],
         sources: list[str],
         lang: Literal["ja", "en"] = "ja",
-    ) -> dict[str, float]:
+    ) -> dict[str, float | list[dict[str, float]] | None]:
         """Evaluate a batch of summaries and return aggregate metrics.
 
         Args:

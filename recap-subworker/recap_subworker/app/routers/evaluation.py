@@ -177,8 +177,8 @@ async def evaluate_genres(
         # データベースに保存
         run_id: UUID | None = None
         if request.save_to_db:
+            dao = SubworkerDAO(session)
             try:
-                dao = SubworkerDAO(session)
                 # ジャンル別メトリクスをリスト形式に変換
                 per_genre_list = [
                     {

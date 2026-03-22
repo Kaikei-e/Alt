@@ -178,7 +178,7 @@ class LearningMachineStudentClassifier:
                 unknown_indices.append(i)
 
         # Run inference for each language group
-        results = [None] * len(texts)
+        results: list[Dict[str, Any] | None] = [None] * len(texts)
 
         # Japanese predictions
         if ja_texts and self.model_ja:
@@ -209,7 +209,7 @@ class LearningMachineStudentClassifier:
                         "candidates": [],
                     }
 
-        return results
+        return [r for r in results if r is not None]
 
     def _predict_with_model(
         self,

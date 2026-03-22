@@ -173,10 +173,16 @@ async def test_scheduler_build_learning_payload(mock_settings):
 
     payload = scheduler._build_learning_payload(result)
 
-    assert payload["summary"]["total_records"] == 10
-    assert payload["graph_override"]["graph_margin"] == 0.15
+    summary = payload["summary"]
+    assert isinstance(summary, dict)
+    assert summary["total_records"] == 10
+    graph_override = payload["graph_override"]
+    assert isinstance(graph_override, dict)
+    assert graph_override["graph_margin"] == 0.15
     assert "metadata" in payload
-    assert "captured_at" in payload["metadata"]
+    metadata = payload["metadata"]
+    assert isinstance(metadata, dict)
+    assert "captured_at" in metadata
 
 
 @pytest.mark.asyncio

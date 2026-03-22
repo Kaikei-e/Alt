@@ -77,7 +77,8 @@ class HallucinationResult:
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
-        result = {
+        from typing import Any
+        result: dict[str, Any] = {
             "is_hallucinated": self.is_hallucinated,
             "hallucination_score": self.hallucination_score,
             "entailment_score": self.entailment_score,
@@ -130,6 +131,7 @@ class HallucinationDetector:
             )
             self.nli = None
         else:
+            assert pipeline is not None  # guarded by TRANSFORMERS_AVAILABLE check above
             self.model_name = model_name or self.DEFAULT_MODEL
             self.device = device
 

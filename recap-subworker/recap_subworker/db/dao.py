@@ -452,12 +452,13 @@ class SubworkerDAO:
             # Check if the error is due to missing table
             error_str = str(e.orig) if hasattr(e, "orig") else str(e)
             if "recap_run_diagnostics" in error_str and ("does not exist" in error_str or "relation" in error_str.lower()):
+                orig = e.orig if e.orig is not None else Exception(str(e))
                 raise ProgrammingError(
                     f"Table 'recap_run_diagnostics' does not exist. "
                     f"Please run database migrations: 'make recap-migrate' or "
                     f"'docker compose --profile recap run --rm recap-db-migrator'",
                     e.params,
-                    e.orig,
+                    orig,
                 ) from e
             raise
 

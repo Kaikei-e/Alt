@@ -41,7 +41,7 @@ class SudachiTokenizer:
         self._init_tokenizer()
 
 class GenreClassifierService:
-    def __init__(self, model_path: str, embedder: Embedder, vectorizer_path: str = None, thresholds_path: str = None):
+    def __init__(self, model_path: str, embedder: Embedder, vectorizer_path: str | None = None, thresholds_path: str | None = None):
         self.embedder = embedder
         self.model_path = Path(model_path)
 
@@ -66,7 +66,7 @@ class GenreClassifierService:
         self.thresholds = None
         self._lock = Lock()
 
-    def _ensure_model(self, threshold_overrides: Dict[str, float] = None):
+    def _ensure_model(self, threshold_overrides: Dict[str, float] | None = None):
         # Double-checked locking pattern: check outside lock first for performance
         if self.model is None:
             with self._lock:
@@ -143,7 +143,7 @@ class GenreClassifierService:
              logger.info("Classification model and artifacts loaded")
 
 
-    def predict_batch(self, texts: List[str], multi_label: bool = False, top_k: int = 5, threshold_overrides: Dict[str, float] = None) -> List[Dict[str, Any]]:
+    def predict_batch(self, texts: List[str], multi_label: bool = False, top_k: int = 5, threshold_overrides: Dict[str, float] | None = None) -> List[Dict[str, Any]]:
         """
         Predict genres for a batch of texts using Hybrid Features (Embedding + TF-IDF)
         and Dynamic Thresholding.
@@ -229,6 +229,7 @@ class GenreClassifierService:
                 features = combined_features
 
         # 3. Predict Probabilities
+        assert self.model is not None, "Model must be loaded before prediction"
         predict_start = time.time()
         try:
             probs_batch = self.model.predict_proba(features)

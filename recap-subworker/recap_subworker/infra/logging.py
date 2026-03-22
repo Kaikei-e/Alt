@@ -20,7 +20,7 @@ from collections.abc import Callable
 from contextvars import ContextVar
 
 import structlog
-from sqlalchemy import create_engine, text
+from sqlalchemy import Engine, create_engine, text
 from structlog.typing import EventDict, WrappedLogger
 
 from .config import get_settings
@@ -124,6 +124,7 @@ class DBLogHandler(logging.Handler):
 
     def __init__(self):
         super().__init__()
+        self.engine: Engine | None = None
         settings = get_settings()
         # Use sync engine for logging to avoid async context issues in signal handlers/shutdown
         try:
@@ -146,7 +147,7 @@ class DBLogHandler(logging.Handler):
             # For structlog integration, we might get a JSON string in msg.
 
             error_type = record.levelname
-            if record.exc_info:
+            if record.exc_info and record.exc_info[0] is not None:
                 error_type = f"{record.levelname}: {record.exc_info[0].__name__}"
             elif hasattr(record, "error_type"):
                 error_type = str(getattr(record, "error_type"))
@@ -195,7 +196,7 @@ def configure_logging(level: str) -> None:
         try:
             from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
-            LoggingInstrumentor().instrument(set_logging_format=False)
+            LoggingInstrumentor().instrument(set_logging_format=False)  # pyrefly: ignore[missing-attribute]
         except Exception as e:
             sys.stderr.write(f"Failed to initialize OTel LoggingInstrumentor: {e}\n")
 

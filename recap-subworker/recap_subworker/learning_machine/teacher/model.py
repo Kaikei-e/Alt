@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 class TeacherBERT(nn.Module):
-    def __init__(self, model_name: str, num_labels: int, label_map: Dict[str, int] = None):
+    def __init__(self, model_name: str, num_labels: int, label_map: Optional[Dict[str, int]] = None):
         super().__init__()
         self.model_name = model_name
         self.num_labels = num_labels

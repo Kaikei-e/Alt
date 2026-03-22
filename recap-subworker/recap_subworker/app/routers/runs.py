@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from typing import cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from ...db.dao import RunRecord
-from ...domain.models import ClusterJobPayload, ClusterJobResponse
+from ...domain.models import ClusterJobPayload, ClusterJobResponse, RunStatusLiteral
 from ...infra.config import Settings
 from ...services.run_manager import (
     ConcurrentRunError,
@@ -29,7 +30,7 @@ def _record_to_response(record: RunRecord) -> ClusterJobResponse:
         run_id=record.run_id,
         job_id=str(record.job_id),
         genre=record.genre,
-        status=record.status,
+        status=cast(RunStatusLiteral, record.status),
         cluster_count=record.cluster_count,
         clusters=[],
         diagnostics={"error_message": record.error_message} if record.error_message else {},

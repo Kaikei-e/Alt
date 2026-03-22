@@ -37,6 +37,7 @@ from ..infra.telemetry import (
     REQUEST_EMBED_SENTENCES,
     REQUEST_PROCESS_SECONDS,
 )
+from ..port.embedder import EmbedderPort
 from .clusterer import Clusterer
 from .embedder import Embedder
 
@@ -119,7 +120,7 @@ class SentenceRecord:
 class EvidencePipeline:
     """Top-level orchestrator for the recap evidence workflow."""
 
-    def __init__(self, *, settings: Settings, embedder: Embedder, process_pool) -> None:
+    def __init__(self, *, settings: Settings, embedder: EmbedderPort, process_pool) -> None:
         self.settings = settings
         self.embedder = embedder
         self.clusterer = Clusterer(settings)
@@ -202,7 +203,7 @@ class EvidencePipeline:
             max(2, base_mcs - self.settings.clustering_search_range_mcs_window_lower),
             base_mcs + self.settings.clustering_search_range_mcs_window_upper,
         )
-        ms_range = range(1, self.settings.clustering_search_range_ms_max)
+        ms_range: list[int | None] = list(range(1, self.settings.clustering_search_range_ms_max))
 
         if request.genre == "other":
             token_counts = np.array([s.tokens_estimate for s in sentences], dtype=int)
@@ -210,6 +211,7 @@ class EvidencePipeline:
         else:
             # Plan-based parameter selection
             count = len(sentences)
+            umap_range: list[int | None] | None
             if count < 10:
                 # Small: No dim reduction (implicit if n_neighbors=None?), min_cluster_size 3-5
                 # The prompt said "No dim reduction". optimize_clustering with umap_n_neighbors_range=None uses default [None] -> No UMAP.
@@ -358,7 +360,7 @@ class EvidencePipeline:
         batches = math.ceil(len(examples) / max(1, self.settings.batch_size))
         processed = self.embedder.warmup(examples)
         return WarmupResponse(
-            warmed=processed > 0, batches=batches, backend=self.embedder.config.backend
+            warmed=processed > 0, batches=batches, backend=self.embedder.config.backend  # pyrefly: ignore[missing-attribute]
         )
 
     def _extract_sentences(self, request: EvidenceRequest) -> list[SentenceRecord]:
@@ -398,7 +400,7 @@ class EvidencePipeline:
                         SentenceRecord(
                             text=sentence,
                             article_id=document.article_id,
-                            url=document.source_url if document.source_url else None,
+                            url=str(document.source_url) if document.source_url else None,
                             paragraph_idx=paragraph_idx,
                             sentence_idx=sentence_counter,
                             lang=document.lang_hint,

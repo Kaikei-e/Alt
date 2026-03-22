@@ -114,6 +114,7 @@ def test_ensure_model_updates_thresholds(mock_json_load, mock_open, mock_exists,
     assert service.current_thresholds["tech"] == 0.8
     assert service.current_thresholds["new"] == 0.3
     # Base should remain unchanged in the underlying dict if separate, but here we copied it.
+    assert service.thresholds is not None
     assert service.thresholds["tech"] == 0.5
 
 

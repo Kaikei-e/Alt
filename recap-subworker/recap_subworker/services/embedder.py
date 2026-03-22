@@ -114,6 +114,9 @@ class Embedder:
                 "Install with: pip install transformers"
             )
 
+        assert ort is not None  # guarded by ONNX_AVAILABLE check above
+        assert AutoTokenizer is not None  # guarded by TRANSFORMERS_AVAILABLE check above
+
         if not self.config.onnx_model_path:
             raise ValueError(
                 "onnx_model_path is required when backend='onnx'. "

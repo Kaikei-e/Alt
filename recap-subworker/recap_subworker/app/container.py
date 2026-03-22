@@ -73,11 +73,16 @@ class ServiceContainer:
     @property
     def process_pool(self) -> ProcessPoolExecutor:
         if self._process_pool is None:
-            pool_kwargs: dict[str, int] = {"max_workers": self.settings.process_pool_size}
-            if sys.version_info >= (3, 13):
-                pool_kwargs["max_tasks_per_child"] = 100
+            max_workers = self.settings.process_pool_size
             mp_context = multiprocessing.get_context("spawn")
-            self._process_pool = ProcessPoolExecutor(mp_context=mp_context, **pool_kwargs)
+            if sys.version_info >= (3, 13):
+                self._process_pool = ProcessPoolExecutor(
+                    max_workers=max_workers, mp_context=mp_context, max_tasks_per_child=100,
+                )
+            else:
+                self._process_pool = ProcessPoolExecutor(
+                    max_workers=max_workers, mp_context=mp_context,
+                )
             logger.info(
                 "process pool created",
                 max_workers=self.settings.process_pool_size,

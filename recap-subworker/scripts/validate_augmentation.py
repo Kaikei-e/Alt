@@ -299,6 +299,7 @@ def main():
         # For each augmented sample, compare to a random original from same genre
         batch_size = 100
         valid_sim = 0
+        batch_end = 0
 
         for batch_start in range(0, len(aug_df), batch_size):
             batch_end = min(batch_start + batch_size, len(aug_df))

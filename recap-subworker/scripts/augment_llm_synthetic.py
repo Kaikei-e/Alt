@@ -336,7 +336,7 @@ def main():
             if current_count >= target_count:
                 continue
 
-            if validate_synthetic_sample(text):
+            if text is not None and validate_synthetic_sample(text):
                 all_samples.append({
                     "content": text,
                     "genre": genre,

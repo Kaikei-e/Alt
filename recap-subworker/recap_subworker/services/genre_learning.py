@@ -400,6 +400,7 @@ def run_bayes_optimization(
             random_state=seed,
             acq_func="EI",
         )
+        assert result is not None, "gp_minimize must return a result"
         best_params = _params_from_raw(result.x)
         train_accuracy = 1.0 - result.fun
         # For small datasets, we can't provide a reliable test accuracy
@@ -428,6 +429,7 @@ def run_bayes_optimization(
         random_state=seed,
         acq_func="EI",
     )
+    assert result is not None, "gp_minimize must return a result"
 
     best_params = _params_from_raw(result.x)
     train_accuracy = 1.0 - result.fun

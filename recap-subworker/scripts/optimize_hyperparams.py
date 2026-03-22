@@ -13,7 +13,9 @@ Usage:
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import optuna
@@ -57,7 +59,7 @@ def create_objective(
     X: pd.Series,
     y: pd.Series,
     n_folds: int = 5,
-) -> callable:
+) -> Callable[..., Any]:
     """Create Optuna objective function.
 
     Args:

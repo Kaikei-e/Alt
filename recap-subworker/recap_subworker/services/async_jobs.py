@@ -36,7 +36,7 @@ class AdminJobService:
         self,
         settings: Settings,
         session_factory,
-        learning_client: LearningClient,
+        learning_client: LearningClient | None,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
@@ -187,6 +187,8 @@ class AdminJobService:
                 days=self._settings.learning_snapshot_days
             )
             payload = self._build_learning_payload(learning_result)
+            if self._learning_client is None:
+                raise RuntimeError("learning_client is required for learning jobs")
             response = await self._learning_client.send_learning_payload(payload)
             result: dict[str, Any] = {
                 "recap_worker_status": response.status_code,
@@ -310,7 +312,7 @@ class AdminJobService:
                 task.cancel()
         try:
             await asyncio.wait_for(
-                asyncio.gather(*self._tasks, return_exceptions=True),
+                asyncio.gather(*self._tasks, return_exceptions=True),  # pyrefly: ignore[bad-argument-type]
                 timeout=10.0,
             )
         except asyncio.TimeoutError:

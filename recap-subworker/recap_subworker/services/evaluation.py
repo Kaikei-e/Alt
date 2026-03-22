@@ -253,7 +253,7 @@ class EvaluationService:
         # Router expects: accuracy, macro_f1, per_genre_metrics, etc.
         # plus CI intervals if requested (bootstrap).
 
-        results = {
+        results: Dict[str, Any] = {
             "accuracy": metrics.accuracy,
             "macro_precision": metrics.macro_precision,
             "macro_recall": metrics.macro_recall,
@@ -422,6 +422,9 @@ class EvaluationService:
         if not DEEPEVAL_AVAILABLE:
             logger.warning("DeepEval not available. Skipping LLM-based summary evaluation.")
             return metrics
+
+        assert LLMTestCase is not None  # guarded by DEEPEVAL_AVAILABLE check above
+        assert FaithfulnessMetric is not None  # guarded by DEEPEVAL_AVAILABLE check above
 
         try:
             test_case = LLMTestCase(

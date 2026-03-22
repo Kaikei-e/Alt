@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
+import multiprocessing.pool
 import threading
 import time
 from typing import Any
@@ -25,7 +26,7 @@ class ClassificationRunner:
 
         logger = structlog.get_logger(__name__)
         self._settings = settings
-        self._pool: multiprocessing.Pool | None = None
+        self._pool: multiprocessing.pool.Pool | None = None
         self._lock = threading.Lock()
         self._active_tasks = 0
         self._last_task_time: float | None = None
@@ -37,7 +38,7 @@ class ClassificationRunner:
             idle_timeout_seconds=settings.classification_pool_idle_timeout_seconds,
         )
 
-    def _ensure_pool(self) -> multiprocessing.Pool:
+    def _ensure_pool(self) -> multiprocessing.pool.Pool:
         """Ensure the worker pool is initialized, creating it if necessary."""
         import structlog
 

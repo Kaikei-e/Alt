@@ -63,7 +63,8 @@ class GEvalResult:
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
-        result = {
+        from typing import Any
+        result: dict[str, Any] = {
             "coherence": self.coherence,
             "consistency": self.consistency,
             "fluency": self.fluency,

@@ -30,7 +30,7 @@ def _worker_count() -> int:
     return max(2, multiprocessing.cpu_count() * 2 + 1)
 
 # Global scheduler process for master process
-_scheduler_process: multiprocessing.Process | None = None
+_scheduler_process: multiprocessing.process.BaseProcess | None = None
 
 
 def _run_scheduler_process() -> None:
@@ -120,13 +120,14 @@ def on_starting(server) -> None:
     # Use 'spawn' context to ensure a clean process with no inherited state
     # This is critical to avoid "Cannot re-initialize CUDA" errors in workers
     ctx = multiprocessing.get_context("spawn")
-    _scheduler_process = ctx.Process(
+    proc = ctx.Process(
         target=_run_scheduler_process,
         daemon=True,
         name="learning-scheduler-proc",
     )
-    _scheduler_process.start()
-    logger.info("learning scheduler process started", pid=_scheduler_process.pid)
+    proc.start()
+    _scheduler_process = proc
+    logger.info("learning scheduler process started", pid=proc.pid)
 
 
 def on_exit(server) -> None:

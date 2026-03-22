@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
+import multiprocessing.pool
 import signal
 import threading
 import time
@@ -32,7 +33,7 @@ class PipelineTaskRunner:
             max_tasks_per_child=settings.pipeline_worker_max_tasks_per_child,
         )
 
-        self._pool = ctx.Pool(
+        self._pool: multiprocessing.pool.Pool | None = ctx.Pool(
             processes=settings.pipeline_worker_processes,
             initializer=pipeline_worker.initialize,
             initargs=(settings.model_dump(mode="json"),),
@@ -50,6 +51,7 @@ class PipelineTaskRunner:
         timeout = self._settings.pipeline_worker_init_timeout_seconds
 
         # Try a simple warmup to verify workers are ready
+        assert self._pool is not None, "Pool must be initialized before verification"
         try:
             future = self._pool.apply_async(pipeline_worker.warmup, ([]))
             result = future.get(timeout=timeout)
@@ -67,8 +69,9 @@ class PipelineTaskRunner:
             )
             # Clean up failed pool
             try:
-                self._pool.terminate()
-                self._pool.join()
+                if self._pool is not None:
+                    self._pool.terminate()
+                    self._pool.join()
             except Exception:
                 pass
             raise RuntimeError(
@@ -77,6 +80,7 @@ class PipelineTaskRunner:
 
     async def run(self, request: EvidenceRequest) -> EvidenceResponse:
         """Execute the evidence pipeline in a worker process."""
+        assert self._pool is not None, "Pool is not initialized"
         payload = request.model_dump(mode="json")
         # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
         async_result = self._pool.apply_async(pipeline_worker.run_pipeline, (payload,))
@@ -87,6 +91,7 @@ class PipelineTaskRunner:
 
     async def warmup(self, samples: Sequence[str] | None = None) -> WarmupResponse:
         """Warmup the pipeline in a worker process."""
+        assert self._pool is not None, "Pool is not initialized"
         # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
         async_result = self._pool.apply_async(pipeline_worker.warmup, (list(samples or []),))
         # Wait for the result in an executor to avoid blocking the event loop

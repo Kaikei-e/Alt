@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def get_db_url_with_password(settings: Settings) -> str:
-    db_url = settings.db_url
+    db_url: str = settings.db_url_str
     if "recap-db" in db_url:
         db_url = db_url.replace("recap-db", "localhost").replace("5432", "5435")
 

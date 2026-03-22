@@ -186,7 +186,12 @@ class EnglishAugmenter:
         """Get synonyms from WordNet."""
         synonyms = set()
         for syn in wordnet.synsets(word.lower()):
-            for lemma in syn.lemmas():
+            if syn is None:
+                continue
+            lemmas = syn.lemmas()
+            if lemmas is None:
+                continue
+            for lemma in lemmas:
                 synonym = lemma.name().replace("_", " ")
                 if synonym.lower() != word.lower():
                     synonyms.add(synonym)
