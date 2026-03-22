@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/port/knowledge_sovereign_port"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -119,31 +120,85 @@ func TestResolveExportScope_NilRepo(t *testing.T) {
 	require.Error(t, err)
 }
 
+// --- payload propagation tests ---
+
+func TestApplyProjectionMutation_PreservesPayload(t *testing.T) {
+	payload := json.RawMessage(`{"item_key":"article:test-123"}`)
+	stub := &stubRepo{}
+	gw := NewGateway(stub)
+	mutation := knowledge_sovereign_port.ProjectionMutation{
+		MutationType: knowledge_sovereign_port.MutationUpsertHomeItem,
+		EntityID:     "article:test-123",
+		Payload:      payload,
+	}
+	err := gw.ApplyProjectionMutation(context.Background(), mutation)
+	require.NoError(t, err)
+	assert.Equal(t, knowledge_sovereign_port.MutationUpsertHomeItem, stub.lastProjectionMutation.MutationType)
+	assert.Equal(t, "article:test-123", stub.lastProjectionMutation.EntityID)
+	assert.JSONEq(t, `{"item_key":"article:test-123"}`, string(stub.lastProjectionMutation.Payload))
+}
+
+func TestApplyRecallMutation_PreservesPayload(t *testing.T) {
+	payload := json.RawMessage(`{"score":0.5}`)
+	stub := &stubRepo{}
+	gw := NewGateway(stub)
+	mutation := knowledge_sovereign_port.RecallMutation{
+		MutationType: knowledge_sovereign_port.MutationUpsertCandidate,
+		EntityID:     "article:recall-1",
+		Payload:      payload,
+	}
+	err := gw.ApplyRecallMutation(context.Background(), mutation)
+	require.NoError(t, err)
+	assert.Equal(t, knowledge_sovereign_port.MutationUpsertCandidate, stub.lastRecallMutation.MutationType)
+	assert.JSONEq(t, `{"score":0.5}`, string(stub.lastRecallMutation.Payload))
+}
+
+func TestApplyCurationMutation_PreservesPayload(t *testing.T) {
+	payload := json.RawMessage(`{"item_key":"article:dismiss-1"}`)
+	stub := &stubRepo{}
+	gw := NewGateway(stub)
+	mutation := knowledge_sovereign_port.CurationMutation{
+		MutationType: knowledge_sovereign_port.MutationDismissCuration,
+		EntityID:     "article:dismiss-1",
+		Payload:      payload,
+	}
+	err := gw.ApplyCurationMutation(context.Background(), mutation)
+	require.NoError(t, err)
+	assert.Equal(t, knowledge_sovereign_port.MutationDismissCuration, stub.lastCurationMutation.MutationType)
+	assert.JSONEq(t, `{"item_key":"article:dismiss-1"}`, string(stub.lastCurationMutation.Payload))
+}
+
 // --- stub ---
 
 type stubRepo struct {
-	projectionCalled     bool
-	recallCalled         bool
-	curationCalled       bool
-	retentionCalled      bool
-	exportCalled         bool
-	retentionPolicy      domain.RetentionPolicy
-	exportClassification domain.ExportClassification
-	err                  error
+	projectionCalled         bool
+	recallCalled             bool
+	curationCalled           bool
+	retentionCalled          bool
+	exportCalled             bool
+	lastProjectionMutation   knowledge_sovereign_port.ProjectionMutation
+	lastRecallMutation       knowledge_sovereign_port.RecallMutation
+	lastCurationMutation     knowledge_sovereign_port.CurationMutation
+	retentionPolicy          domain.RetentionPolicy
+	exportClassification     domain.ExportClassification
+	err                      error
 }
 
-func (s *stubRepo) ApplyProjectionMutation(_ context.Context, _ knowledge_sovereign_port.ProjectionMutation) error {
+func (s *stubRepo) ApplyProjectionMutation(_ context.Context, mutation knowledge_sovereign_port.ProjectionMutation) error {
 	s.projectionCalled = true
+	s.lastProjectionMutation = mutation
 	return s.err
 }
 
-func (s *stubRepo) ApplyRecallMutation(_ context.Context, _ knowledge_sovereign_port.RecallMutation) error {
+func (s *stubRepo) ApplyRecallMutation(_ context.Context, mutation knowledge_sovereign_port.RecallMutation) error {
 	s.recallCalled = true
+	s.lastRecallMutation = mutation
 	return s.err
 }
 
-func (s *stubRepo) ApplyCurationMutation(_ context.Context, _ knowledge_sovereign_port.CurationMutation) error {
+func (s *stubRepo) ApplyCurationMutation(_ context.Context, mutation knowledge_sovereign_port.CurationMutation) error {
 	s.curationCalled = true
+	s.lastCurationMutation = mutation
 	return s.err
 }
 
