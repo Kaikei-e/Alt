@@ -2,6 +2,7 @@ package job
 
 import (
 	"alt/domain"
+	"alt/utils/logger"
 	"context"
 	"errors"
 	"testing"
@@ -50,6 +51,7 @@ func (m *mockUpsertRecallCandidatePort) UpsertRecallCandidate(_ context.Context,
 }
 
 func TestProcessRecallSignals(t *testing.T) {
+	logger.InitLogger()
 	userID := uuid.New()
 
 	t.Run("no users from port - no candidates", func(t *testing.T) {

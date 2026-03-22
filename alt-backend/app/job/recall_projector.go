@@ -32,13 +32,19 @@ const (
 
 // RecallProjectorJob returns a function that scores recall candidates from signals.
 // Users are dynamically discovered via ListDistinctUserIDsPort (from knowledge_home_items).
+// Optional writeService routes writes through Knowledge Sovereign when non-nil.
 func RecallProjectorJob(
 	listUsersPort knowledge_home_port.ListDistinctUserIDsPort,
 	signalPort recall_signal_port.ListRecallSignalsByUserPort,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
+	writeService ...WriteServicePort,
 ) func(ctx context.Context) error {
+	var ws WriteServicePort
+	if len(writeService) > 0 {
+		ws = writeService[0]
+	}
 	return func(ctx context.Context) error {
-		return processRecallSignals(ctx, listUsersPort, signalPort, candidatePort, nil)
+		return processRecallSignals(ctx, listUsersPort, signalPort, candidatePort, ws)
 	}
 }
 
@@ -47,7 +53,7 @@ func processRecallSignals(
 	listUsersPort knowledge_home_port.ListDistinctUserIDsPort,
 	signalPort recall_signal_port.ListRecallSignalsByUserPort,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
-	_ interface{}, // reserved for homeItemsPort (future enrichment)
+	writeService WriteServicePort,
 ) error {
 	userIDs, err := listUsersPort.ListDistinctUserIDs(ctx)
 	if err != nil {
@@ -73,7 +79,7 @@ func processRecallSignals(
 			continue
 		}
 
-		if err := ScoreRecallCandidates(ctx, userID, signals, candidatePort); err != nil {
+		if err := scoreRecallCandidatesWithSovereign(ctx, userID, signals, candidatePort, writeService); err != nil {
 			logger.Logger.ErrorContext(ctx, "recall projector: scoring failed",
 				"error", err, "user_id", userID)
 			continue
@@ -88,13 +94,13 @@ func processRecallSignals(
 	return nil
 }
 
-// ScoreRecallCandidates processes signals for a single user and upserts candidates.
-// Exported for testing.
-func ScoreRecallCandidates(
+// scoreRecallCandidatesWithSovereign is the internal implementation that supports sovereign routing.
+func scoreRecallCandidatesWithSovereign(
 	ctx context.Context,
 	userID uuid.UUID,
 	signals []domain.RecallSignal,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
+	writeService WriteServicePort,
 ) error {
 	// Group signals by item_key
 	itemSignals := make(map[string][]domain.RecallSignal)
@@ -166,7 +172,7 @@ func ScoreRecallCandidates(
 			ProjectionVersion: 1,
 		}
 
-		if err := candidatePort.UpsertRecallCandidate(ctx, candidate); err != nil {
+		if err := sovereignUpsertRecallCandidate(ctx, candidate, candidatePort, writeService); err != nil {
 			logger.Logger.ErrorContext(ctx, "recall projector: failed to upsert candidate",
 				"error", err, "item_key", itemKey)
 			continue
@@ -174,4 +180,15 @@ func ScoreRecallCandidates(
 	}
 
 	return nil
+}
+
+// ScoreRecallCandidates processes signals for a single user and upserts candidates.
+// Exported for testing. Uses legacy direct port (no Sovereign routing).
+func ScoreRecallCandidates(
+	ctx context.Context,
+	userID uuid.UUID,
+	signals []domain.RecallSignal,
+	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
+) error {
+	return scoreRecallCandidatesWithSovereign(ctx, userID, signals, candidatePort, nil)
 }
