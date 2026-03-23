@@ -5,11 +5,11 @@
 | 項目 | 値 |
 |------|-----|
 | 重大度 | SEV-3 |
-| 影響期間 | 2026-03-23 19:25 JST 〜 21:20 JST (約 2 時間) |
+| 影響期間 | 2026-03-23 19:25 JST 〜 21:27 JST (約 2 時間) |
 | 影響サービス | recap-worker, recap-subworker, recap-db |
 | 影響機能 | 3-day Recap 生成（7-day Recap は既存結果の配信で影響なし） |
-| 関連 ADR | [[000547]], [[000048]] |
-| 関連コミット | `d15ffd0d`, `d29be7c7` |
+| 関連 ADR | [[000547]], [[000048]], [[000550]] |
+| 関連コミット | `d15ffd0d`, `d29be7c7`, `88324ead` |
 
 ## サマリー
 
@@ -50,7 +50,12 @@ recap-worker の Recap 生成パイプラインが連鎖的な OOM (Out of Memor
 | 20:34 | GUI から Recap 手動 kick。分類ポーリングは進むが `status: running` のまま変化せず |
 | 20:56 | **原因特定 (3)**: recap-subworker の `ClassificationRunner` プロセスプール (6 ワーカー × spawn) が 1536MB 制限で OOM。`docker top` でワーカープロセス 0 個を確認。`classification.run.process.started` の後 `predict_batch` が永久ハング |
 | 21:00 | recap-subworker の `mem_limit` を 8192m に引き上げ。全 stuck ステートをクリーンアップし、全サービス再起動 |
-| 21:20 | **復旧**: GUI から手動 kick で分類処理が正常に開始 |
+| 21:13 | recap-subworker 再起動（冪等キャッシュクリア）。recap-worker 再起動 |
+| 21:14 | GUI から手動 kick。`ClassificationRunner` が 6 ワーカープロセスをスポーン成功（`docker top` で確認）。CPU 204% で分類処理が正常開始 |
+| 21:16 | 分類チャンク (chunk 0-8) が順次完了 (`classification run completed successfully`, `result_count: 200`) |
+| 21:20 | クラスタリングフェーズ開始。80 ジャンルのクラスタリングが順次完了 |
+| 21:26 | summarization フェーズ開始。80 リクエスト / 27 チャンクのバッチ要約生成。Ollama GPU-Util 90% で LLM 要約処理中 |
+| 21:27 | **復旧**: パイプラインが dispatch → summarization まで正常に進行。全ステージでエラーなし |
 
 ## 根本原因分析
 
