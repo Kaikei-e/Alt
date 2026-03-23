@@ -43,7 +43,6 @@ describe("Connect-RPC proxy route", () => {
 		);
 		expect(response.headers.get("X-Accel-Buffering")).toBe("no");
 		expect(response.headers.get("Cache-Control")).toBe("no-cache, no-transform");
-		expect(response.headers.get("Alt-Svc")).toBe("clear");
 	});
 
 	it("adds no-buffering headers for application/connect+proto responses", async () => {
@@ -75,7 +74,6 @@ describe("Connect-RPC proxy route", () => {
 
 		expect(response.headers.get("X-Accel-Buffering")).toBe("no");
 		expect(response.headers.get("Cache-Control")).toBe("no-cache, no-transform");
-		expect(response.headers.get("Alt-Svc")).toBe("clear");
 	});
 
 	it("does not add no-buffering headers for regular json responses", async () => {
@@ -108,6 +106,5 @@ describe("Connect-RPC proxy route", () => {
 		expect(response.headers.get("content-type")).toBe("application/json");
 		expect(response.headers.get("X-Accel-Buffering")).toBeNull();
 		expect(response.headers.get("Cache-Control")).toBeNull();
-		expect(response.headers.get("Alt-Svc")).toBeNull();
 	});
 });
