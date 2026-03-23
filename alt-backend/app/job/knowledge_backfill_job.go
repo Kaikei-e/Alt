@@ -89,7 +89,7 @@ func processBackfillBatch(
 	for _, article := range articles {
 		articleID := article.ArticleID
 		userID := article.UserID
-		event := GenerateBackfillEvent(userID, &userID, articleID, article.Title, article.PublishedAt)
+		event := GenerateBackfillEvent(userID, &userID, articleID, article.Title, article.PublishedAt, article.URL)
 		if err := eventPort.AppendKnowledgeEvent(ctx, event); err != nil {
 			return fmt.Errorf("append backfill event: %w", err)
 		}
@@ -113,12 +113,13 @@ func processBackfillBatch(
 
 // GenerateBackfillEvent creates a synthetic event for backfill purposes.
 // The dedupe_key ensures idempotency if the same article is backfilled again.
-func GenerateBackfillEvent(tenantID uuid.UUID, userID *uuid.UUID, articleID uuid.UUID, title string, publishedAt time.Time) domain.KnowledgeEvent {
+func GenerateBackfillEvent(tenantID uuid.UUID, userID *uuid.UUID, articleID uuid.UUID, title string, publishedAt time.Time, link string) domain.KnowledgeEvent {
 	payload, _ := json.Marshal(articleCreatedPayload{
 		ArticleID:   articleID.String(),
 		Title:       title,
 		PublishedAt: publishedAt.Format(time.RFC3339),
 		TenantID:    tenantID.String(),
+		Link:        link,
 	})
 
 	return domain.KnowledgeEvent{

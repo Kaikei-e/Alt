@@ -103,7 +103,7 @@ func TestGenerateBackfillEvent_UsesCanonicalArticleCreatedDedupeKey(t *testing.T
 	articleID := uuid.New()
 	publishedAt := time.Date(2026, 3, 18, 9, 0, 0, 0, time.UTC)
 
-	event := GenerateBackfillEvent(tenantID, &userID, articleID, "Backfilled Article", publishedAt)
+	event := GenerateBackfillEvent(tenantID, &userID, articleID, "Backfilled Article", publishedAt, "https://example.com/backfilled")
 
 	assert.Equal(t, "article-created:"+articleID.String(), event.DedupeKey)
 	assert.Equal(t, articleID.String(), event.AggregateID)

@@ -41,4 +41,5 @@ type KnowledgeBackfillArticle struct {
 	CreatedAt   time.Time
 	PublishedAt time.Time
 	Title       string
+	URL         string
 }
