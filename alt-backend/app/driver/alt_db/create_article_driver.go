@@ -87,7 +87,7 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 func (r *AltDBRepository) getArticleContentLength(ctx context.Context, tx pgx.Tx, url, userID string) (int, error) {
 	var contentLen int
 	err := tx.QueryRow(ctx,
-		"SELECT COALESCE(LENGTH(content), 0) FROM articles WHERE url = $1 AND user_id = $2 AND deleted_at IS NULL",
+		"SELECT COALESCE(OCTET_LENGTH(content), 0) FROM articles WHERE url = $1 AND user_id = $2 AND deleted_at IS NULL",
 		url, userID,
 	).Scan(&contentLen)
 	return contentLen, err
