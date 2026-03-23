@@ -351,7 +351,9 @@ func (r *Repository) SnoozeRecallCandidate(ctx context.Context, payload json.Raw
 	return nil
 }
 
-// DismissRecallCandidate removes a recall candidate.
+// DismissRecallCandidate soft-deletes a recall candidate by setting dismissed_at.
+// The candidate remains in the table so the projector's UPSERT preserves the dismissal.
+// After a 30-day cooldown, the projector may clear dismissed_at to allow re-surfacing.
 func (r *Repository) DismissRecallCandidate(ctx context.Context, payload json.RawMessage) error {
 	var params struct {
 		UserID  string `json:"user_id"`
@@ -365,7 +367,8 @@ func (r *Repository) DismissRecallCandidate(ctx context.Context, payload json.Ra
 		return fmt.Errorf("DismissRecallCandidate: parse user_id: %w", err)
 	}
 
-	query := `DELETE FROM recall_candidate_view WHERE user_id = $1 AND item_key = $2`
+	query := `UPDATE recall_candidate_view SET dismissed_at = now(), updated_at = now()
+		WHERE user_id = $1 AND item_key = $2`
 	_, err = r.pool.Exec(ctx, query, userID, params.ItemKey)
 	if err != nil {
 		return fmt.Errorf("DismissRecallCandidate: %w", err)

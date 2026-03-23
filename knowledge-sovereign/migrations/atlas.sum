@@ -1,5 +1,6 @@
-h1:cswMNR9SDl4B1quIaZm4mZoBAMIMsjbtwWeXE4j93k0=
+h1:ncvXnFc/WE/jdq8nX7sSm7eLMT2PhwkqU7TzWvUgwCk=
 00001_initial_schema.sql h1:CSFJx5Q5Jv44C4sqoKpzvdh6t8Unwog8bZw9/VBd3NQ=
 00002_add_link_column.sql h1:A2QxniA5wEK9bo0UnqTNKX5TgvkR/zugtdCKs8O07DE=
 00003_fix_user_events_dedupe_constraint.sql h1:5EpJwNHbInepPLqTMNG3YL/FPTqvpkpqazjt6rK0PkQ=
 00004_add_projector_notify_trigger.sql h1:ecECeGZVZy6hLmsi+uFB3Q294h32k+l6n54EAmwWf1s=
+00005_add_recall_dismissed_at.sql h1:ujis4cSGVlg5EumkQTlvj+xqVSCajU8RWPQ6YTdHnR0=

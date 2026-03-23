@@ -287,6 +287,7 @@ func (r *Repository) GetRecallCandidates(ctx context.Context, userID uuid.UUID, 
 		    SELECT version FROM knowledge_projection_versions WHERE status = 'active' ORDER BY version DESC LIMIT 1
 		  ), 1)
 		WHERE rcv.user_id = $1
+		  AND rcv.dismissed_at IS NULL
 		  AND rcv.snoozed_until IS NULL
 		  AND rcv.next_suggest_at IS NOT NULL
 		  AND rcv.next_suggest_at <= now()
