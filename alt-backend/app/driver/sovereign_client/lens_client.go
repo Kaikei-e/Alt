@@ -31,7 +31,7 @@ func (c *Client) CreateLens(ctx context.Context, lens domain.KnowledgeLens) erro
 		pb.ArchivedAt = timestamppb.New(*lens.ArchivedAt)
 	}
 
-	_, err := c.client.CreateLens(ctx, connect.NewRequest(&sovereignv1.CreateLensRpcRequest{
+	_, err := c.client.CreateLens(ctx, connect.NewRequest(&sovereignv1.CreateLensRequest{
 		Lens: pb,
 	}))
 	if err != nil {
@@ -61,7 +61,7 @@ func (c *Client) CreateLensVersion(ctx context.Context, version domain.Knowledge
 		pv.SupersededBy = version.SupersededBy.String()
 	}
 
-	_, err := c.client.CreateLensVersion(ctx, connect.NewRequest(&sovereignv1.CreateLensVersionRpcRequest{
+	_, err := c.client.CreateLensVersion(ctx, connect.NewRequest(&sovereignv1.CreateLensVersionRequest{
 		Version: pv,
 	}))
 	if err != nil {
@@ -168,7 +168,7 @@ func (c *Client) SelectCurrentLens(ctx context.Context, current domain.Knowledge
 		SelectedAt:    timeToProto(current.SelectedAt),
 	}
 
-	_, err := c.client.SelectCurrentLens(ctx, connect.NewRequest(&sovereignv1.SelectCurrentLensRpcRequest{
+	_, err := c.client.SelectCurrentLens(ctx, connect.NewRequest(&sovereignv1.SelectCurrentLensRequest{
 		Selection: sel,
 	}))
 	if err != nil {

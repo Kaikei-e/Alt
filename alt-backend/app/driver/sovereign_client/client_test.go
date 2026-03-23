@@ -25,38 +25,38 @@ type mockSovereignHandler struct {
 
 func (m *mockSovereignHandler) ApplyProjectionMutation(
 	_ context.Context,
-	req *connect.Request[sovereignv1.ApplyMutationRequest],
-) (*connect.Response[sovereignv1.ApplyMutationResponse], error) {
+	req *connect.Request[sovereignv1.ApplyProjectionMutationRequest],
+) (*connect.Response[sovereignv1.ApplyProjectionMutationResponse], error) {
 	m.lastMutationType = req.Msg.MutationType
 	m.lastEntityID = req.Msg.EntityId
 	if m.returnErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
 	}
-	return connect.NewResponse(&sovereignv1.ApplyMutationResponse{Success: true}), nil
+	return connect.NewResponse(&sovereignv1.ApplyProjectionMutationResponse{Success: true}), nil
 }
 
 func (m *mockSovereignHandler) ApplyRecallMutation(
 	_ context.Context,
-	req *connect.Request[sovereignv1.ApplyMutationRequest],
-) (*connect.Response[sovereignv1.ApplyMutationResponse], error) {
+	req *connect.Request[sovereignv1.ApplyRecallMutationRequest],
+) (*connect.Response[sovereignv1.ApplyRecallMutationResponse], error) {
 	m.lastMutationType = req.Msg.MutationType
 	m.lastEntityID = req.Msg.EntityId
 	if m.returnErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
 	}
-	return connect.NewResponse(&sovereignv1.ApplyMutationResponse{Success: true}), nil
+	return connect.NewResponse(&sovereignv1.ApplyRecallMutationResponse{Success: true}), nil
 }
 
 func (m *mockSovereignHandler) ApplyCurationMutation(
 	_ context.Context,
-	req *connect.Request[sovereignv1.ApplyMutationRequest],
-) (*connect.Response[sovereignv1.ApplyMutationResponse], error) {
+	req *connect.Request[sovereignv1.ApplyCurationMutationRequest],
+) (*connect.Response[sovereignv1.ApplyCurationMutationResponse], error) {
 	m.lastMutationType = req.Msg.MutationType
 	m.lastEntityID = req.Msg.EntityId
 	if m.returnErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
 	}
-	return connect.NewResponse(&sovereignv1.ApplyMutationResponse{Success: true}), nil
+	return connect.NewResponse(&sovereignv1.ApplyCurationMutationResponse{Success: true}), nil
 }
 
 func setupMockServer(handler *mockSovereignHandler) (*Client, func()) {

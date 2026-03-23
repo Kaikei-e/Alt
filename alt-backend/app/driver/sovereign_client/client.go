@@ -56,7 +56,7 @@ func (c *Client) ApplyProjectionMutation(ctx context.Context, mutation knowledge
 		return nil
 	}
 
-	resp, err := c.client.ApplyProjectionMutation(ctx, connect.NewRequest(&sovereignv1.ApplyMutationRequest{
+	resp, err := c.client.ApplyProjectionMutation(ctx, connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
 		MutationType:   mutation.MutationType,
 		EntityId:       mutation.EntityID,
 		Payload:        mutation.Payload,
@@ -77,7 +77,7 @@ func (c *Client) ApplyRecallMutation(ctx context.Context, mutation knowledge_sov
 		return nil
 	}
 
-	resp, err := c.client.ApplyRecallMutation(ctx, connect.NewRequest(&sovereignv1.ApplyMutationRequest{
+	resp, err := c.client.ApplyRecallMutation(ctx, connect.NewRequest(&sovereignv1.ApplyRecallMutationRequest{
 		MutationType:   mutation.MutationType,
 		EntityId:       mutation.EntityID,
 		Payload:        mutation.Payload,
@@ -98,7 +98,7 @@ func (c *Client) ApplyCurationMutation(ctx context.Context, mutation knowledge_s
 		return nil
 	}
 
-	resp, err := c.client.ApplyCurationMutation(ctx, connect.NewRequest(&sovereignv1.ApplyMutationRequest{
+	resp, err := c.client.ApplyCurationMutation(ctx, connect.NewRequest(&sovereignv1.ApplyCurationMutationRequest{
 		MutationType:   mutation.MutationType,
 		EntityId:       mutation.EntityID,
 		Payload:        mutation.Payload,

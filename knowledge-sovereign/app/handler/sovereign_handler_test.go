@@ -195,7 +195,7 @@ func TestApplyProjectionMutation_DispatchesCorrectly(t *testing.T) {
 			defer cleanup()
 
 			resp, err := client.ApplyProjectionMutation(context.Background(),
-				connect.NewRequest(&sovereignv1.ApplyMutationRequest{
+				connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
 					MutationType:   tc.mutationType,
 					EntityId:       "test-entity",
 					Payload:        []byte(`{}`),
@@ -215,7 +215,7 @@ func TestApplyProjectionMutation_UnknownType(t *testing.T) {
 	defer cleanup()
 
 	_, err := client.ApplyProjectionMutation(context.Background(),
-		connect.NewRequest(&sovereignv1.ApplyMutationRequest{
+		connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
 			MutationType: "unknown_type",
 		}))
 
@@ -229,7 +229,7 @@ func TestApplyProjectionMutation_RepoError(t *testing.T) {
 	defer cleanup()
 
 	_, err := client.ApplyProjectionMutation(context.Background(),
-		connect.NewRequest(&sovereignv1.ApplyMutationRequest{
+		connect.NewRequest(&sovereignv1.ApplyProjectionMutationRequest{
 			MutationType: MutationUpsertHomeItem,
 			Payload:      []byte(`{}`),
 		}))
@@ -254,7 +254,7 @@ func TestApplyRecallMutation_DispatchesCorrectly(t *testing.T) {
 			defer cleanup()
 
 			resp, err := client.ApplyRecallMutation(context.Background(),
-				connect.NewRequest(&sovereignv1.ApplyMutationRequest{
+				connect.NewRequest(&sovereignv1.ApplyRecallMutationRequest{
 					MutationType: tc.mutationType,
 					Payload:      []byte(`{}`),
 				}))
@@ -272,7 +272,7 @@ func TestApplyCurationMutation_DismissCuration(t *testing.T) {
 	defer cleanup()
 
 	resp, err := client.ApplyCurationMutation(context.Background(),
-		connect.NewRequest(&sovereignv1.ApplyMutationRequest{
+		connect.NewRequest(&sovereignv1.ApplyCurationMutationRequest{
 			MutationType: MutationDismissCuration,
 			Payload:      []byte(`{}`),
 		}))
@@ -288,7 +288,7 @@ func TestApplyCurationMutation_LensMutationAcksWithoutDB(t *testing.T) {
 	defer cleanup()
 
 	resp, err := client.ApplyCurationMutation(context.Background(),
-		connect.NewRequest(&sovereignv1.ApplyMutationRequest{
+		connect.NewRequest(&sovereignv1.ApplyCurationMutationRequest{
 			MutationType: "create_lens",
 			EntityId:     "lens-123",
 			Payload:      []byte(`{"name":"test"}`),

@@ -10,9 +10,9 @@ import "google/protobuf/timestamp.proto";
 // operations — projections, recall candidates, events, lenses, and curation.
 service KnowledgeSovereignService {
   // === Mutation writes (existing) ===
-  rpc ApplyProjectionMutation(ApplyMutationRequest) returns (ApplyMutationResponse);
-  rpc ApplyRecallMutation(ApplyMutationRequest) returns (ApplyMutationResponse);
-  rpc ApplyCurationMutation(ApplyMutationRequest) returns (ApplyMutationResponse);
+  rpc ApplyProjectionMutation(ApplyProjectionMutationRequest) returns (ApplyProjectionMutationResponse);
+  rpc ApplyRecallMutation(ApplyRecallMutationRequest) returns (ApplyRecallMutationResponse);
+  rpc ApplyCurationMutation(ApplyCurationMutationRequest) returns (ApplyCurationMutationResponse);
 
   // === Projection reads ===
   rpc GetKnowledgeHomeItems(GetKnowledgeHomeItemsRequest) returns (GetKnowledgeHomeItemsResponse);
@@ -27,70 +27,88 @@ service KnowledgeSovereignService {
   rpc AppendKnowledgeEvent(AppendKnowledgeEventRequest) returns (AppendKnowledgeEventResponse);
 
   // === Projection infrastructure ===
-  rpc GetActiveProjectionVersion(GetActiveProjectionVersionRequest) returns (ProjectionVersionResponse);
+  rpc GetActiveProjectionVersion(GetActiveProjectionVersionRequest) returns (GetActiveProjectionVersionResponse);
   rpc ListProjectionVersions(ListProjectionVersionsRequest) returns (ListProjectionVersionsResponse);
-  rpc CreateProjectionVersion(CreateProjectionVersionRequest) returns (Empty);
-  rpc ActivateProjectionVersion(ActivateProjectionVersionRequest) returns (Empty);
+  rpc CreateProjectionVersion(CreateProjectionVersionRequest) returns (CreateProjectionVersionResponse);
+  rpc ActivateProjectionVersion(ActivateProjectionVersionRequest) returns (ActivateProjectionVersionResponse);
   rpc GetProjectionCheckpoint(GetProjectionCheckpointRequest) returns (GetProjectionCheckpointResponse);
-  rpc UpdateProjectionCheckpoint(UpdateProjectionCheckpointRequest) returns (Empty);
+  rpc UpdateProjectionCheckpoint(UpdateProjectionCheckpointRequest) returns (UpdateProjectionCheckpointResponse);
   rpc GetProjectionFreshness(GetProjectionFreshnessRequest) returns (GetProjectionFreshnessResponse);
   rpc GetProjectionLag(GetProjectionLagRequest) returns (GetProjectionLagResponse);
 
   // === Reproject ===
-  rpc GetReprojectRun(GetReprojectRunRequest) returns (ReprojectRunResponse);
+  rpc GetReprojectRun(GetReprojectRunRequest) returns (GetReprojectRunResponse);
   rpc ListReprojectRuns(ListReprojectRunsRequest) returns (ListReprojectRunsResponse);
-  rpc CreateReprojectRun(CreateReprojectRunRequest) returns (Empty);
-  rpc UpdateReprojectRun(UpdateReprojectRunRequest) returns (Empty);
+  rpc CreateReprojectRun(CreateReprojectRunRequest) returns (CreateReprojectRunResponse);
+  rpc UpdateReprojectRun(UpdateReprojectRunRequest) returns (UpdateReprojectRunResponse);
   rpc CompareProjections(CompareProjectionsRequest) returns (CompareProjectionsResponse);
   rpc ListProjectionAudits(ListProjectionAuditsRequest) returns (ListProjectionAuditsResponse);
-  rpc CreateProjectionAudit(CreateProjectionAuditRequest) returns (Empty);
+  rpc CreateProjectionAudit(CreateProjectionAuditRequest) returns (CreateProjectionAuditResponse);
 
   // === Backfill ===
-  rpc GetBackfillJob(GetBackfillJobRequest) returns (BackfillJobResponse);
+  rpc GetBackfillJob(GetBackfillJobRequest) returns (GetBackfillJobResponse);
   rpc ListBackfillJobs(ListBackfillJobsRequest) returns (ListBackfillJobsResponse);
-  rpc CreateBackfillJob(CreateBackfillJobRequest) returns (Empty);
-  rpc UpdateBackfillJob(UpdateBackfillJobRequest) returns (Empty);
+  rpc CreateBackfillJob(CreateBackfillJobRequest) returns (CreateBackfillJobResponse);
+  rpc UpdateBackfillJob(UpdateBackfillJobRequest) returns (UpdateBackfillJobResponse);
 
   // === Lens ===
   rpc ListLenses(ListLensesRequest) returns (ListLensesResponse);
-  rpc GetLens(GetLensRequest) returns (LensResponse);
-  rpc GetCurrentLensSelection(GetCurrentLensSelectionRequest) returns (CurrentLensSelectionResponse);
+  rpc GetLens(GetLensRequest) returns (GetLensResponse);
+  rpc GetCurrentLensSelection(GetCurrentLensSelectionRequest) returns (GetCurrentLensSelectionResponse);
   rpc ResolveLensFilter(ResolveLensFilterRequest) returns (ResolveLensFilterResponse);
-  rpc CreateLens(CreateLensRpcRequest) returns (Empty);
-  rpc CreateLensVersion(CreateLensVersionRpcRequest) returns (Empty);
-  rpc SelectCurrentLens(SelectCurrentLensRpcRequest) returns (Empty);
-  rpc ClearCurrentLens(ClearCurrentLensRequest) returns (Empty);
-  rpc ArchiveLens(ArchiveLensRequest) returns (Empty);
+  rpc CreateLens(CreateLensRequest) returns (CreateLensResponse);
+  rpc CreateLensVersion(CreateLensVersionRequest) returns (CreateLensVersionResponse);
+  rpc SelectCurrentLens(SelectCurrentLensRequest) returns (SelectCurrentLensResponse);
+  rpc ClearCurrentLens(ClearCurrentLensRequest) returns (ClearCurrentLensResponse);
+  rpc ArchiveLens(ArchiveLensRequest) returns (ArchiveLensResponse);
 
   // === Recall signals ===
   rpc ListRecallSignals(ListRecallSignalsRequest) returns (ListRecallSignalsResponse);
-  rpc AppendRecallSignal(AppendRecallSignalRpcRequest) returns (Empty);
+  rpc AppendRecallSignal(AppendRecallSignalRequest) returns (AppendRecallSignalResponse);
 
   // === User events ===
-  rpc AppendKnowledgeUserEvent(AppendKnowledgeUserEventRequest) returns (Empty);
+  rpc AppendKnowledgeUserEvent(AppendKnowledgeUserEventRequest) returns (AppendKnowledgeUserEventResponse);
 
   // === Projector watch (server streaming) ===
-  rpc WatchProjectorEvents(WatchProjectorEventsRequest) returns (stream ProjectorEventNotification);
+  rpc WatchProjectorEvents(WatchProjectorEventsRequest) returns (stream WatchProjectorEventsResponse);
 }
 
 // =============================================================================
-// Generic types
+// Mutation types
 // =============================================================================
 
-message Empty {}
-
-// =============================================================================
-// Mutation types (existing)
-// =============================================================================
-
-message ApplyMutationRequest {
+message ApplyProjectionMutationRequest {
   string mutation_type = 1;
   string entity_id = 2;
   bytes payload = 3;
   string idempotency_key = 4;
 }
 
-message ApplyMutationResponse {
+message ApplyProjectionMutationResponse {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message ApplyRecallMutationRequest {
+  string mutation_type = 1;
+  string entity_id = 2;
+  bytes payload = 3;
+  string idempotency_key = 4;
+}
+
+message ApplyRecallMutationResponse {
+  bool success = 1;
+  string error_message = 2;
+}
+
+message ApplyCurationMutationRequest {
+  string mutation_type = 1;
+  string entity_id = 2;
+  bytes payload = 3;
+  string idempotency_key = 4;
+}
+
+message ApplyCurationMutationResponse {
   bool success = 1;
   string error_message = 2;
 }
@@ -379,7 +397,7 @@ message AppendKnowledgeEventResponse {
 
 message GetActiveProjectionVersionRequest {}
 
-message ProjectionVersionResponse {
+message GetActiveProjectionVersionResponse {
   ProjectionVersion version = 1;
 }
 
@@ -393,9 +411,13 @@ message CreateProjectionVersionRequest {
   ProjectionVersion version = 1;
 }
 
+message CreateProjectionVersionResponse {}
+
 message ActivateProjectionVersionRequest {
   int32 version = 1;
 }
+
+message ActivateProjectionVersionResponse {}
 
 message GetProjectionCheckpointRequest {
   string projector_name = 1;
@@ -409,6 +431,8 @@ message UpdateProjectionCheckpointRequest {
   string projector_name = 1;
   int64 last_event_seq = 2;
 }
+
+message UpdateProjectionCheckpointResponse {}
 
 message GetProjectionFreshnessRequest {
   string projector_name = 1;
@@ -432,7 +456,7 @@ message GetReprojectRunRequest {
   string run_id = 1;
 }
 
-message ReprojectRunResponse {
+message GetReprojectRunResponse {
   ReprojectRun run = 1;
 }
 
@@ -449,9 +473,13 @@ message CreateReprojectRunRequest {
   ReprojectRun run = 1;
 }
 
+message CreateReprojectRunResponse {}
+
 message UpdateReprojectRunRequest {
   ReprojectRun run = 1;
 }
+
+message UpdateReprojectRunResponse {}
 
 message CompareProjectionsRequest {
   string from_version = 1;
@@ -475,13 +503,15 @@ message CreateProjectionAuditRequest {
   ProjectionAudit audit = 1;
 }
 
+message CreateProjectionAuditResponse {}
+
 // --- Backfill ---
 
 message GetBackfillJobRequest {
   string job_id = 1;
 }
 
-message BackfillJobResponse {
+message GetBackfillJobResponse {
   BackfillJob job = 1;
 }
 
@@ -495,9 +525,13 @@ message CreateBackfillJobRequest {
   BackfillJob job = 1;
 }
 
+message CreateBackfillJobResponse {}
+
 message UpdateBackfillJobRequest {
   BackfillJob job = 1;
 }
+
+message UpdateBackfillJobResponse {}
 
 // --- Lens ---
 
@@ -513,7 +547,7 @@ message GetLensRequest {
   string lens_id = 1;
 }
 
-message LensResponse {
+message GetLensResponse {
   Lens lens = 1;
 }
 
@@ -521,7 +555,7 @@ message GetCurrentLensSelectionRequest {
   string user_id = 1;
 }
 
-message CurrentLensSelectionResponse {
+message GetCurrentLensSelectionResponse {
   CurrentLensSelection selection = 1;
   bool found = 2;
 }
@@ -536,25 +570,35 @@ message ResolveLensFilterResponse {
   bool found = 2;
 }
 
-message CreateLensRpcRequest {
+message CreateLensRequest {
   Lens lens = 1;
 }
 
-message CreateLensVersionRpcRequest {
+message CreateLensResponse {}
+
+message CreateLensVersionRequest {
   LensVersion version = 1;
 }
 
-message SelectCurrentLensRpcRequest {
+message CreateLensVersionResponse {}
+
+message SelectCurrentLensRequest {
   CurrentLensSelection selection = 1;
 }
+
+message SelectCurrentLensResponse {}
 
 message ClearCurrentLensRequest {
   string user_id = 1;
 }
 
+message ClearCurrentLensResponse {}
+
 message ArchiveLensRequest {
   string lens_id = 1;
 }
+
+message ArchiveLensResponse {}
 
 // --- Recall signals ---
 
@@ -567,9 +611,11 @@ message ListRecallSignalsResponse {
   repeated RecallSignal signals = 1;
 }
 
-message AppendRecallSignalRpcRequest {
+message AppendRecallSignalRequest {
   RecallSignal signal = 1;
 }
+
+message AppendRecallSignalResponse {}
 
 // --- User events ---
 
@@ -588,13 +634,15 @@ message AppendKnowledgeUserEventRequest {
   KnowledgeUserEvent event = 1;
 }
 
+message AppendKnowledgeUserEventResponse {}
+
 // --- Projector watch ---
 
 message WatchProjectorEventsRequest {
   string projector_name = 1;
 }
 
-message ProjectorEventNotification {
+message WatchProjectorEventsResponse {
   int64 latest_event_seq = 1;
   google.protobuf.Timestamp occurred_at = 2;
 }

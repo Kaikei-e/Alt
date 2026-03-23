@@ -31,7 +31,7 @@ func (h *SovereignHandler) ListLenses(
 func (h *SovereignHandler) GetLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetLensRequest],
-) (*connect.Response[sovereignv1.LensResponse], error) {
+) (*connect.Response[sovereignv1.GetLensResponse], error) {
 	lensID := parseUUID(req.Msg.LensId)
 	lens, err := h.readDB.GetLens(ctx, lensID)
 	if err != nil {
@@ -41,19 +41,19 @@ func (h *SovereignHandler) GetLens(
 	if lens != nil {
 		pb = lensToProto(*lens)
 	}
-	return connect.NewResponse(&sovereignv1.LensResponse{Lens: pb}), nil
+	return connect.NewResponse(&sovereignv1.GetLensResponse{Lens: pb}), nil
 }
 
 func (h *SovereignHandler) GetCurrentLensSelection(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetCurrentLensSelectionRequest],
-) (*connect.Response[sovereignv1.CurrentLensSelectionResponse], error) {
+) (*connect.Response[sovereignv1.GetCurrentLensSelectionResponse], error) {
 	userID := parseUUID(req.Msg.UserId)
 	sel, err := h.readDB.GetCurrentLensSelection(ctx, userID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetCurrentLensSelection: %w", err))
 	}
-	resp := &sovereignv1.CurrentLensSelectionResponse{Found: sel != nil}
+	resp := &sovereignv1.GetCurrentLensSelectionResponse{Found: sel != nil}
 	if sel != nil {
 		resp.Selection = &sovereignv1.CurrentLensSelection{
 			UserId:        sel.UserID.String(),
@@ -91,8 +91,8 @@ func (h *SovereignHandler) ResolveLensFilter(
 
 func (h *SovereignHandler) CreateLens(
 	ctx context.Context,
-	req *connect.Request[sovereignv1.CreateLensRpcRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+	req *connect.Request[sovereignv1.CreateLensRequest],
+) (*connect.Response[sovereignv1.CreateLensResponse], error) {
 	pl := req.Msg.Lens
 	if pl == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("lens is required"))
@@ -113,13 +113,13 @@ func (h *SovereignHandler) CreateLens(
 	if err := h.readDB.CreateLens(ctx, l); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CreateLens: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.CreateLensResponse{}), nil
 }
 
 func (h *SovereignHandler) CreateLensVersion(
 	ctx context.Context,
-	req *connect.Request[sovereignv1.CreateLensVersionRpcRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+	req *connect.Request[sovereignv1.CreateLensVersionRequest],
+) (*connect.Response[sovereignv1.CreateLensVersionResponse], error) {
 	pv := req.Msg.Version
 	if pv == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("version is required"))
@@ -143,13 +143,13 @@ func (h *SovereignHandler) CreateLensVersion(
 	if err := h.readDB.CreateLensVersion(ctx, v); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CreateLensVersion: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.CreateLensVersionResponse{}), nil
 }
 
 func (h *SovereignHandler) SelectCurrentLens(
 	ctx context.Context,
-	req *connect.Request[sovereignv1.SelectCurrentLensRpcRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+	req *connect.Request[sovereignv1.SelectCurrentLensRequest],
+) (*connect.Response[sovereignv1.SelectCurrentLensResponse], error) {
 	ps := req.Msg.Selection
 	if ps == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("selection is required"))
@@ -167,29 +167,29 @@ func (h *SovereignHandler) SelectCurrentLens(
 	if err := h.readDB.SelectCurrentLens(ctx, c); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("SelectCurrentLens: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.SelectCurrentLensResponse{}), nil
 }
 
 func (h *SovereignHandler) ClearCurrentLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ClearCurrentLensRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.ClearCurrentLensResponse], error) {
 	userID := parseUUID(req.Msg.UserId)
 	if err := h.readDB.ClearCurrentLens(ctx, userID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ClearCurrentLens: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.ClearCurrentLensResponse{}), nil
 }
 
 func (h *SovereignHandler) ArchiveLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ArchiveLensRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.ArchiveLensResponse], error) {
 	lensID := parseUUID(req.Msg.LensId)
 	if err := h.readDB.ArchiveLens(ctx, lensID); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ArchiveLens: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.ArchiveLensResponse{}), nil
 }
 
 // --- conversion helpers ---

@@ -22,7 +22,7 @@ func (c *Client) AppendRecallSignal(ctx context.Context, signal domain.RecallSig
 		return fmt.Errorf("sovereign AppendRecallSignal marshal payload: %w", err)
 	}
 
-	_, err = c.client.AppendRecallSignal(ctx, connect.NewRequest(&sovereignv1.AppendRecallSignalRpcRequest{
+	_, err = c.client.AppendRecallSignal(ctx, connect.NewRequest(&sovereignv1.AppendRecallSignalRequest{
 		Signal: &sovereignv1.RecallSignal{
 			SignalId:       signal.SignalID.String(),
 			UserId:         signal.UserID.String(),

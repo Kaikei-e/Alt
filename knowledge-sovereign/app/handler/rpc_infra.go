@@ -93,7 +93,7 @@ func (h *SovereignHandler) AppendKnowledgeEvent(
 func (h *SovereignHandler) GetActiveProjectionVersion(
 	ctx context.Context,
 	_ *connect.Request[sovereignv1.GetActiveProjectionVersionRequest],
-) (*connect.Response[sovereignv1.ProjectionVersionResponse], error) {
+) (*connect.Response[sovereignv1.GetActiveProjectionVersionResponse], error) {
 	v, err := h.readDB.GetActiveProjectionVersion(ctx)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetActiveProjectionVersion: %w", err))
@@ -102,7 +102,7 @@ func (h *SovereignHandler) GetActiveProjectionVersion(
 	if v != nil {
 		pb = projectionVersionToProto(*v)
 	}
-	return connect.NewResponse(&sovereignv1.ProjectionVersionResponse{Version: pb}), nil
+	return connect.NewResponse(&sovereignv1.GetActiveProjectionVersionResponse{Version: pb}), nil
 }
 
 func (h *SovereignHandler) ListProjectionVersions(
@@ -123,7 +123,7 @@ func (h *SovereignHandler) ListProjectionVersions(
 func (h *SovereignHandler) CreateProjectionVersion(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateProjectionVersionRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.CreateProjectionVersionResponse], error) {
 	pv := req.Msg.Version
 	if pv == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("version is required"))
@@ -145,17 +145,17 @@ func (h *SovereignHandler) CreateProjectionVersion(
 	if err := h.readDB.CreateProjectionVersion(ctx, v); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CreateProjectionVersion: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.CreateProjectionVersionResponse{}), nil
 }
 
 func (h *SovereignHandler) ActivateProjectionVersion(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ActivateProjectionVersionRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.ActivateProjectionVersionResponse], error) {
 	if err := h.readDB.ActivateProjectionVersion(ctx, int(req.Msg.Version)); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ActivateProjectionVersion: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.ActivateProjectionVersionResponse{}), nil
 }
 
 // === Checkpoints ===
@@ -174,11 +174,11 @@ func (h *SovereignHandler) GetProjectionCheckpoint(
 func (h *SovereignHandler) UpdateProjectionCheckpoint(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.UpdateProjectionCheckpointRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.UpdateProjectionCheckpointResponse], error) {
 	if err := h.readDB.UpdateProjectionCheckpoint(ctx, req.Msg.ProjectorName, req.Msg.LastEventSeq); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("UpdateProjectionCheckpoint: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.UpdateProjectionCheckpointResponse{}), nil
 }
 
 func (h *SovereignHandler) GetProjectionFreshness(
@@ -216,7 +216,7 @@ func (h *SovereignHandler) GetProjectionLag(
 func (h *SovereignHandler) GetReprojectRun(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetReprojectRunRequest],
-) (*connect.Response[sovereignv1.ReprojectRunResponse], error) {
+) (*connect.Response[sovereignv1.GetReprojectRunResponse], error) {
 	runID := parseUUID(req.Msg.RunId)
 	run, err := h.readDB.GetReprojectRun(ctx, runID)
 	if err != nil {
@@ -226,7 +226,7 @@ func (h *SovereignHandler) GetReprojectRun(
 	if run != nil {
 		pb = reprojectRunToProto(*run)
 	}
-	return connect.NewResponse(&sovereignv1.ReprojectRunResponse{Run: pb}), nil
+	return connect.NewResponse(&sovereignv1.GetReprojectRunResponse{Run: pb}), nil
 }
 
 func (h *SovereignHandler) ListReprojectRuns(
@@ -247,23 +247,23 @@ func (h *SovereignHandler) ListReprojectRuns(
 func (h *SovereignHandler) CreateReprojectRun(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateReprojectRunRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.CreateReprojectRunResponse], error) {
 	run := protoToReprojectRun(req.Msg.Run)
 	if err := h.readDB.CreateReprojectRun(ctx, run); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CreateReprojectRun: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.CreateReprojectRunResponse{}), nil
 }
 
 func (h *SovereignHandler) UpdateReprojectRun(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.UpdateReprojectRunRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.UpdateReprojectRunResponse], error) {
 	run := protoToReprojectRun(req.Msg.Run)
 	if err := h.readDB.UpdateReprojectRun(ctx, run); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("UpdateReprojectRun: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.UpdateReprojectRunResponse{}), nil
 }
 
 func (h *SovereignHandler) CompareProjections(
@@ -312,7 +312,7 @@ func (h *SovereignHandler) ListProjectionAudits(
 func (h *SovereignHandler) CreateProjectionAudit(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateProjectionAuditRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.CreateProjectionAuditResponse], error) {
 	pa := req.Msg.Audit
 	if pa == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("audit is required"))
@@ -331,7 +331,7 @@ func (h *SovereignHandler) CreateProjectionAudit(
 	if err := h.readDB.CreateProjectionAudit(ctx, audit); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CreateProjectionAudit: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.CreateProjectionAuditResponse{}), nil
 }
 
 // === Backfill ===
@@ -339,7 +339,7 @@ func (h *SovereignHandler) CreateProjectionAudit(
 func (h *SovereignHandler) GetBackfillJob(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetBackfillJobRequest],
-) (*connect.Response[sovereignv1.BackfillJobResponse], error) {
+) (*connect.Response[sovereignv1.GetBackfillJobResponse], error) {
 	jobID := parseUUID(req.Msg.JobId)
 	job, err := h.readDB.GetBackfillJob(ctx, jobID)
 	if err != nil {
@@ -349,7 +349,7 @@ func (h *SovereignHandler) GetBackfillJob(
 	if job != nil {
 		pb = backfillJobToProto(*job)
 	}
-	return connect.NewResponse(&sovereignv1.BackfillJobResponse{Job: pb}), nil
+	return connect.NewResponse(&sovereignv1.GetBackfillJobResponse{Job: pb}), nil
 }
 
 func (h *SovereignHandler) ListBackfillJobs(
@@ -370,23 +370,23 @@ func (h *SovereignHandler) ListBackfillJobs(
 func (h *SovereignHandler) CreateBackfillJob(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateBackfillJobRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.CreateBackfillJobResponse], error) {
 	j := protoToBackfillJob(req.Msg.Job)
 	if err := h.readDB.CreateBackfillJob(ctx, j); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CreateBackfillJob: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.CreateBackfillJobResponse{}), nil
 }
 
 func (h *SovereignHandler) UpdateBackfillJob(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.UpdateBackfillJobRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.UpdateBackfillJobResponse], error) {
 	j := protoToBackfillJob(req.Msg.Job)
 	if err := h.readDB.UpdateBackfillJob(ctx, j); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("UpdateBackfillJob: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.UpdateBackfillJobResponse{}), nil
 }
 
 // === Recall Signals ===
@@ -417,8 +417,8 @@ func (h *SovereignHandler) ListRecallSignals(
 
 func (h *SovereignHandler) AppendRecallSignal(
 	ctx context.Context,
-	req *connect.Request[sovereignv1.AppendRecallSignalRpcRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+	req *connect.Request[sovereignv1.AppendRecallSignalRequest],
+) (*connect.Response[sovereignv1.AppendRecallSignalResponse], error) {
 	ps := req.Msg.Signal
 	if ps == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("signal is required"))
@@ -439,7 +439,7 @@ func (h *SovereignHandler) AppendRecallSignal(
 	if err := h.readDB.AppendRecallSignal(ctx, s); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("AppendRecallSignal: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.AppendRecallSignalResponse{}), nil
 }
 
 // === User events ===
@@ -447,7 +447,7 @@ func (h *SovereignHandler) AppendRecallSignal(
 func (h *SovereignHandler) AppendKnowledgeUserEvent(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.AppendKnowledgeUserEventRequest],
-) (*connect.Response[sovereignv1.Empty], error) {
+) (*connect.Response[sovereignv1.AppendKnowledgeUserEventResponse], error) {
 	pe := req.Msg.Event
 	if pe == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("event is required"))
@@ -469,7 +469,7 @@ func (h *SovereignHandler) AppendKnowledgeUserEvent(
 	if err := h.readDB.AppendKnowledgeUserEvent(ctx, e); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("AppendKnowledgeUserEvent: %w", err))
 	}
-	return connect.NewResponse(&sovereignv1.Empty{}), nil
+	return connect.NewResponse(&sovereignv1.AppendKnowledgeUserEventResponse{}), nil
 }
 
 // === Proto conversion helpers ===

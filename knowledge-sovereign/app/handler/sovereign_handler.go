@@ -73,8 +73,8 @@ func WithDatabaseURL(url string) Option {
 // ApplyProjectionMutation dispatches a projection mutation to the repository.
 func (h *SovereignHandler) ApplyProjectionMutation(
 	ctx context.Context,
-	req *connect.Request[sovereignv1.ApplyMutationRequest],
-) (*connect.Response[sovereignv1.ApplyMutationResponse], error) {
+	req *connect.Request[sovereignv1.ApplyProjectionMutationRequest],
+) (*connect.Response[sovereignv1.ApplyProjectionMutationResponse], error) {
 	msg := req.Msg
 	payload := json.RawMessage(msg.Payload)
 
@@ -101,14 +101,14 @@ func (h *SovereignHandler) ApplyProjectionMutation(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	return connect.NewResponse(&sovereignv1.ApplyMutationResponse{Success: true}), nil
+	return connect.NewResponse(&sovereignv1.ApplyProjectionMutationResponse{Success: true}), nil
 }
 
 // ApplyRecallMutation dispatches a recall mutation to the repository.
 func (h *SovereignHandler) ApplyRecallMutation(
 	ctx context.Context,
-	req *connect.Request[sovereignv1.ApplyMutationRequest],
-) (*connect.Response[sovereignv1.ApplyMutationResponse], error) {
+	req *connect.Request[sovereignv1.ApplyRecallMutationRequest],
+) (*connect.Response[sovereignv1.ApplyRecallMutationResponse], error) {
 	msg := req.Msg
 	payload := json.RawMessage(msg.Payload)
 
@@ -131,14 +131,14 @@ func (h *SovereignHandler) ApplyRecallMutation(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	return connect.NewResponse(&sovereignv1.ApplyMutationResponse{Success: true}), nil
+	return connect.NewResponse(&sovereignv1.ApplyRecallMutationResponse{Success: true}), nil
 }
 
 // ApplyCurationMutation dispatches a curation mutation to the repository.
 func (h *SovereignHandler) ApplyCurationMutation(
 	ctx context.Context,
-	req *connect.Request[sovereignv1.ApplyMutationRequest],
-) (*connect.Response[sovereignv1.ApplyMutationResponse], error) {
+	req *connect.Request[sovereignv1.ApplyCurationMutationRequest],
+) (*connect.Response[sovereignv1.ApplyCurationMutationResponse], error) {
 	msg := req.Msg
 	payload := json.RawMessage(msg.Payload)
 
@@ -158,5 +158,5 @@ func (h *SovereignHandler) ApplyCurationMutation(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	return connect.NewResponse(&sovereignv1.ApplyMutationResponse{Success: true}), nil
+	return connect.NewResponse(&sovereignv1.ApplyCurationMutationResponse{Success: true}), nil
 }

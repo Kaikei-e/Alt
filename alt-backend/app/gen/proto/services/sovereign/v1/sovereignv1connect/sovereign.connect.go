@@ -169,9 +169,9 @@ const (
 // services.sovereign.v1.KnowledgeSovereignService service.
 type KnowledgeSovereignServiceClient interface {
 	// === Mutation writes (existing) ===
-	ApplyProjectionMutation(context.Context, *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error)
-	ApplyRecallMutation(context.Context, *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error)
-	ApplyCurationMutation(context.Context, *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error)
+	ApplyProjectionMutation(context.Context, *connect.Request[v1.ApplyProjectionMutationRequest]) (*connect.Response[v1.ApplyProjectionMutationResponse], error)
+	ApplyRecallMutation(context.Context, *connect.Request[v1.ApplyRecallMutationRequest]) (*connect.Response[v1.ApplyRecallMutationResponse], error)
+	ApplyCurationMutation(context.Context, *connect.Request[v1.ApplyCurationMutationRequest]) (*connect.Response[v1.ApplyCurationMutationResponse], error)
 	// === Projection reads ===
 	GetKnowledgeHomeItems(context.Context, *connect.Request[v1.GetKnowledgeHomeItemsRequest]) (*connect.Response[v1.GetKnowledgeHomeItemsResponse], error)
 	GetTodayDigest(context.Context, *connect.Request[v1.GetTodayDigestRequest]) (*connect.Response[v1.GetTodayDigestResponse], error)
@@ -183,44 +183,44 @@ type KnowledgeSovereignServiceClient interface {
 	GetLatestEventSeq(context.Context, *connect.Request[v1.GetLatestEventSeqRequest]) (*connect.Response[v1.GetLatestEventSeqResponse], error)
 	AppendKnowledgeEvent(context.Context, *connect.Request[v1.AppendKnowledgeEventRequest]) (*connect.Response[v1.AppendKnowledgeEventResponse], error)
 	// === Projection infrastructure ===
-	GetActiveProjectionVersion(context.Context, *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.ProjectionVersionResponse], error)
+	GetActiveProjectionVersion(context.Context, *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.GetActiveProjectionVersionResponse], error)
 	ListProjectionVersions(context.Context, *connect.Request[v1.ListProjectionVersionsRequest]) (*connect.Response[v1.ListProjectionVersionsResponse], error)
-	CreateProjectionVersion(context.Context, *connect.Request[v1.CreateProjectionVersionRequest]) (*connect.Response[v1.Empty], error)
-	ActivateProjectionVersion(context.Context, *connect.Request[v1.ActivateProjectionVersionRequest]) (*connect.Response[v1.Empty], error)
+	CreateProjectionVersion(context.Context, *connect.Request[v1.CreateProjectionVersionRequest]) (*connect.Response[v1.CreateProjectionVersionResponse], error)
+	ActivateProjectionVersion(context.Context, *connect.Request[v1.ActivateProjectionVersionRequest]) (*connect.Response[v1.ActivateProjectionVersionResponse], error)
 	GetProjectionCheckpoint(context.Context, *connect.Request[v1.GetProjectionCheckpointRequest]) (*connect.Response[v1.GetProjectionCheckpointResponse], error)
-	UpdateProjectionCheckpoint(context.Context, *connect.Request[v1.UpdateProjectionCheckpointRequest]) (*connect.Response[v1.Empty], error)
+	UpdateProjectionCheckpoint(context.Context, *connect.Request[v1.UpdateProjectionCheckpointRequest]) (*connect.Response[v1.UpdateProjectionCheckpointResponse], error)
 	GetProjectionFreshness(context.Context, *connect.Request[v1.GetProjectionFreshnessRequest]) (*connect.Response[v1.GetProjectionFreshnessResponse], error)
 	GetProjectionLag(context.Context, *connect.Request[v1.GetProjectionLagRequest]) (*connect.Response[v1.GetProjectionLagResponse], error)
 	// === Reproject ===
-	GetReprojectRun(context.Context, *connect.Request[v1.GetReprojectRunRequest]) (*connect.Response[v1.ReprojectRunResponse], error)
+	GetReprojectRun(context.Context, *connect.Request[v1.GetReprojectRunRequest]) (*connect.Response[v1.GetReprojectRunResponse], error)
 	ListReprojectRuns(context.Context, *connect.Request[v1.ListReprojectRunsRequest]) (*connect.Response[v1.ListReprojectRunsResponse], error)
-	CreateReprojectRun(context.Context, *connect.Request[v1.CreateReprojectRunRequest]) (*connect.Response[v1.Empty], error)
-	UpdateReprojectRun(context.Context, *connect.Request[v1.UpdateReprojectRunRequest]) (*connect.Response[v1.Empty], error)
+	CreateReprojectRun(context.Context, *connect.Request[v1.CreateReprojectRunRequest]) (*connect.Response[v1.CreateReprojectRunResponse], error)
+	UpdateReprojectRun(context.Context, *connect.Request[v1.UpdateReprojectRunRequest]) (*connect.Response[v1.UpdateReprojectRunResponse], error)
 	CompareProjections(context.Context, *connect.Request[v1.CompareProjectionsRequest]) (*connect.Response[v1.CompareProjectionsResponse], error)
 	ListProjectionAudits(context.Context, *connect.Request[v1.ListProjectionAuditsRequest]) (*connect.Response[v1.ListProjectionAuditsResponse], error)
-	CreateProjectionAudit(context.Context, *connect.Request[v1.CreateProjectionAuditRequest]) (*connect.Response[v1.Empty], error)
+	CreateProjectionAudit(context.Context, *connect.Request[v1.CreateProjectionAuditRequest]) (*connect.Response[v1.CreateProjectionAuditResponse], error)
 	// === Backfill ===
-	GetBackfillJob(context.Context, *connect.Request[v1.GetBackfillJobRequest]) (*connect.Response[v1.BackfillJobResponse], error)
+	GetBackfillJob(context.Context, *connect.Request[v1.GetBackfillJobRequest]) (*connect.Response[v1.GetBackfillJobResponse], error)
 	ListBackfillJobs(context.Context, *connect.Request[v1.ListBackfillJobsRequest]) (*connect.Response[v1.ListBackfillJobsResponse], error)
-	CreateBackfillJob(context.Context, *connect.Request[v1.CreateBackfillJobRequest]) (*connect.Response[v1.Empty], error)
-	UpdateBackfillJob(context.Context, *connect.Request[v1.UpdateBackfillJobRequest]) (*connect.Response[v1.Empty], error)
+	CreateBackfillJob(context.Context, *connect.Request[v1.CreateBackfillJobRequest]) (*connect.Response[v1.CreateBackfillJobResponse], error)
+	UpdateBackfillJob(context.Context, *connect.Request[v1.UpdateBackfillJobRequest]) (*connect.Response[v1.UpdateBackfillJobResponse], error)
 	// === Lens ===
 	ListLenses(context.Context, *connect.Request[v1.ListLensesRequest]) (*connect.Response[v1.ListLensesResponse], error)
-	GetLens(context.Context, *connect.Request[v1.GetLensRequest]) (*connect.Response[v1.LensResponse], error)
-	GetCurrentLensSelection(context.Context, *connect.Request[v1.GetCurrentLensSelectionRequest]) (*connect.Response[v1.CurrentLensSelectionResponse], error)
+	GetLens(context.Context, *connect.Request[v1.GetLensRequest]) (*connect.Response[v1.GetLensResponse], error)
+	GetCurrentLensSelection(context.Context, *connect.Request[v1.GetCurrentLensSelectionRequest]) (*connect.Response[v1.GetCurrentLensSelectionResponse], error)
 	ResolveLensFilter(context.Context, *connect.Request[v1.ResolveLensFilterRequest]) (*connect.Response[v1.ResolveLensFilterResponse], error)
-	CreateLens(context.Context, *connect.Request[v1.CreateLensRpcRequest]) (*connect.Response[v1.Empty], error)
-	CreateLensVersion(context.Context, *connect.Request[v1.CreateLensVersionRpcRequest]) (*connect.Response[v1.Empty], error)
-	SelectCurrentLens(context.Context, *connect.Request[v1.SelectCurrentLensRpcRequest]) (*connect.Response[v1.Empty], error)
-	ClearCurrentLens(context.Context, *connect.Request[v1.ClearCurrentLensRequest]) (*connect.Response[v1.Empty], error)
-	ArchiveLens(context.Context, *connect.Request[v1.ArchiveLensRequest]) (*connect.Response[v1.Empty], error)
+	CreateLens(context.Context, *connect.Request[v1.CreateLensRequest]) (*connect.Response[v1.CreateLensResponse], error)
+	CreateLensVersion(context.Context, *connect.Request[v1.CreateLensVersionRequest]) (*connect.Response[v1.CreateLensVersionResponse], error)
+	SelectCurrentLens(context.Context, *connect.Request[v1.SelectCurrentLensRequest]) (*connect.Response[v1.SelectCurrentLensResponse], error)
+	ClearCurrentLens(context.Context, *connect.Request[v1.ClearCurrentLensRequest]) (*connect.Response[v1.ClearCurrentLensResponse], error)
+	ArchiveLens(context.Context, *connect.Request[v1.ArchiveLensRequest]) (*connect.Response[v1.ArchiveLensResponse], error)
 	// === Recall signals ===
 	ListRecallSignals(context.Context, *connect.Request[v1.ListRecallSignalsRequest]) (*connect.Response[v1.ListRecallSignalsResponse], error)
-	AppendRecallSignal(context.Context, *connect.Request[v1.AppendRecallSignalRpcRequest]) (*connect.Response[v1.Empty], error)
+	AppendRecallSignal(context.Context, *connect.Request[v1.AppendRecallSignalRequest]) (*connect.Response[v1.AppendRecallSignalResponse], error)
 	// === User events ===
-	AppendKnowledgeUserEvent(context.Context, *connect.Request[v1.AppendKnowledgeUserEventRequest]) (*connect.Response[v1.Empty], error)
+	AppendKnowledgeUserEvent(context.Context, *connect.Request[v1.AppendKnowledgeUserEventRequest]) (*connect.Response[v1.AppendKnowledgeUserEventResponse], error)
 	// === Projector watch (server streaming) ===
-	WatchProjectorEvents(context.Context, *connect.Request[v1.WatchProjectorEventsRequest]) (*connect.ServerStreamForClient[v1.ProjectorEventNotification], error)
+	WatchProjectorEvents(context.Context, *connect.Request[v1.WatchProjectorEventsRequest]) (*connect.ServerStreamForClient[v1.WatchProjectorEventsResponse], error)
 }
 
 // NewKnowledgeSovereignServiceClient constructs a client for the
@@ -235,19 +235,19 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 	baseURL = strings.TrimRight(baseURL, "/")
 	knowledgeSovereignServiceMethods := v1.File_services_sovereign_v1_sovereign_proto.Services().ByName("KnowledgeSovereignService").Methods()
 	return &knowledgeSovereignServiceClient{
-		applyProjectionMutation: connect.NewClient[v1.ApplyMutationRequest, v1.ApplyMutationResponse](
+		applyProjectionMutation: connect.NewClient[v1.ApplyProjectionMutationRequest, v1.ApplyProjectionMutationResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceApplyProjectionMutationProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ApplyProjectionMutation")),
 			connect.WithClientOptions(opts...),
 		),
-		applyRecallMutation: connect.NewClient[v1.ApplyMutationRequest, v1.ApplyMutationResponse](
+		applyRecallMutation: connect.NewClient[v1.ApplyRecallMutationRequest, v1.ApplyRecallMutationResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceApplyRecallMutationProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ApplyRecallMutation")),
 			connect.WithClientOptions(opts...),
 		),
-		applyCurationMutation: connect.NewClient[v1.ApplyMutationRequest, v1.ApplyMutationResponse](
+		applyCurationMutation: connect.NewClient[v1.ApplyCurationMutationRequest, v1.ApplyCurationMutationResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceApplyCurationMutationProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ApplyCurationMutation")),
@@ -301,7 +301,7 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("AppendKnowledgeEvent")),
 			connect.WithClientOptions(opts...),
 		),
-		getActiveProjectionVersion: connect.NewClient[v1.GetActiveProjectionVersionRequest, v1.ProjectionVersionResponse](
+		getActiveProjectionVersion: connect.NewClient[v1.GetActiveProjectionVersionRequest, v1.GetActiveProjectionVersionResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceGetActiveProjectionVersionProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetActiveProjectionVersion")),
@@ -313,13 +313,13 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListProjectionVersions")),
 			connect.WithClientOptions(opts...),
 		),
-		createProjectionVersion: connect.NewClient[v1.CreateProjectionVersionRequest, v1.Empty](
+		createProjectionVersion: connect.NewClient[v1.CreateProjectionVersionRequest, v1.CreateProjectionVersionResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceCreateProjectionVersionProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("CreateProjectionVersion")),
 			connect.WithClientOptions(opts...),
 		),
-		activateProjectionVersion: connect.NewClient[v1.ActivateProjectionVersionRequest, v1.Empty](
+		activateProjectionVersion: connect.NewClient[v1.ActivateProjectionVersionRequest, v1.ActivateProjectionVersionResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceActivateProjectionVersionProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ActivateProjectionVersion")),
@@ -331,7 +331,7 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetProjectionCheckpoint")),
 			connect.WithClientOptions(opts...),
 		),
-		updateProjectionCheckpoint: connect.NewClient[v1.UpdateProjectionCheckpointRequest, v1.Empty](
+		updateProjectionCheckpoint: connect.NewClient[v1.UpdateProjectionCheckpointRequest, v1.UpdateProjectionCheckpointResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceUpdateProjectionCheckpointProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("UpdateProjectionCheckpoint")),
@@ -349,7 +349,7 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetProjectionLag")),
 			connect.WithClientOptions(opts...),
 		),
-		getReprojectRun: connect.NewClient[v1.GetReprojectRunRequest, v1.ReprojectRunResponse](
+		getReprojectRun: connect.NewClient[v1.GetReprojectRunRequest, v1.GetReprojectRunResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceGetReprojectRunProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetReprojectRun")),
@@ -361,13 +361,13 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReprojectRuns")),
 			connect.WithClientOptions(opts...),
 		),
-		createReprojectRun: connect.NewClient[v1.CreateReprojectRunRequest, v1.Empty](
+		createReprojectRun: connect.NewClient[v1.CreateReprojectRunRequest, v1.CreateReprojectRunResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceCreateReprojectRunProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("CreateReprojectRun")),
 			connect.WithClientOptions(opts...),
 		),
-		updateReprojectRun: connect.NewClient[v1.UpdateReprojectRunRequest, v1.Empty](
+		updateReprojectRun: connect.NewClient[v1.UpdateReprojectRunRequest, v1.UpdateReprojectRunResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceUpdateReprojectRunProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("UpdateReprojectRun")),
@@ -385,13 +385,13 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListProjectionAudits")),
 			connect.WithClientOptions(opts...),
 		),
-		createProjectionAudit: connect.NewClient[v1.CreateProjectionAuditRequest, v1.Empty](
+		createProjectionAudit: connect.NewClient[v1.CreateProjectionAuditRequest, v1.CreateProjectionAuditResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceCreateProjectionAuditProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("CreateProjectionAudit")),
 			connect.WithClientOptions(opts...),
 		),
-		getBackfillJob: connect.NewClient[v1.GetBackfillJobRequest, v1.BackfillJobResponse](
+		getBackfillJob: connect.NewClient[v1.GetBackfillJobRequest, v1.GetBackfillJobResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceGetBackfillJobProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetBackfillJob")),
@@ -403,13 +403,13 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListBackfillJobs")),
 			connect.WithClientOptions(opts...),
 		),
-		createBackfillJob: connect.NewClient[v1.CreateBackfillJobRequest, v1.Empty](
+		createBackfillJob: connect.NewClient[v1.CreateBackfillJobRequest, v1.CreateBackfillJobResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceCreateBackfillJobProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("CreateBackfillJob")),
 			connect.WithClientOptions(opts...),
 		),
-		updateBackfillJob: connect.NewClient[v1.UpdateBackfillJobRequest, v1.Empty](
+		updateBackfillJob: connect.NewClient[v1.UpdateBackfillJobRequest, v1.UpdateBackfillJobResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceUpdateBackfillJobProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("UpdateBackfillJob")),
@@ -421,13 +421,13 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListLenses")),
 			connect.WithClientOptions(opts...),
 		),
-		getLens: connect.NewClient[v1.GetLensRequest, v1.LensResponse](
+		getLens: connect.NewClient[v1.GetLensRequest, v1.GetLensResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceGetLensProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetLens")),
 			connect.WithClientOptions(opts...),
 		),
-		getCurrentLensSelection: connect.NewClient[v1.GetCurrentLensSelectionRequest, v1.CurrentLensSelectionResponse](
+		getCurrentLensSelection: connect.NewClient[v1.GetCurrentLensSelectionRequest, v1.GetCurrentLensSelectionResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceGetCurrentLensSelectionProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetCurrentLensSelection")),
@@ -439,31 +439,31 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ResolveLensFilter")),
 			connect.WithClientOptions(opts...),
 		),
-		createLens: connect.NewClient[v1.CreateLensRpcRequest, v1.Empty](
+		createLens: connect.NewClient[v1.CreateLensRequest, v1.CreateLensResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceCreateLensProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("CreateLens")),
 			connect.WithClientOptions(opts...),
 		),
-		createLensVersion: connect.NewClient[v1.CreateLensVersionRpcRequest, v1.Empty](
+		createLensVersion: connect.NewClient[v1.CreateLensVersionRequest, v1.CreateLensVersionResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceCreateLensVersionProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("CreateLensVersion")),
 			connect.WithClientOptions(opts...),
 		),
-		selectCurrentLens: connect.NewClient[v1.SelectCurrentLensRpcRequest, v1.Empty](
+		selectCurrentLens: connect.NewClient[v1.SelectCurrentLensRequest, v1.SelectCurrentLensResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceSelectCurrentLensProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("SelectCurrentLens")),
 			connect.WithClientOptions(opts...),
 		),
-		clearCurrentLens: connect.NewClient[v1.ClearCurrentLensRequest, v1.Empty](
+		clearCurrentLens: connect.NewClient[v1.ClearCurrentLensRequest, v1.ClearCurrentLensResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceClearCurrentLensProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ClearCurrentLens")),
 			connect.WithClientOptions(opts...),
 		),
-		archiveLens: connect.NewClient[v1.ArchiveLensRequest, v1.Empty](
+		archiveLens: connect.NewClient[v1.ArchiveLensRequest, v1.ArchiveLensResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceArchiveLensProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ArchiveLens")),
@@ -475,19 +475,19 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListRecallSignals")),
 			connect.WithClientOptions(opts...),
 		),
-		appendRecallSignal: connect.NewClient[v1.AppendRecallSignalRpcRequest, v1.Empty](
+		appendRecallSignal: connect.NewClient[v1.AppendRecallSignalRequest, v1.AppendRecallSignalResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceAppendRecallSignalProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("AppendRecallSignal")),
 			connect.WithClientOptions(opts...),
 		),
-		appendKnowledgeUserEvent: connect.NewClient[v1.AppendKnowledgeUserEventRequest, v1.Empty](
+		appendKnowledgeUserEvent: connect.NewClient[v1.AppendKnowledgeUserEventRequest, v1.AppendKnowledgeUserEventResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceAppendKnowledgeUserEventProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("AppendKnowledgeUserEvent")),
 			connect.WithClientOptions(opts...),
 		),
-		watchProjectorEvents: connect.NewClient[v1.WatchProjectorEventsRequest, v1.ProjectorEventNotification](
+		watchProjectorEvents: connect.NewClient[v1.WatchProjectorEventsRequest, v1.WatchProjectorEventsResponse](
 			httpClient,
 			baseURL+KnowledgeSovereignServiceWatchProjectorEventsProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("WatchProjectorEvents")),
@@ -498,9 +498,9 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 
 // knowledgeSovereignServiceClient implements KnowledgeSovereignServiceClient.
 type knowledgeSovereignServiceClient struct {
-	applyProjectionMutation    *connect.Client[v1.ApplyMutationRequest, v1.ApplyMutationResponse]
-	applyRecallMutation        *connect.Client[v1.ApplyMutationRequest, v1.ApplyMutationResponse]
-	applyCurationMutation      *connect.Client[v1.ApplyMutationRequest, v1.ApplyMutationResponse]
+	applyProjectionMutation    *connect.Client[v1.ApplyProjectionMutationRequest, v1.ApplyProjectionMutationResponse]
+	applyRecallMutation        *connect.Client[v1.ApplyRecallMutationRequest, v1.ApplyRecallMutationResponse]
+	applyCurationMutation      *connect.Client[v1.ApplyCurationMutationRequest, v1.ApplyCurationMutationResponse]
 	getKnowledgeHomeItems      *connect.Client[v1.GetKnowledgeHomeItemsRequest, v1.GetKnowledgeHomeItemsResponse]
 	getTodayDigest             *connect.Client[v1.GetTodayDigestRequest, v1.GetTodayDigestResponse]
 	getRecallCandidates        *connect.Client[v1.GetRecallCandidatesRequest, v1.GetRecallCandidatesResponse]
@@ -509,54 +509,54 @@ type knowledgeSovereignServiceClient struct {
 	listKnowledgeEvents        *connect.Client[v1.ListKnowledgeEventsRequest, v1.ListKnowledgeEventsResponse]
 	getLatestEventSeq          *connect.Client[v1.GetLatestEventSeqRequest, v1.GetLatestEventSeqResponse]
 	appendKnowledgeEvent       *connect.Client[v1.AppendKnowledgeEventRequest, v1.AppendKnowledgeEventResponse]
-	getActiveProjectionVersion *connect.Client[v1.GetActiveProjectionVersionRequest, v1.ProjectionVersionResponse]
+	getActiveProjectionVersion *connect.Client[v1.GetActiveProjectionVersionRequest, v1.GetActiveProjectionVersionResponse]
 	listProjectionVersions     *connect.Client[v1.ListProjectionVersionsRequest, v1.ListProjectionVersionsResponse]
-	createProjectionVersion    *connect.Client[v1.CreateProjectionVersionRequest, v1.Empty]
-	activateProjectionVersion  *connect.Client[v1.ActivateProjectionVersionRequest, v1.Empty]
+	createProjectionVersion    *connect.Client[v1.CreateProjectionVersionRequest, v1.CreateProjectionVersionResponse]
+	activateProjectionVersion  *connect.Client[v1.ActivateProjectionVersionRequest, v1.ActivateProjectionVersionResponse]
 	getProjectionCheckpoint    *connect.Client[v1.GetProjectionCheckpointRequest, v1.GetProjectionCheckpointResponse]
-	updateProjectionCheckpoint *connect.Client[v1.UpdateProjectionCheckpointRequest, v1.Empty]
+	updateProjectionCheckpoint *connect.Client[v1.UpdateProjectionCheckpointRequest, v1.UpdateProjectionCheckpointResponse]
 	getProjectionFreshness     *connect.Client[v1.GetProjectionFreshnessRequest, v1.GetProjectionFreshnessResponse]
 	getProjectionLag           *connect.Client[v1.GetProjectionLagRequest, v1.GetProjectionLagResponse]
-	getReprojectRun            *connect.Client[v1.GetReprojectRunRequest, v1.ReprojectRunResponse]
+	getReprojectRun            *connect.Client[v1.GetReprojectRunRequest, v1.GetReprojectRunResponse]
 	listReprojectRuns          *connect.Client[v1.ListReprojectRunsRequest, v1.ListReprojectRunsResponse]
-	createReprojectRun         *connect.Client[v1.CreateReprojectRunRequest, v1.Empty]
-	updateReprojectRun         *connect.Client[v1.UpdateReprojectRunRequest, v1.Empty]
+	createReprojectRun         *connect.Client[v1.CreateReprojectRunRequest, v1.CreateReprojectRunResponse]
+	updateReprojectRun         *connect.Client[v1.UpdateReprojectRunRequest, v1.UpdateReprojectRunResponse]
 	compareProjections         *connect.Client[v1.CompareProjectionsRequest, v1.CompareProjectionsResponse]
 	listProjectionAudits       *connect.Client[v1.ListProjectionAuditsRequest, v1.ListProjectionAuditsResponse]
-	createProjectionAudit      *connect.Client[v1.CreateProjectionAuditRequest, v1.Empty]
-	getBackfillJob             *connect.Client[v1.GetBackfillJobRequest, v1.BackfillJobResponse]
+	createProjectionAudit      *connect.Client[v1.CreateProjectionAuditRequest, v1.CreateProjectionAuditResponse]
+	getBackfillJob             *connect.Client[v1.GetBackfillJobRequest, v1.GetBackfillJobResponse]
 	listBackfillJobs           *connect.Client[v1.ListBackfillJobsRequest, v1.ListBackfillJobsResponse]
-	createBackfillJob          *connect.Client[v1.CreateBackfillJobRequest, v1.Empty]
-	updateBackfillJob          *connect.Client[v1.UpdateBackfillJobRequest, v1.Empty]
+	createBackfillJob          *connect.Client[v1.CreateBackfillJobRequest, v1.CreateBackfillJobResponse]
+	updateBackfillJob          *connect.Client[v1.UpdateBackfillJobRequest, v1.UpdateBackfillJobResponse]
 	listLenses                 *connect.Client[v1.ListLensesRequest, v1.ListLensesResponse]
-	getLens                    *connect.Client[v1.GetLensRequest, v1.LensResponse]
-	getCurrentLensSelection    *connect.Client[v1.GetCurrentLensSelectionRequest, v1.CurrentLensSelectionResponse]
+	getLens                    *connect.Client[v1.GetLensRequest, v1.GetLensResponse]
+	getCurrentLensSelection    *connect.Client[v1.GetCurrentLensSelectionRequest, v1.GetCurrentLensSelectionResponse]
 	resolveLensFilter          *connect.Client[v1.ResolveLensFilterRequest, v1.ResolveLensFilterResponse]
-	createLens                 *connect.Client[v1.CreateLensRpcRequest, v1.Empty]
-	createLensVersion          *connect.Client[v1.CreateLensVersionRpcRequest, v1.Empty]
-	selectCurrentLens          *connect.Client[v1.SelectCurrentLensRpcRequest, v1.Empty]
-	clearCurrentLens           *connect.Client[v1.ClearCurrentLensRequest, v1.Empty]
-	archiveLens                *connect.Client[v1.ArchiveLensRequest, v1.Empty]
+	createLens                 *connect.Client[v1.CreateLensRequest, v1.CreateLensResponse]
+	createLensVersion          *connect.Client[v1.CreateLensVersionRequest, v1.CreateLensVersionResponse]
+	selectCurrentLens          *connect.Client[v1.SelectCurrentLensRequest, v1.SelectCurrentLensResponse]
+	clearCurrentLens           *connect.Client[v1.ClearCurrentLensRequest, v1.ClearCurrentLensResponse]
+	archiveLens                *connect.Client[v1.ArchiveLensRequest, v1.ArchiveLensResponse]
 	listRecallSignals          *connect.Client[v1.ListRecallSignalsRequest, v1.ListRecallSignalsResponse]
-	appendRecallSignal         *connect.Client[v1.AppendRecallSignalRpcRequest, v1.Empty]
-	appendKnowledgeUserEvent   *connect.Client[v1.AppendKnowledgeUserEventRequest, v1.Empty]
-	watchProjectorEvents       *connect.Client[v1.WatchProjectorEventsRequest, v1.ProjectorEventNotification]
+	appendRecallSignal         *connect.Client[v1.AppendRecallSignalRequest, v1.AppendRecallSignalResponse]
+	appendKnowledgeUserEvent   *connect.Client[v1.AppendKnowledgeUserEventRequest, v1.AppendKnowledgeUserEventResponse]
+	watchProjectorEvents       *connect.Client[v1.WatchProjectorEventsRequest, v1.WatchProjectorEventsResponse]
 }
 
 // ApplyProjectionMutation calls
 // services.sovereign.v1.KnowledgeSovereignService.ApplyProjectionMutation.
-func (c *knowledgeSovereignServiceClient) ApplyProjectionMutation(ctx context.Context, req *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error) {
+func (c *knowledgeSovereignServiceClient) ApplyProjectionMutation(ctx context.Context, req *connect.Request[v1.ApplyProjectionMutationRequest]) (*connect.Response[v1.ApplyProjectionMutationResponse], error) {
 	return c.applyProjectionMutation.CallUnary(ctx, req)
 }
 
 // ApplyRecallMutation calls services.sovereign.v1.KnowledgeSovereignService.ApplyRecallMutation.
-func (c *knowledgeSovereignServiceClient) ApplyRecallMutation(ctx context.Context, req *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error) {
+func (c *knowledgeSovereignServiceClient) ApplyRecallMutation(ctx context.Context, req *connect.Request[v1.ApplyRecallMutationRequest]) (*connect.Response[v1.ApplyRecallMutationResponse], error) {
 	return c.applyRecallMutation.CallUnary(ctx, req)
 }
 
 // ApplyCurationMutation calls
 // services.sovereign.v1.KnowledgeSovereignService.ApplyCurationMutation.
-func (c *knowledgeSovereignServiceClient) ApplyCurationMutation(ctx context.Context, req *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error) {
+func (c *knowledgeSovereignServiceClient) ApplyCurationMutation(ctx context.Context, req *connect.Request[v1.ApplyCurationMutationRequest]) (*connect.Response[v1.ApplyCurationMutationResponse], error) {
 	return c.applyCurationMutation.CallUnary(ctx, req)
 }
 
@@ -603,7 +603,7 @@ func (c *knowledgeSovereignServiceClient) AppendKnowledgeEvent(ctx context.Conte
 
 // GetActiveProjectionVersion calls
 // services.sovereign.v1.KnowledgeSovereignService.GetActiveProjectionVersion.
-func (c *knowledgeSovereignServiceClient) GetActiveProjectionVersion(ctx context.Context, req *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.ProjectionVersionResponse], error) {
+func (c *knowledgeSovereignServiceClient) GetActiveProjectionVersion(ctx context.Context, req *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.GetActiveProjectionVersionResponse], error) {
 	return c.getActiveProjectionVersion.CallUnary(ctx, req)
 }
 
@@ -615,13 +615,13 @@ func (c *knowledgeSovereignServiceClient) ListProjectionVersions(ctx context.Con
 
 // CreateProjectionVersion calls
 // services.sovereign.v1.KnowledgeSovereignService.CreateProjectionVersion.
-func (c *knowledgeSovereignServiceClient) CreateProjectionVersion(ctx context.Context, req *connect.Request[v1.CreateProjectionVersionRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) CreateProjectionVersion(ctx context.Context, req *connect.Request[v1.CreateProjectionVersionRequest]) (*connect.Response[v1.CreateProjectionVersionResponse], error) {
 	return c.createProjectionVersion.CallUnary(ctx, req)
 }
 
 // ActivateProjectionVersion calls
 // services.sovereign.v1.KnowledgeSovereignService.ActivateProjectionVersion.
-func (c *knowledgeSovereignServiceClient) ActivateProjectionVersion(ctx context.Context, req *connect.Request[v1.ActivateProjectionVersionRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) ActivateProjectionVersion(ctx context.Context, req *connect.Request[v1.ActivateProjectionVersionRequest]) (*connect.Response[v1.ActivateProjectionVersionResponse], error) {
 	return c.activateProjectionVersion.CallUnary(ctx, req)
 }
 
@@ -633,7 +633,7 @@ func (c *knowledgeSovereignServiceClient) GetProjectionCheckpoint(ctx context.Co
 
 // UpdateProjectionCheckpoint calls
 // services.sovereign.v1.KnowledgeSovereignService.UpdateProjectionCheckpoint.
-func (c *knowledgeSovereignServiceClient) UpdateProjectionCheckpoint(ctx context.Context, req *connect.Request[v1.UpdateProjectionCheckpointRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) UpdateProjectionCheckpoint(ctx context.Context, req *connect.Request[v1.UpdateProjectionCheckpointRequest]) (*connect.Response[v1.UpdateProjectionCheckpointResponse], error) {
 	return c.updateProjectionCheckpoint.CallUnary(ctx, req)
 }
 
@@ -649,7 +649,7 @@ func (c *knowledgeSovereignServiceClient) GetProjectionLag(ctx context.Context, 
 }
 
 // GetReprojectRun calls services.sovereign.v1.KnowledgeSovereignService.GetReprojectRun.
-func (c *knowledgeSovereignServiceClient) GetReprojectRun(ctx context.Context, req *connect.Request[v1.GetReprojectRunRequest]) (*connect.Response[v1.ReprojectRunResponse], error) {
+func (c *knowledgeSovereignServiceClient) GetReprojectRun(ctx context.Context, req *connect.Request[v1.GetReprojectRunRequest]) (*connect.Response[v1.GetReprojectRunResponse], error) {
 	return c.getReprojectRun.CallUnary(ctx, req)
 }
 
@@ -659,12 +659,12 @@ func (c *knowledgeSovereignServiceClient) ListReprojectRuns(ctx context.Context,
 }
 
 // CreateReprojectRun calls services.sovereign.v1.KnowledgeSovereignService.CreateReprojectRun.
-func (c *knowledgeSovereignServiceClient) CreateReprojectRun(ctx context.Context, req *connect.Request[v1.CreateReprojectRunRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) CreateReprojectRun(ctx context.Context, req *connect.Request[v1.CreateReprojectRunRequest]) (*connect.Response[v1.CreateReprojectRunResponse], error) {
 	return c.createReprojectRun.CallUnary(ctx, req)
 }
 
 // UpdateReprojectRun calls services.sovereign.v1.KnowledgeSovereignService.UpdateReprojectRun.
-func (c *knowledgeSovereignServiceClient) UpdateReprojectRun(ctx context.Context, req *connect.Request[v1.UpdateReprojectRunRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) UpdateReprojectRun(ctx context.Context, req *connect.Request[v1.UpdateReprojectRunRequest]) (*connect.Response[v1.UpdateReprojectRunResponse], error) {
 	return c.updateReprojectRun.CallUnary(ctx, req)
 }
 
@@ -680,12 +680,12 @@ func (c *knowledgeSovereignServiceClient) ListProjectionAudits(ctx context.Conte
 
 // CreateProjectionAudit calls
 // services.sovereign.v1.KnowledgeSovereignService.CreateProjectionAudit.
-func (c *knowledgeSovereignServiceClient) CreateProjectionAudit(ctx context.Context, req *connect.Request[v1.CreateProjectionAuditRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) CreateProjectionAudit(ctx context.Context, req *connect.Request[v1.CreateProjectionAuditRequest]) (*connect.Response[v1.CreateProjectionAuditResponse], error) {
 	return c.createProjectionAudit.CallUnary(ctx, req)
 }
 
 // GetBackfillJob calls services.sovereign.v1.KnowledgeSovereignService.GetBackfillJob.
-func (c *knowledgeSovereignServiceClient) GetBackfillJob(ctx context.Context, req *connect.Request[v1.GetBackfillJobRequest]) (*connect.Response[v1.BackfillJobResponse], error) {
+func (c *knowledgeSovereignServiceClient) GetBackfillJob(ctx context.Context, req *connect.Request[v1.GetBackfillJobRequest]) (*connect.Response[v1.GetBackfillJobResponse], error) {
 	return c.getBackfillJob.CallUnary(ctx, req)
 }
 
@@ -695,12 +695,12 @@ func (c *knowledgeSovereignServiceClient) ListBackfillJobs(ctx context.Context, 
 }
 
 // CreateBackfillJob calls services.sovereign.v1.KnowledgeSovereignService.CreateBackfillJob.
-func (c *knowledgeSovereignServiceClient) CreateBackfillJob(ctx context.Context, req *connect.Request[v1.CreateBackfillJobRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) CreateBackfillJob(ctx context.Context, req *connect.Request[v1.CreateBackfillJobRequest]) (*connect.Response[v1.CreateBackfillJobResponse], error) {
 	return c.createBackfillJob.CallUnary(ctx, req)
 }
 
 // UpdateBackfillJob calls services.sovereign.v1.KnowledgeSovereignService.UpdateBackfillJob.
-func (c *knowledgeSovereignServiceClient) UpdateBackfillJob(ctx context.Context, req *connect.Request[v1.UpdateBackfillJobRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) UpdateBackfillJob(ctx context.Context, req *connect.Request[v1.UpdateBackfillJobRequest]) (*connect.Response[v1.UpdateBackfillJobResponse], error) {
 	return c.updateBackfillJob.CallUnary(ctx, req)
 }
 
@@ -710,13 +710,13 @@ func (c *knowledgeSovereignServiceClient) ListLenses(ctx context.Context, req *c
 }
 
 // GetLens calls services.sovereign.v1.KnowledgeSovereignService.GetLens.
-func (c *knowledgeSovereignServiceClient) GetLens(ctx context.Context, req *connect.Request[v1.GetLensRequest]) (*connect.Response[v1.LensResponse], error) {
+func (c *knowledgeSovereignServiceClient) GetLens(ctx context.Context, req *connect.Request[v1.GetLensRequest]) (*connect.Response[v1.GetLensResponse], error) {
 	return c.getLens.CallUnary(ctx, req)
 }
 
 // GetCurrentLensSelection calls
 // services.sovereign.v1.KnowledgeSovereignService.GetCurrentLensSelection.
-func (c *knowledgeSovereignServiceClient) GetCurrentLensSelection(ctx context.Context, req *connect.Request[v1.GetCurrentLensSelectionRequest]) (*connect.Response[v1.CurrentLensSelectionResponse], error) {
+func (c *knowledgeSovereignServiceClient) GetCurrentLensSelection(ctx context.Context, req *connect.Request[v1.GetCurrentLensSelectionRequest]) (*connect.Response[v1.GetCurrentLensSelectionResponse], error) {
 	return c.getCurrentLensSelection.CallUnary(ctx, req)
 }
 
@@ -726,27 +726,27 @@ func (c *knowledgeSovereignServiceClient) ResolveLensFilter(ctx context.Context,
 }
 
 // CreateLens calls services.sovereign.v1.KnowledgeSovereignService.CreateLens.
-func (c *knowledgeSovereignServiceClient) CreateLens(ctx context.Context, req *connect.Request[v1.CreateLensRpcRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) CreateLens(ctx context.Context, req *connect.Request[v1.CreateLensRequest]) (*connect.Response[v1.CreateLensResponse], error) {
 	return c.createLens.CallUnary(ctx, req)
 }
 
 // CreateLensVersion calls services.sovereign.v1.KnowledgeSovereignService.CreateLensVersion.
-func (c *knowledgeSovereignServiceClient) CreateLensVersion(ctx context.Context, req *connect.Request[v1.CreateLensVersionRpcRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) CreateLensVersion(ctx context.Context, req *connect.Request[v1.CreateLensVersionRequest]) (*connect.Response[v1.CreateLensVersionResponse], error) {
 	return c.createLensVersion.CallUnary(ctx, req)
 }
 
 // SelectCurrentLens calls services.sovereign.v1.KnowledgeSovereignService.SelectCurrentLens.
-func (c *knowledgeSovereignServiceClient) SelectCurrentLens(ctx context.Context, req *connect.Request[v1.SelectCurrentLensRpcRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) SelectCurrentLens(ctx context.Context, req *connect.Request[v1.SelectCurrentLensRequest]) (*connect.Response[v1.SelectCurrentLensResponse], error) {
 	return c.selectCurrentLens.CallUnary(ctx, req)
 }
 
 // ClearCurrentLens calls services.sovereign.v1.KnowledgeSovereignService.ClearCurrentLens.
-func (c *knowledgeSovereignServiceClient) ClearCurrentLens(ctx context.Context, req *connect.Request[v1.ClearCurrentLensRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) ClearCurrentLens(ctx context.Context, req *connect.Request[v1.ClearCurrentLensRequest]) (*connect.Response[v1.ClearCurrentLensResponse], error) {
 	return c.clearCurrentLens.CallUnary(ctx, req)
 }
 
 // ArchiveLens calls services.sovereign.v1.KnowledgeSovereignService.ArchiveLens.
-func (c *knowledgeSovereignServiceClient) ArchiveLens(ctx context.Context, req *connect.Request[v1.ArchiveLensRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) ArchiveLens(ctx context.Context, req *connect.Request[v1.ArchiveLensRequest]) (*connect.Response[v1.ArchiveLensResponse], error) {
 	return c.archiveLens.CallUnary(ctx, req)
 }
 
@@ -756,18 +756,18 @@ func (c *knowledgeSovereignServiceClient) ListRecallSignals(ctx context.Context,
 }
 
 // AppendRecallSignal calls services.sovereign.v1.KnowledgeSovereignService.AppendRecallSignal.
-func (c *knowledgeSovereignServiceClient) AppendRecallSignal(ctx context.Context, req *connect.Request[v1.AppendRecallSignalRpcRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) AppendRecallSignal(ctx context.Context, req *connect.Request[v1.AppendRecallSignalRequest]) (*connect.Response[v1.AppendRecallSignalResponse], error) {
 	return c.appendRecallSignal.CallUnary(ctx, req)
 }
 
 // AppendKnowledgeUserEvent calls
 // services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeUserEvent.
-func (c *knowledgeSovereignServiceClient) AppendKnowledgeUserEvent(ctx context.Context, req *connect.Request[v1.AppendKnowledgeUserEventRequest]) (*connect.Response[v1.Empty], error) {
+func (c *knowledgeSovereignServiceClient) AppendKnowledgeUserEvent(ctx context.Context, req *connect.Request[v1.AppendKnowledgeUserEventRequest]) (*connect.Response[v1.AppendKnowledgeUserEventResponse], error) {
 	return c.appendKnowledgeUserEvent.CallUnary(ctx, req)
 }
 
 // WatchProjectorEvents calls services.sovereign.v1.KnowledgeSovereignService.WatchProjectorEvents.
-func (c *knowledgeSovereignServiceClient) WatchProjectorEvents(ctx context.Context, req *connect.Request[v1.WatchProjectorEventsRequest]) (*connect.ServerStreamForClient[v1.ProjectorEventNotification], error) {
+func (c *knowledgeSovereignServiceClient) WatchProjectorEvents(ctx context.Context, req *connect.Request[v1.WatchProjectorEventsRequest]) (*connect.ServerStreamForClient[v1.WatchProjectorEventsResponse], error) {
 	return c.watchProjectorEvents.CallServerStream(ctx, req)
 }
 
@@ -775,9 +775,9 @@ func (c *knowledgeSovereignServiceClient) WatchProjectorEvents(ctx context.Conte
 // services.sovereign.v1.KnowledgeSovereignService service.
 type KnowledgeSovereignServiceHandler interface {
 	// === Mutation writes (existing) ===
-	ApplyProjectionMutation(context.Context, *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error)
-	ApplyRecallMutation(context.Context, *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error)
-	ApplyCurationMutation(context.Context, *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error)
+	ApplyProjectionMutation(context.Context, *connect.Request[v1.ApplyProjectionMutationRequest]) (*connect.Response[v1.ApplyProjectionMutationResponse], error)
+	ApplyRecallMutation(context.Context, *connect.Request[v1.ApplyRecallMutationRequest]) (*connect.Response[v1.ApplyRecallMutationResponse], error)
+	ApplyCurationMutation(context.Context, *connect.Request[v1.ApplyCurationMutationRequest]) (*connect.Response[v1.ApplyCurationMutationResponse], error)
 	// === Projection reads ===
 	GetKnowledgeHomeItems(context.Context, *connect.Request[v1.GetKnowledgeHomeItemsRequest]) (*connect.Response[v1.GetKnowledgeHomeItemsResponse], error)
 	GetTodayDigest(context.Context, *connect.Request[v1.GetTodayDigestRequest]) (*connect.Response[v1.GetTodayDigestResponse], error)
@@ -789,44 +789,44 @@ type KnowledgeSovereignServiceHandler interface {
 	GetLatestEventSeq(context.Context, *connect.Request[v1.GetLatestEventSeqRequest]) (*connect.Response[v1.GetLatestEventSeqResponse], error)
 	AppendKnowledgeEvent(context.Context, *connect.Request[v1.AppendKnowledgeEventRequest]) (*connect.Response[v1.AppendKnowledgeEventResponse], error)
 	// === Projection infrastructure ===
-	GetActiveProjectionVersion(context.Context, *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.ProjectionVersionResponse], error)
+	GetActiveProjectionVersion(context.Context, *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.GetActiveProjectionVersionResponse], error)
 	ListProjectionVersions(context.Context, *connect.Request[v1.ListProjectionVersionsRequest]) (*connect.Response[v1.ListProjectionVersionsResponse], error)
-	CreateProjectionVersion(context.Context, *connect.Request[v1.CreateProjectionVersionRequest]) (*connect.Response[v1.Empty], error)
-	ActivateProjectionVersion(context.Context, *connect.Request[v1.ActivateProjectionVersionRequest]) (*connect.Response[v1.Empty], error)
+	CreateProjectionVersion(context.Context, *connect.Request[v1.CreateProjectionVersionRequest]) (*connect.Response[v1.CreateProjectionVersionResponse], error)
+	ActivateProjectionVersion(context.Context, *connect.Request[v1.ActivateProjectionVersionRequest]) (*connect.Response[v1.ActivateProjectionVersionResponse], error)
 	GetProjectionCheckpoint(context.Context, *connect.Request[v1.GetProjectionCheckpointRequest]) (*connect.Response[v1.GetProjectionCheckpointResponse], error)
-	UpdateProjectionCheckpoint(context.Context, *connect.Request[v1.UpdateProjectionCheckpointRequest]) (*connect.Response[v1.Empty], error)
+	UpdateProjectionCheckpoint(context.Context, *connect.Request[v1.UpdateProjectionCheckpointRequest]) (*connect.Response[v1.UpdateProjectionCheckpointResponse], error)
 	GetProjectionFreshness(context.Context, *connect.Request[v1.GetProjectionFreshnessRequest]) (*connect.Response[v1.GetProjectionFreshnessResponse], error)
 	GetProjectionLag(context.Context, *connect.Request[v1.GetProjectionLagRequest]) (*connect.Response[v1.GetProjectionLagResponse], error)
 	// === Reproject ===
-	GetReprojectRun(context.Context, *connect.Request[v1.GetReprojectRunRequest]) (*connect.Response[v1.ReprojectRunResponse], error)
+	GetReprojectRun(context.Context, *connect.Request[v1.GetReprojectRunRequest]) (*connect.Response[v1.GetReprojectRunResponse], error)
 	ListReprojectRuns(context.Context, *connect.Request[v1.ListReprojectRunsRequest]) (*connect.Response[v1.ListReprojectRunsResponse], error)
-	CreateReprojectRun(context.Context, *connect.Request[v1.CreateReprojectRunRequest]) (*connect.Response[v1.Empty], error)
-	UpdateReprojectRun(context.Context, *connect.Request[v1.UpdateReprojectRunRequest]) (*connect.Response[v1.Empty], error)
+	CreateReprojectRun(context.Context, *connect.Request[v1.CreateReprojectRunRequest]) (*connect.Response[v1.CreateReprojectRunResponse], error)
+	UpdateReprojectRun(context.Context, *connect.Request[v1.UpdateReprojectRunRequest]) (*connect.Response[v1.UpdateReprojectRunResponse], error)
 	CompareProjections(context.Context, *connect.Request[v1.CompareProjectionsRequest]) (*connect.Response[v1.CompareProjectionsResponse], error)
 	ListProjectionAudits(context.Context, *connect.Request[v1.ListProjectionAuditsRequest]) (*connect.Response[v1.ListProjectionAuditsResponse], error)
-	CreateProjectionAudit(context.Context, *connect.Request[v1.CreateProjectionAuditRequest]) (*connect.Response[v1.Empty], error)
+	CreateProjectionAudit(context.Context, *connect.Request[v1.CreateProjectionAuditRequest]) (*connect.Response[v1.CreateProjectionAuditResponse], error)
 	// === Backfill ===
-	GetBackfillJob(context.Context, *connect.Request[v1.GetBackfillJobRequest]) (*connect.Response[v1.BackfillJobResponse], error)
+	GetBackfillJob(context.Context, *connect.Request[v1.GetBackfillJobRequest]) (*connect.Response[v1.GetBackfillJobResponse], error)
 	ListBackfillJobs(context.Context, *connect.Request[v1.ListBackfillJobsRequest]) (*connect.Response[v1.ListBackfillJobsResponse], error)
-	CreateBackfillJob(context.Context, *connect.Request[v1.CreateBackfillJobRequest]) (*connect.Response[v1.Empty], error)
-	UpdateBackfillJob(context.Context, *connect.Request[v1.UpdateBackfillJobRequest]) (*connect.Response[v1.Empty], error)
+	CreateBackfillJob(context.Context, *connect.Request[v1.CreateBackfillJobRequest]) (*connect.Response[v1.CreateBackfillJobResponse], error)
+	UpdateBackfillJob(context.Context, *connect.Request[v1.UpdateBackfillJobRequest]) (*connect.Response[v1.UpdateBackfillJobResponse], error)
 	// === Lens ===
 	ListLenses(context.Context, *connect.Request[v1.ListLensesRequest]) (*connect.Response[v1.ListLensesResponse], error)
-	GetLens(context.Context, *connect.Request[v1.GetLensRequest]) (*connect.Response[v1.LensResponse], error)
-	GetCurrentLensSelection(context.Context, *connect.Request[v1.GetCurrentLensSelectionRequest]) (*connect.Response[v1.CurrentLensSelectionResponse], error)
+	GetLens(context.Context, *connect.Request[v1.GetLensRequest]) (*connect.Response[v1.GetLensResponse], error)
+	GetCurrentLensSelection(context.Context, *connect.Request[v1.GetCurrentLensSelectionRequest]) (*connect.Response[v1.GetCurrentLensSelectionResponse], error)
 	ResolveLensFilter(context.Context, *connect.Request[v1.ResolveLensFilterRequest]) (*connect.Response[v1.ResolveLensFilterResponse], error)
-	CreateLens(context.Context, *connect.Request[v1.CreateLensRpcRequest]) (*connect.Response[v1.Empty], error)
-	CreateLensVersion(context.Context, *connect.Request[v1.CreateLensVersionRpcRequest]) (*connect.Response[v1.Empty], error)
-	SelectCurrentLens(context.Context, *connect.Request[v1.SelectCurrentLensRpcRequest]) (*connect.Response[v1.Empty], error)
-	ClearCurrentLens(context.Context, *connect.Request[v1.ClearCurrentLensRequest]) (*connect.Response[v1.Empty], error)
-	ArchiveLens(context.Context, *connect.Request[v1.ArchiveLensRequest]) (*connect.Response[v1.Empty], error)
+	CreateLens(context.Context, *connect.Request[v1.CreateLensRequest]) (*connect.Response[v1.CreateLensResponse], error)
+	CreateLensVersion(context.Context, *connect.Request[v1.CreateLensVersionRequest]) (*connect.Response[v1.CreateLensVersionResponse], error)
+	SelectCurrentLens(context.Context, *connect.Request[v1.SelectCurrentLensRequest]) (*connect.Response[v1.SelectCurrentLensResponse], error)
+	ClearCurrentLens(context.Context, *connect.Request[v1.ClearCurrentLensRequest]) (*connect.Response[v1.ClearCurrentLensResponse], error)
+	ArchiveLens(context.Context, *connect.Request[v1.ArchiveLensRequest]) (*connect.Response[v1.ArchiveLensResponse], error)
 	// === Recall signals ===
 	ListRecallSignals(context.Context, *connect.Request[v1.ListRecallSignalsRequest]) (*connect.Response[v1.ListRecallSignalsResponse], error)
-	AppendRecallSignal(context.Context, *connect.Request[v1.AppendRecallSignalRpcRequest]) (*connect.Response[v1.Empty], error)
+	AppendRecallSignal(context.Context, *connect.Request[v1.AppendRecallSignalRequest]) (*connect.Response[v1.AppendRecallSignalResponse], error)
 	// === User events ===
-	AppendKnowledgeUserEvent(context.Context, *connect.Request[v1.AppendKnowledgeUserEventRequest]) (*connect.Response[v1.Empty], error)
+	AppendKnowledgeUserEvent(context.Context, *connect.Request[v1.AppendKnowledgeUserEventRequest]) (*connect.Response[v1.AppendKnowledgeUserEventResponse], error)
 	// === Projector watch (server streaming) ===
-	WatchProjectorEvents(context.Context, *connect.Request[v1.WatchProjectorEventsRequest], *connect.ServerStream[v1.ProjectorEventNotification]) error
+	WatchProjectorEvents(context.Context, *connect.Request[v1.WatchProjectorEventsRequest], *connect.ServerStream[v1.WatchProjectorEventsResponse]) error
 }
 
 // NewKnowledgeSovereignServiceHandler builds an HTTP handler from the service implementation. It
@@ -1191,15 +1191,15 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 // UnimplementedKnowledgeSovereignServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedKnowledgeSovereignServiceHandler struct{}
 
-func (UnimplementedKnowledgeSovereignServiceHandler) ApplyProjectionMutation(context.Context, *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) ApplyProjectionMutation(context.Context, *connect.Request[v1.ApplyProjectionMutationRequest]) (*connect.Response[v1.ApplyProjectionMutationResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ApplyProjectionMutation is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) ApplyRecallMutation(context.Context, *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) ApplyRecallMutation(context.Context, *connect.Request[v1.ApplyRecallMutationRequest]) (*connect.Response[v1.ApplyRecallMutationResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ApplyRecallMutation is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) ApplyCurationMutation(context.Context, *connect.Request[v1.ApplyMutationRequest]) (*connect.Response[v1.ApplyMutationResponse], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) ApplyCurationMutation(context.Context, *connect.Request[v1.ApplyCurationMutationRequest]) (*connect.Response[v1.ApplyCurationMutationResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ApplyCurationMutation is not implemented"))
 }
 
@@ -1235,7 +1235,7 @@ func (UnimplementedKnowledgeSovereignServiceHandler) AppendKnowledgeEvent(contex
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeEvent is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) GetActiveProjectionVersion(context.Context, *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.ProjectionVersionResponse], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) GetActiveProjectionVersion(context.Context, *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.GetActiveProjectionVersionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetActiveProjectionVersion is not implemented"))
 }
 
@@ -1243,11 +1243,11 @@ func (UnimplementedKnowledgeSovereignServiceHandler) ListProjectionVersions(cont
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListProjectionVersions is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) CreateProjectionVersion(context.Context, *connect.Request[v1.CreateProjectionVersionRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) CreateProjectionVersion(context.Context, *connect.Request[v1.CreateProjectionVersionRequest]) (*connect.Response[v1.CreateProjectionVersionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.CreateProjectionVersion is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) ActivateProjectionVersion(context.Context, *connect.Request[v1.ActivateProjectionVersionRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) ActivateProjectionVersion(context.Context, *connect.Request[v1.ActivateProjectionVersionRequest]) (*connect.Response[v1.ActivateProjectionVersionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ActivateProjectionVersion is not implemented"))
 }
 
@@ -1255,7 +1255,7 @@ func (UnimplementedKnowledgeSovereignServiceHandler) GetProjectionCheckpoint(con
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetProjectionCheckpoint is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) UpdateProjectionCheckpoint(context.Context, *connect.Request[v1.UpdateProjectionCheckpointRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) UpdateProjectionCheckpoint(context.Context, *connect.Request[v1.UpdateProjectionCheckpointRequest]) (*connect.Response[v1.UpdateProjectionCheckpointResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.UpdateProjectionCheckpoint is not implemented"))
 }
 
@@ -1267,7 +1267,7 @@ func (UnimplementedKnowledgeSovereignServiceHandler) GetProjectionLag(context.Co
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetProjectionLag is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) GetReprojectRun(context.Context, *connect.Request[v1.GetReprojectRunRequest]) (*connect.Response[v1.ReprojectRunResponse], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) GetReprojectRun(context.Context, *connect.Request[v1.GetReprojectRunRequest]) (*connect.Response[v1.GetReprojectRunResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetReprojectRun is not implemented"))
 }
 
@@ -1275,11 +1275,11 @@ func (UnimplementedKnowledgeSovereignServiceHandler) ListReprojectRuns(context.C
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListReprojectRuns is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) CreateReprojectRun(context.Context, *connect.Request[v1.CreateReprojectRunRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) CreateReprojectRun(context.Context, *connect.Request[v1.CreateReprojectRunRequest]) (*connect.Response[v1.CreateReprojectRunResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.CreateReprojectRun is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) UpdateReprojectRun(context.Context, *connect.Request[v1.UpdateReprojectRunRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) UpdateReprojectRun(context.Context, *connect.Request[v1.UpdateReprojectRunRequest]) (*connect.Response[v1.UpdateReprojectRunResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.UpdateReprojectRun is not implemented"))
 }
 
@@ -1291,11 +1291,11 @@ func (UnimplementedKnowledgeSovereignServiceHandler) ListProjectionAudits(contex
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListProjectionAudits is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) CreateProjectionAudit(context.Context, *connect.Request[v1.CreateProjectionAuditRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) CreateProjectionAudit(context.Context, *connect.Request[v1.CreateProjectionAuditRequest]) (*connect.Response[v1.CreateProjectionAuditResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.CreateProjectionAudit is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) GetBackfillJob(context.Context, *connect.Request[v1.GetBackfillJobRequest]) (*connect.Response[v1.BackfillJobResponse], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) GetBackfillJob(context.Context, *connect.Request[v1.GetBackfillJobRequest]) (*connect.Response[v1.GetBackfillJobResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetBackfillJob is not implemented"))
 }
 
@@ -1303,11 +1303,11 @@ func (UnimplementedKnowledgeSovereignServiceHandler) ListBackfillJobs(context.Co
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListBackfillJobs is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) CreateBackfillJob(context.Context, *connect.Request[v1.CreateBackfillJobRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) CreateBackfillJob(context.Context, *connect.Request[v1.CreateBackfillJobRequest]) (*connect.Response[v1.CreateBackfillJobResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.CreateBackfillJob is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) UpdateBackfillJob(context.Context, *connect.Request[v1.UpdateBackfillJobRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) UpdateBackfillJob(context.Context, *connect.Request[v1.UpdateBackfillJobRequest]) (*connect.Response[v1.UpdateBackfillJobResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.UpdateBackfillJob is not implemented"))
 }
 
@@ -1315,11 +1315,11 @@ func (UnimplementedKnowledgeSovereignServiceHandler) ListLenses(context.Context,
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListLenses is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) GetLens(context.Context, *connect.Request[v1.GetLensRequest]) (*connect.Response[v1.LensResponse], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) GetLens(context.Context, *connect.Request[v1.GetLensRequest]) (*connect.Response[v1.GetLensResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetLens is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) GetCurrentLensSelection(context.Context, *connect.Request[v1.GetCurrentLensSelectionRequest]) (*connect.Response[v1.CurrentLensSelectionResponse], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) GetCurrentLensSelection(context.Context, *connect.Request[v1.GetCurrentLensSelectionRequest]) (*connect.Response[v1.GetCurrentLensSelectionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetCurrentLensSelection is not implemented"))
 }
 
@@ -1327,23 +1327,23 @@ func (UnimplementedKnowledgeSovereignServiceHandler) ResolveLensFilter(context.C
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ResolveLensFilter is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) CreateLens(context.Context, *connect.Request[v1.CreateLensRpcRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) CreateLens(context.Context, *connect.Request[v1.CreateLensRequest]) (*connect.Response[v1.CreateLensResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.CreateLens is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) CreateLensVersion(context.Context, *connect.Request[v1.CreateLensVersionRpcRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) CreateLensVersion(context.Context, *connect.Request[v1.CreateLensVersionRequest]) (*connect.Response[v1.CreateLensVersionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.CreateLensVersion is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) SelectCurrentLens(context.Context, *connect.Request[v1.SelectCurrentLensRpcRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) SelectCurrentLens(context.Context, *connect.Request[v1.SelectCurrentLensRequest]) (*connect.Response[v1.SelectCurrentLensResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.SelectCurrentLens is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) ClearCurrentLens(context.Context, *connect.Request[v1.ClearCurrentLensRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) ClearCurrentLens(context.Context, *connect.Request[v1.ClearCurrentLensRequest]) (*connect.Response[v1.ClearCurrentLensResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ClearCurrentLens is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) ArchiveLens(context.Context, *connect.Request[v1.ArchiveLensRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) ArchiveLens(context.Context, *connect.Request[v1.ArchiveLensRequest]) (*connect.Response[v1.ArchiveLensResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ArchiveLens is not implemented"))
 }
 
@@ -1351,14 +1351,14 @@ func (UnimplementedKnowledgeSovereignServiceHandler) ListRecallSignals(context.C
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListRecallSignals is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) AppendRecallSignal(context.Context, *connect.Request[v1.AppendRecallSignalRpcRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) AppendRecallSignal(context.Context, *connect.Request[v1.AppendRecallSignalRequest]) (*connect.Response[v1.AppendRecallSignalResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.AppendRecallSignal is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) AppendKnowledgeUserEvent(context.Context, *connect.Request[v1.AppendKnowledgeUserEventRequest]) (*connect.Response[v1.Empty], error) {
+func (UnimplementedKnowledgeSovereignServiceHandler) AppendKnowledgeUserEvent(context.Context, *connect.Request[v1.AppendKnowledgeUserEventRequest]) (*connect.Response[v1.AppendKnowledgeUserEventResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeUserEvent is not implemented"))
 }
 
-func (UnimplementedKnowledgeSovereignServiceHandler) WatchProjectorEvents(context.Context, *connect.Request[v1.WatchProjectorEventsRequest], *connect.ServerStream[v1.ProjectorEventNotification]) error {
+func (UnimplementedKnowledgeSovereignServiceHandler) WatchProjectorEvents(context.Context, *connect.Request[v1.WatchProjectorEventsRequest], *connect.ServerStream[v1.WatchProjectorEventsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.WatchProjectorEvents is not implemented"))
 }

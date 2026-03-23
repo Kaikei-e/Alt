@@ -24,7 +24,7 @@ const (
 func (h *SovereignHandler) WatchProjectorEvents(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.WatchProjectorEventsRequest],
-	stream *connect.ServerStream[sovereignv1.ProjectorEventNotification],
+	stream *connect.ServerStream[sovereignv1.WatchProjectorEventsResponse],
 ) error {
 	if h.databaseURL == "" {
 		return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("database URL not configured for LISTEN"))
@@ -56,7 +56,7 @@ func (h *SovereignHandler) WatchProjectorEvents(
 
 		if err != nil {
 			// Timeout — send heartbeat
-			if err := stream.Send(&sovereignv1.ProjectorEventNotification{
+			if err := stream.Send(&sovereignv1.WatchProjectorEventsResponse{
 				LatestEventSeq: 0,
 				OccurredAt:     timestamppb.Now(),
 			}); err != nil {
@@ -71,7 +71,7 @@ func (h *SovereignHandler) WatchProjectorEvents(
 			eventSeq, _ = strconv.ParseInt(notification.Payload, 10, 64)
 		}
 
-		if err := stream.Send(&sovereignv1.ProjectorEventNotification{
+		if err := stream.Send(&sovereignv1.WatchProjectorEventsResponse{
 			LatestEventSeq: eventSeq,
 			OccurredAt:     timestamppb.Now(),
 		}); err != nil {
