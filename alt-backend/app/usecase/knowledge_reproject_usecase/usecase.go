@@ -23,6 +23,7 @@ type Usecase struct {
 	comparePort         knowledge_reproject_port.CompareProjectionsPort
 	activeVersionPort   knowledge_projection_version_port.GetActiveVersionPort
 	activateVersionPort knowledge_projection_version_port.ActivateVersionPort
+	createVersionPort   knowledge_projection_version_port.CreateVersionPort
 }
 
 // NewUsecase creates a new reproject usecase.
@@ -34,8 +35,9 @@ func NewUsecase(
 	comparePort knowledge_reproject_port.CompareProjectionsPort,
 	activeVersionPort knowledge_projection_version_port.GetActiveVersionPort,
 	activateVersionPort knowledge_projection_version_port.ActivateVersionPort,
+	createVersionPort ...knowledge_projection_version_port.CreateVersionPort,
 ) *Usecase {
-	return &Usecase{
+	uc := &Usecase{
 		createRunPort:       createRunPort,
 		getRunPort:          getRunPort,
 		updateRunPort:       updateRunPort,
@@ -44,6 +46,10 @@ func NewUsecase(
 		activeVersionPort:   activeVersionPort,
 		activateVersionPort: activateVersionPort,
 	}
+	if len(createVersionPort) > 0 {
+		uc.createVersionPort = createVersionPort[0]
+	}
+	return uc
 }
 
 // StartReproject validates the mode and creates a pending reproject run.
@@ -69,6 +75,21 @@ func (u *Usecase) StartReproject(ctx context.Context, mode, fromVersion, toVersi
 		RangeStart:     rangeStart,
 		RangeEnd:       rangeEnd,
 		CreatedAt:      now,
+	}
+
+	// Ensure target version exists in knowledge_projection_versions
+	if u.createVersionPort != nil {
+		targetVersionNum, parseErr := strconv.Atoi(strings.TrimPrefix(strings.ToLower(toVersion), "v"))
+		if parseErr == nil {
+			_ = u.createVersionPort.CreateVersion(ctx, domain.KnowledgeProjectionVersion{
+				Version:     targetVersionNum,
+				Description: fmt.Sprintf("V%d reproject from %s", targetVersionNum, fromVersion),
+				Status:      "inactive",
+				CreatedAt:   now,
+				ActivatedAt: &now,
+			})
+			// Ignore duplicate key errors — version may already exist
+		}
 	}
 
 	if err := u.createRunPort.CreateReprojectRun(ctx, run); err != nil {
@@ -159,7 +180,8 @@ func (u *Usecase) SwapReproject(ctx context.Context, runID uuid.UUID) error {
 	return nil
 }
 
-// RollbackReproject validates the run is swapped, reverts to the previous version, and marks the run as cancelled.
+// RollbackReproject validates the run is swapped, reverts to the previous version via
+// ActivateVersion, and marks the run as cancelled.
 func (u *Usecase) RollbackReproject(ctx context.Context, runID uuid.UUID) error {
 	run, err := u.getRunPort.GetReprojectRun(ctx, runID)
 	if err != nil {
@@ -168,6 +190,16 @@ func (u *Usecase) RollbackReproject(ctx context.Context, runID uuid.UUID) error 
 
 	if run.Status != domain.ReprojectStatusSwapped {
 		return fmt.Errorf("cannot rollback run in status %q; must be swapped", run.Status)
+	}
+
+	// Revert to the previous version
+	fromVersion, err := strconv.Atoi(strings.TrimPrefix(strings.ToLower(run.FromVersion), "v"))
+	if err != nil {
+		return fmt.Errorf("parse from_version for rollback %q: %w", run.FromVersion, err)
+	}
+
+	if err := u.activateVersionPort.ActivateVersion(ctx, fromVersion); err != nil {
+		return fmt.Errorf("rollback activate version %d: %w", fromVersion, err)
 	}
 
 	run.Status = domain.ReprojectStatusCancelled

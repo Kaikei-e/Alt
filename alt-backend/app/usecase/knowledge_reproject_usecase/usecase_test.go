@@ -350,7 +350,7 @@ func TestSwapReproject(t *testing.T) {
 func TestRollbackReproject(t *testing.T) {
 	logger.InitLogger()
 
-	t.Run("rolls back swapped run", func(t *testing.T) {
+	t.Run("rolls back swapped run and reverts version", func(t *testing.T) {
 		runID := uuid.New()
 		now := time.Now()
 		statsJSON, _ := json.Marshal(domain.ReprojectStats{EventsProcessed: 100})
@@ -372,6 +372,7 @@ func TestRollbackReproject(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, updatePort.updated)
 		assert.Equal(t, domain.ReprojectStatusCancelled, updatePort.updated.Status)
+		assert.Equal(t, 1, activatePort.activated, "should revert to FromVersion v1")
 	})
 
 	t.Run("rejects non-swapped run", func(t *testing.T) {

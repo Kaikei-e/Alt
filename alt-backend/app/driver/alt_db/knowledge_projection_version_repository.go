@@ -82,11 +82,14 @@ func (r *AltDBRepository) ActivateProjectionVersion(ctx context.Context, version
 
 	// Activate the target version
 	now := time.Now()
-	_, err = r.pool.Exec(ctx,
+	commandTag, err := r.pool.Exec(ctx,
 		`UPDATE knowledge_projection_versions SET status = 'active', activated_at = $2 WHERE version = $1`,
 		version, now)
 	if err != nil {
 		return fmt.Errorf("ActivateProjectionVersion activate: %w", err)
+	}
+	if commandTag.RowsAffected() == 0 {
+		return fmt.Errorf("ActivateProjectionVersion: version %d not found in knowledge_projection_versions", version)
 	}
 
 	return nil
