@@ -1,0 +1,34 @@
+# Atlas Migration Container for Knowledge Sovereign Database
+# Pattern: migrations-atlas/docker/Dockerfile
+FROM arigaio/atlas:latest-alpine
+
+# Install PostgreSQL client for connectivity testing
+RUN apk add --no-cache postgresql-client
+
+# Create migration directory and set working directory
+WORKDIR /migrations
+
+# Copy all migration files
+COPY migrations/ ./
+
+# Create scripts directory for helper scripts
+RUN mkdir -p /scripts
+
+# Copy migration execution scripts
+COPY docker/scripts/migrate.sh /scripts/
+COPY docker/scripts/hash.sh /scripts/
+
+# Set permissions
+RUN chmod +x /scripts/*.sh
+
+# Fix ownership for non-root user
+RUN chown -R 1001:1001 /migrations /scripts
+
+# Set default user (non-root for security)
+USER 1001:1001
+
+# Override Atlas entrypoint to use our scripts
+ENTRYPOINT ["/scripts/migrate.sh"]
+
+# Default command runs migration status check
+CMD ["status"]

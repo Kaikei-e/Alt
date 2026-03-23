@@ -1,0 +1,31 @@
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+
+# 依存関係キャッシュ最適化
+COPY ./app/go.mod ./app/go.sum ./
+RUN go mod download
+
+COPY ./app .
+
+# 最適化ビルド: シンボル除去 + 静的リンク
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -o /app/server ./main.go
+
+# 静的 wget バイナリ取得 (ヘルスチェック用)
+FROM busybox:1.36-musl AS busybox
+
+# 最小イメージ (distroless/static) + 非rootユーザー
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY --from=busybox /bin/wget /usr/bin/wget
+COPY --from=busybox /bin/sh /bin/sh
+
+COPY --from=builder /app/server /server
+
+USER nonroot:nonroot
+
+EXPOSE 9500 9501
+
+ENTRYPOINT ["/server"]

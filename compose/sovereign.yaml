@@ -1,0 +1,94 @@
+# compose/sovereign.yaml - Knowledge Sovereign service + DB
+# Usage: docker compose -f compose/compose.yaml -f compose/sovereign.yaml -p alt up -d
+
+services:
+  knowledge-sovereign-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      - POSTGRES_DB=knowledge_sovereign
+      - POSTGRES_USER=alt
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+    volumes:
+      - knowledge-sovereign-db-data:/var/lib/postgresql/data
+    ports:
+      - "5434:5432"
+    secrets:
+      - postgres_password
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alt -d knowledge_sovereign"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - sovereign
+
+  # Atlas migrator for knowledge-sovereign-db
+  knowledge-sovereign-db-migrator:
+    build:
+      context: ../knowledge-sovereign
+      dockerfile: docker/Dockerfile.migrator
+    command: ["apply"]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        DB_PASS=$$(cat /run/secrets/postgres_password)
+        export DATABASE_URL="postgres://$${DB_USER}:$${DB_PASS}@$${DB_HOST}:$${DB_PORT}/$${DB_NAME}?sslmode=disable"
+        exec /scripts/migrate.sh "$$@"
+      - --
+    environment:
+      DB_HOST: knowledge-sovereign-db
+      DB_PORT: "5432"
+      DB_USER: alt
+      DB_NAME: knowledge_sovereign
+      ATLAS_REVISIONS_SCHEMA: "public"
+    secrets:
+      - postgres_password
+    volumes:
+      - ../knowledge-sovereign/migrations:/migrations:ro
+    depends_on:
+      knowledge-sovereign-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    restart: "no"
+    profiles:
+      - sovereign
+
+  knowledge-sovereign:
+    build:
+      context: ../knowledge-sovereign
+      dockerfile: Dockerfile.sovereign
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      - DATABASE_URL=postgres://alt:${POSTGRES_PASSWORD}@knowledge-sovereign-db:5432/knowledge_sovereign?sslmode=disable
+      - SERVICE_SECRET_FILE=/run/secrets/service_secret
+      - LISTEN_ADDR=:9500
+      - METRICS_ADDR=:9501
+    ports:
+      - "9500:9500"
+      - "9501:9501"
+    depends_on:
+      knowledge-sovereign-db:
+        condition: service_healthy
+      knowledge-sovereign-db-migrator:
+        condition: service_completed_successfully
+    secrets:
+      - service_secret
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9501/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - sovereign
+
+volumes:
+  knowledge-sovereign-db-data:
