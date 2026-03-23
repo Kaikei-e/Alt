@@ -315,6 +315,12 @@ async function handleFetchFullArticle(forceRefresh = false) {
 async function handleSummarize(forceRefresh = false) {
 	if (!feed?.link || isSummarizing) return;
 
+	// Capture current feed URL for stale response validation.
+	// If the user navigates to another article while streaming,
+	// feed.normalizedUrl will differ from targetFeedUrl and
+	// callbacks will discard the stale data.
+	const targetFeedUrl = feed.normalizedUrl;
+
 	// Cancel previous request
 	if (abortController) {
 		abortController.abort();
@@ -335,15 +341,20 @@ async function handleSummarize(forceRefresh = false) {
 				forceRefresh,
 			},
 			(chunk: string) => {
+				// Discard stale chunks if feed changed during streaming
+				if (feed.normalizedUrl !== targetFeedUrl) return;
 				summary = (summary || "") + chunk;
 			},
 			{}, // No typewriter effect for desktop
 			(result) => {
-				// onComplete
+				// onComplete — discard if feed changed
+				if (feed.normalizedUrl !== targetFeedUrl) return;
 				isSummarizing = false;
 				abortController = null;
 			},
 			(error) => {
+				// Discard stale errors if feed changed
+				if (feed.normalizedUrl !== targetFeedUrl) return;
 				// onError — ignore abort/cancel errors (user navigation)
 				if (error.name === "AbortError") {
 					isSummarizing = false;
@@ -376,6 +387,8 @@ async function handleSummarize(forceRefresh = false) {
 			},
 		);
 	} catch (err) {
+		// Discard stale errors if feed changed
+		if (feed.normalizedUrl !== targetFeedUrl) return;
 		// Ignore abort/cancel errors (user navigation)
 		if (err instanceof Error) {
 			if (err.name === "AbortError") return;

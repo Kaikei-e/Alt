@@ -219,6 +219,9 @@ async function handleToggleContent() {
 }
 
 function handleGenerateAISummary() {
+	// Capture current feed link for stale response validation
+	const targetFeedLink = feed.link;
+
 	isAISummaryRequested = true;
 	isSummarizing = true;
 	summaryError = null;
@@ -234,6 +237,8 @@ function handleGenerateAISummary() {
 			title: feed.title,
 		},
 		(chunk) => {
+			// Discard stale chunks if feed changed during streaming
+			if (feed.link !== targetFeedLink) return;
 			aiSummary = (aiSummary || "") + chunk;
 		},
 		{

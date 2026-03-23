@@ -297,6 +297,9 @@ function handleGenerateAISummary(forceRefresh = false) {
 		summaryError = null;
 	}
 
+	// Capture current feed link for stale response validation
+	const targetFeedLink = feed.link;
+
 	// Hide existing SUMMARY section
 	isAISummaryRequested = true;
 	isSummarizing = true;
@@ -315,6 +318,8 @@ function handleGenerateAISummary(forceRefresh = false) {
 			forceRefresh,
 		},
 		(chunk) => {
+			// Discard stale chunks if feed changed during streaming
+			if (feed.link !== targetFeedLink) return;
 			aiSummary = (aiSummary || "") + chunk;
 		},
 		{
