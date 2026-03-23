@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { RecallCandidateData } from "$lib/connect/knowledge_home";
 import { refreshHomeWithRecallSync } from "./stream-refresh";
 
 describe("refreshHomeWithRecallSync", () => {
@@ -21,6 +22,20 @@ describe("refreshHomeWithRecallSync", () => {
 		expect(home.fetchData).toHaveBeenCalledWith(true, "lens-1");
 		expect(recall.setCandidates).toHaveBeenCalledWith(home.recallCandidates);
 		expect(callOrder).toEqual(["fetch", "set"]);
+	});
+
+	it("syncs empty recall candidates without separate fetch", async () => {
+		const home = {
+			recallCandidates: [] as RecallCandidateData[],
+			fetchData: vi.fn(async () => {}),
+		};
+		const recall = {
+			setCandidates: vi.fn(),
+		};
+
+		await refreshHomeWithRecallSync(home, recall, true, null);
+
+		expect(recall.setCandidates).toHaveBeenCalledWith([]);
 	});
 
 	it("skips recall sync when the rail is disabled", async () => {

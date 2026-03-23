@@ -258,15 +258,11 @@ function submitAsk(question: string) {
 	goto(`/augur?${params.toString()}`);
 }
 
-async function syncRecallState() {
-	if (!recallEnabled) {
-		return;
-	}
-	if (home.recallCandidates.length > 0) {
-		recall.setCandidates(home.recallCandidates);
-		return;
-	}
-	await recall.fetchCandidates();
+function syncRecallState() {
+	if (!recallEnabled) return;
+	// Trust the Home response's embedded recall candidates (even if empty).
+	// The backend always populates this field when FlagRecallRail is enabled.
+	recall.setCandidates(home.recallCandidates);
 }
 
 async function handleLensSelect(lensId: string | null) {
@@ -299,7 +295,7 @@ async function handleLensSelect(lensId: string | null) {
 	}
 	await syncLensQuery(lensId);
 	await home.fetchData(true, lensId);
-	await syncRecallState();
+	syncRecallState();
 }
 
 async function handleCreateLens(payload: {
@@ -367,7 +363,7 @@ onMount(async () => {
 
 		flags.setFlags(home.featureFlags);
 
-		await syncRecallState();
+		syncRecallState();
 	}
 });
 </script>
