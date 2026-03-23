@@ -119,9 +119,12 @@ class DependencyContainer:
         )
 
         # Usecase layer
+        # FE-triggered summarization must stay on the local GPU path.
+        # Keep recap/expand on the shared provider so batch-oriented flows can
+        # still use distributed BE dispatch when explicitly enabled.
         self.summarize_usecase = SummarizeUsecase(
             config=self.config,
-            llm_provider=self.llm_provider,
+            llm_provider=self.ollama_gateway,
         )
         self.recap_summary_usecase = RecapSummaryUsecase(
             config=self.config,
