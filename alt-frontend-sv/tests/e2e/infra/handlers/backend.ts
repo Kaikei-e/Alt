@@ -37,6 +37,15 @@ function log(msg: string) {
 	console.log(`[Mock Backend] ${msg}`);
 }
 
+function encodeConnectEnvelope(message: unknown, flags = 0x00): Buffer {
+	const payload = Buffer.from(JSON.stringify(message), "utf-8");
+	const envelope = Buffer.alloc(5 + payload.length);
+	envelope[0] = flags;
+	envelope.writeUInt32BE(payload.length, 1);
+	payload.copy(envelope, 5);
+	return envelope;
+}
+
 /**
  * Create the Backend mock server
  */
@@ -285,6 +294,55 @@ export function createBackendServer(): http.Server {
 			res.end(
 				AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n") + "\n",
 			);
+			return;
+		}
+
+		// StreamSummarize (FeedService) - Connect-RPC streaming with delayed chunks
+		if (path === "/alt.feeds.v2.FeedService/StreamSummarize") {
+			res.setHeader("Content-Type", "application/connect+json");
+			res.setHeader("Connect-Content-Encoding", "identity");
+			res.setHeader("Connect-Accept-Encoding", "identity");
+			res.setHeader("Cache-Control", "no-cache, no-transform");
+			res.writeHead(200);
+
+			const messages = [
+				{
+					chunk: "First streamed sentence.",
+					isFinal: false,
+					articleId: "article-123",
+					isCached: false,
+				},
+				{
+					chunk: " Second streamed sentence.",
+					isFinal: false,
+					articleId: "article-123",
+					isCached: false,
+				},
+				{
+					chunk: " Final streamed sentence.",
+					isFinal: false,
+					articleId: "article-123",
+					isCached: false,
+				},
+				{
+					chunk: "",
+					isFinal: true,
+					articleId: "article-123",
+					isCached: false,
+					fullSummary:
+						"First streamed sentence. Second streamed sentence. Final streamed sentence.",
+				},
+			];
+
+			void (async () => {
+				for (const [index, msg] of messages.entries()) {
+					if (index > 0) {
+						await new Promise((resolve) => setTimeout(resolve, 250));
+					}
+					res.write(encodeConnectEnvelope(msg));
+				}
+				res.end(encodeConnectEnvelope({}, 0x02));
+			})();
 			return;
 		}
 
