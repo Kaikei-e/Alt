@@ -573,6 +573,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		knowledgeReprojectGw,
 		knowledgeProjectionVersionGw,
 		knowledgeProjectionVersionGw,
+		knowledgeProjectionVersionGw,
 	)
 	sloUsecase := knowledge_slo_usecase.NewUsecase(altDBRepository)
 	auditUsecase := knowledge_audit_usecase.NewUsecase(knowledgeReprojectGw, knowledgeReprojectGw)
@@ -609,6 +610,10 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		knowledgeSovereignGw, knowledgeSovereignGw,
 	)
 	trackHomeActionUsecase.SetCurationMutator(knowledgeSovereignGw)
+	createLensUsecase.SetCurationMutator(knowledgeSovereignGw)
+	updateLensUsecase.SetCurationMutator(knowledgeSovereignGw)
+	selectLensUsecase.SetCurationMutator(knowledgeSovereignGw)
+	archiveLensUsecase.SetCurationMutator(knowledgeSovereignGw)
 
 	// Wire auto-subscribe: Usecase delegates subscription to SubscriptionPort
 	registerFeedsUsecase.SetSubscriptionPort(subscriptionGatewayImpl)

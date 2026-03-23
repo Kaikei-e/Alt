@@ -3,7 +3,10 @@ package update_lens_usecase
 import (
 	"alt/domain"
 	"alt/port/knowledge_lens_port"
+	"alt/port/knowledge_sovereign_port"
+	"alt/utils/logger"
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -11,8 +14,14 @@ import (
 )
 
 type UpdateLensUsecase struct {
-	getLens     knowledge_lens_port.GetLensPort
-	versionPort knowledge_lens_port.CreateLensVersionPort
+	getLens         knowledge_lens_port.GetLensPort
+	versionPort     knowledge_lens_port.CreateLensVersionPort
+	curationMutator knowledge_sovereign_port.CurationMutator
+}
+
+// SetCurationMutator wires the optional Knowledge Sovereign curation mutator.
+func (u *UpdateLensUsecase) SetCurationMutator(port knowledge_sovereign_port.CurationMutator) {
+	u.curationMutator = port
 }
 
 func NewUpdateLensUsecase(
@@ -67,6 +76,21 @@ func (u *UpdateLensUsecase) Execute(ctx context.Context, input UpdateLensInput) 
 
 	if err := u.versionPort.CreateLensVersion(ctx, version); err != nil {
 		return nil, fmt.Errorf("create lens version: %w", err)
+	}
+
+	if u.curationMutator != nil {
+		versionPayload, _ := json.Marshal(map[string]any{
+			"lens_version_id": version.LensVersionID.String(),
+			"lens_id":         input.LensID.String(),
+		})
+		if err := u.curationMutator.ApplyCurationMutation(ctx, knowledge_sovereign_port.CurationMutation{
+			MutationType:   knowledge_sovereign_port.MutationCreateLensVersion,
+			EntityID:       version.LensVersionID.String(),
+			Payload:        versionPayload,
+			IdempotencyKey: domain.BuildIdempotencyKey(knowledge_sovereign_port.MutationCreateLensVersion, version.LensVersionID.String()),
+		}); err != nil {
+			logger.Logger.ErrorContext(ctx, "failed to route lens version creation through sovereign", "error", err)
+		}
 	}
 
 	return &version, nil
