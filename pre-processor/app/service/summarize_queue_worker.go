@@ -15,6 +15,14 @@ import (
 	"pre-processor/utils/html_parser"
 )
 
+// Placeholder summaries saved when content cannot be summarized.
+// These must match the knownPlaceholders in quality-checker/quality_judger.go
+// so that the quality checker does not attempt to delete them.
+const (
+	placeholderTooShort = "本文が短すぎるため要約できませんでした。"
+	placeholderTooLong  = "本文が長すぎるため要約できませんでした。"
+)
+
 // EnqueueResult represents the result of enqueuing unsummarized articles.
 type EnqueueResult struct {
 	Found    int
@@ -239,12 +247,27 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 
 		// Handle non-retryable content errors
 		if errors.Is(err, domain.ErrContentTooShort) {
-			// Short content is expected for RSS feeds that only provide excerpts — skip gracefully
+			// Short content is expected for RSS feeds that only provide excerpts — skip gracefully.
+			// Save a placeholder summary so the article is excluded from the Unsummarized count
+			// and not re-enqueued indefinitely.
 			w.logger.InfoContext(ctx, "skipping short content article",
 				"job_id", job.JobID,
 				"article_id", job.ArticleID,
 				"duration_ms", summarizeDuration.Milliseconds())
+			w.savePlaceholderSummary(ctx, job.ArticleID, article.UserID, article.Title, placeholderTooShort)
 			if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, "", "skipped: content too short for summarization"); updateErr != nil {
+				w.logger.ErrorContext(ctx, "failed to update job status", "error", updateErr, "job_id", job.JobID)
+			}
+			return nil
+		}
+		if errors.Is(err, domain.ErrContentTooLong) {
+			// Content exceeds max length — save placeholder instead of retrying.
+			w.logger.InfoContext(ctx, "skipping long content article",
+				"job_id", job.JobID,
+				"article_id", job.ArticleID,
+				"duration_ms", summarizeDuration.Milliseconds())
+			w.savePlaceholderSummary(ctx, job.ArticleID, article.UserID, article.Title, placeholderTooLong)
+			if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, "", "skipped: content too long for summarization"); updateErr != nil {
 				w.logger.ErrorContext(ctx, "failed to update job status", "error", updateErr, "job_id", job.JobID)
 			}
 			return nil
@@ -343,6 +366,31 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 		"total_duration_ms", totalDuration.Milliseconds(),
 		"completed_at", time.Now().UnixNano())
 	return nil
+}
+
+// savePlaceholderSummary saves a placeholder summary for articles that cannot be
+// summarized (content too short or too long). This prevents the article from being
+// re-enqueued indefinitely and removes it from the Unsummarized count in Stats.
+func (w *SummarizeQueueWorker) savePlaceholderSummary(ctx context.Context, articleID, userID, title, placeholder string) {
+	if title == "" {
+		title = "Untitled"
+	}
+	summary := &domain.ArticleSummary{
+		ArticleID:       articleID,
+		UserID:          userID,
+		ArticleTitle:    title,
+		SummaryJapanese: placeholder,
+	}
+	if err := w.summaryRepo.Create(ctx, summary); err != nil {
+		w.logger.ErrorContext(ctx, "failed to save placeholder summary",
+			"error", err,
+			"article_id", articleID,
+			"placeholder", placeholder)
+	} else {
+		w.logger.InfoContext(ctx, "placeholder summary saved",
+			"article_id", articleID,
+			"placeholder", placeholder)
+	}
 }
 
 // EnqueueUnsummarizedBatch fetches unsummarized articles from the backend and

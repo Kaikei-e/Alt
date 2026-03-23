@@ -829,6 +829,161 @@ func TestEnqueueUnsummarizedBatch_HasMore(t *testing.T) {
 	})
 }
 
+// stubAPIRepoContentTooLong returns ErrContentTooLong for SummarizeArticle.
+type stubAPIRepoContentTooLong struct {
+	repository.ExternalAPIRepository
+	summarizeCalls int
+}
+
+func (m *stubAPIRepoContentTooLong) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
+	m.summarizeCalls++
+	return nil, domain.ErrContentTooLong
+}
+
+// stubSummaryRepoTracking tracks Create calls and captures the saved summary.
+type stubSummaryRepoTracking struct {
+	repository.SummaryRepository
+	createCalls   int
+	lastSummary   *domain.ArticleSummary
+	createErr     error
+	existsResults map[string]bool
+}
+
+func (m *stubSummaryRepoTracking) Create(_ context.Context, summary *domain.ArticleSummary) error {
+	m.createCalls++
+	m.lastSummary = summary
+	return m.createErr
+}
+
+func (m *stubSummaryRepoTracking) Exists(_ context.Context, articleID string) (bool, error) {
+	if m.existsResults != nil {
+		return m.existsResults[articleID], nil
+	}
+	return false, nil
+}
+
+func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort_SavesPlaceholder(t *testing.T) {
+	t.Run("should save placeholder summary when content is too short", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-short", MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoContentTooShort{}
+		summaryRepo := &stubSummaryRepoTracking{}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		err := worker.ProcessQueue(ctx)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 1, summaryRepo.createCalls, "should save placeholder summary")
+		assert.NotNil(t, summaryRepo.lastSummary, "should have saved a summary")
+		assert.Equal(t, "article-short", summaryRepo.lastSummary.ArticleID)
+		assert.Equal(t, "user-1", summaryRepo.lastSummary.UserID)
+		assert.Equal(t, "本文が短すぎるため要約できませんでした。", summaryRepo.lastSummary.SummaryJapanese,
+			"should save the known placeholder for short content")
+	})
+
+	t.Run("should still complete job even if placeholder save fails", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-short", MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoContentTooShort{}
+		summaryRepo := &stubSummaryRepoTracking{createErr: fmt.Errorf("db error")}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		err := worker.ProcessQueue(ctx)
+
+		assert.NoError(t, err, "should not propagate placeholder save error")
+		assert.Equal(t, 1, summaryRepo.createCalls, "should attempt to save placeholder")
+		// Job should still be marked completed
+		assert.Equal(t, 1, len(jobRepo.updateCalls))
+		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status)
+	})
+}
+
+func TestSummarizeQueueWorker_ProcessQueue_ContentTooLong_SavesPlaceholder(t *testing.T) {
+	t.Run("should save placeholder summary and complete job when content is too long", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-long", MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoContentTooLong{}
+		summaryRepo := &stubSummaryRepoTracking{}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		err := worker.ProcessQueue(ctx)
+
+		assert.NoError(t, err, "should not return error for long content")
+		assert.Equal(t, 1, summaryRepo.createCalls, "should save placeholder summary")
+		assert.NotNil(t, summaryRepo.lastSummary)
+		assert.Equal(t, "article-long", summaryRepo.lastSummary.ArticleID)
+		assert.Equal(t, "本文が長すぎるため要約できませんでした。", summaryRepo.lastSummary.SummaryJapanese,
+			"should save the known placeholder for long content")
+
+		// Should be marked completed, not dead_letter
+		assert.Equal(t, 1, len(jobRepo.updateCalls))
+		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status,
+			"should mark as completed, not dead_letter")
+		assert.Contains(t, jobRepo.updateCalls[0].errorMsg, "content too long")
+	})
+
+	t.Run("should continue processing remaining jobs after long content placeholder", func(t *testing.T) {
+		ctx := context.Background()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: uuid.New(), ArticleID: "article-long", MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-normal", MaxRetries: 3},
+		}
+
+		// First call returns too long, second succeeds
+		apiRepo := &stubAPIRepoContentTooLongThenSuccess{}
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		summaryRepo := &stubSummaryRepoTracking{}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		err := worker.ProcessQueue(ctx)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 2, apiRepo.summarizeCalls, "should attempt both jobs")
+		assert.Equal(t, 2, summaryRepo.createCalls, "should save summary for both (placeholder + real)")
+	})
+}
+
+// stubAPIRepoContentTooLongThenSuccess returns ErrContentTooLong on first call, success on subsequent.
+type stubAPIRepoContentTooLongThenSuccess struct {
+	repository.ExternalAPIRepository
+	summarizeCalls int
+}
+
+func (m *stubAPIRepoContentTooLongThenSuccess) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
+	m.summarizeCalls++
+	if m.summarizeCalls == 1 {
+		return nil, domain.ErrContentTooLong
+	}
+	return &domain.SummarizedContent{SummaryJapanese: "テスト要約"}, nil
+}
+
 func TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency(t *testing.T) {
 	t.Run("processes jobs concurrently when worker concurrency is increased", func(t *testing.T) {
 		jobs := []*domain.SummarizeJob{
