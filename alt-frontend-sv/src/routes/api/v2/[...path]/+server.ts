@@ -96,7 +96,6 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 		) {
 			responseHeaders.set("X-Accel-Buffering", "no");
 			responseHeaders.set("Cache-Control", "no-cache, no-transform");
-			responseHeaders.set("Alt-Svc", "clear");
 		}
 
 		return new Response(response.body, {
