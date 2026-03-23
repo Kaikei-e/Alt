@@ -11,7 +11,7 @@ services:
       dockerfile: Dockerfile.recap-db
     container_name: recap-db
     restart: always
-    mem_limit: 256m
+    mem_limit: 2048m
     command: >
       postgres
       -c config_file=/etc/postgresql/postgresql.conf
@@ -147,7 +147,7 @@ services:
   recap-subworker:
     env_file:
       - ../.env
-    mem_limit: 512m
+    mem_limit: 8192m
     build:
       context: ../recap-subworker
       dockerfile: Dockerfile.recap-subworker
