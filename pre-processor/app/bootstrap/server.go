@@ -98,10 +98,15 @@ func StartConnectServer(deps *Dependencies) {
 		addr := fmt.Sprintf(":%s", port)
 		deps.Logger.Info("Starting Connect-RPC server", "port", port)
 		server := &http.Server{
-			Addr:         addr,
-			Handler:      connectHandler,
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 30 * time.Second,
+			Addr:        addr,
+			Handler:     connectHandler,
+			ReadTimeout: 30 * time.Second,
+			// WriteTimeout is intentionally 0 (disabled) for server streaming RPCs.
+			// Go's http.Server WriteTimeout applies to the ENTIRE stream duration,
+			// not per-message. LLM inference can take 30-90+ seconds before the first
+			// token, so any fixed timeout would kill streaming connections.
+			// Per-RPC deadlines are handled via context.WithTimeout instead.
+			WriteTimeout: 0,
 			IdleTimeout:  120 * time.Second,
 		}
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

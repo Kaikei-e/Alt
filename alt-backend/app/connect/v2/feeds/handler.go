@@ -2,7 +2,6 @@
 package feeds
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -645,27 +644,73 @@ func (h *Handler) StreamSummarize(
 		"article_id", resolvedArticleID,
 		"content_length", len(resolvedContent))
 
-	// Stream from pre-processor
-	preProcessorStream, err := h.streamPreProcessorSummarize(ctx, resolvedContent, resolvedArticleID, resolvedTitle)
-	if err != nil {
-		var connectErr *connect.Error
-		if errors.As(err, &connectErr) {
-			h.logger.InfoContext(ctx, "pre-processor returned client error",
-				"article_id", resolvedArticleID,
-				"code", connectErr.Code(),
-				"message", connectErr.Message())
-			return connectErr
-		}
-		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamSummarize.StartStream")
+	// Send initial heartbeat immediately to start the HTTP response.
+	// This resets Cloudflare's 100s idle timer before the potentially slow
+	// pre-processor connection is established (semaphore wait can take minutes).
+	if sendErr := stream.Send(&feedsv2.StreamSummarizeResponse{
+		Chunk: "", IsFinal: false, ArticleId: resolvedArticleID,
+	}); sendErr != nil {
+		return sendErr
 	}
+
+	// Connect to pre-processor in a goroutine while sending heartbeats.
+	// The pre-processor may block for minutes waiting for news-creator's
+	// semaphore slot (batch jobs on remote Ollama hold local slots).
+	type ppStreamResult struct {
+		stream io.ReadCloser
+		err    error
+	}
+	ppCh := make(chan ppStreamResult, 1)
+	go func() {
+		s, e := h.streamPreProcessorSummarize(ctx, resolvedContent, resolvedArticleID, resolvedTitle)
+		ppCh <- ppStreamResult{stream: s, err: e}
+	}()
+
+	// Send heartbeats every 15s while waiting for pre-processor connection.
+	heartbeatTicker := time.NewTicker(15 * time.Second)
+	var preProcessorStream io.ReadCloser
+	waitLoop:
+	for {
+		select {
+		case result := <-ppCh:
+			if result.err != nil {
+				heartbeatTicker.Stop()
+				var connectErr *connect.Error
+				if errors.As(result.err, &connectErr) {
+					h.logger.InfoContext(ctx, "pre-processor returned client error",
+						"article_id", resolvedArticleID,
+						"code", connectErr.Code(),
+						"message", connectErr.Message())
+					return connectErr
+				}
+				return errorhandler.HandleInternalError(ctx, h.logger, result.err, "StreamSummarize.StartStream")
+			}
+			preProcessorStream = result.stream
+			break waitLoop
+		case <-heartbeatTicker.C:
+			if sendErr := stream.Send(&feedsv2.StreamSummarizeResponse{
+				Chunk: "", IsFinal: false, ArticleId: resolvedArticleID,
+			}); sendErr != nil {
+				heartbeatTicker.Stop()
+				return sendErr
+			}
+			h.logger.DebugContext(ctx, "sent heartbeat while waiting for pre-processor", "article_id", resolvedArticleID)
+		case <-ctx.Done():
+			heartbeatTicker.Stop()
+			return ctx.Err()
+		}
+	}
+	heartbeatTicker.Stop()
+
 	defer func() {
 		if closeErr := preProcessorStream.Close(); closeErr != nil {
 			h.logger.DebugContext(ctx, "failed to close pre-processor stream", "error", closeErr)
 		}
 	}()
 
-	// Stream chunks to client and capture full summary
-	fullSummary, err := h.streamAndCapture(ctx, stream, preProcessorStream, resolvedArticleID)
+	// Stream chunks to client and capture full summary.
+	// streamAndCaptureWithHeartbeat sends heartbeats while waiting for first LLM token.
+	fullSummary, err := h.streamAndCaptureWithHeartbeat(ctx, stream, preProcessorStream, resolvedArticleID)
 	if err != nil {
 		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamSummarize.Streaming")
 	}
@@ -854,27 +899,11 @@ func (h *Handler) fetchArticleContent(ctx context.Context, urlStr string) (strin
 	return extractedText, title, nil
 }
 
-// streamPreProcessorSummarize calls the pre-processor streaming API.
-// It creates an independent context to prevent client disconnection from cancelling the stream,
-// but also monitors the original context to propagate cancellation when client disconnects.
+// streamPreProcessorSummarize calls the pre-processor streaming API via Connect-RPC.
+// Uses an independent context with client-disconnect propagation to prevent zombie requests.
 func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, articleID, title string) (io.ReadCloser, error) {
 	if articleID == "" {
 		return nil, fmt.Errorf("article_id is required")
-	}
-
-	requestBody := map[string]string{
-		"content":    content,
-		"article_id": articleID,
-		"title":      title,
-	}
-
-	jsonData, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	client := &http.Client{
-		Timeout: 0, // No timeout for streaming - context handles cancellation
 	}
 
 	// Create an independent context for the streaming request.
@@ -883,64 +912,32 @@ func (h *Handler) streamPreProcessorSummarize(ctx context.Context, content, arti
 	streamCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 
 	// Monitor client context in a separate goroutine.
-	// When client disconnects, cancel the pre-processor request to prevent "zombie requests"
-	// that hold locks in pre-processor's processingArticles map.
+	// When client disconnects, cancel the pre-processor request to free GPU resources.
 	go func() {
 		select {
 		case <-ctx.Done():
-			// Client disconnected - propagate cancellation to pre-processor
 			h.logger.InfoContext(ctx, "client disconnected, cancelling pre-processor stream",
 				"article_id", articleID,
 				"reason", ctx.Err())
 			cancel()
 		case <-streamCtx.Done():
-			// Stream completed normally or timed out - nothing to do
+			// Stream completed normally or timed out
 		}
 	}()
 
-	apiURL := fmt.Sprintf("%s/api/v1/summarize/stream", h.cfg.PreProcessor.URL)
-	req, err := http.NewRequestWithContext(streamCtx, http.MethodPost, apiURL, bytes.NewReader(jsonData))
+	stream, err := h.container.PreProcessorConnectClient.StreamSummarize(streamCtx, content, articleID, title)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		cancel()
-		// Check if original context was cancelled
 		if ctx.Err() != nil {
-			h.logger.WarnContext(ctx, "pre-processor stream failed due to client context cancellation",
-				"article_id", articleID,
-				"error", err)
 			return nil, fmt.Errorf("client disconnected during stream setup: %w", ctx.Err())
 		}
-		return nil, fmt.Errorf("failed to call pre-processor stream: %w", err)
+		return nil, err
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		cancel() // Cancel context on error
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			// Log but don't fail - error response has been read
-			_ = closeErr
-		}
-		if connectErr := mapPreProcessorHTTPError(resp.StatusCode, bodyBytes); connectErr != nil {
-			return nil, connectErr
-		}
-		return nil, fmt.Errorf("pre-processor returned status %d: %s", resp.StatusCode, string(bodyBytes))
-	}
+	h.logger.InfoContext(ctx, "pre-processor Connect-RPC stream obtained", "article_id", articleID)
 
-	h.logger.InfoContext(ctx, "pre-processor stream response received",
-		"article_id", articleID,
-		"status", resp.Status,
-		"content_type", resp.Header.Get("Content-Type"))
-
-	// Wrap the response body to cancel the context when closed
 	return &streamReaderWithCancel{
-		ReadCloser: resp.Body,
+		ReadCloser: stream,
 		cancel:     cancel,
 	}, nil
 }
@@ -1038,6 +1035,77 @@ func (h *Handler) streamAndCapture(
 	}
 
 	return summaryBuf.String(), nil
+}
+
+// streamAndCaptureWithHeartbeat wraps streamAndCapture with heartbeat support.
+// It sends empty chunks every 30s while waiting for the first real data from
+// the pre-processor, preventing Cloudflare 524 timeout (100s idle limit).
+// Once real data starts flowing, heartbeats stop and normal streaming takes over.
+func (h *Handler) streamAndCaptureWithHeartbeat(
+	ctx context.Context,
+	stream *connect.ServerStream[feedsv2.StreamSummarizeResponse],
+	preProcessorStream io.Reader,
+	articleID string,
+) (string, error) {
+	// Phase 1: Wait for first data with heartbeats.
+	// Read in a goroutine; send heartbeats from this goroutine while waiting.
+	type readResult struct {
+		buf []byte
+		n   int
+		err error
+	}
+	firstRead := make(chan readResult, 1)
+	initialBuf := make([]byte, 256)
+	go func() {
+		n, err := preProcessorStream.Read(initialBuf)
+		firstRead <- readResult{buf: initialBuf[:n], n: n, err: err}
+	}()
+
+	heartbeatTicker := time.NewTicker(30 * time.Second)
+	defer heartbeatTicker.Stop()
+
+	var first readResult
+	waiting := true
+	for waiting {
+		select {
+		case first = <-firstRead:
+			waiting = false
+		case <-heartbeatTicker.C:
+			if sendErr := stream.Send(&feedsv2.StreamSummarizeResponse{
+				Chunk: "", IsFinal: false, ArticleId: articleID,
+			}); sendErr != nil {
+				return "", sendErr
+			}
+			h.logger.DebugContext(ctx, "sent heartbeat while waiting for first chunk", "article_id", articleID)
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	heartbeatTicker.Stop()
+
+	// Handle first read result
+	if first.err != nil && first.err != io.EOF && first.n == 0 {
+		return "", first.err
+	}
+
+	// Phase 2: Prepend initial data and delegate to normal streamAndCapture.
+	// Wrap preProcessorStream with the already-read bytes prepended.
+	var combinedReader io.Reader
+	if first.n > 0 {
+		combinedReader = io.MultiReader(
+			strings.NewReader(string(first.buf[:first.n])),
+			preProcessorStream,
+		)
+	} else {
+		combinedReader = preProcessorStream
+	}
+
+	// If first read was EOF, we still need to process the data
+	if first.err == io.EOF {
+		combinedReader = strings.NewReader(string(first.buf[:first.n]))
+	}
+
+	return h.streamAndCapture(ctx, stream, combinedReader, articleID)
 }
 
 // extractSSEData extracts the data content from an SSE event string.

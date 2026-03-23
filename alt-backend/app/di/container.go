@@ -10,6 +10,7 @@ import (
 	"alt/driver/csrf_token_driver"
 	"alt/driver/kratos_client"
 	"alt/driver/mqhub_connect"
+	"alt/driver/preprocessor_connect"
 	"alt/driver/recap_job_driver"
 	"alt/driver/search_indexer_connect"
 	"alt/gateway/archive_article_gateway"
@@ -218,6 +219,9 @@ type ApplicationComponents struct {
 
 	// Image Proxy
 	ImageProxyUsecase *image_proxy_usecase.ImageProxyUsecase
+
+	// Service-to-service Connect-RPC clients
+	PreProcessorConnectClient *preprocessor_connect.ConnectPreProcessorClient
 
 	// Internal API gateway (service-to-service)
 	InternalArticleGateway *internal_article_gateway.Gateway
@@ -660,6 +664,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 		// Image Proxy
 		ImageProxyUsecase: imageProxyUsecaseInstance,
+
+		// Service-to-service Connect-RPC clients
+		PreProcessorConnectClient: preprocessor_connect.NewConnectPreProcessorClient(cfg.PreProcessor.ConnectURL),
 
 		// Internal API gateway
 		InternalArticleGateway: internalArticleGatewayImpl,
