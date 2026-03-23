@@ -77,7 +77,7 @@ services:
   recap-worker:
     env_file:
       - ../.env
-    mem_limit: 1024m
+    mem_limit: 2048m
     build:
       context: ../recap-worker
       dockerfile: Dockerfile.recap-worker
@@ -124,6 +124,10 @@ services:
       recap-db:
         condition: service_healthy
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          memory: 768M
     ports:
       - "9005:9005"
     healthcheck:
