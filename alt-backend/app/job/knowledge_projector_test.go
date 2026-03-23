@@ -2,7 +2,6 @@ package job
 
 import (
 	"alt/domain"
-	"alt/port/knowledge_sovereign_port"
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
@@ -14,23 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// mockWriteService records mutations routed through Knowledge Sovereign.
-type mockWriteService struct {
-	projectionCalls []knowledge_sovereign_port.ProjectionMutation
-	recallCalls     []knowledge_sovereign_port.RecallMutation
-	err             error
-}
-
-func (m *mockWriteService) ApplyProjectionMutation(_ context.Context, mutation knowledge_sovereign_port.ProjectionMutation) error {
-	m.projectionCalls = append(m.projectionCalls, mutation)
-	return m.err
-}
-
-func (m *mockWriteService) ApplyRecallMutation(_ context.Context, mutation knowledge_sovereign_port.RecallMutation) error {
-	m.recallCalls = append(m.recallCalls, mutation)
-	return m.err
-}
 
 type mockEventsPort struct {
 	events []domain.KnowledgeEvent
@@ -261,6 +243,44 @@ func TestKnowledgeProjectorJob_ArticleCreated(t *testing.T) {
 	assert.Equal(t, domain.WhyNewUnread, homeItemsPort.upserted[0].WhyReasons[0].Code)
 	assert.Equal(t, int64(1), checkpointPort.updatedSeq)
 	assert.Equal(t, 1, homeItemsPort.upserted[0].ProjectionVersion) // default version
+}
+
+func TestKnowledgeProjectorJob_ArticleCreated_LinkPropagation(t *testing.T) {
+	logger.InitLogger()
+
+	tenantID := uuid.New()
+	articleID := uuid.New()
+	payload, _ := json.Marshal(articleCreatedPayload{
+		ArticleID:   articleID.String(),
+		Title:       "Article With Link",
+		PublishedAt: "2026-03-23T10:00:00Z",
+		TenantID:    tenantID.String(),
+		Link:        "https://example.com/article-with-link",
+	})
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{
+				EventID:       uuid.New(),
+				EventSeq:      1,
+				TenantID:      tenantID,
+				EventType:     domain.EventArticleCreated,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   articleID.String(),
+				Payload:       payload,
+			},
+		},
+	}
+	checkpointPort := &mockCheckpointPort{lastSeq: 0}
+	homeItemsPort := &mockHomeItemsPort{}
+	digestPort := &mockDigestPort{}
+
+	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, nil, nil, nil)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, homeItemsPort.upserted, 1)
+	assert.Equal(t, "https://example.com/article-with-link", homeItemsPort.upserted[0].Link)
 }
 
 func TestKnowledgeProjectorJob_CheckpointAdvances(t *testing.T) {
@@ -1366,48 +1386,3 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_UppercaseKeys(t *testing.T) 
 	assert.Equal(t, "flowers", homeItemsPort.upserted[0].WhyReasons[1].Tag)
 }
 
-// --- Sovereign WriteService tests ---
-
-func TestKnowledgeProjectorJob_ArticleCreated_ViaSovereign(t *testing.T) {
-	logger.InitLogger()
-
-	tenantID := uuid.New()
-	articleID := uuid.New()
-	payload, _ := json.Marshal(articleCreatedPayload{
-		ArticleID:   articleID.String(),
-		Title:       "Test Article",
-		PublishedAt: time.Now().Format(time.RFC3339),
-		TenantID:    tenantID.String(),
-	})
-
-	eventsPort := &mockEventsPort{
-		events: []domain.KnowledgeEvent{
-			{EventID: uuid.New(), EventSeq: 1, OccurredAt: time.Now(), TenantID: tenantID, EventType: domain.EventArticleCreated, AggregateType: domain.AggregateArticle, AggregateID: articleID.String(), Payload: payload},
-		},
-	}
-	checkpointPort := &mockCheckpointPort{lastSeq: 0}
-	homeItemsPort := &mockHomeItemsPort{}
-	digestPort := &mockDigestPort{}
-	mockWS := &mockWriteService{}
-
-	fn := KnowledgeProjectorJobWithConfig(
-		eventsPort, checkpointPort, checkpointPort,
-		homeItemsPort, digestPort, nil, nil, nil, nil,
-		KnowledgeProjectorConfig{BatchSize: 100, WriteService: mockWS},
-	)
-	err := fn(context.Background())
-
-	require.NoError(t, err)
-	// When WriteService is set, mutations go through Sovereign, not direct ports
-	assert.NotEmpty(t, mockWS.projectionCalls, "should route through WriteService")
-	// Check that MutationType is correct
-	foundUpsert := false
-	for _, call := range mockWS.projectionCalls {
-		if call.MutationType == knowledge_sovereign_port.MutationUpsertHomeItem {
-			foundUpsert = true
-		}
-	}
-	assert.True(t, foundUpsert, "should contain upsert_home_item mutation")
-	// Direct port should NOT be called when WriteService is set
-	assert.Empty(t, homeItemsPort.upserted, "direct port should not be called when WriteService is set")
-}

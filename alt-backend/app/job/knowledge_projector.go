@@ -6,7 +6,6 @@ import (
 	"alt/port/knowledge_home_port"
 	"alt/port/knowledge_projection_port"
 	"alt/port/knowledge_projection_version_port"
-	"alt/port/knowledge_sovereign_port"
 	"alt/port/recall_candidate_port"
 	"alt/port/summary_version_port"
 	"alt/port/tag_set_version_port"
@@ -28,17 +27,10 @@ const (
 	projectorLoopSafetyMargin = 250 * time.Millisecond
 )
 
-// WriteServicePort defines the subset of KnowledgeWriteServiceUsecase used by the projector.
-type WriteServicePort interface {
-	ApplyProjectionMutation(ctx context.Context, mutation knowledge_sovereign_port.ProjectionMutation) error
-	ApplyRecallMutation(ctx context.Context, mutation knowledge_sovereign_port.RecallMutation) error
-}
-
 // KnowledgeProjectorConfig configures the knowledge projector.
 type KnowledgeProjectorConfig struct {
-	BatchSize    int
-	Metrics      *altotel.KnowledgeHomeMetrics
-	WriteService WriteServicePort // When non-nil, routes writes through Knowledge Sovereign.
+	BatchSize int
+	Metrics   *altotel.KnowledgeHomeMetrics
 }
 
 // KnowledgeProjectorJob returns a function suitable for the JobScheduler that
@@ -108,7 +100,7 @@ func KnowledgeProjectorJobWithConfig(
 		if effectiveBatchSize <= 0 {
 			effectiveBatchSize = batchSize
 		}
-		return processKnowledgeEvents(ctx, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, clearPort, projectionVersion, effectiveBatchSize, config.Metrics, config.WriteService)
+		return processKnowledgeEvents(ctx, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, clearPort, projectionVersion, effectiveBatchSize, config.Metrics)
 	}
 }
 
@@ -129,7 +121,6 @@ func processKnowledgeEvents(
 	projectionVersion int,
 	batchLimit int,
 	metrics *altotel.KnowledgeHomeMetrics,
-	writeService WriteServicePort,
 ) error {
 	// Get current checkpoint
 	lastSeq, err := checkpointPort.GetProjectionCheckpoint(ctx, projectorName)
@@ -169,7 +160,7 @@ func processKnowledgeEvents(
 		var maxSeq int64
 		var errorCount int64
 		for _, event := range events {
-			if err := projectEvent(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, clearSupersedePort, projectionVersion, writeService); err != nil {
+			if err := projectEvent(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, clearSupersedePort, projectionVersion); err != nil {
 				logger.ErrorContext(ctx, "failed to project event",
 					"error", err, "event_id", event.EventID, "event_type", event.EventType)
 				errorCount++
@@ -227,84 +218,28 @@ func projectEvent(
 	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
 	clearSupersedePort knowledge_home_port.ClearSupersedeStatePort,
 	projectionVersion int,
-	writeService WriteServicePort,
 ) error {
 	switch event.EventType {
 	case domain.EventArticleCreated:
-		return projectArticleCreated(ctx, event, homeItemsPort, todayDigestPort, projectionVersion, writeService)
+		return projectArticleCreated(ctx, event, homeItemsPort, todayDigestPort, projectionVersion)
 	case domain.EventSummaryVersionCreated:
-		return projectSummaryVersionCreated(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, projectionVersion, writeService)
+		return projectSummaryVersionCreated(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, projectionVersion)
 	case domain.EventTagSetVersionCreated:
-		return projectTagSetVersionCreated(ctx, event, homeItemsPort, tagSetVersionPort, projectionVersion, writeService)
+		return projectTagSetVersionCreated(ctx, event, homeItemsPort, tagSetVersionPort, projectionVersion)
 	case domain.EventHomeItemOpened:
-		return projectHomeItemOpened(ctx, event, homeItemsPort, recallCandidatePort, clearSupersedePort, projectionVersion, writeService)
+		return projectHomeItemOpened(ctx, event, homeItemsPort, recallCandidatePort, clearSupersedePort, projectionVersion)
 	case domain.EventHomeItemDismissed:
-		return projectHomeItemDismissed(ctx, event, homeItemsPort, projectionVersion, writeService)
+		return projectHomeItemDismissed(ctx, event, homeItemsPort, projectionVersion)
 	case domain.EventSummarySuperseded:
-		return projectSummarySuperseded(ctx, event, homeItemsPort, projectionVersion, writeService)
+		return projectSummarySuperseded(ctx, event, homeItemsPort, projectionVersion)
 	case domain.EventTagSetSuperseded:
-		return projectTagSetSuperseded(ctx, event, homeItemsPort, projectionVersion, writeService)
+		return projectTagSetSuperseded(ctx, event, homeItemsPort, projectionVersion)
 	case domain.EventReasonMerged:
-		return projectReasonMerged(ctx, event, homeItemsPort, projectionVersion, writeService)
+		return projectReasonMerged(ctx, event, homeItemsPort, projectionVersion)
 	default:
 		// Unknown event types are silently skipped
 		return nil
 	}
-}
-
-// --- Sovereign routing helpers ---
-
-func sovereignUpsertHomeItem(ctx context.Context, item domain.KnowledgeHomeItem, port knowledge_home_port.UpsertKnowledgeHomeItemPort, ws WriteServicePort) error {
-	if ws != nil {
-		payload, _ := json.Marshal(item)
-		return ws.ApplyProjectionMutation(ctx, knowledge_sovereign_port.ProjectionMutation{
-			MutationType: knowledge_sovereign_port.MutationUpsertHomeItem,
-			EntityID:     item.ItemKey,
-			Payload:      payload,
-		})
-	}
-	return port.UpsertKnowledgeHomeItem(ctx, item)
-}
-
-func sovereignUpsertTodayDigest(ctx context.Context, digest domain.TodayDigest, port today_digest_port.UpsertTodayDigestPort, ws WriteServicePort) error {
-	if ws != nil {
-		payload, _ := json.Marshal(digest)
-		return ws.ApplyProjectionMutation(ctx, knowledge_sovereign_port.ProjectionMutation{
-			MutationType: knowledge_sovereign_port.MutationUpsertTodayDigest,
-			EntityID:     fmt.Sprintf("digest:%s", digest.UserID),
-			Payload:      payload,
-		})
-	}
-	return port.UpsertTodayDigest(ctx, digest)
-}
-
-func sovereignUpsertRecallCandidate(ctx context.Context, candidate domain.RecallCandidate, port recall_candidate_port.UpsertRecallCandidatePort, ws WriteServicePort) error {
-	if ws != nil {
-		payload, _ := json.Marshal(candidate)
-		return ws.ApplyProjectionMutation(ctx, knowledge_sovereign_port.ProjectionMutation{
-			MutationType: knowledge_sovereign_port.MutationUpsertRecallCandidate,
-			EntityID:     candidate.ItemKey,
-			Payload:      payload,
-		})
-	}
-	return port.UpsertRecallCandidate(ctx, candidate)
-}
-
-func sovereignDismissHomeItem(ctx context.Context, port knowledge_home_port.DismissKnowledgeHomeItemPort, userID uuid.UUID, itemKey string, projectionVersion int, dismissedAt time.Time, ws WriteServicePort) error {
-	if ws != nil {
-		payload, _ := json.Marshal(map[string]any{
-			"user_id":            userID.String(),
-			"item_key":           itemKey,
-			"projection_version": projectionVersion,
-			"dismissed_at":       dismissedAt.Format(time.RFC3339Nano),
-		})
-		return ws.ApplyProjectionMutation(ctx, knowledge_sovereign_port.ProjectionMutation{
-			MutationType: knowledge_sovereign_port.MutationDismissHomeItem,
-			EntityID:     itemKey,
-			Payload:      payload,
-		})
-	}
-	return port.DismissKnowledgeHomeItem(ctx, userID, itemKey, projectionVersion, dismissedAt)
 }
 
 // articleCreatedPayload is the expected payload for ArticleCreated events.
@@ -313,9 +248,10 @@ type articleCreatedPayload struct {
 	Title       string `json:"title"`
 	PublishedAt string `json:"published_at"`
 	TenantID    string `json:"tenant_id"`
+	Link        string `json:"link"`
 }
 
-func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, todayDigestPort today_digest_port.UpsertTodayDigestPort, projectionVersion int, writeService WriteServicePort) error {
+func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, todayDigestPort today_digest_port.UpsertTodayDigestPort, projectionVersion int) error {
 	var payload articleCreatedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal ArticleCreated payload: %w", err)
@@ -358,6 +294,7 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 		ItemType:          domain.ItemArticle,
 		PrimaryRefID:      &articleID,
 		Title:             payload.Title,
+		Link:              payload.Link,
 		WhyReasons:        []domain.WhyReason{{Code: domain.WhyNewUnread}},
 		Score:             score,
 		SummaryState:      domain.SummaryStatePending,
@@ -368,12 +305,12 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 		ProjectionVersion: projectionVersion,
 	}
 
-	if err := sovereignUpsertHomeItem(ctx, item, port, writeService); err != nil {
+	if err := port.UpsertKnowledgeHomeItem(ctx, item); err != nil {
 		return err
 	}
 
 	// Update today digest: increment new_articles
-	if todayDigestPort != nil || writeService != nil {
+	if todayDigestPort != nil {
 		digest := domain.TodayDigest{
 			UserID:               userID,
 			DigestDate:           now,
@@ -381,7 +318,7 @@ func projectArticleCreated(ctx context.Context, event domain.KnowledgeEvent, por
 			UnsummarizedArticles: 1,
 			UpdatedAt:            now,
 		}
-		if err := sovereignUpsertTodayDigest(ctx, digest, todayDigestPort, writeService); err != nil {
+		if err := todayDigestPort.UpsertTodayDigest(ctx, digest); err != nil {
 			logger.ErrorContext(ctx, "failed to update today digest for ArticleCreated", "error", err)
 			// Non-fatal: don't fail the projection
 		}
@@ -397,7 +334,7 @@ type summaryVersionPayload struct {
 
 const maxExcerptLen = 200
 
-func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, todayDigestPort today_digest_port.UpsertTodayDigestPort, summaryVersionPort summary_version_port.GetSummaryVersionByIDPort, projectionVersion int, writeService WriteServicePort) error {
+func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, todayDigestPort today_digest_port.UpsertTodayDigestPort, summaryVersionPort summary_version_port.GetSummaryVersionByIDPort, projectionVersion int) error {
 	var payload summaryVersionPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal SummaryVersionCreated payload: %w", err)
@@ -457,12 +394,12 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 		ProjectionVersion: projectionVersion,
 	}
 
-	if err := sovereignUpsertHomeItem(ctx, item, port, writeService); err != nil {
+	if err := port.UpsertKnowledgeHomeItem(ctx, item); err != nil {
 		return err
 	}
 
 	// Update today digest: increment summarized_articles
-	if todayDigestPort != nil || writeService != nil {
+	if todayDigestPort != nil {
 		summarizedArticles := 0
 		unsummarizedDelta := 0
 		if summaryState == domain.SummaryStateReady {
@@ -477,7 +414,7 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 			UnsummarizedArticles: unsummarizedDelta,
 			UpdatedAt:            now,
 		}
-		if err := sovereignUpsertTodayDigest(ctx, digest, todayDigestPort, writeService); err != nil {
+		if err := todayDigestPort.UpsertTodayDigest(ctx, digest); err != nil {
 			logger.ErrorContext(ctx, "failed to update today digest for SummaryVersionCreated", "error", err)
 		}
 	}
@@ -529,7 +466,7 @@ func parseTagNames(raw json.RawMessage) []string {
 	return nil
 }
 
-func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort, projectionVersion int, writeService WriteServicePort) error {
+func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort, projectionVersion int) error {
 	var payload tagSetVersionPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal TagSetVersionCreated payload: %w", err)
@@ -582,14 +519,14 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 		item.UserID = *event.UserID
 	}
 
-	return sovereignUpsertHomeItem(ctx, item, port, writeService)
+	return port.UpsertKnowledgeHomeItem(ctx, item)
 }
 
 type homeItemOpenedPayload struct {
 	ItemKey string `json:"item_key"`
 }
 
-func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort, clearSupersedePort knowledge_home_port.ClearSupersedeStatePort, projectionVersion int, writeService WriteServicePort) error {
+func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, recallCandidatePort recall_candidate_port.UpsertRecallCandidatePort, clearSupersedePort knowledge_home_port.ClearSupersedeStatePort, projectionVersion int) error {
 	var payload homeItemOpenedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal HomeItemOpened payload: %w", err)
@@ -617,7 +554,7 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 		ProjectionVersion: projectionVersion,
 	}
 
-	if err := sovereignUpsertHomeItem(ctx, item, port, writeService); err != nil {
+	if err := port.UpsertKnowledgeHomeItem(ctx, item); err != nil {
 		return err
 	}
 
@@ -630,7 +567,7 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 	}
 
 	// Create recall candidate: eligible after 24h (reproject-safe: based on event time)
-	if recallCandidatePort != nil || writeService != nil {
+	if recallCandidatePort != nil {
 		eligibleAt := eventTime.Add(24 * time.Hour)
 		candidate := domain.RecallCandidate{
 			UserID:            userID,
@@ -642,7 +579,7 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 			UpdatedAt:         time.Now(),
 			ProjectionVersion: projectionVersion,
 		}
-		if err := sovereignUpsertRecallCandidate(ctx, candidate, recallCandidatePort, writeService); err != nil {
+		if err := recallCandidatePort.UpsertRecallCandidate(ctx, candidate); err != nil {
 			logger.ErrorContext(ctx, "failed to create recall candidate", "error", err)
 			// Non-fatal
 		}
@@ -655,7 +592,7 @@ type homeItemDismissedPayload struct {
 	ItemKey string `json:"item_key"`
 }
 
-func projectHomeItemDismissed(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.DismissKnowledgeHomeItemPort, projectionVersion int, writeService WriteServicePort) error {
+func projectHomeItemDismissed(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.DismissKnowledgeHomeItemPort, projectionVersion int) error {
 	var payload homeItemDismissedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal HomeItemDismissed payload: %w", err)
@@ -677,7 +614,7 @@ func projectHomeItemDismissed(ctx context.Context, event domain.KnowledgeEvent, 
 		dismissedAt = time.Now()
 	}
 
-	return sovereignDismissHomeItem(ctx, port, userID, payload.ItemKey, projectionVersion, dismissedAt, writeService)
+	return port.DismissKnowledgeHomeItem(ctx, userID, payload.ItemKey, projectionVersion, dismissedAt)
 }
 
 // ── Supersede projection handlers ──
@@ -689,7 +626,7 @@ type summarySupersededPayload struct {
 	PreviousSummaryExcerpt string `json:"previous_summary_excerpt"`
 }
 
-func projectSummarySuperseded(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int, writeService WriteServicePort) error {
+func projectSummarySuperseded(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
 	var payload summarySupersededPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal SummarySuperseded payload: %w", err)
@@ -724,7 +661,7 @@ func projectSummarySuperseded(ctx context.Context, event domain.KnowledgeEvent, 
 		ProjectionVersion: projectionVersion,
 	}
 
-	return sovereignUpsertHomeItem(ctx, item, port, writeService)
+	return port.UpsertKnowledgeHomeItem(ctx, item)
 }
 
 type tagSetSupersededPayload struct {
@@ -734,7 +671,7 @@ type tagSetSupersededPayload struct {
 	PreviousTags       []string `json:"previous_tags"`
 }
 
-func projectTagSetSuperseded(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int, writeService WriteServicePort) error {
+func projectTagSetSuperseded(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
 	var payload tagSetSupersededPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal TagSetSuperseded payload: %w", err)
@@ -769,7 +706,7 @@ func projectTagSetSuperseded(ctx context.Context, event domain.KnowledgeEvent, p
 		ProjectionVersion: projectionVersion,
 	}
 
-	return sovereignUpsertHomeItem(ctx, item, port, writeService)
+	return port.UpsertKnowledgeHomeItem(ctx, item)
 }
 
 type reasonMergedPayload struct {
@@ -779,7 +716,7 @@ type reasonMergedPayload struct {
 	PreviousWhyCodes []string `json:"previous_why_codes"`
 }
 
-func projectReasonMerged(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int, writeService WriteServicePort) error {
+func projectReasonMerged(ctx context.Context, event domain.KnowledgeEvent, port knowledge_home_port.UpsertKnowledgeHomeItemPort, projectionVersion int) error {
 	var payload reasonMergedPayload
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		return fmt.Errorf("unmarshal ReasonMerged payload: %w", err)
@@ -818,5 +755,5 @@ func projectReasonMerged(ctx context.Context, event domain.KnowledgeEvent, port 
 		ProjectionVersion: projectionVersion,
 	}
 
-	return sovereignUpsertHomeItem(ctx, item, port, writeService)
+	return port.UpsertKnowledgeHomeItem(ctx, item)
 }

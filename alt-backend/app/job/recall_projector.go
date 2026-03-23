@@ -6,6 +6,7 @@ import (
 	"alt/port/recall_candidate_port"
 	"alt/port/recall_signal_port"
 	"alt/utils/logger"
+	"alt/utils/otel"
 	"context"
 	"fmt"
 	"log/slog"
@@ -15,9 +16,8 @@ import (
 )
 
 const (
-	recallProjectorName = "recall-rail-projector"
-	signalWindowDays    = 7
-	minRecallScore      = 0.2
+	signalWindowDays = 7
+	minRecallScore   = 0.2
 )
 
 // Recall reason weights.
@@ -32,19 +32,14 @@ const (
 
 // RecallProjectorJob returns a function that scores recall candidates from signals.
 // Users are dynamically discovered via ListDistinctUserIDsPort (from knowledge_home_items).
-// Optional writeService routes writes through Knowledge Sovereign when non-nil.
 func RecallProjectorJob(
 	listUsersPort knowledge_home_port.ListDistinctUserIDsPort,
 	signalPort recall_signal_port.ListRecallSignalsByUserPort,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
-	writeService ...WriteServicePort,
+	metrics *otel.KnowledgeHomeMetrics,
 ) func(ctx context.Context) error {
-	var ws WriteServicePort
-	if len(writeService) > 0 {
-		ws = writeService[0]
-	}
 	return func(ctx context.Context) error {
-		return processRecallSignals(ctx, listUsersPort, signalPort, candidatePort, ws)
+		return processRecallSignals(ctx, listUsersPort, signalPort, candidatePort, metrics)
 	}
 }
 
@@ -53,8 +48,10 @@ func processRecallSignals(
 	listUsersPort knowledge_home_port.ListDistinctUserIDsPort,
 	signalPort recall_signal_port.ListRecallSignalsByUserPort,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
-	writeService WriteServicePort,
+	metrics *otel.KnowledgeHomeMetrics,
 ) error {
+	start := time.Now()
+
 	userIDs, err := listUsersPort.ListDistinctUserIDs(ctx)
 	if err != nil {
 		return fmt.Errorf("recall projector: list distinct user IDs: %w", err)
@@ -68,6 +65,7 @@ func processRecallSignals(
 	}
 
 	var totalCandidates int
+	var emptyUsers int
 	for _, userID := range userIDs {
 		signals, err := signalPort.ListRecallSignalsByUser(ctx, userID, signalWindowDays)
 		if err != nil {
@@ -76,32 +74,44 @@ func processRecallSignals(
 			continue
 		}
 		if len(signals) == 0 {
+			emptyUsers++
 			continue
 		}
 
-		if err := scoreRecallCandidatesWithSovereign(ctx, userID, signals, candidatePort, writeService); err != nil {
+		candidates, err := scoreAndUpsertCandidates(ctx, userID, signals, candidatePort, metrics)
+		if err != nil {
 			logger.Logger.ErrorContext(ctx, "recall projector: scoring failed",
 				"error", err, "user_id", userID)
 			continue
 		}
-		totalCandidates += len(signals)
+		if candidates == 0 {
+			emptyUsers++
+		}
+		totalCandidates += candidates
+	}
+
+	if metrics != nil {
+		elapsed := float64(time.Since(start).Milliseconds())
+		metrics.RecallProjectorDurationMs.Record(ctx, elapsed)
+		metrics.RecallProjectorUsersProcessed.Add(ctx, int64(len(userIDs)))
+		metrics.RecallCandidateEmptyTotal.Add(ctx, int64(emptyUsers))
 	}
 
 	logger.Logger.InfoContext(ctx, "recall projector: completed",
 		slog.Int("users_processed", len(userIDs)),
-		slog.Int("signals_processed", totalCandidates))
+		slog.Int("candidates_generated", totalCandidates))
 
 	return nil
 }
 
-// scoreRecallCandidatesWithSovereign is the internal implementation that supports sovereign routing.
-func scoreRecallCandidatesWithSovereign(
+// scoreAndUpsertCandidates scores recall candidates from signals and returns the count generated.
+func scoreAndUpsertCandidates(
 	ctx context.Context,
 	userID uuid.UUID,
 	signals []domain.RecallSignal,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
-	writeService WriteServicePort,
-) error {
+	metrics *otel.KnowledgeHomeMetrics,
+) (int, error) {
 	// Group signals by item_key
 	itemSignals := make(map[string][]domain.RecallSignal)
 	for _, s := range signals {
@@ -109,14 +119,14 @@ func scoreRecallCandidatesWithSovereign(
 	}
 
 	now := time.Now()
+	generated := 0
 	for itemKey, sigs := range itemSignals {
-		var reasons []domain.RecallReason
+		reasons := make([]domain.RecallReason, 0, len(sigs))
 		var score float64
 
 		for _, sig := range sigs {
 			switch sig.SignalType {
 			case domain.SignalOpened:
-				// Check if opened but not revisited in 48h
 				if time.Since(sig.OccurredAt) > 48*time.Hour {
 					reasons = append(reasons, domain.RecallReason{
 						Type:        domain.ReasonOpenedNotRevisited,
@@ -162,33 +172,39 @@ func scoreRecallCandidatesWithSovereign(
 		}
 
 		candidate := domain.RecallCandidate{
-			UserID:          userID,
-			ItemKey:         itemKey,
-			RecallScore:     score,
-			Reasons:         reasons,
-			NextSuggestAt:   &now,
-			FirstEligibleAt: &now,
-			UpdatedAt:       now,
+			UserID:            userID,
+			ItemKey:           itemKey,
+			RecallScore:       score,
+			Reasons:           reasons,
+			NextSuggestAt:     &now,
+			FirstEligibleAt:   &now,
+			UpdatedAt:         now,
 			ProjectionVersion: 1,
 		}
 
-		if err := sovereignUpsertRecallCandidate(ctx, candidate, candidatePort, writeService); err != nil {
+		if err := candidatePort.UpsertRecallCandidate(ctx, candidate); err != nil {
 			logger.Logger.ErrorContext(ctx, "recall projector: failed to upsert candidate",
 				"error", err, "item_key", itemKey)
 			continue
 		}
+
+		generated++
+		if metrics != nil {
+			metrics.RecallCandidateGeneratedTotal.Add(ctx, 1)
+		}
 	}
 
-	return nil
+	return generated, nil
 }
 
 // ScoreRecallCandidates processes signals for a single user and upserts candidates.
-// Exported for testing. Uses legacy direct port (no Sovereign routing).
+// Exported for testing.
 func ScoreRecallCandidates(
 	ctx context.Context,
 	userID uuid.UUID,
 	signals []domain.RecallSignal,
 	candidatePort recall_candidate_port.UpsertRecallCandidatePort,
 ) error {
-	return scoreRecallCandidatesWithSovereign(ctx, userID, signals, candidatePort, nil)
+	_, err := scoreAndUpsertCandidates(ctx, userID, signals, candidatePort, nil)
+	return err
 }

@@ -1,7 +1,6 @@
 package knowledge_sovereign_port
 
 import (
-	"alt/domain"
 	"context"
 	"testing"
 
@@ -50,24 +49,6 @@ func (m *mockCurationMutator) ApplyCurationMutation(_ context.Context, mutation 
 	return nil
 }
 
-type mockRetentionResolver struct {
-	policy domain.RetentionPolicy
-	err    error
-}
-
-func (m *mockRetentionResolver) ResolveRetentionDecision(_ context.Context, _, _ string) (domain.RetentionPolicy, error) {
-	return m.policy, m.err
-}
-
-type mockExportScopeResolver struct {
-	classification domain.ExportClassification
-	err            error
-}
-
-func (m *mockExportScopeResolver) ResolveExportScope(_ context.Context, _, _ string) (domain.ExportClassification, error) {
-	return m.classification, m.err
-}
-
 // --- interface compile checks ---
 
 func TestProjectionMutatorInterfaceCompiles(t *testing.T) {
@@ -101,26 +82,6 @@ func TestCurationMutatorInterfaceCompiles(t *testing.T) {
 		EntityID:     "article-123",
 	})
 	assert.NoError(t, err)
-}
-
-func TestRetentionResolverInterfaceCompiles(t *testing.T) {
-	expected := domain.RetentionPolicy{EntityType: "article_metadata", Tier: domain.RetentionTierHot}
-	var iface RetentionResolver = &mockRetentionResolver{policy: expected}
-	require.NotNil(t, iface)
-
-	got, err := iface.ResolveRetentionDecision(context.Background(), "article_metadata", "article-123")
-	assert.NoError(t, err)
-	assert.Equal(t, expected, got)
-}
-
-func TestExportScopeResolverInterfaceCompiles(t *testing.T) {
-	expected := domain.ExportClassification{EntityType: "feed_subscriptions", Tier: domain.ExportTierA}
-	var iface ExportScopeResolver = &mockExportScopeResolver{classification: expected}
-	require.NotNil(t, iface)
-
-	got, err := iface.ResolveExportScope(context.Background(), "feed_subscriptions", "sub-123")
-	assert.NoError(t, err)
-	assert.Equal(t, expected, got)
 }
 
 // --- mutation type constant tests ---

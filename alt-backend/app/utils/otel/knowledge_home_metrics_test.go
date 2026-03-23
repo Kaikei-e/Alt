@@ -122,19 +122,24 @@ func TestNewKnowledgeHomeMetrics_AllFieldsInitialized(t *testing.T) {
 	if m.SovereignMutationDuration == nil {
 		t.Error("SovereignMutationDuration is nil")
 	}
-	if m.SovereignReconciliationRun == nil {
-		t.Error("SovereignReconciliationRun is nil")
+
+	// Recall metrics
+	if m.RecallSignalAppendTotal == nil {
+		t.Error("RecallSignalAppendTotal is nil")
 	}
-	if m.SovereignReconciliationMismatch == nil {
-		t.Error("SovereignReconciliationMismatch is nil")
+	if m.RecallSignalAppendErrors == nil {
+		t.Error("RecallSignalAppendErrors is nil")
 	}
-	if m.SovereignReconciliationDuration == nil {
-		t.Error("SovereignReconciliationDuration is nil")
+	if m.RecallCandidateGeneratedTotal == nil {
+		t.Error("RecallCandidateGeneratedTotal is nil")
 	}
-	if m.SovereignIdempotencyDuplicate == nil {
-		t.Error("SovereignIdempotencyDuplicate is nil")
+	if m.RecallCandidateEmptyTotal == nil {
+		t.Error("RecallCandidateEmptyTotal is nil")
 	}
-	if m.SovereignCutoverReady == nil {
-		t.Error("SovereignCutoverReady is nil")
+	if m.RecallProjectorDurationMs == nil {
+		t.Error("RecallProjectorDurationMs is nil")
+	}
+	if m.RecallProjectorUsersProcessed == nil {
+		t.Error("RecallProjectorUsersProcessed is nil")
 	}
 }

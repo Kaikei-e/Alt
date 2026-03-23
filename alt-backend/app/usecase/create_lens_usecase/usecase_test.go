@@ -2,10 +2,7 @@ package create_lens_usecase
 
 import (
 	"alt/domain"
-	"alt/port/knowledge_sovereign_port"
-	"alt/utils/logger"
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -27,60 +24,8 @@ func (m *mockCreateLensVersionPort) CreateLensVersion(_ context.Context, _ domai
 	return nil
 }
 
-type mockCurationMutator struct {
-	calls []string
-	err   error
-}
-
-func (m *mockCurationMutator) ApplyCurationMutation(_ context.Context, mutation knowledge_sovereign_port.CurationMutation) error {
-	if m.err != nil {
-		return m.err
-	}
-	m.calls = append(m.calls, mutation.MutationType)
-	return nil
-}
-
-func TestCreateLens_RoutesThroughSovereign(t *testing.T) {
-	logger.InitLogger()
-
-	mock := &mockCurationMutator{}
+func TestCreateLens_Success(t *testing.T) {
 	uc := NewCreateLensUsecase(&mockCreateLensPort{}, &mockCreateLensVersionPort{})
-	uc.SetCurationMutator(mock)
-
-	result, err := uc.Execute(context.Background(), CreateLensInput{
-		UserID:   uuid.New(),
-		TenantID: uuid.New(),
-		Name:     "test",
-	})
-
-	require.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Len(t, mock.calls, 2)
-	assert.Equal(t, knowledge_sovereign_port.MutationCreateLens, mock.calls[0])
-	assert.Equal(t, knowledge_sovereign_port.MutationCreateLensVersion, mock.calls[1])
-}
-
-func TestCreateLens_FallsBackWithoutSovereign(t *testing.T) {
-	logger.InitLogger()
-
-	uc := NewCreateLensUsecase(&mockCreateLensPort{}, &mockCreateLensVersionPort{})
-
-	result, err := uc.Execute(context.Background(), CreateLensInput{
-		UserID:   uuid.New(),
-		TenantID: uuid.New(),
-		Name:     "test",
-	})
-
-	require.NoError(t, err)
-	assert.NotNil(t, result)
-}
-
-func TestCreateLens_SovereignError_NonFatal(t *testing.T) {
-	logger.InitLogger()
-
-	mock := &mockCurationMutator{err: errors.New("sovereign failure")}
-	uc := NewCreateLensUsecase(&mockCreateLensPort{}, &mockCreateLensVersionPort{})
-	uc.SetCurationMutator(mock)
 
 	result, err := uc.Execute(context.Background(), CreateLensInput{
 		UserID:   uuid.New(),

@@ -2,6 +2,7 @@ package di
 
 import (
 	"log/slog"
+	"os"
 
 	"alt/adapter/augur_adapter"
 	"alt/config"
@@ -43,14 +44,7 @@ import (
 	"alt/gateway/image_proxy_gateway"
 	"alt/gateway/internal_article_gateway"
 	"alt/gateway/knowledge_backfill_gateway"
-	"alt/gateway/knowledge_event_gateway"
-	"alt/gateway/knowledge_home_gateway"
-	"alt/gateway/knowledge_sovereign_gateway"
-	"alt/gateway/knowledge_lens_gateway"
-	"alt/gateway/knowledge_projection_gateway"
-	"alt/gateway/knowledge_projection_version_gateway"
-	"alt/gateway/knowledge_reproject_gateway"
-	"alt/gateway/knowledge_user_event_gateway"
+	"alt/driver/sovereign_client"
 	"alt/gateway/latest_article_gateway"
 	"alt/gateway/morning_gateway"
 	"alt/gateway/morning_letter_connect_gateway"
@@ -58,8 +52,6 @@ import (
 	"alt/gateway/rag_connect_gateway"
 	"alt/gateway/rag_gateway"
 	"alt/gateway/rate_limiter_gateway"
-	"alt/gateway/recall_candidate_gateway"
-	"alt/gateway/recall_signal_gateway"
 	"alt/gateway/recap_articles_gateway"
 	"alt/gateway/recap_gateway"
 	"alt/gateway/register_favorite_feed_gateway"
@@ -70,7 +62,6 @@ import (
 	"alt/gateway/subscription_gateway"
 	"alt/gateway/summary_version_gateway"
 	"alt/gateway/tag_set_version_gateway"
-	"alt/gateway/today_digest_gateway"
 	"alt/gateway/trend_stats_gateway"
 	"alt/gateway/update_feed_status_gateway"
 	"alt/gateway/user_feed_gateway"
@@ -84,7 +75,6 @@ import (
 	"alt/port/rate_limiter_port"
 	"alt/usecase/answer_chat_usecase"
 	"alt/usecase/append_knowledge_event_usecase"
-	"alt/usecase/knowledge_write_service_usecase"
 	"alt/usecase/archive_article_usecase"
 	"alt/usecase/archive_lens_usecase"
 	"alt/usecase/cached_feed_list_usecase"
@@ -239,38 +229,28 @@ type ApplicationComponents struct {
 	AppendKnowledgeEventUsecase       *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
 	CreateSummaryVersionUsecase       *create_summary_version_usecase.CreateSummaryVersionUsecase
 	CreateTagSetVersionUsecase        *create_tag_set_version_usecase.CreateTagSetVersionUsecase
-	KnowledgeEventGateway             *knowledge_event_gateway.Gateway
-	KnowledgeProjectionGateway        *knowledge_projection_gateway.Gateway
-	KnowledgeHomeGateway              *knowledge_home_gateway.Gateway
-	TodayDigestGateway                *today_digest_gateway.Gateway
-	FeatureFlagGateway                *feature_flag_gateway.Gateway
-	KnowledgeBackfillGateway          *knowledge_backfill_gateway.Gateway
-	KnowledgeProjectionVersionGateway *knowledge_projection_version_gateway.Gateway
-	KnowledgeBackfillUsecase          *knowledge_backfill_usecase.Usecase
-	KnowledgeProjectionHealthUsecase  *knowledge_projection_health_usecase.Usecase
-	KnowledgeReprojectGateway         *knowledge_reproject_gateway.Gateway
-	ReprojectUsecase                  *knowledge_reproject_usecase.Usecase
-	SLOUsecase                        *knowledge_slo_usecase.Usecase
-	AuditUsecase                      *knowledge_audit_usecase.Usecase
+	FeatureFlagGateway               *feature_flag_gateway.Gateway
+	KnowledgeBackfillArticlesGateway *knowledge_backfill_gateway.Gateway
+	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
+	KnowledgeProjectionHealthUsecase *knowledge_projection_health_usecase.Usecase
+	ReprojectUsecase                 *knowledge_reproject_usecase.Usecase
+	SLOUsecase                       *knowledge_slo_usecase.Usecase
+	AuditUsecase                     *knowledge_audit_usecase.Usecase
 
 	// Phase 4: RecallRail, Lens, Stream, Supersede
-	RecallRailUsecase      *recall_rail_usecase.RecallRailUsecase
-	RecallSnoozeUsecase    *recall_snooze_usecase.RecallSnoozeUsecase
-	RecallDismissUsecase   *recall_dismiss_usecase.RecallDismissUsecase
-	CreateLensUsecase      *create_lens_usecase.CreateLensUsecase
-	UpdateLensUsecase      *update_lens_usecase.UpdateLensUsecase
-	ListLensesUsecase      *list_lenses_usecase.ListLensesUsecase
-	SelectLensUsecase      *select_lens_usecase.SelectLensUsecase
-	ArchiveLensUsecase     *archive_lens_usecase.ArchiveLensUsecase
-	RecallSignalGateway    *recall_signal_gateway.Gateway
-	RecallCandidateGateway *recall_candidate_gateway.Gateway
-	SummaryVersionGateway  *summary_version_gateway.Gateway
-	TagSetVersionGateway   *tag_set_version_gateway.Gateway
-	KnowledgeLensGateway   *knowledge_lens_gateway.Gateway
+	RecallRailUsecase    *recall_rail_usecase.RecallRailUsecase
+	RecallSnoozeUsecase  *recall_snooze_usecase.RecallSnoozeUsecase
+	RecallDismissUsecase *recall_dismiss_usecase.RecallDismissUsecase
+	CreateLensUsecase    *create_lens_usecase.CreateLensUsecase
+	UpdateLensUsecase    *update_lens_usecase.UpdateLensUsecase
+	ListLensesUsecase    *list_lenses_usecase.ListLensesUsecase
+	SelectLensUsecase    *select_lens_usecase.SelectLensUsecase
+	ArchiveLensUsecase   *archive_lens_usecase.ArchiveLensUsecase
+	SummaryVersionGateway *summary_version_gateway.Gateway
+	TagSetVersionGateway  *tag_set_version_gateway.Gateway
 
-	// Knowledge Sovereign
-	KnowledgeSovereignGateway    *knowledge_sovereign_gateway.Gateway
-	KnowledgeWriteServiceUsecase *knowledge_write_service_usecase.KnowledgeWriteServiceUsecase
+	// Knowledge Sovereign (remote Connect-RPC service — all knowledge data access)
+	SovereignClient *sovereign_client.Client
 
 	// Observability
 	KnowledgeHomeMetrics *altotel.KnowledgeHomeMetrics
@@ -534,62 +514,56 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	exportOPMLUsecase := opml_usecase.NewExportOPMLUsecase(opmlExportGateway)
 	importOPMLUsecase := opml_usecase.NewImportOPMLUsecase(opmlImportGateway)
 
-	// Knowledge Home components
-	knowledgeEventGw := knowledge_event_gateway.NewGateway(altDBRepository)
-	knowledgeHomeGw := knowledge_home_gateway.NewGateway(altDBRepository)
-	todayDigestGw := today_digest_gateway.NewGateway(altDBRepository)
-	knowledgeUserEventGw := knowledge_user_event_gateway.NewGateway(altDBRepository)
+	// Knowledge Sovereign: all knowledge data access via Connect-RPC
+	sovereignURL := os.Getenv("SOVEREIGN_URL")
+	sovereignEnabled := sovereignURL != ""
+	sovereignCli := sovereign_client.NewClient(sovereignURL, sovereignEnabled)
+
+	// Knowledge Home components (sovereign_client satisfies all sovereign port interfaces)
 	summaryVersionGw := summary_version_gateway.NewGateway(altDBRepository)
 	tagSetVersionGw := tag_set_version_gateway.NewGateway(altDBRepository)
-	knowledgeProjectionGw := knowledge_projection_gateway.NewGateway(altDBRepository)
 	featureFlagGw := feature_flag_gateway.NewGateway(&cfg.KnowledgeHome)
-	knowledgeBackfillGw := knowledge_backfill_gateway.NewGateway(altDBRepository)
-	knowledgeProjectionVersionGw := knowledge_projection_version_gateway.NewGateway(altDBRepository)
-	knowledgeLensGw := knowledge_lens_gateway.NewGateway(altDBRepository)
+	knowledgeBackfillGw := knowledge_backfill_gateway.NewGateway(altDBRepository) // articles table only
 
-	getKnowledgeHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(knowledgeHomeGw, todayDigestGw, knowledgeLensGw, todayDigestGw, todayDigestGw)
-	trackHomeSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(knowledgeUserEventGw, featureFlagGw)
-	trackHomeActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(knowledgeUserEventGw, knowledgeEventGw, featureFlagGw)
-	appendKnowledgeEventUsecase := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(knowledgeEventGw)
-	createSummaryVersionUsecase := create_summary_version_usecase.NewCreateSummaryVersionUsecase(summaryVersionGw, knowledgeEventGw, summaryVersionGw)
-	createTagSetVersionUsecase := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetVersionGw, knowledgeEventGw, tagSetVersionGw)
+	getKnowledgeHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli, sovereignCli)
+	trackHomeSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
+	trackHomeActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw)
+	appendKnowledgeEventUsecase := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
+	createSummaryVersionUsecase := create_summary_version_usecase.NewCreateSummaryVersionUsecase(summaryVersionGw, sovereignCli, summaryVersionGw)
+	createTagSetVersionUsecase := create_tag_set_version_usecase.NewCreateTagSetVersionUsecase(tagSetVersionGw, sovereignCli, tagSetVersionGw)
 	knowledgeBackfillUsecase := knowledge_backfill_usecase.NewUsecase(
-		knowledgeBackfillGw,
-		knowledgeBackfillGw,
-		knowledgeBackfillGw,
-		knowledgeBackfillGw,
-		knowledgeBackfillGw,
-		knowledgeEventGw,
+		sovereignCli,
+		sovereignCli,
+		sovereignCli,
+		sovereignCli,
+		knowledgeBackfillGw, // ListBackfillArticlesPort (articles table in alt-db)
+		sovereignCli,
 	)
-	knowledgeProjectionHealthUsecase := knowledge_projection_health_usecase.NewUsecase(knowledgeProjectionVersionGw, knowledgeProjectionGw, knowledgeBackfillGw)
+	knowledgeProjectionHealthUsecase := knowledge_projection_health_usecase.NewUsecase(sovereignCli, sovereignCli, sovereignCli)
 
-	// Phase 5: Reproject, SLO, Audit components
-	knowledgeReprojectGw := knowledge_reproject_gateway.NewGateway(altDBRepository)
+	// Reproject, SLO, Audit components
 	reprojectUsecase := knowledge_reproject_usecase.NewUsecase(
-		knowledgeReprojectGw,
-		knowledgeReprojectGw,
-		knowledgeReprojectGw,
-		knowledgeReprojectGw,
-		knowledgeReprojectGw,
-		knowledgeProjectionVersionGw,
-		knowledgeProjectionVersionGw,
-		knowledgeProjectionVersionGw,
+		sovereignCli,
+		sovereignCli,
+		sovereignCli,
+		sovereignCli,
+		sovereignCli,
+		sovereignCli,
+		sovereignCli,
+		sovereignCli,
 	)
-	sloUsecase := knowledge_slo_usecase.NewUsecase(altDBRepository)
-	auditUsecase := knowledge_audit_usecase.NewUsecase(knowledgeReprojectGw, knowledgeReprojectGw)
+	sloUsecase := knowledge_slo_usecase.NewUsecase(sovereignCli)
+	auditUsecase := knowledge_audit_usecase.NewUsecase(sovereignCli, sovereignCli)
 
-	// Phase 4: RecallRail, Lens, Stream, Supersede components
-	recallSignalGw := recall_signal_gateway.NewGateway(altDBRepository)
-	recallCandidateGw := recall_candidate_gateway.NewGateway(altDBRepository)
-
-	recallRailUsecase := recall_rail_usecase.NewRecallRailUsecase(recallCandidateGw, featureFlagGw)
-	recallSnoozeUsecase := recall_snooze_usecase.NewRecallSnoozeUsecase(recallCandidateGw, knowledgeEventGw)
-	recallDismissUsecase := recall_dismiss_usecase.NewRecallDismissUsecase(recallCandidateGw, knowledgeEventGw)
-	createLensUsecase := create_lens_usecase.NewCreateLensUsecase(knowledgeLensGw, knowledgeLensGw)
-	updateLensUsecase := update_lens_usecase.NewUpdateLensUsecase(knowledgeLensGw, knowledgeLensGw)
-	listLensesUsecase := list_lenses_usecase.NewListLensesUsecase(knowledgeLensGw, knowledgeLensGw)
-	selectLensUsecase := select_lens_usecase.NewSelectLensUsecase(knowledgeLensGw, knowledgeLensGw, knowledgeLensGw, knowledgeLensGw)
-	archiveLensUsecase := archive_lens_usecase.NewArchiveLensUsecase(knowledgeLensGw, knowledgeLensGw)
+	// RecallRail, Lens, Supersede components
+	recallRailUsecase := recall_rail_usecase.NewRecallRailUsecase(sovereignCli, featureFlagGw)
+	recallSnoozeUsecase := recall_snooze_usecase.NewRecallSnoozeUsecase(sovereignCli, sovereignCli)
+	recallDismissUsecase := recall_dismiss_usecase.NewRecallDismissUsecase(sovereignCli, sovereignCli)
+	createLensUsecase := create_lens_usecase.NewCreateLensUsecase(sovereignCli, sovereignCli)
+	updateLensUsecase := update_lens_usecase.NewUpdateLensUsecase(sovereignCli, sovereignCli)
+	listLensesUsecase := list_lenses_usecase.NewListLensesUsecase(sovereignCli, sovereignCli)
+	selectLensUsecase := select_lens_usecase.NewSelectLensUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli)
+	archiveLensUsecase := archive_lens_usecase.NewArchiveLensUsecase(sovereignCli, sovereignCli)
 
 	// Knowledge Home metrics (optional, fail-open)
 	var knowledgeHomeMetrics *altotel.KnowledgeHomeMetrics
@@ -599,21 +573,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		knowledgeHomeMetrics = m
 	}
 
-	// Wire recall signal port: TrackHomeAction appends recall signals (fire-and-forget)
-	trackHomeActionUsecase.SetRecallSignalPort(recallSignalGw)
-	trackHomeActionUsecase.SetDismissPort(knowledgeHomeGw, knowledgeProjectionVersionGw)
-
-	// Knowledge Sovereign wiring
-	knowledgeSovereignGw := knowledge_sovereign_gateway.NewGateway(altDBRepository)
-	knowledgeWriteServiceUsecase := knowledge_write_service_usecase.NewKnowledgeWriteServiceUsecase(
-		knowledgeSovereignGw, knowledgeSovereignGw, knowledgeSovereignGw,
-		knowledgeSovereignGw, knowledgeSovereignGw,
-	)
-	trackHomeActionUsecase.SetCurationMutator(knowledgeSovereignGw)
-	createLensUsecase.SetCurationMutator(knowledgeSovereignGw)
-	updateLensUsecase.SetCurationMutator(knowledgeSovereignGw)
-	selectLensUsecase.SetCurationMutator(knowledgeSovereignGw)
-	archiveLensUsecase.SetCurationMutator(knowledgeSovereignGw)
+	// Wire optional setter ports
+	trackHomeActionUsecase.SetRecallSignalPort(sovereignCli)
+	trackHomeActionUsecase.SetDismissPort(sovereignCli, sovereignCli)
 
 	// Wire auto-subscribe: Usecase delegates subscription to SubscriptionPort
 	registerFeedsUsecase.SetSubscriptionPort(subscriptionGatewayImpl)
@@ -709,38 +671,28 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		AppendKnowledgeEventUsecase:       appendKnowledgeEventUsecase,
 		CreateSummaryVersionUsecase:       createSummaryVersionUsecase,
 		CreateTagSetVersionUsecase:        createTagSetVersionUsecase,
-		KnowledgeEventGateway:             knowledgeEventGw,
-		KnowledgeProjectionGateway:        knowledgeProjectionGw,
-		KnowledgeHomeGateway:              knowledgeHomeGw,
-		TodayDigestGateway:                todayDigestGw,
-		FeatureFlagGateway:                featureFlagGw,
-		KnowledgeBackfillGateway:          knowledgeBackfillGw,
-		KnowledgeProjectionVersionGateway: knowledgeProjectionVersionGw,
-		KnowledgeBackfillUsecase:          knowledgeBackfillUsecase,
-		KnowledgeProjectionHealthUsecase:  knowledgeProjectionHealthUsecase,
-		KnowledgeReprojectGateway:         knowledgeReprojectGw,
-		ReprojectUsecase:                  reprojectUsecase,
-		SLOUsecase:                        sloUsecase,
-		AuditUsecase:                      auditUsecase,
+		FeatureFlagGateway:               featureFlagGw,
+		KnowledgeBackfillArticlesGateway: knowledgeBackfillGw,
+		KnowledgeBackfillUsecase:         knowledgeBackfillUsecase,
+		KnowledgeProjectionHealthUsecase: knowledgeProjectionHealthUsecase,
+		ReprojectUsecase:                 reprojectUsecase,
+		SLOUsecase:                       sloUsecase,
+		AuditUsecase:                     auditUsecase,
 
-		// Phase 4
-		RecallRailUsecase:      recallRailUsecase,
-		RecallSnoozeUsecase:    recallSnoozeUsecase,
-		RecallDismissUsecase:   recallDismissUsecase,
-		CreateLensUsecase:      createLensUsecase,
-		UpdateLensUsecase:      updateLensUsecase,
-		ListLensesUsecase:      listLensesUsecase,
-		SelectLensUsecase:      selectLensUsecase,
-		ArchiveLensUsecase:     archiveLensUsecase,
-		RecallSignalGateway:    recallSignalGw,
-		RecallCandidateGateway: recallCandidateGw,
-		SummaryVersionGateway:  summaryVersionGw,
-		TagSetVersionGateway:   tagSetVersionGw,
-		KnowledgeLensGateway:   knowledgeLensGw,
+		// RecallRail, Lens
+		RecallRailUsecase:    recallRailUsecase,
+		RecallSnoozeUsecase:  recallSnoozeUsecase,
+		RecallDismissUsecase: recallDismissUsecase,
+		CreateLensUsecase:    createLensUsecase,
+		UpdateLensUsecase:    updateLensUsecase,
+		ListLensesUsecase:    listLensesUsecase,
+		SelectLensUsecase:    selectLensUsecase,
+		ArchiveLensUsecase:   archiveLensUsecase,
+		SummaryVersionGateway: summaryVersionGw,
+		TagSetVersionGateway:  tagSetVersionGw,
 
-		// Knowledge Sovereign
-		KnowledgeSovereignGateway:    knowledgeSovereignGw,
-		KnowledgeWriteServiceUsecase: knowledgeWriteServiceUsecase,
+		// Knowledge Sovereign (all knowledge data access)
+		SovereignClient: sovereignCli,
 
 		// Observability
 		KnowledgeHomeMetrics: knowledgeHomeMetrics,

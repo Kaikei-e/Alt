@@ -3,7 +3,6 @@ package track_home_action_usecase
 import (
 	"alt/domain"
 	"alt/port/knowledge_home_port"
-	"alt/port/knowledge_sovereign_port"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -254,6 +253,19 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 		assert.Equal(t, domain.SignalTagInterest, recallPort.appendedSignals[0].SignalType)
 	})
 
+	t.Run("open_search action appends SignalSearchRelated", func(t *testing.T) {
+		recallPort := &mockRecallSignalPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
+		uc.SetRecallSignalPort(recallPort)
+
+		metadata := `{"search_query":"RAG pipeline"}`
+		err := uc.Execute(context.Background(), userID, tenantID, "open_search", itemKey, metadata)
+		require.NoError(t, err)
+		require.Len(t, recallPort.appendedSignals, 1)
+		assert.Equal(t, domain.SignalSearchRelated, recallPort.appendedSignals[0].SignalType)
+		assert.Equal(t, itemKey, recallPort.appendedSignals[0].ItemKey)
+	})
+
 	t.Run("dismiss action does not append signal", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
 		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
@@ -356,64 +368,5 @@ func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, dismissPort.calls, 1)
 		assert.Equal(t, 1, dismissPort.calls[0].projectionVersion)
-	})
-}
-
-// --- CurationMutator (Sovereign) tests ---
-
-type mockCurationMutator struct {
-	calls []knowledge_sovereign_port.CurationMutation
-	err   error
-}
-
-func (m *mockCurationMutator) ApplyCurationMutation(_ context.Context, mutation knowledge_sovereign_port.CurationMutation) error {
-	if m.err != nil {
-		return m.err
-	}
-	m.calls = append(m.calls, mutation)
-	return nil
-}
-
-func TestTrackHomeActionUsecase_DismissViaSovereign(t *testing.T) {
-	logger.InitLogger()
-
-	userID := uuid.New()
-	tenantID := uuid.New()
-	itemKey := "article:sovereign-dismiss"
-
-	t.Run("dismiss uses curation mutator when set", func(t *testing.T) {
-		curationMock := &mockCurationMutator{}
-		dismissPort := &mockDismissPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
-		uc.SetDismissPort(dismissPort, &mockActiveProjectionVersionPort{})
-		uc.SetCurationMutator(curationMock)
-
-		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
-		require.NoError(t, err)
-		assert.Len(t, curationMock.calls, 1)
-		assert.Equal(t, knowledge_sovereign_port.MutationDismissCuration, curationMock.calls[0].MutationType)
-		assert.Equal(t, itemKey, curationMock.calls[0].EntityID)
-		// Old dismiss port should NOT be called when curation mutator is set
-		assert.Empty(t, dismissPort.calls)
-	})
-
-	t.Run("dismiss curation mutator error is non fatal", func(t *testing.T) {
-		curationMock := &mockCurationMutator{err: errors.New("sovereign failed")}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
-		uc.SetCurationMutator(curationMock)
-
-		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
-		require.NoError(t, err)
-	})
-
-	t.Run("falls back to dismiss port when curation mutator is nil", func(t *testing.T) {
-		dismissPort := &mockDismissPort{}
-		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil)
-		uc.SetDismissPort(dismissPort, &mockActiveProjectionVersionPort{})
-		// No SetCurationMutator call
-
-		err := uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
-		require.NoError(t, err)
-		assert.Len(t, dismissPort.calls, 1)
 	})
 }

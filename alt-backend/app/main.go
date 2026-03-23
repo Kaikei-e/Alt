@@ -132,29 +132,28 @@ func main() {
 		Interval: 15 * time.Second,
 		Timeout:  25 * time.Second,
 		Fn: job.KnowledgeBackfillJob(
-			container.KnowledgeBackfillGateway,
-			container.KnowledgeBackfillGateway,
-			container.KnowledgeBackfillGateway,
-			container.KnowledgeBackfillGateway,
-			container.KnowledgeEventGateway,
+			container.SovereignClient,
+			container.SovereignClient,
+			container.SovereignClient,
+			container.KnowledgeBackfillArticlesGateway,
+			container.SovereignClient,
 		),
 	})
 	scheduler.Add(job.Job{
 		Name:     "knowledge-reproject",
 		Interval: 30 * time.Second,
 		Timeout:  25 * time.Second,
-		Fn: job.KnowledgeReprojectJobWithWriteService(
-			container.KnowledgeReprojectGateway,
-			container.KnowledgeReprojectGateway,
-			container.KnowledgeReprojectGateway,
-			container.KnowledgeEventGateway,
-			container.KnowledgeProjectionGateway,
-			container.KnowledgeProjectionGateway,
-			container.KnowledgeHomeGateway,
-			container.TodayDigestGateway,
+		Fn: job.KnowledgeReprojectJob(
+			container.SovereignClient,
+			container.SovereignClient,
+			container.SovereignClient,
+			container.SovereignClient,
+			container.SovereignClient,
+			container.SovereignClient,
+			container.SovereignClient,
+			container.SovereignClient,
 			container.SummaryVersionGateway,
 			container.TagSetVersionGateway,
-			container.KnowledgeWriteServiceUsecase,
 		),
 	})
 
@@ -163,10 +162,10 @@ func main() {
 		Interval: 60 * time.Second,
 		Timeout:  30 * time.Second,
 		Fn: job.RecallProjectorJob(
-			container.KnowledgeHomeGateway,
-			container.RecallSignalGateway,
-			container.RecallCandidateGateway,
-			container.KnowledgeWriteServiceUsecase,
+			container.SovereignClient,
+			container.SovereignClient,
+			container.SovereignClient,
+			container.KnowledgeHomeMetrics,
 		),
 	})
 	scheduler.Add(job.Job{
@@ -174,52 +173,37 @@ func main() {
 		Interval: 5 * time.Minute,
 		Timeout:  30 * time.Second,
 		Fn: job.DigestAvailabilityReconcileJob(
-			container.KnowledgeHomeGateway,
+			container.SovereignClient,
 			container.RecapUsecase,
-			container.TodayDigestGateway,
-		),
-	})
-	scheduler.Add(job.Job{
-		Name:     "sovereign-reconciliation",
-		Interval: 30 * time.Minute,
-		Timeout:  2 * time.Minute,
-		Fn: job.SovereignReconciliationJob(
-			container.KnowledgeReprojectGateway,
-			container.KnowledgeProjectionVersionGateway,
-			nil, // ReconciliationReporter — recording via audit usecase in future phase
-			container.KnowledgeHomeMetrics,
+			container.SovereignClient,
 		),
 	})
 	scheduler.Start(ctx)
 
 	projectorProcess := job.KnowledgeProjectorJobWithConfig(
-		container.KnowledgeEventGateway,
-		container.KnowledgeProjectionGateway,
-		container.KnowledgeProjectionGateway,
-		container.KnowledgeHomeGateway,
-		container.TodayDigestGateway,
-		container.KnowledgeProjectionVersionGateway,
+		container.SovereignClient,
+		container.SovereignClient,
+		container.SovereignClient,
+		container.SovereignClient,
+		container.SovereignClient,
+		container.SovereignClient,
 		container.SummaryVersionGateway,
-		container.RecallCandidateGateway,
+		container.SovereignClient,
 		container.TagSetVersionGateway,
 		job.KnowledgeProjectorConfig{
-			BatchSize:    cfg.KnowledgeHome.ProjectorBatchSize,
-			Metrics:      container.KnowledgeHomeMetrics,
-			WriteService: container.KnowledgeWriteServiceUsecase,
+			BatchSize: cfg.KnowledgeHome.ProjectorBatchSize,
+			Metrics:   container.KnowledgeHomeMetrics,
 		},
-		container.KnowledgeHomeGateway,
-	)
-	projectorConnString := alt_db.NewDatabaseConfigFromEnv().BuildDirectConnectionString(
-		cfg.KnowledgeHome.ProjectorDirectDBHost,
-		cfg.KnowledgeHome.ProjectorDirectDBPort,
+		container.SovereignClient,
 	)
 	projectorRunner := job.NewKnowledgeProjectorRunner(job.KnowledgeProjectorRunnerConfig{
-		PollInterval: cfg.KnowledgeHome.ProjectorPollInterval,
-		Timeout:      cfg.KnowledgeHome.ProjectorTimeout,
-		Process:      projectorProcess,
-		ListenerFactory: job.NewPGKnowledgeProjectorListenerFactory(
-			projectorConnString,
-			cfg.KnowledgeHome.ProjectorNotifyChannel,
+		PollInterval:    cfg.KnowledgeHome.ProjectorPollInterval,
+		Timeout:         cfg.KnowledgeHome.ProjectorTimeout,
+		Process:         projectorProcess,
+		ListenerFactory: job.NewSovereignProjectorListenerFactory(
+			func(ctx context.Context, name string) (job.KnowledgeProjectorListener, error) {
+				return container.SovereignClient.ConnectProjectorWatch(ctx, name)
+			},
 		),
 	})
 	go func() {

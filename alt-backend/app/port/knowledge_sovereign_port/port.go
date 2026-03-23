@@ -1,9 +1,9 @@
 package knowledge_sovereign_port
 
 import (
-	"alt/domain"
 	"context"
 	"encoding/json"
+	"fmt"
 )
 
 // Projection mutation types.
@@ -71,12 +71,7 @@ type CurationMutator interface {
 	ApplyCurationMutation(ctx context.Context, mutation CurationMutation) error
 }
 
-// RetentionResolver resolves the retention decision for an entity.
-type RetentionResolver interface {
-	ResolveRetentionDecision(ctx context.Context, entityType string, entityID string) (domain.RetentionPolicy, error)
-}
-
-// ExportScopeResolver resolves the export scope for an entity.
-type ExportScopeResolver interface {
-	ResolveExportScope(ctx context.Context, entityType string, entityID string) (domain.ExportClassification, error)
+// BuildIdempotencyKey creates a deterministic key for deduplication.
+func BuildIdempotencyKey(mutationType, entityID string) string {
+	return fmt.Sprintf("%s:%s", mutationType, entityID)
 }

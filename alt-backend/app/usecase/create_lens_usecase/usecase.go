@@ -3,10 +3,7 @@ package create_lens_usecase
 import (
 	"alt/domain"
 	"alt/port/knowledge_lens_port"
-	"alt/port/knowledge_sovereign_port"
-	"alt/utils/logger"
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -14,14 +11,8 @@ import (
 )
 
 type CreateLensUsecase struct {
-	lensPort        knowledge_lens_port.CreateLensPort
-	versionPort     knowledge_lens_port.CreateLensVersionPort
-	curationMutator knowledge_sovereign_port.CurationMutator
-}
-
-// SetCurationMutator wires the optional Knowledge Sovereign curation mutator.
-func (u *CreateLensUsecase) SetCurationMutator(port knowledge_sovereign_port.CurationMutator) {
-	u.curationMutator = port
+	lensPort    knowledge_lens_port.CreateLensPort
+	versionPort knowledge_lens_port.CreateLensVersionPort
 }
 
 func NewCreateLensUsecase(
@@ -97,36 +88,6 @@ func (u *CreateLensUsecase) Execute(ctx context.Context, input CreateLensInput) 
 	}
 
 	lens.CurrentVersion = &version
-
-	if u.curationMutator != nil {
-		lensPayload, _ := json.Marshal(map[string]any{
-			"lens_id":   lensID.String(),
-			"user_id":   input.UserID.String(),
-			"tenant_id": input.TenantID.String(),
-			"name":      input.Name,
-		})
-		if err := u.curationMutator.ApplyCurationMutation(ctx, knowledge_sovereign_port.CurationMutation{
-			MutationType:   knowledge_sovereign_port.MutationCreateLens,
-			EntityID:       lensID.String(),
-			Payload:        lensPayload,
-			IdempotencyKey: domain.BuildIdempotencyKey(knowledge_sovereign_port.MutationCreateLens, lensID.String()),
-		}); err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to route lens creation through sovereign", "error", err)
-		}
-
-		versionPayload, _ := json.Marshal(map[string]any{
-			"lens_version_id": versionID.String(),
-			"lens_id":         lensID.String(),
-		})
-		if err := u.curationMutator.ApplyCurationMutation(ctx, knowledge_sovereign_port.CurationMutation{
-			MutationType:   knowledge_sovereign_port.MutationCreateLensVersion,
-			EntityID:       versionID.String(),
-			Payload:        versionPayload,
-			IdempotencyKey: domain.BuildIdempotencyKey(knowledge_sovereign_port.MutationCreateLensVersion, versionID.String()),
-		}); err != nil {
-			logger.Logger.ErrorContext(ctx, "failed to route lens version creation through sovereign", "error", err)
-		}
-	}
 
 	return &CreateLensResult{Lens: lens, Version: version}, nil
 }

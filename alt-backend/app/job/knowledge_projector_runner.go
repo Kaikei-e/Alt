@@ -119,6 +119,16 @@ func (r *KnowledgeProjectorRunner) runOnce(ctx context.Context) error {
 	return r.process(runCtx)
 }
 
+// ProjectorWatchFactory creates a listener factory from a function that
+// connects to sovereign's WatchProjectorEvents streaming RPC.
+func NewSovereignProjectorListenerFactory(
+	connect func(ctx context.Context, projectorName string) (KnowledgeProjectorListener, error),
+) func(ctx context.Context) (KnowledgeProjectorListener, error) {
+	return func(ctx context.Context) (KnowledgeProjectorListener, error) {
+		return connect(ctx, projectorName)
+	}
+}
+
 type pgKnowledgeProjectorListener struct {
 	conn    *pgx.Conn
 	channel string
