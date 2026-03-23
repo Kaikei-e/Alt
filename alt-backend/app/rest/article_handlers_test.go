@@ -105,8 +105,8 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		c, rec := createContext()
 
 		// Mock: FetchArticleByURL -> Not Found (nil)
-		mockPool.ExpectQuery(`(?is)SELECT id, .* FROM articles WHERE url = \$1`).
-			WithArgs(targetURLStr).
+		mockPool.ExpectQuery(`(?is)SELECT id, .* FROM articles WHERE url = \$1 AND user_id = \$2`).
+			WithArgs(targetURLStr, userID).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "url", "title", "content", "created_at", "updated_at"})) // Empty means not found
 
 		// Mock: IsDomainDeclined -> True
@@ -131,8 +131,8 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		c, rec := createContext()
 
 		// Mock: FetchArticleByURL -> Not Found
-		mockPool.ExpectQuery(`(?is)SELECT id, .* FROM articles WHERE url = \$1`).
-			WithArgs(targetURLStr).
+		mockPool.ExpectQuery(`(?is)SELECT id, .* FROM articles WHERE url = \$1 AND user_id = \$2`).
+			WithArgs(targetURLStr, userID).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "url", "title", "content", "created_at", "updated_at"}))
 
 		// Mock: IsDomainDeclined -> False
@@ -173,8 +173,8 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		c, rec := createContext()
 
 		// Mock: FetchArticleByURL -> Not Found
-		mockPool.ExpectQuery(`(?is)SELECT id, .* FROM articles WHERE url = \$1`).
-			WithArgs(targetURLStr).
+		mockPool.ExpectQuery(`(?is)SELECT id, .* FROM articles WHERE url = \$1 AND user_id = \$2`).
+			WithArgs(targetURLStr, userID).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "url", "title", "content", "created_at", "updated_at"}))
 
 		// Mock: IsDomainDeclined -> False

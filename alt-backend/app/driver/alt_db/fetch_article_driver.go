@@ -17,7 +17,14 @@ const fetchArticleByURLQuery = `
 	WHERE url = $1 AND deleted_at IS NULL
 `
 
-// FetchArticleByURL retrieves article content from database by URL
+const fetchArticleByURLWithUserQuery = `
+	SELECT id, title, content, url, COALESCE(feed_id::text, '') AS feed_id
+	FROM articles
+	WHERE url = $1 AND user_id = $2 AND deleted_at IS NULL
+`
+
+// FetchArticleByURL retrieves article content from database by URL.
+// Scopes to the authenticated user when user context is available.
 func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
@@ -28,14 +35,29 @@ func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL stri
 		return nil, errors.New("article url cannot be empty")
 	}
 
+	// Use user-scoped query when context has authenticated user
+	user, userErr := domain.GetUserFromContext(ctx)
+
 	var article domain.ArticleContent
-	err := r.pool.QueryRow(ctx, fetchArticleByURLQuery, cleanURL).Scan(
-		&article.ID,
-		&article.Title,
-		&article.Content,
-		&article.URL,
-		&article.FeedID,
-	)
+	var err error
+
+	if userErr == nil {
+		err = r.pool.QueryRow(ctx, fetchArticleByURLWithUserQuery, cleanURL, user.UserID).Scan(
+			&article.ID,
+			&article.Title,
+			&article.Content,
+			&article.URL,
+			&article.FeedID,
+		)
+	} else {
+		err = r.pool.QueryRow(ctx, fetchArticleByURLQuery, cleanURL).Scan(
+			&article.ID,
+			&article.Title,
+			&article.Content,
+			&article.URL,
+			&article.FeedID,
+		)
+	}
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
