@@ -148,6 +148,37 @@ func TestCurationMutationTypeConstants(t *testing.T) {
 	assert.Equal(t, "dismiss_curation", MutationDismissCuration)
 }
 
+func TestLensMutationTypeConstants(t *testing.T) {
+	assert.Equal(t, "create_lens", MutationCreateLens)
+	assert.Equal(t, "create_lens_version", MutationCreateLensVersion)
+	assert.Equal(t, "select_lens", MutationSelectLens)
+	assert.Equal(t, "clear_lens", MutationClearLens)
+	assert.Equal(t, "archive_lens", MutationArchiveLens)
+}
+
+func TestMutationIdempotencyKeyField(t *testing.T) {
+	pm := ProjectionMutation{
+		MutationType:   MutationUpsertHomeItem,
+		EntityID:       "article:test",
+		IdempotencyKey: "upsert_home_item:article:test",
+	}
+	assert.Equal(t, "upsert_home_item:article:test", pm.IdempotencyKey)
+
+	rm := RecallMutation{
+		MutationType:   MutationSnoozeCandidate,
+		EntityID:       "article:test",
+		IdempotencyKey: "snooze_candidate:article:test",
+	}
+	assert.Equal(t, "snooze_candidate:article:test", rm.IdempotencyKey)
+
+	cm := CurationMutation{
+		MutationType:   MutationDismissCuration,
+		EntityID:       "article:test",
+		IdempotencyKey: "dismiss_curation:article:test",
+	}
+	assert.Equal(t, "dismiss_curation:article:test", cm.IdempotencyKey)
+}
+
 func TestRecallMutationTypeConstants(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -80,6 +80,78 @@ func TestRunProjectionAudit(t *testing.T) {
 	})
 }
 
+// --- mock compare port ---
+
+type mockCompareProjectionsPort struct {
+	diff *domain.ReprojectDiffSummary
+	err  error
+}
+
+func (m *mockCompareProjectionsPort) CompareProjections(_ context.Context, _, _ string) (*domain.ReprojectDiffSummary, error) {
+	return m.diff, m.err
+}
+
+func TestRunProjectionAudit_WithVerification(t *testing.T) {
+	logger.InitLogger()
+
+	t.Run("detects mismatch on large item count drift", func(t *testing.T) {
+		createPort := &mockCreateProjectionAuditPort{}
+		comparePort := &mockCompareProjectionsPort{
+			diff: &domain.ReprojectDiffSummary{
+				FromItemCount: 100, ToItemCount: 80, // 20% drift
+				FromAvgScore: 0.5, ToAvgScore: 0.5,
+			},
+		}
+		uc := NewUsecaseWithVerification(createPort, nil, comparePort)
+
+		audit, err := uc.RunProjectionAudit(context.Background(), "knowledge_home", "v2", 10)
+		require.NoError(t, err)
+		assert.Equal(t, 1, audit.MismatchCount)
+		assert.NotEmpty(t, audit.DetailsJSON)
+	})
+
+	t.Run("no mismatch when within threshold", func(t *testing.T) {
+		createPort := &mockCreateProjectionAuditPort{}
+		comparePort := &mockCompareProjectionsPort{
+			diff: &domain.ReprojectDiffSummary{
+				FromItemCount: 100, ToItemCount: 98,
+				FromAvgScore: 0.5, ToAvgScore: 0.48,
+			},
+		}
+		uc := NewUsecaseWithVerification(createPort, nil, comparePort)
+
+		audit, err := uc.RunProjectionAudit(context.Background(), "knowledge_home", "v2", 10)
+		require.NoError(t, err)
+		assert.Equal(t, 0, audit.MismatchCount)
+	})
+
+	t.Run("detects multiple mismatches", func(t *testing.T) {
+		createPort := &mockCreateProjectionAuditPort{}
+		comparePort := &mockCompareProjectionsPort{
+			diff: &domain.ReprojectDiffSummary{
+				FromItemCount: 100, ToItemCount: 50, // 50% drift
+				FromAvgScore: 0.5, ToAvgScore: 0.2,  // 60% score drift
+			},
+		}
+		uc := NewUsecaseWithVerification(createPort, nil, comparePort)
+
+		audit, err := uc.RunProjectionAudit(context.Background(), "knowledge_home", "v2", 10)
+		require.NoError(t, err)
+		assert.Equal(t, 2, audit.MismatchCount)
+	})
+
+	t.Run("handles compare error gracefully", func(t *testing.T) {
+		createPort := &mockCreateProjectionAuditPort{}
+		comparePort := &mockCompareProjectionsPort{err: assert.AnError}
+		uc := NewUsecaseWithVerification(createPort, nil, comparePort)
+
+		audit, err := uc.RunProjectionAudit(context.Background(), "knowledge_home", "v2", 10)
+		require.NoError(t, err)
+		assert.Equal(t, 0, audit.MismatchCount)
+		assert.NotEmpty(t, audit.DetailsJSON)
+	})
+}
+
 func TestListProjectionAudits(t *testing.T) {
 	logger.InitLogger()
 

@@ -111,4 +111,30 @@ func TestNewKnowledgeHomeMetrics_AllFieldsInitialized(t *testing.T) {
 	if m.ReprojectEventsTotal == nil {
 		t.Error("ReprojectEventsTotal is nil")
 	}
+
+	// Sovereign metrics
+	if m.SovereignMutationApplied == nil {
+		t.Error("SovereignMutationApplied is nil")
+	}
+	if m.SovereignMutationError == nil {
+		t.Error("SovereignMutationError is nil")
+	}
+	if m.SovereignMutationDuration == nil {
+		t.Error("SovereignMutationDuration is nil")
+	}
+	if m.SovereignReconciliationRun == nil {
+		t.Error("SovereignReconciliationRun is nil")
+	}
+	if m.SovereignReconciliationMismatch == nil {
+		t.Error("SovereignReconciliationMismatch is nil")
+	}
+	if m.SovereignReconciliationDuration == nil {
+		t.Error("SovereignReconciliationDuration is nil")
+	}
+	if m.SovereignIdempotencyDuplicate == nil {
+		t.Error("SovereignIdempotencyDuplicate is nil")
+	}
+	if m.SovereignCutoverReady == nil {
+		t.Error("SovereignCutoverReady is nil")
+	}
 }

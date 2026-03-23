@@ -17,7 +17,12 @@ const (
 
 // Curation mutation types.
 const (
-	MutationDismissCuration = "dismiss_curation"
+	MutationDismissCuration   = "dismiss_curation"
+	MutationCreateLens        = "create_lens"
+	MutationCreateLensVersion = "create_lens_version"
+	MutationSelectLens        = "select_lens"
+	MutationClearLens         = "clear_lens"
+	MutationArchiveLens       = "archive_lens"
 )
 
 // Recall mutation types.
@@ -29,23 +34,26 @@ const (
 
 // ProjectionMutation describes a mutation to a projection read model.
 type ProjectionMutation struct {
-	MutationType string          `json:"mutation_type"`
-	EntityID     string          `json:"entity_id"`
-	Payload      json.RawMessage `json:"payload,omitempty"`
+	MutationType   string          `json:"mutation_type"`
+	EntityID       string          `json:"entity_id"`
+	Payload        json.RawMessage `json:"payload,omitempty"`
+	IdempotencyKey string          `json:"idempotency_key,omitempty"`
 }
 
 // RecallMutation describes a mutation to a recall candidate.
 type RecallMutation struct {
-	MutationType string          `json:"mutation_type"`
-	EntityID     string          `json:"entity_id"`
-	Payload      json.RawMessage `json:"payload,omitempty"`
+	MutationType   string          `json:"mutation_type"`
+	EntityID       string          `json:"entity_id"`
+	Payload        json.RawMessage `json:"payload,omitempty"`
+	IdempotencyKey string          `json:"idempotency_key,omitempty"`
 }
 
 // CurationMutation describes a mutation to curation state (lens/dismiss/pin).
 type CurationMutation struct {
-	MutationType string          `json:"mutation_type"`
-	EntityID     string          `json:"entity_id"`
-	Payload      json.RawMessage `json:"payload,omitempty"`
+	MutationType   string          `json:"mutation_type"`
+	EntityID       string          `json:"entity_id"`
+	Payload        json.RawMessage `json:"payload,omitempty"`
+	IdempotencyKey string          `json:"idempotency_key,omitempty"`
 }
 
 // ProjectionMutator is the official write path for projection mutations.

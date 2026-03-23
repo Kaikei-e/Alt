@@ -84,6 +84,18 @@ func TestFeedModelURLNormalization(t *testing.T) {
 	}
 }
 
+// TestCollectFeedsJob_NoAutoFulltextFetch verifies that CollectFeedsJob
+// accepts only a repository parameter (auto fulltext fetch has been removed).
+func TestCollectFeedsJob_NoAutoFulltextFetch(t *testing.T) {
+	// CollectFeedsJob should accept only a repository parameter.
+	// This test fails at compile time if the function still requires
+	// an auto_fulltext_fetch_usecase parameter.
+	fn := CollectFeedsJob(nil)
+	if fn == nil {
+		t.Fatal("CollectFeedsJob should return a non-nil function")
+	}
+}
+
 // TestNormalizeURLFallback verifies that invalid URLs fall back to original
 func TestNormalizeURLFallback(t *testing.T) {
 	// Invalid URLs should not cause panic and should fall back to original

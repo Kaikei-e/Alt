@@ -272,6 +272,63 @@ func (m *mockBatchEventsPort) ListKnowledgeEventsSince(_ context.Context, _ int6
 	return nil, nil
 }
 
+func TestKnowledgeReprojectJob_RoutesThroughSovereign(t *testing.T) {
+	logger.InitLogger()
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := uuid.New()
+
+	runID := uuid.New()
+	runsPort := &mockReprojectRunsPort{
+		runs: []domain.ReprojectRun{
+			{
+				ReprojectRunID:    runID,
+				ProjectionName:    "knowledge_home",
+				FromVersion:       "v1",
+				ToVersion:         "v2",
+				Mode:              domain.ReprojectModeFull,
+				Status:            domain.ReprojectStatusRunning,
+				CheckpointPayload: json.RawMessage(`{}`),
+				StatsJSON:         json.RawMessage(`{}`),
+			},
+		},
+	}
+
+	eventsPort := &mockEventsPort{
+		events: []domain.KnowledgeEvent{
+			{
+				EventID:       uuid.New(),
+				EventSeq:      1,
+				TenantID:      tenantID,
+				UserID:        &userID,
+				EventType:     domain.EventArticleCreated,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   articleID.String(),
+				Payload: mustJSON(articleCreatedPayload{
+					ArticleID:   articleID.String(),
+					Title:       "Sovereign routed",
+					PublishedAt: "2026-03-23T10:00:00Z",
+				}),
+			},
+		},
+	}
+
+	mockWS := &mockWriteService{}
+	homeItemsPort := &mockHomeItemsPort{}
+
+	fn := KnowledgeReprojectJobWithWriteService(
+		runsPort, runsPort, runsPort,
+		eventsPort, &mockCheckpointPort{}, &mockCheckpointPort{},
+		homeItemsPort, &mockDigestPort{}, nil, nil,
+		mockWS,
+	)
+	err := fn(context.Background())
+
+	require.NoError(t, err)
+	assert.Greater(t, len(mockWS.projectionCalls), 0, "WriteService should have been called for projection mutations")
+}
+
 func mustJSON(v any) []byte {
 	b, _ := json.Marshal(v)
 	return b

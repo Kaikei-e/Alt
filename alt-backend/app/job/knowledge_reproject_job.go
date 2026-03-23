@@ -25,6 +25,7 @@ const (
 
 // KnowledgeReprojectJob returns a function suitable for the JobScheduler that
 // processes pending/running reproject runs. Designed to be called periodically.
+// Uses legacy port-direct writes (no Sovereign routing).
 func KnowledgeReprojectJob(
 	listRunsPort knowledge_reproject_port.ListReprojectRunsPort,
 	getRunPort knowledge_reproject_port.GetReprojectRunPort,
@@ -42,7 +43,31 @@ func KnowledgeReprojectJob(
 	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
 ) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		return processReprojectBatch(ctx, listRunsPort, getRunPort, updateRunPort, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, tagSetVersionPort)
+		return processReprojectBatch(ctx, listRunsPort, getRunPort, updateRunPort, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, tagSetVersionPort, nil)
+	}
+}
+
+// KnowledgeReprojectJobWithWriteService is like KnowledgeReprojectJob but routes
+// writes through the Knowledge Sovereign WriteService when non-nil.
+func KnowledgeReprojectJobWithWriteService(
+	listRunsPort knowledge_reproject_port.ListReprojectRunsPort,
+	getRunPort knowledge_reproject_port.GetReprojectRunPort,
+	updateRunPort knowledge_reproject_port.UpdateReprojectRunPort,
+	eventsPort knowledge_event_port.ListKnowledgeEventsPort,
+	checkpointPort knowledge_projection_port.GetProjectionCheckpointPort,
+	updateCheckpointPort knowledge_projection_port.UpdateProjectionCheckpointPort,
+	homeItemsPort interface {
+		knowledge_home_port.UpsertKnowledgeHomeItemPort
+		knowledge_home_port.DismissKnowledgeHomeItemPort
+		knowledge_home_port.ClearSupersedeStatePort
+	},
+	todayDigestPort today_digest_port.UpsertTodayDigestPort,
+	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
+	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
+	writeService WriteServicePort,
+) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		return processReprojectBatch(ctx, listRunsPort, getRunPort, updateRunPort, eventsPort, checkpointPort, updateCheckpointPort, homeItemsPort, todayDigestPort, summaryVersionPort, tagSetVersionPort, writeService)
 	}
 }
 
@@ -62,6 +87,7 @@ func processReprojectBatch(
 	_ today_digest_port.UpsertTodayDigestPort,
 	summaryVersionPort summary_version_port.GetSummaryVersionByIDPort,
 	tagSetVersionPort tag_set_version_port.GetTagSetVersionByIDPort,
+	writeService WriteServicePort,
 ) error {
 	// Find pending or running reproject runs
 	runs, err := listRunsPort.ListReprojectRuns(ctx, "", 10)
@@ -155,7 +181,7 @@ func processReprojectBatch(
 		var processedCount int64
 		var errorCount int64
 		for _, event := range events {
-			if err := projectEvent(ctx, event, homeItemsPort, nil, summaryVersionPort, nil, tagSetVersionPort, homeItemsPort, targetVersion, nil); err != nil {
+			if err := projectEvent(ctx, event, homeItemsPort, nil, summaryVersionPort, nil, tagSetVersionPort, homeItemsPort, targetVersion, writeService); err != nil {
 				errorCount++
 				logger.Logger.ErrorContext(ctx, "failed to replay reproject event",
 					"error", err,

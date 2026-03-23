@@ -53,6 +53,16 @@ type KnowledgeHomeMetrics struct {
 
 	// Reproject
 	ReprojectEventsTotal metric.Int64Counter
+
+	// Sovereign
+	SovereignMutationApplied        metric.Int64Counter
+	SovereignMutationError          metric.Int64Counter
+	SovereignMutationDuration       metric.Float64Histogram
+	SovereignReconciliationRun      metric.Int64Counter
+	SovereignReconciliationMismatch metric.Int64Counter
+	SovereignReconciliationDuration metric.Float64Histogram
+	SovereignIdempotencyDuplicate   metric.Int64Counter
+	SovereignCutoverReady           metric.Float64Gauge
 }
 
 // NewKnowledgeHomeMetrics initializes all Knowledge Home OTel metrics.
@@ -210,6 +220,48 @@ func NewKnowledgeHomeMetrics() (*KnowledgeHomeMetrics, error) {
 	// Reproject
 	m.ReprojectEventsTotal, err = meter.Int64Counter("alt_home_reproject_events_total",
 		metric.WithDescription("reproject"))
+	if err != nil {
+		return nil, err
+	}
+
+	// Sovereign
+	m.SovereignMutationApplied, err = meter.Int64Counter("alt.sovereign.mutation.applied_total",
+		metric.WithDescription("Sovereign mutation applications by type"))
+	if err != nil {
+		return nil, err
+	}
+	m.SovereignMutationError, err = meter.Int64Counter("alt.sovereign.mutation.error_total",
+		metric.WithDescription("Sovereign mutation errors by type"))
+	if err != nil {
+		return nil, err
+	}
+	m.SovereignMutationDuration, err = meter.Float64Histogram("alt.sovereign.mutation.duration_ms",
+		metric.WithDescription("Sovereign mutation duration in ms"))
+	if err != nil {
+		return nil, err
+	}
+	m.SovereignReconciliationRun, err = meter.Int64Counter("alt.sovereign.reconciliation.run_total",
+		metric.WithDescription("Sovereign reconciliation runs"))
+	if err != nil {
+		return nil, err
+	}
+	m.SovereignReconciliationMismatch, err = meter.Int64Counter("alt.sovereign.reconciliation.mismatch_total",
+		metric.WithDescription("Sovereign reconciliation mismatches"))
+	if err != nil {
+		return nil, err
+	}
+	m.SovereignReconciliationDuration, err = meter.Float64Histogram("alt.sovereign.reconciliation.duration_seconds",
+		metric.WithDescription("Sovereign reconciliation duration"))
+	if err != nil {
+		return nil, err
+	}
+	m.SovereignIdempotencyDuplicate, err = meter.Int64Counter("alt.sovereign.idempotency.duplicate_total",
+		metric.WithDescription("Sovereign idempotency duplicate skips"))
+	if err != nil {
+		return nil, err
+	}
+	m.SovereignCutoverReady, err = meter.Float64Gauge("alt.sovereign.cutover_ready",
+		metric.WithDescription("Whether sovereign cutover conditions are met (0 or 1)"))
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 // ApplyProjectionMutation dispatches a projection mutation to the appropriate repository method.
@@ -28,10 +31,30 @@ func (r *AltDBRepository) ApplyProjectionMutation(ctx context.Context, mutation 
 		if err := json.Unmarshal(mutation.Payload, &params); err != nil {
 			return fmt.Errorf("ApplyProjectionMutation(%s): unmarshal: %w", mutation.MutationType, err)
 		}
-		return nil // dismiss dispatch handled at curation level
+		userID, err := uuid.Parse(params.UserID)
+		if err != nil {
+			return fmt.Errorf("ApplyProjectionMutation(%s): parse user_id: %w", mutation.MutationType, err)
+		}
+		dismissedAt, err := time.Parse(time.RFC3339Nano, params.DismissedAt)
+		if err != nil {
+			return fmt.Errorf("ApplyProjectionMutation(%s): parse dismissed_at: %w", mutation.MutationType, err)
+		}
+		return r.DismissKnowledgeHomeItem(ctx, userID, params.ItemKey, params.ProjectionVersion, dismissedAt)
 
 	case knowledge_sovereign_port.MutationClearSupersede:
-		return nil // clear supersede dispatch - detailed in Phase 2
+		var params struct {
+			UserID            string `json:"user_id"`
+			ItemKey           string `json:"item_key"`
+			ProjectionVersion int    `json:"projection_version"`
+		}
+		if err := json.Unmarshal(mutation.Payload, &params); err != nil {
+			return fmt.Errorf("ApplyProjectionMutation(%s): unmarshal: %w", mutation.MutationType, err)
+		}
+		userID, err := uuid.Parse(params.UserID)
+		if err != nil {
+			return fmt.Errorf("ApplyProjectionMutation(%s): parse user_id: %w", mutation.MutationType, err)
+		}
+		return r.ClearSupersedeState(ctx, userID, params.ItemKey, params.ProjectionVersion)
 
 	case knowledge_sovereign_port.MutationUpsertTodayDigest:
 		var digest domain.TodayDigest
@@ -63,10 +86,37 @@ func (r *AltDBRepository) ApplyRecallMutation(ctx context.Context, mutation know
 		return r.UpsertRecallCandidate(ctx, candidate)
 
 	case knowledge_sovereign_port.MutationSnoozeCandidate:
-		return nil // snooze dispatch - detailed params in Phase 2
+		var params struct {
+			UserID  string `json:"user_id"`
+			ItemKey string `json:"item_key"`
+			Until   string `json:"until"`
+		}
+		if err := json.Unmarshal(mutation.Payload, &params); err != nil {
+			return fmt.Errorf("ApplyRecallMutation(%s): unmarshal: %w", mutation.MutationType, err)
+		}
+		userID, err := uuid.Parse(params.UserID)
+		if err != nil {
+			return fmt.Errorf("ApplyRecallMutation(%s): parse user_id: %w", mutation.MutationType, err)
+		}
+		until, err := time.Parse(time.RFC3339Nano, params.Until)
+		if err != nil {
+			return fmt.Errorf("ApplyRecallMutation(%s): parse until: %w", mutation.MutationType, err)
+		}
+		return r.SnoozeRecallCandidate(ctx, userID, params.ItemKey, until)
 
 	case knowledge_sovereign_port.MutationDismissCandidate:
-		return nil // dismiss dispatch - detailed params in Phase 2
+		var params struct {
+			UserID  string `json:"user_id"`
+			ItemKey string `json:"item_key"`
+		}
+		if err := json.Unmarshal(mutation.Payload, &params); err != nil {
+			return fmt.Errorf("ApplyRecallMutation(%s): unmarshal: %w", mutation.MutationType, err)
+		}
+		userID, err := uuid.Parse(params.UserID)
+		if err != nil {
+			return fmt.Errorf("ApplyRecallMutation(%s): parse user_id: %w", mutation.MutationType, err)
+		}
+		return r.DismissRecallCandidate(ctx, userID, params.ItemKey)
 
 	default:
 		return fmt.Errorf("ApplyRecallMutation: unknown recall mutation type: %s", mutation.MutationType)
@@ -77,7 +127,34 @@ func (r *AltDBRepository) ApplyRecallMutation(ctx context.Context, mutation know
 func (r *AltDBRepository) ApplyCurationMutation(ctx context.Context, mutation knowledge_sovereign_port.CurationMutation) error {
 	switch mutation.MutationType {
 	case knowledge_sovereign_port.MutationDismissCuration:
-		return nil // dismiss curation dispatch - wired to DismissKnowledgeHomeItem in Phase 2
+		var params struct {
+			UserID            string `json:"user_id"`
+			ItemKey           string `json:"item_key"`
+			ProjectionVersion int    `json:"projection_version"`
+			DismissedAt       string `json:"dismissed_at"`
+		}
+		if err := json.Unmarshal(mutation.Payload, &params); err != nil {
+			return fmt.Errorf("ApplyCurationMutation(%s): unmarshal: %w", mutation.MutationType, err)
+		}
+		userID, err := uuid.Parse(params.UserID)
+		if err != nil {
+			return fmt.Errorf("ApplyCurationMutation(%s): parse user_id: %w", mutation.MutationType, err)
+		}
+		// projection_version と dismissed_at はオプショナル。
+		// TrackHomeActionUsecase は user_id と item_key のみ送る。
+		projectionVersion := params.ProjectionVersion
+		if projectionVersion == 0 {
+			projectionVersion = 1
+		}
+		dismissedAt := time.Now()
+		if params.DismissedAt != "" {
+			parsed, err := time.Parse(time.RFC3339Nano, params.DismissedAt)
+			if err != nil {
+				return fmt.Errorf("ApplyCurationMutation(%s): parse dismissed_at: %w", mutation.MutationType, err)
+			}
+			dismissedAt = parsed
+		}
+		return r.DismissKnowledgeHomeItem(ctx, userID, params.ItemKey, projectionVersion, dismissedAt)
 
 	default:
 		return fmt.Errorf("ApplyCurationMutation: unknown curation mutation type: %s", mutation.MutationType)

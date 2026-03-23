@@ -143,7 +143,7 @@ func main() {
 		Name:     "knowledge-reproject",
 		Interval: 30 * time.Second,
 		Timeout:  25 * time.Second,
-		Fn: job.KnowledgeReprojectJob(
+		Fn: job.KnowledgeReprojectJobWithWriteService(
 			container.KnowledgeReprojectGateway,
 			container.KnowledgeReprojectGateway,
 			container.KnowledgeReprojectGateway,
@@ -154,6 +154,7 @@ func main() {
 			container.TodayDigestGateway,
 			container.SummaryVersionGateway,
 			container.TagSetVersionGateway,
+			container.KnowledgeWriteServiceUsecase,
 		),
 	})
 
@@ -176,6 +177,17 @@ func main() {
 			container.KnowledgeHomeGateway,
 			container.RecapUsecase,
 			container.TodayDigestGateway,
+		),
+	})
+	scheduler.Add(job.Job{
+		Name:     "sovereign-reconciliation",
+		Interval: 30 * time.Minute,
+		Timeout:  2 * time.Minute,
+		Fn: job.SovereignReconciliationJob(
+			container.KnowledgeReprojectGateway,
+			container.KnowledgeProjectionVersionGateway,
+			nil, // ReconciliationReporter — recording via audit usecase in future phase
+			container.KnowledgeHomeMetrics,
 		),
 	})
 	scheduler.Start(ctx)
