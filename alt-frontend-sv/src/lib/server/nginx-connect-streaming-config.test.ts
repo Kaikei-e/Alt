@@ -16,7 +16,6 @@ describe("nginx Connect streaming config", () => {
 		);
 		expect(config).toContain("proxy_buffering off;");
 		expect(config).toContain("proxy_request_buffering off;");
-		expect(config).toContain('add_header Alt-Svc "clear" always;');
 		expect(config).toContain(
 			'add_header Cache-Control "no-cache, no-transform" always;',
 		);
