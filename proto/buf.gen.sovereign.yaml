@@ -1,0 +1,12 @@
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - services/sovereign
+plugins:
+  - local: protoc-gen-go
+    out: ../knowledge-sovereign/app/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../knowledge-sovereign/app/gen/proto
+    opt: paths=source_relative

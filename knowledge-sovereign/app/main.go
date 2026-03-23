@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"knowledge-sovereign/config"
+	"knowledge-sovereign/driver/sovereign_db"
+	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 	"knowledge-sovereign/handler"
 	"log/slog"
 	"net/http"
@@ -10,6 +12,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -25,6 +29,24 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Database connection
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("database connection failed", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		slog.Error("database ping failed", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("database connected")
+
+	// Initialize layers
+	repo := sovereign_db.NewRepository(pool)
+	sovereignHandler := handler.NewSovereignHandler(repo, handler.WithDatabaseURL(cfg.DatabaseURL))
+
 	// Metrics / health server
 	metricsMux := http.NewServeMux()
 	metricsMux.HandleFunc("/health", handler.HealthHandler)
@@ -38,9 +60,13 @@ func main() {
 		}
 	}()
 
-	// Main RPC server (placeholder for Connect-RPC)
+	// Main RPC server with Connect-RPC handlers
 	mainMux := http.NewServeMux()
 	mainMux.HandleFunc("/health", handler.HealthHandler)
+
+	path, rpcHandler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(sovereignHandler)
+	mainMux.Handle(path, rpcHandler)
+
 	mainServer := &http.Server{Addr: cfg.ListenAddr, Handler: mainMux}
 
 	go func() {

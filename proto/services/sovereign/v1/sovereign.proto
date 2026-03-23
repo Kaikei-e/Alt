@@ -1,0 +1,600 @@
+syntax = "proto3";
+
+package services.sovereign.v1;
+
+option go_package = "knowledge-sovereign/gen/proto/services/sovereign/v1;sovereignv1";
+
+import "google/protobuf/timestamp.proto";
+
+// KnowledgeSovereignService is the single authority for all knowledge state
+// operations — projections, recall candidates, events, lenses, and curation.
+service KnowledgeSovereignService {
+  // === Mutation writes (existing) ===
+  rpc ApplyProjectionMutation(ApplyMutationRequest) returns (ApplyMutationResponse);
+  rpc ApplyRecallMutation(ApplyMutationRequest) returns (ApplyMutationResponse);
+  rpc ApplyCurationMutation(ApplyMutationRequest) returns (ApplyMutationResponse);
+
+  // === Projection reads ===
+  rpc GetKnowledgeHomeItems(GetKnowledgeHomeItemsRequest) returns (GetKnowledgeHomeItemsResponse);
+  rpc GetTodayDigest(GetTodayDigestRequest) returns (GetTodayDigestResponse);
+  rpc GetRecallCandidates(GetRecallCandidatesRequest) returns (GetRecallCandidatesResponse);
+  rpc ListDistinctUserIDs(ListDistinctUserIDsRequest) returns (ListDistinctUserIDsResponse);
+  rpc CountNeedToKnowItems(CountNeedToKnowItemsRequest) returns (CountNeedToKnowItemsResponse);
+
+  // === Event reads/writes ===
+  rpc ListKnowledgeEvents(ListKnowledgeEventsRequest) returns (ListKnowledgeEventsResponse);
+  rpc GetLatestEventSeq(GetLatestEventSeqRequest) returns (GetLatestEventSeqResponse);
+  rpc AppendKnowledgeEvent(AppendKnowledgeEventRequest) returns (AppendKnowledgeEventResponse);
+
+  // === Projection infrastructure ===
+  rpc GetActiveProjectionVersion(GetActiveProjectionVersionRequest) returns (ProjectionVersionResponse);
+  rpc ListProjectionVersions(ListProjectionVersionsRequest) returns (ListProjectionVersionsResponse);
+  rpc CreateProjectionVersion(CreateProjectionVersionRequest) returns (Empty);
+  rpc ActivateProjectionVersion(ActivateProjectionVersionRequest) returns (Empty);
+  rpc GetProjectionCheckpoint(GetProjectionCheckpointRequest) returns (GetProjectionCheckpointResponse);
+  rpc UpdateProjectionCheckpoint(UpdateProjectionCheckpointRequest) returns (Empty);
+  rpc GetProjectionFreshness(GetProjectionFreshnessRequest) returns (GetProjectionFreshnessResponse);
+  rpc GetProjectionLag(GetProjectionLagRequest) returns (GetProjectionLagResponse);
+
+  // === Reproject ===
+  rpc GetReprojectRun(GetReprojectRunRequest) returns (ReprojectRunResponse);
+  rpc ListReprojectRuns(ListReprojectRunsRequest) returns (ListReprojectRunsResponse);
+  rpc CreateReprojectRun(CreateReprojectRunRequest) returns (Empty);
+  rpc UpdateReprojectRun(UpdateReprojectRunRequest) returns (Empty);
+  rpc CompareProjections(CompareProjectionsRequest) returns (CompareProjectionsResponse);
+  rpc ListProjectionAudits(ListProjectionAuditsRequest) returns (ListProjectionAuditsResponse);
+  rpc CreateProjectionAudit(CreateProjectionAuditRequest) returns (Empty);
+
+  // === Backfill ===
+  rpc GetBackfillJob(GetBackfillJobRequest) returns (BackfillJobResponse);
+  rpc ListBackfillJobs(ListBackfillJobsRequest) returns (ListBackfillJobsResponse);
+  rpc CreateBackfillJob(CreateBackfillJobRequest) returns (Empty);
+  rpc UpdateBackfillJob(UpdateBackfillJobRequest) returns (Empty);
+
+  // === Lens ===
+  rpc ListLenses(ListLensesRequest) returns (ListLensesResponse);
+  rpc GetLens(GetLensRequest) returns (LensResponse);
+  rpc GetCurrentLensSelection(GetCurrentLensSelectionRequest) returns (CurrentLensSelectionResponse);
+  rpc ResolveLensFilter(ResolveLensFilterRequest) returns (ResolveLensFilterResponse);
+  rpc CreateLens(CreateLensRpcRequest) returns (Empty);
+  rpc CreateLensVersion(CreateLensVersionRpcRequest) returns (Empty);
+  rpc SelectCurrentLens(SelectCurrentLensRpcRequest) returns (Empty);
+  rpc ClearCurrentLens(ClearCurrentLensRequest) returns (Empty);
+  rpc ArchiveLens(ArchiveLensRequest) returns (Empty);
+
+  // === Recall signals ===
+  rpc ListRecallSignals(ListRecallSignalsRequest) returns (ListRecallSignalsResponse);
+  rpc AppendRecallSignal(AppendRecallSignalRpcRequest) returns (Empty);
+
+  // === User events ===
+  rpc AppendKnowledgeUserEvent(AppendKnowledgeUserEventRequest) returns (Empty);
+
+  // === Projector watch (server streaming) ===
+  rpc WatchProjectorEvents(WatchProjectorEventsRequest) returns (stream ProjectorEventNotification);
+}
+
+// =============================================================================
+// Generic types
+// =============================================================================
+
+message Empty {}
+
+// =============================================================================
+// Mutation types (existing)
+// =============================================================================
+
+message ApplyMutationRequest {
+  string mutation_type = 1;
+  string entity_id = 2;
+  bytes payload = 3;
+  string idempotency_key = 4;
+}
+
+message ApplyMutationResponse {
+  bool success = 1;
+  string error_message = 2;
+}
+
+// =============================================================================
+// Domain messages
+// =============================================================================
+
+message KnowledgeHomeItem {
+  string user_id = 1;
+  string tenant_id = 2;
+  string item_key = 3;
+  string item_type = 4;
+  string primary_ref_id = 5;
+  string title = 6;
+  string summary_excerpt = 7;
+  repeated string tags = 8;
+  repeated WhyReason why_reasons = 9;
+  double score = 10;
+  google.protobuf.Timestamp freshness_at = 11;
+  google.protobuf.Timestamp published_at = 12;
+  google.protobuf.Timestamp last_interacted_at = 13;
+  google.protobuf.Timestamp generated_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+  int32 projection_version = 16;
+  string summary_state = 17;
+  google.protobuf.Timestamp dismissed_at = 18;
+  string supersede_state = 19;
+  google.protobuf.Timestamp superseded_at = 20;
+  string previous_ref_json = 21;
+  string link = 22;
+}
+
+message WhyReason {
+  string code = 1;
+  string ref_id = 2;
+  string tag = 3;
+}
+
+message TodayDigest {
+  string user_id = 1;
+  string digest_date = 2;
+  int32 new_articles = 3;
+  int32 summarized_articles = 4;
+  int32 unsummarized_articles = 5;
+  repeated string top_tags = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  bool weekly_recap_available = 8;
+  bool evening_pulse_available = 9;
+  int32 need_to_know_count = 10;
+  string digest_freshness = 11;
+  google.protobuf.Timestamp last_projected_at = 12;
+}
+
+message RecallCandidate {
+  string user_id = 1;
+  string item_key = 2;
+  double recall_score = 3;
+  repeated RecallReason reasons = 4;
+  google.protobuf.Timestamp next_suggest_at = 5;
+  google.protobuf.Timestamp first_eligible_at = 6;
+  google.protobuf.Timestamp snoozed_until = 7;
+  google.protobuf.Timestamp updated_at = 8;
+  int32 projection_version = 9;
+  KnowledgeHomeItem item = 10;
+}
+
+message RecallReason {
+  string type = 1;
+  string description = 2;
+  string source_item_key = 3;
+}
+
+message KnowledgeEvent {
+  string event_id = 1;
+  int64 event_seq = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  string tenant_id = 4;
+  string user_id = 5;
+  string actor_type = 6;
+  string actor_id = 7;
+  string event_type = 8;
+  string aggregate_type = 9;
+  string aggregate_id = 10;
+  string correlation_id = 11;
+  string causation_id = 12;
+  string dedupe_key = 13;
+  bytes payload = 14;
+}
+
+message ProjectionVersion {
+  int32 version = 1;
+  string description = 2;
+  string status = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp activated_at = 5;
+}
+
+message ReprojectRun {
+  string reproject_run_id = 1;
+  string projection_name = 2;
+  string from_version = 3;
+  string to_version = 4;
+  string initiated_by = 5;
+  string mode = 6;
+  string status = 7;
+  google.protobuf.Timestamp range_start = 8;
+  google.protobuf.Timestamp range_end = 9;
+  bytes checkpoint_payload = 10;
+  bytes stats_json = 11;
+  bytes diff_summary_json = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp started_at = 14;
+  google.protobuf.Timestamp finished_at = 15;
+}
+
+message ProjectionAudit {
+  string audit_id = 1;
+  string projection_name = 2;
+  string projection_version = 3;
+  google.protobuf.Timestamp checked_at = 4;
+  int32 sample_size = 5;
+  int32 mismatch_count = 6;
+  bytes details_json = 7;
+}
+
+message BackfillJob {
+  string job_id = 1;
+  string status = 2;
+  int32 projection_version = 3;
+  string cursor_user_id = 4;
+  string cursor_date = 5;
+  string cursor_article_id = 6;
+  int32 total_events = 7;
+  int32 processed_events = 8;
+  string error_message = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp started_at = 11;
+  google.protobuf.Timestamp completed_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
+
+message Lens {
+  string lens_id = 1;
+  string user_id = 2;
+  string tenant_id = 3;
+  string name = 4;
+  string description = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  google.protobuf.Timestamp archived_at = 8;
+  LensVersion current_version = 9;
+}
+
+message LensVersion {
+  string lens_version_id = 1;
+  string lens_id = 2;
+  google.protobuf.Timestamp created_at = 3;
+  string query_text = 4;
+  repeated string tag_ids = 5;
+  repeated string source_ids = 6;
+  string time_window = 7;
+  bool include_recap = 8;
+  bool include_pulse = 9;
+  string sort_mode = 10;
+  string superseded_by = 11;
+}
+
+message CurrentLensSelection {
+  string user_id = 1;
+  string lens_id = 2;
+  string lens_version_id = 3;
+  google.protobuf.Timestamp selected_at = 4;
+}
+
+message LensFilter {
+  repeated string tag_ids = 1;
+  repeated string source_ids = 2;
+  string time_window = 3;
+  string query_text = 4;
+  bool include_recap = 5;
+  bool include_pulse = 6;
+  string sort_mode = 7;
+}
+
+message RecallSignal {
+  string signal_id = 1;
+  string user_id = 2;
+  string item_key = 3;
+  string signal_type = 4;
+  double signal_strength = 5;
+  google.protobuf.Timestamp occurred_at = 6;
+  bytes payload = 7;
+}
+
+message ReprojectDiffSummary {
+  int32 from_count = 1;
+  int32 to_count = 2;
+  double from_avg_score = 3;
+  double to_avg_score = 4;
+  int32 from_empty_summary = 5;
+  int32 to_empty_summary = 6;
+}
+
+// =============================================================================
+// Request/Response messages
+// =============================================================================
+
+// --- Projection reads ---
+
+message GetKnowledgeHomeItemsRequest {
+  string user_id = 1;
+  string cursor = 2;
+  int32 limit = 3;
+  LensFilter filter = 4;
+}
+
+message GetKnowledgeHomeItemsResponse {
+  repeated KnowledgeHomeItem items = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+message GetTodayDigestRequest {
+  string user_id = 1;
+  string date = 2;
+}
+
+message GetTodayDigestResponse {
+  TodayDigest digest = 1;
+}
+
+message GetRecallCandidatesRequest {
+  string user_id = 1;
+  int32 limit = 2;
+}
+
+message GetRecallCandidatesResponse {
+  repeated RecallCandidate candidates = 1;
+}
+
+message ListDistinctUserIDsRequest {}
+
+message ListDistinctUserIDsResponse {
+  repeated string user_ids = 1;
+}
+
+message CountNeedToKnowItemsRequest {
+  string user_id = 1;
+  string date = 2;
+}
+
+message CountNeedToKnowItemsResponse {
+  int32 count = 1;
+}
+
+// --- Event reads/writes ---
+
+message ListKnowledgeEventsRequest {
+  int64 after_seq = 1;
+  int32 limit = 2;
+  string user_id = 3; // optional: empty = all users
+}
+
+message ListKnowledgeEventsResponse {
+  repeated KnowledgeEvent events = 1;
+}
+
+message GetLatestEventSeqRequest {
+  string user_id = 1;
+}
+
+message GetLatestEventSeqResponse {
+  int64 event_seq = 1;
+}
+
+message AppendKnowledgeEventRequest {
+  KnowledgeEvent event = 1;
+}
+
+message AppendKnowledgeEventResponse {
+  int64 event_seq = 1;
+}
+
+// --- Projection infrastructure ---
+
+message GetActiveProjectionVersionRequest {}
+
+message ProjectionVersionResponse {
+  ProjectionVersion version = 1;
+}
+
+message ListProjectionVersionsRequest {}
+
+message ListProjectionVersionsResponse {
+  repeated ProjectionVersion versions = 1;
+}
+
+message CreateProjectionVersionRequest {
+  ProjectionVersion version = 1;
+}
+
+message ActivateProjectionVersionRequest {
+  int32 version = 1;
+}
+
+message GetProjectionCheckpointRequest {
+  string projector_name = 1;
+}
+
+message GetProjectionCheckpointResponse {
+  int64 last_event_seq = 1;
+}
+
+message UpdateProjectionCheckpointRequest {
+  string projector_name = 1;
+  int64 last_event_seq = 2;
+}
+
+message GetProjectionFreshnessRequest {
+  string projector_name = 1;
+}
+
+message GetProjectionFreshnessResponse {
+  google.protobuf.Timestamp updated_at = 1;
+  bool found = 2;
+}
+
+message GetProjectionLagRequest {}
+
+message GetProjectionLagResponse {
+  double lag_seconds = 1;
+  double age_seconds = 2;
+}
+
+// --- Reproject ---
+
+message GetReprojectRunRequest {
+  string run_id = 1;
+}
+
+message ReprojectRunResponse {
+  ReprojectRun run = 1;
+}
+
+message ListReprojectRunsRequest {
+  string status_filter = 1;
+  int32 limit = 2;
+}
+
+message ListReprojectRunsResponse {
+  repeated ReprojectRun runs = 1;
+}
+
+message CreateReprojectRunRequest {
+  ReprojectRun run = 1;
+}
+
+message UpdateReprojectRunRequest {
+  ReprojectRun run = 1;
+}
+
+message CompareProjectionsRequest {
+  string from_version = 1;
+  string to_version = 2;
+}
+
+message CompareProjectionsResponse {
+  ReprojectDiffSummary summary = 1;
+}
+
+message ListProjectionAuditsRequest {
+  string projection_name = 1;
+  int32 limit = 2;
+}
+
+message ListProjectionAuditsResponse {
+  repeated ProjectionAudit audits = 1;
+}
+
+message CreateProjectionAuditRequest {
+  ProjectionAudit audit = 1;
+}
+
+// --- Backfill ---
+
+message GetBackfillJobRequest {
+  string job_id = 1;
+}
+
+message BackfillJobResponse {
+  BackfillJob job = 1;
+}
+
+message ListBackfillJobsRequest {}
+
+message ListBackfillJobsResponse {
+  repeated BackfillJob jobs = 1;
+}
+
+message CreateBackfillJobRequest {
+  BackfillJob job = 1;
+}
+
+message UpdateBackfillJobRequest {
+  BackfillJob job = 1;
+}
+
+// --- Lens ---
+
+message ListLensesRequest {
+  string user_id = 1;
+}
+
+message ListLensesResponse {
+  repeated Lens lenses = 1;
+}
+
+message GetLensRequest {
+  string lens_id = 1;
+}
+
+message LensResponse {
+  Lens lens = 1;
+}
+
+message GetCurrentLensSelectionRequest {
+  string user_id = 1;
+}
+
+message CurrentLensSelectionResponse {
+  CurrentLensSelection selection = 1;
+  bool found = 2;
+}
+
+message ResolveLensFilterRequest {
+  string user_id = 1;
+  string lens_id = 2; // optional
+}
+
+message ResolveLensFilterResponse {
+  LensFilter filter = 1;
+  bool found = 2;
+}
+
+message CreateLensRpcRequest {
+  Lens lens = 1;
+}
+
+message CreateLensVersionRpcRequest {
+  LensVersion version = 1;
+}
+
+message SelectCurrentLensRpcRequest {
+  CurrentLensSelection selection = 1;
+}
+
+message ClearCurrentLensRequest {
+  string user_id = 1;
+}
+
+message ArchiveLensRequest {
+  string lens_id = 1;
+}
+
+// --- Recall signals ---
+
+message ListRecallSignalsRequest {
+  string user_id = 1;
+  int32 since_days = 2;
+}
+
+message ListRecallSignalsResponse {
+  repeated RecallSignal signals = 1;
+}
+
+message AppendRecallSignalRpcRequest {
+  RecallSignal signal = 1;
+}
+
+// --- User events ---
+
+message KnowledgeUserEvent {
+  string user_event_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  string user_id = 3;
+  string tenant_id = 4;
+  string event_type = 5;
+  string item_key = 6;
+  bytes payload = 7;
+  string dedupe_key = 8;
+}
+
+message AppendKnowledgeUserEventRequest {
+  KnowledgeUserEvent event = 1;
+}
+
+// --- Projector watch ---
+
+message WatchProjectorEventsRequest {
+  string projector_name = 1;
+}
+
+message ProjectorEventNotification {
+  int64 latest_event_seq = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+}

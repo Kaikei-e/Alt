@@ -132,6 +132,7 @@ services:
       - AUTH_HUB_URL=http://auth-hub:8888
       - MQHUB_ENABLED=true
       - MQHUB_CONNECT_URL=http://mq-hub:9500
+      - SOVEREIGN_URL=http://knowledge-sovereign:9500
       - DB_MAX_CONNS=30
       - DB_MIN_CONNS=5
       - IMAGE_PROXY_SECRET_FILE=/run/secrets/image_proxy_secret
