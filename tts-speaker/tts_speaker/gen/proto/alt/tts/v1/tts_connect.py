@@ -7,6 +7,7 @@ from typing import Protocol
 
 from connectrpc.client import ConnectClient, ConnectClientSync
 from connectrpc.code import Code
+from connectrpc.compression import Compression
 from connectrpc.errors import ConnectError
 from connectrpc.interceptor import Interceptor, InterceptorSync
 from connectrpc.method import IdempotencyLevel, MethodInfo
@@ -27,7 +28,7 @@ class TTSService(Protocol):
 
 
 class TTSServiceASGIApplication(ConnectASGIApplication[TTSService]):
-    def __init__(self, service: TTSService | AsyncGenerator[TTSService], *, interceptors: Iterable[Interceptor]=(), read_max_bytes: int | None = None) -> None:
+    def __init__(self, service: TTSService | AsyncGenerator[TTSService], *, interceptors: Iterable[Interceptor]=(), read_max_bytes: int | None = None, compressions: Iterable[Compression] | None = None) -> None:
         super().__init__(
             service=service,
             endpoints=lambda svc: {
@@ -64,6 +65,7 @@ class TTSServiceASGIApplication(ConnectASGIApplication[TTSService]):
             },
             interceptors=interceptors,
             read_max_bytes=read_max_bytes,
+            compressions=compressions,
         )
 
     @property
@@ -144,7 +146,7 @@ class TTSServiceSync(Protocol):
 
 
 class TTSServiceWSGIApplication(ConnectWSGIApplication):
-    def __init__(self, service: TTSServiceSync, interceptors: Iterable[InterceptorSync]=(), read_max_bytes: int | None = None) -> None:
+    def __init__(self, service: TTSServiceSync, interceptors: Iterable[InterceptorSync]=(), read_max_bytes: int | None = None, compressions: Iterable[Compression] | None = None) -> None:
         super().__init__(
             endpoints={
                 "/alt.tts.v1.TTSService/Synthesize": EndpointSync.unary(
@@ -180,6 +182,7 @@ class TTSServiceWSGIApplication(ConnectWSGIApplication):
             },
             interceptors=interceptors,
             read_max_bytes=read_max_bytes,
+            compressions=compressions,
         )
 
     @property
