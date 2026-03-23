@@ -33,25 +33,9 @@ var (
 			published_at = EXCLUDED.published_at
 		RETURNING id, (xmax = 0) AS created
 	`)
-	knowledgeEventInsertQuery = regexp.QuoteMeta(`INSERT INTO knowledge_events
-		(event_id, occurred_at, tenant_id, user_id, actor_type, actor_id,
-		 event_type, aggregate_type, aggregate_id, correlation_id, causation_id,
-		 dedupe_key, payload)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (dedupe_key) DO NOTHING`)
 )
 
-func expectKnowledgeEventInsert(mock pgxmock.PgxPoolIface) {
-	mock.ExpectExec(knowledgeEventInsertQuery).
-		WithArgs(
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-		).
-		WillReturnResult(pgxmock.NewResult("INSERT", 1))
-}
-
-func TestAltDBRepository_CreateArticleInternal_AppendsKnowledgeEvent(t *testing.T) {
+func TestAltDBRepository_CreateArticleInternal_Success(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	defer mock.Close()
@@ -68,7 +52,6 @@ func TestAltDBRepository_CreateArticleInternal_AppendsKnowledgeEvent(t *testing.
 	mock.ExpectQuery(fullArticleUpsertQuery).
 		WithArgs("Title", "Body", "https://example.com/article", "feed-1", "00000000-0000-4000-a000-000000000001", publishedAt).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow("11111111-1111-4111-a111-111111111111", true))
-	expectKnowledgeEventInsert(mock)
 	mock.ExpectCommit()
 
 	articleID, created, err := repo.CreateArticleInternal(t.Context(), CreateArticleParams{
@@ -102,7 +85,6 @@ func TestCreateArticleInternal_ShorterContent_PreservesExisting(t *testing.T) {
 	mock.ExpectQuery(metadataOnlyArticleUpsertQuery).
 		WithArgs("Title", "Short", "https://example.com/article", "feed-1", "00000000-0000-4000-a000-000000000001", publishedAt).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow("11111111-1111-4111-a111-111111111111", false))
-	expectKnowledgeEventInsert(mock)
 	mock.ExpectCommit()
 
 	articleID, created, err := repo.CreateArticleInternal(t.Context(), CreateArticleParams{

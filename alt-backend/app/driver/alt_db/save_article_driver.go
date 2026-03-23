@@ -86,25 +86,12 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 	defer tx.Rollback(ctx) // Always rollback - no-op after successful Commit
 
 	// 1. Upsert Article
-	articleID, created, err := r.UpsertArticleWithTx(ctx, tx, cleanTitle, cleanContent, cleanURL, userContext.UserID, feedID)
+	articleID, _, err := r.UpsertArticleWithTx(ctx, tx, cleanTitle, cleanContent, cleanURL, userContext.UserID, feedID)
 	if err != nil {
 		return "", err
 	}
 
-	var knowledgeEvent domain.KnowledgeEvent
-	if created {
-		knowledgeEvent, err = buildArticleCreatedKnowledgeEvent(articleID, userContext.TenantID, &userContext.UserID, cleanTitle, nil)
-	} else {
-		knowledgeEvent, err = buildArticleUpdatedKnowledgeEvent(articleID, userContext.TenantID, &userContext.UserID, cleanTitle, nil)
-	}
-	if err != nil {
-		return "", err
-	}
-	if err := appendKnowledgeEventWithExec(ctx, tx, knowledgeEvent); err != nil {
-		return "", err
-	}
-
-	// 3. Insert Outbox Event
+	// 2. Insert Outbox Event
 	eventPayload := map[string]interface{}{
 		"article_id": articleID.String(),
 		"url":        cleanURL,

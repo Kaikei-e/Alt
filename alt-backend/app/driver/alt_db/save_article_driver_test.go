@@ -52,7 +52,7 @@ func TestAltDBRepository_SaveArticle_Success(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestAltDBRepository_SaveArticle_AppendsKnowledgeEvent(t *testing.T) {
+func TestAltDBRepository_SaveArticle_UpsertAndOutbox(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	defer mock.Close()
@@ -78,18 +78,6 @@ func TestAltDBRepository_SaveArticle_AppendsKnowledgeEvent(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta(upsertArticleQuery)).
 		WithArgs("Example Title", strings.Repeat("x", 120), "https://example.com/article", userID, nil).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "created"}).AddRow(uuid.New(), true))
-	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO knowledge_events
-		(event_id, occurred_at, tenant_id, user_id, actor_type, actor_id,
-		 event_type, aggregate_type, aggregate_id, correlation_id, causation_id,
-		 dedupe_key, payload)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (dedupe_key) DO NOTHING`)).
-		WithArgs(
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-		).
-		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 	mock.ExpectExec(`INSERT INTO outbox_events`).
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))

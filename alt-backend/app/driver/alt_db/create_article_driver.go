@@ -1,12 +1,10 @@
 package alt_db
 
 import (
-	"alt/domain"
 	"context"
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -75,32 +73,6 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 		params.PublishedAt,
 	).Scan(&articleID, &created)
 	if err != nil {
-		return "", false, err
-	}
-
-	parsedArticleID, err := uuid.Parse(articleID)
-	if err != nil {
-		return "", false, err
-	}
-	parsedUserID, err := uuid.Parse(params.UserID)
-	if err != nil {
-		return "", false, err
-	}
-
-	var publishedAt *time.Time
-	if !params.PublishedAt.IsZero() {
-		publishedAt = &params.PublishedAt
-	}
-	var knowledgeEvent domain.KnowledgeEvent
-	if created {
-		knowledgeEvent, err = buildArticleCreatedKnowledgeEvent(parsedArticleID, parsedUserID, &parsedUserID, params.Title, publishedAt)
-	} else {
-		knowledgeEvent, err = buildArticleUpdatedKnowledgeEvent(parsedArticleID, parsedUserID, &parsedUserID, params.Title, publishedAt)
-	}
-	if err != nil {
-		return "", false, err
-	}
-	if err := appendKnowledgeEventWithExec(ctx, tx, knowledgeEvent); err != nil {
 		return "", false, err
 	}
 
