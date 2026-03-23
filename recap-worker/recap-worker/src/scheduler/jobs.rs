@@ -235,8 +235,12 @@ impl Scheduler {
             return JobOutcome::Success;
         }
 
-        // Fallback: if we get here, something unexpected happened
-        JobOutcome::Success
+        // Fallback: total_genres > 0 but all counters are 0
+        // → classification completely failed (e.g. subworker down)
+        JobOutcome::Failed(format!(
+            "No genres produced results: total_genres={}, all counters zero (classification may have failed entirely)",
+            persist_result.total_genres
+        ))
     }
 
     pub(crate) async fn run_morning_update(&self, context: JobContext) -> Result<()> {
@@ -483,6 +487,34 @@ mod tests {
             }
             JobOutcome::Success => {
                 panic!("Expected job to be marked as Failed, but got Success");
+            }
+        }
+    }
+
+    /// Test: Job should be marked as Failed when total_genres > 0
+    /// but all counters are zero (classification completely failed, e.g. subworker down)
+    #[test]
+    fn test_job_marked_failed_when_all_counters_zero_but_genres_exist() {
+        let persist_result = PersistResult {
+            job_id: Uuid::new_v4(),
+            genres_stored: 0,
+            genres_failed: 0,
+            genres_skipped: 0,
+            genres_no_evidence: 0,
+            total_genres: 30,
+        };
+
+        let outcome = Scheduler::evaluate_job_outcome(&persist_result);
+
+        match outcome {
+            JobOutcome::Failed(reason) => {
+                assert!(
+                    reason.contains("classification"),
+                    "Expected reason to mention classification, got: {reason}"
+                );
+            }
+            JobOutcome::Success => {
+                panic!("Expected Failed when all counters are zero but total_genres > 0");
             }
         }
     }

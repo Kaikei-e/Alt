@@ -148,6 +148,14 @@ impl GenreStage for RemoteGenreStage {
             .classify_texts_queued(&self.queue, job.job_id, texts)
             .await?;
 
+        // Validate that classification produced results
+        if results.is_empty() && total_articles > 0 {
+            return Err(anyhow::anyhow!(
+                "classification returned 0 results for {} articles (service may be unavailable)",
+                total_articles
+            ));
+        }
+
         // Process results and create assignments
         let mut assignments = Vec::with_capacity(total_articles);
         let mut genre_distribution: HashMap<String, usize> = HashMap::new();
