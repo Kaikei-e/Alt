@@ -804,3 +804,70 @@ async def test_generate_raw_skips_semaphore(mock_config, mock_driver):
 
         await gateway.cleanup()
 
+
+@pytest.mark.asyncio
+async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
+    """Test that preemption actually cancels an in-flight driver.generate() call.
+
+    Before the fix, cancel_event was only checked before/after generate(),
+    not during. This meant a 30-90s Ollama request could not be interrupted.
+    After the fix, asyncio.wait(FIRST_COMPLETED) races cancel_event.wait()
+    against driver.generate(), and task.cancel() aborts the HTTP connection.
+    """
+    # Make generate() block until cancelled
+    generate_started = asyncio.Event()
+    generate_cancelled = asyncio.Event()
+
+    async def slow_generate(payload):
+        generate_started.set()
+        try:
+            await asyncio.sleep(60)  # Simulate long LLM inference
+            return {
+                "response": "Should not reach here",
+                "model": "test-model",
+                "done": True,
+                "prompt_eval_count": 100,
+                "eval_count": 50,
+                "total_duration": 1000000,
+            }
+        except asyncio.CancelledError:
+            generate_cancelled.set()
+            raise
+
+    mock_driver.generate = slow_generate
+
+    # Add missing config fields for OllamaGateway initialization
+    mock_config.scheduling_rt_mode = "lifo"
+
+    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+        gateway = OllamaGateway(mock_config)
+        await gateway.initialize()
+
+        cancel_event = asyncio.Event()
+        task_id = "test-preempt-task"
+
+        # Start the cancellable generation in background
+        gen_task = asyncio.create_task(
+            gateway._generate_with_cancellation(
+                {"prompt": "test", "model": "test-model"},
+                cancel_event,
+                task_id,
+            )
+        )
+
+        # Wait for generate to actually start
+        await generate_started.wait()
+
+        # Simulate preemption: set cancel_event (as HybridPrioritySemaphore does)
+        cancel_event.set()
+
+        # The generation should be interrupted with PreemptedException
+        from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+        with pytest.raises(PreemptedException, match="preempted during generation"):
+            await asyncio.wait_for(gen_task, timeout=2.0)
+
+        # Verify the driver.generate() was actually cancelled
+        assert generate_cancelled.is_set(), "driver.generate() should have received CancelledError"
+
+        await gateway.cleanup()
+

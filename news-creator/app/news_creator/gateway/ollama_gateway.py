@@ -724,8 +724,10 @@ class OllamaGateway(LLMProviderPort):
         """
         Generate with cancellation support for preemption.
 
-        For BE requests, this checks the cancel event periodically and raises
-        PreemptedException if the request is preempted.
+        For BE requests, this races driver.generate() against cancel_event.wait()
+        using asyncio.wait(FIRST_COMPLETED). When preemption is signaled,
+        the in-flight HTTP request to Ollama is cancelled via task.cancel(),
+        which closes the aiohttp connection and causes Ollama to stop inference.
 
         For RT requests (cancel_event is None), this is a direct passthrough.
 
@@ -744,23 +746,43 @@ class OllamaGateway(LLMProviderPort):
             # RT request - no cancellation check needed
             return await self.driver.generate(payload)
 
-        # BE request - check for preemption before and after generation
+        # BE request - check for preemption before generation
         if cancel_event.is_set():
             raise PreemptedException(f"Request {task_id} preempted before generation")
 
-        # Start generation
-        response_data = await self.driver.generate(payload)
+        # Race generate() against cancel_event.wait() so preemption
+        # can interrupt an in-flight Ollama HTTP request.
+        generate_task = asyncio.create_task(self.driver.generate(payload))
+        cancel_task = asyncio.create_task(cancel_event.wait())
 
-        # Check for preemption after generation (for logging purposes)
-        if cancel_event.is_set():
-            logger.info(
-                f"Request {task_id} was marked for preemption during generation",
+        done, _pending = await asyncio.wait(
+            {generate_task, cancel_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        if cancel_task in done:
+            # Preempted — cancel the HTTP request.
+            # task.cancel() raises CancelledError inside aiohttp's session.post(),
+            # which closes the HTTP connection. Ollama detects the disconnect
+            # and stops inference, freeing GPU resources immediately.
+            generate_task.cancel()
+            try:
+                await generate_task
+            except asyncio.CancelledError:
+                pass
+            logger.warning(
+                f"Request {task_id} preempted during generation — HTTP connection cancelled",
                 extra={"task_id": task_id},
             )
-            # Generation completed, so return the result anyway
-            # The preemption will take effect on the next BE request
+            raise PreemptedException(f"Request {task_id} preempted during generation")
 
-        return response_data
+        # Generation completed normally — clean up cancel waiter
+        cancel_task.cancel()
+        try:
+            await cancel_task
+        except asyncio.CancelledError:
+            pass
+        return generate_task.result()
 
     async def list_models(self) -> list[Dict[str, Any]]:
         """
