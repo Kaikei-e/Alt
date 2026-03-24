@@ -2,7 +2,7 @@
 name = "alt-metrics"
 version = "0.2.0"
 description = "Alt システム健全性アナライザー - ClickHouseからのメトリクスレポート生成"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "clickhouse-connect>=0.8.0",
     "pydantic>=2.10.0",
@@ -30,7 +30,7 @@ build-backend = "hatchling.build"
 packages = ["src/alt_metrics"]
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 120
 src = ["src"]
 
@@ -44,7 +44,7 @@ ignore = ["S101", "S608", "B905"]  # S608: SQL injection (intentional), B905: zi
 [tool.pyrefly]
 project-includes = ["src"]
 project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
-python-version = "3.13"
+python-version = "3.14"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

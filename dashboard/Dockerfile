@@ -1,7 +1,7 @@
 # ==============================================================================
 # ビルドステージ
 # ==============================================================================
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # uv を公式イメージからコピー
-COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=0 UV_LINK_MODE=copy
 
@@ -24,7 +24,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ==============================================================================
 # ランタイムステージ
 # ==============================================================================
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 

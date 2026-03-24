@@ -2,7 +2,7 @@
 name = "news-creator"
 version = "0.1.0"
 description = "LLM-powered summarization service"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.100.0",
     "uvicorn>=0.20.0",
@@ -37,7 +37,7 @@ constraint-dependencies = ["protobuf>=6.33.5"]
 [tool.pyrefly]
 project-includes = ["."]
 project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist", "**/*.egg-info", "tests/**"]
-python-version = "3.11"
+python-version = "3.14"
 replace-imports-with-any = [
     "sentence_transformers.*", "numpy.*",
 ]

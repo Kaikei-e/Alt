@@ -2,7 +2,7 @@
 name = "dashboard"
 version = "0.1.0"
 description = "Alt Platform Dashboard"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "streamlit==1.54.0",
     "pandas==2.2.3",
@@ -22,4 +22,4 @@ constraint-dependencies = ["Pillow>=12.1.1", "tornado>=6.5.5"]
 [tool.pyrefly]
 project-includes = ["."]
 project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
-python-version = "3.12"
+python-version = "3.14"

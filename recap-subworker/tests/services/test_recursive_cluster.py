@@ -20,6 +20,7 @@ def mock_settings():
     settings.clustering_recursive_enabled = True
     settings.clustering_max_tokens_per_cluster = 100 # Low threshold to force split
     settings.clustering_min_split_size = 5
+    settings.recursive_dynamic_thresholds = False
     return settings
 
 @pytest.fixture

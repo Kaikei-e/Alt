@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class ProcessingScheduler:
     """Coordinate the recurring processing loop for tag generation."""
 
-    def __init__(self, service: "TagGeneratorService", sleep_fn: Callable[[float], None] | None = None):
+    def __init__(self, service: TagGeneratorService, sleep_fn: Callable[[float], None] | None = None):
         self.service = service
         self._sleep = sleep_fn or time.sleep
 

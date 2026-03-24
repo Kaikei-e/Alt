@@ -31,6 +31,7 @@ def mock_config():
     config.scheduling_priority_promotion_threshold_seconds = 600.0
     config.scheduling_guaranteed_be_ratio = 5
     config.max_queue_depth = 0
+    config.scheduling_rt_mode = "fifo"
     config.llm_num_ctx = 4096
     config.is_base_model_name = Mock(return_value=False)
     config.is_bucket_model_name = Mock(return_value=False)

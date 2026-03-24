@@ -65,11 +65,11 @@ class GinzaExtractor:
     Thread-safe singleton pattern for efficient model reuse.
     """
 
-    _instance: "GinzaExtractor | None" = None
+    _instance: GinzaExtractor | None = None
     _lock = threading.Lock()
     _init_lock = threading.Lock()
 
-    def __new__(cls, config: GinzaConfig | None = None) -> "GinzaExtractor":
+    def __new__(cls, config: GinzaConfig | None = None) -> GinzaExtractor:
         """Ensure singleton instance."""
         if cls._instance is None:
             with cls._lock:
@@ -137,7 +137,7 @@ class GinzaExtractor:
         """Check if GiNZA is available and model can be loaded."""
         return self._lazy_load_model()
 
-    def _get_doc(self, text: str) -> "spacy.tokens.Doc | None":
+    def _get_doc(self, text: str) -> spacy.tokens.Doc | None:
         """
         Get parsed spaCy document, with optional caching.
 

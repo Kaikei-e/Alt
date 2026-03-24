@@ -24,7 +24,7 @@ class TagGeneratorEventHandler(EventHandler):
 
     def __init__(
         self,
-        service: "TagGeneratorService",
+        service: TagGeneratorService,
         stream_consumer: StreamConsumer | None = None,
     ) -> None:
         self.service = service

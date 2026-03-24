@@ -2,7 +2,7 @@
 
 ## Overview
 
-LLM-powered summarization service. **Python 3.11+**, **FastAPI**, **Ollama**.
+LLM-powered summarization service. **Python 3.14+**, **FastAPI**, **Ollama**.
 
 > Details: `docs/services/news-creator.md`
 

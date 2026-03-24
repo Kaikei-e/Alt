@@ -17,7 +17,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # uv を公式イメージからコピー
-COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /uvx /bin/
 
 # キャッシュ設定
 ENV UV_COMPILE_BYTECODE=0 UV_LINK_MODE=copy VIRTUAL_ENV=/opt/venv

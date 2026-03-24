@@ -41,7 +41,7 @@ except ModuleNotFoundError:
         def __init__(self, config: AuthConfig):
             self.config = config
 
-        async def __aenter__(self) -> "AuthClient":
+        async def __aenter__(self) -> AuthClient:
             return self
 
         async def __aexit__(self, exc_type, exc, tb) -> bool:

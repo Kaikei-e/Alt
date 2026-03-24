@@ -2,7 +2,7 @@
 name = "rerank-server"
 version = "0.1.0"
 description = "MLX-based rerank server for cross-encoder reranking"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "sentence-transformers>=5.2.3",
     "fastapi>=0.133.0",
@@ -22,7 +22,7 @@ build-backend = "hatchling.build"
 [tool.pyrefly]
 project-includes = ["."]
 project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
-python-version = "3.12"
+python-version = "3.14"
 
 [tool.pyrefly.errors]
 missing-import = false

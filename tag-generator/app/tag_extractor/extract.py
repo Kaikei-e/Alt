@@ -377,7 +377,7 @@ class TagExtractor:
         return make_japanese_analyzer(self._ja_tagger)
 
     def _score_japanese_candidates_with_keybert(
-        self, text: str, candidates: list[str], freq_counter: "Counter[str]"
+        self, text: str, candidates: list[str], freq_counter: Counter[str]
     ) -> tuple[list[str], dict[str, float]]:
         """Score Japanese keyword candidates using KeyBERT semantic similarity."""
         return score_japanese_candidates_with_keybert(
@@ -385,7 +385,7 @@ class TagExtractor:
         )
 
     def _score_candidates_by_frequency(
-        self, candidates: list[str], freq_counter: "Counter[str]"
+        self, candidates: list[str], freq_counter: Counter[str]
     ) -> tuple[list[str], dict[str, float]]:
         """Score candidates using frequency-based ranking."""
         return score_candidates_by_frequency(candidates, freq_counter, self.config.top_keywords)

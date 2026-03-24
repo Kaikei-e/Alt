@@ -21,12 +21,12 @@ class BatchProcessor:
 
     def __init__(
         self,
-        config: "TagGeneratorConfig",
-        article_fetcher: "ArticleFetcherPort",
-        tag_extractor: "TagExtractorPort",
-        tag_inserter: "TagInserterPort",
-        cascade_controller: "CascadeController",
-        cursor_manager: "CursorManager",
+        config: TagGeneratorConfig,
+        article_fetcher: ArticleFetcherPort,
+        tag_extractor: TagExtractorPort,
+        tag_inserter: TagInserterPort,
+        cascade_controller: CascadeController,
+        cursor_manager: CursorManager,
     ):
         """Initialize batch processor with dependencies."""
         self.config = config
@@ -230,7 +230,7 @@ class BatchProcessor:
         return batch_stats
 
     def process_article_batch_forward(
-        self, conn: Any, cursor_manager: "CursorManager", _from_backfill: bool = False
+        self, conn: Any, cursor_manager: CursorManager, _from_backfill: bool = False
     ) -> dict[str, Any]:
         """Process articles newer than the current forward cursor.
         If no new articles are found and backfill is not completed, fall back to backfill processing.
@@ -297,7 +297,7 @@ class BatchProcessor:
 
         return batch_stats
 
-    def process_article_batch_backfill(self, conn: Any, cursor_manager: "CursorManager") -> dict[str, Any]:
+    def process_article_batch_backfill(self, conn: Any, cursor_manager: CursorManager) -> dict[str, Any]:
         """
         Process a batch of articles for tag generation using true batch processing.
         In hybrid mode, checks for new articles first, then processes backfill.
@@ -443,7 +443,7 @@ class BatchProcessor:
 
         return batch_stats
 
-    def process_article_batch(self, conn: Any, cursor_manager: "CursorManager") -> dict[str, Any]:
+    def process_article_batch(self, conn: Any, cursor_manager: CursorManager) -> dict[str, Any]:
         """Choose processing strategy based on tagging state and backfill completion."""
         # If backfill is completed, prioritize forward processing
         if self.backfill_completed:

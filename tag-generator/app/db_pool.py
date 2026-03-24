@@ -31,7 +31,7 @@ class PoolConfig:
 class PooledConnection:
     """Wrapper for pooled database connection."""
 
-    def __init__(self, connection: Connection, pool: "ConnectionPool"):
+    def __init__(self, connection: Connection, pool: ConnectionPool):
         self.connection = connection
         self.pool = pool
         self.created_at = time.time()

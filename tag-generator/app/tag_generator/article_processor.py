@@ -17,9 +17,9 @@ class ArticleProcessor:
 
     def __init__(
         self,
-        tag_extractor: "TagExtractor",
-        tag_inserter: "TagInserterPort",
-        cascade_controller: "CascadeController",
+        tag_extractor: TagExtractor,
+        tag_inserter: TagInserterPort,
+        cascade_controller: CascadeController,
     ):
         """Initialize article processor with dependencies."""
         self.tag_extractor = tag_extractor

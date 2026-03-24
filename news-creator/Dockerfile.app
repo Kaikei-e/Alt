@@ -1,7 +1,7 @@
 # Dockerfile.app - FastAPI application only
 # Separated from Ollama for faster deployments and smaller images
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Install system dependencies
 RUN apt-get update \
@@ -12,7 +12,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv for Python package management
-COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /bin/uv
 
 # Create application user
 RUN groupadd -g 1000 appuser \

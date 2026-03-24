@@ -2,7 +2,7 @@
 
 ## Overview
 
-Tag generation with ML models (KeyBERT, sentence-transformers). **Python 3.13+**, **FastAPI**.
+Tag generation with ML models (KeyBERT, sentence-transformers). **Python 3.14+**, **FastAPI**.
 
 > Details: `docs/services/tag-generator.md`
 

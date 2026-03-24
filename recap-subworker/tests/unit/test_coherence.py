@@ -9,7 +9,10 @@ from recap_subworker.services.coherence import (
     TopicCoherenceEvaluator,
     CoherenceResult,
     CoherenceType,
+    GENSIM_AVAILABLE,
 )
+
+gensim_required = pytest.mark.skipif(not GENSIM_AVAILABLE, reason="gensim not installed")
 
 
 class TestCoherenceType:
@@ -67,6 +70,7 @@ class TestCoherenceResult:
         assert result.num_documents == 100
 
 
+@gensim_required
 class TestTopicCoherenceEvaluator:
     """Tests for TopicCoherenceEvaluator class."""
 

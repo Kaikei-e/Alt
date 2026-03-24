@@ -15,7 +15,7 @@ class HealthMonitor:
 
     def __init__(
         self,
-        config: "TagGeneratorConfig",
+        config: TagGeneratorConfig,
         article_fetcher: Any,
     ):
         """Initialize health monitor with dependencies."""

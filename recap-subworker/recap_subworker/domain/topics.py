@@ -23,7 +23,9 @@ try:
     import spacy
 
     SPACY_AVAILABLE = True
-except ImportError:
+except (ImportError, Exception):
+    # spacy 3.x uses pydantic.v1 internally, which is incompatible with Python 3.14+
+    # (PEP 649 deferred annotations). Catch broadly until spacy migrates to pydantic v2.
     SPACY_AVAILABLE = False
     spacy = None
 

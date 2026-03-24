@@ -3,7 +3,7 @@ name = "recap-evaluator"
 version = "0.1.0"
 description = "RecapJob精度評価マイクロサービス - 7日間Recapの品質を多角的に評価"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     # Web Framework
     "fastapi>=0.115.0",
@@ -63,7 +63,7 @@ dev = [
 constraint-dependencies = ["protobuf>=6.33.5", "Pillow>=12.1.1"]
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 100
 exclude = [".git", "__pycache__", ".venv", "build", "dist", "*.egg-info"]
 
@@ -98,7 +98,7 @@ indent-style = "space"
 project-includes = ["src"]
 project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist", "tests/**"]
 search-path = ["src"]
-python-version = "3.13"
+python-version = "3.14"
 replace-imports-with-any = [
     "rouge_score.*", "bert_score.*", "transformers.*",
     "sklearn.*", "numpy.*", "pandas.*",

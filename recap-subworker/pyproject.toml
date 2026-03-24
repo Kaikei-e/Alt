@@ -2,7 +2,7 @@
 name = "recap-subworker"
 version = "0.1.0"
 description = "Alt recap evidence clustering subworker"
-requires-python = "~=3.12.0"
+requires-python = ">=3.14"
 readme = "README.md"
 authors = [{ name = "Alt Engineering" }]
 dependencies = [
@@ -22,7 +22,7 @@ dependencies = [
   "datasets>=3.0.0",
   "pyyaml>=6.0.1",
   "sentencepiece>=0.2.0",
-  "numpy<2.0.0",
+  "numpy>=2.0.0",
   "scikit-learn>=1.5.0",
   "scikit-optimize>=0.10.2",
   "pandas>=2.2.2",
@@ -50,7 +50,9 @@ dependencies = [
   "deepeval>=0.21.0",
   "psycopg2-binary>=2.9.9",
   "bert-score>=0.3.13",
-  "gensim>=4.3.0",
+  # gensim 4.4.0 has C extensions incompatible with Python 3.14 (PyLongObject ABI change)
+  # Usage is optional (try/except in services/coherence.py) — re-add when gensim releases 3.14 wheels
+  # "gensim>=4.3.0",
   "faiss-cpu>=1.7.4",
 ]
 
@@ -79,12 +81,12 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py314"
 
 [tool.pyrefly]
 project-includes = ["."]
 project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist", "**/*.egg-info", "tests/**"]
-python-version = "3.12"
+python-version = "3.14"
 replace-imports-with-any = [
     "torch.*", "transformers.*", "sentence_transformers.*",
     "sklearn.*", "scipy.*", "numpy.*", "pandas.*",

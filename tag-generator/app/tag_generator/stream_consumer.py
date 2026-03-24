@@ -27,7 +27,7 @@ class ConsumerConfig:
     enabled: bool = False
 
     @classmethod
-    def from_env(cls) -> "ConsumerConfig":
+    def from_env(cls) -> ConsumerConfig:
         """Create config from environment variables."""
         return cls(
             redis_url=os.getenv("REDIS_STREAMS_URL", "redis://localhost:6379"),
@@ -41,7 +41,7 @@ class ConsumerConfig:
         )
 
     @classmethod
-    def tags_stream_from_env(cls) -> "ConsumerConfig":
+    def tags_stream_from_env(cls) -> ConsumerConfig:
         """Create config for the dedicated tags stream (on-the-fly tag generation).
 
         Uses low batch_size and short block_timeout for low-latency response.
@@ -187,7 +187,7 @@ class StreamConsumer:
         if "created_at" in data:
             try:
                 created_at = datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
-            except (ValueError, AttributeError):
+            except ValueError, AttributeError:
                 pass
 
         payload = {}

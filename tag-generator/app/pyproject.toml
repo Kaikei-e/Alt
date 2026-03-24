@@ -14,7 +14,7 @@ name = "tag-generator"
 version = "0.1.0"
 description = "Ultra-minimal tag generator (external models required)"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     # Japanese Text Processing (self-contained)
     "fugashi[unidic-lite]>=1.5.1", # includes unidic-lite, no external MecAB needed
@@ -141,7 +141,7 @@ find = { include = [
 # - ML models must be provided externally or installed at runtime
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 120
 exclude = [".git", "__pycache__", ".venv", "build", "dist", "*.egg-info", "tag_generator/gen", "test_unit.py"]
 
@@ -193,7 +193,7 @@ project-excludes = [
     "tag_generator/gen/**",
     "**/test_unit.py",
 ]
-python-version = "3.13"
+python-version = "3.14"
 
 # Suppress errors for optional ML dependencies (installed separately in Docker)
 [tool.pyrefly.errors]

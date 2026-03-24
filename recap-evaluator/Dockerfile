@@ -4,12 +4,12 @@
 # ==============================================================================
 
 # ビルドステージ
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /app
 
 # uv を公式イメージからコピー (バージョン固定)
-COPY --from=ghcr.io/astral-sh/uv:0.5.14 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
 # ランタイムステージ
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 

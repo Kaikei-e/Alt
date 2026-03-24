@@ -71,7 +71,7 @@ class TagExtractionConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def resolve_env_overrides(self) -> "TagExtractionConfig":
+    def resolve_env_overrides(self) -> TagExtractionConfig:
         """Resolve environment variable overrides and auto-detect ONNX availability."""
         # Default ONNX path from env
         if self.onnx_model_path is None:
