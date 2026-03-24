@@ -135,7 +135,7 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 	workerFn := func() {
 		defer wg.Done()
 		for job := range jobCh {
-			if ctx.Err() != nil {
+			if ctx.Err() != nil || overloaded.Load() {
 				continue
 			}
 
