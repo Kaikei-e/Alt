@@ -102,6 +102,6 @@ def test_dependency_container_keeps_summarize_usecase_local(monkeypatch):
 
     container = main_module.DependencyContainer()
 
-    assert container.summarize_usecase.llm_provider is container.ollama_gateway
+    assert container.summarize_usecase.llm_provider is container.llm_provider
     assert container.recap_summary_usecase.llm_provider is container.llm_provider
     assert container.expand_query_usecase.llm_provider is container.llm_provider

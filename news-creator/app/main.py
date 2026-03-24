@@ -124,7 +124,7 @@ class DependencyContainer:
         # still use distributed BE dispatch when explicitly enabled.
         self.summarize_usecase = SummarizeUsecase(
             config=self.config,
-            llm_provider=self.ollama_gateway,
+            llm_provider=self.llm_provider,
         )
         self.recap_summary_usecase = RecapSummaryUsecase(
             config=self.config,
