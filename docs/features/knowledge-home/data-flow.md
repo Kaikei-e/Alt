@@ -11,7 +11,7 @@ All events are appended to the `knowledge_events` table with a unique `dedupe_ke
 | `ArticleCreated` | `CreateArticle` usecase | `article_id`, `title`, `published_at`, `tenant_id`, `link` | Creates home item (score=freshness), increments digest |
 | `ArticleUpdated` | Article update path | `article_id`, updated fields | Updates home item metadata |
 | `SummaryVersionCreated` | `SaveArticleSummary` usecase | `summary_version_id`, `article_id` | Sets excerpt, `summary_state=ready`, score=0.8 |
-| `TagSetVersionCreated` | `SaveArticleTags` usecase | `tag_set_version_id`, `article_id` | Sets tags, adds `tag_hotspot` why-reason, score=0.7 |
+| `TagSetVersionCreated` | `SaveArticleTags` usecase | `tag_set_version_id`, `article_id` | Sets tags, score=0.7. `tag_hotspot` why-reason added conditionally by usecase-level trending detection (7-day vs 30-day surge analysis) |
 | `HomeItemsSeen` | `TrackHomeItemsSeen` handler | `items_seen[]`, `session_id` | (Future: exposure tracking) |
 | `HomeItemOpened` | `TrackHomeAction` handler | `item_key` | Suppresses score to 0.1, creates recall candidate |
 | `HomeItemDismissed` | `TrackHomeAction` handler | `item_key` | Sets `dismissed_at`, removes from feed |
@@ -22,7 +22,7 @@ All events are appended to the `knowledge_events` table with a unique `dedupe_ke
 | `HomeItemSuperseded` | Multi-field update | `article_id` | Sets `supersede_state=multiple_updated` |
 | `ReasonMerged` | Why-code updates | `article_id`, `item_key`, `added_codes`, `previous_why_codes` | Sets `supersede_state=reason_updated` |
 | `RecallSnoozed` | Recall rail interaction | `item_key`, `until` | Updates snooze in recall_candidate_view |
-| `RecallDismissed` | Recall rail interaction | `item_key` | Removes from recall_candidate_view |
+| `RecallDismissed` | Recall rail interaction | `item_key` | Soft-deletes from recall_candidate_view (sets `dismissed_at`) |
 
 ## Article Lifecycle
 
@@ -56,7 +56,8 @@ sequenceDiagram
   TG->>AB: SaveArticleTags(article_id, tags)
   AB->>KS: Insert tag_set_versions
   AB->>KS: AppendEvent(TagSetVersionCreated)
-  KP->>KS: UpsertHomeItem(tags, why+=tag_hotspot, score=0.7)
+  KP->>KS: UpsertHomeItem(tags, score=0.7)
+  Note over KP: tag_hotspot added conditionally<br/>by trending detection (7d vs 30d surge)
 
   FE->>AB: GetKnowledgeHome(lens_id, cursor)
   AB->>KS: Query knowledge_home_items + today_digest
@@ -109,7 +110,7 @@ The `projectEvent()` function dispatches by `event_type`:
 |------------|-----------------|-------------|
 | `ArticleCreated` | `projectArticleCreated` | Creates home item with freshness score, increments TodayDigest |
 | `SummaryVersionCreated` | `projectSummaryVersionCreated` | Fetches summary by version ID (reproject-safe), sets excerpt + state |
-| `TagSetVersionCreated` | `projectTagSetVersionCreated` | Fetches tags by version ID, adds tag_hotspot why-reason |
+| `TagSetVersionCreated` | `projectTagSetVersionCreated` | Fetches tags by version ID, sets tags on item |
 | `HomeItemOpened` | `projectHomeItemOpened` | Suppresses score, sets interaction time, creates recall candidate |
 | `HomeItemDismissed` | `projectHomeItemDismissed` | Sets `dismissed_at` to soft-delete from feed |
 | `SummarySuperseded` | `projectSummarySuperseded` | Marks `supersede_state`, preserves previous excerpt |
@@ -122,8 +123,9 @@ Unknown event types are silently skipped, allowing forward compatibility.
 
 The runner (`knowledge_projector_runner.go`) uses a **hybrid polling + LISTEN/NOTIFY** approach:
 
-1. **Primary mode:** Subscribes to PostgreSQL `LISTEN/NOTIFY` via sovereign's `WatchProjectorEvents` streaming RPC. Wakes immediately when new events arrive.
-2. **Fallback mode:** If the listener connection fails, falls back to 5-second polling. Switches back automatically when the connection recovers.
+1. **Primary mode:** Subscribes to PostgreSQL `LISTEN/NOTIFY` on the `knowledge_projector` channel via sovereign's `WatchProjectorEvents` streaming RPC. A database trigger (`trg_knowledge_events_notify`) fires on each event INSERT, waking the projector immediately.
+2. **Fallback mode:** If the listener connection fails, falls back to 5-second polling (default `PollInterval`). Switches back automatically when the connection recovers.
+3. **Timeout:** Each poll cycle has a default 25-second timeout. The runner performs an initial drain before entering the main loop.
 
 ## Score Calculation
 

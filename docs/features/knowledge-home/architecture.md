@@ -99,6 +99,9 @@ All tables are owned by `knowledge-sovereign` and live in the `sovereign-db` Pos
 | Table | Purpose | Key Columns |
 |-------|---------|-------------|
 | `knowledge_events` | Append-only event log. Source of truth. | `event_id`, `event_seq` (BIGSERIAL), `event_type`, `aggregate_type`, `aggregate_id`, `dedupe_key` (UNIQUE), `payload` (JSONB) |
+| `knowledge_user_events` | User interaction log (impressions, clicks). | `user_event_id`, `user_id`, `item_key`, `event_type`, `occurred_at`, `dedupe_key` (UNIQUE), `payload` (JSONB) |
+
+A PostgreSQL trigger (`trg_knowledge_events_notify`) fires on each INSERT into `knowledge_events`, sending `pg_notify('knowledge_projector', event_seq)` to wake the projector immediately.
 
 ### Versioned Artifacts
 
@@ -111,10 +114,18 @@ All tables are owned by `knowledge-sovereign` and live in the `sovereign-db` Pos
 
 | Table | Purpose | PK | Rebuilt By |
 |-------|---------|-----|------------|
-| `knowledge_home_items` | Home feed items with score, summary, tags, why | `(user_id, item_key)` | KnowledgeProjector |
+| `knowledge_home_items` | Home feed items with score, summary, tags, why, link | `(user_id, item_key, projection_version)` | KnowledgeProjector |
 | `today_digest_view` | Daily aggregation: counts, top tags, availability | `(user_id, digest_date)` | KnowledgeProjector |
-| `recall_candidate_view` | Recall rail candidates with score and reasons | `(user_id, item_key)` | KnowledgeProjector + RecallProjector |
+| `recall_candidate_view` | Recall rail candidates with score, reasons, and soft-delete via `dismissed_at` | `(user_id, item_key)` | KnowledgeProjector + RecallProjector |
 | `recall_signals` | Raw interaction signals for recall scoring | `signal_id` | User actions |
+
+### Lens & Curation
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `knowledge_lenses` | Saved viewpoints (filter rules) | `lens_id`, `user_id`, `name`, `description`, `archived_at` |
+| `knowledge_lens_versions` | Versioned lens configurations (append-only per lens) | `lens_version_id`, `lens_id`, `query_text`, `tag_ids_json`, `time_window_json`, `sort_mode`, `superseded_by` |
+| `knowledge_current_lens` | Active lens selection per user | `(user_id)`, `lens_id`, `lens_version_id`, `selected_at` |
 
 ### Infrastructure
 
@@ -122,9 +133,9 @@ All tables are owned by `knowledge-sovereign` and live in the `sovereign-db` Pos
 |-------|---------|
 | `knowledge_projection_checkpoints` | Tracks `last_event_seq` per projector |
 | `knowledge_projection_versions` | Tracks active projection version for reproject |
-| `knowledge_lenses` | Saved viewpoints (filter rules) |
 | `knowledge_backfill_jobs` | Backfill job state and progress |
 | `knowledge_reproject_runs` | Reproject run state and diff summaries |
+| `knowledge_projection_audits` | Audit results: sample size, mismatch count, details |
 
 ## Knowledge Sovereign
 
@@ -132,13 +143,16 @@ Knowledge Sovereign is an independent Go microservice that acts as the single ow
 
 **Protocol:** Connect-RPC (gRPC-compatible)
 
-**Mutation types:**
-- **Projection mutations:** `upsert_home_item`, `dismiss_home_item`, `clear_supersede`, `upsert_today_digest`, `upsert_recall_candidate`
-- **Curation mutations:** `create_lens`, `create_lens_version`, `select_lens`, `clear_lens`, `archive_lens`
-- **Recall mutations:** `upsert_candidate`, `snooze_candidate`, `dismiss_candidate`
+**Mutation RPCs:**
+- `ApplyProjectionMutation` dispatches by mutation type: `upsert_home_item`, `dismiss_home_item`, `clear_supersede`, `upsert_today_digest`, `upsert_recall_candidate`
+- `ApplyRecallMutation` dispatches: `snooze_candidate`, `dismiss_candidate`
+- `ApplyCurationMutation` dispatches curation operations
+
+**Streaming RPC:**
+- `WatchProjectorEvents` — Server-streaming RPC that wraps PostgreSQL `LISTEN/NOTIFY` on the `knowledge_projector` channel. Sends heartbeats every 3 seconds and pushes `latest_event_seq` on each new event.
 
 **Key files:**
 - Service entry: `knowledge-sovereign/app/main.go`
-- RPC handlers: `knowledge-sovereign/app/handler/`
-- Migrations: `knowledge-sovereign/migrations/`
-- Client in alt-backend: `alt-backend/app/driver/sovereign_client/`
+- RPC handlers: `knowledge-sovereign/app/handler/sovereign_handler.go`, `rpc_projections.go`, `rpc_infra.go`, `rpc_lens.go`, `rpc_watch.go`
+- Migrations: `knowledge-sovereign/migrations/` (5 migrations)
+- Client in alt-backend: `alt-backend/app/driver/sovereign_client/` (`client.go`, `read_client.go`, `write_ports.go`, `watch_client.go`, `signal_client.go`, `backfill_client.go`, `lens_client.go`, `reproject_client.go`)

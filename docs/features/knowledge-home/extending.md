@@ -135,7 +135,7 @@ When you need a new optimized view of the event data:
 
 6. **Wire the projector** to populate the new view by adding projection logic to the event dispatch.
 
-7. **Wire DI** in `alt-backend/app/di/container.go`.
+7. **Wire DI** in `alt-backend/app/di/container.go` (see lines ~522-586 for existing sovereign client wiring).
 
 ## Operational Recipes
 

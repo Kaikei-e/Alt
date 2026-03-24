@@ -82,7 +82,14 @@ graph LR
 | Projector runner | `alt-backend/app/job/knowledge_projector_runner.go` |
 | API handler | `alt-backend/app/connect/v2/knowledge_home/handler.go` |
 | Admin handler | `alt-backend/app/connect/v2/knowledge_home_admin/handler.go` |
-| Port interfaces | `alt-backend/app/port/knowledge_home_port/`, `today_digest_port/`, `recall_candidate_port/`, `knowledge_event_port/` |
+| Port interfaces | `alt-backend/app/port/knowledge_home_port/`, `today_digest_port/`, `recall_candidate_port/`, `recall_signal_port/`, `knowledge_event_port/` |
 | Sovereign service | `knowledge-sovereign/app/main.go`, `knowledge-sovereign/app/handler/` |
-| Sovereign client | `alt-backend/app/driver/sovereign_client/` |
-| Migrations | `knowledge-sovereign/migrations/` |
+| Sovereign client | `alt-backend/app/driver/sovereign_client/` (8 files: `client.go`, `read_client.go`, `write_ports.go`, `watch_client.go`, `signal_client.go`, `backfill_client.go`, `lens_client.go`, `reproject_client.go`) |
+| Sovereign proto | `proto/services/sovereign/v1/sovereign.proto` (43 RPCs) |
+| Public API proto | `proto/alt/knowledge_home/v1/knowledge_home.proto` |
+| Admin API proto | `proto/alt/knowledge_home/v1/knowledge_home_admin.proto` |
+| Feature flags | `alt-backend/app/domain/feature_flag.go`, `alt-backend/app/gateway/feature_flag_gateway/gateway.go` |
+| Migrations | `knowledge-sovereign/migrations/` (5 migrations) |
+| Frontend hooks | `alt-frontend-sv/src/lib/hooks/useKnowledgeHome.svelte.ts`, `useRecallRail.svelte.ts`, `useLens.svelte.ts`, `useStreamUpdates.svelte.ts` |
+| Frontend components | `alt-frontend-sv/src/lib/components/knowledge-home/` |
+| BFF routing | `alt-butterfly-facade/internal/handler/proxy_handler.go`, `admin_proxy_handler.go` |

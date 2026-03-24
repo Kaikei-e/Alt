@@ -12,14 +12,14 @@ Knowledge Home exposes two Connect-RPC services: a **public API** for user-facin
 | `TrackHomeItemsSeen` | `TrackHomeItemsSeenRequest` | `TrackHomeItemsSeenResponse` | Reports which items were rendered on screen (exposure tracking) |
 | `TrackHomeAction` | `TrackHomeActionRequest` | `TrackHomeActionResponse` | Tracks user interactions: `open`, `dismiss`, `ask`, `listen` |
 | `GetRecallRail` | `GetRecallRailRequest` | `GetRecallRailResponse` | Returns recall candidates for the recall rail sidebar |
-| `SnoozeRecallCandidate` | `SnoozeRecallCandidateRequest` | `SnoozeRecallCandidateResponse` | Temporarily hides a recall candidate until a specified time |
-| `DismissRecallCandidate` | `DismissRecallCandidateRequest` | `DismissRecallCandidateResponse` | Permanently removes a recall candidate |
+| `TrackRecallAction` | `TrackRecallActionRequest` | `TrackRecallActionResponse` | Handles recall interactions: `snooze`, `dismiss`, `open` |
 | `CreateLens` | `CreateLensRequest` | `CreateLensResponse` | Creates a new saved viewpoint with filter rules |
-| `UpdateLens` | `UpdateLensRequest` | `UpdateLensResponse` | Updates an existing lens name or filter rules |
+| `UpdateLens` | `UpdateLensRequest` | `UpdateLensResponse` | Creates a new lens version with updated filter rules |
+| `DeleteLens` | `DeleteLensRequest` | `DeleteLensResponse` | Soft-deletes (archives) a lens |
 | `ListLenses` | `ListLensesRequest` | `ListLensesResponse` | Lists all lenses for the current user |
 | `SelectLens` | `SelectLensRequest` | `SelectLensResponse` | Activates a lens (changes which items appear in the feed) |
-| `ArchiveLens` | `ArchiveLensRequest` | `ArchiveLensResponse` | Soft-deletes a lens |
 | `StreamKnowledgeHomeUpdates` | `StreamKnowledgeHomeUpdatesRequest` | stream of `StreamEvent` | Server-sent stream of real-time feed updates |
+| `StreamRecallRailUpdates` | `StreamRecallRailUpdatesRequest` | stream of `StreamEvent` | Server-sent stream of recall rail updates |
 
 ### GetKnowledgeHome
 
@@ -41,8 +41,25 @@ GetKnowledgeHomeResponse
   +-- recall_candidates[]: RecallCandidate
   +-- next_cursor: string
   +-- has_more: bool
+  +-- degraded_mode: bool
+  +-- generated_at: timestamp
+  +-- feature_flags[]: FeatureFlag
   +-- service_quality: string (full | degraded | fallback)
 ```
+
+Recall candidates are embedded in the main response to avoid an extra round-trip (single-fetch contract). The frontend populates the recall rail from this field.
+
+### TrackRecallAction
+
+Unified handler for all recall rail interactions:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `action_type` | string | One of: `snooze`, `dismiss`, `open` |
+| `item_key` | string | The recall candidate's item key |
+| `snooze_hours` | int32 | Hours to snooze (only for `snooze` action) |
+
+Dismiss uses soft-delete (sets `dismissed_at` on `recall_candidate_view`) to prevent candidates from reappearing on the next projector run.
 
 ## Admin API: KnowledgeHomeAdminService
 
@@ -90,9 +107,7 @@ The core domain object for a single item in the Knowledge Home feed.
 | `freshness_at` | timestamp | Projector | When the item was last refreshed |
 | `last_interacted_at` | timestamp | Projector | Last user interaction time |
 | `projection_version` | int | Projector | Which projection version created this |
-| `supersede_state` | string | Projector | `summary_updated`, `tags_updated`, `reason_updated`, or `multiple_updated` |
-| `superseded_at` | timestamp | Projector | When the supersede occurred |
-| `previous_ref_json` | string | Projector | JSON of previous state for history display |
+| `supersede_info` | SupersedeInfo | Projector | Supersede state, wrapped as a sub-message in proto (see below) |
 | `link` | string | Event payload | Original article URL |
 | `dismissed_at` | timestamp | Projector | Soft-delete timestamp (excluded from feed queries) |
 
@@ -103,6 +118,18 @@ The core domain object for a single item in the Knowledge Home feed.
 | `code` | string | One of: `new_unread`, `in_weekly_recap`, `pulse_need_to_know`, `tag_hotspot`, `recent_interest_match`, `related_to_recent_search`, `summary_completed` |
 | `ref_id` | string | Optional reference (e.g., recap ID) |
 | `tag` | string | Optional tag name (for `tag_hotspot`) |
+
+### SupersedeInfo
+
+Wraps supersede state as a proto sub-message for cleaner API boundaries.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | string | `summary_updated`, `tags_updated`, `reason_updated`, or `multiple_updated` |
+| `superseded_at` | timestamp | When the supersede occurred |
+| `previous_summary_excerpt` | string | Previous summary text (for history display) |
+| `previous_tags` | string[] | Previous tag set (for history display) |
+| `previous_why_codes` | string[] | Previous why-reason codes (for history display) |
 
 ### TodayDigest
 
@@ -149,8 +176,10 @@ classDiagram
     TodayDigest today_digest
     KnowledgeHomeItem[] items
     RecallCandidate[] recall_candidates
+    FeatureFlag[] feature_flags
     string next_cursor
     bool has_more
+    bool degraded_mode
     string service_quality
   }
 
@@ -163,7 +192,16 @@ classDiagram
     string[] tags
     WhyReason[] why_reasons
     float64 score
-    string supersede_state
+    string link
+    SupersedeInfo supersede_info
+  }
+
+  class SupersedeInfo {
+    string state
+    timestamp superseded_at
+    string previous_summary_excerpt
+    string[] previous_tags
+    string[] previous_why_codes
   }
 
   class TodayDigest {
@@ -195,6 +233,7 @@ classDiagram
   GetKnowledgeHomeResponse --> "0..*" KnowledgeHomeItem
   GetKnowledgeHomeResponse --> "0..*" RecallCandidate
   KnowledgeHomeItem --> "1..*" WhyReason
+  KnowledgeHomeItem --> "0..1" SupersedeInfo
   RecallCandidate --> "1..*" RecallReason
   RecallCandidate --> KnowledgeHomeItem
 ```
@@ -217,11 +256,32 @@ Feature flags gate Knowledge Home subsystems for staged rollout:
 
 | Flag | Type | Description |
 |------|------|-------------|
-| `enable_home_page` | bool | Master switch for Knowledge Home |
-| `enable_tracking` | bool | Whether interaction tracking events are emitted |
-| `enable_projection_v2` | bool | Use v2 projection logic |
+| `enable_knowledge_home_page` | bool | Master switch for Knowledge Home |
+| `enable_knowledge_home_tracking` | bool | Whether interaction tracking events are emitted |
+| `enable_knowledge_home_projection_v2` | bool | Use v2 projection logic |
 | `rollout_percentage` | int | Percentage of users who see Knowledge Home |
 | `enable_recall_rail` | bool | Show the recall rail sidebar |
 | `enable_lens` | bool | Enable lens creation and selection |
 | `enable_stream_updates` | bool | Enable real-time streaming updates |
 | `enable_supersede_ux` | bool | Show "updated" badges on superseded items |
+
+Flags are resolved per-user via CRC32 hash against `rollout_percentage` and an optional user allowlist (`AllowedUserIDs`). See `alt-backend/app/gateway/feature_flag_gateway/gateway.go`.
+
+## Streaming
+
+Both streaming RPCs use Connect-RPC server-sent streams, proxied through the BFF with a 40-minute timeout.
+
+### StreamKnowledgeHomeUpdates
+
+Canonical event types: `item_added`, `item_updated`, `item_removed`, `digest_changed`, `recall_changed`.
+Terminal events: `stream_expired` (suggests reconnect), `fallback_to_unary` (downgrade to polling).
+
+The frontend (`useStreamUpdates`) implements:
+- **Multi-tab leader election** via BroadcastChannel (heartbeat 5s, timeout 10s) — only the leader tab receives and applies updates
+- **Client-side coalescing** with a 3-second window to batch events
+- **Exponential backoff reconnection** (1s → 10s max, 10 retries before fallback)
+- **Tab visibility detection** — pauses stream when tab is hidden
+
+### StreamRecallRailUpdates
+
+Streams recall rail changes independently. Uses the same connection patterns as the home updates stream.
