@@ -2,7 +2,7 @@
 
 ## Overview
 
-High-performance log aggregation service. **Rust 1.87+ (2024 Edition)**, **Axum**, **ClickHouse**.
+High-performance log aggregation service. **Rust 1.94+ (2024 Edition)**, **Axum**, **ClickHouse**.
 
 > Details: `docs/services/rask-log-aggregator.md`
 

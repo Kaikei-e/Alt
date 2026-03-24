@@ -2,7 +2,7 @@
 
 ## Overview
 
-Ultra-high-performance log forwarding sidecar. **Rust 1.87+ (2024 Edition)**, SIMD parsing (>4 GB/s).
+Ultra-high-performance log forwarding sidecar. **Rust 1.94+ (2024 Edition)**, SIMD parsing (>4 GB/s).
 
 > Details: `docs/services/rask-log-forwarder.md`
 
