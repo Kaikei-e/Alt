@@ -111,8 +111,8 @@ These are the main entry points for new contributors:
 
 - Docker Desktop or a compatible Docker Engine + Compose v2 setup
 - Go 1.26+
-- Python 3.12 or 3.13 with `uv`
-- Rust 1.87+
+- Python 3.14+ with `uv`
+- Rust 1.94+
 - Deno 2.x
 - Bun 1.x for `alt-frontend-sv`
 - Optional: Ollama and GPU runtime for local AI-heavy workflows

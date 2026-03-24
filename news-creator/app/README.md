@@ -22,7 +22,7 @@ For detailed architecture documentation, see [CLAUDE.md](CLAUDE.md).
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.14+
 - `uv` for dependency management
 - Ollama running locally or reachable over the network
 - `SERVICE_SECRET` configured

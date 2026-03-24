@@ -191,7 +191,7 @@ See [IMPLEMENTATION.md](./IMPLEMENTATION.md) for detailed architecture and imple
   - `recap_genre_evaluation_metrics`: Per-genre evaluation metrics
 
 ## Development Workflow
-1. **Prerequisites**: Rust 1.87+, `cargo`, PostgreSQL 18, Docker/Compose for integration tests.
+1. **Prerequisites**: Rust 1.94+, `cargo`, PostgreSQL 18, Docker/Compose for integration tests.
 2. **Bootstrap**:
    ```bash
    cd recap-worker/recap-worker

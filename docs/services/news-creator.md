@@ -5,7 +5,7 @@ _Last reviewed: March 18, 2026_
 **Location:** `news-creator/app`
 
 ## Role
-- FastAPI service (Python 3.11+) that synthesizes article summaries and recap blurbs via an Ollama LLM while preserving Clean Architecture boundaries.
+- FastAPI service (Python 3.14+) that synthesizes article summaries and recap blurbs via an Ollama LLM while preserving Clean Architecture boundaries.
 - Keeps handlers thin and testable; orchestrates summarization, recap summary generation, query expansion, and cross-encoder re-ranking.
 - Addresses the `ollama` Compose profile, wired into the recap-worker pipeline and callable by ad-hoc clients via authenticated service tokens.
 - **Key Capabilities**:

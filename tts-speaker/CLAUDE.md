@@ -4,7 +4,7 @@ Kokoro-82M Japanese TTS microservice with iGPU acceleration and connect-rpc API.
 
 ## Tech
 
-- **Language**: Python 3.12
+- **Language**: Python 3.14
 - **Framework**: Starlette (ASGI) + uvicorn
 - **RPC**: connect-rpc (connect-python) via `proto/alt/tts/v1/tts.proto`
 - **TTS Engine**: Kokoro-82M (`kokoro` + `misaki[ja]`)

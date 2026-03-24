@@ -1,6 +1,6 @@
 # Tag Generator
 
-Tag Generator is Alt's Python 3.13 tagging service. It combines Connect-RPC calls to `alt-backend`, Redis Streams consumers, and ML-based extraction to attach tags to articles and serve authenticated tag extraction endpoints for other services.
+Tag Generator is Alt's Python 3.14 tagging service. It combines Connect-RPC calls to `alt-backend`, Redis Streams consumers, and ML-based extraction to attach tags to articles and serve authenticated tag extraction endpoints for other services.
 
 ## Modes
 
@@ -11,7 +11,7 @@ Tag Generator is Alt's Python 3.13 tagging service. It combines Connect-RPC call
 
 ### Prerequisites
 
-- Python 3.13
+- Python 3.14
 - `uv`
 - `SERVICE_SECRET`
 - `BACKEND_API_URL`

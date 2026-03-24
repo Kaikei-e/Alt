@@ -98,7 +98,7 @@ Returns 503 with `{"status": "loading"}` during model initialization.
 
 ```
 tts-speaker/
-├── Dockerfile                  # Multi-stage build (Python 3.12 + ROCm PyTorch)
+├── Dockerfile                  # Multi-stage build (Python 3.14 + ROCm PyTorch)
 ├── .dockerignore
 ├── pyproject.toml
 ├── tts_speaker/

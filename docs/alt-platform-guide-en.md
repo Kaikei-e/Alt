@@ -215,23 +215,23 @@ graph TB
 | auth-token-manager | Deno 2.x | 9201 | HTTP | OAuth2 token management |
 | pre-processor-sidecar | Go 1.26+ | — | Internal | OAuth token bridge |
 | mq-hub | Go 1.26+ | 9500 | Connect-RPC | Event broker |
-| news-creator | Python 3.11+ | 11434 | REST | LLM summarization |
+| news-creator | Python 3.14+ | 11434 | REST | LLM summarization |
 | news-creator-backend | Ollama | 11435 | REST | LLM inference |
-| tag-generator | Python 3.13+ | 9400 | REST | Tag generation |
+| tag-generator | Python 3.14+ | 9400 | REST | Tag generation |
 | pre-processor | Go 1.26+ | 9200, 9202 | REST, Connect-RPC | Article preprocessing |
 | search-indexer | Go 1.26+ | 9300, 9301 | REST, Connect-RPC | Search index |
-| tts-speaker | Python 3.12 | 9700 | Connect-RPC | Japanese TTS |
+| tts-speaker | Python 3.14 | 9700 | Connect-RPC | Japanese TTS |
 | rerank-server | Python | 8080 | REST | Reranking |
-| recap-worker | Rust 1.87+ | 9005 | HTTP | Recap 8-stage pipeline |
-| recap-subworker | Python 3.12+ | 8002 | HTTP | ML clustering |
-| recap-evaluator | Python 3.13+ | 8085 | HTTP | Quality evaluation |
+| recap-worker | Rust 1.94+ | 9005 | HTTP | Recap 8-stage pipeline |
+| recap-subworker | Python 3.14+ | 8002 | HTTP | ML clustering |
+| recap-evaluator | Python 3.14+ | 8085 | HTTP | Quality evaluation |
 | dashboard | Python (Streamlit) | 8501, 8502 | HTTP | Monitoring UI |
 | rag-orchestrator | Go 1.26+ | 9010, 9011 | REST, Connect-RPC | RAG pipeline |
 | knowledge-augur | Ollama | 11435 | REST | RAG LLM |
 | knowledge-embedder | Ollama | 11434 | REST | Vector embedding |
-| rask-log-aggregator | Rust 1.87+ | 9600, 4317, 4318 | HTTP, OTLP | Log aggregation |
-| rask-log-forwarder | Rust 1.87+ | — | Internal | Log collection (14 instances) |
-| metrics | Python 3.13+ | — | CLI | SLI/SLO analysis |
+| rask-log-aggregator | Rust 1.94+ | 9600, 4317, 4318 | HTTP, OTLP | Log aggregation |
+| rask-log-forwarder | Rust 1.94+ | — | Internal | Log collection (14 instances) |
+| metrics | Python 3.14+ | — | CLI | SLI/SLO analysis |
 | altctl | Go | — | CLI | CLI orchestration |
 | alt-perf | Deno 2.x | — | CLI | E2E performance testing |
 | PostgreSQL 17 | SQL | 5432 | TCP | Main DB |

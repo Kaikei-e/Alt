@@ -29,7 +29,7 @@
 - `pre-processor/app/` – Go feed and summarization worker with circuit breakers.
 - `pre-processor-sidecar/app/` – Go scheduler for Inoreader ingestion (CronJob/deployment).
 - `news-creator/app/` – FastAPI LLM service using Ollama via Clean Architecture.
-- `tag-generator/app/` – FastAPI + Python 3.13 tag pipeline with ML components.
+- `tag-generator/app/` – FastAPI + Python 3.14 tag pipeline with ML components.
 - `search-indexer/app/` – Go Meilisearch indexer and search API.
 - `auth-hub/` – Go IAP service bridging Nginx and Ory Kratos.
 - `auth-token-manager/` – Deno OAuth2 token refresher for Inoreader.

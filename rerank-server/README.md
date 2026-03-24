@@ -6,7 +6,7 @@ MPS-accelerated reranking service using `sentence-transformers` CrossEncoder on 
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.14+
 - Apple Silicon Mac (M-series recommended)
 
 ## Installation

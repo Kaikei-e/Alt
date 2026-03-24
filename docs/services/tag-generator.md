@@ -5,7 +5,7 @@ _Last reviewed: March 18, 2026_
 **Location:** `tag-generator/app`
 
 ## Role
-- Python 3.13+ FastAPI サービスで未タグ記事をバッチ処理し ML タグを抽出
+- Python 3.14+ FastAPI サービスで未タグ記事をバッチ処理し ML タグを抽出
 - Redis Streams コンシューマーとしてイベント駆動タグ生成
 - ONNX / SentenceTransformer + KeyBERT によるタグ抽出
 - メモリ使用量を一定に保つ最適化設計

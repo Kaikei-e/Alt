@@ -215,23 +215,23 @@ graph TB
 | auth-token-manager | Deno 2.x | 9201 | HTTP | OAuth2 トークン管理 |
 | pre-processor-sidecar | Go 1.26+ | — | Internal | OAuth トークンブリッジ |
 | mq-hub | Go 1.26+ | 9500 | Connect-RPC | イベントブローカー |
-| news-creator | Python 3.11+ | 11434 | REST | LLM 要約 |
+| news-creator | Python 3.14+ | 11434 | REST | LLM 要約 |
 | news-creator-backend | Ollama | 11435 | REST | LLM 推論 |
-| tag-generator | Python 3.13+ | 9400 | REST | タグ生成 |
+| tag-generator | Python 3.14+ | 9400 | REST | タグ生成 |
 | pre-processor | Go 1.26+ | 9200, 9202 | REST, Connect-RPC | 記事前処理 |
 | search-indexer | Go 1.26+ | 9300, 9301 | REST, Connect-RPC | 検索インデックス |
-| tts-speaker | Python 3.12 | 9700 | Connect-RPC | 日本語 TTS |
+| tts-speaker | Python 3.14 | 9700 | Connect-RPC | 日本語 TTS |
 | rerank-server | Python | 8080 | REST | リランキング |
-| recap-worker | Rust 1.87+ | 9005 | HTTP | Recap 8 ステージパイプライン |
-| recap-subworker | Python 3.12+ | 8002 | HTTP | ML クラスタリング |
-| recap-evaluator | Python 3.13+ | 8085 | HTTP | 品質評価 |
+| recap-worker | Rust 1.94+ | 9005 | HTTP | Recap 8 ステージパイプライン |
+| recap-subworker | Python 3.14+ | 8002 | HTTP | ML クラスタリング |
+| recap-evaluator | Python 3.14+ | 8085 | HTTP | 品質評価 |
 | dashboard | Python (Streamlit) | 8501, 8502 | HTTP | モニタリング UI |
 | rag-orchestrator | Go 1.26+ | 9010, 9011 | REST, Connect-RPC | RAG パイプライン |
 | knowledge-augur | Ollama | 11435 | REST | RAG 用 LLM |
 | knowledge-embedder | Ollama | 11434 | REST | ベクトル埋め込み |
-| rask-log-aggregator | Rust 1.87+ | 9600, 4317, 4318 | HTTP, OTLP | ログ集約 |
-| rask-log-forwarder | Rust 1.87+ | — | Internal | ログ収集 (14 インスタンス) |
-| metrics | Python 3.13+ | — | CLI | SLI/SLO 分析 |
+| rask-log-aggregator | Rust 1.94+ | 9600, 4317, 4318 | HTTP, OTLP | ログ集約 |
+| rask-log-forwarder | Rust 1.94+ | — | Internal | ログ収集 (14 インスタンス) |
+| metrics | Python 3.14+ | — | CLI | SLI/SLO 分析 |
 | altctl | Go | — | CLI | CLI オーケストレーション |
 | alt-perf | Deno 2.x | — | CLI | E2E パフォーマンステスト |
 | PostgreSQL 17 | SQL | 5432 | TCP | メイン DB |

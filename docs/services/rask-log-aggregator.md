@@ -5,7 +5,7 @@ _Last reviewed: March 18, 2026_
 **Location:** `rask-log-aggregator/app`
 
 ## Role
-- Rust 1.87+ (2024 Edition) Axum API でログバッチを集約
+- Rust 1.94+ (2024 Edition) Axum API でログバッチを集約
 - rask-log-forwarder から newline-delimited JSON ログを受信し ClickHouse に書き込み
 - OTLP (OpenTelemetry Protocol) HTTP エンドポイント提供 (gRPC は未実装)
 - デュアルサーバー構成: Main Server (:9600) + OTLP Server (:4318)
