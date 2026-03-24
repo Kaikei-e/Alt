@@ -23,6 +23,7 @@ import { DesktopViewedPage } from "../pages/desktop/DesktopViewedPage";
 import { DesktopStatsPage } from "../pages/desktop/DesktopStatsPage";
 import { DesktopEveningPulsePage } from "../pages/desktop/DesktopEveningPulsePage";
 import { DesktopJobStatusPage } from "../pages/desktop/DesktopJobStatusPage";
+import { DesktopTagArticlesPage } from "../pages/desktop/DesktopTagArticlesPage";
 
 // Mobile POMs
 import { MobileFeedsPage } from "../pages/mobile/MobileFeedsPage";
@@ -37,6 +38,7 @@ import { MobileMorningLetterPage } from "../pages/mobile/MobileMorningLetterPage
 import { MobileEveningPulsePage } from "../pages/mobile/MobileEveningPulsePage";
 import { Mobile3DayRecapPage } from "../pages/mobile/Mobile3DayRecapPage";
 import { MobileJobStatusPage } from "../pages/mobile/MobileJobStatusPage";
+import { MobileTagArticlesPage } from "../pages/mobile/MobileTagArticlesPage";
 
 // Component POMs
 import { SidebarComponent } from "../pages/components/SidebarComponent";
@@ -60,6 +62,7 @@ type PomFixtures = {
 	desktopStatsPage: DesktopStatsPage;
 	desktopEveningPulsePage: DesktopEveningPulsePage;
 	desktopJobStatusPage: DesktopJobStatusPage;
+	desktopTagArticlesPage: DesktopTagArticlesPage;
 	// Mobile
 	mobileFeedsPage: MobileFeedsPage;
 	mobileSwipePage: MobileSwipePage;
@@ -73,6 +76,7 @@ type PomFixtures = {
 	mobileEveningPulsePage: MobileEveningPulsePage;
 	mobile3DayRecapPage: Mobile3DayRecapPage;
 	mobileJobStatusPage: MobileJobStatusPage;
+	mobileTagArticlesPage: MobileTagArticlesPage;
 	// Components
 	sidebar: SidebarComponent;
 	floatingMenu: FloatingMenuComponent;
@@ -126,6 +130,9 @@ export const test = base.extend<PomFixtures>({
 	desktopJobStatusPage: async ({ page }, use) => {
 		await use(new DesktopJobStatusPage(page));
 	},
+	desktopTagArticlesPage: async ({ page }, use) => {
+		await use(new DesktopTagArticlesPage(page));
+	},
 	// Mobile
 	mobileFeedsPage: async ({ page }, use) => {
 		await use(new MobileFeedsPage(page));
@@ -162,6 +169,9 @@ export const test = base.extend<PomFixtures>({
 	},
 	mobileJobStatusPage: async ({ page }, use) => {
 		await use(new MobileJobStatusPage(page));
+	},
+	mobileTagArticlesPage: async ({ page }, use) => {
+		await use(new MobileTagArticlesPage(page));
 	},
 	// Components
 	sidebar: async ({ page }, use) => {
