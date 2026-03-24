@@ -653,7 +653,7 @@ func TestEnrichRecallChangedUpdate_ReplacesMinimalPayloadWhenCandidateResolved(t
 					},
 				},
 			},
-		}, nil),
+		}, nil, nil),
 		logger: slog.Default(),
 	}
 

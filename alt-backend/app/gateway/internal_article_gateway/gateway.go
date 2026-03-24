@@ -124,6 +124,11 @@ func (g *Gateway) SaveArticleSummary(ctx context.Context, articleID string, user
 	return nil
 }
 
+// GetArticleTitleAndLink implements recall_candidate_port.ArticleFallbackPort.
+func (g *Gateway) GetArticleTitleAndLink(ctx context.Context, articleID string) (string, string, *time.Time, error) {
+	return g.repo.GetArticleTitleAndURL(ctx, articleID)
+}
+
 // GetArticleContent implements GetArticleContentPort.
 func (g *Gateway) GetArticleContent(ctx context.Context, articleID string) (*internal_article_port.ArticleContent, error) {
 	ac, err := g.repo.GetArticleContent(ctx, articleID)

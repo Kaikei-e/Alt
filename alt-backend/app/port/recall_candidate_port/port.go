@@ -27,3 +27,9 @@ type SnoozeRecallCandidatePort interface {
 type DismissRecallCandidatePort interface {
 	DismissRecallCandidate(ctx context.Context, userID uuid.UUID, itemKey string) error
 }
+
+// ArticleFallbackPort retrieves minimal article info for recall display fallback.
+// Used when knowledge_home_items projection is missing (projection lag).
+type ArticleFallbackPort interface {
+	GetArticleTitleAndLink(ctx context.Context, articleID string) (title, link string, publishedAt *time.Time, err error)
+}

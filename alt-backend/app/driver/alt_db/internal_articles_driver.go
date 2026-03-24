@@ -2,6 +2,7 @@ package alt_db
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -269,6 +270,22 @@ func (r *AltDBRepository) GetArticleWithTagsByID(ctx context.Context, articleID 
 
 	article.Tags = filterEmptyStrings(tagNames)
 	return &article, nil
+}
+
+// GetArticleTitleAndURL returns minimal article info for recall fallback.
+// Returns empty title when article is not found (no error).
+func (r *AltDBRepository) GetArticleTitleAndURL(ctx context.Context, articleID string) (string, string, *time.Time, error) {
+	query := `SELECT title, url, published_at FROM articles WHERE id = $1 AND deleted_at IS NULL`
+	var title, url string
+	var publishedAt *time.Time
+	err := r.pool.QueryRow(ctx, query, articleID).Scan(&title, &url, &publishedAt)
+	if err != nil {
+		if err.Error() == "no rows in result set" {
+			return "", "", nil, nil
+		}
+		return "", "", nil, fmt.Errorf("GetArticleTitleAndURL: %w", err)
+	}
+	return title, url, publishedAt, nil
 }
 
 func filterEmptyStrings(ss []string) []string {
