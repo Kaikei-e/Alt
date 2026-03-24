@@ -23,6 +23,6 @@ jobs:
     uses: ./.github/workflows/reusable-test-go.yaml
     with:
       working-directory: "pre-processor-sidecar/app"
-      go-version: "1.25"
+      go-version: "1.26"
       coverage-flags: "pre-processor-sidecar"
       sparse-checkout: "pre-processor-sidecar"

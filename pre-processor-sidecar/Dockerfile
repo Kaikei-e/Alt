@@ -1,5 +1,5 @@
 # Multi-stage build for pre-processor-sidecar OAuth2-enabled CronJob
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 

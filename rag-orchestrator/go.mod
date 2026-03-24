@@ -1,6 +1,6 @@
 module rag-orchestrator
 
-go 1.25.5
+go 1.26.1
 
 require (
 	alt/gen/proto v0.0.0-00010101000000-000000000000

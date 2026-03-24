@@ -1,6 +1,6 @@
 module alt-butterfly-facade
 
-go 1.25
+go 1.26.1
 
 require (
 	connectrpc.com/connect v1.19.1

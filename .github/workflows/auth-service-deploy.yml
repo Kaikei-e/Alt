@@ -26,7 +26,7 @@ jobs:
     uses: ./.github/workflows/reusable-test-go.yaml
     with:
       working-directory: 'auth-service/app'
-      go-version: '1.24'
+      go-version: '1.26'
       upload-coverage: true
       coverage-flags: 'auth-service'
       sparse-checkout: 'auth-service'

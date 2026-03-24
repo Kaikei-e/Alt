@@ -1,10 +1,11 @@
 module alt
 
-go 1.25.0
+go 1.26.1
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.1
 	connectrpc.com/connect v1.19.1
+	connectrpc.com/otelconnect v0.9.0
 	github.com/PuerkitoBio/goquery v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -39,7 +40,6 @@ require (
 )
 
 require (
-	connectrpc.com/otelconnect v0.9.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
