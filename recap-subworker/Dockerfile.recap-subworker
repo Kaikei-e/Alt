@@ -12,7 +12,11 @@ RUN apt-get update \
     gcc \
     g++ \
     libpq-dev \
+    curl \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal \
     && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/root/.cargo/bin:$PATH"
 
 # uv を公式イメージからコピー
 COPY --from=ghcr.io/astral-sh/uv:0.11.0 /uv /uvx /bin/
