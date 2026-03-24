@@ -167,6 +167,29 @@ describe("sanitizeHtml", () => {
 		expect(result).toContain("Safe");
 	});
 
+	// C-4 defense: sanitizeHtml must neutralize XSS in externally scraped article content
+	// used by fullContent rendering in swipe feed cards
+	it("neutralizes mixed XSS vectors in scraped article content", () => {
+		const raw =
+			'<p>Article</p><script>document.cookie</script><img src=x onerror="alert(1)"><a href="javascript:void(0)">link</a>';
+		const result = sanitizeHtml(raw);
+		expect(result).toContain("<p>Article</p>");
+		expect(result).not.toContain("<script");
+		expect(result).not.toContain("document.cookie");
+		expect(result).not.toContain("<img");
+		expect(result).not.toContain("javascript:");
+	});
+
+	it("preserves article structure after sanitization of scraped content", () => {
+		const raw =
+			'<h2>Title</h2><p>Text with <strong>bold</strong> and <a href="https://example.com">link</a>.</p><ul><li>Item</li></ul>';
+		const result = sanitizeHtml(raw);
+		expect(result).toContain("<h2>Title</h2>");
+		expect(result).toContain("<strong>bold</strong>");
+		expect(result).toContain('href="https://example.com"');
+		expect(result).toContain("<li>Item</li>");
+	});
+
 	it("removes all img tags including those with data: URLs", () => {
 		// All img tags are removed for security - onerror/onload are XSS vectors
 		const html =

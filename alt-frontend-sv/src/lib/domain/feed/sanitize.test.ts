@@ -29,6 +29,27 @@ describe("sanitizeFeed id assignment", () => {
 	});
 });
 
+describe("sanitizeFeed XSS safety — description must NOT be used with {@html}", () => {
+	it("entity-decoded description can contain raw angle brackets", () => {
+		const feed = makeFeed({
+			description: "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;",
+		});
+		const result = sanitizeFeed(feed);
+		// After entity decoding, description contains literal HTML characters.
+		// This proves {@html feed.description} would execute XSS.
+		// Components MUST use text interpolation {feed.description} instead.
+		expect(result.description).toContain("<img");
+	});
+
+	it("entity-decoded description can contain script tags", () => {
+		const feed = makeFeed({
+			description: "&lt;script&gt;alert('XSS')&lt;/script&gt;",
+		});
+		const result = sanitizeFeed(feed);
+		expect(result.description).toContain("<script>");
+	});
+});
+
 describe("sanitizeFeed HTML entity decoding", () => {
 	it("decodes &#39; in title", () => {
 		const feed = makeFeed({ title: "Here&#39;s the news" });

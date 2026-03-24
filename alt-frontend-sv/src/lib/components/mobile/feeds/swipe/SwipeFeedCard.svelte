@@ -18,6 +18,7 @@ import {
 } from "$lib/api/client";
 import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
+import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
 import { isTransientError } from "$lib/utils/errorClassification";
 import {
@@ -90,7 +91,7 @@ const cardStyle = $derived.by(() => {
 });
 
 // Derived
-const sanitizedFullContent = $derived(fullContent);
+const sanitizedFullContent = $derived(fullContent ? sanitizeHtml(fullContent) : null);
 const hasDescription = $derived(Boolean(feed.description));
 const publishedLabel = $derived.by(() => {
 	if (feed.created_at) {
@@ -534,7 +535,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
           <div
             class="text-sm text-[var(--alt-text-primary)] leading-[1.7] break-words overflow-wrap-anywhere"
           >
-            {@html feed.description}
+            {feed.description}
           </div>
         </div>
       {/if}

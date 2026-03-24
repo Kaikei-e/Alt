@@ -21,6 +21,7 @@ import {
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
 import type { RenderFeed } from "$lib/schema/feed";
+import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
 
 interface Props {
@@ -97,7 +98,7 @@ const cardStyle = $derived.by(() => {
 });
 
 // Derived
-const sanitizedFullContent = $derived(fullContent);
+const sanitizedFullContent = $derived(fullContent ? sanitizeHtml(fullContent) : null);
 const hasDescription = $derived(Boolean(feed.description));
 const publishedLabel = $derived.by(() => {
 	if (feed.created_at) {
@@ -445,7 +446,7 @@ function handleImgError() {
             <div
               class="text-sm text-[var(--alt-text-primary)] leading-[1.6] break-words overflow-wrap-anywhere line-clamp-3"
             >
-              {@html feed.description}
+              {feed.description}
             </div>
           </div>
         {/if}
