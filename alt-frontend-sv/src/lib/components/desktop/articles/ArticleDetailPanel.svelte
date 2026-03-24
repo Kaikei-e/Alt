@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
 import type { TagTrailArticle } from "$lib/connect";
-import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
+import { getFeedContentOnTheFlyClient, type FeedContentOnTheFlyResponse } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
 import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
@@ -24,23 +24,21 @@ interface Props {
 const { article, onClose }: Props = $props();
 
 let isFetchingContent = $state(false);
-let articleContent = $state<string | null>(null);
-let fetchedArticleId = $state<string | null>(null);
+let fetchedResponse = $state<FeedContentOnTheFlyResponse | null>(null);
 let contentError = $state<string | null>(null);
 
 const summarizer = useSummarize();
 const tts = useTtsPlayback();
 
+const articleContent = $derived(fetchedResponse?.content ?? null);
+const fetchedArticleId = $derived(fetchedResponse?.article_id ?? null);
+
 const fetchButtonState = $derived.by(() => {
 	if (isFetchingContent) return "loading" as const;
 	if (contentError) return "error" as const;
-	if (articleContent) return "success" as const;
+	if (fetchedResponse) return "success" as const;
 	return "idle" as const;
 });
-
-const feedDetailsResponse = $derived(
-	articleContent ? { content: articleContent, article_id: fetchedArticleId } : null,
-);
 
 onDestroy(() => {
 	summarizer.abort();
@@ -51,8 +49,7 @@ let prevArticleId = $state("");
 $effect(() => {
 	if (article.id !== prevArticleId) {
 		prevArticleId = article.id;
-		articleContent = null;
-		fetchedArticleId = null;
+		fetchedResponse = null;
 		contentError = null;
 		summarizer.reset();
 		tts.stop();
@@ -65,9 +62,7 @@ async function fetchContent(forceRefresh = false) {
 	isFetchingContent = true;
 	contentError = null;
 	try {
-		const response = await getFeedContentOnTheFlyClient(article.link, { forceRefresh });
-		articleContent = response.content || null;
-		fetchedArticleId = response.article_id || null;
+		fetchedResponse = await getFeedContentOnTheFlyClient(article.link, { forceRefresh });
 	} catch (err) {
 		contentError = err instanceof Error ? err.message : "Failed to fetch article";
 	} finally {
@@ -232,8 +227,8 @@ function handleKeydown(e: KeyboardEvent) {
 			<div class="text-center py-8">
 				<p class="text-sm" style="color: var(--text-secondary);">{contentError}</p>
 			</div>
-		{:else if articleContent}
-			<RenderFeedDetails feedDetails={feedDetailsResponse} />
+		{:else if fetchedResponse}
+			<RenderFeedDetails feedDetails={fetchedResponse} />
 		{:else if !isFetchingContent}
 			<div class="text-center py-12">
 				<FileText class="h-10 w-10 mx-auto mb-4" style="color: var(--text-muted);" />
