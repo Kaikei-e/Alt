@@ -495,8 +495,7 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_PreservesSummaryCompletedRea
 	assert.ElementsMatch(t, []domain.WhyReason{
 		{Code: domain.WhyNewUnread},
 		{Code: domain.WhySummaryCompleted},
-		{Code: domain.WhyTagHotspot, Tag: "AI"},
-	}, current.WhyReasons)
+	}, current.WhyReasons, "tag_hotspot is now computed at read time, not in projector")
 	assert.Equal(t, []string{"AI", "ML"}, current.Tags)
 }
 
@@ -996,7 +995,7 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_ProjectsTags(t *testing.T) {
 	assert.Equal(t, userID, item.UserID)
 }
 
-func TestKnowledgeProjectorJob_TagSetVersionCreated_AddsTagHotspot(t *testing.T) {
+func TestKnowledgeProjectorJob_TagSetVersionCreated_NoTagHotspotInProjector(t *testing.T) {
 	logger.InitLogger()
 
 	tenantID := uuid.New()
@@ -1035,10 +1034,9 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_AddsTagHotspot(t *testing.T)
 	require.Len(t, homeItemsPort.upserted, 1)
 
 	item := homeItemsPort.upserted[0]
-	require.Len(t, item.WhyReasons, 2, "should have new_unread + tag_hotspot")
+	require.Len(t, item.WhyReasons, 1, "tag_hotspot is now computed at read time, not in projector")
 	assert.Equal(t, domain.WhyNewUnread, item.WhyReasons[0].Code)
-	assert.Equal(t, domain.WhyTagHotspot, item.WhyReasons[1].Code)
-	assert.Equal(t, "rust", item.WhyReasons[1].Tag, "tag_hotspot should reference first tag")
+	assert.Equal(t, []string{"rust"}, item.Tags, "tags should still be projected")
 }
 
 func TestKnowledgeProjectorJob_TagSetVersionCreated_DoesNotOverwriteTitleOrSummary(t *testing.T) {
@@ -1382,7 +1380,7 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_UppercaseKeys(t *testing.T) 
 	require.NoError(t, err)
 	require.Len(t, homeItemsPort.upserted, 1)
 	assert.Equal(t, []string{"flowers", "history"}, homeItemsPort.upserted[0].Tags, "should parse uppercase-keyed TagsJSON")
-	assert.Len(t, homeItemsPort.upserted[0].WhyReasons, 2)
-	assert.Equal(t, "flowers", homeItemsPort.upserted[0].WhyReasons[1].Tag)
+	assert.Len(t, homeItemsPort.upserted[0].WhyReasons, 1, "tag_hotspot is now computed at read time")
+	assert.Equal(t, domain.WhyNewUnread, homeItemsPort.upserted[0].WhyReasons[0].Code)
 }
 

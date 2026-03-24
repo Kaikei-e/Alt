@@ -19,6 +19,8 @@ const displayTags = $derived(nonEmptyTags.slice(0, 3));
 const remainingTagCount = $derived(
 	nonEmptyTags.length > 3 ? nonEmptyTags.length - 3 : 0,
 );
+let tagsExpanded = $state(false);
+const visibleTags = $derived(tagsExpanded ? nonEmptyTags : displayTags);
 const displayReasons = $derived(
 	item.why.length > 0 ? item.why.slice(0, 2) : [{ code: "new_unread" }],
 );
@@ -120,21 +122,24 @@ function handleAction(type: string) {
 
 	<!-- Bottom Row: Tags (left) + Actions (right) -->
 	<div class="flex items-center justify-between gap-2 border-t border-[var(--surface-border)]/40 pt-3 mt-3">
-		{#if displayTags.length > 0}
+		{#if nonEmptyTags.length > 0}
 			<div class="flex flex-wrap gap-1 min-w-0">
-				{#each displayTags as tag}
-					<span
-						class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)]"
+				{#each visibleTags as tag}
+					<a
+						href="/articles/by-tag?tag={encodeURIComponent(tag)}"
+						class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)] hover:border-[var(--interactive-text)] hover:text-[var(--interactive-text)] transition-colors"
 					>
 						{tag}
-					</span>
+					</a>
 				{/each}
-				{#if remainingTagCount > 0}
-					<span
-						class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)]"
+				{#if remainingTagCount > 0 && !tagsExpanded}
+					<button
+						type="button"
+						class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)] hover:border-[var(--interactive-text)] hover:text-[var(--interactive-text)] cursor-pointer transition-colors"
+						onclick={() => { tagsExpanded = true; }}
 					>
 						+{remainingTagCount} tags
-					</span>
+					</button>
 				{/if}
 			</div>
 		{:else}

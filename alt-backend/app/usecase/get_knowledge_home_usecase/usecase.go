@@ -24,6 +24,12 @@ type GetKnowledgeHomeUsecase struct {
 	resolveLensPort     knowledge_lens_port.ResolveKnowledgeHomeLensPort
 	freshnessPort       today_digest_port.GetProjectionFreshnessPort
 	needToKnowCountPort today_digest_port.CountNeedToKnowItemsPort
+	tagHotspotPort      knowledge_home_port.TagHotspotPort
+}
+
+// SetTagHotspotPort wires the optional tag hotspot port for trending tag enrichment.
+func (u *GetKnowledgeHomeUsecase) SetTagHotspotPort(port knowledge_home_port.TagHotspotPort) {
+	u.tagHotspotPort = port
 }
 
 // NewGetKnowledgeHomeUsecase creates a new GetKnowledgeHomeUsecase.
@@ -116,6 +122,9 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 		return nil, fmt.Errorf("get knowledge home: items unavailable: %w; digest unavailable: %v", itemsErr, digestErr)
 	}
 
+	// Enrich items with trending tag hotspots
+	u.enrichTagHotspots(ctx, result, userID)
+
 	// Enrich digest with backend-authoritative values
 	u.enrichDigest(ctx, result, userID, date)
 
@@ -123,6 +132,52 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 	result.ServiceQuality = computeServiceQuality(itemsErr, result)
 
 	return result, nil
+}
+
+// enrichTagHotspots adds tag_hotspot WhyReasons to items whose tags match currently trending tags.
+func (u *GetKnowledgeHomeUsecase) enrichTagHotspots(ctx context.Context, result *Result, userID uuid.UUID) {
+	if u.tagHotspotPort == nil || len(result.Items) == 0 {
+		return
+	}
+
+	trendingTags, err := u.tagHotspotPort.GetTrendingTags(ctx, userID)
+	if err != nil {
+		logger.Logger.WarnContext(ctx, "failed to get trending tags for enrichment", "error", err)
+		return
+	}
+	if len(trendingTags) == 0 {
+		return
+	}
+
+	trendingSet := make(map[string]bool, len(trendingTags))
+	for _, t := range trendingTags {
+		trendingSet[t.TagName] = true
+	}
+
+	for i := range result.Items {
+		item := &result.Items[i]
+		if hasWhyCode(item.WhyReasons, domain.WhyTagHotspot) {
+			continue
+		}
+		for _, tag := range item.Tags {
+			if trendingSet[tag] {
+				item.WhyReasons = append(item.WhyReasons, domain.WhyReason{
+					Code: domain.WhyTagHotspot,
+					Tag:  tag,
+				})
+				break
+			}
+		}
+	}
+}
+
+func hasWhyCode(reasons []domain.WhyReason, code string) bool {
+	for _, r := range reasons {
+		if r.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 // computeServiceQuality determines the 3-tier service quality based on error state.

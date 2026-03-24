@@ -133,6 +133,27 @@ describe("KnowledgeCard summaryState", () => {
 	});
 });
 
+describe("KnowledgeCard tag links", () => {
+	it("generates correct href for tag link", () => {
+		const tag = "AI";
+		const href = `/articles/by-tag?tag=${encodeURIComponent(tag)}`;
+		expect(href).toBe("/articles/by-tag?tag=AI");
+	});
+
+	it("encodes special characters in tag name", () => {
+		const tag = "C++ / Templates";
+		const href = `/articles/by-tag?tag=${encodeURIComponent(tag)}`;
+		expect(href).toBe("/articles/by-tag?tag=C%2B%2B%20%2F%20Templates");
+	});
+
+	it("encodes Japanese tag name", () => {
+		const tag = "人工知能";
+		const href = `/articles/by-tag?tag=${encodeURIComponent(tag)}`;
+		expect(href).toContain("/articles/by-tag?tag=");
+		expect(decodeURIComponent(href)).toContain("人工知能");
+	});
+});
+
 /**
  * Tests for formatRelativeTime logic extracted from KnowledgeCard.
  * Bug 4: "NaNd ago" must never appear.

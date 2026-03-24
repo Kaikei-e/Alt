@@ -487,12 +487,8 @@ func projectTagSetVersionCreated(ctx context.Context, event domain.KnowledgeEven
 			tsv, tsvErr := tagSetVersionPort.GetTagSetVersionByID(ctx, tsvID)
 			if tsvErr == nil && len(tsv.TagsJSON) > 0 {
 				tags = parseTagNames(tsv.TagsJSON)
-				if len(tags) > 0 {
-					whyReasons = append(whyReasons, domain.WhyReason{
-						Code: domain.WhyTagHotspot,
-						Tag:  tags[0],
-					})
-				}
+				// tag_hotspot is NOT assigned here — trending detection
+				// is done at read time in GetKnowledgeHomeUsecase.
 			} else if tsvErr != nil {
 				logger.ErrorContext(ctx, "failed to get tag set version for projection", "error", tsvErr, "tag_set_version_id", tsvID)
 			}

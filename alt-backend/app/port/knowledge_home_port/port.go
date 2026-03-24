@@ -37,3 +37,26 @@ type ClearSupersedeStatePort interface {
 type ListDistinctUserIDsPort interface {
 	ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error)
 }
+
+// TagArticleCount holds a tag name and its article count for a given time period.
+type TagArticleCount struct {
+	TagName      string
+	ArticleCount int
+}
+
+// FetchTagArticleCountsPort fetches tag-level article counts since a given time.
+type FetchTagArticleCountsPort interface {
+	FetchTagArticleCounts(ctx context.Context, userID uuid.UUID, since time.Time) ([]TagArticleCount, error)
+}
+
+// TrendingTag represents a tag that is currently trending (surge in recent articles).
+type TrendingTag struct {
+	TagName     string
+	RecentCount int
+	SurgeRatio  float64
+}
+
+// TagHotspotPort provides trending tag detection.
+type TagHotspotPort interface {
+	GetTrendingTags(ctx context.Context, userID uuid.UUID) ([]TrendingTag, error)
+}

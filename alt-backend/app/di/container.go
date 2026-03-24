@@ -45,6 +45,7 @@ import (
 	"alt/gateway/image_proxy_gateway"
 	"alt/gateway/internal_article_gateway"
 	"alt/gateway/knowledge_backfill_gateway"
+	"alt/gateway/trending_tags_gateway"
 	"alt/driver/sovereign_client"
 	"alt/gateway/latest_article_gateway"
 	"alt/gateway/morning_gateway"
@@ -530,6 +531,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	knowledgeBackfillGw := knowledge_backfill_gateway.NewGateway(altDBRepository) // articles table only
 
 	getKnowledgeHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli, sovereignCli)
+	trendingTagsGw := trending_tags_gateway.NewTrendingTagsGateway(altDBRepository, 30*time.Minute)
+	getKnowledgeHomeUsecase.SetTagHotspotPort(trendingTagsGw)
 	trackHomeSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(sovereignCli, featureFlagGw)
 	trackHomeActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw)
 	appendKnowledgeEventUsecase := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
@@ -560,7 +563,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	auditUsecase := knowledge_audit_usecase.NewUsecase(sovereignCli, sovereignCli)
 
 	// RecallRail, Lens, Supersede components
-	recallRailUsecase := recall_rail_usecase.NewRecallRailUsecase(sovereignCli, featureFlagGw)
+	recallRailUsecase := recall_rail_usecase.NewRecallRailUsecase(sovereignCli, featureFlagGw, internalArticleGatewayImpl)
 	recallSnoozeUsecase := recall_snooze_usecase.NewRecallSnoozeUsecase(sovereignCli, sovereignCli)
 	recallDismissUsecase := recall_dismiss_usecase.NewRecallDismissUsecase(sovereignCli, sovereignCli)
 	createLensUsecase := create_lens_usecase.NewCreateLensUsecase(sovereignCli, sovereignCli)

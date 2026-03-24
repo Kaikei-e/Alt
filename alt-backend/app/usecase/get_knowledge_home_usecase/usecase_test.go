@@ -2,6 +2,7 @@ package get_knowledge_home_usecase
 
 import (
 	"alt/domain"
+	"alt/port/knowledge_home_port"
 	"alt/utils/logger"
 	"context"
 	"errors"
@@ -414,6 +415,126 @@ func TestGetKnowledgeHomeUsecase_ServiceQuality(t *testing.T) {
 		// When ServiceQuality is not set explicitly (legacy path), it should default
 		result := &Result{GeneratedAt: time.Now()}
 		assert.Equal(t, "", result.ServiceQuality, "zero value is empty string")
+	})
+}
+
+// mockTagHotspotPort implements knowledge_home_port.TagHotspotPort.
+type mockTagHotspotPort struct {
+	tags []knowledge_home_port.TrendingTag
+	err  error
+}
+
+func (m *mockTagHotspotPort) GetTrendingTags(_ context.Context, _ uuid.UUID) ([]knowledge_home_port.TrendingTag, error) {
+	return m.tags, m.err
+}
+
+func TestGetKnowledgeHomeUsecase_TagHotspotEnrichment(t *testing.T) {
+	logger.InitLogger()
+	userID := uuid.New()
+	now := time.Now()
+
+	t.Run("adds tag_hotspot only to items with trending tags", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{
+			items: []domain.KnowledgeHomeItem{
+				{ItemKey: "article:1", Title: "AI Article", Tags: []string{"AI", "ML"}, WhyReasons: []domain.WhyReason{{Code: domain.WhyNewUnread}}},
+				{ItemKey: "article:2", Title: "Go Article", Tags: []string{"Go", "Backend"}, WhyReasons: []domain.WhyReason{{Code: domain.WhyNewUnread}}},
+				{ItemKey: "article:3", Title: "No Tags", Tags: nil, WhyReasons: []domain.WhyReason{{Code: domain.WhyNewUnread}}},
+			},
+		}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
+		hotspotPort := &mockTagHotspotPort{
+			tags: []knowledge_home_port.TrendingTag{
+				{TagName: "AI", RecentCount: 10, SurgeRatio: 3.0},
+			},
+		}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil)
+		uc.SetTagHotspotPort(hotspotPort)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		require.Len(t, result.Items, 3)
+
+		// AI Article should have tag_hotspot
+		aiReasons := result.Items[0].WhyReasons
+		hasHotspot := false
+		for _, r := range aiReasons {
+			if r.Code == domain.WhyTagHotspot {
+				hasHotspot = true
+				assert.Equal(t, "AI", r.Tag)
+			}
+		}
+		assert.True(t, hasHotspot, "AI article should have tag_hotspot")
+
+		// Go Article should NOT have tag_hotspot
+		for _, r := range result.Items[1].WhyReasons {
+			assert.NotEqual(t, domain.WhyTagHotspot, r.Code, "Go article should not have tag_hotspot")
+		}
+
+		// No Tags article should NOT have tag_hotspot
+		for _, r := range result.Items[2].WhyReasons {
+			assert.NotEqual(t, domain.WhyTagHotspot, r.Code, "tagless article should not have tag_hotspot")
+		}
+	})
+
+	t.Run("nil hotspot port skips enrichment gracefully", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{
+			items: []domain.KnowledgeHomeItem{
+				{ItemKey: "article:1", Tags: []string{"AI"}, WhyReasons: []domain.WhyReason{{Code: domain.WhyNewUnread}}},
+			},
+		}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		assert.Len(t, result.Items[0].WhyReasons, 1, "should keep original reasons unchanged")
+	})
+
+	t.Run("hotspot port error does not fail request", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{
+			items: []domain.KnowledgeHomeItem{
+				{ItemKey: "article:1", Tags: []string{"AI"}, WhyReasons: []domain.WhyReason{{Code: domain.WhyNewUnread}}},
+			},
+		}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
+		hotspotPort := &mockTagHotspotPort{err: errors.New("cache miss")}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil)
+		uc.SetTagHotspotPort(hotspotPort)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		assert.Len(t, result.Items, 1)
+	})
+
+	t.Run("does not duplicate tag_hotspot if already present", func(t *testing.T) {
+		homeItems := &mockHomeItemsPort{
+			items: []domain.KnowledgeHomeItem{
+				{ItemKey: "article:1", Tags: []string{"AI"}, WhyReasons: []domain.WhyReason{
+					{Code: domain.WhyNewUnread},
+					{Code: domain.WhyTagHotspot, Tag: "AI"},
+				}},
+			},
+		}
+		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
+		hotspotPort := &mockTagHotspotPort{
+			tags: []knowledge_home_port.TrendingTag{{TagName: "AI", RecentCount: 10, SurgeRatio: 3.0}},
+		}
+
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil)
+		uc.SetTagHotspotPort(hotspotPort)
+		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
+
+		require.NoError(t, err)
+		hotspotCount := 0
+		for _, r := range result.Items[0].WhyReasons {
+			if r.Code == domain.WhyTagHotspot {
+				hotspotCount++
+			}
+		}
+		assert.Equal(t, 1, hotspotCount, "should not duplicate tag_hotspot")
 	})
 }
 
