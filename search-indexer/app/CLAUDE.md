@@ -2,7 +2,7 @@
 
 ## Overview
 
-Search indexing service with Meilisearch. **Go 1.24+**, Clean Architecture.
+Search indexing service with Meilisearch. **Go 1.26+**, Clean Architecture.
 
 > Details: `docs/services/search-indexer.md`
 

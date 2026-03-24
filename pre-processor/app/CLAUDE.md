@@ -2,7 +2,7 @@
 
 ## Overview
 
-Feed processing and article summarization service. **Go 1.24+**, three-layer architecture.
+Feed processing and article summarization service. **Go 1.26+**, three-layer architecture.
 
 > Details: `docs/services/pre-processor.md`
 

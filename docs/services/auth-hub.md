@@ -173,7 +173,7 @@ OpenTelemetry によるトレーシング + ログ出力 (`utils/otel/provider.g
 
 セキュリティ強化された最小コンテナイメージ:
 
-- **Builder**: `golang:1.25-alpine` (マルチステージビルド)
+- **Builder**: `golang:1.26-alpine` (マルチステージビルド)
 - **Runtime**: `gcr.io/distroless/static-debian12:nonroot` (シェルなし、パッケージマネージャーなし)
 - **User**: `nonroot:nonroot` (非 root 実行)
 - **Build flags**: `CGO_ENABLED=0 -ldflags="-s -w"` (静的リンク, シンボル除去)

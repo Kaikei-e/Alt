@@ -110,7 +110,7 @@ These are the main entry points for new contributors:
 ### Prerequisites
 
 - Docker Desktop or a compatible Docker Engine + Compose v2 setup
-- Go 1.24+
+- Go 1.26+
 - Python 3.12 or 3.13 with `uv`
 - Rust 1.87+
 - Deno 2.x

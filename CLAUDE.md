@@ -6,7 +6,7 @@ Monorepo with 20+ microservices. Docker Compose-first orchestration, TDD-first d
 
 | Language | Services | Test | Build |
 |----------|----------|------|-------|
-| Go 1.24+ | alt-backend, auth-hub, pre-processor, search-indexer, mq-hub, altctl | `go test ./...` | `go build ./...` |
+| Go 1.26+ | alt-backend, auth-hub, pre-processor, search-indexer, mq-hub, altctl | `go test ./...` | `go build ./...` |
 | Python 3.11+ | news-creator, tag-generator, metrics, recap-subworker, recap-evaluator | `uv run pytest` | — |
 | Rust 1.94+ | rask-log-aggregator, rask-log-forwarder, recap-worker | `cargo test` | `cargo build` |
 | TypeScript | alt-frontend-sv | `bun test` | `bun run build` |

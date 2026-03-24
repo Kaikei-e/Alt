@@ -206,27 +206,27 @@ graph TB
 | サービス | 言語 | ポート | プロトコル | 役割 |
 |---------|------|-------|----------|------|
 | nginx | C | 80, 8080 | HTTP | リバースプロキシ |
-| alt-backend | Go 1.24+ | 9000, 9101 | REST, Connect-RPC | コア API |
-| alt-butterfly-facade | Go 1.25+ | 9250 | HTTP/2 h2c | BFF プロキシ |
+| alt-backend | Go 1.26+ | 9000, 9101 | REST, Connect-RPC | コア API |
+| alt-butterfly-facade | Go 1.26+ | 9250 | HTTP/2 h2c | BFF プロキシ |
 | alt-frontend-sv | SvelteKit 2.x | 4173 | HTTP | プライマリ UI |
 | alt-frontend | Next.js 15 | 3000 | HTTP | レガシー UI |
-| auth-hub | Go 1.25+ | 8888 | HTTP | Identity-Aware Proxy |
+| auth-hub | Go 1.26+ | 8888 | HTTP | Identity-Aware Proxy |
 | Ory Kratos | Go | 4433, 4434 | HTTP | アイデンティティ管理 |
 | auth-token-manager | Deno 2.x | 9201 | HTTP | OAuth2 トークン管理 |
-| pre-processor-sidecar | Go 1.24+ | — | Internal | OAuth トークンブリッジ |
-| mq-hub | Go 1.24+ | 9500 | Connect-RPC | イベントブローカー |
+| pre-processor-sidecar | Go 1.26+ | — | Internal | OAuth トークンブリッジ |
+| mq-hub | Go 1.26+ | 9500 | Connect-RPC | イベントブローカー |
 | news-creator | Python 3.11+ | 11434 | REST | LLM 要約 |
 | news-creator-backend | Ollama | 11435 | REST | LLM 推論 |
 | tag-generator | Python 3.13+ | 9400 | REST | タグ生成 |
-| pre-processor | Go 1.24+ | 9200, 9202 | REST, Connect-RPC | 記事前処理 |
-| search-indexer | Go 1.24+ | 9300, 9301 | REST, Connect-RPC | 検索インデックス |
+| pre-processor | Go 1.26+ | 9200, 9202 | REST, Connect-RPC | 記事前処理 |
+| search-indexer | Go 1.26+ | 9300, 9301 | REST, Connect-RPC | 検索インデックス |
 | tts-speaker | Python 3.12 | 9700 | Connect-RPC | 日本語 TTS |
 | rerank-server | Python | 8080 | REST | リランキング |
 | recap-worker | Rust 1.87+ | 9005 | HTTP | Recap 8 ステージパイプライン |
 | recap-subworker | Python 3.12+ | 8002 | HTTP | ML クラスタリング |
 | recap-evaluator | Python 3.13+ | 8085 | HTTP | 品質評価 |
 | dashboard | Python (Streamlit) | 8501, 8502 | HTTP | モニタリング UI |
-| rag-orchestrator | Go 1.25+ | 9010, 9011 | REST, Connect-RPC | RAG パイプライン |
+| rag-orchestrator | Go 1.26+ | 9010, 9011 | REST, Connect-RPC | RAG パイプライン |
 | knowledge-augur | Ollama | 11435 | REST | RAG 用 LLM |
 | knowledge-embedder | Ollama | 11434 | REST | ベクトル埋め込み |
 | rask-log-aggregator | Rust 1.87+ | 9600, 4317, 4318 | HTTP, OTLP | ログ集約 |

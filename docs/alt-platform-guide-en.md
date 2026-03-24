@@ -206,27 +206,27 @@ graph TB
 | Service | Language | Port | Protocol | Role |
 |---------|----------|------|----------|------|
 | nginx | C | 80, 8080 | HTTP | Reverse proxy |
-| alt-backend | Go 1.24+ | 9000, 9101 | REST, Connect-RPC | Core API |
-| alt-butterfly-facade | Go 1.25+ | 9250 | HTTP/2 h2c | BFF proxy |
+| alt-backend | Go 1.26+ | 9000, 9101 | REST, Connect-RPC | Core API |
+| alt-butterfly-facade | Go 1.26+ | 9250 | HTTP/2 h2c | BFF proxy |
 | alt-frontend-sv | SvelteKit 2.x | 4173 | HTTP | Primary UI |
 | alt-frontend | Next.js 15 | 3000 | HTTP | Legacy UI |
-| auth-hub | Go 1.25+ | 8888 | HTTP | Identity-Aware Proxy |
+| auth-hub | Go 1.26+ | 8888 | HTTP | Identity-Aware Proxy |
 | Ory Kratos | Go | 4433, 4434 | HTTP | Identity management |
 | auth-token-manager | Deno 2.x | 9201 | HTTP | OAuth2 token management |
-| pre-processor-sidecar | Go 1.24+ | — | Internal | OAuth token bridge |
-| mq-hub | Go 1.24+ | 9500 | Connect-RPC | Event broker |
+| pre-processor-sidecar | Go 1.26+ | — | Internal | OAuth token bridge |
+| mq-hub | Go 1.26+ | 9500 | Connect-RPC | Event broker |
 | news-creator | Python 3.11+ | 11434 | REST | LLM summarization |
 | news-creator-backend | Ollama | 11435 | REST | LLM inference |
 | tag-generator | Python 3.13+ | 9400 | REST | Tag generation |
-| pre-processor | Go 1.24+ | 9200, 9202 | REST, Connect-RPC | Article preprocessing |
-| search-indexer | Go 1.24+ | 9300, 9301 | REST, Connect-RPC | Search index |
+| pre-processor | Go 1.26+ | 9200, 9202 | REST, Connect-RPC | Article preprocessing |
+| search-indexer | Go 1.26+ | 9300, 9301 | REST, Connect-RPC | Search index |
 | tts-speaker | Python 3.12 | 9700 | Connect-RPC | Japanese TTS |
 | rerank-server | Python | 8080 | REST | Reranking |
 | recap-worker | Rust 1.87+ | 9005 | HTTP | Recap 8-stage pipeline |
 | recap-subworker | Python 3.12+ | 8002 | HTTP | ML clustering |
 | recap-evaluator | Python 3.13+ | 8085 | HTTP | Quality evaluation |
 | dashboard | Python (Streamlit) | 8501, 8502 | HTTP | Monitoring UI |
-| rag-orchestrator | Go 1.25+ | 9010, 9011 | REST, Connect-RPC | RAG pipeline |
+| rag-orchestrator | Go 1.26+ | 9010, 9011 | REST, Connect-RPC | RAG pipeline |
 | knowledge-augur | Ollama | 11435 | REST | RAG LLM |
 | knowledge-embedder | Ollama | 11434 | REST | Vector embedding |
 | rask-log-aggregator | Rust 1.87+ | 9600, 4317, 4318 | HTTP, OTLP | Log aggregation |

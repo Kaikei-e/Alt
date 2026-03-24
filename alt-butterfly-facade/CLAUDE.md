@@ -2,7 +2,7 @@
 
 ## Overview
 
-BFF service between alt-frontend-sv and alt-backend. **Go 1.25+**, HTTP/2 (h2c) transparent proxy.
+BFF service between alt-frontend-sv and alt-backend. **Go 1.26+**, HTTP/2 (h2c) transparent proxy.
 
 > Details: `docs/services/alt-butterfly-facade.md`
 

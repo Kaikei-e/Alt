@@ -4,7 +4,7 @@ _Last reviewed: March 18, 2026_
 
 **Location:** `rag-orchestrator`
 
-The `rag-orchestrator` is a Go 1.25+ service responsible for managing the RAG (Retrieval Augmented Generation) pipeline. It handles article indexing, vector embedding, context retrieval, answer generation using an LLM, and morning-letter topic extraction. The service exposes both a REST API (Echo) and a Connect-RPC API for streaming.
+The `rag-orchestrator` is a Go 1.26+ service responsible for managing the RAG (Retrieval Augmented Generation) pipeline. It handles article indexing, vector embedding, context retrieval, answer generation using an LLM, and morning-letter topic extraction. The service exposes both a REST API (Echo) and a Connect-RPC API for streaming.
 
 ## Directory Structure
 
@@ -12,7 +12,7 @@ The `rag-orchestrator` is a Go 1.25+ service responsible for managing the RAG (R
 rag-orchestrator/
 ├── Dockerfile
 ├── Makefile
-├── go.mod                          # Go 1.25.5, connectrpc.com/connect, pgx, echo, cobra
+├── go.mod                          # Go 1.26.1, connectrpc.com/connect, pgx, echo, cobra
 ├── cmd
 │   ├── backfill
 │   │   └── main.go                 # Backfill CLI (cobra)

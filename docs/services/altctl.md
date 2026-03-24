@@ -6,7 +6,7 @@ _Last reviewed: March 18, 2026_
 
 ## Purpose
 
-Go CLI tool for Alt platform Docker Compose orchestration. Provides stack-based management with automatic dependency resolution, feature-based dependency warnings, and structured error output. Built with Cobra/Viper on Go 1.25.
+Go CLI tool for Alt platform Docker Compose orchestration. Provides stack-based management with automatic dependency resolution, feature-based dependency warnings, and structured error output. Built with Cobra/Viper on Go 1.26.
 
 ## Cobra CLI Architecture
 

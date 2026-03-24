@@ -19,7 +19,7 @@ flowchart LR
 
 ## Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - Docker (for deployment)
 
 ## Quick Start

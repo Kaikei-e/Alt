@@ -5,7 +5,7 @@ _Last reviewed: March 18, 2026_
 **Location:** `pre-processor/app`
 
 ## What it does
-- **Go 1.24 Clean Architecture service** that wires Echo handlers, repository adapters, and drivers around a rich background-job loop defined in `main.go` and `handler/job_handler.go`.
+- **Go 1.26 Clean Architecture service** that wires Echo handlers, repository adapters, and drivers around a rich background-job loop defined in `main.go` and `handler/job_handler.go`.
 - **HTTP surface** exposes synchronous (`POST /api/v1/summarize`), streaming (`POST /api/v1/summarize/stream`), asynchronous queue (`POST /api/v1/summarize/queue` / `GET /api/v1/summarize/status/:job_id`), and health endpoints plus a one-off `--health-check` CLI flag used in readiness probes.
 - **Connect-RPC surface** exposes summarization and job status via gRPC/Connect protocol on a separate port for internal service-to-service communication.
 - **Redis Streams consumer** listens for `ArticleCreated` and `SummarizeRequested` events, enabling event-driven article processing.

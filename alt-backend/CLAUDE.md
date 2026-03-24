@@ -1,6 +1,6 @@
 # alt-backend
 
-Core backend for Alt RSS platform. **Go 1.24+**, **Echo**, Clean Architecture.
+Core backend for Alt RSS platform. **Go 1.26+**, **Echo**, Clean Architecture.
 
 > Details: `docs/services/alt-backend.md`
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Identity-Aware Proxy bridging Nginx `auth_request` with Ory Kratos. **Go 1.25+**.
+Identity-Aware Proxy bridging Nginx `auth_request` with Ory Kratos. **Go 1.26+**.
 
 > Details: `docs/services/auth-hub.md`
 

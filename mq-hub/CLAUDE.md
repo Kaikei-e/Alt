@@ -2,7 +2,7 @@
 
 ## Overview
 
-Event broker using Redis 8.4 Streams. **Go 1.24+**, **Connect-RPC**.
+Event broker using Redis 8.4 Streams. **Go 1.26+**, **Connect-RPC**.
 
 > Details: `docs/services/mq-hub.md`
 

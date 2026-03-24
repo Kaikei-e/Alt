@@ -6,7 +6,7 @@ Core backend service for the Alt RSS knowledge platform. Provides REST API (port
 
 | Component | Technology |
 |-----------|------------|
-| Language | Go 1.24+ |
+| Language | Go 1.26+ |
 | Framework | Echo 4.14 |
 | RPC | Connect-RPC 1.19 |
 | Database | PostgreSQL 17 |

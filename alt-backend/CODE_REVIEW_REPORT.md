@@ -1,7 +1,7 @@
 # Alt-Backend コードレビューレポート
 
 **レビュー日**: 2025-12-31
-**対象**: alt-backend (Go 1.24+, Echo Framework)
+**対象**: alt-backend (Go 1.26+, Echo Framework)
 **ファイル数**: 410 Go files, 114 test files
 **アーキテクチャ**: Clean Architecture (5層パターン)
 

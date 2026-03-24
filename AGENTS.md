@@ -24,7 +24,7 @@
 
 ## Repository Map
 - `alt-frontend/` – Next.js 15 + React 19 client (Chakra UI, Vitest, Playwright).
-- `alt-backend/app/` – Go 1.24 HTTP API in Clean Architecture layers.
+- `alt-backend/app/` – Go 1.26 HTTP API in Clean Architecture layers.
 - `alt-backend/sidecar-proxy/` – Go egress proxy enforcing outbound policy.
 - `pre-processor/app/` – Go feed and summarization worker with circuit breakers.
 - `pre-processor-sidecar/app/` – Go scheduler for Inoreader ingestion (CronJob/deployment).
@@ -65,7 +65,7 @@
   - Auth Hub: `curl http://localhost:8888/health`
 
 ## Language Playbooks
-- **Go 1.24** – Enforce Clean Architecture boundaries, use `log/slog`, wrap errors with context, propagate `context.Context`, throttle external calls (≥5 s between repeat host hits), prefer table-driven tests and GoMock fakes.
+- **Go 1.26** – Enforce Clean Architecture boundaries, use `log/slog`, wrap errors with context, propagate `context.Context`, throttle external calls (≥5 s between repeat host hits), prefer table-driven tests and GoMock fakes.
 - **TypeScript/React** – Strict TypeScript (`noImplicitAny`), App Router patterns, Chakra UI theme system, React 19 concurrent features, use Vitest + Testing Library with `userEvent` and `waitFor`.
 - **Python (FastAPI)** – Dependency injection via containers, async handlers, pytest + `pytest-asyncio`, maintain golden datasets for LLM prompt regressions, sanitize LLM outputs.
 - **Rust 2024** – Favor `async fn` in traits, zero-copy parsing, lock-free data structures, test with `axum-test`, benchmark critical code paths with `criterion`.
