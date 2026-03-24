@@ -20,6 +20,7 @@ import {
 	GalleryVerticalEnd,
 	Orbit,
 	Lightbulb,
+	Tag,
 } from "@lucide/svelte";
 import { page } from "$app/state";
 import { cn } from "$lib/utils";
@@ -113,6 +114,11 @@ const baseMenuItems = [
 				href: `${svBasePath}/feeds/tag-verse`,
 				icon: Orbit,
 			},
+			{
+				label: "Tag Articles",
+				href: `${svBasePath}/articles/by-tag`,
+				icon: Tag,
+			},
 		],
 	},
 	{
@@ -159,13 +165,19 @@ const menuItems = $derived(
 		: baseMenuItems.filter((item) => item.category !== "admin"),
 );
 
-let expandedSections = $state<string[]>([
-	"feeds",
-	"explore",
-	"recap",
-	"settings",
-	"admin",
-]);
+let expandedSections = $state<string[]>([]);
+
+$effect(() => {
+	const path = page.url.pathname;
+	for (const item of baseMenuItems) {
+		if ("children" in item && item.children) {
+			const matches = item.children.some((c) => path.startsWith(c.href));
+			if (matches && !expandedSections.includes(item.category)) {
+				expandedSections = [...expandedSections, item.category];
+			}
+		}
+	}
+});
 
 function toggleSection(category: string) {
 	if (expandedSections.includes(category)) {
@@ -176,12 +188,12 @@ function toggleSection(category: string) {
 }
 
 function isActive(href: string): boolean {
-	return page.url.pathname === href;
+	return page.url.pathname === href || page.url.pathname.startsWith(href + "?");
 }
 
 function isParentActive(children?: { href: string }[]): boolean {
 	if (!children) return false;
-	return children.some((child) => page.url.pathname === child.href);
+	return children.some((child) => page.url.pathname.startsWith(child.href));
 }
 </script>
 

@@ -19,6 +19,7 @@ import {
 	Globe,
 	Orbit,
 	Lightbulb,
+	Tag,
 } from "@lucide/svelte";
 import type { Component } from "svelte";
 
@@ -133,6 +134,11 @@ export const desktopNavigation: Array<
 				label: "Tag Verse",
 				href: `${svBasePath}/feeds/tag-verse`,
 				icon: Orbit,
+			},
+			{
+				label: "Tag Articles",
+				href: `${svBasePath}/articles/by-tag`,
+				icon: Tag,
 			},
 		],
 	},
