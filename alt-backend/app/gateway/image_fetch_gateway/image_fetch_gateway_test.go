@@ -112,8 +112,8 @@ func TestImageFetchGateway_FetchImage_SSRF_Advanced(t *testing.T) {
 	}{
 		{
 			name:        "URL with user info",
-			imageURL:    "https://user:password@malicious.com/image.jpg",
-			expectedErr: "TOCTOU attack detected",
+			imageURL:    "https://user:password@malicious.invalid/image.jpg",
+			expectedErr: "URLs with user info are not allowed",
 		},
 		{
 			name:        "URL with tricky characters in domain",
@@ -135,12 +135,9 @@ func TestImageFetchGateway_FetchImage_SSRF_Advanced(t *testing.T) {
 			// Accept either the expected error or other security-related errors
 			if !strings.Contains(err.Error(), tt.expectedErr) {
 				// For the malicious.com test, allow both TOCTOU and redirect blocking errors
-				if strings.Contains(tt.imageURL, "malicious.com") &&
-					(strings.Contains(err.Error(), "redirects not allowed for security reasons") ||
-						strings.Contains(err.Error(), "TOCTOU attack detected") ||
-						strings.Contains(err.Error(), "VALIDATION_ERROR: response is not an image") ||
-						strings.Contains(err.Error(), "DNS_RESOLUTION_ERROR")) {
-					// This is acceptable - different security protections may trigger
+				if strings.Contains(tt.imageURL, "malicious.invalid") &&
+					strings.Contains(err.Error(), "URLs with user info are not allowed") {
+					// User info must be blocked before DNS resolution
 				} else if strings.Contains(tt.imageURL, "nip.io") &&
 					strings.Contains(err.Error(), "DNS_RESOLUTION_ERROR") {
 					// DNS might be unavailable in isolated test environments

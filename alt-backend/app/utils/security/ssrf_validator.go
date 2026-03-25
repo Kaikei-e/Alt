@@ -76,6 +76,13 @@ func (v *SSRFValidator) ValidateURL(ctx context.Context, u *url.URL) error {
 		return err
 	}
 
+	if u.User != nil {
+		return &ValidationError{
+			Message: "URLs with user info are not allowed",
+			Type:    "USER_INFO_BLOCKED",
+		}
+	}
+
 	if err := v.validateScheme(u); err != nil {
 		return err
 	}

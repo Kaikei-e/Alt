@@ -433,7 +433,7 @@ type promptBuildResult struct {
 	strategyUsed     string
 	intentType       IntentType
 	toolsUsed        []string
-	articleContext    *ArticleContext
+	articleContext   *ArticleContext
 	retrievalQuality QualityVerdict
 	retryCount       int
 }
