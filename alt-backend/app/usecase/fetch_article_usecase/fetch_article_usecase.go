@@ -110,6 +110,11 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 	urlStr := targetURL.String()
 	domainStr := targetURL.Hostname()
 
+	// minFulltextContentLength is the byte threshold below which cached article
+	// content is considered an RSS summary rather than full article text.
+	// Cached articles shorter than this trigger a web fetch for full content.
+	const minFulltextContentLength = 500
+
 	// 1. Check if article already exists in DB (skip when force refresh)
 	if !forceRefresh {
 		existingArticle, err := u.repo.FetchArticleByURL(ctx, urlStr)
@@ -119,7 +124,7 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 			return "", "", "", fmt.Errorf("failed to check existing article: %w", err)
 		}
 
-		if existingArticle != nil {
+		if existingArticle != nil && len(existingArticle.Content) >= minFulltextContentLength {
 			logger.Logger.InfoContext(ctx, "Article found in database", "url", urlStr, "id", existingArticle.ID)
 			// Try to retrieve cached og:image (lightweight query, no head_html)
 			cachedOgImage, ogErr := u.repo.FetchOgImageURLByArticleID(ctx, existingArticle.ID)
@@ -127,6 +132,11 @@ func (u *ArticleUsecaseImpl) FetchCompliantArticleWithRefresh(ctx context.Contex
 				logger.Logger.WarnContext(ctx, "Failed to fetch og_image_url", "error", ogErr, "article_id", existingArticle.ID)
 			}
 			return existingArticle.Content, existingArticle.ID, cachedOgImage, nil
+		}
+
+		if existingArticle != nil {
+			logger.Logger.InfoContext(ctx, "Cached article content below fulltext threshold, fetching from web",
+				"url", urlStr, "cached_length", len(existingArticle.Content), "threshold", minFulltextContentLength)
 		}
 	} else {
 		logger.Logger.InfoContext(ctx, "Force refresh: skipping DB cache", "url", urlStr)

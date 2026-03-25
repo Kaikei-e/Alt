@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -638,16 +639,18 @@ func TestFetchCompliantArticleWithRefresh_NoForceRefreshUsesDBCache(t *testing.T
 	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	userContext := domain.UserContext{UserID: userID}
 
+	// Content must exceed minFulltextContentLength (500 bytes) to be treated as a cache hit
+	longContent := strings.Repeat("This is a cached full article with enough content. ", 15) // ~750 bytes
 	existingArticle := &domain.ArticleContent{
 		ID:      "existing-article-id",
-		Content: "cached article content",
+		Content: longContent,
 	}
 
-	// DB lookup returns existing article
+	// DB lookup returns existing article with long content
 	mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(existingArticle, nil)
 	mockRepo.EXPECT().FetchOgImageURLByArticleID(gomock.Any(), existingArticle.ID).Return("", nil)
 
-	// KEY: FetchArticleContents should NOT be called when forceRefresh=false and article exists
+	// KEY: FetchArticleContents should NOT be called when article has sufficient content
 	// (no mockArticleFetcher.EXPECT().FetchArticleContents)
 
 	content, retID, _, err := usecase.FetchCompliantArticleWithRefresh(context.Background(), articleURL, userContext, false)
@@ -656,10 +659,106 @@ func TestFetchCompliantArticleWithRefresh_NoForceRefreshUsesDBCache(t *testing.T
 		t.Errorf("Unexpected error: %v", err)
 	}
 	if content != existingArticle.Content {
-		t.Errorf("Expected cached content %q, got %q", existingArticle.Content, content)
+		t.Errorf("Expected cached content, got different content")
 	}
 	if retID != existingArticle.ID {
 		t.Errorf("Expected article ID %s, got %s", existingArticle.ID, retID)
+	}
+}
+
+func TestFetchCompliantArticle_ShortCachedContent_FetchesFromWeb(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
+
+	articleURLStr := "https://example.com/inoreader-short"
+	articleURL, _ := url.Parse(articleURLStr)
+	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	userContext := domain.UserContext{UserID: userID}
+
+	// Short cached content (RSS summary from Inoreader, below minFulltextContentLength)
+	shortCached := &domain.ArticleContent{
+		ID:      "short-article-id",
+		Content: "This is a short RSS summary from Inoreader. It contains only a few sentences.",
+	}
+
+	// Full article fetched from web
+	rawHTML := "<html><body><p>" + strings.Repeat("Full article content fetched from web. ", 30) + "</p></body></html>"
+	expectedContentHTML := "<div><p>" + strings.Repeat("Full article content fetched from web. ", 30) + "</p></div>"
+	webArticleID := "web-fetched-article-id"
+
+	// DB lookup returns article with short content
+	mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(shortCached, nil)
+	// Short content should NOT return cached — instead proceed to compliance + web fetch
+	mockRepo.EXPECT().IsDomainDeclined(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil)
+	mockRobotsTxt.EXPECT().IsPathAllowed(gomock.Any(), gomock.Any(), gomock.Any()).Return(true, nil)
+	mockArticleFetcher.EXPECT().FetchArticleContents(gomock.Any(), articleURLStr).Return(&rawHTML, nil)
+	mockRepo.EXPECT().SaveArticle(gomock.Any(), articleURLStr, gomock.Any(), expectedContentHTML).Return(webArticleID, nil)
+	mockRag.EXPECT().UpsertArticle(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	content, retID, _, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if content != expectedContentHTML {
+		t.Errorf("Expected web-fetched content, got cached content")
+	}
+	if retID != webArticleID {
+		t.Errorf("Expected web article ID %s, got %s", webArticleID, retID)
+	}
+	time.Sleep(50 * time.Millisecond)
+	ctrl.Finish()
+}
+
+func TestFetchCompliantArticle_LongCachedContent_ReturnsCached(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockArticleFetcher := mocks.NewMockFetchArticlePort(ctrl)
+	mockRobotsTxt := mocks.NewMockRobotsTxtPort(ctrl)
+	mockRepo := mocks.NewMockArticleRepository(ctrl)
+	mockRag := mocks.NewMockRagIntegrationPort(ctrl)
+
+	usecase := NewArticleUsecase(mockArticleFetcher, mockRobotsTxt, mockRepo, mockRag)
+
+	articleURLStr := "https://example.com/full-article"
+	articleURL, _ := url.Parse(articleURLStr)
+	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	userContext := domain.UserContext{UserID: userID}
+
+	// Long cached content (full article, above minFulltextContentLength)
+	longContent := strings.Repeat("This is a full article with rich content from the web. ", 20) // ~1080 bytes
+	existingArticle := &domain.ArticleContent{
+		ID:      "long-article-id",
+		Content: longContent,
+	}
+
+	// DB lookup returns article with long content — should return cached without web fetch
+	mockRepo.EXPECT().FetchArticleByURL(gomock.Any(), articleURLStr).Return(existingArticle, nil)
+	mockRepo.EXPECT().FetchOgImageURLByArticleID(gomock.Any(), existingArticle.ID).Return("https://example.com/og.jpg", nil)
+
+	// KEY: FetchArticleContents should NOT be called — long cached content is sufficient
+	// (no mockArticleFetcher.EXPECT().FetchArticleContents)
+
+	content, retID, ogImage, err := usecase.FetchCompliantArticle(context.Background(), articleURL, userContext)
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if content != longContent {
+		t.Error("Expected cached long content to be returned as-is")
+	}
+	if retID != existingArticle.ID {
+		t.Errorf("Expected article ID %s, got %s", existingArticle.ID, retID)
+	}
+	if ogImage != "https://example.com/og.jpg" {
+		t.Errorf("Expected og image URL, got %s", ogImage)
 	}
 }
 
