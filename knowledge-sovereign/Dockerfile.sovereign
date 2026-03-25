@@ -23,6 +23,10 @@ COPY --from=busybox /bin/wget /usr/bin/wget
 COPY --from=busybox /bin/sh /bin/sh
 
 COPY --from=builder /app/server /server
+COPY --from=busybox /bin/mkdir /bin/mkdir
+
+# Pre-create snapshot dir before dropping to nonroot
+RUN ["/bin/mkdir", "-p", "/tmp/snapshots"]
 
 USER nonroot:nonroot
 
