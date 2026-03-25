@@ -17,13 +17,13 @@ import (
 type CachedFeedListUsecase struct {
 	feedPageCache  feed_page_cache_port.FeedPageCachePort
 	userReadState  user_read_state_port.UserReadStatePort
-	legacyFeedPort fetch_feed_port.FetchFeedsPort
+	legacyFeedPort fetch_feed_port.ReadAndFavoriteFeedCursorPort
 }
 
 func NewCachedFeedListUsecase(
 	feedPageCache feed_page_cache_port.FeedPageCachePort,
 	userReadState user_read_state_port.UserReadStatePort,
-	legacyFeedPort fetch_feed_port.FetchFeedsPort,
+	legacyFeedPort fetch_feed_port.ReadAndFavoriteFeedCursorPort,
 ) *CachedFeedListUsecase {
 	return &CachedFeedListUsecase{
 		feedPageCache:  feedPageCache,

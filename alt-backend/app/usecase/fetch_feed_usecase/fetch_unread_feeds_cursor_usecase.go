@@ -12,10 +12,10 @@ import (
 )
 
 type FetchUnreadFeedsListCursorUsecase struct {
-	fetchFeedsListGateway fetch_feed_port.FetchFeedsPort
+	fetchFeedsListGateway fetch_feed_port.UnreadFeedCursorPort
 }
 
-func NewFetchUnreadFeedsListCursorUsecase(fetchFeedsListGateway fetch_feed_port.FetchFeedsPort) *FetchUnreadFeedsListCursorUsecase {
+func NewFetchUnreadFeedsListCursorUsecase(fetchFeedsListGateway fetch_feed_port.UnreadFeedCursorPort) *FetchUnreadFeedsListCursorUsecase {
 	return &FetchUnreadFeedsListCursorUsecase{fetchFeedsListGateway: fetchFeedsListGateway}
 }
 

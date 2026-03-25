@@ -52,24 +52,6 @@ type legacyFeedPortStub struct {
 	favorite []*domain.FeedItem
 }
 
-func (s *legacyFeedPortStub) FetchFeeds(ctx context.Context, link string) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-func (s *legacyFeedPortStub) FetchFeedsList(ctx context.Context) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-func (s *legacyFeedPortStub) FetchFeedsListLimit(ctx context.Context, offset int) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-func (s *legacyFeedPortStub) FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-func (s *legacyFeedPortStub) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-func (s *legacyFeedPortStub) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
 func (s *legacyFeedPortStub) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
 	return s.read, nil
 }

@@ -7,10 +7,10 @@ import (
 )
 
 type FetchFeedsListUsecase struct {
-	fetchFeedsListGateway fetch_feed_port.FetchFeedsPort
+	fetchFeedsListGateway fetch_feed_port.FeedListAllPort
 }
 
-func NewFetchFeedsListUsecase(fetchFeedsListGateway fetch_feed_port.FetchFeedsPort) *FetchFeedsListUsecase {
+func NewFetchFeedsListUsecase(fetchFeedsListGateway fetch_feed_port.FeedListAllPort) *FetchFeedsListUsecase {
 	return &FetchFeedsListUsecase{fetchFeedsListGateway: fetchFeedsListGateway}
 }
 

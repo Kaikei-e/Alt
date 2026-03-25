@@ -10,10 +10,10 @@ import (
 )
 
 type FetchFavoriteFeedsListCursorUsecase struct {
-	fetchFeedsListGateway fetch_feed_port.FetchFeedsPort
+	fetchFeedsListGateway fetch_feed_port.FavoriteFeedCursorPort
 }
 
-func NewFetchFavoriteFeedsListCursorUsecase(fetchFeedsListGateway fetch_feed_port.FetchFeedsPort) *FetchFavoriteFeedsListCursorUsecase {
+func NewFetchFavoriteFeedsListCursorUsecase(fetchFeedsListGateway fetch_feed_port.FavoriteFeedCursorPort) *FetchFavoriteFeedsListCursorUsecase {
 	return &FetchFavoriteFeedsListCursorUsecase{fetchFeedsListGateway: fetchFeedsListGateway}
 }
 
