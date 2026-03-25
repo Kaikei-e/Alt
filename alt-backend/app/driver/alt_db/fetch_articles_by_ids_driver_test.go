@@ -22,7 +22,7 @@ func TestFetchArticlesByIDs_PassesStringSliceForPgBouncerCompat(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 
 	id1 := uuid.New()
 	id2 := uuid.New()
@@ -56,7 +56,7 @@ func TestFetchArticlesByIDs_EmptySlice(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 
 	articles, fetchErr := repo.FetchArticlesByIDs(context.Background(), []uuid.UUID{})
 	require.NoError(t, fetchErr)
@@ -64,7 +64,7 @@ func TestFetchArticlesByIDs_EmptySlice(t *testing.T) {
 }
 
 func TestFetchArticlesByIDs_NilPool(t *testing.T) {
-	repo := &AltDBRepository{pool: nil}
+	repo := &ArticleRepository{pool: nil}
 
 	_, err := repo.FetchArticlesByIDs(context.Background(), []uuid.UUID{uuid.New()})
 	require.Error(t, err)

@@ -18,7 +18,7 @@ type InternalUnsummarizedArticle struct {
 
 // ListUnsummarizedArticles returns articles that have no entries in article_summaries,
 // using backward keyset pagination (created_at DESC, id DESC).
-func (r *AltDBRepository) ListUnsummarizedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]InternalUnsummarizedArticle, *time.Time, string, error) {
+func (r *InternalRepository) ListUnsummarizedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]InternalUnsummarizedArticle, *time.Time, string, error) {
 	var query string
 	var args []any
 
@@ -71,7 +71,7 @@ func (r *AltDBRepository) ListUnsummarizedArticles(ctx context.Context, lastCrea
 }
 
 // HasUnsummarizedArticles checks if there are any articles without summaries.
-func (r *AltDBRepository) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
+func (r *InternalRepository) HasUnsummarizedArticles(ctx context.Context) (bool, error) {
 	query := `
 		SELECT EXISTS (
 			SELECT 1

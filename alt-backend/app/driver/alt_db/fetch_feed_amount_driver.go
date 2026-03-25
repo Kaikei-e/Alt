@@ -6,7 +6,7 @@ import (
 	"errors"
 )
 
-func (r *AltDBRepository) FetchFeedAmount(ctx context.Context) (int, error) {
+func (r *FeedRepository) FetchFeedAmount(ctx context.Context) (int, error) {
 	query := `
 		SELECT COUNT(*) FROM feeds
 	`

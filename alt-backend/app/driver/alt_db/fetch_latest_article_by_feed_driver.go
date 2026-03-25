@@ -20,7 +20,7 @@ const fetchLatestArticleByFeedQuery = `
 
 // FetchLatestArticleByFeedID retrieves the most recent article for a given feed.
 // Returns nil (not an error) if no articles exist for the feed.
-func (r *AltDBRepository) FetchLatestArticleByFeedID(ctx context.Context, feedID uuid.UUID) (*domain.ArticleContent, error) {
+func (r *ArticleRepository) FetchLatestArticleByFeedID(ctx context.Context, feedID uuid.UUID) (*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

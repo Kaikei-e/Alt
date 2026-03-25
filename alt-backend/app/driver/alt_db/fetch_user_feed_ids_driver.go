@@ -11,7 +11,7 @@ import (
 
 // FetchUserFeedIDs retrieves the feed IDs that a user is subscribed to.
 // User ID is extracted from the context, following the same pattern as cursor-based endpoints.
-func (r *AltDBRepository) FetchUserFeedIDs(ctx context.Context) ([]uuid.UUID, error) {
+func (r *DashboardRepository) FetchUserFeedIDs(ctx context.Context) ([]uuid.UUID, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

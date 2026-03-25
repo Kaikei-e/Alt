@@ -46,7 +46,7 @@ func (a *StringArray) Scan(value interface{}) error {
 }
 
 // GetScrapingDomainByDomain fetches a scraping domain by domain name
-func (r *AltDBRepository) GetScrapingDomainByDomain(ctx context.Context, domainName string) (*domain.ScrapingDomain, error) {
+func (r *ScrapingRepository) GetScrapingDomainByDomain(ctx context.Context, domainName string) (*domain.ScrapingDomain, error) {
 	query := `
 		SELECT id, domain, scheme, allow_fetch_body, allow_ml_training,
 		       allow_cache_days, force_respect_robots, robots_txt_url, robots_txt_content,
@@ -108,7 +108,7 @@ func (r *AltDBRepository) GetScrapingDomainByDomain(ctx context.Context, domainN
 }
 
 // GetScrapingDomainByID fetches a scraping domain by ID
-func (r *AltDBRepository) GetScrapingDomainByID(ctx context.Context, id uuid.UUID) (*domain.ScrapingDomain, error) {
+func (r *ScrapingRepository) GetScrapingDomainByID(ctx context.Context, id uuid.UUID) (*domain.ScrapingDomain, error) {
 	query := `
 		SELECT id, domain, scheme, allow_fetch_body, allow_ml_training,
 		       allow_cache_days, force_respect_robots, robots_txt_url, robots_txt_content,
@@ -170,7 +170,7 @@ func (r *AltDBRepository) GetScrapingDomainByID(ctx context.Context, id uuid.UUI
 }
 
 // SaveScrapingDomain saves or updates a scraping domain
-func (r *AltDBRepository) SaveScrapingDomain(ctx context.Context, sd *domain.ScrapingDomain) error {
+func (r *ScrapingRepository) SaveScrapingDomain(ctx context.Context, sd *domain.ScrapingDomain) error {
 	query := `
 		INSERT INTO scraping_domains (
 			id, domain, scheme, allow_fetch_body, allow_ml_training,
@@ -236,7 +236,7 @@ func (r *AltDBRepository) SaveScrapingDomain(ctx context.Context, sd *domain.Scr
 }
 
 // ListScrapingDomains lists scraping domains with pagination
-func (r *AltDBRepository) ListScrapingDomains(ctx context.Context, offset, limit int) ([]*domain.ScrapingDomain, error) {
+func (r *ScrapingRepository) ListScrapingDomains(ctx context.Context, offset, limit int) ([]*domain.ScrapingDomain, error) {
 	query := `
 		SELECT id, domain, scheme, allow_fetch_body, allow_ml_training,
 		       allow_cache_days, force_respect_robots, robots_txt_url, robots_txt_content,
@@ -311,7 +311,7 @@ func (r *AltDBRepository) ListScrapingDomains(ctx context.Context, offset, limit
 }
 
 // UpdateScrapingDomainPolicy updates only the policy fields of a scraping domain
-func (r *AltDBRepository) UpdateScrapingDomainPolicy(ctx context.Context, id uuid.UUID, update *domain.ScrapingPolicyUpdate) error {
+func (r *ScrapingRepository) UpdateScrapingDomainPolicy(ctx context.Context, id uuid.UUID, update *domain.ScrapingPolicyUpdate) error {
 	query := `
 		UPDATE scraping_domains
 		SET

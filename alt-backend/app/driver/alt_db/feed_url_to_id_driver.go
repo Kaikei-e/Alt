@@ -14,7 +14,7 @@ var ErrFeedNotFoundByURL = errors.New("feed not found by URL")
 
 // GetFeedIDByArticleURL retrieves the feed ID for a given article URL by looking up feeds.link.
 // This is used by SaveArticle where the URL is an article page URL stored in feeds.link.
-func (r *AltDBRepository) GetFeedIDByArticleURL(ctx context.Context, articleURL string) (string, error) {
+func (r *FeedRepository) GetFeedIDByArticleURL(ctx context.Context, articleURL string) (string, error) {
 	if r.pool == nil {
 		return "", errors.New("database connection not available")
 	}
@@ -34,7 +34,7 @@ func (r *AltDBRepository) GetFeedIDByArticleURL(ctx context.Context, articleURL 
 
 // GetFeedIDByURL retrieves the feed ID for a given RSS feed URL by joining feed_links.
 // This is used by Connect-RPC GetFeedID and FetchFeedTags where the URL is an RSS source URL.
-func (r *AltDBRepository) GetFeedIDByURL(ctx context.Context, feedURL string) (string, error) {
+func (r *FeedRepository) GetFeedIDByURL(ctx context.Context, feedURL string) (string, error) {
 	if r.pool == nil {
 		return "", errors.New("database connection not available")
 	}

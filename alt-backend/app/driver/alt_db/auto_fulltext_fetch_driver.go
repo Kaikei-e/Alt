@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (r *AltDBRepository) ListSubscribedUserIDsByFeedLinkID(ctx context.Context, feedLinkID string) ([]string, error) {
+func (r *InternalRepository) ListSubscribedUserIDsByFeedLinkID(ctx context.Context, feedLinkID string) ([]string, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -37,7 +37,7 @@ func (r *AltDBRepository) ListSubscribedUserIDsByFeedLinkID(ctx context.Context,
 	return userIDs, nil
 }
 
-func (r *AltDBRepository) CheckArticleExistsByURLForUser(ctx context.Context, url string, userID string) (bool, string, error) {
+func (r *InternalRepository) CheckArticleExistsByURLForUser(ctx context.Context, url string, userID string) (bool, string, error) {
 	if r.pool == nil {
 		return false, "", errors.New("database connection not available")
 	}

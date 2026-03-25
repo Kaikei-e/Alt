@@ -14,7 +14,7 @@ func TestBatchUpsertArticleTags_AllEmptyFeedIDs(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &TagRepository{pool: mock}
 
 	// All items have empty FeedID — should return 0 without touching DB
 	items := []BatchUpsertTagItem{
@@ -35,7 +35,7 @@ func TestBatchUpsertArticleTags_EmptyInput(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &TagRepository{pool: mock}
 
 	count, err := repo.BatchUpsertArticleTags(context.Background(), []BatchUpsertTagItem{})
 	require.NoError(t, err)
@@ -49,7 +49,7 @@ func TestUpsertArticleTags_EmptyFeedID(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &TagRepository{pool: mock}
 
 	// Empty FeedID should return 0 without touching DB
 	count, err := repo.UpsertArticleTags(context.Background(), "art-1", "", []TagUpsertItem{{Name: "go", Confidence: 0.9}})
@@ -64,7 +64,7 @@ func TestUpsertArticleTags_EmptyTags(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &TagRepository{pool: mock}
 
 	count, err := repo.UpsertArticleTags(context.Background(), "art-1", "feed-1", []TagUpsertItem{})
 	require.NoError(t, err)

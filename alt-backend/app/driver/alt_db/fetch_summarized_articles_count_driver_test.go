@@ -15,7 +15,7 @@ func TestAltDBRepository_FetchSummarizedArticlesCount_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &DashboardRepository{pool: mock}
 	ctx := authContext()
 
 	expectedQuery := `SELECT COUNT(*) FROM article_summaries WHERE user_id = $1`
@@ -31,7 +31,7 @@ func TestAltDBRepository_FetchSummarizedArticlesCount_Success(t *testing.T) {
 }
 
 func TestAltDBRepository_FetchSummarizedArticlesCount_RequiresAuth(t *testing.T) {
-	repo := &AltDBRepository{}
+	repo := &DashboardRepository{}
 	count, err := repo.FetchSummarizedArticlesCount(context.Background())
 	require.Error(t, err)
 	require.Equal(t, 0, count)
@@ -42,7 +42,7 @@ func TestAltDBRepository_FetchSummarizedArticlesCount_QueryError(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &DashboardRepository{pool: mock}
 	ctx := authContext()
 
 	expectedQuery := `SELECT COUNT(*) FROM article_summaries WHERE user_id = $1`

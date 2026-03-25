@@ -20,7 +20,7 @@ type TrendStatsRow struct {
 }
 
 // FetchTrendStats fetches trend statistics for the given time window
-func (r *AltDBRepository) FetchTrendStats(ctx context.Context, window string) (*trend_stats_port.TrendDataResponse, error) {
+func (r *DashboardRepository) FetchTrendStats(ctx context.Context, window string) (*trend_stats_port.TrendDataResponse, error) {
 	// Validate user context and extract user_id for multi-tenant filtering
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {

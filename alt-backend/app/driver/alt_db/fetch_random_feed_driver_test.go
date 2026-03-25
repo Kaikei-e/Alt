@@ -23,7 +23,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		require.NoError(t, err)
 		defer mock.Close()
 
-		repo := &AltDBRepository{pool: mock}
+		repo := &FeedRepository{pool: mock}
 		ctx := context.Background()
 
 		feedID := uuid.New()
@@ -51,7 +51,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		require.NoError(t, err)
 		defer mock.Close()
 
-		repo := &AltDBRepository{pool: mock}
+		repo := &FeedRepository{pool: mock}
 		ctx := context.Background()
 
 		mock.ExpectQuery("SELECT f.id, f.title, f.description, f.link FROM feeds f WHERE EXISTS").
@@ -69,7 +69,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		require.NoError(t, err)
 		defer mock.Close()
 
-		repo := &AltDBRepository{pool: mock}
+		repo := &FeedRepository{pool: mock}
 		ctx := context.Background()
 
 		feedID := uuid.New()

@@ -8,7 +8,7 @@ import (
 )
 
 // FetchArticleTags retrieves tags associated with a specific article.
-func (r *AltDBRepository) FetchArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error) {
+func (r *TagRepository) FetchArticleTags(ctx context.Context, articleID string) ([]*domain.FeedTag, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

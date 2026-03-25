@@ -15,7 +15,7 @@ func TestListUntaggedArticles_ExcludesNullFeedID(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &InternalRepository{pool: mock}
 
 	// Count query should exclude NULL feed_id articles
 	mock.ExpectQuery("SELECT COUNT").
@@ -52,7 +52,7 @@ func TestListUntaggedArticles_KeysetPagination_FirstPage(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &InternalRepository{pool: mock}
 
 	mock.ExpectQuery("SELECT COUNT").
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(3)))
@@ -88,7 +88,7 @@ func TestListUntaggedArticles_KeysetPagination_NextPage(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &InternalRepository{pool: mock}
 
 	mock.ExpectQuery("SELECT COUNT").
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(3)))
@@ -121,7 +121,7 @@ func TestListUntaggedArticles_AllWithFeedIDs(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &InternalRepository{pool: mock}
 
 	mock.ExpectQuery("SELECT COUNT").
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(1)))
@@ -150,7 +150,7 @@ func TestListUntaggedArticles_Empty(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &InternalRepository{pool: mock}
 
 	mock.ExpectQuery("SELECT COUNT").
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int32(0)))

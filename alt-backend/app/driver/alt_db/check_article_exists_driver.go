@@ -9,7 +9,7 @@ import (
 
 // CheckArticleExistsByURL checks if an article exists by URL and feed_id.
 // Returns the article ID if found.
-func (r *AltDBRepository) CheckArticleExistsByURL(ctx context.Context, url string, feedID string) (bool, string, error) {
+func (r *ArticleRepository) CheckArticleExistsByURL(ctx context.Context, url string, feedID string) (bool, string, error) {
 	if r.pool == nil {
 		return false, "", errors.New("database connection not available")
 	}

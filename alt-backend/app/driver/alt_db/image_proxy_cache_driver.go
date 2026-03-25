@@ -10,7 +10,7 @@ import (
 
 // GetImageProxyCache retrieves a cached image by URL hash.
 // Returns nil if not found or expired.
-func (r *AltDBRepository) GetImageProxyCache(ctx context.Context, urlHash string) (*domain.ImageProxyCacheEntry, error) {
+func (r *ImageRepository) GetImageProxyCache(ctx context.Context, urlHash string) (*domain.ImageProxyCacheEntry, error) {
 	var entry domain.ImageProxyCacheEntry
 	err := r.pool.QueryRow(ctx,
 		`SELECT url_hash, original_url, image_data, content_type, width, height, size_bytes, etag, created_at, expires_at
@@ -40,7 +40,7 @@ func (r *AltDBRepository) GetImageProxyCache(ctx context.Context, urlHash string
 }
 
 // SaveImageProxyCache upserts a cached image entry.
-func (r *AltDBRepository) SaveImageProxyCache(ctx context.Context, entry *domain.ImageProxyCacheEntry) error {
+func (r *ImageRepository) SaveImageProxyCache(ctx context.Context, entry *domain.ImageProxyCacheEntry) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO image_proxy_cache (url_hash, original_url, image_data, content_type, width, height, size_bytes, etag, expires_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -70,7 +70,7 @@ func (r *AltDBRepository) SaveImageProxyCache(ctx context.Context, entry *domain
 }
 
 // CleanupExpiredImageProxyCache deletes expired cache entries and returns the count.
-func (r *AltDBRepository) CleanupExpiredImageProxyCache(ctx context.Context) (int64, error) {
+func (r *ImageRepository) CleanupExpiredImageProxyCache(ctx context.Context) (int64, error) {
 	tag, err := r.pool.Exec(ctx,
 		`DELETE FROM image_proxy_cache WHERE expires_at <= $1`,
 		time.Now(),

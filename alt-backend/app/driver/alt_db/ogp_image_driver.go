@@ -10,7 +10,7 @@ import (
 // FetchUnwarmedOgImageURLs returns OGP image URLs from recent feeds that are
 // not yet cached in image_proxy_cache. SHA256 hashing is done in SQL to match
 // the url_hash column used by the image proxy cache.
-func (r *AltDBRepository) FetchUnwarmedOgImageURLs(ctx context.Context, limit int) ([]string, error) {
+func (r *ImageRepository) FetchUnwarmedOgImageURLs(ctx context.Context, limit int) ([]string, error) {
 	const query = `
 		SELECT DISTINCT f.og_image_url
 		FROM feeds f

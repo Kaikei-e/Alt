@@ -16,7 +16,7 @@ const insertOutboxQuery = `
 `
 
 // SaveOutboxEventWithTx inserts an event into the outbox table using a provided transaction.
-func (r *AltDBRepository) SaveOutboxEventWithTx(ctx context.Context, tx pgx.Tx, eventType string, payload []byte) error {
+func (r *OutboxRepository) SaveOutboxEventWithTx(ctx context.Context, tx pgx.Tx, eventType string, payload []byte) error {
 	if _, err := tx.Exec(ctx, insertOutboxQuery, eventType, string(payload)); err != nil {
 		err = fmt.Errorf("failed to insert outbox event: %w", err)
 		// We can't log article_id easily here without parsing payload, so general error log
@@ -38,7 +38,7 @@ type OutboxEvent struct {
 // FetchAndLockPendingOutboxEvents retrieves pending events within a transaction,
 // locks them with FOR UPDATE SKIP LOCKED, and atomically sets status to PROCESSING.
 // This prevents multiple workers from processing the same event.
-func (r *AltDBRepository) FetchAndLockPendingOutboxEvents(ctx context.Context, limit int) ([]OutboxEvent, error) {
+func (r *OutboxRepository) FetchAndLockPendingOutboxEvents(ctx context.Context, limit int) ([]OutboxEvent, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -88,7 +88,7 @@ func (r *AltDBRepository) FetchAndLockPendingOutboxEvents(ctx context.Context, l
 }
 
 // UpdateOutboxEventStatus updates the status of an outbox event.
-func (r *AltDBRepository) UpdateOutboxEventStatus(ctx context.Context, id string, status string, errorMessage *string) error {
+func (r *OutboxRepository) UpdateOutboxEventStatus(ctx context.Context, id string, status string, errorMessage *string) error {
 	var processedAt interface{}
 	if status == "PROCESSED" || status == "FAILED" {
 		processedAt = time.Now()
@@ -108,7 +108,7 @@ func (r *AltDBRepository) UpdateOutboxEventStatus(ctx context.Context, id string
 }
 
 // PruneOutboxEvents deletes processed events older than the specified duration.
-func (r *AltDBRepository) PruneOutboxEvents(ctx context.Context, olderThan time.Duration) (int64, error) {
+func (r *OutboxRepository) PruneOutboxEvents(ctx context.Context, olderThan time.Duration) (int64, error) {
 	query := `DELETE FROM outbox_events WHERE status = 'PROCESSED' AND processed_at < $1`
 	cutoff := time.Now().Add(-olderThan)
 

@@ -7,7 +7,7 @@ import (
 	"alt/domain"
 )
 
-func (a *AltDBRepository) GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]domain.FeedAndArticle, error) {
+func (a *FeedRepository) GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]domain.FeedAndArticle, error) {
 	if len(articleIDs) == 0 {
 		slog.InfoContext(ctx, "no article IDs provided, returning empty map")
 		return nil, nil

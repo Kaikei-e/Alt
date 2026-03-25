@@ -15,7 +15,7 @@ type FeedRegistrationResult struct {
 	Created   bool
 }
 
-func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.Feed) error {
+func (r *FeedRepository) RegisterSingleFeed(ctx context.Context, feed *models.Feed) error {
 	// Use ON CONFLICT for atomic upsert, eliminating TOCTOU race condition.
 	// Same pattern as RegisterMultipleFeeds.
 	const upsertQuery = `
@@ -40,7 +40,7 @@ func (r *AltDBRepository) RegisterSingleFeed(ctx context.Context, feed *models.F
 	return nil
 }
 
-func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []models.Feed) ([]string, error) {
+func (r *FeedRepository) RegisterMultipleFeeds(ctx context.Context, feeds []models.Feed) ([]string, error) {
 	results, err := r.RegisterMultipleFeedsWithState(ctx, feeds)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func (r *AltDBRepository) RegisterMultipleFeeds(ctx context.Context, feeds []mod
 	return ids, nil
 }
 
-func (r *AltDBRepository) RegisterMultipleFeedsWithState(ctx context.Context, feeds []models.Feed) ([]FeedRegistrationResult, error) {
+func (r *FeedRepository) RegisterMultipleFeedsWithState(ctx context.Context, feeds []models.Feed) ([]FeedRegistrationResult, error) {
 	if len(feeds) == 0 {
 		return nil, nil
 	}

@@ -7,7 +7,7 @@ import (
 	"errors"
 )
 
-func (r *AltDBRepository) FetchTotalArticlesCount(ctx context.Context) (int, error) {
+func (r *ArticleRepository) FetchTotalArticlesCount(ctx context.Context) (int, error) {
 	if r == nil || r.pool == nil {
 		return 0, errors.New("database connection not available")
 	}

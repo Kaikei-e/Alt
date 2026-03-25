@@ -65,7 +65,7 @@ func TestFetchFeedTagsGateway_FetchFeedTags_DatabaseError(t *testing.T) {
 
 	// Test with invalid repository (nil pool) to test error handling
 	gateway := &FetchFeedTagsGateway{
-		alt_db: &alt_db.AltDBRepository{}, // This will cause a database error
+		alt_db: alt_db.NewAltDBRepositoryForTest(), // nil pool but non-nil domain repos for error path testing
 	}
 
 	ctx := context.Background()

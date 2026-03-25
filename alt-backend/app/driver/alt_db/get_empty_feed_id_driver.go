@@ -10,7 +10,7 @@ import (
 
 // GetEmptyFeedID returns a feed ID that has no articles for the given feed URL.
 // Returns empty string if all feeds for this URL already have articles.
-func (r *AltDBRepository) GetEmptyFeedID(ctx context.Context, feedURL string) (string, error) {
+func (r *FeedRepository) GetEmptyFeedID(ctx context.Context, feedURL string) (string, error) {
 	if r.pool == nil {
 		return "", errors.New("database connection not available")
 	}

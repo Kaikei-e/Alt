@@ -17,7 +17,7 @@ type InternalArticleContent struct {
 }
 
 // GetArticleContent retrieves article content by ID for summarization.
-func (r *AltDBRepository) GetArticleContent(ctx context.Context, articleID string) (*InternalArticleContent, error) {
+func (r *ArticleRepository) GetArticleContent(ctx context.Context, articleID string) (*InternalArticleContent, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

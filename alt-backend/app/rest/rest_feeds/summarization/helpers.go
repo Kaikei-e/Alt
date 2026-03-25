@@ -23,6 +23,9 @@ import (
 
 // ensureArticleRecord fetches or persists an article for the provided feed URL.
 func ensureArticleRecord(ctx context.Context, container *di.ApplicationComponents, feedURL string) (string, string, bool, error) {
+	if container.AltDBRepository == nil {
+		return "", "", false, fmt.Errorf("database repository not available")
+	}
 	existingArticle, err := container.AltDBRepository.FetchArticleByURL(ctx, feedURL)
 	if err != nil {
 		return "", "", false, err

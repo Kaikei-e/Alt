@@ -11,7 +11,7 @@ import (
 
 // FetchArticlesByIDs retrieves articles by their IDs with tags
 // Returns articles in the same order as the input IDs (where found)
-func (r *AltDBRepository) FetchArticlesByIDs(ctx context.Context, articleIDs []uuid.UUID) ([]*domain.Article, error) {
+func (r *ArticleRepository) FetchArticlesByIDs(ctx context.Context, articleIDs []uuid.UUID) ([]*domain.Article, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

@@ -22,7 +22,7 @@ type CreateArticleParams struct {
 // This is used by the internal API (service-to-service), not the user-facing API.
 // If an existing article has longer content, only metadata is updated (content preserved).
 // The returned bool is true when a new row was inserted.
-func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params CreateArticleParams) (string, bool, error) {
+func (r *ArticleRepository) CreateArticleInternal(ctx context.Context, params CreateArticleParams) (string, bool, error) {
 	if r.pool == nil {
 		return "", false, errors.New("database connection not available")
 	}
@@ -84,7 +84,7 @@ func (r *AltDBRepository) CreateArticleInternal(ctx context.Context, params Crea
 }
 
 // getArticleContentLength returns the content length of an existing article within a transaction.
-func (r *AltDBRepository) getArticleContentLength(ctx context.Context, tx pgx.Tx, url, userID string) (int, error) {
+func (r *ArticleRepository) getArticleContentLength(ctx context.Context, tx pgx.Tx, url, userID string) (int, error) {
 	var contentLen int
 	err := tx.QueryRow(ctx,
 		"SELECT COALESCE(OCTET_LENGTH(content), 0) FROM articles WHERE url = $1 AND user_id = $2 AND deleted_at IS NULL",

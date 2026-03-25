@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (r *AltDBRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
+func (r *FeedRepository) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "user context not found", "error", err)

@@ -17,7 +17,7 @@ func TestFetchTrendStats_NilPool(t *testing.T) {
 }
 
 func TestFetchTrendStats_CancelledContext(t *testing.T) {
-	repo := &AltDBRepository{pool: nil}
+	repo := &DashboardRepository{pool: nil}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -37,7 +37,7 @@ func TestFetchTrendStats_CancelledContext(t *testing.T) {
 }
 
 func TestFetchTrendStats_NoUserContext(t *testing.T) {
-	repo := &AltDBRepository{pool: nil}
+	repo := &DashboardRepository{pool: nil}
 	ctx := context.Background()
 
 	_, err := repo.FetchTrendStats(ctx, "24h")

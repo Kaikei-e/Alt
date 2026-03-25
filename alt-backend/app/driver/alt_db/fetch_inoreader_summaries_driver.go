@@ -8,7 +8,7 @@ import (
 )
 
 // FetchInoreaderSummariesByURLs retrieves inoreader article summaries for the given URLs
-func (r *AltDBRepository) FetchInoreaderSummariesByURLs(ctx context.Context, urls []string) ([]*models.InoreaderSummary, error) {
+func (r *FeedRepository) FetchInoreaderSummariesByURLs(ctx context.Context, urls []string) ([]*models.InoreaderSummary, error) {
 	if len(urls) == 0 {
 		logger.Logger.InfoContext(ctx, "No URLs provided for inoreader summaries fetch")
 		return []*models.InoreaderSummary{}, nil

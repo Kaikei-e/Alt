@@ -23,7 +23,7 @@ type InternalDeletedArticle struct {
 }
 
 // ListArticlesWithTags fetches articles with tags using backward keyset pagination.
-func (r *AltDBRepository) ListArticlesWithTags(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*InternalArticleWithTags, *time.Time, string, error) {
+func (r *InternalRepository) ListArticlesWithTags(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]*InternalArticleWithTags, *time.Time, string, error) {
 	var query string
 	var args []interface{}
 
@@ -102,7 +102,7 @@ func (r *AltDBRepository) ListArticlesWithTags(ctx context.Context, lastCreatedA
 }
 
 // ListArticlesWithTagsForward fetches articles with tags using forward keyset pagination.
-func (r *AltDBRepository) ListArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*InternalArticleWithTags, *time.Time, string, error) {
+func (r *InternalRepository) ListArticlesWithTagsForward(ctx context.Context, incrementalMark *time.Time, lastCreatedAt *time.Time, lastID string, limit int) ([]*InternalArticleWithTags, *time.Time, string, error) {
 	var query string
 	var args []interface{}
 
@@ -183,7 +183,7 @@ func (r *AltDBRepository) ListArticlesWithTagsForward(ctx context.Context, incre
 }
 
 // ListDeletedArticles fetches deleted articles for syncing deletions.
-func (r *AltDBRepository) ListDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]*InternalDeletedArticle, *time.Time, error) {
+func (r *InternalRepository) ListDeletedArticles(ctx context.Context, lastDeletedAt *time.Time, limit int) ([]*InternalDeletedArticle, *time.Time, error) {
 	var query string
 	var args []interface{}
 
@@ -234,7 +234,7 @@ func (r *AltDBRepository) ListDeletedArticles(ctx context.Context, lastDeletedAt
 }
 
 // GetLatestArticleTimestamp returns the latest created_at timestamp.
-func (r *AltDBRepository) GetLatestArticleTimestamp(ctx context.Context) (*time.Time, error) {
+func (r *InternalRepository) GetLatestArticleTimestamp(ctx context.Context) (*time.Time, error) {
 	var latestCreatedAt *time.Time
 	err := r.pool.QueryRow(ctx, `SELECT MAX(created_at) FROM articles WHERE deleted_at IS NULL`).Scan(&latestCreatedAt)
 	if err != nil {
@@ -244,7 +244,7 @@ func (r *AltDBRepository) GetLatestArticleTimestamp(ctx context.Context) (*time.
 }
 
 // GetArticleWithTagsByID retrieves a single article with tags by ID.
-func (r *AltDBRepository) GetArticleWithTagsByID(ctx context.Context, articleID string) (*InternalArticleWithTags, error) {
+func (r *InternalRepository) GetArticleWithTagsByID(ctx context.Context, articleID string) (*InternalArticleWithTags, error) {
 	query := `
 		SELECT a.id, a.title, a.content, a.created_at, a.user_id,
 			   COALESCE(
@@ -274,7 +274,7 @@ func (r *AltDBRepository) GetArticleWithTagsByID(ctx context.Context, articleID 
 
 // GetArticleTitleAndURL returns minimal article info for recall fallback.
 // Returns empty title when article is not found (no error).
-func (r *AltDBRepository) GetArticleTitleAndURL(ctx context.Context, articleID string) (string, string, *time.Time, error) {
+func (r *InternalRepository) GetArticleTitleAndURL(ctx context.Context, articleID string) (string, string, *time.Time, error) {
 	query := `SELECT title, url, published_at FROM articles WHERE id = $1 AND deleted_at IS NULL`
 	var title, url string
 	var publishedAt *time.Time

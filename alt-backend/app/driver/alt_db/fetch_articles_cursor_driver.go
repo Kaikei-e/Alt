@@ -26,7 +26,7 @@ type ArticleWithTags struct {
 
 // FetchArticlesWithCursor retrieves articles using cursor-based pagination
 // Includes tags from tag-generator via article_tags and tags tables
-func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.Article, error) {
+func (r *ArticleRepository) FetchArticlesWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.Article, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchArticlesWithCursor")
 	defer span.End()
 
@@ -140,7 +140,7 @@ func (r *AltDBRepository) FetchArticlesWithCursor(ctx context.Context, cursor *t
 	return articles, nil
 }
 
-func (r *AltDBRepository) FetchArticleIDsWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]uuid.UUID, error) {
+func (r *ArticleRepository) FetchArticleIDsWithCursor(ctx context.Context, cursor *time.Time, limit int) ([]uuid.UUID, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		return nil, errors.New("authentication required")

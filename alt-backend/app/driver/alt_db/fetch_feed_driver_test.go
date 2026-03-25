@@ -26,7 +26,7 @@ func TestAltDBRepository_FetchReadFeedsListCursor_OrdersByReadAt(t *testing.T) {
 		require.NoError(t, err)
 		defer mock.Close()
 
-		repo := &AltDBRepository{pool: mock}
+		repo := &FeedRepository{pool: mock}
 
 		// Create context with user
 		userID := uuid.New()
@@ -72,7 +72,7 @@ func TestAltDBRepository_FetchReadFeedsListCursor_OrdersByReadAt(t *testing.T) {
 		require.NoError(t, err)
 		defer mock.Close()
 
-		repo := &AltDBRepository{pool: mock}
+		repo := &FeedRepository{pool: mock}
 
 		// Create context with user
 		userID := uuid.New()
@@ -117,7 +117,7 @@ func TestAltDBRepository_GetAllReadFeedIDs_QueriesWithoutFeedIDArray(t *testing.
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 	userID := uuid.New()
 	feedID1 := uuid.New()
 	feedID2 := uuid.New()
@@ -147,7 +147,7 @@ func TestAltDBRepository_GetReadFeedIDs_UsesUUIDArrayCast(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 	userID := uuid.New()
 	feedID := uuid.New()
 

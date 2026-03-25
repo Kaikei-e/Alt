@@ -35,9 +35,7 @@ func TestUpdateFeedStatus_WithUTMParameters(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{
-		pool: mock,
-	}
+	repo := &FeedRepository{pool: mock}
 
 	// Setup test data
 	testUserID := "550e8400-e29b-41d4-a716-446655440000"
@@ -87,9 +85,7 @@ func TestUpdateFeedStatus_WithTrailingSlash(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{
-		pool: mock,
-	}
+	repo := &FeedRepository{pool: mock}
 
 	// Setup test data
 	testUserID := "550e8400-e29b-41d4-a716-446655440001"
@@ -139,9 +135,7 @@ func TestUpdateFeedStatus_RealWorldExample(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{
-		pool: mock,
-	}
+	repo := &FeedRepository{pool: mock}
 
 	// Setup test data
 	testUserID := "550e8400-e29b-41d4-a716-446655440002"
@@ -190,9 +184,7 @@ func TestUpdateFeedStatus_FeedNotFound(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{
-		pool: mock,
-	}
+	repo := &FeedRepository{pool: mock}
 
 	// Setup test data
 	testUserID := "550e8400-e29b-41d4-a716-446655440003"
@@ -225,9 +217,7 @@ func TestUpdateFeedStatus_NoUserInContext(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{
-		pool: mock,
-	}
+	repo := &FeedRepository{pool: mock}
 
 	// Create context WITHOUT user
 	ctx := context.Background()
@@ -250,9 +240,7 @@ func TestUpdateFeedStatus_MultipleFeeds(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{
-		pool: mock,
-	}
+	repo := &FeedRepository{pool: mock}
 
 	// Setup test data
 	testUserID := "550e8400-e29b-41d4-a716-446655440004"
@@ -303,9 +291,7 @@ func TestUpdateFeedStatus_ReturnsErrFeedNotFound(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{
-		pool: mock,
-	}
+	repo := &FeedRepository{pool: mock}
 
 	// Setup test data
 	testUserID := "550e8400-e29b-41d4-a716-446655440010"
@@ -339,9 +325,7 @@ func TestUpdateFeedStatus_OptimizedDatabaseQuery(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{
-		pool: mock,
-	}
+	repo := &FeedRepository{pool: mock}
 
 	// Setup test data
 	testUserID := "550e8400-e29b-41d4-a716-446655440012"

@@ -24,7 +24,7 @@ func buildTagArticleCountsQuery() string {
 }
 
 // FetchTagArticleCounts returns tag names with article counts since the given time for a user.
-func (r *AltDBRepository) FetchTagArticleCounts(ctx context.Context, userID uuid.UUID, since time.Time) ([]knowledge_home_port.TagArticleCount, error) {
+func (r *TagRepository) FetchTagArticleCounts(ctx context.Context, userID uuid.UUID, since time.Time) ([]knowledge_home_port.TagArticleCount, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection pool is nil")
 	}

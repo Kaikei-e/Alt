@@ -27,7 +27,7 @@ func TestAltDBRepository_FetchRecentArticles_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 
 	ctx := context.Background()
 	since := time.Now().Add(-24 * time.Hour)
@@ -67,7 +67,7 @@ func TestAltDBRepository_FetchRecentArticles_MultipleArticles(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 
 	ctx := context.Background()
 	since := time.Now().Add(-24 * time.Hour)
@@ -103,7 +103,7 @@ func TestAltDBRepository_FetchRecentArticles_EmptyResult(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 
 	ctx := context.Background()
 	since := time.Now().Add(-24 * time.Hour)
@@ -129,7 +129,7 @@ func TestAltDBRepository_FetchRecentArticles_NilRepository(t *testing.T) {
 	since := time.Now().Add(-24 * time.Hour)
 	limit := 10
 
-	var repo *AltDBRepository
+	var repo *ArticleRepository
 	_, err := repo.FetchRecentArticles(ctx, since, limit)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "database connection not available")
@@ -140,7 +140,7 @@ func TestAltDBRepository_FetchRecentArticles_NilPool(t *testing.T) {
 	since := time.Now().Add(-24 * time.Hour)
 	limit := 10
 
-	repo := &AltDBRepository{}
+	repo := &ArticleRepository{}
 	_, err := repo.FetchRecentArticles(ctx, since, limit)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "database connection not available")
@@ -151,7 +151,7 @@ func TestAltDBRepository_FetchRecentArticles_LimitBounds(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 	ctx := context.Background()
 	since := time.Now().Add(-24 * time.Hour)
 
@@ -206,7 +206,7 @@ func TestAltDBRepository_FetchRecentArticles_QueryError(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 
 	ctx := context.Background()
 	since := time.Now().Add(-24 * time.Hour)

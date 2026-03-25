@@ -19,7 +19,7 @@ type ArticleWithSummaryResult struct {
 }
 
 // DeleteArticleSummaryByArticleID deletes an article summary by article ID.
-func (r *AltDBRepository) DeleteArticleSummaryByArticleID(ctx context.Context, articleID string) error {
+func (r *SummaryRepository) DeleteArticleSummaryByArticleID(ctx context.Context, articleID string) error {
 	query := `DELETE FROM article_summaries WHERE article_id = $1`
 	_, err := r.pool.Exec(ctx, query, articleID)
 	if err != nil {
@@ -29,7 +29,7 @@ func (r *AltDBRepository) DeleteArticleSummaryByArticleID(ctx context.Context, a
 }
 
 // CheckArticleSummaryExists checks if an article summary exists for the given article ID.
-func (r *AltDBRepository) CheckArticleSummaryExists(ctx context.Context, articleID string) (bool, string, error) {
+func (r *SummaryRepository) CheckArticleSummaryExists(ctx context.Context, articleID string) (bool, string, error) {
 	query := `SELECT id FROM article_summaries WHERE article_id = $1 LIMIT 1`
 	var summaryID string
 	err := r.pool.QueryRow(ctx, query, articleID).Scan(&summaryID)
@@ -43,7 +43,7 @@ func (r *AltDBRepository) CheckArticleSummaryExists(ctx context.Context, article
 }
 
 // FindArticlesWithSummaries returns articles with summaries for quality checking.
-func (r *AltDBRepository) FindArticlesWithSummaries(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]ArticleWithSummaryResult, *time.Time, string, error) {
+func (r *SummaryRepository) FindArticlesWithSummaries(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]ArticleWithSummaryResult, *time.Time, string, error) {
 	var query string
 	var args []interface{}
 

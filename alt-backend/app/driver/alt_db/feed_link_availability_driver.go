@@ -11,7 +11,7 @@ import (
 
 // IncrementFeedLinkFailures increments failure count and returns the updated domain object.
 // It uses UPSERT to handle feeds that don't have an availability record yet.
-func (r *AltDBRepository) IncrementFeedLinkFailures(ctx context.Context, feedURL, reason string) (*domain.FeedLinkAvailability, error) {
+func (r *FeedRepository) IncrementFeedLinkFailures(ctx context.Context, feedURL, reason string) (*domain.FeedLinkAvailability, error) {
 	query := `
 		INSERT INTO feed_link_availability (feed_link_id, is_active, consecutive_failures, last_failure_at, last_failure_reason)
 		SELECT fl.id, true, 1, NOW(), $2
@@ -48,7 +48,7 @@ func (r *AltDBRepository) IncrementFeedLinkFailures(ctx context.Context, feedURL
 // ResetFeedLinkFailures resets the failure count on successful fetch.
 // It uses UPSERT to create the availability row if it doesn't exist yet
 // (e.g., feeds registered after the initial migration).
-func (r *AltDBRepository) ResetFeedLinkFailures(ctx context.Context, feedURL string) error {
+func (r *FeedRepository) ResetFeedLinkFailures(ctx context.Context, feedURL string) error {
 	query := `
 		INSERT INTO feed_link_availability (feed_link_id, is_active, consecutive_failures)
 		SELECT id, true, 0 FROM feed_links WHERE url = $1
@@ -62,7 +62,7 @@ func (r *AltDBRepository) ResetFeedLinkFailures(ctx context.Context, feedURL str
 }
 
 // DisableFeedLink marks a feed as inactive.
-func (r *AltDBRepository) DisableFeedLink(ctx context.Context, feedURL string) error {
+func (r *FeedRepository) DisableFeedLink(ctx context.Context, feedURL string) error {
 	query := `
 		UPDATE feed_link_availability SET is_active = false
 		WHERE feed_link_id IN (SELECT id FROM feed_links WHERE url = $1)`

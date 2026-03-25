@@ -11,7 +11,7 @@ import (
 
 // ListFeedLinkDomains extracts unique domains from feed_links table
 // Groups by domain and scheme, extracting hostname from URLs
-func (r *AltDBRepository) ListFeedLinkDomains(ctx context.Context) ([]domain.FeedLinkDomain, error) {
+func (r *FeedRepository) ListFeedLinkDomains(ctx context.Context) ([]domain.FeedLinkDomain, error) {
 	rows, err := r.pool.Query(ctx, "SELECT DISTINCT url FROM feed_links WHERE url IS NOT NULL AND url != ''")
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching feed link URLs", "error", err)

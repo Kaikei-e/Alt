@@ -18,7 +18,7 @@ func TestFetchFeedLinksWithAvailability_AllWithAvailability(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	id1 := uuid.New()
 	id2 := uuid.New()
@@ -59,7 +59,7 @@ func TestFetchFeedLinksWithAvailability_WithNullAvailability(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	id1 := uuid.New()
 
@@ -87,7 +87,7 @@ func TestFetchFeedLinksWithAvailability_QueryError(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	mock.ExpectQuery(regexp.QuoteMeta(
 		`SELECT fl.id, fl.url, fla.is_active, fla.consecutive_failures, fla.last_failure_at, fla.last_failure_reason FROM feed_links fl LEFT JOIN feed_link_availability fla ON fl.id = fla.feed_link_id ORDER BY fl.url ASC`)).

@@ -9,14 +9,14 @@ import (
 )
 
 func TestAltDBRepository_FetchLatestArticleByFeedID_NilRepository(t *testing.T) {
-	var r *AltDBRepository
+	var r *ArticleRepository
 	_, err := r.FetchLatestArticleByFeedID(context.Background(), uuid.New())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "database connection not available")
 }
 
 func TestAltDBRepository_FetchLatestArticleByFeedID_NilPool(t *testing.T) {
-	r := &AltDBRepository{pool: nil}
+	r := &ArticleRepository{pool: nil}
 	_, err := r.FetchLatestArticleByFeedID(context.Background(), uuid.New())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "database connection not available")

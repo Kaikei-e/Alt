@@ -11,7 +11,7 @@ import (
 )
 
 // CreateTagSetVersion inserts a new tag set version.
-func (r *AltDBRepository) CreateTagSetVersion(ctx context.Context, tsv domain.TagSetVersion) error {
+func (r *TagRepository) CreateTagSetVersion(ctx context.Context, tsv domain.TagSetVersion) error {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.CreateTagSetVersion")
 	defer span.End()
 
@@ -33,7 +33,7 @@ func (r *AltDBRepository) CreateTagSetVersion(ctx context.Context, tsv domain.Ta
 
 // MarkTagSetVersionSuperseded marks all non-superseded tag set versions for an article as superseded
 // by the new version. Returns the previous latest version before marking, or nil if none existed.
-func (r *AltDBRepository) MarkTagSetVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.TagSetVersion, error) {
+func (r *TagRepository) MarkTagSetVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.TagSetVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.MarkTagSetVersionSuperseded")
 	defer span.End()
 
@@ -71,7 +71,7 @@ func (r *AltDBRepository) MarkTagSetVersionSuperseded(ctx context.Context, artic
 }
 
 // GetTagSetVersionByID reads a specific tag set version by its ID.
-func (r *AltDBRepository) GetTagSetVersionByID(ctx context.Context, tagSetVersionID uuid.UUID) (domain.TagSetVersion, error) {
+func (r *TagRepository) GetTagSetVersionByID(ctx context.Context, tagSetVersionID uuid.UUID) (domain.TagSetVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetTagSetVersionByID")
 	defer span.End()
 

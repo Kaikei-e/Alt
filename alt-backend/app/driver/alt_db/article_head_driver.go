@@ -11,7 +11,7 @@ import (
 )
 
 // SaveArticleHead stores or updates the <head> section and og:image URL for an article.
-func (r *AltDBRepository) SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error {
+func (r *ArticleRepository) SaveArticleHead(ctx context.Context, articleID, headHTML, ogImageURL string) error {
 	if r == nil || r.pool == nil {
 		return errors.New("database connection not available")
 	}
@@ -35,7 +35,7 @@ func (r *AltDBRepository) SaveArticleHead(ctx context.Context, articleID, headHT
 
 // FetchArticleHeadByArticleID retrieves the article head metadata for a given article ID.
 // Returns nil, nil if not found.
-func (r *AltDBRepository) FetchArticleHeadByArticleID(ctx context.Context, articleID string) (*domain.ArticleHead, error) {
+func (r *ArticleRepository) FetchArticleHeadByArticleID(ctx context.Context, articleID string) (*domain.ArticleHead, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -65,7 +65,7 @@ func (r *AltDBRepository) FetchArticleHeadByArticleID(ctx context.Context, artic
 
 // FetchOgImageURLByArticleID retrieves only the og_image_url for a given article ID.
 // Returns empty string if not found.
-func (r *AltDBRepository) FetchOgImageURLByArticleID(ctx context.Context, articleID string) (string, error) {
+func (r *ArticleRepository) FetchOgImageURLByArticleID(ctx context.Context, articleID string) (string, error) {
 	if r == nil || r.pool == nil {
 		return "", errors.New("database connection not available")
 	}
@@ -85,7 +85,7 @@ func (r *AltDBRepository) FetchOgImageURLByArticleID(ctx context.Context, articl
 
 // FetchOgImageURLsByArticleIDs retrieves og_image_url for multiple article IDs.
 // Returns a map of articleID -> ogImageURL (only non-empty entries).
-func (r *AltDBRepository) FetchOgImageURLsByArticleIDs(ctx context.Context, articleIDs []string) (map[string]string, error) {
+func (r *ArticleRepository) FetchOgImageURLsByArticleIDs(ctx context.Context, articleIDs []string) (map[string]string, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -115,7 +115,7 @@ func (r *AltDBRepository) FetchOgImageURLsByArticleIDs(ctx context.Context, arti
 
 // CleanupExpiredArticleHeads deletes article_heads older than the given TTL.
 // Returns the number of deleted rows.
-func (r *AltDBRepository) CleanupExpiredArticleHeads(ctx context.Context, ttl time.Duration) (int64, error) {
+func (r *ArticleRepository) CleanupExpiredArticleHeads(ctx context.Context, ttl time.Duration) (int64, error) {
 	if r == nil || r.pool == nil {
 		return 0, errors.New("database connection not available")
 	}

@@ -14,7 +14,7 @@ func TestResetFeedLinkFailures_DuplicateURLs(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	// The query should use UPSERT to create row if missing, and handle duplicate feed_links entries
 	mock.ExpectExec(regexp.QuoteMeta(
@@ -39,7 +39,7 @@ func TestResetFeedLinkFailures_CreatesRowIfMissing(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	// When no feed_link_availability row exists, the UPSERT should INSERT a new row
 	mock.ExpectExec(regexp.QuoteMeta(
@@ -64,7 +64,7 @@ func TestDisableFeedLink_DuplicateURLs(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	// The query should use IN (not =) to handle duplicate feed_links entries
 	mock.ExpectExec(regexp.QuoteMeta(

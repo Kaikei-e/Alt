@@ -14,7 +14,7 @@ import (
 // It resolves the feed by URL (feeds.link) and upserts a record in read_status.
 // Note: This function is named MarkArticleAsRead for API compatibility, but it
 // operates on feeds (not articles) because not all feeds have corresponding articles.
-func (r *AltDBRepository) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
+func (r *SubscriptionRepository) MarkArticleAsRead(ctx context.Context, articleURL url.URL) error {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "user context not found", "error", err)

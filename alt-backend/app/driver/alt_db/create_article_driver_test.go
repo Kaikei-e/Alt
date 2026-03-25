@@ -41,7 +41,7 @@ func TestAltDBRepository_CreateArticleInternal_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 	publishedAt := time.Date(2026, 3, 18, 8, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
@@ -79,7 +79,7 @@ func TestCreateArticleInternal_JapaneseContent_PreservesLonger(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 	publishedAt := time.Date(2026, 3, 23, 8, 0, 0, 0, time.UTC)
 
 	// Simulate: existing article has 3000 bytes of Japanese content (≈1000 chars)
@@ -116,7 +116,7 @@ func TestCreateArticleInternal_ShorterContent_PreservesExisting(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 	publishedAt := time.Date(2026, 3, 18, 8, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()

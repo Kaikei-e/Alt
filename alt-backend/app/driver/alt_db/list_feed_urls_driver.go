@@ -13,7 +13,7 @@ type InternalFeedURL struct {
 
 // ListFeedURLs returns feed URLs with cursor-based pagination.
 // The cursor is the last feed ID from the previous page.
-func (r *AltDBRepository) ListFeedURLs(ctx context.Context, cursor string, limit int) ([]InternalFeedURL, string, bool, error) {
+func (r *FeedRepository) ListFeedURLs(ctx context.Context, cursor string, limit int) ([]InternalFeedURL, string, bool, error) {
 	if r.pool == nil {
 		return nil, "", false, errors.New("database connection not available")
 	}

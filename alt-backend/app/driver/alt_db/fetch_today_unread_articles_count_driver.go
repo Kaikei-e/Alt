@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func (r *AltDBRepository) FetchTodayUnreadArticlesCount(ctx context.Context, since time.Time) (int, error) {
+func (r *ArticleRepository) FetchTodayUnreadArticlesCount(ctx context.Context, since time.Time) (int, error) {
 	// コンテキストからユーザー情報を取得
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {

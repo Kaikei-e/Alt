@@ -13,7 +13,7 @@ import (
 // FetchRandomFeedLink retrieves a random feed link from the user's subscriptions.
 // Uses PostgreSQL's RANDOM() function to select a random row.
 // Deprecated: Use FetchRandomFeed instead which returns more metadata.
-func (r *AltDBRepository) FetchRandomFeedLink(ctx context.Context) (*domain.FeedLink, error) {
+func (r *FeedRepository) FetchRandomFeedLink(ctx context.Context) (*domain.FeedLink, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -46,7 +46,7 @@ func (r *AltDBRepository) FetchRandomFeedLink(ctx context.Context) (*domain.Feed
 // FetchRandomFeed retrieves a random feed that has at least one tagged article.
 // JOINs with articles and article_tags to guarantee tags exist for the feed.
 // Returns the feed with title, description, and link for Tag Trail feature.
-func (r *AltDBRepository) FetchRandomFeed(ctx context.Context) (*domain.Feed, error) {
+func (r *FeedRepository) FetchRandomFeed(ctx context.Context) (*domain.Feed, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

@@ -10,7 +10,7 @@ import (
 
 // FetchFeedTags retrieves tags associated with a specific feed through article_tags table
 // Uses INNER JOIN to fetch tags that are actually associated with articles from the feed
-func (r *AltDBRepository) FetchFeedTags(ctx context.Context, feedID string, cursor *time.Time, limit int) ([]*domain.FeedTag, error) {
+func (r *FeedRepository) FetchFeedTags(ctx context.Context, feedID string, cursor *time.Time, limit int) ([]*domain.FeedTag, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

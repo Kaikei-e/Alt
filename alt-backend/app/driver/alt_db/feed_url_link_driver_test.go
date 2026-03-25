@@ -14,7 +14,7 @@ func TestGetFeedURLsByArticleIDs_ReturnsArticleURLs(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	articleIDs := []string{"article-1", "article-2"}
 
@@ -46,7 +46,7 @@ func TestGetFeedURLsByArticleIDs_ArticleWithoutFeed(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	articleIDs := []string{"article-orphan"}
 
@@ -74,7 +74,7 @@ func TestGetFeedURLsByArticleIDs_EmptyInput(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	results, err := repo.GetFeedURLsByArticleIDs(context.Background(), []string{})
 	require.NoError(t, err)

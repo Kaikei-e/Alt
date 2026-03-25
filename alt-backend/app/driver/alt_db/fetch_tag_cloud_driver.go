@@ -8,7 +8,7 @@ import (
 )
 
 // FetchTagCloud fetches tag names with their article counts, ordered by count descending.
-func (r *AltDBRepository) FetchTagCloud(ctx context.Context, limit int) ([]*domain.TagCloudItem, error) {
+func (r *TagRepository) FetchTagCloud(ctx context.Context, limit int) ([]*domain.TagCloudItem, error) {
 	query := `
 		SELECT ft.tag_name, COUNT(DISTINCT at.article_id) as article_count
 		FROM feed_tags ft

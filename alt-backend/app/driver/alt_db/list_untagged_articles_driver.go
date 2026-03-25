@@ -19,7 +19,7 @@ type InternalUntaggedArticle struct {
 // ListUntaggedArticles returns articles that have no entries in article_tags,
 // using backward keyset pagination (created_at DESC, id DESC).
 // Articles with NULL feed_id are excluded since they cannot receive tags.
-func (r *AltDBRepository) ListUntaggedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]InternalUntaggedArticle, *time.Time, string, int32, error) {
+func (r *InternalRepository) ListUntaggedArticles(ctx context.Context, lastCreatedAt *time.Time, lastID string, limit int) ([]InternalUntaggedArticle, *time.Time, string, int32, error) {
 	// Count total untagged articles (excluding NULL feed_id)
 	var totalCount int32
 	err := r.pool.QueryRow(ctx, `

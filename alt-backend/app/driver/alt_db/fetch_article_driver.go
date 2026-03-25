@@ -25,7 +25,7 @@ const fetchArticleByURLWithUserQuery = `
 
 // FetchArticleByURL retrieves article content from database by URL.
 // Scopes to the authenticated user when user context is available.
-func (r *AltDBRepository) FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error) {
+func (r *ArticleRepository) FetchArticleByURL(ctx context.Context, articleURL string) (*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -80,7 +80,7 @@ const fetchArticleByIDQuery = `
 `
 
 // FetchArticleByID retrieves article content from database by ID
-func (r *AltDBRepository) FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error) {
+func (r *ArticleRepository) FetchArticleByID(ctx context.Context, articleID string) (*domain.ArticleContent, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

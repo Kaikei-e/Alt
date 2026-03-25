@@ -30,7 +30,7 @@ OFFSET $3
 LIMIT $4`
 
 // FetchRecapArticles retrieves recap-ready articles with deterministic ordering.
-func (r *AltDBRepository) FetchRecapArticles(ctx context.Context, query domain.RecapArticlesQuery) (*domain.RecapArticlesPage, error) {
+func (r *RecapRepository) FetchRecapArticles(ctx context.Context, query domain.RecapArticlesQuery) (*domain.RecapArticlesPage, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

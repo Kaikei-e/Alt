@@ -105,7 +105,7 @@ func TestAltDBRepository_SearchFeedsByTitle(t *testing.T) {
 
 			tt.mockSetup(mock)
 
-			repo := &AltDBRepository{pool: mock}
+			repo := &FeedRepository{pool: mock}
 			results, err := repo.SearchFeedsByTitle(context.Background(), tt.query, tt.userID)
 
 			if tt.expectedError {

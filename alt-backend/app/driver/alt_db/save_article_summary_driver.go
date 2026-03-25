@@ -8,7 +8,7 @@ import (
 
 // SaveArticleSummary saves an article summary to the database
 // If a summary already exists for the article and user, it will be updated
-func (r *AltDBRepository) SaveArticleSummary(ctx context.Context, articleID string, userID string, articleTitle string, summary string) error {
+func (r *SummaryRepository) SaveArticleSummary(ctx context.Context, articleID string, userID string, articleTitle string, summary string) error {
 	if articleID == "" {
 		return fmt.Errorf("article_id is required")
 	}

@@ -11,7 +11,7 @@ import (
 )
 
 // CreateSummaryVersion inserts a new summary version.
-func (r *AltDBRepository) CreateSummaryVersion(ctx context.Context, sv domain.SummaryVersion) error {
+func (r *SummaryRepository) CreateSummaryVersion(ctx context.Context, sv domain.SummaryVersion) error {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.CreateSummaryVersion")
 	defer span.End()
 
@@ -35,7 +35,7 @@ func (r *AltDBRepository) CreateSummaryVersion(ctx context.Context, sv domain.Su
 
 // MarkSummaryVersionSuperseded marks all non-superseded summary versions for an article as superseded
 // by the new version. Returns the previous latest version before marking, or nil if none existed.
-func (r *AltDBRepository) MarkSummaryVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.SummaryVersion, error) {
+func (r *SummaryRepository) MarkSummaryVersionSuperseded(ctx context.Context, articleID uuid.UUID, newVersionID uuid.UUID) (*domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.MarkSummaryVersionSuperseded")
 	defer span.End()
 
@@ -76,7 +76,7 @@ func (r *AltDBRepository) MarkSummaryVersionSuperseded(ctx context.Context, arti
 
 // GetSummaryVersionByID returns a specific summary version by its ID.
 // This is reproject-safe: replaying an old event will always fetch the correct version.
-func (r *AltDBRepository) GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error) {
+func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVersionID uuid.UUID) (domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetSummaryVersionByID")
 	defer span.End()
 
@@ -103,7 +103,7 @@ func (r *AltDBRepository) GetSummaryVersionByID(ctx context.Context, summaryVers
 }
 
 // GetLatestSummaryVersion returns the latest non-superseded summary version for an article.
-func (r *AltDBRepository) GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error) {
+func (r *SummaryRepository) GetLatestSummaryVersion(ctx context.Context, articleID uuid.UUID) (domain.SummaryVersion, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.GetLatestSummaryVersion")
 	defer span.End()
 

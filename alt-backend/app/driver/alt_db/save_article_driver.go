@@ -25,7 +25,7 @@ const upsertArticleQuery = `
 `
 
 // SaveArticle stores or updates article content keyed by URL.
-func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content string) (string, error) {
+func (r *ArticleRepository) SaveArticle(ctx context.Context, url, title, content string) (string, error) {
 	if r == nil || r.pool == nil {
 		return "", errors.New("database connection not available")
 	}
@@ -67,7 +67,7 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 
 	// Get feed_id from URL if possible
 	var feedID *uuid.UUID
-	feedIDStr, err := r.GetFeedIDByArticleURL(ctx, cleanURL)
+	feedIDStr, err := getFeedIDByArticleURL(ctx, r.pool, cleanURL)
 	if err != nil {
 		// If feed not found, log warning but continue (feed_id will be NULL)
 		logger.SafeWarnContext(ctx, "feed not found for article URL, article will be saved without feed_id", "url", cleanURL, "error", err)
@@ -105,7 +105,7 @@ func (r *AltDBRepository) SaveArticle(ctx context.Context, url, title, content s
 		return "", fmt.Errorf("failed to marshal outbox payload: %w", err)
 	}
 
-	if err := r.SaveOutboxEventWithTx(ctx, tx, "ARTICLE_UPSERT", payloadBytes); err != nil {
+	if err := saveOutboxEventWithTx(ctx, tx, "ARTICLE_UPSERT", payloadBytes); err != nil {
 		return "", err
 	}
 

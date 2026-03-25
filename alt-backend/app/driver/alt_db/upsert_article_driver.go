@@ -12,7 +12,7 @@ import (
 
 // UpsertArticleWithTx inserts or updates an article using a provided transaction.
 // The returned bool is true when a new row was inserted.
-func (r *AltDBRepository) UpsertArticleWithTx(ctx context.Context, tx pgx.Tx, title, content, url string, userID uuid.UUID, feedID *uuid.UUID) (uuid.UUID, bool, error) {
+func (r *ArticleRepository) UpsertArticleWithTx(ctx context.Context, tx pgx.Tx, title, content, url string, userID uuid.UUID, feedID *uuid.UUID) (uuid.UUID, bool, error) {
 	var articleID uuid.UUID
 	var created bool
 	var feedIDValue interface{}

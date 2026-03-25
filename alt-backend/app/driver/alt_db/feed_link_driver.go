@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func (r *AltDBRepository) FetchFeedLinks(ctx context.Context) ([]*domain.FeedLink, error) {
+func (r *FeedRepository) FetchFeedLinks(ctx context.Context) ([]*domain.FeedLink, error) {
 	rows, err := r.pool.Query(ctx, "SELECT id, url FROM feed_links ORDER BY url ASC")
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching feed links", "error", err)
@@ -38,7 +38,7 @@ func (r *AltDBRepository) FetchFeedLinks(ctx context.Context) ([]*domain.FeedLin
 }
 
 // FetchFeedLinkIDByURL returns the feed_link ID for a given URL, or nil if not found.
-func (r *AltDBRepository) FetchFeedLinkIDByURL(ctx context.Context, feedURL string) (*string, error) {
+func (r *FeedRepository) FetchFeedLinkIDByURL(ctx context.Context, feedURL string) (*string, error) {
 	var id string
 	err := r.pool.QueryRow(ctx, "SELECT id FROM feed_links WHERE url = $1", feedURL).Scan(&id)
 	if err != nil {
@@ -48,7 +48,7 @@ func (r *AltDBRepository) FetchFeedLinkIDByURL(ctx context.Context, feedURL stri
 	return &id, nil
 }
 
-func (r *AltDBRepository) FetchFeedLinksWithAvailability(ctx context.Context) ([]*domain.FeedLinkWithHealth, error) {
+func (r *FeedRepository) FetchFeedLinksWithAvailability(ctx context.Context) ([]*domain.FeedLinkWithHealth, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT fl.id, fl.url, fla.is_active, fla.consecutive_failures, fla.last_failure_at, fla.last_failure_reason FROM feed_links fl LEFT JOIN feed_link_availability fla ON fl.id = fla.feed_link_id ORDER BY fl.url ASC`)
 	if err != nil {
@@ -100,7 +100,7 @@ func (r *AltDBRepository) FetchFeedLinksWithAvailability(ctx context.Context) ([
 	return links, nil
 }
 
-func (r *AltDBRepository) DeleteFeedLink(ctx context.Context, id uuid.UUID) error {
+func (r *FeedRepository) DeleteFeedLink(ctx context.Context, id uuid.UUID) error {
 	result, err := r.pool.Exec(ctx, "DELETE FROM feed_links WHERE id = $1", id)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error deleting feed link", "error", err, "id", id)

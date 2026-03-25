@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (r *AltDBRepository) RegisterFavoriteFeed(ctx context.Context, url string) (err error) {
+func (r *FeedRepository) RegisterFavoriteFeed(ctx context.Context, url string) (err error) {
 	// Get user from context for multi-tenant support
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
@@ -62,7 +62,7 @@ func (r *AltDBRepository) RegisterFavoriteFeed(ctx context.Context, url string) 
 	return nil
 }
 
-func (r *AltDBRepository) RemoveFavoriteFeed(ctx context.Context, url string) (err error) {
+func (r *FeedRepository) RemoveFavoriteFeed(ctx context.Context, url string) (err error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "user context not found", "error", err)

@@ -16,7 +16,7 @@ func TestGetFeedIDByURL_UsesFeedLinksTable(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	// The query should JOIN feed_links → feeds to return feeds.id (not feed_links.id)
 	mock.ExpectQuery(`SELECT f\.id FROM feeds f INNER JOIN feed_links fl ON f\.feed_link_id = fl\.id WHERE fl\.url = \$1`).
@@ -35,7 +35,7 @@ func TestGetFeedIDByURL_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	mock.ExpectQuery(`SELECT f\.id FROM feeds f INNER JOIN feed_links fl ON f\.feed_link_id = fl\.id WHERE fl\.url = \$1`).
 		WithArgs("https://nonexistent.com/rss").
@@ -54,7 +54,7 @@ func TestGetFeedIDByURL_DatabaseError(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	dbErr := fmt.Errorf("connection reset by peer")
 	mock.ExpectQuery(`SELECT f\.id FROM feeds f INNER JOIN feed_links fl ON f\.feed_link_id = fl\.id WHERE fl\.url = \$1`).
@@ -70,7 +70,7 @@ func TestGetFeedIDByURL_DatabaseError(t *testing.T) {
 }
 
 func TestGetFeedIDByURL_NilPool(t *testing.T) {
-	repo := &AltDBRepository{pool: nil}
+	repo := &FeedRepository{pool: nil}
 
 	_, err := repo.GetFeedIDByURL(context.Background(), "https://example.com/rss")
 	require.Error(t, err)
@@ -82,7 +82,7 @@ func TestGetFeedIDByArticleURL_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	// The query should look up feeds.id by feeds.link (article URL, not RSS URL)
 	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
@@ -101,7 +101,7 @@ func TestGetFeedIDByArticleURL_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &FeedRepository{pool: mock}
 
 	mock.ExpectQuery(`SELECT id FROM feeds WHERE link = \$1`).
 		WithArgs("https://nonexistent.com/article").
@@ -114,7 +114,7 @@ func TestGetFeedIDByArticleURL_NotFound(t *testing.T) {
 }
 
 func TestGetFeedIDByArticleURL_NilPool(t *testing.T) {
-	repo := &AltDBRepository{pool: nil}
+	repo := &FeedRepository{pool: nil}
 
 	_, err := repo.GetFeedIDByArticleURL(context.Background(), "https://example.com/article")
 	require.Error(t, err)

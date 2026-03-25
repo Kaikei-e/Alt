@@ -6,7 +6,7 @@ import (
 	"net/url"
 )
 
-func (r *AltDBRepository) FetchFeedSummary(ctx context.Context, feedURL *url.URL) (*domain.FeedSummary, error) {
+func (r *FeedRepository) FetchFeedSummary(ctx context.Context, feedURL *url.URL) (*domain.FeedSummary, error) {
 	// Scope to user when context is available
 	user, userErr := domain.GetUserFromContext(ctx)
 	if userErr == nil {
@@ -58,7 +58,7 @@ func (r *AltDBRepository) FetchFeedSummary(ctx context.Context, feedURL *url.URL
 
 // FetchArticleSummaryByArticleID fetches an article summary by article ID.
 // Scopes to the authenticated user when user context is available.
-func (r *AltDBRepository) FetchArticleSummaryByArticleID(ctx context.Context, articleID string) (*domain.FeedSummary, error) {
+func (r *FeedRepository) FetchArticleSummaryByArticleID(ctx context.Context, articleID string) (*domain.FeedSummary, error) {
 	// Scope to user when context is available
 	user, userErr := domain.GetUserFromContext(ctx)
 	if userErr == nil {

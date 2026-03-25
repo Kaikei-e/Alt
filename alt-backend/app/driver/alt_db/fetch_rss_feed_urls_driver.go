@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func (r *AltDBRepository) FetchRSSFeedURLs(ctx context.Context) ([]domain.FeedLink, error) {
+func (r *FeedRepository) FetchRSSFeedURLs(ctx context.Context) ([]domain.FeedLink, error) {
 	// LEFT JOIN ensures feeds without availability records (new feeds) are still returned
 	query := `
 		SELECT fl.id, fl.url FROM feed_links fl

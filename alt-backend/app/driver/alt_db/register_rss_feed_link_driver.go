@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func (r *AltDBRepository) RegisterRSSFeedLink(ctx context.Context, link string) error {
+func (r *FeedRepository) RegisterRSSFeedLink(ctx context.Context, link string) error {
 	// Validate that the link is not empty or whitespace-only
 	if strings.TrimSpace(link) == "" {
 		logger.Logger.ErrorContext(ctx, "Cannot register empty RSS feed link")

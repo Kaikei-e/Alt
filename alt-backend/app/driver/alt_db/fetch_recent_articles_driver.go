@@ -14,7 +14,7 @@ import (
 // This is used by rag-orchestrator for temporal topics feature
 // Note: This is a system-level query that doesn't filter by user
 // When limit=0, all articles within the time window are returned (no LIMIT clause)
-func (r *AltDBRepository) FetchRecentArticles(ctx context.Context, since time.Time, limit int) ([]*domain.Article, error) {
+func (r *ArticleRepository) FetchRecentArticles(ctx context.Context, since time.Time, limit int) ([]*domain.Article, error) {
 	if r == nil || r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

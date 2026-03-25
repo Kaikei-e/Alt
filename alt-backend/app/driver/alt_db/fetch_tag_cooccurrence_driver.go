@@ -9,7 +9,7 @@ import (
 
 // FetchTagCooccurrences fetches pairs of tags that share articles.
 // Only returns pairs where both tag names are in the provided list and share at least 2 articles.
-func (r *AltDBRepository) FetchTagCooccurrences(ctx context.Context, tagNames []string) ([]*domain.TagCooccurrence, error) {
+func (r *TagRepository) FetchTagCooccurrences(ctx context.Context, tagNames []string) ([]*domain.TagCooccurrence, error) {
 	if len(tagNames) == 0 {
 		return nil, nil
 	}

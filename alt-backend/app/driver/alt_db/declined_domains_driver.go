@@ -7,7 +7,7 @@ import (
 )
 
 // SaveDeclinedDomain saves a domain to the declined_domains table
-func (r *AltDBRepository) SaveDeclinedDomain(ctx context.Context, userID, domain string) error {
+func (r *InternalRepository) SaveDeclinedDomain(ctx context.Context, userID, domain string) error {
 	query := `
 		INSERT INTO declined_domains (user_id, domain, created_at)
 		VALUES ($1, $2, $3)
@@ -21,7 +21,7 @@ func (r *AltDBRepository) SaveDeclinedDomain(ctx context.Context, userID, domain
 }
 
 // IsDomainDeclined checks if a domain is in the declined_domains table for a user
-func (r *AltDBRepository) IsDomainDeclined(ctx context.Context, userID, domain string) (bool, error) {
+func (r *InternalRepository) IsDomainDeclined(ctx context.Context, userID, domain string) (bool, error) {
 	query := `
 		SELECT EXISTS(
 			SELECT 1 FROM declined_domains

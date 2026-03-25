@@ -14,7 +14,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &DashboardRepository{pool: mock}
 	ctx := authContext()
 
 	expectedQuery := `
@@ -40,7 +40,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_AllSummarized(t *testing
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &DashboardRepository{pool: mock}
 	ctx := authContext()
 
 	expectedQuery := `
@@ -66,7 +66,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_NoArticles(t *testing.T)
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &DashboardRepository{pool: mock}
 	ctx := authContext()
 
 	expectedQuery := `
@@ -92,7 +92,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_QueryError(t *testing.T)
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &DashboardRepository{pool: mock}
 	ctx := authContext()
 
 	expectedQuery := `
@@ -115,7 +115,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_QueryError(t *testing.T)
 }
 
 func TestAltDBRepository_FetchUnsummarizedArticlesCount_NilRepository(t *testing.T) {
-	var repo *AltDBRepository
+	var repo *DashboardRepository
 	ctx := authContext()
 
 	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
@@ -125,7 +125,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_NilRepository(t *testing
 }
 
 func TestAltDBRepository_FetchUnsummarizedArticlesCount_NilPool(t *testing.T) {
-	repo := &AltDBRepository{}
+	repo := &DashboardRepository{}
 	ctx := authContext()
 
 	count, err := repo.FetchUnsummarizedArticlesCount(ctx)
@@ -142,7 +142,7 @@ func TestAltDBRepository_FetchUnsummarizedArticlesCount_IgnoresOrphanedSummaries
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &DashboardRepository{pool: mock}
 	ctx := authContext()
 
 	expectedQuery := `

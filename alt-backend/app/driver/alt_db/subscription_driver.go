@@ -10,7 +10,7 @@ import (
 )
 
 // FetchSubscriptions returns all feed_links with subscription status for a given user.
-func (r *AltDBRepository) FetchSubscriptions(ctx context.Context, userID uuid.UUID) ([]*domain.FeedSource, error) {
+func (r *SubscriptionRepository) FetchSubscriptions(ctx context.Context, userID uuid.UUID) ([]*domain.FeedSource, error) {
 	query := `
 		SELECT fl.id, fl.url,
 		       COALESCE(ufs.feed_link_id IS NOT NULL, FALSE) AS is_subscribed,
@@ -42,7 +42,7 @@ func (r *AltDBRepository) FetchSubscriptions(ctx context.Context, userID uuid.UU
 }
 
 // InsertSubscription inserts a user feed subscription.
-func (r *AltDBRepository) InsertSubscription(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error {
+func (r *SubscriptionRepository) InsertSubscription(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error {
 	query := `
 		INSERT INTO user_feed_subscriptions (user_id, feed_link_id)
 		VALUES ($1, $2)
@@ -56,7 +56,7 @@ func (r *AltDBRepository) InsertSubscription(ctx context.Context, userID uuid.UU
 }
 
 // DeleteSubscription deletes a user feed subscription.
-func (r *AltDBRepository) DeleteSubscription(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error {
+func (r *SubscriptionRepository) DeleteSubscription(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error {
 	query := `
 		DELETE FROM user_feed_subscriptions
 		WHERE user_id = $1 AND feed_link_id = $2

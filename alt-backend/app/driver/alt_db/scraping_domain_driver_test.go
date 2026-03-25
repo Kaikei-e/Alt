@@ -19,7 +19,7 @@ func TestSaveScrapingDomain_JSONBParam(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ScrapingRepository{pool: mock}
 
 	sd := &domain.ScrapingDomain{
 		ID:                  uuid.New(),
@@ -50,7 +50,7 @@ func TestSaveScrapingDomain_EmptyPaths(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ScrapingRepository{pool: mock}
 
 	sd := &domain.ScrapingDomain{
 		ID:                  uuid.New(),
@@ -79,7 +79,7 @@ func TestSaveScrapingDomain_NilPaths(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ScrapingRepository{pool: mock}
 
 	sd := &domain.ScrapingDomain{
 		ID:                  uuid.New(),
@@ -109,7 +109,7 @@ func TestSaveScrapingDomain_DBError(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ScrapingRepository{pool: mock}
 
 	sd := &domain.ScrapingDomain{
 		ID:                  uuid.New(),

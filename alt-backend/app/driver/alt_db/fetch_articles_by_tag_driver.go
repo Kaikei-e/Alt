@@ -10,7 +10,7 @@ import (
 
 // FetchArticlesByTag retrieves articles associated with a specific tag for the Tag Trail feature.
 // Uses cursor-based pagination (by created_at) for efficient traversal.
-func (r *AltDBRepository) FetchArticlesByTag(ctx context.Context, tagID string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+func (r *TagRepository) FetchArticlesByTag(ctx context.Context, tagID string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}
@@ -75,7 +75,7 @@ func (r *AltDBRepository) FetchArticlesByTag(ctx context.Context, tagID string, 
 // FetchArticlesByTagName retrieves articles associated with a specific tag name across all feeds.
 // This allows searching for articles by tag name rather than a specific feed_tag_id,
 // enabling cross-feed tag discovery for the Tag Trail feature.
-func (r *AltDBRepository) FetchArticlesByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
+func (r *TagRepository) FetchArticlesByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error) {
 	if r.pool == nil {
 		return nil, errors.New("database connection not available")
 	}

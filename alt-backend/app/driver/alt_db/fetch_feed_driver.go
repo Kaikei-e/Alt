@@ -27,7 +27,7 @@ type FeedPageRow struct {
 	OgImageURL  *string
 }
 
-func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error) {
+func (r *FeedRepository) GetSingleFeed(ctx context.Context) (*models.Feed, error) {
 	query := `
 		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT 1
 	`
@@ -42,7 +42,7 @@ func (r *AltDBRepository) GetSingleFeed(ctx context.Context) (*models.Feed, erro
 	return &feed, nil
 }
 
-func (r *AltDBRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, error) {
 	query := `
 		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT 10000
 	`
@@ -67,7 +67,7 @@ func (r *AltDBRepository) FetchFeedsList(ctx context.Context) ([]*models.Feed, e
 	return feeds, nil
 }
 
-func (r *AltDBRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([]*models.Feed, error) {
 	query := `
 		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT $1
 	`
@@ -93,7 +93,7 @@ func (r *AltDBRepository) FetchFeedsListLimit(ctx context.Context, limit int) ([
 	return feeds, nil
 }
 
-func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
 	query := `
 		SELECT id, title, description, link, pub_date, created_at, updated_at FROM feeds ORDER BY created_at DESC LIMIT $1 OFFSET $2
 	`
@@ -119,7 +119,7 @@ func (r *AltDBRepository) FetchFeedsListPage(ctx context.Context, page int) ([]*
 	return feeds, nil
 }
 
-func (r *AltDBRepository) FetchUnreadFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchUnreadFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
@@ -174,7 +174,7 @@ func buildExcludeClause(args []any, excludeFeedLinkID *uuid.UUID) (string, []any
 	return clause, args
 }
 
-func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*models.Feed, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchUnreadFeedsListCursor")
 	defer span.End()
 
@@ -260,7 +260,7 @@ func (r *AltDBRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor
 // FetchAllFeedsListCursor retrieves all feeds (read + unread) using cursor-based pagination.
 // Unlike FetchUnreadFeedsListCursor, this does not filter by read status but includes
 // the read status via LEFT JOIN so the frontend can visually distinguish read/unread feeds.
-func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*models.Feed, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchAllFeedsListCursor")
 	defer span.End()
 
@@ -331,7 +331,7 @@ func (r *AltDBRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *t
 
 // FetchReadFeedsListCursor retrieves read feeds using cursor-based pagination
 // This method uses INNER JOIN with read_status table for better performance
-func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchReadFeedsListCursor")
 	defer span.End()
 
@@ -393,7 +393,7 @@ func (r *AltDBRepository) FetchReadFeedsListCursor(ctx context.Context, cursor *
 	return feeds, nil
 }
 
-func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
@@ -452,7 +452,7 @@ func (r *AltDBRepository) FetchFavoriteFeedsListCursor(ctx context.Context, curs
 	return feeds, nil
 }
 
-func (r *AltDBRepository) FetchFeedsByFeedLinkID(ctx context.Context, feedLinkID uuid.UUID) ([]*FeedPageRow, error) {
+func (r *FeedRepository) FetchFeedsByFeedLinkID(ctx context.Context, feedLinkID uuid.UUID) ([]*FeedPageRow, error) {
 	query := `
 		SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 		       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL
@@ -481,7 +481,7 @@ func (r *AltDBRepository) FetchFeedsByFeedLinkID(ctx context.Context, feedLinkID
 	return result, rows.Err()
 }
 
-func (r *AltDBRepository) GetReadFeedIDs(ctx context.Context, userID uuid.UUID, feedIDs []uuid.UUID) (map[uuid.UUID]bool, error) {
+func (r *FeedRepository) GetReadFeedIDs(ctx context.Context, userID uuid.UUID, feedIDs []uuid.UUID) (map[uuid.UUID]bool, error) {
 	query := `
 		SELECT feed_id FROM read_status
 		WHERE user_id = $1 AND feed_id = ANY($2::uuid[]) AND is_read = TRUE
@@ -509,7 +509,7 @@ func (r *AltDBRepository) GetReadFeedIDs(ctx context.Context, userID uuid.UUID, 
 	return result, rows.Err()
 }
 
-func (r *AltDBRepository) GetAllReadFeedIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]bool, error) {
+func (r *FeedRepository) GetAllReadFeedIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]bool, error) {
 	query := `
 		SELECT feed_id FROM read_status
 		WHERE user_id = $1 AND is_read = TRUE
@@ -532,7 +532,7 @@ func (r *AltDBRepository) GetAllReadFeedIDs(ctx context.Context, userID uuid.UUI
 	return result, rows.Err()
 }
 
-func (r *AltDBRepository) GetUserSubscriptions(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+func (r *FeedRepository) GetUserSubscriptions(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
 	query := `SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $1`
 
 	rows, err := r.pool.Query(ctx, query, userID)

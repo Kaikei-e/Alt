@@ -11,7 +11,7 @@ import (
 )
 
 // CountBackfillArticles returns the number of non-deleted articles available for replay.
-func (r *AltDBRepository) CountBackfillArticles(ctx context.Context) (int, error) {
+func (r *KnowledgeRepository) CountBackfillArticles(ctx context.Context) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM articles WHERE deleted_at IS NULL`).Scan(&count)
 	if err != nil {
@@ -21,7 +21,7 @@ func (r *AltDBRepository) CountBackfillArticles(ctx context.Context) (int, error
 }
 
 // ListBackfillArticles returns a batch of historical articles ordered by created_at ASC, id ASC.
-func (r *AltDBRepository) ListBackfillArticles(ctx context.Context, lastCreatedAt *time.Time, lastArticleID *uuid.UUID, limit int) ([]domain.KnowledgeBackfillArticle, error) {
+func (r *KnowledgeRepository) ListBackfillArticles(ctx context.Context, lastCreatedAt *time.Time, lastArticleID *uuid.UUID, limit int) ([]domain.KnowledgeBackfillArticle, error) {
 	var (
 		rows pgx.Rows
 		err  error

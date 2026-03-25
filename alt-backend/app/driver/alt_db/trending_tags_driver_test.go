@@ -10,7 +10,7 @@ import (
 )
 
 func TestFetchTagArticleCounts_NilPool(t *testing.T) {
-	repo := &AltDBRepository{pool: nil}
+	repo := &TagRepository{pool: nil}
 	_, err := repo.FetchTagArticleCounts(context.Background(), uuid.New(), time.Now().Add(-7*24*time.Hour))
 	assert.Error(t, err, "should return error with nil pool")
 }

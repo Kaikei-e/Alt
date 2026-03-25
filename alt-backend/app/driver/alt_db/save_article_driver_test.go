@@ -19,7 +19,7 @@ func TestAltDBRepository_SaveArticle_Success(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 
 	// Create context with user
 	userID := uuid.New()
@@ -57,7 +57,7 @@ func TestAltDBRepository_SaveArticle_UpsertAndOutbox(t *testing.T) {
 	require.NoError(t, err)
 	defer mock.Close()
 
-	repo := &AltDBRepository{pool: mock}
+	repo := &ArticleRepository{pool: mock}
 
 	userID := uuid.New()
 	tenantID := uuid.New()
@@ -95,14 +95,14 @@ func TestAltDBRepository_SaveArticle_ValidationFailures(t *testing.T) {
 	defer mock.Close()
 
 	t.Run("nil repository", func(t *testing.T) {
-		var repo *AltDBRepository
+		var repo *ArticleRepository
 		_, err := repo.SaveArticle(ctx, "https://example.com", "title", "content")
 		require.Error(t, err)
 		require.Equal(t, "database connection not available", err.Error())
 	})
 
 	t.Run("nil pool", func(t *testing.T) {
-		repo := &AltDBRepository{}
+		repo := &ArticleRepository{}
 		_, err := repo.SaveArticle(ctx, "https://example.com", "title", "content")
 		require.Error(t, err)
 		require.Equal(t, "database connection not available", err.Error())
@@ -121,21 +121,21 @@ func TestAltDBRepository_SaveArticle_ValidationFailures(t *testing.T) {
 	ctxWithUser := domain.SetUserContext(context.Background(), userCtx)
 
 	t.Run("empty url", func(t *testing.T) {
-		repo := &AltDBRepository{pool: mock}
+		repo := &ArticleRepository{pool: mock}
 		_, err := repo.SaveArticle(ctxWithUser, "   ", "title", "content")
 		require.Error(t, err)
 		require.Equal(t, "article url cannot be empty", err.Error())
 	})
 
 	t.Run("empty content", func(t *testing.T) {
-		repo := &AltDBRepository{pool: mock}
+		repo := &ArticleRepository{pool: mock}
 		_, err := repo.SaveArticle(ctxWithUser, "https://example.com", "title", "   ")
 		require.Error(t, err)
 		require.Equal(t, "article content cannot be empty", err.Error())
 	})
 
 	t.Run("missing user context", func(t *testing.T) {
-		repo := &AltDBRepository{pool: mock}
+		repo := &ArticleRepository{pool: mock}
 		_, err := repo.SaveArticle(ctx, "https://example.com", "title", "content")
 		require.Error(t, err)
 		require.ErrorContains(t, err, "user context required")
