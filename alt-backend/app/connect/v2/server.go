@@ -55,13 +55,45 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	opts := connect.WithInterceptors(interceptors...)
 
 	// Register Feed service
-	feedHandler := feeds.NewHandler(container, cfg, logger)
+	feedHandler := feeds.NewHandler(feeds.FeedHandlerDeps{
+		CachedFeedList:           container.CachedFeedListUsecase,
+		FetchReadFeedsCursor:     container.FetchReadFeedsListCursorUsecase,
+		FetchFavoriteFeedsCursor: container.FetchFavoriteFeedsListCursorUsecase,
+		FeedSearch:               container.FeedSearchUsecase,
+		ListSubscriptions:        container.ListSubscriptionsUsecase,
+		ArticlesReadingStatus:    container.ArticlesReadingStatusUsecase,
+		Subscribe:                container.SubscribeUsecase,
+		Unsubscribe:              container.UnsubscribeUsecase,
+		FeedAmount:               container.FeedAmountUsecase,
+		UnsummarizedCount:        container.UnsummarizedArticlesCountUsecase,
+		SummarizedCount:          container.SummarizedArticlesCountUsecase,
+		TotalCount:               container.TotalArticlesCountUsecase,
+		TodayUnreadCount:         container.TodayUnreadArticlesCountUsecase,
+		AltDBRepository:          container.AltDBRepository,
+		PreProcessorClient:       container.PreProcessorConnectClient,
+		CreateSummaryVersion:     container.CreateSummaryVersionUsecase,
+		ImageProxy:               container.ImageProxyUsecase,
+	}, cfg, logger)
 	feedPath, feedServiceHandler := feedsv2connect.NewFeedServiceHandler(feedHandler, opts)
 	mux.Handle(feedPath, feedServiceHandler)
 	logger.Info("Registered Connect-RPC FeedService", "path", feedPath)
 
 	// Register Article service
-	articleHandler := articles.NewHandler(container, cfg, logger)
+	articleHandler := articles.NewHandler(articles.ArticleHandlerDeps{
+		AltDBRepository:         container.AltDBRepository,
+		ArchiveArticle:          container.ArchiveArticleUsecase,
+		Article:                 container.ArticleUsecase,
+		FetchArticlesByTag:      container.FetchArticlesByTagUsecase,
+		FetchArticlesCursor:     container.FetchArticlesCursorUsecase,
+		FetchArticleSummary:     container.FetchArticleSummaryUsecase,
+		FetchArticleTags:        container.FetchArticleTagsUsecase,
+		FetchInoreaderSummary:   container.FetchInoreaderSummaryUsecase,
+		FetchLatestArticle:      container.FetchLatestArticleUsecase,
+		FetchRandomSubscription: container.FetchRandomSubscriptionUsecase,
+		FetchTagCloud:           container.FetchTagCloudUsecase,
+		ImageProxy:              container.ImageProxyUsecase,
+		StreamArticleTags:       container.StreamArticleTagsUsecase,
+	}, cfg, logger)
 	articlePath, articleServiceHandler := articlesv2connect.NewArticleServiceHandler(articleHandler, opts)
 	mux.Handle(articlePath, articleServiceHandler)
 	logger.Info("Registered Connect-RPC ArticleService", "path", articlePath)

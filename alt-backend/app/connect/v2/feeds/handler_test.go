@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"alt/config"
-	"alt/di"
 	"alt/domain"
 	"alt/driver/alt_db"
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
@@ -48,13 +47,6 @@ func (m *mockUnsummarizedArticlesCountPort) Execute(ctx context.Context) (int, e
 	return 3, nil
 }
 
-// Mock for FeedsReadingStatusUsecase dependency
-type mockUpdateFeedStatusPort struct{}
-
-func (m *mockUpdateFeedStatusPort) UpdateFeedStatus(ctx context.Context, feedURL url.URL) error {
-	return nil
-}
-
 // Mock for ArticlesReadingStatusUsecase dependency
 type mockUpdateArticleStatusPort struct{}
 
@@ -71,16 +63,14 @@ func createTestHandler() *Handler {
 	summarizedUsecase := fetch_feed_stats_usecase.NewSummarizedArticlesCountUsecase(&mockSummarizedArticlesCountPort{})
 	totalArticlesUsecase := fetch_feed_stats_usecase.NewTotalArticlesCountUsecase(&mockTotalArticlesCountPort{})
 	unsummarizedUsecase := fetch_feed_stats_usecase.NewUnsummarizedArticlesCountUsecase(&mockUnsummarizedArticlesCountPort{})
-	feedsReadingStatusUsecase := reading_status.NewFeedsReadingStatusUsecase(&mockUpdateFeedStatusPort{})
 	articlesReadingStatusUsecase := reading_status.NewArticlesReadingStatusUsecase(&mockUpdateArticleStatusPort{})
 
-	container := &di.ApplicationComponents{
-		FeedAmountUsecase:                feedAmountUsecase,
-		SummarizedArticlesCountUsecase:   summarizedUsecase,
-		TotalArticlesCountUsecase:        totalArticlesUsecase,
-		UnsummarizedArticlesCountUsecase: unsummarizedUsecase,
-		FeedsReadingStatusUsecase:        feedsReadingStatusUsecase,
-		ArticlesReadingStatusUsecase:     articlesReadingStatusUsecase,
+	deps := FeedHandlerDeps{
+		FeedAmount:            feedAmountUsecase,
+		SummarizedCount:       summarizedUsecase,
+		TotalCount:            totalArticlesUsecase,
+		UnsummarizedCount:     unsummarizedUsecase,
+		ArticlesReadingStatus: articlesReadingStatusUsecase,
 	}
 
 	cfg := &config.Config{
@@ -91,7 +81,7 @@ func createTestHandler() *Handler {
 
 	handlerLogger := slog.Default()
 
-	return NewHandler(container, cfg, handlerLogger)
+	return NewHandler(deps, cfg, handlerLogger)
 }
 
 func createAuthContext() context.Context {
@@ -159,15 +149,15 @@ func TestStreamFeedStats_DataConstruction(t *testing.T) {
 	// This tests the data gathering logic without actual streaming
 
 	// Get feed stats
-	feedCount, err := handler.container.FeedAmountUsecase.Execute(ctx)
+	feedCount, err := handler.deps.FeedAmount.Execute(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 10, feedCount)
 
-	unsummarized, err := handler.container.UnsummarizedArticlesCountUsecase.Execute(ctx)
+	unsummarized, err := handler.deps.UnsummarizedCount.Execute(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 3, unsummarized)
 
-	totalArticles, err := handler.container.TotalArticlesCountUsecase.Execute(ctx)
+	totalArticles, err := handler.deps.TotalCount.Execute(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 100, totalArticles)
 
@@ -723,8 +713,8 @@ func TestHandler_MarkAsRead_FeedNotFound_Returns404(t *testing.T) {
 	// Create usecase with mock that returns ErrFeedNotFound
 	articlesReadingStatusUsecase := reading_status.NewArticlesReadingStatusUsecase(&mockUpdateArticleStatusPortReturnsNotFound{})
 
-	container := &di.ApplicationComponents{
-		ArticlesReadingStatusUsecase: articlesReadingStatusUsecase,
+	deps := FeedHandlerDeps{
+		ArticlesReadingStatus: articlesReadingStatusUsecase,
 	}
 
 	cfg := &config.Config{
@@ -733,7 +723,7 @@ func TestHandler_MarkAsRead_FeedNotFound_Returns404(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(container, cfg, slog.Default())
+	handler := NewHandler(deps, cfg, slog.Default())
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
@@ -760,8 +750,8 @@ func TestHandler_MarkAsRead_DatabaseError_Returns500(t *testing.T) {
 	// Create usecase with mock that returns generic error
 	articlesReadingStatusUsecase := reading_status.NewArticlesReadingStatusUsecase(&mockUpdateArticleStatusPortReturnsError{})
 
-	container := &di.ApplicationComponents{
-		ArticlesReadingStatusUsecase: articlesReadingStatusUsecase,
+	deps := FeedHandlerDeps{
+		ArticlesReadingStatus: articlesReadingStatusUsecase,
 	}
 
 	cfg := &config.Config{
@@ -770,7 +760,7 @@ func TestHandler_MarkAsRead_DatabaseError_Returns500(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(container, cfg, slog.Default())
+	handler := NewHandler(deps, cfg, slog.Default())
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&feedsv2.MarkAsReadRequest{
@@ -807,8 +797,8 @@ func TestResolveArticle_DBContentPrioritizedOverRequestContent(t *testing.T) {
 	// Create repository with mock pool
 	repo := alt_db.NewAltDBRepository(mock)
 
-	// Create container with mock repository
-	container := &di.ApplicationComponents{
+	// Create deps with mock repository
+	deps := FeedHandlerDeps{
 		AltDBRepository: repo,
 	}
 
@@ -818,7 +808,7 @@ func TestResolveArticle_DBContentPrioritizedOverRequestContent(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(container, cfg, slog.Default())
+	handler := NewHandler(deps, cfg, slog.Default())
 	ctx := createAuthContext()
 
 	// Setup mock: FetchArticleByID should return article with DB content
@@ -858,8 +848,8 @@ func TestResolveArticle_FallbackToRequestContentWhenDBEmpty(t *testing.T) {
 	// Create repository with mock pool
 	repo := alt_db.NewAltDBRepository(mock)
 
-	// Create container with mock repository
-	container := &di.ApplicationComponents{
+	// Create deps with mock repository
+	deps := FeedHandlerDeps{
 		AltDBRepository: repo,
 	}
 
@@ -869,7 +859,7 @@ func TestResolveArticle_FallbackToRequestContentWhenDBEmpty(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(container, cfg, slog.Default())
+	handler := NewHandler(deps, cfg, slog.Default())
 	ctx := createAuthContext()
 
 	// Setup mock: FetchArticleByID returns article with empty content
@@ -908,8 +898,8 @@ func TestResolveArticle_ErrorWhenDBEmptyAndNoRequestContent(t *testing.T) {
 	// Create repository with mock pool
 	repo := alt_db.NewAltDBRepository(mock)
 
-	// Create container with mock repository
-	container := &di.ApplicationComponents{
+	// Create deps with mock repository
+	deps := FeedHandlerDeps{
 		AltDBRepository: repo,
 	}
 
@@ -919,7 +909,7 @@ func TestResolveArticle_ErrorWhenDBEmptyAndNoRequestContent(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(container, cfg, slog.Default())
+	handler := NewHandler(deps, cfg, slog.Default())
 	ctx := createAuthContext()
 
 	// Setup mock: FetchArticleByID returns article with empty content
@@ -994,8 +984,8 @@ func TestResolveArticle_FallbackToRequestContentWhenArticleNotInDB(t *testing.T)
 	// Create repository with mock pool
 	repo := alt_db.NewAltDBRepository(mock)
 
-	// Create container with mock repository
-	container := &di.ApplicationComponents{
+	// Create deps with mock repository
+	deps := FeedHandlerDeps{
 		AltDBRepository: repo,
 	}
 
@@ -1005,7 +995,7 @@ func TestResolveArticle_FallbackToRequestContentWhenArticleNotInDB(t *testing.T)
 		},
 	}
 
-	handler := NewHandler(container, cfg, slog.Default())
+	handler := NewHandler(deps, cfg, slog.Default())
 	ctx := createAuthContext()
 
 	// Setup mock: FetchArticleByID returns no rows (article not found)

@@ -17,7 +17,6 @@ import (
 	articlesv2 "alt/gen/proto/alt/articles/v2"
 
 	"alt/config"
-	"alt/di"
 	"alt/domain"
 )
 
@@ -304,12 +303,12 @@ func (m *mockFetchInoreaderSummaryUsecase) Execute(ctx context.Context, urls []s
 
 // Create test handler for FetchArticleSummary tests
 func createArticleSummaryTestHandler(mockUsecase *mockFetchInoreaderSummaryUsecase) *Handler {
-	container := &di.ApplicationComponents{
-		FetchInoreaderSummaryUsecase: mockUsecase,
+	deps := ArticleHandlerDeps{
+		FetchInoreaderSummary: mockUsecase,
 	}
 	cfg := &config.Config{}
 	logger := slog.Default()
-	return NewHandler(container, cfg, logger)
+	return NewHandler(deps, cfg, logger)
 }
 
 func TestFetchArticleSummary_Success(t *testing.T) {
@@ -535,15 +534,15 @@ func TestStreamArticleTags_OnTheFlyGeneration_Behavior_Documented(t *testing.T) 
 		// - Handler returns EVENT_TYPE_COMPLETED with tags
 
 		// This test verifies the handler structure supports this flow
-		// by checking the container has required dependencies
+		// by checking the handler has required dependencies
 
-		container := &di.ApplicationComponents{}
+		deps := ArticleHandlerDeps{}
 		cfg := &config.Config{}
 		logger := slog.Default()
-		handler := NewHandler(container, cfg, logger)
+		handler := NewHandler(deps, cfg, logger)
 
 		assert.NotNil(t, handler)
-		assert.NotNil(t, handler.container)
+		assert.NotNil(t, handler)
 	})
 }
 
@@ -627,10 +626,10 @@ func TestFetchArticleContent_RateLimitWaitFailed_ReturnsResourceExhausted(t *tes
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: rate limit wait failed for %q: %w", "https://zenn.dev/article", context.DeadlineExceeded),
 	}
-	container := &di.ApplicationComponents{
-		ArticleUsecase: mockUsecase,
+	deps := ArticleHandlerDeps{
+		Article: mockUsecase,
 	}
-	handler := NewHandler(container, &config.Config{}, slog.Default())
+	handler := NewHandler(deps, &config.Config{}, slog.Default())
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
@@ -649,10 +648,10 @@ func TestFetchArticleContent_ExternalHTTPError_404_ReturnsNotFound(t *testing.T)
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 404, URL: "https://example.com/deleted"}),
 	}
-	container := &di.ApplicationComponents{
-		ArticleUsecase: mockUsecase,
+	deps := ArticleHandlerDeps{
+		Article: mockUsecase,
 	}
-	handler := NewHandler(container, &config.Config{}, slog.Default())
+	handler := NewHandler(deps, &config.Config{}, slog.Default())
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
@@ -670,10 +669,10 @@ func TestFetchArticleContent_ExternalHTTPError_410_ReturnsNotFound(t *testing.T)
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 410, URL: "https://example.com/gone"}),
 	}
-	container := &di.ApplicationComponents{
-		ArticleUsecase: mockUsecase,
+	deps := ArticleHandlerDeps{
+		Article: mockUsecase,
 	}
-	handler := NewHandler(container, &config.Config{}, slog.Default())
+	handler := NewHandler(deps, &config.Config{}, slog.Default())
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
@@ -691,10 +690,10 @@ func TestFetchArticleContent_ExternalHTTPError_403_ReturnsPermissionDenied(t *te
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 403, URL: "https://example.com/forbidden"}),
 	}
-	container := &di.ApplicationComponents{
-		ArticleUsecase: mockUsecase,
+	deps := ArticleHandlerDeps{
+		Article: mockUsecase,
 	}
-	handler := NewHandler(container, &config.Config{}, slog.Default())
+	handler := NewHandler(deps, &config.Config{}, slog.Default())
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
@@ -712,10 +711,10 @@ func TestFetchArticleContent_ExternalHTTPError_429_ReturnsResourceExhausted(t *t
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 429, URL: "https://example.com/ratelimited"}),
 	}
-	container := &di.ApplicationComponents{
-		ArticleUsecase: mockUsecase,
+	deps := ArticleHandlerDeps{
+		Article: mockUsecase,
 	}
-	handler := NewHandler(container, &config.Config{}, slog.Default())
+	handler := NewHandler(deps, &config.Config{}, slog.Default())
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
@@ -733,10 +732,10 @@ func TestFetchArticleContent_ExternalHTTPError_500_ReturnsUnavailable(t *testing
 	mockUsecase := &mockArticleUsecase{
 		err: fmt.Errorf("fetch failed: %w", &domain.ExternalHTTPError{StatusCode: 500, URL: "https://example.com/broken"}),
 	}
-	container := &di.ApplicationComponents{
-		ArticleUsecase: mockUsecase,
+	deps := ArticleHandlerDeps{
+		Article: mockUsecase,
 	}
-	handler := NewHandler(container, &config.Config{}, slog.Default())
+	handler := NewHandler(deps, &config.Config{}, slog.Default())
 	ctx := createAuthContext()
 
 	req := connect.NewRequest(&articlesv2.FetchArticleContentRequest{
@@ -823,10 +822,10 @@ func TestFetchRandomFeedResponse_WithNilTags(t *testing.T) {
 }
 
 func TestFetchRandomFeed_RequiresAuth(t *testing.T) {
-	container := &di.ApplicationComponents{}
+	deps := ArticleHandlerDeps{}
 	cfg := &config.Config{}
 	logger := slog.Default()
-	handler := NewHandler(container, cfg, logger)
+	handler := NewHandler(deps, cfg, logger)
 	ctx := context.Background() // No auth
 
 	req := connect.NewRequest(&articlesv2.FetchRandomFeedRequest{})
@@ -852,13 +851,13 @@ func TestFetchRandomFeed_TagsIncludedInResponse_Documented(t *testing.T) {
 		//
 		// This eliminates the need for a separate REST API call to /v1/feeds/{id}/tags
 
-		container := &di.ApplicationComponents{}
+		deps := ArticleHandlerDeps{}
 		cfg := &config.Config{}
 		logger := slog.Default()
-		handler := NewHandler(container, cfg, logger)
+		handler := NewHandler(deps, cfg, logger)
 
 		assert.NotNil(t, handler)
-		assert.NotNil(t, handler.container)
+		assert.NotNil(t, handler)
 	})
 
 	t.Run("fail_open_behavior", func(t *testing.T) {
@@ -919,13 +918,13 @@ func TestFetchRandomFeed_NoArticles_FetchesContentAndGeneratesTags_Documented(t 
 		//
 		// This ensures that even feeds without articles can display tags.
 
-		container := &di.ApplicationComponents{}
+		deps := ArticleHandlerDeps{}
 		cfg := &config.Config{}
 		logger := slog.Default()
-		handler := NewHandler(container, cfg, logger)
+		handler := NewHandler(deps, cfg, logger)
 
 		assert.NotNil(t, handler)
-		assert.NotNil(t, handler.container)
+		assert.NotNil(t, handler)
 	})
 
 	t.Run("fail_open_behavior", func(t *testing.T) {

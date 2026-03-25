@@ -18,28 +18,56 @@ import (
 	"alt/config"
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
-	"alt/di"
 	"alt/domain"
+	"alt/driver/alt_db"
 	"alt/usecase/archive_article_usecase"
+	"alt/usecase/fetch_article_summary_usecase"
+	"alt/usecase/fetch_article_tags_usecase"
+	"alt/usecase/fetch_article_usecase"
+	"alt/usecase/fetch_articles_by_tag_usecase"
+	"alt/usecase/fetch_articles_usecase"
+	"alt/usecase/fetch_inoreader_summary_usecase"
+	"alt/usecase/fetch_latest_article_usecase"
+	"alt/usecase/fetch_random_subscription_usecase"
+	"alt/usecase/fetch_tag_cloud_usecase"
+	"alt/usecase/image_proxy_usecase"
+	"alt/usecase/stream_article_tags_usecase"
 	"alt/utils/perf"
 	"alt/utils/url_validator"
 
 	"google.golang.org/protobuf/proto"
 )
 
+// ArticleHandlerDeps holds the dependencies for the Article service handler.
+type ArticleHandlerDeps struct {
+	AltDBRepository         *alt_db.AltDBRepository
+	ArchiveArticle          *archive_article_usecase.ArchiveArticleUsecase
+	Article                 fetch_article_usecase.ArticleUsecase
+	FetchArticlesByTag      *fetch_articles_by_tag_usecase.FetchArticlesByTagUsecase
+	FetchArticlesCursor     *fetch_articles_usecase.FetchArticlesCursorUsecase
+	FetchArticleSummary     *fetch_article_summary_usecase.FetchArticleSummaryUsecase
+	FetchArticleTags        *fetch_article_tags_usecase.FetchArticleTagsUsecase
+	FetchInoreaderSummary   fetch_inoreader_summary_usecase.FetchInoreaderSummaryUsecase
+	FetchLatestArticle      *fetch_latest_article_usecase.FetchLatestArticleUsecase
+	FetchRandomSubscription *fetch_random_subscription_usecase.FetchRandomSubscriptionUsecase
+	FetchTagCloud           *fetch_tag_cloud_usecase.FetchTagCloudUsecase
+	ImageProxy              *image_proxy_usecase.ImageProxyUsecase
+	StreamArticleTags       *stream_article_tags_usecase.StreamArticleTagsUsecase
+}
+
 // Handler implements the ArticleService Connect-RPC service.
 type Handler struct {
-	container *di.ApplicationComponents
-	logger    *slog.Logger
-	cfg       *config.Config
+	deps   ArticleHandlerDeps
+	logger *slog.Logger
+	cfg    *config.Config
 }
 
 // NewHandler creates a new Article service handler.
-func NewHandler(container *di.ApplicationComponents, cfg *config.Config, logger *slog.Logger) *Handler {
+func NewHandler(deps ArticleHandlerDeps, cfg *config.Config, logger *slog.Logger) *Handler {
 	return &Handler{
-		container: container,
-		logger:    logger,
-		cfg:       cfg,
+		deps:   deps,
+		logger: logger,
+		cfg:    cfg,
 	}
 }
 
@@ -77,7 +105,7 @@ func (h *Handler) FetchArticleContent(
 
 	// Call usecase
 	forceRefresh := req.Msg.ForceRefresh != nil && *req.Msg.ForceRefresh
-	content, articleID, ogImageURL, err := h.container.ArticleUsecase.FetchCompliantArticleWithRefresh(ctx, parsedURL, *user, forceRefresh)
+	content, articleID, ogImageURL, err := h.deps.Article.FetchCompliantArticleWithRefresh(ctx, parsedURL, *user, forceRefresh)
 	if err != nil {
 		var complianceErr *domain.ComplianceError
 		if errors.As(err, &complianceErr) {
@@ -161,7 +189,7 @@ func (h *Handler) ArchiveArticle(
 	}
 
 	// Call usecase
-	if err := h.container.ArchiveArticleUsecase.Execute(ctx, input); err != nil {
+	if err := h.deps.ArchiveArticle.Execute(ctx, input); err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ArchiveArticle")
 	}
 
@@ -205,7 +233,7 @@ func (h *Handler) FetchArticlesCursor(
 	timer := perf.NewFeedReadTimer("FetchArticlesCursor")
 
 	stopUsecase := timer.StartPhase(ctx, "usecase")
-	articles, err := h.container.FetchArticlesCursorUsecase.Execute(ctx, cursor, limit+1)
+	articles, err := h.deps.FetchArticlesCursor.Execute(ctx, cursor, limit+1)
 	stopUsecase()
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticlesCursor")
@@ -303,9 +331,9 @@ func (h *Handler) FetchArticlesByTag(
 
 	// Prefer tag_name (ADR-169 cross-feed discovery), fallback to tag_id
 	if req.Msg.TagName != nil && *req.Msg.TagName != "" {
-		articles, err = h.container.FetchArticlesByTagUsecase.ExecuteByTagName(ctx, *req.Msg.TagName, cursor, limit+1)
+		articles, err = h.deps.FetchArticlesByTag.ExecuteByTagName(ctx, *req.Msg.TagName, cursor, limit+1)
 	} else if req.Msg.TagId != nil && *req.Msg.TagId != "" {
-		articles, err = h.container.FetchArticlesByTagUsecase.Execute(ctx, *req.Msg.TagId, cursor, limit+1)
+		articles, err = h.deps.FetchArticlesByTag.Execute(ctx, *req.Msg.TagId, cursor, limit+1)
 	} else {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("either tag_id or tag_name is required"))
@@ -365,7 +393,7 @@ func (h *Handler) FetchArticleTags(
 			fmt.Errorf("article_id is required"))
 	}
 
-	tags, err := h.container.FetchArticleTagsUsecase.Execute(ctx, articleID)
+	tags, err := h.deps.FetchArticleTags.Execute(ctx, articleID)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleTags")
 	}
@@ -398,7 +426,7 @@ func (h *Handler) FetchRandomFeed(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	feed, err := h.container.FetchRandomSubscriptionUsecase.Execute(ctx)
+	feed, err := h.deps.FetchRandomSubscription.Execute(ctx)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchRandomFeed")
 	}
@@ -407,9 +435,9 @@ func (h *Handler) FetchRandomFeed(
 	var protoTags []*articlesv2.ArticleTagItem
 	var latestArticleID string
 
-	if h.container.FetchLatestArticleUsecase != nil {
+	if h.deps.FetchLatestArticle != nil {
 		// Get the latest article for this feed
-		latestArticle, err := h.container.FetchLatestArticleUsecase.Execute(ctx, feed.ID)
+		latestArticle, err := h.deps.FetchLatestArticle.Execute(ctx, feed.ID)
 		if err != nil {
 			h.logger.WarnContext(ctx, "failed to fetch latest article for feed", "feedID", feed.ID, "error", err)
 			// Continue without tags - fail-open
@@ -418,7 +446,7 @@ func (h *Handler) FetchRandomFeed(
 			h.logger.InfoContext(ctx, "found latest article for feed", "feedID", feed.ID, "articleID", latestArticle.ID)
 
 			// Use FetchArticleTagsUsecase for on-the-fly generation (ADR-168)
-			tags, err := h.container.FetchArticleTagsUsecase.Execute(ctx, latestArticle.ID)
+			tags, err := h.deps.FetchArticleTags.Execute(ctx, latestArticle.ID)
 			if err != nil {
 				h.logger.WarnContext(ctx, "failed to fetch/generate tags for article", "articleID", latestArticle.ID, "error", err)
 				// Continue without tags - fail-open (frontend can use latestArticleId for streaming)
@@ -465,7 +493,7 @@ func (h *Handler) StreamArticleTags(
 
 	h.logger.InfoContext(ctx, "starting article tags stream", "articleID", articleID)
 
-	if h.container.StreamArticleTagsUsecase == nil {
+	if h.deps.StreamArticleTags == nil {
 		h.logger.WarnContext(ctx, "StreamArticleTagsUsecase not available, returning empty tags", "articleID", articleID)
 		return stream.Send(&articlesv2.StreamArticleTagsResponse{
 			ArticleId: articleID,
@@ -475,7 +503,7 @@ func (h *Handler) StreamArticleTags(
 		})
 	}
 
-	result, err := h.container.StreamArticleTagsUsecase.Execute(ctx, articleID)
+	result, err := h.deps.StreamArticleTags.Execute(ctx, articleID)
 	if err != nil {
 		h.logger.WarnContext(ctx, "tag resolution failed", "articleID", articleID, "error", err)
 		return stream.Send(&articlesv2.StreamArticleTagsResponse{
@@ -540,7 +568,7 @@ func (h *Handler) FetchTagCloud(
 		limit = 500
 	}
 
-	items, err := h.container.FetchTagCloudUsecase.Execute(ctx, limit)
+	items, err := h.deps.FetchTagCloud.Execute(ctx, limit)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchTagCloud")
 	}
@@ -585,18 +613,18 @@ func (h *Handler) BatchPrefetchImages(
 		articleIDs = articleIDs[:10]
 	}
 
-	if h.container.ImageProxyUsecase == nil {
+	if h.deps.ImageProxy == nil {
 		return connect.NewResponse(&articlesv2.BatchPrefetchImagesResponse{}), nil
 	}
 
 	// Fetch OGP URLs from article_heads
-	ogURLs, err := h.container.AltDBRepository.FetchOgImageURLsByArticleIDs(ctx, articleIDs)
+	ogURLs, err := h.deps.AltDBRepository.FetchOgImageURLsByArticleIDs(ctx, articleIDs)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "BatchPrefetchImages")
 	}
 
 	// Generate proxy URLs
-	proxyURLs := h.container.ImageProxyUsecase.BatchGenerateProxyURLs(ctx, ogURLs)
+	proxyURLs := h.deps.ImageProxy.BatchGenerateProxyURLs(ctx, ogURLs)
 
 	// Build response
 	images := make([]*articlesv2.ImageProxyInfo, 0, len(proxyURLs))
@@ -614,7 +642,7 @@ func (h *Handler) BatchPrefetchImages(
 		go func() {
 			warmCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
-			h.container.ImageProxyUsecase.WarmCache(warmCtx, ogURLCopy)
+			h.deps.ImageProxy.WarmCache(warmCtx, ogURLCopy)
 		}()
 	}
 
@@ -652,7 +680,7 @@ func (h *Handler) FetchArticleSummary(
 	items := make([]*articlesv2.ArticleSummaryItem, 0, len(feedUrls))
 
 	// First, try to get AI-generated summaries from article_summaries table
-	if h.container.FetchArticleSummaryUsecase != nil {
+	if h.deps.FetchArticleSummary != nil {
 		for _, feedURL := range feedUrls {
 			parsedURL, parseErr := url.Parse(feedURL)
 			if parseErr != nil {
@@ -670,7 +698,7 @@ func (h *Handler) FetchArticleSummary(
 				continue
 			}
 
-			aiSummary, aiErr := h.container.FetchArticleSummaryUsecase.Execute(ctx, parsedURL)
+			aiSummary, aiErr := h.deps.FetchArticleSummary.Execute(ctx, parsedURL)
 			if aiErr == nil && aiSummary != nil && aiSummary.Summary != "" {
 				// Found AI-generated summary
 				items = append(items, &articlesv2.ArticleSummaryItem{
@@ -695,7 +723,7 @@ func (h *Handler) FetchArticleSummary(
 	}
 
 	// Fallback: Fetch summaries from inoreader_summaries using existing usecase
-	summaries, err := h.container.FetchInoreaderSummaryUsecase.Execute(ctx, feedUrls)
+	summaries, err := h.deps.FetchInoreaderSummary.Execute(ctx, feedUrls)
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "FetchArticleSummary")
 	}
