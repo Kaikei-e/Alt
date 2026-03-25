@@ -11,7 +11,8 @@ const { items, onDismiss }: Props = $props();
 const kindClass: Record<ToastItem["kind"], string> = {
 	success:
 		"border-[var(--badge-green-border)] bg-[var(--badge-green-bg)] text-[var(--badge-green-text)]",
-	error: "border-[var(--badge-orange-border)] bg-[var(--badge-orange-bg)] text-[var(--badge-orange-text)]",
+	error:
+		"border-[var(--badge-orange-border)] bg-[var(--badge-orange-bg)] text-[var(--badge-orange-text)]",
 	info: "border-[var(--surface-border)] bg-[var(--surface-bg)] text-[var(--text-primary)]",
 };
 </script>

@@ -34,8 +34,12 @@ describe("useStreamUpdates (Node / enabled=false)", () => {
 
 	it("should not connect when enabled is false", () => {
 		const stream = useStreamUpdates({
-			get enabled() { return false; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return false;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 		expect(stream.isConnected).toBe(false);
 		expect(stream.pendingCount).toBe(0);
@@ -44,8 +48,12 @@ describe("useStreamUpdates (Node / enabled=false)", () => {
 
 	it("should expose initial state correctly", () => {
 		const stream = useStreamUpdates({
-			get enabled() { return false; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return false;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 		expect(stream.isConnected).toBe(false);
 		expect(stream.isFallback).toBe(false);
@@ -56,8 +64,12 @@ describe("useStreamUpdates (Node / enabled=false)", () => {
 	it("should handle applyUpdates calling onRefresh", () => {
 		const onRefresh = vi.fn();
 		const stream = useStreamUpdates({
-			get enabled() { return false; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return false;
+			},
+			get lensId() {
+				return undefined;
+			},
 			onRefresh,
 		});
 		const applied = stream.applyUpdates();
@@ -67,8 +79,12 @@ describe("useStreamUpdates (Node / enabled=false)", () => {
 
 	it("should be a complete no-op when enabled is false", () => {
 		const stream = useStreamUpdates({
-			get enabled() { return false; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return false;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 		expect(stream.isConnected).toBe(false);
 		expect(stream.pendingCount).toBe(0);

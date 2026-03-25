@@ -42,7 +42,9 @@ describe("Connect-RPC proxy route", () => {
 			"application/connect+json",
 		);
 		expect(response.headers.get("X-Accel-Buffering")).toBe("no");
-		expect(response.headers.get("Cache-Control")).toBe("no-cache, no-transform");
+		expect(response.headers.get("Cache-Control")).toBe(
+			"no-cache, no-transform",
+		);
 	});
 
 	it("adds no-buffering headers for application/connect+proto responses", async () => {
@@ -73,7 +75,9 @@ describe("Connect-RPC proxy route", () => {
 		} as never);
 
 		expect(response.headers.get("X-Accel-Buffering")).toBe("no");
-		expect(response.headers.get("Cache-Control")).toBe("no-cache, no-transform");
+		expect(response.headers.get("Cache-Control")).toBe(
+			"no-cache, no-transform",
+		);
 	});
 
 	it("does not add no-buffering headers for regular json responses", async () => {

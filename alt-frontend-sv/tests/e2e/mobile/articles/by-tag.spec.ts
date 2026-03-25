@@ -20,9 +20,7 @@ test.describe("Mobile Tag Articles", () => {
 		await expect(mobileTagArticlesPage.pageTitle).toContainText("AI");
 	});
 
-	test("renders article list on mobile", async ({
-		mobileTagArticlesPage,
-	}) => {
+	test("renders article list on mobile", async ({ mobileTagArticlesPage }) => {
 		await mobileTagArticlesPage.gotoWithTag("AI");
 		await mobileTagArticlesPage.waitForArticlesLoaded();
 		await expect(mobileTagArticlesPage.articleList).toBeVisible();

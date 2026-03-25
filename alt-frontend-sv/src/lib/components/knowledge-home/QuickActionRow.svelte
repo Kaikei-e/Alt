@@ -1,10 +1,5 @@
 <script lang="ts">
-import {
-	BirdIcon,
-	ExternalLink,
-	Headphones,
-	X,
-} from "@lucide/svelte";
+import { BirdIcon, ExternalLink, Headphones, X } from "@lucide/svelte";
 
 interface Props {
 	itemKey: string;

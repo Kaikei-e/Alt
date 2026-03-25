@@ -75,8 +75,12 @@ describe("TodayBar", () => {
 			props: { digest: makeDigest({ topTags: ["AI", "Go"] }) },
 		});
 
-		await expect.element(page.getByText("AI", { exact: true })).toBeInTheDocument();
-		await expect.element(page.getByText("Go", { exact: true })).toBeInTheDocument();
+		await expect
+			.element(page.getByText("AI", { exact: true }))
+			.toBeInTheDocument();
+		await expect
+			.element(page.getByText("Go", { exact: true }))
+			.toBeInTheDocument();
 	});
 
 	it("renders morning letter link always", async () => {

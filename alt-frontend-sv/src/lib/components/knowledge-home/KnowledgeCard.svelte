@@ -24,7 +24,9 @@ const visibleTags = $derived(tagsExpanded ? nonEmptyTags : displayTags);
 const displayReasons = $derived(
 	item.why.length > 0 ? item.why.slice(0, 2) : [{ code: "new_unread" }],
 );
-const isNeedToKnow = $derived(item.why.some(r => r.code === 'pulse_need_to_know'));
+const isNeedToKnow = $derived(
+	item.why.some((r) => r.code === "pulse_need_to_know"),
+);
 let supersedeExpanded = $state(false);
 let whyExpanded = $state(false);
 

@@ -6,7 +6,15 @@ describe("refreshHomeWithRecallSync", () => {
 	it("re-injects recall candidates after the home refresh completes", async () => {
 		const callOrder: string[] = [];
 		const home = {
-			recallCandidates: [{ itemKey: "article:1", recallScore: 0.9, reasons: [], firstEligibleAt: "", nextSuggestAt: "" }],
+			recallCandidates: [
+				{
+					itemKey: "article:1",
+					recallScore: 0.9,
+					reasons: [],
+					firstEligibleAt: "",
+					nextSuggestAt: "",
+				},
+			],
 			fetchData: vi.fn(async () => {
 				callOrder.push("fetch");
 			}),
@@ -40,7 +48,15 @@ describe("refreshHomeWithRecallSync", () => {
 
 	it("skips recall sync when the rail is disabled", async () => {
 		const home = {
-			recallCandidates: [{ itemKey: "article:1", recallScore: 0.9, reasons: [], firstEligibleAt: "", nextSuggestAt: "" }],
+			recallCandidates: [
+				{
+					itemKey: "article:1",
+					recallScore: 0.9,
+					reasons: [],
+					firstEligibleAt: "",
+					nextSuggestAt: "",
+				},
+			],
 			fetchData: vi.fn(async () => {}),
 		};
 		const recall = {

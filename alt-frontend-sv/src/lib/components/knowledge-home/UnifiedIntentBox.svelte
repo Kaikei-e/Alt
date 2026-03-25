@@ -37,10 +37,10 @@ if (browser) {
 
 function saveRecent(trimmed: string) {
 	if (!browser) return;
-	recentQueries = [trimmed, ...recentQueries.filter((item) => item !== trimmed)].slice(
-		0,
-		5,
-	);
+	recentQueries = [
+		trimmed,
+		...recentQueries.filter((item) => item !== trimmed),
+	].slice(0, 5);
 	window.localStorage.setItem(
 		"knowledge-home-recent-queries",
 		JSON.stringify(recentQueries),

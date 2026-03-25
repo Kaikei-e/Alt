@@ -131,16 +131,14 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 									? {
 											itemKey: event.recallChange.item.itemKey,
 											itemType: event.recallChange.item.itemType,
-											articleId:
-												event.recallChange.item.articleId || undefined,
+											articleId: event.recallChange.item.articleId || undefined,
 											recapId: event.recallChange.item.recapId || undefined,
 											title: event.recallChange.item.title,
 											publishedAt: event.recallChange.item.publishedAt,
 											summaryExcerpt:
 												event.recallChange.item.summaryExcerpt || undefined,
-											summaryState:
-												(event.recallChange.item.summaryState ||
-													"missing") as "missing" | "pending" | "ready",
+											summaryState: (event.recallChange.item.summaryState ||
+												"missing") as "missing" | "pending" | "ready",
 											tags: [...event.recallChange.item.tags],
 											why: event.recallChange.item.why.map((why) => ({
 												code: why.code,

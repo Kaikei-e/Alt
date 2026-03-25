@@ -2,85 +2,100 @@
 // @generated from file services/sovereign/v1/sovereign.proto (package services.sovereign.v1, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+	GenFile,
+	GenMessage,
+	GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+	fileDesc,
+	messageDesc,
+	serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file services/sovereign/v1/sovereign.proto.
  */
-export const file_services_sovereign_v1_sovereign: GenFile = /*@__PURE__*/
-  fileDesc("CiVzZXJ2aWNlcy9zb3ZlcmVpZ24vdjEvc292ZXJlaWduLnByb3RvEhVzZXJ2aWNlcy5zb3ZlcmVpZ24udjEiagoUQXBwbHlNdXRhdGlvblJlcXVlc3QSFQoNbXV0YXRpb25fdHlwZRgBIAEoCRIRCgllbnRpdHlfaWQYAiABKAkSDwoHcGF5bG9hZBgDIAEoDBIXCg9pZGVtcG90ZW5jeV9rZXkYBCABKAkiPwoVQXBwbHlNdXRhdGlvblJlc3BvbnNlEg8KB3N1Y2Nlc3MYASABKAgSFQoNZXJyb3JfbWVzc2FnZRgCIAEoCTL3AgoZS25vd2xlZGdlU292ZXJlaWduU2VydmljZRJ0ChdBcHBseVByb2plY3Rpb25NdXRhdGlvbhIrLnNlcnZpY2VzLnNvdmVyZWlnbi52MS5BcHBseU11dGF0aW9uUmVxdWVzdBosLnNlcnZpY2VzLnNvdmVyZWlnbi52MS5BcHBseU11dGF0aW9uUmVzcG9uc2UScAoTQXBwbHlSZWNhbGxNdXRhdGlvbhIrLnNlcnZpY2VzLnNvdmVyZWlnbi52MS5BcHBseU11dGF0aW9uUmVxdWVzdBosLnNlcnZpY2VzLnNvdmVyZWlnbi52MS5BcHBseU11dGF0aW9uUmVzcG9uc2UScgoVQXBwbHlDdXJhdGlvbk11dGF0aW9uEisuc2VydmljZXMuc292ZXJlaWduLnYxLkFwcGx5TXV0YXRpb25SZXF1ZXN0Giwuc2VydmljZXMuc292ZXJlaWduLnYxLkFwcGx5TXV0YXRpb25SZXNwb25zZUJBWj9rbm93bGVkZ2Utc292ZXJlaWduL2dlbi9wcm90by9zZXJ2aWNlcy9zb3ZlcmVpZ24vdjE7c292ZXJlaWdudjFiBnByb3RvMw");
+export const file_services_sovereign_v1_sovereign: GenFile =
+	/*@__PURE__*/
+	fileDesc(
+		"CiVzZXJ2aWNlcy9zb3ZlcmVpZ24vdjEvc292ZXJlaWduLnByb3RvEhVzZXJ2aWNlcy5zb3ZlcmVpZ24udjEiagoUQXBwbHlNdXRhdGlvblJlcXVlc3QSFQoNbXV0YXRpb25fdHlwZRgBIAEoCRIRCgllbnRpdHlfaWQYAiABKAkSDwoHcGF5bG9hZBgDIAEoDBIXCg9pZGVtcG90ZW5jeV9rZXkYBCABKAkiPwoVQXBwbHlNdXRhdGlvblJlc3BvbnNlEg8KB3N1Y2Nlc3MYASABKAgSFQoNZXJyb3JfbWVzc2FnZRgCIAEoCTL3AgoZS25vd2xlZGdlU292ZXJlaWduU2VydmljZRJ0ChdBcHBseVByb2plY3Rpb25NdXRhdGlvbhIrLnNlcnZpY2VzLnNvdmVyZWlnbi52MS5BcHBseU11dGF0aW9uUmVxdWVzdBosLnNlcnZpY2VzLnNvdmVyZWlnbi52MS5BcHBseU11dGF0aW9uUmVzcG9uc2UScAoTQXBwbHlSZWNhbGxNdXRhdGlvbhIrLnNlcnZpY2VzLnNvdmVyZWlnbi52MS5BcHBseU11dGF0aW9uUmVxdWVzdBosLnNlcnZpY2VzLnNvdmVyZWlnbi52MS5BcHBseU11dGF0aW9uUmVzcG9uc2UScgoVQXBwbHlDdXJhdGlvbk11dGF0aW9uEisuc2VydmljZXMuc292ZXJlaWduLnYxLkFwcGx5TXV0YXRpb25SZXF1ZXN0Giwuc2VydmljZXMuc292ZXJlaWduLnYxLkFwcGx5TXV0YXRpb25SZXNwb25zZUJBWj9rbm93bGVkZ2Utc292ZXJlaWduL2dlbi9wcm90by9zZXJ2aWNlcy9zb3ZlcmVpZ24vdjE7c292ZXJlaWdudjFiBnByb3RvMw",
+	);
 
 /**
  * ApplyMutationRequest carries a single mutation to be applied.
  *
  * @generated from message services.sovereign.v1.ApplyMutationRequest
  */
-export type ApplyMutationRequest = Message<"services.sovereign.v1.ApplyMutationRequest"> & {
-  /**
-   * Mutation type constant (e.g. "upsert_home_item", "dismiss_curation").
-   *
-   * @generated from field: string mutation_type = 1;
-   */
-  mutationType: string;
+export type ApplyMutationRequest =
+	Message<"services.sovereign.v1.ApplyMutationRequest"> & {
+		/**
+		 * Mutation type constant (e.g. "upsert_home_item", "dismiss_curation").
+		 *
+		 * @generated from field: string mutation_type = 1;
+		 */
+		mutationType: string;
 
-  /**
-   * Entity identifier the mutation targets.
-   *
-   * @generated from field: string entity_id = 2;
-   */
-  entityId: string;
+		/**
+		 * Entity identifier the mutation targets.
+		 *
+		 * @generated from field: string entity_id = 2;
+		 */
+		entityId: string;
 
-  /**
-   * Type-specific payload (serialized JSON).
-   *
-   * @generated from field: bytes payload = 3;
-   */
-  payload: Uint8Array;
+		/**
+		 * Type-specific payload (serialized JSON).
+		 *
+		 * @generated from field: bytes payload = 3;
+		 */
+		payload: Uint8Array;
 
-  /**
-   * Idempotency key for deduplication.
-   *
-   * @generated from field: string idempotency_key = 4;
-   */
-  idempotencyKey: string;
-};
+		/**
+		 * Idempotency key for deduplication.
+		 *
+		 * @generated from field: string idempotency_key = 4;
+		 */
+		idempotencyKey: string;
+	};
 
 /**
  * Describes the message services.sovereign.v1.ApplyMutationRequest.
  * Use `create(ApplyMutationRequestSchema)` to create a new message.
  */
-export const ApplyMutationRequestSchema: GenMessage<ApplyMutationRequest> = /*@__PURE__*/
-  messageDesc(file_services_sovereign_v1_sovereign, 0);
+export const ApplyMutationRequestSchema: GenMessage<ApplyMutationRequest> =
+	/*@__PURE__*/
+	messageDesc(file_services_sovereign_v1_sovereign, 0);
 
 /**
  * ApplyMutationResponse is the result of applying a mutation.
  *
  * @generated from message services.sovereign.v1.ApplyMutationResponse
  */
-export type ApplyMutationResponse = Message<"services.sovereign.v1.ApplyMutationResponse"> & {
-  /**
-   * Whether the mutation was applied successfully.
-   *
-   * @generated from field: bool success = 1;
-   */
-  success: boolean;
+export type ApplyMutationResponse =
+	Message<"services.sovereign.v1.ApplyMutationResponse"> & {
+		/**
+		 * Whether the mutation was applied successfully.
+		 *
+		 * @generated from field: bool success = 1;
+		 */
+		success: boolean;
 
-  /**
-   * Error details when success is false.
-   *
-   * @generated from field: string error_message = 2;
-   */
-  errorMessage: string;
-};
+		/**
+		 * Error details when success is false.
+		 *
+		 * @generated from field: string error_message = 2;
+		 */
+		errorMessage: string;
+	};
 
 /**
  * Describes the message services.sovereign.v1.ApplyMutationResponse.
  * Use `create(ApplyMutationResponseSchema)` to create a new message.
  */
-export const ApplyMutationResponseSchema: GenMessage<ApplyMutationResponse> = /*@__PURE__*/
-  messageDesc(file_services_sovereign_v1_sovereign, 1);
+export const ApplyMutationResponseSchema: GenMessage<ApplyMutationResponse> =
+	/*@__PURE__*/
+	messageDesc(file_services_sovereign_v1_sovereign, 1);
 
 /**
  * KnowledgeSovereignService is the single authority for all knowledge state
@@ -89,37 +104,35 @@ export const ApplyMutationResponseSchema: GenMessage<ApplyMutationResponse> = /*
  * @generated from service services.sovereign.v1.KnowledgeSovereignService
  */
 export const KnowledgeSovereignService: GenService<{
-  /**
-   * ApplyProjectionMutation writes to projection read models
-   * (knowledge_home_items, today_digest_view, recall_candidate_view).
-   *
-   * @generated from rpc services.sovereign.v1.KnowledgeSovereignService.ApplyProjectionMutation
-   */
-  applyProjectionMutation: {
-    methodKind: "unary";
-    input: typeof ApplyMutationRequestSchema;
-    output: typeof ApplyMutationResponseSchema;
-  },
-  /**
-   * ApplyRecallMutation writes to recall candidate state.
-   *
-   * @generated from rpc services.sovereign.v1.KnowledgeSovereignService.ApplyRecallMutation
-   */
-  applyRecallMutation: {
-    methodKind: "unary";
-    input: typeof ApplyMutationRequestSchema;
-    output: typeof ApplyMutationResponseSchema;
-  },
-  /**
-   * ApplyCurationMutation writes to curation state (dismiss, lens operations).
-   *
-   * @generated from rpc services.sovereign.v1.KnowledgeSovereignService.ApplyCurationMutation
-   */
-  applyCurationMutation: {
-    methodKind: "unary";
-    input: typeof ApplyMutationRequestSchema;
-    output: typeof ApplyMutationResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_services_sovereign_v1_sovereign, 0);
-
+	/**
+	 * ApplyProjectionMutation writes to projection read models
+	 * (knowledge_home_items, today_digest_view, recall_candidate_view).
+	 *
+	 * @generated from rpc services.sovereign.v1.KnowledgeSovereignService.ApplyProjectionMutation
+	 */
+	applyProjectionMutation: {
+		methodKind: "unary";
+		input: typeof ApplyMutationRequestSchema;
+		output: typeof ApplyMutationResponseSchema;
+	};
+	/**
+	 * ApplyRecallMutation writes to recall candidate state.
+	 *
+	 * @generated from rpc services.sovereign.v1.KnowledgeSovereignService.ApplyRecallMutation
+	 */
+	applyRecallMutation: {
+		methodKind: "unary";
+		input: typeof ApplyMutationRequestSchema;
+		output: typeof ApplyMutationResponseSchema;
+	};
+	/**
+	 * ApplyCurationMutation writes to curation state (dismiss, lens operations).
+	 *
+	 * @generated from rpc services.sovereign.v1.KnowledgeSovereignService.ApplyCurationMutation
+	 */
+	applyCurationMutation: {
+		methodKind: "unary";
+		input: typeof ApplyMutationRequestSchema;
+		output: typeof ApplyMutationResponseSchema;
+	};
+}> = /*@__PURE__*/ serviceDesc(file_services_sovereign_v1_sovereign, 0);

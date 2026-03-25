@@ -11,9 +11,15 @@ interface Props {
 const { pendingCount, isConnected, isFallback, onApply }: Props = $props();
 
 const indicatorColor = $derived(
-	isFallback ? "bg-[var(--badge-orange-text)]" : isConnected ? "bg-[var(--badge-green-text)]" : "bg-[var(--badge-gray-text)]",
+	isFallback
+		? "bg-[var(--badge-orange-text)]"
+		: isConnected
+			? "bg-[var(--badge-green-text)]"
+			: "bg-[var(--badge-gray-text)]",
 );
-const indicatorPulse = $derived(isConnected && !isFallback ? "animate-pulse" : "");
+const indicatorPulse = $derived(
+	isConnected && !isFallback ? "animate-pulse" : "",
+);
 </script>
 
 {#if pendingCount > 0}

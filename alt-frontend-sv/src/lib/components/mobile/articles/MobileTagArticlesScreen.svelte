@@ -25,7 +25,13 @@ async function loadArticles(cursor?: string) {
 	if (!browser) return;
 	try {
 		const transport = createClientTransport();
-		const result = await fetchArticlesByTag(transport, tagName, undefined, cursor ?? undefined, 20);
+		const result = await fetchArticlesByTag(
+			transport,
+			tagName,
+			undefined,
+			cursor ?? undefined,
+			20,
+		);
 		if (cursor) {
 			articles = [...articles, ...result.articles];
 		} else {

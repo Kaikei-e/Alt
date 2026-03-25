@@ -72,10 +72,7 @@ function wait(ms: number): Promise<void> {
  * The assertion is re-evaluated whenever any $state it reads changes.
  * Uses real timers — COALESCE_DELAY (3s) must actually elapse.
  */
-function waitForEffect(
-	assertion: () => void,
-	timeoutMs = 8000,
-): Promise<void> {
+function waitForEffect(assertion: () => void, timeoutMs = 8000): Promise<void> {
 	let cleanupRoot: (() => void) | null = null;
 
 	const promise = new Promise<void>((resolve, reject) => {
@@ -154,8 +151,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		mockStreamFn.mockReturnValue(createMockStream([]));
 
 		const { stream, cleanup } = createHook({
-			get enabled() { return true; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return true;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 
 		expect(stream.isLeader).toBe(true);
@@ -171,8 +172,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 			mockStreamFn.mockReturnValue(createMockStream([]));
 
 			const { stream, cleanup } = createHook({
-				get enabled() { return true; },
-				get lensId() { return undefined; },
+				get enabled() {
+					return true;
+				},
+				get lensId() {
+					return undefined;
+				},
 			});
 
 			expect(stream.isLeader).toBe(false);
@@ -193,8 +198,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		mockStreamFn.mockReturnValue(createMockStream([]));
 
 		const { cleanup } = createHook({
-			get enabled() { return true; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return true;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 
 		const visibilityCalls = addListenerSpy.mock.calls.filter(
@@ -222,8 +231,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		mockStreamFn.mockReturnValue(createHangingMockStream(events));
 
 		const { stream, cleanup } = createHook({
-			get enabled() { return true; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return true;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 
 		await waitForEffect(() => {
@@ -268,8 +281,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		mockStreamFn.mockReturnValue(createHangingMockStream(events));
 
 		const { stream, cleanup } = createHook({
-			get enabled() { return true; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return true;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 
 		await waitForEffect(() => {
@@ -285,7 +302,9 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		restore();
 	});
 
-	it("should coalesce updates within delay window", { timeout: 10000 }, async () => {
+	it("should coalesce updates within delay window", {
+		timeout: 10000,
+	}, async () => {
 		const restore = disableBroadcastChannel();
 		const events = [
 			{
@@ -302,8 +321,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		mockStreamFn.mockReturnValue(createHangingMockStream(events));
 
 		const { stream, cleanup } = createHook({
-			get enabled() { return true; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return true;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 
 		await waitForEffect(() => {
@@ -326,8 +349,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		mockStreamFn.mockReturnValue(createMockStream(events));
 
 		const { stream, cleanup } = createHook({
-			get enabled() { return true; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return true;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 
 		await wait(100);
@@ -351,8 +378,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		mockStreamFn.mockReturnValue(createMockStream(events));
 
 		const { stream, cleanup } = createHook({
-			get enabled() { return true; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return true;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 
 		await waitForEffect(() => {
@@ -364,7 +395,9 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		restore();
 	});
 
-	it("should include item data in pending updates", { timeout: 10000 }, async () => {
+	it("should include item data in pending updates", {
+		timeout: 10000,
+	}, async () => {
 		const restore = disableBroadcastChannel();
 		const events = [
 			{
@@ -376,8 +409,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		mockStreamFn.mockReturnValue(createHangingMockStream(events));
 
 		const { stream, cleanup } = createHook({
-			get enabled() { return true; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return true;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 
 		await waitForEffect(() => {
@@ -389,7 +426,9 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		restore();
 	});
 
-	it("should applyUpdates clearing pending and calling onRefresh", { timeout: 10000 }, async () => {
+	it("should applyUpdates clearing pending and calling onRefresh", {
+		timeout: 10000,
+	}, async () => {
 		const restore = disableBroadcastChannel();
 		const events = [
 			{
@@ -402,8 +441,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 
 		const onRefresh = vi.fn();
 		const { stream, cleanup } = createHook({
-			get enabled() { return true; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return true;
+			},
+			get lensId() {
+				return undefined;
+			},
 			onRefresh,
 		});
 
@@ -428,8 +471,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		const flag = createReactiveFlag(false);
 
 		const { stream, cleanup } = createHook({
-			get enabled() { return flag.value; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return flag.value;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 
 		expect(mockStreamFn).not.toHaveBeenCalled();
@@ -451,8 +498,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		const flag = createReactiveFlag(true);
 
 		const { stream, cleanup } = createHook({
-			get enabled() { return flag.value; },
-			get lensId() { return undefined; },
+			get enabled() {
+				return flag.value;
+			},
+			get lensId() {
+				return undefined;
+			},
 		});
 
 		expect(stream.isLeader).toBe(true);
@@ -472,8 +523,12 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		const lensId = createReactiveString("lens-a");
 
 		const { cleanup } = createHook({
-			get enabled() { return true; },
-			get lensId() { return lensId.value; },
+			get enabled() {
+				return true;
+			},
+			get lensId() {
+				return lensId.value;
+			},
 		});
 
 		expect(mockStreamFn).toHaveBeenCalledTimes(1);

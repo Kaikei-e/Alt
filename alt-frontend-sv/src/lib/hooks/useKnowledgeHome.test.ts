@@ -112,16 +112,18 @@ describe("useKnowledgeHome", () => {
 	it("transitions to refreshing during non-initial fetch", async () => {
 		const mockGetKnowledgeHome = vi.mocked(getKnowledgeHome);
 		mockGetKnowledgeHome.mockResolvedValue({
-			items: [{
-				itemKey: "article:1",
-				itemType: "article",
-				title: "Test",
-				publishedAt: "2026-03-17T00:00:00Z",
-				summaryState: "ready" as const,
-				tags: [],
-				why: [],
-				score: 0.5,
-			}],
+			items: [
+				{
+					itemKey: "article:1",
+					itemType: "article",
+					title: "Test",
+					publishedAt: "2026-03-17T00:00:00Z",
+					summaryState: "ready" as const,
+					tags: [],
+					why: [],
+					score: 0.5,
+				},
+			],
 			digest: null,
 			hasMore: false,
 			degraded: false,

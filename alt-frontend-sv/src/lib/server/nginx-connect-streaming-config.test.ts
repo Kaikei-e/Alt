@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const nginxConfigPath = resolve(
-	process.cwd(),
-	"../nginx/conf.d/default.conf",
-);
+const nginxConfigPath = resolve(process.cwd(), "../nginx/conf.d/default.conf");
 
 describe("nginx Connect streaming config", () => {
 	it("routes FeedService streaming requests through the dedicated no-buffering location", () => {

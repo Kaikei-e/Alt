@@ -12,7 +12,15 @@ interface Props {
 	onSubmit: (question: string) => void;
 }
 
-const { open, scopeTitle, scopeContext, scopeArticleId, scopeTags, onClose, onSubmit }: Props = $props();
+const {
+	open,
+	scopeTitle,
+	scopeContext,
+	scopeArticleId,
+	scopeTags,
+	onClose,
+	onSubmit,
+}: Props = $props();
 
 let question = $state("");
 

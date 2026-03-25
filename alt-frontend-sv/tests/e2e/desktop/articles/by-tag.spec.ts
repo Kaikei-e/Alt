@@ -144,7 +144,9 @@ test.describe("Desktop Tag Articles", () => {
 		await desktopTagArticlesPage.waitForArticlesLoaded();
 		await desktopTagArticlesPage.getArticle("trail-art-1").click();
 		await expect(desktopTagArticlesPage.detailPanel).toBeVisible();
-		await page.getByTestId("detail-backdrop").click({ position: { x: 10, y: 10 } });
+		await page
+			.getByTestId("detail-backdrop")
+			.click({ position: { x: 10, y: 10 } });
 		await expect(desktopTagArticlesPage.detailPanel).not.toBeVisible();
 	});
 

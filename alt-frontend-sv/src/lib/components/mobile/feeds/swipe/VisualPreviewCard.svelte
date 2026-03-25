@@ -98,7 +98,9 @@ const cardStyle = $derived.by(() => {
 });
 
 // Derived
-const sanitizedFullContent = $derived(fullContent ? sanitizeHtml(fullContent) : null);
+const sanitizedFullContent = $derived(
+	fullContent ? sanitizeHtml(fullContent) : null,
+);
 const hasDescription = $derived(Boolean(feed.description));
 const publishedLabel = $derived.by(() => {
 	if (feed.created_at) {

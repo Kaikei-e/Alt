@@ -39,7 +39,8 @@ describe("ChatWindow", () => {
 	it("auto-sends the initial question when provided", async () => {
 		render(ChatWindow as never, {
 			props: {
-				initialQuestion: "Context:\nAI chip summary\n\nQuestion:\nWhat changed?",
+				initialQuestion:
+					"Context:\nAI chip summary\n\nQuestion:\nWhat changed?",
 			},
 		});
 

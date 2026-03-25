@@ -45,7 +45,9 @@ async function fetchContent(forceRefresh = false) {
 	contentError = null;
 
 	try {
-		const response = await getFeedContentOnTheFlyClient(articleUrl, { forceRefresh });
+		const response = await getFeedContentOnTheFlyClient(articleUrl, {
+			forceRefresh,
+		});
 		articleContent = response.content || null;
 		fetchedArticleId = response.article_id || null;
 	} catch (err) {

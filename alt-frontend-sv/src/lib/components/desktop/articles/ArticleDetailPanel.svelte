@@ -1,7 +1,10 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
 import type { TagTrailArticle } from "$lib/connect";
-import { getFeedContentOnTheFlyClient, type FeedContentOnTheFlyResponse } from "$lib/api/client/articles";
+import {
+	getFeedContentOnTheFlyClient,
+	type FeedContentOnTheFlyResponse,
+} from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
 import { useSummarize } from "$lib/hooks/useSummarize.svelte";
 import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
@@ -62,9 +65,12 @@ async function fetchContent(forceRefresh = false) {
 	isFetchingContent = true;
 	contentError = null;
 	try {
-		fetchedResponse = await getFeedContentOnTheFlyClient(article.link, { forceRefresh });
+		fetchedResponse = await getFeedContentOnTheFlyClient(article.link, {
+			forceRefresh,
+		});
 	} catch (err) {
-		contentError = err instanceof Error ? err.message : "Failed to fetch article";
+		contentError =
+			err instanceof Error ? err.message : "Failed to fetch article";
 	} finally {
 		isFetchingContent = false;
 	}

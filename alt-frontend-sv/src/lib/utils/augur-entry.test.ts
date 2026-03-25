@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	buildAugurInitialMessage,
-	resolveAugurEntry,
-} from "./augur-entry";
+import { buildAugurInitialMessage, resolveAugurEntry } from "./augur-entry";
 
 describe("augur-entry", () => {
 	it("builds a question-only message when no context is provided", () => {
@@ -35,9 +32,9 @@ describe("augur-entry", () => {
 	});
 
 	it("uses context format when articleId is absent even with context", () => {
-		expect(
-			buildAugurInitialMessage("Explain this", "Some context text"),
-		).toBe("Context:\nSome context text\n\nQuestion:\nExplain this");
+		expect(buildAugurInitialMessage("Explain this", "Some context text")).toBe(
+			"Context:\nSome context text\n\nQuestion:\nExplain this",
+		);
 	});
 
 	it("uses q for auto-send and keeps context-only as a draft", () => {
@@ -48,8 +45,7 @@ describe("augur-entry", () => {
 			}),
 		).toEqual({
 			initialDraft: "",
-			initialMessage:
-				"Context:\nShort summary\n\nQuestion:\nExplain this",
+			initialMessage: "Context:\nShort summary\n\nQuestion:\nExplain this",
 		});
 
 		expect(
