@@ -136,6 +136,14 @@ type RAGConfig struct {
 	MinAnswerLength                  int
 }
 
+// QualityGateConfig holds retrieval quality gate settings.
+type QualityGateConfig struct {
+	Enabled           bool
+	GoodThreshold     float32
+	MarginalThreshold float32
+	MinContexts       int
+}
+
 // RerankConfig holds cross-encoder reranking settings.
 type RerankConfig struct {
 	Enabled bool
@@ -181,6 +189,7 @@ type Config struct {
 	Search         SearchConfig
 	QueryExpansion QueryExpansionConfig
 	RAG            RAGConfig
+	QualityGate    QualityGateConfig
 	Rerank         RerankConfig
 	Hybrid         HybridConfig
 	Temporal       TemporalConfig
@@ -235,6 +244,12 @@ func Load() *Config {
 			PromptVersion:                    getEnv("RAG_PROMPT_VERSION", "alpha-v1"),
 			DynamicLanguageAllocationEnabled: getEnvBool("RAG_DYNAMIC_LANGUAGE_ALLOCATION", defaultDynamicLanguageAllocationEnabled),
 			MinAnswerLength:                  getEnvInt("RAG_MIN_ANSWER_LENGTH", defaultRAGMinAnswerLength),
+		},
+		QualityGate: QualityGateConfig{
+			Enabled:           getEnvBool("RAG_QUALITY_GATE_ENABLED", true),
+			GoodThreshold:     float32(getEnvFloat64("RAG_QUALITY_THRESHOLD_GOOD", 0.5)),
+			MarginalThreshold: float32(getEnvFloat64("RAG_QUALITY_THRESHOLD_MARGINAL", 0.25)),
+			MinContexts:       getEnvInt("RAG_QUALITY_MIN_CONTEXTS", 3),
 		},
 		Rerank: RerankConfig{
 			Enabled: getEnvBool("RERANK_ENABLED", defaultRerankEnabled),

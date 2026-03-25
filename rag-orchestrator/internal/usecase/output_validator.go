@@ -203,6 +203,97 @@ type LLMCitation struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
+// AssessAnswerQuality performs post-generation quality checks on the answer.
+// All checks are string-based (no LLM calls).
+// Returns a list of quality flag names for any failing checks.
+func AssessAnswerQuality(answer, query string, citations []LLMCitation, intentType IntentType) []string {
+	var flags []string
+
+	// 1. Coverage check: do query keywords appear in the answer?
+	if !checkKeywordCoverage(answer, query) {
+		flags = append(flags, "low_keyword_coverage")
+	}
+
+	// 2. Citation density: long answers should have citations
+	if !checkCitationDensity(answer, citations) {
+		flags = append(flags, "low_citation_density")
+	}
+
+	// 3. Coherence: does the answer end with proper punctuation?
+	if !checkCoherentEnding(answer) {
+		flags = append(flags, "incoherent_ending")
+	}
+
+	// 4. Fact-check intent: answer should contain evidence keywords
+	if intentType == IntentFactCheck && !checkFactCheckEvidence(answer) {
+		flags = append(flags, "fact_check_missing_evidence")
+	}
+
+	return flags
+}
+
+func checkKeywordCoverage(answer, query string) bool {
+	// Extract significant words from query (>= 3 chars/runes)
+	lowerAnswer := strings.ToLower(answer)
+	words := strings.Fields(strings.ToLower(query))
+
+	significant := 0
+	covered := 0
+	for _, w := range words {
+		if utf8.RuneCountInString(w) < 3 {
+			continue
+		}
+		significant++
+		if strings.Contains(lowerAnswer, w) {
+			covered++
+		}
+	}
+
+	if significant == 0 {
+		return true
+	}
+	return float64(covered)/float64(significant) >= 0.5
+}
+
+func checkCitationDensity(answer string, citations []LLMCitation) bool {
+	answerLen := utf8.RuneCountInString(answer)
+	if answerLen < 200 {
+		return true // Short answers don't need citations
+	}
+	// At least 1 citation per 500 characters
+	minCitations := answerLen / 500
+	if minCitations < 1 {
+		minCitations = 1
+	}
+	return len(citations) >= minCitations
+}
+
+func checkCoherentEnding(answer string) bool {
+	trimmed := strings.TrimSpace(answer)
+	if len(trimmed) == 0 {
+		return true
+	}
+	// Check if answer ends with sentence-ending punctuation
+	endings := []string{"。", ".", "！", "!", "？", "?", "）", ")", "」", "\"", "\n"}
+	for _, e := range endings {
+		if strings.HasSuffix(trimmed, e) {
+			return true
+		}
+	}
+	return false
+}
+
+func checkFactCheckEvidence(answer string) bool {
+	evidenceKeywords := []string{"根拠", "出典", "研究", "evidence", "source", "according", "study", "report", "データ", "調査"}
+	lower := strings.ToLower(answer)
+	for _, kw := range evidenceKeywords {
+		if strings.Contains(lower, kw) || strings.Contains(answer, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // convertLiteralEscapes converts literal backslash-n to actual newline characters.
 // This handles cases where the LLM outputs literal \n instead of proper JSON escapes
 // (a known issue with GPT-OSS models).

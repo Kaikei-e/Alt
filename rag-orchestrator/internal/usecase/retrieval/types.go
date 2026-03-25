@@ -29,6 +29,9 @@ type StageContext struct {
 	HitsOriginal []domain.SearchResult
 	HitsExpanded []ContextItem
 
+	// Stage 4 metadata
+	RerankApplied bool // true if reranking was successfully applied
+
 	// Config values (set once at init)
 	SearchLimit   int
 	RRFK          float64
@@ -43,6 +46,7 @@ type ContextItem struct {
 	Title           string
 	PublishedAt     string // ISO8601 string
 	Score           float32
+	RerankScore     float32 // Cross-encoder reranker score (0 if reranking disabled)
 	DocumentVersion int
 	ChunkID         uuid.UUID
 }

@@ -94,6 +94,8 @@ func Rerank(
 		slog.String("model", reranker.ModelName()),
 		slog.Int64("duration_ms", rerankDuration.Milliseconds()))
 
+	sc.RerankApplied = true
+
 	// Apply reranked scores
 	rerankScores := make(map[uuid.UUID]float32)
 	for _, r := range reranked {
@@ -111,10 +113,11 @@ func Rerank(
 		return sc.HitsOriginal[i].Score > sc.HitsOriginal[j].Score
 	})
 
-	// Update expanded hits scores
+	// Update expanded hits scores and propagate rerank scores
 	for i := range sc.HitsExpanded {
 		if score, ok := rerankScores[sc.HitsExpanded[i].ChunkID]; ok {
 			sc.HitsExpanded[i].Score = score
+			sc.HitsExpanded[i].RerankScore = score
 		}
 	}
 	sort.Slice(sc.HitsExpanded, func(i, j int) bool {

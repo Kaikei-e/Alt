@@ -866,3 +866,189 @@ func TestPromptBuilder_MultiTurnCoreferenceInstruction(t *testing.T) {
 	content := messages[0].Content
 	assert.Contains(t, content, "指示代名詞（「それ」「この件」等）を解決してください")
 }
+
+// --- Phase 1: Retrieval Quality Gate integration tests ---
+
+type mockQueryExpander struct {
+	mock.Mock
+}
+
+func (m *mockQueryExpander) ExpandQuery(ctx context.Context, query string, jaCount, enCount int) ([]string, error) {
+	args := m.Called(ctx, query, jaCount, enCount)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *mockQueryExpander) ExpandQueryWithHistory(ctx context.Context, query string, history []domain.Message, jaCount, enCount int) ([]string, error) {
+	args := m.Called(ctx, query, history, jaCount, enCount)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func TestQualityGate_GoodQuality_NoRetry(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	assessor := usecase.NewRetrievalQualityAssessor(0.5, 0.25, 1)
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithQualityAssessor(assessor, nil),
+	)
+
+	chunkID := uuid.New()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: chunkID, ChunkText: "Good chunk", Score: 0.9, RerankScore: 0.9, Title: "T", URL: "http://x.com", PublishedAt: "2025-01-01T00:00:00Z", DocumentVersion: 1},
+		},
+	}, nil)
+
+	llmResponse := `{"answer": "Answer here", "citations": [], "fallback": false, "reason": ""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test"})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Equal(t, "good", output.Debug.RetrievalQuality)
+	assert.Equal(t, 0, output.Debug.RetryCount)
+}
+
+func TestQualityGate_InsufficientQuality_ReturnsFallback(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	assessor := usecase.NewRetrievalQualityAssessor(0.5, 0.25, 1)
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithQualityAssessor(assessor, nil),
+	)
+
+	chunkID := uuid.New()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: chunkID, ChunkText: "Bad chunk", Score: 0.05, RerankScore: 0.05, Title: "T", URL: "http://x.com", PublishedAt: "2025-01-01T00:00:00Z", DocumentVersion: 1},
+		},
+	}, nil)
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test"})
+	assert.NoError(t, err)
+	assert.True(t, output.Fallback)
+	assert.Contains(t, output.Reason, "retrieval quality insufficient")
+}
+
+func TestQualityGate_MarginalQuality_TriggersRetry(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	mockExpander := new(mockQueryExpander)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	assessor := usecase.NewRetrievalQualityAssessor(0.5, 0.25, 1)
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithQualityAssessor(assessor, mockExpander),
+	)
+
+	chunkID := uuid.New()
+	// First retrieval returns marginal quality
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: chunkID, ChunkText: "Marginal chunk", Score: 0.3, RerankScore: 0.3, Title: "T", URL: "http://x.com", PublishedAt: "2025-01-01T00:00:00Z", DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	// Query expander returns a rewritten query
+	mockExpander.On("ExpandQueryWithHistory", mock.Anything, mock.Anything, mock.Anything, 2, 2).
+		Return([]string{"expanded query"}, nil)
+
+	chunkID2 := uuid.New()
+	// Second retrieval (retry) returns good quality via general strategy
+	// Note: the retry calls generalStrategy which internally calls RetrieveContextUsecase.Execute
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: chunkID2, ChunkText: "Good chunk", Score: 0.8, RerankScore: 0.8, Title: "T2", URL: "http://y.com", PublishedAt: "2025-01-01T00:00:00Z", DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	llmResponse := `{"answer": "Better answer", "citations": [], "fallback": false, "reason": ""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test"})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Equal(t, 1, output.Debug.RetryCount)
+	assert.Contains(t, output.Debug.StrategyUsed, "retried")
+	mockExpander.AssertCalled(t, "ExpandQueryWithHistory", mock.Anything, mock.Anything, mock.Anything, 2, 2)
+}
+
+// --- Phase 2: PromptBuilder intent-aware instruction tests ---
+
+func TestPromptBuilder_ComparisonIntent_AddsInstruction(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "RustとGoの違い",
+		PromptVersion: "test",
+		IntentType:    usecase.IntentComparison,
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Rust", ChunkText: "Rust info", Score: 0.9},
+		},
+	})
+	assert.NoError(t, err)
+	assert.Contains(t, messages[0].Content, "比較")
+}
+
+func TestPromptBuilder_TemporalIntent_AddsInstruction(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "最近のAIニュース",
+		PromptVersion: "test",
+		IntentType:    usecase.IntentTemporal,
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "AI News", ChunkText: "AI info", Score: 0.9},
+		},
+	})
+	assert.NoError(t, err)
+	assert.Contains(t, messages[0].Content, "最新")
+}
+
+func TestPromptBuilder_FactCheckIntent_AddsInstruction(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "量子コンピュータは暗号を解ける？",
+		PromptVersion: "test",
+		IntentType:    usecase.IntentFactCheck,
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Quantum", ChunkText: "Quantum info", Score: 0.9},
+		},
+	})
+	assert.NoError(t, err)
+	assert.Contains(t, messages[0].Content, "根拠")
+}
+
+func TestPromptBuilder_GeneralIntent_NoExtraInstruction(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "AI技術のトレンド",
+		PromptVersion: "test",
+		IntentType:    usecase.IntentGeneral,
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "AI", ChunkText: "AI info", Score: 0.9},
+		},
+	})
+	assert.NoError(t, err)
+	// General should NOT have comparison/temporal/factcheck-specific instructions
+	assert.NotContains(t, messages[0].Content, "両者を公平に比較")
+	assert.NotContains(t, messages[0].Content, "根拠と判定を構造化")
+}

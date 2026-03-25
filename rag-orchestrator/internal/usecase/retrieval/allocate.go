@@ -27,7 +27,7 @@ func Allocate(
 	var contexts []ContextItem
 
 	if cfg.DynamicLanguageAllocationEnabled {
-		contexts = SelectContextsDynamic(sc.HitsOriginal, sc.HitsExpanded, quotaOriginal+quotaExpanded)
+		contexts = SelectContextsDynamic(sc.HitsOriginal, sc.HitsExpanded, quotaOriginal+quotaExpanded, sc.RerankApplied)
 
 		jaCount, enCount := 0, 0
 		for _, ctx := range contexts {
@@ -50,7 +50,7 @@ func Allocate(
 }
 
 // SelectContextsDynamic merges and selects top N contexts from all sources by score.
-func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []ContextItem, totalQuota int) []ContextItem {
+func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []ContextItem, totalQuota int, rerankApplied bool) []ContextItem {
 	seen := make(map[uuid.UUID]bool)
 	allCandidates := make([]ContextItem, 0, len(hitsOriginal)+len(hitsExpanded))
 
@@ -58,7 +58,7 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 		if seen[res.Chunk.ID] {
 			continue
 		}
-		allCandidates = append(allCandidates, ContextItem{
+		item := ContextItem{
 			ChunkText:       res.Chunk.Content,
 			URL:             res.URL,
 			Title:           res.Title,
@@ -66,7 +66,11 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 			Score:           res.Score,
 			DocumentVersion: res.DocumentVersion,
 			ChunkID:         res.Chunk.ID,
-		})
+		}
+		if rerankApplied {
+			item.RerankScore = res.Score
+		}
+		allCandidates = append(allCandidates, item)
 		seen[res.Chunk.ID] = true
 	}
 

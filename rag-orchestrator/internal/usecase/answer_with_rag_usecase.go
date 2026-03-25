@@ -21,6 +21,10 @@ type answerWithRAGUsecase struct {
 	promptBuilder     PromptBuilder
 	llmClient         domain.LLMClient
 	validator         OutputValidator
+	qualityAssessor   *RetrievalQualityAssessor
+	queryExpander     domain.QueryExpander
+	queryClassifier   *QueryClassifier
+	toolDispatcher    *ToolDispatcher
 	maxChunks         int
 	maxTokens         int
 	maxPromptTokens   int
@@ -65,6 +69,10 @@ func NewAnswerWithRAGUsecase(
 		promptBuilder:     promptBuilder,
 		llmClient:         llmClient,
 		validator:         validator,
+		qualityAssessor:   cfg.qualityAssessor,
+		queryExpander:     cfg.queryExpander,
+		queryClassifier:   cfg.queryClassifier,
+		toolDispatcher:    cfg.toolDispatcher,
 		maxChunks:         maxChunks,
 		maxTokens:         maxTokens,
 		maxPromptTokens:   maxPromptTokens,
@@ -86,6 +94,10 @@ type answerUsecaseConfig struct {
 	cacheTTL          time.Duration
 	heartbeatInterval time.Duration
 	strategies        map[IntentType]RetrievalStrategy
+	qualityAssessor   *RetrievalQualityAssessor
+	queryExpander     domain.QueryExpander
+	queryClassifier   *QueryClassifier
+	toolDispatcher    *ToolDispatcher
 }
 
 // WithCacheConfig sets the cache size and TTL.
@@ -111,6 +123,28 @@ func WithStrategy(intentType IntentType, strategy RetrievalStrategy) AnswerUseca
 			cfg.strategies = make(map[IntentType]RetrievalStrategy)
 		}
 		cfg.strategies[intentType] = strategy
+	}
+}
+
+// WithQualityAssessor enables retrieval quality gating with adaptive retry.
+func WithQualityAssessor(assessor *RetrievalQualityAssessor, expander domain.QueryExpander) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		cfg.qualityAssessor = assessor
+		cfg.queryExpander = expander
+	}
+}
+
+// WithQueryClassifier enables smart query classification for intent routing.
+func WithQueryClassifier(classifier *QueryClassifier) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		cfg.queryClassifier = classifier
+	}
+}
+
+// WithToolDispatcher enables intent-driven tool dispatch alongside retrieval.
+func WithToolDispatcher(dispatcher *ToolDispatcher) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		cfg.toolDispatcher = dispatcher
 	}
 }
 
@@ -274,6 +308,16 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 	// Build Citations (Hydration)
 	finalCitations := u.buildCitations(promptData.contexts, parsedAnswer.Citations)
 
+	// Phase 4: Answer quality assessment
+	qualityFlags := AssessAnswerQuality(
+		parsedAnswer.Answer, input.Query, parsedAnswer.Citations, promptData.intentType,
+	)
+	if len(qualityFlags) > 0 {
+		u.logger.Info("answer_quality_flags",
+			slog.String("request_id", requestID),
+			slog.Any("flags", qualityFlags))
+	}
+
 	output := &AnswerWithRAGOutput{
 		Answer:    strings.TrimSpace(parsedAnswer.Answer),
 		Citations: finalCitations,
@@ -281,10 +325,15 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		Fallback:  false,
 		Reason:    "",
 		Debug: AnswerDebug{
-			RetrievalSetID:  promptData.retrievalSetID,
-			PromptVersion:   u.promptVersion,
-			ExpandedQueries: promptData.expandedQueries,
-			StrategyUsed:    promptData.strategyUsed,
+			RetrievalSetID:   promptData.retrievalSetID,
+			PromptVersion:    u.promptVersion,
+			ExpandedQueries:  promptData.expandedQueries,
+			StrategyUsed:     promptData.strategyUsed,
+			IntentType:       string(promptData.intentType),
+			RetrievalQuality: string(promptData.retrievalQuality),
+			RetryCount:       promptData.retryCount,
+			ToolsUsed:        promptData.toolsUsed,
+			QualityFlags:     qualityFlags,
 		},
 	}
 
@@ -376,13 +425,17 @@ type ArticleContext struct {
 }
 
 type promptBuildResult struct {
-	retrievalSetID  string
-	contexts        []ContextItem
-	messages        []domain.Message
-	maxTokens       int
-	expandedQueries []string
-	strategyUsed    string
-	articleContext  *ArticleContext
+	retrievalSetID   string
+	contexts         []ContextItem
+	messages         []domain.Message
+	maxTokens        int
+	expandedQueries  []string
+	strategyUsed     string
+	intentType       IntentType
+	toolsUsed        []string
+	articleContext    *ArticleContext
+	retrievalQuality QualityVerdict
+	retryCount       int
 }
 
 func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWithRAGInput) (*promptBuildResult, error) {
@@ -402,8 +455,18 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 	// Parse intent from raw query
 	intent := ResolveQueryIntent(input.Query, input.ConversationHistory)
+
+	// Smart classification: if not article-scoped, use classifier for richer intent
+	if intent.IntentType != IntentArticleScoped && u.queryClassifier != nil {
+		classified := u.queryClassifier.Classify(ctx, intent.UserQuestion)
+		if classified != IntentGeneral {
+			intent.IntentType = classified
+		}
+	}
+
 	strategy := u.selectStrategy(intent.IntentType)
 	result.strategyUsed = strategy.Name()
+	result.intentType = intent.IntentType
 
 	u.logger.Info("query_intent_parsed",
 		slog.String("intent_type", string(intent.IntentType)),
@@ -444,6 +507,45 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 	if err != nil {
 		return result, fmt.Errorf("failed to retrieve context: %w", err)
+	}
+
+	// Quality gate: assess retrieval quality and retry if marginal
+	if u.qualityAssessor != nil && retrieved != nil && len(retrieved.Contexts) > 0 {
+		verdict := u.qualityAssessor.Assess(retrieved.Contexts)
+		result.retrievalQuality = verdict
+
+		u.logger.Info("retrieval_quality_verdict",
+			slog.String("retrieval_id", result.retrievalSetID),
+			slog.String("verdict", string(verdict)),
+			slog.String("strategy", result.strategyUsed))
+
+		if verdict == QualityMarginal && u.queryExpander != nil {
+			// Retry once with expanded query
+			u.logger.Info("retrieval_quality_retry",
+				slog.String("retrieval_id", result.retrievalSetID),
+				slog.String("reason", "marginal_quality"))
+
+			retryQuery := intent.UserQuestion
+			expanded, expErr := u.queryExpander.ExpandQueryWithHistory(
+				ctx, retryQuery, input.ConversationHistory, 2, 2,
+			)
+			if expErr == nil && len(expanded) > 0 {
+				retryInput := retrieveInput
+				retryInput.Query = expanded[0]
+				retryRetrieved, retryErr := u.generalStrategy.Retrieve(ctx, retryInput, intent)
+				if retryErr == nil && retryRetrieved != nil && len(retryRetrieved.Contexts) > 0 {
+					retryVerdict := u.qualityAssessor.Assess(retryRetrieved.Contexts)
+					if retryVerdict == QualityGood || (retryVerdict == QualityMarginal && verdict == QualityMarginal) {
+						retrieved = retryRetrieved
+						result.strategyUsed += "_retried"
+						result.retrievalQuality = retryVerdict
+					}
+				}
+			}
+			result.retryCount = 1
+		} else if verdict == QualityInsufficient {
+			return result, errors.New("retrieval quality insufficient: context relevance too low")
+		}
 	}
 
 	contexts := retrieved.Contexts
@@ -520,6 +622,16 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		locale = u.defaultLocale
 	}
 
+	// Phase 3: Tool dispatch (intent-driven, no LLM)
+	var supplementary []string
+	if u.toolDispatcher != nil {
+		toolResults := u.toolDispatcher.Dispatch(ctx, intent, intent.UserQuestion)
+		for _, tr := range toolResults {
+			supplementary = append(supplementary, tr.Data)
+			result.toolsUsed = append(result.toolsUsed, "tool")
+		}
+	}
+
 	promptInput := PromptInput{
 		Query:               intent.UserQuestion,
 		Locale:              locale,
@@ -527,6 +639,8 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		Contexts:            promptContexts,
 		ConversationHistory: input.ConversationHistory,
 		ArticleContext:      artCtx,
+		IntentType:          intent.IntentType,
+		SupplementaryInfo:   supplementary,
 	}
 
 	messages, err := u.promptBuilder.Build(promptInput)

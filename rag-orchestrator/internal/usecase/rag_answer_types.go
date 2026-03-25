@@ -40,10 +40,17 @@ type Citation struct {
 
 // AnswerDebug surfaces metadata that aids troubleshooting and golden-test matching.
 type AnswerDebug struct {
-	RetrievalSetID  string
-	PromptVersion   string
-	ExpandedQueries []string
-	StrategyUsed    string
+	RetrievalSetID    string
+	PromptVersion     string
+	ExpandedQueries   []string
+	StrategyUsed      string
+	IntentType        string      // Phase 2: classified intent type
+	RetrievalQuality  string      // Phase 1: "good", "marginal", "insufficient"
+	RetryCount        int         // Phase 1: number of retrieval retries (0 = no retry)
+	ToolsUsed         []string    // Phase 3: tool names executed
+	QualityFlags      []string    // Phase 4: answer quality check failures
+	AgentSteps        []AgentStep // Phase 5: full agentic step trace
+	TotalAgentStepsMs int64       // Phase 5: sum of all step durations
 }
 
 // AnswerWithRAGUsecase defines the contract for generating grounded answers.

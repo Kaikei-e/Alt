@@ -333,3 +333,79 @@ func TestOutputValidator_ConvertLiteralEscapes_OnlyNewlines(t *testing.T) {
 	expected := "Line 1\nLine 2 with tab:\there"
 	assert.Equal(t, expected, result.Answer, "Only literal \\n should be converted, not \\t")
 }
+
+// --- Phase 4: Answer Quality Checks ---
+
+func TestAssessAnswerQuality_CoverageCheck(t *testing.T) {
+	flags := usecase.AssessAnswerQuality(
+		"This answer discusses AI and machine learning trends",
+		"What are the latest AI trends and cybersecurity news?",
+		[]usecase.LLMCitation{{ChunkID: "1"}},
+		usecase.IntentGeneral,
+	)
+	// "cybersecurity" not covered in answer
+	assert.Contains(t, flags, "low_keyword_coverage")
+}
+
+func TestAssessAnswerQuality_GoodCoverage(t *testing.T) {
+	flags := usecase.AssessAnswerQuality(
+		"AI trends include transformers and large language models. Cybersecurity news covers ransomware.",
+		"AI trends and cybersecurity news",
+		[]usecase.LLMCitation{{ChunkID: "1"}, {ChunkID: "2"}},
+		usecase.IntentGeneral,
+	)
+	assert.NotContains(t, flags, "low_keyword_coverage")
+}
+
+func TestAssessAnswerQuality_CitationDensity(t *testing.T) {
+	// Long answer with no citations
+	longAnswer := strings.Repeat("This is a detailed answer about technology. ", 50)
+	flags := usecase.AssessAnswerQuality(
+		longAnswer,
+		"tech question",
+		nil, // no citations
+		usecase.IntentGeneral,
+	)
+	assert.Contains(t, flags, "low_citation_density")
+}
+
+func TestAssessAnswerQuality_CoherenceCheck(t *testing.T) {
+	// Answer that doesn't end with sentence-ending punctuation
+	flags := usecase.AssessAnswerQuality(
+		"This answer is truncated and does not end properly with",
+		"test query",
+		[]usecase.LLMCitation{{ChunkID: "1"}},
+		usecase.IntentGeneral,
+	)
+	assert.Contains(t, flags, "incoherent_ending")
+}
+
+func TestAssessAnswerQuality_CoherentEnding(t *testing.T) {
+	flags := usecase.AssessAnswerQuality(
+		"This is a complete answer about the topic。",
+		"test query",
+		[]usecase.LLMCitation{{ChunkID: "1"}},
+		usecase.IntentGeneral,
+	)
+	assert.NotContains(t, flags, "incoherent_ending")
+}
+
+func TestAssessAnswerQuality_FactCheckNeedsEvidence(t *testing.T) {
+	flags := usecase.AssessAnswerQuality(
+		"Yes, that is true。",
+		"Is it true that AI can do X?",
+		[]usecase.LLMCitation{{ChunkID: "1"}},
+		usecase.IntentFactCheck,
+	)
+	assert.Contains(t, flags, "fact_check_missing_evidence")
+}
+
+func TestAssessAnswerQuality_FactCheckHasEvidence(t *testing.T) {
+	flags := usecase.AssessAnswerQuality(
+		"根拠として、最新の研究では... したがって事実です。",
+		"AIがXできるのは本当？",
+		[]usecase.LLMCitation{{ChunkID: "1"}},
+		usecase.IntentFactCheck,
+	)
+	assert.NotContains(t, flags, "fact_check_missing_evidence")
+}

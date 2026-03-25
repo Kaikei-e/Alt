@@ -32,6 +32,7 @@ type ContextItem struct {
 	Title           string
 	PublishedAt     string // ISO8601 string
 	Score           float32
+	RerankScore     float32 // Cross-encoder reranker score (0 if reranking disabled)
 	DocumentVersion int
 	ChunkID         uuid.UUID
 }
@@ -215,7 +216,7 @@ func SelectContextsDynamic(hitsOriginal []domain.SearchResult, hitsExpanded []Co
 		}
 	}
 
-	result := retrieval.SelectContextsDynamic(hitsOriginal, rExpanded, totalQuota)
+	result := retrieval.SelectContextsDynamic(hitsOriginal, rExpanded, totalQuota, false)
 	return convertContextItems(result)
 }
 
@@ -228,6 +229,7 @@ func convertContextItems(items []retrieval.ContextItem) []ContextItem {
 			Title:           item.Title,
 			PublishedAt:     item.PublishedAt,
 			Score:           item.Score,
+			RerankScore:     item.RerankScore,
 			DocumentVersion: item.DocumentVersion,
 			ChunkID:         item.ChunkID,
 		}

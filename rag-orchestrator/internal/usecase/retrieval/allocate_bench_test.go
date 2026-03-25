@@ -14,7 +14,7 @@ func BenchmarkSelectContextsDynamic_Small(b *testing.B) {
 	hitsOriginal, hitsExpanded := generateBenchData(5, 10)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		retrieval.SelectContextsDynamic(hitsOriginal, hitsExpanded, 7)
+		retrieval.SelectContextsDynamic(hitsOriginal, hitsExpanded, 7, false)
 	}
 }
 
@@ -22,7 +22,7 @@ func BenchmarkSelectContextsDynamic_Large(b *testing.B) {
 	hitsOriginal, hitsExpanded := generateBenchData(50, 200)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		retrieval.SelectContextsDynamic(hitsOriginal, hitsExpanded, 20)
+		retrieval.SelectContextsDynamic(hitsOriginal, hitsExpanded, 20, false)
 	}
 }
 

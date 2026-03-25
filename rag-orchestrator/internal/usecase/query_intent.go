@@ -13,6 +13,10 @@ type IntentType string
 const (
 	IntentGeneral       IntentType = "general"
 	IntentArticleScoped IntentType = "article_scoped"
+	IntentComparison    IntentType = "comparison"
+	IntentTemporal      IntentType = "temporal"
+	IntentTopicDeepDive IntentType = "topic_deep_dive"
+	IntentFactCheck     IntentType = "fact_check"
 )
 
 // ErrArticleNotIndexed indicates that the referenced article is not in the RAG index.
