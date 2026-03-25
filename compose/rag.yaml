@@ -95,7 +95,7 @@ services:
       - AUGUR_KNOWLEDGE_MODEL=${AUGUR_KNOWLEDGE_MODEL:-gemma3-4b-8k}
       - SEARCH_INDEXER_URL=http://search-indexer:9300
       - QUERY_EXPANSION_URL=http://news-creator:11434
-      - QUERY_EXPANSION_TIMEOUT=15
+      - QUERY_EXPANSION_TIMEOUT=30
       - RERANK_ENABLED=true
       - RERANK_URL=http://rerank-external:8080
       - RERANK_TIMEOUT=12
