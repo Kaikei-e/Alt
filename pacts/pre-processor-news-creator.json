@@ -1,0 +1,296 @@
+{
+  "consumer": {
+    "name": "pre-processor"
+  },
+  "interactions": [
+    {
+      "description": "a summarize request for a normal article",
+      "providerStates": [
+        {
+          "name": "the LLM model is loaded and ready"
+        }
+      ],
+      "request": {
+        "body": {
+          "article_id": "article-001",
+          "content": "This is a sufficiently long article content for summarization testing. It needs to be at least one hundred characters long to pass the minimum content length validation check.",
+          "stream": false
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.content": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.stream": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/v1/summarize"
+      },
+      "response": {
+        "body": {
+          "article_id": "article-001",
+          "model": "gemma3:4b-it-qat",
+          "success": true,
+          "summary": "これはテスト記事の要約です。"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a summarize request when queue is full",
+      "providerStates": [
+        {
+          "name": "the LLM queue is full"
+        }
+      ],
+      "request": {
+        "body": {
+          "article_id": "article-overflow",
+          "content": "Content that arrives when the summarization queue is full. This article has sufficient length to pass the minimum content validation check of one hundred characters in the news-creator service.",
+          "stream": false
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.content": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.stream": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/v1/summarize"
+      },
+      "response": {
+        "body": {
+          "error": "queue full"
+        },
+        "headers": {
+          "Content-Type": "application/json",
+          "Retry-After": "30"
+        },
+        "matchingRules": {
+          "body": {
+            "$.error": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Retry-After": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 429
+      }
+    },
+    {
+      "description": "a summarize request with HIGH priority",
+      "providerStates": [
+        {
+          "name": "the LLM model is loaded and ready"
+        }
+      ],
+      "request": {
+        "body": {
+          "article_id": "article-rt",
+          "content": "Real-time article content requiring immediate summarization. This article covers breaking news about artificial intelligence and needs to be processed with high priority for immediate delivery.",
+          "priority": "high",
+          "stream": false
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.content": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.stream": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/v1/summarize"
+      },
+      "response": {
+        "body": {
+          "article_id": "article-rt",
+          "model": "gemma3:4b-it-qat",
+          "success": true,
+          "summary": "リアルタイム記事の要約。"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.4.2"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "news-creator"
+  }
+}

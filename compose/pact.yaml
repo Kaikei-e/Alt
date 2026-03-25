@@ -1,0 +1,53 @@
+# compose/pact.yaml - Pact Broker for Consumer-Driven Contract Testing
+# Usage: docker compose -f compose/compose.yaml -f compose/pact.yaml -p alt up -d pact-broker
+
+name: alt
+
+include:
+  - base.yaml
+
+services:
+  pact-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pact
+      POSTGRES_PASSWORD: pact
+      POSTGRES_DB: pact
+    volumes:
+      - pact_db_data:/var/lib/postgresql/data
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pact"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - pact
+
+  pact-broker:
+    image: pactfoundation/pact-broker:latest
+    depends_on:
+      pact-db:
+        condition: service_healthy
+    ports:
+      - "9292:9292"
+    environment:
+      PACT_BROKER_DATABASE_URL: postgres://pact:pact@pact-db/pact
+      PACT_BROKER_BASIC_AUTH_USERNAME: pact
+      PACT_BROKER_BASIC_AUTH_PASSWORD: pact
+      PACT_BROKER_ALLOW_PUBLIC_READ: "true"
+      PACT_BROKER_LOG_LEVEL: INFO
+    networks:
+      - alt-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9292/diagnostic/status/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    profiles:
+      - pact
+
+volumes:
+  pact_db_data:

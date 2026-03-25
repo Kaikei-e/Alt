@@ -1,0 +1,167 @@
+{
+  "consumer": {
+    "name": "rag-orchestrator"
+  },
+  "interactions": [
+    {
+      "description": "a non-streaming chat request from rag-orchestrator",
+      "providerStates": [
+        {
+          "name": "the LLM model is loaded and ready for chat"
+        }
+      ],
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "test",
+              "role": "user"
+            }
+          ],
+          "model": "gemma3:4b-it-qat",
+          "stream": false
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.messages": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.stream": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/chat"
+      },
+      "response": {
+        "body": {
+          "done": true,
+          "message": {
+            "content": "This is a non-streaming response."
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.done": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a streaming chat request from rag-orchestrator",
+      "providerStates": [
+        {
+          "name": "the LLM model is loaded and ready for chat"
+        }
+      ],
+      "request": {
+        "body": {
+          "messages": [
+            {
+              "content": "test",
+              "role": "user"
+            }
+          ],
+          "model": "gemma3:4b-it-qat",
+          "stream": true
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.messages": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.stream": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/chat"
+      },
+      "response": {
+        "headers": {
+          "Content-Type": "application/x-ndjson"
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.4.2"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "news-creator"
+  }
+}

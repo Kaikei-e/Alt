@@ -1,0 +1,230 @@
+{
+  "consumer": {
+    "name": "alt-backend"
+  },
+  "interactions": [
+    {
+      "description": "a GetSummarizeStatus request for job-789",
+      "providerStates": [
+        {
+          "name": "a completed summarize job exists with id job-789"
+        }
+      ],
+      "request": {
+        "body": {
+          "jobId": "job-789"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.preprocessor.v2.PreProcessorService/GetSummarizeStatus"
+      },
+      "response": {
+        "body": {
+          "articleId": "article-456",
+          "jobId": "job-789",
+          "status": "completed",
+          "summary": "Generated summary text"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a QueueSummarize request for article-456",
+      "providerStates": [
+        {
+          "name": "the summarization queue is available"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "article-456",
+          "title": "Async Test Article"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.preprocessor.v2.PreProcessorService/QueueSummarize"
+      },
+      "response": {
+        "body": {
+          "jobId": "job-001",
+          "message": "Job queued successfully",
+          "status": "pending"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.jobId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a Summarize request for article-123",
+      "providerStates": [
+        {
+          "name": "an article exists with id article-123"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "article-123",
+          "content": "This is a test article content for summarization.",
+          "title": "Test Article"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.content": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.preprocessor.v2.PreProcessorService/Summarize"
+      },
+      "response": {
+        "body": {
+          "articleId": "article-123",
+          "success": true,
+          "summary": "This is a generated summary."
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.4.2"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "pre-processor"
+  }
+}
