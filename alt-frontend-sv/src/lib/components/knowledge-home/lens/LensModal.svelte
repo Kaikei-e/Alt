@@ -2,11 +2,14 @@
 import * as Dialog from "$lib/components/ui/dialog";
 import type { ConnectFeedSource } from "$lib/connect";
 import type { LensVersionData } from "$lib/connect/knowledge_home";
+import TagCombobox from "./TagCombobox.svelte";
+import type { TagSuggestion } from "./TagCombobox.svelte";
 
 interface Props {
 	open: boolean;
 	version: Omit<LensVersionData, "versionId">;
 	availableSources: ConnectFeedSource[];
+	availableTags?: TagSuggestion[];
 	loadingSources?: boolean;
 	onOpenChange: (open: boolean) => void;
 	onSave: (payload: {
@@ -20,6 +23,7 @@ const {
 	open,
 	version,
 	availableSources,
+	availableTags = [],
 	loadingSources = false,
 	onOpenChange,
 	onSave,
@@ -28,25 +32,22 @@ const {
 let name = $state("");
 let description = $state("");
 let queryText = $state("");
-let tagInput = $state("");
+let selectedTagNames = $state<string[]>([]);
 let timeWindow = $state("7d");
 let selectedSourceIds = $state<string[]>([]);
 let sourceSearch = $state("");
 let saving = $state(false);
+let nameBlurred = $state(false);
 
-function parseCsv(value: string): string[] {
-	return value
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter(Boolean);
-}
+const nameError = $derived(nameBlurred && !name.trim());
 
 function syncFromVersion(nextVersion: Omit<LensVersionData, "versionId">) {
 	queryText = nextVersion.queryText ?? "";
-	tagInput = nextVersion.tagIds.join(", ");
+	selectedTagNames = [...nextVersion.tagIds];
 	timeWindow = nextVersion.timeWindow || "7d";
 	selectedSourceIds = [...nextVersion.sourceIds];
 	sourceSearch = "";
+	nameBlurred = false;
 }
 
 $effect(() => {
@@ -82,6 +83,7 @@ const filteredSources = $derived.by(() => {
 
 async function submit() {
 	if (!name.trim()) {
+		nameBlurred = true;
 		return;
 	}
 	saving = true;
@@ -91,7 +93,7 @@ async function submit() {
 			description: description.trim(),
 			version: {
 				queryText: queryText.trim(),
-				tagIds: parseCsv(tagInput),
+				tagIds: selectedTagNames,
 				sourceIds: selectedSourceIds,
 				timeWindow,
 				includeRecap: version.includeRecap,
@@ -109,84 +111,152 @@ async function submit() {
 </script>
 
 <Dialog.Root {open} {onOpenChange}>
-	<Dialog.Content class="sm:!max-w-2xl">
+	<Dialog.Content class="sm:!max-w-2xl max-h-[85vh] overflow-y-auto">
 		<Dialog.Header>
 			<Dialog.Title>Save current view</Dialog.Title>
 			<Dialog.Description>
-				Save the current Home search, tags, sources, and recent window as a reusable server-side lens.
+				Save the current Home filters as a reusable lens. Only a name is required — filters below are pre-filled from your current view.
 			</Dialog.Description>
 		</Dialog.Header>
 
 		<div class="space-y-4 py-2">
+			<!-- Essential: Name (required) -->
 			<label class="block space-y-1">
-				<span class="text-sm text-[var(--text-primary)]">Name</span>
-				<input bind:value={name} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none" placeholder="AI sources" />
+				<span class="text-sm text-[var(--text-primary)]">
+					Name <span class="text-xs text-[var(--alt-primary)]">*</span>
+				</span>
+				<input
+					bind:value={name}
+					class="w-full rounded-xl border px-3 py-2 text-sm outline-none transition-colors {nameError
+						? 'border-red-400 bg-red-50/30'
+						: 'border-[var(--surface-border)] bg-[var(--surface-hover)]'}"
+					placeholder="e.g. AI sources, Rust weekly"
+					onblur={() => { nameBlurred = true; }}
+				/>
+				{#if nameError}
+					<span class="text-xs text-red-500">Name is required</span>
+				{/if}
 			</label>
 
+			<!-- Optional: Description -->
 			<label class="block space-y-1">
-				<span class="text-sm text-[var(--text-primary)]">Description</span>
-				<textarea bind:value={description} class="min-h-20 w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none" placeholder="Optional note for this view"></textarea>
+				<span class="text-sm text-[var(--text-primary)]">
+					Description <span class="text-xs text-[var(--text-tertiary)]">(optional)</span>
+				</span>
+				<textarea
+					bind:value={description}
+					class="min-h-16 w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none"
+					placeholder="A short note about this view"
+				></textarea>
 			</label>
 
-			<label class="block space-y-1">
-				<span class="text-sm text-[var(--text-primary)]">Search query</span>
-				<input bind:value={queryText} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none" placeholder="agents" />
-				<span class="text-xs text-[var(--text-secondary)]">Saved as a server-side filter for this lens</span>
-			</label>
+			<!-- Filter Criteria Section -->
+			<div class="border-t border-[var(--surface-border)] pt-4 mt-2">
+				<p class="text-xs text-[var(--text-tertiary)] mb-3">Filter criteria — pre-filled from your current view</p>
 
-			<label class="block space-y-1">
-				<span class="text-sm text-[var(--text-primary)]">Tags</span>
-				<input bind:value={tagInput} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none" placeholder="AI, Rust, Agents" />
-				<span class="text-xs text-[var(--text-secondary)]">Comma-separated tag names</span>
-			</label>
+				<div class="space-y-4">
+					<!-- Search query -->
+					<label class="block space-y-1">
+						<span class="text-sm text-[var(--text-primary)]">
+							Search query <span class="text-xs text-[var(--text-tertiary)]">(optional)</span>
+						</span>
+						<input
+							bind:value={queryText}
+							class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none"
+							placeholder="agents"
+						/>
+					</label>
 
-			<div class="space-y-2">
-				<div class="flex items-center justify-between gap-3">
-					<span class="text-sm text-[var(--text-primary)]">Sources</span>
-					<span class="text-xs text-[var(--text-secondary)]">{selectedSourceIds.length} selected</span>
-				</div>
+					<!-- Tags (TagCombobox) -->
+					<div class="space-y-1">
+						<span class="text-sm text-[var(--text-primary)]">
+							Tags <span class="text-xs text-[var(--text-tertiary)]">(optional)</span>
+						</span>
+						<TagCombobox
+							selectedTags={selectedTagNames}
+							{availableTags}
+							placeholder="Search or add tags..."
+							onTagsChange={(tags) => { selectedTagNames = tags; }}
+						/>
+					</div>
 
-				<input bind:value={sourceSearch} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none" placeholder="Filter subscribed sources" />
+					<!-- Sources -->
+					<div class="space-y-2">
+						<div class="flex items-center justify-between gap-3">
+							<span class="text-sm text-[var(--text-primary)]">
+								Sources <span class="text-xs text-[var(--text-tertiary)]">(optional)</span>
+							</span>
+							<div class="flex items-center gap-2">
+								<span class="text-xs text-[var(--text-secondary)]">{selectedSourceIds.length} of {availableSources.length}</span>
+								{#if availableSources.length > 0}
+									<button type="button" class="text-xs text-[var(--alt-primary)] hover:underline" onclick={() => { selectedSourceIds = availableSources.map(s => s.id); }}>All</button>
+									<button type="button" class="text-xs text-[var(--text-tertiary)] hover:underline" onclick={() => { selectedSourceIds = []; }}>Clear</button>
+								{/if}
+							</div>
+						</div>
 
-				<div class="max-h-64 space-y-2 overflow-y-auto rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-2)] p-3">
-					{#if loadingSources}
-						<p class="text-sm text-[var(--text-secondary)]">Loading subscribed sources...</p>
-					{:else if filteredSources.length === 0}
-						<p class="text-sm text-[var(--text-secondary)]">No subscribed sources match this filter.</p>
-					{:else}
-						{#each filteredSources as source (source.id)}
-							<label class="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-2 py-2 transition-colors hover:border-[var(--surface-border)]">
-								<input
-									type="checkbox"
-									class="mt-0.5"
-									checked={selectedSourceIds.includes(source.id)}
-									onchange={() => toggleSource(source.id)}
-								/>
-								<span class="min-w-0">
-									<span class="block text-sm text-[var(--text-primary)]">{displaySourceName(source)}</span>
-									<span class="block truncate text-xs text-[var(--text-secondary)]">{source.url}</span>
-								</span>
-							</label>
-						{/each}
-					{/if}
+						<input
+							bind:value={sourceSearch}
+							class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none"
+							placeholder="Filter sources..."
+						/>
+
+						<div class="max-h-48 space-y-1 overflow-y-auto rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-2)] p-2">
+							{#if loadingSources}
+								<p class="px-2 py-1.5 text-sm text-[var(--text-secondary)]">Loading sources...</p>
+							{:else if availableSources.length === 0}
+								<p class="px-2 py-1.5 text-sm text-[var(--text-secondary)]">No sources available. Add feeds in Settings → Feeds.</p>
+							{:else if filteredSources.length === 0}
+								<p class="px-2 py-1.5 text-sm text-[var(--text-secondary)]">No sources match "{sourceSearch}"</p>
+							{:else}
+								{#each filteredSources as source (source.id)}
+									<label class="flex cursor-pointer items-start gap-3 rounded-xl border border-transparent px-2 py-1.5 transition-colors hover:border-[var(--surface-border)]">
+										<input
+											type="checkbox"
+											class="mt-0.5"
+											checked={selectedSourceIds.includes(source.id)}
+											onchange={() => toggleSource(source.id)}
+										/>
+										<span class="min-w-0">
+											<span class="block text-sm text-[var(--text-primary)]">{displaySourceName(source)}</span>
+											<span class="block truncate text-xs text-[var(--text-secondary)]">{source.url}</span>
+										</span>
+									</label>
+								{/each}
+							{/if}
+						</div>
+					</div>
+
+					<!-- Recent window -->
+					<label class="block space-y-1">
+						<span class="text-sm text-[var(--text-primary)]">
+							Recent window <span class="text-xs text-[var(--text-tertiary)]">(optional)</span>
+						</span>
+						<select
+							bind:value={timeWindow}
+							class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none"
+						>
+							<option value="7d">Last 7 days</option>
+							<option value="30d">Last 30 days</option>
+							<option value="90d">Last 90 days</option>
+						</select>
+					</label>
 				</div>
 			</div>
-
-			<label class="block space-y-1">
-				<span class="text-sm text-[var(--text-primary)]">Recent window</span>
-				<select bind:value={timeWindow} class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm outline-none">
-					<option value="7d">Last 7 days</option>
-					<option value="30d">Last 30 days</option>
-					<option value="90d">Last 90 days</option>
-				</select>
-			</label>
 		</div>
 
-		<div class="mt-4 flex justify-end gap-2">
-			<button class="rounded-full border border-[var(--surface-border)] px-4 py-2 text-sm" onclick={() => onOpenChange(false)}>
+		<div class="mt-4 flex justify-end gap-2 border-t border-[var(--surface-border)] pt-4">
+			<button
+				class="rounded-none border-2 border-[var(--surface-border)] bg-[var(--surface-bg)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] shadow-[var(--shadow-sm)] transition-all hover:bg-[var(--surface-hover)]"
+				onclick={() => onOpenChange(false)}
+			>
 				Cancel
 			</button>
-			<button class="rounded-full bg-[var(--accent-primary)] px-4 py-2 text-sm text-white disabled:opacity-50" onclick={submit} disabled={saving || !name.trim()}>
+			<button
+				class="rounded-none border-2 border-[var(--alt-primary)] bg-[var(--surface-bg)] px-4 py-2 text-sm font-bold text-[var(--text-primary)] shadow-[var(--shadow-sm)] transition-all hover:bg-[var(--alt-primary)] hover:text-white disabled:pointer-events-none disabled:opacity-60"
+				onclick={submit}
+				disabled={saving || !name.trim()}
+			>
 				{saving ? "Saving..." : "Save lens"}
 			</button>
 		</div>
