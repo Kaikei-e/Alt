@@ -163,52 +163,30 @@ func expandQuery(ctx context.Context, query string, history []domain.Message, qu
 		return expandQueryLegacy(ctx, query, history, llmClient)
 	}
 
-	// Use cancellable context so the loser is cancelled once a winner is found
-	raceCtx, raceCancel := context.WithCancel(ctx)
-	defer raceCancel()
-
-	type result struct {
-		queries []string
-		err     error
-		source  string
+	// Single-path expansion via news-creator (semaphore-managed, HIGH PRIORITY).
+	// The previous race design (news-creator vs ollama-legacy in parallel) was removed
+	// because both paths now route through the same HybridPrioritySemaphore after
+	// ADR-567 unified AUGUR_EXTERNAL. Running two goroutines doubled semaphore slot
+	// consumption without improving latency.
+	var expansions []string
+	var err error
+	if len(history) > 0 {
+		expansions, err = queryExpander.ExpandQueryWithHistory(ctx, query, history, 1, 3)
+	} else {
+		expansions, err = queryExpander.ExpandQuery(ctx, query, 1, 3)
 	}
-	ch := make(chan result, 2)
-
-	go func() {
-		var expansions []string
-		var err error
-		if len(history) > 0 {
-			// Multi-turn: use history-aware expansion (coreference resolution + expansion in one call)
-			expansions, err = queryExpander.ExpandQueryWithHistory(raceCtx, query, history, 1, 3)
-		} else {
-			expansions, err = queryExpander.ExpandQuery(raceCtx, query, 1, 3)
-		}
-		ch <- result{expansions, err, "news-creator"}
-	}()
-
-	go func() {
-		expansions, err := expandQueryLegacy(raceCtx, query, history, llmClient)
-		ch <- result{expansions, err, "ollama-legacy"}
-	}()
-
-	var lastErr error
-	for range 2 {
-		r := <-ch
-		if r.err == nil && len(r.queries) > 0 {
-			logger.Info("query_expansion_completed",
-				slog.String("source", r.source),
-				slog.Int("count", len(r.queries)))
-			raceCancel() // Cancel the loser
-			return r.queries, nil
-		}
-		if r.err != nil {
-			logger.Warn("query_expansion_source_failed",
-				slog.String("source", r.source),
-				slog.String("error", r.err.Error()))
-			lastErr = r.err
-		}
+	if err != nil {
+		logger.Warn("query_expansion_source_failed",
+			slog.String("source", "news-creator"),
+			slog.String("error", err.Error()))
+		return nil, fmt.Errorf("query expansion failed: %w", err)
 	}
-	return nil, fmt.Errorf("all expansion methods failed: %w", lastErr)
+	if len(expansions) > 0 {
+		logger.Info("query_expansion_completed",
+			slog.String("source", "news-creator"),
+			slog.Int("count", len(expansions)))
+	}
+	return expansions, nil
 }
 
 // maxExpandedQueries caps the number of expanded queries to limit embedding + vector search cost.
