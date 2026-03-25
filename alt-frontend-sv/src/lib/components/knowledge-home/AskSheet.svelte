@@ -1,5 +1,6 @@
 <script lang="ts">
 import { FileText } from "@lucide/svelte";
+import { pickSuggestions } from "./ask-suggestions";
 
 interface Props {
 	open: boolean;
@@ -15,11 +16,7 @@ const { open, scopeTitle, scopeContext, scopeArticleId, scopeTags, onClose, onSu
 
 let question = $state("");
 
-const suggestions = [
-	"この記事の要点は？",
-	"ここでの新しい発見は？",
-	"次に何を読むべき？",
-] as const;
+const suggestions = $derived(pickSuggestions(scopeTags));
 
 function submit() {
 	const trimmed = question.trim();
