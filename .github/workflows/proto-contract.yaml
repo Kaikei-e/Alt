@@ -98,7 +98,7 @@ jobs:
       - name: Install pact FFI library
         run: |
           curl -fsSL https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz \
-            | gunzip > /usr/local/lib/libpact_ffi.so
+            | gunzip | sudo tee /usr/local/lib/libpact_ffi.so > /dev/null
           sudo ldconfig
 
       - name: Run Pact consumer tests
@@ -122,7 +122,7 @@ jobs:
       - name: Install pact FFI library
         run: |
           curl -fsSL https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz \
-            | gunzip > /usr/local/lib/libpact_ffi.so
+            | gunzip | sudo tee /usr/local/lib/libpact_ffi.so > /dev/null
           sudo ldconfig
 
       - name: Generate pact files from Go consumers
