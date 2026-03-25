@@ -33,6 +33,7 @@ from news_creator.handler import (
     create_expand_query_router,
     create_health_router,
 )
+from news_creator.handler.chat_handler import create_chat_router
 from news_creator.handler.rerank_handler import create_rerank_router
 from news_creator.utils.context_logger import (
     BusinessContextFilter,
@@ -195,6 +196,10 @@ app.include_router(
 app.include_router(
     create_rerank_router(container.rerank_usecase),
     tags=["reranking"]
+)
+app.include_router(
+    create_chat_router(container.ollama_gateway),
+    tags=["chat-proxy"]
 )
 app.include_router(
     create_health_router(container.llm_provider),

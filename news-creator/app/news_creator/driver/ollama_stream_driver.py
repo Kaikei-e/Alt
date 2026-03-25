@@ -40,6 +40,52 @@ class OllamaStreamDriver:
             await self.session.close()
             logger.info("Ollama stream driver cleaned up")
 
+    async def chat_stream(self, payload: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Proxy Ollama /api/chat with streaming.
+
+        Identical to generate_stream but uses /api/chat endpoint and
+        accepts messages instead of prompt. Used by the chat proxy handler
+        to route Ask Augur requests through the semaphore.
+
+        Args:
+            payload: Request payload for /api/chat (must contain 'messages' and stream=True)
+
+        Yields:
+            Response chunks (dictionaries) from Ollama stream
+        """
+        if not payload.get("messages"):
+            raise ValueError("payload must contain 'messages'")
+
+        if not payload.get("stream", False):
+            raise ValueError("chat_stream requires stream=True")
+
+        if self.session is None or self.session.closed:
+            await self.initialize()
+
+        url = f"{self.config.llm_service_url.rstrip('/')}/api/chat"
+        model = payload.get("model", "unknown")
+
+        logger.info(
+            "Sending chat stream to Ollama",
+            extra={"model": model, "message_count": len(payload["messages"]), "url": url},
+        )
+
+        assert self.session is not None
+        async with self.session.post(url, json=payload) as response:
+            if response.status != 200:
+                text_body = await response.text()
+                raise RuntimeError(f"Ollama chat API error: HTTP {response.status} - {text_body[:200]}")
+
+            async for line_bytes in response.content:
+                line = line_bytes.decode("utf-8").strip()
+                if not line:
+                    continue
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to decode chat stream line", extra={"line": line[:200]})
+
     async def generate_stream(self, payload: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
         """
         Call Ollama generate API with streaming support.

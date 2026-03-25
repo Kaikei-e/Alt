@@ -802,3 +802,49 @@ class OllamaGateway(LLMProviderPort):
         except Exception as err:
             logger.error("Failed to list Ollama models", extra={"error": str(err)})
             raise RuntimeError(f"Failed to list Ollama models: {err}") from err
+
+    async def chat_stream(
+        self,
+        payload: Dict[str, Any],
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream Ollama /api/chat through semaphore with HIGH priority.
+
+        This is a transparent proxy for Ask Augur chat requests. It acquires
+        a HIGH PRIORITY semaphore slot, forwards the request to Ollama's
+        /api/chat endpoint, and yields raw NDJSON chunks.
+
+        Args:
+            payload: Ollama chat request payload (messages, model, options, etc.)
+
+        Yields:
+            Response chunk dicts from Ollama stream
+
+        Raises:
+            QueueFullError: If semaphore queue is at capacity
+            RuntimeError: If Ollama returns an error
+        """
+        wait_time = await self._semaphore.acquire(high_priority=True)
+        logger.info(
+            "Acquired semaphore (HIGH PRIORITY) for chat stream proxy",
+            extra={
+                "model": payload.get("model", "unknown"),
+                "message_count": len(payload.get("messages", [])),
+                "queue_wait_time_seconds": round(wait_time, 4),
+            },
+        )
+
+        async def _stream():
+            try:
+                async for chunk in self.stream_driver.chat_stream(payload):
+                    yield chunk
+            except GeneratorExit:
+                logger.info("Chat stream closed by client disconnect")
+                raise
+            except Exception:
+                logger.error("Chat stream error", exc_info=True)
+                raise
+            finally:
+                self._semaphore.release(was_high_priority=True)
+                logger.info("Released semaphore after chat stream")
+
+        return _stream()
