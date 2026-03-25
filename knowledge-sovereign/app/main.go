@@ -47,9 +47,29 @@ func main() {
 	repo := sovereign_db.NewRepository(pool)
 	sovereignHandler := handler.NewSovereignHandler(repo, handler.WithDatabaseURL(cfg.DatabaseURL))
 
+	// Snapshot handler
+	snapshotDir := os.Getenv("SNAPSHOT_DIR")
+	if snapshotDir == "" {
+		snapshotDir = "/data/snapshots"
+	}
+	buildRef := os.Getenv("BUILD_REF")
+	if buildRef == "" {
+		buildRef = "dev"
+	}
+	snapshotHandler := handler.NewSnapshotHandler(repo, snapshotDir, buildRef, "00009")
+	archiveDir := os.Getenv("ARCHIVE_DIR")
+	if archiveDir == "" {
+		archiveDir = "/tmp/archives"
+	}
+	retentionHandler := handler.NewRetentionHandler(repo, archiveDir)
+	storageHandler := handler.NewStorageHandler(repo)
+
 	// Metrics / health server
 	metricsMux := http.NewServeMux()
 	metricsMux.HandleFunc("/health", handler.HealthHandler)
+	snapshotHandler.RegisterRoutes(metricsMux)
+	retentionHandler.RegisterRoutes(metricsMux)
+	storageHandler.RegisterRoutes(metricsMux)
 	metricsServer := &http.Server{Addr: cfg.MetricsAddr, Handler: metricsMux}
 
 	go func() {

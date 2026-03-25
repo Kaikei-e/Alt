@@ -65,9 +65,12 @@ services:
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
       - LISTEN_ADDR=:9500
       - METRICS_ADDR=:9501
+      - SNAPSHOT_DIR=/tmp/snapshots
     ports:
       - "9510:9500"
       - "9511:9501"
+    volumes:
+      - ../backups/sovereign-snapshots:/tmp/snapshots
     depends_on:
       knowledge-sovereign-db:
         condition: service_healthy
