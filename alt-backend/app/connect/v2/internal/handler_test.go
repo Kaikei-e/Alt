@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"alt/domain"
 	backendv1 "alt/gen/proto/services/backend/v1"
 	"alt/mocks"
 	"alt/port/event_publisher_port"
@@ -1156,6 +1157,122 @@ func TestBatchUpsertArticleTags_Unimplemented(t *testing.T) {
 	_, err := h.BatchUpsertArticleTags(context.Background(), req)
 	if connect.CodeOf(err) != connect.CodeUnimplemented {
 		t.Errorf("expected CodeUnimplemented, got %v", connect.CodeOf(err))
+	}
+}
+
+// ── Knowledge Home ArticleCreated event tests ──
+
+type stubKnowledgeEventPort struct {
+	called    bool
+	lastEvent domain.KnowledgeEvent
+	err       error
+}
+
+func (s *stubKnowledgeEventPort) AppendKnowledgeEvent(_ context.Context, event domain.KnowledgeEvent) error {
+	s.called = true
+	s.lastEvent = event
+	return s.err
+}
+
+func TestCreateArticle_AppendsKnowledgeEvent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
+	stub := &stubKnowledgeEventPort{}
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithKnowledgeEventPort(stub),
+	)
+
+	mockCreate.EXPECT().
+		CreateArticle(gomock.Any(), gomock.Any()).
+		Return("new-article-id", true, nil)
+
+	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+		Title:  "Test Article",
+		Url:    "http://example.com/test",
+		FeedId: "feed-1",
+		UserId: "00000000-0000-0000-0000-000000000001",
+	})
+
+	resp, err := h.CreateArticle(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Msg.ArticleId != "new-article-id" {
+		t.Errorf("expected article_id new-article-id, got %s", resp.Msg.ArticleId)
+	}
+
+	// Knowledge event should have been appended
+	if !stub.called {
+		t.Fatal("expected knowledge event to be appended")
+	}
+	if stub.lastEvent.EventType != domain.EventArticleCreated {
+		t.Errorf("expected event type ArticleCreated, got %s", stub.lastEvent.EventType)
+	}
+	if stub.lastEvent.AggregateID != "new-article-id" {
+		t.Errorf("expected aggregate_id new-article-id, got %s", stub.lastEvent.AggregateID)
+	}
+}
+
+func TestCreateArticle_NoKnowledgeEventOnUpdate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
+	stub := &stubKnowledgeEventPort{}
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithKnowledgeEventPort(stub),
+	)
+
+	mockCreate.EXPECT().
+		CreateArticle(gomock.Any(), gomock.Any()).
+		Return("existing-article-id", false, nil) // created=false means upsert
+
+	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+		Title:  "Updated",
+		Url:    "http://example.com/existing",
+		FeedId: "feed-1",
+	})
+
+	_, err := h.CreateArticle(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Knowledge event should NOT be appended for upserts
+	if stub.called {
+		t.Fatal("expected knowledge event NOT to be appended for upsert")
+	}
+}
+
+func TestCreateArticle_KnowledgeEventFailureDoesNotFailRPC(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCreate := mocks.NewMockCreateArticlePort(ctrl)
+	stub := &stubKnowledgeEventPort{err: errors.New("sovereign unavailable")}
+
+	h := NewHandler(nil, nil, nil, nil, nil, nil,
+		WithPhase2Ports(nil, mockCreate, nil, nil, nil, nil),
+		WithKnowledgeEventPort(stub),
+	)
+
+	mockCreate.EXPECT().
+		CreateArticle(gomock.Any(), gomock.Any()).
+		Return("article-x", true, nil)
+
+	req := connect.NewRequest(&backendv1.CreateArticleRequest{
+		Title:  "Test",
+		Url:    "http://example.com/test-fail",
+		FeedId: "feed-1",
+	})
+
+	// RPC should succeed even when knowledge event append fails
+	resp, err := h.CreateArticle(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected no error despite knowledge event failure, got: %v", err)
+	}
+	if resp.Msg.ArticleId != "article-x" {
+		t.Errorf("expected article_id article-x, got %s", resp.Msg.ArticleId)
 	}
 }
 

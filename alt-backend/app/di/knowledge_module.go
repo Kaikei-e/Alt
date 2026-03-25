@@ -101,7 +101,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		knowledgeBackfillGw, // ListBackfillArticlesPort (articles table in alt-db)
 		sovereignCli,
 	)
-	knowledgeProjectionHealthUC := knowledge_projection_health_usecase.NewUsecase(sovereignCli, sovereignCli, sovereignCli)
+	knowledgeProjectionHealthUC := knowledge_projection_health_usecase.NewUsecase(sovereignCli, sovereignCli, sovereignCli, sovereignCli)
 
 	// Reproject, SLO, Audit
 	reprojectUC := knowledge_reproject_usecase.NewUsecase(

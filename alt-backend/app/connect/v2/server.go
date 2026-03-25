@@ -181,6 +181,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		internalhandler.WithBackfillPorts(gw),
 		internalhandler.WithEventPublisher(container.EventPublisher),
 		internalhandler.WithKnowledgeVersionUsecases(container.CreateSummaryVersionUsecase, container.CreateTagSetVersionUsecase),
+		internalhandler.WithKnowledgeEventPort(container.SovereignClient),
 	)
 	internalPath, internalServiceHandler := backendv1connect.NewBackendInternalServiceHandler(internalHandler, internalOpts)
 	mux.Handle(internalPath, internalServiceHandler)

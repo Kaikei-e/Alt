@@ -13,12 +13,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"alt/domain"
+	"fmt"
 	backendv1 "alt/gen/proto/services/backend/v1"
 	"alt/gen/proto/services/backend/v1/backendv1connect"
 	"alt/port/event_publisher_port"
 	"alt/port/internal_article_port"
 	"alt/port/internal_feed_port"
 	"alt/port/internal_tag_port"
+	"alt/port/knowledge_event_port"
 	"alt/usecase/create_summary_version_usecase"
 	"alt/usecase/create_tag_set_version_usecase"
 )
@@ -60,7 +62,8 @@ type Handler struct {
 	getEmptyFeedID internal_feed_port.GetEmptyFeedIDPort
 
 	// Event publishing
-	eventPublisher event_publisher_port.EventPublisherPort
+	eventPublisher     event_publisher_port.EventPublisherPort
+	knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort
 
 	// Knowledge version usecases
 	createSummaryVersionUsecase *create_summary_version_usecase.CreateSummaryVersionUsecase
@@ -157,6 +160,13 @@ func WithBackfillPorts(
 ) HandlerOption {
 	return func(h *Handler) {
 		h.getEmptyFeedID = getEmptyFeedID
+	}
+}
+
+// WithKnowledgeEventPort configures the Knowledge Home event append port.
+func WithKnowledgeEventPort(port knowledge_event_port.AppendKnowledgeEventPort) HandlerOption {
+	return func(h *Handler) {
+		h.knowledgeEventPort = port
 	}
 }
 
@@ -354,6 +364,36 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[backen
 	if err != nil {
 		h.logger.Error("CreateArticle failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to create article"))
+	}
+
+	// Fire-and-forget: append Knowledge Home ArticleCreated event to sovereign-db
+	if h.knowledgeEventPort != nil && created {
+		if userID, parseErr := uuid.Parse(req.Msg.UserId); parseErr == nil {
+			payload, _ := json.Marshal(map[string]string{
+				"article_id":   articleID,
+				"title":        req.Msg.Title,
+				"published_at": publishedAt.Format(time.RFC3339),
+				"tenant_id":    req.Msg.UserId,
+				"link":         req.Msg.Url,
+			})
+			kevent := domain.KnowledgeEvent{
+				EventID:       uuid.New(),
+				OccurredAt:    time.Now(),
+				TenantID:      userID,
+				UserID:        &userID,
+				ActorType:     domain.ActorService,
+				ActorID:       "pre-processor",
+				EventType:     domain.EventArticleCreated,
+				AggregateType: domain.AggregateArticle,
+				AggregateID:   articleID,
+				DedupeKey:     fmt.Sprintf("article-created:%s", articleID),
+				Payload:       payload,
+			}
+			if appendErr := h.knowledgeEventPort.AppendKnowledgeEvent(ctx, kevent); appendErr != nil {
+				h.logger.Warn("failed to append knowledge ArticleCreated event (non-fatal)",
+					"article_id", articleID, "error", appendErr)
+			}
+		}
 	}
 
 	// Fire-and-forget: publish ArticleCreated event for downstream consumers

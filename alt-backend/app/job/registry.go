@@ -25,7 +25,7 @@ func RegisterAllJobs(scheduler *JobScheduler, container *di.ApplicationComponent
 		Name:     "outbox-worker",
 		Interval: 5 * time.Second,
 		Timeout:  30 * time.Second,
-		Fn:       OutboxWorkerJob(container.AltDBRepository, container.RagIntegration),
+		Fn:       OutboxWorkerJob(container.AltDBRepository, container.RagIntegration, container.SovereignClient),
 	})
 	scheduler.Add(Job{
 		Name:     "ogp-image-warmer",

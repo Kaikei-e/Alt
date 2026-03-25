@@ -18,4 +18,5 @@ include:
   - pgbouncer.yaml
   - rag.yaml
   - recap.yaml
+  - sovereign.yaml
   - workers.yaml

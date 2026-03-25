@@ -1,18 +1,24 @@
 package job
 
 import (
+	"alt/domain"
 	"alt/driver/alt_db"
+	"alt/port/knowledge_event_port"
 	"alt/port/rag_integration_port"
 	"alt/utils/logger"
 	"context"
 	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 // OutboxWorkerJob returns a function suitable for the JobScheduler that
 // processes pending outbox events.
-func OutboxWorkerJob(repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort) func(ctx context.Context) error {
+func OutboxWorkerJob(repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		processOutboxEvents(ctx, repo, ragIntegration)
+		processOutboxEvents(ctx, repo, ragIntegration, knowledgeEventPort)
 		return nil
 	}
 }
@@ -20,10 +26,10 @@ func OutboxWorkerJob(repo *alt_db.AltDBRepository, ragIntegration rag_integratio
 // OutboxWorkerRunner is kept for backward compatibility.
 // Deprecated: Use OutboxWorkerJob with JobScheduler instead.
 func OutboxWorkerRunner(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort) {
-	processOutboxEvents(ctx, repo, ragIntegration)
+	processOutboxEvents(ctx, repo, ragIntegration, nil)
 }
 
-func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort) {
+func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragIntegration rag_integration_port.RagIntegrationPort, knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort) {
 	events, err := repo.FetchAndLockPendingOutboxEvents(ctx, 10)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to fetch pending outbox events", "error", err)
@@ -55,10 +61,65 @@ func processOutboxEvents(ctx context.Context, repo *alt_db.AltDBRepository, ragI
 				logger.Logger.InfoContext(ctx, "Successfully processed outbox event", "event_id", event.ID)
 				updateStatus(ctx, repo, event.ID, "PROCESSED", "")
 			}
+
+			// Fire-and-forget: emit Knowledge Home ArticleCreated event (idempotent via dedupe_key)
+			emitArticleCreatedEvent(ctx, knowledgeEventPort, event.Payload)
 		} else {
 			logger.Logger.WarnContext(ctx, "Unknown event type", "event_type", event.EventType, "event_id", event.ID)
 			updateStatus(ctx, repo, event.ID, "FAILED", "Unknown event type")
 		}
+	}
+}
+
+// emitArticleCreatedEvent appends a Knowledge Home ArticleCreated event to sovereign-db.
+// Uses dedupe_key for idempotency — safe to call on every ARTICLE_UPSERT.
+func emitArticleCreatedEvent(ctx context.Context, port knowledge_event_port.AppendKnowledgeEventPort, payload []byte) {
+	if port == nil {
+		return
+	}
+
+	var p struct {
+		ArticleID string `json:"article_id"`
+		URL       string `json:"url"`
+		Title     string `json:"title"`
+		UserID    string `json:"user_id"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		logger.Logger.ErrorContext(ctx, "failed to unmarshal outbox payload for knowledge event", "error", err)
+		return
+	}
+
+	userID, err := uuid.Parse(p.UserID)
+	if err != nil {
+		logger.Logger.WarnContext(ctx, "invalid user_id for knowledge event, skipping", "user_id", p.UserID)
+		return
+	}
+
+	eventPayload, _ := json.Marshal(map[string]string{
+		"article_id":   p.ArticleID,
+		"title":        p.Title,
+		"published_at": time.Now().Format(time.RFC3339),
+		"tenant_id":    p.UserID,
+		"link":         p.URL,
+	})
+
+	kevent := domain.KnowledgeEvent{
+		EventID:       uuid.New(),
+		OccurredAt:    time.Now(),
+		TenantID:      userID,
+		UserID:        &userID,
+		ActorType:     domain.ActorService,
+		ActorID:       "outbox-worker",
+		EventType:     domain.EventArticleCreated,
+		AggregateType: domain.AggregateArticle,
+		AggregateID:   p.ArticleID,
+		DedupeKey:     fmt.Sprintf("article-created:%s", p.ArticleID),
+		Payload:       eventPayload,
+	}
+
+	if err := port.AppendKnowledgeEvent(ctx, kevent); err != nil {
+		logger.Logger.WarnContext(ctx, "failed to append knowledge ArticleCreated event (non-fatal)",
+			"article_id", p.ArticleID, "error", err)
 	}
 }
 

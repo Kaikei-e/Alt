@@ -5,6 +5,7 @@ import (
 	"alt/port/knowledge_backfill_port"
 	"alt/port/knowledge_projection_port"
 	"alt/port/knowledge_projection_version_port"
+	"alt/port/today_digest_port"
 	"alt/utils/logger"
 	"context"
 	"time"
@@ -25,6 +26,7 @@ type Usecase struct {
 	versionPort    knowledge_projection_version_port.GetActiveVersionPort
 	checkpointPort knowledge_projection_port.GetProjectionCheckpointPort
 	backfillPort   knowledge_backfill_port.ListBackfillJobsPort
+	freshnessPort  today_digest_port.GetProjectionFreshnessPort
 }
 
 // NewUsecase creates a new projection health usecase.
@@ -32,11 +34,13 @@ func NewUsecase(
 	versionPort knowledge_projection_version_port.GetActiveVersionPort,
 	checkpointPort knowledge_projection_port.GetProjectionCheckpointPort,
 	backfillPort knowledge_backfill_port.ListBackfillJobsPort,
+	freshnessPort today_digest_port.GetProjectionFreshnessPort,
 ) *Usecase {
 	return &Usecase{
 		versionPort:    versionPort,
 		checkpointPort: checkpointPort,
 		backfillPort:   backfillPort,
+		freshnessPort:  freshnessPort,
 	}
 }
 
@@ -68,6 +72,16 @@ func (u *Usecase) GetHealth(ctx context.Context) (*HealthStatus, error) {
 		health.BackfillJobs = jobs
 	}
 
+	// Use actual checkpoint updated_at instead of request time
+	if u.freshnessPort != nil {
+		updatedAt, err := u.freshnessPort.GetProjectionFreshness(ctx, projectorName)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "failed to get projection freshness", "error", err)
+		} else if updatedAt != nil {
+			health.LastUpdated = *updatedAt
+			return health, nil
+		}
+	}
 	health.LastUpdated = time.Now()
 	return health, nil
 }

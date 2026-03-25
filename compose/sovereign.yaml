@@ -1,5 +1,4 @@
 # compose/sovereign.yaml - Knowledge Sovereign service + DB
-# Usage: docker compose -f compose/compose.yaml -f compose/sovereign.yaml -p alt up -d
 
 services:
   knowledge-sovereign-db:
@@ -23,8 +22,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-    profiles:
-      - sovereign
 
   # Atlas migrator for knowledge-sovereign-db
   knowledge-sovereign-db-migrator:
@@ -56,8 +53,6 @@ services:
     networks:
       - alt-network
     restart: "no"
-    profiles:
-      - sovereign
 
   knowledge-sovereign:
     build:
@@ -87,8 +82,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-    profiles:
-      - sovereign
 
 volumes:
   knowledge-sovereign-db-data:
