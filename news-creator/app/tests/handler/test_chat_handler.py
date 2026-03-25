@@ -141,16 +141,70 @@ class TestChatEndpointValidation:
         )
         assert resp.status_code == 422
 
-    def test_non_streaming_returns_400(self):
-        """Non-streaming chat is not supported — use direct Ollama."""
+    def test_non_streaming_calls_chat_generate(self):
+        """Non-streaming chat routes to gateway.chat_generate()."""
         gateway = AsyncMock()
+        gateway.chat_generate.return_value = {
+            "model": "gemma3-4b-8k",
+            "message": {"role": "assistant", "content": "Hello!"},
+            "done": True,
+        }
+
         client = TestClient(make_app(gateway))
         resp = client.post(
             "/api/chat",
             json={
-                "model": "test",
+                "model": "gemma3-4b-8k",
                 "messages": [{"role": "user", "content": "hi"}],
                 "stream": False,
             },
         )
-        assert resp.status_code == 400
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["message"]["content"] == "Hello!"
+        gateway.chat_generate.assert_awaited_once()
+        call_payload = gateway.chat_generate.call_args[1]["payload"]
+        assert call_payload["model"] == "gemma3-4b-8k"
+
+    def test_non_streaming_passes_options(self):
+        """Non-streaming chat passes options to gateway."""
+        gateway = AsyncMock()
+        gateway.chat_generate.return_value = {
+            "model": "gemma3-4b-8k",
+            "message": {"role": "assistant", "content": "ok"},
+            "done": True,
+        }
+
+        client = TestClient(make_app(gateway))
+        resp = client.post(
+            "/api/chat",
+            json={
+                "model": "gemma3-4b-8k",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+                "options": {"num_predict": 4096},
+            },
+        )
+
+        assert resp.status_code == 200
+        call_payload = gateway.chat_generate.call_args[1]["payload"]
+        assert call_payload["options"]["num_predict"] == 4096
+
+    def test_non_streaming_queue_full_returns_429(self):
+        """Non-streaming chat returns 429 when queue is full."""
+        from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+
+        gateway = AsyncMock()
+        gateway.chat_generate.side_effect = QueueFullError("queue full")
+
+        client = TestClient(make_app(gateway))
+        resp = client.post(
+            "/api/chat",
+            json={
+                "model": "gemma3-4b-8k",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+            },
+        )
+        assert resp.status_code == 429

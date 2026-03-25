@@ -848,3 +848,40 @@ class OllamaGateway(LLMProviderPort):
                 logger.info("Released semaphore after chat stream")
 
         return _stream()
+
+    async def chat_generate(
+        self,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Non-streaming Ollama /api/chat through semaphore with HIGH priority.
+
+        Used by morning letter and other non-streaming chat requests.
+
+        Args:
+            payload: Ollama chat request payload (messages, model, options, etc.)
+
+        Returns:
+            Response dict in /api/chat format
+
+        Raises:
+            QueueFullError: If semaphore queue is at capacity
+            RuntimeError: If Ollama returns an error
+        """
+        wait_time = await self._semaphore.acquire(high_priority=True)
+        logger.info(
+            "Acquired semaphore (HIGH PRIORITY) for chat generate proxy",
+            extra={
+                "model": payload.get("model", "unknown"),
+                "message_count": len(payload.get("messages", [])),
+                "queue_wait_time_seconds": round(wait_time, 4),
+            },
+        )
+
+        try:
+            return await self.stream_driver.chat_generate(payload)
+        except Exception:
+            logger.error("Chat generate error", exc_info=True)
+            raise
+        finally:
+            self._semaphore.release(was_high_priority=True)
+            logger.info("Released semaphore after chat generate")

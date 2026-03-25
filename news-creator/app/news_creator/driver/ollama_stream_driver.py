@@ -40,6 +40,32 @@ class OllamaStreamDriver:
             await self.session.close()
             logger.info("Ollama stream driver cleaned up")
 
+    def _build_prompt_from_messages(self, messages: list) -> str:
+        """Convert chat messages to a single prompt for /api/generate.
+
+        Shared between chat_stream() and chat_generate().
+        """
+        prompt_parts = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            prompt_parts.append(f"<start_of_turn>{role}\n{content}<end_of_turn>")
+        prompt_parts.append("<start_of_turn>model\n")
+        return "\n".join(prompt_parts)
+
+    def _merge_options(self, caller_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Merge config base options with caller options.
+
+        Config base options (num_batch, num_keep, stop, etc.) are used as
+        defaults. Caller options (num_predict, temperature, etc.) override.
+        This prevents Ollama model reload from parameter mismatch between
+        batch summarization and chat requests.
+        """
+        base = self.config.get_llm_options()
+        if caller_options:
+            base.update(caller_options)
+        return base
+
     async def chat_stream(self, payload: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
         """
         Proxy chat requests through Ollama /api/generate (not /api/chat).
@@ -48,6 +74,9 @@ class OllamaStreamDriver:
         This method converts the chat messages to a single prompt, calls
         /api/generate, and converts the response back to /api/chat format
         so the upstream caller (rag-orchestrator) sees no difference.
+
+        Options are merged with config base options (num_batch, num_keep, stop)
+        to prevent Ollama model reload from parameter mismatch.
 
         Args:
             payload: Request payload in /api/chat format (must contain 'messages')
@@ -61,14 +90,7 @@ class OllamaStreamDriver:
         if self.session is None or self.session.closed:
             await self.initialize()
 
-        # Convert chat messages to a single prompt for /api/generate
-        prompt_parts = []
-        for msg in payload["messages"]:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            prompt_parts.append(f"<start_of_turn>{role}\n{content}<end_of_turn>")
-        prompt_parts.append("<start_of_turn>model\n")
-        prompt = "\n".join(prompt_parts)
+        prompt = self._build_prompt_from_messages(payload["messages"])
 
         model = payload.get("model", "unknown")
         generate_payload: Dict[str, Any] = {
@@ -76,9 +98,8 @@ class OllamaStreamDriver:
             "prompt": prompt,
             "stream": True,
             "raw": True,  # Skip Ollama's own chat template since we build it
+            "options": self._merge_options(payload.get("options")),
         }
-        if payload.get("options"):
-            generate_payload["options"] = payload["options"]
         if payload.get("keep_alive") is not None:
             generate_payload["keep_alive"] = payload["keep_alive"]
         if payload.get("format") is not None:
@@ -131,6 +152,81 @@ class OllamaStreamDriver:
                     yield chat_chunk
                 except json.JSONDecodeError:
                     logger.warning("Failed to decode generate stream line", extra={"line": line[:200]})
+
+    async def chat_generate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Non-streaming chat → /api/generate proxy with config base options.
+
+        Converts chat messages to a prompt, calls /api/generate (non-streaming),
+        and returns the result in /api/chat response format.
+
+        Options are merged with config base options to prevent Ollama model reload.
+
+        Args:
+            payload: Request payload in /api/chat format (must contain 'messages')
+
+        Returns:
+            Response dict in /api/chat format
+
+        Raises:
+            ValueError: If messages are missing
+            RuntimeError: If Ollama returns an error
+        """
+        if not payload.get("messages"):
+            raise ValueError("payload must contain 'messages'")
+
+        if self.session is None or self.session.closed:
+            await self.initialize()
+
+        prompt = self._build_prompt_from_messages(payload["messages"])
+        model = payload.get("model", "unknown")
+
+        generate_payload: Dict[str, Any] = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "raw": True,
+            "options": self._merge_options(payload.get("options")),
+        }
+        if payload.get("keep_alive") is not None:
+            generate_payload["keep_alive"] = payload["keep_alive"]
+        if payload.get("format") is not None:
+            generate_payload["format"] = payload["format"]
+
+        url = f"{self.config.llm_service_url.rstrip('/')}/api/generate"
+
+        logger.info(
+            "Sending chat-to-generate (non-streaming) to Ollama",
+            extra={
+                "model": model,
+                "message_count": len(payload["messages"]),
+                "prompt_length": len(prompt),
+                "url": url,
+            },
+        )
+
+        assert self.session is not None
+        async with self.session.post(url, json=generate_payload) as response:
+            if response.status != 200:
+                text_body = await response.text()
+                raise RuntimeError(
+                    f"Ollama generate API error: HTTP {response.status} - {text_body[:200]}"
+                )
+
+            gen_resp = await response.json()
+
+            return {
+                "model": gen_resp.get("model", model),
+                "created_at": gen_resp.get("created_at", ""),
+                "message": {
+                    "role": "assistant",
+                    "content": gen_resp.get("response", ""),
+                },
+                "done": gen_resp.get("done", True),
+                "done_reason": gen_resp.get("done_reason", "stop"),
+                "total_duration": gen_resp.get("total_duration"),
+                "prompt_eval_count": gen_resp.get("prompt_eval_count"),
+                "eval_count": gen_resp.get("eval_count"),
+            }
 
     async def generate_stream(self, payload: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
         """

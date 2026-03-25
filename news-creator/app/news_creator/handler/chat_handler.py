@@ -48,10 +48,21 @@ def create_chat_router(gateway: OllamaGateway) -> APIRouter:
 
         try:
             if not request.stream:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Non-streaming chat is not supported via proxy. Use direct Ollama connection.",
-                )
+                # Non-streaming chat (used by morning letter)
+                payload: Dict[str, Any] = {
+                    "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+                }
+                if request.model:
+                    payload["model"] = request.model
+                if request.keep_alive is not None:
+                    payload["keep_alive"] = request.keep_alive
+                if request.format is not None:
+                    payload["format"] = request.format
+                if request.options is not None:
+                    payload["options"] = request.options
+
+                result = await gateway.chat_generate(payload=payload)
+                return JSONResponse(content=result)
 
             # Build payload preserving all Ollama fields
             payload: Dict[str, Any] = {
