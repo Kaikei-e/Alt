@@ -194,6 +194,8 @@ func TestCacheConfig_DefaultTTL(t *testing.T) {
 	assert.Equal(t, 30*time.Second, config.GetTTL("/alt.feeds.v2.FeedService/GetDetailedFeedStats"))
 	assert.Equal(t, 15*time.Second, config.GetTTL("/alt.feeds.v2.FeedService/GetUnreadCount"))
 	assert.Equal(t, 30*time.Second, config.GetTTL("/alt.feeds.v2.FeedService/GetFeedStats"))
+	assert.Equal(t, 10*time.Second, config.GetTTL("/alt.feeds.v2.FeedService/GetUnreadFeeds"))
+	assert.Equal(t, 10*time.Second, config.GetTTL("/alt.feeds.v2.FeedService/GetAllFeeds"))
 }
 
 func TestCacheConfig_IsCacheable(t *testing.T) {
@@ -206,6 +208,8 @@ func TestCacheConfig_IsCacheable(t *testing.T) {
 		{"/alt.feeds.v2.FeedService/GetDetailedFeedStats", true},
 		{"/alt.feeds.v2.FeedService/GetUnreadCount", true},
 		{"/alt.feeds.v2.FeedService/GetFeedStats", true},
+		{"/alt.feeds.v2.FeedService/GetUnreadFeeds", true},
+		{"/alt.feeds.v2.FeedService/GetAllFeeds", true},
 		{"/alt.feeds.v2.FeedService/StreamFeedStats", false},  // Streaming
 		{"/alt.augur.v2.AugurService/StreamChat", false},      // Streaming
 		{"/alt.feeds.v2.FeedService/CreateFeed", false},       // Mutation

@@ -156,6 +156,8 @@ var defaultTTLs = map[string]time.Duration{
 	"/alt.feeds.v2.FeedService/GetDetailedFeedStats": 30 * time.Second,
 	"/alt.feeds.v2.FeedService/GetUnreadCount":       15 * time.Second,
 	"/alt.feeds.v2.FeedService/GetFeedStats":         30 * time.Second,
+	"/alt.feeds.v2.FeedService/GetUnreadFeeds":       10 * time.Second,
+	"/alt.feeds.v2.FeedService/GetAllFeeds":          10 * time.Second,
 }
 
 // Streaming endpoints that should never be cached
