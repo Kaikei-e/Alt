@@ -97,9 +97,10 @@ jobs:
 
       - name: Install pact FFI library
         run: |
+          mkdir -p "$HOME/.pact/lib"
           curl -fsSL https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz \
-            | gunzip | sudo tee /usr/local/lib/libpact_ffi.so > /dev/null
-          sudo ldconfig
+            | gunzip > "$HOME/.pact/lib/libpact_ffi.so"
+          echo "LD_LIBRARY_PATH=$HOME/.pact/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Run Pact consumer tests
         working-directory: ${{ matrix.service }}
@@ -121,9 +122,10 @@ jobs:
 
       - name: Install pact FFI library
         run: |
+          mkdir -p "$HOME/.pact/lib"
           curl -fsSL https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz \
-            | gunzip | sudo tee /usr/local/lib/libpact_ffi.so > /dev/null
-          sudo ldconfig
+            | gunzip > "$HOME/.pact/lib/libpact_ffi.so"
+          echo "LD_LIBRARY_PATH=$HOME/.pact/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Generate pact files from Go consumers
         run: |
