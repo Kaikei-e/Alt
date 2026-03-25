@@ -47,30 +47,22 @@ type TrackHomeActionUsecase struct {
 	activeVersionPort  knowledge_projection_version_port.GetActiveVersionPort
 }
 
-// SetRecallSignalPort wires the optional recall signal port.
-func (u *TrackHomeActionUsecase) SetRecallSignalPort(port recall_signal_port.AppendRecallSignalPort) {
-	u.recallSignalPort = port
-}
-
-// SetDismissPort wires the optional synchronous dismiss fast-path and projection version lookup.
-func (u *TrackHomeActionUsecase) SetDismissPort(
-	port knowledge_home_port.DismissKnowledgeHomeItemPort,
-	versionPort knowledge_projection_version_port.GetActiveVersionPort,
-) {
-	u.dismissPort = port
-	u.activeVersionPort = versionPort
-}
-
 // NewTrackHomeActionUsecase creates a new TrackHomeActionUsecase.
 func NewTrackHomeActionUsecase(
 	userEventPort knowledge_user_event_port.AppendKnowledgeUserEventPort,
 	knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort,
 	featureFlagPort feature_flag_port.FeatureFlagPort,
+	recallSignalPort recall_signal_port.AppendRecallSignalPort,
+	dismissPort knowledge_home_port.DismissKnowledgeHomeItemPort,
+	activeVersionPort knowledge_projection_version_port.GetActiveVersionPort,
 ) *TrackHomeActionUsecase {
 	return &TrackHomeActionUsecase{
 		userEventPort:      userEventPort,
 		knowledgeEventPort: knowledgeEventPort,
 		featureFlagPort:    featureFlagPort,
+		recallSignalPort:   recallSignalPort,
+		dismissPort:        dismissPort,
+		activeVersionPort:  activeVersionPort,
 	}
 }
 

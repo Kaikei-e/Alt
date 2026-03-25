@@ -137,9 +137,9 @@ func setupHandlerWithFlags(flagPort *mockFeatureFlagPort) (*Handler, *mockHomeIt
 	userEventPort := &mockUserEventPort{}
 	knowledgeEventPort := &mockKnowledgeEventPort{}
 
-	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil, nil, nil)
+	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil, nil, nil, nil)
 	trackSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(userEventPort, flagPort)
-	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, flagPort)
+	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, flagPort, nil, nil, nil)
 
 	handler := NewHandler(
 		getHomeUsecase, trackSeenUsecase, trackActionUsecase,
@@ -355,9 +355,9 @@ func TestHandler_GetKnowledgeHome_WithMetrics_DoesNotPanic(t *testing.T) {
 	userEventPort := &mockUserEventPort{}
 	knowledgeEventPort := &mockKnowledgeEventPort{}
 
-	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil, nil, nil)
+	getHomeUsecase := get_knowledge_home_usecase.NewGetKnowledgeHomeUsecase(homePort, digestPort, nil, nil, nil, nil)
 	trackSeenUsecase := track_home_seen_usecase.NewTrackHomeSeenUsecase(userEventPort, nil)
-	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, nil)
+	trackActionUsecase := track_home_action_usecase.NewTrackHomeActionUsecase(userEventPort, knowledgeEventPort, nil, nil, nil, nil)
 
 	handler := NewHandler(
 		getHomeUsecase, trackSeenUsecase, trackActionUsecase,

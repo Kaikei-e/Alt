@@ -32,6 +32,19 @@ var (
 	// 記事関連エラー
 	ErrArticleNotFound      = errors.New("article not found")
 	ErrArticleAlreadyExists = errors.New("article already exists")
+
+	// インフラ関連エラー
+	ErrRateLimited        = errors.New("rate limited")
+	ErrServiceUnavailable = errors.New("service unavailable")
+	ErrTimeout            = errors.New("request timeout")
+	ErrDatabaseError      = errors.New("database error")
+
+	// 検索関連エラー
+	ErrSearchUnavailable = errors.New("search service unavailable")
+
+	// Knowledge Home 関連エラー
+	ErrKnowledgeEventNotFound = errors.New("knowledge event not found")
+	ErrProjectionStale        = errors.New("projection is stale")
 )
 
 type ComplianceError struct {

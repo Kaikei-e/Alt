@@ -19,6 +19,20 @@ type FeedLinkIDResolver interface {
 	FetchFeedLinkIDByURL(ctx context.Context, feedURL string) (*string, error)
 }
 
+// FeedPageInvalidator invalidates cached feed pages.
+type FeedPageInvalidator interface {
+	InvalidateFeedPage(ctx context.Context, feedLinkID uuid.UUID) error
+}
+
+// RegisterFeedsOpts holds optional dependencies for RegisterFeedsUsecase.
+type RegisterFeedsOpts struct {
+	FeedLinkIDResolver   FeedLinkIDResolver
+	FeedLinkAvailability feed_link_availability_port.FeedLinkAvailabilityPort
+	FeedPageInvalidator  FeedPageInvalidator
+	SubscriptionPort     subscription_port.SubscriptionPort
+	EventPublisher       event_publisher_port.EventPublisherPort
+}
+
 type RegisterFeedsUsecase struct {
 	validateAndFetchPort validate_fetch_rss_port.ValidateAndFetchRSSPort
 	registerFeedLinkPort register_feed_port.RegisterFeedLinkPort
@@ -27,47 +41,28 @@ type RegisterFeedsUsecase struct {
 	subscriptionPort     subscription_port.SubscriptionPort
 	availabilityPort     feed_link_availability_port.FeedLinkAvailabilityPort
 	eventPublisher       event_publisher_port.EventPublisherPort
-	feedPageInvalidator  interface {
-		InvalidateFeedPage(ctx context.Context, feedLinkID uuid.UUID) error
-	}
+	feedPageInvalidator  FeedPageInvalidator
 }
 
 func NewRegisterFeedsUsecase(
 	validateAndFetchPort validate_fetch_rss_port.ValidateAndFetchRSSPort,
 	registerFeedLinkPort register_feed_port.RegisterFeedLinkPort,
 	registerFeedsGateway register_feed_port.RegisterFeedsPort,
+	opts *RegisterFeedsOpts,
 ) *RegisterFeedsUsecase {
-	return &RegisterFeedsUsecase{
+	uc := &RegisterFeedsUsecase{
 		validateAndFetchPort: validateAndFetchPort,
 		registerFeedLinkPort: registerFeedLinkPort,
 		registerFeedsGateway: registerFeedsGateway,
 	}
-}
-
-// SetFeedLinkIDResolver sets the resolver for looking up feed_link_id by URL.
-func (r *RegisterFeedsUsecase) SetFeedLinkIDResolver(resolver FeedLinkIDResolver) {
-	r.feedLinkIDResolver = resolver
-}
-
-// SetSubscriptionPort sets the subscription port for auto-subscribing users.
-func (r *RegisterFeedsUsecase) SetSubscriptionPort(port subscription_port.SubscriptionPort) {
-	r.subscriptionPort = port
-}
-
-// SetFeedLinkAvailabilityPort sets the availability port for initializing feed health.
-func (r *RegisterFeedsUsecase) SetFeedLinkAvailabilityPort(port feed_link_availability_port.FeedLinkAvailabilityPort) {
-	r.availabilityPort = port
-}
-
-// SetEventPublisher sets the event publisher for domain event publishing.
-func (r *RegisterFeedsUsecase) SetEventPublisher(port event_publisher_port.EventPublisherPort) {
-	r.eventPublisher = port
-}
-
-func (r *RegisterFeedsUsecase) SetFeedPageInvalidator(invalidator interface {
-	InvalidateFeedPage(ctx context.Context, feedLinkID uuid.UUID) error
-}) {
-	r.feedPageInvalidator = invalidator
+	if opts != nil {
+		uc.feedLinkIDResolver = opts.FeedLinkIDResolver
+		uc.availabilityPort = opts.FeedLinkAvailability
+		uc.feedPageInvalidator = opts.FeedPageInvalidator
+		uc.subscriptionPort = opts.SubscriptionPort
+		uc.eventPublisher = opts.EventPublisher
+	}
+	return uc
 }
 
 func (r *RegisterFeedsUsecase) Execute(ctx context.Context, link string) error {

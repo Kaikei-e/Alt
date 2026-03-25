@@ -223,7 +223,7 @@ func TestGetKnowledgeHomeUsecase_Execute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewGetKnowledgeHomeUsecase(tt.homeItems, tt.todayDigest, tt.resolveLens, nil, nil)
+			uc := NewGetKnowledgeHomeUsecase(tt.homeItems, tt.todayDigest, tt.resolveLens, nil, nil, nil)
 			result, err := uc.Execute(context.Background(), userID, tt.cursor, tt.limit, tt.date, tt.lensID)
 
 			if tt.wantErr {
@@ -254,7 +254,7 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		countPort := &mockCountNeedToKnowPort{count: 7}
 		freshnessPort := &mockProjectionFreshnessPort{updatedAt: &recentTime}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, countPort)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, countPort, nil)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -266,7 +266,7 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
 		freshnessPort := &mockProjectionFreshnessPort{updatedAt: &recentTime}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, nil)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, nil, nil)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -279,7 +279,7 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
 		freshnessPort := &mockProjectionFreshnessPort{updatedAt: &staleTime}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, nil)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, nil, nil)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -291,7 +291,7 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
 		freshnessPort := &mockProjectionFreshnessPort{updatedAt: nil}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, nil)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, nil, nil)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -306,7 +306,7 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		freshnessPort := &mockProjectionFreshnessPort{err: errors.New("db error")}
 		countPort := &mockCountNeedToKnowPort{err: errors.New("db error")}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, countPort)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, countPort, nil)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -320,7 +320,7 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		homeItems := &mockHomeItemsPort{items: []domain.KnowledgeHomeItem{}}
 		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{NeedToKnowCount: 3}}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil, nil)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -338,7 +338,7 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		countPort := &mockCountNeedToKnowPort{count: 2}
 		freshnessPort := &mockProjectionFreshnessPort{updatedAt: &recentTime}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, countPort)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, freshnessPort, countPort, nil)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -359,7 +359,7 @@ func TestGetKnowledgeHomeUsecase_ServiceQuality(t *testing.T) {
 		uc := NewGetKnowledgeHomeUsecase(
 			&mockHomeItemsPort{items: []domain.KnowledgeHomeItem{{ItemKey: "article:1", Title: "Test"}}},
 			&mockTodayDigestPort{digest: domain.TodayDigest{NewArticles: 5}},
-			nil, &mockProjectionFreshnessPort{updatedAt: &recentTime}, nil,
+			nil, &mockProjectionFreshnessPort{updatedAt: &recentTime}, nil, nil,
 		)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 		require.NoError(t, err)
@@ -370,7 +370,7 @@ func TestGetKnowledgeHomeUsecase_ServiceQuality(t *testing.T) {
 		uc := NewGetKnowledgeHomeUsecase(
 			&mockHomeItemsPort{items: []domain.KnowledgeHomeItem{{ItemKey: "article:1", Title: "Test"}}},
 			&mockTodayDigestPort{err: errors.New("digest db error")},
-			nil, nil, nil,
+			nil, nil, nil, nil,
 		)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 		require.NoError(t, err)
@@ -381,7 +381,7 @@ func TestGetKnowledgeHomeUsecase_ServiceQuality(t *testing.T) {
 		uc := NewGetKnowledgeHomeUsecase(
 			&mockHomeItemsPort{err: errors.New("items db error")},
 			&mockTodayDigestPort{digest: domain.TodayDigest{NewArticles: 5}},
-			nil, nil, nil,
+			nil, nil, nil, nil,
 		)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 		require.NoError(t, err)
@@ -392,7 +392,7 @@ func TestGetKnowledgeHomeUsecase_ServiceQuality(t *testing.T) {
 		uc := NewGetKnowledgeHomeUsecase(
 			&mockHomeItemsPort{err: errors.New("items db error")},
 			&mockTodayDigestPort{err: errors.New("digest db error")},
-			nil, nil, nil,
+			nil, nil, nil, nil,
 		)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 		require.Error(t, err)
@@ -404,7 +404,7 @@ func TestGetKnowledgeHomeUsecase_ServiceQuality(t *testing.T) {
 		uc := NewGetKnowledgeHomeUsecase(
 			&mockHomeItemsPort{items: []domain.KnowledgeHomeItem{{ItemKey: "article:1", Title: "Test"}}},
 			&mockTodayDigestPort{digest: domain.TodayDigest{NewArticles: 5}},
-			nil, &mockProjectionFreshnessPort{updatedAt: &staleTime}, nil,
+			nil, &mockProjectionFreshnessPort{updatedAt: &staleTime}, nil, nil,
 		)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 		require.NoError(t, err)
@@ -448,8 +448,7 @@ func TestGetKnowledgeHomeUsecase_TagHotspotEnrichment(t *testing.T) {
 			},
 		}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil)
-		uc.SetTagHotspotPort(hotspotPort)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil, hotspotPort)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -485,7 +484,7 @@ func TestGetKnowledgeHomeUsecase_TagHotspotEnrichment(t *testing.T) {
 		}
 		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil, nil)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -501,8 +500,7 @@ func TestGetKnowledgeHomeUsecase_TagHotspotEnrichment(t *testing.T) {
 		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{}}
 		hotspotPort := &mockTagHotspotPort{err: errors.New("cache miss")}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil)
-		uc.SetTagHotspotPort(hotspotPort)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil, hotspotPort)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -523,8 +521,7 @@ func TestGetKnowledgeHomeUsecase_TagHotspotEnrichment(t *testing.T) {
 			tags: []knowledge_home_port.TrendingTag{{TagName: "AI", RecentCount: 10, SurgeRatio: 3.0}},
 		}
 
-		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil)
-		uc.SetTagHotspotPort(hotspotPort)
+		uc := NewGetKnowledgeHomeUsecase(homeItems, digestPort, nil, nil, nil, hotspotPort)
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
 
 		require.NoError(t, err)
@@ -551,6 +548,7 @@ func TestGetKnowledgeHomeUsecase_Execute_ReturnsCancellationErrors(t *testing.T)
 			nil,
 			nil,
 			nil,
+			nil,
 		)
 
 		result, err := uc.Execute(context.Background(), userID, "", 20, now, nil)
@@ -563,6 +561,7 @@ func TestGetKnowledgeHomeUsecase_Execute_ReturnsCancellationErrors(t *testing.T)
 		uc := NewGetKnowledgeHomeUsecase(
 			&mockHomeItemsPort{items: []domain.KnowledgeHomeItem{{ItemKey: "article:1"}}},
 			&mockTodayDigestPort{err: context.DeadlineExceeded},
+			nil,
 			nil,
 			nil,
 			nil,

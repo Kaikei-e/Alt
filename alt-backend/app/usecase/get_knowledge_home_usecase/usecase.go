@@ -27,11 +27,6 @@ type GetKnowledgeHomeUsecase struct {
 	tagHotspotPort      knowledge_home_port.TagHotspotPort
 }
 
-// SetTagHotspotPort wires the optional tag hotspot port for trending tag enrichment.
-func (u *GetKnowledgeHomeUsecase) SetTagHotspotPort(port knowledge_home_port.TagHotspotPort) {
-	u.tagHotspotPort = port
-}
-
 // NewGetKnowledgeHomeUsecase creates a new GetKnowledgeHomeUsecase.
 func NewGetKnowledgeHomeUsecase(
 	homeItemsPort knowledge_home_port.GetKnowledgeHomeItemsPort,
@@ -39,6 +34,7 @@ func NewGetKnowledgeHomeUsecase(
 	resolveLensPort knowledge_lens_port.ResolveKnowledgeHomeLensPort,
 	freshnessPort today_digest_port.GetProjectionFreshnessPort,
 	needToKnowCountPort today_digest_port.CountNeedToKnowItemsPort,
+	tagHotspotPort knowledge_home_port.TagHotspotPort,
 ) *GetKnowledgeHomeUsecase {
 	return &GetKnowledgeHomeUsecase{
 		homeItemsPort:       homeItemsPort,
@@ -46,6 +42,7 @@ func NewGetKnowledgeHomeUsecase(
 		resolveLensPort:     resolveLensPort,
 		freshnessPort:       freshnessPort,
 		needToKnowCountPort: needToKnowCountPort,
+		tagHotspotPort:      tagHotspotPort,
 	}
 }
 
