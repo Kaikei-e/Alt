@@ -53,6 +53,7 @@ type ReadOperations interface {
 	// Lens
 	ListLenses(ctx context.Context, userID uuid.UUID) ([]sovereign_db.KnowledgeLens, error)
 	GetLens(ctx context.Context, lensID uuid.UUID) (*sovereign_db.KnowledgeLens, error)
+	GetCurrentLensVersion(ctx context.Context, lensID uuid.UUID) (*sovereign_db.KnowledgeLensVersion, error)
 	GetCurrentLensSelection(ctx context.Context, userID uuid.UUID) (*sovereign_db.KnowledgeCurrentLens, error)
 	ResolveLensFilter(ctx context.Context, userID uuid.UUID, lensID *uuid.UUID) (*sovereign_db.LensFilter, error)
 	CreateLens(ctx context.Context, l sovereign_db.KnowledgeLens) error

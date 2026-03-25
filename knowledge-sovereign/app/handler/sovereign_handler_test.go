@@ -21,9 +21,11 @@ import (
 
 // mockRepo implements ReadDB (MutationRepository + ReadOperations).
 type mockRepo struct {
-	lastMethod  string
-	lastPayload json.RawMessage
-	returnErr   error
+	lastMethod    string
+	lastPayload   json.RawMessage
+	returnErr     error
+	returnLens    *sovereign_db.KnowledgeLens
+	returnVersion *sovereign_db.KnowledgeLensVersion
 }
 
 // --- MutationRepository ---
@@ -137,7 +139,10 @@ func (m *mockRepo) ListLenses(_ context.Context, _ uuid.UUID) ([]sovereign_db.Kn
 	return nil, m.returnErr
 }
 func (m *mockRepo) GetLens(_ context.Context, _ uuid.UUID) (*sovereign_db.KnowledgeLens, error) {
-	return nil, m.returnErr
+	return m.returnLens, m.returnErr
+}
+func (m *mockRepo) GetCurrentLensVersion(_ context.Context, _ uuid.UUID) (*sovereign_db.KnowledgeLensVersion, error) {
+	return m.returnVersion, m.returnErr
 }
 func (m *mockRepo) GetCurrentLensSelection(_ context.Context, _ uuid.UUID) (*sovereign_db.KnowledgeCurrentLens, error) {
 	return nil, m.returnErr
@@ -341,4 +346,82 @@ func TestGetProjectionCheckpoint_ReturnsZero(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), resp.Msg.LastEventSeq)
+}
+
+func TestGetLens_PopulatesCurrentVersion(t *testing.T) {
+	lensID := uuid.New()
+	versionID := uuid.New()
+
+	tests := []struct {
+		name           string
+		repo           *mockRepo
+		wantVersion    bool
+		wantNilLens    bool
+	}{
+		{
+			name: "lens with current version",
+			repo: &mockRepo{
+				returnLens: &sovereign_db.KnowledgeLens{
+					LensID: lensID,
+					UserID: uuid.New(),
+					Name:   "Test Lens",
+				},
+				returnVersion: &sovereign_db.KnowledgeLensVersion{
+					LensVersionID: versionID,
+					LensID:        lensID,
+					TagIDs:        []string{"llm", "ai"},
+					TimeWindow:    "90d",
+					SortMode:      "relevance",
+				},
+			},
+			wantVersion: true,
+		},
+		{
+			name: "lens without version",
+			repo: &mockRepo{
+				returnLens: &sovereign_db.KnowledgeLens{
+					LensID: lensID,
+					UserID: uuid.New(),
+					Name:   "Orphan Lens",
+				},
+				returnVersion: nil,
+			},
+			wantVersion: false,
+		},
+		{
+			name:        "lens not found",
+			repo:        &mockRepo{},
+			wantNilLens: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, cleanup := setupTestServer(tt.repo)
+			defer cleanup()
+
+			resp, err := client.GetLens(context.Background(),
+				connect.NewRequest(&sovereignv1.GetLensRequest{
+					LensId: lensID.String(),
+				}))
+
+			require.NoError(t, err)
+
+			if tt.wantNilLens {
+				assert.Nil(t, resp.Msg.Lens)
+				return
+			}
+
+			require.NotNil(t, resp.Msg.Lens)
+
+			if tt.wantVersion {
+				require.NotNil(t, resp.Msg.Lens.CurrentVersion, "CurrentVersion should be populated")
+				assert.Equal(t, versionID.String(), resp.Msg.Lens.CurrentVersion.LensVersionId)
+				assert.Equal(t, []string{"llm", "ai"}, resp.Msg.Lens.CurrentVersion.TagIds)
+				assert.Equal(t, "90d", resp.Msg.Lens.CurrentVersion.TimeWindow)
+			} else {
+				assert.Nil(t, resp.Msg.Lens.CurrentVersion)
+			}
+		})
+	}
 }

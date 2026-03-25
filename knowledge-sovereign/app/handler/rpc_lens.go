@@ -39,6 +39,11 @@ func (h *SovereignHandler) GetLens(
 	}
 	var pb *sovereignv1.Lens
 	if lens != nil {
+		version, err := h.readDB.GetCurrentLensVersion(ctx, lensID)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLens version: %w", err))
+		}
+		lens.CurrentVersion = version
 		pb = lensToProto(*lens)
 	}
 	return connect.NewResponse(&sovereignv1.GetLensResponse{Lens: pb}), nil
