@@ -19,17 +19,20 @@ type userReadStateDB interface {
 type Gateway struct {
 	db                userReadStateDB
 	subscriptionCache *cache.SharedCache[uuid.UUID, []uuid.UUID]
+	readStateCache    *cache.SharedCache[uuid.UUID, map[uuid.UUID]bool]
 }
 
 func NewGateway(db *alt_db.AltDBRepository) *Gateway {
 	g := &Gateway{db: db}
 	g.subscriptionCache = cache.NewSharedCache(30*time.Second, 0, g.loadSubscriptions)
+	g.readStateCache = cache.NewSharedCache(5*time.Second, 0, g.loadAllReadFeedIDs)
 	return g
 }
 
 func newGateway(db userReadStateDB) *Gateway {
 	g := &Gateway{db: db}
 	g.subscriptionCache = cache.NewSharedCache(30*time.Second, 0, g.loadSubscriptions)
+	g.readStateCache = cache.NewSharedCache(5*time.Second, 0, g.loadAllReadFeedIDs)
 	return g
 }
 
@@ -41,7 +44,7 @@ func (g *Gateway) GetReadFeedIDs(ctx context.Context, userID uuid.UUID, feedIDs 
 }
 
 func (g *Gateway) GetAllReadFeedIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]bool, error) {
-	return g.db.GetAllReadFeedIDs(ctx, userID)
+	return g.readStateCache.Get(ctx, userID)
 }
 
 func (g *Gateway) GetUserSubscriptions(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
@@ -52,6 +55,14 @@ func (g *Gateway) loadSubscriptions(ctx context.Context, userID uuid.UUID) ([]uu
 	ids, err := g.db.GetUserSubscriptions(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get user subscriptions: %w", err)
+	}
+	return ids, nil
+}
+
+func (g *Gateway) loadAllReadFeedIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]bool, error) {
+	ids, err := g.db.GetAllReadFeedIDs(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get all read feed ids: %w", err)
 	}
 	return ids, nil
 }

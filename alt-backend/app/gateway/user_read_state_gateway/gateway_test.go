@@ -10,6 +10,7 @@ import (
 
 type userReadStateDBStub struct {
 	subscriptionLoads int32
+	allReadLoads      int32
 	subscriptions     []uuid.UUID
 	readIDs           map[uuid.UUID]bool
 	allReadIDs        map[uuid.UUID]bool
@@ -20,6 +21,7 @@ func (s *userReadStateDBStub) GetReadFeedIDs(ctx context.Context, userID uuid.UU
 }
 
 func (s *userReadStateDBStub) GetAllReadFeedIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]bool, error) {
+	atomic.AddInt32(&s.allReadLoads, 1)
 	return s.allReadIDs, nil
 }
 
@@ -60,6 +62,29 @@ func TestGateway_GetAllReadFeedIDs(t *testing.T) {
 	}
 	if !got[feedID] {
 		t.Fatal("expected feedID to be read")
+	}
+}
+
+func TestGateway_GetAllReadFeedIDs_Caches(t *testing.T) {
+	userID := uuid.New()
+	feedID := uuid.New()
+	db := &userReadStateDBStub{allReadIDs: map[uuid.UUID]bool{feedID: true}}
+	gateway := newGateway(db)
+
+	first, err := gateway.GetAllReadFeedIDs(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("GetAllReadFeedIDs() error = %v", err)
+	}
+	second, err := gateway.GetAllReadFeedIDs(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("GetAllReadFeedIDs() second error = %v", err)
+	}
+
+	if !first[feedID] || !second[feedID] {
+		t.Fatal("expected feedID to be read in both calls")
+	}
+	if atomic.LoadInt32(&db.allReadLoads) != 1 {
+		t.Fatalf("allReadLoads = %d, want 1 (should cache)", db.allReadLoads)
 	}
 }
 
