@@ -1,3 +1,5 @@
+//go:build contract
+
 // Package contract contains Consumer-Driven Contract tests for rag-orchestrator → news-creator.
 //
 // These tests verify the /api/chat proxy contract, specifically:

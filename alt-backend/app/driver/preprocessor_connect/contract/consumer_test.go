@@ -1,3 +1,5 @@
+//go:build contract
+
 // Package contract contains Consumer-Driven Contract tests for alt-backend → pre-processor.
 //
 // These tests verify that alt-backend's expectations of the pre-processor

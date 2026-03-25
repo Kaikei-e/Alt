@@ -1,4 +1,4 @@
-name: Proto Contract Validation
+name: Proto & Contract Validation
 
 on:
   push:
@@ -7,12 +7,20 @@ on:
       - 'proto/**'
       - 'alt-frontend-sv/src/lib/gen/**'
       - 'alt-frontend-sv/src/test/contracts/**'
+      - 'alt-backend/app/driver/preprocessor_connect/contract/**'
+      - 'pre-processor/app/driver/contract/**'
+      - 'rag-orchestrator/internal/adapter/contract/**'
+      - 'news-creator/app/tests/contract/**'
   pull_request:
     branches: [main]
     paths:
       - 'proto/**'
       - 'alt-frontend-sv/src/lib/gen/**'
       - 'alt-frontend-sv/src/test/contracts/**'
+      - 'alt-backend/app/driver/preprocessor_connect/contract/**'
+      - 'pre-processor/app/driver/contract/**'
+      - 'rag-orchestrator/internal/adapter/contract/**'
+      - 'news-creator/app/tests/contract/**'
 
 permissions:
   contents: read
@@ -38,7 +46,7 @@ jobs:
         run: buf breaking --against '.git#branch=main'
 
   contract-conformance:
-    name: Contract Conformance Tests
+    name: Contract Conformance Tests (FE)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -60,3 +68,81 @@ jobs:
       - name: Run contract tests
         working-directory: alt-frontend-sv
         run: bun test src/test/contracts/
+
+  pact-cdc-go:
+    name: Pact CDC Consumer Tests (Go)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: alt-backend/app
+            test-path: ./driver/preprocessor_connect/contract/
+            sparse-checkout: alt-backend
+          - service: pre-processor/app
+            test-path: ./driver/contract/
+            sparse-checkout: pre-processor
+          - service: rag-orchestrator
+            test-path: ./internal/adapter/contract/
+            sparse-checkout: rag-orchestrator
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: ${{ matrix.sparse-checkout }}
+          sparse-checkout-cone-mode: true
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Install pact FFI library
+        run: |
+          curl -fsSL https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz \
+            | gunzip > /usr/local/lib/libpact_ffi.so
+          sudo ldconfig
+
+      - name: Run Pact consumer tests
+        working-directory: ${{ matrix.service }}
+        env:
+          CGO_ENABLED: "1"
+        run: go test -tags=contract ${{ matrix.test-path }} -v
+
+  pact-cdc-python:
+    name: Pact CDC Provider Verification (Python)
+    runs-on: ubuntu-latest
+    needs: pact-cdc-go
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Install pact FFI library
+        run: |
+          curl -fsSL https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz \
+            | gunzip > /usr/local/lib/libpact_ffi.so
+          sudo ldconfig
+
+      - name: Generate pact files from Go consumers
+        run: |
+          cd alt-backend/app && go test -tags=contract ./driver/preprocessor_connect/contract/ -v
+          cd ../../pre-processor/app && go test -tags=contract ./driver/contract/ -v
+          cd ../../rag-orchestrator && go test -tags=contract ./internal/adapter/contract/ -v
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python
+        run: uv python install 3.14
+
+      - name: Install news-creator dependencies
+        working-directory: news-creator/app
+        run: uv sync --dev
+
+      - name: Run provider verification
+        working-directory: news-creator/app
+        env:
+          SERVICE_SECRET: test-secret
+        run: uv run pytest tests/contract/ -v

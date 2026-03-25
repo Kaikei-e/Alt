@@ -1,3 +1,5 @@
+//go:build contract
+
 // Package contract contains Consumer-Driven Contract tests for pre-processor → news-creator.
 //
 // These tests verify that pre-processor's expectations of the news-creator
