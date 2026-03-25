@@ -26,6 +26,7 @@ import type {
 	KnowledgeHomeItemData,
 	LensVersionData,
 } from "$lib/connect/knowledge_home";
+import type { TagSuggestion } from "$lib/components/knowledge-home/lens/TagCombobox.svelte";
 import { useFeatureFlags } from "$lib/hooks/useFeatureFlags.svelte";
 import { useKnowledgeHome } from "$lib/hooks/useKnowledgeHome.svelte";
 import { useLens } from "$lib/hooks/useLens.svelte";
@@ -113,9 +114,20 @@ const emptyReason = $derived.by(() => {
 	return home.emptyReason;
 });
 const currentQueueTitle = $derived(listenQueue[0]?.title ?? null);
-const subscribedLensSources = $derived(
-	lensSources.filter((source) => source.isSubscribed),
-);
+const lensTagSuggestions = $derived.by((): TagSuggestion[] => {
+	const tagCounts = new Map<string, number>();
+	for (const item of home.items) {
+		for (const tag of item.tags ?? []) {
+			tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+		}
+	}
+	for (const tag of home.digest?.topTags ?? []) {
+		if (!tagCounts.has(tag)) tagCounts.set(tag, 0);
+	}
+	return Array.from(tagCounts.entries())
+		.map(([name, count]): TagSuggestion => ({ name, count }))
+		.sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
+});
 
 const stream = useStreamUpdates({
 	get enabled() {
@@ -330,7 +342,12 @@ onMount(async () => {
 	if (browser) {
 		exposureSessionId = crypto.randomUUID();
 
-		if (lensEnabled) {
+		// Fetch Home data first to get feature flags
+		await home.fetchData(true);
+		flags.setFlags(home.featureFlags);
+
+		// After flags are resolved, load lens data if enabled
+		if (flags.isEnabled("enable_lens")) {
 			await loadLensSources();
 			await lens.fetchLenses();
 			const urlLensId = page.url.searchParams.get("lens");
@@ -356,12 +373,11 @@ onMount(async () => {
 				}
 			}
 			await syncLensQuery(initialLensId);
-			await home.fetchData(true, initialLensId);
-		} else {
-			await home.fetchData(true);
+			// Re-fetch with lens filter if active
+			if (initialLensId) {
+				await home.fetchData(true, initialLensId);
+			}
 		}
-
-		flags.setFlags(home.featureFlags);
 
 		syncRecallState();
 	}
@@ -565,7 +581,8 @@ onMount(async () => {
 	<LensModal
 		open={lensModalOpen}
 		version={lensDraft}
-		availableSources={subscribedLensSources}
+		availableSources={lensSources}
+		availableTags={lensTagSuggestions}
 		loadingSources={lensSourcesLoading}
 		onOpenChange={(open: boolean) => {
 			lensModalOpen = open;

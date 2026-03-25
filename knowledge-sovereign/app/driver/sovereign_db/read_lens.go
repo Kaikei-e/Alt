@@ -76,7 +76,7 @@ func (r *Repository) ListLenses(ctx context.Context, userID uuid.UUID) ([]Knowle
 		var vCreatedAt *time.Time
 		var vQueryText *string
 		var vTagIDsJSON, vSourceIDsJSON []byte
-		var vTimeWindow *string
+		var vTimeWindowJSON []byte
 		var vIncludeRecap, vIncludePulse *bool
 		var vSortMode *string
 		var vSupersededBy *uuid.UUID
@@ -85,7 +85,7 @@ func (r *Repository) ListLenses(ctx context.Context, userID uuid.UUID) ([]Knowle
 			&l.LensID, &l.UserID, &l.TenantID, &l.Name, &l.Description,
 			&l.CreatedAt, &l.UpdatedAt, &l.ArchivedAt,
 			&versionID, &vLensID, &vCreatedAt, &vQueryText,
-			&vTagIDsJSON, &vSourceIDsJSON, &vTimeWindow,
+			&vTagIDsJSON, &vSourceIDsJSON, &vTimeWindowJSON,
 			&vIncludeRecap, &vIncludePulse, &vSortMode, &vSupersededBy,
 		); err != nil {
 			return nil, fmt.Errorf("ListLenses scan: %w", err)
@@ -103,8 +103,8 @@ func (r *Repository) ListLenses(ctx context.Context, userID uuid.UUID) ([]Knowle
 			if vQueryText != nil {
 				v.QueryText = *vQueryText
 			}
-			if vTimeWindow != nil {
-				v.TimeWindow = *vTimeWindow
+			if len(vTimeWindowJSON) > 0 {
+				_ = json.Unmarshal(vTimeWindowJSON, &v.TimeWindow)
 			}
 			if vIncludeRecap != nil {
 				v.IncludeRecap = *vIncludeRecap
@@ -151,11 +151,10 @@ func (r *Repository) GetCurrentLensVersion(ctx context.Context, lensID uuid.UUID
 		ORDER BY created_at DESC LIMIT 1`
 
 	var v KnowledgeLensVersion
-	var tagIDsJSON, sourceIDsJSON []byte
-	var timeWindow *string
+	var tagIDsJSON, sourceIDsJSON, timeWindowJSON []byte
 	err := r.pool.QueryRow(ctx, query, lensID).Scan(
 		&v.LensVersionID, &v.LensID, &v.CreatedAt, &v.QueryText,
-		&tagIDsJSON, &sourceIDsJSON, &timeWindow,
+		&tagIDsJSON, &sourceIDsJSON, &timeWindowJSON,
 		&v.IncludeRecap, &v.IncludePulse, &v.SortMode, &v.SupersededBy,
 	)
 	if err != nil {
@@ -166,8 +165,8 @@ func (r *Repository) GetCurrentLensVersion(ctx context.Context, lensID uuid.UUID
 	}
 	_ = json.Unmarshal(tagIDsJSON, &v.TagIDs)
 	_ = json.Unmarshal(sourceIDsJSON, &v.SourceIDs)
-	if timeWindow != nil {
-		v.TimeWindow = *timeWindow
+	if len(timeWindowJSON) > 0 {
+		_ = json.Unmarshal(timeWindowJSON, &v.TimeWindow)
 	}
 	return &v, nil
 }
@@ -238,15 +237,25 @@ func (r *Repository) CreateLens(ctx context.Context, l KnowledgeLens) error {
 
 // CreateLensVersion inserts a new lens version.
 func (r *Repository) CreateLensVersion(ctx context.Context, v KnowledgeLensVersion) error {
-	tagIDsJSON, _ := json.Marshal(v.TagIDs)
-	sourceIDsJSON, _ := json.Marshal(v.SourceIDs)
+	tagIDsJSON, err := json.Marshal(v.TagIDs)
+	if err != nil {
+		return fmt.Errorf("marshal tag_ids: %w", err)
+	}
+	sourceIDsJSON, err := json.Marshal(v.SourceIDs)
+	if err != nil {
+		return fmt.Errorf("marshal source_ids: %w", err)
+	}
+	timeWindowJSON, err := json.Marshal(v.TimeWindow)
+	if err != nil {
+		return fmt.Errorf("marshal time_window: %w", err)
+	}
 	query := `INSERT INTO knowledge_lens_versions
 		(lens_version_id, lens_id, created_at, query_text, tag_ids_json, source_ids_json,
 		 time_window_json, include_recap, include_pulse, sort_mode)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
-	_, err := r.pool.Exec(ctx, query,
+	_, err = r.pool.Exec(ctx, query,
 		v.LensVersionID, v.LensID, v.CreatedAt, v.QueryText,
-		string(tagIDsJSON), string(sourceIDsJSON), v.TimeWindow,
+		tagIDsJSON, sourceIDsJSON, timeWindowJSON,
 		v.IncludeRecap, v.IncludePulse, v.SortMode,
 	)
 	if err != nil {

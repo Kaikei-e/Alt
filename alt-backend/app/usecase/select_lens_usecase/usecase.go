@@ -54,6 +54,9 @@ func (u *SelectLensUsecase) Execute(ctx context.Context, userID uuid.UUID, lensI
 	if err != nil {
 		return fmt.Errorf("get current lens version: %w", err)
 	}
+	if version == nil {
+		return fmt.Errorf("no active version found for lens %s", lensID)
+	}
 
 	current := domain.KnowledgeCurrentLens{
 		UserID:        userID,
