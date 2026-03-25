@@ -27,6 +27,8 @@ type PromptInput struct {
 	Citations           []string         // For "answer" stage, pass previously extracted citations
 	ConversationHistory []domain.Message // Recent chat turns for multi-turn context
 	ArticleContext      *ArticleContext  // Set when query targets a specific article
+	IntentType          IntentType       // Classified query intent (Phase 2)
+	SupplementaryInfo   []string         // Tool results injected as supplementary context (Phase 3)
 }
 
 // PromptBuilder builds the chat messages sent to the LLM.
@@ -87,6 +89,26 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 		sb.WriteString("\n")
 	}
 
+	// Intent-specific instructions (Phase 2: Agentic RAG)
+	switch input.IntentType {
+	case IntentComparison:
+		sb.WriteString("## クエリ意図: 比較\n")
+		sb.WriteString("- 両者を公平に比較し、共通点・相違点を構造化してください\n")
+		sb.WriteString("- 一方に偏らず、各項目の長所・短所を併記してください\n\n")
+	case IntentTemporal:
+		sb.WriteString("## クエリ意図: 時系列\n")
+		sb.WriteString("- 最新の情報を優先して回答してください\n")
+		sb.WriteString("- 日付・時期を明記し、時系列順に整理してください\n\n")
+	case IntentTopicDeepDive:
+		sb.WriteString("## クエリ意図: 深掘り\n")
+		sb.WriteString("- 背景・詳細・影響を包括的に解説してください\n")
+		sb.WriteString("- 基本概念から応用まで段階的に説明してください\n\n")
+	case IntentFactCheck:
+		sb.WriteString("## クエリ意図: ファクトチェック\n")
+		sb.WriteString("- 出典を明示し、根拠と判定を構造化して回答してください\n")
+		sb.WriteString("- 「主張」「根拠」「判定」の3段構成で回答してください\n\n")
+	}
+
 	sb.WriteString("## 出力形式\n")
 	sb.WriteString("以下のJSON形式で出力してください。answer フィールドには Markdown を使用してください。\n")
 	sb.WriteString("{\"answer\":\"## 概要\\n...\\n## 詳細\\n...\\n## まとめ\\n...\",")
@@ -120,6 +142,15 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 		} else {
 			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の全内容です。この記事に基づいて質問に回答してください。\n\n", input.ArticleContext.Title))
 		}
+	}
+
+	// Supplementary info from tools (Phase 3)
+	if len(input.SupplementaryInfo) > 0 {
+		sb.WriteString("### 補足情報（ツール結果）\n")
+		for _, info := range input.SupplementaryInfo {
+			sb.WriteString(fmt.Sprintf("- %s\n", info))
+		}
+		sb.WriteString("\n")
 	}
 
 	// Context

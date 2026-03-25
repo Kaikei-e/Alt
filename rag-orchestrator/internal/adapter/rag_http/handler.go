@@ -230,9 +230,14 @@ func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 		reasonPtr = &output.Reason
 	}
 	debug := openapi.AnswerDebug{
-		RetrievalSetId: &output.Debug.RetrievalSetID,
-		PromptVersion:  &output.Debug.PromptVersion,
-		StrategyUsed:   &output.Debug.StrategyUsed,
+		RetrievalSetId:   &output.Debug.RetrievalSetID,
+		PromptVersion:    &output.Debug.PromptVersion,
+		StrategyUsed:     &output.Debug.StrategyUsed,
+		IntentType:       ptrIfNotEmpty(output.Debug.IntentType),
+		RetrievalQuality: ptrIfNotEmpty(output.Debug.RetrievalQuality),
+		RetryCount:       &output.Debug.RetryCount,
+		ToolsUsed:        ptrSliceIfNotEmpty(output.Debug.ToolsUsed),
+		QualityFlags:     ptrSliceIfNotEmpty(output.Debug.QualityFlags),
 	}
 
 	var citationsPtr *[]openapi.AnswerCitation
@@ -524,4 +529,18 @@ func (h *Handler) MorningLetter(ctx echo.Context) error {
 			Fallback: output.GenerationInfo.Fallback,
 		},
 	})
+}
+
+func ptrIfNotEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func ptrSliceIfNotEmpty(s []string) *[]string {
+	if len(s) == 0 {
+		return nil
+	}
+	return &s
 }

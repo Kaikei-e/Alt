@@ -270,3 +270,22 @@ components:
         strategy_used:
           type: string
           description: "Retrieval strategy used (general, article_scoped, article_constrained_fallback, unrestricted_general_fallback)"
+        intent_type:
+          type: string
+          description: "Classified query intent (general, article_scoped, comparison, temporal, topic_deep_dive, fact_check)"
+        retrieval_quality:
+          type: string
+          description: "Retrieval quality verdict (good, marginal, insufficient)"
+        retry_count:
+          type: integer
+          description: "Number of retrieval retries (0 = no retry)"
+        tools_used:
+          type: array
+          items:
+            type: string
+          description: "Names of tools executed during this request"
+        quality_flags:
+          type: array
+          items:
+            type: string
+          description: "Answer quality check failures (low_keyword_coverage, low_citation_density, etc.)"

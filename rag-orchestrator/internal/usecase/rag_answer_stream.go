@@ -116,10 +116,14 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		meta := StreamMeta{
 			Contexts: promptData.contexts,
 			Debug: AnswerDebug{
-				RetrievalSetID:  promptData.retrievalSetID,
-				PromptVersion:   u.promptVersion,
-				ExpandedQueries: promptData.expandedQueries,
-				StrategyUsed:    promptData.strategyUsed,
+				RetrievalSetID:   promptData.retrievalSetID,
+				PromptVersion:    u.promptVersion,
+				ExpandedQueries:  promptData.expandedQueries,
+				StrategyUsed:     promptData.strategyUsed,
+				IntentType:       string(promptData.intentType),
+				RetrievalQuality: string(promptData.retrievalQuality),
+				RetryCount:       promptData.retryCount,
+				ToolsUsed:        promptData.toolsUsed,
 			},
 		}
 		if !u.sendStreamEvent(ctx, events, StreamEvent{Kind: StreamEventKindMeta, Payload: meta}) {

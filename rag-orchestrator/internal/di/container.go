@@ -122,12 +122,34 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// Answer usecase
 	promptBuilder := usecase.NewXMLPromptBuilder("Answer in Japanese.")
 	articleScopedStrategy := usecase.NewArticleScopedStrategy(docRepo, chunkRepo, log)
+
+	// Agentic RAG options (ADR-000568)
+	answerOpts := []usecase.AnswerUsecaseOption{
+		usecase.WithCacheConfig(cfg.Cache.Size, time.Duration(cfg.Cache.TTL)*time.Minute),
+		usecase.WithStrategy(usecase.IntentArticleScoped, articleScopedStrategy),
+		usecase.WithStrategy(usecase.IntentTemporal, usecase.NewTemporalStrategy(retrieveUsecase, log)),
+		usecase.WithStrategy(usecase.IntentComparison, usecase.NewComparisonStrategy(retrieveUsecase, log)),
+		usecase.WithStrategy(usecase.IntentTopicDeepDive, usecase.NewTopicDeepDiveStrategy(retrieveUsecase, log)),
+		usecase.WithStrategy(usecase.IntentFactCheck, usecase.NewFactCheckStrategy(retrieveUsecase, log)),
+		usecase.WithQueryClassifier(usecase.NewQueryClassifier(nil, 0)),
+	}
+	if cfg.QualityGate.Enabled {
+		assessor := usecase.NewRetrievalQualityAssessor(
+			cfg.QualityGate.GoodThreshold,
+			cfg.QualityGate.MarginalThreshold,
+			cfg.QualityGate.MinContexts,
+		)
+		answerOpts = append(answerOpts, usecase.WithQualityAssessor(assessor, queryExpander))
+		log.Info("quality_gate_enabled",
+			slog.Float64("good_threshold", float64(cfg.QualityGate.GoodThreshold)),
+			slog.Float64("marginal_threshold", float64(cfg.QualityGate.MarginalThreshold)))
+	}
+
 	answerUsecase := usecase.NewAnswerWithRAGUsecase(
 		retrieveUsecase, promptBuilder, generator, usecase.NewOutputValidator(cfg.RAG.MinAnswerLength),
 		cfg.RAG.MaxChunks, cfg.RAG.MaxTokens, cfg.RAG.MaxPromptTokens,
 		cfg.RAG.PromptVersion, cfg.RAG.Locale, log,
-		usecase.WithCacheConfig(cfg.Cache.Size, time.Duration(cfg.Cache.TTL)*time.Minute),
-		usecase.WithStrategy(usecase.IntentArticleScoped, articleScopedStrategy),
+		answerOpts...,
 	)
 
 	// Morning letter usecase
