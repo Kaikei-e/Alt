@@ -104,6 +104,7 @@ jobs:
           curl -fsSL https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz \
             | gunzip > "$HOME/.pact/lib/libpact_ffi.so"
           echo "LD_LIBRARY_PATH=$HOME/.pact/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          echo "CGO_LDFLAGS=-L$HOME/.pact/lib" >> "$GITHUB_ENV"
 
       - name: Run Pact consumer tests
         working-directory: ${{ matrix.service }}
@@ -129,6 +130,7 @@ jobs:
           curl -fsSL https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz \
             | gunzip > "$HOME/.pact/lib/libpact_ffi.so"
           echo "LD_LIBRARY_PATH=$HOME/.pact/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          echo "CGO_LDFLAGS=-L$HOME/.pact/lib" >> "$GITHUB_ENV"
 
       - name: Generate pact files from Go consumers
         run: |
