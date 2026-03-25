@@ -54,6 +54,7 @@ dependencies = [
   # Usage is optional (try/except in services/coherence.py) — re-add when gensim releases 3.14 wheels
   # "gensim>=4.3.0",
   "faiss-cpu>=1.7.4",
+  "tbb>=2022.0",
 ]
 
 [project.optional-dependencies]

@@ -68,10 +68,12 @@ RUN groupadd -r recap && useradd -r -g recap recap
 # 環境変数
 # HOME設定はdeepevalが~/.deepevalを作成するため必要
 ENV PATH="/app/.venv/bin:$PATH" \
+    LD_LIBRARY_PATH="/app/.venv/lib:${LD_LIBRARY_PATH}" \
     HOME=/app \
     OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
-    OPENBLAS_NUM_THREADS=1
+    OPENBLAS_NUM_THREADS=1 \
+    NUMBA_THREADING_LAYER=tbb
 
 # 仮想環境をコピー
 COPY --from=builder /app/.venv /app/.venv

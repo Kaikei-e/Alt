@@ -185,6 +185,9 @@ services:
       - RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS=${RECAP_SUBWORKER_HDBSCAN_TIMEOUT_SECS:-300}
       # Classification (Learning Machine) - CPU使用でOOM回避
       - RECAP_SUBWORKER_CLASSIFICATION_DEVICE=cpu
+      # Numba threading: TBB is thread-safe, workqueue/omp are not
+      - NUMBA_THREADING_LAYER=tbb
+      - LD_LIBRARY_PATH=/app/.venv/lib
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=recap-subworker
