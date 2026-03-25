@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // KnowledgeEvent represents a single event in the knowledge event store.
@@ -60,18 +59,40 @@ func (r *Repository) GetLatestKnowledgeEventSeqForUser(ctx context.Context, user
 	return seq, nil
 }
 
-// AppendKnowledgeEvent inserts a new knowledge event.
+// AppendKnowledgeEvent inserts a new knowledge event using a dedupe registry
+// for idempotency. The dedupe registry is a non-partitioned table that holds
+// the global UNIQUE constraint on dedupe_key, which cannot be placed on the
+// partitioned knowledge_events table directly (PostgreSQL requires partition
+// key in all UNIQUE constraints).
+//
+// Flow:
+//  1. INSERT into knowledge_event_dedupes (ON CONFLICT DO NOTHING)
+//  2. If dedupe INSERT affected 0 rows → duplicate, return 0 (idempotent)
+//  3. Otherwise INSERT into knowledge_events and return event_seq
 func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEvent) (int64, error) {
-	query := `INSERT INTO knowledge_events
+	// Step 1: Check dedupe registry
+	dedupeQuery := `INSERT INTO knowledge_event_dedupes (dedupe_key, event_id, occurred_at)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (dedupe_key) DO NOTHING`
+
+	tag, err := r.pool.Exec(ctx, dedupeQuery, event.DedupeKey, event.EventID, event.OccurredAt)
+	if err != nil {
+		return 0, fmt.Errorf("AppendKnowledgeEvent dedupe check: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return 0, nil // duplicate, idempotent
+	}
+
+	// Step 2: Insert event
+	eventQuery := `INSERT INTO knowledge_events
 		(event_id, occurred_at, tenant_id, user_id, actor_type, actor_id,
 		 event_type, aggregate_type, aggregate_id, correlation_id, causation_id,
 		 dedupe_key, payload)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		ON CONFLICT (dedupe_key) DO NOTHING
 		RETURNING event_seq`
 
 	var eventSeq int64
-	err := r.pool.QueryRow(ctx, query,
+	err = r.pool.QueryRow(ctx, eventQuery,
 		event.EventID, event.OccurredAt, event.TenantID, event.UserID,
 		event.ActorType, event.ActorID, event.EventType,
 		event.AggregateType, event.AggregateID,
@@ -79,10 +100,7 @@ func (r *Repository) AppendKnowledgeEvent(ctx context.Context, event KnowledgeEv
 		event.DedupeKey, event.Payload,
 	).Scan(&eventSeq)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return 0, nil // duplicate, idempotent
-		}
-		return 0, fmt.Errorf("AppendKnowledgeEvent: %w", err)
+		return 0, fmt.Errorf("AppendKnowledgeEvent insert: %w", err)
 	}
 	return eventSeq, nil
 }
@@ -100,12 +118,13 @@ type KnowledgeUserEvent struct {
 }
 
 // AppendKnowledgeUserEvent inserts a user event with deduplication.
-// Uses the partial unique index on dedupe_key (WHERE dedupe_key IS NOT NULL).
+// Uses the unique index on (dedupe_key, occurred_at) for partitioned table compatibility.
+// PostgreSQL requires ON CONFLICT columns to match a unique constraint exactly.
 func (r *Repository) AppendKnowledgeUserEvent(ctx context.Context, event KnowledgeUserEvent) error {
 	query := `INSERT INTO knowledge_user_events
 		(user_event_id, occurred_at, user_id, tenant_id, event_type, item_key, payload, dedupe_key)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT (dedupe_key) DO NOTHING`
+		ON CONFLICT (dedupe_key, occurred_at) WHERE dedupe_key != '' DO NOTHING`
 
 	_, err := r.pool.Exec(ctx, query,
 		event.UserEventID, event.OccurredAt, event.UserID, event.TenantID,
