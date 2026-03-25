@@ -1,9 +1,11 @@
 name: Proto & Contract Validation
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/proto-contract.yaml'
       - 'proto/**'
       - 'alt-frontend-sv/src/lib/gen/**'
       - 'alt-frontend-sv/src/test/contracts/**'
@@ -14,6 +16,7 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - '.github/workflows/proto-contract.yaml'
       - 'proto/**'
       - 'alt-frontend-sv/src/lib/gen/**'
       - 'alt-frontend-sv/src/test/contracts/**'
