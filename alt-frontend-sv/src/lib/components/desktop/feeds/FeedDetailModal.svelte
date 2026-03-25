@@ -22,6 +22,7 @@ import type { Snippet } from "svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import { isTransientError } from "$lib/utils/errorClassification";
+import { processArticleFetchResponse } from "./FeedDetailModal.logic";
 import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 
 interface Props {
@@ -172,13 +173,14 @@ $effect(() => {
 
 // Auto-fetch article content when modal opens
 $effect(() => {
-	if (
-		open &&
-		feed?.normalizedUrl &&
-		!articleContent &&
-		!isFetchingContent &&
-		!contentError
-	) {
+	if (!open || !feed) return;
+	if (!feed.normalizedUrl) {
+		if (!contentError) {
+			contentError = "Article URL is not available";
+		}
+		return;
+	}
+	if (!articleContent && !isFetchingContent && !contentError) {
 		handleFetchFullArticle();
 	}
 });
@@ -219,7 +221,11 @@ async function handleRefetchArticle() {
 }
 
 async function handleFetchFullArticle(forceRefresh = false) {
-	if (!feed?.normalizedUrl || isFetchingContent) return;
+	if (isFetchingContent) return;
+	if (!feed?.normalizedUrl) {
+		contentError = "Article URL is not available";
+		return;
+	}
 
 	const targetFeedUrl = feed.normalizedUrl; // Capture for stale response validation
 
@@ -256,8 +262,12 @@ async function handleFetchFullArticle(forceRefresh = false) {
 		// Defensive validation: discard stale response if feed changed
 		if (feed.normalizedUrl !== targetFeedUrl) return;
 
-		articleContent = response.content || null;
-		articleID = response.article_id || null;
+		const result = processArticleFetchResponse(response);
+		articleContent = result.articleContent;
+		articleID = result.articleID;
+		if (result.contentError) {
+			contentError = result.contentError;
+		}
 	} catch (err) {
 		// Ignore AbortError and ConnectError wrapping abort (user cancelled)
 		if (err instanceof Error) {
@@ -282,8 +292,12 @@ async function handleFetchFullArticle(forceRefresh = false) {
 
 				if (feed.normalizedUrl !== targetFeedUrl) return;
 
-				articleContent = response.content || null;
-				articleID = response.article_id || null;
+				const retryResult = processArticleFetchResponse(response);
+				articleContent = retryResult.articleContent;
+				articleID = retryResult.articleID;
+				if (retryResult.contentError) {
+					contentError = retryResult.contentError;
+				}
 				return;
 			} catch (retryErr) {
 				if (retryErr instanceof Error) {
