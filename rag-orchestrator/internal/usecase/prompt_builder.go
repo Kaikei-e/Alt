@@ -49,16 +49,87 @@ func NewXMLPromptBuilder(additionalInstructions ...string) PromptBuilder {
 }
 
 // Build renders the Messages for Chat API.
-// Gemma 3 officially supports only user/model roles, so instructions are
-// embedded in the user message instead of a separate system message.
+// Single-turn: one user message with full instructions + context + query.
+// Multi-turn: past turns as actual user/assistant messages + follow-up user message.
 func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 	if input.PromptVersion == "" {
 		return nil, fmt.Errorf("prompt version is required")
 	}
 
+	if len(input.ConversationHistory) > 0 {
+		return b.buildMultiTurn(input)
+	}
+	return b.buildSingleTurn(input)
+}
+
+// buildSingleTurn creates a single user message with full instructions, context, and query.
+func (b *XMLPromptBuilder) buildSingleTurn(input PromptInput) ([]domain.Message, error) {
 	var sb strings.Builder
 
-	// Instructions (merged into user message for Gemma 3 compatibility)
+	b.writeFullInstructions(&sb, input)
+	b.writeOutputFormat(&sb)
+	b.writeArticleContext(&sb, input)
+	b.writeSupplementaryInfo(&sb, input)
+	b.writeContextChunks(&sb, input)
+	b.writeQuery(&sb, input)
+
+	return []domain.Message{
+		{Role: "user", Content: sb.String()},
+	}, nil
+}
+
+// buildMultiTurn creates actual chat turns for past conversation, plus a follow-up
+// user message with context and query. This leverages the LLM's native multi-turn
+// understanding (Gemma: <start_of_turn>user / <start_of_turn>model) instead of
+// embedding history as text in a single message.
+func (b *XMLPromptBuilder) buildMultiTurn(input PromptInput) ([]domain.Message, error) {
+	var messages []domain.Message
+
+	// Past turns as actual user/assistant chat messages.
+	// Ollama maps "assistant" to model-specific tokens automatically.
+	maxMsgs := 6
+	start := 0
+	if len(input.ConversationHistory) > maxMsgs {
+		start = len(input.ConversationHistory) - maxMsgs
+	}
+	for _, msg := range input.ConversationHistory[start:] {
+		content := msg.Content
+		if len(content) > 3000 {
+			content = content[:3000] + "..."
+		}
+		messages = append(messages, domain.Message{
+			Role:    msg.Role,
+			Content: content,
+		})
+	}
+
+	// Current turn: follow-up instructions + context + query
+	var sb strings.Builder
+
+	sb.WriteString("## フォローアップ指示\n")
+	sb.WriteString("これは会話の続きです。以下のルールに必ず従ってください:\n")
+	sb.WriteString("- **前回の回答で既に述べた内容を一切繰り返さないこと**\n")
+	sb.WriteString("- 概要の再説明は不要。質問に直接回答すること\n")
+	sb.WriteString("- 前回触れていない新しい事実・データ・視点のみを提供すること\n")
+	sb.WriteString("- 必ず日本語で回答すること\n\n")
+
+	b.writeFollowUpOutputFormat(&sb)
+	b.writeArticleContext(&sb, input)
+	b.writeSupplementaryInfo(&sb, input)
+	b.writeContextChunks(&sb, input)
+	b.writeQuery(&sb, input)
+
+	messages = append(messages, domain.Message{
+		Role:    "user",
+		Content: sb.String(),
+	})
+
+	return messages, nil
+}
+
+// --- Shared prompt section writers ---
+
+func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input PromptInput) {
 	sb.WriteString("## あなたの役割\n")
 	sb.WriteString("あなたは優秀なリサーチアナリストです。提供されたコンテキスト情報を分析し、\n")
 	sb.WriteString("ユーザーの質問に対して包括的で詳細な回答を生成してください。\n\n")
@@ -108,34 +179,26 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 		sb.WriteString("- 出典を明示し、根拠と判定を構造化して回答してください\n")
 		sb.WriteString("- 「主張」「根拠」「判定」の3段構成で回答してください\n\n")
 	}
+}
 
+func (b *XMLPromptBuilder) writeFollowUpOutputFormat(sb *strings.Builder) {
+	sb.WriteString("## 出力形式\n")
+	sb.WriteString("以下のJSON形式で出力してください。answer フィールドには Markdown を使用してください。\n")
+	sb.WriteString("**概要セクションは不要です。質問への回答を直接書いてください。**\n")
+	sb.WriteString("{\"answer\":\"質問への直接回答をここに書く\",")
+	sb.WriteString("\"citations\":[{\"chunk_id\":\"1\",\"reason\":\"引用理由\"}],\"fallback\":false,\"reason\":\"\"}\n\n")
+	sb.WriteString("コンテキストが不十分な場合は fallback=true とし、reason に理由を記述してください。\n\n")
+}
+
+func (b *XMLPromptBuilder) writeOutputFormat(sb *strings.Builder) {
 	sb.WriteString("## 出力形式\n")
 	sb.WriteString("以下のJSON形式で出力してください。answer フィールドには Markdown を使用してください。\n")
 	sb.WriteString("{\"answer\":\"## 概要\\n...\\n## 詳細\\n...\\n## まとめ\\n...\",")
 	sb.WriteString("\"citations\":[{\"chunk_id\":\"1\",\"reason\":\"引用理由\"}],\"fallback\":false,\"reason\":\"\"}\n\n")
 	sb.WriteString("コンテキストが不十分な場合は fallback=true とし、reason に理由を記述してください。\n\n")
+}
 
-	// Conversation History (for multi-turn context)
-	if len(input.ConversationHistory) > 0 {
-		sb.WriteString("### 会話履歴\n")
-		sb.WriteString("以下の会話履歴を参考に、指示代名詞（「それ」「この件」等）を解決してください。\n")
-		// Include last 3 turns max (6 messages)
-		maxMsgs := 6
-		start := 0
-		if len(input.ConversationHistory) > maxMsgs {
-			start = len(input.ConversationHistory) - maxMsgs
-		}
-		for _, msg := range input.ConversationHistory[start:] {
-			content := msg.Content
-			if len(content) > 500 {
-				content = content[:500] + "..."
-			}
-			sb.WriteString(fmt.Sprintf("%s: %s\n", msg.Role, content))
-		}
-		sb.WriteString("\n")
-	}
-
-	// Article-scoped context instruction
+func (b *XMLPromptBuilder) writeArticleContext(sb *strings.Builder, input PromptInput) {
 	if input.ArticleContext != nil {
 		if input.ArticleContext.Truncated {
 			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の主要な部分です。この記事に基づいて質問に回答してください。\n\n", input.ArticleContext.Title))
@@ -143,8 +206,9 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 			sb.WriteString(fmt.Sprintf("## 記事コンテキスト\n以下は記事「%s」の全内容です。この記事に基づいて質問に回答してください。\n\n", input.ArticleContext.Title))
 		}
 	}
+}
 
-	// Supplementary info from tools (Phase 3)
+func (b *XMLPromptBuilder) writeSupplementaryInfo(sb *strings.Builder, input PromptInput) {
 	if len(input.SupplementaryInfo) > 0 {
 		sb.WriteString("### 補足情報（ツール結果）\n")
 		for _, info := range input.SupplementaryInfo {
@@ -152,8 +216,9 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 		}
 		sb.WriteString("\n")
 	}
+}
 
-	// Context
+func (b *XMLPromptBuilder) writeContextChunks(sb *strings.Builder, input PromptInput) {
 	sb.WriteString("### Context\n")
 	for i, ctx := range input.Contexts {
 		index := i + 1
@@ -165,14 +230,12 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 		sb.WriteString(ctx.ChunkText)
 		sb.WriteString("\n\n")
 	}
+}
 
+func (b *XMLPromptBuilder) writeQuery(sb *strings.Builder, input PromptInput) {
 	sb.WriteString("### Query\n")
 	sb.WriteString(input.Query)
 	if input.Locale != "" {
 		sb.WriteString(fmt.Sprintf("\n(Language: %s)", input.Locale))
 	}
-
-	return []domain.Message{
-		{Role: "user", Content: sb.String()},
-	}, nil
 }

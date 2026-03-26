@@ -121,7 +121,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 
 	// Answer usecase
 	promptBuilder := usecase.NewXMLPromptBuilder("Answer in Japanese.")
-	articleScopedStrategy := usecase.NewArticleScopedStrategy(docRepo, chunkRepo, log)
+	articleScopedStrategy := usecase.NewArticleScopedStrategy(docRepo, chunkRepo, log, queryExpander)
 
 	// Agentic RAG options (ADR-000568)
 	answerOpts := []usecase.AnswerUsecaseOption{

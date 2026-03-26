@@ -484,6 +484,35 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 	retrieved, err := strategy.Retrieve(ctx, retrieveInput, intent)
 
+	// Agentic RAG: for article-scoped follow-ups, augment with general re-retrieval.
+	// The article's own chunks provide scoped context, while the global index
+	// surfaces related articles that may answer the follow-up question better.
+	if intent.IntentType == IntentArticleScoped && len(input.ConversationHistory) > 0 && err == nil && retrieved != nil {
+		u.logger.Info("agentic_reretrieval_started",
+			slog.String("article_id", intent.ArticleID),
+			slog.String("query", intent.UserQuestion))
+
+		generalInput := RetrieveContextInput{
+			Query:               intent.UserQuestion,
+			ConversationHistory: input.ConversationHistory,
+		}
+		generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
+		if genErr != nil {
+			u.logger.Warn("agentic_reretrieval_failed",
+				slog.String("article_id", intent.ArticleID),
+				slog.String("error", genErr.Error()))
+		}
+		if genErr == nil && generalResult != nil && len(generalResult.Contexts) > 0 {
+			before := len(retrieved.Contexts)
+			retrieved = mergeContexts(retrieved, generalResult)
+			u.logger.Info("agentic_reretrieval_completed",
+				slog.Int("article_chunks", before),
+				slog.Int("general_chunks", len(generalResult.Contexts)),
+				slog.Int("merged_total", len(retrieved.Contexts)))
+			result.strategyUsed = "article_scoped+general"
+		}
+	}
+
 	// 2-stage fallback for article_scoped
 	if intent.IntentType == IntentArticleScoped && err != nil && errors.Is(err, ErrArticleNotIndexed) {
 		// Fallback stage 1: article-constrained general retrieval
@@ -681,4 +710,43 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// mergeContexts combines article-scoped chunks with general retrieval results.
+// For follow-up re-retrieval, general results are placed FIRST because the
+// follow-up question seeks NEW information beyond the article's own content.
+// Article chunks are appended after as supplementary context.
+// Deduplicates by chunk text prefix to avoid sending the same content twice.
+func mergeContexts(article, general *RetrieveContextOutput) *RetrieveContextOutput {
+	seen := make(map[string]bool, len(article.Contexts)+len(general.Contexts))
+	merged := make([]ContextItem, 0, len(article.Contexts)+len(general.Contexts))
+
+	// General results first — these are the NEW information from re-retrieval
+	for _, ctx := range general.Contexts {
+		key := dedupeKey(ctx)
+		if !seen[key] {
+			seen[key] = true
+			merged = append(merged, ctx)
+		}
+	}
+	// Article chunks after — supplementary context from the original article
+	for _, ctx := range article.Contexts {
+		key := dedupeKey(ctx)
+		if !seen[key] {
+			seen[key] = true
+			merged = append(merged, ctx)
+		}
+	}
+
+	result := *article
+	result.Contexts = merged
+	return &result
+}
+
+func dedupeKey(ctx ContextItem) string {
+	text := ctx.ChunkText
+	if len(text) > 80 {
+		text = text[:80]
+	}
+	return ctx.URL + "|" + text
 }

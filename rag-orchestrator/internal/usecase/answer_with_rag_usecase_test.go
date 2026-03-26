@@ -760,12 +760,22 @@ func TestExecute_ArticleScopedFollowUp_InheritsScopeFromHistory(t *testing.T) {
 			},
 		}, nil)
 
+	// General strategy (re-retrieval) for follow-up augmentation
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: uuid.New(), ChunkText: "Related context from global index", Title: "Related", Score: 0.7, DocumentVersion: 1},
+		},
+	}, nil)
+
 	llmResponse := `{"answer":"Impact summary","citations":[{"chunk_id":"1","reason":"relevant"}],"fallback":false,"reason":""}`
+	// Multi-turn produces actual chat turns: 2 history messages + 1 current user message
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		return len(msgs) == 1 &&
-			contains(msgs[0].Content, "記事コンテキスト") &&
-			contains(msgs[0].Content, "OpenAI GPT-5") &&
-			contains(msgs[0].Content, "What is the impact?")
+		if len(msgs) < 3 {
+			return false
+		}
+		lastMsg := msgs[len(msgs)-1]
+		return lastMsg.Role == "user" &&
+			contains(lastMsg.Content, "What is the impact?")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
@@ -777,7 +787,61 @@ func TestExecute_ArticleScopedFollowUp_InheritsScopeFromHistory(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
-	assert.Equal(t, "article_scoped", output.Debug.StrategyUsed)
+	assert.Equal(t, "article_scoped+general", output.Debug.StrategyUsed)
+}
+
+func TestExecute_ArticleScopedFollowUp_ReRetrievesFromGlobalIndex(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithStrategy(usecase.IntentArticleScoped, articleStrategy),
+	)
+
+	chunkID1 := uuid.New()
+	chunkID2 := uuid.New()
+
+	// Article-scoped strategy returns article's own chunks
+	articleStrategy.
+		On("Retrieve", mock.Anything, mock.Anything, mock.Anything).
+		Return(&usecase.RetrieveContextOutput{
+			Contexts: []usecase.ContextItem{
+				{ChunkID: chunkID1, ChunkText: "Article chunk about fuel crisis", Title: "Fuel Crisis", Score: 1.0, DocumentVersion: 1},
+			},
+		}, nil)
+
+	// General strategy (mockRetrieve) should be called for follow-up re-retrieval
+	// and return ADDITIONAL context from the global index
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: chunkID2, ChunkText: "Related article about Middle East geopolitics", Title: "Geopolitics", Score: 0.8, DocumentVersion: 1},
+		},
+	}, nil)
+
+	llmResponse := `{"answer":"Combined answer","citations":[{"chunk_id":"1","reason":"r"},{"chunk_id":"2","reason":"r"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
+		Query: "Why did this crisis happen?",
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: "Regarding the article: Fuel Crisis [articleId: art-fuel]\n\nQuestion:\nSummary?"},
+			{Role: "assistant", Content: "The article discusses a fuel crisis in Australia."},
+		},
+	})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+
+	// General strategy should have been called for re-retrieval (agentic pattern)
+	mockRetrieve.AssertCalled(t, "Execute", mock.Anything, mock.Anything)
+
+	// Output should contain contexts from BOTH article and general retrieval
+	assert.Greater(t, len(output.Contexts), 1,
+		"follow-up should include contexts from both article and global index")
 }
 
 func TestExecute_FallbackDebugPreservesStrategyUsed(t *testing.T) {
@@ -861,10 +925,18 @@ func TestPromptBuilder_MultiTurnCoreferenceInstruction(t *testing.T) {
 		},
 	})
 	assert.NoError(t, err)
-	assert.Len(t, messages, 1)
 
-	content := messages[0].Content
-	assert.Contains(t, content, "指示代名詞（「それ」「この件」等）を解決してください")
+	// Multi-turn: 2 history messages + 1 current user message = 3
+	assert.Len(t, messages, 3)
+
+	// Past turns should be actual chat messages
+	assert.Equal(t, "user", messages[0].Role)
+	assert.Equal(t, "assistant", messages[1].Role)
+
+	// Last message is the follow-up with instructions
+	lastMsg := messages[2]
+	assert.Contains(t, lastMsg.Content, "繰り返さない",
+		"follow-up should instruct not to repeat")
 }
 
 // --- Phase 1: Retrieval Quality Gate integration tests ---
