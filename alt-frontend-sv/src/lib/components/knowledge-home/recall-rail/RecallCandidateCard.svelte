@@ -2,6 +2,8 @@
 import { AlarmClockOff, Clock, X } from "@lucide/svelte";
 import type { RecallCandidateData } from "$lib/connect/knowledge_home";
 import RecallReasonBadge from "./RecallReasonBadge.svelte";
+import RecallWhyPanel from "./RecallWhyPanel.svelte";
+import { resolveRecallReason } from "./recall-reason-map";
 
 interface Props {
 	candidate: RecallCandidateData;
@@ -11,6 +13,8 @@ interface Props {
 }
 
 const { candidate, onSnooze, onDismiss, onOpen }: Props = $props();
+
+let whyExpanded = $state(false);
 
 const title = $derived(candidate.item?.title ?? candidate.itemKey);
 const summaryExcerpt = $derived(
@@ -24,6 +28,18 @@ const displayTags = $derived(
 const dateSource = $derived(
 	candidate.item?.publishedAt || candidate.firstEligibleAt || "",
 );
+const primaryReason = $derived(candidate.reasons[0]);
+const borderColor = $derived.by(() => {
+	if (!primaryReason) return "border-l-[var(--surface-border)]";
+	const display = resolveRecallReason(primaryReason.type);
+	if (display.colorClass.includes("amber")) return "border-l-[var(--badge-amber-border)]";
+	if (display.colorClass.includes("blue")) return "border-l-[var(--badge-blue-border)]";
+	if (display.colorClass.includes("purple")) return "border-l-[var(--badge-purple-border)]";
+	if (display.colorClass.includes("teal")) return "border-l-[var(--badge-teal-border)]";
+	if (display.colorClass.includes("orange")) return "border-l-[var(--badge-orange-border)]";
+	if (display.colorClass.includes("green")) return "border-l-[var(--badge-green-border)]";
+	return "border-l-[var(--surface-border)]";
+});
 
 function formatRelativeTime(isoString: string): string {
 	if (!isoString) return "recent";
@@ -44,7 +60,7 @@ const age = $derived(formatRelativeTime(dateSource));
 </script>
 
 <div
-	class="border rounded-md p-3 bg-[var(--surface-bg)] border-[var(--surface-border)] hover:border-[var(--accent-primary)] transition-all duration-200 cursor-pointer"
+	class="border border-l-[3px] rounded-md p-3 bg-[var(--surface-bg)] border-[var(--surface-border)] {borderColor} hover:border-[var(--accent-primary)] hover:-translate-y-0.5 transition-all duration-200 cursor-pointer shadow-sm"
 	role="button"
 	tabindex="0"
 	onclick={() => onOpen(candidate.itemKey)}
@@ -62,11 +78,28 @@ const age = $derived(formatRelativeTime(dateSource));
 		{/if}
 	</div>
 
-	<div class="flex flex-wrap gap-1 mb-2">
-		{#each candidate.reasons.slice(0, 2) as reason}
-			<RecallReasonBadge reasonType={reason.type} description={reason.description} />
-		{/each}
-	</div>
+	<!-- Reason badges + Why recalled? toggle -->
+	{#if candidate.reasons.length > 0}
+		<div class="flex flex-wrap items-center gap-1 mb-2">
+			{#each candidate.reasons.slice(0, 2) as reason}
+				<RecallReasonBadge reasonType={reason.type} description={reason.description} />
+			{/each}
+			<button
+				type="button"
+				class="rounded-full border border-[var(--surface-border)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-muted)] hover:border-[var(--interactive-text)] hover:text-[var(--interactive-text)] transition-colors ml-auto"
+				onclick={(e) => { e.stopPropagation(); whyExpanded = !whyExpanded; }}
+			>
+				{whyExpanded ? "Hide why" : "Why?"}
+			</button>
+		</div>
+	{/if}
+
+	<!-- Expanded Why Panel -->
+	{#if whyExpanded}
+		<div class="mb-2" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+			<RecallWhyPanel reasons={candidate.reasons} />
+		</div>
+	{/if}
 
 	{#if summaryExcerpt}
 		<p class="mb-2 text-xs leading-5 text-[var(--text-secondary)] line-clamp-2">
