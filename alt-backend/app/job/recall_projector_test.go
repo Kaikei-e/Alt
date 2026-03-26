@@ -246,6 +246,96 @@ func TestProcessRecallSignals(t *testing.T) {
 	})
 }
 
+func TestRecallDescriptionContainsTemporalContext(t *testing.T) {
+	userID := uuid.New()
+
+	t.Run("SignalOpened 3 days ago produces description with '3 days ago'", func(t *testing.T) {
+		signals := []domain.RecallSignal{
+			{
+				SignalID: uuid.New(), UserID: userID,
+				ItemKey: "article:temporal-test", SignalType: domain.SignalOpened,
+				OccurredAt: time.Now().Add(-72 * time.Hour), // 3 days ago
+			},
+		}
+		candidatePort := &mockUpsertRecallCandidatePort{}
+
+		err := ScoreRecallCandidates(context.Background(), userID, signals, candidatePort)
+		require.NoError(t, err)
+		require.Len(t, candidatePort.upserted, 1)
+		desc := candidatePort.upserted[0].Reasons[0].Description
+		assert.Contains(t, desc, "3 days ago")
+	})
+
+	t.Run("SignalSearchRelated 5 hours ago produces description with '5 hours ago'", func(t *testing.T) {
+		signals := []domain.RecallSignal{
+			{
+				SignalID: uuid.New(), UserID: userID,
+				ItemKey: "article:search-temporal", SignalType: domain.SignalSearchRelated,
+				OccurredAt: time.Now().Add(-5 * time.Hour),
+			},
+		}
+		candidatePort := &mockUpsertRecallCandidatePort{}
+
+		err := ScoreRecallCandidates(context.Background(), userID, signals, candidatePort)
+		require.NoError(t, err)
+		require.Len(t, candidatePort.upserted, 1)
+		desc := candidatePort.upserted[0].Reasons[0].Description
+		assert.Contains(t, desc, "5 hours ago")
+	})
+
+	t.Run("SignalSearchRelated with search_query in payload includes query in description", func(t *testing.T) {
+		signals := []domain.RecallSignal{
+			{
+				SignalID: uuid.New(), UserID: userID,
+				ItemKey: "article:search-query", SignalType: domain.SignalSearchRelated,
+				OccurredAt: time.Now().Add(-2 * time.Hour),
+				Payload:    map[string]any{"search_query": "rust async"},
+			},
+		}
+		candidatePort := &mockUpsertRecallCandidatePort{}
+
+		err := ScoreRecallCandidates(context.Background(), userID, signals, candidatePort)
+		require.NoError(t, err)
+		require.Len(t, candidatePort.upserted, 1)
+		desc := candidatePort.upserted[0].Reasons[0].Description
+		assert.Contains(t, desc, "rust async")
+	})
+
+	t.Run("SignalAugurReferenced produces description with temporal context", func(t *testing.T) {
+		signals := []domain.RecallSignal{
+			{
+				SignalID: uuid.New(), UserID: userID,
+				ItemKey: "article:augur-temporal", SignalType: domain.SignalAugurReferenced,
+				OccurredAt: time.Now().Add(-26 * time.Hour), // 1 day ago
+			},
+		}
+		candidatePort := &mockUpsertRecallCandidatePort{}
+
+		err := ScoreRecallCandidates(context.Background(), userID, signals, candidatePort)
+		require.NoError(t, err)
+		require.Len(t, candidatePort.upserted, 1)
+		desc := candidatePort.upserted[0].Reasons[0].Description
+		assert.Contains(t, desc, "1 day ago")
+	})
+
+	t.Run("SignalRecapContextUnread produces description with temporal context", func(t *testing.T) {
+		signals := []domain.RecallSignal{
+			{
+				SignalID: uuid.New(), UserID: userID,
+				ItemKey: "article:recap-temporal", SignalType: domain.SignalRecapContextUnread,
+				OccurredAt: time.Now().Add(-96 * time.Hour), // 4 days ago
+			},
+		}
+		candidatePort := &mockUpsertRecallCandidatePort{}
+
+		err := ScoreRecallCandidates(context.Background(), userID, signals, candidatePort)
+		require.NoError(t, err)
+		require.Len(t, candidatePort.upserted, 1)
+		desc := candidatePort.upserted[0].Reasons[0].Description
+		assert.Contains(t, desc, "4 days ago")
+	})
+}
+
 func TestScoreRecallCandidates(t *testing.T) {
 	userID := uuid.New()
 
