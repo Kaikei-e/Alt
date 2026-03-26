@@ -262,6 +262,17 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 		assert.Equal(t, itemKey, recallPort.appendedSignals[0].ItemKey)
 	})
 
+	t.Run("open_search action includes search_query in signal payload", func(t *testing.T) {
+		recallPort := &mockRecallSignalPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
+
+		metadata := `{"query":"rust async"}`
+		err := uc.Execute(context.Background(), userID, tenantID, "open_search", itemKey, metadata)
+		require.NoError(t, err)
+		require.Len(t, recallPort.appendedSignals, 1)
+		assert.Equal(t, "rust async", recallPort.appendedSignals[0].Payload["search_query"])
+	})
+
 	t.Run("dismiss action does not append signal", func(t *testing.T) {
 		recallPort := &mockRecallSignalPort{}
 		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
