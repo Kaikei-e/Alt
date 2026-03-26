@@ -1,0 +1,160 @@
+/**
+ * Server-side client for knowledge-sovereign admin REST endpoints.
+ *
+ * Calls knowledge-sovereign metrics port (:9501) directly from SvelteKit server.
+ * PascalCase Go responses (structs without json tags) are normalized to camelCase.
+ */
+
+import { env } from "$env/dynamic/private";
+import type {
+	TableStorageInfo,
+	SnapshotMetadata,
+	RetentionLogEntry,
+	EligiblePartitionsResult,
+	RetentionRunResponse,
+	SovereignAdminSnapshot,
+} from "$lib/types/sovereign-admin";
+
+const SOVEREIGN_METRICS_URL =
+	env.SOVEREIGN_METRICS_URL || "http://knowledge-sovereign:9501";
+
+async function fetchJSON<T>(url: string): Promise<T> {
+	const response = await fetch(url);
+	if (!response.ok) {
+		throw new Error(`Sovereign API error: ${response.status} ${url}`);
+	}
+	return response.json() as Promise<T>;
+}
+
+// --- PascalCase → camelCase normalizers ---
+
+export function normalizeSnapshotMetadata(
+	raw: Record<string, unknown>,
+): SnapshotMetadata {
+	return {
+		snapshotId: raw.SnapshotID as string,
+		snapshotType: raw.SnapshotType as string,
+		projectionVersion: raw.ProjectionVersion as number,
+		projectorBuildRef: raw.ProjectorBuildRef as string,
+		schemaVersion: raw.SchemaVersion as string,
+		snapshotAt: raw.SnapshotAt as string,
+		eventSeqBoundary: raw.EventSeqBoundary as number,
+		snapshotDataPath: raw.SnapshotDataPath as string,
+		itemsRowCount: raw.ItemsRowCount as number,
+		itemsChecksum: raw.ItemsChecksum as string,
+		digestRowCount: raw.DigestRowCount as number,
+		digestChecksum: raw.DigestChecksum as string,
+		recallRowCount: raw.RecallRowCount as number,
+		recallChecksum: raw.RecallChecksum as string,
+		createdAt: raw.CreatedAt as string,
+		status: raw.Status as string,
+	};
+}
+
+export function normalizeRetentionLogEntry(
+	raw: Record<string, unknown>,
+): RetentionLogEntry {
+	return {
+		logId: raw.LogID as string,
+		runAt: raw.RunAt as string,
+		action: raw.Action as string,
+		targetTable: raw.TargetTable as string,
+		targetPartition: raw.TargetPartition as string,
+		rowsAffected: raw.RowsAffected as number,
+		archivePath: raw.ArchivePath as string,
+		checksum: raw.Checksum as string,
+		dryRun: raw.DryRun as boolean,
+		status: raw.Status as string,
+		errorMessage: raw.ErrorMessage as string,
+	};
+}
+
+export function normalizePartitionInfo(raw: Record<string, unknown>) {
+	return {
+		name: raw.Name as string,
+		rangeStart: raw.RangeStart as string,
+		rangeEnd: raw.RangeEnd as string,
+		rowCount: raw.RowCount as number,
+		sizeBytes: raw.SizeBytes as number,
+	};
+}
+
+export function normalizeEligiblePartitionsResult(
+	raw: Record<string, unknown>,
+): EligiblePartitionsResult {
+	return {
+		table: raw.table as string,
+		eligible: ((raw.eligible as Record<string, unknown>[]) ?? []).map(
+			normalizePartitionInfo,
+		),
+	};
+}
+
+// --- Public API ---
+
+export async function fetchSovereignAdminSnapshot(): Promise<SovereignAdminSnapshot> {
+	const [
+		storageStats,
+		rawSnapshots,
+		rawLatestSnapshot,
+		rawRetentionLogs,
+		rawEligiblePartitions,
+	] = await Promise.all([
+		fetchJSON<TableStorageInfo[]>(
+			`${SOVEREIGN_METRICS_URL}/admin/storage/stats`,
+		).catch(() => []),
+		fetchJSON<Record<string, unknown>[]>(
+			`${SOVEREIGN_METRICS_URL}/admin/snapshots/list`,
+		).catch(() => []),
+		fetchJSON<Record<string, unknown> | null>(
+			`${SOVEREIGN_METRICS_URL}/admin/snapshots/latest`,
+		).catch(() => null),
+		fetchJSON<Record<string, unknown>[]>(
+			`${SOVEREIGN_METRICS_URL}/admin/retention/status`,
+		).catch(() => []),
+		fetchJSON<Record<string, unknown>[]>(
+			`${SOVEREIGN_METRICS_URL}/admin/retention/eligible`,
+		).catch(() => []),
+	]);
+
+	return {
+		storageStats,
+		snapshots: rawSnapshots.map(normalizeSnapshotMetadata),
+		latestSnapshot: rawLatestSnapshot
+			? normalizeSnapshotMetadata(rawLatestSnapshot)
+			: null,
+		retentionLogs: rawRetentionLogs.map(normalizeRetentionLogEntry),
+		eligiblePartitions: rawEligiblePartitions.map(
+			normalizeEligiblePartitionsResult,
+		),
+	};
+}
+
+export async function createSovereignSnapshot(): Promise<SnapshotMetadata> {
+	const response = await fetch(
+		`${SOVEREIGN_METRICS_URL}/admin/snapshots/create`,
+		{ method: "POST" },
+	);
+	if (!response.ok) {
+		throw new Error(`Failed to create snapshot: ${response.status}`);
+	}
+	const raw = (await response.json()) as Record<string, unknown>;
+	return normalizeSnapshotMetadata(raw);
+}
+
+export async function runSovereignRetention(
+	dryRun: boolean,
+): Promise<RetentionRunResponse> {
+	const response = await fetch(
+		`${SOVEREIGN_METRICS_URL}/admin/retention/run`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ dry_run: dryRun }),
+		},
+	);
+	if (!response.ok) {
+		throw new Error(`Failed to run retention: ${response.status}`);
+	}
+	return response.json() as Promise<RetentionRunResponse>;
+}

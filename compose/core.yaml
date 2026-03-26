@@ -67,6 +67,7 @@ services:
       - BACKEND_CONNECT_URL=${BACKEND_CONNECT_URL:-http://alt-butterfly-facade:9250}
       - AUTH_HUB_INTERNAL_URL=${AUTH_HUB_INTERNAL_URL:-http://auth-hub:8888}
       - PUBLIC_USE_CONNECT_STREAMING=${PUBLIC_USE_CONNECT_STREAMING:-false}
+      - SOVEREIGN_METRICS_URL=${SOVEREIGN_METRICS_URL:-http://knowledge-sovereign:9501}
     ports:
       - "4173:4173"
     restart: always
