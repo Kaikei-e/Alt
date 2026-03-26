@@ -151,9 +151,9 @@ test.describe("Knowledge Home Admin - Audit Tab", () => {
 		// Run audit
 		await adminPage.runAuditButton.click();
 
-		// Result should appear
+		// Result should appear with mismatch count
 		await expect(adminPage.auditResultPanel).toBeVisible();
-		await expect(page.getByText("2")).toBeVisible(); // mismatch count
+		await expect(adminPage.auditResultPanel.getByText("2", { exact: true })).toBeVisible();
 	});
 });
 

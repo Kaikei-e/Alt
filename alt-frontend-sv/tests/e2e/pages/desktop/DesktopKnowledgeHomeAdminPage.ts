@@ -54,7 +54,7 @@ export class DesktopKnowledgeHomeAdminPage extends BasePage {
 			name: "Create Snapshot",
 		});
 		this.runRetentionButton = page.getByRole("button", {
-			name: /Run Retention/,
+			name: "Run Retention (Dry Run)",
 		});
 		this.confirmDialog = page.getByTestId("confirm-action-dialog");
 		this.confirmDialogConfirmButton = page.getByTestId(
@@ -88,11 +88,11 @@ export class DesktopKnowledgeHomeAdminPage extends BasePage {
 
 	/** Get a storage stat card by table name text */
 	getStorageStatCard(tableName: string): Locator {
-		return this.storageStatsPanel.getByText(tableName);
+		return this.storageStatsPanel.getByRole("cell", { name: tableName });
 	}
 
-	/** Get a snapshot row by status */
+	/** Get a snapshot row by status badge */
 	getSnapshotByStatus(status: string): Locator {
-		return this.snapshotListPanel.getByText(status);
+		return this.snapshotListPanel.locator("span").filter({ hasText: status });
 	}
 }
