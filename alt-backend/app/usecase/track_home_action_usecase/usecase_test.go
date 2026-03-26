@@ -305,6 +305,18 @@ func TestTrackHomeActionUsecase_RecallSignal(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, recallPort.appendedSignals)
 	})
+
+	t.Run("tag_click action appends SignalTagClicked with tag in payload", func(t *testing.T) {
+		recallPort := &mockRecallSignalPort{}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, recallPort, nil, nil)
+
+		metadata := `{"tag":"rust"}`
+		err := uc.Execute(context.Background(), userID, tenantID, "tag_click", itemKey, metadata)
+		require.NoError(t, err)
+		require.Len(t, recallPort.appendedSignals, 1)
+		assert.Equal(t, domain.SignalTagClicked, recallPort.appendedSignals[0].SignalType)
+		assert.Equal(t, itemKey, recallPort.appendedSignals[0].ItemKey)
+	})
 }
 
 func TestTrackHomeActionUsecase_DismissWriteThrough(t *testing.T) {

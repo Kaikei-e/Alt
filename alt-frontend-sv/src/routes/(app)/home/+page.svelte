@@ -226,7 +226,16 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 	}
 }
 
+function handleTagClick(tag: string, item: KnowledgeHomeItemData) {
+	if (flags.trackingEnabled) {
+		home.trackAction("tag_click", item.itemKey, JSON.stringify({ tag }));
+	}
+}
+
 function handleRecallOpen(itemKey: string) {
+	if (flags.trackingEnabled) {
+		home.trackAction("open", itemKey);
+	}
 	const articleId = itemKey.startsWith("article:") ? itemKey.slice(8) : null;
 	if (!articleId) return;
 	const candidate = recall.candidates.find((c) => c.itemKey === itemKey);
@@ -449,6 +458,7 @@ onMount(async () => {
 				streamMode={streamMode}
 				searchQuery={searchQuery}
 				onAction={handleAction}
+				onTagClick={handleTagClick}
 				onLoadMore={() => home.loadMore(lens.activeLensId)}
 				onItemsVisible={handleItemsVisible}
 				onClearLens={() => handleLensSelect(null)}
@@ -536,6 +546,7 @@ onMount(async () => {
 				streamMode={streamMode}
 				searchQuery={searchQuery}
 				onAction={handleAction}
+				onTagClick={handleTagClick}
 				onLoadMore={() => home.loadMore(lens.activeLensId)}
 				onItemsVisible={handleItemsVisible}
 				onClearLens={() => handleLensSelect(null)}

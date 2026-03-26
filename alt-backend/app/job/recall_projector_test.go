@@ -110,14 +110,14 @@ func TestProcessRecallSignals(t *testing.T) {
 		assert.InDelta(t, weightOpenedNotRevisited, candidatePort.upserted[0].RecallScore, 0.01)
 	})
 
-	t.Run("SignalOpened younger than 48h - below minRecallScore - no candidate", func(t *testing.T) {
+	t.Run("SignalOpened older than 1h creates candidate", func(t *testing.T) {
 		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
 		recentSignal := domain.RecallSignal{
 			SignalID:   uuid.New(),
 			UserID:     userID,
 			ItemKey:    "article:recent-item",
 			SignalType: domain.SignalOpened,
-			OccurredAt: time.Now().Add(-24 * time.Hour), // 24h ago, < 48h
+			OccurredAt: time.Now().Add(-2 * time.Hour), // 2h ago, > 1h threshold
 		}
 		signalPort := &mockListRecallSignalsByUserPort{
 			signalsByUser: map[uuid.UUID][]domain.RecallSignal{
@@ -128,7 +128,32 @@ func TestProcessRecallSignals(t *testing.T) {
 
 		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
 		require.NoError(t, err)
-		assert.Empty(t, candidatePort.upserted)
+		require.Len(t, candidatePort.upserted, 1, "opened signal older than 1h should produce a candidate")
+		assert.Equal(t, domain.ReasonOpenedNotRevisited, candidatePort.upserted[0].Reasons[0].Type)
+	})
+
+	t.Run("SignalTagClicked creates ReasonTagInteraction candidate", func(t *testing.T) {
+		listUsersPort := &mockListDistinctUserIDsPort{userIDs: []uuid.UUID{userID}}
+		signal := domain.RecallSignal{
+			SignalID:   uuid.New(),
+			UserID:     userID,
+			ItemKey:    "article:tag-item",
+			SignalType: domain.SignalTagClicked,
+			OccurredAt: time.Now().Add(-1 * time.Hour),
+			Payload:    map[string]any{"tag": "rust"},
+		}
+		signalPort := &mockListRecallSignalsByUserPort{
+			signalsByUser: map[uuid.UUID][]domain.RecallSignal{
+				userID: {signal},
+			},
+		}
+		candidatePort := &mockUpsertRecallCandidatePort{}
+
+		err := processRecallSignals(context.Background(), listUsersPort, signalPort, candidatePort, nil)
+		require.NoError(t, err)
+		require.Len(t, candidatePort.upserted, 1, "tag_clicked signal should produce a candidate")
+		assert.Equal(t, domain.ReasonTagInteraction, candidatePort.upserted[0].Reasons[0].Type)
+		assert.Contains(t, candidatePort.upserted[0].Reasons[0].Description, "rust")
 	})
 
 	t.Run("SignalAugurReferenced creates ReasonRelatedToAugurQ candidate", func(t *testing.T) {

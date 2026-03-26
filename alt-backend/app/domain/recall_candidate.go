@@ -14,6 +14,7 @@ const (
 	ReasonRecapContextUnfinished = "recap_context_unfinished"
 	ReasonPulseFollowupNeeded   = "pulse_followup_needed"
 	ReasonTagInterestOverlap    = "tag_interest_overlap"
+	ReasonTagInteraction        = "tag_interaction"
 )
 
 // RecallReason explains why an item is being recalled.

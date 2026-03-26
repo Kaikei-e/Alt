@@ -44,6 +44,13 @@ describe("recall-reason-map", () => {
 			expect(result.iconName).toBe("Tag");
 			expect(result.colorClass).toContain("green");
 		});
+
+		it("maps tag_interaction to 'Tag explored' with teal color", () => {
+			const result = resolveRecallReason("tag_interaction");
+			expect(result.label).toBe("Tag explored");
+			expect(result.iconName).toBe("Hash");
+			expect(result.colorClass).toContain("teal");
+		});
 	});
 
 	describe("fallback behavior", () => {

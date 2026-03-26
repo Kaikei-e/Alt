@@ -37,6 +37,17 @@ describe("categorizeRecallReasons", () => {
 		expect(connection!.items).toHaveLength(3);
 	});
 
+	it("categorizes tag_interaction under 'Connection'", () => {
+		const reasons: RecallReasonData[] = [
+			{ type: "tag_interaction", description: 'You explored tag "rust"' },
+		];
+		const groups = categorizeRecallReasons(reasons);
+		const connection = groups.find((g) => g.key === "connection");
+		expect(connection).toBeDefined();
+		expect(connection!.items).toHaveLength(1);
+		expect(connection!.items[0].displayLabel).toBe("Tag explored");
+	});
+
 	it("categorizes recap/pulse under 'Completion'", () => {
 		const reasons: RecallReasonData[] = [
 			{ type: "recap_context_unfinished", description: "Recap" },

@@ -17,6 +17,7 @@ const CONNECTION_CODES = new Set([
 	"related_to_recent_search",
 	"related_to_recent_augur_question",
 	"tag_interest_overlap",
+	"tag_interaction",
 ]);
 const COMPLETION_CODES = new Set([
 	"recap_context_unfinished",

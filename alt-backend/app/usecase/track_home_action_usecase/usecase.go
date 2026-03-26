@@ -27,6 +27,7 @@ var validActionTypes = map[string]string{
 	"listen":      domain.EventHomeItemListened,
 	"open_recap":  domain.EventHomeItemOpened,
 	"open_search": domain.EventHomeItemOpened,
+	"tag_click":   domain.EventHomeItemTagClicked,
 }
 
 // actionToSignalType maps action types that should generate recall signals.
@@ -35,6 +36,7 @@ var actionToSignalType = map[string]string{
 	"ask":         domain.SignalAugurReferenced,
 	"listen":      domain.SignalTagInterest,
 	"open_search": domain.SignalSearchRelated,
+	"tag_click":   domain.SignalTagClicked,
 }
 
 // TrackHomeActionUsecase records user actions on knowledge home items.
@@ -168,6 +170,9 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 			if err := json.Unmarshal([]byte(metadataJSON), &meta); err == nil {
 				if q, ok := meta["query"].(string); ok && q != "" {
 					signalPayload["search_query"] = q
+				}
+				if t, ok := meta["tag"].(string); ok && t != "" {
+					signalPayload["tag"] = t
 				}
 			}
 		}

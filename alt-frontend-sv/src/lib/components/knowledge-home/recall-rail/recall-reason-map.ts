@@ -46,6 +46,12 @@ const RECALL_REASON_MAP: Record<string, RecallReasonDisplay> = {
 		colorClass:
 			"text-[var(--badge-green-text)] border-[var(--badge-green-border)] bg-[var(--badge-green-bg)]",
 	},
+	tag_interaction: {
+		label: "Tag explored",
+		iconName: "Hash",
+		colorClass:
+			"text-[var(--badge-teal-text)] border-[var(--badge-teal-border)] bg-[var(--badge-teal-bg)]",
+	},
 };
 
 const FALLBACK: RecallReasonDisplay = {

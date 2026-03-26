@@ -14,6 +14,7 @@ const (
 	SignalRecapContextUnread = "recap_context_unread"
 	SignalPulseFollowup      = "pulse_followup"
 	SignalTagInterest        = "tag_interest"
+	SignalTagClicked         = "tag_clicked"
 )
 
 // RecallSignal represents a user interaction signal that feeds the recall scoring algorithm.

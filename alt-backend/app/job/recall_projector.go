@@ -28,6 +28,7 @@ const (
 	weightRecapContextUnfinished = 0.2
 	weightPulseFollowup         = 0.25
 	weightTagInterest           = 0.15
+	weightTagClicked            = 0.20
 )
 
 // RecallProjectorJob returns a function that scores recall candidates from signals.
@@ -128,7 +129,7 @@ func scoreAndUpsertCandidates(
 			age := formatRelativeAge(sig.OccurredAt)
 			switch sig.SignalType {
 			case domain.SignalOpened:
-				if time.Since(sig.OccurredAt) > 48*time.Hour {
+				if time.Since(sig.OccurredAt) > 1*time.Hour {
 					reasons = append(reasons, domain.RecallReason{
 						Type:        domain.ReasonOpenedNotRevisited,
 						Description: fmt.Sprintf("Opened %s, not revisited since", age),
@@ -169,6 +170,17 @@ func scoreAndUpsertCandidates(
 					Description: fmt.Sprintf("Matches your interest tags (signal from %s)", age),
 				})
 				score += weightTagInterest
+			case domain.SignalTagClicked:
+				tag := ""
+				if t, ok := sig.Payload["tag"].(string); ok {
+					tag = t
+				}
+				desc := fmt.Sprintf("You explored tag \"%s\" (%s)", tag, age)
+				reasons = append(reasons, domain.RecallReason{
+					Type:        domain.ReasonTagInteraction,
+					Description: desc,
+				})
+				score += weightTagClicked
 			}
 		}
 

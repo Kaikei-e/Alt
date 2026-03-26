@@ -20,6 +20,7 @@ interface Props {
 	searchQuery?: string;
 	degradedNote?: string | null;
 	onAction: (type: string, item: KnowledgeHomeItemData) => void;
+	onTagClick?: (tag: string, item: KnowledgeHomeItemData) => void;
 	onLoadMore: () => void;
 	onItemsVisible: (itemKeys: string[]) => void;
 	onClearLens?: () => void;
@@ -35,6 +36,7 @@ const {
 	searchQuery = "",
 	degradedNote = null,
 	onAction,
+	onTagClick,
 	onLoadMore,
 	onItemsVisible,
 	onClearLens,
@@ -169,7 +171,7 @@ onMount(() => {
 			</div>
 		{/if}
 		{#each items as item (item.itemKey)}
-			<KnowledgeCard {item} {onAction} />
+			<KnowledgeCard {item} {onAction} {onTagClick} />
 		{/each}
 
 		{#if loading}

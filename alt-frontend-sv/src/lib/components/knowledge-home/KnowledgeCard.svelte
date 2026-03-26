@@ -10,9 +10,10 @@ import WhySurfacedBadge from "./WhySurfacedBadge.svelte";
 interface Props {
 	item: KnowledgeHomeItemData;
 	onAction: (type: string, item: KnowledgeHomeItemData) => void;
+	onTagClick?: (tag: string, item: KnowledgeHomeItemData) => void;
 }
 
-const { item, onAction }: Props = $props();
+const { item, onAction, onTagClick }: Props = $props();
 
 const nonEmptyTags = $derived(item.tags.filter((t) => t.trim() !== ""));
 const displayTags = $derived(nonEmptyTags.slice(0, 3));
@@ -130,6 +131,9 @@ function handleAction(type: string) {
 					<a
 						href="/articles/by-tag?tag={encodeURIComponent(tag)}"
 						class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)] hover:border-[var(--interactive-text)] hover:text-[var(--interactive-text)] transition-colors"
+						onclick={() => {
+							onTagClick?.(tag, item);
+						}}
 					>
 						{tag}
 					</a>
