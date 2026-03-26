@@ -64,7 +64,7 @@ const age = $derived(formatRelativeTime(dateSource));
 
 	<div class="flex flex-wrap gap-1 mb-2">
 		{#each candidate.reasons.slice(0, 2) as reason}
-			<RecallReasonBadge reasonType={reason.type} />
+			<RecallReasonBadge reasonType={reason.type} description={reason.description} />
 		{/each}
 	</div>
 

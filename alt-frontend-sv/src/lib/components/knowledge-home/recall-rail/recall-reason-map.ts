@@ -55,6 +55,17 @@ const FALLBACK: RecallReasonDisplay = {
 		"text-[var(--badge-gray-text)] border-[var(--badge-gray-border)] bg-[var(--badge-gray-bg)]",
 };
 
-export function resolveRecallReason(code: string): RecallReasonDisplay {
-	return RECALL_REASON_MAP[code] ?? FALLBACK;
+/**
+ * Resolves a recall reason code to its display properties.
+ * When the code is unknown but a description is available, uses it as the label
+ * instead of the generic "Recall" fallback — supporting Why-First principle.
+ */
+export function resolveRecallReason(
+	code: string,
+	description?: string,
+): RecallReasonDisplay {
+	const mapped = RECALL_REASON_MAP[code];
+	if (mapped) return mapped;
+	if (description) return { ...FALLBACK, label: description };
+	return FALLBACK;
 }

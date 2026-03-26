@@ -3,10 +3,11 @@ import { resolveRecallReason } from "./recall-reason-map";
 
 interface Props {
 	reasonType: string;
+	description?: string;
 }
 
-const { reasonType }: Props = $props();
-const display = $derived(resolveRecallReason(reasonType));
+const { reasonType, description }: Props = $props();
+const display = $derived(resolveRecallReason(reasonType, description));
 </script>
 
 <span

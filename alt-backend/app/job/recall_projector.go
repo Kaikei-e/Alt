@@ -125,43 +125,48 @@ func scoreAndUpsertCandidates(
 		var score float64
 
 		for _, sig := range sigs {
+			age := formatRelativeAge(sig.OccurredAt)
 			switch sig.SignalType {
 			case domain.SignalOpened:
 				if time.Since(sig.OccurredAt) > 48*time.Hour {
 					reasons = append(reasons, domain.RecallReason{
 						Type:        domain.ReasonOpenedNotRevisited,
-						Description: "You opened this but haven't revisited it",
+						Description: fmt.Sprintf("Opened %s, not revisited since", age),
 					})
 					score += weightOpenedNotRevisited
 				}
 			case domain.SignalSearchRelated:
+				desc := fmt.Sprintf("Related to a search from %s", age)
+				if q, ok := sig.Payload["search_query"].(string); ok && q != "" {
+					desc = fmt.Sprintf("Related to your search for \"%s\" (%s)", q, age)
+				}
 				reasons = append(reasons, domain.RecallReason{
 					Type:        domain.ReasonRelatedToRecentSearch,
-					Description: "Related to your recent search",
+					Description: desc,
 				})
 				score += weightRelatedToSearch
 			case domain.SignalAugurReferenced:
 				reasons = append(reasons, domain.RecallReason{
 					Type:        domain.ReasonRelatedToAugurQ,
-					Description: "Referenced in a recent Augur question",
+					Description: fmt.Sprintf("Referenced in an Augur question from %s", age),
 				})
 				score += weightRelatedToAugur
 			case domain.SignalRecapContextUnread:
 				reasons = append(reasons, domain.RecallReason{
 					Type:        domain.ReasonRecapContextUnfinished,
-					Description: "Recap context article left unread",
+					Description: fmt.Sprintf("Recap context from %s, still unread", age),
 				})
 				score += weightRecapContextUnfinished
 			case domain.SignalPulseFollowup:
 				reasons = append(reasons, domain.RecallReason{
 					Type:        domain.ReasonPulseFollowupNeeded,
-					Description: "Follow-up needed from pulse",
+					Description: fmt.Sprintf("Pulse flagged for follow-up %s", age),
 				})
 				score += weightPulseFollowup
 			case domain.SignalTagInterest:
 				reasons = append(reasons, domain.RecallReason{
 					Type:        domain.ReasonTagInterestOverlap,
-					Description: "Matches your interest tags",
+					Description: fmt.Sprintf("Matches your interest tags (signal from %s)", age),
 				})
 				score += weightTagInterest
 			}
@@ -195,6 +200,31 @@ func scoreAndUpsertCandidates(
 	}
 
 	return generated, nil
+}
+
+// formatRelativeAge returns a human-readable relative time string (e.g. "3 days ago").
+func formatRelativeAge(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Hour:
+		m := int(d.Minutes())
+		if m <= 1 {
+			return "1 minute ago"
+		}
+		return fmt.Sprintf("%d minutes ago", m)
+	case d < 24*time.Hour:
+		h := int(d.Hours())
+		if h == 1 {
+			return "1 hour ago"
+		}
+		return fmt.Sprintf("%d hours ago", h)
+	default:
+		days := int(d.Hours() / 24)
+		if days == 1 {
+			return "1 day ago"
+		}
+		return fmt.Sprintf("%d days ago", days)
+	}
 }
 
 // ScoreRecallCandidates processes signals for a single user and upserts candidates.
