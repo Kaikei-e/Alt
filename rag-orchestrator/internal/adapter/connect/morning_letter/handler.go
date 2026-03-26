@@ -3,6 +3,7 @@ package morning_letter
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
@@ -13,6 +14,11 @@ import (
 
 	"connectrpc.com/connect"
 )
+
+// sanitizeUTF8 removes invalid UTF-8 sequences from a string.
+func sanitizeUTF8(s string) string {
+	return strings.ToValidUTF8(s, "")
+}
 
 // Handler implements morningletterv2connect.MorningLetterServiceHandler
 type Handler struct {
@@ -222,9 +228,9 @@ func (h *Handler) convertContextsToCitations(contexts []usecase.ContextItem) []*
 	citations := make([]*morningletterv2.Citation, 0, len(contexts))
 	for _, ctx := range contexts {
 		citations = append(citations, &morningletterv2.Citation{
-			Url:         ctx.URL,
-			Title:       ctx.Title,
-			PublishedAt: ctx.PublishedAt,
+			Url:         sanitizeUTF8(ctx.URL),
+			Title:       sanitizeUTF8(ctx.Title),
+			PublishedAt: sanitizeUTF8(ctx.PublishedAt),
 		})
 	}
 	return citations
@@ -236,8 +242,8 @@ func (h *Handler) convertCitationsToProtoCitations(citations []usecase.Citation)
 	result := make([]*morningletterv2.Citation, 0, len(citations))
 	for _, c := range citations {
 		result = append(result, &morningletterv2.Citation{
-			Url:   c.URL,
-			Title: c.Title,
+			Url:   sanitizeUTF8(c.URL),
+			Title: sanitizeUTF8(c.Title),
 		})
 	}
 	return result

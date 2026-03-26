@@ -238,7 +238,7 @@ func (h *Handler) convertContextsToCitations(contexts []usecase.ContextItem) []*
 		citations = append(citations, &augurv2.Citation{
 			Url:         sanitizeUTF8(ctx.URL),
 			Title:       sanitizeUTF8(ctx.Title),
-			PublishedAt: ctx.PublishedAt,
+			PublishedAt: sanitizeUTF8(ctx.PublishedAt),
 		})
 	}
 	return citations
@@ -285,9 +285,9 @@ func (h *Handler) RetrieveContext(
 	contexts := make([]*augurv2.ContextItem, 0, len(output.Contexts))
 	for _, c := range output.Contexts {
 		contexts = append(contexts, &augurv2.ContextItem{
-			Url:         c.URL,
-			Title:       c.Title,
-			PublishedAt: c.PublishedAt,
+			Url:         sanitizeUTF8(c.URL),
+			Title:       sanitizeUTF8(c.Title),
+			PublishedAt: sanitizeUTF8(c.PublishedAt),
 			Score:       c.Score,
 		})
 	}

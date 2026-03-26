@@ -157,3 +157,46 @@ func TestNewHandler(t *testing.T) {
 
 	assert.NotNil(t, handler)
 }
+
+func TestHandler_RetrieveContext_SanitizesInvalidUTF8(t *testing.T) {
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, logger)
+
+	// Build strings with invalid UTF-8: truncated 3-byte Japanese char (日 = E6 97 A5, only 2 bytes)
+	invalidTitle := "記事タイトル" + string([]byte{0xe6, 0x97}) + "テスト"
+	invalidURL := "https://example.com/" + string([]byte{0xc0, 0xaf}) + "path"
+	invalidDate := "2026-01-01" + string([]byte{0xff})
+
+	ctx := context.Background()
+	req := connect.NewRequest(&augurv2.RetrieveContextRequest{
+		Query: "テスト",
+		Limit: 10,
+	})
+
+	mockRetrieve.On("Execute", ctx, mock.MatchedBy(func(input usecase.RetrieveContextInput) bool {
+		return input.Query == "テスト"
+	})).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{
+				URL:         invalidURL,
+				Title:       invalidTitle,
+				PublishedAt: invalidDate,
+				Score:       0.9,
+			},
+		},
+	}, nil)
+
+	resp, err := handler.RetrieveContext(ctx, req)
+
+	require.NoError(t, err)
+	require.Len(t, resp.Msg.Contexts, 1)
+
+	c := resp.Msg.Contexts[0]
+	// Invalid UTF-8 bytes must be stripped
+	assert.Equal(t, "記事タイトルテスト", c.Title, "Title should have invalid UTF-8 removed")
+	assert.Equal(t, "https://example.com/path", c.Url, "URL should have invalid UTF-8 removed")
+	assert.Equal(t, "2026-01-01", c.PublishedAt, "PublishedAt should have invalid UTF-8 removed")
+}

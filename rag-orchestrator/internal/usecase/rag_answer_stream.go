@@ -282,10 +282,21 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 									continue
 								}
 								if char == '"' {
-									inAnswer = false
-									answerCompletelyStreamed = true
+									// Lookahead: verify this quote is a real JSON field terminator,
+									// not an unescaped quote from LLM structured output bug.
+									// After the answer field's closing ", the next non-whitespace
+									// must be , or } to form valid JSON structure.
+									tail := strToScan[i+charLen:]
+									if isAnswerFieldEnd(tail) {
+										inAnswer = false
+										answerCompletelyStreamed = true
+										advanceBytes = i + charLen
+										break
+									}
+									// Not a real end — treat as embedded unescaped quote
+									contentBuilder.WriteRune('"')
 									advanceBytes = i + charLen
-									break
+									continue
 								}
 								contentBuilder.WriteRune(char)
 								advanceBytes = i + charLen
@@ -431,6 +442,30 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 	}()
 
 	return events
+}
+
+// isAnswerFieldEnd checks whether the text after a closing " indicates
+// the real end of the JSON "answer" field. Ollama structured output may
+// produce unescaped quotes inside string values (known bug with HTML/code
+// content). A real field end is followed by , or } (with optional whitespace)
+// which form valid JSON structure. If the tail is empty (quote at chunk
+// boundary), we conservatively return false so the parser buffers until
+// more data arrives.
+func isAnswerFieldEnd(tail string) bool {
+	if tail == "" {
+		return false // not enough data — buffer and wait for next chunk
+	}
+	for _, r := range tail {
+		switch r {
+		case ' ', '\t', '\n', '\r':
+			continue
+		case ',', '}':
+			return true
+		default:
+			return false // e.g. 'o' from og:title — embedded quote
+		}
+	}
+	return false // only whitespace — need more data
 }
 
 func (u *answerWithRAGUsecase) sendStreamEvent(ctx context.Context, events chan<- StreamEvent, event StreamEvent) bool {

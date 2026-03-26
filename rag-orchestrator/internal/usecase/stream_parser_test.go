@@ -324,6 +324,61 @@ func TestStreamParser_EventSequence(t *testing.T) {
 	assert.True(t, doneIdx > deltaIdx, "done should be last")
 }
 
+func TestStreamParser_UnescapedQuoteInAnswer(t *testing.T) {
+	_, mockLLM, uc, chunkID := setupStreamTest(t)
+
+	// Simulate Ollama structured output bug: model generates HTML with unescaped
+	// quotes inside the answer field. The closing " of answer comes before
+	// ,"citations" — the parser must NOT stop at the embedded unescaped ".
+	//
+	// Bug example from real logs:
+	//   {"answer":"...`<meta property="og:title"...","citations":[...]}
+	// The parser was stopping at the " after property= treating it as end of answer.
+	response := `{"answer":"OGタグは<meta property="og:title" content="タイトル">で設定します。","citations":[{"chunk_id":"` + chunkID.String() + `"}],"fallback":false,"reason":""}`
+	chunkCh, errCh := makeLLMStream([]domain.LLMStreamChunk{
+		{Response: response, Done: false},
+		{Done: true},
+	})
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
+
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "OGタグとは"}))
+
+	deltas := findEvents(events, usecase.StreamEventKindDelta)
+	var fullAnswer string
+	for _, d := range deltas {
+		fullAnswer += d.Payload.(string)
+	}
+
+	// The full answer should contain the complete text, not be truncated at the first unescaped quote
+	assert.Contains(t, fullAnswer, "OGタグは")
+	assert.Contains(t, fullAnswer, "で設定します。", "answer should not be truncated at the unescaped quote")
+}
+
+func TestStreamParser_UnescapedQuoteChunked(t *testing.T) {
+	_, mockLLM, uc, chunkID := setupStreamTest(t)
+
+	// Same bug but split across chunks — the unescaped " arrives at a chunk boundary
+	chunks := []domain.LLMStreamChunk{
+		{Response: `{"answer":"HTMLの<meta property=`},
+		{Response: `"og:title" content=`},
+		{Response: `"タイトル">です。","citations":[{"chunk_id":"`},
+		{Response: chunkID.String() + `"}],"fallback":false,"reason":""}`},
+		{Done: true},
+	}
+	chunkCh, errCh := makeLLMStream(chunks)
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).Return(chunkCh, errCh, nil)
+
+	events := collectStreamEvents(uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "HTMLタグ"}))
+
+	deltas := findEvents(events, usecase.StreamEventKindDelta)
+	var fullAnswer string
+	for _, d := range deltas {
+		fullAnswer += d.Payload.(string)
+	}
+
+	assert.Contains(t, fullAnswer, "です。", "chunked answer should not be truncated at unescaped quote boundary")
+}
+
 func TestStreamParser_ContextCancellation(t *testing.T) {
 	_, mockLLM, uc, _ := setupStreamTest(t)
 
