@@ -271,13 +271,6 @@ function handleAskFromHome(query: string) {
 	askSheetOpen = true;
 }
 
-function submitAsk(question: string) {
-	const params = new URLSearchParams();
-	if (question.trim()) params.set("q", question.trim());
-	if (askScopeContext.trim()) params.set("context", askScopeContext.trim());
-	if (askScopeArticleId) params.set("articleId", askScopeArticleId);
-	goto(`/augur?${params.toString()}`);
-}
 
 function syncRecallState() {
 	if (!recallEnabled) return;
@@ -564,7 +557,6 @@ onMount(async () => {
 	onClose={() => {
 		askSheetOpen = false;
 	}}
-	onSubmit={submitAsk}
 />
 
 <ListenQueueBar

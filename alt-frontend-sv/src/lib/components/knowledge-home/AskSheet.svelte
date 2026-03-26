@@ -1,48 +1,129 @@
 <script lang="ts">
-import { FileText } from "@lucide/svelte";
-import { pickSuggestions } from "./ask-suggestions";
+	import { tick } from "svelte";
+	import { FileText, Loader2, RotateCcw } from "@lucide/svelte";
+	import * as Sheet from "$lib/components/ui/sheet";
+	import ChatMessage from "$lib/components/desktop/augur/ChatMessage.svelte";
+	import ChatInput from "$lib/components/desktop/augur/ChatInput.svelte";
+	import { useAugurPane } from "$lib/hooks/useAugurPane.svelte";
+	import { useViewport } from "$lib/stores/viewport.svelte";
+	import { buildAugurInitialMessage } from "$lib/utils/augur-entry";
+	import { pickSuggestions } from "./ask-suggestions";
+	import augurAvatar from "$lib/assets/augur-chat.webp";
 
-interface Props {
-	open: boolean;
-	scopeTitle: string;
-	scopeContext?: string;
-	scopeArticleId?: string;
-	scopeTags?: string[];
-	onClose: () => void;
-	onSubmit: (question: string) => void;
-}
+	interface Props {
+		open: boolean;
+		scopeTitle: string;
+		scopeContext?: string;
+		scopeArticleId?: string;
+		scopeTags?: string[];
+		onClose: () => void;
+	}
 
-const {
-	open,
-	scopeTitle,
-	scopeContext,
-	scopeArticleId,
-	scopeTags,
-	onClose,
-	onSubmit,
-}: Props = $props();
+	const {
+		open,
+		scopeTitle,
+		scopeContext,
+		scopeArticleId,
+		scopeTags,
+		onClose,
+	}: Props = $props();
 
-let question = $state("");
+	const { isDesktop } = useViewport();
+	const pane = useAugurPane();
 
-const suggestions = $derived(pickSuggestions(scopeTags));
+	let phase = $state<"ask" | "chat">("ask");
+	let question = $state("");
+	let chatContainer: HTMLDivElement | undefined = $state();
 
-function submit() {
-	const trimmed = question.trim();
-	if (!trimmed) return;
-	onSubmit(trimmed);
-}
+	const suggestions = $derived(pickSuggestions(scopeTags));
+	const sheetSide = $derived<"right" | "bottom">(isDesktop ? "right" : "bottom");
+
+	// Reset state when sheet closes
+	$effect(() => {
+		if (!open) {
+			phase = "ask";
+			question = "";
+			pane.reset();
+		}
+	});
+
+	// Auto-scroll when messages update
+	$effect(() => {
+		const _len = pane.messages.length;
+		const lastMsg = pane.messages.at(-1);
+		const _content = lastMsg?.message;
+		if (chatContainer) {
+			tick().then(() => {
+				if (chatContainer) {
+					chatContainer.scrollTop = chatContainer.scrollHeight;
+				}
+			});
+		}
+	});
+
+	function handleAskSubmit() {
+		const trimmed = question.trim();
+		if (!trimmed) return;
+
+		phase = "chat";
+		const initialMessage = buildAugurInitialMessage(
+			trimmed,
+			scopeContext,
+			scopeArticleId,
+		);
+		tick().then(() => pane.sendMessage(initialMessage));
+	}
+
+	// Retry: detect if last assistant message is an error/fallback (not loading)
+	const canRetry = $derived.by(() => {
+		if (pane.isLoading || pane.messages.length < 2) return false;
+		const last = pane.messages.at(-1);
+		if (!last || last.role !== "assistant") return false;
+		const msg = last.message;
+		return (
+			msg.startsWith("Error:") ||
+			msg.includes("Not enough indexed content") ||
+			msg.includes("couldn't find enough information") ||
+			msg.includes("timed out")
+		);
+	});
+
+	function handleRetry() {
+		// Find last user message and resend
+		for (let i = pane.messages.length - 1; i >= 0; i--) {
+			if (pane.messages[i].role === "user") {
+				pane.sendMessage(pane.messages[i].message);
+				return;
+			}
+		}
+	}
+
+	function handleChatSend(text: string) {
+		pane.sendMessage(text);
+	}
+
+	function handleOpenChange(isOpen: boolean) {
+		if (!isOpen) {
+			pane.abort();
+			onClose();
+		}
+	}
 </script>
 
-{#if open}
-	<div class="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" role="presentation" onclick={onClose}></div>
-	<div
-		class="fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-bg)] p-4 shadow-2xl animate-slide-in-bottom md:animate-slide-in-right md:left-auto md:right-4 md:top-4 md:bottom-4 md:w-96"
-	>
-		<div class="mb-3 flex items-start justify-between gap-3">
-			<div class="min-w-0 flex-1">
-				{#if scopeArticleId}
-					<p class="text-xs font-medium text-[var(--text-secondary)]">質問の対象:</p>
-					<div class="mt-2 flex items-start gap-2.5 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] p-2.5">
+{#key sheetSide}
+	<Sheet.Root {open} onOpenChange={handleOpenChange}>
+		<Sheet.Content
+			side={sheetSide}
+			class={isDesktop
+				? "flex h-full w-full flex-col sm:max-w-[28rem]"
+				: "flex h-[85dvh] flex-col"}
+		>
+			<Sheet.Header class="flex-shrink-0 border-b border-[var(--surface-border)]">
+				{#if phase === "ask" && scopeArticleId}
+					<Sheet.Title class="text-xs font-medium text-[var(--text-secondary)]">
+						質問の対象
+					</Sheet.Title>
+					<div class="flex items-start gap-2.5 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] p-2.5">
 						<FileText class="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--interactive-text)]" />
 						<div class="min-w-0 flex-1">
 							<p class="line-clamp-2 text-sm font-medium text-[var(--text-primary)]">{scopeTitle}</p>
@@ -57,64 +138,118 @@ function submit() {
 							{/if}
 						</div>
 					</div>
-				{:else}
-					<h3 class="text-sm font-semibold text-[var(--text-primary)]">
+				{:else if phase === "ask"}
+					<Sheet.Title class="text-sm font-semibold text-[var(--text-primary)]">
 						{scopeTitle} について質問
-					</h3>
+					</Sheet.Title>
 					{#if scopeContext}
-						<p class="mt-1 text-xs text-[var(--text-secondary)]">
+						<Sheet.Description class="text-xs text-[var(--text-secondary)]">
 							{scopeContext}
-						</p>
+						</Sheet.Description>
 					{/if}
+				{:else}
+					<Sheet.Title class="text-sm font-semibold text-[var(--text-primary)]">
+						Ask Augur
+					</Sheet.Title>
 				{/if}
-			</div>
-			<button
-				type="button"
-				class="rounded-md px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
-				onclick={onClose}
-			>
-				閉じる
-			</button>
-		</div>
+			</Sheet.Header>
 
-		<div class="space-y-3">
-			<input
-				type="text"
-				bind:value={question}
-				placeholder="質問を入力..."
-				class="w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] focus:outline-none"
-				onkeydown={(e) => {
-					if (e.key === "Enter") submit();
-				}}
-			/>
-
-			<div class="flex flex-wrap gap-2">
-				{#each suggestions as suggestion}
-					<button
-						type="button"
-						class="rounded-full border border-[var(--surface-border)] px-3 py-1 text-xs text-[var(--text-secondary)] hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
-						onclick={() => {
-							question = suggestion;
+			{#if phase === "ask"}
+				<!-- Ask phase: input form with suggestions -->
+				<div class="flex flex-1 flex-col gap-3 p-4">
+					<input
+						type="text"
+						bind:value={question}
+						placeholder="質問を入力..."
+						class="w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-[var(--accent-primary)] focus:outline-none"
+						onkeydown={(e) => {
+							if (e.key === "Enter" && !e.isComposing) handleAskSubmit();
 						}}
-					>
-						{suggestion}
-					</button>
-				{/each}
-			</div>
+					/>
 
-			<div class="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] p-3 text-xs text-[var(--text-secondary)]">
-				現在の Knowledge Home のコンテキストを添えて Augur に質問します。
-			</div>
+					<div class="flex flex-wrap gap-2">
+						{#each suggestions as suggestion}
+							<button
+								type="button"
+								class="rounded-full border border-[var(--surface-border)] px-3 py-1 text-xs text-[var(--text-secondary)] hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+								onclick={() => {
+									question = suggestion;
+								}}
+							>
+								{suggestion}
+							</button>
+						{/each}
+					</div>
 
-			<div class="flex justify-end">
-				<button
-					type="button"
-					class="rounded-lg bg-[var(--interactive-text)] px-3 py-2 text-sm font-medium text-white"
-					onclick={submit}
+					<div class="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] p-3 text-xs text-[var(--text-secondary)]">
+						現在の Knowledge Home のコンテキストを添えて Augur に質問します。
+					</div>
+
+					<div class="mt-auto flex justify-end">
+						<button
+							type="button"
+							class="rounded-lg bg-[var(--interactive-text)] px-3 py-2 text-sm font-medium text-white"
+							onclick={handleAskSubmit}
+						>
+							Augur に質問
+						</button>
+					</div>
+				</div>
+			{:else}
+				<!-- Chat phase: message list + input -->
+				<div
+					bind:this={chatContainer}
+					class="flex-1 overflow-y-auto p-4"
 				>
-					Augur に質問
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
+					{#each pane.messages as msg (msg.id)}
+						<ChatMessage
+							message={msg.message}
+							role={msg.role}
+							timestamp={msg.timestamp}
+							citations={msg.citations}
+						/>
+					{/each}
+
+					{#if pane.isLoading && pane.messages.at(-1)?.message === ""}
+						<div class="mb-4 flex gap-3">
+							<div class="relative mt-1 h-8 w-8 flex-shrink-0 overflow-hidden rounded-full border border-border/50 bg-muted shadow-sm">
+								<img src={augurAvatar} alt="Augur" class="h-full w-full object-cover" />
+								<div class="absolute inset-0 flex items-center justify-center bg-background/40">
+									<Loader2 class="h-4 w-4 animate-spin text-primary" />
+								</div>
+							</div>
+							<div class="rounded-2xl rounded-bl-none border border-border/50 bg-muted/50 p-3 text-sm shadow-sm">
+								<p class="text-muted-foreground">
+									{#if pane.progressStage === "searching"}
+										Searching knowledge base...
+									{:else if pane.progressStage === "generating"}
+										Generating answer...
+									{:else}
+										Augur is thinking...
+									{/if}
+								</p>
+							</div>
+						</div>
+					{/if}
+
+					{#if canRetry}
+						<div class="mb-4 flex justify-center">
+							<button
+								type="button"
+								class="flex items-center gap-1.5 rounded-full border border-border/50 px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+								onclick={handleRetry}
+							>
+								<RotateCcw class="h-3 w-3" />
+								Retry
+							</button>
+						</div>
+					{/if}
+				</div>
+
+				<div class="flex-shrink-0">
+					<ChatInput onSend={handleChatSend} disabled={pane.isLoading} />
+				</div>
+			{/if}
+		</Sheet.Content>
+	</Sheet.Root>
+{/key}
