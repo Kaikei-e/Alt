@@ -17,7 +17,7 @@ const PACT_DIR: &str = "../../pacts";
 
 /// Normal summary generation: POST /v1/summary/generate → 200 OK
 #[tokio::test]
-#[ignore] // CDC contract test — run with `cargo test contract -- --ignored`
+#[ignore = "CDC contract test — run with `cargo test contract -- --ignored`"]
 async fn contract_news_creator_summary_generate() {
     let pact = PactBuilder::new("recap-worker", "news-creator")
         .interaction("a summary generate request for tech genre", "", |mut i| {
@@ -84,7 +84,7 @@ async fn contract_news_creator_summary_generate() {
 
 /// Batch summary generation: POST /v1/summary/generate/batch → 200 OK
 #[tokio::test]
-#[ignore]
+#[ignore = "CDC contract test"]
 async fn contract_news_creator_batch_summary_generate() {
     let pact = PactBuilder::new("recap-worker", "news-creator")
         .interaction("a batch summary generate request", "", |mut i| {
@@ -156,7 +156,7 @@ async fn contract_news_creator_batch_summary_generate() {
 
 /// Queue full scenario: POST /v1/summary/generate → 429 Too Many Requests
 #[tokio::test]
-#[ignore]
+#[ignore = "CDC contract test"]
 async fn contract_news_creator_summary_queue_full() {
     let pact = PactBuilder::new("recap-worker", "news-creator")
         .interaction(

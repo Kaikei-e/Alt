@@ -18,7 +18,7 @@ const PACT_DIR: &str = "../../pacts";
 
 /// Paginated article fetch: GET /v1/recap/articles → 200 OK
 #[tokio::test]
-#[ignore]
+#[ignore = "CDC contract test"]
 async fn contract_alt_backend_recap_articles() {
     let pact = PactBuilder::new("recap-worker", "alt-backend")
         .interaction("a paginated recap articles request", "", |mut i| {

@@ -57,6 +57,7 @@ export function buildKratosSession(): KratosSession {
 			traits: {
 				email: "e2e@example.com",
 				name: "E2E User",
+				role: "admin",
 			},
 		},
 		authentication_methods: [

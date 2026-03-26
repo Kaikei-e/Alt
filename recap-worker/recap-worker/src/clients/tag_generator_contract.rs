@@ -24,7 +24,7 @@ const PACT_DIR: &str = "../../pacts";
 
 /// Batch tag fetch: POST /api/v1/tags/batch → 200 OK
 #[tokio::test]
-#[ignore]
+#[ignore = "CDC contract test"]
 async fn contract_tag_generator_batch_tags() {
     let pact = PactBuilder::new("recap-worker", "tag-generator")
         .interaction("a batch tags request", "", |mut i| {
@@ -71,7 +71,7 @@ async fn contract_tag_generator_batch_tags() {
 
 /// Tag extraction: POST /api/v1/extract-tags → 200 OK
 #[tokio::test]
-#[ignore]
+#[ignore = "CDC contract test"]
 async fn contract_tag_generator_extract_tags() {
     let pact = PactBuilder::new("recap-worker", "tag-generator")
         .interaction("a tag extraction request", "", |mut i| {

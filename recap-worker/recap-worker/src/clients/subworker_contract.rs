@@ -28,7 +28,7 @@ const PACT_DIR: &str = "../../pacts";
 
 /// Submit classification job: POST /v1/classify-runs → 200 OK
 #[tokio::test]
-#[ignore]
+#[ignore = "CDC contract test"]
 async fn contract_subworker_classify_submit() {
     let pact = PactBuilder::new("recap-worker", "recap-subworker")
         .interaction("a classification job submission", "", |mut i| {
@@ -70,7 +70,7 @@ async fn contract_subworker_classify_submit() {
 
 /// Poll classification job status: GET /v1/classify-runs/{run_id} → 200 OK (succeeded)
 #[tokio::test]
-#[ignore]
+#[ignore = "CDC contract test"]
 async fn contract_subworker_classify_poll_succeeded() {
     let pact = PactBuilder::new("recap-worker", "recap-subworker")
         .interaction(
@@ -115,7 +115,7 @@ async fn contract_subworker_classify_poll_succeeded() {
 
 /// Coarse genre classification: POST /v1/classify/coarse → 200 OK
 #[tokio::test]
-#[ignore]
+#[ignore = "CDC contract test"]
 async fn contract_subworker_coarse_classify() {
     let pact = PactBuilder::new("recap-worker", "recap-subworker")
         .interaction("a coarse classification request", "", |mut i| {
@@ -156,7 +156,7 @@ async fn contract_subworker_coarse_classify() {
 
 /// Clustering execution: POST /v1/clustering/{run_id} → 200 OK
 #[tokio::test]
-#[ignore]
+#[ignore = "CDC contract test"]
 async fn contract_subworker_clustering() {
     let pact = PactBuilder::new("recap-worker", "recap-subworker")
         .interaction("a clustering execution request", "", |mut i| {
