@@ -159,12 +159,16 @@ func processKnowledgeEvents(
 
 		var maxSeq int64
 		var errorCount int64
+		var projectionErr error
 		for _, event := range events {
 			if err := projectEvent(ctx, event, homeItemsPort, todayDigestPort, summaryVersionPort, recallCandidatePort, tagSetVersionPort, clearSupersedePort, projectionVersion); err != nil {
 				logger.ErrorContext(ctx, "failed to project event",
 					"error", err, "event_id", event.EventID, "event_type", event.EventType)
 				errorCount++
-				// Continue with other events (best effort)
+				projectionErr = fmt.Errorf("project event %s (seq=%d): %w", event.EventType, event.EventSeq, err)
+				// Stop processing: do not advance checkpoint past the failed event
+				// so it will be retried on the next cycle.
+				break
 			}
 			if event.EventSeq > maxSeq {
 				maxSeq = event.EventSeq
@@ -195,6 +199,10 @@ func processKnowledgeEvents(
 				lag := time.Since(latestEvent.OccurredAt).Seconds()
 				metrics.ProjectorLagSeconds.Record(ctx, lag)
 			}
+		}
+
+		if projectionErr != nil {
+			return projectionErr
 		}
 
 		if len(events) < batchLimit {
@@ -355,8 +363,9 @@ func projectSummaryVersionCreated(ctx context.Context, event domain.KnowledgeEve
 	if summaryVersionPort != nil {
 		sv, err := summaryVersionPort.GetSummaryVersionByID(ctx, svID)
 		if err != nil {
-			logger.ErrorContext(ctx, "failed to get summary version for excerpt", "error", err, "summary_version_id", svID)
-		} else if sv.SummaryText != "" {
+			return fmt.Errorf("get summary version %s for excerpt: %w", svID, err)
+		}
+		if sv.SummaryText != "" {
 			summaryExcerpt = textutil.TruncateValidUTF8(sv.SummaryText, maxExcerptLen)
 		}
 	}
@@ -562,9 +571,9 @@ func projectHomeItemOpened(ctx context.Context, event domain.KnowledgeEvent, por
 		}
 	}
 
-	// Create recall candidate: eligible after 24h (reproject-safe: based on event time)
+	// Create recall candidate: eligible after 1h (reproject-safe: based on event time)
 	if recallCandidatePort != nil {
-		eligibleAt := eventTime.Add(24 * time.Hour)
+		eligibleAt := eventTime.Add(1 * time.Hour)
 		candidate := domain.RecallCandidate{
 			UserID:            userID,
 			ItemKey:           payload.ItemKey,

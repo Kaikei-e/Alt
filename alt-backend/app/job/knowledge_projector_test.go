@@ -619,9 +619,9 @@ func TestKnowledgeProjectorJob_HomeItemOpened_ReprojectSafe(t *testing.T) {
 	// Recall candidate eligibleAt should be based on event time, not time.Now()
 	require.Len(t, recallPort.upserted, 1)
 	candidate := recallPort.upserted[0]
-	expectedEligibleAt := eventTime.Add(24 * time.Hour)
-	assert.WithinDuration(t, expectedEligibleAt, *candidate.FirstEligibleAt, time.Second, "eligibleAt should be event time + 24h, not now + 24h")
-	assert.WithinDuration(t, expectedEligibleAt, *candidate.NextSuggestAt, time.Second, "nextSuggestAt should be event time + 24h")
+	expectedEligibleAt := eventTime.Add(1 * time.Hour)
+	assert.WithinDuration(t, expectedEligibleAt, *candidate.FirstEligibleAt, time.Second, "eligibleAt should be event time + 1h, not now + 1h")
+	assert.WithinDuration(t, expectedEligibleAt, *candidate.NextSuggestAt, time.Second, "nextSuggestAt should be event time + 1h")
 
 	// LastInteractedAt should be event time, not time.Now()
 	require.Len(t, homeItemsPort.upserted, 1)
@@ -882,7 +882,7 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_EmptySummary_SetsPending(t 
 	assert.Equal(t, 0, digestPort.upserted[0].UnsummarizedArticles, "empty summaries must not reduce pending count")
 }
 
-func TestKnowledgeProjectorJob_SummaryVersionCreated_PortError_DoesNotAddSummaryCompletedReason(t *testing.T) {
+func TestKnowledgeProjectorJob_SummaryVersionCreated_PortError_ReturnsError(t *testing.T) {
 	logger.InitLogger()
 
 	tenantID := uuid.New()
@@ -908,10 +908,10 @@ func TestKnowledgeProjectorJob_SummaryVersionCreated_PortError_DoesNotAddSummary
 	fn := KnowledgeProjectorJob(eventsPort, checkpointPort, checkpointPort, homeItemsPort, digestPort, nil, summaryVersionPort, nil, nil)
 	err := fn(context.Background())
 
-	require.NoError(t, err)
-	require.Len(t, homeItemsPort.upserted, 1)
-	assert.Equal(t, domain.SummaryStatePending, homeItemsPort.upserted[0].SummaryState)
-	assert.NotContains(t, homeItemsPort.upserted[0].WhyReasons, domain.WhyReason{Code: domain.WhySummaryCompleted}, "failed summary fetch must not add summary_completed")
+	// GetSummaryVersionByID failure must propagate so the event is retried
+	require.Error(t, err, "summary version lookup failure must propagate as error")
+	// Checkpoint must NOT advance past the failed event
+	assert.Equal(t, int64(0), checkpointPort.updatedSeq, "checkpoint must not advance when event projection fails")
 }
 
 func TestKnowledgeProjectorJob_UsesActiveVersion(t *testing.T) {
