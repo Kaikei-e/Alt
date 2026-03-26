@@ -1,0 +1,192 @@
+{
+  "consumer": {
+    "name": "recap-worker"
+  },
+  "interactions": [
+    {
+      "description": "a paginated recap articles request",
+      "providerStates": [
+        {
+          "name": "articles exist in the recap window"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/v1/recap/articles",
+        "query": {
+          "from": [
+            "2026-03-19T00:00:00Z"
+          ],
+          "page": [
+            "1"
+          ],
+          "page_size": [
+            "500"
+          ],
+          "to": [
+            "2026-03-26T00:00:00Z"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "articles": [
+            {
+              "article_id": "art-001",
+              "fulltext": "Full article text content here.",
+              "tags": [
+                {
+                  "label": "technology"
+                }
+              ],
+              "title": "Test Article Title"
+            }
+          ],
+          "has_more": false,
+          "page": 1,
+          "page_size": 500,
+          "range": {
+            "from": "2026-03-19T00:00:00Z",
+            "to": "2026-03-26T00:00:00Z"
+          },
+          "total": 42
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.articles": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.articles[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].fulltext": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].tags": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.articles[*].tags[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].tags[*].label": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.has_more": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.page": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.page_size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.range.from": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.range.to": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.total": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "consumer": "1.4.2",
+      "mockserver": "2.1.3",
+      "models": "1.3.8"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "alt-backend"
+  }
+}

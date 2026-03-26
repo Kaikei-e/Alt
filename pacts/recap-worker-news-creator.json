@@ -1,0 +1,560 @@
+{
+  "consumer": {
+    "name": "recap-worker"
+  },
+  "interactions": [
+    {
+      "description": "a batch summary generate request",
+      "providerStates": [
+        {
+          "name": "the LLM model is loaded and ready"
+        }
+      ],
+      "request": {
+        "body": {
+          "requests": [
+            {
+              "clusters": [
+                {
+                  "cluster_id": 0,
+                  "representative_sentences": [
+                    {
+                      "text": "Test sentence"
+                    }
+                  ]
+                }
+              ],
+              "genre": "tech",
+              "job_id": "00000000-0000-0000-0000-000000000001"
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.requests": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.requests[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.requests[*].clusters": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.requests[*].clusters[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.requests[*].clusters[*].cluster_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.requests[*].clusters[*].representative_sentences": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.requests[*].clusters[*].representative_sentences[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.requests[*].clusters[*].representative_sentences[*].text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.requests[*].genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.requests[*].job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/v1/summary/generate/batch"
+      },
+      "response": {
+        "body": {
+          "errors": [],
+          "responses": [
+            {
+              "genre": "tech",
+              "job_id": "00000000-0000-0000-0000-000000000001",
+              "metadata": {
+                "model": "gemma3:4b-it-qat"
+              },
+              "summary": {
+                "bullets": [
+                  "Bullet 1"
+                ],
+                "language": "ja",
+                "title": "Summary Title"
+              }
+            }
+          ]
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.responses": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.responses[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.responses[*].genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.responses[*].job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.responses[*].metadata.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.responses[*].summary.bullets": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.responses[*].summary.bullets[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.responses[*].summary.bullets[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.responses[*].summary.language": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.responses[*].summary.title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a summary generate request for tech genre",
+      "providerStates": [
+        {
+          "name": "the LLM model is loaded and ready"
+        }
+      ],
+      "request": {
+        "body": {
+          "clusters": [
+            {
+              "cluster_id": 0,
+              "representative_sentences": [
+                {
+                  "text": "AI advances in 2026"
+                }
+              ]
+            }
+          ],
+          "genre": "tech",
+          "job_id": "00000000-0000-0000-0000-000000000001"
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.clusters": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.clusters[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].cluster_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representative_sentences": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.clusters[*].representative_sentences[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representative_sentences[*].text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/v1/summary/generate"
+      },
+      "response": {
+        "body": {
+          "genre": "tech",
+          "job_id": "00000000-0000-0000-0000-000000000001",
+          "metadata": {
+            "model": "gemma3:4b-it-qat"
+          },
+          "summary": {
+            "bullets": [
+              "AI関連の進展が報告された。"
+            ],
+            "language": "ja",
+            "title": "テクノロジー週間要約"
+          }
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.metadata.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary.bullets": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.summary.bullets[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary.bullets[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary.language": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary.title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a summary generate request when queue is full",
+      "providerStates": [
+        {
+          "name": "the LLM queue is full"
+        }
+      ],
+      "request": {
+        "body": {
+          "clusters": [
+            {
+              "cluster_id": 0,
+              "representative_sentences": [
+                {
+                  "text": "Queue full test sentence"
+                }
+              ]
+            }
+          ],
+          "genre": "politics",
+          "job_id": "00000000-0000-0000-0000-000000000002"
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.clusters": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.clusters[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].cluster_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representative_sentences": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.clusters[*].representative_sentences[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representative_sentences[*].text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/v1/summary/generate"
+      },
+      "response": {
+        "body": {
+          "error": "queue full"
+        },
+        "headers": {
+          "Retry-After": "30",
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.error": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 429
+      }
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "consumer": "1.4.2",
+      "mockserver": "2.1.3",
+      "models": "1.3.8"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "news-creator"
+  }
+}
