@@ -75,6 +75,8 @@ flowchart LR
     FE --> API[alt-backend / BFF]
     API --> MQ[mq-hub / Redis Streams]
     API --> DB[(PostgreSQL)]
+    API --> KS[knowledge-sovereign]
+    KS --> SDB[(sovereign-db)]
     MQ --> IDX[search-indexer]
     MQ --> TAG[tag-generator]
     API --> PRE[pre-processor]
