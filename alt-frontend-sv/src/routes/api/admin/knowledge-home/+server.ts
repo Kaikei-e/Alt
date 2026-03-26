@@ -8,6 +8,7 @@ import {
 	compareKnowledgeHomeReproject,
 	swapKnowledgeHomeReproject,
 	rollbackKnowledgeHomeReproject,
+	runKnowledgeHomeAudit,
 } from "$lib/server/knowledge-home-admin";
 import { getUserRole } from "$lib/server/user-role";
 
@@ -171,6 +172,30 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 				body.reprojectRunId,
 			);
 			return json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+		}
+
+		if (
+			typeof body === "object" &&
+			body !== null &&
+			"action" in body &&
+			body.action === "run_audit" &&
+			"projectionName" in body &&
+			typeof body.projectionName === "string" &&
+			"projectionVersion" in body &&
+			typeof body.projectionVersion === "string" &&
+			"sampleSize" in body &&
+			typeof body.sampleSize === "number"
+		) {
+			const audit = await runKnowledgeHomeAudit(
+				locals.backendToken,
+				body.projectionName,
+				body.projectionVersion,
+				body.sampleSize,
+			);
+			return json(
+				{ ok: true, audit },
+				{ headers: { "Cache-Control": "no-store" } },
+			);
 		}
 
 		return json({ error: "Invalid admin action." }, { status: 400 });

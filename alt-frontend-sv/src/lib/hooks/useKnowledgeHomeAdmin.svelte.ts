@@ -4,6 +4,7 @@ import type {
 	SLOStatusData,
 	ReprojectRunData,
 	ReprojectDiffSummaryData,
+	ProjectionAuditData,
 } from "$lib/connect/knowledge_home_admin";
 
 interface Snapshot {
@@ -42,6 +43,12 @@ export type KnowledgeHomeAdminActionRequest =
 	| {
 			action: "rollback_reproject";
 			reprojectRunId: string;
+	  }
+	| {
+			action: "run_audit";
+			projectionName: string;
+			projectionVersion: string;
+			sampleSize: number;
 	  };
 
 export function useKnowledgeHomeAdmin(
@@ -53,6 +60,7 @@ export function useKnowledgeHomeAdmin(
 	let sloStatus = $state<SLOStatusData | null>(null);
 	let reprojectRuns = $state<ReprojectRunData[]>([]);
 	let reprojectDiff = $state<ReprojectDiffSummaryData | null>(null);
+	let auditResult = $state<ProjectionAuditData | null>(null);
 	let error = $state<Error | null>(null);
 	let refreshing = $state(false);
 	let lastUpdatedAt = $state<Date | null>(null);
@@ -177,6 +185,38 @@ export function useKnowledgeHomeAdmin(
 	const rollbackReprojectAction = async (reprojectRunId: string) =>
 		runAction({ action: "rollback_reproject", reprojectRunId });
 
+	const runAuditAction = async (
+		projectionName: string,
+		projectionVersion: string,
+		sampleSize: number,
+	) => {
+		if (!actionRunner) throw new Error("Admin actions are unavailable.");
+		acting = true;
+		try {
+			const response = await fetch("/api/admin/knowledge-home", {
+				method: "POST",
+				credentials: "include",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					action: "run_audit",
+					projectionName,
+					projectionVersion,
+					sampleSize,
+				}),
+			});
+			if (!response.ok) {
+				const body = await response.json().catch(() => null);
+				throw new Error(body?.error ?? "Failed to run audit.");
+			}
+			const result = await response.json();
+			auditResult = result.audit ?? null;
+		} catch (err) {
+			error = err instanceof Error ? err : new Error("Unknown error");
+		} finally {
+			acting = false;
+		}
+	};
+
 	return {
 		seed,
 		get health() {
@@ -193,6 +233,9 @@ export function useKnowledgeHomeAdmin(
 		},
 		get reprojectDiff() {
 			return reprojectDiff;
+		},
+		get auditResult() {
+			return auditResult;
 		},
 		get error() {
 			return error;
@@ -220,6 +263,7 @@ export function useKnowledgeHomeAdmin(
 		compareReproject: compareReprojectAction,
 		swapReproject: swapReprojectAction,
 		rollbackReproject: rollbackReprojectAction,
+		runAudit: runAuditAction,
 		fetchData,
 		startPolling,
 		stopPolling,

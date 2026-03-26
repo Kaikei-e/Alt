@@ -12,10 +12,17 @@ import AlertStatusPanel from "$lib/components/knowledge-home-admin/AlertStatusPa
 import ReprojectActions from "$lib/components/knowledge-home-admin/ReprojectActions.svelte";
 import ReprojectRunsTable from "$lib/components/knowledge-home-admin/ReprojectRunsTable.svelte";
 import DiffSummaryPanel from "$lib/components/knowledge-home-admin/DiffSummaryPanel.svelte";
+import StorageStatsPanel from "$lib/components/knowledge-home-admin/StorageStatsPanel.svelte";
+import SnapshotListPanel from "$lib/components/knowledge-home-admin/SnapshotListPanel.svelte";
+import RetentionStatusPanel from "$lib/components/knowledge-home-admin/RetentionStatusPanel.svelte";
+import RetentionRunResultPanel from "$lib/components/knowledge-home-admin/RetentionRunResultPanel.svelte";
+import AuditActions from "$lib/components/knowledge-home-admin/AuditActions.svelte";
+import AuditResultPanel from "$lib/components/knowledge-home-admin/AuditResultPanel.svelte";
 import {
 	useKnowledgeHomeAdmin,
 	type KnowledgeHomeAdminActionRequest,
 } from "$lib/hooks/useKnowledgeHomeAdmin.svelte";
+import { useSovereignAdmin } from "$lib/hooks/useSovereignAdmin.svelte";
 import type {
 	BackfillJobData,
 	ReprojectRunData,
@@ -70,6 +77,32 @@ const runAdminAction = async (action: KnowledgeHomeAdminActionRequest) => {
 
 const admin = useKnowledgeHomeAdmin(fetchSnapshot, runAdminAction);
 
+const fetchSovereignSnapshot = async () => {
+	const response = await fetch("/api/admin/knowledge-home/sovereign", {
+		credentials: "include",
+	});
+	if (!response.ok) {
+		const body = await response.json().catch(() => null);
+		throw new Error(body?.error ?? "Failed to load sovereign data.");
+	}
+	return await response.json();
+};
+
+const runSovereignAction = async (action: { action: string; dry_run?: boolean }) => {
+	const response = await fetch("/api/admin/knowledge-home/sovereign", {
+		method: "POST",
+		credentials: "include",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(action),
+	});
+	if (!response.ok) {
+		const body = await response.json().catch(() => null);
+		throw new Error(body?.error ?? "Failed to run sovereign action.");
+	}
+};
+
+const sovereign = useSovereignAdmin(fetchSovereignSnapshot, runSovereignAction);
+
 $effect(() => {
 	admin.seed(data.adminData, data.error ? new Error(data.error) : null);
 });
@@ -77,11 +110,13 @@ $effect(() => {
 onMount(() => {
 	if (browser) {
 		admin.startPolling(10000);
+		sovereign.startPolling(30000);
 	}
 });
 
 onDestroy(() => {
 	admin.stopPolling();
+	sovereign.stopPolling();
 });
 </script>
 
@@ -160,5 +195,30 @@ onDestroy(() => {
 			onRollback={(run: ReprojectRunData) => admin.rollbackReproject(run.reprojectRunId)}
 		/>
 		<DiffSummaryPanel diff={admin.reprojectDiff} />
+	</div>
+{:else if activeTab === "storage"}
+	<div class="mt-4 flex flex-col gap-6">
+		<StorageStatsPanel stats={sovereign.storageStats} />
+		<SnapshotListPanel
+			snapshots={sovereign.snapshots}
+			latestSnapshot={sovereign.latestSnapshot}
+			disabled={sovereign.acting}
+			onCreateSnapshot={() => sovereign.createSnapshot()}
+		/>
+		<RetentionStatusPanel
+			retentionLogs={sovereign.retentionLogs}
+			eligiblePartitions={sovereign.eligiblePartitions}
+			disabled={sovereign.acting}
+			onRunRetention={(dryRun) => sovereign.runRetention(dryRun)}
+		/>
+		<RetentionRunResultPanel result={sovereign.retentionResult} />
+	</div>
+{:else if activeTab === "audit"}
+	<div class="mt-4 flex flex-col gap-6">
+		<AuditActions
+			onRunAudit={(name, version, size) => void admin.runAudit(name, version, size)}
+			inFlight={admin.acting}
+		/>
+		<AuditResultPanel audit={admin.auditResult} />
 	</div>
 {/if}

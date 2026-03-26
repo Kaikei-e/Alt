@@ -19,6 +19,8 @@ import {
 	compareReproject,
 	swapReproject,
 	rollbackReproject,
+	runProjectionAudit,
+	type ProjectionAuditData,
 } from "$lib/connect/knowledge_home_admin";
 
 const BFF_CONNECT_URL =
@@ -127,4 +129,19 @@ export async function rollbackKnowledgeHomeReproject(
 ) {
 	const transport = createBffTransport(backendToken);
 	return rollbackReproject(transport, reprojectRunId);
+}
+
+export async function runKnowledgeHomeAudit(
+	backendToken: string,
+	projectionName: string,
+	projectionVersion: string,
+	sampleSize: number,
+): Promise<ProjectionAuditData | null> {
+	const transport = createBffTransport(backendToken);
+	return runProjectionAudit(
+		transport,
+		projectionName,
+		projectionVersion,
+		sampleSize,
+	);
 }

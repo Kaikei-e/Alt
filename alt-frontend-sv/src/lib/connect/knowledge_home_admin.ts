@@ -282,6 +282,41 @@ export async function rollbackReproject(
 	await client.rollbackReproject({ reprojectRunId });
 }
 
+/** Projection audit result data */
+export interface ProjectionAuditData {
+	auditId: string;
+	projectionName: string;
+	projectionVersion: string;
+	checkedAt: string;
+	sampleSize: number;
+	mismatchCount: number;
+	detailsJson: string;
+}
+
+export async function runProjectionAudit(
+	transport: Transport,
+	projectionName: string,
+	projectionVersion: string,
+	sampleSize: number,
+): Promise<ProjectionAuditData | null> {
+	const client = createAdminClient(transport);
+	const response = await client.runProjectionAudit({
+		projectionName,
+		projectionVersion,
+		sampleSize,
+	});
+	if (!response.audit) return null;
+	return {
+		auditId: response.audit.auditId,
+		projectionName: response.audit.projectionName,
+		projectionVersion: response.audit.projectionVersion,
+		checkedAt: response.audit.checkedAt,
+		sampleSize: response.audit.sampleSize,
+		mismatchCount: response.audit.mismatchCount,
+		detailsJson: response.audit.detailsJson,
+	};
+}
+
 function convertReprojectRun(r: {
 	reprojectRunId: string;
 	projectionName: string;
