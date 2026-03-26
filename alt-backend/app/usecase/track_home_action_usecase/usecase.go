@@ -162,6 +162,15 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 
 	// Append recall signal for eligible action types (non-fatal)
 	if signalType, ok := actionToSignalType[actionType]; ok && u.recallSignalPort != nil {
+		signalPayload := map[string]any{"source": "home_action", "action_type": actionType}
+		if metadataJSON != "" {
+			var meta map[string]any
+			if err := json.Unmarshal([]byte(metadataJSON), &meta); err == nil {
+				if q, ok := meta["query"].(string); ok && q != "" {
+					signalPayload["search_query"] = q
+				}
+			}
+		}
 		signal := domain.RecallSignal{
 			SignalID:       uuid.New(),
 			UserID:         userID,
@@ -169,7 +178,7 @@ func (u *TrackHomeActionUsecase) Execute(ctx context.Context, userID uuid.UUID, 
 			SignalType:     signalType,
 			SignalStrength: 1.0,
 			OccurredAt:     now,
-			Payload:        map[string]any{"source": "home_action", "action_type": actionType},
+			Payload:        signalPayload,
 		}
 		if err := u.recallSignalPort.AppendRecallSignal(ctx, signal); err != nil {
 			slog.ErrorContext(ctx, "failed to append recall signal",
