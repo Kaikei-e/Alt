@@ -82,6 +82,8 @@ dev = [
     "langdetect>=1.0.9",
     "psutil>=5.9.0",
     "httpx>=0.28.1",
+    # Contract testing
+    "pact-python>=3.2.1",
 ]
 
 # ML dependencies for production and testing

@@ -1,0 +1,51 @@
+{
+  "consumer": {
+    "name": "recap-evaluator"
+  },
+  "interactions": [
+    {
+      "description": "a request for genre evaluation by run_id 42",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "genre evaluation with run_id 42 exists"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/v1/evaluation/genres/42"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "accuracy": 0.85,
+            "macro_f1": 0.82,
+            "run_id": 42,
+            "status": "succeeded"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.4.28",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "recap-worker"
+  }
+}

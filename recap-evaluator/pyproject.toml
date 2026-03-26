@@ -52,6 +52,9 @@ dev = [
     "pytest-cov>=6.0.0",
     "pytest-mock>=3.14.0",
 
+    # Contract Testing (Pact CDC)
+    "pact-python>=3.2.1",
+
     # Code Quality
     "ruff>=0.8.0",
 

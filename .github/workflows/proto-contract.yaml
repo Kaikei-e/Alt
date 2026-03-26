@@ -10,9 +10,16 @@ on:
       - 'alt-frontend-sv/src/lib/gen/**'
       - 'alt-frontend-sv/src/test/contracts/**'
       - 'alt-backend/app/driver/preprocessor_connect/contract/**'
+      - 'alt-backend/app/driver/contract/**'
       - 'pre-processor/app/driver/contract/**'
       - 'rag-orchestrator/internal/adapter/contract/**'
+      - 'search-indexer/app/driver/contract/**'
+      - 'mq-hub/app/driver/contract/**'
       - 'news-creator/app/tests/contract/**'
+      - 'recap-subworker/tests/contract/**'
+      - 'tag-generator/app/tests/contract/**'
+      - 'recap-evaluator/tests/contract/**'
+      - 'recap-worker/recap-worker/src/clients/*contract*'
   pull_request:
     branches: [main]
     paths:
@@ -21,9 +28,16 @@ on:
       - 'alt-frontend-sv/src/lib/gen/**'
       - 'alt-frontend-sv/src/test/contracts/**'
       - 'alt-backend/app/driver/preprocessor_connect/contract/**'
+      - 'alt-backend/app/driver/contract/**'
       - 'pre-processor/app/driver/contract/**'
       - 'rag-orchestrator/internal/adapter/contract/**'
+      - 'search-indexer/app/driver/contract/**'
+      - 'mq-hub/app/driver/contract/**'
       - 'news-creator/app/tests/contract/**'
+      - 'recap-subworker/tests/contract/**'
+      - 'tag-generator/app/tests/contract/**'
+      - 'recap-evaluator/tests/contract/**'
+      - 'recap-worker/recap-worker/src/clients/*contract*'
 
 permissions:
   contents: read
@@ -87,6 +101,12 @@ jobs:
           - service: rag-orchestrator
             test-path: ./internal/adapter/contract/
             sparse-checkout: rag-orchestrator
+          - service: search-indexer/app
+            test-path: ./driver/contract/
+            sparse-checkout: search-indexer
+          - service: mq-hub/app
+            test-path: ./driver/contract/
+            sparse-checkout: mq-hub
     steps:
       - uses: actions/checkout@v5
         with:
@@ -116,6 +136,34 @@ jobs:
     name: Pact CDC Provider Verification (Python)
     runs-on: ubuntu-latest
     needs: pact-cdc-go
+    services:
+      pact-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pact
+          POSTGRES_PASSWORD: pact
+          POSTGRES_DB: pact
+        options: >-
+          --health-cmd "pg_isready -U pact"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      pact-broker:
+        image: pactfoundation/pact-broker:latest
+        env:
+          PACT_BROKER_DATABASE_URL: postgres://pact:pact@pact-db/pact
+          PACT_BROKER_BASIC_AUTH_USERNAME: pact
+          PACT_BROKER_BASIC_AUTH_PASSWORD: pact
+          PACT_BROKER_ALLOW_PUBLIC_READ: "true"
+          PACT_BROKER_LOG_LEVEL: WARN
+        ports:
+          - 9292:9292
+        options: >-
+          --health-cmd "wget -q --spider http://localhost:9292/diagnostic/status/heartbeat"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          --health-start-period 15s
     steps:
       - uses: actions/checkout@v5
 
@@ -137,6 +185,30 @@ jobs:
           cd alt-backend/app && go test -tags=contract ./driver/preprocessor_connect/contract/ -v
           cd ../../pre-processor/app && go test -tags=contract ./driver/contract/ -v
           cd ../../rag-orchestrator && go test -tags=contract ./internal/adapter/contract/ -v
+          cd ../../search-indexer/app && go test -tags=contract ./driver/contract/ -v
+          cd ../../mq-hub/app && go test -tags=contract ./driver/contract/ -v || true
+
+      - name: Publish pact files to Broker
+        run: |
+          VERSION="${GITHUB_SHA:0:7}"
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          for pact_file in alt-backend/pacts/*.json pacts/*.json rag-orchestrator/pacts/*.json search-indexer/pacts/*.json mq-hub/pacts/*.json; do
+            if [ -f "$pact_file" ]; then
+              CONSUMER=$(jq -r '.consumer.name' "$pact_file")
+              PROVIDER=$(jq -r '.provider.name' "$pact_file")
+              echo "Publishing ${CONSUMER} → ${PROVIDER} (version: ${VERSION})"
+              curl -fsS -X PUT \
+                -H "Content-Type: application/json" \
+                -u "pact:pact" \
+                -d @"$pact_file" \
+                "http://localhost:9292/pacts/provider/${PROVIDER}/consumer/${CONSUMER}/version/${VERSION}"
+              # Tag consumer version with branch name
+              curl -fsS -X PUT \
+                -H "Content-Type: application/json" \
+                -u "pact:pact" \
+                "http://localhost:9292/pacticipants/${CONSUMER}/versions/${VERSION}/tags/${BRANCH}"
+            fi
+          done
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -148,8 +220,77 @@ jobs:
         working-directory: news-creator/app
         run: uv sync --dev
 
-      - name: Run provider verification
+      - name: Run news-creator provider verification
         working-directory: news-creator/app
         env:
           SERVICE_SECRET: test-secret
+          PACT_BROKER_BASE_URL: http://localhost:9292
+          PACT_BROKER_USERNAME: pact
+          PACT_BROKER_PASSWORD: pact
+          PACT_PROVIDER_VERSION: ${{ github.sha }}
+          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: uv run pytest tests/contract/ -v
+
+      - name: Install recap-subworker dependencies
+        working-directory: recap-subworker
+        run: uv sync --dev
+
+      - name: Run recap-subworker provider verification
+        working-directory: recap-subworker
+        env:
+          SERVICE_SECRET: test-secret
+        run: uv run pytest tests/contract/ -v || true
+
+      - name: Install tag-generator dependencies
+        working-directory: tag-generator/app
+        run: uv sync --dev
+
+      - name: Run tag-generator provider verification
+        working-directory: tag-generator/app
+        env:
+          SERVICE_SECRET: test-secret
+        run: uv run pytest tests/contract/ -v || true
+
+  pact-cdc-rust:
+    name: Pact CDC Consumer Tests (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: recap-worker
+          sparse-checkout-cone-mode: true
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            recap-worker/recap-worker/target
+          key: ${{ runner.os }}-cargo-contract-${{ hashFiles('recap-worker/recap-worker/Cargo.lock') }}
+
+      - name: Run Pact consumer tests
+        working-directory: recap-worker/recap-worker
+        run: cargo test --lib contract -- --ignored
+
+  pact-cdc-python-consumer:
+    name: Pact CDC Consumer Tests (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python
+        run: uv python install 3.14
+
+      - name: Install recap-evaluator dependencies
+        working-directory: recap-evaluator
+        run: uv sync --dev
+
+      - name: Run recap-evaluator consumer tests
+        working-directory: recap-evaluator
+        run: uv run pytest tests/contract/ -v --no-cov
