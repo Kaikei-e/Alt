@@ -15,6 +15,7 @@ export interface KratosIdentity {
 	traits: {
 		email: string;
 		name: string;
+		role?: string;
 	};
 }
 
