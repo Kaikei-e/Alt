@@ -96,6 +96,7 @@ const age = $derived(formatRelativeTime(dateSource));
 
 	<!-- Expanded Why Panel -->
 	{#if whyExpanded}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="mb-2" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
 			<RecallWhyPanel reasons={candidate.reasons} />
 		</div>

@@ -58,10 +58,11 @@ const handleSubmit = () => {
 
 	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
 		<div class="flex flex-col gap-1">
-			<label class="text-xs font-medium" style="color: var(--text-secondary);">
+			<label for="reproject-mode" class="text-xs font-medium" style="color: var(--text-secondary);">
 				Mode
 			</label>
 			<select
+				id="reproject-mode"
 				class="rounded-md border px-3 py-1.5 text-sm"
 				style="background: var(--surface-bg); border-color: var(--surface-border, #d1d5db); color: var(--text-primary);"
 				bind:value={mode}
@@ -74,10 +75,11 @@ const handleSubmit = () => {
 		</div>
 
 		<div class="flex flex-col gap-1">
-			<label class="text-xs font-medium" style="color: var(--text-secondary);">
+			<label for="reproject-from-version" class="text-xs font-medium" style="color: var(--text-secondary);">
 				From Version
 			</label>
 			<input
+				id="reproject-from-version"
 				type="text"
 				class="rounded-md border px-3 py-1.5 text-sm font-mono"
 				style="background: var(--surface-bg); border-color: var(--surface-border, #d1d5db); color: var(--text-primary);"
@@ -88,10 +90,11 @@ const handleSubmit = () => {
 		</div>
 
 		<div class="flex flex-col gap-1">
-			<label class="text-xs font-medium" style="color: var(--text-secondary);">
+			<label for="reproject-to-version" class="text-xs font-medium" style="color: var(--text-secondary);">
 				To Version
 			</label>
 			<input
+				id="reproject-to-version"
 				type="text"
 				class="rounded-md border px-3 py-1.5 text-sm font-mono"
 				style="background: var(--surface-bg); border-color: var(--surface-border, #d1d5db); color: var(--text-primary);"
@@ -116,10 +119,11 @@ const handleSubmit = () => {
 	{#if showRange}
 		<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 			<div class="flex flex-col gap-1">
-				<label class="text-xs font-medium" style="color: var(--text-secondary);">
+				<label for="reproject-range-start" class="text-xs font-medium" style="color: var(--text-secondary);">
 					Range Start (RFC3339)
 				</label>
 				<input
+					id="reproject-range-start"
 					type="text"
 					class="rounded-md border px-3 py-1.5 text-sm font-mono"
 					style="background: var(--surface-bg); border-color: var(--surface-border, #d1d5db); color: var(--text-primary);"
@@ -129,10 +133,11 @@ const handleSubmit = () => {
 				/>
 			</div>
 			<div class="flex flex-col gap-1">
-				<label class="text-xs font-medium" style="color: var(--text-secondary);">
+				<label for="reproject-range-end" class="text-xs font-medium" style="color: var(--text-secondary);">
 					Range End (RFC3339)
 				</label>
 				<input
+					id="reproject-range-end"
 					type="text"
 					class="rounded-md border px-3 py-1.5 text-sm font-mono"
 					style="background: var(--surface-bg); border-color: var(--surface-border, #d1d5db); color: var(--text-primary);"

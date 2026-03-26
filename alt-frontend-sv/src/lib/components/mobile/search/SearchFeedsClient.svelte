@@ -11,6 +11,7 @@ interface Props {
 }
 const { initialQuery = "" }: Props = $props();
 
+// svelte-ignore state_referenced_locally
 let searchQuery = $state<SearchQuery>({ query: initialQuery });
 let results = $state<SearchFeedItem[]>([]);
 let isLoading = $state(false);

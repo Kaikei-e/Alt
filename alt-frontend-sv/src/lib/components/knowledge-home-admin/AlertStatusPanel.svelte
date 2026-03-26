@@ -45,12 +45,13 @@ const severityIcon = (severity: string) => {
 	{:else}
 		<div class="flex flex-col gap-2">
 			{#each alerts as alert (alert.alertName + alert.firedAt)}
+				{@const Icon = severityIcon(alert.severity)}
 				<div
 					class="flex items-start gap-3 rounded-lg border-2 px-4 py-3"
 					style="background: var(--surface-bg); border-color: var(--border-primary);"
 				>
 					<div class="mt-0.5 shrink-0" style="color: {severityColor(alert.severity)};">
-						<svelte:component this={severityIcon(alert.severity)} size={16} />
+						<Icon size={16} />
 					</div>
 					<div class="flex flex-1 flex-col gap-1">
 						<div class="flex items-center justify-between">
