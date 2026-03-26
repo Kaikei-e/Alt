@@ -1,0 +1,147 @@
+{
+  "consumer": {
+    "name": "mq-hub"
+  },
+  "interactions": [
+    {
+      "contents": {
+        "content": {
+          "created_at": "2026-03-26T00:00:00.000Z",
+          "event_id": "evt-uuid-tag-001",
+          "event_type": "TagGenerationRequested",
+          "metadata": {
+            "correlation_id": "corr-001",
+            "reply_to": "alt:reply:tag-gen-001"
+          },
+          "payload": {
+            "article_id": "art-002",
+            "content": "An article about memory safety.",
+            "feed_id": "feed-002",
+            "title": "Rust Memory Safety"
+          },
+          "source": "mq-hub"
+        },
+        "contentType": "application/json",
+        "encoded": false
+      },
+      "description": "a TagGenerationRequested event on alt:events:tags",
+      "matchingRules": {
+        "body": {
+          "$.created_at": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.event_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.metadata": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.metadata.correlation_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.metadata.reply_to": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.article_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.content": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.feed_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.title": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.source": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json"
+      },
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "the tags stream exists"
+        }
+      ],
+      "type": "Asynchronous/Messages"
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.4.2"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "tag-generator"
+  }
+}
