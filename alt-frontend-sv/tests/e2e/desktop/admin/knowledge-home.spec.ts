@@ -40,14 +40,14 @@ test.describe("Knowledge Home Admin - Storage Tab", () => {
 		await expect(adminPage.tabStorage).toBeVisible();
 		await adminPage.switchToStorageTab();
 
-		// Storage stats panel should show table data
+		// Storage stats panel should show table data (wait for sovereign data via client-side polling)
 		await expect(adminPage.storageStatsPanel).toBeVisible();
 		await expect(
 			adminPage.getStorageStatCard("knowledge_events"),
-		).toBeVisible();
+		).toBeVisible({ timeout: 10000 });
 		await expect(
 			adminPage.getStorageStatCard("knowledge_home_items"),
-		).toBeVisible();
+		).toBeVisible({ timeout: 10000 });
 	});
 
 	test("renders snapshot list", async () => {
@@ -56,7 +56,9 @@ test.describe("Knowledge Home Admin - Storage Tab", () => {
 		await adminPage.switchToStorageTab();
 
 		await expect(adminPage.snapshotListPanel).toBeVisible();
-		await expect(adminPage.getSnapshotByStatus("valid")).toBeVisible();
+		await expect(adminPage.getSnapshotByStatus("valid")).toBeVisible({
+			timeout: 10000,
+		});
 	});
 
 	test("renders retention status with eligible partitions", async () => {
