@@ -288,10 +288,7 @@ func (r *Repository) UpsertRecallCandidate(ctx context.Context, payload json.Raw
 		UserID            uuid.UUID  `json:"user_id"`
 		ItemKey           string     `json:"item_key"`
 		RecallScore       float64    `json:"recall_score"`
-		Reasons           []struct {
-			Code   string `json:"code"`
-			Reason string `json:"reason"`
-		} `json:"reasons"`
+		Reasons []RecallReason `json:"reasons"`
 		NextSuggestAt     *time.Time `json:"next_suggest_at"`
 		FirstEligibleAt   *time.Time `json:"first_eligible_at"`
 		UpdatedAt         time.Time  `json:"updated_at"`
