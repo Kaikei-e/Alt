@@ -60,6 +60,12 @@ func (d *ToolDispatcher) Dispatch(ctx context.Context, intent QueryIntent, query
 	return results
 }
 
+// DispatchForPlan selects and executes tools based on planner output.
+// Falls back to intent-based selection when the planner policy is not tool_only.
+func (d *ToolDispatcher) DispatchForPlan(ctx context.Context, plan *domain.PlannerOutput, intent QueryIntent, query string) []*domain.ToolResult {
+	panic("not implemented")
+}
+
 // selectTools returns tool names to execute based on intent type.
 func (d *ToolDispatcher) selectTools(intent QueryIntent) []string {
 	switch intent.IntentType {

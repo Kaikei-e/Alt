@@ -97,6 +97,47 @@ func TestSelectTools_ArticleScopedRelatedArticles_ReturnsRelatedArticlesTool(t *
 	}
 }
 
+func TestDispatchForPlan_ToolOnly_RelatedArticles(t *testing.T) {
+	relatedTool := &mockTool{name: "related_articles", result: &domain.ToolResult{Data: "Related articles:\n- Article B\n", Success: true}}
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	dispatcher := NewToolDispatcher(map[string]domain.Tool{"related_articles": relatedTool}, logger)
+
+	plan := &domain.PlannerOutput{
+		Operation:       domain.OpRelatedArticles,
+		RetrievalPolicy: domain.PolicyToolOnly,
+	}
+	intent := QueryIntent{
+		IntentType:   IntentArticleScoped,
+		ArticleID:    "article-123",
+		UserQuestion: "関連する記事はある？",
+	}
+	results := dispatcher.DispatchForPlan(context.Background(), plan, intent, "関連する記事はある？")
+
+	if len(results) == 0 {
+		t.Fatal("expected related_articles tool result for tool_only policy")
+	}
+	if results[0].ToolName != "related_articles" {
+		t.Errorf("expected tool name 'related_articles', got %q", results[0].ToolName)
+	}
+}
+
+func TestDispatchForPlan_NonToolPolicy_FallsBackToIntent(t *testing.T) {
+	dateTool := &mockTool{name: "date_range_filter", result: &domain.ToolResult{Data: "filtered", Success: true}}
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	dispatcher := NewToolDispatcher(map[string]domain.Tool{"date_range_filter": dateTool}, logger)
+
+	plan := &domain.PlannerOutput{
+		Operation:       domain.OpGeneral,
+		RetrievalPolicy: domain.PolicyGlobalOnly,
+	}
+	intent := QueryIntent{IntentType: IntentTemporal, UserQuestion: "最近のニュース"}
+	results := dispatcher.DispatchForPlan(context.Background(), plan, intent, "最近のニュース")
+
+	if len(results) == 0 {
+		t.Fatal("expected date_range_filter tool result from intent-based fallback")
+	}
+}
+
 func TestSelectTools_ArticleScopedDetail_ReturnsNil(t *testing.T) {
 	relatedTool := &mockTool{name: "related_articles", result: &domain.ToolResult{Data: "data", Success: true}}
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
