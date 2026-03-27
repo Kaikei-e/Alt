@@ -106,6 +106,23 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			}
 		}
 
+		// Clarification check: if the planner determined the query needs
+		// user clarification, short-circuit before generation.
+		if promptData.plannerOutput != nil && promptData.plannerOutput.NeedsClarification {
+			u.sendStreamEvent(ctx, events, StreamEvent{
+				Kind: StreamEventKindClarification,
+				Payload: StreamClarification{
+					Message: promptData.plannerOutput.ClarificationMsg,
+					Options: promptData.plannerOutput.EntityFocus,
+				},
+			})
+			u.sendStreamEvent(ctx, events, StreamEvent{
+				Kind:    StreamEventKindDone,
+				Payload: nil,
+			})
+			return
+		}
+
 		if !u.sendStreamEvent(ctx, events, StreamEvent{
 			Kind:    StreamEventKindProgress,
 			Payload: "generating",
@@ -113,21 +130,26 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
+		debug := AnswerDebug{
+			RetrievalSetID:        promptData.retrievalSetID,
+			PromptVersion:         u.promptVersion,
+			ExpandedQueries:       promptData.expandedQueries,
+			StrategyUsed:          promptData.strategyUsed,
+			IntentType:            string(promptData.intentType),
+			SubIntentType:         string(promptData.subIntentType),
+			RetrievalQuality:      string(promptData.retrievalQuality),
+			RetryCount:            promptData.retryCount,
+			ToolsUsed:             promptData.toolsUsed,
+			RetrievalPolicy:       promptData.retrievalPolicy,
+			GeneralRetrievalGated: promptData.generalGated,
+		}
+		if promptData.plannerOutput != nil {
+			debug.PlannerOperation = string(promptData.plannerOutput.Operation)
+			debug.PlannerConfidence = promptData.plannerOutput.Confidence
+		}
 		meta := StreamMeta{
 			Contexts: promptData.contexts,
-			Debug: AnswerDebug{
-				RetrievalSetID:        promptData.retrievalSetID,
-				PromptVersion:         u.promptVersion,
-				ExpandedQueries:       promptData.expandedQueries,
-				StrategyUsed:          promptData.strategyUsed,
-				IntentType:            string(promptData.intentType),
-				SubIntentType:         string(promptData.subIntentType),
-				RetrievalQuality:      string(promptData.retrievalQuality),
-				RetryCount:            promptData.retryCount,
-				ToolsUsed:             promptData.toolsUsed,
-				RetrievalPolicy:       promptData.retrievalPolicy,
-				GeneralRetrievalGated: promptData.generalGated,
-			},
+			Debug:    debug,
 		}
 		if !u.sendStreamEvent(ctx, events, StreamEvent{Kind: StreamEventKindMeta, Payload: meta}) {
 			return

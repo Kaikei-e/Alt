@@ -219,3 +219,60 @@ func TestPromptBuilder_NoHistoryOmitsConversationSection(t *testing.T) {
 	assert.NotContains(t, msgs[0].Content, "フォローアップ",
 		"prompt without history should not contain follow-up instructions")
 }
+
+// --- Phase E: PlannerOutput-driven prompt tests ---
+
+func TestPromptBuilder_WithPlannerOutput_Detail_NoSummaryStructure(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "技術的な詳細をもっと教えて",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test", ChunkText: "Content about the topic"},
+		},
+		IntentType:    usecase.IntentArticleScoped,
+		SubIntentType: usecase.SubIntentDetail,
+		PlannerOutput: &domain.PlannerOutput{
+			Operation:       domain.OpDetail,
+			RetrievalPolicy: domain.PolicyArticleOnly,
+			Confidence:      0.85,
+		},
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+
+	content := msgs[0].Content
+	// Detail operation should NOT include summary structure
+	assert.NotContains(t, content, "## 概要",
+		"detail operation should not include summary-style 概要 section")
+	assert.Contains(t, content, "技術的",
+		"detail operation should mention technical focus")
+}
+
+func TestPromptBuilder_WithPlannerOutput_General_KeepsSummaryStructure(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "AIの最新動向は？",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "AI News", ChunkText: "AI trends content"},
+		},
+		IntentType: usecase.IntentGeneral,
+		PlannerOutput: &domain.PlannerOutput{
+			Operation:       domain.OpGeneral,
+			RetrievalPolicy: domain.PolicyGlobalOnly,
+			Confidence:      0.8,
+		},
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+
+	content := msgs[0].Content
+	// General operation should keep summary structure
+	assert.Contains(t, content, "概要",
+		"general operation should include 概要 in output format")
+}
