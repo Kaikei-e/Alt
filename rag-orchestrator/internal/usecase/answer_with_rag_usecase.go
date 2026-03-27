@@ -494,32 +494,70 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 	retrieved, err := strategy.Retrieve(ctx, retrieveInput, intent)
 
-	// Agentic RAG: for article-scoped follow-ups, augment with general re-retrieval.
-	// The article's own chunks provide scoped context, while the global index
-	// surfaces related articles that may answer the follow-up question better.
+	// Agentic RAG: retrieval policy varies by sub-intent for article-scoped follow-ups.
 	if intent.IntentType == IntentArticleScoped && len(input.ConversationHistory) > 0 && err == nil && retrieved != nil {
-		u.logger.Info("agentic_reretrieval_started",
-			slog.String("article_id", intent.ArticleID),
-			slog.String("query", intent.UserQuestion))
+		switch intent.SubIntentType {
+		case SubIntentDetail, SubIntentEvidence, SubIntentSummaryRefresh:
+			// Article chunks only — no general re-retrieval.
+			u.logger.Info("retrieval_policy_article_only",
+				slog.String("sub_intent", string(intent.SubIntentType)),
+				slog.String("article_id", intent.ArticleID))
 
-		generalInput := RetrieveContextInput{
-			Query:               intent.UserQuestion,
-			ConversationHistory: input.ConversationHistory,
-		}
-		generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
-		if genErr != nil {
-			u.logger.Warn("agentic_reretrieval_failed",
+		case SubIntentRelatedArticles:
+			// Tool delegated — RelatedArticlesTool handles search.
+			u.logger.Info("retrieval_policy_tool_delegated",
+				slog.String("sub_intent", string(intent.SubIntentType)),
+				slog.String("article_id", intent.ArticleID))
+
+		case SubIntentCritique, SubIntentOpinion, SubIntentImplication:
+			// Article-first with optional general retrieval behind quality threshold.
+			if u.qualityAssessor != nil {
+				verdict := u.qualityAssessor.Assess(retrieved.Contexts)
+				if verdict == QualityMarginal || verdict == QualityInsufficient {
+					u.logger.Info("analytical_subintent_general_augmentation",
+						slog.String("sub_intent", string(intent.SubIntentType)),
+						slog.String("verdict", string(verdict)))
+					generalInput := RetrieveContextInput{
+						Query:               intent.UserQuestion,
+						ConversationHistory: input.ConversationHistory,
+					}
+					generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
+					if genErr == nil && generalResult != nil && len(generalResult.Contexts) > 0 {
+						before := len(retrieved.Contexts)
+						retrieved = mergeContexts(retrieved, generalResult)
+						u.logger.Info("analytical_general_merge",
+							slog.Int("article_chunks", before),
+							slog.Int("general_chunks", len(generalResult.Contexts)),
+							slog.Int("merged_total", len(retrieved.Contexts)))
+						result.strategyUsed = "article_scoped+general_analytical"
+					}
+				}
+			}
+
+		default:
+			// SubIntentNone: keep current behavior for backward compatibility.
+			u.logger.Info("agentic_reretrieval_started",
 				slog.String("article_id", intent.ArticleID),
-				slog.String("error", genErr.Error()))
-		}
-		if genErr == nil && generalResult != nil && len(generalResult.Contexts) > 0 {
-			before := len(retrieved.Contexts)
-			retrieved = mergeContexts(retrieved, generalResult)
-			u.logger.Info("agentic_reretrieval_completed",
-				slog.Int("article_chunks", before),
-				slog.Int("general_chunks", len(generalResult.Contexts)),
-				slog.Int("merged_total", len(retrieved.Contexts)))
-			result.strategyUsed = "article_scoped+general"
+				slog.String("query", intent.UserQuestion))
+			generalInput := RetrieveContextInput{
+				Query:               intent.UserQuestion,
+				ConversationHistory: input.ConversationHistory,
+			}
+			generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
+			if genErr != nil {
+				u.logger.Warn("agentic_reretrieval_failed",
+					slog.String("article_id", intent.ArticleID),
+					slog.String("error", genErr.Error()))
+			}
+			if genErr == nil && generalResult != nil && len(generalResult.Contexts) > 0 {
+				before := len(retrieved.Contexts)
+				retrieved = mergeContexts(retrieved, generalResult)
+				u.logger.Info("agentic_reretrieval_completed",
+					slog.Int("article_chunks", before),
+					slog.Int("general_chunks", len(generalResult.Contexts)),
+					slog.Int("merged_total", len(retrieved.Contexts)))
+				result.strategyUsed = "article_scoped+general"
+			}
 		}
 	}
 

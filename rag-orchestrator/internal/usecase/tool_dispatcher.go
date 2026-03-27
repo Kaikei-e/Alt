@@ -67,7 +67,9 @@ func (d *ToolDispatcher) selectTools(intent QueryIntent) []string {
 	case IntentComparison:
 		return []string{"tag_search"}
 	case IntentArticleScoped:
-		// Only if related articles are requested — detected by keywords
+		if intent.SubIntentType == SubIntentRelatedArticles {
+			return []string{"related_articles"}
+		}
 		return nil
 	default:
 		return nil

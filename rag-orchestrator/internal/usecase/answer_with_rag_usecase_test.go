@@ -827,11 +827,8 @@ func TestExecute_ArticleScopedFollowUp_FromHistory_ClassifiesCritiqueAndPreserve
 			},
 		}, nil)
 
-	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
-		Contexts: []usecase.ContextItem{
-			{ChunkID: uuid.New(), ChunkText: "Related global context", Title: "Related", Score: 0.8, DocumentVersion: 1},
-		},
-	}, nil)
+	// With the subintent-gated retrieval policy, critique subintent without a
+	// quality assessor will NOT trigger general re-retrieval — stays article-only.
 
 	llmResponse := `{"answer":"批判的な回答","citations":[{"chunk_id":"1","reason":"relevant"}],"fallback":false,"reason":""}`
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
@@ -854,8 +851,10 @@ func TestExecute_ArticleScopedFollowUp_FromHistory_ClassifiesCritiqueAndPreserve
 	})
 	assert.NoError(t, err)
 	assert.False(t, output.Fallback)
-	assert.Equal(t, "article_scoped+general", output.Debug.StrategyUsed)
+	assert.Equal(t, "article_scoped", output.Debug.StrategyUsed)
 	assert.Equal(t, "critique", output.Debug.SubIntentType)
+	// General strategy should NOT be called — no quality assessor configured
+	mockRetrieve.AssertNotCalled(t, "Execute", mock.Anything, mock.Anything)
 }
 
 func TestExecute_ArticleScopedFollowUp_ReRetrievesFromGlobalIndex(t *testing.T) {
