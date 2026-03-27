@@ -25,6 +25,8 @@ type answerWithRAGUsecase struct {
 	queryExpander     domain.QueryExpander
 	queryClassifier   *QueryClassifier
 	toolDispatcher    *ToolDispatcher
+	planner           *ConversationPlanner
+	conversationStore *ConversationStore
 	maxChunks         int
 	maxTokens         int
 	maxPromptTokens   int
@@ -73,6 +75,8 @@ func NewAnswerWithRAGUsecase(
 		queryExpander:     cfg.queryExpander,
 		queryClassifier:   cfg.queryClassifier,
 		toolDispatcher:    cfg.toolDispatcher,
+		planner:           cfg.planner,
+		conversationStore: cfg.conversationStore,
 		maxChunks:         maxChunks,
 		maxTokens:         maxTokens,
 		maxPromptTokens:   maxPromptTokens,
@@ -98,6 +102,8 @@ type answerUsecaseConfig struct {
 	queryExpander     domain.QueryExpander
 	queryClassifier   *QueryClassifier
 	toolDispatcher    *ToolDispatcher
+	planner           *ConversationPlanner
+	conversationStore *ConversationStore
 }
 
 // WithCacheConfig sets the cache size and TTL.
@@ -145,6 +151,14 @@ func WithQueryClassifier(classifier *QueryClassifier) AnswerUsecaseOption {
 func WithToolDispatcher(dispatcher *ToolDispatcher) AnswerUsecaseOption {
 	return func(cfg *answerUsecaseConfig) {
 		cfg.toolDispatcher = dispatcher
+	}
+}
+
+// WithConversationPlanner enables conversation-aware planning before retrieval.
+func WithConversationPlanner(planner *ConversationPlanner, store *ConversationStore) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		cfg.planner = planner
+		cfg.conversationStore = store
 	}
 }
 
@@ -318,26 +332,33 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			slog.Any("flags", qualityFlags))
 	}
 
+	debug := AnswerDebug{
+		RetrievalSetID:        promptData.retrievalSetID,
+		PromptVersion:         u.promptVersion,
+		ExpandedQueries:       promptData.expandedQueries,
+		StrategyUsed:          promptData.strategyUsed,
+		IntentType:            string(promptData.intentType),
+		SubIntentType:         string(promptData.subIntentType),
+		RetrievalQuality:      string(promptData.retrievalQuality),
+		RetryCount:            promptData.retryCount,
+		ToolsUsed:             promptData.toolsUsed,
+		QualityFlags:          qualityFlags,
+		RetrievalPolicy:       promptData.retrievalPolicy,
+		GeneralRetrievalGated: promptData.generalGated,
+	}
+	if promptData.plannerOutput != nil {
+		debug.PlannerOperation = string(promptData.plannerOutput.Operation)
+		debug.PlannerConfidence = promptData.plannerOutput.Confidence
+		debug.NeedsClarification = promptData.plannerOutput.NeedsClarification
+	}
+
 	output := &AnswerWithRAGOutput{
 		Answer:    strings.TrimSpace(parsedAnswer.Answer),
 		Citations: finalCitations,
 		Contexts:  promptData.contexts,
 		Fallback:  false,
 		Reason:    "",
-		Debug: AnswerDebug{
-			RetrievalSetID:        promptData.retrievalSetID,
-			PromptVersion:         u.promptVersion,
-			ExpandedQueries:       promptData.expandedQueries,
-			StrategyUsed:          promptData.strategyUsed,
-			IntentType:            string(promptData.intentType),
-			SubIntentType:         string(promptData.subIntentType),
-			RetrievalQuality:      string(promptData.retrievalQuality),
-			RetryCount:            promptData.retryCount,
-			ToolsUsed:             promptData.toolsUsed,
-			QualityFlags:          qualityFlags,
-			RetrievalPolicy:       promptData.retrievalPolicy,
-			GeneralRetrievalGated: promptData.generalGated,
-		},
+		Debug:     debug,
 	}
 
 	// 5. Store in Cache
@@ -442,6 +463,7 @@ type promptBuildResult struct {
 	retryCount       int
 	retrievalPolicy  string
 	generalGated     bool
+	plannerOutput    *domain.PlannerOutput // Conversation planner result
 }
 
 func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWithRAGInput) (*promptBuildResult, error) {
@@ -496,79 +518,29 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		retrieveInput.CandidateArticleIDs = input.CandidateArticleIDs
 	}
 
-	retrieved, err := strategy.Retrieve(ctx, retrieveInput, intent)
-
-	// Agentic RAG: retrieval policy varies by sub-intent for article-scoped follow-ups.
-	if intent.IntentType == IntentArticleScoped && len(input.ConversationHistory) > 0 && err == nil && retrieved != nil {
-		switch intent.SubIntentType {
-		case SubIntentDetail, SubIntentEvidence, SubIntentSummaryRefresh:
-			// Article chunks only — no general re-retrieval.
-			u.logger.Info("retrieval_policy_article_only",
-				slog.String("sub_intent", string(intent.SubIntentType)),
-				slog.String("article_id", intent.ArticleID))
-			result.retrievalPolicy = "article_only"
-			result.generalGated = true
-
-		case SubIntentRelatedArticles:
-			// Tool delegated — RelatedArticlesTool handles search.
-			u.logger.Info("retrieval_policy_tool_delegated",
-				slog.String("sub_intent", string(intent.SubIntentType)),
-				slog.String("article_id", intent.ArticleID))
-			result.retrievalPolicy = "tool_delegated"
-			result.generalGated = true
-
-		case SubIntentCritique, SubIntentOpinion, SubIntentImplication:
-			// Article-first with optional general retrieval behind quality threshold.
-			result.retrievalPolicy = "article_first_analytical"
-			result.generalGated = true
-			if u.qualityAssessor != nil {
-				verdict := u.qualityAssessor.Assess(retrieved.Contexts)
-				if verdict == QualityMarginal || verdict == QualityInsufficient {
-					u.logger.Info("analytical_subintent_general_augmentation",
-						slog.String("sub_intent", string(intent.SubIntentType)),
-						slog.String("verdict", string(verdict)))
-					generalInput := RetrieveContextInput{
-						Query:               intent.UserQuestion,
-						ConversationHistory: input.ConversationHistory,
-					}
-					generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
-					if genErr == nil && generalResult != nil && len(generalResult.Contexts) > 0 {
-						before := len(retrieved.Contexts)
-						retrieved = mergeContexts(retrieved, generalResult)
-						u.logger.Info("analytical_general_merge",
-							slog.Int("article_chunks", before),
-							slog.Int("general_chunks", len(generalResult.Contexts)),
-							slog.Int("merged_total", len(retrieved.Contexts)))
-						result.strategyUsed = "article_scoped+general_analytical"
-					}
-				}
-			}
-
-		default:
-			// SubIntentNone: keep current behavior for backward compatibility.
-			u.logger.Info("agentic_reretrieval_started",
-				slog.String("article_id", intent.ArticleID),
-				slog.String("query", intent.UserQuestion))
-			generalInput := RetrieveContextInput{
-				Query:               intent.UserQuestion,
-				ConversationHistory: input.ConversationHistory,
-			}
-			generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
-			if genErr != nil {
-				u.logger.Warn("agentic_reretrieval_failed",
-					slog.String("article_id", intent.ArticleID),
-					slog.String("error", genErr.Error()))
-			}
-			if genErr == nil && generalResult != nil && len(generalResult.Contexts) > 0 {
-				before := len(retrieved.Contexts)
-				retrieved = mergeContexts(retrieved, generalResult)
-				u.logger.Info("agentic_reretrieval_completed",
-					slog.Int("article_chunks", before),
-					slog.Int("general_chunks", len(generalResult.Contexts)),
-					slog.Int("merged_total", len(retrieved.Contexts)))
-				result.strategyUsed = "article_scoped+general"
-			}
+	// Conversation planner: resolve ambiguity and determine retrieval policy.
+	var plan *domain.PlannerOutput
+	if u.planner != nil {
+		var convState *domain.ConversationState
+		if u.conversationStore != nil {
+			convState = u.conversationStore.Get(input.UserID)
 		}
+		plan = u.planner.Plan(intent.UserQuestion, intent, convState, input.ConversationHistory)
+		result.plannerOutput = plan
+
+		u.logger.Info("planner_output",
+			slog.String("operation", string(plan.Operation)),
+			slog.String("retrieval_policy", string(plan.RetrievalPolicy)),
+			slog.Float64("confidence", plan.Confidence),
+			slog.Bool("needs_clarification", plan.NeedsClarification))
+	}
+
+	// Retrieve contexts using planner-driven or legacy policy.
+	retrieved, err := u.retrieveWithPolicy(ctx, strategy, retrieveInput, intent, plan, input, result)
+
+	// Legacy path: when no planner, use existing sub-intent policy switch.
+	if plan == nil && intent.IntentType == IntentArticleScoped && len(input.ConversationHistory) > 0 && err == nil && retrieved != nil {
+		retrieved = u.applyLegacySubIntentPolicy(ctx, intent, input, retrieved, result)
 	}
 
 	// 2-stage fallback for article_scoped
@@ -687,9 +659,13 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		result.expandedQueries = retrieved.ExpandedQueries
 	}
 
-	// For related_articles subintent, tool results are the primary content —
-	// allow empty contexts since the tool dispatch below will supply data.
-	if len(contexts) == 0 && intent.SubIntentType != SubIntentRelatedArticles {
+	// Allow empty contexts when tool results are the primary content or
+	// when the planner determined no retrieval is needed (clarification, tool-only).
+	allowEmpty := intent.SubIntentType == SubIntentRelatedArticles
+	if plan != nil && (plan.RetrievalPolicy == domain.PolicyToolOnly || plan.RetrievalPolicy == domain.PolicyNoRetrieval) {
+		allowEmpty = true
+	}
+	if len(contexts) == 0 && !allowEmpty {
 		return result, errors.New("no context returned from retrieval")
 	}
 
@@ -740,6 +716,147 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 	result.messages = messages
 	return result, nil
+}
+
+// retrieveWithPolicy executes retrieval based on planner output policy.
+// When no planner is configured, falls back to the standard strategy.Retrieve path.
+func (u *answerWithRAGUsecase) retrieveWithPolicy(
+	ctx context.Context,
+	strategy RetrievalStrategy,
+	retrieveInput RetrieveContextInput,
+	intent QueryIntent,
+	plan *domain.PlannerOutput,
+	input AnswerWithRAGInput,
+	result *promptBuildResult,
+) (*RetrieveContextOutput, error) {
+	if plan == nil {
+		return strategy.Retrieve(ctx, retrieveInput, intent)
+	}
+
+	generalInput := RetrieveContextInput{
+		Query:               intent.UserQuestion,
+		ConversationHistory: input.ConversationHistory,
+	}
+
+	switch plan.RetrievalPolicy {
+	case domain.PolicyArticleOnly:
+		result.retrievalPolicy = "article_only"
+		result.generalGated = true
+		return strategy.Retrieve(ctx, retrieveInput, intent)
+
+	case domain.PolicyArticlePlusGlobal:
+		result.retrievalPolicy = "article_plus_global"
+		retrieved, err := strategy.Retrieve(ctx, retrieveInput, intent)
+		if err != nil {
+			return retrieved, err
+		}
+		if u.qualityAssessor != nil && retrieved != nil {
+			verdict := u.qualityAssessor.Assess(retrieved.Contexts)
+			if verdict != QualityGood {
+				generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
+				if genErr == nil && generalResult != nil && len(generalResult.Contexts) > 0 {
+					retrieved = mergeContexts(retrieved, generalResult)
+					result.strategyUsed = strategy.Name() + "+general"
+				}
+			}
+		}
+		return retrieved, nil
+
+	case domain.PolicyGlobalOnly:
+		result.retrievalPolicy = "global_only"
+		return u.generalStrategy.Retrieve(ctx, retrieveInput, intent)
+
+	case domain.PolicyToolOnly:
+		result.retrievalPolicy = "tool_only"
+		result.generalGated = true
+		// Tool-only: return empty contexts; tool dispatch later supplies data.
+		return &RetrieveContextOutput{Contexts: nil}, nil
+
+	case domain.PolicyNoRetrieval:
+		result.retrievalPolicy = "no_retrieval"
+		return &RetrieveContextOutput{Contexts: nil}, nil
+
+	default:
+		return strategy.Retrieve(ctx, retrieveInput, intent)
+	}
+}
+
+// applyLegacySubIntentPolicy preserves the existing sub-intent-driven retrieval
+// policy for backward compatibility when no ConversationPlanner is configured.
+// Returns the (potentially merged) retrieved output.
+func (u *answerWithRAGUsecase) applyLegacySubIntentPolicy(
+	ctx context.Context,
+	intent QueryIntent,
+	input AnswerWithRAGInput,
+	retrieved *RetrieveContextOutput,
+	result *promptBuildResult,
+) *RetrieveContextOutput {
+	switch intent.SubIntentType {
+	case SubIntentDetail, SubIntentEvidence, SubIntentSummaryRefresh:
+		u.logger.Info("retrieval_policy_article_only",
+			slog.String("sub_intent", string(intent.SubIntentType)),
+			slog.String("article_id", intent.ArticleID))
+		result.retrievalPolicy = "article_only"
+		result.generalGated = true
+
+	case SubIntentRelatedArticles:
+		u.logger.Info("retrieval_policy_tool_delegated",
+			slog.String("sub_intent", string(intent.SubIntentType)),
+			slog.String("article_id", intent.ArticleID))
+		result.retrievalPolicy = "tool_delegated"
+		result.generalGated = true
+
+	case SubIntentCritique, SubIntentOpinion, SubIntentImplication:
+		result.retrievalPolicy = "article_first_analytical"
+		result.generalGated = true
+		if u.qualityAssessor != nil {
+			verdict := u.qualityAssessor.Assess(retrieved.Contexts)
+			if verdict == QualityMarginal || verdict == QualityInsufficient {
+				u.logger.Info("analytical_subintent_general_augmentation",
+					slog.String("sub_intent", string(intent.SubIntentType)),
+					slog.String("verdict", string(verdict)))
+				generalInput := RetrieveContextInput{
+					Query:               intent.UserQuestion,
+					ConversationHistory: input.ConversationHistory,
+				}
+				generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
+				if genErr == nil && generalResult != nil && len(generalResult.Contexts) > 0 {
+					before := len(retrieved.Contexts)
+					retrieved = mergeContexts(retrieved, generalResult)
+					u.logger.Info("analytical_general_merge",
+						slog.Int("article_chunks", before),
+						slog.Int("general_chunks", len(generalResult.Contexts)),
+						slog.Int("merged_total", len(retrieved.Contexts)))
+					result.strategyUsed = "article_scoped+general_analytical"
+				}
+			}
+		}
+
+	default:
+		u.logger.Info("agentic_reretrieval_started",
+			slog.String("article_id", intent.ArticleID),
+			slog.String("query", intent.UserQuestion))
+		generalInput := RetrieveContextInput{
+			Query:               intent.UserQuestion,
+			ConversationHistory: input.ConversationHistory,
+		}
+		generalResult, genErr := u.generalStrategy.Retrieve(ctx, generalInput, intent)
+		if genErr != nil {
+			u.logger.Warn("agentic_reretrieval_failed",
+				slog.String("article_id", intent.ArticleID),
+				slog.String("error", genErr.Error()))
+		}
+		if genErr == nil && generalResult != nil && len(generalResult.Contexts) > 0 {
+			before := len(retrieved.Contexts)
+			retrieved = mergeContexts(retrieved, generalResult)
+			u.logger.Info("agentic_reretrieval_completed",
+				slog.Int("article_chunks", before),
+				slog.Int("general_chunks", len(generalResult.Contexts)),
+				slog.Int("merged_total", len(retrieved.Contexts)))
+			result.strategyUsed = "article_scoped+general"
+		}
+	}
+	return retrieved
 }
 
 func (u *answerWithRAGUsecase) toPromptContexts(contexts []ContextItem) []PromptContext {

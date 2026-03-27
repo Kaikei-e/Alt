@@ -54,6 +54,9 @@ type AnswerDebug struct {
 	TotalAgentStepsMs     int64       // Phase 5: sum of all step durations
 	RetrievalPolicy       string      // article_only, tool_delegated, article+general_analytical, article+general
 	GeneralRetrievalGated bool        // true when general re-retrieval was suppressed by subintent
+	PlannerOperation      string      // Conversation planner operation (detail, evidence, clarify, etc.)
+	PlannerConfidence     float64     // Planner confidence in the chosen operation
+	NeedsClarification    bool        // true when planner determined clarification is needed
 }
 
 // AnswerWithRAGUsecase defines the contract for generating grounded answers.
@@ -65,14 +68,15 @@ type AnswerWithRAGUsecase interface {
 type StreamEventKind string
 
 const (
-	StreamEventKindMeta      StreamEventKind = "meta"
-	StreamEventKindDelta     StreamEventKind = "delta"
-	StreamEventKindThinking  StreamEventKind = "thinking"
-	StreamEventKindProgress  StreamEventKind = "progress"
-	StreamEventKindHeartbeat StreamEventKind = "heartbeat"
-	StreamEventKindDone      StreamEventKind = "done"
-	StreamEventKindFallback  StreamEventKind = "fallback"
-	StreamEventKindError     StreamEventKind = "error"
+	StreamEventKindMeta          StreamEventKind = "meta"
+	StreamEventKindDelta         StreamEventKind = "delta"
+	StreamEventKindThinking      StreamEventKind = "thinking"
+	StreamEventKindProgress      StreamEventKind = "progress"
+	StreamEventKindHeartbeat     StreamEventKind = "heartbeat"
+	StreamEventKindDone          StreamEventKind = "done"
+	StreamEventKindFallback      StreamEventKind = "fallback"
+	StreamEventKindError         StreamEventKind = "error"
+	StreamEventKindClarification StreamEventKind = "clarification"
 )
 
 type StreamEvent struct {
@@ -83,6 +87,13 @@ type StreamEvent struct {
 type StreamMeta struct {
 	Contexts []ContextItem
 	Debug    AnswerDebug
+}
+
+// StreamClarification is sent when the planner determines the query is too
+// ambiguous and needs user clarification before retrieval.
+type StreamClarification struct {
+	Message string   // Clarification question text
+	Options []string // Suggested options for the user
 }
 
 // FallbackCategory classifies why a fallback was triggered, aiding observability.
