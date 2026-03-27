@@ -113,7 +113,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		sovereignCli,
 		sovereignCli,
 		sovereignCli,
-	)
+	).WithUpdateCheckpointPort(sovereignCli)
 	sloUC := knowledge_slo_usecase.NewUsecase(sovereignCli)
 	auditUC := knowledge_audit_usecase.NewUsecase(sovereignCli, sovereignCli)
 

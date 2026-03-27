@@ -81,6 +81,18 @@ func (m *mockActivateVersionPort) ActivateVersion(_ context.Context, version int
 	return m.err
 }
 
+type mockUpdateCheckpointPort struct {
+	projectorName string
+	lastEventSeq  int64
+	err           error
+}
+
+func (m *mockUpdateCheckpointPort) UpdateProjectionCheckpoint(_ context.Context, projectorName string, lastSeq int64) error {
+	m.projectorName = projectorName
+	m.lastEventSeq = lastSeq
+	return m.err
+}
+
 // --- tests ---
 
 func TestStartReproject(t *testing.T) {
@@ -344,6 +356,52 @@ func TestSwapReproject(t *testing.T) {
 		err := uc.SwapReproject(context.Background(), runID)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot swap")
+	})
+
+	t.Run("resets checkpoint to reproject checkpoint on swap", func(t *testing.T) {
+		runID := uuid.New()
+		getPort := &mockGetReprojectRunPort{
+			run: &domain.ReprojectRun{
+				ReprojectRunID:    runID,
+				Status:            domain.ReprojectStatusSwappable,
+				ToVersion:         "v3",
+				CheckpointPayload: json.RawMessage(`{"last_event_seq": 1116081}`),
+			},
+		}
+		updatePort := &mockUpdateReprojectRunPort{}
+		activatePort := &mockActivateVersionPort{}
+		checkpointPort := &mockUpdateCheckpointPort{}
+		uc := NewUsecase(nil, getPort, updatePort, nil, nil, nil, activatePort)
+		uc.updateCheckpointPort = checkpointPort
+
+		err := uc.SwapReproject(context.Background(), runID)
+		require.NoError(t, err)
+		assert.Equal(t, 3, activatePort.activated)
+		assert.Equal(t, "knowledge-home-projector", checkpointPort.projectorName)
+		assert.Equal(t, int64(1116081), checkpointPort.lastEventSeq)
+	})
+
+	t.Run("succeeds swap even with empty checkpoint payload", func(t *testing.T) {
+		runID := uuid.New()
+		getPort := &mockGetReprojectRunPort{
+			run: &domain.ReprojectRun{
+				ReprojectRunID:    runID,
+				Status:            domain.ReprojectStatusSwappable,
+				ToVersion:         "v2",
+				CheckpointPayload: nil,
+			},
+		}
+		updatePort := &mockUpdateReprojectRunPort{}
+		activatePort := &mockActivateVersionPort{}
+		checkpointPort := &mockUpdateCheckpointPort{}
+		uc := NewUsecase(nil, getPort, updatePort, nil, nil, nil, activatePort)
+		uc.updateCheckpointPort = checkpointPort
+
+		err := uc.SwapReproject(context.Background(), runID)
+		require.NoError(t, err)
+		assert.Equal(t, 2, activatePort.activated)
+		// No checkpoint reset when payload is nil
+		assert.Equal(t, int64(0), checkpointPort.lastEventSeq)
 	})
 }
 
