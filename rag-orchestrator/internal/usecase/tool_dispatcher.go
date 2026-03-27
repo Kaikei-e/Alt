@@ -63,7 +63,50 @@ func (d *ToolDispatcher) Dispatch(ctx context.Context, intent QueryIntent, query
 // DispatchForPlan selects and executes tools based on planner output.
 // Falls back to intent-based selection when the planner policy is not tool_only.
 func (d *ToolDispatcher) DispatchForPlan(ctx context.Context, plan *domain.PlannerOutput, intent QueryIntent, query string) []*domain.ToolResult {
-	panic("not implemented")
+	toolNames := d.selectToolsForPlan(plan, intent)
+	if len(toolNames) == 0 {
+		return nil
+	}
+
+	var results []*domain.ToolResult
+	for _, name := range toolNames {
+		tool, ok := d.tools[name]
+		if !ok {
+			continue
+		}
+
+		toolCtx, cancel := context.WithTimeout(ctx, toolTimeout)
+		result, err := tool.Execute(toolCtx, map[string]string{"query": query})
+		cancel()
+
+		if err != nil {
+			d.logger.Warn("tool_execution_failed",
+				slog.String("tool", name),
+				slog.String("error", err.Error()))
+			continue
+		}
+
+		if result != nil && result.Success {
+			result.ToolName = name
+			d.logger.Info("tool_execution_success",
+				slog.String("tool", name),
+				slog.Int("data_length", len(result.Data)))
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (d *ToolDispatcher) selectToolsForPlan(plan *domain.PlannerOutput, intent QueryIntent) []string {
+	if plan.RetrievalPolicy == domain.PolicyToolOnly {
+		switch plan.Operation {
+		case domain.OpRelatedArticles:
+			return []string{"related_articles"}
+		}
+	}
+	// Fallback to existing intent-based selection
+	return d.selectTools(intent)
 }
 
 // selectTools returns tool names to execute based on intent type.
