@@ -1398,3 +1398,206 @@ class TestLIFOSchedulingMode:
         semaphore = HybridPrioritySemaphore(total_slots=2)
 
         assert semaphore._rt_scheduling_mode == "fifo"
+
+
+class TestSlotLeakAfterPreemption:
+    """Tests for slot leak after preemption (PM-2026-012 reproduction).
+
+    Reproduces the exact sequence from 2026-03-27 09:35-09:49 UTC logs:
+    preemption causes RT slot to migrate into BE pool; per-pool cap in
+    release() permanently loses one slot, starving subsequent RT requests.
+    """
+
+    @pytest.mark.asyncio
+    async def test_invariant_holds_after_preemption_release_chain(
+        self, hybrid_semaphore_module
+    ):
+        """Slot invariant: rt_available + be_available + acquired == total_slots.
+
+        Sequence (mirrors production logs):
+        1. RT#1 acquires RT slot
+        2. BE#1 acquires BE slot, registers as preemptable
+        3. RT#2 arrives → RT slot busy → preempts BE#1
+        4. BE#1 detects cancel, releases (was_high_priority=False)
+        5. RT#2 wakes from queue
+        6. RT#1 releases → wakes a BE waiter
+        7. RT#2 releases → wakes another BE waiter
+        8. Both BE finish, no more waiters
+        After step 8, rt_available + be_available must == total_slots.
+        """
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=1,
+            preemption_enabled=True,
+            guaranteed_be_ratio=0,  # disable to isolate the bug
+        )
+
+        # Step 1: RT#1 acquires RT slot
+        await sem.acquire(high_priority=True)
+        assert sem._rt_available == 0
+
+        # Step 2: BE#1 acquires BE slot
+        await sem.acquire(high_priority=False)
+        assert sem._be_available == 0
+
+        # Register BE#1 as preemptable
+        cancel_event = asyncio.Event()
+        sem.register_active_request("be-1", cancel_event, is_high_priority=False)
+
+        # Step 3: RT#2 arrives — both slots busy, triggers preemption
+        rt2_task = asyncio.create_task(sem.acquire(high_priority=True))
+        # Let the event loop process the preemption
+        await asyncio.sleep(0)
+
+        # BE#1 should have been signalled
+        assert cancel_event.is_set(), "BE#1 should be preempted"
+
+        # Step 4: BE#1 detects cancel, releases its slot
+        sem.unregister_active_request("be-1")
+        sem.release(was_high_priority=False)
+
+        # Step 5: RT#2 wakes from queue (may need multiple yields)
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert rt2_task.done(), "RT#2 should have been woken by BE#1 release"
+
+        # Queue two BE waiters so RT releases can transfer to them
+        be_waiter_1 = asyncio.create_task(sem.acquire(high_priority=False))
+        be_waiter_2 = asyncio.create_task(sem.acquire(high_priority=False))
+        for _ in range(3):
+            await asyncio.sleep(0)
+
+        # Step 6: RT#1 releases → should wake be_waiter_1
+        sem.release(was_high_priority=True)
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert be_waiter_1.done(), "BE waiter 1 should be woken by RT#1 release"
+
+        # Step 7: RT#2 releases → should wake be_waiter_2
+        sem.release(was_high_priority=True)
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert be_waiter_2.done(), "BE waiter 2 should be woken by RT#2 release"
+
+        # Step 8: Both BE finish, release with no waiters
+        sem.release(was_high_priority=False)
+        sem.release(was_high_priority=False)
+
+        # INVARIANT: total available must equal total_slots
+        total_available = sem._rt_available + sem._be_available
+        total_acquired = len(sem._acquired_slots)
+        assert total_available + total_acquired == 2, (
+            f"Slot leak detected: rt_available={sem._rt_available}, "
+            f"be_available={sem._be_available}, "
+            f"acquired={total_acquired}, "
+            f"expected total=2"
+        )
+        # Specifically: RT pool must have recovered its reserved slot
+        assert sem._rt_available == 1, (
+            f"RT slot permanently lost: rt_available={sem._rt_available}, "
+            f"expected 1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_rt_not_starved_when_gpu_idle(self, hybrid_semaphore_module):
+        """RT request must not wait indefinitely when no BE is active.
+
+        Reproduces the 10-minute idle GPU scenario:
+        After preemption chain with wake-ups, rt_available=0, be_available=1.
+        A new RT request arrives but cannot acquire because rt_available=0
+        and rt_reserved!=0 blocks BE-slot fallback. The RT starves until
+        a new BE request happens to arrive and release.
+        """
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=1,
+            preemption_enabled=True,
+            guaranteed_be_ratio=0,
+        )
+
+        # --- Reproduce the full preemption → wake chain → leak sequence ---
+
+        # RT#1 acquires RT slot, BE#1 acquires BE slot
+        await sem.acquire(high_priority=True)
+        await sem.acquire(high_priority=False)
+
+        cancel_event = asyncio.Event()
+        sem.register_active_request("be-1", cancel_event, is_high_priority=False)
+
+        # Queue TWO BE waiters so BOTH RT releases transfer to BE (not pool)
+        be_waiter_1 = asyncio.create_task(sem.acquire(high_priority=False))
+        be_waiter_2 = asyncio.create_task(sem.acquire(high_priority=False))
+        for _ in range(3):
+            await asyncio.sleep(0)
+
+        # RT#2 preempts BE#1
+        rt2_task = asyncio.create_task(sem.acquire(high_priority=True))
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert cancel_event.is_set()
+
+        # BE#1 releases → wakes RT#2
+        sem.unregister_active_request("be-1")
+        sem.release(was_high_priority=False)
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert rt2_task.done()
+
+        # RT#1 releases → wakes be_waiter_1 (slot migrates RT→BE)
+        sem.release(was_high_priority=True)
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert be_waiter_1.done()
+
+        # RT#2 releases → wakes be_waiter_2 (slot migrates RT→BE AGAIN)
+        sem.release(was_high_priority=True)
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert be_waiter_2.done()
+
+        # Both BE complete, release with no waiters
+        sem.release(was_high_priority=False)
+        sem.release(was_high_priority=False)
+
+        # --- Now GPU is idle, all slots should be available ---
+        rt3_task = asyncio.create_task(sem.acquire(high_priority=True))
+        for _ in range(3):
+            await asyncio.sleep(0)
+
+        assert rt3_task.done(), (
+            f"RT request should acquire immediately when GPU is idle. "
+            f"rt_available={sem._rt_available}, be_available={sem._be_available}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_slot_count_invariant_after_mixed_releases(
+        self, hybrid_semaphore_module
+    ):
+        """Available + acquired slots must always equal total_slots.
+
+        Tests that release() never drops a slot due to per-pool cap,
+        regardless of the acquire/release priority sequence.
+        """
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=2,
+            rt_reserved_slots=1,
+            guaranteed_be_ratio=0,
+        )
+
+        # Acquire both slots as RT (simulating preemption path)
+        await sem.acquire(high_priority=True)   # RT slot
+        await sem.acquire(high_priority=False)   # BE slot
+
+        # Release both as the opposite priority
+        sem.release(was_high_priority=False)  # was RT, releasing as BE
+        sem.release(was_high_priority=True)   # was BE, releasing as RT
+
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == 2, (
+            f"Slot count mismatch: rt={sem._rt_available}, "
+            f"be={sem._be_available}, acquired={len(sem._acquired_slots)}, "
+            f"total={total}, expected=2"
+        )
