@@ -1192,3 +1192,93 @@ func TestPromptBuilder_GeneralIntent_NoExtraInstruction(t *testing.T) {
 	assert.NotContains(t, messages[0].Content, "両者を公平に比較")
 	assert.NotContains(t, messages[0].Content, "根拠と判定を構造化")
 }
+
+// --- Retrieval policy gating tests (Augur RAG remediation) ---
+
+func TestExecute_ArticleScopedFollowUp_DetailSubIntent_SkipsGeneralReRetrieval(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithStrategy(usecase.IntentArticleScoped, articleStrategy),
+		usecase.WithQueryClassifier(usecase.NewQueryClassifier(nil, 0)),
+	)
+
+	chunkID := uuid.New()
+	articleStrategy.
+		On("Retrieve", mock.Anything, mock.Anything, mock.Anything).
+		Return(&usecase.RetrieveContextOutput{
+			Contexts: []usecase.ContextItem{
+				{ChunkID: chunkID, ChunkText: "記憶の定着メカニズムの詳細", Title: "暗記のコツ", Score: 1.0, DocumentVersion: 1},
+			},
+		}, nil)
+
+	llmResponse := `{"answer":"技術的な詳細の回答","citations":[{"chunk_id":"1","reason":"r"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
+
+	_, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
+		Query: "技術的な詳細をもっと教えて",
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: "Regarding the article: 暗記のコツ [articleId: art-memory]\n\nQuestion:\n概要を教えて"},
+			{Role: "assistant", Content: "記事は暗記のコツについてです。"},
+		},
+	})
+	assert.NoError(t, err)
+
+	// General strategy (mockRetrieve) must NOT be called — detail subintent stays article-only
+	mockRetrieve.AssertNotCalled(t, "Execute", mock.Anything, mock.Anything)
+}
+
+func TestExecute_ArticleScopedFollowUp_NoneSubIntent_KeepsGeneralReRetrieval(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithStrategy(usecase.IntentArticleScoped, articleStrategy),
+		usecase.WithQueryClassifier(usecase.NewQueryClassifier(nil, 0)),
+	)
+
+	chunkID1 := uuid.New()
+	chunkID2 := uuid.New()
+
+	articleStrategy.
+		On("Retrieve", mock.Anything, mock.Anything, mock.Anything).
+		Return(&usecase.RetrieveContextOutput{
+			Contexts: []usecase.ContextItem{
+				{ChunkID: chunkID1, ChunkText: "Article chunk", Title: "Test Article", Score: 1.0, DocumentVersion: 1},
+			},
+		}, nil)
+
+	// General strategy SHOULD be called for SubIntentNone (backward compat)
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: chunkID2, ChunkText: "General chunk", Title: "General Article", Score: 0.8, DocumentVersion: 1},
+		},
+	}, nil)
+
+	llmResponse := `{"answer":"回答","citations":[{"chunk_id":"1","reason":"r"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
+
+	_, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
+		// This query matches SubIntentNone — no keywords for detail/related/evidence/etc.
+		Query: "もっと教えて",
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: "Regarding the article: Test [articleId: art-test]\n\nQuestion:\n概要を教えて"},
+			{Role: "assistant", Content: "テスト記事です。"},
+		},
+	})
+	assert.NoError(t, err)
+
+	// General strategy SHOULD be called for backward compatibility
+	mockRetrieve.AssertCalled(t, "Execute", mock.Anything, mock.Anything)
+}

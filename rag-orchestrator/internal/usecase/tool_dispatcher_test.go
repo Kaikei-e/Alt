@@ -76,3 +76,40 @@ func TestDispatch_ComparisonIntent_SelectsTagSearchTool(t *testing.T) {
 		t.Fatal("expected at least 1 tool result for comparison intent")
 	}
 }
+
+func TestSelectTools_ArticleScopedRelatedArticles_ReturnsRelatedArticlesTool(t *testing.T) {
+	relatedTool := &mockTool{name: "related_articles", result: &domain.ToolResult{Data: "Related articles:\n- Article A\n", Success: true}}
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	dispatcher := NewToolDispatcher(map[string]domain.Tool{"related_articles": relatedTool}, logger)
+
+	intent := QueryIntent{
+		IntentType:    IntentArticleScoped,
+		SubIntentType: SubIntentRelatedArticles,
+		UserQuestion:  "関連する記事はある？",
+	}
+	results := dispatcher.Dispatch(context.Background(), intent, "関連する記事はある？")
+
+	if len(results) == 0 {
+		t.Fatal("expected related_articles tool result for article-scoped + related_articles sub-intent")
+	}
+	if !results[0].Success {
+		t.Error("expected tool result to be successful")
+	}
+}
+
+func TestSelectTools_ArticleScopedDetail_ReturnsNil(t *testing.T) {
+	relatedTool := &mockTool{name: "related_articles", result: &domain.ToolResult{Data: "data", Success: true}}
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	dispatcher := NewToolDispatcher(map[string]domain.Tool{"related_articles": relatedTool}, logger)
+
+	intent := QueryIntent{
+		IntentType:    IntentArticleScoped,
+		SubIntentType: SubIntentDetail,
+		UserQuestion:  "技術的な詳細をもっと教えて",
+	}
+	results := dispatcher.Dispatch(context.Background(), intent, "技術的な詳細をもっと教えて")
+
+	if len(results) != 0 {
+		t.Errorf("expected 0 tool results for article-scoped + detail sub-intent, got %d", len(results))
+	}
+}
