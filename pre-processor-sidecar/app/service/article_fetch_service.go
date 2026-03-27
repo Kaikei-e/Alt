@@ -39,6 +39,7 @@ type SyncStateRepository interface {
 type ArticleFetchResult struct {
 	NewArticles       int           `json:"new_articles"`
 	TotalProcessed    int           `json:"total_processed"`
+	FilteredNonTier1  int           `json:"filtered_non_tier1"`
 	ContinuationToken string        `json:"continuation_token,omitempty"`
 	SyncTime          time.Time     `json:"sync_time"`
 	Duration          time.Duration `json:"duration"`
@@ -195,8 +196,12 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 			"error_message", resolutionError.ErrorMessage)
 	}
 
-	// Step 5: Process articles in batches
-	processed, skipped, err := s.ProcessArticleBatch(ctx, articles)
+	// Step 5: Filter Tier1 articles only
+	filterResult := FilterTier1Articles(articles, s.logger)
+	tier1Articles := filterResult.Tier1
+
+	// Step 6: Process only Tier1 articles in batches
+	processed, skipped, err := s.ProcessArticleBatch(ctx, tier1Articles)
 	if err != nil {
 		s.logger.Error("Failed to process article batch", "error", err)
 		return nil, fmt.Errorf("failed to process article batch: %w", err)
@@ -204,6 +209,7 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 
 	result.NewArticles = processed
 	result.TotalProcessed = len(articles)
+	result.FilteredNonTier1 = filterResult.Filtered
 	result.ContinuationToken = nextToken
 
 	// Update or create sync state with new continuation token
@@ -220,6 +226,7 @@ func (s *ArticleFetchService) FetchArticles(ctx context.Context, streamID string
 		"duration", result.Duration,
 		"new_articles", result.NewArticles,
 		"total_processed", result.TotalProcessed,
+		"filtered_non_tier1", result.FilteredNonTier1,
 		"skipped", skipped,
 		"continuation_token", result.ContinuationToken)
 
