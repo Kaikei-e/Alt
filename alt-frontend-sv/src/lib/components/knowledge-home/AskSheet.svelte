@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from "svelte";
-	import { FileText, Loader2, RotateCcw } from "@lucide/svelte";
+	import { FileText, Loader2, RotateCcw, Shuffle } from "@lucide/svelte";
 	import * as Sheet from "$lib/components/ui/sheet";
 	import ChatMessage from "$lib/components/desktop/augur/ChatMessage.svelte";
 	import ChatInput from "$lib/components/desktop/augur/ChatInput.svelte";
@@ -34,8 +34,9 @@
 	let phase = $state<"ask" | "chat">("ask");
 	let question = $state("");
 	let chatContainer: HTMLDivElement | undefined = $state();
+	let shuffleCount = $state(0);
 
-	const suggestions = $derived(pickSuggestions(scopeTags));
+	const suggestions = $derived(pickSuggestions(scopeTags, shuffleCount));
 	const sheetSide = $derived<"right" | "bottom">(isDesktop ? "right" : "bottom");
 
 	// Reset state when sheet closes
@@ -43,6 +44,7 @@
 		if (!open) {
 			phase = "ask";
 			question = "";
+			shuffleCount = 0;
 			pane.reset();
 		}
 	});
@@ -167,18 +169,30 @@
 						}}
 					/>
 
-					<div class="flex flex-wrap gap-2">
-						{#each suggestions as suggestion}
-							<button
-								type="button"
-								class="rounded-full border border-[var(--surface-border)] px-3 py-1 text-xs text-[var(--text-secondary)] hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
-								onclick={() => {
-									question = suggestion;
-								}}
-							>
-								{suggestion}
-							</button>
-						{/each}
+					<div class="flex items-center gap-2">
+						{#key shuffleCount}
+							<div class="flex flex-wrap gap-2">
+								{#each suggestions as suggestion}
+									<button
+										type="button"
+										class="rounded-full border border-[var(--surface-border)] px-3 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+										onclick={() => {
+											question = suggestion;
+										}}
+									>
+										{suggestion}
+									</button>
+								{/each}
+							</div>
+						{/key}
+						<button
+							type="button"
+							class="flex-shrink-0 rounded-full p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--accent-primary)]"
+							onclick={() => shuffleCount++}
+							title="Shuffle suggestions"
+						>
+							<Shuffle class="h-3.5 w-3.5" />
+						</button>
 					</div>
 
 					<div class="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] p-3 text-xs text-[var(--text-secondary)]">

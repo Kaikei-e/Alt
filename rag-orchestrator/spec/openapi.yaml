@@ -273,6 +273,9 @@ components:
         intent_type:
           type: string
           description: "Classified query intent (general, article_scoped, comparison, temporal, topic_deep_dive, fact_check)"
+        sub_intent_type:
+          type: string
+          description: "Analytical sub-intent for article-scoped queries (critique, opinion, implication)"
         retrieval_quality:
           type: string
           description: "Retrieval quality verdict (good, marginal, insufficient)"

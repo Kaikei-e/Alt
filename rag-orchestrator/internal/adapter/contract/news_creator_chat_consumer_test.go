@@ -30,9 +30,10 @@ type chatMessage struct {
 }
 
 type chatRequest struct {
-	Model    string        `json:"model"`
-	Messages []chatMessage `json:"messages"`
-	Stream   bool          `json:"stream"`
+	Model    string         `json:"model"`
+	Messages []chatMessage  `json:"messages"`
+	Stream   bool           `json:"stream"`
+	Options  map[string]any `json:"options,omitempty"`
 }
 
 type chatStreamChunk struct {
@@ -74,6 +75,7 @@ func TestChatStreamContract(t *testing.T) {
 				"model":    matchers.Like("gemma3:4b-it-qat"),
 				"messages": matchers.Like([]chatMessage{{Role: "user", Content: "test"}}),
 				"stream":   matchers.Like(true),
+				"options":  matchers.Like(map[string]any{"num_predict": 2048}),
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -89,6 +91,7 @@ func TestChatStreamContract(t *testing.T) {
 				Model:    "gemma3:4b-it-qat",
 				Messages: []chatMessage{{Role: "user", Content: "test"}},
 				Stream:   true,
+				Options:  map[string]any{"num_predict": 2048},
 			}
 			jsonData, _ := json.Marshal(payload)
 
@@ -127,6 +130,7 @@ func TestChatNonStreamContract(t *testing.T) {
 				"model":    matchers.Like("gemma3:4b-it-qat"),
 				"messages": matchers.Like([]chatMessage{{Role: "user", Content: "test"}}),
 				"stream":   matchers.Like(false),
+				"options":  matchers.Like(map[string]any{"num_predict": 2048}),
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -148,6 +152,7 @@ func TestChatNonStreamContract(t *testing.T) {
 				Model:    "gemma3:4b-it-qat",
 				Messages: []chatMessage{{Role: "user", Content: "test"}},
 				Stream:   false,
+				Options:  map[string]any{"num_predict": 2048},
 			}
 			jsonData, _ := json.Marshal(payload)
 

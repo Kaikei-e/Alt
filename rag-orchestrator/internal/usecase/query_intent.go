@@ -19,12 +19,24 @@ const (
 	IntentFactCheck     IntentType = "fact_check"
 )
 
+// SubIntentType classifies the analytical intent within an article-scoped query.
+// Separate type from IntentType to prevent accidental use as strategy map key.
+type SubIntentType string
+
+const (
+	SubIntentNone        SubIntentType = ""
+	SubIntentCritique    SubIntentType = "critique"    // 反論・批判・弱点
+	SubIntentOpinion     SubIntentType = "opinion"     // 評価・意見
+	SubIntentImplication SubIntentType = "implication"  // 影響・意味合い
+)
+
 // ErrArticleNotIndexed indicates that the referenced article is not in the RAG index.
 var ErrArticleNotIndexed = errors.New("article not indexed in RAG system")
 
 // QueryIntent holds the parsed intent from a raw user query.
 type QueryIntent struct {
 	IntentType    IntentType
+	SubIntentType SubIntentType // Analytical sub-intent for article-scoped queries
 	ArticleID     string
 	ArticleTitle  string
 	UserQuestion  string // Metadata-stripped question body

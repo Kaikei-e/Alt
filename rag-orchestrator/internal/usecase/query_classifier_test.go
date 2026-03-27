@@ -165,6 +165,185 @@ func TestClassify_ArticleScoped_UsesExistingParser(t *testing.T) {
 	}
 }
 
+// --- SubIntent classification tests ---
+
+func TestClassifySubIntent_CritiqueKeywords_JP(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"反論はある？"},
+		{"この記事の弱点は？"},
+		{"批判的な意見は？"},
+		{"問題点を教えて"},
+		{"リスクは何？"},
+		{"デメリットはある？"},
+		{"懸念点は？"},
+		{"この手法の課題は？"},
+		{"限界はある？"},
+		{"欠点を挙げて"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentCritique {
+				t.Errorf("expected SubIntentCritique for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_CritiqueKeywords_EN(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"are there counterarguments?"},
+		{"what are the weaknesses?"},
+		{"any limitations?"},
+		{"what are the risks?"},
+		{"what are the drawbacks?"},
+		{"any concerns?"},
+		{"criticism of this approach?"},
+		{"flaw in this argument?"},
+		{"downside of this approach?"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentCritique {
+				t.Errorf("expected SubIntentCritique for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_OpinionKeywords_JP(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"どう思う？"},
+		{"この記事の評価は？"},
+		{"意見を教えて"},
+		{"見解を聞かせて"},
+		{"感想は？"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentOpinion {
+				t.Errorf("expected SubIntentOpinion for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_OpinionKeywords_EN(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"what do you think about this?"},
+		{"your opinion on this approach?"},
+		{"assessment of this technology?"},
+		{"evaluation of the claims?"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentOpinion {
+				t.Errorf("expected SubIntentOpinion for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_ImplicationKeywords_JP(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"影響はある？"},
+		{"どういう意味？"},
+		{"今後どうなる？"},
+		{"将来性は？"},
+		{"結果はどうなる？"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentImplication {
+				t.Errorf("expected SubIntentImplication for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_ImplicationKeywords_EN(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"what are the implications?"},
+		{"what does this mean for the industry?"},
+		{"what is the impact?"},
+		{"what are the consequences?"},
+		{"going forward, what changes?"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentImplication {
+				t.Errorf("expected SubIntentImplication for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_NoMatch_ReturnsNone(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"この記事の要点は？"},
+		{"要約して"},
+		{"何が書いてある？"},
+		{"3行でまとめて"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentNone {
+				t.Errorf("expected SubIntentNone for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_PriorityConflicts(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	// Critique > Opinion > Implication
+	tests := []struct {
+		query    string
+		expected SubIntentType
+		reason   string
+	}{
+		{"どういう意味？問題点は？", SubIntentCritique, "Critique wins over Implication"},
+		{"影響とリスクは？", SubIntentCritique, "リスク triggers Critique before 影響"},
+		{"評価して。弱点はある？", SubIntentCritique, "弱点 triggers Critique before 評価"},
+		{"影響は？意見を教えて", SubIntentOpinion, "Opinion wins over Implication"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != tt.expected {
+				t.Errorf("%s: expected %s for %q, got %s", tt.reason, tt.expected, tt.query, subIntent)
+			}
+		})
+	}
+}
+
 func TestClassify_General_FallsThrough(t *testing.T) {
 	c := NewQueryClassifier(nil, 0)
 	tests := []struct {

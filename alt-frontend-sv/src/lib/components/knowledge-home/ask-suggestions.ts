@@ -4,6 +4,10 @@
  * 7 categories aligned with Agentic RAG intent types (ADR-568).
  * Questions are selected based on article tags to surface the most
  * relevant prompts per NNGroup best practices.
+ *
+ * Uses a seeded RNG so that:
+ * - Different seeds produce different suggestions (shuffle)
+ * - Same seed produces identical results (deterministic tests)
  */
 
 export const suggestionPool: Record<string, string[]> = {
@@ -68,16 +72,38 @@ const tagCategoryWeights: Record<string, string[]> = {
 const allCategories = Object.keys(suggestionPool);
 
 /**
+ * Simple seeded PRNG (mulberry32).
+ * Returns a function that produces deterministic floats in [0, 1).
+ */
+function createSeededRng(seed: number): () => number {
+	let s = seed | 0;
+	return () => {
+		s = (s + 0x6d2b79f5) | 0;
+		let t = Math.imul(s ^ (s >>> 15), 1 | s);
+		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
+/**
  * Pick 3 context-aware question suggestions based on article tags.
  *
+ * @param tags - Article tags for category weighting
+ * @param seed - RNG seed. Different seeds produce different suggestions.
+ *               Used by $derived to trigger re-evaluation on shuffle.
+ *
  * 1. Resolve tag → preferred categories (weighted)
- * 2. Select 3 distinct categories (preferred ones first, then random fill)
- * 3. Pick 1 random question per category
+ * 2. Select 3 distinct categories (preferred ones first, then seeded-random fill)
+ * 3. Pick 1 seeded-random question per category
  */
-export function pickSuggestions(tags: string[] | undefined): string[] {
+export function pickSuggestions(
+	tags: string[] | undefined,
+	seed = 0,
+): string[] {
+	const rng = createSeededRng(seed);
 	const preferred = resolvePreferredCategories(tags);
-	const selected = selectCategories(preferred, 3);
-	return selected.map((cat) => pickRandom(suggestionPool[cat]));
+	const selected = selectCategories(preferred, 3, rng);
+	return selected.map((cat) => pickWithRng(suggestionPool[cat], rng));
 }
 
 function resolvePreferredCategories(tags: string[] | undefined): string[] {
@@ -102,7 +128,11 @@ function resolvePreferredCategories(tags: string[] | undefined): string[] {
 	return result;
 }
 
-function selectCategories(preferred: string[], count: number): string[] {
+function selectCategories(
+	preferred: string[],
+	count: number,
+	rng: () => number,
+): string[] {
 	const selected: string[] = [];
 	const used = new Set<string>();
 
@@ -115,10 +145,10 @@ function selectCategories(preferred: string[], count: number): string[] {
 		}
 	}
 
-	// Fill remaining with random categories
+	// Fill remaining with seeded-random categories
 	if (selected.length < count) {
 		const remaining = allCategories.filter((c) => !used.has(c));
-		shuffle(remaining);
+		shuffleWithRng(remaining, rng);
 		for (const cat of remaining) {
 			if (selected.length >= count) break;
 			selected.push(cat);
@@ -128,13 +158,13 @@ function selectCategories(preferred: string[], count: number): string[] {
 	return selected;
 }
 
-function pickRandom<T>(arr: T[]): T {
-	return arr[Math.floor(Math.random() * arr.length)];
+function pickWithRng<T>(arr: T[], rng: () => number): T {
+	return arr[Math.floor(rng() * arr.length)];
 }
 
-function shuffle<T>(arr: T[]): void {
+function shuffleWithRng<T>(arr: T[], rng: () => number): void {
 	for (let i = arr.length - 1; i > 0; i--) {
-		const j = Math.floor(Math.random() * (i + 1));
+		const j = Math.floor(rng() * (i + 1));
 		[arr[i], arr[j]] = [arr[j], arr[i]];
 	}
 }

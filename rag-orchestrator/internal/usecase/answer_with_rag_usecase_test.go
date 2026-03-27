@@ -790,6 +790,74 @@ func TestExecute_ArticleScopedFollowUp_InheritsScopeFromHistory(t *testing.T) {
 	assert.Equal(t, "article_scoped+general", output.Debug.StrategyUsed)
 }
 
+func TestExecute_ArticleScopedFollowUp_FromHistory_ClassifiesCritiqueAndPreservesDebug(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
+	classifier := usecase.NewQueryClassifier(nil, 0)
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithStrategy(usecase.IntentArticleScoped, articleStrategy),
+		usecase.WithQueryClassifier(classifier),
+	)
+
+	chunkID := uuid.New()
+	articleStrategy.
+		On("Retrieve", mock.Anything, mock.MatchedBy(func(input usecase.RetrieveContextInput) bool {
+			return input.Query == "反論はある？"
+		}), mock.MatchedBy(func(intent usecase.QueryIntent) bool {
+			return intent.IntentType == usecase.IntentArticleScoped &&
+				intent.SubIntentType == usecase.SubIntentCritique &&
+				intent.ArticleID == "art-critique" &&
+				intent.UserQuestion == "反論はある？"
+		})).
+		Return(&usecase.RetrieveContextOutput{
+			Contexts: []usecase.ContextItem{
+				{
+					ChunkID:         chunkID,
+					ChunkText:       "Article claim and evidence",
+					Title:           "Test Article",
+					Score:           1.0,
+					DocumentVersion: 1,
+				},
+			},
+		}, nil)
+
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: uuid.New(), ChunkText: "Related global context", Title: "Related", Score: 0.8, DocumentVersion: 1},
+		},
+	}, nil)
+
+	llmResponse := `{"answer":"批判的な回答","citations":[{"chunk_id":"1","reason":"relevant"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
+		if len(msgs) < 3 {
+			return false
+		}
+		lastMsg := msgs[len(msgs)-1]
+		return lastMsg.Role == "user" &&
+			contains(lastMsg.Content, "反論はある？") &&
+			contains(lastMsg.Content, "弱点") &&
+			contains(lastMsg.Content, "反証")
+	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
+		Query: "反論はある？",
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: "Regarding the article: Test Article [articleId: art-critique]\n\nQuestion:\n要点は？"},
+			{Role: "assistant", Content: "記事の要点は..."},
+		},
+	})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Equal(t, "article_scoped+general", output.Debug.StrategyUsed)
+	assert.Equal(t, "critique", output.Debug.SubIntentType)
+}
+
 func TestExecute_ArticleScopedFollowUp_ReRetrievesFromGlobalIndex(t *testing.T) {
 	ctx := context.Background()
 	mockRetrieve := new(mockRetrieveContextUsecase)

@@ -234,6 +234,7 @@ func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 		PromptVersion:    &output.Debug.PromptVersion,
 		StrategyUsed:     &output.Debug.StrategyUsed,
 		IntentType:       ptrIfNotEmpty(output.Debug.IntentType),
+		SubIntentType:    ptrIfNotEmpty(output.Debug.SubIntentType),
 		RetrievalQuality: ptrIfNotEmpty(output.Debug.RetrievalQuality),
 		RetryCount:       &output.Debug.RetryCount,
 		ToolsUsed:        ptrSliceIfNotEmpty(output.Debug.ToolsUsed),

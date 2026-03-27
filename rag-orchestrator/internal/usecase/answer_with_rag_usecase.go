@@ -330,6 +330,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 			ExpandedQueries:  promptData.expandedQueries,
 			StrategyUsed:     promptData.strategyUsed,
 			IntentType:       string(promptData.intentType),
+			SubIntentType:    string(promptData.subIntentType),
 			RetrievalQuality: string(promptData.retrievalQuality),
 			RetryCount:       promptData.retryCount,
 			ToolsUsed:        promptData.toolsUsed,
@@ -432,6 +433,7 @@ type promptBuildResult struct {
 	expandedQueries  []string
 	strategyUsed     string
 	intentType       IntentType
+	subIntentType    SubIntentType
 	toolsUsed        []string
 	articleContext   *ArticleContext
 	retrievalQuality QualityVerdict
@@ -456,20 +458,28 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	// Parse intent from raw query
 	intent := ResolveQueryIntent(input.Query, input.ConversationHistory)
 
-	// Smart classification: if not article-scoped, use classifier for richer intent
-	if intent.IntentType != IntentArticleScoped && u.queryClassifier != nil {
-		classified := u.queryClassifier.Classify(ctx, intent.UserQuestion)
-		if classified != IntentGeneral {
-			intent.IntentType = classified
+	// Smart classification
+	if u.queryClassifier != nil {
+		if intent.IntentType == IntentArticleScoped {
+			// Sub-classify the actual question within article scope
+			intent.SubIntentType = u.queryClassifier.ClassifySubIntent(intent.UserQuestion)
+		} else {
+			// Non-article-scoped: use full classifier for richer intent
+			classified := u.queryClassifier.Classify(ctx, intent.UserQuestion)
+			if classified != IntentGeneral {
+				intent.IntentType = classified
+			}
 		}
 	}
 
 	strategy := u.selectStrategy(intent.IntentType)
 	result.strategyUsed = strategy.Name()
 	result.intentType = intent.IntentType
+	result.subIntentType = intent.SubIntentType
 
 	u.logger.Info("query_intent_parsed",
 		slog.String("intent_type", string(intent.IntentType)),
+		slog.String("sub_intent_type", string(intent.SubIntentType)),
 		slog.String("article_id", intent.ArticleID),
 		slog.String("strategy", strategy.Name()))
 
@@ -669,6 +679,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		ConversationHistory: input.ConversationHistory,
 		ArticleContext:      artCtx,
 		IntentType:          intent.IntentType,
+		SubIntentType:       intent.SubIntentType,
 		SupplementaryInfo:   supplementary,
 	}
 

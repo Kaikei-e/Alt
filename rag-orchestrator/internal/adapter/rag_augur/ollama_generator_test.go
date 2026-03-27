@@ -16,20 +16,16 @@ func TestBuildOptions_GemmaModel(t *testing.T) {
 	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-4b-rag", 100, testLogger)
 	opts := gen.buildOptions(2048)
 
-	if opts["temperature"] != 0.7 {
-		t.Fatalf("expected temperature 0.7, got %v", opts["temperature"])
+	// Gemma: sampling params delegated to news-creator proxy baseline (ADR-579).
+	// Only num_predict should be set by rag-orchestrator.
+	if _, ok := opts["temperature"]; ok {
+		t.Fatal("Gemma should not send temperature (delegated to proxy)")
 	}
-	if opts["top_p"] != 0.85 {
-		t.Fatalf("expected top_p 0.85, got %v", opts["top_p"])
+	if _, ok := opts["top_p"]; ok {
+		t.Fatal("Gemma should not send top_p (delegated to proxy)")
 	}
-	if opts["top_k"] != 40 {
-		t.Fatalf("expected top_k 40, got %v", opts["top_k"])
-	}
-	if opts["num_ctx"] != 8192 {
-		t.Fatalf("expected num_ctx 8192, got %v", opts["num_ctx"])
-	}
-	if opts["repeat_penalty"] != 1.15 {
-		t.Fatalf("expected repeat_penalty 1.15, got %v", opts["repeat_penalty"])
+	if _, ok := opts["num_ctx"]; ok {
+		t.Fatal("Gemma should not send num_ctx (delegated to proxy)")
 	}
 	if opts["num_predict"] != 2048 {
 		t.Fatalf("expected num_predict 2048, got %v", opts["num_predict"])

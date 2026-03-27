@@ -28,6 +28,7 @@ type PromptInput struct {
 	ConversationHistory []domain.Message // Recent chat turns for multi-turn context
 	ArticleContext      *ArticleContext  // Set when query targets a specific article
 	IntentType          IntentType       // Classified query intent (Phase 2)
+	SubIntentType       SubIntentType    // Analytical sub-intent for article-scoped queries
 	SupplementaryInfo   []string         // Tool results injected as supplementary context (Phase 3)
 }
 
@@ -67,7 +68,11 @@ func (b *XMLPromptBuilder) buildSingleTurn(input PromptInput) ([]domain.Message,
 	var sb strings.Builder
 
 	b.writeFullInstructions(&sb, input)
-	b.writeOutputFormat(&sb)
+	if input.SubIntentType != SubIntentNone {
+		b.writeAnalyticalOutputFormat(&sb)
+	} else {
+		b.writeOutputFormat(&sb)
+	}
 	b.writeArticleContext(&sb, input)
 	b.writeSupplementaryInfo(&sb, input)
 	b.writeContextChunks(&sb, input)
@@ -111,7 +116,19 @@ func (b *XMLPromptBuilder) buildMultiTurn(input PromptInput) ([]domain.Message, 
 	sb.WriteString("- **前回の回答で既に述べた内容を一切繰り返さないこと**\n")
 	sb.WriteString("- 概要の再説明は不要。質問に直接回答すること\n")
 	sb.WriteString("- 前回触れていない新しい事実・データ・視点のみを提供すること\n")
-	sb.WriteString("- 必ず日本語で回答すること\n\n")
+	sb.WriteString("- 必ず日本語で回答すること\n")
+
+	// Sub-intent specific follow-up guidance
+	switch input.SubIntentType {
+	case SubIntentCritique:
+		sb.WriteString("- **記事の要約を繰り返さず、主張の弱点・反証可能性・欠落前提に集中すること**\n")
+		sb.WriteString("- 反対の立場からの視点や、記事が見落としている点を指摘すること\n")
+	case SubIntentOpinion:
+		sb.WriteString("- **要約ではなく、分析的な評価と意見を述べること**\n")
+	case SubIntentImplication:
+		sb.WriteString("- **要約ではなく、影響・意味合い・今後の展望を分析すること**\n")
+	}
+	sb.WriteString("\n")
 
 	b.writeFollowUpOutputFormat(&sb)
 	b.writeArticleContext(&sb, input)
@@ -137,7 +154,11 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 	sb.WriteString("## 回答の品質基準\n")
 	sb.WriteString("- **必ず日本語で回答すること**。ソース記事が英語であっても、回答は日本語で記述すること\n")
 	sb.WriteString("- 結論を最初に述べ、その後で根拠と詳細を説明すること\n")
-	sb.WriteString("- 回答は800文字以上で、具体的な事実・データ・事例を含むこと\n")
+	if input.SubIntentType != SubIntentNone {
+		sb.WriteString("- 回答は具体的な事実・データ・事例を含むこと\n")
+	} else {
+		sb.WriteString("- 回答は800文字以上で、具体的な事実・データ・事例を含むこと\n")
+	}
 	sb.WriteString("- コンテキストの情報を最大限に活用し、複数のソースを統合すること\n")
 	sb.WriteString("- ソース引用は[番号]形式（例: [1], [2]）で必ず付与すること\n")
 	sb.WriteString("- 提供されたコンテキスト情報のみに基づいて回答すること（外部知識を使わない）\n")
@@ -179,6 +200,38 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 		sb.WriteString("- 出典を明示し、根拠と判定を構造化して回答してください\n")
 		sb.WriteString("- 「主張」「根拠」「判定」の3段構成で回答してください\n\n")
 	}
+
+	// Sub-intent-specific instructions for article-scoped queries
+	switch input.SubIntentType {
+	case SubIntentCritique:
+		sb.WriteString("## クエリ意図: 批判的分析\n")
+		sb.WriteString("ユーザーは記事の内容に対する反論・批判・弱点を知りたいと思っています。\n")
+		sb.WriteString("- 記事の主張を簡潔に述べた上で、それに対する反論・批判を提示すること\n")
+		sb.WriteString("- 考えられる弱点・限界・問題点を具体的に列挙すること\n")
+		sb.WriteString("- 反対の立場からの視点や、記事が見落としている点を指摘すること\n")
+		sb.WriteString("- **記事の内容を要約するのではなく、批判的に分析すること**\n\n")
+	case SubIntentOpinion:
+		sb.WriteString("## クエリ意図: 評価・意見\n")
+		sb.WriteString("ユーザーは記事の内容に対する評価や分析的な意見を求めています。\n")
+		sb.WriteString("- コンテキストの情報に基づいて、分析的な評価を提示すること\n")
+		sb.WriteString("- 長所と短所の両面から評価すること\n")
+		sb.WriteString("- **記事の内容を要約するのではなく、分析・評価を行うこと**\n\n")
+	case SubIntentImplication:
+		sb.WriteString("## クエリ意図: 影響・意味合い\n")
+		sb.WriteString("ユーザーは記事の内容がもたらす影響や意味合いを知りたいと思っています。\n")
+		sb.WriteString("- 記事の内容が何を意味するのか、その影響を分析すること\n")
+		sb.WriteString("- 短期的・長期的な影響を区別して説明すること\n")
+		sb.WriteString("- **記事の内容を要約するのではなく、その影響と意味合いを分析すること**\n\n")
+	}
+}
+
+func (b *XMLPromptBuilder) writeAnalyticalOutputFormat(sb *strings.Builder) {
+	sb.WriteString("## 出力形式\n")
+	sb.WriteString("以下のJSON形式で出力してください。answer フィールドには Markdown を使用してください。\n")
+	sb.WriteString("**重要: 記事の要約ではなく、質問に対する分析的な回答を書いてください。**\n")
+	sb.WriteString("{\"answer\":\"質問に対する分析的な回答をここに書く\",")
+	sb.WriteString("\"citations\":[{\"chunk_id\":\"1\",\"reason\":\"引用理由\"}],\"fallback\":false,\"reason\":\"\"}\n\n")
+	sb.WriteString("コンテキストが不十分な場合は fallback=true とし、reason に理由を記述してください。\n\n")
 }
 
 func (b *XMLPromptBuilder) writeFollowUpOutputFormat(sb *strings.Builder) {

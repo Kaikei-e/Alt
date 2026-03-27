@@ -45,6 +45,7 @@ type AnswerDebug struct {
 	ExpandedQueries   []string
 	StrategyUsed      string
 	IntentType        string      // Phase 2: classified intent type
+	SubIntentType     string      // Analytical sub-intent (critique, opinion, implication)
 	RetrievalQuality  string      // Phase 1: "good", "marginal", "insufficient"
 	RetryCount        int         // Phase 1: number of retrieval retries (0 = no retry)
 	ToolsUsed         []string    // Phase 3: tool names executed

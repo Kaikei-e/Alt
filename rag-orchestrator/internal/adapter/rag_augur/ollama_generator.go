@@ -52,7 +52,7 @@ type chatMessage struct {
 type chatRequest struct {
 	Model     string                 `json:"model"`
 	Messages  []chatMessage          `json:"messages"`
-	KeepAlive int                    `json:"keep_alive"`
+	KeepAlive *int                   `json:"keep_alive,omitempty"` // nil = proxy default
 	Stream    bool                   `json:"stream"`
 	Format    map[string]interface{} `json:"format"`
 	Options   map[string]interface{} `json:"options,omitempty"`
@@ -122,7 +122,10 @@ func (g *OllamaGenerator) getThinkParam(maxTokens int) interface{} {
 }
 
 // buildOptions returns the appropriate options map for the model.
-// Different models require different sampling parameters.
+// Sampling parameters (temperature, top_p, top_k, repeat_penalty, num_ctx) are delegated
+// to the news-creator proxy baseline for Gemma models. Only num_predict is overridden
+// per-request to control answer length. Non-proxy models retain their own parameters.
+// See ADR-579 for the Ollama options unification rationale.
 func (g *OllamaGenerator) buildOptions(maxTokens int) map[string]interface{} {
 	opts := map[string]interface{}{}
 	modelLower := strings.ToLower(g.Model)
@@ -134,22 +137,15 @@ func (g *OllamaGenerator) buildOptions(maxTokens int) map[string]interface{} {
 		opts["top_p"] = 0.8
 		opts["repeat_penalty"] = 1.15
 	case strings.Contains(modelLower, "gemma"):
-		// Gemma 3: news-creator実績準拠の設定
-		// M4 Mac Mini 16GB: 12B Q4_0 ~7GB + 8K KV cache ~2GB = ~9GB
-		opts["temperature"] = 0.7
-		opts["top_p"] = 0.85
-		opts["top_k"] = 40
-		opts["num_ctx"] = 8192
-		opts["repeat_penalty"] = 1.15
+		// Gemma: sampling/context params delegated to news-creator proxy baseline.
+		// Only num_predict is set here to avoid model reload from parameter mismatch.
 	case strings.Contains(modelLower, "swallow") || strings.Contains(modelLower, "llama"):
 		// Swallow/Llama 3.1: 詳細な回答生成向け設定
 		// Swallow公式推奨: temperature=0.6 for detailed responses
 		// Reference: https://swallow-llm.github.io/llama3.1-swallow.en.html
 		opts["temperature"] = 0.6
 		opts["top_p"] = 0.9
-		// コンテキストウィンドウ: RAMで swallow-8b q5_k_s (~6GB) + 16k KV cache (~1.5GB) = ~7.5GB
 		opts["num_ctx"] = 16384
-		// 長い回答のためのrepeat_penalty（繰り返し防止）
 		opts["repeat_penalty"] = 1.1
 	default:
 		// gpt-oss and other models
@@ -179,13 +175,11 @@ func (g *OllamaGenerator) Generate(ctx context.Context, prompt string, maxTokens
 	opts := g.buildOptions(maxTokens)
 
 	reqBody := chatRequest{
-		Model:     g.Model,
-		Messages:  []chatMessage{{Role: "user", Content: prompt}},
-		KeepAlive: -1,
-		Stream:    true,
-		// Format:    nil, // Force generic
-		Think:   g.getThinkParam(maxTokens),
-		Options: opts,
+		Model:    g.Model,
+		Messages: []chatMessage{{Role: "user", Content: prompt}},
+		Stream:   true,
+		Think:    g.getThinkParam(maxTokens),
+		Options:  opts,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
@@ -286,7 +280,7 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  []chatMessage{{Role: "user", Content: prompt}},
-		KeepAlive: -1,
+		// KeepAlive delegated to news-creator proxy baseline
 		Stream:    true,
 		Think:     g.getThinkParam(maxTokens),
 		Options:   opts,
@@ -466,7 +460,7 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  chatMsgs,
-		KeepAlive: -1,
+		// KeepAlive delegated to news-creator proxy baseline
 		Stream:    false,
 		Format:    generationFormat,
 		Think:     g.getThinkParam(maxTokens),
@@ -558,7 +552,7 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 	reqBody := chatRequest{
 		Model:     g.Model,
 		Messages:  chatMsgs,
-		KeepAlive: -1,
+		// KeepAlive delegated to news-creator proxy baseline
 		Stream:    true,
 		Format:    format,
 		Think:     g.getThinkParam(maxTokens),

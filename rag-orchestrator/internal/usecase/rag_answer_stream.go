@@ -121,6 +121,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				ExpandedQueries:  promptData.expandedQueries,
 				StrategyUsed:     promptData.strategyUsed,
 				IntentType:       string(promptData.intentType),
+				SubIntentType:    string(promptData.subIntentType),
 				RetrievalQuality: string(promptData.retrievalQuality),
 				RetryCount:       promptData.retryCount,
 				ToolsUsed:        promptData.toolsUsed,

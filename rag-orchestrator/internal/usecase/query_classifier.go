@@ -115,6 +115,74 @@ func matchesFactCheck(query, lower string) bool {
 	return false
 }
 
+// ClassifySubIntent classifies the analytical sub-intent of a user question.
+// Used for article-scoped queries where the question text has been extracted.
+// Returns SubIntentNone if no specific analytical intent is detected.
+// Priority: Critique > Opinion > Implication.
+// Pure function — does not use LLM or context.
+func (c *QueryClassifier) ClassifySubIntent(query string) SubIntentType {
+	lower := strings.ToLower(query)
+
+	if matchesCritique(query, lower) {
+		return SubIntentCritique
+	}
+	if matchesOpinion(query, lower) {
+		return SubIntentOpinion
+	}
+	if matchesImplication(query, lower) {
+		return SubIntentImplication
+	}
+	return SubIntentNone
+}
+
+func matchesCritique(query, lower string) bool {
+	jpKeywords := []string{"反論", "批判", "弱点", "問題点", "欠点", "リスク", "デメリット", "懸念", "課題", "限界"}
+	for _, kw := range jpKeywords {
+		if strings.Contains(query, kw) {
+			return true
+		}
+	}
+	enKeywords := []string{"counterargument", "criticism", "weakness", "limitation", "drawback", "risk", "concern", "flaw", "downside"}
+	for _, kw := range enKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesOpinion(query, lower string) bool {
+	jpKeywords := []string{"どう思う", "評価", "意見", "見解", "感想", "判断"}
+	for _, kw := range jpKeywords {
+		if strings.Contains(query, kw) {
+			return true
+		}
+	}
+	enKeywords := []string{"what do you think", "opinion", "assessment", "evaluation", "judgment", "your view"}
+	for _, kw := range enKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesImplication(query, lower string) bool {
+	jpKeywords := []string{"影響は", "意味は", "どういう意味", "結果は", "将来", "今後"}
+	for _, kw := range jpKeywords {
+		if strings.Contains(query, kw) {
+			return true
+		}
+	}
+	enKeywords := []string{"implication", "what does this mean", "impact", "consequence", "going forward"}
+	for _, kw := range enKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 func matchesDeepDive(query, lower string) bool {
 	jpKeywords := []string{"詳しく", "深掘り", "について教えて", "について詳しく"}
 	for _, kw := range jpKeywords {
