@@ -15,20 +15,26 @@ type ConversationStore struct {
 
 // NewConversationStore creates a store with bounded capacity and TTL-based expiry.
 func NewConversationStore(maxSize int, ttl time.Duration) *ConversationStore {
-	panic("not implemented")
+	return &ConversationStore{
+		states: expirable.NewLRU[string, *domain.ConversationState](maxSize, nil, ttl),
+	}
 }
 
 // Get returns the conversation state for a thread, or nil if not found.
 func (s *ConversationStore) Get(threadID string) *domain.ConversationState {
-	panic("not implemented")
+	val, ok := s.states.Get(threadID)
+	if !ok {
+		return nil
+	}
+	return val
 }
 
 // Put stores or updates the conversation state for a thread.
 func (s *ConversationStore) Put(state *domain.ConversationState) {
-	panic("not implemented")
+	s.states.Add(state.ThreadID, state)
 }
 
 // Reset removes the conversation state for a thread, starting fresh.
 func (s *ConversationStore) Reset(threadID string) {
-	panic("not implemented")
+	s.states.Remove(threadID)
 }
