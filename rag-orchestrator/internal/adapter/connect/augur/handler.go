@@ -2,6 +2,8 @@ package augur
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"log/slog"
 	"strings"
 	"unicode"
@@ -87,10 +89,15 @@ func (h *Handler) StreamChat(
 		slog.String("query", query),
 		slog.Int("history_turns", len(conversationHistory)))
 
+	// Derive thread ID for conversation state tracking.
+	// Uses hash of first user message as a deterministic thread identifier.
+	threadID := deriveThreadID(req.Msg.Messages)
+
 	// Build input for AnswerWithRAGUsecase
 	locale := detectLocale(query)
 	input := usecase.AnswerWithRAGInput{
 		Query:               query,
+		UserID:              threadID,
 		Locale:              locale,
 		ConversationHistory: conversationHistory,
 	}
@@ -306,6 +313,20 @@ func (h *Handler) RetrieveContext(
 // detectLocale determines the response language based on query content.
 // Uses Unicode range heuristics: if Japanese characters (Hiragana, Katakana, CJK)
 // make up a significant portion, the locale is "ja"; otherwise "en".
+// deriveThreadID generates a deterministic thread ID from the first user message
+// in the conversation. Same conversation always maps to the same thread ID.
+func deriveThreadID(messages []*augurv2.ChatMessage) string {
+	for _, msg := range messages {
+		if msg.Role == "user" && msg.Content != "" {
+			hash := sha256.Sum256([]byte(msg.Content))
+			return fmt.Sprintf("thread-%x", hash[:8])
+		}
+	}
+	// No user message found — generate from empty hash
+	hash := sha256.Sum256(nil)
+	return fmt.Sprintf("thread-%x", hash[:8])
+}
+
 func detectLocale(query string) string {
 	if query == "" {
 		return "ja" // Default

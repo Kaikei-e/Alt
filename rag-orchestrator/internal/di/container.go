@@ -155,6 +155,13 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 			slog.Float64("marginal_threshold", float64(cfg.QualityGate.MarginalThreshold)))
 	}
 
+	// Conversation planner + state store (ADR-000604)
+	classifier := usecase.NewQueryClassifier(nil, 0)
+	planner := usecase.NewConversationPlanner(classifier)
+	conversationStore := usecase.NewConversationStore(1024, 30*time.Minute)
+	answerOpts = append(answerOpts, usecase.WithConversationPlanner(planner, conversationStore))
+	log.Info("conversation_planner_enabled")
+
 	answerUsecase := usecase.NewAnswerWithRAGUsecase(
 		retrieveUsecase, promptBuilder, generator, usecase.NewOutputValidator(cfg.RAG.MinAnswerLength),
 		cfg.RAG.MaxChunks, cfg.RAG.MaxTokens, cfg.RAG.MaxPromptTokens,
