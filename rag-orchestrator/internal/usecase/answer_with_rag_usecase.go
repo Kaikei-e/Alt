@@ -325,16 +325,18 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		Fallback:  false,
 		Reason:    "",
 		Debug: AnswerDebug{
-			RetrievalSetID:   promptData.retrievalSetID,
-			PromptVersion:    u.promptVersion,
-			ExpandedQueries:  promptData.expandedQueries,
-			StrategyUsed:     promptData.strategyUsed,
-			IntentType:       string(promptData.intentType),
-			SubIntentType:    string(promptData.subIntentType),
-			RetrievalQuality: string(promptData.retrievalQuality),
-			RetryCount:       promptData.retryCount,
-			ToolsUsed:        promptData.toolsUsed,
-			QualityFlags:     qualityFlags,
+			RetrievalSetID:        promptData.retrievalSetID,
+			PromptVersion:         u.promptVersion,
+			ExpandedQueries:       promptData.expandedQueries,
+			StrategyUsed:          promptData.strategyUsed,
+			IntentType:            string(promptData.intentType),
+			SubIntentType:         string(promptData.subIntentType),
+			RetrievalQuality:      string(promptData.retrievalQuality),
+			RetryCount:            promptData.retryCount,
+			ToolsUsed:             promptData.toolsUsed,
+			QualityFlags:          qualityFlags,
+			RetrievalPolicy:       promptData.retrievalPolicy,
+			GeneralRetrievalGated: promptData.generalGated,
 		},
 	}
 
@@ -435,9 +437,11 @@ type promptBuildResult struct {
 	intentType       IntentType
 	subIntentType    SubIntentType
 	toolsUsed        []string
-	articleContext   *ArticleContext
+	articleContext    *ArticleContext
 	retrievalQuality QualityVerdict
 	retryCount       int
+	retrievalPolicy  string
+	generalGated     bool
 }
 
 func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWithRAGInput) (*promptBuildResult, error) {
@@ -502,15 +506,21 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 			u.logger.Info("retrieval_policy_article_only",
 				slog.String("sub_intent", string(intent.SubIntentType)),
 				slog.String("article_id", intent.ArticleID))
+			result.retrievalPolicy = "article_only"
+			result.generalGated = true
 
 		case SubIntentRelatedArticles:
 			// Tool delegated — RelatedArticlesTool handles search.
 			u.logger.Info("retrieval_policy_tool_delegated",
 				slog.String("sub_intent", string(intent.SubIntentType)),
 				slog.String("article_id", intent.ArticleID))
+			result.retrievalPolicy = "tool_delegated"
+			result.generalGated = true
 
 		case SubIntentCritique, SubIntentOpinion, SubIntentImplication:
 			// Article-first with optional general retrieval behind quality threshold.
+			result.retrievalPolicy = "article_first_analytical"
+			result.generalGated = true
 			if u.qualityAssessor != nil {
 				verdict := u.qualityAssessor.Assess(retrieved.Contexts)
 				if verdict == QualityMarginal || verdict == QualityInsufficient {
@@ -705,7 +715,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		toolResults := u.toolDispatcher.Dispatch(ctx, intent, intent.UserQuestion)
 		for _, tr := range toolResults {
 			supplementary = append(supplementary, tr.Data)
-			result.toolsUsed = append(result.toolsUsed, "tool")
+			result.toolsUsed = append(result.toolsUsed, tr.ToolName)
 		}
 	}
 

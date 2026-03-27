@@ -49,6 +49,7 @@ func (d *ToolDispatcher) Dispatch(ctx context.Context, intent QueryIntent, query
 		}
 
 		if result != nil && result.Success {
+			result.ToolName = name
 			d.logger.Info("tool_execution_success",
 				slog.String("tool", name),
 				slog.Int("data_length", len(result.Data)))

@@ -116,15 +116,17 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		meta := StreamMeta{
 			Contexts: promptData.contexts,
 			Debug: AnswerDebug{
-				RetrievalSetID:   promptData.retrievalSetID,
-				PromptVersion:    u.promptVersion,
-				ExpandedQueries:  promptData.expandedQueries,
-				StrategyUsed:     promptData.strategyUsed,
-				IntentType:       string(promptData.intentType),
-				SubIntentType:    string(promptData.subIntentType),
-				RetrievalQuality: string(promptData.retrievalQuality),
-				RetryCount:       promptData.retryCount,
-				ToolsUsed:        promptData.toolsUsed,
+				RetrievalSetID:        promptData.retrievalSetID,
+				PromptVersion:         u.promptVersion,
+				ExpandedQueries:       promptData.expandedQueries,
+				StrategyUsed:          promptData.strategyUsed,
+				IntentType:            string(promptData.intentType),
+				SubIntentType:         string(promptData.subIntentType),
+				RetrievalQuality:      string(promptData.retrievalQuality),
+				RetryCount:            promptData.retryCount,
+				ToolsUsed:             promptData.toolsUsed,
+				RetrievalPolicy:       promptData.retrievalPolicy,
+				GeneralRetrievalGated: promptData.generalGated,
 			},
 		}
 		if !u.sendStreamEvent(ctx, events, StreamEvent{Kind: StreamEventKindMeta, Payload: meta}) {
@@ -426,10 +428,16 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			Fallback:  false,
 			Reason:    "",
 			Debug: AnswerDebug{
-				RetrievalSetID:  promptData.retrievalSetID,
-				PromptVersion:   u.promptVersion,
-				ExpandedQueries: promptData.expandedQueries,
-				StrategyUsed:    promptData.strategyUsed,
+				RetrievalSetID:        promptData.retrievalSetID,
+				PromptVersion:         u.promptVersion,
+				ExpandedQueries:       promptData.expandedQueries,
+				StrategyUsed:          promptData.strategyUsed,
+				IntentType:            string(promptData.intentType),
+				SubIntentType:         string(promptData.subIntentType),
+				RetrievalQuality:      string(promptData.retrievalQuality),
+				ToolsUsed:             promptData.toolsUsed,
+				RetrievalPolicy:       promptData.retrievalPolicy,
+				GeneralRetrievalGated: promptData.generalGated,
 			},
 		}
 

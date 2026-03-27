@@ -40,18 +40,20 @@ type Citation struct {
 
 // AnswerDebug surfaces metadata that aids troubleshooting and golden-test matching.
 type AnswerDebug struct {
-	RetrievalSetID    string
-	PromptVersion     string
-	ExpandedQueries   []string
-	StrategyUsed      string
-	IntentType        string      // Phase 2: classified intent type
-	SubIntentType     string      // Analytical sub-intent (critique, opinion, implication)
-	RetrievalQuality  string      // Phase 1: "good", "marginal", "insufficient"
-	RetryCount        int         // Phase 1: number of retrieval retries (0 = no retry)
-	ToolsUsed         []string    // Phase 3: tool names executed
-	QualityFlags      []string    // Phase 4: answer quality check failures
-	AgentSteps        []AgentStep // Phase 5: full agentic step trace
-	TotalAgentStepsMs int64       // Phase 5: sum of all step durations
+	RetrievalSetID        string
+	PromptVersion         string
+	ExpandedQueries       []string
+	StrategyUsed          string
+	IntentType            string      // Phase 2: classified intent type
+	SubIntentType         string      // Analytical sub-intent (critique, opinion, implication, detail, related_articles, evidence, summary_refresh)
+	RetrievalQuality      string      // Phase 1: "good", "marginal", "insufficient"
+	RetryCount            int         // Phase 1: number of retrieval retries (0 = no retry)
+	ToolsUsed             []string    // Phase 3: tool names executed
+	QualityFlags          []string    // Phase 4: answer quality check failures
+	AgentSteps            []AgentStep // Phase 5: full agentic step trace
+	TotalAgentStepsMs     int64       // Phase 5: sum of all step durations
+	RetrievalPolicy       string      // article_only, tool_delegated, article+general_analytical, article+general
+	GeneralRetrievalGated bool        // true when general re-retrieval was suppressed by subintent
 }
 
 // AnswerWithRAGUsecase defines the contract for generating grounded answers.

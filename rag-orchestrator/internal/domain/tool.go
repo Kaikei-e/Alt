@@ -11,7 +11,8 @@ type Tool interface {
 
 // ToolResult represents the output of a tool execution.
 type ToolResult struct {
-	Data    string // Text or JSON data
-	Success bool
-	Error   string
+	ToolName string // Name of the tool that produced this result
+	Data     string // Text or JSON data
+	Success  bool
+	Error    string
 }
