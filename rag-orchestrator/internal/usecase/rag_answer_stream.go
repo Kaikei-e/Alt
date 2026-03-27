@@ -420,11 +420,36 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			slog.Int("answer_length", len(parsedAnswer.Answer)),
 			slog.Int("citations_count", len(parsedAnswer.Citations)))
 
+		// Answer quality check on streaming path (ADR-000604: hard stop for bad answers)
+		qualityFlags := AssessAnswerQuality(
+			parsedAnswer.Answer, input.Query, parsedAnswer.Citations, promptData.intentType,
+		)
+		if len(qualityFlags) > 0 {
+			u.logger.Info("stream_answer_quality_flags",
+				slog.String("retrieval_set_id", promptData.retrievalSetID),
+				slog.Any("flags", qualityFlags))
+		}
+
 		if parsedAnswer.ShortAnswer {
 			u.logger.Warn("stream_short_answer_detected",
 				slog.String("retrieval_set_id", promptData.retrievalSetID),
 				slog.Int("answer_rune_length", utf8.RuneCountInString(parsedAnswer.Answer)),
 				slog.String("query", input.Query))
+
+			// Hard stop: short answer + quality issues = fallback instead of serving bad content.
+			// A short answer alone might be acceptable (yes/no questions), but combined with
+			// low keyword coverage or incoherent ending, it indicates a broken generation.
+			if hasQualityFlag(qualityFlags, "low_keyword_coverage") || hasQualityFlag(qualityFlags, "incoherent_ending") {
+				u.logger.Warn("stream_short_answer_hard_stop",
+					slog.String("retrieval_set_id", promptData.retrievalSetID),
+					slog.Any("flags", qualityFlags),
+					slog.String("raw_response_preview", truncate(rawResponse, 300)))
+				u.sendStreamEvent(ctx, events, StreamEvent{
+					Kind:    StreamEventKindFallback,
+					Payload: "answer quality insufficient: short answer with quality issues",
+				})
+				return
+			}
 		}
 
 		if parsedAnswer.Fallback {
@@ -482,6 +507,16 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 // which form valid JSON structure. If the tail is empty (quote at chunk
 // boundary), we conservatively return false so the parser buffers until
 // more data arrives.
+// hasQualityFlag checks if a specific flag is present in the quality flags list.
+func hasQualityFlag(flags []string, flag string) bool {
+	for _, f := range flags {
+		if f == flag {
+			return true
+		}
+	}
+	return false
+}
+
 func isAnswerFieldEnd(tail string) bool {
 	if tail == "" {
 		return false // not enough data — buffer and wait for next chunk
