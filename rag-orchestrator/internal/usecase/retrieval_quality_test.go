@@ -106,6 +106,48 @@ func TestAssess_ExactlyAtGoodThreshold(t *testing.T) {
 	}
 }
 
+func TestAssess_TopicIncoherence_DifferentTitles_Downgrades(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	// High scores but contexts come from completely different articles — topic incoherence
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0.9, Title: "Iran Protests"},
+		{ChunkID: uuid.New(), Score: 0.8, RerankScore: 0.8, Title: "Cooking Recipes"},
+		{ChunkID: uuid.New(), Score: 0.7, RerankScore: 0.7, Title: "Space Exploration"},
+	}
+	verdict := assessor.Assess(contexts)
+	if verdict == QualityGood {
+		t.Error("expected downgrade from QualityGood when top contexts have unrelated titles")
+	}
+}
+
+func TestAssess_TopicCoherence_SameTitle_NoDowngrade(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0.9, Title: "Iran Protests"},
+		{ChunkID: uuid.New(), Score: 0.8, RerankScore: 0.8, Title: "Iran Protests"},
+		{ChunkID: uuid.New(), Score: 0.7, RerankScore: 0.7, Title: "Iran and Middle East"},
+	}
+	verdict := assessor.Assess(contexts)
+	if verdict != QualityGood {
+		t.Errorf("expected QualityGood for coherent contexts, got %s", verdict)
+	}
+}
+
+func TestAssess_ScoreVariance_HighSpread_Downgrades(t *testing.T) {
+	// Top-1 is very high, but remaining are very low = "one hit + noise" pattern
+	// Even with low thresholds that would pass by avg alone, variance should downgrade
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.95, RerankScore: 0.95, Title: "Topic A"},
+		{ChunkID: uuid.New(), Score: 0.1, RerankScore: 0.1, Title: "Topic A"},
+		{ChunkID: uuid.New(), Score: 0.08, RerankScore: 0.08, Title: "Topic A"},
+	}
+	assessor := NewRetrievalQualityAssessor(0.3, 0.15, 3)
+	verdict := assessor.Assess(contexts)
+	if verdict == QualityGood {
+		t.Error("expected downgrade when score variance is very high (one hit + noise)")
+	}
+}
+
 func TestAssess_MoreThanThreeContexts_UsesTopThree(t *testing.T) {
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
 	contexts := []ContextItem{
