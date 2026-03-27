@@ -687,7 +687,9 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		result.expandedQueries = retrieved.ExpandedQueries
 	}
 
-	if len(contexts) == 0 {
+	// For related_articles subintent, tool results are the primary content —
+	// allow empty contexts since the tool dispatch below will supply data.
+	if len(contexts) == 0 && intent.SubIntentType != SubIntentRelatedArticles {
 		return result, errors.New("no context returned from retrieval")
 	}
 
