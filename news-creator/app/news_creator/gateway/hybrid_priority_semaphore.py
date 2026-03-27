@@ -39,11 +39,12 @@ class QueueFullError(Exception):
 
 @dataclass
 class AcquiredSlot:
-    """Tracks an acquired semaphore slot for leak detection."""
+    """Tracks an acquired semaphore slot for leak detection and ownership."""
 
     slot_id: int
     acquired_at: float  # monotonic time
     is_high_priority: bool
+    home_pool: str = ""  # "rt" or "be" — which pool this slot was taken from
     context: str = ""  # optional description for debugging
 
 
@@ -267,7 +268,7 @@ class HybridPrioritySemaphore:
         oldest.cancel_event.set()
         return True
 
-    def _track_acquire(self, is_high_priority: bool, context: str = "") -> int:
+    def _track_acquire(self, is_high_priority: bool, context: str = "", home_pool: str = "") -> int:
         """Track a slot acquisition for leak detection. Returns slot_id."""
         self._slot_counter += 1
         slot_id = self._slot_counter
@@ -275,6 +276,7 @@ class HybridPrioritySemaphore:
             slot_id=slot_id,
             acquired_at=time.monotonic(),
             is_high_priority=is_high_priority,
+            home_pool=home_pool,
             context=context,
         )
         return slot_id
@@ -356,7 +358,7 @@ class HybridPrioritySemaphore:
                 if self._rt_available > 0:
                     self._rt_available -= 1
                     self._last_wait_time = 0.0
-                    self._track_acquire(is_high_priority=True, context="rt_immediate")
+                    self._track_acquire(is_high_priority=True, context="rt_immediate", home_pool="rt")
                     logger.debug(
                         "RT slot acquired immediately",
                         extra={"rt_available": self._rt_available},
@@ -366,7 +368,7 @@ class HybridPrioritySemaphore:
                 elif self._rt_reserved == 0 and self._be_available > 0:
                     self._be_available -= 1
                     self._last_wait_time = 0.0
-                    self._track_acquire(is_high_priority=True, context="hp_be_fallback")
+                    self._track_acquire(is_high_priority=True, context="hp_be_fallback", home_pool="be")
                     logger.debug(
                         "High priority acquired BE slot (no RT reserved)",
                         extra={"be_available": self._be_available},
@@ -385,7 +387,7 @@ class HybridPrioritySemaphore:
                 if self._be_available > 0:
                     self._be_available -= 1
                     self._last_wait_time = 0.0
-                    self._track_acquire(is_high_priority=False, context="be_immediate")
+                    self._track_acquire(is_high_priority=False, context="be_immediate", home_pool="be")
                     logger.debug(
                         "BE slot acquired immediately",
                         extra={"be_available": self._be_available},
@@ -396,7 +398,7 @@ class HybridPrioritySemaphore:
                 elif self._be_slots == 0 and self._rt_available > 0:
                     self._rt_available -= 1
                     self._last_wait_time = 0.0
-                    self._track_acquire(is_high_priority=False, context="lp_rt_fallback")
+                    self._track_acquire(is_high_priority=False, context="lp_rt_fallback", home_pool="rt")
                     logger.debug(
                         "Low priority acquired RT slot (no BE slots configured)",
                         extra={"rt_available": self._rt_available},
@@ -440,10 +442,15 @@ class HybridPrioritySemaphore:
 
         # Wait for slot
         try:
-            await future
+            result = await future
             wait_time = time.monotonic() - start_time
             self._last_wait_time = wait_time
-            self._track_acquire(is_high_priority=high_priority, context="queued")
+            # result is the home_pool of the transferred slot (str),
+            # or True for legacy callers
+            inherited_pool = result if isinstance(result, str) and result else ""
+            if not inherited_pool:
+                inherited_pool = "rt" if high_priority else "be"
+            self._track_acquire(is_high_priority=high_priority, context="queued", home_pool=inherited_pool)
 
             if wait_time > 10.0:
                 logger.warning(
@@ -468,26 +475,36 @@ class HybridPrioritySemaphore:
         """
         Release a slot and wake up next waiter.
 
-        Implements guaranteed bandwidth for BE requests:
-        - After guaranteed_be_ratio consecutive RT releases, force BE processing
-        - This prevents BE starvation even when RT requests are continuous
+        Slot ownership: The slot is returned to its *home pool* (the pool it was
+        originally acquired from), not based on the caller's priority. This prevents
+        slot migration across pools during preemption → release chains.
 
         Args:
-            was_high_priority: Whether the released slot was RT
-            slot_id: Optional slot_id from acquire tracking (for precise leak detection)
+            was_high_priority: Whether the caller was high priority (used for
+                guaranteed bandwidth tracking; NOT used for pool return)
+            slot_id: Optional slot_id from acquire tracking (for precise ownership)
         """
-        # Untrack acquired slot
+        # Determine home_pool from acquired slot tracking
+        home_pool = ""
         if slot_id is not None:
+            slot_info = self._acquired_slots.get(slot_id)
+            if slot_info:
+                home_pool = slot_info.home_pool
             self._track_release(slot_id)
         else:
-            # Find and release the oldest matching slot
+            # Fallback: find oldest matching slot to determine home_pool
             matching = [
                 s for s in self._acquired_slots.values()
                 if s.is_high_priority == was_high_priority
             ]
             if matching:
                 oldest = min(matching, key=lambda s: s.acquired_at)
+                home_pool = oldest.home_pool
                 self._track_release(oldest.slot_id)
+
+        # If home_pool is unknown (no tracking data), infer from caller priority
+        if not home_pool:
+            home_pool = "rt" if was_high_priority else "be"
 
         # Recompute priorities with aging and handle promotions
         self._apply_aging()
@@ -517,9 +534,9 @@ class HybridPrioritySemaphore:
                 if not request.future.done() and not request.future.cancelled():
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
-                        loop.call_soon_threadsafe(request.future.set_result, True)
+                        loop.call_soon_threadsafe(request.future.set_result, home_pool)
                     else:
-                        request.future.set_result(True)
+                        request.future.set_result(home_pool)
                     woke_up = True
                     self._consecutive_rt_releases = 0  # Reset counter after BE processed
                     logger.debug("Woke up BE waiter (guaranteed bandwidth)")
@@ -533,9 +550,9 @@ class HybridPrioritySemaphore:
                 if not request.future.done() and not request.future.cancelled():
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
-                        loop.call_soon_threadsafe(request.future.set_result, True)
+                        loop.call_soon_threadsafe(request.future.set_result, home_pool)
                     else:
-                        request.future.set_result(True)
+                        request.future.set_result(home_pool)
                     woke_up = True
                     logger.debug("Woke up RT waiter")
 
@@ -546,17 +563,17 @@ class HybridPrioritySemaphore:
                     if not request.future.done() and not request.future.cancelled():
                         loop = asyncio.get_event_loop()
                         if loop.is_running():
-                            loop.call_soon_threadsafe(request.future.set_result, True)
+                            loop.call_soon_threadsafe(request.future.set_result, home_pool)
                         else:
-                            request.future.set_result(True)
+                            request.future.set_result(home_pool)
                         woke_up = True
                         self._consecutive_rt_releases = 0  # Reset counter after BE processed
                         logger.debug("Woke up BE waiter")
                         break
 
-        # No waiters, return slot to pool
+        # No waiters, return slot to its home pool
         if not woke_up:
-            if was_high_priority:
+            if home_pool == "rt":
                 self._rt_available = min(self._rt_available + 1, self._rt_reserved)
             else:
                 self._be_available = min(self._be_available + 1, self._be_slots)
