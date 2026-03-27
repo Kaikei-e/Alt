@@ -578,6 +578,23 @@ class HybridPrioritySemaphore:
             else:
                 self._be_available = min(self._be_available + 1, self._be_slots)
 
+        # Invariant check: available + acquired must equal total_slots
+        total_tracked = self._rt_available + self._be_available + len(self._acquired_slots)
+        if total_tracked != self._total_slots:
+            logger.error(
+                "SLOT INVARIANT VIOLATION: available + acquired != total_slots",
+                extra={
+                    "rt_available": self._rt_available,
+                    "be_available": self._be_available,
+                    "acquired_count": len(self._acquired_slots),
+                    "total_tracked": total_tracked,
+                    "total_slots": self._total_slots,
+                    "rt_queue_size": len(self._rt_queue),
+                    "be_queue_size": len(self._be_queue),
+                    "home_pool": home_pool,
+                },
+            )
+
     def _purge_cancelled_from_queues(self) -> None:
         """Remove cancelled/done futures from both queues.
 
