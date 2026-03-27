@@ -278,12 +278,12 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 	opts := g.buildOptions(maxTokens)
 
 	reqBody := chatRequest{
-		Model:     g.Model,
-		Messages:  []chatMessage{{Role: "user", Content: prompt}},
+		Model:    g.Model,
+		Messages: []chatMessage{{Role: "user", Content: prompt}},
 		// KeepAlive delegated to news-creator proxy baseline
-		Stream:    true,
-		Think:     g.getThinkParam(maxTokens),
-		Options:   opts,
+		Stream:  true,
+		Think:   g.getThinkParam(maxTokens),
+		Options: opts,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
@@ -458,13 +458,13 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 	opts := g.buildOptions(maxTokens)
 
 	reqBody := chatRequest{
-		Model:     g.Model,
-		Messages:  chatMsgs,
+		Model:    g.Model,
+		Messages: chatMsgs,
 		// KeepAlive delegated to news-creator proxy baseline
-		Stream:    false,
-		Format:    generationFormat,
-		Think:     g.getThinkParam(maxTokens),
-		Options:   opts,
+		Stream:  false,
+		Format:  generationFormat,
+		Think:   g.getThinkParam(maxTokens),
+		Options: opts,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
@@ -550,13 +550,13 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 	}
 
 	reqBody := chatRequest{
-		Model:     g.Model,
-		Messages:  chatMsgs,
+		Model:    g.Model,
+		Messages: chatMsgs,
 		// KeepAlive delegated to news-creator proxy baseline
-		Stream:    true,
-		Format:    format,
-		Think:     g.getThinkParam(maxTokens),
-		Options:   opts,
+		Stream:  true,
+		Format:  format,
+		Think:   g.getThinkParam(maxTokens),
+		Options: opts,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)

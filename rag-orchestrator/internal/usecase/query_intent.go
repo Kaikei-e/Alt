@@ -27,7 +27,7 @@ const (
 	SubIntentNone        SubIntentType = ""
 	SubIntentCritique    SubIntentType = "critique"    // 反論・批判・弱点
 	SubIntentOpinion     SubIntentType = "opinion"     // 評価・意見
-	SubIntentImplication SubIntentType = "implication"  // 影響・意味合い
+	SubIntentImplication SubIntentType = "implication" // 影響・意味合い
 )
 
 // ErrArticleNotIndexed indicates that the referenced article is not in the RAG index.
