@@ -1192,6 +1192,111 @@ func TestPromptBuilder_GeneralIntent_NoExtraInstruction(t *testing.T) {
 	assert.NotContains(t, messages[0].Content, "根拠と判定を構造化")
 }
 
+// --- Subintent-specific prompt template tests (Augur RAG remediation) ---
+
+func TestPromptBuilder_SingleTurn_DetailSubIntent_DirectAnswerFormat(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "技術的な詳細をもっと教えて",
+		PromptVersion: "test",
+		IntentType:    usecase.IntentArticleScoped,
+		SubIntentType: usecase.SubIntentDetail,
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Article", ChunkText: "content", Score: 0.9},
+		},
+	})
+	assert.NoError(t, err)
+	content := messages[0].Content
+	assert.Contains(t, content, "質問に直接回答")
+	assert.NotContains(t, content, "## 概要\\n...\\n## 詳細\\n...\\n## まとめ")
+}
+
+func TestPromptBuilder_SingleTurn_RelatedArticlesSubIntent_ListFormat(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "関連する記事はある？",
+		PromptVersion: "test",
+		IntentType:    usecase.IntentArticleScoped,
+		SubIntentType: usecase.SubIntentRelatedArticles,
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Article", ChunkText: "content", Score: 0.9},
+		},
+	})
+	assert.NoError(t, err)
+	content := messages[0].Content
+	assert.Contains(t, content, "ランク付きリスト")
+}
+
+func TestPromptBuilder_SingleTurn_EvidenceSubIntent_CitedPassages(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "根拠は？",
+		PromptVersion: "test",
+		IntentType:    usecase.IntentArticleScoped,
+		SubIntentType: usecase.SubIntentEvidence,
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Article", ChunkText: "content", Score: 0.9},
+		},
+	})
+	assert.NoError(t, err)
+	content := messages[0].Content
+	assert.Contains(t, content, "引用付き")
+}
+
+func TestPromptBuilder_SingleTurn_SummaryRefreshSubIntent_Concise(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "要約して",
+		PromptVersion: "test",
+		IntentType:    usecase.IntentArticleScoped,
+		SubIntentType: usecase.SubIntentSummaryRefresh,
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Article", ChunkText: "content", Score: 0.9},
+		},
+	})
+	assert.NoError(t, err)
+	content := messages[0].Content
+	assert.NotContains(t, content, "800文字以上")
+	assert.Contains(t, content, "簡潔")
+}
+
+func TestPromptBuilder_MultiTurn_DetailSubIntent_AddsGuidance(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:         "技術的な詳細をもっと教えて",
+		PromptVersion: "test",
+		IntentType:    usecase.IntentArticleScoped,
+		SubIntentType: usecase.SubIntentDetail,
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: "概要を教えて"},
+			{Role: "assistant", Content: "記事の概要です。"},
+		},
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Article", ChunkText: "content", Score: 0.9},
+		},
+	})
+	assert.NoError(t, err)
+	// Last message should contain detail-specific guidance
+	lastMsg := messages[len(messages)-1]
+	assert.Contains(t, lastMsg.Content, "技術的")
+}
+
+func TestPromptBuilder_ToolOnly_RelatedArticlesSubIntent_DoesNotRequireContextChunks(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	messages, err := builder.Build(usecase.PromptInput{
+		Query:           "関連する記事はある？",
+		PromptVersion:   "test",
+		IntentType:      usecase.IntentArticleScoped,
+		SubIntentType:   usecase.SubIntentRelatedArticles,
+		Contexts:        []usecase.PromptContext{}, // Empty — tool-only path
+		SupplementaryInfo: []string{"Related articles:\n- Article A\n- Article B"},
+	})
+	assert.NoError(t, err)
+	content := messages[0].Content
+	assert.Contains(t, content, "Article A")
+	assert.Contains(t, content, "ランク付きリスト")
+}
+
 // --- Retrieval policy gating tests (Augur RAG remediation) ---
 
 func TestExecute_ArticleScopedFollowUp_DetailSubIntent_SkipsGeneralReRetrieval(t *testing.T) {
