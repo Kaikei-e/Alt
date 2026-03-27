@@ -118,11 +118,20 @@ func matchesFactCheck(query, lower string) bool {
 // ClassifySubIntent classifies the analytical sub-intent of a user question.
 // Used for article-scoped queries where the question text has been extracted.
 // Returns SubIntentNone if no specific analytical intent is detected.
-// Priority: Critique > Opinion > Implication.
+// Priority: related_articles > evidence > detail > critique > opinion > implication > summary_refresh.
 // Pure function — does not use LLM or context.
 func (c *QueryClassifier) ClassifySubIntent(query string) SubIntentType {
 	lower := strings.ToLower(query)
 
+	if matchesRelatedArticles(query, lower) {
+		return SubIntentRelatedArticles
+	}
+	if matchesEvidence(query, lower) {
+		return SubIntentEvidence
+	}
+	if matchesDetail(query, lower) {
+		return SubIntentDetail
+	}
 	if matchesCritique(query, lower) {
 		return SubIntentCritique
 	}
@@ -131,6 +140,9 @@ func (c *QueryClassifier) ClassifySubIntent(query string) SubIntentType {
 	}
 	if matchesImplication(query, lower) {
 		return SubIntentImplication
+	}
+	if matchesSummaryRefresh(query, lower) {
+		return SubIntentSummaryRefresh
 	}
 	return SubIntentNone
 }
@@ -175,6 +187,70 @@ func matchesImplication(query, lower string) bool {
 		}
 	}
 	enKeywords := []string{"implication", "what does this mean", "impact", "consequence", "going forward"}
+	for _, kw := range enKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesRelatedArticles(query, lower string) bool {
+	jpKeywords := []string{"関連する記事", "似た記事", "関連記事", "他にもある"}
+	for _, kw := range jpKeywords {
+		if strings.Contains(query, kw) {
+			return true
+		}
+	}
+	enKeywords := []string{"related articles", "similar articles", "related stories"}
+	for _, kw := range enKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesEvidence(query, lower string) bool {
+	jpKeywords := []string{"根拠", "エビデンス", "証拠", "出典"}
+	for _, kw := range jpKeywords {
+		if strings.Contains(query, kw) {
+			return true
+		}
+	}
+	enKeywords := []string{"evidence", "proof", "citation", "source of"}
+	for _, kw := range enKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesDetail(query, lower string) bool {
+	jpKeywords := []string{"技術的", "詳細", "具体例", "仕組み", "メカニズム"}
+	for _, kw := range jpKeywords {
+		if strings.Contains(query, kw) {
+			return true
+		}
+	}
+	enKeywords := []string{"technical", "detail", "specific example", "mechanism", "how does it work"}
+	for _, kw := range enKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesSummaryRefresh(query, lower string) bool {
+	jpKeywords := []string{"結論だけ", "もう一度", "要約して", "まとめ直して"}
+	for _, kw := range jpKeywords {
+		if strings.Contains(query, kw) {
+			return true
+		}
+	}
+	enKeywords := []string{"just the conclusion", "summarize again", "recap"}
 	for _, kw := range enKeywords {
 		if strings.Contains(lower, kw) {
 			return true

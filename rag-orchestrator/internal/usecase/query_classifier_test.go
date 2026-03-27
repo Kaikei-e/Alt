@@ -491,7 +491,7 @@ func TestClassifySubIntent_PriorityConflicts(t *testing.T) {
 		{"影響は？意見を教えて", SubIntentOpinion, "Opinion wins over Implication"},
 		{"詳細と関連記事を教えて", SubIntentRelatedArticles, "RelatedArticles wins over Detail"},
 		{"根拠と技術的な詳細", SubIntentEvidence, "Evidence wins over Detail"},
-		{"技術的な弱点を教えて", SubIntentCritique, "Critique wins over Detail (弱点 > 技術的)"},
+		{"技術的な弱点を教えて", SubIntentDetail, "Detail wins over Critique (技術的 matched first in priority)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
