@@ -10,6 +10,7 @@ import (
 	"rag-orchestrator/internal/adapter/rag_augur"
 	rag_http "rag-orchestrator/internal/adapter/rag_http"
 	"rag-orchestrator/internal/adapter/repository"
+	"rag-orchestrator/internal/adapter/tools"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/infra/config"
 	"rag-orchestrator/internal/infra/httpclient"
@@ -133,6 +134,15 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		usecase.WithStrategy(usecase.IntentFactCheck, usecase.NewFactCheckStrategy(retrieveUsecase, log)),
 		usecase.WithQueryClassifier(usecase.NewQueryClassifier(nil, 0)),
 	}
+	// Tool dispatcher (Agentic RAG: subintent-driven tool selection)
+	relatedArticlesTool := tools.NewRelatedArticlesTool(searchClient)
+	toolMap := map[string]domain.Tool{
+		"related_articles": relatedArticlesTool,
+	}
+	toolDispatcher := usecase.NewToolDispatcher(toolMap, log)
+	answerOpts = append(answerOpts, usecase.WithToolDispatcher(toolDispatcher))
+	log.Info("tool_dispatcher_enabled", slog.Int("tools", len(toolMap)))
+
 	if cfg.QualityGate.Enabled {
 		assessor := usecase.NewRetrievalQualityAssessor(
 			cfg.QualityGate.GoodThreshold,
