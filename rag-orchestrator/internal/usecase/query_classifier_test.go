@@ -301,13 +301,169 @@ func TestClassifySubIntent_ImplicationKeywords_EN(t *testing.T) {
 	}
 }
 
+func TestClassifySubIntent_DetailKeywords_JP(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"技術的な詳細をもっと教えて"},
+		{"具体例を教えて"},
+		{"仕組みはどうなってる？"},
+		{"メカニズムを説明して"},
+		{"技術的な背景は？"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentDetail {
+				t.Errorf("expected SubIntentDetail for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_DetailKeywords_EN(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"tell me the technical details"},
+		{"give me a specific example"},
+		{"how does the mechanism work?"},
+		{"how does it work exactly?"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentDetail {
+				t.Errorf("expected SubIntentDetail for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_RelatedArticlesKeywords_JP(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"関連する記事はある？"},
+		{"似た記事を教えて"},
+		{"関連記事は？"},
+		{"他にもある？"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentRelatedArticles {
+				t.Errorf("expected SubIntentRelatedArticles for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_RelatedArticlesKeywords_EN(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"are there related articles?"},
+		{"show me similar articles"},
+		{"any related stories?"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentRelatedArticles {
+				t.Errorf("expected SubIntentRelatedArticles for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_EvidenceKeywords_JP(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"根拠は？"},
+		{"エビデンスを示して"},
+		{"出典は？"},
+		{"証拠はある？"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentEvidence {
+				t.Errorf("expected SubIntentEvidence for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_EvidenceKeywords_EN(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"what is the evidence?"},
+		{"show me the proof"},
+		{"what is the citation?"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentEvidence {
+				t.Errorf("expected SubIntentEvidence for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_SummaryRefreshKeywords_JP(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"結論だけもう一度"},
+		{"要約して"},
+		{"まとめ直して"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentSummaryRefresh {
+				t.Errorf("expected SubIntentSummaryRefresh for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
+func TestClassifySubIntent_SummaryRefreshKeywords_EN(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"just the conclusion please"},
+		{"summarize again"},
+		{"give me a recap"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			subIntent := c.ClassifySubIntent(tt.query)
+			if subIntent != SubIntentSummaryRefresh {
+				t.Errorf("expected SubIntentSummaryRefresh for %q, got %s", tt.query, subIntent)
+			}
+		})
+	}
+}
+
 func TestClassifySubIntent_NoMatch_ReturnsNone(t *testing.T) {
 	c := NewQueryClassifier(nil, 0)
 	tests := []struct {
 		query string
 	}{
 		{"この記事の要点は？"},
-		{"要約して"},
 		{"何が書いてある？"},
 		{"3行でまとめて"},
 	}
@@ -323,7 +479,7 @@ func TestClassifySubIntent_NoMatch_ReturnsNone(t *testing.T) {
 
 func TestClassifySubIntent_PriorityConflicts(t *testing.T) {
 	c := NewQueryClassifier(nil, 0)
-	// Critique > Opinion > Implication
+	// Priority: related_articles > evidence > detail > critique > opinion > implication > summary_refresh
 	tests := []struct {
 		query    string
 		expected SubIntentType
@@ -333,6 +489,9 @@ func TestClassifySubIntent_PriorityConflicts(t *testing.T) {
 		{"影響とリスクは？", SubIntentCritique, "リスク triggers Critique before 影響"},
 		{"評価して。弱点はある？", SubIntentCritique, "弱点 triggers Critique before 評価"},
 		{"影響は？意見を教えて", SubIntentOpinion, "Opinion wins over Implication"},
+		{"詳細と関連記事を教えて", SubIntentRelatedArticles, "RelatedArticles wins over Detail"},
+		{"根拠と技術的な詳細", SubIntentEvidence, "Evidence wins over Detail"},
+		{"技術的な弱点を教えて", SubIntentCritique, "Critique wins over Detail (弱点 > 技術的)"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {

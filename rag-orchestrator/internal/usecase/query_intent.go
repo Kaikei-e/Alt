@@ -24,10 +24,14 @@ const (
 type SubIntentType string
 
 const (
-	SubIntentNone        SubIntentType = ""
-	SubIntentCritique    SubIntentType = "critique"    // 反論・批判・弱点
-	SubIntentOpinion     SubIntentType = "opinion"     // 評価・意見
-	SubIntentImplication SubIntentType = "implication" // 影響・意味合い
+	SubIntentNone            SubIntentType = ""
+	SubIntentCritique        SubIntentType = "critique"         // 反論・批判・弱点
+	SubIntentOpinion         SubIntentType = "opinion"          // 評価・意見
+	SubIntentImplication     SubIntentType = "implication"      // 影響・意味合い
+	SubIntentDetail          SubIntentType = "detail"           // 技術的・詳細・具体例
+	SubIntentRelatedArticles SubIntentType = "related_articles" // 関連する記事
+	SubIntentEvidence        SubIntentType = "evidence"         // 根拠・エビデンス
+	SubIntentSummaryRefresh  SubIntentType = "summary_refresh"  // 要約リフレッシュ
 )
 
 // ErrArticleNotIndexed indicates that the referenced article is not in the RAG index.
