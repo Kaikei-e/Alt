@@ -1601,3 +1601,99 @@ class TestSlotLeakAfterPreemption:
             f"be={sem._be_available}, acquired={len(sem._acquired_slots)}, "
             f"total={total}, expected=2"
         )
+
+
+class TestSlotIdOwnershipPropagation:
+    """Tests for explicit slot_id ownership propagation (ADR-000604 item 4).
+
+    acquire() must return (wait_time, slot_id) so callers can pass slot_id
+    back to release(), eliminating was_high_priority inference.
+    """
+
+    @pytest.mark.asyncio
+    async def test_acquire_returns_tuple_with_slot_id(self, hybrid_semaphore_module):
+        """acquire() must return (wait_time, slot_id) tuple."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
+
+        result = await sem.acquire(high_priority=True)
+        assert isinstance(result, tuple), (
+            f"acquire() should return tuple, got {type(result)}"
+        )
+        wait_time, slot_id = result
+        assert isinstance(wait_time, float)
+        assert isinstance(slot_id, int)
+        assert slot_id > 0
+
+    @pytest.mark.asyncio
+    async def test_release_with_slot_id_returns_to_home_pool(
+        self, hybrid_semaphore_module
+    ):
+        """release(slot_id=X) must return slot to the pool it came from."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
+
+        _, slot_id = await sem.acquire(high_priority=True)
+        sem.release(slot_id=slot_id)
+
+        # RT slot should be back in RT pool
+        assert sem._rt_available == 1
+
+    @pytest.mark.asyncio
+    async def test_acquire_different_slots_get_different_ids(
+        self, hybrid_semaphore_module
+    ):
+        """Each acquire() must return a unique slot_id."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(total_slots=3, rt_reserved_slots=1)
+
+        _, id1 = await sem.acquire(high_priority=True)
+        _, id2 = await sem.acquire(high_priority=False)
+        _, id3 = await sem.acquire(high_priority=False)
+
+        assert len({id1, id2, id3}) == 3, "All slot_ids must be unique"
+
+    @pytest.mark.asyncio
+    async def test_preemption_release_chain_with_slot_id(
+        self, hybrid_semaphore_module
+    ):
+        """Reproduce the exact preemption→release chain from production logs.
+
+        Scenario:
+        1. BE acquires a slot from BE pool
+        2. RT arrives, preempts BE
+        3. BE gets a transferred RT slot
+        4. Both release with their slot_ids
+        5. Slots must return to correct home pools
+        """
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            preemption_enabled=True,
+        )
+
+        # BE acquires the only slot (falls back to RT pool since no BE slots)
+        _, be_slot_id = await sem.acquire(high_priority=False)
+
+        # RT arrives — triggers preemption
+        rt_task = asyncio.create_task(sem.acquire(high_priority=True))
+        await asyncio.sleep(0.05)  # Let preemption happen
+
+        # BE releases its slot (which came from RT pool)
+        sem.release(slot_id=be_slot_id)
+        await asyncio.sleep(0.05)
+
+        # RT should now have acquired
+        assert rt_task.done(), "RT should have acquired after BE release"
+        _, rt_slot_id = rt_task.result()
+
+        # Release RT
+        sem.release(slot_id=rt_slot_id)
+
+        # Invariant: all slots back
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == sem._total_slots, (
+            f"Slot leak: rt={sem._rt_available}, be={sem._be_available}, "
+            f"acquired={len(sem._acquired_slots)}"
+        )
