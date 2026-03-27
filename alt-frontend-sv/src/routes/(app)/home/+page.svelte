@@ -208,6 +208,8 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 			const params = new URLSearchParams({ url: item.link });
 			if (item.title) params.set("title", item.title);
 			goto(`/articles/${articleId}?${params.toString()}`);
+		} else {
+			toast.push("Article link is not available yet.", "error", 3000);
 		}
 		return;
 	}
