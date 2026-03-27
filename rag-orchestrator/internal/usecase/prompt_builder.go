@@ -68,9 +68,12 @@ func (b *XMLPromptBuilder) buildSingleTurn(input PromptInput) ([]domain.Message,
 	var sb strings.Builder
 
 	b.writeFullInstructions(&sb, input)
-	if input.SubIntentType != SubIntentNone {
+	switch {
+	case input.SubIntentType == SubIntentRelatedArticles:
+		b.writeRelatedArticlesOutputFormat(&sb)
+	case input.SubIntentType != SubIntentNone:
 		b.writeAnalyticalOutputFormat(&sb)
-	} else {
+	default:
 		b.writeOutputFormat(&sb)
 	}
 	b.writeArticleContext(&sb, input)
@@ -127,6 +130,15 @@ func (b *XMLPromptBuilder) buildMultiTurn(input PromptInput) ([]domain.Message, 
 		sb.WriteString("- **要約ではなく、分析的な評価と意見を述べること**\n")
 	case SubIntentImplication:
 		sb.WriteString("- **要約ではなく、影響・意味合い・今後の展望を分析すること**\n")
+	case SubIntentDetail:
+		sb.WriteString("- **概要を繰り返さず、技術的な詳細・メカニズム・ステップに集中すること**\n")
+		sb.WriteString("- 具体的なデータや数値があれば正確に引用すること\n")
+	case SubIntentRelatedArticles:
+		sb.WriteString("- **関連記事のランク付きリストを返すこと。散文形式にしないこと**\n")
+	case SubIntentEvidence:
+		sb.WriteString("- **主張の根拠となる具体的なパッセージを引用付きで返すこと**\n")
+	case SubIntentSummaryRefresh:
+		sb.WriteString("- **簡潔な要約を提供すること。前回の回答との重複は許容**\n")
 	}
 	sb.WriteString("\n")
 
@@ -222,6 +234,32 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 		sb.WriteString("- 記事の内容が何を意味するのか、その影響を分析すること\n")
 		sb.WriteString("- 短期的・長期的な影響を区別して説明すること\n")
 		sb.WriteString("- **記事の内容を要約するのではなく、その影響と意味合いを分析すること**\n\n")
+	case SubIntentDetail:
+		sb.WriteString("## クエリ意図: 技術的詳細\n")
+		sb.WriteString("ユーザーは記事の技術的な詳細、メカニズム、ステップを知りたいと思っています。\n")
+		sb.WriteString("- 質問に直接回答すること。概要の再説明は不要\n")
+		sb.WriteString("- メカニズム・手順・技術的根拠に焦点を当てること\n")
+		sb.WriteString("- 具体的なデータ・数値を正確に引用すること\n")
+		sb.WriteString("- **記事の要約ではなく、技術的な詳細に集中すること**\n\n")
+	case SubIntentRelatedArticles:
+		sb.WriteString("## クエリ意図: 関連記事\n")
+		sb.WriteString("ユーザーはこの記事に関連する他の記事を知りたいと思っています。\n")
+		sb.WriteString("- 関連記事のランク付きリストを返すこと（散文形式ではなくリスト形式）\n")
+		sb.WriteString("- 各記事に関連する理由を1文で説明すること\n")
+		sb.WriteString("- **長文の散文ではなく、簡潔な構造化リストで回答すること**\n\n")
+	case SubIntentEvidence:
+		sb.WriteString("## クエリ意図: 根拠・エビデンス\n")
+		sb.WriteString("ユーザーは記事の主張を裏付ける具体的な根拠を求めています。\n")
+		sb.WriteString("- 引用付きで具体的なパッセージを返すこと\n")
+		sb.WriteString("- 各引用に出典番号[番号]を付与すること\n")
+		sb.WriteString("- 根拠の強さ（直接的か間接的か）を明示すること\n")
+		sb.WriteString("- **記事の要約ではなく、根拠となるパッセージに集中すること**\n\n")
+	case SubIntentSummaryRefresh:
+		sb.WriteString("## クエリ意図: 要約リフレッシュ\n")
+		sb.WriteString("ユーザーは記事の簡潔な要約を求めています。\n")
+		sb.WriteString("- 重要なポイントを簡潔にまとめること\n")
+		sb.WriteString("- 前回の回答と重複しても構わない（ユーザーが要約を求めている）\n")
+		sb.WriteString("- **簡潔さを優先し、5-7ポイントに絞ること**\n\n")
 	}
 }
 
@@ -239,6 +277,15 @@ func (b *XMLPromptBuilder) writeFollowUpOutputFormat(sb *strings.Builder) {
 	sb.WriteString("以下のJSON形式で出力してください。answer フィールドには Markdown を使用してください。\n")
 	sb.WriteString("**概要セクションは不要です。質問への回答を直接書いてください。**\n")
 	sb.WriteString("{\"answer\":\"質問への直接回答をここに書く\",")
+	sb.WriteString("\"citations\":[{\"chunk_id\":\"1\",\"reason\":\"引用理由\"}],\"fallback\":false,\"reason\":\"\"}\n\n")
+	sb.WriteString("コンテキストが不十分な場合は fallback=true とし、reason に理由を記述してください。\n\n")
+}
+
+func (b *XMLPromptBuilder) writeRelatedArticlesOutputFormat(sb *strings.Builder) {
+	sb.WriteString("## 出力形式\n")
+	sb.WriteString("以下のJSON形式で出力してください。answer フィールドにはMarkdownリストを使用してください。\n")
+	sb.WriteString("**重要: 散文ではなく、関連記事の簡潔なランク付きリストで回答してください。**\n")
+	sb.WriteString("{\"answer\":\"関連記事のリストをここに書く\",")
 	sb.WriteString("\"citations\":[{\"chunk_id\":\"1\",\"reason\":\"引用理由\"}],\"fallback\":false,\"reason\":\"\"}\n\n")
 	sb.WriteString("コンテキストが不十分な場合は fallback=true とし、reason に理由を記述してください。\n\n")
 }
