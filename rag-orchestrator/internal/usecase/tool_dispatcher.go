@@ -30,7 +30,7 @@ func (d *ToolDispatcher) Dispatch(ctx context.Context, intent QueryIntent, query
 		return nil
 	}
 
-	var results []*domain.ToolResult
+	results := make([]*domain.ToolResult, 0, len(toolNames))
 	for _, name := range toolNames {
 		tool, ok := d.tools[name]
 		if !ok {
@@ -68,7 +68,7 @@ func (d *ToolDispatcher) DispatchForPlan(ctx context.Context, plan *domain.Plann
 		return nil
 	}
 
-	var results []*domain.ToolResult
+	results := make([]*domain.ToolResult, 0, len(toolNames))
 	for _, name := range toolNames {
 		tool, ok := d.tools[name]
 		if !ok {

@@ -711,7 +711,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 	messages, err := u.promptBuilder.Build(promptInput)
 	if err != nil {
-		return result, fmt.Errorf("failed to build messages: %v", err)
+		return result, fmt.Errorf("build messages: %w", err)
 	}
 
 	result.messages = messages
@@ -748,7 +748,7 @@ func (u *answerWithRAGUsecase) retrieveWithPolicy(
 		result.retrievalPolicy = "article_plus_global"
 		retrieved, err := strategy.Retrieve(ctx, retrieveInput, intent)
 		if err != nil {
-			return retrieved, err
+			return retrieved, fmt.Errorf("retrieve with article_plus_global policy: %w", err)
 		}
 		if u.qualityAssessor != nil && retrieved != nil {
 			verdict := u.qualityAssessor.Assess(retrieved.Contexts)
