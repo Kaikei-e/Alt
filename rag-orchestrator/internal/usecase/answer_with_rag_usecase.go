@@ -464,6 +464,7 @@ type promptBuildResult struct {
 	retrievalPolicy  string
 	generalGated     bool
 	plannerOutput    *domain.PlannerOutput // Conversation planner result
+	parsedIntent     QueryIntent           // Resolved intent for state derivation
 }
 
 func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWithRAGInput) (*promptBuildResult, error) {
@@ -502,6 +503,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	result.strategyUsed = strategy.Name()
 	result.intentType = intent.IntentType
 	result.subIntentType = intent.SubIntentType
+	result.parsedIntent = intent
 
 	u.logger.Info("query_intent_parsed",
 		slog.String("intent_type", string(intent.IntentType)),

@@ -491,6 +491,18 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			},
 		}
 
+		// Persist conversation state for follow-up reference resolution.
+		if u.conversationStore != nil && input.UserID != "" {
+			newState := DeriveStateUpdate(
+				u.conversationStore.Get(input.UserID),
+				input.UserID,
+				promptData.parsedIntent,
+				promptData.plannerOutput,
+				output,
+			)
+			u.conversationStore.Put(newState)
+		}
+
 		// Store in Cache
 		u.cache.Add(cacheKey, output)
 
