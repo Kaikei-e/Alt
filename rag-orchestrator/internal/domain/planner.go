@@ -4,18 +4,18 @@ package domain
 type PlannerOperation string
 
 const (
-	OpDetail          PlannerOperation = "detail"
-	OpEvidence        PlannerOperation = "evidence"
-	OpRelatedArticles PlannerOperation = "related_articles"
-	OpClarify         PlannerOperation = "clarify"
-	OpCompare         PlannerOperation = "compare"
-	OpTopicShift      PlannerOperation = "topic_shift"
-	OpFactCheck       PlannerOperation = "fact_check"
-	OpSummaryRefresh  PlannerOperation = "summary_refresh"
-	OpCritique        PlannerOperation = "critique"
-	OpOpinion         PlannerOperation = "opinion"
-	OpImplication     PlannerOperation = "implication"
-	OpGeneral            PlannerOperation = "general"
+	OpDetail            PlannerOperation = "detail"
+	OpEvidence          PlannerOperation = "evidence"
+	OpRelatedArticles   PlannerOperation = "related_articles"
+	OpClarify           PlannerOperation = "clarify"
+	OpCompare           PlannerOperation = "compare"
+	OpTopicShift        PlannerOperation = "topic_shift"
+	OpFactCheck         PlannerOperation = "fact_check"
+	OpSummaryRefresh    PlannerOperation = "summary_refresh"
+	OpCritique          PlannerOperation = "critique"
+	OpOpinion           PlannerOperation = "opinion"
+	OpImplication       PlannerOperation = "implication"
+	OpGeneral           PlannerOperation = "general"
 	OpCausalExplanation PlannerOperation = "causal_explanation"
 )
 

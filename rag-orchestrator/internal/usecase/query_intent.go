@@ -11,12 +11,12 @@ import (
 type IntentType string
 
 const (
-	IntentGeneral       IntentType = "general"
-	IntentArticleScoped IntentType = "article_scoped"
-	IntentComparison    IntentType = "comparison"
-	IntentTemporal      IntentType = "temporal"
-	IntentTopicDeepDive IntentType = "topic_deep_dive"
-	IntentFactCheck          IntentType = "fact_check"
+	IntentGeneral           IntentType = "general"
+	IntentArticleScoped     IntentType = "article_scoped"
+	IntentComparison        IntentType = "comparison"
+	IntentTemporal          IntentType = "temporal"
+	IntentTopicDeepDive     IntentType = "topic_deep_dive"
+	IntentFactCheck         IntentType = "fact_check"
 	IntentCausalExplanation IntentType = "causal_explanation"
 )
 

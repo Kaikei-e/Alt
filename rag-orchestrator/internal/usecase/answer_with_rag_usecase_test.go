@@ -1284,11 +1284,11 @@ func TestPromptBuilder_MultiTurn_DetailSubIntent_AddsGuidance(t *testing.T) {
 func TestPromptBuilder_ToolOnly_RelatedArticlesSubIntent_DoesNotRequireContextChunks(t *testing.T) {
 	builder := usecase.NewXMLPromptBuilder()
 	messages, err := builder.Build(usecase.PromptInput{
-		Query:           "関連する記事はある？",
-		PromptVersion:   "test",
-		IntentType:      usecase.IntentArticleScoped,
-		SubIntentType:   usecase.SubIntentRelatedArticles,
-		Contexts:        []usecase.PromptContext{}, // Empty — tool-only path
+		Query:             "関連する記事はある？",
+		PromptVersion:     "test",
+		IntentType:        usecase.IntentArticleScoped,
+		SubIntentType:     usecase.SubIntentRelatedArticles,
+		Contexts:          []usecase.PromptContext{}, // Empty — tool-only path
 		SupplementaryInfo: []string{"Related articles:\n- Article A\n- Article B"},
 	})
 	assert.NoError(t, err)

@@ -458,7 +458,7 @@ type promptBuildResult struct {
 	intentType       IntentType
 	subIntentType    SubIntentType
 	toolsUsed        []string
-	articleContext    *ArticleContext
+	articleContext   *ArticleContext
 	retrievalQuality QualityVerdict
 	retryCount       int
 	retrievalPolicy  string

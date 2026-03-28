@@ -23,13 +23,13 @@ type PromptInput struct {
 	Locale              string
 	PromptVersion       string
 	Contexts            []PromptContext
-	Stage               string               // "citations" or "answer" (empty = combined)
-	Citations           []string             // For "answer" stage, pass previously extracted citations
-	ConversationHistory []domain.Message     // Recent chat turns for multi-turn context
-	ArticleContext      *ArticleContext      // Set when query targets a specific article
-	IntentType          IntentType           // Classified query intent (Phase 2)
-	SubIntentType       SubIntentType        // Analytical sub-intent for article-scoped queries
-	SupplementaryInfo   []string             // Tool results injected as supplementary context (Phase 3)
+	Stage               string                // "citations" or "answer" (empty = combined)
+	Citations           []string              // For "answer" stage, pass previously extracted citations
+	ConversationHistory []domain.Message      // Recent chat turns for multi-turn context
+	ArticleContext      *ArticleContext       // Set when query targets a specific article
+	IntentType          IntentType            // Classified query intent (Phase 2)
+	SubIntentType       SubIntentType         // Analytical sub-intent for article-scoped queries
+	SupplementaryInfo   []string              // Tool results injected as supplementary context (Phase 3)
 	PlannerOutput       *domain.PlannerOutput // Planner-driven prompt shaping (nil = legacy mode)
 }
 
