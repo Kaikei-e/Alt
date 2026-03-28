@@ -310,7 +310,7 @@ class HybridPrioritySemaphore:
                 )
         return leaked
 
-    async def acquire(self, high_priority: bool = False) -> float:
+    async def acquire(self, high_priority: bool = False) -> tuple[float, int]:
         """
         Acquire a slot with RT/BE scheduling.
 
@@ -318,7 +318,8 @@ class HybridPrioritySemaphore:
             high_priority: True for RT (streaming), False for BE (batch)
 
         Returns:
-            Wait time in seconds
+            Tuple of (wait_time_seconds, slot_id). The slot_id MUST be passed
+            back to release() for correct pool ownership tracking.
 
         Raises:
             QueueFullError: If max_queue_depth is set and queue is full
@@ -358,22 +359,22 @@ class HybridPrioritySemaphore:
                 if self._rt_available > 0:
                     self._rt_available -= 1
                     self._last_wait_time = 0.0
-                    self._track_acquire(is_high_priority=True, context="rt_immediate", home_pool="rt")
+                    sid = self._track_acquire(is_high_priority=True, context="rt_immediate", home_pool="rt")
                     logger.debug(
                         "RT slot acquired immediately",
                         extra={"rt_available": self._rt_available},
                     )
-                    return 0.0
+                    return 0.0, sid
                 # Fallback to BE slot if no RT slots reserved (rt_reserved=0)
                 elif self._rt_reserved == 0 and self._be_available > 0:
                     self._be_available -= 1
                     self._last_wait_time = 0.0
-                    self._track_acquire(is_high_priority=True, context="hp_be_fallback", home_pool="be")
+                    sid = self._track_acquire(is_high_priority=True, context="hp_be_fallback", home_pool="be")
                     logger.debug(
                         "High priority acquired BE slot (no RT reserved)",
                         extra={"be_available": self._be_available},
                     )
-                    return 0.0
+                    return 0.0, sid
 
                 # No slot available for RT - try preemption
                 if self._preemption_enabled and self._has_preemptable_be():
@@ -387,23 +388,23 @@ class HybridPrioritySemaphore:
                 if self._be_available > 0:
                     self._be_available -= 1
                     self._last_wait_time = 0.0
-                    self._track_acquire(is_high_priority=False, context="be_immediate", home_pool="be")
+                    sid = self._track_acquire(is_high_priority=False, context="be_immediate", home_pool="be")
                     logger.debug(
                         "BE slot acquired immediately",
                         extra={"be_available": self._be_available},
                     )
-                    return 0.0
+                    return 0.0, sid
                 # Fallback to RT slot if no BE slots exist (all slots are RT)
                 # This prevents deadlock when rt_reserved == total_slots
                 elif self._be_slots == 0 and self._rt_available > 0:
                     self._rt_available -= 1
                     self._last_wait_time = 0.0
-                    self._track_acquire(is_high_priority=False, context="lp_rt_fallback", home_pool="rt")
+                    sid = self._track_acquire(is_high_priority=False, context="lp_rt_fallback", home_pool="rt")
                     logger.debug(
                         "Low priority acquired RT slot (no BE slots configured)",
                         extra={"rt_available": self._rt_available},
                     )
-                    return 0.0
+                    return 0.0, sid
 
             # No slot available, queue the request
             future = asyncio.get_event_loop().create_future()
@@ -450,7 +451,7 @@ class HybridPrioritySemaphore:
             inherited_pool = result if isinstance(result, str) and result else ""
             if not inherited_pool:
                 inherited_pool = "rt" if high_priority else "be"
-            self._track_acquire(is_high_priority=high_priority, context="queued", home_pool=inherited_pool)
+            sid = self._track_acquire(is_high_priority=high_priority, context="queued", home_pool=inherited_pool)
 
             if wait_time > 10.0:
                 logger.warning(
@@ -461,7 +462,7 @@ class HybridPrioritySemaphore:
                     },
                 )
 
-            return wait_time
+            return wait_time, sid
         except asyncio.CancelledError:
             if not future.done():
                 future.cancel()
@@ -484,7 +485,9 @@ class HybridPrioritySemaphore:
                 guaranteed bandwidth tracking; NOT used for pool return)
             slot_id: Optional slot_id from acquire tracking (for precise ownership)
         """
-        # Determine home_pool from acquired slot tracking
+        # Determine home_pool from acquired slot tracking.
+        # slot_id is the authoritative source of ownership. When provided,
+        # home_pool is looked up directly — no was_high_priority inference needed.
         home_pool = ""
         if slot_id is not None:
             slot_info = self._acquired_slots.get(slot_id)
@@ -492,7 +495,8 @@ class HybridPrioritySemaphore:
                 home_pool = slot_info.home_pool
             self._track_release(slot_id)
         else:
-            # Fallback: find oldest matching slot to determine home_pool
+            # Legacy fallback for callers that haven't migrated to (wait_time, slot_id).
+            # Find oldest matching slot to determine home_pool.
             matching = [
                 s for s in self._acquired_slots.values()
                 if s.is_high_priority == was_high_priority
@@ -501,8 +505,16 @@ class HybridPrioritySemaphore:
                 oldest = min(matching, key=lambda s: s.acquired_at)
                 home_pool = oldest.home_pool
                 self._track_release(oldest.slot_id)
+            else:
+                logger.warning(
+                    "release() called without slot_id and no matching tracked slots",
+                    extra={
+                        "was_high_priority": was_high_priority,
+                        "acquired_slots": len(self._acquired_slots),
+                    },
+                )
 
-        # If home_pool is unknown (no tracking data), infer from caller priority
+        # Last resort: infer from caller priority (only if no tracking data at all)
         if not home_pool:
             home_pool = "rt" if was_high_priority else "be"
 

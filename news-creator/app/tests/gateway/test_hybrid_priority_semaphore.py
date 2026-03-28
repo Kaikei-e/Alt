@@ -82,7 +82,7 @@ class TestRTSlotReservation:
         semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
 
         # High priority should acquire RT slot immediately
-        wait_time = await semaphore.acquire(high_priority=True)
+        wait_time, _sid = await semaphore.acquire(high_priority=True)
         assert wait_time == 0.0
         assert semaphore._rt_available == 0
 
@@ -93,7 +93,7 @@ class TestRTSlotReservation:
         semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
 
         # Low priority should acquire BE slot immediately
-        wait_time = await semaphore.acquire(high_priority=False)
+        wait_time, _sid = await semaphore.acquire(high_priority=False)
         assert wait_time == 0.0
         assert semaphore._be_available == 0
 
@@ -104,10 +104,10 @@ class TestRTSlotReservation:
         semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
 
         # Acquire BE slot with low priority
-        await semaphore.acquire(high_priority=False)
+        _, _sid = await semaphore.acquire(high_priority=False)
 
         # RT slot should still be available for high priority
-        wait_time = await semaphore.acquire(high_priority=True)
+        wait_time, _sid = await semaphore.acquire(high_priority=True)
         assert wait_time == 0.0
 
     @pytest.mark.asyncio
@@ -120,18 +120,18 @@ class TestRTSlotReservation:
         processing_order = []
 
         # Hold the RT slot first
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def low_priority_worker():
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             processing_order.append("low")
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         async def high_priority_worker():
             await asyncio.sleep(0.02)  # Delay to let low priority queue first
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append("high")
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Start both workers - low priority will get BE slot immediately
         # since we have 1 BE slot available
@@ -141,7 +141,7 @@ class TestRTSlotReservation:
         await asyncio.sleep(0.01)
 
         # Release RT slot - high priority should get it
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
 
         await asyncio.gather(low_task, high_task)
 
@@ -162,17 +162,17 @@ class TestPriorityQueueBehavior:
         processing_order = []
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def low_priority_worker():
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             processing_order.append("low")
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         async def high_priority_worker():
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append("high")
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Queue low priority first, then high priority
         low_task = asyncio.create_task(low_priority_worker())
@@ -181,7 +181,7 @@ class TestPriorityQueueBehavior:
         await asyncio.sleep(0.01)
 
         # Release the slot
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
 
         await asyncio.gather(low_task, high_task)
 
@@ -197,13 +197,13 @@ class TestPriorityQueueBehavior:
         processing_order = []
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def rt_worker(task_id: int):
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append(f"rt_{task_id}")
             await asyncio.sleep(0.01)
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Queue RT tasks in order
         tasks = []
@@ -213,7 +213,7 @@ class TestPriorityQueueBehavior:
             await asyncio.sleep(0.01)
 
         # Release the slot
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
 
         await asyncio.gather(*tasks)
 
@@ -263,17 +263,17 @@ class TestAgingMechanism:
         processing_order = []
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def be_worker():
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             processing_order.append("be")
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         async def rt_worker():
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append("rt")
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Queue BE worker first
         be_task = asyncio.create_task(be_worker())
@@ -285,7 +285,7 @@ class TestAgingMechanism:
 
         # Release - aged BE may be prioritized over fresh RT
         # This tests that aging is applied; actual order depends on timing
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
 
         await asyncio.gather(be_task, rt_task)
 
@@ -303,11 +303,11 @@ class TestSlotManagement:
         semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
 
         # Acquire RT slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
         assert semaphore._rt_available == 0
 
         # Release RT slot
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
         assert semaphore._rt_available == 1
 
     @pytest.mark.asyncio
@@ -317,11 +317,11 @@ class TestSlotManagement:
         semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
 
         # Acquire BE slot
-        await semaphore.acquire(high_priority=False)
+        _, _sid = await semaphore.acquire(high_priority=False)
         assert semaphore._be_available == 0
 
         # Release BE slot
-        semaphore.release(was_high_priority=False)
+        semaphore.release(slot_id=_sid, was_high_priority=False)
         assert semaphore._be_available == 1
 
     @pytest.mark.asyncio
@@ -331,20 +331,20 @@ class TestSlotManagement:
         semaphore = HybridPrioritySemaphore(total_slots=1, rt_reserved_slots=1)
 
         # Acquire the slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         rt_completed = asyncio.Event()
 
         async def rt_worker():
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             rt_completed.set()
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         task = asyncio.create_task(rt_worker())
         await asyncio.sleep(0.01)  # Ensure it's queued
 
         # Release - should wake RT waiter
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
 
         await asyncio.wait_for(rt_completed.wait(), timeout=1.0)
         await task
@@ -359,7 +359,7 @@ class TestLastWaitTime:
         HybridPrioritySemaphore = hybrid_semaphore_module
         semaphore = HybridPrioritySemaphore(total_slots=2)
 
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
         assert semaphore.last_wait_time == 0.0
 
     @pytest.mark.asyncio
@@ -369,20 +369,20 @@ class TestLastWaitTime:
         semaphore = HybridPrioritySemaphore(total_slots=1, rt_reserved_slots=1)
 
         # Acquire the slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         wait_time_recorded = None
 
         async def worker():
             nonlocal wait_time_recorded
-            wait_time = await semaphore.acquire(high_priority=True)
+            wait_time, _sid = await semaphore.acquire(high_priority=True)
             wait_time_recorded = wait_time
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         task = asyncio.create_task(worker())
         await asyncio.sleep(0.05)  # Wait 50ms before releasing
 
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
         await task
 
         # Wait time should be approximately 50ms
@@ -402,13 +402,13 @@ class TestCancellation:
         processing_order = []
 
         # Acquire the slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def worker(name: str, high_priority: bool):
             try:
-                await semaphore.acquire(high_priority=high_priority)
+                _, _sid = await semaphore.acquire(high_priority=high_priority)
                 processing_order.append(name)
-                semaphore.release(was_high_priority=high_priority)
+                semaphore.release(slot_id=_sid, was_high_priority=high_priority)
             except asyncio.CancelledError:
                 processing_order.append(f"{name}_cancelled")
                 raise
@@ -427,7 +427,7 @@ class TestCancellation:
             pass
 
         # Release - should wake second task
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
         await task2
 
         assert "first_cancelled" in processing_order
@@ -457,7 +457,7 @@ class TestEdgeCases:
         assert semaphore._be_slots == 2
 
         # High priority still works, just uses BE slots
-        wait_time = await semaphore.acquire(high_priority=True)
+        wait_time, _sid = await semaphore.acquire(high_priority=True)
         assert wait_time == 0.0
 
     @pytest.mark.asyncio
@@ -469,10 +469,10 @@ class TestEdgeCases:
         completed = []
 
         async def worker(worker_id: int, high_priority: bool):
-            await semaphore.acquire(high_priority=high_priority)
+            _, _sid = await semaphore.acquire(high_priority=high_priority)
             await asyncio.sleep(0.01)
             completed.append(worker_id)
-            semaphore.release(was_high_priority=high_priority)
+            semaphore.release(slot_id=_sid, was_high_priority=high_priority)
 
         # Start many workers concurrently
         tasks = [
@@ -576,10 +576,10 @@ class TestPreemption:
         )
 
         # Acquire RT slot (for an existing RT request)
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         # Acquire BE slot and register as active
-        await semaphore.acquire(high_priority=False)
+        _, _sid = await semaphore.acquire(high_priority=False)
         be_cancel_event = asyncio.Event()
         semaphore.register_active_request("be-1", be_cancel_event, is_high_priority=False)
 
@@ -587,7 +587,7 @@ class TestPreemption:
         rt_acquired = asyncio.Event()
 
         async def rt_worker():
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             rt_acquired.set()
 
         rt_task = asyncio.create_task(rt_worker())
@@ -598,7 +598,7 @@ class TestPreemption:
 
         # Simulate BE completion and slot release
         semaphore.unregister_active_request("be-1")
-        semaphore.release(was_high_priority=False)
+        semaphore.release(slot_id=_sid, was_high_priority=False)
 
         # RT should eventually acquire
         await asyncio.wait_for(rt_acquired.wait(), timeout=2.0)
@@ -615,8 +615,8 @@ class TestPreemption:
         )
 
         # Acquire both slots
-        await semaphore.acquire(high_priority=True)
-        await semaphore.acquire(high_priority=False)
+        _, _sid = await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=False)
         be_cancel_event = asyncio.Event()
         semaphore.register_active_request("be-1", be_cancel_event, is_high_priority=False)
 
@@ -625,7 +625,7 @@ class TestPreemption:
 
         async def rt_worker():
             rt_queued.set()
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
 
         rt_task = asyncio.create_task(rt_worker())
         await asyncio.sleep(0.05)
@@ -684,12 +684,12 @@ class TestPreemption:
         )
 
         # Only acquire BE slot, leave RT slot available
-        await semaphore.acquire(high_priority=False)
+        _, _sid = await semaphore.acquire(high_priority=False)
         be_cancel_event = asyncio.Event()
         semaphore.register_active_request("be-1", be_cancel_event, is_high_priority=False)
 
         # New RT request gets RT slot immediately, no preemption
-        wait_time = await semaphore.acquire(high_priority=True)
+        wait_time, _sid = await semaphore.acquire(high_priority=True)
         assert wait_time == 0.0
         assert not be_cancel_event.is_set(), "BE should not be preempted when RT slot available"
 
@@ -704,10 +704,10 @@ class TestPreemption:
         )
 
         # Acquire both RT slots
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
         cancel_event = asyncio.Event()
         semaphore.register_active_request("rt-1", cancel_event, is_high_priority=True)
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
         cancel_event2 = asyncio.Event()
         semaphore.register_active_request("rt-2", cancel_event2, is_high_priority=True)
 
@@ -716,7 +716,7 @@ class TestPreemption:
 
         async def rt_worker():
             rt_queued.set()
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
 
         rt_task = asyncio.create_task(rt_worker())
         await asyncio.sleep(0.05)
@@ -770,17 +770,17 @@ class TestGuaranteedBandwidth:
         processing_order = []
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def be_worker():
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             processing_order.append("be")
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         async def rt_worker(idx: int):
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append(f"rt_{idx}")
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Queue BE first
         be_task = asyncio.create_task(be_worker())
@@ -794,7 +794,7 @@ class TestGuaranteedBandwidth:
             await asyncio.sleep(0.01)
 
         # Release initial slot
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Wait for all to complete
         await asyncio.gather(be_task, *rt_tasks)
@@ -815,7 +815,7 @@ class TestGuaranteedBandwidth:
         )
 
         # Acquire initial slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         # Simulate 2 RT releases (counter at 2)
         semaphore._consecutive_rt_releases = 2
@@ -824,16 +824,16 @@ class TestGuaranteedBandwidth:
         be_completed = asyncio.Event()
 
         async def be_worker():
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             be_completed.set()
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         be_task = asyncio.create_task(be_worker())
         await asyncio.sleep(0.01)
 
         # Force BE release via guaranteed bandwidth by incrementing counter
         semaphore._consecutive_rt_releases = 3  # Hits threshold
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
 
         await asyncio.wait_for(be_completed.wait(), timeout=1.0)
         await be_task
@@ -854,17 +854,17 @@ class TestGuaranteedBandwidth:
         processing_order = []
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def be_worker():
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             processing_order.append("be")
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         async def rt_worker(idx: int):
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append(f"rt_{idx}")
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Queue BE first
         be_task = asyncio.create_task(be_worker())
@@ -878,7 +878,7 @@ class TestGuaranteedBandwidth:
             await asyncio.sleep(0.01)
 
         # Release initial slot
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Wait for all to complete
         await asyncio.gather(be_task, *rt_tasks)
@@ -924,17 +924,17 @@ class TestEnhancedAging:
         processing_order = []
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def be_worker():
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             processing_order.append("be_promoted")
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         async def rt_worker():
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append("rt_fresh")
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Queue BE first
         be_task = asyncio.create_task(be_worker())
@@ -945,7 +945,7 @@ class TestEnhancedAging:
         await asyncio.sleep(0.01)
 
         # Release slot - promoted BE should be processed like RT
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
 
         await asyncio.gather(be_task, rt_task)
 
@@ -963,15 +963,15 @@ class TestEnhancedAging:
         )
 
         # Acquire slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         # Queue BE request
         be_completed = asyncio.Event()
 
         async def be_worker():
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             be_completed.set()
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         be_task = asyncio.create_task(be_worker())
         await asyncio.sleep(0.01)
@@ -984,7 +984,7 @@ class TestEnhancedAging:
         await asyncio.sleep(0.06)
 
         # Trigger aging check via release
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # BE should be processed
         await asyncio.wait_for(be_completed.wait(), timeout=1.0)
@@ -1073,12 +1073,12 @@ class TestQueueDepthLimit:
         )
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         # Queue 2 requests (fills max_queue_depth)
         async def queued_worker():
-            await semaphore.acquire(high_priority=False)
-            semaphore.release(was_high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         task1 = asyncio.create_task(queued_worker())
         await asyncio.sleep(0.01)
@@ -1087,10 +1087,10 @@ class TestQueueDepthLimit:
 
         # Third request should raise QueueFullError
         with pytest.raises(QueueFullError):
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
 
         # Cleanup
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
         await asyncio.gather(task1, task2)
 
     @pytest.mark.asyncio
@@ -1105,15 +1105,15 @@ class TestQueueDepthLimit:
         )
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         # Queue 1 request (under depth limit of 5)
         completed = asyncio.Event()
 
         async def queued_worker():
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             completed.set()
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         task = asyncio.create_task(queued_worker())
         await asyncio.sleep(0.01)
@@ -1122,7 +1122,7 @@ class TestQueueDepthLimit:
         assert len(semaphore._rt_queue) + len(semaphore._be_queue) <= 5
 
         # Cleanup
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
         await asyncio.wait_for(completed.wait(), timeout=1.0)
         await task
 
@@ -1139,16 +1139,16 @@ class TestQueueDepthLimit:
         )
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         # Queue 1 RT and 1 BE (total = 2 = max_queue_depth)
         async def rt_worker():
-            await semaphore.acquire(high_priority=True)
-            semaphore.release(was_high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         async def be_worker():
-            await semaphore.acquire(high_priority=False)
-            semaphore.release(was_high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         rt_task = asyncio.create_task(rt_worker())
         await asyncio.sleep(0.01)
@@ -1157,10 +1157,10 @@ class TestQueueDepthLimit:
 
         # Third request (either priority) should raise QueueFullError
         with pytest.raises(QueueFullError):
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
 
         # Cleanup
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
         await asyncio.gather(rt_task, be_task)
 
     @pytest.mark.asyncio
@@ -1189,7 +1189,7 @@ class TestQueueDepthLimit:
         assert status["max_queue_depth"] == 20
 
         # Acquire one slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
         status = semaphore.queue_status()
         assert status["available_slots"] == 1
         assert status["accepting"] is True
@@ -1215,12 +1215,12 @@ class TestLIFOSchedulingMode:
         processing_order = []
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def rt_worker(name: str):
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append(name)
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Queue A, B, C in order with small delays to ensure distinct enqueue times
         task_a = asyncio.create_task(rt_worker("A"))
@@ -1231,7 +1231,7 @@ class TestLIFOSchedulingMode:
         await asyncio.sleep(0.01)
 
         # Release slot - LIFO should process C first (newest)
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
         await asyncio.gather(task_a, task_b, task_c)
 
         assert processing_order == ["C", "B", "A"]
@@ -1249,12 +1249,12 @@ class TestLIFOSchedulingMode:
         processing_order = []
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def rt_worker(name: str):
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append(name)
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         # Queue A, B, C in order
         task_a = asyncio.create_task(rt_worker("A"))
@@ -1265,7 +1265,7 @@ class TestLIFOSchedulingMode:
         await asyncio.sleep(0.01)
 
         # Release slot - FIFO should process A first (oldest)
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
         await asyncio.gather(task_a, task_b, task_c)
 
         assert processing_order == ["A", "B", "C"]
@@ -1283,12 +1283,12 @@ class TestLIFOSchedulingMode:
         processing_order = []
 
         # Acquire the BE slot
-        await semaphore.acquire(high_priority=False)
+        _, _sid = await semaphore.acquire(high_priority=False)
 
         async def be_worker(name: str):
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             processing_order.append(name)
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         # Queue BE requests
         task_a = asyncio.create_task(be_worker("A"))
@@ -1299,7 +1299,7 @@ class TestLIFOSchedulingMode:
         await asyncio.sleep(0.01)
 
         # Release - BE should still be FIFO (A→B→C)
-        semaphore.release(was_high_priority=False)
+        semaphore.release(slot_id=_sid, was_high_priority=False)
         await asyncio.gather(task_a, task_b, task_c)
 
         assert processing_order == ["A", "B", "C"]
@@ -1317,12 +1317,12 @@ class TestLIFOSchedulingMode:
         processing_order = []
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def rt_worker(name: str):
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append(name)
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         task_a = asyncio.create_task(rt_worker("A"))
         await asyncio.sleep(0.01)
@@ -1339,7 +1339,7 @@ class TestLIFOSchedulingMode:
             pass
 
         # Release slot - should process B next (second-newest in LIFO)
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
         await asyncio.gather(task_a, task_b, return_exceptions=True)
 
         assert processing_order == ["B", "A"]
@@ -1358,17 +1358,17 @@ class TestLIFOSchedulingMode:
         processing_order = []
 
         # Acquire the only slot
-        await semaphore.acquire(high_priority=True)
+        _, _sid = await semaphore.acquire(high_priority=True)
 
         async def rt_worker(name: str):
-            await semaphore.acquire(high_priority=True)
+            _, _sid = await semaphore.acquire(high_priority=True)
             processing_order.append(name)
-            semaphore.release(was_high_priority=True)
+            semaphore.release(slot_id=_sid, was_high_priority=True)
 
         async def be_worker(name: str):
-            await semaphore.acquire(high_priority=False)
+            _, _sid = await semaphore.acquire(high_priority=False)
             processing_order.append(name)
-            semaphore.release(was_high_priority=False)
+            semaphore.release(slot_id=_sid, was_high_priority=False)
 
         # Queue: RT-A, RT-B, BE-X
         task_rt_a = asyncio.create_task(rt_worker("RT-A"))
@@ -1379,7 +1379,7 @@ class TestLIFOSchedulingMode:
         await asyncio.sleep(0.01)
 
         # First release (RT) - LIFO processes RT-B first
-        semaphore.release(was_high_priority=True)
+        semaphore.release(slot_id=_sid, was_high_priority=True)
         await asyncio.sleep(0.05)
 
         # RT-B processed, releases as RT → consecutive_rt_releases = 2
@@ -1434,11 +1434,11 @@ class TestSlotLeakAfterPreemption:
         )
 
         # Step 1: RT#1 acquires RT slot
-        await sem.acquire(high_priority=True)
+        _, rt1_sid = await sem.acquire(high_priority=True)
         assert sem._rt_available == 0
 
         # Step 2: BE#1 acquires BE slot
-        await sem.acquire(high_priority=False)
+        _, be1_sid = await sem.acquire(high_priority=False)
         assert sem._be_available == 0
 
         # Register BE#1 as preemptable
@@ -1455,12 +1455,13 @@ class TestSlotLeakAfterPreemption:
 
         # Step 4: BE#1 detects cancel, releases its slot
         sem.unregister_active_request("be-1")
-        sem.release(was_high_priority=False)
+        sem.release(slot_id=be1_sid, was_high_priority=False)
 
         # Step 5: RT#2 wakes from queue (may need multiple yields)
         for _ in range(5):
             await asyncio.sleep(0)
         assert rt2_task.done(), "RT#2 should have been woken by BE#1 release"
+        _, rt2_sid = rt2_task.result()
 
         # Queue two BE waiters so RT releases can transfer to them
         be_waiter_1 = asyncio.create_task(sem.acquire(high_priority=False))
@@ -1469,20 +1470,22 @@ class TestSlotLeakAfterPreemption:
             await asyncio.sleep(0)
 
         # Step 6: RT#1 releases → should wake be_waiter_1
-        sem.release(was_high_priority=True)
+        sem.release(slot_id=rt1_sid, was_high_priority=True)
         for _ in range(3):
             await asyncio.sleep(0)
         assert be_waiter_1.done(), "BE waiter 1 should be woken by RT#1 release"
+        _, bw1_sid = be_waiter_1.result()
 
         # Step 7: RT#2 releases → should wake be_waiter_2
-        sem.release(was_high_priority=True)
+        sem.release(slot_id=rt2_sid, was_high_priority=True)
         for _ in range(3):
             await asyncio.sleep(0)
         assert be_waiter_2.done(), "BE waiter 2 should be woken by RT#2 release"
+        _, bw2_sid = be_waiter_2.result()
 
         # Step 8: Both BE finish, release with no waiters
-        sem.release(was_high_priority=False)
-        sem.release(was_high_priority=False)
+        sem.release(slot_id=bw1_sid, was_high_priority=False)
+        sem.release(slot_id=bw2_sid, was_high_priority=False)
 
         # INVARIANT: total available must equal total_slots
         total_available = sem._rt_available + sem._be_available
@@ -1520,8 +1523,8 @@ class TestSlotLeakAfterPreemption:
         # --- Reproduce the full preemption → wake chain → leak sequence ---
 
         # RT#1 acquires RT slot, BE#1 acquires BE slot
-        await sem.acquire(high_priority=True)
-        await sem.acquire(high_priority=False)
+        _, rt1_sid = await sem.acquire(high_priority=True)
+        _, be1_sid = await sem.acquire(high_priority=False)
 
         cancel_event = asyncio.Event()
         sem.register_active_request("be-1", cancel_event, is_high_priority=False)
@@ -1540,26 +1543,29 @@ class TestSlotLeakAfterPreemption:
 
         # BE#1 releases → wakes RT#2
         sem.unregister_active_request("be-1")
-        sem.release(was_high_priority=False)
+        sem.release(slot_id=be1_sid, was_high_priority=False)
         for _ in range(5):
             await asyncio.sleep(0)
         assert rt2_task.done()
+        _, rt2_sid = rt2_task.result()
 
         # RT#1 releases → wakes be_waiter_1 (slot migrates RT→BE)
-        sem.release(was_high_priority=True)
+        sem.release(slot_id=rt1_sid, was_high_priority=True)
         for _ in range(3):
             await asyncio.sleep(0)
         assert be_waiter_1.done()
+        _, bw1_sid = be_waiter_1.result()
 
         # RT#2 releases → wakes be_waiter_2 (slot migrates RT→BE AGAIN)
-        sem.release(was_high_priority=True)
+        sem.release(slot_id=rt2_sid, was_high_priority=True)
         for _ in range(3):
             await asyncio.sleep(0)
         assert be_waiter_2.done()
+        _, bw2_sid = be_waiter_2.result()
 
         # Both BE complete, release with no waiters
-        sem.release(was_high_priority=False)
-        sem.release(was_high_priority=False)
+        sem.release(slot_id=bw1_sid, was_high_priority=False)
+        sem.release(slot_id=bw2_sid, was_high_priority=False)
 
         # --- Now GPU is idle, all slots should be available ---
         rt3_task = asyncio.create_task(sem.acquire(high_priority=True))
@@ -1588,12 +1594,12 @@ class TestSlotLeakAfterPreemption:
         )
 
         # Acquire both slots as RT (simulating preemption path)
-        await sem.acquire(high_priority=True)   # RT slot
-        await sem.acquire(high_priority=False)   # BE slot
+        _, sid1 = await sem.acquire(high_priority=True)   # RT slot
+        _, sid2 = await sem.acquire(high_priority=False)   # BE slot
 
-        # Release both as the opposite priority
-        sem.release(was_high_priority=False)  # was RT, releasing as BE
-        sem.release(was_high_priority=True)   # was BE, releasing as RT
+        # Release both — slot_id tracks home_pool correctly regardless of caller priority
+        sem.release(slot_id=sid1, was_high_priority=False)
+        sem.release(slot_id=sid2, was_high_priority=True)
 
         total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
         assert total == 2, (

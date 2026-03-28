@@ -254,7 +254,7 @@ class OllamaGateway(LLMProviderPort):
             # 1. RT requests get priority slots immediately (not delayed until iteration)
             # 2. ADR 140's Hybrid RT/BE Priority Semaphore works as designed
             # 3. Predictable queue ordering for streaming requests
-            wait_time = await self._semaphore.acquire(high_priority=is_high_priority)
+            wait_time, acquired_slot_id = await self._semaphore.acquire(high_priority=is_high_priority)
             priority_label = "HIGH PRIORITY" if is_high_priority else "LOW PRIORITY"
             logger.info(
                 f"Acquired semaphore ({priority_label}), returning streaming generator",
@@ -265,6 +265,7 @@ class OllamaGateway(LLMProviderPort):
                     "priority": priority,
                     "is_high_priority": is_high_priority,
                     "queue_wait_time_seconds": round(wait_time, 4),
+                    "slot_id": acquired_slot_id,
                 }
             )
 
@@ -306,10 +307,10 @@ class OllamaGateway(LLMProviderPort):
                     raise
                 finally:
                     # Release semaphore when generator completes (normal, abort, or GC)
-                    self._semaphore.release(was_high_priority=is_high_priority)
+                    self._semaphore.release(slot_id=acquired_slot_id, was_high_priority=is_high_priority)
                     logger.info(
                         "Released semaphore after streaming",
-                        extra={"model": payload["model"], "is_high_priority": is_high_priority}
+                        extra={"model": payload["model"], "is_high_priority": is_high_priority, "slot_id": acquired_slot_id}
                     )
 
             # Return the generator (semaphore already acquired)
@@ -321,7 +322,7 @@ class OllamaGateway(LLMProviderPort):
         cancel_event = asyncio.Event() if not is_high_priority else None
 
         # Acquire semaphore based on priority
-        wait_time = await self._semaphore.acquire(high_priority=is_high_priority)
+        wait_time, acquired_slot_id = await self._semaphore.acquire(high_priority=is_high_priority)
         priority_label = "HIGH PRIORITY" if is_high_priority else "LOW PRIORITY"
         try:
             # Register BE request as active for preemption tracking
@@ -340,6 +341,7 @@ class OllamaGateway(LLMProviderPort):
                     "is_high_priority": is_high_priority,
                     "queue_wait_time_seconds": round(wait_time, 4),
                     "task_id": task_id,
+                    "slot_id": acquired_slot_id,
                 }
             )
             # Call appropriate driver based on stream flag
@@ -409,7 +411,7 @@ class OllamaGateway(LLMProviderPort):
             # Unregister BE request from active tracking
             if task_id:
                 self._semaphore.unregister_active_request(task_id)
-            self._semaphore.release(was_high_priority=is_high_priority)
+            self._semaphore.release(slot_id=acquired_slot_id, was_high_priority=is_high_priority)
 
         # Validate response (Non-streaming only)
         if "response" not in response_data:
@@ -599,7 +601,7 @@ class OllamaGateway(LLMProviderPort):
         task_id = str(uuid.uuid4()) if not is_high_priority else None
         cancel_event = asyncio.Event() if not is_high_priority else None
 
-        wait_time = await self._semaphore.acquire(high_priority=is_high_priority)
+        wait_time, acquired_slot_id = await self._semaphore.acquire(high_priority=is_high_priority)
         if task_id and cancel_event:
             self._semaphore.register_active_request(
                 task_id, cancel_event, is_high_priority
@@ -609,7 +611,7 @@ class OllamaGateway(LLMProviderPort):
         finally:
             if task_id:
                 self._semaphore.unregister_active_request(task_id)
-            self._semaphore.release(was_high_priority=is_high_priority)
+            self._semaphore.release(slot_id=acquired_slot_id, was_high_priority=is_high_priority)
 
     async def generate_raw(
         self,
@@ -823,13 +825,14 @@ class OllamaGateway(LLMProviderPort):
             QueueFullError: If semaphore queue is at capacity
             RuntimeError: If Ollama returns an error
         """
-        wait_time = await self._semaphore.acquire(high_priority=True)
+        wait_time, acquired_slot_id = await self._semaphore.acquire(high_priority=True)
         logger.info(
             "Acquired semaphore (HIGH PRIORITY) for chat stream proxy",
             extra={
                 "model": payload.get("model", "unknown"),
                 "message_count": len(payload.get("messages", [])),
                 "queue_wait_time_seconds": round(wait_time, 4),
+                "slot_id": acquired_slot_id,
             },
         )
 
@@ -844,7 +847,7 @@ class OllamaGateway(LLMProviderPort):
                 logger.error("Chat stream error", exc_info=True)
                 raise
             finally:
-                self._semaphore.release(was_high_priority=True)
+                self._semaphore.release(slot_id=acquired_slot_id, was_high_priority=True)
                 logger.info("Released semaphore after chat stream")
 
         return _stream()
@@ -867,13 +870,14 @@ class OllamaGateway(LLMProviderPort):
             QueueFullError: If semaphore queue is at capacity
             RuntimeError: If Ollama returns an error
         """
-        wait_time = await self._semaphore.acquire(high_priority=True)
+        wait_time, acquired_slot_id = await self._semaphore.acquire(high_priority=True)
         logger.info(
             "Acquired semaphore (HIGH PRIORITY) for chat generate proxy",
             extra={
                 "model": payload.get("model", "unknown"),
                 "message_count": len(payload.get("messages", [])),
                 "queue_wait_time_seconds": round(wait_time, 4),
+                "slot_id": acquired_slot_id,
             },
         )
 
@@ -883,5 +887,5 @@ class OllamaGateway(LLMProviderPort):
             logger.error("Chat generate error", exc_info=True)
             raise
         finally:
-            self._semaphore.release(was_high_priority=True)
+            self._semaphore.release(slot_id=acquired_slot_id, was_high_priority=True)
             logger.info("Released semaphore after chat generate")
