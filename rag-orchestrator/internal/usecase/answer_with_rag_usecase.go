@@ -579,29 +579,41 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 			slog.String("strategy", result.strategyUsed))
 
 		if verdict == QualityMarginal && u.queryExpander != nil {
-			// Retry once with expanded query
+			// Retry with expanded/decomposed queries.
+			// For causal queries, use multiple focused subqueries instead of a single
+			// broad rewrite. This follows Azure RAG guidance: "decomposed subqueries"
+			// preserve the original query's intent while narrowing retrieval focus.
 			u.logger.Info("retrieval_quality_retry",
 				slog.String("retrieval_id", result.retrievalSetID),
-				slog.String("reason", "marginal_quality"))
+				slog.String("reason", "marginal_quality"),
+				slog.String("intent_type", string(intent.IntentType)))
 
-			retryQuery := intent.UserQuestion
-			expanded, expErr := u.queryExpander.ExpandQueryWithHistory(
-				ctx, retryQuery, input.ConversationHistory, 2, 2,
-			)
-			if expErr == nil && len(expanded) > 0 {
+			retryQueries := u.buildRetryQueries(ctx, intent, input.ConversationHistory)
+
+			var bestRetrieved *RetrieveContextOutput
+			var bestVerdict QualityVerdict
+			for _, rq := range retryQueries {
 				retryInput := retrieveInput
-				retryInput.Query = expanded[0]
+				retryInput.Query = rq
 				retryRetrieved, retryErr := u.generalStrategy.Retrieve(ctx, retryInput, intent)
-				if retryErr == nil && retryRetrieved != nil && len(retryRetrieved.Contexts) > 0 {
-					retryVerdict := u.qualityAssessor.Assess(retryRetrieved.Contexts)
-					if retryVerdict == QualityGood || (retryVerdict == QualityMarginal && verdict == QualityMarginal) {
-						retrieved = retryRetrieved
-						result.strategyUsed += "_retried"
-						result.retrievalQuality = retryVerdict
-					}
+				if retryErr != nil || retryRetrieved == nil || len(retryRetrieved.Contexts) == 0 {
+					continue
+				}
+				retryVerdict := u.qualityAssessor.AssessWithIntent(retryRetrieved.Contexts, intent.IntentType)
+				if retryVerdict == QualityGood || (bestRetrieved == nil && retryVerdict == QualityMarginal) {
+					bestRetrieved = retryRetrieved
+					bestVerdict = retryVerdict
+				}
+				if retryVerdict == QualityGood {
+					break // Found good result, stop trying
 				}
 			}
-			result.retryCount = 1
+			if bestRetrieved != nil {
+				retrieved = bestRetrieved
+				result.strategyUsed += "_retried"
+				result.retrievalQuality = bestVerdict
+			}
+			result.retryCount = len(retryQueries)
 		} else if verdict == QualityInsufficient {
 			return result, errors.New("retrieval quality insufficient: context relevance too low")
 		}
@@ -857,6 +869,37 @@ func (u *answerWithRAGUsecase) applyLegacySubIntentPolicy(
 		}
 	}
 	return retrieved
+}
+
+// buildRetryQueries generates focused retry queries based on intent type.
+// For causal queries, decomposes the question into focused subqueries
+// targeting different causal aspects (supply, geopolitical, economic).
+// For other intents, uses the standard query expansion approach.
+func (u *answerWithRAGUsecase) buildRetryQueries(
+	ctx context.Context,
+	intent QueryIntent,
+	history []domain.Message,
+) []string {
+	if intent.IntentType == IntentCausalExplanation {
+		// Causal decomposition: focused subqueries for different causal aspects
+		base := intent.UserQuestion
+		return []string{
+			base + " 供給 制裁 sanctions supply",
+			base + " 地政学 geopolitical conflict",
+			base + " 経済 market price impact",
+		}
+	}
+
+	// Default: use query expander for a single retry
+	if u.queryExpander != nil {
+		expanded, err := u.queryExpander.ExpandQueryWithHistory(
+			ctx, intent.UserQuestion, history, 2, 2,
+		)
+		if err == nil && len(expanded) > 0 {
+			return expanded[:1]
+		}
+	}
+	return nil
 }
 
 func (u *answerWithRAGUsecase) toPromptContexts(contexts []ContextItem) []PromptContext {
