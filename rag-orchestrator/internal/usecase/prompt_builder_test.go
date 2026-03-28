@@ -273,6 +273,62 @@ func TestPromptBuilder_CausalExplanation_HasStructuredRequirement(t *testing.T) 
 	assert.Contains(t, content, "単一の原因に帰結させず")
 }
 
+func TestPromptBuilder_SubIntent_OmitsGenericAnswerStructure(t *testing.T) {
+	// When a SubIntent is detected, the generic 回答構造 section (概要/詳細/まとめ)
+	// should NOT be included in instructions because it conflicts with the
+	// SubIntent-specific guidance (e.g., "批判的分析" vs "概要を述べる").
+	tests := []struct {
+		name      string
+		subIntent usecase.SubIntentType
+	}{
+		{"critique", usecase.SubIntentCritique},
+		{"detail", usecase.SubIntentDetail},
+		{"implication", usecase.SubIntentImplication},
+		{"evidence", usecase.SubIntentEvidence},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder := usecase.NewXMLPromptBuilder()
+			input := usecase.PromptInput{
+				Query:         "テスト質問",
+				Locale:        "ja",
+				PromptVersion: "v1",
+				IntentType:    usecase.IntentArticleScoped,
+				SubIntentType: tt.subIntent,
+				Contexts: []usecase.PromptContext{
+					{ChunkID: "1", Title: "Test", ChunkText: "Content"},
+				},
+			}
+
+			msgs, err := builder.Build(input)
+			require.NoError(t, err)
+
+			content := msgs[0].Content
+			assert.NotContains(t, content, "## 回答構造",
+				"SubIntent %s should not include generic 回答構造 section", tt.subIntent)
+		})
+	}
+}
+
+func TestPromptBuilder_NoSubIntent_KeepsGenericAnswerStructure(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "この記事について教えて",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		IntentType:    usecase.IntentGeneral,
+		SubIntentType: usecase.SubIntentNone,
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test", ChunkText: "Content"},
+		},
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+	assert.Contains(t, msgs[0].Content, "## 回答構造",
+		"generic queries should include 回答構造 section")
+}
+
 func TestPromptBuilder_WithPlannerOutput_General_KeepsSummaryStructure(t *testing.T) {
 	builder := usecase.NewXMLPromptBuilder()
 	input := usecase.PromptInput{
