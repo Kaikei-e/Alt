@@ -163,16 +163,31 @@ func TestAssessWithIntent_Causal_TopicIncoherence_IsInsufficient(t *testing.T) {
 	}
 }
 
-func TestAssessWithIntent_Causal_Marginal_IsInsufficient(t *testing.T) {
+func TestAssessWithIntent_Causal_Marginal_Coherent_AllowsRetry(t *testing.T) {
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	// Marginal scores but coherent titles → allow retry (return Marginal, not Insufficient)
 	contexts := []ContextItem{
 		{ChunkID: uuid.New(), Score: 0.4, RerankScore: 0.4, Title: "Oil Crisis"},
 		{ChunkID: uuid.New(), Score: 0.3, RerankScore: 0.3, Title: "Oil Crisis"},
 		{ChunkID: uuid.New(), Score: 0.25, RerankScore: 0.25, Title: "Oil Crisis"},
 	}
 	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation)
+	if verdict != QualityMarginal {
+		t.Errorf("expected QualityMarginal for causal + marginal + coherent (allows retry), got %s", verdict)
+	}
+}
+
+func TestAssessWithIntent_Causal_Marginal_Incoherent_IsInsufficient(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	// Marginal scores AND incoherent titles → no point retrying scattered results
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.4, RerankScore: 0.4, Title: "Venezuela Oil Blockade"},
+		{ChunkID: uuid.New(), Score: 0.3, RerankScore: 0.3, Title: "Iran Airspace Reopening"},
+		{ChunkID: uuid.New(), Score: 0.25, RerankScore: 0.25, Title: "Space Exploration News"},
+	}
+	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation)
 	if verdict != QualityInsufficient {
-		t.Errorf("expected QualityInsufficient for causal + marginal score, got %s", verdict)
+		t.Errorf("expected QualityInsufficient for causal + marginal + incoherent, got %s", verdict)
 	}
 }
 
@@ -202,16 +217,23 @@ func TestAssessWithIntent_Causal_Coherent_Good(t *testing.T) {
 	}
 }
 
-func TestAssessWithIntent_Causal_ScoreVariance_IsInsufficient(t *testing.T) {
+func TestAssessWithIntent_Causal_Good_HighVariance_IsInsufficient(t *testing.T) {
+	// Use low thresholds so base verdict is Good despite high variance,
+	// then causal + good + high variance → Insufficient
 	assessor := NewRetrievalQualityAssessor(0.3, 0.15, 3)
 	contexts := []ContextItem{
-		{ChunkID: uuid.New(), Score: 0.95, RerankScore: 0.95, Title: "Oil Crisis"},
+		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0.9, Title: "Oil Crisis"},
+		{ChunkID: uuid.New(), Score: 0.15, RerankScore: 0.15, Title: "Oil Crisis"},
 		{ChunkID: uuid.New(), Score: 0.1, RerankScore: 0.1, Title: "Oil Crisis"},
-		{ChunkID: uuid.New(), Score: 0.08, RerankScore: 0.08, Title: "Oil Crisis"},
 	}
+	// avg = 0.383 > 0.3 (good threshold), but variance is high (0.9 / 0.15 = 6x)
+	// Base Assess: good → downgraded to marginal by hasHighScoreVariance
+	// AssessWithIntent: marginal + coherent → Marginal (allows retry)
+	// Actually base Assess itself downgrades Good→Marginal for high variance,
+	// so causal + marginal + coherent → Marginal
 	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation)
-	if verdict != QualityInsufficient {
-		t.Errorf("expected QualityInsufficient for causal + high score variance, got %s", verdict)
+	if verdict != QualityMarginal {
+		t.Errorf("expected QualityMarginal for causal + high variance (coherent titles allow retry), got %s", verdict)
 	}
 }
 

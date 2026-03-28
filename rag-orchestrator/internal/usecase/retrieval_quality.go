@@ -81,8 +81,9 @@ func (a *RetrievalQualityAssessor) Assess(contexts []ContextItem) QualityVerdict
 
 // AssessWithIntent evaluates retrieval quality with intent-specific strictness.
 // For causal/explanatory queries, applies stricter coherence requirements:
-// topic incoherence and score variance cause Insufficient (not just Marginal),
-// and marginal average scores are treated as Insufficient (no retry).
+// topic incoherence and score variance on "good" base verdict cause Insufficient.
+// Marginal base verdict is preserved (allows retry), but if the retrieval is
+// both marginal AND incoherent, it becomes Insufficient.
 // For other intents, delegates to the standard Assess() method.
 func (a *RetrievalQualityAssessor) AssessWithIntent(contexts []ContextItem, intentType IntentType) QualityVerdict {
 	baseVerdict := a.Assess(contexts)
@@ -91,33 +92,34 @@ func (a *RetrievalQualityAssessor) AssessWithIntent(contexts []ContextItem, inte
 		return baseVerdict
 	}
 
-	// Causal intent: stricter requirements
-	// Marginal is not acceptable — causal synthesis from weak evidence produces overconfident nonsense
-	if baseVerdict == QualityMarginal {
+	topN := 3
+	if len(contexts) < topN {
+		topN = len(contexts)
+	}
+
+	incoherent := topN >= 2 && hasTopicIncoherence(contexts[:topN])
+
+	scores := make([]float32, topN)
+	for i := 0; i < topN; i++ {
+		scores[i] = contexts[i].RerankScore
+		if scores[i] == 0 {
+			scores[i] = contexts[i].Score
+		}
+	}
+	highVariance := topN >= 2 && hasHighScoreVariance(scores)
+
+	// Causal + Good but incoherent or high variance → Insufficient
+	if baseVerdict == QualityGood && (incoherent || highVariance) {
 		return QualityInsufficient
 	}
 
-	// Even if base verdict is Good, re-check coherence signals with stricter thresholds
-	if baseVerdict == QualityGood {
-		topN := 3
-		if len(contexts) < topN {
-			topN = len(contexts)
-		}
-		if topN >= 2 && hasTopicIncoherence(contexts[:topN]) {
-			return QualityInsufficient
-		}
-
-		scores := make([]float32, topN)
-		for i := 0; i < topN; i++ {
-			scores[i] = contexts[i].RerankScore
-			if scores[i] == 0 {
-				scores[i] = contexts[i].Score
-			}
-		}
-		if hasHighScoreVariance(scores) {
-			return QualityInsufficient
-		}
+	// Causal + Marginal + incoherent → Insufficient (no point retrying scattered results)
+	if baseVerdict == QualityMarginal && incoherent {
+		return QualityInsufficient
 	}
+
+	// Causal + Marginal but coherent → keep Marginal (allow retry with expanded query)
+	// The retry mechanism in buildPrompt() will attempt once with expanded queries.
 
 	return baseVerdict
 }
