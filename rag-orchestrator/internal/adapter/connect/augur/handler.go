@@ -217,6 +217,18 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 			},
 		}, true
 
+	case usecase.StreamEventKindClarification:
+		clarification, ok := event.Payload.(usecase.StreamClarification)
+		if !ok {
+			return nil, true
+		}
+		return &augurv2.StreamChatResponse{
+			Kind: "clarification",
+			Payload: &augurv2.StreamChatResponse_Delta{
+				Delta: sanitizeUTF8(clarification.Message),
+			},
+		}, false // terminal — planner decided to stop and ask for clarification
+
 	case usecase.StreamEventKindProgress:
 		progress, ok := event.Payload.(string)
 		if !ok {
