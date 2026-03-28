@@ -92,14 +92,14 @@ services:
       # Ask Augur chat uses HIGH PRIORITY to preempt batch summarization
       # Override AUGUR_EXTERNAL in .env to route to remote Mac if needed
       - AUGUR_EXTERNAL=${AUGUR_EXTERNAL:-http://news-creator:11434}
-      - AUGUR_KNOWLEDGE_MODEL=${AUGUR_KNOWLEDGE_MODEL:-gemma3-4b-8k}
+      - AUGUR_KNOWLEDGE_MODEL=${AUGUR_KNOWLEDGE_MODEL:-gemma3-4b-12k}
       - SEARCH_INDEXER_URL=http://search-indexer:9300
       - QUERY_EXPANSION_URL=http://news-creator:11434
       - QUERY_EXPANSION_TIMEOUT=30
       - RERANK_ENABLED=true
       - RERANK_URL=http://rerank-external:8080
       - RERANK_TIMEOUT=12
-      - RAG_DEFAULT_MAX_TOKENS=${RAG_DEFAULT_MAX_TOKENS:-2048}
+      - RAG_DEFAULT_MAX_TOKENS=${RAG_DEFAULT_MAX_TOKENS:-3072}
       - MORNING_LETTER_MAX_TOKENS=${MORNING_LETTER_MAX_TOKENS:-4096}
       - RAG_MAX_PROMPT_TOKENS=${RAG_MAX_PROMPT_TOKENS:-6000}
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318

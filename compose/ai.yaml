@@ -59,8 +59,8 @@ services:
       # QAT model for improved quantization quality (54% less perplexity drop)
       # Set OLLAMA_BASE_MODEL=gemma3:4b for rollback
       - OLLAMA_BASE_MODEL=${OLLAMA_BASE_MODEL:-gemma3:4b-it-qat}
-      # Optimization: Enable 2x Concurrency with 8k Context (Fits in 8GB VRAM)
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-2}
+      # RAG-dedicated mode: favor a single larger context slot over dual-slot concurrency
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
       # Strict limit to 1 model to prevent VRAM fragmentation/swapping
       - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
       # Flash Attention 2.0: Disabled for stability
@@ -102,14 +102,14 @@ services:
       dockerfile: Dockerfile.app
     environment:
       - LLM_SERVICE_URL=http://news-creator-backend:11435
-      - LLM_MODEL=gemma3-4b-8k
+      - LLM_MODEL=gemma3-4b-12k
       - MODEL_ROUTING_ENABLED=false
       - LLM_KEEP_ALIVE_8K=24h
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
       # Concurrency: sync with OLLAMA_NUM_PARALLEL in news-creator-backend
-      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-2}
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
       # LLM context window size (8k tokens)
       - LLM_NUM_CTX=${LLM_NUM_CTX:-8192}
       # 8K-only mode: disable 60K model, use hierarchical map-reduce for large documents

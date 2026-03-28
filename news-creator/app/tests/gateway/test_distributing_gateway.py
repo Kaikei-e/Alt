@@ -16,7 +16,7 @@ def _make_local_gateway():
     """Create a mock OllamaGateway (local)."""
     gw = MagicMock()
     gw.config = MagicMock()
-    gw.config.model_name = "gemma3-4b-8k"
+    gw.config.model_name = "gemma3-4b-12k"
     gw.config.llm_keep_alive = -1
     gw.config.get_keep_alive_for_model.return_value = "24h"
     gw.config.get_llm_options.return_value = {
@@ -37,14 +37,14 @@ def _make_local_gateway():
     gw.generate = AsyncMock(
         return_value=LLMGenerateResponse(
             response="local response",
-            model="gemma3-4b-8k",
+            model="gemma3-4b-12k",
             done=True,
         )
     )
     gw.generate_raw = AsyncMock(
         return_value=LLMGenerateResponse(
             response="local raw response",
-            model="gemma3-4b-8k",
+            model="gemma3-4b-12k",
             done=True,
         )
     )

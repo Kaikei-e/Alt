@@ -32,7 +32,7 @@ class TestChatEndpointStreaming:
         resp = client.post(
             "/api/chat",
             json={
-                "model": "gemma3-4b-8k",
+                "model": "gemma3-4b-12k",
                 "messages": [{"role": "user", "content": "hi"}],
                 "stream": True,
             },
@@ -57,7 +57,7 @@ class TestChatEndpointStreaming:
 
         client = TestClient(make_app(gateway))
         payload = {
-            "model": "gemma3-4b-8k",
+            "model": "gemma3-4b-12k",
             "messages": [{"role": "user", "content": "test"}],
             "stream": True,
             "keep_alive": -1,
@@ -67,7 +67,7 @@ class TestChatEndpointStreaming:
 
         gateway.chat_stream.assert_awaited_once()
         call_payload = gateway.chat_stream.call_args[1]["payload"]
-        assert call_payload["model"] == "gemma3-4b-8k"
+        assert call_payload["model"] == "gemma3-4b-12k"
         assert call_payload["messages"] == [{"role": "user", "content": "test"}]
         assert call_payload["options"]["temperature"] == 0.7
 
@@ -81,7 +81,7 @@ class TestChatEndpointStreaming:
         resp = client.post(
             "/api/chat",
             json={
-                "model": "gemma3-4b-8k",
+                "model": "gemma3-4b-12k",
                 "messages": [{"role": "user", "content": "hi"}],
                 "stream": True,
             },
@@ -98,7 +98,7 @@ class TestChatEndpointStreaming:
         resp = client.post(
             "/api/chat",
             json={
-                "model": "gemma3-4b-8k",
+                "model": "gemma3-4b-12k",
                 "messages": [{"role": "user", "content": "hi"}],
                 "stream": True,
             },
@@ -114,7 +114,7 @@ class TestChatEndpointStreaming:
         resp = client.post(
             "/api/chat",
             json={
-                "model": "gemma3-4b-8k",
+                "model": "gemma3-4b-12k",
                 "messages": [{"role": "user", "content": "hi"}],
                 "stream": True,
             },
@@ -145,7 +145,7 @@ class TestChatEndpointValidation:
         """Non-streaming chat routes to gateway.chat_generate()."""
         gateway = AsyncMock()
         gateway.chat_generate.return_value = {
-            "model": "gemma3-4b-8k",
+            "model": "gemma3-4b-12k",
             "message": {"role": "assistant", "content": "Hello!"},
             "done": True,
         }
@@ -154,7 +154,7 @@ class TestChatEndpointValidation:
         resp = client.post(
             "/api/chat",
             json={
-                "model": "gemma3-4b-8k",
+                "model": "gemma3-4b-12k",
                 "messages": [{"role": "user", "content": "hi"}],
                 "stream": False,
             },
@@ -165,13 +165,13 @@ class TestChatEndpointValidation:
         assert data["message"]["content"] == "Hello!"
         gateway.chat_generate.assert_awaited_once()
         call_payload = gateway.chat_generate.call_args[1]["payload"]
-        assert call_payload["model"] == "gemma3-4b-8k"
+        assert call_payload["model"] == "gemma3-4b-12k"
 
     def test_non_streaming_passes_options(self):
         """Non-streaming chat passes options to gateway."""
         gateway = AsyncMock()
         gateway.chat_generate.return_value = {
-            "model": "gemma3-4b-8k",
+            "model": "gemma3-4b-12k",
             "message": {"role": "assistant", "content": "ok"},
             "done": True,
         }
@@ -180,7 +180,7 @@ class TestChatEndpointValidation:
         resp = client.post(
             "/api/chat",
             json={
-                "model": "gemma3-4b-8k",
+                "model": "gemma3-4b-12k",
                 "messages": [{"role": "user", "content": "hi"}],
                 "stream": False,
                 "options": {"num_predict": 4096},
@@ -202,7 +202,7 @@ class TestChatEndpointValidation:
         resp = client.post(
             "/api/chat",
             json={
-                "model": "gemma3-4b-8k",
+                "model": "gemma3-4b-12k",
                 "messages": [{"role": "user", "content": "hi"}],
                 "stream": False,
             },

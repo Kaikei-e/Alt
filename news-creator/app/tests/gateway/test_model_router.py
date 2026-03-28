@@ -13,7 +13,7 @@ def _create_mock_config(model_60k_enabled: bool = False):
     config.model_name = "gemma3:4b-it-qat"
     config.llm_num_ctx = 8192
     config.llm_num_predict = 1200
-    config.model_8k_name = "gemma3-4b-8k"
+    config.model_8k_name = "gemma3-4b-12k"
     config.model_60k_name = "gemma3-4b-60k"
     config.token_safety_margin_percent = 10
     config.token_safety_margin_fixed = 512
@@ -23,22 +23,22 @@ def _create_mock_config(model_60k_enabled: bool = False):
 
 
 class TestModelRouter60KDisabled:
-    """Tests for model router when 60K model is disabled (8K-only mode)."""
+    """Tests for model router when 60K model is disabled (single primary-bucket mode)."""
 
-    def test_small_prompt_uses_8k_when_60k_disabled(self):
-        """Small prompts should use 8K model when 60K is disabled."""
+    def test_small_prompt_uses_primary_bucket_when_60k_disabled(self):
+        """Small prompts should use the primary bucket model when 60K is disabled."""
         config = _create_mock_config(model_60k_enabled=False)
         router = ModelRouter(config)
 
-        # Small prompt that would fit in 8K
+        # Small prompt that fits in the primary bucket
         prompt = "A" * 1000  # ~250 tokens
         model_name, bucket_size = router.select_model(prompt)
 
-        assert model_name == "gemma3-4b-8k"
+        assert model_name == "gemma3-4b-12k"
         assert bucket_size == 8192
 
-    def test_large_prompt_still_uses_8k_when_60k_disabled(self):
-        """Large prompts should still use 8K model when 60K is disabled (hierarchical summarization handles this)."""
+    def test_large_prompt_still_uses_primary_bucket_when_60k_disabled(self):
+        """Large prompts should still use the primary bucket model when 60K is disabled."""
         config = _create_mock_config(model_60k_enabled=False)
         router = ModelRouter(config)
 
@@ -46,8 +46,8 @@ class TestModelRouter60KDisabled:
         prompt = "A" * 60000
         model_name, bucket_size = router.select_model(prompt)
 
-        # Should still use 8K even though it's too large
-        assert model_name == "gemma3-4b-8k"
+        # Should still use the primary bucket even though it's too large
+        assert model_name == "gemma3-4b-12k"
         assert bucket_size == 8192
 
     def test_60k_enabled_uses_60k_for_large_prompts(self):
@@ -62,20 +62,20 @@ class TestModelRouter60KDisabled:
         assert model_name == "gemma3-4b-60k"
         assert bucket_size == 61440
 
-    def test_60k_enabled_uses_8k_for_small_prompts(self):
-        """When 60K is enabled, small prompts should still use 8K model."""
+    def test_60k_enabled_uses_primary_bucket_for_small_prompts(self):
+        """When 60K is enabled, small prompts should still use the primary bucket model."""
         config = _create_mock_config(model_60k_enabled=True)
         router = ModelRouter(config)
 
-        # Small prompt that fits in 8K
+        # Small prompt that fits in the primary bucket
         prompt = "A" * 1000
         model_name, bucket_size = router.select_model(prompt)
 
-        assert model_name == "gemma3-4b-8k"
+        assert model_name == "gemma3-4b-12k"
         assert bucket_size == 8192
 
-    def test_extremely_large_prompt_uses_8k_when_60k_disabled(self):
-        """Extremely large prompts should use 8K model when 60K is disabled with warning logged."""
+    def test_extremely_large_prompt_uses_primary_bucket_when_60k_disabled(self):
+        """Extremely large prompts should use the primary bucket model when 60K is disabled with warning logged."""
         config = _create_mock_config(model_60k_enabled=False)
         router = ModelRouter(config)
 
@@ -83,8 +83,8 @@ class TestModelRouter60KDisabled:
         prompt = "A" * 250000  # ~62.5K tokens
         model_name, bucket_size = router.select_model(prompt)
 
-        # Should still use 8K (hierarchical summarization should handle this upstream)
-        assert model_name == "gemma3-4b-8k"
+        # Should still use the primary bucket (hierarchical summarization should handle this upstream)
+        assert model_name == "gemma3-4b-12k"
         assert bucket_size == 8192
 
 

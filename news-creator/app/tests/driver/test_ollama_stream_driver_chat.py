@@ -21,7 +21,7 @@ def config():
         "os.environ",
         {
             "LLM_SERVICE_URL": "http://test-backend:11435",
-            "LLM_MODEL": "gemma3-4b-8k",
+            "LLM_MODEL": "gemma3-4b-12k",
             "SERVICE_SECRET": "test-secret",
         },
     ):
@@ -62,7 +62,7 @@ class TestChatStreamOptionsMerge:
     async def test_base_options_included_when_caller_has_no_options(self, driver):
         """When caller sends no options, config base options are used."""
         payload = {
-            "model": "gemma3-4b-8k",
+            "model": "gemma3-4b-12k",
             "messages": [{"role": "user", "content": "test"}],
         }
 

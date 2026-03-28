@@ -38,8 +38,8 @@ class NewsCreatorConfig:
         self.model_name = os.getenv("LLM_MODEL", "gemma3:4b-it-qat")
         self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 300)  # 5分に増加（1000トークン生成 + 続き生成に対応）
         self.llm_keep_alive = os.getenv("LLM_KEEP_ALIVE_SECONDS", "24h")
-        # Model-specific keep_alive settings (best practice: 8K/60K on-demand)
-        # 8K model: 24h to allow unloading after use to save VRAM
+        # Model-specific keep_alive settings (primary bucket / 60K on-demand)
+        # Primary local model: 24h to keep the warmed RAG bucket resident
         # 60K model: 15m to allow quick unloading after use to save VRAM
         self.llm_keep_alive_8k = os.getenv("LLM_KEEP_ALIVE_8K", "24h")
         self.llm_keep_alive_60k = os.getenv("LLM_KEEP_ALIVE_60K", "15m")
@@ -60,8 +60,8 @@ class NewsCreatorConfig:
             self._ollama_concurrency_source = "OLLAMA_NUM_PARALLEL"
 
         # ---- Generation parameters (Gemma3 + Ollama options) ----
-        # Default: 8K context for normal AI Summary (60K is used only for Recap)
-        # 8K context with OLLAMA_NUM_PARALLEL=2 fits in 8GB VRAM (~7.1 GB usage)
+        # Default: compose/runtime should override this to the tuned 12K profile.
+        # Keep the code default conservative so local tests can boot without compose env.
         self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 8192)
         # RTX 4060最適化: バッチサイズ1024（entrypoint.shのOLLAMA_NUM_BATCHと統一）
         self.llm_num_batch = self._get_int("LLM_NUM_BATCH", 1024)
@@ -92,22 +92,22 @@ class NewsCreatorConfig:
         self.max_repetition_retries = self._get_int("MAX_REPETITION_RETRIES", 2)
         self.repetition_threshold = self._get_float("REPETITION_THRESHOLD", 0.3)
 
-        # 60K model enable/disable flag (8K-only mode by default)
+        # 60K model enable/disable flag (single primary-bucket mode by default)
         # When disabled, hierarchical map-reduce is used for large documents
         self.model_60k_enabled = os.getenv("MODEL_60K_ENABLED", "false").lower() == "true"
 
-        # Hierarchical summarization settings (8K-only mode)
-        # With 8K context window, we need aggressive hierarchical summarization
+        # Hierarchical summarization settings (single primary-bucket mode)
+        # These thresholds remain conservative to fit the default local bucket safely.
         # Best practice: 1,500-3,000 tokens per chunk with 10-20% overlap
         # Reference: https://www.pinecone.io/learn/chunking-strategies/
-        self.hierarchical_threshold_chars = self._get_int("HIERARCHICAL_THRESHOLD_CHARS", 8_000)  # ~2K tokens - trigger map-reduce for larger inputs (reduced for 8K-only)
-        self.hierarchical_threshold_clusters = self._get_int("HIERARCHICAL_THRESHOLD_CLUSTERS", 5)  # trigger map-reduce for many clusters (reduced for 8K-only)
-        self.hierarchical_chunk_max_chars = self._get_int("HIERARCHICAL_CHUNK_MAX_CHARS", 6_000)  # ~1.5K tokens per chunk (fits in 8K context)
+        self.hierarchical_threshold_chars = self._get_int("HIERARCHICAL_THRESHOLD_CHARS", 8_000)  # ~2K tokens - trigger map-reduce for larger inputs
+        self.hierarchical_threshold_clusters = self._get_int("HIERARCHICAL_THRESHOLD_CLUSTERS", 5)  # trigger map-reduce for many clusters
+        self.hierarchical_chunk_max_chars = self._get_int("HIERARCHICAL_CHUNK_MAX_CHARS", 6_000)  # ~1.5K tokens per chunk
         self.hierarchical_chunk_overlap_ratio = self._get_float("HIERARCHICAL_CHUNK_OVERLAP_RATIO", 0.15)  # 15% overlap for context preservation
 
         # Recursive reduce settings for hierarchical summarization
         # When intermediate summaries exceed this limit, recursively reduce them
-        self.recursive_reduce_max_chars = self._get_int("RECURSIVE_REDUCE_MAX_CHARS", 6_000)  # ~1.5K tokens, safe for 8K context
+        self.recursive_reduce_max_chars = self._get_int("RECURSIVE_REDUCE_MAX_CHARS", 6_000)  # ~1.5K tokens, safe for the primary bucket
         self.recursive_reduce_max_depth = self._get_int("RECURSIVE_REDUCE_MAX_DEPTH", 3)  # Max recursion depth
 
         # Hierarchical summarization settings for single large articles
@@ -115,11 +115,12 @@ class NewsCreatorConfig:
         self.hierarchical_single_article_chunk_size = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_CHUNK_SIZE", 6_000)
         self.hierarchical_token_budget_percent = self._get_int("HIERARCHICAL_TOKEN_BUDGET_PERCENT", 75)
 
-        # Model routing settings (2-model bucket system: 8K, 60K)
+        # Model routing settings (primary bucket + 60K expansion bucket)
         self.model_routing_enabled = os.getenv("MODEL_ROUTING_ENABLED", "true").lower() == "true"
         # Base model name (e.g., "gemma3:4b") - will be auto-mapped to bucket models
         self.model_base_name = os.getenv("MODEL_BASE_NAME", "gemma3:4b-it-qat")
-        self.model_8k_name = os.getenv("MODEL_8K_NAME", "gemma3-4b-8k")
+        # MODEL_8K_NAME is kept for backward compatibility, but the primary bucket now points at 12K.
+        self.model_8k_name = os.getenv("MODEL_8K_NAME", "gemma3-4b-12k")
         self.model_60k_name = os.getenv("MODEL_60K_NAME", "gemma3-4b-60k")
         self.token_safety_margin_percent = self._get_int("TOKEN_SAFETY_MARGIN_PERCENT", 10)
         self.token_safety_margin_fixed = self._get_int("TOKEN_SAFETY_MARGIN_FIXED", 512)

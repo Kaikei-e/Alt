@@ -102,7 +102,7 @@ class OllamaGateway(LLMProviderPort):
         # Select model using router
         # - If routing enabled and model is None: use router
         # - If routing enabled and model is base model name (e.g., "gemma3:4b"): use router to auto-map
-        # - If routing enabled and model is bucket model name (e.g., "gemma3-4b-8k"): use as-is
+        # - If routing enabled and model is bucket model name (e.g., "gemma3-4b-12k"): use as-is
         # - If routing disabled: use provided model or default
         if self.config.model_routing_enabled:
             if model is None:
@@ -131,7 +131,7 @@ class OllamaGateway(LLMProviderPort):
                     },
                 )
             elif self.config.is_bucket_model_name(model):
-                # Bucket model name explicitly specified (e.g., "gemma3-4b-8k") - use as-is
+                # Bucket model name explicitly specified (e.g., "gemma3-4b-12k") - use as-is
                 logger.debug(
                     f"Bucket model explicitly specified, using as-is: {model}",
                     extra={"model": model, "prompt_length": len(prompt)},

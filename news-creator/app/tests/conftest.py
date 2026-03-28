@@ -26,7 +26,7 @@ def mock_config() -> Mock:
     """
     config = Mock(spec=NewsCreatorConfig)
     config.llm_service_url = "http://localhost:11435"
-    config.model_name = "gemma3-4b-8k"
+    config.model_name = "gemma3-4b-12k"
     config.llm_timeout_seconds = 60
     config.llm_keep_alive = -1
     config.ollama_request_concurrency = 1
@@ -66,7 +66,7 @@ def mock_llm_provider() -> AsyncMock:
         def test_summarize(mock_llm_provider):
             mock_llm_provider.generate.return_value = LLMGenerateResponse(
                 response='{"title": "Test", "bullets": ["Point 1"]}',
-                model="gemma3-4b-8k",
+                model="gemma3-4b-12k",
             )
             # ... test code
     """
@@ -75,7 +75,7 @@ def mock_llm_provider() -> AsyncMock:
     provider.cleanup = AsyncMock()
     provider.generate = AsyncMock(return_value=LLMGenerateResponse(
         response="Default mock response",
-        model="gemma3-4b-8k",
+        model="gemma3-4b-12k",
         done=True,
         prompt_eval_count=100,
         eval_count=50,
@@ -98,7 +98,7 @@ def mock_llm_response_success() -> LLMGenerateResponse:
             ],
             "language": "en"
         }),
-        model="gemma3-4b-8k",
+        model="gemma3-4b-12k",
         done=True,
         prompt_eval_count=512,
         eval_count=256,

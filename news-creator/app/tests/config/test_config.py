@@ -196,7 +196,7 @@ def test_model_60k_enabled_case_insensitive(monkeypatch):
 
 
 def test_hierarchical_threshold_chars_default_8000(monkeypatch):
-    """Test that hierarchical_threshold_chars defaults to 8000 for 8K-only mode."""
+    """Test that hierarchical_threshold_chars defaults to 8000 for primary-bucket mode."""
     monkeypatch.delenv("HIERARCHICAL_THRESHOLD_CHARS", raising=False)
     monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
@@ -206,7 +206,7 @@ def test_hierarchical_threshold_chars_default_8000(monkeypatch):
 
 
 def test_hierarchical_threshold_clusters_default_5(monkeypatch):
-    """Test that hierarchical_threshold_clusters defaults to 5 for 8K-only mode."""
+    """Test that hierarchical_threshold_clusters defaults to 5 for primary-bucket mode."""
     monkeypatch.delenv("HIERARCHICAL_THRESHOLD_CLUSTERS", raising=False)
     monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
@@ -216,7 +216,7 @@ def test_hierarchical_threshold_clusters_default_5(monkeypatch):
 
 
 def test_hierarchical_chunk_max_chars_default_6000(monkeypatch):
-    """Test that hierarchical_chunk_max_chars defaults to 6000 (~1.5K tokens) for 8K context."""
+    """Test that hierarchical_chunk_max_chars defaults to 6000 (~1.5K tokens) for the primary bucket."""
     monkeypatch.delenv("HIERARCHICAL_CHUNK_MAX_CHARS", raising=False)
     monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 

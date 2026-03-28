@@ -28,14 +28,14 @@ class ModelWarmupService:
         """
         Warm up models based on configuration.
 
-        - 2-model mode: Warm up 8K model only (60K is loaded on-demand)
+        - 2-model mode: Warm up the primary bucket model only (60K is loaded on-demand)
         - Single model mode: Warm up default model
         """
         if not self.config.warmup_enabled:
             logger.info("Model warmup is disabled")
             return
 
-        # Use longer keep_alive to ensure 8K model stays in GPU memory
+        # Use longer keep_alive to ensure the primary bucket model stays in GPU memory
         # Default is 30 minutes, but we use 24h to match entrypoint.sh
         keep_alive_minutes = max(self.config.warmup_keep_alive_minutes, 1440)  # At least 24h
         keep_alive_str = f"{keep_alive_minutes}m"
@@ -43,12 +43,12 @@ class ModelWarmupService:
         try:
             models_to_warmup = []
             if self.config.model_routing_enabled:
-                # RTX 4060最適化: 8Kモデルのみをウォームアップ（60Kはオンデマンドでロード）
+                # RTX 4060最適化: primary bucket のみをウォームアップ（60Kはオンデマンドでロード）
                 models_to_warmup = [
                     self.config.model_8k_name,
                 ]
                 logger.info(
-                    f"Warming up 8K model only (60K will be loaded on-demand when needed)"
+                    "Warming up primary bucket model only (60K will be loaded on-demand when needed)"
                 )
             else:
                 # Single model mode: warm up default model
@@ -120,4 +120,3 @@ class ModelWarmupService:
                 exc_info=True,
             )
             raise
-
