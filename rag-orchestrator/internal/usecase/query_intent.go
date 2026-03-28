@@ -16,7 +16,8 @@ const (
 	IntentComparison    IntentType = "comparison"
 	IntentTemporal      IntentType = "temporal"
 	IntentTopicDeepDive IntentType = "topic_deep_dive"
-	IntentFactCheck     IntentType = "fact_check"
+	IntentFactCheck          IntentType = "fact_check"
+	IntentCausalExplanation IntentType = "causal_explanation"
 )
 
 // SubIntentType classifies the analytical intent within an article-scoped query.

@@ -521,3 +521,83 @@ func TestClassify_General_FallsThrough(t *testing.T) {
 		})
 	}
 }
+
+func TestClassify_CausalKeywords_JP(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"石油危機の真因は何？"},
+		{"物価上昇の原因は？"},
+		{"なぜインフレが起きた？"},
+		{"経済危機の要因を教えて"},
+		{"紛争の根源は何か"},
+		{"景気後退の理由は？"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			intent := c.Classify(nil, tt.query)
+			if intent != IntentCausalExplanation {
+				t.Errorf("expected IntentCausalExplanation for %q, got %s", tt.query, intent)
+			}
+		})
+	}
+}
+
+func TestClassify_CausalKeywords_EN(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"what is the root cause of the oil crisis"},
+		{"why did inflation spike"},
+		{"reason behind the market crash"},
+		{"what caused the supply chain disruption"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			intent := c.Classify(nil, tt.query)
+			if intent != IntentCausalExplanation {
+				t.Errorf("expected IntentCausalExplanation for %q, got %s", tt.query, intent)
+			}
+		})
+	}
+}
+
+func TestClassify_TemporalPlusCausal_CausalWins(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"最近の石油危機の真因は？"},
+		{"最新のインフレの原因は何か"},
+		{"今週の株価暴落はなぜ起きた？"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			intent := c.Classify(nil, tt.query)
+			if intent != IntentCausalExplanation {
+				t.Errorf("expected IntentCausalExplanation (not Temporal) for %q, got %s", tt.query, intent)
+			}
+		})
+	}
+}
+
+func TestClassify_PureTemporal_StaysTemporal(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"最近の原油価格は？"},
+		{"今日のAIニュース"},
+		{"latest market trends"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			intent := c.Classify(nil, tt.query)
+			if intent != IntentTemporal {
+				t.Errorf("expected IntentTemporal for %q, got %s", tt.query, intent)
+			}
+		})
+	}
+}
