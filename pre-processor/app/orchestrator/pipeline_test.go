@@ -108,8 +108,6 @@ func TestRunStage_BoundsConcurrency(t *testing.T) {
 
 func TestRunStage_ContextCancellation(t *testing.T) {
 	t.Run("should respect context cancellation in process function", func(t *testing.T) {
-		var processed atomic.Int32
-
 		inputs := make([]int, 10)
 		for i := range inputs {
 			inputs[i] = i
@@ -119,27 +117,31 @@ func TestRunStage_ContextCancellation(t *testing.T) {
 
 		results := RunStage(ctx, Stage[int, int]{
 			Name:        "cancelable",
-			Concurrency: 2,
+			Concurrency: 1, // Single worker: deterministic ordering
 			Process: func(ctx context.Context, in int) (int, error) {
 				if ctx.Err() != nil {
 					return 0, ctx.Err()
 				}
-				processed.Add(1)
-				if in == 1 {
+				if in == 2 {
 					cancel()
-					// Give time for cancellation to propagate
-					time.Sleep(50 * time.Millisecond)
 				}
-				time.Sleep(20 * time.Millisecond) // Simulate work
 				return in, nil
 			},
 		}, inputs)
 
-		require.Len(t, results, 10)
+		require.Len(t, results, 10, "RunStage always returns len(inputs) results")
 
-		// Not all items should have been successfully processed
-		p := processed.Load()
-		assert.Less(t, p, int32(10), "not all items should be processed after cancellation, got %d", p)
+		// With concurrency=1, items 0,1,2 process successfully (cancel at in==2).
+		// Remaining items should see ctx.Err() either at semaphore acquire or
+		// the ctx check before Process. At least one result must have a cancel error.
+		var cancelledCount int
+		for _, r := range results {
+			if r.Err != nil {
+				cancelledCount++
+			}
+		}
+		assert.Greater(t, cancelledCount, 0,
+			"at least one item should be cancelled after context cancellation")
 	})
 }
 
