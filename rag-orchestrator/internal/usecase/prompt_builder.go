@@ -212,6 +212,15 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 		sb.WriteString("## クエリ意図: ファクトチェック\n")
 		sb.WriteString("- 出典を明示し、根拠と判定を構造化して回答してください\n")
 		sb.WriteString("- 「主張」「根拠」「判定」の3段構成で回答してください\n\n")
+	case IntentCausalExplanation:
+		sb.WriteString("## クエリ意図: 因果分析\n")
+		sb.WriteString("- 回答は最低3つの構成要素で構造化すること:\n")
+		sb.WriteString("  1. **直接的要因**: 直近のトリガーとなった出来事\n")
+		sb.WriteString("  2. **構造的背景**: 長期的な要因・制度的背景\n")
+		sb.WriteString("  3. **不確実性**: 根拠が不十分な点、見解が分かれる点\n")
+		sb.WriteString("- 単一の原因に帰結させず、複数の要因を分離して記述すること\n")
+		sb.WriteString("- ソースが収束しない場合は「見解が分かれている」と明記すること\n")
+		sb.WriteString("- 各要因にソース引用[番号]を必ず付けること\n\n")
 	}
 
 	// Sub-intent-specific instructions for article-scoped queries

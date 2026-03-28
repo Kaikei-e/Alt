@@ -251,6 +251,28 @@ func TestPromptBuilder_WithPlannerOutput_Detail_NoSummaryStructure(t *testing.T)
 		"detail operation should mention technical focus")
 }
 
+func TestPromptBuilder_CausalExplanation_HasStructuredRequirement(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "最近の石油危機の真因は？",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Oil Crisis", ChunkText: "Crisis content"},
+		},
+		IntentType: usecase.IntentCausalExplanation,
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+
+	content := msgs[0].Content
+	assert.Contains(t, content, "直接的要因")
+	assert.Contains(t, content, "構造的背景")
+	assert.Contains(t, content, "不確実性")
+	assert.Contains(t, content, "単一の原因に帰結させず")
+}
+
 func TestPromptBuilder_WithPlannerOutput_General_KeepsSummaryStructure(t *testing.T) {
 	builder := usecase.NewXMLPromptBuilder()
 	input := usecase.PromptInput{
