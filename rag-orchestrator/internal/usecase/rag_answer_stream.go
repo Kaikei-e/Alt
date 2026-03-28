@@ -440,13 +440,16 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			// A short answer alone might be acceptable (yes/no questions), but combined with
 			// low keyword coverage or incoherent ending, it indicates a broken generation.
 			if hasQualityFlag(qualityFlags, "low_keyword_coverage") || hasQualityFlag(qualityFlags, "incoherent_ending") {
+				// Select specific fallback reason based on intent and flags
+				fallbackReason := selectFallbackReason(promptData.intentType, qualityFlags)
 				u.logger.Warn("stream_short_answer_hard_stop",
 					slog.String("retrieval_set_id", promptData.retrievalSetID),
+					slog.String("fallback_reason", fallbackReason),
 					slog.Any("flags", qualityFlags),
 					slog.String("raw_response_preview", truncate(rawResponse, 300)))
 				u.sendStreamEvent(ctx, events, StreamEvent{
 					Kind:    StreamEventKindFallback,
-					Payload: "answer quality insufficient: short answer with quality issues",
+					Payload: fallbackReason,
 				})
 				return
 			}
@@ -507,6 +510,17 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 // which form valid JSON structure. If the tail is empty (quote at chunk
 // boundary), we conservatively return false so the parser buffers until
 // more data arrives.
+// selectFallbackReason chooses a specific fallback reason based on intent type and quality flags.
+func selectFallbackReason(intentType IntentType, flags []string) string {
+	if intentType == IntentCausalExplanation {
+		return "十分に一貫した根拠が取れなかったため、因果関係を断定できません。より具体的な質問をお試しください。"
+	}
+	if hasQualityFlag(flags, "low_keyword_coverage") {
+		return "answer quality insufficient: low keyword coverage"
+	}
+	return "answer quality insufficient: short answer with quality issues"
+}
+
 // hasQualityFlag checks if a specific flag is present in the quality flags list.
 func hasQualityFlag(flags []string, flag string) bool {
 	for _, f := range flags {

@@ -100,8 +100,11 @@ type StreamClarification struct {
 type FallbackCategory string
 
 const (
-	FallbackRetrievalEmpty   FallbackCategory = "retrieval_empty"
-	FallbackGenerationFailed FallbackCategory = "generation_failed"
-	FallbackValidationFailed FallbackCategory = "validation_failed"
-	FallbackLLMFallback      FallbackCategory = "llm_fallback"
+	FallbackRetrievalEmpty      FallbackCategory = "retrieval_empty"
+	FallbackGenerationFailed    FallbackCategory = "generation_failed"
+	FallbackValidationFailed    FallbackCategory = "validation_failed"
+	FallbackLLMFallback         FallbackCategory = "llm_fallback"
+	FallbackShortUnderGrounded  FallbackCategory = "short_under_grounded"
+	FallbackMixedTopicRetrieval FallbackCategory = "mixed_topic_retrieval"
+	FallbackCausalInsufficient  FallbackCategory = "causal_question_insufficient_evidence"
 )
