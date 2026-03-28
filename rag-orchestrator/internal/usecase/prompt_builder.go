@@ -178,13 +178,18 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 	sb.WriteString("- コンテキストに記載のない事実や数値を推測・捏造しないこと\n")
 	sb.WriteString("- 情報が不十分な場合は、不足している点を明示すること\n\n")
 
-	sb.WriteString("## 回答構造\n")
-	sb.WriteString("1. **概要**: 結論と全体像を2-3文で説明（最重要ポイントを冒頭に）\n")
-	sb.WriteString("2. **詳細**: 具体的な事実・データ・事例を含む本文（最も重要なセクション）\n")
-	sb.WriteString("   - 背景情報と現状（コンテキストから引用、[番号]で出典明記）\n")
-	sb.WriteString("   - 具体的な内容・データ（数値・日付・固有名詞を正確に引用）\n")
-	sb.WriteString("   - 影響と意味合い（複数ソースの情報を統合して分析）\n")
-	sb.WriteString("3. **まとめ**: 重要ポイントの整理と今後の展望\n\n")
+	// Generic summary structure only for queries without a specific SubIntent.
+	// SubIntents have their own task-specific guidance below, and mixing in
+	// 概要/詳細/まとめ sends the model conflicting signals about answer shape.
+	if input.SubIntentType == SubIntentNone && input.IntentType != IntentCausalExplanation && input.IntentType != IntentFactCheck {
+		sb.WriteString("## 回答構造\n")
+		sb.WriteString("1. **概要**: 結論と全体像を2-3文で説明（最重要ポイントを冒頭に）\n")
+		sb.WriteString("2. **詳細**: 具体的な事実・データ・事例を含む本文（最も重要なセクション）\n")
+		sb.WriteString("   - 背景情報と現状（コンテキストから引用、[番号]で出典明記）\n")
+		sb.WriteString("   - 具体的な内容・データ（数値・日付・固有名詞を正確に引用）\n")
+		sb.WriteString("   - 影響と意味合い（複数ソースの情報を統合して分析）\n")
+		sb.WriteString("3. **まとめ**: 重要ポイントの整理と今後の展望\n\n")
+	}
 
 	if len(b.additionalInstructions) > 0 {
 		sb.WriteString("## 追加ルール\n")
