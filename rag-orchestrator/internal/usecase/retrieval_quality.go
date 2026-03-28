@@ -79,6 +79,49 @@ func (a *RetrievalQualityAssessor) Assess(contexts []ContextItem) QualityVerdict
 	return verdict
 }
 
+// AssessWithIntent evaluates retrieval quality with intent-specific strictness.
+// For causal/explanatory queries, applies stricter coherence requirements:
+// topic incoherence and score variance cause Insufficient (not just Marginal),
+// and marginal average scores are treated as Insufficient (no retry).
+// For other intents, delegates to the standard Assess() method.
+func (a *RetrievalQualityAssessor) AssessWithIntent(contexts []ContextItem, intentType IntentType) QualityVerdict {
+	baseVerdict := a.Assess(contexts)
+
+	if intentType != IntentCausalExplanation {
+		return baseVerdict
+	}
+
+	// Causal intent: stricter requirements
+	// Marginal is not acceptable — causal synthesis from weak evidence produces overconfident nonsense
+	if baseVerdict == QualityMarginal {
+		return QualityInsufficient
+	}
+
+	// Even if base verdict is Good, re-check coherence signals with stricter thresholds
+	if baseVerdict == QualityGood {
+		topN := 3
+		if len(contexts) < topN {
+			topN = len(contexts)
+		}
+		if topN >= 2 && hasTopicIncoherence(contexts[:topN]) {
+			return QualityInsufficient
+		}
+
+		scores := make([]float32, topN)
+		for i := 0; i < topN; i++ {
+			scores[i] = contexts[i].RerankScore
+			if scores[i] == 0 {
+				scores[i] = contexts[i].Score
+			}
+		}
+		if hasHighScoreVariance(scores) {
+			return QualityInsufficient
+		}
+	}
+
+	return baseVerdict
+}
+
 // hasTopicIncoherence checks if the top contexts are from many unrelated sources.
 // If every title is unique (no pair shares any significant word), this signals
 // that retrieval scattered across unrelated topics.

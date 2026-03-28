@@ -568,9 +568,9 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		return result, fmt.Errorf("failed to retrieve context: %w", err)
 	}
 
-	// Quality gate: assess retrieval quality and retry if marginal
+	// Quality gate: assess retrieval quality with intent-aware strictness
 	if u.qualityAssessor != nil && retrieved != nil && len(retrieved.Contexts) > 0 {
-		verdict := u.qualityAssessor.Assess(retrieved.Contexts)
+		verdict := u.qualityAssessor.AssessWithIntent(retrieved.Contexts, intent.IntentType)
 		result.retrievalQuality = verdict
 
 		u.logger.Info("retrieval_quality_verdict",
