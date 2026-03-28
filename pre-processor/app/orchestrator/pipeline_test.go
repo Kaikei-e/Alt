@@ -128,9 +128,9 @@ func TestRunStage_ContextCancellation(t *testing.T) {
 				if in == 1 {
 					cancel()
 					// Give time for cancellation to propagate
-					time.Sleep(20 * time.Millisecond)
+					time.Sleep(50 * time.Millisecond)
 				}
-				time.Sleep(10 * time.Millisecond) // Simulate work
+				time.Sleep(20 * time.Millisecond) // Simulate work
 				return in, nil
 			},
 		}, inputs)
