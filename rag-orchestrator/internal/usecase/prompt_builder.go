@@ -198,22 +198,27 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 	switch input.IntentType {
 	case IntentComparison:
 		sb.WriteString("## クエリ意図: 比較\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("- 両者を公平に比較し、共通点・相違点を構造化してください\n")
 		sb.WriteString("- 一方に偏らず、各項目の長所・短所を併記してください\n\n")
 	case IntentTemporal:
 		sb.WriteString("## クエリ意図: 時系列\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("- 最新の情報を優先して回答してください\n")
 		sb.WriteString("- 日付・時期を明記し、時系列順に整理してください\n\n")
 	case IntentTopicDeepDive:
 		sb.WriteString("## クエリ意図: 深掘り\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("- 背景・詳細・影響を包括的に解説してください\n")
 		sb.WriteString("- 基本概念から応用まで段階的に説明してください\n\n")
 	case IntentFactCheck:
 		sb.WriteString("## クエリ意図: ファクトチェック\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("- 出典を明示し、根拠と判定を構造化して回答してください\n")
 		sb.WriteString("- 「主張」「根拠」「判定」の3段構成で回答してください\n\n")
 	case IntentCausalExplanation:
 		sb.WriteString("## クエリ意図: 因果分析\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("- 回答は最低3つの構成要素で構造化すること:\n")
 		sb.WriteString("  1. **直接的要因**: 直近のトリガーとなった出来事\n")
 		sb.WriteString("  2. **構造的背景**: 長期的な要因・制度的背景\n")
@@ -227,6 +232,7 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 	switch input.SubIntentType {
 	case SubIntentCritique:
 		sb.WriteString("## クエリ意図: 批判的分析\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("ユーザーは記事の内容に対する反論・批判・弱点を知りたいと思っています。\n")
 		sb.WriteString("- 記事の主張を簡潔に述べた上で、それに対する反論・批判を提示すること\n")
 		sb.WriteString("- 考えられる弱点・限界・問題点を具体的に列挙すること\n")
@@ -234,18 +240,21 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 		sb.WriteString("- **記事の内容を要約するのではなく、批判的に分析すること**\n\n")
 	case SubIntentOpinion:
 		sb.WriteString("## クエリ意図: 評価・意見\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("ユーザーは記事の内容に対する評価や分析的な意見を求めています。\n")
 		sb.WriteString("- コンテキストの情報に基づいて、分析的な評価を提示すること\n")
 		sb.WriteString("- 長所と短所の両面から評価すること\n")
 		sb.WriteString("- **記事の内容を要約するのではなく、分析・評価を行うこと**\n\n")
 	case SubIntentImplication:
 		sb.WriteString("## クエリ意図: 影響・意味合い\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("ユーザーは記事の内容がもたらす影響や意味合いを知りたいと思っています。\n")
 		sb.WriteString("- 記事の内容が何を意味するのか、その影響を分析すること\n")
 		sb.WriteString("- 短期的・長期的な影響を区別して説明すること\n")
 		sb.WriteString("- **記事の内容を要約するのではなく、その影響と意味合いを分析すること**\n\n")
 	case SubIntentDetail:
 		sb.WriteString("## クエリ意図: 技術的詳細\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("ユーザーは記事の技術的な詳細、メカニズム、ステップを知りたいと思っています。\n")
 		sb.WriteString("- 質問に直接回答すること。概要の再説明は不要\n")
 		sb.WriteString("- メカニズム・手順・技術的根拠に焦点を当てること\n")
@@ -253,12 +262,14 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 		sb.WriteString("- **記事の要約ではなく、技術的な詳細に集中すること**\n\n")
 	case SubIntentRelatedArticles:
 		sb.WriteString("## クエリ意図: 関連記事\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("ユーザーはこの記事に関連する他の記事を知りたいと思っています。\n")
 		sb.WriteString("- 関連記事のランク付きリストを返すこと（散文形式ではなくリスト形式）\n")
 		sb.WriteString("- 各記事に関連する理由を1文で説明すること\n")
 		sb.WriteString("- **長文の散文ではなく、簡潔な構造化リストで回答すること**\n\n")
 	case SubIntentEvidence:
 		sb.WriteString("## クエリ意図: 根拠・エビデンス\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("ユーザーは記事の主張を裏付ける具体的な根拠を求めています。\n")
 		sb.WriteString("- 引用付きで具体的なパッセージを返すこと\n")
 		sb.WriteString("- 各引用に出典番号[番号]を付与すること\n")
@@ -266,6 +277,7 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 		sb.WriteString("- **記事の要約ではなく、根拠となるパッセージに集中すること**\n\n")
 	case SubIntentSummaryRefresh:
 		sb.WriteString("## クエリ意図: 要約リフレッシュ\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
 		sb.WriteString("ユーザーは記事の簡潔な要約を求めています。\n")
 		sb.WriteString("- 重要なポイントを簡潔にまとめること\n")
 		sb.WriteString("- 前回の回答と重複しても構わない（ユーザーが要約を求めている）\n")
