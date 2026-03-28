@@ -96,7 +96,7 @@ class Settings(BaseSettings):
 
     # Ollama
     ollama_url: str = Field(default="http://localhost:11434")
-    ollama_model: str = Field(default="gemma3-4b-8k")
+    ollama_model: str = Field(default="gemma3-4b-12k")
     ollama_timeout: int = Field(default=120, ge=10, le=600)
     ollama_concurrency: int = Field(default=5, ge=1, le=20)
 
