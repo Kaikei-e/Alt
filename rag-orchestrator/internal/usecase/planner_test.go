@@ -281,6 +281,51 @@ func TestPlanner_ArticleScopeAction_Keep(t *testing.T) {
 	assert.Equal(t, domain.ScopeKeep, got.ArticleScopeAction)
 }
 
+// --- Fix 1: Ambiguous follow-up over-classification ---
+
+func TestIsAmbiguousFollowUp_TopicPlusPattern_NotAmbiguous(t *testing.T) {
+	// "PyO3について詳しく教えて" contains a specific topic — not ambiguous.
+	assert.False(t, isAmbiguousFollowUp("PyO3について詳しく教えて"),
+		"query with specific topic + pattern should not be ambiguous")
+	assert.False(t, isAmbiguousFollowUp("そのリスクについて詳しく教えて"),
+		"query with demonstrative + topic + pattern should not be ambiguous")
+	assert.False(t, isAmbiguousFollowUp("Rustのメモリ管理についてもっと詳しく"),
+		"query with specific entity + pattern should not be ambiguous")
+}
+
+func TestIsAmbiguousFollowUp_PatternOnly_IsAmbiguous(t *testing.T) {
+	// Pattern-only queries without substantive content remain ambiguous.
+	assert.True(t, isAmbiguousFollowUp("もっと詳しく"),
+		"bare pattern should be ambiguous")
+	assert.True(t, isAmbiguousFollowUp("詳しく教えて"),
+		"bare pattern should be ambiguous")
+	assert.True(t, isAmbiguousFollowUp("それって本当？"),
+		"bare pattern should be ambiguous")
+	assert.True(t, isAmbiguousFollowUp("別の観点では？"),
+		"bare pattern should be ambiguous")
+}
+
+func TestPlanner_NilState_WithHistory_FallsBackToDetail(t *testing.T) {
+	// When state is nil but conversation history exists, the planner should
+	// NOT demand clarification — it should fall back to OpDetail.
+	planner := newTestPlanner()
+	intent := QueryIntent{
+		IntentType:   IntentGeneral,
+		UserQuestion: "もっと詳しく",
+	}
+	history := []domain.Message{
+		{Role: "user", Content: "PyO3について教えて"},
+		{Role: "assistant", Content: "PyO3はPythonとRustの橋渡しライブラリです。"},
+	}
+
+	got := planner.Plan("もっと詳しく", intent, nil, history)
+
+	assert.Equal(t, domain.OpDetail, got.Operation,
+		"nil state + non-empty history should fall back to OpDetail, not OpClarify")
+	assert.False(t, got.NeedsClarification,
+		"should not demand clarification when history provides context")
+}
+
 func TestPlanner_ArticleScopeAction_Drop(t *testing.T) {
 	planner := newTestPlanner()
 	intent := QueryIntent{

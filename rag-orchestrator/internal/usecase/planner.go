@@ -49,7 +49,7 @@ func (p *ConversationPlanner) Plan(
 	ambiguous := isAmbiguousFollowUp(query)
 
 	if ambiguous {
-		return p.resolveAmbiguous(query, intent, state, out)
+		return p.resolveAmbiguous(query, intent, state, history, out)
 	}
 
 	// Step 3: Map from SubIntentType or IntentType to operation
@@ -61,10 +61,23 @@ func (p *ConversationPlanner) resolveAmbiguous(
 	query string,
 	intent QueryIntent,
 	state *domain.ConversationState,
+	history []domain.Message,
 	out *domain.PlannerOutput,
 ) *domain.PlannerOutput {
-	// No state = cannot resolve reference → clarify
+	// No state = cannot resolve reference.
+	// But if conversation history exists, the user is in an active dialogue —
+	// fall back to OpDetail instead of demanding clarification.
 	if state == nil {
+		if len(history) > 0 {
+			out.Operation = domain.OpDetail
+			if intent.ArticleID != "" {
+				out.RetrievalPolicy = domain.PolicyArticleOnly
+			} else {
+				out.RetrievalPolicy = domain.PolicyGlobalOnly
+			}
+			out.Confidence = 0.5
+			return out
+		}
 		out.Operation = domain.OpClarify
 		out.RetrievalPolicy = domain.PolicyNoRetrieval
 		out.NeedsClarification = true
@@ -191,6 +204,8 @@ func (p *ConversationPlanner) fromIntentType(intent QueryIntent, out *domain.Pla
 // --- Pattern Matching Helpers ---
 
 // isAmbiguousFollowUp detects vague follow-up queries that need reference resolution.
+// A query is ambiguous only if it consists primarily of a pattern with no substantive
+// additional content. "もっと詳しく" is ambiguous, but "PyO3について詳しく教えて" is not.
 func isAmbiguousFollowUp(query string) bool {
 	lower := strings.ToLower(query)
 	ambiguousPatterns := []string{
@@ -201,7 +216,22 @@ func isAmbiguousFollowUp(query string) bool {
 	}
 	for _, p := range ambiguousPatterns {
 		if strings.Contains(lower, p) || strings.Contains(query, p) {
-			return true
+			// Check if the query has substantive content beyond the pattern.
+			// Remove the pattern and see if meaningful content remains.
+			remainder := strings.Replace(query, p, "", 1)
+			remainder = strings.TrimSpace(remainder)
+			// Strip common particles and punctuation
+			for _, strip := range []string{"？", "?", "。", ".", "、", "の", "について", "は", "を", "に"} {
+				remainder = strings.ReplaceAll(remainder, strip, "")
+			}
+			remainder = strings.TrimSpace(remainder)
+			// If after removing the pattern and particles, less than 2 runes remain,
+			// the query is truly ambiguous (just the pattern).
+			if len([]rune(remainder)) < 2 {
+				return true
+			}
+			// Has substantive content — not ambiguous.
+			return false
 		}
 	}
 	return false
