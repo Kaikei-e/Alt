@@ -16,6 +16,8 @@
 
 _Last reviewed on March 18, 2026._
 
+> Learn from you, serve for you
+
 **Alt is a Compose-first knowledge platform built for turning information into reusable knowledge.**
 Starting from RSS ingestion, Alt runs a local-first AI pipeline for summarization, tag extraction, search, recap, and RAG-powered Q&A, then brings the results together in **Knowledge Home** — the main surface for discovering, understanding, recalling, and revisiting what matters.
 
