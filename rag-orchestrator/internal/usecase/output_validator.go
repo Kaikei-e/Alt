@@ -233,9 +233,20 @@ func AssessAnswerQuality(answer, query string, citations []LLMCitation, intentTy
 }
 
 func checkKeywordCoverage(answer, query string) bool {
-	// Extract significant words from query (>= 3 chars/runes)
+	// For article-scoped queries, extract just the user question to avoid
+	// matching English article title keywords against Japanese answer text.
+	// The full query format is: "Regarding the article: TITLE [articleId: UUID]\n\nQuestion:\nUSER_QUESTION"
+	effectiveQuery := extractUserQuestion(query)
+
+	// Japanese/CJK text doesn't use spaces between words, so strings.Fields
+	// treats the entire sentence as one "word". Word-based coverage is meaningless.
+	// Skip for CJK-dominant queries.
+	if isCJKDominant(effectiveQuery) {
+		return true
+	}
+
 	lowerAnswer := strings.ToLower(answer)
-	words := strings.Fields(strings.ToLower(query))
+	words := strings.Fields(strings.ToLower(effectiveQuery))
 
 	significant := 0
 	covered := 0
@@ -253,6 +264,39 @@ func checkKeywordCoverage(answer, query string) bool {
 		return true
 	}
 	return float64(covered)/float64(significant) >= 0.5
+}
+
+// isCJKDominant returns true when more than 30% of runes are CJK characters.
+// This matches the locale detection heuristic used elsewhere in rag-orchestrator.
+func isCJKDominant(s string) bool {
+	total := 0
+	cjk := 0
+	for _, r := range s {
+		total++
+		if (r >= 0x3040 && r <= 0x309F) || // Hiragana
+			(r >= 0x30A0 && r <= 0x30FF) || // Katakana
+			(r >= 0x4E00 && r <= 0x9FFF) || // CJK Unified Ideographs
+			(r >= 0x3400 && r <= 0x4DBF) || // CJK Extension A
+			(r >= 0xFF00 && r <= 0xFFEF) { // Fullwidth Forms
+			cjk++
+		}
+	}
+	if total == 0 {
+		return false
+	}
+	return float64(cjk)/float64(total) > 0.3
+}
+
+// extractUserQuestion strips article metadata from article-scoped queries,
+// returning only the user's actual question for keyword analysis.
+// For non-article-scoped queries, returns the original query unchanged.
+func extractUserQuestion(query string) string {
+	const sep = "\n\nQuestion:\n"
+	idx := strings.LastIndex(query, sep)
+	if idx >= 0 {
+		return strings.TrimSpace(query[idx+len(sep):])
+	}
+	return query
 }
 
 func checkCitationDensity(answer string, citations []LLMCitation) bool {
