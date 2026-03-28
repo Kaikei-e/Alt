@@ -148,6 +148,73 @@ func TestAssess_ScoreVariance_HighSpread_Downgrades(t *testing.T) {
 	}
 }
 
+// --- AssessWithIntent tests (causal-aware retrieval gating) ---
+
+func TestAssessWithIntent_Causal_TopicIncoherence_IsInsufficient(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0.9, Title: "Venezuela Oil Blockade"},
+		{ChunkID: uuid.New(), Score: 0.8, RerankScore: 0.8, Title: "Iran Airspace Reopening"},
+		{ChunkID: uuid.New(), Score: 0.7, RerankScore: 0.7, Title: "Space Exploration Update"},
+	}
+	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation)
+	if verdict != QualityInsufficient {
+		t.Errorf("expected QualityInsufficient for causal + incoherent topics, got %s", verdict)
+	}
+}
+
+func TestAssessWithIntent_Causal_Marginal_IsInsufficient(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.4, RerankScore: 0.4, Title: "Oil Crisis"},
+		{ChunkID: uuid.New(), Score: 0.3, RerankScore: 0.3, Title: "Oil Crisis"},
+		{ChunkID: uuid.New(), Score: 0.25, RerankScore: 0.25, Title: "Oil Crisis"},
+	}
+	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation)
+	if verdict != QualityInsufficient {
+		t.Errorf("expected QualityInsufficient for causal + marginal score, got %s", verdict)
+	}
+}
+
+func TestAssessWithIntent_NonCausal_TopicIncoherence_IsMarginal(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0.9, Title: "Venezuela Oil"},
+		{ChunkID: uuid.New(), Score: 0.8, RerankScore: 0.8, Title: "Iran Airspace"},
+		{ChunkID: uuid.New(), Score: 0.7, RerankScore: 0.7, Title: "Space Exploration"},
+	}
+	verdict := assessor.AssessWithIntent(contexts, IntentGeneral)
+	if verdict != QualityMarginal {
+		t.Errorf("expected QualityMarginal for non-causal + incoherent (downgrade only), got %s", verdict)
+	}
+}
+
+func TestAssessWithIntent_Causal_Coherent_Good(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0.9, Title: "Oil Crisis Root Causes"},
+		{ChunkID: uuid.New(), Score: 0.85, RerankScore: 0.85, Title: "Oil Supply Crisis Analysis"},
+		{ChunkID: uuid.New(), Score: 0.8, RerankScore: 0.8, Title: "Oil Market Crisis Factors"},
+	}
+	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation)
+	if verdict != QualityGood {
+		t.Errorf("expected QualityGood for causal + coherent + good scores, got %s", verdict)
+	}
+}
+
+func TestAssessWithIntent_Causal_ScoreVariance_IsInsufficient(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.3, 0.15, 3)
+	contexts := []ContextItem{
+		{ChunkID: uuid.New(), Score: 0.95, RerankScore: 0.95, Title: "Oil Crisis"},
+		{ChunkID: uuid.New(), Score: 0.1, RerankScore: 0.1, Title: "Oil Crisis"},
+		{ChunkID: uuid.New(), Score: 0.08, RerankScore: 0.08, Title: "Oil Crisis"},
+	}
+	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation)
+	if verdict != QualityInsufficient {
+		t.Errorf("expected QualityInsufficient for causal + high score variance, got %s", verdict)
+	}
+}
+
 func TestAssess_MoreThanThreeContexts_UsesTopThree(t *testing.T) {
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
 	contexts := []ContextItem{
