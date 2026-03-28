@@ -1609,6 +1609,93 @@ class TestSlotLeakAfterPreemption:
         )
 
 
+class TestSingleSlotPreemption:
+    """Tests for total_slots=1 (RAG-dedicated single-slot mode).
+
+    When be_slots=0, preemption chains can tag a slot with home_pool="be"
+    but no BE pool exists. The slot must be remapped to the RT pool.
+    """
+
+    @pytest.mark.asyncio
+    async def test_slot_invariant_single_slot_after_preemption(
+        self, hybrid_semaphore_module
+    ):
+        """With total_slots=1, rt_reserved=1, be_slots=0.
+
+        A summarize (LOW) request holds the single RT slot. A chat (HIGH)
+        request arrives and preempts it. After the preemption chain completes,
+        the single slot must not disappear.
+        """
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            preemption_enabled=True,
+            guaranteed_be_ratio=0,
+        )
+
+        # BE acquires the single slot (falls back to RT slot since be_slots=0)
+        _, be_sid = await sem.acquire(high_priority=False)
+
+        # Register as preemptable
+        cancel_event = asyncio.Event()
+        sem.register_active_request("be-1", cancel_event, is_high_priority=False)
+
+        # RT arrives — triggers preemption
+        rt_task = asyncio.create_task(sem.acquire(high_priority=True))
+        await asyncio.sleep(0)
+        assert cancel_event.is_set(), "BE should be preempted"
+
+        # BE detects cancel, releases
+        sem.unregister_active_request("be-1")
+        sem.release(slot_id=be_sid, was_high_priority=False)
+
+        # RT wakes from queue
+        for _ in range(5):
+            await asyncio.sleep(0)
+        assert rt_task.done(), "RT should have acquired after preemption"
+        _, rt_sid = rt_task.result()
+
+        # RT finishes, releases — no waiters
+        sem.release(slot_id=rt_sid, was_high_priority=True)
+
+        # INVARIANT: the single slot must not have disappeared
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == 1, (
+            f"Slot leak: rt_available={sem._rt_available}, "
+            f"be_available={sem._be_available}, "
+            f"acquired={len(sem._acquired_slots)}, total={total}, expected=1"
+        )
+        assert sem._rt_available == 1, (
+            f"Single RT slot lost: rt_available={sem._rt_available}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_slot_returns_to_rt_when_be_pool_zero(
+        self, hybrid_semaphore_module
+    ):
+        """When be_slots=0, a slot with home_pool='be' must remap to RT."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=1,
+            rt_reserved_slots=1,
+            preemption_enabled=False,
+            guaranteed_be_ratio=0,
+        )
+        assert sem._be_slots == 0, "be_slots should be 0 when rt_reserved == total"
+
+        # Acquire the single slot as LOW priority (will get RT slot via fallback)
+        _, sid = await sem.acquire(high_priority=False)
+        assert len(sem._acquired_slots) == 1
+
+        # Release — regardless of tracked home_pool, it must return to RT (the only pool)
+        sem.release(slot_id=sid, was_high_priority=False)
+
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == 1, f"Slot lost: rt={sem._rt_available}, be={sem._be_available}"
+        assert sem._rt_available == 1, "Slot must return to RT pool (only existing pool)"
+
+
 class TestSlotIdOwnershipPropagation:
     """Tests for explicit slot_id ownership propagation (ADR-000604 item 4).
 
