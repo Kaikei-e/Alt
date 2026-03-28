@@ -15,7 +15,8 @@ const (
 	OpCritique        PlannerOperation = "critique"
 	OpOpinion         PlannerOperation = "opinion"
 	OpImplication     PlannerOperation = "implication"
-	OpGeneral         PlannerOperation = "general"
+	OpGeneral            PlannerOperation = "general"
+	OpCausalExplanation PlannerOperation = "causal_explanation"
 )
 
 // ArticleScopeAction determines how article scope should change.

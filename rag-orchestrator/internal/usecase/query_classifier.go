@@ -44,6 +44,11 @@ func (c *QueryClassifier) Classify(ctx context.Context, query string) IntentType
 		return IntentComparison
 	}
 
+	// Causal/explanatory patterns (before Temporal — "最近の真因" is causal, not temporal)
+	if matchesCausal(query, lower) {
+		return IntentCausalExplanation
+	}
+
 	// Temporal patterns
 	if matchesTemporal(query, lower) {
 		return IntentTemporal
@@ -251,6 +256,22 @@ func matchesSummaryRefresh(query, lower string) bool {
 		}
 	}
 	enKeywords := []string{"just the conclusion", "summarize again", "recap"}
+	for _, kw := range enKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesCausal(query, lower string) bool {
+	jpKeywords := []string{"真因", "原因", "要因", "なぜ", "理由", "根源"}
+	for _, kw := range jpKeywords {
+		if strings.Contains(query, kw) {
+			return true
+		}
+	}
+	enKeywords := []string{"root cause", "why did", "reason behind", "caused by", "what caused"}
 	for _, kw := range enKeywords {
 		if strings.Contains(lower, kw) {
 			return true

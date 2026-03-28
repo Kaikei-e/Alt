@@ -169,6 +169,9 @@ func (p *ConversationPlanner) fromIntentType(intent QueryIntent, out *domain.Pla
 	case IntentComparison:
 		out.Operation = domain.OpCompare
 		out.RetrievalPolicy = domain.PolicyArticlePlusGlobal
+	case IntentCausalExplanation:
+		out.Operation = domain.OpCausalExplanation
+		out.RetrievalPolicy = domain.PolicyGlobalOnly
 	case IntentTemporal:
 		out.Operation = domain.OpGeneral
 		out.RetrievalPolicy = domain.PolicyGlobalOnly
