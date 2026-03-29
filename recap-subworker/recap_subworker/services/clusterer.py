@@ -832,7 +832,7 @@ class Clusterer:
                 # Return composite score (to maximize)
                 return 0.6 * result.silhouette_score + 0.4 * result.dbcv_score
 
-            except (IndexError, ValueError, RuntimeError) as e:
+            except (IndexError, ValueError, RuntimeError, TypeError) as e:
                 _LOGGER.warning(
                     "optuna_trial_failed",
                     trial_number=trial.number,

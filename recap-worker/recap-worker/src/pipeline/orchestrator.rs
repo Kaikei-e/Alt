@@ -115,15 +115,22 @@ impl PipelineOrchestrator {
         let max_concurrent = (cpu_count * 3) / 2;
 
         let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
-            crate::pipeline::embedding::EmbeddingService::new()
-                .ok()
-                .map(|s| Arc::new(s) as Arc<dyn crate::pipeline::embedding::Embedder>);
-
-        if embedding_service.is_none() {
-            tracing::warn!(
-                "Embedding service failed to initialize. Falling back to keyword-only filtering."
-            );
-        }
+            match crate::pipeline::embedding::EmbeddingService::new() {
+                Ok(s) => {
+                    tracing::info!("Embedding service initialized successfully (AllMiniLmL12V2)");
+                    Some(Arc::new(s) as Arc<dyn crate::pipeline::embedding::Embedder>)
+                }
+                Err(e) => {
+                    tracing::error!(
+                        error = %e,
+                        error_chain = ?e,
+                        "Embedding service failed to initialize. \
+                         Large genres cannot be split into subgenres. \
+                         Falling back to keyword-only filtering."
+                    );
+                    None
+                }
+            };
 
         // Initialize Pulse stage and rollout
         let pulse_config = PulseConfig::from_env();
