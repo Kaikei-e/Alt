@@ -543,12 +543,7 @@ class HybridPrioritySemaphore:
         if force_be:
             while self._be_queue and not woke_up:
                 request = heapq.heappop(self._be_queue)
-                if not request.future.done() and not request.future.cancelled():
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        loop.call_soon_threadsafe(request.future.set_result, home_pool)
-                    else:
-                        request.future.set_result(home_pool)
+                if self._try_wake_waiter(request, home_pool):
                     woke_up = True
                     self._consecutive_rt_releases = 0  # Reset counter after BE processed
                     logger.debug("Woke up BE waiter (guaranteed bandwidth)")
@@ -559,12 +554,7 @@ class HybridPrioritySemaphore:
             # Try RT queue first
             while self._rt_queue and not woke_up:
                 request = heapq.heappop(self._rt_queue)
-                if not request.future.done() and not request.future.cancelled():
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        loop.call_soon_threadsafe(request.future.set_result, home_pool)
-                    else:
-                        request.future.set_result(home_pool)
+                if self._try_wake_waiter(request, home_pool):
                     woke_up = True
                     logger.debug("Woke up RT waiter")
 
@@ -572,12 +562,7 @@ class HybridPrioritySemaphore:
             if not woke_up:
                 while self._be_queue:
                     request = heapq.heappop(self._be_queue)
-                    if not request.future.done() and not request.future.cancelled():
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            loop.call_soon_threadsafe(request.future.set_result, home_pool)
-                        else:
-                            request.future.set_result(home_pool)
+                    if self._try_wake_waiter(request, home_pool):
                         woke_up = True
                         self._consecutive_rt_releases = 0  # Reset counter after BE processed
                         logger.debug("Woke up BE waiter")
@@ -606,6 +591,35 @@ class HybridPrioritySemaphore:
                     "home_pool": home_pool,
                 },
             )
+
+    def _try_wake_waiter(self, request: QueuedRequest, home_pool: str) -> bool:
+        """Try to wake a queued waiter by setting its future result.
+
+        Uses direct set_result() instead of call_soon_threadsafe() to avoid
+        a race condition where the future gets cancelled between scheduling
+        and execution, causing the slot to be permanently lost.
+
+        Args:
+            request: The queued request to wake
+            home_pool: The home pool of the slot being transferred
+
+        Returns:
+            True if the waiter was successfully woken, False if the future
+            was already done/cancelled (caller should try next waiter).
+        """
+        if request.future.done() or request.future.cancelled():
+            return False
+        try:
+            request.future.set_result(home_pool)
+            return True
+        except asyncio.InvalidStateError:
+            # Future was cancelled between our check and set_result.
+            # This should be rare but can happen under high concurrency.
+            logger.warning(
+                "Failed to wake waiter: future cancelled during set_result",
+                extra={"home_pool": home_pool},
+            )
+            return False
 
     def _purge_cancelled_from_queues(self) -> None:
         """Remove cancelled/done futures from both queues.

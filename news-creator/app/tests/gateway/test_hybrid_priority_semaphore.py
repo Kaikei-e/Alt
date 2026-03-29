@@ -1790,3 +1790,161 @@ class TestSlotIdOwnershipPropagation:
             f"Slot leak: rt={sem._rt_available}, be={sem._be_available}, "
             f"acquired={len(sem._acquired_slots)}"
         )
+
+
+class TestBeSlotZeroSlotLoss:
+    """Tests for be_slots=0 (total_slots=1, rt_reserved=1) slot loss bug.
+
+    When be_slots=0, BE requests fall back to RT slots. The release() method
+    uses call_soon_threadsafe to schedule future.set_result(), which can fail
+    if the future is cancelled between scheduling and execution, causing the
+    slot to be permanently lost.
+    """
+
+    @pytest.mark.asyncio
+    async def test_be_slots_zero_basic_acquire_release(self, hybrid_semaphore_module):
+        """BE acquires RT slot when be_slots=0 and releases back correctly."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(total_slots=1, rt_reserved_slots=1)
+
+        assert sem._be_slots == 0
+        assert sem._rt_available == 1
+
+        # BE acquires the RT slot (fallback path)
+        wait_time, slot_id = await sem.acquire(high_priority=False)
+        assert wait_time == 0.0
+        assert sem._rt_available == 0
+
+        # Release: slot should return to RT pool
+        sem.release(slot_id=slot_id, was_high_priority=False)
+        assert sem._rt_available == 1
+        assert sem._be_available == 0
+
+        # Invariant
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == 1
+
+    @pytest.mark.asyncio
+    async def test_be_slots_zero_transfer_to_rt_waiter(self, hybrid_semaphore_module):
+        """When BE releases and RT is queued, slot transfers correctly."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+        )
+
+        # BE acquires the only slot
+        _, be_sid = await sem.acquire(high_priority=False)
+
+        # RT queues (no preemption)
+        rt_task = asyncio.create_task(sem.acquire(high_priority=True))
+        await asyncio.sleep(0.02)
+        assert not rt_task.done()
+
+        # BE releases → should wake RT
+        sem.release(slot_id=be_sid, was_high_priority=False)
+        await asyncio.sleep(0.02)
+
+        assert rt_task.done()
+        _, rt_sid = rt_task.result()
+
+        # RT releases → slot back to RT pool
+        sem.release(slot_id=rt_sid, was_high_priority=True)
+
+        # Invariant
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == 1, (
+            f"Slot leak: rt={sem._rt_available}, be={sem._be_available}, "
+            f"acquired={len(sem._acquired_slots)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_be_slots_zero_transfer_to_be_waiter(self, hybrid_semaphore_module):
+        """When BE releases and another BE is queued, slot transfers correctly."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+        )
+
+        # BE-1 acquires the only slot
+        _, be1_sid = await sem.acquire(high_priority=False)
+
+        # BE-2 queues
+        be2_task = asyncio.create_task(sem.acquire(high_priority=False))
+        await asyncio.sleep(0.02)
+        assert not be2_task.done()
+
+        # BE-1 releases → should wake BE-2
+        sem.release(slot_id=be1_sid, was_high_priority=False)
+        await asyncio.sleep(0.02)
+
+        assert be2_task.done()
+        _, be2_sid = be2_task.result()
+
+        # BE-2 releases → slot back to RT pool (home_pool=rt)
+        sem.release(slot_id=be2_sid, was_high_priority=False)
+
+        # Invariant: slot must return to RT pool since be_slots=0
+        assert sem._rt_available == 1
+        assert sem._be_available == 0
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == 1, (
+            f"Slot leak: rt={sem._rt_available}, be={sem._be_available}, "
+            f"acquired={len(sem._acquired_slots)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_be_slots_zero_cancelled_waiter_no_slot_loss(self, hybrid_semaphore_module):
+        """If a queued waiter is cancelled, the slot must not be lost.
+
+        This is the key bug: release() uses call_soon_threadsafe to schedule
+        future.set_result(). If the future is cancelled before set_result
+        executes, the slot vanishes.
+        """
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+        )
+
+        # BE-1 acquires the only slot
+        _, be1_sid = await sem.acquire(high_priority=False)
+
+        # BE-2 queues
+        be2_task = asyncio.create_task(sem.acquire(high_priority=False))
+        await asyncio.sleep(0.02)
+        assert not be2_task.done()
+
+        # Cancel BE-2 before it gets woken up
+        be2_task.cancel()
+        await asyncio.sleep(0.02)
+
+        # BE-1 releases — the release should detect that the waiter was
+        # cancelled and return the slot to the pool instead
+        sem.release(slot_id=be1_sid, was_high_priority=False)
+        await asyncio.sleep(0.02)
+
+        # Invariant: slot must NOT be lost
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == 1, (
+            f"Slot lost after cancelled waiter: rt={sem._rt_available}, "
+            f"be={sem._be_available}, acquired={len(sem._acquired_slots)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_be_slots_zero_rapid_acquire_release_invariant(self, hybrid_semaphore_module):
+        """Rapid acquire/release cycles must not leak slots."""
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(total_slots=1, rt_reserved_slots=1)
+
+        for _ in range(20):
+            _, sid = await sem.acquire(high_priority=False)
+            sem.release(slot_id=sid, was_high_priority=False)
+
+            total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+            assert total == 1, f"Invariant broken on iteration: rt={sem._rt_available}, be={sem._be_available}"
+
+        for _ in range(20):
+            _, sid = await sem.acquire(high_priority=True)
+            sem.release(slot_id=sid, was_high_priority=True)
+
+            total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+            assert total == 1
