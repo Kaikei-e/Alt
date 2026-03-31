@@ -464,7 +464,22 @@ class HybridPrioritySemaphore:
 
             return wait_time, sid
         except asyncio.CancelledError:
-            if not future.done():
+            if future.done() and not future.cancelled():
+                # Slot was transferred to us via set_result() in release(),
+                # but our task was cancelled before _track_acquire() ran.
+                # Recover the slot by releasing it back to the pool or
+                # forwarding it to the next queued waiter.
+                transferred_pool = future.result()
+                if isinstance(transferred_pool, str) and transferred_pool:
+                    home_pool = transferred_pool
+                else:
+                    home_pool = "rt" if high_priority else "be"
+                logger.info(
+                    "Recovering slot from cancelled waiter",
+                    extra={"home_pool": home_pool, "high_priority": high_priority},
+                )
+                self._release_slot_to_pool_or_waiter(home_pool)
+            elif not future.done():
                 future.cancel()
             # Purge this (and any other) cancelled futures from queues
             # so they don't occupy queue slots or get popped by release()
@@ -575,9 +590,16 @@ class HybridPrioritySemaphore:
             else:
                 self._be_available = min(self._be_available + 1, self._be_slots)
 
-        # Invariant check: available + acquired must equal total_slots
+        # Invariant check: available + acquired must equal total_slots.
+        # When woke_up is True, a slot is "in transit" — removed from
+        # _acquired_slots by _track_release() but not yet tracked by
+        # _track_acquire() in the acquiring coroutine. This is normal.
+        expected_total = self._total_slots
+        if woke_up:
+            expected_total -= 1
+
         total_tracked = self._rt_available + self._be_available + len(self._acquired_slots)
-        if total_tracked != self._total_slots:
+        if total_tracked != expected_total:
             logger.error(
                 "SLOT INVARIANT VIOLATION: available + acquired != total_slots",
                 extra={
@@ -585,12 +607,42 @@ class HybridPrioritySemaphore:
                     "be_available": self._be_available,
                     "acquired_count": len(self._acquired_slots),
                     "total_tracked": total_tracked,
+                    "expected_total": expected_total,
                     "total_slots": self._total_slots,
+                    "in_transit": woke_up,
                     "rt_queue_size": len(self._rt_queue),
                     "be_queue_size": len(self._be_queue),
                     "home_pool": home_pool,
                 },
             )
+
+    def _release_slot_to_pool_or_waiter(self, home_pool: str) -> None:
+        """Return a slot to its home pool or transfer to the next queued waiter.
+
+        Used by release() and by the CancelledError recovery path in acquire()
+        when a waiter's task is cancelled after receiving a slot via set_result().
+        """
+        woke_up = False
+
+        # Try RT queue first, then BE queue
+        while self._rt_queue and not woke_up:
+            request = heapq.heappop(self._rt_queue)
+            if self._try_wake_waiter(request, home_pool):
+                woke_up = True
+
+        if not woke_up:
+            while self._be_queue:
+                request = heapq.heappop(self._be_queue)
+                if self._try_wake_waiter(request, home_pool):
+                    woke_up = True
+                    break
+
+        # No waiters — return slot to its home pool
+        if not woke_up:
+            if home_pool == "rt":
+                self._rt_available = min(self._rt_available + 1, self._rt_reserved)
+            else:
+                self._be_available = min(self._be_available + 1, self._be_slots)
 
     def _try_wake_waiter(self, request: QueuedRequest, home_pool: str) -> bool:
         """Try to wake a queued waiter by setting its future result.
