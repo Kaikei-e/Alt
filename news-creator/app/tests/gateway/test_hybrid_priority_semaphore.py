@@ -4,6 +4,7 @@ Tests the RT/BE scheduling, reserved slots, aging mechanism, and LIFO mode.
 """
 
 import asyncio
+import logging
 import pytest
 
 
@@ -1948,3 +1949,192 @@ class TestBeSlotZeroSlotLoss:
 
             total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
             assert total == 1
+
+
+class TestCancelledWaiterSlotRecovery:
+    """Tests for slot recovery when a waiter's task is cancelled AFTER
+    receiving a slot via set_result().
+
+    Bug: When release() transfers a slot to a queued waiter via
+    _try_wake_waiter → set_result(home_pool), and the waiter's asyncio
+    task is then cancelled before _track_acquire() runs, the slot is
+    permanently lost — not in _acquired_slots, not in pool counters.
+    """
+
+    @pytest.mark.asyncio
+    async def test_cancelled_task_after_slot_transfer_recovers_slot(
+        self, hybrid_semaphore_module
+    ):
+        """Slot must be recovered when a waiter's task is cancelled after
+        receiving the slot via set_result().
+
+        Scenario (be_slots=0):
+        1. BE-1 acquires the only slot (RT fallback)
+        2. BE-2 queues
+        3. BE-1 releases → slot transferred to BE-2 via set_result()
+        4. BE-2's task is cancelled before _track_acquire()
+        5. Invariant: slot must be returned to RT pool
+        """
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+        )
+
+        # BE-1 acquires the only slot
+        _, be1_sid = await sem.acquire(high_priority=False)
+
+        # BE-2 queues (will block waiting for slot)
+        be2_task = asyncio.create_task(sem.acquire(high_priority=False))
+        await asyncio.sleep(0.02)
+        assert not be2_task.done()
+
+        # BE-1 releases → slot transferred to BE-2 via set_result()
+        sem.release(slot_id=be1_sid, was_high_priority=False)
+
+        # Cancel BE-2's task immediately — before _track_acquire() runs
+        be2_task.cancel()
+        try:
+            await be2_task
+        except asyncio.CancelledError:
+            pass
+
+        # Allow event loop to process
+        await asyncio.sleep(0.02)
+
+        # Invariant: slot must NOT be lost
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == 1, (
+            f"Slot lost after cancelled waiter: rt={sem._rt_available}, "
+            f"be={sem._be_available}, acquired={len(sem._acquired_slots)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_cancelled_task_transfers_to_next_waiter(
+        self, hybrid_semaphore_module
+    ):
+        """When a waiter's task is cancelled after slot transfer, the slot
+        must be forwarded to the next waiter in the queue.
+
+        Scenario (be_slots=0):
+        1. BE-1 acquires
+        2. BE-2 queues, BE-3 queues
+        3. BE-1 releases → slot goes to BE-2
+        4. BE-2's task is cancelled → slot must go to BE-3
+        5. BE-3 should get the slot
+        """
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+        )
+
+        # BE-1 acquires
+        _, be1_sid = await sem.acquire(high_priority=False)
+
+        # BE-2 and BE-3 queue
+        be2_task = asyncio.create_task(sem.acquire(high_priority=False))
+        await asyncio.sleep(0.02)
+        be3_task = asyncio.create_task(sem.acquire(high_priority=False))
+        await asyncio.sleep(0.02)
+        assert not be2_task.done()
+        assert not be3_task.done()
+
+        # BE-1 releases → slot transferred to BE-2
+        sem.release(slot_id=be1_sid, was_high_priority=False)
+
+        # Cancel BE-2 before it processes the slot
+        be2_task.cancel()
+        try:
+            await be2_task
+        except asyncio.CancelledError:
+            pass
+
+        await asyncio.sleep(0.05)
+
+        # BE-3 should have received the recovered slot
+        assert be3_task.done(), "BE-3 should have received the slot"
+        _, be3_sid = be3_task.result()
+
+        # Clean up
+        sem.release(slot_id=be3_sid, was_high_priority=False)
+
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == 1
+
+    @pytest.mark.asyncio
+    async def test_rt_cancelled_after_transfer_recovers_to_rt_pool(
+        self, hybrid_semaphore_module
+    ):
+        """When an RT waiter's task is cancelled after slot transfer,
+        the slot must return to the RT pool (be_slots=0 config).
+        """
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+        )
+
+        # RT-1 acquires
+        _, rt1_sid = await sem.acquire(high_priority=True)
+
+        # RT-2 queues (preemption disabled, so it just waits)
+        rt2_task = asyncio.create_task(sem.acquire(high_priority=True))
+        await asyncio.sleep(0.02)
+        assert not rt2_task.done()
+
+        # RT-1 releases → slot transferred to RT-2
+        sem.release(slot_id=rt1_sid, was_high_priority=True)
+
+        # Cancel RT-2
+        rt2_task.cancel()
+        try:
+            await rt2_task
+        except asyncio.CancelledError:
+            pass
+
+        await asyncio.sleep(0.02)
+
+        # Slot must return to RT pool
+        assert sem._rt_available == 1, (
+            f"RT slot not recovered: rt={sem._rt_available}, "
+            f"be={sem._be_available}, acquired={len(sem._acquired_slots)}"
+        )
+        total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
+        assert total == 1
+
+    @pytest.mark.asyncio
+    async def test_invariant_no_false_positive_during_transfer(
+        self, hybrid_semaphore_module, caplog
+    ):
+        """release() must not log SLOT INVARIANT VIOLATION during normal
+        slot transfer to a queued waiter (false positive).
+        """
+        HybridPrioritySemaphore = hybrid_semaphore_module
+        sem = HybridPrioritySemaphore(
+            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+        )
+
+        # BE-1 acquires
+        _, be1_sid = await sem.acquire(high_priority=False)
+
+        # BE-2 queues
+        be2_task = asyncio.create_task(sem.acquire(high_priority=False))
+        await asyncio.sleep(0.02)
+
+        # BE-1 releases → slot transferred to BE-2
+        with caplog.at_level(logging.ERROR, logger="news_creator.gateway.hybrid_priority_semaphore"):
+            sem.release(slot_id=be1_sid, was_high_priority=False)
+
+        # No SLOT INVARIANT VIOLATION should be logged
+        violation_msgs = [
+            r for r in caplog.records
+            if "SLOT INVARIANT VIOLATION" in r.message
+        ]
+        assert len(violation_msgs) == 0, (
+            f"False positive invariant violation during normal transfer: "
+            f"{[r.message for r in violation_msgs]}"
+        )
+
+        # Clean up
+        await asyncio.sleep(0.02)
+        assert be2_task.done()
+        _, be2_sid = be2_task.result()
+        sem.release(slot_id=be2_sid, was_high_priority=False)
