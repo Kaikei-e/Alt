@@ -15,6 +15,9 @@ dev = [
     "pyrefly>=0.42.0",
 ]
 
+[tool.uv]
+constraint-dependencies = ["Pygments>=2.20.0"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

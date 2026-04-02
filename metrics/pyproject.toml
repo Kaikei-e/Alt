@@ -21,6 +21,7 @@ dev = [
 
 [tool.uv]
 package = true
+constraint-dependencies = ["Pygments>=2.20.0"]
 
 [build-system]
 requires = ["hatchling"]

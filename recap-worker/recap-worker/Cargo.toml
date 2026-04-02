@@ -103,7 +103,7 @@ rstest = "0.22"
 tokio = { version = "1.49", features = ["rt", "macros"] }
 wiremock = "0.6"
 criterion = { version = "0.5", features = ["html_reports"] }
-testcontainers = "0.16"
+testcontainers = "0.27"
 temp-env = "0.3"
 tempfile = "3.25"
 pact_consumer = "1.3"

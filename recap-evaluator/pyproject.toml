@@ -63,7 +63,7 @@ dev = [
 ]
 
 [tool.uv]
-constraint-dependencies = ["protobuf>=6.33.5", "Pillow>=12.1.1"]
+constraint-dependencies = ["protobuf>=6.33.5", "Pillow>=12.1.1", "Pygments>=2.20.0"]
 
 [tool.ruff]
 target-version = "py314"
