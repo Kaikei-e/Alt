@@ -66,7 +66,7 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 				if r.URL.Path == "/health" {
 					w.WriteHeader(http.StatusOK)
 					// Implementation expects models array
-					_, _ = w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`))
+					_, _ = w.Write([]byte(`{"models":[{"name":"gemma4-e4b-q4km"}]}`))
 				} else {
 					w.WriteHeader(http.StatusNotFound)
 				}
@@ -153,7 +153,7 @@ func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 				if r.URL.Path == "/health" {
 					w.WriteHeader(http.StatusOK)
 					// Implementation expects models array
-					if _, err := w.Write([]byte(`{"models":[{"name":"gemma3:4b"}]}`)); err != nil {
+					if _, err := w.Write([]byte(`{"models":[{"name":"gemma4-e4b-q4km"}]}`)); err != nil {
 						t.Fatalf("failed to write mock response: %v", err)
 					}
 				}

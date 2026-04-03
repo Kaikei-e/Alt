@@ -46,7 +46,7 @@ async fn contract_news_creator_summary_generate() {
                     "language": like!("ja"),
                 }),
                 "metadata": json_pattern!({
-                    "model": like!("gemma3:4b-it-qat"),
+                    "model": like!("gemma4-e4b-q4km"),
                 }),
             }));
             i
@@ -116,7 +116,7 @@ async fn contract_news_creator_batch_summary_generate() {
                         "language": like!("ja"),
                     }),
                     "metadata": json_pattern!({
-                        "model": like!("gemma3:4b-it-qat"),
+                        "model": like!("gemma4-e4b-q4km"),
                     }),
                 })),
                 "errors": [],

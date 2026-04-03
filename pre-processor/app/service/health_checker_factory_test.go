@@ -129,7 +129,7 @@ func TestHealthCheckerFactory_Integration(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{
 				"models": [
-					{"name": "gemma3:4b"},
+					{"name": "gemma4-e4b-q4km"},
 					{"name": "llama2:7b"}
 				]
 			}`))

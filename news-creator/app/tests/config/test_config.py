@@ -14,7 +14,7 @@ def test_config_loads_defaults():
     config = NewsCreatorConfig()
 
     assert config.llm_service_url == "http://localhost:11435"
-    assert config.model_name == "gemma3:4b-it-qat"
+    assert config.model_name == "gemma4-e4b-q4km"
 
     # Cleanup
     os.environ.pop("SERVICE_SECRET", None)
@@ -53,7 +53,7 @@ def test_config_handles_invalid_numeric_values():
 
     # Should fall back to defaults
     assert config.llm_timeout_seconds == 300
-    assert config.llm_temperature == 0.7  # Gemma3 QAT optimized default
+    assert config.llm_temperature == 0.7  # Gemma4 default
 
     # Cleanup
     del os.environ["LLM_TIMEOUT_SECONDS"]

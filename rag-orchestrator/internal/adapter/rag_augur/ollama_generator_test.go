@@ -13,7 +13,7 @@ import (
 
 func TestBuildOptions_GemmaModel(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-4b-rag", 100, testLogger)
+	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-rag", 100, testLogger)
 	opts := gen.buildOptions(2048)
 
 	// Gemma: sampling params delegated to news-creator proxy baseline (ADR-579).
@@ -47,7 +47,7 @@ func TestBuildOptions_SwallowModel(t *testing.T) {
 
 func TestGetThinkParam_GemmaReturnsNil(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-4b-rag", 100, testLogger)
+	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-rag", 100, testLogger)
 	result := gen.getThinkParam(4096)
 
 	if result != nil {

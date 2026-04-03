@@ -92,7 +92,7 @@ services:
       # Ask Augur chat uses HIGH PRIORITY to preempt batch summarization
       # Override AUGUR_EXTERNAL in .env to route to remote Mac if needed
       - AUGUR_EXTERNAL=${AUGUR_EXTERNAL:-http://news-creator:11434}
-      - AUGUR_KNOWLEDGE_MODEL=${AUGUR_KNOWLEDGE_MODEL:-gemma3-4b-12k}
+      - AUGUR_KNOWLEDGE_MODEL=${AUGUR_KNOWLEDGE_MODEL:-gemma4-e4b-12k}
       - SEARCH_INDEXER_URL=http://search-indexer:9300
       - QUERY_EXPANSION_URL=http://news-creator:11434
       - QUERY_EXPANSION_TIMEOUT=30

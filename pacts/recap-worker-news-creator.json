@@ -130,7 +130,7 @@
               "genre": "tech",
               "job_id": "00000000-0000-0000-0000-000000000001",
               "metadata": {
-                "model": "gemma3:4b-it-qat"
+                "model": "gemma4-e4b-q4km"
               },
               "summary": {
                 "bullets": [
@@ -337,7 +337,7 @@
           "genre": "tech",
           "job_id": "00000000-0000-0000-0000-000000000001",
           "metadata": {
-            "model": "gemma3:4b-it-qat"
+            "model": "gemma4-e4b-q4km"
           },
           "summary": {
             "bullets": [

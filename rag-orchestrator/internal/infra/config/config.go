@@ -220,7 +220,7 @@ func Load() *Config {
 		},
 		Augur: AugurConfig{
 			URL:     getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "http://news-creator-backend:11435"),
-			Model:   getEnv("AUGUR_KNOWLEDGE_MODEL", "gemma3-4b-12k"),
+			Model:   getEnv("AUGUR_KNOWLEDGE_MODEL", "gemma4-e4b-12k"),
 			Timeout: getEnvInt("OLLAMA_TIMEOUT", 300),
 		},
 		Search: SearchConfig{

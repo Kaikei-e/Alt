@@ -60,7 +60,7 @@ class ExpandQueryUsecase:
     """Usecase for generating expanded search queries for RAG retrieval."""
 
     # Use the same warmed RAG model as the main answer path to avoid backend model swaps.
-    EXPANSION_MODEL = "gemma3-4b-12k"
+    EXPANSION_MODEL = "gemma4-e4b-12k"
 
     def __init__(self, config: NewsCreatorConfig, llm_provider: LLMProviderPort):
         """Initialize expand query usecase."""

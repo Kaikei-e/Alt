@@ -38,7 +38,7 @@ def test_recap_summary_handler_success():
             bullets=["世界経済は緩やかに回復している。"],
             language="ja",
         ),
-        metadata=RecapSummaryMetadata(model="gemma3:4b"),
+        metadata=RecapSummaryMetadata(model="gemma4-e4b-q4km"),
     )
     usecase.generate_summary.return_value = response
 
@@ -138,7 +138,7 @@ def test_batch_recap_summary_handler_success():
                     bullets=["テックの要点"],
                     language="ja",
                 ),
-                metadata=RecapSummaryMetadata(model="gemma3:4b"),
+                metadata=RecapSummaryMetadata(model="gemma4-e4b-q4km"),
             ),
             RecapSummaryResponse(
                 job_id=job_id_2,
@@ -148,7 +148,7 @@ def test_batch_recap_summary_handler_success():
                     bullets=["政治の要点"],
                     language="ja",
                 ),
-                metadata=RecapSummaryMetadata(model="gemma3:4b"),
+                metadata=RecapSummaryMetadata(model="gemma4-e4b-q4km"),
             ),
         ],
         errors=[],
@@ -189,7 +189,7 @@ def test_batch_recap_summary_handler_partial_failure():
                     bullets=["テックの要点"],
                     language="ja",
                 ),
-                metadata=RecapSummaryMetadata(model="gemma3:4b"),
+                metadata=RecapSummaryMetadata(model="gemma4-e4b-q4km"),
             ),
         ],
         errors=[

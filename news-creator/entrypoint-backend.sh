@@ -39,6 +39,7 @@ export OLLAMA_NUM_THREAD="${OLLAMA_NUM_THREAD:-12}"
 export OLLAMA_NUM_BATCH="${OLLAMA_NUM_BATCH:-1024}"
 export OLLAMA_DEBUG="${OLLAMA_DEBUG:-0}"
 export OLLAMA_FLASH_ATTENTION="${OLLAMA_FLASH_ATTENTION:-1}"
+export OLLAMA_KV_CACHE_TYPE="${OLLAMA_KV_CACHE_TYPE:-q8_0}"
 
 # HOME / キャッシュ
 export HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
@@ -87,34 +88,47 @@ if ! curl -fs "http://localhost:11435/api/tags" >/dev/null 2>&1; then
   exit 1
 fi
 
-# --- ensure base model ----------------------------------------
-# Using QAT model for improved quantization quality (54% less perplexity drop)
-# See: https://developers.googleblog.com/en/gemma-3-quantized-aware-trained-state-of-the-art-ai-to-consumer-gpus/
-BASE_MODEL="${OLLAMA_BASE_MODEL:-gemma3:4b-it-qat}"
-echo "Ensuring ${BASE_MODEL} model is up to date..."
-if ! ollama list 2>/dev/null | grep -q "${BASE_MODEL}"; then
-  echo "Pulling ${BASE_MODEL} model (this may take a few minutes)..."
-  if ! ollama pull "${BASE_MODEL}"; then
-    echo "Warning: Failed to pull model"
+# --- ensure base model (GGUF import from ggml-org) ----------------------------------------
+# Gemma4:E4B text-only Q4_K_M (5.34GB) — fits RTX 4060 8GB
+# Ollama's gemma4-e4b-q4km tag is 9.6GB (includes multimodal projector) — too large
+# See: https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF
+BASE_MODEL="${OLLAMA_BASE_MODEL:-gemma4-e4b-q4km}"
+GGUF_URL="https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-e4b-it-Q4_K_M.gguf"
+GGUF_DIR="/tmp/gguf"
+GGUF_FILE="${GGUF_DIR}/gemma-4-e4b-it-Q4_K_M.gguf"
+
+MODELFILE_DIR="$(dirname "$0")"
+if [ ! -f "$MODELFILE_DIR/Modelfile.gemma4-e4b-q4km" ]; then
+  MODELFILE_DIR="/home/ollama-user"
+fi
+
+echo "Ensuring ${BASE_MODEL} model exists..."
+if ! ollama list 2>/dev/null | grep -q "^${BASE_MODEL}"; then
+  echo "  Model not found. Downloading GGUF from ggml-org (5.34GB)..."
+  mkdir -p "$GGUF_DIR"
+  if curl -fSL --progress-bar -o "$GGUF_FILE" "$GGUF_URL"; then
+    echo "  GGUF downloaded successfully"
+    echo "  Importing GGUF via ollama create ${BASE_MODEL}..."
+    if ollama create "$BASE_MODEL" -f "$MODELFILE_DIR/Modelfile.gemma4-e4b-q4km"; then
+      echo "  Model ${BASE_MODEL} created successfully"
+    else
+      echo "Error: Failed to create model from GGUF"
+      rm -f "$GGUF_FILE"
+      exit 1
+    fi
+    echo "  Cleaning up GGUF file..."
+    rm -f "$GGUF_FILE"
+    rmdir "$GGUF_DIR" 2>/dev/null || true
   else
-    echo "  Model ${BASE_MODEL} pulled successfully"
+    echo "Error: Failed to download GGUF from HuggingFace"
+    exit 1
   fi
 else
-  echo "  Model ${BASE_MODEL} exists, pulling latest version..."
-  if ! ollama pull "${BASE_MODEL}"; then
-    echo "Warning: Failed to update model (using existing version)"
-  else
-    echo "  Model ${BASE_MODEL} updated to latest version"
-  fi
+  echo "  Model ${BASE_MODEL} already exists"
 fi
 
 # --- create model variants with fixed num_ctx ----------------------------------------
-echo "Creating model variants with fixed num_ctx (8K, 12K, 60K)..."
-
-MODELFILE_DIR="$(dirname "$0")"
-if [ ! -f "$MODELFILE_DIR/Modelfile.gemma3-4b-12k" ]; then
-  MODELFILE_DIR="/home/ollama-user"
-fi
+echo "Creating model variants with fixed num_ctx (8K, 12K)..."
 
 create_model() {
   local model_name=$1
@@ -135,23 +149,22 @@ create_model() {
   fi
 }
 
-create_model "gemma3-4b-8k" "$MODELFILE_DIR/Modelfile.gemma3-4b-8k"
-create_model "gemma3-4b-12k" "$MODELFILE_DIR/Modelfile.gemma3-4b-12k"
-create_model "gemma3-4b-60k" "$MODELFILE_DIR/Modelfile.gemma3-4b-60k"
+create_model "gemma4-e4b-8k" "$MODELFILE_DIR/Modelfile.gemma4-e4b-8k"
+create_model "gemma4-e4b-12k" "$MODELFILE_DIR/Modelfile.gemma4-e4b-12k"
 
 echo "Model variants created (if needed)."
 
 # --- preload default RAG model only ------------------------
-echo "Preloading 12K model only (8K/60K remain available on-demand)..."
+echo "Preloading 12K model only (8K remains available on-demand)..."
 echo "  Loading 12K model (attempt 1/3)..."
 if curl -s -X POST http://localhost:11435/api/generate \
-  -d '{"model":"gemma3-4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
+  -d '{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
   >/dev/null 2>&1; then
   echo "  12K model preloaded successfully (will be kept in GPU memory)"
   sleep 2
   echo "  Verifying 12K model is loaded (attempt 2/3)..."
   if curl -s -X POST http://localhost:11435/api/generate \
-    -d '{"model":"gemma3-4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
+    -d '{"model":"gemma4-e4b-12k","prompt":"ping","stream":false,"keep_alive":"24h","options":{"num_predict":1}}' \
     >/dev/null 2>&1; then
     echo "  12K model confirmed to be loaded in GPU memory (keep_alive: 24h)"
   else

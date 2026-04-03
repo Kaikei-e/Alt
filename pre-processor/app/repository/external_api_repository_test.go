@@ -74,7 +74,7 @@ func testConfig() *config.Config {
 		NewsCreator: config.NewsCreatorConfig{
 			Host:    "http://test-news-creator:11434",
 			APIPath: "/api/generate",
-			Model:   "gemma3:4b",
+			Model:   "gemma4-e4b-q4km",
 			Timeout: 30 * time.Second,
 		},
 		AltService: config.AltServiceConfig{

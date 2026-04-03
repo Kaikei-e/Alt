@@ -168,7 +168,8 @@ class RemoteHealthChecker:
                 model_names = [m.get("name", "") for m in models]
 
                 required = self._model_overrides.get(url, self._required_model)
-                if required in model_names:
+                # Match model name with or without :latest tag suffix
+                if any(name == required or name.startswith(f"{required}:") for name in model_names):
                     state["healthy"] = True
                     state["last_healthy"] = time.monotonic()
                     state["consecutive_failures"] = 0

@@ -277,7 +277,7 @@ class DistributingGateway(LLMProviderPort):
                 else config.get_keep_alive_for_model(effective_model)
             )
         else:
-            effective_model = model or override_model or self._remote_model or "gemma3:4b-it-qat"
+            effective_model = model or override_model or self._remote_model or "gemma4-e4b-q4km"
             llm_options = options or {}
             if num_predict is not None:
                 llm_options["num_predict"] = num_predict
@@ -287,6 +287,7 @@ class DistributingGateway(LLMProviderPort):
             "model": effective_model,
             "prompt": prompt.strip(),
             "stream": False,
+            "raw": True,
             "keep_alive": final_keep_alive,
             "options": llm_options,
         }

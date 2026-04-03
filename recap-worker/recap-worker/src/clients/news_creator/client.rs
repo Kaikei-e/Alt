@@ -608,7 +608,7 @@ mod tests_batch {
                             "language": "ja"
                         },
                         "metadata": {
-                            "model": "gemma3:4b"
+                            "model": "gemma4-e4b-q4km"
                         }
                     },
                     {
@@ -620,7 +620,7 @@ mod tests_batch {
                             "language": "ja"
                         },
                         "metadata": {
-                            "model": "gemma3:4b"
+                            "model": "gemma4-e4b-q4km"
                         }
                     }
                 ],
@@ -694,7 +694,7 @@ mod tests_batch {
                             "language": "ja"
                         },
                         "metadata": {
-                            "model": "gemma3:4b"
+                            "model": "gemma4-e4b-q4km"
                         }
                     }
                 ],

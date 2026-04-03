@@ -117,7 +117,7 @@ func TestValidateConfig(t *testing.T) {
 				NewsCreator: NewsCreatorConfig{
 					Host:    "http://news-creator:11434",
 					APIPath: "/api/generate",
-					Model:   "gemma3:4b",
+					Model:   "gemma4-e4b-q4km",
 					Timeout: 60 * time.Second,
 				},
 				SummarizeQueue: SummarizeQueueConfig{
@@ -216,7 +216,7 @@ func TestConfigManager(t *testing.T) {
 			NewsCreator: NewsCreatorConfig{
 				Host:    "http://news-creator:11434",
 				APIPath: "/api/generate",
-				Model:   "gemma3:4b",
+				Model:   "gemma4-e4b-q4km",
 				Timeout: 60 * time.Second,
 			},
 			SummarizeQueue: SummarizeQueueConfig{
@@ -238,7 +238,7 @@ func TestConfigManager(t *testing.T) {
 			NewsCreator: NewsCreatorConfig{
 				Host:    "http://news-creator:11434",
 				APIPath: "/api/generate",
-				Model:   "gemma3:4b",
+				Model:   "gemma4-e4b-q4km",
 				Timeout: 60 * time.Second,
 			},
 			SummarizeQueue: SummarizeQueueConfig{
@@ -268,7 +268,7 @@ func TestConfigManager(t *testing.T) {
 			NewsCreator: NewsCreatorConfig{
 				Host:    "http://news-creator:11434",
 				APIPath: "/api/generate",
-				Model:   "gemma3:4b",
+				Model:   "gemma4-e4b-q4km",
 				Timeout: 60 * time.Second,
 			},
 		}

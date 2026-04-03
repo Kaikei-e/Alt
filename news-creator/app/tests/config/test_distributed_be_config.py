@@ -18,7 +18,7 @@ def test_distributed_be_defaults_off(monkeypatch):
     assert config.distributed_be_health_interval_seconds == 30
     assert config.distributed_be_timeout_seconds == 300
     assert config.distributed_be_cooldown_seconds == 60
-    assert config.distributed_be_remote_model == "gemma3:4b-it-qat"
+    assert config.distributed_be_remote_model == "gemma4-e4b-q4km"
 
 
 def test_distributed_be_parses_remotes(monkeypatch):
@@ -140,12 +140,12 @@ def test_distributed_be_custom_remote_model(monkeypatch):
     """Remote model override is respected."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv("DISTRIBUTED_BE_REMOTES", "http://host:11434")
-    monkeypatch.setenv("DISTRIBUTED_BE_REMOTE_MODEL", "gemma3:4b-it-qat")
+    monkeypatch.setenv("DISTRIBUTED_BE_REMOTE_MODEL", "gemma4-e4b-q4km")
     monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
-    assert config.distributed_be_remote_model == "gemma3:4b-it-qat"
+    assert config.distributed_be_remote_model == "gemma4-e4b-q4km"
 
 
 def test_distributed_be_model_overrides(monkeypatch):
@@ -154,14 +154,14 @@ def test_distributed_be_model_overrides(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_BE_REMOTES", "http://host-a:11434,http://host-b:11434")
     monkeypatch.setenv(
         "DISTRIBUTED_BE_MODEL_OVERRIDES",
-        "http://host-b:11434=gemma3-4b-rag",
+        "http://host-b:11434=gemma4-e4b-rag",
     )
     monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
     assert config.distributed_be_model_overrides == {
-        "http://host-b:11434": "gemma3-4b-rag",
+        "http://host-b:11434": "gemma4-e4b-rag",
     }
 
 

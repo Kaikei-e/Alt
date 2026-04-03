@@ -101,8 +101,8 @@ class OllamaGateway(LLMProviderPort):
 
         # Select model using router
         # - If routing enabled and model is None: use router
-        # - If routing enabled and model is base model name (e.g., "gemma3:4b"): use router to auto-map
-        # - If routing enabled and model is bucket model name (e.g., "gemma3-4b-12k"): use as-is
+        # - If routing enabled and model is base model name (e.g., "gemma4-e4b-q4km"): use router to auto-map
+        # - If routing enabled and model is bucket model name (e.g., "gemma4-e4b-12k"): use as-is
         # - If routing disabled: use provided model or default
         if self.config.model_routing_enabled:
             if model is None:
@@ -116,7 +116,7 @@ class OllamaGateway(LLMProviderPort):
                     extra={"model": selected_model, "bucket": bucket_size},
                 )
             elif self.config.is_base_model_name(model):
-                # Base model name specified (e.g., "gemma3:4b") - auto-map using router
+                # Base model name specified (e.g., "gemma4-e4b-q4km") - auto-map using router
                 original_model = model
                 selected_model, bucket_size = self.model_router.select_model(
                     prompt, max_new_tokens=num_predict
@@ -131,7 +131,7 @@ class OllamaGateway(LLMProviderPort):
                     },
                 )
             elif self.config.is_bucket_model_name(model):
-                # Bucket model name explicitly specified (e.g., "gemma3-4b-12k") - use as-is
+                # Bucket model name explicitly specified (e.g., "gemma4-e4b-12k") - use as-is
                 logger.debug(
                     f"Bucket model explicitly specified, using as-is: {model}",
                     extra={"model": model, "prompt_length": len(prompt)},
@@ -194,10 +194,13 @@ class OllamaGateway(LLMProviderPort):
             logger.debug(f"Using model-specific keep_alive: {final_keep_alive} for model: {model}", extra={"model": model, "keep_alive": final_keep_alive})
 
         # Build payload for Ollama API
+        # raw=True: prompts already contain <start_of_turn>/<end_of_turn> chat template.
+        # This bypasses Ollama's built-in RENDERER/PARSER which enables Gemma4 thinking by default.
         payload: Dict[str, Any] = {
             "model": model,
             "prompt": prompt.strip(),
             "stream": stream,
+            "raw": True,
             "keep_alive": final_keep_alive,
             "options": llm_options,
         }
@@ -679,6 +682,7 @@ class OllamaGateway(LLMProviderPort):
             "model": model,
             "prompt": prompt.strip(),
             "stream": False,
+            "raw": True,
             "keep_alive": final_keep_alive,
             "options": llm_options,
         }

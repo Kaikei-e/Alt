@@ -10,11 +10,11 @@ def _create_mock_config(model_60k_enabled: bool = False):
     """Create a mock config for testing."""
     config = Mock()
     config.model_routing_enabled = True
-    config.model_name = "gemma3:4b-it-qat"
+    config.model_name = "gemma4-e4b-q4km"
     config.llm_num_ctx = 8192
     config.llm_num_predict = 1200
-    config.model_8k_name = "gemma3-4b-12k"
-    config.model_60k_name = "gemma3-4b-60k"
+    config.model_8k_name = "gemma4-e4b-12k"
+    config.model_60k_name = "gemma4-e4b-60k"
     config.token_safety_margin_percent = 10
     config.token_safety_margin_fixed = 512
     config.oom_detection_enabled = False
@@ -34,7 +34,7 @@ class TestModelRouter60KDisabled:
         prompt = "A" * 1000  # ~250 tokens
         model_name, bucket_size = router.select_model(prompt)
 
-        assert model_name == "gemma3-4b-12k"
+        assert model_name == "gemma4-e4b-12k"
         assert bucket_size == 8192
 
     def test_large_prompt_still_uses_primary_bucket_when_60k_disabled(self):
@@ -47,7 +47,7 @@ class TestModelRouter60KDisabled:
         model_name, bucket_size = router.select_model(prompt)
 
         # Should still use the primary bucket even though it's too large
-        assert model_name == "gemma3-4b-12k"
+        assert model_name == "gemma4-e4b-12k"
         assert bucket_size == 8192
 
     def test_60k_enabled_uses_60k_for_large_prompts(self):
@@ -59,7 +59,7 @@ class TestModelRouter60KDisabled:
         prompt = "A" * 60000  # ~15K tokens
         model_name, bucket_size = router.select_model(prompt)
 
-        assert model_name == "gemma3-4b-60k"
+        assert model_name == "gemma4-e4b-60k"
         assert bucket_size == 61440
 
     def test_60k_enabled_uses_primary_bucket_for_small_prompts(self):
@@ -71,7 +71,7 @@ class TestModelRouter60KDisabled:
         prompt = "A" * 1000
         model_name, bucket_size = router.select_model(prompt)
 
-        assert model_name == "gemma3-4b-12k"
+        assert model_name == "gemma4-e4b-12k"
         assert bucket_size == 8192
 
     def test_extremely_large_prompt_uses_primary_bucket_when_60k_disabled(self):
@@ -84,7 +84,7 @@ class TestModelRouter60KDisabled:
         model_name, bucket_size = router.select_model(prompt)
 
         # Should still use the primary bucket (hierarchical summarization should handle this upstream)
-        assert model_name == "gemma3-4b-12k"
+        assert model_name == "gemma4-e4b-12k"
         assert bucket_size == 8192
 
 

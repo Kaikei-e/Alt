@@ -36,7 +36,7 @@ async def test_generate_posts_to_given_url(driver):
     """RemoteOllamaDriver sends POST to {base_url}/api/generate."""
     body = json.dumps({
         "response": "summary text",
-        "model": "gemma3:4b-it-qat",
+        "model": "gemma4-e4b-q4km",
         "done": True,
         "done_reason": "stop",
         "prompt_eval_count": 100,
@@ -49,7 +49,7 @@ async def test_generate_posts_to_given_url(driver):
 
     result = await driver.generate(
         base_url="http://remote-a:11434",
-        payload={"model": "gemma3:4b-it-qat", "prompt": "hello", "stream": False},
+        payload={"model": "gemma4-e4b-q4km", "prompt": "hello", "stream": False},
     )
 
     mock_session.post.assert_called_once()
@@ -57,7 +57,7 @@ async def test_generate_posts_to_given_url(driver):
     assert call_args[0][0] == "http://remote-a:11434/api/generate"
     assert isinstance(result, LLMGenerateResponse)
     assert result.response == "summary text"
-    assert result.model == "gemma3:4b-it-qat"
+    assert result.model == "gemma4-e4b-q4km"
 
 
 @pytest.mark.asyncio
@@ -72,7 +72,7 @@ async def test_generate_handles_timeout(driver):
     with pytest.raises(RuntimeError, match="Remote Ollama.*timed out"):
         await driver.generate(
             base_url="http://remote-a:11434",
-            payload={"model": "gemma3:4b-it-qat", "prompt": "hello", "stream": False},
+            payload={"model": "gemma4-e4b-q4km", "prompt": "hello", "stream": False},
         )
 
 
@@ -88,7 +88,7 @@ async def test_generate_handles_asyncio_timeout(driver):
     with pytest.raises(RuntimeError, match="timed out"):
         await driver.generate(
             base_url="http://remote-a:11434",
-            payload={"model": "gemma3:4b-it-qat", "prompt": "hello", "stream": False},
+            payload={"model": "gemma4-e4b-q4km", "prompt": "hello", "stream": False},
         )
 
 
@@ -106,7 +106,7 @@ async def test_generate_handles_connection_error(driver):
     with pytest.raises(RuntimeError, match="Remote Ollama.*failed"):
         await driver.generate(
             base_url="http://remote-a:11434",
-            payload={"model": "gemma3:4b-it-qat", "prompt": "hello", "stream": False},
+            payload={"model": "gemma4-e4b-q4km", "prompt": "hello", "stream": False},
         )
 
 
@@ -115,7 +115,7 @@ async def test_generate_parses_response_to_domain_model(driver):
     """Response JSON is parsed into LLMGenerateResponse with all metrics."""
     response_data = {
         "response": "Generated text here",
-        "model": "gemma3:4b-it-qat",
+        "model": "gemma4-e4b-q4km",
         "done": True,
         "done_reason": "stop",
         "prompt_eval_count": 200,
@@ -133,7 +133,7 @@ async def test_generate_parses_response_to_domain_model(driver):
 
     result = await driver.generate(
         base_url="http://host:11434",
-        payload={"model": "gemma3:4b-it-qat", "prompt": "test", "stream": False},
+        payload={"model": "gemma4-e4b-q4km", "prompt": "test", "stream": False},
     )
 
     assert result.response == "Generated text here"

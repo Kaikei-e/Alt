@@ -82,7 +82,7 @@ func TestNewsCreatorSummarizeContract(t *testing.T) {
 				"success":    matchers.Like(true),
 				"article_id": matchers.Like("article-001"),
 				"summary":    matchers.Like("これはテスト記事の要約です。"),
-				"model":      matchers.Like("gemma3:4b-it-qat"),
+				"model":      matchers.Like("gemma4-e4b-q4km"),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
@@ -205,7 +205,7 @@ func TestNewsCreatorSummarizeWithPriorityContract(t *testing.T) {
 				"success":    matchers.Like(true),
 				"article_id": matchers.Like("article-rt"),
 				"summary":    matchers.Like("リアルタイム記事の要約。"),
-				"model":      matchers.Like("gemma3:4b-it-qat"),
+				"model":      matchers.Like("gemma4-e4b-q4km"),
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {

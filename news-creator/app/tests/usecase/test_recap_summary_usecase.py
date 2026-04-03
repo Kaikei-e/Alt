@@ -40,7 +40,7 @@ async def test_generate_summary_success():
           "language": "ja"
         }
         """,
-        model="gemma3:4b",
+        model="gemma4-e4b-q4km",
         prompt_eval_count=512,
         eval_count=256,
         total_duration=1_750_000_000,
@@ -77,7 +77,7 @@ async def test_generate_summary_success():
     assert response.summary.title == "AI業界の大型買収"
     assert len(response.summary.bullets) == 3
     assert response.summary.language == "ja"
-    assert response.metadata.model == "gemma3:4b"
+    assert response.metadata.model == "gemma4-e4b-q4km"
     assert response.metadata.temperature == pytest.approx(0.6)
     assert response.metadata.prompt_tokens == 512
     assert response.metadata.completion_tokens == 256
@@ -112,7 +112,7 @@ async def test_generate_summary_raises_error_when_invalid_json():
         レポート：主要な出来事
         - 経済の回復が進展
         """,
-        model="gemma3:4b",
+        model="gemma4-e4b-q4km",
     )
 
     request = RecapSummaryRequest(
@@ -155,7 +155,7 @@ async def test_generate_summary_trims_excess_bullets():
                 "language": "ja",
             }
         ),
-        model="gemma3:4b",
+        model="gemma4-e4b-q4km",
     )
 
     request = RecapSummaryRequest(
@@ -223,7 +223,7 @@ def _create_llm_response(title: str, genre: str) -> LLMGenerateResponse:
             "bullets": [f"{genre} の要点1", f"{genre} の要点2"],
             "language": "ja"
         }),
-        model="gemma3:4b",
+        model="gemma4-e4b-q4km",
         prompt_eval_count=100,
         eval_count=50,
         total_duration=1_000_000_000,
@@ -503,7 +503,7 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
                 response=json.dumps({
                     "bullets": [f"中間要約{generate_raw_call_count}-1 " + "詳細" * 50, f"中間要約{generate_raw_call_count}-2 " + "詳細" * 50],
                 }),
-                model="gemma3:4b",
+                model="gemma4-e4b-q4km",
                 prompt_eval_count=100,
                 eval_count=50,
                 total_duration=500_000_000,
@@ -513,7 +513,7 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
                 response=json.dumps({
                     "bullets": ["要約済み要点1", "要約済み要点2"],
                 }),
-                model="gemma3:4b",
+                model="gemma4-e4b-q4km",
                 prompt_eval_count=100,
                 eval_count=50,
                 total_duration=500_000_000,
@@ -527,7 +527,7 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
                 "bullets": ["最終要点1", "最終要点2"],
                 "language": "ja"
             }),
-            model="gemma3:4b",
+            model="gemma4-e4b-q4km",
             prompt_eval_count=100,
             eval_count=50,
             total_duration=500_000_000,
@@ -598,7 +598,7 @@ async def test_recursive_reduce_respects_max_depth():
             "bullets": ["長い要点" * 20],  # Large output
             "language": "ja"
         }),
-        model="gemma3:4b",
+        model="gemma4-e4b-q4km",
         prompt_eval_count=100,
         eval_count=50,
         total_duration=500_000_000,
@@ -668,7 +668,7 @@ async def test_small_intermediate_summaries_skip_recursive_reduce():
             response=json.dumps({
                 "bullets": ["短い要点1", "短い要点2"],
             }),
-            model="gemma3:4b",
+            model="gemma4-e4b-q4km",
         )
 
     # Final reduce goes through _generate_single_shot_summary (uses generate())
@@ -679,7 +679,7 @@ async def test_small_intermediate_summaries_skip_recursive_reduce():
                 "bullets": ["最終要点1"],
                 "language": "ja"
             }),
-            model="gemma3:4b",
+            model="gemma4-e4b-q4km",
         )
 
     llm_provider.hold_slot = mock_hold_slot
@@ -791,7 +791,7 @@ async def test_hierarchical_map_phase_uses_hold_slot_generate_raw():
             response=json.dumps({
                 "bullets": [f"要点{generate_raw_calls}"],
             }),
-            model="gemma3:4b",
+            model="gemma4-e4b-q4km",
             prompt_eval_count=100,
             eval_count=50,
             total_duration=500_000_000,
@@ -805,7 +805,7 @@ async def test_hierarchical_map_phase_uses_hold_slot_generate_raw():
                 "bullets": ["最終要点1", "最終要点2"],
                 "language": "ja"
             }),
-            model="gemma3:4b",
+            model="gemma4-e4b-q4km",
             prompt_eval_count=100,
             eval_count=50,
             total_duration=500_000_000,
@@ -857,7 +857,7 @@ async def test_hierarchical_reduce_group_uses_hold_slot_generate_raw():
             response=json.dumps({
                 "bullets": [f"要点{generate_raw_calls}" + "詳細" * 20],
             }),
-            model="gemma3:4b",
+            model="gemma4-e4b-q4km",
             prompt_eval_count=100,
             eval_count=50,
             total_duration=500_000_000,
@@ -871,7 +871,7 @@ async def test_hierarchical_reduce_group_uses_hold_slot_generate_raw():
                 "bullets": ["最終要点"],
                 "language": "ja"
             }),
-            model="gemma3:4b",
+            model="gemma4-e4b-q4km",
             prompt_eval_count=100,
             eval_count=50,
             total_duration=500_000_000,

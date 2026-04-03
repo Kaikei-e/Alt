@@ -12,7 +12,7 @@ def test_expand_query_handler_success():
     usecase = AsyncMock()
     usecase.expand_query.return_value = (
         ["AI技術の最新動向", "AI technology trends 2025", "machine learning advances", "generative AI development"],
-        "gemma3-4b-12k",
+        "gemma4-e4b-12k",
         150.5,
     )
 
@@ -31,7 +31,7 @@ def test_expand_query_handler_success():
     data = resp.json()
     assert len(data["expanded_queries"]) == 4
     assert data["original_query"] == "AI技術のトレンド"
-    assert data["model"] == "gemma3-4b-12k"
+    assert data["model"] == "gemma4-e4b-12k"
     assert data["processing_time_ms"] == 150.5
     usecase.expand_query.assert_awaited_once_with(
         query="AI技術のトレンド",
@@ -47,7 +47,7 @@ def test_expand_query_handler_default_counts():
     usecase = AsyncMock()
     usecase.expand_query.return_value = (
         ["test query 1", "test query 2"],
-        "gemma3-4b-12k",
+        "gemma4-e4b-12k",
         100.0,
     )
 
@@ -74,7 +74,7 @@ def test_expand_query_handler_with_conversation_history():
     usecase = AsyncMock()
     usecase.expand_query.return_value = (
         ["expanded query 1", "expanded query 2"],
-        "gemma3-4b-12k",
+        "gemma4-e4b-12k",
         200.0,
     )
 
@@ -174,7 +174,7 @@ def test_expand_query_handler_with_priority():
     usecase = AsyncMock()
     usecase.expand_query.return_value = (
         ["expanded query 1"],
-        "gemma3-4b-12k",
+        "gemma4-e4b-12k",
         100.0,
     )
 
@@ -198,7 +198,7 @@ def test_expand_query_handler_default_priority():
     usecase = AsyncMock()
     usecase.expand_query.return_value = (
         ["expanded query 1"],
-        "gemma3-4b-12k",
+        "gemma4-e4b-12k",
         100.0,
     )
 

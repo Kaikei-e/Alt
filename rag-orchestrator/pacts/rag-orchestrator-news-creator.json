@@ -18,7 +18,7 @@
               "role": "user"
             }
           ],
-          "model": "gemma3:4b-it-qat",
+          "model": "gemma4-e4b-q4km",
           "stream": false
         },
         "headers": {
@@ -103,7 +103,7 @@
               "role": "user"
             }
           ],
-          "model": "gemma3:4b-it-qat",
+          "model": "gemma4-e4b-q4km",
           "stream": true
         },
         "headers": {

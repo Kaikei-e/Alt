@@ -31,7 +31,7 @@ services:
   # Ollama server (separated from news-creator for faster deployments)
   news-creator-backend:
     container_name: news-creator-backend
-    mem_limit: 4g
+    mem_limit: 8g
     env_file:
       - ../.env
     build:
@@ -56,9 +56,11 @@ services:
       - OLLAMA_HOME=/home/ollama-user/.ollama
       - OLLAMA_MODELS=/home/ollama-user/.ollama
       - OLLAMA_HOST=0.0.0.0:11435
-      # QAT model for improved quantization quality (54% less perplexity drop)
-      # Set OLLAMA_BASE_MODEL=gemma3:4b for rollback
-      - OLLAMA_BASE_MODEL=${OLLAMA_BASE_MODEL:-gemma3:4b-it-qat}
+      # Gemma4:E4B — 4.5B effective, Q4_K_M (5.34GB), 128K context
+      # Set OLLAMA_BASE_MODEL=gemma3:4b-it-qat for rollback to Gemma3
+      - OLLAMA_BASE_MODEL=${OLLAMA_BASE_MODEL:-gemma4-e4b-q4km}
+      # KV cache quantization: q8_0 halves KV cache memory vs f16 (resolve recommendation)
+      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-q8_0}
       # RAG-dedicated mode: favor a single larger context slot over dual-slot concurrency
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
       # Strict limit to 1 model to prevent VRAM fragmentation/swapping
@@ -102,7 +104,7 @@ services:
       dockerfile: Dockerfile.app
     environment:
       - LLM_SERVICE_URL=http://news-creator-backend:11435
-      - LLM_MODEL=gemma3-4b-12k
+      - LLM_MODEL=gemma4-e4b-12k
       - MODEL_ROUTING_ENABLED=false
       - LLM_KEEP_ALIVE_8K=24h
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
@@ -135,7 +137,7 @@ services:
       - DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS=${DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS:-30}
       - DISTRIBUTED_BE_TIMEOUT_SECONDS=${DISTRIBUTED_BE_TIMEOUT_SECONDS:-300}
       - DISTRIBUTED_BE_COOLDOWN_SECONDS=${DISTRIBUTED_BE_COOLDOWN_SECONDS:-60}
-      - DISTRIBUTED_BE_REMOTE_MODEL=${DISTRIBUTED_BE_REMOTE_MODEL:-gemma3:4b-it-qat}
+      - DISTRIBUTED_BE_REMOTE_MODEL=${DISTRIBUTED_BE_REMOTE_MODEL:-gemma4-e4b-q4km}
       - DISTRIBUTED_BE_MODEL_OVERRIDES=${DISTRIBUTED_BE_MODEL_OVERRIDES:-}
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318

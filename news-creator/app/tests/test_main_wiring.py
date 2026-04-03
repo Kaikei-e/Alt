@@ -70,8 +70,8 @@ class _DummyConfig(SimpleNamespace):
             distributed_be_health_interval_seconds=30,
             distributed_be_timeout_seconds=300,
             distributed_be_cooldown_seconds=60,
-            distributed_be_remote_model="gemma3:4b-it-qat",
-            distributed_be_model_overrides={"http://remote-a:11434": "gemma3:4b-it-qat"},
+            distributed_be_remote_model="gemma4-e4b-q4km",
+            distributed_be_model_overrides={"http://remote-a:11434": "gemma4-e4b-q4km"},
         )
 
 

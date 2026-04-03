@@ -38,7 +38,7 @@ def test_health_check_with_models_loaded(client, mock_ollama_gateway):
     """Test health check returns models when Ollama has models loaded."""
     # Arrange
     mock_ollama_gateway.list_models.return_value = [
-        {"name": "gemma3:4b", "size": 1234567890},
+        {"name": "gemma4-e4b-q4km", "size": 1234567890},
         {"name": "llama2:7b", "size": 9876543210},
     ]
 
@@ -52,7 +52,7 @@ def test_health_check_with_models_loaded(client, mock_ollama_gateway):
     assert data["service"] == "news-creator"
     assert "models" in data
     assert len(data["models"]) == 2
-    assert data["models"][0]["name"] == "gemma3:4b"
+    assert data["models"][0]["name"] == "gemma4-e4b-q4km"
     assert data["models"][1]["name"] == "llama2:7b"
 
 

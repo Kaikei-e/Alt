@@ -72,7 +72,7 @@ func TestChatStreamContract(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
-				"model":    matchers.Like("gemma3:4b-it-qat"),
+				"model":    matchers.Like("gemma4-e4b-q4km"),
 				"messages": matchers.Like([]chatMessage{{Role: "user", Content: "test"}}),
 				"stream":   matchers.Like(true),
 				"options":  matchers.Like(map[string]any{"num_predict": 2048}),
@@ -88,7 +88,7 @@ func TestChatStreamContract(t *testing.T) {
 			apiURL := fmt.Sprintf("http://%s:%d/api/chat", config.Host, config.Port)
 
 			payload := chatRequest{
-				Model:    "gemma3:4b-it-qat",
+				Model:    "gemma4-e4b-q4km",
 				Messages: []chatMessage{{Role: "user", Content: "test"}},
 				Stream:   true,
 				Options:  map[string]any{"num_predict": 2048},
@@ -127,7 +127,7 @@ func TestChatNonStreamContract(t *testing.T) {
 				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
-				"model":    matchers.Like("gemma3:4b-it-qat"),
+				"model":    matchers.Like("gemma4-e4b-q4km"),
 				"messages": matchers.Like([]chatMessage{{Role: "user", Content: "test"}}),
 				"stream":   matchers.Like(false),
 				"options":  matchers.Like(map[string]any{"num_predict": 2048}),
@@ -149,7 +149,7 @@ func TestChatNonStreamContract(t *testing.T) {
 			apiURL := fmt.Sprintf("http://%s:%d/api/chat", config.Host, config.Port)
 
 			payload := chatRequest{
-				Model:    "gemma3:4b-it-qat",
+				Model:    "gemma4-e4b-q4km",
 				Messages: []chatMessage{{Role: "user", Content: "test"}},
 				Stream:   false,
 				Options:  map[string]any{"num_predict": 2048},

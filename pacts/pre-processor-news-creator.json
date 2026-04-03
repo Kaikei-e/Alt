@@ -53,7 +53,7 @@
       "response": {
         "body": {
           "article_id": "article-001",
-          "model": "gemma3:4b-it-qat",
+          "model": "gemma4-e4b-q4km",
           "success": true,
           "summary": "これはテスト記事の要約です。"
         },
@@ -230,7 +230,7 @@
       "response": {
         "body": {
           "article_id": "article-rt",
-          "model": "gemma3:4b-it-qat",
+          "model": "gemma4-e4b-q4km",
           "success": true,
           "summary": "リアルタイム記事の要約。"
         },

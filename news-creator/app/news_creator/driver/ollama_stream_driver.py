@@ -70,7 +70,7 @@ class OllamaStreamDriver:
         """
         Proxy chat requests through Ollama /api/generate (not /api/chat).
 
-        Ollama's /api/chat hangs with gemma3 models (known issue).
+        Ollama's /api/chat historically hangs with gemma models (known issue).
         This method converts the chat messages to a single prompt, calls
         /api/generate, and converts the response back to /api/chat format
         so the upstream caller (rag-orchestrator) sees no difference.

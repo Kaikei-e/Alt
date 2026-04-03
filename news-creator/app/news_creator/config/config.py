@@ -35,7 +35,7 @@ class NewsCreatorConfig:
 
         # LLM service settings
         self.llm_service_url = os.getenv("LLM_SERVICE_URL", "http://localhost:11435")
-        self.model_name = os.getenv("LLM_MODEL", "gemma3:4b-it-qat")
+        self.model_name = os.getenv("LLM_MODEL", "gemma4-e4b-q4km")
         self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 300)  # 5分に増加（1000トークン生成 + 続き生成に対応）
         self.llm_keep_alive = os.getenv("LLM_KEEP_ALIVE_SECONDS", "24h")
         # Model-specific keep_alive settings (primary bucket / 60K on-demand)
@@ -59,22 +59,21 @@ class NewsCreatorConfig:
             self.ollama_request_concurrency = self._get_int("OLLAMA_NUM_PARALLEL", 1)
             self._ollama_concurrency_source = "OLLAMA_NUM_PARALLEL"
 
-        # ---- Generation parameters (Gemma3 + Ollama options) ----
+        # ---- Generation parameters (Gemma4 E4B + Ollama options) ----
         # Default: compose/runtime should override this to the tuned 12K profile.
         # Keep the code default conservative so local tests can boot without compose env.
         self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 8192)
         # RTX 4060最適化: バッチサイズ1024（entrypoint.shのOLLAMA_NUM_BATCHと統一）
         self.llm_num_batch = self._get_int("LLM_NUM_BATCH", 1024)
         self.llm_num_predict = self._get_int("LLM_NUM_PREDICT", 1200)  # 復活
-        # Gemma3 QAT最適化: 繰り返し問題対策（CJKテキストでは高めのtemperatureが必要）
-        self.llm_temperature = self._get_float("LLM_TEMPERATURE", 0.7)  # 0.15 → 0.7 (Gemma3推奨)
-        self.llm_top_p = self._get_float("LLM_TOP_P", 0.85)             # 0.9 → 0.85
-        self.llm_top_k = self._get_int("LLM_TOP_K", 40)                 # 50 → 40
-        self.llm_repeat_penalty = self._get_float("LLM_REPEAT_PENALTY", 1.15)  # 1.07 → 1.15
+        # Gemma4 E4B: CJKテキスト向けサンプリング（公式推奨は1.0だが、要約安定性のため0.7を維持）
+        self.llm_temperature = self._get_float("LLM_TEMPERATURE", 0.7)
+        self.llm_top_p = self._get_float("LLM_TOP_P", 0.85)
+        self.llm_top_k = self._get_int("LLM_TOP_K", 40)
+        self.llm_repeat_penalty = self._get_float("LLM_REPEAT_PENALTY", 1.15)  # Gemma4公式は1.0だが、CJKループ防止のため維持
         self.llm_num_keep = self._get_int("LLM_NUM_KEEP", -1)          # system保持
 
-        # Stop tokens（Gemma3 は <start_of_turn>/<end_of_turn>）
-        # 既定は Gemma3 正式トークンのみ。空なら安全に補充。
+        # Stop tokens（Gemma3/4 共通: <start_of_turn>/<end_of_turn>）
         stop_tokens_str = os.getenv("LLM_STOP_TOKENS", "<end_of_turn>")
         self.llm_stop_tokens = [
             token.strip() for token in stop_tokens_str.split(",") if token.strip()
@@ -86,7 +85,7 @@ class NewsCreatorConfig:
         # Increased from 500 to 1000 tokens to support 1000-1500 character summaries with safety margin
         # Japanese text: 1 character ≈ 1 token, so 1500 chars needs ~1500 tokens + safety margin
         self.summary_num_predict = self._get_int("SUMMARY_NUM_PREDICT", 1000)
-        self.summary_temperature = self._get_float("SUMMARY_TEMPERATURE", 0.5)  # 0.1 → 0.5 (Gemma3 CJK対応)
+        self.summary_temperature = self._get_float("SUMMARY_TEMPERATURE", 0.5)
 
         # Repetition detection and retry settings
         self.max_repetition_retries = self._get_int("MAX_REPETITION_RETRIES", 2)
@@ -117,11 +116,12 @@ class NewsCreatorConfig:
 
         # Model routing settings (primary bucket + 60K expansion bucket)
         self.model_routing_enabled = os.getenv("MODEL_ROUTING_ENABLED", "true").lower() == "true"
-        # Base model name (e.g., "gemma3:4b") - will be auto-mapped to bucket models
-        self.model_base_name = os.getenv("MODEL_BASE_NAME", "gemma3:4b-it-qat")
-        # MODEL_8K_NAME is kept for backward compatibility, but the primary bucket now points at 12K.
-        self.model_8k_name = os.getenv("MODEL_8K_NAME", "gemma3-4b-12k")
-        self.model_60k_name = os.getenv("MODEL_60K_NAME", "gemma3-4b-60k")
+        # Base model name (e.g., "gemma4-e4b-q4km") - will be auto-mapped to bucket models
+        self.model_base_name = os.getenv("MODEL_BASE_NAME", "gemma4-e4b-q4km")
+        # MODEL_8K_NAME: use base model directly; num_ctx is set via API options (get_llm_options)
+        # Gemma4 E4B (8B params) is too large for Modelfile-based num_ctx=12K on 8GB VRAM
+        self.model_8k_name = os.getenv("MODEL_8K_NAME", "gemma4-e4b-q4km")
+        self.model_60k_name = os.getenv("MODEL_60K_NAME", "gemma4-e4b-60k")
         self.token_safety_margin_percent = self._get_int("TOKEN_SAFETY_MARGIN_PERCENT", 10)
         self.token_safety_margin_fixed = self._get_int("TOKEN_SAFETY_MARGIN_FIXED", 512)
         self.oom_detection_enabled = os.getenv("OOM_DETECTION_ENABLED", "true").lower() == "true"
@@ -193,7 +193,7 @@ class NewsCreatorConfig:
             "DISTRIBUTED_BE_COOLDOWN_SECONDS", 60
         )
         self.distributed_be_remote_model = os.getenv(
-            "DISTRIBUTED_BE_REMOTE_MODEL", "gemma3:4b-it-qat"
+            "DISTRIBUTED_BE_REMOTE_MODEL", "gemma4-e4b-q4km"
         ).strip()
         self.distributed_be_model_overrides = self._parse_model_overrides(
             os.getenv("DISTRIBUTED_BE_MODEL_OVERRIDES", "")

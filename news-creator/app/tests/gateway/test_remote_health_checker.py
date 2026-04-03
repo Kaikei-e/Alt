@@ -23,7 +23,7 @@ def remotes():
 def checker(remotes):
     return RemoteHealthChecker(
         remotes=remotes,
-        required_model="gemma3:4b-it-qat",
+        required_model="gemma4-e4b-q4km",
         interval_seconds=30,
         cooldown_seconds=60,
         timeout_seconds=10,
@@ -97,7 +97,7 @@ def test_healthy_remote_not_probed_before_interval(checker, remotes):
 @pytest.mark.asyncio
 async def test_probe_marks_healthy_when_model_present(checker, remotes):
     """Probe marks remote as healthy when required model is in /api/tags."""
-    tags_response = {"models": [{"name": "gemma3:4b-it-qat"}]}
+    tags_response = {"models": [{"name": "gemma4-e4b-q4km"}]}
     mock_response = MagicMock()
     mock_response.status = 200
     mock_response.text = AsyncMock(return_value=json.dumps(tags_response))
@@ -156,7 +156,7 @@ async def test_probe_marks_unhealthy_on_connection_error(checker, remotes):
 @pytest.mark.asyncio
 async def test_background_check_updates_state(checker, remotes):
     """Background check loop probes and updates remote state."""
-    tags_response = {"models": [{"name": "gemma3:4b-it-qat"}]}
+    tags_response = {"models": [{"name": "gemma4-e4b-q4km"}]}
     mock_response = MagicMock()
     mock_response.status = 200
     mock_response.text = AsyncMock(return_value=json.dumps(tags_response))
@@ -203,7 +203,7 @@ def test_no_remotes_returns_none():
     """Empty remote list always returns None."""
     checker = RemoteHealthChecker(
         remotes=[],
-        required_model="gemma3:4b-it-qat",
+        required_model="gemma4-e4b-q4km",
         interval_seconds=30,
         cooldown_seconds=60,
         timeout_seconds=10,

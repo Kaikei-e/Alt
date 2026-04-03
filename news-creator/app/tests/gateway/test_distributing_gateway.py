@@ -16,7 +16,7 @@ def _make_local_gateway():
     """Create a mock OllamaGateway (local)."""
     gw = MagicMock()
     gw.config = MagicMock()
-    gw.config.model_name = "gemma3-4b-12k"
+    gw.config.model_name = "gemma4-e4b-12k"
     gw.config.llm_keep_alive = -1
     gw.config.get_keep_alive_for_model.return_value = "24h"
     gw.config.get_llm_options.return_value = {
@@ -37,14 +37,14 @@ def _make_local_gateway():
     gw.generate = AsyncMock(
         return_value=LLMGenerateResponse(
             response="local response",
-            model="gemma3-4b-12k",
+            model="gemma4-e4b-12k",
             done=True,
         )
     )
     gw.generate_raw = AsyncMock(
         return_value=LLMGenerateResponse(
             response="local raw response",
-            model="gemma3-4b-12k",
+            model="gemma4-e4b-12k",
             done=True,
         )
     )
@@ -85,14 +85,14 @@ def _make_remote_driver():
     driver.generate = AsyncMock(
         return_value=LLMGenerateResponse(
             response="remote response",
-            model="gemma3:4b-it-qat",
+            model="gemma4-e4b-q4km",
             done=True,
         )
     )
     return driver
 
 
-def _make_gateway(enabled=True, healthy_url="http://remote:11434", remote_model="gemma3:4b-it-qat", model_overrides=None):
+def _make_gateway(enabled=True, healthy_url="http://remote:11434", remote_model="gemma4-e4b-q4km", model_overrides=None):
     """Assemble a DistributingGateway with mocked dependencies."""
     local = _make_local_gateway()
     hc = _make_health_checker(healthy_url)
@@ -134,7 +134,7 @@ async def test_be_dispatched_to_remote_when_healthy():
 
     assert result.response == "remote response"
     driver.generate.assert_awaited_once()
-    assert driver.generate.await_args.kwargs["payload"]["model"] == "gemma3:4b-it-qat"
+    assert driver.generate.await_args.kwargs["payload"]["model"] == "gemma4-e4b-q4km"
     # Local generate_raw should NOT have been called
     local.generate_raw.assert_not_awaited()
 
@@ -204,7 +204,7 @@ async def test_concurrent_be_requests_use_contextvars():
         health_checker=hc,
         remote_driver=driver,
         enabled=True,
-        remote_model="gemma3:4b-it-qat",
+        remote_model="gemma4-e4b-q4km",
     )
 
     results = []
@@ -269,7 +269,7 @@ async def test_remote_failure_retries_next_healthy_remote_then_succeeds():
     driver.generate = AsyncMock(
         side_effect=[
             RuntimeError("remote-a failed"),
-            LLMGenerateResponse(response="remote-b response", model="gemma3:4b-it-qat", done=True),
+            LLMGenerateResponse(response="remote-b response", model="gemma4-e4b-q4km", done=True),
         ]
     )
 
@@ -385,14 +385,14 @@ async def test_model_override_uses_per_remote_model():
     gw, local, hc, driver = _make_gateway(
         enabled=True,
         healthy_url="http://remote-rag:11434",
-        model_overrides={"http://remote-rag:11434": "gemma3-4b-rag"},
+        model_overrides={"http://remote-rag:11434": "gemma4-e4b-rag"},
     )
 
     async with gw.hold_slot(is_high_priority=False):
         await gw.generate_raw("prompt")
 
     payload = driver.generate.await_args.kwargs["payload"]
-    assert payload["model"] == "gemma3-4b-rag"
+    assert payload["model"] == "gemma4-e4b-rag"
 
 
 @pytest.mark.asyncio
@@ -401,14 +401,14 @@ async def test_no_model_override_uses_default():
     gw, local, hc, driver = _make_gateway(
         enabled=True,
         healthy_url="http://remote-gpu:11434",
-        model_overrides={"http://other:11434": "gemma3-4b-rag"},
+        model_overrides={"http://other:11434": "gemma4-e4b-rag"},
     )
 
     async with gw.hold_slot(is_high_priority=False):
         await gw.generate_raw("prompt")
 
     payload = driver.generate.await_args.kwargs["payload"]
-    assert payload["model"] == "gemma3:4b-it-qat"
+    assert payload["model"] == "gemma4-e4b-q4km"
 
 
 # ============================================================================

@@ -74,7 +74,7 @@ def _create_provider_app() -> FastAPI:
         return (
             "これはテスト記事の要約です。",
             {
-                "model": "gemma3:4b-it-qat",
+                "model": "gemma4-e4b-q4km",
                 "prompt_tokens": 150,
                 "completion_tokens": 80,
                 "total_duration_ms": 2500.0,

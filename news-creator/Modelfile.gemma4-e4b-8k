@@ -1,0 +1,2 @@
+FROM gemma4-e4b-q4km
+PARAMETER num_ctx 8192
