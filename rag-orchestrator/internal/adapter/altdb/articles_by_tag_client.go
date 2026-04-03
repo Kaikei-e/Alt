@@ -28,7 +28,7 @@ func NewInternalArticlesByTagClient(client backendv1connect.BackendInternalServi
 func (c *InternalArticlesByTagClient) FetchArticlesByTag(ctx context.Context, tagName string, limit int) ([]domain.TagArticle, error) {
 	req := connect.NewRequest(&backendv1.BackendInternalServiceFetchArticlesByTagRequest{
 		TagName: tagName,
-		Limit:   int32(min(limit, math.MaxInt32)),
+		Limit:   int32(min(limit, math.MaxInt32)), //nolint:gosec // value clamped to MaxInt32
 	})
 
 	resp, err := c.client.FetchArticlesByTag(ctx, req)

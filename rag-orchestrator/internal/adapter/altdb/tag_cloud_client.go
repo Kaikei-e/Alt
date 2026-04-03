@@ -27,7 +27,7 @@ func NewInternalTagCloudClient(client backendv1connect.BackendInternalServiceCli
 
 func (c *InternalTagCloudClient) FetchTagCloud(ctx context.Context, limit int) ([]domain.TagCloudEntry, error) {
 	req := connect.NewRequest(&backendv1.BackendInternalServiceFetchTagCloudRequest{
-		Limit: int32(min(limit, math.MaxInt32)),
+		Limit: int32(min(limit, math.MaxInt32)), //nolint:gosec // value clamped to MaxInt32
 	})
 
 	resp, err := c.client.FetchTagCloud(ctx, req)
