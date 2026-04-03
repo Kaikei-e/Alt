@@ -49,6 +49,11 @@ func (c *QueryClassifier) Classify(ctx context.Context, query string) IntentType
 		return IntentCausalExplanation
 	}
 
+	// Synthesis patterns (before Temporal — "最近のNYと芸術のかかわり" is synthesis, not temporal)
+	if matchesSynthesis(query, lower) {
+		return IntentSynthesis
+	}
+
 	// Temporal patterns
 	if matchesTemporal(query, lower) {
 		return IntentTemporal
@@ -277,6 +282,49 @@ func matchesCausal(query, lower string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func matchesSynthesis(query, lower string) bool {
+	// 1. Explicit synthesis signals (Japanese)
+	jpSynthKeywords := []string{"そもそも", "全体像", "概観", "歴史的"}
+	for _, kw := range jpSynthKeywords {
+		if strings.Contains(query, kw) {
+			return true
+		}
+	}
+
+	// 2. "Xとは何か" pattern
+	if strings.Contains(query, "とは何") {
+		return true
+	}
+
+	// 3. Abstract relationship pattern: <Entity>と<Entity>の(かかわり|関係|影響|つながり|関連|関係性)
+	relationWords := []string{"かかわり", "関係", "つながり", "関連", "関係性"}
+	hasRelationWord := false
+	for _, rw := range relationWords {
+		if strings.Contains(query, rw) {
+			hasRelationWord = true
+			break
+		}
+	}
+	if hasRelationWord && strings.Contains(query, "と") {
+		return true
+	}
+
+	// 4. "影響" with "全体" or "と" pattern (broad impact, not article-scoped implication)
+	if strings.Contains(query, "影響") && (strings.Contains(query, "全体") || strings.Contains(query, "と")) {
+		return true
+	}
+
+	// 5. English synthesis patterns
+	enSynthPatterns := []string{"relationship between", "overview of", "how are", "connected"}
+	for _, pat := range enSynthPatterns {
+		if strings.Contains(lower, pat) {
+			return true
+		}
+	}
+
 	return false
 }
 

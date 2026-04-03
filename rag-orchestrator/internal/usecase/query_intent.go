@@ -18,6 +18,7 @@ const (
 	IntentTopicDeepDive     IntentType = "topic_deep_dive"
 	IntentFactCheck         IntentType = "fact_check"
 	IntentCausalExplanation IntentType = "causal_explanation"
+	IntentSynthesis         IntentType = "synthesis"
 )
 
 // SubIntentType classifies the analytical intent within an article-scoped query.

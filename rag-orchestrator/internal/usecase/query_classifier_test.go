@@ -156,6 +156,68 @@ func TestClassify_FactCheckKeywords_EN(t *testing.T) {
 	}
 }
 
+func TestClassify_SynthesisKeywords_JP(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"そもそもニューヨークと芸術のかかわりは？"},
+		{"AIと教育の関係について教えて"},
+		{"気候変動が農業に与える影響の全体像"},
+		{"ブロックチェーンとは何か"},
+		{"日本の少子化と経済のつながり"},
+		{"テクノロジーと社会の関係性"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			intent := c.Classify(nil, tt.query)
+			if intent != IntentSynthesis {
+				t.Errorf("expected IntentSynthesis for %q, got %s", tt.query, intent)
+			}
+		})
+	}
+}
+
+func TestClassify_SynthesisKeywords_EN(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query string
+	}{
+		{"what is the relationship between AI and healthcare"},
+		{"overview of blockchain and finance"},
+		{"how are technology and education connected"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			intent := c.Classify(nil, tt.query)
+			if intent != IntentSynthesis {
+				t.Errorf("expected IntentSynthesis for %q, got %s", tt.query, intent)
+			}
+		})
+	}
+}
+
+func TestClassify_Synthesis_NotTriggeredForOtherIntents(t *testing.T) {
+	c := NewQueryClassifier(nil, 0)
+	tests := []struct {
+		query    string
+		expected IntentType
+	}{
+		{"最近の原油価格は？", IntentTemporal},
+		{"AとBの違いは？", IntentComparison},
+		{"それは本当？", IntentFactCheck},
+		{"最近の石油危機の真因は？", IntentCausalExplanation},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			intent := c.Classify(nil, tt.query)
+			if intent != tt.expected {
+				t.Errorf("expected %s for %q, got %s", tt.expected, tt.query, intent)
+			}
+		})
+	}
+}
+
 func TestClassify_ArticleScoped_UsesExistingParser(t *testing.T) {
 	c := NewQueryClassifier(nil, 0)
 	query := "Regarding the article: Test Title [articleId: 123e4567-e89b-12d3-a456-426614174000]\n\nQuestion:\nWhat is this about?"
@@ -508,7 +570,6 @@ func TestClassify_General_FallsThrough(t *testing.T) {
 	tests := []struct {
 		query string
 	}{
-		{"AIとは何か"},
 		{"Rustのエラーハンドリング"},
 		{"hello world"},
 	}
