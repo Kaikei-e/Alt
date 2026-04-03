@@ -98,18 +98,23 @@ jobs:
           - service: alt-backend/app
             test-path: ./driver/preprocessor_connect/contract/
             sparse-checkout: alt-backend
+            pact-dir: alt-backend/pacts
           - service: pre-processor/app
             test-path: ./driver/contract/
             sparse-checkout: pre-processor
+            pact-dir: pacts
           - service: rag-orchestrator
             test-path: ./internal/adapter/contract/
             sparse-checkout: rag-orchestrator
+            pact-dir: rag-orchestrator/pacts
           - service: search-indexer/app
             test-path: ./driver/contract/
             sparse-checkout: search-indexer
+            pact-dir: pacts
           - service: mq-hub/app
             test-path: ./driver/contract/
             sparse-checkout: mq-hub
+            pact-dir: pacts
     steps:
       - uses: actions/checkout@v5
         with:
@@ -135,10 +140,17 @@ jobs:
           CGO_ENABLED: "1"
         run: go test -tags=contract ${{ matrix.test-path }} -v
 
-  pact-cdc-python:
-    name: Pact CDC Provider Verification (Python)
+      - name: Upload pact files
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacts-${{ matrix.sparse-checkout }}
+          path: ${{ matrix.pact-dir }}/*.json
+          if-no-files-found: error
+
+  pact-publish-and-verify:
+    name: Pact Publish & Provider Verification
     runs-on: ubuntu-latest
-    needs: pact-cdc-go
+    needs: [pact-cdc-go, pact-cdc-rust, pact-cdc-python-consumer]
     services:
       pact-db:
         image: postgres:16-alpine
@@ -170,6 +182,41 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Download all pact artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: collected-pacts
+          pattern: pacts-*
+          merge-multiple: true
+
+      - name: List collected pact files
+        run: ls -la collected-pacts/
+
+      - name: Publish all pact files to Broker
+        run: |
+          VERSION="${GITHUB_SHA:0:7}"
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          COUNT=0
+          for pact_file in collected-pacts/*.json; do
+            if [ -f "$pact_file" ]; then
+              CONSUMER=$(jq -r '.consumer.name' "$pact_file")
+              PROVIDER=$(jq -r '.provider.name' "$pact_file")
+              echo "Publishing ${CONSUMER} → ${PROVIDER} (version: ${VERSION})"
+              curl -fsS -X PUT \
+                -H "Content-Type: application/json" \
+                -u "pact:pact" \
+                -d @"$pact_file" \
+                "http://localhost:9292/pacts/provider/${PROVIDER}/consumer/${CONSUMER}/version/${VERSION}"
+              curl -fsS -X PUT \
+                -H "Content-Type: application/json" \
+                -u "pact:pact" \
+                "http://localhost:9292/pacticipants/${CONSUMER}/versions/${VERSION}/tags/${BRANCH}"
+              COUNT=$((COUNT + 1))
+            fi
+          done
+          echo "Published ${COUNT} pact files to Broker"
+
+      # --- Go provider verification (alt-backend) ---
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
@@ -183,36 +230,18 @@ jobs:
           echo "LD_LIBRARY_PATH=$HOME/.pact/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
           echo "CGO_LDFLAGS=-L$HOME/.pact/lib" >> "$GITHUB_ENV"
 
-      - name: Generate pact files from Go consumers
-        run: |
-          cd alt-backend/app && go test -tags=contract ./driver/preprocessor_connect/contract/ -v
-          cd ../../pre-processor/app && go test -tags=contract ./driver/contract/ -v
-          cd ../../rag-orchestrator && go test -tags=contract ./internal/adapter/contract/ -v
-          cd ../../search-indexer/app && go test -tags=contract ./driver/contract/ -v
-          cd ../../mq-hub/app && go test -tags=contract ./driver/contract/ -v || true
+      - name: Run alt-backend provider verification
+        working-directory: alt-backend/app
+        env:
+          CGO_ENABLED: "1"
+          PACT_BROKER_BASE_URL: http://localhost:9292
+          PACT_BROKER_USERNAME: pact
+          PACT_BROKER_PASSWORD: pact
+          PACT_PROVIDER_VERSION: ${{ github.sha }}
+          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: go test -tags=contract ./driver/contract/ -v
 
-      - name: Publish pact files to Broker
-        run: |
-          VERSION="${GITHUB_SHA:0:7}"
-          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-          for pact_file in alt-backend/pacts/*.json pacts/*.json rag-orchestrator/pacts/*.json search-indexer/pacts/*.json mq-hub/pacts/*.json; do
-            if [ -f "$pact_file" ]; then
-              CONSUMER=$(jq -r '.consumer.name' "$pact_file")
-              PROVIDER=$(jq -r '.provider.name' "$pact_file")
-              echo "Publishing ${CONSUMER} → ${PROVIDER} (version: ${VERSION})"
-              curl -fsS -X PUT \
-                -H "Content-Type: application/json" \
-                -u "pact:pact" \
-                -d @"$pact_file" \
-                "http://localhost:9292/pacts/provider/${PROVIDER}/consumer/${CONSUMER}/version/${VERSION}"
-              # Tag consumer version with branch name
-              curl -fsS -X PUT \
-                -H "Content-Type: application/json" \
-                -u "pact:pact" \
-                "http://localhost:9292/pacticipants/${CONSUMER}/versions/${VERSION}/tags/${BRANCH}"
-            fi
-          done
-
+      # --- Python provider verifications ---
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
@@ -244,7 +273,12 @@ jobs:
         working-directory: recap-subworker
         env:
           SERVICE_SECRET: test-secret
-        run: uv run pytest tests/contract/ -v || true
+          PACT_BROKER_BASE_URL: http://localhost:9292
+          PACT_BROKER_USERNAME: pact
+          PACT_BROKER_PASSWORD: pact
+          PACT_PROVIDER_VERSION: ${{ github.sha }}
+          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: uv run pytest tests/contract/ -v
 
       - name: Install tag-generator dependencies
         working-directory: tag-generator/app
@@ -254,7 +288,12 @@ jobs:
         working-directory: tag-generator/app
         env:
           SERVICE_SECRET: test-secret
-        run: uv run pytest tests/contract/ -v || true
+          PACT_BROKER_BASE_URL: http://localhost:9292
+          PACT_BROKER_USERNAME: pact
+          PACT_BROKER_PASSWORD: pact
+          PACT_PROVIDER_VERSION: ${{ github.sha }}
+          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: uv run pytest tests/contract/ -v
 
   pact-cdc-rust:
     name: Pact CDC Consumer Tests (Rust)
@@ -280,6 +319,13 @@ jobs:
         working-directory: recap-worker/recap-worker
         run: cargo test --lib contract -- --ignored
 
+      - name: Upload pact files
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacts-recap-worker
+          path: pacts/*.json
+          if-no-files-found: error
+
   pact-cdc-python-consumer:
     name: Pact CDC Consumer Tests (Python)
     runs-on: ubuntu-latest
@@ -299,3 +345,10 @@ jobs:
       - name: Run recap-evaluator consumer tests
         working-directory: recap-evaluator
         run: uv run pytest tests/contract/ -v --no-cov
+
+      - name: Upload pact files
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacts-recap-evaluator
+          path: pacts/recap-evaluator-recap-worker.json
+          if-no-files-found: error
