@@ -703,7 +703,17 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 	// Phase 3: Tool dispatch (intent-driven, no LLM)
 	var supplementary []string
-	if u.toolDispatcher != nil {
+
+	// For synthesis strategy, tool results are already in the retrieval output
+	if retrieved != nil && len(retrieved.SupplementaryInfo) > 0 {
+		supplementary = append(supplementary, retrieved.SupplementaryInfo...)
+	}
+	if retrieved != nil && len(retrieved.ToolsUsed) > 0 {
+		result.toolsUsed = append(result.toolsUsed, retrieved.ToolsUsed...)
+	}
+
+	// Additional tool dispatch for non-synthesis intents
+	if u.toolDispatcher != nil && intent.IntentType != IntentSynthesis {
 		toolResults := u.toolDispatcher.Dispatch(ctx, intent, intent.UserQuestion)
 		for _, tr := range toolResults {
 			supplementary = append(supplementary, tr.Data)
