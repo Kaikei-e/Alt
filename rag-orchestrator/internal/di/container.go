@@ -153,13 +153,13 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		log.Info("connect_rpc_service_token_configured")
 	}
 	altBackendConnectClient := articlesv2connect.NewArticleServiceClient(
-		http.DefaultClient, cfg.Backend.URL, connectOpts...,
+		http.DefaultClient, cfg.Backend.ConnectURL, connectOpts...,
 	)
 	tagCloudClient := altdb.NewConnectTagCloudClient(altBackendConnectClient, log)
 	articlesByTagClient := altdb.NewConnectArticlesByTagClient(altBackendConnectClient, log)
 
 	recapConnectClient := recapv2connect.NewRecapServiceClient(
-		http.DefaultClient, cfg.Backend.URL, connectOpts...,
+		http.DefaultClient, cfg.Backend.ConnectURL, connectOpts...,
 	)
 	recapSearchClient := altdb.NewConnectRecapSearchClient(recapConnectClient, log)
 

@@ -170,6 +170,7 @@ type TemporalConfig struct {
 // BackendConfig holds alt-backend connection settings.
 type BackendConfig struct {
 	URL          string
+	ConnectURL   string // Connect-RPC URL (separate port from REST)
 	Timeout      int    // Seconds
 	ServiceToken string // Shared secret for Connect-RPC auth (X-Service-Token header)
 }
@@ -271,6 +272,7 @@ func Load() *Config {
 		},
 		Backend: BackendConfig{
 			URL:          getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),
+			ConnectURL:   getEnv("ALT_BACKEND_CONNECT_URL", "http://alt-backend:9101"),
 			Timeout:      getEnvInt("ALT_BACKEND_TIMEOUT", 30),
 			ServiceToken: getSecret("SERVICE_TOKEN", "SERVICE_TOKEN_FILE", ""),
 		},
