@@ -29,6 +29,8 @@ Built as an ambitious solo project with production-quality goals, Alt treats **p
 
 Alt is organized as a Compose-first monorepo with Go, Python, Rust, TypeScript, Deno, and F# services. Docker Compose is the source of truth for local orchestration. Historical Kubernetes assets under `stopped-using-k8s/` are reference-only.
 
+You can simply ask Gemini at [Code Wiki](https://codewiki.google/github.com/kaikei-e/alt) for help your understanding of the codebase.
+
 ## Table of Contents
 
 - [Why Alt](#why-alt)
