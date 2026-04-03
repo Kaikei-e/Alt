@@ -2,6 +2,7 @@ package di
 
 import (
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,6 +17,9 @@ import (
 	"rag-orchestrator/internal/infra/httpclient"
 	"rag-orchestrator/internal/usecase"
 	"rag-orchestrator/internal/worker"
+
+	"alt/gen/proto/alt/articles/v2/articlesv2connect"
+	"alt/gen/proto/alt/recap/v2/recapv2connect"
 )
 
 // ApplicationComponents holds all wired dependencies for the application.
@@ -134,14 +138,45 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		usecase.WithStrategy(usecase.IntentFactCheck, usecase.NewFactCheckStrategy(retrieveUsecase, log)),
 		usecase.WithQueryClassifier(usecase.NewQueryClassifier(nil, 0)),
 	}
-	// Tool dispatcher (Agentic RAG: subintent-driven tool selection)
+	// Tool dispatcher (Agentic RAG: subintent-driven tool selection + synthesis tools)
 	relatedArticlesTool := tools.NewRelatedArticlesTool(searchClient)
+
+	// Connect-RPC clients for alt-backend and recap service (ADR-000617: Tool-Use Agentic RAG)
+	altBackendConnectClient := articlesv2connect.NewArticleServiceClient(
+		http.DefaultClient, cfg.Backend.URL,
+	)
+	tagCloudClient := altdb.NewConnectTagCloudClient(altBackendConnectClient, log)
+	articlesByTagClient := altdb.NewConnectArticlesByTagClient(altBackendConnectClient, log)
+
+	recapConnectClient := recapv2connect.NewRecapServiceClient(
+		http.DefaultClient, cfg.Backend.URL, // recap service shares alt-backend URL
+	)
+	recapSearchClient := altdb.NewConnectRecapSearchClient(recapConnectClient, log)
+
 	toolMap := map[string]domain.Tool{
-		"related_articles": relatedArticlesTool,
+		"related_articles":  relatedArticlesTool,
+		"tag_cloud_explore": tools.NewTagCloudExploreTool(tagCloudClient),
+		"articles_by_tag":   tools.NewArticlesByTagTool(articlesByTagClient),
+		"search_recaps":     tools.NewSearchRecapsTool(recapSearchClient),
+		"tag_search":        tools.NewTagSearchTool(searchClient),
+		"date_range_filter": tools.NewDateRangeFilterTool(searchClient),
 	}
 	toolDispatcher := usecase.NewToolDispatcher(toolMap, log)
 	answerOpts = append(answerOpts, usecase.WithToolDispatcher(toolDispatcher))
 	log.Info("tool_dispatcher_enabled", slog.Int("tools", len(toolMap)))
+
+	// Synthesis strategy (ADR-000617: Tool-Use Agentic RAG)
+	toolDescriptors := make([]domain.ToolDescriptor, 0, len(toolMap))
+	for _, t := range toolMap {
+		toolDescriptors = append(toolDescriptors, domain.ToolDescriptor{
+			Name:        t.Name(),
+			Description: t.Description(),
+		})
+	}
+	toolPlanner := usecase.NewToolPlanner(generator, toolDescriptors, log)
+	synthStrategy := usecase.NewSynthesisStrategy(toolPlanner, toolDispatcher, retrieveUsecase, log)
+	answerOpts = append(answerOpts, usecase.WithStrategy(usecase.IntentSynthesis, synthStrategy))
+	log.Info("synthesis_strategy_enabled")
 
 	if cfg.QualityGate.Enabled {
 		assessor := usecase.NewRetrievalQualityAssessor(
