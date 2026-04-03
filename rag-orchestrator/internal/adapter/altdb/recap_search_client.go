@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 
 	recapv2 "alt/gen/proto/alt/recap/v2"
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
@@ -27,7 +28,7 @@ func NewConnectRecapSearchClient(client recapv2connect.RecapServiceClient, logge
 func (c *ConnectRecapSearchClient) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]domain.RecapSearchResult, error) {
 	req := connect.NewRequest(&recapv2.SearchRecapsByTagRequest{
 		TagName: tagName,
-		Limit:   int32(limit),
+		Limit:   int32(min(limit, math.MaxInt32)),
 	})
 
 	resp, err := c.client.SearchRecapsByTag(ctx, req)

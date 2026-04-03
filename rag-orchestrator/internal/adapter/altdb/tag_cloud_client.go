@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 
 	backendv1 "alt/gen/proto/services/backend/v1"
 	"alt/gen/proto/services/backend/v1/backendv1connect"
@@ -26,7 +27,7 @@ func NewInternalTagCloudClient(client backendv1connect.BackendInternalServiceCli
 
 func (c *InternalTagCloudClient) FetchTagCloud(ctx context.Context, limit int) ([]domain.TagCloudEntry, error) {
 	req := connect.NewRequest(&backendv1.BackendInternalServiceFetchTagCloudRequest{
-		Limit: int32(limit),
+		Limit: int32(min(limit, math.MaxInt32)),
 	})
 
 	resp, err := c.client.FetchTagCloud(ctx, req)

@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"testing"
 )
 
@@ -16,7 +17,7 @@ func TestClassify_ComparisonKeywords_JP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentComparison {
 				t.Errorf("expected IntentComparison for %q, got %s", tt.query, intent)
 			}
@@ -35,7 +36,7 @@ func TestClassify_ComparisonKeywords_EN(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentComparison {
 				t.Errorf("expected IntentComparison for %q, got %s", tt.query, intent)
 			}
@@ -55,7 +56,7 @@ func TestClassify_TemporalKeywords_JP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentTemporal {
 				t.Errorf("expected IntentTemporal for %q, got %s", tt.query, intent)
 			}
@@ -74,7 +75,7 @@ func TestClassify_TemporalKeywords_EN(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentTemporal {
 				t.Errorf("expected IntentTemporal for %q, got %s", tt.query, intent)
 			}
@@ -93,7 +94,7 @@ func TestClassify_DeepDiveKeywords_JP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentTopicDeepDive {
 				t.Errorf("expected IntentTopicDeepDive for %q, got %s", tt.query, intent)
 			}
@@ -111,7 +112,7 @@ func TestClassify_DeepDiveKeywords_EN(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentTopicDeepDive {
 				t.Errorf("expected IntentTopicDeepDive for %q, got %s", tt.query, intent)
 			}
@@ -130,7 +131,7 @@ func TestClassify_FactCheckKeywords_JP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentFactCheck {
 				t.Errorf("expected IntentFactCheck for %q, got %s", tt.query, intent)
 			}
@@ -148,7 +149,7 @@ func TestClassify_FactCheckKeywords_EN(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentFactCheck {
 				t.Errorf("expected IntentFactCheck for %q, got %s", tt.query, intent)
 			}
@@ -170,7 +171,7 @@ func TestClassify_SynthesisKeywords_JP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentSynthesis {
 				t.Errorf("expected IntentSynthesis for %q, got %s", tt.query, intent)
 			}
@@ -189,7 +190,7 @@ func TestClassify_SynthesisKeywords_EN(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentSynthesis {
 				t.Errorf("expected IntentSynthesis for %q, got %s", tt.query, intent)
 			}
@@ -210,7 +211,7 @@ func TestClassify_Synthesis_NotTriggeredForOtherIntents(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != tt.expected {
 				t.Errorf("expected %s for %q, got %s", tt.expected, tt.query, intent)
 			}
@@ -221,7 +222,7 @@ func TestClassify_Synthesis_NotTriggeredForOtherIntents(t *testing.T) {
 func TestClassify_ArticleScoped_UsesExistingParser(t *testing.T) {
 	c := NewQueryClassifier(nil, 0)
 	query := "Regarding the article: Test Title [articleId: 123e4567-e89b-12d3-a456-426614174000]\n\nQuestion:\nWhat is this about?"
-	intent := c.Classify(nil, query)
+	intent := c.Classify(context.Background(), query)
 	if intent != IntentArticleScoped {
 		t.Errorf("expected IntentArticleScoped, got %s", intent)
 	}
@@ -575,7 +576,7 @@ func TestClassify_General_FallsThrough(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentGeneral {
 				t.Errorf("expected IntentGeneral for %q, got %s", tt.query, intent)
 			}
@@ -597,7 +598,7 @@ func TestClassify_CausalKeywords_JP(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentCausalExplanation {
 				t.Errorf("expected IntentCausalExplanation for %q, got %s", tt.query, intent)
 			}
@@ -617,7 +618,7 @@ func TestClassify_CausalKeywords_EN(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentCausalExplanation {
 				t.Errorf("expected IntentCausalExplanation for %q, got %s", tt.query, intent)
 			}
@@ -636,7 +637,7 @@ func TestClassify_TemporalPlusCausal_CausalWins(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentCausalExplanation {
 				t.Errorf("expected IntentCausalExplanation (not Temporal) for %q, got %s", tt.query, intent)
 			}
@@ -655,7 +656,7 @@ func TestClassify_PureTemporal_StaysTemporal(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.query, func(t *testing.T) {
-			intent := c.Classify(nil, tt.query)
+			intent := c.Classify(context.Background(), tt.query)
 			if intent != IntentTemporal {
 				t.Errorf("expected IntentTemporal for %q, got %s", tt.query, intent)
 			}
