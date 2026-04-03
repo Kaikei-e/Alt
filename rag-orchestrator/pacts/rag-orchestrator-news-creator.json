@@ -19,6 +19,9 @@
             }
           ],
           "model": "gemma4-e4b-q4km",
+          "options": {
+            "num_predict": 2048
+          },
           "stream": false
         },
         "headers": {
@@ -35,6 +38,14 @@
               ]
             },
             "$.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.options": {
               "combine": "AND",
               "matchers": [
                 {
@@ -104,6 +115,9 @@
             }
           ],
           "model": "gemma4-e4b-q4km",
+          "options": {
+            "num_predict": 2048
+          },
           "stream": true
         },
         "headers": {
@@ -120,6 +134,14 @@
               ]
             },
             "$.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.options": {
               "combine": "AND",
               "matchers": [
                 {
