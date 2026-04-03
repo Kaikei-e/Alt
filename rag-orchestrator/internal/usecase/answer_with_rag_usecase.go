@@ -788,7 +788,9 @@ func (u *answerWithRAGUsecase) retrieveWithPolicy(
 
 	case domain.PolicyGlobalOnly:
 		result.retrievalPolicy = "global_only"
-		return u.generalStrategy.Retrieve(ctx, retrieveInput, intent)
+		// Use the intent-selected strategy (e.g. SynthesisStrategy for IntentSynthesis)
+		// rather than always falling back to generalStrategy.
+		return strategy.Retrieve(ctx, retrieveInput, intent)
 
 	case domain.PolicyToolOnly:
 		result.retrievalPolicy = "tool_only"
