@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -13,7 +14,13 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"rag-orchestrator/internal/adapter/rag_augur"
+	"rag-orchestrator/internal/adapter/repository"
 	"rag-orchestrator/internal/backfill"
+	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/infra"
+	"rag-orchestrator/internal/infra/httpclient"
+	"rag-orchestrator/internal/usecase"
 )
 
 var (
@@ -30,6 +37,7 @@ var (
 	batchSize   int
 	dryRun      bool
 	hyperBoost  bool
+	directMode  bool
 )
 
 func main() {
@@ -90,6 +98,7 @@ func init() {
 	runCmd.Flags().IntVar(&batchSize, "batch-size", 40, "articles per batch")
 	runCmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be processed without actually processing")
 	runCmd.Flags().BoolVar(&hyperBoost, "hyper-boost", false, "use local GPU for embedding (starts temporary Ollama container)")
+	runCmd.Flags().BoolVar(&directMode, "direct", false, "bypass HTTP, index directly via rag-db + embedder (requires RAG_DB_URL, EMBEDDER_URL)")
 
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(statusCmd)
@@ -167,6 +176,67 @@ func runBackfill(cmd *cobra.Command, args []string) error {
 		cfg.EmbedderOverrideURL = hb.EmbedderURL()
 		logger.Info("hyper-boost enabled",
 			slog.String("embedder_url", cfg.EmbedderOverrideURL),
+		)
+	}
+
+	// Handle direct mode
+	if directMode {
+		ragDBURL := os.Getenv("RAG_DB_URL")
+		if ragDBURL == "" {
+			return fmt.Errorf("RAG_DB_URL environment variable is required for --direct mode")
+		}
+		embeddingModel := os.Getenv("EMBEDDING_MODEL")
+		if embeddingModel == "" {
+			embeddingModel = "embeddinggemma"
+		}
+
+		// Support multiple embedder replicas (EMBEDDER_URLS) or single (EMBEDDER_URL)
+		var embedderURLs []string
+		if urls := os.Getenv("EMBEDDER_URLS"); urls != "" {
+			embedderURLs = strings.Split(urls, ",")
+		} else if url := os.Getenv("EMBEDDER_URL"); url != "" {
+			embedderURLs = []string{url}
+		} else {
+			return fmt.Errorf("EMBEDDER_URL or EMBEDDER_URLS environment variable is required for --direct mode")
+		}
+
+		// Connect to rag-db with pgvector type registration
+		ragPool, err := infra.NewPostgresDB(ctx, ragDBURL)
+		if err != nil {
+			return fmt.Errorf("connect to rag-db: %w", err)
+		}
+		defer ragPool.Close()
+
+		// Shared DB dependencies
+		chunkRepo := repository.NewRagChunkRepository(ragPool)
+		docRepo := repository.NewRagDocumentRepository(ragPool)
+		txManager := repository.NewPostgresTransactionManager(ragPool)
+		hasher := domain.NewSourceHashPolicy()
+		chunker := domain.NewChunker()
+
+		// Build one IndexArticleUsecase per embedder replica
+		var indexers []usecase.IndexArticleUsecase
+		for _, eURL := range embedderURLs {
+			embedder := rag_augur.NewOllamaEmbedder(
+				strings.TrimSpace(eURL), embeddingModel, 120,
+				httpclient.NewPooledClient(120*time.Second),
+			)
+			indexers = append(indexers, usecase.NewIndexArticleUsecase(
+				docRepo, chunkRepo, txManager, hasher, chunker, embedder,
+			))
+		}
+
+		cfg.Direct = true
+		if len(indexers) == 1 {
+			cfg.DirectIndexer = backfill.NewDirectIndexer(indexers[0], concurrency, logger)
+		} else {
+			cfg.DirectIndexer = backfill.NewDirectIndexerMulti(indexers, concurrency, logger)
+		}
+
+		logger.Info("direct mode enabled",
+			slog.String("rag_db", ragDBURL),
+			slog.Int("embedder_replicas", len(embedderURLs)),
+			slog.String("embedding_model", embeddingModel),
 		)
 	}
 

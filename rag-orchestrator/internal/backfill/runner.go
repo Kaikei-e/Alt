@@ -40,6 +40,10 @@ type Config struct {
 	DryRun              bool
 	RequestTimeout      time.Duration
 	EmbedderOverrideURL string // hyper-boost: override embedder URL via X-Embedder-URL header
+
+	// Direct mode: bypass HTTP, index via usecase directly.
+	Direct        bool
+	DirectIndexer *DirectIndexer
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -332,7 +336,7 @@ func (r *Runner) processBatches(ctx context.Context, query string, args []interf
 					return
 				}
 
-				if err := r.sendArticle(ctx, article); err != nil {
+				if err := r.indexArticle(ctx, article); err != nil {
 					r.logger.Warn("failed to send article",
 						slog.String("id", article.ID),
 						slog.String("error", err.Error()),
@@ -367,7 +371,15 @@ func (r *Runner) processBatches(ctx context.Context, query string, args []interf
 	return totalCount, nil
 }
 
-// sendArticle sends an article to the orchestrator for indexing.
+// indexArticle dispatches to direct indexer or HTTP depending on mode.
+func (r *Runner) indexArticle(ctx context.Context, a Article) error {
+	if r.cfg.Direct && r.cfg.DirectIndexer != nil {
+		return r.cfg.DirectIndexer.IndexArticle(ctx, a)
+	}
+	return r.sendArticle(ctx, a)
+}
+
+// sendArticle sends an article to the orchestrator for indexing via HTTP.
 func (r *Runner) sendArticle(ctx context.Context, a Article) error {
 	payload := map[string]interface{}{
 		"article_id":   a.ID,
