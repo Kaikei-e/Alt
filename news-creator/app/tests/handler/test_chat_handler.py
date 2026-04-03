@@ -71,6 +71,30 @@ class TestChatEndpointStreaming:
         assert call_payload["messages"] == [{"role": "user", "content": "test"}]
         assert call_payload["options"]["temperature"] == 0.7
 
+    def test_streaming_chat_passes_think_false(self):
+        """Streaming chat must forward think parameter to gateway."""
+        gateway = AsyncMock()
+
+        async def empty():
+            yield {"message": {"role": "assistant", "content": ""}, "done": True}
+
+        gateway.chat_stream.return_value = empty()
+
+        client = TestClient(make_app(gateway))
+        client.post(
+            "/api/chat",
+            json={
+                "model": "gemma4-e4b-12k",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": True,
+                "think": False,
+            },
+        )
+
+        call_payload = gateway.chat_stream.call_args[1]["payload"]
+        assert "think" in call_payload, "think must be forwarded to gateway"
+        assert call_payload["think"] is False
+
     def test_streaming_chat_queue_full_returns_429(self):
         from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 
@@ -190,6 +214,31 @@ class TestChatEndpointValidation:
         assert resp.status_code == 200
         call_payload = gateway.chat_generate.call_args[1]["payload"]
         assert call_payload["options"]["num_predict"] == 4096
+
+    def test_non_streaming_passes_think_false(self):
+        """Non-streaming chat must forward think parameter to gateway."""
+        gateway = AsyncMock()
+        gateway.chat_generate.return_value = {
+            "model": "gemma4-e4b-12k",
+            "message": {"role": "assistant", "content": "ok"},
+            "done": True,
+        }
+
+        client = TestClient(make_app(gateway))
+        resp = client.post(
+            "/api/chat",
+            json={
+                "model": "gemma4-e4b-12k",
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": False,
+                "think": False,
+            },
+        )
+
+        assert resp.status_code == 200
+        call_payload = gateway.chat_generate.call_args[1]["payload"]
+        assert "think" in call_payload, "think must be forwarded to gateway"
+        assert call_payload["think"] is False
 
     def test_non_streaming_queue_full_returns_429(self):
         """Non-streaming chat returns 429 when queue is full."""

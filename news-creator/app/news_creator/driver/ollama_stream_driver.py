@@ -40,19 +40,6 @@ class OllamaStreamDriver:
             await self.session.close()
             logger.info("Ollama stream driver cleaned up")
 
-    def _build_prompt_from_messages(self, messages: list) -> str:
-        """Convert chat messages to a single prompt for /api/generate.
-
-        Shared between chat_stream() and chat_generate().
-        """
-        prompt_parts = []
-        for msg in messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            prompt_parts.append(f"<start_of_turn>{role}\n{content}<end_of_turn>")
-        prompt_parts.append("<start_of_turn>model\n")
-        return "\n".join(prompt_parts)
-
     def _merge_options(self, caller_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """Merge config base options with caller options.
 
@@ -67,13 +54,11 @@ class OllamaStreamDriver:
         return base
 
     async def chat_stream(self, payload: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Proxy chat requests through Ollama /api/generate (not /api/chat).
+        """Proxy chat requests through Ollama /api/chat with think=false.
 
-        Ollama's /api/chat historically hangs with gemma models (known issue).
-        This method converts the chat messages to a single prompt, calls
-        /api/generate, and converts the response back to /api/chat format
-        so the upstream caller (rag-orchestrator) sees no difference.
+        Forwards messages directly to Ollama's /api/chat endpoint, letting
+        Ollama handle the chat template natively.  think=false disables
+        Gemma4's thinking mode without bypassing the template engine.
 
         Options are merged with config base options (num_batch, num_keep, stop)
         to prevent Ollama model reload from parameter mismatch.
@@ -90,75 +75,50 @@ class OllamaStreamDriver:
         if self.session is None or self.session.closed:
             await self.initialize()
 
-        prompt = self._build_prompt_from_messages(payload["messages"])
-
         model = payload.get("model", "unknown")
-        generate_payload: Dict[str, Any] = {
+        chat_payload: Dict[str, Any] = {
             "model": model,
-            "prompt": prompt,
+            "messages": payload["messages"],
             "stream": True,
-            "raw": True,  # Skip Ollama's own chat template since we build it
+            "think": False,
             "options": self._merge_options(payload.get("options")),
         }
         if payload.get("keep_alive") is not None:
-            generate_payload["keep_alive"] = payload["keep_alive"]
+            chat_payload["keep_alive"] = payload["keep_alive"]
         if payload.get("format") is not None:
-            generate_payload["format"] = payload["format"]
+            chat_payload["format"] = payload["format"]
 
-        url = f"{self.config.llm_service_url.rstrip('/')}/api/generate"
+        url = f"{self.config.llm_service_url.rstrip('/')}/api/chat"
 
         logger.info(
-            "Sending chat-to-generate stream to Ollama",
+            "Sending chat stream to Ollama",
             extra={
                 "model": model,
                 "message_count": len(payload["messages"]),
-                "prompt_length": len(prompt),
                 "url": url,
             },
         )
 
         assert self.session is not None
-        async with self.session.post(url, json=generate_payload) as response:
+        async with self.session.post(url, json=chat_payload) as response:
             if response.status != 200:
                 text_body = await response.text()
-                raise RuntimeError(f"Ollama generate API error: HTTP {response.status} - {text_body[:200]}")
+                raise RuntimeError(f"Ollama chat API error: HTTP {response.status} - {text_body[:200]}")
 
             async for line_bytes in response.content:
                 line = line_bytes.decode("utf-8").strip()
                 if not line:
                     continue
                 try:
-                    gen_chunk = json.loads(line)
-                    # Convert /api/generate format to /api/chat format
-                    chat_chunk: Dict[str, Any] = {
-                        "model": gen_chunk.get("model", model),
-                        "created_at": gen_chunk.get("created_at", ""),
-                        "message": {
-                            "role": "assistant",
-                            "content": gen_chunk.get("response", ""),
-                        },
-                        "done": gen_chunk.get("done", False),
-                    }
-                    if gen_chunk.get("done"):
-                        # Copy timing metadata from final chunk
-                        for key in (
-                            "total_duration", "load_duration",
-                            "prompt_eval_count", "prompt_eval_duration",
-                            "eval_count", "eval_duration",
-                            "done_reason",
-                        ):
-                            if key in gen_chunk:
-                                chat_chunk[key] = gen_chunk[key]
-                    yield chat_chunk
+                    chunk = json.loads(line)
+                    yield chunk
                 except json.JSONDecodeError:
-                    logger.warning("Failed to decode generate stream line", extra={"line": line[:200]})
+                    logger.warning("Failed to decode chat stream line", extra={"line": line[:200]})
 
     async def chat_generate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Non-streaming chat → /api/generate proxy with config base options.
+        """Non-streaming chat via Ollama /api/chat with think=false.
 
-        Converts chat messages to a prompt, calls /api/generate (non-streaming),
-        and returns the result in /api/chat response format.
-
+        Forwards messages directly to Ollama's /api/chat endpoint.
         Options are merged with config base options to prevent Ollama model reload.
 
         Args:
@@ -177,56 +137,40 @@ class OllamaStreamDriver:
         if self.session is None or self.session.closed:
             await self.initialize()
 
-        prompt = self._build_prompt_from_messages(payload["messages"])
         model = payload.get("model", "unknown")
 
-        generate_payload: Dict[str, Any] = {
+        chat_payload: Dict[str, Any] = {
             "model": model,
-            "prompt": prompt,
+            "messages": payload["messages"],
             "stream": False,
-            "raw": True,
+            "think": False,
             "options": self._merge_options(payload.get("options")),
         }
         if payload.get("keep_alive") is not None:
-            generate_payload["keep_alive"] = payload["keep_alive"]
+            chat_payload["keep_alive"] = payload["keep_alive"]
         if payload.get("format") is not None:
-            generate_payload["format"] = payload["format"]
+            chat_payload["format"] = payload["format"]
 
-        url = f"{self.config.llm_service_url.rstrip('/')}/api/generate"
+        url = f"{self.config.llm_service_url.rstrip('/')}/api/chat"
 
         logger.info(
-            "Sending chat-to-generate (non-streaming) to Ollama",
+            "Sending chat (non-streaming) to Ollama",
             extra={
                 "model": model,
                 "message_count": len(payload["messages"]),
-                "prompt_length": len(prompt),
                 "url": url,
             },
         )
 
         assert self.session is not None
-        async with self.session.post(url, json=generate_payload) as response:
+        async with self.session.post(url, json=chat_payload) as response:
             if response.status != 200:
                 text_body = await response.text()
                 raise RuntimeError(
-                    f"Ollama generate API error: HTTP {response.status} - {text_body[:200]}"
+                    f"Ollama chat API error: HTTP {response.status} - {text_body[:200]}"
                 )
 
-            gen_resp = await response.json()
-
-            return {
-                "model": gen_resp.get("model", model),
-                "created_at": gen_resp.get("created_at", ""),
-                "message": {
-                    "role": "assistant",
-                    "content": gen_resp.get("response", ""),
-                },
-                "done": gen_resp.get("done", True),
-                "done_reason": gen_resp.get("done_reason", "stop"),
-                "total_duration": gen_resp.get("total_duration"),
-                "prompt_eval_count": gen_resp.get("prompt_eval_count"),
-                "eval_count": gen_resp.get("eval_count"),
-            }
+            return await response.json()
 
     async def generate_stream(self, payload: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
         """

@@ -58,6 +58,8 @@ def create_chat_router(gateway: OllamaGateway) -> APIRouter:
                     payload["keep_alive"] = request.keep_alive
                 if request.format is not None:
                     payload["format"] = request.format
+                if request.think is not None:
+                    payload["think"] = request.think
                 if request.options is not None:
                     payload["options"] = request.options
 

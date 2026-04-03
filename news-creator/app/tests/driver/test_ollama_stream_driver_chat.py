@@ -33,28 +33,6 @@ def driver(config):
     return OllamaStreamDriver(config)
 
 
-class TestBuildPromptFromMessages:
-    """_build_prompt_from_messages extracts shared prompt-building logic."""
-
-    def test_single_user_message(self, driver):
-        messages = [{"role": "user", "content": "Hello"}]
-        prompt = driver._build_prompt_from_messages(messages)
-        assert "<start_of_turn>user\nHello<end_of_turn>" in prompt
-        assert prompt.endswith("<start_of_turn>model\n")
-
-    def test_multi_turn(self, driver):
-        messages = [
-            {"role": "user", "content": "Hi"},
-            {"role": "assistant", "content": "Hello!"},
-            {"role": "user", "content": "How are you?"},
-        ]
-        prompt = driver._build_prompt_from_messages(messages)
-        assert "<start_of_turn>user\nHi<end_of_turn>" in prompt
-        assert "<start_of_turn>assistant\nHello!<end_of_turn>" in prompt
-        assert "<start_of_turn>user\nHow are you?<end_of_turn>" in prompt
-        assert prompt.endswith("<start_of_turn>model\n")
-
-
 class TestChatStreamOptionsMerge:
     """chat_stream() must merge config base options with caller options."""
 
@@ -134,3 +112,197 @@ class TestChatGenerateOptionsMerge:
         merged = {**base_opts, **caller_opts}
         assert merged["num_predict"] == 4096
         assert merged["num_batch"] == 1024  # preserved from base
+
+
+# ---------------------------------------------------------------------------
+# /api/chat migration tests: chat_stream/chat_generate must call /api/chat
+# with think=false, no raw=true, and forward messages directly.
+# ---------------------------------------------------------------------------
+
+class _AsyncLineIterator:
+    """Async iterator over bytes lines, mimicking aiohttp StreamReader."""
+
+    def __init__(self, lines: list[bytes]):
+        self._lines = lines
+        self._index = 0
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._index >= len(self._lines):
+            raise StopAsyncIteration
+        line = self._lines[self._index]
+        self._index += 1
+        return line
+
+
+def _make_mock_session(response_lines: list[bytes] | None = None, json_body: dict | None = None):
+    """Create a mock aiohttp session that captures the POSTed URL and payload.
+
+    Returns (session, captured) where captured is a dict with 'url' and 'json'.
+    """
+    captured: dict = {}
+
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+
+    if response_lines is not None:
+        mock_resp.content = _AsyncLineIterator(response_lines)
+    if json_body is not None:
+        mock_resp.json = AsyncMock(return_value=json_body)
+
+    ctx = AsyncMock()
+    ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    session = MagicMock()
+    session.closed = False
+
+    def _post(url, json=None):
+        captured["url"] = url
+        captured["json"] = json
+        return ctx
+
+    session.post = _post
+
+    return session, captured
+
+
+class TestChatStreamUsesApiChat:
+    """chat_stream() must call /api/chat (not /api/generate) with think=false."""
+
+    @pytest.mark.asyncio
+    async def test_calls_api_chat_endpoint(self, driver):
+        """Downstream URL must be /api/chat, not /api/generate."""
+        lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
+        session, captured = _make_mock_session(response_lines=lines)
+        driver.session = session
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+        }
+        chunks = []
+        async for chunk in driver.chat_stream(payload):
+            chunks.append(chunk)
+
+        assert captured["url"].endswith("/api/chat"), f"Expected /api/chat, got {captured['url']}"
+        assert "/api/generate" not in captured["url"]
+
+    @pytest.mark.asyncio
+    async def test_includes_think_false(self, driver):
+        """think: false must be in the downstream payload."""
+        lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
+        session, captured = _make_mock_session(response_lines=lines)
+        driver.session = session
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+        }
+        async for _ in driver.chat_stream(payload):
+            pass
+
+        assert captured["json"].get("think") is False
+
+    @pytest.mark.asyncio
+    async def test_no_raw_parameter(self, driver):
+        """raw must NOT be in the downstream payload."""
+        lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
+        session, captured = _make_mock_session(response_lines=lines)
+        driver.session = session
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+        }
+        async for _ in driver.chat_stream(payload):
+            pass
+
+        assert "raw" not in captured["json"]
+
+    @pytest.mark.asyncio
+    async def test_forwards_messages_not_prompt(self, driver):
+        """Messages must be forwarded as-is; no 'prompt' key in downstream payload."""
+        lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
+        session, captured = _make_mock_session(response_lines=lines)
+        driver.session = session
+
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi!"},
+            {"role": "user", "content": "How are you?"},
+        ]
+        payload = {"model": "gemma4-e4b-12k", "messages": messages}
+        async for _ in driver.chat_stream(payload):
+            pass
+
+        assert "prompt" not in captured["json"], "Should not build a prompt string"
+        assert captured["json"]["messages"] == messages
+
+
+class TestChatGenerateUsesApiChat:
+    """chat_generate() must call /api/chat with think=false (non-streaming)."""
+
+    @pytest.mark.asyncio
+    async def test_calls_api_chat_endpoint(self, driver):
+        """Downstream URL must be /api/chat, not /api/generate."""
+        body = {
+            "message": {"role": "assistant", "content": "Hello!"},
+            "done": True,
+        }
+        session, captured = _make_mock_session(json_body=body)
+        driver.session = session
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+        }
+        await driver.chat_generate(payload)
+
+        assert captured["url"].endswith("/api/chat"), f"Expected /api/chat, got {captured['url']}"
+
+    @pytest.mark.asyncio
+    async def test_includes_think_false(self, driver):
+        """think: false must be in the downstream payload."""
+        body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
+        session, captured = _make_mock_session(json_body=body)
+        driver.session = session
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+        }
+        await driver.chat_generate(payload)
+
+        assert captured["json"].get("think") is False
+
+    @pytest.mark.asyncio
+    async def test_no_raw_parameter(self, driver):
+        """raw must NOT be in the downstream payload."""
+        body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
+        session, captured = _make_mock_session(json_body=body)
+        driver.session = session
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+        }
+        await driver.chat_generate(payload)
+
+        assert "raw" not in captured["json"]
+
+    @pytest.mark.asyncio
+    async def test_forwards_messages_not_prompt(self, driver):
+        """Messages must be forwarded, not converted to prompt."""
+        body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
+        session, captured = _make_mock_session(json_body=body)
+        driver.session = session
+
+        messages = [{"role": "user", "content": "Hello"}]
+        payload = {"model": "gemma4-e4b-12k", "messages": messages}
+        await driver.chat_generate(payload)
+
+        assert "prompt" not in captured["json"]
+        assert captured["json"]["messages"] == messages
