@@ -181,7 +181,7 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 	// Generic summary structure only for queries without a specific SubIntent.
 	// SubIntents have their own task-specific guidance below, and mixing in
 	// 概要/詳細/まとめ sends the model conflicting signals about answer shape.
-	if input.SubIntentType == SubIntentNone && input.IntentType != IntentCausalExplanation && input.IntentType != IntentFactCheck {
+	if input.SubIntentType == SubIntentNone && input.IntentType != IntentCausalExplanation && input.IntentType != IntentFactCheck && input.IntentType != IntentSynthesis {
 		sb.WriteString("## 回答構造\n")
 		sb.WriteString("1. **概要**: 結論と全体像を2-3文で説明（最重要ポイントを冒頭に）\n")
 		sb.WriteString("2. **詳細**: 具体的な事実・データ・事例を含む本文（最も重要なセクション）\n")
@@ -231,6 +231,20 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 		sb.WriteString("- 単一の原因に帰結させず、複数の要因を分離して記述すること\n")
 		sb.WriteString("- ソースが収束しない場合は「見解が分かれている」と明記すること\n")
 		sb.WriteString("- 各要因にソース引用[番号]を必ず付けること\n\n")
+	case IntentSynthesis:
+		sb.WriteString("## クエリ意図: 概念的合成\n")
+		sb.WriteString("- **必ず日本語で回答すること**\n")
+		sb.WriteString("- ユーザーは広範なテーマについての包括的な理解を求めています\n")
+		sb.WriteString("- 回答は以下の構造で作成すること:\n")
+		sb.WriteString("  1. **導入**: テーマの概要と主要な側面を2-3文で提示\n")
+		sb.WriteString("  2. **多面的分析**: 3つ以上の異なる側面・視点から論じること\n")
+		sb.WriteString("     - 各側面にサブ見出し（**太字**）を付与\n")
+		sb.WriteString("     - 各側面にソース引用[番号]を必ず付与\n")
+		sb.WriteString("  3. **相互関係**: 側面間のつながりや影響関係を記述\n")
+		sb.WriteString("  4. **現状と展望**: 最新の動向と今後の方向性\n")
+		sb.WriteString("- 1つの側面だけに偏らず、バランスよく複数の視点を提供すること\n")
+		sb.WriteString("- コンテキストに情報が不十分な側面は「この側面については情報が限定的です」と明記\n")
+		sb.WriteString("- 回答は1200文字以上で、具体的な事実・データ・事例を含むこと\n\n")
 	}
 
 	// Sub-intent-specific instructions for article-scoped queries

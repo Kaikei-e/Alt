@@ -354,3 +354,49 @@ func TestPromptBuilder_WithPlannerOutput_General_KeepsSummaryStructure(t *testin
 	assert.Contains(t, content, "概要",
 		"general operation should include 概要 in output format")
 }
+
+func TestPromptBuilder_IntentSynthesis_MultiAspectStructure(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "ニューヨークと芸術のかかわり",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "NYC Art", ChunkText: "Art in New York"},
+		},
+		IntentType: usecase.IntentSynthesis,
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+
+	content := msgs[0].Content
+	assert.Contains(t, content, "概念的合成",
+		"synthesis should include 概念的合成 intent section")
+	assert.Contains(t, content, "多面的分析",
+		"synthesis should require multi-aspect analysis")
+	assert.Contains(t, content, "相互関係",
+		"synthesis should require relationship analysis")
+	assert.Contains(t, content, "1200文字以上",
+		"synthesis should require 1200+ characters")
+}
+
+func TestPromptBuilder_IntentSynthesis_SkipsGenericStructure(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "AIと教育の関係",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "AI Education", ChunkText: "AI in education"},
+		},
+		IntentType: usecase.IntentSynthesis,
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+
+	content := msgs[0].Content
+	assert.NotContains(t, content, "## 回答構造",
+		"synthesis intent should NOT include generic 回答構造 section (概要/詳細/まとめ)")
+}
