@@ -118,8 +118,8 @@ func TestChunker_Chunk(t *testing.T) {
 		assert.True(t, hasLongChunk)
 	})
 
-	t.Run("Returns v8 version", func(t *testing.T) {
-		assert.Equal(t, domain.ChunkerVersionV8, chunker.Version())
+	t.Run("Returns v9 version", func(t *testing.T) {
+		assert.Equal(t, domain.ChunkerVersionV9, chunker.Version())
 	})
 
 	t.Run("Handles Japanese sentence boundaries", func(t *testing.T) {
@@ -203,5 +203,29 @@ func TestChunker_Chunk(t *testing.T) {
 
 	t.Run("MinChunkLength is 80", func(t *testing.T) {
 		assert.Equal(t, 80, domain.MinChunkLength)
+	})
+
+	t.Run("HTML input produces chunks without tags", func(t *testing.T) {
+		htmlBody := `<div><h2>見出しテキスト</h2>` +
+			`<p>これは記事の本文です。十分な長さのテキストが必要です。このテキストはチャンクの最小文字数を超える長さにしています。</p>` +
+			`<p>2番目の段落です。こちらも十分な長さを持つテキストで、チャンク分割のテストに使用します。複数の文を含みます。</p>` +
+			`</div>`
+
+		chunks, err := chunker.Chunk(htmlBody)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, chunks)
+
+		for _, chunk := range chunks {
+			assert.NotContains(t, chunk.Content, "<div>")
+			assert.NotContains(t, chunk.Content, "<h2>")
+			assert.NotContains(t, chunk.Content, "<p>")
+			assert.NotContains(t, chunk.Content, "</div>")
+			assert.Contains(t, chunk.Content, "見出しテキスト")
+		}
+	})
+
+	t.Run("v8 to v9 version change triggers re-chunk on backfill", func(t *testing.T) {
+		// ChunkerVersionV9 must be different from V8 to trigger re-indexing
+		assert.NotEqual(t, domain.ChunkerVersionV8, domain.ChunkerVersionV9)
 	})
 }

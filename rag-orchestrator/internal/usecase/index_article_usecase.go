@@ -65,8 +65,12 @@ func (u *indexArticleUsecase) Upsert(ctx context.Context, articleID, title, url,
 			}
 		}
 
-		// 3. Idempotency Check
-		if latestVer != nil && latestVer.SourceHash == sourceHash && latestVer.URL == url && latestVer.Title == title {
+		// 3. Idempotency Check — re-index when chunker version changes (e.g. v8→v9 HTML sanitization)
+		if latestVer != nil &&
+			latestVer.SourceHash == sourceHash &&
+			latestVer.URL == url &&
+			latestVer.Title == title &&
+			latestVer.ChunkerVersion == string(u.chunker.Version()) {
 			return nil
 		}
 

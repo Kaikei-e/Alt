@@ -137,10 +137,11 @@ func TestIndexArticle_Upsert_Idempotency(t *testing.T) {
 	}, nil)
 
 	mockDocRepo.On("GetLatestVersion", ctx, docID).Return(&domain.RagDocumentVersion{
-		ID:         verID,
-		DocumentID: docID,
-		SourceHash: sourceHash, // Same hash
-		Title:      title,
+		ID:             verID,
+		DocumentID:     docID,
+		SourceHash:     sourceHash, // Same hash
+		Title:          title,
+		ChunkerVersion: string(domain.ChunkerVersionV9), // Same chunker version
 	}, nil)
 
 	// Execute
@@ -199,6 +200,108 @@ func TestIndexArticle_Upsert_NewArticle(t *testing.T) {
 	assert.NoError(t, err)
 	mockDocRepo.AssertExpectations(t)
 	mockChunkRepo.AssertExpectations(t)
+}
+
+func TestIndexArticle_Upsert_ReindexOnChunkerVersionChange(t *testing.T) {
+	// When SourceHash/Title/URL match but ChunkerVersion is old (v8),
+	// the article must be re-indexed with the new chunker (v9).
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockTxManager := new(MockTransactionManager)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker() // Returns V9
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
+	)
+
+	ctx := context.Background()
+	articleID := "reindex-article"
+	title := "Reindex Title"
+	body := "Body text for reindex."
+
+	sourceHash := hasher.Compute(title, body)
+	docID := uuid.New()
+	verID := uuid.New()
+
+	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(&domain.RagDocument{
+		ID:               docID,
+		ArticleID:        articleID,
+		CurrentVersionID: &verID,
+	}, nil)
+
+	// Latest version has same hash but OLD chunker version (v8)
+	mockDocRepo.On("GetLatestVersion", ctx, docID).Return(&domain.RagDocumentVersion{
+		ID:             verID,
+		DocumentID:     docID,
+		VersionNumber:  1,
+		SourceHash:     sourceHash, // Same content hash
+		Title:          title,
+		ChunkerVersion: string(domain.ChunkerVersionV8), // OLD version
+	}, nil)
+
+	// Because chunker version differs, re-indexing should happen:
+	mockChunkRepo.On("GetChunksByVersionID", ctx, verID).Return([]domain.RagChunk{
+		{Ordinal: 0, Content: "Body text for reindex.", ID: uuid.New()},
+	}, nil)
+	mockDocRepo.On("CreateVersion", ctx, mock.MatchedBy(func(v *domain.RagDocumentVersion) bool {
+		return v.VersionNumber == 2 && v.ChunkerVersion == string(domain.ChunkerVersionV9)
+	})).Return(nil)
+	mockChunkRepo.On("BulkInsertChunks", ctx, mock.Anything).Return(nil)
+	mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil)
+	mockDocRepo.On("UpdateCurrentVersion", ctx, docID, mock.Anything).Return(nil)
+
+	err := uc.Upsert(ctx, articleID, title, "", body)
+	assert.NoError(t, err)
+
+	// Verify that CreateVersion was called (i.e., not skipped by idempotency)
+	mockDocRepo.AssertCalled(t, "CreateVersion", ctx, mock.Anything)
+	mockChunkRepo.AssertCalled(t, "BulkInsertChunks", ctx, mock.Anything)
+}
+
+func TestIndexArticle_Upsert_HTMLBodyProducesCleanChunks(t *testing.T) {
+	// When body contains HTML, chunks should have stripped text (via sanitizer in chunker V9).
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockTxManager := new(MockTransactionManager)
+	hasher := domain.NewSourceHashPolicy()
+	chunker := domain.NewChunker()
+
+	uc := usecase.NewIndexArticleUsecase(
+		mockDocRepo, mockChunkRepo, mockTxManager, hasher, chunker, nil,
+	)
+
+	ctx := context.Background()
+	articleID := "html-article"
+	title := "HTML Article"
+	body := `<div><p>記事の本文テキストです。十分な長さを持つ文章で、HTMLタグが除去されていることを確認します。</p>` +
+		`<script>alert('xss')</script>` +
+		`<p>2番目の段落の本文です。こちらも十分な長さを持っています。チャンク分割の確認用テキストです。</p></div>`
+
+	mockDocRepo.On("GetByArticleID", ctx, articleID).Return(nil, nil)
+	mockDocRepo.On("CreateDocument", ctx, mock.Anything).Return(nil)
+	mockDocRepo.On("CreateVersion", ctx, mock.Anything).Return(nil)
+
+	// Capture the chunks to verify they are HTML-free
+	var capturedChunks []domain.RagChunk
+	mockChunkRepo.On("BulkInsertChunks", ctx, mock.MatchedBy(func(chunks []domain.RagChunk) bool {
+		capturedChunks = chunks
+		return true
+	})).Return(nil)
+	mockChunkRepo.On("InsertEvents", ctx, mock.Anything).Return(nil)
+	mockDocRepo.On("UpdateCurrentVersion", ctx, mock.Anything, mock.Anything).Return(nil)
+
+	err := uc.Upsert(ctx, articleID, title, "", body)
+	assert.NoError(t, err)
+
+	// All chunks must be HTML-free
+	for _, chunk := range capturedChunks {
+		assert.NotContains(t, chunk.Content, "<div>")
+		assert.NotContains(t, chunk.Content, "<p>")
+		assert.NotContains(t, chunk.Content, "<script>")
+		assert.NotContains(t, chunk.Content, "alert")
+		assert.Contains(t, chunk.Content, "記事の本文テキスト")
+	}
 }
 
 func TestIndexArticle_Upsert_Update(t *testing.T) {

@@ -25,6 +25,8 @@ const (
 	ChunkerVersionV6 ChunkerVersion = "v6"
 	ChunkerVersionV7 ChunkerVersion = "v7"
 	ChunkerVersionV8 ChunkerVersion = "v8"
+	// ChunkerVersionV9 adds HTML sanitization before chunking.
+	ChunkerVersionV9 ChunkerVersion = "v9"
 )
 
 const (
@@ -57,13 +59,17 @@ func NewChunker() Chunker {
 }
 
 func (c *paragraphChunker) Version() ChunkerVersion {
-	return ChunkerVersionV8
+	return ChunkerVersionV9
 }
 
 // Chunk splits the body into chunks based on double newlines (paragraphs).
 // It trims whitespace from each chunk and ignores empty chunks.
 // Short chunks are merged with adjacent chunks, and long chunks are split.
 func (c *paragraphChunker) Chunk(body string) ([]Chunk, error) {
+	// V9: Sanitize HTML before chunking. Strips tags, removes boilerplate,
+	// preserves block element boundaries as newlines.
+	body = SanitizeHTML(body)
+
 	// Normalize newlines to \n
 	normalized := strings.ReplaceAll(body, "\r\n", "\n")
 	normalized = strings.ReplaceAll(normalized, "\r", "\n")
