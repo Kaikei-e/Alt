@@ -11,7 +11,8 @@ services:
       dockerfile: Dockerfile
     container_name: rag-db
     restart: always
-    mem_limit: 512m
+    mem_limit: 4096m
+    shm_size: "2g"
     command: >
       postgres
       -c config_file=/etc/postgresql/postgresql.conf
