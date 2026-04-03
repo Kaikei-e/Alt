@@ -437,19 +437,19 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) CreateJob(ctx, articleID any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).CreateJob), ctx, articleID)
 }
 
-// HasRecentSuccessfulJob mocks base method.
-func (m *MockSummarizeJobRepository) HasRecentSuccessfulJob(ctx context.Context, articleID string, since time.Time) (bool, error) {
+// DequeueJobs mocks base method.
+func (m *MockSummarizeJobRepository) DequeueJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasRecentSuccessfulJob", ctx, articleID, since)
-	ret0, _ := ret[0].(bool)
+	ret := m.ctrl.Call(m, "DequeueJobs", ctx, limit)
+	ret0, _ := ret[0].([]*domain.SummarizeJob)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// HasRecentSuccessfulJob indicates an expected call of HasRecentSuccessfulJob.
-func (mr *MockSummarizeJobRepositoryMockRecorder) HasRecentSuccessfulJob(ctx, articleID, since any) *gomock.Call {
+// DequeueJobs indicates an expected call of DequeueJobs.
+func (mr *MockSummarizeJobRepositoryMockRecorder) DequeueJobs(ctx, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasRecentSuccessfulJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).HasRecentSuccessfulJob), ctx, articleID, since)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DequeueJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).DequeueJobs), ctx, limit)
 }
 
 // GetJob mocks base method.
@@ -482,19 +482,33 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) GetPendingJobs(ctx, limit any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPendingJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).GetPendingJobs), ctx, limit)
 }
 
-// DequeueJobs mocks base method.
-func (m *MockSummarizeJobRepository) DequeueJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error) {
+// HasRecentSuccessfulJob mocks base method.
+func (m *MockSummarizeJobRepository) HasRecentSuccessfulJob(ctx context.Context, articleID string, since time.Time) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DequeueJobs", ctx, limit)
-	ret0, _ := ret[0].([]*domain.SummarizeJob)
+	ret := m.ctrl.Call(m, "HasRecentSuccessfulJob", ctx, articleID, since)
+	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// DequeueJobs indicates an expected call of DequeueJobs.
-func (mr *MockSummarizeJobRepositoryMockRecorder) DequeueJobs(ctx, limit any) *gomock.Call {
+// HasRecentSuccessfulJob indicates an expected call of HasRecentSuccessfulJob.
+func (mr *MockSummarizeJobRepositoryMockRecorder) HasRecentSuccessfulJob(ctx, articleID, since any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DequeueJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).DequeueJobs), ctx, limit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasRecentSuccessfulJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).HasRecentSuccessfulJob), ctx, articleID, since)
+}
+
+// InvalidateCompletedJobSummary mocks base method.
+func (m *MockSummarizeJobRepository) InvalidateCompletedJobSummary(ctx context.Context, articleID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InvalidateCompletedJobSummary", ctx, articleID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InvalidateCompletedJobSummary indicates an expected call of InvalidateCompletedJobSummary.
+func (mr *MockSummarizeJobRepositoryMockRecorder) InvalidateCompletedJobSummary(ctx, articleID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateCompletedJobSummary", reflect.TypeOf((*MockSummarizeJobRepository)(nil).InvalidateCompletedJobSummary), ctx, articleID)
 }
 
 // RecoverStuckJobs mocks base method.

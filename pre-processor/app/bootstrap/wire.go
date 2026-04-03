@@ -76,7 +76,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 
 	// Initialize services
 	articleSummarizerService := service.NewArticleSummarizerService(articleRepo, summaryRepo, apiRepo, log)
-	qualityCheckerService := service.NewQualityCheckerService(summaryRepo, articleRepo, apiRepo, log)
+	qualityCheckerService := service.NewQualityCheckerService(summaryRepo, articleRepo, apiRepo, jobRepo, log)
 	healthCheckerService := service.NewHealthCheckerServiceWithFactory(cfg, cfg.NewsCreator.Host, log)
 	articleSyncService := service.NewArticleSyncService(articleRepo, apiRepo, log)
 	summarizeQueueWorker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log, batchSize)

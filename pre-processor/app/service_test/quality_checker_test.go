@@ -101,10 +101,12 @@ func TestQualityCheckerService_CheckQuality(t *testing.T) {
 			tc.setupMocks(mockSummaryRepo)
 
 			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+			mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
 			serviceInstance := service.NewQualityCheckerService(
 				mockSummaryRepo,
 				mockArticleRepo,
 				mockAPIRepo,
+				mockJobRepo,
 				logger,
 			)
 
@@ -146,44 +148,39 @@ func TestQualityCheckerService_ProcessLowQualityArticles(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		setupMocks    func(*mocks.MockSummaryRepository)
+		setupMocks    func(*mocks.MockSummaryRepository, *mocks.MockSummarizeJobRepository)
 		articles      []domain.ArticleWithSummary
 		expectedError string
 		description   string
 	}{
 		"success_case_delete_summaries": {
-			description: "Should successfully delete low quality summaries",
+			description: "Should successfully delete low quality summaries and invalidate jobs",
 			articles:    lowQualityArticles,
-			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
-				// Expect deletion of both articles' summaries (by article ID)
-				mockSummaryRepo.EXPECT().
-					Delete(gomock.Any(), "article1").
-					Return(nil).
-					Times(1)
-
-				mockSummaryRepo.EXPECT().
-					Delete(gomock.Any(), "article2").
-					Return(nil).
-					Times(1)
+			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository, mockJobRepo *mocks.MockSummarizeJobRepository) {
+				mockSummaryRepo.EXPECT().Delete(gomock.Any(), "article1").Return(nil)
+				mockSummaryRepo.EXPECT().Delete(gomock.Any(), "article2").Return(nil)
+				// Compensating transaction for each deleted summary
+				mockJobRepo.EXPECT().InvalidateCompletedJobSummary(gomock.Any(), "article1").Return(nil)
+				mockJobRepo.EXPECT().InvalidateCompletedJobSummary(gomock.Any(), "article2").Return(nil)
 			},
 			expectedError: "",
 		},
 		"success_case_empty_list": {
 			description: "Should handle empty article list gracefully",
 			articles:    []domain.ArticleWithSummary{},
-			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
+			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository, mockJobRepo *mocks.MockSummarizeJobRepository) {
 				// No expectations for empty list
 			},
 			expectedError: "",
 		},
 		"error_case_delete_failure": {
-			description: "Should fail when summary deletion fails",
-			articles:    lowQualityArticles[:1], // Only first article
-			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository) {
+			description: "Should fail when summary deletion fails (no invalidation)",
+			articles:    lowQualityArticles[:1],
+			setupMocks: func(mockSummaryRepo *mocks.MockSummaryRepository, mockJobRepo *mocks.MockSummarizeJobRepository) {
 				mockSummaryRepo.EXPECT().
 					Delete(gomock.Any(), "article1").
-					Return(errors.New("delete operation failed")).
-					Times(1)
+					Return(errors.New("delete operation failed"))
+				// No InvalidateCompletedJobSummary expected — delete failed
 			},
 			expectedError: "delete operation failed",
 		},
@@ -199,14 +196,17 @@ func TestQualityCheckerService_ProcessLowQualityArticles(t *testing.T) {
 			mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
 			logger := slog.Default()
 
-			// Setup test expectations
-			tc.setupMocks(mockSummaryRepo)
-
 			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+			mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+
+			// Setup test expectations
+			tc.setupMocks(mockSummaryRepo, mockJobRepo)
+
 			serviceInstance := service.NewQualityCheckerService(
 				mockSummaryRepo,
 				mockArticleRepo,
 				mockAPIRepo,
+				mockJobRepo,
 				logger,
 			)
 
@@ -247,10 +247,12 @@ func TestQualityCheckerService_ResetPagination(t *testing.T) {
 			logger := slog.Default()
 
 			mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+			mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
 			serviceInstance := service.NewQualityCheckerService(
 				mockSummaryRepo,
 				mockArticleRepo,
 				mockAPIRepo,
+				mockJobRepo,
 				logger,
 			)
 
@@ -278,10 +280,12 @@ func TestQualityCheckerService_Interface_Compliance(t *testing.T) {
 	logger := slog.Default()
 
 	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+	mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
 	serviceInstance := service.NewQualityCheckerService(
 		mockSummaryRepo,
 		mockArticleRepo,
 		mockAPIRepo,
+		mockJobRepo,
 		logger,
 	)
 
@@ -299,10 +303,12 @@ func TestQualityCheckerService_Constructor(t *testing.T) {
 	logger := slog.Default()
 
 	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+	mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
 	serviceInstance := service.NewQualityCheckerService(
 		mockSummaryRepo,
 		mockArticleRepo,
 		mockAPIRepo,
+		mockJobRepo,
 		logger,
 	)
 
@@ -333,10 +339,12 @@ func TestQualityCheckerService_EdgeCases(t *testing.T) {
 			Times(1)
 
 		mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
 		serviceInstance := service.NewQualityCheckerService(
 			mockSummaryRepo,
 			mockArticleRepo,
 			mockAPIRepo,
+			mockJobRepo,
 			logger,
 		)
 
@@ -361,15 +369,117 @@ func TestQualityCheckerService_EdgeCases(t *testing.T) {
 			Times(1)
 
 		mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
 		serviceInstance := service.NewQualityCheckerService(
 			mockSummaryRepo,
 			mockArticleRepo,
 			mockAPIRepo,
+			mockJobRepo,
 			logger,
 		)
 
 		result, err := serviceInstance.CheckQuality(context.Background(), 0)
 		require.NoError(t, err)
 		assert.Equal(t, 0, result.ProcessedCount)
+	})
+}
+
+func TestQualityCheckerService_CompensatingTransaction(t *testing.T) {
+	t.Run("should_invalidate_job_after_summary_deletion", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+		mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+		mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+		logger := slog.Default()
+
+		articles := []domain.ArticleWithSummary{
+			{ArticleID: "article-low-quality", SummaryID: "s1"},
+		}
+
+		// Delete succeeds
+		mockSummaryRepo.EXPECT().
+			Delete(gomock.Any(), "article-low-quality").
+			Return(nil)
+
+		// Compensating transaction: must invalidate the completed job
+		mockJobRepo.EXPECT().
+			InvalidateCompletedJobSummary(gomock.Any(), "article-low-quality").
+			Return(nil).
+			Times(1)
+
+		svc := service.NewQualityCheckerService(
+			mockSummaryRepo, mockArticleRepo, mockAPIRepo, mockJobRepo, logger,
+		)
+
+		err := svc.ProcessLowQualityArticles(context.Background(), articles)
+		require.NoError(t, err)
+	})
+
+	t.Run("should_not_invalidate_when_delete_fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+		mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+		mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+		logger := slog.Default()
+
+		articles := []domain.ArticleWithSummary{
+			{ArticleID: "article-delete-fail", SummaryID: "s2"},
+		}
+
+		// Delete fails
+		mockSummaryRepo.EXPECT().
+			Delete(gomock.Any(), "article-delete-fail").
+			Return(errors.New("delete failed"))
+
+		// InvalidateCompletedJobSummary must NOT be called (gomock enforces this)
+
+		svc := service.NewQualityCheckerService(
+			mockSummaryRepo, mockArticleRepo, mockAPIRepo, mockJobRepo, logger,
+		)
+
+		err := svc.ProcessLowQualityArticles(context.Background(), articles)
+		require.Error(t, err)
+	})
+
+	t.Run("should_continue_on_invalidation_error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+		mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+		mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+		logger := slog.Default()
+
+		articles := []domain.ArticleWithSummary{
+			{ArticleID: "article-inv-fail", SummaryID: "s3"},
+			{ArticleID: "article-inv-ok", SummaryID: "s4"},
+		}
+
+		// Both deletes succeed
+		mockSummaryRepo.EXPECT().Delete(gomock.Any(), "article-inv-fail").Return(nil)
+		mockSummaryRepo.EXPECT().Delete(gomock.Any(), "article-inv-ok").Return(nil)
+
+		// First invalidation fails — processing must continue
+		mockJobRepo.EXPECT().
+			InvalidateCompletedJobSummary(gomock.Any(), "article-inv-fail").
+			Return(errors.New("db timeout"))
+		// Second invalidation succeeds
+		mockJobRepo.EXPECT().
+			InvalidateCompletedJobSummary(gomock.Any(), "article-inv-ok").
+			Return(nil)
+
+		svc := service.NewQualityCheckerService(
+			mockSummaryRepo, mockArticleRepo, mockAPIRepo, mockJobRepo, logger,
+		)
+
+		err := svc.ProcessLowQualityArticles(context.Background(), articles)
+		require.NoError(t, err)
 	})
 }

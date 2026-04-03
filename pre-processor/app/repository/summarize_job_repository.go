@@ -471,3 +471,40 @@ func (r *summarizeJobRepository) RecoverStuckJobs(ctx context.Context) (int64, e
 	}
 	return recovered, nil
 }
+
+// InvalidateCompletedJobSummary NULLs the summary column on completed jobs for
+// the given article. This is a compensating transaction: when quality-check
+// deletes a summary from article_summaries, this ensures HasRecentSuccessfulJob
+// no longer blocks re-enqueue.
+func (r *summarizeJobRepository) InvalidateCompletedJobSummary(ctx context.Context, articleID string) error {
+	if articleID == "" {
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
+		return fmt.Errorf("article ID cannot be empty")
+	}
+
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return fmt.Errorf("database connection is nil")
+	}
+
+	query := `
+		UPDATE summarize_job_queue
+		SET summary = NULL
+		WHERE article_id = $1
+		  AND status = 'completed'
+		  AND summary IS NOT NULL
+	`
+
+	result, err := r.db.Exec(ctx, query, articleID)
+	if err != nil {
+		r.logger.ErrorContext(ctx, "failed to invalidate completed job summary", "error", err, "article_id", articleID)
+		return fmt.Errorf("failed to invalidate completed job summary: %w", err)
+	}
+
+	if affected := result.RowsAffected(); affected > 0 {
+		r.logger.InfoContext(ctx, "invalidated completed job summary for re-enqueue",
+			"article_id", articleID, "affected_rows", affected)
+	}
+
+	return nil
+}

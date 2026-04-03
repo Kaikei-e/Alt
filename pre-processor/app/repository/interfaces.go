@@ -57,4 +57,8 @@ type SummarizeJobRepository interface {
 	// in a single transaction, preventing duplicate processing under concurrency.
 	DequeueJobs(ctx context.Context, limit int) ([]*domain.SummarizeJob, error)
 	RecoverStuckJobs(ctx context.Context) (int64, error)
+	// InvalidateCompletedJobSummary NULLs out the summary column on completed jobs
+	// for the given article, so HasRecentSuccessfulJob no longer blocks re-enqueue.
+	// This is the compensating transaction for quality-check deletion.
+	InvalidateCompletedJobSummary(ctx context.Context, articleID string) error
 }

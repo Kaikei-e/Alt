@@ -196,6 +196,32 @@ func TestSummarizeJobRepository_RecoverStuckJobs(t *testing.T) {
 	// - Returns count of recovered jobs
 }
 
+func TestSummarizeJobRepository_InvalidateCompletedJobSummary(t *testing.T) {
+	t.Run("should reject empty article ID", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		err := repo.InvalidateCompletedJobSummary(context.Background(), "")
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "article ID cannot be empty")
+	})
+
+	t.Run("should handle nil database gracefully", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		err := repo.InvalidateCompletedJobSummary(context.Background(), "test-article-id")
+
+		assert.Error(t, err)
+	})
+
+	// Note: Integration tests should verify:
+	// - Completed jobs with non-empty summary get summary set to NULL
+	// - Pending/running jobs are NOT affected
+	// - Multiple completed jobs for same article all get summary NULLed
+	// - No-op when article has no completed jobs (idempotent)
+	// - After invalidation, HasRecentSuccessfulJob returns false
+}
+
 func TestSummarizeJobRepository_CreateJob_Idempotent(t *testing.T) {
 	// Note: Integration tests should verify:
 	// - First insert for an article_id creates a new job

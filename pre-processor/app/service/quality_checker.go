@@ -16,6 +16,7 @@ type qualityCheckerService struct {
 	summaryRepo repository.SummaryRepository
 	articleRepo repository.ArticleRepository
 	apiRepo     repository.ExternalAPIRepository
+	jobRepo     repository.SummarizeJobRepository
 	logger      *slog.Logger
 	cursor      *domain.Cursor
 }
@@ -25,12 +26,14 @@ func NewQualityCheckerService(
 	summaryRepo repository.SummaryRepository,
 	articleRepo repository.ArticleRepository,
 	apiRepo repository.ExternalAPIRepository,
+	jobRepo repository.SummarizeJobRepository,
 	logger *slog.Logger,
 ) QualityCheckerService {
 	return &qualityCheckerService{
 		summaryRepo: summaryRepo,
 		articleRepo: articleRepo,
 		apiRepo:     apiRepo,
+		jobRepo:     jobRepo,
 		logger:      logger,
 		cursor:      &domain.Cursor{},
 	}
@@ -104,6 +107,13 @@ func (s *qualityCheckerService) CheckQuality(ctx context.Context, batchSize int)
 		} else {
 			result.RemovedCount++
 
+			// Compensating transaction: invalidate completed job summary
+			// so the recent_success guard allows re-enqueue (ADR-513 guard fix).
+			if invalidateErr := s.jobRepo.InvalidateCompletedJobSummary(ctx, articleWithSummary.ArticleID); invalidateErr != nil {
+				s.logger.ErrorContext(ctx, "failed to invalidate completed job summary (best-effort)",
+					"article_id", articleWithSummary.ArticleID, "error", invalidateErr)
+			}
+
 			s.logger.InfoContext(ctx, "removed low quality summary", "article_id", articleWithSummary.ArticleID)
 		}
 
@@ -147,6 +157,13 @@ func (s *qualityCheckerService) ProcessLowQualityArticles(ctx context.Context, a
 				"error", err)
 
 			return err
+		}
+
+		// Compensating transaction: invalidate completed job summary
+		// so the recent_success guard allows re-enqueue.
+		if invalidateErr := s.jobRepo.InvalidateCompletedJobSummary(ctx, article.ArticleID); invalidateErr != nil {
+			s.logger.ErrorContext(ctx, "failed to invalidate completed job summary (best-effort)",
+				"article_id", article.ArticleID, "error", invalidateErr)
 		}
 
 		s.logger.InfoContext(ctx, "removed low quality summary",
