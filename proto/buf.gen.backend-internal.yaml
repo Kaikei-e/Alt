@@ -13,3 +13,13 @@ plugins:
   - local: protoc-gen-connect-go
     out: ../alt-backend/app/gen/proto
     opt: paths=source_relative
+
+  # ============================================================================
+  # rag-orchestrator (client for BackendInternalService, ADR-000617)
+  # ============================================================================
+  - local: protoc-gen-go
+    out: ../rag-orchestrator/internal/gen/proto
+    opt: paths=source_relative
+  - local: protoc-gen-connect-go
+    out: ../rag-orchestrator/internal/gen/proto
+    opt: paths=source_relative

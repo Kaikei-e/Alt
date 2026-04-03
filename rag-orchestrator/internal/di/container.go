@@ -21,8 +21,7 @@ import (
 	"rag-orchestrator/internal/usecase"
 	"rag-orchestrator/internal/worker"
 
-	"alt/gen/proto/alt/articles/v2/articlesv2connect"
-	"alt/gen/proto/alt/recap/v2/recapv2connect"
+	"alt/gen/proto/services/backend/v1/backendv1connect"
 )
 
 // ApplicationComponents holds all wired dependencies for the application.
@@ -152,22 +151,18 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		))
 		log.Info("connect_rpc_service_token_configured")
 	}
-	altBackendConnectClient := articlesv2connect.NewArticleServiceClient(
+	backendInternalClient := backendv1connect.NewBackendInternalServiceClient(
 		http.DefaultClient, cfg.Backend.ConnectURL, connectOpts...,
 	)
-	tagCloudClient := altdb.NewConnectTagCloudClient(altBackendConnectClient, log)
-	articlesByTagClient := altdb.NewConnectArticlesByTagClient(altBackendConnectClient, log)
-
-	recapConnectClient := recapv2connect.NewRecapServiceClient(
-		http.DefaultClient, cfg.Backend.ConnectURL, connectOpts...,
-	)
-	recapSearchClient := altdb.NewConnectRecapSearchClient(recapConnectClient, log)
+	tagCloudClient := altdb.NewInternalTagCloudClient(backendInternalClient, log)
+	articlesByTagClient := altdb.NewInternalArticlesByTagClient(backendInternalClient, log)
 
 	toolMap := map[string]domain.Tool{
 		"related_articles":  relatedArticlesTool,
 		"tag_cloud_explore": tools.NewTagCloudExploreTool(tagCloudClient),
 		"articles_by_tag":   tools.NewArticlesByTagTool(articlesByTagClient),
-		"search_recaps":     tools.NewSearchRecapsTool(recapSearchClient),
+		// search_recaps: Connect-RPC to recap service pending (requires recap-worker internal API)
+		// "search_recaps":     tools.NewSearchRecapsTool(recapSearchClient),
 		"tag_search":        tools.NewTagSearchTool(searchClient),
 		"date_range_filter": tools.NewDateRangeFilterTool(searchClient),
 	}

@@ -61,6 +61,10 @@ type Handler struct {
 	// Backfill (pre-processor split-DB)
 	getEmptyFeedID internal_feed_port.GetEmptyFeedIDPort
 
+	// RAG Tool Operations (ADR-000617)
+	fetchTagCloudPort      fetchTagCloudPort
+	fetchArticlesByTagPort fetchArticlesByTagPort
+
 	// Event publishing
 	eventPublisher     event_publisher_port.EventPublisherPort
 	knowledgeEventPort knowledge_event_port.AppendKnowledgeEventPort
@@ -909,4 +913,100 @@ func clampLimit(limit int) int {
 		limit = maxLimit
 	}
 	return limit
+}
+
+// --- RAG Tool Operations (ADR-000617) ---
+
+// fetchTagCloudPort is the port interface for fetching tag cloud data.
+type fetchTagCloudPort interface {
+	Execute(ctx context.Context, limit int) ([]*domain.TagCloudItem, error)
+}
+
+// fetchArticlesByTagPort is the port interface for fetching articles by tag name.
+type fetchArticlesByTagPort interface {
+	ExecuteByTagName(ctx context.Context, tagName string, cursor *time.Time, limit int) ([]*domain.TagTrailArticle, error)
+}
+
+// WithRAGToolPorts configures ports for RAG tool RPCs (ADR-000617).
+func WithRAGToolPorts(
+	tagCloud fetchTagCloudPort,
+	articlesByTag fetchArticlesByTagPort,
+) HandlerOption {
+	return func(h *Handler) {
+		h.fetchTagCloudPort = tagCloud
+		h.fetchArticlesByTagPort = articlesByTag
+	}
+}
+
+// FetchTagCloud returns tag cloud data for topic exploration.
+func (h *Handler) FetchTagCloud(ctx context.Context, req *connect.Request[backendv1.BackendInternalServiceFetchTagCloudRequest]) (*connect.Response[backendv1.BackendInternalServiceFetchTagCloudResponse], error) {
+	if h.fetchTagCloudPort == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("FetchTagCloud not configured"))
+	}
+
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 300
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+
+	items, err := h.fetchTagCloudPort.Execute(ctx, limit)
+	if err != nil {
+		h.logger.Error("FetchTagCloud failed", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("fetch tag cloud: %w", err))
+	}
+
+	tags := make([]*backendv1.TagCloudInternalItem, 0, len(items))
+	for _, item := range items {
+		tags = append(tags, &backendv1.TagCloudInternalItem{
+			TagName:      item.TagName,
+			ArticleCount: int32(item.ArticleCount),
+		})
+	}
+
+	return connect.NewResponse(&backendv1.BackendInternalServiceFetchTagCloudResponse{
+		Tags: tags,
+	}), nil
+}
+
+// FetchArticlesByTag returns articles matching a tag name.
+func (h *Handler) FetchArticlesByTag(ctx context.Context, req *connect.Request[backendv1.BackendInternalServiceFetchArticlesByTagRequest]) (*connect.Response[backendv1.BackendInternalServiceFetchArticlesByTagResponse], error) {
+	if h.fetchArticlesByTagPort == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("FetchArticlesByTag not configured"))
+	}
+
+	tagName := req.Msg.TagName
+	if tagName == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("tag_name is required"))
+	}
+
+	limit := int(req.Msg.Limit)
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	articles, err := h.fetchArticlesByTagPort.ExecuteByTagName(ctx, tagName, nil, limit)
+	if err != nil {
+		h.logger.Error("FetchArticlesByTag failed", "error", err, "tag", tagName)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("fetch articles by tag: %w", err))
+	}
+
+	result := make([]*backendv1.ArticleByTagItem, 0, len(articles))
+	for _, a := range articles {
+		result = append(result, &backendv1.ArticleByTagItem{
+			Id:          a.ID,
+			Title:       a.Title,
+			Url:         a.Link,
+			PublishedAt: a.PublishedAt.Format(time.RFC3339),
+		})
+	}
+
+	return connect.NewResponse(&backendv1.BackendInternalServiceFetchArticlesByTagResponse{
+		Articles: result,
+	}), nil
 }

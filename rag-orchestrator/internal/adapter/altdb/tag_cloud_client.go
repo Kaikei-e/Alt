@@ -5,27 +5,27 @@ import (
 	"fmt"
 	"log/slog"
 
-	articlesv2 "alt/gen/proto/alt/articles/v2"
-	"alt/gen/proto/alt/articles/v2/articlesv2connect"
+	backendv1 "alt/gen/proto/services/backend/v1"
+	"alt/gen/proto/services/backend/v1/backendv1connect"
 
 	"rag-orchestrator/internal/domain"
 
 	"connectrpc.com/connect"
 )
 
-// ConnectTagCloudClient implements domain.TagCloudClient using Connect-RPC.
-type ConnectTagCloudClient struct {
-	client articlesv2connect.ArticleServiceClient
+// InternalTagCloudClient implements domain.TagCloudClient using BackendInternalService Connect-RPC.
+type InternalTagCloudClient struct {
+	client backendv1connect.BackendInternalServiceClient
 	logger *slog.Logger
 }
 
-// NewConnectTagCloudClient creates a tag cloud client using the given Connect-RPC client.
-func NewConnectTagCloudClient(client articlesv2connect.ArticleServiceClient, logger *slog.Logger) *ConnectTagCloudClient {
-	return &ConnectTagCloudClient{client: client, logger: logger}
+// NewInternalTagCloudClient creates a tag cloud client using the BackendInternalService.
+func NewInternalTagCloudClient(client backendv1connect.BackendInternalServiceClient, logger *slog.Logger) *InternalTagCloudClient {
+	return &InternalTagCloudClient{client: client, logger: logger}
 }
 
-func (c *ConnectTagCloudClient) FetchTagCloud(ctx context.Context, limit int) ([]domain.TagCloudEntry, error) {
-	req := connect.NewRequest(&articlesv2.FetchTagCloudRequest{
+func (c *InternalTagCloudClient) FetchTagCloud(ctx context.Context, limit int) ([]domain.TagCloudEntry, error) {
+	req := connect.NewRequest(&backendv1.BackendInternalServiceFetchTagCloudRequest{
 		Limit: int32(limit),
 	})
 

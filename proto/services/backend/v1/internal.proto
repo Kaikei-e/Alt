@@ -407,4 +407,48 @@ service BackendInternalService {
   // GetEmptyFeedID returns a feed ID that has no articles for the given feed URL.
   // Returns empty feed_id if all feeds for this URL already have articles.
   rpc GetEmptyFeedID(GetEmptyFeedIDRequest) returns (GetEmptyFeedIDResponse);
+
+  // ── RAG Tool Operations (ADR-000617: rag-orchestrator synthesis) ──
+
+  // FetchTagCloud returns tag names with article counts for topic exploration.
+  rpc FetchTagCloud(BackendInternalServiceFetchTagCloudRequest) returns (BackendInternalServiceFetchTagCloudResponse);
+
+  // FetchArticlesByTag returns articles filtered by tag name.
+  rpc FetchArticlesByTag(BackendInternalServiceFetchArticlesByTagRequest) returns (BackendInternalServiceFetchArticlesByTagResponse);
+}
+
+// BackendInternalServiceFetchTagCloudRequest is the request for FetchTagCloud via BackendInternalService.
+message BackendInternalServiceFetchTagCloudRequest {
+  // Maximum number of tags to return (default: 300, max: 500)
+  int32 limit = 1;
+}
+
+// BackendInternalServiceFetchTagCloudResponse contains tag cloud entries.
+message BackendInternalServiceFetchTagCloudResponse {
+  repeated TagCloudInternalItem tags = 1;
+}
+
+// TagCloudInternalItem represents a tag with its article count.
+message TagCloudInternalItem {
+  string tag_name = 1;
+  int32 article_count = 2;
+}
+
+// BackendInternalServiceFetchArticlesByTagRequest is the request for FetchArticlesByTag via BackendInternalService.
+message BackendInternalServiceFetchArticlesByTagRequest {
+  string tag_name = 1;
+  int32 limit = 2;
+}
+
+// BackendInternalServiceFetchArticlesByTagResponse contains articles matching the tag.
+message BackendInternalServiceFetchArticlesByTagResponse {
+  repeated ArticleByTagItem articles = 1;
+}
+
+// ArticleByTagItem represents a minimal article returned by tag search.
+message ArticleByTagItem {
+  string id = 1;
+  string title = 2;
+  string url = 3;
+  string published_at = 4;
 }

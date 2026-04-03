@@ -182,6 +182,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		internalhandler.WithEventPublisher(container.EventPublisher),
 		internalhandler.WithKnowledgeVersionUsecases(container.CreateSummaryVersionUsecase, container.CreateTagSetVersionUsecase),
 		internalhandler.WithKnowledgeEventPort(container.SovereignClient),
+		internalhandler.WithRAGToolPorts(container.FetchTagCloudUsecase, container.FetchArticlesByTagUsecase),
 	)
 	internalPath, internalServiceHandler := backendv1connect.NewBackendInternalServiceHandler(internalHandler, internalOpts)
 	mux.Handle(internalPath, internalServiceHandler)

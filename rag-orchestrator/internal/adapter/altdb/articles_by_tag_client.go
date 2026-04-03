@@ -5,28 +5,28 @@ import (
 	"fmt"
 	"log/slog"
 
-	articlesv2 "alt/gen/proto/alt/articles/v2"
-	"alt/gen/proto/alt/articles/v2/articlesv2connect"
+	backendv1 "alt/gen/proto/services/backend/v1"
+	"alt/gen/proto/services/backend/v1/backendv1connect"
 
 	"rag-orchestrator/internal/domain"
 
 	"connectrpc.com/connect"
 )
 
-// ConnectArticlesByTagClient implements domain.ArticlesByTagClient using Connect-RPC.
-type ConnectArticlesByTagClient struct {
-	client articlesv2connect.ArticleServiceClient
+// InternalArticlesByTagClient implements domain.ArticlesByTagClient using BackendInternalService.
+type InternalArticlesByTagClient struct {
+	client backendv1connect.BackendInternalServiceClient
 	logger *slog.Logger
 }
 
-// NewConnectArticlesByTagClient creates an articles-by-tag client.
-func NewConnectArticlesByTagClient(client articlesv2connect.ArticleServiceClient, logger *slog.Logger) *ConnectArticlesByTagClient {
-	return &ConnectArticlesByTagClient{client: client, logger: logger}
+// NewInternalArticlesByTagClient creates an articles-by-tag client using BackendInternalService.
+func NewInternalArticlesByTagClient(client backendv1connect.BackendInternalServiceClient, logger *slog.Logger) *InternalArticlesByTagClient {
+	return &InternalArticlesByTagClient{client: client, logger: logger}
 }
 
-func (c *ConnectArticlesByTagClient) FetchArticlesByTag(ctx context.Context, tagName string, limit int) ([]domain.TagArticle, error) {
-	req := connect.NewRequest(&articlesv2.FetchArticlesByTagRequest{
-		TagName: &tagName,
+func (c *InternalArticlesByTagClient) FetchArticlesByTag(ctx context.Context, tagName string, limit int) ([]domain.TagArticle, error) {
+	req := connect.NewRequest(&backendv1.BackendInternalServiceFetchArticlesByTagRequest{
+		TagName: tagName,
 		Limit:   int32(limit),
 	})
 
@@ -40,7 +40,7 @@ func (c *ConnectArticlesByTagClient) FetchArticlesByTag(ctx context.Context, tag
 		articles = append(articles, domain.TagArticle{
 			ID:    a.GetId(),
 			Title: a.GetTitle(),
-			URL:   a.GetLink(),
+			URL:   a.GetUrl(),
 		})
 	}
 
