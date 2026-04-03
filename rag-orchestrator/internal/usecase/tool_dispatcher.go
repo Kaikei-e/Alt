@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"rag-orchestrator/internal/domain"
@@ -107,6 +108,103 @@ func (d *ToolDispatcher) selectToolsForPlan(plan *domain.PlannerOutput, intent Q
 	}
 	// Fallback to existing intent-based selection
 	return d.selectTools(intent)
+}
+
+// ExecutePlan runs tools according to a ToolPlan, respecting step dependencies.
+// Independent steps (no depends_on) run in parallel. Dependent steps wait.
+// Tool failures are captured in results but do not abort other steps.
+func (d *ToolDispatcher) ExecutePlan(ctx context.Context, plan *domain.ToolPlan) []domain.ToolResult {
+	n := len(plan.Steps)
+	results := make([]domain.ToolResult, n)
+	done := make([]bool, n)
+	var mu sync.Mutex
+
+	// Build a level-order execution: steps with no unmet dependencies run first.
+	for {
+		// Find runnable steps: not done, all dependencies done.
+		var runnable []int
+		mu.Lock()
+		for i := 0; i < n; i++ {
+			if done[i] {
+				continue
+			}
+			ready := true
+			for _, dep := range plan.Steps[i].DependsOn {
+				if dep >= 0 && dep < n && !done[dep] {
+					ready = false
+					break
+				}
+			}
+			if ready {
+				runnable = append(runnable, i)
+			}
+		}
+		mu.Unlock()
+
+		if len(runnable) == 0 {
+			break
+		}
+
+		// Run all runnable steps in parallel.
+		var wg sync.WaitGroup
+		for _, idx := range runnable {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				step := plan.Steps[i]
+				result := d.executeStep(ctx, step)
+				mu.Lock()
+				results[i] = result
+				done[i] = true
+				mu.Unlock()
+			}(idx)
+		}
+		wg.Wait()
+	}
+
+	return results
+}
+
+func (d *ToolDispatcher) executeStep(ctx context.Context, step domain.ToolStep) domain.ToolResult {
+	tool, ok := d.tools[step.ToolName]
+	if !ok {
+		return domain.ToolResult{
+			ToolName: step.ToolName,
+			Success:  false,
+			Error:    "tool not found: " + step.ToolName,
+		}
+	}
+
+	toolCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	result, err := tool.Execute(toolCtx, step.Params)
+	if err != nil {
+		d.logger.Warn("plan_tool_execution_failed",
+			slog.String("tool", step.ToolName),
+			slog.String("error", err.Error()))
+		return domain.ToolResult{
+			ToolName: step.ToolName,
+			Success:  false,
+			Error:    err.Error(),
+		}
+	}
+
+	if result == nil {
+		return domain.ToolResult{
+			ToolName: step.ToolName,
+			Success:  false,
+			Error:    "tool returned nil result",
+		}
+	}
+
+	result.ToolName = step.ToolName
+	d.logger.Info("plan_tool_executed",
+		slog.String("tool", step.ToolName),
+		slog.Bool("success", result.Success),
+		slog.Int("data_length", len(result.Data)))
+
+	return *result
 }
 
 // selectTools returns tool names to execute based on intent type.
