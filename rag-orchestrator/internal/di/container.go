@@ -1,9 +1,12 @@
 package di
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
+
+	"connectrpc.com/connect"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -142,14 +145,21 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	relatedArticlesTool := tools.NewRelatedArticlesTool(searchClient)
 
 	// Connect-RPC clients for alt-backend and recap service (ADR-000617: Tool-Use Agentic RAG)
+	var connectOpts []connect.ClientOption
+	if cfg.Backend.ServiceToken != "" {
+		connectOpts = append(connectOpts, connect.WithInterceptors(
+			newServiceTokenInterceptor(cfg.Backend.ServiceToken),
+		))
+		log.Info("connect_rpc_service_token_configured")
+	}
 	altBackendConnectClient := articlesv2connect.NewArticleServiceClient(
-		http.DefaultClient, cfg.Backend.URL,
+		http.DefaultClient, cfg.Backend.URL, connectOpts...,
 	)
 	tagCloudClient := altdb.NewConnectTagCloudClient(altBackendConnectClient, log)
 	articlesByTagClient := altdb.NewConnectArticlesByTagClient(altBackendConnectClient, log)
 
 	recapConnectClient := recapv2connect.NewRecapServiceClient(
-		http.DefaultClient, cfg.Backend.URL, // recap service shares alt-backend URL
+		http.DefaultClient, cfg.Backend.URL, connectOpts...,
 	)
 	recapSearchClient := altdb.NewConnectRecapSearchClient(recapConnectClient, log)
 
@@ -247,4 +257,32 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		EmbeddingModel:       cfg.Embedder.Model,
 		EmbedderTimeout:      cfg.Embedder.Timeout,
 	}
+}
+
+// serviceTokenInterceptor adds X-Service-Token header to all Connect-RPC requests.
+type serviceTokenInterceptor struct {
+	token string
+}
+
+func newServiceTokenInterceptor(token string) *serviceTokenInterceptor {
+	return &serviceTokenInterceptor{token: token}
+}
+
+func (i *serviceTokenInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		req.Header().Set("X-Service-Token", i.token)
+		return next(ctx, req)
+	}
+}
+
+func (i *serviceTokenInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
+		conn := next(ctx, spec)
+		conn.RequestHeader().Set("X-Service-Token", i.token)
+		return conn
+	}
+}
+
+func (i *serviceTokenInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next // No-op for handler side
 }

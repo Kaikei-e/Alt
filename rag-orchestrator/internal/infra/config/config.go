@@ -169,8 +169,9 @@ type TemporalConfig struct {
 
 // BackendConfig holds alt-backend connection settings.
 type BackendConfig struct {
-	URL     string
-	Timeout int // Seconds
+	URL          string
+	Timeout      int    // Seconds
+	ServiceToken string // Shared secret for Connect-RPC auth (X-Service-Token header)
 }
 
 // CacheConfig holds answer cache settings.
@@ -269,8 +270,9 @@ func Load() *Config {
 			Boost18h: getEnvFloat32("TEMPORAL_BOOST_18H", defaultTemporalBoost18h),
 		},
 		Backend: BackendConfig{
-			URL:     getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),
-			Timeout: getEnvInt("ALT_BACKEND_TIMEOUT", 30),
+			URL:          getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),
+			Timeout:      getEnvInt("ALT_BACKEND_TIMEOUT", 30),
+			ServiceToken: getSecret("SERVICE_TOKEN", "SERVICE_TOKEN_FILE", ""),
 		},
 		Cache: CacheConfig{
 			Size: getEnvInt("RAG_CACHE_SIZE", defaultCacheSize),
