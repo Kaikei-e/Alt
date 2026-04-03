@@ -20,6 +20,9 @@ type ToolDispatcher struct {
 
 // NewToolDispatcher creates a new tool dispatcher with available tools.
 func NewToolDispatcher(tools map[string]domain.Tool, logger *slog.Logger) *ToolDispatcher {
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
 	return &ToolDispatcher{tools: tools, logger: logger}
 }
 

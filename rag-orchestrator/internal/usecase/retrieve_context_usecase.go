@@ -21,8 +21,10 @@ type RetrieveContextInput struct {
 
 // RetrieveContextOutput defines the output for RetrieveContext.
 type RetrieveContextOutput struct {
-	Contexts        []ContextItem
-	ExpandedQueries []string
+	Contexts          []ContextItem
+	ExpandedQueries   []string
+	SupplementaryInfo []string // Additional context from tools (recaps, tag clouds, etc.)
+	ToolsUsed         []string // Names of tools executed during retrieval
 }
 
 // ContextItem represents a single retrieved chunk with metadata.
