@@ -4,7 +4,11 @@ import pytest
 from unittest.mock import AsyncMock, Mock
 
 from news_creator.domain.models import LLMGenerateResponse
-from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
+from news_creator.usecase.expand_query_usecase import (
+    ExpandQueryUsecase,
+    EXPAND_QUERY_PROMPT_TEMPLATE,
+    EXPAND_QUERY_WITH_HISTORY_TEMPLATE,
+)
 
 
 @pytest.mark.asyncio
@@ -199,3 +203,113 @@ async def test_expand_query_default_priority_is_low():
 
     call_args = llm_provider.generate.call_args
     assert call_args.kwargs.get("priority") == "low"
+
+
+# --- Phase 1 RED tests: prompt hardening + output validation ---
+
+ECHOABLE_META_PHRASES = [
+    "Output Japanese queries first",
+    "Output ONLY the generated queries",
+    "Do not add numbering, bullets, labels, or explanations",
+    "one per line",
+    "Japanese queries first, then English queries",
+]
+
+
+class TestPromptHasNoEchoableMeta:
+    """Prompt templates must not contain meta-instructions that small models echo."""
+
+    def test_single_turn_template_has_no_echoable_meta_lines(self):
+        for phrase in ECHOABLE_META_PHRASES:
+            assert phrase not in EXPAND_QUERY_PROMPT_TEMPLATE, (
+                f"Template contains echoable meta: '{phrase}'"
+            )
+
+    def test_multi_turn_template_has_no_echoable_meta_lines(self):
+        for phrase in ECHOABLE_META_PHRASES:
+            assert phrase not in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+                f"History template contains echoable meta: '{phrase}'"
+            )
+
+
+@pytest.mark.asyncio
+async def test_expand_query_filters_instruction_echo():
+    """When LLM echoes prompt instructions, the result must be empty."""
+    config = Mock()
+    llm_provider = AsyncMock()
+    # Simulate the exact failure observed in production logs
+    echo_line = "Japanese queries and English queries must be translated to each other."
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="\n".join([echo_line] * 8),
+        model="gemma4-e4b-12k",
+        prompt_eval_count=256,
+        eval_count=64,
+        total_duration=500_000_000,
+    )
+
+    usecase = ExpandQueryUsecase(config=config, llm_provider=llm_provider)
+
+    expanded_queries, _, _ = await usecase.expand_query(
+        query="イランの石油危機はなぜ起きた？",
+        japanese_count=1,
+        english_count=3,
+    )
+
+    assert expanded_queries == [], (
+        f"Instruction echo should be filtered out, got: {expanded_queries}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_expand_query_deduplicates_preserving_order():
+    """Duplicate queries must be removed while preserving first-occurrence order."""
+    config = Mock()
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="イランの石油危機 原因\nIran oil crisis causes\nIran oil crisis causes\nイランの石油危機 原因\noil price surge reasons",
+        model="gemma4-e4b-12k",
+        prompt_eval_count=256,
+        eval_count=64,
+        total_duration=500_000_000,
+    )
+
+    usecase = ExpandQueryUsecase(config=config, llm_provider=llm_provider)
+
+    expanded_queries, _, _ = await usecase.expand_query(
+        query="イランの石油危機はなぜ起きた？",
+        japanese_count=1,
+        english_count=3,
+    )
+
+    # Dedup should keep first occurrence, preserve order
+    assert expanded_queries == [
+        "イランの石油危機 原因",
+        "Iran oil crisis causes",
+        "oil price surge reasons",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_expand_query_rejects_wrapped_labels_and_preamble():
+    """Preamble lines like 'Here are the queries:' must be stripped."""
+    config = Mock()
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="Here are the generated queries:\n\nイランの石油危機 原因\nIran oil crisis causes\nOil price surge reasons",
+        model="gemma4-e4b-12k",
+        prompt_eval_count=256,
+        eval_count=64,
+        total_duration=500_000_000,
+    )
+
+    usecase = ExpandQueryUsecase(config=config, llm_provider=llm_provider)
+
+    expanded_queries, _, _ = await usecase.expand_query(
+        query="イランの石油危機はなぜ起きた？",
+        japanese_count=1,
+        english_count=3,
+    )
+
+    # Preamble "Here are the generated queries:" must be excluded
+    assert "Here are the generated queries:" not in expanded_queries
+    assert len(expanded_queries) == 3
