@@ -90,12 +90,22 @@ func ExpandQueries(
 			return nil // non-fatal
 		}
 		if len(expanded) > 0 {
+			preFilterCount := len(expanded)
 			expanded = filterExpandedQueries(expanded)
 			sc.ExpandedQueries = expanded
 			logger.Info("query_expanded",
 				slog.String("retrieval_id", sc.RetrievalID),
 				slog.String("original", sc.Query),
+				slog.Int("pre_filter_count", preFilterCount),
+				slog.Int("post_filter_count", len(expanded)),
 				slog.Any("expanded", expanded))
+			if len(expanded) == 0 {
+				logger.Warn("expansion_all_filtered",
+					slog.String("retrieval_id", sc.RetrievalID),
+					slog.String("query", sc.Query),
+					slog.Int("pre_filter_count", preFilterCount),
+					slog.String("reason", "all_queries_rejected_by_filter"))
+			}
 		}
 		return nil
 	})
@@ -192,24 +202,120 @@ func expandQuery(ctx context.Context, query string, history []domain.Message, qu
 // maxExpandedQueries caps the number of expanded queries to limit embedding + vector search cost.
 const maxExpandedQueries = 8
 
-// filterExpandedQueries removes useless romanized Japanese queries and caps the result count.
-// LLMs sometimes generate romanized Japanese (e.g., "Sei-sai naiyō Rosia") which
-// matches neither Japanese nor English articles in search.
+// minQueryRuneLen is the minimum rune length for a useful search query.
+const minQueryRuneLen = 3
+
+// maxQueryRuneLen is the maximum rune length before a query is considered prompt leakage.
+const maxQueryRuneLen = 200
+
+// filterExpandedQueries removes useless queries and caps the result count.
+// Filters applied in order: romanized Japanese, instruction leaks, length, dedup.
 func filterExpandedQueries(queries []string) []string {
 	if len(queries) == 0 {
 		return []string{}
 	}
+	seen := make(map[string]struct{}, len(queries))
 	filtered := make([]string, 0, len(queries))
 	for _, q := range queries {
+		q = strings.TrimSpace(q)
+		if q == "" {
+			continue
+		}
+		// Length filter
+		runeLen := len([]rune(q))
+		if runeLen < minQueryRuneLen || runeLen > maxQueryRuneLen {
+			continue
+		}
 		if isRomanizedJapanese(q) {
 			continue
 		}
+		if isInstructionLeak(q) {
+			continue
+		}
+		if isXMLTagLeak(q) {
+			continue
+		}
+		// Order-preserving dedup (case-insensitive)
+		key := strings.ToLower(q)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
 		filtered = append(filtered, q)
 		if len(filtered) >= maxExpandedQueries {
 			break
 		}
 	}
 	return filtered
+}
+
+// instructionLeakExact contains known instruction echo patterns (lowercased, period-stripped).
+var instructionLeakExact = []string{
+	"japanese queries and english queries must be translated to each other",
+	"japanese queries first, then english queries",
+	"output only the generated queries, one per line",
+	"do not add numbering, bullets, labels, or explanations",
+	"output japanese queries first",
+	"one query per line",
+}
+
+// instructionMetaWords are words that appear in prompt instructions but rarely in real search queries.
+// If 3+ appear in a single line, it's likely an instruction leak.
+var instructionMetaWords = map[string]struct{}{
+	"queries":      {},
+	"generate":     {},
+	"variations":   {},
+	"translate":    {},
+	"numbering":    {},
+	"bullets":      {},
+	"labels":       {},
+	"explanations": {},
+	"output":       {},
+	"exactly":      {},
+	"requirements": {},
+}
+
+// isXMLTagLeak detects leaked XML tags from the prompt structure.
+func isXMLTagLeak(q string) bool {
+	trimmed := strings.TrimSpace(q)
+	if trimmed == "" {
+		return false
+	}
+	// XML tags like </example>, <input>..., </task>, <rules>
+	if strings.HasPrefix(trimmed, "<") && strings.Contains(trimmed, ">") {
+		return true
+	}
+	return false
+}
+
+// isInstructionLeak detects if a query is an echoed prompt instruction.
+// Uses three signals:
+//  1. Exact match against known instruction patterns
+//  2. High-overlap containment of known instruction patterns
+//  3. High density of meta-words (3+ in a single line)
+func isInstructionLeak(q string) bool {
+	normalized := strings.TrimRight(strings.ToLower(strings.TrimSpace(q)), ".")
+
+	// Check exact or high-overlap match against known patterns
+	for _, pattern := range instructionLeakExact {
+		if normalized == pattern {
+			return true
+		}
+		// Long patterns: containment is enough
+		if len(pattern) > 20 && strings.Contains(normalized, pattern) {
+			return true
+		}
+	}
+
+	// Meta-word density check
+	words := strings.Fields(normalized)
+	metaCount := 0
+	for _, w := range words {
+		if _, ok := instructionMetaWords[w]; ok {
+			metaCount++
+		}
+	}
+	return metaCount >= 3
 }
 
 // isRomanizedJapanese detects romanized Japanese strings like "Sei-sai naiyō Rosia Amerika".

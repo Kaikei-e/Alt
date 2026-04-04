@@ -1,6 +1,7 @@
 package retrieval
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -141,6 +142,124 @@ func TestFilterExpandedQueries(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := filterExpandedQueries(tt.queries)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// --- Phase 2 RED tests ---
+
+func TestFilterExpandedQueries_AllIdentical_DeduplicatesToOneThenRejectsIfOnlyLeak(t *testing.T) {
+	// The exact failure from production: all expanded queries are the same instruction echo
+	queries := []string{
+		"Japanese queries and English queries must be translated to each other.",
+		"Japanese queries and English queries must be translated to each other.",
+		"Japanese queries and English queries must be translated to each other.",
+		"Japanese queries and English queries must be translated to each other.",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Empty(t, result, "All-identical instruction echoes should be completely filtered")
+}
+
+func TestFilterExpandedQueries_InstructionEcho_Filtered(t *testing.T) {
+	queries := []string{
+		"Output Japanese queries first, then English queries.",
+		"Do not add numbering, bullets, labels, or explanations.",
+		"イランの石油危機 原因",
+		"Iran oil crisis causes",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"イランの石油危機 原因", "Iran oil crisis causes"}, result)
+}
+
+func TestFilterExpandedQueries_DuplicateRemoval_PreservesOrder(t *testing.T) {
+	queries := []string{
+		"Iran oil crisis",
+		"Iran oil crisis",
+		"Iran oil crisis causes",
+		"iran oil crisis", // case-insensitive dup
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"Iran oil crisis", "Iran oil crisis causes"}, result)
+}
+
+func TestFilterExpandedQueries_TooShort_Filtered(t *testing.T) {
+	queries := []string{"ab", "Iran oil crisis", "x", "OK"}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"Iran oil crisis"}, result)
+}
+
+func TestFilterExpandedQueries_TooLong_Filtered(t *testing.T) {
+	longQuery := strings.Repeat("a", 201)
+	queries := []string{longQuery, "Iran oil crisis"}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"Iran oil crisis"}, result)
+}
+
+func TestFilterExpandedQueries_XMLTagLeak_Filtered(t *testing.T) {
+	queries := []string{
+		"</example>",
+		"<input>イランの石油危機はなぜ起きた？</input>",
+		"Iran oil crisis causes",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"Iran oil crisis causes"}, result)
+}
+
+func TestIsXMLTagLeak(t *testing.T) {
+	assert.True(t, isXMLTagLeak("</example>"))
+	assert.True(t, isXMLTagLeak("<input>something</input>"))
+	assert.True(t, isXMLTagLeak("<task>Generate queries</task>"))
+	assert.False(t, isXMLTagLeak("Iran oil crisis"))
+	assert.False(t, isXMLTagLeak("イランの石油危機 原因"))
+	assert.False(t, isXMLTagLeak(""))
+}
+
+func TestIsInstructionLeak_KnownMetaPatterns(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		expected bool
+	}{
+		{
+			name:     "exact production echo",
+			query:    "Japanese queries and English queries must be translated to each other.",
+			expected: true,
+		},
+		{
+			name:     "output instruction echo",
+			query:    "Output ONLY the generated queries, one per line.",
+			expected: true,
+		},
+		{
+			name:     "generate instruction echo",
+			query:    "Generate exactly 3 English query variations.",
+			expected: true,
+		},
+		{
+			name:     "Japanese queries first echo",
+			query:    "Japanese queries first, then English queries.",
+			expected: true,
+		},
+		{
+			name:     "real Japanese query",
+			query:    "イランの石油危機 原因",
+			expected: false,
+		},
+		{
+			name:     "real English query",
+			query:    "Iran oil crisis causes and background",
+			expected: false,
+		},
+		{
+			name:     "query about translation",
+			query:    "machine translation quality improvement",
+			expected: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isInstructionLeak(tt.query)
+			assert.Equal(t, tt.expected, result, "query: %q", tt.query)
 		})
 	}
 }
