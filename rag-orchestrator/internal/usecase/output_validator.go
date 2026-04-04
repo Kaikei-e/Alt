@@ -205,8 +205,9 @@ type LLMCitation struct {
 
 // AssessAnswerQuality performs post-generation quality checks on the answer.
 // All checks are string-based (no LLM calls).
+// expandedQueries is the list of queries that survived filtering (nil/empty = expansion failed).
 // Returns a list of quality flag names for any failing checks.
-func AssessAnswerQuality(answer, query string, citations []LLMCitation, intentType IntentType) []string {
+func AssessAnswerQuality(answer, query string, citations []LLMCitation, intentType IntentType, expandedQueries []string) []string {
 	var flags []string
 
 	// 1. Coverage check: do query keywords appear in the answer?
@@ -227,6 +228,11 @@ func AssessAnswerQuality(answer, query string, citations []LLMCitation, intentTy
 	// 4. Fact-check intent: answer should contain evidence keywords
 	if intentType == IntentFactCheck && !checkFactCheckEvidence(answer) {
 		flags = append(flags, "fact_check_missing_evidence")
+	}
+
+	// 5. Expansion failure: causal queries with no expanded queries
+	if intentType == IntentCausalExplanation && len(expandedQueries) == 0 {
+		flags = append(flags, "expansion_failed")
 	}
 
 	return flags

@@ -422,7 +422,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 
 		// Answer quality check on streaming path (ADR-000604: hard stop for bad answers)
 		qualityFlags := AssessAnswerQuality(
-			parsedAnswer.Answer, input.Query, parsedAnswer.Citations, promptData.intentType,
+			parsedAnswer.Answer, input.Query, parsedAnswer.Citations, promptData.intentType, promptData.expandedQueries,
 		)
 		if len(qualityFlags) > 0 {
 			u.logger.Info("stream_answer_quality_flags",
@@ -438,8 +438,9 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 
 			// Hard stop: short answer + quality issues = fallback instead of serving bad content.
 			// A short answer alone might be acceptable (yes/no questions), but combined with
-			// low keyword coverage or incoherent ending, it indicates a broken generation.
-			if hasQualityFlag(qualityFlags, "low_keyword_coverage") || hasQualityFlag(qualityFlags, "incoherent_ending") {
+			// low keyword coverage, incoherent ending, or expansion failure, it indicates broken generation.
+			if hasQualityFlag(qualityFlags, "low_keyword_coverage") || hasQualityFlag(qualityFlags, "incoherent_ending") ||
+				(hasQualityFlag(qualityFlags, "expansion_failed") && promptData.intentType == IntentCausalExplanation) {
 				// Select specific fallback reason based on intent and flags
 				fallbackReason := selectFallbackReason(promptData.intentType, qualityFlags)
 				u.logger.Warn("stream_short_answer_hard_stop",

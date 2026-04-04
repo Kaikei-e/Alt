@@ -324,7 +324,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 
 	// Phase 4: Answer quality assessment
 	qualityFlags := AssessAnswerQuality(
-		parsedAnswer.Answer, input.Query, parsedAnswer.Citations, promptData.intentType,
+		parsedAnswer.Answer, input.Query, parsedAnswer.Citations, promptData.intentType, promptData.expandedQueries,
 	)
 	if len(qualityFlags) > 0 {
 		u.logger.Info("answer_quality_flags",
@@ -572,7 +572,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 
 	// Quality gate: assess retrieval quality with intent-aware strictness
 	if u.qualityAssessor != nil && retrieved != nil && len(retrieved.Contexts) > 0 {
-		verdict := u.qualityAssessor.AssessWithIntent(retrieved.Contexts, intent.IntentType)
+		verdict := u.qualityAssessor.AssessWithIntent(retrieved.Contexts, intent.IntentType, intent.UserQuestion)
 		result.retrievalQuality = verdict
 
 		u.logger.Info("retrieval_quality_verdict",
@@ -601,7 +601,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 				if retryErr != nil || retryRetrieved == nil || len(retryRetrieved.Contexts) == 0 {
 					continue
 				}
-				retryVerdict := u.qualityAssessor.AssessWithIntent(retryRetrieved.Contexts, intent.IntentType)
+				retryVerdict := u.qualityAssessor.AssessWithIntent(retryRetrieved.Contexts, intent.IntentType, intent.UserQuestion)
 				if retryVerdict == QualityGood || (bestRetrieved == nil && retryVerdict == QualityMarginal) {
 					bestRetrieved = retryRetrieved
 					bestVerdict = retryVerdict

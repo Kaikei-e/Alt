@@ -342,6 +342,7 @@ func TestAssessAnswerQuality_CoverageCheck(t *testing.T) {
 		"What are the latest AI trends and cybersecurity news?",
 		[]usecase.LLMCitation{{ChunkID: "1"}},
 		usecase.IntentGeneral,
+		[]string{"dummy"},
 	)
 	// "cybersecurity" not covered in answer
 	assert.Contains(t, flags, "low_keyword_coverage")
@@ -353,6 +354,7 @@ func TestAssessAnswerQuality_GoodCoverage(t *testing.T) {
 		"AI trends and cybersecurity news",
 		[]usecase.LLMCitation{{ChunkID: "1"}, {ChunkID: "2"}},
 		usecase.IntentGeneral,
+		[]string{"dummy"},
 	)
 	assert.NotContains(t, flags, "low_keyword_coverage")
 }
@@ -365,6 +367,7 @@ func TestAssessAnswerQuality_CitationDensity(t *testing.T) {
 		"tech question",
 		nil, // no citations
 		usecase.IntentGeneral,
+		[]string{"dummy"},
 	)
 	assert.Contains(t, flags, "low_citation_density")
 }
@@ -376,6 +379,7 @@ func TestAssessAnswerQuality_CoherenceCheck(t *testing.T) {
 		"test query",
 		[]usecase.LLMCitation{{ChunkID: "1"}},
 		usecase.IntentGeneral,
+		[]string{"dummy"},
 	)
 	assert.Contains(t, flags, "incoherent_ending")
 }
@@ -386,6 +390,7 @@ func TestAssessAnswerQuality_CoherentEnding(t *testing.T) {
 		"test query",
 		[]usecase.LLMCitation{{ChunkID: "1"}},
 		usecase.IntentGeneral,
+		[]string{"dummy"},
 	)
 	assert.NotContains(t, flags, "incoherent_ending")
 }
@@ -396,6 +401,7 @@ func TestAssessAnswerQuality_FactCheckNeedsEvidence(t *testing.T) {
 		"Is it true that AI can do X?",
 		[]usecase.LLMCitation{{ChunkID: "1"}},
 		usecase.IntentFactCheck,
+		[]string{"dummy"},
 	)
 	assert.Contains(t, flags, "fact_check_missing_evidence")
 }
@@ -406,6 +412,7 @@ func TestAssessAnswerQuality_FactCheckHasEvidence(t *testing.T) {
 		"AIがXできるのは本当？",
 		[]usecase.LLMCitation{{ChunkID: "1"}},
 		usecase.IntentFactCheck,
+		[]string{"dummy"},
 	)
 	assert.NotContains(t, flags, "fact_check_missing_evidence")
 }
@@ -426,6 +433,7 @@ func TestAssessAnswerQuality_ArticleScopedJapaneseAnswer_ShouldNotFlagLowCoverag
 		query,
 		[]usecase.LLMCitation{{ChunkID: "1"}, {ChunkID: "2"}},
 		usecase.IntentArticleScoped,
+		[]string{"dummy"},
 	)
 	assert.NotContains(t, flags, "low_keyword_coverage",
 		"article-scoped query with English title + Japanese answer should not trigger low_keyword_coverage")
@@ -443,6 +451,7 @@ func TestAssessAnswerQuality_ArticleScopedJapaneseQuery_ShouldCheckUserQuestionO
 		query,
 		[]usecase.LLMCitation{{ChunkID: "1"}},
 		usecase.IntentArticleScoped,
+		[]string{"dummy"},
 	)
 	assert.NotContains(t, flags, "low_keyword_coverage",
 		"should check user question keywords, not article title keywords")
@@ -455,7 +464,43 @@ func TestCheckKeywordCoverage_GeneralQueryStillWorks(t *testing.T) {
 		"What are the latest cybersecurity trends",
 		[]usecase.LLMCitation{{ChunkID: "1"}},
 		usecase.IntentGeneral,
+		[]string{"dummy"},
 	)
 	assert.NotContains(t, flags, "low_keyword_coverage",
 		"general query with matching keywords should pass")
+}
+
+// --- Phase 4: expansion_failed flag tests ---
+
+func TestAssessAnswerQuality_CausalExpansionFailed_FlagsExpansionFailed(t *testing.T) {
+	flags := usecase.AssessAnswerQuality(
+		"イランは石油を輸出しています。",
+		"イランの石油危機はなぜ起きた？",
+		[]usecase.LLMCitation{{ChunkID: "1"}},
+		usecase.IntentCausalExplanation,
+		nil, // no expanded queries = expansion failed
+	)
+	assert.Contains(t, flags, "expansion_failed")
+}
+
+func TestAssessAnswerQuality_CausalExpansionSucceeded_NoFlag(t *testing.T) {
+	flags := usecase.AssessAnswerQuality(
+		"イランは石油を輸出しています。",
+		"イランの石油危機はなぜ起きた？",
+		[]usecase.LLMCitation{{ChunkID: "1"}},
+		usecase.IntentCausalExplanation,
+		[]string{"Iran oil crisis", "イラン 石油 危機"},
+	)
+	assert.NotContains(t, flags, "expansion_failed")
+}
+
+func TestAssessAnswerQuality_NonCausal_ExpansionFailed_NoFlag(t *testing.T) {
+	flags := usecase.AssessAnswerQuality(
+		"Some general answer.",
+		"General question",
+		[]usecase.LLMCitation{{ChunkID: "1"}},
+		usecase.IntentGeneral,
+		nil,
+	)
+	assert.NotContains(t, flags, "expansion_failed")
 }
