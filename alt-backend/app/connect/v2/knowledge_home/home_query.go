@@ -199,6 +199,16 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 		"lens_id", lensID,
 		"start_seq", lastSeq)
 
+	// Send immediate heartbeat so the client receives the first byte instantly.
+	// Without this, the first Send() is delayed until updateTicker (5s) or
+	// heartbeatTicker (10s) fires, causing 5-10s upstream header time in nginx.
+	if err := stream.Send(&knowledgehomev1.StreamKnowledgeHomeUpdatesResponse{
+		EventType:  "heartbeat",
+		OccurredAt: time.Now().Format(time.RFC3339),
+	}); err != nil {
+		return err
+	}
+
 	updateTicker := time.NewTicker(5 * time.Second)
 	defer updateTicker.Stop()
 

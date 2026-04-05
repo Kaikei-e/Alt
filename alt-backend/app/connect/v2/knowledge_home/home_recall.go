@@ -113,6 +113,14 @@ func (h *Handler) StreamRecallRailUpdates(
 	h.logger.InfoContext(ctx, "alt.recall_rail.stream_started",
 		"user_id", user.UserID)
 
+	// Send immediate heartbeat so the client receives the first byte instantly.
+	if err := stream.Send(&knowledgehomev1.StreamRecallRailUpdatesResponse{
+		EventType:  "heartbeat",
+		OccurredAt: time.Now().Format(time.RFC3339),
+	}); err != nil {
+		return err
+	}
+
 	updateTicker := time.NewTicker(30 * time.Second)
 	defer updateTicker.Stop()
 

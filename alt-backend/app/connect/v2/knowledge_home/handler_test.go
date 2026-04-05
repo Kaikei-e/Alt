@@ -12,6 +12,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	knowledgehomev1 "alt/gen/proto/alt/knowledge_home/v1"
+	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
 )
 
 type mockRecallCandidatesPort struct {
@@ -868,6 +871,103 @@ func TestHighWaterMark_CoalescingReducesBelowThreshold(t *testing.T) {
 	assert.Len(t, coalesced, 1, "same aggregate deduplicates to 1")
 	assert.LessOrEqual(t, len(coalesced), streamHighWaterMark,
 		"after coalescing, should be within threshold → send individual events")
+}
+
+// testAuthInterceptor injects a user context for httptest-based streaming tests.
+type testAuthInterceptor struct{}
+
+func (i *testAuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		user := &domain.UserContext{
+			UserID:    uuid.MustParse("93852825-3755-4c9b-af19-ac92002ebf82"),
+			Email:     "test@example.com",
+			Role:      domain.UserRoleUser,
+			TenantID:  uuid.New(),
+			SessionID: "test-session",
+			LoginAt:   time.Now(),
+			ExpiresAt: time.Now().Add(1 * time.Hour),
+		}
+		return next(domain.SetUserContext(ctx, user), req)
+	}
+}
+
+func (i *testAuthInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+func (i *testAuthInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		user := &domain.UserContext{
+			UserID:    uuid.MustParse("93852825-3755-4c9b-af19-ac92002ebf82"),
+			Email:     "test@example.com",
+			Role:      domain.UserRoleUser,
+			TenantID:  uuid.New(),
+			SessionID: "test-session",
+			LoginAt:   time.Now(),
+			ExpiresAt: time.Now().Add(1 * time.Hour),
+		}
+		return next(domain.SetUserContext(ctx, user), conn)
+	}
+}
+
+func TestStreamKnowledgeHomeUpdates_SendsImmediateHeartbeat(t *testing.T) {
+	logger.InitLogger()
+
+	flagPort := &mockFeatureFlagPort{
+		enabledFlags: map[string]bool{
+			domain.FlagStreamUpdates: true,
+		},
+	}
+	eventsForUser := &mockEventsForUserPort{events: nil, err: nil}
+	handler := NewHandler(
+		nil, nil, nil, // home, seen, action
+		nil, nil, nil, // recall: rail, snooze, dismiss
+		nil, nil, nil, nil, nil, // lens
+		nil,            // eventsPort
+		eventsForUser,  // eventsForUserPort
+		flagPort,       // featureFlagPort
+		nil,            // metrics
+		slog.Default(),
+	)
+
+	// Register handler with test auth interceptor
+	path, h := knowledgehomev1connect.NewKnowledgeHomeServiceHandler(
+		handler,
+		connect.WithInterceptors(&testAuthInterceptor{}),
+	)
+	mux := http.NewServeMux()
+	mux.Handle(path, h)
+
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+
+	client := knowledgehomev1connect.NewKnowledgeHomeServiceClient(
+		server.Client(),
+		server.URL,
+	)
+
+	// Context with short timeout — we only need the first message
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	stream, err := client.StreamKnowledgeHomeUpdates(
+		ctx,
+		connect.NewRequest(&knowledgehomev1.StreamKnowledgeHomeUpdatesRequest{}),
+	)
+	require.NoError(t, err)
+	defer stream.Close()
+
+	// First message must be an immediate heartbeat (not delayed by 5-10s tickers)
+	started := time.Now()
+	require.True(t, stream.Receive(), "expected first message from stream")
+	elapsed := time.Since(started)
+
+	msg := stream.Msg()
+	assert.Equal(t, "heartbeat", msg.EventType, "first message should be a heartbeat")
+	assert.NotEmpty(t, msg.OccurredAt, "heartbeat should have occurred_at timestamp")
+	assert.Less(t, elapsed, 2*time.Second, "first message should arrive within 2s, not after 5-10s ticker delay")
 }
 
 func TestHandler_TrackHomeAction_Validation(t *testing.T) {

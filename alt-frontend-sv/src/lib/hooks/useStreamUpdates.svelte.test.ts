@@ -183,8 +183,40 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 			expect(stream.isLeader).toBe(false);
 			expect(mockStreamFn).not.toHaveBeenCalled();
 
-			vi.advanceTimersByTime(3100);
+			vi.advanceTimersByTime(600);
 			expect(stream.isLeader).toBe(true);
+
+			cleanup();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("claims leadership within 600ms when no other tabs respond", () => {
+		vi.useFakeTimers();
+		try {
+			mockStreamFn.mockReturnValue(createMockStream([]));
+
+			const { stream, cleanup } = createHook({
+				get enabled() {
+					return true;
+				},
+				get lensId() {
+					return undefined;
+				},
+			});
+
+			// Not leader immediately (claim is async via timeout)
+			expect(stream.isLeader).toBe(false);
+
+			// Should NOT be leader at 400ms
+			vi.advanceTimersByTime(400);
+			expect(stream.isLeader).toBe(false);
+
+			// Should be leader by 600ms (LEADER_CLAIM_TIMEOUT=500 + margin)
+			vi.advanceTimersByTime(200);
+			expect(stream.isLeader).toBe(true);
+			expect(mockStreamFn).toHaveBeenCalled();
 
 			cleanup();
 		} finally {
