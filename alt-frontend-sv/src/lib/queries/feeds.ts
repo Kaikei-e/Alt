@@ -154,6 +154,7 @@ interface MarkAsReadContext {
 		pages: FeedCursorResponse[];
 		pageParams: (string | undefined)[];
 	};
+	previousCount?: { count: number };
 }
 
 /**
@@ -168,12 +169,18 @@ export function createMarkAsReadMutation() {
 		onMutate: async (feedUrl: string) => {
 			// Cancel any outgoing refetches
 			await queryClient.cancelQueries({ queryKey: feedKeys.unread() });
+			await queryClient.cancelQueries({
+				queryKey: feedKeys.unreadCount(),
+			});
 
-			// Snapshot previous value
+			// Snapshot previous values
 			const previousUnread = queryClient.getQueryData<{
 				pages: FeedCursorResponse[];
 				pageParams: (string | undefined)[];
 			}>(feedKeys.unread());
+			const previousCount = queryClient.getQueryData<{ count: number }>(
+				feedKeys.unreadCount(),
+			);
 
 			// Optimistically update: remove from unread list
 			if (previousUnread) {
@@ -188,7 +195,14 @@ export function createMarkAsReadMutation() {
 				});
 			}
 
-			return { previousUnread } as MarkAsReadContext;
+			// Optimistically decrement unread count
+			if (previousCount && previousCount.count > 0) {
+				queryClient.setQueryData(feedKeys.unreadCount(), {
+					count: previousCount.count - 1,
+				});
+			}
+
+			return { previousUnread, previousCount } as MarkAsReadContext;
 		},
 		onError: (
 			_err: Error,
@@ -199,13 +213,16 @@ export function createMarkAsReadMutation() {
 			if (context?.previousUnread) {
 				queryClient.setQueryData(feedKeys.unread(), context.previousUnread);
 			}
+			if (context?.previousCount) {
+				queryClient.setQueryData(feedKeys.unreadCount(), context.previousCount);
+			}
 		},
 		onSettled: () => {
-			// Invalidate related queries
-			queryClient.invalidateQueries({ queryKey: feedKeys.stats() });
-			queryClient.invalidateQueries({ queryKey: feedKeys.unreadCount() });
-			// Add to read list
-			queryClient.invalidateQueries({ queryKey: feedKeys.read() });
+			// Only refetch read list if actively displayed
+			queryClient.invalidateQueries({
+				queryKey: feedKeys.read(),
+				refetchType: "active",
+			});
 		},
 	}));
 }

@@ -509,13 +509,18 @@ func (r *FeedRepository) GetReadFeedIDs(ctx context.Context, userID uuid.UUID, f
 	return result, rows.Err()
 }
 
+// maxReadFeedIDs bounds the result set to prevent unbounded growth.
+const maxReadFeedIDs = 10000
+
 func (r *FeedRepository) GetAllReadFeedIDs(ctx context.Context, userID uuid.UUID) (map[uuid.UUID]bool, error) {
 	query := `
 		SELECT feed_id FROM read_status
 		WHERE user_id = $1 AND is_read = TRUE
+		ORDER BY read_at DESC
+		LIMIT $2
 	`
 
-	rows, err := r.pool.Query(ctx, query, userID)
+	rows, err := r.pool.Query(ctx, query, userID, maxReadFeedIDs)
 	if err != nil {
 		return nil, fmt.Errorf("query all read feed ids: %w", err)
 	}

@@ -18,7 +18,6 @@ import (
 	"alt/port/scraping_domain_port"
 	"alt/gateway/trend_stats_gateway"
 	"alt/gateway/update_feed_status_gateway"
-	"alt/gateway/user_read_state_gateway"
 	"alt/gateway/validate_fetch_rss_gateway"
 	"alt/usecase/cached_feed_list_usecase"
 	"alt/usecase/feed_link_usecase"
@@ -85,14 +84,13 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 	feedFetcherGw := fetch_feed_gateway.NewSingleFeedGatewayWithRateLimiter(pool, infra.RateLimiter)
 	fetchFeedsListGw := fetch_feed_gateway.NewFetchFeedsGatewayWithRateLimiter(pool, infra.RateLimiter)
 	feedPageCacheGw := feed_page_cache_gateway.NewGateway(altDB)
-	userReadStateGw := user_read_state_gateway.NewGateway(altDB)
 
 	// Feed fetch usecases
 	fetchSingleFeedUC := fetch_feed_usecase.NewFetchSingleFeedUsecase(feedFetcherGw)
 	fetchFeedsListUC := fetch_feed_usecase.NewFetchFeedsListUsecase(fetchFeedsListGw)
 	fetchFeedsListCursorUC := fetch_feed_usecase.NewFetchFeedsListCursorUsecase(fetchFeedsListGw)
 	fetchUnreadFeedsListCursorUC := fetch_feed_usecase.NewFetchUnreadFeedsListCursorUsecase(fetchFeedsListGw)
-	cachedFeedListUC := cached_feed_list_usecase.NewCachedFeedListUsecase(feedPageCacheGw, userReadStateGw, fetchFeedsListGw)
+	cachedFeedListUC := cached_feed_list_usecase.NewCachedFeedListUsecase(fetchFeedsListGw, fetchFeedsListGw, fetchFeedsListGw)
 	fetchReadFeedsListCursorUC := fetch_feed_usecase.NewFetchReadFeedsListCursorUsecase(fetchFeedsListGw)
 	fetchFavoriteFeedsListCursorUC := fetch_feed_usecase.NewFetchFavoriteFeedsListCursorUsecase(fetchFeedsListGw)
 
