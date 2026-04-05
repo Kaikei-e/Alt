@@ -128,6 +128,15 @@ var defaultVolumes = []VolumeSpec{
 		DBUser:      "rag_user",
 		DBPort:      5432,
 	},
+	{
+		Name:        "knowledge_sovereign_db_data",
+		Service:     "knowledge-sovereign-db",
+		BackupType:  BackupTypePostgreSQL,
+		Description: "Knowledge Sovereign database (PostgreSQL 16)",
+		DBName:      "knowledge_sovereign",
+		DBUser:      "sovereign",
+		DBPort:      5432,
+	},
 	// Other volumes
 	{
 		Name:        "meili_data",

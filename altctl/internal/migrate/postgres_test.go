@@ -146,15 +146,16 @@ func TestRegistryPostgreSQLVolumes(t *testing.T) {
 	r := NewVolumeRegistry()
 	pgVolumes := r.PostgreSQL()
 
-	if len(pgVolumes) != 4 {
-		t.Errorf("Expected 4 PostgreSQL volumes, got %d", len(pgVolumes))
+	if len(pgVolumes) != 5 {
+		t.Errorf("Expected 5 PostgreSQL volumes, got %d", len(pgVolumes))
 	}
 
 	expectedPG := map[string]bool{
-		"db_data_17":     true,
-		"kratos_db_data": true,
-		"recap_db_data":  true,
-		"rag_db_data":    true,
+		"db_data_17":                   true,
+		"kratos_db_data":               true,
+		"recap_db_data":                true,
+		"rag_db_data":                  true,
+		"knowledge_sovereign_db_data":  true,
 	}
 
 	for _, v := range pgVolumes {

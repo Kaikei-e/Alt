@@ -40,10 +40,11 @@ func TestVolumeRegistry_BackupTypes(t *testing.T) {
 	r := NewVolumeRegistry()
 
 	pgNames := map[string]bool{
-		"db_data_17":     true,
-		"kratos_db_data": true,
-		"recap_db_data":  true,
-		"rag_db_data":    true,
+		"db_data_17":                   true,
+		"kratos_db_data":               true,
+		"recap_db_data":                true,
+		"rag_db_data":                  true,
+		"knowledge_sovereign_db_data":  true,
 	}
 
 	for _, v := range r.All() {
@@ -63,7 +64,7 @@ func TestVolumeRegistry_Tar(t *testing.T) {
 	r := NewVolumeRegistry()
 	tarVolumes := r.Tar()
 
-	// Should have 8 tar volumes (12 total - 4 PG)
+	// Should have 8 tar volumes (13 total - 5 PG)
 	if len(tarVolumes) != 8 {
 		t.Errorf("Expected 8 tar volumes, got %d", len(tarVolumes))
 	}
@@ -112,9 +113,9 @@ func TestVolumeRegistry_All(t *testing.T) {
 	r := NewVolumeRegistry()
 	all := r.All()
 
-	// Should have 12 total volumes
-	if len(all) != 12 {
-		t.Errorf("Expected 12 total volumes, got %d", len(all))
+	// Should have 13 total volumes
+	if len(all) != 13 {
+		t.Errorf("Expected 13 total volumes, got %d", len(all))
 	}
 
 	// Verify each volume has required fields
