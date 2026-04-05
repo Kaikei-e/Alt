@@ -66,7 +66,7 @@ func (c *AdminClient) Call(ctx context.Context, method string, reqBody, respBody
 
 	req.Header.Set("Content-Type", "application/json")
 	if c.ServiceToken != "" {
-		req.Header.Set("Service-Token", c.ServiceToken)
+		req.Header.Set("X-Service-Token", c.ServiceToken)
 	}
 
 	resp, err := c.HTTPClient.Do(req)

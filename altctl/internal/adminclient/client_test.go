@@ -31,8 +31,8 @@ func TestCall_Success(t *testing.T) {
 		if ct := r.Header.Get("Content-Type"); ct != "application/json" {
 			t.Errorf("expected Content-Type application/json, got %s", ct)
 		}
-		if st := r.Header.Get("Service-Token"); st != "my-secret" {
-			t.Errorf("expected Service-Token my-secret, got %s", st)
+		if st := r.Header.Get("X-Service-Token"); st != "my-secret" {
+			t.Errorf("expected X-Service-Token my-secret, got %s", st)
 		}
 		if r.URL.Path != "/alt.knowledge_home.v1.KnowledgeHomeAdminService/StartReproject" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
