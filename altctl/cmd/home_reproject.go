@@ -3,13 +3,11 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/alt-project/altctl/internal/adminclient"
 	"github.com/alt-project/altctl/internal/output"
 )
 
@@ -31,19 +29,6 @@ func validateUUID(s string) error {
 		return fmt.Errorf("invalid UUID %q: expected format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", s)
 	}
 	return nil
-}
-
-// newAdminClient creates an AdminClient from command flags and env vars.
-func newAdminClient(cmd *cobra.Command) (*adminclient.AdminClient, error) {
-	backendURL, _ := cmd.Flags().GetString("backend-url")
-	serviceToken, _ := cmd.Flags().GetString("service-token")
-	if serviceToken == "" {
-		serviceToken = os.Getenv("SERVICE_TOKEN")
-	}
-	if serviceToken == "" {
-		return nil, fmt.Errorf("service token required: set SERVICE_TOKEN env var or use --service-token flag")
-	}
-	return adminclient.NewClient(backendURL, serviceToken), nil
 }
 
 // reprojectCmd is the parent for all reproject subcommands.
@@ -408,8 +393,7 @@ func init() {
 
 	// Shared flags for all reproject subcommands
 	for _, cmd := range []*cobra.Command{reprojectStartCmd, reprojectStatusCmd, reprojectCompareCmd, reprojectSwapCmd, reprojectRollbackCmd} {
-		cmd.Flags().String("backend-url", "http://localhost:9001", "alt-backend admin API URL")
-		cmd.Flags().String("service-token", "", "service token (overrides SERVICE_TOKEN env var)")
+		addAdminFlags(cmd)
 	}
 
 	// start-specific flags

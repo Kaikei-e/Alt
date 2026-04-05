@@ -77,7 +77,5 @@ func runHomeSLO(cmd *cobra.Command, args []string) error {
 
 func init() {
 	homeCmd.AddCommand(homeSLOCmd)
-
-	homeSLOCmd.Flags().String("backend-url", "http://localhost:9001", "alt-backend admin API URL")
-	homeSLOCmd.Flags().String("service-token", "", "service token (overrides SERVICE_TOKEN env var)")
+	addAdminFlags(homeSLOCmd)
 }
