@@ -122,8 +122,7 @@ export function useAugurPane() {
 			if (isLoading) {
 				messages[assistantIndex] = {
 					...messages[assistantIndex],
-					message:
-						bufferedContent || "Response timed out. Please try again.",
+					message: bufferedContent || "Response timed out. Please try again.",
 				};
 				finalize();
 			}

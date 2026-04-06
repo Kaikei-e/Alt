@@ -13,8 +13,13 @@ describe("useAugurPane", () => {
 	let capturedCallbacks: {
 		onDelta?: (text: string) => void;
 		onThinking?: (text: string) => void;
-		onMeta?: (citations: Array<{ url: string; title: string; publishedAt: string }>) => void;
-		onComplete?: (result: { answer: string; citations: Array<{ url: string; title: string; publishedAt: string }> }) => void;
+		onMeta?: (
+			citations: Array<{ url: string; title: string; publishedAt: string }>,
+		) => void;
+		onComplete?: (result: {
+			answer: string;
+			citations: Array<{ url: string; title: string; publishedAt: string }>;
+		}) => void;
 		onFallback?: (code: string) => void;
 		onError?: (error: Error) => void;
 		onProgress?: (stage: string) => void;
@@ -32,13 +37,26 @@ describe("useAugurPane", () => {
 				_options: unknown,
 				onDelta?: (text: string) => void,
 				onThinking?: (text: string) => void,
-				onMeta?: (citations: Array<{ url: string; title: string; publishedAt: string }>) => void,
-				onComplete?: (result: { answer: string; citations: Array<{ url: string; title: string; publishedAt: string }> }) => void,
+				onMeta?: (
+					citations: Array<{ url: string; title: string; publishedAt: string }>,
+				) => void,
+				onComplete?: (result: {
+					answer: string;
+					citations: Array<{ url: string; title: string; publishedAt: string }>;
+				}) => void,
 				onFallback?: (code: string) => void,
 				onError?: (error: Error) => void,
 				onProgress?: (stage: string) => void,
 			) => {
-				capturedCallbacks = { onDelta, onThinking, onMeta, onComplete, onFallback, onError, onProgress };
+				capturedCallbacks = {
+					onDelta,
+					onThinking,
+					onMeta,
+					onComplete,
+					onFallback,
+					onError,
+					onProgress,
+				};
 				return mockAbortController;
 			},
 		);
@@ -102,12 +120,10 @@ describe("useAugurPane", () => {
 			expect(mockStreamAugurChat).toHaveBeenCalledWith(
 				expect.anything(), // transport
 				{
-					messages: [
-						{ role: "user", content: "What is RSS?" },
-					],
+					messages: [{ role: "user", content: "What is RSS?" }],
 				},
 				expect.any(Function), // onDelta
-				undefined,            // onThinking (unused)
+				undefined, // onThinking (unused)
 				expect.any(Function), // onMeta
 				expect.any(Function), // onComplete
 				expect.any(Function), // onFallback
@@ -148,7 +164,9 @@ describe("useAugurPane", () => {
 
 			// The second call should include full history (excluding the empty placeholder)
 			const secondCall = mockStreamAugurChat.mock.calls[1];
-			const options = secondCall[1] as { messages: Array<{ role: string; content: string }> };
+			const options = secondCall[1] as {
+				messages: Array<{ role: string; content: string }>;
+			};
 			expect(options.messages).toEqual([
 				{ role: "user", content: "What is RSS?" },
 				{ role: "assistant", content: "RSS is a web feed format." },
@@ -202,12 +220,22 @@ describe("useAugurPane", () => {
 			capturedCallbacks.onDelta?.("partial");
 			capturedCallbacks.onComplete?.({
 				answer: "Final answer text",
-				citations: [{ url: "https://example.com", title: "Example", publishedAt: "2026-01-01" }],
+				citations: [
+					{
+						url: "https://example.com",
+						title: "Example",
+						publishedAt: "2026-01-01",
+					},
+				],
 			});
 
 			expect(pane.messages[1].message).toBe("Final answer text");
 			expect(pane.messages[1].citations).toEqual([
-				{ URL: "https://example.com", Title: "Example", PublishedAt: "2026-01-01" },
+				{
+					URL: "https://example.com",
+					Title: "Example",
+					PublishedAt: "2026-01-01",
+				},
 			]);
 			expect(pane.isLoading).toBe(false);
 			expect(pane.progressStage).toBe("");
@@ -298,7 +326,9 @@ describe("useAugurPane", () => {
 			const pane = useAugurPane();
 			pane.sendMessage("Hello");
 
-			capturedCallbacks.onFallback?.("retrieval quality insufficient: context relevance too low");
+			capturedCallbacks.onFallback?.(
+				"retrieval quality insufficient: context relevance too low",
+			);
 
 			expect(pane.messages[1].message).toContain("Not enough indexed content");
 		});
@@ -309,7 +339,9 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onFallback?.("validation failed");
 
-			expect(pane.messages[1].message).toContain("couldn't find enough information");
+			expect(pane.messages[1].message).toContain(
+				"couldn't find enough information",
+			);
 		});
 	});
 });

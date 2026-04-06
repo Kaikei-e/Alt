@@ -235,7 +235,7 @@ function handleBackToFeeds() {
 }
 
 function handleBackToHome() {
-	void goto("/");
+	void goto("/home");
 }
 </script>
 

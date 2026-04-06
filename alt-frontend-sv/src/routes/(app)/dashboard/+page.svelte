@@ -13,7 +13,7 @@ const { isDesktop } = useViewport();
 
 onMount(() => {
 	if (!isDesktop) {
-		goto("/feeds", { replaceState: true });
+		goto("/home", { replaceState: true });
 	}
 });
 </script>

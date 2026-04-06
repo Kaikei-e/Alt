@@ -8,7 +8,7 @@ const auth = getAuthStore();
 
 $effect(() => {
 	if (auth.isAuthenticated) {
-		goto("/feeds", { replaceState: true });
+		goto("/home", { replaceState: true });
 	}
 });
 </script>
@@ -32,7 +32,7 @@ $effect(() => {
             Embark on a Journey of Discovery
           </p>
           <Button
-            href="/feeds"
+            href="/home"
             size="lg"
             class="w-full sm:w-auto"
             variant="secondary"

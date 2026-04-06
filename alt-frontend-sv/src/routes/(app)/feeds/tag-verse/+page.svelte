@@ -1,8 +1,16 @@
 <script lang="ts">
+import { onMount } from "svelte";
+import { goto } from "$app/navigation";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import TagVerseScreen from "$lib/components/desktop/tag-verse/TagVerseScreen.svelte";
 
 const { isDesktop } = useViewport();
+
+onMount(() => {
+	if (!isDesktop) {
+		goto("/home", { replaceState: true });
+	}
+});
 </script>
 
 <svelte:head>

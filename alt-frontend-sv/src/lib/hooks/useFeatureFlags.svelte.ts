@@ -1,35 +1,22 @@
 /**
- * Headless composable for Knowledge Home feature flag management.
- * Reads flag states from the GetKnowledgeHome response.
+ * Feature flags have been removed. All features are always enabled.
+ * This hook is retained as a no-op for backward compatibility.
  */
-import type { FeatureFlagData } from "$lib/connect/knowledge_home";
-
 export function useFeatureFlags() {
-	let flags = $state<FeatureFlagData[]>([]);
-
-	const setFlags = (newFlags: FeatureFlagData[]) => {
-		flags = newFlags;
-	};
-
-	const isEnabled = (name: string): boolean => {
-		const flag = flags.find((f) => f.name === name);
-		return flag?.enabled ?? false;
-	};
-
 	return {
 		get flags() {
-			return flags;
+			return [];
 		},
 		get knowledgeHomeEnabled() {
-			return isEnabled("enable_knowledge_home_page");
+			return true;
 		},
 		get trackingEnabled() {
-			return isEnabled("enable_knowledge_home_tracking");
+			return true;
 		},
 		get projectionV2Enabled() {
-			return isEnabled("enable_knowledge_home_projection_v2");
+			return true;
 		},
-		setFlags,
-		isEnabled,
+		setFlags: (_: unknown) => {},
+		isEnabled: (_: string) => true,
 	};
 }

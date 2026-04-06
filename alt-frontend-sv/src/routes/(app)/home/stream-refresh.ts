@@ -12,11 +12,8 @@ interface RecallRefreshTarget {
 export async function refreshHomeWithRecallSync(
 	home: HomeRefreshSource,
 	recall: RecallRefreshTarget,
-	recallEnabled: boolean,
 	lensId: string | null,
 ): Promise<void> {
 	await home.fetchData(true, lensId);
-	if (recallEnabled) {
-		recall.setCandidates(home.recallCandidates);
-	}
+	recall.setCandidates(home.recallCandidates);
 }

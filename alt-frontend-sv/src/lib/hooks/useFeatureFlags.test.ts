@@ -2,30 +2,24 @@ import { describe, it, expect } from "vitest";
 import { useFeatureFlags } from "./useFeatureFlags.svelte.ts";
 
 describe("useFeatureFlags", () => {
-	it("starts with empty flags", () => {
+	it("always returns true for all flags", () => {
 		const ff = useFeatureFlags();
 		expect(ff.flags).toEqual([]);
-		expect(ff.knowledgeHomeEnabled).toBe(false);
-		expect(ff.trackingEnabled).toBe(false);
-		expect(ff.projectionV2Enabled).toBe(false);
-	});
-
-	it("sets flags and reports enabled state", () => {
-		const ff = useFeatureFlags();
-		ff.setFlags([
-			{ name: "enable_knowledge_home_page", enabled: true },
-			{ name: "enable_knowledge_home_tracking", enabled: false },
-			{ name: "enable_knowledge_home_projection_v2", enabled: true },
-		]);
 		expect(ff.knowledgeHomeEnabled).toBe(true);
-		expect(ff.trackingEnabled).toBe(false);
+		expect(ff.trackingEnabled).toBe(true);
 		expect(ff.projectionV2Enabled).toBe(true);
 	});
 
-	it("isEnabled checks arbitrary flag names", () => {
+	it("isEnabled always returns true regardless of flag name", () => {
 		const ff = useFeatureFlags();
-		ff.setFlags([{ name: "custom_flag", enabled: true }]);
 		expect(ff.isEnabled("custom_flag")).toBe(true);
-		expect(ff.isEnabled("unknown_flag")).toBe(false);
+		expect(ff.isEnabled("unknown_flag")).toBe(true);
+		expect(ff.isEnabled("enable_recall_rail")).toBe(true);
+	});
+
+	it("setFlags is a no-op", () => {
+		const ff = useFeatureFlags();
+		ff.setFlags([{ name: "any", enabled: false }]);
+		expect(ff.isEnabled("any")).toBe(true);
 	});
 });

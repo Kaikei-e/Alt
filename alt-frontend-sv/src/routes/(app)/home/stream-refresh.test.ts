@@ -25,7 +25,7 @@ describe("refreshHomeWithRecallSync", () => {
 			}),
 		};
 
-		await refreshHomeWithRecallSync(home, recall, true, "lens-1");
+		await refreshHomeWithRecallSync(home, recall, "lens-1");
 
 		expect(home.fetchData).toHaveBeenCalledWith(true, "lens-1");
 		expect(recall.setCandidates).toHaveBeenCalledWith(home.recallCandidates);
@@ -41,12 +41,12 @@ describe("refreshHomeWithRecallSync", () => {
 			setCandidates: vi.fn(),
 		};
 
-		await refreshHomeWithRecallSync(home, recall, true, null);
+		await refreshHomeWithRecallSync(home, recall, null);
 
 		expect(recall.setCandidates).toHaveBeenCalledWith([]);
 	});
 
-	it("skips recall sync when the rail is disabled", async () => {
+	it("always syncs recall candidates after refresh", async () => {
 		const home = {
 			recallCandidates: [
 				{
@@ -63,9 +63,9 @@ describe("refreshHomeWithRecallSync", () => {
 			setCandidates: vi.fn(),
 		};
 
-		await refreshHomeWithRecallSync(home, recall, false, null);
+		await refreshHomeWithRecallSync(home, recall, null);
 
 		expect(home.fetchData).toHaveBeenCalledWith(true, null);
-		expect(recall.setCandidates).not.toHaveBeenCalled();
+		expect(recall.setCandidates).toHaveBeenCalledWith(home.recallCandidates);
 	});
 });
