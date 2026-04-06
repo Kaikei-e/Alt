@@ -81,6 +81,10 @@ message DonePayload {
   string answer = 1;
   // List of citations used in the answer
   repeated Citation citations = 2;
+  // Classified query intent (e.g. "causal_explanation", "temporal", "comparison")
+  string intent = 3;
+  // Retrieval strategy used (e.g. "general", "article_scoped", "synthesis")
+  string strategy = 4;
 }
 
 // =============================================================================

@@ -175,6 +175,8 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 				Done: &augurv2.DonePayload{
 					Answer:    sanitizeUTF8(output.Answer),
 					Citations: citations,
+					Intent:    output.Debug.IntentType,
+					Strategy:  output.Debug.StrategyUsed,
 				},
 			},
 		}, false

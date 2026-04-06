@@ -335,3 +335,49 @@ class BatchRecapSummaryResponse(BaseModel):
         default_factory=list,
         description="List of errors for failed requests"
     )
+
+
+# ============================================================================
+# Query Planning Models (for Augur Conversational RAG)
+# ============================================================================
+
+
+class PlanQueryRequest(BaseModel):
+    """Request model for structured query planning."""
+
+    query: str = Field(min_length=1, description="User query to plan retrieval for")
+    conversation_history: Optional[List[ConversationMessage]] = Field(
+        default=None, description="Recent conversation turns for coreference resolution"
+    )
+    article_id: Optional[str] = Field(default=None, description="Article ID if query is article-scoped")
+    article_title: Optional[str] = Field(default=None, description="Article title if query is article-scoped")
+    last_answer_scope: Optional[str] = Field(
+        default=None, description="Scope of the last answer: summary, detail, evidence, etc."
+    )
+    priority: str = Field(
+        default="high",
+        pattern="^(high|low)$",
+        description="Request priority. Defaults to high for real-time Augur queries.",
+    )
+
+
+class QueryPlan(BaseModel):
+    """Structured output from query planning. Tells the retrieval layer what to do."""
+
+    resolved_query: str = Field(description="Self-contained search query with coreferences resolved")
+    search_queries: List[str] = Field(description="Expanded search queries (3-5, mixed Japanese/English)")
+    intent: str = Field(description="Query intent: causal_explanation, temporal, synthesis, comparison, fact_check, topic_deep_dive, general")
+    retrieval_policy: str = Field(description="Retrieval policy: global_only, article_only, tool_only, no_retrieval")
+    answer_format: str = Field(description="Answer format: causal_analysis, summary, list, detail, comparison, fact_check")
+    should_clarify: bool = Field(description="True if the query is too ambiguous and needs user clarification")
+    clarification_msg: Optional[str] = Field(default=None, description="Clarification question if should_clarify is true")
+    topic_entities: List[str] = Field(default_factory=list, description="Key entities extracted from the query")
+
+
+class PlanQueryResponse(BaseModel):
+    """Response model for query planning."""
+
+    plan: QueryPlan
+    original_query: str = Field(description="Original input query")
+    model: str = Field(description="Model used for planning")
+    processing_time_ms: Optional[float] = Field(default=None, description="Processing time in milliseconds")

@@ -202,6 +202,18 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	answerOpts = append(answerOpts, usecase.WithConversationPlanner(planner, conversationStore))
 	log.Info("conversation_planner_enabled")
 
+	// LLM-based query planner via news-creator (ADR-000630)
+	queryPlannerClient := rag_augur.NewQueryPlannerClient(
+		cfg.QueryExpansion.URL, cfg.QueryExpansion.Timeout, log,
+	)
+	answerOpts = append(answerOpts, usecase.WithQueryPlanner(queryPlannerClient))
+	log.Info("query_planner_enabled", slog.String("url", cfg.QueryExpansion.URL))
+
+	// Cross-encoder relevance gate (ADR-000630)
+	relevanceGate := usecase.NewRelevanceGate(0.5, 0.25)
+	answerOpts = append(answerOpts, usecase.WithRelevanceGate(relevanceGate))
+	log.Info("relevance_gate_enabled")
+
 	answerUsecase := usecase.NewAnswerWithRAGUsecase(
 		retrieveUsecase, promptBuilder, generator, usecase.NewOutputValidator(cfg.RAG.MinAnswerLength),
 		cfg.RAG.MaxChunks, cfg.RAG.MaxTokens, cfg.RAG.MaxPromptTokens,

@@ -100,6 +100,237 @@
       }
     },
     {
+      "description": "a plan-query request from rag-orchestrator",
+      "providerStates": [
+        {
+          "name": "the LLM model is loaded and ready for query planning"
+        }
+      ],
+      "request": {
+        "body": {
+          "priority": "high",
+          "query": "イランの石油危機はなぜ起きた？"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.priority": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.query": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/v1/plan-query"
+      },
+      "response": {
+        "body": {
+          "model": "gemma4-e4b-12k",
+          "original_query": "イランの石油危機はなぜ起きた？",
+          "plan": {
+            "answer_format": "causal_analysis",
+            "intent": "causal_explanation",
+            "resolved_query": "イランの石油危機が発生した背景と直接的原因",
+            "retrieval_policy": "global_only",
+            "search_queries": [
+              "Iran oil crisis causes"
+            ],
+            "should_clarify": false,
+            "topic_entities": [
+              "イラン"
+            ]
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.original_query": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.plan": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.plan.search_queries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.plan.topic_entities": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a plan-query request with conversation history",
+      "providerStates": [
+        {
+          "name": "the LLM model is loaded and ready for query planning"
+        }
+      ],
+      "request": {
+        "body": {
+          "conversation_history": [
+            {
+              "content": "previous question",
+              "role": "user"
+            }
+          ],
+          "priority": "high",
+          "query": "それについて詳しく"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.conversation_history": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.priority": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.query": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/api/v1/plan-query"
+      },
+      "response": {
+        "body": {
+          "model": "gemma4-e4b-12k",
+          "original_query": "それについて詳しく",
+          "plan": {
+            "answer_format": "summary",
+            "intent": "general",
+            "resolved_query": "resolved standalone query",
+            "retrieval_policy": "global_only",
+            "search_queries": [
+              "search query"
+            ],
+            "should_clarify": false,
+            "topic_entities": [
+              "entity"
+            ]
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.original_query": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.plan": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.plan.search_queries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.plan.topic_entities": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a streaming chat request from rag-orchestrator",
       "providerStates": [
         {

@@ -25,6 +25,7 @@ from news_creator.services.model_warmup import ModelWarmupService
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
 from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
+from news_creator.usecase.plan_query_usecase import PlanQueryUsecase
 from news_creator.usecase.rerank_usecase import RerankUsecase
 from news_creator.handler import (
     create_summarize_router,
@@ -34,6 +35,7 @@ from news_creator.handler import (
     create_health_router,
 )
 from news_creator.handler.chat_handler import create_chat_router
+from news_creator.handler.plan_query_handler import create_plan_query_router
 from news_creator.handler.rerank_handler import create_rerank_router
 from news_creator.utils.context_logger import (
     BusinessContextFilter,
@@ -135,6 +137,10 @@ class DependencyContainer:
             config=self.config,
             llm_provider=self.llm_provider,
         )
+        self.plan_query_usecase = PlanQueryUsecase(
+            config=self.config,
+            llm_provider=self.llm_provider,
+        )
         # Rerank usecase (cross-encoder, no Ollama dependency)
         self.rerank_usecase = RerankUsecase()
 
@@ -192,6 +198,10 @@ app.include_router(
 app.include_router(
     create_expand_query_router(container.expand_query_usecase),
     tags=["query-expansion"]
+)
+app.include_router(
+    create_plan_query_router(container.plan_query_usecase),
+    tags=["query-planning"]
 )
 app.include_router(
     create_rerank_router(container.rerank_usecase),

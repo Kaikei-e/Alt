@@ -27,6 +27,8 @@ type answerWithRAGUsecase struct {
 	toolDispatcher    *ToolDispatcher
 	planner           *ConversationPlanner
 	conversationStore *ConversationStore
+	queryPlanner      domain.QueryPlannerPort
+	relevanceGate     *RelevanceGate
 	maxChunks         int
 	maxTokens         int
 	maxPromptTokens   int
@@ -77,6 +79,8 @@ func NewAnswerWithRAGUsecase(
 		toolDispatcher:    cfg.toolDispatcher,
 		planner:           cfg.planner,
 		conversationStore: cfg.conversationStore,
+		queryPlanner:      cfg.queryPlanner,
+		relevanceGate:     cfg.relevanceGate,
 		maxChunks:         maxChunks,
 		maxTokens:         maxTokens,
 		maxPromptTokens:   maxPromptTokens,
@@ -104,6 +108,8 @@ type answerUsecaseConfig struct {
 	toolDispatcher    *ToolDispatcher
 	planner           *ConversationPlanner
 	conversationStore *ConversationStore
+	queryPlanner      domain.QueryPlannerPort
+	relevanceGate     *RelevanceGate
 }
 
 // WithCacheConfig sets the cache size and TTL.
@@ -159,6 +165,21 @@ func WithConversationPlanner(planner *ConversationPlanner, store *ConversationSt
 	return func(cfg *answerUsecaseConfig) {
 		cfg.planner = planner
 		cfg.conversationStore = store
+	}
+}
+
+// WithQueryPlanner enables LLM-based query planning via news-creator.
+// When set, this replaces the rule-based ConversationPlanner and query expansion.
+func WithQueryPlanner(qp domain.QueryPlannerPort) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		cfg.queryPlanner = qp
+	}
+}
+
+// WithRelevanceGate enables cross-encoder score-based quality gating.
+func WithRelevanceGate(gate *RelevanceGate) AnswerUsecaseOption {
+	return func(cfg *answerUsecaseConfig) {
+		cfg.relevanceGate = gate
 	}
 }
 
@@ -345,6 +366,7 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		QualityFlags:          qualityFlags,
 		RetrievalPolicy:       promptData.retrievalPolicy,
 		GeneralRetrievalGated: promptData.generalGated,
+		BM25HitCount:          promptData.bm25HitCount,
 	}
 	if promptData.plannerOutput != nil {
 		debug.PlannerOperation = string(promptData.plannerOutput.Operation)
@@ -465,6 +487,7 @@ type promptBuildResult struct {
 	generalGated     bool
 	plannerOutput    *domain.PlannerOutput // Conversation planner result
 	parsedIntent     QueryIntent           // Resolved intent for state derivation
+	bm25HitCount     int
 }
 
 func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWithRAGInput) (*promptBuildResult, error) {
@@ -481,6 +504,15 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		retrievalSetID: uuid.NewString(),
 		maxTokens:      maxTokens,
 	}
+
+	// --- LLM-based query planner (P0-4) ---
+	// When queryPlanner is configured, it replaces the legacy
+	// ResolveQueryIntent + QueryClassifier + ConversationPlanner pipeline.
+	if u.queryPlanner != nil {
+		return u.buildPromptWithQueryPlanner(ctx, input, result)
+	}
+
+	// --- Legacy path (will be removed in P1-3) ---
 
 	// Parse intent from raw query
 	intent := ResolveQueryIntent(input.Query, input.ConversationHistory)
@@ -914,6 +946,188 @@ func (u *answerWithRAGUsecase) buildRetryQueries(
 		}
 	}
 	return nil
+}
+
+// buildPromptWithQueryPlanner uses the LLM-based QueryPlannerPort to plan retrieval.
+// This replaces the legacy ResolveQueryIntent + QueryClassifier + ConversationPlanner.
+func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
+	ctx context.Context,
+	input AnswerWithRAGInput,
+	result *promptBuildResult,
+) (*promptBuildResult, error) {
+	// Call the query planner
+	qpInput := domain.QueryPlannerInput{
+		Query:               input.Query,
+		ConversationHistory: input.ConversationHistory,
+	}
+
+	// Extract article scope from the raw query (reuse ParseQueryIntent for metadata extraction)
+	parsedIntent := ParseQueryIntent(input.Query)
+	if parsedIntent.IntentType == IntentArticleScoped {
+		qpInput.ArticleID = parsedIntent.ArticleID
+		qpInput.ArticleTitle = parsedIntent.ArticleTitle
+		qpInput.Query = parsedIntent.UserQuestion // Strip article metadata
+	}
+
+	qPlan, err := u.queryPlanner.PlanQuery(ctx, qpInput)
+	if err != nil {
+		u.logger.Warn("query_planner_failed_falling_back",
+			slog.String("error", err.Error()),
+			slog.String("query", input.Query))
+		// Fallback: use original query directly
+		qPlan = &domain.QueryPlan{
+			ResolvedQuery:   qpInput.Query,
+			SearchQueries:   []string{qpInput.Query},
+			Intent:          "general",
+			RetrievalPolicy: "global_only",
+			AnswerFormat:    "summary",
+		}
+	}
+
+	u.logger.Info("query_planner_output",
+		slog.String("resolved_query", qPlan.ResolvedQuery),
+		slog.String("intent", qPlan.Intent),
+		slog.String("retrieval_policy", qPlan.RetrievalPolicy),
+		slog.Bool("should_clarify", qPlan.ShouldClarify),
+		slog.Int("search_queries", len(qPlan.SearchQueries)))
+
+	// Map plan to result metadata
+	result.intentType = IntentType(qPlan.Intent)
+	result.retrievalPolicy = qPlan.RetrievalPolicy
+	result.expandedQueries = qPlan.SearchQueries
+
+	// Map to PlannerOutput for compatibility with stream clarification
+	plannerOut := &domain.PlannerOutput{
+		Operation:          domain.PlannerOperation(qPlan.Intent),
+		RetrievalPolicy:    domain.RetrievalPolicy(qPlan.RetrievalPolicy),
+		NeedsClarification: qPlan.ShouldClarify,
+		ClarificationMsg:   qPlan.ClarificationMsg,
+		Confidence:         0.8, // LLM planner confidence
+	}
+	result.plannerOutput = plannerOut
+
+	// Clarification: short-circuit before retrieval
+	if qPlan.ShouldClarify {
+		result.contexts = nil
+		return result, nil
+	}
+
+	// Select strategy based on LLM-classified intent
+	strategy := u.selectStrategy(result.intentType)
+	result.strategyUsed = strategy.Name()
+
+	// Use resolved query for retrieval
+	retrieveInput := RetrieveContextInput{
+		Query:               qPlan.ResolvedQuery,
+		ConversationHistory: input.ConversationHistory,
+	}
+	if len(input.CandidateArticleIDs) > 0 {
+		retrieveInput.CandidateArticleIDs = input.CandidateArticleIDs
+	}
+
+	// Retrieve with the planner's policy
+	retrieved, err := u.retrieveWithPolicy(ctx, strategy, retrieveInput, parsedIntent, plannerOut, input, result)
+	if err != nil {
+		return result, fmt.Errorf("failed to retrieve context: %w", err)
+	}
+
+	// Quality gate: prefer RelevanceGate (cross-encoder score based),
+	// fall back to legacy heuristic assessor.
+	if retrieved != nil && len(retrieved.Contexts) > 0 {
+		var verdict QualityVerdict
+		if u.relevanceGate != nil {
+			verdict = u.relevanceGate.Evaluate(retrieved.Contexts)
+		} else if u.qualityAssessor != nil {
+			verdict = u.qualityAssessor.AssessWithIntent(retrieved.Contexts, result.intentType, qPlan.ResolvedQuery)
+		}
+		result.retrievalQuality = verdict
+
+		if verdict == QualityInsufficient {
+			return result, errors.New("retrieval quality insufficient: context relevance too low")
+		}
+	}
+
+	contexts := retrieved.Contexts
+	if len(contexts) > u.maxChunks {
+		contexts = contexts[:u.maxChunks]
+	}
+
+	// Token-based limiting
+	maxPromptTokens := u.maxPromptTokens
+	estimatedTokens := 500
+	var limitedContexts []ContextItem
+	for _, ctx := range contexts {
+		chunkTokens := len(ctx.ChunkText) / 3
+		if estimatedTokens+chunkTokens > maxPromptTokens && len(limitedContexts) > 0 {
+			break
+		}
+		estimatedTokens += chunkTokens
+		limitedContexts = append(limitedContexts, ctx)
+	}
+	contexts = limitedContexts
+
+	result.contexts = contexts
+	if retrieved.ExpandedQueries != nil {
+		result.expandedQueries = retrieved.ExpandedQueries
+	}
+
+	if len(contexts) == 0 && qPlan.RetrievalPolicy != "tool_only" && qPlan.RetrievalPolicy != "no_retrieval" {
+		return result, errors.New("no context returned from retrieval")
+	}
+
+	// Build prompt messages
+	promptContexts := make([]PromptContext, len(contexts))
+	for i, ctxItem := range contexts {
+		promptContexts[i] = PromptContext{
+			ChunkID:         ctxItem.ChunkID.String(),
+			ChunkText:       ctxItem.ChunkText,
+			Title:           ctxItem.Title,
+			URL:             ctxItem.URL,
+			PublishedAt:     ctxItem.PublishedAt,
+			Score:           ctxItem.Score,
+			DocumentVersion: ctxItem.DocumentVersion,
+		}
+	}
+
+	locale := strings.TrimSpace(input.Locale)
+	if locale == "" {
+		locale = u.defaultLocale
+	}
+
+	// Tool dispatch (supplementary info)
+	var supplementary []string
+	if retrieved != nil && len(retrieved.SupplementaryInfo) > 0 {
+		supplementary = append(supplementary, retrieved.SupplementaryInfo...)
+	}
+	if retrieved != nil && len(retrieved.ToolsUsed) > 0 {
+		result.toolsUsed = append(result.toolsUsed, retrieved.ToolsUsed...)
+	}
+	if u.toolDispatcher != nil {
+		toolResults := u.toolDispatcher.Dispatch(ctx, parsedIntent, qPlan.ResolvedQuery)
+		for _, tr := range toolResults {
+			supplementary = append(supplementary, tr.Data)
+			result.toolsUsed = append(result.toolsUsed, tr.ToolName)
+		}
+	}
+
+	promptInput := PromptInput{
+		Query:               qPlan.ResolvedQuery,
+		Locale:              locale,
+		PromptVersion:       u.promptVersion,
+		Contexts:            promptContexts,
+		ConversationHistory: input.ConversationHistory,
+		IntentType:          result.intentType,
+		SupplementaryInfo:   supplementary,
+		PlannerOutput:       plannerOut,
+	}
+
+	messages, err := u.promptBuilder.Build(promptInput)
+	if err != nil {
+		return result, fmt.Errorf("build messages: %w", err)
+	}
+
+	result.messages = messages
+	return result, nil
 }
 
 func (u *answerWithRAGUsecase) toPromptContexts(contexts []ContextItem) []PromptContext {
