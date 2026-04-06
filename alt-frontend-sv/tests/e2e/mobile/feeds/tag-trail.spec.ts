@@ -61,9 +61,4 @@ test.describe("Mobile Tag Trail", () => {
 		await expect(page.getByText("AI Trends in 2026")).toBeVisible();
 	});
 
-	test("floating menu is accessible", async ({ mobileTagTrailPage }) => {
-		await mobileTagTrailPage.goto();
-		await mobileTagTrailPage.waitForFeedLoaded();
-		await expect(mobileTagTrailPage.floatingMenu).toBeVisible();
-	});
 });

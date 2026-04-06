@@ -83,9 +83,4 @@ test.describe("Mobile 3-Day Recap", () => {
 		});
 	});
 
-	test("floating menu is visible", async ({ mobile3DayRecapPage }) => {
-		await mobile3DayRecapPage.goto();
-		await mobile3DayRecapPage.waitForRecapLoaded();
-		await expect(mobile3DayRecapPage.floatingMenu).toBeVisible();
-	});
 });

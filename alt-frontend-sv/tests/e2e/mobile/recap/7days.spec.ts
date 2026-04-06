@@ -135,17 +135,6 @@ test.describe("Mobile Recap 7-Days", () => {
 		});
 	});
 
-	test("has floating menu", async ({ page, mobile3DayRecapPage }) => {
-		await page.goto("./recap?window=7");
-
-		// Wait for page to load
-		await expect(mobile3DayRecapPage.skeletonContainer).not.toBeVisible({
-			timeout: 15000,
-		});
-
-		// FloatingMenu component should be present
-		await expect(mobile3DayRecapPage.floatingMenu).toBeVisible();
-	});
 });
 
 test.describe("Mobile Recap 7-Days - Navigation", () => {

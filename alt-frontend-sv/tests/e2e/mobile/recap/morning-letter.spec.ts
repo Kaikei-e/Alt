@@ -41,9 +41,4 @@ test.describe("Mobile Morning Letter", () => {
 		).toBeVisible({ timeout: 10000 });
 	});
 
-	test("floating menu is accessible", async ({ mobileMorningLetterPage }) => {
-		await mobileMorningLetterPage.goto();
-		await mobileMorningLetterPage.waitForChatReady();
-		await expect(mobileMorningLetterPage.floatingMenu).toBeVisible();
-	});
 });

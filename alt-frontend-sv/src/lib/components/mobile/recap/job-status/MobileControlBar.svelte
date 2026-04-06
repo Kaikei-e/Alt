@@ -31,8 +31,8 @@ const startButtonTooltip = $derived.by(() => {
 </script>
 
 <div
-	class="fixed bottom-0 left-0 right-0 z-50 border-t bg-white"
-	style="border-color: var(--surface-border); padding-bottom: env(safe-area-inset-bottom, 0px);"
+	class="fixed left-0 right-0 z-50 border-t bg-white"
+	style="border-color: var(--surface-border); bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px));"
 	data-testid="mobile-control-bar"
 >
 	<div class="flex gap-3 p-4">
