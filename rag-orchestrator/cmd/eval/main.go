@@ -12,9 +12,9 @@ import (
 
 	"strings"
 
-	"connectrpc.com/connect"
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
+	"connectrpc.com/connect"
 
 	"rag-orchestrator/eval"
 )

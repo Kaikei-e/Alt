@@ -4,15 +4,15 @@ package eval
 type GoldenCase struct {
 	ID                  string            `json:"id"`
 	Query               string            `json:"query"`
-	ConversationHistory []HistoryMessage   `json:"conversation_history,omitempty"`
-	ArticleScope        *ArticleScopeInfo  `json:"article_scope,omitempty"`
-	Expected            ExpectedBehavior   `json:"expected"`
-	Tags                []string           `json:"tags,omitempty"` // e.g. "causal", "follow-up", "cjk"
+	ConversationHistory []HistoryMessage  `json:"conversation_history,omitempty"`
+	ArticleScope        *ArticleScopeInfo `json:"article_scope,omitempty"`
+	Expected            ExpectedBehavior  `json:"expected"`
+	Tags                []string          `json:"tags,omitempty"` // e.g. "causal", "follow-up", "cjk"
 }
 
 // HistoryMessage represents a single message in the conversation history.
 type HistoryMessage struct {
-	Role    string `json:"role"`    // "user" or "assistant"
+	Role    string `json:"role"` // "user" or "assistant"
 	Content string `json:"content"`
 }
 
@@ -25,21 +25,21 @@ type ArticleScopeInfo struct {
 // ExpectedBehavior defines what a correct response looks like.
 type ExpectedBehavior struct {
 	// Retrieval expectations
-	ExpectedTopicKeywords []string `json:"expected_topic_keywords"`           // keywords that should appear in retrieved chunks
-	RetrievalScope        string   `json:"retrieval_scope"`                   // "global", "article_only", "tool_only"
-	MinRelevantContexts   int      `json:"min_relevant_contexts,omitempty"`   // minimum number of relevant chunks
-	IrrelevantTitles      []string `json:"irrelevant_titles,omitempty"`       // titles that must NOT appear
+	ExpectedTopicKeywords []string `json:"expected_topic_keywords"`         // keywords that should appear in retrieved chunks
+	RetrievalScope        string   `json:"retrieval_scope"`                 // "global", "article_only", "tool_only"
+	MinRelevantContexts   int      `json:"min_relevant_contexts,omitempty"` // minimum number of relevant chunks
+	IrrelevantTitles      []string `json:"irrelevant_titles,omitempty"`     // titles that must NOT appear
 
 	// Planning expectations
-	ShouldClarify       bool   `json:"should_clarify"`
-	ExpectedIntent      string `json:"expected_intent,omitempty"`       // expected intent classification
+	ShouldClarify        bool   `json:"should_clarify"`
+	ExpectedIntent       string `json:"expected_intent,omitempty"`        // expected intent classification
 	ExpectedAnswerFormat string `json:"expected_answer_format,omitempty"` // "causal_analysis", "summary", etc.
 
 	// Generation expectations
-	MinAnswerLength    int      `json:"min_answer_length,omitempty"`    // minimum rune count
-	RequiresCitations  bool     `json:"requires_citations"`
-	ExpectedEntities   []string `json:"expected_entities,omitempty"`   // entities that should appear in answer
-	ForbiddenPatterns  []string `json:"forbidden_patterns,omitempty"` // patterns that must NOT appear
+	MinAnswerLength   int      `json:"min_answer_length,omitempty"` // minimum rune count
+	RequiresCitations bool     `json:"requires_citations"`
+	ExpectedEntities  []string `json:"expected_entities,omitempty"`  // entities that should appear in answer
+	ForbiddenPatterns []string `json:"forbidden_patterns,omitempty"` // patterns that must NOT appear
 }
 
 // EvalResult holds the actual output from a single evaluation run.
@@ -47,10 +47,10 @@ type EvalResult struct {
 	CaseID string `json:"case_id"`
 
 	// Retrieval
-	RetrievedTitles   []string  `json:"retrieved_titles"`
-	RetrievedScores   []float32 `json:"retrieved_scores"`
-	BM25HitCount      int       `json:"bm25_hit_count"`
-	ExpandedQueries   []string  `json:"expanded_queries"`
+	RetrievedTitles []string  `json:"retrieved_titles"`
+	RetrievedScores []float32 `json:"retrieved_scores"`
+	BM25HitCount    int       `json:"bm25_hit_count"`
+	ExpandedQueries []string  `json:"expanded_queries"`
 
 	// Planning
 	IntentClassified   string  `json:"intent_classified"`
@@ -70,19 +70,19 @@ type EvalResult struct {
 
 // CaseVerdict represents the pass/fail judgment for a single case.
 type CaseVerdict struct {
-	CaseID  string   `json:"case_id"`
-	Passed  bool     `json:"passed"`
+	CaseID   string   `json:"case_id"`
+	Passed   bool     `json:"passed"`
 	Failures []string `json:"failures,omitempty"` // human-readable failure reasons
 }
 
 // EvalReport summarizes the full evaluation run.
 type EvalReport struct {
-	Timestamp    string        `json:"timestamp"`
-	CaseCount    int           `json:"case_count"`
-	PassCount    int           `json:"pass_count"`
-	FailCount    int           `json:"fail_count"`
-	Verdicts     []CaseVerdict `json:"verdicts"`
-	Metrics      AggregateMetrics `json:"metrics"`
+	Timestamp string           `json:"timestamp"`
+	CaseCount int              `json:"case_count"`
+	PassCount int              `json:"pass_count"`
+	FailCount int              `json:"fail_count"`
+	Verdicts  []CaseVerdict    `json:"verdicts"`
+	Metrics   AggregateMetrics `json:"metrics"`
 }
 
 // AggregateMetrics holds the aggregate scores across all cases.
@@ -99,8 +99,8 @@ type AggregateMetrics struct {
 	IntentAccuracy         float64 `json:"intent_accuracy"`
 
 	// Generation
-	MeanFaithfulness       float64 `json:"mean_faithfulness"`
+	MeanFaithfulness        float64 `json:"mean_faithfulness"`
 	MeanCitationCorrectness float64 `json:"mean_citation_correctness"`
-	UnsupportedClaimRate   float64 `json:"unsupported_claim_rate"`
-	FallbackRate           float64 `json:"fallback_rate"`
+	UnsupportedClaimRate    float64 `json:"unsupported_claim_rate"`
+	FallbackRate            float64 `json:"fallback_rate"`
 }

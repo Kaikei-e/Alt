@@ -42,6 +42,14 @@ func (m *MockSearchIndexerPort) SearchRecapsByTag(ctx context.Context, tagName s
 	return args.Get(0).([]*domain.RecapSearchResult), args.Error(1)
 }
 
+func (m *MockSearchIndexerPort) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, int64, error) {
+	args := m.Called(ctx, query, limit)
+	if args.Get(0) == nil {
+		return nil, args.Get(1).(int64), args.Error(2)
+	}
+	return args.Get(0).([]*domain.RecapSearchResult), args.Get(1).(int64), args.Error(2)
+}
+
 func TestSearchArticleUsecase_Execute_Success(t *testing.T) {
 	// Arrange
 	mockPort := new(MockSearchIndexerPort)

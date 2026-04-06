@@ -117,6 +117,37 @@ def _create_provider_app() -> FastAPI:
     chat_router = chat_mod.create_chat_router(mock_ollama_gateway)
     app.include_router(chat_router)
 
+    # --- Mock plan-query handler ---
+    import news_creator.handler.plan_query_handler as plan_query_mod
+
+    importlib.reload(plan_query_mod)
+
+    mock_plan_query_usecase = Mock()
+
+    async def _mock_plan_query(request: Any) -> Any:
+        from news_creator.domain.models import PlanQueryResponse, QueryPlan
+
+        return PlanQueryResponse(
+            plan=QueryPlan(
+                resolved_query=request.query,
+                search_queries=[request.query, f"{request.query} 分析"],
+                intent="causal_explanation",
+                retrieval_policy="global_only",
+                answer_format="causal_analysis",
+                should_clarify=False,
+                clarification_msg=None,
+                topic_entities=["test"],
+            ),
+            original_query=request.query,
+            model="gemma4-e4b-12k",
+            processing_time_ms=150.0,
+        )
+
+    mock_plan_query_usecase.plan_query = AsyncMock(side_effect=_mock_plan_query)
+
+    plan_query_router = plan_query_mod.create_plan_query_router(mock_plan_query_usecase)
+    app.include_router(plan_query_router)
+
     # --- Provider state handler ---
     from pydantic import BaseModel
 

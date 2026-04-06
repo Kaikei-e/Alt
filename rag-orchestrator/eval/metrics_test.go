@@ -46,9 +46,9 @@ func TestRecallAtK_EmptyRelevant(t *testing.T) {
 
 func TestNDCGAtK_PerfectRanking(t *testing.T) {
 	relevance := map[string]int{
-		"Iran oil crisis":      2,
-		"Iran sanctions":       1,
-		"Unrelated":            0,
+		"Iran oil crisis": 2,
+		"Iran sanctions":  1,
+		"Unrelated":       0,
 	}
 	retrieved := []string{"Iran oil crisis", "Iran sanctions", "Unrelated"}
 	got := NDCGAtK(relevance, retrieved, 3)
