@@ -71,12 +71,38 @@ export const RECALL_CANDIDATE_WITH_REASONS = {
 		articleId: "e2e-recall-1",
 		title: "Go Concurrency Patterns",
 		publishedAt: new Date(Date.now() - 86400_000).toISOString(),
-		summaryExcerpt: "Go の並行処理パターンは goroutine と channel を中心に構成される。",
+		summaryExcerpt:
+			"Go の並行処理パターンは goroutine と channel を中心に構成される。",
 		summaryState: "ready",
 		tags: ["go", "concurrency"],
 		why: [{ code: "new_unread", refId: "", tag: "" }],
 		score: 0.1,
 		link: "https://example.com/go-concurrency",
+	},
+};
+
+export const KNOWLEDGE_HOME_ITEM_SUPERSEDED = {
+	itemKey: "article:e2e-superseded-1",
+	itemType: "article",
+	articleId: "e2e-superseded-1",
+	title: "GraphQL Federation Patterns",
+	publishedAt: new Date(Date.now() - 7200_000).toISOString(),
+	summaryExcerpt:
+		"GraphQL Federation allows composing multiple subgraphs into a single unified API.",
+	summaryState: "ready",
+	tags: ["graphql", "federation", "api"],
+	why: [
+		{ code: "new_unread", refId: "", tag: "" },
+		{ code: "summary_completed", refId: "", tag: "" },
+	],
+	score: 0.7,
+	link: "https://example.com/graphql-federation",
+	supersedeInfo: {
+		state: "summary_updated",
+		supersededAt: new Date(Date.now() - 600_000).toISOString(),
+		previousSummaryExcerpt: "GraphQL は複数のスキーマを合成する仕組みとして Federation を提供している。",
+		previousTags: ["graphql", "schema"],
+		previousWhyCodes: ["new_unread"],
 	},
 };
 
@@ -89,12 +115,49 @@ export const FEATURE_FLAGS = [
 	{ name: "enable_supersede_ux", enabled: false },
 ];
 
+export const FEATURE_FLAGS_WITH_LENS = FEATURE_FLAGS.map((f) =>
+	f.name === "enable_lens" ? { ...f, enabled: true } : f,
+);
+
+export const FEATURE_FLAGS_RECALL_DISABLED = FEATURE_FLAGS.map((f) =>
+	f.name === "enable_recall_rail" ? { ...f, enabled: false } : f,
+);
+
+export const FEATURE_FLAGS_WITH_SUPERSEDE = FEATURE_FLAGS.map((f) =>
+	f.name === "enable_supersede_ux" ? { ...f, enabled: true } : f,
+);
+
+export const FEATURE_FLAGS_WITH_STREAM = FEATURE_FLAGS.map((f) =>
+	f.name === "enable_stream_updates" ? { ...f, enabled: true } : f,
+);
+
+export const DIGEST_WITH_AVAILABILITY = {
+	...KNOWLEDGE_HOME_DIGEST,
+	weeklyRecapAvailable: true,
+	eveningPulseAvailable: true,
+};
+
+export const DIGEST_WITHOUT_AVAILABILITY = {
+	...KNOWLEDGE_HOME_DIGEST,
+	weeklyRecapAvailable: false,
+	eveningPulseAvailable: false,
+};
+
+export function buildListLensesResponse(
+	lenses: { id: string; name: string; filterSummary: string }[] = [],
+	activeLensId = "",
+) {
+	return { lenses, activeLensId };
+}
+
 export function buildGetKnowledgeHomeResponse(overrides?: {
 	items?: unknown[];
 	recallCandidates?: unknown[];
+	featureFlags?: typeof FEATURE_FLAGS;
+	todayDigest?: typeof KNOWLEDGE_HOME_DIGEST;
 }) {
 	return {
-		todayDigest: KNOWLEDGE_HOME_DIGEST,
+		todayDigest: overrides?.todayDigest ?? KNOWLEDGE_HOME_DIGEST,
 		items: overrides?.items ?? [
 			KNOWLEDGE_HOME_ITEM_READY,
 			KNOWLEDGE_HOME_ITEM_PENDING,
@@ -103,7 +166,7 @@ export function buildGetKnowledgeHomeResponse(overrides?: {
 		hasMore: false,
 		degradedMode: false,
 		generatedAt: new Date().toISOString(),
-		featureFlags: FEATURE_FLAGS,
+		featureFlags: overrides?.featureFlags ?? FEATURE_FLAGS,
 		serviceQuality: "full",
 		recallCandidates: overrides?.recallCandidates ?? [
 			RECALL_CANDIDATE_WITH_REASONS,

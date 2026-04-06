@@ -27,15 +27,13 @@ export class DesktopKnowledgeHomePage extends BasePage {
 
 	constructor(page: Page) {
 		super(page);
-		this.todayBar = page.locator("[data-testid='today-bar']").or(
-			page.getByText("Knowledge Home").first(),
-		);
+		this.todayBar = page
+			.locator("[data-testid='today-bar']")
+			.or(page.getByText("Knowledge Home").first());
 		this.knowledgeStream = page.locator("[data-item-key]").first();
 		this.cards = page.locator("article[data-item-key]");
 		this.recallRail = page.getByText("Recall").first();
-		this.recallCandidateCards = page.locator(
-			"[role='button'][tabindex='0']",
-		);
+		this.recallCandidateCards = page.locator("[role='button'][tabindex='0']");
 		this.streamUpdateBar = page.getByText("items updated");
 		this.degradedBanner = page.getByText("degraded");
 	}
@@ -66,9 +64,7 @@ export class DesktopKnowledgeHomePage extends BasePage {
 
 	/** Get tag chips within a card */
 	getCardTags(itemKey: string): Locator {
-		return this.getCard(itemKey).locator(
-			'a[href^="/articles/by-tag"]',
-		);
+		return this.getCard(itemKey).locator('a[href^="/articles/by-tag"]');
 	}
 
 	/** Get the Open button within a card's QuickActionRow */
@@ -88,9 +84,42 @@ export class DesktopKnowledgeHomePage extends BasePage {
 
 	/** Get recall reason badges */
 	getRecallReasonBadges(): Locator {
-		return this.page.locator(
-			"[class*='badge']",
-		);
+		return this.page.locator("[class*='badge']");
+	}
+
+	/** Get the supersede badge on a card */
+	getSupersedeBadge(itemKey: string): Locator {
+		return this.getCard(itemKey).getByText(/updated|replaced/i);
+	}
+
+	/** Get the supersede detail panel */
+	getSupersedDetail(): Locator {
+		return this.page.getByText("Previous summary:").first();
+	}
+
+	/** Get the stream update refresh button */
+	getStreamRefreshButton(): Locator {
+		return this.page.locator("button").filter({ hasText: /updated/ });
+	}
+
+	/** Get lens tab buttons */
+	getLensTab(name: string): Locator {
+		return this.page.locator("button").filter({ hasText: new RegExp(`^${name}$`) });
+	}
+
+	/** Get the morning letter link in TodayBar */
+	getTodayBarMorningLetterLink(): Locator {
+		return this.todayBar.locator('a[href*="morning-letter"]');
+	}
+
+	/** Get the evening pulse link in TodayBar */
+	getTodayBarEveningPulseLink(): Locator {
+		return this.todayBar.locator('a[href*="evening-pulse"]');
+	}
+
+	/** Get the weekly recap link in TodayBar */
+	getTodayBarRecapLink(): Locator {
+		return this.todayBar.locator('a[href*="/recap"]').first();
 	}
 
 	/** Wait for the home page to finish initial loading */

@@ -3,7 +3,8 @@ import type { Snippet } from "svelte";
 import { page } from "$app/state";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import Sidebar from "$lib/components/desktop/layout/Sidebar.svelte";
-import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
+import MobileBottomNav from "$lib/components/mobile/MobileBottomNav.svelte";
+import { shouldShowBottomNav } from "$lib/components/mobile/bottom-nav";
 import { cn } from "$lib/utils";
 
 let { children, class: className = "" }: { children: Snippet; class?: string } =
@@ -11,15 +12,10 @@ let { children, class: className = "" }: { children: Snippet; class?: string } =
 
 const { isDesktop } = useViewport();
 
-/** Routes where FloatingMenu should be hidden (full-screen interactive pages) */
-const HIDE_FLOATING_MENU_PATHS = ["/augur", "/feeds/swipe", "/feeds/search"];
-
 /** Routes that need full-bleed layout (no padding) */
 const FULL_BLEED_PATHS = ["/feeds/tag-verse"];
 
-const showFloatingMenu = $derived(
-	!HIDE_FLOATING_MENU_PATHS.includes(page.url.pathname),
-);
+const showBottomNav = $derived(shouldShowBottomNav(page.url.pathname));
 const isFullBleed = $derived(FULL_BLEED_PATHS.includes(page.url.pathname));
 </script>
 
@@ -32,13 +28,13 @@ const isFullBleed = $derived(FULL_BLEED_PATHS.includes(page.url.pathname));
 		</main>
 	</div>
 {:else}
-	<!-- Mobile: Full-screen content + FloatingMenu FAB -->
+	<!-- Mobile: Full-screen content + persistent BottomNav -->
 	<div class="min-h-screen bg-[var(--surface-bg)]">
-		<main class={className}>
+		<main class={cn(className, showBottomNav ? "pb-[calc(2.75rem+env(safe-area-inset-bottom,0px))]" : "")}>
 			{@render children()}
 		</main>
-		{#if showFloatingMenu}
-			<FloatingMenu />
+		{#if showBottomNav}
+			<MobileBottomNav pathname={page.url.pathname} />
 		{/if}
 	</div>
 {/if}

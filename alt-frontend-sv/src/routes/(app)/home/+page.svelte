@@ -11,12 +11,15 @@ import ListenQueueBar from "$lib/components/knowledge-home/ListenQueueBar.svelte
 import Toast from "$lib/components/knowledge-home/Toast.svelte";
 import LensModal from "$lib/components/knowledge-home/lens/LensModal.svelte";
 import LensSelector from "$lib/components/knowledge-home/lens/LensSelector.svelte";
-import MiniRecallPanel from "$lib/components/knowledge-home/MiniRecallPanel.svelte";
 import RecallRail from "$lib/components/knowledge-home/recall-rail/RecallRail.svelte";
 import RecallRailCollapsible from "$lib/components/knowledge-home/recall-rail/RecallRailCollapsible.svelte";
 import StreamUpdateBar from "$lib/components/knowledge-home/StreamUpdateBar.svelte";
 import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
 import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.svelte";
+import MobileKnowledgeHomeHeader from "$lib/components/knowledge-home/MobileKnowledgeHomeHeader.svelte";
+import GlobalSearchEntry from "$lib/components/knowledge-home/GlobalSearchEntry.svelte";
+import MobileRecallSection from "$lib/components/knowledge-home/MobileRecallSection.svelte";
+import MobileMoreSheet from "$lib/components/mobile/MobileMoreSheet.svelte";
 import {
 	createClientTransport,
 	listSubscriptions,
@@ -27,7 +30,6 @@ import type {
 	LensVersionData,
 } from "$lib/connect/knowledge_home";
 import type { TagSuggestion } from "$lib/components/knowledge-home/lens/TagCombobox.svelte";
-import { useFeatureFlags } from "$lib/hooks/useFeatureFlags.svelte";
 import { useKnowledgeHome } from "$lib/hooks/useKnowledgeHome.svelte";
 import { useLens } from "$lib/hooks/useLens.svelte";
 import { useRecallRail } from "$lib/hooks/useRecallRail.svelte";
@@ -39,7 +41,6 @@ import { refreshHomeWithRecallSync } from "./stream-refresh";
 
 const { isDesktop } = useViewport();
 const home = useKnowledgeHome();
-const flags = useFeatureFlags();
 const recall = useRecallRail();
 const lens = useLens();
 const tts = useTtsPlayback();
@@ -48,6 +49,7 @@ const toast = useToastStore();
 let exposureSessionId = $state("");
 let lensModalOpen = $state(false);
 let bannerDismissed = $state(false);
+let moreSheetOpen = $state(false);
 let askSheetOpen = $state(false);
 let askScopeTitle = $state("");
 let askScopeContext = $state("");
@@ -68,9 +70,6 @@ let lensDraft = $state<Omit<LensVersionData, "versionId">>({
 	sortMode: "relevance",
 });
 
-const recallEnabled = $derived(flags.isEnabled("enable_recall_rail"));
-const lensEnabled = $derived(flags.isEnabled("enable_lens"));
-const streamEnabled = $derived(flags.isEnabled("enable_stream_updates"));
 const activeLensName = $derived(
 	lens.activeLensId
 		? (lens.lenses.find((entry) => entry.lensId === lens.activeLensId)?.name ??
@@ -83,31 +82,10 @@ const showBanner = $derived(
 		(home.pageState === "degraded" || home.pageState === "fallback"),
 );
 const streamMode = $derived(
-	searchQuery.trim() ? "search" : lens.activeLensId ? "lens" : "default",
+	lens.activeLensId ? "lens" : "default",
 );
-const visibleItems = $derived.by(() => {
-	const query = searchQuery.trim().toLowerCase();
-	if (!query) return home.items;
-	return home.items.filter((item) => {
-		const haystack = [
-			item.title,
-			item.summaryExcerpt ?? "",
-			...(item.tags ?? []),
-			...(item.why ?? []).map((reason) => `${reason.code} ${reason.tag ?? ""}`),
-		]
-			.join(" ")
-			.toLowerCase();
-		return haystack.includes(query);
-	});
-});
+const visibleItems = $derived(home.items);
 const emptyReason = $derived.by(() => {
-	if (
-		streamMode === "search" &&
-		searchQuery.trim() &&
-		visibleItems.length === 0
-	) {
-		return "search_strict";
-	}
 	if (home.pageState === "degraded" && visibleItems.length === 0) {
 		return "degraded";
 	}
@@ -131,13 +109,13 @@ const lensTagSuggestions = $derived.by((): TagSuggestion[] => {
 
 const stream = useStreamUpdates({
 	get enabled() {
-		return streamEnabled;
+		return true;
 	},
 	get lensId() {
 		return lens.activeLensId ?? undefined;
 	},
 	onRefresh: () =>
-		refreshHomeWithRecallSync(home, recall, recallEnabled, lens.activeLensId),
+		refreshHomeWithRecallSync(home, recall, lens.activeLensId),
 });
 
 async function processQueue() {
@@ -197,9 +175,7 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 		return;
 	}
 
-	if (flags.trackingEnabled) {
-		home.trackAction(type, itemKey, metadata);
-	}
+	home.trackAction(type, itemKey, metadata);
 
 	const articleId = itemKey.startsWith("article:") ? itemKey.slice(8) : null;
 
@@ -229,15 +205,11 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 }
 
 function handleTagClick(tag: string, item: KnowledgeHomeItemData) {
-	if (flags.trackingEnabled) {
-		home.trackAction("tag_click", item.itemKey, JSON.stringify({ tag }));
-	}
+	home.trackAction("tag_click", item.itemKey, JSON.stringify({ tag }));
 }
 
 function handleRecallOpen(itemKey: string) {
-	if (flags.trackingEnabled) {
-		home.trackAction("open", itemKey);
-	}
+	home.trackAction("open", itemKey);
 	const articleId = itemKey.startsWith("article:") ? itemKey.slice(8) : null;
 	if (!articleId) return;
 	const candidate = recall.candidates.find((c) => c.itemKey === itemKey);
@@ -250,19 +222,18 @@ function handleRecallOpen(itemKey: string) {
 }
 
 function handleItemsVisible(itemKeys: string[]) {
-	if (exposureSessionId && flags.trackingEnabled) {
+	if (exposureSessionId) {
 		home.trackSeen(itemKeys, exposureSessionId);
 	}
 }
 
 function handleSearchSubmit(query: string) {
-	searchQuery = query;
-	lensDraft = { ...lensDraft, queryText: query.trim() };
+	goto(`/search?q=${encodeURIComponent(query)}`);
 }
 
 function handleSearchClear() {
 	searchQuery = "";
-	lensDraft = { ...lensDraft, queryText: "" };
+	lensDraft.queryText = "";
 }
 
 function handleAskFromHome(query: string) {
@@ -273,11 +244,7 @@ function handleAskFromHome(query: string) {
 	askSheetOpen = true;
 }
 
-
 function syncRecallState() {
-	if (!recallEnabled) return;
-	// Trust the Home response's embedded recall candidates (even if empty).
-	// The backend always populates this field when FlagRecallRail is enabled.
 	recall.setCandidates(home.recallCandidates);
 }
 
@@ -346,41 +313,35 @@ onMount(async () => {
 	if (browser) {
 		exposureSessionId = crypto.randomUUID();
 
-		// Fetch Home data first to get feature flags
 		await home.fetchData(true);
-		flags.setFlags(home.featureFlags);
 
-		// After flags are resolved, load lens data if enabled
-		if (flags.isEnabled("enable_lens")) {
-			await loadLensSources();
-			await lens.fetchLenses();
-			const urlLensId = page.url.searchParams.get("lens");
-			const initialLensId = urlLensId ?? lens.activeLensId;
-			if (urlLensId && urlLensId !== lens.activeLensId) {
-				await lens.select(urlLensId);
+		await loadLensSources();
+		await lens.fetchLenses();
+		const urlLensId = page.url.searchParams.get("lens");
+		const initialLensId = urlLensId ?? lens.activeLensId;
+		if (urlLensId && urlLensId !== lens.activeLensId) {
+			await lens.select(urlLensId);
+		}
+		if (initialLensId) {
+			const initialLens = lens.lenses.find(
+				(entry) => entry.lensId === initialLensId,
+			);
+			if (initialLens?.currentVersion) {
+				searchQuery = initialLens.currentVersion.queryText;
+				lensDraft = {
+					queryText: initialLens.currentVersion.queryText,
+					tagIds: [...initialLens.currentVersion.tagIds],
+					sourceIds: [...initialLens.currentVersion.sourceIds],
+					timeWindow: initialLens.currentVersion.timeWindow || "7d",
+					includeRecap: initialLens.currentVersion.includeRecap,
+					includePulse: initialLens.currentVersion.includePulse,
+					sortMode: initialLens.currentVersion.sortMode || "relevance",
+				};
 			}
-			if (initialLensId) {
-				const initialLens = lens.lenses.find(
-					(entry) => entry.lensId === initialLensId,
-				);
-				if (initialLens?.currentVersion) {
-					searchQuery = initialLens.currentVersion.queryText;
-					lensDraft = {
-						queryText: initialLens.currentVersion.queryText,
-						tagIds: [...initialLens.currentVersion.tagIds],
-						sourceIds: [...initialLens.currentVersion.sourceIds],
-						timeWindow: initialLens.currentVersion.timeWindow || "7d",
-						includeRecap: initialLens.currentVersion.includeRecap,
-						includePulse: initialLens.currentVersion.includePulse,
-						sortMode: initialLens.currentVersion.sortMode || "relevance",
-					};
-				}
-			}
-			await syncLensQuery(initialLensId);
-			// Re-fetch with lens filter if active
-			if (initialLensId) {
-				await home.fetchData(true, initialLensId);
-			}
+		}
+		await syncLensQuery(initialLensId);
+		if (initialLensId) {
+			await home.fetchData(true, initialLensId);
 		}
 
 		syncRecallState();
@@ -417,30 +378,26 @@ onMount(async () => {
 		onAsk={handleAskFromHome}
 	/>
 
-	{#if lensEnabled}
-		<div class="mt-3">
-			<LensSelector
-				lenses={lens.lenses}
-				activeLensId={lens.activeLensId}
-				matchCount={lensMatchCount}
-				onSelect={handleLensSelect}
-				onCreateClick={() => {
-					lensModalOpen = true;
-				}}
-			/>
-		</div>
-	{/if}
+	<div class="mt-3">
+		<LensSelector
+			lenses={lens.lenses}
+			activeLensId={lens.activeLensId}
+			matchCount={lensMatchCount}
+			onSelect={handleLensSelect}
+			onCreateClick={() => {
+				lensModalOpen = true;
+			}}
+		/>
+	</div>
 
-	{#if streamEnabled}
-		<div class="mt-3">
-			<StreamUpdateBar
-				pendingCount={stream.pendingCount}
-				isConnected={stream.isConnected}
-				isFallback={stream.isFallback}
-				onApply={() => stream.applyUpdates()}
-			/>
-		</div>
-	{/if}
+	<div class="mt-3">
+		<StreamUpdateBar
+			pendingCount={stream.pendingCount}
+			isConnected={stream.isConnected}
+			isFallback={stream.isFallback}
+			onApply={() => stream.applyUpdates()}
+		/>
+	</div>
 
 	<div class="mt-6 flex gap-8">
 		<div class="min-w-0 flex-1">
@@ -460,21 +417,22 @@ onMount(async () => {
 			/>
 		</div>
 		<div class="w-80 flex-shrink-0">
-				{#if recallEnabled}
-					<RecallRail
-						candidates={recall.candidates}
-						unavailable={Boolean(recall.error)}
-						onSnooze={(key: string) => recall.snooze(key)}
-						onDismiss={(key: string) => recall.dismiss(key)}
-						onOpen={handleRecallOpen}
-					/>
-			{:else}
-				<MiniRecallPanel digest={home.digest} />
-			{/if}
+			<RecallRail
+				candidates={recall.candidates}
+				unavailable={Boolean(recall.error)}
+				onSnooze={(key: string) => recall.snooze(key)}
+				onDismiss={(key: string) => recall.dismiss(key)}
+				onOpen={handleRecallOpen}
+			/>
 		</div>
 	</div>
 {:else}
-	<div class="min-h-[100dvh]" style="background: var(--app-bg);">
+	<div style="background: var(--app-bg);">
+		<MobileKnowledgeHomeHeader
+			serviceQuality={home.serviceQuality}
+			onMoreClick={() => { moreSheetOpen = true; }}
+		/>
+
 		{#if showBanner}
 			<div class="px-3 pt-2">
 				<DegradedModeBanner
@@ -487,49 +445,37 @@ onMount(async () => {
 		{/if}
 
 		<TodayBar digest={home.digest} serviceQuality={home.serviceQuality} />
-		<UnifiedIntentBox
-			query={searchQuery}
-			onSearchSubmit={handleSearchSubmit}
-			onSearchClear={handleSearchClear}
-			onAsk={handleAskFromHome}
+
+		<GlobalSearchEntry onAsk={handleAskFromHome} />
+
+		<div class="px-3 pt-2">
+			<LensSelector
+				lenses={lens.lenses}
+				activeLensId={lens.activeLensId}
+				matchCount={lensMatchCount}
+				onSelect={handleLensSelect}
+				onCreateClick={() => {
+					lensModalOpen = true;
+				}}
+			/>
+		</div>
+
+		<MobileRecallSection
+			candidates={recall.candidates}
+			unavailable={Boolean(recall.error)}
+			onSnooze={(key: string) => recall.snooze(key)}
+			onDismiss={(key: string) => recall.dismiss(key)}
+			onOpen={handleRecallOpen}
 		/>
 
-		{#if recallEnabled}
-				<div class="px-3 pt-2">
-					<RecallRailCollapsible
-						candidates={recall.candidates}
-						unavailable={Boolean(recall.error)}
-						onSnooze={(key: string) => recall.snooze(key)}
-						onDismiss={(key: string) => recall.dismiss(key)}
-						onOpen={handleRecallOpen}
-					/>
-			</div>
-		{/if}
-
-		{#if lensEnabled}
-			<div class="px-3 pt-2">
-				<LensSelector
-					lenses={lens.lenses}
-					activeLensId={lens.activeLensId}
-					matchCount={lensMatchCount}
-					onSelect={handleLensSelect}
-					onCreateClick={() => {
-						lensModalOpen = true;
-					}}
-				/>
-			</div>
-		{/if}
-
-		{#if streamEnabled}
-			<div class="px-3 pt-2">
-				<StreamUpdateBar
-					pendingCount={stream.pendingCount}
-					isConnected={stream.isConnected}
-					isFallback={stream.isFallback}
-					onApply={() => stream.applyUpdates()}
-				/>
-			</div>
-		{/if}
+		<div class="px-3 pt-2">
+			<StreamUpdateBar
+				pendingCount={stream.pendingCount}
+				isConnected={stream.isConnected}
+				isFallback={stream.isFallback}
+				onApply={() => stream.applyUpdates()}
+			/>
+		</div>
 
 		<div class="p-3">
 			<KnowledgeStream
@@ -548,6 +494,8 @@ onMount(async () => {
 			/>
 		</div>
 	</div>
+
+	<MobileMoreSheet bind:open={moreSheetOpen} />
 {/if}
 
 <AskSheet
@@ -582,16 +530,14 @@ onMount(async () => {
 
 <Toast items={toast.items} onDismiss={toast.remove} />
 
-{#if lensEnabled}
-	<LensModal
-		open={lensModalOpen}
-		version={lensDraft}
-		availableSources={lensSources}
-		availableTags={lensTagSuggestions}
-		loadingSources={lensSourcesLoading}
-		onOpenChange={(open: boolean) => {
-			lensModalOpen = open;
-		}}
-		onSave={handleCreateLens}
-	/>
-{/if}
+<LensModal
+	open={lensModalOpen}
+	version={lensDraft}
+	availableSources={lensSources}
+	availableTags={lensTagSuggestions}
+	loadingSources={lensSourcesLoading}
+	onOpenChange={(open: boolean) => {
+		lensModalOpen = open;
+	}}
+	onSave={handleCreateLens}
+/>

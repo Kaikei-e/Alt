@@ -67,13 +67,19 @@ describe("recall-reason-map", () => {
 		});
 
 		it("uses description as label when code is unknown and description is provided", () => {
-			const result = resolveRecallReason("unknown_code", "Opened 3 days ago, not revisited since");
+			const result = resolveRecallReason(
+				"unknown_code",
+				"Opened 3 days ago, not revisited since",
+			);
 			expect(result.label).toBe("Opened 3 days ago, not revisited since");
 			expect(result.colorClass).toContain("gray");
 		});
 
 		it("ignores description when code is known", () => {
-			const result = resolveRecallReason("related_to_recent_search", "some override text");
+			const result = resolveRecallReason(
+				"related_to_recent_search",
+				"some override text",
+			);
 			expect(result.label).toBe("Search related");
 		});
 	});

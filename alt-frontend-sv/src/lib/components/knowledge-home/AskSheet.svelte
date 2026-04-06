@@ -1,115 +1,115 @@
 <script lang="ts">
-	import { tick } from "svelte";
-	import { FileText, Loader2, RotateCcw, Shuffle } from "@lucide/svelte";
-	import * as Sheet from "$lib/components/ui/sheet";
-	import ChatMessage from "$lib/components/desktop/augur/ChatMessage.svelte";
-	import ChatInput from "$lib/components/desktop/augur/ChatInput.svelte";
-	import { useAugurPane } from "$lib/hooks/useAugurPane.svelte";
-	import { useViewport } from "$lib/stores/viewport.svelte";
-	import { buildAugurInitialMessage } from "$lib/utils/augur-entry";
-	import { pickSuggestions } from "./ask-suggestions";
-	import augurAvatar from "$lib/assets/augur-chat.webp";
+import { tick } from "svelte";
+import { FileText, Loader2, RotateCcw, Shuffle } from "@lucide/svelte";
+import * as Sheet from "$lib/components/ui/sheet";
+import ChatMessage from "$lib/components/desktop/augur/ChatMessage.svelte";
+import ChatInput from "$lib/components/desktop/augur/ChatInput.svelte";
+import { useAugurPane } from "$lib/hooks/useAugurPane.svelte";
+import { useViewport } from "$lib/stores/viewport.svelte";
+import { buildAugurInitialMessage } from "$lib/utils/augur-entry";
+import { pickSuggestions } from "./ask-suggestions";
+import augurAvatar from "$lib/assets/augur-chat.webp";
 
-	interface Props {
-		open: boolean;
-		scopeTitle: string;
-		scopeContext?: string;
-		scopeArticleId?: string;
-		scopeTags?: string[];
-		onClose: () => void;
+interface Props {
+	open: boolean;
+	scopeTitle: string;
+	scopeContext?: string;
+	scopeArticleId?: string;
+	scopeTags?: string[];
+	onClose: () => void;
+}
+
+const {
+	open,
+	scopeTitle,
+	scopeContext,
+	scopeArticleId,
+	scopeTags,
+	onClose,
+}: Props = $props();
+
+const { isDesktop } = useViewport();
+const pane = useAugurPane();
+
+let phase = $state<"ask" | "chat">("ask");
+let question = $state("");
+let chatContainer: HTMLDivElement | undefined = $state();
+let shuffleCount = $state(0);
+
+const suggestions = $derived(pickSuggestions(scopeTags, shuffleCount));
+const sheetSide = $derived<"right" | "bottom">(isDesktop ? "right" : "bottom");
+
+// Reset state when sheet closes
+$effect(() => {
+	if (!open) {
+		phase = "ask";
+		question = "";
+		shuffleCount = 0;
+		pane.reset();
 	}
+});
 
-	const {
-		open,
-		scopeTitle,
+// Auto-scroll when messages update
+$effect(() => {
+	const _len = pane.messages.length;
+	const lastMsg = pane.messages.at(-1);
+	const _content = lastMsg?.message;
+	if (chatContainer) {
+		tick().then(() => {
+			if (chatContainer) {
+				chatContainer.scrollTop = chatContainer.scrollHeight;
+			}
+		});
+	}
+});
+
+function handleAskSubmit() {
+	const trimmed = question.trim();
+	if (!trimmed) return;
+
+	phase = "chat";
+	const initialMessage = buildAugurInitialMessage(
+		trimmed,
 		scopeContext,
 		scopeArticleId,
-		scopeTags,
-		onClose,
-	}: Props = $props();
+	);
+	tick().then(() => pane.sendMessage(initialMessage));
+}
 
-	const { isDesktop } = useViewport();
-	const pane = useAugurPane();
+// Retry: detect if last assistant message is an error/fallback (not loading)
+const canRetry = $derived.by(() => {
+	if (pane.isLoading || pane.messages.length < 2) return false;
+	const last = pane.messages.at(-1);
+	if (!last || last.role !== "assistant") return false;
+	const msg = last.message;
+	return (
+		msg.startsWith("Error:") ||
+		msg.includes("Not enough indexed content") ||
+		msg.includes("couldn't find enough information") ||
+		msg.includes("timed out")
+	);
+});
 
-	let phase = $state<"ask" | "chat">("ask");
-	let question = $state("");
-	let chatContainer: HTMLDivElement | undefined = $state();
-	let shuffleCount = $state(0);
-
-	const suggestions = $derived(pickSuggestions(scopeTags, shuffleCount));
-	const sheetSide = $derived<"right" | "bottom">(isDesktop ? "right" : "bottom");
-
-	// Reset state when sheet closes
-	$effect(() => {
-		if (!open) {
-			phase = "ask";
-			question = "";
-			shuffleCount = 0;
-			pane.reset();
-		}
-	});
-
-	// Auto-scroll when messages update
-	$effect(() => {
-		const _len = pane.messages.length;
-		const lastMsg = pane.messages.at(-1);
-		const _content = lastMsg?.message;
-		if (chatContainer) {
-			tick().then(() => {
-				if (chatContainer) {
-					chatContainer.scrollTop = chatContainer.scrollHeight;
-				}
-			});
-		}
-	});
-
-	function handleAskSubmit() {
-		const trimmed = question.trim();
-		if (!trimmed) return;
-
-		phase = "chat";
-		const initialMessage = buildAugurInitialMessage(
-			trimmed,
-			scopeContext,
-			scopeArticleId,
-		);
-		tick().then(() => pane.sendMessage(initialMessage));
-	}
-
-	// Retry: detect if last assistant message is an error/fallback (not loading)
-	const canRetry = $derived.by(() => {
-		if (pane.isLoading || pane.messages.length < 2) return false;
-		const last = pane.messages.at(-1);
-		if (!last || last.role !== "assistant") return false;
-		const msg = last.message;
-		return (
-			msg.startsWith("Error:") ||
-			msg.includes("Not enough indexed content") ||
-			msg.includes("couldn't find enough information") ||
-			msg.includes("timed out")
-		);
-	});
-
-	function handleRetry() {
-		// Find last user message and resend
-		for (let i = pane.messages.length - 1; i >= 0; i--) {
-			if (pane.messages[i].role === "user") {
-				pane.sendMessage(pane.messages[i].message);
-				return;
-			}
+function handleRetry() {
+	// Find last user message and resend
+	for (let i = pane.messages.length - 1; i >= 0; i--) {
+		if (pane.messages[i].role === "user") {
+			pane.sendMessage(pane.messages[i].message);
+			return;
 		}
 	}
+}
 
-	function handleChatSend(text: string) {
-		pane.sendMessage(text);
-	}
+function handleChatSend(text: string) {
+	pane.sendMessage(text);
+}
 
-	function handleOpenChange(isOpen: boolean) {
-		if (!isOpen) {
-			pane.abort();
-			onClose();
-		}
+function handleOpenChange(isOpen: boolean) {
+	if (!isOpen) {
+		pane.abort();
+		onClose();
 	}
+}
 </script>
 
 {#key sheetSide}

@@ -32,12 +32,18 @@ const primaryReason = $derived(candidate.reasons[0]);
 const borderColor = $derived.by(() => {
 	if (!primaryReason) return "border-l-[var(--surface-border)]";
 	const display = resolveRecallReason(primaryReason.type);
-	if (display.colorClass.includes("amber")) return "border-l-[var(--badge-amber-border)]";
-	if (display.colorClass.includes("blue")) return "border-l-[var(--badge-blue-border)]";
-	if (display.colorClass.includes("purple")) return "border-l-[var(--badge-purple-border)]";
-	if (display.colorClass.includes("teal")) return "border-l-[var(--badge-teal-border)]";
-	if (display.colorClass.includes("orange")) return "border-l-[var(--badge-orange-border)]";
-	if (display.colorClass.includes("green")) return "border-l-[var(--badge-green-border)]";
+	if (display.colorClass.includes("amber"))
+		return "border-l-[var(--badge-amber-border)]";
+	if (display.colorClass.includes("blue"))
+		return "border-l-[var(--badge-blue-border)]";
+	if (display.colorClass.includes("purple"))
+		return "border-l-[var(--badge-purple-border)]";
+	if (display.colorClass.includes("teal"))
+		return "border-l-[var(--badge-teal-border)]";
+	if (display.colorClass.includes("orange"))
+		return "border-l-[var(--badge-orange-border)]";
+	if (display.colorClass.includes("green"))
+		return "border-l-[var(--badge-green-border)]";
 	return "border-l-[var(--surface-border)]";
 });
 

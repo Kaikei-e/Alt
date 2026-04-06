@@ -42,9 +42,7 @@ describe("processArticleFetchResponse", () => {
 
 		expect(result.articleContent).toBeNull();
 		expect(result.articleID).toBeNull();
-		expect(result.contentError).toBe(
-			"Article content could not be retrieved",
-		);
+		expect(result.contentError).toBe("Article content could not be retrieved");
 	});
 
 	it("sets contentError when content is whitespace-only", () => {
@@ -58,9 +56,7 @@ describe("processArticleFetchResponse", () => {
 		const result = processArticleFetchResponse(response);
 
 		expect(result.articleContent).toBeNull();
-		expect(result.contentError).toBe(
-			"Article content could not be retrieved",
-		);
+		expect(result.contentError).toBe("Article content could not be retrieved");
 	});
 
 	it("returns articleID as null when article_id is empty", () => {

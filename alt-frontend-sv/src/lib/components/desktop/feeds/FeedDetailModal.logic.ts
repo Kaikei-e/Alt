@@ -7,7 +7,9 @@ import type { FeedContentOnTheFlyResponse } from "$lib/api/client/articles";
  * infinitely: articleContent stays null, contentError stays null,
  * isFetchingContent resets → all conditions for re-fetch remain true.
  */
-export function processArticleFetchResponse(response: FeedContentOnTheFlyResponse): {
+export function processArticleFetchResponse(
+	response: FeedContentOnTheFlyResponse,
+): {
 	articleContent: string | null;
 	articleID: string | null;
 	contentError: string | null;
