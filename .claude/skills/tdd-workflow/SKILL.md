@@ -57,7 +57,10 @@ Use an outside-in order for feature work: `E2E` → `CDCT` → `Unit tests`.
 | news-creator (provider) | — | Python | `news-creator/app/tests/contract/` |
 | recap-subworker (provider) | — | Python | `recap-subworker/tests/contract/` |
 | tag-generator (provider) | — | Python | `tag-generator/app/tests/contract/` |
+| alt-butterfly-facade | alt-backend, tts-speaker | Go | `alt-butterfly-facade/internal/handler/contract/` |
+| auth-hub | kratos | Go | `auth-hub/internal/adapter/gateway/contract/` |
 | alt-backend (provider) | — | Go | `alt-backend/app/driver/contract/provider_test.go` |
+| tts-speaker (provider) | — | Python | `tts-speaker/tests/contract/` |
 
 ### CDC Test Commands
 

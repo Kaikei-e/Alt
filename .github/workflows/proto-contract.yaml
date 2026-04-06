@@ -20,6 +20,9 @@ on:
       - 'tag-generator/app/tests/contract/**'
       - 'recap-evaluator/tests/contract/**'
       - 'recap-worker/recap-worker/src/clients/*contract*'
+      - 'alt-butterfly-facade/internal/handler/contract/**'
+      - 'auth-hub/internal/adapter/gateway/contract/**'
+      - 'tts-speaker/tests/contract/**'
   pull_request:
     branches: [main]
     paths:
@@ -38,6 +41,9 @@ on:
       - 'tag-generator/app/tests/contract/**'
       - 'recap-evaluator/tests/contract/**'
       - 'recap-worker/recap-worker/src/clients/*contract*'
+      - 'alt-butterfly-facade/internal/handler/contract/**'
+      - 'auth-hub/internal/adapter/gateway/contract/**'
+      - 'tts-speaker/tests/contract/**'
 
 permissions:
   contents: read
@@ -114,6 +120,14 @@ jobs:
           - service: mq-hub/app
             test-path: ./driver/contract/
             sparse-checkout: mq-hub
+            pact-dir: pacts
+          - service: alt-butterfly-facade
+            test-path: ./internal/handler/contract/
+            sparse-checkout: alt-butterfly-facade
+            pact-dir: pacts
+          - service: auth-hub
+            test-path: ./internal/adapter/gateway/contract/
+            sparse-checkout: auth-hub
             pact-dir: pacts
     steps:
       - uses: actions/checkout@v5
@@ -288,6 +302,20 @@ jobs:
         working-directory: tag-generator/app
         env:
           SERVICE_SECRET: test-secret
+          PACT_BROKER_BASE_URL: http://localhost:9292
+          PACT_BROKER_USERNAME: pact
+          PACT_BROKER_PASSWORD: pact
+          PACT_PROVIDER_VERSION: ${{ github.sha }}
+          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: uv run pytest tests/contract/ -v
+
+      - name: Install tts-speaker dependencies
+        working-directory: tts-speaker
+        run: uv sync --dev
+
+      - name: Run tts-speaker provider verification
+        working-directory: tts-speaker
+        env:
           PACT_BROKER_BASE_URL: http://localhost:9292
           PACT_BROKER_USERNAME: pact
           PACT_BROKER_PASSWORD: pact

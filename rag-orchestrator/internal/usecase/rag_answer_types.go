@@ -57,6 +57,7 @@ type AnswerDebug struct {
 	PlannerOperation      string      // Conversation planner operation (detail, evidence, clarify, etc.)
 	PlannerConfidence     float64     // Planner confidence in the chosen operation
 	NeedsClarification    bool        // true when planner determined clarification is needed
+	BM25HitCount          int         // Number of BM25 keyword search results
 }
 
 // AnswerWithRAGUsecase defines the contract for generating grounded answers.

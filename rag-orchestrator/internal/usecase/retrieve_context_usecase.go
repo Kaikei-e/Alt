@@ -25,6 +25,7 @@ type RetrieveContextOutput struct {
 	ExpandedQueries   []string
 	SupplementaryInfo []string // Additional context from tools (recaps, tag clouds, etc.)
 	ToolsUsed         []string // Names of tools executed during retrieval
+	BM25HitCount      int      // Number of BM25 keyword search results (0 = lexical retrieval failed)
 }
 
 // ContextItem represents a single retrieved chunk with metadata.
@@ -199,6 +200,7 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 	return &RetrieveContextOutput{
 		Contexts:        contexts,
 		ExpandedQueries: expandedQueriesRet,
+		BM25HitCount:    len(sc.BM25Results),
 	}, nil
 }
 

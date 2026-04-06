@@ -1,0 +1,171 @@
+[
+  {
+    "id": "iran-oil-crisis-causal",
+    "query": "イランの石油危機はなぜ起きた？",
+    "tags": ["causal", "cjk", "known-failure-2026-04-03"],
+    "expected": {
+      "expected_topic_keywords": ["イラン", "石油", "Iran", "oil"],
+      "retrieval_scope": "global",
+      "min_relevant_contexts": 2,
+      "irrelevant_titles": ["Asset Tokenization", "LibreFang", "AI Model Pricing"],
+      "should_clarify": false,
+      "expected_intent": "causal_explanation",
+      "expected_answer_format": "causal_analysis",
+      "min_answer_length": 800,
+      "requires_citations": true,
+      "expected_entities": ["イラン", "石油"]
+    }
+  },
+  {
+    "id": "iran-follow-up-developments",
+    "query": "では、それに関連するイランの動向は？",
+    "conversation_history": [
+      {"role": "user", "content": "最近の石油危機の真因は？"},
+      {"role": "assistant", "content": "最近の石油危機は、複数の産油国の減産方針と地政学的緊張の高まりが複合的に作用して発生しました。"}
+    ],
+    "tags": ["follow-up", "cjk", "coreference", "known-failure-2026-03-28"],
+    "expected": {
+      "expected_topic_keywords": ["イラン", "Iran"],
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "min_answer_length": 300,
+      "requires_citations": true,
+      "expected_entities": ["イラン"]
+    }
+  },
+  {
+    "id": "ambiguous-more-detail",
+    "query": "もっと詳しく",
+    "conversation_history": [
+      {"role": "user", "content": "最近のAIチップ開発の動向は？"},
+      {"role": "assistant", "content": "NVIDIAのBlackwellアーキテクチャが発表され、推論性能が大幅に向上しました。"}
+    ],
+    "tags": ["follow-up", "ambiguous", "known-failure-2026-03-28"],
+    "expected": {
+      "should_clarify": true
+    }
+  },
+  {
+    "id": "ambiguous-is-that-true",
+    "query": "それって本当？",
+    "conversation_history": [
+      {"role": "user", "content": "EVバッテリーの寿命は延びている？"},
+      {"role": "assistant", "content": "最新の全固体電池技術により、バッテリー寿命は従来比2倍に延びています。"}
+    ],
+    "tags": ["follow-up", "fact-check", "coreference"],
+    "expected": {
+      "should_clarify": false,
+      "expected_intent": "fact_check",
+      "min_answer_length": 200,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "oil-crisis-root-cause",
+    "query": "最近の石油危機の真因は？",
+    "tags": ["causal", "cjk", "known-failure-2026-03-28"],
+    "expected": {
+      "expected_topic_keywords": ["石油", "oil", "crisis"],
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "expected_intent": "causal_explanation",
+      "min_answer_length": 600,
+      "requires_citations": true,
+      "expected_entities": ["石油"]
+    }
+  },
+  {
+    "id": "simple-temporal-query",
+    "query": "今週のAI関連ニュースは？",
+    "tags": ["temporal", "cjk"],
+    "expected": {
+      "expected_topic_keywords": ["AI"],
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "expected_intent": "temporal",
+      "min_answer_length": 300,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "comparison-query",
+    "query": "GPT-4oとClaude 3.5の違いは？",
+    "tags": ["comparison", "cjk"],
+    "expected": {
+      "expected_topic_keywords": ["GPT", "Claude"],
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "expected_intent": "comparison",
+      "min_answer_length": 500,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "synthesis-broad-topic",
+    "query": "そもそもニューヨークと芸術のかかわりは？",
+    "tags": ["synthesis", "cjk", "known-failure-2026-04-03"],
+    "expected": {
+      "expected_topic_keywords": ["ニューヨーク", "芸術", "New York", "art"],
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "expected_intent": "synthesis",
+      "min_answer_length": 800,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "topic-shift-explicit",
+    "query": "別件だけど、最新の半導体市場の動向は？",
+    "conversation_history": [
+      {"role": "user", "content": "EVバッテリーの技術は？"},
+      {"role": "assistant", "content": "全固体電池の実用化が進んでいます。"}
+    ],
+    "tags": ["follow-up", "topic-shift"],
+    "expected": {
+      "expected_topic_keywords": ["半導体", "semiconductor"],
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "min_answer_length": 200,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "cjk-short-query-bm25",
+    "query": "量子コンピュータ 実用化",
+    "tags": ["cjk", "bm25", "short-query"],
+    "expected": {
+      "expected_topic_keywords": ["量子", "quantum"],
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "min_relevant_contexts": 1,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "deep-dive-technical",
+    "query": "Transformerアーキテクチャのattention機構について詳しく",
+    "tags": ["deep-dive", "technical"],
+    "expected": {
+      "expected_topic_keywords": ["Transformer", "attention"],
+      "retrieval_scope": "global",
+      "should_clarify": false,
+      "expected_intent": "topic_deep_dive",
+      "min_answer_length": 500,
+      "requires_citations": true
+    }
+  },
+  {
+    "id": "follow-up-different-perspective",
+    "query": "別の観点では？",
+    "conversation_history": [
+      {"role": "user", "content": "生成AIの著作権問題は？"},
+      {"role": "assistant", "content": "著作権法の観点からは、学習データの利用がフェアユースに該当するか議論が続いています。"}
+    ],
+    "tags": ["follow-up", "ambiguous"],
+    "expected": {
+      "should_clarify": false,
+      "min_answer_length": 300,
+      "requires_citations": true
+    }
+  }
+]

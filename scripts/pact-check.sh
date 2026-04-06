@@ -98,6 +98,10 @@ if command -v go &>/dev/null && check_ffi; then
     bash -c 'cd search-indexer/app && CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v'
   run_step "Go: mq-hub consumer" \
     bash -c 'cd mq-hub/app && CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v'
+  run_step "Go: alt-butterfly-facade consumer" \
+    bash -c 'cd alt-butterfly-facade && CGO_ENABLED=1 go test -tags=contract ./internal/handler/contract/ -v'
+  run_step "Go: auth-hub consumer" \
+    bash -c 'cd auth-hub && CGO_ENABLED=1 go test -tags=contract ./internal/adapter/gateway/contract/ -v'
 else
   skip_step "Go consumer tests (go or libpact_ffi not found)"
 fi
@@ -158,6 +162,8 @@ if command -v uv &>/dev/null; then
     bash -c 'cd recap-subworker && SERVICE_SECRET=test-secret uv run pytest tests/contract/ -v'
   run_step "Python: tag-generator provider" \
     bash -c 'cd tag-generator/app && SERVICE_SECRET=test-secret uv run pytest tests/contract/ -v'
+  run_step "Python: tts-speaker provider" \
+    bash -c 'cd tts-speaker && uv run pytest tests/contract/ -v'
 else
   skip_step "Python provider verifications (uv not found)"
 fi

@@ -36,13 +36,14 @@ func (v OutputValidator) Validate(raw string, contexts []ContextItem) (*LLMAnswe
 			// This is useful if the stream cut off mid-JSON but we have some answer text
 			extractedAnswer := extractAnswerOnly(trimmed)
 			if extractedAnswer != "" {
-				// Apply the same post-processing as the normal path
 				extractedAnswer = strings.TrimSpace(extractedAnswer)
 				extractedAnswer = convertLiteralEscapes(extractedAnswer)
+				citations := extractCitationsOnly(trimmed)
 				return &LLMAnswer{
-					Answer:   extractedAnswer,
-					Fallback: false, // It's technically a fallback, but we retrieved content
-					Reason:   "recovered_from_truncated_json",
+					Answer:    extractedAnswer,
+					Citations: citations,
+					Fallback:  false,
+					Reason:    "recovered_from_truncated_json",
 				}, nil
 			}
 			return nil, fmt.Errorf("failed to parse llm response (raw: %s): %w", trimmed, err)
@@ -186,6 +187,76 @@ func extractAnswerOnly(raw string) string {
 	// If we reached here, the string is truncated (no closing quote).
 	// Return what we have!
 	return sb.String()
+}
+
+// extractCitationsOnly attempts to extract the citations array from potentially
+// truncated JSON. Handles both complete and partial citations arrays.
+func extractCitationsOnly(raw string) []LLMCitation {
+	key := "\"citations\":"
+	idx := strings.Index(raw, key)
+	if idx == -1 {
+		return nil
+	}
+
+	// Find the start of the array
+	start := idx + len(key)
+	for start < len(raw) && (raw[start] == ' ' || raw[start] == '\n' || raw[start] == '\t') {
+		start++
+	}
+	if start >= len(raw) || raw[start] != '[' {
+		return nil
+	}
+
+	// Find the end bracket, or take everything if truncated
+	depth := 0
+	end := -1
+	for i := start; i < len(raw); i++ {
+		switch raw[i] {
+		case '[':
+			depth++
+		case ']':
+			depth--
+			if depth == 0 {
+				end = i + 1
+			}
+		}
+		if end > 0 {
+			break
+		}
+	}
+
+	var fragment string
+	if end > 0 {
+		fragment = raw[start:end]
+	} else {
+		// Truncated: try to repair by closing open objects and the array
+		fragment = raw[start:]
+		if !strings.HasSuffix(strings.TrimSpace(fragment), "]") {
+			// Close any open object and array
+			fragment = strings.TrimRight(fragment, ", \n\t")
+			if strings.HasSuffix(fragment, "\"") {
+				fragment += "}]"
+			} else if strings.HasSuffix(fragment, "}") {
+				fragment += "]"
+			} else {
+				fragment += "\"}]"
+			}
+		}
+	}
+
+	var citations []LLMCitation
+	if err := json.Unmarshal([]byte(fragment), &citations); err != nil {
+		return nil
+	}
+
+	// Filter out empty citations
+	var valid []LLMCitation
+	for _, c := range citations {
+		if c.ChunkID != "" {
+			valid = append(valid, c)
+		}
+	}
+	return valid
 }
 
 // LLMAnswer models the JSON output the prompt format section enforces.
