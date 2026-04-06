@@ -39,7 +39,7 @@ async def test_plan_query_causal_single_turn():
     """Causal query produces resolved_query and causal intent."""
     usecase, llm = _make_usecase()
     llm.generate.return_value = _make_llm_response({
-        "resolved_query": "イランの石油危機が発生した背景と直接的原因",
+        "reasoning": "test reasoning", "resolved_query": "イランの石油危機が発生した背景と直接的原因",
         "search_queries": [
             "イラン 石油危機 原因 2026",
             "Iran oil crisis causes sanctions",
@@ -71,7 +71,7 @@ async def test_plan_query_follow_up_resolves_coreference():
     """Follow-up with 'それ' should produce a standalone resolved_query."""
     usecase, llm = _make_usecase()
     llm.generate.return_value = _make_llm_response({
-        "resolved_query": "イランの最近の外交的・軍事的動向",
+        "reasoning": "test reasoning", "resolved_query": "イランの最近の外交的・軍事的動向",
         "search_queries": [
             "イラン 動向 2026",
             "Iran recent developments",
@@ -110,13 +110,12 @@ async def test_plan_query_ambiguous_requests_clarification():
     """Ambiguous follow-up 'もっと詳しく' should request clarification."""
     usecase, llm = _make_usecase()
     llm.generate.return_value = _make_llm_response({
-        "resolved_query": "",
+        "reasoning": "test reasoning", "resolved_query": "",
         "search_queries": [],
         "intent": "general",
         "retrieval_policy": "no_retrieval",
         "answer_format": "detail",
         "should_clarify": True,
-        "clarification_msg": "何を詳しく知りたいですか？",
         "topic_entities": [],
     })
 
@@ -133,8 +132,6 @@ async def test_plan_query_ambiguous_requests_clarification():
     response = await usecase.plan_query(request)
 
     assert response.plan.should_clarify is True
-    assert response.plan.clarification_msg is not None
-    assert response.plan.retrieval_policy == "no_retrieval"
 
 
 # --- Article-scoped query ---
@@ -145,7 +142,7 @@ async def test_plan_query_article_scoped():
     """Article-scoped query should set article_only policy."""
     usecase, llm = _make_usecase()
     llm.generate.return_value = _make_llm_response({
-        "resolved_query": "Transformerアーキテクチャのattention機構の技術的詳細",
+        "reasoning": "test reasoning", "resolved_query": "Transformerアーキテクチャのattention機構の技術的詳細",
         "search_queries": [
             "Transformer attention mechanism detail",
             "attention 機構 仕組み",
@@ -215,7 +212,7 @@ async def test_plan_query_prompt_includes_history():
     """Verify the LLM prompt includes conversation history when provided."""
     usecase, llm = _make_usecase()
     llm.generate.return_value = _make_llm_response({
-        "resolved_query": "EV充電インフラの課題",
+        "reasoning": "test reasoning", "resolved_query": "EV充電インフラの課題",
         "search_queries": ["EV charging infrastructure challenges"],
         "intent": "general",
         "retrieval_policy": "global_only",

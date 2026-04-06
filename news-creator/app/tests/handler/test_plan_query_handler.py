@@ -18,6 +18,7 @@ def _make_app(mock_usecase: AsyncMock) -> TestClient:
 def _successful_response() -> PlanQueryResponse:
     return PlanQueryResponse(
         plan=QueryPlan(
+            reasoning="test reasoning",
             resolved_query="テスト検索クエリ",
             search_queries=["テスト 検索", "test search query"],
             intent="general",
