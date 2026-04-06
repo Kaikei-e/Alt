@@ -76,6 +76,9 @@ const (
 	// KnowledgeHomeAdminServiceRunProjectionAuditProcedure is the fully-qualified name of the
 	// KnowledgeHomeAdminService's RunProjectionAudit RPC.
 	KnowledgeHomeAdminServiceRunProjectionAuditProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/RunProjectionAudit"
+	// KnowledgeHomeAdminServiceGetSystemMetricsProcedure is the fully-qualified name of the
+	// KnowledgeHomeAdminService's GetSystemMetrics RPC.
+	KnowledgeHomeAdminServiceGetSystemMetricsProcedure = "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetSystemMetrics"
 )
 
 // KnowledgeHomeAdminServiceClient is a client for the
@@ -112,6 +115,9 @@ type KnowledgeHomeAdminServiceClient interface {
 	// Phase 5: Audit
 	// RunProjectionAudit samples items and verifies projection correctness.
 	RunProjectionAudit(context.Context, *connect.Request[v1.RunProjectionAuditRequest]) (*connect.Response[v1.RunProjectionAuditResponse], error)
+	// Phase 6: System Observability
+	// GetSystemMetrics returns aggregated system metrics from OTel instrumentation and service health.
+	GetSystemMetrics(context.Context, *connect.Request[v1.GetSystemMetricsRequest]) (*connect.Response[v1.GetSystemMetricsResponse], error)
 }
 
 // NewKnowledgeHomeAdminServiceClient constructs a client for the
@@ -210,6 +216,12 @@ func NewKnowledgeHomeAdminServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("RunProjectionAudit")),
 			connect.WithClientOptions(opts...),
 		),
+		getSystemMetrics: connect.NewClient[v1.GetSystemMetricsRequest, v1.GetSystemMetricsResponse](
+			httpClient,
+			baseURL+KnowledgeHomeAdminServiceGetSystemMetricsProcedure,
+			connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("GetSystemMetrics")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -229,6 +241,7 @@ type knowledgeHomeAdminServiceClient struct {
 	rollbackReproject   *connect.Client[v1.RollbackReprojectRequest, v1.RollbackReprojectResponse]
 	getSLOStatus        *connect.Client[v1.GetSLOStatusRequest, v1.GetSLOStatusResponse]
 	runProjectionAudit  *connect.Client[v1.RunProjectionAuditRequest, v1.RunProjectionAuditResponse]
+	getSystemMetrics    *connect.Client[v1.GetSystemMetricsRequest, v1.GetSystemMetricsResponse]
 }
 
 // TriggerBackfill calls alt.knowledge_home.v1.KnowledgeHomeAdminService.TriggerBackfill.
@@ -301,6 +314,11 @@ func (c *knowledgeHomeAdminServiceClient) RunProjectionAudit(ctx context.Context
 	return c.runProjectionAudit.CallUnary(ctx, req)
 }
 
+// GetSystemMetrics calls alt.knowledge_home.v1.KnowledgeHomeAdminService.GetSystemMetrics.
+func (c *knowledgeHomeAdminServiceClient) GetSystemMetrics(ctx context.Context, req *connect.Request[v1.GetSystemMetricsRequest]) (*connect.Response[v1.GetSystemMetricsResponse], error) {
+	return c.getSystemMetrics.CallUnary(ctx, req)
+}
+
 // KnowledgeHomeAdminServiceHandler is an implementation of the
 // alt.knowledge_home.v1.KnowledgeHomeAdminService service.
 type KnowledgeHomeAdminServiceHandler interface {
@@ -335,6 +353,9 @@ type KnowledgeHomeAdminServiceHandler interface {
 	// Phase 5: Audit
 	// RunProjectionAudit samples items and verifies projection correctness.
 	RunProjectionAudit(context.Context, *connect.Request[v1.RunProjectionAuditRequest]) (*connect.Response[v1.RunProjectionAuditResponse], error)
+	// Phase 6: System Observability
+	// GetSystemMetrics returns aggregated system metrics from OTel instrumentation and service health.
+	GetSystemMetrics(context.Context, *connect.Request[v1.GetSystemMetricsRequest]) (*connect.Response[v1.GetSystemMetricsResponse], error)
 }
 
 // NewKnowledgeHomeAdminServiceHandler builds an HTTP handler from the service implementation. It
@@ -428,6 +449,12 @@ func NewKnowledgeHomeAdminServiceHandler(svc KnowledgeHomeAdminServiceHandler, o
 		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("RunProjectionAudit")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeHomeAdminServiceGetSystemMetricsHandler := connect.NewUnaryHandler(
+		KnowledgeHomeAdminServiceGetSystemMetricsProcedure,
+		svc.GetSystemMetrics,
+		connect.WithSchema(knowledgeHomeAdminServiceMethods.ByName("GetSystemMetrics")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.knowledge_home.v1.KnowledgeHomeAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeHomeAdminServiceTriggerBackfillProcedure:
@@ -458,6 +485,8 @@ func NewKnowledgeHomeAdminServiceHandler(svc KnowledgeHomeAdminServiceHandler, o
 			knowledgeHomeAdminServiceGetSLOStatusHandler.ServeHTTP(w, r)
 		case KnowledgeHomeAdminServiceRunProjectionAuditProcedure:
 			knowledgeHomeAdminServiceRunProjectionAuditHandler.ServeHTTP(w, r)
+		case KnowledgeHomeAdminServiceGetSystemMetricsProcedure:
+			knowledgeHomeAdminServiceGetSystemMetricsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -521,4 +550,8 @@ func (UnimplementedKnowledgeHomeAdminServiceHandler) GetSLOStatus(context.Contex
 
 func (UnimplementedKnowledgeHomeAdminServiceHandler) RunProjectionAudit(context.Context, *connect.Request[v1.RunProjectionAuditRequest]) (*connect.Response[v1.RunProjectionAuditResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.RunProjectionAudit is not implemented"))
+}
+
+func (UnimplementedKnowledgeHomeAdminServiceHandler) GetSystemMetrics(context.Context, *connect.Request[v1.GetSystemMetricsRequest]) (*connect.Response[v1.GetSystemMetricsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.knowledge_home.v1.KnowledgeHomeAdminService.GetSystemMetrics is not implemented"))
 }

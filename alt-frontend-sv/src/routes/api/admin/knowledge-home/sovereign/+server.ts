@@ -69,10 +69,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 		return json({ error: "Invalid action." }, { status: 400 });
 	} catch (error) {
-		console.error(
-			"[api/admin/knowledge-home/sovereign] Action failed:",
-			error,
-		);
+		console.error("[api/admin/knowledge-home/sovereign] Action failed:", error);
 		return json(
 			{ error: "Failed to run sovereign admin action." },
 			{ status: 502 },
