@@ -123,7 +123,7 @@ func TestAltDBRepository_GetAllReadFeedIDs_QueriesWithoutFeedIDArray(t *testing.
 	feedID2 := uuid.New()
 
 	mock.ExpectQuery("SELECT feed_id FROM read_status").
-		WithArgs(userID).
+		WithArgs(userID, 10000).
 		WillReturnRows(
 			pgxmock.NewRows([]string{"feed_id"}).
 				AddRow(feedID1).

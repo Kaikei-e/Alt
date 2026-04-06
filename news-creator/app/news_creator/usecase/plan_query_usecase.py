@@ -1,19 +1,24 @@
 """Usecase for structured query planning for Augur Conversational RAG.
 
-Uses Ollama structured outputs (JSON Schema) to produce a deterministic
-QueryPlan from user query + conversation history. This replaces the
-rag-orchestrator's rule-based ConversationPlanner and query expansion.
+Uses Ollama structured outputs (JSON Schema via GBNF grammar) to produce a
+QueryPlan from user query + conversation history.
+
+Key design decisions based on research (Ollama structured output best practices):
+- reasoning field BEFORE decision fields (+8pp accuracy, DSdev 2025)
+- Few-shot examples included (near-zero accuracy without them, RANLP 2025)
+- Schema described in prompt (model cannot see the format parameter)
+- Temperature = 0 for maximum schema adherence
+- num_predict = 512 (room for reasoning field)
+- Options use config.get_llm_options() base to prevent model reload (PM-008)
 """
 
 import json
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Optional, List
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.models import (
-    ConversationMessage,
     PlanQueryRequest,
     PlanQueryResponse,
     QueryPlan,
@@ -22,35 +27,35 @@ from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
 
-PLAN_QUERY_PROMPT_TEMPLATE = """<task>
-You are a query planner for a news knowledge retrieval system.
-Analyze the user query and produce a structured retrieval plan.
-</task>
+PLAN_QUERY_PROMPT = """You are a query planner for a news retrieval system. Produce a JSON retrieval plan.
 
-<rules>
-- Current Date: {current_date}
-- CRITICAL: should_clarify MUST be false for almost all queries. Set true ONLY for bare ambiguous phrases like "もっと詳しく" or "tell me more" with NO conversation history. If there is conversation history, resolve the reference and set should_clarify=false.
-- resolved_query MUST be a complete, self-contained search query. Never return empty string or single characters.
-- If the query already contains a clear topic, use it directly as resolved_query.
-- Generate 3-5 search_queries: include Japanese AND English variations, synonyms, and related terms.
-- intent: choose exactly one of: causal_explanation, temporal, synthesis, comparison, fact_check, topic_deep_dive, general
-- retrieval_policy: choose exactly one of: global_only, article_only, tool_only, no_retrieval. Default is global_only.
-- answer_format: choose exactly one of: causal_analysis, summary, list, detail, comparison, fact_check. Default is summary.
-</rules>
+Current Date: {current_date}
 
-{context_section}
+Output JSON with these fields IN ORDER:
+1. reasoning: Your step-by-step thinking about the query
+2. resolved_query: A self-contained search query (no pronouns, must contain the topic)
+3. search_queries: 3-5 search queries in Japanese AND English
+4. intent: One of causal_explanation, temporal, synthesis, comparison, fact_check, topic_deep_dive, general
+5. retrieval_policy: global_only or article_only (default: global_only)
+6. answer_format: causal_analysis, summary, list, detail, or comparison (default: summary)
+7. should_clarify: ALMOST ALWAYS false. Only true for bare phrases like "もっと詳しく" with NO context.
+8. topic_entities: Key entities from the query
 
-<query>{query}</query>
-"""
+<example>
+Query: 最近のEV市場の動向は？
+{{"reasoning": "User asks about recent EV market trends. Clear standalone query about electric vehicles. Temporal because of '最近の'. No conversation history, no coreference.", "resolved_query": "最近のEV市場の動向と成長トレンド", "search_queries": ["EV市場 動向 2026", "electric vehicle market trends", "EV 販売台数 成長率", "電気自動車 市場規模"], "intent": "temporal", "retrieval_policy": "global_only", "answer_format": "summary", "should_clarify": false, "topic_entities": ["EV", "電気自動車"]}}
+</example>
 
-CONVERSATION_SECTION_TEMPLATE = """<conversation>
-{history}
-</conversation>
-"""
+<example>
+Conversation:
+user: AIチップの最新動向は？
+assistant: NVIDIAのBlackwellが発表され推論性能が向上しました。
 
-ARTICLE_SECTION_TEMPLATE = """<article_scope>
-Article: {title} [id: {article_id}]
-</article_scope>
+Query: それについてもっと詳しく教えて
+{{"reasoning": "Follow-up query. 'それ' refers to NVIDIA Blackwell from the previous answer. Resolve coreference: the user wants more detail about NVIDIA Blackwell architecture. This is NOT ambiguous because conversation history provides clear referent.", "resolved_query": "NVIDIA Blackwellアーキテクチャの技術的詳細と推論性能", "search_queries": ["NVIDIA Blackwell architecture details", "Blackwell 推論性能 仕様", "NVIDIA B200 GPU specs"], "intent": "topic_deep_dive", "retrieval_policy": "global_only", "answer_format": "detail", "should_clarify": false, "topic_entities": ["NVIDIA", "Blackwell"]}}
+</example>
+
+{context_section}Query: {query}
 """
 
 
@@ -88,11 +93,10 @@ class PlanQueryUsecase:
         response = await self.llm_provider.generate(
             prompt,
             model=self.PLANNING_MODEL,
-            num_predict=256,
+            num_predict=512,
             format=json_schema,
             options={
-                "temperature": 0.2,
-                "repeat_penalty": 1.1,
+                "temperature": 0,
             },
             priority=request.priority,
         )
@@ -108,39 +112,30 @@ class PlanQueryUsecase:
             return self._fallback_plan(request.query)
 
     def _build_prompt(self, request: PlanQueryRequest) -> str:
-        context_parts = []
+        context_section = ""
 
         if request.conversation_history:
-            history_lines = []
+            lines = []
             for msg in request.conversation_history[-6:]:
                 content = msg.content[:300] + "..." if len(msg.content) > 300 else msg.content
-                history_lines.append(f"{msg.role}: {content}")
-            context_parts.append(
-                CONVERSATION_SECTION_TEMPLATE.format(history="\n".join(history_lines))
-            )
+                lines.append(f"{msg.role}: {content}")
+            context_section += "Conversation:\n" + "\n".join(lines) + "\n\n"
 
         if request.article_id and request.article_title:
-            context_parts.append(
-                ARTICLE_SECTION_TEMPLATE.format(
-                    title=request.article_title,
-                    article_id=request.article_id,
-                )
-            )
-
-        if request.last_answer_scope:
-            context_parts.append(f"<last_answer_scope>{request.last_answer_scope}</last_answer_scope>\n")
+            context_section += f"Article scope: {request.article_title} [id: {request.article_id}]\n\n"
 
         current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-        return PLAN_QUERY_PROMPT_TEMPLATE.format(
+        return PLAN_QUERY_PROMPT.format(
             current_date=current_date,
-            context_section="".join(context_parts),
+            context_section=context_section,
             query=request.query,
         )
 
     @staticmethod
     def _fallback_plan(query: str) -> QueryPlan:
         return QueryPlan(
+            reasoning="Fallback: LLM planning failed, using original query directly.",
             resolved_query=query,
             search_queries=[query],
             intent="general",

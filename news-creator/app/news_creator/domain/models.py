@@ -362,16 +362,20 @@ class PlanQueryRequest(BaseModel):
 
 
 class QueryPlan(BaseModel):
-    """Structured output from query planning. Tells the retrieval layer what to do."""
+    """Structured output from query planning. Tells the retrieval layer what to do.
 
-    resolved_query: str = Field(description="Self-contained search query with coreferences resolved")
-    search_queries: List[str] = Field(description="Expanded search queries (3-5, mixed Japanese/English)")
-    intent: str = Field(description="Query intent: causal_explanation, temporal, synthesis, comparison, fact_check, topic_deep_dive, general")
-    retrieval_policy: str = Field(description="Retrieval policy: global_only, article_only, tool_only, no_retrieval")
-    answer_format: str = Field(description="Answer format: causal_analysis, summary, list, detail, comparison, fact_check")
-    should_clarify: bool = Field(description="True if the query is too ambiguous and needs user clarification")
-    clarification_msg: Optional[str] = Field(default=None, description="Clarification question if should_clarify is true")
-    topic_entities: List[str] = Field(default_factory=list, description="Key entities extracted from the query")
+    Field ordering matters for small model accuracy (DSdev 2025):
+    reasoning MUST come first so the model thinks before deciding.
+    """
+
+    reasoning: str = Field(description="Step-by-step reasoning: What is the user asking about? What topic? Is it a follow-up referencing prior context? What retrieval strategy fits best?")
+    resolved_query: str = Field(description="Self-contained search query with all pronouns and references resolved into explicit terms. Must contain the actual topic words.")
+    search_queries: List[str] = Field(description="3-5 diverse search queries covering Japanese AND English variations, synonyms, and related terms")
+    intent: str = Field(description="Exactly one of: causal_explanation, temporal, synthesis, comparison, fact_check, topic_deep_dive, general")
+    retrieval_policy: str = Field(description="Exactly one of: global_only, article_only. Default: global_only")
+    answer_format: str = Field(description="Exactly one of: causal_analysis, summary, list, detail, comparison. Default: summary")
+    should_clarify: bool = Field(description="ALMOST ALWAYS false. Set true ONLY for bare ambiguous phrases like just 'もっと詳しく' with NO conversation history to resolve from.")
+    topic_entities: List[str] = Field(default_factory=list, description="Key named entities extracted from the query")
 
 
 class PlanQueryResponse(BaseModel):
