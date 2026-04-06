@@ -1,28 +1,21 @@
 {
-  "timestamp": "2026-04-06T09:52:39Z",
+  "timestamp": "2026-04-06T12:08:48Z",
   "case_count": 12,
-  "pass_count": 1,
-  "fail_count": 11,
+  "pass_count": 2,
+  "fail_count": 10,
   "verdicts": [
     {
       "case_id": "iran-oil-crisis-causal",
       "passed": false,
       "failures": [
-        "min relevant contexts: got 0, want \u003e= 2",
-        "intent: got \"\", want \"causal_explanation\"",
-        "answer length: got 0 runes, want \u003e= 800",
-        "citations required but none provided",
-        "expected entity \"イラン\" not found in answer",
-        "expected entity \"石油\" not found in answer"
+        "intent: got \"general\", want \"causal_explanation\""
       ]
     },
     {
       "case_id": "iran-follow-up-developments",
       "passed": false,
       "failures": [
-        "answer length: got 0 runes, want \u003e= 300",
-        "citations required but none provided",
-        "expected entity \"イラン\" not found in answer"
+        "answer length: got 73 runes, want \u003e= 300"
       ]
     },
     {
@@ -36,31 +29,26 @@
       "case_id": "ambiguous-is-that-true",
       "passed": false,
       "failures": [
-        "intent: got \"\", want \"fact_check\"",
-        "answer length: got 0 runes, want \u003e= 200",
-        "citations required but none provided"
+        "intent: got \"topic_deep_dive\", want \"fact_check\"",
+        "answer length: got 43 runes, want \u003e= 200"
       ]
     },
     {
       "case_id": "oil-crisis-root-cause",
-      "passed": true
+      "passed": false,
+      "failures": [
+        "intent: got \"temporal\", want \"causal_explanation\""
+      ]
     },
     {
       "case_id": "simple-temporal-query",
-      "passed": false,
-      "failures": [
-        "intent: got \"\", want \"temporal\"",
-        "answer length: got 0 runes, want \u003e= 300",
-        "citations required but none provided"
-      ]
+      "passed": true
     },
     {
       "case_id": "comparison-query",
       "passed": false,
       "failures": [
-        "intent: got \"\", want \"comparison\"",
-        "answer length: got 0 runes, want \u003e= 500",
-        "citations required but none provided"
+        "intent: got \"general\", want \"comparison\""
       ]
     },
     {
@@ -74,31 +62,26 @@
       "case_id": "topic-shift-explicit",
       "passed": false,
       "failures": [
-        "answer length: got 0 runes, want \u003e= 200",
+        "answer length: got 123 runes, want \u003e= 200",
         "citations required but none provided"
       ]
     },
     {
       "case_id": "cjk-short-query-bm25",
-      "passed": false,
-      "failures": [
-        "min relevant contexts: got 0, want \u003e= 1",
-        "citations required but none provided"
-      ]
+      "passed": true
     },
     {
       "case_id": "deep-dive-technical",
       "passed": false,
       "failures": [
-        "citations required but none provided"
+        "intent: got \"general\", want \"topic_deep_dive\""
       ]
     },
     {
       "case_id": "follow-up-different-perspective",
       "passed": false,
       "failures": [
-        "answer length: got 0 runes, want \u003e= 300",
-        "citations required but none provided"
+        "answer length: got 84 runes, want \u003e= 300"
       ]
     }
   ],
@@ -109,10 +92,10 @@
     "bm25_zero_rate": 1,
     "follow_up_resolution_rate": 0,
     "clarification_precision": 0,
-    "intent_accuracy": 0.2857142857142857,
-    "mean_faithfulness": 0,
+    "intent_accuracy": 0.14285714285714285,
+    "mean_faithfulness": 0.3333333333333333,
     "mean_citation_correctness": 0,
     "unsupported_claim_rate": 0,
-    "fallback_rate": 0
+    "fallback_rate": 0.16666666666666666
   }
 }

@@ -1,8 +1,8 @@
 # Augur Baseline Eval Report
 
-**Timestamp:** 2026-04-06T09:52:39Z
+**Timestamp:** 2026-04-06T12:08:48Z
 
-**Cases:** 12 | **Pass:** 1 | **Fail:** 11 | **Pass Rate:** 8%
+**Cases:** 12 | **Pass:** 2 | **Fail:** 10 | **Pass Rate:** 17%
 
 ---
 
@@ -21,7 +21,7 @@
 
 | Metric | Value |
 |--------|-------|
-| Intent Accuracy | 0.286 |
+| Intent Accuracy | 0.143 |
 | Clarification Precision | 0.000 |
 | Follow-up Resolution Rate | 0.000 |
 
@@ -29,10 +29,10 @@
 
 | Metric | Value |
 |--------|-------|
-| Mean Faithfulness | 0.000 |
+| Mean Faithfulness | 0.333 |
 | Mean Citation Correctness | 0.000 |
 | Unsupported Claim Rate | 0.000 |
-| Fallback Rate | 0.000 |
+| Fallback Rate | 0.167 |
 
 ---
 
@@ -46,18 +46,32 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 0 runes |
-| Citations | 0 |
+| Answer Length | 1411 runes |
+| Citations | 7 |
 | Fallback | false |
+| Retrieved Titles | Middle East war creating ‘largest supply disruption in the history of oil markets’; Can the IEA put a lid on the price per barrel by releasing oil stockpiles?; ‘The stakes are enormous’: how a prolonged Iran war could shock the global economy; ‘Nobody else is responsible’: Trump to blame for Iran crisis, ex-CIA chief says; G7 ready to take ‘necessary measures’ over economic impact of Iran war; Aramco warns of oil market ‘catastrophe’ unless strait of Hormuz reopens soon; ‘Makes Covid look like a tea party’: Australian food prices could rise for the next year, farmers warn |
+| Cited Titles | Middle East war creating ‘largest supply disruption in the history of oil markets’; Can the IEA put a lid on the price per barrel by releasing oil stockpiles?; ‘The stakes are enormous’: how a prolonged Iran war could shock the global economy; ‘Nobody else is responsible’: Trump to blame for Iran crisis, ex-CIA chief says; G7 ready to take ‘necessary measures’ over economic impact of Iran war; Aramco warns of oil market ‘catastrophe’ unless strait of Hormuz reopens soon; ‘Makes Covid look like a tea party’: Australian food prices could rise for the next year, farmers warn |
 
 **Failures:**
 
-- min relevant contexts: got 0, want >= 2
-- intent: got "", want "causal_explanation"
-- answer length: got 0 runes, want >= 800
-- citations required but none provided
-- expected entity "イラン" not found in answer
-- expected entity "石油" not found in answer
+- intent: got "general", want "causal_explanation"
+
+<details><summary>Answer (preview)</summary>
+
+```
+## 概要
+イランを巡る紛争が、石油市場における「史上最大の供給途絶」を引き起こし、世界経済に甚大な影響を及ぼす懸念が高まっています。この危機は、単なる紛争に留まらず、地政学的な緊張の高まりや、過去の供給経路のボトルネックが複合的に作用した結果であると指摘されています。
+
+## 詳細
+イランを巡る紛争が引き起こす石油危機は、世界エネルギー監視機関が「史上最大の供給途絶」と警告するほど深刻な状況にあります[1]。この危機は、イランの戦争がタンカーによる原油輸送を妨害し、毎日数百万バレルもの原油の流れを遮断していることが直接的な原因です[1]。
+
+### 危機を深刻化させている複合的な要因
+この現在の石油市場の脆弱性は、単一の原因ではなく、複数の要因が積み重なって加速しています。具体的には、以下の要因が挙げられます。
+
+*   **地政学的緊張の増大**: イラン紛争自体が大きな懸念材料となっています[3]。専門家は、イランとの戦争を遂行する際、ホルムズ海峡のような地域の重要な脆弱性が指摘されており、これが「価格を非常に高く押し上げる巨大な石油危機」を引き起こす可能性があると警告しています...
+```
+
+</details>
 
 ---
 
@@ -74,15 +88,23 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 0 runes |
-| Citations | 0 |
+| Answer Length | 73 runes |
+| Citations | 2 |
 | Fallback | false |
+| Retrieved Titles | 原油安定供給に懸念 関連製品の値上げや火力発電設備の停止も; 自民 イラン情勢長期化見据え 石油業界などの団体から聴き取り; Airlines Are Already Preparing for an Oil Crisis | WIRED; Iran has largely halted oil and gas exports through strait of Hormuz; Aramco warns of oil market ‘catastrophe’ unless strait of Hormuz reopens soon; Iran protesters tell of brutal police response as regime lashes out | Iran | The Guardian; Monday briefing: ​How are Iranians abroad grappling with loss and uncertainty from afar? |
+| Cited Titles | Airlines Are Already Preparing for an Oil Crisis | WIRED; Iran has largely halted oil and gas exports through strait of Hormuz |
 
 **Failures:**
 
-- answer length: got 0 runes, want >= 300
-- citations required but none provided
-- expected entity "イラン" not found in answer
+- answer length: got 73 runes, want >= 300
+
+<details><summary>Answer (preview)</summary>
+
+```
+ホルムズ海峡という重要な航路が、イランによるドローン攻撃と懸念から実質的に石油・ガス輸出が停止している点が、価格高騰の直接的な要因となっています。
+```
+
+</details>
 
 ---
 
@@ -99,13 +121,23 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 0 runes |
+| Answer Length | 187 runes |
 | Citations | 0 |
-| Fallback | false |
+| Fallback | true |
+| Fallback Reason | 前回の回答でNVIDIA Blackwellアーキテクチャに言及しましたが、今回のコンテキストにはそのアーキテクチャの技術的詳細や推論性能に関する具体的なデータが含まれていません。 |
+| Retrieved Titles | GitTalks: Turn Any GitHub Repo Into a Podcast. - DEV Community; How to Check Polish Company Insolvency Programmatically (KRZ Scraper); How to Process Unstructured RFQs using OpenAI RAG and Node.js - DEV Community; From Direct Classification to Agentic Routing: Local vs Cloud AI - DEV Community; I Analyzed Claude Code's Leaked Source &mdash; Here's How Anthropic's AI Agent Actually Works; We Proved Physics in Zero Knowledge -- Here's What That Means - DEV Community; The Self-Improving AI Agent — How We Built a Brain That Optimizes Itself - DEV Community |
 
 **Failures:**
 
 - expected clarification but none was asked
+
+<details><summary>Answer (preview)</summary>
+
+```
+Blackwellアーキテクチャ自体に関する具体的な技術詳細や推論性能のベンチマークデータは、提供されたコンテキスト内には含まれていません。コンテキストは、AIエージェントの自己改善システム（[7]）、RAGを用いた非構造化データ処理（[3]）、およびAIエージェントの動作原理に関する分析（[5]）など、より広範なAIシステムアーキテクチャのトピックに焦点を当てています。
+```
+
+</details>
 
 ---
 
@@ -122,19 +154,28 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 0 runes |
-| Citations | 0 |
+| Answer Length | 43 runes |
+| Citations | 1 |
 | Fallback | false |
+| Retrieved Titles | Why your iPhone isn't powered by a solid-state battery yet - even though it beats lithium-ion | ZDNET; My 7 wishes for Android phones in 2026 - Android Authority; Why your iPhone isn't powered by a solid-state battery yet - even though it beats lithium-ion | ZDNET; Multi-day battery life is finally here — and Apple and Samsung missed the memo; iOS 26.4 adds three new ways to customize your iPhone - 9to5Mac; I switched to a solid-state portable battery for a week - now lithium-ion feels outdated | ZDNET; I tested a solid-state portable battery for a week - now lithium-ion feels old school | ZDNET |
+| Cited Titles | Why your iPhone isn't powered by a solid-state battery yet - even though it beats lithium-ion | ZDNET |
 
 **Failures:**
 
-- intent: got "", want "fact_check"
-- answer length: got 0 runes, want >= 200
-- citations required but none provided
+- intent: got "topic_deep_dive", want "fact_check"
+- answer length: got 43 runes, want >= 200
+
+<details><summary>Answer (preview)</summary>
+
+```
+全固体電池は、リチウムイオンバッテリーと比較して、より多くの充電サイクルを提供します。
+```
+
+</details>
 
 ---
 
-### PASS `oil-crisis-root-cause`
+### FAIL `oil-crisis-root-cause`
 
 **Query:** 最近の石油危機の真因は？
 
@@ -142,31 +183,39 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 1512 runes |
-| Citations | 6 |
+| Answer Length | 1380 runes |
+| Citations | 7 |
 | Fallback | false |
-| Retrieved Titles | Oil prices hit seven-month highs as tensions rise before US-Iran talks; Trump’s re-election may have helped Albanese – but the US war in Iran is creating economic conundrums; Middle East crisis live: More than 100 children killed by Israeli strikes in Lebanon, health ministry says; How escalating Iran conflict is driving up oil and gas prices – a visual guide; Australia news live: PM confirms deal to keep Tomago aluminium smelter open; Chalmers clears way for Korean firm to up its stake in defence shipbuilder  | Australia news | The Guardian; Pessimism takes root in UK as shoppers struggle to afford essentials | UK cost of living crisis | The Guardian; Lloyd’s of London stresses it is still insuring shipping in strait of Hormuz |
-| Cited Titles | Oil prices hit seven-month highs as tensions rise before US-Iran talks; Trump’s re-election may have helped Albanese – but the US war in Iran is creating economic conundrums; Middle East crisis live: More than 100 children killed by Israeli strikes in Lebanon, health ministry says; How escalating Iran conflict is driving up oil and gas prices – a visual guide; Pessimism takes root in UK as shoppers struggle to afford essentials | UK cost of living crisis | The Guardian; Lloyd’s of London stresses it is still insuring shipping in strait of Hormuz |
+| Retrieved Titles | Countries must seek energy independence through renewables and nuclear, says John Kerry; War in Iran Spiked Oil Prices. Trump Will Decide How High They Go; Airlines Are Already Preparing for an Oil Crisis | WIRED; Work from home and slow down on the road: world’s energy watchdog advises emergency measures as oil prices rise | Oil | The Guardian; Ministers discuss ways to offset energy price surges caused by Iran war; Starmer seeks to reassure public over cost of living as oil surges above $100 a barrel - UK politics live; Middle East crisis live: Hegseth addresses media after Trump threatens to ‘blow up’ entire South Pars gasfield |
+| Cited Titles | Countries must seek energy independence through renewables and nuclear, says John Kerry; War in Iran Spiked Oil Prices. Trump Will Decide How High They Go; Airlines Are Already Preparing for an Oil Crisis | WIRED; Work from home and slow down on the road: world’s energy watchdog advises emergency measures as oil prices rise | Oil | The Guardian; Ministers discuss ways to offset energy price surges caused by Iran war; Starmer seeks to reassure public over cost of living as oil surges above $100 a barrel - UK politics live; Middle East crisis live: Hegseth addresses media after Trump threatens to ‘blow up’ entire South Pars gasfield |
+
+**Failures:**
+
+- intent: got "temporal", want "causal_explanation"
 
 <details><summary>Answer (preview)</summary>
 
 ```
 ## 概要
-最近の石油価格高騰やエネルギー危機を引き起こしている要因は、単一の原因ではなく、複数の要因が複雑に絡み合っていると分析されます。最も直接的なトリガーとしては、米国とイラン間の緊張の高まりが挙げられ、これが市場の懸念を煽っています。しかし、背景には、地域的な紛争の拡大や、特定の戦略的要衝での供給リスクが高まっている構造的な問題が存在します。特に、ホルムズ海峡での輸送の停滞や精製所への攻撃といった物理的な供給懸念が、価格上昇の主要因となっています。
+直近の石油危機は、イランをめぐる中東での紛争が主な引き金となっており、特にホルムズ海峡の封鎖や地域エネルギーインフラへの攻撃が深刻な要因となっています。この地政学的な混乱が、世界のエネルギー供給システム全体に影響を及ぼし、原油価格の急騰とエネルギー価格の上昇を引き起こしています。
 
 ## 詳細
-最近のエネルギー市場の動向は、複数の要因から構成される複雑な因果関係を示しています。これらを「直接的要因」「構造的背景」「不確実性」の三つの側面から分析します。
+### 発生の時系列的な経緯と要因
+石油価格の高騰とエネルギー危機は、2026年4月3日頃から顕著になっています。この危機は、主にイランをめぐる中東情勢の悪化に端を発しています。
 
-### 1. 直接的要因：米イラン間の緊張の高まりと地域紛争の激化
+**1. 紛争の勃発と価格への影響（2026年4月3日）**
+*   ドナルド・トランプ氏によるイランへの爆撃キャンペーンが開始されたことをきっかけに、石油・ガス価格が急騰しました[5]。
+*   これに対し、イランが重要な航路であるホルムズ海峡を閉鎖し、地域のエネルギーインフラを攻撃したことが、価格急騰の直接的な引き金の一つです[5], [3]。
+*   この中東での紛争は、原油価格を押し上げ、アメリカ国内ではすでに高額なエネルギー請求額に直面している状況に拍車をかけています[2]。
 
-石油価格が直近で7ヶ月ぶりの高水準に達した背景には、米国とイランの間で差し迫った緊張が高まっていることが直接的な引き金となっています[1]。この地域情勢の悪化は、市場参加者の間で懸念を引き起こし、価格を押し上げています[1]。さらに、米国による中東への介入（Middle East incu...
+**2. エネル...
 ```
 
 </details>
 
 ---
 
-### FAIL `simple-temporal-query`
+### PASS `simple-temporal-query`
 
 **Query:** 今週のAI関連ニュースは？
 
@@ -174,15 +223,26 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 0 runes |
-| Citations | 0 |
+| Answer Length | 1529 runes |
+| Citations | 7 |
 | Fallback | false |
+| Retrieved Titles | As confusion reigns over Jony Ive's iO device, I remain an AI hardware skeptic - 9to5Mac; AI Agents Are Already Breaking Things — And We've Barely Started - DEV Community; Anthropic Said No to the Pentagon. Meta Can't Beat Google. And NVIDIA Owns Everything. - DEV Community; What the nation's strongest AI regulations change in 2026, according to legal experts | ZDNET; アイデアを入力するだけで国際会議レベルの学術論文を生成する「AutoResearchClaw」、PCが使われていない時を狙ってこっそり進化するAIエージェント「MetaClaw」など生成AI技術5つを解説（生成AIウィークリー）; Struggling to track AI agents? This open-source tool gives you a single source of truth; Cloud-native computing is poised to explode, thanks to AI inference work |
+| Cited Titles | As confusion reigns over Jony Ive's iO device, I remain an AI hardware skeptic - 9to5Mac; AI Agents Are Already Breaking Things — And We've Barely Started - DEV Community; Anthropic Said No to the Pentagon. Meta Can't Beat Google. And NVIDIA Owns Everything. - DEV Community; What the nation's strongest AI regulations change in 2026, according to legal experts | ZDNET; アイデアを入力するだけで国際会議レベルの学術論文を生成する「AutoResearchClaw」、PCが使われていない時を狙ってこっそり進化するAIエージェント「MetaClaw」など生成AI技術5つを解説（生成AIウィークリー）; Struggling to track AI agents? This open-source tool gives you a single source of truth; Cloud-native computing is poised to explode, thanks to AI inference work |
 
-**Failures:**
+<details><summary>Answer (preview)</summary>
 
-- intent: got "", want "temporal"
-- answer length: got 0 runes, want >= 300
-- citations required but none provided
+```
+## 概要
+2026年4月3日頃のAI関連の主要な動向は、AI技術が単なる技術的な話題から、政治的、経済的、そして実存的な問題へと移行している点に集約されます。特に、自律的なAIエージェントの展開が加速しており、その進展の速さが安全対策の追いつきを困難にしている状況が指摘されています。また、AppleのiOイベントにおけるAIハードウェアの動向や、AI規制に関する法的な動きも注目されています。
+
+## 詳細
+### 1. AIエージェントの急速な展開と課題
+今週の動向を包括的に見ると、業界全体が自律的なAIエージェントをプロダクションシステムへ積極的に展開している状況が浮き彫りになっており、そのペースが安全対策の整備速度を上回っている点が重要な懸念点として挙げられています [2]。
+
+具体的な技術動向としては、生成AI技術の解説が行われており、「アイデアを入力するだけで国際会議レベルの学術論文を生成する『AutoResearchClaw』」や、「PCが使われていない時を狙ってこっそり進化するAIエージェント『MetaClaw』」といった具体的な技術が紹介されています [5]。さらに、A...
+```
+
+</details>
 
 ---
 
@@ -194,15 +254,31 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 0 runes |
-| Citations | 0 |
+| Answer Length | 1750 runes |
+| Citations | 7 |
 | Fallback | false |
+| Retrieved Titles | 新人が徹底解説！Agent Bricks カスタムLLM の"使いこなし方" | NTT DATA TECHのフィード; Claude Sonnet 4.5 Code Review Benchmark; Claude vs ChatGPT for Coding: The Real Differences in 2026; Claude vs ChatGPT for Coding: The Real Differences in 2026; Claude Sonnet 4.5 Code Review Benchmark; Claude vs ChatGPT for Coding: The Real Differences in 2026; ChatGPT vs Claude for Coding: Which AI Is Better for Developers in 2025? |
+| Cited Titles | 新人が徹底解説！Agent Bricks カスタムLLM の"使いこなし方" | NTT DATA TECHのフィード; Claude Sonnet 4.5 Code Review Benchmark; Claude vs ChatGPT for Coding: The Real Differences in 2026; Claude vs ChatGPT for Coding: The Real Differences in 2026; Claude Sonnet 4.5 Code Review Benchmark; Claude vs ChatGPT for Coding: The Real Differences in 2026; ChatGPT vs Claude for Coding: Which AI Is Better for Developers in 2025? |
 
 **Failures:**
 
-- intent: got "", want "comparison"
-- answer length: got 0 runes, want >= 500
-- citations required but none provided
+- intent: got "general", want "comparison"
+
+<details><summary>Answer (preview)</summary>
+
+```
+## 概要
+GPT-4oとClaude 3.5（またはClaude Sonnet/Opus）の性能比較は、タスクの性質によって優位なモデルが異なります。全体的なコーディング能力においては、Claudeが初期のコード品質や複雑な推論を要するタスクで強みを示す一方、GPT-4oは速度や幅広いツール連携において優位性を持つ傾向があります。
+
+## 詳細
+### 1. コーディングとコードレビューにおける比較
+
+**コードレビューの観点から見ると、Claudeが特定の領域で高い性能を発揮します。**
+*   **Claudeの強み**: Claudeは、微妙なバグ検出（nuanced bug detection）に優れており、より実用的な提案（actionable suggestions）を生成する傾向があります [2]。また、Claudeは、特にOpusモデルにおいて、より良いコードを初回で記述する能力があると指摘されています [3]。さらに、コードが即座にリファクタリングを必要としない場合に、Claudeが勝るとされています [4]。
+*   **GPT-4oの強み**: GPT-4oは、...
+```
+
+</details>
 
 ---
 
@@ -214,11 +290,11 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 1540 runes |
-| Citations | 7 |
+| Answer Length | 1321 runes |
+| Citations | 6 |
 | Fallback | false |
-| Retrieved Titles | High and low: the spontaneous joy and drama of New York City – in pictures; Meet the Speakerhead Wiring the Art World for Sound; Venezuelan Artists Speak Out; A View From the Easel; Hard Truths: Can an Artist Dally With Dubious Funding and Come Out Clean on the Other Side?; Required Reading; A View From the Easel |
-| Cited Titles | High and low: the spontaneous joy and drama of New York City – in pictures; Meet the Speakerhead Wiring the Art World for Sound; Venezuelan Artists Speak Out; A View From the Easel; Hard Truths: Can an Artist Dally With Dubious Funding and Come Out Clean on the Other Side?; Required Reading; A View From the Easel |
+| Retrieved Titles | Meet the Members of Mamdani’s Arts and Culture Transition Committee; Meet the Members of Mamdani’s Arts and Culture Transition Committee; Your Go-To Guide to NYC's Spring Art Fairs; Mayor Mamdani’s Artistic Vision; Whitney Biennial Artists Revealed; NYC Deserves a Culture Commissioner Who Cares; A View From the Easel |
+| Cited Titles | Meet the Members of Mamdani’s Arts and Culture Transition Committee; Meet the Members of Mamdani’s Arts and Culture Transition Committee; NYC Deserves a Culture Commissioner Who Cares; A View From the Easel; Whitney Biennial Artists Revealed; Your Go-To Guide to NYC's Spring Art Fairs |
 
 **Failures:**
 
@@ -228,15 +304,12 @@
 
 ```
 ## 概要
-ニューヨークと芸術の関係は、その「無限の刺激」「歴史的背景」「多様なコミュニティの形成」によって特徴づけられています。この都市は、芸術家たちにとって常に刺激的で、時には生存をかけた闘いの場でありながら、才能を育み、展示の場を提供するダイナミックな環境となっています。
+ニューヨークにおける芸術と文化は、単なる贅沢品ではなく、市民生活の基盤（シビックインフラ）であり、都市の社会的な幸福度と経済的な活力を支える極めて中心的な要素です。芸術分野の専門家や活動家は、この文化的な役割を認識し、今後の都市運営において、芸術家や文化従事者を単なる受益者としてではなく、都市の物語を共に創造する共同制作者として位置づける必要性を強く訴えています。
 
 ## 詳細
-ニューヨークは、芸術家たちにとって「尽きることのない謎と視覚的な刺激」を提供する場所として描かれています[7]。この環境は、単なる創造の場に留まらず、歴史や新たな経験が積み重なる「レガシー」を形成しています[7]。
+ニューヨークにおいて、文化と芸術分野が果たす役割は、その重要性が繰り返し強調されています。具体的には、文化は「市民生活の基盤（civic infrastructure）」として捉えられており、これは、人々が意味を見出し、帰属意識を築き、地域社会の幸福度を向上させ、そして全ての新住民のために経済的な機会を創出する方法と結びついています [6]。
 
-**1. 芸術活動とコミュニティの側面**
-
-*   **コミュニティの結集と支援:** ニューヨークには、特定の芸術分野に特化したコミュニティが存在します。例えば、ある地域では「新世代のニューヨークを拠点とする彫刻家たち」に捧げられたグループショーが開かれた記録があります[2]。また、特定の地域（例：Woodstock、Ulster County、Hudson Valley）には、アーティストが集まる大きな芸術コミュニティが存在し、関連する活動が行われています[4]。
-*   **...
+この視点は、政治的な議論の場でも根強く示されています。文化芸術分野の労働者たちは、今後の政権が掲げる「手頃な価格の実現に向けたアジェンダ（affordability agenda）」を形作る上で「不可欠なパートナー」であると指摘されています [1], [2]...
 ```
 
 </details>
@@ -256,18 +329,28 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 0 runes |
+| Answer Length | 123 runes |
 | Citations | 0 |
-| Fallback | false |
+| Fallback | true |
+| Fallback Reason | 提供されたコンテキストは、半導体市場に関する情報を含んでいないため。 |
+| Retrieved Titles | Atlarix Earns a 60 Proof of Usefulness Score by Building an AI Coding Copilot with Persistent Visual Memory | HackerNoon; Functionland Fula Earns a 98 Proof of Usefulness Score by Building Decentralized Storage for the Masses | HackerNoon; Scribe Earns a 39 Proof of Usefulness Score by Building an Agent that Synthesizes Group Chat Links into High-Signal Digests | HackerNoon; Image to Photo Earns a 28 Proof of Usefulness Score by Building an Online Tool to Enhance and Restore Old Photos | HackerNoon; Cocktail of the week: Huŏ’s Szechuan sizzle – recipe | The good mixer; The HackerNoon Newsletter: Become Unstoppable at Work: 10 Habits You Need to Adopt (3/26/2026) | HackerNoon; Call for Applications: 2026 Craft Archive Fellowship |
 
 **Failures:**
 
-- answer length: got 0 runes, want >= 200
+- answer length: got 123 runes, want >= 200
 - citations required but none provided
+
+<details><summary>Answer (preview)</summary>
+
+```
+提供されたコンテキストには、半導体市場の動向や成長トレンドに関する具体的な情報は含まれていません。コンテキストは、AI関連のツールやウェブサイトの「Proof of Usefulness Score」に関するニュース記事の断片で構成されています。
+```
+
+</details>
 
 ---
 
-### FAIL `cjk-short-query-bm25`
+### PASS `cjk-short-query-bm25`
 
 **Query:** 量子コンピュータ 実用化
 
@@ -275,14 +358,26 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 0 runes |
-| Citations | 0 |
+| Answer Length | 1490 runes |
+| Citations | 4 |
 | Fallback | false |
+| Retrieved Titles | 政府機関における耐量子計算機暗号への移行は2035年まで、NCOが中間とりまとめ　2026年度中にロードマップを作成; 【PQCの最新動向調査】PQC Conference@クアラルンプール 参加レポート; From RSA to ECC: The Impact of Quantum Computing on Modern Cryptography; Quantum Computing Will Break AI Privacy — And Nobody in the Industry Is Ready - DEV Community; Gold Price Forecast 2031: Year-by-Year Outlook [2026 Update] - DEV Community; 量子コンピュータの「幻滅期」を超えて：2026年、実利と研究が切り離される再編の幕開け; Boosting one protein helps the brain protect itself from Alzheimer’s |
+| Cited Titles | 政府機関における耐量子計算機暗号への移行は2035年まで、NCOが中間とりまとめ　2026年度中にロードマップを作成; From RSA to ECC: The Impact of Quantum Computing on Modern Cryptography; Quantum Computing Will Break AI Privacy — And Nobody in the Industry Is Ready - DEV Community; 量子コンピュータの「幻滅期」を超えて：2026年、実利と研究が切り離される再編の幕開け |
 
-**Failures:**
+<details><summary>Answer (preview)</summary>
 
-- min relevant contexts: got 0, want >= 1
-- citations required but none provided
+```
+## 概要
+量子コンピュータの実用化に向けたロードマップは、政府機関レベルでの具体的な移行計画が進行しており、特に2035年頃を一つの目安として進められています。技術的な課題としては、現在の脅威が「暗号学的に関連性の高い量子コンピュータ（CRQC）」の実現に依存しており、これには十分な安定した量子ビット数と低いエラー率が求められています。そのため、単なる「意識向上」から「具体的な行動」へと移行し、システムの改修やハイブリッドな暗号方式の採用が喫緊の課題となっています。
+
+## 詳細
+### 1. 政府・組織レベルのロードマップと移行計画
+政府機関における耐量子計算機暗号（PQC）への移行に関しては、具体的なスケジュールが示されています。政府機関では、2035年までに耐量子計算機暗号への移行を目指す動きがあり、これに関してNCOが中間とりまとめを行う予定です[1]。さらに、この移行プロセスの一環として、2026年度中にロードマップが作成される見込みです[1]。
+
+具体的な移行戦略としては、耐量子計算機暗号への「完全な移行」だけでなく、暗号部分を迅速に切り替えられる情報システムの構築が求め...
+```
+
+</details>
 
 ---
 
@@ -294,24 +389,29 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 640 runes |
-| Citations | 0 |
+| Answer Length | 1828 runes |
+| Citations | 5 |
 | Fallback | false |
+| Retrieved Titles | Attention再入門 is all you need; NTTとドコモが開発した「大規模行動モデル(LAM)」で1to1マーケティングを革新──テレマ受注率が最大2倍に向上 | ヘッドウォータースのフィード; I Analyzed 10,000 SMS Verifications Across 50 Countries — Here's What the Data Shows - DEV Community; Exploring the Future of NLP: Trends, Techniques, and Tools in 2026; Transformerアーキテクチャの変遷 ~Attention is All You Needからgpt-ossまで~; Understanding Attention Mechanisms – Part 2: Comparing Encoder and Decoder Outputs; Building Transformer from Scratch - DEV Community |
+| Cited Titles | Attention再入門 is all you need; NTTとドコモが開発した「大規模行動モデル(LAM)」で1to1マーケティングを革新──テレマ受注率が最大2倍に向上 | ヘッドウォータースのフィード; Transformerアーキテクチャの変遷 ~Attention is All You Needからgpt-ossまで~; Building Transformer from Scratch - DEV Community; Understanding Attention Mechanisms – Part 2: Comparing Encoder and Decoder Outputs |
 
 **Failures:**
 
-- citations required but none provided
+- intent: got "general", want "topic_deep_dive"
 
 <details><summary>Answer (preview)</summary>
 
 ```
 ## 概要
-提供されたコンテキスト情報だけでは、ユーザーの質問に対する包括的かつ詳細な回答を生成することができません。回答に必要な具体的な情報（コンテキスト）が提供されていないため、分析や解説を行うことが不可能です。
+TransformerアーキテクチャにおけるAttention機構は、単語一つ一つが他の単語との関連性に基づいて「どの情報にどれだけ注目するか（フォーカスするか）」を決定する、極めて重要な仕組みです。このAttention機構こそが、現在のAIブームを牽引する大規模言語モデル（LLM）やTransformerの根幹技術となっています[1], [7]。
+
+歴史的に、Attention機構は「Attention is all you need」という論文によって大きな注目を集め、以降、Encoder-Decoder型構造や、単体構造など、様々な形で進化を遂げてきました[1], [5]。
 
 ## 詳細
-本タスクでは、優秀なリサーチアナリストとして、提供されたコンテキスト情報を最大限に活用し、ユーザーの質問に対して包括的で詳細な回答を生成することが求められています。回答は、結論を最初に述べ、その後で根拠と詳細を説明するという構造に従う必要があります。また、回答は日本語で記述し、800文字以上を目指す必要があります。最も重要な点として、回答の根拠となる全ての情報は、提供されたコンテキスト情報のみに基づいて記述し、ソース引用（[番号]形式）を付与することが必須です。
+### Attention機構の基本的な機能と重要性
+Attention機構の核心的な機能は、系列データ（文章や時系列など）を処理する際に、入力された単語（トークン）が、他のすべての単語を参照し、その文脈上の関連度に基づいて「注目度」を計算できる点にあります[7]。これにより、モデルは単語間の複雑な依存関係や文脈的な意味合いを深く理解することが可能になります[2]。
 
-しかしながら、今回のリクエストには、分析対象となる「Context」が空であるか、または提供されていない状態です。そのため、具体的な事実、データ、事例を引用することができず、回答の核となる部分を構成することができません。コンテキスト情報が欠如しているため、指定された品質基準（特に「コンテキストの情...
+この技術が注...
 ```
 
 </details>
@@ -331,14 +431,23 @@
 
 | Field | Value |
 |-------|-------|
-| Answer Length | 0 runes |
-| Citations | 0 |
+| Answer Length | 84 runes |
+| Citations | 1 |
 | Fallback | false |
+| Retrieved Titles | Why open source may not survive the rise of generative AI; 生成AI活用による数IIIコンテンツ制作における挑戦と成果 - Classi開発者ブログ; AI firm wins high court ruling after photo agency’s copyright claim; 無料で始められるデザインツール「Affinity」のススメ - シナプス技術者ブログ; Why you'll pay more for AI in 2026, and 3 money-saving tips to try | ZDNET; The platform exposing exactly how much copyrighted art is used by AI tools; Shadow AI Risk - DEV Community |
+| Cited Titles | The platform exposing exactly how much copyrighted art is used by AI tools |
 
 **Failures:**
 
-- answer length: got 0 runes, want >= 300
-- citations required but none provided
+- answer length: got 84 runes, want >= 300
+
+<details><summary>Answer (preview)</summary>
+
+```
+AIモデルが、既存の著作物（例：BBCの素材）をどれだけ利用して独自の成果物を出しているのかを定量的に把握することが、著作権侵害の具体的な問題点として指摘されています。
+```
+
+</details>
 
 ---
 
@@ -348,7 +457,7 @@
 
 | Issue | Count | Impact |
 |-------|-------|--------|
-| Citation not returned in stream | 9/12 | done event の citations が空。rag-orchestrator → frontend の citation 伝搬に問題 |
-| Intent not exposed in response | 5/12 | StreamChat が intent debug 情報を返していない |
-| Answer too short | 7/12 | follow-up・topic-shift で retrieval が不十分 |
+| Citation not returned in stream | 1/12 | done event の citations が空。rag-orchestrator → frontend の citation 伝搬に問題 |
+| Intent not exposed in response | 6/12 | StreamChat が intent debug 情報を返していない |
+| Answer too short | 4/12 | follow-up・topic-shift で retrieval が不十分 |
 | Clarification not triggered | 1/12 | ConversationPlanner が曖昧クエリで clarification を返さない |
