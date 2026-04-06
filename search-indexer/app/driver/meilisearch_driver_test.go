@@ -129,6 +129,31 @@ func containsUnescapedQuotes(filter string) bool {
 	return false
 }
 
+func TestContainsCJK_Japanese(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"イラン 石油", true},
+		{"石油危機 原因", true},
+		{"量子コンピュータ 実用化", true},
+		{"Iran oil crisis", false},
+		{"hello world", false},
+		{"", false},
+		{"AI関連ニュース", true},
+		{"GPT-4o と Claude", true},              // と is Hiragana → CJK
+		{"GPT-4oとClaude 3.5の違いは？", true},    // contains と, の, は (Hiragana)
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := containsCJK(tt.input)
+			if got != tt.expected {
+				t.Errorf("containsCJK(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 func BenchmarkMeilisearchDriver_BuildSecureFilter(b *testing.B) {
 	driver := &MeilisearchDriver{}
 	filters := []string{"technology", "programming", "web-development", "data-science", "machine-learning"}

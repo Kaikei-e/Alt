@@ -194,6 +194,39 @@ export interface RecapSearchResultItem {
 }
 
 /**
+ * Searches across all completed recap jobs for genres matching a free-text query.
+ * Uses the `query` field on SearchRecapsByTagRequest (added in parallel proto update).
+ *
+ * @param transport - The Connect transport to use (must include auth)
+ * @param query - Free-text search query
+ * @param limit - Maximum results (default: 50, max: 200)
+ * @returns Matching recap genres sorted by date descending
+ */
+export async function searchRecaps(
+	transport: Transport,
+	query: string,
+	limit = 50,
+): Promise<RecapSearchResultItem[]> {
+	const client = createRecapClient(transport);
+	const response = (await client.searchRecapsByTag({
+		query,
+		limit,
+	})) as SearchRecapsByTagResponse;
+
+	return response.results.map(
+		(item: ProtoRecapSearchResultItem): RecapSearchResultItem => ({
+			jobId: item.jobId,
+			executedAt: item.executedAt,
+			windowDays: item.windowDays,
+			genre: item.genre,
+			summary: item.summary,
+			topTerms: [...item.topTerms],
+			bullets: [...item.bullets],
+		}),
+	);
+}
+
+/**
  * Searches across all completed recap jobs for genres matching a tag name.
  *
  * @param transport - The Connect transport to use (must include auth)

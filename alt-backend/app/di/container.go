@@ -210,6 +210,9 @@ type ApplicationComponents struct {
 	// Knowledge Sovereign (remote Connect-RPC service — all knowledge data access)
 	SovereignClient *sovereign_client.Client
 
+	// Search
+	Search *SearchModule
+
 	// Observability
 	KnowledgeHomeMetrics *altotel.KnowledgeHomeMetrics
 }
@@ -240,6 +243,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 	// 8. Recap module
 	recap := newRecapModule(infra)
 
+	// 9. Search module (global federated search)
+	search := newSearchModule(infra)
+
 	return &ApplicationComponents{
 		// Modules
 		Infra:        infra,
@@ -249,6 +255,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		RAG:          rag,
 		Image:        image,
 		Recap:        recap,
+		Search:       search,
 		Subscription: sub,
 
 		// ===== Backward-compat fields populated from modules =====

@@ -41,6 +41,7 @@ type RecapUsecaseInterface interface {
 	GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 	GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error)
 	SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error)
+	SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error)
 }
 
 // NewHandler creates a new Recap service handler.
@@ -434,7 +435,7 @@ func representativeArticlesToProto(articles []domain.RepresentativeArticle) []*r
 	return result
 }
 
-// SearchRecapsByTag searches across all completed recaps for genres matching a tag.
+// SearchRecapsByTag searches across all completed recaps for genres matching a tag or free-text query.
 func (h *Handler) SearchRecapsByTag(
 	ctx context.Context,
 	req *connect.Request[recapv2.SearchRecapsByTagRequest],
@@ -444,12 +445,11 @@ func (h *Handler) SearchRecapsByTag(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
-	h.logger.InfoContext(ctx, "SearchRecapsByTag called", "user_id", userCtx.UserID, "tag_name", req.Msg.TagName)
 
+	query := req.Msg.GetQuery()
 	tagName := req.Msg.TagName
-	if tagName == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("tag_name is required"))
-	}
+
+	h.logger.InfoContext(ctx, "SearchRecapsByTag called", "user_id", userCtx.UserID, "tag_name", tagName, "query", query)
 
 	limit := int(req.Msg.Limit)
 	if limit <= 0 {
@@ -459,7 +459,18 @@ func (h *Handler) SearchRecapsByTag(
 		limit = 200
 	}
 
-	results, err := h.getRecapUsecase().SearchRecapsByTag(ctx, tagName, limit)
+	var results []*domain.RecapSearchResult
+
+	if query != "" {
+		// Free-text query takes precedence over tag_name
+		results, err = h.getRecapUsecase().SearchRecapsByQuery(ctx, query, limit)
+	} else if tagName != "" {
+		// Fall back to tag-based search
+		results, err = h.getRecapUsecase().SearchRecapsByTag(ctx, tagName, limit)
+	} else {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("at least one of query or tag_name is required"))
+	}
+
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "SearchRecapsByTag")
 	}

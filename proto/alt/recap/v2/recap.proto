@@ -353,6 +353,8 @@ message SearchRecapsByTagRequest {
   string tag_name = 1;
   // Maximum number of results to return (default: 50, max: 200)
   int32 limit = 2;
+  // Free-text search query (takes precedence over tag_name when non-empty)
+  optional string query = 3;
 }
 
 // RecapSearchResultItem represents a genre from a completed recap job matching the search

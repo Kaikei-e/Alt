@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package alt.search.v2;
+
+option go_package = "alt/gen/proto/alt/search/v2;searchv2";
+
+// =============================================================================
+// GlobalSearchService — Federated parallel search across Articles, Recaps, Tags
+// =============================================================================
+
+service GlobalSearchService {
+  // SearchEverything performs a federated search across all content verticals.
+  rpc SearchEverything(SearchEverythingRequest) returns (SearchEverythingResponse);
+}
+
+// SearchEverythingRequest is the request for federated search.
+message SearchEverythingRequest {
+  // Search query string (required)
+  string query = 1;
+  // Maximum article results (default: 5, max: 20)
+  int32 article_limit = 2;
+  // Maximum recap results (default: 3, max: 10)
+  int32 recap_limit = 3;
+  // Maximum tag results (default: 10, max: 30)
+  int32 tag_limit = 4;
+}
+
+// SearchEverythingResponse contains federated search results from all verticals.
+message SearchEverythingResponse {
+  // Original search query
+  string query = 1;
+  // Article search results
+  ArticleSection article_section = 2;
+  // Recap search results
+  RecapSection recap_section = 3;
+  // Tag search results
+  TagSection tag_section = 4;
+  // Names of sections that failed to respond (e.g. "articles", "recaps", "tags")
+  repeated string degraded_sections = 5;
+  // When the search was executed (RFC3339)
+  string searched_at = 6;
+}
+
+// =============================================================================
+// Article Section
+// =============================================================================
+
+// ArticleSection contains article search results.
+message ArticleSection {
+  // Matching articles (top-k overview)
+  repeated GlobalArticleHit hits = 1;
+  // Estimated total matching articles
+  int64 estimated_total = 2;
+  // Whether more results are available in the specialist UI
+  bool has_more = 3;
+}
+
+// GlobalArticleHit represents a single article search result.
+message GlobalArticleHit {
+  // Article ID (UUID)
+  string id = 1;
+  // Article title
+  string title = 2;
+  // Content snippet with matched context
+  string snippet = 3;
+  // Article URL
+  string link = 4;
+  // Tags associated with the article
+  repeated string tags = 5;
+  // Which fields matched the query (e.g. "title", "content", "tags")
+  repeated string matched_fields = 6;
+}
+
+// =============================================================================
+// Recap Section
+// =============================================================================
+
+// RecapSection contains recap search results.
+message RecapSection {
+  // Matching recap genres (top-k overview)
+  repeated GlobalRecapHit hits = 1;
+  // Estimated total matching recaps
+  int64 estimated_total = 2;
+  // Whether more results are available
+  bool has_more = 3;
+}
+
+// GlobalRecapHit represents a single recap search result.
+message GlobalRecapHit {
+  // Composite document ID (job_id__genre)
+  string id = 1;
+  // Recap job ID
+  string job_id = 2;
+  // Genre name (e.g. "Technology", "Business")
+  string genre = 3;
+  // Summary text excerpt
+  string summary = 4;
+  // Top terms/keywords from the cluster
+  repeated string top_terms = 5;
+  // Semantic tags from tag-generator (KeyBERT)
+  repeated string tags = 6;
+  // Window days (3 or 7)
+  int32 window_days = 7;
+  // Execution timestamp (RFC3339)
+  string executed_at = 8;
+}
+
+// =============================================================================
+// Tag Section
+// =============================================================================
+
+// TagSection contains tag search results.
+message TagSection {
+  // Matching tags with article counts
+  repeated GlobalTagHit hits = 1;
+  // Total matching tags
+  int64 total = 2;
+}
+
+// GlobalTagHit represents a single tag search result.
+message GlobalTagHit {
+  // Tag name
+  string tag_name = 1;
+  // Number of articles with this tag
+  int32 article_count = 2;
+}

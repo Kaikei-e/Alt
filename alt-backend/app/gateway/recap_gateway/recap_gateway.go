@@ -85,6 +85,12 @@ func (g *RecapGateway) SearchRecapsByTag(ctx context.Context, tagName string, li
 	return g.searchIndexer.SearchRecapsByTag(ctx, tagName, limit)
 }
 
+// SearchRecapsByQuery searches recaps by free-text query via search-indexer (Meilisearch).
+func (g *RecapGateway) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error) {
+	results, _, err := g.searchIndexer.SearchRecapsByQuery(ctx, query, limit)
+	return results, err
+}
+
 // GetEveningPulse fetches Evening Pulse data from recap-worker
 func (g *RecapGateway) GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error) {
 	url := fmt.Sprintf("%s/v1/pulse/latest", g.recapWorkerURL)

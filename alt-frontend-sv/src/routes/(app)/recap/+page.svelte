@@ -9,6 +9,8 @@ import {
 	createClientTransport,
 	getSevenDayRecap,
 	getThreeDayRecap,
+	searchRecaps,
+	type RecapSearchResultItem,
 } from "$lib/connect";
 import { getLoadingStore } from "$lib/stores/loading.svelte";
 import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
@@ -22,6 +24,7 @@ import RecapDetail from "$lib/components/desktop/recap/RecapDetail.svelte";
 import RecapEmptyState from "$lib/components/mobile/recap/RecapEmptyState.svelte";
 import SwipeRecapScreen from "$lib/components/mobile/recap/SwipeRecapScreen.svelte";
 import { Button } from "$lib/components/ui/button";
+import { Search, ArrowLeft, BookOpen } from "@lucide/svelte";
 
 const { isDesktop } = useViewport();
 const loadingStore = getLoadingStore();
@@ -42,6 +45,77 @@ let error = $state<Error | null>(null);
 let isRetrying = $state(false);
 
 let genres = $derived(recapData?.genres ?? []);
+
+// Search mode state
+let searchQuery = $state<string>("");
+let searchResults = $state<RecapSearchResultItem[]>([]);
+let isSearching = $state(false);
+let searchError = $state<Error | null>(null);
+let isSearchMode = $derived(searchQuery.length > 0);
+
+function getQueryFromUrl(): string {
+	return page.url.searchParams.get("q") ?? "";
+}
+
+async function executeSearch(query: string) {
+	if (!query.trim()) return;
+	try {
+		isSearching = true;
+		searchError = null;
+		searchResults = [];
+
+		const transport = createClientTransport();
+		searchResults = await searchRecaps(transport, query, 50);
+	} catch (err) {
+		if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
+			goto("/login");
+			return;
+		}
+		searchError = err instanceof Error ? err : new Error("Unknown error");
+	} finally {
+		isSearching = false;
+	}
+}
+
+function handleSearchSubmit(e: Event) {
+	e.preventDefault();
+	const trimmed = searchQuery.trim();
+	if (!trimmed) return;
+	const url = new URL(page.url);
+	url.searchParams.set("q", trimmed);
+	goto(url.toString(), { replaceState: true });
+	void executeSearch(trimmed);
+}
+
+function navigateToSearchResult(item: RecapSearchResultItem) {
+	searchQuery = "";
+	const url = new URL(page.url);
+	url.searchParams.delete("q");
+	url.searchParams.set("window", String(item.windowDays));
+	url.searchParams.set("genre", item.genre);
+	goto(url.toString());
+	selectedWindow = item.windowDays === 7 ? 7 : 3;
+	void fetchRecap(selectedWindow);
+}
+
+function clearSearch() {
+	searchQuery = "";
+	searchResults = [];
+	searchError = null;
+	const url = new URL(page.url);
+	url.searchParams.delete("q");
+	goto(url.toString(), { replaceState: true });
+	selectedWindow = getWindowFromUrl();
+	void fetchRecap(selectedWindow);
+}
+
+function formatSearchDate(dateStr: string): string {
+	return new Date(dateStr).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+		year: "numeric",
+	});
+}
 
 async function fetchRecap(window: RecapWindow) {
 	try {
@@ -132,78 +206,178 @@ function formatArticleCount(count: number): string {
 
 onMount(() => {
 	if (browser) {
-		selectedWindow = getWindowFromUrl();
-		void fetchRecap(selectedWindow);
+		const q = getQueryFromUrl();
+		if (q) {
+			searchQuery = q;
+			void executeSearch(q);
+		} else {
+			selectedWindow = getWindowFromUrl();
+			void fetchRecap(selectedWindow);
+		}
 	}
 });
 </script>
 
 <svelte:head>
-	<title>{selectedWindow}-Day Recap - Alt</title>
+	<title>{isSearchMode ? `Search: ${searchQuery}` : `${selectedWindow}-Day Recap`} - Alt</title>
 </svelte:head>
 
 {#if isDesktop}
-	<PageHeader title="Recap" description="News summary by genre">
-		{#snippet actions()}
-			<div class="flex items-center gap-1 bg-[var(--surface-bg)] rounded-lg p-1 border border-[var(--border-color)]">
+	{#if isSearchMode}
+		<!-- Search mode -->
+		<PageHeader title="Recap Search" description="Search across all recap genres">
+			{#snippet actions()}
 				<button
-					class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors {selectedWindow === 3
-						? 'bg-gray-800 text-white shadow-sm'
-						: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]'}"
-					onclick={() => switchWindow(3)}
-					disabled={isLoading}
+					type="button"
+					onclick={clearSearch}
+					class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-[var(--interactive-text)] hover:text-[var(--interactive-text-hover)] transition-colors"
 				>
-					3 Days
+					<ArrowLeft class="h-4 w-4" />
+					Back to latest
 				</button>
-				<button
-					class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors {selectedWindow === 7
-						? 'bg-gray-800 text-white shadow-sm'
-						: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]'}"
-					onclick={() => switchWindow(7)}
-					disabled={isLoading}
-				>
-					7 Days
-				</button>
-			</div>
-		{/snippet}
-	</PageHeader>
+			{/snippet}
+		</PageHeader>
 
-	{#if recapData}
-		<div class="flex items-center gap-2 text-sm text-[var(--text-secondary)] mb-4 -mt-2">
-			<span class="font-medium">{selectedWindow}-day window</span>
-			<span class="text-[var(--text-muted)]">&middot;</span>
-			<span>Generated: {formatExecutedAt(recapData.executedAt)}</span>
-			<span class="text-[var(--text-muted)]">&middot;</span>
-			<span>{formatArticleCount(recapData.totalArticles)} articles</span>
-		</div>
-	{/if}
-
-	{#if isLoading}
-		<!-- Loading state handled by SystemLoader via loadingStore -->
-	{:else if error}
-		<div class="text-center py-12">
-			<div class="inline-flex flex-col items-center gap-3">
-				<p class="text-[var(--text-secondary)] text-sm">
-					No recap data available yet.
-				</p>
-				<p class="text-[var(--text-muted)] text-xs">
-					Run a recap job first to see the summary here.
-				</p>
+		<form onsubmit={handleSearchSubmit} class="mb-6">
+			<div class="relative">
+				<Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-secondary)]" />
+				<input
+					type="text"
+					bind:value={searchQuery}
+					placeholder="Search recaps..."
+					class="w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] py-2.5 pl-10 pr-4 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:border-[var(--interactive-text)] focus:outline-none transition-colors"
+				/>
 			</div>
-		</div>
-	{:else if genres.length === 0}
-		<div class="text-center py-12">
-			<p class="text-[var(--text-secondary)] text-sm">No recap data available</p>
-		</div>
+		</form>
+
+		{#if isSearching}
+			<div class="space-y-3">
+				{#each Array(4) as _}
+					<div class="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] p-4 animate-pulse">
+						<div class="h-4 bg-[var(--surface-hover)] rounded w-1/3 mb-3"></div>
+						<div class="h-3 bg-[var(--surface-hover)] rounded w-full mb-2"></div>
+						<div class="h-3 bg-[var(--surface-hover)] rounded w-4/5"></div>
+					</div>
+				{/each}
+			</div>
+		{:else if searchError}
+			<div class="text-center py-12">
+				<p class="text-[var(--text-secondary)] text-sm">Failed to search recaps.</p>
+				<p class="text-[var(--text-muted)] text-xs mt-1">{searchError.message}</p>
+			</div>
+		{:else if searchResults.length === 0}
+			<div class="text-center py-12">
+				<p class="text-[var(--text-secondary)] text-sm">No matching recaps found.</p>
+			</div>
+		{:else}
+			<p class="text-xs text-[var(--text-secondary)] mb-4">
+				{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}
+			</p>
+			<div class="space-y-3">
+				{#each searchResults as item (item.jobId + item.genre)}
+					<button
+						type="button"
+						onclick={() => navigateToSearchResult(item)}
+						class="w-full text-left rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] p-4 space-y-2 cursor-pointer hover:border-[var(--interactive-text)] transition-colors"
+					>
+						<div class="flex items-start gap-3">
+							<BookOpen class="mt-0.5 h-4 w-4 flex-shrink-0 text-[var(--text-secondary)]" />
+							<div class="min-w-0 flex-1 space-y-1.5">
+								<div class="flex items-center gap-2">
+									<h3 class="text-sm font-medium text-[var(--text-primary)]">
+										{item.genre}
+									</h3>
+									<span class="inline-block rounded border border-[var(--surface-border)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">
+										{item.windowDays}-day
+									</span>
+									<span class="text-[10px] text-[var(--text-secondary)]">
+										{formatSearchDate(item.executedAt)}
+									</span>
+								</div>
+								{#if item.summary}
+									<p class="text-xs text-[var(--text-secondary)] leading-relaxed line-clamp-3">
+										{item.summary}
+									</p>
+								{/if}
+								{#if item.topTerms.length > 0}
+									<div class="flex flex-wrap gap-1.5">
+										{#each item.topTerms.slice(0, 5) as term}
+											<span class="inline-block rounded-full bg-[var(--surface-hover)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-secondary)]">
+												{term}
+											</span>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						</div>
+					</button>
+				{/each}
+			</div>
+		{/if}
 	{:else}
-		<div class="grid grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
-			<div class="col-span-1 h-full overflow-y-auto">
-				<RecapGenreList {genres} {selectedGenre} onSelectGenre={handleSelectGenre} />
+		<!-- Normal recap view -->
+		<PageHeader title="Recap" description="News summary by genre">
+			{#snippet actions()}
+				<div class="flex items-center gap-1 bg-[var(--surface-bg)] rounded-lg p-1 border border-[var(--border-color)]">
+					<button
+						class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors {selectedWindow === 3
+							? 'bg-gray-800 text-white shadow-sm'
+							: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]'}"
+						onclick={() => switchWindow(3)}
+						disabled={isLoading}
+					>
+						3 Days
+					</button>
+					<button
+						class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors {selectedWindow === 7
+							? 'bg-gray-800 text-white shadow-sm'
+							: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]'}"
+						onclick={() => switchWindow(7)}
+						disabled={isLoading}
+					>
+						7 Days
+					</button>
+				</div>
+			{/snippet}
+		</PageHeader>
+
+		{#if recapData}
+			<div class="flex items-center gap-2 text-sm text-[var(--text-secondary)] mb-4 -mt-2">
+				<span class="font-medium">{selectedWindow}-day window</span>
+				<span class="text-[var(--text-muted)]">&middot;</span>
+				<span>Generated: {formatExecutedAt(recapData.executedAt)}</span>
+				<span class="text-[var(--text-muted)]">&middot;</span>
+				<span>{formatArticleCount(recapData.totalArticles)} articles</span>
 			</div>
-			<div class="col-span-2 h-full overflow-y-auto">
-				<RecapDetail genre={selectedGenre} />
+		{/if}
+
+		{#if isLoading}
+			<!-- Loading state handled by SystemLoader via loadingStore -->
+		{:else if error}
+			<div class="text-center py-12">
+				<div class="inline-flex flex-col items-center gap-3">
+					<p class="text-[var(--text-secondary)] text-sm">
+						No recap data available yet.
+					</p>
+					<p class="text-[var(--text-muted)] text-xs">
+						Run a recap job first to see the summary here.
+					</p>
+				</div>
 			</div>
-		</div>
+		{:else if genres.length === 0}
+			<div class="text-center py-12">
+				<p class="text-[var(--text-secondary)] text-sm">No recap data available</p>
+			</div>
+		{:else}
+			<div class="grid grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
+				<div class="col-span-1 h-full overflow-y-auto">
+					<RecapGenreList {genres} {selectedGenre} onSelectGenre={handleSelectGenre} />
+				</div>
+				<div class="col-span-2 h-full overflow-y-auto">
+					<RecapDetail genre={selectedGenre} />
+				</div>
+			</div>
+		{/if}
 	{/if}
 {:else}
 	<!-- Mobile -->

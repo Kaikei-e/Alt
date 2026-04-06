@@ -100,3 +100,18 @@ func (mr *MockRecapPortMockRecorder) SearchRecapsByTag(ctx, tagName, limit any) 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecapsByTag", reflect.TypeOf((*MockRecapPort)(nil).SearchRecapsByTag), ctx, tagName, limit)
 }
+
+// SearchRecapsByQuery mocks base method.
+func (m *MockRecapPort) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SearchRecapsByQuery", ctx, query, limit)
+	ret0, _ := ret[0].([]*domain.RecapSearchResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SearchRecapsByQuery indicates an expected call of SearchRecapsByQuery.
+func (mr *MockRecapPortMockRecorder) SearchRecapsByQuery(ctx, query, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SearchRecapsByQuery", reflect.TypeOf((*MockRecapPort)(nil).SearchRecapsByQuery), ctx, query, limit)
+}

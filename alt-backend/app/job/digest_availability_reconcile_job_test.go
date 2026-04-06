@@ -36,6 +36,10 @@ func (m *mockRecapPortForDigest) SearchRecapsByTag(_ context.Context, _ string, 
 	return nil, nil
 }
 
+func (m *mockRecapPortForDigest) SearchRecapsByQuery(_ context.Context, _ string, _ int) ([]*domain.RecapSearchResult, error) {
+	return nil, nil
+}
+
 // mockDigestUpsertPort implements today_digest_port.UpsertTodayDigestPort for testing.
 type mockDigestUpsertPort struct {
 	upserted []domain.TodayDigest

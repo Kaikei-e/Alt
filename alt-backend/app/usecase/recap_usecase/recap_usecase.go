@@ -32,3 +32,7 @@ func (u *RecapUsecase) GetEveningPulse(ctx context.Context, date string) (*domai
 func (u *RecapUsecase) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
 	return u.recapPort.SearchRecapsByTag(ctx, tagName, limit)
 }
+
+func (u *RecapUsecase) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error) {
+	return u.recapPort.SearchRecapsByQuery(ctx, query, limit)
+}

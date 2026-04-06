@@ -124,6 +124,7 @@ export {
 	createRecapClient,
 	getSevenDayRecap,
 	getThreeDayRecap,
+	searchRecaps,
 	searchRecapsByTag,
 	type RecapReference,
 	type RecapGenreWithReferences,
@@ -172,6 +173,20 @@ export {
 	type ListLensesResult,
 	type StreamHomeUpdate,
 } from "./knowledge_home";
+
+// GlobalSearchService client
+export {
+	createGlobalSearchClient,
+	searchEverything,
+	type GlobalArticleHitData,
+	type GlobalRecapHitData,
+	type GlobalTagHitData,
+	type ArticleSectionData,
+	type RecapSectionData,
+	type TagSectionData,
+	type GlobalSearchResult,
+	type GlobalSearchOptions,
+} from "./global_search";
 
 // KnowledgeHomeAdminService client
 export {

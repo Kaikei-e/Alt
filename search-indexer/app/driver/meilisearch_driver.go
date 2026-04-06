@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+	"unicode"
 
 	"github.com/meilisearch/meilisearch-go"
 )
@@ -75,6 +76,9 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 		Query: query,
 		Limit: int64(limit),
 	}
+	if containsCJK(query) {
+		searchRequest.Locales = []string{"jpn"}
+	}
 
 	result, err := d.index.Search(query, searchRequest)
 	if err != nil {
@@ -104,6 +108,9 @@ func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string,
 	searchRequest := &meilisearch.SearchRequest{
 		Query: query,
 		Limit: int64(limit),
+	}
+	if containsCJK(query) {
+		searchRequest.Locales = []string{"jpn"}
 	}
 
 	// Only add filter if it's not empty
@@ -207,6 +214,35 @@ func (d *MeilisearchDriver) EnsureIndex(ctx context.Context) error {
 		}
 	}
 
+	// Set localized attributes for Japanese content.
+	// Without this, Meilisearch uses its default tokenizer which splits CJK text
+	// incorrectly, causing 0 results for Japanese BM25 queries.
+	// Multiple locale rules allow Meilisearch to auto-detect the content language
+	// and apply the correct tokenizer. Articles contain both Japanese and English text.
+	localizedAttrs := []*meilisearch.LocalizedAttributes{
+		{
+			Locales:           []string{"jpn"},
+			AttributePatterns: []string{"title", "content", "tags"},
+		},
+		{
+			Locales:           []string{"eng"},
+			AttributePatterns: []string{"title", "content", "tags"},
+		},
+	}
+	task, localErr := d.index.UpdateLocalizedAttributes(localizedAttrs)
+	if localErr != nil {
+		return &DriverError{
+			Op:  "EnsureIndex",
+			Err: "failed to set localized attributes: " + localErr.Error(),
+		}
+	}
+	if _, err := d.index.WaitForTask(task.TaskUID, 15*time.Second); err != nil {
+		return &DriverError{
+			Op:  "EnsureIndex",
+			Err: "failed to wait for localized attributes update: " + err.Error(),
+		}
+	}
+
 	return nil
 }
 
@@ -233,10 +269,14 @@ func (d *MeilisearchDriver) getStringSlice(m meilisearch.Hit, key string) []stri
 func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]SearchDocumentDriver, error) {
 	filter := BuildUserFilter(userID)
 
-	result, err := d.index.Search(query, &meilisearch.SearchRequest{
+	req := &meilisearch.SearchRequest{
 		Limit:  int64(limit),
 		Filter: filter,
-	})
+	}
+	if containsCJK(query) {
+		req.Locales = []string{"jpn"}
+	}
+	result, err := d.index.Search(query, req)
 	if err != nil {
 		return nil, &DriverError{Op: "SearchByUserID", Err: err.Error()}
 	}
@@ -254,11 +294,15 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 
 	filter := BuildUserFilter(userID)
 
-	result, err := d.index.Search(query, &meilisearch.SearchRequest{
+	paginReq := &meilisearch.SearchRequest{
 		Offset: offset,
 		Limit:  limit,
 		Filter: filter,
-	})
+	}
+	if containsCJK(query) {
+		paginReq.Locales = []string{"jpn"}
+	}
+	result, err := d.index.Search(query, paginReq)
 	if err != nil {
 		return nil, 0, &DriverError{Op: "SearchByUserIDWithPagination", Err: err.Error()}
 	}
@@ -302,4 +346,14 @@ func (d *MeilisearchDriver) RegisterSynonyms(ctx context.Context, synonyms map[s
 // buildSecureFilter creates a secure filter from tag filters
 func (d *MeilisearchDriver) buildSecureFilter(filters []string) string {
 	return makeSecureSearchFilter(filters)
+}
+
+// containsCJK checks if text contains CJK characters (Hiragana, Katakana, Han/Kanji).
+func containsCJK(text string) bool {
+	for _, r := range text {
+		if unicode.In(r, unicode.Hiragana, unicode.Katakana, unicode.Han) {
+			return true
+		}
+	}
+	return false
 }

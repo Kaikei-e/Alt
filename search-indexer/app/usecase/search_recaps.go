@@ -41,3 +41,23 @@ func (u *SearchRecapsUsecase) Execute(ctx context.Context, tagName string, limit
 		EstimatedTotalHits: total,
 	}, nil
 }
+
+// ExecuteByQuery searches recap documents by free-text query.
+func (u *SearchRecapsUsecase) ExecuteByQuery(ctx context.Context, query string, limit int) (*SearchRecapsResult, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	docs, total, err := u.recapSearchEngine.SearchRecaps(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	return &SearchRecapsResult{
+		Hits:               docs,
+		EstimatedTotalHits: total,
+	}, nil
+}

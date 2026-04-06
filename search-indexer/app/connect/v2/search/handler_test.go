@@ -51,6 +51,30 @@ func (m *mockSearchEngine) RegisterSynonyms(ctx context.Context, synonyms map[st
 
 var _ port.SearchEngine = (*mockSearchEngine)(nil)
 
+// mockRecapSearchEngine implements port.RecapSearchEngine for testing.
+type mockRecapSearchEngine struct {
+	docs           []domain.RecapDocument
+	estimatedTotal int64
+	err            error
+	lastQuery      string
+	lastLimit      int
+}
+
+func (m *mockRecapSearchEngine) EnsureRecapIndex(ctx context.Context) error { return m.err }
+func (m *mockRecapSearchEngine) IndexRecapDocuments(ctx context.Context, docs []domain.RecapDocument) error {
+	return m.err
+}
+func (m *mockRecapSearchEngine) SearchRecaps(ctx context.Context, query string, limit int) ([]domain.RecapDocument, int64, error) {
+	m.lastQuery = query
+	m.lastLimit = limit
+	if m.err != nil {
+		return nil, 0, m.err
+	}
+	return m.docs, m.estimatedTotal, nil
+}
+
+var _ port.RecapSearchEngine = (*mockRecapSearchEngine)(nil)
+
 func TestHandler_SearchArticles_Success(t *testing.T) {
 	now := time.Now()
 	article, _ := domain.NewArticle("1", "Test Title", "Test Content", []string{"go", "test"}, now, "user1")
@@ -181,5 +205,122 @@ func TestHandler_SearchArticles_NilTags(t *testing.T) {
 
 	if resp.Msg.Hits[0].Tags == nil {
 		t.Error("Tags should not be nil, expected empty slice")
+	}
+}
+
+func TestHandler_SearchRecaps_WithQuery(t *testing.T) {
+	recapEngine := &mockRecapSearchEngine{
+		docs: []domain.RecapDocument{
+			{
+				ID:       "job1__tech",
+				JobID:    "job1",
+				Genre:    "tech",
+				Summary:  "Technology recap",
+				TopTerms: []string{"ai", "golang"},
+				Tags:     []string{"artificial-intelligence"},
+				Bullets:  []string{"bullet1"},
+			},
+		},
+		estimatedTotal: 1,
+	}
+	recapUC := usecase.NewSearchRecapsUsecase(recapEngine)
+	handler := NewHandler(nil, recapUC)
+
+	query := "technology ai"
+	req := connect.NewRequest(&searchv2.SearchRecapsRequest{
+		Query: &query,
+		Limit: 10,
+	})
+
+	resp, err := handler.SearchRecaps(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SearchRecaps() error = %v", err)
+	}
+
+	if len(resp.Msg.Hits) != 1 {
+		t.Fatalf("Hits count = %d, want 1", len(resp.Msg.Hits))
+	}
+	if resp.Msg.Hits[0].Genre != "tech" {
+		t.Errorf("Genre = %q, want %q", resp.Msg.Hits[0].Genre, "tech")
+	}
+	if resp.Msg.EstimatedTotalHits != 1 {
+		t.Errorf("EstimatedTotalHits = %d, want 1", resp.Msg.EstimatedTotalHits)
+	}
+	// Verify the query was passed to the search engine
+	if recapEngine.lastQuery != "technology ai" {
+		t.Errorf("Search engine received query = %q, want %q", recapEngine.lastQuery, "technology ai")
+	}
+}
+
+func TestHandler_SearchRecaps_QueryTakesPrecedenceOverTagName(t *testing.T) {
+	recapEngine := &mockRecapSearchEngine{
+		docs:           []domain.RecapDocument{},
+		estimatedTotal: 0,
+	}
+	recapUC := usecase.NewSearchRecapsUsecase(recapEngine)
+	handler := NewHandler(nil, recapUC)
+
+	query := "free text search"
+	req := connect.NewRequest(&searchv2.SearchRecapsRequest{
+		TagName: "some-tag",
+		Query:   &query,
+		Limit:   10,
+	})
+
+	_, err := handler.SearchRecaps(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SearchRecaps() error = %v", err)
+	}
+
+	// When both query and tag_name are set, query takes precedence
+	if recapEngine.lastQuery != "free text search" {
+		t.Errorf("Search engine received query = %q, want %q (query should take precedence over tag_name)", recapEngine.lastQuery, "free text search")
+	}
+}
+
+func TestHandler_SearchRecaps_FallbackToTagName(t *testing.T) {
+	recapEngine := &mockRecapSearchEngine{
+		docs:           []domain.RecapDocument{},
+		estimatedTotal: 0,
+	}
+	recapUC := usecase.NewSearchRecapsUsecase(recapEngine)
+	handler := NewHandler(nil, recapUC)
+
+	req := connect.NewRequest(&searchv2.SearchRecapsRequest{
+		TagName: "golang",
+		Limit:   10,
+	})
+
+	_, err := handler.SearchRecaps(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SearchRecaps() error = %v", err)
+	}
+
+	// When query is not set, tag_name is used
+	if recapEngine.lastQuery != "golang" {
+		t.Errorf("Search engine received query = %q, want %q (should fall back to tag_name)", recapEngine.lastQuery, "golang")
+	}
+}
+
+func TestHandler_SearchRecaps_NeitherQueryNorTagName(t *testing.T) {
+	recapEngine := &mockRecapSearchEngine{}
+	recapUC := usecase.NewSearchRecapsUsecase(recapEngine)
+	handler := NewHandler(nil, recapUC)
+
+	req := connect.NewRequest(&searchv2.SearchRecapsRequest{
+		Limit: 10,
+	})
+
+	_, err := handler.SearchRecaps(context.Background(), req)
+	if err == nil {
+		t.Fatal("SearchRecaps() should return error when neither query nor tag_name is set")
+	}
+
+	connectErr, ok := err.(*connect.Error)
+	if !ok {
+		t.Fatalf("Expected *connect.Error, got %T", err)
+	}
+	if connectErr.Code() != connect.CodeInvalidArgument {
+		t.Errorf("Error code = %v, want InvalidArgument", connectErr.Code())
 	}
 }

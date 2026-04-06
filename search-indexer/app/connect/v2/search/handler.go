@@ -86,15 +86,23 @@ func (h *Handler) SearchRecaps(
 	}
 
 	tagName := req.Msg.TagName
+	query := req.Msg.GetQuery()
 	limit := int(req.Msg.Limit)
 
-	if tagName == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("tag_name is required"))
+	var result *usecase.SearchRecapsResult
+	var err error
+
+	switch {
+	case query != "":
+		result, err = h.searchRecapsUsecase.ExecuteByQuery(ctx, query, limit)
+	case tagName != "":
+		result, err = h.searchRecapsUsecase.Execute(ctx, tagName, limit)
+	default:
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("query or tag_name is required"))
 	}
 
-	result, err := h.searchRecapsUsecase.Execute(ctx, tagName, limit)
 	if err != nil {
-		logger.Logger.Error("recap search failed", "err", err, "tag_name", tagName)
+		logger.Logger.Error("recap search failed", "err", err, "tag_name", tagName, "query", query)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("recap search failed"))
 	}
 
@@ -125,7 +133,7 @@ func (h *Handler) SearchRecaps(
 		})
 	}
 
-	logger.Logger.Info("recap search ok", "tag_name", tagName, "count", len(hits), "estimated_total", result.EstimatedTotalHits)
+	logger.Logger.Info("recap search ok", "tag_name", tagName, "query", query, "count", len(hits), "estimated_total", result.EstimatedTotalHits)
 
 	return connect.NewResponse(&searchv2.SearchRecapsResponse{
 		Hits:               hits,

@@ -56,6 +56,14 @@ func (m *MockRecapUsecase) SearchRecapsByTag(ctx context.Context, tagName string
 	return args.Get(0).([]*domain.RecapSearchResult), args.Error(1)
 }
 
+func (m *MockRecapUsecase) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error) {
+	args := m.Called(ctx, query, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.RecapSearchResult), args.Error(1)
+}
+
 func TestHandler_GetEveningPulse(t *testing.T) {
 	logger := slog.Default()
 
@@ -224,5 +232,179 @@ func TestHandler_GetEveningPulse(t *testing.T) {
 		assert.Equal(t, connect.CodeInternal, connectErr.Code())
 
 		mockUsecase.AssertExpectations(t)
+	})
+}
+
+func TestHandler_SearchRecapsByTag(t *testing.T) {
+	logger := slog.Default()
+
+	t.Run("free-text query takes precedence over tag_name", func(t *testing.T) {
+		mockUsecase := new(MockRecapUsecase)
+		expectedResults := []*domain.RecapSearchResult{
+			{
+				JobID:      "job-001",
+				ExecutedAt: "2026-04-01T00:00:00Z",
+				WindowDays: 7,
+				Genre:      "Technology",
+				Summary:    "AI chip developments",
+				TopTerms:   []string{"AI", "chips"},
+				Bullets:    []string{"bullet1"},
+			},
+		}
+		mockUsecase.On("SearchRecapsByQuery", mock.Anything, "artificial intelligence", 50).
+			Return(expectedResults, nil)
+
+		handler := NewHandlerWithUsecase(mockUsecase, nil, logger)
+		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
+
+		query := "artificial intelligence"
+		req := connect.NewRequest(&recapv2.SearchRecapsByTagRequest{
+			TagName: "AI",
+			Query:   &query,
+		})
+		resp, err := handler.SearchRecapsByTag(ctx, req)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.Len(t, resp.Msg.Results, 1)
+		assert.Equal(t, "job-001", resp.Msg.Results[0].JobId)
+		assert.Equal(t, "AI chip developments", resp.Msg.Results[0].Summary)
+
+		// SearchRecapsByTag should NOT be called when query is provided
+		mockUsecase.AssertNotCalled(t, "SearchRecapsByTag")
+		mockUsecase.AssertExpectations(t)
+	})
+
+	t.Run("query only - no tag_name", func(t *testing.T) {
+		mockUsecase := new(MockRecapUsecase)
+		expectedResults := []*domain.RecapSearchResult{
+			{
+				JobID:      "job-002",
+				ExecutedAt: "2026-04-02T00:00:00Z",
+				WindowDays: 3,
+				Genre:      "Finance",
+				Summary:    "Market trends",
+				TopTerms:   []string{"stocks", "bonds"},
+				Bullets:    []string{"bullet2"},
+			},
+		}
+		mockUsecase.On("SearchRecapsByQuery", mock.Anything, "market trends", 30).
+			Return(expectedResults, nil)
+
+		handler := NewHandlerWithUsecase(mockUsecase, nil, logger)
+		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
+
+		query := "market trends"
+		req := connect.NewRequest(&recapv2.SearchRecapsByTagRequest{
+			Limit: 30,
+			Query: &query,
+		})
+		resp, err := handler.SearchRecapsByTag(ctx, req)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.Len(t, resp.Msg.Results, 1)
+		assert.Equal(t, "job-002", resp.Msg.Results[0].JobId)
+
+		mockUsecase.AssertNotCalled(t, "SearchRecapsByTag")
+		mockUsecase.AssertExpectations(t)
+	})
+
+	t.Run("tag_name fallback when query is not provided", func(t *testing.T) {
+		mockUsecase := new(MockRecapUsecase)
+		expectedResults := []*domain.RecapSearchResult{
+			{
+				JobID:      "job-003",
+				ExecutedAt: "2026-04-03T00:00:00Z",
+				WindowDays: 7,
+				Genre:      "Science",
+				Summary:    "Climate research",
+				TopTerms:   []string{"climate"},
+				Bullets:    []string{"bullet3"},
+			},
+		}
+		mockUsecase.On("SearchRecapsByTag", mock.Anything, "climate", 50).
+			Return(expectedResults, nil)
+
+		handler := NewHandlerWithUsecase(mockUsecase, nil, logger)
+		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
+
+		req := connect.NewRequest(&recapv2.SearchRecapsByTagRequest{
+			TagName: "climate",
+		})
+		resp, err := handler.SearchRecapsByTag(ctx, req)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.Len(t, resp.Msg.Results, 1)
+		assert.Equal(t, "job-003", resp.Msg.Results[0].JobId)
+
+		mockUsecase.AssertNotCalled(t, "SearchRecapsByQuery")
+		mockUsecase.AssertExpectations(t)
+	})
+
+	t.Run("neither query nor tag_name - returns error", func(t *testing.T) {
+		mockUsecase := new(MockRecapUsecase)
+
+		handler := NewHandlerWithUsecase(mockUsecase, nil, logger)
+		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
+
+		req := connect.NewRequest(&recapv2.SearchRecapsByTagRequest{})
+		_, err := handler.SearchRecapsByTag(ctx, req)
+
+		require.Error(t, err)
+		connectErr, ok := err.(*connect.Error)
+		require.True(t, ok)
+		assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
+
+		mockUsecase.AssertNotCalled(t, "SearchRecapsByTag")
+		mockUsecase.AssertNotCalled(t, "SearchRecapsByQuery")
+	})
+
+	t.Run("empty query string falls back to tag_name", func(t *testing.T) {
+		mockUsecase := new(MockRecapUsecase)
+		expectedResults := []*domain.RecapSearchResult{
+			{
+				JobID:      "job-004",
+				ExecutedAt: "2026-04-04T00:00:00Z",
+				WindowDays: 3,
+				Genre:      "Tech",
+				Summary:    "Rust updates",
+				TopTerms:   []string{"rust"},
+				Bullets:    []string{"bullet4"},
+			},
+		}
+		mockUsecase.On("SearchRecapsByTag", mock.Anything, "rust", 50).
+			Return(expectedResults, nil)
+
+		handler := NewHandlerWithUsecase(mockUsecase, nil, logger)
+		ctx := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New(), Email: "test@example.com", ExpiresAt: time.Now().Add(time.Hour)})
+
+		emptyQuery := ""
+		req := connect.NewRequest(&recapv2.SearchRecapsByTagRequest{
+			TagName: "rust",
+			Query:   &emptyQuery,
+		})
+		resp, err := handler.SearchRecapsByTag(ctx, req)
+
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		assert.Len(t, resp.Msg.Results, 1)
+
+		mockUsecase.AssertNotCalled(t, "SearchRecapsByQuery")
+		mockUsecase.AssertExpectations(t)
+	})
+
+	t.Run("unauthenticated - returns error", func(t *testing.T) {
+		mockUsecase := new(MockRecapUsecase)
+		handler := NewHandlerWithUsecase(mockUsecase, nil, logger)
+
+		req := connect.NewRequest(&recapv2.SearchRecapsByTagRequest{TagName: "test"})
+		_, err := handler.SearchRecapsByTag(context.Background(), req)
+
+		require.Error(t, err)
+		connectErr, ok := err.(*connect.Error)
+		require.True(t, ok)
+		assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 	})
 }

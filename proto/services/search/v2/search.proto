@@ -60,12 +60,14 @@ service SearchService {
 // Search Recaps Messages
 // =============================================================================
 
-// SearchRecapsRequest is the request for searching recap genres by tag
+// SearchRecapsRequest is the request for searching recap genres by tag or free text.
 message SearchRecapsRequest {
-  // Tag name to search for in recap top_terms
+  // Tag name to search for in recap top_terms (legacy, use query for free-text)
   string tag_name = 1;
   // Maximum number of results to return (default: 50, max: 200)
   int32 limit = 2;
+  // Free-text search query (when set, takes precedence over tag_name)
+  optional string query = 3;
 }
 
 // RecapSearchHit represents a matched recap genre

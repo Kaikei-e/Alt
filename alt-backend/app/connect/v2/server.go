@@ -13,6 +13,7 @@ import (
 	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
+	"alt/gen/proto/alt/search/v2/searchv2connect"
 	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
@@ -23,6 +24,7 @@ import (
 	"alt/connect/v2/articles"
 	"alt/connect/v2/augur"
 	"alt/connect/v2/feeds"
+	global_search "alt/connect/v2/global_search"
 	internalhandler "alt/connect/v2/internal"
 	knowledge_home "alt/connect/v2/knowledge_home"
 	"alt/connect/v2/knowledge_home_admin"
@@ -165,6 +167,14 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	khAdminPath, khAdminServiceHandler := knowledgehomev1connect.NewKnowledgeHomeAdminServiceHandler(khAdminHandler, adminOpts)
 	mux.Handle(khAdminPath, khAdminServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeHomeAdminService", "path", khAdminPath)
+
+	// Register GlobalSearchService
+	if container.Search != nil {
+		globalSearchHandler := global_search.NewHandler(container.Search.GlobalSearchUsecase, logger)
+		gsPath, gsServiceHandler := searchv2connect.NewGlobalSearchServiceHandler(globalSearchHandler, opts)
+		mux.Handle(gsPath, gsServiceHandler)
+		logger.Info("Registered Connect-RPC GlobalSearchService", "path", gsPath)
+	}
 
 	// Register BackendInternalService (service-to-service API, uses service token auth)
 	internalOpts := connect.WithInterceptors(

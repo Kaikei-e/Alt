@@ -104,3 +104,31 @@ func (d *ConnectSearchIndexerDriver) SearchRecapsByTag(ctx context.Context, tagN
 
 	return results, nil
 }
+
+// SearchRecapsByQuery searches recap genres by free-text query via search-indexer's Meilisearch.
+func (d *ConnectSearchIndexerDriver) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, int64, error) {
+	q := &query
+	resp, err := d.client.SearchRecaps(ctx, connect.NewRequest(&searchv2.SearchRecapsRequest{
+		Query: q,
+		Limit: int32(limit),
+	}))
+	if err != nil {
+		return nil, 0, err
+	}
+
+	results := make([]*domain.RecapSearchResult, len(resp.Msg.Hits))
+	for i, hit := range resp.Msg.Hits {
+		results[i] = &domain.RecapSearchResult{
+			JobID:      hit.JobId,
+			ExecutedAt: hit.ExecutedAt,
+			WindowDays: int(hit.WindowDays),
+			Genre:      hit.Genre,
+			Summary:    hit.Summary,
+			TopTerms:   hit.TopTerms,
+			Tags:       hit.Tags,
+			Bullets:    hit.Bullets,
+		}
+	}
+
+	return results, resp.Msg.EstimatedTotalHits, nil
+}

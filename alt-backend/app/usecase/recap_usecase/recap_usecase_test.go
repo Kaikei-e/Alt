@@ -50,6 +50,14 @@ func (m *MockRecapPort) SearchRecapsByTag(ctx context.Context, tagName string, l
 	return args.Get(0).([]*domain.RecapSearchResult), args.Error(1)
 }
 
+func (m *MockRecapPort) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error) {
+	args := m.Called(ctx, query, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.RecapSearchResult), args.Error(1)
+}
+
 func TestRecapUsecase_GetEveningPulse(t *testing.T) {
 	t.Run("success - delegates to port and returns result", func(t *testing.T) {
 		mockPort := new(MockRecapPort)

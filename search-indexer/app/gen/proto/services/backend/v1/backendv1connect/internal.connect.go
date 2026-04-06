@@ -93,6 +93,12 @@ const (
 	// BackendInternalServiceGetEmptyFeedIDProcedure is the fully-qualified name of the
 	// BackendInternalService's GetEmptyFeedID RPC.
 	BackendInternalServiceGetEmptyFeedIDProcedure = "/services.backend.v1.BackendInternalService/GetEmptyFeedID"
+	// BackendInternalServiceFetchTagCloudProcedure is the fully-qualified name of the
+	// BackendInternalService's FetchTagCloud RPC.
+	BackendInternalServiceFetchTagCloudProcedure = "/services.backend.v1.BackendInternalService/FetchTagCloud"
+	// BackendInternalServiceFetchArticlesByTagProcedure is the fully-qualified name of the
+	// BackendInternalService's FetchArticlesByTag RPC.
+	BackendInternalServiceFetchArticlesByTagProcedure = "/services.backend.v1.BackendInternalService/FetchArticlesByTag"
 )
 
 // BackendInternalServiceClient is a client for the services.backend.v1.BackendInternalService
@@ -141,6 +147,10 @@ type BackendInternalServiceClient interface {
 	// GetEmptyFeedID returns a feed ID that has no articles for the given feed URL.
 	// Returns empty feed_id if all feeds for this URL already have articles.
 	GetEmptyFeedID(context.Context, *connect.Request[v1.GetEmptyFeedIDRequest]) (*connect.Response[v1.GetEmptyFeedIDResponse], error)
+	// FetchTagCloud returns tag names with article counts for topic exploration.
+	FetchTagCloud(context.Context, *connect.Request[v1.BackendInternalServiceFetchTagCloudRequest]) (*connect.Response[v1.BackendInternalServiceFetchTagCloudResponse], error)
+	// FetchArticlesByTag returns articles filtered by tag name.
+	FetchArticlesByTag(context.Context, *connect.Request[v1.BackendInternalServiceFetchArticlesByTagRequest]) (*connect.Response[v1.BackendInternalServiceFetchArticlesByTagResponse], error)
 }
 
 // NewBackendInternalServiceClient constructs a client for the
@@ -274,6 +284,18 @@ func NewBackendInternalServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(backendInternalServiceMethods.ByName("GetEmptyFeedID")),
 			connect.WithClientOptions(opts...),
 		),
+		fetchTagCloud: connect.NewClient[v1.BackendInternalServiceFetchTagCloudRequest, v1.BackendInternalServiceFetchTagCloudResponse](
+			httpClient,
+			baseURL+BackendInternalServiceFetchTagCloudProcedure,
+			connect.WithSchema(backendInternalServiceMethods.ByName("FetchTagCloud")),
+			connect.WithClientOptions(opts...),
+		),
+		fetchArticlesByTag: connect.NewClient[v1.BackendInternalServiceFetchArticlesByTagRequest, v1.BackendInternalServiceFetchArticlesByTagResponse](
+			httpClient,
+			baseURL+BackendInternalServiceFetchArticlesByTagProcedure,
+			connect.WithSchema(backendInternalServiceMethods.ByName("FetchArticlesByTag")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -299,6 +321,8 @@ type backendInternalServiceClient struct {
 	listUnsummarizedArticles    *connect.Client[v1.ListUnsummarizedArticlesRequest, v1.ListUnsummarizedArticlesResponse]
 	hasUnsummarizedArticles     *connect.Client[v1.HasUnsummarizedArticlesRequest, v1.HasUnsummarizedArticlesResponse]
 	getEmptyFeedID              *connect.Client[v1.GetEmptyFeedIDRequest, v1.GetEmptyFeedIDResponse]
+	fetchTagCloud               *connect.Client[v1.BackendInternalServiceFetchTagCloudRequest, v1.BackendInternalServiceFetchTagCloudResponse]
+	fetchArticlesByTag          *connect.Client[v1.BackendInternalServiceFetchArticlesByTagRequest, v1.BackendInternalServiceFetchArticlesByTagResponse]
 }
 
 // ListArticlesWithTags calls services.backend.v1.BackendInternalService.ListArticlesWithTags.
@@ -406,6 +430,16 @@ func (c *backendInternalServiceClient) GetEmptyFeedID(ctx context.Context, req *
 	return c.getEmptyFeedID.CallUnary(ctx, req)
 }
 
+// FetchTagCloud calls services.backend.v1.BackendInternalService.FetchTagCloud.
+func (c *backendInternalServiceClient) FetchTagCloud(ctx context.Context, req *connect.Request[v1.BackendInternalServiceFetchTagCloudRequest]) (*connect.Response[v1.BackendInternalServiceFetchTagCloudResponse], error) {
+	return c.fetchTagCloud.CallUnary(ctx, req)
+}
+
+// FetchArticlesByTag calls services.backend.v1.BackendInternalService.FetchArticlesByTag.
+func (c *backendInternalServiceClient) FetchArticlesByTag(ctx context.Context, req *connect.Request[v1.BackendInternalServiceFetchArticlesByTagRequest]) (*connect.Response[v1.BackendInternalServiceFetchArticlesByTagResponse], error) {
+	return c.fetchArticlesByTag.CallUnary(ctx, req)
+}
+
 // BackendInternalServiceHandler is an implementation of the
 // services.backend.v1.BackendInternalService service.
 type BackendInternalServiceHandler interface {
@@ -452,6 +486,10 @@ type BackendInternalServiceHandler interface {
 	// GetEmptyFeedID returns a feed ID that has no articles for the given feed URL.
 	// Returns empty feed_id if all feeds for this URL already have articles.
 	GetEmptyFeedID(context.Context, *connect.Request[v1.GetEmptyFeedIDRequest]) (*connect.Response[v1.GetEmptyFeedIDResponse], error)
+	// FetchTagCloud returns tag names with article counts for topic exploration.
+	FetchTagCloud(context.Context, *connect.Request[v1.BackendInternalServiceFetchTagCloudRequest]) (*connect.Response[v1.BackendInternalServiceFetchTagCloudResponse], error)
+	// FetchArticlesByTag returns articles filtered by tag name.
+	FetchArticlesByTag(context.Context, *connect.Request[v1.BackendInternalServiceFetchArticlesByTagRequest]) (*connect.Response[v1.BackendInternalServiceFetchArticlesByTagResponse], error)
 }
 
 // NewBackendInternalServiceHandler builds an HTTP handler from the service implementation. It
@@ -581,6 +619,18 @@ func NewBackendInternalServiceHandler(svc BackendInternalServiceHandler, opts ..
 		connect.WithSchema(backendInternalServiceMethods.ByName("GetEmptyFeedID")),
 		connect.WithHandlerOptions(opts...),
 	)
+	backendInternalServiceFetchTagCloudHandler := connect.NewUnaryHandler(
+		BackendInternalServiceFetchTagCloudProcedure,
+		svc.FetchTagCloud,
+		connect.WithSchema(backendInternalServiceMethods.ByName("FetchTagCloud")),
+		connect.WithHandlerOptions(opts...),
+	)
+	backendInternalServiceFetchArticlesByTagHandler := connect.NewUnaryHandler(
+		BackendInternalServiceFetchArticlesByTagProcedure,
+		svc.FetchArticlesByTag,
+		connect.WithSchema(backendInternalServiceMethods.ByName("FetchArticlesByTag")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.backend.v1.BackendInternalService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BackendInternalServiceListArticlesWithTagsProcedure:
@@ -623,6 +673,10 @@ func NewBackendInternalServiceHandler(svc BackendInternalServiceHandler, opts ..
 			backendInternalServiceHasUnsummarizedArticlesHandler.ServeHTTP(w, r)
 		case BackendInternalServiceGetEmptyFeedIDProcedure:
 			backendInternalServiceGetEmptyFeedIDHandler.ServeHTTP(w, r)
+		case BackendInternalServiceFetchTagCloudProcedure:
+			backendInternalServiceFetchTagCloudHandler.ServeHTTP(w, r)
+		case BackendInternalServiceFetchArticlesByTagProcedure:
+			backendInternalServiceFetchArticlesByTagHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -710,4 +764,12 @@ func (UnimplementedBackendInternalServiceHandler) HasUnsummarizedArticles(contex
 
 func (UnimplementedBackendInternalServiceHandler) GetEmptyFeedID(context.Context, *connect.Request[v1.GetEmptyFeedIDRequest]) (*connect.Response[v1.GetEmptyFeedIDResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.GetEmptyFeedID is not implemented"))
+}
+
+func (UnimplementedBackendInternalServiceHandler) FetchTagCloud(context.Context, *connect.Request[v1.BackendInternalServiceFetchTagCloudRequest]) (*connect.Response[v1.BackendInternalServiceFetchTagCloudResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.FetchTagCloud is not implemented"))
+}
+
+func (UnimplementedBackendInternalServiceHandler) FetchArticlesByTag(context.Context, *connect.Request[v1.BackendInternalServiceFetchArticlesByTagRequest]) (*connect.Response[v1.BackendInternalServiceFetchArticlesByTagResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.FetchArticlesByTag is not implemented"))
 }

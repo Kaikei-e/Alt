@@ -64,3 +64,9 @@ func (d *HTTPSearchIndexerDriver) SearchArticlesWithPagination(ctx context.Conte
 func (d *HTTPSearchIndexerDriver) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
 	return nil, fmt.Errorf("SearchRecapsByTag not supported by HTTP driver, use Connect-RPC driver")
 }
+
+// SearchRecapsByQuery is not supported by the REST driver.
+// Use the Connect-RPC driver for recap search via Meilisearch.
+func (d *HTTPSearchIndexerDriver) SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, int64, error) {
+	return nil, 0, fmt.Errorf("SearchRecapsByQuery not supported by HTTP driver, use Connect-RPC driver")
+}
