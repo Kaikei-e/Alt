@@ -122,6 +122,10 @@
 	--color-alt-ash: var(--alt-ash);
 	--color-alt-primary: var(--alt-primary);
 	--color-alt-secondary: var(--alt-secondary);
+
+	/* Alt-Paper font families */
+	--font-family-display: var(--font-display);
+	--font-family-body: var(--font-body);
 	--color-alt-tertiary: var(--alt-tertiary);
 	--color-alt-success: var(--alt-success);
 	--color-alt-error: var(--alt-error);
@@ -333,6 +337,10 @@
 	--alt-secondary: #696969;
 	--alt-tertiary: #808080;
 
+	/* Typography */
+	--font-display: "Playfair Display", "Georgia", serif;
+	--font-body: "Source Sans 3", "system-ui", sans-serif;
+
 	--surface-bg: #faf9f7;
 	--surface-2: #f5f4f1;
 	--surface-border: #c8c8c8;
@@ -404,6 +412,30 @@
 	--badge-indigo-text: #4f46e5;
 	--badge-indigo-bg: #eef2ff;
 	--badge-indigo-border: #c7d2fe;
+
+	/* Mobile navigation */
+	--nav-bg: #faf9f7;
+	--nav-border-top: #d8d5cf;
+	--nav-active-pill: rgba(47, 79, 79, 0.12);
+	--nav-active-icon: #2f4f4f;
+	--nav-inactive-icon: #767676;
+	--nav-label-active: #2f4f4f;
+	--nav-label-inactive: #767676;
+
+	/* Skeleton loading */
+	--skeleton-base: #e8e4de;
+	--skeleton-shimmer: #f0ede7;
+
+	/* Recall section */
+	--recall-bg: #f5f3ef;
+	--recall-border: #d0cbc2;
+
+	/* Toast */
+	--toast-bg: #1a1a1a;
+	--toast-text: #faf9f7;
+
+	/* Section divider */
+	--divider-rule: rgba(0, 0, 0, 0.08);
 }
 
 /* Utility Classes for Glassmorphism */
@@ -478,6 +510,39 @@
 }
 .animate-slide-in-bottom {
 	animation: slide-in-bottom 0.3s ease-out both;
+}
+.animate-shimmer-warm {
+	background: linear-gradient(
+		90deg,
+		var(--skeleton-base) 25%,
+		var(--skeleton-shimmer) 50%,
+		var(--skeleton-base) 75%
+	);
+	background-size: 200% 100%;
+	animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+	.animate-shimmer,
+	.animate-shimmer-warm {
+		animation: none;
+	}
+	.animate-fade-up {
+		animation: none;
+		opacity: 1;
+		transform: none;
+	}
+	.animate-slide-in-bottom {
+		animation: none;
+		opacity: 1;
+		transform: none;
+	}
+	.animate-slide-in-right {
+		animation: none;
+		opacity: 1;
+		transform: none;
+	}
 }
 
 @layer base {

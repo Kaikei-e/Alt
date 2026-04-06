@@ -15,7 +15,6 @@ import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import { canonicalize } from "$lib/utils/feed";
-import FloatingMenu from "./FloatingMenu.svelte";
 import SwipeFeedCard from "./SwipeFeedCard.svelte";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
 import SwipeFilterSortSheet from "./SwipeFilterSortSheet.svelte";
@@ -467,5 +466,4 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
     onClearExclusion={handleClearExclusion}
     onSortChange={(order) => { sortOrder = order; }}
   />
-  <FloatingMenu />
 </div>

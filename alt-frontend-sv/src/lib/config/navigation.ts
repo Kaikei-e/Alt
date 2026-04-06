@@ -67,6 +67,12 @@ export const desktopNavigation: Array<
 		category: "main",
 	},
 	{
+		label: "Global Search",
+		href: `${svBasePath}/search`,
+		icon: Search,
+		category: "main",
+	},
+	{
 		label: "Feeds",
 		category: "feeds",
 		icon: Rss,
@@ -214,6 +220,13 @@ export const mobileMenuItems = [
 		category: "feeds",
 		icon: Search,
 		description: "Find specific feeds",
+	},
+	{
+		label: "Global Search",
+		href: `${svBasePath}/search`,
+		category: "explore",
+		icon: Search,
+		description: "Search articles, recaps, and tags",
 	},
 	{
 		label: "Tag Trail",
