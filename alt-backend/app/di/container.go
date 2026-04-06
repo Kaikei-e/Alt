@@ -46,6 +46,7 @@ import (
 	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/image_proxy_usecase"
 	"alt/usecase/knowledge_audit_usecase"
+	"alt/usecase/knowledge_metrics_usecase"
 	"alt/usecase/knowledge_backfill_usecase"
 	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/knowledge_reproject_usecase"
@@ -192,6 +193,7 @@ type ApplicationComponents struct {
 	ReprojectUsecase                  *knowledge_reproject_usecase.Usecase
 	SLOUsecase                        *knowledge_slo_usecase.Usecase
 	AuditUsecase                      *knowledge_audit_usecase.Usecase
+	MetricsUsecase                    *knowledge_metrics_usecase.Usecase
 
 	// Phase 4: RecallRail, Lens, Stream, Supersede
 	RecallRailUsecase    *recall_rail_usecase.RecallRailUsecase
@@ -352,6 +354,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		ReprojectUsecase:                  knowledge.ReprojectUsecase,
 		SLOUsecase:                        knowledge.SLOUsecase,
 		AuditUsecase:                      knowledge.AuditUsecase,
+		MetricsUsecase:                    knowledge.MetricsUsecase,
 
 		// RecallRail, Lens
 		RecallRailUsecase:     knowledge.RecallRailUsecase,

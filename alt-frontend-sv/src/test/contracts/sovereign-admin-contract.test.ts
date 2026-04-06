@@ -102,8 +102,12 @@ describe("Sovereign Admin REST Contract", () => {
 
 	describe("SnapshotMetadata (PascalCase → normalized camelCase)", () => {
 		it("normalizes PascalCase Go response to camelCase", () => {
-			const normalized = normalizeSnapshotMetadata(RAW_SNAPSHOT_METADATA_PASCAL);
-			expect(normalized.snapshotId).toBe("550e8400-e29b-41d4-a716-446655440000");
+			const normalized = normalizeSnapshotMetadata(
+				RAW_SNAPSHOT_METADATA_PASCAL,
+			);
+			expect(normalized.snapshotId).toBe(
+				"550e8400-e29b-41d4-a716-446655440000",
+			);
 			expect(normalized.snapshotType).toBe("full");
 			expect(normalized.projectionVersion).toBe(1);
 			expect(normalized.eventSeqBoundary).toBe(786652);
@@ -112,12 +116,26 @@ describe("Sovereign Admin REST Contract", () => {
 		});
 
 		it("validates all required fields are present after normalization", () => {
-			const normalized = normalizeSnapshotMetadata(RAW_SNAPSHOT_METADATA_PASCAL);
+			const normalized = normalizeSnapshotMetadata(
+				RAW_SNAPSHOT_METADATA_PASCAL,
+			);
 			const requiredKeys: (keyof SnapshotMetadata)[] = [
-				"snapshotId", "snapshotType", "projectionVersion", "projectorBuildRef",
-				"schemaVersion", "snapshotAt", "eventSeqBoundary", "snapshotDataPath",
-				"itemsRowCount", "itemsChecksum", "digestRowCount", "digestChecksum",
-				"recallRowCount", "recallChecksum", "createdAt", "status",
+				"snapshotId",
+				"snapshotType",
+				"projectionVersion",
+				"projectorBuildRef",
+				"schemaVersion",
+				"snapshotAt",
+				"eventSeqBoundary",
+				"snapshotDataPath",
+				"itemsRowCount",
+				"itemsChecksum",
+				"digestRowCount",
+				"digestChecksum",
+				"recallRowCount",
+				"recallChecksum",
+				"createdAt",
+				"status",
 			];
 			for (const key of requiredKeys) {
 				expect(normalized[key], `missing key: ${key}`).toBeDefined();
@@ -225,7 +243,9 @@ describe("Sovereign Admin REST Contract", () => {
 // --- Normalization functions (to be imported from sovereign-admin.ts server module) ---
 // For now, inline implementations that WILL BE replaced by imports once the module exists.
 
-function normalizeSnapshotMetadata(raw: Record<string, unknown>): SnapshotMetadata {
+function normalizeSnapshotMetadata(
+	raw: Record<string, unknown>,
+): SnapshotMetadata {
 	return {
 		snapshotId: raw.SnapshotID as string,
 		snapshotType: raw.SnapshotType as string,
@@ -246,7 +266,9 @@ function normalizeSnapshotMetadata(raw: Record<string, unknown>): SnapshotMetada
 	};
 }
 
-function normalizeRetentionLogEntry(raw: Record<string, unknown>): RetentionLogEntry {
+function normalizeRetentionLogEntry(
+	raw: Record<string, unknown>,
+): RetentionLogEntry {
 	return {
 		logId: raw.LogID as string,
 		runAt: raw.RunAt as string,

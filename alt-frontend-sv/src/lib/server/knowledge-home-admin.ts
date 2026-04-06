@@ -6,6 +6,7 @@ import type {
 	SLOStatusData,
 	ReprojectRunData,
 	ReprojectDiffSummaryData,
+	SystemMetricsData,
 } from "$lib/connect/knowledge_home_admin";
 import {
 	getFeatureFlags,
@@ -14,6 +15,7 @@ import {
 	resumeBackfill,
 	triggerBackfill,
 	getSLOStatus,
+	getSystemMetrics,
 	listReprojectRuns,
 	startReproject,
 	compareReproject,
@@ -31,6 +33,7 @@ export interface KnowledgeHomeAdminSnapshot {
 	flags: FeatureFlagsConfigData | null;
 	sloStatus: SLOStatusData | null;
 	reprojectRuns: ReprojectRunData[];
+	systemMetrics: SystemMetricsData | null;
 }
 
 function createBffTransport(backendToken: string) {
@@ -49,18 +52,21 @@ export async function fetchKnowledgeHomeAdminSnapshot(
 	backendToken: string,
 ): Promise<KnowledgeHomeAdminSnapshot> {
 	const transport = createBffTransport(backendToken);
-	const [health, flags, sloStatus, reprojectRuns] = await Promise.all([
-		getProjectionHealth(transport),
-		getFeatureFlags(transport),
-		getSLOStatus(transport).catch(() => null),
-		listReprojectRuns(transport).catch(() => []),
-	]);
+	const [health, flags, sloStatus, reprojectRuns, systemMetrics] =
+		await Promise.all([
+			getProjectionHealth(transport),
+			getFeatureFlags(transport),
+			getSLOStatus(transport).catch(() => null),
+			listReprojectRuns(transport).catch(() => []),
+			getSystemMetrics(transport).catch(() => null),
+		]);
 
 	return {
 		health,
 		flags,
 		sloStatus,
 		reprojectRuns,
+		systemMetrics,
 	};
 }
 

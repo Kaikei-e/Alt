@@ -30,17 +30,29 @@ func (h *Handler) TrackHomeItemsSeen(
 	if h.metrics != nil {
 		h.metrics.TrackingReceivedTotal.Add(ctx, 1)
 		h.metrics.ItemsExposed.Add(ctx, int64(len(req.Msg.ItemKeys)))
+		if h.metrics.Snapshot != nil {
+			h.metrics.Snapshot.RecordTrackingReceived()
+			for range len(req.Msg.ItemKeys) {
+				h.metrics.Snapshot.RecordItemExposed()
+			}
+		}
 	}
 
 	if err := h.trackSeenUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ItemKeys, req.Msg.ExposureSessionId); err != nil {
 		if h.metrics != nil {
 			h.metrics.TrackingFailedTotal.Add(ctx, 1)
+			if h.metrics.Snapshot != nil {
+				h.metrics.Snapshot.RecordTrackingFailed()
+			}
 		}
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "TrackHomeItemsSeen")
 	}
 
 	if h.metrics != nil {
 		h.metrics.TrackingPersistedTotal.Add(ctx, 1)
+		if h.metrics.Snapshot != nil {
+			h.metrics.Snapshot.RecordTrackingPersisted()
+		}
 	}
 
 	return connect.NewResponse(&knowledgehomev1.TrackHomeItemsSeenResponse{}), nil
@@ -78,8 +90,14 @@ func (h *Handler) TrackHomeAction(
 		switch req.Msg.ActionType {
 		case "open", "open_recap", "open_search":
 			h.metrics.ItemsOpened.Add(ctx, 1)
+			if h.metrics.Snapshot != nil {
+				h.metrics.Snapshot.RecordItemOpened()
+			}
 		case "dismiss":
 			h.metrics.ItemsDismissed.Add(ctx, 1)
+			if h.metrics.Snapshot != nil {
+				h.metrics.Snapshot.RecordItemDismissed()
+			}
 		}
 	}
 

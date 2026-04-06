@@ -180,8 +180,19 @@ func processKnowledgeEvents(
 			batchDuration := float64(time.Since(batchStart).Milliseconds())
 			metrics.ProjectorEventsProcessed.Add(ctx, int64(len(events)))
 			metrics.ProjectorBatchDurationMs.Record(ctx, batchDuration)
+			if metrics.Snapshot != nil {
+				for range len(events) {
+					metrics.Snapshot.RecordProjectorEvent()
+				}
+				metrics.Snapshot.RecordProjectorBatch(batchDuration)
+			}
 			if errorCount > 0 {
 				metrics.ProjectorErrors.Add(ctx, errorCount)
+				if metrics.Snapshot != nil {
+					for range errorCount {
+						metrics.Snapshot.RecordProjectorError()
+					}
+				}
 			}
 		}
 
@@ -198,6 +209,9 @@ func processKnowledgeEvents(
 				latestEvent := events[len(events)-1]
 				lag := time.Since(latestEvent.OccurredAt).Seconds()
 				metrics.ProjectorLagSeconds.Record(ctx, lag)
+				if metrics.Snapshot != nil {
+					metrics.Snapshot.RecordProjectorLag(lag)
+				}
 			}
 		}
 

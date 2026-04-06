@@ -18,6 +18,15 @@ import RetentionStatusPanel from "$lib/components/knowledge-home-admin/Retention
 import RetentionRunResultPanel from "$lib/components/knowledge-home-admin/RetentionRunResultPanel.svelte";
 import AuditActions from "$lib/components/knowledge-home-admin/AuditActions.svelte";
 import AuditResultPanel from "$lib/components/knowledge-home-admin/AuditResultPanel.svelte";
+import SystemAtAGlancePanel from "$lib/components/knowledge-home-admin/SystemAtAGlancePanel.svelte";
+import ServiceHealthGrid from "$lib/components/knowledge-home-admin/ServiceHealthGrid.svelte";
+import ProjectorPipelinePanel from "$lib/components/knowledge-home-admin/ProjectorPipelinePanel.svelte";
+import StreamHealthPanel from "$lib/components/knowledge-home-admin/StreamHealthPanel.svelte";
+import RecallPipelinePanel from "$lib/components/knowledge-home-admin/RecallPipelinePanel.svelte";
+import SovereignMutationPanel from "$lib/components/knowledge-home-admin/SovereignMutationPanel.svelte";
+import ErrorBudgetBurnRatePanel from "$lib/components/knowledge-home-admin/ErrorBudgetBurnRatePanel.svelte";
+import InteractionFunnelPanel from "$lib/components/knowledge-home-admin/InteractionFunnelPanel.svelte";
+import ReasonDistributionChart from "$lib/components/knowledge-home-admin/ReasonDistributionChart.svelte";
 import {
 	useKnowledgeHomeAdmin,
 	type KnowledgeHomeAdminActionRequest,
@@ -42,6 +51,9 @@ let { data } = $props<{
 				| import("$lib/connect/knowledge_home_admin").SLOStatusData
 				| null;
 			reprojectRuns: import("$lib/connect/knowledge_home_admin").ReprojectRunData[];
+			systemMetrics:
+				| import("$lib/connect/knowledge_home_admin").SystemMetricsData
+				| null;
 		};
 		error: string | null;
 	};
@@ -88,7 +100,10 @@ const fetchSovereignSnapshot = async () => {
 	return await response.json();
 };
 
-const runSovereignAction = async (action: { action: string; dry_run?: boolean }) => {
+const runSovereignAction = async (action: {
+	action: string;
+	dry_run?: boolean;
+}) => {
 	const response = await fetch("/api/admin/knowledge-home/sovereign", {
 		method: "POST",
 		credentials: "include",
@@ -162,6 +177,15 @@ onDestroy(() => {
 </div>
 
 {#if activeTab === "overview"}
+	<div class="mt-4 flex flex-col gap-6">
+		<SystemAtAGlancePanel
+			overallHealth={admin.sloStatus?.overallHealth ?? null}
+			lagSeconds={admin.systemMetrics?.projector?.lagSeconds ?? null}
+			healthyCount={admin.systemMetrics?.serviceHealth?.filter(s => s.status === "healthy").length ?? 0}
+			totalServiceCount={admin.systemMetrics?.serviceHealth?.length ?? 0}
+			activeAlertCount={admin.sloStatus?.activeAlerts?.length ?? 0}
+		/>
+	</div>
 	<div class="mt-4 grid gap-6 lg:grid-cols-2">
 		<ProjectionStatusPanel health={admin.health} />
 		<FeatureFlagPanel flags={admin.flags} />
@@ -178,7 +202,42 @@ onDestroy(() => {
 {:else if activeTab === "slo"}
 	<div class="mt-4 flex flex-col gap-6">
 		<SLOSummaryPanel sloStatus={admin.sloStatus} />
+		<ErrorBudgetBurnRatePanel slis={admin.sloStatus?.slis ?? []} />
 		<AlertStatusPanel alerts={admin.sloStatus?.activeAlerts ?? []} />
+		<div class="grid gap-6 lg:grid-cols-2">
+			<InteractionFunnelPanel funnel={admin.systemMetrics?.tracking
+				? [
+					{ label: "Exposed", value: admin.systemMetrics.tracking.itemsExposed },
+					{ label: "Opened", value: admin.systemMetrics.tracking.itemsOpened },
+					{ label: "Dismissed", value: admin.systemMetrics.tracking.itemsDismissed },
+				]
+				: []} />
+			<ReasonDistributionChart distribution={(() => {
+				try {
+					if (!admin.auditResult?.detailsJson) return [];
+					const details = JSON.parse(admin.auditResult.detailsJson);
+					if (details.why_distribution && typeof details.why_distribution === "object") {
+						return Object.entries(details.why_distribution).map(([code, count]) => ({
+							code,
+							count: count as number,
+						}));
+					}
+					return [];
+				} catch {
+					return [];
+				}
+			})()} />
+		</div>
+	</div>
+{:else if activeTab === "system"}
+	<div class="mt-4 flex flex-col gap-6">
+		<ServiceHealthGrid services={admin.systemMetrics?.serviceHealth ?? []} />
+		<ProjectorPipelinePanel projector={admin.systemMetrics?.projector ?? null} />
+		<StreamHealthPanel stream={admin.systemMetrics?.stream ?? null} />
+		<div class="grid gap-6 lg:grid-cols-2">
+			<RecallPipelinePanel recall={admin.systemMetrics?.recall ?? null} />
+			<SovereignMutationPanel sovereign={admin.systemMetrics?.sovereign ?? null} />
+		</div>
 	</div>
 {:else if activeTab === "reproject"}
 	<div class="mt-4 flex flex-col gap-6">

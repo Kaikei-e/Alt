@@ -14,6 +14,7 @@ export const load = async ({ locals }) => {
 				flags: null,
 				sloStatus: null,
 				reprojectRuns: [],
+				systemMetrics: null,
 			},
 			error: "Failed to load admin data.",
 		};
@@ -35,6 +36,7 @@ export const load = async ({ locals }) => {
 				flags: null,
 				sloStatus: null,
 				reprojectRuns: [],
+				systemMetrics: null,
 			},
 			error: "Failed to load admin data.",
 		};

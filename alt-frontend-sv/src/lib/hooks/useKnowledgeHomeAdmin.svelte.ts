@@ -5,6 +5,7 @@ import type {
 	ReprojectRunData,
 	ReprojectDiffSummaryData,
 	ProjectionAuditData,
+	SystemMetricsData,
 } from "$lib/connect/knowledge_home_admin";
 
 interface Snapshot {
@@ -12,7 +13,15 @@ interface Snapshot {
 	flags: FeatureFlagsConfigData | null;
 	sloStatus: SLOStatusData | null;
 	reprojectRuns: ReprojectRunData[];
+	systemMetrics: SystemMetricsData | null;
 }
+
+export interface SLIHistoryEntry {
+	timestamp: number;
+	values: Record<string, number>;
+}
+
+const SLI_HISTORY_MAX = 30;
 
 export type KnowledgeHomeAdminSnapshot = Snapshot;
 export type KnowledgeHomeAdminActionRequest =
@@ -61,6 +70,8 @@ export function useKnowledgeHomeAdmin(
 	let reprojectRuns = $state<ReprojectRunData[]>([]);
 	let reprojectDiff = $state<ReprojectDiffSummaryData | null>(null);
 	let auditResult = $state<ProjectionAuditData | null>(null);
+	let systemMetrics = $state<SystemMetricsData | null>(null);
+	let sliHistory = $state<SLIHistoryEntry[]>([]);
 	let error = $state<Error | null>(null);
 	let refreshing = $state(false);
 	let lastUpdatedAt = $state<Date | null>(null);
@@ -83,6 +94,21 @@ export function useKnowledgeHomeAdmin(
 				flags = snapshot.flags;
 				sloStatus = snapshot.sloStatus;
 				reprojectRuns = snapshot.reprojectRuns;
+				systemMetrics = snapshot.systemMetrics ?? null;
+
+				// Track SLI history for sparklines
+				if (snapshot.sloStatus?.slis) {
+					const entry: SLIHistoryEntry = {
+						timestamp: Date.now(),
+						values: {},
+					};
+					for (const sli of snapshot.sloStatus.slis) {
+						entry.values[sli.name] = sli.currentValue;
+					}
+					const next = [...sliHistory, entry];
+					sliHistory = next.length > SLI_HISTORY_MAX ? next.slice(-SLI_HISTORY_MAX) : next;
+				}
+
 				error = null;
 				lastUpdatedAt = new Date();
 			} catch (err) {
@@ -114,6 +140,7 @@ export function useKnowledgeHomeAdmin(
 		flags = snapshot.flags;
 		sloStatus = snapshot.sloStatus;
 		reprojectRuns = snapshot.reprojectRuns;
+		systemMetrics = snapshot.systemMetrics ?? null;
 		error = seedError;
 		lastUpdatedAt = new Date();
 	};
@@ -236,6 +263,12 @@ export function useKnowledgeHomeAdmin(
 		},
 		get auditResult() {
 			return auditResult;
+		},
+		get systemMetrics() {
+			return systemMetrics;
+		},
+		get sliHistory() {
+			return sliHistory;
 		},
 		get error() {
 			return error;

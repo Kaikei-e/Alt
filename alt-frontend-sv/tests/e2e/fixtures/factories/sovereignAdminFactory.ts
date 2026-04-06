@@ -79,8 +79,7 @@ export const SOVEREIGN_ADMIN_SNAPSHOT = {
 			targetTable: "knowledge_events",
 			targetPartition: "knowledge_events_y2025m11",
 			rowsAffected: 42000,
-			archivePath:
-				"/tmp/archives/knowledge_events_y2025m11_20260325.jsonl.gz",
+			archivePath: "/tmp/archives/knowledge_events_y2025m11_20260325.jsonl.gz",
 			checksum: "sha256:archivechecksum",
 			dryRun: false,
 			status: "exported",

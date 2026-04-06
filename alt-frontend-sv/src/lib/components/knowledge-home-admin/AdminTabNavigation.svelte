@@ -10,6 +10,7 @@ let {
 const tabs = [
 	{ id: "overview", label: "Overview" },
 	{ id: "slo", label: "SLO" },
+	{ id: "system", label: "System" },
 	{ id: "reproject", label: "Reproject" },
 	{ id: "storage", label: "Storage" },
 	{ id: "audit", label: "Audit" },

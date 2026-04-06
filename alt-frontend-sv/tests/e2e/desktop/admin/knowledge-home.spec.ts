@@ -42,9 +42,9 @@ test.describe("Knowledge Home Admin - Storage Tab", () => {
 
 		// Storage stats panel should show table data (wait for sovereign data via client-side polling)
 		await expect(adminPage.storageStatsPanel).toBeVisible();
-		await expect(
-			adminPage.getStorageStatCard("knowledge_events"),
-		).toBeVisible({ timeout: 10000 });
+		await expect(adminPage.getStorageStatCard("knowledge_events")).toBeVisible({
+			timeout: 10000,
+		});
 		await expect(
 			adminPage.getStorageStatCard("knowledge_home_items"),
 		).toBeVisible({ timeout: 10000 });
@@ -153,7 +153,9 @@ test.describe("Knowledge Home Admin - Audit Tab", () => {
 
 		// Result should appear with mismatch count
 		await expect(adminPage.auditResultPanel).toBeVisible();
-		await expect(adminPage.auditResultPanel.getByText("2", { exact: true })).toBeVisible();
+		await expect(
+			adminPage.auditResultPanel.getByText("2", { exact: true }),
+		).toBeVisible();
 	});
 });
 

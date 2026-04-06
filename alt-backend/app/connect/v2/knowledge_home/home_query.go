@@ -138,11 +138,20 @@ func (h *Handler) GetKnowledgeHome(
 		duration := time.Since(start).Seconds()
 		h.metrics.RequestsTotal.Add(ctx, 1)
 		h.metrics.RequestDurationSeconds.Record(ctx, duration)
+		if h.metrics.Snapshot != nil {
+			h.metrics.Snapshot.RecordRequest()
+		}
 		if serviceQuality == "degraded" || serviceQuality == "fallback" {
 			h.metrics.DegradedResponsesTotal.Add(ctx, 1)
+			if h.metrics.Snapshot != nil {
+				h.metrics.Snapshot.RecordDegradedResponse()
+			}
 		}
 		if len(result.Items) == 0 {
 			h.metrics.EmptyResponsesTotal.Add(ctx, 1)
+			if h.metrics.Snapshot != nil {
+				h.metrics.Snapshot.RecordEmptyResponse()
+			}
 		}
 	}
 
@@ -186,11 +195,17 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 
 	if h.metrics != nil {
 		h.metrics.StreamConnectionsTotal.Add(ctx, 1)
+		if h.metrics.Snapshot != nil {
+			h.metrics.Snapshot.RecordStreamConnection()
+		}
 	}
 
 	recordDelivery := func() {
 		if h.metrics != nil {
 			h.metrics.StreamDeliveriesTotal.Add(ctx, 1)
+			if h.metrics.Snapshot != nil {
+				h.metrics.Snapshot.RecordStreamDelivery()
+			}
 		}
 	}
 
@@ -226,6 +241,9 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 		case <-ctx.Done():
 			if h.metrics != nil {
 				h.metrics.StreamDisconnectsTotal.Add(ctx, 1)
+				if h.metrics.Snapshot != nil {
+					h.metrics.Snapshot.RecordStreamDisconnect()
+				}
 			}
 			h.logger.InfoContext(ctx, "alt.knowledge_home.stream_ended",
 				"user_id", user.UserID, "reason", ctx.Err())

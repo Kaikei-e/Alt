@@ -96,6 +96,15 @@ func processRecallSignals(
 		metrics.RecallProjectorDurationMs.Record(ctx, elapsed)
 		metrics.RecallProjectorUsersProcessed.Add(ctx, int64(len(userIDs)))
 		metrics.RecallCandidateEmptyTotal.Add(ctx, int64(emptyUsers))
+		if metrics.Snapshot != nil {
+			metrics.Snapshot.RecordRecallProjectorDuration(elapsed)
+			for range len(userIDs) {
+				metrics.Snapshot.RecordRecallUserProcessed()
+			}
+			for range emptyUsers {
+				metrics.Snapshot.RecordRecallCandidateEmpty()
+			}
+		}
 	}
 
 	logger.Logger.InfoContext(ctx, "recall projector: completed",
@@ -208,6 +217,9 @@ func scoreAndUpsertCandidates(
 		generated++
 		if metrics != nil {
 			metrics.RecallCandidateGeneratedTotal.Add(ctx, 1)
+			if metrics.Snapshot != nil {
+				metrics.Snapshot.RecordRecallCandidate()
+			}
 		}
 	}
 

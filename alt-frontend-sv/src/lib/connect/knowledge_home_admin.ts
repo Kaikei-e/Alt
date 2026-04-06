@@ -102,12 +102,92 @@ export interface ReprojectDiffSummaryData {
 	toWhyDistribution: string;
 }
 
+/** System metrics data */
+export interface SystemMetricsData {
+	projector: ProjectorMetricsData;
+	handler: HandlerMetricsData;
+	tracking: TrackingMetricsData;
+	stream: StreamMetricsData;
+	correctness: CorrectnessMetricsData;
+	sovereign: SovereignMetricsData;
+	recall: RecallMetricsData;
+	serviceHealth: ServiceHealthStatusData[];
+}
+
+export interface ProjectorMetricsData {
+	eventsProcessed: number;
+	lagSeconds: number;
+	batchDurationMsP50: number;
+	batchDurationMsP95: number;
+	batchDurationMsP99: number;
+	errors: number;
+}
+
+export interface HandlerMetricsData {
+	pagesServed: number;
+	pagesDegraded: number;
+	degradedRatePct: number;
+}
+
+export interface TrackingMetricsData {
+	itemsExposed: number;
+	itemsOpened: number;
+	itemsDismissed: number;
+	openRatePct: number;
+	dismissRatePct: number;
+}
+
+export interface StreamMetricsData {
+	connectionsTotal: number;
+	disconnectsTotal: number;
+	reconnectsTotal: number;
+	deliveriesTotal: number;
+	disconnectRatePct: number;
+}
+
+export interface CorrectnessMetricsData {
+	emptyResponses: number;
+	malformedWhy: number;
+	orphanItems: number;
+	supersedeMismatch: number;
+	requestsTotal: number;
+	correctnessScorePct: number;
+}
+
+export interface SovereignMetricsData {
+	mutationsApplied: number;
+	mutationsErrors: number;
+	mutationDurationMsP50: number;
+	mutationDurationMsP95: number;
+	errorRatePct: number;
+}
+
+export interface RecallMetricsData {
+	signalsAppended: number;
+	signalErrors: number;
+	candidatesGenerated: number;
+	candidatesEmpty: number;
+	usersProcessed: number;
+	projectorDurationMsP50: number;
+	projectorDurationMsP95: number;
+}
+
+export interface ServiceHealthStatusData {
+	serviceName: string;
+	endpoint: string;
+	status: string;
+	latencyMs: number;
+	checkedAt: string;
+	errorMessage: string;
+}
+
 /** Combined admin dashboard data */
 export interface KnowledgeHomeAdminData {
 	health: ProjectionHealthData | null;
 	flags: FeatureFlagsConfigData | null;
 	sloStatus: SLOStatusData | null;
 	reprojectRuns: ReprojectRunData[];
+	systemMetrics: SystemMetricsData | null;
 }
 
 function createAdminClient(transport: Transport): KnowledgeHomeAdminClient {
@@ -215,6 +295,81 @@ export async function getSLOStatus(
 			description: a.description,
 		})),
 		computedAt: response.computedAt,
+	};
+}
+
+export async function getSystemMetrics(
+	transport: Transport,
+): Promise<SystemMetricsData> {
+	const client = createAdminClient(transport);
+	const response = await client.getSystemMetrics({});
+	const p = response.projector;
+	const h = response.handler;
+	const t = response.tracking;
+	const s = response.stream;
+	const c = response.correctness;
+	const sv = response.sovereign;
+	const r = response.recall;
+	return {
+		projector: {
+			eventsProcessed: Number(p?.eventsProcessed ?? 0n),
+			lagSeconds: p?.lagSeconds ?? 0,
+			batchDurationMsP50: p?.batchDurationMsP50 ?? 0,
+			batchDurationMsP95: p?.batchDurationMsP95 ?? 0,
+			batchDurationMsP99: p?.batchDurationMsP99 ?? 0,
+			errors: Number(p?.errors ?? 0n),
+		},
+		handler: {
+			pagesServed: Number(h?.pagesServed ?? 0n),
+			pagesDegraded: Number(h?.pagesDegraded ?? 0n),
+			degradedRatePct: h?.degradedRatePct ?? 0,
+		},
+		tracking: {
+			itemsExposed: Number(t?.itemsExposed ?? 0n),
+			itemsOpened: Number(t?.itemsOpened ?? 0n),
+			itemsDismissed: Number(t?.itemsDismissed ?? 0n),
+			openRatePct: t?.openRatePct ?? 0,
+			dismissRatePct: t?.dismissRatePct ?? 0,
+		},
+		stream: {
+			connectionsTotal: Number(s?.connectionsTotal ?? 0n),
+			disconnectsTotal: Number(s?.disconnectsTotal ?? 0n),
+			reconnectsTotal: Number(s?.reconnectsTotal ?? 0n),
+			deliveriesTotal: Number(s?.deliveriesTotal ?? 0n),
+			disconnectRatePct: s?.disconnectRatePct ?? 0,
+		},
+		correctness: {
+			emptyResponses: Number(c?.emptyResponses ?? 0n),
+			malformedWhy: Number(c?.malformedWhy ?? 0n),
+			orphanItems: Number(c?.orphanItems ?? 0n),
+			supersedeMismatch: Number(c?.supersedeMismatch ?? 0n),
+			requestsTotal: Number(c?.requestsTotal ?? 0n),
+			correctnessScorePct: c?.correctnessScorePct ?? 0,
+		},
+		sovereign: {
+			mutationsApplied: Number(sv?.mutationsApplied ?? 0n),
+			mutationsErrors: Number(sv?.mutationsErrors ?? 0n),
+			mutationDurationMsP50: sv?.mutationDurationMsP50 ?? 0,
+			mutationDurationMsP95: sv?.mutationDurationMsP95 ?? 0,
+			errorRatePct: sv?.errorRatePct ?? 0,
+		},
+		recall: {
+			signalsAppended: Number(r?.signalsAppended ?? 0n),
+			signalErrors: Number(r?.signalErrors ?? 0n),
+			candidatesGenerated: Number(r?.candidatesGenerated ?? 0n),
+			candidatesEmpty: Number(r?.candidatesEmpty ?? 0n),
+			usersProcessed: Number(r?.usersProcessed ?? 0n),
+			projectorDurationMsP50: r?.projectorDurationMsP50 ?? 0,
+			projectorDurationMsP95: r?.projectorDurationMsP95 ?? 0,
+		},
+		serviceHealth: response.serviceHealth.map((sh) => ({
+			serviceName: sh.serviceName,
+			endpoint: sh.endpoint,
+			status: sh.status,
+			latencyMs: Number(sh.latencyMs),
+			checkedAt: sh.checkedAt,
+			errorMessage: sh.errorMessage,
+		})),
 	};
 }
 

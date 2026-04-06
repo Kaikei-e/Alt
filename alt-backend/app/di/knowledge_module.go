@@ -1,8 +1,10 @@
 package di
 
 import (
+	"alt/driver/health_checker"
 	"alt/driver/sovereign_client"
 	"alt/gateway/feature_flag_gateway"
+	"alt/gateway/knowledge_metrics_gateway"
 	"alt/gateway/knowledge_backfill_gateway"
 	"alt/gateway/summary_version_gateway"
 	"alt/gateway/tag_set_version_gateway"
@@ -15,6 +17,7 @@ import (
 	"alt/usecase/get_knowledge_home_usecase"
 	"alt/usecase/knowledge_audit_usecase"
 	"alt/usecase/knowledge_backfill_usecase"
+	"alt/usecase/knowledge_metrics_usecase"
 	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/knowledge_reproject_usecase"
 	"alt/usecase/knowledge_slo_usecase"
@@ -46,6 +49,7 @@ type KnowledgeModule struct {
 	ReprojectUsecase                  *knowledge_reproject_usecase.Usecase
 	SLOUsecase                        *knowledge_slo_usecase.Usecase
 	AuditUsecase                      *knowledge_audit_usecase.Usecase
+	MetricsUsecase                    *knowledge_metrics_usecase.Usecase
 
 	// Recall / Lens usecases
 	RecallRailUsecase    *recall_rail_usecase.RecallRailUsecase
@@ -117,6 +121,21 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	sloUC := knowledge_slo_usecase.NewUsecase(sovereignCli)
 	auditUC := knowledge_audit_usecase.NewUsecase(sovereignCli, sovereignCli)
 
+	// System metrics: health check endpoints with sensible defaults
+	sovereignMetricsURL := os.Getenv("SOVEREIGN_METRICS_URL")
+	if sovereignMetricsURL == "" {
+		sovereignMetricsURL = "http://knowledge-sovereign:9501"
+	}
+	meiliURL := os.Getenv("MEILISEARCH_HOST")
+	if meiliURL == "" {
+		meiliURL = "http://meilisearch:7700"
+	}
+	healthEndpoints := []health_checker.ServiceEndpoint{
+		{Name: "knowledge-sovereign", Endpoint: sovereignMetricsURL + "/health"},
+		{Name: "meilisearch", Endpoint: meiliURL + "/health"},
+	}
+	healthChecker := health_checker.NewChecker(healthEndpoints)
+
 	// RecallRail, Lens, Supersede
 	recallRailUC := recall_rail_usecase.NewRecallRailUsecase(sovereignCli, featureFlagGw, article.InternalArticleGateway)
 	recallSnoozeUC := recall_snooze_usecase.NewRecallSnoozeUsecase(sovereignCli, sovereignCli)
@@ -135,6 +154,14 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		knowledgeHomeMetrics = m
 	}
 
+	// Wire metrics usecase (uses metrics snapshot from KnowledgeHomeMetrics)
+	var metricsSnapshot *altotel.MetricsSnapshot
+	if knowledgeHomeMetrics != nil {
+		metricsSnapshot = knowledgeHomeMetrics.Snapshot
+	}
+	metricsGw := knowledge_metrics_gateway.NewGateway(metricsSnapshot)
+	metricsUC := knowledge_metrics_usecase.NewUsecase(metricsGw, healthChecker)
+
 	return &KnowledgeModule{
 		GetKnowledgeHomeUsecase:          getKnowledgeHomeUC,
 		TrackHomeSeenUsecase:             trackHomeSeenUC,
@@ -147,6 +174,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		ReprojectUsecase:                 reprojectUC,
 		SLOUsecase:                       sloUC,
 		AuditUsecase:                     auditUC,
+		MetricsUsecase:                   metricsUC,
 
 		RecallRailUsecase:    recallRailUC,
 		RecallSnoozeUsecase:  recallSnoozeUC,

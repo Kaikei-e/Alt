@@ -39,6 +39,11 @@ type AuditUsecase interface {
 	RunProjectionAudit(ctx context.Context, projectionName, projectionVersion string, sampleSize int) (*domain.ProjectionAudit, error)
 }
 
+// MetricsUsecase defines the system metrics operations interface.
+type MetricsUsecase interface {
+	GetSystemMetrics(ctx context.Context) (*domain.SystemMetrics, error)
+}
+
 // Handler implements KnowledgeHomeAdminServiceHandler.
 type Handler struct {
 	backfillUsecase         *knowledge_backfill_usecase.Usecase
@@ -46,6 +51,7 @@ type Handler struct {
 	reprojectUsecase        ReprojectUsecase
 	sloUsecase              SLOUsecase
 	auditUsecase            AuditUsecase
+	metricsUsecase          MetricsUsecase
 	cfg                     *config.KnowledgeHomeConfig
 	logger                  *slog.Logger
 }
@@ -60,6 +66,7 @@ func NewHandler(
 	reproject ReprojectUsecase,
 	slo SLOUsecase,
 	audit AuditUsecase,
+	metrics MetricsUsecase,
 	cfg *config.KnowledgeHomeConfig,
 	logger *slog.Logger,
 ) *Handler {
@@ -69,6 +76,7 @@ func NewHandler(
 		reprojectUsecase:        reproject,
 		sloUsecase:              slo,
 		auditUsecase:            audit,
+		metricsUsecase:          metrics,
 		cfg:                     cfg,
 		logger:                  logger,
 	}
@@ -437,6 +445,87 @@ func (h *Handler) RunProjectionAudit(
 			MismatchCount:     int32(audit.MismatchCount),
 			DetailsJson:       string(audit.DetailsJSON),
 		},
+	}), nil
+}
+
+// --- Phase 6: System Metrics RPCs ---
+
+// GetSystemMetrics returns aggregated system metrics from OTel instrumentation and service health.
+func (h *Handler) GetSystemMetrics(
+	ctx context.Context,
+	_ *connect.Request[knowledgehomev1.GetSystemMetricsRequest],
+) (*connect.Response[knowledgehomev1.GetSystemMetricsResponse], error) {
+	metrics, err := h.metricsUsecase.GetSystemMetrics(ctx)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to get system metrics", "error", err)
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("get system metrics: %w", err))
+	}
+
+	protoHealth := make([]*knowledgehomev1.ServiceHealthStatus, 0, len(metrics.ServiceHealth))
+	for _, sh := range metrics.ServiceHealth {
+		protoHealth = append(protoHealth, &knowledgehomev1.ServiceHealthStatus{
+			ServiceName:  sh.ServiceName,
+			Endpoint:     sh.Endpoint,
+			Status:       sh.Status,
+			LatencyMs:    sh.LatencyMs,
+			CheckedAt:    sh.CheckedAt.Format(time.RFC3339),
+			ErrorMessage: sh.ErrorMessage,
+		})
+	}
+
+	return connect.NewResponse(&knowledgehomev1.GetSystemMetricsResponse{
+		Projector: &knowledgehomev1.ProjectorMetrics{
+			EventsProcessed:    metrics.Projector.EventsProcessed,
+			LagSeconds:         metrics.Projector.LagSeconds,
+			BatchDurationMsP50: metrics.Projector.BatchDurationMsP50,
+			BatchDurationMsP95: metrics.Projector.BatchDurationMsP95,
+			BatchDurationMsP99: metrics.Projector.BatchDurationMsP99,
+			Errors:             metrics.Projector.Errors,
+		},
+		Handler: &knowledgehomev1.HandlerMetrics{
+			PagesServed:    metrics.Handler.PagesServed,
+			PagesDegraded:  metrics.Handler.PagesDegraded,
+			DegradedRatePct: metrics.Handler.DegradedRatePct,
+		},
+		Tracking: &knowledgehomev1.TrackingMetrics{
+			ItemsExposed:   metrics.Tracking.ItemsExposed,
+			ItemsOpened:    metrics.Tracking.ItemsOpened,
+			ItemsDismissed: metrics.Tracking.ItemsDismissed,
+			OpenRatePct:    metrics.Tracking.OpenRatePct,
+			DismissRatePct: metrics.Tracking.DismissRatePct,
+		},
+		Stream: &knowledgehomev1.StreamMetrics{
+			ConnectionsTotal:  metrics.Stream.ConnectionsTotal,
+			DisconnectsTotal:  metrics.Stream.DisconnectsTotal,
+			ReconnectsTotal:   metrics.Stream.ReconnectsTotal,
+			DeliveriesTotal:   metrics.Stream.DeliveriesTotal,
+			DisconnectRatePct: metrics.Stream.DisconnectRatePct,
+		},
+		Correctness: &knowledgehomev1.CorrectnessMetrics{
+			EmptyResponses:      metrics.Correctness.EmptyResponses,
+			MalformedWhy:        metrics.Correctness.MalformedWhy,
+			OrphanItems:         metrics.Correctness.OrphanItems,
+			SupersedeMismatch:   metrics.Correctness.SupersedeMismatch,
+			RequestsTotal:       metrics.Correctness.RequestsTotal,
+			CorrectnessScorePct: metrics.Correctness.CorrectnessScorePct,
+		},
+		Sovereign: &knowledgehomev1.SovereignMetrics{
+			MutationsApplied:     metrics.Sovereign.MutationsApplied,
+			MutationsErrors:      metrics.Sovereign.MutationsErrors,
+			MutationDurationMsP50: metrics.Sovereign.MutationDurationMsP50,
+			MutationDurationMsP95: metrics.Sovereign.MutationDurationMsP95,
+			ErrorRatePct:         metrics.Sovereign.ErrorRatePct,
+		},
+		Recall: &knowledgehomev1.RecallMetrics{
+			SignalsAppended:        metrics.Recall.SignalsAppended,
+			SignalErrors:           metrics.Recall.SignalErrors,
+			CandidatesGenerated:   metrics.Recall.CandidatesGenerated,
+			CandidatesEmpty:       metrics.Recall.CandidatesEmpty,
+			UsersProcessed:        metrics.Recall.UsersProcessed,
+			ProjectorDurationMsP50: metrics.Recall.ProjectorDurationMsP50,
+			ProjectorDurationMsP95: metrics.Recall.ProjectorDurationMsP95,
+		},
+		ServiceHealth: protoHealth,
 	}), nil
 }
 

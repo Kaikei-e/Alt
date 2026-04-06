@@ -41,6 +41,10 @@ service KnowledgeHomeAdminService {
   // Phase 5: Audit
   // RunProjectionAudit samples items and verifies projection correctness.
   rpc RunProjectionAudit(RunProjectionAuditRequest) returns (RunProjectionAuditResponse);
+
+  // Phase 6: System Observability
+  // GetSystemMetrics returns aggregated system metrics from OTel instrumentation and service health.
+  rpc GetSystemMetrics(GetSystemMetricsRequest) returns (GetSystemMetricsResponse);
 }
 
 // TriggerBackfillRequest starts a backfill job.
@@ -284,4 +288,97 @@ message ProjectionAudit {
   int32 sample_size = 5;
   int32 mismatch_count = 6;
   string details_json = 7;
+}
+
+// --- Phase 6: System Observability messages ---
+
+// GetSystemMetricsRequest is empty.
+message GetSystemMetricsRequest {}
+
+// GetSystemMetricsResponse returns aggregated system metrics.
+message GetSystemMetricsResponse {
+  ProjectorMetrics projector = 1;
+  HandlerMetrics handler = 2;
+  TrackingMetrics tracking = 3;
+  StreamMetrics stream = 4;
+  CorrectnessMetrics correctness = 5;
+  SovereignMetrics sovereign = 6;
+  RecallMetrics recall = 7;
+  repeated ServiceHealthStatus service_health = 8;
+}
+
+// ProjectorMetrics captures event processing pipeline health.
+message ProjectorMetrics {
+  int64 events_processed = 1;
+  double lag_seconds = 2;
+  double batch_duration_ms_p50 = 3;
+  double batch_duration_ms_p95 = 4;
+  double batch_duration_ms_p99 = 5;
+  int64 errors = 6;
+}
+
+// HandlerMetrics captures Knowledge Home page serving health.
+message HandlerMetrics {
+  int64 pages_served = 1;
+  int64 pages_degraded = 2;
+  double degraded_rate_pct = 3;
+}
+
+// TrackingMetrics captures user interaction tracking health.
+message TrackingMetrics {
+  int64 items_exposed = 1;
+  int64 items_opened = 2;
+  int64 items_dismissed = 3;
+  double open_rate_pct = 4;
+  double dismiss_rate_pct = 5;
+}
+
+// StreamMetrics captures SSE stream connection health.
+message StreamMetrics {
+  int64 connections_total = 1;
+  int64 disconnects_total = 2;
+  int64 reconnects_total = 3;
+  int64 deliveries_total = 4;
+  double disconnect_rate_pct = 5;
+}
+
+// CorrectnessMetrics captures data quality signals.
+message CorrectnessMetrics {
+  int64 empty_responses = 1;
+  int64 malformed_why = 2;
+  int64 orphan_items = 3;
+  int64 supersede_mismatch = 4;
+  int64 requests_total = 5;
+  double correctness_score_pct = 6;
+}
+
+// SovereignMetrics captures knowledge-sovereign mutation health.
+message SovereignMetrics {
+  int64 mutations_applied = 1;
+  int64 mutations_errors = 2;
+  double mutation_duration_ms_p50 = 3;
+  double mutation_duration_ms_p95 = 4;
+  double error_rate_pct = 5;
+}
+
+// RecallMetrics captures recall pipeline health.
+message RecallMetrics {
+  int64 signals_appended = 1;
+  int64 signal_errors = 2;
+  int64 candidates_generated = 3;
+  int64 candidates_empty = 4;
+  int64 users_processed = 5;
+  double projector_duration_ms_p50 = 6;
+  double projector_duration_ms_p95 = 7;
+}
+
+// ServiceHealthStatus represents the health of a downstream service.
+message ServiceHealthStatus {
+  string service_name = 1;
+  string endpoint = 2;
+  // Status: healthy, unhealthy, unknown
+  string status = 3;
+  int64 latency_ms = 4;
+  string checked_at = 5;
+  string error_message = 6;
 }

@@ -9,6 +9,9 @@ const khMeterName = "alt-backend"
 
 // KnowledgeHomeMetrics holds all OTel metrics for Knowledge Home.
 type KnowledgeHomeMetrics struct {
+	// Snapshot provides atomic read access for the admin API.
+	Snapshot *MetricsSnapshot
+
 	// Projector metrics
 	ProjectorEventsProcessed metric.Int64Counter
 	ProjectorLagSeconds      metric.Float64Gauge
@@ -71,7 +74,9 @@ type KnowledgeHomeMetrics struct {
 // NewKnowledgeHomeMetrics initializes all Knowledge Home OTel metrics.
 func NewKnowledgeHomeMetrics() (*KnowledgeHomeMetrics, error) {
 	meter := otel.Meter(khMeterName)
-	m := &KnowledgeHomeMetrics{}
+	m := &KnowledgeHomeMetrics{
+		Snapshot: NewMetricsSnapshot(),
+	}
 	var err error
 
 	// Projector

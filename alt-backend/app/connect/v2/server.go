@@ -158,6 +158,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		container.ReprojectUsecase,
 		container.SLOUsecase,
 		container.AuditUsecase,
+		container.MetricsUsecase,
 		&cfg.KnowledgeHome,
 		logger,
 	)

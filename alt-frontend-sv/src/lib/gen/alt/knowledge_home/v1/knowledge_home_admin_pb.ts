@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/knowledge_home/v1/knowledge_home_admin.proto.
  */
 export const file_alt_knowledge_home_v1_knowledge_home_admin: GenFile = /*@__PURE__*/
-  fileDesc("CjBhbHQva25vd2xlZGdlX2hvbWUvdjEva25vd2xlZGdlX2hvbWVfYWRtaW4ucHJvdG8SFWFsdC5rbm93bGVkZ2VfaG9tZS52MSI0ChZUcmlnZ2VyQmFja2ZpbGxSZXF1ZXN0EhoKEnByb2plY3Rpb25fdmVyc2lvbhgBIAEoBSJKChdUcmlnZ2VyQmFja2ZpbGxSZXNwb25zZRIvCgNqb2IYASABKAsyIi5hbHQua25vd2xlZGdlX2hvbWUudjEuQmFja2ZpbGxKb2IiJgoUUGF1c2VCYWNrZmlsbFJlcXVlc3QSDgoGam9iX2lkGAEgASgJIhcKFVBhdXNlQmFja2ZpbGxSZXNwb25zZSInChVSZXN1bWVCYWNrZmlsbFJlcXVlc3QSDgoGam9iX2lkGAEgASgJIhgKFlJlc3VtZUJhY2tmaWxsUmVzcG9uc2UiKgoYR2V0QmFja2ZpbGxTdGF0dXNSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSJMChlHZXRCYWNrZmlsbFN0YXR1c1Jlc3BvbnNlEi8KA2pvYhgBIAEoCzIiLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5CYWNrZmlsbEpvYiIcChpHZXRQcm9qZWN0aW9uSGVhbHRoUmVxdWVzdCKeAQobR2V0UHJvamVjdGlvbkhlYWx0aFJlc3BvbnNlEhYKDmFjdGl2ZV92ZXJzaW9uGAEgASgFEhYKDmNoZWNrcG9pbnRfc2VxGAIgASgDEhQKDGxhc3RfdXBkYXRlZBgDIAEoCRI5Cg1iYWNrZmlsbF9qb2JzGAQgAygLMiIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkJhY2tmaWxsSm9iIhgKFkdldEZlYXR1cmVGbGFnc1JlcXVlc3Qi8wEKF0dldEZlYXR1cmVGbGFnc1Jlc3BvbnNlEhgKEGVuYWJsZV9ob21lX3BhZ2UYASABKAgSFwoPZW5hYmxlX3RyYWNraW5nGAIgASgIEhwKFGVuYWJsZV9wcm9qZWN0aW9uX3YyGAMgASgIEhoKEnJvbGxvdXRfcGVyY2VudGFnZRgEIAEoBRIaChJlbmFibGVfcmVjYWxsX3JhaWwYBSABKAgSEwoLZW5hYmxlX2xlbnMYBiABKAgSHQoVZW5hYmxlX3N0cmVhbV91cGRhdGVzGAcgASgIEhsKE2VuYWJsZV9zdXBlcnNlZGVfdXgYCCABKAgizgEKC0JhY2tmaWxsSm9iEg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSGgoScHJvamVjdGlvbl92ZXJzaW9uGAMgASgFEhQKDHRvdGFsX2V2ZW50cxgEIAEoBRIYChBwcm9jZXNzZWRfZXZlbnRzGAUgASgFEhUKDWVycm9yX21lc3NhZ2UYBiABKAkSEgoKY3JlYXRlZF9hdBgHIAEoCRISCgpzdGFydGVkX2F0GAggASgJEhQKDGNvbXBsZXRlZF9hdBgJIAEoCSKfAQoVU3RhcnRSZXByb2plY3RSZXF1ZXN0EgwKBG1vZGUYASABKAkSEgoKdG9fdmVyc2lvbhgCIAEoCRIUCgxmcm9tX3ZlcnNpb24YAyABKAkSGAoLcmFuZ2Vfc3RhcnQYBCABKAlIAIgBARIWCglyYW5nZV9lbmQYBSABKAlIAYgBAUIOCgxfcmFuZ2Vfc3RhcnRCDAoKX3JhbmdlX2VuZCJKChZTdGFydFJlcHJvamVjdFJlc3BvbnNlEjAKA3J1bhgBIAEoCzIjLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXByb2plY3RSdW4iNQoZR2V0UmVwcm9qZWN0U3RhdHVzUmVxdWVzdBIYChByZXByb2plY3RfcnVuX2lkGAEgASgJIk4KGkdldFJlcHJvamVjdFN0YXR1c1Jlc3BvbnNlEjAKA3J1bhgBIAEoCzIjLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXByb2plY3RSdW4iVwoYTGlzdFJlcHJvamVjdFJ1bnNSZXF1ZXN0EhoKDXN0YXR1c19maWx0ZXIYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBUIQCg5fc3RhdHVzX2ZpbHRlciJOChlMaXN0UmVwcm9qZWN0UnVuc1Jlc3BvbnNlEjEKBHJ1bnMYASADKAsyIy5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVwcm9qZWN0UnVuIjMKF0NvbXBhcmVSZXByb2plY3RSZXF1ZXN0EhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkiVQoYQ29tcGFyZVJlcHJvamVjdFJlc3BvbnNlEjkKBGRpZmYYASABKAsyKy5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVwcm9qZWN0RGlmZlN1bW1hcnkiMAoUU3dhcFJlcHJvamVjdFJlcXVlc3QSGAoQcmVwcm9qZWN0X3J1bl9pZBgBIAEoCSIXChVTd2FwUmVwcm9qZWN0UmVzcG9uc2UiNAoYUm9sbGJhY2tSZXByb2plY3RSZXF1ZXN0EhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkiGwoZUm9sbGJhY2tSZXByb2plY3RSZXNwb25zZSKzAgoMUmVwcm9qZWN0UnVuEhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkSFwoPcHJvamVjdGlvbl9uYW1lGAIgASgJEhQKDGZyb21fdmVyc2lvbhgDIAEoCRISCgp0b192ZXJzaW9uGAQgASgJEhQKDGluaXRpYXRlZF9ieRgFIAEoCRIMCgRtb2RlGAYgASgJEg4KBnN0YXR1cxgHIAEoCRITCgtyYW5nZV9zdGFydBgIIAEoCRIRCglyYW5nZV9lbmQYCSABKAkSEgoKc3RhdHNfanNvbhgKIAEoCRIZChFkaWZmX3N1bW1hcnlfanNvbhgLIAEoCRISCgpjcmVhdGVkX2F0GAwgASgJEhIKCnN0YXJ0ZWRfYXQYDSABKAkSEwoLZmluaXNoZWRfYXQYDiABKAki4gEKFFJlcHJvamVjdERpZmZTdW1tYXJ5EhcKD2Zyb21faXRlbV9jb3VudBgBIAEoAxIVCg10b19pdGVtX2NvdW50GAIgASgDEhgKEGZyb21fZW1wdHlfY291bnQYAyABKAMSFgoOdG9fZW1wdHlfY291bnQYBCABKAMSFgoOZnJvbV9hdmdfc2NvcmUYBSABKAESFAoMdG9fYXZnX3Njb3JlGAYgASgBEh0KFWZyb21fd2h5X2Rpc3RyaWJ1dGlvbhgHIAEoCRIbChN0b193aHlfZGlzdHJpYnV0aW9uGAggASgJIhUKE0dldFNMT1N0YXR1c1JlcXVlc3Qi0QEKFEdldFNMT1N0YXR1c1Jlc3BvbnNlEhYKDm92ZXJhbGxfaGVhbHRoGAEgASgJEi4KBHNsaXMYAiADKAsyIC5hbHQua25vd2xlZGdlX2hvbWUudjEuU0xJU3RhdHVzEiAKGGVycm9yX2J1ZGdldF93aW5kb3dfZGF5cxgDIAEoBRI6Cg1hY3RpdmVfYWxlcnRzGAQgAygLMiMuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkFsZXJ0U3VtbWFyeRITCgtjb21wdXRlZF9hdBgFIAEoCSKHAQoJU0xJU3RhdHVzEgwKBG5hbWUYASABKAkSFQoNY3VycmVudF92YWx1ZRgCIAEoARIUCgx0YXJnZXRfdmFsdWUYAyABKAESDAoEdW5pdBgEIAEoCRIOCgZzdGF0dXMYBSABKAkSIQoZZXJyb3JfYnVkZ2V0X2NvbnN1bWVkX3BjdBgGIAEoASJrCgxBbGVydFN1bW1hcnkSEgoKYWxlcnRfbmFtZRgBIAEoCRIQCghzZXZlcml0eRgCIAEoCRIOCgZzdGF0dXMYAyABKAkSEAoIZmlyZWRfYXQYBCABKAkSEwoLZGVzY3JpcHRpb24YBSABKAkiZQoZUnVuUHJvamVjdGlvbkF1ZGl0UmVxdWVzdBIXCg9wcm9qZWN0aW9uX25hbWUYASABKAkSGgoScHJvamVjdGlvbl92ZXJzaW9uGAIgASgJEhMKC3NhbXBsZV9zaXplGAMgASgFIlMKGlJ1blByb2plY3Rpb25BdWRpdFJlc3BvbnNlEjUKBWF1ZGl0GAEgASgLMiYuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlByb2plY3Rpb25BdWRpdCKvAQoPUHJvamVjdGlvbkF1ZGl0EhAKCGF1ZGl0X2lkGAEgASgJEhcKD3Byb2plY3Rpb25fbmFtZRgCIAEoCRIaChJwcm9qZWN0aW9uX3ZlcnNpb24YAyABKAkSEgoKY2hlY2tlZF9hdBgEIAEoCRITCgtzYW1wbGVfc2l6ZRgFIAEoBRIWCg5taXNtYXRjaF9jb3VudBgGIAEoBRIUCgxkZXRhaWxzX2pzb24YByABKAky7wwKGUtub3dsZWRnZUhvbWVBZG1pblNlcnZpY2UScAoPVHJpZ2dlckJhY2tmaWxsEi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLlRyaWdnZXJCYWNrZmlsbFJlcXVlc3QaLi5hbHQua25vd2xlZGdlX2hvbWUudjEuVHJpZ2dlckJhY2tmaWxsUmVzcG9uc2USagoNUGF1c2VCYWNrZmlsbBIrLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5QYXVzZUJhY2tmaWxsUmVxdWVzdBosLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5QYXVzZUJhY2tmaWxsUmVzcG9uc2USbQoOUmVzdW1lQmFja2ZpbGwSLC5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVzdW1lQmFja2ZpbGxSZXF1ZXN0Gi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJlc3VtZUJhY2tmaWxsUmVzcG9uc2USdgoRR2V0QmFja2ZpbGxTdGF0dXMSLy5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0QmFja2ZpbGxTdGF0dXNSZXF1ZXN0GjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldEJhY2tmaWxsU3RhdHVzUmVzcG9uc2USfAoTR2V0UHJvamVjdGlvbkhlYWx0aBIxLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRQcm9qZWN0aW9uSGVhbHRoUmVxdWVzdBoyLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRQcm9qZWN0aW9uSGVhbHRoUmVzcG9uc2UScAoPR2V0RmVhdHVyZUZsYWdzEi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldEZlYXR1cmVGbGFnc1JlcXVlc3QaLi5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0RmVhdHVyZUZsYWdzUmVzcG9uc2USbQoOU3RhcnRSZXByb2plY3QSLC5hbHQua25vd2xlZGdlX2hvbWUudjEuU3RhcnRSZXByb2plY3RSZXF1ZXN0Gi0uYWx0Lmtub3dsZWRnZV9ob21lLnYxLlN0YXJ0UmVwcm9qZWN0UmVzcG9uc2USeQoSR2V0UmVwcm9qZWN0U3RhdHVzEjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFJlcHJvamVjdFN0YXR1c1JlcXVlc3QaMS5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0UmVwcm9qZWN0U3RhdHVzUmVzcG9uc2USdgoRTGlzdFJlcHJvamVjdFJ1bnMSLy5hbHQua25vd2xlZGdlX2hvbWUudjEuTGlzdFJlcHJvamVjdFJ1bnNSZXF1ZXN0GjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkxpc3RSZXByb2plY3RSdW5zUmVzcG9uc2UScwoQQ29tcGFyZVJlcHJvamVjdBIuLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Db21wYXJlUmVwcm9qZWN0UmVxdWVzdBovLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Db21wYXJlUmVwcm9qZWN0UmVzcG9uc2USagoNU3dhcFJlcHJvamVjdBIrLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Td2FwUmVwcm9qZWN0UmVxdWVzdBosLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Td2FwUmVwcm9qZWN0UmVzcG9uc2USdgoRUm9sbGJhY2tSZXByb2plY3QSLy5hbHQua25vd2xlZGdlX2hvbWUudjEuUm9sbGJhY2tSZXByb2plY3RSZXF1ZXN0GjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJvbGxiYWNrUmVwcm9qZWN0UmVzcG9uc2USZwoMR2V0U0xPU3RhdHVzEiouYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFNMT1N0YXR1c1JlcXVlc3QaKy5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0U0xPU3RhdHVzUmVzcG9uc2USeQoSUnVuUHJvamVjdGlvbkF1ZGl0EjAuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJ1blByb2plY3Rpb25BdWRpdFJlcXVlc3QaMS5hbHQua25vd2xlZGdlX2hvbWUudjEuUnVuUHJvamVjdGlvbkF1ZGl0UmVzcG9uc2VCNVozYWx0L2dlbi9wcm90by9hbHQva25vd2xlZGdlX2hvbWUvdjE7a25vd2xlZGdlaG9tZXYxYgZwcm90bzM");
+  fileDesc("CjBhbHQva25vd2xlZGdlX2hvbWUvdjEva25vd2xlZGdlX2hvbWVfYWRtaW4ucHJvdG8SFWFsdC5rbm93bGVkZ2VfaG9tZS52MSI0ChZUcmlnZ2VyQmFja2ZpbGxSZXF1ZXN0EhoKEnByb2plY3Rpb25fdmVyc2lvbhgBIAEoBSJKChdUcmlnZ2VyQmFja2ZpbGxSZXNwb25zZRIvCgNqb2IYASABKAsyIi5hbHQua25vd2xlZGdlX2hvbWUudjEuQmFja2ZpbGxKb2IiJgoUUGF1c2VCYWNrZmlsbFJlcXVlc3QSDgoGam9iX2lkGAEgASgJIhcKFVBhdXNlQmFja2ZpbGxSZXNwb25zZSInChVSZXN1bWVCYWNrZmlsbFJlcXVlc3QSDgoGam9iX2lkGAEgASgJIhgKFlJlc3VtZUJhY2tmaWxsUmVzcG9uc2UiKgoYR2V0QmFja2ZpbGxTdGF0dXNSZXF1ZXN0Eg4KBmpvYl9pZBgBIAEoCSJMChlHZXRCYWNrZmlsbFN0YXR1c1Jlc3BvbnNlEi8KA2pvYhgBIAEoCzIiLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5CYWNrZmlsbEpvYiIcChpHZXRQcm9qZWN0aW9uSGVhbHRoUmVxdWVzdCKeAQobR2V0UHJvamVjdGlvbkhlYWx0aFJlc3BvbnNlEhYKDmFjdGl2ZV92ZXJzaW9uGAEgASgFEhYKDmNoZWNrcG9pbnRfc2VxGAIgASgDEhQKDGxhc3RfdXBkYXRlZBgDIAEoCRI5Cg1iYWNrZmlsbF9qb2JzGAQgAygLMiIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkJhY2tmaWxsSm9iIhgKFkdldEZlYXR1cmVGbGFnc1JlcXVlc3Qi8wEKF0dldEZlYXR1cmVGbGFnc1Jlc3BvbnNlEhgKEGVuYWJsZV9ob21lX3BhZ2UYASABKAgSFwoPZW5hYmxlX3RyYWNraW5nGAIgASgIEhwKFGVuYWJsZV9wcm9qZWN0aW9uX3YyGAMgASgIEhoKEnJvbGxvdXRfcGVyY2VudGFnZRgEIAEoBRIaChJlbmFibGVfcmVjYWxsX3JhaWwYBSABKAgSEwoLZW5hYmxlX2xlbnMYBiABKAgSHQoVZW5hYmxlX3N0cmVhbV91cGRhdGVzGAcgASgIEhsKE2VuYWJsZV9zdXBlcnNlZGVfdXgYCCABKAgizgEKC0JhY2tmaWxsSm9iEg4KBmpvYl9pZBgBIAEoCRIOCgZzdGF0dXMYAiABKAkSGgoScHJvamVjdGlvbl92ZXJzaW9uGAMgASgFEhQKDHRvdGFsX2V2ZW50cxgEIAEoBRIYChBwcm9jZXNzZWRfZXZlbnRzGAUgASgFEhUKDWVycm9yX21lc3NhZ2UYBiABKAkSEgoKY3JlYXRlZF9hdBgHIAEoCRISCgpzdGFydGVkX2F0GAggASgJEhQKDGNvbXBsZXRlZF9hdBgJIAEoCSKfAQoVU3RhcnRSZXByb2plY3RSZXF1ZXN0EgwKBG1vZGUYASABKAkSEgoKdG9fdmVyc2lvbhgCIAEoCRIUCgxmcm9tX3ZlcnNpb24YAyABKAkSGAoLcmFuZ2Vfc3RhcnQYBCABKAlIAIgBARIWCglyYW5nZV9lbmQYBSABKAlIAYgBAUIOCgxfcmFuZ2Vfc3RhcnRCDAoKX3JhbmdlX2VuZCJKChZTdGFydFJlcHJvamVjdFJlc3BvbnNlEjAKA3J1bhgBIAEoCzIjLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXByb2plY3RSdW4iNQoZR2V0UmVwcm9qZWN0U3RhdHVzUmVxdWVzdBIYChByZXByb2plY3RfcnVuX2lkGAEgASgJIk4KGkdldFJlcHJvamVjdFN0YXR1c1Jlc3BvbnNlEjAKA3J1bhgBIAEoCzIjLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXByb2plY3RSdW4iVwoYTGlzdFJlcHJvamVjdFJ1bnNSZXF1ZXN0EhoKDXN0YXR1c19maWx0ZXIYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBUIQCg5fc3RhdHVzX2ZpbHRlciJOChlMaXN0UmVwcm9qZWN0UnVuc1Jlc3BvbnNlEjEKBHJ1bnMYASADKAsyIy5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVwcm9qZWN0UnVuIjMKF0NvbXBhcmVSZXByb2plY3RSZXF1ZXN0EhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkiVQoYQ29tcGFyZVJlcHJvamVjdFJlc3BvbnNlEjkKBGRpZmYYASABKAsyKy5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVwcm9qZWN0RGlmZlN1bW1hcnkiMAoUU3dhcFJlcHJvamVjdFJlcXVlc3QSGAoQcmVwcm9qZWN0X3J1bl9pZBgBIAEoCSIXChVTd2FwUmVwcm9qZWN0UmVzcG9uc2UiNAoYUm9sbGJhY2tSZXByb2plY3RSZXF1ZXN0EhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkiGwoZUm9sbGJhY2tSZXByb2plY3RSZXNwb25zZSKzAgoMUmVwcm9qZWN0UnVuEhgKEHJlcHJvamVjdF9ydW5faWQYASABKAkSFwoPcHJvamVjdGlvbl9uYW1lGAIgASgJEhQKDGZyb21fdmVyc2lvbhgDIAEoCRISCgp0b192ZXJzaW9uGAQgASgJEhQKDGluaXRpYXRlZF9ieRgFIAEoCRIMCgRtb2RlGAYgASgJEg4KBnN0YXR1cxgHIAEoCRITCgtyYW5nZV9zdGFydBgIIAEoCRIRCglyYW5nZV9lbmQYCSABKAkSEgoKc3RhdHNfanNvbhgKIAEoCRIZChFkaWZmX3N1bW1hcnlfanNvbhgLIAEoCRISCgpjcmVhdGVkX2F0GAwgASgJEhIKCnN0YXJ0ZWRfYXQYDSABKAkSEwoLZmluaXNoZWRfYXQYDiABKAki4gEKFFJlcHJvamVjdERpZmZTdW1tYXJ5EhcKD2Zyb21faXRlbV9jb3VudBgBIAEoAxIVCg10b19pdGVtX2NvdW50GAIgASgDEhgKEGZyb21fZW1wdHlfY291bnQYAyABKAMSFgoOdG9fZW1wdHlfY291bnQYBCABKAMSFgoOZnJvbV9hdmdfc2NvcmUYBSABKAESFAoMdG9fYXZnX3Njb3JlGAYgASgBEh0KFWZyb21fd2h5X2Rpc3RyaWJ1dGlvbhgHIAEoCRIbChN0b193aHlfZGlzdHJpYnV0aW9uGAggASgJIhUKE0dldFNMT1N0YXR1c1JlcXVlc3Qi0QEKFEdldFNMT1N0YXR1c1Jlc3BvbnNlEhYKDm92ZXJhbGxfaGVhbHRoGAEgASgJEi4KBHNsaXMYAiADKAsyIC5hbHQua25vd2xlZGdlX2hvbWUudjEuU0xJU3RhdHVzEiAKGGVycm9yX2J1ZGdldF93aW5kb3dfZGF5cxgDIAEoBRI6Cg1hY3RpdmVfYWxlcnRzGAQgAygLMiMuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkFsZXJ0U3VtbWFyeRITCgtjb21wdXRlZF9hdBgFIAEoCSKHAQoJU0xJU3RhdHVzEgwKBG5hbWUYASABKAkSFQoNY3VycmVudF92YWx1ZRgCIAEoARIUCgx0YXJnZXRfdmFsdWUYAyABKAESDAoEdW5pdBgEIAEoCRIOCgZzdGF0dXMYBSABKAkSIQoZZXJyb3JfYnVkZ2V0X2NvbnN1bWVkX3BjdBgGIAEoASJrCgxBbGVydFN1bW1hcnkSEgoKYWxlcnRfbmFtZRgBIAEoCRIQCghzZXZlcml0eRgCIAEoCRIOCgZzdGF0dXMYAyABKAkSEAoIZmlyZWRfYXQYBCABKAkSEwoLZGVzY3JpcHRpb24YBSABKAkiZQoZUnVuUHJvamVjdGlvbkF1ZGl0UmVxdWVzdBIXCg9wcm9qZWN0aW9uX25hbWUYASABKAkSGgoScHJvamVjdGlvbl92ZXJzaW9uGAIgASgJEhMKC3NhbXBsZV9zaXplGAMgASgFIlMKGlJ1blByb2plY3Rpb25BdWRpdFJlc3BvbnNlEjUKBWF1ZGl0GAEgASgLMiYuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlByb2plY3Rpb25BdWRpdCKvAQoPUHJvamVjdGlvbkF1ZGl0EhAKCGF1ZGl0X2lkGAEgASgJEhcKD3Byb2plY3Rpb25fbmFtZRgCIAEoCRIaChJwcm9qZWN0aW9uX3ZlcnNpb24YAyABKAkSEgoKY2hlY2tlZF9hdBgEIAEoCRITCgtzYW1wbGVfc2l6ZRgFIAEoBRIWCg5taXNtYXRjaF9jb3VudBgGIAEoBRIUCgxkZXRhaWxzX2pzb24YByABKAkiGQoXR2V0U3lzdGVtTWV0cmljc1JlcXVlc3Qi9AMKGEdldFN5c3RlbU1ldHJpY3NSZXNwb25zZRI6Cglwcm9qZWN0b3IYASABKAsyJy5hbHQua25vd2xlZGdlX2hvbWUudjEuUHJvamVjdG9yTWV0cmljcxI2CgdoYW5kbGVyGAIgASgLMiUuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkhhbmRsZXJNZXRyaWNzEjgKCHRyYWNraW5nGAMgASgLMiYuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlRyYWNraW5nTWV0cmljcxI0CgZzdHJlYW0YBCABKAsyJC5hbHQua25vd2xlZGdlX2hvbWUudjEuU3RyZWFtTWV0cmljcxI+Cgtjb3JyZWN0bmVzcxgFIAEoCzIpLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Db3JyZWN0bmVzc01ldHJpY3MSOgoJc292ZXJlaWduGAYgASgLMicuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlNvdmVyZWlnbk1ldHJpY3MSNAoGcmVjYWxsGAcgASgLMiQuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlJlY2FsbE1ldHJpY3MSQgoOc2VydmljZV9oZWFsdGgYCCADKAsyKi5hbHQua25vd2xlZGdlX2hvbWUudjEuU2VydmljZUhlYWx0aFN0YXR1cyKuAQoQUHJvamVjdG9yTWV0cmljcxIYChBldmVudHNfcHJvY2Vzc2VkGAEgASgDEhMKC2xhZ19zZWNvbmRzGAIgASgBEh0KFWJhdGNoX2R1cmF0aW9uX21zX3A1MBgDIAEoARIdChViYXRjaF9kdXJhdGlvbl9tc19wOTUYBCABKAESHQoVYmF0Y2hfZHVyYXRpb25fbXNfcDk5GAUgASgBEg4KBmVycm9ycxgGIAEoAyJZCg5IYW5kbGVyTWV0cmljcxIUCgxwYWdlc19zZXJ2ZWQYASABKAMSFgoOcGFnZXNfZGVncmFkZWQYAiABKAMSGQoRZGVncmFkZWRfcmF0ZV9wY3QYAyABKAEiiAEKD1RyYWNraW5nTWV0cmljcxIVCg1pdGVtc19leHBvc2VkGAEgASgDEhQKDGl0ZW1zX29wZW5lZBgCIAEoAxIXCg9pdGVtc19kaXNtaXNzZWQYAyABKAMSFQoNb3Blbl9yYXRlX3BjdBgEIAEoARIYChBkaXNtaXNzX3JhdGVfcGN0GAUgASgBIpYBCg1TdHJlYW1NZXRyaWNzEhkKEWNvbm5lY3Rpb25zX3RvdGFsGAEgASgDEhkKEWRpc2Nvbm5lY3RzX3RvdGFsGAIgASgDEhgKEHJlY29ubmVjdHNfdG90YWwYAyABKAMSGAoQZGVsaXZlcmllc190b3RhbBgEIAEoAxIbChNkaXNjb25uZWN0X3JhdGVfcGN0GAUgASgBIq0BChJDb3JyZWN0bmVzc01ldHJpY3MSFwoPZW1wdHlfcmVzcG9uc2VzGAEgASgDEhUKDW1hbGZvcm1lZF93aHkYAiABKAMSFAoMb3JwaGFuX2l0ZW1zGAMgASgDEhoKEnN1cGVyc2VkZV9taXNtYXRjaBgEIAEoAxIWCg5yZXF1ZXN0c190b3RhbBgFIAEoAxIdChVjb3JyZWN0bmVzc19zY29yZV9wY3QYBiABKAEiowEKEFNvdmVyZWlnbk1ldHJpY3MSGQoRbXV0YXRpb25zX2FwcGxpZWQYASABKAMSGAoQbXV0YXRpb25zX2Vycm9ycxgCIAEoAxIgChhtdXRhdGlvbl9kdXJhdGlvbl9tc19wNTAYAyABKAESIAoYbXV0YXRpb25fZHVyYXRpb25fbXNfcDk1GAQgASgBEhYKDmVycm9yX3JhdGVfcGN0GAUgASgBItcBCg1SZWNhbGxNZXRyaWNzEhgKEHNpZ25hbHNfYXBwZW5kZWQYASABKAMSFQoNc2lnbmFsX2Vycm9ycxgCIAEoAxIcChRjYW5kaWRhdGVzX2dlbmVyYXRlZBgDIAEoAxIYChBjYW5kaWRhdGVzX2VtcHR5GAQgASgDEhcKD3VzZXJzX3Byb2Nlc3NlZBgFIAEoAxIhChlwcm9qZWN0b3JfZHVyYXRpb25fbXNfcDUwGAYgASgBEiEKGXByb2plY3Rvcl9kdXJhdGlvbl9tc19wOTUYByABKAEijAEKE1NlcnZpY2VIZWFsdGhTdGF0dXMSFAoMc2VydmljZV9uYW1lGAEgASgJEhAKCGVuZHBvaW50GAIgASgJEg4KBnN0YXR1cxgDIAEoCRISCgpsYXRlbmN5X21zGAQgASgDEhIKCmNoZWNrZWRfYXQYBSABKAkSFQoNZXJyb3JfbWVzc2FnZRgGIAEoCTLkDQoZS25vd2xlZGdlSG9tZUFkbWluU2VydmljZRJwCg9UcmlnZ2VyQmFja2ZpbGwSLS5hbHQua25vd2xlZGdlX2hvbWUudjEuVHJpZ2dlckJhY2tmaWxsUmVxdWVzdBouLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5UcmlnZ2VyQmFja2ZpbGxSZXNwb25zZRJqCg1QYXVzZUJhY2tmaWxsEisuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlBhdXNlQmFja2ZpbGxSZXF1ZXN0GiwuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlBhdXNlQmFja2ZpbGxSZXNwb25zZRJtCg5SZXN1bWVCYWNrZmlsbBIsLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SZXN1bWVCYWNrZmlsbFJlcXVlc3QaLS5hbHQua25vd2xlZGdlX2hvbWUudjEuUmVzdW1lQmFja2ZpbGxSZXNwb25zZRJ2ChFHZXRCYWNrZmlsbFN0YXR1cxIvLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRCYWNrZmlsbFN0YXR1c1JlcXVlc3QaMC5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0QmFja2ZpbGxTdGF0dXNSZXNwb25zZRJ8ChNHZXRQcm9qZWN0aW9uSGVhbHRoEjEuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFByb2plY3Rpb25IZWFsdGhSZXF1ZXN0GjIuYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFByb2plY3Rpb25IZWFsdGhSZXNwb25zZRJwCg9HZXRGZWF0dXJlRmxhZ3MSLS5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0RmVhdHVyZUZsYWdzUmVxdWVzdBouLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRGZWF0dXJlRmxhZ3NSZXNwb25zZRJtCg5TdGFydFJlcHJvamVjdBIsLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5TdGFydFJlcHJvamVjdFJlcXVlc3QaLS5hbHQua25vd2xlZGdlX2hvbWUudjEuU3RhcnRSZXByb2plY3RSZXNwb25zZRJ5ChJHZXRSZXByb2plY3RTdGF0dXMSMC5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0UmVwcm9qZWN0U3RhdHVzUmVxdWVzdBoxLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRSZXByb2plY3RTdGF0dXNSZXNwb25zZRJ2ChFMaXN0UmVwcm9qZWN0UnVucxIvLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5MaXN0UmVwcm9qZWN0UnVuc1JlcXVlc3QaMC5hbHQua25vd2xlZGdlX2hvbWUudjEuTGlzdFJlcHJvamVjdFJ1bnNSZXNwb25zZRJzChBDb21wYXJlUmVwcm9qZWN0Ei4uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkNvbXBhcmVSZXByb2plY3RSZXF1ZXN0Gi8uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkNvbXBhcmVSZXByb2plY3RSZXNwb25zZRJqCg1Td2FwUmVwcm9qZWN0EisuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlN3YXBSZXByb2plY3RSZXF1ZXN0GiwuYWx0Lmtub3dsZWRnZV9ob21lLnYxLlN3YXBSZXByb2plY3RSZXNwb25zZRJ2ChFSb2xsYmFja1JlcHJvamVjdBIvLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5Sb2xsYmFja1JlcHJvamVjdFJlcXVlc3QaMC5hbHQua25vd2xlZGdlX2hvbWUudjEuUm9sbGJhY2tSZXByb2plY3RSZXNwb25zZRJnCgxHZXRTTE9TdGF0dXMSKi5hbHQua25vd2xlZGdlX2hvbWUudjEuR2V0U0xPU3RhdHVzUmVxdWVzdBorLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5HZXRTTE9TdGF0dXNSZXNwb25zZRJ5ChJSdW5Qcm9qZWN0aW9uQXVkaXQSMC5hbHQua25vd2xlZGdlX2hvbWUudjEuUnVuUHJvamVjdGlvbkF1ZGl0UmVxdWVzdBoxLmFsdC5rbm93bGVkZ2VfaG9tZS52MS5SdW5Qcm9qZWN0aW9uQXVkaXRSZXNwb25zZRJzChBHZXRTeXN0ZW1NZXRyaWNzEi4uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFN5c3RlbU1ldHJpY3NSZXF1ZXN0Gi8uYWx0Lmtub3dsZWRnZV9ob21lLnYxLkdldFN5c3RlbU1ldHJpY3NSZXNwb25zZUI1WjNhbHQvZ2VuL3Byb3RvL2FsdC9rbm93bGVkZ2VfaG9tZS92MTtrbm93bGVkZ2Vob21ldjFiBnByb3RvMw");
 
 /**
  * TriggerBackfillRequest starts a backfill job.
@@ -985,6 +985,404 @@ export const ProjectionAuditSchema: GenMessage<ProjectionAudit> = /*@__PURE__*/
   messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 33);
 
 /**
+ * GetSystemMetricsRequest is empty.
+ *
+ * @generated from message alt.knowledge_home.v1.GetSystemMetricsRequest
+ */
+export type GetSystemMetricsRequest = Message<"alt.knowledge_home.v1.GetSystemMetricsRequest"> & {
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.GetSystemMetricsRequest.
+ * Use `create(GetSystemMetricsRequestSchema)` to create a new message.
+ */
+export const GetSystemMetricsRequestSchema: GenMessage<GetSystemMetricsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 34);
+
+/**
+ * GetSystemMetricsResponse returns aggregated system metrics.
+ *
+ * @generated from message alt.knowledge_home.v1.GetSystemMetricsResponse
+ */
+export type GetSystemMetricsResponse = Message<"alt.knowledge_home.v1.GetSystemMetricsResponse"> & {
+  /**
+   * @generated from field: alt.knowledge_home.v1.ProjectorMetrics projector = 1;
+   */
+  projector?: ProjectorMetrics;
+
+  /**
+   * @generated from field: alt.knowledge_home.v1.HandlerMetrics handler = 2;
+   */
+  handler?: HandlerMetrics;
+
+  /**
+   * @generated from field: alt.knowledge_home.v1.TrackingMetrics tracking = 3;
+   */
+  tracking?: TrackingMetrics;
+
+  /**
+   * @generated from field: alt.knowledge_home.v1.StreamMetrics stream = 4;
+   */
+  stream?: StreamMetrics;
+
+  /**
+   * @generated from field: alt.knowledge_home.v1.CorrectnessMetrics correctness = 5;
+   */
+  correctness?: CorrectnessMetrics;
+
+  /**
+   * @generated from field: alt.knowledge_home.v1.SovereignMetrics sovereign = 6;
+   */
+  sovereign?: SovereignMetrics;
+
+  /**
+   * @generated from field: alt.knowledge_home.v1.RecallMetrics recall = 7;
+   */
+  recall?: RecallMetrics;
+
+  /**
+   * @generated from field: repeated alt.knowledge_home.v1.ServiceHealthStatus service_health = 8;
+   */
+  serviceHealth: ServiceHealthStatus[];
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.GetSystemMetricsResponse.
+ * Use `create(GetSystemMetricsResponseSchema)` to create a new message.
+ */
+export const GetSystemMetricsResponseSchema: GenMessage<GetSystemMetricsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 35);
+
+/**
+ * ProjectorMetrics captures event processing pipeline health.
+ *
+ * @generated from message alt.knowledge_home.v1.ProjectorMetrics
+ */
+export type ProjectorMetrics = Message<"alt.knowledge_home.v1.ProjectorMetrics"> & {
+  /**
+   * @generated from field: int64 events_processed = 1;
+   */
+  eventsProcessed: bigint;
+
+  /**
+   * @generated from field: double lag_seconds = 2;
+   */
+  lagSeconds: number;
+
+  /**
+   * @generated from field: double batch_duration_ms_p50 = 3;
+   */
+  batchDurationMsP50: number;
+
+  /**
+   * @generated from field: double batch_duration_ms_p95 = 4;
+   */
+  batchDurationMsP95: number;
+
+  /**
+   * @generated from field: double batch_duration_ms_p99 = 5;
+   */
+  batchDurationMsP99: number;
+
+  /**
+   * @generated from field: int64 errors = 6;
+   */
+  errors: bigint;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.ProjectorMetrics.
+ * Use `create(ProjectorMetricsSchema)` to create a new message.
+ */
+export const ProjectorMetricsSchema: GenMessage<ProjectorMetrics> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 36);
+
+/**
+ * HandlerMetrics captures Knowledge Home page serving health.
+ *
+ * @generated from message alt.knowledge_home.v1.HandlerMetrics
+ */
+export type HandlerMetrics = Message<"alt.knowledge_home.v1.HandlerMetrics"> & {
+  /**
+   * @generated from field: int64 pages_served = 1;
+   */
+  pagesServed: bigint;
+
+  /**
+   * @generated from field: int64 pages_degraded = 2;
+   */
+  pagesDegraded: bigint;
+
+  /**
+   * @generated from field: double degraded_rate_pct = 3;
+   */
+  degradedRatePct: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.HandlerMetrics.
+ * Use `create(HandlerMetricsSchema)` to create a new message.
+ */
+export const HandlerMetricsSchema: GenMessage<HandlerMetrics> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 37);
+
+/**
+ * TrackingMetrics captures user interaction tracking health.
+ *
+ * @generated from message alt.knowledge_home.v1.TrackingMetrics
+ */
+export type TrackingMetrics = Message<"alt.knowledge_home.v1.TrackingMetrics"> & {
+  /**
+   * @generated from field: int64 items_exposed = 1;
+   */
+  itemsExposed: bigint;
+
+  /**
+   * @generated from field: int64 items_opened = 2;
+   */
+  itemsOpened: bigint;
+
+  /**
+   * @generated from field: int64 items_dismissed = 3;
+   */
+  itemsDismissed: bigint;
+
+  /**
+   * @generated from field: double open_rate_pct = 4;
+   */
+  openRatePct: number;
+
+  /**
+   * @generated from field: double dismiss_rate_pct = 5;
+   */
+  dismissRatePct: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.TrackingMetrics.
+ * Use `create(TrackingMetricsSchema)` to create a new message.
+ */
+export const TrackingMetricsSchema: GenMessage<TrackingMetrics> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 38);
+
+/**
+ * StreamMetrics captures SSE stream connection health.
+ *
+ * @generated from message alt.knowledge_home.v1.StreamMetrics
+ */
+export type StreamMetrics = Message<"alt.knowledge_home.v1.StreamMetrics"> & {
+  /**
+   * @generated from field: int64 connections_total = 1;
+   */
+  connectionsTotal: bigint;
+
+  /**
+   * @generated from field: int64 disconnects_total = 2;
+   */
+  disconnectsTotal: bigint;
+
+  /**
+   * @generated from field: int64 reconnects_total = 3;
+   */
+  reconnectsTotal: bigint;
+
+  /**
+   * @generated from field: int64 deliveries_total = 4;
+   */
+  deliveriesTotal: bigint;
+
+  /**
+   * @generated from field: double disconnect_rate_pct = 5;
+   */
+  disconnectRatePct: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.StreamMetrics.
+ * Use `create(StreamMetricsSchema)` to create a new message.
+ */
+export const StreamMetricsSchema: GenMessage<StreamMetrics> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 39);
+
+/**
+ * CorrectnessMetrics captures data quality signals.
+ *
+ * @generated from message alt.knowledge_home.v1.CorrectnessMetrics
+ */
+export type CorrectnessMetrics = Message<"alt.knowledge_home.v1.CorrectnessMetrics"> & {
+  /**
+   * @generated from field: int64 empty_responses = 1;
+   */
+  emptyResponses: bigint;
+
+  /**
+   * @generated from field: int64 malformed_why = 2;
+   */
+  malformedWhy: bigint;
+
+  /**
+   * @generated from field: int64 orphan_items = 3;
+   */
+  orphanItems: bigint;
+
+  /**
+   * @generated from field: int64 supersede_mismatch = 4;
+   */
+  supersedeMismatch: bigint;
+
+  /**
+   * @generated from field: int64 requests_total = 5;
+   */
+  requestsTotal: bigint;
+
+  /**
+   * @generated from field: double correctness_score_pct = 6;
+   */
+  correctnessScorePct: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.CorrectnessMetrics.
+ * Use `create(CorrectnessMetricsSchema)` to create a new message.
+ */
+export const CorrectnessMetricsSchema: GenMessage<CorrectnessMetrics> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 40);
+
+/**
+ * SovereignMetrics captures knowledge-sovereign mutation health.
+ *
+ * @generated from message alt.knowledge_home.v1.SovereignMetrics
+ */
+export type SovereignMetrics = Message<"alt.knowledge_home.v1.SovereignMetrics"> & {
+  /**
+   * @generated from field: int64 mutations_applied = 1;
+   */
+  mutationsApplied: bigint;
+
+  /**
+   * @generated from field: int64 mutations_errors = 2;
+   */
+  mutationsErrors: bigint;
+
+  /**
+   * @generated from field: double mutation_duration_ms_p50 = 3;
+   */
+  mutationDurationMsP50: number;
+
+  /**
+   * @generated from field: double mutation_duration_ms_p95 = 4;
+   */
+  mutationDurationMsP95: number;
+
+  /**
+   * @generated from field: double error_rate_pct = 5;
+   */
+  errorRatePct: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.SovereignMetrics.
+ * Use `create(SovereignMetricsSchema)` to create a new message.
+ */
+export const SovereignMetricsSchema: GenMessage<SovereignMetrics> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 41);
+
+/**
+ * RecallMetrics captures recall pipeline health.
+ *
+ * @generated from message alt.knowledge_home.v1.RecallMetrics
+ */
+export type RecallMetrics = Message<"alt.knowledge_home.v1.RecallMetrics"> & {
+  /**
+   * @generated from field: int64 signals_appended = 1;
+   */
+  signalsAppended: bigint;
+
+  /**
+   * @generated from field: int64 signal_errors = 2;
+   */
+  signalErrors: bigint;
+
+  /**
+   * @generated from field: int64 candidates_generated = 3;
+   */
+  candidatesGenerated: bigint;
+
+  /**
+   * @generated from field: int64 candidates_empty = 4;
+   */
+  candidatesEmpty: bigint;
+
+  /**
+   * @generated from field: int64 users_processed = 5;
+   */
+  usersProcessed: bigint;
+
+  /**
+   * @generated from field: double projector_duration_ms_p50 = 6;
+   */
+  projectorDurationMsP50: number;
+
+  /**
+   * @generated from field: double projector_duration_ms_p95 = 7;
+   */
+  projectorDurationMsP95: number;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.RecallMetrics.
+ * Use `create(RecallMetricsSchema)` to create a new message.
+ */
+export const RecallMetricsSchema: GenMessage<RecallMetrics> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 42);
+
+/**
+ * ServiceHealthStatus represents the health of a downstream service.
+ *
+ * @generated from message alt.knowledge_home.v1.ServiceHealthStatus
+ */
+export type ServiceHealthStatus = Message<"alt.knowledge_home.v1.ServiceHealthStatus"> & {
+  /**
+   * @generated from field: string service_name = 1;
+   */
+  serviceName: string;
+
+  /**
+   * @generated from field: string endpoint = 2;
+   */
+  endpoint: string;
+
+  /**
+   * Status: healthy, unhealthy, unknown
+   *
+   * @generated from field: string status = 3;
+   */
+  status: string;
+
+  /**
+   * @generated from field: int64 latency_ms = 4;
+   */
+  latencyMs: bigint;
+
+  /**
+   * @generated from field: string checked_at = 5;
+   */
+  checkedAt: string;
+
+  /**
+   * @generated from field: string error_message = 6;
+   */
+  errorMessage: string;
+};
+
+/**
+ * Describes the message alt.knowledge_home.v1.ServiceHealthStatus.
+ * Use `create(ServiceHealthStatusSchema)` to create a new message.
+ */
+export const ServiceHealthStatusSchema: GenMessage<ServiceHealthStatus> = /*@__PURE__*/
+  messageDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 43);
+
+/**
  * KnowledgeHomeAdminService provides admin operations for Knowledge Home.
  * Protected by ServiceAuthInterceptor (service-token authentication).
  *
@@ -1133,6 +1531,17 @@ export const KnowledgeHomeAdminService: GenService<{
     methodKind: "unary";
     input: typeof RunProjectionAuditRequestSchema;
     output: typeof RunProjectionAuditResponseSchema;
+  },
+  /**
+   * Phase 6: System Observability
+   * GetSystemMetrics returns aggregated system metrics from OTel instrumentation and service health.
+   *
+   * @generated from rpc alt.knowledge_home.v1.KnowledgeHomeAdminService.GetSystemMetrics
+   */
+  getSystemMetrics: {
+    methodKind: "unary";
+    input: typeof GetSystemMetricsRequestSchema;
+    output: typeof GetSystemMetricsResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_knowledge_home_v1_knowledge_home_admin, 0);

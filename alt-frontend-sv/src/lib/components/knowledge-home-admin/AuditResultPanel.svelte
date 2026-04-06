@@ -14,13 +14,15 @@ const mismatchRate = $derived(
 		: "0.0",
 );
 
-const mismatchStatus = $derived.by((): "ok" | "warning" | "error" | "neutral" => {
-	if (!audit) return "neutral";
-	const rate = audit.mismatchCount / audit.sampleSize;
-	if (rate === 0) return "ok";
-	if (rate <= 0.05) return "warning";
-	return "error";
-});
+const mismatchStatus = $derived.by(
+	(): "ok" | "warning" | "error" | "neutral" => {
+		if (!audit) return "neutral";
+		const rate = audit.mismatchCount / audit.sampleSize;
+		if (rate === 0) return "ok";
+		if (rate <= 0.05) return "warning";
+		return "error";
+	},
+);
 
 let parsedDetails = $derived.by(() => {
 	if (!audit?.detailsJson) return null;

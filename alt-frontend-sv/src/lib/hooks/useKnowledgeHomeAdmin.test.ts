@@ -24,6 +24,7 @@ const initialSnapshot: KnowledgeHomeAdminSnapshot = {
 	},
 	sloStatus: null,
 	reprojectRuns: [],
+	systemMetrics: null,
 };
 
 describe("useKnowledgeHomeAdmin", () => {
@@ -75,6 +76,7 @@ describe("useKnowledgeHomeAdmin", () => {
 			},
 			sloStatus: null,
 			reprojectRuns: [],
+			systemMetrics: null,
 		});
 
 		const pending = admin.fetchData();
@@ -100,6 +102,7 @@ describe("useKnowledgeHomeAdmin", () => {
 			},
 			sloStatus: null,
 			reprojectRuns: [],
+			systemMetrics: null,
 		});
 		await pending;
 
@@ -130,6 +133,7 @@ describe("useKnowledgeHomeAdmin", () => {
 			flags: initialSnapshot.flags,
 			sloStatus: null,
 			reprojectRuns: [],
+			systemMetrics: null,
 		};
 		const fetcher = vi.fn().mockResolvedValue(refreshedSnapshot);
 		const actionRunner = vi

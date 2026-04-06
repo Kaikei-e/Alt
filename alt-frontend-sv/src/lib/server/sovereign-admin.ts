@@ -145,14 +145,11 @@ export async function createSovereignSnapshot(): Promise<SnapshotMetadata> {
 export async function runSovereignRetention(
 	dryRun: boolean,
 ): Promise<RetentionRunResponse> {
-	const response = await fetch(
-		`${SOVEREIGN_METRICS_URL}/admin/retention/run`,
-		{
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ dry_run: dryRun }),
-		},
-	);
+	const response = await fetch(`${SOVEREIGN_METRICS_URL}/admin/retention/run`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ dry_run: dryRun }),
+	});
 	if (!response.ok) {
 		throw new Error(`Failed to run retention: ${response.status}`);
 	}
