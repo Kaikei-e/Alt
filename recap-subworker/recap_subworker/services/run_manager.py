@@ -58,6 +58,11 @@ def _hash_payload(payload: dict[str, Any]) -> str:
     return hashlib.sha256(serialized).hexdigest()
 
 
+def _should_reuse_idempotent_run(status: str) -> bool:
+    """Only reuse runs that are still in-flight or already produced usable output."""
+    return status != "failed"
+
+
 @dataclass(slots=True)
 class RunSubmission:
     job_id: UUID
@@ -122,8 +127,15 @@ class RunManager:
                         raise IdempotencyMismatchError(
                             "request payload differs for idempotency key"
                         )
-                    await session.rollback()
-                    return existing
+                    if _should_reuse_idempotent_run(existing.status):
+                        await session.rollback()
+                        return existing
+                    LOGGER.info(
+                        "run.idempotent_previous_failed",
+                        run_id=existing.run_id,
+                        job_id=str(submission.job_id),
+                        genre=submission.genre,
+                    )
 
             if await dao.has_running_run(submission.job_id, submission.genre):
                 await session.rollback()
@@ -355,13 +367,19 @@ class RunManager:
                         raise IdempotencyMismatchError(
                             f"idempotency key reused with different payload"
                         )
+                    if _should_reuse_idempotent_run(existing.status):
+                        LOGGER.info(
+                            "classification.run.idempotent",
+                            run_id=existing.run_id,
+                            job_id=str(submission.job_id),
+                        )
+                        await session.rollback()
+                        return existing
                     LOGGER.info(
-                        "classification.run.idempotent",
+                        "classification.run.retry_after_failed_idempotent",
                         run_id=existing.run_id,
                         job_id=str(submission.job_id),
                     )
-                    await session.rollback()
-                    return existing
 
             # Allow concurrent runs if they have different idempotency keys
             # This enables parallel processing of chunks from the same job

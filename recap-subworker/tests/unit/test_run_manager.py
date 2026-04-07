@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import pytest
 from recap_subworker.domain.models import (
+    ClassificationJobPayload,
     ClusterDocument,
     ClusterJobParams,
     ClusterJobPayload,
@@ -22,10 +23,12 @@ from recap_subworker.domain.models import (
 )
 from recap_subworker.infra.config import Settings
 from recap_subworker.services.run_manager import (
+    ClassificationRunSubmission,
     ConcurrentRunError,
     IdempotencyMismatchError,
     RunManager,
     RunSubmission,
+    _hash_payload,
 )
 from recap_subworker.db.dao import RunRecord
 
@@ -186,6 +189,38 @@ async def test_create_run_reuses_existing_idempotent(payload):
 
 
 @pytest.mark.asyncio
+async def test_create_run_retries_failed_idempotent(payload):
+    session = FakeSession()
+    dao = FakeDAO(session)
+    existing = RunRecord(
+        run_id=3,
+        job_id=uuid4(),
+        genre="ai",
+        status="failed",
+        cluster_count=0,
+        request_payload={"request_hash": None},
+        response_payload=None,
+        error_message="transient failure",
+    )
+    dao.idempotent_record = existing
+    manager = make_manager(dao, session)
+    scheduled = {}
+
+    def recorder(record):
+        scheduled["run_id"] = record.run_id
+
+    manager._schedule_background = recorder  # type: ignore[attr-defined]
+    submission = RunSubmission(job_id=existing.job_id, genre="ai", payload=payload, idempotency_key="k")
+
+    record = await manager.create_run(submission)
+
+    assert record.run_id == 7
+    assert session.commit_called
+    assert dao.inserted
+    assert scheduled["run_id"] == 7
+
+
+@pytest.mark.asyncio
 async def test_create_run_detects_idempotency_mismatch(payload):
     session = FakeSession()
     dao = FakeDAO(session)
@@ -216,6 +251,38 @@ async def test_create_run_blocks_when_running(payload):
 
     with pytest.raises(ConcurrentRunError):
         await manager.create_run(submission)
+
+
+@pytest.mark.asyncio
+async def test_create_classification_run_retries_failed_idempotent():
+    session = FakeSession()
+    dao = FakeDAO(session)
+    payload = ClassificationJobPayload(texts=["classification text"])
+    request_hash = _hash_payload(payload.model_dump(mode="json"))
+    existing = RunRecord(
+        run_id=11,
+        job_id=uuid4(),
+        genre="classification",
+        status="failed",
+        cluster_count=0,
+        request_payload={"request_hash": request_hash},
+        response_payload=None,
+        error_message="stuck: process pool OOM",
+    )
+    dao.idempotent_record = existing
+    manager = make_manager(dao, session)
+    manager._classification_runner = object()
+
+    submission = ClassificationRunSubmission(
+        job_id=existing.job_id,
+        payload=payload,
+        idempotency_key="same-key",
+    )
+    record = await manager.create_classification_run(submission)
+
+    assert record.run_id == 7
+    assert session.commit_called
+    assert dao.inserted
 
 
 @pytest.mark.asyncio

@@ -69,3 +69,17 @@ class TestDeviceSeparation:
         restored = Settings(**dumped)
         assert restored.device == "cuda"
         assert restored.classification_device == "cpu"
+
+    def test_classification_worker_processes_capped_by_background_runs(self, monkeypatch):
+        """classification worker pool は background slots を超えない"""
+        monkeypatch.setenv("RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES", "6")
+        monkeypatch.setenv("RECAP_SUBWORKER_MAX_BACKGROUND_RUNS", "2")
+        settings = Settings(_env_file=None)
+        assert settings.classification_worker_processes == 2
+
+    def test_classification_worker_processes_preserves_lower_explicit_value(self, monkeypatch):
+        """明示的に小さい worker 数はそのまま維持する"""
+        monkeypatch.setenv("RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES", "1")
+        monkeypatch.setenv("RECAP_SUBWORKER_MAX_BACKGROUND_RUNS", "2")
+        settings = Settings(_env_file=None)
+        assert settings.classification_worker_processes == 1

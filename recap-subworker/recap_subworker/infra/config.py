@@ -52,6 +52,12 @@ class Settings(BaseSettings):
         if self.classification_device is None:
             self.classification_device = self.device
 
+        # Classification runs are throttled by RunManager. A larger worker pool
+        # than the number of background slots only pre-loads duplicate models and
+        # increases RSS without improving throughput.
+        if self.classification_worker_processes > self.max_background_runs:
+            self.classification_worker_processes = self.max_background_runs
+
         return self
 
     @property
@@ -100,7 +106,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("RECAP_PIPELINE_WORKER_PROCESSES", "RECAP_SUBWORKER_PIPELINE_WORKER_PROCESSES"),
     )
     classification_worker_processes: int = Field(
-        6,  # 6 parallel workers for classification
+        2,
         ge=1,
         description="Number of worker processes to use for classification execution",
         validation_alias=AliasChoices("RECAP_CLASSIFICATION_WORKER_PROCESSES", "RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES"),

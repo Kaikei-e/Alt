@@ -42,7 +42,7 @@ impl QueueWorker {
 
         loop {
             // Acquire semaphore permit (limits to 8 concurrent jobs)
-            let permit = self.semaphore.acquire().await;
+            let permit = Arc::clone(&self.semaphore).acquire_owned().await;
             if permit.is_err() {
                 // Semaphore was closed
                 break;
@@ -71,6 +71,8 @@ impl QueueWorker {
             let client = self.client.clone();
             let retry_delay_ms = self.retry_delay_ms;
             tokio::spawn(async move {
+                // Hold the permit for the full lifetime of the spawned task.
+                let _permit = permit;
                 if let Err(e) = Self::process_job(store, client, job, retry_delay_ms).await {
                     error!(error = %e, "job processing failed");
                 }

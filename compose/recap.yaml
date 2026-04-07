@@ -169,7 +169,7 @@ services:
       - RECAP_SUBWORKER_PROCESS_POOL_SIZE=2
       - RECAP_SUBWORKER_MAX_BACKGROUND_RUNS=2
       - RECAP_SUBWORKER_PIPELINE_WORKER_PROCESSES=2
-      - RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES=6
+      - RECAP_SUBWORKER_CLASSIFICATION_WORKER_PROCESSES=2
       - RECAP_SUBWORKER_CLASSIFICATION_POOL_IDLE_TIMEOUT_SECONDS=60
       # Embedding device (for sentence-transformers backend only, ignored when using ollama-remote)
       # - cuda: Use local NVIDIA GPU (requires workers=1 for CUDA compatibility)
