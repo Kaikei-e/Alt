@@ -41,14 +41,21 @@ export class MobileMorningLetterPage extends BasePage {
 	 * Wait for chat to be ready — opens the disclosure toggle if needed.
 	 */
 	async waitForChatReady(): Promise<void> {
-		// Open disclosure chat if toggle exists
+		// Wait for page to load first
+		await this.page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+
+		// Mobile layout uses disclosure pattern — try to open it
 		const toggle = this.chatToggle;
-		if (await toggle.isVisible({ timeout: 5000 }).catch(() => false)) {
+		try {
+			await toggle.waitFor({ state: "visible", timeout: 5000 });
 			const expanded = await toggle.getAttribute("aria-expanded");
 			if (expanded !== "true") {
 				await toggle.click();
 			}
+		} catch {
+			// No toggle found — may be in desktop layout or legacy layout
 		}
+
 		await expect(this.chatInput).toBeVisible({ timeout: 15000 });
 	}
 

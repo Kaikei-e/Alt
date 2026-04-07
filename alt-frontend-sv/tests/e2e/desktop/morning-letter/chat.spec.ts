@@ -14,11 +14,15 @@ test.describe("Desktop Morning Letter Chat", () => {
 		morningLetterPage = new DesktopMorningLetterPage(page);
 
 		// Mock GetLatestLetter — the +page.ts load function calls this on navigation.
-		// Return 404 (no letter) so the page renders the empty state + chat.
+		// Return Connect-RPC NotFound so the page renders the empty state + chat.
 		await page.route(
 			CONNECT_RPC_PATHS.morningLetterGetLatest,
 			async (route) => {
-				await fulfillJson(route, {}, 404);
+				await route.fulfill({
+					status: 404,
+					contentType: "application/json",
+					body: JSON.stringify({ code: "not_found", message: "no letter" }),
+				});
 			},
 		);
 	});

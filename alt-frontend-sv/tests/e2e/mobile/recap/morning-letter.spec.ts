@@ -8,10 +8,15 @@ import {
 test.describe("Mobile Morning Letter", () => {
 	test.beforeEach(async ({ page }) => {
 		// Mock GetLatestLetter — +page.ts load calls this on navigation
+		// Return Connect-RPC NotFound error format
 		await page.route(
 			CONNECT_RPC_PATHS.morningLetterGetLatest,
 			async (route) => {
-				await fulfillJson(route, {}, 404);
+				await route.fulfill({
+					status: 404,
+					contentType: "application/json",
+					body: JSON.stringify({ code: "not_found", message: "no letter" }),
+				});
 			},
 		);
 		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, (route) =>
