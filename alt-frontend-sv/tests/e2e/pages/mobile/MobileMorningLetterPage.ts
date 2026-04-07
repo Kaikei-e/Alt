@@ -14,15 +14,18 @@ export class MobileMorningLetterPage extends BasePage {
 	readonly floatingMenu: Locator;
 	readonly messageList: Locator;
 
+	readonly chatToggle: Locator;
+
 	constructor(page: Page) {
 		super(page);
 
 		this.pageHeader = page
 			.getByRole("heading", { name: /morning letter/i })
 			.first();
-		this.chatInput = page.getByPlaceholder(/ask about today/i);
+		this.chatToggle = page.getByRole("button", { name: /follow-up chat/i });
+		this.chatInput = page.getByPlaceholder(/ask about the briefing|ask about today/i);
 		this.sendButton = page.getByLabel("Send");
-		this.welcomeMessage = page.getByText(/hello.*ask me about/i);
+		this.welcomeMessage = page.getByText(/follow-up questions|hello.*ask me about/i);
 		this.thinkingIndicator = page.getByText(/searching/i);
 		this.floatingMenu = page.getByLabel("Open floating menu");
 		this.messageList = page
@@ -35,9 +38,17 @@ export class MobileMorningLetterPage extends BasePage {
 	}
 
 	/**
-	 * Wait for chat to be ready.
+	 * Wait for chat to be ready — opens the disclosure toggle if needed.
 	 */
 	async waitForChatReady(): Promise<void> {
+		// Open disclosure chat if toggle exists
+		const toggle = this.chatToggle;
+		if (await toggle.isVisible({ timeout: 5000 }).catch(() => false)) {
+			const expanded = await toggle.getAttribute("aria-expanded");
+			if (expanded !== "true") {
+				await toggle.click();
+			}
+		}
 		await expect(this.chatInput).toBeVisible({ timeout: 15000 });
 	}
 

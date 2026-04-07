@@ -149,7 +149,7 @@ func (h *Handler) StreamChat(
 		Query:               query,
 		CandidateArticleIDs: articleIDs,
 		Locale:              "ja", // Default to Japanese for morning letter
-		LetterContext:        letterContext,
+		LetterContext:       letterContext,
 	}
 
 	events := h.answerUsecase.Stream(ctx, input)

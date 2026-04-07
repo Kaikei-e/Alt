@@ -37,8 +37,8 @@ export class DesktopMorningLetterPage extends BasePage {
 			.filter({ hasText: /morning letter/i });
 
 		// Messages - use partial match for dynamic content
-		this.welcomeMessage = page.getByText(/i'm your morning letter assistant/i);
-		this.thinkingIndicator = page.getByText(/searching recent news/i);
+		this.welcomeMessage = page.getByText(/follow-up questions|morning letter assistant/i);
+		this.thinkingIndicator = page.getByText(/searching recent news|searching\.\.\./i);
 
 		// Metadata display
 		this.timeWindowDisplay = page.getByText(/articles from/i);

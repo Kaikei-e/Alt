@@ -129,13 +129,13 @@ def _create_provider_app() -> FastAPI:
 
         return PlanQueryResponse(
             plan=QueryPlan(
+                reasoning="The user is asking about the causes of Iran's oil crisis. This requires causal analysis.",
                 resolved_query=request.query,
                 search_queries=[request.query, f"{request.query} 分析"],
                 intent="causal_explanation",
                 retrieval_policy="global_only",
                 answer_format="causal_analysis",
                 should_clarify=False,
-                clarification_msg=None,
                 topic_entities=["test"],
             ),
             original_query=request.query,

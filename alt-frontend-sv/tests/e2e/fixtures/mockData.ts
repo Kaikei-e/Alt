@@ -416,6 +416,13 @@ export const CONNECT_RPC_PATHS = {
 	// MorningLetter service
 	morningLetterStreamChat:
 		"**/api/v2/alt.morning_letter.v2.MorningLetterService/StreamChat",
+	// MorningLetterReadService
+	morningLetterGetLatest:
+		"**/api/v2/alt.morning_letter.v2.MorningLetterReadService/GetLatestLetter",
+	morningLetterGetByDate:
+		"**/api/v2/alt.morning_letter.v2.MorningLetterReadService/GetLetterByDate",
+	morningLetterGetSources:
+		"**/api/v2/alt.morning_letter.v2.MorningLetterReadService/GetLetterSources",
 	// Recap service
 	getSevenDayRecap: "**/alt.recap.v2.RecapService/GetSevenDayRecap",
 	getThreeDayRecap: "**/alt.recap.v2.RecapService/GetThreeDayRecap",

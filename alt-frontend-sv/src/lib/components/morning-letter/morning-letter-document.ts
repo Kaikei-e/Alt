@@ -1,6 +1,9 @@
 /**
  * Pure presentation logic for Morning Letter document.
  * No Svelte imports — testable with vitest server project.
+ *
+ * Uses structural typing compatible with generated proto types
+ * (MorningLetterSection, MorningLetterSourceProto, Timestamp).
  */
 
 interface Section {
@@ -8,6 +11,8 @@ interface Section {
 	title: string;
 	bullets: string[];
 	genre?: string;
+	// Allow additional proto fields via index signature
+	[key: string]: unknown;
 }
 
 interface Source {
@@ -16,11 +21,13 @@ interface Source {
 	articleId: string;
 	sourceType: number;
 	position: number;
+	[key: string]: unknown;
 }
 
 interface ProtoTimestamp {
 	seconds: bigint;
 	nanos: number;
+	[key: string]: unknown;
 }
 
 const SECTION_ORDER: Record<string, number> = {
@@ -33,7 +40,7 @@ const SECTION_DISPLAY_TITLES: Record<string, string> = {
 	what_changed: "What Changed",
 };
 
-export function orderSections(sections: Section[]): Section[] {
+export function orderSections<T extends Section>(sections: T[]): T[] {
 	return [...sections].sort((a, b) => {
 		const orderA = SECTION_ORDER[a.key] ?? 100;
 		const orderB = SECTION_ORDER[b.key] ?? 100;
@@ -56,7 +63,7 @@ export function formatLetterDate(
 	return `${year}-${month}-${day}`;
 }
 
-export function getSectionDisplayTitle(section: Section): string {
+export function getSectionDisplayTitle(section: Pick<Section, "key" | "title">): string {
 	if (section.title) return section.title;
 
 	if (SECTION_DISPLAY_TITLES[section.key]) {

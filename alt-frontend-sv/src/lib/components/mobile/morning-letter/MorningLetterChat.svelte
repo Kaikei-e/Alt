@@ -49,7 +49,7 @@ let messages = $state<Message[]>([
 
 let isLoading = $state(false);
 let inputValue = $state("");
-let chatContainer: HTMLDivElement;
+let chatContainer = $state<HTMLDivElement>(undefined!);
 let currentAbortController: AbortController | null = null;
 
 async function scrollToBottom() {

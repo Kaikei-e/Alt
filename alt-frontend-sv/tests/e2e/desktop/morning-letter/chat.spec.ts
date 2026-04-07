@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { DesktopMorningLetterPage } from "../../pages/desktop/DesktopMorningLetterPage";
-import { fulfillConnectStream } from "../../utils/mockHelpers";
+import { fulfillConnectStream, fulfillJson } from "../../utils/mockHelpers";
 import {
 	CONNECT_MORNING_LETTER_STREAM_MESSAGES,
 	CONNECT_MORNING_LETTER_SIMPLE_RESPONSE,
@@ -12,6 +12,15 @@ test.describe("Desktop Morning Letter Chat", () => {
 
 	test.beforeEach(async ({ page }) => {
 		morningLetterPage = new DesktopMorningLetterPage(page);
+
+		// Mock GetLatestLetter — the +page.ts load function calls this on navigation.
+		// Return 404 (no letter) so the page renders the empty state + chat.
+		await page.route(
+			CONNECT_RPC_PATHS.morningLetterGetLatest,
+			async (route) => {
+				await fulfillJson(route, {}, 404);
+			},
+		);
 	});
 
 	test("renders page title and welcome message", async () => {

@@ -1,5 +1,5 @@
 import { test, expect } from "../../fixtures/pomFixtures";
-import { fulfillConnectStream } from "../../utils/mockHelpers";
+import { fulfillConnectStream, fulfillJson } from "../../utils/mockHelpers";
 import {
 	CONNECT_RPC_PATHS,
 	CONNECT_MORNING_LETTER_STREAM_MESSAGES,
@@ -7,6 +7,13 @@ import {
 
 test.describe("Mobile Morning Letter", () => {
 	test.beforeEach(async ({ page }) => {
+		// Mock GetLatestLetter — +page.ts load calls this on navigation
+		await page.route(
+			CONNECT_RPC_PATHS.morningLetterGetLatest,
+			async (route) => {
+				await fulfillJson(route, {}, 404);
+			},
+		);
 		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, (route) =>
 			fulfillConnectStream(route, CONNECT_MORNING_LETTER_STREAM_MESSAGES),
 		);
