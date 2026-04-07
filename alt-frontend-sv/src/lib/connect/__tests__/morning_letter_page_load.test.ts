@@ -48,7 +48,9 @@ describe("+page.ts load", () => {
 	it("calls getLetterByDate when date param is provided", async () => {
 		mockGetLetterByDate.mockResolvedValue(fakeLetter);
 
-		const result = (await load(makeLoadArgs({ date: "2026-04-07" }) as never)) as LoadResult;
+		const result = (await load(
+			makeLoadArgs({ date: "2026-04-07" }) as never,
+		)) as LoadResult;
 
 		expect(mockGetLetterByDate).toHaveBeenCalledWith(
 			expect.anything(),

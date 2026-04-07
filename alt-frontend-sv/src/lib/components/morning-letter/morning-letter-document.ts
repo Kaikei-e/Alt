@@ -63,7 +63,9 @@ export function formatLetterDate(
 	return `${year}-${month}-${day}`;
 }
 
-export function getSectionDisplayTitle(section: Pick<Section, "key" | "title">): string {
+export function getSectionDisplayTitle(
+	section: Pick<Section, "key" | "title">,
+): string {
 	if (section.title) return section.title;
 
 	if (SECTION_DISPLAY_TITLES[section.key]) {
@@ -99,9 +101,7 @@ export function isLetterStale(
 	return ageHours > thresholdHours;
 }
 
-export function deriveWithinHours(
-	targetDate: string | undefined,
-): number {
+export function deriveWithinHours(targetDate: string | undefined): number {
 	if (!targetDate) return 24;
 
 	// Parse civil date by decomposition (no new Date() timezone issues)

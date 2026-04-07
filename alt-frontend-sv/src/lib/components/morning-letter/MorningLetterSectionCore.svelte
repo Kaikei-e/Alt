@@ -1,8 +1,14 @@
 <script lang="ts">
 import { Loader2 } from "@lucide/svelte";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
-import { getSectionDisplayTitle, getSourcesForSection } from "./morning-letter-document";
-import type { MorningLetterSection, MorningLetterSourceProto } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
+import {
+	getSectionDisplayTitle,
+	getSourcesForSection,
+} from "./morning-letter-document";
+import type {
+	MorningLetterSection,
+	MorningLetterSourceProto,
+} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
 
 type Props = {
 	section: MorningLetterSection;

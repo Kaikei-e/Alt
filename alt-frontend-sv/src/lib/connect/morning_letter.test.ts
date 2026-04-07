@@ -214,10 +214,7 @@ describe("morning_letter read service client", () => {
 				new ConnectError("not found", Code.NotFound),
 			);
 
-			const result = await getLetterSources(
-				mockTransport,
-				"nonexistent",
-			);
+			const result = await getLetterSources(mockTransport, "nonexistent");
 
 			expect(result).toBeNull();
 		});

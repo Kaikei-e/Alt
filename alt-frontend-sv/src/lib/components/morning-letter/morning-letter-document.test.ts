@@ -28,9 +28,7 @@ describe("orderSections", () => {
 	});
 
 	it("handles missing sections gracefully", () => {
-		const sections = [
-			{ key: "by_genre:ai", title: "AI", bullets: [] },
-		];
+		const sections = [{ key: "by_genre:ai", title: "AI", bullets: [] }];
 
 		const ordered = orderSections(sections);
 
@@ -102,9 +100,27 @@ describe("getSectionDisplayTitle", () => {
 
 describe("getSourcesForSection", () => {
 	const sources = [
-		{ letterId: "l1", sectionKey: "top3", articleId: "a1", sourceType: 1, position: 0 },
-		{ letterId: "l1", sectionKey: "top3", articleId: "a2", sourceType: 1, position: 1 },
-		{ letterId: "l1", sectionKey: "what_changed", articleId: "a3", sourceType: 2, position: 0 },
+		{
+			letterId: "l1",
+			sectionKey: "top3",
+			articleId: "a1",
+			sourceType: 1,
+			position: 0,
+		},
+		{
+			letterId: "l1",
+			sectionKey: "top3",
+			articleId: "a2",
+			sourceType: 1,
+			position: 1,
+		},
+		{
+			letterId: "l1",
+			sectionKey: "what_changed",
+			articleId: "a3",
+			sourceType: 2,
+			position: 0,
+		},
 	];
 
 	it("filters sources by section key", () => {

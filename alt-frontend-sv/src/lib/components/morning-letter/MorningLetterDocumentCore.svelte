@@ -1,7 +1,14 @@
 <script lang="ts">
 import { AlertTriangle } from "@lucide/svelte";
-import type { MorningLetterDocument, MorningLetterSourceProto } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
-import { orderSections, formatLetterDate, isLetterStale } from "./morning-letter-document";
+import type {
+	MorningLetterDocument,
+	MorningLetterSourceProto,
+} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
+import {
+	orderSections,
+	formatLetterDate,
+	isLetterStale,
+} from "./morning-letter-document";
 import MorningLetterSectionCore from "./MorningLetterSectionCore.svelte";
 
 type Props = {
@@ -13,7 +20,9 @@ type Props = {
 let { letter, sources, sourcesLoading }: Props = $props();
 
 const orderedSections = $derived(orderSections(letter.body?.sections ?? []));
-const dateDisplay = $derived(formatLetterDate(letter.targetDate, letter.editionTimezone));
+const dateDisplay = $derived(
+	formatLetterDate(letter.targetDate, letter.editionTimezone),
+);
 const stale = $derived(isLetterStale(letter.createdAt, 12));
 </script>
 

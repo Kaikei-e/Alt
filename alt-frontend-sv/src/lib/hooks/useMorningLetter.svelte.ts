@@ -28,9 +28,7 @@ function isUnauthenticatedError(err: unknown): boolean {
 	return false;
 }
 
-export function useMorningLetter(
-	initialLetter?: MorningLetterDocument | null,
-) {
+export function useMorningLetter(initialLetter?: MorningLetterDocument | null) {
 	// undefined = no data provided yet (need to fetch), null = explicitly no letter (NotFound)
 	const hasInitialData = initialLetter !== undefined;
 	let letter = $state<MorningLetterDocument | null>(initialLetter ?? null);
@@ -89,10 +87,7 @@ export function useMorningLetter(
 				void loadSources(result.id);
 			}
 		} catch (err) {
-			if (
-				err instanceof ConnectError &&
-				err.code === Code.Unauthenticated
-			) {
+			if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
 				goto("/login");
 				return;
 			}
