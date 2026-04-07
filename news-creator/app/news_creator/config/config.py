@@ -73,13 +73,13 @@ class NewsCreatorConfig:
         self.llm_repeat_penalty = self._get_float("LLM_REPEAT_PENALTY", 1.15)  # Gemma4公式は1.0だが、CJKループ防止のため維持
         self.llm_num_keep = self._get_int("LLM_NUM_KEEP", -1)          # system保持
 
-        # Stop tokens（Gemma3/4 共通: <start_of_turn>/<end_of_turn>）
-        stop_tokens_str = os.getenv("LLM_STOP_TOKENS", "<end_of_turn>")
+        # Stop tokens（Gemma 4: <|turn>/<turn|>）
+        stop_tokens_str = os.getenv("LLM_STOP_TOKENS", "<turn|>")
         self.llm_stop_tokens = [
             token.strip() for token in stop_tokens_str.split(",") if token.strip()
         ]
         if not self.llm_stop_tokens:
-            self.llm_stop_tokens = ["<end_of_turn>"]
+            self.llm_stop_tokens = ["<turn|>"]
 
         # Summary-specific settings
         # Increased from 500 to 1000 tokens to support 1000-1500 character summaries with safety margin

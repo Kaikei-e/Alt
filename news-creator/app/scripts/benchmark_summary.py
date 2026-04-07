@@ -240,7 +240,7 @@ async def call_ollama(
             "top_p": 0.85,
             "top_k": 40,
             "repeat_penalty": 1.15,
-            "stop": ["<end_of_turn>"],
+            "stop": ["<turn|>"],
         },
         "keep_alive": "30m",
     }

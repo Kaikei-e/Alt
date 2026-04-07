@@ -1025,3 +1025,18 @@ func TestJudgeArticleQualityLowScoreStillDeletes(t *testing.T) {
 	assert.Contains(t, err.Error(), "summary repository is nil", "Error should indicate summary repository is nil")
 	assert.NotContains(t, err.Error(), "failed to connect to news-creator service", "Error should not be about connection")
 }
+
+// --- Gemma 4 chat template token tests ---
+
+func TestJudgeTemplateUsesGemma4TurnTokens(t *testing.T) {
+	t.Run("contains Gemma 4 turn tokens", func(t *testing.T) {
+		assert.Contains(t, JudgeTemplate, "<|turn>user", "JudgeTemplate must use Gemma 4 <|turn>user token")
+		assert.Contains(t, JudgeTemplate, "<|turn>model", "JudgeTemplate must use Gemma 4 <|turn>model token")
+		assert.Contains(t, JudgeTemplate, "<turn|>", "JudgeTemplate must use Gemma 4 <turn|> token")
+	})
+
+	t.Run("does not contain Gemma 3 turn tokens", func(t *testing.T) {
+		assert.NotContains(t, JudgeTemplate, "<start_of_turn>", "JudgeTemplate must not contain Gemma 3 <start_of_turn>")
+		assert.NotContains(t, JudgeTemplate, "<end_of_turn>", "JudgeTemplate must not contain Gemma 3 <end_of_turn>")
+	})
+}

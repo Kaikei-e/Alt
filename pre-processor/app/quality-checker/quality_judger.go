@@ -77,7 +77,7 @@ type Score struct {
 }
 
 const JudgeTemplate = `
-<start_of_turn>user
+<|turn>user
 You are an expert Japanese news editor and quality evaluator. Your task is to rigorously assess the quality of a Japanese news summary against its source article.
 
 ROLE:
@@ -125,7 +125,7 @@ OUTPUT FORMAT:
 - X must be an integer 1-10 (no decimals, no fractions)
 - Do not output anything else: no explanations, no quotes, no extra tags, no preamble
 - No leading/trailing spaces or newlines
-- Do not output control tokens (e.g., <end_of_turn>)
+- Do not output control tokens (e.g., <turn|>)
 
 CRITICAL RULES:
 - Base your score on objective evaluation of all five criteria
@@ -141,8 +141,8 @@ Summary:
 
 Respond with only:
 <score>X</score>
-<end_of_turn>
-<start_of_turn>model
+<turn|>
+<|turn>model
 
 `
 
@@ -153,7 +153,7 @@ func scoreSummary(ctx context.Context, prompt string) (*Score, error) {
 		TopP:        0.5,  // More restrictive sampling
 		NumPredict:  60,   // Shorter to force concise responses
 		NumCtx:      8192, // Match news-creator 8K model to prevent Ollama model reloads
-		Stop:        []string{"</score>", "\n\n", "ARTICLE:", "SUMMARY:", "<|user|>", "<|assistant|>"},
+		Stop:        []string{"</score>", "\n\n", "ARTICLE:", "SUMMARY:", "<turn|>", "<|user|>", "<|assistant|>"},
 	}
 
 	payload := judgePrompt{

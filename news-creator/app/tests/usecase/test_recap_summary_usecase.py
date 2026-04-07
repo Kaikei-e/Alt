@@ -892,7 +892,7 @@ async def test_hierarchical_3days_map_phase_uses_3days_prompt_contract():
 
     assert captured_prompts, "Expected at least one hierarchical map prompt"
     first_prompt = captured_prompts[0]
-    assert first_prompt.startswith("<start_of_turn>system\n")
+    assert first_prompt.startswith("<|turn>system\n")
     assert "直近3日間" in first_prompt
     assert "language" in first_prompt and '"ja"' in first_prompt
 
@@ -1086,9 +1086,9 @@ async def test_3days_prompt_uses_gemma_turn_format():
 
     call_args = llm_provider.generate.call_args
     prompt = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt", "")
-    assert prompt.startswith("<start_of_turn>system\n")
-    assert "<start_of_turn>user\n" in prompt
-    assert prompt.endswith("<start_of_turn>model\n")
+    assert prompt.startswith("<|turn>system\n")
+    assert "<|turn>user\n" in prompt
+    assert prompt.endswith("<|turn>model\n")
 
 
 @pytest.mark.asyncio

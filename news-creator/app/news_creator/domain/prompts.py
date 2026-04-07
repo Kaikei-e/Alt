@@ -1,6 +1,6 @@
 """Prompt templates for LLM content generation."""
 
-SUMMARY_PROMPT_TEMPLATE = """<start_of_turn>user
+SUMMARY_PROMPT_TEMPLATE = """<|turn>user
 You are an expert multilingual journalist specializing in Japanese news summarization.
 
 TASK:
@@ -54,12 +54,12 @@ ARTICLE TO SUMMARIZE:
 ---
 
 Write 3-5 paragraphs in Japanese with specific facts, numbers, dates, and proper nouns. Count characters as you write. Target 300-1000 characters. CRITICAL: Complete your output - do not truncate mid-sentence. Always end with a complete sentence.
-<end_of_turn>
-<start_of_turn>model
+<turn|>
+<|turn>model
 """
 
 
-CHUNK_SUMMARY_PROMPT_TEMPLATE = """<start_of_turn>user
+CHUNK_SUMMARY_PROMPT_TEMPLATE = """<|turn>user
 You are an expert editor extracting key information for a later summarization task.
 
 TASK:
@@ -80,12 +80,12 @@ TEXT CHUNK:
 ---
 
 Extract key facts:
-<end_of_turn>
-<start_of_turn>model
+<turn|>
+<|turn>model
 """
 
 
-RECAP_CLUSTER_SUMMARY_PROMPT = r"""<start_of_turn>system
+RECAP_CLUSTER_SUMMARY_PROMPT = r"""<|turn>system
 You are an expert Japanese news editor. Generate structured Japanese recap bullets strictly following the contract below.
 Return a single JSON object and nothing else.
 
@@ -136,8 +136,8 @@ Before generating, verify:
 1. Response starts with {{
 2. Response ends with }}
 3. No markdown formatting
-<end_of_turn>
-<start_of_turn>user
+<turn|>
+<|turn>user
 Job ID: {job_id}
 Genre: {genre}
 Top Terms (per cluster) and representative sentences are provided below.
@@ -146,6 +146,6 @@ Use them to infer the overall storyline and synthesize the summary.
 {cluster_section}
 
 Return ONLY the JSON object. Start with {{ and end with }}.
-<end_of_turn>
-<start_of_turn>model
+<turn|>
+<|turn>model
 """

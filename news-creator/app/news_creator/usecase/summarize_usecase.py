@@ -435,6 +435,10 @@ class SummarizeUsecase:
                 fallback_summary = (
                     fallback_summary.replace("<start_of_turn>", "")
                     .replace("<end_of_turn>", "")
+                    .replace("<|turn>", "")
+                    .replace("<turn|>", "")
+                    .replace("<|channel>thought", "")
+                    .replace("<channel|>", "")
                     .replace("<|system|>", "")
                     .replace("<|user|>", "")
                     .replace("<|assistant|>", "")
@@ -781,6 +785,8 @@ class SummarizeUsecase:
             # We'll just filter valid exact matches or basic substring checks if it's a single token.
             ignored_tokens = {
                 "<start_of_turn>", "<end_of_turn>",
+                "<|turn>", "<turn|>",
+                "<|channel>thought", "<channel|>",
                 "<|system|>", "<|user|>", "<|assistant|>"
             }
 
@@ -916,10 +922,12 @@ class SummarizeUsecase:
 
         original_length = len(content)
 
-        # Remove Gemma3 turn tokens first (most important)
+        # Remove Gemma turn tokens (Gemma 4: <|turn>/<turn|>, legacy Gemma 3: <start_of_turn>/<end_of_turn>)
         cleaned = (
             content.replace("<start_of_turn>", "")
             .replace("<end_of_turn>", "")
+            .replace("<|turn>", "")
+            .replace("<turn|>", "")
             .replace("<|system|>", "")
             .replace("<|user|>", "")
             .replace("<|assistant|>", "")
@@ -936,8 +944,11 @@ class SummarizeUsecase:
                 }
             )
 
-        # Remove markdown code blocks (```...```)
+        # Strip Gemma 4 thinking blocks (<|channel>thought\n...<channel|>)
         import re
+        cleaned = re.sub(r"<\|channel>thought.*?<channel\|>", "", cleaned, flags=re.DOTALL)
+
+        # Remove markdown code blocks (```...```)
         # Remove code blocks with triple backticks
         cleaned = re.sub(r'```[^`]*```', '', cleaned, flags=re.DOTALL)
         # Remove standalone triple backticks

@@ -91,13 +91,13 @@ class RecapSummaryUsecase:
     def _wrap_gemma_prompt(self, prompt_body: str) -> str:
         body = prompt_body.strip()
         return (
-            "<start_of_turn>system\n"
+            "<|turn>system\n"
             f"{GEMMA_RECAP_SYSTEM_PROMPT}\n"
-            "<end_of_turn>\n"
-            "<start_of_turn>user\n"
+            "<turn|>\n"
+            "<|turn>user\n"
             f"{body}\n"
-            "<end_of_turn>\n"
-            "<start_of_turn>model\n"
+            "<turn|>\n"
+            "<|turn>model\n"
         )
 
     async def generate_summary(self, request: RecapSummaryRequest) -> RecapSummaryResponse:
@@ -1448,6 +1448,9 @@ class RecapSummaryUsecase:
         if not content:
             raise RuntimeError("LLM returned empty response for recap summary")
 
+        # Strip Gemma 4 thinking blocks before JSON parse
+        content = re.sub(r"<\|channel>thought.*?<channel\|>", "", content, flags=re.DOTALL)
+
         parse_errors = 0
         try:
             # Structured Outputs should trigger clean JSON, but just in case, straightforward load.
@@ -1488,6 +1491,9 @@ class RecapSummaryUsecase:
     ) -> IntermediateSummary:
         if not content:
             raise RuntimeError("LLM returned empty response for intermediate recap summary")
+
+        # Strip Gemma 4 thinking blocks before JSON parse
+        content = re.sub(r"<\|channel>thought.*?<channel\|>", "", content, flags=re.DOTALL)
 
         try:
             parsed = json.loads(content)

@@ -325,3 +325,36 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
             f"Expected at least 2 generate_raw calls (map + reduce), got {len(generate_raw_calls)}"
         )
         assert summary
+
+
+# --- Gemma 4 token cleanup tests ---
+
+
+class TestGemma4TokenCleanup:
+    """Output cleanup must handle Gemma 4 turn tokens and thinking blocks."""
+
+    def test_clean_summary_text_strips_gemma4_turn_tokens(self):
+        """_clean_summary_text must strip Gemma 4 <|turn> and <turn|> tokens."""
+        config = _make_config()
+        llm_provider = AsyncMock()
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        text = "<|turn>model\nテスト要約です。<turn|>"
+        cleaned = usecase._clean_summary_text(text, "test-article")
+        assert "<|turn>" not in cleaned
+        assert "<turn|>" not in cleaned
+        assert "テスト要約" in cleaned
+
+    def test_clean_summary_text_strips_thinking_blocks(self):
+        """_clean_summary_text must strip Gemma 4 thinking channel blocks."""
+        config = _make_config()
+        llm_provider = AsyncMock()
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        text = "実際の出力<|channel>thought\n内部推論プロセス<channel|>続きの出力"
+        cleaned = usecase._clean_summary_text(text, "test-article")
+        assert "<|channel>" not in cleaned
+        assert "<channel|>" not in cleaned
+        assert "内部推論" not in cleaned
+        assert "実際の出力" in cleaned
+        assert "続きの出力" in cleaned
