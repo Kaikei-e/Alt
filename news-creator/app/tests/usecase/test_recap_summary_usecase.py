@@ -128,8 +128,10 @@ async def test_generate_summary_raises_error_when_invalid_json():
 
     usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
 
-    with pytest.raises(RuntimeError):
-        await usecase.generate_summary(request)
+    # Invalid JSON triggers graceful fallback (not exception) — Issue 5 improvement
+    response = await usecase.generate_summary(request)
+    assert response.metadata.is_degraded is True
+    assert response.metadata.model == "cluster-fallback"
 
 
 @pytest.mark.asyncio
@@ -909,3 +911,659 @@ async def test_hierarchical_reduce_group_uses_hold_slot_generate_raw():
     )
     assert response.summary is not None
 
+
+# ============================================================================
+# Issue 2: Prompt Split Tests (window_days → 3days/7days template selection)
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_selects_3days_prompt_when_window_is_3():
+    """window_days=3 → 3days-specific prompt template is used."""
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.25
+    config.max_repetition_retries = 2
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
+    config.hierarchical_threshold_chars = 100000
+    config.hierarchical_threshold_clusters = 50
+    config.hierarchical_chunk_max_chars = 20000
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps({
+            "title": "AI最新動向",
+            "bullets": [
+                "TechFusion は 4月5日に Nova Labs 買収を発表し、統合後の推論基盤共通化を打ち出した。買収総額は12億ドルで、企業向け AI 競争を加速させる可能性がある [1]",
+                "Google は 4月6日に新モデルの API 提供時期を公開し、企業導入の前倒しを促した。価格改定も重なり、主要クラウド各社の競争は強まっている [2]",
+            ],
+            "language": "ja",
+            "references": [
+                {"id": 1, "url": "https://a.com", "domain": "a.com"},
+                {"id": 2, "url": "https://b.com", "domain": "b.com"},
+            ],
+        }),
+        model="gemma4-e4b-q4km",
+        prompt_eval_count=100,
+        eval_count=50,
+        total_duration=1_000_000_000,
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(text="Sample sentence for testing.", source_url="https://example.com/1", article_id="art1"),
+                    RepresentativeSentence(text="Another sample sentence for testing.", source_url="https://example.com/2", article_id="art2"),
+                    RepresentativeSentence(text="Third sample sentence for testing.", source_url="https://example.com/3", article_id="art3"),
+                    RepresentativeSentence(text="Fourth sample sentence for testing.", source_url="https://example.com/4", article_id="art4"),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    await usecase.generate_summary(request)
+
+    # Verify that the prompt passed to LLM contains 3days-specific markers
+    _, kwargs = llm_provider.generate.call_args
+    # The generate() first arg is prompt (positional)
+    call_args = llm_provider.generate.call_args
+    prompt = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt", "")
+    assert "変化" in prompt or "変わった" in prompt, (
+        "3days prompt should prioritize changes, but prompt does not contain change-focused markers"
+    )
+
+
+@pytest.mark.asyncio
+async def test_selects_7days_prompt_when_window_is_none():
+    """window_days=None (default) → existing 7days prompt template is used."""
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.25
+    config.max_repetition_retries = 2
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
+    config.hierarchical_threshold_chars = 100000
+    config.hierarchical_threshold_clusters = 50
+    config.hierarchical_chunk_max_chars = 20000
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps({
+            "title": "AI最新動向",
+            "bullets": ["テスト要約"],
+            "language": "ja",
+        }),
+        model="gemma4-e4b-q4km",
+        prompt_eval_count=100,
+        eval_count=50,
+        total_duration=1_000_000_000,
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(text="Sample sentence for testing.")
+                ],
+            )
+        ],
+        # window_days not set → defaults to None → 7days behavior
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    await usecase.generate_summary(request)
+
+    # 7days prompt should contain the existing deep-dive markers
+    call_args = llm_provider.generate.call_args
+    prompt = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt", "")
+    # The existing prompt says "3〜7 個" for bullets
+    assert "3〜7" in prompt, (
+        "7days prompt should contain '3〜7' bullet count spec from existing template"
+    )
+
+
+@pytest.mark.asyncio
+async def test_3days_max_bullets_default_is_7():
+    """window_days=3 with no explicit max_bullets → default is 7 (not 15)."""
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.25
+    config.max_repetition_retries = 2
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
+    config.hierarchical_threshold_chars = 100000
+    config.hierarchical_threshold_clusters = 50
+    config.hierarchical_chunk_max_chars = 20000
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps({
+            "title": "テスト",
+            "bullets": [
+                "要点1: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                "要点2: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                "要点3: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                "要点4: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                "要点5: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                "要点6: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                "要点7: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                "要点8: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+            ],
+            "language": "ja",
+        }),
+        model="gemma4-e4b-q4km",
+        prompt_eval_count=100,
+        eval_count=50,
+        total_duration=1_000_000_000,
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(text="Sample one.", source_url="https://example.com/1", article_id="art1"),
+                    RepresentativeSentence(text="Sample two.", source_url="https://example.com/2", article_id="art2"),
+                    RepresentativeSentence(text="Sample three.", source_url="https://example.com/3", article_id="art3"),
+                    RepresentativeSentence(text="Sample four.", source_url="https://example.com/4", article_id="art4"),
+                ],
+            )
+        ],
+        window_days=3,
+        # No options → max_bullets should default to 7 for 3days
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # 8 bullets in LLM response but max_bullets=7 → trimmed to 7
+    assert len(response.summary.bullets) <= 7
+
+
+@pytest.mark.asyncio
+async def test_3days_prompt_contains_contract_examples_and_forbidden_patterns():
+    """3days prompt should inline the contract, examples, and invalid-pattern guidance."""
+    config = _create_mock_config()
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps({
+            "title": "AI最新動向",
+            "bullets": [
+                "TechFusion は 4月5日に Nova Labs 買収を発表し、統合後の製品戦略を示した [1]",
+                "Google は 新モデルを公開し、API 提供時期も明示した [2]",
+            ],
+            "language": "ja",
+            "references": [
+                {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
+                {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
+            ],
+        }),
+        model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="TechFusion bought Nova Labs for $1.2B.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                    RepresentativeSentence(
+                        text="Google launched a new model and shared the API timeline.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                    RepresentativeSentence(
+                        text="Japanese regulators published new AI guidance.",
+                        source_url="https://example.com/3",
+                        article_id="art3",
+                    ),
+                    RepresentativeSentence(
+                        text="AWS lowered pricing for inference workloads.",
+                        source_url="https://example.com/4",
+                        article_id="art4",
+                    ),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    await usecase.generate_summary(request)
+
+    call_args = llm_provider.generate.call_args
+    prompt = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt", "")
+    assert "良い例" in prompt
+    assert "不正な例" in prompt
+    assert '"references"' in prompt
+    assert "... [1]" in prompt
+
+# ============================================================================
+# Issue 3: Reduce Quality Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_reduce_group_uses_structured_prompt():
+    """Reduce prompt should contain deduplication and reference preservation rules."""
+    from contextlib import asynccontextmanager
+
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.25
+
+    llm_provider = Mock()
+
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    captured_prompts = []
+
+    async def mock_generate_raw(prompt, **kwargs):
+        captured_prompts.append(prompt)
+        return LLMGenerateResponse(
+            response=json.dumps({
+                "bullets": ["統合された要約 [1]"],
+                "language": "ja",
+            }),
+            model="gemma4-e4b-q4km",
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = mock_generate_raw
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+
+    from news_creator.domain.models import IntermediateSummary
+    group = [
+        IntermediateSummary(bullets=["TechFusionがNova Labsを買収 [1]", "Google新モデル発表 [2]"], language="ja"),
+        IntermediateSummary(bullets=["TechFusion買収でAI業界再編 [1]", "日銀金利変更 [3]"], language="ja"),
+    ]
+
+    result = await usecase._reduce_group(group, Mock(job_id="test", genre="ai"), {}, {})
+
+    assert len(captured_prompts) == 1
+    reduce_prompt = captured_prompts[0]
+    # Reduce prompt should contain structured rules (Issue 3 requirement)
+    assert "重複" in reduce_prompt or "統合" in reduce_prompt, (
+        "Reduce prompt should contain deduplication rules"
+    )
+    assert "参照" in reduce_prompt or "[n]" in reduce_prompt, (
+        "Reduce prompt should mention reference preservation"
+    )
+
+
+@pytest.mark.asyncio
+async def test_metadata_includes_reduce_depth():
+    """Response metadata should include reduce_depth when hierarchical path is used."""
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.25
+    config.max_repetition_retries = 2
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
+    config.hierarchical_threshold_chars = 100000
+    config.hierarchical_threshold_clusters = 50
+    config.hierarchical_chunk_max_chars = 20000
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps({
+            "title": "テスト",
+            "bullets": ["要約"],
+            "language": "ja",
+        }),
+        model="gemma4-e4b-q4km",
+        prompt_eval_count=100,
+        eval_count=50,
+        total_duration=1_000_000_000,
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[RepresentativeSentence(text="Sample.")],
+            )
+        ],
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # reduce_depth should exist in metadata (0 for single-shot)
+    assert hasattr(response.metadata, "reduce_depth")
+    assert response.metadata.reduce_depth == 0
+
+
+# ============================================================================
+# Issue 5: Fallback / Degraded Mode Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_fallback_includes_degraded_metadata():
+    """When LLM returns invalid JSON on all retries, response has is_degraded=True."""
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.25
+    config.max_repetition_retries = 0  # No retries → immediate fallback
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
+    config.hierarchical_threshold_chars = 100000
+    config.hierarchical_threshold_clusters = 50
+    config.hierarchical_chunk_max_chars = 20000
+
+    llm_provider = AsyncMock()
+    # Return invalid JSON to trigger fallback
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="This is not valid JSON at all",
+        model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Sample sentence.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                ],
+            )
+        ],
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+
+    # Should not raise — should fall back gracefully
+    response = await usecase.generate_summary(request)
+
+    assert response.metadata.is_degraded is True
+    assert response.metadata.degradation_reason is not None
+    assert len(response.metadata.degradation_reason) > 0
+
+
+@pytest.mark.asyncio
+async def test_fallback_preserves_references():
+    """Fallback response should include references from cluster source_urls."""
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.25
+    config.max_repetition_retries = 0
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
+    config.hierarchical_threshold_chars = 100000
+    config.hierarchical_threshold_clusters = 50
+    config.hierarchical_chunk_max_chars = 20000
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="not json",
+        model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="TechFusion bought Nova Labs for $1.2B.",
+                        source_url="https://techfusion.com/news",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                ],
+            ),
+            RecapClusterInput(
+                cluster_id=1,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Google launched Gemini 3.0.",
+                        source_url="https://blog.google/gemini",
+                        article_id="art2",
+                    ),
+                ],
+            ),
+        ],
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # Fallback should preserve references
+    assert response.summary.references is not None
+    assert len(response.summary.references) >= 1
+    urls = [ref.url for ref in response.summary.references]
+    assert "https://techfusion.com/news" in urls
+
+
+@pytest.mark.asyncio
+async def test_fallback_selects_centroids_first():
+    """Fallback should prefer centroid sentences over non-centroid."""
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.25
+    config.max_repetition_retries = 0
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
+    config.hierarchical_threshold_chars = 100000
+    config.hierarchical_threshold_clusters = 50
+    config.hierarchical_chunk_max_chars = 20000
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="not json",
+        model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(text="Non-centroid secondary info.", is_centroid=False),
+                    RepresentativeSentence(text="CENTROID: Main topic here.", is_centroid=True),
+                ],
+            ),
+        ],
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # First bullet should be the centroid sentence
+    assert "CENTROID" in response.summary.bullets[0]
+
+
+@pytest.mark.asyncio
+async def test_generate_summary_bypasses_llm_for_low_evidence_3days():
+    """Low-evidence 3days requests should use deterministic extractive output."""
+    config = _create_mock_config()
+    config.recap_min_source_articles_for_llm = 3
+    config.recap_min_representative_sentences_for_llm = 4
+
+    llm_provider = AsyncMock()
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="TechFusion announced a small update.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    llm_provider.generate.assert_not_awaited()
+    assert response.metadata.is_degraded is True
+    assert response.metadata.model == "low-evidence-extractive"
+    assert response.metadata.degradation_reason == "low_evidence_extractive"
+    assert response.summary.references is not None
+
+
+@pytest.mark.asyncio
+async def test_generate_summary_repairs_placeholder_and_non_japanese_output():
+    """Semantic contract violations should trigger one repair attempt before fallback."""
+    config = _create_mock_config()
+    config.recap_summary_repair_attempts = 1
+    config.recap_ja_ratio_threshold = 0.6
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.side_effect = [
+        LLMGenerateResponse(
+            response=json.dumps({
+                "title": "AI Updates",
+                "bullets": ["... [1]"],
+                "language": "en",
+                "references": [{"id": 1, "url": "https://example.com/1", "domain": "example.com"}],
+            }),
+            model="gemma4-e4b-q4km",
+        ),
+        LLMGenerateResponse(
+            response=json.dumps({
+                "title": "AI業界の重要更新",
+                "bullets": [
+                    "TechFusion は 4月5日に Nova Labs の買収を発表し、統合後に推論基盤を共通化する方針を示した。買収額は12億ドルで、生成AI向け最適化技術の獲得が狙いとみられる [1]",
+                    "Google は 4月6日に新モデルの API 提供時期を公表し、企業導入の前倒しを促した。競合各社も価格改定を進めており、市場の競争は一段と激しくなっている [2]",
+                ],
+                "language": "ja",
+                "references": [
+                    {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
+                    {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
+                ],
+            }),
+            model="gemma4-e4b-q4km",
+        ),
+    ]
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(text="TechFusion announced the Nova Labs acquisition.", source_url="https://example.com/1", article_id="art1"),
+                    RepresentativeSentence(text="Google shared an API launch timeline for the new model.", source_url="https://example.com/2", article_id="art2"),
+                    RepresentativeSentence(text="Regulators published AI safety guidance.", source_url="https://example.com/3", article_id="art3"),
+                    RepresentativeSentence(text="AWS cut inference prices for enterprise workloads.", source_url="https://example.com/4", article_id="art4"),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    assert llm_provider.generate.await_count == 2
+    assert response.metadata.is_degraded is False
+    assert response.summary.language == "ja"
+    assert response.summary.title == "AI業界の重要更新"
+
+
+@pytest.mark.asyncio
+async def test_generate_summary_repairs_reference_mismatch():
+    """Broken [n] citations should trigger repair instead of accepting the payload."""
+    config = _create_mock_config()
+    config.recap_summary_repair_attempts = 1
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.side_effect = [
+        LLMGenerateResponse(
+            response=json.dumps({
+                "title": "AI業界の更新",
+                "bullets": [
+                    "TechFusion は Nova Labs の買収を発表し、統合完了時期も示した [2]",
+                    "Google は 新モデルの API 提供時期を公開した [3]",
+                ],
+                "language": "ja",
+                "references": [{"id": 1, "url": "https://example.com/1", "domain": "example.com"}],
+            }),
+            model="gemma4-e4b-q4km",
+        ),
+        LLMGenerateResponse(
+            response=json.dumps({
+                "title": "AI業界の更新",
+                "bullets": [
+                    "TechFusion は Nova Labs の買収を発表し、統合完了時期も示した。買収額は12億ドルで、生成AI向け最適化技術を取り込む狙いがある [1]",
+                    "Google は 新モデルの API 提供時期を公開し、企業導入の前倒しを促した。価格改定も重なり市場競争は一段と激しくなっている [2]",
+                ],
+                "language": "ja",
+                "references": [
+                    {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
+                    {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
+                ],
+            }),
+            model="gemma4-e4b-q4km",
+        ),
+    ]
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(text="TechFusion announced the Nova Labs acquisition.", source_url="https://example.com/1", article_id="art1"),
+                    RepresentativeSentence(text="Google shared an API launch timeline for the new model.", source_url="https://example.com/2", article_id="art2"),
+                    RepresentativeSentence(text="Regulators published AI safety guidance.", source_url="https://example.com/3", article_id="art3"),
+                    RepresentativeSentence(text="AWS cut inference prices for enterprise workloads.", source_url="https://example.com/4", article_id="art4"),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    assert llm_provider.generate.await_count == 2
+    assert response.metadata.is_degraded is False
+    assert response.summary.references is not None
+    assert [ref.id for ref in response.summary.references] == [1, 2]

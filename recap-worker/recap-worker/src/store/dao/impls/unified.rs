@@ -56,7 +56,10 @@ impl JobDao for UnifiedDao {
         window_days: u32,
     ) -> Result<Option<Uuid>> {
         crate::store::dao::job::RecapDao::create_job_with_lock_and_window(
-            &self.pool, job_id, note, window_days,
+            &self.pool,
+            job_id,
+            note,
+            window_days,
         )
         .await
     }
@@ -349,11 +352,7 @@ impl OutputDao for UnifiedDao {
         crate::store::dao::output::RecapDao::get_clusters_by_job(&self.pool, job_id).await
     }
 
-    async fn search_recaps_by_term(
-        &self,
-        term: &str,
-        limit: i32,
-    ) -> Result<Vec<RecapSearchHit>> {
+    async fn search_recaps_by_term(&self, term: &str, limit: i32) -> Result<Vec<RecapSearchHit>> {
         crate::store::dao::output::RecapDao::search_recaps_by_term(&self.pool, term, limit).await
     }
 }
@@ -444,6 +443,41 @@ impl MorningDao for UnifiedDao {
         since: DateTime<Utc>,
     ) -> Result<Vec<(Uuid, Uuid, bool, DateTime<Utc>)>> {
         crate::store::dao::morning::RecapDao::get_morning_article_groups(&self.pool, since).await
+    }
+
+    async fn save_morning_letter(
+        &self,
+        letter: &crate::store::models::MorningLetter,
+    ) -> Result<()> {
+        crate::store::dao::morning::RecapDao::save_morning_letter(&self.pool, letter).await
+    }
+
+    async fn save_morning_letter_sources(
+        &self,
+        sources: &[crate::store::models::MorningLetterSource],
+    ) -> Result<()> {
+        crate::store::dao::morning::RecapDao::save_morning_letter_sources(&self.pool, sources).await
+    }
+
+    async fn get_morning_letter_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> Result<Option<crate::store::models::MorningLetter>> {
+        crate::store::dao::morning::RecapDao::get_morning_letter_by_date(&self.pool, date).await
+    }
+
+    async fn get_latest_morning_letter(
+        &self,
+    ) -> Result<Option<crate::store::models::MorningLetter>> {
+        crate::store::dao::morning::RecapDao::get_latest_morning_letter(&self.pool).await
+    }
+
+    async fn get_morning_letter_sources(
+        &self,
+        letter_id: Uuid,
+    ) -> Result<Vec<crate::store::models::MorningLetterSource>> {
+        crate::store::dao::morning::RecapDao::get_morning_letter_sources(&self.pool, letter_id)
+            .await
     }
 }
 

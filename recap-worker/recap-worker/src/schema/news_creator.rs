@@ -110,6 +110,27 @@ pub(crate) static SUMMARY_RESPONSE_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
                         "type": "integer",
                         "minimum": 0,
                         "description": "Processing time in milliseconds"
+                    },
+                    "is_degraded": {
+                        "type": "boolean",
+                        "default": false,
+                        "description": "Whether this response is a degraded fallback"
+                    },
+                    "degradation_reason": {
+                        "type": ["string", "null"],
+                        "maxLength": 500,
+                        "description": "Reason for degradation if is_degraded is true"
+                    },
+                    "reduce_depth": {
+                        "type": ["integer", "null"],
+                        "minimum": 0,
+                        "description": "Depth of recursive reduce (0 for single-shot)"
+                    },
+                    "reduce_info_retention": {
+                        "type": ["number", "null"],
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Entity retention ratio after reduce (0.0-1.0)"
                     }
                 },
                 "required": ["model"]
@@ -164,6 +185,12 @@ pub(crate) static SUMMARY_REQUEST_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
                         "default": 0.7
                     }
                 }
+            },
+            "window_days": {
+                "type": ["integer", "null"],
+                "minimum": 1,
+                "maximum": 30,
+                "description": "Recap window in days (3 for 3-day, 7 for 7-day)"
             }
         },
         "required": ["job_id", "genre", "clusters"],
@@ -353,5 +380,59 @@ mod tests {
 
         let result = validate_json(&SUMMARY_REQUEST_SCHEMA, &request);
         assert!(!result.valid);
+    }
+
+    #[test]
+    fn schema_accepts_degraded_response() {
+        let response = json!({
+            "job_id": "550e8400-e29b-41d4-a716-446655440000",
+            "genre": "ai",
+            "summary": {
+                "title": "AIの主要トピック (自動抽出)",
+                "bullets": ["Extractive fallback bullet [1]"],
+                "language": "ja",
+                "references": [{"id": 1, "url": "https://example.com", "domain": "example.com"}]
+            },
+            "metadata": {
+                "model": "cluster-fallback",
+                "is_degraded": true,
+                "degradation_reason": "LLM generation failed after all retries",
+                "reduce_depth": 0
+            }
+        });
+
+        let result = validate_json(&SUMMARY_RESPONSE_SCHEMA, &response);
+        assert!(result.valid, "Errors: {:?}", result.errors);
+    }
+
+    #[test]
+    fn schema_accepts_request_with_window_days() {
+        let request = json!({
+            "job_id": "550e8400-e29b-41d4-a716-446655440000",
+            "genre": "ai",
+            "clusters": [{
+                "cluster_id": 0,
+                "representative_sentences": ["Test sentence."]
+            }],
+            "window_days": 3
+        });
+
+        let result = validate_json(&SUMMARY_REQUEST_SCHEMA, &request);
+        assert!(result.valid, "Errors: {:?}", result.errors);
+    }
+
+    #[test]
+    fn schema_accepts_request_without_window_days() {
+        let request = json!({
+            "job_id": "550e8400-e29b-41d4-a716-446655440000",
+            "genre": "ai",
+            "clusters": [{
+                "cluster_id": 0,
+                "representative_sentences": ["Test sentence."]
+            }]
+        });
+
+        let result = validate_json(&SUMMARY_REQUEST_SCHEMA, &request);
+        assert!(result.valid, "Errors: {:?}", result.errors);
     }
 }

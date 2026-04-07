@@ -136,6 +136,7 @@ class RecapSummaryRequest(BaseModel):
     clusters: List[RecapClusterInput] = Field(min_length=1, max_length=300)
     genre_highlights: Optional[List[RepresentativeSentence]] = None
     options: Optional[RecapSummaryOptions] = None
+    window_days: Optional[int] = Field(default=None, ge=1, le=30)
 
 
 class IntermediateSummary(BaseModel):
@@ -201,6 +202,10 @@ class RecapSummaryMetadata(BaseModel):
     processing_time_ms: Optional[int] = Field(default=None, ge=0)
     json_validation_errors: int = Field(default=0, ge=0)
     summary_length_bullets: int = Field(default=0, ge=0)
+    reduce_depth: Optional[int] = Field(default=0, ge=0)
+    reduce_info_retention: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    is_degraded: bool = Field(default=False)
+    degradation_reason: Optional[str] = Field(default=None, max_length=500)
 
 
 class RecapSummaryResponse(BaseModel):
@@ -385,3 +390,61 @@ class PlanQueryResponse(BaseModel):
     original_query: str = Field(description="Original input query")
     model: str = Field(description="Model used for planning")
     processing_time_ms: Optional[float] = Field(default=None, description="Processing time in milliseconds")
+
+
+# ============================================================================
+# Morning Letter Models
+# ============================================================================
+
+
+class MorningLetterRecapInput(BaseModel):
+    """Recap summary data used as input for Morning Letter generation."""
+
+    genre: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    bullets: List[str] = Field(min_length=1)
+    window_days: int = Field(default=3, ge=1, le=30)
+
+
+class MorningLetterGroupInput(BaseModel):
+    """Overnight article group for Morning Letter."""
+
+    group_id: UUID
+    articles: List[RepresentativeSentence] = Field(min_length=1)
+
+
+class MorningLetterRequest(BaseModel):
+    """Request for Morning Letter generation."""
+
+    target_date: str = Field(min_length=1)
+    edition_timezone: str = Field(default="Asia/Tokyo")
+    recap_summaries: Optional[List[MorningLetterRecapInput]] = None
+    overnight_groups: List[MorningLetterGroupInput]
+
+
+class MorningLetterSection(BaseModel):
+    """A section in the Morning Letter."""
+
+    key: str = Field(min_length=1, pattern=r"^(lead|top3|what_changed|by_genre:[a-z0-9_\-]+)$")
+    title: str = Field(min_length=1)
+    bullets: List[str] = Field(min_length=1)
+    genre: Optional[str] = None
+
+
+class MorningLetterContent(BaseModel):
+    """Generated Morning Letter content."""
+
+    schema_version: int = Field(default=1, ge=1)
+    lead: str = Field(min_length=1)
+    sections: List[MorningLetterSection] = Field(min_length=1)
+    generated_at: str = Field(min_length=1)
+    source_recap_window_days: Optional[int] = None
+
+
+class MorningLetterResponse(BaseModel):
+    """Response for Morning Letter generation."""
+
+    target_date: str
+    edition_timezone: str
+    content: MorningLetterContent
+    metadata: RecapSummaryMetadata

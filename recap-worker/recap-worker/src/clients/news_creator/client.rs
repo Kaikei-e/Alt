@@ -14,7 +14,8 @@ use crate::schema::{news_creator::SUMMARY_RESPONSE_SCHEMA, validate_json};
 use super::builder::SummaryRequestBuilder;
 use super::models::{
     BatchSummaryRequest, BatchSummaryResponse, GenreTieBreakRequest, GenreTieBreakResponse,
-    NewsCreatorSummary, SummaryRequest, SummaryResponse, truncate_error_message,
+    MorningLetterGenerateRequest, MorningLetterGenerateResponse, NewsCreatorSummary,
+    SummaryRequest, SummaryResponse, truncate_error_message,
 };
 
 #[derive(Debug, Clone)]
@@ -247,6 +248,70 @@ impl NewsCreatorClient {
         Ok(batch_response)
     }
 
+    /// Morning Letter を生成する。
+    ///
+    /// Recap要約 + Overnight記事グループを基に、
+    /// news-creator 側で LLM を使って Morning Letter を生成する。
+    ///
+    /// # Arguments
+    /// * `request` - Morning Letter 生成リクエスト
+    ///
+    /// # Returns
+    /// Morning Letter 生成レスポンス
+    pub(crate) async fn generate_morning_letter(
+        &self,
+        request: &MorningLetterGenerateRequest,
+    ) -> Result<MorningLetterGenerateResponse> {
+        let url = self
+            .base_url
+            .join("v1/morning-letter/generate")
+            .context("failed to build morning letter generation URL")?;
+
+        debug!(
+            target_date = %request.target_date,
+            edition_timezone = %request.edition_timezone,
+            overnight_groups = request.overnight_groups.len(),
+            has_recap = request.recap_summaries.is_some(),
+            "sending morning letter generation request to news-creator"
+        );
+
+        // Morning Letter involves complex LLM generation with multiple sections,
+        // so we use a longer timeout than standard summary generation.
+        let morning_letter_timeout = self.summary_timeout * 3;
+
+        let response = self
+            .client
+            .post(url)
+            .json(request)
+            .timeout(morning_letter_timeout)
+            .send()
+            .await
+            .context("morning letter generation request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            let truncated_body = truncate_error_message(&body);
+            return Err(anyhow!(
+                "morning letter generation endpoint returned error status {status}: {truncated_body}"
+            ));
+        }
+
+        let ml_response: MorningLetterGenerateResponse = response
+            .json()
+            .await
+            .context("failed to deserialize morning letter response")?;
+
+        debug!(
+            target_date = %ml_response.target_date,
+            sections = ml_response.content.sections.len(),
+            is_degraded = ml_response.metadata.is_degraded,
+            "morning letter generation completed"
+        );
+
+        Ok(ml_response)
+    }
+
     /// クラスタリングレスポンスから要約リクエストを構築する。
     ///
     /// # Arguments
@@ -293,6 +358,7 @@ impl NewsCreatorClient {
                 max_bullets: Some(5), // 中間要約は短めに
                 temperature: Some(0.7),
             }),
+            window_days: None,
         };
         self.generate_summary(&request).await
     }
@@ -336,6 +402,7 @@ impl NewsCreatorClient {
                 max_bullets: Some(15), // 最終要約
                 temperature: Some(0.7),
             }),
+            window_days: None,
         };
         self.generate_summary(&request).await
     }
@@ -471,6 +538,7 @@ mod tests {
             }],
             genre_highlights: None,
             options: None,
+            window_days: None,
         };
 
         let error = client
@@ -638,6 +706,7 @@ mod tests_batch {
                 clusters: vec![],
                 genre_highlights: None,
                 options: None,
+                window_days: None,
             },
             SummaryRequest {
                 job_id: Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
@@ -645,6 +714,7 @@ mod tests_batch {
                 clusters: vec![],
                 genre_highlights: None,
                 options: None,
+                window_days: None,
             },
         ];
 
@@ -667,15 +737,26 @@ mod tests_batch {
         // With fewer requests than 3, minimum multiplier of 3 applies
         let request_count_small = 2usize;
         let timeout_small = base_timeout * std::cmp::max(3, request_count_small as u32);
-        assert_eq!(timeout_small, base_timeout * 3, "small request count should use minimum multiplier of 3");
+        assert_eq!(
+            timeout_small,
+            base_timeout * 3,
+            "small request count should use minimum multiplier of 3"
+        );
 
         // With more requests, timeout scales with request count
         let request_count_large = 7usize;
         let timeout_large = base_timeout * std::cmp::max(3, request_count_large as u32);
-        assert_eq!(timeout_large, base_timeout * 7, "large request count should scale linearly");
+        assert_eq!(
+            timeout_large,
+            base_timeout * 7,
+            "large request count should scale linearly"
+        );
 
         // Verify large > small
-        assert!(timeout_large > timeout_small, "more requests should yield larger timeout");
+        assert!(
+            timeout_large > timeout_small,
+            "more requests should yield larger timeout"
+        );
     }
 
     #[tokio::test]
@@ -718,6 +799,7 @@ mod tests_batch {
                 clusters: vec![],
                 genre_highlights: None,
                 options: None,
+                window_days: None,
             },
             SummaryRequest {
                 job_id: Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
@@ -725,6 +807,7 @@ mod tests_batch {
                 clusters: vec![],
                 genre_highlights: None,
                 options: None,
+                window_days: None,
             },
         ];
 

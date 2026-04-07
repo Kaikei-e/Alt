@@ -348,15 +348,13 @@ mod tests {
                 novelty_score: 0.1,
                 recency_score: 0.1,
             },
-            representative_articles: vec![
-                RepresentativeArticle {
-                    article_id: "art-001".to_string(),
-                    title: "Breaking news article".to_string(),
-                    source_url: "https://reuters.com/article/1".to_string(),
-                    source_name: "Reuters".to_string(),
-                    published_at: "2026-01-31T12:00:00Z".to_string(),
-                },
-            ],
+            representative_articles: vec![RepresentativeArticle {
+                article_id: "art-001".to_string(),
+                title: "Breaking news article".to_string(),
+                source_url: "https://reuters.com/article/1".to_string(),
+                source_name: "Reuters".to_string(),
+                published_at: "2026-01-31T12:00:00Z".to_string(),
+            }],
             top_entities: vec!["Entity1".to_string(), "Entity2".to_string()],
             source_names: vec!["Reuters".to_string(), "BBC".to_string()],
             genre: Some("Tech".to_string()),

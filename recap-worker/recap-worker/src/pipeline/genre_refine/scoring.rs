@@ -235,11 +235,7 @@ pub(crate) fn tag_consistency_score(
     }
 
     // 複数のタグが一致する場合、信頼度の合計を返す（最大1.0にクランプ）
-    if match_count > 0 {
-        score.min(1.0)
-    } else {
-        0.0
-    }
+    if match_count > 0 { score.min(1.0) } else { 0.0 }
 }
 
 /// 重み付きスコアリングでタイブレークを決定する。
@@ -290,13 +286,11 @@ mod tests {
         let config = RefineConfig::new(false);
         // High classifier confidence, low graph boost
         let candidate = make_candidate("ai_data", 0.9, 3);
-        let score_high_classifier =
-            compute_weighted_tie_break_score(&config, &candidate, 0.1, 0.1);
+        let score_high_classifier = compute_weighted_tie_break_score(&config, &candidate, 0.1, 0.1);
 
         // Low classifier confidence, high graph boost
         let candidate_low = make_candidate("cybersecurity", 0.1, 3);
-        let score_high_graph =
-            compute_weighted_tie_break_score(&config, &candidate_low, 0.9, 0.1);
+        let score_high_graph = compute_weighted_tie_break_score(&config, &candidate_low, 0.9, 0.1);
 
         // With classifier weight 0.40 vs graph weight 0.20, high classifier should win
         assert!(

@@ -8,8 +8,7 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::store::models::{
-    ClusterWithEvidence, GenreWithSummary, RecapFinalSection, RecapJob, RecapOutput,
-    RecapSearchHit,
+    ClusterWithEvidence, GenreWithSummary, RecapFinalSection, RecapJob, RecapOutput, RecapSearchHit,
 };
 
 /// OutputDao - リキャップ出力のためのデータアクセス層

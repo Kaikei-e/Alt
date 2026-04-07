@@ -6,9 +6,9 @@ use chrono::{DateTime, Utc};
 
 use crate::scheduler::JobContext;
 
+use super::PipelineOrchestrator;
 use super::dispatch::DispatchResult;
 use super::pulse::{self, PulseRollout, PulseStage};
-use super::PipelineOrchestrator;
 
 impl PipelineOrchestrator {
     /// Generate Evening Pulse if enabled via rollout.
@@ -160,9 +160,10 @@ pub(super) fn build_pulse_input(
                 if !articles.is_empty() {
                     clusters.push(pulse::ClusterInput {
                         cluster_id: i64::from(cluster.cluster_id),
-                        label: cluster.label.clone().or_else(|| {
-                            Some(format!("{} Cluster {}", genre, cluster.cluster_id))
-                        }),
+                        label: cluster
+                            .label
+                            .clone()
+                            .or_else(|| Some(format!("{} Cluster {}", genre, cluster.cluster_id))),
                         articles,
                         embeddings: Vec::new(), // Not available in clustering response
                         impact_score: None,

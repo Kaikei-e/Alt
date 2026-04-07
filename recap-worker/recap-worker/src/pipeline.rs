@@ -55,7 +55,10 @@ mod tests {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
         Arc::new(temp_env::with_vars(
             [
-                ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5999/recap_db")),
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5999/recap_db"),
+                ),
                 ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
                 ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
                 ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),

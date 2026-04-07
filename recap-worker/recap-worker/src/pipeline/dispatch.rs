@@ -15,7 +15,7 @@ use tokio::sync::Semaphore;
 use tracing::info;
 
 use crate::{
-    clients::{subworker::SubworkerClient, NewsCreatorClient},
+    clients::{NewsCreatorClient, subworker::SubworkerClient},
     config::Config,
     scheduler::JobContext,
     store::dao::RecapDao,
@@ -249,6 +249,7 @@ mod tests {
             ],
             genre_highlights: None,
             options: None,
+            window_days: None,
         };
 
         let original_count = request.clusters.len();
@@ -282,6 +283,7 @@ mod tests {
             ],
             genre_highlights: None,
             options: None,
+            window_days: None,
         };
 
         request

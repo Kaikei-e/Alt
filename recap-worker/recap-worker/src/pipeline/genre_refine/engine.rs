@@ -400,13 +400,12 @@ impl RefineEngine for DefaultRefineEngine {
         }
 
         // Determine actual strategy: GraphBoost only if boost is active and classifier is confident
-        let actual_strategy = if top_boost > 0.0
-            && top.0.classifier_confidence >= config.min_classifier_confidence
-        {
-            RefineStrategy::GraphBoost
-        } else {
-            RefineStrategy::CoarseOnly
-        };
+        let actual_strategy =
+            if top_boost > 0.0 && top.0.classifier_confidence >= config.min_classifier_confidence {
+                RefineStrategy::GraphBoost
+            } else {
+                RefineStrategy::CoarseOnly
+            };
         Ok(RefineOutcome::new(
             top.0.name.clone(),
             top.0.classifier_confidence.clamp(0.0, 1.0),
@@ -420,7 +419,9 @@ impl RefineEngine for DefaultRefineEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::genre_refine::cache::{LabelEdge, StaticTagLabelGraphSource, TagLabelGraphCache};
+    use crate::pipeline::genre_refine::cache::{
+        LabelEdge, StaticTagLabelGraphSource, TagLabelGraphCache,
+    };
 
     fn make_config() -> RefineConfig {
         RefineConfig::new(false)

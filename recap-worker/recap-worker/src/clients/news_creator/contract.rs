@@ -69,8 +69,6 @@ async fn contract_news_creator_summary_generate() {
     let resp = Client::new()
         .post(url)
         .json(&body)
-
-
         .send()
         .await
         .expect("request should succeed");
@@ -141,15 +139,15 @@ async fn contract_news_creator_batch_summary_generate() {
     let resp = Client::new()
         .post(url)
         .json(&body)
-
-
         .send()
         .await
         .expect("request should succeed");
 
     assert_eq!(resp.status(), 200);
-    let parsed: BatchSummaryResponse =
-        resp.json().await.expect("should parse as BatchSummaryResponse");
+    let parsed: BatchSummaryResponse = resp
+        .json()
+        .await
+        .expect("should parse as BatchSummaryResponse");
     assert!(!parsed.responses.is_empty());
     assert!(parsed.errors.is_empty());
 }
@@ -202,8 +200,6 @@ async fn contract_news_creator_summary_queue_full() {
     let resp = Client::new()
         .post(url)
         .json(&body)
-
-
         .send()
         .await
         .expect("request should succeed");

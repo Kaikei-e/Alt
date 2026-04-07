@@ -314,11 +314,7 @@ impl PersistStage for FinalSectionPersistStage {
 
             // tag-generatorでセマンティックタグを抽出
             let tags = if let Some(ref tg) = self.tag_generator {
-                let tag_content = format!(
-                    "{}\n{}",
-                    sanitized_summary,
-                    summary_bullets.join("\n")
-                );
+                let tag_content = format!("{}\n{}", sanitized_summary, summary_bullets.join("\n"));
                 match tg.extract_tags(genre.as_str(), &tag_content).await {
                     Ok(tags) => {
                         debug!(

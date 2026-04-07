@@ -73,32 +73,28 @@ async fn contract_subworker_classify_submit() {
 #[ignore = "CDC contract test"]
 async fn contract_subworker_classify_poll_succeeded() {
     let pact = PactBuilder::new("recap-worker", "recap-subworker")
-        .interaction(
-            "polling a completed classification job",
-            "",
-            |mut i| {
-                i.given("classification job 42 has succeeded");
-                i.request.method("GET");
-                i.request.path("/v1/classify-runs/42");
-                i.response.status(200);
-                i.response.content_type("application/json");
-                i.response.json_body(json_pattern!({
-                    "run_id": like!(42i64),
-                    "job_id": like!("00000000-0000-0000-0000-000000000001"),
-                    "status": like!("succeeded"),
-                    "result_count": like!(5i64),
-                    "results": each_like!(json_pattern!({
-                        "top_genre": like!("technology"),
-                        "confidence": like!(0.85f64),
-                        "scores": json_pattern!({
-                            "technology": like!(0.85f64),
-                            "science": like!(0.10f64),
-                        }),
-                    })),
-                }));
-                i
-            },
-        )
+        .interaction("polling a completed classification job", "", |mut i| {
+            i.given("classification job 42 has succeeded");
+            i.request.method("GET");
+            i.request.path("/v1/classify-runs/42");
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "run_id": like!(42i64),
+                "job_id": like!("00000000-0000-0000-0000-000000000001"),
+                "status": like!("succeeded"),
+                "result_count": like!(5i64),
+                "results": each_like!(json_pattern!({
+                    "top_genre": like!("technology"),
+                    "confidence": like!(0.85f64),
+                    "scores": json_pattern!({
+                        "technology": like!(0.85f64),
+                        "science": like!(0.10f64),
+                    }),
+                })),
+            }));
+            i
+        })
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 

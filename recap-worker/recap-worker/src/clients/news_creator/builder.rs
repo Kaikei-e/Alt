@@ -172,6 +172,7 @@ impl<'a> SummaryRequestBuilder<'a> {
                 max_bullets: Some(15),
                 temperature: Some(0.7),
             }),
+            window_days: None,
         }
     }
 }

@@ -138,7 +138,6 @@ fn classify_novelty_level(score: f32) -> &'static str {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::super::types::{ClusterQualityMetrics, QualityTier, ScoreBreakdown};

@@ -20,7 +20,9 @@ use super::dispatch::{DispatchStage, MlLlmDispatchStage};
 use super::executor;
 use super::fetch::{AltBackendFetchStage, FetchStage};
 use super::genre::{CoarseGenreStage, GenreStage, RefineRollout, TwoStageGenreStage};
-use super::genre_refine::{DbTagLabelGraphSource, DefaultRefineEngine, RefineConfig, TagLabelGraphSource};
+use super::genre_refine::{
+    DbTagLabelGraphSource, DefaultRefineEngine, RefineConfig, TagLabelGraphSource,
+};
 use super::graph_override::GraphOverrideSettings;
 use super::persist::{self, PersistStage};
 use super::preprocess::{PreprocessStage, TextPreprocessStage};

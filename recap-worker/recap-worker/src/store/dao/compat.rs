@@ -20,8 +20,9 @@ use crate::pipeline::pulse::PulseResult;
 use crate::store::models::{
     ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
     GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, JobStats,
-    NewSubworkerRun, PersistedCluster, PersistedGenre, PreprocessMetrics, PulseGenerationRow,
-    RawArticle, RecapFinalSection, RecapJob, RecapOutput, RecapSearchHit, SubworkerRunStatus,
+    MorningLetter, MorningLetterSource, NewSubworkerRun, PersistedCluster, PersistedGenre,
+    PreprocessMetrics, PulseGenerationRow, RawArticle, RecapFinalSection, RecapJob, RecapOutput,
+    RecapSearchHit, SubworkerRunStatus,
 };
 
 /// RecapDao - Backward-compatible composite trait combining all focused DAO traits
@@ -74,8 +75,9 @@ pub trait RecapDao: Send + Sync {
 
     async fn job_exists(&self, job_id: Uuid) -> anyhow::Result<bool>;
 
-    async fn find_resumable_job(&self)
-    -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>, u32)>>;
+    async fn find_resumable_job(
+        &self,
+    ) -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>, u32)>>;
 
     async fn update_job_status(
         &self,
@@ -323,6 +325,25 @@ pub trait RecapDao: Send + Sync {
         &self,
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<(Uuid, Uuid, bool, DateTime<Utc>)>>;
+
+    async fn save_morning_letter(&self, letter: &MorningLetter) -> anyhow::Result<()>;
+
+    async fn save_morning_letter_sources(
+        &self,
+        sources: &[MorningLetterSource],
+    ) -> anyhow::Result<()>;
+
+    async fn get_morning_letter_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> anyhow::Result<Option<MorningLetter>>;
+
+    async fn get_latest_morning_letter(&self) -> anyhow::Result<Option<MorningLetter>>;
+
+    async fn get_morning_letter_sources(
+        &self,
+        letter_id: Uuid,
+    ) -> anyhow::Result<Vec<MorningLetterSource>>;
 
     // === JobStatusDao methods ===
     async fn get_extended_jobs(
@@ -752,6 +773,35 @@ where
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<(Uuid, Uuid, bool, DateTime<Utc>)>> {
         MorningDao::get_morning_article_groups(self, since).await
+    }
+
+    async fn save_morning_letter(&self, letter: &MorningLetter) -> anyhow::Result<()> {
+        MorningDao::save_morning_letter(self, letter).await
+    }
+
+    async fn save_morning_letter_sources(
+        &self,
+        sources: &[MorningLetterSource],
+    ) -> anyhow::Result<()> {
+        MorningDao::save_morning_letter_sources(self, sources).await
+    }
+
+    async fn get_morning_letter_by_date(
+        &self,
+        date: NaiveDate,
+    ) -> anyhow::Result<Option<MorningLetter>> {
+        MorningDao::get_morning_letter_by_date(self, date).await
+    }
+
+    async fn get_latest_morning_letter(&self) -> anyhow::Result<Option<MorningLetter>> {
+        MorningDao::get_latest_morning_letter(self).await
+    }
+
+    async fn get_morning_letter_sources(
+        &self,
+        letter_id: Uuid,
+    ) -> anyhow::Result<Vec<MorningLetterSource>> {
+        MorningDao::get_morning_letter_sources(self, letter_id).await
     }
 
     async fn get_extended_jobs(

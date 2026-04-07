@@ -7,11 +7,11 @@ use anyhow::{Context, Result};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use crate::clients::NewsCreatorClient;
 use crate::clients::news_creator::models::{
     BatchSummaryError, BatchSummaryResponse, SummaryOptions, SummaryRequest, SummaryResponse,
 };
 use crate::clients::subworker::ClusteringResponse;
-use crate::clients::NewsCreatorClient;
 use crate::config::Config;
 use crate::scheduler::JobContext;
 use crate::store::dao::RecapDao;
@@ -23,6 +23,18 @@ pub(crate) struct SummarizationOps<'a> {
     pub(crate) news_creator_client: &'a Arc<NewsCreatorClient>,
     pub(crate) dao: &'a Arc<dyn RecapDao>,
     pub(crate) config: &'a Arc<Config>,
+}
+
+fn apply_recap_request_defaults(
+    summary_request: &mut SummaryRequest,
+    window_days: u32,
+    temperature: f64,
+) {
+    summary_request.options = Some(SummaryOptions {
+        max_bullets: None,
+        temperature: Some(temperature),
+    });
+    summary_request.window_days = Some(window_days);
 }
 
 impl SummarizationOps<'_> {
@@ -89,6 +101,7 @@ impl SummarizationOps<'_> {
     pub(crate) async fn generate_summary_with_metadata(
         &self,
         job_id: Uuid,
+        window_days: u32,
         genre: &str,
         clustering_response: &ClusteringResponse,
     ) -> Result<SummaryResponse> {
@@ -147,10 +160,11 @@ impl SummarizationOps<'_> {
         );
 
         // Enforce strict output format options
-        summary_request.options = Some(SummaryOptions {
-            max_bullets: Some(15), // Plan 9: Max 15 bullets for output
-            temperature: Some(0.7),
-        });
+        apply_recap_request_defaults(
+            &mut summary_request,
+            window_days,
+            self.config.recap_summary_temperature(),
+        );
 
         self.news_creator_client
             .generate_summary(&summary_request)
@@ -162,6 +176,7 @@ impl SummarizationOps<'_> {
     pub(crate) async fn build_summary_request_for_batch(
         &self,
         job_id: Uuid,
+        window_days: u32,
         genre: &str,
         clustering_response: &ClusteringResponse,
     ) -> Result<SummaryRequest> {
@@ -209,10 +224,11 @@ impl SummarizationOps<'_> {
         .context("failed to join build_summary_request task")?;
 
         // 出力フォーマットオプションを設定
-        summary_request.options = Some(SummaryOptions {
-            max_bullets: Some(15), // Plan 9: Max 15 bullets for output
-            temperature: Some(0.7),
-        });
+        apply_recap_request_defaults(
+            &mut summary_request,
+            window_days,
+            self.config.recap_summary_temperature(),
+        );
 
         Ok(summary_request)
     }
@@ -277,7 +293,12 @@ impl SummarizationOps<'_> {
                     );
 
                     let summary_result = self
-                        .generate_summary_with_metadata(job.job_id, &genre, &clustering_response)
+                        .generate_summary_with_metadata(
+                            job.job_id,
+                            job.window_days(),
+                            &genre,
+                            &clustering_response,
+                        )
                         .await;
 
                     // システムメトリクス（要約）を保存
@@ -324,8 +345,7 @@ impl SummarizationOps<'_> {
                         "skipping summary generation due to clustering failure"
                     );
                     let genre_clone = genre.clone();
-                    genre_results
-                        .insert(genre, Self::clustering_error_result(&genre_clone, e));
+                    genre_results.insert(genre, Self::clustering_error_result(&genre_clone, e));
                 }
             }
         }
@@ -395,7 +415,12 @@ impl SummarizationOps<'_> {
         let request_futures: Vec<_> = successful
             .iter()
             .map(|(genre, clustering_response)| {
-                self.build_summary_request_for_batch(job.job_id, genre, clustering_response)
+                self.build_summary_request_for_batch(
+                    job.job_id,
+                    job.window_days(),
+                    genre,
+                    clustering_response,
+                )
             })
             .collect();
 
@@ -533,8 +558,13 @@ impl SummarizationOps<'_> {
         };
 
         // 5. レスポンスをマッピング
-        self.process_batch_response(job, Ok(batch_response), genre_clustering_map, &mut genre_results)
-            .await;
+        self.process_batch_response(
+            job,
+            Ok(batch_response),
+            genre_clustering_map,
+            &mut genre_results,
+        )
+        .await;
 
         info!(
             job_id = %job.job_id,
@@ -652,5 +682,52 @@ impl SummarizationOps<'_> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn apply_request_defaults_threads_3day_window_and_temperature() {
+        let mut request = SummaryRequest {
+            job_id: Uuid::new_v4(),
+            genre: "ai".to_string(),
+            clusters: Vec::new(),
+            genre_highlights: None,
+            options: None,
+            window_days: None,
+        };
+
+        apply_recap_request_defaults(&mut request, 3, 0.0);
+
+        let options = request.options.expect("options should be set");
+        assert_eq!(request.window_days, Some(3));
+        assert_eq!(options.temperature, Some(0.0));
+        assert_eq!(options.max_bullets, None);
+    }
+
+    #[test]
+    fn apply_request_defaults_threads_7day_window_without_forcing_bullet_override() {
+        let mut request = SummaryRequest {
+            job_id: Uuid::new_v4(),
+            genre: "tech".to_string(),
+            clusters: Vec::new(),
+            genre_highlights: None,
+            options: Some(SummaryOptions {
+                max_bullets: Some(15),
+                temperature: Some(0.7),
+            }),
+            window_days: None,
+        };
+
+        apply_recap_request_defaults(&mut request, 7, 0.0);
+
+        let options = request.options.expect("options should be set");
+        assert_eq!(request.window_days, Some(7));
+        assert_eq!(options.temperature, Some(0.0));
+        assert_eq!(options.max_bullets, None);
     }
 }

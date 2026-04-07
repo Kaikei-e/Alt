@@ -35,8 +35,10 @@ from news_creator.handler import (
     create_health_router,
 )
 from news_creator.handler.chat_handler import create_chat_router
+from news_creator.handler.morning_letter_handler import create_morning_letter_router
 from news_creator.handler.plan_query_handler import create_plan_query_router
 from news_creator.handler.rerank_handler import create_rerank_router
+from news_creator.usecase.morning_letter_usecase import MorningLetterUsecase
 from news_creator.utils.context_logger import (
     BusinessContextFilter,
     BusinessContextJSONFormatter,
@@ -143,6 +145,11 @@ class DependencyContainer:
         )
         # Rerank usecase (cross-encoder, no Ollama dependency)
         self.rerank_usecase = RerankUsecase()
+        # Morning Letter usecase
+        self.morning_letter_usecase = MorningLetterUsecase(
+            config=self.config,
+            llm_provider=self.llm_provider,
+        )
 
     async def initialize(self) -> None:
         """Initialize all async resources."""
@@ -214,6 +221,10 @@ app.include_router(
 app.include_router(
     create_health_router(container.llm_provider),
     tags=["health"]
+)
+app.include_router(
+    create_morning_letter_router(container.morning_letter_usecase),
+    tags=["morning-letter"]
 )
 
 

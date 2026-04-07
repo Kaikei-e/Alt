@@ -1,10 +1,10 @@
 //! 高速なジャンルキーワード照合データ構造。
 use aho_corasick::{AhoCorasick, AhoCorasickBuilder, MatchKind};
 use fst::{IntoStreamer, Map, Streamer};
-use std::sync::LazyLock;
 use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 /// ジャンルごとのキーワード定義。
 #[derive(Debug, Clone)]

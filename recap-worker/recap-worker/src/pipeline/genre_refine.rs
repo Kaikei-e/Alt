@@ -10,11 +10,11 @@ mod strategy;
 mod tag_profile;
 
 // Re-exports for public API
-pub(crate) use cache::{
-    DbTagLabelGraphSource, LabelEdge, TagLabelGraphCache, TagLabelGraphSource,
-};
+pub(crate) use cache::{DbTagLabelGraphSource, LabelEdge, TagLabelGraphCache, TagLabelGraphSource};
 pub(crate) use config::RefineConfig;
-pub(crate) use engine::{DefaultRefineEngine, LlmDecision, LlmTieBreaker, RefineEngine, RefineInput};
+pub(crate) use engine::{
+    DefaultRefineEngine, LlmDecision, LlmTieBreaker, RefineEngine, RefineInput,
+};
 pub(crate) use strategy::{RefineOutcome, RefineStrategy};
 pub(crate) use tag_profile::{TagFallbackMode, TagProfile};
 
@@ -28,7 +28,7 @@ mod tests {
     use crate::pipeline::genre::GenreCandidate;
     use crate::pipeline::tag_signal::TagSignal;
     use crate::scheduler::JobContext;
-    use anyhow::{anyhow, Result};
+    use anyhow::{Result, anyhow};
     use std::sync::Arc;
     use tokio::sync::Mutex;
     use uuid::Uuid;

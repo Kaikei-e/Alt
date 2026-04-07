@@ -796,3 +796,54 @@ pub struct PulseGenerationRow {
     pub version: String,
     pub result_payload: Option<Value>,
 }
+
+// ============================================================================
+// Morning Letter Models
+// ============================================================================
+
+/// Morning Letter document row.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct MorningLetter {
+    pub(crate) id: Uuid,
+    pub(crate) target_date: chrono::NaiveDate,
+    pub(crate) edition_timezone: String,
+    pub(crate) source_recap_job_id: Option<Uuid>,
+    pub(crate) is_degraded: bool,
+    pub(crate) schema_version: i32,
+    pub(crate) generation_revision: i32,
+    pub(crate) result_jsonb: Value,
+    pub(crate) model: Option<String>,
+    pub(crate) generation_metadata_jsonb: Value,
+    pub(crate) created_at: DateTime<Utc>,
+}
+
+/// Morning Letter source provenance.
+#[derive(Debug, Clone)]
+pub(crate) struct MorningLetterSource {
+    pub(crate) letter_id: Uuid,
+    pub(crate) section_key: String,
+    pub(crate) article_id: Uuid,
+    pub(crate) source_type: String,
+    pub(crate) position: i32,
+}
+
+/// Typed Morning Letter content (stored as result_jsonb).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct MorningLetterContent {
+    pub(crate) lead: String,
+    pub(crate) sections: Vec<MorningLetterSection>,
+    pub(crate) generated_at: String,
+    pub(crate) source_recap_window_days: Option<u32>,
+}
+
+/// A section in the Morning Letter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct MorningLetterSection {
+    pub(crate) key: String,
+    pub(crate) title: String,
+    pub(crate) bullets: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) genre: Option<String>,
+}

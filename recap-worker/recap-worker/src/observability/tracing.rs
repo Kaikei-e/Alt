@@ -1,11 +1,11 @@
 use anyhow::{Context, Error, Result};
-use std::sync::Once;
 use opentelemetry::{KeyValue, global, trace::TracerProvider};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::{
     Resource,
     trace::{RandomIdGenerator, Sampler, SdkTracer, SdkTracerProvider},
 };
+use std::sync::Once;
 use tracing::info;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 

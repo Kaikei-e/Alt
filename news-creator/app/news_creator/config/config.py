@@ -90,6 +90,16 @@ class NewsCreatorConfig:
         # Repetition detection and retry settings
         self.max_repetition_retries = self._get_int("MAX_REPETITION_RETRIES", 2)
         self.repetition_threshold = self._get_float("REPETITION_THRESHOLD", 0.3)
+        self.recap_min_source_articles_for_llm = self._get_int(
+            "RECAP_MIN_SOURCE_ARTICLES_FOR_LLM", 3
+        )
+        self.recap_min_representative_sentences_for_llm = self._get_int(
+            "RECAP_MIN_REPRESENTATIVE_SENTENCES_FOR_LLM", 4
+        )
+        self.recap_ja_ratio_threshold = self._get_float("RECAP_JA_RATIO_THRESHOLD", 0.6)
+        self.recap_summary_repair_attempts = self._get_int(
+            "RECAP_SUMMARY_REPAIR_ATTEMPTS", 1
+        )
 
         # 60K model enable/disable flag (single primary-bucket mode by default)
         # When disabled, hierarchical map-reduce is used for large documents

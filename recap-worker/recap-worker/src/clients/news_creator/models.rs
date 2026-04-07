@@ -74,6 +74,8 @@ pub(crate) struct SummaryRequest {
     pub(crate) genre_highlights: Option<Vec<RepresentativeSentence>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) options: Option<SummaryOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) window_days: Option<u32>,
 }
 
 /// 代表文のメタデータ。
@@ -149,6 +151,14 @@ pub(crate) struct SummaryMetadata {
     completion_tokens: Option<usize>,
     #[serde(default)]
     processing_time_ms: Option<usize>,
+    #[serde(default)]
+    pub(crate) is_degraded: bool,
+    #[serde(default)]
+    pub(crate) degradation_reason: Option<String>,
+    #[serde(default)]
+    pub(crate) reduce_depth: Option<u32>,
+    #[serde(default)]
+    pub(crate) reduce_info_retention: Option<f64>,
 }
 
 // ============================================================================
@@ -176,4 +186,74 @@ pub(crate) struct BatchSummaryError {
 pub(crate) struct BatchSummaryResponse {
     pub(crate) responses: Vec<SummaryResponse>,
     pub(crate) errors: Vec<BatchSummaryError>,
+}
+
+// ============================================================================
+// Morning Letter Models
+// ============================================================================
+
+/// Morning Letter generation request (sent to news-creator).
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct MorningLetterGenerateRequest {
+    pub(crate) target_date: String,
+    pub(crate) edition_timezone: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) recap_summaries: Option<Vec<MorningLetterRecapInput>>,
+    pub(crate) overnight_groups: Vec<MorningLetterGroupInput>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct MorningLetterRecapInput {
+    pub(crate) genre: String,
+    pub(crate) title: String,
+    pub(crate) bullets: Vec<String>,
+    pub(crate) window_days: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct MorningLetterGroupInput {
+    pub(crate) group_id: uuid::Uuid,
+    pub(crate) articles: Vec<RepresentativeSentence>,
+}
+
+/// Morning Letter generation response (from news-creator).
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct MorningLetterGenerateResponse {
+    pub(crate) target_date: String,
+    pub(crate) edition_timezone: String,
+    pub(crate) content: MorningLetterResponseContent,
+    pub(crate) metadata: MorningLetterResponseMetadata,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct MorningLetterResponseContent {
+    pub(crate) schema_version: i32,
+    pub(crate) lead: String,
+    pub(crate) sections: Vec<MorningLetterResponseSection>,
+    pub(crate) generated_at: String,
+    pub(crate) source_recap_window_days: Option<u32>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct MorningLetterResponseSection {
+    pub(crate) key: String,
+    pub(crate) title: String,
+    pub(crate) bullets: Vec<String>,
+    #[serde(default)]
+    pub(crate) genre: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct MorningLetterResponseMetadata {
+    pub(crate) model: String,
+    #[serde(default)]
+    pub(crate) is_degraded: bool,
+    #[serde(default)]
+    pub(crate) degradation_reason: Option<String>,
+    #[serde(default)]
+    pub(crate) processing_time_ms: Option<u64>,
 }

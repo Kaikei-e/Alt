@@ -5,10 +5,11 @@ use std::sync::LazyLock;
 /// Canonical sentences for each genre to be used for embedding-based filtering.
 /// These sentences represent the "ideal" content for a genre.
 #[allow(dead_code)] // May be used in future refactoring
-static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> = LazyLock::new(|| {
-    let mut m = HashMap::new();
+static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> = LazyLock::new(
+    || {
+        let mut m = HashMap::new();
 
-    m.insert(
+        m.insert(
         "ai_data",
         vec![
             "Machine learning, generative AI, data analytics, AI applications, model development and large-scale data infrastructure.",
@@ -16,7 +17,7 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
+        m.insert(
         "software_dev",
         vec![
             "Programming languages, frameworks, architecture, cloud/DevOps, and software engineering processes.",
@@ -24,7 +25,7 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
+        m.insert(
         "cybersecurity",
         vec![
             "Vulnerabilities, attacks/defense, incidents, authentication/cryptography, and security operations.",
@@ -32,7 +33,7 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
+        m.insert(
         "consumer_tech",
         vec![
             "User-facing devices and services such as smartphones, PCs, wearables, and home electronics.",
@@ -40,7 +41,7 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
+        m.insert(
         "internet_platforms",
         vec![
             "Trends and changes in online platforms such as social networks, search, streaming, and app stores.",
@@ -48,15 +49,15 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
-        "space_astronomy",
-        vec![
-            "Space missions, satellites, exploration programs, and astronomy findings.",
-            "宇宙開発、衛星、探査、天文学の観測成果に関する話題。",
-        ],
-    );
+        m.insert(
+            "space_astronomy",
+            vec![
+                "Space missions, satellites, exploration programs, and astronomy findings.",
+                "宇宙開発、衛星、探査、天文学の観測成果に関する話題。",
+            ],
+        );
 
-    m.insert(
+        m.insert(
         "climate_environment",
         vec![
             "Climate change, ecosystems, pollution control, and environmental protection trends.",
@@ -64,7 +65,7 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
+        m.insert(
         "energy_transition",
         vec![
             "Renewables, grids, storage, nuclear, and decarbonization infrastructure and markets.",
@@ -72,7 +73,7 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
+        m.insert(
         "health_medicine",
         vec![
             "Healthcare systems, treatments, clinical topics, hospital operations, and public health impacts.",
@@ -80,15 +81,15 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
-        "life_science",
-        vec![
-            "Biology, genetics, biotech, and foundational research results.",
-            "生物学、遺伝子、バイオテック、基礎研究の成果や技術。",
-        ],
-    );
+        m.insert(
+            "life_science",
+            vec![
+                "Biology, genetics, biotech, and foundational research results.",
+                "生物学、遺伝子、バイオテック、基礎研究の成果や技術。",
+            ],
+        );
 
-    m.insert(
+        m.insert(
         "economics_macro",
         vec![
             "Economy-wide trends: inflation, rates, employment, and international macro dynamics.",
@@ -96,7 +97,7 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
+        m.insert(
         "markets_finance",
         vec![
             "Stocks, bonds, FX, fundraising, financial institutions, earnings and investment trends.",
@@ -104,15 +105,15 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
-        "startups_innovation",
-        vec![
-            "Startups, venture capital, and innovation ecosystems.",
-            "新興企業、VC、技術起点の新規事業やエコシステムの動き。",
-        ],
-    );
+        m.insert(
+            "startups_innovation",
+            vec![
+                "Startups, venture capital, and innovation ecosystems.",
+                "新興企業、VC、技術起点の新規事業やエコシステムの動き。",
+            ],
+        );
 
-    m.insert(
+        m.insert(
         "industry_logistics",
         vec![
             "Manufacturing, supply chains, logistics networks and physical infrastructure operations.",
@@ -120,15 +121,15 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
-        "politics_government",
-        vec![
-            "Elections, policymaking, public administration and political actors.",
-            "選挙、政策決定、行政運営、政治家・政党の動向。",
-        ],
-    );
+        m.insert(
+            "politics_government",
+            vec![
+                "Elections, policymaking, public administration and political actors.",
+                "選挙、政策決定、行政運営、政治家・政党の動向。",
+            ],
+        );
 
-    m.insert(
+        m.insert(
         "diplomacy_security",
         vec![
             "International relations, conflicts, military affairs, treaties and security cooperation.",
@@ -136,95 +137,95 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
-        "law_crime",
-        vec![
-            "Courts, legal reforms, crime cases, and societal impacts of regulation.",
-            "司法、法改正、裁判、犯罪事案、規制の社会的影響。",
-        ],
-    );
+        m.insert(
+            "law_crime",
+            vec![
+                "Courts, legal reforms, crime cases, and societal impacts of regulation.",
+                "司法、法改正、裁判、犯罪事案、規制の社会的影響。",
+            ],
+        );
 
-    m.insert(
-        "education",
-        vec![
-            "Schooling, learning methods, education systems, and university operations.",
-            "学校教育、学習方法、教育制度、大学運営などの話題。",
-        ],
-    );
+        m.insert(
+            "education",
+            vec![
+                "Schooling, learning methods, education systems, and university operations.",
+                "学校教育、学習方法、教育制度、大学運営などの話題。",
+            ],
+        );
 
-    m.insert(
-        "labor_workplace",
-        vec![
-            "Work styles, wages, HR systems, workplace safety, and culture changes.",
-            "働き方、賃金、人事制度、労働安全、職場文化の変化。",
-        ],
-    );
+        m.insert(
+            "labor_workplace",
+            vec![
+                "Work styles, wages, HR systems, workplace safety, and culture changes.",
+                "働き方、賃金、人事制度、労働安全、職場文化の変化。",
+            ],
+        );
 
-    m.insert(
-        "society_demographics",
-        vec![
-            "Population trends, regional issues, welfare, inequality and community change.",
-            "人口動態、地域課題、福祉、格差、コミュニティの変化など。",
-        ],
-    );
+        m.insert(
+            "society_demographics",
+            vec![
+                "Population trends, regional issues, welfare, inequality and community change.",
+                "人口動態、地域課題、福祉、格差、コミュニティの変化など。",
+            ],
+        );
 
-    m.insert(
-        "culture_arts",
-        vec![
-            "Fine arts, performing arts, traditional culture, exhibitions and cultural trends.",
-            "美術、舞台、伝統文化、展覧会など文化・芸術の動向。",
-        ],
-    );
+        m.insert(
+            "culture_arts",
+            vec![
+                "Fine arts, performing arts, traditional culture, exhibitions and cultural trends.",
+                "美術、舞台、伝統文化、展覧会など文化・芸術の動向。",
+            ],
+        );
 
-    m.insert(
-        "film_tv",
-        vec![
-            "Films, drama, TV/streaming content, production and box-office/ratings trends.",
-            "映画、ドラマ、テレビ/配信コンテンツ、制作・興行の動向。",
-        ],
-    );
+        m.insert(
+            "film_tv",
+            vec![
+                "Films, drama, TV/streaming content, production and box-office/ratings trends.",
+                "映画、ドラマ、テレビ/配信コンテンツ、制作・興行の動向。",
+            ],
+        );
 
-    m.insert(
-        "music_audio",
-        vec![
-            "Music releases, artists, live events, audio streaming and listening culture.",
-            "音楽作品、アーティスト、ライブ、音声配信、オーディオ文化。",
-        ],
-    );
+        m.insert(
+            "music_audio",
+            vec![
+                "Music releases, artists, live events, audio streaming and listening culture.",
+                "音楽作品、アーティスト、ライブ、音声配信、オーディオ文化。",
+            ],
+        );
 
-    m.insert(
-        "sports",
-        vec![
-            "Sports competitions, leagues, athletes and tournaments.",
-            "国内外の競技、リーグ運営、選手・大会の動向。",
-        ],
-    );
+        m.insert(
+            "sports",
+            vec![
+                "Sports competitions, leagues, athletes and tournaments.",
+                "国内外の競技、リーグ運営、選手・大会の動向。",
+            ],
+        );
 
-    m.insert(
-        "food_cuisine",
-        vec![
-            "Food culture, dining trends, the food industry, recipes and culinary experiences.",
-            "飲食トレンド、食文化、食品・外食産業の動き、レシピや食体験。",
-        ],
-    );
+        m.insert(
+            "food_cuisine",
+            vec![
+                "Food culture, dining trends, the food industry, recipes and culinary experiences.",
+                "飲食トレンド、食文化、食品・外食産業の動き、レシピや食体験。",
+            ],
+        );
 
-    m.insert(
-        "travel_places",
-        vec![
-            "Tourism, destinations, travel experiences and demand shifts.",
-            "観光、地域の魅力、旅行体験、旅行需要の変化。",
-        ],
-    );
+        m.insert(
+            "travel_places",
+            vec![
+                "Tourism, destinations, travel experiences and demand shifts.",
+                "観光、地域の魅力、旅行体験、旅行需要の変化。",
+            ],
+        );
 
-    m.insert(
-        "home_living",
-        vec![
-            "Housing, interior, home routines, and household services.",
-            "住宅、インテリア、家事、暮らしの改善、家庭向けサービス。",
-        ],
-    );
+        m.insert(
+            "home_living",
+            vec![
+                "Housing, interior, home routines, and household services.",
+                "住宅、インテリア、家事、暮らしの改善、家庭向けサービス。",
+            ],
+        );
 
-    m.insert(
+        m.insert(
         "games_esports",
         vec![
             "Game releases, industry trends, esports tournaments, communities and business models.",
@@ -232,15 +233,15 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m.insert(
-        "mobility_automotive",
-        vec![
-            "Automotive, EVs, public transport, mobility technologies and markets.",
-            "自動車、EV、公共交通、移動技術や市場の話題。",
-        ],
-    );
+        m.insert(
+            "mobility_automotive",
+            vec![
+                "Automotive, EVs, public transport, mobility technologies and markets.",
+                "自動車、EV、公共交通、移動技術や市場の話題。",
+            ],
+        );
 
-    m.insert(
+        m.insert(
         "consumer_products",
         vec![
             "Consumer goods choices, pricing, brands, household products and consumption trends.",
@@ -248,8 +249,9 @@ static CANONICAL_SENTENCES: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
         ],
     );
 
-    m
-});
+        m
+    },
+);
 
 #[allow(dead_code)] // May be used in future refactoring
 pub fn get_canonical_sentences(genre: &str) -> Option<&'static Vec<&'static str>> {

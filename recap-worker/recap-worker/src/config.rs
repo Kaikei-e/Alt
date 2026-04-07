@@ -65,6 +65,7 @@ pub struct Config {
     http_bind: SocketAddr,
     llm_max_concurrency: NonZeroUsize,
     llm_prompt_version: String,
+    recap_summary_temperature: f64,
     recap_db_dsn: String,
     news_creator_base_url: String,
     subworker_base_url: String,
@@ -138,6 +139,7 @@ struct BasicConfig {
     recap_db_dsn: String,
     http_bind: SocketAddr,
     llm_prompt_version: String,
+    recap_summary_temperature: f64,
     llm_max_concurrency: NonZeroUsize,
     llm_summary_timeout: Duration,
     batch_summary_chunk_size: usize,
@@ -307,6 +309,7 @@ impl Config {
             http_bind: basic.http_bind,
             llm_max_concurrency: basic.llm_max_concurrency,
             llm_prompt_version: basic.llm_prompt_version,
+            recap_summary_temperature: basic.recap_summary_temperature,
             recap_db_dsn: basic.recap_db_dsn,
             news_creator_base_url: external_services.news_creator_base_url,
             subworker_base_url: external_services.subworker_base_url,
@@ -378,6 +381,11 @@ impl Config {
     #[must_use]
     pub fn llm_prompt_version(&self) -> &str {
         &self.llm_prompt_version
+    }
+
+    #[must_use]
+    pub fn recap_summary_temperature(&self) -> f64 {
+        self.recap_summary_temperature
     }
 
     #[must_use]
@@ -695,6 +703,7 @@ fn load_basic_config() -> Result<BasicConfig, ConfigError> {
     let http_bind = parse_socket_addr("RECAP_WORKER_HTTP_BIND", "0.0.0.0:9005")?;
     let llm_prompt_version =
         env::var("LLM_PROMPT_VERSION").unwrap_or_else(|_| "recap-ja-v2".to_string());
+    let recap_summary_temperature = parse_f64("RECAP_SUMMARY_TEMPERATURE", 0.0)?;
     let llm_max_concurrency = parse_non_zero_usize("LLM_MAX_CONCURRENCY", 1)?;
     let llm_summary_timeout = parse_duration_secs("LLM_SUMMARY_TIMEOUT_SECS", 600)?;
     let batch_summary_chunk_size = parse_usize("RECAP_BATCH_SUMMARY_CHUNK_SIZE", 3)?;
@@ -703,6 +712,7 @@ fn load_basic_config() -> Result<BasicConfig, ConfigError> {
         recap_db_dsn,
         http_bind,
         llm_prompt_version,
+        recap_summary_temperature,
         llm_max_concurrency,
         llm_summary_timeout,
         batch_summary_chunk_size,
@@ -1085,7 +1095,10 @@ mod tests {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
         let mut vars = base_env_vars();
         vars.extend([
-            ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5555/recap_db")),
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
             ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
             ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
             ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
@@ -1098,6 +1111,7 @@ mod tests {
                 "postgres://recap:recap@localhost:5555/recap_db"
             );
             assert_eq!(config.llm_prompt_version(), "recap-ja-v2");
+            assert!((config.recap_summary_temperature() - 0.0).abs() < f64::EPSILON);
             assert_eq!(config.llm_max_concurrency().get(), 1);
             assert_eq!(config.http_bind(), "0.0.0.0:9005".parse().unwrap());
             assert_eq!(config.news_creator_base_url(), "http://localhost:8001/");
@@ -1166,7 +1180,10 @@ mod tests {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
         let mut vars = base_env_vars();
         vars.extend([
-            ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5999/recap_db")),
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5999/recap_db"),
+            ),
             ("RECAP_WORKER_HTTP_BIND", Some("127.0.0.1:8088")),
             ("LLM_PROMPT_VERSION", Some("recap-ja-v3")),
             ("LLM_MAX_CONCURRENCY", Some("2")),
@@ -1176,6 +1193,7 @@ mod tests {
             ("ALT_BACKEND_CONNECT_TIMEOUT_MS", Some("5000")),
             ("HTTP_MAX_RETRIES", Some("5")),
             ("OTEL_EXPORTER_ENDPOINT", Some("http://otel:4317")),
+            ("RECAP_SUMMARY_TEMPERATURE", Some("0.15")),
             ("RECAP_WINDOW_DAYS", Some("14")),
             ("RECAP_GENRES", Some("ai,tech")),
             ("TAG_LABEL_GRAPH_WINDOW", Some("30d")),
@@ -1189,6 +1207,7 @@ mod tests {
                 "postgres://recap:recap@localhost:5999/recap_db"
             );
             assert_eq!(config.llm_prompt_version(), "recap-ja-v3");
+            assert!((config.recap_summary_temperature() - 0.15).abs() < f64::EPSILON);
             assert_eq!(config.llm_max_concurrency().get(), 2);
             assert_eq!(config.http_bind(), "127.0.0.1:8088".parse().unwrap());
             assert_eq!(config.news_creator_base_url(), "https://news.example.com/");
@@ -1233,7 +1252,10 @@ mod tests {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
         let mut vars = base_env_vars();
         vars.extend([
-            ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5555/recap_db")),
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
             ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
             ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
         ]);
@@ -1251,7 +1273,10 @@ mod tests {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
         let mut vars = base_env_vars();
         vars.extend([
-            ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5555/recap_db")),
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
             ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
             ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
         ]);
@@ -1266,7 +1291,10 @@ mod tests {
         let _lock = ENV_MUTEX.lock().expect("env mutex");
         let mut vars = base_env_vars();
         vars.extend([
-            ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5555/recap_db")),
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@localhost:5555/recap_db"),
+            ),
             ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
             ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
         ]);

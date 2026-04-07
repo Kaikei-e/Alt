@@ -129,13 +129,19 @@ mod tests {
             let _lock = ENV_MUTEX.lock().expect("env mutex");
             temp_env::with_vars(
                 [
-                    ("RECAP_DB_DSN", Some("postgres://recap:recap@localhost:5432/recap")),
+                    (
+                        "RECAP_DB_DSN",
+                        Some("postgres://recap:recap@localhost:5432/recap"),
+                    ),
                     ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
                     ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
                     ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
                     ("RECAP_GENRES", Some("ai,space")),
                     ("ALT_BACKEND_SERVICE_TOKEN", None),
-                    ("HUGGING_FACE_TOKEN_PATH", Some("/tmp/test-token-which-does-not-exist")),
+                    (
+                        "HUGGING_FACE_TOKEN_PATH",
+                        Some("/tmp/test-token-which-does-not-exist"),
+                    ),
                 ],
                 || Config::from_env().expect("config loads"),
             )

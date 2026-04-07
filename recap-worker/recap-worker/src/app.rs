@@ -119,6 +119,7 @@ impl ComponentRegistry {
         let morning_pipeline = Arc::new(crate::pipeline::morning::MorningPipeline::new(
             Arc::clone(&config),
             Arc::clone(&recap_dao),
+            Arc::clone(&news_creator_client),
         ));
         let scheduler = Scheduler::new(
             Arc::clone(&pipeline),
@@ -167,12 +168,18 @@ mod tests {
             let _lock = ENV_MUTEX.lock().expect("env mutex");
             temp_env::with_vars(
                 [
-                    ("RECAP_DB_DSN", Some("postgres://user:pass@localhost:5555/recap_db")),
+                    (
+                        "RECAP_DB_DSN",
+                        Some("postgres://user:pass@localhost:5555/recap_db"),
+                    ),
                     ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
                     ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
                     ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
                     ("ALT_BACKEND_SERVICE_TOKEN", None),
-                    ("HUGGING_FACE_TOKEN_PATH", Some("/tmp/test-token-which-does-not-exist")),
+                    (
+                        "HUGGING_FACE_TOKEN_PATH",
+                        Some("/tmp/test-token-which-does-not-exist"),
+                    ),
                 ],
                 || Config::from_env().expect("config loads"),
             )

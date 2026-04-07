@@ -122,6 +122,20 @@ def test_config_summary_num_predict():
     del os.environ["SUMMARY_NUM_PREDICT"]
 
 
+def test_config_recap_quality_defaults():
+    """Recap quality gates should load sane defaults."""
+    os.environ["SERVICE_SECRET"] = "test-secret"
+
+    config = NewsCreatorConfig()
+
+    assert config.recap_min_source_articles_for_llm == 3
+    assert config.recap_min_representative_sentences_for_llm == 4
+    assert config.recap_ja_ratio_threshold == 0.6
+    assert config.recap_summary_repair_attempts == 1
+
+    os.environ.pop("SERVICE_SECRET", None)
+
+
 def test_concurrency_defaults_to_one_when_envs_missing(monkeypatch):
     """When concurrency envs are missing, default to 1 via OLLAMA_NUM_PARALLEL."""
     # Ensure no concurrency envs are set

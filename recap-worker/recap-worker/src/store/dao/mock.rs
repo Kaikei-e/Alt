@@ -17,8 +17,8 @@ use crate::pipeline::pulse::PulseResult;
 use crate::store::models::{
     ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
     GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, JobStats,
-    NewSubworkerRun, PersistedCluster, PersistedGenre, PulseGenerationRow, RawArticle, RecapJob,
-    RecapSearchHit, SubworkerRunStatus,
+    MorningLetter, MorningLetterSource, NewSubworkerRun, PersistedCluster, PersistedGenre,
+    PulseGenerationRow, RawArticle, RecapJob, RecapSearchHit, SubworkerRunStatus,
 };
 
 #[cfg(test)]
@@ -333,11 +333,7 @@ impl RecapDao for MockRecapDao {
         Ok(std::collections::HashMap::new())
     }
 
-    async fn search_recaps_by_term(
-        &self,
-        _term: &str,
-        _limit: i32,
-    ) -> Result<Vec<RecapSearchHit>> {
+    async fn search_recaps_by_term(&self, _term: &str, _limit: i32) -> Result<Vec<RecapSearchHit>> {
         Ok(vec![])
     }
 
@@ -418,6 +414,32 @@ impl RecapDao for MockRecapDao {
         &self,
         _since: chrono::DateTime<chrono::Utc>,
     ) -> Result<Vec<(Uuid, Uuid, bool, chrono::DateTime<chrono::Utc>)>> {
+        Ok(vec![])
+    }
+
+    async fn save_morning_letter(&self, _letter: &MorningLetter) -> Result<()> {
+        Ok(())
+    }
+
+    async fn save_morning_letter_sources(&self, _sources: &[MorningLetterSource]) -> Result<()> {
+        Ok(())
+    }
+
+    async fn get_morning_letter_by_date(
+        &self,
+        _date: chrono::NaiveDate,
+    ) -> Result<Option<MorningLetter>> {
+        Ok(None)
+    }
+
+    async fn get_latest_morning_letter(&self) -> Result<Option<MorningLetter>> {
+        Ok(None)
+    }
+
+    async fn get_morning_letter_sources(
+        &self,
+        _letter_id: Uuid,
+    ) -> Result<Vec<MorningLetterSource>> {
         Ok(vec![])
     }
 
