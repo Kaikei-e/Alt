@@ -474,8 +474,8 @@ func TestCheckKeywordCoverage_GeneralQueryStillWorks(t *testing.T) {
 
 func TestAssessAnswerQuality_CausalExpansionFailed_FlagsExpansionFailed(t *testing.T) {
 	flags := usecase.AssessAnswerQuality(
-		"イランは石油を輸出しています。",
-		"イランの石油危機はなぜ起きた？",
+		"物流網は世界的に相互接続されています。",
+		"世界的な物流混乱はなぜ起きた？",
 		[]usecase.LLMCitation{{ChunkID: "1"}},
 		usecase.IntentCausalExplanation,
 		nil, // no expanded queries = expansion failed
@@ -485,11 +485,11 @@ func TestAssessAnswerQuality_CausalExpansionFailed_FlagsExpansionFailed(t *testi
 
 func TestAssessAnswerQuality_CausalExpansionSucceeded_NoFlag(t *testing.T) {
 	flags := usecase.AssessAnswerQuality(
-		"イランは石油を輸出しています。",
-		"イランの石油危機はなぜ起きた？",
+		"物流網は世界的に相互接続されています。",
+		"世界的な物流混乱はなぜ起きた？",
 		[]usecase.LLMCitation{{ChunkID: "1"}},
 		usecase.IntentCausalExplanation,
-		[]string{"Iran oil crisis", "イラン 石油 危機"},
+		[]string{"logistics disruption", "物流 混乱 原因"},
 	)
 	assert.NotContains(t, flags, "expansion_failed")
 }
@@ -503,4 +503,15 @@ func TestAssessAnswerQuality_NonCausal_ExpansionFailed_NoFlag(t *testing.T) {
 		nil,
 	)
 	assert.NotContains(t, flags, "expansion_failed")
+}
+
+func TestAssessAnswerQuality_ContextInsufficiencyDisclaimer_FlagsDisclaimer(t *testing.T) {
+	flags := usecase.AssessAnswerQuality(
+		"提供されたコンテキストには、世界的な物流混乱に関する情報、因果分析、または関連するデータは含まれていません。",
+		"世界的な物流混乱はなぜ起きたの？詳しく教えて",
+		nil,
+		usecase.IntentCausalExplanation,
+		[]string{"物流 混乱 原因"},
+	)
+	assert.Contains(t, flags, "context_insufficiency_disclaimer")
 }

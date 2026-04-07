@@ -306,6 +306,12 @@ func AssessAnswerQuality(answer, query string, citations []LLMCitation, intentTy
 		flags = append(flags, "expansion_failed")
 	}
 
+	// 6. Detect terse "context is missing" disclaimer answers so corrective retry
+	// can reject degraded outputs instead of overwriting a grounded answer.
+	if checkContextInsufficiencyDisclaimer(answer) {
+		flags = append(flags, "context_insufficiency_disclaimer")
+	}
+
 	return flags
 }
 
@@ -412,6 +418,62 @@ func checkFactCheckEvidence(answer string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func checkContextInsufficiencyDisclaimer(answer string) bool {
+	trimmed := strings.TrimSpace(answer)
+	if trimmed == "" || utf8.RuneCountInString(trimmed) > 260 {
+		return false
+	}
+
+	japanesePrefixes := []string{
+		"提供されたコンテキストには",
+		"このコンテキストには",
+		"コンテキストには",
+	}
+	japaneseLackSignals := []string{
+		"含まれていません",
+		"十分な情報がありません",
+		"情報がありません",
+		"記載されていません",
+	}
+	for _, prefix := range japanesePrefixes {
+		if strings.HasPrefix(trimmed, prefix) {
+			for _, signal := range japaneseLackSignals {
+				if strings.Contains(trimmed, signal) {
+					return true
+				}
+			}
+		}
+	}
+
+	lower := strings.ToLower(trimmed)
+	englishPrefixes := []string{
+		"the provided context",
+		"the supplied context",
+		"the context provided",
+		"i couldn't find enough information",
+	}
+	englishLackSignals := []string{
+		"does not contain",
+		"doesn't contain",
+		"does not include",
+		"not enough information",
+		"insufficient evidence",
+		"knowledge base",
+		"not enough indexed evidence",
+	}
+	for _, prefix := range englishPrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			for _, signal := range englishLackSignals {
+				if strings.Contains(lower, signal) {
+					return true
+				}
+			}
+		}
+	}
+
 	return false
 }
 

@@ -89,7 +89,7 @@ func (b *XMLPromptBuilder) buildSingleTurn(input PromptInput) ([]domain.Message,
 
 // buildMultiTurn creates actual chat turns for past conversation, plus a follow-up
 // user message with context and query. This leverages the LLM's native multi-turn
-// understanding (Gemma: <start_of_turn>user / <start_of_turn>model) instead of
+// understanding (Gemma 4: <|turn>user / <|turn>model) instead of
 // embedding history as text in a single message.
 func (b *XMLPromptBuilder) buildMultiTurn(input PromptInput) ([]domain.Message, error) {
 	var messages []domain.Message
