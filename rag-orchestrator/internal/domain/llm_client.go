@@ -11,16 +11,25 @@ type LLMClient interface {
 	Version() string
 }
 
+// ToolCallingLLMClient extends LLMClient with native tool-calling support.
+type ToolCallingLLMClient interface {
+	ChatWithTools(ctx context.Context, messages []Message, tools []ToolDefinition, maxTokens int) (*LLMResponse, error)
+}
+
 // Message represents a single message in a chat conversation.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content,omitempty"`
+	Name       string     `json:"name,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 }
 
 // LLMResponse carries the LLM output and whether the generation finished.
 type LLMResponse struct {
-	Text string
-	Done bool
+	Text      string
+	ToolCalls []ToolCall
+	Done      bool
 }
 
 // LLMStreamChunk represents a single streaming response chunk returned by the LLM.
@@ -33,6 +42,30 @@ type LLMStreamChunk struct {
 	PromptEvalCount *int
 	EvalCount       *int
 	TotalDuration   *int64
+}
+
+// ToolDefinition describes a tool exposed to an LLM for native function calling.
+type ToolDefinition struct {
+	Type     string           `json:"type"`
+	Function ToolDescriptorFn `json:"function"`
+}
+
+// ToolDescriptorFn mirrors the Ollama/OpenAI tool schema function block.
+type ToolDescriptorFn struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
+}
+
+// ToolCall represents a model-requested tool invocation.
+type ToolCall struct {
+	Function ToolCallFunction `json:"function"`
+}
+
+// ToolCallFunction contains the requested tool name and JSON arguments.
+type ToolCallFunction struct {
+	Name      string         `json:"name"`
+	Arguments map[string]any `json:"arguments,omitempty"`
 }
 
 // QueryExpander defines the capability to expand a user query into multiple search variations.

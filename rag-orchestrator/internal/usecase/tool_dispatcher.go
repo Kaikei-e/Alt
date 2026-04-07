@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
@@ -24,6 +25,55 @@ func NewToolDispatcher(tools map[string]domain.Tool, logger *slog.Logger) *ToolD
 		logger = slog.New(slog.DiscardHandler)
 	}
 	return &ToolDispatcher{tools: tools, logger: logger}
+}
+
+// ToolDefinitions converts the dispatcher tool registry into Ollama/OpenAI-style tool schemas.
+func (d *ToolDispatcher) ToolDefinitions() []domain.ToolDefinition {
+	defs := make([]domain.ToolDefinition, 0, len(d.tools))
+	for _, tool := range d.tools {
+		defs = append(defs, domain.ToolDefinition{
+			Type: "function",
+			Function: domain.ToolDescriptorFn{
+				Name:        tool.Name(),
+				Description: tool.Description(),
+				Parameters: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"query":      map[string]any{"type": "string"},
+						"topic":      map[string]any{"type": "string"},
+						"article_id": map[string]any{"type": "string"},
+						"limit":      map[string]any{"type": "string"},
+						"date_from":  map[string]any{"type": "string"},
+						"date_to":    map[string]any{"type": "string"},
+					},
+					"additionalProperties": true,
+				},
+			},
+		})
+	}
+	sort.Slice(defs, func(i, j int) bool {
+		return defs[i].Function.Name < defs[j].Function.Name
+	})
+	return defs
+}
+
+// ExecuteNamed executes a single tool by name with the provided params.
+func (d *ToolDispatcher) ExecuteNamed(ctx context.Context, name string, params map[string]string) (*domain.ToolResult, error) {
+	tool, ok := d.tools[name]
+	if !ok {
+		return &domain.ToolResult{ToolName: name, Success: false, Error: "tool not found"}, nil
+	}
+	toolCtx, cancel := context.WithTimeout(ctx, toolTimeout)
+	defer cancel()
+	result, err := tool.Execute(toolCtx, params)
+	if err != nil {
+		return &domain.ToolResult{ToolName: name, Success: false, Error: err.Error()}, err
+	}
+	if result == nil {
+		return &domain.ToolResult{ToolName: name, Success: false, Error: "tool returned nil result"}, nil
+	}
+	result.ToolName = name
+	return result, nil
 }
 
 // Dispatch selects and executes tools based on intent and query.

@@ -45,24 +45,30 @@ var generationFormat = map[string]interface{}{
 }
 
 type chatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string            `json:"role"`
+	Content    string            `json:"content,omitempty"`
+	Name       string            `json:"name,omitempty"`
+	ToolCallID string            `json:"tool_call_id,omitempty"`
+	ToolCalls  []domain.ToolCall `json:"tool_calls,omitempty"`
 }
 
 type chatRequest struct {
-	Model     string                 `json:"model"`
-	Messages  []chatMessage          `json:"messages"`
-	KeepAlive *int                   `json:"keep_alive,omitempty"` // nil = proxy default
-	Stream    bool                   `json:"stream"`
-	Format    map[string]interface{} `json:"format"`
-	Options   map[string]interface{} `json:"options,omitempty"`
-	MaxTokens *int                   `json:"max_tokens,omitempty"`
-	Think     interface{}            `json:"think,omitempty"`
+	Model     string                  `json:"model"`
+	Messages  []chatMessage           `json:"messages"`
+	KeepAlive *int                    `json:"keep_alive,omitempty"` // nil = proxy default
+	Stream    bool                    `json:"stream"`
+	Format    map[string]interface{}  `json:"format"`
+	Options   map[string]interface{}  `json:"options,omitempty"`
+	MaxTokens *int                    `json:"max_tokens,omitempty"`
+	Think     interface{}             `json:"think,omitempty"`
+	Tools     []domain.ToolDefinition `json:"tools,omitempty"`
 }
 
 type chatResponse struct {
 	Message struct {
-		Content string `json:"content"`
+		Content   string            `json:"content"`
+		Thinking  string            `json:"thinking"`
+		ToolCalls []domain.ToolCall `json:"tool_calls"`
 	} `json:"message"`
 	Done bool `json:"done"`
 }
@@ -520,8 +526,86 @@ func (g *OllamaGenerator) Chat(ctx context.Context, messages []domain.Message, m
 		slog.Bool("done", chatResp.Done))
 
 	return &domain.LLMResponse{
-		Text: chatResp.Message.Content,
-		Done: chatResp.Done,
+		Text:      chatResp.Message.Content,
+		ToolCalls: chatResp.Message.ToolCalls,
+		Done:      chatResp.Done,
+	}, nil
+}
+
+// ChatWithTools sends a conversation to Ollama with native tool definitions.
+func (g *OllamaGenerator) ChatWithTools(ctx context.Context, messages []domain.Message, tools []domain.ToolDefinition, maxTokens int) (*domain.LLMResponse, error) {
+	requestID := uuid.NewString()
+	g.logger.Info("ollama_chat_tools_started",
+		slog.String("request_id", requestID),
+		slog.String("model", g.Model),
+		slog.Int("message_count", len(messages)),
+		slog.Int("tool_count", len(tools)),
+		slog.Int("max_tokens", maxTokens))
+
+	chatMsgs := toChatMessages(messages)
+	opts := g.buildOptions(maxTokens)
+
+	reqBody := chatRequest{
+		Model:    g.Model,
+		Messages: chatMsgs,
+		Stream:   false,
+		Options:  opts,
+		Tools:    tools,
+	}
+
+	jsonPayload, err := json.Marshal(reqBody)
+	if err != nil {
+		g.logger.Warn("ollama_chat_tools_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
+		return nil, fmt.Errorf("failed to marshal tool chat request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/chat", g.BaseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonPayload))
+	if err != nil {
+		g.logger.Warn("ollama_chat_tools_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
+		return nil, fmt.Errorf("failed to create tool chat request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := g.Client.Do(req)
+	if err != nil {
+		g.logger.Warn("ollama_chat_tools_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
+		return nil, fmt.Errorf("failed to call tool chat endpoint: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		g.logger.Warn("ollama_chat_tools_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", fmt.Sprintf("status %d: %s", resp.StatusCode, string(body))))
+		return nil, fmt.Errorf("tool chat endpoint returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var chatResp chatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		g.logger.Warn("ollama_chat_tools_failed",
+			slog.String("request_id", requestID),
+			slog.String("error", err.Error()))
+		return nil, fmt.Errorf("failed to decode tool chat response: %w", err)
+	}
+
+	g.logger.Info("ollama_chat_tools_completed",
+		slog.String("request_id", requestID),
+		slog.Int("response_length", len(chatResp.Message.Content)),
+		slog.Int("tool_calls", len(chatResp.Message.ToolCalls)),
+		slog.Bool("done", chatResp.Done))
+
+	return &domain.LLMResponse{
+		Text:      chatResp.Message.Content,
+		ToolCalls: chatResp.Message.ToolCalls,
+		Done:      chatResp.Done,
 	}, nil
 }
 
@@ -730,8 +814,11 @@ func toChatMessages(msgs []domain.Message) []chatMessage {
 	out := make([]chatMessage, len(msgs))
 	for i, m := range msgs {
 		out[i] = chatMessage{
-			Role:    m.Role,
-			Content: m.Content,
+			Role:       m.Role,
+			Content:    m.Content,
+			Name:       m.Name,
+			ToolCallID: m.ToolCallID,
+			ToolCalls:  m.ToolCalls,
 		}
 	}
 	return out
