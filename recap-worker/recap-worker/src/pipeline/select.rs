@@ -1,6 +1,7 @@
 //! Selection stage for filtering and selecting articles for summarization.
 
 mod clustering;
+mod embedding_batches;
 mod filtering;
 mod scoring;
 mod thresholds;
@@ -159,6 +160,7 @@ mod tests {
     use super::super::genre::{FeatureProfile, GenreCandidate};
     use super::*;
     use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
     use uuid::Uuid;
 
     fn assignment(genre: &str) -> super::super::genre::GenreAssignment {
@@ -274,6 +276,49 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Default)]
+    struct EmbedderBatchStats {
+        call_count: usize,
+        max_batch_seen: usize,
+    }
+
+    #[derive(Debug, Clone)]
+    struct BatchCappedMockEmbedder {
+        max_batch: usize,
+        stats: Arc<Mutex<EmbedderBatchStats>>,
+    }
+
+    impl BatchCappedMockEmbedder {
+        fn stable_embedding(text: &str) -> Vec<f32> {
+            let digits: String = text.chars().filter(|ch| ch.is_ascii_digit()).collect();
+            let base = digits.parse::<f32>().unwrap_or(0.0);
+            vec![base, base * 0.5, base.sin(), 1.0]
+        }
+    }
+
+    #[async_trait]
+    impl crate::pipeline::embedding::Embedder for BatchCappedMockEmbedder {
+        async fn encode(&self, texts: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+            let mut stats = self.stats.lock().expect("batch stats lock");
+            stats.call_count += 1;
+            stats.max_batch_seen = stats.max_batch_seen.max(texts.len());
+            drop(stats);
+
+            if texts.len() > self.max_batch {
+                return Err(anyhow::anyhow!(
+                    "batch too large: {} > {}",
+                    texts.len(),
+                    self.max_batch
+                ));
+            }
+
+            Ok(texts
+                .iter()
+                .map(|text| Self::stable_embedding(text))
+                .collect())
+        }
+    }
+
     #[tokio::test]
     async fn subcluster_others_splits_into_groups() {
         let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
@@ -378,10 +423,13 @@ mod tests {
             })
             .collect();
 
-        let result =
-            clustering::subcluster_large_genres(embedding_service.as_ref(), &subgenre_config, assignments)
-                .await
-                .expect("subcluster_large_genres failed");
+        let result = clustering::subcluster_large_genres(
+            embedding_service.as_ref(),
+            &subgenre_config,
+            assignments,
+        )
+        .await
+        .expect("subcluster_large_genres failed");
 
         // Should have split into multiple subgenres (software_dev_001, software_dev_002, etc.)
         // 250 items with target 50 -> k = ceil(250/50) = 5, capped at max_k=10, so k=5
@@ -511,5 +559,109 @@ mod tests {
                 "Without embedding service, genre should remain unchanged"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn subcluster_large_genres_batches_embedding_requests() {
+        let stats = Arc::new(Mutex::new(EmbedderBatchStats::default()));
+        let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
+            Some(Arc::new(BatchCappedMockEmbedder {
+                max_batch: 32,
+                stats: Arc::clone(&stats),
+            }));
+
+        let subgenre_config = SubgenreConfig::new(50, 25, 10);
+
+        let assignments: Vec<super::super::genre::GenreAssignment> = (0..96)
+            .map(|i| super::super::genre::GenreAssignment {
+                genres: vec!["software_dev".to_string()],
+                candidates: vec![],
+                genre_scores: std::collections::HashMap::from([("software_dev".to_string(), 10)]),
+                genre_confidence: std::collections::HashMap::from([(
+                    "software_dev".to_string(),
+                    0.9,
+                )]),
+                feature_profile: FeatureProfile::default(),
+                article: DeduplicatedArticle {
+                    id: format!("art-{}", i),
+                    title: Some(format!("Title {}", i)),
+                    sentences: vec![format!("Sentence {}", i)],
+                    ..Default::default()
+                },
+                embedding: None,
+            })
+            .collect();
+
+        let result = clustering::subcluster_large_genres(
+            embedding_service.as_ref(),
+            &subgenre_config,
+            assignments,
+        )
+        .await
+        .expect("subcluster_large_genres failed");
+
+        let genres: std::collections::HashSet<String> =
+            result.iter().flat_map(|a| a.genres.clone()).collect();
+        assert!(
+            genres.iter().any(|g| g.starts_with("software_dev_")),
+            "Should contain software_dev_### subgenres"
+        );
+
+        let stats = stats.lock().expect("batch stats lock");
+        assert!(
+            stats.call_count >= 3,
+            "Expected multiple batched encode calls"
+        );
+        assert!(
+            stats.max_batch_seen <= 32,
+            "Embedding batch exceeded cap: {}",
+            stats.max_batch_seen
+        );
+    }
+
+    #[tokio::test]
+    async fn filter_outliers_batches_embedding_requests() {
+        let stats = Arc::new(Mutex::new(EmbedderBatchStats::default()));
+        let embedder = BatchCappedMockEmbedder {
+            max_batch: 32,
+            stats: Arc::clone(&stats),
+        };
+
+        let assignments: Vec<super::super::genre::GenreAssignment> = (0..64)
+            .map(|i| super::super::genre::GenreAssignment {
+                genres: vec!["tech".to_string()],
+                candidates: vec![],
+                genre_scores: std::collections::HashMap::from([("tech".to_string(), 10)]),
+                genre_confidence: std::collections::HashMap::from([("tech".to_string(), 0.9)]),
+                feature_profile: FeatureProfile::default(),
+                article: DeduplicatedArticle {
+                    id: format!("art-{}", i),
+                    title: Some(format!("Title {}", i)),
+                    sentences: vec![format!("Sentence {}", i)],
+                    ..Default::default()
+                },
+                embedding: None,
+            })
+            .collect();
+
+        let filtered =
+            filtering::filter_outliers(&embedder, assignments, &HashMap::new(), &HashMap::new(), 5)
+                .await;
+
+        assert!(
+            !filtered.is_empty(),
+            "Filtering should keep some assignments"
+        );
+
+        let stats = stats.lock().expect("batch stats lock");
+        assert!(
+            stats.call_count >= 2,
+            "Expected multiple batched encode calls"
+        );
+        assert!(
+            stats.max_batch_seen <= 32,
+            "Embedding batch exceeded cap: {}",
+            stats.max_batch_seen
+        );
     }
 }

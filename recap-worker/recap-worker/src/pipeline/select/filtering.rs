@@ -2,8 +2,10 @@
 
 use std::collections::HashMap;
 
-use crate::pipeline::embedding::{cosine_similarity, Embedder};
+use crate::pipeline::embedding::{Embedder, cosine_similarity};
 use crate::pipeline::genre::GenreAssignment;
+
+use super::embedding_batches::{EMBEDDING_REQUEST_BATCH_SIZE, encode_batched};
 
 /// Filter outliers from assignments based on embedding similarity.
 #[allow(clippy::too_many_lines)]
@@ -50,7 +52,8 @@ pub(crate) async fn filter_outliers(
             })
             .collect();
 
-        if let Ok(embeddings) = service.encode(&texts).await {
+        if let Ok(embeddings) = encode_batched(service, &texts, EMBEDDING_REQUEST_BATCH_SIZE).await
+        {
             // Calculate centroid
             let count = embeddings.len() as f32;
             let dim = embeddings[0].len();

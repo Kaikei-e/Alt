@@ -5,9 +5,15 @@ use std::sync::Arc;
 
 use crate::pipeline::embedding::Embedder;
 use crate::pipeline::genre::GenreAssignment;
-use crate::util::kmeans::KMeans;
+use crate::util::kmeans::MiniBatchKMeans;
 
-use super::types::SubgenreConfig;
+use super::{
+    embedding_batches::{EMBEDDING_REQUEST_BATCH_SIZE, encode_batched},
+    types::SubgenreConfig,
+};
+
+const MINI_BATCH_KMEANS_BATCH_SIZE: usize = 64;
+const MINI_BATCH_KMEANS_MAX_ITERATIONS: usize = 20;
 
 /// Subcluster "other" genre assignments into groups.
 pub(crate) async fn subcluster_others(
@@ -41,12 +47,19 @@ pub(crate) async fn subcluster_others(
             })
             .collect();
 
-        if let Ok(embeddings) = service.encode(&texts).await {
+        if let Ok(embeddings) =
+            encode_batched(service.as_ref(), &texts, EMBEDDING_REQUEST_BATCH_SIZE).await
+        {
             // Determine K dynamically: at least 3 items per cluster
             let k = (others.len() / 3).clamp(1, 5);
 
             if k > 1 {
-                let kmeans = KMeans::new(&embeddings, k, 20);
+                let kmeans = MiniBatchKMeans::new(
+                    &embeddings,
+                    k,
+                    MINI_BATCH_KMEANS_MAX_ITERATIONS,
+                    MINI_BATCH_KMEANS_BATCH_SIZE,
+                );
 
                 for (i, &cluster_id) in kmeans.assignments.iter().enumerate() {
                     if let Some(assignment) = others.get_mut(i) {
@@ -119,9 +132,16 @@ pub(crate) async fn subcluster_large_genres(
                 })
                 .collect();
 
-            if let Ok(embeddings) = service.encode(&texts).await {
+            if let Ok(embeddings) =
+                encode_batched(service.as_ref(), &texts, EMBEDDING_REQUEST_BATCH_SIZE).await
+            {
                 if embeddings.len() == genre_assignments.len() {
-                    let kmeans = KMeans::new(&embeddings, k, 20);
+                    let kmeans = MiniBatchKMeans::new(
+                        &embeddings,
+                        k,
+                        MINI_BATCH_KMEANS_MAX_ITERATIONS,
+                        MINI_BATCH_KMEANS_BATCH_SIZE,
+                    );
 
                     for (i, &cluster_id) in kmeans.assignments.iter().enumerate() {
                         if let Some(assignment) = genre_assignments.get_mut(i) {

@@ -7,6 +7,11 @@ pub struct KMeans {
     pub assignments: Vec<usize>,
 }
 
+pub struct MiniBatchKMeans {
+    pub centroids: Vec<Vec<f32>>,
+    pub assignments: Vec<usize>,
+}
+
 impl KMeans {
     /// Runs K-Means clustering.
     ///
@@ -90,6 +95,95 @@ impl KMeans {
     }
 }
 
+impl MiniBatchKMeans {
+    /// Runs mini-batch K-Means using online centroid updates.
+    ///
+    /// This follows the standard mini-batch update pattern described by
+    /// Sculley (2010): shuffle the dataset, update centroids from small
+    /// batches, then assign all samples in a final pass.
+    pub fn new(data: &[Vec<f32>], k: usize, max_iterations: usize, batch_size: usize) -> Self {
+        if data.is_empty() || k == 0 {
+            return Self {
+                centroids: vec![],
+                assignments: vec![],
+            };
+        }
+
+        let k = k.min(data.len());
+        let dim = data[0].len();
+        let mut rng = thread_rng();
+        let mut centroids: Vec<Vec<f32>> = data.choose_multiple(&mut rng, k).cloned().collect();
+        let mut counts = vec![0usize; k];
+        let mut indices: Vec<usize> = (0..data.len()).collect();
+        let batch_size = batch_size.clamp(1, data.len());
+        let epochs = max_iterations.max(1);
+
+        for _ in 0..epochs {
+            indices.shuffle(&mut rng);
+
+            for batch in indices.chunks(batch_size) {
+                for &idx in batch {
+                    let point = &data[idx];
+                    let cluster = nearest_centroid(point, &centroids);
+                    counts[cluster] += 1;
+                    let eta = 1.0 / counts[cluster] as f32;
+
+                    for axis in 0..dim {
+                        centroids[cluster][axis] =
+                            (1.0 - eta) * centroids[cluster][axis] + eta * point[axis];
+                    }
+                }
+            }
+        }
+
+        let assignments = data
+            .iter()
+            .map(|point| nearest_centroid(point, &centroids))
+            .collect();
+
+        Self {
+            centroids,
+            assignments,
+        }
+    }
+}
+
 fn distance_sq(a: &[f32], b: &[f32]) -> f32 {
     a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum()
+}
+
+fn nearest_centroid(point: &[f32], centroids: &[Vec<f32>]) -> usize {
+    let mut min_dist_sq = f32::MAX;
+    let mut best_cluster = 0;
+
+    for (cluster_idx, centroid) in centroids.iter().enumerate() {
+        let dist_sq = distance_sq(point, centroid);
+        if dist_sq < min_dist_sq {
+            min_dist_sq = dist_sq;
+            best_cluster = cluster_idx;
+        }
+    }
+
+    best_cluster
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MiniBatchKMeans;
+
+    #[test]
+    fn mini_batch_kmeans_assigns_every_point() {
+        let data = vec![
+            vec![0.0, 0.0],
+            vec![0.1, 0.1],
+            vec![10.0, 10.0],
+            vec![10.1, 10.1],
+        ];
+
+        let kmeans = MiniBatchKMeans::new(&data, 2, 10, 2);
+
+        assert_eq!(kmeans.assignments.len(), data.len());
+        assert_eq!(kmeans.centroids.len(), 2);
+        assert!(kmeans.assignments.iter().all(|cluster| *cluster < 2));
+    }
 }
