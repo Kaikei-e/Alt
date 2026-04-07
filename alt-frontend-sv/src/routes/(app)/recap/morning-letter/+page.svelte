@@ -19,11 +19,11 @@ import MobileChat from "$lib/components/mobile/morning-letter/MorningLetterChat.
 
 const { isDesktop } = useViewport();
 
-// Receive preloaded data from +page.ts load function
-const { data } = page;
-const ml = useMorningLetter(data.letter ?? null);
+// useMorningLetter receives preloaded letter from +page.ts load
+// page.data is populated by SvelteKit before rendering (ssr=false + load)
+const ml = useMorningLetter(page.data.letter ?? null);
 
-const targetDate = $derived(ml.letter?.targetDate ?? data.requestedDate ?? undefined);
+const targetDate = $derived(ml.letter?.targetDate ?? page.data.requestedDate ?? undefined);
 const withinHours = $derived(deriveWithinHours(targetDate));
 const dateDisplay = $derived(
 	targetDate ? formatLetterDate(targetDate, ml.letter?.editionTimezone) : "Morning Letter",
@@ -31,7 +31,7 @@ const dateDisplay = $derived(
 
 // If load returned an error, attempt client-side retry
 onMount(() => {
-	if (data.error && !ml.letter) {
+	if (page.data.error && !ml.letter) {
 		void ml.fetchLetter();
 	}
 });
@@ -49,7 +49,7 @@ onMount(() => {
 			{#if ml.letterLoading}
 				<MorningLetterSkeleton minHeight="60vh" />
 			{:else if !ml.letter}
-				<MorningLetterEmpty requestedDate={data.requestedDate} />
+				<MorningLetterEmpty requestedDate={page.data.requestedDate} />
 			{:else}
 				<MorningLetterDocumentCore
 					letter={ml.letter}
@@ -82,7 +82,7 @@ onMount(() => {
 			{#if ml.letterLoading}
 				<MorningLetterSkeleton minHeight="40vh" />
 			{:else if !ml.letter}
-				<MorningLetterEmpty requestedDate={data.requestedDate} />
+				<MorningLetterEmpty requestedDate={page.data.requestedDate} />
 			{:else}
 				<MorningLetterDocumentCore
 					letter={ml.letter}

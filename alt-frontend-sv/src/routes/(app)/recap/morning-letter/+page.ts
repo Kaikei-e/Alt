@@ -1,16 +1,11 @@
+import type { PageLoad } from "./$types";
 import { createClientTransport, getLatestLetter, getLetterByDate } from "$lib/connect";
 import type { MorningLetterDocument } from "$lib/connect";
 
 // Connect-RPC transport requires browser context
 export const ssr = false;
 
-type LoadResult = {
-	letter: MorningLetterDocument | null;
-	requestedDate: string | null;
-	error?: true;
-};
-
-export const load = async ({ url }: { url: URL }): Promise<LoadResult> => {
+export const load: PageLoad = async ({ url }) => {
 	const transport = createClientTransport();
 	const dateParam = url.searchParams.get("date");
 

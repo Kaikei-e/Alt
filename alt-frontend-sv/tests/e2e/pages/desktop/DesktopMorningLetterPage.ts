@@ -28,8 +28,8 @@ export class DesktopMorningLetterPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 
-		// Page elements
-		this.pageTitle = page.getByRole("heading", { name: /morning letter/i });
+		// Page elements — use .first() since empty state also has a heading containing "Morning Letter"
+		this.pageTitle = page.getByRole("heading", { name: /morning letter/i }).first();
 
 		// Chat container
 		this.chatContainer = page

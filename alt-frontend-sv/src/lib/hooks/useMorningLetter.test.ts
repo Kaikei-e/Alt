@@ -45,11 +45,18 @@ describe("useMorningLetter", () => {
 		expect(ml.letterLoading).toBe(false);
 	});
 
-	it("starts with letterLoading=true when no initial letter", () => {
+	it("starts with letterLoading=true when no initial data (undefined)", () => {
 		const ml = useMorningLetter();
 
 		expect(ml.letter).toBeNull();
 		expect(ml.letterLoading).toBe(true);
+	});
+
+	it("starts with letterLoading=false when initial is null (NotFound)", () => {
+		const ml = useMorningLetter(null);
+
+		expect(ml.letter).toBeNull();
+		expect(ml.letterLoading).toBe(false);
 	});
 
 	it("fetches latest letter when no initial and fetchLetter is called", async () => {

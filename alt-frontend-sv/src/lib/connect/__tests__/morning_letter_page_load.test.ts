@@ -11,6 +11,9 @@ vi.mock("$lib/connect", () => ({
 
 import { load } from "../../../routes/(app)/recap/morning-letter/+page";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LoadResult = Record<string, any>;
+
 const fakeLetter = {
 	id: "letter-001",
 	targetDate: "2026-04-07",
@@ -34,7 +37,7 @@ describe("+page.ts load", () => {
 	it("calls getLatestLetter when no date param", async () => {
 		mockGetLatestLetter.mockResolvedValue(fakeLetter);
 
-		const result = await load(makeLoadArgs() as never);
+		const result = (await load(makeLoadArgs() as never)) as LoadResult;
 
 		expect(mockGetLatestLetter).toHaveBeenCalledTimes(1);
 		expect(mockGetLetterByDate).not.toHaveBeenCalled();
@@ -45,7 +48,7 @@ describe("+page.ts load", () => {
 	it("calls getLetterByDate when date param is provided", async () => {
 		mockGetLetterByDate.mockResolvedValue(fakeLetter);
 
-		const result = await load(makeLoadArgs({ date: "2026-04-07" }) as never);
+		const result = (await load(makeLoadArgs({ date: "2026-04-07" }) as never)) as LoadResult;
 
 		expect(mockGetLetterByDate).toHaveBeenCalledWith(
 			expect.anything(),
@@ -59,7 +62,7 @@ describe("+page.ts load", () => {
 	it("returns null letter when not found", async () => {
 		mockGetLatestLetter.mockResolvedValue(null);
 
-		const result = await load(makeLoadArgs() as never);
+		const result = (await load(makeLoadArgs() as never)) as LoadResult;
 
 		expect(result.letter).toBeNull();
 		expect(result.error).toBeUndefined();
@@ -68,7 +71,7 @@ describe("+page.ts load", () => {
 	it("returns error flag on network failure", async () => {
 		mockGetLatestLetter.mockRejectedValue(new Error("network error"));
 
-		const result = await load(makeLoadArgs() as never);
+		const result = (await load(makeLoadArgs() as never)) as LoadResult;
 
 		expect(result.letter).toBeNull();
 		expect(result.error).toBe(true);
@@ -77,9 +80,9 @@ describe("+page.ts load", () => {
 	it("returns error flag when getLetterByDate fails", async () => {
 		mockGetLetterByDate.mockRejectedValue(new Error("server error"));
 
-		const result = await load(
+		const result = (await load(
 			makeLoadArgs({ date: "2026-04-07" }) as never,
-		);
+		)) as LoadResult;
 
 		expect(result.letter).toBeNull();
 		expect(result.requestedDate).toBe("2026-04-07");

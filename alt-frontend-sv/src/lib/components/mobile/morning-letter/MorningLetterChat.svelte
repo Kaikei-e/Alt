@@ -49,14 +49,15 @@ let messages = $state<Message[]>([
 
 let isLoading = $state(false);
 let inputValue = $state("");
-let chatContainer = $state<HTMLDivElement>(undefined!);
+let chatContainer = $state<HTMLDivElement | undefined>(undefined);
 let currentAbortController: AbortController | null = null;
 
 async function scrollToBottom() {
 	await tick();
-	if (chatContainer) {
+	const el = chatContainer;
+	if (el) {
 		setTimeout(() => {
-			chatContainer.scrollTop = chatContainer.scrollHeight;
+			el.scrollTop = el.scrollHeight;
 		}, 100);
 	}
 }

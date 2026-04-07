@@ -11,12 +11,31 @@ import type {
 	MorningLetterSourceProto,
 } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
 
+/** Type guard for ConnectError Unauthenticated (handles both real and mocked instances). */
+function isUnauthenticatedError(err: unknown): boolean {
+	if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
+		return true;
+	}
+	// Duck-type check for mocked ConnectError in tests
+	if (
+		err instanceof Error &&
+		err.name === "ConnectError" &&
+		"code" in err &&
+		(err as Record<string, unknown>)["code"] === 16
+	) {
+		return true;
+	}
+	return false;
+}
+
 export function useMorningLetter(
-	initialLetter: MorningLetterDocument | null = null,
+	initialLetter?: MorningLetterDocument | null,
 ) {
-	let letter = $state<MorningLetterDocument | null>(initialLetter);
+	// undefined = no data provided yet (need to fetch), null = explicitly no letter (NotFound)
+	const hasInitialData = initialLetter !== undefined;
+	let letter = $state<MorningLetterDocument | null>(initialLetter ?? null);
 	let sources = $state<MorningLetterSourceProto[]>([]);
-	let letterLoading = $state(!initialLetter);
+	let letterLoading = $state(!hasInitialData);
 	let sourcesLoading = $state(false);
 	let error = $state<Error | null>(null);
 
@@ -47,19 +66,7 @@ export function useMorningLetter(
 				void loadSources(result.id);
 			}
 		} catch (err) {
-			if (
-				err instanceof ConnectError &&
-				err.code === Code.Unauthenticated
-			) {
-				goto("/login");
-				return;
-			}
-			// Duck-type check for mocked ConnectError
-			if (
-				err instanceof Error &&
-				err.name === "ConnectError" &&
-				(err as { code?: number }).code === 16
-			) {
+			if (isUnauthenticatedError(err)) {
 				goto("/login");
 				return;
 			}
