@@ -743,7 +743,7 @@ fn parse_morning_letter_body(
     result_jsonb: &Value,
     letter_id: &str,
     schema_version: i32,
-    model: &Option<String>,
+    model: Option<&String>,
     generation_revision: i32,
 ) -> Result<MorningLetterBodyResponse, StatusCode> {
     if schema_version != 1 {
@@ -775,7 +775,7 @@ fn parse_morning_letter_body(
             error!(
                 letter_id = letter_id,
                 schema_version = schema_version,
-                model = model.as_deref().unwrap_or("unknown"),
+                model = model.map_or("unknown", String::as_str),
                 generation_revision = generation_revision,
                 error = %e,
                 "failed to parse morning letter result_jsonb"
@@ -794,7 +794,7 @@ fn map_morning_letter_response(
         &letter.result_jsonb,
         &letter_id_str,
         letter.schema_version,
-        &letter.model,
+        letter.model.as_ref(),
         letter.generation_revision,
     )
     .map_err(|status| {
@@ -874,20 +874,17 @@ pub(crate) async fn get_morning_letter_by_date(
     State(state): State<AppState>,
     Path(target_date): Path<String>,
 ) -> impl IntoResponse {
-    let date = match chrono::NaiveDate::parse_from_str(&target_date, "%Y-%m-%d") {
-        Ok(d) => d,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!(
-                        "Invalid date format: '{}'. Expected YYYY-MM-DD",
-                        target_date
-                    ),
-                }),
-            )
-                .into_response();
-        }
+    let Ok(date) = chrono::NaiveDate::parse_from_str(&target_date, "%Y-%m-%d") else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!(
+                    "Invalid date format: '{}'. Expected YYYY-MM-DD",
+                    target_date
+                ),
+            }),
+        )
+            .into_response();
     };
 
     let dao = state.dao();
@@ -926,17 +923,14 @@ pub(crate) async fn get_morning_letter_sources(
     State(state): State<AppState>,
     Path(letter_id): Path<String>,
 ) -> impl IntoResponse {
-    let id = match uuid::Uuid::parse_str(&letter_id) {
-        Ok(id) => id,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!("Invalid letter_id: '{}'. Expected UUID", letter_id),
-                }),
-            )
-                .into_response();
-        }
+    let Ok(id) = uuid::Uuid::parse_str(&letter_id) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid letter_id: '{}'. Expected UUID", letter_id),
+            }),
+        )
+            .into_response();
     };
 
     let dao = state.dao();

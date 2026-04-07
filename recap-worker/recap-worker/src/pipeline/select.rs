@@ -290,7 +290,7 @@ mod tests {
 
     impl BatchCappedMockEmbedder {
         fn stable_embedding(text: &str) -> Vec<f32> {
-            let digits: String = text.chars().filter(|ch| ch.is_ascii_digit()).collect();
+            let digits: String = text.chars().filter(char::is_ascii_digit).collect();
             let base = digits.parse::<f32>().unwrap_or(0.0);
             vec![base, base * 0.5, base.sin(), 1.0]
         }

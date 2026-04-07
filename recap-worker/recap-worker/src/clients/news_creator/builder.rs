@@ -140,28 +140,8 @@ impl<'a> SummaryRequestBuilder<'a> {
             })
             .collect();
 
-        // Genre highlightsの変換
-        let genre_highlights = clustering.genre_highlights.as_ref().map(|highlights| {
-            highlights
-                .iter()
-                .map(|rep| {
-                    let text = rep.text.trim().to_string();
-                    // メタデータを取得
-                    let (published_at, source_url) = article_metadata
-                        .get(&rep.article_id)
-                        .cloned()
-                        .unwrap_or((None, None));
-
-                    RepresentativeSentence {
-                        text,
-                        published_at: published_at.map(|dt| dt.to_rfc3339()),
-                        source_url,
-                        article_id: Some(rep.article_id.clone()),
-                        is_centroid: rep.reasons.iter().any(|r| r == "centrality"),
-                    }
-                })
-                .collect()
-        });
+        let genre_highlights =
+            Self::convert_genre_highlights(clustering, article_metadata);
 
         SummaryRequest {
             job_id,
@@ -174,6 +154,34 @@ impl<'a> SummaryRequestBuilder<'a> {
             }),
             window_days: None,
         }
+    }
+
+    fn convert_genre_highlights(
+        clustering: &ClusteringResponse,
+        article_metadata: &std::collections::HashMap<
+            String,
+            (Option<chrono::DateTime<chrono::Utc>>, Option<String>),
+        >,
+    ) -> Option<Vec<RepresentativeSentence>> {
+        clustering.genre_highlights.as_ref().map(|highlights| {
+            highlights
+                .iter()
+                .map(|rep| {
+                    let text = rep.text.trim().to_string();
+                    let (published_at, source_url) = article_metadata
+                        .get(&rep.article_id)
+                        .cloned()
+                        .unwrap_or((None, None));
+                    RepresentativeSentence {
+                        text,
+                        published_at: published_at.map(|dt| dt.to_rfc3339()),
+                        source_url,
+                        article_id: Some(rep.article_id.clone()),
+                        is_centroid: rep.reasons.iter().any(|r| r == "centrality"),
+                    }
+                })
+                .collect()
+        })
     }
 }
 
