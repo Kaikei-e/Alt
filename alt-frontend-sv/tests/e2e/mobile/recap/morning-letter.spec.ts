@@ -52,5 +52,4 @@ test.describe("Mobile Morning Letter", () => {
 				.first(),
 		).toBeVisible({ timeout: 10000 });
 	});
-
 });

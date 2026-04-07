@@ -93,9 +93,9 @@ test.describe("Mobile Knowledge Home", () => {
 		await homePage.goto();
 		await homePage.waitForHomeLoaded();
 
-		await expect(
-			page.getByText("Go Concurrency Patterns"),
-		).toBeVisible({ timeout: 10000 });
+		await expect(page.getByText("Go Concurrency Patterns")).toBeVisible({
+			timeout: 10000,
+		});
 	});
 });
 
@@ -114,8 +114,6 @@ test.describe("Mobile Knowledge Home - Recall Disabled", () => {
 		await expect(readyCard).toBeVisible();
 
 		// Recall candidate should NOT be visible
-		await expect(
-			page.getByText("Go Concurrency Patterns"),
-		).not.toBeVisible();
+		await expect(page.getByText("Go Concurrency Patterns")).not.toBeVisible();
 	});
 });

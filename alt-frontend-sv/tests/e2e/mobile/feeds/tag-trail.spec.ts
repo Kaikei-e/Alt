@@ -60,5 +60,4 @@ test.describe("Mobile Tag Trail", () => {
 		await mobileTagTrailPage.clickTag("AI");
 		await expect(page.getByText("AI Trends in 2026")).toBeVisible();
 	});
-
 });

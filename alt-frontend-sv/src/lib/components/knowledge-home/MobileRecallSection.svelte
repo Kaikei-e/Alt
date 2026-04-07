@@ -1,26 +1,26 @@
 <script lang="ts">
-	import { Brain } from "@lucide/svelte";
-	import type { RecallCandidateData } from "$lib/connect/knowledge_home";
-	import RecallCandidateCard from "./recall-rail/RecallCandidateCard.svelte";
+import { Brain } from "@lucide/svelte";
+import type { RecallCandidateData } from "$lib/connect/knowledge_home";
+import RecallCandidateCard from "./recall-rail/RecallCandidateCard.svelte";
 
-	interface Props {
-		candidates: RecallCandidateData[];
-		unavailable?: boolean;
-		onSnooze: (itemKey: string) => void;
-		onDismiss: (itemKey: string) => void;
-		onOpen: (itemKey: string) => void;
-	}
+interface Props {
+	candidates: RecallCandidateData[];
+	unavailable?: boolean;
+	onSnooze: (itemKey: string) => void;
+	onDismiss: (itemKey: string) => void;
+	onOpen: (itemKey: string) => void;
+}
 
-	const {
-		candidates,
-		unavailable = false,
-		onSnooze,
-		onDismiss,
-		onOpen,
-	}: Props = $props();
+const {
+	candidates,
+	unavailable = false,
+	onSnooze,
+	onDismiss,
+	onOpen,
+}: Props = $props();
 
-	const displayCandidates = $derived(candidates.slice(0, 2));
-	const hasMore = $derived(candidates.length > 2);
+const displayCandidates = $derived(candidates.slice(0, 2));
+const hasMore = $derived(candidates.length > 2);
 </script>
 
 {#if unavailable}

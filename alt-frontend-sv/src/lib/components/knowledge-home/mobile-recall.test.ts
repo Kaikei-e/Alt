@@ -21,11 +21,7 @@ describe("MobileRecallSection logic", () => {
 	});
 
 	it("has remaining count when more than 2", () => {
-		const candidates = [
-			{ itemKey: "a" },
-			{ itemKey: "b" },
-			{ itemKey: "c" },
-		];
+		const candidates = [{ itemKey: "a" }, { itemKey: "b" }, { itemKey: "c" }];
 		const remaining = candidates.length - 2;
 		expect(remaining).toBe(1);
 	});

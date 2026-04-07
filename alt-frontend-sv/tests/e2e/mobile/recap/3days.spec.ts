@@ -82,5 +82,4 @@ test.describe("Mobile 3-Day Recap", () => {
 			timeout: 15000,
 		});
 	});
-
 });

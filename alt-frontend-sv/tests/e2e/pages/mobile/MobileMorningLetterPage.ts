@@ -23,9 +23,13 @@ export class MobileMorningLetterPage extends BasePage {
 			.getByRole("heading", { name: /morning letter/i })
 			.first();
 		this.chatToggle = page.getByRole("button", { name: /follow-up chat/i });
-		this.chatInput = page.getByPlaceholder(/ask about the briefing|ask about today/i);
+		this.chatInput = page.getByPlaceholder(
+			/ask about the briefing|ask about today/i,
+		);
 		this.sendButton = page.getByLabel("Send");
-		this.welcomeMessage = page.getByText(/follow-up questions|hello.*ask me about/i);
+		this.welcomeMessage = page.getByText(
+			/follow-up questions|hello.*ask me about/i,
+		);
 		this.thinkingIndicator = page.getByText(/searching/i);
 		this.floatingMenu = page.getByLabel("Open floating menu");
 		this.messageList = page
@@ -42,7 +46,9 @@ export class MobileMorningLetterPage extends BasePage {
 	 */
 	async waitForChatReady(): Promise<void> {
 		// Wait for page to load first
-		await this.page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+		await this.page
+			.waitForLoadState("networkidle", { timeout: 15000 })
+			.catch(() => {});
 
 		// Mobile layout uses disclosure pattern — try to open it
 		const toggle = this.chatToggle;

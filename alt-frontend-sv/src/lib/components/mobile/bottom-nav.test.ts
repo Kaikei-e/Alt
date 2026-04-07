@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	NAV_TABS,
-	shouldShowBottomNav,
-	getActiveTabIndex,
-} from "./bottom-nav";
+import { NAV_TABS, shouldShowBottomNav, getActiveTabIndex } from "./bottom-nav";
 
 describe("NAV_TABS", () => {
 	it("has exactly 5 tabs", () => {
@@ -12,7 +8,7 @@ describe("NAV_TABS", () => {
 
 	it("has correct labels", () => {
 		const labels = NAV_TABS.map((t) => t.label);
-		expect(labels).toEqual(["Home", "Swipe", "Search", "Recap", "Library"]);
+		expect(labels).toEqual(["Home", "Swipe", "Search", "Recap", "Menu"]);
 	});
 
 	it("has correct hrefs", () => {
@@ -22,7 +18,7 @@ describe("NAV_TABS", () => {
 			"/feeds/swipe",
 			"/search",
 			"/recap",
-			"/feeds",
+			"/menu",
 		]);
 	});
 });
@@ -33,6 +29,7 @@ describe("shouldShowBottomNav", () => {
 		expect(shouldShowBottomNav("/feeds")).toBe(true);
 		expect(shouldShowBottomNav("/recap")).toBe(true);
 		expect(shouldShowBottomNav("/search")).toBe(true);
+		expect(shouldShowBottomNav("/menu")).toBe(true);
 	});
 
 	it("returns true for /feeds/swipe (swipe is a primary tab)", () => {
@@ -73,12 +70,16 @@ describe("getActiveTabIndex", () => {
 		expect(getActiveTabIndex("/recap/morning-letter")).toBe(3);
 	});
 
-	it("returns 4 for /feeds (Library)", () => {
-		expect(getActiveTabIndex("/feeds")).toBe(4);
+	it("returns 4 for /menu (Menu)", () => {
+		expect(getActiveTabIndex("/menu")).toBe(4);
 	});
 
-	it("returns 4 for /feeds sub-paths that are not swipe", () => {
-		expect(getActiveTabIndex("/feeds/favorites")).toBe(4);
+	it("returns -1 for /feeds (no longer a primary tab)", () => {
+		expect(getActiveTabIndex("/feeds")).toBe(-1);
+	});
+
+	it("returns -1 for /feeds sub-paths that are not swipe", () => {
+		expect(getActiveTabIndex("/feeds/favorites")).toBe(-1);
 	});
 
 	it("returns -1 for unknown paths", () => {

@@ -1,28 +1,25 @@
 <script lang="ts">
-	import { MoreHorizontal } from "@lucide/svelte";
-	import {
-		type ServiceQuality,
-		getQualityDotClass,
-		getQualityLabel,
-	} from "./mobile-header";
+import {
+	type ServiceQuality,
+	getQualityDotClass,
+	getQualityLabel,
+} from "./mobile-header";
 
-	let {
-		serviceQuality = "full",
-		onMoreClick,
-	}: {
-		serviceQuality?: ServiceQuality;
-		onMoreClick?: () => void;
-	} = $props();
+let {
+	serviceQuality = "full",
+}: {
+	serviceQuality?: ServiceQuality;
+} = $props();
 
-	let isCompact = $state(false);
+let isCompact = $state(false);
 
-	$effect(() => {
-		function handleScroll() {
-			isCompact = window.scrollY > 100;
-		}
-		window.addEventListener("scroll", handleScroll, { passive: true });
-		return () => window.removeEventListener("scroll", handleScroll);
-	});
+$effect(() => {
+	function handleScroll() {
+		isCompact = window.scrollY > 100;
+	}
+	window.addEventListener("scroll", handleScroll, { passive: true });
+	return () => window.removeEventListener("scroll", handleScroll);
+});
 </script>
 
 <header
@@ -52,22 +49,12 @@
 			{/if}
 		</div>
 
-		<div class="flex items-center gap-2">
-			{#if serviceQuality !== "full"}
-				<span
-					class="h-2 w-2 rounded-full {getQualityDotClass(serviceQuality)}"
-					aria-label={getQualityLabel(serviceQuality)}
-					role="status"
-				></span>
-			{/if}
-			<button
-				type="button"
-				class="rounded-lg p-2 text-[var(--text-secondary)] transition-colors active:bg-[var(--surface-hover)]"
-				aria-label="More options"
-				onclick={onMoreClick}
-			>
-				<MoreHorizontal size={24} />
-			</button>
-		</div>
+		{#if serviceQuality !== "full"}
+			<span
+				class="h-2 w-2 rounded-full {getQualityDotClass(serviceQuality)}"
+				aria-label={getQualityLabel(serviceQuality)}
+				role="status"
+			></span>
+		{/if}
 	</div>
 </header>

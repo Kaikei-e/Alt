@@ -134,7 +134,6 @@ test.describe("Mobile Recap 7-Days", () => {
 			timeout: 15000,
 		});
 	});
-
 });
 
 test.describe("Mobile Recap 7-Days - Navigation", () => {

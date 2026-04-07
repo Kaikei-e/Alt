@@ -1,14 +1,10 @@
 <script lang="ts">
-	import {
-		NAV_TABS,
-		shouldShowBottomNav,
-		getActiveTabIndex,
-	} from "./bottom-nav";
+import { NAV_TABS, shouldShowBottomNav, getActiveTabIndex } from "./bottom-nav";
 
-	let { pathname }: { pathname: string } = $props();
+let { pathname }: { pathname: string } = $props();
 
-	const show = $derived(shouldShowBottomNav(pathname));
-	const activeIndex = $derived(getActiveTabIndex(pathname));
+const show = $derived(shouldShowBottomNav(pathname));
+const activeIndex = $derived(getActiveTabIndex(pathname));
 </script>
 
 {#if show}
