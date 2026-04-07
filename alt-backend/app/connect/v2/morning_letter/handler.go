@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"alt/connect/errorhandler"
 	"alt/domain"
@@ -13,40 +14,43 @@ import (
 	"alt/port/morning_letter_port"
 )
 
-// Handler implements morningletterv2connect.MorningLetterServiceHandler
+// Handler implements both MorningLetterServiceHandler (StreamChat) and
+// MorningLetterReadServiceHandler (GetLatestLetter, GetLetterByDate, GetLetterSources).
 type Handler struct {
-	streamChat morning_letter_port.StreamChatPort
-	logger     *slog.Logger
+	streamChat      morning_letter_port.StreamChatPort
+	morningLetterUC morning_letter_port.MorningLetterUsecase
+	logger          *slog.Logger
 }
 
-// Ensure Handler implements the interface
+// Ensure Handler implements both interfaces
 var _ morningletterv2connect.MorningLetterServiceHandler = (*Handler)(nil)
+var _ morningletterv2connect.MorningLetterReadServiceHandler = (*Handler)(nil)
 
-// NewHandler creates a new MorningLetterService handler
+// NewHandler creates a new MorningLetterService + MorningLetterReadService handler
 func NewHandler(
 	streamChat morning_letter_port.StreamChatPort,
+	morningLetterUC morning_letter_port.MorningLetterUsecase,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
-		streamChat: streamChat,
-		logger:     logger,
+		streamChat:      streamChat,
+		morningLetterUC: morningLetterUC,
+		logger:          logger,
 	}
 }
 
-// StreamChat proxies streaming chat requests to rag-orchestrator
+// StreamChat proxies streaming chat requests to rag-orchestrator (unchanged)
 func (h *Handler) StreamChat(
 	ctx context.Context,
 	req *connect.Request[morningletterv2.StreamChatRequest],
 	stream *connect.ServerStream[morningletterv2.StreamChatResponse],
 ) error {
-	// Authentication check (handled by interceptor, but double-check)
 	_, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "authentication failed", slog.String("error", err.Error()))
 		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	// Validate request
 	if len(req.Msg.Messages) == 0 {
 		h.logger.WarnContext(ctx, "no messages in request")
 		return connect.NewError(connect.CodeInvalidArgument, nil)
@@ -54,17 +58,16 @@ func (h *Handler) StreamChat(
 
 	withinHours := req.Msg.WithinHours
 	if withinHours <= 0 {
-		withinHours = 24 // Default to 24 hours
+		withinHours = 24
 	}
 	if withinHours > 168 {
-		withinHours = 168 // Max 7 days
+		withinHours = 168
 	}
 
 	h.logger.InfoContext(ctx, "proxying MorningLetter.StreamChat to rag-orchestrator",
 		slog.Int("message_count", len(req.Msg.Messages)),
 		slog.Int("within_hours", int(withinHours)))
 
-	// Call rag-orchestrator via gateway
 	upstreamStream, err := h.streamChat.StreamChat(ctx, req.Msg.Messages, withinHours)
 	if err != nil {
 		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.ConnectUpstream")
@@ -75,19 +78,15 @@ func (h *Handler) StreamChat(
 		}
 	}()
 
-	// Proxy events from rag-orchestrator to client
 	eventCount := 0
 	for upstreamStream.Receive() {
 		event := upstreamStream.Msg()
-
-		// Send to downstream client
 		if err := stream.Send(event); err != nil {
 			return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.SendEvent")
 		}
 		eventCount++
 	}
 
-	// Check for upstream errors
 	if err := upstreamStream.Err(); err != nil {
 		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamChat.UpstreamError")
 	}
@@ -96,4 +95,143 @@ func (h *Handler) StreamChat(
 		slog.Int("events_sent", eventCount))
 
 	return nil
+}
+
+// =============================================================================
+// MorningLetterReadService methods
+// =============================================================================
+
+func (h *Handler) GetLatestLetter(
+	ctx context.Context,
+	req *connect.Request[morningletterv2.GetLatestLetterRequest],
+) (*connect.Response[morningletterv2.GetLatestLetterResponse], error) {
+	if _, err := domain.GetUserFromContext(ctx); err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	doc, err := h.morningLetterUC.GetLatestLetter(ctx)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetLatestLetter")
+	}
+	if doc == nil {
+		return nil, connect.NewError(connect.CodeNotFound, nil)
+	}
+
+	return connect.NewResponse(&morningletterv2.GetLatestLetterResponse{
+		Letter: domainToProto(doc),
+	}), nil
+}
+
+func (h *Handler) GetLetterByDate(
+	ctx context.Context,
+	req *connect.Request[morningletterv2.GetLetterByDateRequest],
+) (*connect.Response[morningletterv2.GetLetterByDateResponse], error) {
+	if _, err := domain.GetUserFromContext(ctx); err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	if req.Msg.TargetDate == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
+	}
+
+	doc, err := h.morningLetterUC.GetLetterByDate(ctx, req.Msg.TargetDate)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetLetterByDate")
+	}
+	if doc == nil {
+		return nil, connect.NewError(connect.CodeNotFound, nil)
+	}
+
+	return connect.NewResponse(&morningletterv2.GetLetterByDateResponse{
+		Letter: domainToProto(doc),
+	}), nil
+}
+
+func (h *Handler) GetLetterSources(
+	ctx context.Context,
+	req *connect.Request[morningletterv2.GetLetterSourcesRequest],
+) (*connect.Response[morningletterv2.GetLetterSourcesResponse], error) {
+	if _, err := domain.GetUserFromContext(ctx); err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	if req.Msg.LetterId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
+	}
+
+	sources, err := h.morningLetterUC.GetLetterSources(ctx, req.Msg.LetterId)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetLetterSources")
+	}
+
+	protoSources := make([]*morningletterv2.MorningLetterSourceProto, len(sources))
+	for i, s := range sources {
+		protoSources[i] = &morningletterv2.MorningLetterSourceProto{
+			LetterId:   s.LetterID,
+			SectionKey: s.SectionKey,
+			ArticleId:  s.ArticleID.String(),
+			SourceType: mapSourceType(s.SourceType),
+			Position:   int32(s.Position),
+		}
+	}
+
+	return connect.NewResponse(&morningletterv2.GetLetterSourcesResponse{
+		Sources: protoSources,
+	}), nil
+}
+
+// =============================================================================
+// Mapping helpers
+// =============================================================================
+
+func domainToProto(doc *domain.MorningLetterDocument) *morningletterv2.MorningLetterDocument {
+	sections := make([]*morningletterv2.MorningLetterSection, len(doc.Body.Sections))
+	for i, s := range doc.Body.Sections {
+		var genre *string
+		if s.Genre != "" {
+			g := s.Genre
+			genre = &g
+		}
+		sections[i] = &morningletterv2.MorningLetterSection{
+			Key:     s.Key,
+			Title:   s.Title,
+			Bullets: s.Bullets,
+			Genre:   genre,
+		}
+	}
+
+	var windowDays *int32
+	if doc.Body.SourceRecapWindowDays != nil {
+		d := int32(*doc.Body.SourceRecapWindowDays)
+		windowDays = &d
+	}
+
+	return &morningletterv2.MorningLetterDocument{
+		Id:                 doc.ID,
+		TargetDate:         doc.TargetDate,
+		EditionTimezone:    doc.EditionTimezone,
+		IsDegraded:         doc.IsDegraded,
+		SchemaVersion:      int32(doc.SchemaVersion),
+		GenerationRevision: int32(doc.GenerationRevision),
+		Model:              doc.Model,
+		CreatedAt:          timestamppb.New(doc.CreatedAt),
+		Etag:               doc.Etag,
+		Body: &morningletterv2.MorningLetterBody{
+			Lead:                  doc.Body.Lead,
+			Sections:              sections,
+			GeneratedAt:           timestamppb.New(doc.Body.GeneratedAt),
+			SourceRecapWindowDays: windowDays,
+		},
+	}
+}
+
+func mapSourceType(st string) morningletterv2.MorningLetterSourceType {
+	switch st {
+	case "recap":
+		return morningletterv2.MorningLetterSourceType_MORNING_LETTER_SOURCE_TYPE_RECAP
+	case "overnight":
+		return morningletterv2.MorningLetterSourceType_MORNING_LETTER_SOURCE_TYPE_OVERNIGHT
+	default:
+		return morningletterv2.MorningLetterSourceType_MORNING_LETTER_SOURCE_TYPE_UNSPECIFIED
+	}
 }

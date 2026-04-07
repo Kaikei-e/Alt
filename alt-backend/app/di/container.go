@@ -148,6 +148,7 @@ type ApplicationComponents struct {
 	RecapArticlesUsecase                *recap_articles_usecase.RecapArticlesUsecase
 	RecapUsecase                        *recap_usecase.RecapUsecase
 	MorningUsecase                      morning_letter_port.MorningUsecase
+	MorningLetterUsecase                morning_letter_port.MorningLetterUsecase
 	ScrapingDomainUsecase               *scraping_domain_usecase.ScrapingDomainUsecase
 	BatchArticleFetcher                 *batch_article_fetcher.BatchArticleFetcher
 	RetrieveContextUsecase              retrieve_context_usecase.RetrieveContextUsecase
@@ -325,6 +326,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		RetrieveContextUsecase: rag.RetrieveContextUsecase,
 		AnswerChatUsecase:      rag.AnswerChatUsecase,
 		MorningUsecase:         rag.MorningUsecase,
+		MorningLetterUsecase:   rag.MorningLetterUsecase,
 
 		// Image usecases
 		ImageFetchUsecase: image.ImageFetchUsecase,

@@ -23,6 +23,8 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// MorningLetterServiceName is the fully-qualified name of the MorningLetterService service.
 	MorningLetterServiceName = "alt.morning_letter.v2.MorningLetterService"
+	// MorningLetterReadServiceName is the fully-qualified name of the MorningLetterReadService service.
+	MorningLetterReadServiceName = "alt.morning_letter.v2.MorningLetterReadService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -36,6 +38,15 @@ const (
 	// MorningLetterServiceStreamChatProcedure is the fully-qualified name of the MorningLetterService's
 	// StreamChat RPC.
 	MorningLetterServiceStreamChatProcedure = "/alt.morning_letter.v2.MorningLetterService/StreamChat"
+	// MorningLetterReadServiceGetLatestLetterProcedure is the fully-qualified name of the
+	// MorningLetterReadService's GetLatestLetter RPC.
+	MorningLetterReadServiceGetLatestLetterProcedure = "/alt.morning_letter.v2.MorningLetterReadService/GetLatestLetter"
+	// MorningLetterReadServiceGetLetterByDateProcedure is the fully-qualified name of the
+	// MorningLetterReadService's GetLetterByDate RPC.
+	MorningLetterReadServiceGetLetterByDateProcedure = "/alt.morning_letter.v2.MorningLetterReadService/GetLetterByDate"
+	// MorningLetterReadServiceGetLetterSourcesProcedure is the fully-qualified name of the
+	// MorningLetterReadService's GetLetterSources RPC.
+	MorningLetterReadServiceGetLetterSourcesProcedure = "/alt.morning_letter.v2.MorningLetterReadService/GetLetterSources"
 )
 
 // MorningLetterServiceClient is a client for the alt.morning_letter.v2.MorningLetterService
@@ -112,4 +123,139 @@ type UnimplementedMorningLetterServiceHandler struct{}
 
 func (UnimplementedMorningLetterServiceHandler) StreamChat(context.Context, *connect.Request[v2.StreamChatRequest], *connect.ServerStream[v2.StreamChatResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("alt.morning_letter.v2.MorningLetterService.StreamChat is not implemented"))
+}
+
+// MorningLetterReadServiceClient is a client for the alt.morning_letter.v2.MorningLetterReadService
+// service.
+type MorningLetterReadServiceClient interface {
+	// GetLatestLetter returns the most recent morning letter (by edition timezone).
+	GetLatestLetter(context.Context, *connect.Request[v2.GetLatestLetterRequest]) (*connect.Response[v2.GetLatestLetterResponse], error)
+	// GetLetterByDate returns the morning letter for a specific civil date.
+	// The date is interpreted in the edition timezone (default: Asia/Tokyo).
+	GetLetterByDate(context.Context, *connect.Request[v2.GetLetterByDateRequest]) (*connect.Response[v2.GetLetterByDateResponse], error)
+	// GetLetterSources returns the article provenance for a letter's sections.
+	// Sources are filtered by the requesting user's feed subscriptions.
+	GetLetterSources(context.Context, *connect.Request[v2.GetLetterSourcesRequest]) (*connect.Response[v2.GetLetterSourcesResponse], error)
+}
+
+// NewMorningLetterReadServiceClient constructs a client for the
+// alt.morning_letter.v2.MorningLetterReadService service. By default, it uses the Connect protocol
+// with the binary Protobuf Codec, asks for gzipped responses, and sends uncompressed requests. To
+// use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or connect.WithGRPCWeb()
+// options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewMorningLetterReadServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) MorningLetterReadServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	morningLetterReadServiceMethods := v2.File_alt_morning_letter_v2_morning_letter_proto.Services().ByName("MorningLetterReadService").Methods()
+	return &morningLetterReadServiceClient{
+		getLatestLetter: connect.NewClient[v2.GetLatestLetterRequest, v2.GetLatestLetterResponse](
+			httpClient,
+			baseURL+MorningLetterReadServiceGetLatestLetterProcedure,
+			connect.WithSchema(morningLetterReadServiceMethods.ByName("GetLatestLetter")),
+			connect.WithClientOptions(opts...),
+		),
+		getLetterByDate: connect.NewClient[v2.GetLetterByDateRequest, v2.GetLetterByDateResponse](
+			httpClient,
+			baseURL+MorningLetterReadServiceGetLetterByDateProcedure,
+			connect.WithSchema(morningLetterReadServiceMethods.ByName("GetLetterByDate")),
+			connect.WithClientOptions(opts...),
+		),
+		getLetterSources: connect.NewClient[v2.GetLetterSourcesRequest, v2.GetLetterSourcesResponse](
+			httpClient,
+			baseURL+MorningLetterReadServiceGetLetterSourcesProcedure,
+			connect.WithSchema(morningLetterReadServiceMethods.ByName("GetLetterSources")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// morningLetterReadServiceClient implements MorningLetterReadServiceClient.
+type morningLetterReadServiceClient struct {
+	getLatestLetter  *connect.Client[v2.GetLatestLetterRequest, v2.GetLatestLetterResponse]
+	getLetterByDate  *connect.Client[v2.GetLetterByDateRequest, v2.GetLetterByDateResponse]
+	getLetterSources *connect.Client[v2.GetLetterSourcesRequest, v2.GetLetterSourcesResponse]
+}
+
+// GetLatestLetter calls alt.morning_letter.v2.MorningLetterReadService.GetLatestLetter.
+func (c *morningLetterReadServiceClient) GetLatestLetter(ctx context.Context, req *connect.Request[v2.GetLatestLetterRequest]) (*connect.Response[v2.GetLatestLetterResponse], error) {
+	return c.getLatestLetter.CallUnary(ctx, req)
+}
+
+// GetLetterByDate calls alt.morning_letter.v2.MorningLetterReadService.GetLetterByDate.
+func (c *morningLetterReadServiceClient) GetLetterByDate(ctx context.Context, req *connect.Request[v2.GetLetterByDateRequest]) (*connect.Response[v2.GetLetterByDateResponse], error) {
+	return c.getLetterByDate.CallUnary(ctx, req)
+}
+
+// GetLetterSources calls alt.morning_letter.v2.MorningLetterReadService.GetLetterSources.
+func (c *morningLetterReadServiceClient) GetLetterSources(ctx context.Context, req *connect.Request[v2.GetLetterSourcesRequest]) (*connect.Response[v2.GetLetterSourcesResponse], error) {
+	return c.getLetterSources.CallUnary(ctx, req)
+}
+
+// MorningLetterReadServiceHandler is an implementation of the
+// alt.morning_letter.v2.MorningLetterReadService service.
+type MorningLetterReadServiceHandler interface {
+	// GetLatestLetter returns the most recent morning letter (by edition timezone).
+	GetLatestLetter(context.Context, *connect.Request[v2.GetLatestLetterRequest]) (*connect.Response[v2.GetLatestLetterResponse], error)
+	// GetLetterByDate returns the morning letter for a specific civil date.
+	// The date is interpreted in the edition timezone (default: Asia/Tokyo).
+	GetLetterByDate(context.Context, *connect.Request[v2.GetLetterByDateRequest]) (*connect.Response[v2.GetLetterByDateResponse], error)
+	// GetLetterSources returns the article provenance for a letter's sections.
+	// Sources are filtered by the requesting user's feed subscriptions.
+	GetLetterSources(context.Context, *connect.Request[v2.GetLetterSourcesRequest]) (*connect.Response[v2.GetLetterSourcesResponse], error)
+}
+
+// NewMorningLetterReadServiceHandler builds an HTTP handler from the service implementation. It
+// returns the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewMorningLetterReadServiceHandler(svc MorningLetterReadServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	morningLetterReadServiceMethods := v2.File_alt_morning_letter_v2_morning_letter_proto.Services().ByName("MorningLetterReadService").Methods()
+	morningLetterReadServiceGetLatestLetterHandler := connect.NewUnaryHandler(
+		MorningLetterReadServiceGetLatestLetterProcedure,
+		svc.GetLatestLetter,
+		connect.WithSchema(morningLetterReadServiceMethods.ByName("GetLatestLetter")),
+		connect.WithHandlerOptions(opts...),
+	)
+	morningLetterReadServiceGetLetterByDateHandler := connect.NewUnaryHandler(
+		MorningLetterReadServiceGetLetterByDateProcedure,
+		svc.GetLetterByDate,
+		connect.WithSchema(morningLetterReadServiceMethods.ByName("GetLetterByDate")),
+		connect.WithHandlerOptions(opts...),
+	)
+	morningLetterReadServiceGetLetterSourcesHandler := connect.NewUnaryHandler(
+		MorningLetterReadServiceGetLetterSourcesProcedure,
+		svc.GetLetterSources,
+		connect.WithSchema(morningLetterReadServiceMethods.ByName("GetLetterSources")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/alt.morning_letter.v2.MorningLetterReadService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case MorningLetterReadServiceGetLatestLetterProcedure:
+			morningLetterReadServiceGetLatestLetterHandler.ServeHTTP(w, r)
+		case MorningLetterReadServiceGetLetterByDateProcedure:
+			morningLetterReadServiceGetLetterByDateHandler.ServeHTTP(w, r)
+		case MorningLetterReadServiceGetLetterSourcesProcedure:
+			morningLetterReadServiceGetLetterSourcesHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedMorningLetterReadServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedMorningLetterReadServiceHandler struct{}
+
+func (UnimplementedMorningLetterReadServiceHandler) GetLatestLetter(context.Context, *connect.Request[v2.GetLatestLetterRequest]) (*connect.Response[v2.GetLatestLetterResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.morning_letter.v2.MorningLetterReadService.GetLatestLetter is not implemented"))
+}
+
+func (UnimplementedMorningLetterReadServiceHandler) GetLetterByDate(context.Context, *connect.Request[v2.GetLetterByDateRequest]) (*connect.Response[v2.GetLetterByDateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.morning_letter.v2.MorningLetterReadService.GetLetterByDate is not implemented"))
+}
+
+func (UnimplementedMorningLetterReadServiceHandler) GetLetterSources(context.Context, *connect.Request[v2.GetLetterSourcesRequest]) (*connect.Response[v2.GetLetterSourcesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.morning_letter.v2.MorningLetterReadService.GetLetterSources is not implemented"))
 }

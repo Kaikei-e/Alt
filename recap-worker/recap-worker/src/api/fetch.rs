@@ -1,11 +1,14 @@
 use std::{collections::HashSet, time::Instant};
 
-use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+use axum::{
+    Json, extract::Path, extract::State, http::HeaderMap, http::StatusCode, response::IntoResponse,
+};
 use serde::Serialize;
 use serde_json::{Map, Value};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::app::AppState;
+use crate::store::models::MorningLetterContent;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct RecapGenreResponse {
@@ -259,8 +262,10 @@ pub(crate) async fn search_recaps(
             let results: Vec<RecapSearchHitResponse> = hits
                 .into_iter()
                 .map(|hit| {
-                    let summary = normalize_summary_text(hit.summary_ja.as_deref().unwrap_or_default());
-                    let bullets = extract_bullets_from_payload(hit.summary_ja.as_deref().unwrap_or_default());
+                    let summary =
+                        normalize_summary_text(hit.summary_ja.as_deref().unwrap_or_default());
+                    let bullets =
+                        extract_bullets_from_payload(hit.summary_ja.as_deref().unwrap_or_default());
                     RecapSearchHitResponse {
                         job_id: hit.job_id.to_string(),
                         executed_at: hit.executed_at.to_rfc3339(),
@@ -274,7 +279,11 @@ pub(crate) async fn search_recaps(
                 })
                 .collect();
 
-            info!("Search recaps: term='{}', found {} results", term, results.len());
+            info!(
+                "Search recaps: term='{}', found {} results",
+                term,
+                results.len()
+            );
             (StatusCode::OK, Json(SearchRecapsResponse { results })).into_response()
         }
         Err(e) => {
@@ -329,9 +338,8 @@ pub(crate) async fn get_indexable_genres(
                 .map(|hit| {
                     let summary =
                         normalize_summary_text(hit.summary_ja.as_deref().unwrap_or_default());
-                    let bullets = extract_bullets_from_payload(
-                        hit.summary_ja.as_deref().unwrap_or_default(),
-                    );
+                    let bullets =
+                        extract_bullets_from_payload(hit.summary_ja.as_deref().unwrap_or_default());
                     RecapSearchHitResponse {
                         job_id: hit.job_id.to_string(),
                         executed_at: hit.executed_at.to_rfc3339(),
@@ -550,7 +558,10 @@ async fn get_recap_by_window(
         genres: genre_responses,
     };
 
-    info!("Successfully fetched {} recap for job {}", label, job.job_id);
+    info!(
+        "Successfully fetched {} recap for job {}",
+        label, job.job_id
+    );
     metrics
         .api_latest_fetch_duration
         .observe(handler_start.elapsed().as_secs_f64());
@@ -675,6 +686,284 @@ pub(crate) async fn get_morning_updates(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: "Failed to fetch morning updates".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+// =============================================================================
+// Morning Letter Read Endpoints
+// =============================================================================
+
+#[derive(Debug, Serialize)]
+pub(crate) struct MorningLetterResponse {
+    id: String,
+    target_date: String,
+    edition_timezone: String,
+    is_degraded: bool,
+    schema_version: i32,
+    generation_revision: i32,
+    model: Option<String>,
+    created_at: String,
+    etag: String,
+    body: MorningLetterBodyResponse,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct MorningLetterBodyResponse {
+    lead: String,
+    sections: Vec<MorningLetterSectionResponse>,
+    generated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_recap_window_days: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct MorningLetterSectionResponse {
+    key: String,
+    title: String,
+    bullets: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    genre: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct MorningLetterSourceResponse {
+    letter_id: String,
+    section_key: String,
+    article_id: String,
+    source_type: String,
+    position: i32,
+}
+
+/// Parse `result_jsonb` into a typed body. Fails closed on malformed payloads.
+fn parse_morning_letter_body(
+    result_jsonb: &Value,
+    letter_id: &str,
+    schema_version: i32,
+    model: &Option<String>,
+    generation_revision: i32,
+) -> Result<MorningLetterBodyResponse, StatusCode> {
+    if schema_version != 1 {
+        warn!(
+            letter_id = letter_id,
+            schema_version = schema_version,
+            "unsupported morning letter schema_version"
+        );
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    match serde_json::from_value::<MorningLetterContent>(result_jsonb.clone()) {
+        Ok(content) => Ok(MorningLetterBodyResponse {
+            lead: content.lead,
+            sections: content
+                .sections
+                .into_iter()
+                .map(|s| MorningLetterSectionResponse {
+                    key: s.key,
+                    title: s.title,
+                    bullets: s.bullets,
+                    genre: s.genre,
+                })
+                .collect(),
+            generated_at: content.generated_at,
+            source_recap_window_days: content.source_recap_window_days,
+        }),
+        Err(e) => {
+            error!(
+                letter_id = letter_id,
+                schema_version = schema_version,
+                model = model.as_deref().unwrap_or("unknown"),
+                generation_revision = generation_revision,
+                error = %e,
+                "failed to parse morning letter result_jsonb"
+            );
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Map a MorningLetter model to the REST response, including ETag/Last-Modified headers.
+fn map_morning_letter_response(
+    letter: &crate::store::models::MorningLetter,
+) -> Result<(HeaderMap, Json<MorningLetterResponse>), (StatusCode, Json<ErrorResponse>)> {
+    let letter_id_str = letter.id.to_string();
+    let body = parse_morning_letter_body(
+        &letter.result_jsonb,
+        &letter_id_str,
+        letter.schema_version,
+        &letter.model,
+        letter.generation_revision,
+    )
+    .map_err(|status| {
+        (
+            status,
+            Json(ErrorResponse {
+                error: "Failed to parse morning letter content".to_string(),
+            }),
+        )
+    })?;
+
+    let etag = format!("\"{}:{}\"", letter.id, letter.generation_revision);
+
+    let mut headers = HeaderMap::new();
+    if let Ok(val) = etag.parse() {
+        headers.insert("ETag", val);
+    }
+    if let Ok(val) = letter
+        .created_at
+        .format("%a, %d %b %Y %H:%M:%S GMT")
+        .to_string()
+        .parse()
+    {
+        headers.insert("Last-Modified", val);
+    }
+
+    Ok((
+        headers,
+        Json(MorningLetterResponse {
+            id: letter_id_str,
+            target_date: letter.target_date.to_string(),
+            edition_timezone: letter.edition_timezone.clone(),
+            is_degraded: letter.is_degraded,
+            schema_version: letter.schema_version,
+            generation_revision: letter.generation_revision,
+            model: letter.model.clone(),
+            created_at: letter.created_at.to_rfc3339(),
+            etag: etag.clone(),
+            body,
+        }),
+    ))
+}
+
+/// GET /v1/morning/letters/latest
+/// Edition timezone 基準での最新の Morning Letter を返す。
+pub(crate) async fn get_latest_morning_letter(State(state): State<AppState>) -> impl IntoResponse {
+    let dao = state.dao();
+
+    match dao.get_latest_morning_letter().await {
+        Ok(Some(letter)) => match map_morning_letter_response(&letter) {
+            Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "No morning letter found".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            error!("Failed to fetch latest morning letter: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch latest morning letter".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /v1/morning/letters/{target_date}
+/// 指定日の Morning Letter を返す。日付形式: YYYY-MM-DD (edition timezone)。
+pub(crate) async fn get_morning_letter_by_date(
+    State(state): State<AppState>,
+    Path(target_date): Path<String>,
+) -> impl IntoResponse {
+    let date = match chrono::NaiveDate::parse_from_str(&target_date, "%Y-%m-%d") {
+        Ok(d) => d,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: format!(
+                        "Invalid date format: '{}'. Expected YYYY-MM-DD",
+                        target_date
+                    ),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let dao = state.dao();
+
+    match dao.get_morning_letter_by_date(date).await {
+        Ok(Some(letter)) => match map_morning_letter_response(&letter) {
+            Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: format!("No morning letter found for date: {}", target_date),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            error!(
+                target_date = %target_date,
+                "Failed to fetch morning letter by date: {}", e
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch morning letter".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /v1/morning/letters/{letter_id}/sources
+/// Morning Letter のソース (provenance) を返す。
+pub(crate) async fn get_morning_letter_sources(
+    State(state): State<AppState>,
+    Path(letter_id): Path<String>,
+) -> impl IntoResponse {
+    let id = match uuid::Uuid::parse_str(&letter_id) {
+        Ok(id) => id,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: format!("Invalid letter_id: '{}'. Expected UUID", letter_id),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    let dao = state.dao();
+
+    match dao.get_morning_letter_sources(id).await {
+        Ok(sources) => {
+            let response: Vec<MorningLetterSourceResponse> = sources
+                .into_iter()
+                .map(|s| MorningLetterSourceResponse {
+                    letter_id: s.letter_id.to_string(),
+                    section_key: s.section_key,
+                    article_id: s.article_id.to_string(),
+                    source_type: s.source_type,
+                    position: s.position,
+                })
+                .collect();
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(e) => {
+            error!(
+                letter_id = %letter_id,
+                "Failed to fetch morning letter sources: {}", e
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch morning letter sources".to_string(),
                 }),
             )
                 .into_response()

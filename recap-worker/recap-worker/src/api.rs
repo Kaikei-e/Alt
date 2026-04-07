@@ -35,6 +35,18 @@ pub(crate) fn router(state: AppState) -> Router {
             get(fetch::get_indexable_genres),
         )
         .route("/v1/morning/updates", get(fetch::get_morning_updates))
+        .route(
+            "/v1/morning/letters/latest",
+            get(fetch::get_latest_morning_letter),
+        )
+        .route(
+            "/v1/morning/letters/{target_date}",
+            get(fetch::get_morning_letter_by_date),
+        )
+        .route(
+            "/v1/morning/letters/{letter_id}/sources",
+            get(fetch::get_morning_letter_sources),
+        )
         .route("/v1/evaluation/genres", post(evaluation::evaluate_genres))
         .route(
             "/v1/evaluation/genres/latest",

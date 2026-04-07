@@ -24,6 +24,7 @@ type RAGModule struct {
 	RetrieveContextUsecase retrieve_context_usecase.RetrieveContextUsecase
 	AnswerChatUsecase      answer_chat_usecase.AnswerChatUsecase
 	MorningUsecase         morning_letter_port.MorningUsecase
+	MorningLetterUsecase   morning_letter_port.MorningLetterUsecase
 
 	// Clients / Ports
 	RagConnectClient *rag_connect_gateway.Client
@@ -54,11 +55,16 @@ func newRAGModule(infra *InfraModule, feed *FeedModule) *RAGModule {
 	morningGw := morning_gateway.NewMorningGateway(infra.Pool)
 	morningUC := morning_usecase.NewMorningUsecase(morningGw, userFeedGw)
 
+	// Morning Letter v2 read usecase
+	morningLetterGw := morning_gateway.NewMorningLetterGateway(infra.Pool)
+	morningLetterUC := morning_usecase.NewMorningLetterUsecase(morningLetterGw, userFeedGw)
+
 	return &RAGModule{
 		RagAdapter:             ragAdapter,
 		RetrieveContextUsecase: ragRetrieveContextUC,
 		AnswerChatUsecase:      answerChatUC,
 		MorningUsecase:         morningUC,
+		MorningLetterUsecase:   morningLetterUC,
 		RagConnectClient:       ragConnectClient,
 		StreamChatPort:         morningLetterConnectGw,
 	}

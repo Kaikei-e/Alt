@@ -7,14 +7,26 @@ import (
 	"alt/domain"
 )
 
-// MorningRepository defines the interface for accessing morning letter data.
+// MorningRepository defines the interface for accessing morning article groups.
 type MorningRepository interface {
-	// GetMorningArticleGroups returns the article groups for the morning update within the specified time window.
 	GetMorningArticleGroups(ctx context.Context, since time.Time) ([]*domain.MorningArticleGroup, error)
 }
 
-// MorningUsecase defines the interface for the morning letter business logic.
+// MorningUsecase defines the interface for the morning letter business logic (overnight updates).
 type MorningUsecase interface {
-	// GetOvernightUpdates returns the overnight updates for a user.
 	GetOvernightUpdates(ctx context.Context, userID string) ([]*domain.MorningUpdate, error)
+}
+
+// MorningLetterRepository defines data access for Morning Letter documents (via recap-worker REST).
+type MorningLetterRepository interface {
+	GetLatestLetter(ctx context.Context) (*domain.MorningLetterDocument, error)
+	GetLetterByDate(ctx context.Context, targetDate string) (*domain.MorningLetterDocument, error)
+	GetLetterSources(ctx context.Context, letterID string) ([]*domain.MorningLetterSourceEntry, error)
+}
+
+// MorningLetterUsecase defines business logic for reading Morning Letters with subscription filtering.
+type MorningLetterUsecase interface {
+	GetLatestLetter(ctx context.Context) (*domain.MorningLetterDocument, error)
+	GetLetterByDate(ctx context.Context, targetDate string) (*domain.MorningLetterDocument, error)
+	GetLetterSources(ctx context.Context, letterID string) ([]*domain.MorningLetterSourceEntry, error)
 }

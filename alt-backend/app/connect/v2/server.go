@@ -112,11 +112,16 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	mux.Handle(augurPath, augurServiceHandler)
 	logger.Info("Registered Connect-RPC AugurService", "path", augurPath)
 
-	// Register MorningLetter service
-	morningLetterHandler := morning_letter.NewHandler(container.StreamChatPort, logger)
+	// Register MorningLetter services (chat + read)
+	morningLetterHandler := morning_letter.NewHandler(container.StreamChatPort, container.MorningLetterUsecase, logger)
 	morningLetterPath, morningLetterServiceHandler := morningletterv2connect.NewMorningLetterServiceHandler(morningLetterHandler, opts)
 	mux.Handle(morningLetterPath, morningLetterServiceHandler)
 	logger.Info("Registered Connect-RPC MorningLetterService", "path", morningLetterPath)
+
+	// Register MorningLetterReadService (document-oriented read APIs)
+	readPath, readServiceHandler := morningletterv2connect.NewMorningLetterReadServiceHandler(morningLetterHandler, opts)
+	mux.Handle(readPath, readServiceHandler)
+	logger.Info("Registered Connect-RPC MorningLetterReadService", "path", readPath)
 
 	// Register Recap service
 	clusterDraftLoader := recapinternal.NewClusterDraftLoader(cfg.Recap.ClusterDraftPath)

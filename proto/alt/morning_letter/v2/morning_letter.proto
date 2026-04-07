@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.morning_letter.v2;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "alt/gen/proto/alt/morning_letter/v2;morningletterv2";
 
 // =============================================================================
@@ -15,6 +17,103 @@ service MorningLetterService {
 }
 
 // =============================================================================
+// MorningLetterReadService - Document-oriented read APIs for Morning Letter
+// =============================================================================
+// Separated from MorningLetterService to avoid breaking rag-orchestrator's
+// MorningLetterServiceHandler implementation when adding read RPCs.
+
+service MorningLetterReadService {
+  // GetLatestLetter returns the most recent morning letter (by edition timezone).
+  rpc GetLatestLetter(GetLatestLetterRequest) returns (GetLatestLetterResponse);
+
+  // GetLetterByDate returns the morning letter for a specific civil date.
+  // The date is interpreted in the edition timezone (default: Asia/Tokyo).
+  rpc GetLetterByDate(GetLetterByDateRequest) returns (GetLetterByDateResponse);
+
+  // GetLetterSources returns the article provenance for a letter's sections.
+  // Sources are filtered by the requesting user's feed subscriptions.
+  rpc GetLetterSources(GetLetterSourcesRequest) returns (GetLetterSourcesResponse);
+}
+
+// =============================================================================
+// Read API Messages
+// =============================================================================
+
+message GetLatestLetterRequest {}
+
+message GetLatestLetterResponse {
+  MorningLetterDocument letter = 1;
+}
+
+// target_date format: ISO 8601 civil date "YYYY-MM-DD" in edition timezone.
+message GetLetterByDateRequest {
+  string target_date = 1;
+}
+
+message GetLetterByDateResponse {
+  MorningLetterDocument letter = 1;
+}
+
+message GetLetterSourcesRequest {
+  string letter_id = 1;
+}
+
+message GetLetterSourcesResponse {
+  repeated MorningLetterSourceProto sources = 1;
+}
+
+// =============================================================================
+// Morning Letter Document
+// =============================================================================
+
+message MorningLetterDocument {
+  string id = 1;
+  // Civil date in edition timezone, format "YYYY-MM-DD".
+  string target_date = 2;
+  string edition_timezone = 3;
+  bool is_degraded = 4;
+  int32 schema_version = 5;
+  int32 generation_revision = 6;
+  string model = 7;
+  google.protobuf.Timestamp created_at = 8;
+  MorningLetterBody body = 9;
+  // Opaque tag for cache validation (AIP-154). Derived from generation_revision.
+  string etag = 10;
+}
+
+message MorningLetterBody {
+  string lead = 1;
+  repeated MorningLetterSection sections = 2;
+  google.protobuf.Timestamp generated_at = 3;
+  optional int32 source_recap_window_days = 4;
+}
+
+message MorningLetterSection {
+  string key = 1;
+  string title = 2;
+  repeated string bullets = 3;
+  optional string genre = 4;
+}
+
+// =============================================================================
+// Morning Letter Source Provenance
+// =============================================================================
+
+enum MorningLetterSourceType {
+  MORNING_LETTER_SOURCE_TYPE_UNSPECIFIED = 0;
+  MORNING_LETTER_SOURCE_TYPE_RECAP = 1;
+  MORNING_LETTER_SOURCE_TYPE_OVERNIGHT = 2;
+}
+
+message MorningLetterSourceProto {
+  string letter_id = 1;
+  string section_key = 2;
+  string article_id = 3;
+  MorningLetterSourceType source_type = 4;
+  int32 position = 5;
+}
+
+// =============================================================================
 // Chat Messages
 // =============================================================================
 
@@ -24,6 +123,10 @@ message StreamChatRequest {
   repeated ChatMessage messages = 1;
   // Time window in hours (default: 24, max: 168 = 7 days)
   int32 within_hours = 2;
+  // Civil date of the morning letter the user is viewing (format: "YYYY-MM-DD").
+  // When set, the follow-up chat is grounded on that specific letter.
+  // When absent, the rag-orchestrator fetches the latest letter.
+  optional string target_date = 3;
 }
 
 // ChatMessage represents a single message in the conversation.
