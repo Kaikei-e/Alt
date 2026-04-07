@@ -59,8 +59,8 @@ groups:
               conditions:
                 - evaluator:
                     params:
-                      - 0
-                    type: eq
+                      - 1
+                    type: lt
                   operator:
                     type: and
                   query:

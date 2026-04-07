@@ -11,7 +11,7 @@ groups:
   - orgId: 1
     name: knowledge-home-slo
     folder: KnowledgeHome
-    interval: 15s
+    interval: 10s
     rules:
       # SLI-A: Availability - 14.4x burn rate (page)
       - uid: kh-availability-burn-high

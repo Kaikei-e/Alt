@@ -58,12 +58,14 @@ services:
         max-file: "3"
 
   grafana:
-    image: grafana/grafana-oss:11.4.0
+    image: grafana/grafana:11.4.0
     restart: unless-stopped
+    mem_limit: 256m
     ports:
       - "3001:3000"
     volumes:
       - grafana_data:/var/lib/grafana
+      - ../observability/grafana/grafana.ini:/etc/grafana/grafana.ini:ro
       - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     environment:
