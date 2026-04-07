@@ -44,6 +44,11 @@ PLACEHOLDER_BULLET_RE = re.compile(r"^\s*(?:\.\.\.|…)(?:\s*\[\d+\])?\s*$")
 JAPANESE_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]")
 LATIN_CHAR_RE = re.compile(r"[A-Za-z]")
 
+GEMMA_RECAP_SYSTEM_PROMPT = (
+    "You are an expert Japanese news editor. "
+    "Follow the JSON contract exactly and respond with only the requested JSON object."
+)
+
 
 class RecapSummaryUsecase:
     """Generate recap summaries from evidence clusters via LLM."""
@@ -71,6 +76,30 @@ class RecapSummaryUsecase:
         # Backward compat alias
         self.template = self.template_7days
 
+    @staticmethod
+    def _is_3days_request(request: RecapSummaryRequest) -> bool:
+        window_days = getattr(request, "window_days", None)
+        return isinstance(window_days, int) and window_days <= 3
+
+    def _resolve_generation_temperature(self, request: RecapSummaryRequest) -> float:
+        if request.options and request.options.temperature is not None:
+            return float(request.options.temperature)
+        if self._is_3days_request(request):
+            return float(self._config_float("recap_summary_temperature", 0.0))
+        return float(self.config.llm_temperature)
+
+    def _wrap_gemma_prompt(self, prompt_body: str) -> str:
+        body = prompt_body.strip()
+        return (
+            "<start_of_turn>system\n"
+            f"{GEMMA_RECAP_SYSTEM_PROMPT}\n"
+            "<end_of_turn>\n"
+            "<start_of_turn>user\n"
+            f"{body}\n"
+            "<end_of_turn>\n"
+            "<start_of_turn>model\n"
+        )
+
     async def generate_summary(self, request: RecapSummaryRequest) -> RecapSummaryResponse:
         """Produce structured summary JSON from clustering evidence."""
         if not request.clusters:
@@ -87,9 +116,7 @@ class RecapSummaryUsecase:
             return cached_response
 
         max_bullets = self._resolve_max_bullets(request)
-        temperature_override = (
-            request.options.temperature if request.options and request.options.temperature is not None else None
-        )
+        temperature_override = self._resolve_generation_temperature(request)
 
         if self._should_bypass_llm(request):
             logger.info(
@@ -309,7 +336,8 @@ class RecapSummaryUsecase:
             genre=request.genre,
             clusters=chunk_clusters,
             genre_highlights=None,
-            options=None,
+            options=request.options,
+            window_days=request.window_days,
         )
         chunk_prompt = self._build_prompt(chunk_request, max_bullets=4, intermediate=True)
 
@@ -324,9 +352,7 @@ class RecapSummaryUsecase:
                     options=llm_options,
                 )
 
-            # Parse intermediate summary
-            parsed = json.loads(llm_response.response)
-            return IntermediateSummary(**parsed)
+            return self._parse_intermediate_summary_json(llm_response.response, request)
         except Exception as e:
             logger.warning(
                 "Failed to generate intermediate summary for chunk, skipping",
@@ -542,23 +568,7 @@ class RecapSummaryUsecase:
         for s in group:
             combined_bullets.extend(s.bullets)
 
-        # Create a structured prompt for reducing this group
-        bullets_text = "\n".join(f"- {bullet}" for bullet in combined_bullets)
-        reduce_prompt = f"""以下の要点リストを3-4項目に統合・要約してください。
-
-# ルール
-1. **重複の統合**: 同じ出来事を異なる角度から述べた項目は1つに統合する
-2. **トピックの多様性**: 異なるトピックをカバーし、1つの話題に偏らない
-3. **参照の保持**: 出典マーカー [n] がある場合は必ず保持する
-4. **変化優先**: 新しい発表・変更・リリースを背景情報より優先する
-5. **固有名詞と数値の保持**: 企業名・サービス名・具体的数値は削除しない
-
-# 入力要点
-{bullets_text}
-
-# 出力形式
-JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト、"language" に "ja" を返す。
-{{"bullets": ["要約1", "要約2", ...], "language": "ja"}}"""
+        reduce_prompt = self._build_reduce_group_prompt(request, combined_bullets)
 
         try:
             async with self.llm_provider.hold_slot(is_high_priority=False) as (_wait_time, cancel_event, task_id):
@@ -571,8 +581,7 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
                     options=llm_options,
                 )
 
-            parsed = json.loads(llm_response.response)
-            return IntermediateSummary(**parsed)
+            return self._parse_intermediate_summary_json(llm_response.response, request)
         except Exception as e:
             logger.warning(
                 "Failed to reduce group in recursive reduce",
@@ -583,6 +592,50 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
                 },
             )
             return None
+
+    def _build_reduce_group_prompt(
+        self,
+        request: RecapSummaryRequest,
+        combined_bullets: List[str],
+    ) -> str:
+        bullet_target = "2〜3" if self._is_3days_request(request) else "3〜4"
+        bullets_text = "\n".join(f"- {bullet}" for bullet in combined_bullets)
+        prompt_body = textwrap.dedent(
+            f"""
+            以下の要点リストを {bullet_target} 項目に統合・要約してください。
+
+            ### 必須契約
+            - 出力は JSON オブジェクト 1 つのみ。
+            - Markdown、説明文、前置きは禁止。
+            - `language` は必ず `"ja"`。
+            - `bullets` は placeholder を禁止し、すべて完結した日本語にする。
+            - 出典マーカー `[n]` がある場合は必ず保持する。
+            - 企業名・サービス名・固有名詞・数値は落とさない。
+            - 関連する変化は統合してもよいが、無関係な話題は混ぜない。
+
+            ### Schema Mirror
+            {{
+              "bullets": [
+                "要約1 [1]",
+                "要約2 [2]"
+              ],
+              "language": "ja"
+            }}
+
+            ### 不正な例
+            {{
+              "bullets": ["..."],
+              "language": "en"
+            }}
+
+            ### 入力要点
+            {bullets_text}
+
+            ### 出力
+            JSON オブジェクトのみを返してください。
+            """
+        ).strip()
+        return self._wrap_gemma_prompt(prompt_body)
 
     async def _final_reduce(
         self,
@@ -645,6 +698,7 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
             clusters=[dummy_cluster],  # Dummy cluster to satisfy validation
             genre_highlights=reduce_highlights,
             options=request.options,
+            window_days=request.window_days,
         )
 
         # Use single-shot path for final reduce
@@ -718,10 +772,14 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
         """Generate summary using single-shot approach (original logic)."""
         base_prompt = self._build_prompt(request, max_bullets)
         active_prompt = base_prompt
+        is_3days = self._is_3days_request(request)
 
-        llm_options: Optional[Dict[str, Any]] = None
-        if temperature_override is not None:
-            llm_options = {"temperature": float(temperature_override)}
+        base_temperature = (
+            float(temperature_override)
+            if temperature_override is not None
+            else self._resolve_generation_temperature(request)
+        )
+        llm_options: Optional[Dict[str, Any]] = {"temperature": base_temperature}
 
         max_retries = max(2, self.config.max_repetition_retries)
         remaining_repair_attempts = max(
@@ -732,13 +790,15 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
         json_validation_error_count = 0
 
         for attempt in range(max_retries + 1):
-            current_temp = temperature_override
+            current_temp = base_temperature
             current_repeat_penalty = self.config.llm_repeat_penalty
 
             if attempt > 0:
-                base_temp = temperature_override if temperature_override is not None else self.config.llm_temperature
-                current_temp = max(0.05, base_temp - (0.05 * attempt))
-                current_repeat_penalty = min(1.2, current_repeat_penalty + (0.05 * attempt))
+                if is_3days:
+                    current_temp = base_temperature
+                else:
+                    current_temp = max(0.05, base_temperature - (0.05 * attempt))
+                    current_repeat_penalty = min(1.2, current_repeat_penalty + (0.05 * attempt))
 
             json_schema = RecapSummary.model_json_schema()
 
@@ -786,7 +846,11 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
                 continue
 
             try:
-                summary_payload, parse_errors = self._parse_summary_json(llm_response.response, max_bullets)
+                summary_payload, parse_errors = self._parse_summary_json(
+                    llm_response.response,
+                    max_bullets,
+                    strict_contract=is_3days,
+                )
                 json_validation_error_count += parse_errors
 
                 summary_text = summary_payload.get("title", "") + " " + " ".join(summary_payload.get("bullets", []))
@@ -895,49 +959,21 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
     def _create_fallback_response(self, request: RecapSummaryRequest) -> RecapSummaryResponse:
         """Create a response from genre highlights when LLM generation fails."""
         highlights = request.genre_highlights or []
-        bullets: List[str] = []
-        references: List[Reference] = []
-        ref_id = 1
-
-        for h in highlights[:7]:
-            if h.source_url:
-                try:
-                    domain = urlparse(h.source_url if "://" in h.source_url else f"https://{h.source_url}").netloc or h.source_url
-                except Exception:
-                    domain = h.source_url
-                bullets.append(f"{h.text} [{ref_id}]")
-                references.append(Reference(id=ref_id, url=h.source_url, domain=domain, article_id=h.article_id))
-                ref_id += 1
-            else:
-                bullets.append(h.text)
-
-        if not bullets:
-            bullets = ["要約の生成に失敗しました。"]
-
-        summary = RecapSummary(
-            title=f"{request.genre}の主要トピック (自動抽出)",
-            bullets=bullets,
-            language="ja",
-            references=references if references else None,
-        )
-
-        metadata = RecapSummaryMetadata(
-            model="extraction-fallback",
-            temperature=0.0,
-            prompt_tokens=0,
-            completion_tokens=0,
-            processing_time_ms=0,
-            json_validation_errors=1,
-            summary_length_bullets=len(summary.bullets),
-            is_degraded=True,
+        candidates = [
+            {
+                "text": highlight.text,
+                "source_url": highlight.source_url,
+                "article_id": highlight.article_id,
+                "topic_label": request.genre.replace("_", " "),
+            }
+            for highlight in highlights
+        ]
+        return self._create_degraded_response(
+            request,
+            candidates,
+            model_name="extractive-fallback",
             degradation_reason="llm_failed_after_repair",
-        )
-
-        return RecapSummaryResponse(
-            job_id=request.job_id,
-            genre=request.genre,
-            summary=summary,
-            metadata=metadata
+            json_validation_errors=1,
         )
 
     def _create_low_evidence_response(self, request: RecapSummaryRequest) -> RecapSummaryResponse:
@@ -950,69 +986,156 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
 
     def _create_fallback_from_clusters(self, request: RecapSummaryRequest) -> RecapSummaryResponse:
         """Create a degraded response preserving references and preferring centroids."""
-        bullets: List[str] = []
-        references: List[Reference] = []
-        ref_id = 1
-        max_fallback_bullets = 7
+        candidates = self._collect_fallback_candidates_from_clusters(request)
+        return self._create_degraded_response(
+            request,
+            candidates,
+            model_name="cluster-fallback",
+            degradation_reason="llm_failed_after_repair",
+            json_validation_errors=1,
+        )
 
-        # Sort clusters by number of sentences (proxy for importance), descending
+    def _collect_fallback_candidates_from_clusters(
+        self,
+        request: RecapSummaryRequest,
+    ) -> List[Dict[str, Any]]:
+        max_fallback_bullets = 4 if self._is_3days_request(request) else 7
         sorted_clusters = sorted(
             request.clusters,
             key=lambda c: len(c.representative_sentences),
             reverse=True,
         )
 
-        for cluster in sorted_clusters[:max_fallback_bullets]:
-            # Prefer centroid sentence
-            centroid = next(
-                (s for s in cluster.representative_sentences if s.is_centroid), None
+        candidates: List[Dict[str, Any]] = []
+        seen_texts: set[str] = set()
+        for cluster in sorted_clusters:
+            ordered_sentences = sorted(
+                cluster.representative_sentences,
+                key=lambda sentence: (not sentence.is_centroid, len(sentence.text)),
             )
-            best = centroid or cluster.representative_sentences[0]
+            topic_label = "・".join(cluster.top_terms[:2]) if cluster.top_terms else request.genre.replace("_", " ")
+            for sentence in ordered_sentences:
+                normalized_text = " ".join(sentence.text.split())
+                if not normalized_text or normalized_text in seen_texts:
+                    continue
+                seen_texts.add(normalized_text)
+                candidates.append(
+                    {
+                        "text": normalized_text,
+                        "source_url": sentence.source_url,
+                        "article_id": sentence.article_id,
+                        "topic_label": topic_label,
+                    }
+                )
+                if len(candidates) >= max_fallback_bullets:
+                    return candidates
+        return candidates
 
-            if best.source_url:
-                try:
-                    domain = urlparse(best.source_url if "://" in best.source_url else f"https://{best.source_url}").netloc or best.source_url
-                except Exception:
-                    domain = best.source_url
-                bullets.append(f"{best.text} [{ref_id}]")
-                references.append(Reference(
-                    id=ref_id, url=best.source_url, domain=domain,
-                    article_id=best.article_id,
-                ))
+    def _create_degraded_response(
+        self,
+        request: RecapSummaryRequest,
+        candidates: List[Dict[str, Any]],
+        *,
+        model_name: str,
+        degradation_reason: str,
+        json_validation_errors: int,
+    ) -> RecapSummaryResponse:
+        references: List[Reference] = []
+        bullets: List[str] = []
+        ref_id = 1
+
+        for candidate in candidates:
+            source_url = candidate.get("source_url")
+            article_id = candidate.get("article_id")
+            topic_label = str(candidate.get("topic_label") or request.genre.replace("_", " ")).strip()
+            reference_id: Optional[int] = None
+            if source_url:
+                reference_id = ref_id
+                references.append(
+                    Reference(
+                        id=ref_id,
+                        url=source_url,
+                        domain=self._extract_domain(source_url),
+                        article_id=article_id,
+                    )
+                )
                 ref_id += 1
-            else:
-                bullets.append(best.text)
+            bullets.append(
+                self._format_degraded_bullet(
+                    request,
+                    text=str(candidate.get("text") or "").strip(),
+                    topic_label=topic_label or request.genre.replace("_", " "),
+                    reference_id=reference_id,
+                )
+            )
 
         if not bullets:
-            bullets = ["要約の生成に失敗しました。"]
+            bullets = ["関連する更新が確認されたが、要約の自動生成には失敗した。出典の再処理が必要である。"]
 
+        title_suffix = "直近更新" if self._is_3days_request(request) else "主要トピック"
         summary = RecapSummary(
-            title=f"{request.genre}の主要トピック (自動抽出)",
+            title=f"{request.genre.replace('_', ' ')}の{title_suffix}",
             bullets=bullets,
             language="ja",
             references=references if references else None,
         )
 
         metadata = RecapSummaryMetadata(
-            model="cluster-fallback",
+            model=model_name,
             temperature=0.0,
             prompt_tokens=0,
             completion_tokens=0,
             processing_time_ms=0,
-            json_validation_errors=1,
+            json_validation_errors=json_validation_errors,
             summary_length_bullets=len(summary.bullets),
             is_degraded=True,
-            degradation_reason="llm_failed_after_repair",
+            degradation_reason=degradation_reason,
         )
 
         return RecapSummaryResponse(
             job_id=request.job_id,
             genre=request.genre,
             summary=summary,
-            metadata=metadata
+            metadata=metadata,
         )
 
-    def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int, intermediate: bool = False) -> str:
+    def _format_degraded_bullet(
+        self,
+        request: RecapSummaryRequest,
+        *,
+        text: str,
+        topic_label: str,
+        reference_id: Optional[int],
+    ) -> str:
+        scope = "直近3日間" if self._is_3days_request(request) else "最近"
+        snippet = self._truncate_fallback_snippet(text)
+        reference_suffix = f" [{reference_id}]" if reference_id is not None else ""
+        return (
+            f"{topic_label} に関する更新が確認された。代表文では「{snippet}」が中心情報として示されており、"
+            f"{scope}の重要トピックとして整理できる{reference_suffix}"
+        )
+
+    @staticmethod
+    def _truncate_fallback_snippet(text: str, max_chars: int = 120) -> str:
+        cleaned = " ".join(text.split())
+        if len(cleaned) <= max_chars:
+            return cleaned
+        return cleaned[: max_chars - 1].rstrip() + "…"
+
+    @staticmethod
+    def _extract_domain(url: str) -> str:
+        try:
+            parsed = urlparse(url if "://" in url else f"https://{url}")
+            return parsed.netloc or parsed.path.split("/")[0] or url
+        except Exception:
+            return url
+
+    def _render_prompt_body(
+        self,
+        request: RecapSummaryRequest,
+        max_bullets: int,
+        intermediate: bool = False,
+    ) -> Tuple[str, str]:
         # Truncate cluster section to fit within context window
         # Context window is 12K (default) or 60K tokens, configured in entrypoint.sh and config.py
         # Model routing automatically selects 12K or 60K based on input size
@@ -1121,9 +1244,18 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
              render_kwargs["highlights"] = None
 
         # Select template: 3days change-focused vs 7days deep-dive
-        is_3days = request.window_days is not None and request.window_days <= 3
-        template = self.template_3days if (is_3days and not intermediate) else self.template_7days
-        prompt = template.render(**render_kwargs)
+        is_3days = self._is_3days_request(request)
+        template = self.template_3days if is_3days else self.template_7days
+        prompt_body = template.render(**render_kwargs)
+        return prompt_body, cluster_section
+
+    def _build_prompt(self, request: RecapSummaryRequest, max_bullets: int, intermediate: bool = False) -> str:
+        prompt_body, cluster_section = self._render_prompt_body(
+            request,
+            max_bullets,
+            intermediate=intermediate,
+        )
+        prompt = self._wrap_gemma_prompt(prompt_body)
         prompt_length = len(prompt)
         estimated_tokens = prompt_length // 4  # Rough estimate: 1 token ≈ 4 chars
 
@@ -1186,9 +1318,9 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
     ) -> str:
         issue_lines = "\n".join(f"- {issue}" for issue in issues)
         truncated_response = invalid_response[:3000]
-        base_prompt = self._build_prompt(request, max_bullets)
-        return (
-            f"{base_prompt}\n\n"
+        base_prompt_body, _ = self._render_prompt_body(request, max_bullets)
+        repair_body = (
+            f"{base_prompt_body}\n\n"
             "### 修正タスク\n"
             "前回の出力は契約違反でした。入力にない事実を追加せず、"
             "下記の問題だけを修正して JSON オブジェクト 1 つだけを返してください。\n"
@@ -1196,6 +1328,7 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
             "### 前回の不正な出力\n"
             f"{truncated_response}\n"
         )
+        return self._wrap_gemma_prompt(repair_body)
 
     def _validate_summary_quality(
         self,
@@ -1210,6 +1343,9 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
         title = str(payload.get("title", "")).strip()
         bullets = payload.get("bullets") or []
         language = payload.get("language")
+
+        if not title:
+            issues.append("title must be a non-empty Japanese string")
 
         if len(bullets) < 2:
             issues.append("bullets must contain at least 2 non-empty items")
@@ -1227,6 +1363,9 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
         min_ja_ratio = self._config_float("recap_ja_ratio_threshold", 0.6)
         if japanese_ratio < min_ja_ratio:
             issues.append(f"Japanese text ratio must be >= {min_ja_ratio:.2f}")
+        title_ja_ratio = self._compute_japanese_ratio(title)
+        if title and title_ja_ratio < min_ja_ratio:
+            issues.append(f"title Japanese text ratio must be >= {min_ja_ratio:.2f}")
 
         references = payload.get("references") or []
         reference_ids = {
@@ -1235,11 +1374,39 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
             if isinstance(ref, dict) and isinstance(ref.get("id"), int)
         }
         cited_ids = self._extract_cited_reference_ids(bullets)
+        if any(not REFERENCE_MARKER_RE.search(str(bullet)) for bullet in bullets):
+            issues.append("every 3days bullet must cite at least one [n] reference")
         if cited_ids and not cited_ids.issubset(reference_ids):
             issues.append("every cited [n] marker in bullets must exist in references")
 
         if any(len(str(bullet).strip()) < 40 for bullet in bullets):
             issues.append("3days recap bullets must be substantive, not ultra-short stubs")
+
+        return issues
+
+    def _validate_intermediate_summary_quality(
+        self,
+        request: RecapSummaryRequest,
+        payload: Dict[str, Any],
+    ) -> List[str]:
+        if not self._is_3days_request(request):
+            return []
+
+        issues: List[str] = []
+        bullets = payload.get("bullets") or []
+        language = payload.get("language")
+
+        if language != "ja":
+            issues.append("intermediate summary language must be 'ja'")
+        if len(bullets) < 2:
+            issues.append("intermediate summary must contain at least 2 bullets")
+        if any(self._is_placeholder_bullet(str(bullet)) for bullet in bullets):
+            issues.append("intermediate summary bullets must not contain placeholder text")
+
+        japanese_ratio = self._compute_japanese_ratio(" ".join(str(bullet) for bullet in bullets))
+        min_ja_ratio = self._config_float("recap_ja_ratio_threshold", 0.6)
+        if japanese_ratio < min_ja_ratio:
+            issues.append(f"intermediate summary Japanese text ratio must be >= {min_ja_ratio:.2f}")
 
         return issues
 
@@ -1271,7 +1438,13 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
             return 7
         return 15
 
-    def _parse_summary_json(self, content: str, max_bullets: int) -> Tuple[Dict[str, Any], int]:
+    def _parse_summary_json(
+        self,
+        content: str,
+        max_bullets: int,
+        *,
+        strict_contract: bool = False,
+    ) -> Tuple[Dict[str, Any], int]:
         if not content:
             raise RuntimeError("LLM returned empty response for recap summary")
 
@@ -1302,7 +1475,40 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
         if not isinstance(parsed, dict):
             raise RuntimeError("LLM response must be a JSON object")
 
-        return self._sanitize_summary_payload(parsed, max_bullets), parse_errors
+        return self._sanitize_summary_payload(
+            parsed,
+            max_bullets,
+            strict_contract=strict_contract,
+        ), parse_errors
+
+    def _parse_intermediate_summary_json(
+        self,
+        content: str,
+        request: RecapSummaryRequest,
+    ) -> IntermediateSummary:
+        if not content:
+            raise RuntimeError("LLM returned empty response for intermediate recap summary")
+
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as exc:
+            if json_repair:
+                repaired_json = json_repair.repair_json(content)
+                parsed = json.loads(repaired_json)
+            else:
+                raise RuntimeError(f"Failed to parse intermediate structured output: {exc}") from exc
+
+        if not isinstance(parsed, dict):
+            raise RuntimeError("Intermediate summary response must be a JSON object")
+
+        payload = self._sanitize_intermediate_payload(parsed)
+        if not payload.get("language") and not self._is_3days_request(request):
+            payload["language"] = "ja"
+        issues = self._validate_intermediate_summary_quality(request, payload)
+        if issues:
+            raise RuntimeError("; ".join(issues))
+
+        return IntermediateSummary(**payload)
 
 
 
@@ -1310,6 +1516,8 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
         self,
         payload: Dict[str, Any],
         max_bullets: int,
+        *,
+        strict_contract: bool = False,
     ) -> Dict[str, Any]:
         summary_section = payload.get("summary")
         if isinstance(summary_section, dict):
@@ -1319,7 +1527,12 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
 
         # タイトルがコードフェンス等の不正値の場合は修正
         invalid_titles = ["```json", "```", "json", "{", ""]
-        if not isinstance(title, str) or title.strip().lower() in invalid_titles:
+        if strict_contract:
+            if isinstance(title, str):
+                title = title.strip()[:200]
+            else:
+                title = ""
+        elif not isinstance(title, str) or title.strip().lower() in invalid_titles:
             # bulletsの先頭から抽出を試みる
             bullets = payload.get("bullets", [])
             if bullets and isinstance(bullets[0], str):
@@ -1330,7 +1543,7 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
                 title = "主要トピックのまとめ"
 
         if not isinstance(title, str) or not title.strip():
-            title = "主要トピックのまとめ"
+            title = "" if strict_contract else "主要トピックのまとめ"
         title = title.strip()[:200]
 
         bullets_field = payload.get("bullets")
@@ -1344,7 +1557,9 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
             bullets = []
 
         language = payload.get("language")
-        if not isinstance(language, str) or not language.strip():
+        if strict_contract:
+            language = language.strip() if isinstance(language, str) else ""
+        elif not isinstance(language, str) or not language.strip():
             language = "ja"
 
         max_allowed = min(max(1, max_bullets), 15)
@@ -1359,7 +1574,7 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
             bullets = bullets[:max_allowed]
 
         # Ensure at least one bullet is present
-        if not bullets:
+        if not bullets and not strict_contract:
             bullets = [title]
 
         # Validate and sanitize references
@@ -1407,6 +1622,30 @@ JSON オブジェクト 1 つのみ。"bullets" に要約した要点リスト�
             sanitized["references"] = references
 
         return sanitized
+
+    def _sanitize_intermediate_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        summary_section = payload.get("summary")
+        if isinstance(summary_section, dict):
+            payload = summary_section
+
+        bullets_field = payload.get("bullets")
+        if isinstance(bullets_field, list):
+            bullets = [
+                str(bullet).strip()[:1000]
+                for bullet in bullets_field
+                if isinstance(bullet, (str, int, float)) and str(bullet).strip()
+            ]
+        else:
+            bullets = []
+
+        language = payload.get("language")
+        if not isinstance(language, str):
+            language = ""
+
+        return {
+            "bullets": bullets,
+            "language": language.strip(),
+        }
 
     def _extract_title_from_bullet(self, bullet: str) -> str:
         """bulletテキストから適切なタイトルを抽出する"""

@@ -9,11 +9,16 @@
 - 入力にない事実・数値・因果関係は書かない。
 - bullet 内で使った **すべての [n]** は `references.id` に存在しなければならない。
 - `language` は必ず `"ja"`。
+- `title` と `bullets` 本文は日本語で書く。英語だけの title / bullet は禁止。
+- 根拠が薄い場合でも `"..."` や placeholder を出さず、関連する変化を統合して密度を上げる。
+
+### Schema Mirror
 {% if intermediate %}
 - 形式（中間要約）:
 {
   "bullets": [
-    "..."
+    "日本語の要点1",
+    "日本語の要点2"
   ],
   "language": "ja"
 }
@@ -63,6 +68,7 @@
 }
 - 不正理由:
   - `language` が `"ja"` ではない
+  - title が英語だけで、日本語要約になっていない
   - bullet が placeholder で内容がない
   - 変化・重要性・今後の見通しが書かれていない
 {% endif %}

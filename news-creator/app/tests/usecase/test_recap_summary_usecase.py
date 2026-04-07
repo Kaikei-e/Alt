@@ -835,6 +835,69 @@ async def test_hierarchical_map_phase_uses_hold_slot_generate_raw():
 
 
 @pytest.mark.asyncio
+async def test_hierarchical_3days_map_phase_uses_3days_prompt_contract():
+    """Hierarchical map phase should preserve window_days=3 and use the 3days contract."""
+    from contextlib import asynccontextmanager
+
+    config = _make_recap_config_for_hierarchical()
+    llm_provider = Mock()
+
+    captured_prompts = []
+
+    @asynccontextmanager
+    async def mock_hold_slot(is_high_priority=False):
+        yield 0.0, None, None
+
+    async def mock_generate_raw(prompt, **kwargs):
+        captured_prompts.append(prompt)
+        return LLMGenerateResponse(
+            response=json.dumps({
+                "bullets": ["主要な変化が確認された。", "追加の更新が確認された。"],
+                "language": "ja",
+            }),
+            model="gemma4-e4b-q4km",
+        )
+
+    async def mock_generate(prompt, **kwargs):
+        return LLMGenerateResponse(
+            response=json.dumps({
+                "title": "最終要約",
+                "bullets": [
+                    "主要企業の動きが変化し、市場の競争環境に影響した [1]",
+                    "規制側の更新も重なり、今後の導入見通しが変わった [2]",
+                ],
+                "language": "ja",
+                "references": [
+                    {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
+                    {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
+                ],
+            }),
+            model="gemma4-e4b-q4km",
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=_make_hierarchical_clusters(4),
+        options=RecapSummaryOptions(max_bullets=3, temperature=0.0),
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    await usecase.generate_summary(request)
+
+    assert captured_prompts, "Expected at least one hierarchical map prompt"
+    first_prompt = captured_prompts[0]
+    assert first_prompt.startswith("<start_of_turn>system\n")
+    assert "直近3日間" in first_prompt
+    assert "language" in first_prompt and '"ja"' in first_prompt
+
+
+@pytest.mark.asyncio
 async def test_hierarchical_reduce_group_uses_hold_slot_generate_raw():
     """Recursive reduce groups must also use hold_slot+generate_raw."""
     from contextlib import asynccontextmanager
@@ -978,6 +1041,54 @@ async def test_selects_3days_prompt_when_window_is_3():
     assert "変化" in prompt or "変わった" in prompt, (
         "3days prompt should prioritize changes, but prompt does not contain change-focused markers"
     )
+
+
+@pytest.mark.asyncio
+async def test_3days_prompt_uses_gemma_turn_format():
+    """3days recap prompts should be wrapped for Gemma raw prompting."""
+    config = _create_mock_config()
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps({
+            "title": "AI最新動向",
+            "bullets": [
+                "主要企業が新機能を公開し、競争環境が変化した [1]",
+                "規制当局も新方針を示し、今後の導入に影響する [2]",
+            ],
+            "language": "ja",
+            "references": [
+                {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
+                {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
+            ],
+        }),
+        model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(text="Sample sentence one.", source_url="https://example.com/1", article_id="art1"),
+                    RepresentativeSentence(text="Sample sentence two.", source_url="https://example.com/2", article_id="art2"),
+                    RepresentativeSentence(text="Sample sentence three.", source_url="https://example.com/3", article_id="art3"),
+                    RepresentativeSentence(text="Sample sentence four.", source_url="https://example.com/4", article_id="art4"),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    await usecase.generate_summary(request)
+
+    call_args = llm_provider.generate.call_args
+    prompt = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt", "")
+    assert prompt.startswith("<start_of_turn>system\n")
+    assert "<start_of_turn>user\n" in prompt
+    assert prompt.endswith("<start_of_turn>model\n")
 
 
 @pytest.mark.asyncio
@@ -1155,6 +1266,51 @@ async def test_3days_prompt_contains_contract_examples_and_forbidden_patterns():
     assert "不正な例" in prompt
     assert '"references"' in prompt
     assert "... [1]" in prompt
+
+
+@pytest.mark.asyncio
+async def test_3days_strict_validation_rejects_english_title_and_missing_references():
+    """3days strict validation should reject English-only title and uncited bullets."""
+    config = _create_mock_config()
+    config.max_repetition_retries = 0
+    config.recap_summary_repair_attempts = 0
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps({
+            "title": "AI updates",
+            "bullets": [
+                "主要企業が新機能を公開し、市場の競争環境が変化した。",
+                "規制当局も新方針を示し、今後の導入見通しが変わった。",
+            ],
+            "language": "ja",
+            "references": [],
+        }),
+        model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(text="Sample one.", source_url="https://example.com/1", article_id="art1"),
+                    RepresentativeSentence(text="Sample two.", source_url="https://example.com/2", article_id="art2"),
+                    RepresentativeSentence(text="Sample three.", source_url="https://example.com/3", article_id="art3"),
+                    RepresentativeSentence(text="Sample four.", source_url="https://example.com/4", article_id="art4"),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    assert response.metadata.is_degraded is True
+    assert response.summary.language == "ja"
 
 # ============================================================================
 # Issue 3: Reduce Quality Tests
@@ -1365,6 +1521,61 @@ async def test_fallback_preserves_references():
     assert len(response.summary.references) >= 1
     urls = [ref.url for ref in response.summary.references]
     assert "https://techfusion.com/news" in urls
+
+
+@pytest.mark.asyncio
+async def test_3days_fallback_wraps_english_source_sentences_in_japanese():
+    """3days degraded fallback should remain Japanese even when source sentences are English."""
+    config = Mock()
+    config.summary_num_predict = 400
+    config.llm_temperature = 0.25
+    config.max_repetition_retries = 0
+    config.llm_repeat_penalty = 1.1
+    config.repetition_threshold = 2.0
+    config.hierarchical_threshold_chars = 100000
+    config.hierarchical_threshold_clusters = 50
+    config.hierarchical_chunk_max_chars = 20000
+    config.recap_ja_ratio_threshold = 0.6
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="not json",
+        model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="TechFusion bought Nova Labs for $1.2B and will integrate the platform in March 2026.",
+                        source_url="https://example.com/techfusion-news",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                    RepresentativeSentence(
+                        text="Google launched a new API pricing tier for enterprise inference workloads.",
+                        source_url="https://example.com/google-gemini",
+                        article_id="art2",
+                    ),
+                ],
+                top_terms=["TechFusion", "Nova Labs"],
+            ),
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    assert response.metadata.is_degraded is True
+    assert response.summary.language == "ja"
+    assert "更新が確認された" in response.summary.bullets[0]
+    assert response.summary.references is not None
+    assert response.summary.references[0].url == "https://example.com/techfusion-news"
 
 
 @pytest.mark.asyncio

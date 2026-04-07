@@ -96,6 +96,9 @@ class NewsCreatorConfig:
         self.recap_min_representative_sentences_for_llm = self._get_int(
             "RECAP_MIN_REPRESENTATIVE_SENTENCES_FOR_LLM", 4
         )
+        self.recap_summary_temperature = self._get_float(
+            "RECAP_SUMMARY_TEMPERATURE", 0.0
+        )
         self.recap_ja_ratio_threshold = self._get_float("RECAP_JA_RATIO_THRESHOLD", 0.6)
         self.recap_summary_repair_attempts = self._get_int(
             "RECAP_SUMMARY_REPAIR_ATTEMPTS", 1
