@@ -31,14 +31,17 @@ type Message = {
 
 type Props = {
 	withinHours?: number;
+	targetDate?: string;
 };
 
-let { withinHours = 24 }: Props = $props();
+let { withinHours = 24, targetDate }: Props = $props();
+
+let chatOpen = $state(false);
 
 let messages = $state<Message[]>([
 	{
 		id: "welcome",
-		message: `Hello! Ask me about today's news.`,
+		message: `Ask follow-up questions about today's briefing.`,
 		role: "assistant",
 		timestamp: new Date().toLocaleTimeString(),
 	},
@@ -197,25 +200,38 @@ onMount(() => {
 });
 </script>
 
-<div class="flex flex-col h-full" style="background: var(--app-bg);">
-	<!-- Header -->
-	<div
-		class="sticky top-0 z-10 p-4 border-b"
+<div style="background: var(--app-bg);">
+	<!-- Disclosure toggle -->
+	<button
+		onclick={() => { chatOpen = !chatOpen; }}
+		aria-expanded={chatOpen}
+		aria-controls="follow-up-chat"
+		class="w-full flex items-center justify-between p-4 border-t"
 		style="background: var(--surface-bg); border-color: var(--border-color);"
 	>
-		<h1 class="text-lg font-bold" style="color: var(--text-primary);">
-			Morning Letter
-		</h1>
-		<div class="flex items-center gap-2 text-xs mt-1" style="color: var(--text-secondary);">
-			<Clock class="h-3 w-3" />
-			<span>News from the past {withinHours} hours</span>
+		<div class="flex items-center gap-2">
+			<span class="text-sm font-semibold" style="color: var(--text-primary);">Follow-up Chat</span>
+			<span class="text-xs" style="color: var(--text-secondary);">Ask about the briefing</span>
 		</div>
-	</div>
+		<svg
+			class="h-4 w-4 transition-transform"
+			class:rotate-180={chatOpen}
+			style="color: var(--text-secondary);"
+			viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+		>
+			<path d="m6 9 6 6 6-6" />
+		</svg>
+	</button>
 
+	{#if chatOpen}
+	<div id="follow-up-chat" role="region" class="flex flex-col" style="height: 50vh;">
 	<!-- Messages -->
 	<div
 		bind:this={chatContainer}
 		class="flex-1 overflow-y-auto p-4 space-y-4"
+		role="log"
+		aria-live="polite"
+		aria-busy={isLoading}
 	>
 		{#each messages as msg (msg.id)}
 			<div
@@ -341,7 +357,7 @@ onMount(() => {
 				type="text"
 				bind:value={inputValue}
 				onkeydown={handleKeydown}
-				placeholder="Ask about today's news..."
+				placeholder="Ask about the briefing..."
 				disabled={isLoading}
 				class="flex-1 px-4 py-2 rounded-full border focus:outline-none focus:ring-2 disabled:opacity-50"
 				style="background: var(--app-bg); border-color: var(--border-color); color: var(--text-primary); font-size: 16px;"
@@ -357,4 +373,6 @@ onMount(() => {
 			</button>
 		</div>
 	</div>
+	</div>
+	{/if}
 </div>

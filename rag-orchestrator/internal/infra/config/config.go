@@ -169,10 +169,11 @@ type TemporalConfig struct {
 
 // BackendConfig holds alt-backend connection settings.
 type BackendConfig struct {
-	URL          string
-	ConnectURL   string // Connect-RPC URL (separate port from REST)
-	Timeout      int    // Seconds
-	ServiceToken string // Shared secret for Connect-RPC auth (X-Service-Token header)
+	URL            string
+	ConnectURL     string // Connect-RPC URL (separate port from REST)
+	Timeout        int    // Seconds
+	ServiceToken   string // Shared secret for Connect-RPC auth (X-Service-Token header)
+	RecapWorkerURL string // recap-worker REST base URL for letter fetching
 }
 
 // CacheConfig holds answer cache settings.

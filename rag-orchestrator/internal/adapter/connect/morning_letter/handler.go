@@ -2,6 +2,7 @@ package morning_letter
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -24,21 +25,25 @@ func sanitizeUTF8(s string) string {
 type Handler struct {
 	articleClient domain.ArticleClient
 	answerUsecase usecase.AnswerWithRAGUsecase
+	letterFetcher domain.MorningLetterFetcher
 	logger        *slog.Logger
 }
 
 // Ensure Handler implements the interface
 var _ morningletterv2connect.MorningLetterServiceHandler = (*Handler)(nil)
 
-// NewHandler creates a new MorningLetterService handler
+// NewHandler creates a new MorningLetterService handler.
+// letterFetcher may be nil — in that case, letter context grounding is skipped.
 func NewHandler(
 	articleClient domain.ArticleClient,
 	answerUsecase usecase.AnswerWithRAGUsecase,
+	letterFetcher domain.MorningLetterFetcher,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
 		articleClient: articleClient,
 		answerUsecase: answerUsecase,
+		letterFetcher: letterFetcher,
 		logger:        logger,
 	}
 }
@@ -78,6 +83,28 @@ func (h *Handler) StreamChat(
 	h.logger.Info("starting morning letter stream chat",
 		slog.String("query", query),
 		slog.Int("within_hours", withinHours))
+
+	// 0. Resolve letter for document-grounded follow-up
+	var letterContext string
+	letterContextUsed := false
+	if h.letterFetcher != nil {
+		var doc *domain.MorningLetterDoc
+		var fetchErr error
+		if td := req.Msg.TargetDate; td != nil && *td != "" {
+			doc, fetchErr = h.letterFetcher.FetchByDate(ctx, *td)
+		} else {
+			doc, fetchErr = h.letterFetcher.FetchLatest(ctx)
+		}
+		if fetchErr != nil {
+			h.logger.Warn("failed to fetch morning letter for context",
+				slog.String("error", fetchErr.Error()))
+		} else if doc != nil {
+			letterContext = formatLetterAsContext(doc)
+			letterContextUsed = true
+		}
+	}
+	h.logger.Info("letter context resolved",
+		slog.Bool("letter_context_used", letterContextUsed))
 
 	// 1. Fetch recent articles from alt-backend (limit=0 means no limit, relying on time constraint only)
 	articles, err := h.articleClient.GetRecentArticles(ctx, withinHours, 0)
@@ -122,6 +149,7 @@ func (h *Handler) StreamChat(
 		Query:               query,
 		CandidateArticleIDs: articleIDs,
 		Locale:              "ja", // Default to Japanese for morning letter
+		LetterContext:        letterContext,
 	}
 
 	events := h.answerUsecase.Stream(ctx, input)
@@ -261,6 +289,30 @@ func (h *Handler) sendErrorEvent(stream *connect.ServerStream[morningletterv2.St
 		return connect.NewError(connect.CodeInternal, err)
 	}
 	return nil
+}
+
+// formatLetterAsContext converts a morning letter document into a structured text context
+// for the LLM prompt. Uses XML-style tagging to keep it separate from system instructions.
+func formatLetterAsContext(doc *domain.MorningLetterDoc) string {
+	var sb strings.Builder
+	sb.WriteString("<morning_letter>\n")
+	if doc.Lead != "" {
+		sb.WriteString(fmt.Sprintf("## Lead\n%s\n\n", doc.Lead))
+	}
+	for _, s := range doc.Sections {
+		title := s.Title
+		if title == "" {
+			title = s.Key
+		}
+		sb.WriteString(fmt.Sprintf("## %s\n", title))
+		for _, b := range s.Bullets {
+			sb.WriteString(fmt.Sprintf("- %s\n", b))
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("</morning_letter>\n")
+	sb.WriteString("ユーザーの質問にはこの Morning Letter の内容を最優先で参照してください。記事検索は補助的に使用してください。")
+	return sb.String()
 }
 
 // sendFallbackEvent sends a fallback event to the stream

@@ -5,12 +5,15 @@
  * time-bounded RAG-powered chat about recent news.
  */
 
-import { createClient } from "@connectrpc/connect";
+import { createClient, ConnectError, Code } from "@connectrpc/connect";
 import type { Client, Transport } from "@connectrpc/connect";
 import {
 	MorningLetterService,
+	MorningLetterReadService,
 	type StreamChatResponse,
 	type Citation as ProtoCitation,
+	type MorningLetterDocument,
+	type MorningLetterSourceProto,
 } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
 
 /** Type-safe MorningLetterService client */
@@ -251,4 +254,70 @@ export async function streamMorningLetterChatAsync(
 			(error) => reject(error), // onError
 		);
 	});
+}
+
+// =============================================================================
+// MorningLetterReadService Client
+// =============================================================================
+
+/**
+ * Get the latest morning letter document.
+ * Returns null if no letter exists (NotFound).
+ * Rethrows Unauthenticated and other errors.
+ */
+export async function getLatestLetter(
+	transport: Transport,
+): Promise<MorningLetterDocument | null> {
+	const client = createClient(MorningLetterReadService, transport);
+	try {
+		const res = await client.getLatestLetter({});
+		return res.letter ?? null;
+	} catch (err) {
+		if (err instanceof ConnectError && err.code === Code.NotFound) {
+			return null;
+		}
+		throw err;
+	}
+}
+
+/**
+ * Get a morning letter by civil date (YYYY-MM-DD).
+ * Returns null if no letter exists for that date (NotFound).
+ * Rethrows Unauthenticated and other errors.
+ */
+export async function getLetterByDate(
+	transport: Transport,
+	targetDate: string,
+): Promise<MorningLetterDocument | null> {
+	const client = createClient(MorningLetterReadService, transport);
+	try {
+		const res = await client.getLetterByDate({ targetDate });
+		return res.letter ?? null;
+	} catch (err) {
+		if (err instanceof ConnectError && err.code === Code.NotFound) {
+			return null;
+		}
+		throw err;
+	}
+}
+
+/**
+ * Get article provenance sources for a letter.
+ * Returns null if letter not found (NotFound).
+ * Rethrows Unauthenticated and other errors.
+ */
+export async function getLetterSources(
+	transport: Transport,
+	letterId: string,
+): Promise<MorningLetterSourceProto[] | null> {
+	const client = createClient(MorningLetterReadService, transport);
+	try {
+		const res = await client.getLetterSources({ letterId });
+		return res.sources;
+	} catch (err) {
+		if (err instanceof ConnectError && err.code === Code.NotFound) {
+			return null;
+		}
+		throw err;
+	}
 }

@@ -117,7 +117,20 @@ export {
 	type MorningLetterStreamOptions,
 	type MorningLetterMeta,
 	type MorningLetterStreamResult,
+	// MorningLetterReadService (Document-oriented read APIs)
+	getLatestLetter,
+	getLetterByDate,
+	getLetterSources,
 } from "./morning_letter";
+
+// Re-export generated Morning Letter types for consumers
+export type {
+	MorningLetterDocument,
+	MorningLetterBody,
+	MorningLetterSection,
+	MorningLetterSourceProto,
+	MorningLetterSourceType,
+} from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
 
 // RecapService client
 export {

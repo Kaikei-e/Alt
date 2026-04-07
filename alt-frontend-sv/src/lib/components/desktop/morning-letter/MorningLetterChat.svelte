@@ -33,12 +33,13 @@ type Message = {
 
 type Props = {
 	withinHours?: number;
+	targetDate?: string;
 };
 
-let { withinHours = 24 }: Props = $props();
+let { withinHours = 24, targetDate }: Props = $props();
 
 const welcomeMessage = $derived(
-	`Hello! I'm your Morning Letter assistant. I can answer questions about news from the past ${withinHours} hours. What would you like to know?`,
+	`Ask follow-up questions about today's briefing. I'll use the Morning Letter as primary context.`,
 );
 
 let messages = $state<Message[]>([]);
@@ -226,7 +227,7 @@ onMount(() => {
 	class="flex flex-col h-[calc(100vh-12rem)] max-w-4xl mx-auto border border-border bg-background rounded-lg overflow-hidden"
 >
 	<!-- Chat messages -->
-	<div bind:this={chatContainer} class="flex-1 overflow-y-auto p-6">
+	<div bind:this={chatContainer} class="flex-1 overflow-y-auto p-6" role="log" aria-live="polite" aria-busy={isLoading}>
 		{#each messages as msg (msg.id)}
 			<div
 				class={cn(

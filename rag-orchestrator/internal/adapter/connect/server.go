@@ -27,12 +27,14 @@ func SetupConnectHandlers(
 	articleClient domain.ArticleClient,
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	retrieveUsecase usecase.RetrieveContextUsecase,
+	letterFetcher domain.MorningLetterFetcher,
 	logger *slog.Logger,
 ) {
 	// Register MorningLetterService
 	morningLetterHandler := morning_letter.NewHandler(
 		articleClient,
 		answerUsecase,
+		letterFetcher,
 		logger,
 	)
 	mlPath, mlHandler := morningletterv2connect.NewMorningLetterServiceHandler(morningLetterHandler)
@@ -55,6 +57,7 @@ func CreateConnectServer(
 	articleClient domain.ArticleClient,
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	retrieveUsecase usecase.RetrieveContextUsecase,
+	letterFetcher domain.MorningLetterFetcher,
 	logger *slog.Logger,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -66,7 +69,7 @@ func CreateConnectServer(
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"connect-rpc"}`))
 	})
 
-	SetupConnectHandlers(mux, articleClient, answerUsecase, retrieveUsecase, logger)
+	SetupConnectHandlers(mux, articleClient, answerUsecase, retrieveUsecase, letterFetcher, logger)
 
 	// Support HTTP/2 without TLS (h2c) for Connect-RPC streaming
 	return h2c.NewHandler(mux, &http2.Server{})

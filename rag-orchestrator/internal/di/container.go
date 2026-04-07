@@ -13,6 +13,7 @@ import (
 	"rag-orchestrator/internal/adapter/altdb"
 	"rag-orchestrator/internal/adapter/rag_augur"
 	rag_http "rag-orchestrator/internal/adapter/rag_http"
+	"rag-orchestrator/internal/adapter/recap_worker"
 	"rag-orchestrator/internal/adapter/repository"
 	"rag-orchestrator/internal/adapter/tools"
 	"rag-orchestrator/internal/domain"
@@ -46,6 +47,7 @@ type ApplicationComponents struct {
 
 	// Adapters exposed for handler wiring
 	ArticleClient   domain.ArticleClient
+	LetterFetcher   domain.MorningLetterFetcher
 	EmbeddingModel  string
 	EmbedderTimeout int
 }
@@ -238,6 +240,13 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		generator, cfg.RAG.MorningLetterMaxTokens, cfg.RAG.MaxPromptTokens, temporalBoostConfig, log,
 	)
 
+	// Morning letter fetcher for chat grounding (recap-worker REST)
+	recapWorkerURL := cfg.Backend.RecapWorkerURL
+	if recapWorkerURL == "" {
+		recapWorkerURL = "http://recap-worker:8080"
+	}
+	letterFetcher := recap_worker.NewClient(recapWorkerURL, httpclient.NewPooledClient(10*time.Second))
+
 	// Factories for hyper-boost
 	embedderFactory := func(url string, model string, timeout int) domain.VectorEncoder {
 		return rag_augur.NewOllamaEmbedder(url, model, timeout, httpclient.NewPooledClient(time.Duration(timeout)*time.Second))
@@ -261,6 +270,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		EmbedderFactory:      embedderFactory,
 		IndexUsecaseFactory:  indexUsecaseFactory,
 		ArticleClient:        articleClient,
+		LetterFetcher:        letterFetcher,
 		EmbeddingModel:       cfg.Embedder.Model,
 		EmbedderTimeout:      cfg.Embedder.Timeout,
 	}

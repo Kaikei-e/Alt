@@ -15,6 +15,7 @@ type AnswerWithRAGInput struct {
 	UserID              string
 	Locale              string
 	ConversationHistory []domain.Message // Recent chat turns for multi-turn context
+	LetterContext       string           // Morning Letter body for document-grounded follow-up
 }
 
 // AnswerWithRAGOutput represents the normalized answer response returned to API clients.
