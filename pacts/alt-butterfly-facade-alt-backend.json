@@ -1,0 +1,151 @@
+{
+  "consumer": {
+    "name": "alt-butterfly-facade"
+  },
+  "interactions": [
+    {
+      "description": "a Connect-RPC request that returns a not_found error",
+      "providerStates": [
+        {
+          "name": "article does not exist"
+        }
+      ],
+      "request": {
+        "body": {
+          "feedId": "nonexistent-feed"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feedId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.feeds.v2.FeedService/GetFeed"
+      },
+      "response": {
+        "body": {
+          "code": "not_found",
+          "message": "feed not found"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 404
+      }
+    },
+    {
+      "description": "a GetFeedStats unary Connect-RPC request proxied by BFF",
+      "providerStates": [
+        {
+          "name": "feed stats are available"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/alt.feeds.v2.FeedService/GetFeedStats"
+      },
+      "response": {
+        "body": {
+          "totalArticles": 250,
+          "totalFeeds": 10
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetOverview admin Connect-RPC request with service token",
+      "providerStates": [
+        {
+          "name": "knowledge home admin service is available"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Service-Token": "service-secret"
+        },
+        "method": "POST",
+        "path": "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview"
+      },
+      "response": {
+        "body": {
+          "totalEvents": 100
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.4.2"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "alt-backend"
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "consumer": {
+    "name": "alt-butterfly-facade"
+  },
+  "interactions": [
+    {
+      "description": "a Synthesize request forwarded by BFF with service token",
+      "providerStates": [
+        {
+          "name": "TTS service is available"
+        }
+      ],
+      "request": {
+        "body": {
+          "text": "Hello world"
+        },
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Service-Token": "tts-service-secret"
+        },
+        "matchingRules": {
+          "body": {
+            "$.text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.tts.v1.TTSService/Synthesize"
+      },
+      "response": {
+        "body": {
+          "audioWav": ""
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a Synthesize request that returns a service error",
+      "providerStates": [
+        {
+          "name": "TTS service encounters an error"
+        }
+      ],
+      "request": {
+        "body": {
+          "text": ""
+        },
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Service-Token": "tts-service-secret"
+        },
+        "matchingRules": {
+          "body": {
+            "$.text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.tts.v1.TTSService/Synthesize"
+      },
+      "response": {
+        "body": {
+          "code": "invalid_argument",
+          "message": "text must not be empty"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 400
+      }
+    }
+  ],
+  "metadata": {
+    "pact-go": {
+      "version": "2.4.2"
+    },
+    "pactRust": {
+      "ffi": "0.4.28",
+      "mockserver": "1.2.16",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "tts-speaker"
+  }
+}
