@@ -123,7 +123,7 @@ describe("useAugurPane", () => {
 					messages: [{ role: "user", content: "What is RSS?" }],
 				},
 				expect.any(Function), // onDelta
-				undefined, // onThinking (unused)
+				expect.any(Function), // onThinking
 				expect.any(Function), // onMeta
 				expect.any(Function), // onComplete
 				expect.any(Function), // onFallback
@@ -270,7 +270,7 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onFallback?.("insufficient_context");
 
-			expect(pane.messages[1].message).toContain("Not enough indexed content");
+			expect(pane.messages[1].message).toContain("Not enough indexed evidence");
 			expect(pane.isLoading).toBe(false);
 		});
 
@@ -287,7 +287,7 @@ describe("useAugurPane", () => {
 	});
 
 	describe("timeout", () => {
-		it("auto-recovers after 60 seconds if onComplete never fires", () => {
+		it("auto-recovers after 180 seconds if onComplete never fires", () => {
 			vi.useFakeTimers();
 			const pane = useAugurPane();
 			pane.sendMessage("Hello");
@@ -296,8 +296,8 @@ describe("useAugurPane", () => {
 			capturedCallbacks.onDelta?.("Partial text");
 			expect(pane.isLoading).toBe(true);
 
-			// Advance 60 seconds
-			vi.advanceTimersByTime(60_000);
+			// Advance 180 seconds
+			vi.advanceTimersByTime(180_000);
 
 			expect(pane.isLoading).toBe(false);
 			expect(pane.messages[1].message).toContain("Partial text");
@@ -314,10 +314,74 @@ describe("useAugurPane", () => {
 			expect(pane.isLoading).toBe(false);
 
 			// Advance past timeout — should NOT change anything
-			vi.advanceTimersByTime(60_000);
+			vi.advanceTimersByTime(180_000);
 			expect(pane.messages[1].message).toBe("Done");
 
 			vi.useRealTimers();
+		});
+	});
+
+	describe("provisional state", () => {
+		it("onDelta sets isProvisional to true", () => {
+			const pane = useAugurPane();
+			pane.sendMessage("Hello");
+			expect(pane.isProvisional).toBe(false);
+
+			capturedCallbacks.onDelta?.("Draft text");
+			expect(pane.isProvisional).toBe(true);
+		});
+
+		it("onComplete clears isProvisional", () => {
+			const pane = useAugurPane();
+			pane.sendMessage("Hello");
+
+			capturedCallbacks.onDelta?.("Draft");
+			expect(pane.isProvisional).toBe(true);
+
+			capturedCallbacks.onComplete?.({
+				answer: "Final answer",
+				citations: [],
+			});
+			expect(pane.isProvisional).toBe(false);
+		});
+
+		it("onFallback clears isProvisional", () => {
+			const pane = useAugurPane();
+			pane.sendMessage("Hello");
+
+			capturedCallbacks.onDelta?.("Draft");
+			expect(pane.isProvisional).toBe(true);
+
+			capturedCallbacks.onFallback?.("insufficient_context");
+			expect(pane.isProvisional).toBe(false);
+		});
+	});
+
+	describe("statusText from thinking", () => {
+		it("onThinking updates statusText", () => {
+			const pane = useAugurPane();
+			pane.sendMessage("Hello");
+
+			capturedCallbacks.onThinking?.("Analyzing context...");
+			expect(pane.statusText).toBe("Analyzing context...");
+		});
+
+		it("refining progress updates statusText", () => {
+			const pane = useAugurPane();
+			pane.sendMessage("Hello");
+
+			capturedCallbacks.onProgress?.("refining");
+			expect(pane.progressStage).toBe("refining");
+			expect(pane.statusText).toBe("Refining answer...");
+		});
+
+		it("onComplete clears statusText", () => {
+			const pane = useAugurPane();
+			pane.sendMessage("Hello");
+
+			capturedCallbacks.onThinking?.("Thinking...");
+			capturedCallbacks.onComplete?.({ answer: "Done", citations: [] });
+			expect(pane.statusText).toBe("");
 		});
 	});
 
@@ -330,17 +394,30 @@ describe("useAugurPane", () => {
 				"retrieval quality insufficient: context relevance too low",
 			);
 
-			expect(pane.messages[1].message).toContain("Not enough indexed content");
+			expect(pane.messages[1].message).toContain("Not enough indexed evidence");
 		});
 
-		it("shows generic message for other fallback codes", () => {
+		it("shows generic message for technical fallback codes", () => {
 			const pane = useAugurPane();
 			pane.sendMessage("Hello");
 
 			capturedCallbacks.onFallback?.("validation failed");
 
 			expect(pane.messages[1].message).toContain(
-				"couldn't find enough information",
+				"I couldn't find enough information",
+			);
+		});
+
+		it("shows Japanese fallback reasons as-is", () => {
+			const pane = useAugurPane();
+			pane.sendMessage("Hello");
+
+			capturedCallbacks.onFallback?.(
+				"十分に一貫した根拠が取れなかったため、因果関係を断定できません。より具体的な質問をお試しください。",
+			);
+
+			expect(pane.messages[1].message).toContain(
+				"I couldn't establish a consistent enough evidence trail",
 			);
 		});
 	});

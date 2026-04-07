@@ -109,6 +109,7 @@ func Run(ctx context.Context) error {
 	// ── Use cases (application layer) ──
 	indexUsecase := usecase.NewIndexArticlesUsecase(articleRepo, searchEngine, tokenizer)
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(searchEngine)
+	searchArticlesUsecase := usecase.NewSearchArticlesUsecase(searchEngine)
 
 	// ── Redis Streams Consumer ──
 	var redisConsumer *consumer.Consumer
@@ -142,7 +143,7 @@ func Run(ctx context.Context) error {
 
 	// ── Servers ──
 	app := &App{
-		httpServer:    newHTTPServer(searchByUserUsecase, otelCfg),
+		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg),
 		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase),
 		redisConsumer: redisConsumer,
 		otelShutdown:  otelShutdown,

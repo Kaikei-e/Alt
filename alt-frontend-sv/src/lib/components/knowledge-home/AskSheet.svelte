@@ -234,8 +234,18 @@ function handleOpenChange(isOpen: boolean) {
 							</div>
 							<div class="rounded-2xl rounded-bl-none border border-border/50 bg-muted/50 p-3 text-sm shadow-sm">
 								<p class="text-muted-foreground">
-									{#if pane.progressStage === "searching"}
+									{#if pane.statusText}
+										{pane.statusText}
+									{:else if pane.progressStage === "planning"}
+										Analyzing question...
+									{:else if pane.progressStage === "searching"}
 										Searching knowledge base...
+									{:else if pane.progressStage === "reranking"}
+										Ranking results...
+									{:else if pane.progressStage === "drafting"}
+										Drafting answer...
+									{:else if pane.progressStage === "validating"}
+										Verifying answer...
 									{:else if pane.progressStage === "generating"}
 										Generating answer...
 									{:else}
@@ -244,6 +254,12 @@ function handleOpenChange(isOpen: boolean) {
 								</p>
 							</div>
 						</div>
+					{/if}
+
+					{#if pane.isLoading && pane.progressStage === "refining" && pane.messages.at(-1)?.message}
+						<p class="mb-2 text-center text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] transition-opacity duration-300">
+							Refining answer...
+						</p>
 					{/if}
 
 					{#if canRetry}

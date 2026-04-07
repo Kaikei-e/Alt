@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -229,6 +230,9 @@ func filterExpandedQueries(queries []string) []string {
 		if isRomanizedJapanese(q) {
 			continue
 		}
+		if isDateOnly(q) {
+			continue
+		}
 		if isInstructionLeak(q) {
 			continue
 		}
@@ -273,6 +277,26 @@ var instructionMetaWords = map[string]struct{}{
 	"output":       {},
 	"exactly":      {},
 	"requirements": {},
+}
+
+// FilterSearchQueries validates search queries from the LLM query planner.
+// It removes date-only, too-short, and instruction leak queries, then falls back
+// to resolvedQuery if all queries were filtered out.
+func FilterSearchQueries(queries []string, resolvedQuery string) []string {
+	filtered := filterExpandedQueries(queries)
+	if len(filtered) == 0 && resolvedQuery != "" {
+		return []string{resolvedQuery}
+	}
+	return filtered
+}
+
+// dateOnlyPattern matches strings that are only a date (e.g., "2026-04-07", "2026/03/15", "2026.01.01").
+// These are useless as search queries and appear when LLM hallucinates dates from conversation context.
+var dateOnlyPattern = regexp.MustCompile(`^\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}$`)
+
+// isDateOnly returns true if the string is only a date with no other content.
+func isDateOnly(q string) bool {
+	return dateOnlyPattern.MatchString(strings.TrimSpace(q))
 }
 
 // isXMLTagLeak detects leaked XML tags from the prompt structure.

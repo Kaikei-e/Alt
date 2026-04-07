@@ -32,6 +32,50 @@ type mockLLMClient struct {
 	mock.Mock
 }
 
+type blockingRetryLLMClient struct {
+	streamResponse string
+	retryResponse  string
+	retryStarted   chan struct{}
+	allowRetry     chan struct{}
+}
+
+func (c *blockingRetryLLMClient) Generate(context.Context, string, int) (*domain.LLMResponse, error) {
+	panic("unused")
+}
+
+func (c *blockingRetryLLMClient) GenerateStream(context.Context, string, int) (<-chan domain.LLMStreamChunk, <-chan error, error) {
+	panic("unused")
+}
+
+func (c *blockingRetryLLMClient) ChatStream(_ context.Context, _ []domain.Message, _ int) (<-chan domain.LLMStreamChunk, <-chan error, error) {
+	chunkCh := make(chan domain.LLMStreamChunk, 2)
+	errCh := make(chan error)
+	chunkCh <- domain.LLMStreamChunk{Response: c.streamResponse, Done: false}
+	chunkCh <- domain.LLMStreamChunk{Done: true}
+	close(chunkCh)
+	close(errCh)
+	return chunkCh, errCh, nil
+}
+
+func (c *blockingRetryLLMClient) Chat(ctx context.Context, _ []domain.Message, _ int) (*domain.LLMResponse, error) {
+	select {
+	case <-c.retryStarted:
+	default:
+		close(c.retryStarted)
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-c.allowRetry:
+		return &domain.LLMResponse{Text: c.retryResponse, Done: true}, nil
+	}
+}
+
+func (c *blockingRetryLLMClient) Version() string {
+	return "blocking-retry"
+}
+
 type mockRetrievalStrategy struct {
 	mock.Mock
 	name string
@@ -1130,6 +1174,525 @@ func TestQualityGate_MarginalQuality_TriggersRetry(t *testing.T) {
 	assert.Equal(t, 1, output.Debug.RetryCount)
 	assert.Contains(t, output.Debug.StrategyUsed, "retried")
 	mockExpander.AssertCalled(t, "ExpandQueryWithHistory", mock.Anything, mock.Anything, mock.Anything, 2, 2)
+}
+
+func TestExecute_ShortAnswer_TriggersCorrectiveRetry(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(20),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+	)
+
+	firstChunkID := uuid.New()
+	secondChunkID := uuid.New()
+
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: firstChunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.2, DocumentVersion: 1},
+		},
+	}, nil).Once()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: secondChunkID, ChunkText: "Retry context", Title: "Retry", Score: 0.9, DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	shortResponse := `{"answer":"短い","citations":[{"chunk_id":"1","reason":"short"}],"fallback":false,"reason":""}`
+	longResponse := `{"answer":"` + strings.Repeat("世界的な物流混乱は、供給制約、輸送遅延、港湾処理の逼迫が重なって発生しました。背景には需要の急回復と在庫の偏在があり、構造要因として物流網の集中と代替輸送能力の不足が影響しています。結果として、納期の長期化、価格上昇、在庫再編の必要性が生じました。", 3) + `","citations":[{"chunk_id":"1","reason":"retry"},{"chunk_id":"1","reason":"supporting detail"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: shortResponse, Done: true}, nil).Once()
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: longResponse, Done: true}, nil).Once()
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Contains(t, output.Answer, "供給制約")
+	assert.Len(t, output.Citations, 2)
+}
+
+func TestStream_ShortAnswer_TriggersCorrectiveRetry(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(20),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithHeartbeatInterval(10*time.Millisecond),
+	)
+
+	firstChunkID := uuid.New()
+	secondChunkID := uuid.New()
+
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: firstChunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.2, DocumentVersion: 1},
+		},
+	}, nil).Once()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: secondChunkID, ChunkText: "Retry context", Title: "Retry", Score: 0.9, DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	shortResponse := `{"answer":"短い","citations":[{"chunk_id":"1","reason":"short"}],"fallback":false,"reason":""}`
+	longResponse := `{"answer":"世界的な物流混乱は、供給制約、輸送遅延、港湾処理の逼迫が重なって発生した可能性が高いです。","citations":[{"chunk_id":"1","reason":"retry"}],"fallback":false,"reason":""}`
+
+	chunkChan := make(chan domain.LLMStreamChunk, 2)
+	errChan := make(chan error)
+	chunkChan <- domain.LLMStreamChunk{Response: shortResponse, Done: false}
+	chunkChan <- domain.LLMStreamChunk{Done: true}
+	close(chunkChan)
+	close(errChan)
+
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil).Once()
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: longResponse, Done: true}, nil).Once()
+
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+
+	var gotAnswer string
+	var doneSeen bool
+	for event := range events {
+		switch event.Kind {
+		case usecase.StreamEventKindDelta:
+			gotAnswer = event.Payload.(string)
+		case usecase.StreamEventKindDone:
+			doneSeen = true
+		}
+	}
+
+	assert.True(t, doneSeen)
+	assert.Contains(t, gotAnswer, "供給制約")
+}
+
+func TestExecute_ShortAnswer_RetryStillShortButGroundedReturnsAnswer(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(80),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+	)
+
+	firstChunkID := uuid.New()
+	secondChunkID := uuid.New()
+
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: firstChunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.2, DocumentVersion: 1},
+		},
+	}, nil).Once()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: secondChunkID, ChunkText: "Retry context", Title: "Retry", Score: 0.9, DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	shortResponse := `{"answer":"短い","citations":[{"chunk_id":"1","reason":"short"}],"fallback":false,"reason":""}`
+	stillShortButGrounded := `{"answer":"供給制約と輸送遅延が重なり、価格上昇と供給不安が拡大しました。現時点では背景要因の切り分けがなお必要です。","citations":[{"chunk_id":"1","reason":"retry"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: shortResponse, Done: true}, nil).Once()
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: stillShortButGrounded, Done: true}, nil).Once()
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Contains(t, output.Answer, "供給制約")
+	assert.Equal(t, 1, output.Debug.RetryCount)
+}
+
+func TestStream_ShortAnswer_RetryStillShortButGroundedReturnsAnswer(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(80),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithHeartbeatInterval(10*time.Millisecond),
+	)
+
+	firstChunkID := uuid.New()
+	secondChunkID := uuid.New()
+
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: firstChunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.2, DocumentVersion: 1},
+		},
+	}, nil).Once()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: secondChunkID, ChunkText: "Retry context", Title: "Retry", Score: 0.9, DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	shortResponse := `{"answer":"短い","citations":[{"chunk_id":"1","reason":"short"}],"fallback":false,"reason":""}`
+	stillShortButGrounded := `{"answer":"供給制約と輸送遅延が重なり、価格上昇と供給不安が拡大しました。現時点では背景要因の切り分けがなお必要です。","citations":[{"chunk_id":"1","reason":"retry"}],"fallback":false,"reason":""}`
+
+	chunkChan := make(chan domain.LLMStreamChunk, 2)
+	errChan := make(chan error)
+	chunkChan <- domain.LLMStreamChunk{Response: shortResponse, Done: false}
+	chunkChan <- domain.LLMStreamChunk{Done: true}
+	close(chunkChan)
+	close(errChan)
+
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil).Once()
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: stillShortButGrounded, Done: true}, nil).Once()
+
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+
+	var gotAnswer string
+	var fallbackSeen bool
+	for event := range events {
+		switch event.Kind {
+		case usecase.StreamEventKindDelta:
+			gotAnswer = event.Payload.(string)
+		case usecase.StreamEventKindFallback:
+			fallbackSeen = true
+		}
+	}
+
+	assert.False(t, fallbackSeen)
+	assert.Contains(t, gotAnswer, "供給制約")
+}
+
+func TestExecute_CausalShortGroundedAnswer_DoesNotRetry(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(500),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+	)
+
+	chunkID := uuid.New()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: chunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.9, DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	groundedButShort := `{"answer":"` + strings.Repeat("供給制約と輸送遅延、保管能力の逼迫が重なり、市場の不安定化が進みました。", 4) + `","citations":[{"chunk_id":"1","reason":"grounded"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: groundedButShort, Done: true}, nil).Once()
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Contains(t, output.Answer, "供給制約")
+	assert.Equal(t, 0, output.Debug.RetryCount)
+	mockLLM.AssertNumberOfCalls(t, "Chat", 1)
+}
+
+func TestStream_CausalShortGroundedAnswer_DoesNotRetry(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(500),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithHeartbeatInterval(10*time.Millisecond),
+	)
+
+	chunkID := uuid.New()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: chunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.9, DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	groundedButShort := `{"answer":"` + strings.Repeat("供給制約と輸送遅延、保管能力の逼迫が重なり、市場の不安定化が進みました。", 4) + `","citations":[{"chunk_id":"1","reason":"grounded"}],"fallback":false,"reason":""}`
+	chunkChan := make(chan domain.LLMStreamChunk, 2)
+	errChan := make(chan error)
+	chunkChan <- domain.LLMStreamChunk{Response: groundedButShort, Done: false}
+	chunkChan <- domain.LLMStreamChunk{Done: true}
+	close(chunkChan)
+	close(errChan)
+
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil).Once()
+
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+
+	var gotAnswer string
+	for event := range events {
+		if event.Kind == usecase.StreamEventKindDelta {
+			gotAnswer = event.Payload.(string)
+		}
+	}
+
+	assert.Contains(t, gotAnswer, "供給制約")
+	mockLLM.AssertNumberOfCalls(t, "Chat", 0)
+}
+
+func TestExecute_DetailedCausalShortGroundedAnswer_TriggersRetry(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(500),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+	)
+
+	firstChunkID := uuid.New()
+	secondChunkID := uuid.New()
+
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: firstChunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.9, DocumentVersion: 1},
+		},
+	}, nil).Once()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: secondChunkID, ChunkText: "Retry context", Title: "Retry", Score: 0.95, DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	groundedButShort := `{"answer":"` + strings.Repeat("供給制約と輸送遅延、保管能力の逼迫が重なり、市場の不安定化が進みました。", 4) + `","citations":[{"chunk_id":"1","reason":"grounded"}],"fallback":false,"reason":""}`
+	longerRetry := `{"answer":"` + strings.Repeat("供給制約と輸送遅延が直接要因です。背景では需要の急回復と港湾処理能力の逼迫が重なりました。さらに、在庫の偏在と物流ネットワークの集中が構造要因として作用し、遅延が連鎖的に拡大しました。結果として、納期の長期化、価格上昇、代替調達コストの増加が発生し、企業の在庫戦略にも再設計が求められました。", 3) + `","citations":[{"chunk_id":"1","reason":"retry"},{"chunk_id":"1","reason":"supporting detail"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: groundedButShort, Done: true}, nil).Once()
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: longerRetry, Done: true}, nil).Once()
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？詳しく教えて。"})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Contains(t, output.Answer, "構造要因")
+	assert.Equal(t, 1, output.Debug.RetryCount)
+	mockLLM.AssertNumberOfCalls(t, "Chat", 2)
+}
+
+func TestStream_DetailedCausalShortGroundedAnswer_TriggersRetry(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(500),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithHeartbeatInterval(10*time.Millisecond),
+	)
+
+	firstChunkID := uuid.New()
+	secondChunkID := uuid.New()
+
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: firstChunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.9, DocumentVersion: 1},
+		},
+	}, nil).Once()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: secondChunkID, ChunkText: "Retry context", Title: "Retry", Score: 0.95, DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	groundedButShort := `{"answer":"` + strings.Repeat("供給制約と輸送遅延、保管能力の逼迫が重なり、市場の不安定化が進みました。", 4) + `","citations":[{"chunk_id":"1","reason":"grounded"}],"fallback":false,"reason":""}`
+	longerRetry := `{"answer":"` + strings.Repeat("供給制約と輸送遅延が直接要因です。背景では需要の急回復と港湾処理能力の逼迫が重なりました。さらに、在庫の偏在と物流ネットワークの集中が構造要因として作用し、遅延が連鎖的に拡大しました。結果として、納期の長期化、価格上昇、代替調達コストの増加が発生し、企業の在庫戦略にも再設計が求められました。", 3) + `","citations":[{"chunk_id":"1","reason":"retry"},{"chunk_id":"1","reason":"supporting detail"}],"fallback":false,"reason":""}`
+
+	// Hybrid streaming: strictLongForm now uses ChatStream for initial attempt
+	chunkChan := make(chan domain.LLMStreamChunk, 10)
+	errChan := make(chan error)
+	chunkChan <- domain.LLMStreamChunk{Response: groundedButShort, Done: false}
+	chunkChan <- domain.LLMStreamChunk{Done: true}
+	close(chunkChan)
+	close(errChan)
+	mockLLM.On("ChatStream", mock.Anything, mock.Anything, mock.Anything).
+		Return((<-chan domain.LLMStreamChunk)(chunkChan), (<-chan error)(errChan), nil).Once()
+
+	// Corrective retry uses non-streaming Chat
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: longerRetry, Done: true}, nil).Once()
+
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？詳しく教えて。"})
+
+	var gotAnswer string
+	for event := range events {
+		if event.Kind == usecase.StreamEventKindDone {
+			output := event.Payload.(*usecase.AnswerWithRAGOutput)
+			gotAnswer = output.Answer
+		}
+	}
+
+	assert.Contains(t, gotAnswer, "構造要因")
+	mockLLM.AssertNumberOfCalls(t, "ChatStream", 1)
+	mockLLM.AssertNumberOfCalls(t, "Chat", 1)
+}
+
+func TestStream_DetailedQuery_EmitsRefiningBeforeRetryStarts(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	firstChunkID := uuid.New()
+	secondChunkID := uuid.New()
+	retrievalOutput := &usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: firstChunkID, ChunkText: "Supply bottleneck context", Title: "Supply", Score: 0.8, DocumentVersion: 1},
+			{ChunkID: secondChunkID, ChunkText: "Port congestion context", Title: "Port", Score: 0.79, DocumentVersion: 1},
+		},
+	}
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(retrievalOutput, nil).Twice()
+
+	shortResponse := `{"answer":"短い説明です。","citations":[{"chunk_id":"` + firstChunkID.String() + `","reason":"initial"}],"fallback":false,"reason":""}`
+	longResponse := `{"answer":"` + strings.Repeat("物流混乱は、供給制約、港湾滞留、輸送網の同期失敗が連鎖して拡大しました。", 8) + `","citations":[{"chunk_id":"` + firstChunkID.String() + `","reason":"supply"},{"chunk_id":"` + secondChunkID.String() + `","reason":"port"}],"fallback":false,"reason":""}`
+	llm := &blockingRetryLLMClient{
+		streamResponse: shortResponse,
+		retryResponse:  longResponse,
+		retryStarted:   make(chan struct{}),
+		allowRetry:     make(chan struct{}),
+	}
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, llm, usecase.NewOutputValidator(80),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+		usecase.WithHeartbeatInterval(10*time.Millisecond),
+	)
+
+	events := uc.Stream(ctx, usecase.AnswerWithRAGInput{Query: "物流混乱の背景を詳しく教えて"})
+
+	sawRefining := false
+	retryStarted := false
+	retryStartedCh := llm.retryStarted
+	timeout := time.After(2 * time.Second)
+
+loop:
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for refining progress")
+		case <-retryStartedCh:
+			retryStarted = true
+			retryStartedCh = nil
+			if !sawRefining {
+				t.Fatal("retry started before refining progress was emitted")
+			}
+			close(llm.allowRetry)
+		case event, ok := <-events:
+			if !ok {
+				break loop
+			}
+			if event.Kind == usecase.StreamEventKindProgress && event.Payload == "refining" {
+				sawRefining = true
+			}
+			if retryStarted && event.Kind == usecase.StreamEventKindDone {
+				break loop
+			}
+		}
+	}
+
+	assert.True(t, sawRefining)
+	assert.True(t, retryStarted)
+}
+
+func TestExecute_CorrectiveRetryContextDisclaimer_KeepsOriginalAnswer(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(220),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+	)
+
+	firstChunkID := uuid.New()
+	secondChunkID := uuid.New()
+
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: firstChunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.7, DocumentVersion: 1},
+		},
+	}, nil).Once()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: secondChunkID, ChunkText: "Retry context", Title: "Retry", Score: 0.8, DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	originalShortButGrounded := `{"answer":"供給制約と輸送遅延が重なり、物流網の混乱が広がりました。背景要因として需要変動と港湾処理能力の逼迫も確認できます。","citations":[{"chunk_id":"1","reason":"grounded"}],"fallback":false,"reason":""}`
+	retryContextDisclaimer := `{"answer":"提供されたコンテキストには、世界的な物流混乱に関する情報、因果分析、または関連するデータは含まれていません。","citations":[],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: originalShortButGrounded, Done: true}, nil).Once()
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: retryContextDisclaimer, Done: true}, nil).Once()
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？"})
+	assert.NoError(t, err)
+	assert.False(t, output.Fallback)
+	assert.Contains(t, output.Answer, "供給制約")
+	assert.NotContains(t, output.Answer, "提供されたコンテキストには")
+}
+
+func TestExecute_ShortAnswer_RetryStillShortAndUngroundedFallsBack(t *testing.T) {
+	ctx := context.Background()
+	mockRetrieve := new(mockRetrieveContextUsecase)
+	mockLLM := new(mockLLMClient)
+	builder := usecase.NewXMLPromptBuilder()
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewAnswerWithRAGUsecase(
+		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(80),
+		10, 512, 6000, "alpha-v1", "ja", testLogger,
+	)
+
+	firstChunkID := uuid.New()
+	secondChunkID := uuid.New()
+
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: firstChunkID, ChunkText: "Initial context", Title: "Initial", Score: 0.2, DocumentVersion: 1},
+		},
+	}, nil).Once()
+	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
+		Contexts: []usecase.ContextItem{
+			{ChunkID: secondChunkID, ChunkText: "Retry context", Title: "Retry", Score: 0.9, DocumentVersion: 1},
+		},
+	}, nil).Once()
+
+	shortResponse := `{"answer":"short","citations":[{"chunk_id":"1","reason":"short"}],"fallback":false,"reason":""}`
+	stillShortAndUngrounded := `{"answer":"Unrelated.","citations":[{"chunk_id":"1","reason":"retry"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: shortResponse, Done: true}, nil).Once()
+	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).
+		Return(&domain.LLMResponse{Text: stillShortAndUngrounded, Done: true}, nil).Once()
+
+	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "What caused the global logistics disruption?"})
+	assert.NoError(t, err)
+	assert.True(t, output.Fallback)
+	assert.Equal(t, usecase.FallbackShortUnderGrounded, output.FallbackCategory)
 }
 
 // --- Phase 2: PromptBuilder intent-aware instruction tests ---

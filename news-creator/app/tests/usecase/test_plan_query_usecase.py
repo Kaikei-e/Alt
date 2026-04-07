@@ -6,22 +6,22 @@ from unittest.mock import AsyncMock, Mock
 
 from news_creator.domain.models import (
     ConversationMessage,
-    LLMGenerateResponse,
     PlanQueryRequest,
     QueryPlan,
 )
 from news_creator.usecase.plan_query_usecase import PlanQueryUsecase
 
 
-def _make_llm_response(plan: dict) -> LLMGenerateResponse:
-    """Helper to create an LLM response with a QueryPlan JSON."""
-    return LLMGenerateResponse(
-        response=json.dumps(plan, ensure_ascii=False),
-        model="gemma4-e4b-12k",
-        prompt_eval_count=256,
-        eval_count=64,
-        total_duration=500_000_000,
-    )
+def _make_chat_response(plan: dict) -> dict:
+    """Helper to create an Ollama /api/chat response with a QueryPlan JSON."""
+    return {
+        "model": "gemma4-e4b-12k",
+        "message": {
+            "role": "assistant",
+            "content": json.dumps(plan, ensure_ascii=False),
+        },
+        "done": True,
+    }
 
 
 def _make_usecase() -> tuple[PlanQueryUsecase, AsyncMock]:
@@ -38,7 +38,7 @@ def _make_usecase() -> tuple[PlanQueryUsecase, AsyncMock]:
 async def test_plan_query_causal_single_turn():
     """Causal query produces resolved_query and causal intent."""
     usecase, llm = _make_usecase()
-    llm.generate.return_value = _make_llm_response({
+    llm.chat_generate.return_value = _make_chat_response({
         "reasoning": "test reasoning", "resolved_query": "イランの石油危機が発生した背景と直接的原因",
         "search_queries": [
             "イラン 石油危機 原因 2026",
@@ -70,7 +70,7 @@ async def test_plan_query_causal_single_turn():
 async def test_plan_query_follow_up_resolves_coreference():
     """Follow-up with 'それ' should produce a standalone resolved_query."""
     usecase, llm = _make_usecase()
-    llm.generate.return_value = _make_llm_response({
+    llm.chat_generate.return_value = _make_chat_response({
         "reasoning": "test reasoning", "resolved_query": "イランの最近の外交的・軍事的動向",
         "search_queries": [
             "イラン 動向 2026",
@@ -109,7 +109,7 @@ async def test_plan_query_follow_up_resolves_coreference():
 async def test_plan_query_ambiguous_requests_clarification():
     """Ambiguous follow-up 'もっと詳しく' should request clarification."""
     usecase, llm = _make_usecase()
-    llm.generate.return_value = _make_llm_response({
+    llm.chat_generate.return_value = _make_chat_response({
         "reasoning": "test reasoning", "resolved_query": "",
         "search_queries": [],
         "intent": "general",
@@ -141,7 +141,7 @@ async def test_plan_query_ambiguous_requests_clarification():
 async def test_plan_query_article_scoped():
     """Article-scoped query should set article_only policy."""
     usecase, llm = _make_usecase()
-    llm.generate.return_value = _make_llm_response({
+    llm.chat_generate.return_value = _make_chat_response({
         "reasoning": "test reasoning", "resolved_query": "Transformerアーキテクチャのattention機構の技術的詳細",
         "search_queries": [
             "Transformer attention mechanism detail",
@@ -172,7 +172,7 @@ async def test_plan_query_article_scoped():
 async def test_plan_query_llm_failure_returns_fallback():
     """LLM error should produce a safe deterministic fallback plan."""
     usecase, llm = _make_usecase()
-    llm.generate.side_effect = RuntimeError("Ollama timeout")
+    llm.chat_generate.side_effect = RuntimeError("Ollama timeout")
 
     request = PlanQueryRequest(query="量子コンピュータの実用化")
     response = await usecase.plan_query(request)
@@ -191,10 +191,14 @@ async def test_plan_query_llm_failure_returns_fallback():
 async def test_plan_query_invalid_json_returns_fallback():
     """Malformed LLM response should produce a safe fallback plan."""
     usecase, llm = _make_usecase()
-    llm.generate.return_value = LLMGenerateResponse(
-        response="This is not valid JSON at all {broken",
-        model="gemma4-e4b-12k",
-    )
+    llm.chat_generate.return_value = {
+        "model": "gemma4-e4b-12k",
+        "message": {
+            "role": "assistant",
+            "content": "This is not valid JSON at all {broken",
+        },
+        "done": True,
+    }
 
     request = PlanQueryRequest(query="半導体市場の動向")
     response = await usecase.plan_query(request)
@@ -211,7 +215,7 @@ async def test_plan_query_invalid_json_returns_fallback():
 async def test_plan_query_prompt_includes_history():
     """Verify the LLM prompt includes conversation history when provided."""
     usecase, llm = _make_usecase()
-    llm.generate.return_value = _make_llm_response({
+    llm.chat_generate.return_value = _make_chat_response({
         "reasoning": "test reasoning", "resolved_query": "EV充電インフラの課題",
         "search_queries": ["EV charging infrastructure challenges"],
         "intent": "general",
@@ -231,7 +235,8 @@ async def test_plan_query_prompt_includes_history():
     await usecase.plan_query(request)
 
     # Check that the prompt sent to LLM contains the conversation context
-    call_args = llm.generate.call_args
-    prompt = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt", "")
+    call_args = llm.chat_generate.call_args
+    payload = call_args.args[0] if call_args.args else call_args.kwargs.get("payload", {})
+    prompt = payload.get("messages", [{}])[0].get("content", "")
     assert "EVの普及状況は？" in prompt
     assert "充電インフラの整備が鍵" in prompt

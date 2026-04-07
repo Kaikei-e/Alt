@@ -14,8 +14,8 @@ import (
 )
 
 // newHTTPServer creates the REST HTTP server.
-func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, otelCfg appOtel.Config) *http.Server {
-	restHandler := rest.NewHandler(searchByUserUsecase)
+func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArticlesUsecase *usecase.SearchArticlesUsecase, otelCfg appOtel.Config) *http.Server {
+	restHandler := rest.NewHandler(searchByUserUsecase, searchArticlesUsecase)
 
 	mux := http.NewServeMux()
 

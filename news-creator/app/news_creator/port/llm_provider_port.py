@@ -94,6 +94,23 @@ class LLMProviderPort(ABC):
         """List available models. Optional — not all providers support this."""
         return []  # pragma: no cover
 
+    async def chat_generate(
+        self,
+        payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Non-streaming /api/chat call through semaphore with HIGH priority.
+
+        Used for structured output with thinking mode (plan-query, etc.).
+        The payload follows Ollama /api/chat format: messages, model, format, options.
+
+        Args:
+            payload: Ollama chat request payload
+
+        Returns:
+            Response dict in /api/chat format
+        """
+        raise NotImplementedError  # pragma: no cover
+
     @abstractmethod
     async def initialize(self) -> None:
         """Initialize the LLM provider (e.g., create client session)."""

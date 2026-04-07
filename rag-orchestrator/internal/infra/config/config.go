@@ -116,8 +116,9 @@ type SearchConfig struct {
 
 // QueryExpansionConfig holds query expansion settings.
 type QueryExpansionConfig struct {
-	URL     string
-	Timeout int // Seconds
+	URL             string
+	Timeout         int // Seconds — used for legacy query expansion
+	PlannerTimeout  int // Seconds — used for LLM query planner (thinking mode, longer)
 }
 
 // RAGConfig holds RAG retrieval parameters.
@@ -231,8 +232,9 @@ func Load() *Config {
 			Timeout:    getEnvInt("SEARCH_INDEXER_TIMEOUT", 10),
 		},
 		QueryExpansion: QueryExpansionConfig{
-			URL:     getEnv("QUERY_EXPANSION_URL", "http://news-creator:11434"),
-			Timeout: getEnvInt("QUERY_EXPANSION_TIMEOUT", 3),
+			URL:            getEnv("QUERY_EXPANSION_URL", "http://news-creator:11434"),
+			Timeout:        getEnvInt("QUERY_EXPANSION_TIMEOUT", 3),
+			PlannerTimeout: getEnvInt("QUERY_PLANNER_TIMEOUT", 60),
 		},
 		RAG: RAGConfig{
 			SearchLimit:                      getEnvInt("RAG_SEARCH_LIMIT", defaultRAGSearchLimit),

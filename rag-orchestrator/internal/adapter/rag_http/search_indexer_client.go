@@ -85,9 +85,8 @@ func (c *SearchIndexerClient) Search(ctx context.Context, query string) ([]domai
 
 // SearchBM25 performs BM25 (keyword) search for hybrid search fusion.
 // Implements domain.BM25Searcher interface.
+// Omits user_id to search all articles (unfiltered) for RAG use.
 func (c *SearchIndexerClient) SearchBM25(ctx context.Context, query string, limit int) ([]domain.BM25SearchResult, error) {
-	systemUserID := "rag-orchestrator-system"
-
 	u, err := url.Parse(fmt.Sprintf("%s/v1/search", c.BaseURL))
 	if err != nil {
 		return nil, fmt.Errorf("invalid base url: %w", err)
@@ -95,7 +94,6 @@ func (c *SearchIndexerClient) SearchBM25(ctx context.Context, query string, limi
 
 	q := u.Query()
 	q.Set("q", query)
-	q.Set("user_id", systemUserID)
 	q.Set("limit", fmt.Sprintf("%d", limit))
 	u.RawQuery = q.Encode()
 

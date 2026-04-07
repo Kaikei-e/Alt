@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"rag-orchestrator/internal/domain"
+	"rag-orchestrator/internal/usecase/retrieval"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/golang-lru/v2/expirable"
@@ -243,9 +244,174 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 	}
 
 	// 3. Single Stage Generation — use messages from buildPrompt directly
-	messages := promptData.messages
+	finalPromptData, parsedAnswer, qualityFlags, generationRetryCount, accepted, err := u.generateAnswerWithRetries(ctx, input, promptData, requestID)
+	if err != nil {
+		u.logger.Warn("answer_fallback_triggered",
+			slog.String("request_id", requestID),
+			slog.String("retrieval_set_id", promptData.retrievalSetID),
+			slog.String("reason", fmt.Sprintf("generation failed: %v", err)),
+			slog.Int("contexts_available", len(promptData.contexts)))
+		return u.prepareFallback(
+			promptData.contexts,
+			promptData.retrievalSetID,
+			fmt.Sprintf("generation failed: %v", err),
+			FallbackGenerationFailed,
+			promptData.strategyUsed,
+			promptData.expandedQueries,
+		)
+	}
 
-	// Calculate approximate prompt size
+	if parsedAnswer.Fallback {
+		u.logger.Warn("answer_fallback_triggered",
+			slog.String("request_id", requestID),
+			slog.String("retrieval_set_id", finalPromptData.retrievalSetID),
+			slog.String("reason", parsedAnswer.Reason),
+			slog.Int("contexts_available", len(finalPromptData.contexts)))
+		return u.prepareFallback(
+			finalPromptData.contexts,
+			finalPromptData.retrievalSetID,
+			parsedAnswer.Reason,
+			FallbackLLMFallback,
+			finalPromptData.strategyUsed,
+			finalPromptData.expandedQueries,
+		)
+	}
+
+	if !accepted {
+		fallbackReason := selectFallbackReason(finalPromptData.intentType, qualityFlags)
+		u.logger.Warn("answer_fallback_triggered",
+			slog.String("request_id", requestID),
+			slog.String("retrieval_set_id", finalPromptData.retrievalSetID),
+			slog.String("reason", fallbackReason),
+			slog.Int("contexts_available", len(finalPromptData.contexts)))
+		return u.prepareFallback(
+			finalPromptData.contexts,
+			finalPromptData.retrievalSetID,
+			fallbackReason,
+			FallbackShortUnderGrounded,
+			finalPromptData.strategyUsed,
+			finalPromptData.expandedQueries,
+		)
+	}
+
+	// Build Citations (Hydration)
+	finalCitations := u.buildCitations(finalPromptData.contexts, parsedAnswer.Citations)
+
+	// Phase 4: Answer quality assessment
+	if len(qualityFlags) > 0 {
+		u.logger.Info("answer_quality_flags",
+			slog.String("request_id", requestID),
+			slog.Any("flags", qualityFlags))
+	}
+
+	debug := AnswerDebug{
+		RetrievalSetID:        finalPromptData.retrievalSetID,
+		PromptVersion:         u.promptVersion,
+		ExpandedQueries:       finalPromptData.expandedQueries,
+		StrategyUsed:          finalPromptData.strategyUsed,
+		IntentType:            string(finalPromptData.intentType),
+		SubIntentType:         string(finalPromptData.subIntentType),
+		RetrievalQuality:      string(finalPromptData.retrievalQuality),
+		RetryCount:            finalPromptData.retryCount + generationRetryCount,
+		ToolsUsed:             finalPromptData.toolsUsed,
+		QualityFlags:          qualityFlags,
+		RetrievalPolicy:       finalPromptData.retrievalPolicy,
+		GeneralRetrievalGated: finalPromptData.generalGated,
+		BM25HitCount:          finalPromptData.bm25HitCount,
+	}
+	if finalPromptData.plannerOutput != nil {
+		debug.PlannerOperation = string(finalPromptData.plannerOutput.Operation)
+		debug.PlannerConfidence = finalPromptData.plannerOutput.Confidence
+		debug.NeedsClarification = finalPromptData.plannerOutput.NeedsClarification
+	}
+
+	output := &AnswerWithRAGOutput{
+		Answer:    strings.TrimSpace(parsedAnswer.Answer),
+		Citations: finalCitations,
+		Contexts:  finalPromptData.contexts,
+		Fallback:  false,
+		Reason:    "",
+		Debug:     debug,
+	}
+
+	// 5. Store in Cache
+	u.cache.Add(cacheKey, output)
+
+	executionDuration := time.Since(executionStart)
+	u.logger.Info("answer_request_completed",
+		slog.String("request_id", requestID),
+		slog.Int("answer_length", len(output.Answer)),
+		slog.Int("citations", len(output.Citations)),
+		slog.String("strategy_used", finalPromptData.strategyUsed),
+		slog.Int64("total_duration_ms", executionDuration.Milliseconds()))
+
+	return output, nil
+}
+
+type answerAcceptanceProfile struct {
+	name                string
+	maxRetries          int
+	acceptMinRunes      int
+	minCitations        int
+	strictLongForm      bool
+	rejectTruncatedJSON bool
+}
+
+func deriveAcceptanceProfile(input AnswerWithRAGInput, promptData *promptBuildResult) answerAcceptanceProfile {
+	profile := answerAcceptanceProfile{
+		name:                "default",
+		maxRetries:          1,
+		acceptMinRunes:      0,
+		minCitations:        0,
+		strictLongForm:      false,
+		rejectTruncatedJSON: false,
+	}
+	if promptData == nil {
+		return profile
+	}
+
+	isDetailed := queryRequestsDetailedAnswer(input.Query) ||
+		promptData.intentType == IntentTopicDeepDive ||
+		promptData.subIntentType == SubIntentDetail ||
+		(promptData.plannerOutput != nil && promptData.plannerOutput.Operation == domain.OpDetail)
+	if isDetailed {
+		profile = answerAcceptanceProfile{
+			name:                "detail",
+			maxRetries:          2,
+			acceptMinRunes:      240,
+			minCitations:        2,
+			strictLongForm:      true,
+			rejectTruncatedJSON: true,
+		}
+	}
+	if promptData.intentType == IntentSynthesis {
+		profile = answerAcceptanceProfile{
+			name:                "synthesis",
+			maxRetries:          2,
+			acceptMinRunes:      420,
+			minCitations:        3,
+			strictLongForm:      true,
+			rejectTruncatedJSON: true,
+		}
+	}
+	return profile
+}
+
+func (u *answerWithRAGUsecase) generateAnswerWithRetries(
+	ctx context.Context,
+	input AnswerWithRAGInput,
+	promptData *promptBuildResult,
+	requestID string,
+) (*promptBuildResult, *LLMAnswer, []string, int, bool, error) {
+	profile := deriveAcceptanceProfile(input, promptData)
+	u.logger.Info("answer_acceptance_profile",
+		slog.String("request_id", requestID),
+		slog.String("profile", profile.name),
+		slog.Int("max_retries", profile.maxRetries),
+		slog.Int("accept_min_runes", profile.acceptMinRunes),
+		slog.Int("min_citations", profile.minCitations))
+
+	messages := promptData.messages
 	promptSize := 0
 	for _, msg := range messages {
 		promptSize += len(msg.Content)
@@ -264,137 +430,296 @@ func (u *answerWithRAGUsecase) Execute(ctx context.Context, input AnswerWithRAGI
 		slog.String("first_context_title", firstTitle),
 		slog.String("query", input.Query))
 
-	generationStart := time.Now()
-	u.logger.Info("llm_generation_started",
-		slog.String("request_id", requestID),
-		slog.String("retrieval_set_id", promptData.retrievalSetID))
+	retryCount := 0
+	currentPromptData := promptData
+	currentAnswer := (*LLMAnswer)(nil)
+	currentFlags := []string(nil)
 
-	resp, err := u.llmClient.Chat(ctx, messages, promptData.maxTokens)
-	if err != nil {
-		u.logger.Warn("answer_fallback_triggered",
+	for {
+		generationStart := time.Now()
+		u.logger.Info("llm_generation_started",
 			slog.String("request_id", requestID),
-			slog.String("retrieval_set_id", promptData.retrievalSetID),
-			slog.String("reason", fmt.Sprintf("generation failed: %v", err)),
-			slog.Int("contexts_available", len(promptData.contexts)))
-		return u.prepareFallback(
-			promptData.contexts,
-			promptData.retrievalSetID,
-			fmt.Sprintf("generation failed: %v", err),
-			FallbackGenerationFailed,
-			promptData.strategyUsed,
-			promptData.expandedQueries,
+			slog.String("retrieval_set_id", currentPromptData.retrievalSetID),
+			slog.String("profile", profile.name),
+			slog.Int("attempt", retryCount+1))
+
+		resp, err := u.llmClient.Chat(ctx, currentPromptData.messages, currentPromptData.maxTokens)
+		if err != nil {
+			return currentPromptData, nil, currentFlags, retryCount, false, fmt.Errorf("generation failed: %w", err)
+		}
+
+		generationDuration := time.Since(generationStart)
+		u.logger.Info("llm_generation_completed",
+			slog.String("request_id", requestID),
+			slog.String("profile", profile.name),
+			slog.Int("attempt", retryCount+1),
+			slog.Int("response_length", len(resp.Text)),
+			slog.Int64("generation_ms", generationDuration.Milliseconds()))
+
+		parsedAnswer, err := u.validator.Validate(resp.Text, currentPromptData.contexts)
+		if err != nil {
+			return currentPromptData, nil, currentFlags, retryCount, false, fmt.Errorf("validation failed: %w", err)
+		}
+
+		u.logger.Info("validation_completed",
+			slog.String("request_id", requestID),
+			slog.String("profile", profile.name),
+			slog.Int("attempt", retryCount+1),
+			slog.Bool("is_fallback", parsedAnswer.Fallback),
+			slog.Int("citations_count", len(parsedAnswer.Citations)))
+
+		if parsedAnswer.Fallback {
+			return currentPromptData, parsedAnswer, currentFlags, retryCount, false, nil
+		}
+
+		qualityFlags := AssessAnswerQuality(
+			parsedAnswer.Answer, input.Query, parsedAnswer.Citations, currentPromptData.intentType, currentPromptData.expandedQueries,
 		)
+		currentAnswer = parsedAnswer
+		currentFlags = qualityFlags
+
+		if len(qualityFlags) > 0 {
+			u.logger.Info("answer_quality_flags",
+				slog.String("request_id", requestID),
+				slog.String("profile", profile.name),
+				slog.Int("attempt", retryCount+1),
+				slog.Any("flags", qualityFlags))
+		}
+
+		return u.retryValidatedAnswer(ctx, input, currentPromptData, currentAnswer, currentFlags, profile, requestID, retryCount)
 	}
+}
 
-	generationDuration := time.Since(generationStart)
-	u.logger.Info("llm_generation_completed",
-		slog.String("request_id", requestID),
-		slog.Int("response_length", len(resp.Text)),
-		slog.Int64("generation_ms", generationDuration.Milliseconds()))
+func (u *answerWithRAGUsecase) retryValidatedAnswer(
+	ctx context.Context,
+	input AnswerWithRAGInput,
+	promptData *promptBuildResult,
+	parsedAnswer *LLMAnswer,
+	qualityFlags []string,
+	profile answerAcceptanceProfile,
+	requestID string,
+	retryCount int,
+) (*promptBuildResult, *LLMAnswer, []string, int, bool, error) {
+	currentPromptData := promptData
+	currentAnswer := parsedAnswer
+	currentFlags := qualityFlags
 
-	// Validate/Parse Answer
-	parsedAnswer, err := u.validator.Validate(resp.Text, promptData.contexts)
-	if err != nil {
-		u.logger.Warn("answer_fallback_triggered",
-			slog.String("request_id", requestID),
-			slog.String("retrieval_set_id", promptData.retrievalSetID),
-			slog.String("reason", fmt.Sprintf("validation failed: %v", err)),
-			slog.Int("contexts_available", len(promptData.contexts)))
-		return u.prepareFallback(
-			promptData.contexts,
-			promptData.retrievalSetID,
-			fmt.Sprintf("validation failed: %v", err),
-			FallbackValidationFailed,
-			promptData.strategyUsed,
-			promptData.expandedQueries,
+	for {
+		if u.answerAccepted(profile, currentAnswer, currentFlags) && !currentAnswer.ShortAnswer {
+			return currentPromptData, currentAnswer, currentFlags, retryCount, true, nil
+		}
+
+		if currentAnswer.ShortAnswer {
+			u.logger.Warn("short_answer_detected",
+				slog.String("request_id", requestID),
+				slog.String("retrieval_set_id", currentPromptData.retrievalSetID),
+				slog.String("profile", profile.name),
+				slog.Int("answer_rune_length", utf8.RuneCountInString(currentAnswer.Answer)),
+				slog.String("query", input.Query),
+				slog.Any("quality_flags", currentFlags))
+		}
+
+		if retryCount >= profile.maxRetries {
+			accepted := u.answerAccepted(profile, currentAnswer, currentFlags)
+			if accepted && currentAnswer.ShortAnswer {
+				if hasQualityFlag(currentFlags, "low_keyword_coverage") ||
+					hasQualityFlag(currentFlags, "incoherent_ending") ||
+					hasQualityFlag(currentFlags, "context_insufficiency_disclaimer") {
+					accepted = false
+				}
+			}
+			return currentPromptData, currentAnswer, currentFlags, retryCount, accepted, nil
+		}
+		if !u.shouldRetryGeneratedAnswer(input.Query, currentAnswer, currentPromptData, currentFlags, profile) {
+			return currentPromptData, currentAnswer, currentFlags, retryCount, u.answerAccepted(profile, currentAnswer, currentFlags), nil
+		}
+
+		retryInput := u.buildCorrectiveRetryInput(input, promptData, profile, retryCount+1)
+		retryPromptData, err := u.buildPrompt(ctx, retryInput)
+		if err != nil {
+			return currentPromptData, parsedAnswer, qualityFlags, retryCount, false, fmt.Errorf("build corrective retry prompt: %w", err)
+		}
+
+		retryResp, err := u.llmClient.Chat(ctx, retryPromptData.messages, retryPromptData.maxTokens)
+		if err != nil {
+			return currentPromptData, parsedAnswer, qualityFlags, retryCount, false, fmt.Errorf("corrective retry generation failed: %w", err)
+		}
+
+		retryParsed, err := u.validator.Validate(retryResp.Text, retryPromptData.contexts)
+		if err != nil {
+			return currentPromptData, parsedAnswer, qualityFlags, retryCount, false, fmt.Errorf("corrective retry validation failed: %w", err)
+		}
+
+		retryFlags := AssessAnswerQuality(
+			retryParsed.Answer, input.Query, retryParsed.Citations, retryPromptData.intentType, retryPromptData.expandedQueries,
 		)
+		retryCount++
+		if shouldKeepOriginalAfterRetry(currentAnswer, currentFlags, retryParsed, retryFlags) {
+			u.logger.Warn("corrective_retry_discarded_degraded_answer",
+				slog.String("request_id", requestID),
+				slog.String("profile", profile.name),
+				slog.String("original_retrieval_set_id", currentPromptData.retrievalSetID),
+				slog.String("retry_retrieval_set_id", retryPromptData.retrievalSetID),
+				slog.Any("retry_flags", retryFlags))
+			continue
+		}
+
+		currentPromptData = retryPromptData
+		currentAnswer = retryParsed
+		currentFlags = retryFlags
+		if u.answerAccepted(profile, currentAnswer, currentFlags) && !currentAnswer.ShortAnswer {
+			return currentPromptData, currentAnswer, currentFlags, retryCount, true, nil
+		}
+	}
+}
+
+func (u *answerWithRAGUsecase) shouldRetryGeneratedAnswer(
+	query string,
+	parsedAnswer *LLMAnswer,
+	promptData *promptBuildResult,
+	qualityFlags []string,
+	profile answerAcceptanceProfile,
+) bool {
+	if parsedAnswer == nil || promptData == nil {
+		return false
+	}
+	answerLen := utf8.RuneCountInString(parsedAnswer.Answer)
+	if hasQualityFlag(qualityFlags, "low_keyword_coverage") ||
+		hasQualityFlag(qualityFlags, "low_citation_density") ||
+		hasQualityFlag(qualityFlags, "incoherent_ending") ||
+		hasQualityFlag(qualityFlags, "expansion_failed") ||
+		hasQualityFlag(qualityFlags, "context_insufficiency_disclaimer") ||
+		len(parsedAnswer.Citations) == 0 {
+		return true
+	}
+	if promptData.intentType == IntentCausalExplanation && answerLen < 160 {
+		return true
+	}
+	if profile.strictLongForm && answerLen < profile.acceptMinRunes {
+		return true
+	}
+	return queryRequestsDetailedAnswer(query) && answerLen < profile.acceptMinRunes
+}
+
+func (u *answerWithRAGUsecase) answerAccepted(profile answerAcceptanceProfile, parsedAnswer *LLMAnswer, qualityFlags []string) bool {
+	if parsedAnswer == nil || parsedAnswer.Fallback {
+		return false
+	}
+	if hasQualityFlag(qualityFlags, "context_insufficiency_disclaimer") {
+		return false
+	}
+	if len(parsedAnswer.Citations) < profile.minCitations {
+		return false
+	}
+	if profile.strictLongForm {
+		answerLen := utf8.RuneCountInString(parsedAnswer.Answer)
+		if answerLen < profile.acceptMinRunes {
+			return false
+		}
+		if profile.rejectTruncatedJSON && parsedAnswer.Reason == "recovered_from_truncated_json" {
+			return false
+		}
+	}
+	return true
+}
+
+func (u *answerWithRAGUsecase) buildCorrectiveRetryInput(
+	input AnswerWithRAGInput,
+	promptData *promptBuildResult,
+	profile answerAcceptanceProfile,
+	attempt int,
+) AnswerWithRAGInput {
+	retryInput := input
+
+	baseTokens := promptData.maxTokens
+	if baseTokens <= 0 {
+		baseTokens = u.maxTokens
+	}
+	retryInput.MaxTokens = baseTokens + max(256, baseTokens/2)
+
+	retryHint := "より詳しく、直接原因、背景要因、影響、未確定点を分けて説明してください。"
+	if promptData.intentType == IntentCausalExplanation {
+		retryHint = "因果関係をより詳しく、直接原因、背景要因、構造要因、影響を分けて説明してください。"
+	}
+	if profile.name == "detail" {
+		if promptData.intentType == IntentCausalExplanation {
+			if attempt == 1 {
+				retryHint = "因果関係を短くまとめず、複数段落で直接原因、背景要因、構造要因、影響を分けて詳しく説明してください。"
+			} else {
+				retryHint = "最低4段落で、直接原因、背景要因、構造要因、影響、不確実性を分けて詳しく説明してください。"
+			}
+		} else if attempt == 1 {
+			retryHint = "短くまとめず、複数段落で具体的な事実と引用を交えて説明してください。"
+		} else {
+			retryHint = "最低4段落で、背景、直接要因、構造要因、影響、不確実性を分けて詳しく説明してください。"
+		}
+	} else if profile.name == "synthesis" {
+		if attempt == 1 {
+			retryHint = "3つ以上の観点を分け、各観点に具体例と引用を付けて包括的に説明してください。"
+		} else {
+			retryHint = "最低4段落で、相互関係・現状・展望・不確実性を分けて詳しく説明してください。"
+		}
+	} else if queryRequestsDetailedAnswer(input.Query) {
+		retryHint += " 短くまとめず、複数段落で具体的な事実と引用を交えて説明してください。"
+	}
+	if strings.TrimSpace(retryInput.Query) != "" && !strings.Contains(retryInput.Query, retryHint) {
+		retryInput.Query = strings.TrimSpace(retryInput.Query) + "\n\n" + retryHint
 	}
 
-	u.logger.Info("validation_completed",
-		slog.String("request_id", requestID),
-		slog.Bool("is_fallback", parsedAnswer.Fallback),
-		slog.Int("citations_count", len(parsedAnswer.Citations)))
+	return retryInput
+}
 
-	if parsedAnswer.ShortAnswer {
-		u.logger.Warn("short_answer_detected",
-			slog.String("request_id", requestID),
-			slog.String("retrieval_set_id", promptData.retrievalSetID),
-			slog.Int("answer_rune_length", utf8.RuneCountInString(parsedAnswer.Answer)),
-			slog.String("query", input.Query))
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func shouldKeepOriginalAfterRetry(
+	original *LLMAnswer,
+	originalFlags []string,
+	retry *LLMAnswer,
+	retryFlags []string,
+) bool {
+	if original == nil || retry == nil {
+		return false
+	}
+	if !hasQualityFlag(retryFlags, "context_insufficiency_disclaimer") {
+		return false
+	}
+	if hasQualityFlag(originalFlags, "context_insufficiency_disclaimer") ||
+		hasQualityFlag(originalFlags, "low_keyword_coverage") ||
+		hasQualityFlag(originalFlags, "incoherent_ending") {
+		return false
+	}
+	return len(original.Citations) > 0
+}
+
+func queryRequestsDetailedAnswer(query string) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(query))
+	if trimmed == "" {
+		return false
 	}
 
-	if parsedAnswer.Fallback {
-		u.logger.Warn("answer_fallback_triggered",
-			slog.String("request_id", requestID),
-			slog.String("retrieval_set_id", promptData.retrievalSetID),
-			slog.String("reason", parsedAnswer.Reason),
-			slog.Int("contexts_available", len(promptData.contexts)),
-			slog.String("llm_raw_response", truncate(resp.Text, 500)))
-		return u.prepareFallback(
-			promptData.contexts,
-			promptData.retrievalSetID,
-			parsedAnswer.Reason,
-			FallbackLLMFallback,
-			promptData.strategyUsed,
-			promptData.expandedQueries,
-		)
+	detailSignals := []string{
+		"詳しく",
+		"詳細",
+		"くわしく",
+		"背景も",
+		"背景まで",
+		"深く",
+		"in detail",
+		"detailed",
+		"more detail",
+		"explain fully",
 	}
-
-	// Build Citations (Hydration)
-	finalCitations := u.buildCitations(promptData.contexts, parsedAnswer.Citations)
-
-	// Phase 4: Answer quality assessment
-	qualityFlags := AssessAnswerQuality(
-		parsedAnswer.Answer, input.Query, parsedAnswer.Citations, promptData.intentType, promptData.expandedQueries,
-	)
-	if len(qualityFlags) > 0 {
-		u.logger.Info("answer_quality_flags",
-			slog.String("request_id", requestID),
-			slog.Any("flags", qualityFlags))
+	for _, signal := range detailSignals {
+		if strings.Contains(trimmed, signal) {
+			return true
+		}
 	}
-
-	debug := AnswerDebug{
-		RetrievalSetID:        promptData.retrievalSetID,
-		PromptVersion:         u.promptVersion,
-		ExpandedQueries:       promptData.expandedQueries,
-		StrategyUsed:          promptData.strategyUsed,
-		IntentType:            string(promptData.intentType),
-		SubIntentType:         string(promptData.subIntentType),
-		RetrievalQuality:      string(promptData.retrievalQuality),
-		RetryCount:            promptData.retryCount,
-		ToolsUsed:             promptData.toolsUsed,
-		QualityFlags:          qualityFlags,
-		RetrievalPolicy:       promptData.retrievalPolicy,
-		GeneralRetrievalGated: promptData.generalGated,
-		BM25HitCount:          promptData.bm25HitCount,
-	}
-	if promptData.plannerOutput != nil {
-		debug.PlannerOperation = string(promptData.plannerOutput.Operation)
-		debug.PlannerConfidence = promptData.plannerOutput.Confidence
-		debug.NeedsClarification = promptData.plannerOutput.NeedsClarification
-	}
-
-	output := &AnswerWithRAGOutput{
-		Answer:    strings.TrimSpace(parsedAnswer.Answer),
-		Citations: finalCitations,
-		Contexts:  promptData.contexts,
-		Fallback:  false,
-		Reason:    "",
-		Debug:     debug,
-	}
-
-	// 5. Store in Cache
-	u.cache.Add(cacheKey, output)
-
-	executionDuration := time.Since(executionStart)
-	u.logger.Info("answer_request_completed",
-		slog.String("request_id", requestID),
-		slog.Int("answer_length", len(output.Answer)),
-		slog.Int("citations", len(output.Citations)),
-		slog.String("strategy_used", promptData.strategyUsed),
-		slog.Int64("total_duration_ms", executionDuration.Milliseconds()))
-
-	return output, nil
+	return false
 }
 
 func (u *answerWithRAGUsecase) prepareFallback(
@@ -994,7 +1319,12 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	// Map plan to result metadata
 	result.intentType = IntentType(qPlan.Intent)
 	result.retrievalPolicy = qPlan.RetrievalPolicy
-	result.expandedQueries = qPlan.SearchQueries
+	result.expandedQueries = retrieval.FilterSearchQueries(qPlan.SearchQueries, qPlan.ResolvedQuery)
+	plannerIntent := parsedIntent
+	plannerIntent.IntentType = result.intentType
+	if strings.TrimSpace(qPlan.ResolvedQuery) != "" {
+		plannerIntent.UserQuestion = qPlan.ResolvedQuery
+	}
 
 	// Map to PlannerOutput for compatibility with stream clarification
 	plannerOut := &domain.PlannerOutput{
@@ -1026,9 +1356,12 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	}
 
 	// Retrieve with the planner's policy
-	retrieved, err := u.retrieveWithPolicy(ctx, strategy, retrieveInput, parsedIntent, plannerOut, input, result)
+	retrieved, err := u.retrieveWithPolicy(ctx, strategy, retrieveInput, plannerIntent, plannerOut, input, result)
 	if err != nil {
 		return result, fmt.Errorf("failed to retrieve context: %w", err)
+	}
+	if retrieved == nil {
+		return result, errors.New("no context returned from retrieval")
 	}
 
 	// Quality gate: prefer RelevanceGate (cross-encoder score based),

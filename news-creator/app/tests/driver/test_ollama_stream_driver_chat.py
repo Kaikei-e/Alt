@@ -102,7 +102,7 @@ class TestChatGenerateOptionsMerge:
         base_opts = driver.config.get_llm_options()
         assert base_opts["num_batch"] == 1024
         assert base_opts["num_keep"] == -1
-        assert "<end_of_turn>" in base_opts["stop"]
+        assert "<turn|>" in base_opts["stop"]
 
     @pytest.mark.asyncio
     async def test_caller_options_override(self, driver):
@@ -116,7 +116,8 @@ class TestChatGenerateOptionsMerge:
 
 # ---------------------------------------------------------------------------
 # /api/chat migration tests: chat_stream/chat_generate must call /api/chat
-# with think=false, no raw=true, and forward messages directly.
+# without raw=true and forward messages directly. `think` is intentionally
+# omitted so Gemma can use its default thinking behavior.
 # ---------------------------------------------------------------------------
 
 class _AsyncLineIterator:
@@ -170,7 +171,7 @@ def _make_mock_session(response_lines: list[bytes] | None = None, json_body: dic
 
 
 class TestChatStreamUsesApiChat:
-    """chat_stream() must call /api/chat (not /api/generate) with think=false."""
+    """chat_stream() must call /api/chat (not /api/generate) and set think=false."""
 
     @pytest.mark.asyncio
     async def test_calls_api_chat_endpoint(self, driver):
@@ -192,7 +193,7 @@ class TestChatStreamUsesApiChat:
 
     @pytest.mark.asyncio
     async def test_includes_think_false(self, driver):
-        """think: false must be in the downstream payload."""
+        """think=false must be in the downstream payload."""
         lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
         session, captured = _make_mock_session(response_lines=lines)
         driver.session = session
@@ -241,9 +242,27 @@ class TestChatStreamUsesApiChat:
         assert "prompt" not in captured["json"], "Should not build a prompt string"
         assert captured["json"]["messages"] == messages
 
+    @pytest.mark.asyncio
+    async def test_preserves_caller_num_predict_in_downstream_options(self, driver):
+        """Streaming /api/chat must preserve caller-provided num_predict."""
+        lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
+        session, captured = _make_mock_session(response_lines=lines)
+        driver.session = session
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+            "options": {"num_predict": 3072, "temperature": 0.1},
+        }
+        async for _ in driver.chat_stream(payload):
+            pass
+
+        assert captured["json"]["options"]["num_predict"] == 3072
+        assert captured["json"]["options"]["temperature"] == 0.1
+
 
 class TestChatGenerateUsesApiChat:
-    """chat_generate() must call /api/chat with think=false (non-streaming)."""
+    """chat_generate() must call /api/chat and omit raw (non-streaming)."""
 
     @pytest.mark.asyncio
     async def test_calls_api_chat_endpoint(self, driver):
@@ -264,8 +283,8 @@ class TestChatGenerateUsesApiChat:
         assert captured["url"].endswith("/api/chat"), f"Expected /api/chat, got {captured['url']}"
 
     @pytest.mark.asyncio
-    async def test_includes_think_false(self, driver):
-        """think: false must be in the downstream payload."""
+    async def test_omits_think_parameter(self, driver):
+        """think should be omitted in the downstream payload."""
         body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
         session, captured = _make_mock_session(json_body=body)
         driver.session = session
@@ -276,7 +295,7 @@ class TestChatGenerateUsesApiChat:
         }
         await driver.chat_generate(payload)
 
-        assert captured["json"].get("think") is False
+        assert "think" not in captured["json"]
 
     @pytest.mark.asyncio
     async def test_no_raw_parameter(self, driver):
@@ -306,3 +325,20 @@ class TestChatGenerateUsesApiChat:
 
         assert "prompt" not in captured["json"]
         assert captured["json"]["messages"] == messages
+
+    @pytest.mark.asyncio
+    async def test_preserves_caller_num_predict_in_downstream_options(self, driver):
+        """Non-streaming /api/chat must preserve caller-provided num_predict."""
+        body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
+        session, captured = _make_mock_session(json_body=body)
+        driver.session = session
+
+        payload = {
+            "model": "gemma4-e4b-12k",
+            "messages": [{"role": "user", "content": "test"}],
+            "options": {"num_predict": 2048, "temperature": 0.2},
+        }
+        await driver.chat_generate(payload)
+
+        assert captured["json"]["options"]["num_predict"] == 2048
+        assert captured["json"]["options"]["temperature"] == 0.2

@@ -20,6 +20,8 @@ func TestMain(m *testing.M) {
 
 // mockSearchEngine implements port.SearchEngine for testing
 type mockSearchEngine struct {
+	searchResult         []domain.SearchDocument
+	searchErr            error
 	searchByUserIDResult []domain.SearchDocument
 	searchByUserIDErr    error
 }
@@ -29,7 +31,7 @@ func (m *mockSearchEngine) IndexDocuments(ctx context.Context, docs []domain.Sea
 }
 func (m *mockSearchEngine) DeleteDocuments(ctx context.Context, ids []string) error { return nil }
 func (m *mockSearchEngine) Search(ctx context.Context, query string, limit int) ([]domain.SearchDocument, error) {
-	return nil, nil
+	return m.searchResult, m.searchErr
 }
 func (m *mockSearchEngine) SearchWithFilters(ctx context.Context, query string, filters []string, limit int) ([]domain.SearchDocument, error) {
 	return nil, nil
@@ -72,12 +74,6 @@ func TestHandler_SearchArticles(t *testing.T) {
 			wantStatusCode: http.StatusBadRequest,
 		},
 		{
-			name:           "missing user_id",
-			query:          "test",
-			userID:         "",
-			wantStatusCode: http.StatusBadRequest,
-		},
-		{
 			name:           "search engine error",
 			query:          "test",
 			userID:         "user1",
@@ -102,7 +98,8 @@ func TestHandler_SearchArticles(t *testing.T) {
 			}
 
 			searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
-			handler := NewHandler(searchByUserUsecase)
+			searchArticlesUsecase := usecase.NewSearchArticlesUsecase(mock)
+			handler := NewHandler(searchByUserUsecase, searchArticlesUsecase)
 
 			url := "/v1/search?"
 			if tt.query != "" {
@@ -131,5 +128,39 @@ func TestHandler_SearchArticles(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestHandler_SearchArticles_WithoutUserID_UsesUnfilteredSearch(t *testing.T) {
+	unfilteredResults := []domain.SearchDocument{
+		{ID: "1", Title: "Iran Oil Crisis", Content: "Content about Iran", Tags: []string{"iran"}},
+		{ID: "2", Title: "Oil Price Surge", Content: "Oil prices rising", Tags: []string{"oil"}},
+	}
+
+	mock := &mockSearchEngine{
+		searchResult:         unfilteredResults,
+		searchByUserIDResult: nil, // user-scoped search returns nothing
+	}
+
+	searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
+	searchArticlesUsecase := usecase.NewSearchArticlesUsecase(mock)
+	handler := NewHandler(searchByUserUsecase, searchArticlesUsecase)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=iran+oil&limit=50", nil)
+	rec := httptest.NewRecorder()
+
+	handler.SearchArticles(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp SearchArticlesResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(resp.Hits) != 2 {
+		t.Errorf("hit count = %d, want 2 (unfiltered search should return all results)", len(resp.Hits))
 	}
 }

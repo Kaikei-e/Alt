@@ -34,16 +34,28 @@ Current Date: {current_date}
 Output JSON with these fields IN ORDER:
 1. reasoning: Your step-by-step thinking about the query
 2. resolved_query: A self-contained search query (no pronouns, must contain the topic)
-3. search_queries: 3-5 search queries in Japanese AND English
+3. search_queries: 3-5 topically relevant search queries in Japanese AND English. NEVER output dates alone.
 4. intent: One of causal_explanation, temporal, synthesis, comparison, fact_check, topic_deep_dive, general
 5. retrieval_policy: global_only or article_only (default: global_only)
 6. answer_format: causal_analysis, summary, list, detail, or comparison (default: summary)
 7. should_clarify: ALMOST ALWAYS false. Only true for bare phrases like "もっと詳しく" with NO context.
 8. topic_entities: Key entities from the query
 
+Intent selection guide:
+- "原因", "なぜ", "要因", "真因", "root cause", "why did", "caused by" → causal_explanation
+- "最近", "今週", "動向", "latest", "recent" → temporal (UNLESS combined with causal keywords like 原因/なぜ, then use causal_explanation)
+- "比較", "違い", "vs", "difference" → comparison
+- "そもそも", "とは何", "全体像", "overview" → synthesis
+- "詳しく", "deep dive", "技術的" → topic_deep_dive
+
 <example>
 Query: 最近のEV市場の動向は？
-{{"reasoning": "User asks about recent EV market trends. Clear standalone query about electric vehicles. Temporal because of '最近の'. No conversation history, no coreference.", "resolved_query": "最近のEV市場の動向と成長トレンド", "search_queries": ["EV市場 動向 2026", "electric vehicle market trends", "EV 販売台数 成長率", "電気自動車 市場規模"], "intent": "temporal", "retrieval_policy": "global_only", "answer_format": "summary", "should_clarify": false, "topic_entities": ["EV", "電気自動車"]}}
+{{"reasoning": "User asks about recent EV market trends. Clear standalone query about electric vehicles. Temporal because of '最近の'. No causal keyword. No conversation history, no coreference.", "resolved_query": "最近のEV市場の動向と成長トレンド", "search_queries": ["EV市場 動向 2026", "electric vehicle market trends", "EV 販売台数 成長率", "電気自動車 市場規模"], "intent": "temporal", "retrieval_policy": "global_only", "answer_format": "summary", "should_clarify": false, "topic_entities": ["EV", "電気自動車"]}}
+</example>
+
+<example>
+Query: 最近の石油危機の原因は？
+{{"reasoning": "User asks about the CAUSE of the recent oil crisis. Both temporal ('最近') and causal ('原因') cues present. Per intent guide, causal keywords override temporal — this is causal_explanation, not temporal. The user wants to understand WHY the crisis happened, not just WHEN.", "resolved_query": "最近の石油危機が発生した原因と背景", "search_queries": ["石油危機 原因 2026", "oil crisis causes geopolitical", "原油価格 高騰 要因", "Iran oil supply disruption reasons"], "intent": "causal_explanation", "retrieval_policy": "global_only", "answer_format": "causal_analysis", "should_clarify": false, "topic_entities": ["石油危機", "原油", "イラン"]}}
 </example>
 
 <example>
@@ -74,7 +86,13 @@ class PlanQueryUsecase:
         try:
             plan = await self._plan_with_llm(request)
         except Exception as e:
-            logger.warning("plan_query_llm_failed", extra={"error": str(e), "query": request.query})
+            import traceback
+            logger.warning("plan_query_llm_failed", extra={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc(),
+                "query": request.query,
+            })
             plan = self._fallback_plan(request.query)
 
         elapsed_ms = (time.monotonic() - start) * 1000
@@ -88,26 +106,35 @@ class PlanQueryUsecase:
 
     async def _plan_with_llm(self, request: PlanQueryRequest) -> QueryPlan:
         prompt = self._build_prompt(request)
-        json_schema = QueryPlan.model_json_schema()
 
-        response = await self.llm_provider.generate(
-            prompt,
-            model=self.PLANNING_MODEL,
-            num_predict=512,
-            format=json_schema,
-            options={
+        # Use /api/chat with thinking enabled for better intent classification.
+        # Do NOT use the 'format' parameter — Ollama #10929: thinking + format = empty content.
+        # The prompt + few-shot examples guide the model to produce valid JSON.
+        # Thinking mode adds ~25s latency but dramatically improves intent accuracy.
+        # The streaming layer sends progress events to keep the client connection alive.
+        payload = {
+            "model": self.PLANNING_MODEL,
+            "messages": [
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "options": {
                 "temperature": 0,
+                "num_predict": 2048,
             },
-            priority=request.priority,
-        )
+        }
+
+        response = await self.llm_provider.chat_generate(payload)
+        content = response.get("message", {}).get("content", "")
 
         try:
-            parsed = json.loads(response.response)
+            json_str = self._extract_json(content)
+            parsed = json.loads(json_str)
             return QueryPlan(**parsed)
-        except (json.JSONDecodeError, Exception) as e:
+        except (json.JSONDecodeError, KeyError, Exception) as e:
             logger.warning("plan_query_parse_failed", extra={
                 "error": str(e),
-                "raw_response": response.response[:200],
+                "raw_content": content[:300] if content else "(empty)",
             })
             return self._fallback_plan(request.query)
 
@@ -131,6 +158,25 @@ class PlanQueryUsecase:
             context_section=context_section,
             query=request.query,
         )
+
+    @staticmethod
+    def _extract_json(text: str) -> str:
+        """Extract JSON object from LLM response that may contain markdown fences or preamble."""
+        # Strip markdown code fences
+        if "```json" in text:
+            text = text.split("```json", 1)[1]
+            if "```" in text:
+                text = text.split("```", 1)[0]
+        elif "```" in text:
+            text = text.split("```", 1)[1]
+            if "```" in text:
+                text = text.split("```", 1)[0]
+        # Find the first { and last }
+        start = text.find("{")
+        end = text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return text[start:end + 1]
+        return text.strip()
 
     @staticmethod
     def _fallback_plan(query: str) -> QueryPlan:

@@ -131,6 +131,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// Answer usecase
 	promptBuilder := usecase.NewXMLPromptBuilder("Answer in Japanese.")
 	articleScopedStrategy := usecase.NewArticleScopedStrategy(docRepo, chunkRepo, log, queryExpander)
+	var causalAssessor *usecase.RetrievalQualityAssessor
 
 	// Agentic RAG options (ADR-000568)
 	answerOpts := []usecase.AnswerUsecaseOption{
@@ -181,21 +182,24 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		})
 	}
 	toolPlanner := usecase.NewToolPlanner(generator, toolDescriptors, log)
-	synthStrategy := usecase.NewSynthesisStrategy(toolPlanner, toolDispatcher, retrieveUsecase, log)
+	synthStrategy := usecase.NewAgenticSynthesisStrategy(toolPlanner, toolDispatcher, retrieveUsecase, generator, log)
 	answerOpts = append(answerOpts, usecase.WithStrategy(usecase.IntentSynthesis, synthStrategy))
-	log.Info("synthesis_strategy_enabled")
+	log.Info("synthesis_agentic_strategy_enabled")
 
 	if cfg.QualityGate.Enabled {
-		assessor := usecase.NewRetrievalQualityAssessor(
+		causalAssessor = usecase.NewRetrievalQualityAssessor(
 			cfg.QualityGate.GoodThreshold,
 			cfg.QualityGate.MarginalThreshold,
 			cfg.QualityGate.MinContexts,
 		)
-		answerOpts = append(answerOpts, usecase.WithQualityAssessor(assessor, queryExpander))
+		answerOpts = append(answerOpts, usecase.WithQualityAssessor(causalAssessor, queryExpander))
 		log.Info("quality_gate_enabled",
 			slog.Float64("good_threshold", float64(cfg.QualityGate.GoodThreshold)),
 			slog.Float64("marginal_threshold", float64(cfg.QualityGate.MarginalThreshold)))
 	}
+
+	answerOpts = append(answerOpts, usecase.WithStrategy(usecase.IntentCausalExplanation, usecase.NewCausalStrategy(retrieveUsecase, causalAssessor, log)))
+	log.Info("causal_strategy_enabled")
 
 	// Conversation planner + state store (ADR-000604)
 	classifier := usecase.NewQueryClassifier(nil, 0)
@@ -205,8 +209,9 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	log.Info("conversation_planner_enabled")
 
 	// LLM-based query planner via news-creator (ADR-000630)
+	// Uses dedicated PlannerTimeout (default 60s) for thinking mode.
 	queryPlannerClient := rag_augur.NewQueryPlannerClient(
-		cfg.QueryExpansion.URL, cfg.QueryExpansion.Timeout, log,
+		cfg.QueryExpansion.URL, cfg.QueryExpansion.PlannerTimeout, log,
 	)
 	answerOpts = append(answerOpts, usecase.WithQueryPlanner(queryPlannerClient))
 	log.Info("query_planner_enabled", slog.String("url", cfg.QueryExpansion.URL))

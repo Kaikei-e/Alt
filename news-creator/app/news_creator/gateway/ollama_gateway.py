@@ -194,7 +194,7 @@ class OllamaGateway(LLMProviderPort):
             logger.debug(f"Using model-specific keep_alive: {final_keep_alive} for model: {model}", extra={"model": model, "keep_alive": final_keep_alive})
 
         # Build payload for Ollama API
-        # raw=True: prompts already contain <start_of_turn>/<end_of_turn> chat template.
+        # raw=True: prompts already contain <|turn>/<turn|> (Gemma 4) chat template.
         # This bypasses Ollama's built-in RENDERER/PARSER which enables Gemma4 thinking by default.
         payload: Dict[str, Any] = {
             "model": model,

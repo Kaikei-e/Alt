@@ -66,6 +66,13 @@ class DistributingGateway(LLMProviderPort):
             logger.info("DistributingGateway cleaned up")
 
     # ------------------------------------------------------------------
+    # chat_generate() — always local (used for plan-query, morning letter)
+    # ------------------------------------------------------------------
+
+    async def chat_generate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return await self._local.chat_generate(payload)
+
+    # ------------------------------------------------------------------
     # generate() — always local (handles streaming, model routing, etc.)
     # ------------------------------------------------------------------
 

@@ -143,9 +143,13 @@ class OllamaStreamDriver:
             "model": model,
             "messages": payload["messages"],
             "stream": False,
-            "think": False,
             "options": self._merge_options(payload.get("options")),
         }
+        # Only set think parameter if explicitly provided in payload.
+        # Omitting think lets Gemma 4 default to thinking mode (better quality).
+        # Setting think=false breaks format constraint for gemma4 (Ollama #15260).
+        if "think" in payload:
+            chat_payload["think"] = payload["think"]
         if payload.get("keep_alive") is not None:
             chat_payload["keep_alive"] = payload["keep_alive"]
         if payload.get("format") is not None:

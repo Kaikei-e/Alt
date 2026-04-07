@@ -205,6 +205,25 @@ func TestFilterExpandedQueries_XMLTagLeak_Filtered(t *testing.T) {
 	assert.Equal(t, []string{"Iran oil crisis causes"}, result)
 }
 
+func TestFilterExpandedQueries_DateOnly_Filtered(t *testing.T) {
+	queries := []string{
+		"2026-04-07",
+		"2026/03/15",
+		"Iran oil crisis causes",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"Iran oil crisis causes"}, result)
+}
+
+func TestFilterExpandedQueries_DateOnly_Various(t *testing.T) {
+	assert.True(t, isDateOnly("2026-04-07"))
+	assert.True(t, isDateOnly("2026/03/15"))
+	assert.True(t, isDateOnly("2026.01.01"))
+	assert.False(t, isDateOnly("2026年のAI動向"))
+	assert.False(t, isDateOnly("Iran oil crisis 2026"))
+	assert.False(t, isDateOnly(""))
+}
+
 func TestIsXMLTagLeak(t *testing.T) {
 	assert.True(t, isXMLTagLeak("</example>"))
 	assert.True(t, isXMLTagLeak("<input>something</input>"))

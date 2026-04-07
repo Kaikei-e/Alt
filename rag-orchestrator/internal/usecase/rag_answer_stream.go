@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"rag-orchestrator/internal/domain"
 )
@@ -59,13 +58,13 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
-		// 3. Prepare Context (retrieval + reranking)
+		// 3. Prepare Context (query planning + retrieval + reranking)
 		// Run buildPrompt in a goroutine with a heartbeat ticker to keep data
 		// flowing through Cloudflare Tunnel. Without this, Cloudflare's 30-second
 		// Proxy Write Timeout kills the connection during retrieval + reranking.
 		if !u.sendStreamEvent(ctx, events, StreamEvent{
 			Kind:    StreamEventKindProgress,
-			Payload: "searching",
+			Payload: "planning",
 		}) {
 			return
 		}
@@ -155,7 +154,23 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
+		profile := deriveAcceptanceProfile(input, promptData)
+		if profile.strictLongForm {
+			// Hybrid streaming: use ChatStream with paragraph-level provisional
+			// previews instead of non-streaming generateAnswerWithRetries.
+			// Raw tokens are accumulated internally; flushes happen at paragraph
+			// or sentence boundaries via ParagraphFlusher.
+			u.streamHybridLongForm(ctx, events, input, promptData, profile, heartbeat, cacheKey)
+			return
+		}
+
 		// 4. Single Stage Generation (Streaming) — use messages from buildPrompt directly
+		if !u.sendStreamEvent(ctx, events, StreamEvent{
+			Kind:    StreamEventKindProgress,
+			Payload: "drafting",
+		}) {
+			return
+		}
 		messages := promptData.messages
 
 		// Run ChatStream in a goroutine so we can send heartbeats while
@@ -198,17 +213,15 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		}
 
 		var builder strings.Builder // Full response for final validation
-		hasData := false
-		chunkStream := chunkCh
-		errStream := errCh
-		done := false
-
-		// Parsing state — O(n) incremental parser.
-		// `pending` holds only unprocessed bytes (not the full accumulated text).
+		var answerBuilder strings.Builder
 		var pending strings.Builder
 		inAnswer := false
 		isEscaped := false
 		answerCompletelyStreamed := false
+		hasData := false
+		chunkStream := chunkCh
+		errStream := errCh
+		done := false
 
 		for chunkStream != nil || errStream != nil {
 			select {
@@ -236,7 +249,8 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 					hasData = true
 					builder.WriteString(chunk.Response)
 
-					// Partial Parsing Logic — only process new chunk data
+					// Incremental parsing keeps the answer boundary intact even when
+					// Ollama emits unescaped quotes inside structured output.
 					if !answerCompletelyStreamed {
 						pending.WriteString(chunk.Response)
 						pendingStr := pending.String()
@@ -261,17 +275,11 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 								if startOffset != -1 {
 									inAnswer = true
 									processed = startOffset
-								} else {
-									// Keep tail for cross-chunk matching
-									if len(pendingStr) > 20 {
-										processed = len(pendingStr) - 20
-									}
-								}
-							} else {
-								// Keep tail for cross-chunk matching of "answer" key
-								if len(pendingStr) > 20 {
+								} else if len(pendingStr) > 20 {
 									processed = len(pendingStr) - 20
 								}
+							} else if len(pendingStr) > 20 {
+								processed = len(pendingStr) - 20
 							}
 						}
 
@@ -307,10 +315,6 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 									continue
 								}
 								if char == '"' {
-									// Lookahead: verify this quote is a real JSON field terminator,
-									// not an unescaped quote from LLM structured output bug.
-									// After the answer field's closing ", the next non-whitespace
-									// must be , or } to form valid JSON structure.
 									tail := strToScan[i+charLen:]
 									if isAnswerFieldEnd(tail) {
 										inAnswer = false
@@ -318,7 +322,6 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 										advanceBytes = i + charLen
 										break
 									}
-									// Not a real end — treat as embedded unescaped quote
 									contentBuilder.WriteRune('"')
 									advanceBytes = i + charLen
 									continue
@@ -331,17 +334,11 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 							}
 							strToStream := contentBuilder.String()
 							if strToStream != "" {
-								if !u.sendStreamEvent(ctx, events, StreamEvent{
-									Kind:    StreamEventKindDelta,
-									Payload: strToStream,
-								}) {
-									return
-								}
+								answerBuilder.WriteString(strToStream)
 							}
 							processed += advanceBytes
 						}
 
-						// Keep only unprocessed tail in pending buffer
 						remaining := pendingStr[processed:]
 						pending.Reset()
 						pending.WriteString(remaining)
@@ -377,7 +374,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			slog.Bool("done", done),
 			slog.Bool("hasData", hasData),
 			slog.Int("builder_len", builder.Len()),
-			slog.Bool("answerCompletelyStreamed", answerCompletelyStreamed))
+			slog.Bool("answerCompletelyStreamed", true))
 
 		if !hasData {
 			u.logger.Warn("stream_no_data_fallback",
@@ -389,6 +386,10 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
+		u.sendStreamEvent(ctx, events, StreamEvent{
+			Kind:    StreamEventKindProgress,
+			Payload: "validating",
+		})
 		u.logger.Info("stream_proceeding_to_validation",
 			slog.String("retrieval_set_id", promptData.retrievalSetID),
 			slog.Int("builder_len", builder.Len()))
@@ -420,7 +421,6 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			slog.Int("answer_length", len(parsedAnswer.Answer)),
 			slog.Int("citations_count", len(parsedAnswer.Citations)))
 
-		// Answer quality check on streaming path (ADR-000604: hard stop for bad answers)
 		qualityFlags := AssessAnswerQuality(
 			parsedAnswer.Answer, input.Query, parsedAnswer.Citations, promptData.intentType, promptData.expandedQueries,
 		)
@@ -429,31 +429,10 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				slog.String("retrieval_set_id", promptData.retrievalSetID),
 				slog.Any("flags", qualityFlags))
 		}
-
-		if parsedAnswer.ShortAnswer {
-			u.logger.Warn("stream_short_answer_detected",
-				slog.String("retrieval_set_id", promptData.retrievalSetID),
-				slog.Int("answer_rune_length", utf8.RuneCountInString(parsedAnswer.Answer)),
-				slog.String("query", input.Query))
-
-			// Hard stop: short answer + quality issues = fallback instead of serving bad content.
-			// A short answer alone might be acceptable (yes/no questions), but combined with
-			// low keyword coverage, incoherent ending, or expansion failure, it indicates broken generation.
-			if hasQualityFlag(qualityFlags, "low_keyword_coverage") || hasQualityFlag(qualityFlags, "incoherent_ending") ||
-				(hasQualityFlag(qualityFlags, "expansion_failed") && promptData.intentType == IntentCausalExplanation) {
-				// Select specific fallback reason based on intent and flags
-				fallbackReason := selectFallbackReason(promptData.intentType, qualityFlags)
-				u.logger.Warn("stream_short_answer_hard_stop",
-					slog.String("retrieval_set_id", promptData.retrievalSetID),
-					slog.String("fallback_reason", fallbackReason),
-					slog.Any("flags", qualityFlags),
-					slog.String("raw_response_preview", truncate(rawResponse, 300)))
-				u.sendStreamEvent(ctx, events, StreamEvent{
-					Kind:    StreamEventKindFallback,
-					Payload: fallbackReason,
-				})
-				return
-			}
+		finalAnswerText := parsedAnswer.Answer
+		if answerBuilder.Len() > 0 {
+			finalAnswerText = strings.TrimSpace(answerBuilder.String())
+			parsedAnswer.Answer = finalAnswerText
 		}
 
 		if parsedAnswer.Fallback {
@@ -469,11 +448,37 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			return
 		}
 
+		finalPromptData, finalAnswer, finalFlags, retryCount, accepted, err := u.retryValidatedAnswer(
+			ctx, input, promptData, parsedAnswer, qualityFlags, profile, promptData.retrievalSetID, 0,
+		)
+		if err != nil {
+			u.sendStreamEvent(ctx, events, StreamEvent{
+				Kind:    StreamEventKindFallback,
+				Payload: fmt.Sprintf("generation failed: %v", err),
+			})
+			return
+		}
+		if !accepted {
+			fallbackReason := selectFallbackReason(finalPromptData.intentType, finalFlags)
+			if finalAnswer != nil && finalAnswer.Fallback {
+				fallbackReason = finalAnswer.Reason
+			}
+			u.sendStreamEvent(ctx, events, StreamEvent{
+				Kind:    StreamEventKindFallback,
+				Payload: fallbackReason,
+			})
+			return
+		}
+		promptData = finalPromptData
+		parsedAnswer = finalAnswer
+		qualityFlags = finalFlags
+		finalAnswerText = strings.TrimSpace(parsedAnswer.Answer)
+
 		// Build Final Output (Hydration)
 		finalCitations := u.buildCitations(promptData.contexts, parsedAnswer.Citations)
 
 		output := &AnswerWithRAGOutput{
-			Answer:    strings.TrimSpace(parsedAnswer.Answer),
+			Answer:    finalAnswerText,
 			Citations: finalCitations,
 			Contexts:  promptData.contexts,
 			Fallback:  false,
@@ -486,10 +491,18 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				IntentType:            string(promptData.intentType),
 				SubIntentType:         string(promptData.subIntentType),
 				RetrievalQuality:      string(promptData.retrievalQuality),
+				RetryCount:            promptData.retryCount + retryCount,
 				ToolsUsed:             promptData.toolsUsed,
 				RetrievalPolicy:       promptData.retrievalPolicy,
 				GeneralRetrievalGated: promptData.generalGated,
 			},
+		}
+
+		if !u.sendStreamEvent(ctx, events, StreamEvent{
+			Kind:    StreamEventKindDelta,
+			Payload: output.Answer,
+		}) {
+			return
 		}
 
 		// Persist conversation state for follow-up reference resolution.
@@ -532,6 +545,13 @@ func selectFallbackReason(intentType IntentType, flags []string) string {
 		return "answer quality insufficient: low keyword coverage"
 	}
 	return "answer quality insufficient: short answer with quality issues"
+}
+
+func shouldHardStopShortAnswer(intentType IntentType, flags []string) bool {
+	return hasQualityFlag(flags, "low_keyword_coverage") ||
+		hasQualityFlag(flags, "incoherent_ending") ||
+		hasQualityFlag(flags, "context_insufficiency_disclaimer") ||
+		(hasQualityFlag(flags, "expansion_failed") && intentType == IntentCausalExplanation)
 }
 
 // hasQualityFlag checks if a specific flag is present in the quality flags list.

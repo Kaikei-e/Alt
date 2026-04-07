@@ -10,6 +10,7 @@ import {
 	streamAugurChat,
 	type AugurCitation,
 } from "$lib/connect";
+import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
 
 type Citation = {
 	URL: string;
@@ -26,7 +27,7 @@ export type AugurPaneMessage = {
 	citations?: Citation[];
 };
 
-const STREAM_TIMEOUT_MS = 60_000;
+const STREAM_TIMEOUT_MS = 180_000;
 
 function convertCitations(citations: AugurCitation[]): Citation[] {
 	return citations.map((c) => ({
@@ -36,17 +37,12 @@ function convertCitations(citations: AugurCitation[]): Citation[] {
 	}));
 }
 
-function fallbackMessage(code: string): string {
-	if (code.includes("insufficient")) {
-		return "Not enough indexed content for this article yet. Please try again later.";
-	}
-	return "I couldn't find enough information to answer that properly.";
-}
-
 export function useAugurPane() {
 	let messages = $state<AugurPaneMessage[]>([]);
 	let isLoading = $state(false);
 	let progressStage = $state("");
+	let statusText = $state("");
+	let isProvisional = $state(false);
 	let currentAbortController: AbortController | null = null;
 	let streamTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -60,6 +56,8 @@ export function useAugurPane() {
 	function finalize() {
 		isLoading = false;
 		progressStage = "";
+		statusText = "";
+		isProvisional = false;
 		currentAbortController = null;
 		clearStreamTimeout();
 	}
@@ -71,6 +69,8 @@ export function useAugurPane() {
 		}
 		isLoading = false;
 		progressStage = "";
+		statusText = "";
+		isProvisional = false;
 		clearStreamTimeout();
 	}
 
@@ -132,16 +132,19 @@ export function useAugurPane() {
 		currentAbortController = streamAugurChat(
 			transport,
 			{ messages: chatHistory },
-			// onDelta
+			// onDelta — provisional preview text
 			(delta) => {
 				bufferedContent += delta;
+				isProvisional = true;
 				messages[assistantIndex] = {
 					...messages[assistantIndex],
 					message: bufferedContent,
 				};
 			},
-			// onThinking (unused)
-			undefined,
+			// onThinking — update status text for UI
+			(text) => {
+				statusText = text;
+			},
 			// onMeta
 			(citations) => {
 				messages[assistantIndex] = {
@@ -149,7 +152,7 @@ export function useAugurPane() {
 					citations: convertCitations(citations),
 				};
 			},
-			// onComplete
+			// onComplete — authoritative final answer replaces all provisional text
 			(result) => {
 				messages[assistantIndex] = {
 					...messages[assistantIndex],
@@ -161,25 +164,30 @@ export function useAugurPane() {
 				};
 				finalize();
 			},
-			// onFallback
+			// onFallback — clear provisional, show fallback
 			(code) => {
+				isProvisional = false;
 				messages[assistantIndex] = {
 					...messages[assistantIndex],
-					message: fallbackMessage(code),
+					message: formatAugurFallbackMessage(code),
 				};
 				finalize();
 			},
 			// onError
 			(error) => {
+				isProvisional = false;
 				messages[assistantIndex] = {
 					...messages[assistantIndex],
 					message: `Error: ${error.message}. Please try again.`,
 				};
 				finalize();
 			},
-			// onProgress
+			// onProgress — update stage + statusText for refining
 			(stage) => {
 				progressStage = stage;
+				if (stage === "refining") {
+					statusText = "Refining answer...";
+				}
 			},
 		);
 	}
@@ -193,6 +201,12 @@ export function useAugurPane() {
 		},
 		get progressStage() {
 			return progressStage;
+		},
+		get statusText() {
+			return statusText;
+		},
+		get isProvisional() {
+			return isProvisional;
 		},
 		sendMessage,
 		abort,

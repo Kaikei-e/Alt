@@ -3,8 +3,10 @@ package rest
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
+	"search-indexer/domain"
 	"search-indexer/logger"
 	"search-indexer/usecase"
 	appOtel "search-indexer/utils/otel"
@@ -15,13 +17,15 @@ import (
 
 // Handler contains all HTTP handlers for the search indexer
 type Handler struct {
-	searchByUserUsecase *usecase.SearchByUserUsecase
+	searchByUserUsecase   *usecase.SearchByUserUsecase
+	searchArticlesUsecase *usecase.SearchArticlesUsecase
 }
 
 // NewHandler creates a new Handler
-func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase) *Handler {
+func NewHandler(searchByUserUsecase *usecase.SearchByUserUsecase, searchArticlesUsecase *usecase.SearchArticlesUsecase) *Handler {
 	return &Handler{
-		searchByUserUsecase: searchByUserUsecase,
+		searchByUserUsecase:   searchByUserUsecase,
+		searchArticlesUsecase: searchArticlesUsecase,
 	}
 }
 
@@ -38,11 +42,14 @@ type SearchArticlesResponse struct {
 }
 
 // SearchArticles handles GET /v1/search requests.
+// When user_id is provided, results are filtered to that user's articles.
+// When user_id is omitted, all articles are searched (used by RAG/BM25 internal callers).
 func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	start := time.Now()
 	query := r.URL.Query().Get("q")
 	userID := r.URL.Query().Get("user_id")
+	limitStr := r.URL.Query().Get("limit")
 
 	if query == "" {
 		logger.Logger.ErrorContext(ctx, "query is empty")
@@ -50,13 +57,36 @@ func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var docs []domain.SearchDocument
+	var searchQuery string
+	var err error
+
 	if userID == "" {
-		logger.Logger.ErrorContext(ctx, "user_id is empty")
-		http.Error(w, "user_id parameter required", http.StatusBadRequest)
-		return
+		// Unfiltered search for internal RAG/BM25 callers
+		limit := 50
+		if limitStr != "" {
+			if l, parseErr := strconv.Atoi(limitStr); parseErr == nil && l > 0 && l <= 1000 {
+				limit = l
+			}
+		}
+		result, execErr := h.searchArticlesUsecase.Execute(ctx, query, limit)
+		if execErr != nil {
+			err = execErr
+		} else {
+			docs = result.Documents
+			searchQuery = result.Query
+		}
+	} else {
+		// User-scoped search
+		result, execErr := h.searchByUserUsecase.Execute(ctx, query, userID)
+		if execErr != nil {
+			err = execErr
+		} else {
+			docs = result.Hits
+			searchQuery = result.Query
+		}
 	}
 
-	result, err := h.searchByUserUsecase.Execute(ctx, query, userID)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "search failed", "err", err, "user_id", userID)
 		if m := appOtel.Metrics; m != nil {
@@ -71,11 +101,11 @@ func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := SearchArticlesResponse{
-		Query: result.Query,
-		Hits:  make([]SearchArticlesHit, 0, len(result.Hits)),
+		Query: searchQuery,
+		Hits:  make([]SearchArticlesHit, 0, len(docs)),
 	}
 
-	for _, doc := range result.Hits {
+	for _, doc := range docs {
 		tags := doc.Tags
 		if tags == nil {
 			tags = []string{}
