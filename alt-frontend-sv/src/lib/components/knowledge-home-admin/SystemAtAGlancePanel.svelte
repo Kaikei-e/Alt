@@ -36,12 +36,14 @@ const lagStatus = $derived.by((): "ok" | "warning" | "error" | "neutral" => {
 	return "error";
 });
 
-const servicesStatus = $derived.by((): "ok" | "warning" | "error" | "neutral" => {
-	if (totalServiceCount === 0) return "neutral";
-	if (healthyCount === totalServiceCount) return "ok";
-	if (healthyCount === 0) return "error";
-	return "warning";
-});
+const servicesStatus = $derived.by(
+	(): "ok" | "warning" | "error" | "neutral" => {
+		if (totalServiceCount === 0) return "neutral";
+		if (healthyCount === totalServiceCount) return "ok";
+		if (healthyCount === 0) return "error";
+		return "warning";
+	},
+);
 
 const alertsStatus = $derived.by((): "ok" | "warning" | "error" | "neutral" => {
 	if (activeAlertCount === 0) return "ok";

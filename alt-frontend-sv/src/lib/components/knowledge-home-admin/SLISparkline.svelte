@@ -36,7 +36,9 @@ const lastPoint = $derived(() => {
 	const lastIdx = values.length - 1;
 	const x = padding + lastIdx * stepX;
 	const y =
-		height - padding - ((values[lastIdx] - min) / range) * (height - padding * 2);
+		height -
+		padding -
+		((values[lastIdx] - min) / range) * (height - padding * 2);
 	return { x, y };
 });
 </script>

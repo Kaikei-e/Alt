@@ -9,6 +9,7 @@ import {
 	type AugurCitation,
 } from "$lib/connect";
 import augurAvatar from "$lib/assets/augur-chat.webp";
+import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
 
 interface Props {
 	initialContext?: string;
@@ -43,6 +44,8 @@ let messages = $state<Message[]>([
 
 let isLoading = $state(false);
 let progressStage = $state<string>("");
+let statusText = $state("");
+let isProvisional = $state(false);
 let chatContainer: HTMLDivElement;
 let currentAbortController: AbortController | null = null;
 let lastAutoSentQuestion = $state("");
@@ -87,6 +90,25 @@ function convertCitations(citations: AugurCitation[]): Citation[] {
 	}));
 }
 
+function stageStatus(stage: string): string {
+	switch (stage) {
+		case "planning":
+			return "Planning search...";
+		case "searching":
+			return "Searching evidence...";
+		case "reranking":
+			return "Checking evidence quality...";
+		case "drafting":
+			return "Drafting answer...";
+		case "validating":
+			return "Validating answer...";
+		case "refining":
+			return "Refining answer...";
+		default:
+			return "";
+	}
+}
+
 async function handleSend(messageText: string) {
 	// Cancel any ongoing stream
 	if (currentAbortController) {
@@ -106,6 +128,8 @@ async function handleSend(messageText: string) {
 	await scrollToBottom();
 
 	isLoading = true;
+	statusText = "";
+	isProvisional = false;
 
 	// Add placeholder for assistant message
 	messages = [
@@ -143,6 +167,7 @@ async function handleSend(messageText: string) {
 			(text) => {
 				progressStage = "";
 				bufferedContent += text;
+				isProvisional = true;
 
 				const now = Date.now();
 				if (now - lastUpdateTime > THROTTLE_MS) {
@@ -154,8 +179,10 @@ async function handleSend(messageText: string) {
 					throttledScrollToBottom();
 				}
 			},
-			// onThinking: not displayed
-			undefined,
+			// onThinking: update live status text
+			(text) => {
+				statusText = text;
+			},
 			// onMeta: citations received
 			(citations) => {
 				messages[currentAssistantMessageIndex] = {
@@ -176,6 +203,8 @@ async function handleSend(messageText: string) {
 				};
 				isLoading = false;
 				progressStage = "";
+				statusText = "";
+				isProvisional = false;
 				currentAbortController = null;
 				scrollToBottom();
 			},
@@ -183,11 +212,12 @@ async function handleSend(messageText: string) {
 			(code) => {
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex],
-					message:
-						"I apologize, but I couldn't find enough information in my knowledge base to answer that properly.",
+					message: formatAugurFallbackMessage(code),
 				};
 				isLoading = false;
 				progressStage = "";
+				statusText = "";
+				isProvisional = false;
 				currentAbortController = null;
 				scrollToBottom();
 			},
@@ -200,12 +230,15 @@ async function handleSend(messageText: string) {
 				};
 				isLoading = false;
 				progressStage = "";
+				statusText = "";
+				isProvisional = false;
 				currentAbortController = null;
 				scrollToBottom();
 			},
 			// onProgress: stage updates
 			(stage) => {
 				progressStage = stage;
+				statusText = stageStatus(stage);
 			},
 		);
 	} catch (error) {
@@ -215,6 +248,8 @@ async function handleSend(messageText: string) {
 			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
 		};
 		isLoading = false;
+		statusText = "";
+		isProvisional = false;
 		await scrollToBottom();
 	}
 }
@@ -252,6 +287,11 @@ $effect(() => {
 				timestamp={msg.timestamp}
 				citations={msg.citations}
 			/>
+			{#if idx === messages.length - 1 && msg.role === "assistant" && isLoading && isProvisional && statusText}
+				<div class="mb-4 ml-11 text-xs text-muted-foreground">
+					{statusText}
+				</div>
+			{/if}
 		{/each}
 
 		{#if isLoading && messages[messages.length - 1]?.message === ""}
@@ -264,13 +304,7 @@ $effect(() => {
 				</div>
 				<div class="bg-muted/50 p-3 text-sm rounded-2xl rounded-bl-none shadow-sm border border-border/50">
 					<p class="text-muted-foreground">
-						{#if progressStage === "searching"}
-							Searching knowledge base...
-						{:else if progressStage === "generating"}
-							Generating answer...
-						{:else}
-							Augur is thinking...
-						{/if}
+						{statusText || stageStatus(progressStage) || "Augur is thinking..."}
 					</p>
 				</div>
 			</div>

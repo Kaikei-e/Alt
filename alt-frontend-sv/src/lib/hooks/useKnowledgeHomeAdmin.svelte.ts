@@ -106,7 +106,8 @@ export function useKnowledgeHomeAdmin(
 						entry.values[sli.name] = sli.currentValue;
 					}
 					const next = [...sliHistory, entry];
-					sliHistory = next.length > SLI_HISTORY_MAX ? next.slice(-SLI_HISTORY_MAX) : next;
+					sliHistory =
+						next.length > SLI_HISTORY_MAX ? next.slice(-SLI_HISTORY_MAX) : next;
 				}
 
 				error = null;

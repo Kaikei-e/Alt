@@ -1,40 +1,40 @@
 <script lang="ts">
-	import { goto } from "$app/navigation";
-	import { BirdIcon, Search } from "@lucide/svelte";
+import { goto } from "$app/navigation";
+import { BirdIcon, Search } from "@lucide/svelte";
 
-	let {
-		onAsk,
-	}: {
-		onAsk?: (query: string) => void;
-	} = $props();
+let {
+	onAsk,
+}: {
+	onAsk?: (query: string) => void;
+} = $props();
 
-	let query = $state("");
+let query = $state("");
 
-	function handleSearch() {
-		const trimmed = query.trim();
-		if (trimmed) {
-			goto(`/search?q=${encodeURIComponent(trimmed)}`);
-		}
+function handleSearch() {
+	const trimmed = query.trim();
+	if (trimmed) {
+		goto(`/search?q=${encodeURIComponent(trimmed)}`);
 	}
+}
 
-	function handleAsk() {
-		const trimmed = query.trim();
-		if (onAsk) {
-			onAsk(trimmed);
-			return;
-		}
-		if (trimmed) {
-			goto(`/augur?q=${encodeURIComponent(trimmed)}`);
-		} else {
-			goto("/augur");
-		}
+function handleAsk() {
+	const trimmed = query.trim();
+	if (onAsk) {
+		onAsk(trimmed);
+		return;
 	}
+	if (trimmed) {
+		goto(`/augur?q=${encodeURIComponent(trimmed)}`);
+	} else {
+		goto("/augur");
+	}
+}
 
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === "Enter") {
-			handleSearch();
-		}
+function handleKeydown(e: KeyboardEvent) {
+	if (e.key === "Enter") {
+		handleSearch();
 	}
+}
 </script>
 
 <div class="px-4 py-3">

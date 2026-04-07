@@ -12,6 +12,7 @@ import {
 	streamAugurChat,
 	type AugurCitation,
 } from "$lib/connect";
+import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
 
 type Citation = {
 	url: string;
@@ -37,6 +38,8 @@ let messages: Message[] = $state([]);
 let inputValue = $state("");
 let isLoading = $state(false);
 let progressStage = $state<string>("");
+let statusText = $state("");
+let isProvisional = $state(false);
 let messagesEndRef: HTMLDivElement;
 let messagesContainer: HTMLDivElement;
 let lastAutoSentQuestion = $state("");
@@ -69,6 +72,25 @@ function throttledScrollToBottom() {
 	}
 }
 
+function stageStatus(stage: string): string {
+	switch (stage) {
+		case "planning":
+			return "Planning search...";
+		case "searching":
+			return "Searching evidence...";
+		case "reranking":
+			return "Checking evidence quality...";
+		case "drafting":
+			return "Drafting answer...";
+		case "validating":
+			return "Validating answer...";
+		case "refining":
+			return "Refining answer...";
+		default:
+			return "";
+	}
+}
+
 const handleSubmit = async (messageOverride?: string) => {
 	const userMessage = (messageOverride ?? inputValue).trim();
 	if (!userMessage || isLoading) return;
@@ -82,6 +104,8 @@ const handleSubmit = async (messageOverride?: string) => {
 	await scrollToBottom();
 
 	isLoading = true;
+	statusText = "";
+	isProvisional = false;
 
 	// Add placeholder for assistant message
 	messages = [...messages, { role: "assistant", content: "" }];
@@ -111,6 +135,7 @@ const handleSubmit = async (messageOverride?: string) => {
 			(text) => {
 				progressStage = "";
 				bufferedContent += text;
+				isProvisional = true;
 
 				const now = Date.now();
 				if (now - lastUpdateTime > THROTTLE_MS) {
@@ -123,8 +148,10 @@ const handleSubmit = async (messageOverride?: string) => {
 					throttledScrollToBottom();
 				}
 			},
-			// onThinking: not displayed
-			undefined,
+			// onThinking: update live status text
+			(text) => {
+				statusText = text;
+			},
 			// onMeta: citations
 			(citations: AugurCitation[]) => {
 				const cleanCitations: Citation[] = citations.map((c) => ({
@@ -154,19 +181,21 @@ const handleSubmit = async (messageOverride?: string) => {
 				};
 				isLoading = false;
 				progressStage = "";
+				statusText = "";
+				isProvisional = false;
 				scrollToBottom();
 			},
 			// onFallback: insufficient evidence
 			(code) => {
-				const fallbackMessage =
-					"I apologize, but I couldn't find enough information in my knowledge base to answer that properly.";
 				const currentMsg = messages[currentAssistantMessageIndex];
 				messages[currentAssistantMessageIndex] = {
 					...currentMsg,
-					content: fallbackMessage,
+					content: formatAugurFallbackMessage(code),
 				};
 				isLoading = false;
 				progressStage = "";
+				statusText = "";
+				isProvisional = false;
 				scrollToBottom();
 			},
 			// onError: error handling
@@ -179,11 +208,14 @@ const handleSubmit = async (messageOverride?: string) => {
 				};
 				isLoading = false;
 				progressStage = "";
+				statusText = "";
+				isProvisional = false;
 				scrollToBottom();
 			},
 			// onProgress: stage updates
 			(stage) => {
 				progressStage = stage;
+				statusText = stageStatus(stage);
 			},
 		);
 	} catch (error) {
@@ -194,6 +226,8 @@ const handleSubmit = async (messageOverride?: string) => {
 			content: "Sorry, something went wrong. Please try again.",
 		};
 		isLoading = false;
+		statusText = "";
+		isProvisional = false;
 		await scrollToBottom();
 	}
 };
@@ -223,7 +257,7 @@ $effect(() => {
       </div>
     {/if}
 
-    {#each messages as message}
+    {#each messages as message, idx}
       <div class="flex w-full {message.role === 'user' ? 'justify-end' : 'justify-start'}">
         <div class="flex max-w-[85%] gap-2 {message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}">
 
@@ -253,11 +287,7 @@ $effect(() => {
                             <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-150"></span>
                             <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-300"></span>
                         </span>
-                        {#if progressStage === "searching"}
-                            <span class="text-xs text-muted-foreground">Searching...</span>
-                        {:else if progressStage === "generating"}
-                            <span class="text-xs text-muted-foreground">Generating...</span>
-                        {/if}
+                        <span class="text-xs text-muted-foreground">{statusText || stageStatus(progressStage) || "Augur is thinking..."}</span>
                     </span>
                 {:else}
                 <div>
@@ -269,6 +299,10 @@ $effect(() => {
                 </div>
                 {/if}
             </div>
+
+            {#if idx === messages.length - 1 && message.role === 'assistant' && isLoading && isProvisional && statusText}
+                <div class="ml-1 text-[11px] text-muted-foreground">{statusText}</div>
+            {/if}
 
             <!-- Citations -->
             {#if message.role === 'assistant' && message.citations && message.citations.length > 0}
