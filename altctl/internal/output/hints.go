@@ -17,9 +17,10 @@ var CommandHints = map[string][]string{
 	"restart":         {"status", "logs <service>"},
 	"init":            {"up", "status", "list"},
 	"deploy":          {"status", "logs <service>", "down"},
-	"migrate backup":  {"migrate verify", "migrate list", "migrate status"},
-	"migrate restore": {"migrate verify", "status"},
-	"migrate status":  {"migrate backup", "migrate list"},
+	"migrate backup":   {"migrate verify", "migrate list", "migrate status"},
+	"migrate restore":  {"migrate verify", "status"},
+	"migrate status":   {"migrate backup", "migrate snapshot", "migrate list"},
+	"migrate snapshot": {"migrate verify", "migrate list", "migrate status"},
 }
 
 // PrintHints prints "See also" hints for a command. No-op in quiet mode or if command has no hints.
