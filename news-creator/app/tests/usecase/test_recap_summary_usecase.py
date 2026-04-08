@@ -2240,3 +2240,78 @@ async def test_should_bypass_llm_with_only_1_sentence():
     llm_provider.generate.assert_not_awaited()
     assert response.metadata.is_degraded is True
     assert response.metadata.degradation_reason == "low_evidence_extractive"
+
+
+@pytest.mark.asyncio
+async def test_3days_prompt_includes_anti_hallucination_section():
+    """3days prompt should contain anti-hallucination instructions."""
+    config = _create_mock_config()
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps(
+            {
+                "title": "AI最新アップデート",
+                "bullets": [
+                    "Googleは新しいAIモデルを4月5日にリリースし、推論速度が従来比30%向上した。同社は企業向けAPI料金も引き下げた [1]",
+                    "日本政府はAI安全性に関するガイドラインを公開し、生成AIの責任範囲を明文化した [2]",
+                ],
+                "language": "ja",
+                "references": [
+                    {"id": 1, "url": "https://example.com/1", "domain": "example.com", "article_id": "art1"},
+                    {"id": 2, "url": "https://example.com/2", "domain": "example.com", "article_id": "art2"},
+                ],
+            }
+        ),
+        model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Google launched new model.", source_url="https://example.com/1", article_id="art1",
+                    ),
+                    RepresentativeSentence(
+                        text="Japan published AI guidelines.", source_url="https://example.com/2", article_id="art2",
+                    ),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    await usecase.generate_summary(request)
+
+    call_args = llm_provider.generate.call_args
+    prompt = call_args.args[0] if call_args.args else call_args.kwargs.get("prompt", "")
+    # Anti-hallucination section should be present
+    assert "禁止事項" in prompt
+    assert "異なるクラスタの情報を1つのbulletに混合しない" in prompt
+
+
+def test_3days_prompt_has_event_extraction_step():
+    """3days prompt bullet construction should mention event-based extraction."""
+    config = _create_mock_config()
+    llm_provider = Mock()
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(text="Sample text for prompt test."),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+    prompt = usecase._build_prompt(request, max_bullets=4)
+    assert "イベント単位" in prompt
