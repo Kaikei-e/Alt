@@ -24,7 +24,8 @@ def _make_trace(
         rendered_prompt="test prompt",
         raw_llm_response='{"bullets":["test"],"language":"ja"}',
         parsed_summary_json='{"title":"t","bullets":["b"],"language":"ja"}',
-        scores=scores or {
+        scores=scores
+        or {
             "source_grounding": 0.8,
             "redundancy": 0.1,
             "readability": 0.7,
@@ -51,20 +52,28 @@ class TestCompareRuns:
 
     def test_improvement_detected(self):
         """After run has higher source_grounding → positive delta, improved=True."""
-        before = [_make_trace(scores={
-            "source_grounding": 0.6,
-            "redundancy": 0.2,
-            "readability": 0.7,
-            "structure": 0.5,
-            "entity_density": 0.4,
-        })]
-        after = [_make_trace(scores={
-            "source_grounding": 0.9,
-            "redundancy": 0.1,
-            "readability": 0.8,
-            "structure": 0.7,
-            "entity_density": 0.6,
-        })]
+        before = [
+            _make_trace(
+                scores={
+                    "source_grounding": 0.6,
+                    "redundancy": 0.2,
+                    "readability": 0.7,
+                    "structure": 0.5,
+                    "entity_density": 0.4,
+                }
+            )
+        ]
+        after = [
+            _make_trace(
+                scores={
+                    "source_grounding": 0.9,
+                    "redundancy": 0.1,
+                    "readability": 0.8,
+                    "structure": 0.7,
+                    "entity_density": 0.6,
+                }
+            )
+        ]
 
         report = compare_runs(before=before, after=after)
 
@@ -74,20 +83,28 @@ class TestCompareRuns:
 
     def test_regression_detected(self):
         """After run has lower readability → negative delta, improved=False."""
-        before = [_make_trace(scores={
-            "source_grounding": 0.8,
-            "redundancy": 0.1,
-            "readability": 0.9,
-            "structure": 0.6,
-            "entity_density": 0.5,
-        })]
-        after = [_make_trace(scores={
-            "source_grounding": 0.8,
-            "redundancy": 0.1,
-            "readability": 0.5,
-            "structure": 0.6,
-            "entity_density": 0.5,
-        })]
+        before = [
+            _make_trace(
+                scores={
+                    "source_grounding": 0.8,
+                    "redundancy": 0.1,
+                    "readability": 0.9,
+                    "structure": 0.6,
+                    "entity_density": 0.5,
+                }
+            )
+        ]
+        after = [
+            _make_trace(
+                scores={
+                    "source_grounding": 0.8,
+                    "redundancy": 0.1,
+                    "readability": 0.5,
+                    "structure": 0.6,
+                    "entity_density": 0.5,
+                }
+            )
+        ]
 
         report = compare_runs(before=before, after=after)
 
@@ -136,20 +153,28 @@ class TestCompareRuns:
 
     def test_redundancy_improvement_is_decrease(self):
         """For redundancy, lower is better → decrease is 'improved'."""
-        before = [_make_trace(scores={
-            "source_grounding": 0.8,
-            "redundancy": 0.5,
-            "readability": 0.7,
-            "structure": 0.6,
-            "entity_density": 0.5,
-        })]
-        after = [_make_trace(scores={
-            "source_grounding": 0.8,
-            "redundancy": 0.1,
-            "readability": 0.7,
-            "structure": 0.6,
-            "entity_density": 0.5,
-        })]
+        before = [
+            _make_trace(
+                scores={
+                    "source_grounding": 0.8,
+                    "redundancy": 0.5,
+                    "readability": 0.7,
+                    "structure": 0.6,
+                    "entity_density": 0.5,
+                }
+            )
+        ]
+        after = [
+            _make_trace(
+                scores={
+                    "source_grounding": 0.8,
+                    "redundancy": 0.1,
+                    "readability": 0.7,
+                    "structure": 0.6,
+                    "entity_density": 0.5,
+                }
+            )
+        ]
 
         report = compare_runs(before=before, after=after)
 

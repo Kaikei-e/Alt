@@ -19,13 +19,10 @@ import argparse
 import asyncio
 import json
 import statistics
-import sys
-import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
-from uuid import uuid4
 
 import aiohttp
 
@@ -306,10 +303,22 @@ def calculate_stats(results: list[BenchmarkResult]) -> BenchmarkStats:
             iterations=len(results),
             success_count=0,
             error_count=len(errors),
-            ttft_mean=0, ttft_p50=0, ttft_p95=0, ttft_min=0, ttft_max=0,
-            decode_mean=0, decode_p50=0, decode_p95=0, decode_min=0, decode_max=0,
-            prefill_mean=0, prefill_p50=0, prefill_p95=0,
-            latency_mean=0, latency_p50=0, latency_p95=0,
+            ttft_mean=0,
+            ttft_p50=0,
+            ttft_p95=0,
+            ttft_min=0,
+            ttft_max=0,
+            decode_mean=0,
+            decode_p50=0,
+            decode_p95=0,
+            decode_min=0,
+            decode_max=0,
+            prefill_mean=0,
+            prefill_p50=0,
+            prefill_p95=0,
+            latency_mean=0,
+            latency_p50=0,
+            latency_p95=0,
         )
 
     ttft_values = [r.ttft_s for r in successful]
@@ -357,7 +366,9 @@ async def run_benchmark(
 ) -> tuple[list[BenchmarkResult], BenchmarkStats]:
     """Run benchmark for a single test case."""
     case_config = TEST_CASES[case_name]
-    model = config.model_16k if case_config["expected_model"] == "16k" else config.model_80k
+    model = (
+        config.model_16k if case_config["expected_model"] == "16k" else config.model_80k
+    )
 
     print(f"\n{'=' * 60}")
     print(f"Case: {case_name} - {case_config['description']}")
@@ -432,21 +443,31 @@ def print_stats(stats: BenchmarkStats) -> None:
     print(f"\n{'─' * 60}")
     print(f"Stats for: {stats.case_name}")
     print(f"{'─' * 60}")
-    print(f"Iterations: {stats.iterations} (Success: {stats.success_count}, Errors: {stats.error_count})")
+    print(
+        f"Iterations: {stats.iterations} (Success: {stats.success_count}, Errors: {stats.error_count})"
+    )
     print()
     print("TTFT (Time To First Token):")
-    print(f"  Mean: {stats.ttft_mean:.2f}s, P50: {stats.ttft_p50:.2f}s, P95: {stats.ttft_p95:.2f}s")
+    print(
+        f"  Mean: {stats.ttft_mean:.2f}s, P50: {stats.ttft_p50:.2f}s, P95: {stats.ttft_p95:.2f}s"
+    )
     print(f"  Min: {stats.ttft_min:.2f}s, Max: {stats.ttft_max:.2f}s")
     print()
     print("Decode Speed (tokens/sec):")
-    print(f"  Mean: {stats.decode_mean:.1f}, P50: {stats.decode_p50:.1f}, P95: {stats.decode_p95:.1f}")
+    print(
+        f"  Mean: {stats.decode_mean:.1f}, P50: {stats.decode_p50:.1f}, P95: {stats.decode_p95:.1f}"
+    )
     print(f"  Min: {stats.decode_min:.1f}, Max: {stats.decode_max:.1f}")
     print()
     print("Prefill Speed (tokens/sec):")
-    print(f"  Mean: {stats.prefill_mean:.1f}, P50: {stats.prefill_p50:.1f}, P95: {stats.prefill_p95:.1f}")
+    print(
+        f"  Mean: {stats.prefill_mean:.1f}, P50: {stats.prefill_p50:.1f}, P95: {stats.prefill_p95:.1f}"
+    )
     print()
     print("Total Latency:")
-    print(f"  Mean: {stats.latency_mean:.2f}s, P50: {stats.latency_p50:.2f}s, P95: {stats.latency_p95:.2f}s")
+    print(
+        f"  Mean: {stats.latency_mean:.2f}s, P50: {stats.latency_p50:.2f}s, P95: {stats.latency_p95:.2f}s"
+    )
 
 
 def save_results(
@@ -475,7 +496,9 @@ def save_results(
 
 async def main() -> None:
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Benchmark news-creator Summary performance")
+    parser = argparse.ArgumentParser(
+        description="Benchmark news-creator Summary performance"
+    )
     parser.add_argument(
         "--case",
         choices=list(TEST_CASES.keys()) + ["all"],
@@ -556,7 +579,9 @@ async def main() -> None:
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
-    print(f"{'Case':<12} {'TTFT P50':>10} {'Decode P50':>12} {'Latency P50':>12} {'Errors':>8}")
+    print(
+        f"{'Case':<12} {'TTFT P50':>10} {'Decode P50':>12} {'Latency P50':>12} {'Errors':>8}"
+    )
     print("-" * 60)
     for stats in all_stats:
         print(

@@ -202,7 +202,6 @@ class TestPayloadBuilderProtocol:
         """PayloadBuilder should implement PayloadBuilderProtocol."""
         from news_creator.gateway.payload_builder import (
             PayloadBuilder,
-            PayloadBuilderProtocol,
         )
 
         builder = PayloadBuilder()

@@ -12,6 +12,7 @@ import pytest
 def hybrid_semaphore_module():
     """Import HybridPrioritySemaphore for testing."""
     from news_creator.gateway.hybrid_priority_semaphore import HybridPrioritySemaphore
+
     return HybridPrioritySemaphore
 
 
@@ -58,7 +59,9 @@ class TestHybridPrioritySemaphoreBasic:
         """Test that rt_reserved > total raises ValueError."""
         HybridPrioritySemaphore = hybrid_semaphore_module
 
-        with pytest.raises(ValueError, match="rt_reserved_slots cannot exceed total_slots"):
+        with pytest.raises(
+            ValueError, match="rt_reserved_slots cannot exceed total_slots"
+        ):
             HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=3)
 
     @pytest.mark.asyncio
@@ -77,7 +80,9 @@ class TestRTSlotReservation:
     """Tests for RT (Real-Time) slot reservation."""
 
     @pytest.mark.asyncio
-    async def test_rt_acquire_immediate_when_slot_available(self, hybrid_semaphore_module):
+    async def test_rt_acquire_immediate_when_slot_available(
+        self, hybrid_semaphore_module
+    ):
         """High priority request acquires RT slot immediately when available."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
@@ -88,7 +93,9 @@ class TestRTSlotReservation:
         assert semaphore._rt_available == 0
 
     @pytest.mark.asyncio
-    async def test_be_acquire_immediate_when_slot_available(self, hybrid_semaphore_module):
+    async def test_be_acquire_immediate_when_slot_available(
+        self, hybrid_semaphore_module
+    ):
         """Low priority request acquires BE slot immediately when available."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
@@ -238,16 +245,22 @@ class TestAgingMechanism:
         import time
 
         # High priority always has score 0.0
-        score_high = semaphore._compute_priority_score(high_priority=True, enqueue_time=time.monotonic())
+        score_high = semaphore._compute_priority_score(
+            high_priority=True, enqueue_time=time.monotonic()
+        )
         assert score_high == 0.0
 
         # Low priority starts at 1.0
-        score_low_fresh = semaphore._compute_priority_score(high_priority=False, enqueue_time=time.monotonic())
+        score_low_fresh = semaphore._compute_priority_score(
+            high_priority=False, enqueue_time=time.monotonic()
+        )
         assert score_low_fresh == 1.0
 
         # Low priority after threshold is boosted (lower score = higher priority)
         old_enqueue_time = time.monotonic() - 2.0  # 2 seconds ago
-        score_low_aged = semaphore._compute_priority_score(high_priority=False, enqueue_time=old_enqueue_time)
+        score_low_aged = semaphore._compute_priority_score(
+            high_priority=False, enqueue_time=old_enqueue_time
+        )
         assert score_low_aged < score_low_fresh
 
     @pytest.mark.asyncio
@@ -476,10 +489,7 @@ class TestEdgeCases:
             semaphore.release(slot_id=_sid, was_high_priority=high_priority)
 
         # Start many workers concurrently
-        tasks = [
-            asyncio.create_task(worker(i, i % 2 == 0))
-            for i in range(10)
-        ]
+        tasks = [asyncio.create_task(worker(i, i % 2 == 0)) for i in range(10)]
 
         await asyncio.gather(*tasks)
 
@@ -494,6 +504,7 @@ class TestPreemption:
     def preempted_exception(self):
         """Import PreemptedException for testing."""
         from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+
         return PreemptedException
 
     @pytest.mark.asyncio
@@ -519,7 +530,9 @@ class TestPreemption:
         semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
 
         cancel_event = asyncio.Event()
-        semaphore.register_active_request("task-1", cancel_event, is_high_priority=False)
+        semaphore.register_active_request(
+            "task-1", cancel_event, is_high_priority=False
+        )
 
         assert "task-1" in semaphore._active_requests
         assert semaphore._active_requests["task-1"].cancel_event is cancel_event
@@ -532,7 +545,9 @@ class TestPreemption:
         semaphore = HybridPrioritySemaphore(total_slots=2, rt_reserved_slots=1)
 
         cancel_event = asyncio.Event()
-        semaphore.register_active_request("task-1", cancel_event, is_high_priority=False)
+        semaphore.register_active_request(
+            "task-1", cancel_event, is_high_priority=False
+        )
         semaphore.unregister_active_request("task-1")
 
         assert "task-1" not in semaphore._active_requests
@@ -582,7 +597,9 @@ class TestPreemption:
         # Acquire BE slot and register as active
         _, _sid = await semaphore.acquire(high_priority=False)
         be_cancel_event = asyncio.Event()
-        semaphore.register_active_request("be-1", be_cancel_event, is_high_priority=False)
+        semaphore.register_active_request(
+            "be-1", be_cancel_event, is_high_priority=False
+        )
 
         # New RT request should trigger preemption
         rt_acquired = asyncio.Event()
@@ -595,7 +612,9 @@ class TestPreemption:
         await asyncio.sleep(0.05)
 
         # BE cancel event should be set
-        assert be_cancel_event.is_set(), "BE cancel event should be triggered for preemption"
+        assert be_cancel_event.is_set(), (
+            "BE cancel event should be triggered for preemption"
+        )
 
         # Simulate BE completion and slot release
         semaphore.unregister_active_request("be-1")
@@ -606,7 +625,9 @@ class TestPreemption:
         await rt_task
 
     @pytest.mark.asyncio
-    async def test_preemption_not_triggered_when_disabled(self, hybrid_semaphore_module):
+    async def test_preemption_not_triggered_when_disabled(
+        self, hybrid_semaphore_module
+    ):
         """Preemption is not triggered when disabled."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         semaphore = HybridPrioritySemaphore(
@@ -619,7 +640,9 @@ class TestPreemption:
         _, _sid = await semaphore.acquire(high_priority=True)
         _, _sid = await semaphore.acquire(high_priority=False)
         be_cancel_event = asyncio.Event()
-        semaphore.register_active_request("be-1", be_cancel_event, is_high_priority=False)
+        semaphore.register_active_request(
+            "be-1", be_cancel_event, is_high_priority=False
+        )
 
         # New RT request queues but does not preempt
         rt_queued = asyncio.Event()
@@ -655,9 +678,13 @@ class TestPreemption:
         cancel_event1 = asyncio.Event()
         cancel_event2 = asyncio.Event()
 
-        semaphore.register_active_request("be-old", cancel_event1, is_high_priority=False)
+        semaphore.register_active_request(
+            "be-old", cancel_event1, is_high_priority=False
+        )
         await asyncio.sleep(0.02)  # Ensure different timestamps
-        semaphore.register_active_request("be-new", cancel_event2, is_high_priority=False)
+        semaphore.register_active_request(
+            "be-new", cancel_event2, is_high_priority=False
+        )
 
         # Manually trigger preemption
         await semaphore._preempt_oldest_be()
@@ -667,7 +694,9 @@ class TestPreemption:
         assert not cancel_event2.is_set(), "Newer BE should not be preempted"
 
     @pytest.mark.asyncio
-    async def test_preempted_exception_raised(self, hybrid_semaphore_module, preempted_exception):
+    async def test_preempted_exception_raised(
+        self, hybrid_semaphore_module, preempted_exception
+    ):
         """Test that PreemptedException can be raised and caught."""
         PreemptedException = preempted_exception
 
@@ -687,12 +716,16 @@ class TestPreemption:
         # Only acquire BE slot, leave RT slot available
         _, _sid = await semaphore.acquire(high_priority=False)
         be_cancel_event = asyncio.Event()
-        semaphore.register_active_request("be-1", be_cancel_event, is_high_priority=False)
+        semaphore.register_active_request(
+            "be-1", be_cancel_event, is_high_priority=False
+        )
 
         # New RT request gets RT slot immediately, no preemption
         wait_time, _sid = await semaphore.acquire(high_priority=True)
         assert wait_time == 0.0
-        assert not be_cancel_event.is_set(), "BE should not be preempted when RT slot available"
+        assert not be_cancel_event.is_set(), (
+            "BE should not be preempted when RT slot available"
+        )
 
     @pytest.mark.asyncio
     async def test_rt_does_not_preempt_rt(self, hybrid_semaphore_module):
@@ -759,7 +792,9 @@ class TestGuaranteedBandwidth:
         assert semaphore._guaranteed_be_ratio == 3
 
     @pytest.mark.asyncio
-    async def test_be_guaranteed_after_consecutive_rt_releases(self, hybrid_semaphore_module):
+    async def test_be_guaranteed_after_consecutive_rt_releases(
+        self, hybrid_semaphore_module
+    ):
         """BE request gets slot after guaranteed_be_ratio consecutive RT releases."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         semaphore = HybridPrioritySemaphore(
@@ -803,10 +838,14 @@ class TestGuaranteedBandwidth:
         # BE should be processed after at most 3 RT releases due to guaranteed bandwidth
         # Find BE position in processing order
         be_position = processing_order.index("be")
-        assert be_position <= 3, f"BE should be processed within 3 releases, got position {be_position}"
+        assert be_position <= 3, (
+            f"BE should be processed within 3 releases, got position {be_position}"
+        )
 
     @pytest.mark.asyncio
-    async def test_consecutive_rt_counter_resets_after_be(self, hybrid_semaphore_module):
+    async def test_consecutive_rt_counter_resets_after_be(
+        self, hybrid_semaphore_module
+    ):
         """Consecutive RT counter resets after BE is processed."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         semaphore = HybridPrioritySemaphore(
@@ -843,7 +882,9 @@ class TestGuaranteedBandwidth:
         assert semaphore._consecutive_rt_releases == 0
 
     @pytest.mark.asyncio
-    async def test_guaranteed_bandwidth_disabled_when_ratio_zero(self, hybrid_semaphore_module):
+    async def test_guaranteed_bandwidth_disabled_when_ratio_zero(
+        self, hybrid_semaphore_module
+    ):
         """Guaranteed bandwidth is disabled when ratio is 0."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         semaphore = HybridPrioritySemaphore(
@@ -913,7 +954,9 @@ class TestEnhancedAging:
         assert semaphore._priority_promotion_threshold == 300.0
 
     @pytest.mark.asyncio
-    async def test_be_promoted_to_rt_queue_after_threshold(self, hybrid_semaphore_module):
+    async def test_be_promoted_to_rt_queue_after_threshold(
+        self, hybrid_semaphore_module
+    ):
         """BE request is promoted to RT queue after priority promotion threshold."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         semaphore = HybridPrioritySemaphore(
@@ -1006,19 +1049,27 @@ class TestEnhancedAging:
 
         # Fresh BE request has score 1.0
         now = time.monotonic()
-        score_fresh = semaphore._compute_priority_score(high_priority=False, enqueue_time=now)
+        score_fresh = semaphore._compute_priority_score(
+            high_priority=False, enqueue_time=now
+        )
         assert score_fresh == 1.0
 
         # Aged BE request (past aging threshold) has reduced score
         aged_time = now - 0.03  # 30ms ago
-        score_aged = semaphore._compute_priority_score(high_priority=False, enqueue_time=aged_time)
+        score_aged = semaphore._compute_priority_score(
+            high_priority=False, enqueue_time=aged_time
+        )
         assert score_aged < 1.0
 
         # Promoted BE request (past promotion threshold) has RT-like score
         promoted_time = now - 0.06  # 60ms ago (past promotion threshold)
-        score_promoted = semaphore._compute_priority_score(high_priority=False, enqueue_time=promoted_time)
+        score_promoted = semaphore._compute_priority_score(
+            high_priority=False, enqueue_time=promoted_time
+        )
         # Promoted should have priority close to or at RT level (0.0)
-        assert score_promoted <= 0.1, f"Promoted BE should have RT-like priority, got {score_promoted}"
+        assert score_promoted <= 0.1, (
+            f"Promoted BE should have RT-like priority, got {score_promoted}"
+        )
 
     @pytest.mark.asyncio
     async def test_aging_and_promotion_work_together(self, hybrid_semaphore_module):
@@ -1059,10 +1110,13 @@ class TestQueueDepthLimit:
     def queue_full_error(self):
         """Import QueueFullError for testing."""
         from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+
         return QueueFullError
 
     @pytest.mark.asyncio
-    async def test_acquire_raises_queue_full_when_depth_exceeded(self, hybrid_semaphore_module, queue_full_error):
+    async def test_acquire_raises_queue_full_when_depth_exceeded(
+        self, hybrid_semaphore_module, queue_full_error
+    ):
         """Test that acquire raises QueueFullError when max_queue_depth is exceeded."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         QueueFullError = queue_full_error
@@ -1095,7 +1149,9 @@ class TestQueueDepthLimit:
         await asyncio.gather(task1, task2)
 
     @pytest.mark.asyncio
-    async def test_acquire_succeeds_when_under_depth_limit(self, hybrid_semaphore_module):
+    async def test_acquire_succeeds_when_under_depth_limit(
+        self, hybrid_semaphore_module
+    ):
         """Test that acquire succeeds when under max_queue_depth."""
         HybridPrioritySemaphore = hybrid_semaphore_module
 
@@ -1128,7 +1184,9 @@ class TestQueueDepthLimit:
         await task
 
     @pytest.mark.asyncio
-    async def test_queue_full_error_includes_rt_and_be_queues(self, hybrid_semaphore_module, queue_full_error):
+    async def test_queue_full_error_includes_rt_and_be_queues(
+        self, hybrid_semaphore_module, queue_full_error
+    ):
         """Test that QueueFullError considers both RT and BE queues for depth check."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         QueueFullError = queue_full_error
@@ -1165,7 +1223,9 @@ class TestQueueDepthLimit:
         await asyncio.gather(rt_task, be_task)
 
     @pytest.mark.asyncio
-    async def test_default_max_queue_depth_is_zero_unlimited(self, hybrid_semaphore_module):
+    async def test_default_max_queue_depth_is_zero_unlimited(
+        self, hybrid_semaphore_module
+    ):
         """Test that default max_queue_depth=0 means unlimited."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         semaphore = HybridPrioritySemaphore(total_slots=2)
@@ -1499,8 +1559,7 @@ class TestSlotLeakAfterPreemption:
         )
         # Specifically: RT pool must have recovered its reserved slot
         assert sem._rt_available == 1, (
-            f"RT slot permanently lost: rt_available={sem._rt_available}, "
-            f"expected 1"
+            f"RT slot permanently lost: rt_available={sem._rt_available}, expected 1"
         )
 
     @pytest.mark.asyncio
@@ -1595,8 +1654,8 @@ class TestSlotLeakAfterPreemption:
         )
 
         # Acquire both slots as RT (simulating preemption path)
-        _, sid1 = await sem.acquire(high_priority=True)   # RT slot
-        _, sid2 = await sem.acquire(high_priority=False)   # BE slot
+        _, sid1 = await sem.acquire(high_priority=True)  # RT slot
+        _, sid2 = await sem.acquire(high_priority=False)  # BE slot
 
         # Release both — slot_id tracks home_pool correctly regardless of caller priority
         sem.release(slot_id=sid1, was_high_priority=False)
@@ -1672,9 +1731,7 @@ class TestSingleSlotPreemption:
         )
 
     @pytest.mark.asyncio
-    async def test_slot_returns_to_rt_when_be_pool_zero(
-        self, hybrid_semaphore_module
-    ):
+    async def test_slot_returns_to_rt_when_be_pool_zero(self, hybrid_semaphore_module):
         """When be_slots=0, a slot with home_pool='be' must remap to RT."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         sem = HybridPrioritySemaphore(
@@ -1694,7 +1751,9 @@ class TestSingleSlotPreemption:
 
         total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
         assert total == 1, f"Slot lost: rt={sem._rt_available}, be={sem._be_available}"
-        assert sem._rt_available == 1, "Slot must return to RT pool (only existing pool)"
+        assert sem._rt_available == 1, (
+            "Slot must return to RT pool (only existing pool)"
+        )
 
 
 class TestSlotIdOwnershipPropagation:
@@ -1748,9 +1807,7 @@ class TestSlotIdOwnershipPropagation:
         assert len({id1, id2, id3}) == 3, "All slot_ids must be unique"
 
     @pytest.mark.asyncio
-    async def test_preemption_release_chain_with_slot_id(
-        self, hybrid_semaphore_module
-    ):
+    async def test_preemption_release_chain_with_slot_id(self, hybrid_semaphore_module):
         """Reproduce the exact preemption→release chain from production logs.
 
         Scenario:
@@ -1830,7 +1887,9 @@ class TestBeSlotZeroSlotLoss:
         """When BE releases and RT is queued, slot transfers correctly."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         sem = HybridPrioritySemaphore(
-            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+            total_slots=1,
+            rt_reserved_slots=1,
+            preemption_enabled=False,
         )
 
         # BE acquires the only slot
@@ -1863,7 +1922,9 @@ class TestBeSlotZeroSlotLoss:
         """When BE releases and another BE is queued, slot transfers correctly."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         sem = HybridPrioritySemaphore(
-            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+            total_slots=1,
+            rt_reserved_slots=1,
+            preemption_enabled=False,
         )
 
         # BE-1 acquires the only slot
@@ -1894,7 +1955,9 @@ class TestBeSlotZeroSlotLoss:
         )
 
     @pytest.mark.asyncio
-    async def test_be_slots_zero_cancelled_waiter_no_slot_loss(self, hybrid_semaphore_module):
+    async def test_be_slots_zero_cancelled_waiter_no_slot_loss(
+        self, hybrid_semaphore_module
+    ):
         """If a queued waiter is cancelled, the slot must not be lost.
 
         This is the key bug: release() uses call_soon_threadsafe to schedule
@@ -1903,7 +1966,9 @@ class TestBeSlotZeroSlotLoss:
         """
         HybridPrioritySemaphore = hybrid_semaphore_module
         sem = HybridPrioritySemaphore(
-            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+            total_slots=1,
+            rt_reserved_slots=1,
+            preemption_enabled=False,
         )
 
         # BE-1 acquires the only slot
@@ -1931,7 +1996,9 @@ class TestBeSlotZeroSlotLoss:
         )
 
     @pytest.mark.asyncio
-    async def test_be_slots_zero_rapid_acquire_release_invariant(self, hybrid_semaphore_module):
+    async def test_be_slots_zero_rapid_acquire_release_invariant(
+        self, hybrid_semaphore_module
+    ):
         """Rapid acquire/release cycles must not leak slots."""
         HybridPrioritySemaphore = hybrid_semaphore_module
         sem = HybridPrioritySemaphore(total_slots=1, rt_reserved_slots=1)
@@ -1941,7 +2008,9 @@ class TestBeSlotZeroSlotLoss:
             sem.release(slot_id=sid, was_high_priority=False)
 
             total = sem._rt_available + sem._be_available + len(sem._acquired_slots)
-            assert total == 1, f"Invariant broken on iteration: rt={sem._rt_available}, be={sem._be_available}"
+            assert total == 1, (
+                f"Invariant broken on iteration: rt={sem._rt_available}, be={sem._be_available}"
+            )
 
         for _ in range(20):
             _, sid = await sem.acquire(high_priority=True)
@@ -1977,7 +2046,9 @@ class TestCancelledWaiterSlotRecovery:
         """
         HybridPrioritySemaphore = hybrid_semaphore_module
         sem = HybridPrioritySemaphore(
-            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+            total_slots=1,
+            rt_reserved_slots=1,
+            preemption_enabled=False,
         )
 
         # BE-1 acquires the only slot
@@ -2024,7 +2095,9 @@ class TestCancelledWaiterSlotRecovery:
         """
         HybridPrioritySemaphore = hybrid_semaphore_module
         sem = HybridPrioritySemaphore(
-            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+            total_slots=1,
+            rt_reserved_slots=1,
+            preemption_enabled=False,
         )
 
         # BE-1 acquires
@@ -2069,7 +2142,9 @@ class TestCancelledWaiterSlotRecovery:
         """
         HybridPrioritySemaphore = hybrid_semaphore_module
         sem = HybridPrioritySemaphore(
-            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+            total_slots=1,
+            rt_reserved_slots=1,
+            preemption_enabled=False,
         )
 
         # RT-1 acquires
@@ -2109,7 +2184,9 @@ class TestCancelledWaiterSlotRecovery:
         """
         HybridPrioritySemaphore = hybrid_semaphore_module
         sem = HybridPrioritySemaphore(
-            total_slots=1, rt_reserved_slots=1, preemption_enabled=False,
+            total_slots=1,
+            rt_reserved_slots=1,
+            preemption_enabled=False,
         )
 
         # BE-1 acquires
@@ -2120,13 +2197,14 @@ class TestCancelledWaiterSlotRecovery:
         await asyncio.sleep(0.02)
 
         # BE-1 releases → slot transferred to BE-2
-        with caplog.at_level(logging.ERROR, logger="news_creator.gateway.hybrid_priority_semaphore"):
+        with caplog.at_level(
+            logging.ERROR, logger="news_creator.gateway.hybrid_priority_semaphore"
+        ):
             sem.release(slot_id=be1_sid, was_high_priority=False)
 
         # No SLOT INVARIANT VIOLATION should be logged
         violation_msgs = [
-            r for r in caplog.records
-            if "SLOT INVARIANT VIOLATION" in r.message
+            r for r in caplog.records if "SLOT INVARIANT VIOLATION" in r.message
         ]
         assert len(violation_msgs) == 0, (
             f"False positive invariant violation during normal transfer: "

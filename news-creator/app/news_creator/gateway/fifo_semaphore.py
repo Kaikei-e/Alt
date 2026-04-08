@@ -142,4 +142,3 @@ class FIFOSemaphore:
         """Async context manager exit."""
         self.release()
         return False
-

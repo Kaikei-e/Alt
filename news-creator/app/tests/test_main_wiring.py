@@ -43,7 +43,15 @@ class _DummyRerankUsecase:
 
 
 class _DummyDistributedGateway:
-    def __init__(self, local_gateway, health_checker, remote_driver, enabled=True, remote_model=None, model_overrides=None):
+    def __init__(
+        self,
+        local_gateway,
+        health_checker,
+        remote_driver,
+        enabled=True,
+        remote_model=None,
+        model_overrides=None,
+    ):
         self.local_gateway = local_gateway
         self.health_checker = health_checker
         self.remote_driver = remote_driver
@@ -96,9 +104,15 @@ def test_dependency_container_keeps_summarize_usecase_local(monkeypatch):
     remote_ollama_mod.RemoteOllamaDriver = _DummyRemoteDriver
     remote_health_mod = ModuleType("news_creator.gateway.remote_health_checker")
     remote_health_mod.RemoteHealthChecker = _DummyRemoteHealthChecker
-    monkeypatch.setitem(sys.modules, "news_creator.gateway.distributing_gateway", distributing_mod)
-    monkeypatch.setitem(sys.modules, "news_creator.gateway.remote_ollama_driver", remote_ollama_mod)
-    monkeypatch.setitem(sys.modules, "news_creator.gateway.remote_health_checker", remote_health_mod)
+    monkeypatch.setitem(
+        sys.modules, "news_creator.gateway.distributing_gateway", distributing_mod
+    )
+    monkeypatch.setitem(
+        sys.modules, "news_creator.gateway.remote_ollama_driver", remote_ollama_mod
+    )
+    monkeypatch.setitem(
+        sys.modules, "news_creator.gateway.remote_health_checker", remote_health_mod
+    )
 
     container = main_module.DependencyContainer()
 

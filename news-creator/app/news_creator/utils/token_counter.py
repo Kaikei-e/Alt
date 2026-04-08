@@ -58,4 +58,3 @@ def count_tokens_with_template(prompt_template: str, **kwargs) -> int:
             exc_info=True,
         )
         return count_tokens(prompt_template)
-

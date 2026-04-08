@@ -1,6 +1,5 @@
 """Tests for model router - selecting appropriate model bucket based on token count."""
 
-import pytest
 from unittest.mock import Mock
 
 from news_creator.gateway.model_router import ModelRouter

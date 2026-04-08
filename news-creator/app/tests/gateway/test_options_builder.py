@@ -7,9 +7,6 @@ Following Python 3.14 best practices:
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock
-
 
 class TestOptionsBuilder:
     """Tests for OptionsBuilder class."""
@@ -239,7 +236,6 @@ class TestOptionsBuilderProtocol:
         from news_creator.config.llm_config import LLMConfig
         from news_creator.gateway.options_builder import (
             OptionsBuilder,
-            OptionsBuilderProtocol,
         )
 
         llm_config = LLMConfig(

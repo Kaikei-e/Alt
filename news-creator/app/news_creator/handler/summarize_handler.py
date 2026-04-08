@@ -32,8 +32,11 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
     Returns:
         Configured APIRouter
     """
+
     @router.post("/api/v1/summarize", response_model=SummarizeResponse)
-    async def summarize_endpoint(request: SummarizeRequest, http_request: Request) -> SummarizeResponse | StreamingResponse | JSONResponse:
+    async def summarize_endpoint(
+        request: SummarizeRequest, http_request: Request
+    ) -> SummarizeResponse | StreamingResponse | JSONResponse:
         """
         Generate a Japanese summary using LLM.
 
@@ -57,7 +60,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
             "Received summarize request",
             extra={
                 "incoming_content_length": incoming_content_length,
-            }
+            },
         )
 
         # Early check: reject requests with content shorter than 100 characters
@@ -75,11 +78,9 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                     "article_id": request.article_id,
                     "content_length": len(request.content) if request.content else 0,
                     "min_required": min_content_length,
-                }
+                },
             )
             raise HTTPException(status_code=400, detail=error_msg)
-
-
 
         try:
             if request.stream:
@@ -89,7 +90,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                     extra={
                         "article_id": request.article_id,
                         "content_length": incoming_content_length,
-                    }
+                    },
                 )
 
                 try:
@@ -103,7 +104,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                         "Stream generator created, creating StreamingResponse with heartbeat",
                         extra={
                             "article_id": request.article_id,
-                        }
+                        },
                     )
 
                     # Create a wrapper that adds heartbeat support
@@ -115,8 +116,12 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                         to prevent blocking data chunk processing.
                         """
                         heartbeat_interval = 10  # seconds - reduced from 15 to 10 for better responsiveness
-                        data_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
-                        heartbeat_queue: asyncio.Queue[tuple[str, str] | None] = asyncio.Queue()
+                        data_queue: asyncio.Queue[tuple[str, str] | None] = (
+                            asyncio.Queue()
+                        )
+                        heartbeat_queue: asyncio.Queue[tuple[str, str] | None] = (
+                            asyncio.Queue()
+                        )
                         stopped = asyncio.Event()
                         last_data_time = asyncio.get_event_loop().time()
 
@@ -140,10 +145,12 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                             "Sending SSE heartbeat",
                                             extra={
                                                 "article_id": request.article_id,
-                                                "time_since_data": f"{time_since_data:.2f}s"
-                                            }
+                                                "time_since_data": f"{time_since_data:.2f}s",
+                                            },
                                         )
-                                        await heartbeat_queue.put(("heartbeat", ":\n\n"))
+                                        await heartbeat_queue.put(
+                                            ("heartbeat", ":\n\n")
+                                        )
                             except asyncio.CancelledError:
                                 pass
                             finally:
@@ -168,9 +175,13 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                                 extra={
                                                     "article_id": request.article_id,
                                                     "chunk_count": chunk_count,
-                                                    "chunk_size": len(chunk) if chunk else 0,
-                                                    "chunk_preview": chunk[:50] if chunk and len(chunk) > 50 else chunk
-                                                }
+                                                    "chunk_size": len(chunk)
+                                                    if chunk
+                                                    else 0,
+                                                    "chunk_preview": chunk[:50]
+                                                    if chunk and len(chunk) > 50
+                                                    else chunk,
+                                                },
                                             )
                                         # Update last data time to prevent unnecessary heartbeats
                                         last_data_time = asyncio.get_event_loop().time()
@@ -178,8 +189,11 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                             except Exception as e:
                                 logger.error(
                                     "Error in stream task",
-                                    extra={"error": str(e), "article_id": request.article_id},
-                                    exc_info=True
+                                    extra={
+                                        "error": str(e),
+                                        "article_id": request.article_id,
+                                    },
+                                    exc_info=True,
                                 )
                             finally:
                                 stopped.set()
@@ -198,10 +212,15 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                 # Prioritize data queue - check it first with timeout
                                 try:
                                     # Use timeout to allow checking heartbeat queue periodically
-                                    item = await asyncio.wait_for(data_queue.get(), timeout=0.1)
+                                    item = await asyncio.wait_for(
+                                        data_queue.get(), timeout=0.1
+                                    )
                                     if item is None:
                                         data_sentinel_received = True
-                                        if data_sentinel_received and heartbeat_sentinel_received:
+                                        if (
+                                            data_sentinel_received
+                                            and heartbeat_sentinel_received
+                                        ):
                                             break
                                         continue
 
@@ -212,8 +231,10 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                             "Yielding data chunk to client",
                                             extra={
                                                 "article_id": request.article_id,
-                                                "chunk_size": len(content) if content else 0
-                                            }
+                                                "chunk_size": len(content)
+                                                if content
+                                                else 0,
+                                            },
                                         )
                                         # Standard SSE format: data: <json_encoded_data>\n\n
                                         yield f"data: {json.dumps(content)}\n\n"
@@ -227,15 +248,22 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                                         heartbeat_item = heartbeat_queue.get_nowait()
                                         if heartbeat_item is None:
                                             heartbeat_sentinel_received = True
-                                            if data_sentinel_received and heartbeat_sentinel_received:
+                                            if (
+                                                data_sentinel_received
+                                                and heartbeat_sentinel_received
+                                            ):
                                                 break
                                             continue
 
-                                        heartbeat_type, heartbeat_content = heartbeat_item
+                                        heartbeat_type, heartbeat_content = (
+                                            heartbeat_item
+                                        )
                                         if heartbeat_type == "heartbeat":
                                             logger.debug(
                                                 "Yielding SSE heartbeat",
-                                                extra={"article_id": request.article_id}
+                                                extra={
+                                                    "article_id": request.article_id
+                                                },
                                             )
                                             yield heartbeat_content
 
@@ -251,25 +279,29 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                             heartbeat.cancel()
                             stream.cancel()
                             try:
-                                await asyncio.gather(heartbeat, stream, return_exceptions=True)
+                                await asyncio.gather(
+                                    heartbeat, stream, return_exceptions=True
+                                )
                             except Exception:
                                 pass
 
                     response = StreamingResponse(
                         stream_with_heartbeat(),
-                        media_type="text/event-stream; charset=utf-8"
+                        media_type="text/event-stream; charset=utf-8",
                     )
                     # Set headers for SSE streaming
                     response.headers["Cache-Control"] = "no-cache"
                     response.headers["Connection"] = "keep-alive"
-                    response.headers["X-Accel-Buffering"] = "no"  # Disable nginx buffering
+                    response.headers["X-Accel-Buffering"] = (
+                        "no"  # Disable nginx buffering
+                    )
 
                     logger.info(
                         "StreamingResponse created successfully with SSE format",
                         extra={
                             "article_id": request.article_id,
                             "media_type": "text/event-stream",
-                        }
+                        },
                     )
                     return response
                 except Exception as stream_exc:
@@ -326,8 +358,7 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                     },
                 )
                 raise HTTPException(
-                    status_code=422,
-                    detail=f"Content not processable: {error_detail}"
+                    status_code=422, detail=f"Content not processable: {error_detail}"
                 ) from exc
             logger.error(
                 "Failed to generate summary",
@@ -346,7 +377,9 @@ def create_summarize_router(summarize_usecase: SummarizeUsecase) -> APIRouter:
                 "Unexpected error while generating summary",
                 extra={"article_id": request.article_id},
             )
-            raise HTTPException(status_code=500, detail="Internal server error") from exc
+            raise HTTPException(
+                status_code=500, detail="Internal server error"
+            ) from exc
 
         finally:
             # Clear business context after request processing

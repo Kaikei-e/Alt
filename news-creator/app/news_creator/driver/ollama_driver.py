@@ -86,10 +86,14 @@ class OllamaDriver:
                     "estimated_tokens": estimated_tokens,
                     "prompt_preview_start": prompt_preview_start,
                     "prompt_preview_end": prompt_preview_end,
-                    "prompt_middle_sample": prompt[prompt_length//2-100:prompt_length//2+100] if prompt_length > 200 else "",
+                    "prompt_middle_sample": prompt[
+                        prompt_length // 2 - 100 : prompt_length // 2 + 100
+                    ]
+                    if prompt_length > 200
+                    else "",
                     "payload_size_bytes": payload_size_estimate,
                     "model": model,
-                }
+                },
             )
         else:
             logger.info(
@@ -118,15 +122,21 @@ class OllamaDriver:
                     )
                     await asyncio.sleep(wait_time)
                 else:
-                    logger.debug("Calling Ollama API (non-streaming)", extra={"url": url, "model": model})
+                    logger.debug(
+                        "Calling Ollama API (non-streaming)",
+                        extra={"url": url, "model": model},
+                    )
 
                 # Ensure stream is False for non-streaming driver
                 if payload.get("stream", False):
-                    raise ValueError("OllamaDriver does not support streaming. Use OllamaStreamDriver instead.")
+                    raise ValueError(
+                        "OllamaDriver does not support streaming. Use OllamaStreamDriver instead."
+                    )
 
-                assert self.session is not None, "Session not initialized. Call initialize() first."
+                assert self.session is not None, (
+                    "Session not initialized. Call initialize() first."
+                )
                 async with self.session.post(url, json=payload) as response:
-
                     if response.status != 200:
                         text_body = await response.text()
                         error_msg = (
@@ -146,22 +156,31 @@ class OllamaDriver:
                         # Retry logic for non-200 responses
                         if response.status >= 500 or response.status in (502, 503):
                             if attempt < max_retries:
-                                logger.warning(f"Retryable error {response.status}, will retry")
+                                logger.warning(
+                                    f"Retryable error {response.status}, will retry"
+                                )
                                 continue
-                        raise RuntimeError(f"Ollama API error: HTTP {response.status} - {text_body[:200]}")
+                        raise RuntimeError(
+                            f"Ollama API error: HTTP {response.status} - {text_body[:200]}"
+                        )
 
                     text_body = await response.text()
                     try:
                         return json.loads(text_body)
                     except json.JSONDecodeError as err:
                         error_msg = f"Failed to decode Ollama response: {str(err)}. Body: {text_body[:200]}"
-                        logger.error(error_msg, extra={"error": str(err), "body_preview": text_body[:200]})
+                        logger.error(
+                            error_msg,
+                            extra={"error": str(err), "body_preview": text_body[:200]},
+                        )
                         raise RuntimeError(error_msg) from err
 
             except aiohttp.ClientError as err:
                 # タイムアウトエラーの詳細な情報を取得
                 error_type = type(err).__name__
-                is_timeout = isinstance(err, (aiohttp.ServerTimeoutError, aiohttp.ClientTimeout))
+                is_timeout = isinstance(
+                    err, (aiohttp.ServerTimeoutError, aiohttp.ClientTimeout)
+                )
                 error_msg = f"Ollama API request failed: {err}"
 
                 logger.error(
@@ -177,7 +196,8 @@ class OllamaDriver:
                         "attempt": attempt + 1,
                         "max_retries": max_retries + 1,
                         "timeout_seconds": self.config.llm_timeout_seconds,
-                        "total_timeout_seconds": self.config.llm_timeout_seconds * (max_retries + 1),
+                        "total_timeout_seconds": self.config.llm_timeout_seconds
+                        * (max_retries + 1),
                     },
                     exc_info=True,  # Include full traceback for debugging
                 )
@@ -185,12 +205,12 @@ class OllamaDriver:
                 # Retry on connection errors (including timeouts)
                 if attempt < max_retries:
                     # Exponential backoff with jitter
-                    delay = base_delay * (2 ** attempt)
+                    delay = base_delay * (2**attempt)
                     jitter = delay * 0.1
                     wait_time = delay + jitter
 
                     logger.warning(
-                        f"Connection error, will retry",
+                        "Connection error, will retry",
                         extra={
                             "error": str(err),
                             "error_type": error_type,
@@ -229,7 +249,8 @@ class OllamaDriver:
                         "payload_size_estimate_bytes": payload_size_estimate,
                         "total_attempts": max_retries + 1,
                         "timeout_seconds": self.config.llm_timeout_seconds,
-                        "total_timeout_seconds": self.config.llm_timeout_seconds * (max_retries + 1),
+                        "total_timeout_seconds": self.config.llm_timeout_seconds
+                        * (max_retries + 1),
                     },
                     exc_info=True,
                 )
@@ -258,7 +279,9 @@ class OllamaDriver:
         logger.debug("Calling Ollama tags API", extra={"url": url})
 
         try:
-            assert self.session is not None, "Session not initialized. Call initialize() first."
+            assert self.session is not None, (
+                "Session not initialized. Call initialize() first."
+            )
             async with self.session.get(url) as response:
                 text_body = await response.text()
 
@@ -275,7 +298,10 @@ class OllamaDriver:
                 try:
                     return json.loads(text_body)
                 except json.JSONDecodeError as err:
-                    logger.error("Failed to decode Ollama tags response", extra={"error": str(err)})
+                    logger.error(
+                        "Failed to decode Ollama tags response",
+                        extra={"error": str(err)},
+                    )
                     raise RuntimeError("Failed to decode Ollama tags response") from err
 
         except aiohttp.ClientError as err:

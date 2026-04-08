@@ -33,7 +33,9 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
     router = APIRouter()
 
     @router.post("/v1/summary/generate", response_model=RecapSummaryResponse)
-    async def recap_summary_endpoint(request: RecapSummaryRequest) -> RecapSummaryResponse:
+    async def recap_summary_endpoint(
+        request: RecapSummaryRequest,
+    ) -> RecapSummaryResponse:
         """
         Generate a Japanese recap summary for clustered evidence.
 
@@ -61,7 +63,11 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
         except RuntimeError as exc:
             logger.error(
                 "Recap summary generation failed",
-                extra={"error": str(exc), "job_id": str(request.job_id), "genre": request.genre},
+                extra={
+                    "error": str(exc),
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                },
             )
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -70,7 +76,9 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
                 "Unexpected error while generating recap summary",
                 extra={"job_id": str(request.job_id)},
             )
-            raise HTTPException(status_code=500, detail="Internal server error") from exc
+            raise HTTPException(
+                status_code=500, detail="Internal server error"
+            ) from exc
 
         finally:
             clear_context()
@@ -108,10 +116,11 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
                 "Unexpected error while processing batch recap summary",
                 extra={"request_count": len(request.requests)},
             )
-            raise HTTPException(status_code=500, detail="Internal server error") from exc
+            raise HTTPException(
+                status_code=500, detail="Internal server error"
+            ) from exc
 
         finally:
             clear_context()
 
     return router
-

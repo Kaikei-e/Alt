@@ -81,7 +81,9 @@ def test_config_raises_error_when_service_secret_missing():
     """Test that config raises error when SERVICE_SECRET is not set."""
     os.environ.pop("SERVICE_SECRET", None)
 
-    with pytest.raises(ValueError, match="SERVICE_SECRET environment variable is required"):
+    with pytest.raises(
+        ValueError, match="SERVICE_SECRET environment variable is required"
+    ):
         NewsCreatorConfig()
 
 
@@ -103,8 +105,14 @@ def test_config_llm_options():
     assert config.llm_stop_tokens == ["<end>", "<stop>"]
 
     # Cleanup
-    for key in ["SERVICE_SECRET", "LLM_NUM_PREDICT", "LLM_TOP_P",
-                "LLM_REPEAT_PENALTY", "LLM_NUM_CTX", "LLM_STOP_TOKENS"]:
+    for key in [
+        "SERVICE_SECRET",
+        "LLM_NUM_PREDICT",
+        "LLM_TOP_P",
+        "LLM_REPEAT_PENALTY",
+        "LLM_NUM_CTX",
+        "LLM_STOP_TOKENS",
+    ]:
         os.environ.pop(key, None)
 
 

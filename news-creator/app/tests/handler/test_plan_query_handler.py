@@ -1,6 +1,5 @@
 """Tests for plan_query_handler."""
 
-import pytest
 from unittest.mock import AsyncMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -55,13 +54,16 @@ def test_plan_query_with_history():
     mock_usecase.plan_query.return_value = _successful_response()
     client = _make_app(mock_usecase)
 
-    resp = client.post("/api/v1/plan-query", json={
-        "query": "それについて詳しく",
-        "conversation_history": [
-            {"role": "user", "content": "AIの最新動向は？"},
-            {"role": "assistant", "content": "LLMの進化が著しいです。"},
-        ],
-    })
+    resp = client.post(
+        "/api/v1/plan-query",
+        json={
+            "query": "それについて詳しく",
+            "conversation_history": [
+                {"role": "user", "content": "AIの最新動向は？"},
+                {"role": "assistant", "content": "LLMの進化が著しいです。"},
+            ],
+        },
+    )
 
     assert resp.status_code == 200
     call_args = mock_usecase.plan_query.call_args[0][0]

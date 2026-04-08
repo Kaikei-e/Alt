@@ -1,6 +1,5 @@
 """Tests for summarize handler - HTTP 429 queue full behavior."""
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, Mock
@@ -10,10 +9,10 @@ from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 
 def _make_client(mock_usecase):
     """Create a fresh test client with a fresh router (avoid module-level router reuse)."""
-    from news_creator.handler.summarize_handler import create_summarize_router
     # Reload module to get a fresh router each time
     import importlib
     import news_creator.handler.summarize_handler as mod
+
     importlib.reload(mod)
 
     app = FastAPI()
@@ -25,14 +24,23 @@ def _make_client(mock_usecase):
 def _make_mock_usecase(return_value=None, side_effect=None):
     """Create a mock SummarizeUsecase."""
     from news_creator.usecase.summarize_usecase import SummarizeUsecase
+
     mock = Mock(spec=SummarizeUsecase)
     if side_effect:
         mock.generate_summary = AsyncMock(side_effect=side_effect)
     else:
-        mock.generate_summary = AsyncMock(return_value=return_value or (
-            "テスト要約",
-            {"model": "test-model", "prompt_tokens": 100, "completion_tokens": 50, "total_duration_ms": 1000.0},
-        ))
+        mock.generate_summary = AsyncMock(
+            return_value=return_value
+            or (
+                "テスト要約",
+                {
+                    "model": "test-model",
+                    "prompt_tokens": 100,
+                    "completion_tokens": 50,
+                    "total_duration_ms": 1000.0,
+                },
+            )
+        )
     return mock
 
 
@@ -87,7 +95,9 @@ def test_empty_summary_returns_422():
 
     assert response.status_code == 422
     data = response.json()
-    assert "not processable" in data["detail"].lower() or "empty" in data["detail"].lower()
+    assert (
+        "not processable" in data["detail"].lower() or "empty" in data["detail"].lower()
+    )
 
 
 def test_other_runtime_error_returns_502():

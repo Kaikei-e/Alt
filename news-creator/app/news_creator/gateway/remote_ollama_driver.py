@@ -72,7 +72,9 @@ class RemoteOllamaDriver:
         )
 
         try:
-            assert self._session is not None, "Session not initialized. Call initialize() first."
+            assert self._session is not None, (
+                "Session not initialized. Call initialize() first."
+            )
             async with self._session.post(url, json=payload) as response:
                 text_body = await response.text()
 
@@ -116,7 +118,9 @@ class RemoteOllamaDriver:
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             error_type = type(err).__name__
-            is_timeout = isinstance(err, (aiohttp.ServerTimeoutError, asyncio.TimeoutError))
+            is_timeout = isinstance(
+                err, (aiohttp.ServerTimeoutError, asyncio.TimeoutError)
+            )
             if is_timeout:
                 error_msg = (
                     f"Remote Ollama at {base_url} timed out "
@@ -124,8 +128,7 @@ class RemoteOllamaDriver:
                 )
             else:
                 error_msg = (
-                    f"Remote Ollama at {base_url} request failed: "
-                    f"{error_type} - {err}"
+                    f"Remote Ollama at {base_url} request failed: {error_type} - {err}"
                 )
             logger.error(
                 error_msg,

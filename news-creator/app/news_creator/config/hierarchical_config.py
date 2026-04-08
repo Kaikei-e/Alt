@@ -38,8 +38,12 @@ class HierarchicalConfig:
             chunk_overlap_ratio=_get_float("HIERARCHICAL_CHUNK_OVERLAP_RATIO", 0.15),
             recursive_reduce_max_chars=_get_int("RECURSIVE_REDUCE_MAX_CHARS", 6_000),
             recursive_reduce_max_depth=_get_int("RECURSIVE_REDUCE_MAX_DEPTH", 3),
-            single_article_threshold=_get_int("HIERARCHICAL_SINGLE_ARTICLE_THRESHOLD", 20_000),
-            single_article_chunk_size=_get_int("HIERARCHICAL_SINGLE_ARTICLE_CHUNK_SIZE", 6_000),
+            single_article_threshold=_get_int(
+                "HIERARCHICAL_SINGLE_ARTICLE_THRESHOLD", 20_000
+            ),
+            single_article_chunk_size=_get_int(
+                "HIERARCHICAL_SINGLE_ARTICLE_CHUNK_SIZE", 6_000
+            ),
             token_budget_percent=_get_int("HIERARCHICAL_TOKEN_BUDGET_PERCENT", 75),
         )
 

@@ -34,15 +34,17 @@ def _make_mock_response(status=200, body=""):
 @pytest.mark.asyncio
 async def test_generate_posts_to_given_url(driver):
     """RemoteOllamaDriver sends POST to {base_url}/api/generate."""
-    body = json.dumps({
-        "response": "summary text",
-        "model": "gemma4-e4b-q4km",
-        "done": True,
-        "done_reason": "stop",
-        "prompt_eval_count": 100,
-        "eval_count": 50,
-        "total_duration": 1_000_000_000,
-    })
+    body = json.dumps(
+        {
+            "response": "summary text",
+            "model": "gemma4-e4b-q4km",
+            "done": True,
+            "done_reason": "stop",
+            "prompt_eval_count": 100,
+            "eval_count": 50,
+            "total_duration": 1_000_000_000,
+        }
+    )
     mock_session = _make_mock_session()
     mock_session.post = MagicMock(return_value=_make_mock_response(200, body))
     driver._session = mock_session
@@ -64,9 +66,7 @@ async def test_generate_posts_to_given_url(driver):
 async def test_generate_handles_timeout(driver):
     """Timeout during remote generation raises RuntimeError."""
     mock_session = _make_mock_session()
-    mock_session.post = MagicMock(
-        side_effect=aiohttp.ServerTimeoutError("timed out")
-    )
+    mock_session.post = MagicMock(side_effect=aiohttp.ServerTimeoutError("timed out"))
     driver._session = mock_session
 
     with pytest.raises(RuntimeError, match="Remote Ollama.*timed out"):
@@ -164,9 +164,7 @@ async def test_generate_handles_http_error_status(driver):
 async def test_generate_handles_malformed_json(driver):
     """Malformed JSON response raises RuntimeError."""
     mock_session = _make_mock_session()
-    mock_session.post = MagicMock(
-        return_value=_make_mock_response(200, "not json")
-    )
+    mock_session.post = MagicMock(return_value=_make_mock_response(200, "not json"))
     driver._session = mock_session
 
     with pytest.raises(RuntimeError, match="decode"):

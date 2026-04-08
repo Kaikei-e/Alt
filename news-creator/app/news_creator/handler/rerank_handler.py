@@ -67,7 +67,7 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
                     "candidate_count": len(request.candidates),
                     "model": request.model,
                     "top_k": request.top_k,
-                }
+                },
             )
             # Use request model if specified, otherwise usecase default
             if request.model:
@@ -83,8 +83,7 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
 
             return RerankResponse(
                 results=[
-                    RerankResultItem(index=idx, score=score)
-                    for idx, score in results
+                    RerankResultItem(index=idx, score=score) for idx, score in results
                 ],
                 model=model,
                 processing_time_ms=processing_time_ms,
@@ -93,7 +92,10 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
         except ValueError as exc:
             logger.warning(
                 "Invalid rerank request",
-                extra={"error": str(exc), "query": request.query[:100] if request.query else ""}
+                extra={
+                    "error": str(exc),
+                    "query": request.query[:100] if request.query else "",
+                },
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -114,7 +116,9 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
                 "Unexpected error while re-ranking",
                 extra={"query": request.query[:100] if request.query else ""},
             )
-            raise HTTPException(status_code=500, detail="Internal server error") from exc
+            raise HTTPException(
+                status_code=500, detail="Internal server error"
+            ) from exc
 
         finally:
             clear_context()

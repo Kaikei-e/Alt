@@ -2,7 +2,7 @@
 
 import pytest
 
-from news_creator.domain.models import RecapSummary, Reference
+from news_creator.domain.models import RecapSummary
 from news_creator.evaluation.recap_quality import RecapQualityEvaluator
 
 
@@ -74,9 +74,7 @@ class TestRedundancy:
 
     def test_single_bullet_no_redundancy(self):
         """Single bullet → redundancy is 0.0 by definition."""
-        summary = RecapSummary(
-            title="タイトル", bullets=["一つだけ。"], language="ja"
-        )
+        summary = RecapSummary(title="タイトル", bullets=["一つだけ。"], language="ja")
         evaluator = RecapQualityEvaluator()
         score = evaluator.evaluate_redundancy(summary)
         assert score == pytest.approx(0.0)

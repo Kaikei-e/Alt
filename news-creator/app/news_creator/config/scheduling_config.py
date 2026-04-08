@@ -45,11 +45,20 @@ class SchedulingConfig:
 
         return cls(
             rt_reserved_slots=_get_int("SCHEDULING_RT_RESERVED_SLOTS", 1),
-            aging_threshold_seconds=_get_float("SCHEDULING_AGING_THRESHOLD_SECONDS", 60.0),
+            aging_threshold_seconds=_get_float(
+                "SCHEDULING_AGING_THRESHOLD_SECONDS", 60.0
+            ),
             aging_boost=_get_float("SCHEDULING_AGING_BOOST", 0.5),
-            preemption_enabled=os.getenv("SCHEDULING_PREEMPTION_ENABLED", "true").lower() == "true",
-            preemption_wait_threshold_seconds=_get_float("SCHEDULING_PREEMPTION_WAIT_THRESHOLD_SECONDS", 2.0),
-            priority_promotion_threshold_seconds=_get_float("SCHEDULING_PRIORITY_PROMOTION_THRESHOLD_SECONDS", 120.0),
+            preemption_enabled=os.getenv(
+                "SCHEDULING_PREEMPTION_ENABLED", "true"
+            ).lower()
+            == "true",
+            preemption_wait_threshold_seconds=_get_float(
+                "SCHEDULING_PREEMPTION_WAIT_THRESHOLD_SECONDS", 2.0
+            ),
+            priority_promotion_threshold_seconds=_get_float(
+                "SCHEDULING_PRIORITY_PROMOTION_THRESHOLD_SECONDS", 120.0
+            ),
             guaranteed_be_ratio=_get_int("SCHEDULING_GUARANTEED_BE_RATIO", 5),
             max_queue_depth=_get_int("MAX_QUEUE_DEPTH", 10),
             rt_mode=os.getenv("SCHEDULING_RT_MODE", "fifo").lower(),

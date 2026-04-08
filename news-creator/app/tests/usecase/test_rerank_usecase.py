@@ -28,11 +28,11 @@ class TestRerankUsecase:
         """Test successful re-ranking."""
         with patch(
             "news_creator.usecase.rerank_usecase._get_cross_encoder",
-            return_value=mock_cross_encoder
+            return_value=mock_cross_encoder,
         ):
             results, model, time_ms = await usecase.rerank(
                 query="test query",
-                candidates=["candidate 1", "candidate 2", "candidate 3"]
+                candidates=["candidate 1", "candidate 2", "candidate 3"],
             )
 
         # Results should be sorted by score descending
@@ -57,12 +57,12 @@ class TestRerankUsecase:
         """Test re-ranking with top_k limit."""
         with patch(
             "news_creator.usecase.rerank_usecase._get_cross_encoder",
-            return_value=mock_cross_encoder
+            return_value=mock_cross_encoder,
         ):
             results, model, time_ms = await usecase.rerank(
                 query="test query",
                 candidates=["candidate 1", "candidate 2", "candidate 3"],
-                top_k=2
+                top_k=2,
             )
 
         # Only top 2 results should be returned
@@ -90,13 +90,10 @@ class TestRerankUsecase:
 
         with patch(
             "news_creator.usecase.rerank_usecase._get_cross_encoder",
-            return_value=mock_encoder
+            return_value=mock_encoder,
         ):
             with pytest.raises(RuntimeError, match="Re-ranking failed"):
-                await usecase.rerank(
-                    query="test query",
-                    candidates=["candidate 1"]
-                )
+                await usecase.rerank(query="test query", candidates=["candidate 1"])
 
     @pytest.mark.asyncio
     async def test_rerank_scores_sorted_correctly(self, usecase):
@@ -107,11 +104,10 @@ class TestRerankUsecase:
 
         with patch(
             "news_creator.usecase.rerank_usecase._get_cross_encoder",
-            return_value=mock_encoder
+            return_value=mock_encoder,
         ):
             results, _, _ = await usecase.rerank(
-                query="test query",
-                candidates=["a", "b", "c", "d"]
+                query="test query", candidates=["a", "b", "c", "d"]
             )
 
         # Results should be sorted: b(0.9), d(0.7), a(0.3), c(0.1)

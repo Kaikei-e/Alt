@@ -1,7 +1,5 @@
 """Tests for distributed BE dispatch configuration."""
 
-import os
-import pytest
 from news_creator.config.config import NewsCreatorConfig
 
 
@@ -151,7 +149,9 @@ def test_distributed_be_custom_remote_model(monkeypatch):
 def test_distributed_be_model_overrides(monkeypatch):
     """Per-remote model overrides are parsed."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
-    monkeypatch.setenv("DISTRIBUTED_BE_REMOTES", "http://host-a:11434,http://host-b:11434")
+    monkeypatch.setenv(
+        "DISTRIBUTED_BE_REMOTES", "http://host-a:11434,http://host-b:11434"
+    )
     monkeypatch.setenv(
         "DISTRIBUTED_BE_MODEL_OVERRIDES",
         "http://host-b:11434=gemma4-e4b-rag",

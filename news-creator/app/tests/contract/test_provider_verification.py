@@ -70,6 +70,7 @@ def _create_provider_app() -> FastAPI:
     async def _dynamic_generate_summary(*args: Any, **kwargs: Any):
         if provider_state["current"] == "queue_full":
             from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
+
             raise QueueFullError("Queue depth 20 >= max 20")
         return (
             "これはテスト記事の要約です。",
@@ -81,7 +82,9 @@ def _create_provider_app() -> FastAPI:
             },
         )
 
-    mock_summarize_usecase.generate_summary = AsyncMock(side_effect=_dynamic_generate_summary)
+    mock_summarize_usecase.generate_summary = AsyncMock(
+        side_effect=_dynamic_generate_summary
+    )
     router = summarize_mod.create_summarize_router(mock_summarize_usecase)
     app.include_router(router)
 
@@ -112,7 +115,9 @@ def _create_provider_app() -> FastAPI:
             yield chunk
 
     # chat_stream is awaited then iterated, so return the async generator directly
-    mock_ollama_gateway.chat_stream = AsyncMock(return_value=_mock_chat_stream_iter(payload={}))
+    mock_ollama_gateway.chat_stream = AsyncMock(
+        return_value=_mock_chat_stream_iter(payload={})
+    )
 
     chat_router = chat_mod.create_chat_router(mock_ollama_gateway)
     app.include_router(chat_router)

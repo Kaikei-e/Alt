@@ -10,13 +10,17 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 from news_creator.gateway.ollama_gateway import OllamaGateway
-from news_creator.utils.context_logger import clear_context, set_ai_pipeline, set_processing_stage
+from news_creator.utils.context_logger import (
+    clear_context,
+    set_ai_pipeline,
+    set_processing_stage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +54,9 @@ def create_chat_router(gateway: OllamaGateway) -> APIRouter:
             if not request.stream:
                 # Non-streaming chat (used by morning letter)
                 payload: Dict[str, Any] = {
-                    "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+                    "messages": [
+                        {"role": m.role, "content": m.content} for m in request.messages
+                    ],
                 }
                 if request.model:
                     payload["model"] = request.model
@@ -68,7 +74,9 @@ def create_chat_router(gateway: OllamaGateway) -> APIRouter:
 
             # Build payload preserving all Ollama fields
             payload: Dict[str, Any] = {
-                "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+                "messages": [
+                    {"role": m.role, "content": m.content} for m in request.messages
+                ],
                 "stream": True,
             }
             if request.model:
@@ -111,11 +119,15 @@ def create_chat_router(gateway: OllamaGateway) -> APIRouter:
 
         except RuntimeError as exc:
             logger.error("Chat proxy: upstream error", extra={"error": str(exc)})
-            raise HTTPException(status_code=502, detail="Upstream service error") from exc
+            raise HTTPException(
+                status_code=502, detail="Upstream service error"
+            ) from exc
 
         except Exception as exc:
             logger.exception("Chat proxy: unexpected error")
-            raise HTTPException(status_code=500, detail="Internal server error") from exc
+            raise HTTPException(
+                status_code=500, detail="Internal server error"
+            ) from exc
 
         finally:
             clear_context()

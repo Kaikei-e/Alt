@@ -2,14 +2,14 @@
 name = "news-creator"
 version = "0.1.0"
 description = "LLM-powered summarization service"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
-    "fastapi>=0.100.0",
+    "fastapi>=0.135.0",
     "uvicorn>=0.20.0",
     "aiohttp>=3.13.4",
     "PyJWT>=2.12.0",
     "python-multipart>=0.0.6",
-    "pydantic>=2.0.0",
+    "pydantic>=2.12.5",
     "json-repair>=0.27.0",
     "bleach>=6.0.0",
     "jinja2>=3.1.0",
@@ -30,15 +30,17 @@ dev = [
     "httpx>=0.27.0",  # Required for FastAPI TestClient
     "pyrefly>=0.42.0",
     "pact-python>=3.2.1",
+    "ruff>=0.9.0",  # Linting and formatting
+    "bandit>=1.9.0",  # Security scanning
 ]
 
 [tool.uv]
 constraint-dependencies = ["protobuf>=6.33.5", "Pygments>=2.20.0"]
 
 [tool.pyrefly]
-project-includes = ["."]
-project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist", "**/*.egg-info", "tests/**"]
-python-version = "3.14"
+project-includes = ["news_creator"]
+project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist", "**/*.egg-info", "tests", "tests/**", "scripts", "scripts/**"]
+python-version = "3.13"
 replace-imports-with-any = [
     "sentence_transformers.*", "numpy.*",
 ]

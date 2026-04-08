@@ -6,7 +6,6 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
 
 from jinja2 import Template
 
@@ -42,7 +41,9 @@ class MorningLetterUsecase:
     ):
         self.config = config
         self.llm_provider = llm_provider
-        template_path = Path(__file__).parent.parent.parent / "prompts" / "morning_letter.jinja"
+        template_path = (
+            Path(__file__).parent.parent.parent / "prompts" / "morning_letter.jinja"
+        )
         if template_path.exists():
             with open(template_path, "r", encoding="utf-8") as f:
                 self.template = Template(f.read())
@@ -58,7 +59,11 @@ class MorningLetterUsecase:
         When LLM fails, falls back to deterministic extractive output.
         """
         is_degraded = request.recap_summaries is None
-        degradation_reason = "No recap summaries available; using overnight data only" if is_degraded else None
+        degradation_reason = (
+            "No recap summaries available; using overnight data only"
+            if is_degraded
+            else None
+        )
 
         # Try LLM generation
         try:
@@ -103,7 +108,10 @@ class MorningLetterUsecase:
         prompt = self._build_prompt(request, is_degraded)
 
         json_schema = MorningLetterContent.model_json_schema()
-        llm_options = {"temperature": 0.1, "repeat_penalty": float(self.config.llm_repeat_penalty)}
+        llm_options = {
+            "temperature": 0.1,
+            "repeat_penalty": float(self.config.llm_repeat_penalty),
+        }
 
         result = await self.llm_provider.generate(
             prompt,
@@ -136,12 +144,21 @@ class MorningLetterUsecase:
             if json_repair is not None:
                 data = json_repair.loads(raw_response)
             else:
-                raise RuntimeError(f"Failed to parse Morning Letter JSON: {raw_response[:200]}")
+                raise RuntimeError(
+                    f"Failed to parse Morning Letter JSON: {raw_response[:200]}"
+                )
+
+        # Ensure data is a dict
+        if not isinstance(data, dict):
+            raise RuntimeError(
+                f"Expected JSON object, got {type(data).__name__}: {raw_response[:200]}"
+            )
 
         # Filter sections with invalid keys
         if "sections" in data:
             data["sections"] = [
-                s for s in data["sections"]
+                s
+                for s in data["sections"]
                 if SECTION_KEY_PATTERN.match(s.get("key", ""))
             ]
             if not data["sections"]:
@@ -162,7 +179,9 @@ class MorningLetterUsecase:
         }
         return self.template.render(**render_kwargs)
 
-    def _build_inline_prompt(self, request: MorningLetterRequest, is_degraded: bool) -> str:
+    def _build_inline_prompt(
+        self, request: MorningLetterRequest, is_degraded: bool
+    ) -> str:
         """Fallback inline prompt when template file is not available."""
         parts = [
             "あなたは熟練したニュース編集者です。",
@@ -188,21 +207,25 @@ class MorningLetterUsecase:
         if not is_degraded:
             sections_spec = "top3, what_changed, by_genre:*"
 
-        parts.extend([
-            "",
-            "### 出力仕様",
-            "JSON オブジェクト 1 つのみ。以下の構造:",
-            '{ "schema_version": 1, "lead": "1-2文のトップニュース要約",',
-            f'  "sections": [{{key: "{sections_spec}", title, bullets}}...],',
-            '  "generated_at": "ISO8601", "source_recap_window_days": 3 }',
-            "",
-            "section の key は lead, top3, what_changed, by_genre:<genre名> のいずれかのみ使用。",
-            "各 bullet は具体的な事実と固有名詞を含む日本語。",
-        ])
+        parts.extend(
+            [
+                "",
+                "### 出力仕様",
+                "JSON オブジェクト 1 つのみ。以下の構造:",
+                '{ "schema_version": 1, "lead": "1-2文のトップニュース要約",',
+                f'  "sections": [{{key: "{sections_spec}", title, bullets}}...],',
+                '  "generated_at": "ISO8601", "source_recap_window_days": 3 }',
+                "",
+                "section の key は lead, top3, what_changed, by_genre:<genre名> のいずれかのみ使用。",
+                "各 bullet は具体的な事実と固有名詞を含む日本語。",
+            ]
+        )
 
         return "\n".join(parts)
 
-    def _build_extractive_fallback(self, request: MorningLetterRequest) -> MorningLetterContent:
+    def _build_extractive_fallback(
+        self, request: MorningLetterRequest
+    ) -> MorningLetterContent:
         """Deterministic, LLM-independent fallback from input data."""
         sections: List[MorningLetterSection] = []
 
@@ -213,21 +236,25 @@ class MorningLetterUsecase:
                 if recap.bullets:
                     top_bullets.append(recap.bullets[0])
             if top_bullets:
-                sections.append(MorningLetterSection(
-                    key="top3",
-                    title="Top Stories",
-                    bullets=top_bullets,
-                ))
+                sections.append(
+                    MorningLetterSection(
+                        key="top3",
+                        title="Top Stories",
+                        bullets=top_bullets,
+                    )
+                )
 
             # by_genre sections from recap
             for recap in request.recap_summaries[:5]:
                 genre_key = re.sub(r"[^a-z0-9_\-]", "_", recap.genre.lower())
-                sections.append(MorningLetterSection(
-                    key=f"by_genre:{genre_key}",
-                    title=recap.title,
-                    bullets=recap.bullets[:3],
-                    genre=recap.genre,
-                ))
+                sections.append(
+                    MorningLetterSection(
+                        key=f"by_genre:{genre_key}",
+                        title=recap.title,
+                        bullets=recap.bullets[:3],
+                        genre=recap.genre,
+                    )
+                )
 
         # If no sections yet, build from overnight groups
         if not sections:
@@ -236,22 +263,30 @@ class MorningLetterUsecase:
                 for article in group.articles[:1]:
                     overnight_bullets.append(article.text)
             if overnight_bullets:
-                sections.append(MorningLetterSection(
-                    key="top3",
-                    title="Today's Headlines",
-                    bullets=overnight_bullets[:3],
-                ))
+                sections.append(
+                    MorningLetterSection(
+                        key="top3",
+                        title="Today's Headlines",
+                        bullets=overnight_bullets[:3],
+                    )
+                )
 
         # Ensure at least one section
         if not sections:
-            sections.append(MorningLetterSection(
-                key="top3",
-                title="No Data Available",
-                bullets=["Morning Letter の生成に十分なデータがありませんでした。"],
-            ))
+            sections.append(
+                MorningLetterSection(
+                    key="top3",
+                    title="No Data Available",
+                    bullets=["Morning Letter の生成に十分なデータがありませんでした。"],
+                )
+            )
 
         # Build lead from first section
-        lead = sections[0].bullets[0] if sections and sections[0].bullets else "本日のニュース概要"
+        lead = (
+            sections[0].bullets[0]
+            if sections and sections[0].bullets
+            else "本日のニュース概要"
+        )
 
         return MorningLetterContent(
             schema_version=1,

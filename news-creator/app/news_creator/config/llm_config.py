@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Union
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,9 @@ class LLMConfig:
             "stop": list(self.stop_tokens),
         }
 
-    def get_keep_alive_for_model(self, model_name: str, model_8k_name: str, model_60k_name: str) -> Union[int, str]:
+    def get_keep_alive_for_model(
+        self, model_name: str, model_8k_name: str, model_60k_name: str
+    ) -> Union[int, str]:
         """Get keep_alive value for a specific model."""
         if model_name == model_8k_name:
             return self.keep_alive_8k
@@ -100,8 +102,12 @@ class LLMConfig:
             summary_temperature=_get_float("SUMMARY_TEMPERATURE", 0.5),
             max_repetition_retries=_get_int("MAX_REPETITION_RETRIES", 2),
             repetition_threshold=_get_float("REPETITION_THRESHOLD", 0.3),
-            recap_min_source_articles_for_llm=_get_int("RECAP_MIN_SOURCE_ARTICLES_FOR_LLM", 3),
-            recap_min_representative_sentences_for_llm=_get_int("RECAP_MIN_REPRESENTATIVE_SENTENCES_FOR_LLM", 4),
+            recap_min_source_articles_for_llm=_get_int(
+                "RECAP_MIN_SOURCE_ARTICLES_FOR_LLM", 3
+            ),
+            recap_min_representative_sentences_for_llm=_get_int(
+                "RECAP_MIN_REPRESENTATIVE_SENTENCES_FOR_LLM", 4
+            ),
             recap_summary_temperature=_get_float("RECAP_SUMMARY_TEMPERATURE", 0.0),
             recap_ja_ratio_threshold=_get_float("RECAP_JA_RATIO_THRESHOLD", 0.6),
             recap_summary_repair_attempts=_get_int("RECAP_SUMMARY_REPAIR_ATTEMPTS", 1),

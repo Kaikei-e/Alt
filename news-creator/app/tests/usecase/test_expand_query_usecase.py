@@ -110,7 +110,9 @@ async def test_expand_query_llm_failure():
     usecase = ExpandQueryUsecase(config=config, llm_provider=llm_provider)
 
     with pytest.raises(RuntimeError, match="Query expansion failed"):
-        await usecase.expand_query(query="test query", japanese_count=1, english_count=3)
+        await usecase.expand_query(
+            query="test query", japanese_count=1, english_count=3
+        )
 
 
 @pytest.mark.asyncio
@@ -339,7 +341,13 @@ class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
         assert "[TOPIC_B]" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
             "Template should contain abstract placeholder [TOPIC_B]"
         )
-        for phrase in ["天気予報", "weather forecast", "スマートフォン", "iPhone 16", "Pixel 9"]:
+        for phrase in [
+            "天気予報",
+            "weather forecast",
+            "スマートフォン",
+            "iPhone 16",
+            "Pixel 9",
+        ]:
             assert phrase not in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
                 f"Template contains concrete topic example '{phrase}'"
             )

@@ -7,11 +7,9 @@ from uuid import uuid4
 
 from news_creator.domain.models import (
     LLMGenerateResponse,
-    MorningLetterContent,
     MorningLetterGroupInput,
     MorningLetterRecapInput,
     MorningLetterRequest,
-    MorningLetterSection,
     RepresentativeSentence,
 )
 from news_creator.usecase.morning_letter_usecase import MorningLetterUsecase

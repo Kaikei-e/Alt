@@ -33,17 +33,14 @@ def _get_cross_encoder(model_name: str):
     if _cross_encoder is None or _loaded_model_name != model_name:
         from sentence_transformers import CrossEncoder
 
-        logger.info(
-            "Loading cross-encoder model",
-            extra={"model_name": model_name}
-        )
+        logger.info("Loading cross-encoder model", extra={"model_name": model_name})
         load_start = time.time()
         _cross_encoder = CrossEncoder(model_name)
         _loaded_model_name = model_name
         load_elapsed = time.time() - load_start
         logger.info(
             "Cross-encoder model loaded",
-            extra={"model_name": model_name, "load_time_s": round(load_elapsed, 2)}
+            extra={"model_name": model_name, "load_time_s": round(load_elapsed, 2)},
         )
 
     return _cross_encoder
@@ -105,7 +102,7 @@ class RerankUsecase:
                 "candidate_count": len(candidates),
                 "top_k": top_k,
                 "model": self.model_name,
-            }
+            },
         )
 
         try:
@@ -140,7 +137,7 @@ class RerankUsecase:
                     "top_score": round(results[0][1], 4) if results else None,
                     "model": self.model_name,
                     "elapsed_ms": round(elapsed_ms, 2),
-                }
+                },
             )
 
             return results, self.model_name, elapsed_ms

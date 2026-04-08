@@ -111,7 +111,9 @@ def _build_batch_request_payload():
                 "clusters": [
                     {
                         "cluster_id": 0,
-                        "representative_sentences": [{"text": "Politics news sentence."}],
+                        "representative_sentences": [
+                            {"text": "Politics news sentence."}
+                        ],
                         "top_terms": ["politics"],
                     }
                 ],
@@ -230,4 +232,3 @@ def test_batch_recap_summary_handler_invalid_request():
     resp = client.post("/v1/summary/generate/batch", json=payload)
 
     assert resp.status_code == 422  # Validation error
-

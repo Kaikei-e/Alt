@@ -5,7 +5,6 @@ Ensures chat_stream() and chat_generate() merge config base options
 model reload from parameter mismatch between batch and chat requests.
 """
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -39,10 +38,6 @@ class TestChatStreamOptionsMerge:
     @pytest.mark.asyncio
     async def test_base_options_included_when_caller_has_no_options(self, driver):
         """When caller sends no options, config base options are used."""
-        payload = {
-            "model": "gemma4-e4b-12k",
-            "messages": [{"role": "user", "content": "test"}],
-        }
 
         captured_payload = {}
 
@@ -50,9 +45,11 @@ class TestChatStreamOptionsMerge:
             captured_payload.update(json)
             mock_resp = AsyncMock()
             mock_resp.status = 200
-            mock_resp.content.__aiter__ = AsyncMock(return_value=iter([
-                b'{"response": "hi", "done": true, "done_reason": "stop"}\n'
-            ]))
+            mock_resp.content.__aiter__ = AsyncMock(
+                return_value=iter(
+                    [b'{"response": "hi", "done": true, "done_reason": "stop"}\n']
+                )
+            )
             return mock_resp
 
         mock_session = AsyncMock()
@@ -88,8 +85,17 @@ class TestChatStreamOptionsMerge:
     def test_config_base_options_structure(self, config):
         """Config base options contain all required Ollama parameters."""
         opts = config.get_llm_options()
-        required_keys = {"num_ctx", "num_predict", "num_batch", "temperature",
-                         "top_p", "top_k", "repeat_penalty", "num_keep", "stop"}
+        required_keys = {
+            "num_ctx",
+            "num_predict",
+            "num_batch",
+            "temperature",
+            "top_p",
+            "top_k",
+            "repeat_penalty",
+            "num_keep",
+            "stop",
+        }
         assert required_keys.issubset(set(opts.keys()))
 
 
@@ -120,6 +126,7 @@ class TestChatGenerateOptionsMerge:
 # omitted so Gemma can use its default thinking behavior.
 # ---------------------------------------------------------------------------
 
+
 class _AsyncLineIterator:
     """Async iterator over bytes lines, mimicking aiohttp StreamReader."""
 
@@ -138,7 +145,9 @@ class _AsyncLineIterator:
         return line
 
 
-def _make_mock_session(response_lines: list[bytes] | None = None, json_body: dict | None = None):
+def _make_mock_session(
+    response_lines: list[bytes] | None = None, json_body: dict | None = None
+):
     """Create a mock aiohttp session that captures the POSTed URL and payload.
 
     Returns (session, captured) where captured is a dict with 'url' and 'json'.
@@ -188,7 +197,9 @@ class TestChatStreamUsesApiChat:
         async for chunk in driver.chat_stream(payload):
             chunks.append(chunk)
 
-        assert captured["url"].endswith("/api/chat"), f"Expected /api/chat, got {captured['url']}"
+        assert captured["url"].endswith("/api/chat"), (
+            f"Expected /api/chat, got {captured['url']}"
+        )
         assert "/api/generate" not in captured["url"]
 
     @pytest.mark.asyncio
@@ -280,7 +291,9 @@ class TestChatGenerateUsesApiChat:
         }
         await driver.chat_generate(payload)
 
-        assert captured["url"].endswith("/api/chat"), f"Expected /api/chat, got {captured['url']}"
+        assert captured["url"].endswith("/api/chat"), (
+            f"Expected /api/chat, got {captured['url']}"
+        )
 
     @pytest.mark.asyncio
     async def test_omits_think_parameter(self, driver):

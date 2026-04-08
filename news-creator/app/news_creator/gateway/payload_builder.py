@@ -51,7 +51,9 @@ class GeneratePayload:
         # Only include format if it's set
         if self.format is not None:
             result["format"] = self.format
-            logger.debug("Using structured output format", extra={"format": self.format})
+            logger.debug(
+                "Using structured output format", extra={"format": self.format}
+            )
 
         return result
 

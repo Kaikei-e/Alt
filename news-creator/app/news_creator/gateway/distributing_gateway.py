@@ -21,8 +21,8 @@ from news_creator.port.llm_provider_port import LLMProviderPort
 logger = logging.getLogger(__name__)
 
 # Per-coroutine tracking of the remote reservation selected during hold_slot()
-_dispatch_state_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = contextvars.ContextVar(
-    "_dispatch_state_var", default=None
+_dispatch_state_var: contextvars.ContextVar[Optional[Dict[str, Any]]] = (
+    contextvars.ContextVar("_dispatch_state_var", default=None)
 )
 
 
@@ -118,7 +118,10 @@ class DistributingGateway(LLMProviderPort):
             # All remotes down → local fallback
             logger.debug(
                 "No idle healthy remotes, falling back to local",
-                extra={"dispatch_target": "local", "fallback_reason": "all_remotes_busy_or_unhealthy"},
+                extra={
+                    "dispatch_target": "local",
+                    "fallback_reason": "all_remotes_busy_or_unhealthy",
+                },
             )
             async with self._local.hold_slot(is_high_priority) as slot:
                 yield slot
@@ -162,7 +165,9 @@ class DistributingGateway(LLMProviderPort):
         options: Optional[Dict[str, Any]] = None,
     ) -> LLMGenerateResponse:
         dispatch_state = _dispatch_state_var.get(None)
-        remote_url = dispatch_state["remote_url"] if dispatch_state is not None else None
+        remote_url = (
+            dispatch_state["remote_url"] if dispatch_state is not None else None
+        )
 
         if remote_url is not None:
             tried: set[str] = set()
@@ -170,9 +175,13 @@ class DistributingGateway(LLMProviderPort):
 
             while candidate_url is not None:
                 payload = self._build_payload(
-                    prompt, target_url=candidate_url, model=model,
-                    num_predict=num_predict, keep_alive=keep_alive,
-                    format=format, options=options,
+                    prompt,
+                    target_url=candidate_url,
+                    model=model,
+                    num_predict=num_predict,
+                    keep_alive=keep_alive,
+                    format=format,
+                    options=options,
                 )
                 logger.info(
                     "generate_raw dispatching to remote",
@@ -184,19 +193,28 @@ class DistributingGateway(LLMProviderPort):
                 )
                 try:
                     response = await self._remote_driver.generate(
-                        base_url=candidate_url, payload=payload,
+                        base_url=candidate_url,
+                        payload=payload,
                     )
                     self._health_checker.mark_success(candidate_url)
-                    if dispatch_state is not None and dispatch_state["remote_url"] == candidate_url:
+                    if (
+                        dispatch_state is not None
+                        and dispatch_state["remote_url"] == candidate_url
+                    ):
                         dispatch_state["released"] = True
                     return response
                 except RuntimeError:
                     failed_url = candidate_url
                     tried.add(candidate_url)
                     self._health_checker.mark_failure(candidate_url)
-                    if dispatch_state is not None and dispatch_state["remote_url"] == candidate_url:
+                    if (
+                        dispatch_state is not None
+                        and dispatch_state["remote_url"] == candidate_url
+                    ):
                         dispatch_state["released"] = True
-                    next_candidates = self._health_checker.get_healthy_remotes(exclude=tried)
+                    next_candidates = self._health_checker.get_healthy_remotes(
+                        exclude=tried
+                    )
                     if not next_candidates:
                         logger.warning(
                             "All healthy remotes exhausted during generate_raw; falling back to local",
@@ -272,7 +290,9 @@ class DistributingGateway(LLMProviderPort):
         # Reuse local gateway's config for model name and options
         config = getattr(self._local, "config", None)
         if config is not None:
-            effective_model = model or override_model or self._remote_model or config.model_name
+            effective_model = (
+                model or override_model or self._remote_model or config.model_name
+            )
             llm_options = config.get_llm_options()
             if options:
                 filtered = {k: v for k, v in options.items() if k != "num_ctx"}
@@ -280,11 +300,14 @@ class DistributingGateway(LLMProviderPort):
             if num_predict is not None:
                 llm_options["num_predict"] = num_predict
             final_keep_alive = (
-                keep_alive if keep_alive is not None
+                keep_alive
+                if keep_alive is not None
                 else config.get_keep_alive_for_model(effective_model)
             )
         else:
-            effective_model = model or override_model or self._remote_model or "gemma4-e4b-q4km"
+            effective_model = (
+                model or override_model or self._remote_model or "gemma4-e4b-q4km"
+            )
             llm_options = options or {}
             if num_predict is not None:
                 llm_options["num_predict"] = num_predict

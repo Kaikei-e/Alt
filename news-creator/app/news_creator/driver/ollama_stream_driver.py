@@ -40,7 +40,9 @@ class OllamaStreamDriver:
             await self.session.close()
             logger.info("Ollama stream driver cleaned up")
 
-    def _merge_options(self, caller_options: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _merge_options(
+        self, caller_options: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """Merge config base options with caller options.
 
         Config base options (num_batch, num_keep, stop, etc.) are used as
@@ -53,7 +55,9 @@ class OllamaStreamDriver:
             base.update(caller_options)
         return base
 
-    async def chat_stream(self, payload: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
+    async def chat_stream(
+        self, payload: Dict[str, Any]
+    ) -> AsyncIterator[Dict[str, Any]]:
         """Proxy chat requests through Ollama /api/chat with think=false.
 
         Forwards messages directly to Ollama's /api/chat endpoint, letting
@@ -103,7 +107,9 @@ class OllamaStreamDriver:
         async with self.session.post(url, json=chat_payload) as response:
             if response.status != 200:
                 text_body = await response.text()
-                raise RuntimeError(f"Ollama chat API error: HTTP {response.status} - {text_body[:200]}")
+                raise RuntimeError(
+                    f"Ollama chat API error: HTTP {response.status} - {text_body[:200]}"
+                )
 
             async for line_bytes in response.content:
                 line = line_bytes.decode("utf-8").strip()
@@ -113,7 +119,9 @@ class OllamaStreamDriver:
                     chunk = json.loads(line)
                     yield chunk
                 except json.JSONDecodeError:
-                    logger.warning("Failed to decode chat stream line", extra={"line": line[:200]})
+                    logger.warning(
+                        "Failed to decode chat stream line", extra={"line": line[:200]}
+                    )
 
     async def chat_generate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Non-streaming chat via Ollama /api/chat with think=false.
@@ -176,7 +184,9 @@ class OllamaStreamDriver:
 
             return await response.json()
 
-    async def generate_stream(self, payload: Dict[str, Any]) -> AsyncIterator[Dict[str, Any]]:
+    async def generate_stream(
+        self, payload: Dict[str, Any]
+    ) -> AsyncIterator[Dict[str, Any]]:
         """
         Call Ollama generate API with streaming support.
 
@@ -194,7 +204,9 @@ class OllamaStreamDriver:
             raise ValueError("payload must contain 'prompt'")
 
         if not payload.get("stream", False):
-            raise ValueError("OllamaStreamDriver requires stream=True. Use OllamaDriver for non-streaming requests.")
+            raise ValueError(
+                "OllamaStreamDriver requires stream=True. Use OllamaDriver for non-streaming requests."
+            )
 
         if self.session is None or self.session.closed:
             await self.initialize()
@@ -211,9 +223,10 @@ class OllamaStreamDriver:
             f"estimated_tokens={estimated_tokens}, model={model}, payload_size={payload_size_estimate} bytes"
         )
 
-        assert self.session is not None, "Session not initialized. Call initialize() first."
+        assert self.session is not None, (
+            "Session not initialized. Call initialize() first."
+        )
         async with self.session.post(url, json=payload) as response:
-
             if response.status != 200:
                 text_body = await response.text()
                 error_msg = (
@@ -229,14 +242,16 @@ class OllamaStreamDriver:
                         "model": model,
                     },
                 )
-                raise RuntimeError(f"Ollama API error: HTTP {response.status} - {text_body[:200]}")
+                raise RuntimeError(
+                    f"Ollama API error: HTTP {response.status} - {text_body[:200]}"
+                )
 
             logger.info(
                 "Starting to read streaming response from Ollama",
                 extra={
                     "url": url,
                     "model": model,
-                }
+                },
             )
 
             lines_read = 0
@@ -256,7 +271,7 @@ class OllamaStreamDriver:
 
                         lines_read += 1
                         # Decode bytes to string and strip whitespace
-                        line = line_bytes.decode('utf-8').strip()
+                        line = line_bytes.decode("utf-8").strip()
 
                         if not line:
                             # Empty line, skip
@@ -274,10 +289,10 @@ class OllamaStreamDriver:
                                         "lines_read": lines_read,
                                         "url": url,
                                         "model": model,
-                                    }
+                                    },
                                 )
                             yield parsed
-                        except json.JSONDecodeError as e:
+                        except json.JSONDecodeError:
                             logger.error(
                                 "Failed to decode stream line",
                                 extra={
@@ -286,7 +301,7 @@ class OllamaStreamDriver:
                                     "url": url,
                                     "model": model,
                                 },
-                                exc_info=True
+                                exc_info=True,
                             )
 
                     except aiohttp.ClientConnectionError as conn_err:
@@ -303,7 +318,7 @@ class OllamaStreamDriver:
                                     "url": url,
                                     "model": model,
                                     "has_data": has_data,
-                                }
+                                },
                             )
                             # Break the loop to end the stream gracefully
                             connection_closed_gracefully = True
@@ -318,7 +333,7 @@ class OllamaStreamDriver:
                                     "url": url,
                                     "model": model,
                                 },
-                                exc_info=True
+                                exc_info=True,
                             )
                             raise
 
@@ -330,7 +345,7 @@ class OllamaStreamDriver:
                             "url": url,
                             "model": model,
                             "connection_closed_gracefully": connection_closed_gracefully,
-                        }
+                        },
                     )
                 else:
                     logger.info(
@@ -341,7 +356,7 @@ class OllamaStreamDriver:
                             "url": url,
                             "model": model,
                             "connection_closed_gracefully": connection_closed_gracefully,
-                        }
+                        },
                     )
 
             except aiohttp.ClientConnectionError as conn_err:
@@ -357,7 +372,7 @@ class OllamaStreamDriver:
                             "url": url,
                             "model": model,
                         },
-                        exc_info=True
+                        exc_info=True,
                     )
                     raise
                 # If we have data, log and let the stream end naturally
@@ -370,7 +385,7 @@ class OllamaStreamDriver:
                         "chunks_yielded": chunks_yielded,
                         "url": url,
                         "model": model,
-                    }
+                    },
                 )
 
             except Exception as stream_err:
@@ -384,7 +399,6 @@ class OllamaStreamDriver:
                         "url": url,
                         "model": model,
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
                 raise
-

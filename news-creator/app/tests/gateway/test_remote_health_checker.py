@@ -1,10 +1,9 @@
 """Tests for RemoteHealthChecker."""
 
-import asyncio
 import json
 import time
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 import aiohttp
 
 from news_creator.gateway.remote_health_checker import RemoteHealthChecker

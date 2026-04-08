@@ -50,14 +50,16 @@ def mock_driver():
     driver = AsyncMock()
     driver.initialize = AsyncMock()
     driver.cleanup = AsyncMock()
-    driver.generate = AsyncMock(return_value={
-        "response": "Test response",
-        "model": "test-model",
-        "done": True,
-        "prompt_eval_count": 100,
-        "eval_count": 50,
-        "total_duration": 1000000,
-    })
+    driver.generate = AsyncMock(
+        return_value={
+            "response": "Test response",
+            "model": "test-model",
+            "done": True,
+            "prompt_eval_count": 100,
+            "eval_count": 50,
+            "total_duration": 1000000,
+        }
+    )
     driver.list_tags = AsyncMock(return_value={"models": []})
     return driver
 
@@ -65,7 +67,9 @@ def mock_driver():
 @pytest.mark.asyncio
 async def test_semaphore_queues_requests(mock_config, mock_driver):
     """Test that semaphore properly queues concurrent requests."""
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -110,13 +114,17 @@ async def test_semaphore_queues_requests(mock_config, mock_driver):
 
 
 @pytest.mark.asyncio
-async def test_semaphore_allows_concurrent_requests_when_configured(mock_config, mock_driver):
+async def test_semaphore_allows_concurrent_requests_when_configured(
+    mock_config, mock_driver
+):
     """Test that semaphore allows concurrent requests when concurrency > 1."""
     mock_config.ollama_request_concurrency = 2
     # Set RT reserved to 0 so all slots are available for BE (low priority) requests
     mock_config.scheduling_rt_reserved_slots = 0
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -163,7 +171,9 @@ async def test_semaphore_defaults_to_one(mock_config, mock_driver):
     # Don't set ollama_request_concurrency
     mock_config.ollama_request_concurrency = 1
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -185,7 +195,9 @@ async def test_semaphore_fifo_order(mock_config, mock_driver):
     mock_config.is_bucket_model_name = Mock(return_value=False)
     mock_config.get_keep_alive_for_model = Mock(return_value=-1)
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -209,7 +221,6 @@ async def test_semaphore_fifo_order(mock_config, mock_driver):
 
         # Create a closure to track request IDs
         request_counter = [0]
-        original_generate = mock_driver.generate
 
         async def tracked_generate(payload):
             request_counter[0] += 1
@@ -238,7 +249,9 @@ async def test_semaphore_fifo_order(mock_config, mock_driver):
         # Verify FIFO order: requests should be processed in the order they were submitted
         # Note: This test verifies that asyncio.Semaphore maintains FIFO order
         # If the semaphore doesn't guarantee FIFO, this test may fail
-        assert len(processing_order) == 5, f"Expected 5 processed requests, got {len(processing_order)}"
+        assert len(processing_order) == 5, (
+            f"Expected 5 processed requests, got {len(processing_order)}"
+        )
 
         # Check if processing order matches submission order (FIFO)
         # With concurrency=1, requests should be processed strictly in order
@@ -246,7 +259,9 @@ async def test_semaphore_fifo_order(mock_config, mock_driver):
         is_fifo = processing_order == expected_order
 
         # At minimum, verify that all requests were processed
-        assert set(processing_order) == set(expected_order), f"All requests should be processed. Got: {processing_order}"
+        assert set(processing_order) == set(expected_order), (
+            f"All requests should be processed. Got: {processing_order}"
+        )
 
         # Assert FIFO order - this will fail if asyncio.Semaphore doesn't guarantee FIFO
         assert is_fifo, (
@@ -263,7 +278,9 @@ async def test_high_priority_bypasses_low_priority_queue(mock_config, mock_drive
     """Test that high priority requests use the high priority queue."""
     mock_config.ollama_request_concurrency = 1
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -281,7 +298,9 @@ async def test_low_priority_default(mock_config, mock_driver):
     """Test that default priority is low."""
     mock_config.ollama_request_concurrency = 1
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -295,12 +314,17 @@ async def test_low_priority_default(mock_config, mock_driver):
 
 
 @pytest.mark.asyncio
-async def test_ttft_metrics_logged_with_cold_start_warning(mock_config, mock_driver, caplog):
+async def test_ttft_metrics_logged_with_cold_start_warning(
+    mock_config, mock_driver, caplog
+):
     """Test that TTFT metrics are logged with cold start warning when load_duration > 0.1s."""
     import logging
+
     caplog.set_level(logging.WARNING)
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -312,7 +336,7 @@ async def test_ttft_metrics_logged_with_cold_start_warning(mock_config, mock_dri
             "prompt_eval_count": 500,
             "eval_count": 100,
             "total_duration": 3_000_000_000,  # 3 seconds total
-            "load_duration": 2_000_000_000,    # 2 seconds load time (cold start)
+            "load_duration": 2_000_000_000,  # 2 seconds load time (cold start)
             "prompt_eval_duration": 500_000_000,  # 0.5 seconds prefill
             "eval_duration": 500_000_000,  # 0.5 seconds decode
         }
@@ -322,19 +346,30 @@ async def test_ttft_metrics_logged_with_cold_start_warning(mock_config, mock_dri
 
         # Verify cold start warning was logged
         warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-        cold_start_warnings = [r for r in warning_records if "cold start" in r.message.lower() or "COLD_START" in r.message]
-        assert len(cold_start_warnings) >= 1, "Cold start warning should be logged when load_duration > 0.1s"
+        cold_start_warnings = [
+            r
+            for r in warning_records
+            if "cold start" in r.message.lower() or "COLD_START" in r.message
+        ]
+        assert len(cold_start_warnings) >= 1, (
+            "Cold start warning should be logged when load_duration > 0.1s"
+        )
 
         await gateway.cleanup()
 
 
 @pytest.mark.asyncio
-async def test_ttft_metrics_logged_without_cold_start_warning(mock_config, mock_driver, caplog):
+async def test_ttft_metrics_logged_without_cold_start_warning(
+    mock_config, mock_driver, caplog
+):
     """Test that no cold start warning is logged when model is hot (load_duration < 0.1s)."""
     import logging
+
     caplog.set_level(logging.WARNING)
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -346,7 +381,7 @@ async def test_ttft_metrics_logged_without_cold_start_warning(mock_config, mock_
             "prompt_eval_count": 500,
             "eval_count": 100,
             "total_duration": 600_000_000,  # 0.6 seconds total
-            "load_duration": 1_000_000,    # 0.001 seconds (hot)
+            "load_duration": 1_000_000,  # 0.001 seconds (hot)
             "prompt_eval_duration": 300_000_000,  # 0.3 seconds prefill
             "eval_duration": 300_000_000,  # 0.3 seconds decode
         }
@@ -356,8 +391,14 @@ async def test_ttft_metrics_logged_without_cold_start_warning(mock_config, mock_
 
         # Verify no cold start warning was logged
         warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-        cold_start_warnings = [r for r in warning_records if "cold start" in r.message.lower() or "COLD_START" in r.message]
-        assert len(cold_start_warnings) == 0, "No cold start warning should be logged when load_duration < 0.1s"
+        cold_start_warnings = [
+            r
+            for r in warning_records
+            if "cold start" in r.message.lower() or "COLD_START" in r.message
+        ]
+        assert len(cold_start_warnings) == 0, (
+            "No cold start warning should be logged when load_duration < 0.1s"
+        )
 
         await gateway.cleanup()
 
@@ -366,9 +407,12 @@ async def test_ttft_metrics_logged_without_cold_start_warning(mock_config, mock_
 async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
     """Test that TTFT breakdown is logged in a structured format."""
     import logging
+
     caplog.set_level(logging.INFO)
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -380,7 +424,7 @@ async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
             "prompt_eval_count": 500,
             "eval_count": 100,
             "total_duration": 1_500_000_000,  # 1.5 seconds total
-            "load_duration": 100_000_000,    # 0.1 seconds load
+            "load_duration": 100_000_000,  # 0.1 seconds load
             "prompt_eval_duration": 400_000_000,  # 0.4 seconds prefill
             "eval_duration": 1_000_000_000,  # 1.0 seconds decode
         }
@@ -390,13 +434,21 @@ async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
 
         # Verify TTFT breakdown is logged
         info_records = [r for r in caplog.records if r.levelno == logging.INFO]
-        ttft_logs = [r for r in info_records if "ttft" in r.message.lower() or "TTFT" in r.message]
+        ttft_logs = [
+            r
+            for r in info_records
+            if "ttft" in r.message.lower() or "TTFT" in r.message
+        ]
         assert len(ttft_logs) >= 1, "TTFT breakdown should be logged"
 
         # Verify the TTFT log contains expected components
         ttft_log = ttft_logs[0]
-        assert "load_duration" in ttft_log.message.lower() or hasattr(ttft_log, "load_duration_s")
-        assert "prompt_eval" in ttft_log.message.lower() or hasattr(ttft_log, "prompt_eval_duration_s")
+        assert "load_duration" in ttft_log.message.lower() or hasattr(
+            ttft_log, "load_duration_s"
+        )
+        assert "prompt_eval" in ttft_log.message.lower() or hasattr(
+            ttft_log, "prompt_eval_duration_s"
+        )
 
         await gateway.cleanup()
 
@@ -406,7 +458,9 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
     """Test that semaphore is acquired BEFORE generator iteration starts (eager acquisition)."""
     mock_config.ollama_request_concurrency = 1
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         # Create a mock stream driver
         mock_stream_driver = AsyncMock()
 
@@ -423,7 +477,10 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
         mock_stream_driver.initialize = AsyncMock()
         mock_stream_driver.cleanup = AsyncMock()
 
-        with patch("news_creator.gateway.ollama_gateway.OllamaStreamDriver", return_value=mock_stream_driver):
+        with patch(
+            "news_creator.gateway.ollama_gateway.OllamaStreamDriver",
+            return_value=mock_stream_driver,
+        ):
             gateway = OllamaGateway(mock_config)
             await gateway.initialize()
 
@@ -439,8 +496,9 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
             generator: AsyncIterator[LLMGenerateResponse] = result
 
             # Verify semaphore was acquired (RT slots decreased since stream=True is high priority)
-            assert gateway._semaphore._rt_available < initial_rt_available, \
+            assert gateway._semaphore._rt_available < initial_rt_available, (
                 "Semaphore should be acquired before generator iteration"
+            )
 
             # Consume the generator
             chunks = []
@@ -448,8 +506,9 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
                 chunks.append(chunk)
 
             # Verify semaphore was released after iteration
-            assert gateway._semaphore._rt_available == initial_rt_available, \
+            assert gateway._semaphore._rt_available == initial_rt_available, (
                 "Semaphore should be released after generator completes"
+            )
 
             # Verify we got all chunks
             assert len(chunks) == 3
@@ -458,11 +517,15 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
 
 
 @pytest.mark.asyncio
-async def test_streaming_semaphore_released_on_early_termination(mock_config, mock_driver):
+async def test_streaming_semaphore_released_on_early_termination(
+    mock_config, mock_driver
+):
     """Test that semaphore is released when generator is terminated early."""
     mock_config.ollama_request_concurrency = 1
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         # Create a mock stream driver
         mock_stream_driver = AsyncMock()
 
@@ -479,7 +542,10 @@ async def test_streaming_semaphore_released_on_early_termination(mock_config, mo
         mock_stream_driver.initialize = AsyncMock()
         mock_stream_driver.cleanup = AsyncMock()
 
-        with patch("news_creator.gateway.ollama_gateway.OllamaStreamDriver", return_value=mock_stream_driver):
+        with patch(
+            "news_creator.gateway.ollama_gateway.OllamaStreamDriver",
+            return_value=mock_stream_driver,
+        ):
             gateway = OllamaGateway(mock_config)
             await gateway.initialize()
 
@@ -509,22 +575,28 @@ async def test_streaming_semaphore_released_on_early_termination(mock_config, mo
                 await generator.aclose()
 
             # Verify semaphore was released after early termination
-            assert gateway._semaphore._rt_available == initial_rt_available, \
+            assert gateway._semaphore._rt_available == initial_rt_available, (
                 "Semaphore should be released after early termination"
+            )
 
             await gateway.cleanup()
 
 
 @pytest.mark.asyncio
-async def test_streaming_high_priority_immediate_acquisition(mock_config, mock_driver, caplog):
+async def test_streaming_high_priority_immediate_acquisition(
+    mock_config, mock_driver, caplog
+):
     """Test that streaming (high priority) requests acquire semaphore immediately."""
     import logging
+
     caplog.set_level(logging.INFO)
 
     mock_config.ollama_request_concurrency = 2
     mock_config.scheduling_rt_reserved_slots = 1  # 1 slot reserved for RT
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         mock_stream_driver = AsyncMock()
 
         async def mock_generate_stream(payload):
@@ -535,7 +607,10 @@ async def test_streaming_high_priority_immediate_acquisition(mock_config, mock_d
         mock_stream_driver.initialize = AsyncMock()
         mock_stream_driver.cleanup = AsyncMock()
 
-        with patch("news_creator.gateway.ollama_gateway.OllamaStreamDriver", return_value=mock_stream_driver):
+        with patch(
+            "news_creator.gateway.ollama_gateway.OllamaStreamDriver",
+            return_value=mock_stream_driver,
+        ):
             gateway = OllamaGateway(mock_config)
             await gateway.initialize()
 
@@ -549,11 +624,13 @@ async def test_streaming_high_priority_immediate_acquisition(mock_config, mock_d
             # Verify log shows HIGH PRIORITY acquisition
             info_records = [r for r in caplog.records if r.levelno == logging.INFO]
             high_priority_logs = [
-                r for r in info_records
+                r
+                for r in info_records
                 if "HIGH PRIORITY" in r.message and "streaming generator" in r.message
             ]
-            assert len(high_priority_logs) >= 1, \
+            assert len(high_priority_logs) >= 1, (
                 "Streaming requests should log HIGH PRIORITY semaphore acquisition"
+            )
 
             # Consume the generator
             async for _ in generator:
@@ -563,7 +640,9 @@ async def test_streaming_high_priority_immediate_acquisition(mock_config, mock_d
 
 
 @pytest.mark.asyncio
-async def test_slow_generation_warning_uses_decode_speed(mock_config, mock_driver, caplog):
+async def test_slow_generation_warning_uses_decode_speed(
+    mock_config, mock_driver, caplog
+):
     """Test that slow generation warning uses decode speed (eval_duration) not total_duration.
 
     Previously, tokens_per_second was calculated as eval_count / total_duration, which
@@ -571,9 +650,12 @@ async def test_slow_generation_warning_uses_decode_speed(mock_config, mock_drive
     warnings. The fix uses eval_count / eval_duration (decode speed) for accurate detection.
     """
     import logging
+
     caplog.set_level(logging.WARNING)
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -600,7 +682,9 @@ async def test_slow_generation_warning_uses_decode_speed(mock_config, mock_drive
         # Old calculation: 70 tokens / 70 seconds = 1 tok/s -> would warn (WRONG)
         # New calculation: 70 tokens / 1 second = 70 tok/s -> no warning (CORRECT)
         warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-        slow_gen_warnings = [r for r in warning_records if "Slow LLM generation detected" in r.message]
+        slow_gen_warnings = [
+            r for r in warning_records if "Slow LLM generation detected" in r.message
+        ]
         assert len(slow_gen_warnings) == 0, (
             f"Should NOT warn when decode speed is fast (70 tok/s). "
             f"Found warnings: {[r.message for r in slow_gen_warnings]}"
@@ -610,12 +694,17 @@ async def test_slow_generation_warning_uses_decode_speed(mock_config, mock_drive
 
 
 @pytest.mark.asyncio
-async def test_slow_generation_warning_triggers_on_slow_decode(mock_config, mock_driver, caplog):
+async def test_slow_generation_warning_triggers_on_slow_decode(
+    mock_config, mock_driver, caplog
+):
     """Test that slow generation warning triggers when decode speed is actually slow."""
     import logging
+
     caplog.set_level(logging.WARNING)
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -638,7 +727,9 @@ async def test_slow_generation_warning_triggers_on_slow_decode(mock_config, mock
 
         # Verify slow generation warning WAS logged
         warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-        slow_gen_warnings = [r for r in warning_records if "Slow LLM generation detected" in r.message]
+        slow_gen_warnings = [
+            r for r in warning_records if "Slow LLM generation detected" in r.message
+        ]
         assert len(slow_gen_warnings) >= 1, (
             f"Should warn when decode speed is slow (10 tok/s). "
             f"Found warnings: {[r.message[:100] for r in warning_records]}"
@@ -648,16 +739,21 @@ async def test_slow_generation_warning_triggers_on_slow_decode(mock_config, mock
 
 
 @pytest.mark.asyncio
-async def test_slow_generation_warning_skipped_for_short_eval_count(mock_config, mock_driver, caplog):
+async def test_slow_generation_warning_skipped_for_short_eval_count(
+    mock_config, mock_driver, caplog
+):
     """Test that slow generation warning is skipped when eval_count is too low.
 
     Short generations (eval_count < 20) can have unstable speed measurements,
     so we skip the warning to avoid false positives from rerank/expand-query calls.
     """
     import logging
+
     caplog.set_level(logging.WARNING)
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -683,7 +779,9 @@ async def test_slow_generation_warning_skipped_for_short_eval_count(mock_config,
         # Old behavior: would warn because 7 / 2 = 3.5 tok/s < 30
         # New behavior: skip warning because eval_count (7) < 20 threshold
         warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
-        slow_gen_warnings = [r for r in warning_records if "Slow LLM generation detected" in r.message]
+        slow_gen_warnings = [
+            r for r in warning_records if "Slow LLM generation detected" in r.message
+        ]
         assert len(slow_gen_warnings) == 0, (
             f"Should NOT warn when eval_count is too low ({short_response['eval_count']} < 20). "
             f"Found warnings: {[r.message for r in slow_gen_warnings]}"
@@ -700,14 +798,22 @@ async def test_generate_propagates_queue_full_error(mock_config, mock_driver):
     mock_config.ollama_request_concurrency = 1
     mock_config.max_queue_depth = 1
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
         async def slow_generate(payload):
             await asyncio.sleep(10)  # Hold the slot
-            return {"response": "ok", "model": "test", "done": True,
-                    "prompt_eval_count": 10, "eval_count": 10, "total_duration": 100}
+            return {
+                "response": "ok",
+                "model": "test",
+                "done": True,
+                "prompt_eval_count": 10,
+                "eval_count": 10,
+                "total_duration": 100,
+            }
 
         mock_driver.generate = slow_generate
 
@@ -734,18 +840,26 @@ async def test_generate_propagates_queue_full_error(mock_config, mock_driver):
 
 
 @pytest.mark.asyncio
-async def test_hold_slot_context_manager_acquires_and_releases(mock_config, mock_driver):
+async def test_hold_slot_context_manager_acquires_and_releases(
+    mock_config, mock_driver
+):
     """Test that hold_slot acquires semaphore on enter and releases on exit."""
     mock_config.ollama_request_concurrency = 1
     mock_config.max_queue_depth = 0
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
         initial_rt = gateway._semaphore._rt_available
 
-        async with gateway.hold_slot(is_high_priority=True) as (wait_time, cancel_event, task_id):
+        async with gateway.hold_slot(is_high_priority=True) as (
+            wait_time,
+            cancel_event,
+            task_id,
+        ):
             # Slot should be acquired
             assert gateway._semaphore._rt_available < initial_rt
             assert wait_time == 0.0
@@ -766,11 +880,17 @@ async def test_hold_slot_be_provides_cancel_event(mock_config, mock_driver):
     mock_config.scheduling_rt_reserved_slots = 0  # All BE
     mock_config.max_queue_depth = 0
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
-        async with gateway.hold_slot(is_high_priority=False) as (wait_time, cancel_event, task_id):
+        async with gateway.hold_slot(is_high_priority=False) as (
+            wait_time,
+            cancel_event,
+            task_id,
+        ):
             assert wait_time == 0.0
             assert cancel_event is not None
             assert task_id is not None
@@ -789,7 +909,9 @@ async def test_generate_raw_skips_semaphore(mock_config, mock_driver):
     mock_config.ollama_request_concurrency = 1
     mock_config.max_queue_depth = 0
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -840,7 +962,9 @@ async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
     # Add missing config fields for OllamaGateway initialization
     mock_config.scheduling_rt_mode = "lifo"
 
-    with patch("news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver):
+    with patch(
+        "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
+    ):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
@@ -864,11 +988,13 @@ async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
 
         # The generation should be interrupted with PreemptedException
         from news_creator.gateway.hybrid_priority_semaphore import PreemptedException
+
         with pytest.raises(PreemptedException, match="preempted during generation"):
             await asyncio.wait_for(gen_task, timeout=2.0)
 
         # Verify the driver.generate() was actually cancelled
-        assert generate_cancelled.is_set(), "driver.generate() should have received CancelledError"
+        assert generate_cancelled.is_set(), (
+            "driver.generate() should have received CancelledError"
+        )
 
         await gateway.cleanup()
-

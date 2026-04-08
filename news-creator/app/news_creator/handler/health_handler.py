@@ -54,7 +54,7 @@ def create_health_router(ollama_gateway: Optional[Any] = None) -> APIRouter:
         response: Dict[str, Any] = {
             "status": "healthy",
             "service": "news-creator",
-            "models": []
+            "models": [],
         }
 
         # If ollama_gateway is provided, check for available models

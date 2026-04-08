@@ -19,7 +19,7 @@ Usage:
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from news_creator.domain.models import LLMGenerateResponse
@@ -69,11 +69,13 @@ class FakeLLMProvider(LLMProviderPort):
         self.call_history: List[FakeCallRecord] = []
         self.responses: Dict[str, str] = {}
         self.default_model = default_model
-        self.default_response = default_response or json.dumps({
-            "title": "Default Fake Title",
-            "bullets": ["Default bullet point from fake provider."],
-            "language": "en"
-        })
+        self.default_response = default_response or json.dumps(
+            {
+                "title": "Default Fake Title",
+                "bullets": ["Default bullet point from fake provider."],
+                "language": "en",
+            }
+        )
         self.initialized = False
         self._should_fail = False
         self._fail_message = ""
@@ -98,11 +100,7 @@ class FakeLLMProvider(LLMProviderPort):
         self.responses[pattern] = response
 
     def add_json_response(
-        self,
-        pattern: str,
-        title: str,
-        bullets: List[str],
-        language: str = "ja"
+        self, pattern: str, title: str, bullets: List[str], language: str = "ja"
     ) -> None:
         """
         Add a JSON-formatted response for recap summary testing.
@@ -113,11 +111,9 @@ class FakeLLMProvider(LLMProviderPort):
             bullets: List of bullet points
             language: Language code (default: "ja")
         """
-        self.responses[pattern] = json.dumps({
-            "title": title,
-            "bullets": bullets,
-            "language": language
-        })
+        self.responses[pattern] = json.dumps(
+            {"title": title, "bullets": bullets, "language": language}
+        )
 
     def set_failure(self, message: str = "Fake LLM failure") -> None:
         """
@@ -169,14 +165,16 @@ class FakeLLMProvider(LLMProviderPort):
         Records the call and returns a configurable response.
         """
         # Record the call
-        self.call_history.append(FakeCallRecord(
-            prompt=prompt,
-            model=model,
-            num_predict=num_predict,
-            stream=stream,
-            format=format,
-            options=options,
-        ))
+        self.call_history.append(
+            FakeCallRecord(
+                prompt=prompt,
+                model=model,
+                num_predict=num_predict,
+                stream=stream,
+                format=format,
+                options=options,
+            )
+        )
 
         # Simulate failure if configured
         if self._should_fail:
@@ -186,6 +184,7 @@ class FakeLLMProvider(LLMProviderPort):
         # Simulate latency if configured
         if self._latency_ms > 0:
             import asyncio
+
             await asyncio.sleep(self._latency_ms / 1000)
 
         # Find matching response
@@ -197,12 +196,14 @@ class FakeLLMProvider(LLMProviderPort):
 
         # Handle streaming (simplified)
         if stream:
+
             async def stream_generator():
                 yield LLMGenerateResponse(
                     response=response_text,
                     model=model or self.default_model,
                     done=True,
                 )
+
             return stream_generator()
 
         # Return non-streaming response
@@ -230,16 +231,12 @@ class FakeLLMProvider(LLMProviderPort):
     def assert_called_once(self) -> None:
         """Assert that generate() was called exactly once."""
         if len(self.call_history) != 1:
-            raise AssertionError(
-                f"Expected 1 call, got {len(self.call_history)}"
-            )
+            raise AssertionError(f"Expected 1 call, got {len(self.call_history)}")
 
     def assert_not_called(self) -> None:
         """Assert that generate() was never called."""
         if self.call_history:
-            raise AssertionError(
-                f"Expected no calls, got {len(self.call_history)}"
-            )
+            raise AssertionError(f"Expected no calls, got {len(self.call_history)}")
 
     def assert_prompt_contains(self, text: str) -> None:
         """Assert that the last prompt contains the given text."""

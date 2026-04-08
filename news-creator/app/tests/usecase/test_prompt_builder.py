@@ -7,7 +7,6 @@ Following Python 3.14 best practices:
 
 from __future__ import annotations
 
-import pytest
 from datetime import datetime
 
 
@@ -32,7 +31,7 @@ class TestSummaryPromptBuilder:
         prompt = builder.build(content="Content")
 
         # Should contain a date
-        today = datetime.now().strftime("%Y年%m月%d日")
+        datetime.now().strftime("%Y年%m月%d日")
         # Note: The format might vary, but there should be a date
         assert any(c.isdigit() for c in prompt)  # Contains numbers (date)
 

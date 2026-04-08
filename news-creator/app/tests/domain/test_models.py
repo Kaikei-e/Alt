@@ -14,10 +14,7 @@ from news_creator.domain.models import (
 def test_summarize_request_validation():
     """Test SummarizeRequest validates required fields."""
     # Valid request
-    request = SummarizeRequest(
-        article_id="test-123",
-        content="This is test content"
-    )
+    request = SummarizeRequest(article_id="test-123", content="This is test content")
     assert request.article_id == "test-123"
     assert request.content == "This is test content"
     assert request.priority == "low"  # Default value
@@ -27,17 +24,13 @@ def test_summarize_request_priority_field():
     """Test SummarizeRequest priority field validation."""
     # Valid high priority
     request_high = SummarizeRequest(
-        article_id="test-123",
-        content="This is test content",
-        priority="high"
+        article_id="test-123", content="This is test content", priority="high"
     )
     assert request_high.priority == "high"
 
     # Valid low priority
     request_low = SummarizeRequest(
-        article_id="test-123",
-        content="This is test content",
-        priority="low"
+        article_id="test-123", content="This is test content", priority="low"
     )
     assert request_low.priority == "low"
 
@@ -46,9 +39,7 @@ def test_summarize_request_rejects_invalid_priority():
     """Test SummarizeRequest rejects invalid priority values."""
     with pytest.raises(ValueError):
         SummarizeRequest(
-            article_id="test-123",
-            content="This is test content",
-            priority="invalid"
+            article_id="test-123", content="This is test content", priority="invalid"
         )
 
 
@@ -73,7 +64,7 @@ def test_summarize_response_creation():
         model="test-model",
         prompt_tokens=100,
         completion_tokens=50,
-        total_duration_ms=1500.5
+        total_duration_ms=1500.5,
     )
     assert response.success is True
     assert response.article_id == "test-123"
@@ -87,10 +78,7 @@ def test_summarize_response_creation():
 def test_summarize_response_allows_optional_fields():
     """Test SummarizeResponse allows optional fields to be None."""
     response = SummarizeResponse(
-        success=False,
-        article_id="test-123",
-        summary="",
-        model="test-model"
+        success=False, article_id="test-123", summary="", model="test-model"
     )
     assert response.prompt_tokens is None
     assert response.completion_tokens is None
@@ -115,7 +103,7 @@ def test_generate_request_with_options():
         model="custom-model",
         stream=True,
         keep_alive=300,
-        options=options
+        options=options,
     )
     assert request.prompt == "Test prompt"
     assert request.model == "custom-model"
@@ -148,7 +136,7 @@ def test_news_generation_request_with_custom_values():
         style="blog",
         max_length=1000,
         language="ja",
-        metadata=metadata
+        metadata=metadata,
     )
     assert request.topic == "Climate change"
     assert request.style == "blog"
@@ -167,7 +155,7 @@ def test_generated_content_creation():
         confidence=0.95,
         word_count=5,
         language="en",
-        metadata=metadata
+        metadata=metadata,
     )
     assert content.content == "This is generated content."
     assert content.title == "Test Title"
@@ -187,7 +175,7 @@ def test_llm_generate_response_creation():
         done_reason="stop",
         prompt_eval_count=100,
         eval_count=50,
-        total_duration=1500000000
+        total_duration=1500000000,
     )
     assert response.response == "Generated text"
     assert response.model == "test-model"
@@ -200,10 +188,7 @@ def test_llm_generate_response_creation():
 
 def test_llm_generate_response_with_optional_fields():
     """Test LLMGenerateResponse allows optional fields."""
-    response = LLMGenerateResponse(
-        response="Generated text",
-        model="test-model"
-    )
+    response = LLMGenerateResponse(response="Generated text", model="test-model")
     assert response.done is None
     assert response.done_reason is None
     assert response.prompt_eval_count is None

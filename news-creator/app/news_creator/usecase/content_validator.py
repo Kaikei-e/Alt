@@ -117,7 +117,7 @@ class ContentValidator:
             extra={
                 "article_id": article_id,
                 "original_length": original_length,
-            }
+            },
         )
 
         cleaned_content, was_html = clean_html_content(content, article_id)
@@ -136,7 +136,7 @@ class ContentValidator:
                     "original_length": original_length,
                     "cleaned_length": cleaned_length,
                     "reduction_ratio": round(reduction_ratio, 2),
-                }
+                },
             )
         else:
             logger.info(
@@ -144,7 +144,7 @@ class ContentValidator:
                 extra={
                     "article_id": article_id,
                     "content_length": cleaned_length,
-                }
+                },
             )
 
         # Strip whitespace
@@ -168,13 +168,15 @@ class ContentValidator:
                     "cleaned_length": len(cleaned_content),
                     "min_required": self.min_length,
                     "content_preview": cleaned_content[:100] if cleaned_content else "",
-                }
+                },
             )
             raise ValueError(error_msg)
 
         # Check for abnormal size
         if len(cleaned_content) > self.abnormal_size_threshold:
-            warning_msg = f"Abnormally large content detected: {len(cleaned_content)} characters"
+            warning_msg = (
+                f"Abnormally large content detected: {len(cleaned_content)} characters"
+            )
             warnings.append(warning_msg)
             logger.warning(
                 "ABNORMAL CONTENT SIZE detected",
@@ -182,13 +184,13 @@ class ContentValidator:
                     "article_id": article_id,
                     "content_length": len(cleaned_content),
                     "threshold": self.abnormal_size_threshold,
-                }
+                },
             )
 
         # Truncate if necessary
         was_truncated = len(cleaned_content) > self.max_length
         if was_truncated:
-            cleaned_content = cleaned_content[:self.max_length]
+            cleaned_content = cleaned_content[: self.max_length]
             logger.warning(
                 "Input content truncated to fit context window",
                 extra={
@@ -196,7 +198,7 @@ class ContentValidator:
                     "original_length": len(cleaned_content),
                     "truncated_length": self.max_length,
                     "max_length": self.max_length,
-                }
+                },
             )
 
         return ValidationResult(

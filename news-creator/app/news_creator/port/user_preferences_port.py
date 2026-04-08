@@ -9,9 +9,7 @@ class UserPreferencesPort(ABC):
 
     @abstractmethod
     async def get_user_preferences(
-        self,
-        tenant_id: str,
-        user_id: str
+        self, tenant_id: str, user_id: str
     ) -> Dict[str, Any]:
         """
         Get user's content generation preferences.
@@ -30,11 +28,7 @@ class UserPreferencesPort(ABC):
 
     @abstractmethod
     async def save_user_content(
-        self,
-        tenant_id: str,
-        user_id: str,
-        topic: str,
-        content_data: Dict[str, Any]
+        self, tenant_id: str, user_id: str, topic: str, content_data: Dict[str, Any]
     ) -> None:
         """
         Save generated content to user-specific storage.

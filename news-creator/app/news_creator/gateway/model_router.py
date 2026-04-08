@@ -103,7 +103,7 @@ class ModelRouter:
         )
 
         # Check if 60K model is disabled (8K-only mode)
-        model_60k_enabled = getattr(self.config, 'model_60k_enabled', True)
+        model_60k_enabled = getattr(self.config, "model_60k_enabled", True)
 
         if not model_60k_enabled:
             # 8K-only mode: always use 8K model
@@ -112,7 +112,10 @@ class ModelRouter:
                 logger.warning(
                     f"Token count ({needed_tokens}) exceeds 8K bucket but 60K is disabled. "
                     f"Hierarchical summarization should handle this.",
-                    extra={"needed_tokens": needed_tokens, "prompt_tokens": prompt_tokens},
+                    extra={
+                        "needed_tokens": needed_tokens,
+                        "prompt_tokens": prompt_tokens,
+                    },
                 )
             selected_bucket = self.BUCKET_8K
             selected_model = self.config.model_8k_name
@@ -207,4 +210,3 @@ class ModelRouter:
         )
 
         return selected_model, selected_bucket
-

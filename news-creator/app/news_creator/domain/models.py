@@ -86,7 +86,9 @@ class RepresentativeSentence(BaseModel):
     )
     source_url: Optional[str] = Field(default=None, description="Source article URL")
     article_id: Optional[str] = Field(default=None, description="Source article ID")
-    is_centroid: bool = Field(default=False, description="Whether this is the centroid sentence")
+    is_centroid: bool = Field(
+        default=False, description="Whether this is the centroid sentence"
+    )
 
 
 class RecapClusterInput(BaseModel):
@@ -102,7 +104,9 @@ class RecapClusterInput(BaseModel):
 
     @field_validator("representative_sentences", mode="after")
     @classmethod
-    def strip_sentences(cls, sentences: List[RepresentativeSentence]) -> List[RepresentativeSentence]:
+    def strip_sentences(
+        cls, sentences: List[RepresentativeSentence]
+    ) -> List[RepresentativeSentence]:
         cleaned: List[RepresentativeSentence] = []
         for sentence in sentences:
             stripped_text = sentence.text.strip()
@@ -117,7 +121,9 @@ class RecapClusterInput(BaseModel):
                     )
                 )
         if not cleaned:
-            raise ValueError("representative_sentences must contain at least one sentence")
+            raise ValueError(
+                "representative_sentences must contain at least one sentence"
+            )
         return cleaned
 
 
@@ -161,10 +167,14 @@ class IntermediateSummary(BaseModel):
 class Reference(BaseModel):
     """Reference to a source article."""
 
-    id: int = Field(ge=1, description="Reference ID (1-indexed, matches [n] in bullets)")
+    id: int = Field(
+        ge=1, description="Reference ID (1-indexed, matches [n] in bullets)"
+    )
     url: str = Field(min_length=1, description="Source article URL")
     domain: str = Field(min_length=1, description="Source domain")
-    article_id: Optional[str] = Field(default=None, description="Source article ID if available")
+    article_id: Optional[str] = Field(
+        default=None, description="Source article ID if available"
+    )
 
 
 class RecapSummary(BaseModel):
@@ -176,7 +186,7 @@ class RecapSummary(BaseModel):
     references: Optional[List[Reference]] = Field(
         default=None,
         max_length=50,
-        description="List of references cited in bullets (e.g., [1], [2])"
+        description="List of references cited in bullets (e.g., [1], [2])",
     )
 
     @field_validator("bullets", mode="after")
@@ -233,8 +243,12 @@ class ExpandQueryRequest(BaseModel):
     """Request model for query expansion."""
 
     query: str = Field(min_length=1, description="Original user query to expand")
-    japanese_count: int = Field(default=1, ge=0, le=5, description="Number of Japanese query variations")
-    english_count: int = Field(default=3, ge=0, le=10, description="Number of English query variations")
+    japanese_count: int = Field(
+        default=1, ge=0, le=5, description="Number of Japanese query variations"
+    )
+    english_count: int = Field(
+        default=3, ge=0, le=10, description="Number of English query variations"
+    )
     conversation_history: Optional[List[ConversationMessage]] = Field(
         default=None, description="Recent conversation turns for coreference resolution"
     )
@@ -251,7 +265,9 @@ class ExpandQueryResponse(BaseModel):
     expanded_queries: List[str] = Field(description="List of expanded query variations")
     original_query: str = Field(description="Original input query")
     model: str = Field(description="Model used for generation")
-    processing_time_ms: Optional[float] = Field(default=None, description="Processing time in milliseconds")
+    processing_time_ms: Optional[float] = Field(
+        default=None, description="Processing time in milliseconds"
+    )
 
 
 # ============================================================================
@@ -270,19 +286,17 @@ class RerankRequest(BaseModel):
 
     query: str = Field(min_length=1, description="Query to score candidates against")
     candidates: List[str] = Field(
-        min_length=1,
-        max_length=100,
-        description="List of candidate texts to re-rank"
+        min_length=1, max_length=100, description="List of candidate texts to re-rank"
     )
     model: Optional[str] = Field(
         default=None,
-        description="Cross-encoder model name (default: bge-reranker-v2-m3)"
+        description="Cross-encoder model name (default: bge-reranker-v2-m3)",
     )
     top_k: Optional[int] = Field(
         default=None,
         ge=1,
         le=100,
-        description="Return only top-k results (default: return all)"
+        description="Return only top-k results (default: return all)",
     )
 
 
@@ -301,8 +315,7 @@ class RerankResponse(BaseModel):
     )
     model: str = Field(description="Model used for re-ranking")
     processing_time_ms: Optional[float] = Field(
-        default=None,
-        description="Processing time in milliseconds"
+        default=None, description="Processing time in milliseconds"
     )
 
 
@@ -317,7 +330,7 @@ class BatchRecapSummaryRequest(BaseModel):
     requests: List[RecapSummaryRequest] = Field(
         min_length=1,
         max_length=50,
-        description="List of individual recap summary requests"
+        description="List of individual recap summary requests",
     )
 
 
@@ -333,12 +346,10 @@ class BatchRecapSummaryResponse(BaseModel):
     """Response for batch recap summary processing."""
 
     responses: List[RecapSummaryResponse] = Field(
-        default_factory=list,
-        description="List of successful recap summary responses"
+        default_factory=list, description="List of successful recap summary responses"
     )
     errors: List[BatchRecapSummaryError] = Field(
-        default_factory=list,
-        description="List of errors for failed requests"
+        default_factory=list, description="List of errors for failed requests"
     )
 
 
@@ -354,10 +365,15 @@ class PlanQueryRequest(BaseModel):
     conversation_history: Optional[List[ConversationMessage]] = Field(
         default=None, description="Recent conversation turns for coreference resolution"
     )
-    article_id: Optional[str] = Field(default=None, description="Article ID if query is article-scoped")
-    article_title: Optional[str] = Field(default=None, description="Article title if query is article-scoped")
+    article_id: Optional[str] = Field(
+        default=None, description="Article ID if query is article-scoped"
+    )
+    article_title: Optional[str] = Field(
+        default=None, description="Article title if query is article-scoped"
+    )
     last_answer_scope: Optional[str] = Field(
-        default=None, description="Scope of the last answer: summary, detail, evidence, etc."
+        default=None,
+        description="Scope of the last answer: summary, detail, evidence, etc.",
     )
     priority: str = Field(
         default="high",
@@ -373,14 +389,30 @@ class QueryPlan(BaseModel):
     reasoning MUST come first so the model thinks before deciding.
     """
 
-    reasoning: str = Field(description="Step-by-step reasoning: What is the user asking about? What topic? Is it a follow-up referencing prior context? What retrieval strategy fits best?")
-    resolved_query: str = Field(description="Self-contained search query with all pronouns and references resolved into explicit terms. Must contain the actual topic words.")
-    search_queries: List[str] = Field(description="3-5 diverse search queries covering Japanese AND English variations, synonyms, and related terms")
-    intent: str = Field(description="Exactly one of: causal_explanation, temporal, synthesis, comparison, fact_check, topic_deep_dive, general")
-    retrieval_policy: str = Field(description="Exactly one of: global_only, article_only. Default: global_only")
-    answer_format: str = Field(description="Exactly one of: causal_analysis, summary, list, detail, comparison. Default: summary")
-    should_clarify: bool = Field(description="ALMOST ALWAYS false. Set true ONLY for bare ambiguous phrases like just 'もっと詳しく' with NO conversation history to resolve from.")
-    topic_entities: List[str] = Field(default_factory=list, description="Key named entities extracted from the query")
+    reasoning: str = Field(
+        description="Step-by-step reasoning: What is the user asking about? What topic? Is it a follow-up referencing prior context? What retrieval strategy fits best?"
+    )
+    resolved_query: str = Field(
+        description="Self-contained search query with all pronouns and references resolved into explicit terms. Must contain the actual topic words."
+    )
+    search_queries: List[str] = Field(
+        description="3-5 diverse search queries covering Japanese AND English variations, synonyms, and related terms"
+    )
+    intent: str = Field(
+        description="Exactly one of: causal_explanation, temporal, synthesis, comparison, fact_check, topic_deep_dive, general"
+    )
+    retrieval_policy: str = Field(
+        description="Exactly one of: global_only, article_only. Default: global_only"
+    )
+    answer_format: str = Field(
+        description="Exactly one of: causal_analysis, summary, list, detail, comparison. Default: summary"
+    )
+    should_clarify: bool = Field(
+        description="ALMOST ALWAYS false. Set true ONLY for bare ambiguous phrases like just 'もっと詳しく' with NO conversation history to resolve from."
+    )
+    topic_entities: List[str] = Field(
+        default_factory=list, description="Key named entities extracted from the query"
+    )
 
 
 class PlanQueryResponse(BaseModel):
@@ -389,7 +421,9 @@ class PlanQueryResponse(BaseModel):
     plan: QueryPlan
     original_query: str = Field(description="Original input query")
     model: str = Field(description="Model used for planning")
-    processing_time_ms: Optional[float] = Field(default=None, description="Processing time in milliseconds")
+    processing_time_ms: Optional[float] = Field(
+        default=None, description="Processing time in milliseconds"
+    )
 
 
 # ============================================================================
@@ -425,7 +459,9 @@ class MorningLetterRequest(BaseModel):
 class MorningLetterSection(BaseModel):
     """A section in the Morning Letter."""
 
-    key: str = Field(min_length=1, pattern=r"^(lead|top3|what_changed|by_genre:[a-z0-9_\-]+)$")
+    key: str = Field(
+        min_length=1, pattern=r"^(lead|top3|what_changed|by_genre:[a-z0-9_\-]+)$"
+    )
     title: str = Field(min_length=1)
     bullets: List[str] = Field(min_length=1)
     genre: Optional[str] = None
