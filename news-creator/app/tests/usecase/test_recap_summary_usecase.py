@@ -1977,3 +1977,96 @@ async def test_generate_summary_repairs_reference_mismatch():
     assert response.metadata.is_degraded is False
     assert response.summary.references is not None
     assert [ref.id for ref in response.summary.references] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_should_not_bypass_llm_with_2_sentences_from_1_source():
+    """2 representative sentences from 1 source should NOT trigger LLM bypass."""
+    config = _create_mock_config()
+    # Use defaults — should be lenient enough for 2 sentences / 1 source
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response=json.dumps(
+            {
+                "title": "AIモデルの最新動向",
+                "bullets": [
+                    "Googleは新たなAIモデルを発表し、従来モデルと比較して推論速度が大幅に向上した。同モデルは複数のベンチマークで最高精度を達成している [1]",
+                    "同モデルの精度は95%に達しており、産業応用への展開が期待されている。特にヘルスケアおよび金融分野での導入が検討されている [1]",
+                ],
+                "language": "ja",
+                "references": [
+                    {"id": 1, "url": "https://example.com/1", "domain": "example.com", "article_id": "art1"}
+                ],
+            }
+        ),
+        model="gemma4-e4b-q4km",
+        prompt_eval_count=100,
+        eval_count=50,
+        total_duration=500_000_000,
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Google released new AI model.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                    RepresentativeSentence(
+                        text="The model achieves 95% accuracy.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                ],
+                top_terms=["ai", "model"],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # LLM should have been called, not bypassed
+    llm_provider.generate.assert_awaited()
+    assert response.metadata.is_degraded is False
+
+
+@pytest.mark.asyncio
+async def test_should_bypass_llm_with_only_1_sentence():
+    """Only 1 representative sentence should still trigger LLM bypass."""
+    config = _create_mock_config()
+    llm_provider = AsyncMock()
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Single sentence only.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                ],
+                top_terms=["ai"],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    llm_provider.generate.assert_not_awaited()
+    assert response.metadata.is_degraded is True
+    assert response.metadata.degradation_reason == "low_evidence_extractive"

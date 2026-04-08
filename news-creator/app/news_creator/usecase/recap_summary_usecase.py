@@ -249,9 +249,9 @@ class RecapSummaryUsecase:
         if request.window_days is None or request.window_days > 3:
             return False
 
-        min_sources = max(1, self._config_int("recap_min_source_articles_for_llm", 3))
+        min_sources = max(1, self._config_int("recap_min_source_articles_for_llm", 1))
         min_sentences = max(
-            1, self._config_int("recap_min_representative_sentences_for_llm", 4)
+            1, self._config_int("recap_min_representative_sentences_for_llm", 2)
         )
 
         distinct_sources, representative_sentence_count = self._count_request_evidence(
