@@ -45,7 +45,7 @@ type QueryIntent struct {
 	SubIntentType SubIntentType // Analytical sub-intent for article-scoped queries
 	ArticleID     string
 	ArticleTitle  string
-	UserQuestion  string   // Metadata-stripped question body
+	UserQuestion  string // Metadata-stripped question body
 	OriginalQuery string
 	SearchQueries []string // Planner-generated search queries (topic-aware)
 }

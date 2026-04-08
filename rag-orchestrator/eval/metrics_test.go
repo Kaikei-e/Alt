@@ -376,8 +376,8 @@ func TestRunOfflineEval_InstructionAdherence(t *testing.T) {
 func TestRunOfflineEval_NoStructureExpected(t *testing.T) {
 	cases := []GoldenCase{
 		{
-			ID:    "no-structure",
-			Query: "Q1",
+			ID:       "no-structure",
+			Query:    "Q1",
 			Expected: ExpectedBehavior{
 				// No ExpectedStructure
 			},

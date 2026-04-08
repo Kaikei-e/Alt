@@ -46,12 +46,12 @@ type RetrieveContextUsecase interface {
 }
 
 type retrieveContextUsecase struct {
-	chunkRepo     domain.RagChunkRepository
-	docRepo       domain.RagDocumentRepository
-	encoder       domain.VectorEncoder
-	llmClient     domain.LLMClient
-	searchClient  domain.SearchClient
-	queryExpander domain.QueryExpander
+	chunkRepo      domain.RagChunkRepository
+	docRepo        domain.RagDocumentRepository
+	encoder        domain.VectorEncoder
+	llmClient      domain.LLMClient
+	searchClient   domain.SearchClient
+	queryExpander  domain.QueryExpander
 	reranker       domain.Reranker       // Optional: cross-encoder reranking
 	bm25Searcher   domain.BM25Searcher   // Optional: BM25 search for hybrid fusion
 	hybridSearcher domain.HybridSearcher // Optional: in-DB hybrid search (replaces bm25Searcher)

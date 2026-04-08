@@ -46,8 +46,8 @@ type GraphDeps struct {
 	LLMClient     domain.LLMClient
 	SearchClient  domain.SearchClient
 	Encoder       domain.VectorEncoder
-	Reranker      domain.Reranker      // Optional: cross-encoder reranking
-	BM25Searcher  domain.BM25Searcher  // Optional: BM25 search for hybrid fusion
+	Reranker      domain.Reranker     // Optional: cross-encoder reranking
+	BM25Searcher  domain.BM25Searcher // Optional: BM25 search for hybrid fusion
 	ChunkRepo     domain.RagChunkRepository
 	Config        GraphConfig
 	Logger        *slog.Logger
