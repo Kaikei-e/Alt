@@ -190,11 +190,11 @@ jobs:
         ports:
           - 9292:9292
         options: >-
-          --health-cmd "ruby -e \"require 'net/http'; Net::HTTP.get(URI('http://localhost:9292/diagnostic/status/dependencies'))\""
+          --health-cmd "ruby -e \"require 'net/http'; require 'json'; r = Net::HTTP.get(URI('http://localhost:9292/diagnostic/status/dependencies')); exit(JSON.parse(r).dig('database','ok') ? 0 : 1)\""
           --health-interval 5s
           --health-timeout 10s
-          --health-retries 20
-          --health-start-period 45s
+          --health-retries 30
+          --health-start-period 60s
     steps:
       - uses: actions/checkout@v5
 
@@ -212,15 +212,17 @@ jobs:
         run: |
           echo "Waiting for Pact Broker to connect to database..."
           for i in {1..30}; do
-            if curl -fsS -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies 2>&1 | grep -q "ok"; then
+            RESPONSE=$(curl -sS -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies 2>/dev/null || echo '{}')
+            if echo "$RESPONSE" | jq -e '.database.ok == true' > /dev/null 2>&1; then
               echo "Pact Broker is ready with database connection!"
+              echo "Response: $RESPONSE"
               exit 0
             fi
-            echo "Attempt $i/30: Pact Broker not ready yet, waiting..."
+            echo "Attempt $i/30: Pact Broker not ready yet (response: $RESPONSE), waiting..."
             sleep 2
           done
-          echo "Pact Broker failed to become ready"
-          curl -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies || true
+          echo "Pact Broker failed to become ready after 60 seconds"
+          curl -sS -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies || true
           exit 1
 
       - name: Publish all pact files to Broker
