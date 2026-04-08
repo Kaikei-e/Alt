@@ -10,9 +10,11 @@ import (
 
 // RestoreOptions configures the restore operation
 type RestoreOptions struct {
-	BackupDir string // Path to backup directory
-	Force     bool   // Force restore without confirmation
-	Verify    bool   // Verify backup integrity before restore
+	BackupDir string        // Path to backup directory
+	Force     bool          // Force restore without confirmation
+	Verify    bool          // Verify backup integrity before restore
+	Profile   BackupProfile // Only restore volumes matching this profile (empty = all)
+	Volumes   []string      // Only restore these specific volumes (empty = all)
 }
 
 // Restore performs a full restore from a backup
@@ -56,8 +58,19 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 		}
 	}
 
-	// Restore all volumes using tar
-	for _, vb := range manifest.Volumes {
+	// Build filter set for selective restore
+	targetVolumes, err := m.filterRestoreVolumes(manifest.Volumes, opts)
+	if err != nil {
+		return fmt.Errorf("filtering volumes: %w", err)
+	}
+
+	m.logger.Info("restoring volumes",
+		"total_in_manifest", len(manifest.Volumes),
+		"selected", len(targetVolumes),
+	)
+
+	// Restore selected volumes
+	for _, vb := range targetVolumes {
 		spec, ok := m.registry.Get(vb.Name)
 		if !ok {
 			m.logger.Warn("unknown volume in backup, skipping",
@@ -108,6 +121,60 @@ func (m *Migrator) restoreVolume(ctx context.Context, spec VolumeSpec, backupDir
 		tarSpec.BackupType = BackupTypeTar
 		return m.volumeBackup.Restore(ctx, tarSpec, inputPath)
 	}
+}
+
+// filterRestoreVolumes filters manifest volumes based on restore options
+func (m *Migrator) filterRestoreVolumes(manifestVolumes []VolumeBackup, opts RestoreOptions) ([]VolumeBackup, error) {
+	// If specific volumes requested, filter to just those
+	if len(opts.Volumes) > 0 {
+		volumeSet := make(map[string]bool, len(opts.Volumes))
+		for _, name := range opts.Volumes {
+			volumeSet[name] = true
+		}
+
+		// Validate that requested volumes exist in manifest
+		manifestNames := make(map[string]bool, len(manifestVolumes))
+		for _, vb := range manifestVolumes {
+			manifestNames[vb.Name] = true
+		}
+		for _, name := range opts.Volumes {
+			if !manifestNames[name] {
+				return nil, fmt.Errorf("volume %s not found in backup manifest", name)
+			}
+		}
+
+		var filtered []VolumeBackup
+		for _, vb := range manifestVolumes {
+			if volumeSet[vb.Name] {
+				filtered = append(filtered, vb)
+			}
+		}
+		return filtered, nil
+	}
+
+	// If profile specified, filter by profile categories
+	if opts.Profile != "" {
+		cats := profileCategories(opts.Profile)
+		catSet := make(map[VolumeCategory]bool, len(cats))
+		for _, c := range cats {
+			catSet[c] = true
+		}
+
+		var filtered []VolumeBackup
+		for _, vb := range manifestVolumes {
+			spec, ok := m.registry.Get(vb.Name)
+			if !ok {
+				continue
+			}
+			if catSet[spec.Category] {
+				filtered = append(filtered, vb)
+			}
+		}
+		return filtered, nil
+	}
+
+	// No filter — restore everything
+	return manifestVolumes, nil
 }
 
 // stopContainers stops all project containers
