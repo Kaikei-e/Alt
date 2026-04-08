@@ -1,0 +1,83 @@
+name: News-Creator Quality Gates
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "news-creator/**"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "news-creator/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "news-creator/app"
+      python-version: "3.14"
+      sparse-checkout: "news-creator"
+      coverage-flags: "news-creator"
+      upload-coverage: true
+      job-type: "test"
+      test-command: "pytest -v --cov=news_creator --cov-report=xml --junit-xml=tests/results.xml"
+    permissions:
+      contents: read
+    secrets: inherit
+
+  lint:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "news-creator/app"
+      python-version: "3.14"
+      sparse-checkout: "news-creator"
+      job-type: "lint"
+    permissions:
+      contents: read
+
+  security:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "news-creator/app"
+      python-version: "3.14"
+      sparse-checkout: "news-creator"
+      job-type: "security"
+    permissions:
+      contents: read
+
+  typecheck:
+    uses: ./.github/workflows/reusable-test-python.yaml
+    with:
+      working-directory: "news-creator/app"
+      python-version: "3.14"
+      sparse-checkout: "news-creator"
+      job-type: "typecheck"
+    permissions:
+      contents: read
+
+  # NOTE: Pact CDC tests are handled in proto-contract.yaml
+  # - Consumer tests trigger on contract/** changes
+  # - Provider verification runs in pact-publish-and-verify job
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    needs: [tests, lint, security, typecheck]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.tests.result }}" != "success" ] || \
+             [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.security.result }}" != "success" ] || \
+             [ "${{ needs.typecheck.result }}" != "success" ]; then
+            echo "One or more quality gates failed"
+            exit 1
+          fi
+          echo "All quality gates passed"
