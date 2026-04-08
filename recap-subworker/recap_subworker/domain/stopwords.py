@@ -107,6 +107,65 @@ _NEWS_DOMAIN_STOPWORDS: Set[str] = {
     "yourselves",
 }
 
+# Web, URL, and programming terms that dominate c-TF-IDF in developer-heavy content
+_WEB_TECH_STOPWORDS: Set[str] = {
+    # URL and web components
+    "url",
+    "http",
+    "https",
+    "www",
+    "com",
+    "org",
+    "net",
+    "html",
+    "css",
+    "href",
+    "src",
+    "img",
+    # Programming keywords (common across Python/JS/Go/Rust)
+    "self",
+    "class",
+    "def",
+    "return",
+    "import",
+    "function",
+    "const",
+    "var",
+    "let",
+    "async",
+    "await",
+    "yield",
+    "lambda",
+    "static",
+    "public",
+    "private",
+    "void",
+    # Boolean / null literals
+    "true",
+    "false",
+    "null",
+    "none",
+    "undefined",
+    # Generic programming terms
+    "error",
+    "exception",
+    "string",
+    "int",
+    "float",
+    "bool",
+    "list",
+    "dict",
+    "array",
+    "object",
+    "type",
+    "value",
+    "key",
+    "index",
+    "param",
+    "args",
+    "kwargs",
+}
+
 _STOPWORD_FILE_ENV = "RECAP_SUBWORKER_STOPWORDS_FILE"
 _STOPWORD_EXTRA_ENV = "RECAP_SUBWORKER_STOPWORDS_EXTRA"
 
@@ -158,6 +217,9 @@ def get_stopwords() -> Set[str]:
 
     # Add news domain-specific stopwords
     stopwords.update(_NEWS_DOMAIN_STOPWORDS)
+
+    # Add web and programming stopwords
+    stopwords.update(_WEB_TECH_STOPWORDS)
 
     # Add operator-provided extensions
     stopwords.update(_iterate_extra_terms())

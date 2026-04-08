@@ -184,3 +184,36 @@ def test_is_informative_rejects_alphanumeric_mixed():
     assert not topics._is_informative("123", stopword_set)
     assert not topics._is_informative("11", stopword_set)
 
+
+def test_extract_topics_filters_web_and_code_noise():
+    """Web/code terms like 'url', 'http', 'self', 'null' should be stopwords."""
+    corpus = [
+        "url url http https www com self data none true false null class def return import",
+        "Google AI research team published new transformer architecture paper",
+    ]
+
+    result = topics.extract_topics(corpus, top_n=5, bm25_weighting=False)
+    assert result
+
+    # Second cluster should have informative terms
+    second_cluster = result[1]
+    informative = {"google", "research", "transformer", "architecture", "paper"}
+    assert any(term in second_cluster for term in informative)
+
+    # First cluster: web/code noise should be filtered out
+    first_cluster = result[0]
+    web_noise = {"url", "http", "https", "www", "com", "self", "null", "none", "true", "false", "class", "def", "return", "import"}
+    for noise in web_noise:
+        assert noise not in first_cluster, f"Found web/code noise: {noise}"
+
+
+def test_stopwords_include_web_tech_terms():
+    """Stopword set should include web and programming terms."""
+    stopwords.get_stopwords.cache_clear()
+    terms = stopwords.get_stopwords()
+
+    web_terms = {"url", "http", "https", "www", "com", "self", "null", "none",
+                 "true", "false", "class", "def", "return", "import", "function"}
+    for term in web_terms:
+        assert term in terms, f"Missing web/tech stopword: {term}"
+
