@@ -190,11 +190,11 @@ jobs:
         ports:
           - 9292:9292
         options: >-
-          --health-cmd "ruby -e \"require 'net/http'; Net::HTTP.get(URI('http://localhost:9292/diagnostic/status/heartbeat'))\""
-          --health-interval 10s
+          --health-cmd "ruby -e \"require 'net/http'; Net::HTTP.get(URI('http://localhost:9292/diagnostic/status/dependencies'))\""
+          --health-interval 5s
           --health-timeout 10s
-          --health-retries 10
-          --health-start-period 30s
+          --health-retries 20
+          --health-start-period 45s
     steps:
       - uses: actions/checkout@v5
 
@@ -208,18 +208,19 @@ jobs:
       - name: List collected pact files
         run: ls -la collected-pacts/
 
-      - name: Wait for Pact Broker to be ready
+      - name: Wait for Pact Broker database connection
         run: |
-          echo "Waiting for Pact Broker to be ready..."
+          echo "Waiting for Pact Broker to connect to database..."
           for i in {1..30}; do
-            if curl -fsS -u "pact:pact" http://localhost:9292/diagnostic/status/heartbeat > /dev/null 2>&1; then
-              echo "Pact Broker is ready!"
+            if curl -fsS -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies 2>&1 | grep -q "ok"; then
+              echo "Pact Broker is ready with database connection!"
               exit 0
             fi
             echo "Attempt $i/30: Pact Broker not ready yet, waiting..."
             sleep 2
           done
           echo "Pact Broker failed to become ready"
+          curl -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies || true
           exit 1
 
       - name: Publish all pact files to Broker
