@@ -67,7 +67,7 @@ func runMigrateBackup(cmd *cobra.Command, args []string) error {
 	)
 
 	// Run backup
-	manifest, err := migrator.Backup(cmd.Context(), migrate.BackupOptions{
+	result, err := migrator.Backup(cmd.Context(), migrate.BackupOptions{
 		OutputDir:     absOutput,
 		Force:         force,
 		AltctlVersion: version,
@@ -83,10 +83,10 @@ func runMigrateBackup(cmd *cobra.Command, args []string) error {
 	printer.Success("Backup complete!")
 	fmt.Println()
 
-	printer.Info("Volumes backed up: %d", len(manifest.Volumes))
+	printer.Info("Volumes backed up: %d", len(result.Manifest.Volumes))
 
 	var totalSize int64
-	for _, v := range manifest.Volumes {
+	for _, v := range result.Manifest.Volumes {
 		totalSize += v.Size
 		printer.Info("  • %-30s %10s  %s",
 			v.Name,
@@ -97,7 +97,7 @@ func runMigrateBackup(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	printer.Info("Total size: %s", migrate.FormatSize(totalSize))
-	printer.Info("Manifest checksum: %s", manifest.Checksum)
+	printer.Info("Manifest checksum: %s", result.Manifest.Checksum)
 	printer.PrintHints("migrate backup")
 
 	return nil

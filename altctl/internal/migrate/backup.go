@@ -8,15 +8,40 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // BackupOptions configures the backup operation
 type BackupOptions struct {
-	OutputDir     string // Base output directory
-	Force         bool   // Force backup even if containers are running
-	AltctlVersion string // Version string for manifest
+	OutputDir     string        // Base output directory
+	Force         bool          // Force backup even if containers are running
+	AltctlVersion string        // Version string for manifest
+	Profile       BackupProfile // Backup profile (db, essential, all)
+	Include       []string      // Only include these volume names
+	Exclude       []string      // Exclude these volume names
+	Concurrency   int           // Max parallel pg_dump operations (default: 4)
 }
+
+// BackupResult contains the outcome of a backup operation
+type BackupResult struct {
+	Manifest      *Manifest
+	Elapsed       time.Duration
+	VolumeTimings []VolumeTiming
+}
+
+// VolumeTiming records per-volume backup timing
+type VolumeTiming struct {
+	Name    string
+	Elapsed time.Duration
+	Size    int64
+	Error   error
+}
+
+// defaultConcurrency is the default number of parallel pg_dump operations
+const defaultConcurrency = 4
 
 // Migrator orchestrates backup and restore operations
 type Migrator struct {
@@ -42,8 +67,26 @@ func NewMigrator(composeDir, projectName string, logger *slog.Logger, dryRun boo
 	}
 }
 
-// Backup performs a full backup of all registered volumes
-func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*Manifest, error) {
+// Backup performs a backup of volumes filtered by profile and include/exclude options
+func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*BackupResult, error) {
+	totalStart := time.Now()
+
+	// Default to ProfileAll for backward compatibility when no profile specified
+	profile := opts.Profile
+	if profile == "" {
+		profile = ProfileAll
+	}
+
+	// Resolve volumes based on profile and filters
+	volumes, err := ResolveVolumes(m.registry, profile, opts.Include, opts.Exclude)
+	if err != nil {
+		return nil, fmt.Errorf("resolving volumes: %w", err)
+	}
+
+	if len(volumes) == 0 {
+		return nil, fmt.Errorf("no volumes selected for backup (profile=%s)", profile)
+	}
+
 	// Check if any containers are running (for data consistency)
 	running, err := m.getRunningContainers(ctx)
 	if err != nil {
@@ -70,7 +113,8 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*Manifest, e
 
 	m.logger.Info("starting backup",
 		"output_dir", backupDir,
-		"volumes", len(m.registry.All()),
+		"profile", string(profile),
+		"volumes", len(volumes),
 	)
 
 	// Create manifest
@@ -78,23 +122,106 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*Manifest, e
 
 	// Create volumes subdirectory
 	volumesDir := filepath.Join(backupDir, "volumes")
-
 	if !m.dryRun {
 		if err := os.MkdirAll(volumesDir, 0755); err != nil {
 			return nil, fmt.Errorf("creating volumes directory: %w", err)
 		}
 	}
 
-	// Backup all volumes using tar (requires containers to be stopped)
-	for _, spec := range m.registry.All() {
-		if err := m.backupVolume(ctx, spec, volumesDir, manifest); err != nil {
+	// Separate PG and tar volumes
+	var pgVolumes, tarVolumes []VolumeSpec
+	for _, spec := range volumes {
+		if spec.BackupType == BackupTypePostgreSQL {
+			pgVolumes = append(pgVolumes, spec)
+		} else {
+			tarVolumes = append(tarVolumes, spec)
+		}
+	}
+
+	var allTimings []VolumeTiming
+	var timingsMu sync.Mutex
+
+	// Back up PG volumes in parallel
+	if len(pgVolumes) > 0 {
+		concurrency := opts.Concurrency
+		if concurrency <= 0 {
+			concurrency = defaultConcurrency
+		}
+
+		m.logger.Info("backing up PostgreSQL databases",
+			"count", len(pgVolumes),
+			"concurrency", concurrency,
+		)
+
+		g, gCtx := errgroup.WithContext(ctx)
+		g.SetLimit(concurrency)
+
+		for _, spec := range pgVolumes {
+			g.Go(func() error {
+				timing := m.backupVolumeWithTiming(gCtx, spec, volumesDir)
+				timingsMu.Lock()
+				allTimings = append(allTimings, timing)
+				timingsMu.Unlock()
+				return nil // don't fail the group; individual errors are tracked in timing
+			})
+		}
+
+		if err := g.Wait(); err != nil {
+			return nil, fmt.Errorf("parallel pg_dump: %w", err)
+		}
+	}
+
+	// Back up tar volumes sequentially
+	if len(tarVolumes) > 0 {
+		m.logger.Info("backing up tar volumes",
+			"count", len(tarVolumes),
+		)
+
+		for _, spec := range tarVolumes {
+			timing := m.backupVolumeWithTiming(ctx, spec, volumesDir)
+			allTimings = append(allTimings, timing)
+		}
+	}
+
+	// Build manifest from timings
+	for _, timing := range allTimings {
+		if timing.Error != nil {
 			m.logger.Error("volume backup failed",
-				"volume", spec.Name,
-				"error", err,
+				"volume", timing.Name,
+				"error", timing.Error,
 			)
-			// Continue with other volumes
 			continue
 		}
+
+		spec, _ := m.registry.Get(timing.Name)
+		var filename string
+		switch spec.BackupType {
+		case BackupTypePostgreSQL:
+			filename = spec.Name + ".dump"
+		default:
+			filename = spec.Name + ".tar.gz"
+		}
+
+		vb := VolumeBackup{
+			Name:       timing.Name,
+			Type:       spec.BackupType,
+			Filename:   filepath.Join("volumes", filename),
+			Size:       timing.Size,
+			Service:    spec.Service,
+			BackedUpAt: time.Now().UTC(),
+		}
+
+		if !m.dryRun {
+			outputPath := filepath.Join(volumesDir, filename)
+			checksum, err := FileChecksum(outputPath)
+			if err == nil {
+				vb.Checksum = checksum
+			}
+		} else {
+			vb.Checksum = "sha256:dry-run"
+		}
+
+		manifest.AddVolume(vb)
 	}
 
 	// Finalize and save manifest
@@ -107,16 +234,25 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*Manifest, e
 		}
 	}
 
+	elapsed := time.Since(totalStart)
+
 	m.logger.Info("backup complete",
 		"output_dir", backupDir,
 		"volumes_backed_up", len(manifest.Volumes),
+		"elapsed", elapsed,
 	)
 
-	return manifest, nil
+	return &BackupResult{
+		Manifest:      manifest,
+		Elapsed:       elapsed,
+		VolumeTimings: allTimings,
+	}, nil
 }
 
-// backupVolume backs up a single volume, dispatching to the appropriate strategy
-func (m *Migrator) backupVolume(ctx context.Context, spec VolumeSpec, outputDir string, manifest *Manifest) error {
+// backupVolumeWithTiming backs up a single volume and returns timing info
+func (m *Migrator) backupVolumeWithTiming(ctx context.Context, spec VolumeSpec, outputDir string) VolumeTiming {
+	start := time.Now()
+
 	var filename string
 	switch spec.BackupType {
 	case BackupTypePostgreSQL:
@@ -126,55 +262,28 @@ func (m *Migrator) backupVolume(ctx context.Context, spec VolumeSpec, outputDir 
 	}
 
 	outputPath := filepath.Join(outputDir, filename)
-	startTime := time.Now()
 
-	// Dispatch to appropriate backup strategy
+	var backupErr error
 	switch spec.BackupType {
 	case BackupTypePostgreSQL:
-		if err := m.pgBackup.Backup(ctx, spec, outputPath); err != nil {
-			return err
-		}
+		backupErr = m.pgBackup.Backup(ctx, spec, outputPath)
 	default:
-		if err := m.volumeBackup.Backup(ctx, spec, outputPath); err != nil {
-			return err
+		backupErr = m.volumeBackup.Backup(ctx, spec, outputPath)
+	}
+
+	timing := VolumeTiming{
+		Name:    spec.Name,
+		Elapsed: time.Since(start),
+		Error:   backupErr,
+	}
+
+	if backupErr == nil && !m.dryRun {
+		if info, err := os.Stat(outputPath); err == nil {
+			timing.Size = info.Size()
 		}
 	}
 
-	if m.dryRun {
-		manifest.AddVolume(VolumeBackup{
-			Name:       spec.Name,
-			Type:       spec.BackupType,
-			Filename:   filepath.Join("volumes", filename),
-			Size:       0,
-			Checksum:   "sha256:dry-run",
-			Service:    spec.Service,
-			BackedUpAt: startTime,
-		})
-		return nil
-	}
-
-	// Get file info for manifest
-	info, err := os.Stat(outputPath)
-	if err != nil {
-		return fmt.Errorf("getting file info: %w", err)
-	}
-
-	checksum, err := FileChecksum(outputPath)
-	if err != nil {
-		return fmt.Errorf("calculating checksum: %w", err)
-	}
-
-	manifest.AddVolume(VolumeBackup{
-		Name:       spec.Name,
-		Type:       spec.BackupType,
-		Filename:   filepath.Join("volumes", filename),
-		Size:       info.Size(),
-		Checksum:   checksum,
-		Service:    spec.Service,
-		BackedUpAt: startTime,
-	})
-
-	return nil
+	return timing
 }
 
 // getRunningContainers returns a list of running containers for this project
