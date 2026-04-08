@@ -46,11 +46,13 @@ def mock_config() -> Mock:
     config.is_base_model_name = Mock(return_value=False)
     config.is_bucket_model_name = Mock(return_value=False)
     config.get_keep_alive_for_model = Mock(return_value=-1)
-    config.get_llm_options = Mock(return_value={
-        "num_ctx": 8192,
-        "num_predict": 1200,
-        "temperature": 0.25,
-    })
+    config.get_llm_options = Mock(
+        return_value={
+            "num_ctx": 8192,
+            "num_predict": 1200,
+            "temperature": 0.25,
+        }
+    )
 
     return config
 
@@ -73,14 +75,16 @@ def mock_llm_provider() -> AsyncMock:
     provider = AsyncMock(spec=LLMProviderPort)
     provider.initialize = AsyncMock()
     provider.cleanup = AsyncMock()
-    provider.generate = AsyncMock(return_value=LLMGenerateResponse(
-        response="Default mock response",
-        model="gemma4-e4b-12k",
-        done=True,
-        prompt_eval_count=100,
-        eval_count=50,
-        total_duration=1_000_000_000,
-    ))
+    provider.generate = AsyncMock(
+        return_value=LLMGenerateResponse(
+            response="Default mock response",
+            model="gemma4-e4b-12k",
+            done=True,
+            prompt_eval_count=100,
+            eval_count=50,
+            total_duration=1_000_000_000,
+        )
+    )
     return provider
 
 
@@ -88,16 +92,19 @@ def mock_llm_provider() -> AsyncMock:
 def mock_llm_response_success() -> LLMGenerateResponse:
     """Create a successful LLM response for recap summary tests."""
     import json
+
     return LLMGenerateResponse(
-        response=json.dumps({
-            "title": "Test Summary Title",
-            "bullets": [
-                "First important point from the articles.",
-                "Second key finding or development.",
-                "Third conclusion or insight.",
-            ],
-            "language": "en"
-        }),
+        response=json.dumps(
+            {
+                "title": "Test Summary Title",
+                "bullets": [
+                    "First important point from the articles.",
+                    "Second key finding or development.",
+                    "Third conclusion or insight.",
+                ],
+                "language": "en",
+            }
+        ),
         model="gemma4-e4b-12k",
         done=True,
         prompt_eval_count=512,
@@ -125,14 +132,18 @@ def sample_recap_request():
                 cluster_id=0,
                 representative_sentences=[
                     RepresentativeSentence(text="AI company announces new product."),
-                    RepresentativeSentence(text="Market responds positively to announcement."),
+                    RepresentativeSentence(
+                        text="Market responds positively to announcement."
+                    ),
                 ],
                 top_terms=["AI", "product", "market"],
             ),
             RecapClusterInput(
                 cluster_id=1,
                 representative_sentences=[
-                    RepresentativeSentence(text="Regulatory concerns raised by experts."),
+                    RepresentativeSentence(
+                        text="Regulatory concerns raised by experts."
+                    ),
                 ],
                 top_terms=["regulation", "concerns"],
             ),
@@ -142,6 +153,7 @@ def sample_recap_request():
 
 
 # Integration test fixtures
+
 
 @pytest.fixture
 def test_app(mock_llm_provider):

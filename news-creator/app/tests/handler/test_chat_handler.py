@@ -3,7 +3,6 @@
 import json
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -24,7 +23,11 @@ class TestChatEndpointStreaming:
 
         async def fake_chunks():
             yield {"message": {"role": "assistant", "content": "Hello"}, "done": False}
-            yield {"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"}
+            yield {
+                "message": {"role": "assistant", "content": ""},
+                "done": True,
+                "done_reason": "stop",
+            }
 
         gateway.chat_stream.return_value = fake_chunks()
 
@@ -39,7 +42,7 @@ class TestChatEndpointStreaming:
         )
 
         assert resp.status_code == 200
-        lines = [l for l in resp.text.strip().split("\n") if l.strip()]
+        lines = [line for line in resp.text.strip().split("\n") if line.strip()]
         assert len(lines) == 2
         first = json.loads(lines[0])
         assert first["message"]["content"] == "Hello"

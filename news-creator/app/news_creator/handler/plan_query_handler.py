@@ -47,12 +47,16 @@ def create_plan_query_router(plan_query_usecase: PlanQueryUsecase) -> APIRouter:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         except RuntimeError as exc:
-            logger.error("Failed to plan query", extra={"error": str(exc)}, exc_info=True)
+            logger.error(
+                "Failed to plan query", extra={"error": str(exc)}, exc_info=True
+            )
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
         except Exception as exc:
             logger.exception("Unexpected error in plan-query")
-            raise HTTPException(status_code=500, detail="Internal server error") from exc
+            raise HTTPException(
+                status_code=500, detail="Internal server error"
+            ) from exc
 
         finally:
             clear_context()

@@ -76,7 +76,9 @@ def test_health_check_with_no_models_loaded(client, mock_ollama_gateway):
 def test_health_check_handles_ollama_unavailable(client, mock_ollama_gateway):
     """Test health check handles Ollama service unavailability gracefully."""
     # Arrange
-    mock_ollama_gateway.list_models.side_effect = RuntimeError("Ollama service unavailable")
+    mock_ollama_gateway.list_models.side_effect = RuntimeError(
+        "Ollama service unavailable"
+    )
 
     # Act
     response = client.get("/health")
@@ -129,6 +131,7 @@ def test_health_check_handles_network_timeout(client, mock_ollama_gateway):
     """Test health check handles network timeout gracefully."""
     # Arrange
     import asyncio
+
     mock_ollama_gateway.list_models.side_effect = asyncio.TimeoutError()
 
     # Act

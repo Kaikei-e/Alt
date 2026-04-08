@@ -8,6 +8,7 @@ import pytest
 def fifo_semaphore_module():
     """Import FIFOSemaphore for testing."""
     from news_creator.gateway.fifo_semaphore import FIFOSemaphore
+
     return FIFOSemaphore
 
 
@@ -207,4 +208,3 @@ async def test_fifo_semaphore_context_manager_returns_wait_time(fifo_semaphore_m
         # After entering context, last_wait_time should be available
         assert semaphore.last_wait_time >= 0
         assert semaphore.last_wait_time < 0.1  # Immediate acquire
-

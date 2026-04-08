@@ -54,9 +54,13 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
                     "query_length": len(request.query) if request.query else 0,
                     "japanese_count": request.japanese_count,
                     "english_count": request.english_count,
-                }
+                },
             )
-            expanded_queries, model, processing_time_ms = await expand_query_usecase.expand_query(
+            (
+                expanded_queries,
+                model,
+                processing_time_ms,
+            ) = await expand_query_usecase.expand_query(
                 query=request.query,
                 japanese_count=request.japanese_count,
                 english_count=request.english_count,
@@ -74,7 +78,10 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
         except ValueError as exc:
             logger.warning(
                 "Invalid expand-query request",
-                extra={"error": str(exc), "query": request.query[:100] if request.query else ""}
+                extra={
+                    "error": str(exc),
+                    "query": request.query[:100] if request.query else "",
+                },
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -94,7 +101,9 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
                 "Unexpected error while expanding query",
                 extra={"query": request.query[:100] if request.query else ""},
             )
-            raise HTTPException(status_code=500, detail="Internal server error") from exc
+            raise HTTPException(
+                status_code=500, detail="Internal server error"
+            ) from exc
 
         finally:
             clear_context()

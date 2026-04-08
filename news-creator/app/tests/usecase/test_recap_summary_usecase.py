@@ -53,15 +53,21 @@ async def test_generate_summary_success():
             RecapClusterInput(
                 cluster_id=0,
                 representative_sentences=[
-                    RepresentativeSentence(text="TechFusion announced the acquisition of Nova Labs for $1.2B."),
-                    RepresentativeSentence(text="Executives expect integration in March 2026."),
+                    RepresentativeSentence(
+                        text="TechFusion announced the acquisition of Nova Labs for $1.2B."
+                    ),
+                    RepresentativeSentence(
+                        text="Executives expect integration in March 2026."
+                    ),
                 ],
                 top_terms=["acquisition", "AI", "Nova Labs"],
             ),
             RecapClusterInput(
                 cluster_id=1,
                 representative_sentences=[
-                    RepresentativeSentence(text="Nova Labs is known for fast fine-tuning infrastructure."),
+                    RepresentativeSentence(
+                        text="Nova Labs is known for fast fine-tuning infrastructure."
+                    ),
                 ],
             ),
         ],
@@ -121,7 +127,9 @@ async def test_generate_summary_raises_error_when_invalid_json():
         clusters=[
             RecapClusterInput(
                 cluster_id=0,
-                representative_sentences=[RepresentativeSentence(text="Sample sentence for testing.")]
+                representative_sentences=[
+                    RepresentativeSentence(text="Sample sentence for testing.")
+                ],
             )
         ],
     )
@@ -166,7 +174,9 @@ async def test_generate_summary_trims_excess_bullets():
         clusters=[
             RecapClusterInput(
                 cluster_id=0,
-                representative_sentences=[RepresentativeSentence(text="Example sentence.")],
+                representative_sentences=[
+                    RepresentativeSentence(text="Example sentence.")
+                ],
             )
         ],
         options=RecapSummaryOptions(max_bullets=8, temperature=0.3),
@@ -220,11 +230,13 @@ def _create_sample_request(genre: str) -> RecapSummaryRequest:
 def _create_llm_response(title: str, genre: str) -> LLMGenerateResponse:
     """Create a mock LLM response."""
     return LLMGenerateResponse(
-        response=json.dumps({
-            "title": title,
-            "bullets": [f"{genre} の要点1", f"{genre} の要点2"],
-            "language": "ja"
-        }),
+        response=json.dumps(
+            {
+                "title": title,
+                "bullets": [f"{genre} の要点1", f"{genre} の要点2"],
+                "language": "ja",
+            }
+        ),
         model="gemma4-e4b-q4km",
         prompt_eval_count=100,
         eval_count=50,
@@ -321,7 +333,7 @@ async def test_generate_batch_summary_empty_requests():
     config = _create_mock_config()
     llm_provider = AsyncMock()
 
-    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    RecapSummaryUsecase(config=config, llm_provider=llm_provider)
 
     # Pydantic validation should reject empty requests list
     with pytest.raises(ValueError):
@@ -336,9 +348,7 @@ async def test_generate_batch_summary_single_request():
 
     llm_provider.generate.return_value = _create_llm_response("テック要約", "tech")
 
-    batch_request = BatchRecapSummaryRequest(
-        requests=[_create_sample_request("tech")]
-    )
+    batch_request = BatchRecapSummaryRequest(requests=[_create_sample_request("tech")])
 
     usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
 
@@ -415,7 +425,9 @@ def test_split_clusters_into_chunks_with_overlap():
         cluster_counts = {}
         for chunk in chunks:
             for cluster in chunk:
-                cluster_counts[cluster.cluster_id] = cluster_counts.get(cluster.cluster_id, 0) + 1
+                cluster_counts[cluster.cluster_id] = (
+                    cluster_counts.get(cluster.cluster_id, 0) + 1
+                )
 
         # With 50% overlap, clusters near chunk boundaries should appear twice
         has_overlap = any(count > 1 for count in cluster_counts.values())
@@ -502,9 +514,14 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
         # Return smaller summaries on each call
         if generate_raw_call_count <= 4:  # Map phase (initial chunks)
             return LLMGenerateResponse(
-                response=json.dumps({
-                    "bullets": [f"中間要約{generate_raw_call_count}-1 " + "詳細" * 50, f"中間要約{generate_raw_call_count}-2 " + "詳細" * 50],
-                }),
+                response=json.dumps(
+                    {
+                        "bullets": [
+                            f"中間要約{generate_raw_call_count}-1 " + "詳細" * 50,
+                            f"中間要約{generate_raw_call_count}-2 " + "詳細" * 50,
+                        ],
+                    }
+                ),
                 model="gemma4-e4b-q4km",
                 prompt_eval_count=100,
                 eval_count=50,
@@ -512,9 +529,11 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
             )
         else:  # Recursive reduce phase
             return LLMGenerateResponse(
-                response=json.dumps({
-                    "bullets": ["要約済み要点1", "要約済み要点2"],
-                }),
+                response=json.dumps(
+                    {
+                        "bullets": ["要約済み要点1", "要約済み要点2"],
+                    }
+                ),
                 model="gemma4-e4b-q4km",
                 prompt_eval_count=100,
                 eval_count=50,
@@ -524,11 +543,13 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
     # Final reduce goes through _generate_single_shot_summary which uses generate()
     def mock_generate(prompt, **kwargs):
         return LLMGenerateResponse(
-            response=json.dumps({
-                "title": "最終要約タイトル",
-                "bullets": ["最終要点1", "最終要点2"],
-                "language": "ja"
-            }),
+            response=json.dumps(
+                {
+                    "title": "最終要約タイトル",
+                    "bullets": ["最終要点1", "最終要点2"],
+                    "language": "ja",
+                }
+            ),
             model="gemma4-e4b-q4km",
             prompt_eval_count=100,
             eval_count=50,
@@ -595,11 +616,13 @@ async def test_recursive_reduce_respects_max_depth():
         yield 0.0, None, None
 
     large_response = LLMGenerateResponse(
-        response=json.dumps({
-            "title": "要約タイトル",
-            "bullets": ["長い要点" * 20],  # Large output
-            "language": "ja"
-        }),
+        response=json.dumps(
+            {
+                "title": "要約タイトル",
+                "bullets": ["長い要点" * 20],  # Large output
+                "language": "ja",
+            }
+        ),
         model="gemma4-e4b-q4km",
         prompt_eval_count=100,
         eval_count=50,
@@ -667,20 +690,20 @@ async def test_small_intermediate_summaries_skip_recursive_reduce():
         generate_raw_call_count += 1
         # Map phase: return small intermediate summaries
         return LLMGenerateResponse(
-            response=json.dumps({
-                "bullets": ["短い要点1", "短い要点2"],
-            }),
+            response=json.dumps(
+                {
+                    "bullets": ["短い要点1", "短い要点2"],
+                }
+            ),
             model="gemma4-e4b-q4km",
         )
 
     # Final reduce goes through _generate_single_shot_summary (uses generate())
     def mock_generate(prompt, **kwargs):
         return LLMGenerateResponse(
-            response=json.dumps({
-                "title": "最終要約",
-                "bullets": ["最終要点1"],
-                "language": "ja"
-            }),
+            response=json.dumps(
+                {"title": "最終要約", "bullets": ["最終要点1"], "language": "ja"}
+            ),
             model="gemma4-e4b-q4km",
         )
 
@@ -691,9 +714,7 @@ async def test_small_intermediate_summaries_skip_recursive_reduce():
     clusters = [
         RecapClusterInput(
             cluster_id=0,
-            representative_sentences=[
-                RepresentativeSentence(text="短いテスト文。")
-            ],
+            representative_sentences=[RepresentativeSentence(text="短いテスト文。")],
         ),
         RecapClusterInput(
             cluster_id=1,
@@ -703,9 +724,7 @@ async def test_small_intermediate_summaries_skip_recursive_reduce():
         ),
         RecapClusterInput(
             cluster_id=2,
-            representative_sentences=[
-                RepresentativeSentence(text="三つ目の短い文。")
-            ],
+            representative_sentences=[RepresentativeSentence(text="三つ目の短い文。")],
         ),
     ]
 
@@ -755,7 +774,9 @@ def _make_hierarchical_clusters(count=4):
         RecapClusterInput(
             cluster_id=i,
             representative_sentences=[
-                RepresentativeSentence(text=f"クラスタ{i}の代表文。テスト用の内容です。" * 5)
+                RepresentativeSentence(
+                    text=f"クラスタ{i}の代表文。テスト用の内容です。" * 5
+                )
             ],
             top_terms=[f"term{i}"],
         )
@@ -790,9 +811,11 @@ async def test_hierarchical_map_phase_uses_hold_slot_generate_raw():
         nonlocal generate_raw_calls
         generate_raw_calls += 1
         return LLMGenerateResponse(
-            response=json.dumps({
-                "bullets": [f"要点{generate_raw_calls}"],
-            }),
+            response=json.dumps(
+                {
+                    "bullets": [f"要点{generate_raw_calls}"],
+                }
+            ),
             model="gemma4-e4b-q4km",
             prompt_eval_count=100,
             eval_count=50,
@@ -802,11 +825,13 @@ async def test_hierarchical_map_phase_uses_hold_slot_generate_raw():
     # generate() is used by _generate_single_shot_summary for the final reduce
     async def mock_generate(prompt, **kwargs):
         return LLMGenerateResponse(
-            response=json.dumps({
-                "title": "最終要約",
-                "bullets": ["最終要点1", "最終要点2"],
-                "language": "ja"
-            }),
+            response=json.dumps(
+                {
+                    "title": "最終要約",
+                    "bullets": ["最終要点1", "最終要点2"],
+                    "language": "ja",
+                }
+            ),
             model="gemma4-e4b-q4km",
             prompt_eval_count=100,
             eval_count=50,
@@ -830,7 +855,9 @@ async def test_hierarchical_map_phase_uses_hold_slot_generate_raw():
     response = await usecase.generate_summary(request)
 
     assert hold_slot_calls >= 1, "hold_slot must be called for hierarchical map chunks"
-    assert generate_raw_calls >= 1, "generate_raw must be used for hierarchical map chunks"
+    assert generate_raw_calls >= 1, (
+        "generate_raw must be used for hierarchical map chunks"
+    )
     assert response.summary is not None
 
 
@@ -851,27 +878,39 @@ async def test_hierarchical_3days_map_phase_uses_3days_prompt_contract():
     async def mock_generate_raw(prompt, **kwargs):
         captured_prompts.append(prompt)
         return LLMGenerateResponse(
-            response=json.dumps({
-                "bullets": ["主要な変化が確認された。", "追加の更新が確認された。"],
-                "language": "ja",
-            }),
+            response=json.dumps(
+                {
+                    "bullets": ["主要な変化が確認された。", "追加の更新が確認された。"],
+                    "language": "ja",
+                }
+            ),
             model="gemma4-e4b-q4km",
         )
 
     async def mock_generate(prompt, **kwargs):
         return LLMGenerateResponse(
-            response=json.dumps({
-                "title": "最終要約",
-                "bullets": [
-                    "主要企業の動きが変化し、市場の競争環境に影響した [1]",
-                    "規制側の更新も重なり、今後の導入見通しが変わった [2]",
-                ],
-                "language": "ja",
-                "references": [
-                    {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
-                    {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
-                ],
-            }),
+            response=json.dumps(
+                {
+                    "title": "最終要約",
+                    "bullets": [
+                        "主要企業の動きが変化し、市場の競争環境に影響した [1]",
+                        "規制側の更新も重なり、今後の導入見通しが変わった [2]",
+                    ],
+                    "language": "ja",
+                    "references": [
+                        {
+                            "id": 1,
+                            "url": "https://example.com/1",
+                            "domain": "example.com",
+                        },
+                        {
+                            "id": 2,
+                            "url": "https://example.com/2",
+                            "domain": "example.com",
+                        },
+                    ],
+                }
+            ),
             model="gemma4-e4b-q4km",
         )
 
@@ -919,9 +958,11 @@ async def test_hierarchical_reduce_group_uses_hold_slot_generate_raw():
         nonlocal generate_raw_calls
         generate_raw_calls += 1
         return LLMGenerateResponse(
-            response=json.dumps({
-                "bullets": [f"要点{generate_raw_calls}" + "詳細" * 20],
-            }),
+            response=json.dumps(
+                {
+                    "bullets": [f"要点{generate_raw_calls}" + "詳細" * 20],
+                }
+            ),
             model="gemma4-e4b-q4km",
             prompt_eval_count=100,
             eval_count=50,
@@ -931,11 +972,9 @@ async def test_hierarchical_reduce_group_uses_hold_slot_generate_raw():
     # generate() is used by _generate_single_shot_summary for the final reduce
     async def mock_generate(prompt, **kwargs):
         return LLMGenerateResponse(
-            response=json.dumps({
-                "title": "最終要約",
-                "bullets": ["最終要点"],
-                "language": "ja"
-            }),
+            response=json.dumps(
+                {"title": "最終要約", "bullets": ["最終要点"], "language": "ja"}
+            ),
             model="gemma4-e4b-q4km",
             prompt_eval_count=100,
             eval_count=50,
@@ -995,18 +1034,20 @@ async def test_selects_3days_prompt_when_window_is_3():
 
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response=json.dumps({
-            "title": "AI最新動向",
-            "bullets": [
-                "TechFusion は 4月5日に Nova Labs 買収を発表し、統合後の推論基盤共通化を打ち出した。買収総額は12億ドルで、企業向け AI 競争を加速させる可能性がある [1]",
-                "Google は 4月6日に新モデルの API 提供時期を公開し、企業導入の前倒しを促した。価格改定も重なり、主要クラウド各社の競争は強まっている [2]",
-            ],
-            "language": "ja",
-            "references": [
-                {"id": 1, "url": "https://a.com", "domain": "a.com"},
-                {"id": 2, "url": "https://b.com", "domain": "b.com"},
-            ],
-        }),
+        response=json.dumps(
+            {
+                "title": "AI最新動向",
+                "bullets": [
+                    "TechFusion は 4月5日に Nova Labs 買収を発表し、統合後の推論基盤共通化を打ち出した。買収総額は12億ドルで、企業向け AI 競争を加速させる可能性がある [1]",
+                    "Google は 4月6日に新モデルの API 提供時期を公開し、企業導入の前倒しを促した。価格改定も重なり、主要クラウド各社の競争は強まっている [2]",
+                ],
+                "language": "ja",
+                "references": [
+                    {"id": 1, "url": "https://a.com", "domain": "a.com"},
+                    {"id": 2, "url": "https://b.com", "domain": "b.com"},
+                ],
+            }
+        ),
         model="gemma4-e4b-q4km",
         prompt_eval_count=100,
         eval_count=50,
@@ -1020,10 +1061,26 @@ async def test_selects_3days_prompt_when_window_is_3():
             RecapClusterInput(
                 cluster_id=0,
                 representative_sentences=[
-                    RepresentativeSentence(text="Sample sentence for testing.", source_url="https://example.com/1", article_id="art1"),
-                    RepresentativeSentence(text="Another sample sentence for testing.", source_url="https://example.com/2", article_id="art2"),
-                    RepresentativeSentence(text="Third sample sentence for testing.", source_url="https://example.com/3", article_id="art3"),
-                    RepresentativeSentence(text="Fourth sample sentence for testing.", source_url="https://example.com/4", article_id="art4"),
+                    RepresentativeSentence(
+                        text="Sample sentence for testing.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                    RepresentativeSentence(
+                        text="Another sample sentence for testing.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                    RepresentativeSentence(
+                        text="Third sample sentence for testing.",
+                        source_url="https://example.com/3",
+                        article_id="art3",
+                    ),
+                    RepresentativeSentence(
+                        text="Fourth sample sentence for testing.",
+                        source_url="https://example.com/4",
+                        article_id="art4",
+                    ),
                 ],
             )
         ],
@@ -1049,18 +1106,20 @@ async def test_3days_prompt_uses_gemma_turn_format():
     config = _create_mock_config()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response=json.dumps({
-            "title": "AI最新動向",
-            "bullets": [
-                "主要企業が新機能を公開し、競争環境が変化した [1]",
-                "規制当局も新方針を示し、今後の導入に影響する [2]",
-            ],
-            "language": "ja",
-            "references": [
-                {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
-                {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
-            ],
-        }),
+        response=json.dumps(
+            {
+                "title": "AI最新動向",
+                "bullets": [
+                    "主要企業が新機能を公開し、競争環境が変化した [1]",
+                    "規制当局も新方針を示し、今後の導入に影響する [2]",
+                ],
+                "language": "ja",
+                "references": [
+                    {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
+                    {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
+                ],
+            }
+        ),
         model="gemma4-e4b-q4km",
     )
 
@@ -1071,10 +1130,26 @@ async def test_3days_prompt_uses_gemma_turn_format():
             RecapClusterInput(
                 cluster_id=0,
                 representative_sentences=[
-                    RepresentativeSentence(text="Sample sentence one.", source_url="https://example.com/1", article_id="art1"),
-                    RepresentativeSentence(text="Sample sentence two.", source_url="https://example.com/2", article_id="art2"),
-                    RepresentativeSentence(text="Sample sentence three.", source_url="https://example.com/3", article_id="art3"),
-                    RepresentativeSentence(text="Sample sentence four.", source_url="https://example.com/4", article_id="art4"),
+                    RepresentativeSentence(
+                        text="Sample sentence one.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                    RepresentativeSentence(
+                        text="Sample sentence two.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                    RepresentativeSentence(
+                        text="Sample sentence three.",
+                        source_url="https://example.com/3",
+                        article_id="art3",
+                    ),
+                    RepresentativeSentence(
+                        text="Sample sentence four.",
+                        source_url="https://example.com/4",
+                        article_id="art4",
+                    ),
                 ],
             )
         ],
@@ -1106,11 +1181,13 @@ async def test_selects_7days_prompt_when_window_is_none():
 
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response=json.dumps({
-            "title": "AI最新動向",
-            "bullets": ["テスト要約"],
-            "language": "ja",
-        }),
+        response=json.dumps(
+            {
+                "title": "AI最新動向",
+                "bullets": ["テスト要約"],
+                "language": "ja",
+            }
+        ),
         model="gemma4-e4b-q4km",
         prompt_eval_count=100,
         eval_count=50,
@@ -1158,20 +1235,22 @@ async def test_3days_max_bullets_default_is_7():
 
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response=json.dumps({
-            "title": "テスト",
-            "bullets": [
-                "要点1: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
-                "要点2: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
-                "要点3: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
-                "要点4: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
-                "要点5: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
-                "要点6: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
-                "要点7: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
-                "要点8: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
-            ],
-            "language": "ja",
-        }),
+        response=json.dumps(
+            {
+                "title": "テスト",
+                "bullets": [
+                    "要点1: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                    "要点2: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                    "要点3: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                    "要点4: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                    "要点5: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                    "要点6: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                    "要点7: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                    "要点8: 主要企業が新製品投入や価格改定を進め、市場の競争環境がこの3日で大きく変化したことが確認された。今後の導入拡大にも影響する可能性が高い",
+                ],
+                "language": "ja",
+            }
+        ),
         model="gemma4-e4b-q4km",
         prompt_eval_count=100,
         eval_count=50,
@@ -1185,10 +1264,26 @@ async def test_3days_max_bullets_default_is_7():
             RecapClusterInput(
                 cluster_id=0,
                 representative_sentences=[
-                    RepresentativeSentence(text="Sample one.", source_url="https://example.com/1", article_id="art1"),
-                    RepresentativeSentence(text="Sample two.", source_url="https://example.com/2", article_id="art2"),
-                    RepresentativeSentence(text="Sample three.", source_url="https://example.com/3", article_id="art3"),
-                    RepresentativeSentence(text="Sample four.", source_url="https://example.com/4", article_id="art4"),
+                    RepresentativeSentence(
+                        text="Sample one.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                    RepresentativeSentence(
+                        text="Sample two.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                    RepresentativeSentence(
+                        text="Sample three.",
+                        source_url="https://example.com/3",
+                        article_id="art3",
+                    ),
+                    RepresentativeSentence(
+                        text="Sample four.",
+                        source_url="https://example.com/4",
+                        article_id="art4",
+                    ),
                 ],
             )
         ],
@@ -1209,18 +1304,20 @@ async def test_3days_prompt_contains_contract_examples_and_forbidden_patterns():
     config = _create_mock_config()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response=json.dumps({
-            "title": "AI最新動向",
-            "bullets": [
-                "TechFusion は 4月5日に Nova Labs 買収を発表し、統合後の製品戦略を示した [1]",
-                "Google は 新モデルを公開し、API 提供時期も明示した [2]",
-            ],
-            "language": "ja",
-            "references": [
-                {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
-                {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
-            ],
-        }),
+        response=json.dumps(
+            {
+                "title": "AI最新動向",
+                "bullets": [
+                    "TechFusion は 4月5日に Nova Labs 買収を発表し、統合後の製品戦略を示した [1]",
+                    "Google は 新モデルを公開し、API 提供時期も明示した [2]",
+                ],
+                "language": "ja",
+                "references": [
+                    {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
+                    {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
+                ],
+            }
+        ),
         model="gemma4-e4b-q4km",
     )
 
@@ -1277,15 +1374,17 @@ async def test_3days_strict_validation_rejects_english_title_and_missing_referen
 
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response=json.dumps({
-            "title": "AI updates",
-            "bullets": [
-                "主要企業が新機能を公開し、市場の競争環境が変化した。",
-                "規制当局も新方針を示し、今後の導入見通しが変わった。",
-            ],
-            "language": "ja",
-            "references": [],
-        }),
+        response=json.dumps(
+            {
+                "title": "AI updates",
+                "bullets": [
+                    "主要企業が新機能を公開し、市場の競争環境が変化した。",
+                    "規制当局も新方針を示し、今後の導入見通しが変わった。",
+                ],
+                "language": "ja",
+                "references": [],
+            }
+        ),
         model="gemma4-e4b-q4km",
     )
 
@@ -1296,10 +1395,26 @@ async def test_3days_strict_validation_rejects_english_title_and_missing_referen
             RecapClusterInput(
                 cluster_id=0,
                 representative_sentences=[
-                    RepresentativeSentence(text="Sample one.", source_url="https://example.com/1", article_id="art1"),
-                    RepresentativeSentence(text="Sample two.", source_url="https://example.com/2", article_id="art2"),
-                    RepresentativeSentence(text="Sample three.", source_url="https://example.com/3", article_id="art3"),
-                    RepresentativeSentence(text="Sample four.", source_url="https://example.com/4", article_id="art4"),
+                    RepresentativeSentence(
+                        text="Sample one.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                    RepresentativeSentence(
+                        text="Sample two.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                    RepresentativeSentence(
+                        text="Sample three.",
+                        source_url="https://example.com/3",
+                        article_id="art3",
+                    ),
+                    RepresentativeSentence(
+                        text="Sample four.",
+                        source_url="https://example.com/4",
+                        article_id="art4",
+                    ),
                 ],
             )
         ],
@@ -1311,6 +1426,7 @@ async def test_3days_strict_validation_rejects_english_title_and_missing_referen
 
     assert response.metadata.is_degraded is True
     assert response.summary.language == "ja"
+
 
 # ============================================================================
 # Issue 3: Reduce Quality Tests
@@ -1337,10 +1453,12 @@ async def test_reduce_group_uses_structured_prompt():
     async def mock_generate_raw(prompt, **kwargs):
         captured_prompts.append(prompt)
         return LLMGenerateResponse(
-            response=json.dumps({
-                "bullets": ["統合された要約 [1]"],
-                "language": "ja",
-            }),
+            response=json.dumps(
+                {
+                    "bullets": ["統合された要約 [1]"],
+                    "language": "ja",
+                }
+            ),
             model="gemma4-e4b-q4km",
         )
 
@@ -1350,12 +1468,19 @@ async def test_reduce_group_uses_structured_prompt():
     usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
 
     from news_creator.domain.models import IntermediateSummary
+
     group = [
-        IntermediateSummary(bullets=["TechFusionがNova Labsを買収 [1]", "Google新モデル発表 [2]"], language="ja"),
-        IntermediateSummary(bullets=["TechFusion買収でAI業界再編 [1]", "日銀金利変更 [3]"], language="ja"),
+        IntermediateSummary(
+            bullets=["TechFusionがNova Labsを買収 [1]", "Google新モデル発表 [2]"],
+            language="ja",
+        ),
+        IntermediateSummary(
+            bullets=["TechFusion買収でAI業界再編 [1]", "日銀金利変更 [3]"],
+            language="ja",
+        ),
     ]
 
-    result = await usecase._reduce_group(group, Mock(job_id="test", genre="ai"), {}, {})
+    await usecase._reduce_group(group, Mock(job_id="test", genre="ai"), {}, {})
 
     assert len(captured_prompts) == 1
     reduce_prompt = captured_prompts[0]
@@ -1383,11 +1508,13 @@ async def test_metadata_includes_reduce_depth():
 
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response=json.dumps({
-            "title": "テスト",
-            "bullets": ["要約"],
-            "language": "ja",
-        }),
+        response=json.dumps(
+            {
+                "title": "テスト",
+                "bullets": ["要約"],
+                "language": "ja",
+            }
+        ),
         model="gemma4-e4b-q4km",
         prompt_eval_count=100,
         eval_count=50,
@@ -1604,8 +1731,12 @@ async def test_fallback_selects_centroids_first():
             RecapClusterInput(
                 cluster_id=0,
                 representative_sentences=[
-                    RepresentativeSentence(text="Non-centroid secondary info.", is_centroid=False),
-                    RepresentativeSentence(text="CENTROID: Main topic here.", is_centroid=True),
+                    RepresentativeSentence(
+                        text="Non-centroid secondary info.", is_centroid=False
+                    ),
+                    RepresentativeSentence(
+                        text="CENTROID: Main topic here.", is_centroid=True
+                    ),
                 ],
             ),
         ],
@@ -1666,27 +1797,45 @@ async def test_generate_summary_repairs_placeholder_and_non_japanese_output():
     llm_provider = AsyncMock()
     llm_provider.generate.side_effect = [
         LLMGenerateResponse(
-            response=json.dumps({
-                "title": "AI Updates",
-                "bullets": ["... [1]"],
-                "language": "en",
-                "references": [{"id": 1, "url": "https://example.com/1", "domain": "example.com"}],
-            }),
+            response=json.dumps(
+                {
+                    "title": "AI Updates",
+                    "bullets": ["... [1]"],
+                    "language": "en",
+                    "references": [
+                        {
+                            "id": 1,
+                            "url": "https://example.com/1",
+                            "domain": "example.com",
+                        }
+                    ],
+                }
+            ),
             model="gemma4-e4b-q4km",
         ),
         LLMGenerateResponse(
-            response=json.dumps({
-                "title": "AI業界の重要更新",
-                "bullets": [
-                    "TechFusion は 4月5日に Nova Labs の買収を発表し、統合後に推論基盤を共通化する方針を示した。買収額は12億ドルで、生成AI向け最適化技術の獲得が狙いとみられる [1]",
-                    "Google は 4月6日に新モデルの API 提供時期を公表し、企業導入の前倒しを促した。競合各社も価格改定を進めており、市場の競争は一段と激しくなっている [2]",
-                ],
-                "language": "ja",
-                "references": [
-                    {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
-                    {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
-                ],
-            }),
+            response=json.dumps(
+                {
+                    "title": "AI業界の重要更新",
+                    "bullets": [
+                        "TechFusion は 4月5日に Nova Labs の買収を発表し、統合後に推論基盤を共通化する方針を示した。買収額は12億ドルで、生成AI向け最適化技術の獲得が狙いとみられる [1]",
+                        "Google は 4月6日に新モデルの API 提供時期を公表し、企業導入の前倒しを促した。競合各社も価格改定を進めており、市場の競争は一段と激しくなっている [2]",
+                    ],
+                    "language": "ja",
+                    "references": [
+                        {
+                            "id": 1,
+                            "url": "https://example.com/1",
+                            "domain": "example.com",
+                        },
+                        {
+                            "id": 2,
+                            "url": "https://example.com/2",
+                            "domain": "example.com",
+                        },
+                    ],
+                }
+            ),
             model="gemma4-e4b-q4km",
         ),
     ]
@@ -1698,10 +1847,26 @@ async def test_generate_summary_repairs_placeholder_and_non_japanese_output():
             RecapClusterInput(
                 cluster_id=0,
                 representative_sentences=[
-                    RepresentativeSentence(text="TechFusion announced the Nova Labs acquisition.", source_url="https://example.com/1", article_id="art1"),
-                    RepresentativeSentence(text="Google shared an API launch timeline for the new model.", source_url="https://example.com/2", article_id="art2"),
-                    RepresentativeSentence(text="Regulators published AI safety guidance.", source_url="https://example.com/3", article_id="art3"),
-                    RepresentativeSentence(text="AWS cut inference prices for enterprise workloads.", source_url="https://example.com/4", article_id="art4"),
+                    RepresentativeSentence(
+                        text="TechFusion announced the Nova Labs acquisition.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                    RepresentativeSentence(
+                        text="Google shared an API launch timeline for the new model.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                    RepresentativeSentence(
+                        text="Regulators published AI safety guidance.",
+                        source_url="https://example.com/3",
+                        article_id="art3",
+                    ),
+                    RepresentativeSentence(
+                        text="AWS cut inference prices for enterprise workloads.",
+                        source_url="https://example.com/4",
+                        article_id="art4",
+                    ),
                 ],
             )
         ],
@@ -1726,30 +1891,48 @@ async def test_generate_summary_repairs_reference_mismatch():
     llm_provider = AsyncMock()
     llm_provider.generate.side_effect = [
         LLMGenerateResponse(
-            response=json.dumps({
-                "title": "AI業界の更新",
-                "bullets": [
-                    "TechFusion は Nova Labs の買収を発表し、統合完了時期も示した [2]",
-                    "Google は 新モデルの API 提供時期を公開した [3]",
-                ],
-                "language": "ja",
-                "references": [{"id": 1, "url": "https://example.com/1", "domain": "example.com"}],
-            }),
+            response=json.dumps(
+                {
+                    "title": "AI業界の更新",
+                    "bullets": [
+                        "TechFusion は Nova Labs の買収を発表し、統合完了時期も示した [2]",
+                        "Google は 新モデルの API 提供時期を公開した [3]",
+                    ],
+                    "language": "ja",
+                    "references": [
+                        {
+                            "id": 1,
+                            "url": "https://example.com/1",
+                            "domain": "example.com",
+                        }
+                    ],
+                }
+            ),
             model="gemma4-e4b-q4km",
         ),
         LLMGenerateResponse(
-            response=json.dumps({
-                "title": "AI業界の更新",
-                "bullets": [
-                    "TechFusion は Nova Labs の買収を発表し、統合完了時期も示した。買収額は12億ドルで、生成AI向け最適化技術を取り込む狙いがある [1]",
-                    "Google は 新モデルの API 提供時期を公開し、企業導入の前倒しを促した。価格改定も重なり市場競争は一段と激しくなっている [2]",
-                ],
-                "language": "ja",
-                "references": [
-                    {"id": 1, "url": "https://example.com/1", "domain": "example.com"},
-                    {"id": 2, "url": "https://example.com/2", "domain": "example.com"},
-                ],
-            }),
+            response=json.dumps(
+                {
+                    "title": "AI業界の更新",
+                    "bullets": [
+                        "TechFusion は Nova Labs の買収を発表し、統合完了時期も示した。買収額は12億ドルで、生成AI向け最適化技術を取り込む狙いがある [1]",
+                        "Google は 新モデルの API 提供時期を公開し、企業導入の前倒しを促した。価格改定も重なり市場競争は一段と激しくなっている [2]",
+                    ],
+                    "language": "ja",
+                    "references": [
+                        {
+                            "id": 1,
+                            "url": "https://example.com/1",
+                            "domain": "example.com",
+                        },
+                        {
+                            "id": 2,
+                            "url": "https://example.com/2",
+                            "domain": "example.com",
+                        },
+                    ],
+                }
+            ),
             model="gemma4-e4b-q4km",
         ),
     ]
@@ -1761,10 +1944,26 @@ async def test_generate_summary_repairs_reference_mismatch():
             RecapClusterInput(
                 cluster_id=0,
                 representative_sentences=[
-                    RepresentativeSentence(text="TechFusion announced the Nova Labs acquisition.", source_url="https://example.com/1", article_id="art1"),
-                    RepresentativeSentence(text="Google shared an API launch timeline for the new model.", source_url="https://example.com/2", article_id="art2"),
-                    RepresentativeSentence(text="Regulators published AI safety guidance.", source_url="https://example.com/3", article_id="art3"),
-                    RepresentativeSentence(text="AWS cut inference prices for enterprise workloads.", source_url="https://example.com/4", article_id="art4"),
+                    RepresentativeSentence(
+                        text="TechFusion announced the Nova Labs acquisition.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                    RepresentativeSentence(
+                        text="Google shared an API launch timeline for the new model.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                    RepresentativeSentence(
+                        text="Regulators published AI safety guidance.",
+                        source_url="https://example.com/3",
+                        article_id="art3",
+                    ),
+                    RepresentativeSentence(
+                        text="AWS cut inference prices for enterprise workloads.",
+                        source_url="https://example.com/4",
+                        article_id="art4",
+                    ),
                 ],
             )
         ],

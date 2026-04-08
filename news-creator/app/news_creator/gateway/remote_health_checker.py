@@ -54,7 +54,8 @@ class RemoteHealthChecker:
     def acquire_idle_remote(self) -> Optional[str]:
         """Reserve the next idle healthy remote, or None if all are busy/unhealthy."""
         idle_healthy = [
-            url for url in self._remotes
+            url
+            for url in self._remotes
             if self._states[url]["healthy"] and not self._states[url]["busy"]
         ]
         if not idle_healthy:
@@ -95,7 +96,8 @@ class RemoteHealthChecker:
         """Return healthy idle remotes in priority order, excluding any specified URLs."""
         excluded = exclude or set()
         return [
-            url for url in self._remotes
+            url
+            for url in self._remotes
             if (
                 self._states[url]["healthy"]
                 and not self._states[url]["busy"]
@@ -118,17 +120,19 @@ class RemoteHealthChecker:
         result = []
         for url in self._remotes:
             state = self._states[url]
-            result.append({
-                "url": url,
-                "healthy": state["healthy"],
-                "busy": state["busy"],
-                "last_checked": state["last_checked"],
-                "last_healthy": state["last_healthy"],
-                "last_assigned": state["last_assigned"],
-                "last_completed": state["last_completed"],
-                "in_flight_count": state["in_flight_count"],
-                "consecutive_failures": state["consecutive_failures"],
-            })
+            result.append(
+                {
+                    "url": url,
+                    "healthy": state["healthy"],
+                    "busy": state["busy"],
+                    "last_checked": state["last_checked"],
+                    "last_healthy": state["last_healthy"],
+                    "last_assigned": state["last_assigned"],
+                    "last_completed": state["last_completed"],
+                    "in_flight_count": state["in_flight_count"],
+                    "consecutive_failures": state["consecutive_failures"],
+                }
+            )
         return result
 
     def _should_probe(self, url: str) -> bool:
@@ -169,7 +173,10 @@ class RemoteHealthChecker:
 
                 required = self._model_overrides.get(url, self._required_model)
                 # Match model name with or without :latest tag suffix
-                if any(name == required or name.startswith(f"{required}:") for name in model_names):
+                if any(
+                    name == required or name.startswith(f"{required}:")
+                    for name in model_names
+                ):
                     state["healthy"] = True
                     state["last_healthy"] = time.monotonic()
                     state["consecutive_failures"] = 0

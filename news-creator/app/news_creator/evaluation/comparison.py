@@ -1,7 +1,7 @@
 """Comparison report for before/after evaluation runs."""
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from news_creator.evaluation.recap_quality import LOWER_IS_BETTER_AXES
 from news_creator.evaluation.trace_recorder import TraceRecord
@@ -78,13 +78,15 @@ def compare_runs(
         else:
             improved = delta > 0
 
-        axis_deltas.append(AxisDelta(
-            axis=axis,
-            before_mean=before_mean,
-            after_mean=after_mean,
-            delta=delta,
-            improved=improved,
-        ))
+        axis_deltas.append(
+            AxisDelta(
+                axis=axis,
+                before_mean=before_mean,
+                after_mean=after_mean,
+                delta=delta,
+                improved=improved,
+            )
+        )
 
     fb_before = _fallback_rate(before)
     fb_after = _fallback_rate(after)

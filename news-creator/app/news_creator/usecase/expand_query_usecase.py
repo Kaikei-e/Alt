@@ -1,6 +1,7 @@
 """Expand Query usecase - business logic for RAG query expansion."""
 
 import logging
+import re as _re
 import time
 from datetime import datetime, timezone, timedelta
 from typing import List, Tuple, Optional
@@ -140,7 +141,7 @@ class ExpandQueryUsecase:
                 "japanese_count": japanese_count,
                 "english_count": english_count,
                 "max_tokens": max_tokens,
-            }
+            },
         )
 
         try:
@@ -159,7 +160,9 @@ class ExpandQueryUsecase:
             )
 
             # Narrow union type: non-streaming returns LLMGenerateResponse
-            assert isinstance(result, LLMGenerateResponse), "Expected non-streaming LLMGenerateResponse"
+            assert isinstance(result, LLMGenerateResponse), (
+                "Expected non-streaming LLMGenerateResponse"
+            )
             llm_response: LLMGenerateResponse = result
 
             # Parse response: split by newlines and filter empty lines
@@ -182,7 +185,7 @@ class ExpandQueryUsecase:
                     "raw_line_count": len(parsed_lines),
                     "model": llm_response.model,
                     "elapsed_ms": round(elapsed_ms, 2),
-                }
+                },
             )
 
             return expanded_queries, llm_response.model, elapsed_ms
@@ -206,8 +209,12 @@ class ExpandQueryUsecase:
 
 # Labels and section headers that small models sometimes emit
 _LABEL_PREFIXES = (
-    "japanese:", "english:", "日本語:", "英語:",
-    "japanese(", "english(",
+    "japanese:",
+    "english:",
+    "日本語:",
+    "英語:",
+    "japanese(",
+    "english(",
 )
 
 # Preamble patterns that indicate prose, not search queries
@@ -234,25 +241,35 @@ _INSTRUCTION_ECHO_EXACT = {
 }
 
 # Meta-words: if 3+ appear in a single line, it's likely an instruction leak
-_META_WORDS = frozenset({
-    "queries", "generate", "variations", "translate",
-    "numbering", "bullets", "labels", "explanations",
-    "output", "exactly", "requirements",
-})
+_META_WORDS = frozenset(
+    {
+        "queries",
+        "generate",
+        "variations",
+        "translate",
+        "numbering",
+        "bullets",
+        "labels",
+        "explanations",
+        "output",
+        "exactly",
+        "requirements",
+    }
+)
 
 
-import re as _re
-
-_URL_PATTERN = _re.compile(r'https?://\S+')
-_SPECIAL_CHARS_PATTERN = _re.compile(r'[^\w\s\u3000-\u9FFF\u30A0-\u30FF\u3040-\u309F。、！？.,!?\-()（）]')
+_URL_PATTERN = _re.compile(r"https?://\S+")
+_SPECIAL_CHARS_PATTERN = _re.compile(
+    r"[^\w\s\u3000-\u9FFF\u30A0-\u30FF\u3040-\u309F。、！？.,!?\-()（）]"
+)
 
 
 def _sanitize_history_content(content: str) -> str:
     """Sanitize conversation history content to prevent LLM confusion."""
     text = content[:150]
-    text = _URL_PATTERN.sub('', text)
-    text = _SPECIAL_CHARS_PATTERN.sub(' ', text)
-    text = ' '.join(text.split())
+    text = _URL_PATTERN.sub("", text)
+    text = _SPECIAL_CHARS_PATTERN.sub(" ", text)
+    text = " ".join(text.split())
     return text
 
 
@@ -267,7 +284,7 @@ def _is_repeating_pattern(line: str) -> bool:
         pat = stripped[:pat_len]
         repetitions = 0
         for i in range(0, len(stripped), pat_len):
-            if stripped[i:i + pat_len] == pat:
+            if stripped[i : i + pat_len] == pat:
                 repetitions += 1
             else:
                 break

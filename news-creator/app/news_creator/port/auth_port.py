@@ -13,6 +13,7 @@ except ModuleNotFoundError:
     @dataclass
     class UserContext:
         """Fallback UserContext when alt_auth is not available."""
+
         user_id: str = "anonymous"
         tenant_id: str = "public"
         roles: Tuple[str, ...] = ()

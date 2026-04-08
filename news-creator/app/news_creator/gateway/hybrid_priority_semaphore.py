@@ -236,9 +236,7 @@ class HybridPrioritySemaphore:
 
     def _has_preemptable_be(self) -> bool:
         """Check if there are any preemptable BE requests."""
-        return any(
-            not req.is_high_priority for req in self._active_requests.values()
-        )
+        return any(not req.is_high_priority for req in self._active_requests.values())
 
     async def _preempt_oldest_be(self) -> bool:
         """
@@ -268,7 +266,9 @@ class HybridPrioritySemaphore:
         oldest.cancel_event.set()
         return True
 
-    def _track_acquire(self, is_high_priority: bool, context: str = "", home_pool: str = "") -> int:
+    def _track_acquire(
+        self, is_high_priority: bool, context: str = "", home_pool: str = ""
+    ) -> int:
         """Track a slot acquisition for leak detection. Returns slot_id."""
         self._slot_counter += 1
         slot_id = self._slot_counter
@@ -359,7 +359,9 @@ class HybridPrioritySemaphore:
                 if self._rt_available > 0:
                     self._rt_available -= 1
                     self._last_wait_time = 0.0
-                    sid = self._track_acquire(is_high_priority=True, context="rt_immediate", home_pool="rt")
+                    sid = self._track_acquire(
+                        is_high_priority=True, context="rt_immediate", home_pool="rt"
+                    )
                     logger.debug(
                         "RT slot acquired immediately",
                         extra={"rt_available": self._rt_available},
@@ -369,7 +371,9 @@ class HybridPrioritySemaphore:
                 elif self._rt_reserved == 0 and self._be_available > 0:
                     self._be_available -= 1
                     self._last_wait_time = 0.0
-                    sid = self._track_acquire(is_high_priority=True, context="hp_be_fallback", home_pool="be")
+                    sid = self._track_acquire(
+                        is_high_priority=True, context="hp_be_fallback", home_pool="be"
+                    )
                     logger.debug(
                         "High priority acquired BE slot (no RT reserved)",
                         extra={"be_available": self._be_available},
@@ -388,7 +392,9 @@ class HybridPrioritySemaphore:
                 if self._be_available > 0:
                     self._be_available -= 1
                     self._last_wait_time = 0.0
-                    sid = self._track_acquire(is_high_priority=False, context="be_immediate", home_pool="be")
+                    sid = self._track_acquire(
+                        is_high_priority=False, context="be_immediate", home_pool="be"
+                    )
                     logger.debug(
                         "BE slot acquired immediately",
                         extra={"be_available": self._be_available},
@@ -399,7 +405,9 @@ class HybridPrioritySemaphore:
                 elif self._be_slots == 0 and self._rt_available > 0:
                     self._rt_available -= 1
                     self._last_wait_time = 0.0
-                    sid = self._track_acquire(is_high_priority=False, context="lp_rt_fallback", home_pool="rt")
+                    sid = self._track_acquire(
+                        is_high_priority=False, context="lp_rt_fallback", home_pool="rt"
+                    )
                     logger.debug(
                         "Low priority acquired RT slot (no BE slots configured)",
                         extra={"rt_available": self._rt_available},
@@ -451,7 +459,11 @@ class HybridPrioritySemaphore:
             inherited_pool = result if isinstance(result, str) and result else ""
             if not inherited_pool:
                 inherited_pool = "rt" if high_priority else "be"
-            sid = self._track_acquire(is_high_priority=high_priority, context="queued", home_pool=inherited_pool)
+            sid = self._track_acquire(
+                is_high_priority=high_priority,
+                context="queued",
+                home_pool=inherited_pool,
+            )
 
             if wait_time > 10.0:
                 logger.warning(
@@ -487,7 +499,9 @@ class HybridPrioritySemaphore:
                 self._purge_cancelled_from_queues()
             raise
 
-    def release(self, was_high_priority: bool = False, slot_id: Optional[int] = None) -> None:
+    def release(
+        self, was_high_priority: bool = False, slot_id: Optional[int] = None
+    ) -> None:
         """
         Release a slot and wake up next waiter.
 
@@ -513,7 +527,8 @@ class HybridPrioritySemaphore:
             # Legacy fallback for callers that haven't migrated to (wait_time, slot_id).
             # Find oldest matching slot to determine home_pool.
             matching = [
-                s for s in self._acquired_slots.values()
+                s
+                for s in self._acquired_slots.values()
                 if s.is_high_priority == was_high_priority
             ]
             if matching:
@@ -560,7 +575,9 @@ class HybridPrioritySemaphore:
                 request = heapq.heappop(self._be_queue)
                 if self._try_wake_waiter(request, home_pool):
                     woke_up = True
-                    self._consecutive_rt_releases = 0  # Reset counter after BE processed
+                    self._consecutive_rt_releases = (
+                        0  # Reset counter after BE processed
+                    )
                     logger.debug("Woke up BE waiter (guaranteed bandwidth)")
                     break
 
@@ -579,7 +596,9 @@ class HybridPrioritySemaphore:
                     request = heapq.heappop(self._be_queue)
                     if self._try_wake_waiter(request, home_pool):
                         woke_up = True
-                        self._consecutive_rt_releases = 0  # Reset counter after BE processed
+                        self._consecutive_rt_releases = (
+                            0  # Reset counter after BE processed
+                        )
                         logger.debug("Woke up BE waiter")
                         break
 
@@ -598,7 +617,9 @@ class HybridPrioritySemaphore:
         if woke_up:
             expected_total -= 1
 
-        total_tracked = self._rt_available + self._be_available + len(self._acquired_slots)
+        total_tracked = (
+            self._rt_available + self._be_available + len(self._acquired_slots)
+        )
         if total_tracked != expected_total:
             logger.error(
                 "SLOT INVARIANT VIOLATION: available + acquired != total_slots",
@@ -682,7 +703,9 @@ class HybridPrioritySemaphore:
         purged = 0
         for _, queue in [("rt", self._rt_queue), ("be", self._be_queue)]:
             original_len = len(queue)
-            live = [r for r in queue if not r.future.done() and not r.future.cancelled()]
+            live = [
+                r for r in queue if not r.future.done() and not r.future.cancelled()
+            ]
             removed = original_len - len(live)
             if removed > 0:
                 purged += removed

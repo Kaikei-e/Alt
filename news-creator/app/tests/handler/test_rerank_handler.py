@@ -20,7 +20,7 @@ class TestRerankHandler:
         mock.rerank.return_value = (
             [(1, 0.95), (0, 0.85), (2, 0.75)],
             "test-model",
-            123.45
+            123.45,
         )
         return mock
 
@@ -37,8 +37,8 @@ class TestRerankHandler:
             "/v1/rerank",
             json={
                 "query": "test query",
-                "candidates": ["candidate 1", "candidate 2", "candidate 3"]
-            }
+                "candidates": ["candidate 1", "candidate 2", "candidate 3"],
+            },
         )
 
         assert response.status_code == 200
@@ -57,24 +57,20 @@ class TestRerankHandler:
         mock_usecase.rerank.assert_called_once_with(
             query="test query",
             candidates=["candidate 1", "candidate 2", "candidate 3"],
-            top_k=None
+            top_k=None,
         )
 
     def test_rerank_with_top_k(self, client, mock_usecase):
         """Test rerank request with top_k limit."""
-        mock_usecase.rerank.return_value = (
-            [(1, 0.95), (0, 0.85)],
-            "test-model",
-            100.0
-        )
+        mock_usecase.rerank.return_value = ([(1, 0.95), (0, 0.85)], "test-model", 100.0)
 
         response = client.post(
             "/v1/rerank",
             json={
                 "query": "test query",
                 "candidates": ["candidate 1", "candidate 2", "candidate 3"],
-                "top_k": 2
-            }
+                "top_k": 2,
+            },
         )
 
         assert response.status_code == 200
@@ -85,17 +81,13 @@ class TestRerankHandler:
         mock_usecase.rerank.assert_called_once_with(
             query="test query",
             candidates=["candidate 1", "candidate 2", "candidate 3"],
-            top_k=2
+            top_k=2,
         )
 
     def test_rerank_empty_query(self, client, mock_usecase):
         """Test rerank request with empty query returns 400."""
         response = client.post(
-            "/v1/rerank",
-            json={
-                "query": "",
-                "candidates": ["candidate 1"]
-            }
+            "/v1/rerank", json={"query": "", "candidates": ["candidate 1"]}
         )
 
         # FastAPI validation should catch empty query
@@ -104,11 +96,7 @@ class TestRerankHandler:
     def test_rerank_empty_candidates(self, client, mock_usecase):
         """Test rerank request with empty candidates returns 422."""
         response = client.post(
-            "/v1/rerank",
-            json={
-                "query": "test query",
-                "candidates": []
-            }
+            "/v1/rerank", json={"query": "test query", "candidates": []}
         )
 
         assert response.status_code == 422
@@ -118,11 +106,7 @@ class TestRerankHandler:
         mock_usecase.rerank.side_effect = ValueError("Invalid input")
 
         response = client.post(
-            "/v1/rerank",
-            json={
-                "query": "test query",
-                "candidates": ["candidate 1"]
-            }
+            "/v1/rerank", json={"query": "test query", "candidates": ["candidate 1"]}
         )
 
         assert response.status_code == 400
@@ -133,11 +117,7 @@ class TestRerankHandler:
         mock_usecase.rerank.side_effect = RuntimeError("Model failed")
 
         response = client.post(
-            "/v1/rerank",
-            json={
-                "query": "test query",
-                "candidates": ["candidate 1"]
-            }
+            "/v1/rerank", json={"query": "test query", "candidates": ["candidate 1"]}
         )
 
         assert response.status_code == 502
@@ -148,11 +128,7 @@ class TestRerankHandler:
         mock_usecase.rerank.side_effect = Exception("Unexpected error")
 
         response = client.post(
-            "/v1/rerank",
-            json={
-                "query": "test query",
-                "candidates": ["candidate 1"]
-            }
+            "/v1/rerank", json={"query": "test query", "candidates": ["candidate 1"]}
         )
 
         assert response.status_code == 500
@@ -171,8 +147,8 @@ class TestRerankHandler:
                 json={
                     "query": "test query",
                     "candidates": ["candidate 1"],
-                    "model": "custom-model"
-                }
+                    "model": "custom-model",
+                },
             )
 
             assert response.status_code == 200

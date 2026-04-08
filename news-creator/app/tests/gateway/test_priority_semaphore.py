@@ -8,6 +8,7 @@ import pytest
 def priority_semaphore_module():
     """Import PrioritySemaphore for testing."""
     from news_creator.gateway.priority_semaphore import PrioritySemaphore
+
     return PrioritySemaphore
 
 
@@ -97,7 +98,9 @@ async def test_priority_semaphore_high_priority_first(priority_semaphore_module)
 
 
 @pytest.mark.asyncio
-async def test_priority_semaphore_multiple_high_priority_fifo(priority_semaphore_module):
+async def test_priority_semaphore_multiple_high_priority_fifo(
+    priority_semaphore_module,
+):
     """Test that multiple high priority requests maintain FIFO order among themselves."""
     PrioritySemaphore = priority_semaphore_module
     semaphore = PrioritySemaphore(1)
@@ -268,7 +271,9 @@ async def test_priority_semaphore_tracks_wait_time(priority_semaphore_module):
 
 
 @pytest.mark.asyncio
-async def test_priority_semaphore_wait_time_for_queued_requests(priority_semaphore_module):
+async def test_priority_semaphore_wait_time_for_queued_requests(
+    priority_semaphore_module,
+):
     """Test that queue wait time is tracked when actually waiting."""
     PrioritySemaphore = priority_semaphore_module
     semaphore = PrioritySemaphore(1)

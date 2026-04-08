@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, Mock
 from news_creator.domain.models import (
     ConversationMessage,
     PlanQueryRequest,
-    QueryPlan,
 )
 from news_creator.usecase.plan_query_usecase import PlanQueryUsecase
 
@@ -38,19 +37,22 @@ def _make_usecase() -> tuple[PlanQueryUsecase, AsyncMock]:
 async def test_plan_query_causal_single_turn():
     """Causal query produces resolved_query and causal intent."""
     usecase, llm = _make_usecase()
-    llm.chat_generate.return_value = _make_chat_response({
-        "reasoning": "test reasoning", "resolved_query": "イランの石油危機が発生した背景と直接的原因",
-        "search_queries": [
-            "イラン 石油危機 原因 2026",
-            "Iran oil crisis causes sanctions",
-            "原油供給 イラン 制裁 影響",
-        ],
-        "intent": "causal_explanation",
-        "retrieval_policy": "global_only",
-        "answer_format": "causal_analysis",
-        "should_clarify": False,
-        "topic_entities": ["イラン", "石油", "制裁"],
-    })
+    llm.chat_generate.return_value = _make_chat_response(
+        {
+            "reasoning": "test reasoning",
+            "resolved_query": "イランの石油危機が発生した背景と直接的原因",
+            "search_queries": [
+                "イラン 石油危機 原因 2026",
+                "Iran oil crisis causes sanctions",
+                "原油供給 イラン 制裁 影響",
+            ],
+            "intent": "causal_explanation",
+            "retrieval_policy": "global_only",
+            "answer_format": "causal_analysis",
+            "should_clarify": False,
+            "topic_entities": ["イラン", "石油", "制裁"],
+        }
+    )
 
     request = PlanQueryRequest(query="イランの石油危機はなぜ起きた？")
     response = await usecase.plan_query(request)
@@ -70,19 +72,22 @@ async def test_plan_query_causal_single_turn():
 async def test_plan_query_follow_up_resolves_coreference():
     """Follow-up with 'それ' should produce a standalone resolved_query."""
     usecase, llm = _make_usecase()
-    llm.chat_generate.return_value = _make_chat_response({
-        "reasoning": "test reasoning", "resolved_query": "イランの最近の外交的・軍事的動向",
-        "search_queries": [
-            "イラン 動向 2026",
-            "Iran recent developments",
-            "イラン 外交 軍事",
-        ],
-        "intent": "temporal",
-        "retrieval_policy": "global_only",
-        "answer_format": "summary",
-        "should_clarify": False,
-        "topic_entities": ["イラン"],
-    })
+    llm.chat_generate.return_value = _make_chat_response(
+        {
+            "reasoning": "test reasoning",
+            "resolved_query": "イランの最近の外交的・軍事的動向",
+            "search_queries": [
+                "イラン 動向 2026",
+                "Iran recent developments",
+                "イラン 外交 軍事",
+            ],
+            "intent": "temporal",
+            "retrieval_policy": "global_only",
+            "answer_format": "summary",
+            "should_clarify": False,
+            "topic_entities": ["イラン"],
+        }
+    )
 
     request = PlanQueryRequest(
         query="では、それに関連するイランの動向は？",
@@ -109,15 +114,18 @@ async def test_plan_query_follow_up_resolves_coreference():
 async def test_plan_query_ambiguous_requests_clarification():
     """Ambiguous follow-up 'もっと詳しく' should request clarification."""
     usecase, llm = _make_usecase()
-    llm.chat_generate.return_value = _make_chat_response({
-        "reasoning": "test reasoning", "resolved_query": "",
-        "search_queries": [],
-        "intent": "general",
-        "retrieval_policy": "no_retrieval",
-        "answer_format": "detail",
-        "should_clarify": True,
-        "topic_entities": [],
-    })
+    llm.chat_generate.return_value = _make_chat_response(
+        {
+            "reasoning": "test reasoning",
+            "resolved_query": "",
+            "search_queries": [],
+            "intent": "general",
+            "retrieval_policy": "no_retrieval",
+            "answer_format": "detail",
+            "should_clarify": True,
+            "topic_entities": [],
+        }
+    )
 
     request = PlanQueryRequest(
         query="もっと詳しく",
@@ -141,18 +149,21 @@ async def test_plan_query_ambiguous_requests_clarification():
 async def test_plan_query_article_scoped():
     """Article-scoped query should set article_only policy."""
     usecase, llm = _make_usecase()
-    llm.chat_generate.return_value = _make_chat_response({
-        "reasoning": "test reasoning", "resolved_query": "Transformerアーキテクチャのattention機構の技術的詳細",
-        "search_queries": [
-            "Transformer attention mechanism detail",
-            "attention 機構 仕組み",
-        ],
-        "intent": "topic_deep_dive",
-        "retrieval_policy": "article_only",
-        "answer_format": "detail",
-        "should_clarify": False,
-        "topic_entities": ["Transformer", "attention"],
-    })
+    llm.chat_generate.return_value = _make_chat_response(
+        {
+            "reasoning": "test reasoning",
+            "resolved_query": "Transformerアーキテクチャのattention機構の技術的詳細",
+            "search_queries": [
+                "Transformer attention mechanism detail",
+                "attention 機構 仕組み",
+            ],
+            "intent": "topic_deep_dive",
+            "retrieval_policy": "article_only",
+            "answer_format": "detail",
+            "should_clarify": False,
+            "topic_entities": ["Transformer", "attention"],
+        }
+    )
 
     request = PlanQueryRequest(
         query="attention機構について詳しく",
@@ -215,28 +226,35 @@ async def test_plan_query_invalid_json_returns_fallback():
 async def test_plan_query_prompt_includes_history():
     """Verify the LLM prompt includes conversation history when provided."""
     usecase, llm = _make_usecase()
-    llm.chat_generate.return_value = _make_chat_response({
-        "reasoning": "test reasoning", "resolved_query": "EV充電インフラの課題",
-        "search_queries": ["EV charging infrastructure challenges"],
-        "intent": "general",
-        "retrieval_policy": "global_only",
-        "answer_format": "summary",
-        "should_clarify": False,
-        "topic_entities": ["EV", "充電"],
-    })
+    llm.chat_generate.return_value = _make_chat_response(
+        {
+            "reasoning": "test reasoning",
+            "resolved_query": "EV充電インフラの課題",
+            "search_queries": ["EV charging infrastructure challenges"],
+            "intent": "general",
+            "retrieval_policy": "global_only",
+            "answer_format": "summary",
+            "should_clarify": False,
+            "topic_entities": ["EV", "充電"],
+        }
+    )
 
     request = PlanQueryRequest(
         query="具体的な課題は？",
         conversation_history=[
             ConversationMessage(role="user", content="EVの普及状況は？"),
-            ConversationMessage(role="assistant", content="充電インフラの整備が鍵です。"),
+            ConversationMessage(
+                role="assistant", content="充電インフラの整備が鍵です。"
+            ),
         ],
     )
     await usecase.plan_query(request)
 
     # Check that the prompt sent to LLM contains the conversation context
     call_args = llm.chat_generate.call_args
-    payload = call_args.args[0] if call_args.args else call_args.kwargs.get("payload", {})
+    payload = (
+        call_args.args[0] if call_args.args else call_args.kwargs.get("payload", {})
+    )
     prompt = payload.get("messages", [{}])[0].get("content", "")
     assert "EVの普及状況は？" in prompt
     assert "充電インフラの整備が鍵" in prompt

@@ -117,7 +117,9 @@ class TestContentValidator:
         result = validator.validate_and_clean(large_content, article_id="test-123")
 
         assert len(result.warnings) > 0
-        assert any("abnormal" in w.lower() or "large" in w.lower() for w in result.warnings)
+        assert any(
+            "abnormal" in w.lower() or "large" in w.lower() for w in result.warnings
+        )
 
 
 class TestValidationResult:

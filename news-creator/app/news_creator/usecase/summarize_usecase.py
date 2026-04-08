@@ -9,7 +9,7 @@ from news_creator.domain.models import LLMGenerateResponse
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.prompts import (
     SUMMARY_PROMPT_TEMPLATE,
-    CHUNK_SUMMARY_PROMPT_TEMPLATE
+    CHUNK_SUMMARY_PROMPT_TEMPLATE,
 )
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.utils.repetition_detector import detect_repetition
@@ -26,7 +26,9 @@ class SummarizeUsecase:
         self.config = config
         self.llm_provider = llm_provider
 
-    async def generate_summary(self, article_id: str, content: str, priority: str = "low") -> Tuple[str, Dict[str, Any]]:
+    async def generate_summary(
+        self, article_id: str, content: str, priority: str = "low"
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         Generate a Japanese summary for an article.
 
@@ -54,14 +56,18 @@ class SummarizeUsecase:
             extra={
                 "article_id": article_id,
                 "original_length": original_content_length,
-            }
+            },
         )
 
         cleaned_content, was_html = clean_html_content(content, article_id)
         cleaned_length = len(cleaned_content)
 
         if was_html:
-            reduction_ratio = (1.0 - (cleaned_length / original_content_length)) * 100.0 if original_content_length > 0 else 0.0
+            reduction_ratio = (
+                (1.0 - (cleaned_length / original_content_length)) * 100.0
+                if original_content_length > 0
+                else 0.0
+            )
             logger.warning(
                 "HTML detected and removed from article content",
                 extra={
@@ -69,7 +75,7 @@ class SummarizeUsecase:
                     "original_length": original_content_length,
                     "cleaned_length": cleaned_length,
                     "reduction_ratio": round(reduction_ratio, 2),
-                }
+                },
             )
         else:
             logger.info(
@@ -77,13 +83,17 @@ class SummarizeUsecase:
                 extra={
                     "article_id": article_id,
                     "content_length": cleaned_length,
-                }
+                },
             )
         content = cleaned_content
 
         # Validate that we have meaningful content after cleaning
         min_content_length = 100
-        if not content or not content.strip() or len(content.strip()) < min_content_length:
+        if (
+            not content
+            or not content.strip()
+            or len(content.strip()) < min_content_length
+        ):
             error_msg = (
                 f"Content is empty or too short after HTML cleaning. "
                 f"Original length: {original_content_length}, "
@@ -102,7 +112,7 @@ class SummarizeUsecase:
                     "cleaned_length": len(content),
                     "min_required": min_content_length,
                     "content_preview": content[:100] if content else "",
-                }
+                },
             )
             raise ValueError(error_msg)
 
@@ -112,7 +122,9 @@ class SummarizeUsecase:
         # Conservative estimate: 1 char ≈ 0.25-0.5 tokens (Japanese text)
         # Reserve ~1K tokens for prompt template and safety margin, leaving ~15K tokens for content
         # Using ~60K chars (≈15K tokens) for content to avoid truncation and stay within 16K limit
-        MAX_CONTENT_LENGTH = 60_000  # characters (conservative estimate for ~15K tokens in 16K context)
+        MAX_CONTENT_LENGTH = (
+            60_000  # characters (conservative estimate for ~15K tokens in 16K context)
+        )
         original_length = len(content)
 
         # Check for Hierarchical Summarization needed
@@ -122,8 +134,8 @@ class SummarizeUsecase:
                 extra={
                     "article_id": article_id,
                     "length": original_length,
-                    "threshold": self.config.hierarchical_single_article_threshold
-                }
+                    "threshold": self.config.hierarchical_single_article_threshold,
+                },
             )
             return await self._generate_hierarchical_summary(article_id, content)
 
@@ -137,7 +149,7 @@ class SummarizeUsecase:
                     "original_length": original_length,
                     "truncated_length": len(truncated_content),
                     "max_length": MAX_CONTENT_LENGTH,
-                }
+                },
             )
 
         logger.info(
@@ -146,13 +158,15 @@ class SummarizeUsecase:
                 "article_id": article_id,
                 "content_length": len(truncated_content),
                 "was_truncated": original_length > MAX_CONTENT_LENGTH,
-            }
+            },
         )
 
         # Build prompt from template
         jst = timezone(timedelta(hours=9))
         current_date_str = datetime.now(jst).strftime("%Y-%m-%d")
-        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=truncated_content, current_date=current_date_str)
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(
+            content=truncated_content, current_date=current_date_str
+        )
         prompt_length = len(prompt)
         template_length = prompt_length - len(truncated_content)
 
@@ -164,7 +178,9 @@ class SummarizeUsecase:
         if prompt_length > ABNORMAL_PROMPT_THRESHOLD:
             # Abnormal prompt size detected - log detailed information for investigation
             # Check for repetition in the prompt
-            has_repetition, repetition_score, repetition_patterns = detect_repetition(prompt, threshold=0.3)
+            has_repetition, repetition_score, repetition_patterns = detect_repetition(
+                prompt, threshold=0.3
+            )
 
             logger.error(
                 "ABNORMAL PROMPT SIZE DETECTED in summarize_usecase",
@@ -177,11 +193,13 @@ class SummarizeUsecase:
                     "context_window": context_window,
                     "prompt_preview_start": prompt[:500],
                     "prompt_preview_end": prompt[-500:] if prompt_length > 1000 else "",
-                    "content_preview": truncated_content[:500] if len(truncated_content) > 500 else truncated_content,
+                    "content_preview": truncated_content[:500]
+                    if len(truncated_content) > 500
+                    else truncated_content,
                     "has_repetition": has_repetition,
                     "repetition_score": repetition_score,
                     "repetition_patterns": repetition_patterns,
-                }
+                },
             )
             # Check if prompt contains repeated content
             if len(truncated_content) * 10 < prompt_length:
@@ -191,10 +209,12 @@ class SummarizeUsecase:
                         "article_id": article_id,
                         "content_length": len(truncated_content),
                         "prompt_length": prompt_length,
-                        "ratio": prompt_length / len(truncated_content) if truncated_content else 0,
+                        "ratio": prompt_length / len(truncated_content)
+                        if truncated_content
+                        else 0,
                         "has_repetition": has_repetition,
                         "repetition_score": repetition_score,
-                    }
+                    },
                 )
 
         logger.info(
@@ -206,24 +226,34 @@ class SummarizeUsecase:
                 "template_length": template_length,
                 "estimated_prompt_tokens": estimated_prompt_tokens,
                 "context_window": context_window,
-                "usage_percent": round((estimated_prompt_tokens / context_window) * 100, 1) if context_window > 0 else 0,
-            }
+                "usage_percent": round(
+                    (estimated_prompt_tokens / context_window) * 100, 1
+                )
+                if context_window > 0
+                else 0,
+            },
         )
 
-        if estimated_prompt_tokens > context_window * 0.9:  # Warn if using >90% of context window
+        if (
+            estimated_prompt_tokens > context_window * 0.9
+        ):  # Warn if using >90% of context window
             logger.warning(
                 "Prompt may be close to context window limit",
                 extra={
                     "article_id": article_id,
                     "estimated_prompt_tokens": estimated_prompt_tokens,
                     "context_window": context_window,
-                    "usage_percent": round((estimated_prompt_tokens / context_window) * 100, 1),
-                }
+                    "usage_percent": round(
+                        (estimated_prompt_tokens / context_window) * 100, 1
+                    ),
+                },
             )
 
         # Token-budget-based hierarchical fallback
         total_token_budget = estimated_prompt_tokens + self.config.summary_num_predict
-        budget_limit = int(context_window * self.config.hierarchical_token_budget_percent / 100)
+        budget_limit = int(
+            context_window * self.config.hierarchical_token_budget_percent / 100
+        )
 
         if total_token_budget > budget_limit:
             logger.warning(
@@ -235,7 +265,7 @@ class SummarizeUsecase:
                     "total_token_budget": total_token_budget,
                     "budget_limit": budget_limit,
                     "context_window": context_window,
-                }
+                },
             )
             return await self._generate_hierarchical_summary(article_id, content)
 
@@ -244,7 +274,6 @@ class SummarizeUsecase:
         # Previously, generate() was called per retry, re-acquiring the semaphore each time,
         # causing retries to wait 3500s+ in the queue again.
         max_retries = self.config.max_repetition_retries
-        last_error = None
         last_metadata = None
         has_repetition = False
         rep_score = 0.0
@@ -258,7 +287,11 @@ class SummarizeUsecase:
 
         import time
 
-        async with self.llm_provider.hold_slot(is_high_priority=is_high_priority) as (wait_time, cancel_event, task_id):
+        async with self.llm_provider.hold_slot(is_high_priority=is_high_priority) as (
+            wait_time,
+            cancel_event,
+            task_id,
+        ):
             for attempt in range(max_retries + 1):
                 # Adjust temperature and repetition penalty for retries
                 current_temp = self.config.summary_temperature
@@ -267,7 +300,9 @@ class SummarizeUsecase:
                 if attempt > 0:
                     # Progressively lower temperature and increase repetition penalty
                     current_temp = max(0.05, current_temp - (0.05 * attempt))
-                    current_repeat_penalty = min(1.2, current_repeat_penalty + (0.05 * attempt))
+                    current_repeat_penalty = min(
+                        1.2, current_repeat_penalty + (0.05 * attempt)
+                    )
 
                     logger.warning(
                         "Retrying summary generation due to repetition",
@@ -277,7 +312,7 @@ class SummarizeUsecase:
                             "max_retries": max_retries + 1,
                             "temperature": current_temp,
                             "repeat_penalty": current_repeat_penalty,
-                        }
+                        },
                     )
 
                 # Call LLM provider with adjusted parameters (no semaphore re-acquisition)
@@ -299,7 +334,11 @@ class SummarizeUsecase:
                 elapsed_time = time.time() - start_time
 
                 # Log generation performance
-                tokens_per_second = round(llm_response.eval_count / elapsed_time, 2) if llm_response.eval_count and elapsed_time > 0 else None
+                tokens_per_second = (
+                    round(llm_response.eval_count / elapsed_time, 2)
+                    if llm_response.eval_count and elapsed_time > 0
+                    else None
+                )
                 logger.info(
                     f"LLM generation completed: article_id={article_id}, elapsed={round(elapsed_time, 2)}s, "
                     f"prompt_eval_count={llm_response.prompt_eval_count}, eval_count={llm_response.eval_count}, "
@@ -322,9 +361,11 @@ class SummarizeUsecase:
                             "attempt": attempt + 1,
                             "raw_length": len(raw_summary) if raw_summary else 0,
                             "stripped_length": len(raw_text_stripped),
-                            "raw_preview": repr(raw_summary[:100]) if raw_summary else "None",
+                            "raw_preview": repr(raw_summary[:100])
+                            if raw_summary
+                            else "None",
                             "consecutive_empty_count": consecutive_empty_count,
-                        }
+                        },
                     )
                     # Bail early on consecutive empty responses to release the slot
                     if consecutive_empty_count >= 2:
@@ -334,12 +375,14 @@ class SummarizeUsecase:
                             f"Model may be in a bad state."
                         )
                     if attempt < max_retries:
-                        last_error = f"LLM returned insufficient content (length: {len(raw_text_stripped)})"
+                        f"LLM returned insufficient content (length: {len(raw_text_stripped)})"
                         last_metadata = {
                             "model": llm_response.model,
                             "prompt_tokens": llm_response.prompt_eval_count,
                             "completion_tokens": llm_response.eval_count,
-                            "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
+                            "total_duration_ms": self._nanoseconds_to_milliseconds(
+                                llm_response.total_duration
+                            ),
                         }
                         continue  # Retry with adjusted temperature
                 else:
@@ -347,8 +390,7 @@ class SummarizeUsecase:
 
                 # Check for repetition
                 has_repetition, rep_score, rep_patterns = detect_repetition(
-                    raw_summary,
-                    threshold=self.config.repetition_threshold
+                    raw_summary, threshold=self.config.repetition_threshold
                 )
 
                 if has_repetition and attempt < max_retries:
@@ -360,14 +402,15 @@ class SummarizeUsecase:
                             "repetition_score": rep_score,
                             "patterns": rep_patterns,
                             "raw_summary_preview": raw_summary[:200],
-                        }
+                        },
                     )
-                    last_error = f"Repetition detected (score: {rep_score:.2f})"
                     last_metadata = {
                         "model": llm_response.model,
                         "prompt_tokens": llm_response.prompt_eval_count,
                         "completion_tokens": llm_response.eval_count,
-                        "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
+                        "total_duration_ms": self._nanoseconds_to_milliseconds(
+                            llm_response.total_duration
+                        ),
                     }
                     continue  # Retry
 
@@ -382,7 +425,7 @@ class SummarizeUsecase:
                     "article_id": article_id,
                     "attempts": attempt + 1,
                     "raw_summary_length": len(raw_summary) if raw_summary else 0,
-                }
+                },
             )
 
         logger.debug(
@@ -391,7 +434,7 @@ class SummarizeUsecase:
                 "article_id": article_id,
                 "raw_summary_length": len(raw_summary) if raw_summary else 0,
                 "raw_summary_preview": raw_summary[:200] if raw_summary else "",
-            }
+            },
         )
 
         # If we exhausted retries and still have repetition, log warning but proceed
@@ -403,7 +446,7 @@ class SummarizeUsecase:
                     "repetition_score": rep_score,
                     "patterns": rep_patterns,
                     "max_retries": max_retries,
-                }
+                },
             )
 
         cleaned_summary = self._clean_summary_text(raw_summary, article_id)
@@ -413,9 +456,13 @@ class SummarizeUsecase:
             "Cleaned summary after processing",
             extra={
                 "article_id": article_id,
-                "cleaned_summary_length": len(cleaned_summary) if cleaned_summary else 0,
-                "cleaned_summary_preview": cleaned_summary[:200] if cleaned_summary else "",
-            }
+                "cleaned_summary_length": len(cleaned_summary)
+                if cleaned_summary
+                else 0,
+                "cleaned_summary_preview": cleaned_summary[:200]
+                if cleaned_summary
+                else "",
+            },
         )
 
         if not cleaned_summary:
@@ -426,7 +473,7 @@ class SummarizeUsecase:
                     "article_id": article_id,
                     "raw_summary_length": len(raw_summary) if raw_summary else 0,
                     "raw_summary": raw_summary[:500] if raw_summary else "",
-                }
+                },
             )
 
             # Minimal fallback cleaning: just remove turn tokens and trim
@@ -472,7 +519,7 @@ class SummarizeUsecase:
                         "estimated_prompt_tokens": estimated_prompt_tokens,
                         "context_window": context_window,
                         "prompt_truncated": prompt_truncated,
-                    }
+                    },
                 )
                 raise RuntimeError(error_msg)
 
@@ -482,7 +529,7 @@ class SummarizeUsecase:
                 extra={
                     "article_id": article_id,
                     "fallback_summary_length": len(cleaned_summary),
-                }
+                },
             )
 
         # Enforce 2000 character max (quality priority - allow slight exceed of 1500 target)
@@ -494,7 +541,9 @@ class SummarizeUsecase:
                 "model": llm_response.model,
                 "prompt_tokens": llm_response.prompt_eval_count,
                 "completion_tokens": llm_response.eval_count,
-                "total_duration_ms": self._nanoseconds_to_milliseconds(llm_response.total_duration),
+                "total_duration_ms": self._nanoseconds_to_milliseconds(
+                    llm_response.total_duration
+                ),
             }
         elif last_metadata:
             metadata = last_metadata
@@ -513,12 +562,14 @@ class SummarizeUsecase:
                 "article_id": article_id,
                 "summary_length": len(truncated_summary),
                 "model": metadata["model"],
-            }
+            },
         )
 
         return truncated_summary, metadata
 
-    async def _generate_hierarchical_summary(self, article_id: str, content: str) -> Tuple[str, Dict[str, Any]]:
+    async def _generate_hierarchical_summary(
+        self, article_id: str, content: str
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         Generate a summary for a large article using Hierarchical (Map-Reduce) strategy.
 
@@ -534,12 +585,13 @@ class SummarizeUsecase:
             Tuple of (summary text, metadata dict)
         """
         import time
+
         start_time = time.time()
 
         chunk_size = self.config.hierarchical_single_article_chunk_size
         chunks = []
         for i in range(0, len(content), chunk_size):
-            chunks.append(content[i:i + chunk_size])
+            chunks.append(content[i : i + chunk_size])
 
         logger.info(
             "Starting hierarchical summarization (Map-Reduce)",
@@ -547,8 +599,8 @@ class SummarizeUsecase:
                 "article_id": article_id,
                 "content_length": len(content),
                 "chunk_count": len(chunks),
-                "chunk_size": chunk_size
-            }
+                "chunk_size": chunk_size,
+            },
         )
 
         # Map Phase: Summarize each chunk via hold_slot + generate_raw (BE path)
@@ -558,8 +610,8 @@ class SummarizeUsecase:
 
         for i, chunk in enumerate(chunks):
             logger.info(
-                f"Map phase: Processing chunk {i+1}/{len(chunks)}",
-                extra={"article_id": article_id, "chunk_index": i}
+                f"Map phase: Processing chunk {i + 1}/{len(chunks)}",
+                extra={"article_id": article_id, "chunk_index": i},
             )
 
             prompt = CHUNK_SUMMARY_PROMPT_TEMPLATE.format(content=chunk)
@@ -567,12 +619,16 @@ class SummarizeUsecase:
             # Use somewhat higher temperature for extraction to avoid rigid repetition
             llm_options = {
                 "temperature": 0.2,
-                "repeat_penalty": self.config.llm_repeat_penalty
+                "repeat_penalty": self.config.llm_repeat_penalty,
             }
 
             try:
                 # Use hold_slot + generate_raw so DistributingGateway can dispatch to remote
-                async with self.llm_provider.hold_slot(is_high_priority=False) as (_wait_time, cancel_event, task_id):
+                async with self.llm_provider.hold_slot(is_high_priority=False) as (
+                    _wait_time,
+                    cancel_event,
+                    task_id,
+                ):
                     chunk_resp = await self.llm_provider.generate_raw(
                         prompt,
                         cancel_event=cancel_event,
@@ -583,7 +639,9 @@ class SummarizeUsecase:
                 chunk_text = chunk_resp.response
 
                 # Cleanup chunk summary
-                chunk_text = self._clean_summary_text(chunk_text, f"{article_id}-chunk-{i}")
+                chunk_text = self._clean_summary_text(
+                    chunk_text, f"{article_id}-chunk-{i}"
+                )
 
                 if chunk_text and chunk_text != "なし":
                     chunk_summaries.append(chunk_text)
@@ -596,12 +654,14 @@ class SummarizeUsecase:
             except Exception as e:
                 logger.error(
                     f"Failed to summarize chunk {i}",
-                    extra={"article_id": article_id, "error": str(e)}
+                    extra={"article_id": article_id, "error": str(e)},
                 )
                 # Continue best effort
 
         if not chunk_summaries:
-            raise RuntimeError("Hierarchical summarization failed: no valid chunk summaries generated")
+            raise RuntimeError(
+                "Hierarchical summarization failed: no valid chunk summaries generated"
+            )
 
         # Reduce Phase: Summarize the combined chunk summaries
         combined_text = "\n\n".join(chunk_summaries)
@@ -611,20 +671,29 @@ class SummarizeUsecase:
             extra={
                 "article_id": article_id,
                 "combined_length": len(combined_text),
-                "reduction_ratio": f"{(1 - len(combined_text)/len(content))*100:.1f}%"
-            }
+                "reduction_ratio": f"{(1 - len(combined_text) / len(content)) * 100:.1f}%",
+            },
         )
 
-        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=combined_text, current_date=datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d"))
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(
+            content=combined_text,
+            current_date=datetime.now(timezone(timedelta(hours=9))).strftime(
+                "%Y-%m-%d"
+            ),
+        )
 
         # Use standard summary configuration
         llm_options = {
             "temperature": self.config.summary_temperature,
-            "repeat_penalty": self.config.llm_repeat_penalty
+            "repeat_penalty": self.config.llm_repeat_penalty,
         }
 
         # Reduce phase also uses hold_slot + generate_raw (BE path)
-        async with self.llm_provider.hold_slot(is_high_priority=False) as (_wait_time, cancel_event, task_id):
+        async with self.llm_provider.hold_slot(is_high_priority=False) as (
+            _wait_time,
+            cancel_event,
+            task_id,
+        ):
             final_resp = await self.llm_provider.generate_raw(
                 prompt,
                 cancel_event=cancel_event,
@@ -648,12 +717,14 @@ class SummarizeUsecase:
             "prompt_tokens": total_prompt_tokens,
             "completion_tokens": total_completion_tokens,
             "total_duration_ms": elapsed_ms,
-            "strategy": "hierarchical"
+            "strategy": "hierarchical",
         }
 
         return truncated_summary, metadata
 
-    async def generate_summary_stream(self, article_id: str, content: str, priority: str = "low") -> AsyncGenerator[str, None]:
+    async def generate_summary_stream(
+        self, article_id: str, content: str, priority: str = "low"
+    ) -> AsyncGenerator[str, None]:
         """
         Generate a Japanese summary for an article as a stream of tokens.
 
@@ -669,7 +740,7 @@ class SummarizeUsecase:
             extra={
                 "article_id": article_id,
                 "content_length": len(content) if content else 0,
-            }
+            },
         )
 
         if not article_id or not article_id.strip():
@@ -683,7 +754,11 @@ class SummarizeUsecase:
 
         # Basic validation (same as sync method)
         min_content_length = 100
-        if not content or not content.strip() or len(content.strip()) < min_content_length:
+        if (
+            not content
+            or not content.strip()
+            or len(content.strip()) < min_content_length
+        ):
             error_msg = (
                 f"Content is too short for summarization. "
                 f"Content length: {len(content) if content else 0}, "
@@ -695,7 +770,7 @@ class SummarizeUsecase:
                     "article_id": article_id,
                     "content_length": len(content) if content else 0,
                     "min_required": min_content_length,
-                }
+                },
             )
             # Don't yield empty string - raise error instead to prevent empty streams
             raise ValueError(error_msg)
@@ -711,7 +786,7 @@ class SummarizeUsecase:
                 "article_id": article_id,
                 "original_type": str(type(content)),
                 "truncated_type": str(type(truncated_content)),
-            }
+            },
         )
 
         if len(content) > MAX_CONTENT_LENGTH:
@@ -721,14 +796,16 @@ class SummarizeUsecase:
                     "article_id": article_id,
                     "original_length": len(content),
                     "truncated_length": len(truncated_content),
-                }
+                },
             )
 
         # Build prompt: Ensure we use truncated_content and enforce limit again just in case
         safe_content = truncated_content[:MAX_CONTENT_LENGTH]
         jst = timezone(timedelta(hours=9))
         current_date_str = datetime.now(jst).strftime("%Y-%m-%d")
-        prompt = SUMMARY_PROMPT_TEMPLATE.format(content=safe_content, current_date=current_date_str)
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(
+            content=safe_content, current_date=current_date_str
+        )
         prompt_length = len(prompt)
 
         logger.info(
@@ -737,7 +814,7 @@ class SummarizeUsecase:
                 "article_id": article_id,
                 "prompt_length": prompt_length,
                 "content_length": len(truncated_content),
-            }
+            },
         )
 
         # Call LLM provider with streaming
@@ -757,7 +834,7 @@ class SummarizeUsecase:
                     "article_id": article_id,
                     "stream": True,
                     "num_predict": self.config.summary_num_predict,
-                }
+                },
             )
 
             result = await self.llm_provider.generate(
@@ -769,14 +846,16 @@ class SummarizeUsecase:
             )
 
             # Narrow union type: streaming returns AsyncIterator
-            assert not isinstance(result, LLMGenerateResponse), "Expected AsyncIterator for streaming"
+            assert not isinstance(result, LLMGenerateResponse), (
+                "Expected AsyncIterator for streaming"
+            )
             stream_gen: AsyncIterator[LLMGenerateResponse] = result
 
             logger.info(
                 "Stream generator obtained from LLM provider",
                 extra={
                     "article_id": article_id,
-                }
+                },
             )
 
             # Control tokens to filter
@@ -784,10 +863,15 @@ class SummarizeUsecase:
             # but for now we assume tokens come in reasonable chunks or at least not split control tokens often.
             # We'll just filter valid exact matches or basic substring checks if it's a single token.
             ignored_tokens = {
-                "<start_of_turn>", "<end_of_turn>",
-                "<|turn>", "<turn|>",
-                "<|channel>thought", "<channel|>",
-                "<|system|>", "<|user|>", "<|assistant|>"
+                "<start_of_turn>",
+                "<end_of_turn>",
+                "<|turn>",
+                "<turn|>",
+                "<|channel>thought",
+                "<channel|>",
+                "<|system|>",
+                "<|user|>",
+                "<|assistant|>",
             }
 
             has_data = False
@@ -799,7 +883,7 @@ class SummarizeUsecase:
                     if token and token not in ignored_tokens:
                         has_data = True
                         tokens_yielded += 1
-                        bytes_yielded += len(token.encode('utf-8'))
+                        bytes_yielded += len(token.encode("utf-8"))
 
                         # Log first few tokens and periodically
                         if tokens_yielded <= 3 or tokens_yielded % 50 == 0:
@@ -808,10 +892,12 @@ class SummarizeUsecase:
                                 extra={
                                     "article_id": article_id,
                                     "token_number": tokens_yielded,
-                                    "token_preview": token[:50] if len(token) > 50 else token,
+                                    "token_preview": token[:50]
+                                    if len(token) > 50
+                                    else token,
                                     "bytes_yielded": bytes_yielded,
                                     "chunks_received": chunks_received,
-                                }
+                                },
                             )
 
                         # Very basic filtering of partial control tokens could be added here if needed
@@ -826,7 +912,7 @@ class SummarizeUsecase:
                                     "article_id": article_id,
                                     "token": token,
                                     "chunks_received": chunks_received,
-                                }
+                                },
                             )
 
                 if not has_data:
@@ -836,7 +922,7 @@ class SummarizeUsecase:
                             "article_id": article_id,
                             "chunks_received": chunks_received,
                             "tokens_yielded": tokens_yielded,
-                        }
+                        },
                     )
                 else:
                     logger.info(
@@ -846,14 +932,14 @@ class SummarizeUsecase:
                             "tokens_yielded": tokens_yielded,
                             "bytes_yielded": bytes_yielded,
                             "chunks_received": chunks_received,
-                        }
+                        },
                     )
             finally:
-                if hasattr(stream_gen, 'aclose'):
+                if hasattr(stream_gen, "aclose"):
                     await stream_gen.aclose()
                 logger.info(
                     "Inner stream generator closed (aclose)",
-                    extra={"article_id": article_id}
+                    extra={"article_id": article_id},
                 )
 
         except aiohttp.ClientConnectionError as conn_err:
@@ -868,7 +954,7 @@ class SummarizeUsecase:
                         "tokens_yielded": tokens_yielded,
                         "bytes_yielded": bytes_yielded,
                         "chunks_received": chunks_received,
-                    }
+                    },
                 )
                 # Don't raise - the partial data has already been yielded
                 return
@@ -881,9 +967,11 @@ class SummarizeUsecase:
                         "error_type": type(conn_err).__name__,
                         "chunks_received": chunks_received,
                     },
-                    exc_info=True
+                    exc_info=True,
                 )
-                raise RuntimeError(f"Streaming summary generation failed: connection closed before any data was received") from conn_err
+                raise RuntimeError(
+                    "Streaming summary generation failed: connection closed before any data was received"
+                ) from conn_err
         except Exception as e:
             logger.error(
                 "Streaming summary generation failed",
@@ -895,10 +983,9 @@ class SummarizeUsecase:
                     "bytes_yielded": bytes_yielded,
                     "chunks_received": chunks_received,
                 },
-                exc_info=True
+                exc_info=True,
             )
             raise RuntimeError(f"Streaming summary generation failed: {e}") from e
-
 
     @staticmethod
     def _clean_summary_text(content: str, article_id: str = "") -> str:
@@ -916,7 +1003,7 @@ class SummarizeUsecase:
             if article_id:
                 logger.warning(
                     "Empty content provided to _clean_summary_text",
-                    extra={"article_id": article_id}
+                    extra={"article_id": article_id},
                 )
             return ""
 
@@ -941,26 +1028,29 @@ class SummarizeUsecase:
                     "article_id": article_id,
                     "original_length": original_length,
                     "after_token_removal": len(cleaned),
-                }
+                },
             )
 
         # Strip Gemma 4 thinking blocks (<|channel>thought\n...<channel|>)
         import re
-        cleaned = re.sub(r"<\|channel>thought.*?<channel\|>", "", cleaned, flags=re.DOTALL)
+
+        cleaned = re.sub(
+            r"<\|channel>thought.*?<channel\|>", "", cleaned, flags=re.DOTALL
+        )
 
         # Remove markdown code blocks (```...```)
         # Remove code blocks with triple backticks
-        cleaned = re.sub(r'```[^`]*```', '', cleaned, flags=re.DOTALL)
+        cleaned = re.sub(r"```[^`]*```", "", cleaned, flags=re.DOTALL)
         # Remove standalone triple backticks
-        cleaned = re.sub(r'```+', '', cleaned)
+        cleaned = re.sub(r"```+", "", cleaned)
         # Remove any remaining backticks
-        cleaned = cleaned.replace('`', '')
+        cleaned = cleaned.replace("`", "")
 
         # Remove excessive whitespace and special characters
         # Replace multiple spaces/tabs with single space
-        cleaned = re.sub(r'[ \t]+', ' ', cleaned)
+        cleaned = re.sub(r"[ \t]+", " ", cleaned)
         # Remove excessive newlines
-        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
 
         # Process line by line
         lines = cleaned.splitlines()
@@ -985,7 +1075,7 @@ class SummarizeUsecase:
         # Final cleanup: remove any remaining repetitive patterns
         # Check for patterns like "word-word-word" (3+ repetitions)
         before_final = result
-        result = re.sub(r'\b(\w+)(-\1){2,}\b', '', result, flags=re.IGNORECASE)
+        result = re.sub(r"\b(\w+)(-\1){2,}\b", "", result, flags=re.IGNORECASE)
 
         # Log if final cleanup removed significant content
         if len(result) < len(before_final) * 0.9:  # More than 10% removed
@@ -995,7 +1085,7 @@ class SummarizeUsecase:
                     "article_id": article_id,
                     "before_final_length": len(before_final),
                     "after_final_length": len(result),
-                }
+                },
             )
 
         # Warn if result is empty after all cleaning
@@ -1006,7 +1096,7 @@ class SummarizeUsecase:
                     "article_id": article_id,
                     "original_length": original_length,
                     "original_preview": content[:200],
-                }
+                },
             )
 
         return result

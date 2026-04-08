@@ -16,11 +16,11 @@ _REF_MARKER_RE = re.compile(r"\[(\d+)\]")
 # Regex for numeric values (dates, percentages, currencies, plain numbers)
 _NUMERIC_RE = re.compile(
     r"\d{4}[-/年]\d{1,2}[-/月]"  # dates
-    r"|\d+[%％]"                   # percentages
-    r"|\d+[億万千]"                # Japanese large numbers
-    r"|[\$€£¥]\s?\d"              # currency symbols
+    r"|\d+[%％]"  # percentages
+    r"|\d+[億万千]"  # Japanese large numbers
+    r"|[\$€£¥]\s?\d"  # currency symbols
     r"|\d+(?:\.\d+)?(?:ドル|円|ユーロ|ポンド)"  # currency words
-    r"|\d{2,}",                    # plain numbers ≥ 2 digits
+    r"|\d{2,}",  # plain numbers ≥ 2 digits
 )
 
 # Heuristic patterns for 4-element structure detection
@@ -28,11 +28,26 @@ _STRUCTURE_PATTERNS: List[Tuple[str, re.Pattern]] = [
     # who/what: proper nouns (katakana sequences, ASCII names, 社/氏)
     ("who_what", re.compile(r"[ァ-ヶー]{3,}|[A-Z][a-zA-Z]+|.{1,10}[社氏]")),
     # action: verb-like endings
-    ("action", re.compile(r"(?:した|される|発表|買収|開始|導入|開発|提供|発売|実施|公開|統合|改善|向上|引き上げ)")),
+    (
+        "action",
+        re.compile(
+            r"(?:した|される|発表|買収|開始|導入|開発|提供|発売|実施|公開|統合|改善|向上|引き上げ)"
+        ),
+    ),
     # background: context markers
-    ("background", re.compile(r"(?:背景|経緯|これまで|従来|過去|以前|に伴い|を受けて|に対して|一方で|として)")),
+    (
+        "background",
+        re.compile(
+            r"(?:背景|経緯|これまで|従来|過去|以前|に伴い|を受けて|に対して|一方で|として)"
+        ),
+    ),
     # impact/outlook: forward-looking or consequence markers
-    ("impact", re.compile(r"(?:見込み|予定|目指す|狙う|今後|将来|影響|結果|効果|期待|可能性|展望|視野)")),
+    (
+        "impact",
+        re.compile(
+            r"(?:見込み|予定|目指す|狙う|今後|将来|影響|結果|効果|期待|可能性|展望|視野)"
+        ),
+    ),
 ]
 
 
@@ -67,9 +82,9 @@ class RecapQualityEvaluator:
             return 0.0
 
         # Calculate alignment
-        matched = cited_ids & ref_ids
-        dangling = cited_ids - ref_ids      # markers with no ref
-        unused = ref_ids - cited_ids        # refs never cited
+        cited_ids & ref_ids
+        dangling = cited_ids - ref_ids  # markers with no ref
+        unused = ref_ids - cited_ids  # refs never cited
 
         total_items = len(cited_ids | ref_ids)
         if total_items == 0:
@@ -94,7 +109,7 @@ class RecapQualityEvaluator:
         for bullet in bullets:
             # Tokenize by character bigrams (effective for Japanese)
             chars = re.sub(r"\s+", "", bullet)  # remove whitespace
-            bigrams = Counter(chars[i:i+2] for i in range(len(chars) - 1))
+            bigrams = Counter(chars[i : i + 2] for i in range(len(chars) - 1))
             bullet_bigrams.append(bigrams)
 
         # Compute pairwise Jaccard similarity

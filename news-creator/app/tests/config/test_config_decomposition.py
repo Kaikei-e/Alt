@@ -316,7 +316,9 @@ class TestNewsCreatorConfigComposition:
         # New-style access should also work
         assert config.llm.service_url == "http://test:11435"
 
-    def test_news_creator_config_backward_compatible_scheduling_fields(self, monkeypatch):
+    def test_news_creator_config_backward_compatible_scheduling_fields(
+        self, monkeypatch
+    ):
         """NewsCreatorConfig should maintain backward compatible scheduling fields."""
         from news_creator.config.config import NewsCreatorConfig
 
@@ -330,7 +332,9 @@ class TestNewsCreatorConfigComposition:
         # New-style access should also work
         assert config.scheduling.rt_reserved_slots == 2
 
-    def test_news_creator_config_backward_compatible_hierarchical_fields(self, monkeypatch):
+    def test_news_creator_config_backward_compatible_hierarchical_fields(
+        self, monkeypatch
+    ):
         """NewsCreatorConfig should maintain backward compatible hierarchical fields."""
         from news_creator.config.config import NewsCreatorConfig
 
@@ -344,7 +348,9 @@ class TestNewsCreatorConfigComposition:
         # New-style access should also work
         assert config.hierarchical.threshold_chars == 10000
 
-    def test_news_creator_config_backward_compatible_model_routing_fields(self, monkeypatch):
+    def test_news_creator_config_backward_compatible_model_routing_fields(
+        self, monkeypatch
+    ):
         """NewsCreatorConfig should maintain backward compatible model routing fields."""
         from news_creator.config.config import NewsCreatorConfig
 
@@ -398,7 +404,9 @@ class TestNewsCreatorConfigComposition:
         assert config.is_bucket_model_name("model-60k") is True
         assert config.is_bucket_model_name("other") is False
 
-    def test_news_creator_config_get_keep_alive_for_model_still_works(self, monkeypatch):
+    def test_news_creator_config_get_keep_alive_for_model_still_works(
+        self, monkeypatch
+    ):
         """NewsCreatorConfig.get_keep_alive_for_model() should still work after refactoring."""
         from news_creator.config.config import NewsCreatorConfig
 

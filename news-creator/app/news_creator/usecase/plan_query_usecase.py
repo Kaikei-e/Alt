@@ -87,12 +87,16 @@ class PlanQueryUsecase:
             plan = await self._plan_with_llm(request)
         except Exception as e:
             import traceback
-            logger.warning("plan_query_llm_failed", extra={
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "traceback": traceback.format_exc(),
-                "query": request.query,
-            })
+
+            logger.warning(
+                "plan_query_llm_failed",
+                extra={
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                    "traceback": traceback.format_exc(),
+                    "query": request.query,
+                },
+            )
             plan = self._fallback_plan(request.query)
 
         elapsed_ms = (time.monotonic() - start) * 1000
@@ -132,10 +136,13 @@ class PlanQueryUsecase:
             parsed = json.loads(json_str)
             return QueryPlan(**parsed)
         except (json.JSONDecodeError, KeyError, Exception) as e:
-            logger.warning("plan_query_parse_failed", extra={
-                "error": str(e),
-                "raw_content": content[:300] if content else "(empty)",
-            })
+            logger.warning(
+                "plan_query_parse_failed",
+                extra={
+                    "error": str(e),
+                    "raw_content": content[:300] if content else "(empty)",
+                },
+            )
             return self._fallback_plan(request.query)
 
     def _build_prompt(self, request: PlanQueryRequest) -> str:
@@ -144,12 +151,16 @@ class PlanQueryUsecase:
         if request.conversation_history:
             lines = []
             for msg in request.conversation_history[-6:]:
-                content = msg.content[:300] + "..." if len(msg.content) > 300 else msg.content
+                content = (
+                    msg.content[:300] + "..." if len(msg.content) > 300 else msg.content
+                )
                 lines.append(f"{msg.role}: {content}")
             context_section += "Conversation:\n" + "\n".join(lines) + "\n\n"
 
         if request.article_id and request.article_title:
-            context_section += f"Article scope: {request.article_title} [id: {request.article_id}]\n\n"
+            context_section += (
+                f"Article scope: {request.article_title} [id: {request.article_id}]\n\n"
+            )
 
         current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -175,7 +186,7 @@ class PlanQueryUsecase:
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
-            return text[start:end + 1]
+            return text[start : end + 1]
         return text.strip()
 
     @staticmethod

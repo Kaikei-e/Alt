@@ -60,7 +60,8 @@ class ModelRoutingConfig:
             model_60k_enabled=os.getenv("MODEL_60K_ENABLED", "false").lower() == "true",
             token_safety_margin_percent=_get_int("TOKEN_SAFETY_MARGIN_PERCENT", 10),
             token_safety_margin_fixed=_get_int("TOKEN_SAFETY_MARGIN_FIXED", 512),
-            oom_detection_enabled=os.getenv("OOM_DETECTION_ENABLED", "true").lower() == "true",
+            oom_detection_enabled=os.getenv("OOM_DETECTION_ENABLED", "true").lower()
+            == "true",
             warmup_enabled=os.getenv("WARMUP_ENABLED", "true").lower() == "true",
             warmup_keep_alive_minutes=_get_int("WARMUP_KEEP_ALIVE_MINUTES", 30),
         )

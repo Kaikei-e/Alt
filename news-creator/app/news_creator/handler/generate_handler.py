@@ -4,7 +4,7 @@ import asyncio
 import logging
 import aiohttp
 from fastapi import APIRouter, HTTPException
-from typing import AsyncIterator, Dict, Any
+from typing import Dict, Any
 
 from news_creator.domain.models import GenerateRequest, LLMGenerateResponse
 from news_creator.port.llm_provider_port import LLMProviderPort
@@ -24,6 +24,7 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
     Returns:
         Configured APIRouter
     """
+
     @router.post("/api/generate")
     async def generate_endpoint(request: GenerateRequest) -> Dict[str, Any]:
         """
@@ -60,15 +61,17 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
             # 60k tokens ~ 240,000 chars. Reject anything larger to prevent queue clogging.
             MAX_PROMPT_LENGTH_CHARS = 240_000
             if request.prompt and len(request.prompt) > MAX_PROMPT_LENGTH_CHARS:
-                 logger.warning(
-                     "Rejecting request with excessive prompt length",
-                     extra={
-                         "prompt_length": len(request.prompt),
-                         "limit": MAX_PROMPT_LENGTH_CHARS,
-                         "model": request.model
-                     }
-                 )
-                 raise ValueError(f"Prompt too long ({len(request.prompt)} chars). Max {MAX_PROMPT_LENGTH_CHARS} chars.")
+                logger.warning(
+                    "Rejecting request with excessive prompt length",
+                    extra={
+                        "prompt_length": len(request.prompt),
+                        "limit": MAX_PROMPT_LENGTH_CHARS,
+                        "model": request.model,
+                    },
+                )
+                raise ValueError(
+                    f"Prompt too long ({len(request.prompt)} chars). Max {MAX_PROMPT_LENGTH_CHARS} chars."
+                )
 
             # Call LLM provider
             result = await llm_provider.generate(
@@ -81,7 +84,9 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
             )
 
             # Narrow the union type: non-streaming returns LLMGenerateResponse
-            assert isinstance(result, LLMGenerateResponse), "Expected non-streaming LLMGenerateResponse"
+            assert isinstance(result, LLMGenerateResponse), (
+                "Expected non-streaming LLMGenerateResponse"
+            )
             llm_response: LLMGenerateResponse = result
 
             # Format response in Ollama format
@@ -108,13 +113,17 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
 
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             # Convert network/timeout errors to RuntimeError for consistent handling
-            error_msg = f"Network error during LLM request: {type(exc).__name__} - {str(exc)}"
+            error_msg = (
+                f"Network error during LLM request: {type(exc).__name__} - {str(exc)}"
+            )
             logger.error(
                 "Network error in /api/generate",
                 extra={
                     "error": str(exc),
                     "error_type": type(exc).__name__,
-                    "is_timeout": isinstance(exc, (asyncio.TimeoutError, aiohttp.ServerTimeoutError)),
+                    "is_timeout": isinstance(
+                        exc, (asyncio.TimeoutError, aiohttp.ServerTimeoutError)
+                    ),
                 },
                 exc_info=True,
             )
@@ -142,6 +151,8 @@ def create_generate_router(llm_provider: LLMProviderPort) -> APIRouter:
                     "error": str(exc),
                 },
             )
-            raise HTTPException(status_code=500, detail="Internal server error") from exc
+            raise HTTPException(
+                status_code=500, detail="Internal server error"
+            ) from exc
 
     return router

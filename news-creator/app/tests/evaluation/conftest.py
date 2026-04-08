@@ -1,15 +1,12 @@
 """Shared fixtures for evaluation tests."""
 
-import json
 from pathlib import Path
 
 import pytest
 
 from news_creator.domain.models import (
-    RecapClusterInput,
     RecapSummary,
     Reference,
-    RepresentativeSentence,
 )
 
 
@@ -26,8 +23,18 @@ def _make_summary_with_refs() -> RecapSummary:
         ],
         language="ja",
         references=[
-            Reference(id=1, url="https://techfusion.com/nova-labs", domain="techfusion.com", article_id="art1"),
-            Reference(id=2, url="https://blog.google/gemini3", domain="blog.google", article_id="art2"),
+            Reference(
+                id=1,
+                url="https://techfusion.com/nova-labs",
+                domain="techfusion.com",
+                article_id="art1",
+            ),
+            Reference(
+                id=2,
+                url="https://blog.google/gemini3",
+                domain="blog.google",
+                article_id="art2",
+            ),
         ],
     )
 

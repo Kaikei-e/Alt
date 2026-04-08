@@ -20,7 +20,11 @@ from fastapi import FastAPI
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.ollama_gateway import OllamaGateway
 from news_creator.port.llm_provider_port import LLMProviderPort
-from news_creator.otel import init_otel_provider, instrument_fastapi, get_otel_logging_handler
+from news_creator.otel import (
+    init_otel_provider,
+    instrument_fastapi,
+    get_otel_logging_handler,
+)
 from news_creator.services.model_warmup import ModelWarmupService
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
@@ -191,43 +195,28 @@ instrument_fastapi(app)
 
 # Register routers with dependency injection
 app.include_router(
-    create_summarize_router(container.summarize_usecase),
-    tags=["summarization"]
+    create_summarize_router(container.summarize_usecase), tags=["summarization"]
+)
+app.include_router(create_generate_router(container.llm_provider), tags=["generation"])
+app.include_router(
+    create_recap_summary_router(container.recap_summary_usecase), tags=["recap-summary"]
 )
 app.include_router(
-    create_generate_router(container.llm_provider),
-    tags=["generation"]
+    create_expand_query_router(container.expand_query_usecase), tags=["query-expansion"]
 )
 app.include_router(
-    create_recap_summary_router(container.recap_summary_usecase),
-    tags=["recap-summary"]
+    create_plan_query_router(container.plan_query_usecase), tags=["query-planning"]
 )
-app.include_router(
-    create_expand_query_router(container.expand_query_usecase),
-    tags=["query-expansion"]
-)
-app.include_router(
-    create_plan_query_router(container.plan_query_usecase),
-    tags=["query-planning"]
-)
-app.include_router(
-    create_rerank_router(container.rerank_usecase),
-    tags=["reranking"]
-)
-app.include_router(
-    create_chat_router(container.ollama_gateway),
-    tags=["chat-proxy"]
-)
-app.include_router(
-    create_health_router(container.llm_provider),
-    tags=["health"]
-)
+app.include_router(create_rerank_router(container.rerank_usecase), tags=["reranking"])
+app.include_router(create_chat_router(container.ollama_gateway), tags=["chat-proxy"])
+app.include_router(create_health_router(container.llm_provider), tags=["health"])
 app.include_router(
     create_morning_letter_router(container.morning_letter_usecase),
-    tags=["morning-letter"]
+    tags=["morning-letter"],
 )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8001)

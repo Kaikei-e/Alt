@@ -19,10 +19,14 @@ def create_morning_letter_router(usecase: MorningLetterUsecase) -> APIRouter:
             return await usecase.generate_letter(request)
         except ValueError as e:
             from fastapi.responses import JSONResponse
+
             return JSONResponse(status_code=400, content={"error": str(e)})
         except Exception as e:
             logger.error("Morning Letter generation failed", extra={"error": str(e)})
             from fastapi.responses import JSONResponse
-            return JSONResponse(status_code=500, content={"error": "Internal server error"})
+
+            return JSONResponse(
+                status_code=500, content={"error": "Internal server error"}
+            )
 
     return router

@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from typing import Optional
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.driver.ollama_driver import OllamaDriver
@@ -37,7 +36,9 @@ class ModelWarmupService:
 
         # Use longer keep_alive to ensure the primary bucket model stays in GPU memory
         # Default is 30 minutes, but we use 24h to match entrypoint.sh
-        keep_alive_minutes = max(self.config.warmup_keep_alive_minutes, 1440)  # At least 24h
+        keep_alive_minutes = max(
+            self.config.warmup_keep_alive_minutes, 1440
+        )  # At least 24h
         keep_alive_str = f"{keep_alive_minutes}m"
 
         try:
@@ -81,9 +82,7 @@ class ModelWarmupService:
                 exc_info=True,
             )
 
-    async def _warmup_single_model(
-        self, model_name: str, keep_alive: str
-    ) -> None:
+    async def _warmup_single_model(self, model_name: str, keep_alive: str) -> None:
         """
         Warm up a single model.
 

@@ -7,7 +7,9 @@ from typing import Tuple, List
 logger = logging.getLogger(__name__)
 
 
-def detect_repetition(text: str, threshold: float = 0.3) -> Tuple[bool, float, List[str]]:
+def detect_repetition(
+    text: str, threshold: float = 0.3
+) -> Tuple[bool, float, List[str]]:
     """
     Detect repetitive patterns in text.
 
@@ -28,7 +30,7 @@ def detect_repetition(text: str, threshold: float = 0.3) -> Tuple[bool, float, L
     scores: List[float] = []
 
     # 1. Word-level repetition: same word repeated 3+ times consecutively
-    word_pattern = r'\b(\w+)(?:\s+\1){2,}\b'
+    word_pattern = r"\b(\w+)(?:\s+\1){2,}\b"
     word_matches = re.findall(word_pattern, text, re.IGNORECASE)
     if word_matches:
         word_score = min(1.0, len(word_matches) * 0.2)
@@ -37,7 +39,7 @@ def detect_repetition(text: str, threshold: float = 0.3) -> Tuple[bool, float, L
         logger.debug(f"Word repetition detected: {word_matches[:5]}")
 
     # 2. HTML tag repetition: </div></div></div> or <tag><tag><tag>
-    html_pattern = r'(</?\w+[^>]*>)(?:\s*\1){2,}'
+    html_pattern = r"(</?\w+[^>]*>)(?:\s*\1){2,}"
     html_matches = re.findall(html_pattern, text)
     if html_matches:
         html_score = min(1.0, len(html_matches) * 0.3)
@@ -55,20 +57,34 @@ def detect_repetition(text: str, threshold: float = 0.3) -> Tuple[bool, float, L
         logger.debug(f"Attribute repetition detected: {attr_matches[:5]}")
 
     # 4. Short string repetition: "4" 4" 4" or "word word word" (same short string 3+ times)
-    short_pattern = r'([^\s]{1,10})(?:\s+\1){2,}'
+    short_pattern = r"([^\s]{1,10})(?:\s+\1){2,}"
     short_matches = re.findall(short_pattern, text)
     if short_matches:
         # Filter out common words that might legitimately repeat
-        common_words = {'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with'}
+        common_words = {
+            "the",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+        }
         filtered_matches = [m for m in short_matches if m.lower() not in common_words]
         if filtered_matches:
             short_score = min(1.0, len(filtered_matches) * 0.15)
             scores.append(short_score)
-            patterns.append(f"Short string repetition: {len(filtered_matches)} patterns found")
+            patterns.append(
+                f"Short string repetition: {len(filtered_matches)} patterns found"
+            )
             logger.debug(f"Short string repetition detected: {filtered_matches[:5]}")
 
     # 5. URL pattern repetition: http://... http://... http://...
-    url_pattern = r'(https?://[^\s]+)(?:\s+\1){2,}'
+    url_pattern = r"(https?://[^\s]+)(?:\s+\1){2,}"
     url_matches = re.findall(url_pattern, text)
     if url_matches:
         url_score = min(1.0, len(url_matches) * 0.3)
@@ -77,7 +93,7 @@ def detect_repetition(text: str, threshold: float = 0.3) -> Tuple[bool, float, L
         logger.debug(f"URL repetition detected: {url_matches[:3]}")
 
     # 6. Character-level repetition: "aaaa" or "----" (4+ same characters)
-    char_pattern = r'(.)\1{3,}'
+    char_pattern = r"(.)\1{3,}"
     char_matches = re.findall(char_pattern, text)
     if char_matches:
         char_score = min(1.0, len(char_matches) * 0.1)
@@ -101,7 +117,7 @@ def detect_repetition(text: str, threshold: float = 0.3) -> Tuple[bool, float, L
                 "threshold": threshold,
                 "patterns": patterns,
                 "text_preview": text[:200],
-            }
+            },
         )
 
     return has_repetition, overall_score, patterns
@@ -120,4 +136,3 @@ def has_severe_repetition(text: str, threshold: float = 0.3) -> bool:
     """
     has_rep, _, _ = detect_repetition(text, threshold)
     return has_rep
-

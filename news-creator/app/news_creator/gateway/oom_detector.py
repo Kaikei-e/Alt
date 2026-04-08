@@ -1,7 +1,6 @@
 """OOM (Out of Memory) detection and fallback to 2-model mode."""
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -120,4 +119,3 @@ class OOMDetector:
         self._oom_detected = False
         self._two_model_mode = False
         logger.info("OOM detector state reset")
-

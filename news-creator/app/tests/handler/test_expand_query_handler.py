@@ -11,7 +11,12 @@ def test_expand_query_handler_success():
     """Test successful query expansion request."""
     usecase = AsyncMock()
     usecase.expand_query.return_value = (
-        ["AI技術の最新動向", "AI technology trends 2025", "machine learning advances", "generative AI development"],
+        [
+            "AI技術の最新動向",
+            "AI technology trends 2025",
+            "machine learning advances",
+            "generative AI development",
+        ],
         "gemma4-e4b-12k",
         150.5,
     )

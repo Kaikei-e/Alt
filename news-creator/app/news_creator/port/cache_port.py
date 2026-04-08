@@ -24,7 +24,9 @@ class CachePort(ABC):
         pass
 
     @abstractmethod
-    async def set(self, key: str, value: str, ttl_seconds: Optional[int] = None) -> bool:
+    async def set(
+        self, key: str, value: str, ttl_seconds: Optional[int] = None
+    ) -> bool:
         """
         Store a value in the cache.
 

@@ -1,7 +1,5 @@
 """Tests for HTML cleaner utility."""
 
-import pytest
-
 from news_creator.utils.html_cleaner import clean_html_content
 
 
@@ -101,4 +99,3 @@ class TestHTMLCleaner:
         assert "with" in cleaned
         # Verify whitespace is normalized (should not have 3+ consecutive spaces)
         assert "   " not in cleaned
-

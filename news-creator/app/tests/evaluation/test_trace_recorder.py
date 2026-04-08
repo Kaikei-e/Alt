@@ -1,10 +1,5 @@
 """Tests for TraceRecorder — JSONL trace recording and loading."""
 
-import json
-from pathlib import Path
-
-import pytest
-
 from news_creator.evaluation.trace_recorder import TraceRecord, TraceRecorder
 
 
@@ -30,7 +25,6 @@ def _make_trace(**overrides) -> TraceRecord:
 
 
 class TestTraceRecorder:
-
     def test_record_and_load_roundtrip(self, tmp_path):
         """Write a trace, load it back, fields match."""
         recorder = TraceRecorder(output_dir=tmp_path)
