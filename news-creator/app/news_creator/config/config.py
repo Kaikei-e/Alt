@@ -1,18 +1,34 @@
-"""Configuration module for News Creator service."""
+"""Configuration module for News Creator service.
+
+This module composes specialized config dataclasses while maintaining
+backward compatibility with existing attribute access patterns.
+"""
+
+from __future__ import annotations
 
 import os
 import logging
 from typing import Union
 
+from news_creator.config.llm_config import LLMConfig
+from news_creator.config.scheduling_config import SchedulingConfig
+from news_creator.config.hierarchical_config import HierarchicalConfig
+from news_creator.config.model_routing_config import ModelRoutingConfig
+
 logger = logging.getLogger(__name__)
 
 
 class NewsCreatorConfig:
-    """Configuration for News Creator service from environment variables."""
+    """Configuration for News Creator service from environment variables.
+
+    This class composes specialized config dataclasses (LLMConfig, SchedulingConfig,
+    HierarchicalConfig, ModelRoutingConfig) while maintaining backward compatibility
+    with direct attribute access (e.g., config.llm_service_url).
+    """
 
     def __init__(self):
         """Initialize configuration from environment variables."""
-        # Authentication settings
+        # Authentication settings (remain at top level)
         self.auth_service_url = os.getenv(
             "AUTH_SERVICE_URL",
             "http://auth-service.alt-auth.svc.cluster.local:8080",
@@ -33,163 +49,13 @@ class NewsCreatorConfig:
         if not self.service_secret:
             raise ValueError("SERVICE_SECRET environment variable is required")
 
-        # LLM service settings
-        self.llm_service_url = os.getenv("LLM_SERVICE_URL", "http://localhost:11435")
-        self.model_name = os.getenv("LLM_MODEL", "gemma4-e4b-q4km")
-        self.llm_timeout_seconds = self._get_int("LLM_TIMEOUT_SECONDS", 300)  # 5分に増加（1000トークン生成 + 続き生成に対応）
-        self.llm_keep_alive = os.getenv("LLM_KEEP_ALIVE_SECONDS", "24h")
-        # Model-specific keep_alive settings (primary bucket / 60K on-demand)
-        # Primary local model: 24h to keep the warmed RAG bucket resident
-        # 60K model: 15m to allow quick unloading after use to save VRAM
-        self.llm_keep_alive_8k = os.getenv("LLM_KEEP_ALIVE_8K", "24h")
-        self.llm_keep_alive_60k = os.getenv("LLM_KEEP_ALIVE_60K", "15m")
+        # Compose specialized config dataclasses
+        self.llm = LLMConfig.from_env()
+        self.scheduling = SchedulingConfig.from_env()
+        self.hierarchical = HierarchicalConfig.from_env()
+        self.model_routing = ModelRoutingConfig.from_env()
 
-        # Concurrency settings:
-        # - OLLAMA_REQUEST_CONCURRENCY が明示的に設定されている場合はそれを優先
-        # - 未設定の場合は OLLAMA_NUM_PARALLEL に自動追従（なければ最終的に 1 にフォールバック）
-        env_concurrency = os.getenv("OLLAMA_REQUEST_CONCURRENCY")
-        if env_concurrency is not None:
-            self.ollama_request_concurrency = self._get_int(
-                "OLLAMA_REQUEST_CONCURRENCY", 1
-            )
-            self._ollama_concurrency_source = "OLLAMA_REQUEST_CONCURRENCY"
-        else:
-            # NOTE: entrypoint.sh で OLLAMA_NUM_PARALLEL のデフォルトを設定しているため、
-            # ここでは OLLAMA_NUM_PARALLEL が優先される（未設定時のみ 1 にフォールバック）
-            self.ollama_request_concurrency = self._get_int("OLLAMA_NUM_PARALLEL", 1)
-            self._ollama_concurrency_source = "OLLAMA_NUM_PARALLEL"
-
-        # ---- Generation parameters (Gemma4 E4B + Ollama options) ----
-        # Default: compose/runtime should override this to the tuned 12K profile.
-        # Keep the code default conservative so local tests can boot without compose env.
-        self.llm_num_ctx = self._get_int("LLM_NUM_CTX", 8192)
-        # RTX 4060最適化: バッチサイズ1024（entrypoint.shのOLLAMA_NUM_BATCHと統一）
-        self.llm_num_batch = self._get_int("LLM_NUM_BATCH", 1024)
-        self.llm_num_predict = self._get_int("LLM_NUM_PREDICT", 1200)  # 復活
-        # Gemma4 E4B: CJKテキスト向けサンプリング（公式推奨は1.0だが、要約安定性のため0.7を維持）
-        self.llm_temperature = self._get_float("LLM_TEMPERATURE", 0.7)
-        self.llm_top_p = self._get_float("LLM_TOP_P", 0.85)
-        self.llm_top_k = self._get_int("LLM_TOP_K", 40)
-        self.llm_repeat_penalty = self._get_float("LLM_REPEAT_PENALTY", 1.15)  # Gemma4公式は1.0だが、CJKループ防止のため維持
-        self.llm_num_keep = self._get_int("LLM_NUM_KEEP", -1)          # system保持
-
-        # Stop tokens（Gemma 4: <|turn>/<turn|>）
-        stop_tokens_str = os.getenv("LLM_STOP_TOKENS", "<turn|>")
-        self.llm_stop_tokens = [
-            token.strip() for token in stop_tokens_str.split(",") if token.strip()
-        ]
-        if not self.llm_stop_tokens:
-            self.llm_stop_tokens = ["<turn|>"]
-
-        # Summary-specific settings
-        # Increased from 500 to 1000 tokens to support 1000-1500 character summaries with safety margin
-        # Japanese text: 1 character ≈ 1 token, so 1500 chars needs ~1500 tokens + safety margin
-        self.summary_num_predict = self._get_int("SUMMARY_NUM_PREDICT", 1000)
-        self.summary_temperature = self._get_float("SUMMARY_TEMPERATURE", 0.5)
-
-        # Repetition detection and retry settings
-        self.max_repetition_retries = self._get_int("MAX_REPETITION_RETRIES", 2)
-        self.repetition_threshold = self._get_float("REPETITION_THRESHOLD", 0.3)
-        self.recap_min_source_articles_for_llm = self._get_int(
-            "RECAP_MIN_SOURCE_ARTICLES_FOR_LLM", 3
-        )
-        self.recap_min_representative_sentences_for_llm = self._get_int(
-            "RECAP_MIN_REPRESENTATIVE_SENTENCES_FOR_LLM", 4
-        )
-        self.recap_summary_temperature = self._get_float(
-            "RECAP_SUMMARY_TEMPERATURE", 0.0
-        )
-        self.recap_ja_ratio_threshold = self._get_float("RECAP_JA_RATIO_THRESHOLD", 0.6)
-        self.recap_summary_repair_attempts = self._get_int(
-            "RECAP_SUMMARY_REPAIR_ATTEMPTS", 1
-        )
-
-        # 60K model enable/disable flag (single primary-bucket mode by default)
-        # When disabled, hierarchical map-reduce is used for large documents
-        self.model_60k_enabled = os.getenv("MODEL_60K_ENABLED", "false").lower() == "true"
-
-        # Hierarchical summarization settings (single primary-bucket mode)
-        # These thresholds remain conservative to fit the default local bucket safely.
-        # Best practice: 1,500-3,000 tokens per chunk with 10-20% overlap
-        # Reference: https://www.pinecone.io/learn/chunking-strategies/
-        self.hierarchical_threshold_chars = self._get_int("HIERARCHICAL_THRESHOLD_CHARS", 8_000)  # ~2K tokens - trigger map-reduce for larger inputs
-        self.hierarchical_threshold_clusters = self._get_int("HIERARCHICAL_THRESHOLD_CLUSTERS", 5)  # trigger map-reduce for many clusters
-        self.hierarchical_chunk_max_chars = self._get_int("HIERARCHICAL_CHUNK_MAX_CHARS", 6_000)  # ~1.5K tokens per chunk
-        self.hierarchical_chunk_overlap_ratio = self._get_float("HIERARCHICAL_CHUNK_OVERLAP_RATIO", 0.15)  # 15% overlap for context preservation
-
-        # Recursive reduce settings for hierarchical summarization
-        # When intermediate summaries exceed this limit, recursively reduce them
-        self.recursive_reduce_max_chars = self._get_int("RECURSIVE_REDUCE_MAX_CHARS", 6_000)  # ~1.5K tokens, safe for the primary bucket
-        self.recursive_reduce_max_depth = self._get_int("RECURSIVE_REDUCE_MAX_DEPTH", 3)  # Max recursion depth
-
-        # Hierarchical summarization settings for single large articles
-        self.hierarchical_single_article_threshold = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_THRESHOLD", 20_000)
-        self.hierarchical_single_article_chunk_size = self._get_int("HIERARCHICAL_SINGLE_ARTICLE_CHUNK_SIZE", 6_000)
-        self.hierarchical_token_budget_percent = self._get_int("HIERARCHICAL_TOKEN_BUDGET_PERCENT", 75)
-
-        # Model routing settings (primary bucket + 60K expansion bucket)
-        self.model_routing_enabled = os.getenv("MODEL_ROUTING_ENABLED", "true").lower() == "true"
-        # Base model name (e.g., "gemma4-e4b-q4km") - will be auto-mapped to bucket models
-        self.model_base_name = os.getenv("MODEL_BASE_NAME", "gemma4-e4b-q4km")
-        # MODEL_8K_NAME: use base model directly; num_ctx is set via API options (get_llm_options)
-        # Gemma4 E4B (8B params) is too large for Modelfile-based num_ctx=12K on 8GB VRAM
-        self.model_8k_name = os.getenv("MODEL_8K_NAME", "gemma4-e4b-q4km")
-        self.model_60k_name = os.getenv("MODEL_60K_NAME", "gemma4-e4b-60k")
-        self.token_safety_margin_percent = self._get_int("TOKEN_SAFETY_MARGIN_PERCENT", 10)
-        self.token_safety_margin_fixed = self._get_int("TOKEN_SAFETY_MARGIN_FIXED", 512)
-        self.oom_detection_enabled = os.getenv("OOM_DETECTION_ENABLED", "true").lower() == "true"
-        self.warmup_enabled = os.getenv("WARMUP_ENABLED", "true").lower() == "true"
-        self.warmup_keep_alive_minutes = self._get_int("WARMUP_KEEP_ALIVE_MINUTES", 30)
-
-        # Cache settings (Redis)
-        self.cache_enabled = os.getenv("CACHE_ENABLED", "false").lower() == "true"
-        self.cache_redis_url = os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0")
-        self.cache_ttl_seconds = self._get_int("CACHE_TTL_SECONDS", 86400)  # 24 hours
-
-        # Hybrid Scheduling Configuration (RT/BE with reserved slots and aging)
-        # See: https://arxiv.org/html/2504.09590v1 (Hybrid RT/BE Scheduling)
-        self.scheduling_rt_reserved_slots = self._get_int("SCHEDULING_RT_RESERVED_SLOTS", 1)
-        self.scheduling_aging_threshold_seconds = self._get_float(
-            "SCHEDULING_AGING_THRESHOLD_SECONDS", 60.0
-        )
-        self.scheduling_aging_boost = self._get_float("SCHEDULING_AGING_BOOST", 0.5)
-
-        # Preemption settings (application-level preemption for RT priority)
-        # See: https://arxiv.org/html/2503.09304v1 (QLLM Preemption)
-        self.scheduling_preemption_enabled = (
-            os.getenv("SCHEDULING_PREEMPTION_ENABLED", "true").lower() == "true"
-        )
-        self.scheduling_preemption_wait_threshold_seconds = self._get_float(
-            "SCHEDULING_PREEMPTION_WAIT_THRESHOLD_SECONDS", 2.0
-        )
-
-        # Priority promotion settings (BE -> RT after long wait)
-        # After this threshold, BE requests are promoted to RT queue to prevent starvation
-        # Default: 120 seconds - must be well below backend timeout (300s) to allow
-        # promoted requests time to complete before upstream cancellation
-        self.scheduling_priority_promotion_threshold_seconds = self._get_float(
-            "SCHEDULING_PRIORITY_PROMOTION_THRESHOLD_SECONDS", 120.0
-        )
-
-        # Guaranteed bandwidth settings (anti-starvation for BE requests)
-        # BE request is guaranteed to be processed after this many consecutive RT releases
-        # Default: 5 (80% RT, 20% BE guaranteed bandwidth)
-        # Set to 0 to disable guaranteed bandwidth
-        self.scheduling_guaranteed_be_ratio = self._get_int(
-            "SCHEDULING_GUARANTEED_BE_RATIO", 5
-        )
-
-        # Queue depth limit (backpressure)
-        # When set > 0, reject new requests with QueueFullError when queue exceeds this depth
-        # Default: 10 (fail-fast to prevent long queue waits with limited GPU slots)
-        self.max_queue_depth = self._get_int("MAX_QUEUE_DEPTH", 10)
-
-        # RT queue scheduling mode: "fifo" (default) or "lifo"
-        # LIFO processes newest requests first, optimizing for swipe-feed UIs
-        # where the user's current view should get priority
-        self.scheduling_rt_mode = os.getenv("SCHEDULING_RT_MODE", "fifo").lower()
-
-        # Distributed BE dispatch (default OFF for OSS compatibility)
+        # Distributed BE dispatch (remains at top level for now)
         self.distributed_be_enabled = (
             os.getenv("DISTRIBUTED_BE_ENABLED", "false").lower() == "true"
         )
@@ -218,73 +84,347 @@ class NewsCreatorConfig:
                 "distributed dispatch will be effectively disabled"
             )
 
-        # Build bucket model names set for quick lookup
-        self._bucket_model_names = {
-            self.model_8k_name,
-            self.model_60k_name,
-        }
+        # Cache settings (remains at top level for now)
+        self.cache_enabled = os.getenv("CACHE_ENABLED", "false").lower() == "true"
+        self.cache_redis_url = os.getenv("CACHE_REDIS_URL", "redis://localhost:6379/0")
+        self.cache_ttl_seconds = self._get_int("CACHE_TTL_SECONDS", 86400)
 
         logger.info(
             "News creator configuration initialized",
             extra={
                 "auth_service_url": self.auth_service_url,
                 "service_name": self.service_name,
-                "llm_service_url": self.llm_service_url,
-                "model": self.model_name,
-                "ollama_request_concurrency": self.ollama_request_concurrency,
-                "ollama_concurrency_source": self._ollama_concurrency_source,
+                "llm_service_url": self.llm.service_url,
+                "model": self.llm.model_name,
+                "ollama_request_concurrency": self.scheduling.request_concurrency,
+                "ollama_concurrency_source": self.scheduling.concurrency_source,
                 "ollama_num_parallel": os.getenv("OLLAMA_NUM_PARALLEL"),
-                "scheduling_rt_reserved_slots": self.scheduling_rt_reserved_slots,
-                "scheduling_aging_threshold_seconds": self.scheduling_aging_threshold_seconds,
-                "scheduling_priority_promotion_threshold_seconds": self.scheduling_priority_promotion_threshold_seconds,
-                "scheduling_guaranteed_be_ratio": self.scheduling_guaranteed_be_ratio,
-                "scheduling_rt_mode": self.scheduling_rt_mode,
+                "scheduling_rt_reserved_slots": self.scheduling.rt_reserved_slots,
+                "scheduling_aging_threshold_seconds": self.scheduling.aging_threshold_seconds,
+                "scheduling_priority_promotion_threshold_seconds": self.scheduling.priority_promotion_threshold_seconds,
+                "scheduling_guaranteed_be_ratio": self.scheduling.guaranteed_be_ratio,
+                "scheduling_rt_mode": self.scheduling.rt_mode,
             },
         )
 
+    # =========================================================================
+    # Backward Compatibility Properties - LLM Config
+    # =========================================================================
+
+    @property
+    def llm_service_url(self) -> str:
+        """Backward compatible access to LLM service URL."""
+        return self.llm.service_url
+
+    @property
+    def model_name(self) -> str:
+        """Backward compatible access to model name."""
+        return self.llm.model_name
+
+    @property
+    def llm_timeout_seconds(self) -> int:
+        """Backward compatible access to LLM timeout."""
+        return self.llm.timeout_seconds
+
+    @property
+    def llm_keep_alive(self) -> str:
+        """Backward compatible access to keep alive."""
+        return self.llm.keep_alive
+
+    @property
+    def llm_keep_alive_8k(self) -> str:
+        """Backward compatible access to 8K keep alive."""
+        return self.llm.keep_alive_8k
+
+    @property
+    def llm_keep_alive_60k(self) -> str:
+        """Backward compatible access to 60K keep alive."""
+        return self.llm.keep_alive_60k
+
+    @property
+    def llm_num_ctx(self) -> int:
+        """Backward compatible access to num_ctx."""
+        return self.llm.num_ctx
+
+    @property
+    def llm_num_batch(self) -> int:
+        """Backward compatible access to num_batch."""
+        return self.llm.num_batch
+
+    @property
+    def llm_num_predict(self) -> int:
+        """Backward compatible access to num_predict."""
+        return self.llm.num_predict
+
+    @property
+    def llm_temperature(self) -> float:
+        """Backward compatible access to temperature."""
+        return self.llm.temperature
+
+    @property
+    def llm_top_p(self) -> float:
+        """Backward compatible access to top_p."""
+        return self.llm.top_p
+
+    @property
+    def llm_top_k(self) -> int:
+        """Backward compatible access to top_k."""
+        return self.llm.top_k
+
+    @property
+    def llm_repeat_penalty(self) -> float:
+        """Backward compatible access to repeat_penalty."""
+        return self.llm.repeat_penalty
+
+    @property
+    def llm_num_keep(self) -> int:
+        """Backward compatible access to num_keep."""
+        return self.llm.num_keep
+
+    @property
+    def llm_stop_tokens(self) -> list[str]:
+        """Backward compatible access to stop_tokens."""
+        return list(self.llm.stop_tokens)
+
+    @property
+    def summary_num_predict(self) -> int:
+        """Backward compatible access to summary_num_predict."""
+        return self.llm.summary_num_predict
+
+    @property
+    def summary_temperature(self) -> float:
+        """Backward compatible access to summary_temperature."""
+        return self.llm.summary_temperature
+
+    @property
+    def max_repetition_retries(self) -> int:
+        """Backward compatible access to max_repetition_retries."""
+        return self.llm.max_repetition_retries
+
+    @property
+    def repetition_threshold(self) -> float:
+        """Backward compatible access to repetition_threshold."""
+        return self.llm.repetition_threshold
+
+    @property
+    def recap_min_source_articles_for_llm(self) -> int:
+        """Backward compatible access to recap_min_source_articles_for_llm."""
+        return self.llm.recap_min_source_articles_for_llm
+
+    @property
+    def recap_min_representative_sentences_for_llm(self) -> int:
+        """Backward compatible access to recap_min_representative_sentences_for_llm."""
+        return self.llm.recap_min_representative_sentences_for_llm
+
+    @property
+    def recap_summary_temperature(self) -> float:
+        """Backward compatible access to recap_summary_temperature."""
+        return self.llm.recap_summary_temperature
+
+    @property
+    def recap_ja_ratio_threshold(self) -> float:
+        """Backward compatible access to recap_ja_ratio_threshold."""
+        return self.llm.recap_ja_ratio_threshold
+
+    @property
+    def recap_summary_repair_attempts(self) -> int:
+        """Backward compatible access to recap_summary_repair_attempts."""
+        return self.llm.recap_summary_repair_attempts
+
+    # =========================================================================
+    # Backward Compatibility Properties - Scheduling Config
+    # =========================================================================
+
+    @property
+    def ollama_request_concurrency(self) -> int:
+        """Backward compatible access to request concurrency."""
+        return self.scheduling.request_concurrency
+
+    @property
+    def _ollama_concurrency_source(self) -> str:
+        """Backward compatible access to concurrency source."""
+        return self.scheduling.concurrency_source
+
+    @property
+    def scheduling_rt_reserved_slots(self) -> int:
+        """Backward compatible access to RT reserved slots."""
+        return self.scheduling.rt_reserved_slots
+
+    @property
+    def scheduling_aging_threshold_seconds(self) -> float:
+        """Backward compatible access to aging threshold."""
+        return self.scheduling.aging_threshold_seconds
+
+    @property
+    def scheduling_aging_boost(self) -> float:
+        """Backward compatible access to aging boost."""
+        return self.scheduling.aging_boost
+
+    @property
+    def scheduling_preemption_enabled(self) -> bool:
+        """Backward compatible access to preemption enabled."""
+        return self.scheduling.preemption_enabled
+
+    @property
+    def scheduling_preemption_wait_threshold_seconds(self) -> float:
+        """Backward compatible access to preemption wait threshold."""
+        return self.scheduling.preemption_wait_threshold_seconds
+
+    @property
+    def scheduling_priority_promotion_threshold_seconds(self) -> float:
+        """Backward compatible access to priority promotion threshold."""
+        return self.scheduling.priority_promotion_threshold_seconds
+
+    @property
+    def scheduling_guaranteed_be_ratio(self) -> int:
+        """Backward compatible access to guaranteed BE ratio."""
+        return self.scheduling.guaranteed_be_ratio
+
+    @property
+    def max_queue_depth(self) -> int:
+        """Backward compatible access to max queue depth."""
+        return self.scheduling.max_queue_depth
+
+    @property
+    def scheduling_rt_mode(self) -> str:
+        """Backward compatible access to RT mode."""
+        return self.scheduling.rt_mode
+
+    # =========================================================================
+    # Backward Compatibility Properties - Hierarchical Config
+    # =========================================================================
+
+    @property
+    def hierarchical_threshold_chars(self) -> int:
+        """Backward compatible access to hierarchical threshold chars."""
+        return self.hierarchical.threshold_chars
+
+    @property
+    def hierarchical_threshold_clusters(self) -> int:
+        """Backward compatible access to hierarchical threshold clusters."""
+        return self.hierarchical.threshold_clusters
+
+    @property
+    def hierarchical_chunk_max_chars(self) -> int:
+        """Backward compatible access to chunk max chars."""
+        return self.hierarchical.chunk_max_chars
+
+    @property
+    def hierarchical_chunk_overlap_ratio(self) -> float:
+        """Backward compatible access to chunk overlap ratio."""
+        return self.hierarchical.chunk_overlap_ratio
+
+    @property
+    def recursive_reduce_max_chars(self) -> int:
+        """Backward compatible access to recursive reduce max chars."""
+        return self.hierarchical.recursive_reduce_max_chars
+
+    @property
+    def recursive_reduce_max_depth(self) -> int:
+        """Backward compatible access to recursive reduce max depth."""
+        return self.hierarchical.recursive_reduce_max_depth
+
+    @property
+    def hierarchical_single_article_threshold(self) -> int:
+        """Backward compatible access to single article threshold."""
+        return self.hierarchical.single_article_threshold
+
+    @property
+    def hierarchical_single_article_chunk_size(self) -> int:
+        """Backward compatible access to single article chunk size."""
+        return self.hierarchical.single_article_chunk_size
+
+    @property
+    def hierarchical_token_budget_percent(self) -> int:
+        """Backward compatible access to token budget percent."""
+        return self.hierarchical.token_budget_percent
+
+    # =========================================================================
+    # Backward Compatibility Properties - Model Routing Config
+    # =========================================================================
+
+    @property
+    def model_routing_enabled(self) -> bool:
+        """Backward compatible access to model routing enabled."""
+        return self.model_routing.enabled
+
+    @property
+    def model_base_name(self) -> str:
+        """Backward compatible access to model base name."""
+        return self.model_routing.base_name
+
+    @property
+    def model_8k_name(self) -> str:
+        """Backward compatible access to 8K model name."""
+        return self.model_routing.model_8k_name
+
+    @property
+    def model_60k_name(self) -> str:
+        """Backward compatible access to 60K model name."""
+        return self.model_routing.model_60k_name
+
+    @property
+    def model_60k_enabled(self) -> bool:
+        """Backward compatible access to 60K model enabled."""
+        return self.model_routing.model_60k_enabled
+
+    @property
+    def token_safety_margin_percent(self) -> int:
+        """Backward compatible access to token safety margin percent."""
+        return self.model_routing.token_safety_margin_percent
+
+    @property
+    def token_safety_margin_fixed(self) -> int:
+        """Backward compatible access to token safety margin fixed."""
+        return self.model_routing.token_safety_margin_fixed
+
+    @property
+    def oom_detection_enabled(self) -> bool:
+        """Backward compatible access to OOM detection enabled."""
+        return self.model_routing.oom_detection_enabled
+
+    @property
+    def warmup_enabled(self) -> bool:
+        """Backward compatible access to warmup enabled."""
+        return self.model_routing.warmup_enabled
+
+    @property
+    def warmup_keep_alive_minutes(self) -> int:
+        """Backward compatible access to warmup keep alive minutes."""
+        return self.model_routing.warmup_keep_alive_minutes
+
+    @property
+    def _bucket_model_names(self) -> set[str]:
+        """Backward compatible access to bucket model names set."""
+        return set(self.model_routing._bucket_model_names)
+
+    # =========================================================================
+    # Backward Compatibility Methods
+    # =========================================================================
+
     def is_base_model_name(self, model_name: str) -> bool:
-        """
-        Check if the given model name is the base model name.
-
-        Args:
-            model_name: Model name to check
-
-        Returns:
-            True if the model name is the base model name
-        """
-        return model_name == self.model_base_name
+        """Check if the given model name is the base model name."""
+        return self.model_routing.is_base_model_name(model_name)
 
     def is_bucket_model_name(self, model_name: str) -> bool:
-        """
-        Check if the given model name is a bucket model name.
-
-        Args:
-            model_name: Model name to check
-
-        Returns:
-            True if the model name is a bucket model name
-        """
-        return model_name in self._bucket_model_names
+        """Check if the given model name is a bucket model name."""
+        return self.model_routing.is_bucket_model_name(model_name)
 
     def get_keep_alive_for_model(self, model_name: str) -> Union[int, str]:
-        """
-        Get keep_alive value for a specific model based on best practices.
+        """Get keep_alive value for a specific model."""
+        return self.llm.get_keep_alive_for_model(
+            model_name,
+            self.model_routing.model_8k_name,
+            self.model_routing.model_60k_name,
+        )
 
-        Args:
-            model_name: Model name to get keep_alive for
+    def get_llm_options(self) -> dict:
+        """Get LLM options as a dictionary (for Ollama 'options')."""
+        return self.llm.get_options()
 
-        Returns:
-            keep_alive value (int for seconds, str for duration like "24h", "30m")
-        """
-        if model_name == self.model_8k_name:
-            # 8K model: on-demand, use 24h to allow unloading after use
-            return self.llm_keep_alive_8k
-        elif model_name == self.model_60k_name:
-            # 60K model: on-demand, use 15m to allow quick unloading after use
-            return self.llm_keep_alive_60k
-        else:
-            # Unknown model: use default keep_alive (backward compatibility)
-            return self.llm_keep_alive
+    # =========================================================================
+    # Helper Methods
+    # =========================================================================
 
     def _parse_model_overrides(self, raw: str) -> dict[str, str]:
         """Parse comma-separated url=model overrides into a dict."""
@@ -333,17 +473,3 @@ class NewsCreatorConfig:
         except ValueError:
             logger.warning("Invalid float for %s. Using default %s", name, default)
             return default
-
-    def get_llm_options(self) -> dict:
-        """Get LLM options as a dictionary (for Ollama 'options')."""
-        return {
-            "num_ctx": self.llm_num_ctx,
-            "num_predict": self.llm_num_predict,
-            "num_batch": self.llm_num_batch,  # バッチサイズ追加
-            "temperature": self.llm_temperature,
-            "top_p": self.llm_top_p,
-            "top_k": self.llm_top_k,
-            "repeat_penalty": self.llm_repeat_penalty,
-            "num_keep": self.llm_num_keep,
-            "stop": list(self.llm_stop_tokens),
-        }
