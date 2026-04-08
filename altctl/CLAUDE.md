@@ -39,7 +39,28 @@ altctl home storage                         # Table storage stats
 altctl home audit                           # Run projection audit
 altctl home backfill trigger                # Trigger backfill
 altctl home backfill status --job-id=<id>   # Check backfill status
+
+# Backup & Restore (migrate)
+altctl migrate snapshot                           # Quick DB-only hot backup
+altctl migrate backup --force                     # Essential profile (default, no metrics)
+altctl migrate backup --profile db --force        # DB-only backup
+altctl migrate backup --profile all --force       # Full backup (all 14 volumes)
+altctl migrate backup --exclude clickhouse_data   # Exclude specific volumes
+altctl migrate restore --from ./backups/xxx --force
+altctl migrate restore --from ./backups/xxx --profile db --force
+altctl migrate restore --from ./backups/xxx --volumes db_data_17 --force
+altctl migrate list                               # List available backups
+altctl migrate verify --backup ./backups/xxx      # Verify integrity
+altctl migrate status                             # Backup health check
 ```
+
+## Backup Profiles
+
+| Profile | Categories | Volumes | Use Case |
+|---------|------------|---------|----------|
+| db | critical | 6 PG | Quick DB snapshot |
+| essential | critical + data + search | 10 | Standard backup (no metrics/models) |
+| all | all | 14 | Complete backup (migration) |
 
 ## Stack Quick Reference
 
