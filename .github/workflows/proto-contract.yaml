@@ -57,12 +57,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0  # Full history required for buf breaking --against
-
-      - name: Fetch main branch for comparison
-        if: github.event_name == 'pull_request'
-        run: git fetch origin main:main
 
       - uses: bufbuild/buf-setup-action@v1
         with:
@@ -74,8 +68,10 @@ jobs:
 
       - name: Buf breaking change detection
         if: github.event_name == 'pull_request'
-        working-directory: proto
-        run: buf breaking --against '.git#branch=main'
+        uses: bufbuild/buf-breaking-action@v1
+        with:
+          input: proto
+          against: 'https://github.com/Kaikei-e/Alt.git#branch=main,subdir=proto'
 
   contract-conformance:
     name: Contract Conformance Tests (FE)
