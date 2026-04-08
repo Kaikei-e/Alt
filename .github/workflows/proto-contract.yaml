@@ -260,7 +260,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Install Python
-        run: uv python install 3.14
+        run: uv python install 3.13
 
       - name: Install news-creator dependencies
         working-directory: news-creator/app
@@ -364,7 +364,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Install Python
-        run: uv python install 3.14
+        run: uv python install 3.13
 
       - name: Install recap-evaluator dependencies
         working-directory: recap-evaluator
