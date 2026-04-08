@@ -226,28 +226,31 @@ jobs:
           exit 1
 
       - name: Publish all pact files to Broker
+        env:
+          PACT_BROKER_BASE_URL: http://localhost:9292
+          PACT_BROKER_USERNAME: pact
+          PACT_BROKER_PASSWORD: pact
         run: |
+          # Use official pact-cli for publishing (best practice per pact-foundation docs)
+          # See: https://docs.pact.io/pact_broker/publishing_and_retrieving_pacts
           VERSION="${GITHUB_SHA:0:7}"
           BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-          COUNT=0
-          for pact_file in collected-pacts/*.json; do
-            if [ -f "$pact_file" ]; then
-              CONSUMER=$(jq -r '.consumer.name' "$pact_file")
-              PROVIDER=$(jq -r '.provider.name' "$pact_file")
-              echo "Publishing ${CONSUMER} → ${PROVIDER} (version: ${VERSION})"
-              curl -fsS -X PUT \
-                -H "Content-Type: application/json" \
-                -u "pact:pact" \
-                -d @"$pact_file" \
-                "http://localhost:9292/pacts/provider/${PROVIDER}/consumer/${CONSUMER}/version/${VERSION}"
-              curl -fsS -X PUT \
-                -H "Content-Type: application/json" \
-                -u "pact:pact" \
-                "http://localhost:9292/pacticipants/${CONSUMER}/versions/${VERSION}/tags/${BRANCH}"
-              COUNT=$((COUNT + 1))
-            fi
-          done
-          echo "Published ${COUNT} pact files to Broker"
+
+          echo "Publishing pacts to broker (version: ${VERSION}, branch: ${BRANCH})"
+          ls -la collected-pacts/
+
+          # Install pact CLI via standalone script (official method)
+          curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-ruby-standalone/master/install.sh | PACT_CLI_VERSION=v2.4.10 bash
+          export PATH="${PATH}:${PWD}/pact/bin"
+
+          # Publish all pacts using official CLI
+          pact-broker publish collected-pacts \
+            --consumer-app-version "${VERSION}" \
+            --branch "${BRANCH}" \
+            --broker-base-url "${PACT_BROKER_BASE_URL}" \
+            --broker-username "${PACT_BROKER_USERNAME}" \
+            --broker-password "${PACT_BROKER_PASSWORD}" \
+            --verbose
 
       # --- Go provider verification (alt-backend) ---
       - uses: actions/setup-go@v5
