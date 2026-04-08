@@ -60,12 +60,12 @@ type EvalResult struct {
 	ClarificationAsked bool    `json:"clarification_asked"`
 
 	// Generation
-	Answer         string   `json:"answer"`
-	AnswerLength   int      `json:"answer_length"` // rune count
-	CitationCount  int      `json:"citation_count"`
-	CitedTitles    []string `json:"cited_titles"`
-	IsFallback     bool     `json:"is_fallback"`
-	FallbackReason string   `json:"fallback_reason,omitempty"`
+	Answer           string   `json:"answer"`
+	AnswerLength     int      `json:"answer_length"` // rune count
+	CitationCount    int      `json:"citation_count"`
+	CitedTitles      []string `json:"cited_titles"`
+	IsFallback       bool     `json:"is_fallback"`
+	FallbackReason   string   `json:"fallback_reason,omitempty"`
 	QualityFlags     []string `json:"quality_flags,omitempty"`
 	PromptTokenCount int      `json:"prompt_token_count,omitempty"` // measured prompt size in tokens
 }
@@ -108,5 +108,5 @@ type AggregateMetrics struct {
 
 	// Instruction adherence (Phase 0 additions)
 	InstructionAdherenceRate float64 `json:"instruction_adherence_rate"` // fraction of cases where answer matches expected structure
-	MeanPromptTokens         float64 `json:"mean_prompt_tokens"`        // average prompt token count across cases
+	MeanPromptTokens         float64 `json:"mean_prompt_tokens"`         // average prompt token count across cases
 }
