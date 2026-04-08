@@ -88,7 +88,7 @@ waitHybridChatStream:
 	done := false
 
 	// Flush smaller provisional previews so the UI feels live sooner.
-	flusher := NewParagraphFlusher(80, 1500*time.Millisecond, 80)
+	flusher := NewParagraphFlusher(40, 1500*time.Millisecond, 40)
 	flushTicker := time.NewTicker(500 * time.Millisecond)
 	defer flushTicker.Stop()
 

@@ -79,26 +79,37 @@ func (a *RetrievalQualityAssessor) Assess(contexts []ContextItem) QualityVerdict
 	return verdict
 }
 
-// AssessWithIntent evaluates retrieval quality with intent-specific strictness.
-// For causal/explanatory queries, applies stricter coherence requirements:
-// topic incoherence, score variance, and query-context mismatch on "good" base verdict cause Insufficient.
-// Marginal base verdict is preserved (allows retry), but if the retrieval is
-// both marginal AND incoherent/mismatched, it becomes Insufficient.
-// For other intents, delegates to the standard Assess() method.
+// intentThresholds returns the effective quality thresholds for a given intent type.
+// Cross-encoders (bge-reranker-v2-m3) inherently score lower on causal/abstract queries
+// because they're trained primarily on factual QA pairs (CRAG, ICLR 2024).
+func (a *RetrievalQualityAssessor) intentThresholds(intentType IntentType) (good, marginal float32) {
+	switch intentType {
+	case IntentCausalExplanation, IntentSynthesis, IntentTopicDeepDive:
+		return 0.30, 0.15
+	default:
+		return a.goodThreshold, a.marginalThreshold
+	}
+}
+
+// AssessWithIntent evaluates retrieval quality with intent-aware thresholds.
+// Causal, synthesis, and deep-dive queries use lowered thresholds (0.30/0.15)
+// because cross-encoders inherently score lower on abstract/explanatory content.
+// Downgrade heuristics (topic incoherence, score variance) are applied but
+// never downgrade beyond Marginal — hard Insufficient verdicts are reserved for
+// genuine content mismatch (query keywords absent from all contexts).
 // The query parameter enables query-context relevance checking (pass "" to skip).
 func (a *RetrievalQualityAssessor) AssessWithIntent(contexts []ContextItem, intentType IntentType, query string) QualityVerdict {
-	baseVerdict := a.Assess(contexts)
-
-	if intentType != IntentCausalExplanation {
-		return baseVerdict
+	if len(contexts) < a.minContexts {
+		return QualityInsufficient
 	}
+
+	// Apply intent-aware thresholds
+	effectiveGood, effectiveMarginal := a.intentThresholds(intentType)
 
 	topN := 3
 	if len(contexts) < topN {
 		topN = len(contexts)
 	}
-
-	incoherent := topN >= 2 && hasTopicIncoherence(contexts[:topN])
 
 	scores := make([]float32, topN)
 	for i := 0; i < topN; i++ {
@@ -107,36 +118,39 @@ func (a *RetrievalQualityAssessor) AssessWithIntent(contexts []ContextItem, inte
 			scores[i] = contexts[i].Score
 		}
 	}
+
+	var sum float32
+	for _, s := range scores {
+		sum += s
+	}
+	avg := sum / float32(topN)
+
+	verdict := QualityInsufficient
+	if avg >= effectiveGood {
+		verdict = QualityGood
+	} else if avg >= effectiveMarginal {
+		verdict = QualityMarginal
+	}
+
+	// Downgrade heuristics: topic incoherence and score variance
+	// These cap at Marginal — never downgrade to Insufficient
+	incoherent := topN >= 2 && hasTopicIncoherence(contexts[:topN])
 	highVariance := topN >= 2 && hasHighScoreVariance(scores)
 
-	// Query-context relevance: check if contexts are about the query topic
-	// Uses Title + ChunkText, not title alone.
-	mismatch := query != "" && hasQueryContextMismatch(query, contexts[:topN])
-
-	// When context IS relevant to query (no mismatch), title incoherence is less meaningful:
-	// articles about the same topic often have diverse titles (e.g., "Middle East Update",
-	// "Energy Markets Weekly" can both be about Iran oil crisis).
-
-	// Causal + Good but incoherent or high variance → Insufficient
-	if baseVerdict == QualityGood && (incoherent || highVariance) {
-		return QualityInsufficient
+	if verdict == QualityGood && (incoherent || highVariance) {
+		verdict = QualityMarginal
 	}
 
-	// Causal + Marginal + incoherent
-	if baseVerdict == QualityMarginal && incoherent {
-		// If query is provided and content is relevant, keep Marginal (diverse titles for same topic)
-		if query != "" && !mismatch {
-			return QualityMarginal
+	// Query-context mismatch: the only path to Insufficient from Marginal
+	// Only when query keywords are completely absent from ALL context chunks
+	if verdict == QualityMarginal && query != "" {
+		mismatch := hasQueryContextMismatch(query, contexts[:topN])
+		if mismatch {
+			return QualityInsufficient
 		}
-		return QualityInsufficient
 	}
 
-	// Causal + Marginal + mismatch (content doesn't match query)
-	if baseVerdict == QualityMarginal && mismatch {
-		return QualityInsufficient
-	}
-
-	return baseVerdict
+	return verdict
 }
 
 // hasTopicIncoherence checks if the top contexts are from many unrelated sources.

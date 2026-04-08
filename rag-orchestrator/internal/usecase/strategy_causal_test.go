@@ -29,19 +29,47 @@ func TestCausalStrategy_Name(t *testing.T) {
 	assert.Equal(t, "causal", s.Name())
 }
 
-func TestCausalStrategy_Retrieve_DecomposesSubqueries(t *testing.T) {
+func TestCausalStrategy_Retrieve_UsesPlannerSearchQueries(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	baseQuery := "物流危機の原因"
+	plannerQuery1 := "物流危機 サプライチェーン 原因"
+	plannerQuery2 := "global logistics crisis root cause"
+	stub := &causalStubRetrieve{
+		outputs: map[string]*RetrieveContextOutput{
+			baseQuery: &RetrieveContextOutput{
+				Contexts: []ContextItem{{ChunkText: "base", Title: "Base", Score: 0.20, RerankScore: 0.20}},
+			},
+			plannerQuery1: &RetrieveContextOutput{
+				Contexts: []ContextItem{{ChunkText: "supply", Title: "Supply", Score: 0.25, RerankScore: 0.25}},
+			},
+			plannerQuery2: &RetrieveContextOutput{
+				Contexts: []ContextItem{{ChunkText: "geo", Title: "Geo", Score: 0.85, RerankScore: 0.85}},
+			},
+		},
+	}
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 1)
+	s := NewCausalStrategy(stub, assessor, logger)
+
+	output, err := s.Retrieve(context.Background(), RetrieveContextInput{Query: baseQuery}, QueryIntent{
+		IntentType:    IntentCausalExplanation,
+		UserQuestion:  baseQuery,
+		SearchQueries: []string{plannerQuery1, plannerQuery2},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	assert.Len(t, output.Contexts, 1)
+	assert.Equal(t, "Geo", output.Contexts[0].Title)
+	// Should use planner queries + keyword-augmented base query
+	assert.Equal(t, []string{baseQuery, plannerQuery1, plannerQuery2}, stub.queries[:3])
+}
+
+func TestCausalStrategy_Retrieve_FallbackWithoutPlannerQueries(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	baseQuery := "物流危機の原因"
 	stub := &causalStubRetrieve{
 		outputs: map[string]*RetrieveContextOutput{
 			baseQuery: &RetrieveContextOutput{
-				Contexts: []ContextItem{{ChunkText: "base", Title: "Base", Score: 0.3, RerankScore: 0.3}},
-			},
-			baseQuery + " 供給 制裁 sanctions supply": &RetrieveContextOutput{
-				Contexts: []ContextItem{{ChunkText: "supply", Title: "Supply", Score: 0.35, RerankScore: 0.35}},
-			},
-			baseQuery + " 地政学 geopolitical conflict": &RetrieveContextOutput{
-				Contexts: []ContextItem{{ChunkText: "geo", Title: "Geo", Score: 0.85, RerankScore: 0.85}},
+				Contexts: []ContextItem{{ChunkText: "base", Title: "Base", Score: 0.85, RerankScore: 0.85}},
 			},
 		},
 	}
@@ -51,16 +79,11 @@ func TestCausalStrategy_Retrieve_DecomposesSubqueries(t *testing.T) {
 	output, err := s.Retrieve(context.Background(), RetrieveContextInput{Query: baseQuery}, QueryIntent{
 		IntentType:   IntentCausalExplanation,
 		UserQuestion: baseQuery,
+		// No SearchQueries — uses base query + keyword augmentation
 	})
 	require.NoError(t, err)
 	require.NotNil(t, output)
-	assert.Len(t, output.Contexts, 1)
-	assert.Equal(t, "Geo", output.Contexts[0].Title)
-	assert.Equal(t, []string{
-		baseQuery,
-		baseQuery + " 供給 制裁 sanctions supply",
-		baseQuery + " 地政学 geopolitical conflict",
-	}, stub.queries)
+	assert.Equal(t, baseQuery, stub.queries[0])
 }
 
 func TestCausalStrategy_Retrieve_EarlyExitOnGoodBaseResult(t *testing.T) {
@@ -93,34 +116,22 @@ func TestCausalStrategy_Retrieve_DetailedQueryRequiresGoodVerdict(t *testing.T) 
 	stub := &causalStubRetrieve{
 		outputs: map[string]*RetrieveContextOutput{
 			baseQuery: {
-				Contexts: []ContextItem{{ChunkText: "base", Title: "Base", Score: 0.31, RerankScore: 0.31}},
-			},
-			baseQuery + " 供給 制裁 sanctions supply": {
-				Contexts: []ContextItem{{ChunkText: "supply", Title: "Supply", Score: 0.34, RerankScore: 0.34}},
-			},
-			baseQuery + " 地政学 geopolitical conflict": {
-				Contexts: []ContextItem{{ChunkText: "geo", Title: "Geo", Score: 0.33, RerankScore: 0.33}},
-			},
-			baseQuery + " 経済 market price impact": {
-				Contexts: []ContextItem{{ChunkText: "market", Title: "Market", Score: 0.32, RerankScore: 0.32}},
+				Contexts: []ContextItem{{ChunkText: "base", Title: "Base", Score: 0.20, RerankScore: 0.20}},
 			},
 		},
 	}
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 1)
 	s := NewCausalStrategy(stub, assessor, logger)
 
+	// Without planner queries: returns best available (graceful degradation)
 	output, err := s.Retrieve(context.Background(), RetrieveContextInput{Query: baseQuery}, QueryIntent{
 		IntentType:   IntentCausalExplanation,
 		UserQuestion: baseQuery,
 	})
 	require.NoError(t, err)
-	assert.Nil(t, output)
-	assert.Equal(t, []string{
-		baseQuery,
-		baseQuery + " 供給 制裁 sanctions supply",
-		baseQuery + " 地政学 geopolitical conflict",
-		baseQuery + " 経済 market price impact",
-	}, stub.queries)
+	// Graceful degradation: returns best result even if not Good quality
+	require.NotNil(t, output, "should return best available result for low-confidence generation")
+	assert.Equal(t, baseQuery, stub.queries[0])
 }
 
 func TestIntentCausalExplanation_IsValidConstant(t *testing.T) {

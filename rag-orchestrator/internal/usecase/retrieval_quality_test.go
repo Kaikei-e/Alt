@@ -150,44 +150,47 @@ func TestAssess_ScoreVariance_HighSpread_Downgrades(t *testing.T) {
 
 // --- AssessWithIntent tests (causal-aware retrieval gating) ---
 
-func TestAssessWithIntent_Causal_TopicIncoherence_IsInsufficient(t *testing.T) {
+func TestAssessWithIntent_Causal_TopicIncoherence_IsMarginal(t *testing.T) {
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
 	contexts := []ContextItem{
 		{ChunkID: uuid.New(), Score: 0.9, RerankScore: 0.9, Title: "Venezuela Oil Blockade"},
 		{ChunkID: uuid.New(), Score: 0.8, RerankScore: 0.8, Title: "Iran Airspace Reopening"},
 		{ChunkID: uuid.New(), Score: 0.7, RerankScore: 0.7, Title: "Space Exploration Update"},
 	}
+	// Causal + Good + incoherent → Marginal (relaxed from Insufficient)
 	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation, "")
-	if verdict != QualityInsufficient {
-		t.Errorf("expected QualityInsufficient for causal + incoherent topics, got %s", verdict)
+	if verdict != QualityMarginal {
+		t.Errorf("expected QualityMarginal for causal + incoherent topics (relaxed downgrade), got %s", verdict)
 	}
 }
 
-func TestAssessWithIntent_Causal_Marginal_Coherent_AllowsRetry(t *testing.T) {
+func TestAssessWithIntent_Causal_CoherentModerateScores_BecomesGood(t *testing.T) {
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
-	// Marginal scores but coherent titles → allow retry (return Marginal, not Insufficient)
+	// avg=0.317 → with causal lowered threshold (0.30): Good
+	// Coherent titles → no downgrade
 	contexts := []ContextItem{
 		{ChunkID: uuid.New(), Score: 0.4, RerankScore: 0.4, Title: "Oil Crisis"},
 		{ChunkID: uuid.New(), Score: 0.3, RerankScore: 0.3, Title: "Oil Crisis"},
 		{ChunkID: uuid.New(), Score: 0.25, RerankScore: 0.25, Title: "Oil Crisis"},
 	}
 	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation, "")
-	if verdict != QualityMarginal {
-		t.Errorf("expected QualityMarginal for causal + marginal + coherent (allows retry), got %s", verdict)
+	if verdict != QualityGood {
+		t.Errorf("expected QualityGood for causal + coherent + avg 0.317 (lowered threshold), got %s", verdict)
 	}
 }
 
-func TestAssessWithIntent_Causal_Marginal_Incoherent_IsInsufficient(t *testing.T) {
+func TestAssessWithIntent_Causal_Marginal_Incoherent_StaysMarginal(t *testing.T) {
 	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 3)
-	// Marginal scores AND incoherent titles → no point retrying scattered results
+	// Marginal scores AND incoherent titles → stay Marginal (relaxed from Insufficient)
+	// Allow caveated generation rather than hard rejection
 	contexts := []ContextItem{
 		{ChunkID: uuid.New(), Score: 0.4, RerankScore: 0.4, Title: "Venezuela Oil Blockade"},
 		{ChunkID: uuid.New(), Score: 0.3, RerankScore: 0.3, Title: "Iran Airspace Reopening"},
 		{ChunkID: uuid.New(), Score: 0.25, RerankScore: 0.25, Title: "Space Exploration News"},
 	}
 	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation, "")
-	if verdict != QualityInsufficient {
-		t.Errorf("expected QualityInsufficient for causal + marginal + incoherent, got %s", verdict)
+	if verdict != QualityMarginal {
+		t.Errorf("expected QualityMarginal (relaxed downgrade), got %s", verdict)
 	}
 }
 
@@ -295,6 +298,58 @@ func TestAssessWithIntent_Causal_QueryContextMatch_StaysGood(t *testing.T) {
 	verdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation, "イランの石油危機はなぜ起きた？")
 	if verdict != QualityGood {
 		t.Errorf("expected QualityGood when contexts match query, got %s", verdict)
+	}
+}
+
+// --- Intent-aware threshold tests ---
+
+func TestAssessWithIntent_Causal_LoweredThresholds_BecomesGood(t *testing.T) {
+	// Top-3 average = 0.35 → General: Marginal (0.35 < 0.50), Causal: Good (0.35 >= 0.30)
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 1)
+	contexts := []ContextItem{
+		{RerankScore: 0.40, Title: "Oil Crisis Analysis"},
+		{RerankScore: 0.35, Title: "Oil Market Disruption"},
+		{RerankScore: 0.30, Title: "Oil Supply Issues"},
+	}
+	generalVerdict := assessor.AssessWithIntent(contexts, IntentGeneral, "")
+	if generalVerdict != QualityMarginal {
+		t.Errorf("general intent: expected Marginal, got %s", generalVerdict)
+	}
+	causalVerdict := assessor.AssessWithIntent(contexts, IntentCausalExplanation, "")
+	if causalVerdict != QualityGood {
+		t.Errorf("causal intent: expected Good (lowered threshold 0.30), got %s", causalVerdict)
+	}
+}
+
+func TestAssessWithIntent_Synthesis_LoweredThresholds(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 1)
+	contexts := []ContextItem{
+		{RerankScore: 0.25, Title: "NYC Art Scene"},
+		{RerankScore: 0.20, Title: "NYC Art Galleries"},
+		{RerankScore: 0.15, Title: "NYC Art Events"},
+	}
+	// avg = 0.20 → General: Insufficient (0.20 < 0.25), Synthesis: Marginal (0.20 >= 0.15)
+	generalVerdict := assessor.AssessWithIntent(contexts, IntentGeneral, "")
+	if generalVerdict != QualityInsufficient {
+		t.Errorf("general intent: expected Insufficient, got %s", generalVerdict)
+	}
+	synthesisVerdict := assessor.AssessWithIntent(contexts, IntentSynthesis, "")
+	if synthesisVerdict != QualityMarginal {
+		t.Errorf("synthesis intent: expected Marginal (lowered threshold 0.15), got %s", synthesisVerdict)
+	}
+}
+
+func TestAssessWithIntent_TopicDeepDive_LoweredThresholds(t *testing.T) {
+	assessor := NewRetrievalQualityAssessor(0.5, 0.25, 1)
+	contexts := []ContextItem{
+		{RerankScore: 0.35, Title: "Transformer Architecture"},
+		{RerankScore: 0.30, Title: "Attention Mechanism"},
+		{RerankScore: 0.28, Title: "Transformer Design"},
+	}
+	// avg = 0.31 → DeepDive: Good (0.31 >= 0.30)
+	verdict := assessor.AssessWithIntent(contexts, IntentTopicDeepDive, "")
+	if verdict != QualityGood {
+		t.Errorf("deep dive intent: expected Good (lowered threshold), got %s", verdict)
 	}
 }
 

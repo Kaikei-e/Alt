@@ -37,7 +37,7 @@ func (s *causalStrategy) Retrieve(ctx context.Context, input RetrieveContextInpu
 		slog.String("intent", string(intent.IntentType)),
 		slog.Bool("require_good_verdict", requireGoodVerdict))
 
-	queries := causalSubqueries(baseQuery)
+	queries := causalSubqueries(baseQuery, intent.SearchQueries)
 	var (
 		bestOutput  *RetrieveContextOutput
 		bestVerdict QualityVerdict
@@ -86,16 +86,18 @@ func (s *causalStrategy) Retrieve(ctx context.Context, input RetrieveContextInpu
 
 	if bestOutput != nil {
 		if requireGoodVerdict && bestVerdict != QualityGood {
-			s.log("causal_strategy_rejected_marginal_result",
+			// Graceful degradation: return best available result instead of nil.
+			// The answer usecase will mark it as lowConfidence and add a disclaimer.
+			s.log("causal_strategy_low_confidence",
 				slog.String("query", bestQuery),
 				slog.String("verdict", string(bestVerdict)),
 				slog.Int("contexts", len(bestOutput.Contexts)))
-			return nil, nil
+		} else {
+			s.log("causal_strategy_selected",
+				slog.String("query", bestQuery),
+				slog.String("verdict", string(bestVerdict)),
+				slog.Int("contexts", len(bestOutput.Contexts)))
 		}
-		s.log("causal_strategy_selected",
-			slog.String("query", bestQuery),
-			slog.String("verdict", string(bestVerdict)),
-			slog.Int("contexts", len(bestOutput.Contexts)))
 		return bestOutput, nil
 	}
 
@@ -104,16 +106,24 @@ func (s *causalStrategy) Retrieve(ctx context.Context, input RetrieveContextInpu
 	return nil, nil
 }
 
-func causalSubqueries(baseQuery string) []string {
+// causalSubqueries generates subqueries for causal strategy.
+// Uses planner search queries (topic-aware) as the primary source,
+// supplemented by keyword-augmented base query for BM25 coverage.
+func causalSubqueries(baseQuery string, plannerQueries []string) []string {
 	if strings.TrimSpace(baseQuery) == "" {
 		return nil
 	}
-	return []string{
-		baseQuery,
-		baseQuery + " 供給 制裁 sanctions supply",
-		baseQuery + " 地政学 geopolitical conflict",
-		baseQuery + " 経済 market price impact",
+	result := []string{baseQuery}
+
+	// Planner queries: topic-aware, diverse angles
+	for _, pq := range plannerQueries {
+		pq = strings.TrimSpace(pq)
+		if pq != "" && pq != baseQuery {
+			result = append(result, pq)
+		}
 	}
+
+	return result
 }
 
 func qualityRank(verdict QualityVerdict) int {
