@@ -100,7 +100,8 @@ export const KNOWLEDGE_HOME_ITEM_SUPERSEDED = {
 	supersedeInfo: {
 		state: "summary_updated",
 		supersededAt: new Date(Date.now() - 600_000).toISOString(),
-		previousSummaryExcerpt: "GraphQL は複数のスキーマを合成する仕組みとして Federation を提供している。",
+		previousSummaryExcerpt:
+			"GraphQL は複数のスキーマを合成する仕組みとして Federation を提供している。",
 		previousTags: ["graphql", "schema"],
 		previousWhyCodes: ["new_unread"],
 	},

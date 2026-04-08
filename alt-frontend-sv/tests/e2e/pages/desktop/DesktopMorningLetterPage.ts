@@ -29,7 +29,9 @@ export class DesktopMorningLetterPage extends BasePage {
 		super(page);
 
 		// Page elements — use .first() since empty state also has a heading containing "Morning Letter"
-		this.pageTitle = page.getByRole("heading", { name: /morning letter/i }).first();
+		this.pageTitle = page
+			.getByRole("heading", { name: /morning letter/i })
+			.first();
 
 		// Chat container
 		this.chatContainer = page
@@ -37,8 +39,12 @@ export class DesktopMorningLetterPage extends BasePage {
 			.filter({ hasText: /morning letter/i });
 
 		// Messages - use partial match for dynamic content
-		this.welcomeMessage = page.getByText(/follow-up questions|morning letter assistant/i);
-		this.thinkingIndicator = page.getByText(/searching recent news|searching\.\.\./i);
+		this.welcomeMessage = page.getByText(
+			/follow-up questions|morning letter assistant/i,
+		);
+		this.thinkingIndicator = page.getByText(
+			/searching recent news|searching\.\.\./i,
+		);
 
 		// Metadata display
 		this.timeWindowDisplay = page.getByText(/articles from/i);

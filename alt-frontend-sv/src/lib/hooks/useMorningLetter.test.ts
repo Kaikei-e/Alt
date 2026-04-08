@@ -30,7 +30,13 @@ const fakeLetter = {
 };
 
 const fakeSources = [
-	{ letterId: "letter-001", sectionKey: "top3", articleId: "art-1", sourceType: 1, position: 0 },
+	{
+		letterId: "letter-001",
+		sectionKey: "top3",
+		articleId: "art-1",
+		sourceType: 1,
+		position: 0,
+	},
 ];
 
 describe("useMorningLetter", () => {
@@ -90,7 +96,10 @@ describe("useMorningLetter", () => {
 		await ml.fetchByDate("2026-04-07");
 
 		expect(ml.letter).toEqual(fakeLetter);
-		expect(mockGetLetterByDate).toHaveBeenCalledWith(expect.anything(), "2026-04-07");
+		expect(mockGetLetterByDate).toHaveBeenCalledWith(
+			expect.anything(),
+			"2026-04-07",
+		);
 		expect(mockGetLatestLetter).not.toHaveBeenCalled();
 	});
 
@@ -114,7 +123,10 @@ describe("useMorningLetter", () => {
 
 		// Sources should be loaded after letter
 		expect(ml.sources).toEqual(fakeSources);
-		expect(mockGetLetterSources).toHaveBeenCalledWith(expect.anything(), "letter-001");
+		expect(mockGetLetterSources).toHaveBeenCalledWith(
+			expect.anything(),
+			"letter-001",
+		);
 	});
 
 	it("separates letterLoading and sourcesLoading", async () => {

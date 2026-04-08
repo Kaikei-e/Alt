@@ -302,9 +302,7 @@ test.describe("Knowledge Home - TodayBar", () => {
 		await homePage.waitForHomeLoaded();
 
 		// When available, Pulse should be an <a> link
-		await expect(
-			page.locator('a[href*="evening-pulse"]'),
-		).toBeVisible();
+		await expect(page.locator('a[href*="evening-pulse"]')).toBeVisible();
 		// Recap link should also be present
 		await expect(page.locator('a[href="/recap"]')).toBeVisible();
 	});
@@ -321,9 +319,7 @@ test.describe("Knowledge Home - TodayBar", () => {
 		// Pulse text should be visible (as a span, not a link)
 		await expect(page.getByText("Pulse").first()).toBeVisible();
 		// But the evening-pulse link should NOT exist
-		await expect(
-			page.locator('a[href*="evening-pulse"]'),
-		).not.toBeVisible();
+		await expect(page.locator('a[href*="evening-pulse"]')).not.toBeVisible();
 	});
 });
 
@@ -342,9 +338,7 @@ test.describe("Knowledge Home - Recall Disabled", () => {
 		await expect(readyCard).toBeVisible();
 
 		// Recall candidate should NOT be visible
-		await expect(
-			page.getByText("Go Concurrency Patterns"),
-		).not.toBeVisible();
+		await expect(page.getByText("Go Concurrency Patterns")).not.toBeVisible();
 	});
 });
 
@@ -370,9 +364,7 @@ test.describe("Knowledge Home - Lens Switching", () => {
 					candidates: [RECALL_CANDIDATE_WITH_REASONS],
 				}),
 			),
-			page.route(KH_LIST_LENSES, (route) =>
-				fulfillJson(route, lensesResponse),
-			),
+			page.route(KH_LIST_LENSES, (route) => fulfillJson(route, lensesResponse)),
 			page.route(LIST_SUBS, (route) => fulfillJson(route, { sources: [] })),
 			page.route(KH_STREAM, (route) => route.abort()),
 		]);
@@ -381,9 +373,9 @@ test.describe("Knowledge Home - Lens Switching", () => {
 		await homePage.waitForHomeLoaded();
 
 		// Lens names from the response should be visible
-		await expect(
-			page.getByText("Rust").first(),
-		).toBeVisible({ timeout: 10000 });
+		await expect(page.getByText("Rust").first()).toBeVisible({
+			timeout: 10000,
+		});
 	});
 });
 
@@ -394,10 +386,7 @@ test.describe("Knowledge Home - Supersede", () => {
 		homePage = new DesktopKnowledgeHomePage(page);
 		await mockAllKnowledgeHomeRoutes(page, {
 			featureFlags: FEATURE_FLAGS_WITH_SUPERSEDE,
-			items: [
-				KNOWLEDGE_HOME_ITEM_READY,
-				KNOWLEDGE_HOME_ITEM_SUPERSEDED,
-			],
+			items: [KNOWLEDGE_HOME_ITEM_READY, KNOWLEDGE_HOME_ITEM_SUPERSEDED],
 		});
 	});
 

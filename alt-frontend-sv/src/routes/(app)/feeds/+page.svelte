@@ -13,7 +13,6 @@ import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 // Mobile components
 import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
 import MobileFeedExcludeFilter from "$lib/components/mobile/feeds/MobileFeedExcludeFilter.svelte";
-import MobileFeedsHero from "$lib/components/mobile/MobileFeedsHero.svelte";
 import { Button } from "$lib/components/ui/button";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
@@ -195,7 +194,11 @@ function handleFeedGridReady(api: FeedGridApi) {
 		class="h-screen overflow-hidden flex flex-col"
 		style="background: var(--app-bg);"
 	>
-		<MobileFeedsHero />
+		<header class="px-5 pt-4 pb-2">
+			<h1 class="font-[var(--font-display)] text-xl font-semibold text-[var(--text-primary)]">
+				Library
+			</h1>
+		</header>
 		<MobileFeedExcludeFilter
 			sources={feedSources}
 			excludedSourceId={mobileExcludedFeedLinkId}

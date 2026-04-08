@@ -1,5 +1,9 @@
 import type { PageLoad } from "./$types";
-import { createClientTransport, getLatestLetter, getLetterByDate } from "$lib/connect";
+import {
+	createClientTransport,
+	getLatestLetter,
+	getLetterByDate,
+} from "$lib/connect";
 import type { MorningLetterDocument } from "$lib/connect";
 
 // Connect-RPC transport requires browser context

@@ -3,7 +3,10 @@ import { onMount } from "svelte";
 import { page } from "$app/state";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import { useMorningLetter } from "$lib/hooks/useMorningLetter.svelte";
-import { deriveWithinHours, formatLetterDate } from "$lib/components/morning-letter/morning-letter-document";
+import {
+	deriveWithinHours,
+	formatLetterDate,
+} from "$lib/components/morning-letter/morning-letter-document";
 
 // Shared components
 import MorningLetterDocumentCore from "$lib/components/morning-letter/MorningLetterDocumentCore.svelte";
@@ -23,10 +26,14 @@ const { isDesktop } = useViewport();
 // page.data is populated by SvelteKit before rendering (ssr=false + load)
 const ml = useMorningLetter(page.data.letter ?? null);
 
-const targetDate = $derived(ml.letter?.targetDate ?? page.data.requestedDate ?? undefined);
+const targetDate = $derived(
+	ml.letter?.targetDate ?? page.data.requestedDate ?? undefined,
+);
 const withinHours = $derived(deriveWithinHours(targetDate));
 const dateDisplay = $derived(
-	targetDate ? formatLetterDate(targetDate, ml.letter?.editionTimezone) : "Morning Letter",
+	targetDate
+		? formatLetterDate(targetDate, ml.letter?.editionTimezone)
+		: "Morning Letter",
 );
 
 // If load returned an error, attempt client-side retry

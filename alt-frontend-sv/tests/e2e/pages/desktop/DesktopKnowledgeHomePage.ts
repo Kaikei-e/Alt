@@ -104,7 +104,9 @@ export class DesktopKnowledgeHomePage extends BasePage {
 
 	/** Get lens tab buttons */
 	getLensTab(name: string): Locator {
-		return this.page.locator("button").filter({ hasText: new RegExp(`^${name}$`) });
+		return this.page
+			.locator("button")
+			.filter({ hasText: new RegExp(`^${name}$`) });
 	}
 
 	/** Get the morning letter link in TodayBar */

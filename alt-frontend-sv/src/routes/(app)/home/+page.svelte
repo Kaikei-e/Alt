@@ -19,7 +19,6 @@ import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.sv
 import MobileKnowledgeHomeHeader from "$lib/components/knowledge-home/MobileKnowledgeHomeHeader.svelte";
 import GlobalSearchEntry from "$lib/components/knowledge-home/GlobalSearchEntry.svelte";
 import MobileRecallSection from "$lib/components/knowledge-home/MobileRecallSection.svelte";
-import MobileMoreSheet from "$lib/components/mobile/MobileMoreSheet.svelte";
 import {
 	createClientTransport,
 	listSubscriptions,
@@ -49,7 +48,6 @@ const toast = useToastStore();
 let exposureSessionId = $state("");
 let lensModalOpen = $state(false);
 let bannerDismissed = $state(false);
-let moreSheetOpen = $state(false);
 let askSheetOpen = $state(false);
 let askScopeTitle = $state("");
 let askScopeContext = $state("");
@@ -81,9 +79,7 @@ const showBanner = $derived(
 	!bannerDismissed &&
 		(home.pageState === "degraded" || home.pageState === "fallback"),
 );
-const streamMode = $derived(
-	lens.activeLensId ? "lens" : "default",
-);
+const streamMode = $derived(lens.activeLensId ? "lens" : "default");
 const visibleItems = $derived(home.items);
 const emptyReason = $derived.by(() => {
 	if (home.pageState === "degraded" && visibleItems.length === 0) {
@@ -114,8 +110,7 @@ const stream = useStreamUpdates({
 	get lensId() {
 		return lens.activeLensId ?? undefined;
 	},
-	onRefresh: () =>
-		refreshHomeWithRecallSync(home, recall, lens.activeLensId),
+	onRefresh: () => refreshHomeWithRecallSync(home, recall, lens.activeLensId),
 });
 
 async function processQueue() {
@@ -430,7 +425,6 @@ onMount(async () => {
 	<div style="background: var(--app-bg);">
 		<MobileKnowledgeHomeHeader
 			serviceQuality={home.serviceQuality}
-			onMoreClick={() => { moreSheetOpen = true; }}
 		/>
 
 		{#if showBanner}
@@ -495,7 +489,6 @@ onMount(async () => {
 		</div>
 	</div>
 
-	<MobileMoreSheet bind:open={moreSheetOpen} />
 {/if}
 
 <AskSheet
