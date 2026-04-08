@@ -1700,7 +1700,9 @@ async def test_3days_fallback_wraps_english_source_sentences_in_japanese():
 
     assert response.metadata.is_degraded is True
     assert response.summary.language == "ja"
-    assert "更新が確認された" in response.summary.bullets[0]
+    # English sentences should get a Japanese genre prefix (not the old template)
+    assert "【" in response.summary.bullets[0]
+    assert "TechFusion" in response.summary.bullets[0]
     assert response.summary.references is not None
     assert response.summary.references[0].url == "https://example.com/techfusion-news"
 
@@ -1747,6 +1749,174 @@ async def test_fallback_selects_centroids_first():
 
     # First bullet should be the centroid sentence
     assert "CENTROID" in response.summary.bullets[0]
+
+
+@pytest.mark.asyncio
+async def test_degraded_bullet_uses_raw_sentence_for_japanese():
+    """Japanese representative sentence should be used directly without template wrapping."""
+    config = _create_mock_config()
+    config.max_repetition_retries = 0
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="not json", model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Googleは新たなAIモデルを発表し、従来比30%の速度向上を実現した。",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                ],
+                top_terms=["AI", "model"],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    bullet = response.summary.bullets[0]
+    # Japanese sentence should NOT be wrapped in the mechanical template
+    assert "に関する更新が確認された" not in bullet
+    assert "中心情報として示されており" not in bullet
+    # The actual sentence content should be present
+    assert "Googleは新たなAIモデルを発表" in bullet
+
+
+@pytest.mark.asyncio
+async def test_degraded_bullet_adds_genre_prefix_for_english():
+    """English representative sentence should get a Japanese genre label prefix."""
+    config = _create_mock_config()
+    config.max_repetition_retries = 0
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="not json", model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="cybersecurity",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="A critical vulnerability was found in OpenSSL affecting millions of servers.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                ],
+                top_terms=["vulnerability", "OpenSSL"],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    bullet = response.summary.bullets[0]
+    # Should NOT use the old template
+    assert "に関する更新が確認された" not in bullet
+    # Should have a Japanese genre prefix for English content
+    assert "サイバーセキュリティ" in bullet or "cybersecurity" in bullet.lower()
+    # The original content should be present
+    assert "OpenSSL" in bullet
+
+
+@pytest.mark.asyncio
+async def test_degraded_title_uses_japanese_genre_name():
+    """Degraded titles should use Japanese genre name instead of raw English slug."""
+    config = _create_mock_config()
+    config.max_repetition_retries = 0
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="not json", model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="software_dev",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="New framework released.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # Title should NOT contain the raw slug "software dev"
+    assert "software dev" not in response.summary.title.lower()
+    # Should contain Japanese genre name
+    assert "ソフトウェア開発" in response.summary.title
+
+
+@pytest.mark.asyncio
+async def test_fallback_filters_short_sentences():
+    """Fallback should exclude very short sentences (<20 chars)."""
+    config = _create_mock_config()
+    config.max_repetition_retries = 0
+
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="not json", model="gemma4-e4b-q4km",
+    )
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Short.",  # Too short - should be excluded
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                    RepresentativeSentence(
+                        text="Google released a major update to their AI infrastructure affecting millions of developers worldwide.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                ],
+                top_terms=["AI", "Google"],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # The short sentence should not appear in any bullet
+    for bullet in response.summary.bullets:
+        assert "Short." not in bullet
 
 
 @pytest.mark.asyncio

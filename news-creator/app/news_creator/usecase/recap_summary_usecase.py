@@ -49,6 +49,39 @@ GEMMA_RECAP_SYSTEM_PROMPT = (
     "Follow the JSON contract exactly and respond with only the requested JSON object."
 )
 
+GENRE_JA_MAP: Dict[str, str] = {
+    "ai_data": "AI・データ",
+    "climate_environment": "気候・環境",
+    "consumer_tech": "家電・テクノロジー",
+    "culture_arts": "文化・芸術",
+    "cybersecurity": "サイバーセキュリティ",
+    "diplomacy_security": "外交・安全保障",
+    "economics_macro": "マクロ経済",
+    "education": "教育",
+    "energy_transition": "エネルギー",
+    "film_tv": "映画・テレビ",
+    "food_cuisine": "食・料理",
+    "games_esports": "ゲーム・eスポーツ",
+    "health_medicine": "医療・健康",
+    "home_living": "住まい・暮らし",
+    "industry_logistics": "産業・物流",
+    "internet_platforms": "インターネット",
+    "labor_workplace": "労働・キャリア",
+    "law_crime": "法律・犯罪",
+    "life_science": "生命科学",
+    "markets_finance": "金融・市場",
+    "mobility_automotive": "モビリティ・自動車",
+    "music_audio": "音楽・オーディオ",
+    "politics_government": "政治",
+    "software_dev": "ソフトウェア開発",
+    "space_astronomy": "宇宙・天文",
+    "sports": "スポーツ",
+    "startups_innovation": "スタートアップ",
+    "travel_places": "旅行・観光",
+}
+
+_MIN_FALLBACK_SENTENCE_LEN = 20
+
 
 class RecapSummaryUsecase:
     """Generate recap summaries from evidence clusters via LLM."""
@@ -1063,31 +1096,40 @@ class RecapSummaryUsecase:
 
         candidates: List[Dict[str, Any]] = []
         seen_texts: set[str] = set()
+
+        # Collect all valid sentences, preferring Japanese
+        ja_candidates: List[Dict[str, Any]] = []
+        other_candidates: List[Dict[str, Any]] = []
+
         for cluster in sorted_clusters:
             ordered_sentences = sorted(
                 cluster.representative_sentences,
                 key=lambda sentence: (not sentence.is_centroid, len(sentence.text)),
             )
-            topic_label = (
-                "・".join(cluster.top_terms[:2])
-                if cluster.top_terms
-                else request.genre.replace("_", " ")
-            )
+            topic_label = self._genre_to_japanese(request.genre)
             for sentence in ordered_sentences:
                 normalized_text = " ".join(sentence.text.split())
                 if not normalized_text or normalized_text in seen_texts:
                     continue
+                if len(normalized_text) < _MIN_FALLBACK_SENTENCE_LEN:
+                    continue
+                # Filter code-heavy sentences (>30% backticks)
+                if normalized_text.count("`") > len(normalized_text) * 0.3:
+                    continue
                 seen_texts.add(normalized_text)
-                candidates.append(
-                    {
-                        "text": normalized_text,
-                        "source_url": sentence.source_url,
-                        "article_id": sentence.article_id,
-                        "topic_label": topic_label,
-                    }
-                )
-                if len(candidates) >= max_fallback_bullets:
-                    return candidates
+                entry = {
+                    "text": normalized_text,
+                    "source_url": sentence.source_url,
+                    "article_id": sentence.article_id,
+                    "topic_label": topic_label,
+                }
+                if self._looks_japanese(normalized_text):
+                    ja_candidates.append(entry)
+                else:
+                    other_candidates.append(entry)
+
+        # Prefer Japanese sentences, then fill with others
+        candidates = (ja_candidates + other_candidates)[:max_fallback_bullets]
         return candidates
 
     def _create_degraded_response(
@@ -1136,8 +1178,9 @@ class RecapSummaryUsecase:
             ]
 
         title_suffix = "直近更新" if self._is_3days_request(request) else "主要トピック"
+        genre_ja = self._genre_to_japanese(request.genre)
         summary = RecapSummary(
-            title=f"{request.genre.replace('_', ' ')}の{title_suffix}",
+            title=f"{genre_ja}の{title_suffix}",
             bullets=bullets,
             language="ja",
             references=references if references else None,
@@ -1170,13 +1213,23 @@ class RecapSummaryUsecase:
         topic_label: str,
         reference_id: Optional[int],
     ) -> str:
-        scope = "直近3日間" if self._is_3days_request(request) else "最近"
-        snippet = self._truncate_fallback_snippet(text)
         reference_suffix = f" [{reference_id}]" if reference_id is not None else ""
-        return (
-            f"{topic_label} に関する更新が確認された。代表文では「{snippet}」が中心情報として示されており、"
-            f"{scope}の重要トピックとして整理できる{reference_suffix}"
-        )
+        if self._looks_japanese(text):
+            return f"{text}{reference_suffix}"
+        genre_ja = self._genre_to_japanese(request.genre)
+        return f"【{genre_ja}】{text}{reference_suffix}"
+
+    @staticmethod
+    def _looks_japanese(text: str) -> bool:
+        if not text:
+            return False
+        ja_count = len(JAPANESE_CHAR_RE.findall(text))
+        return ja_count / max(len(text), 1) > 0.15
+
+    @staticmethod
+    def _genre_to_japanese(genre: str) -> str:
+        base_genre = re.sub(r"_\d+$", "", genre)
+        return GENRE_JA_MAP.get(base_genre, genre.replace("_", " "))
 
     @staticmethod
     def _truncate_fallback_snippet(text: str, max_chars: int = 120) -> str:
