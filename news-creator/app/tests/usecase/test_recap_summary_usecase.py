@@ -1923,8 +1923,8 @@ async def test_fallback_filters_short_sentences():
 async def test_generate_summary_bypasses_llm_for_low_evidence_3days():
     """Low-evidence 3days requests should use deterministic extractive output."""
     config = _create_mock_config()
-    config.recap_min_source_articles_for_llm = 3
-    config.recap_min_representative_sentences_for_llm = 4
+    config.recap_min_source_articles_for_llm = 10
+    config.recap_min_representative_sentences_for_llm = 10
 
     llm_provider = AsyncMock()
 

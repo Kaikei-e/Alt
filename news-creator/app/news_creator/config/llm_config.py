@@ -41,8 +41,8 @@ class LLMConfig:
     max_repetition_retries: int = 2
     repetition_threshold: float = 0.3
     # Recap settings
-    recap_min_source_articles_for_llm: int = 3
-    recap_min_representative_sentences_for_llm: int = 4
+    recap_min_source_articles_for_llm: int = 1
+    recap_min_representative_sentences_for_llm: int = 2
     recap_summary_temperature: float = 0.0
     recap_ja_ratio_threshold: float = 0.6
     recap_summary_repair_attempts: int = 1
@@ -103,10 +103,10 @@ class LLMConfig:
             max_repetition_retries=_get_int("MAX_REPETITION_RETRIES", 2),
             repetition_threshold=_get_float("REPETITION_THRESHOLD", 0.3),
             recap_min_source_articles_for_llm=_get_int(
-                "RECAP_MIN_SOURCE_ARTICLES_FOR_LLM", 3
+                "RECAP_MIN_SOURCE_ARTICLES_FOR_LLM", 1
             ),
             recap_min_representative_sentences_for_llm=_get_int(
-                "RECAP_MIN_REPRESENTATIVE_SENTENCES_FOR_LLM", 4
+                "RECAP_MIN_REPRESENTATIVE_SENTENCES_FOR_LLM", 2
             ),
             recap_summary_temperature=_get_float("RECAP_SUMMARY_TEMPERATURE", 0.0),
             recap_ja_ratio_threshold=_get_float("RECAP_JA_RATIO_THRESHOLD", 0.6),
