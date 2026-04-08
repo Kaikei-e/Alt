@@ -40,6 +40,7 @@ type ExpectedBehavior struct {
 	RequiresCitations bool     `json:"requires_citations"`
 	ExpectedEntities  []string `json:"expected_entities,omitempty"`  // entities that should appear in answer
 	ForbiddenPatterns []string `json:"forbidden_patterns,omitempty"` // patterns that must NOT appear
+	ExpectedStructure []string `json:"expected_structure,omitempty"` // markdown headers/keywords that must appear in answer
 }
 
 // EvalResult holds the actual output from a single evaluation run.
@@ -65,7 +66,8 @@ type EvalResult struct {
 	CitedTitles    []string `json:"cited_titles"`
 	IsFallback     bool     `json:"is_fallback"`
 	FallbackReason string   `json:"fallback_reason,omitempty"`
-	QualityFlags   []string `json:"quality_flags,omitempty"`
+	QualityFlags     []string `json:"quality_flags,omitempty"`
+	PromptTokenCount int      `json:"prompt_token_count,omitempty"` // measured prompt size in tokens
 }
 
 // CaseVerdict represents the pass/fail judgment for a single case.
@@ -103,4 +105,8 @@ type AggregateMetrics struct {
 	MeanCitationCorrectness float64 `json:"mean_citation_correctness"`
 	UnsupportedClaimRate    float64 `json:"unsupported_claim_rate"`
 	FallbackRate            float64 `json:"fallback_rate"`
+
+	// Instruction adherence (Phase 0 additions)
+	InstructionAdherenceRate float64 `json:"instruction_adherence_rate"` // fraction of cases where answer matches expected structure
+	MeanPromptTokens         float64 `json:"mean_prompt_tokens"`        // average prompt token count across cases
 }

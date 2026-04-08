@@ -114,7 +114,11 @@ func (g *OllamaGenerator) getThinkParam(maxTokens int) interface{} {
 	if strings.Contains(modelLower, "swallow") || strings.Contains(modelLower, "llama") {
 		return nil
 	}
-	// gemma models: thinking not supported, return nil
+	// gemma4: supports thinking mode for grounding verification
+	if strings.Contains(modelLower, "gemma4") {
+		return true
+	}
+	// gemma3 and earlier: thinking not supported
 	if strings.Contains(modelLower, "gemma") {
 		return nil
 	}

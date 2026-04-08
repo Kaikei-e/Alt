@@ -106,6 +106,13 @@ type SearchResult struct {
 	DocumentVersion int
 }
 
+// HybridSearcher performs in-database hybrid search (dense vector + sparse tsvector)
+// with Reciprocal Rank Fusion (RRF). Replaces application-level BM25 + vector fusion.
+type HybridSearcher interface {
+	// HybridSearch performs a combined vector + full-text search with RRF fusion.
+	HybridSearch(ctx context.Context, queryVector []float32, queryText string, limit int) ([]SearchResult, error)
+}
+
 // TransactionManager defines the interface for handling database transactions.
 type TransactionManager interface {
 	// RunInTx executes the given function within a transaction.

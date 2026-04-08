@@ -159,6 +159,7 @@ type HybridConfig struct {
 	Enabled   bool
 	Alpha     float64
 	BM25Limit int
+	BM25Source string // "meilisearch" (default) or "postgres" (in-DB tsvector hybrid)
 }
 
 // TemporalConfig holds temporal boost settings.
@@ -264,9 +265,10 @@ func Load() *Config {
 			Timeout: getEnvInt("RERANK_TIMEOUT", defaultRerankTimeout),
 		},
 		Hybrid: HybridConfig{
-			Enabled:   getEnvBool("HYBRID_SEARCH_ENABLED", defaultHybridSearchEnabled),
-			Alpha:     getEnvFloat64("HYBRID_ALPHA", defaultHybridAlpha),
-			BM25Limit: getEnvInt("HYBRID_BM25_LIMIT", defaultHybridBM25Limit),
+			Enabled:    getEnvBool("HYBRID_SEARCH_ENABLED", defaultHybridSearchEnabled),
+			Alpha:      getEnvFloat64("HYBRID_ALPHA", defaultHybridAlpha),
+			BM25Limit:  getEnvInt("HYBRID_BM25_LIMIT", defaultHybridBM25Limit),
+			BM25Source: getEnv("HYBRID_BM25_SOURCE", "meilisearch"),
 		},
 		Temporal: TemporalConfig{
 			Boost6h:  getEnvFloat32("TEMPORAL_BOOST_6H", defaultTemporalBoost6h),

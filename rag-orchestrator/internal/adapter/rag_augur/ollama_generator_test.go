@@ -45,13 +45,23 @@ func TestBuildOptions_SwallowModel(t *testing.T) {
 	}
 }
 
-func TestGetThinkParam_GemmaReturnsNil(t *testing.T) {
+func TestGetThinkParam_Gemma4ReturnsTrue(t *testing.T) {
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-rag", 100, testLogger)
 	result := gen.getThinkParam(4096)
 
+	if result != true {
+		t.Fatalf("expected true for gemma4 model (thinking enabled), got %v", result)
+	}
+}
+
+func TestGetThinkParam_Gemma3ReturnsNil(t *testing.T) {
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-4b", 100, testLogger)
+	result := gen.getThinkParam(4096)
+
 	if result != nil {
-		t.Fatalf("expected nil for gemma model, got %v", result)
+		t.Fatalf("expected nil for gemma3 model, got %v", result)
 	}
 }
 

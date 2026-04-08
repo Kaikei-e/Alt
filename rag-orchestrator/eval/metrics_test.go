@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -248,6 +249,153 @@ func TestVerifyCase_IranFollowUp_Baseline_Fails(t *testing.T) {
 
 	verdict := VerifyCase(gc, result)
 	assert.False(t, verdict.Passed)
+}
+
+// --- ExpectedStructure ---
+
+func TestVerifyCase_ExpectedStructure_AllPresent(t *testing.T) {
+	gc := GoldenCase{
+		ID:    "causal-structure-pass",
+		Query: "イランの石油危機はなぜ起きた？",
+		Expected: ExpectedBehavior{
+			ExpectedIntent:    "causal_explanation",
+			ExpectedStructure: []string{"直接的要因", "構造的背景", "不確実性"},
+			MinAnswerLength:   10,
+		},
+	}
+
+	result := EvalResult{
+		CaseID:           "causal-structure-pass",
+		IntentClassified: "causal_explanation",
+		Answer:           "**直接的要因**\n制裁が原因...\n\n**構造的背景**\n長期的な対立...\n\n**不確実性**\n一部情報が不足...",
+		AnswerLength:     50,
+	}
+
+	verdict := VerifyCase(gc, result)
+	assert.True(t, verdict.Passed, "all expected structures present: %v", verdict.Failures)
+}
+
+func TestVerifyCase_ExpectedStructure_Missing(t *testing.T) {
+	gc := GoldenCase{
+		ID:    "causal-structure-fail",
+		Query: "イランの石油危機はなぜ起きた？",
+		Expected: ExpectedBehavior{
+			ExpectedIntent:    "causal_explanation",
+			ExpectedStructure: []string{"直接的要因", "構造的背景", "不確実性"},
+		},
+	}
+
+	result := EvalResult{
+		CaseID:           "causal-structure-fail",
+		IntentClassified: "causal_explanation",
+		Answer:           "イランの石油危機は制裁が原因です。",
+		AnswerLength:     17,
+	}
+
+	verdict := VerifyCase(gc, result)
+	assert.False(t, verdict.Passed)
+	// Should report missing structures
+	hasStructureFailure := false
+	for _, f := range verdict.Failures {
+		if strings.Contains(f, "expected structure") {
+			hasStructureFailure = true
+			break
+		}
+	}
+	assert.True(t, hasStructureFailure, "should report missing structure, got: %v", verdict.Failures)
+}
+
+func TestVerifyCase_ExpectedStructure_Partial(t *testing.T) {
+	gc := GoldenCase{
+		ID:    "causal-structure-partial",
+		Query: "イランの石油危機はなぜ起きた？",
+		Expected: ExpectedBehavior{
+			ExpectedStructure: []string{"直接的要因", "構造的背景", "不確実性"},
+		},
+	}
+
+	result := EvalResult{
+		CaseID:       "causal-structure-partial",
+		Answer:       "**直接的要因**\n制裁が原因...",
+		AnswerLength: 15,
+	}
+
+	verdict := VerifyCase(gc, result)
+	assert.False(t, verdict.Passed)
+	// Should fail for missing "構造的背景" and "不確実性"
+	structureFailures := 0
+	for _, f := range verdict.Failures {
+		if strings.Contains(f, "expected structure") {
+			structureFailures++
+		}
+	}
+	assert.Equal(t, 2, structureFailures, "should report 2 missing structures")
+}
+
+// --- InstructionAdherenceRate and MeanPromptTokens in AggregateMetrics ---
+
+func TestRunOfflineEval_InstructionAdherence(t *testing.T) {
+	cases := []GoldenCase{
+		{
+			ID:    "case-1",
+			Query: "Q1",
+			Expected: ExpectedBehavior{
+				ExpectedStructure: []string{"概要", "詳細"},
+			},
+		},
+		{
+			ID:    "case-2",
+			Query: "Q2",
+			Expected: ExpectedBehavior{
+				ExpectedStructure: []string{"概要", "詳細"},
+			},
+		},
+	}
+	results := map[string]EvalResult{
+		"case-1": {
+			CaseID:           "case-1",
+			Answer:           "## 概要\ntest\n## 詳細\ntest",
+			AnswerLength:     20,
+			PromptTokenCount: 800,
+		},
+		"case-2": {
+			CaseID:           "case-2",
+			Answer:           "simple answer without structure",
+			AnswerLength:     30,
+			PromptTokenCount: 1200,
+		},
+	}
+
+	report := RunOfflineEval(cases, results)
+	// case-1 adheres (has both 概要 and 詳細), case-2 does not
+	assert.InDelta(t, 0.5, report.Metrics.InstructionAdherenceRate, 0.01)
+	// Mean prompt tokens = (800 + 1200) / 2 = 1000
+	assert.InDelta(t, 1000.0, report.Metrics.MeanPromptTokens, 0.01)
+}
+
+func TestRunOfflineEval_NoStructureExpected(t *testing.T) {
+	cases := []GoldenCase{
+		{
+			ID:    "no-structure",
+			Query: "Q1",
+			Expected: ExpectedBehavior{
+				// No ExpectedStructure
+			},
+		},
+	}
+	results := map[string]EvalResult{
+		"no-structure": {
+			CaseID:           "no-structure",
+			Answer:           "simple answer",
+			AnswerLength:     10,
+			PromptTokenCount: 500,
+		},
+	}
+
+	report := RunOfflineEval(cases, results)
+	// No structure expectations → adherence rate should be 0 (no denominator)
+	assert.Equal(t, 0.0, report.Metrics.InstructionAdherenceRate)
+	assert.InDelta(t, 500.0, report.Metrics.MeanPromptTokens, 0.01)
 }
 
 func TestVerifyCase_ClarificationExpected_Passes(t *testing.T) {

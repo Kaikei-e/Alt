@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -43,6 +44,12 @@ func RunOfflineEval(cases []GoldenCase, results map[string]EvalResult) EvalRepor
 		followUpTotal     int
 		faithfulnessCount int
 		citCorrectCount   int
+
+		// Phase 0 additions
+		structureAdherent int
+		structureTotal    int
+		totalPromptTokens float64
+		promptTokenCount  int
 	)
 
 	for _, gc := range cases {
@@ -117,6 +124,27 @@ func RunOfflineEval(cases []GoldenCase, results map[string]EvalResult) EvalRepor
 			totalCitCorrect += cc
 			citCorrectCount++
 		}
+
+		// Instruction adherence: check if all expected structures are present
+		if len(gc.Expected.ExpectedStructure) > 0 {
+			structureTotal++
+			allPresent := true
+			for _, s := range gc.Expected.ExpectedStructure {
+				if !strings.Contains(result.Answer, s) {
+					allPresent = false
+					break
+				}
+			}
+			if allPresent {
+				structureAdherent++
+			}
+		}
+
+		// Prompt token tracking
+		if result.PromptTokenCount > 0 {
+			totalPromptTokens += float64(result.PromptTokenCount)
+			promptTokenCount++
+		}
 	}
 
 	n := float64(len(cases))
@@ -140,6 +168,12 @@ func RunOfflineEval(cases []GoldenCase, results map[string]EvalResult) EvalRepor
 	}
 	if citCorrectCount > 0 {
 		report.Metrics.MeanCitationCorrectness = totalCitCorrect / float64(citCorrectCount)
+	}
+	if structureTotal > 0 {
+		report.Metrics.InstructionAdherenceRate = float64(structureAdherent) / float64(structureTotal)
+	}
+	if promptTokenCount > 0 {
+		report.Metrics.MeanPromptTokens = totalPromptTokens / float64(promptTokenCount)
 	}
 
 	return report

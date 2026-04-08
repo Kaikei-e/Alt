@@ -70,6 +70,13 @@ func VerifyCase(gc GoldenCase, result EvalResult) CaseVerdict {
 		}
 	}
 
+	// Expected structure (instruction adherence)
+	for _, structure := range gc.Expected.ExpectedStructure {
+		if !strings.Contains(result.Answer, structure) {
+			v.failf("expected structure %q not found in answer", structure)
+		}
+	}
+
 	return v
 }
 

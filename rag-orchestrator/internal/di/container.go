@@ -116,10 +116,19 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 			slog.String("model", cfg.Rerank.Model))
 	}
 	if cfg.Hybrid.Enabled {
-		opts = append(opts, usecase.WithBM25Searcher(searchClient))
-		log.Info("hybrid_search_enabled",
-			slog.Float64("alpha", cfg.Hybrid.Alpha),
-			slog.Int("bm25_limit", cfg.Hybrid.BM25Limit))
+		if cfg.Hybrid.BM25Source == "postgres" {
+			hybridSearcher := repository.NewHybridSearchRepository(pool, int(cfg.RAG.RRFK))
+			opts = append(opts, usecase.WithHybridSearcher(hybridSearcher))
+			log.Info("hybrid_search_enabled",
+				slog.String("bm25_source", "postgres"),
+				slog.Int("rrfk", int(cfg.RAG.RRFK)))
+		} else {
+			opts = append(opts, usecase.WithBM25Searcher(searchClient))
+			log.Info("hybrid_search_enabled",
+				slog.String("bm25_source", "meilisearch"),
+				slog.Float64("alpha", cfg.Hybrid.Alpha),
+				slog.Int("bm25_limit", cfg.Hybrid.BM25Limit))
+		}
 	}
 
 	// Retrieve usecase

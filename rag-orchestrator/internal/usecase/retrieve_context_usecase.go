@@ -52,10 +52,11 @@ type retrieveContextUsecase struct {
 	llmClient     domain.LLMClient
 	searchClient  domain.SearchClient
 	queryExpander domain.QueryExpander
-	reranker      domain.Reranker     // Optional: cross-encoder reranking
-	bm25Searcher  domain.BM25Searcher // Optional: BM25 search for hybrid fusion
-	config        RetrievalConfig
-	logger        *slog.Logger
+	reranker       domain.Reranker       // Optional: cross-encoder reranking
+	bm25Searcher   domain.BM25Searcher   // Optional: BM25 search for hybrid fusion
+	hybridSearcher domain.HybridSearcher // Optional: in-DB hybrid search (replaces bm25Searcher)
+	config         RetrievalConfig
+	logger         *slog.Logger
 }
 
 // RetrieveContextOption is a functional option for configuring the usecase.
@@ -74,6 +75,14 @@ func WithReranker(r domain.Reranker) RetrieveContextOption {
 func WithBM25Searcher(s domain.BM25Searcher) RetrieveContextOption {
 	return func(u *retrieveContextUsecase) {
 		u.bm25Searcher = s
+	}
+}
+
+// WithHybridSearcher sets an in-database hybrid searcher (pgvector + tsvector RRF).
+// When set, this replaces the separate BM25 + vector search + application-level fusion.
+func WithHybridSearcher(h domain.HybridSearcher) RetrieveContextOption {
+	return func(u *retrieveContextUsecase) {
+		u.hybridSearcher = h
 	}
 }
 
