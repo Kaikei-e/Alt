@@ -62,66 +62,13 @@ jobs:
     permissions:
       contents: read
 
-  pact-verification:
-    name: Pact Provider Verification
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 1
-          sparse-checkout: |
-            news-creator
-            pacts
-            pre-processor/pacts
-            rag-orchestrator/pacts
-          sparse-checkout-cone-mode: true
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-          cache-dependency-glob: "news-creator/app/uv.lock"
-
-      - name: Set up Python
-        run: uv python install 3.14
-
-      - name: Install dependencies
-        working-directory: news-creator/app
-        run: uv sync --all-extras --dev
-
-      - name: Run Pact Provider Verification
-        working-directory: news-creator/app
-        env:
-          PACT_BROKER_BASE_URL: ${{ secrets.PACT_BROKER_BASE_URL }}
-          PACT_BROKER_USERNAME: ${{ secrets.PACT_BROKER_USERNAME }}
-          PACT_BROKER_PASSWORD: ${{ secrets.PACT_BROKER_PASSWORD }}
-          PACT_PROVIDER_VERSION: ${{ github.sha }}
-          PACT_PROVIDER_BRANCH: ${{ github.ref_name }}
-        run: |
-          uv run pytest tests/contract/ -v --tb=short
-
-      - name: Publish verification results
-        if: success() && github.ref == 'refs/heads/main'
-        working-directory: news-creator/app
-        env:
-          PACT_BROKER_BASE_URL: ${{ secrets.PACT_BROKER_BASE_URL }}
-          PACT_BROKER_USERNAME: ${{ secrets.PACT_BROKER_USERNAME }}
-          PACT_BROKER_PASSWORD: ${{ secrets.PACT_BROKER_PASSWORD }}
-        run: |
-          if [ -n "$PACT_BROKER_BASE_URL" ]; then
-            echo "Publishing verification results to Pact Broker"
-          else
-            echo "PACT_BROKER_BASE_URL not set, skipping publish"
-          fi
+  # NOTE: Pact CDC tests are handled in proto-contract.yaml
+  # - Consumer tests trigger on contract/** changes
+  # - Provider verification runs in pact-publish-and-verify job
 
   quality-gate:
     runs-on: ubuntu-latest
-    needs: [tests, lint, security, typecheck, pact-verification]
+    needs: [tests, lint, security, typecheck]
     if: always()
     steps:
       - name: Check all jobs passed
@@ -129,8 +76,7 @@ jobs:
           if [ "${{ needs.tests.result }}" != "success" ] || \
              [ "${{ needs.lint.result }}" != "success" ] || \
              [ "${{ needs.security.result }}" != "success" ] || \
-             [ "${{ needs.typecheck.result }}" != "success" ] || \
-             [ "${{ needs.pact-verification.result }}" != "success" ]; then
+             [ "${{ needs.typecheck.result }}" != "success" ]; then
             echo "One or more quality gates failed"
             exit 1
           fi
