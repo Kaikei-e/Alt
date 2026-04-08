@@ -120,6 +120,14 @@ func TestPostgresBackuper_ContainerName(t *testing.T) {
 			VolumeSpec{Name: "rag_db_data", Service: "rag-db"},
 			"rag-db",
 		},
+		{
+			VolumeSpec{Name: "knowledge-sovereign-db-data", Service: "knowledge-sovereign-db"},
+			"alt-knowledge-sovereign-db-1",
+		},
+		{
+			VolumeSpec{Name: "pre_processor_db_data", Service: "pre-processor-db"},
+			"pre-processor-db",
+		},
 	}
 
 	for _, tt := range tests {
@@ -146,16 +154,17 @@ func TestRegistryPostgreSQLVolumes(t *testing.T) {
 	r := NewVolumeRegistry()
 	pgVolumes := r.PostgreSQL()
 
-	if len(pgVolumes) != 5 {
-		t.Errorf("Expected 5 PostgreSQL volumes, got %d", len(pgVolumes))
+	if len(pgVolumes) != 6 {
+		t.Errorf("Expected 6 PostgreSQL volumes, got %d", len(pgVolumes))
 	}
 
 	expectedPG := map[string]bool{
-		"db_data_17":                   true,
-		"kratos_db_data":               true,
-		"recap_db_data":                true,
-		"rag_db_data":                  true,
-		"knowledge_sovereign_db_data":  true,
+		"db_data_17":                  true,
+		"kratos_db_data":              true,
+		"recap_db_data":               true,
+		"rag_db_data":                 true,
+		"knowledge-sovereign-db-data": true,
+		"pre_processor_db_data":       true,
 	}
 
 	for _, v := range pgVolumes {
@@ -178,7 +187,7 @@ func TestRegistryTarVolumesAfterPGChange(t *testing.T) {
 	r := NewVolumeRegistry()
 	tarVolumes := r.Tar()
 
-	// 12 total - 4 PG = 8 tar
+	// 14 total - 6 PG = 8 tar
 	if len(tarVolumes) != 8 {
 		t.Errorf("Expected 8 tar volumes, got %d", len(tarVolumes))
 	}

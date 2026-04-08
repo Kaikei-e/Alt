@@ -23,6 +23,29 @@ func TestBackupTypeString(t *testing.T) {
 	}
 }
 
+func TestVolumeCategoryString(t *testing.T) {
+	tests := []struct {
+		cat  VolumeCategory
+		want string
+	}{
+		{CategoryCritical, "critical"},
+		{CategoryData, "data"},
+		{CategorySearch, "search"},
+		{CategoryMetrics, "metrics"},
+		{CategoryModels, "models"},
+		{VolumeCategory(0), "unknown"},
+		{VolumeCategory(99), "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := tt.cat.String(); got != tt.want {
+				t.Errorf("VolumeCategory.String() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNewVolumeRegistry(t *testing.T) {
 	r := NewVolumeRegistry()
 
@@ -44,7 +67,8 @@ func TestVolumeRegistry_BackupTypes(t *testing.T) {
 		"kratos_db_data":               true,
 		"recap_db_data":                true,
 		"rag_db_data":                  true,
-		"knowledge_sovereign_db_data":  true,
+		"knowledge-sovereign-db-data":  true,
+		"pre_processor_db_data":        true,
 	}
 
 	for _, v := range r.All() {
@@ -64,7 +88,7 @@ func TestVolumeRegistry_Tar(t *testing.T) {
 	r := NewVolumeRegistry()
 	tarVolumes := r.Tar()
 
-	// Should have 8 tar volumes (13 total - 5 PG)
+	// Should have 8 tar volumes (14 total - 6 PG)
 	if len(tarVolumes) != 8 {
 		t.Errorf("Expected 8 tar volumes, got %d", len(tarVolumes))
 	}
@@ -109,13 +133,35 @@ func TestVolumeRegistry_Get(t *testing.T) {
 	}
 }
 
+func TestVolumeRegistry_Get_HyphenUnderscoreCompat(t *testing.T) {
+	r := NewVolumeRegistry()
+
+	// Old manifests may use underscores for sovereign volume
+	v, ok := r.Get("knowledge_sovereign_db_data")
+	if !ok {
+		t.Error("Should find sovereign volume via underscore fallback")
+	}
+	if v.Service != "knowledge-sovereign-db" {
+		t.Errorf("Expected service 'knowledge-sovereign-db', got '%s'", v.Service)
+	}
+
+	// Direct lookup with hyphens should also work
+	v2, ok := r.Get("knowledge-sovereign-db-data")
+	if !ok {
+		t.Error("Should find sovereign volume by exact name")
+	}
+	if v.Name != v2.Name {
+		t.Error("Both lookups should return the same volume")
+	}
+}
+
 func TestVolumeRegistry_All(t *testing.T) {
 	r := NewVolumeRegistry()
 	all := r.All()
 
-	// Should have 13 total volumes
-	if len(all) != 13 {
-		t.Errorf("Expected 13 total volumes, got %d", len(all))
+	// Should have 14 total volumes (6 PG + 8 tar)
+	if len(all) != 14 {
+		t.Errorf("Expected 14 total volumes, got %d", len(all))
 	}
 
 	// Verify each volume has required fields
@@ -128,6 +174,79 @@ func TestVolumeRegistry_All(t *testing.T) {
 		}
 		if v.Description == "" {
 			t.Error("Volume description should not be empty")
+		}
+	}
+}
+
+func TestVolumeRegistry_AllHaveCategory(t *testing.T) {
+	r := NewVolumeRegistry()
+	for _, v := range r.All() {
+		if v.Category == 0 {
+			t.Errorf("Volume %s has no category assigned", v.Name)
+		}
+	}
+}
+
+func TestVolumeRegistry_ByCategory_Critical(t *testing.T) {
+	r := NewVolumeRegistry()
+	critical := r.ByCategory(CategoryCritical)
+
+	if len(critical) != 6 {
+		t.Errorf("Expected 6 critical volumes, got %d", len(critical))
+	}
+
+	expectedNames := map[string]bool{
+		"db_data_17":                  true,
+		"kratos_db_data":              true,
+		"recap_db_data":               true,
+		"rag_db_data":                 true,
+		"knowledge-sovereign-db-data": true,
+		"pre_processor_db_data":       true,
+	}
+
+	for _, v := range critical {
+		if !expectedNames[v.Name] {
+			t.Errorf("Unexpected critical volume: %s", v.Name)
+		}
+		if v.Category != CategoryCritical {
+			t.Errorf("Volume %s has category %s, want critical", v.Name, v.Category)
+		}
+	}
+}
+
+func TestVolumeRegistry_ByCategory_Metrics(t *testing.T) {
+	r := NewVolumeRegistry()
+	metrics := r.ByCategory(CategoryMetrics)
+
+	if len(metrics) != 3 {
+		t.Errorf("Expected 3 metrics volumes, got %d", len(metrics))
+	}
+
+	expectedNames := map[string]bool{
+		"clickhouse_data": true,
+		"prometheus_data": true,
+		"grafana_data":    true,
+	}
+
+	for _, v := range metrics {
+		if !expectedNames[v.Name] {
+			t.Errorf("Unexpected metrics volume: %s", v.Name)
+		}
+	}
+}
+
+func TestVolumeRegistry_ByCategory_MultiCategories(t *testing.T) {
+	r := NewVolumeRegistry()
+	result := r.ByCategory(CategoryCritical, CategoryData)
+
+	// 6 critical + 3 data = 9
+	if len(result) != 9 {
+		t.Errorf("Expected 9 volumes for critical+data, got %d", len(result))
+	}
+
+	for _, v := range result {
+		if v.Category != CategoryCritical && v.Category != CategoryData {
+			t.Errorf("Volume %s has unexpected category %s", v.Name, v.Category)
 		}
 	}
 }

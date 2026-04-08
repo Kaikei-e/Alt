@@ -175,6 +175,10 @@ func (p *PostgresBackuper) containerName(spec VolumeSpec) string {
 		return "recap-db"
 	case "rag-db":
 		return "rag-db"
+	case "knowledge-sovereign-db":
+		return "alt-knowledge-sovereign-db-1"
+	case "pre-processor-db":
+		return "pre-processor-db"
 	default:
 		return p.projectName + "-" + spec.Service
 	}
