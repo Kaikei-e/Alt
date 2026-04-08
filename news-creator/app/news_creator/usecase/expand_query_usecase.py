@@ -33,7 +33,30 @@ EXPAND_QUERY_WITH_HISTORY_TEMPLATE = """<task>Generate search query variations f
 - Resolve pronouns and references ("that", "it", "tell me more") from conversation context
 - Translate between Japanese and English as needed
 - Cover different aspects: keywords, synonyms, related concepts
+- IMPORTANT: Generate queries about the SAME TOPIC as the input. Do NOT copy topics from examples.
+- Output ONLY search queries. No explanations, no labels, no numbering.
 </rules>
+<example>
+<conversation>
+user: 最近の天気はどう？
+assistant: 今週は全国的に晴れの日が続いています...
+</conversation>
+<input>来週はどうなりそう？</input>
+来週 天気予報 日本
+weather forecast next week Japan
+weekly weather outlook prediction
+</example>
+<example>
+<conversation>
+user: 新しいスマートフォンのおすすめは？
+assistant: 最新のスマートフォンではPixel 9とiPhone 16が人気です...
+</conversation>
+<input>カメラ性能はどっちがいい？</input>
+Pixel 9 iPhone 16 カメラ比較
+smartphone camera comparison 2026
+best phone camera quality benchmark
+</example>
+---
 <conversation>
 {conversation_history}
 </conversation>
@@ -88,7 +111,7 @@ class ExpandQueryUsecase:
         if conversation_history:
             # Multi-turn: include conversation context for coreference resolution
             history_lines = "\n".join(
-                f"{msg.role}: {msg.content[:200]}"
+                f"{msg.role}: {_sanitize_history_content(msg.content)}"
                 for msg in conversation_history[-6:]  # Last 3 turns max
             )
             prompt = EXPAND_QUERY_WITH_HISTORY_TEMPLATE.format(
@@ -121,9 +144,9 @@ class ExpandQueryUsecase:
         )
 
         try:
-            # Use low temperature for consistent, focused query generation
+            # Use deterministic temperature to prevent garbage output in multi-turn
             llm_options = {
-                "temperature": 0.3,
+                "temperature": 0.0,
                 "repeat_penalty": 1.1,
             }
 
@@ -218,6 +241,41 @@ _META_WORDS = frozenset({
 })
 
 
+import re as _re
+
+_URL_PATTERN = _re.compile(r'https?://\S+')
+_SPECIAL_CHARS_PATTERN = _re.compile(r'[^\w\s\u3000-\u9FFF\u30A0-\u30FF\u3040-\u309F。、！？.,!?\-()（）]')
+
+
+def _sanitize_history_content(content: str) -> str:
+    """Sanitize conversation history content to prevent LLM confusion."""
+    text = content[:150]
+    text = _URL_PATTERN.sub('', text)
+    text = _SPECIAL_CHARS_PATTERN.sub(' ', text)
+    text = ' '.join(text.split())
+    return text
+
+
+def _is_repeating_pattern(line: str) -> bool:
+    """Detect repetitive character patterns like ':):):):)...' or 'hahaha'."""
+    stripped = line.strip()
+    if len(stripped) < 6:
+        return False
+    for pat_len in range(1, 5):
+        if len(stripped) < pat_len * 3:
+            continue
+        pat = stripped[:pat_len]
+        repetitions = 0
+        for i in range(0, len(stripped), pat_len):
+            if stripped[i:i + pat_len] == pat:
+                repetitions += 1
+            else:
+                break
+        if repetitions >= 3 and repetitions * pat_len * 3 >= len(stripped) * 2:
+            return True
+    return False
+
+
 def _parse_expansion_lines(raw_text: str) -> List[str]:
     """Parse raw LLM output into candidate query lines."""
     lines = []
@@ -307,6 +365,12 @@ def _filter_instruction_leaks(queries: List[str]) -> List[str]:
             logger.info(
                 "Rejected XML tag leak",
                 extra={"rejected_line": q[:100], "reason": "xml_tag_leak"},
+            )
+            continue
+        if _is_repeating_pattern(q):
+            logger.info(
+                "Rejected repeating garbage pattern",
+                extra={"rejected_line": q[:100], "reason": "repeating_pattern"},
             )
             continue
         result.append(q)

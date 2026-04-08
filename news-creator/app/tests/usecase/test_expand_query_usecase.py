@@ -155,7 +155,7 @@ async def test_expand_query_low_temperature():
 
     call_args = llm_provider.generate.call_args
     options = call_args.kwargs.get("options", {})
-    assert options.get("temperature") == 0.3
+    assert options.get("temperature") == 0.0
 
 
 @pytest.mark.asyncio
@@ -313,3 +313,35 @@ async def test_expand_query_rejects_wrapped_labels_and_preamble():
     # Preamble "Here are the generated queries:" must be excluded
     assert "Here are the generated queries:" not in expanded_queries
     assert len(expanded_queries) == 3
+
+
+class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
+    """The multi-turn few-shot example must not contain domain-specific content
+    that Gemma 4 (12B) copies verbatim instead of learning the pattern."""
+
+    def test_expand_query_with_history_template_does_not_contain_ai_chip_content(self):
+        """Template must not contain AI-chip-market examples that cause contamination."""
+        assert "AIチップ" not in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+            "Template contains 'AIチップ' which causes few-shot example contamination"
+        )
+        assert "NVIDIA" not in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+            "Template contains 'NVIDIA' which causes few-shot example contamination"
+        )
+        assert "AMD Intel" not in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+            "Template contains 'AMD Intel' which causes few-shot example contamination"
+        )
+
+    def test_expand_query_with_history_template_has_neutral_examples(self):
+        """Template must use domain-neutral examples (weather + smartphone)."""
+        assert "天気" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+            "Template should contain weather (天気) as a neutral example"
+        )
+        assert "スマートフォン" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+            "Template should contain smartphone (スマートフォン) as a neutral example"
+        )
+
+    def test_expand_query_with_history_template_has_anti_copy_rule(self):
+        """Template must explicitly tell the model not to copy example topics."""
+        assert "SAME TOPIC as the input" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+            "Template must contain anti-contamination instruction 'SAME TOPIC as the input'"
+        )

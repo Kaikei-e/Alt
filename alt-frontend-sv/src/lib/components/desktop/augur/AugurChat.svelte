@@ -154,11 +154,14 @@ async function handleSend(messageText: string) {
 	try {
 		const transport = createClientTransport();
 
-		// Build message history (excluding the empty placeholder)
-		const chatHistory = messages.slice(0, -1).map((m) => ({
-			role: m.role as "user" | "assistant",
-			content: m.message,
-		}));
+		// Build message history (excluding the empty placeholder and welcome message)
+		const chatHistory = messages
+			.slice(0, -1)
+			.filter((m) => m.id !== "welcome")
+			.map((m) => ({
+				role: m.role as "user" | "assistant",
+				content: m.message,
+			}));
 
 		currentAbortController = streamAugurChat(
 			transport,

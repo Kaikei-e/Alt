@@ -227,6 +227,9 @@ func filterExpandedQueries(queries []string) []string {
 		if runeLen < minQueryRuneLen || runeLen > maxQueryRuneLen {
 			continue
 		}
+		if isGarbagePattern(q) {
+			continue
+		}
 		if isRomanizedJapanese(q) {
 			continue
 		}
@@ -237,6 +240,9 @@ func filterExpandedQueries(queries []string) []string {
 			continue
 		}
 		if isXMLTagLeak(q) {
+			continue
+		}
+		if isConversationMessageLeak(q) {
 			continue
 		}
 		// Order-preserving dedup (case-insensitive)
@@ -312,6 +318,13 @@ func isXMLTagLeak(q string) bool {
 	return false
 }
 
+// isConversationMessageLeak detects leaked conversation messages (e.g., "assistant: Hello!").
+// These appear when the frontend's welcome message or conversation history leaks into expanded queries.
+func isConversationMessageLeak(q string) bool {
+	lower := strings.ToLower(strings.TrimSpace(q))
+	return strings.HasPrefix(lower, "assistant:") || strings.HasPrefix(lower, "user:")
+}
+
 // isInstructionLeak detects if a query is an echoed prompt instruction.
 // Uses three signals:
 //  1. Exact match against known instruction patterns
@@ -340,6 +353,33 @@ func isInstructionLeak(q string) bool {
 		}
 	}
 	return metaCount >= 3
+}
+
+// isGarbagePattern detects repetitive character sequences like ":):):):)..." or "hahahahaha".
+// These appear when the LLM enters a degenerate decoding state during query expansion.
+func isGarbagePattern(q string) bool {
+	runes := []rune(strings.TrimSpace(q))
+	if len(runes) < 6 {
+		return false
+	}
+	for patLen := 1; patLen <= 4; patLen++ {
+		if len(runes) < patLen*3 {
+			continue
+		}
+		pat := string(runes[:patLen])
+		repetitions := 0
+		for i := 0; i+patLen <= len(runes); i += patLen {
+			if string(runes[i:i+patLen]) == pat {
+				repetitions++
+			} else {
+				break
+			}
+		}
+		if repetitions >= 3 && repetitions*patLen*3 >= len(runes)*2 {
+			return true
+		}
+	}
+	return false
 }
 
 // isRomanizedJapanese detects romanized Japanese strings like "Sei-sai naiyō Rosia Amerika".

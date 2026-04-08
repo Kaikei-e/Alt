@@ -164,55 +164,55 @@ func TestFilterExpandedQueries_InstructionEcho_Filtered(t *testing.T) {
 	queries := []string{
 		"Output Japanese queries first, then English queries.",
 		"Do not add numbering, bullets, labels, or explanations.",
-		"イランの石油危機 原因",
-		"Iran oil crisis causes",
+		"サプライチェーン 混乱 原因",
+		"global supply chain disruption causes",
 	}
 	result := filterExpandedQueries(queries)
-	assert.Equal(t, []string{"イランの石油危機 原因", "Iran oil crisis causes"}, result)
+	assert.Equal(t, []string{"サプライチェーン 混乱 原因", "global supply chain disruption causes"}, result)
 }
 
 func TestFilterExpandedQueries_DuplicateRemoval_PreservesOrder(t *testing.T) {
 	queries := []string{
-		"Iran oil crisis",
-		"Iran oil crisis",
-		"Iran oil crisis causes",
-		"iran oil crisis", // case-insensitive dup
+		"global supply chain disruption",
+		"global supply chain disruption",
+		"global supply chain disruption causes",
+		"Global Supply Chain Disruption", // case-insensitive dup
 	}
 	result := filterExpandedQueries(queries)
-	assert.Equal(t, []string{"Iran oil crisis", "Iran oil crisis causes"}, result)
+	assert.Equal(t, []string{"global supply chain disruption", "global supply chain disruption causes"}, result)
 }
 
 func TestFilterExpandedQueries_TooShort_Filtered(t *testing.T) {
-	queries := []string{"ab", "Iran oil crisis", "x", "OK"}
+	queries := []string{"ab", "global supply chain disruption", "x", "OK"}
 	result := filterExpandedQueries(queries)
-	assert.Equal(t, []string{"Iran oil crisis"}, result)
+	assert.Equal(t, []string{"global supply chain disruption"}, result)
 }
 
 func TestFilterExpandedQueries_TooLong_Filtered(t *testing.T) {
 	longQuery := strings.Repeat("a", 201)
-	queries := []string{longQuery, "Iran oil crisis"}
+	queries := []string{longQuery, "global supply chain disruption"}
 	result := filterExpandedQueries(queries)
-	assert.Equal(t, []string{"Iran oil crisis"}, result)
+	assert.Equal(t, []string{"global supply chain disruption"}, result)
 }
 
 func TestFilterExpandedQueries_XMLTagLeak_Filtered(t *testing.T) {
 	queries := []string{
 		"</example>",
 		"<input>イランの石油危機はなぜ起きた？</input>",
-		"Iran oil crisis causes",
+		"global supply chain disruption causes",
 	}
 	result := filterExpandedQueries(queries)
-	assert.Equal(t, []string{"Iran oil crisis causes"}, result)
+	assert.Equal(t, []string{"global supply chain disruption causes"}, result)
 }
 
 func TestFilterExpandedQueries_DateOnly_Filtered(t *testing.T) {
 	queries := []string{
 		"2026-04-07",
 		"2026/03/15",
-		"Iran oil crisis causes",
+		"global supply chain disruption causes",
 	}
 	result := filterExpandedQueries(queries)
-	assert.Equal(t, []string{"Iran oil crisis causes"}, result)
+	assert.Equal(t, []string{"global supply chain disruption causes"}, result)
 }
 
 func TestFilterExpandedQueries_DateOnly_Various(t *testing.T) {
@@ -220,7 +220,7 @@ func TestFilterExpandedQueries_DateOnly_Various(t *testing.T) {
 	assert.True(t, isDateOnly("2026/03/15"))
 	assert.True(t, isDateOnly("2026.01.01"))
 	assert.False(t, isDateOnly("2026年のAI動向"))
-	assert.False(t, isDateOnly("Iran oil crisis 2026"))
+	assert.False(t, isDateOnly("global supply chain disruption 2026"))
 	assert.False(t, isDateOnly(""))
 }
 
@@ -228,8 +228,8 @@ func TestIsXMLTagLeak(t *testing.T) {
 	assert.True(t, isXMLTagLeak("</example>"))
 	assert.True(t, isXMLTagLeak("<input>something</input>"))
 	assert.True(t, isXMLTagLeak("<task>Generate queries</task>"))
-	assert.False(t, isXMLTagLeak("Iran oil crisis"))
-	assert.False(t, isXMLTagLeak("イランの石油危機 原因"))
+	assert.False(t, isXMLTagLeak("global supply chain disruption"))
+	assert.False(t, isXMLTagLeak("サプライチェーン 混乱 原因"))
 	assert.False(t, isXMLTagLeak(""))
 }
 
@@ -261,12 +261,12 @@ func TestIsInstructionLeak_KnownMetaPatterns(t *testing.T) {
 		},
 		{
 			name:     "real Japanese query",
-			query:    "イランの石油危機 原因",
+			query:    "サプライチェーン 混乱 原因",
 			expected: false,
 		},
 		{
 			name:     "real English query",
-			query:    "Iran oil crisis causes and background",
+			query:    "global supply chain disruption causes and background",
 			expected: false,
 		},
 		{
@@ -281,4 +281,58 @@ func TestIsInstructionLeak_KnownMetaPatterns(t *testing.T) {
 			assert.Equal(t, tt.expected, result, "query: %q", tt.query)
 		})
 	}
+}
+
+func TestIsGarbagePattern(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		expected bool
+	}{
+		{"smiley repeats", ":):):):):):):):):):)", true},
+		{"dot repeats", "..............................", true},
+		{"ha repeats", "hahahahahahahahahaha", true},
+		{"ab repeats", "ababababababab", true},
+		{"real query Japanese", "最新のAI技術動向", false},
+		{"real query English", "latest AI technology trends", false},
+		{"short string", "abc", false},
+		{"empty", "", false},
+		{"mixed with real text", ":) this is a real query", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isGarbagePattern(tt.query)
+			assert.Equal(t, tt.expected, result, "query: %q", tt.query)
+		})
+	}
+}
+
+func TestFilterExpandedQueries_ConversationMessageLeak_Filtered(t *testing.T) {
+	queries := []string{
+		"assistant: Hello! I m Augur. Ask me anything about your RSS feeds.",
+		"user: サプライチェーンの混乱の原因は？",
+		"global supply chain disruption causes",
+		"サプライチェーン 混乱 原因",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"global supply chain disruption causes", "サプライチェーン 混乱 原因"}, result)
+}
+
+func TestFilterExpandedQueries_AssistantPrefix_Filtered(t *testing.T) {
+	queries := []string{
+		"assistant: 前回の回答では...",
+		"assistant:Hello! I'm Augur.",
+		"global supply chain disruption",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"global supply chain disruption"}, result)
+}
+
+func TestFilterExpandedQueries_GarbagePattern_Filtered(t *testing.T) {
+	queries := []string{
+		":):):):):):):):):):):):):):):):):):):):):):):):):):):):):):):",
+		"latest AI technology trends",
+	}
+	result := filterExpandedQueries(queries)
+	assert.Equal(t, []string{"latest AI technology trends"}, result)
 }
