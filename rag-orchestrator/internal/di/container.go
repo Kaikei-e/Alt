@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"rag-orchestrator/internal/adapter/altdb"
+	"rag-orchestrator/internal/adapter/eino"
 	"rag-orchestrator/internal/adapter/rag_augur"
 	rag_http "rag-orchestrator/internal/adapter/rag_http"
 	"rag-orchestrator/internal/adapter/recap_worker"
@@ -24,6 +25,11 @@ import (
 
 	"alt/gen/proto/services/backend/v1/backendv1connect"
 )
+
+type ragLLMClient interface {
+	domain.LLMClient
+	domain.ToolCallingLLMClient
+}
 
 // ApplicationComponents holds all wired dependencies for the application.
 type ApplicationComponents struct {
@@ -68,9 +74,26 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 
 	// External clients
 	embedder := rag_augur.NewOllamaEmbedder(cfg.Embedder.URL, cfg.Embedder.Model, cfg.Embedder.Timeout, embedderHTTP)
-	generator := rag_augur.NewOllamaGenerator(cfg.Augur.URL, cfg.Augur.Model, cfg.Augur.Timeout, log, augurHTTP)
 	searchClient := rag_http.NewSearchIndexerClient(cfg.Search.IndexerURL, cfg.Search.Timeout)
 	queryExpander := rag_augur.NewQueryExpanderClient(cfg.QueryExpansion.URL, cfg.QueryExpansion.Timeout, log, queryExpanderHTTP)
+
+	var generator ragLLMClient
+	switch cfg.LLMBackend {
+	case "eino":
+		einoGenerator, err := eino.NewChatModelAdapter(context.Background(), cfg.Augur.URL, cfg.Augur.Model, log)
+		if err != nil {
+			log.Warn("eino_generator_init_failed",
+				slog.String("error", err.Error()),
+				slog.String("fallback", "ollama"))
+			generator = rag_augur.NewOllamaGenerator(cfg.Augur.URL, cfg.Augur.Model, cfg.Augur.Timeout, log, augurHTTP)
+		} else {
+			generator = einoGenerator
+			log.Info("llm_backend_selected", slog.String("backend", "eino"))
+		}
+	default:
+		generator = rag_augur.NewOllamaGenerator(cfg.Augur.URL, cfg.Augur.Model, cfg.Augur.Timeout, log, augurHTTP)
+		log.Info("llm_backend_selected", slog.String("backend", "ollama"))
+	}
 
 	// Domain services
 	hasher := domain.NewSourceHashPolicy()

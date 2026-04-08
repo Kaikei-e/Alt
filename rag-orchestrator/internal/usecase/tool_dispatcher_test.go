@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"rag-orchestrator/internal/domain"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type mockTool struct {
@@ -246,5 +248,31 @@ func TestSelectTools_ArticleScopedDetail_ReturnsNil(t *testing.T) {
 
 	if len(results) != 0 {
 		t.Errorf("expected 0 tool results for article-scoped + detail sub-intent, got %d", len(results))
+	}
+}
+
+func TestToolDefinitions_UsesToolSpecificSchema(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	dispatcher := NewToolDispatcher(map[string]domain.Tool{
+		"tag_cloud_explore": &mockTool{name: "tag_cloud_explore"},
+		"articles_by_tag":   &mockTool{name: "articles_by_tag"},
+	}, logger)
+
+	defs := dispatcher.ToolDefinitions()
+	if len(defs) != 2 {
+		t.Fatalf("expected 2 tool definitions, got %d", len(defs))
+	}
+
+	for _, def := range defs {
+		switch def.Function.Name {
+		case "tag_cloud_explore":
+			assert.Contains(t, def.Function.Parameters["properties"].(map[string]any), "topic")
+			assert.Equal(t, []string{"topic"}, def.Function.Parameters["required"])
+		case "articles_by_tag":
+			assert.Contains(t, def.Function.Parameters["properties"].(map[string]any), "tag_name")
+			assert.Equal(t, []string{"tag_name"}, def.Function.Parameters["required"])
+		default:
+			t.Fatalf("unexpected tool definition: %s", def.Function.Name)
+		}
 	}
 }

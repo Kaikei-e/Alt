@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"rag-orchestrator/internal/domain"
 
@@ -23,14 +24,9 @@ func WrapDomainTool(t domain.Tool) *ToolAdapter {
 	return &ToolAdapter{
 		domainTool: t,
 		info: &schema.ToolInfo{
-			Name: t.Name(),
-			Desc: t.Description(),
-			ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
-				"query": {
-					Type: schema.String,
-					Desc: "Search query or input for the tool",
-				},
-			}),
+			Name:        t.Name(),
+			Desc:        t.Description(),
+			ParamsOneOf: schema.NewParamsOneOfByParams(toolParamsForName(t.Name())),
 		},
 	}
 }
@@ -44,8 +40,8 @@ func (a *ToolAdapter) Info(ctx context.Context) (*schema.ToolInfo, error) {
 func (a *ToolAdapter) InvokableRun(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
 	var args map[string]string
 	if err := json.Unmarshal([]byte(argumentsInJSON), &args); err != nil {
-		// Try to use the raw input as query
-		args = map[string]string{"query": argumentsInJSON}
+		// Try to use the raw input as the most likely argument name for this tool.
+		args = map[string]string{defaultToolArgName(a.domainTool.Name()): strings.TrimSpace(argumentsInJSON)}
 	}
 
 	result, err := a.domainTool.Execute(ctx, args)

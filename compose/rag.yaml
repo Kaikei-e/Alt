@@ -105,6 +105,7 @@ services:
       - RAG_MAX_PROMPT_TOKENS=${RAG_MAX_PROMPT_TOKENS:-6000}
       - RAG_PROMPT_VERSION=${RAG_PROMPT_VERSION:-alpha-v2}
       - HYBRID_BM25_SOURCE=${HYBRID_BM25_SOURCE:-meilisearch}
+      - LLM_BACKEND=${LLM_BACKEND:-ollama}
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret
     secrets:

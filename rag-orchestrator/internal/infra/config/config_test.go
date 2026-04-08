@@ -255,3 +255,14 @@ func TestLoad_CacheConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 256, cfg.Cache.Size)
 	assert.Equal(t, 10, cfg.Cache.TTL)
 }
+
+func TestLoad_LLMBackend_DefaultAndFromEnv(t *testing.T) {
+	_ = os.Unsetenv("LLM_BACKEND")
+
+	cfg := Load()
+	assert.Equal(t, "ollama", cfg.LLMBackend)
+
+	t.Setenv("LLM_BACKEND", "eino")
+	cfg = Load()
+	assert.Equal(t, "eino", cfg.LLMBackend)
+}

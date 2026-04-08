@@ -36,18 +36,7 @@ func (d *ToolDispatcher) ToolDefinitions() []domain.ToolDefinition {
 			Function: domain.ToolDescriptorFn{
 				Name:        tool.Name(),
 				Description: tool.Description(),
-				Parameters: map[string]any{
-					"type": "object",
-					"properties": map[string]any{
-						"query":      map[string]any{"type": "string"},
-						"topic":      map[string]any{"type": "string"},
-						"article_id": map[string]any{"type": "string"},
-						"limit":      map[string]any{"type": "string"},
-						"date_from":  map[string]any{"type": "string"},
-						"date_to":    map[string]any{"type": "string"},
-					},
-					"additionalProperties": true,
-				},
+				Parameters:  toolParamsForName(tool.Name()),
 			},
 		})
 	}
@@ -57,11 +46,57 @@ func (d *ToolDispatcher) ToolDefinitions() []domain.ToolDefinition {
 	return defs
 }
 
+func toolParamsForName(name string) map[string]any {
+	switch name {
+	case "tag_cloud_explore":
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"topic": map[string]any{
+					"type":        "string",
+					"description": "Topic to explore",
+				},
+			},
+			"required":             []string{"topic"},
+			"additionalProperties": false,
+		}
+	case "articles_by_tag", "search_recaps":
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"tag_name": map[string]any{
+					"type":        "string",
+					"description": "Tag name to search for",
+				},
+			},
+			"required":             []string{"tag_name"},
+			"additionalProperties": false,
+		}
+	case "date_range_filter", "related_articles", "tag_search", "extract_query_tags":
+		fallthrough
+	default:
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"query": map[string]any{
+					"type":        "string",
+					"description": "Search query or input",
+				},
+			},
+			"required":             []string{"query"},
+			"additionalProperties": false,
+		}
+	}
+}
+
 // ExecuteNamed executes a single tool by name with the provided params.
 func (d *ToolDispatcher) ExecuteNamed(ctx context.Context, name string, params map[string]string) (*domain.ToolResult, error) {
 	tool, ok := d.tools[name]
 	if !ok {
 		return &domain.ToolResult{ToolName: name, Success: false, Error: "tool not found"}, nil
+	}
+	if len(params) == 0 {
+		params = defaultToolArgs(name, "")
 	}
 	toolCtx, cancel := context.WithTimeout(ctx, toolTimeout)
 	defer cancel()
@@ -92,7 +127,7 @@ func (d *ToolDispatcher) Dispatch(ctx context.Context, intent QueryIntent, query
 		}
 
 		toolCtx, cancel := context.WithTimeout(ctx, toolTimeout)
-		result, err := tool.Execute(toolCtx, map[string]string{"query": query})
+		result, err := tool.Execute(toolCtx, defaultToolArgs(name, query))
 		cancel()
 
 		if err != nil {
@@ -130,7 +165,7 @@ func (d *ToolDispatcher) DispatchForPlan(ctx context.Context, plan *domain.Plann
 		}
 
 		toolCtx, cancel := context.WithTimeout(ctx, toolTimeout)
-		result, err := tool.Execute(toolCtx, map[string]string{"query": query})
+		result, err := tool.Execute(toolCtx, defaultToolArgs(name, query))
 		cancel()
 
 		if err != nil {
@@ -150,6 +185,19 @@ func (d *ToolDispatcher) DispatchForPlan(ctx context.Context, plan *domain.Plann
 	}
 
 	return results
+}
+
+func defaultToolArgs(name, query string) map[string]string {
+	switch name {
+	case "tag_cloud_explore":
+		return map[string]string{"topic": query}
+	case "articles_by_tag", "search_recaps":
+		return map[string]string{"tag_name": query}
+	case "date_range_filter", "related_articles", "tag_search", "extract_query_tags":
+		fallthrough
+	default:
+		return map[string]string{"query": query}
+	}
 }
 
 func (d *ToolDispatcher) selectToolsForPlan(plan *domain.PlannerOutput, intent QueryIntent) []string {

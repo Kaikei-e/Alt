@@ -41,3 +41,4 @@ func TestToEinoMessages_Empty(t *testing.T) {
 
 // Compile-time interface check: ChatModelAdapter must implement domain.LLMClient.
 var _ domain.LLMClient = (*ChatModelAdapter)(nil)
+var _ domain.ToolCallingLLMClient = (*ChatModelAdapter)(nil)

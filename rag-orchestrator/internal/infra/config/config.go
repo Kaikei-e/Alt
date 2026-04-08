@@ -116,9 +116,9 @@ type SearchConfig struct {
 
 // QueryExpansionConfig holds query expansion settings.
 type QueryExpansionConfig struct {
-	URL             string
-	Timeout         int // Seconds — used for legacy query expansion
-	PlannerTimeout  int // Seconds — used for LLM query planner (thinking mode, longer)
+	URL            string
+	Timeout        int // Seconds — used for legacy query expansion
+	PlannerTimeout int // Seconds — used for LLM query planner (thinking mode, longer)
 }
 
 // RAGConfig holds RAG retrieval parameters.
@@ -156,9 +156,9 @@ type RerankConfig struct {
 
 // HybridConfig holds hybrid search (BM25+vector) settings.
 type HybridConfig struct {
-	Enabled   bool
-	Alpha     float64
-	BM25Limit int
+	Enabled    bool
+	Alpha      float64
+	BM25Limit  int
 	BM25Source string // "meilisearch" (default) or "postgres" (in-DB tsvector hybrid)
 }
 
@@ -187,6 +187,7 @@ type CacheConfig struct {
 // Config is the top-level configuration, organized by concern.
 type Config struct {
 	Env            string
+	LLMBackend     string
 	Server         ServerConfig
 	DB             DBConfig
 	Embedder       EmbedderConfig
@@ -204,7 +205,8 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		Env: getEnv("ENV", "development"),
+		Env:        getEnv("ENV", "development"),
+		LLMBackend: getEnv("LLM_BACKEND", "ollama"),
 		Server: ServerConfig{
 			Port:        getEnv("PORT", "9010"),
 			ConnectPort: getEnv("CONNECT_PORT", "9011"),
