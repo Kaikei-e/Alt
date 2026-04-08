@@ -31,6 +31,7 @@ type PromptInput struct {
 	SubIntentType       SubIntentType         // Analytical sub-intent for article-scoped queries
 	SupplementaryInfo   []string              // Tool results injected as supplementary context (Phase 3)
 	PlannerOutput       *domain.PlannerOutput // Planner-driven prompt shaping (nil = legacy mode)
+	LowConfidence       bool                  // Retrieval quality insufficient — add disclaimer to prompt
 }
 
 // PromptBuilder builds the chat messages sent to the LLM.
@@ -41,12 +42,14 @@ type PromptBuilder interface {
 // XMLPromptBuilder creates structured prompts that separate context, instructions, query, and format.
 type XMLPromptBuilder struct {
 	additionalInstructions []string
+	v2Registry             *TemplateRegistry // non-nil when alpha-v2 is available
 }
 
 // NewXMLPromptBuilder creates a prompt builder with optional extra instructions appended.
 func NewXMLPromptBuilder(additionalInstructions ...string) PromptBuilder {
 	return &XMLPromptBuilder{
 		additionalInstructions: additionalInstructions,
+		v2Registry:             NewTemplateRegistry(),
 	}
 }
 
@@ -58,41 +61,65 @@ func (b *XMLPromptBuilder) Build(input PromptInput) ([]domain.Message, error) {
 		return nil, fmt.Errorf("prompt version is required")
 	}
 
+	// Dispatch to v2 template registry for alpha-v2 prompt version
+	if input.PromptVersion == "alpha-v2" && b.v2Registry != nil {
+		return b.v2Registry.Build(input)
+	}
+
 	if len(input.ConversationHistory) > 0 {
 		return b.buildMultiTurn(input)
 	}
 	return b.buildSingleTurn(input)
 }
 
-// buildSingleTurn creates a single user message with full instructions, context, and query.
+// buildSingleTurn creates a system message with instructions and a user message with context + query.
 func (b *XMLPromptBuilder) buildSingleTurn(input PromptInput) ([]domain.Message, error) {
-	var sb strings.Builder
-
-	b.writeFullInstructions(&sb, input)
+	// System message: all instructions, output format, few-shot, instruction sandwich
+	var sysSb strings.Builder
+	b.writeFullInstructions(&sysSb, input)
 	switch {
 	case input.SubIntentType == SubIntentRelatedArticles:
-		b.writeRelatedArticlesOutputFormat(&sb)
+		b.writeRelatedArticlesOutputFormat(&sysSb)
 	case input.SubIntentType != SubIntentNone:
-		b.writeAnalyticalOutputFormat(&sb)
+		b.writeAnalyticalOutputFormat(&sysSb)
 	default:
-		b.writeOutputFormat(&sb)
+		b.writeOutputFormat(&sysSb)
 	}
-	b.writeArticleContext(&sb, input)
-	b.writeSupplementaryInfo(&sb, input)
-	b.writeContextChunks(&sb, input)
-	b.writeQuery(&sb, input)
+	b.writeFewShotExample(&sysSb, input)
+	b.writeInstructionSandwich(&sysSb)
+	if input.LowConfidence {
+		b.writeLowConfidenceDisclaimer(&sysSb)
+	}
+
+	// User message: context chunks + query only
+	var userSb strings.Builder
+	b.writeArticleContext(&userSb, input)
+	b.writeSupplementaryInfo(&userSb, input)
+	b.writeContextChunks(&userSb, input)
+	b.writeQuery(&userSb, input)
 
 	return []domain.Message{
-		{Role: "user", Content: sb.String()},
+		{Role: "system", Content: sysSb.String()},
+		{Role: "user", Content: userSb.String()},
 	}, nil
 }
 
-// buildMultiTurn creates actual chat turns for past conversation, plus a follow-up
-// user message with context and query. This leverages the LLM's native multi-turn
-// understanding (Gemma 4: <|turn>user / <|turn>model) instead of
-// embedding history as text in a single message.
+// buildMultiTurn creates a system message with full instructions + follow-up rules,
+// past conversation turns, and a user message with context + query.
+// The system message is re-injected every turn to prevent persona drift.
 func (b *XMLPromptBuilder) buildMultiTurn(input PromptInput) ([]domain.Message, error) {
 	var messages []domain.Message
+
+	// System message: core instructions + follow-up rules + instruction sandwich
+	var sysSb strings.Builder
+	b.writeFullInstructions(&sysSb, input)
+	b.writeFollowUpRules(&sysSb, input)
+	b.writeFollowUpOutputFormat(&sysSb)
+	b.writeInstructionSandwich(&sysSb)
+	if input.LowConfidence {
+		b.writeLowConfidenceDisclaimer(&sysSb)
+	}
+	messages = append(messages, domain.Message{Role: "system", Content: sysSb.String()})
 
 	// Past turns as actual user/assistant chat messages.
 	// Ollama maps "assistant" to model-specific tokens automatically.
@@ -112,9 +139,19 @@ func (b *XMLPromptBuilder) buildMultiTurn(input PromptInput) ([]domain.Message, 
 		})
 	}
 
-	// Current turn: follow-up instructions + context + query
-	var sb strings.Builder
+	// User message: context + query only (no instructions)
+	var userSb strings.Builder
+	b.writeArticleContext(&userSb, input)
+	b.writeSupplementaryInfo(&userSb, input)
+	b.writeContextChunks(&userSb, input)
+	b.writeQuery(&userSb, input)
+	messages = append(messages, domain.Message{Role: "user", Content: userSb.String()})
 
+	return messages, nil
+}
+
+// writeFollowUpRules writes multi-turn follow-up instructions into the system prompt.
+func (b *XMLPromptBuilder) writeFollowUpRules(sb *strings.Builder, input PromptInput) {
 	sb.WriteString("## フォローアップ指示\n")
 	sb.WriteString("これは会話の続きです。以下のルールに必ず従ってください:\n")
 	sb.WriteString("- **前回の回答で既に述べた内容を一切繰り返さないこと**\n")
@@ -142,19 +179,6 @@ func (b *XMLPromptBuilder) buildMultiTurn(input PromptInput) ([]domain.Message, 
 		sb.WriteString("- **簡潔な要約を提供すること。前回の回答との重複は許容**\n")
 	}
 	sb.WriteString("\n")
-
-	b.writeFollowUpOutputFormat(&sb)
-	b.writeArticleContext(&sb, input)
-	b.writeSupplementaryInfo(&sb, input)
-	b.writeContextChunks(&sb, input)
-	b.writeQuery(&sb, input)
-
-	messages = append(messages, domain.Message{
-		Role:    "user",
-		Content: sb.String(),
-	})
-
-	return messages, nil
 }
 
 // --- Shared prompt section writers ---
@@ -337,6 +361,44 @@ func (b *XMLPromptBuilder) writeOutputFormat(sb *strings.Builder) {
 	sb.WriteString("{\"answer\":\"## 概要\\n...\\n## 詳細\\n...\\n## まとめ\\n...\",")
 	sb.WriteString("\"citations\":[{\"chunk_id\":\"1\",\"reason\":\"引用理由\"}],\"fallback\":false,\"reason\":\"\"}\n\n")
 	sb.WriteString("コンテキストが不十分な場合は fallback=true とし、reason に理由を記述してください。\n\n")
+}
+
+// writeLowConfidenceDisclaimer adds a disclaimer when retrieval quality is insufficient.
+// Instead of hard fallback, this enables the LLM to generate with explicit uncertainty.
+func (b *XMLPromptBuilder) writeLowConfidenceDisclaimer(sb *strings.Builder) {
+	sb.WriteString("\n## 情報の信頼性に関する注意\n")
+	sb.WriteString("利用可能なソースが限定的です。以下の点に必ず従ってください:\n")
+	sb.WriteString("- 確認できた事実と推測を明確に区別すること\n")
+	sb.WriteString("- 情報が不十分な箇所を「この点については情報が限定的です」と明記すること\n")
+	sb.WriteString("- 回答を短縮せず、利用可能な情報を最大限活用すること\n")
+	sb.WriteString("- fallback=false を返すこと（回答を生成してください）\n")
+}
+
+// writeInstructionSandwich repeats the most critical rules at the end of the system
+// prompt. This exploits the LLM's recency bias to reinforce key constraints.
+func (b *XMLPromptBuilder) writeInstructionSandwich(sb *strings.Builder) {
+	sb.WriteString("\n## 重要な注意（必ず守ること）\n")
+	sb.WriteString("- 必ず日本語で回答すること\n")
+	sb.WriteString("- 提供されたコンテキスト情報のみに基づいて回答すること（外部知識を使わない）\n")
+	sb.WriteString("- 回答は具体的な事実・データ・事例を含むこと\n")
+	sb.WriteString("- ソース引用[番号]を必ず付与すること\n")
+}
+
+// writeFewShotExample adds a single example of the expected JSON output format.
+func (b *XMLPromptBuilder) writeFewShotExample(sb *strings.Builder, input PromptInput) {
+	sb.WriteString("## 参考例\n")
+	if input.SubIntentType == SubIntentRelatedArticles {
+		sb.WriteString("<example>\n<query>関連する記事はある？</query>\n")
+		sb.WriteString("<answer>{\"answer\":\"1. **記事タイトルA** - 関連理由...[1]\\n2. **記事タイトルB** - 関連理由...[2]\",\"citations\":[{\"chunk_id\":\"1\",\"reason\":\"関連トピック\"}],\"fallback\":false,\"reason\":\"\"}</answer>\n</example>\n\n")
+		return
+	}
+	if input.SubIntentType != SubIntentNone {
+		sb.WriteString("<example>\n<query>この記事の弱点は？</query>\n")
+		sb.WriteString("<answer>{\"answer\":\"この記事の主な弱点は以下の通りです。\\n\\n**1. データの限定性**\\n記事は...[1]...\\n\\n**2. 反対意見の欠如**\\n...[2]...\",\"citations\":[{\"chunk_id\":\"1\",\"reason\":\"データ不足\"},{\"chunk_id\":\"2\",\"reason\":\"片面的\"}],\"fallback\":false,\"reason\":\"\"}</answer>\n</example>\n\n")
+		return
+	}
+	sb.WriteString("<example>\n<query>EUのAI規制法案の影響は？</query>\n")
+	sb.WriteString("<answer>{\"answer\":\"## 概要\\nEUのAI規制法案は世界初の包括的AI規制であり、テック企業に大きな影響を与えています[1]。\\n\\n## 詳細\\n**背景と現状**\\n2024年3月に正式採択され...[1]\\n\\n**産業への影響**\\n大手テック企業は対応を迫られ...[2]\\n\\n## まとめ\\n規制の影響は広範囲に及び、今後の動向が注目されます。\",\"citations\":[{\"chunk_id\":\"1\",\"reason\":\"法案の経緯\"},{\"chunk_id\":\"2\",\"reason\":\"企業への影響\"}],\"fallback\":false,\"reason\":\"\"}</answer>\n</example>\n\n")
 }
 
 func (b *XMLPromptBuilder) writeArticleContext(sb *strings.Builder, input PromptInput) {

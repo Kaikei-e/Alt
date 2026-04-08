@@ -40,6 +40,7 @@ type answerWithRAGUsecase struct {
 	logger            *slog.Logger
 	strategies        map[IntentType]RetrievalStrategy
 	generalStrategy   RetrievalStrategy
+	templateRegistry  *TemplateRegistry
 }
 
 // NewAnswerWithRAGUsecase wires together the components needed to generate a RAG answer.
@@ -65,6 +66,10 @@ func NewAnswerWithRAGUsecase(
 		opt(&cfg)
 	}
 	generalStrat := NewGeneralStrategy(retrieve)
+	var tmplRegistry *TemplateRegistry
+	if promptVersion == "alpha-v2" {
+		tmplRegistry = NewTemplateRegistry()
+	}
 	strategies := cfg.strategies
 	if strategies == nil {
 		strategies = make(map[IntentType]RetrievalStrategy)
@@ -92,6 +97,7 @@ func NewAnswerWithRAGUsecase(
 		logger:            logger,
 		strategies:        strategies,
 		generalStrategy:   generalStrat,
+		templateRegistry:  tmplRegistry,
 	}
 }
 
@@ -813,6 +819,7 @@ type promptBuildResult struct {
 	plannerOutput    *domain.PlannerOutput // Conversation planner result
 	parsedIntent     QueryIntent           // Resolved intent for state derivation
 	bm25HitCount     int
+	lowConfidence    bool // Insufficient quality but generating with disclaimer
 }
 
 func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWithRAGInput) (*promptBuildResult, error) {
@@ -974,7 +981,13 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 			}
 			result.retryCount = len(retryQueries)
 		} else if verdict == QualityInsufficient {
-			return result, errors.New("retrieval quality insufficient: context relevance too low")
+			// Graceful degradation: generate with low-confidence disclaimer
+			// instead of hard fallback. Google ICLR 2025 shows models can
+			// correctly answer 35-62% of queries even with insufficient context.
+			result.lowConfidence = true
+			u.logger.Warn("retrieval_quality_low_confidence",
+				slog.String("retrieval_id", result.retrievalSetID),
+				slog.String("reason", "insufficient_quality_generating_with_disclaimer"))
 		}
 	}
 
@@ -989,7 +1002,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 	// Dynamic token-based limiting: prevent prompt from exceeding LLM context window.
 	// Japanese text averages ~3 characters per token.
 	maxPromptTokens := u.maxPromptTokens
-	estimatedTokens := 500 // system prompt + query overhead
+	estimatedTokens := EstimateSystemPromptTokens(u.promptVersion, intent.IntentType, u.templateRegistry)
 	var limitedContexts []ContextItem
 	for _, ctx := range contexts {
 		chunkTokens := len(ctx.ChunkText) / 3 // Japanese ~3 chars/token
@@ -1088,6 +1101,7 @@ func (u *answerWithRAGUsecase) buildPrompt(ctx context.Context, input AnswerWith
 		IntentType:          intent.IntentType,
 		SubIntentType:       intent.SubIntentType,
 		SupplementaryInfo:   supplementary,
+		LowConfidence:       result.lowConfidence,
 	}
 
 	messages, err := u.promptBuilder.Build(promptInput)
@@ -1322,6 +1336,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	result.expandedQueries = retrieval.FilterSearchQueries(qPlan.SearchQueries, qPlan.ResolvedQuery)
 	plannerIntent := parsedIntent
 	plannerIntent.IntentType = result.intentType
+	plannerIntent.SearchQueries = result.expandedQueries
 	if strings.TrimSpace(qPlan.ResolvedQuery) != "" {
 		plannerIntent.UserQuestion = qPlan.ResolvedQuery
 	}
@@ -1387,7 +1402,7 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 
 	// Token-based limiting
 	maxPromptTokens := u.maxPromptTokens
-	estimatedTokens := 500
+	estimatedTokens := EstimateSystemPromptTokens(u.promptVersion, result.intentType, u.templateRegistry)
 	var limitedContexts []ContextItem
 	for _, ctx := range contexts {
 		chunkTokens := len(ctx.ChunkText) / 3

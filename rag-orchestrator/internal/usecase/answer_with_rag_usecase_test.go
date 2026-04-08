@@ -159,13 +159,14 @@ func TestAnswerWithRAG_Success(t *testing.T) {
   "reason": ""
 }`
 
-	// Expect Single Call (Gemma 3: instructions merged into user message)
+	// Expect system + user messages (system role separation)
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		return len(msgs) == 1 && msgs[0].Role == "user" &&
+		return len(msgs) == 2 && msgs[0].Role == "system" &&
 			contains(msgs[0].Content, "リサーチアナリスト") &&
 			contains(msgs[0].Content, "800文字以上") &&
 			contains(msgs[0].Content, "結論を最初に") &&
-			contains(msgs[0].Content, "引用は[番号]形式")
+			contains(msgs[0].Content, "引用は[番号]形式") &&
+			msgs[1].Role == "user"
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query"})
@@ -205,7 +206,7 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
   "reason": "insufficient evidence"
 }`
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		return len(msgs) == 1 && msgs[0].Role == "user" &&
+		return len(msgs) == 2 && msgs[0].Role == "system" &&
 			contains(msgs[0].Content, "リサーチアナリスト")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: fallbackResponse, Done: true}, nil)
 
@@ -590,8 +591,9 @@ func TestPromptBuilder_ContainsGroundingInstructions(t *testing.T) {
 		},
 	})
 	assert.NoError(t, err)
-	assert.Len(t, messages, 1)
+	assert.Len(t, messages, 2, "system + user messages")
 
+	// Grounding instructions should be in system message
 	content := messages[0].Content
 	assert.Contains(t, content, "提供されたコンテキスト情報のみに基づいて回答すること")
 	assert.Contains(t, content, "推測・捏造しないこと")
@@ -615,13 +617,14 @@ func TestPromptBuilder_ArticleContext(t *testing.T) {
 		},
 	})
 	assert.NoError(t, err)
-	assert.Len(t, messages, 1)
+	assert.Len(t, messages, 2, "system + user messages")
 
-	content := messages[0].Content
-	assert.Contains(t, content, "記事コンテキスト")
-	assert.Contains(t, content, "AI Article")
-	assert.Contains(t, content, "全内容です")
-	assert.NotContains(t, content, "主要な部分")
+	// Article context should be in user message
+	userContent := messages[1].Content
+	assert.Contains(t, userContent, "記事コンテキスト")
+	assert.Contains(t, userContent, "AI Article")
+	assert.Contains(t, userContent, "全内容です")
+	assert.NotContains(t, userContent, "主要な部分")
 }
 
 func TestPromptBuilder_ArticleContextTruncated(t *testing.T) {
@@ -642,9 +645,10 @@ func TestPromptBuilder_ArticleContextTruncated(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	content := messages[0].Content
-	assert.Contains(t, content, "主要な部分です")
-	assert.NotContains(t, content, "全内容です")
+	// Article context (truncated) should be in user message
+	userContent := messages[1].Content
+	assert.Contains(t, userContent, "主要な部分です")
+	assert.NotContains(t, userContent, "全内容です")
 }
 
 func TestPromptBuilder_GeneralNoArticleContext(t *testing.T) {
@@ -660,8 +664,9 @@ func TestPromptBuilder_GeneralNoArticleContext(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	content := messages[0].Content
-	assert.NotContains(t, content, "記事コンテキスト")
+	// User message should not contain article context when not set
+	userContent := messages[1].Content
+	assert.NotContains(t, userContent, "記事コンテキスト")
 }
 
 func TestExecute_ArticleScopedQuery_UsesNormalizedQuery(t *testing.T) {
@@ -812,9 +817,13 @@ func TestExecute_ArticleScopedFollowUp_InheritsScopeFromHistory(t *testing.T) {
 	}, nil)
 
 	llmResponse := `{"answer":"Impact summary","citations":[{"chunk_id":"1","reason":"relevant"}],"fallback":false,"reason":""}`
-	// Multi-turn produces actual chat turns: 2 history messages + 1 current user message
+	// Multi-turn: system + 2 history messages + 1 current user message
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		if len(msgs) < 3 {
+		if len(msgs) < 4 {
+			return false
+		}
+		// First message should be system
+		if msgs[0].Role != "system" {
 			return false
 		}
 		lastMsg := msgs[len(msgs)-1]
@@ -876,14 +885,16 @@ func TestExecute_ArticleScopedFollowUp_FromHistory_ClassifiesCritiqueAndPreserve
 
 	llmResponse := `{"answer":"批判的な回答","citations":[{"chunk_id":"1","reason":"relevant"}],"fallback":false,"reason":""}`
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		if len(msgs) < 3 {
+		if len(msgs) < 4 {
+			return false
+		}
+		// System message should contain critique guidance
+		if msgs[0].Role != "system" || !contains(msgs[0].Content, "弱点") || !contains(msgs[0].Content, "反証") {
 			return false
 		}
 		lastMsg := msgs[len(msgs)-1]
 		return lastMsg.Role == "user" &&
-			contains(lastMsg.Content, "反論はある？") &&
-			contains(lastMsg.Content, "弱点") &&
-			contains(lastMsg.Content, "反証")
+			contains(lastMsg.Content, "反論はある？")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
@@ -1007,9 +1018,9 @@ func TestExecute_ArticleScopedMaxChunksMarksPromptAsTruncated(t *testing.T) {
 
 	llmResponse := `{"answer":"Partial summary","citations":[{"chunk_id":"1","reason":"relevant"}],"fallback":false,"reason":""}`
 	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
-		return len(msgs) == 1 &&
-			contains(msgs[0].Content, "主要な部分です") &&
-			!contains(msgs[0].Content, "全内容です")
+		return len(msgs) == 2 && msgs[0].Role == "system" &&
+			contains(msgs[1].Content, "主要な部分です") &&
+			!contains(msgs[1].Content, "全内容です")
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{
@@ -1037,17 +1048,21 @@ func TestPromptBuilder_MultiTurnCoreferenceInstruction(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	// Multi-turn: 2 history messages + 1 current user message = 3
-	assert.Len(t, messages, 3)
+	// Multi-turn: system + 2 history messages + 1 current user message = 4
+	assert.Len(t, messages, 4)
 
-	// Past turns should be actual chat messages
-	assert.Equal(t, "user", messages[0].Role)
-	assert.Equal(t, "assistant", messages[1].Role)
+	// First message should be system with instructions
+	assert.Equal(t, "system", messages[0].Role)
+	assert.Contains(t, messages[0].Content, "繰り返さない",
+		"system message should contain no-repeat instruction")
 
-	// Last message is the follow-up with instructions
-	lastMsg := messages[2]
-	assert.Contains(t, lastMsg.Content, "繰り返さない",
-		"follow-up should instruct not to repeat")
+	// Past turns should be actual chat messages (shifted by +1)
+	assert.Equal(t, "user", messages[1].Role)
+	assert.Equal(t, "assistant", messages[2].Role)
+
+	// Last message is user with context + query only
+	lastMsg := messages[3]
+	assert.Equal(t, "user", lastMsg.Role)
 }
 
 // --- Phase 1: Retrieval Quality Gate integration tests ---
@@ -1099,7 +1114,7 @@ func TestQualityGate_GoodQuality_NoRetry(t *testing.T) {
 	assert.Equal(t, 0, output.Debug.RetryCount)
 }
 
-func TestQualityGate_InsufficientQuality_ReturnsFallback(t *testing.T) {
+func TestQualityGate_InsufficientQuality_GeneratesWithLowConfidence(t *testing.T) {
 	ctx := context.Background()
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
@@ -1117,14 +1132,22 @@ func TestQualityGate_InsufficientQuality_ReturnsFallback(t *testing.T) {
 	chunkID := uuid.New()
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
 		Contexts: []usecase.ContextItem{
-			{ChunkID: chunkID, ChunkText: "Bad chunk", Score: 0.05, RerankScore: 0.05, Title: "T", URL: "http://x.com", PublishedAt: "2025-01-01T00:00:00Z", DocumentVersion: 1},
+			{ChunkID: chunkID, ChunkText: "Low quality test chunk", Score: 0.05, RerankScore: 0.05, Title: "Test", URL: "http://x.com", PublishedAt: "2025-01-01T00:00:00Z", DocumentVersion: 1},
 		},
 	}, nil)
 
+	// Graceful degradation: generates with low-confidence disclaimer instead of hard fallback
+	llmResponse := `{"answer":"Limited answer based on available context","citations":[{"chunk_id":"1","reason":"only source"}],"fallback":false,"reason":""}`
+	mockLLM.On("Chat", mock.Anything, mock.MatchedBy(func(msgs []domain.Message) bool {
+		// System message should contain low-confidence disclaimer
+		return len(msgs) >= 2 && msgs[0].Role == "system" &&
+			contains(msgs[0].Content, "情報の信頼性")
+	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
+
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test"})
 	assert.NoError(t, err)
-	assert.True(t, output.Fallback)
-	assert.Contains(t, output.Reason, "retrieval quality insufficient")
+	assert.False(t, output.Fallback, "should NOT fallback - should generate with low confidence")
+	assert.Equal(t, "Limited answer based on available context", output.Answer)
 }
 
 func TestQualityGate_MarginalQuality_TriggersRetry(t *testing.T) {
@@ -1147,7 +1170,7 @@ func TestQualityGate_MarginalQuality_TriggersRetry(t *testing.T) {
 	// First retrieval returns marginal quality
 	mockRetrieve.On("Execute", mock.Anything, mock.Anything).Return(&usecase.RetrieveContextOutput{
 		Contexts: []usecase.ContextItem{
-			{ChunkID: chunkID, ChunkText: "Marginal chunk", Score: 0.3, RerankScore: 0.3, Title: "T", URL: "http://x.com", PublishedAt: "2025-01-01T00:00:00Z", DocumentVersion: 1},
+			{ChunkID: chunkID, ChunkText: "This is a test about marginal quality", Score: 0.3, RerankScore: 0.3, Title: "Test Topic", URL: "http://x.com", PublishedAt: "2025-01-01T00:00:00Z", DocumentVersion: 1},
 		},
 	}, nil).Once()
 
@@ -1839,9 +1862,8 @@ func TestPromptBuilder_MultiTurn_DetailSubIntent_AddsGuidance(t *testing.T) {
 		},
 	})
 	assert.NoError(t, err)
-	// Last message should contain detail-specific guidance
-	lastMsg := messages[len(messages)-1]
-	assert.Contains(t, lastMsg.Content, "技術的")
+	// Detail guidance should be in system message
+	assert.Contains(t, messages[0].Content, "技術的")
 }
 
 func TestPromptBuilder_ToolOnly_RelatedArticlesSubIntent_DoesNotRequireContextChunks(t *testing.T) {
@@ -1855,9 +1877,11 @@ func TestPromptBuilder_ToolOnly_RelatedArticlesSubIntent_DoesNotRequireContextCh
 		SupplementaryInfo: []string{"Related articles:\n- Article A\n- Article B"},
 	})
 	assert.NoError(t, err)
-	content := messages[0].Content
-	assert.Contains(t, content, "Article A")
-	assert.Contains(t, content, "ランク付きリスト")
+	// Supplementary info is in user message, instructions in system
+	userContent := messages[1].Content
+	assert.Contains(t, userContent, "Article A")
+	sysContent := messages[0].Content
+	assert.Contains(t, sysContent, "ランク付きリスト")
 }
 
 // --- Retrieval policy gating tests (Augur RAG remediation) ---

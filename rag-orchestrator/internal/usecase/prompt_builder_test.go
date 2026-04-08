@@ -28,17 +28,22 @@ func TestPromptBuilder_MultiTurnReturnsChatMessages(t *testing.T) {
 	msgs, err := builder.Build(input)
 	require.NoError(t, err)
 
-	// Multi-turn should return multiple messages (past turns + current)
-	assert.Greater(t, len(msgs), 1,
-		"multi-turn should produce multiple chat messages, not a single message")
+	// Multi-turn: system + history + current user
+	assert.GreaterOrEqual(t, len(msgs), 4,
+		"multi-turn should produce system + history + current user messages")
 
-	// Past turns should be actual chat messages
-	assert.Equal(t, "user", msgs[0].Role)
-	assert.Contains(t, msgs[0].Content, "この記事の要点は？")
-	assert.Equal(t, "assistant", msgs[1].Role)
-	assert.Contains(t, msgs[1].Content, "新しいプロトコルについて")
+	// First message should be system with instructions
+	assert.Equal(t, "system", msgs[0].Role)
+	assert.Contains(t, msgs[0].Content, "あなたの役割",
+		"system message should contain role instructions")
 
-	// Last message should be user with follow-up context + query
+	// Past turns should be actual chat messages (shifted by +1 due to system)
+	assert.Equal(t, "user", msgs[1].Role)
+	assert.Contains(t, msgs[1].Content, "この記事の要点は？")
+	assert.Equal(t, "assistant", msgs[2].Role)
+	assert.Contains(t, msgs[2].Content, "新しいプロトコルについて")
+
+	// Last message should be user with context + query (no instructions)
 	lastMsg := msgs[len(msgs)-1]
 	assert.Equal(t, "user", lastMsg.Role)
 	assert.Contains(t, lastMsg.Content, "もっと詳しく教えて")
@@ -64,13 +69,21 @@ func TestPromptBuilder_MultiTurnFollowUpInstructions(t *testing.T) {
 	msgs, err := builder.Build(input)
 	require.NoError(t, err)
 
+	// Follow-up instructions should be in the system message, not the user message
+	sysMsg := msgs[0]
+	assert.Equal(t, "system", sysMsg.Role)
+	assert.Contains(t, sysMsg.Content, "繰り返さない",
+		"system message should instruct not to repeat")
+	assert.Contains(t, sysMsg.Content, "直接回答",
+		"system message should request direct answer without overview")
+	assert.Contains(t, sysMsg.Content, "日本語",
+		"system message should enforce Japanese response")
+
+	// User message should have only context + query, not instructions
 	lastMsg := msgs[len(msgs)-1]
-	assert.Contains(t, lastMsg.Content, "繰り返さない",
-		"follow-up should instruct not to repeat")
-	assert.Contains(t, lastMsg.Content, "直接回答",
-		"follow-up should request direct answer without overview")
-	assert.Contains(t, lastMsg.Content, "日本語",
-		"follow-up should enforce Japanese response")
+	assert.Equal(t, "user", lastMsg.Role)
+	assert.NotContains(t, lastMsg.Content, "繰り返さない",
+		"user message should not contain follow-up instructions")
 	assert.NotContains(t, lastMsg.Content, "## 概要\\n...\\n## 詳細",
 		"follow-up should NOT include overview/detail/summary format")
 }
@@ -90,11 +103,14 @@ func TestPromptBuilder_SingleTurnUnchanged(t *testing.T) {
 	msgs, err := builder.Build(input)
 	require.NoError(t, err)
 
-	// Single-turn should still return 1 message
-	assert.Len(t, msgs, 1, "single-turn should return exactly 1 message")
-	assert.Equal(t, "user", msgs[0].Role)
+	// Single-turn should return system + user messages
+	assert.Len(t, msgs, 2, "single-turn should return system + user messages")
+	assert.Equal(t, "system", msgs[0].Role)
 	assert.Contains(t, msgs[0].Content, "あなたの役割",
-		"single-turn should include full instructions")
+		"system message should include full instructions")
+	assert.Equal(t, "user", msgs[1].Role)
+	assert.Contains(t, msgs[1].Content, "この記事の要点は？",
+		"user message should contain the query")
 }
 
 // --- SubIntent prompt tests ---
@@ -118,19 +134,24 @@ func TestPromptBuilder_SingleTurn_CritiqueSubIntent_NoSummaryStructure(t *testin
 
 	msgs, err := builder.Build(input)
 	require.NoError(t, err)
-	assert.Len(t, msgs, 1)
+	assert.Len(t, msgs, 2, "single-turn should return system + user messages")
 
-	content := msgs[0].Content
-	// Should contain critique-specific instructions
-	assert.Contains(t, content, "批判的分析")
-	assert.Contains(t, content, "反論")
+	sysContent := msgs[0].Content
+	assert.Equal(t, "system", msgs[0].Role)
+	// Should contain critique-specific instructions in system message
+	assert.Contains(t, sysContent, "批判的分析")
+	assert.Contains(t, sysContent, "反論")
 	// answer exemplar should NOT contain summary template structure
-	assert.NotContains(t, content, "## 概要\\n...\\n## 詳細\\n...\\n## まとめ")
+	assert.NotContains(t, sysContent, "## 概要\\n...\\n## 詳細\\n...\\n## まとめ")
 	// Should contain analytical output format instruction
-	assert.Contains(t, content, "質問に対する分析的な回答")
+	assert.Contains(t, sysContent, "質問に対する分析的な回答")
 	// Schema (JSON structure) should still be present
-	assert.Contains(t, content, "\"answer\"")
-	assert.Contains(t, content, "\"citations\"")
+	assert.Contains(t, sysContent, "\"answer\"")
+	assert.Contains(t, sysContent, "\"citations\"")
+
+	// User message should contain context and query
+	assert.Equal(t, "user", msgs[1].Role)
+	assert.Contains(t, msgs[1].Content, "Article content here")
 }
 
 func TestPromptBuilder_SingleTurn_NoSubIntent_KeepsSummaryStructure(t *testing.T) {
@@ -173,12 +194,17 @@ func TestPromptBuilder_MultiTurn_CritiqueSubIntent_AddsGuidance(t *testing.T) {
 	msgs, err := builder.Build(input)
 	require.NoError(t, err)
 
+	// Multi-turn critique guidance should be in system message
+	sysMsg := msgs[0]
+	assert.Equal(t, "system", sysMsg.Role)
+	assert.Contains(t, sysMsg.Content, "弱点")
+	assert.Contains(t, sysMsg.Content, "反証")
+	// Should still have "don't repeat" in system message
+	assert.Contains(t, sysMsg.Content, "繰り返さない")
+
+	// User message should have only context + query
 	lastMsg := msgs[len(msgs)-1]
-	// Multi-turn critique should include critique guidance
-	assert.Contains(t, lastMsg.Content, "弱点")
-	assert.Contains(t, lastMsg.Content, "反証")
-	// Should still have "don't repeat" (existing multi-turn behavior)
-	assert.Contains(t, lastMsg.Content, "繰り返さない")
+	assert.Equal(t, "user", lastMsg.Role)
 }
 
 func TestPromptBuilder_SingleTurn_AnalyticalRelaxes800CharRule(t *testing.T) {
@@ -399,4 +425,183 @@ func TestPromptBuilder_IntentSynthesis_SkipsGenericStructure(t *testing.T) {
 	content := msgs[0].Content
 	assert.NotContains(t, content, "## 回答構造",
 		"synthesis intent should NOT include generic 回答構造 section (概要/詳細/まとめ)")
+}
+
+// --- System role separation tests ---
+
+func TestPromptBuilder_SingleTurn_SystemMessageContainsInstructions(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "テスト質問",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test", ChunkText: "Content"},
+		},
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+	require.Len(t, msgs, 2)
+
+	sysContent := msgs[0].Content
+	assert.Equal(t, "system", msgs[0].Role)
+	assert.Contains(t, sysContent, "あなたの役割",
+		"system message should contain role definition")
+	assert.Contains(t, sysContent, "品質基準",
+		"system message should contain quality criteria")
+	assert.Contains(t, sysContent, "出力形式",
+		"system message should contain output format")
+	assert.Contains(t, sysContent, "\"answer\"",
+		"system message should contain JSON schema")
+}
+
+func TestPromptBuilder_SingleTurn_UserMessageContainsOnlyContextAndQuery(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "テスト質問",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test Article", ChunkText: "Article text content"},
+		},
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+	require.Len(t, msgs, 2)
+
+	userContent := msgs[1].Content
+	assert.Equal(t, "user", msgs[1].Role)
+	// User message should contain context and query
+	assert.Contains(t, userContent, "Article text content",
+		"user message should contain context chunks")
+	assert.Contains(t, userContent, "テスト質問",
+		"user message should contain the query")
+	// User message should NOT contain instructions
+	assert.NotContains(t, userContent, "あなたの役割",
+		"user message should not contain role definition")
+	assert.NotContains(t, userContent, "品質基準",
+		"user message should not contain quality criteria")
+	assert.NotContains(t, userContent, "出力形式",
+		"user message should not contain output format")
+}
+
+func TestPromptBuilder_SingleTurn_InstructionSandwich(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "テスト質問",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test", ChunkText: "Content"},
+		},
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+
+	sysContent := msgs[0].Content
+	assert.Contains(t, sysContent, "重要な注意",
+		"system message should end with instruction sandwich reminder")
+}
+
+func TestPromptBuilder_SingleTurn_FewShotExample(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "テスト質問",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test", ChunkText: "Content"},
+		},
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+
+	sysContent := msgs[0].Content
+	assert.Contains(t, sysContent, "<example>",
+		"system message should contain a few-shot example")
+}
+
+func TestPromptBuilder_MultiTurn_SystemMessageReinjected(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "続きを教えて",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test", ChunkText: "Content"},
+		},
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: "最初の質問"},
+			{Role: "assistant", Content: "最初の回答"},
+		},
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+
+	// System message should be re-injected with core instructions
+	assert.Equal(t, "system", msgs[0].Role)
+	assert.Contains(t, msgs[0].Content, "あなたの役割",
+		"multi-turn system message should re-inject core instructions")
+	assert.Contains(t, msgs[0].Content, "品質基準",
+		"multi-turn system message should re-inject quality criteria")
+}
+
+func TestPromptBuilder_MultiTurn_UserMessageHasOnlyContextAndQuery(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "詳しく教えて",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test", ChunkText: "Content"},
+		},
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: "最初の質問"},
+			{Role: "assistant", Content: "最初の回答"},
+		},
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+
+	lastMsg := msgs[len(msgs)-1]
+	assert.Equal(t, "user", lastMsg.Role)
+	assert.NotContains(t, lastMsg.Content, "フォローアップ指示",
+		"user message should not contain follow-up instruction header")
+	assert.NotContains(t, lastMsg.Content, "あなたの役割",
+		"user message should not contain role definition")
+	assert.Contains(t, lastMsg.Content, "詳しく教えて",
+		"user message should contain query")
+}
+
+func TestPromptBuilder_MultiTurn_SystemContainsFollowUpRules(t *testing.T) {
+	builder := usecase.NewXMLPromptBuilder()
+	input := usecase.PromptInput{
+		Query:         "もっと教えて",
+		Locale:        "ja",
+		PromptVersion: "v1",
+		Contexts: []usecase.PromptContext{
+			{ChunkID: "1", Title: "Test", ChunkText: "Content"},
+		},
+		ConversationHistory: []domain.Message{
+			{Role: "user", Content: "最初の質問"},
+			{Role: "assistant", Content: "最初の回答"},
+		},
+	}
+
+	msgs, err := builder.Build(input)
+	require.NoError(t, err)
+
+	sysContent := msgs[0].Content
+	assert.Contains(t, sysContent, "繰り返さない",
+		"system message should contain no-repeat rule")
+	assert.Contains(t, sysContent, "新しい事実",
+		"system message should instruct new facts only")
+	assert.Contains(t, sysContent, "重要な注意",
+		"system message should contain instruction sandwich")
 }
