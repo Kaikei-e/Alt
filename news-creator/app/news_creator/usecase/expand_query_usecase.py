@@ -38,23 +38,23 @@ EXPAND_QUERY_WITH_HISTORY_TEMPLATE = """<task>Generate search query variations f
 </rules>
 <example>
 <conversation>
-user: 最近の天気はどう？
-assistant: 今週は全国的に晴れの日が続いています...
+user: [TOPIC_A] について調べています。
+assistant: [TOPIC_A] の基本情報をまとめています。
 </conversation>
-<input>来週はどうなりそう？</input>
-来週 天気予報 日本
-weather forecast next week Japan
-weekly weather outlook prediction
+<input>もっと詳しく知りたい</input>
+[TOPIC_A] 詳細
+[TOPIC_A] background
+[TOPIC_A] key points
 </example>
 <example>
 <conversation>
-user: 新しいスマートフォンのおすすめは？
-assistant: 最新のスマートフォンではPixel 9とiPhone 16が人気です...
+user: [TOPIC_B] はどう違いますか？
+assistant: [TOPIC_B] には複数の選択肢があります。
 </conversation>
-<input>カメラ性能はどっちがいい？</input>
-Pixel 9 iPhone 16 カメラ比較
-smartphone camera comparison 2026
-best phone camera quality benchmark
+<input>どちらがよい？</input>
+[TOPIC_B] comparison
+[TOPIC_B] pros and cons
+[TOPIC_B] benchmark
 </example>
 ---
 <conversation>

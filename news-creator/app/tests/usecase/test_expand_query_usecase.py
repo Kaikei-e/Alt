@@ -320,7 +320,7 @@ class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
     that Gemma 4 (12B) copies verbatim instead of learning the pattern."""
 
     def test_expand_query_with_history_template_does_not_contain_ai_chip_content(self):
-        """Template must not contain AI-chip-market examples that cause contamination."""
+        """Template must not contain concrete topical examples that cause contamination."""
         assert "AIチップ" not in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
             "Template contains 'AIチップ' which causes few-shot example contamination"
         )
@@ -332,13 +332,17 @@ class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
         )
 
     def test_expand_query_with_history_template_has_neutral_examples(self):
-        """Template must use domain-neutral examples (weather + smartphone)."""
-        assert "天気" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
-            "Template should contain weather (天気) as a neutral example"
+        """Template must use abstract placeholders instead of real topics."""
+        assert "[TOPIC_A]" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+            "Template should contain abstract placeholder [TOPIC_A]"
         )
-        assert "スマートフォン" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
-            "Template should contain smartphone (スマートフォン) as a neutral example"
+        assert "[TOPIC_B]" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+            "Template should contain abstract placeholder [TOPIC_B]"
         )
+        for phrase in ["天気予報", "weather forecast", "スマートフォン", "iPhone 16", "Pixel 9"]:
+            assert phrase not in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+                f"Template contains concrete topic example '{phrase}'"
+            )
 
     def test_expand_query_with_history_template_has_anti_copy_rule(self):
         """Template must explicitly tell the model not to copy example topics."""
