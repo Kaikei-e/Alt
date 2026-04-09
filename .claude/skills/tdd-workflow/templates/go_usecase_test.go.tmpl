@@ -1,0 +1,51 @@
+package {{package_name}}
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"go.uber.org/mock/gomock"
+)
+
+func Test{{UsecaseName}}_Execute(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// mockPort := mocks.NewMock{{PortName}}(ctrl)
+
+	tests := []struct {
+		name      string
+		input     interface{}
+		mockSetup func()
+		wantErr   bool
+	}{
+		{
+			name:  "success case",
+			input: nil,
+			mockSetup: func() {
+				// mockPort.EXPECT().Method(gomock.Any()).Return(nil, nil)
+			},
+			wantErr: false,
+		},
+		{
+			name:  "error case",
+			input: nil,
+			mockSetup: func() {
+				// mockPort.EXPECT().Method(gomock.Any()).Return(nil, errors.New("error"))
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.mockSetup()
+			// u := &{{UsecaseName}}{port: mockPort}
+			// _, err := u.Execute(context.Background(), tt.input)
+			// if (err != nil) != tt.wantErr {
+			// 	t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+			// }
+		})
+	}
+}

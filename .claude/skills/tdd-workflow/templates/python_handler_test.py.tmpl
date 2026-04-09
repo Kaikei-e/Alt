@@ -1,0 +1,36 @@
+"""Tests for {{handler_name}} handler."""
+
+import pytest
+from unittest.mock import AsyncMock, Mock
+
+
+@pytest.fixture
+def mock_usecase():
+    """Create a mock usecase."""
+    mock = Mock()
+    mock.execute = AsyncMock()
+    return mock
+
+
+class Test{{HandlerName}}:
+    """Tests for {{HandlerName}}."""
+
+    def test_success(self, mock_usecase):
+        """Test successful execution."""
+        # Arrange
+        mock_usecase.execute.return_value = {"result": "expected"}
+
+        # Act
+        # result = handler.execute(...)
+
+        # Assert
+        # assert result == expected
+
+    def test_error_handling(self, mock_usecase):
+        """Test error handling."""
+        # Arrange
+        mock_usecase.execute.side_effect = RuntimeError("Service error")
+
+        # Act & Assert
+        # with pytest.raises(HTTPException):
+        #     handler.execute(...)

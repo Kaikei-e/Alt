@@ -126,7 +126,8 @@ metrics/scripts/reports/
 # ============================================
 # AI agents / Claude Code
 # ============================================
-.claude/
+.claude/*
+!.claude/skills/
 .agent/
 .serena/
 docs/.obsidian/
