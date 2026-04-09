@@ -2315,3 +2315,198 @@ def test_3days_prompt_has_event_extraction_step():
     )
     prompt = usecase._build_prompt(request, max_bullets=4)
     assert "イベント単位" in prompt
+
+
+@pytest.mark.asyncio
+async def test_single_shot_uses_chat_generate_for_recap():
+    """Single-shot recap should use chat_generate (api/chat) instead of generate (api/generate)."""
+    config = _create_mock_config()
+    llm_provider = AsyncMock()
+
+    # chat_generate returns /api/chat format
+    llm_provider.chat_generate.return_value = {
+        "message": {
+            "content": json.dumps(
+                {
+                    "title": "AI最新動向まとめ",
+                    "bullets": [
+                        "Googleは新しいAIモデルを4月5日にリリースし、推論速度が従来比30%向上した。同社は企業向けAPI料金も引き下げた [1]",
+                        "日本政府はAI安全性に関する新ガイドラインを公開し、生成AIの出力に対する責任範囲を初めて明文化した [2]",
+                    ],
+                    "language": "ja",
+                    "references": [
+                        {"id": 1, "url": "https://example.com/1", "domain": "example.com", "article_id": "art1"},
+                        {"id": 2, "url": "https://example.com/2", "domain": "example.com", "article_id": "art2"},
+                    ],
+                }
+            ),
+        },
+        "model": "gemma4-e4b-12k",
+        "prompt_eval_count": 100,
+        "eval_count": 50,
+        "total_duration": 500_000_000,
+    }
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Google released new AI model.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                        is_centroid=True,
+                    ),
+                    RepresentativeSentence(
+                        text="Japan published AI guidelines.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                ],
+                top_terms=["AI", "model"],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # chat_generate should be called (not generate)
+    llm_provider.chat_generate.assert_awaited()
+    # The payload should contain messages (not raw prompt)
+    call_args = llm_provider.chat_generate.call_args
+    payload = call_args.args[0] if call_args.args else call_args.kwargs.get("payload", {})
+    assert "messages" in payload
+    assert payload["messages"][0]["role"] == "system"
+    assert payload["messages"][1]["role"] == "user"
+    # format (json schema) should be in the payload
+    assert "format" in payload
+    # think should NOT be in payload (let Gemma 4 default to thinking)
+    assert "think" not in payload
+    # Response should not be degraded
+    assert response.metadata.is_degraded is False
+
+
+@pytest.mark.asyncio
+async def test_sanitize_auto_injects_reference_markers():
+    """Bullets without [n] markers should get auto-injected references."""
+    config = _create_mock_config()
+    llm_provider = AsyncMock()
+
+    # LLM returns valid JSON but bullets lack [n] markers
+    llm_provider.chat_generate.return_value = {
+        "message": {
+            "content": json.dumps(
+                {
+                    "title": "テスト要約タイトル",
+                    "bullets": [
+                        "Googleは新しいAIモデルを発表し、推論速度が従来比30%向上した。同社は企業向けAPIの提供も開始した。",
+                        "日本政府はAI安全性に関する新ガイドラインを公開し、生成AIの出力に対する責任範囲を初めて明文化した。",
+                    ],
+                    "language": "ja",
+                    "references": [
+                        {"id": 1, "url": "https://example.com/1", "domain": "example.com", "article_id": "art1"},
+                        {"id": 2, "url": "https://example.com/2", "domain": "example.com", "article_id": "art2"},
+                    ],
+                }
+            ),
+        },
+        "model": "gemma4-e4b-12k",
+        "prompt_eval_count": 100,
+        "eval_count": 50,
+        "total_duration": 500_000_000,
+    }
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Google released new AI model.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                    RepresentativeSentence(
+                        text="Japan published AI guidelines.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
+                    ),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # Should NOT be degraded — auto-injection should fix the missing markers
+    assert response.metadata.is_degraded is False
+    # Every bullet should now have a [n] marker
+    for bullet in response.summary.bullets:
+        assert "[" in bullet and "]" in bullet
+
+
+@pytest.mark.asyncio
+async def test_thin_evidence_allows_single_bullet():
+    """With thin evidence (<= 3 sentences), a single bullet should be accepted."""
+    config = _create_mock_config()
+    llm_provider = AsyncMock()
+
+    llm_provider.chat_generate.return_value = {
+        "message": {
+            "content": json.dumps(
+                {
+                    "title": "テスト要約タイトル",
+                    "bullets": [
+                        "Googleは新しいAIモデルを発表し、推論速度が従来比30%向上した。同社は企業向けAPIの料金を引き下げた [1]",
+                    ],
+                    "language": "ja",
+                    "references": [
+                        {"id": 1, "url": "https://example.com/1", "domain": "example.com", "article_id": "art1"},
+                    ],
+                }
+            ),
+        },
+        "model": "gemma4-e4b-12k",
+        "prompt_eval_count": 100,
+        "eval_count": 50,
+        "total_duration": 500_000_000,
+    }
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Google released new AI model.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                    RepresentativeSentence(
+                        text="The model achieves state-of-the-art results.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
+                    ),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # Should NOT be degraded — 1 bullet is acceptable for thin evidence (2 sentences)
+    assert response.metadata.is_degraded is False
+    assert len(response.summary.bullets) == 1

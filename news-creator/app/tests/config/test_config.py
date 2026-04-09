@@ -139,7 +139,7 @@ def test_config_recap_quality_defaults():
     assert config.recap_min_source_articles_for_llm == 1
     assert config.recap_min_representative_sentences_for_llm == 2
     assert config.recap_ja_ratio_threshold == 0.6
-    assert config.recap_summary_repair_attempts == 1
+    assert config.recap_summary_repair_attempts == 2
 
     os.environ.pop("SERVICE_SECRET", None)
 

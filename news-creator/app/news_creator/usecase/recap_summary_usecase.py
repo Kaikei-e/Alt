@@ -828,15 +828,74 @@ class RecapSummaryUsecase:
             chunks if chunks else [[c] for c in clusters]
         )  # At least one chunk per cluster if needed
 
+    def _build_chat_messages(
+        self, request: RecapSummaryRequest, max_bullets: int, intermediate: bool = False
+    ) -> List[Dict[str, str]]:
+        """Build chat messages for /api/chat (no manual turn tokens)."""
+        prompt_body, _ = self._render_prompt_body(
+            request, max_bullets, intermediate=intermediate
+        )
+        return [
+            {"role": "system", "content": GEMMA_RECAP_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt_body},
+        ]
+
+    async def _call_llm_for_recap(
+        self,
+        messages: List[Dict[str, str]],
+        json_schema: Dict[str, Any],
+        llm_options: Dict[str, Any],
+    ) -> LLMGenerateResponse:
+        """Call LLM via /api/chat (think enabled) with generate() fallback.
+
+        Prefers chat_generate() for correct format constraint enforcement
+        with Gemma 4 thinking mode (Ollama #15260 workaround).
+        Falls back to generate() for backward compatibility.
+        """
+        try:
+            chat_payload: Dict[str, Any] = {
+                "model": self.config.model_name,
+                "messages": messages,
+                "format": json_schema,
+                "options": llm_options,
+            }
+            raw_response = await self.llm_provider.chat_generate(chat_payload)
+            # Validate that response is a proper dict with message.content
+            if not isinstance(raw_response, dict):
+                raise TypeError("chat_generate returned non-dict response")
+            content = raw_response.get("message", {}).get("content")
+            if not isinstance(content, str):
+                raise TypeError("chat_generate response missing message.content string")
+            return LLMGenerateResponse(
+                response=content,
+                model=raw_response.get("model", self.config.model_name),
+                prompt_eval_count=raw_response.get("prompt_eval_count", 0),
+                eval_count=raw_response.get("eval_count", 0),
+                total_duration=raw_response.get("total_duration", 0),
+            )
+        except (NotImplementedError, TypeError):
+            # Fallback: use generate() with raw prompt (legacy path)
+            opts = {**llm_options}
+            num_predict = opts.pop("num_predict", self.config.summary_num_predict)
+            prompt = self._wrap_gemma_prompt(messages[1]["content"])
+            result = await self.llm_provider.generate(
+                prompt,
+                num_predict=num_predict,
+                format=json_schema,
+                options=opts,
+            )
+            assert isinstance(result, LLMGenerateResponse)
+            return result
+
     async def _generate_single_shot_summary(
         self,
         request: RecapSummaryRequest,
         max_bullets: int,
         temperature_override: Optional[float],
     ) -> RecapSummaryResponse:
-        """Generate summary using single-shot approach (original logic)."""
-        base_prompt = self._build_prompt(request, max_bullets)
-        active_prompt = base_prompt
+        """Generate summary using single-shot approach via /api/chat with thinking."""
+        messages = self._build_chat_messages(request, max_bullets)
+        active_messages = messages
         is_3days = self._is_3days_request(request)
 
         base_temperature = (
@@ -868,33 +927,16 @@ class RecapSummaryUsecase:
 
             json_schema = RecapSummary.model_json_schema()
 
-            llm_options_retry = None
-            if current_temp is not None:
-                llm_options_retry = {
-                    **(llm_options or {}),
-                    "temperature": float(current_temp),
-                    "repeat_penalty": float(current_repeat_penalty),
-                }
-            elif llm_options is not None:
-                llm_options_retry = {
-                    **llm_options,
-                    "repeat_penalty": float(current_repeat_penalty),
-                }
-            else:
-                llm_options_retry = {"repeat_penalty": float(current_repeat_penalty)}
+            llm_options_retry = {
+                **(llm_options or {}),
+                "temperature": float(current_temp),
+                "repeat_penalty": float(current_repeat_penalty),
+                "num_predict": self.config.summary_num_predict,
+            }
 
-            result = await self.llm_provider.generate(
-                active_prompt,
-                num_predict=self.config.summary_num_predict,
-                format=json_schema,
-                options=llm_options_retry,
+            llm_response = await self._call_llm_for_recap(
+                active_messages, json_schema, llm_options_retry
             )
-
-            # Narrow union type: non-streaming returns LLMGenerateResponse
-            assert isinstance(result, LLMGenerateResponse), (
-                "Expected non-streaming LLMGenerateResponse"
-            )
-            llm_response: LLMGenerateResponse = result
 
             has_repetition, rep_score, rep_patterns = detect_repetition(
                 llm_response.response, threshold=self.config.repetition_threshold
@@ -968,12 +1010,14 @@ class RecapSummaryUsecase:
                     json_validation_error_count += len(quality_issues)
                     if remaining_repair_attempts > 0:
                         remaining_repair_attempts -= 1
-                        active_prompt = self._build_repair_prompt(
-                            request,
-                            max_bullets,
-                            llm_response.response,
-                            quality_issues,
+                        repair_body = self._build_repair_prompt_body(
+                            request, max_bullets,
+                            llm_response.response, quality_issues,
                         )
+                        active_messages = [
+                            {"role": "system", "content": GEMMA_RECAP_SYSTEM_PROMPT},
+                            {"role": "user", "content": repair_body},
+                        ]
                         continue
                     break
 
@@ -1006,12 +1050,16 @@ class RecapSummaryUsecase:
                     json_validation_error_count += len(validation_issues)
                     if remaining_repair_attempts > 0:
                         remaining_repair_attempts -= 1
-                        active_prompt = self._build_repair_prompt(
+                        repair_body = self._build_repair_prompt_body(
                             request,
                             max_bullets,
                             llm_response.response,
                             validation_issues,
                         )
+                        active_messages = [
+                            {"role": "system", "content": GEMMA_RECAP_SYSTEM_PROMPT},
+                            {"role": "user", "content": repair_body},
+                        ]
                         continue
                 if attempt < max_retries:
                     continue
@@ -1447,17 +1495,18 @@ class RecapSummaryUsecase:
 
         return prompt
 
-    def _build_repair_prompt(
+    def _build_repair_prompt_body(
         self,
         request: RecapSummaryRequest,
         max_bullets: int,
         invalid_response: str,
         issues: List[str],
     ) -> str:
+        """Build repair prompt body (without turn tokens, for /api/chat)."""
         issue_lines = "\n".join(f"- {issue}" for issue in issues)
         truncated_response = invalid_response[:3000]
         base_prompt_body, _ = self._render_prompt_body(request, max_bullets)
-        repair_body = (
+        return (
             f"{base_prompt_body}\n\n"
             "### 修正タスク\n"
             "前回の出力は契約違反でした。入力にない事実を追加せず、"
@@ -1466,7 +1515,6 @@ class RecapSummaryUsecase:
             "### 前回の不正な出力\n"
             f"{truncated_response}\n"
         )
-        return self._wrap_gemma_prompt(repair_body)
 
     def _validate_summary_quality(
         self,
@@ -1482,11 +1530,16 @@ class RecapSummaryUsecase:
         bullets = payload.get("bullets") or []
         language = payload.get("language")
 
+        # Count total representative sentences for thin-evidence detection
+        _, total_sentences = self._count_request_evidence(request)
+        is_thin_evidence = total_sentences <= 3
+
         if not title:
             issues.append("title must be a non-empty Japanese string")
 
-        if len(bullets) < 2:
-            issues.append("bullets must contain at least 2 non-empty items")
+        min_bullets = 1 if is_thin_evidence else 2
+        if len(bullets) < min_bullets:
+            issues.append(f"bullets must contain at least {min_bullets} non-empty items")
 
         if len(bullets) == 1 and bullets[0].strip() == title:
             issues.append("bullets must not collapse to a title-only fallback")
@@ -1777,9 +1830,19 @@ class RecapSummaryUsecase:
                     )
                 references = validated_refs if validated_refs else None
 
+        # Auto-inject [n] reference markers into bullets that lack them
+        final_bullets = []
+        for idx, bullet in enumerate(bullets):
+            trimmed = bullet[:1000]
+            if references and not REFERENCE_MARKER_RE.search(trimmed):
+                # Assign the reference ID round-robin from available references
+                ref_id = references[idx % len(references)]["id"]
+                trimmed = f"{trimmed} [{ref_id}]"
+            final_bullets.append(trimmed)
+
         sanitized = {
             "title": title,
-            "bullets": [bullet[:1000] for bullet in bullets],
+            "bullets": final_bullets,
             "language": language,
         }
         if references:

@@ -45,7 +45,7 @@ class LLMConfig:
     recap_min_representative_sentences_for_llm: int = 2
     recap_summary_temperature: float = 0.0
     recap_ja_ratio_threshold: float = 0.6
-    recap_summary_repair_attempts: int = 1
+    recap_summary_repair_attempts: int = 2
 
     def get_options(self) -> dict:
         """Get LLM options as a dictionary for Ollama 'options' field."""
@@ -110,7 +110,7 @@ class LLMConfig:
             ),
             recap_summary_temperature=_get_float("RECAP_SUMMARY_TEMPERATURE", 0.0),
             recap_ja_ratio_threshold=_get_float("RECAP_JA_RATIO_THRESHOLD", 0.6),
-            recap_summary_repair_attempts=_get_int("RECAP_SUMMARY_REPAIR_ATTEMPTS", 1),
+            recap_summary_repair_attempts=_get_int("RECAP_SUMMARY_REPAIR_ATTEMPTS", 2),
         )
 
 
