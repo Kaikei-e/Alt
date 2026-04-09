@@ -1,48 +1,66 @@
 <script lang="ts">
-	import { goto } from "$app/navigation";
-	import { onMount } from "svelte";
-	import { createReport } from "$lib/connect/acolyte";
+import { goto } from "$app/navigation";
+import { onMount } from "svelte";
+import { createReport } from "$lib/connect/acolyte";
 
-	let title = $state("");
-	let reportType = $state("weekly_briefing");
-	let topic = $state("");
-	let submitting = $state(false);
-	let error = $state<string | null>(null);
-	let revealed = $state(false);
+let title = $state("");
+let reportType = $state("weekly_briefing");
+let topic = $state("");
+let submitting = $state(false);
+let error = $state<string | null>(null);
+let revealed = $state(false);
 
-	const reportTypes = [
-		{ value: "weekly_briefing", label: "Weekly Briefing", desc: "Curated intelligence summary of the past week" },
-		{ value: "market_analysis", label: "Market Analysis", desc: "Sector trends, sentiment, and outlook" },
-		{ value: "tech_review", label: "Technology Review", desc: "Emerging technology landscape and impact assessment" },
-		{ value: "custom", label: "Custom Report", desc: "Free-form topic with full pipeline" },
-	] as const;
+const reportTypes = [
+	{
+		value: "weekly_briefing",
+		label: "Weekly Briefing",
+		desc: "Curated intelligence summary of the past week",
+	},
+	{
+		value: "market_analysis",
+		label: "Market Analysis",
+		desc: "Sector trends, sentiment, and outlook",
+	},
+	{
+		value: "tech_review",
+		label: "Technology Review",
+		desc: "Emerging technology landscape and impact assessment",
+	},
+	{
+		value: "custom",
+		label: "Custom Report",
+		desc: "Free-form topic with full pipeline",
+	},
+] as const;
 
-	let selectedTypeDesc = $derived(
-		reportTypes.find((t) => t.value === reportType)?.desc ?? "",
-	);
+let selectedTypeDesc = $derived(
+	reportTypes.find((t) => t.value === reportType)?.desc ?? "",
+);
 
-	async function handleSubmit() {
-		if (!title.trim()) {
-			error = "A title is required to proceed.";
-			return;
-		}
-		try {
-			submitting = true;
-			error = null;
-			const scope: Record<string, string> = {};
-			if (topic.trim()) scope.topic = topic.trim();
-			const result = await createReport(title.trim(), reportType, scope);
-			goto(`/acolyte/reports/${result.reportId}`);
-		} catch (e) {
-			error = e instanceof Error ? e.message : "Failed to create report";
-		} finally {
-			submitting = false;
-		}
+async function handleSubmit() {
+	if (!title.trim()) {
+		error = "A title is required to proceed.";
+		return;
 	}
+	try {
+		submitting = true;
+		error = null;
+		const scope: Record<string, string> = {};
+		if (topic.trim()) scope.topic = topic.trim();
+		const result = await createReport(title.trim(), reportType, scope);
+		goto(`/acolyte/reports/${result.reportId}`);
+	} catch (e) {
+		error = e instanceof Error ? e.message : "Failed to create report";
+	} finally {
+		submitting = false;
+	}
+}
 
-	onMount(() => {
-		requestAnimationFrame(() => { revealed = true; });
+onMount(() => {
+	requestAnimationFrame(() => {
+		revealed = true;
 	});
+});
 </script>
 
 <div class="aco-new" class:revealed>

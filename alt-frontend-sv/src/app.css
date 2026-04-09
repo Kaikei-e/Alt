@@ -150,11 +150,19 @@ body {
 	font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
 	font-family: var(--font-display, "Playfair Display", Georgia, serif);
 }
 
-code, kbd, samp, pre {
+code,
+kbd,
+samp,
+pre {
 	font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
 }
 

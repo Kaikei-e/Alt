@@ -227,6 +227,121 @@ describe("parseMarkdown", () => {
 		});
 	});
 
+	describe("horizontal rules", () => {
+		it("converts --- to <hr>", () => {
+			const result = parseMarkdown("---");
+			expect(result).toContain("<hr");
+		});
+
+		it("converts *** to <hr>", () => {
+			const result = parseMarkdown("***");
+			expect(result).toContain("<hr");
+		});
+
+		it("converts ___ to <hr>", () => {
+			const result = parseMarkdown("___");
+			expect(result).toContain("<hr");
+		});
+
+		it("does not convert -- (too few) to <hr>", () => {
+			const result = parseMarkdown("--");
+			expect(result).not.toContain("<hr");
+		});
+
+		it("handles hr between paragraphs", () => {
+			const result = parseMarkdown("Above\n\n---\n\nBelow");
+			expect(result).toContain("<hr");
+			expect(result).toContain("Above");
+			expect(result).toContain("Below");
+			const hrPos = result.indexOf("<hr");
+			const abovePos = result.indexOf("Above");
+			const belowPos = result.indexOf("Below");
+			expect(abovePos).toBeLessThan(hrPos);
+			expect(hrPos).toBeLessThan(belowPos);
+		});
+	});
+
+	describe("blockquotes", () => {
+		it("converts > text to <blockquote>", () => {
+			const result = parseMarkdown("> This is a quote");
+			expect(result).toContain("<blockquote");
+			expect(result).toContain("This is a quote");
+		});
+
+		it("handles multi-line blockquote", () => {
+			const result = parseMarkdown("> Line one\n> Line two");
+			expect(result).toContain("<blockquote");
+			expect(result).toContain("Line one");
+			expect(result).toContain("Line two");
+			// Should be a single blockquote
+			const count = (result.match(/<blockquote/g) || []).length;
+			expect(count).toBe(1);
+		});
+
+		it("handles blockquote with inline formatting", () => {
+			const result = parseMarkdown("> This is **bold** in a quote");
+			expect(result).toContain("<blockquote");
+			expect(result).toContain("<strong>bold</strong>");
+		});
+
+		it("handles blockquote followed by paragraph", () => {
+			const result = parseMarkdown("> A quote\n\nA paragraph");
+			expect(result).toContain("<blockquote");
+			expect(result).toContain("</blockquote>");
+			expect(result).toContain("<p");
+			expect(result).toContain("A paragraph");
+		});
+
+		it("escapes HTML in blockquotes", () => {
+			const result = parseMarkdown('> <script>alert("xss")</script>');
+			expect(result).toContain("<blockquote");
+			expect(result).not.toContain("<script>");
+			expect(result).toContain("&lt;script&gt;");
+		});
+	});
+
+	describe("links", () => {
+		it("converts [text](url) to <a> tag", () => {
+			const result = parseMarkdown(
+				"Visit [Example](https://example.com) today",
+			);
+			expect(result).toContain('<a href="https://example.com"');
+			expect(result).toContain(">Example</a>");
+		});
+
+		it("link opens in new tab with rel=noopener", () => {
+			const result = parseMarkdown("[Link](https://example.com)");
+			expect(result).toContain('target="_blank"');
+			expect(result).toContain('rel="noopener noreferrer"');
+		});
+
+		it("handles multiple links in one line", () => {
+			const result = parseMarkdown(
+				"[A](https://example.com/a) and [B](https://example.com/b)",
+			);
+			const linkCount = (result.match(/<a href/g) || []).length;
+			expect(linkCount).toBe(2);
+		});
+
+		it("handles link inside bold text", () => {
+			const result = parseMarkdown("**[Bold Link](https://example.com)**");
+			expect(result).toContain("<strong>");
+			expect(result).toContain('<a href="https://example.com"');
+		});
+
+		it("does not convert javascript: URLs", () => {
+			const result = parseMarkdown("[click](javascript:alert(1))");
+			expect(result).not.toContain("<a href");
+		});
+
+		it("does not convert data: URLs", () => {
+			const result = parseMarkdown(
+				"[click](data:text/html,<script>alert(1)</script>)",
+			);
+			expect(result).not.toContain("<a href");
+		});
+	});
+
 	describe("complex content", () => {
 		it("handles mixed content types", () => {
 			const markdown = `# Title
@@ -261,6 +376,34 @@ Final paragraph.`;
 			const h2Pos = result.indexOf("<h2");
 			expect(h1Pos).toBeLessThan(pPos);
 			expect(pPos).toBeLessThan(h2Pos);
+		});
+
+		it("handles report-like content with all features", () => {
+			const markdown = `## AI技術の最新動向
+
+近年、**大規模言語モデル**（LLM）の進化が加速しています。
+
+> GPT-4やGeminiの登場により、自然言語処理の精度は飛躍的に向上しました。
+
+### 主要な進展
+
+- *Transformer*アーキテクチャの改良
+- マルチモーダル対応の拡大
+- 推論コストの低減
+
+---
+
+詳細は[公式サイト](https://example.com)を参照してください。`;
+
+			const result = parseMarkdown(markdown);
+			expect(result).toContain("<h2");
+			expect(result).toContain("<strong>大規模言語モデル</strong>");
+			expect(result).toContain("<blockquote");
+			expect(result).toContain("<h3");
+			expect(result).toContain("<ul");
+			expect(result).toContain("<em>Transformer</em>");
+			expect(result).toContain("<hr");
+			expect(result).toContain('<a href="https://example.com"');
 		});
 	});
 });

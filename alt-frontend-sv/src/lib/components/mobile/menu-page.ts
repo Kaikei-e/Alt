@@ -60,9 +60,7 @@ export const MENU_SECTIONS: MenuSection[] = [
 	},
 	{
 		title: "Settings",
-		items: [
-			{ label: "Manage Feeds", href: "/settings/feeds", icon: Link },
-		],
+		items: [{ label: "Manage Feeds", href: "/settings/feeds", icon: Link }],
 	},
 	{
 		title: "Admin",

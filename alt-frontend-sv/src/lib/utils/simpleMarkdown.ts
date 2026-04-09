@@ -9,6 +9,9 @@
  * - Ordered Lists (1. item)
  * - Code Blocks (```)
  * - Inline Code (`)
+ * - Links ([text](url))
+ * - Blockquotes (> text)
+ * - Horizontal Rules (---, ***, ___)
  * - Paragraphs
  */
 export function parseMarkdown(text: string): string {
@@ -24,7 +27,19 @@ export function parseMarkdown(text: string): string {
 	let inCodeBlock = false;
 	let inList = false;
 	let listType: "ul" | "ol" | null = null;
+	let inBlockquote = false;
+	let blockquoteBuffer: string[] = [];
 	let paragraphBuffer: string[] = [];
+
+	// Helper to flush current blockquote buffer
+	const flushBlockquote = () => {
+		if (blockquoteBuffer.length > 0) {
+			const content = blockquoteBuffer.join("<br>");
+			html += `<blockquote class="pl-3 border-l-2 border-current opacity-80 italic my-2">${content}</blockquote>\n`;
+			blockquoteBuffer = [];
+			inBlockquote = false;
+		}
+	};
 
 	// Helper to flush current paragraph buffer
 	const flushParagraph = () => {
@@ -51,9 +66,10 @@ export function parseMarkdown(text: string): string {
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
+		const trimmed = line.trim();
 
 		// Code Blocks
-		if (line.trim().startsWith("```")) {
+		if (trimmed.startsWith("```")) {
 			flushParagraph();
 			if (inCodeBlock) {
 				html += "</code></pre>\n";
@@ -70,6 +86,38 @@ export function parseMarkdown(text: string): string {
 			// Escape HTML in code blocks
 			html += escapeHtml(line) + "\n";
 			continue;
+		}
+
+		// Horizontal Rules (must check before headers/lists since --- could be confused)
+		if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+			flushParagraph();
+			flushBlockquote();
+			if (inList) {
+				html += `</${listType}>\n`;
+				inList = false;
+				listType = null;
+			}
+			html += "<hr>\n";
+			continue;
+		}
+
+		// Blockquotes
+		if (trimmed.startsWith("> ") || trimmed === ">") {
+			flushParagraph();
+			if (inList) {
+				html += `</${listType}>\n`;
+				inList = false;
+				listType = null;
+			}
+			const content = trimmed.startsWith("> ") ? trimmed.slice(2) : "";
+			blockquoteBuffer.push(parseInline(content));
+			inBlockquote = true;
+			continue;
+		}
+
+		// If we were in a blockquote and hit a non-blockquote line, flush it
+		if (inBlockquote) {
+			flushBlockquote();
 		}
 
 		// Headers
@@ -105,7 +153,6 @@ export function parseMarkdown(text: string): string {
 		}
 
 		// Lists
-		const trimmed = line.trim();
 		const isUnordered = trimmed.startsWith("- ");
 		const isOrdered = /^\d+\.\s/.test(trimmed);
 
@@ -157,6 +204,7 @@ export function parseMarkdown(text: string): string {
 
 	// Final flush
 	flushParagraph();
+	flushBlockquote();
 
 	if (inList) {
 		html += `</${listType}>\n`;
@@ -179,6 +227,11 @@ function parseInline(text: string): string {
 	text = text.replace(
 		/`([^`]+)`/g,
 		'<code class="bg-muted px-1 rounded font-mono text-sm">$1</code>',
+	);
+	// Links — only allow http/https URLs to block javascript:/data: XSS vectors
+	text = text.replace(
+		/\[([^\]]+)\]\((https?:\/\/[^)]*)\)/g,
+		'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
 	);
 	return text;
 }

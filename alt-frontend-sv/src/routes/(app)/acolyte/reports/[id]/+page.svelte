@@ -1,74 +1,84 @@
 <script lang="ts">
-	import { page } from "$app/state";
-	import { onMount } from "svelte";
-	import {
-		getReport,
-		listReportVersions,
-		startReportRun,
-		rerunSection,
-		type AcolyteReport,
-		type AcolyteSection,
-		type AcolyteVersionSummary,
-	} from "$lib/connect/acolyte";
+import { page } from "$app/state";
+import { onMount } from "svelte";
+import {
+	getReport,
+	listReportVersions,
+	startReportRun,
+	rerunSection,
+	type AcolyteReport,
+	type AcolyteSection,
+	type AcolyteVersionSummary,
+} from "$lib/connect/acolyte";
+import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 
-	let report = $state<AcolyteReport | null>(null);
-	let sections = $state<AcolyteSection[]>([]);
-	let versions = $state<AcolyteVersionSummary[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-	let showHistory = $state(false);
-	let revealed = $state(false);
-	let activeSection = $state<string | null>(null);
+let report = $state<AcolyteReport | null>(null);
+let sections = $state<AcolyteSection[]>([]);
+let versions = $state<AcolyteVersionSummary[]>([]);
+let loading = $state(true);
+let error = $state<string | null>(null);
+let showHistory = $state(false);
+let revealed = $state(false);
+let activeSection = $state<string | null>(null);
 
-	async function loadReport() {
-		const id = page.params.id;
-		if (!id) return;
-		try {
-			loading = true;
-			const [rpt, ver] = await Promise.all([
-				getReport(id),
-				listReportVersions(id, undefined, 30),
-			]);
-			report = rpt.report ?? null;
-			sections = rpt.sections ?? [];
-			versions = ver.versions ?? [];
-			if (sections.length > 0 && !activeSection) {
-				activeSection = sections[0].sectionKey;
-			}
-		} catch (e) {
-			error = e instanceof Error ? e.message : "Failed to load report";
-		} finally {
-			loading = false;
-			requestAnimationFrame(() => { revealed = true; });
+async function loadReport() {
+	const id = page.params.id;
+	if (!id) return;
+	try {
+		loading = true;
+		const [rpt, ver] = await Promise.all([
+			getReport(id),
+			listReportVersions(id, undefined, 30),
+		]);
+		report = rpt.report ?? null;
+		sections = rpt.sections ?? [];
+		versions = ver.versions ?? [];
+		if (sections.length > 0 && !activeSection) {
+			activeSection = sections[0].sectionKey;
 		}
+	} catch (e) {
+		error = e instanceof Error ? e.message : "Failed to load report";
+	} finally {
+		loading = false;
+		requestAnimationFrame(() => {
+			revealed = true;
+		});
 	}
+}
 
-	async function handleGenerate() {
-		if (!report) return;
-		try {
-			await startReportRun(report.reportId);
-			await loadReport();
-		} catch (e) {
-			error = e instanceof Error ? e.message : "Failed to start run";
-		}
+async function handleGenerate() {
+	if (!report) return;
+	try {
+		await startReportRun(report.reportId);
+		await loadReport();
+	} catch (e) {
+		error = e instanceof Error ? e.message : "Failed to start run";
 	}
+}
 
-	async function handleRerun(key: string) {
-		if (!report) return;
-		try {
-			await rerunSection(report.reportId, key);
-			await loadReport();
-		} catch (e) {
-			error = e instanceof Error ? e.message : "Rerun failed";
-		}
+async function handleRerun(key: string) {
+	if (!report) return;
+	try {
+		await rerunSection(report.reportId, key);
+		await loadReport();
+	} catch (e) {
+		error = e instanceof Error ? e.message : "Rerun failed";
 	}
+}
 
-	function changeKindIcon(kind: string): string {
-		const m: Record<string, string> = { added: "+", updated: "~", removed: "−", regenerated: "↻" };
-		return m[kind] ?? "?";
-	}
+function changeKindIcon(kind: string): string {
+	const m: Record<string, string> = {
+		added: "+",
+		updated: "~",
+		removed: "−",
+		regenerated: "↻",
+	};
+	return m[kind] ?? "?";
+}
 
-	onMount(() => { loadReport(); });
+onMount(() => {
+	loadReport();
+});
 </script>
 
 <div class="aco-detail" class:revealed>
@@ -144,7 +154,7 @@
 								</div>
 								<div class="section-prose">
 									{#if sec.body}
-										{sec.body}
+										{@html parseMarkdown(sec.body)}
 									{:else}
 										<span class="no-content">Awaiting generation&hellip;</span>
 									{/if}
@@ -290,8 +300,42 @@
 	.section-prose {
 		font-family: var(--font-body, "Source Sans 3", sans-serif);
 		font-size: 0.95rem; line-height: 1.72; color: var(--alt-charcoal, #1a1a1a);
-		white-space: pre-wrap; max-width: 65ch;
+		max-width: 65ch;
 	}
+	.section-prose :global(h1) {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1.3rem; font-weight: 700; margin: 1.5rem 0 0.5rem; line-height: 1.25;
+	}
+	.section-prose :global(h2) {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1.1rem; font-weight: 700; margin: 1.25rem 0 0.4rem; line-height: 1.3;
+	}
+	.section-prose :global(h3) {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 0.95rem; font-weight: 700; margin: 1rem 0 0.3rem; line-height: 1.35;
+	}
+	.section-prose :global(p) { margin: 0 0 0.75rem; line-height: 1.72; }
+	.section-prose :global(ul),
+	.section-prose :global(ol) { margin: 0.5rem 0 0.75rem; padding-left: 1.5rem; }
+	.section-prose :global(ul) { list-style-type: disc; }
+	.section-prose :global(ol) { list-style-type: decimal; }
+	.section-prose :global(li) { margin-bottom: 0.25rem; line-height: 1.6; }
+	.section-prose :global(blockquote) {
+		border-left: 2px solid var(--alt-charcoal, #1a1a1a); padding-left: 0.75rem;
+		margin: 0.75rem 0; font-style: italic; color: var(--alt-slate, #666);
+	}
+	.section-prose :global(a) {
+		color: var(--alt-primary, #2f4f4f); text-decoration: underline;
+		text-decoration-thickness: 1px; text-underline-offset: 2px; transition: color 0.15s;
+	}
+	.section-prose :global(a:hover) { color: var(--alt-charcoal, #1a1a1a); }
+	.section-prose :global(hr) { border: none; border-top: 1px solid var(--surface-border, #c8c8c8); margin: 1.25rem 0; }
+	.section-prose :global(pre) {
+		background: var(--surface-2, #f5f4f1); padding: 0.75rem; overflow-x: auto;
+		margin: 0.75rem 0; font-size: 0.85rem; line-height: 1.5;
+	}
+	.section-prose :global(code) { font-family: var(--font-mono, "IBM Plex Mono", monospace); font-size: 0.85em; }
+	.section-prose :global(strong) { font-weight: 700; }
 	.no-content { font-style: italic; color: var(--alt-ash, #999); }
 
 	/* History sidebar */

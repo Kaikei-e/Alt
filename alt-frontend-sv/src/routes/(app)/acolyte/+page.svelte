@@ -1,55 +1,55 @@
 <script lang="ts">
-	import { goto } from "$app/navigation";
-	import { onMount } from "svelte";
-	import {
-		listReports,
-		startReportRun,
-		type AcolyteReportSummary,
-	} from "$lib/connect/acolyte";
+import { goto } from "$app/navigation";
+import { onMount } from "svelte";
+import {
+	listReports,
+	startReportRun,
+	type AcolyteReportSummary,
+} from "$lib/connect/acolyte";
 
-	let reports = $state<AcolyteReportSummary[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-	let revealed = $state(false);
+let reports = $state<AcolyteReportSummary[]>([]);
+let loading = $state(true);
+let error = $state<string | null>(null);
+let revealed = $state(false);
 
-	async function loadReports() {
-		try {
-			loading = true;
-			const result = await listReports(undefined, 50);
-			reports = result.reports ?? [];
-		} catch (e) {
-			error = e instanceof Error ? e.message : "Failed to load reports";
-		} finally {
-			loading = false;
-			requestAnimationFrame(() => {
-				revealed = true;
-			});
-		}
+async function loadReports() {
+	try {
+		loading = true;
+		const result = await listReports(undefined, 50);
+		reports = result.reports ?? [];
+	} catch (e) {
+		error = e instanceof Error ? e.message : "Failed to load reports";
+	} finally {
+		loading = false;
+		requestAnimationFrame(() => {
+			revealed = true;
+		});
 	}
+}
 
-	async function handleStartRun(ev: MouseEvent, reportId: string) {
-		ev.stopPropagation();
-		try {
-			await startReportRun(reportId);
-			await loadReports();
-		} catch (e) {
-			error = e instanceof Error ? e.message : "Failed to start run";
-		}
+async function handleStartRun(ev: MouseEvent, reportId: string) {
+	ev.stopPropagation();
+	try {
+		await startReportRun(reportId);
+		await loadReports();
+	} catch (e) {
+		error = e instanceof Error ? e.message : "Failed to start run";
 	}
+}
 
-	function statusLabel(s: string): string {
-		const map: Record<string, string> = {
-			succeeded: "Complete",
-			running: "Running",
-			failed: "Failed",
-			pending: "Queued",
-		};
-		return map[s] ?? "Draft";
-	}
+function statusLabel(s: string): string {
+	const map: Record<string, string> = {
+		succeeded: "Complete",
+		running: "Running",
+		failed: "Failed",
+		pending: "Queued",
+	};
+	return map[s] ?? "Draft";
+}
 
-	onMount(() => {
-		loadReports();
-	});
+onMount(() => {
+	loadReports();
+});
 </script>
 
 <div class="aco-index" class:revealed>

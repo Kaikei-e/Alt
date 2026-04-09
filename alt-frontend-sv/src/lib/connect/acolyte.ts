@@ -7,7 +7,10 @@
 
 const BASE = "/api/v2";
 
-async function rpc<T>(method: string, body: Record<string, unknown> = {}): Promise<T> {
+async function rpc<T>(
+	method: string,
+	body: Record<string, unknown> = {},
+): Promise<T> {
 	const resp = await fetch(`${BASE}/alt.acolyte.v1.AcolyteService/${method}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
