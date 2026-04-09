@@ -83,7 +83,7 @@ export function buildAugurStreamMessages(
 	for (let i = 0; i < words.length; i += 3) {
 		chunks.push({
 			kind: "delta" as const,
-			delta: words.slice(i, i + 3).join(" ") + " ",
+			delta: `${words.slice(i, i + 3).join(" ")} `,
 		});
 	}
 	chunks.push({

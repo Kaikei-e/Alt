@@ -174,7 +174,7 @@ function getPosition(
 	if (hasServerPositions) {
 		return [tag.positionX, tag.positionY, tag.positionZ];
 	}
-	return fallbackPositions![index];
+	return fallbackPositions?.[index] ?? [0, 0, 0];
 }
 
 function handleTagSelect(tag: TagCloudItem) {

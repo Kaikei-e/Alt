@@ -106,11 +106,11 @@ describe("knowledge_home client", () => {
 			expect(result.items[0].why[1].tag).toBe("AI");
 			expect(result.items[0].summaryState).toBe("ready");
 			expect(result.digest).not.toBeNull();
-			expect(result.digest!.newArticles).toBe(42);
-			expect(result.digest!.topTags).toEqual(["AI", "Go"]);
-			expect(result.digest!.needToKnowCount).toBe(3);
-			expect(result.digest!.digestFreshness).toBe("fresh");
-			expect(result.digest!.lastProjectedAt).toBe("2026-03-17T10:00:00Z");
+			expect(result.digest?.newArticles).toBe(42);
+			expect(result.digest?.topTags).toEqual(["AI", "Go"]);
+			expect(result.digest?.needToKnowCount).toBe(3);
+			expect(result.digest?.digestFreshness).toBe("fresh");
+			expect(result.digest?.lastProjectedAt).toBe("2026-03-17T10:00:00Z");
 			expect(result.nextCursor).toBe("cursor-abc");
 			expect(result.hasMore).toBe(true);
 			expect(result.degraded).toBe(false);

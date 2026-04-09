@@ -7,8 +7,7 @@ import FeedCard from "./FeedCard.svelte";
 
 describe("FeedCard", () => {
 	it("renders feed metadata and button when unread", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FeedCard as any, {
+		render(FeedCard as never, {
 			props: {
 				feed: renderFeedFixture,
 				isReadStatus: false,
@@ -29,8 +28,7 @@ describe("FeedCard", () => {
 
 	it("calls setIsReadStatus with normalized URL when Mark as read is clicked", async () => {
 		const setIsReadStatus = vi.fn();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FeedCard as any, {
+		render(FeedCard as never, {
 			props: {
 				feed: renderFeedFixture,
 				isReadStatus: false,
@@ -49,8 +47,7 @@ describe("FeedCard", () => {
 	});
 
 	it("renders nothing when feed is already read", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FeedCard as any, {
+		render(FeedCard as never, {
 			props: {
 				feed: renderFeedFixture,
 				isReadStatus: true,

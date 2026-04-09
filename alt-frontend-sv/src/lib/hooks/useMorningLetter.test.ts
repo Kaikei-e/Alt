@@ -131,7 +131,7 @@ describe("useMorningLetter", () => {
 
 	it("separates letterLoading and sourcesLoading", async () => {
 		// Make sources slower than letter
-		let resolveSourcesFn: (v: unknown) => void;
+		let resolveSourcesFn: (v: unknown) => void = () => {};
 		const sourcesPromise = new Promise((resolve) => {
 			resolveSourcesFn = resolve;
 		});
@@ -147,7 +147,7 @@ describe("useMorningLetter", () => {
 		expect(ml.sourcesLoading).toBe(true);
 
 		// Resolve sources
-		resolveSourcesFn!(fakeSources);
+		resolveSourcesFn?.(fakeSources);
 		await sourcesPromise;
 		// Wait a tick for state to update
 		await new Promise((r) => setTimeout(r, 0));

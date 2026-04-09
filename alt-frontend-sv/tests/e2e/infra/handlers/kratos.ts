@@ -68,7 +68,7 @@ function validateRedirectUrl(
  */
 export function createKratosServer(): http.Server {
 	return http.createServer((req, res) => {
-		const url = new URL(req.url!, `http://${req.headers.host}`);
+		const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
 		const path = url.pathname;
 
 		log(`${req.method} ${path}`);

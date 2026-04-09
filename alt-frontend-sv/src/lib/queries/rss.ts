@@ -19,10 +19,7 @@ import {
 	deleteRSSFeedLink,
 	registerFavoriteFeed,
 	type RSSFeedLink,
-	type RegisterRSSFeedResult,
 	type ListRSSFeedLinksResult,
-	type DeleteRSSFeedLinkResult,
-	type RegisterFavoriteFeedResult,
 } from "$lib/connect/rss";
 import { rssKeys, feedKeys } from "./keys";
 

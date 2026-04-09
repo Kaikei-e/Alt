@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
+import type { Identity } from "@ory/client";
 import { createAuthStore, AUTH_STORE_KEY, type AuthStore } from "./auth.svelte";
 
 describe("AuthStore", () => {
@@ -23,7 +24,7 @@ describe("AuthStore", () => {
 			const mockUser = {
 				id: "user-123",
 				traits: { email: "test@example.com" },
-			} as any;
+			} as unknown as Identity;
 
 			authStore.setUser(mockUser);
 
@@ -35,7 +36,7 @@ describe("AuthStore", () => {
 			const mockUser = {
 				id: "user-123",
 				traits: { email: "test@example.com" },
-			} as any;
+			} as unknown as Identity;
 
 			authStore.setUser(mockUser);
 			authStore.setUser(null);
@@ -50,7 +51,7 @@ describe("AuthStore", () => {
 			const store1 = createAuthStore();
 			const store2 = createAuthStore();
 
-			const mockUser = { id: "user-1" } as any;
+			const mockUser = { id: "user-1" } as unknown as Identity;
 			store1.setUser(mockUser);
 
 			expect(store1.user?.id).toBe("user-1");
@@ -60,7 +61,7 @@ describe("AuthStore", () => {
 
 	describe("logout", () => {
 		it("should clear user and set isAuthenticated to false", () => {
-			const mockUser = { id: "user-123" } as any;
+			const mockUser = { id: "user-123" } as unknown as Identity;
 			authStore.setUser(mockUser);
 
 			authStore.logout();

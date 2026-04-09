@@ -1,6 +1,6 @@
 import { chromium, type FullConfig } from "@playwright/test";
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
 import { startMockServers, waitForMockServersReady } from "./infra/mock-server";
 
 const STORAGE_STATE_PATH = "tests/e2e/.auth/storage.json";

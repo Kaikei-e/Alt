@@ -83,7 +83,7 @@ describe("VisualPreviewCard", () => {
 
 	describe("rendering", () => {
 		it("renders the visual preview card with feed title", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -93,7 +93,7 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("renders the swipe card container", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -103,7 +103,7 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("renders the action footer with buttons", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -113,7 +113,7 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("renders Article button", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -123,7 +123,7 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("renders Summary button", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -135,7 +135,7 @@ describe("VisualPreviewCard", () => {
 
 	describe("thumbnail rendering", () => {
 		it("renders thumbnail image when URL is provided", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -145,7 +145,7 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("renders fallback gradient when thumbnailUrl is null", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: {
 					...defaultProps,
 					thumbnailUrl: null,
@@ -158,7 +158,7 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("thumbnail image has correct src", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -169,7 +169,7 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("thumbnail image has lazy loading", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -180,7 +180,7 @@ describe("VisualPreviewCard", () => {
 
 	describe("accessibility", () => {
 		it("has correct aria-label for external link", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -190,7 +190,7 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("sets aria-busy when component is busy", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: {
 					...defaultProps,
 					isBusy: true,
@@ -204,7 +204,7 @@ describe("VisualPreviewCard", () => {
 
 	describe("feed info", () => {
 		it("displays feed description", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -214,7 +214,7 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("displays 'Swipe to mark as read' text", async () => {
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: defaultProps,
 			});
 
@@ -228,7 +228,7 @@ describe("VisualPreviewCard", () => {
 		it("uses cached content when getCachedContent returns value", async () => {
 			const getCachedContent = vi.fn(() => "<p>Cached</p>");
 
-			render(VisualPreviewCard as any, {
+			render(VisualPreviewCard as never, {
 				props: {
 					...defaultProps,
 					getCachedContent,

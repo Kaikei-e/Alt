@@ -16,9 +16,9 @@ describe("MENU_SECTIONS", () => {
 		expect(browse?.items).toHaveLength(6);
 	});
 
-	it("AI & Insights section has 3 items", () => {
+	it("AI & Insights section has 4 items", () => {
 		const ai = MENU_SECTIONS.find((s) => s.title === "AI & Insights");
-		expect(ai?.items).toHaveLength(3);
+		expect(ai?.items).toHaveLength(4);
 	});
 
 	it("Settings section has 1 item", () => {

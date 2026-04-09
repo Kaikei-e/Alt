@@ -29,9 +29,7 @@ function renderModal(overrides: Partial<RecapModalData> | null = {}) {
 describe("RecapPreviewModal", () => {
 	it("renders genre title when open", async () => {
 		renderModal();
-		await expect
-			.element(page.getByText("Technology"))
-			.toBeInTheDocument();
+		await expect.element(page.getByText("Technology")).toBeInTheDocument();
 	});
 
 	it("renders summary text", async () => {
@@ -53,16 +51,12 @@ describe("RecapPreviewModal", () => {
 
 	it("does not render Key Points section when bullets is undefined", async () => {
 		renderModal({ bullets: undefined });
-		await expect
-			.element(page.getByText("Key Points"))
-			.not.toBeInTheDocument();
+		await expect.element(page.getByText("Key Points")).not.toBeInTheDocument();
 	});
 
 	it("does not render Key Points section when bullets is empty", async () => {
 		renderModal({ bullets: [] });
-		await expect
-			.element(page.getByText("Key Points"))
-			.not.toBeInTheDocument();
+		await expect.element(page.getByText("Key Points")).not.toBeInTheDocument();
 	});
 
 	it("renders top terms as badges", async () => {
@@ -80,22 +74,16 @@ describe("RecapPreviewModal", () => {
 
 	it("does not render Tags section when tags is undefined", async () => {
 		renderModal({ tags: undefined });
-		await expect
-			.element(page.getByText("Tags"))
-			.not.toBeInTheDocument();
+		await expect.element(page.getByText("Tags")).not.toBeInTheDocument();
 	});
 
 	it("renders window days badge", async () => {
 		renderModal();
-		await expect
-			.element(page.getByText("3-day"))
-			.toBeInTheDocument();
+		await expect.element(page.getByText("3-day")).toBeInTheDocument();
 	});
 
 	it("does not render content when data is null", async () => {
 		renderModal(null);
-		await expect
-			.element(page.getByText("Technology"))
-			.not.toBeInTheDocument();
+		await expect.element(page.getByText("Technology")).not.toBeInTheDocument();
 	});
 });

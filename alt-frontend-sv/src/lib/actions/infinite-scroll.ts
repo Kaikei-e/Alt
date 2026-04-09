@@ -74,15 +74,10 @@ export function infiniteScroll(
 						// Re-observe after a short delay to allow DOM updates
 						await new Promise((resolve) => requestAnimationFrame(resolve));
 						// Check if observer still exists and element is still connected
-						if (
-							observer &&
-							element &&
-							element.isConnected &&
-							!currentOptions.disabled
-						) {
+						if (observer && element?.isConnected && !currentOptions.disabled) {
 							try {
 								observer.observe(element);
-							} catch (err) {
+							} catch (_err) {
 								// Element may have been removed, ignore error
 							}
 						}
@@ -135,8 +130,7 @@ export function infiniteScroll(
 			} else if (
 				!observer &&
 				!newOptions.disabled &&
-				element &&
-				element.isConnected &&
+				element?.isConnected &&
 				!isSettingUp
 			) {
 				// Observer was disconnected but should be enabled, recreate it

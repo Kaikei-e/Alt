@@ -13,10 +13,10 @@ describe("categorizeRecallReasons", () => {
 		const groups = categorizeRecallReasons(reasons);
 		const revisit = groups.find((g) => g.key === "revisit");
 		expect(revisit).toBeDefined();
-		expect(revisit!.label).toBe("Revisit");
-		expect(revisit!.items).toHaveLength(1);
-		expect(revisit!.items[0].displayLabel).toBe("Not revisited");
-		expect(revisit!.items[0].reason.description).toBe(
+		expect(revisit?.label).toBe("Revisit");
+		expect(revisit?.items).toHaveLength(1);
+		expect(revisit?.items[0].displayLabel).toBe("Not revisited");
+		expect(revisit?.items[0].reason.description).toBe(
 			"Opened 3 days ago, not revisited since",
 		);
 	});
@@ -33,8 +33,8 @@ describe("categorizeRecallReasons", () => {
 		const groups = categorizeRecallReasons(reasons);
 		const connection = groups.find((g) => g.key === "connection");
 		expect(connection).toBeDefined();
-		expect(connection!.label).toBe("Connection");
-		expect(connection!.items).toHaveLength(3);
+		expect(connection?.label).toBe("Connection");
+		expect(connection?.items).toHaveLength(3);
 	});
 
 	it("categorizes tag_interaction under 'Connection'", () => {
@@ -44,8 +44,8 @@ describe("categorizeRecallReasons", () => {
 		const groups = categorizeRecallReasons(reasons);
 		const connection = groups.find((g) => g.key === "connection");
 		expect(connection).toBeDefined();
-		expect(connection!.items).toHaveLength(1);
-		expect(connection!.items[0].displayLabel).toBe("Tag explored");
+		expect(connection?.items).toHaveLength(1);
+		expect(connection?.items[0].displayLabel).toBe("Tag explored");
 	});
 
 	it("categorizes recap/pulse under 'Completion'", () => {
@@ -56,8 +56,8 @@ describe("categorizeRecallReasons", () => {
 		const groups = categorizeRecallReasons(reasons);
 		const completion = groups.find((g) => g.key === "completion");
 		expect(completion).toBeDefined();
-		expect(completion!.label).toBe("Completion");
-		expect(completion!.items).toHaveLength(2);
+		expect(completion?.label).toBe("Completion");
+		expect(completion?.items).toHaveLength(2);
 	});
 
 	it("returns empty array for empty reasons", () => {
@@ -72,7 +72,7 @@ describe("categorizeRecallReasons", () => {
 		const groups = categorizeRecallReasons(reasons);
 		const other = groups.find((g) => g.key === "other");
 		expect(other).toBeDefined();
-		expect(other!.items[0].displayLabel).toBe("Some custom reason");
+		expect(other?.items[0].displayLabel).toBe("Some custom reason");
 	});
 
 	it("handles mixed categories and preserves order", () => {

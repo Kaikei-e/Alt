@@ -6,7 +6,7 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { swipe, type SwipeDirection } from "./swipe";
+import { swipe } from "./swipe";
 
 describe("swipe action", () => {
 	let element: HTMLDivElement;

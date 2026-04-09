@@ -69,7 +69,7 @@ test.describe("Knowledge Home Admin - Storage Tab", () => {
 		await expect(adminPage.retentionStatusPanel).toBeVisible();
 	});
 
-	test("Create Snapshot requires confirmation dialog", async ({ page }) => {
+	test("Create Snapshot requires confirmation dialog", async () => {
 		await adminPage.goto();
 		await adminPage.waitForAdminLoaded();
 		await adminPage.switchToStorageTab();

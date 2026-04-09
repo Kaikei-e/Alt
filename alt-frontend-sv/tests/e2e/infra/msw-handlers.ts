@@ -15,10 +15,6 @@ import {
 	KRATOS_SESSION_COOKIE_NAME,
 	KRATOS_SESSION_COOKIE_VALUE,
 	buildAuthHubSession,
-	DEV_USER_ID,
-	DEV_JWT_SECRET,
-	DEV_JWT_ISSUER,
-	DEV_JWT_AUDIENCE,
 } from "./data/session";
 import {
 	FEEDS_RESPONSE,
@@ -364,8 +360,7 @@ export const backendHandlers = [
 
 	// StreamChat (Augur) - Connect-RPC streaming
 	http.post("*/alt.augur.v2.AugurService/StreamChat", () => {
-		const body =
-			AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n") + "\n";
+		const body = `${AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n")}\n`;
 		return new HttpResponse(body, {
 			headers: {
 				"Content-Type": "application/connect+json",

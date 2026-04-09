@@ -182,7 +182,7 @@ $effect(() => {
 		}
 	};
 
-	const swipeEndHandler = (event: Event) => {
+	const swipeEndHandler = (_event: Event) => {
 		// ドラッグが終わったので中央に戻す
 		// 実際にスワイプが成立した場合は、swipe イベント → handleSwipe → onDismiss が走るので、
 		// カード自体はすぐ差し替えられる

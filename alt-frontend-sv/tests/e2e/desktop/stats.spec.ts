@@ -67,7 +67,9 @@ test.describe("Desktop Statistics", () => {
 				constructor(url: string) {
 					this.url = url;
 					setTimeout(() => {
-						(this as any).onerror?.(new Event("error"));
+						(this as unknown as { onerror?: (e: Event) => void }).onerror?.(
+							new Event("error"),
+						);
 					}, 0);
 				}
 				close() {
@@ -79,7 +81,8 @@ test.describe("Desktop Statistics", () => {
 					return false;
 				}
 			}
-			(window as any).EventSource = DisconnectedEventSource;
+			(window as unknown as Record<string, unknown>).EventSource =
+				DisconnectedEventSource;
 		});
 
 		await desktopStatsPage.goto();

@@ -122,7 +122,7 @@ export function swipe(node: HTMLElement, options: SwipeOptions = {}) {
 		}
 	}
 
-	function onTouchEnd(ev: TouchEvent) {
+	function onTouchEnd(_ev: TouchEvent) {
 		touchActive = false;
 		touchAxis = "undecided";
 	}

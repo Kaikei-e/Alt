@@ -34,7 +34,7 @@ function groupByDate(items: RecapSearchResultItem[]): DateGroup[] {
 		if (!groups.has(date)) {
 			groups.set(date, []);
 		}
-		groups.get(date)!.push(item);
+		groups.get(date)?.push(item);
 	}
 	return Array.from(groups.entries()).map(([date, items]) => ({ date, items }));
 }

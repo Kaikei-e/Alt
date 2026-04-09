@@ -20,8 +20,8 @@ async function load() {
 	try {
 		// Pass windowSeconds and limit (default 200)
 		jobs = await getRecapJobs(fetch, windowSeconds, 200);
-	} catch (e: any) {
-		error = e.message;
+	} catch (e: unknown) {
+		error = e instanceof Error ? e.message : String(e);
 		console.error("Failed to load recap jobs", e);
 	} finally {
 		loading = false;

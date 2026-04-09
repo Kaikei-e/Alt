@@ -88,7 +88,6 @@ test.describe("Desktop Tag Articles", () => {
 	});
 
 	test("clicking article card opens detail panel", async ({
-		page,
 		desktopTagArticlesPage,
 	}) => {
 		await desktopTagArticlesPage.gotoWithTag("AI");

@@ -4,7 +4,6 @@ import {
 	getLatestLetter,
 	getLetterByDate,
 } from "$lib/connect";
-import type { MorningLetterDocument } from "$lib/connect";
 
 // Connect-RPC transport requires browser context
 export const ssr = false;

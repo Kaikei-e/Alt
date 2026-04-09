@@ -6,11 +6,13 @@ vi.mock("$lib/api/client", () => ({
 }));
 
 import { ArticlePrefetcher } from "./articlePrefetcher";
+import type { RenderFeed } from "$lib/schema/feed";
+import type { FeedContentOnTheFlyResponse } from "$lib/api/client/articles";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client";
 
 const mockedGetContent = vi.mocked(getFeedContentOnTheFlyClient);
 
-function makeFeed(id: string, url: string) {
+function makeFeed(id: string, url: string): RenderFeed {
 	return {
 		id,
 		normalizedUrl: url,
@@ -20,7 +22,7 @@ function makeFeed(id: string, url: string) {
 		published: "",
 		author: "",
 		feedSource: "",
-	} as any;
+	} as unknown as RenderFeed;
 }
 
 describe("ArticlePrefetcher", () => {
@@ -100,14 +102,14 @@ describe("ArticlePrefetcher", () => {
 
 	describe("same-host prefetch limiting", () => {
 		it("skips prefetch when another fetch for the same host is in-flight", async () => {
-			let resolveFirst: (value: any) => void;
+			let resolveFirst: (value: unknown) => void = () => {};
 			const firstCallPromise = new Promise((resolve) => {
 				resolveFirst = resolve;
 			});
 
 			// Only mock the first call — the second should be skipped entirely
 			mockedGetContent.mockImplementationOnce(
-				() => firstCallPromise as Promise<any>,
+				() => firstCallPromise as Promise<FeedContentOnTheFlyResponse>,
 			);
 
 			const feeds = [
@@ -130,7 +132,7 @@ describe("ArticlePrefetcher", () => {
 			);
 
 			// Resolve the first call
-			resolveFirst!({
+			resolveFirst?.({
 				content: "<p>First</p>",
 				article_id: "art-1",
 				og_image_url: null,
@@ -149,12 +151,12 @@ describe("ArticlePrefetcher", () => {
 					content: "<p>Zenn</p>",
 					article_id: "art-z",
 					og_image_url: null,
-				} as any)
+				} as unknown as FeedContentOnTheFlyResponse)
 				.mockResolvedValueOnce({
 					content: "<p>Example</p>",
 					article_id: "art-e",
 					og_image_url: null,
-				} as any);
+				} as unknown as FeedContentOnTheFlyResponse);
 
 			const feeds = [
 				makeFeed("0", "https://active.com/page"),
@@ -191,7 +193,7 @@ describe("ArticlePrefetcher", () => {
 				content: "<p>Hello</p>",
 				article_id: "art-123",
 				og_image_url: null,
-			} as any);
+			} as unknown as FeedContentOnTheFlyResponse);
 
 			const feeds = [
 				makeFeed("0", "https://example.com/active"),
@@ -220,7 +222,7 @@ describe("ArticlePrefetcher", () => {
 				content: "<p>No article ID</p>",
 				article_id: "",
 				og_image_url: null,
-			} as any);
+			} as unknown as FeedContentOnTheFlyResponse);
 
 			const feeds = [
 				makeFeed("0", "https://example.com/active"),
@@ -248,7 +250,7 @@ describe("ArticlePrefetcher", () => {
 				content: "<p>test</p>",
 				article_id: "art-456",
 				og_image_url: null,
-			} as any);
+			} as unknown as FeedContentOnTheFlyResponse);
 
 			const feeds = [
 				makeFeed("0", "https://example.com/active"),

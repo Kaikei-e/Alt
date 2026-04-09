@@ -1,12 +1,6 @@
 import { getTrendStats } from "$lib/api/client/stats";
 import type { TrendDataResponse, TimeWindow } from "$lib/schema/stats";
 
-interface TrendStatsState {
-	data: TrendDataResponse | null;
-	loading: boolean;
-	error: string | null;
-}
-
 /**
  * Hook for fetching and managing trend statistics data.
  * Provides reactive state that updates when the time window changes.

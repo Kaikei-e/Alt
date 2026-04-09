@@ -153,7 +153,7 @@ async function handleSend() {
 				currentAbortController = null;
 				scrollToBottom();
 			},
-			(code) => {
+			(_code) => {
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex],
 					message: "I couldn't find enough recent news to answer that.",

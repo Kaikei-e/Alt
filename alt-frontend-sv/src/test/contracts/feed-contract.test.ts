@@ -13,7 +13,6 @@ import {
 	GetFeedStatsResponseSchema,
 	GetDetailedFeedStatsResponseSchema,
 	MarkAsReadResponseSchema,
-	type FeedItem,
 } from "$lib/gen/alt/feeds/v2/feeds_pb";
 import {
 	buildConnectFeedsResponse,

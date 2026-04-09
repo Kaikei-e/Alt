@@ -35,6 +35,9 @@ function makeCandidate(
 	};
 }
 
+const defaultItem = makeCandidate().item;
+if (!defaultItem) throw new Error("makeCandidate must return item");
+
 describe("RecallCandidateCard", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
@@ -65,7 +68,7 @@ describe("RecallCandidateCard", () => {
 			props: {
 				candidate: makeCandidate({
 					item: {
-						...makeCandidate().item!,
+						...defaultItem,
 						tags: ["AI", " ", "Go", "Rust"],
 					},
 				}),
@@ -91,7 +94,7 @@ describe("RecallCandidateCard", () => {
 			props: {
 				candidate: makeCandidate({
 					item: {
-						...makeCandidate().item!,
+						...defaultItem,
 						publishedAt: "not-a-date",
 					},
 				}),

@@ -58,7 +58,7 @@ describe("pickSuggestions", () => {
 			}
 		}
 		// critical should appear in every result for security tags (it's preferred)
-		expect(counts["critical"]).toBeGreaterThan(20);
+		expect(counts.critical).toBeGreaterThan(20);
 	});
 
 	it("prioritizes relevant categories for AI tags", () => {
@@ -73,7 +73,7 @@ describe("pickSuggestions", () => {
 				}
 			}
 		}
-		expect(counts["deep_dive"]).toBeGreaterThan(20);
+		expect(counts.deep_dive).toBeGreaterThan(20);
 	});
 
 	it("handles empty tags array", () => {

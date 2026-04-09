@@ -60,7 +60,9 @@ $effect(() => {
 	);
 
 	if (needsPrefetch.length > 0) {
-		const articleIds = needsPrefetch.map((f: RenderFeed) => f.articleId!);
+		const articleIds = needsPrefetch
+			.map((f: RenderFeed) => f.articleId)
+			.filter((id): id is string => id != null);
 		batchPrefetchImagesClient(articleIds)
 			.then((results) => {
 				for (const result of results) {

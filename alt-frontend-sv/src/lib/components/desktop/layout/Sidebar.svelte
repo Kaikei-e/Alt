@@ -195,7 +195,7 @@ function toggleSection(category: string) {
 }
 
 function isActive(href: string): boolean {
-	return page.url.pathname === href || page.url.pathname.startsWith(href + "?");
+	return page.url.pathname === href || page.url.pathname.startsWith(`${href}?`);
 }
 
 function isParentActive(children?: { href: string }[]): boolean {

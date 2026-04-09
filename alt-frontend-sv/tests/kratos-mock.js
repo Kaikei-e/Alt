@@ -1,5 +1,5 @@
-import http from "http";
-import url from "url";
+import http from "node:http";
+import url from "node:url";
 
 const PORT = 4435;
 
@@ -46,7 +46,7 @@ const server = http.createServer((req, res) => {
 
 	if (path === "/sessions/whoami") {
 		const cookie = req.headers.cookie;
-		if (cookie && cookie.includes("ory_kratos_session=e2e-session")) {
+		if (cookie?.includes("ory_kratos_session=e2e-session")) {
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(JSON.stringify(sessionPayload));
 		} else {

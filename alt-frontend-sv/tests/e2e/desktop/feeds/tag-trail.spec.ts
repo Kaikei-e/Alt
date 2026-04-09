@@ -57,7 +57,6 @@ test.describe("Desktop Tag Trail", () => {
 	});
 
 	test("shows tag buttons after tags stream", async ({
-		page,
 		desktopTagTrailPage,
 	}) => {
 		await desktopTagTrailPage.goto();

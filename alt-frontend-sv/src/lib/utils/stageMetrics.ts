@@ -47,7 +47,7 @@ export function calculateDurationSecs(
  */
 export function calculateStageDurations(
 	statusHistory: StatusTransition[],
-	jobKickedAt: string,
+	_jobKickedAt: string,
 	jobStatus: JobStatus,
 ): StageDuration[] {
 	if (!statusHistory || statusHistory.length === 0) {
@@ -121,7 +121,7 @@ export function calculateStageDurations(
 		const current = stageTiming.get(currentStage);
 		const next = stageTiming.get(nextStage);
 
-		if (current && current.start && !current.end && next && next.start) {
+		if (current?.start && !current.end && next?.start) {
 			current.end = next.start;
 			if (current.status === "running") {
 				current.status = "completed";
@@ -137,7 +137,7 @@ export function calculateStageDurations(
 			const timing = stageTiming.get(stage);
 
 			// Skip stages that already have complete timing data (both start and end)
-			if (timing && timing.start && timing.end) {
+			if (timing?.start && timing.end) {
 				continue;
 			}
 
@@ -171,12 +171,7 @@ export function calculateStageDurations(
 			if (i > 0) {
 				const prevStage = stageOrder[i - 1];
 				const prevTiming = stageTiming.get(prevStage);
-				if (
-					prevTiming &&
-					prevTiming.start &&
-					!prevTiming.end &&
-					inferredStart
-				) {
+				if (prevTiming?.start && !prevTiming.end && inferredStart) {
 					prevTiming.end = inferredStart;
 					if (prevTiming.status === "running") {
 						prevTiming.status = "completed";

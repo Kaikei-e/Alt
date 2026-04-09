@@ -10,8 +10,7 @@ const unreadFeed = { ...renderFeedFixture, isRead: false };
 
 describe("FavoriteCard", () => {
 	it("renders feed metadata (title, excerpt, author)", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FavoriteCard as any, {
+		render(FavoriteCard as never, {
 			props: { feed: unreadFeed },
 		});
 
@@ -27,8 +26,7 @@ describe("FavoriteCard", () => {
 	});
 
 	it("always renders when feed is read (unlike FeedCard which hides)", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FavoriteCard as any, {
+		render(FavoriteCard as never, {
 			props: { feed: readFeed },
 		});
 
@@ -39,8 +37,7 @@ describe("FavoriteCard", () => {
 	});
 
 	it("shows Read badge when feed.isRead is true", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FavoriteCard as any, {
+		render(FavoriteCard as never, {
 			props: { feed: readFeed },
 		});
 
@@ -48,8 +45,7 @@ describe("FavoriteCard", () => {
 	});
 
 	it("does not show Read badge when feed.isRead is false", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FavoriteCard as any, {
+		render(FavoriteCard as never, {
 			props: { feed: unreadFeed },
 		});
 
@@ -57,8 +53,7 @@ describe("FavoriteCard", () => {
 	});
 
 	it("does NOT have a Mark as read button", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FavoriteCard as any, {
+		render(FavoriteCard as never, {
 			props: { feed: unreadFeed },
 		});
 
@@ -68,8 +63,7 @@ describe("FavoriteCard", () => {
 	});
 
 	it("has a Show Details button", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FavoriteCard as any, {
+		render(FavoriteCard as never, {
 			props: { feed: unreadFeed },
 		});
 
@@ -77,8 +71,7 @@ describe("FavoriteCard", () => {
 	});
 
 	it("has an Open link pointing to normalizedUrl", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FavoriteCard as any, {
+		render(FavoriteCard as never, {
 			props: { feed: unreadFeed },
 		});
 
@@ -92,8 +85,7 @@ describe("FavoriteCard", () => {
 
 	it("shows Remove button and calls onRemove when clicked", async () => {
 		const onRemove = vi.fn();
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FavoriteCard as any, {
+		render(FavoriteCard as never, {
 			props: { feed: unreadFeed, onRemove },
 		});
 
@@ -105,8 +97,7 @@ describe("FavoriteCard", () => {
 	});
 
 	it("hides Remove button when onRemove is not provided", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FavoriteCard as any, {
+		render(FavoriteCard as never, {
 			props: { feed: unreadFeed },
 		});
 
@@ -116,8 +107,7 @@ describe("FavoriteCard", () => {
 	});
 
 	it("uses muted styling for read feeds", async () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		render(FavoriteCard as any, {
+		render(FavoriteCard as never, {
 			props: { feed: readFeed },
 		});
 

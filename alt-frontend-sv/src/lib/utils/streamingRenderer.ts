@@ -22,7 +22,7 @@ export interface StreamingRendererOptions {
 	/**
 	 * Callback for metadata events (e.g. citations, context)
 	 */
-	onMetadata?: (metadata: any) => void;
+	onMetadata?: (metadata: Record<string, unknown>) => void;
 	/**
 	 * Optional tick function from Svelte to force re-render
 	 * If provided, will be called after each chunk to ensure immediate rendering

@@ -119,7 +119,7 @@ export async function processSummarizeStreamingText(
 							// Numbers, booleans, etc
 							await renderer.processChunk(String(text));
 						}
-					} catch (e) {
+					} catch (_e) {
 						// Not valid JSON, treat as raw text (fallback)
 						await renderer.processChunk(event.data);
 					}

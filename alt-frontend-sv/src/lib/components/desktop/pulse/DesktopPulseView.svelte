@@ -30,7 +30,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 	// Handle number keys 1-3 for direct navigation
 	if (e.key >= "1" && e.key <= "3") {
-		const index = Number.parseInt(e.key) - 1;
+		const index = Number.parseInt(e.key, 10) - 1;
 		if (index < topicCount) {
 			e.preventDefault();
 			focusedIndex = index;

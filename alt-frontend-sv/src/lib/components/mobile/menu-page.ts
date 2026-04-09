@@ -9,12 +9,13 @@ import {
 	Heart,
 	Link,
 	Orbit,
+	ScrollText,
 	ShieldCheck,
 } from "@lucide/svelte";
+import type { IconProps } from "@lucide/svelte";
 import type { Component } from "svelte";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type IconComponent = Component<any>;
+type IconComponent = Component<IconProps>;
 
 export interface MenuGridItem {
 	label: string;
@@ -54,6 +55,7 @@ export const MENU_SECTIONS: MenuSection[] = [
 		title: "AI & Insights",
 		items: [
 			{ label: "Ask Augur", href: "/augur", icon: Bird },
+			{ label: "Acolyte", href: "/acolyte", icon: ScrollText },
 			{ label: "Statistics", href: "/stats", icon: BarChart3 },
 			{ label: "Job Status", href: "/recap/job-status", icon: Activity },
 		],

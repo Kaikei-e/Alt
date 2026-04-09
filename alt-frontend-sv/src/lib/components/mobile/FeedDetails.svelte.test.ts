@@ -70,7 +70,7 @@ describe("FeedDetails retry", () => {
 				new Error("Server error"),
 			);
 
-			render(FeedDetails as any, {
+			render(FeedDetails as never, {
 				props: {
 					feedURL: testFeedURL,
 					feedTitle: testFeedTitle,
@@ -110,7 +110,7 @@ describe("FeedDetails retry", () => {
 				},
 			);
 
-			render(FeedDetails as any, {
+			render(FeedDetails as never, {
 				props: {
 					feedURL: testFeedURL,
 					feedTitle: testFeedTitle,
@@ -153,7 +153,7 @@ describe("FeedDetails retry", () => {
 				},
 			);
 
-			render(FeedDetails as any, {
+			render(FeedDetails as never, {
 				props: {
 					feedURL: testFeedURL,
 					feedTitle: testFeedTitle,

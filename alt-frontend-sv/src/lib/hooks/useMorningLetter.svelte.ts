@@ -21,7 +21,7 @@ function isUnauthenticatedError(err: unknown): boolean {
 		err instanceof Error &&
 		err.name === "ConnectError" &&
 		"code" in err &&
-		(err as Record<string, unknown>)["code"] === 16
+		(err as Record<string, unknown>).code === 16
 	) {
 		return true;
 	}

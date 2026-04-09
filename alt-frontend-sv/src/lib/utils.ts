@@ -5,10 +5,8 @@ export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 // biome-ignore lint/suspicious/noExplicitAny: This type is used to conditionally omit a 'child' property, and 'any' is used to check for its existence without caring about its specific type.
 export type WithoutChild<T> = T extends { child?: any } ? Omit<T, "child"> : T;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 // biome-ignore lint/suspicious/noExplicitAny: This type is used to conditionally omit a 'children' property, and 'any' is used to check for its existence without caring about its specific type.
 export type WithoutChildren<T> = T extends { children?: any }
 	? Omit<T, "children">

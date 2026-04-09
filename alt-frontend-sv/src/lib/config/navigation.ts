@@ -22,10 +22,10 @@ import {
 	Tag,
 	ScrollText,
 } from "@lucide/svelte";
+import type { IconProps } from "@lucide/svelte";
 import type { Component } from "svelte";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type IconComponent = Component<any>;
+type IconComponent = Component<IconProps>;
 
 export interface NavigationItem {
 	label: string;

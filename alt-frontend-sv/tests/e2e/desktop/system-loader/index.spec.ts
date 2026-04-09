@@ -48,7 +48,7 @@ test.describe("System Loader", () => {
 
 	test("SystemLoader component has correct structure", async ({ page }) => {
 		// Test the component directly by navigating and triggering a slow API
-		let resolveRoute: () => void;
+		let resolveRoute: () => void = () => {};
 		const routePromise = new Promise<void>((resolve) => {
 			resolveRoute = resolve;
 		});
@@ -75,7 +75,7 @@ test.describe("System Loader", () => {
 		}
 
 		// Release the API
-		resolveRoute!();
+		resolveRoute?.();
 
 		// Ensure loader is hidden after content loads
 		await expect(loader).not.toBeVisible({ timeout: 15000 });

@@ -172,7 +172,7 @@ async function handleSend() {
 				scrollToBottom();
 			},
 			// onFallback: insufficient context
-			(code) => {
+			(_code) => {
 				messages[currentAssistantMessageIndex] = {
 					...messages[currentAssistantMessageIndex],
 					message:

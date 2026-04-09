@@ -1,8 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { DesktopAugurPage } from "../../pages/desktop/DesktopAugurPage";
-import { fulfillStream, fulfillConnectStream } from "../../utils/mockHelpers";
+import { fulfillConnectStream } from "../../utils/mockHelpers";
 import {
-	AUGUR_RESPONSE_CHUNKS,
 	CONNECT_AUGUR_STREAM_MESSAGES,
 	CONNECT_AUGUR_SIMPLE_RESPONSE,
 	CONNECT_RPC_PATHS,

@@ -84,7 +84,7 @@ export function parseMarkdown(text: string): string {
 
 		if (inCodeBlock) {
 			// Escape HTML in code blocks
-			html += escapeHtml(line) + "\n";
+			html += `${escapeHtml(line)}\n`;
 			continue;
 		}
 

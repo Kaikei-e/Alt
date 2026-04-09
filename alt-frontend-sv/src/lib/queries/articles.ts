@@ -18,8 +18,6 @@ import {
 	fetchArticleContent,
 	archiveArticle,
 	fetchArticlesCursor,
-	type FetchArticleContentResult,
-	type ArchiveArticleResult,
 	type ArticleCursorResponse,
 	type ConnectArticleItem,
 } from "$lib/connect/articles";

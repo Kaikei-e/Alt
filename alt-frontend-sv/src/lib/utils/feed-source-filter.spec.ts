@@ -96,18 +96,16 @@ describe("feed-source-filter", () => {
 
 		it("strips subdomains for 3+ part domains", () => {
 			expect(
-				getEffectiveDomain(
-					"https://feeds.theguardian.com/theguardian/rss",
-				),
+				getEffectiveDomain("https://feeds.theguardian.com/theguardian/rss"),
 			).toBe("theguardian.com");
 			expect(
 				getEffectiveDomain(
 					"https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
 				),
 			).toBe("nytimes.com");
-			expect(
-				getEffectiveDomain("https://www.theguardian.com/world/rss"),
-			).toBe("theguardian.com");
+			expect(getEffectiveDomain("https://www.theguardian.com/world/rss")).toBe(
+				"theguardian.com",
+			);
 		});
 
 		it("returns input for invalid URLs", () => {

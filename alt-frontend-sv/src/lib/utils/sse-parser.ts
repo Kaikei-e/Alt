@@ -37,7 +37,7 @@ export async function* parseSSEStream(
 						if (trimmed.startsWith("data:")) {
 							let content = line.substring(line.indexOf(":") + 1);
 							if (content.startsWith(" ")) content = content.substring(1);
-							currentEvent.data += content + "\n";
+							currentEvent.data += `${content}\n`;
 							hasData = true;
 						}
 					}
@@ -76,7 +76,7 @@ export async function* parseSSEStream(
 					} else if (trimmed.startsWith("data:")) {
 						let content = line.substring(line.indexOf(":") + 1);
 						if (content.startsWith(" ")) content = content.substring(1);
-						currentEvent.data += content + "\n";
+						currentEvent.data += `${content}\n`;
 						hasData = true;
 					} else if (trimmed.startsWith("id:")) {
 						currentEvent.id = trimmed.slice(3).trim();
@@ -91,6 +91,6 @@ export async function* parseSSEStream(
 	} finally {
 		try {
 			reader.releaseLock();
-		} catch (e) {}
+		} catch (_e) {}
 	}
 }

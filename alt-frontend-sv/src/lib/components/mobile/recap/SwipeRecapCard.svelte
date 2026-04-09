@@ -76,7 +76,7 @@ $effect(() => {
 		}
 	};
 
-	const swipeEndHandler = (event: Event) => {
+	const swipeEndHandler = (_event: Event) => {
 		x.target = 0;
 		isDragging = false;
 	};

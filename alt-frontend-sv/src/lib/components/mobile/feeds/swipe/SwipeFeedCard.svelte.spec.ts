@@ -84,7 +84,7 @@ describe("SwipeFeedCard", () => {
 
 	describe("rendering", () => {
 		it("renders the swipe card with feed title", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -94,7 +94,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("renders the swipe card container", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -102,7 +102,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("renders the action footer with buttons", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -112,7 +112,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("renders Article button", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -122,7 +122,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("renders Summary button", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -134,7 +134,7 @@ describe("SwipeFeedCard", () => {
 
 	describe("accessibility", () => {
 		it("has correct aria-label for external link", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -144,7 +144,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("sets aria-busy when component is busy", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: {
 					...defaultProps,
 					isBusy: true,
@@ -156,7 +156,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("external link has correct rel attributes for security", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -168,7 +168,7 @@ describe("SwipeFeedCard", () => {
 
 	describe("feed description", () => {
 		it("displays feed description when available", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -178,7 +178,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("displays published date when available", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -190,7 +190,7 @@ describe("SwipeFeedCard", () => {
 
 	describe("button interactions", () => {
 		it("Article button is enabled initially", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -199,7 +199,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("Summary button is enabled initially", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -213,7 +213,7 @@ describe("SwipeFeedCard", () => {
 			const cachedContent = "<p>Cached article content</p>";
 			const getCachedContent = vi.fn(() => cachedContent);
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: {
 					...defaultProps,
 					getCachedContent,
@@ -229,7 +229,7 @@ describe("SwipeFeedCard", () => {
 			const getCachedArticleId = vi.fn(() => "cached-article-id");
 			const onArticleIdResolved = vi.fn();
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: {
 					...defaultProps,
 					getCachedContent,
@@ -253,7 +253,7 @@ describe("SwipeFeedCard", () => {
 		it("uses initialArticleContent when provided", async () => {
 			const initialContent = "<p>Pre-loaded article content</p>";
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: {
 					...defaultProps,
 					initialArticleContent: initialContent,
@@ -276,7 +276,7 @@ describe("SwipeFeedCard", () => {
 				return mockAbortController;
 			});
 
-			const { unmount } = render(SwipeFeedCard as any, {
+			const { unmount } = render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -293,7 +293,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("does not error when destroyed without active summary", async () => {
-			const { unmount } = render(SwipeFeedCard as any, {
+			const { unmount } = render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -304,7 +304,7 @@ describe("SwipeFeedCard", () => {
 
 	describe("link structure", () => {
 		it("article link points to correct URL", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -320,7 +320,7 @@ describe("SwipeFeedCard", () => {
 				new Error("Server error"),
 			);
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -348,7 +348,7 @@ describe("SwipeFeedCard", () => {
 					og_image_proxy_url: "",
 				});
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -378,7 +378,7 @@ describe("SwipeFeedCard", () => {
 				new Error("Server error"),
 			);
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -412,7 +412,7 @@ describe("SwipeFeedCard", () => {
 				},
 			);
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -448,7 +448,7 @@ describe("SwipeFeedCard", () => {
 				},
 			);
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -463,7 +463,7 @@ describe("SwipeFeedCard", () => {
 
 	describe("favorite button", () => {
 		it("renders Favorite button", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -473,7 +473,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("Favorite button is enabled initially", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -484,7 +484,7 @@ describe("SwipeFeedCard", () => {
 		it("Favorite button calls registerFavoriteFeedClient on click", async () => {
 			const { registerFavoriteFeedClient } = await import("$lib/api/client");
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -498,7 +498,7 @@ describe("SwipeFeedCard", () => {
 		});
 
 		it("Favorite button shows favorited state after successful call", async () => {
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -519,7 +519,7 @@ describe("SwipeFeedCard", () => {
 				new Error("network error"),
 			);
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 
@@ -545,7 +545,7 @@ describe("SwipeFeedCard", () => {
 				.mockRejectedValueOnce(new Error("network error"))
 				.mockResolvedValueOnce({ message: "ok" });
 
-			render(SwipeFeedCard as any, {
+			render(SwipeFeedCard as never, {
 				props: defaultProps,
 			});
 

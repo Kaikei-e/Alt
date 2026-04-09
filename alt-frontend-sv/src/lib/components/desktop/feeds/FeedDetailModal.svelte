@@ -360,7 +360,7 @@ async function handleSummarize(forceRefresh = false) {
 				summary = (summary || "") + chunk;
 			},
 			{}, // No typewriter effect for desktop
-			(result) => {
+			(_result) => {
 				// onComplete — discard if feed changed
 				if (feed.normalizedUrl !== targetFeedUrl) return;
 				isSummarizing = false;

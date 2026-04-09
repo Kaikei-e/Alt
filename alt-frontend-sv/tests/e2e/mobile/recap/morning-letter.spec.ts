@@ -1,5 +1,5 @@
 import { test, expect } from "../../fixtures/pomFixtures";
-import { fulfillConnectStream, fulfillJson } from "../../utils/mockHelpers";
+import { fulfillConnectStream } from "../../utils/mockHelpers";
 import {
 	CONNECT_RPC_PATHS,
 	CONNECT_MORNING_LETTER_STREAM_MESSAGES,

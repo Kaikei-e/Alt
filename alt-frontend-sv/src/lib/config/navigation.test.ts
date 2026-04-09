@@ -9,7 +9,7 @@ describe("navigation", () => {
 			);
 			const acolyte = flat.find((item) => item.href === "/acolyte");
 			expect(acolyte).toBeDefined();
-			expect(acolyte!.label).toBe("Acolyte Reports");
+			expect(acolyte?.label).toBe("Acolyte Reports");
 		});
 	});
 
@@ -17,8 +17,8 @@ describe("navigation", () => {
 		it("includes Acolyte Reports link", () => {
 			const acolyte = mobileMenuItems.find((item) => item.href === "/acolyte");
 			expect(acolyte).toBeDefined();
-			expect(acolyte!.label).toBe("Acolyte Reports");
-			expect(acolyte!.category).toBe("augur");
+			expect(acolyte?.label).toBe("Acolyte Reports");
+			expect(acolyte?.category).toBe("augur");
 		});
 	});
 });

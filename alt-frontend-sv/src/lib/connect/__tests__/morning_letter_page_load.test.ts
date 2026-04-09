@@ -11,8 +11,7 @@ vi.mock("$lib/connect", () => ({
 
 import { load } from "../../../routes/(app)/recap/morning-letter/+page";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type LoadResult = Record<string, any>;
+type LoadResult = Record<string, unknown>;
 
 const fakeLetter = {
 	id: "letter-001",

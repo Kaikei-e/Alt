@@ -64,7 +64,7 @@ const loadMore = async () => {
 		const cursorOffset = currentCursor
 			? parseInt(currentCursor, 10)
 			: undefined;
-		if (cursorOffset !== undefined && isNaN(cursorOffset)) {
+		if (cursorOffset !== undefined && Number.isNaN(cursorOffset)) {
 			console.error("Invalid cursor value:", currentCursor);
 			setIsLoading(false);
 			return;

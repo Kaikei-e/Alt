@@ -12,7 +12,11 @@ import {
 	searchRecaps,
 	type RecapSearchResultItem,
 } from "$lib/connect";
-import { RecapPreviewModal, fromRecapSearchResult, type RecapModalData } from "$lib/components/recap";
+import {
+	RecapPreviewModal,
+	fromRecapSearchResult,
+	type RecapModalData,
+} from "$lib/components/recap";
 import { getLoadingStore } from "$lib/stores/loading.svelte";
 import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
 

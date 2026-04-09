@@ -22,7 +22,6 @@ export const GET: RequestHandler = async ({ request }) => {
 		);
 
 		if (!response.ok) {
-			const errorText = await response.text().catch(() => "");
 			return new Response(
 				JSON.stringify({ error: `Backend error: ${response.status}` }),
 				{

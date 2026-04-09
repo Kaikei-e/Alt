@@ -5,7 +5,11 @@ import type {
 	GlobalRecapHitData,
 } from "$lib/connect/global_search";
 import { BookOpen, ChevronRight } from "@lucide/svelte";
-import { RecapPreviewModal, fromGlobalRecapHit, type RecapModalData } from "$lib/components/recap";
+import {
+	RecapPreviewModal,
+	fromGlobalRecapHit,
+	type RecapModalData,
+} from "$lib/components/recap";
 
 interface Props {
 	section: RecapSectionData;

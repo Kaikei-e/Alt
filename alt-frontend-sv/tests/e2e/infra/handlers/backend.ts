@@ -51,7 +51,7 @@ function encodeConnectEnvelope(message: unknown, flags = 0x00): Buffer {
  */
 export function createBackendServer(): http.Server {
 	return http.createServer((req, res) => {
-		const url = new URL(req.url!, `http://${req.headers.host}`);
+		const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
 		const path = url.pathname;
 
 		log(`${req.method} ${path}`);
@@ -272,7 +272,7 @@ export function createBackendServer(): http.Server {
 				],
 				eventType: "EVENT_TYPE_COMPLETED",
 			};
-			res.end(JSON.stringify(msg) + "\n");
+			res.end(`${JSON.stringify(msg)}\n`);
 			return;
 		}
 
@@ -292,7 +292,7 @@ export function createBackendServer(): http.Server {
 			res.writeHead(200);
 			// Connect-RPC streaming format: newline-delimited JSON
 			res.end(
-				AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n") + "\n",
+				`${AUGUR_CONNECT_MESSAGES.map((m) => JSON.stringify(m)).join("\n")}\n`,
 			);
 			return;
 		}

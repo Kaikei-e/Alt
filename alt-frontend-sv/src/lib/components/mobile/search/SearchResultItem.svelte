@@ -27,7 +27,7 @@ const displayDescription = $derived(
 	isDescriptionExpanded
 		? descriptionText
 		: shouldTruncateDescription
-			? descriptionText.slice(0, 200) + "..."
+			? `${descriptionText.slice(0, 200)}...`
 			: descriptionText,
 );
 

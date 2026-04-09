@@ -15,6 +15,7 @@ export function useKeyboardOffset(isActive: () => boolean) {
 
 		const vv = window.visualViewport;
 		if (!vv) return;
+		const viewport = vv;
 
 		function update() {
 			// innerHeight = layout viewport (stable on iOS)
@@ -22,7 +23,7 @@ export function useKeyboardOffset(isActive: () => boolean) {
 			// vv.offsetTop = scroll offset of visual viewport within layout viewport
 			offset = Math.max(
 				0,
-				Math.round(window.innerHeight - vv!.height - vv!.offsetTop),
+				Math.round(window.innerHeight - viewport.height - viewport.offsetTop),
 			);
 		}
 

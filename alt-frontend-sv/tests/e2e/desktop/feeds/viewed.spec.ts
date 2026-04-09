@@ -5,10 +5,7 @@ import {
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
 } from "../../fixtures/mockData";
-import {
-	buildConnectFeedItem,
-	buildConnectArticleContent,
-} from "../../fixtures/factories";
+import { buildConnectFeedItem } from "../../fixtures/factories";
 
 test.describe("Desktop Viewed Feeds", () => {
 	test.beforeEach(async ({ page }) => {

@@ -34,10 +34,10 @@ describe("createServerTransportWithToken", () => {
 
 		expect(transport).toBeDefined();
 		expect(lastTransportConfig).not.toBeNull();
-		expect(lastTransportConfig!.baseUrl).toBe("http://test-backend:9101");
+		expect(lastTransportConfig?.baseUrl).toBe("http://test-backend:9101");
 
 		// Verify interceptor sets the token header
-		const interceptors = lastTransportConfig!.interceptors as Array<
+		const interceptors = lastTransportConfig?.interceptors as Array<
 			(
 				next: (req: unknown) => Promise<unknown>,
 			) => (req: unknown) => Promise<unknown>

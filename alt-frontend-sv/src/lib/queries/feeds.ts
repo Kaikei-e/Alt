@@ -26,9 +26,6 @@ import {
 	type ConnectFeedItem,
 	type FeedCursorResponse,
 	type FeedSearchResponse,
-	type FeedStats,
-	type DetailedFeedStats,
-	type UnreadCount,
 } from "$lib/connect/feeds";
 import { feedKeys } from "./keys";
 

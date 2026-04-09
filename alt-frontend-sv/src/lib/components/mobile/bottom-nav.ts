@@ -5,10 +5,10 @@ import {
 	Infinity as InfinityIcon,
 	Menu,
 } from "@lucide/svelte";
+import type { IconProps } from "@lucide/svelte";
 import type { Component } from "svelte";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type IconComponent = Component<any>;
+type IconComponent = Component<IconProps>;
 
 export interface NavTab {
 	label: string;
@@ -38,7 +38,7 @@ export function getActiveTabIndex(pathname: string): number {
 	for (let i = 0; i < NAV_TABS.length; i++) {
 		const tab = NAV_TABS[i];
 		if (tab.href === "/feeds/swipe") continue; // Already handled
-		if (pathname === tab.href || pathname.startsWith(tab.href + "/")) {
+		if (pathname === tab.href || pathname.startsWith(`${tab.href}/`)) {
 			return i;
 		}
 	}

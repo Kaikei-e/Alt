@@ -16,11 +16,11 @@ test.describe("mobile feeds routes - stats", () => {
 	// Skip this test in CI - the mobile stats page uses Connect-RPC client-side calls
 	// that are difficult to mock reliably. The page works correctly in production.
 	test.skip(
-		({ browserName }) => !!process.env.CI,
+		() => !!process.env.CI,
 		"Skip in CI - Connect-RPC client mocking is unreliable",
 	);
 
-	test("stats page renders counters", async ({ page, mobileStatsPage }) => {
+	test("stats page renders counters", async ({ page }) => {
 		// Mock EventSource to prevent SSE connections from interfering
 		await page.addInitScript(() => {
 			class MockEventSource {

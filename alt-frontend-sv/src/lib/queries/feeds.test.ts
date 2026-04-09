@@ -31,7 +31,9 @@ describe("flattenFeedPages", () => {
 	});
 
 	it("should return empty array when pages is undefined", () => {
-		const result = flattenFeedPages({ pages: undefined } as any);
+		const result = flattenFeedPages({ pages: undefined } as unknown as {
+			pages: FeedCursorResponse[];
+		});
 		expect(result).toEqual([]);
 	});
 
@@ -117,7 +119,9 @@ describe("flattenSearchPages", () => {
 	});
 
 	it("should return empty array when pages is undefined", () => {
-		const result = flattenSearchPages({ pages: undefined } as any);
+		const result = flattenSearchPages({ pages: undefined } as unknown as {
+			pages: FeedSearchResponse[];
+		});
 		expect(result).toEqual([]);
 	});
 

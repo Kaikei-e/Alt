@@ -52,7 +52,7 @@ export function resolveResponsiveRedirect(
 
 	// If target already has query params, merge with &
 	if (target.includes("?")) {
-		return target + "&" + search.slice(1);
+		return `${target}&${search.slice(1)}`;
 	}
 
 	return target + search;

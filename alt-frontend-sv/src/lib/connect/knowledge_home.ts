@@ -15,7 +15,6 @@ import {
 	type WhyReason as ProtoWhyReason,
 	type RecallCandidate as ProtoRecallCandidate,
 	type Lens as ProtoLens,
-	type SupersedeInfo as ProtoSupersedeInfo,
 } from "$lib/gen/alt/knowledge_home/v1/knowledge_home_pb";
 
 /** Type-safe KnowledgeHomeService client */

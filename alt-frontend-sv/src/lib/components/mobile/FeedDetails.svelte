@@ -302,7 +302,7 @@ async function handleSummarize(forceRefresh = false) {
 					}
 				},
 			},
-			(result) => {
+			(_result) => {
 				// onComplete
 				isSummarizing = false;
 				abortController = null;
