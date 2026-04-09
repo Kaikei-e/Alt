@@ -30,7 +30,7 @@ let isModalOpen = $state(false);
 let filters = $state({
 	unreadOnly: false,
 	sortBy: "date_desc",
-	excludedFeedLinkId: null as string | null,
+	excludedFeedLinkIds: [] as string[],
 });
 let feedGridApi = $state<FeedGridApi | null>(null);
 let feedSources = $state<ConnectFeedSource[]>([]);
@@ -121,7 +121,7 @@ function handleSelectFeed(feed: RenderFeed, _index: number, _total: number) {
 function handleFilterChange(newFilters: {
 	unreadOnly: boolean;
 	sortBy: string;
-	excludedFeedLinkId: string | null;
+	excludedFeedLinkIds: string[];
 }) {
 	filters = newFilters;
 }
@@ -184,7 +184,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 	<FeedFilters
 		unreadOnly={filters.unreadOnly}
 		sortBy={filters.sortBy}
-		excludedFeedLinkId={filters.excludedFeedLinkId}
+		excludedFeedLinkIds={filters.excludedFeedLinkIds}
 		{feedSources}
 		onFilterChange={handleFilterChange}
 	/>
@@ -193,7 +193,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 		onSelectFeed={handleSelectFeed}
 		unreadOnly={filters.unreadOnly}
 		sortBy={filters.sortBy}
-		excludedFeedLinkId={filters.excludedFeedLinkId}
+		excludedFeedLinkIds={filters.excludedFeedLinkIds}
 		onReady={handleFeedGridReady}
 		gridClass="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
 	>
