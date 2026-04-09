@@ -42,6 +42,7 @@ func main() {
 		"backend_url", cfg.BackendConnectURL,
 		"backend_rest_url", cfg.BackendRESTURL,
 		"tts_url", cfg.TTSConnectURL,
+		"acolyte_url", cfg.AcolyteConnectURL,
 		"issuer", cfg.BackendTokenIssuer,
 		"audience", cfg.BackendTokenAudience)
 
@@ -70,6 +71,7 @@ func main() {
 		TTSConnectURL:    cfg.TTSConnectURL,
 		TTSServiceSecret: cfg.TTSServiceSecret,
 		ServiceSecret:    serviceSecret,
+		AcolyteConnectURL: cfg.AcolyteConnectURL,
 	}
 
 	// Create HTTP server

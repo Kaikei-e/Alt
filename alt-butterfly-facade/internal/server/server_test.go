@@ -213,6 +213,103 @@ func TestServer_TTSRoute_NotRegistered_WhenURLEmpty(t *testing.T) {
 	assert.Equal(t, http.StatusOK, recorder.Code)
 }
 
+func TestServer_AcolyteRoute_Unauthorized(t *testing.T) {
+	cfg := Config{
+		BackendURL:        "http://localhost:9101",
+		AcolyteConnectURL: "http://localhost:8090",
+		Secret:            []byte("test-secret"),
+		Issuer:            "auth-hub",
+		Audience:          "alt-backend",
+		RequestTimeout:    30 * time.Second,
+		StreamingTimeout:  5 * time.Minute,
+	}
+
+	handler := NewServer(cfg, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/alt.acolyte.v1.AcolyteService/HealthCheck", nil)
+	recorder := httptest.NewRecorder()
+
+	handler.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+}
+
+func TestServer_AcolyteRoute_Success(t *testing.T) {
+	acolyteBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/alt.acolyte.v1.AcolyteService/HealthCheck", r.URL.Path)
+		assert.Equal(t, "svc-secret", r.Header.Get("X-Service-Token"))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer acolyteBackend.Close()
+
+	altBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("Acolyte request should not reach alt-backend, got path: %s", r.URL.Path)
+	}))
+	defer altBackend.Close()
+
+	cfg := Config{
+		BackendURL:        altBackend.URL,
+		AcolyteConnectURL: acolyteBackend.URL,
+		ServiceSecret:     "svc-secret",
+		Secret:            []byte("test-secret"),
+		Issuer:            "auth-hub",
+		Audience:          "alt-backend",
+		RequestTimeout:    30 * time.Second,
+		StreamingTimeout:  5 * time.Minute,
+	}
+
+	handler := NewServerWithTransport(cfg, nil, http.DefaultTransport)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/alt.acolyte.v1.AcolyteService/HealthCheck",
+		strings.NewReader(`{}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), `"status":"ok"`)
+}
+
+func TestServer_AcolyteRoute_NotRegistered_WhenURLEmpty(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	cfg := Config{
+		BackendURL:        backend.URL,
+		AcolyteConnectURL: "",
+		Secret:            []byte("test-secret"),
+		Issuer:            "auth-hub",
+		Audience:          "alt-backend",
+		RequestTimeout:    30 * time.Second,
+		StreamingTimeout:  5 * time.Minute,
+	}
+
+	handler := NewServerWithTransport(cfg, nil, http.DefaultTransport)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/alt.acolyte.v1.AcolyteService/HealthCheck",
+		strings.NewReader(`{}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, []byte("test-secret")))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	// Falls through to alt-backend catch-all
+	assert.Equal(t, http.StatusOK, recorder.Code)
+}
+
 // createValidToken creates a valid JWT for testing
 func createValidToken(t *testing.T, secret []byte) string {
 	t.Helper()

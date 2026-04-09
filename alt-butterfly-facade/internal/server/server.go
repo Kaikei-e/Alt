@@ -30,9 +30,10 @@ type Config struct {
 	Audience         string
 	RequestTimeout   time.Duration
 	StreamingTimeout time.Duration
-	TTSConnectURL    string
-	TTSServiceSecret string
-	ServiceSecret    string
+	TTSConnectURL      string
+	TTSServiceSecret   string
+	ServiceSecret      string
+	AcolyteConnectURL  string
 
 	// BFF Feature Configuration
 	BFFConfig handler.BFFConfig
@@ -190,6 +191,39 @@ func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.Roun
 			cfg.RequestTimeout,
 		)
 		mux.Handle("/alt.knowledge_home.v1.KnowledgeHomeAdminService/", adminProxy)
+	}
+
+	// Acolyte orchestrator routing (Connect protocol, HTTP/1.1)
+	// Uses streaming timeout since report generation can be long-running.
+	if cfg.AcolyteConnectURL != "" {
+		acolyteTransport := transport
+		if acolyteTransport == nil {
+			acolyteTransport = http.DefaultTransport
+		}
+		acolyteClient := client.NewBackendClientWithTransport(
+			cfg.AcolyteConnectURL,
+			cfg.StreamingTimeout,
+			cfg.StreamingTimeout,
+			acolyteTransport,
+		)
+		acolyteProxy := handler.NewProxyHandler(
+			acolyteClient,
+			cfg.Secret,
+			cfg.Issuer,
+			cfg.Audience,
+			logger,
+			cfg.StreamingTimeout,
+			cfg.StreamingTimeout,
+		)
+		acolyteServiceSecret := cfg.ServiceSecret
+		var acolyteHandler http.Handler = acolyteProxy
+		if acolyteServiceSecret != "" {
+			acolyteHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r.Header.Set("X-Service-Token", acolyteServiceSecret)
+				acolyteProxy.ServeHTTP(w, r)
+			})
+		}
+		mux.Handle("/alt.acolyte.v1.AcolyteService/", acolyteHandler)
 	}
 
 	// Register proxy handler for all other paths

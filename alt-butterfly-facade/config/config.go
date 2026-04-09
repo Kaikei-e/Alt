@@ -32,6 +32,8 @@ type Config struct {
 	StreamingTimeout time.Duration
 	// TTSConnectURL is the URL of the TTS service (e.g., http://tts-external:9700)
 	TTSConnectURL string
+	// AcolyteConnectURL is the URL of the Acolyte orchestrator (e.g., http://acolyte-orchestrator:8090)
+	AcolyteConnectURL string
 	// TTSServiceSecret is the shared secret for authenticating with the TTS service
 	TTSServiceSecret string
 	// ServiceSecretFile is the file path for internal service auth secret
@@ -82,6 +84,7 @@ func NewConfig() *Config {
 		RequestTimeout:         getDurationEnv("BFF_REQUEST_TIMEOUT", 30*time.Second),
 		StreamingTimeout:       getDurationEnv("BFF_STREAMING_TIMEOUT", 40*time.Minute),
 		TTSConnectURL:          getEnv("TTS_CONNECT_URL", ""),
+		AcolyteConnectURL:     getEnv("ACOLYTE_CONNECT_URL", ""),
 		TTSServiceSecret:       getEnv("TTS_SERVICE_SECRET", ""),
 		ServiceSecretFile:      getEnv("SERVICE_SECRET_FILE", ""),
 		ServiceSecret:          getEnv("SERVICE_SECRET", ""),
