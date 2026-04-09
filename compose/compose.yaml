@@ -5,6 +5,7 @@
 name: alt
 
 include:
+  - acolyte.yaml
   - ai.yaml
   - auth.yaml
   - backup.yaml

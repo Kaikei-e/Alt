@@ -22,6 +22,7 @@ services:
       - TTS_CONNECT_URL=${TTS_CONNECT_URL:-}
       - TTS_SERVICE_SECRET=${TTS_SERVICE_SECRET:-}
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
+      - ACOLYTE_CONNECT_URL=http://acolyte-orchestrator:8090
     extra_hosts:
       - "tts-external:${TTS_EXTERNAL_HOST:-127.0.0.1}"
     secrets:

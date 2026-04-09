@@ -1,0 +1,115 @@
+# compose/acolyte.yaml - Acolyte report generation orchestrator
+# acolyte-db: dedicated PostgreSQL for report versioning tables
+# acolyte-db-migrator: Atlas migration runner
+# acolyte-orchestrator: Python service (Starlette + Connect-RPC + LangGraph)
+
+include:
+  - base.yaml
+
+services:
+  acolyte-db:
+    image: postgres:18-alpine
+    container_name: acolyte-db
+    mem_limit: 192m
+    ports:
+      - "5439:5432"
+    environment:
+      POSTGRES_DB: ${ACOLYTE_DB_NAME:-acolyte}
+      POSTGRES_USER: ${ACOLYTE_DB_USER:-acolyte_user}
+      POSTGRES_PASSWORD_FILE: /run/secrets/acolyte_db_password
+    secrets:
+      - acolyte_db_password
+    volumes:
+      - acolyte_db_data:/var/lib/postgresql
+    healthcheck:
+      test: [
+        "CMD-SHELL",
+        "pg_isready -U ${ACOLYTE_DB_USER:-acolyte_user} -d ${ACOLYTE_DB_NAME:-acolyte}",
+      ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - alt-network
+    restart: unless-stopped
+    labels:
+      - rask.group=acolyte-db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  acolyte-db-migrator:
+    build:
+      context: ../acolyte-migration-atlas
+      dockerfile: docker/Dockerfile
+    container_name: acolyte-db-migrator
+    command: ["apply"]
+    environment:
+      - ACOLYTE_DB_HOST=acolyte-db
+      - ACOLYTE_DB_PORT=5432
+      - ACOLYTE_DB_USER=${ACOLYTE_DB_USER:-acolyte_user}
+      - ACOLYTE_DB_NAME=${ACOLYTE_DB_NAME:-acolyte}
+      - ACOLYTE_DB_PASSWORD_FILE=/run/secrets/acolyte_db_password
+    secrets:
+      - acolyte_db_password
+    depends_on:
+      acolyte-db:
+        condition: service_healthy
+    networks:
+      - alt-network
+    restart: "no"
+    labels:
+      - rask.group=acolyte-db-migrator
+
+  acolyte-orchestrator:
+    container_name: acolyte-orchestrator
+    mem_limit: 256m
+    build:
+      context: ../acolyte-orchestrator
+      dockerfile: Dockerfile
+    environment:
+      - ACOLYTE_DB_DSN=postgresql://${ACOLYTE_DB_USER:-acolyte_user}:placeholder@acolyte-db:5432/${ACOLYTE_DB_NAME:-acolyte}
+      - ACOLYTE_DB_PASSWORD_FILE=/run/secrets/acolyte_db_password
+      # LLM inference: override ACOLYTE_LLM_URL in .env to route to remote host (e.g. AIX)
+      - NEWS_CREATOR_URL=${ACOLYTE_LLM_URL:-http://news-creator:11434}
+      - SEARCH_INDEXER_URL=${ACOLYTE_SEARCH_URL:-http://search-indexer:9300}
+      - DEFAULT_MODEL=${ACOLYTE_MODEL:-gemma4-e4b-12k}
+      - SERVICE_TOKEN_FILE=/run/secrets/service_secret
+      - LOG_LEVEL=info
+      # OpenTelemetry
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
+      - OTEL_SERVICE_NAME=acolyte-orchestrator
+    secrets:
+      - service_secret
+      - acolyte_db_password
+    extra_hosts:
+      - "llm-external:${ACOLYTE_LLM_HOST:-127.0.0.1}"
+    ports:
+      - "8090:8090"
+    networks:
+      - alt-network
+    depends_on:
+      acolyte-db:
+        condition: service_healthy
+      acolyte-db-migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    labels:
+      - rask.group=acolyte-orchestrator
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  acolyte_db_data:
