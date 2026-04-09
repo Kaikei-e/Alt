@@ -1,0 +1,26 @@
+"""Job queue port — interface for job claim and lifecycle."""
+
+from __future__ import annotations
+
+from typing import Protocol
+from uuid import UUID
+
+from acolyte.domain.run import ReportJob, ReportRun
+
+
+class JobQueuePort(Protocol):
+    async def create_run(self, report_id: UUID, target_version_no: int) -> ReportRun: ...
+
+    async def get_run(self, run_id: UUID) -> ReportRun | None: ...
+
+    async def claim_job(self, worker_id: str) -> ReportJob | None: ...
+
+    async def update_job_status(self, job_id: UUID, status: str) -> None: ...
+
+    async def complete_job(self, job_id: UUID) -> None: ...
+
+    async def fail_job(self, job_id: UUID, failure_message: str) -> None: ...
+
+    async def complete_run(self, run_id: UUID) -> None: ...
+
+    async def fail_run(self, run_id: UUID, failure_code: str, failure_message: str) -> None: ...
