@@ -12,6 +12,7 @@ import {
 	searchRecaps,
 	type RecapSearchResultItem,
 } from "$lib/connect";
+import { RecapPreviewModal, fromRecapSearchResult, type RecapModalData } from "$lib/components/recap";
 import { getLoadingStore } from "$lib/stores/loading.svelte";
 import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
 
@@ -87,15 +88,12 @@ function handleSearchSubmit(e: Event) {
 	void executeSearch(trimmed);
 }
 
-function navigateToSearchResult(item: RecapSearchResultItem) {
-	searchQuery = "";
-	const url = new URL(page.url);
-	url.searchParams.delete("q");
-	url.searchParams.set("window", String(item.windowDays));
-	url.searchParams.set("genre", item.genre);
-	goto(url.toString());
-	selectedWindow = item.windowDays === 7 ? 7 : 3;
-	void fetchRecap(selectedWindow);
+let selectedSearchRecap = $state<RecapModalData | null>(null);
+let recapModalOpen = $state(false);
+
+function openSearchResultModal(item: RecapSearchResultItem) {
+	selectedSearchRecap = fromRecapSearchResult(item);
+	recapModalOpen = true;
 }
 
 function clearSearch() {
@@ -277,7 +275,7 @@ onMount(() => {
 				{#each searchResults as item (item.jobId + item.genre)}
 					<button
 						type="button"
-						onclick={() => navigateToSearchResult(item)}
+						onclick={() => openSearchResultModal(item)}
 						class="w-full text-left rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] p-4 space-y-2 cursor-pointer hover:border-[var(--interactive-text)] transition-colors"
 					>
 						<div class="flex items-start gap-3">
@@ -314,6 +312,8 @@ onMount(() => {
 				{/each}
 			</div>
 		{/if}
+
+		<RecapPreviewModal data={selectedSearchRecap} open={recapModalOpen} onOpenChange={(v) => { recapModalOpen = v; }} />
 	{:else}
 		<!-- Normal recap view -->
 		<PageHeader title="Recap" description="News summary by genre">

@@ -5,6 +5,7 @@ import type {
 	GlobalRecapHitData,
 } from "$lib/connect/global_search";
 import { BookOpen, ChevronRight } from "@lucide/svelte";
+import { RecapPreviewModal, fromGlobalRecapHit, type RecapModalData } from "$lib/components/recap";
 
 interface Props {
 	section: RecapSectionData;
@@ -13,14 +14,16 @@ interface Props {
 
 const { section, query }: Props = $props();
 
+let selectedRecap = $state<RecapModalData | null>(null);
+let modalOpen = $state(false);
+
 function windowLabel(days: number): string {
 	return `${days}-day`;
 }
 
-function navigateToRecap(hit: GlobalRecapHitData) {
-	goto(
-		`/recap?window=${hit.windowDays}&genre=${encodeURIComponent(hit.genre)}`,
-	);
+function openRecapModal(hit: GlobalRecapHitData) {
+	selectedRecap = fromGlobalRecapHit(hit);
+	modalOpen = true;
 }
 
 function seeAll() {
@@ -60,7 +63,7 @@ function seeAll() {
 			{#each section.hits as hit (hit.id)}
 				<button
 					type="button"
-					onclick={() => navigateToRecap(hit)}
+					onclick={() => openRecapModal(hit)}
 					class="w-full text-left rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] p-4 space-y-2 cursor-pointer hover:border-[var(--interactive-text)] transition-colors"
 				>
 					<div class="flex items-start gap-3">
@@ -105,3 +108,5 @@ function seeAll() {
 		</div>
 	{/if}
 </section>
+
+<RecapPreviewModal data={selectedRecap} open={modalOpen} onOpenChange={(v) => { modalOpen = v; }} />
