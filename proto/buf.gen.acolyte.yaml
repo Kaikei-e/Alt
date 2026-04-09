@@ -1,0 +1,15 @@
+version: v2
+inputs:
+  - directory: .
+    paths:
+      - alt/acolyte
+plugins:
+  # Python protobuf messages (pinned to v33.5 for protobuf 6.x runtime compatibility)
+  - remote: buf.build/protocolbuffers/python:v33.5
+    out: ../acolyte-orchestrator/acolyte/gen/proto
+  # Python protobuf type stubs
+  - remote: buf.build/protocolbuffers/pyi:v33.5
+    out: ../acolyte-orchestrator/acolyte/gen/proto
+  # Connect-RPC Python service stubs
+  - remote: buf.build/connectrpc/python
+    out: ../acolyte-orchestrator/acolyte/gen/proto

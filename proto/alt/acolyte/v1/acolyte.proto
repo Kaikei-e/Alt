@@ -1,0 +1,271 @@
+syntax = "proto3";
+
+package alt.acolyte.v1;
+
+option go_package = "alt/gen/proto/alt/acolyte/v1;acolytev1";
+
+// =============================================================================
+// AcolyteService — Versioned Report Generation Orchestrator
+// =============================================================================
+
+service AcolyteService {
+  // CreateReport creates a new report.
+  rpc CreateReport(CreateReportRequest) returns (CreateReportResponse);
+  // GetReport returns a report with its current version and sections.
+  rpc GetReport(GetReportRequest) returns (GetReportResponse);
+  // ListReports returns a paginated list of reports (metadata only, no body).
+  rpc ListReports(ListReportsRequest) returns (ListReportsResponse);
+  // GetReportVersion returns a specific version snapshot.
+  rpc GetReportVersion(GetReportVersionRequest) returns (GetReportVersionResponse);
+  // ListReportVersions returns the version history with change items.
+  rpc ListReportVersions(ListReportVersionsRequest) returns (ListReportVersionsResponse);
+  // DiffReportVersions returns the diff between two versions of a report.
+  rpc DiffReportVersions(DiffReportVersionsRequest) returns (DiffReportVersionsResponse);
+  // StartReportRun enqueues a generation run for a report.
+  rpc StartReportRun(StartReportRunRequest) returns (StartReportRunResponse);
+  // GetRunStatus returns the current status of a generation run.
+  rpc GetRunStatus(GetRunStatusRequest) returns (GetRunStatusResponse);
+  // StreamRunProgress streams real-time generation progress events.
+  rpc StreamRunProgress(StreamRunProgressRequest) returns (stream StreamRunProgressResponse);
+  // RerunSection re-generates a single section of a report.
+  rpc RerunSection(RerunSectionRequest) returns (RerunSectionResponse);
+  // HealthCheck returns the service health status.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// =============================================================================
+// Report CRUD
+// =============================================================================
+
+message CreateReportRequest {
+  string title = 1;
+  string report_type = 2;
+  // Scope parameters for report generation (e.g. topic, date range, sources).
+  map<string, string> scope = 3;
+}
+
+message CreateReportResponse {
+  string report_id = 1;
+}
+
+message GetReportRequest {
+  string report_id = 1;
+}
+
+message GetReportResponse {
+  Report report = 1;
+  repeated ReportSection sections = 2;
+}
+
+message ListReportsRequest {
+  optional string cursor = 1;
+  int32 limit = 2;
+}
+
+message ListReportsResponse {
+  repeated ReportSummary reports = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+// =============================================================================
+// Report Versions
+// =============================================================================
+
+message GetReportVersionRequest {
+  string report_id = 1;
+  int32 version_no = 2;
+}
+
+message GetReportVersionResponse {
+  ReportVersion version = 1;
+  repeated ChangeItem change_items = 2;
+  repeated SectionVersion section_versions = 3;
+}
+
+message ListReportVersionsRequest {
+  string report_id = 1;
+  optional string cursor = 2;
+  int32 limit = 3;
+}
+
+message ListReportVersionsResponse {
+  repeated ReportVersionSummary versions = 1;
+  string next_cursor = 2;
+  bool has_more = 3;
+}
+
+message DiffReportVersionsRequest {
+  string report_id = 1;
+  int32 from_version = 2;
+  int32 to_version = 3;
+}
+
+message DiffReportVersionsResponse {
+  repeated ChangeItem change_items = 1;
+  repeated SectionDiff section_diffs = 2;
+}
+
+// =============================================================================
+// Generation Runs
+// =============================================================================
+
+message StartReportRunRequest {
+  string report_id = 1;
+}
+
+message StartReportRunResponse {
+  string run_id = 1;
+}
+
+message GetRunStatusRequest {
+  string run_id = 1;
+}
+
+message GetRunStatusResponse {
+  ReportRun run = 1;
+  repeated ReportJob jobs = 2;
+}
+
+message StreamRunProgressRequest {
+  string run_id = 1;
+}
+
+message StreamRunProgressResponse {
+  // Event kind: "step_start", "step_complete", "delta", "error", "done"
+  string kind = 1;
+  oneof payload {
+    StepEvent step = 2;
+    string delta = 3;
+    string error_message = 4;
+    RunDoneEvent done = 5;
+  }
+}
+
+message StepEvent {
+  string step_name = 1;
+  int32 step_index = 2;
+  int32 total_steps = 3;
+}
+
+message RunDoneEvent {
+  int32 new_version_no = 1;
+  string run_status = 2;
+}
+
+// =============================================================================
+// Section Rerun
+// =============================================================================
+
+message RerunSectionRequest {
+  string report_id = 1;
+  string section_key = 2;
+}
+
+message RerunSectionResponse {
+  string run_id = 1;
+}
+
+// =============================================================================
+// Health Check
+// =============================================================================
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;
+}
+
+// =============================================================================
+// Domain Models
+// =============================================================================
+
+message Report {
+  string report_id = 1;
+  string title = 2;
+  string report_type = 3;
+  int32 current_version = 4;
+  optional string latest_successful_run_id = 5;
+  string created_at = 6;
+}
+
+message ReportSummary {
+  string report_id = 1;
+  string title = 2;
+  string report_type = 3;
+  int32 current_version = 4;
+  string latest_run_status = 5;
+  string created_at = 6;
+}
+
+message ReportVersion {
+  string report_id = 1;
+  int32 version_no = 2;
+  int64 change_seq = 3;
+  string change_reason = 4;
+  string created_at = 5;
+  string prompt_template_version = 6;
+}
+
+message ReportVersionSummary {
+  int32 version_no = 1;
+  string change_reason = 2;
+  string created_at = 3;
+  repeated ChangeItem change_items = 4;
+}
+
+message ChangeItem {
+  string field_name = 1;
+  // One of: added, updated, removed, regenerated
+  string change_kind = 2;
+  string old_fingerprint = 3;
+  string new_fingerprint = 4;
+}
+
+message ReportSection {
+  string section_key = 1;
+  int32 current_version = 2;
+  int32 display_order = 3;
+  string body = 4;
+  string citations_json = 5;
+}
+
+message SectionVersion {
+  string section_key = 1;
+  int32 version_no = 2;
+  string body = 3;
+  string citations_json = 4;
+  string created_at = 5;
+}
+
+message SectionDiff {
+  string section_key = 1;
+  optional string old_body = 2;
+  optional string new_body = 3;
+  int32 old_version = 4;
+  int32 new_version = 5;
+}
+
+message ReportRun {
+  string run_id = 1;
+  string report_id = 2;
+  int32 target_version_no = 3;
+  string run_status = 4;
+  string planner_model = 5;
+  string writer_model = 6;
+  string critic_model = 7;
+  optional string started_at = 8;
+  optional string finished_at = 9;
+  optional string failure_code = 10;
+  optional string failure_message = 11;
+}
+
+message ReportJob {
+  string job_id = 1;
+  string run_id = 2;
+  string job_status = 3;
+  int32 attempt_no = 4;
+  optional string claimed_by = 5;
+  optional string claimed_at = 6;
+  string created_at = 7;
+}
