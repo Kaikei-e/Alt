@@ -14,6 +14,7 @@ from starlette.routing import Mount, Route
 
 import acolyte.gen  # noqa: F401, I001 — must precede generated imports
 from acolyte.config.settings import Settings
+from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.memory_job_gw import MemoryJobGateway
 from acolyte.gateway.ollama_gw import OllamaGateway
 from acolyte.gateway.postgres_report_gw import PostgresReportGateway
@@ -45,14 +46,17 @@ _http_client = httpx.AsyncClient(
     limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
 )
 
-# LLM gateway (Ollama on AIX — ADR-579: consistent options to prevent model reload)
+# LLM gateway (Ollama remote — ADR-579: consistent options to prevent model reload)
 _ollama_gw = OllamaGateway(_http_client, settings)
 
+# Run-scoped content store (article body cache for hydrator top-N fetch)
+_content_store = MemoryContentStore()
+
 # Evidence gateway (search-indexer / Meilisearch)
-_search_gw = SearchIndexerGateway(_http_client, settings)
+_search_gw = SearchIndexerGateway(_http_client, settings, _content_store)
 
 # LangGraph pipeline
-_graph = build_report_graph(_ollama_gw, _search_gw, _report_repo)
+_graph = build_report_graph(_ollama_gw, _search_gw, _report_repo, content_store=_content_store)
 
 
 @asynccontextmanager
@@ -79,7 +83,7 @@ async def health_endpoint(request: Request) -> JSONResponse:
 
 def create_app() -> Starlette:
     """Create Starlette ASGI application instance."""
-    connect_service = AcolyteConnectService(settings, _report_repo, _job_queue, _graph)
+    connect_service = AcolyteConnectService(settings, _report_repo, _job_queue, _graph, llm=_ollama_gw)
     asgi_app = AcolyteServiceASGIApplication(connect_service)
 
     app = Starlette(

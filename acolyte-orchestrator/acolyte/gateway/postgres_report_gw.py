@@ -8,6 +8,7 @@ from uuid import UUID
 
 import structlog
 
+from acolyte.domain.brief import ReportBrief
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 
 if TYPE_CHECKING:
@@ -46,6 +47,42 @@ class PostgresReportGateway:
                 current_version=r[3],
                 latest_successful_run_id=r[4],
                 created_at=r[5],
+            )
+
+    async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
+        async with self._pool.connection() as conn:
+            await conn.execute(
+                "INSERT INTO report_briefs "
+                "(report_id, topic, report_type, time_range, entities, exclude_topics, constraints_jsonb) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                [
+                    report_id,
+                    brief.topic,
+                    brief.report_type,
+                    brief.time_range,
+                    brief.entities,
+                    brief.exclude_topics,
+                    json.dumps(brief.constraints),
+                ],
+            )
+
+    async def get_brief(self, report_id: UUID) -> ReportBrief | None:
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT topic, report_type, time_range, entities, exclude_topics, constraints_jsonb "
+                "FROM report_briefs WHERE report_id = %s",
+                [report_id],
+            )
+            r = await cur.fetchone()
+            if r is None:
+                return None
+            return ReportBrief(
+                topic=r[0],
+                report_type=r[1],
+                time_range=r[2],
+                entities=r[3] or [],
+                exclude_topics=r[4] or [],
+                constraints=r[5] or {},
             )
 
     async def get_report(self, report_id: UUID) -> Report | None:

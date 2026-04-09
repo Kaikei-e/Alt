@@ -8,12 +8,17 @@ from typing import Protocol
 
 @dataclass(frozen=True)
 class ArticleHit:
+    """Metadata-only search hit. Content is stored in ContentStore separately.
+
+    Fields match search-indexer REST GET /v1/search response:
+    id, title, content, tags. Note: url, published_at, _rankingScore
+    are NOT returned by search-indexer.
+    """
+
     article_id: str
     title: str
-    url: str
-    score: float
-    published_at: str | None = None
-    excerpt: str | None = None
+    tags: list[str] | None = None
+    score: float = 0.0
 
 
 @dataclass(frozen=True)

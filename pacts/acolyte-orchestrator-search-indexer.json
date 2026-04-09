@@ -4,30 +4,30 @@
   },
   "interactions": [
     {
-      "description": "a recap search request for evidence gathering",
+      "description": "an article search request with no matches",
       "pending": false,
       "providerStates": [
         {
-          "name": "search-indexer has indexed recaps"
+          "name": "search-indexer has no matching articles"
         }
       ],
       "request": {
-        "method": "POST",
-        "path": "/indexes/recaps/search"
+        "method": "GET",
+        "path": "/v1/search",
+        "query": {
+          "limit": [
+            "20"
+          ],
+          "q": [
+            "nonexistent topic xyz"
+          ]
+        }
       },
       "response": {
         "body": {
           "content": {
-            "estimatedTotalHits": 1,
-            "hits": [
-              {
-                "id": "recap-001",
-                "summary": "This week in technology...",
-                "title": "Tech Trends Weekly Recap"
-              }
-            ],
-            "limit": 10,
-            "offset": 0
+            "hits": [],
+            "query": "nonexistent topic xyz"
           },
           "contentType": "application/json",
           "encoded": false

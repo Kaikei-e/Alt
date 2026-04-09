@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
+from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.port.evidence_provider import ArticleHit, RecapHit
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.critic_node import should_revise
@@ -70,7 +71,7 @@ class FakeLLM:
 class FakeEvidence:
     async def search_articles(self, query: str, *, limit: int = 20) -> list[ArticleHit]:
         return [
-            ArticleHit(article_id="art-1", title="Test Article", url="https://example.com", score=0.9),
+            ArticleHit(article_id="art-1", title="Test Article", tags=["AI"], score=0.9),
         ]
 
     async def fetch_article_metadata(self, article_ids: list[str]) -> list:
@@ -178,7 +179,7 @@ async def test_writer_node_generates_sections() -> None:
         {
             "outline": [{"key": "summary", "title": "Summary"}],
             "curated": [{"type": "article", "id": "art-1", "title": "Test", "score": 0.9}],
-            "scope": {"topic": "AI"},
+            "brief": {"topic": "AI"},
             "sections": {},
         }
     )
@@ -198,7 +199,7 @@ def test_should_revise_returns_revise_when_verdict_is_revise() -> None:
 
 
 def test_should_revise_accepts_at_max_revisions() -> None:
-    state = {"critique": {"verdict": "revise", "revise_sections": ["summary"]}, "revision_count": 2}
+    state = {"critique": {"verdict": "revise", "revise_sections": ["summary"]}, "revision_count": 3}
     assert should_revise(state) == "accept"
 
 
@@ -217,7 +218,7 @@ async def test_full_pipeline_produces_version() -> None:
         {
             "report_id": str(report.report_id),
             "run_id": str(uuid4()),
-            "scope": {"topic": "AI trends 2026"},
+            "brief": {"topic": "AI trends 2026"},
             "revision_count": 0,
         }
     )
@@ -225,3 +226,57 @@ async def test_full_pipeline_produces_version() -> None:
     assert result.get("final_version_no") == 1
     assert repo.reports[report.report_id].current_version == 1
     assert len(repo.sections[report.report_id]) > 0
+
+
+@pytest.mark.asyncio
+async def test_full_pipeline_with_content_store_hydrates_evidence() -> None:
+    """Pipeline with content_store wires hydrator node and produces hydrated_evidence."""
+    llm = FakeLLM()
+    evidence = FakeEvidence()
+    repo = FakeReportRepo()
+    content_store = MemoryContentStore()
+
+    # Pre-populate content store (simulating search_indexer storing content)
+    await content_store.store("art-1", "Full article body about AI trends.")
+
+    report = await repo.create_report("Test Report", "weekly_briefing")
+
+    graph = build_report_graph(llm, evidence, repo, content_store=content_store)
+
+    result = await graph.ainvoke(
+        {
+            "report_id": str(report.report_id),
+            "run_id": str(uuid4()),
+            "brief": {"topic": "AI trends 2026"},
+            "revision_count": 0,
+        }
+    )
+
+    assert result.get("final_version_no") == 1
+    # Hydrator should have produced hydrated_evidence
+    assert "hydrated_evidence" in result
+    assert result["hydrated_evidence"].get("art-1") == "Full article body about AI trends."
+
+
+@pytest.mark.asyncio
+async def test_full_pipeline_without_content_store_still_works() -> None:
+    """Pipeline without content_store should still work (backward compat)."""
+    llm = FakeLLM()
+    evidence = FakeEvidence()
+    repo = FakeReportRepo()
+
+    report = await repo.create_report("Test Report", "weekly_briefing")
+
+    graph = build_report_graph(llm, evidence, repo)
+
+    result = await graph.ainvoke(
+        {
+            "report_id": str(report.report_id),
+            "run_id": str(uuid4()),
+            "brief": {"topic": "AI trends 2026"},
+            "revision_count": 0,
+        }
+    )
+
+    assert result.get("final_version_no") == 1
+    assert result.get("error") is None

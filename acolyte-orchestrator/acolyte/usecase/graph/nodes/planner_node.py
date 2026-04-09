@@ -29,8 +29,12 @@ _PLANNER_FORMAT = {
                 "properties": {
                     "key": {"type": "string"},
                     "title": {"type": "string"},
+                    "search_queries": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
                 },
-                "required": ["key", "title"],
+                "required": ["key", "title", "search_queries"],
             },
         },
     },
@@ -38,15 +42,47 @@ _PLANNER_FORMAT = {
 }
 
 PLANNER_PROMPT = """You are a report planner. Given the topic, create a structured outline with 3-5 sections.
+Each section must include search_queries — a list of 1-3 specific search strings to find relevant articles.
 
 Topic: {scope}
 
-Return JSON with "reasoning" (your thinking) and "sections" (array of key/title objects).
+Return JSON with "reasoning" (your thinking) and "sections" (array of objects with key, title, search_queries).
 
 Example:
-{{"reasoning": "A market analysis needs executive summary, trends, landscape, and outlook.", "sections": [{{"key": "executive_summary", "title": "Executive Summary"}}, {{"key": "market_trends", "title": "Market Trends"}}, {{"key": "competitive_landscape", "title": "Competitive Landscape"}}, {{"key": "outlook", "title": "Outlook & Recommendations"}}]}}
+{{"reasoning": "A market analysis needs executive summary, trends, landscape, and outlook.", "sections": [{{"key": "executive_summary", "title": "Executive Summary", "search_queries": ["AI market overview 2026"]}}, {{"key": "market_trends", "title": "Market Trends", "search_queries": ["AI market size forecast", "AI adoption enterprise"]}}, {{"key": "competitive_landscape", "title": "Competitive Landscape", "search_queries": ["AI company comparison", "AI startup funding"]}}, {{"key": "outlook", "title": "Outlook & Recommendations", "search_queries": ["AI industry predictions"]}}]}}
 
 Now plan sections for the given topic."""
+
+
+def _ensure_search_queries(sections: list[dict], topic: str) -> list[dict]:
+    """Ensure every section has at least one search_query. Add default if missing."""
+    for section in sections:
+        queries = section.get("search_queries")
+        if not queries:
+            title = section.get("title", section.get("key", ""))
+            section["search_queries"] = [f"{topic} {title}"]
+    return sections
+
+
+def _default_fallback_sections(topic: str) -> list[dict]:
+    """Generate fallback sections with topic-based search queries."""
+    return [
+        {
+            "key": "executive_summary",
+            "title": "Executive Summary",
+            "search_queries": [f"{topic} executive summary"],
+        },
+        {
+            "key": "analysis",
+            "title": "Analysis",
+            "search_queries": [f"{topic} analysis"],
+        },
+        {
+            "key": "conclusion",
+            "title": "Conclusion",
+            "search_queries": [f"{topic} conclusion"],
+        },
+    ]
 
 
 class PlannerNode:
@@ -54,8 +90,9 @@ class PlannerNode:
         self._llm = llm
 
     async def __call__(self, state: ReportGenerationState) -> dict:
-        scope = state.get("scope", {})
-        prompt = PLANNER_PROMPT.format(scope=json.dumps(scope))
+        brief = state.get("brief") or state.get("scope") or {}
+        topic = brief.get("topic", "")
+        prompt = PLANNER_PROMPT.format(scope=json.dumps(brief))
 
         response = await self._llm.generate(
             prompt,
@@ -72,14 +109,19 @@ class PlannerNode:
                 logger.info("Planner reasoning", reasoning=reasoning[:200])
         except json.JSONDecodeError:
             logger.warning("Planner JSON parse failed, using fallback", raw_len=len(response.text))
-            outline = [
-                {"key": "executive_summary", "title": "Executive Summary"},
-                {"key": "analysis", "title": "Analysis"},
-                {"key": "conclusion", "title": "Conclusion"},
-            ]
+            outline = _default_fallback_sections(topic)
 
         if not outline:
-            outline = [{"key": "executive_summary", "title": "Executive Summary"}]
+            outline = [
+                {
+                    "key": "executive_summary",
+                    "title": "Executive Summary",
+                    "search_queries": [f"{topic} executive summary"],
+                },
+            ]
+
+        # Ensure all sections have search_queries
+        outline = _ensure_search_queries(outline, topic)
 
         logger.info("Planner completed", section_count=len(outline))
         return {"outline": outline}

@@ -27,15 +27,13 @@ logger = structlog.get_logger(__name__)
 _BASE_OPTIONS = {
     "num_batch": 1024,
     "num_keep": -1,
+    "num_ctx": 12288,  # 32GB VRAM target — 12K context for Gemma4 26B
     "stop": ["<end_of_turn>"],
 }
 
 
 class OllamaGateway:
-    """LLM text generation via Ollama /api/generate endpoint.
-
-    Targets AIX remote host with Gemma4 26B.
-    """
+    """LLM text generation via Ollama /api/generate endpoint."""
 
     def __init__(self, http_client: httpx.AsyncClient, settings: Settings) -> None:
         self._client = http_client

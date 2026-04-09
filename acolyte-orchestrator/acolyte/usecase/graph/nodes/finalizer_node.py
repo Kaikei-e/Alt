@@ -24,7 +24,8 @@ class FinalizerNode:
         report_id = UUID(state["report_id"])
         sections = state.get("sections", {})
         outline = state.get("outline", [])
-        scope = state.get("scope", {})
+        brief = state.get("brief") or state.get("scope") or {}
+        section_citations = state.get("section_citations", {})
 
         report = await self._report_repo.get_report(report_id)
         if report is None:
@@ -37,7 +38,7 @@ class FinalizerNode:
             report.current_version,
             "LangGraph pipeline generation",
             change_items,
-            scope_snapshot=scope,
+            scope_snapshot=brief,
             outline_snapshot=outline,
         )
 
@@ -58,7 +59,8 @@ class FinalizerNode:
                 sec = next((s for s in existing_sections if s.section_key == key), None)
                 expected_v = sec.current_version if sec else 0
 
-            await self._report_repo.bump_section_version(report_id, key, expected_v, body)
+            citations = section_citations.get(key)
+            await self._report_repo.bump_section_version(report_id, key, expected_v, body, citations=citations)
 
         logger.info("Finalizer completed", report_id=str(report_id), new_version=new_version)
         return {"final_version_no": new_version}

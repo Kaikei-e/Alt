@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
     from acolyte.config.settings import Settings
     from acolyte.port.job_queue import JobQueuePort
+    from acolyte.port.llm_provider import LLMProviderPort
     from acolyte.port.report_repository import ReportRepositoryPort
 
 logger = structlog.get_logger(__name__)
@@ -35,11 +36,13 @@ class AcolyteConnectService:
         report_repo: ReportRepositoryPort,
         job_queue: JobQueuePort | None = None,
         graph: CompiledStateGraph | None = None,
+        llm: LLMProviderPort | None = None,
     ) -> None:
         self._settings = settings
         self._repo = report_repo
         self._jobs = job_queue
         self._graph = graph
+        self._llm = llm
 
     def _verify_token(self, ctx: RequestContext) -> None:
         """Verify X-Service-Token header. Skip if secret is empty (dev mode)."""
@@ -53,7 +56,13 @@ class AcolyteConnectService:
     async def create_report(
         self, request: acolyte_pb2.CreateReportRequest, ctx: RequestContext
     ) -> acolyte_pb2.CreateReportResponse:
+        from acolyte.domain.brief import ReportBrief
+
         report = await self._repo.create_report(request.title, request.report_type)
+        scope = dict(request.scope) if request.scope else {}
+        if scope.get("topic"):
+            brief = ReportBrief.from_scope(scope, request.report_type)
+            await self._repo.create_brief(report.report_id, brief)
         return acolyte_pb2.CreateReportResponse(report_id=str(report.report_id))
 
     async def get_report(
@@ -168,22 +177,23 @@ class AcolyteConnectService:
 
         # Launch pipeline in background if graph is wired
         if self._graph is not None:
-            scope = {}  # TODO: store scope in report and retrieve here
+            brief = await self._repo.get_brief(report.report_id)
+            brief_dict = brief.to_dict() if brief else {"topic": report.title}
             asyncio.create_task(
-                self._run_pipeline(str(report.report_id), str(run.run_id), scope),
+                self._run_pipeline(str(report.report_id), str(run.run_id), brief_dict),
                 name=f"acolyte-run-{run.run_id}",
             )
 
         return acolyte_pb2.StartReportRunResponse(run_id=str(run.run_id))
 
-    async def _run_pipeline(self, report_id: str, run_id: str, scope: dict) -> None:
+    async def _run_pipeline(self, report_id: str, run_id: str, brief_dict: dict) -> None:
         """Execute LangGraph pipeline in background."""
         logger.info("Pipeline started", report_id=report_id, run_id=run_id)
         try:
             result = await self._graph.ainvoke({
                 "report_id": report_id,
                 "run_id": run_id,
-                "scope": scope,
+                "brief": brief_dict,
                 "revision_count": 0,
             })
 
@@ -226,7 +236,20 @@ class AcolyteConnectService:
     async def rerun_section(
         self, request: acolyte_pb2.RerunSectionRequest, ctx: RequestContext
     ) -> acolyte_pb2.RerunSectionResponse:
-        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+        if self._llm is None:
+            raise ConnectError(Code.UNIMPLEMENTED, "LLM provider not configured")
+        if not request.section_key:
+            raise ConnectError(Code.INVALID_ARGUMENT, "section_key is required")
+
+        from acolyte.usecase.rerun_section_uc import RerunSectionUsecase
+
+        uc = RerunSectionUsecase(self._repo, self._llm)
+        try:
+            await uc.execute(UUID(request.report_id), request.section_key)
+        except ValueError as e:
+            raise ConnectError(Code.NOT_FOUND, str(e))
+
+        return acolyte_pb2.RerunSectionResponse(run_id="")
 
     async def health_check(
         self, request: acolyte_pb2.HealthCheckRequest, ctx: RequestContext

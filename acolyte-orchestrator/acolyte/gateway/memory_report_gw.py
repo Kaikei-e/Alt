@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from acolyte.domain.brief import ReportBrief
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 from acolyte.gateway.postgres_report_gw import StaleVersionError
 
@@ -14,6 +15,7 @@ class MemoryReportGateway:
 
     def __init__(self) -> None:
         self._reports: dict[UUID, Report] = {}
+        self._briefs: dict[UUID, ReportBrief] = {}
         self._versions: dict[UUID, list[ReportVersion]] = {}
         self._change_items: dict[tuple[UUID, int], list[ChangeItem]] = {}
         self._sections: dict[UUID, list[ReportSection]] = {}
@@ -33,6 +35,12 @@ class MemoryReportGateway:
         self._versions[report.report_id] = []
         self._sections[report.report_id] = []
         return report
+
+    async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
+        self._briefs[report_id] = brief
+
+    async def get_brief(self, report_id: UUID) -> ReportBrief | None:
+        return self._briefs.get(report_id)
 
     async def get_report(self, report_id: UUID) -> Report | None:
         return self._reports.get(report_id)

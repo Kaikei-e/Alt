@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 
+if TYPE_CHECKING:
+    from acolyte.domain.brief import ReportBrief
+
 
 class ReportRepositoryPort(Protocol):
     async def create_report(self, title: str, report_type: str) -> Report: ...
+
+    async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None: ...
+
+    async def get_brief(self, report_id: UUID) -> ReportBrief | None: ...
 
     async def get_report(self, report_id: UUID) -> Report | None: ...
 
