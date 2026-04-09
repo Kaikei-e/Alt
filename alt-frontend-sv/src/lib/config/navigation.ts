@@ -20,6 +20,7 @@ import {
 	Orbit,
 	Lightbulb,
 	Tag,
+	ScrollText,
 } from "@lucide/svelte";
 import type { Component } from "svelte";
 
@@ -155,6 +156,12 @@ export const desktopNavigation: Array<
 		category: "main",
 	},
 	{
+		label: "Acolyte Reports",
+		href: `${svBasePath}/acolyte`,
+		icon: ScrollText,
+		category: "main",
+	},
+	{
 		label: "Settings",
 		category: "settings",
 		icon: Settings,
@@ -241,6 +248,13 @@ export const mobileMenuItems = [
 		category: "augur",
 		icon: BirdIcon,
 		description: "Chat with your knowledge base",
+	},
+	{
+		label: "Acolyte Reports",
+		href: `${svBasePath}/acolyte`,
+		category: "augur",
+		icon: ScrollText,
+		description: "Versioned intelligence briefings",
 	},
 	{
 		label: "3-Day Recap",

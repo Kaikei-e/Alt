@@ -21,6 +21,7 @@ import {
 	Orbit,
 	Lightbulb,
 	Tag,
+	ScrollText,
 } from "@lucide/svelte";
 import { page } from "$app/state";
 import { cn } from "$lib/utils";
@@ -125,6 +126,12 @@ const baseMenuItems = [
 		label: "Ask Augur",
 		href: `${svBasePath}/augur`,
 		icon: BirdIcon,
+		category: "main",
+	},
+	{
+		label: "Acolyte Reports",
+		href: `${svBasePath}/acolyte`,
+		icon: ScrollText,
 		category: "main",
 	},
 	{

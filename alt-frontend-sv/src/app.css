@@ -123,9 +123,13 @@
 	--color-alt-primary: var(--alt-primary);
 	--color-alt-secondary: var(--alt-secondary);
 
-	/* Alt-Paper font families */
+	/* Alt-Paper font families — applied globally via Tailwind v4 theme tokens */
+	--font-sans: "Source Sans 3", "system-ui", sans-serif;
+	--font-serif: "Playfair Display", "Georgia", serif;
+	--font-mono: "IBM Plex Mono", "Source Code Pro", ui-monospace, monospace;
 	--font-family-display: var(--font-display);
 	--font-family-body: var(--font-body);
+	--font-family-mono: var(--font-mono);
 	--color-alt-tertiary: var(--alt-tertiary);
 	--color-alt-success: var(--alt-success);
 	--color-alt-error: var(--alt-error);
@@ -138,6 +142,20 @@
 	--color-surface-bg: var(--surface-bg);
 	--color-surface-border: var(--surface-border);
 	--color-surface-hover: var(--surface-hover);
+}
+
+/* --- Global font application --- */
+html,
+body {
+	font-family: var(--font-body, "Source Sans 3", system-ui, sans-serif);
+}
+
+h1, h2, h3, h4, h5, h6 {
+	font-family: var(--font-display, "Playfair Display", Georgia, serif);
+}
+
+code, kbd, samp, pre {
+	font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
 }
 
 /* --- Base Brand Colors (Vaporwave) --- */
@@ -340,6 +358,7 @@
 	/* Typography */
 	--font-display: "Playfair Display", "Georgia", serif;
 	--font-body: "Source Sans 3", "system-ui", sans-serif;
+	--font-mono: "IBM Plex Mono", "Source Code Pro", ui-monospace, monospace;
 
 	--surface-bg: #faf9f7;
 	--surface-2: #f5f4f1;
