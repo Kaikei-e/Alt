@@ -1011,8 +1011,10 @@ class RecapSummaryUsecase:
                     if remaining_repair_attempts > 0:
                         remaining_repair_attempts -= 1
                         repair_body = self._build_repair_prompt_body(
-                            request, max_bullets,
-                            llm_response.response, quality_issues,
+                            request,
+                            max_bullets,
+                            llm_response.response,
+                            quality_issues,
                         )
                         active_messages = [
                             {"role": "system", "content": GEMMA_RECAP_SYSTEM_PROMPT},
@@ -1539,7 +1541,9 @@ class RecapSummaryUsecase:
 
         min_bullets = 1 if is_thin_evidence else 2
         if len(bullets) < min_bullets:
-            issues.append(f"bullets must contain at least {min_bullets} non-empty items")
+            issues.append(
+                f"bullets must contain at least {min_bullets} non-empty items"
+            )
 
         if len(bullets) == 1 and bullets[0].strip() == title:
             issues.append("bullets must not collapse to a title-only fallback")

@@ -1759,7 +1759,8 @@ async def test_degraded_bullet_uses_raw_sentence_for_japanese():
 
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response="not json", model="gemma4-e4b-q4km",
+        response="not json",
+        model="gemma4-e4b-q4km",
     )
 
     request = RecapSummaryRequest(
@@ -1801,7 +1802,8 @@ async def test_degraded_bullet_adds_genre_prefix_for_english():
 
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response="not json", model="gemma4-e4b-q4km",
+        response="not json",
+        model="gemma4-e4b-q4km",
     )
 
     request = RecapSummaryRequest(
@@ -1844,7 +1846,8 @@ async def test_degraded_title_uses_japanese_genre_name():
 
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response="not json", model="gemma4-e4b-q4km",
+        response="not json",
+        model="gemma4-e4b-q4km",
     )
 
     request = RecapSummaryRequest(
@@ -1883,7 +1886,8 @@ async def test_fallback_filters_short_sentences():
 
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
-        response="not json", model="gemma4-e4b-q4km",
+        response="not json",
+        model="gemma4-e4b-q4km",
     )
 
     request = RecapSummaryRequest(
@@ -2165,7 +2169,12 @@ async def test_should_not_bypass_llm_with_2_sentences_from_1_source():
                 ],
                 "language": "ja",
                 "references": [
-                    {"id": 1, "url": "https://example.com/1", "domain": "example.com", "article_id": "art1"}
+                    {
+                        "id": 1,
+                        "url": "https://example.com/1",
+                        "domain": "example.com",
+                        "article_id": "art1",
+                    }
                 ],
             }
         ),
@@ -2257,8 +2266,18 @@ async def test_3days_prompt_includes_anti_hallucination_section():
                 ],
                 "language": "ja",
                 "references": [
-                    {"id": 1, "url": "https://example.com/1", "domain": "example.com", "article_id": "art1"},
-                    {"id": 2, "url": "https://example.com/2", "domain": "example.com", "article_id": "art2"},
+                    {
+                        "id": 1,
+                        "url": "https://example.com/1",
+                        "domain": "example.com",
+                        "article_id": "art1",
+                    },
+                    {
+                        "id": 2,
+                        "url": "https://example.com/2",
+                        "domain": "example.com",
+                        "article_id": "art2",
+                    },
                 ],
             }
         ),
@@ -2273,10 +2292,14 @@ async def test_3days_prompt_includes_anti_hallucination_section():
                 cluster_id=0,
                 representative_sentences=[
                     RepresentativeSentence(
-                        text="Google launched new model.", source_url="https://example.com/1", article_id="art1",
+                        text="Google launched new model.",
+                        source_url="https://example.com/1",
+                        article_id="art1",
                     ),
                     RepresentativeSentence(
-                        text="Japan published AI guidelines.", source_url="https://example.com/2", article_id="art2",
+                        text="Japan published AI guidelines.",
+                        source_url="https://example.com/2",
+                        article_id="art2",
                     ),
                 ],
             )
@@ -2335,8 +2358,18 @@ async def test_single_shot_uses_chat_generate_for_recap():
                     ],
                     "language": "ja",
                     "references": [
-                        {"id": 1, "url": "https://example.com/1", "domain": "example.com", "article_id": "art1"},
-                        {"id": 2, "url": "https://example.com/2", "domain": "example.com", "article_id": "art2"},
+                        {
+                            "id": 1,
+                            "url": "https://example.com/1",
+                            "domain": "example.com",
+                            "article_id": "art1",
+                        },
+                        {
+                            "id": 2,
+                            "url": "https://example.com/2",
+                            "domain": "example.com",
+                            "article_id": "art2",
+                        },
                     ],
                 }
             ),
@@ -2379,7 +2412,9 @@ async def test_single_shot_uses_chat_generate_for_recap():
     llm_provider.chat_generate.assert_awaited()
     # The payload should contain messages (not raw prompt)
     call_args = llm_provider.chat_generate.call_args
-    payload = call_args.args[0] if call_args.args else call_args.kwargs.get("payload", {})
+    payload = (
+        call_args.args[0] if call_args.args else call_args.kwargs.get("payload", {})
+    )
     assert "messages" in payload
     assert payload["messages"][0]["role"] == "system"
     assert payload["messages"][1]["role"] == "user"
@@ -2409,8 +2444,18 @@ async def test_sanitize_auto_injects_reference_markers():
                     ],
                     "language": "ja",
                     "references": [
-                        {"id": 1, "url": "https://example.com/1", "domain": "example.com", "article_id": "art1"},
-                        {"id": 2, "url": "https://example.com/2", "domain": "example.com", "article_id": "art2"},
+                        {
+                            "id": 1,
+                            "url": "https://example.com/1",
+                            "domain": "example.com",
+                            "article_id": "art1",
+                        },
+                        {
+                            "id": 2,
+                            "url": "https://example.com/2",
+                            "domain": "example.com",
+                            "article_id": "art2",
+                        },
                     ],
                 }
             ),
@@ -2470,7 +2515,12 @@ async def test_thin_evidence_allows_single_bullet():
                     ],
                     "language": "ja",
                     "references": [
-                        {"id": 1, "url": "https://example.com/1", "domain": "example.com", "article_id": "art1"},
+                        {
+                            "id": 1,
+                            "url": "https://example.com/1",
+                            "domain": "example.com",
+                            "article_id": "art1",
+                        },
                     ],
                 }
             ),
