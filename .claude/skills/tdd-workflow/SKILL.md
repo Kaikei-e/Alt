@@ -205,10 +205,10 @@ When implementing features:
 
 When modifying service-to-service communication, verify:
 
-- [ ] **Proto compatibility**: `buf breaking` passes (PM-004 #1 prevention)
-- [ ] **Options consistency**: LLM parameters match across all request paths (PM-008 prevention)
-- [ ] **Semaphore routing**: GPU requests go through HybridPrioritySemaphore (PM-006 prevention)
-- [ ] **Content-type handling**: Proxy layers detect all Connect-RPC serialization formats (PM-004 #4 prevention)
+- [ ] **Proto compatibility**: `buf breaking` passes
+- [ ] **Options consistency**: LLM parameters match across all request paths
+- [ ] **Semaphore routing**: GPU requests go through HybridPrioritySemaphore
+- [ ] **Content-type handling**: Proxy layers detect all Connect-RPC serialization formats
 - [ ] **CDC tests updated**: Consumer expectations match provider implementation
 
 ## Anti-Patterns (AVOID)
