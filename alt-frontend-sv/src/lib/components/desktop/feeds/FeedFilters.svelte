@@ -6,31 +6,31 @@ import FeedSourceExcludeFilter from "./FeedSourceExcludeFilter.svelte";
 interface Props {
 	unreadOnly?: boolean;
 	sortBy?: string;
-	excludedFeedLinkId?: string | null;
+	excludedFeedLinkIds?: string[];
 	feedSources?: ConnectFeedSource[];
 	onFilterChange: (filters: {
 		unreadOnly: boolean;
 		sortBy: string;
-		excludedFeedLinkId: string | null;
+		excludedFeedLinkIds: string[];
 	}) => void;
 }
 
 let {
 	unreadOnly = false,
 	sortBy = "date_desc",
-	excludedFeedLinkId = null,
+	excludedFeedLinkIds = [],
 	feedSources = [],
 	onFilterChange,
 }: Props = $props();
 
 let localUnreadOnly = $state(false);
 let localSortBy = $state("date_desc");
-let localExcludedFeedLinkId = $state<string | null>(null);
+let localExcludedFeedLinkIds = $state<string[]>([]);
 
 $effect.pre(() => {
 	localUnreadOnly = unreadOnly;
 	localSortBy = sortBy;
-	localExcludedFeedLinkId = excludedFeedLinkId ?? null;
+	localExcludedFeedLinkIds = excludedFeedLinkIds ?? [];
 });
 
 function handleUnreadChange(event: Event) {
@@ -39,7 +39,7 @@ function handleUnreadChange(event: Event) {
 	onFilterChange({
 		unreadOnly: localUnreadOnly,
 		sortBy: localSortBy,
-		excludedFeedLinkId: localExcludedFeedLinkId,
+		excludedFeedLinkIds: localExcludedFeedLinkIds,
 	});
 }
 
@@ -49,25 +49,25 @@ function handleSortChange(event: Event) {
 	onFilterChange({
 		unreadOnly: localUnreadOnly,
 		sortBy: localSortBy,
-		excludedFeedLinkId: localExcludedFeedLinkId,
+		excludedFeedLinkIds: localExcludedFeedLinkIds,
 	});
 }
 
-function handleExclude(feedLinkId: string) {
-	localExcludedFeedLinkId = feedLinkId;
+function handleExclude(feedLinkIds: string[]) {
+	localExcludedFeedLinkIds = feedLinkIds;
 	onFilterChange({
 		unreadOnly: localUnreadOnly,
 		sortBy: localSortBy,
-		excludedFeedLinkId: localExcludedFeedLinkId,
+		excludedFeedLinkIds: localExcludedFeedLinkIds,
 	});
 }
 
 function handleClearExclusion() {
-	localExcludedFeedLinkId = null;
+	localExcludedFeedLinkIds = [];
 	onFilterChange({
 		unreadOnly: localUnreadOnly,
 		sortBy: localSortBy,
-		excludedFeedLinkId: null,
+		excludedFeedLinkIds: [],
 	});
 }
 </script>
@@ -93,7 +93,7 @@ function handleClearExclusion() {
 		<div class="border-l border-[var(--surface-border)] pl-3">
 			<FeedSourceExcludeFilter
 				sources={feedSources}
-				excludedSourceId={localExcludedFeedLinkId}
+				excludedFeedLinkIds={localExcludedFeedLinkIds}
 				onExclude={handleExclude}
 				onClearExclusion={handleClearExclusion}
 			/>

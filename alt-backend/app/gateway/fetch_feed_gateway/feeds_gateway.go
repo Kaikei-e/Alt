@@ -177,7 +177,7 @@ func (g *FetchFeedsGateway) FetchFeedsListPage(ctx context.Context, page int) ([
 	return feedItems, nil
 }
 
-func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
+func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchFeedsListCursor")
 	defer span.End()
 
@@ -185,7 +185,7 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 		return nil, errors.New("database connection not available")
 	}
 
-	feeds, err := g.alt_db.FetchAllFeedsListCursor(ctx, cursor, limit, excludeFeedLinkID)
+	feeds, err := g.alt_db.FetchAllFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching all feeds with cursor", "error", err)
 		return nil, errors.New("error fetching feeds with cursor")
@@ -215,7 +215,7 @@ func (g *FetchFeedsGateway) FetchFeedsListCursor(ctx context.Context, cursor *ti
 	return feedItems, nil
 }
 
-func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
+func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchUnreadFeedsListCursor")
 	defer span.End()
 
@@ -223,7 +223,7 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 		return nil, errors.New("database connection not available")
 	}
 
-	feeds, err := g.alt_db.FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkID)
+	feeds, err := g.alt_db.FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching unread feeds with cursor", "error", err)
 		return nil, errors.New("error fetching unread feeds with cursor")

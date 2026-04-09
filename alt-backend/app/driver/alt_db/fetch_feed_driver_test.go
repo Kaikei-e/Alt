@@ -138,6 +138,57 @@ func TestAltDBRepository_GetAllReadFeedIDs_QueriesWithoutFeedIDArray(t *testing.
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestBuildExcludeClauseMultiple(t *testing.T) {
+	t.Run("NilSlice_ReturnsEmpty", func(t *testing.T) {
+		args := []any{20, uuid.New()}
+		clause, resultArgs := buildExcludeClauseMultiple(args, nil)
+		require.Equal(t, "", clause)
+		require.Len(t, resultArgs, 2)
+	})
+
+	t.Run("EmptySlice_ReturnsEmpty", func(t *testing.T) {
+		args := []any{20, uuid.New()}
+		clause, resultArgs := buildExcludeClauseMultiple(args, []uuid.UUID{})
+		require.Equal(t, "", clause)
+		require.Len(t, resultArgs, 2)
+	})
+
+	t.Run("SingleElement_GeneratesClause", func(t *testing.T) {
+		id := uuid.New()
+		args := []any{20, uuid.New()}
+		clause, resultArgs := buildExcludeClauseMultiple(args, []uuid.UUID{id})
+		require.Equal(t, "AND f.feed_link_id != ALL($3::uuid[])", clause)
+		require.Len(t, resultArgs, 3)
+		require.Equal(t, []string{id.String()}, resultArgs[2])
+	})
+
+	t.Run("MultipleElements_GeneratesClause", func(t *testing.T) {
+		ids := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
+		args := []any{20, uuid.New()}
+		clause, resultArgs := buildExcludeClauseMultiple(args, ids)
+		require.Equal(t, "AND f.feed_link_id != ALL($3::uuid[])", clause)
+		require.Len(t, resultArgs, 3)
+		strs := make([]string, len(ids))
+		for i, id := range ids {
+			strs[i] = id.String()
+		}
+		require.Equal(t, strs, resultArgs[2])
+	})
+
+	t.Run("PreservesExistingArgs", func(t *testing.T) {
+		existingTime := time.Now()
+		existingUser := uuid.New()
+		args := []any{existingTime, 20, existingUser}
+		ids := []uuid.UUID{uuid.New()}
+		clause, resultArgs := buildExcludeClauseMultiple(args, ids)
+		require.Equal(t, "AND f.feed_link_id != ALL($4::uuid[])", clause)
+		require.Len(t, resultArgs, 4)
+		require.Equal(t, existingTime, resultArgs[0])
+		require.Equal(t, 20, resultArgs[1])
+		require.Equal(t, existingUser, resultArgs[2])
+	})
+}
+
 func TestAltDBRepository_GetReadFeedIDs_UsesUUIDArrayCast(t *testing.T) {
 	var buf bytes.Buffer
 	testLogger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))

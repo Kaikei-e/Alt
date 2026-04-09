@@ -27,7 +27,7 @@ const { data }: { data: PageData } = $props();
 const { isDesktop } = useViewport();
 
 // --- Mobile state ---
-let mobileExcludedFeedLinkId = $state<string | null>(null);
+let mobileExcludedFeedLinkIds = $state<string[]>([]);
 
 // --- Desktop state ---
 let selectedFeedUrl = $state<string | null>(null);
@@ -35,7 +35,7 @@ let isModalOpen = $state(false);
 let filters = $state({
 	unreadOnly: false,
 	sortBy: "date_desc",
-	excludedFeedLinkId: null as string | null,
+	excludedFeedLinkIds: [] as string[],
 });
 let feedGridApi = $state<FeedGridApi | null>(null);
 let feedSources = $state<ConnectFeedSource[]>([]);
@@ -91,7 +91,7 @@ function handleSelectFeed(feed: RenderFeed, _index: number, _total: number) {
 function handleFilterChange(newFilters: {
 	unreadOnly: boolean;
 	sortBy: string;
-	excludedFeedLinkId: string | null;
+	excludedFeedLinkIds: string[];
 }) {
 	filters = newFilters;
 }
@@ -154,7 +154,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 	<FeedFilters
 		unreadOnly={filters.unreadOnly}
 		sortBy={filters.sortBy}
-		excludedFeedLinkId={filters.excludedFeedLinkId}
+		excludedFeedLinkIds={filters.excludedFeedLinkIds}
 		{feedSources}
 		onFilterChange={handleFilterChange}
 	/>
@@ -163,7 +163,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 		onSelectFeed={handleSelectFeed}
 		unreadOnly={filters.unreadOnly}
 		sortBy={filters.sortBy}
-		excludedFeedLinkId={filters.excludedFeedLinkId}
+		excludedFeedLinkIds={filters.excludedFeedLinkIds}
 		onReady={handleFeedGridReady}
 	/>
 
@@ -201,14 +201,14 @@ function handleFeedGridReady(api: FeedGridApi) {
 		</header>
 		<MobileFeedExcludeFilter
 			sources={feedSources}
-			excludedSourceId={mobileExcludedFeedLinkId}
-			onExclude={(id: string) => (mobileExcludedFeedLinkId = id)}
-			onClearExclusion={() => (mobileExcludedFeedLinkId = null)}
+			excludedFeedLinkIds={mobileExcludedFeedLinkIds}
+			onExclude={(ids: string[]) => (mobileExcludedFeedLinkIds = ids)}
+			onClearExclusion={() => (mobileExcludedFeedLinkIds = [])}
 		/>
 		<div class="flex-1 min-h-0 flex flex-col">
 			<FeedsClient
 				initialFeeds={data.initialFeeds || []}
-				excludeFeedLinkId={mobileExcludedFeedLinkId}
+				excludeFeedLinkIds={mobileExcludedFeedLinkIds}
 			/>
 		</div>
 	</div>

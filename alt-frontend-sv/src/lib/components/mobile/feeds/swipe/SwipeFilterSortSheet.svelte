@@ -10,20 +10,24 @@ import {
 import * as Sheet from "$lib/components/ui/sheet";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import { useKeyboardOffset } from "$lib/hooks/useKeyboardOffset.svelte";
-import { extractDomain, filterSources } from "$lib/utils/feed-source-filter";
+import {
+	getEffectiveDomain,
+	groupSourcesByDomain,
+	collectFeedLinkIdsByDomain,
+} from "$lib/utils/feed-source-filter";
 
 interface Props {
 	sources: ConnectFeedSource[];
-	excludedSourceId: string | null;
+	excludedFeedLinkIds: string[];
 	sortOrder: "newest" | "oldest";
-	onExclude: (id: string) => void;
+	onExclude: (ids: string[]) => void;
 	onClearExclusion: () => void;
 	onSortChange: (order: "newest" | "oldest") => void;
 }
 
 let {
 	sources,
-	excludedSourceId,
+	excludedFeedLinkIds,
 	sortOrder,
 	onExclude,
 	onClearExclusion,
@@ -35,15 +39,31 @@ let query = $state("");
 
 const kb = useKeyboardOffset(() => isOpen);
 
-const excludedSource = $derived(
-	excludedSourceId ? sources.find((s) => s.id === excludedSourceId) : null,
+const excludedDomain = $derived.by(() => {
+	if (excludedFeedLinkIds.length === 0) return null;
+	const source = sources.find((s) => excludedFeedLinkIds.includes(s.id));
+	return source ? getEffectiveDomain(source.url) : null;
+});
+
+const domainEntries = $derived.by(() => {
+	const grouped = groupSourcesByDomain(sources);
+	return [...grouped.entries()]
+		.map(([domain, items]) => ({
+			domain,
+			count: items.length,
+		}))
+		.sort((a, b) => a.domain.localeCompare(b.domain));
+});
+
+const displayedDomains = $derived(
+	query.trim() === ""
+		? domainEntries
+		: domainEntries.filter((e) =>
+				e.domain.toLowerCase().includes(query.toLowerCase()),
+			),
 );
 
-const displayedSources = $derived(
-	query.trim() === "" ? sources : filterSources(sources, query),
-);
-
-function handleSelect(source: ConnectFeedSource) {
+function handleSelect(domain: string) {
 	// Phase 1: Force keyboard dismiss before closing sheet.
 	// Safari iOS freezes the viewport if isOpen becomes false (triggering
 	// useKeyboardOffset → offset=0) while the keyboard is still animating away.
@@ -55,7 +75,8 @@ function handleSelect(source: ConnectFeedSource) {
 		document.activeElement.blur();
 	}
 
-	onExclude(source.id);
+	const ids = collectFeedLinkIdsByDomain(sources, domain);
+	onExclude(ids);
 	query = "";
 
 	// Phase 2: Close sheet AFTER keyboard dismiss animation (~350ms)
@@ -78,7 +99,7 @@ function handleClear() {
 	data-testid="swipe-filter-trigger"
 >
 	<SlidersHorizontal class="h-5 w-5 relative z-[1]" />
-	{#if excludedSourceId}
+	{#if excludedFeedLinkIds.length > 0}
 		<span
 			class="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-[var(--alt-primary)] border-2 border-[var(--bg-surface)]"
 			data-testid="filter-active-badge"
@@ -152,17 +173,17 @@ function handleClear() {
 					Exclude source
 				</h3>
 
-				{#if excludedSource}
+				{#if excludedDomain}
 					<!-- Active exclusion chip -->
 					<button
 						type="button"
 						class="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-[var(--surface-border)] bg-[var(--surface-bg)] text-sm text-[var(--text-primary)] active:bg-[var(--surface-hover)] transition-colors min-h-[44px]"
 						onclick={handleClear}
-						aria-label="Remove exclusion for {extractDomain(excludedSource.url)}"
+						aria-label="Remove exclusion for {excludedDomain}"
 						data-testid="exclude-chip-active"
 					>
 						<Ban class="h-4 w-4 text-[var(--text-secondary)] shrink-0" />
-						<span class="max-w-[200px] truncate">{extractDomain(excludedSource.url)}</span>
+						<span class="max-w-[200px] truncate">{excludedDomain}</span>
 						<X class="h-4 w-4 text-[var(--text-secondary)] shrink-0" />
 					</button>
 				{:else}
@@ -186,16 +207,16 @@ function handleClear() {
 						role="listbox"
 						aria-label="Feed sources"
 					>
-						{#each displayedSources as source (source.id)}
+						{#each displayedDomains as entry (entry.domain)}
 							<button
 								type="button"
 								role="option"
 								aria-selected={false}
 								class="w-full text-left px-3 py-3 min-h-[44px] text-sm text-[var(--text-primary)] rounded-lg active:bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)] transition-colors"
-								onclick={() => handleSelect(source)}
+								onclick={() => handleSelect(entry.domain)}
 								data-testid="exclude-source-item"
 							>
-								<span class="block truncate">{source.url}</span>
+								<span class="block truncate">{entry.domain}{entry.count > 1 ? ` (${entry.count} feeds)` : ""}</span>
 							</button>
 						{:else}
 							<p

@@ -56,7 +56,7 @@ function connectFeedToRenderFeed(item: ConnectFeedItem): RenderFeed {
 export async function getFeedsWithCursorClient(
 	cursor?: string,
 	limit: number = 20,
-	excludeFeedLinkId?: string,
+	excludeFeedLinkIds?: string[],
 ): Promise<CursorResponse<RenderFeed>> {
 	const transport = createClientTransport();
 	const response = await getUnreadFeeds(
@@ -64,7 +64,7 @@ export async function getFeedsWithCursorClient(
 		cursor,
 		limit,
 		undefined,
-		excludeFeedLinkId,
+		excludeFeedLinkIds,
 	);
 
 	return {
@@ -81,14 +81,14 @@ export async function getFeedsWithCursorClient(
 export async function getAllFeedsWithCursorClient(
 	cursor?: string,
 	limit: number = 20,
-	excludeFeedLinkId?: string,
+	excludeFeedLinkIds?: string[],
 ): Promise<CursorResponse<RenderFeed>> {
 	const transport = createClientTransport();
 	const response = await getAllFeeds(
 		transport,
 		cursor,
 		limit,
-		excludeFeedLinkId,
+		excludeFeedLinkIds,
 	);
 
 	return {

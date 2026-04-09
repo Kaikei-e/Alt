@@ -32,7 +32,7 @@ func (u *CachedFeedListUsecase) FetchUnreadFeedsListCursor(
 	ctx context.Context,
 	cursor *time.Time,
 	limit int,
-	excludeFeedLinkID *uuid.UUID,
+	excludeFeedLinkIDs []uuid.UUID,
 ) ([]*domain.FeedItem, bool, error) {
 	if err := validateLimit(limit); err != nil {
 		return nil, false, err
@@ -41,7 +41,7 @@ func (u *CachedFeedListUsecase) FetchUnreadFeedsListCursor(
 	// Delegate to efficient single-SQL-query port.
 	// Fetches limit+1 to detect hasMore without a separate COUNT query.
 	fetchLimit := limit + 1
-	feeds, err := u.unreadFeedPort.FetchUnreadFeedsListCursor(ctx, cursor, fetchLimit, excludeFeedLinkID)
+	feeds, err := u.unreadFeedPort.FetchUnreadFeedsListCursor(ctx, cursor, fetchLimit, excludeFeedLinkIDs)
 	if err != nil {
 		return nil, false, err
 	}
@@ -57,7 +57,7 @@ func (u *CachedFeedListUsecase) FetchAllFeedsListCursor(
 	ctx context.Context,
 	cursor *time.Time,
 	limit int,
-	excludeFeedLinkID *uuid.UUID,
+	excludeFeedLinkIDs []uuid.UUID,
 ) ([]*domain.FeedItem, error) {
 	if err := validateLimit(limit); err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func (u *CachedFeedListUsecase) FetchAllFeedsListCursor(
 
 	// Delegate to efficient single-SQL-query port.
 	// The SQL query includes LEFT JOIN with read_status to set IsRead.
-	return u.allFeedPort.FetchFeedsListCursor(ctx, cursor, limit, excludeFeedLinkID)
+	return u.allFeedPort.FetchFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
 }
 
 func (u *CachedFeedListUsecase) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {

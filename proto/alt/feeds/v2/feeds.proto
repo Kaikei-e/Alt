@@ -113,8 +113,10 @@ message GetUnreadFeedsRequest {
   int32 limit = 2;
   // View mode: "swipe" for single-card response (optional)
   optional string view = 3;
-  // Feed link ID to exclude from results (UUID format)
+  // Feed link ID to exclude from results (UUID format) [deprecated: use exclude_feed_link_ids]
   optional string exclude_feed_link_id = 4;
+  // Feed link IDs to exclude from results (UUID format, domain-level exclude)
+  repeated string exclude_feed_link_ids = 5;
 }
 
 // GetUnreadFeedsResponse contains unread feeds with pagination
@@ -133,8 +135,10 @@ message GetAllFeedsRequest {
   optional string cursor = 1;
   // Maximum number of items to return (default: 20, max: 100)
   int32 limit = 2;
-  // Feed link ID to exclude from results (UUID format)
+  // Feed link ID to exclude from results (UUID format) [deprecated: use exclude_feed_link_ids]
   optional string exclude_feed_link_id = 3;
+  // Feed link IDs to exclude from results (UUID format, domain-level exclude)
+  repeated string exclude_feed_link_ids = 4;
 }
 
 // GetAllFeedsResponse contains all feeds with pagination

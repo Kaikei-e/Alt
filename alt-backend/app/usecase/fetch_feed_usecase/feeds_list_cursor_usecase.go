@@ -19,7 +19,7 @@ func NewFetchFeedsListCursorUsecase(fetchFeedsListGateway fetch_feed_port.FeedCu
 	return &FetchFeedsListCursorUsecase{fetchFeedsListGateway: fetchFeedsListGateway}
 }
 
-func (u *FetchFeedsListCursorUsecase) Execute(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
+func (u *FetchFeedsListCursorUsecase) Execute(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
 	// Validate limit
 	if limit <= 0 {
 		logger.Logger.ErrorContext(ctx, "invalid limit: must be greater than 0", "limit", limit)
@@ -32,7 +32,7 @@ func (u *FetchFeedsListCursorUsecase) Execute(ctx context.Context, cursor *time.
 
 	logger.Logger.InfoContext(ctx, "fetching feeds with cursor", "cursor", cursor, "limit", limit)
 
-	feeds, err := u.fetchFeedsListGateway.FetchFeedsListCursor(ctx, cursor, limit, excludeFeedLinkID)
+	feeds, err := u.fetchFeedsListGateway.FetchFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to fetch feeds with cursor", "error", err, "cursor", cursor, "limit", limit)
 		return nil, err

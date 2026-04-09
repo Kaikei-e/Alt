@@ -17,6 +17,33 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// parseExcludeFeedLinkIDs parses exclude feed link IDs from the request.
+// Prefers the repeated field; falls back to the deprecated single field.
+func parseExcludeFeedLinkIDs(repeatedIDs []string, singleID *string) ([]uuid.UUID, error) {
+	if len(repeatedIDs) > 0 {
+		if len(repeatedIDs) > 50 {
+			return nil, fmt.Errorf("too many exclude IDs (max 50)")
+		}
+		ids := make([]uuid.UUID, 0, len(repeatedIDs))
+		for _, s := range repeatedIDs {
+			id, err := uuid.Parse(s)
+			if err != nil {
+				return nil, fmt.Errorf("invalid exclude_feed_link_ids element: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		return ids, nil
+	}
+	if singleID != nil && *singleID != "" {
+		id, err := uuid.Parse(*singleID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid exclude_feed_link_id: %w", err)
+		}
+		return []uuid.UUID{id}, nil
+	}
+	return nil, nil
+}
+
 // =============================================================================
 // Feed List RPCs (Phase 2)
 // =============================================================================
@@ -55,22 +82,17 @@ func (h *Handler) GetUnreadFeeds(
 		cursor = &parsed
 	}
 
-	// Parse exclude_feed_link_id if provided
-	var excludeFeedLinkID *uuid.UUID
-	if req.Msg.ExcludeFeedLinkId != nil && *req.Msg.ExcludeFeedLinkId != "" {
-		parsed, err := uuid.Parse(*req.Msg.ExcludeFeedLinkId)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("invalid exclude_feed_link_id: %w", err))
-		}
-		excludeFeedLinkID = &parsed
+	// Parse exclude feed link IDs (prefer repeated field, fallback to single)
+	excludeFeedLinkIDs, err := parseExcludeFeedLinkIDs(req.Msg.ExcludeFeedLinkIds, req.Msg.ExcludeFeedLinkId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
 	// Call usecase
 	timer := perf.NewFeedReadTimer("GetUnreadFeeds")
 
 	stopUsecase := timer.StartPhase(ctx, "usecase")
-	feeds, hasMore, err := h.deps.CachedFeedList.FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkID)
+	feeds, hasMore, err := h.deps.CachedFeedList.FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
 	stopUsecase()
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetUnreadFeeds")
@@ -123,22 +145,17 @@ func (h *Handler) GetAllFeeds(
 		cursor = &parsed
 	}
 
-	// Parse exclude_feed_link_id if provided
-	var excludeFeedLinkID *uuid.UUID
-	if req.Msg.ExcludeFeedLinkId != nil && *req.Msg.ExcludeFeedLinkId != "" {
-		parsed, err := uuid.Parse(*req.Msg.ExcludeFeedLinkId)
-		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument,
-				fmt.Errorf("invalid exclude_feed_link_id: %w", err))
-		}
-		excludeFeedLinkID = &parsed
+	// Parse exclude feed link IDs (prefer repeated field, fallback to single)
+	excludeFeedLinkIDs, err := parseExcludeFeedLinkIDs(req.Msg.ExcludeFeedLinkIds, req.Msg.ExcludeFeedLinkId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
 	// Call usecase (all feeds, no read status filter)
 	timer := perf.NewFeedReadTimer("GetAllFeeds")
 
 	stopUsecase := timer.StartPhase(ctx, "usecase")
-	feeds, err := h.deps.CachedFeedList.FetchAllFeedsListCursor(ctx, cursor, limit, excludeFeedLinkID)
+	feeds, err := h.deps.CachedFeedList.FetchAllFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs)
 	stopUsecase()
 	if err != nil {
 		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetAllFeeds")

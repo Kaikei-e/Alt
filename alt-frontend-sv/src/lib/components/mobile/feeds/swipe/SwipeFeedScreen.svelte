@@ -59,7 +59,7 @@ let isInitialLoading = $state((initialFeeds ?? []).length === 0);
 let liveRegionMessage = $state("");
 
 // Filter & sort state
-let excludedSourceId = $state<string | null>(null);
+let excludedFeedLinkIds = $state<string[]>([]);
 let feedSources = $state<ConnectFeedSource[]>([]);
 let sortOrder = $state<"newest" | "oldest">("newest");
 
@@ -198,7 +198,7 @@ async function loadMore() {
 			const feedsPromise = getFeedsWithCursorClient(
 				cursor ?? undefined,
 				PAGE_SIZE,
-				excludedSourceId ?? undefined,
+				excludedFeedLinkIds.length > 0 ? excludedFeedLinkIds : undefined,
 			);
 
 			// feed取得を開始（article取得は後で開始）
@@ -249,7 +249,7 @@ async function loadMore() {
 			const res = await getFeedsWithCursorClient(
 				cursor ?? undefined,
 				PAGE_SIZE,
-				excludedSourceId ?? undefined,
+				excludedFeedLinkIds.length > 0 ? excludedFeedLinkIds : undefined,
 			);
 			const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
 
@@ -314,13 +314,13 @@ function triggerBatchImagePrefetch(newFeeds: RenderFeed[]) {
 		});
 }
 
-function handleExclude(id: string) {
-	excludedSourceId = id;
+function handleExclude(ids: string[]) {
+	excludedFeedLinkIds = ids;
 	resetAndReload();
 }
 
 function handleClearExclusion() {
-	excludedSourceId = null;
+	excludedFeedLinkIds = [];
 	resetAndReload();
 }
 
@@ -460,7 +460,7 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
   <SwipeLoadingOverlay isVisible={isLoading} />
   <SwipeFilterSortSheet
     sources={feedSources}
-    {excludedSourceId}
+    {excludedFeedLinkIds}
     {sortOrder}
     onExclude={handleExclude}
     onClearExclusion={handleClearExclusion}

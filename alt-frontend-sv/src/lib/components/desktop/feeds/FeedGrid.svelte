@@ -16,14 +16,14 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 		onSelectFeed: (feed: RenderFeed, index: number, totalCount: number) => void;
 		unreadOnly?: boolean;
 		sortBy?: string;
-		excludedFeedLinkId?: string | null;
+		excludedFeedLinkIds?: string[];
 		onReady?: (api: FeedGridApi) => void;
 		fetchFn?: (cursor?: string, limit?: number) => Promise<import("$lib/api").CursorResponse<RenderFeed>>;
 		cardRenderer?: Snippet<[{ feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void }]>;
 		gridClass?: string;
 	}
 
-	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkId = null, onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4" }: Props = $props();
+	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkIds = [], onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4" }: Props = $props();
 
 	// Simple state for infinite scroll
 	let feeds = $state<RenderFeed[]>([]);
@@ -66,9 +66,9 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 	function fetchFeedsApi(cursor?: string, limit: number = 20) {
 		if (fetchFn) return fetchFn(cursor, limit);
 		if (unreadOnly) {
-			return getFeedsWithCursorClient(cursor, limit, excludedFeedLinkId ?? undefined);
+			return getFeedsWithCursorClient(cursor, limit, excludedFeedLinkIds.length > 0 ? excludedFeedLinkIds : undefined);
 		}
-		return getAllFeedsWithCursorClient(cursor, limit, excludedFeedLinkId ?? undefined);
+		return getAllFeedsWithCursorClient(cursor, limit, excludedFeedLinkIds.length > 0 ? excludedFeedLinkIds : undefined);
 	}
 
 	/**
@@ -203,7 +203,7 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 
 	// Reset and reload when filters change
 	$effect(() => {
-		const filterKey = `${unreadOnly}:${sortBy}:${excludedFeedLinkId ?? ''}`;
+		const filterKey = `${unreadOnly}:${sortBy}:${excludedFeedLinkIds.join(',')}`;
 
 		// Skip the initial run (handled by onMount)
 		if (prevFilterKey === "") {
@@ -216,7 +216,7 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 		if (filterKey !== prevFilterKey) {
 			const parts = prevFilterKey.split(":");
 			const unreadOnlyChanged = parts[0] !== String(unreadOnly);
-			const excludeChanged = (parts[2] ?? '') !== (excludedFeedLinkId ?? '');
+			const excludeChanged = (parts[2] ?? '') !== excludedFeedLinkIds.join(',');
 			prevFilterKey = filterKey;
 
 			if (unreadOnlyChanged || excludeChanged) {

@@ -2,128 +2,113 @@
 // @generated from file alt/search/v2/global_search.proto (package alt.search.v2, syntax proto3)
 /* eslint-disable */
 
-import type {
-	GenFile,
-	GenMessage,
-	GenService,
-} from "@bufbuild/protobuf/codegenv2";
-import {
-	fileDesc,
-	messageDesc,
-	serviceDesc,
-} from "@bufbuild/protobuf/codegenv2";
+import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
+import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/search/v2/global_search.proto.
  */
-export const file_alt_search_v2_global_search: GenFile =
-	/*@__PURE__*/
-	fileDesc(
-		"CiFhbHQvc2VhcmNoL3YyL2dsb2JhbF9zZWFyY2gucHJvdG8SDWFsdC5zZWFyY2gudjIiZwoXU2VhcmNoRXZlcnl0aGluZ1JlcXVlc3QSDQoFcXVlcnkYASABKAkSFQoNYXJ0aWNsZV9saW1pdBgCIAEoBRITCgtyZWNhcF9saW1pdBgDIAEoBRIRCgl0YWdfbGltaXQYBCABKAUi9QEKGFNlYXJjaEV2ZXJ5dGhpbmdSZXNwb25zZRINCgVxdWVyeRgBIAEoCRI2Cg9hcnRpY2xlX3NlY3Rpb24YAiABKAsyHS5hbHQuc2VhcmNoLnYyLkFydGljbGVTZWN0aW9uEjIKDXJlY2FwX3NlY3Rpb24YAyABKAsyGy5hbHQuc2VhcmNoLnYyLlJlY2FwU2VjdGlvbhIuCgt0YWdfc2VjdGlvbhgEIAEoCzIZLmFsdC5zZWFyY2gudjIuVGFnU2VjdGlvbhIZChFkZWdyYWRlZF9zZWN0aW9ucxgFIAMoCRITCgtzZWFyY2hlZF9hdBgGIAEoCSJqCg5BcnRpY2xlU2VjdGlvbhItCgRoaXRzGAEgAygLMh8uYWx0LnNlYXJjaC52Mi5HbG9iYWxBcnRpY2xlSGl0EhcKD2VzdGltYXRlZF90b3RhbBgCIAEoAxIQCghoYXNfbW9yZRgDIAEoCCJyChBHbG9iYWxBcnRpY2xlSGl0EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB3NuaXBwZXQYAyABKAkSDAoEbGluaxgEIAEoCRIMCgR0YWdzGAUgAygJEhYKDm1hdGNoZWRfZmllbGRzGAYgAygJImYKDFJlY2FwU2VjdGlvbhIrCgRoaXRzGAEgAygLMh0uYWx0LnNlYXJjaC52Mi5HbG9iYWxSZWNhcEhpdBIXCg9lc3RpbWF0ZWRfdG90YWwYAiABKAMSEAoIaGFzX21vcmUYAyABKAgilwEKDkdsb2JhbFJlY2FwSGl0EgoKAmlkGAEgASgJEg4KBmpvYl9pZBgCIAEoCRINCgVnZW5yZRgDIAEoCRIPCgdzdW1tYXJ5GAQgASgJEhEKCXRvcF90ZXJtcxgFIAMoCRIMCgR0YWdzGAYgAygJEhMKC3dpbmRvd19kYXlzGAcgASgFEhMKC2V4ZWN1dGVkX2F0GAggASgJIkYKClRhZ1NlY3Rpb24SKQoEaGl0cxgBIAMoCzIbLmFsdC5zZWFyY2gudjIuR2xvYmFsVGFnSGl0Eg0KBXRvdGFsGAIgASgDIjcKDEdsb2JhbFRhZ0hpdBIQCgh0YWdfbmFtZRgBIAEoCRIVCg1hcnRpY2xlX2NvdW50GAIgASgFMnoKE0dsb2JhbFNlYXJjaFNlcnZpY2USYwoQU2VhcmNoRXZlcnl0aGluZxImLmFsdC5zZWFyY2gudjIuU2VhcmNoRXZlcnl0aGluZ1JlcXVlc3QaJy5hbHQuc2VhcmNoLnYyLlNlYXJjaEV2ZXJ5dGhpbmdSZXNwb25zZUImWiRhbHQvZ2VuL3Byb3RvL2FsdC9zZWFyY2gvdjI7c2VhcmNodjJiBnByb3RvMw",
-	);
+export const file_alt_search_v2_global_search: GenFile = /*@__PURE__*/
+  fileDesc("CiFhbHQvc2VhcmNoL3YyL2dsb2JhbF9zZWFyY2gucHJvdG8SDWFsdC5zZWFyY2gudjIiZwoXU2VhcmNoRXZlcnl0aGluZ1JlcXVlc3QSDQoFcXVlcnkYASABKAkSFQoNYXJ0aWNsZV9saW1pdBgCIAEoBRITCgtyZWNhcF9saW1pdBgDIAEoBRIRCgl0YWdfbGltaXQYBCABKAUi9QEKGFNlYXJjaEV2ZXJ5dGhpbmdSZXNwb25zZRINCgVxdWVyeRgBIAEoCRI2Cg9hcnRpY2xlX3NlY3Rpb24YAiABKAsyHS5hbHQuc2VhcmNoLnYyLkFydGljbGVTZWN0aW9uEjIKDXJlY2FwX3NlY3Rpb24YAyABKAsyGy5hbHQuc2VhcmNoLnYyLlJlY2FwU2VjdGlvbhIuCgt0YWdfc2VjdGlvbhgEIAEoCzIZLmFsdC5zZWFyY2gudjIuVGFnU2VjdGlvbhIZChFkZWdyYWRlZF9zZWN0aW9ucxgFIAMoCRITCgtzZWFyY2hlZF9hdBgGIAEoCSJqCg5BcnRpY2xlU2VjdGlvbhItCgRoaXRzGAEgAygLMh8uYWx0LnNlYXJjaC52Mi5HbG9iYWxBcnRpY2xlSGl0EhcKD2VzdGltYXRlZF90b3RhbBgCIAEoAxIQCghoYXNfbW9yZRgDIAEoCCJyChBHbG9iYWxBcnRpY2xlSGl0EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB3NuaXBwZXQYAyABKAkSDAoEbGluaxgEIAEoCRIMCgR0YWdzGAUgAygJEhYKDm1hdGNoZWRfZmllbGRzGAYgAygJImYKDFJlY2FwU2VjdGlvbhIrCgRoaXRzGAEgAygLMh0uYWx0LnNlYXJjaC52Mi5HbG9iYWxSZWNhcEhpdBIXCg9lc3RpbWF0ZWRfdG90YWwYAiABKAMSEAoIaGFzX21vcmUYAyABKAgilwEKDkdsb2JhbFJlY2FwSGl0EgoKAmlkGAEgASgJEg4KBmpvYl9pZBgCIAEoCRINCgVnZW5yZRgDIAEoCRIPCgdzdW1tYXJ5GAQgASgJEhEKCXRvcF90ZXJtcxgFIAMoCRIMCgR0YWdzGAYgAygJEhMKC3dpbmRvd19kYXlzGAcgASgFEhMKC2V4ZWN1dGVkX2F0GAggASgJIkYKClRhZ1NlY3Rpb24SKQoEaGl0cxgBIAMoCzIbLmFsdC5zZWFyY2gudjIuR2xvYmFsVGFnSGl0Eg0KBXRvdGFsGAIgASgDIjcKDEdsb2JhbFRhZ0hpdBIQCgh0YWdfbmFtZRgBIAEoCRIVCg1hcnRpY2xlX2NvdW50GAIgASgFMnoKE0dsb2JhbFNlYXJjaFNlcnZpY2USYwoQU2VhcmNoRXZlcnl0aGluZxImLmFsdC5zZWFyY2gudjIuU2VhcmNoRXZlcnl0aGluZ1JlcXVlc3QaJy5hbHQuc2VhcmNoLnYyLlNlYXJjaEV2ZXJ5dGhpbmdSZXNwb25zZUImWiRhbHQvZ2VuL3Byb3RvL2FsdC9zZWFyY2gvdjI7c2VhcmNodjJiBnByb3RvMw");
 
 /**
  * SearchEverythingRequest is the request for federated search.
  *
  * @generated from message alt.search.v2.SearchEverythingRequest
  */
-export type SearchEverythingRequest =
-	Message<"alt.search.v2.SearchEverythingRequest"> & {
-		/**
-		 * Search query string (required)
-		 *
-		 * @generated from field: string query = 1;
-		 */
-		query: string;
+export type SearchEverythingRequest = Message<"alt.search.v2.SearchEverythingRequest"> & {
+  /**
+   * Search query string (required)
+   *
+   * @generated from field: string query = 1;
+   */
+  query: string;
 
-		/**
-		 * Maximum article results (default: 5, max: 20)
-		 *
-		 * @generated from field: int32 article_limit = 2;
-		 */
-		articleLimit: number;
+  /**
+   * Maximum article results (default: 5, max: 20)
+   *
+   * @generated from field: int32 article_limit = 2;
+   */
+  articleLimit: number;
 
-		/**
-		 * Maximum recap results (default: 3, max: 10)
-		 *
-		 * @generated from field: int32 recap_limit = 3;
-		 */
-		recapLimit: number;
+  /**
+   * Maximum recap results (default: 3, max: 10)
+   *
+   * @generated from field: int32 recap_limit = 3;
+   */
+  recapLimit: number;
 
-		/**
-		 * Maximum tag results (default: 10, max: 30)
-		 *
-		 * @generated from field: int32 tag_limit = 4;
-		 */
-		tagLimit: number;
-	};
+  /**
+   * Maximum tag results (default: 10, max: 30)
+   *
+   * @generated from field: int32 tag_limit = 4;
+   */
+  tagLimit: number;
+};
 
 /**
  * Describes the message alt.search.v2.SearchEverythingRequest.
  * Use `create(SearchEverythingRequestSchema)` to create a new message.
  */
-export const SearchEverythingRequestSchema: GenMessage<SearchEverythingRequest> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_global_search, 0);
+export const SearchEverythingRequestSchema: GenMessage<SearchEverythingRequest> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_global_search, 0);
 
 /**
  * SearchEverythingResponse contains federated search results from all verticals.
  *
  * @generated from message alt.search.v2.SearchEverythingResponse
  */
-export type SearchEverythingResponse =
-	Message<"alt.search.v2.SearchEverythingResponse"> & {
-		/**
-		 * Original search query
-		 *
-		 * @generated from field: string query = 1;
-		 */
-		query: string;
+export type SearchEverythingResponse = Message<"alt.search.v2.SearchEverythingResponse"> & {
+  /**
+   * Original search query
+   *
+   * @generated from field: string query = 1;
+   */
+  query: string;
 
-		/**
-		 * Article search results
-		 *
-		 * @generated from field: alt.search.v2.ArticleSection article_section = 2;
-		 */
-		articleSection?: ArticleSection;
+  /**
+   * Article search results
+   *
+   * @generated from field: alt.search.v2.ArticleSection article_section = 2;
+   */
+  articleSection?: ArticleSection;
 
-		/**
-		 * Recap search results
-		 *
-		 * @generated from field: alt.search.v2.RecapSection recap_section = 3;
-		 */
-		recapSection?: RecapSection;
+  /**
+   * Recap search results
+   *
+   * @generated from field: alt.search.v2.RecapSection recap_section = 3;
+   */
+  recapSection?: RecapSection;
 
-		/**
-		 * Tag search results
-		 *
-		 * @generated from field: alt.search.v2.TagSection tag_section = 4;
-		 */
-		tagSection?: TagSection;
+  /**
+   * Tag search results
+   *
+   * @generated from field: alt.search.v2.TagSection tag_section = 4;
+   */
+  tagSection?: TagSection;
 
-		/**
-		 * Names of sections that failed to respond (e.g. "articles", "recaps", "tags")
-		 *
-		 * @generated from field: repeated string degraded_sections = 5;
-		 */
-		degradedSections: string[];
+  /**
+   * Names of sections that failed to respond (e.g. "articles", "recaps", "tags")
+   *
+   * @generated from field: repeated string degraded_sections = 5;
+   */
+  degradedSections: string[];
 
-		/**
-		 * When the search was executed (RFC3339)
-		 *
-		 * @generated from field: string searched_at = 6;
-		 */
-		searchedAt: string;
-	};
+  /**
+   * When the search was executed (RFC3339)
+   *
+   * @generated from field: string searched_at = 6;
+   */
+  searchedAt: string;
+};
 
 /**
  * Describes the message alt.search.v2.SearchEverythingResponse.
  * Use `create(SearchEverythingResponseSchema)` to create a new message.
  */
-export const SearchEverythingResponseSchema: GenMessage<SearchEverythingResponse> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_global_search, 1);
+export const SearchEverythingResponseSchema: GenMessage<SearchEverythingResponse> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_global_search, 1);
 
 /**
  * ArticleSection contains article search results.
@@ -131,35 +116,34 @@ export const SearchEverythingResponseSchema: GenMessage<SearchEverythingResponse
  * @generated from message alt.search.v2.ArticleSection
  */
 export type ArticleSection = Message<"alt.search.v2.ArticleSection"> & {
-	/**
-	 * Matching articles (top-k overview)
-	 *
-	 * @generated from field: repeated alt.search.v2.GlobalArticleHit hits = 1;
-	 */
-	hits: GlobalArticleHit[];
+  /**
+   * Matching articles (top-k overview)
+   *
+   * @generated from field: repeated alt.search.v2.GlobalArticleHit hits = 1;
+   */
+  hits: GlobalArticleHit[];
 
-	/**
-	 * Estimated total matching articles
-	 *
-	 * @generated from field: int64 estimated_total = 2;
-	 */
-	estimatedTotal: bigint;
+  /**
+   * Estimated total matching articles
+   *
+   * @generated from field: int64 estimated_total = 2;
+   */
+  estimatedTotal: bigint;
 
-	/**
-	 * Whether more results are available in the specialist UI
-	 *
-	 * @generated from field: bool has_more = 3;
-	 */
-	hasMore: boolean;
+  /**
+   * Whether more results are available in the specialist UI
+   *
+   * @generated from field: bool has_more = 3;
+   */
+  hasMore: boolean;
 };
 
 /**
  * Describes the message alt.search.v2.ArticleSection.
  * Use `create(ArticleSectionSchema)` to create a new message.
  */
-export const ArticleSectionSchema: GenMessage<ArticleSection> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_global_search, 2);
+export const ArticleSectionSchema: GenMessage<ArticleSection> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_global_search, 2);
 
 /**
  * GlobalArticleHit represents a single article search result.
@@ -167,56 +151,55 @@ export const ArticleSectionSchema: GenMessage<ArticleSection> =
  * @generated from message alt.search.v2.GlobalArticleHit
  */
 export type GlobalArticleHit = Message<"alt.search.v2.GlobalArticleHit"> & {
-	/**
-	 * Article ID (UUID)
-	 *
-	 * @generated from field: string id = 1;
-	 */
-	id: string;
+  /**
+   * Article ID (UUID)
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
 
-	/**
-	 * Article title
-	 *
-	 * @generated from field: string title = 2;
-	 */
-	title: string;
+  /**
+   * Article title
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
 
-	/**
-	 * Content snippet with matched context
-	 *
-	 * @generated from field: string snippet = 3;
-	 */
-	snippet: string;
+  /**
+   * Content snippet with matched context
+   *
+   * @generated from field: string snippet = 3;
+   */
+  snippet: string;
 
-	/**
-	 * Article URL
-	 *
-	 * @generated from field: string link = 4;
-	 */
-	link: string;
+  /**
+   * Article URL
+   *
+   * @generated from field: string link = 4;
+   */
+  link: string;
 
-	/**
-	 * Tags associated with the article
-	 *
-	 * @generated from field: repeated string tags = 5;
-	 */
-	tags: string[];
+  /**
+   * Tags associated with the article
+   *
+   * @generated from field: repeated string tags = 5;
+   */
+  tags: string[];
 
-	/**
-	 * Which fields matched the query (e.g. "title", "content", "tags")
-	 *
-	 * @generated from field: repeated string matched_fields = 6;
-	 */
-	matchedFields: string[];
+  /**
+   * Which fields matched the query (e.g. "title", "content", "tags")
+   *
+   * @generated from field: repeated string matched_fields = 6;
+   */
+  matchedFields: string[];
 };
 
 /**
  * Describes the message alt.search.v2.GlobalArticleHit.
  * Use `create(GlobalArticleHitSchema)` to create a new message.
  */
-export const GlobalArticleHitSchema: GenMessage<GlobalArticleHit> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_global_search, 3);
+export const GlobalArticleHitSchema: GenMessage<GlobalArticleHit> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_global_search, 3);
 
 /**
  * RecapSection contains recap search results.
@@ -224,35 +207,34 @@ export const GlobalArticleHitSchema: GenMessage<GlobalArticleHit> =
  * @generated from message alt.search.v2.RecapSection
  */
 export type RecapSection = Message<"alt.search.v2.RecapSection"> & {
-	/**
-	 * Matching recap genres (top-k overview)
-	 *
-	 * @generated from field: repeated alt.search.v2.GlobalRecapHit hits = 1;
-	 */
-	hits: GlobalRecapHit[];
+  /**
+   * Matching recap genres (top-k overview)
+   *
+   * @generated from field: repeated alt.search.v2.GlobalRecapHit hits = 1;
+   */
+  hits: GlobalRecapHit[];
 
-	/**
-	 * Estimated total matching recaps
-	 *
-	 * @generated from field: int64 estimated_total = 2;
-	 */
-	estimatedTotal: bigint;
+  /**
+   * Estimated total matching recaps
+   *
+   * @generated from field: int64 estimated_total = 2;
+   */
+  estimatedTotal: bigint;
 
-	/**
-	 * Whether more results are available
-	 *
-	 * @generated from field: bool has_more = 3;
-	 */
-	hasMore: boolean;
+  /**
+   * Whether more results are available
+   *
+   * @generated from field: bool has_more = 3;
+   */
+  hasMore: boolean;
 };
 
 /**
  * Describes the message alt.search.v2.RecapSection.
  * Use `create(RecapSectionSchema)` to create a new message.
  */
-export const RecapSectionSchema: GenMessage<RecapSection> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_global_search, 4);
+export const RecapSectionSchema: GenMessage<RecapSection> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_global_search, 4);
 
 /**
  * GlobalRecapHit represents a single recap search result.
@@ -260,70 +242,69 @@ export const RecapSectionSchema: GenMessage<RecapSection> =
  * @generated from message alt.search.v2.GlobalRecapHit
  */
 export type GlobalRecapHit = Message<"alt.search.v2.GlobalRecapHit"> & {
-	/**
-	 * Composite document ID (job_id__genre)
-	 *
-	 * @generated from field: string id = 1;
-	 */
-	id: string;
+  /**
+   * Composite document ID (job_id__genre)
+   *
+   * @generated from field: string id = 1;
+   */
+  id: string;
 
-	/**
-	 * Recap job ID
-	 *
-	 * @generated from field: string job_id = 2;
-	 */
-	jobId: string;
+  /**
+   * Recap job ID
+   *
+   * @generated from field: string job_id = 2;
+   */
+  jobId: string;
 
-	/**
-	 * Genre name (e.g. "Technology", "Business")
-	 *
-	 * @generated from field: string genre = 3;
-	 */
-	genre: string;
+  /**
+   * Genre name (e.g. "Technology", "Business")
+   *
+   * @generated from field: string genre = 3;
+   */
+  genre: string;
 
-	/**
-	 * Summary text excerpt
-	 *
-	 * @generated from field: string summary = 4;
-	 */
-	summary: string;
+  /**
+   * Summary text excerpt
+   *
+   * @generated from field: string summary = 4;
+   */
+  summary: string;
 
-	/**
-	 * Top terms/keywords from the cluster
-	 *
-	 * @generated from field: repeated string top_terms = 5;
-	 */
-	topTerms: string[];
+  /**
+   * Top terms/keywords from the cluster
+   *
+   * @generated from field: repeated string top_terms = 5;
+   */
+  topTerms: string[];
 
-	/**
-	 * Semantic tags from tag-generator (KeyBERT)
-	 *
-	 * @generated from field: repeated string tags = 6;
-	 */
-	tags: string[];
+  /**
+   * Semantic tags from tag-generator (KeyBERT)
+   *
+   * @generated from field: repeated string tags = 6;
+   */
+  tags: string[];
 
-	/**
-	 * Window days (3 or 7)
-	 *
-	 * @generated from field: int32 window_days = 7;
-	 */
-	windowDays: number;
+  /**
+   * Window days (3 or 7)
+   *
+   * @generated from field: int32 window_days = 7;
+   */
+  windowDays: number;
 
-	/**
-	 * Execution timestamp (RFC3339)
-	 *
-	 * @generated from field: string executed_at = 8;
-	 */
-	executedAt: string;
+  /**
+   * Execution timestamp (RFC3339)
+   *
+   * @generated from field: string executed_at = 8;
+   */
+  executedAt: string;
 };
 
 /**
  * Describes the message alt.search.v2.GlobalRecapHit.
  * Use `create(GlobalRecapHitSchema)` to create a new message.
  */
-export const GlobalRecapHitSchema: GenMessage<GlobalRecapHit> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_global_search, 5);
+export const GlobalRecapHitSchema: GenMessage<GlobalRecapHit> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_global_search, 5);
 
 /**
  * TagSection contains tag search results.
@@ -331,28 +312,27 @@ export const GlobalRecapHitSchema: GenMessage<GlobalRecapHit> =
  * @generated from message alt.search.v2.TagSection
  */
 export type TagSection = Message<"alt.search.v2.TagSection"> & {
-	/**
-	 * Matching tags with article counts
-	 *
-	 * @generated from field: repeated alt.search.v2.GlobalTagHit hits = 1;
-	 */
-	hits: GlobalTagHit[];
+  /**
+   * Matching tags with article counts
+   *
+   * @generated from field: repeated alt.search.v2.GlobalTagHit hits = 1;
+   */
+  hits: GlobalTagHit[];
 
-	/**
-	 * Total matching tags
-	 *
-	 * @generated from field: int64 total = 2;
-	 */
-	total: bigint;
+  /**
+   * Total matching tags
+   *
+   * @generated from field: int64 total = 2;
+   */
+  total: bigint;
 };
 
 /**
  * Describes the message alt.search.v2.TagSection.
  * Use `create(TagSectionSchema)` to create a new message.
  */
-export const TagSectionSchema: GenMessage<TagSection> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_global_search, 6);
+export const TagSectionSchema: GenMessage<TagSection> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_global_search, 6);
 
 /**
  * GlobalTagHit represents a single tag search result.
@@ -360,41 +340,42 @@ export const TagSectionSchema: GenMessage<TagSection> =
  * @generated from message alt.search.v2.GlobalTagHit
  */
 export type GlobalTagHit = Message<"alt.search.v2.GlobalTagHit"> & {
-	/**
-	 * Tag name
-	 *
-	 * @generated from field: string tag_name = 1;
-	 */
-	tagName: string;
+  /**
+   * Tag name
+   *
+   * @generated from field: string tag_name = 1;
+   */
+  tagName: string;
 
-	/**
-	 * Number of articles with this tag
-	 *
-	 * @generated from field: int32 article_count = 2;
-	 */
-	articleCount: number;
+  /**
+   * Number of articles with this tag
+   *
+   * @generated from field: int32 article_count = 2;
+   */
+  articleCount: number;
 };
 
 /**
  * Describes the message alt.search.v2.GlobalTagHit.
  * Use `create(GlobalTagHitSchema)` to create a new message.
  */
-export const GlobalTagHitSchema: GenMessage<GlobalTagHit> =
-	/*@__PURE__*/
-	messageDesc(file_alt_search_v2_global_search, 7);
+export const GlobalTagHitSchema: GenMessage<GlobalTagHit> = /*@__PURE__*/
+  messageDesc(file_alt_search_v2_global_search, 7);
 
 /**
  * @generated from service alt.search.v2.GlobalSearchService
  */
 export const GlobalSearchService: GenService<{
-	/**
-	 * SearchEverything performs a federated search across all content verticals.
-	 *
-	 * @generated from rpc alt.search.v2.GlobalSearchService.SearchEverything
-	 */
-	searchEverything: {
-		methodKind: "unary";
-		input: typeof SearchEverythingRequestSchema;
-		output: typeof SearchEverythingResponseSchema;
-	};
-}> = /*@__PURE__*/ serviceDesc(file_alt_search_v2_global_search, 0);
+  /**
+   * SearchEverything performs a federated search across all content verticals.
+   *
+   * @generated from rpc alt.search.v2.GlobalSearchService.SearchEverything
+   */
+  searchEverything: {
+    methodKind: "unary";
+    input: typeof SearchEverythingRequestSchema;
+    output: typeof SearchEverythingResponseSchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_alt_search_v2_global_search, 0);
+

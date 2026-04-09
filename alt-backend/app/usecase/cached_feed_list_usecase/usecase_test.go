@@ -28,7 +28,7 @@ type unreadFeedPortStub struct {
 	err   error
 }
 
-func (s *unreadFeedPortStub) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
+func (s *unreadFeedPortStub) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
 	return s.feeds, s.err
 }
 
@@ -37,7 +37,7 @@ type allFeedPortStub struct {
 	err   error
 }
 
-func (s *allFeedPortStub) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*domain.FeedItem, error) {
+func (s *allFeedPortStub) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
 	return s.feeds, s.err
 }
 
@@ -163,7 +163,7 @@ func TestFetchUnreadFeedsListCursor_ExcludeFeedLinkID(t *testing.T) {
 	)
 
 	linkA := uuid.New()
-	feeds, _, err := usecase.FetchUnreadFeedsListCursor(ctx, nil, 100, &linkA)
+	feeds, _, err := usecase.FetchUnreadFeedsListCursor(ctx, nil, 100, []uuid.UUID{linkA})
 	if err != nil {
 		t.Fatalf("error = %v", err)
 	}

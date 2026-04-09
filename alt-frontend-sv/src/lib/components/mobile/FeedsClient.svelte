@@ -15,10 +15,10 @@ import FeedCard from "./FeedCard.svelte";
 
 interface Props {
 	initialFeeds?: RenderFeed[];
-	excludeFeedLinkId?: string | null;
+	excludeFeedLinkIds?: string[];
 }
 
-const { initialFeeds = [], excludeFeedLinkId = null }: Props = $props();
+const { initialFeeds = [], excludeFeedLinkIds = [] }: Props = $props();
 
 const PAGE_SIZE = 20;
 
@@ -108,7 +108,7 @@ const loadInitial = async () => {
 		const response = await getFeedsWithCursorClient(
 			undefined,
 			PAGE_SIZE,
-			excludeFeedLinkId ?? undefined,
+			excludeFeedLinkIds.length > 0 ? excludeFeedLinkIds : undefined,
 		);
 
 		// If initialFeeds exist and still in use, filter out duplicates
@@ -156,7 +156,7 @@ const loadMore = async () => {
 		const response = await getFeedsWithCursorClient(
 			currentCursor ?? undefined,
 			PAGE_SIZE,
-			excludeFeedLinkId ?? undefined,
+			excludeFeedLinkIds.length > 0 ? excludeFeedLinkIds : undefined,
 		);
 
 		if (response.data.length === 0) {
@@ -208,19 +208,19 @@ const retryFetch = async () => {
 	}
 };
 
-// Track previous excludeFeedLinkId to detect changes
-let prevExcludeFeedLinkId = $state<string | null | undefined>(undefined);
+// Track previous excludeFeedLinkIds to detect changes
+let prevExcludeKey = $state<string | undefined>(undefined);
 
-// React to excludeFeedLinkId changes: reset and reload feeds
+// React to excludeFeedLinkIds changes: reset and reload feeds
 $effect(() => {
-	const currentExclude = excludeFeedLinkId;
-	if (prevExcludeFeedLinkId === undefined) {
+	const currentKey = excludeFeedLinkIds.join(",");
+	if (prevExcludeKey === undefined) {
 		// First run - just record the initial value
-		prevExcludeFeedLinkId = currentExclude;
+		prevExcludeKey = currentKey;
 		return;
 	}
-	if (prevExcludeFeedLinkId !== currentExclude) {
-		prevExcludeFeedLinkId = currentExclude;
+	if (prevExcludeKey !== currentKey) {
+		prevExcludeKey = currentKey;
 		feeds = [];
 		cursor = null;
 		hasMore = true;

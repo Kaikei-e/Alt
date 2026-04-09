@@ -22,3 +22,41 @@ export function extractDomain(url: string): string {
 		return url;
 	}
 }
+
+/** Extract effective (registerable) domain, stripping subdomains like feeds., rss., www. */
+export function getEffectiveDomain(url: string): string {
+	try {
+		const hostname = new URL(url).hostname;
+		const parts = hostname.split(".");
+		if (parts.length <= 2) return hostname;
+		return parts.slice(-2).join(".");
+	} catch {
+		return url;
+	}
+}
+
+/** Group sources by effective domain. */
+export function groupSourcesByDomain<T extends { url: string }>(
+	sources: T[],
+): Map<string, T[]> {
+	const map = new Map<string, T[]>();
+	for (const source of sources) {
+		const domain = getEffectiveDomain(source.url);
+		const existing = map.get(domain);
+		if (existing) {
+			existing.push(source);
+		} else {
+			map.set(domain, [source]);
+		}
+	}
+	return map;
+}
+
+/** Collect all feed_link_ids that belong to the same effective domain. */
+export function collectFeedLinkIdsByDomain<
+	T extends { id: string; url: string },
+>(sources: T[], targetDomain: string): string[] {
+	return sources
+		.filter((s) => getEffectiveDomain(s.url) === targetDomain)
+		.map((s) => s.id);
+}

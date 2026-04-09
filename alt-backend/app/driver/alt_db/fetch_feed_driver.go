@@ -163,18 +163,32 @@ func (r *FeedRepository) FetchUnreadFeedsListPage(ctx context.Context, page int)
 	return feeds, nil
 }
 
-// buildExcludeClause builds a NOT EXISTS clause that excludes feeds matching
-// the given feed_link_id.
+// buildExcludeClause builds a WHERE clause that excludes feeds matching
+// a single feed_link_id. Delegates to buildExcludeClauseMultiple.
 func buildExcludeClause(args []any, excludeFeedLinkID *uuid.UUID) (string, []any) {
 	if excludeFeedLinkID == nil {
 		return "", args
 	}
-	clause := fmt.Sprintf(`AND f.feed_link_id != $%d`, len(args)+1)
-	args = append(args, *excludeFeedLinkID)
+	return buildExcludeClauseMultiple(args, []uuid.UUID{*excludeFeedLinkID})
+}
+
+// buildExcludeClauseMultiple builds a WHERE clause that excludes feeds matching
+// any of the given feed_link_ids using PostgreSQL array comparison.
+// Converts []uuid.UUID to []string for pgx encoding compatibility.
+func buildExcludeClauseMultiple(args []any, excludeFeedLinkIDs []uuid.UUID) (string, []any) {
+	if len(excludeFeedLinkIDs) == 0 {
+		return "", args
+	}
+	strs := make([]string, len(excludeFeedLinkIDs))
+	for i, id := range excludeFeedLinkIDs {
+		strs[i] = id.String()
+	}
+	clause := fmt.Sprintf(`AND f.feed_link_id != ALL($%d::uuid[])`, len(args)+1)
+	args = append(args, strs)
 	return clause, args
 }
 
-func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchUnreadFeedsListCursor")
 	defer span.End()
 
@@ -194,7 +208,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 	var excludeClause string
 	if cursor == nil {
 		args = []interface{}{limit, user.UserID}
-		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
+		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
@@ -214,7 +228,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 		`, excludeClause)
 	} else {
 		args = []interface{}{cursor, limit, user.UserID}
-		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
+		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
@@ -260,7 +274,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor 
 // FetchAllFeedsListCursor retrieves all feeds (read + unread) using cursor-based pagination.
 // Unlike FetchUnreadFeedsListCursor, this does not filter by read status but includes
 // the read status via LEFT JOIN so the frontend can visually distinguish read/unread feeds.
-func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkID *uuid.UUID) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchAllFeedsListCursor")
 	defer span.End()
 
@@ -276,7 +290,7 @@ func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *ti
 	var excludeClause string
 	if cursor == nil {
 		args = []interface{}{limit, user.UserID}
-		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
+		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
@@ -291,7 +305,7 @@ func (r *FeedRepository) FetchAllFeedsListCursor(ctx context.Context, cursor *ti
 		`, excludeClause)
 	} else {
 		args = []interface{}{cursor, limit, user.UserID}
-		excludeClause, args = buildExcludeClause(args, excludeFeedLinkID)
+		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.link, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,

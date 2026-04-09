@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { extractDomain, filterSources } from "./feed-source-filter";
+import {
+	collectFeedLinkIdsByDomain,
+	extractDomain,
+	filterSources,
+	getEffectiveDomain,
+	groupSourcesByDomain,
+} from "./feed-source-filter";
 
 interface MockFeedSource {
 	id: string;
@@ -80,6 +86,95 @@ describe("feed-source-filter", () => {
 		it("is case-insensitive", () => {
 			const result = filterSources(mockSources, "GUARDIAN");
 			expect(result).toHaveLength(2);
+		});
+	});
+
+	describe("getEffectiveDomain", () => {
+		it("returns hostname for 2-part domains", () => {
+			expect(getEffectiveDomain("https://dev.to/feed/tag/go")).toBe("dev.to");
+		});
+
+		it("strips subdomains for 3+ part domains", () => {
+			expect(
+				getEffectiveDomain(
+					"https://feeds.theguardian.com/theguardian/rss",
+				),
+			).toBe("theguardian.com");
+			expect(
+				getEffectiveDomain(
+					"https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+				),
+			).toBe("nytimes.com");
+			expect(
+				getEffectiveDomain("https://www.theguardian.com/world/rss"),
+			).toBe("theguardian.com");
+		});
+
+		it("returns input for invalid URLs", () => {
+			expect(getEffectiveDomain("not-a-url")).toBe("not-a-url");
+		});
+	});
+
+	describe("groupSourcesByDomain", () => {
+		it("groups multiple URLs from the same domain", () => {
+			const devToSources = [
+				{ ...mockSources[0], url: "https://dev.to/feed/tag/go", id: "a" },
+				{
+					...mockSources[0],
+					url: "https://dev.to/feed/tag/rust",
+					id: "b",
+				},
+				{
+					...mockSources[0],
+					url: "https://dev.to/feed/tag/typescript",
+					id: "c",
+				},
+			];
+			const grouped = groupSourcesByDomain(devToSources);
+			expect(grouped.size).toBe(1);
+			expect(grouped.get("dev.to")).toHaveLength(3);
+		});
+
+		it("groups by effective domain (strips subdomains)", () => {
+			const grouped = groupSourcesByDomain(mockSources);
+			// theguardian.com should be grouped (feeds. and www.)
+			const guardian = grouped.get("theguardian.com");
+			expect(guardian).toHaveLength(2);
+		});
+	});
+
+	describe("collectFeedLinkIdsByDomain", () => {
+		it("collects all IDs for a matching domain", () => {
+			const sources = [
+				{
+					id: "a",
+					url: "https://dev.to/feed/tag/go",
+					title: "",
+					isSubscribed: true,
+					createdAt: "",
+				},
+				{
+					id: "b",
+					url: "https://dev.to/feed/tag/rust",
+					title: "",
+					isSubscribed: true,
+					createdAt: "",
+				},
+				{
+					id: "c",
+					url: "https://example.com/rss",
+					title: "",
+					isSubscribed: true,
+					createdAt: "",
+				},
+			];
+			const ids = collectFeedLinkIdsByDomain(sources, "dev.to");
+			expect(ids).toEqual(["a", "b"]);
+		});
+
+		it("returns empty for non-matching domain", () => {
+			const ids = collectFeedLinkIdsByDomain(mockSources, "nonexistent.com");
+			expect(ids).toEqual([]);
 		});
 	});
 
