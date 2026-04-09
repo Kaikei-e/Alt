@@ -91,7 +91,7 @@
 	{:else}
 		<div class="aco-grid">
 			{#each reports as report, i}
-				<article
+				<div
 					class="report-card"
 					style="--stagger: {i}"
 					role="button"
@@ -120,7 +120,7 @@
 					>
 						&#9654;
 					</button>
-				</article>
+				</div>
 			{/each}
 		</div>
 	{/if}

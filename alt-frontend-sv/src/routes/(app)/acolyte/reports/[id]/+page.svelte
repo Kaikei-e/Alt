@@ -22,6 +22,7 @@
 
 	async function loadReport() {
 		const id = page.params.id;
+		if (!id) return;
 		try {
 			loading = true;
 			const [rpt, ver] = await Promise.all([
