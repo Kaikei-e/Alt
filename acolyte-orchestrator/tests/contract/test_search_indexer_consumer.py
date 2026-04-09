@@ -5,9 +5,10 @@ REST API are documented as Pact contracts.
 
 search-indexer actual API:
   GET /v1/search?q={query}&limit={limit}
-  Response: {query: str, hits: [{id, title, content, tags}]}
+  Response: {query: str, hits: [{id, title, content, tags, score}]}
 
-Note: search-indexer does NOT return url, published_at, or _rankingScore.
+Note: search-indexer does NOT return url or published_at.
+score is Meilisearch _rankingScore (0.0-1.0).
 Recap search is available via Connect v2 SearchRecaps (not REST).
 
 Run with:
@@ -46,6 +47,7 @@ def test_search_articles():
                             "title": "AI Market Overview 2026",
                             "content": "The artificial intelligence market continues to expand...",
                             "tags": ["AI", "market", "2026"],
+                            "score": 0.85,
                         }
                     ],
                 }
@@ -68,6 +70,8 @@ def test_search_articles():
         assert "title" in hit
         assert "content" in hit
         assert "tags" in hit
+        assert "score" in hit
+        assert isinstance(hit["score"], (int, float))
 
     pact.write_file(str(PACT_DIR), overwrite=True)
 

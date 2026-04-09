@@ -14,6 +14,7 @@ from starlette.routing import Mount, Route
 
 import acolyte.gen  # noqa: F401, I001 — must precede generated imports
 from acolyte.config.settings import Settings
+from acolyte.domain.fusion import RRFFusion
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.memory_job_gw import MemoryJobGateway
 from acolyte.gateway.ollama_gw import OllamaGateway
@@ -40,9 +41,9 @@ _pool = AsyncConnectionPool(_dsn, min_size=settings.db_pool_min_size, max_size=s
 _report_repo = PostgresReportGateway(_pool)
 _job_queue = MemoryJobGateway()
 
-# HTTP client for Ollama and search-indexer (300s timeout for 26B model — ADR-579)
+# HTTP client for Ollama and search-indexer (600s timeout for 26B model with 8192 num_predict)
 _http_client = httpx.AsyncClient(
-    timeout=httpx.Timeout(connect=10, read=300, write=10, pool=10),
+    timeout=httpx.Timeout(connect=10, read=600, write=10, pool=10),
     limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
 )
 
@@ -55,8 +56,11 @@ _content_store = MemoryContentStore()
 # Evidence gateway (search-indexer / Meilisearch)
 _search_gw = SearchIndexerGateway(_http_client, settings, _content_store)
 
+# Fusion strategy for hybrid retrieval (Issue 7: RRF default, CC future)
+_fusion = RRFFusion(k=60)
+
 # LangGraph pipeline
-_graph = build_report_graph(_ollama_gw, _search_gw, _report_repo, content_store=_content_store)
+_graph = build_report_graph(_ollama_gw, _search_gw, _report_repo, content_store=_content_store, fusion=_fusion)
 
 
 @asynccontextmanager

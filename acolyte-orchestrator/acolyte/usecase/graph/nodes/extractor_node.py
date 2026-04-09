@@ -29,7 +29,9 @@ Article Title: {source_title}
 Article Body:
 {body}
 
-Return JSON with "facts" array. Each fact: {{"claim": "text", "source_id": "{source_id}", "source_title": "{source_title}", "verbatim_quote": "exact quote", "confidence": 0.0-1.0, "data_type": "statistic|date|quote|trend|comparison"}}"""
+Return JSON with "reasoning" (one sentence about your extraction approach) and "facts" array.
+Each fact: {{"claim": "text", "source_id": "{source_id}", "source_title": "{source_title}", "verbatim_quote": "exact quote (max 200 chars)", "confidence": 0.0-1.0, "data_type": "statistic|date|quote|trend|comparison"}}
+Keep reasoning to one sentence. Keep verbatim_quote short — at most 200 characters."""
 
 
 class ExtractorNode:
@@ -59,21 +61,28 @@ class ExtractorNode:
             if not body:
                 continue
 
-            prompt = EXTRACTOR_PROMPT.format(
-                max_facts=self._max_facts,
-                source_id=item_id,
-                source_title=item.get("title", ""),
-                body=body[:2000],  # Truncate for context window
-            )
+            try:
+                prompt = EXTRACTOR_PROMPT.format(
+                    max_facts=self._max_facts,
+                    source_id=item_id,
+                    source_title=item.get("title", ""),
+                    body=body[:2000],  # Truncate for context window
+                )
 
-            fallback = ExtractorOutput(facts=[])
-            result = await generate_validated(
-                self._llm, prompt, ExtractorOutput,
-                temperature=0, num_predict=4096, fallback=fallback,
-            )
+                fallback = ExtractorOutput(facts=[])
+                result = await generate_validated(
+                    self._llm, prompt, ExtractorOutput,
+                    temperature=0, num_predict=6000, fallback=fallback,
+                )
 
-            for fact in result.facts[:self._max_facts]:
-                all_facts.append(fact.model_dump())
+                for fact in result.facts[:self._max_facts]:
+                    all_facts.append(fact.model_dump())
+            except Exception as exc:
+                logger.warning(
+                    "Extraction failed for article, continuing with partial results",
+                    article_id=item_id,
+                    error=str(exc),
+                )
 
         logger.info("Extractor completed", fact_count=len(all_facts), articles_processed=len(items_to_extract))
         return {"extracted_facts": all_facts}

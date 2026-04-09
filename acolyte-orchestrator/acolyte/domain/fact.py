@@ -31,6 +31,12 @@ class ExtractedFactModel(BaseModel):
 
 
 class ExtractorOutput(BaseModel):
-    """Pydantic model for full extractor LLM response."""
+    """Pydantic model for full extractor LLM response.
 
+    The 'reasoning' field absorbs Gemma4 thinking tokens into the JSON structure.
+    Without it, thinking flows to the separate 'thinking' response field,
+    consuming num_predict budget without contributing to output (ADR-632).
+    """
+
+    reasoning: str = ""
     facts: list[ExtractedFactModel]

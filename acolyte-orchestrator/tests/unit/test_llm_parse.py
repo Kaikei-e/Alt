@@ -90,3 +90,41 @@ async def test_passes_format_and_kwargs() -> None:
     assert llm.captured_kwargs["temperature"] == 0
     assert llm.captured_kwargs["num_predict"] == 512
     assert "format" in llm.captured_kwargs
+
+
+class ErrorThenSuccessLLM:
+    """LLM that raises on first call, succeeds on second."""
+
+    def __init__(self, error: Exception, success_response: str) -> None:
+        self._error = error
+        self._success = success_response
+        self._call_count = 0
+
+    async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+        self._call_count += 1
+        if self._call_count == 1:
+            raise self._error
+        return LLMResponse(text=self._success, model="fake")
+
+
+@pytest.mark.asyncio
+async def test_generate_exception_retries_and_succeeds() -> None:
+    """If llm.generate() raises (e.g. ReadTimeout), it should retry and succeed."""
+    valid = json.dumps({"reasoning": "recovered", "sections": []})
+    llm = ErrorThenSuccessLLM(TimeoutError("ReadTimeout"), valid)
+    result = await generate_validated(llm, "prompt", SampleOutput, retries=1)
+    assert result.reasoning == "recovered"
+    assert llm._call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_exception_exhausted_uses_fallback() -> None:
+    """If llm.generate() raises on all attempts, fallback is returned."""
+
+    class AlwaysErrorLLM:
+        async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+            raise TimeoutError("ReadTimeout")
+
+    fallback = SampleOutput(reasoning="fallback", sections=[])
+    result = await generate_validated(AlwaysErrorLLM(), "prompt", SampleOutput, retries=1, fallback=fallback)
+    assert result.reasoning == "fallback"

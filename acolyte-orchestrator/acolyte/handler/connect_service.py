@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -83,7 +84,7 @@ class AcolyteConnectService:
                     current_version=sec.current_version,
                     display_order=sec.display_order,
                     body=sv.body if sv else "",
-                    citations_json="[]",
+                    citations_json=json.dumps(sv.citations) if sv and sv.citations else "[]",
                 )
             )
 

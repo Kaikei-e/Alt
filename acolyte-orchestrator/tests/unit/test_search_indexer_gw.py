@@ -1,9 +1,10 @@
 """Unit tests for search-indexer gateway.
 
 Tests are aligned with search-indexer actual REST API:
-  GET /v1/search → {query, hits: [{id, title, content, tags}]}
+  GET /v1/search → {query, hits: [{id, title, content, tags, score}]}
 
-No url, published_at, or _rankingScore in response.
+score is Meilisearch _rankingScore (0.0-1.0).
+No url or published_at in response.
 """
 
 from __future__ import annotations
@@ -100,6 +101,56 @@ async def test_search_articles_empty_response(
         hits = await gw.search_articles("xyz", limit=10)
 
     assert hits == []
+
+
+@pytest.mark.asyncio
+async def test_search_articles_extracts_score(
+    settings: Settings, content_store: MemoryContentStore
+) -> None:
+    """Score from search-indexer response should be propagated to ArticleHit."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "query": "AI",
+                "hits": [
+                    {"id": "a1", "title": "T1", "content": "C1", "tags": [], "score": 0.85},
+                    {"id": "a2", "title": "T2", "content": "C2", "tags": [], "score": 0.42},
+                ],
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
+        gw = SearchIndexerGateway(client, settings, content_store)
+        hits = await gw.search_articles("AI", limit=10)
+
+    assert hits[0].score == 0.85
+    assert hits[1].score == 0.42
+
+
+@pytest.mark.asyncio
+async def test_search_articles_score_default_zero(
+    settings: Settings, content_store: MemoryContentStore
+) -> None:
+    """When score is missing from response, default to 0.0."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "query": "AI",
+                "hits": [{"id": "a1", "title": "T1", "content": "C1", "tags": []}],
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
+        gw = SearchIndexerGateway(client, settings, content_store)
+        hits = await gw.search_articles("AI", limit=10)
+
+    assert hits[0].score == 0.0
 
 
 @pytest.mark.asyncio

@@ -24,6 +24,7 @@ class FakeLLM:
     def __init__(self, responses: dict[str, str] | None = None) -> None:
         self._responses = responses or {}
         self._call_count = 0
+        self._calls: list[dict] = []
 
     async def generate(
         self,
@@ -35,29 +36,133 @@ class FakeLLM:
         format: dict | None = None,
     ) -> LLMResponse:
         self._call_count += 1
+        self._calls.append({"prompt": prompt, "num_predict": num_predict, "temperature": temperature, "format": format})
 
         # Check for keyword matches in prompt
         for key, response in self._responses.items():
             if key in prompt:
                 return LLMResponse(text=response, model="fake-model")
 
-        # Default: return valid JSON for planner, accept for critic
+        # Default: return valid JSON based on prompt content.
+        # Order matters: specific patterns before general ones.
+        if "summary planner" in prompt.lower():
+            return LLMResponse(
+                text=json.dumps(
+                    {
+                        "reasoning": "Summarizing key findings for ES",
+                        "claims": [
+                            {
+                                "claim": "Key finding: AI trends are consolidating rapidly",
+                                "claim_type": "synthesis",
+                                "evidence_ids": ["art-1"],
+                                "supporting_quotes": ["Article body text."],
+                                "numeric_facts": [],
+                                "novelty_against": ["analysis", "conclusion"],
+                                "must_cite": True,
+                            },
+                        ],
+                    }
+                ),
+                model="fake-model",
+            )
+        if "synthesis planner" in prompt.lower():
+            return LLMResponse(
+                text=json.dumps(
+                    {
+                        "reasoning": "Synthesizing analysis claims",
+                        "claims": [
+                            {
+                                "claim": "Overall, AI trends point to consolidation",
+                                "claim_type": "synthesis",
+                                "evidence_ids": ["art-1"],
+                                "supporting_quotes": ["Article body text."],
+                                "numeric_facts": [],
+                                "novelty_against": ["analysis"],
+                                "must_cite": True,
+                            },
+                        ],
+                    }
+                ),
+                model="fake-model",
+            )
+        if "claim planner" in prompt.lower():
+            return LLMResponse(
+                text=json.dumps(
+                    {
+                        "reasoning": "Planning claims from extracted facts",
+                        "claims": [
+                            {
+                                "claim": "Test claim from evidence",
+                                "claim_type": "factual",
+                                "evidence_ids": ["art-1"],
+                                "supporting_quotes": ["Article body text."],
+                                "numeric_facts": [],
+                                "novelty_against": [],
+                                "must_cite": True,
+                            },
+                        ],
+                    }
+                ),
+                model="fake-model",
+            )
+        if "extract" in prompt.lower() and "atomic" in prompt.lower():
+            return LLMResponse(
+                text=json.dumps(
+                    {
+                        "reasoning": "Extracting key factual claims about AI trends.",
+                        "facts": [
+                            {
+                                "claim": "AI trends are accelerating",
+                                "source_id": "art-1",
+                                "source_title": "Test Article",
+                                "verbatim_quote": "Article body text.",
+                                "confidence": 0.9,
+                                "data_type": "quote",
+                            },
+                        ],
+                    }
+                ),
+                model="fake-model",
+            )
         if "planner" in prompt.lower() or "plan" in prompt.lower() or "outline" in prompt.lower():
             return LLMResponse(
-                text=json.dumps({
-                    "reasoning": "Need a summary section",
-                    "sections": [{"key": "summary", "title": "Summary"}],
-                }),
+                text=json.dumps(
+                    {
+                        "reasoning": "Need ES, analysis, and conclusion",
+                        "sections": [
+                            {
+                                "key": "executive_summary",
+                                "title": "Executive Summary",
+                                "section_role": "executive_summary",
+                                "search_queries": ["AI trends overview"],
+                            },
+                            {
+                                "key": "analysis",
+                                "title": "Analysis",
+                                "section_role": "analysis",
+                                "search_queries": ["AI trends analysis"],
+                            },
+                            {
+                                "key": "conclusion",
+                                "title": "Conclusion",
+                                "section_role": "conclusion",
+                                "search_queries": ["AI trends conclusion"],
+                            },
+                        ],
+                    }
+                ),
                 model="fake-model",
             )
         if "critic" in prompt.lower() or "evaluate" in prompt.lower():
             return LLMResponse(
-                text=json.dumps({
-                    "reasoning": "Quality is acceptable",
-                    "verdict": "accept",
-                    "revise_sections": [],
-                    "feedback": {},
-                }),
+                text=json.dumps(
+                    {
+                        "reasoning": "Quality is acceptable",
+                        "verdict": "accept",
+                        "revise_sections": [],
+                        "feedback": {},
+                    }
+                ),
                 model="fake-model",
             )
         if "curator" in prompt.lower() or "select" in prompt.lower():
@@ -149,6 +254,15 @@ class FakeReportRepo:
                     report_id=report_id, section_key=section_key, current_version=new_v, display_order=s.display_order
                 )
                 break
+        self.section_versions.append(
+            SectionVersion(
+                report_id=report_id,
+                section_key=section_key,
+                version_no=new_v,
+                body=body,
+                citations=citations or [],
+            )
+        )
         return new_v
 
     async def get_section_version(self, report_id: UUID, section_key: str, version_no: int) -> SectionVersion | None:
@@ -230,7 +344,7 @@ async def test_full_pipeline_produces_version() -> None:
 
 @pytest.mark.asyncio
 async def test_full_pipeline_with_content_store_hydrates_evidence() -> None:
-    """Pipeline with content_store wires hydrator node and produces hydrated_evidence."""
+    """Pipeline with content_store wires hydrator, extractor, and section_planner nodes."""
     llm = FakeLLM()
     evidence = FakeEvidence()
     repo = FakeReportRepo()
@@ -256,6 +370,49 @@ async def test_full_pipeline_with_content_store_hydrates_evidence() -> None:
     # Hydrator should have produced hydrated_evidence
     assert "hydrated_evidence" in result
     assert result["hydrated_evidence"].get("art-1") == "Full article body about AI trends."
+    # Section planner should have produced claim_plans
+    assert "claim_plans" in result
+
+
+@pytest.mark.asyncio
+async def test_full_pipeline_with_content_store_produces_citations() -> None:
+    """Pipeline with content_store produces section_citations via claim_plans."""
+    llm = FakeLLM()
+    evidence = FakeEvidence()
+    repo = FakeReportRepo()
+    content_store = MemoryContentStore()
+
+    await content_store.store("art-1", "Full article body about AI trends.")
+
+    report = await repo.create_report("Test Report", "weekly_briefing")
+
+    graph = build_report_graph(llm, evidence, repo, content_store=content_store)
+
+    result = await graph.ainvoke(
+        {
+            "report_id": str(report.report_id),
+            "run_id": str(uuid4()),
+            "brief": {"topic": "AI trends 2026"},
+            "revision_count": 0,
+        }
+    )
+
+    assert result.get("final_version_no") == 1
+    # section_citations should be populated
+    section_citations = result.get("section_citations", {})
+    assert len(section_citations) > 0
+    # Each section with claims should have citations
+    for key, cites in section_citations.items():
+        if result.get("claim_plans", {}).get(key):
+            assert len(cites) > 0, f"Section {key} has claims but no citations"
+            for cite in cites:
+                assert "claim_id" in cite
+                assert "source_id" in cite
+                assert "source_type" in cite
+    # Verify citations were persisted via bump_section_version
+    assert len(repo.section_versions) > 0
+    sv_with_cites = [sv for sv in repo.section_versions if sv.citations]
+    assert len(sv_with_cites) > 0
 
 
 @pytest.mark.asyncio
@@ -280,3 +437,169 @@ async def test_full_pipeline_without_content_store_still_works() -> None:
 
     assert result.get("final_version_no") == 1
     assert result.get("error") is None
+
+
+@pytest.mark.asyncio
+async def test_full_pipeline_conclusion_uses_analysis_claims() -> None:
+    """With content_store, conclusion section_planner uses analysis claims, not raw facts."""
+    llm = FakeLLM()
+    evidence = FakeEvidence()
+    repo = FakeReportRepo()
+    content_store = MemoryContentStore()
+
+    await content_store.store("art-1", "Full article body about AI trends.")
+
+    report = await repo.create_report("Test Report", "weekly_briefing")
+
+    graph = build_report_graph(llm, evidence, repo, content_store=content_store)
+
+    result = await graph.ainvoke(
+        {
+            "report_id": str(report.report_id),
+            "run_id": str(uuid4()),
+            "brief": {"topic": "AI trends 2026"},
+            "revision_count": 0,
+        }
+    )
+
+    assert result.get("final_version_no") == 1
+    claim_plans = result.get("claim_plans", {})
+    # Check that conclusion claims exist and are synthesis type
+    conclusion_keys = [s.get("key") for s in result.get("outline", []) if s.get("section_role") == "conclusion"]
+    for key in conclusion_keys:
+        claims = claim_plans.get(key, [])
+        for claim in claims:
+            assert claim.get("claim_type") == "synthesis", (
+                f"Conclusion claim should be synthesis, got {claim.get('claim_type')}"
+            )
+
+
+@pytest.mark.asyncio
+async def test_full_pipeline_es_uses_accepted_claims() -> None:
+    """ES is generated from accepted section claims, not raw evidence. Citations must not be empty."""
+    llm = FakeLLM()
+    evidence = FakeEvidence()
+    repo = FakeReportRepo()
+    content_store = MemoryContentStore()
+
+    await content_store.store("art-1", "Full article body about AI trends.")
+
+    report = await repo.create_report("Test Report", "weekly_briefing")
+
+    graph = build_report_graph(llm, evidence, repo, content_store=content_store)
+
+    result = await graph.ainvoke(
+        {
+            "report_id": str(report.report_id),
+            "run_id": str(uuid4()),
+            "brief": {"topic": "AI trends 2026"},
+            "revision_count": 0,
+        }
+    )
+
+    assert result.get("final_version_no") == 1
+    claim_plans = result.get("claim_plans", {})
+    # ES should have claim_plans
+    es_keys = [s.get("key") for s in result.get("outline", []) if s.get("section_role") == "executive_summary"]
+    for key in es_keys:
+        es_claims = claim_plans.get(key, [])
+        assert len(es_claims) > 0, f"ES section '{key}' should have claims from accepted sections"
+        # ES claims should be synthesis type
+        for claim in es_claims:
+            assert claim.get("claim_type") == "synthesis", (
+                f"ES claim should be synthesis, got {claim.get('claim_type')}"
+            )
+    # ES citations should not be empty
+    section_citations = result.get("section_citations", {})
+    for key in es_keys:
+        es_citations = section_citations.get(key, [])
+        assert len(es_citations) > 0, f"ES section '{key}' must have citations"
+
+
+@pytest.mark.asyncio
+async def test_planner_uses_num_predict_2048() -> None:
+    """Planner must request num_predict=2048 for sufficient Japanese JSON output budget."""
+    llm = FakeLLM()
+    node = PlannerNode(llm)
+
+    await node({"scope": {"topic": "AI trends"}})
+
+    planner_calls = [c for c in llm._calls if "plan" in c["prompt"].lower() or "outline" in c["prompt"].lower()]
+    assert len(planner_calls) >= 1
+    assert planner_calls[0]["num_predict"] == 2048
+
+
+@pytest.mark.asyncio
+async def test_extractor_uses_num_predict_6000() -> None:
+    """Extractor must request num_predict=6000 — balanced between quality and timeout risk."""
+    from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
+
+    llm = FakeLLM()
+    node = ExtractorNode(llm)
+
+    state = {
+        "curated_by_section": {"analysis": [{"id": "art-1", "title": "Test Article"}]},
+        "hydrated_evidence": {"art-1": "Article body text about AI trends."},
+    }
+
+    await node(state)
+
+    extractor_calls = [c for c in llm._calls if "extract" in c["prompt"].lower()]
+    assert len(extractor_calls) >= 1
+    assert extractor_calls[0]["num_predict"] == 6000
+
+
+@pytest.mark.asyncio
+async def test_extractor_preserves_partial_results_on_failure() -> None:
+    """If one article extraction fails (e.g. ReadTimeout), facts from other articles are preserved."""
+    from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
+
+    call_count = 0
+
+    class AlwaysFailForArt2LLM(FakeLLM):
+        """Fails on EVERY call for art-2 (both retries), succeeds for others."""
+
+        async def generate(self, prompt: str, **kwargs) -> LLMResponse:
+            nonlocal call_count
+            call_count += 1
+            if "art-2" in prompt:
+                raise TimeoutError("ReadTimeout")
+            return await super().generate(prompt, **kwargs)
+
+    llm = AlwaysFailForArt2LLM()
+    node = ExtractorNode(llm)
+
+    state = {
+        "curated_by_section": {
+            "analysis": [
+                {"id": "art-1", "title": "Article 1"},
+                {"id": "art-2", "title": "Article 2"},
+                {"id": "art-3", "title": "Article 3"},
+            ]
+        },
+        "hydrated_evidence": {
+            "art-1": "Body about AI trends.",
+            "art-2": "Body about chips.",
+            "art-3": "Body about semiconductors.",
+        },
+    }
+
+    result = await node(state)
+
+    # art-2 failed but art-1 and art-3 should have extracted facts
+    assert len(result["extracted_facts"]) >= 1, "Partial results should be preserved when one article fails"
+
+
+def test_extractor_output_has_reasoning_field() -> None:
+    """ExtractorOutput must have a 'reasoning' field to absorb Gemma4 thinking tokens into JSON.
+
+    Without this field, Gemma4's thinking mode generates tokens in the 'thinking' response field
+    (outside JSON), consuming num_predict budget without contributing to output.
+    ADR-632: reasoning-first field order prevents thinking token waste.
+    """
+    from acolyte.domain.fact import ExtractorOutput
+
+    schema = ExtractorOutput.model_json_schema()
+    assert "reasoning" in schema["properties"], (
+        "ExtractorOutput must have 'reasoning' field to absorb Gemma4 thinking tokens"
+    )

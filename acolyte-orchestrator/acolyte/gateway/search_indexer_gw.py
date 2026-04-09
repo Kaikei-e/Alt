@@ -2,8 +2,9 @@
 
 Uses GET /v1/search?q={query}&limit={limit} — the search-indexer's own REST endpoint.
 
-Response schema: {query: str, hits: [{id, title, content, tags}]}
-Note: search-indexer does NOT return url, published_at, or _rankingScore.
+Response schema: {query: str, hits: [{id, title, content, tags, score}]}
+Note: search-indexer does NOT return url or published_at.
+score is Meilisearch _rankingScore (0.0-1.0).
 
 Content from search results is stored in ContentStore (not in ArticleHit)
 to follow the 'Fetch metadata first, body only for top-N' rule.
@@ -60,7 +61,7 @@ class SearchIndexerGateway:
                     article_id=article_id,
                     title=hit.get("title", ""),
                     tags=hit.get("tags"),
-                    score=0.0,  # search-indexer REST does not return ranking score
+                    score=float(hit.get("score", 0.0)),
                 )
             )
 

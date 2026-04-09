@@ -49,11 +49,11 @@ async def generate_validated(
 
     last_error: Exception | None = None
     for attempt in range(1 + retries):
-        response = await llm.generate(prompt, **llm_kwargs)
         try:
+            response = await llm.generate(prompt, **llm_kwargs)
             parsed = json.loads(response.text)
             return adapter.validate_python(parsed)
-        except (json.JSONDecodeError, Exception) as exc:
+        except Exception as exc:
             last_error = exc
             logger.warning(
                 "LLM output validation failed",

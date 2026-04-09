@@ -152,3 +152,168 @@ async def test_gatherer_empty_topic_returns_error() -> None:
 
     assert result.get("error") is not None
     assert "topic" in result["error"].lower()
+
+
+# --- Issue 6: Faceted search tests ---
+
+
+@pytest.mark.asyncio
+async def test_gatherer_uses_faceted_queries_when_available() -> None:
+    """Outline with query_facets triggers faceted search path."""
+    articles_by_query = {
+        "AI": [ArticleHit(article_id="art-1", title="AI Article", tags=["AI"], score=0.9)],
+    }
+    evidence = FakeEvidence(articles_by_query)
+    content_store = MemoryContentStore()
+    node = GathererNode(evidence, content_store=content_store)
+
+    state = {
+        "brief": {"topic": "AI trends"},
+        "outline": [
+            {
+                "key": "analysis",
+                "title": "Analysis",
+                "search_queries": ["AI trends"],
+                "query_facets": [
+                    {
+                        "intent": "investigate",
+                        "raw_query": "AI trends",
+                        "must_have_terms": ["AI", "trends"],
+                        "entities": [],
+                        "optional_terms": [],
+                        "time_range": None,
+                        "source_bias": "article",
+                    }
+                ],
+            },
+        ],
+    }
+    result = await node(state)
+
+    assert len(result["evidence"]) >= 1
+    # Faceted path should have made search calls
+    assert len(evidence.search_calls) >= 1
+
+
+@pytest.mark.asyncio
+async def test_gatherer_falls_back_to_search_queries_without_facets() -> None:
+    """Outline without query_facets uses legacy search_queries path."""
+    articles_by_query = {
+        "market": [ArticleHit(article_id="art-1", title="Market Report", tags=["market"], score=0.9)],
+    }
+    evidence = FakeEvidence(articles_by_query)
+    content_store = MemoryContentStore()
+    node = GathererNode(evidence, content_store=content_store)
+
+    state = {
+        "brief": {"topic": "AI semiconductor"},
+        "outline": [
+            {"key": "market", "title": "Market", "search_queries": ["market trends"]},
+        ],
+    }
+    result = await node(state)
+
+    # Legacy path should still work
+    assert len(result["evidence"]) >= 1
+    assert any("market" in q for q in evidence.search_calls)
+
+
+@pytest.mark.asyncio
+async def test_gatherer_flags_weak_facets() -> None:
+    """Facet returning fewer than WEAK_FACET_THRESHOLD hits appears in weak_facets."""
+    # Only one hit for "niche" — below threshold of 2
+    articles_by_query = {
+        "niche": [ArticleHit(article_id="art-1", title="Niche Topic", tags=[], score=0.5)],
+    }
+    evidence = FakeEvidence(articles_by_query)
+    content_store = MemoryContentStore()
+    node = GathererNode(evidence, content_store=content_store)
+
+    state = {
+        "brief": {"topic": "niche topic"},
+        "outline": [
+            {
+                "key": "analysis",
+                "title": "Analysis",
+                "query_facets": [
+                    {
+                        "intent": "investigate",
+                        "raw_query": "niche topic analysis",
+                        "must_have_terms": ["niche", "topic"],
+                        "entities": [],
+                        "optional_terms": [],
+                        "time_range": None,
+                        "source_bias": "article",
+                    }
+                ],
+            },
+        ],
+    }
+    result = await node(state)
+
+    assert "weak_facets" in result
+    assert len(result["weak_facets"]) >= 1
+    assert result["weak_facets"][0]["section_key"] == "analysis"
+
+
+@pytest.mark.asyncio
+async def test_gatherer_deduplicates_across_facets() -> None:
+    """Same article from two facets in one section is deduplicated."""
+    shared = ArticleHit(article_id="art-shared", title="Shared", tags=[], score=0.9)
+    articles_by_query = {
+        "AI": [shared],
+        "GPU": [shared],
+    }
+    evidence = FakeEvidence(articles_by_query)
+    content_store = MemoryContentStore()
+    node = GathererNode(evidence, content_store=content_store)
+
+    state = {
+        "brief": {"topic": "AI GPU"},
+        "outline": [
+            {
+                "key": "analysis",
+                "title": "Analysis",
+                "query_facets": [
+                    {"intent": "investigate", "raw_query": "AI market", "must_have_terms": ["AI"], "entities": [], "optional_terms": [], "time_range": None, "source_bias": "article"},
+                    {"intent": "investigate", "raw_query": "GPU demand", "must_have_terms": ["GPU"], "entities": [], "optional_terms": [], "time_range": None, "source_bias": "article"},
+                ],
+            },
+        ],
+    }
+    result = await node(state)
+
+    shared_items = [e for e in result["evidence"] if e["id"] == "art-shared"]
+    assert len(shared_items) == 1
+    assert "analysis" in shared_items[0]["section_keys"]
+
+
+@pytest.mark.asyncio
+async def test_gatherer_synthesis_only_sections_skip_search() -> None:
+    """Sections with empty query_facets (synthesis_only) do not trigger search."""
+    evidence = FakeEvidence()
+    content_store = MemoryContentStore()
+    node = GathererNode(evidence, content_store=content_store)
+
+    state = {
+        "brief": {"topic": "AI"},
+        "outline": [
+            {
+                "key": "analysis",
+                "title": "Analysis",
+                "query_facets": [
+                    {"intent": "investigate", "raw_query": "AI analysis", "must_have_terms": ["AI"], "entities": [], "optional_terms": [], "time_range": None, "source_bias": "article"},
+                ],
+            },
+            {
+                "key": "conclusion",
+                "title": "Conclusion",
+                "query_facets": [],  # synthesis_only
+            },
+        ],
+    }
+    await node(state)
+
+    # Should only have called search for analysis, not conclusion
+    for call in evidence.search_calls:
+        assert "conclusion" not in call.lower()

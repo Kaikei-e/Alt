@@ -13,10 +13,12 @@ from acolyte.usecase.graph.nodes.finalizer_node import FinalizerNode
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode
 from acolyte.usecase.graph.nodes.hydrator_node import HydratorNode
 from acolyte.usecase.graph.nodes.planner_node import PlannerNode
+from acolyte.usecase.graph.nodes.section_planner_node import SectionPlannerNode
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
 from acolyte.usecase.graph.state import ReportGenerationState
 
 if TYPE_CHECKING:
+    from acolyte.domain.fusion import FusionStrategy
     from acolyte.port.content_store import ContentStorePort
     from acolyte.port.evidence_provider import EvidenceProviderPort
     from acolyte.port.llm_provider import LLMProviderPort
@@ -29,18 +31,21 @@ def build_report_graph(
     report_repo: ReportRepositoryPort,
     *,
     content_store: ContentStorePort | None = None,
+    fusion: FusionStrategy | None = None,
 ) -> StateGraph:
     """Build the report generation StateGraph.
 
-    Pipeline: planner → gatherer → curator → hydrator → extractor → writer → critic → (revise|accept) → finalizer
+    Pipeline:
+      Without content_store: planner → gatherer → curator → writer → critic → finalizer
+      With content_store:    planner → gatherer → curator → hydrator → extractor → section_planner → writer → critic → finalizer
 
-    When content_store is provided, hydrator fetches full article bodies for curated evidence,
-    and extractor extracts atomic facts from those bodies.
+    Revision loop: critic → writer (section_planner is NOT re-run on revision;
+    claim_plans persist in state and writer re-uses them with revision feedback).
     """
     graph = StateGraph(ReportGenerationState)
 
     graph.add_node("planner", PlannerNode(llm))
-    graph.add_node("gatherer", GathererNode(evidence, content_store=content_store))
+    graph.add_node("gatherer", GathererNode(evidence, content_store=content_store, fusion=fusion))
     graph.add_node("curator", CuratorNode(llm))
     graph.add_node("writer", WriterNode(llm))
     graph.add_node("critic", CriticNode(llm))
@@ -53,9 +58,11 @@ def build_report_graph(
     if content_store is not None:
         graph.add_node("hydrator", HydratorNode(content_store))
         graph.add_node("extractor", ExtractorNode(llm))
+        graph.add_node("section_planner", SectionPlannerNode(llm))
         graph.add_edge("curator", "hydrator")
         graph.add_edge("hydrator", "extractor")
-        graph.add_edge("extractor", "writer")
+        graph.add_edge("extractor", "section_planner")
+        graph.add_edge("section_planner", "writer")
     else:
         graph.add_edge("curator", "writer")
 
