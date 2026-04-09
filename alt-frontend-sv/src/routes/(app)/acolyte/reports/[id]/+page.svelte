@@ -3,14 +3,29 @@ import { page } from "$app/state";
 import { onMount } from "svelte";
 import {
 	getReport,
+	isAlreadyRunning,
 	listReportVersions,
 	startReportRun,
 	rerunSection,
+	type AcolyteCitation,
 	type AcolyteReport,
 	type AcolyteSection,
 	type AcolyteVersionSummary,
 } from "$lib/connect/acolyte";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+import { useViewport } from "$lib/stores/viewport.svelte";
+import MobileAcolyteDetail from "$lib/components/mobile/acolyte/MobileAcolyteDetail.svelte";
+
+function parseCitations(citationsJson: string): AcolyteCitation[] {
+	try {
+		const parsed = JSON.parse(citationsJson || "[]");
+		return Array.isArray(parsed) ? parsed : [];
+	} catch {
+		return [];
+	}
+}
+
+const { isDesktop } = useViewport();
 
 let report = $state<AcolyteReport | null>(null);
 let sections = $state<AcolyteSection[]>([]);
@@ -19,6 +34,7 @@ let loading = $state(true);
 let error = $state<string | null>(null);
 let showHistory = $state(false);
 let revealed = $state(false);
+let generating = $state(false);
 let activeSection = $state<string | null>(null);
 
 async function loadReport() {
@@ -47,12 +63,18 @@ async function loadReport() {
 }
 
 async function handleGenerate() {
-	if (!report) return;
+	if (!report || generating) return;
+	generating = true;
 	try {
 		await startReportRun(report.reportId);
 		await loadReport();
 	} catch (e) {
-		error = e instanceof Error ? e.message : "Failed to start run";
+		if (isAlreadyRunning(e)) {
+			error = "A report generation is already in progress";
+		} else {
+			error = e instanceof Error ? e.message : "Failed to start run";
+			generating = false;
+		}
 	}
 }
 
@@ -70,8 +92,8 @@ function changeKindIcon(kind: string): string {
 	const m: Record<string, string> = {
 		added: "+",
 		updated: "~",
-		removed: "−",
-		regenerated: "↻",
+		removed: "\u2212",
+		regenerated: "\u21BB",
 	};
 	return m[kind] ?? "?";
 }
@@ -81,6 +103,18 @@ onMount(() => {
 });
 </script>
 
+{#if !isDesktop}
+<MobileAcolyteDetail
+	{report}
+	{sections}
+	{versions}
+	{loading}
+	{error}
+	{generating}
+	onGenerate={handleGenerate}
+	onRerun={handleRerun}
+/>
+{:else}
 <div class="aco-detail" class:revealed>
 	{#if loading}
 		<div class="aco-loading">
@@ -114,7 +148,9 @@ onMount(() => {
 				<button class="btn-history" onclick={() => showHistory = !showHistory}>
 					{showHistory ? "Hide" : "Show"} History
 				</button>
-				<button class="btn-generate" onclick={handleGenerate}>Generate</button>
+				<button class="btn-generate" onclick={handleGenerate} disabled={generating}>
+					{generating ? "Generating\u2026" : "Generate"}
+				</button>
 			</div>
 			<div class="header-rule"></div>
 		</header>
@@ -145,6 +181,7 @@ onMount(() => {
 					<!-- Active section body -->
 					{#each sections as sec}
 						{#if sec.sectionKey === activeSection}
+							{@const citations = parseCitations(sec.citationsJson)}
 							<article class="section-article" style="--delay: 0">
 								<div class="section-topbar">
 									<h2>{sec.sectionKey.replace(/_/g, " ")}</h2>
@@ -159,6 +196,22 @@ onMount(() => {
 										<span class="no-content">Awaiting generation&hellip;</span>
 									{/if}
 								</div>
+								{#if citations.length > 0}
+									<footer class="section-sources">
+										<h4 class="sources-heading">Sources</h4>
+										<ol class="sources-list">
+											{#each citations as cite}
+												<li class="source-item">
+													<span class="source-id">[{cite.claim_id}]</span>
+													<span class="source-ref">{cite.source_type}:{cite.source_id}</span>
+													{#if cite.quote}
+														<span class="source-quote">&ldquo;{cite.quote}&rdquo;</span>
+													{/if}
+												</li>
+											{/each}
+										</ol>
+									</footer>
+								{/if}
 							</article>
 						{/if}
 					{/each}
@@ -203,6 +256,7 @@ onMount(() => {
 		</div>
 	{/if}
 </div>
+{/if}
 
 <style>
 	.aco-detail { max-width: 1080px; margin: 0 auto; padding: 1.5rem 1rem 3rem; opacity: 0; transform: translateY(6px); transition: opacity 0.35s ease, transform 0.35s ease; }
@@ -249,6 +303,7 @@ onMount(() => {
 	.btn-history:hover { background: var(--surface-2, #f5f4f1); }
 	.btn-generate { background: var(--alt-charcoal, #1a1a1a); color: var(--surface-bg, #faf9f7); }
 	.btn-generate:hover { opacity: 0.88; }
+	.btn-generate:disabled { opacity: 0.4; cursor: not-allowed; }
 	.header-rule { height: 2px; background: var(--alt-charcoal, #1a1a1a); }
 
 	/* Layout */
@@ -337,6 +392,42 @@ onMount(() => {
 	.section-prose :global(code) { font-family: var(--font-mono, "IBM Plex Mono", monospace); font-size: 0.85em; }
 	.section-prose :global(strong) { font-weight: 700; }
 	.no-content { font-style: italic; color: var(--alt-ash, #999); }
+
+	/* Section sources / citations */
+	.section-sources {
+		margin-top: 1.25rem; padding-top: 0.75rem;
+		border-top: 1px solid var(--surface-border, #c8c8c8);
+		max-width: 65ch;
+	}
+	.sources-heading {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.6rem; font-weight: 700; letter-spacing: 0.12em;
+		text-transform: uppercase; color: var(--alt-ash, #999);
+		margin: 0 0 0.5rem;
+	}
+	.sources-list {
+		list-style: none; padding: 0; margin: 0;
+		display: flex; flex-direction: column; gap: 0.35rem;
+	}
+	.source-item {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.75rem; line-height: 1.5; color: var(--alt-slate, #666);
+		display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: baseline;
+	}
+	.source-id {
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.65rem; font-weight: 600; color: var(--alt-charcoal, #1a1a1a);
+		flex-shrink: 0;
+	}
+	.source-ref {
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.65rem; color: var(--alt-ash, #999);
+		flex-shrink: 0;
+	}
+	.source-quote {
+		font-style: italic; color: var(--alt-slate, #666);
+		font-size: 0.72rem;
+	}
 
 	/* History sidebar */
 	.history-panel {

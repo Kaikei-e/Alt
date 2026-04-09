@@ -2,6 +2,10 @@
 import { goto } from "$app/navigation";
 import { onMount } from "svelte";
 import { createReport } from "$lib/connect/acolyte";
+import { useViewport } from "$lib/stores/viewport.svelte";
+import MobileAcolyteNew from "$lib/components/mobile/acolyte/MobileAcolyteNew.svelte";
+
+const { isDesktop } = useViewport();
 
 let title = $state("");
 let reportType = $state("weekly_briefing");
@@ -56,6 +60,25 @@ async function handleSubmit() {
 	}
 }
 
+async function handleMobileSubmit(
+	titleVal: string,
+	reportTypeVal: string,
+	topicVal: string,
+) {
+	try {
+		submitting = true;
+		error = null;
+		const scope: Record<string, string> = {};
+		if (topicVal) scope.topic = topicVal;
+		const result = await createReport(titleVal, reportTypeVal, scope);
+		goto(`/acolyte/reports/${result.reportId}`);
+	} catch (e) {
+		error = e instanceof Error ? e.message : "Failed to create report";
+	} finally {
+		submitting = false;
+	}
+}
+
 onMount(() => {
 	requestAnimationFrame(() => {
 		revealed = true;
@@ -63,6 +86,13 @@ onMount(() => {
 });
 </script>
 
+{#if !isDesktop}
+<MobileAcolyteNew
+	onSubmit={handleMobileSubmit}
+	{error}
+	{submitting}
+/>
+{:else}
 <div class="aco-new" class:revealed>
 	<!-- Breadcrumb -->
 	<nav class="aco-breadcrumb">
@@ -133,6 +163,7 @@ onMount(() => {
 		</div>
 	</form>
 </div>
+{/if}
 
 <style>
 	.aco-new { max-width: 600px; margin: 0 auto; padding: 1.5rem 1rem 3rem; opacity: 0; transform: translateY(6px); transition: opacity 0.35s ease, transform 0.35s ease; }

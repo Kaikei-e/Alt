@@ -18,10 +18,30 @@ async function rpc<T>(
 		body: JSON.stringify(body),
 	});
 	if (!resp.ok) {
-		const err = await resp.json().catch(() => ({ message: resp.statusText }));
-		throw new Error(err.message ?? `RPC ${method} failed: ${resp.status}`);
+		const err = await resp
+			.json()
+			.catch(() => ({ code: "unknown", message: resp.statusText }));
+		throw new AcolyteRpcError(
+			err.code ?? "unknown",
+			err.message ?? `RPC ${method} failed: ${resp.status}`,
+		);
 	}
 	return resp.json();
+}
+
+// --- Connect-RPC Error ---
+
+export class AcolyteRpcError extends Error {
+	code: string;
+	constructor(code: string, message: string) {
+		super(message);
+		this.name = "AcolyteRpcError";
+		this.code = code;
+	}
+}
+
+export function isAlreadyRunning(err: unknown): err is AcolyteRpcError {
+	return err instanceof AcolyteRpcError && err.code === "failed_precondition";
 }
 
 // --- Types ---
@@ -42,6 +62,15 @@ export interface AcolyteReportSummary {
 	currentVersion: number;
 	latestRunStatus: string;
 	createdAt: string;
+}
+
+export interface AcolyteCitation {
+	claim_id: string;
+	source_id: string;
+	source_type: string;
+	quote: string;
+	offset_start: number;
+	offset_end: number;
 }
 
 export interface AcolyteSection {

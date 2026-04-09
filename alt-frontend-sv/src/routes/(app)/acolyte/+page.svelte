@@ -1,11 +1,11 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import { onMount } from "svelte";
-import {
-	listReports,
-	startReportRun,
-	type AcolyteReportSummary,
-} from "$lib/connect/acolyte";
+import { listReports, type AcolyteReportSummary } from "$lib/connect/acolyte";
+import { useViewport } from "$lib/stores/viewport.svelte";
+import MobileAcolyteList from "$lib/components/mobile/acolyte/MobileAcolyteList.svelte";
+
+const { isDesktop } = useViewport();
 
 let reports = $state<AcolyteReportSummary[]>([]);
 let loading = $state(true);
@@ -27,16 +27,6 @@ async function loadReports() {
 	}
 }
 
-async function handleStartRun(ev: MouseEvent, reportId: string) {
-	ev.stopPropagation();
-	try {
-		await startReportRun(reportId);
-		await loadReports();
-	} catch (e) {
-		error = e instanceof Error ? e.message : "Failed to start run";
-	}
-}
-
 function statusLabel(s: string): string {
 	const map: Record<string, string> = {
 		succeeded: "Complete",
@@ -52,6 +42,13 @@ onMount(() => {
 });
 </script>
 
+{#if !isDesktop}
+<MobileAcolyteList
+	{reports}
+	{loading}
+	{error}
+/>
+{:else}
 <div class="aco-index" class:revealed>
 	<!-- Masthead -->
 	<header class="aco-masthead">
@@ -113,18 +110,12 @@ onMount(() => {
 							</span>
 						</div>
 					</div>
-					<button
-						class="card-run-btn"
-						onclick={(ev) => handleStartRun(ev, report.reportId)}
-						title="Generate report"
-					>
-						&#9654;
-					</button>
 				</div>
 			{/each}
 		</div>
 	{/if}
 </div>
+{/if}
 
 <style>
 	/* ===== Reveal animation ===== */
@@ -237,15 +228,6 @@ onMount(() => {
 	.card-status--failed { color: var(--alt-terracotta, #b85450); }
 	.card-status--pending { color: var(--alt-ash, #999); }
 	.card-status--draft { color: var(--surface-border, #c8c8c8); }
-
-	.card-run-btn {
-		display: flex; align-items: center; justify-content: center;
-		width: 44px; flex-shrink: 0; border: none; background: none;
-		color: var(--alt-ash, #999); font-size: 0.75rem; cursor: pointer;
-		border-left: 1px solid var(--surface-border, #c8c8c8);
-		transition: color 0.15s, background-color 0.15s;
-	}
-	.card-run-btn:hover { background: var(--alt-charcoal, #1a1a1a); color: var(--surface-bg, #faf9f7); }
 
 	/* ===== States ===== */
 	.aco-error {
