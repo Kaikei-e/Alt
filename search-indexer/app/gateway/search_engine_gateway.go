@@ -141,6 +141,7 @@ func (g *SearchEngineGateway) convertDocs(driverResults []driver.SearchDocumentD
 			Content: d.Content,
 			Tags:    d.Tags,
 			UserID:  d.UserID,
+			Score:   d.Score,
 		}
 	}
 	return domainResults

@@ -37,7 +37,7 @@ var (
 	eventHandlerPattern = regexp.MustCompile(`(?i)on\w+\s*=`)
 
 	// SQL injection prevention patterns
-	sqlInjectionPattern = regexp.MustCompile(`(?i)(union|select|insert|update|delete|drop|create|alter|exec|execute|\-\-|\/\*|\*\/|;|'|")`)
+	sqlInjectionPattern = regexp.MustCompile(`(?i)(\bunion\b|\bselect\b|\binsert\b|\bupdate\b|\bdelete\b|\bdrop\b|\bcreate\b|\balter\b|\bexec\b|\bexecute\b|\-\-|\/\*|\*\/|;|'|")`)
 
 	// Command injection prevention patterns
 	commandInjectionPattern = regexp.MustCompile(`[|;&$\x60]`)

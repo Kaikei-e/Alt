@@ -73,8 +73,9 @@ func (d *MeilisearchDriver) DeleteDocuments(ctx context.Context, ids []string) e
 
 func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int) ([]SearchDocumentDriver, error) {
 	searchRequest := &meilisearch.SearchRequest{
-		Query: query,
-		Limit: int64(limit),
+		Query:            query,
+		Limit:            int64(limit),
+		ShowRankingScore: true,
 	}
 	if containsCJK(query) {
 		searchRequest.Locales = []string{"jpn"}
@@ -95,6 +96,7 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 			Title:   d.getString(hit, "title"),
 			Content: d.getString(hit, "content"),
 			Tags:    d.getStringSlice(hit, "tags"),
+			Score:   d.getFloat64(hit, "_rankingScore"),
 		}
 		docs = append(docs, doc)
 	}
@@ -106,8 +108,9 @@ func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string,
 	filter := d.buildSecureFilter(filters)
 
 	searchRequest := &meilisearch.SearchRequest{
-		Query: query,
-		Limit: int64(limit),
+		Query:            query,
+		Limit:            int64(limit),
+		ShowRankingScore: true,
 	}
 	if containsCJK(query) {
 		searchRequest.Locales = []string{"jpn"}
@@ -133,6 +136,7 @@ func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string,
 			Title:   d.getString(hit, "title"),
 			Content: d.getString(hit, "content"),
 			Tags:    d.getStringSlice(hit, "tags"),
+			Score:   d.getFloat64(hit, "_rankingScore"),
 		}
 		docs = append(docs, doc)
 	}
@@ -266,12 +270,23 @@ func (d *MeilisearchDriver) getStringSlice(m meilisearch.Hit, key string) []stri
 	return []string{}
 }
 
+func (d *MeilisearchDriver) getFloat64(m meilisearch.Hit, key string) float64 {
+	if v, ok := m[key]; ok {
+		var f float64
+		if err := json.Unmarshal(v, &f); err == nil {
+			return f
+		}
+	}
+	return 0.0
+}
+
 func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, userID string, limit int) ([]SearchDocumentDriver, error) {
 	filter := BuildUserFilter(userID)
 
 	req := &meilisearch.SearchRequest{
-		Limit:  int64(limit),
-		Filter: filter,
+		Limit:            int64(limit),
+		Filter:           filter,
+		ShowRankingScore: true,
 	}
 	if containsCJK(query) {
 		req.Locales = []string{"jpn"}
@@ -295,9 +310,10 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 	filter := BuildUserFilter(userID)
 
 	paginReq := &meilisearch.SearchRequest{
-		Offset: offset,
-		Limit:  limit,
-		Filter: filter,
+		Offset:           offset,
+		Limit:            limit,
+		Filter:           filter,
+		ShowRankingScore: true,
 	}
 	if containsCJK(query) {
 		paginReq.Locales = []string{"jpn"}
@@ -318,6 +334,7 @@ func (d *MeilisearchDriver) extractDocs(hits []meilisearch.Hit) []SearchDocument
 			Title:   d.getString(hit, "title"),
 			Content: d.getString(hit, "content"),
 			Tags:    d.getStringSlice(hit, "tags"),
+			Score:   d.getFloat64(hit, "_rankingScore"),
 		})
 	}
 	return docs

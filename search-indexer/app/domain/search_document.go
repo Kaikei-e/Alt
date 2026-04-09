@@ -6,6 +6,7 @@ type SearchDocument struct {
 	Content string   `json:"content"`
 	Tags    []string `json:"tags"`
 	UserID  string   `json:"user_id"`
+	Score   float64  `json:"score"`
 }
 
 func NewSearchDocument(article *Article) SearchDocument {

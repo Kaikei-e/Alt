@@ -34,6 +34,7 @@ type SearchArticlesHit struct {
 	Title   string   `json:"title"`
 	Content string   `json:"content"`
 	Tags    []string `json:"tags"`
+	Score   float64  `json:"score"`
 }
 
 type SearchArticlesResponse struct {
@@ -115,6 +116,7 @@ func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 			Title:   doc.Title,
 			Content: doc.Content,
 			Tags:    tags,
+			Score:   doc.Score,
 		})
 	}
 

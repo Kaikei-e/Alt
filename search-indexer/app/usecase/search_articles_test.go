@@ -251,6 +251,21 @@ func TestSearchArticlesUsecase_ExecuteWithSecurityValidation(t *testing.T) {
 		{"search with hyphens", "test-driven development", 10, false},
 		{"search with spaces", "clean architecture", 10, false},
 		{"search with unicode", "プログラミング", 10, false},
+
+		// False positive prevention — words containing SQL keywords as substrings
+		{"executive summary should pass", "executive summary", 10, false},
+		{"selected items should pass", "selected items", 10, false},
+		{"updated article should pass", "updated article", 10, false},
+		{"created document should pass", "created document", 10, false},
+		{"dropped connection should pass", "dropped connection analysis", 10, false},
+		{"altered state should pass", "altered state of consciousness", 10, false},
+		{"insertion sort should pass", "insertion sort algorithm", 10, false},
+		// "union jack" contains standalone "union" — blocked by design (SQL UNION is high-risk)
+		{"union as standalone word blocked", "union jack flag", 10, true},
+
+		// Real SQL injection with standalone keywords should still be caught
+		{"exec standalone", "exec sp_help", 10, true},
+		{"select standalone", "SELECT * FROM users", 10, true},
 	}
 
 	for _, tt := range tests {
