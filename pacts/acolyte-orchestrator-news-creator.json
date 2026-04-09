@@ -1,0 +1,52 @@
+{
+  "consumer": {
+    "name": "acolyte-orchestrator"
+  },
+  "interactions": [
+    {
+      "description": "a non-streaming generation request",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "news-creator is ready"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/summarize"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "metadata": {
+              "model": "gemma4-e4b-12k",
+              "tokens": 200
+            },
+            "summary": "Market trends indicate..."
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.4.28",
+      "models": "1.3.5"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "news-creator"
+  }
+}
