@@ -50,6 +50,7 @@ func init() {
 	migrateBackupCmd.Flags().StringSlice("include", nil, "only include these volume names")
 	migrateBackupCmd.Flags().StringSlice("exclude", nil, "exclude these volume names")
 	migrateBackupCmd.Flags().Int("concurrency", 4, "max parallel pg_dump operations")
+	migrateBackupCmd.Flags().Bool("compress", false, "compress backup into a single .tar.gz archive")
 }
 
 func runMigrateBackup(cmd *cobra.Command, args []string) error {
@@ -61,6 +62,7 @@ func runMigrateBackup(cmd *cobra.Command, args []string) error {
 	include, _ := cmd.Flags().GetStringSlice("include")
 	exclude, _ := cmd.Flags().GetStringSlice("exclude")
 	concurrency, _ := cmd.Flags().GetInt("concurrency")
+	compress, _ := cmd.Flags().GetBool("compress")
 
 	// Get absolute path
 	absOutput, err := filepath.Abs(outputDir)
@@ -100,6 +102,7 @@ func runMigrateBackup(cmd *cobra.Command, args []string) error {
 		Include:       include,
 		Exclude:       exclude,
 		Concurrency:   concurrency,
+		Compress:      compress,
 	})
 
 	if err != nil {
@@ -131,6 +134,9 @@ func runMigrateBackup(cmd *cobra.Command, args []string) error {
 	printer.Info("Total size: %s", migrate.FormatSize(totalSize))
 	printer.Info("Elapsed: %s", result.Elapsed.Round(time.Millisecond))
 	printer.Info("Manifest checksum: %s", result.Manifest.Checksum)
+	if result.ArchivePath != "" {
+		printer.Info("Archive: %s", result.ArchivePath)
+	}
 	printer.PrintHints("migrate backup")
 
 	return nil

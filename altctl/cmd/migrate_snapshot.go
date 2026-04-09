@@ -40,6 +40,7 @@ func init() {
 
 	migrateSnapshotCmd.Flags().StringP("output", "o", "./backups", "output directory for backups")
 	migrateSnapshotCmd.Flags().Int("concurrency", 4, "max parallel pg_dump operations")
+	migrateSnapshotCmd.Flags().Bool("compress", false, "compress backup into a single .tar.gz archive")
 }
 
 func runMigrateSnapshot(cmd *cobra.Command, args []string) error {
@@ -47,6 +48,7 @@ func runMigrateSnapshot(cmd *cobra.Command, args []string) error {
 
 	outputDir, _ := cmd.Flags().GetString("output")
 	concurrency, _ := cmd.Flags().GetInt("concurrency")
+	compress, _ := cmd.Flags().GetBool("compress")
 
 	absOutput, err := filepath.Abs(outputDir)
 	if err != nil {
@@ -78,6 +80,7 @@ func runMigrateSnapshot(cmd *cobra.Command, args []string) error {
 		AltctlVersion: version,
 		Profile:       migrate.ProfileDB,
 		Concurrency:   concurrency,
+		Compress:      compress,
 	})
 
 	if err != nil {
@@ -109,6 +112,9 @@ func runMigrateSnapshot(cmd *cobra.Command, args []string) error {
 	printer.Info("Databases: %d", len(result.Manifest.Volumes))
 	printer.Info("Total size: %s", migrate.FormatSize(totalSize))
 	printer.Info("Elapsed: %s", elapsed.Round(time.Millisecond))
+	if result.ArchivePath != "" {
+		printer.Info("Archive: %s", result.ArchivePath)
+	}
 	printer.PrintHints("migrate snapshot")
 
 	return nil

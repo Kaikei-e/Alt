@@ -3,6 +3,9 @@ package migrate
 import (
 	"context"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -161,5 +164,77 @@ func TestBackupResult_ConcurrencyDefault(t *testing.T) {
 
 	if result == nil {
 		t.Fatal("expected non-nil result with default concurrency")
+	}
+}
+
+func TestCompressBackupDir(t *testing.T) {
+	// Create a fake backup directory with some files
+	baseDir := t.TempDir()
+	backupDir := filepath.Join(baseDir, "20260409_120000")
+	volumesDir := filepath.Join(backupDir, "volumes")
+	if err := os.MkdirAll(volumesDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write some test files
+	if err := os.WriteFile(filepath.Join(backupDir, "manifest.json"), []byte(`{"version":"1.0"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(volumesDir, "db_data_17.dump"), []byte("fake-pg-dump-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Compress
+	archivePath, err := CompressBackupDir(backupDir)
+	if err != nil {
+		t.Fatalf("CompressBackupDir failed: %v", err)
+	}
+
+	// Verify archive was created
+	if !strings.HasSuffix(archivePath, ".tar.gz") {
+		t.Errorf("Expected .tar.gz suffix, got %s", archivePath)
+	}
+
+	info, err := os.Stat(archivePath)
+	if err != nil {
+		t.Fatalf("Archive file not found: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Error("Archive file is empty")
+	}
+
+	// Verify original directory was removed
+	if _, err := os.Stat(backupDir); !os.IsNotExist(err) {
+		t.Error("Original backup directory should be removed after compression")
+	}
+}
+
+func TestCompressBackupDir_NonExistent(t *testing.T) {
+	_, err := CompressBackupDir("/nonexistent/path")
+	if err == nil {
+		t.Error("Expected error for non-existent directory")
+	}
+}
+
+func TestMigrator_Backup_WithCompress(t *testing.T) {
+	migrator := NewMigrator("/tmp/compose", "alt", slog.Default(), true)
+
+	result, err := migrator.Backup(context.Background(), BackupOptions{
+		OutputDir:     t.TempDir(),
+		Force:         true,
+		AltctlVersion: "test",
+		Profile:       ProfileDB,
+		Compress:      true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// In dry-run, ArchivePath should still be set (predicted path)
+	if result.ArchivePath == "" {
+		t.Error("Expected ArchivePath to be set when Compress=true")
+	}
+	if !strings.HasSuffix(result.ArchivePath, ".tar.gz") {
+		t.Errorf("Expected .tar.gz suffix, got %s", result.ArchivePath)
 	}
 }

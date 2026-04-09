@@ -23,6 +23,7 @@ type BackupOptions struct {
 	Include       []string      // Only include these volume names
 	Exclude       []string      // Exclude these volume names
 	Concurrency   int           // Max parallel pg_dump operations (default: 4)
+	Compress      bool          // Compress final backup directory into .tar.gz
 }
 
 // BackupResult contains the outcome of a backup operation
@@ -30,6 +31,7 @@ type BackupResult struct {
 	Manifest      *Manifest
 	Elapsed       time.Duration
 	VolumeTimings []VolumeTiming
+	ArchivePath   string // Path to .tar.gz archive (set when Compress=true)
 }
 
 // VolumeTiming records per-volume backup timing
@@ -236,17 +238,38 @@ func (m *Migrator) Backup(ctx context.Context, opts BackupOptions) (*BackupResul
 
 	elapsed := time.Since(totalStart)
 
+	result := &BackupResult{
+		Manifest:      manifest,
+		Elapsed:       elapsed,
+		VolumeTimings: allTimings,
+	}
+
+	// Compress backup directory into .tar.gz if requested
+	if opts.Compress {
+		if m.dryRun {
+			result.ArchivePath = backupDir + ".tar.gz"
+			m.logger.Info("[dry-run] would compress backup",
+				"archive", result.ArchivePath,
+			)
+		} else {
+			archivePath, err := CompressBackupDir(backupDir)
+			if err != nil {
+				return nil, fmt.Errorf("compressing backup: %w", err)
+			}
+			result.ArchivePath = archivePath
+			m.logger.Info("backup compressed",
+				"archive", archivePath,
+			)
+		}
+	}
+
 	m.logger.Info("backup complete",
 		"output_dir", backupDir,
 		"volumes_backed_up", len(manifest.Volumes),
 		"elapsed", elapsed,
 	)
 
-	return &BackupResult{
-		Manifest:      manifest,
-		Elapsed:       elapsed,
-		VolumeTimings: allTimings,
-	}, nil
+	return result, nil
 }
 
 // backupVolumeWithTiming backs up a single volume and returns timing info
@@ -384,6 +407,50 @@ type BackupInfo struct {
 	VolumeCount int
 	TotalSize   int64
 	Manifest    *Manifest
+}
+
+// CompressBackupDir compresses a backup directory into a .tar.gz archive,
+// then removes the original directory. Returns the archive path.
+func CompressBackupDir(backupDir string) (string, error) {
+	// Verify directory exists
+	info, err := os.Stat(backupDir)
+	if err != nil {
+		return "", fmt.Errorf("backup directory not found: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("%s is not a directory", backupDir)
+	}
+
+	archivePath := backupDir + ".tar.gz"
+	dirName := filepath.Base(backupDir)
+	parentDir := filepath.Dir(backupDir)
+
+	// Create tar.gz using OS tar command for efficiency
+	cmd := exec.CommandContext(context.Background(),
+		"tar", "czf", archivePath,
+		"-C", parentDir,
+		dirName,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("tar compression failed: %w\n%s", err, string(output))
+	}
+
+	// Verify archive was created
+	archiveInfo, err := os.Stat(archivePath)
+	if err != nil {
+		return "", fmt.Errorf("archive not found after compression: %w", err)
+	}
+	if archiveInfo.Size() == 0 {
+		os.Remove(archivePath)
+		return "", fmt.Errorf("archive is empty")
+	}
+
+	// Remove original directory
+	if err := os.RemoveAll(backupDir); err != nil {
+		return archivePath, fmt.Errorf("archive created but failed to remove original: %w", err)
+	}
+
+	return archivePath, nil
 }
 
 // FormatSize formats bytes as human-readable string
