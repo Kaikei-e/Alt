@@ -43,11 +43,12 @@ const tags = $derived(
 	type="button"
 	onclick={handleClick}
 	class={cn(
-		"w-full text-left border border-[var(--surface-border)] transition-all duration-200 hover:shadow-md hover:-translate-y-1 cursor-pointer group overflow-hidden",
+		"w-full text-left border border-[var(--surface-border)] transition-colors duration-200 cursor-pointer group overflow-hidden",
 		isRead
 			? "bg-[var(--surface-hover)]"
-			: "shadow-[inset_3px_0_0_var(--alt-primary)] bg-white",
+			: "border-l-[3px] border-l-[var(--alt-primary)]",
 	)}
+	style="background: var(--surface-bg);"
 	aria-label="Open {feed.title}"
 >
 	<!-- Image area -->

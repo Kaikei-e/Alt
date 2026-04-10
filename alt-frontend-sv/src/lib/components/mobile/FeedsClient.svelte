@@ -300,74 +300,58 @@ const isInitialLoadingState = $derived(
 		style="background: var(--app-bg);"
 	>
 		{#if isInitialLoadingState && !hasVisibleContent}
-			<!-- Skeleton loading state -->
-			<div class="flex flex-col gap-4">
-				{#each Array(5) as _}
+			<div class="flex flex-col">
+				{#each Array(5) as _, i}
 					<div
-						class="p-4 rounded-2xl border-2 border-border animate-pulse"
-						style="background: var(--surface-bg);"
+						class="skeleton-entry"
+						style="animation-delay: {i * 80}ms;"
 					>
-						<div class="h-4 bg-muted rounded w-3/4 mb-2"></div>
-						<div class="h-3 bg-muted rounded w-full mb-1"></div>
-						<div class="h-3 bg-muted rounded w-5/6"></div>
+						<div class="skeleton-line skeleton-line--title animate-shimmer-warm"></div>
+						<div class="skeleton-line skeleton-line--full animate-shimmer-warm"></div>
+						<div class="skeleton-line skeleton-line--short animate-shimmer-warm"></div>
 					</div>
 				{/each}
 			</div>
 		{:else if error}
-			<!-- Error state -->
-			<div class="flex flex-col items-center justify-center min-h-[50vh] p-6">
-				<div
-					class="p-6 rounded-lg border text-center"
-					style="background: var(--surface-bg); border-color: var(--destructive);"
+			<div class="error-state">
+				<p class="error-title">Error loading feeds</p>
+				<p class="error-message">{error.message}</p>
+				<button
+					onclick={() => void retryFetch()}
+					disabled={isRetrying}
+					class="retry-btn"
 				>
-					<p class="text-destructive font-semibold mb-2">Error loading feeds</p>
-					<p class="text-sm text-muted-foreground mb-4">{error.message}</p>
-					<button
-						onclick={() => void retryFetch()}
-						disabled={isRetrying}
-						class="px-4 py-2 rounded bg-primary text-primary-foreground disabled:opacity-50"
-					>
-						{isRetrying ? "Retrying..." : "Retry"}
-					</button>
-				</div>
+					{isRetrying ? "Retrying\u2026" : "Retry"}
+				</button>
 			</div>
 		{:else if renderFeeds.length > 0}
-			<!-- Feed list rendering -->
 			<div
-				class="flex flex-col gap-4"
+				class="flex flex-col"
 				data-testid="virtual-feed-list"
 				style="content-visibility: auto; contain-intrinsic-size: 800px;"
 			>
-				{#each renderFeeds as feed (feed.link)}
-					<FeedCard
-						{feed}
-						isReadStatus={readFeeds.has(feed.normalizedUrl)}
-						setIsReadStatus={(feedLink: string) => handleMarkAsRead(feedLink)}
-					/>
+				{#each renderFeeds as feed, i (feed.link)}
+					<div class="feed-entry" style="--stagger: {i};">
+						<FeedCard
+							{feed}
+							isReadStatus={readFeeds.has(feed.normalizedUrl)}
+							setIsReadStatus={(feedLink: string) => handleMarkAsRead(feedLink)}
+						/>
+					</div>
 				{/each}
 			</div>
 
-			<!-- No more feeds indicator -->
 			{#if !hasMore && renderFeeds.length > 0}
-				<p
-					class="text-center text-sm mt-8 mb-4"
-					style="color: var(--alt-text-secondary);"
-				>
-					No more feeds to load
-				</p>
+				<p class="end-hint">End of wire</p>
 			{/if}
 
-			<!-- Loading indicator -->
 			{#if isLoading}
-				<div
-					class="py-4 text-center text-sm"
-					style="color: var(--alt-text-secondary);"
-				>
-					Loading more...
+				<div class="loading-more">
+					<span class="loading-pulse"></span>
+					<span class="loading-text">Loading more dispatches&hellip;</span>
 				</div>
 			{/if}
 
-			<!-- Infinite scroll sentinel -->
 			{#if hasMore}
 				<div
 					use:infiniteScroll={{
@@ -383,8 +367,141 @@ const isInitialLoadingState = $derived(
 				></div>
 			{/if}
 		{:else}
-			<!-- Empty state -->
 			<EmptyFeedState />
 		{/if}
 	</div>
 </div>
+
+<style>
+	.skeleton-entry {
+		padding: 0.75rem 0;
+		border-bottom: 1px solid var(--surface-border);
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.skeleton-line {
+		height: 0.75rem;
+	}
+
+	.skeleton-line--title {
+		width: 75%;
+		height: 1rem;
+	}
+
+	.skeleton-line--full {
+		width: 100%;
+	}
+
+	.skeleton-line--short {
+		width: 60%;
+	}
+
+	.error-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		min-height: 50vh;
+		padding: 1.5rem;
+		text-align: center;
+	}
+
+	.error-title {
+		font-family: var(--font-body);
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: var(--alt-terracotta);
+		margin: 0 0 0.4rem;
+	}
+
+	.error-message {
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		color: var(--alt-slate);
+		margin: 0 0 1rem;
+	}
+
+	.retry-btn {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		padding: 0.4rem 1rem;
+		min-height: 44px;
+		cursor: pointer;
+	}
+
+	.retry-btn:disabled {
+		opacity: 0.4;
+	}
+
+	.feed-entry {
+		opacity: 0;
+		animation: entry-in 0.3s ease forwards;
+		animation-delay: calc(var(--stagger) * 40ms);
+	}
+
+	.end-hint {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		text-align: center;
+		margin: 2rem 0 1rem;
+	}
+
+	.loading-more {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 1rem 0;
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-ash);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.loading-text {
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		font-style: italic;
+		color: var(--alt-ash);
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.3;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	@keyframes entry-in {
+		to {
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.feed-entry {
+			animation: none;
+			opacity: 1;
+		}
+		.loading-pulse {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>

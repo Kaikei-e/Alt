@@ -1,6 +1,4 @@
 <script lang="ts">
-import { SquareArrowOutUpRight } from "@lucide/svelte";
-import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
 import FeedDetails from "./FeedDetails.svelte";
 
@@ -13,82 +11,132 @@ interface Props {
 const { feed, isReadStatus, setIsReadStatus }: Props = $props();
 
 const handleReadStatus = () => {
-	// API呼び出しは親コンポーネントで行うため、コールバックのみ実行
-	// normalizedUrlを使用して一貫性を保つ
 	setIsReadStatus(feed.normalizedUrl);
 };
 </script>
 
 {#if !isReadStatus}
-	<!-- Gradient border container with hover effects -->
-	<div
-		class="w-full max-w-[calc(100vw-2.5rem)] p-[2px] rounded-[18px] border-2 transition-transform duration-300 ease-in-out cursor-pointer hover:-translate-y-[2px] hover:shadow-lg"
-		style="border-color: var(--surface-border);"
+	<article
+		class="dispatch-card"
 		data-testid="feed-card-container"
+		role="article"
+		aria-label="Feed: {feed.title}"
 	>
-		<div
-			class="glass w-full p-4 rounded-2xl"
-			data-testid="feed-card"
-			role="article"
-			aria-label="Feed: {feed.title}"
-			style="background: var(--surface-bg);"
-		>
-			<div class="flex flex-col gap-2">
-				<!-- Title as link -->
-				<div class="flex flex-row items-center gap-2">
-					<div
-						class="flex items-center justify-center w-6 h-6 flex-shrink-0"
-						data-testid="feed-link-icon-{feed.id}"
-					>
-						<SquareArrowOutUpRight
-							size={16}
-							style="color: var(--alt-primary);"
-						/>
-					</div>
-					<a
-						href={feed.normalizedUrl}
-						target="_blank"
-						rel="noopener noreferrer"
-						aria-label="Open {feed.title} in external link"
-						class="text-sm font-semibold hover:underline leading-tight break-words flex-1 min-w-0"
-						style="color: var(--accent-primary);"
-					>
-						{feed.title}
-					</a>
-				</div>
+		<div class="dispatch-stripe" aria-hidden="true"></div>
+		<div class="dispatch-content">
+			<a
+				href={feed.normalizedUrl}
+				target="_blank"
+				rel="noopener noreferrer"
+				class="dispatch-title"
+			>
+				{feed.title}
+			</a>
 
-				<!-- Description - Use server-generated excerpt if available -->
-				<p
-					class="text-xs leading-normal break-words line-clamp-3"
-					style="color: var(--text-primary);"
+			<p class="dispatch-excerpt">{feed.excerpt}</p>
+
+			{#if feed.author}
+				<span class="dispatch-dateline">
+					{feed.publishedAtFormatted ?? ""}{feed.author ? ` \u00b7 ${feed.author}` : ""}
+				</span>
+			{/if}
+
+			<div class="dispatch-actions">
+				<button
+					onclick={handleReadStatus}
+					class="action-btn"
+					aria-label="Mark {feed.title} as read"
 				>
-					{feed.excerpt}
-				</p>
+					Mark as Read
+				</button>
 
-				<!-- Author name (if available) -->
-				{#if feed.author}
-					<p class="text-xs italic" style="color: var(--text-secondary);">
-						by {feed.author}
-					</p>
-				{/if}
-
-				<!-- Bottom section with button and details -->
-				<div class="flex flex-wrap justify-between items-center mt-3 gap-3">
-					<Button
-						class="flex-1 text-sm font-bold px-3 min-w-0 min-h-[44px] border border-white/20 rounded-full transition-all duration-200 hover:scale-105 active:scale-95"
-						style="
-							background: var(--alt-primary);
-							color: var(--text-primary);
-						"
-						onclick={handleReadStatus}
-						aria-label="Mark {feed.title} as read"
-					>
-						Mark as read
-					</Button>
-
-					<FeedDetails feedURL={feed.link} feedTitle={feed.title} />
-				</div>
+				<FeedDetails feedURL={feed.link} feedTitle={feed.title} />
 			</div>
 		</div>
-	</div>
+	</article>
 {/if}
+
+<style>
+	.dispatch-card {
+		display: flex;
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.dispatch-stripe {
+		width: 3px;
+		flex-shrink: 0;
+		background: var(--alt-primary);
+	}
+
+	.dispatch-content {
+		flex: 1;
+		padding: 0.75rem 0.75rem 0.75rem 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.dispatch-title {
+		font-family: var(--font-display);
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: var(--alt-primary);
+		line-height: 1.3;
+		text-decoration: none;
+	}
+
+	.dispatch-title:hover {
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	.dispatch-excerpt {
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		color: var(--alt-charcoal);
+		line-height: 1.5;
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		margin: 0;
+	}
+
+	.dispatch-dateline {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.04em;
+	}
+
+	.dispatch-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem;
+		margin-top: 0.5rem;
+	}
+
+	.action-btn {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		padding: 0.4rem 0.75rem;
+		min-height: 44px;
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+
+	.action-btn:active {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+</style>

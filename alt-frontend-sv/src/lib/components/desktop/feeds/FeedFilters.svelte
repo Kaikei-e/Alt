@@ -1,5 +1,4 @@
 <script lang="ts">
-import { Filter, ArrowUpDown } from "@lucide/svelte";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import FeedSourceExcludeFilter from "./FeedSourceExcludeFilter.svelte";
 
@@ -72,41 +71,34 @@ function handleClearExclusion() {
 }
 </script>
 
-<div class="flex items-center justify-between gap-4 mb-6 p-4 border border-[var(--surface-border)] bg-white">
-	<!-- Filter section -->
+<div class="filter-bar">
 	<div class="flex items-center gap-3">
-		<Filter class="h-4 w-4 text-[var(--text-secondary)]" />
-		<div class="flex items-center gap-2">
+		<div class="filter-group">
 			<input
 				type="checkbox"
 				id="unread-only"
 				checked={localUnreadOnly}
 				onchange={handleUnreadChange}
-				class="w-4 h-4 cursor-pointer"
+				class="filter-checkbox"
 			/>
-			<label for="unread-only" class="text-sm text-[var(--text-primary)] cursor-pointer">
-				Unread Only
-			</label>
+			<label for="unread-only" class="filter-label">Unread Only</label>
 		</div>
 
-		<!-- Exclude source filter -->
-		<div class="border-l border-[var(--surface-border)] pl-3">
-			<FeedSourceExcludeFilter
-				sources={feedSources}
-				excludedFeedLinkIds={localExcludedFeedLinkIds}
-				onExclude={handleExclude}
-				onClearExclusion={handleClearExclusion}
-			/>
-		</div>
+		<div class="filter-divider" aria-hidden="true"></div>
+
+		<FeedSourceExcludeFilter
+			sources={feedSources}
+			excludedFeedLinkIds={localExcludedFeedLinkIds}
+			onExclude={handleExclude}
+			onClearExclusion={handleClearExclusion}
+		/>
 	</div>
 
-	<!-- Sort section -->
-	<div class="flex items-center gap-3">
-		<ArrowUpDown class="h-4 w-4 text-[var(--text-secondary)]" />
+	<div class="filter-group">
 		<select
 			value={localSortBy}
 			onchange={handleSortChange}
-			class="w-[180px] h-9 px-3 border border-[var(--surface-border)] bg-white text-sm cursor-pointer"
+			class="filter-select"
 		>
 			<option value="date_desc">Date (Newest)</option>
 			<option value="date_asc">Date (Oldest)</option>
@@ -115,3 +107,59 @@ function handleClearExclusion() {
 		</select>
 	</div>
 </div>
+
+<style>
+	.filter-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.6rem 0;
+		border-bottom: 1px solid var(--surface-border);
+		margin-bottom: 0.75rem;
+	}
+
+	.filter-group {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
+	.filter-checkbox {
+		width: 1rem;
+		height: 1rem;
+		cursor: pointer;
+		accent-color: var(--alt-primary);
+	}
+
+	.filter-label {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-charcoal);
+		cursor: pointer;
+	}
+
+	.filter-divider {
+		width: 1px;
+		height: 1rem;
+		background: var(--surface-border);
+		flex-shrink: 0;
+	}
+
+	.filter-select {
+		width: 160px;
+		height: 2rem;
+		padding: 0 0.5rem;
+		border: 1px solid var(--surface-border);
+		background: transparent;
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-charcoal);
+		cursor: pointer;
+	}
+
+	.filter-select:focus {
+		border-color: var(--alt-charcoal);
+		outline: none;
+	}
+</style>

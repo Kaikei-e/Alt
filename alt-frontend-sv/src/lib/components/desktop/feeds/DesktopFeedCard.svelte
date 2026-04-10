@@ -1,7 +1,5 @@
 <script lang="ts">
-import { Eye, ExternalLink } from "@lucide/svelte";
 import type { RenderFeed } from "$lib/schema/feed";
-import { cn } from "$lib/utils";
 
 interface Props {
 	feed: RenderFeed;
@@ -11,6 +9,12 @@ interface Props {
 
 let { feed, onSelect, isRead = false }: Props = $props();
 
+const tags = $derived(
+	feed.mergedTagsLabel
+		? feed.mergedTagsLabel.split(" / ").slice(0, 3).join(" \u00b7 ")
+		: "",
+);
+
 function handleClick() {
 	onSelect(feed);
 }
@@ -19,69 +23,97 @@ function handleClick() {
 <button
 	type="button"
 	onclick={handleClick}
-	class={cn(
-		"w-full text-left border border-[var(--surface-border)] p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-1 cursor-pointer group",
-		isRead
-			? "bg-[var(--surface-hover)]"
-			: "shadow-[inset_3px_0_0_var(--alt-primary)] bg-white"
-	)}
+	class="dispatch-card"
+	class:dispatch-card--unread={!isRead}
+	class:dispatch-card--read={isRead}
 	aria-label="Open {feed.title}"
 >
-	<div class="flex flex-col h-full gap-2">
-		<!-- Title -->
-		<h3
-			class={cn(
-				"text-sm line-clamp-2 group-hover:text-[var(--accent-primary)] transition-colors",
-				isRead
-					? "font-normal text-[var(--text-muted)]"
-					: "font-semibold text-[var(--text-primary)]"
-			)}
-		>
-			{feed.title}
-		</h3>
-
-		<!-- Excerpt -->
-		{#if feed.excerpt}
-			<p class="text-xs text-[var(--text-secondary)] line-clamp-3 flex-1">
-				{feed.excerpt}
-			</p>
-		{/if}
-
-		<!-- Footer -->
-		<div class="flex items-center justify-between mt-auto pt-2 border-t border-[var(--surface-border)]">
-			<div class="flex flex-col gap-0.5">
-				{#if feed.author}
-					<p class="text-xs text-[var(--text-secondary)] truncate">
-						{feed.author}
-					</p>
-				{/if}
-				{#if feed.publishedAtFormatted}
-					<p class="text-xs text-[var(--text-muted)]">
-						{feed.publishedAtFormatted}
-					</p>
-				{/if}
-			</div>
-
-			<!-- Read status badge -->
-			{#if isRead}
-				<div class="flex items-center gap-1 text-xs text-[var(--text-muted)]">
-					<Eye class="h-3 w-3" />
-					<span>Read</span>
-				</div>
-			{/if}
-		</div>
-
-		<!-- Tags (if available) -->
-		{#if feed.mergedTagsLabel}
-			<div class="flex flex-wrap gap-1 mt-1">
-				{#each feed.mergedTagsLabel.split(" / ").slice(0, 2) as tag}
-					<span
-						class="text-xs px-2 py-0.5 bg-[var(--surface-hover)] text-[var(--text-secondary)] truncate max-w-[120px]"
-					>
-						{tag}
-					</span>
-				{/each}
-			</div>
-		{/if}
-	</div>
+	<span class="dispatch-dateline">
+		{feed.publishedAtFormatted}{feed.author ? ` \u00b7 ${feed.author}` : ""}
+	</span>
+	<span class="dispatch-title">{feed.title}</span>
+	{#if feed.excerpt}
+		<span class="dispatch-excerpt">{feed.excerpt}</span>
+	{/if}
+	{#if tags}
+		<span class="dispatch-tags">{tags}</span>
+	{/if}
 </button>
+
+<style>
+	.dispatch-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+		width: 100%;
+		text-align: left;
+		padding: 0.75rem;
+		border: 1px solid var(--surface-border);
+		cursor: pointer;
+		transition: background 0.15s;
+		background: var(--surface-bg);
+	}
+
+	.dispatch-card:hover {
+		background: var(--surface-hover);
+	}
+
+	.dispatch-card--unread {
+		border-left: 3px solid var(--alt-primary);
+	}
+
+	.dispatch-card--read {
+		border-left: 3px solid transparent;
+	}
+
+	.dispatch-dateline {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.04em;
+	}
+
+	.dispatch-title {
+		font-family: var(--font-display);
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: var(--alt-charcoal);
+		line-height: 1.3;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.dispatch-card--read .dispatch-title {
+		color: var(--alt-ash);
+		font-weight: 400;
+	}
+
+	.dispatch-excerpt {
+		font-family: var(--font-body);
+		font-size: 0.78rem;
+		color: var(--alt-slate);
+		line-height: 1.5;
+		display: -webkit-box;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.dispatch-card--read .dispatch-excerpt {
+		color: var(--alt-ash);
+	}
+
+	.dispatch-tags {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.04em;
+		margin-top: auto;
+		padding-top: 0.3rem;
+		border-top: 1px solid var(--surface-border);
+	}
+</style>

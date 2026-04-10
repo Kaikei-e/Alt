@@ -1,18 +1,7 @@
 <script lang="ts">
-import {
-	ChevronLeft,
-	ChevronRight,
-	ExternalLink,
-	FileText,
-	Loader2,
-	RefreshCw,
-	Sparkles,
-	Volume2,
-	Square,
-} from "@lucide/svelte";
+import { ChevronLeft, ChevronRight, Volume2, Square } from "@lucide/svelte";
 import { getFeedContentOnTheFlyClient } from "$lib/api/client/articles";
 import RenderFeedDetails from "$lib/components/mobile/RenderFeedDetails.svelte";
-import { Button } from "$lib/components/ui/button";
 import { Dialog as DialogPrimitive } from "bits-ui";
 import {
 	createClientTransport,
@@ -420,120 +409,97 @@ async function handleSummarize(forceRefresh = false) {
 {#if open}
 <DialogPrimitive.Root open={true} onOpenChange={(value) => { if (!value) { open = false; onOpenChange(false); } }}>
 	<DialogPrimitive.Portal>
-		<DialogPrimitive.Overlay class="fixed inset-0 bg-black/50 z-50" />
+		<DialogPrimitive.Overlay class="fixed inset-0 z-50" style="background: rgba(0,0,0,0.5);" />
 		<DialogPrimitive.Content
 			preventScroll={false}
-			class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[75vw] sm:max-w-[1800px] h-[75vh] bg-white rounded-lg shadow-xl overflow-hidden flex flex-col z-50"
+			class="modal-content fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[75vw] sm:max-w-[1800px] h-[75vh] overflow-hidden flex flex-col z-50"
 		>
-			<!-- Navigation Arrows (inside modal at edges) -->
 			{#if hasPrevious}
 				<button
 					onclick={onPrevious}
-					class="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors z-10 shadow"
+					class="nav-arrow nav-arrow--left"
 					aria-label="Previous feed"
 				>
-					<ChevronLeft class="h-6 w-6 text-gray-700" />
+					<ChevronLeft class="h-6 w-6" />
 				</button>
 			{/if}
 			{#if hasNext}
 				<button
 					onclick={onNext}
-					class="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors z-10 shadow"
+					class="nav-arrow nav-arrow--right"
 					aria-label="Next feed"
 				>
-					<ChevronRight class="h-6 w-6 text-gray-700" />
+					<ChevronRight class="h-6 w-6" />
 				</button>
 			{/if}
 
 			{#if feed}
-				<!-- Header Section -->
-				<div class="py-6 border-b border-gray-200" style="padding-left: 70px; padding-right: 70px;">
-					<!-- Title with external link -->
+				<div class="modal-header">
 					{#if feed.link}
 						<a
 							href={feed.link}
 							target="_blank"
 							rel="noopener noreferrer"
-							class="group flex items-start gap-2 hover:underline"
+							class="modal-title-link"
 						>
-							<h2 class="text-2xl font-bold text-[#1a1a1a] flex-1">
-								{feed.title || "Untitled"}
-							</h2>
-							<ExternalLink class="h-5 w-5 text-gray-400 group-hover:text-blue-600 flex-shrink-0" />
+							<h2 class="modal-title">{feed.title || "Untitled"}</h2>
 						</a>
 					{:else}
-						<h2 class="text-2xl font-bold text-[#1a1a1a]">
-							{feed.title || "Untitled"}
-						</h2>
+						<h2 class="modal-title">{feed.title || "Untitled"}</h2>
 					{/if}
 
-					<!-- Metadata -->
-					<div class="flex items-center gap-4 mt-2 text-sm text-gray-600">
+					<div class="modal-meta">
 						{#if feed.author}
 							<span>{feed.author}</span>
 						{/if}
 						{#if feed.publishedAtFormatted}
-							{#if feed.author}
-								<span>•</span>
-							{/if}
+							{#if feed.author}<span class="modal-meta-sep">&middot;</span>{/if}
 							<span>{feed.publishedAtFormatted}</span>
 						{/if}
 					</div>
 
-					<!-- Tags -->
 					{#if feed.mergedTagsLabel}
-						<div class="flex gap-2 mt-3 flex-wrap">
-							{#each feed.mergedTagsLabel.split(" / ") as tag}
-								<span class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-									{tag}
-								</span>
-							{/each}
-						</div>
+						<span class="modal-tags">
+							{feed.mergedTagsLabel.split(" / ").join(" \u00b7 ")}
+						</span>
 					{/if}
 				</div>
 
-				<!-- Scrollable Content Section -->
-				<div class="min-h-0 flex-1 overflow-y-auto py-6 bg-[#f8f8f8]" style="padding-left: 70px; padding-right: 70px;">
-					<!-- Excerpt (always visible) -->
+				<div class="modal-body">
 					{#if feed.excerpt}
-						<div class="mb-6 p-4 bg-white rounded border border-gray-200">
-							<h3 class="text-sm font-semibold text-gray-500 mb-2">EXCERPT</h3>
-							<p class="text-gray-700 leading-relaxed whitespace-pre-wrap">{feed.excerpt}</p>
-						</div>
+						<section class="content-section">
+							<h3 class="section-label">EXCERPT</h3>
+							<p class="section-prose">{feed.excerpt}</p>
+						</section>
 					{/if}
 
-					<!-- Full Article Section -->
 					{#if articleContent}
-						<div class="mb-6 p-4 bg-white rounded border border-gray-200">
-							<h3 class="text-sm font-semibold text-gray-500 mb-3">FULL ARTICLE</h3>
+						<section class="content-section">
+							<h3 class="section-label">FULL ARTICLE</h3>
 							<RenderFeedDetails
 								feedDetails={articleContent ? { content: articleContent, article_id: articleID ?? "", og_image_url: "", og_image_proxy_url: "" } : null}
 								error={contentError}
 							/>
-						</div>
+						</section>
 					{:else if contentError}
-						<div class="mb-6 p-4 bg-white border-2 border-destructive rounded" role="alert">
-							<p class="text-red-600 text-sm">{contentError}</p>
+						<div class="error-stripe" role="alert">
+							<p>{contentError}</p>
 						</div>
 					{/if}
 
-					<!-- AI Summary Section -->
 					{#if summary}
-						<div class="mb-6 p-4 bg-white rounded border border-gray-200">
-							<div class="flex items-center justify-between mb-3">
-								<h3 class="text-sm font-semibold text-gray-500 flex items-center gap-2">
-									<Sparkles class="h-4 w-4" />
-									AI SUMMARY
-								</h3>
+						<section class="content-section">
+							<div class="flex items-center justify-between">
+								<h3 class="section-label">AI SUMMARY</h3>
 								{#if !isSummarizing}
 									<button
 										onclick={handleTtsClick}
-										class="p-2 rounded-md hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700"
+										class="tts-button"
 										aria-label={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
 										title={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
 									>
 										{#if tts.isLoading}
-											<Loader2 class="h-4 w-4 animate-spin" />
+											<span class="loading-pulse"></span>
 										{:else if tts.isPlaying}
 											<Square class="h-4 w-4" />
 										{:else}
@@ -542,77 +508,63 @@ async function handleSummarize(forceRefresh = false) {
 									</button>
 								{/if}
 							</div>
-							<div class="text-gray-700 leading-relaxed whitespace-pre-wrap">
-								{summary}
-							</div>
+							<div class="section-prose">{summary}</div>
 							{#if tts.error}
-								<p class="text-xs text-red-500 mt-2">{tts.error}</p>
+								<p class="tts-error">{tts.error}</p>
 							{/if}
-						</div>
+						</section>
 					{:else if summaryError}
-						<div class="mb-6 p-4 bg-white border-2 border-destructive rounded" role="alert">
-							<p class="text-red-600 text-sm">{summaryError}</p>
+						<div class="error-stripe" role="alert">
+							<p>{summaryError}</p>
 						</div>
 					{/if}
 				</div>
 
-				<!-- Footer Actions -->
-				<div class="shrink-0 py-4 border-t border-gray-200 bg-gray-50 flex flex-wrap gap-3 items-center" style="padding-left: 70px; padding-right: 70px;">
-					<!-- 左側グループ: アクションボタン -->
+				<div class="modal-footer">
 					<div class="flex gap-3 flex-1 min-w-0">
-						<!-- Full Article Button -->
-						<Button
+						<button
 							onclick={articleButtonState === 'success' ? handleRefetchArticle : () => handleFetchFullArticle()}
 							disabled={articleButtonState === 'loading'}
-							class="flex items-center gap-2"
-							variant={articleButtonState === 'error' ? 'destructive' : 'outline'}
+							class="action-btn"
+							class:action-btn--error={articleButtonState === 'error'}
 						>
 							{#if articleButtonState === 'loading'}
-								<Loader2 class="h-4 w-4 animate-spin" />
-								<span>Loading...</span>
+								<span class="loading-pulse"></span>
+								<span>Loading&hellip;</span>
 							{:else if articleButtonState === 'success'}
-								<RefreshCw class="h-4 w-4" />
 								<span>Re-fetch Article</span>
 							{:else if articleButtonState === 'error'}
-								<RefreshCw class="h-4 w-4" />
-								<span>Try again</span>
+								<span>Try Again</span>
 							{:else}
-								<FileText class="h-4 w-4" />
 								<span>Full Article</span>
 							{/if}
-						</Button>
+						</button>
 
-						<!-- Summarize Button -->
-						<Button
+						<button
 							onclick={() => handleSummarize(summaryButtonState === 'success')}
 							disabled={summaryButtonState === 'loading' || (!articleContent && summaryButtonState !== 'error' && summaryButtonState !== 'success')}
-							variant={summaryButtonState === 'error' ? 'destructive' : undefined}
-							class={summaryButtonState === 'error' ? 'flex items-center gap-2' : 'flex items-center gap-2 bg-[#2f4f4f] text-white hover:bg-[#2f4f4f]/90 hover:text-white disabled:opacity-50'}
+							class="action-btn action-btn--primary"
+							class:action-btn--error={summaryButtonState === 'error'}
 						>
 							{#if summaryButtonState === 'loading'}
-								<Loader2 class="h-4 w-4 animate-spin" />
-								<span>Summarizing...</span>
+								<span class="loading-pulse"></span>
+								<span>Summarizing&hellip;</span>
 							{:else if summaryButtonState === 'error'}
-								<RefreshCw class="h-4 w-4" />
-								<span>Try again</span>
+								<span>Try Again</span>
 							{:else if summaryButtonState === 'success'}
-								<RefreshCw class="h-4 w-4" />
 								<span>Re-summarize</span>
 							{:else}
-								<Sparkles class="h-4 w-4" />
-								<span>Summarize By AI</span>
+								<span>Summarize</span>
 							{/if}
-						</Button>
+						</button>
 					</div>
 
-					<!-- 右側グループ: 状態変更とクローズ -->
 					<div class="flex gap-3 flex-shrink-0">
 						{#if footerActions}
 							{@render footerActions()}
 						{/if}
 
-						<!-- Close -->
-						<DialogPrimitive.Close class="inline-flex items-center justify-center gap-2 rounded-none text-base font-bold px-4 py-2 h-9 bg-transparent text-[var(--text-primary)] border-2 border-transparent hover:bg-[var(--surface-hover)] hover:border-[var(--surface-border)] transition-all focus-visible:outline-none disabled:opacity-60">
+						<DialogPrimitive.Close class="action-btn">
 							Close
 						</DialogPrimitive.Close>
 					</div>
@@ -622,3 +574,232 @@ async function handleSummarize(forceRefresh = false) {
 	</DialogPrimitive.Portal>
 </DialogPrimitive.Root>
 {/if}
+
+<style>
+	:global(.modal-content) {
+		background: var(--surface-bg);
+		border: 1px solid var(--surface-border);
+	}
+
+	.nav-arrow {
+		position: absolute;
+		top: 50%;
+		transform: translateY(-50%);
+		padding: 0.5rem;
+		background: var(--surface-bg);
+		border: 1px solid var(--surface-border);
+		color: var(--alt-charcoal);
+		cursor: pointer;
+		z-index: 10;
+		transition: background 0.15s;
+	}
+
+	.nav-arrow:hover {
+		background: var(--surface-hover);
+	}
+
+	.nav-arrow--left {
+		left: 0.75rem;
+	}
+
+	.nav-arrow--right {
+		right: 0.75rem;
+	}
+
+	.modal-header {
+		padding: 1.5rem 4.5rem;
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.modal-title-link {
+		text-decoration: none;
+	}
+
+	.modal-title-link:hover {
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	.modal-title {
+		font-family: var(--font-display);
+		font-size: 1.4rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+		line-height: 1.3;
+		margin: 0;
+	}
+
+	.modal-meta {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin-top: 0.4rem;
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-ash);
+	}
+
+	.modal-meta-sep {
+		color: var(--surface-border);
+	}
+
+	.modal-tags {
+		display: block;
+		margin-top: 0.5rem;
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.04em;
+	}
+
+	.modal-body {
+		min-height: 0;
+		flex: 1;
+		overflow-y: auto;
+		padding: 1.5rem 4.5rem;
+		background: var(--surface-2);
+	}
+
+	.content-section {
+		margin-bottom: 1.5rem;
+		padding: 1rem;
+		background: var(--surface-bg);
+		border: 1px solid var(--surface-border);
+	}
+
+	.section-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0 0 0.5rem;
+	}
+
+	.section-prose {
+		font-family: var(--font-body);
+		font-size: 0.9rem;
+		line-height: 1.7;
+		color: var(--alt-charcoal);
+		white-space: pre-wrap;
+		margin: 0;
+	}
+
+	.error-stripe {
+		margin-bottom: 1.5rem;
+		padding: 0.75rem 1rem;
+		border-left: 3px solid var(--alt-terracotta);
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-terracotta);
+	}
+
+	.tts-button {
+		padding: 0.4rem;
+		background: transparent;
+		border: none;
+		color: var(--alt-ash);
+		cursor: pointer;
+		transition: color 0.15s;
+	}
+
+	.tts-button:hover {
+		color: var(--alt-charcoal);
+	}
+
+	.tts-error {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-terracotta);
+		margin-top: 0.4rem;
+	}
+
+	.modal-footer {
+		flex-shrink: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		align-items: center;
+		padding: 0.75rem 4.5rem;
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.action-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		padding: 0.4rem 1rem;
+		min-height: 2.25rem;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+
+	.action-btn:hover:not(:disabled) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.action-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.action-btn--primary {
+		background: var(--alt-primary);
+		color: var(--surface-bg);
+		border-color: var(--alt-primary);
+	}
+
+	.action-btn--primary:hover:not(:disabled) {
+		background: var(--alt-charcoal);
+		border-color: var(--alt-charcoal);
+	}
+
+	.action-btn--error {
+		color: var(--alt-terracotta);
+		border-color: var(--alt-terracotta);
+		background: transparent;
+	}
+
+	.action-btn--error:hover:not(:disabled) {
+		background: var(--alt-terracotta);
+		color: var(--surface-bg);
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: currentColor;
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.3;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.loading-pulse {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>

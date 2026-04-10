@@ -4,16 +4,12 @@ import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "$lib/api/client/feeds";
-// Desktop components
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedFilters from "$lib/components/desktop/feeds/FeedFilters.svelte";
 import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-// Mobile components
 import FeedsClient from "$lib/components/mobile/FeedsClient.svelte";
 import MobileFeedExcludeFilter from "$lib/components/mobile/feeds/MobileFeedExcludeFilter.svelte";
-import { Button } from "$lib/components/ui/button";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
 import { useViewport } from "$lib/stores/viewport.svelte";
@@ -26,10 +22,7 @@ interface PageData {
 const { data }: { data: PageData } = $props();
 const { isDesktop } = useViewport();
 
-// --- Mobile state ---
 let mobileExcludedFeedLinkIds = $state<string[]>([]);
-
-// --- Desktop state ---
 let selectedFeedUrl = $state<string | null>(null);
 let isModalOpen = $state(false);
 let filters = $state({
@@ -41,8 +34,19 @@ let feedGridApi = $state<FeedGridApi | null>(null);
 let feedSources = $state<ConnectFeedSource[]>([]);
 let isProcessingMarkAsRead = $state(false);
 let isMarkingAsRead = $state(false);
+let revealed = $state(false);
+
+const dateStr = new Date().toLocaleDateString("en-US", {
+	weekday: "long",
+	year: "numeric",
+	month: "long",
+	day: "numeric",
+});
 
 onMount(async () => {
+	requestAnimationFrame(() => {
+		revealed = true;
+	});
 	try {
 		feedSources = await listSubscriptionsClient();
 	} catch (e) {
@@ -148,56 +152,57 @@ function handleFeedGridReady(api: FeedGridApi) {
 </svelte:head>
 
 {#if isDesktop}
-	<!-- Desktop: Grid view with modal -->
-	<PageHeader title="Feeds" description="Browse all RSS feeds" />
+	<div class="wire-page" class:revealed>
+		<header class="wire-header">
+			<span class="wire-date">{dateStr}</span>
+			<h1 class="wire-title">Feeds</h1>
+			<div class="wire-rule" aria-hidden="true"></div>
+		</header>
 
-	<FeedFilters
-		unreadOnly={filters.unreadOnly}
-		sortBy={filters.sortBy}
-		excludedFeedLinkIds={filters.excludedFeedLinkIds}
-		{feedSources}
-		onFilterChange={handleFilterChange}
-	/>
+		<FeedFilters
+			unreadOnly={filters.unreadOnly}
+			sortBy={filters.sortBy}
+			excludedFeedLinkIds={filters.excludedFeedLinkIds}
+			{feedSources}
+			onFilterChange={handleFilterChange}
+		/>
 
-	<FeedGrid
-		onSelectFeed={handleSelectFeed}
-		unreadOnly={filters.unreadOnly}
-		sortBy={filters.sortBy}
-		excludedFeedLinkIds={filters.excludedFeedLinkIds}
-		onReady={handleFeedGridReady}
-	/>
+		<FeedGrid
+			onSelectFeed={handleSelectFeed}
+			unreadOnly={filters.unreadOnly}
+			sortBy={filters.sortBy}
+			excludedFeedLinkIds={filters.excludedFeedLinkIds}
+			onReady={handleFeedGridReady}
+		/>
 
-	<FeedDetailModal
-		bind:open={isModalOpen}
-		feed={selectedFeed}
-		onOpenChange={(open: boolean) => (isModalOpen = open)}
-		{hasPrevious}
-		{hasNext}
-		onPrevious={handlePrevious}
-		onNext={handleNext}
-		feeds={feedGridApi?.getVisibleFeeds() ?? []}
-		{currentIndex}
-	>
-		{#snippet footerActions()}
-			<Button
-				onclick={handleMarkAsReadInModal}
-				variant="outline"
-				disabled={isMarkingAsRead || isProcessingMarkAsRead}
-			>
-				{isMarkingAsRead ? "Marking..." : "Mark as Read"}
-			</Button>
-		{/snippet}
-	</FeedDetailModal>
+		<FeedDetailModal
+			bind:open={isModalOpen}
+			feed={selectedFeed}
+			onOpenChange={(open: boolean) => (isModalOpen = open)}
+			{hasPrevious}
+			{hasNext}
+			onPrevious={handlePrevious}
+			onNext={handleNext}
+			feeds={feedGridApi?.getVisibleFeeds() ?? []}
+			{currentIndex}
+		>
+			{#snippet footerActions()}
+				<button
+					onclick={handleMarkAsReadInModal}
+					disabled={isMarkingAsRead || isProcessingMarkAsRead}
+					class="mark-read-btn"
+				>
+					{isMarkingAsRead ? "Marking\u2026" : "Mark as Read"}
+				</button>
+			{/snippet}
+		</FeedDetailModal>
+	</div>
 {:else}
-	<!-- Mobile: Swipe card layout -->
-	<div
-		class="h-screen overflow-hidden flex flex-col"
-		style="background: var(--app-bg);"
-	>
-		<header class="px-5 pt-4 pb-2">
-			<h1 class="font-[var(--font-display)] text-xl font-semibold text-[var(--text-primary)]">
-				Library
-			</h1>
+	<div style="background: var(--app-bg);" class="h-screen overflow-hidden flex flex-col">
+		<header class="mobile-wire-header">
+			<span class="wire-date">{dateStr}</span>
+			<h1 class="wire-title-mobile">Feeds</h1>
+			<div class="wire-rule" aria-hidden="true"></div>
 		</header>
 		<MobileFeedExcludeFilter
 			sources={feedSources}
@@ -213,3 +218,96 @@ function handleFeedGridReady(api: FeedGridApi) {
 		</div>
 	</div>
 {/if}
+
+<style>
+	.wire-page {
+		opacity: 0;
+		transform: translateY(6px);
+		transition:
+			opacity 0.4s ease,
+			transform 0.4s ease;
+	}
+
+	.wire-page.revealed {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	.wire-header {
+		padding: 1.5rem 0 0;
+	}
+
+	.mobile-wire-header {
+		padding: 1rem 1.25rem 0;
+	}
+
+	.wire-date {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.06em;
+	}
+
+	.wire-title {
+		font-family: var(--font-display);
+		font-size: 1.6rem;
+		font-weight: 800;
+		color: var(--alt-charcoal);
+		letter-spacing: -0.01em;
+		margin: 0.15rem 0 0;
+		line-height: 1.2;
+	}
+
+	.wire-title-mobile {
+		font-family: var(--font-display);
+		font-size: 1.3rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+		margin: 0.1rem 0 0;
+		line-height: 1.2;
+	}
+
+	.wire-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-top: 0.75rem;
+	}
+
+	.mark-read-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.4rem 1rem;
+		min-height: 2.25rem;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+
+	.mark-read-btn:hover:not(:disabled) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.mark-read-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.wire-page {
+			opacity: 1;
+			transform: none;
+			transition: none;
+		}
+	}
+</style>

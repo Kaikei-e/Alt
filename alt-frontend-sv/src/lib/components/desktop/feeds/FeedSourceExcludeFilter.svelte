@@ -126,7 +126,7 @@ const listboxId = "exclude-source-listbox";
 				onblur={handleBlur}
 				onfocus={handleInput}
 				placeholder="Exclude source..."
-				class="w-[140px] h-7 px-2 border border-[var(--surface-border)] bg-white text-xs placeholder:text-[var(--text-muted)]"
+				class="w-[140px] h-7 px-2 border border-[var(--surface-border)] text-xs placeholder:text-[var(--text-muted)]"
 				role="combobox"
 				aria-expanded={isOpen && filteredDomains.length > 0}
 				aria-controls={listboxId}
@@ -139,7 +139,7 @@ const listboxId = "exclude-source-listbox";
 			<ul
 				id={listboxId}
 				role="listbox"
-				class="absolute top-full left-0 mt-1 w-[280px] max-h-[200px] overflow-y-auto border border-[var(--surface-border)] bg-white shadow-sm z-50"
+				class="absolute top-full left-0 mt-1 w-[280px] max-h-[200px] overflow-y-auto border border-[var(--surface-border)] bg-white z-50"
 			>
 				{#each filteredDomains as entry, index (entry.domain)}
 					<li
@@ -158,7 +158,7 @@ const listboxId = "exclude-source-listbox";
 			</ul>
 		{:else if isOpen && query.trim().length > 0 && filteredDomains.length === 0}
 			<div
-				class="absolute top-full left-0 mt-1 w-[280px] border border-[var(--surface-border)] bg-white shadow-sm z-50 px-3 py-2 text-xs text-[var(--text-muted)]"
+				class="absolute top-full left-0 mt-1 w-[280px] border border-[var(--surface-border)] bg-white z-50 px-3 py-2 text-xs text-[var(--text-muted)]"
 			>
 				No matching sources
 			</div>

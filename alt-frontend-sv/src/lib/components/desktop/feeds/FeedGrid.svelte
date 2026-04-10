@@ -4,7 +4,6 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 
 <script lang="ts">
 	import type { Snippet } from "svelte";
-	import { Loader2 } from "@lucide/svelte";
 	import { getFeedsWithCursorClient, getAllFeedsWithCursorClient } from "$lib/api/client/feeds";
 	import type { RenderFeed } from "$lib/schema/feed";
 	import type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
@@ -24,6 +23,9 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 	}
 
 	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkIds = [], onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4" }: Props = $props();
+
+	// Track initial load completion to only animate first batch
+	let initialLoadDone = $state(false);
 
 	// Simple state for infinite scroll
 	let feeds = $state<RenderFeed[]>([]);
@@ -244,39 +246,38 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 			error = err as Error;
 		} finally {
 			isLoading = false;
+			// Mark initial load done so subsequent infinite scroll items appear instantly
+			setTimeout(() => { initialLoadDone = true; }, 600);
 		}
 	});
 
 </script>
 
-<div class="w-full">
+<div class="wire-container">
 	{#if isLoading}
-		<div class="flex items-center justify-center py-24">
-			<Loader2 class="h-8 w-8 animate-spin text-[var(--accent-primary)]" />
+		<div class="loading-state">
+			<span class="loading-pulse"></span>
+			<span class="loading-text">Retrieving dispatches&hellip;</span>
 		</div>
 	{:else if error}
-		<div class="text-center py-12">
-			<p class="text-[var(--alt-error)] text-sm">
-				Error loading feeds: {error.message}
-			</p>
+		<div class="error-state">
+			{error.message}
 		</div>
 	{:else if visibleFeeds.length === 0}
-		<div class="text-center py-12">
-			<p class="text-[var(--text-secondary)] text-sm">No feeds found</p>
-		</div>
+		<p class="empty-state">No dispatches on the wire</p>
 	{:else}
-		<!-- Grid layout -->
 		<div class={gridClass}>
 			{#each visibleFeeds as feed, index (feed.id)}
-				{#if cardRenderer}
-					{@render cardRenderer({ feed, index, isRead: feed.isRead ?? false, onSelect: (f) => onSelectFeed(f, index, visibleFeeds.length) })}
-				{:else}
-					<DesktopFeedCard {feed} isRead={feed.isRead ?? false} onSelect={(f) => onSelectFeed(f, index, visibleFeeds.length)} />
-				{/if}
+				<div class={initialLoadDone ? "" : "dispatch-item"} style={initialLoadDone ? "" : `--stagger: ${index};`}>
+					{#if cardRenderer}
+						{@render cardRenderer({ feed, index, isRead: feed.isRead ?? false, onSelect: (f) => onSelectFeed(f, index, visibleFeeds.length) })}
+					{:else}
+						<DesktopFeedCard {feed} isRead={feed.isRead ?? false} onSelect={(f) => onSelectFeed(f, index, visibleFeeds.length)} />
+					{/if}
+				</div>
 			{/each}
 		</div>
 
-		<!-- Load more trigger -->
 		<div
 			use:infiniteScroll={{
 				callback: loadMore,
@@ -284,15 +285,110 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 				threshold: 0.1,
 				rootMargin: "0px 0px 200px 0px",
 			}}
-			class="py-8 text-center"
+			class="load-more"
 		>
 			{#if isFetchingNextPage}
-				<Loader2 class="h-6 w-6 animate-spin text-[var(--accent-primary)] mx-auto" />
+				<div class="loading-state">
+					<span class="loading-pulse"></span>
+					<span class="loading-text">Loading more dispatches&hellip;</span>
+				</div>
 			{:else if hasNextPage}
-				<p class="text-xs text-[var(--text-muted)]">Scroll for more</p>
+				<p class="scroll-hint">Scroll for more</p>
 			{:else}
-				<p class="text-xs text-[var(--text-muted)]">No more feeds</p>
+				<p class="scroll-hint">End of wire</p>
 			{/if}
 		</div>
 	{/if}
 </div>
+
+<style>
+	.wire-container {
+		width: 100%;
+	}
+
+	.dispatch-item {
+		opacity: 0;
+		animation: entry-in 0.3s ease forwards;
+		animation-delay: calc(var(--stagger) * 40ms);
+	}
+
+	.load-more {
+		padding: 1.5rem 0;
+	}
+
+	.loading-state {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 2rem 0;
+		justify-content: center;
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-ash);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.loading-text {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--alt-ash);
+	}
+
+	.error-state {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-terracotta);
+		padding: 1rem 0;
+		border-left: 3px solid var(--alt-terracotta);
+		padding-left: 0.75rem;
+	}
+
+	.empty-state {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-ash);
+		padding: 2rem 0;
+		margin: 0;
+		text-align: center;
+	}
+
+	.scroll-hint {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		text-align: center;
+		margin: 0;
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.3;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	@keyframes entry-in {
+		to {
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.dispatch-item {
+			animation: none;
+			opacity: 1;
+		}
+		.loading-pulse {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>

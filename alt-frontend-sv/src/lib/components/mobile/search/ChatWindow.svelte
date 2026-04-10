@@ -1,11 +1,6 @@
 <script lang="ts">
-import { Loader, SendHorizontal } from "@lucide/svelte";
 import { tick } from "svelte";
-import augurAvatar from "$lib/assets/augur-chat.webp";
-import augurPlaceholder from "$lib/assets/augur-placeholder.webp";
 import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import {
 	createClientTransport,
@@ -13,6 +8,7 @@ import {
 	type AugurCitation,
 } from "$lib/connect";
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
+import augurAvatar from "$lib/assets/augur-chat.webp";
 
 type Citation = {
 	url: string;
@@ -75,19 +71,27 @@ function throttledScrollToBottom() {
 function stageStatus(stage: string): string {
 	switch (stage) {
 		case "planning":
-			return "Planning search...";
+			return "Planning search\u2026";
 		case "searching":
-			return "Searching evidence...";
+			return "Searching evidence\u2026";
 		case "reranking":
-			return "Checking evidence quality...";
+			return "Checking evidence quality\u2026";
 		case "drafting":
-			return "Drafting answer...";
+			return "Drafting answer\u2026";
 		case "validating":
-			return "Validating answer...";
+			return "Validating answer\u2026";
 		case "refining":
-			return "Refining answer...";
+			return "Refining answer\u2026";
 		default:
 			return "";
+	}
+}
+
+function handleKeydown(event: KeyboardEvent) {
+	if (event.isComposing) return;
+	if (event.key === "Enter" && !event.shiftKey) {
+		event.preventDefault();
+		handleSubmit();
 	}
 }
 
@@ -109,7 +113,7 @@ const handleSubmit = async (messageOverride?: string) => {
 
 	// Add placeholder for assistant message
 	messages = [...messages, { role: "assistant", content: "" }];
-	let currentAssistantMessageIndex = messages.length - 1;
+	const currentAssistantMessageIndex = messages.length - 1;
 
 	// Throttling state
 	let bufferedContent = "";
@@ -247,116 +251,343 @@ $effect(() => {
 });
 </script>
 
-<div class="flex flex-col h-full bg-background relative">
-  <!-- Messages Area -->
-  <div bind:this={messagesContainer} class="flex-1 overflow-y-auto p-4 space-y-4 pb-20" onscroll={handleScroll}>
-    {#if messages.length === 0}
-      <div class="flex flex-col items-center justify-center h-full text-muted-foreground opacity-50">
-        <img src={augurPlaceholder} alt="Augur" class="w-32 h-32 mb-4 rounded-full opacity-50 grayscale" />
-        <p>Ask Augur anything...</p>
-      </div>
-    {/if}
+<div class="augur-mobile">
+	<!-- Thread area -->
+	<div bind:this={messagesContainer} class="augur-thread" onscroll={handleScroll}>
+		{#if messages.length === 0}
+			<div class="augur-empty">
+				<img src={augurAvatar} alt="Augur" class="empty-avatar" />
+				<p class="empty-title">Ask Augur</p>
+				<div class="empty-rule"></div>
+			</div>
+		{/if}
 
-    {#each messages as message, idx}
-      <div class="flex w-full {message.role === 'user' ? 'justify-end' : 'justify-start'}">
-        <div class="flex max-w-[85%] gap-2 {message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}">
+		{#each messages as message, idx}
+			<article class="thread-entry" data-role={message.role} style="--stagger: {idx}">
+				{#if message.role === "user"}
+					<h3 class="entry-question">{message.content}</h3>
+				{:else}
+					<div class="entry-byline">
+						<img src={augurAvatar} alt="Augur" class="byline-avatar" />
+						<span class="byline-name">Augur</span>
+					</div>
+					{#if !message.content && isLoading && !message.citations}
+						<div class="augur-loading">
+							<div class="loading-pulse"></div>
+							<span class="loading-text">{statusText || stageStatus(progressStage) || "Consulting the evidence\u2026"}</span>
+						</div>
+					{:else}
+						<div class="entry-prose">
+							{@html parseMarkdown(message.content)}
+						</div>
+					{/if}
 
-          <!-- Avatar -->
-          <div class="flex-shrink-0 w-8 h-8 rounded-full overflow-hidden bg-muted mt-1 shadow-sm border border-border/50">
-             {#if message.role === 'assistant'}
-                <img src={augurAvatar} alt="Augur" class="w-full h-full object-cover" />
-             {:else}
-                <div class="w-full h-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
-                    You
-                </div>
-             {/if}
-          </div>
+					{#if idx === messages.length - 1 && message.role === "assistant" && isLoading && isProvisional && statusText}
+						<div class="stage-hint">{statusText}</div>
+					{/if}
 
-          <!-- Message Bubble -->
-          <div class="flex flex-col gap-2 max-w-full">
-            <div class="
-                p-3 rounded-2xl text-sm leading-relaxed shadow-sm break-words [overflow-wrap:anywhere]
-                {message.role === 'user'
-                ? 'bg-primary text-primary-foreground rounded-br-none'
-                : 'bg-muted/50 text-foreground rounded-bl-none border border-border/50'}
-            ">
-                {#if message.role === 'assistant' && !message.content && isLoading && !message.citations}
-                    <span class="flex gap-2 items-center h-5">
-                        <span class="flex gap-1 items-center">
-                            <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-0"></span>
-                            <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-150"></span>
-                            <span class="w-1.5 h-1.5 bg-current rounded-full animate-bounce delay-300"></span>
-                        </span>
-                        <span class="text-xs text-muted-foreground">{statusText || stageStatus(progressStage) || "Augur is thinking..."}</span>
-                    </span>
-                {:else}
-                <div>
-                    {#if message.role === 'assistant'}
-                        {@html parseMarkdown(message.content)}
-                    {:else}
-                        <div class="whitespace-pre-wrap">{message.content}</div>
-                    {/if}
-                </div>
-                {/if}
-            </div>
+					{#if message.citations && message.citations.length > 0}
+						<footer class="entry-sources">
+							<h4 class="sources-heading">Sources</h4>
+							<ol class="sources-list">
+								{#each message.citations as cite, i}
+									<li class="source-item">
+										<span class="source-id">[{i + 1}]</span>
+										<a href={cite.url} target="_blank" rel="noopener noreferrer" class="source-title">
+											{cite.title || "Untitled Source"}
+										</a>
+									</li>
+								{/each}
+							</ol>
+						</footer>
+					{/if}
+				{/if}
 
-            {#if idx === messages.length - 1 && message.role === 'assistant' && isLoading && isProvisional && statusText}
-                <div class="ml-1 text-[11px] text-muted-foreground">{statusText}</div>
-            {/if}
+				<div class="entry-rule"></div>
+			</article>
+		{/each}
+		<div bind:this={messagesEndRef}></div>
+	</div>
 
-            <!-- Citations -->
-            {#if message.role === 'assistant' && message.citations && message.citations.length > 0}
-                <div class="bg-muted/30 border border-border/50 rounded-lg p-3 text-xs text-muted-foreground ml-1 mt-1">
-                    <p class="font-semibold mb-2">Sources:</p>
-                    <ul class="space-y-2">
-                        {#each message.citations as cite, i}
-                            <li>
-                                <a href={cite.url} target="_blank" rel="noopener noreferrer" class="hover:text-foreground flex gap-2 group items-start">
-                                    <span class="font-mono opacity-70 shrink-0 mt-0.5">[{i + 1}]</span>
-                                    <span class="underline decoration-muted-foreground/50 group-hover:decoration-foreground underline-offset-4 break-words leading-relaxed">
-                                        {cite.title || 'Untitled Source'}
-                                    </span>
-                                </a>
-                            </li>
-                        {/each}
-                    </ul>
-                </div>
-            {/if}
-          </div>
+	<FloatingMenu />
 
-        </div>
-      </div>
-    {/each}
-    <div bind:this={messagesEndRef}></div>
-  </div>
-
-  <FloatingMenu class="bottom-24" />
-
-  <!-- Input Area -->
-  <div class="p-3 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 fixed bottom-0 left-0 right-0 z-10 w-full md:max-w-md mx-auto">
-     <form
-        class="flex gap-2 items-end max-w-4xl mx-auto"
-        onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}
-    >
-        <Input
-            bind:value={inputValue}
-            placeholder="Type your message..."
-            class="min-h-[44px] rounded-full border-border/50 bg-muted/30 focus-visible:ring-offset-0 focus-visible:ring-1"
-            disabled={isLoading}
-        />
-        <Button
-            type="submit"
-            size="icon"
-            class="rounded-full h-11 w-11 shrink-0 shadow-sm"
-            disabled={!inputValue.trim() || isLoading}
-        >
-            {#if isLoading}
-                <Loader class="h-5 w-5 animate-spin" />
-            {:else}
-                <SendHorizontal class="h-5 w-5 ml-0.5" />
-            {/if}
-            <span class="sr-only">Send</span>
-        </Button>
-     </form>
-  </div>
+	<!-- Input Area -->
+	<div class="augur-input-fixed">
+		<div class="input-rule"></div>
+		<form
+			class="input-row"
+			onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+		>
+			<textarea
+				class="input-field"
+				bind:value={inputValue}
+				onkeydown={handleKeydown}
+				placeholder="What would you like to know?"
+				disabled={isLoading}
+				rows={1}
+			></textarea>
+			<button
+				type="submit"
+				class="input-submit"
+				disabled={!inputValue.trim() || isLoading}
+				aria-label="Submit question"
+			>
+				{#if isLoading}
+					<span class="submit-loading"></span>
+				{:else}
+					&#8594;
+				{/if}
+			</button>
+		</form>
+	</div>
 </div>
+
+<style>
+	.augur-mobile {
+		display: flex; flex-direction: column;
+		height: 100%;
+		background: var(--surface-bg, #faf9f7);
+		position: relative;
+		overflow: hidden;
+		overscroll-behavior: none;
+	}
+
+	/* ===== Thread ===== */
+	.augur-thread {
+		flex: 1; overflow-y: auto; overflow-x: hidden;
+		padding: calc(0.5rem + env(safe-area-inset-top, 0px)) 1rem 1rem;
+		overscroll-behavior-y: contain;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	/* ===== Empty state: invitation ===== */
+	.augur-empty {
+		display: flex; flex-direction: column;
+		align-items: center; justify-content: center;
+		width: 100%; height: 100%; gap: 0.5rem;
+		text-align: center;
+		box-sizing: border-box;
+	}
+	.empty-avatar {
+		display: block;
+		width: 40px; height: 40px;
+		object-fit: cover;
+		border: 1px solid var(--alt-charcoal, #1a1a1a);
+		filter: saturate(0.85);
+		margin: 0 auto;
+	}
+	.empty-title {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1.1rem; font-weight: 600; font-style: italic;
+		color: var(--alt-slate, #666);
+		margin: 0;
+	}
+	.empty-rule {
+		width: 80px; height: 1px;
+		background: var(--surface-border, #c8c8c8);
+	}
+
+	/* ===== Thread entry ===== */
+	.thread-entry {
+		padding: 0.75rem 0;
+		opacity: 0; animation: entry-in 0.3s ease forwards;
+		animation-delay: calc(var(--stagger) * 40ms);
+	}
+	@keyframes entry-in { to { opacity: 1; } }
+
+	/* Augur byline */
+	.entry-byline {
+		display: flex; align-items: center; gap: 0.35rem;
+		margin-bottom: 0.3rem;
+	}
+	.byline-avatar {
+		width: 20px; height: 20px;
+		object-fit: cover;
+		border: 1px solid var(--surface-border, #c8c8c8);
+	}
+	.byline-name {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.6rem; font-weight: 600;
+		letter-spacing: 0.08em; text-transform: uppercase;
+		color: var(--alt-ash, #999);
+	}
+
+	/* User question */
+	.entry-question {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: clamp(1rem, 3.5vw, 1.15rem);
+		font-weight: 700; line-height: 1.3;
+		color: var(--alt-charcoal, #1a1a1a);
+		margin: 0;
+		overflow-wrap: anywhere; word-break: break-word;
+	}
+
+	/* Assistant prose */
+	.entry-prose {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.95rem; line-height: 1.72;
+		color: var(--alt-charcoal, #1a1a1a);
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+	.entry-prose :global(h1) {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1.2rem; font-weight: 700; margin: 1.25rem 0 0.4rem; line-height: 1.25;
+	}
+	.entry-prose :global(h2) {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1.05rem; font-weight: 700; margin: 1rem 0 0.35rem; line-height: 1.3;
+	}
+	.entry-prose :global(h3) {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 0.9rem; font-weight: 700; margin: 0.75rem 0 0.25rem; line-height: 1.35;
+	}
+	.entry-prose :global(p) { margin: 0 0 0.65rem; line-height: 1.72; }
+	.entry-prose :global(ul),
+	.entry-prose :global(ol) { margin: 0.4rem 0 0.65rem; padding-left: 1.25rem; }
+	.entry-prose :global(ul) { list-style-type: disc; }
+	.entry-prose :global(ol) { list-style-type: decimal; }
+	.entry-prose :global(li) { margin-bottom: 0.2rem; line-height: 1.6; }
+	.entry-prose :global(blockquote) {
+		border-left: 2px solid var(--alt-charcoal, #1a1a1a); padding-left: 0.6rem;
+		margin: 0.5rem 0; font-style: italic; color: var(--alt-slate, #666);
+	}
+	.entry-prose :global(a) {
+		color: var(--alt-primary, #2f4f4f); text-decoration: underline;
+		text-decoration-thickness: 1px; text-underline-offset: 2px;
+	}
+	.entry-prose :global(a:hover) { color: var(--alt-charcoal, #1a1a1a); }
+	.entry-prose :global(hr) { border: none; border-top: 1px solid var(--surface-border, #c8c8c8); margin: 1rem 0; }
+	.entry-prose :global(pre) {
+		background: var(--surface-2, #f5f4f1); padding: 0.6rem; overflow-x: auto;
+		margin: 0.5rem 0; font-size: 0.8rem; line-height: 1.5;
+		max-width: calc(100vw - 2rem);
+	}
+	.entry-prose :global(code) { font-family: var(--font-mono, "IBM Plex Mono", monospace); font-size: 0.85em; }
+	.entry-prose :global(strong) { font-weight: 700; }
+
+	/* Sources / citations */
+	.entry-sources {
+		margin-top: 0.75rem; padding-top: 0.5rem;
+		border-top: 1px solid var(--surface-border, #c8c8c8);
+	}
+	.sources-heading {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.55rem; font-weight: 700; letter-spacing: 0.12em;
+		text-transform: uppercase; color: var(--alt-ash, #999);
+		margin: 0 0 0.35rem;
+	}
+	.sources-list {
+		list-style: none; padding: 0; margin: 0;
+		display: flex; flex-direction: column; gap: 0.25rem;
+	}
+	.source-item {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.7rem; line-height: 1.5; color: var(--alt-slate, #666);
+		display: flex; gap: 0.25rem; align-items: baseline;
+	}
+	.source-id {
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.6rem; font-weight: 600; color: var(--alt-charcoal, #1a1a1a);
+		flex-shrink: 0;
+	}
+	.source-title {
+		color: var(--alt-primary, #2f4f4f); text-decoration: underline;
+		text-decoration-thickness: 1px; text-underline-offset: 2px;
+		overflow-wrap: anywhere; word-break: break-word;
+		min-width: 0;
+	}
+	.source-title:hover { color: var(--alt-charcoal, #1a1a1a); }
+
+	/* Bottom rule separator */
+	.entry-rule {
+		height: 1px; background: var(--surface-border, #c8c8c8);
+		margin-top: 0.75rem;
+	}
+
+	/* ===== Loading ===== */
+	.augur-loading {
+		display: flex; align-items: center; gap: 0.6rem;
+		padding: 0.5rem 0;
+		color: var(--alt-ash, #999);
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.8rem;
+	}
+	.loading-pulse {
+		width: 6px; height: 6px; border-radius: 50%;
+		background: var(--alt-ash, #999);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+	@keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+	.loading-text { font-style: italic; }
+
+	.stage-hint {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.7rem; font-style: italic;
+		color: var(--alt-ash, #999);
+		padding: 0.15rem 0 0.5rem;
+	}
+
+	/* ===== Input area (flexbox, no positioning) ===== */
+	.augur-input-fixed {
+		flex-shrink: 0;
+		background: var(--surface-bg, #faf9f7);
+		padding: 0 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+	}
+	.input-rule {
+		height: 1px; background: var(--surface-border, #c8c8c8);
+		margin-bottom: 0.5rem;
+	}
+	.input-row {
+		display: flex; gap: 0.5rem; align-items: flex-end;
+	}
+	.input-field {
+		flex: 1;
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 1rem; line-height: 1.4;
+		padding: 0.5rem 0.6rem;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		border-radius: 0;
+		background: transparent;
+		color: var(--alt-charcoal, #1a1a1a);
+		resize: none;
+		min-height: 44px; max-height: 100px;
+	}
+	.input-field::placeholder {
+		color: var(--alt-ash, #999); font-style: italic;
+	}
+	.input-field:focus {
+		outline: none; border-color: var(--alt-charcoal, #1a1a1a);
+	}
+	.input-field:disabled {
+		opacity: 0.5; cursor: not-allowed;
+	}
+	.input-submit {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 1.2rem; font-weight: 600;
+		width: 44px; height: 44px;
+		display: flex; align-items: center; justify-content: center;
+		border: 1.5px solid var(--alt-charcoal, #1a1a1a);
+		background: transparent;
+		color: var(--alt-charcoal, #1a1a1a);
+		cursor: pointer;
+		transition: background-color 0.2s, color 0.2s;
+		flex-shrink: 0;
+	}
+	.input-submit:active:not(:disabled) {
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+	}
+	.input-submit:disabled {
+		opacity: 0.4; cursor: not-allowed;
+	}
+	.submit-loading {
+		width: 6px; height: 6px; border-radius: 50%;
+		background: var(--alt-ash, #999);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.thread-entry { animation: none; opacity: 1; }
+	}
+</style>
