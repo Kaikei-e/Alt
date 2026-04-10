@@ -679,6 +679,9 @@ class CriticNode:
         logger.info("Critic completed", verdict=critique.get("verdict"), detections=len(all_detections))
         return {
             "critique": critique,
+            # Keep LangGraph's revision loop making progress even when
+            # the critic verdict/payload is identical across retries.
+            "critic_revision_no": state.get("revision_count", 0),
             "claim_feedbacks": claim_fbs,
             "failure_modes": [
                 {"mode": d.mode.value, "section": d.section_key, "description": d.description} for d in all_detections

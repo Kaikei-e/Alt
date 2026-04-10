@@ -42,13 +42,13 @@ class FinalizerNode:
             outline_snapshot=outline,
         )
 
-        # Use best_sections if available (paragraph-level writer tracks best revision)
+        # Persist the best revision body when available, not only when latest is empty.
         best = state.get("best_sections")
         if best:
             for key in list(sections.keys()):
-                if key in best and best[key] and (not sections.get(key)):
+                if key in best and best[key]:
                     sections[key] = best[key]
-                    logger.info("Finalizer using best_sections fallback", section_key=key, body_len=len(best[key]))
+                    logger.info("Finalizer using best_sections", section_key=key, body_len=len(best[key]))
 
         # Persist sections
         existing_sections = await self._report_repo.get_sections(report_id)

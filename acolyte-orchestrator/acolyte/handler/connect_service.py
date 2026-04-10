@@ -217,11 +217,10 @@ class AcolyteConnectService:
             "Pipeline started", report_id=report_id, run_id=run_id, thread_id=config["configurable"]["thread_id"]
         )
         try:
-            result: dict[str, object]
-            invoke_input: dict[str, object] | None = initial_state
+            invoke_input = initial_state
 
             if self._settings.checkpoint_enabled:
-                snapshot = await self._graph.aget_state(config)
+                snapshot = await self._graph.aget_state(config)  # type: ignore[bad-argument-type]
                 if snapshot.next:
                     logger.info(
                         "Resuming pipeline from checkpoint",
@@ -261,11 +260,13 @@ class AcolyteConnectService:
 
             # durability="sync" ensures checkpoint is persisted before proceeding
             # to the next super-step (critical for 70+ minute runs)
-            invoke_kwargs: dict[str, object] = {"config": config}
-            if self._settings.checkpoint_enabled:
-                invoke_kwargs["durability"] = "sync"
+            durability = "sync" if self._settings.checkpoint_enabled else None
 
-            result = await self._graph.ainvoke(invoke_input, **invoke_kwargs)
+            result = await self._graph.ainvoke(  # type: ignore[bad-argument-type]
+                invoke_input,
+                config=config,
+                durability=durability,
+            )
 
             final_version = result.get("final_version_no")
             error = result.get("error")

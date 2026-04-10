@@ -18,6 +18,7 @@ from langgraph.graph import END, StateGraph
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.fact_normalizer_node import FactNormalizerNode, should_continue_fact_normalization
 from acolyte.usecase.graph.nodes.quote_selector_node import QuoteSelectorNode, should_continue_quote_selection
+from acolyte.usecase.graph.state import ReportGenerationState
 
 _fail_once_tracker: dict[str, int] = {"node_a": 0, "node_b": 0}
 
@@ -165,13 +166,16 @@ async def test_incremental_quote_selector_resume_preserves_processed_articles() 
                 raise RuntimeError("boom")
             return await super()._select_quotes(*args, **kwargs)
 
-    graph = StateGraph(dict)  # type: ignore[arg-type]
+    async def route_quote_selector(state: ReportGenerationState) -> str:
+        return should_continue_quote_selection(state)
+
+    graph = StateGraph(ReportGenerationState)  # type: ignore[bad-specialization]
     node = FlakyQuoteSelector()
     graph.add_node("quote_selector", node)
     graph.set_entry_point("quote_selector")
     graph.add_conditional_edges(
         "quote_selector",
-        should_continue_quote_selection,
+        route_quote_selector,
         {"more": "quote_selector", "done": END},
     )
     compiled = graph.compile(checkpointer=MemorySaver())
@@ -225,13 +229,16 @@ async def test_incremental_fact_normalizer_resume_preserves_processed_quotes() -
                 raise RuntimeError("boom")
             return await super()._normalize_quote(quote)
 
-    graph = StateGraph(dict)  # type: ignore[arg-type]
+    async def route_fact_normalizer(state: ReportGenerationState) -> str:
+        return should_continue_fact_normalization(state)
+
+    graph = StateGraph(ReportGenerationState)  # type: ignore[bad-specialization]
     node = FlakyFactNormalizer()
     graph.add_node("fact_normalizer", node)
     graph.set_entry_point("fact_normalizer")
     graph.add_conditional_edges(
         "fact_normalizer",
-        should_continue_fact_normalization,
+        route_fact_normalizer,
         {"more": "fact_normalizer", "done": END},
     )
     compiled = graph.compile(checkpointer=MemorySaver())

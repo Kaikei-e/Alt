@@ -29,6 +29,18 @@ if TYPE_CHECKING:
     from acolyte.port.report_repository import ReportRepositoryPort
 
 
+async def _route_quote_selector(state: ReportGenerationState) -> str:
+    return should_continue_quote_selection(state)
+
+
+async def _route_fact_normalizer(state: ReportGenerationState) -> str:
+    return should_continue_fact_normalization(state)
+
+
+async def _route_critic(state: ReportGenerationState) -> str:
+    return should_revise(state)
+
+
 def build_report_graph(
     llm: LLMProviderPort,
     evidence: EvidenceProviderPort,
@@ -86,12 +98,12 @@ def build_report_graph(
         if incremental_extract:
             graph.add_conditional_edges(
                 "quote_selector",
-                should_continue_quote_selection,
+                _route_quote_selector,
                 {"more": "quote_selector", "done": "fact_normalizer"},
             )
             graph.add_conditional_edges(
                 "fact_normalizer",
-                should_continue_fact_normalization,
+                _route_fact_normalizer,
                 {"more": "fact_normalizer", "done": "section_planner"},
             )
         else:
@@ -104,7 +116,7 @@ def build_report_graph(
     graph.add_edge("writer", "critic")
     graph.add_conditional_edges(
         "critic",
-        should_revise,
+        _route_critic,
         {"revise": "writer", "accept": "finalizer"},
     )
     graph.add_edge("finalizer", END)

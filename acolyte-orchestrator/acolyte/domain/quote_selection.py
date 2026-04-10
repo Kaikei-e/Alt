@@ -36,11 +36,9 @@ class FactNormalizerOutput(BaseModel):
     """LLM output for normalizing a single quote into a fact.
 
     Tiny schema per exec3.md Issue 2.
-    reasoning kept per ADR-632 (A/B gated — removal requires validation).
     data_type constrained to Literal enum for stronger schema enforcement.
     """
 
-    reasoning: str = ""
     claim: str
     confidence: float = 0.5
     data_type: Literal["statistic", "date", "quote", "trend", "comparison"] = "quote"

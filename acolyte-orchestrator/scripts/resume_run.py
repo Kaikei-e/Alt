@@ -39,6 +39,7 @@ async def _resume(run_id: str) -> None:
     from acolyte.gateway.checkpoint_factory import create_checkpointer
     from acolyte.gateway.memory_content_store import MemoryContentStore
     from acolyte.gateway.ollama_gw import OllamaGateway
+    from acolyte.gateway.postgres_job_gw import PostgresJobGateway
     from acolyte.gateway.postgres_report_gw import PostgresReportGateway
     from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
     from acolyte.handler.connect_service import AcolyteConnectService
@@ -55,9 +56,12 @@ async def _resume(run_id: str) -> None:
 
     async with AsyncConnectionPool(dsn, min_size=1, max_size=3) as pool:
         repo = PostgresReportGateway(pool)
+        job_gw = PostgresJobGateway(pool)
 
         # Resolve run -> report -> brief
-        run = await repo.get_run(run_id)
+        from uuid import UUID
+
+        run = await job_gw.get_run(UUID(run_id))
         if run is None:
             logger.error("Run not found", run_id=run_id)
             sys.exit(1)

@@ -20,10 +20,10 @@ from acolyte.domain.query_facet import render_query_string
 from acolyte.domain.quote_selection import QuoteSelectorOutput, SelectedQuote
 from acolyte.port.llm_provider import LLMMode
 from acolyte.usecase.graph.llm_parse import generate_validated
+from acolyte.usecase.graph.state import ReportGenerationState
 
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
-    from acolyte.usecase.graph.state import ReportGenerationState
 
 logger = structlog.get_logger(__name__)
 
@@ -113,11 +113,24 @@ def _spans_to_quotes(
     return quotes
 
 
+def should_continue_quote_selection(state: ReportGenerationState) -> str:
+    """Conditional edge for checkpoint-safe per-article quote selection."""
+    work_items = state.get("quote_selector_work_items", [])
+    cursor = state.get("quote_selector_cursor", 0)
+    return "more" if cursor < len(work_items) else "done"
+
+
 class QuoteSelectorNode:
-    def __init__(self, llm: LLMProviderPort) -> None:
+    def __init__(self, llm: LLMProviderPort, *, incremental: bool = False) -> None:
         self._llm = llm
+        self._incremental = incremental
 
     async def __call__(self, state: ReportGenerationState) -> dict:
+        if self._incremental:
+            return await self._process_incremental(state)
+        return await self._process_all(state)
+
+    async def _process_all(self, state: ReportGenerationState) -> dict:
         curated_by_section = state.get("curated_by_section", {})
         hydrated = state.get("hydrated_evidence", {})
         compressed = state.get("compressed_evidence", {})
@@ -159,6 +172,78 @@ class QuoteSelectorNode:
             sections=len(curated_by_section),
         )
         return {"selected_quotes": all_quotes}
+
+    async def _process_incremental(self, state: ReportGenerationState) -> dict:
+        """Checkpoint-safe path: process one section/article pair per invocation."""
+        hydrated = state.get("hydrated_evidence", {})
+        compressed = state.get("compressed_evidence", {})
+        selected_quotes = list(state.get("selected_quotes", []))
+
+        work_items = state.get("quote_selector_work_items")
+        if work_items is None:
+            work_items = self._build_work_items(state)
+
+        cursor = state.get("quote_selector_cursor", 0)
+        if cursor >= len(work_items):
+            logger.info("QuoteSelector completed", quote_count=len(selected_quotes), sections=len(work_items))
+            return {
+                "selected_quotes": selected_quotes,
+                "quote_selector_work_items": work_items,
+                "quote_selector_cursor": cursor,
+            }
+
+        item = work_items[cursor]
+        raw_body = _resolve_raw_body(item["source_id"], hydrated)
+        if raw_body:
+            quotes = await self._select_quotes(
+                item["source_id"],
+                item["source_title"],
+                raw_body,
+                item["section_key"],
+                item["section_queries"],
+                compressed,
+                hydrated,
+            )
+            selected_quotes.extend(quotes)
+
+        next_cursor = cursor + 1
+        if next_cursor >= len(work_items):
+            logger.info("QuoteSelector completed", quote_count=len(selected_quotes), sections=len(work_items))
+        else:
+            logger.info(
+                "QuoteSelector progress",
+                processed=next_cursor,
+                total=len(work_items),
+            )
+
+        return {
+            "selected_quotes": selected_quotes,
+            "quote_selector_work_items": work_items,
+            "quote_selector_cursor": next_cursor,
+        }
+
+    def _build_work_items(self, state: ReportGenerationState) -> list[dict]:
+        curated_by_section = state.get("curated_by_section", {})
+        outline = state.get("outline", [])
+
+        section_queries_map: dict[str, list[str]] = {}
+        for section in outline:
+            key = section.get("key", "")
+            section_queries_map[key] = _resolve_queries_for_section(section)
+
+        work_items: list[dict] = []
+        for section_key, items in curated_by_section.items():
+            query_list = section_queries_map.get(section_key, [section_key])
+            for item in items:
+                work_items.append(
+                    {
+                        "section_key": section_key,
+                        "section_queries": list(query_list),
+                        "source_id": item.get("id", ""),
+                        "source_title": item.get("title", ""),
+                    }
+                )
+        return work_items
 
     async def _select_quotes(
         self,

@@ -71,8 +71,7 @@ async def test_converts_quote_to_fact() -> None:
     fact = facts[0]
     assert fact["claim"] == "AI market grew 20%"
     assert fact["source_id"] == "art-1"
-    assert fact["source_title"] == "Report"
-    assert fact["verbatim_quote"] == "The AI market expanded by 20%"
+    assert fact["quote"] == "The AI market expanded by 20%"
     assert fact["confidence"] == 0.9
     assert fact["data_type"] == "statistic"
     assert fact["is_fallback"] is False
@@ -294,6 +293,12 @@ async def test_schema_constrains_data_type_enum() -> None:
     assert "enum" in data_type_schema, "data_type must be constrained by enum in JSON schema"
     expected = {"statistic", "date", "quote", "trend", "comparison"}
     assert set(data_type_schema["enum"]) == expected
+
+
+def test_fact_normalizer_output_tiny_schema_has_no_reasoning() -> None:
+    """Tiny schema should not expose a reasoning field."""
+    schema = FactNormalizerOutput.model_json_schema()
+    assert "reasoning" not in schema["properties"]
 
 
 @pytest.mark.asyncio

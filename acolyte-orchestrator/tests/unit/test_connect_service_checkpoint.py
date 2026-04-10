@@ -17,7 +17,7 @@ async def test_run_pipeline_passes_namespaced_thread_id() -> None:
     graph = MagicMock()
     graph.ainvoke = AsyncMock(return_value={"final_version_no": 2})
     graph.aget_state = AsyncMock()
-    service = AcolyteConnectService(settings, MagicMock(), graph=graph)
+    service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
     await service._run_pipeline("report-1", "run-1", {"topic": "AI"})
 
@@ -30,6 +30,7 @@ async def test_run_pipeline_passes_namespaced_thread_id() -> None:
             "revision_count": 0,
         },
         config={"configurable": {"thread_id": "acolyte-run:run-1"}},
+        durability=None,
     )
 
 
@@ -41,7 +42,7 @@ async def test_run_pipeline_resumes_from_pending_checkpoint() -> None:
     graph = MagicMock()
     graph.aget_state = AsyncMock(return_value=snapshot)
     graph.ainvoke = AsyncMock(return_value={"final_version_no": 2})
-    service = AcolyteConnectService(settings, MagicMock(), graph=graph)
+    service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
     await service._run_pipeline("report-1", "run-1", {"topic": "AI"})
 
@@ -61,7 +62,7 @@ async def test_run_pipeline_skips_completed_checkpoint() -> None:
     graph = MagicMock()
     graph.aget_state = AsyncMock(return_value=snapshot)
     graph.ainvoke = AsyncMock()
-    service = AcolyteConnectService(settings, MagicMock(), graph=graph)
+    service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
     await service._run_pipeline("report-1", "run-1", {"topic": "AI"})
 
@@ -77,7 +78,7 @@ async def test_run_pipeline_uses_sync_durability_when_checkpoint_enabled() -> No
     graph = MagicMock()
     graph.aget_state = AsyncMock(return_value=snapshot)
     graph.ainvoke = AsyncMock(return_value={"final_version_no": 1})
-    service = AcolyteConnectService(settings, MagicMock(), graph=graph)
+    service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
     await service._run_pipeline("report-1", "run-1", {"topic": "AI"})
 
@@ -100,7 +101,7 @@ async def test_run_pipeline_completed_checkpoint_requires_final_version() -> Non
     graph = MagicMock()
     graph.aget_state = AsyncMock(return_value=snapshot)
     graph.ainvoke = AsyncMock(return_value={"final_version_no": 2})
-    service = AcolyteConnectService(settings, MagicMock(), graph=graph)
+    service = AcolyteConnectService(settings, MagicMock(), graph=graph)  # type: ignore[bad-argument-type]
 
     await service._run_pipeline("report-1", "run-1", {"topic": "AI"})
 
