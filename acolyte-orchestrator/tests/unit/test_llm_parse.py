@@ -128,3 +128,69 @@ async def test_generate_exception_exhausted_uses_fallback() -> None:
     fallback = SampleOutput(reasoning="fallback", sections=[])
     result = await generate_validated(AlwaysErrorLLM(), "prompt", SampleOutput, retries=1, fallback=fallback)
     assert result.reasoning == "fallback"
+
+
+# --- Truncation detection tests ---
+
+
+class TruncationLLM:
+    """LLM that returns truncated JSON with high completion_tokens, then succeeds."""
+
+    def __init__(self, responses: list[LLMResponse]) -> None:
+        self._responses = list(responses)
+        self._idx = 0
+        self.calls: list[dict] = []
+
+    async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+        self.calls.append({"prompt": prompt, **kwargs})
+        resp = self._responses[min(self._idx, len(self._responses) - 1)]
+        self._idx += 1
+        return resp
+
+
+@pytest.mark.asyncio
+async def test_detects_truncation_and_increases_budget() -> None:
+    """When completion_tokens >= 95% of num_predict and JSON is truncated, increase budget +25%."""
+    truncated = LLMResponse(
+        text='{"reasoning": "thinking...', model="test", completion_tokens=1900,
+    )
+    valid = LLMResponse(
+        text=json.dumps({"reasoning": "ok", "sections": []}), model="test", completion_tokens=500,
+    )
+    llm = TruncationLLM([truncated, valid])
+
+    result = await generate_validated(llm, "prompt", SampleOutput, num_predict=2000, temperature=0)
+
+    assert result.reasoning == "ok"
+    assert llm.calls[1]["num_predict"] == 2500  # 2000 * 1.25
+
+
+@pytest.mark.asyncio
+async def test_does_not_increase_budget_on_non_truncation() -> None:
+    """When completion_tokens is well below num_predict, don't increase budget."""
+    bad_json = LLMResponse(text="not json", model="test", completion_tokens=100)
+    valid = LLMResponse(
+        text=json.dumps({"reasoning": "ok", "sections": []}), model="test", completion_tokens=50,
+    )
+    llm = TruncationLLM([bad_json, valid])
+
+    result = await generate_validated(llm, "prompt", SampleOutput, num_predict=2000, temperature=0)
+
+    assert result.reasoning == "ok"
+    assert llm.calls[1]["num_predict"] == 2000  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_budget_increase_bounded_once() -> None:
+    """Budget increases at most once across retries."""
+    truncated = LLMResponse(text='{"reasoning": "...', model="test", completion_tokens=1950)
+    llm = TruncationLLM([truncated, truncated])
+
+    fallback = SampleOutput(reasoning="fallback", sections=[])
+    result = await generate_validated(
+        llm, "prompt", SampleOutput, num_predict=2000, temperature=0, fallback=fallback,
+    )
+
+    assert result.reasoning == "fallback"
+    # Second call should have 2500, not 3125
+    assert llm.calls[1]["num_predict"] == 2500
