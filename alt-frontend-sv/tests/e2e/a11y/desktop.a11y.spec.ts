@@ -228,7 +228,7 @@ test.describe("Desktop Pages Accessibility", () => {
 
 			await gotoDesktopRoute(page, "stats");
 			await expect(
-				page.getByRole("heading", { name: "Statistics" }),
+				page.getByRole("heading", { name: /circulation ledger/i }),
 			).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
@@ -245,7 +245,7 @@ test.describe("Desktop Pages Accessibility", () => {
 
 			await gotoDesktopRoute(page, "stats");
 			await expect(
-				page.getByRole("heading", { name: "Statistics" }),
+				page.getByRole("heading", { name: /circulation ledger/i }),
 			).toBeVisible();
 
 			// Charts should have aria-labels or be supplemented with text

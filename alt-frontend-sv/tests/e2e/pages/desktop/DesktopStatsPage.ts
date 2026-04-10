@@ -4,39 +4,42 @@ import { BasePage } from "../BasePage";
 
 /**
  * Page Object for Desktop Statistics page (/stats)
+ * Alt-Paper "Circulation Ledger" editorial layout
  */
 export class DesktopStatsPage extends BasePage {
 	readonly pageTitle: Locator;
 
-	// Stat cards
-	readonly feedCountCard: Locator;
-	readonly totalArticlesCard: Locator;
-	readonly unsummarizedCard: Locator;
+	// Figures bar labels
+	readonly feedsLabel: Locator;
+	readonly articlesLabel: Locator;
+	readonly unsummarizedLabel: Locator;
 
 	// Connection status
-	readonly connectionStatus: Locator;
+	readonly statusLabel: Locator;
 	readonly reconnectButton: Locator;
 
-	// Trend charts
-	readonly trendChartsHeading: Locator;
+	// Activity log
+	readonly activityLogHeading: Locator;
 	readonly trendError: Locator;
 
 	constructor(page: Page) {
 		super(page);
 
-		this.pageTitle = page.getByRole("heading", { name: "Statistics" }).first();
+		this.pageTitle = page
+			.getByRole("heading", { name: /circulation ledger/i })
+			.first();
 
-		this.feedCountCard = page.getByText("Feed Count");
-		this.totalArticlesCard = page.getByText("Total Articles");
-		this.unsummarizedCard = page.getByText("Unsummarized").first();
+		this.feedsLabel = page.getByText("FEEDS");
+		this.articlesLabel = page.getByText("ARTICLES");
+		this.unsummarizedLabel = page.getByText("UNSUMMARIZED");
 
-		this.connectionStatus = page.getByText(/connected|disconnected/i).first();
+		this.statusLabel = page.locator(".status-label");
 		this.reconnectButton = page.getByRole("button", {
 			name: /reconnect/i,
 		});
 
-		this.trendChartsHeading = page.getByRole("heading", {
-			name: /trend charts/i,
+		this.activityLogHeading = page.getByRole("heading", {
+			name: /activity log/i,
 		});
 		this.trendError = page.getByText(/error loading trends/i);
 	}
@@ -50,6 +53,6 @@ export class DesktopStatsPage extends BasePage {
 	 */
 	async waitForStatsLoaded(): Promise<void> {
 		await expect(this.pageTitle).toBeVisible({ timeout: 15000 });
-		await expect(this.feedCountCard).toBeVisible({ timeout: 10000 });
+		await expect(this.feedsLabel).toBeVisible({ timeout: 10000 });
 	}
 }

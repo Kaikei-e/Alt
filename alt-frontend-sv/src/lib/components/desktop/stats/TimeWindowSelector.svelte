@@ -22,18 +22,50 @@ function handleClick(window: TimeWindow) {
 }
 </script>
 
-<div class="flex gap-1">
+<div class="window-bar">
 	{#each windows as { value, label }}
 		<button
 			type="button"
-			class="px-3 py-1 text-sm font-medium transition-colors
-                   {selected === value
-				? 'bg-primary text-primary-foreground'
-				: 'bg-[var(--surface-bg)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'}
-                   border border-[var(--surface-border)]"
+			class="window-btn"
+			class:window-btn--active={selected === value}
 			onclick={() => handleClick(value)}
 		>
 			{label}
 		</button>
 	{/each}
 </div>
+
+<style>
+	.window-bar {
+		display: flex;
+	}
+
+	.window-btn {
+		border: 1px solid var(--surface-border);
+		background: transparent;
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: var(--alt-ash);
+		padding: 0.3rem 0.6rem;
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+
+	.window-btn + .window-btn {
+		border-left: 0;
+	}
+
+	.window-btn:hover:not(.window-btn--active) {
+		background: var(--surface-hover);
+	}
+
+	.window-btn--active {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+		border-color: var(--alt-charcoal);
+	}
+</style>

@@ -4,26 +4,29 @@ import { BasePage } from "../BasePage";
 
 /**
  * Page Object for Mobile Stats page
+ * Alt-Paper "Circulation Ledger" editorial layout
  */
 export class MobileStatsPage extends BasePage {
 	readonly pageTitle: Locator;
-	readonly loadingSpinner: Locator;
+	readonly loadingDot: Locator;
 
-	// Stats cards
+	// Ledger rows
 	readonly totalFeeds: Locator;
 	readonly totalArticles: Locator;
+	readonly unsummarized: Locator;
 	readonly unreadCount: Locator;
 
 	constructor(page: Page) {
 		super(page);
 
 		this.pageTitle = page
-			.getByRole("heading", { name: /stats|statistics/i })
+			.getByRole("heading", { name: /circulation ledger/i })
 			.first();
-		this.loadingSpinner = page.locator(".animate-spin").first();
+		this.loadingDot = page.locator(".loading-pulse").first();
 
 		this.totalFeeds = page.getByTestId("stat-total-feeds");
 		this.totalArticles = page.getByTestId("stat-total-articles");
+		this.unsummarized = page.getByTestId("stat-unsummarized");
 		this.unreadCount = page.getByTestId("stat-unread-count");
 	}
 
@@ -32,7 +35,7 @@ export class MobileStatsPage extends BasePage {
 	}
 
 	async waitForStatsLoaded(): Promise<void> {
-		await expect(this.loadingSpinner).not.toBeVisible({ timeout: 15000 });
+		await expect(this.loadingDot).not.toBeVisible({ timeout: 15000 });
 	}
 
 	async getTotalFeedsValue(): Promise<string | null> {

@@ -29,21 +29,21 @@ test.describe("Desktop Statistics", () => {
 		);
 	});
 
-	test("renders page title and stat cards", async ({ desktopStatsPage }) => {
+	test("renders page title and figures bar", async ({ desktopStatsPage }) => {
 		await desktopStatsPage.goto();
 		await desktopStatsPage.waitForStatsLoaded();
 
 		await expect(desktopStatsPage.pageTitle).toBeVisible();
-		await expect(desktopStatsPage.feedCountCard).toBeVisible();
-		await expect(desktopStatsPage.totalArticlesCard).toBeVisible();
-		await expect(desktopStatsPage.unsummarizedCard).toBeVisible();
+		await expect(desktopStatsPage.feedsLabel).toBeVisible();
+		await expect(desktopStatsPage.articlesLabel).toBeVisible();
+		await expect(desktopStatsPage.unsummarizedLabel).toBeVisible();
 	});
 
-	test("shows Trend Charts heading", async ({ desktopStatsPage }) => {
+	test("shows Activity Log heading", async ({ desktopStatsPage }) => {
 		await desktopStatsPage.goto();
 		await desktopStatsPage.waitForStatsLoaded();
 
-		await expect(desktopStatsPage.trendChartsHeading).toBeVisible();
+		await expect(desktopStatsPage.activityLogHeading).toBeVisible();
 	});
 
 	test("shows reconnect button when disconnected", async ({

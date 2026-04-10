@@ -76,9 +76,11 @@ test.describe("mobile feeds routes - stats", () => {
 		await page.goto("./stats");
 
 		// Wait for page to load - check for either stats content, loading state, or error state
-		const pageTitle = page.getByRole("heading", { name: /statistics/i });
+		const pageTitle = page.getByRole("heading", {
+			name: /circulation ledger/i,
+		});
 		const errorIndicator = page.getByText("Internal Error");
-		const loadingIndicator = page.getByText("Loading stats...");
+		const loadingIndicator = page.locator(".loading-pulse");
 		const componentError = page.getByText("Failed to load statistics");
 
 		// Wait for the page to be in a known state

@@ -1,18 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { useViewport } from "$lib/stores/viewport.svelte";
-
-// Desktop components & deps
-import {
-	BarChart3,
-	TrendingUp,
-	FileText,
-	BookOpen,
-	Rss,
-	Layers,
-	RefreshCw,
-} from "@lucide/svelte";
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
 import { useTrendStats } from "$lib/hooks/useTrendStats.svelte";
 import TimeWindowSelector from "$lib/components/desktop/stats/TimeWindowSelector.svelte";
@@ -41,30 +29,16 @@ const trendStats = useTrendStats();
 let feedAmount = $derived(stats.feedAmount);
 let totalArticlesAmount = $derived(stats.totalArticlesAmount);
 let unsummarizedArticlesAmount = $derived(stats.unsummarizedArticlesAmount);
-let connectionStatus = $derived(
-	stats.isConnected ? "Connected" : "Disconnected",
-);
 
-let desktopStatCards = $derived([
-	{
-		label: "Feed Count",
-		value: feedAmount,
-		icon: FileText,
-		color: "text-blue-600",
-	},
-	{
-		label: "Total Articles",
-		value: totalArticlesAmount,
-		icon: BarChart3,
-		color: "text-green-600",
-	},
-	{
-		label: "Unsummarized",
-		value: unsummarizedArticlesAmount,
-		icon: Layers,
-		color: "text-purple-600",
-	},
-]);
+// Page reveal
+let revealed = $state(false);
+
+const dateStr = new Date().toLocaleDateString("en-US", {
+	weekday: "long",
+	year: "numeric",
+	month: "long",
+	day: "numeric",
+});
 
 // Mobile-specific state
 let mobileStats: DetailedFeedStatsSummary | null = $state(null);
@@ -81,6 +55,10 @@ function formatNumber(num: number): string {
 }
 
 onMount(async () => {
+	requestAnimationFrame(() => {
+		revealed = true;
+	});
+
 	if (isDesktop) {
 		trendStats.fetchData("24h");
 	} else {
@@ -126,213 +104,495 @@ $effect(() => {
 </svelte:head>
 
 {#if isDesktop}
-	<PageHeader title="Statistics" description="Overview of your RSS feed analytics" />
+	<div class="ledger-page" class:revealed>
+		<!-- Editorial Header -->
+		<header class="ledger-header">
+			<span class="ledger-date">{dateStr}</span>
+			<h1 class="ledger-title">Circulation Ledger</h1>
+			<div class="ledger-rule" aria-hidden="true"></div>
+		</header>
 
-	<!-- Stats cards -->
-	<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-		{#each desktopStatCards as stat}
-			<div class="border border-[var(--surface-border)] bg-white p-6">
-				<div class="flex items-center justify-between mb-3">
-					<h3 class="text-sm font-medium text-[var(--text-secondary)]">
-						{stat.label}
-					</h3>
-					<stat.icon class="h-5 w-5 {stat.color}" />
+		<!-- Figures Bar -->
+		<div class="section-reveal" style="--delay: 1;">
+			<div class="figures-bar">
+				<div class="figure-group">
+					<span class="figure-label">FEEDS</span>
+					<span class="figure-value">{feedAmount.toLocaleString()}</span>
 				</div>
-				<p class="text-3xl font-bold text-[var(--text-primary)]">
-					{stat.value.toLocaleString()}
-				</p>
-			</div>
-		{/each}
-	</div>
 
-	<!-- Connection status -->
-	<div class="border border-[var(--surface-border)] bg-white p-6 mb-8">
-		<div class="flex items-center justify-between">
-			<div class="flex items-center gap-3">
-				<div
-					class="h-3 w-3 rounded-full {stats.isConnected ? 'bg-green-500' : 'bg-red-500'}"
-				></div>
-				<div>
-					<h3 class="text-sm font-semibold text-[var(--text-primary)]">
-						Real-time Connection
-					</h3>
-					<p class="text-xs text-[var(--text-secondary)]">{connectionStatus}</p>
-				</div>
-			</div>
-				<div class="flex items-center gap-2">
-				{#if !stats.isConnected}
-					<button
-						onclick={() => stats.reconnect()}
-						class="inline-flex items-center gap-1.5 text-xs px-3 py-1 border border-[var(--surface-border)] rounded hover:bg-gray-50 text-[var(--text-secondary)] transition-colors"
+				<div class="figure-separator" aria-hidden="true"></div>
+
+				<div class="figure-group">
+					<span class="figure-label">ARTICLES</span>
+					<span class="figure-value"
+						>{totalArticlesAmount.toLocaleString()}</span
 					>
-						<RefreshCw class="h-3 w-3" />
-						Reconnect
-					</button>
-				{/if}
-				<TrendingUp class="h-5 w-5 text-[var(--text-secondary)]" />
+				</div>
+
+				<div class="figure-separator" aria-hidden="true"></div>
+
+				<div class="figure-group">
+					<span class="figure-label">UNSUMMARIZED</span>
+					<span class="figure-value"
+						>{unsummarizedArticlesAmount.toLocaleString()}</span
+					>
+				</div>
+
+				<div class="status-group">
+					<span
+						class="status-dot"
+						class:status-dot--live={stats.isConnected}
+						class:status-dot--offline={!stats.isConnected}
+					></span>
+					<span class="status-label"
+						>{stats.isConnected ? "Live" : "Offline"}</span
+					>
+					{#if !stats.isConnected}
+						<button
+							class="reconnect-btn"
+							onclick={() => stats.reconnect()}
+						>
+							RECONNECT
+						</button>
+					{/if}
+				</div>
 			</div>
-		</div>
-	</div>
-
-	<!-- Trend Charts Section -->
-	<div class="border border-[var(--surface-border)] bg-white p-6">
-		<div class="flex items-center justify-between mb-6">
-			<h2 class="text-lg font-semibold text-[var(--text-primary)]">
-				Trend Charts
-			</h2>
-			<TimeWindowSelector
-				selected={trendStats.currentWindow}
-				onchange={(window: TimeWindow) => trendStats.setWindow(window)}
-			/>
+			<div class="ledger-rule" aria-hidden="true"></div>
 		</div>
 
-		{#if trendStats.error}
-			<div class="p-4 bg-red-50 border border-red-200 text-red-700 rounded mb-6">
-				{trendStats.error}
+		<!-- Activity Log Section -->
+		<div class="section-reveal" style="--delay: 2;">
+			<div class="activity-log-header">
+				<h2 class="activity-log-label">Activity Log</h2>
+				<TimeWindowSelector
+					selected={trendStats.currentWindow}
+					onchange={(window: TimeWindow) => trendStats.setWindow(window)}
+				/>
 			</div>
-		{/if}
 
-		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-			{#await TrendChartPromise then TrendChart}
-				<TrendChart.default
-					title="Articles"
-					dataPoints={trendStats.data?.data_points ?? []}
-					dataKey="articles"
-					color="#3b82f6"
-					loading={trendStats.loading}
-				/>
-				<TrendChart.default
-					title="Summarized"
-					dataPoints={trendStats.data?.data_points ?? []}
-					dataKey="summarized"
-					color="#8b5cf6"
-					loading={trendStats.loading}
-				/>
-				<TrendChart.default
-					title="Feed Activity"
-					dataPoints={trendStats.data?.data_points ?? []}
-					dataKey="feed_activity"
-					color="#10b981"
-					loading={trendStats.loading}
-				/>
-			{/await}
+			{#if trendStats.error}
+				<div class="trend-error">
+					<span class="trend-error-text">{trendStats.error}</span>
+				</div>
+			{/if}
+
+			<div class="charts-grid">
+				{#await TrendChartPromise then TrendChart}
+					<TrendChart.default
+						title="Articles"
+						dataPoints={trendStats.data?.data_points ?? []}
+						dataKey="articles"
+						loading={trendStats.loading}
+					/>
+					<TrendChart.default
+						title="Summarized"
+						dataPoints={trendStats.data?.data_points ?? []}
+						dataKey="summarized"
+						loading={trendStats.loading}
+					/>
+					<TrendChart.default
+						title="Feed Activity"
+						dataPoints={trendStats.data?.data_points ?? []}
+						dataKey="feed_activity"
+						loading={trendStats.loading}
+					/>
+				{/await}
+			</div>
 		</div>
 	</div>
 {:else}
 	<!-- Mobile -->
-	<div
-		class="h-screen overflow-hidden flex flex-col"
-		style="background: var(--app-bg);"
-	>
-		<!-- Page Title -->
-		<div class="px-5 pt-4 pb-2">
-			<h1
-				class="text-2xl font-bold text-center"
-				style="color: var(--alt-primary); font-family: var(--font-outfit, sans-serif);"
-			>
-				Statistics
-			</h1>
-		</div>
+	<div class="ledger-mobile">
+		<header class="mobile-ledger-header">
+			<span class="ledger-date">{dateStr}</span>
+			<h1 class="ledger-title-mobile">Circulation Ledger</h1>
+			<div class="ledger-rule" aria-hidden="true"></div>
+		</header>
 
-		<div class="flex-1 min-h-0 flex flex-col px-5 py-4 overflow-y-auto">
-			<!-- Connection Status Indicator -->
-			<div class="flex justify-center mb-4">
-				<div
-					class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-[var(--bg-surface)] border border-[var(--border-glass)]"
+		<div class="mobile-content">
+			<!-- Status -->
+			<div class="mobile-status-row">
+				<span
+					class="status-dot"
+					class:status-dot--live={stats.isConnected}
+					class:status-dot--offline={!stats.isConnected}
+				></span>
+				<span class="status-label"
+					>{stats.isConnected ? "Live" : "Offline"}</span
 				>
-					<div
-						class="w-2 h-2 rounded-full transition-colors {stats.isConnected
-							? 'animate-pulse'
-							: ''}"
-						style="background-color: {stats.isConnected
-							? 'var(--alt-success)'
-							: 'var(--alt-warning)'}"
-					></div>
-					<span style="color: var(--text-secondary)">
-						{stats.isConnected ? "Live Updates" : "Connecting..."}
-					</span>
-				</div>
 			</div>
 
 			{#if mobileLoading}
-				<div class="flex flex-col items-center justify-center py-20">
-					<div
-						class="w-10 h-10 border-4 border-[var(--text-secondary)] border-t-[var(--accent-primary)] rounded-full animate-spin"
-					></div>
-					<p class="mt-4 text-[var(--text-secondary)] font-medium">
-						Loading stats...
-					</p>
+				<div class="mobile-loading">
+					<span class="loading-pulse"></span>
+					<span class="loading-text">Loading&hellip;</span>
 				</div>
 			{:else if mobileError}
-				<div
-					class="bg-[var(--bg-surface)] border border-red-500/20 rounded-2xl p-6 text-center"
-				>
-					<p class="text-red-400 font-medium mb-2">Error</p>
-					<p class="text-[var(--text-secondary)] text-sm">{mobileError}</p>
+				<div class="mobile-error">
+					<span class="error-label">Error</span>
+					<span class="error-text">{mobileError}</span>
 				</div>
 			{:else}
-				<div class="grid grid-cols-1 gap-4">
-					<div
-						class="bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-2xl p-6 shadow-lg"
-					>
-						<div class="flex items-center gap-3 mb-3">
-							<Rss class="w-5 h-5 text-[var(--alt-primary)]" />
-							<span
-								class="text-[var(--text-secondary)] text-sm uppercase tracking-wider font-semibold"
-								>Total Feeds</span
-							>
-						</div>
-						<span class="text-4xl font-bold text-[var(--text-primary)]">
-							{formatNumber(displayFeedAmount)}
-						</span>
+				<div class="ledger-rows">
+					<div class="ledger-row" data-testid="stat-total-feeds">
+						<span class="row-label">Total Feeds</span>
+						<span class="row-value">{formatNumber(displayFeedAmount)}</span>
 					</div>
+					<div class="ledger-rule" aria-hidden="true"></div>
 
-					<div
-						class="bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-2xl p-6 shadow-lg"
-					>
-						<div class="flex items-center gap-3 mb-3">
-							<FileText class="w-5 h-5 text-[var(--alt-primary)]" />
-							<span
-								class="text-[var(--text-secondary)] text-sm uppercase tracking-wider font-semibold"
-								>Total Articles</span
-							>
-						</div>
-						<span class="text-4xl font-bold text-[var(--text-primary)]">
-							{formatNumber(displayTotalArticles)}
-						</span>
+					<div class="ledger-row" data-testid="stat-total-articles">
+						<span class="row-label">Total Articles</span>
+						<span class="row-value">{formatNumber(displayTotalArticles)}</span>
 					</div>
+					<div class="ledger-rule" aria-hidden="true"></div>
 
-					<div
-						class="bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-2xl p-6 shadow-lg"
-					>
-						<div class="flex items-center gap-3 mb-3">
-							<Layers class="w-5 h-5 text-[var(--alt-primary)]" />
-							<span
-								class="text-[var(--text-secondary)] text-sm uppercase tracking-wider font-semibold"
-								>Unsummarized</span
-							>
-						</div>
-						<span class="text-4xl font-bold text-[var(--text-primary)]">
-							{formatNumber(displayUnsummarized)}
-						</span>
+					<div class="ledger-row" data-testid="stat-unsummarized">
+						<span class="row-label">Unsummarized</span>
+						<span class="row-value">{formatNumber(displayUnsummarized)}</span>
 					</div>
+					<div class="ledger-rule" aria-hidden="true"></div>
 
-					<div
-						class="bg-[var(--bg-surface)] border border-[var(--border-glass)] rounded-2xl p-6 shadow-lg"
-					>
-						<div class="flex items-center gap-3 mb-3">
-							<BookOpen class="w-5 h-5 text-[var(--alt-primary)]" />
-							<span
-								class="text-[var(--text-secondary)] text-sm uppercase tracking-wider font-semibold"
-								>Today's Unread</span
-							>
-						</div>
-						<span class="text-4xl font-bold text-[var(--text-primary)]">
-							{formatNumber(unreadCount)}
-						</span>
+					<div class="ledger-row" data-testid="stat-unread-count">
+						<span class="row-label">Today's Unread</span>
+						<span class="row-value">{formatNumber(unreadCount)}</span>
 					</div>
 				</div>
 			{/if}
 		</div>
 	</div>
 {/if}
+
+<style>
+	/* ── Page reveal ── */
+	.ledger-page {
+		max-width: 1400px;
+		opacity: 0;
+		transform: translateY(6px);
+		transition:
+			opacity 0.4s ease,
+			transform 0.4s ease;
+	}
+
+	.ledger-page.revealed {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	/* ── Header ── */
+	.ledger-header {
+		padding: 1.5rem 0 0;
+	}
+
+	.mobile-ledger-header {
+		padding: 1rem 1.25rem 0;
+	}
+
+	.ledger-date {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.06em;
+	}
+
+	.ledger-title {
+		font-family: var(--font-display);
+		font-size: 1.6rem;
+		font-weight: 800;
+		color: var(--alt-charcoal);
+		letter-spacing: -0.01em;
+		margin: 0.15rem 0 0;
+		line-height: 1.2;
+	}
+
+	.ledger-title-mobile {
+		font-family: var(--font-display);
+		font-size: 1.3rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+		margin: 0.1rem 0 0;
+		line-height: 1.2;
+	}
+
+	.ledger-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-top: 0.75rem;
+	}
+
+	/* ── Figures bar ── */
+	.figures-bar {
+		display: flex;
+		align-items: baseline;
+		gap: 1.5rem;
+		padding: 0.75rem 0;
+	}
+
+	.figure-group {
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+	}
+
+	.figure-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.figure-value {
+		font-family: var(--font-mono);
+		font-size: 1.1rem;
+		font-weight: 600;
+		color: var(--alt-charcoal);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.figure-separator {
+		width: 1px;
+		height: 1.2rem;
+		background: var(--surface-border);
+		flex-shrink: 0;
+	}
+
+	/* ── Status ── */
+	.status-group {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		margin-left: auto;
+	}
+
+	.status-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		flex-shrink: 0;
+	}
+
+	.status-dot--live {
+		background: var(--alt-sage);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.status-dot--offline {
+		background: var(--alt-ash);
+		animation: none;
+	}
+
+	.status-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.04em;
+	}
+
+	.reconnect-btn {
+		border: 1.5px solid var(--alt-charcoal);
+		background: transparent;
+		color: var(--alt-charcoal);
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 0.25rem 0.6rem;
+		cursor: pointer;
+		margin-left: 0.5rem;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+
+	.reconnect-btn:hover {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	/* ── Activity Log ── */
+	.activity-log-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 1rem 0 0.75rem;
+	}
+
+	.activity-log-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0;
+	}
+
+	.charts-grid {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 1rem;
+	}
+
+	.trend-error {
+		border: 1px solid var(--alt-terracotta);
+		padding: 0.75rem 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.trend-error-text {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-terracotta);
+	}
+
+	/* ── Section reveal animation ── */
+	.section-reveal {
+		opacity: 0;
+		transform: translateY(6px);
+		animation: reveal 0.4s ease forwards;
+		animation-delay: calc(var(--delay) * 100ms);
+	}
+
+	/* ── Mobile ── */
+	.ledger-mobile {
+		height: 100vh;
+		height: 100dvh;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		background: var(--surface-bg);
+	}
+
+	.mobile-content {
+		padding: 1rem 1.25rem;
+		flex: 1;
+	}
+
+	.mobile-status-row {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		margin-bottom: 1rem;
+	}
+
+	.mobile-loading {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 4rem 0;
+		gap: 0.75rem;
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-ash);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.loading-text {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--alt-ash);
+	}
+
+	.mobile-error {
+		border: 1px solid var(--alt-terracotta);
+		padding: 1rem;
+		text-align: center;
+	}
+
+	.error-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-terracotta);
+		display: block;
+		margin-bottom: 0.25rem;
+	}
+
+	.error-text {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-slate);
+	}
+
+	/* ── Ledger rows (mobile figures) ── */
+	.ledger-rows {
+		padding-top: 0.5rem;
+	}
+
+	.ledger-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		padding: 0.75rem 0;
+	}
+
+	.row-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.row-value {
+		font-family: var(--font-mono);
+		font-size: 1.1rem;
+		font-weight: 600;
+		color: var(--alt-charcoal);
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* ── Keyframes ── */
+	@keyframes reveal {
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.3;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	/* ── Reduced motion ── */
+	@media (prefers-reduced-motion: reduce) {
+		.ledger-page {
+			opacity: 1;
+			transform: none;
+			transition: none;
+		}
+
+		.section-reveal {
+			animation: none;
+			opacity: 1;
+			transform: none;
+		}
+
+		.status-dot--live {
+			animation: none;
+			opacity: 1;
+		}
+
+		.loading-pulse {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>
