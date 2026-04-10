@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Protocol
+
+
+class LLMMode(Enum):
+    """LLM calling profile — determines default temperature, num_predict, and endpoint."""
+
+    STRUCTURED = "structured"
+    LONGFORM = "longform"
 
 
 @dataclass(frozen=True)
@@ -23,4 +31,6 @@ class LLMProviderPort(Protocol):
         num_predict: int | None = None,
         temperature: float | None = None,
         format: dict | None = None,
+        think: bool | None = None,
+        mode: LLMMode | None = None,
     ) -> LLMResponse: ...

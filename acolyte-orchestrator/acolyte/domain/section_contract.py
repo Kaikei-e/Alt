@@ -36,13 +36,24 @@ class PlannerSection(BaseModel):
 
 
 class PlannerOutput(BaseModel):
-    """Full LLM structured output for the planner node.
+    """Full LLM structured output for the planner node (deprecated — use QueryExpansionOutput).
 
     reasoning-first field order per ADR-632.
     """
 
     reasoning: str
     sections: list[PlannerSection]
+
+
+class QueryExpansionOutput(BaseModel):
+    """Simplified LLM output — queries only, no section structure.
+
+    Section structure comes from REPORT_TYPE_SKELETONS (deterministic).
+    LLM only provides search query expansion per section key.
+    """
+
+    reasoning: str = ""
+    queries: dict[str, list[str]]  # section_key → search queries
 
 
 # Template defaults per section_role.

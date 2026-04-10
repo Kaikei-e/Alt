@@ -6,6 +6,7 @@ from acolyte.domain.section_contract import (
     ROLE_CONTRACT_DEFAULTS,
     PlannerOutput,
     PlannerSection,
+    QueryExpansionOutput,
     SectionContract,
 )
 
@@ -109,3 +110,17 @@ def test_planner_output_schema_is_valid_ollama_format() -> None:
     assert "reasoning" in schema["properties"]
     assert "sections" in schema["properties"]
     assert "required" in schema
+
+
+def test_query_expansion_output_schema_valid() -> None:
+    """QueryExpansionOutput schema has reasoning + queries properties."""
+    schema = QueryExpansionOutput.model_json_schema()
+    assert schema["type"] == "object"
+    assert "reasoning" in schema["properties"]
+    assert "queries" in schema["properties"]
+
+
+def test_query_expansion_output_reasoning_defaults_empty() -> None:
+    """reasoning defaults to empty string (debug-only field)."""
+    output = QueryExpansionOutput(queries={"analysis": ["q"]})
+    assert output.reasoning == ""

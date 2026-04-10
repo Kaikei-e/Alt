@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from acolyte.port.llm_provider import LLMResponse
+from acolyte.port.llm_provider import LLMMode, LLMResponse
 
 if TYPE_CHECKING:
     import httpx
@@ -33,13 +33,31 @@ _BASE_OPTIONS = {
 
 
 class OllamaGateway:
-    """LLM text generation via Ollama /api/generate endpoint."""
+    """LLM text generation via Ollama API.
+
+    Structured output (format != None): uses /api/chat — Ollama docs recommend
+    this endpoint for structured outputs. think parameter is NOT sent to avoid
+    Gemma4 #15260 (think=false breaks format constraint).
+
+    Free-text generation (format == None): uses /api/generate — allows thinking
+    mode for longer reasoning in Writer.
+    """
 
     def __init__(self, http_client: httpx.AsyncClient, settings: Settings) -> None:
         self._client = http_client
         self._base_url = settings.news_creator_url
         self._default_model = settings.default_model
         self._default_num_predict = settings.default_num_predict
+        self._mode_defaults = {
+            LLMMode.STRUCTURED: {
+                "temperature": settings.structured_temperature,
+                "num_predict": settings.structured_num_predict,
+            },
+            LLMMode.LONGFORM: {
+                "temperature": settings.longform_temperature,
+                "num_predict": settings.longform_num_predict,
+            },
+        }
 
     async def generate(
         self,
@@ -49,44 +67,107 @@ class OllamaGateway:
         num_predict: int | None = None,
         temperature: float | None = None,
         format: dict | None = None,
+        think: bool | None = None,
+        mode: LLMMode | None = None,
     ) -> LLMResponse:
-        """Generate text via Ollama /api/generate.
+        """Generate text via Ollama.
 
-        Options are merged on top of _BASE_OPTIONS to ensure model reload prevention.
-        Pass `format` (JSON schema dict) to enable Ollama structured output (GBNF grammar).
-        NOTE: Do NOT set think=false with format — Gemma4 bug (ollama/ollama#15260).
+        When mode is set, uses mode defaults for temperature/num_predict (explicit kwargs override).
+        Routes: STRUCTURED → /api/chat, LONGFORM → /api/generate, None → format-based routing.
         """
+        # Resolve defaults: mode defaults → explicit kwargs → gateway defaults
+        if mode is not None:
+            defaults = self._mode_defaults[mode]
+            resolved_temp = temperature if temperature is not None else defaults["temperature"]
+            resolved_predict = num_predict or defaults["num_predict"]
+        else:
+            resolved_temp = temperature if temperature is not None else 0.7
+            resolved_predict = num_predict or self._default_num_predict
+
         options = {
             **_BASE_OPTIONS,
-            "num_predict": num_predict or self._default_num_predict,
-            "temperature": temperature if temperature is not None else 0.7,
+            "num_predict": resolved_predict,
+            "temperature": resolved_temp,
         }
 
-        payload: dict = {
-            "model": model or self._default_model,
-            "prompt": prompt,
+        resolved_model = model or self._default_model
+
+        # Endpoint routing: mode-based when set, format-based otherwise
+        if mode == LLMMode.STRUCTURED:
+            return await self._generate_structured(prompt, resolved_model, options, format or {})
+        if mode == LLMMode.LONGFORM:
+            return await self._generate_freetext(prompt, resolved_model, options, think=think)
+        # Fallback: format-based routing (backward compat)
+        if format is not None:
+            return await self._generate_structured(prompt, resolved_model, options, format)
+        return await self._generate_freetext(prompt, resolved_model, options, think=think)
+
+    async def _generate_structured(
+        self,
+        prompt: str,
+        model: str,
+        options: dict,
+        format: dict,
+    ) -> LLMResponse:
+        """Structured output via /api/chat. No think parameter (Gemma4 #15260)."""
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "format": format,
             "stream": False,
             "options": options,
         }
-        if format is not None:
-            payload["format"] = format
 
         logger.info(
-            "Ollama generate",
-            model=payload["model"],
+            "Ollama chat (structured)",
+            model=model,
             prompt_len=len(prompt),
             num_predict=options["num_predict"],
             temperature=options["temperature"],
         )
 
-        resp = await self._client.post(
-            f"{self._base_url}/api/generate",
-            json=payload,
+        resp = await self._client.post(f"{self._base_url}/api/chat", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+        text = data.get("message", {}).get("content", "")
+        return self._build_response(data, text, model)
+
+    async def _generate_freetext(
+        self,
+        prompt: str,
+        model: str,
+        options: dict,
+        *,
+        think: bool | None = None,
+    ) -> LLMResponse:
+        """Free-text generation via /api/generate. Thinking mode allowed."""
+        payload: dict = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": options,
+        }
+        if think is not None:
+            payload["think"] = think
+
+        logger.info(
+            "Ollama generate (freetext)",
+            model=model,
+            prompt_len=len(prompt),
+            num_predict=options["num_predict"],
+            temperature=options["temperature"],
         )
+
+        resp = await self._client.post(f"{self._base_url}/api/generate", json=payload)
         resp.raise_for_status()
         data = resp.json()
 
         text = data.get("response", "")
+        return self._build_response(data, text, model)
+
+    def _build_response(self, data: dict, text: str, model: str) -> LLMResponse:
+        """Build LLMResponse from Ollama API response."""
         eval_dur = data.get("eval_duration", 0)
         logger.info(
             "Ollama response",
@@ -98,7 +179,7 @@ class OllamaGateway:
 
         return LLMResponse(
             text=text,
-            model=data.get("model", model or self._default_model),
+            model=data.get("model", model),
             prompt_tokens=data.get("prompt_eval_count", 0),
             completion_tokens=data.get("eval_count", 0),
         )

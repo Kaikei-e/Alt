@@ -1,21 +1,23 @@
-"""Planner node — generates report outline from scope.
+"""Planner node — semi-deterministic report outline from skeleton + query expansion.
 
-Uses Ollama structured output (format parameter) with reasoning-first field order (ADR-632).
-temperature=0, num_predict=2048 for sufficient Japanese JSON output budget.
-
-Design (Issue 5 + resolve): LLM generates only key/title/search_queries/section_role.
-Contract fields (synthesis_only, novelty_against, min_citations, etc.) come from
-ROLE_CONTRACT_DEFAULTS templates, merged in post-processing.
+Design (Issue 5 + resolve + quality hotfix):
+  - Section structure is fixed per report_type (REPORT_TYPE_SKELETONS)
+  - LLM generates only search_queries per skeleton section (query expansion)
+  - Contract fields come from ROLE_CONTRACT_DEFAULTS templates
+  - num_predict=1024 (skeleton only needs short query output)
+  - On LLM failure, skeleton + topic-based queries is the intended fallback
 """
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import structlog
 
 from acolyte.domain.query_facet import decompose_queries
-from acolyte.domain.section_contract import ROLE_CONTRACT_DEFAULTS, PlannerOutput
+from acolyte.domain.section_contract import ROLE_CONTRACT_DEFAULTS, QueryExpansionOutput
+from acolyte.port.llm_provider import LLMMode
 from acolyte.usecase.graph.llm_parse import generate_validated
 
 if TYPE_CHECKING:
@@ -24,25 +26,47 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-PLANNER_PROMPT = """You are a report planner. Given the topic, create a structured outline with 3-5 sections.
-Each section must include search_queries — a list of 1-3 specific search strings to find relevant articles.
-Each section must include section_role — one of "analysis", "conclusion", "executive_summary", or "general".
-
-Role guidelines:
-- "executive_summary": high-level overview of key findings
-- "analysis": detailed examination of evidence and data
-- "conclusion": synthesis of analysis findings — implications, priorities, recommendations (NO new facts)
-- "general": any other section type
+PLANNER_PROMPT = """You are a report query planner. Given the topic and fixed section structure, generate specific search queries for each section.
 
 Topic: {scope}
 
-Return JSON with "reasoning" (one sentence about your planning approach) and "sections" (array of objects with key, title, search_queries, section_role).
-Keep reasoning to one sentence to save tokens for sections.
+Sections (fixed structure):
+{skeleton_block}
+
+For each section, generate 1-3 specific search queries to find relevant articles.
+Return JSON with "reasoning" (one sentence) and "queries" (object mapping section key to list of search query strings).
+Keep reasoning to one sentence. Focus on generating diverse, specific search queries.
+
+JSON schema: {schema}
 
 Example:
-{{"reasoning": "A market analysis needs executive summary, analysis, and conclusion.", "sections": [{{"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary", "search_queries": ["AI market overview 2026"]}}, {{"key": "market_analysis", "title": "Market Analysis", "section_role": "analysis", "search_queries": ["AI market size forecast", "AI adoption enterprise"]}}, {{"key": "conclusion", "title": "Conclusion", "section_role": "conclusion", "search_queries": ["AI industry predictions"]}}]}}
+{{"reasoning": "Need market data and trend analysis.", "queries": {{"executive_summary": ["AI chip market overview 2026"], "analysis": ["NVIDIA Blackwell GPU", "AMD MI400 series"], "conclusion": ["AI chip market outlook"]}}}}"""
 
-Now plan sections for the given topic."""
+# Default skeleton for unknown report_types (no pre-baked queries).
+DEFAULT_SKELETON: list[dict] = [
+    {"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"},
+    {"key": "analysis", "title": "Analysis", "section_role": "analysis"},
+    {"key": "conclusion", "title": "Conclusion", "section_role": "conclusion"},
+]
+
+# Fixed section skeletons per report_type. LLM only expands queries.
+REPORT_TYPE_SKELETONS: dict[str, list[dict]] = {
+    "market_analysis": [
+        {"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"},
+        {"key": "analysis", "title": "Analysis", "section_role": "analysis"},
+        {"key": "conclusion", "title": "Conclusion", "section_role": "conclusion"},
+    ],
+    "weekly_briefing": [
+        {"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"},
+        {"key": "analysis", "title": "Analysis", "section_role": "analysis"},
+        {"key": "conclusion", "title": "Conclusion", "section_role": "conclusion"},
+    ],
+    "trend_report": [
+        {"key": "executive_summary", "title": "Executive Summary", "section_role": "executive_summary"},
+        {"key": "analysis", "title": "Trend Analysis", "section_role": "analysis"},
+        {"key": "conclusion", "title": "Outlook", "section_role": "conclusion"},
+    ],
+}
 
 
 def _infer_section_role(key: str, title: str) -> str:
@@ -65,30 +89,6 @@ def _ensure_search_queries(sections: list[dict], topic: str) -> list[dict]:
             title = section.get("title", section.get("key", ""))
             section["search_queries"] = [f"{topic} {title}"]
     return sections
-
-
-def _default_fallback_sections(topic: str) -> list[dict]:
-    """Generate fallback sections with topic-based search queries."""
-    return [
-        {
-            "key": "executive_summary",
-            "title": "Executive Summary",
-            "section_role": "executive_summary",
-            "search_queries": [f"{topic} executive summary"],
-        },
-        {
-            "key": "analysis",
-            "title": "Analysis",
-            "section_role": "analysis",
-            "search_queries": [f"{topic} analysis"],
-        },
-        {
-            "key": "conclusion",
-            "title": "Conclusion",
-            "section_role": "conclusion",
-            "search_queries": [f"{topic} conclusion"],
-        },
-    ]
 
 
 def _enrich_with_contract(sections: list[dict], brief: dict | None = None) -> list[dict]:
@@ -128,6 +128,23 @@ def _enrich_with_contract(sections: list[dict], brief: dict | None = None) -> li
     return sections
 
 
+def _get_skeleton(brief: dict) -> list[dict]:
+    """Get fixed section skeleton for report_type, or default."""
+    report_type = brief.get("report_type", "")
+    skeleton = REPORT_TYPE_SKELETONS.get(report_type)
+    if skeleton:
+        return [dict(s) for s in skeleton]  # copy to avoid mutation
+    return [dict(s) for s in DEFAULT_SKELETON]
+
+
+def _format_skeleton_block(skeleton: list[dict]) -> str:
+    """Format skeleton sections for the prompt."""
+    lines = []
+    for s in skeleton:
+        lines.append(f"- {s['key']} ({s.get('section_role', 'general')}): {s.get('title', s['key'])}")
+    return "\n".join(lines)
+
+
 class PlannerNode:
     def __init__(self, llm: LLMProviderPort) -> None:
         self._llm = llm
@@ -135,28 +152,41 @@ class PlannerNode:
     async def __call__(self, state: ReportGenerationState) -> dict:
         brief = state.get("brief") or state.get("scope") or {}
         topic = brief.get("topic", "")
-        prompt = PLANNER_PROMPT.format(scope=brief)
+        skeleton = _get_skeleton(brief)
 
-        fallback = PlannerOutput(
-            reasoning="fallback",
-            sections=[],
+        schema_str = json.dumps(QueryExpansionOutput.model_json_schema())
+        prompt = PLANNER_PROMPT.format(
+            scope=topic,
+            skeleton_block=_format_skeleton_block(skeleton),
+            schema=schema_str,
         )
+
+        fallback = QueryExpansionOutput(reasoning="fallback", queries={})
         result = await generate_validated(
             self._llm,
             prompt,
-            PlannerOutput,
+            QueryExpansionOutput,
             temperature=0,
-            num_predict=2048,
+            num_predict=1024,
             fallback=fallback,
+            mode=LLMMode.STRUCTURED,
         )
 
         if result.reasoning and result.reasoning != "fallback":
             logger.info("Planner reasoning", reasoning=result.reasoning[:200])
+        else:
+            logger.info(
+                "Planner skeleton fallback activated",
+                report_type=brief.get("report_type", ""),
+            )
 
-        outline = [s.model_dump() for s in result.sections]
-
-        if not outline:
-            outline = _default_fallback_sections(topic)
+        # Merge LLM-generated queries into skeleton
+        queries_by_key = result.queries or {}
+        outline: list[dict] = []
+        for skel in skeleton:
+            section = dict(skel)
+            section["search_queries"] = queries_by_key.get(skel["key"], [])
+            outline.append(section)
 
         # Ensure all sections have search_queries and section_role
         outline = _ensure_search_queries(outline, topic)
