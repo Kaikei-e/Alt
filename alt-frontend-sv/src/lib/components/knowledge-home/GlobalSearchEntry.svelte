@@ -45,7 +45,7 @@ function handleKeydown(e: KeyboardEvent) {
 				bind:value={query}
 				onkeydown={handleKeydown}
 				placeholder="Search across articles, recaps, and tags"
-				class="w-full rounded-xl border border-[var(--surface-border)] bg-[var(--surface-2)] px-4 py-2.5 pl-9 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--interactive-text)] focus:ring-2 focus:ring-[var(--interactive-text)]/20 focus:outline-none transition-colors"
+				class="w-full border border-[var(--surface-border)] bg-[var(--surface-2)] px-4 py-2.5 pl-9 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:border-[var(--alt-charcoal)] focus:outline-none transition-colors"
 				style="min-height: 44px;"
 			/>
 			<Search
@@ -55,7 +55,7 @@ function handleKeydown(e: KeyboardEvent) {
 		<button
 			type="button"
 			onclick={handleAsk}
-			class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-border)] px-2.5 py-1.5 text-sm font-medium text-[var(--interactive-text)] transition-colors active:bg-[var(--surface-hover)]"
+			class="inline-flex items-center gap-1.5 border border-[var(--surface-border)] px-2.5 py-1.5 text-sm font-medium text-[var(--interactive-text)] transition-colors active:bg-[var(--surface-hover)]"
 			style="min-height: 44px;"
 			title="Ask Augur"
 			aria-label="Ask Augur"

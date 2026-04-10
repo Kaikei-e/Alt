@@ -11,7 +11,7 @@ const { serviceQuality = "full", onDismiss }: Props = $props();
 
 {#if serviceQuality === "degraded"}
 	<div
-		class="flex items-center gap-2 rounded-xl border border-[var(--badge-amber-border)] bg-[var(--badge-amber-bg)] px-4 py-2 text-sm text-[var(--badge-amber-text)]"
+		class="flex items-center gap-2  border border-[var(--badge-amber-border)] bg-[var(--badge-amber-bg)] px-4 py-2 text-sm text-[var(--badge-amber-text)]"
 		role="alert"
 	>
 		<AlertTriangle size={16} class="flex-shrink-0" />
@@ -22,7 +22,7 @@ const { serviceQuality = "full", onDismiss }: Props = $props();
 		{#if onDismiss}
 			<button
 				type="button"
-				class="flex-shrink-0 rounded p-0.5 transition-colors hover:bg-white/10"
+				class="flex-shrink-0 p-0.5 transition-colors hover:bg-white/10"
 				title="Dismiss"
 				onclick={onDismiss}
 			>
@@ -32,7 +32,7 @@ const { serviceQuality = "full", onDismiss }: Props = $props();
 	</div>
 {:else if serviceQuality === "fallback"}
 	<div
-		class="flex items-center gap-2 rounded-xl border border-[var(--badge-orange-border)] bg-[var(--badge-orange-bg)] px-4 py-2 text-sm text-[var(--badge-orange-text)]"
+		class="flex items-center gap-2  border border-[var(--badge-orange-border)] bg-[var(--badge-orange-bg)] px-4 py-2 text-sm text-[var(--badge-orange-text)]"
 		role="alert"
 	>
 		<ShieldAlert size={16} class="flex-shrink-0" />
@@ -43,7 +43,7 @@ const { serviceQuality = "full", onDismiss }: Props = $props();
 		{#if onDismiss}
 			<button
 				type="button"
-				class="flex-shrink-0 rounded p-0.5 transition-colors hover:bg-white/10"
+				class="flex-shrink-0 p-0.5 transition-colors hover:bg-white/10"
 				title="Dismiss"
 				onclick={onDismiss}
 			>

@@ -28,16 +28,16 @@ export class DesktopMorningLetterPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 
-		// Page elements
-		this.pageTitle = page
-			.getByRole("heading", { name: /morning letter/i })
-			.first();
+		// Page elements — the h1 now reads "Today's Edition" (or a formatted date)
+		this.pageTitle = page.locator(".edition-dateline").first();
 
 		// Chat container
 		this.chatContainer = page.locator(".letter-chat");
 
-		// Messages - use partial match for dynamic content
-		this.welcomeMessage = page.getByText(/follow-up questions about today/i);
+		// Messages — scope to .entry-prose to avoid matching the h1 dateline
+		this.welcomeMessage = page
+			.locator(".entry-prose")
+			.getByText(/follow-up questions about today/i);
 		this.thinkingIndicator = page.getByText(
 			/searching recent news|searching\.\.\./i,
 		);

@@ -30,7 +30,7 @@ function formatTime(isoString: string): string {
 </script>
 
 <div
-	class="mt-2 p-3 rounded border text-xs space-y-2 bg-[var(--surface-bg)] border-[var(--surface-border)]"
+	class="mt-2 p-3 border text-xs space-y-2 bg-[var(--surface-bg)] border-[var(--surface-border)]"
 >
 	<div class="flex items-center gap-2 text-[var(--text-secondary)]">
 		<span class="font-medium">{display.label}</span>
@@ -58,7 +58,7 @@ function formatTime(isoString: string): string {
 			<div class="flex flex-wrap gap-1 mt-0.5">
 				{#each info.previousTags as tag}
 					<span
-						class="inline-flex items-center rounded border px-1.5 py-0.5 text-xs bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)] opacity-60 line-through"
+						class="inline-flex items-center border px-1.5 py-0.5 text-xs bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)] opacity-60 line-through"
 					>
 						{tag}
 					</span>
@@ -73,7 +73,7 @@ function formatTime(isoString: string): string {
 			<div class="flex flex-wrap gap-1 mt-0.5">
 				{#each info.previousWhyCodes as code}
 					<span
-						class="inline-flex items-center rounded border px-1.5 py-0.5 text-xs bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)] opacity-60"
+						class="inline-flex items-center border px-1.5 py-0.5 text-xs bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)] opacity-60"
 					>
 						{code}
 					</span>

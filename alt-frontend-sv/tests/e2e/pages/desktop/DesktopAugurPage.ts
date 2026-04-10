@@ -23,8 +23,8 @@ export class DesktopAugurPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 
-		// Empty state title or thread heading
-		this.pageTitle = page.locator(".augur-empty").getByText(/ask augur/i);
+		// Empty state title (scoped to .empty-title inside .augur-empty)
+		this.pageTitle = page.locator(".augur-empty .empty-title");
 
 		// Thread container
 		this.threadContainer = page.locator(".augur-thread");

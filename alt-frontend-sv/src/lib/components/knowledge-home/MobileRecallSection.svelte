@@ -24,11 +24,11 @@ const hasMore = $derived(candidates.length > 2);
 </script>
 
 {#if unavailable}
-	<div class="mx-4 mt-3 rounded-lg border border-[var(--recall-border)] bg-[var(--recall-bg)] px-4 py-3">
+	<div class="mx-4 mt-3 border border-[var(--recall-border)] bg-[var(--recall-bg)] px-4 py-3">
 		<p class="text-sm text-[var(--text-tertiary)]">Recall is temporarily unavailable.</p>
 	</div>
 {:else if candidates.length > 0}
-	<div class="mx-4 mt-3 rounded-lg border border-[var(--recall-border)] border-t-2 border-t-[var(--text-primary)] bg-[var(--recall-bg)]">
+	<div class="mx-4 mt-3 border border-[var(--recall-border)] border-t-2 border-t-[var(--text-primary)] bg-[var(--recall-bg)]">
 		<!-- Section header -->
 		<div class="flex items-center gap-1.5 px-4 pt-3 pb-2">
 			<Brain class="h-3.5 w-3.5 text-[var(--text-secondary)]" />

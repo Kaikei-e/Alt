@@ -39,14 +39,14 @@ const {
 				</span>
 				<button
 					type="button"
-					class="rounded-md bg-[var(--action-surface)] border-transparent px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--action-surface-hover)] transition-colors"
+					class="bg-[var(--action-surface)] border border-[var(--surface-border)] px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--action-surface-hover)] transition-colors"
 					onclick={onToggle}
 				>
 					{isPlaying ? "Pause" : "Play"}
 				</button>
 				<button
 					type="button"
-					class="rounded-md bg-[var(--action-surface)] border-transparent px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--action-surface-hover)] transition-colors"
+					class="bg-[var(--action-surface)] border border-[var(--surface-border)] px-3 py-1.5 text-xs text-[var(--text-primary)] hover:bg-[var(--action-surface-hover)] transition-colors"
 					onclick={onClear}
 				>
 					Clear

@@ -630,7 +630,9 @@ class WriterNode:
                         include_roles={"analysis"},
                     )
                     accepted_claims_by_section.update(accepted_analysis)
-                    accepted_flat = [claim for claims_in_section in accepted_analysis.values() for claim in claims_in_section]
+                    accepted_flat = [
+                        claim for claims_in_section in accepted_analysis.values() for claim in claims_in_section
+                    ]
                     if accepted_flat:
                         claims = _synthesis_claims_from_accepted(
                             accepted_flat,
@@ -647,7 +649,9 @@ class WriterNode:
                         exclude_roles={"executive_summary"},
                     )
                     accepted_claims_by_section.update(accepted_non_es)
-                    accepted_flat = [claim for claims_in_section in accepted_non_es.values() for claim in claims_in_section]
+                    accepted_flat = [
+                        claim for claims_in_section in accepted_non_es.values() for claim in claims_in_section
+                    ]
                     if accepted_flat:
                         claims = _synthesis_claims_from_accepted(
                             accepted_flat,

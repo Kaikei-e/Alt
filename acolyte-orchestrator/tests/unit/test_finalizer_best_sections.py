@@ -22,24 +22,52 @@ class FakeRepo:
             latest_successful_run_id=None,
             created_at=datetime.now(UTC),
         )
-        self.sections = [ReportSection(report_id=self.report_id, section_key="analysis", current_version=0, display_order=0)]
+        self.sections = [
+            ReportSection(report_id=self.report_id, section_key="analysis", current_version=0, display_order=0)
+        ]
         self.saved_bodies: dict[str, str] = {}
+
+    async def create_report(self, title, report_type):
+        return self.report
+
+    async def create_brief(self, report_id, brief):
+        pass
+
+    async def get_brief(self, report_id):
+        return None
 
     async def get_report(self, report_id):
         return self.report
 
+    async def list_reports(self, cursor, limit):
+        return [], None
+
     async def bump_version(self, report_id, expected_version, change_reason, change_items, **kwargs):
         return expected_version + 1
+
+    async def get_report_version(self, report_id, version_no):
+        return None
+
+    async def list_report_versions(self, report_id, cursor, limit):
+        return [], None
+
+    async def get_change_items(self, report_id, version_no):
+        return []
 
     async def get_sections(self, report_id):
         return self.sections
 
     async def create_section(self, report_id, section_key, display_order):
-        return None
+        return ReportSection(
+            report_id=report_id, section_key=section_key, current_version=0, display_order=display_order
+        )
 
     async def bump_section_version(self, report_id, section_key, expected_version, body, citations=None):
         self.saved_bodies[section_key] = body
         return expected_version + 1
+
+    async def get_section_version(self, report_id, section_key, version_no):
+        return None
 
 
 @pytest.mark.asyncio

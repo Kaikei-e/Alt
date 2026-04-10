@@ -47,56 +47,130 @@ const activeSummary = $derived.by(() => {
 });
 </script>
 
-<div class="space-y-2">
-	<div class="flex items-center gap-2 flex-wrap">
-	<button
-		class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border transition-colors
-			{activeLensId === null
-				? 'border-[var(--accent-primary)] text-[var(--accent-primary)] bg-[var(--accent-primary)]/15'
-				: 'border-[var(--surface-border)] text-[var(--text-secondary)] hover:border-[var(--text-secondary)]'}"
-		onclick={() => onSelect(null)}
-	>
-		<Filter class="h-3.5 w-3.5" />
-		All
-	</button>
-
-	{#each lenses as lens (lens.lensId)}
+<div class="lens-bar">
+	<div class="lens-pills">
 		<button
-			class="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-full border transition-colors
-				{activeLensId === lens.lensId
-					? 'border-[var(--accent-primary)] text-[var(--accent-primary)] bg-[var(--accent-primary)]/15'
-					: 'border-[var(--surface-border)] text-[var(--text-secondary)] hover:border-[var(--text-secondary)]'}"
-			onclick={() => onSelect(lens.lensId)}
+			class="lens-pill {activeLensId === null ? 'lens-pill--active' : ''}"
+			onclick={() => onSelect(null)}
 		>
-			{lens.name}
+			<Filter class="h-3.5 w-3.5" />
+			All
 		</button>
-	{/each}
 
-	<button
-		class="inline-flex items-center gap-1 px-2 py-1.5 text-sm rounded-full border border-dashed border-[var(--surface-border)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:border-[var(--text-secondary)] transition-colors"
-		onclick={onCreateClick}
-	>
-		<Plus class="h-3.5 w-3.5" />
-		Save current view
-	</button>
+		{#each lenses as lens (lens.lensId)}
+			<button
+				class="lens-pill {activeLensId === lens.lensId ? 'lens-pill--active' : ''}"
+				onclick={() => onSelect(lens.lensId)}
+			>
+				{lens.name}
+			</button>
+		{/each}
+
+		<button class="lens-pill lens-pill--create" onclick={onCreateClick}>
+			<Plus class="h-3.5 w-3.5" />
+			Save current view
+		</button>
 	</div>
 
 	{#if activeLens}
-		<div class="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-2)] px-4 py-3">
-			<div class="flex items-center justify-between gap-3">
-				<div class="min-w-0">
-					<p class="text-sm font-medium text-[var(--text-primary)]">
-						Active lens: {activeLens.name}
-					</p>
-					<p class="text-xs text-[var(--text-secondary)]">{activeSummary.join(" · ")}</p>
-				</div>
-				<button
-					class="shrink-0 rounded-full border border-[var(--surface-border)] px-3 py-1 text-xs text-[var(--text-primary)] transition-colors hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
-					onclick={() => onSelect(null)}
-				>
-					Clear
-				</button>
+		<div class="lens-summary">
+			<div class="min-w-0">
+				<p class="lens-summary-name">Active lens: {activeLens.name}</p>
+				<p class="lens-summary-detail">{activeSummary.join(" · ")}</p>
 			</div>
+			<button class="lens-clear" onclick={() => onSelect(null)}>
+				Clear
+			</button>
 		</div>
 	{/if}
 </div>
+
+<style>
+	.lens-bar {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.lens-pills {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.lens-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.875rem;
+		font-weight: 500;
+		border: 1px solid var(--surface-border);
+		background: transparent;
+		color: var(--alt-slate);
+		cursor: pointer;
+		transition: border-color 0.15s, color 0.15s;
+	}
+
+	.lens-pill:hover {
+		border-color: var(--alt-slate);
+	}
+
+	.lens-pill--active {
+		border-color: var(--alt-primary);
+		color: var(--alt-primary);
+		background: color-mix(in srgb, var(--alt-primary) 15%, transparent);
+	}
+
+	.lens-pill--create {
+		border-style: dashed;
+		color: var(--alt-ash);
+	}
+
+	.lens-pill--create:hover {
+		color: var(--alt-slate);
+		border-color: var(--alt-slate);
+	}
+
+	.lens-summary {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-2);
+		padding: 0.75rem 1rem;
+	}
+
+	.lens-summary-name {
+		font-family: var(--font-body);
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--alt-charcoal);
+	}
+
+	.lens-summary-detail {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		color: var(--alt-slate);
+	}
+
+	.lens-clear {
+		flex-shrink: 0;
+		border: 1px solid var(--surface-border);
+		padding: 0.25rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		color: var(--alt-charcoal);
+		background: transparent;
+		cursor: pointer;
+		transition: border-color 0.15s, color 0.15s;
+	}
+
+	.lens-clear:hover {
+		border-color: var(--alt-primary);
+		color: var(--alt-primary);
+	}
+</style>

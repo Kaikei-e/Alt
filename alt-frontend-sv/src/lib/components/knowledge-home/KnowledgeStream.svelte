@@ -134,9 +134,9 @@ onMount(() => {
 });
 </script>
 
-<div class="pb-3 mb-5 border-b border-[var(--surface-border)]/30 flex items-center justify-between gap-3">
+<div class="stream-header">
 	<div>
-		<h2 class="text-lg font-bold text-[var(--text-primary)] tracking-tight">
+		<h2 class="stream-heading">
 			{#if streamMode === "search"}
 				Search results
 			{:else if streamMode === "lens" && activeLensName}
@@ -147,7 +147,7 @@ onMount(() => {
 				Latest
 			{/if}
 		</h2>
-		<p class="mt-1 text-sm text-[var(--text-muted)]">
+		<p class="stream-subtitle">
 			{#if streamMode === "search" && searchQuery}
 				Query: "{searchQuery}"
 			{:else if streamMode === "lens" && activeLensName}
@@ -164,21 +164,22 @@ onMount(() => {
 {:else if !loading && items.length === 0}
 	<KnowledgeHomeEmpty reason={emptyReason} {activeLensName} {onClearLens} />
 {:else}
-	<div class="flex flex-col gap-4" bind:this={streamRef}>
+	<div class="stream-items" bind:this={streamRef}>
 		{#if degradedNote}
-			<div class="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-xs text-amber-400">
+			<div class="degraded-note">
 				{degradedNote}
 			</div>
 		{/if}
-		{#each items as item (item.itemKey)}
-			<KnowledgeCard {item} {onAction} {onTagClick} />
+		{#each items as item, i (item.itemKey)}
+			<div class="stream-entry" style="--entry-delay: {i};">
+				<KnowledgeCard {item} {onAction} {onTagClick} />
+			</div>
 		{/each}
 
 		{#if loading}
-			<div class="flex justify-center py-4">
-				<div
-					class="h-5 w-5 border-2 border-[var(--text-secondary)] border-t-transparent rounded-full animate-spin"
-				></div>
+			<div class="loading-more">
+				<span class="loading-pulse"></span>
+				<span class="loading-text">Loading more...</span>
 			</div>
 		{/if}
 
@@ -186,3 +187,98 @@ onMount(() => {
 		<div bind:this={sentinelRef} class="h-1"></div>
 	</div>
 {/if}
+
+<style>
+	.stream-header {
+		padding-bottom: 0.75rem;
+		margin-bottom: 1.25rem;
+		border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 30%, transparent);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.stream-heading {
+		font-family: var(--font-display);
+		font-size: 1.15rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		letter-spacing: -0.01em;
+	}
+
+	.stream-subtitle {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-ash);
+		margin-top: 0.15rem;
+		font-style: italic;
+	}
+
+	.stream-items {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.stream-entry {
+		opacity: 0;
+		animation: entry-in 0.3s ease forwards;
+		animation-delay: calc(var(--entry-delay) * 40ms);
+	}
+
+	.degraded-note {
+		border: 1px solid color-mix(in srgb, var(--badge-amber-border) 30%, transparent);
+		background: color-mix(in srgb, var(--badge-amber-bg) 5%, transparent);
+		padding: 0.5rem 0.75rem;
+		font-size: 0.75rem;
+		color: var(--badge-amber-text);
+	}
+
+	.loading-more {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 1rem 0;
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-ash);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.loading-text {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-ash);
+		font-style: italic;
+	}
+
+	@keyframes entry-in {
+		from {
+			opacity: 0;
+			transform: translateY(4px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 0.3; }
+		50% { opacity: 1; }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.stream-entry {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>

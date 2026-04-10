@@ -32,7 +32,7 @@ const Chevron = $derived(expanded ? ChevronUp : ChevronDown);
 
 <button
 	type="button"
-	class={`inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded border cursor-pointer transition-colors ${display.colorClass}`}
+	class={`inline-flex items-center gap-1 px-1.5 py-0.5 text-xs border cursor-pointer transition-colors ${display.colorClass}`}
 	title={`Updated at ${info.supersededAt}`}
 	onclick={onToggle}
 >

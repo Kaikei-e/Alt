@@ -51,7 +51,7 @@ class RubricEvaluator:
         try:
             parsed = json.loads(response.text)
             return parsed.get("claims", [])
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError):  # fmt: skip
             logger.warning("Claim extraction failed", raw_len=len(response.text))
             return []
 

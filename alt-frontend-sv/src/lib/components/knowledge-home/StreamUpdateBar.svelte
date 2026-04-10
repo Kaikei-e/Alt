@@ -12,35 +12,102 @@ const { pendingCount, isConnected, isFallback, onApply }: Props = $props();
 
 const indicatorColor = $derived(
 	isFallback
-		? "bg-[var(--badge-orange-text)]"
+		? "var(--badge-orange-text)"
 		: isConnected
-			? "bg-[var(--badge-green-text)]"
-			: "bg-[var(--badge-gray-text)]",
+			? "var(--badge-green-text)"
+			: "var(--badge-gray-text)",
 );
-const indicatorPulse = $derived(
-	isConnected && !isFallback ? "animate-pulse" : "",
-);
+const indicatorPulse = $derived(isConnected && !isFallback);
 </script>
 
 {#if pendingCount > 0}
-	<div class="w-full flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/5">
-		<span class="h-2.5 w-2.5 rounded-full {indicatorColor} {indicatorPulse} flex-shrink-0" aria-hidden="true"></span>
-		<button
-			class="flex-1 flex items-center justify-center gap-2 text-[var(--accent-primary)] hover:text-[var(--accent-primary)]/80 transition-colors"
-			onclick={onApply}
-		>
+	<div class="update-bar update-bar--pending">
+		<span
+			class="indicator {indicatorPulse ? 'indicator--pulse' : ''}"
+			style="background: {indicatorColor};"
+			aria-hidden="true"
+		></span>
+		<button class="update-apply" onclick={onApply}>
 			<RefreshCw class="h-3.5 w-3.5" />
 			{pendingCount} {pendingCount === 1 ? 'item' : 'items'} updated
 		</button>
 	</div>
 {:else if isFallback}
-	<div class="w-full flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-[var(--badge-orange-border)] bg-[var(--badge-orange-bg)]">
-		<AlertCircle class="h-3.5 w-3.5 text-[var(--badge-orange-text)] flex-shrink-0" />
-		<span class="text-[var(--text-secondary)]">Live updates unavailable</span>
+	<div class="update-bar update-bar--fallback">
+		<AlertCircle class="h-3.5 w-3.5" style="color: var(--badge-orange-text);" />
+		<span class="update-text">Live updates unavailable</span>
 	</div>
 {:else if !isConnected}
-	<div class="w-full flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)]">
-		<WifiOff class="h-3.5 w-3.5 text-[var(--text-tertiary)] flex-shrink-0" />
-		<span class="text-[var(--text-tertiary)]">Reconnecting...</span>
+	<div class="update-bar update-bar--disconnected">
+		<WifiOff class="h-3.5 w-3.5" style="color: var(--alt-ash);" />
+		<span class="update-text update-text--muted">Reconnecting...</span>
 	</div>
 {/if}
+
+<style>
+	.update-bar {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1rem;
+		font-size: 0.875rem;
+		border: 1px solid var(--surface-border);
+	}
+
+	.update-bar--pending {
+		border-color: color-mix(in srgb, var(--alt-primary) 30%, transparent);
+		background: color-mix(in srgb, var(--alt-primary) 5%, transparent);
+	}
+
+	.update-bar--fallback {
+		border-color: var(--badge-orange-border);
+		background: var(--badge-orange-bg);
+	}
+
+	.update-bar--disconnected {
+		background: var(--surface-bg);
+	}
+
+	.indicator {
+		width: 0.625rem;
+		height: 0.625rem;
+		border-radius: 50%;
+		flex-shrink: 0;
+	}
+
+	.indicator--pulse {
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.update-apply {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		color: var(--alt-primary);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		transition: opacity 0.15s;
+	}
+
+	.update-apply:hover {
+		opacity: 0.8;
+	}
+
+	.update-text {
+		font-family: var(--font-body);
+		color: var(--alt-slate);
+	}
+
+	.update-text--muted {
+		color: var(--alt-ash);
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 0.3; }
+		50% { opacity: 1; }
+	}
+</style>

@@ -11,7 +11,7 @@ const display = $derived(resolveRecallReason(reasonType, description));
 </script>
 
 <span
-	class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded border {display.colorClass}"
+	class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs border {display.colorClass}"
 >
 	{display.label}
 </span>

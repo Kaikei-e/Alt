@@ -48,16 +48,14 @@ class CuratorNode:
             section_title = section.get("title", section_key)
 
             # Filter evidence tagged for this section
-            section_evidence = [
-                e for e in evidence if section_key in e.get("section_keys", [])
-            ]
+            section_evidence = [e for e in evidence if section_key in e.get("section_keys", [])]
 
             if len(section_evidence) <= self._max_evidence:
                 curated_by_section[section_key] = section_evidence
             else:
                 # LLM curation for sections exceeding limit
                 curated_by_section[section_key] = await self._curate_with_llm(
-                    section_evidence, topic, section_title
+                    section_evidence, topic, str(section_title or section_key)
                 )
 
         # Backward compat: flatten curated_by_section into a deduplicated curated list
@@ -84,9 +82,7 @@ class CuratorNode:
         )
         return {"curated_by_section": curated_by_section, "curated": curated_flat}
 
-    async def _curate_with_llm(
-        self, section_evidence: list[dict], topic: str, section_title: str
-    ) -> list[dict]:
+    async def _curate_with_llm(self, section_evidence: list[dict], topic: str, section_title: str) -> list[dict]:
         """Use LLM to select top evidence items for a section."""
         prompt = CURATOR_PROMPT.format(
             limit=self._max_evidence,
@@ -100,5 +96,5 @@ class CuratorNode:
             selected_ids = json.loads(response.text)
             id_set = set(selected_ids)
             return [e for e in section_evidence if e.get("id") in id_set]
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError):  # fmt: skip
             return section_evidence[: self._max_evidence]

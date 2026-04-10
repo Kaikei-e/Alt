@@ -3,7 +3,6 @@ import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import AskSheet from "$lib/components/knowledge-home/AskSheet.svelte";
 import DegradedModeBanner from "$lib/components/knowledge-home/DegradedModeBanner.svelte";
 import KnowledgeStream from "$lib/components/knowledge-home/KnowledgeStream.svelte";
@@ -12,7 +11,6 @@ import Toast from "$lib/components/knowledge-home/Toast.svelte";
 import LensModal from "$lib/components/knowledge-home/lens/LensModal.svelte";
 import LensSelector from "$lib/components/knowledge-home/lens/LensSelector.svelte";
 import RecallRail from "$lib/components/knowledge-home/recall-rail/RecallRail.svelte";
-import RecallRailCollapsible from "$lib/components/knowledge-home/recall-rail/RecallRailCollapsible.svelte";
 import StreamUpdateBar from "$lib/components/knowledge-home/StreamUpdateBar.svelte";
 import TodayBar from "$lib/components/knowledge-home/TodayBar.svelte";
 import UnifiedIntentBox from "$lib/components/knowledge-home/UnifiedIntentBox.svelte";
@@ -45,6 +43,7 @@ const lens = useLens();
 const tts = useTtsPlayback();
 const toast = useToastStore();
 
+let revealed = $state(false);
 let exposureSessionId = $state("");
 let lensModalOpen = $state(false);
 let bannerDismissed = $state(false);
@@ -101,6 +100,13 @@ const lensTagSuggestions = $derived.by((): TagSuggestion[] => {
 	return Array.from(tagCounts.entries())
 		.map(([name, count]): TagSuggestion => ({ name, count }))
 		.sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
+});
+
+const dateStr = new Date().toLocaleDateString("en-US", {
+	weekday: "long",
+	year: "numeric",
+	month: "long",
+	day: "numeric",
 });
 
 const stream = useStreamUpdates({
@@ -306,6 +312,9 @@ async function loadLensSources() {
 
 onMount(async () => {
 	if (browser) {
+		requestAnimationFrame(() => {
+			revealed = true;
+		});
 		exposureSessionId = crypto.randomUUID();
 
 		await home.fetchData(true);
@@ -349,76 +358,86 @@ onMount(async () => {
 </svelte:head>
 
 {#if isDesktop}
-	<PageHeader
-		title="Knowledge Home"
-		description="Today's knowledge starting point"
-	/>
+	<div class="reading-desk" class:revealed>
+		<!-- Editorial Header -->
+		<header class="desk-header">
+			<span class="desk-date">{dateStr}</span>
+			<h1 class="desk-title">Knowledge Home</h1>
+			<p class="desk-subtitle">Today's knowledge starting point</p>
+			<div class="desk-rule" aria-hidden="true"></div>
+		</header>
 
-	{#if showBanner}
-		<div class="mb-3">
-			<DegradedModeBanner
-				serviceQuality={home.serviceQuality}
-				onDismiss={() => {
-					bannerDismissed = true;
+		{#if showBanner}
+			<div class="section-reveal" style="--delay: 1;">
+				<DegradedModeBanner
+					serviceQuality={home.serviceQuality}
+					onDismiss={() => {
+						bannerDismissed = true;
+					}}
+				/>
+			</div>
+		{/if}
+
+		<div class="section-reveal" style="--delay: 1;">
+			<TodayBar digest={home.digest} serviceQuality={home.serviceQuality} />
+		</div>
+
+		<div class="section-reveal" style="--delay: 2;">
+			<UnifiedIntentBox
+				query={searchQuery}
+				onSearchSubmit={handleSearchSubmit}
+				onSearchClear={handleSearchClear}
+				onAsk={handleAskFromHome}
+			/>
+		</div>
+
+		<div class="section-reveal" style="--delay: 3;">
+			<LensSelector
+				lenses={lens.lenses}
+				activeLensId={lens.activeLensId}
+				matchCount={lensMatchCount}
+				onSelect={handleLensSelect}
+				onCreateClick={() => {
+					lensModalOpen = true;
 				}}
 			/>
 		</div>
-	{/if}
 
-	<TodayBar digest={home.digest} serviceQuality={home.serviceQuality} />
-	<UnifiedIntentBox
-		query={searchQuery}
-		onSearchSubmit={handleSearchSubmit}
-		onSearchClear={handleSearchClear}
-		onAsk={handleAskFromHome}
-	/>
-
-	<div class="mt-3">
-		<LensSelector
-			lenses={lens.lenses}
-			activeLensId={lens.activeLensId}
-			matchCount={lensMatchCount}
-			onSelect={handleLensSelect}
-			onCreateClick={() => {
-				lensModalOpen = true;
-			}}
-		/>
-	</div>
-
-	<div class="mt-3">
-		<StreamUpdateBar
-			pendingCount={stream.pendingCount}
-			isConnected={stream.isConnected}
-			isFallback={stream.isFallback}
-			onApply={() => stream.applyUpdates()}
-		/>
-	</div>
-
-	<div class="mt-6 flex gap-8">
-		<div class="min-w-0 flex-1">
-			<KnowledgeStream
-				items={visibleItems}
-				loading={home.loading}
-				hasMore={home.hasMore}
-				{activeLensName}
-				emptyReason={emptyReason}
-				streamMode={streamMode}
-				searchQuery={searchQuery}
-				onAction={handleAction}
-				onTagClick={handleTagClick}
-				onLoadMore={() => home.loadMore(lens.activeLensId)}
-				onItemsVisible={handleItemsVisible}
-				onClearLens={() => handleLensSelect(null)}
+		<div class="section-reveal" style="--delay: 3;">
+			<StreamUpdateBar
+				pendingCount={stream.pendingCount}
+				isConnected={stream.isConnected}
+				isFallback={stream.isFallback}
+				onApply={() => stream.applyUpdates()}
 			/>
 		</div>
-		<div class="w-80 flex-shrink-0">
-			<RecallRail
-				candidates={recall.candidates}
-				unavailable={Boolean(recall.error)}
-				onSnooze={(key: string) => recall.snooze(key)}
-				onDismiss={(key: string) => recall.dismiss(key)}
-				onOpen={handleRecallOpen}
-			/>
+
+		<div class="desk-columns section-reveal" style="--delay: 4;">
+			<div class="min-w-0 flex-1">
+				<KnowledgeStream
+					items={visibleItems}
+					loading={home.loading}
+					hasMore={home.hasMore}
+					{activeLensName}
+					emptyReason={emptyReason}
+					streamMode={streamMode}
+					searchQuery={searchQuery}
+					onAction={handleAction}
+					onTagClick={handleTagClick}
+					onLoadMore={() => home.loadMore(lens.activeLensId)}
+					onItemsVisible={handleItemsVisible}
+					onClearLens={() => handleLensSelect(null)}
+				/>
+			</div>
+			<div class="desk-rail">
+				<RecallRail
+					candidates={recall.candidates}
+					unavailable={Boolean(recall.error)}
+					onSnooze={(key: string) => recall.snooze(key)}
+					onDismiss={(key: string) => recall.dismiss(key)}
+					onOpen={handleRecallOpen}
+				/>
+			</div>
 		</div>
 	</div>
 {:else}
@@ -534,3 +553,97 @@ onMount(async () => {
 	}}
 	onSave={handleCreateLens}
 />
+
+<style>
+	/* ── Page reveal ── */
+	.reading-desk {
+		max-width: 1400px;
+		opacity: 0;
+		transform: translateY(6px);
+		transition:
+			opacity 0.4s ease,
+			transform 0.4s ease;
+	}
+
+	.reading-desk.revealed {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	/* ── Editorial header ── */
+	.desk-header {
+		padding: 1.5rem 0 0;
+	}
+
+	.desk-date {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.06em;
+	}
+
+	.desk-title {
+		font-family: var(--font-display);
+		font-size: 1.6rem;
+		font-weight: 800;
+		color: var(--alt-charcoal);
+		letter-spacing: -0.01em;
+		margin: 0.15rem 0 0;
+		line-height: 1.2;
+	}
+
+	.desk-subtitle {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-ash);
+		margin-top: 0.2rem;
+	}
+
+	.desk-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-top: 0.75rem;
+	}
+
+	/* ── Two-column layout ── */
+	.desk-columns {
+		display: flex;
+		gap: 2rem;
+		margin-top: 1.5rem;
+	}
+
+	.desk-rail {
+		width: 20rem;
+		flex-shrink: 0;
+	}
+
+	/* ── Section stagger ── */
+	.section-reveal {
+		opacity: 0;
+		transform: translateY(6px);
+		animation: reveal 0.4s ease forwards;
+		animation-delay: calc(var(--delay) * 100ms);
+		margin-top: 0.75rem;
+	}
+
+	@keyframes reveal {
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.reading-desk {
+			opacity: 1;
+			transform: none;
+			transition: none;
+		}
+
+		.section-reveal {
+			animation: none;
+			opacity: 1;
+			transform: none;
+		}
+	}
+</style>

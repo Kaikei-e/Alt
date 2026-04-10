@@ -84,33 +84,27 @@ function handleKeydown(e: KeyboardEvent) {
 }
 </script>
 
-<div class="space-y-3 bg-[var(--surface-bg)] px-4 py-3">
-	<div class="relative flex items-center gap-2">
-		<div class="relative flex-1">
+<div class="intent-box">
+	<div class="intent-row">
+		<div class="intent-input-wrap">
 			<input
 				type="text"
 				bind:value={query}
 				onkeydown={handleKeydown}
 				placeholder="Search articles or ask a question..."
-				class="w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] px-4 py-2.5 pl-9 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] shadow-[var(--shadow-sm)] focus:border-[var(--accent-primary)] focus:ring-2 focus:ring-[var(--accent-primary,var(--interactive-text))]/20 focus:outline-none transition-colors"
+				class="intent-input"
 			/>
-			<Search
-				class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-secondary)]"
-			/>
+			<span class="intent-icon"><Search class="h-4 w-4" /></span>
 		</div>
 		{#if query.trim()}
-			<button
-				type="button"
-				onclick={clearSearch}
-				class="rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] transition-colors"
-			>
+			<button type="button" onclick={clearSearch} class="intent-btn intent-btn--clear">
 				Clear
 			</button>
 		{/if}
 		<button
 			type="button"
 			onclick={handleAsk}
-			class="inline-flex items-center gap-1.5 rounded-lg border border-[var(--surface-border)] px-3 py-2 text-sm font-medium text-[var(--interactive-text)] hover:bg-[var(--surface-hover)] hover:text-[var(--interactive-text-hover)] transition-colors"
+			class="intent-btn intent-btn--ask"
 			title="Ask Augur"
 			aria-label="Ask Augur"
 		>
@@ -120,14 +114,12 @@ function handleKeydown(e: KeyboardEvent) {
 	</div>
 
 	{#if recentQueries.length > 0}
-		<div class="flex flex-wrap items-center gap-2">
-			<span class="text-xs uppercase tracking-wider text-[var(--text-secondary)]">
-				Recent
-			</span>
+		<div class="recent-row">
+			<span class="recent-label">RECENT</span>
 			{#each recentQueries as recent}
 				<button
 					type="button"
-					class="rounded-full bg-[var(--surface-hover)] border border-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--action-surface)] hover:text-[var(--text-primary)]"
+					class="recent-chip"
 					onclick={() => {
 						query = recent;
 						onSearchSubmit?.(recent);
@@ -139,3 +131,117 @@ function handleKeydown(e: KeyboardEvent) {
 		</div>
 	{/if}
 </div>
+
+<style>
+	.intent-box {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		background: var(--surface-bg);
+		padding: 0.75rem 1rem;
+	}
+
+	.intent-row {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.intent-input-wrap {
+		position: relative;
+		flex: 1;
+	}
+
+	.intent-input {
+		width: 100%;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
+		padding: 0.625rem 1rem 0.625rem 2.25rem;
+		font-family: var(--font-body);
+		font-size: 0.875rem;
+		color: var(--alt-charcoal);
+		transition: border-color 0.15s;
+	}
+
+	.intent-input::placeholder {
+		color: var(--alt-slate);
+	}
+
+	.intent-input:focus {
+		border-color: var(--alt-charcoal);
+		outline: none;
+	}
+
+	.intent-icon {
+		position: absolute;
+		left: 0.75rem;
+		top: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		color: var(--alt-slate);
+	}
+
+	.intent-btn {
+		padding: 0.5rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.875rem;
+		font-weight: 500;
+		border: 1px solid var(--surface-border);
+		background: transparent;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.intent-btn--clear {
+		color: var(--alt-slate);
+	}
+
+	.intent-btn--clear:hover {
+		background: var(--surface-hover);
+		color: var(--alt-charcoal);
+	}
+
+	.intent-btn--ask {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		color: var(--interactive-text);
+	}
+
+	.intent-btn--ask:hover {
+		background: var(--surface-hover);
+		color: var(--interactive-text-hover);
+	}
+
+	/* ── Recent queries ── */
+	.recent-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.recent-label {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: var(--alt-ash);
+	}
+
+	.recent-chip {
+		border: 1px solid transparent;
+		background: var(--surface-hover);
+		padding: 0.25rem 0.75rem;
+		font-size: 0.75rem;
+		color: var(--alt-slate);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.recent-chip:hover {
+		background: var(--action-surface);
+		color: var(--alt-charcoal);
+	}
+</style>

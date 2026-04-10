@@ -12,7 +12,7 @@ const groups = $derived(categorizeRecallReasons(reasons));
 const hasReasons = $derived(groups.length > 0);
 </script>
 
-<div class="animate-fade-up rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] p-3">
+<div class="animate-fade-up  border border-[var(--surface-border)] bg-[var(--surface-bg)] p-3">
 	<h4 class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
 		<Info class="h-3.5 w-3.5" />
 		Why recalled?
@@ -27,7 +27,7 @@ const hasReasons = $derived(groups.length > 0);
 					</p>
 					<div class="space-y-1.5">
 						{#each group.items as { reason, displayLabel }}
-							<div class="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2.5">
+							<div class=" border border-[var(--surface-border)] bg-[var(--surface-hover)] px-3 py-2.5">
 								<p class="text-xs font-medium text-[var(--text-primary)]">
 									{displayLabel}
 								</p>

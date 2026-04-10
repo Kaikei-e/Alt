@@ -30,21 +30,17 @@ const dateSource = $derived(
 );
 const primaryReason = $derived(candidate.reasons[0]);
 const borderColor = $derived.by(() => {
-	if (!primaryReason) return "border-l-[var(--surface-border)]";
+	if (!primaryReason) return "var(--surface-border)";
 	const display = resolveRecallReason(primaryReason.type);
-	if (display.colorClass.includes("amber"))
-		return "border-l-[var(--badge-amber-border)]";
-	if (display.colorClass.includes("blue"))
-		return "border-l-[var(--badge-blue-border)]";
+	if (display.colorClass.includes("amber")) return "var(--badge-amber-border)";
+	if (display.colorClass.includes("blue")) return "var(--badge-blue-border)";
 	if (display.colorClass.includes("purple"))
-		return "border-l-[var(--badge-purple-border)]";
-	if (display.colorClass.includes("teal"))
-		return "border-l-[var(--badge-teal-border)]";
+		return "var(--badge-purple-border)";
+	if (display.colorClass.includes("teal")) return "var(--badge-teal-border)";
 	if (display.colorClass.includes("orange"))
-		return "border-l-[var(--badge-orange-border)]";
-	if (display.colorClass.includes("green"))
-		return "border-l-[var(--badge-green-border)]";
-	return "border-l-[var(--surface-border)]";
+		return "var(--badge-orange-border)";
+	if (display.colorClass.includes("green")) return "var(--badge-green-border)";
+	return "var(--surface-border)";
 });
 
 function formatRelativeTime(isoString: string): string {
@@ -66,18 +62,17 @@ const age = $derived(formatRelativeTime(dateSource));
 </script>
 
 <div
-	class="border border-l-[3px] rounded-md p-3 bg-[var(--surface-bg)] border-[var(--surface-border)] {borderColor} hover:border-[var(--accent-primary)] hover:-translate-y-0.5 transition-all duration-200 cursor-pointer shadow-sm"
+	class="recall-card"
+	style="border-left-color: {borderColor};"
 	role="button"
 	tabindex="0"
 	onclick={() => onOpen(candidate.itemKey)}
 	onkeydown={(e) => { if (e.key === "Enter") onOpen(candidate.itemKey); }}
 >
 	<div class="flex items-start justify-between gap-2 mb-2">
-		<h4 class="text-sm font-medium text-[var(--text-primary)] line-clamp-2 flex-1">
-			{title}
-		</h4>
+		<h4 class="recall-title">{title}</h4>
 		{#if age}
-			<span class="text-xs text-[var(--text-tertiary)] whitespace-nowrap flex items-center gap-1">
+			<span class="recall-time">
 				<Clock class="h-3 w-3" />
 				{age}
 			</span>
@@ -92,10 +87,10 @@ const age = $derived(formatRelativeTime(dateSource));
 			{/each}
 			<button
 				type="button"
-				class="rounded-full border border-[var(--surface-border)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-muted)] hover:border-[var(--interactive-text)] hover:text-[var(--interactive-text)] transition-colors ml-auto"
+				class="recall-why-toggle"
 				onclick={(e) => { e.stopPropagation(); whyExpanded = !whyExpanded; }}
 			>
-				{whyExpanded ? "Hide why" : "Why?"}
+				{whyExpanded ? "HIDE WHY" : "WHY?"}
 			</button>
 		</div>
 	{/if}
@@ -109,33 +104,27 @@ const age = $derived(formatRelativeTime(dateSource));
 	{/if}
 
 	{#if summaryExcerpt}
-		<p class="mb-2 text-xs leading-5 text-[var(--text-secondary)] line-clamp-2">
-			{summaryExcerpt}
-		</p>
+		<p class="recall-summary">{summaryExcerpt}</p>
 	{/if}
 
 	{#if displayTags.length > 0}
 		<div class="flex flex-wrap gap-1 mb-2">
 			{#each displayTags as tag}
-				<span
-					class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)]"
-				>
-					{tag}
-				</span>
+				<span class="recall-tag">{tag}</span>
 			{/each}
 		</div>
 	{/if}
 
 	<div class="flex items-center gap-1 mt-2">
 		<button
-			class="p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
+			class="recall-action"
 			title="Snooze for 24 hours"
 			onclick={(e) => { e.stopPropagation(); onSnooze(candidate.itemKey); }}
 		>
 			<AlarmClockOff class="h-3.5 w-3.5" />
 		</button>
 		<button
-			class="p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] transition-colors"
+			class="recall-action"
 			title="Dismiss"
 			onclick={(e) => { e.stopPropagation(); onDismiss(candidate.itemKey); }}
 		>
@@ -143,3 +132,99 @@ const age = $derived(formatRelativeTime(dateSource));
 		</button>
 	</div>
 </div>
+
+<style>
+	.recall-card {
+		border: 1px solid var(--surface-border);
+		border-left: 3px solid var(--surface-border);
+		padding: 0.75rem;
+		background: var(--surface-bg);
+		cursor: pointer;
+		transition: border-color 0.15s;
+	}
+
+	.recall-card:hover {
+		border-color: var(--alt-primary);
+	}
+
+	.recall-title {
+		font-family: var(--font-display);
+		font-size: 0.875rem;
+		font-weight: 600;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		flex: 1;
+	}
+
+	.recall-time {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: var(--alt-ash);
+		white-space: nowrap;
+	}
+
+	.recall-summary {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		line-height: 1.4;
+		color: var(--alt-slate);
+		margin-bottom: 0.5rem;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.recall-tag {
+		display: inline-flex;
+		align-items: center;
+		border: 1px solid var(--chip-border);
+		padding: 0.125rem 0.5rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		background: var(--chip-bg);
+		color: var(--chip-text);
+	}
+
+	.recall-why-toggle {
+		margin-left: auto;
+		border: 1px solid var(--surface-border);
+		padding: 0.125rem 0.625rem;
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: var(--alt-ash);
+		background: transparent;
+		cursor: pointer;
+		transition: border-color 0.15s, color 0.15s;
+	}
+
+	.recall-why-toggle:hover {
+		border-color: var(--interactive-text);
+		color: var(--interactive-text);
+	}
+
+	.recall-action {
+		padding: 0.375rem;
+		color: var(--alt-ash);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		transition: color 0.15s, background 0.15s;
+	}
+
+	.recall-action:hover {
+		color: var(--alt-slate);
+		background: var(--surface-hover);
+	}
+</style>

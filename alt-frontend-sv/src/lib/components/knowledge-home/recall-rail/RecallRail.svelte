@@ -20,16 +20,16 @@ const {
 }: Props = $props();
 </script>
 
-<aside class="sticky top-4 border rounded-xl p-4 bg-[var(--surface-2,var(--surface-bg))] border-[var(--surface-border)]">
-	<h3 class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3 flex items-center gap-1.5">
-		<Brain class="h-3.5 w-3.5 text-[var(--accent-primary,var(--interactive-text))]" />
-		Recall
+<aside class="rail">
+	<h3 class="rail-label">
+		<Brain class="h-3.5 w-3.5" style="color: var(--alt-primary);" />
+		RECALL
 	</h3>
 
 	{#if unavailable}
-		<p class="text-sm text-[var(--text-tertiary)]">Recall is temporarily unavailable.</p>
+		<p class="rail-empty">Recall is temporarily unavailable.</p>
 	{:else if candidates.length === 0}
-		<p class="text-sm text-[var(--text-tertiary)]">Nothing to recall right now.</p>
+		<p class="rail-empty">Nothing to recall right now.</p>
 	{:else}
 		<div class="flex flex-col gap-3">
 			{#each candidates as candidate (candidate.itemKey)}
@@ -43,3 +43,31 @@ const {
 		</div>
 	{/if}
 </aside>
+
+<style>
+	.rail {
+		position: sticky;
+		top: 1rem;
+		border: 1px solid var(--surface-border);
+		padding: 1rem;
+		background: color-mix(in srgb, var(--surface-2) 100%, var(--surface-bg));
+	}
+
+	.rail-label {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: var(--alt-ash);
+		margin-bottom: 0.75rem;
+	}
+
+	.rail-empty {
+		font-family: var(--font-body);
+		font-size: 0.875rem;
+		color: var(--alt-ash);
+	}
+</style>

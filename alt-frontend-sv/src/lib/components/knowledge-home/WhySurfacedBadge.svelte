@@ -34,7 +34,7 @@ const IconComponent = $derived(ICON_MAP[display.iconName] ?? Info);
 </script>
 
 <span
-	class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full border {display.colorClass}"
+	class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium border {display.colorClass}"
 >
 	<IconComponent class="h-3 w-3" />
 	{display.label}

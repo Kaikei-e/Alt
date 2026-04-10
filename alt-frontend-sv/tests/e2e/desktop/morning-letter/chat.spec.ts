@@ -30,9 +30,9 @@ test.describe("Desktop Morning Letter Chat", () => {
 	test("renders page title and welcome message", async () => {
 		await morningLetterPage.goto();
 
-		// Verify page title
+		// Verify page title — the h1 dateline says "Today's Edition" (or a date)
 		await expect(morningLetterPage.pageTitle).toBeVisible();
-		await expect(morningLetterPage.pageTitle).toContainText("Morning Letter");
+		await expect(morningLetterPage.pageTitle).toContainText(/today's edition/i);
 
 		// Verify welcome message
 		await morningLetterPage.waitForWelcomeMessage();

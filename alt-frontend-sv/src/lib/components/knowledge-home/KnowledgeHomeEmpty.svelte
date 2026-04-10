@@ -93,7 +93,7 @@ const config = $derived.by(() => {
 	</p>
 	{#if config.showClearLens && onClearLens}
 		<button
-			class="mt-4 inline-flex items-center rounded-full border border-[var(--surface-border)] px-4 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
+			class="mt-4 inline-flex items-center border border-[var(--surface-border)] px-4 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)]"
 			onclick={onClearLens}
 		>
 			Clear lens

@@ -52,13 +52,13 @@ function handleAction(type: string) {
 </script>
 
 <article
-	class="rounded-lg border-l-[3px] px-5 py-4 bg-[var(--surface-bg)] border-[var(--surface-border)] border-l-[var(--interactive-text)] hover:border-[var(--interactive-text)] transition-all duration-200 hover:shadow-[var(--card-hover-shadow)] hover:-translate-y-0.5 shadow-[var(--shadow-sm)] {isNeedToKnow ? 'ring-1 ring-[var(--badge-orange-border)] border-l-[var(--badge-orange-text)]' : ''}"
+	class="card {isNeedToKnow ? 'card--urgent' : ''}"
 	data-item-key={item.itemKey}
 >
 	<!-- Header: Title + Supersede Badge + Relative Time -->
 	<div class="flex items-start justify-between gap-2 mb-2">
 		<div class="flex-1 min-w-0">
-			<h3 class="text-base font-semibold leading-snug text-[var(--text-primary)] line-clamp-2">
+			<h3 class="card-title">
 				{item.title}
 			</h3>
 			{#if item.supersedeInfo}
@@ -81,7 +81,7 @@ function handleAction(type: string) {
 		</div>
 	{/if}
 		<time
-			class="text-xs text-[var(--text-secondary)] whitespace-nowrap flex-shrink-0"
+			class="card-time"
 			datetime={item.publishedAt}
 		>
 			{formatRelativeTime(item.publishedAt)}
@@ -97,40 +97,40 @@ function handleAction(type: string) {
 			<SummaryStateChip state={item.summaryState} />
 			<button
 				type="button"
-				class="rounded-full border border-[var(--surface-border)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-muted)] hover:border-[var(--interactive-text)] hover:text-[var(--interactive-text)] transition-colors ml-auto"
+				class="why-toggle"
 				onclick={() => {
 					whyExpanded = !whyExpanded;
 				}}
 			>
-				{whyExpanded ? "Hide why" : "Explain why"}
+				{whyExpanded ? "HIDE WHY" : "EXPLAIN WHY"}
 			</button>
 		</div>
 	{/if}
 
 	<!-- Summary Excerpt or Skeleton -->
 	{#if item.summaryState === "ready" && item.summaryExcerpt}
-		<p class="mb-2 text-sm leading-relaxed text-[var(--text-secondary)] line-clamp-2">
+		<p class="card-summary">
 			{item.summaryExcerpt}
 		</p>
 	{:else if item.summaryState === "pending" || item.summaryState === "missing"}
 		<div class="space-y-1 mb-2">
-			<div class="h-3 w-full rounded bg-[var(--surface-hover)] animate-pulse"></div>
-			<div class="h-3 w-2/3 rounded bg-[var(--surface-hover)] animate-pulse"></div>
+			<div class="skeleton-line"></div>
+			<div class="skeleton-line skeleton-line--short"></div>
 		</div>
 	{:else}
-		<p class="mb-2 text-sm leading-relaxed text-[var(--text-secondary)] line-clamp-2">
+		<p class="card-summary">
 			{item.summaryExcerpt}
 		</p>
 	{/if}
 
 	<!-- Bottom Row: Tags (left) + Actions (right) -->
-	<div class="flex items-center justify-between gap-2 border-t border-[var(--surface-border)]/40 pt-3 mt-3">
+	<div class="card-footer">
 		{#if nonEmptyTags.length > 0}
 			<div class="flex flex-wrap gap-1 min-w-0">
 				{#each visibleTags as tag}
 					<a
 						href="/articles/by-tag?tag={encodeURIComponent(tag)}"
-						class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)] hover:border-[var(--interactive-text)] hover:text-[var(--interactive-text)] transition-colors"
+						class="card-tag"
 						onclick={() => {
 							onTagClick?.(tag, item);
 						}}
@@ -141,7 +141,7 @@ function handleAction(type: string) {
 				{#if remainingTagCount > 0 && !tagsExpanded}
 					<button
 						type="button"
-						class="inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium bg-[var(--chip-bg)] border-[var(--chip-border)] text-[var(--chip-text)] hover:border-[var(--interactive-text)] hover:text-[var(--interactive-text)] cursor-pointer transition-colors"
+						class="card-tag card-tag--expand"
 						onclick={() => { tagsExpanded = true; }}
 					>
 						+{remainingTagCount} tags
@@ -159,3 +159,125 @@ function handleAction(type: string) {
 		/>
 	</div>
 </article>
+
+<style>
+	.card {
+		border-left: 3px solid var(--interactive-text);
+		border-top: 1px solid var(--surface-border);
+		border-right: 1px solid var(--surface-border);
+		border-bottom: 1px solid var(--surface-border);
+		padding: 1.25rem 1.25rem;
+		background: var(--surface-bg);
+		transition: border-color 0.15s;
+	}
+
+	.card:hover {
+		border-color: var(--interactive-text);
+	}
+
+	.card--urgent {
+		border-left-color: var(--badge-orange-text);
+		box-shadow: inset 0 0 0 1px var(--badge-orange-border);
+	}
+
+	.card-title {
+		font-family: var(--font-display);
+		font-size: 1rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.card-time {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+
+	.card-summary {
+		font-family: var(--font-body);
+		font-size: 0.875rem;
+		line-height: 1.6;
+		color: var(--alt-slate);
+		margin-bottom: 0.5rem;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.card-footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		border-top: 1px solid color-mix(in srgb, var(--surface-border) 40%, transparent);
+		padding-top: 0.75rem;
+		margin-top: 0.75rem;
+	}
+
+	.card-tag {
+		display: inline-flex;
+		align-items: center;
+		border: 1px solid var(--chip-border);
+		padding: 0.125rem 0.5rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		background: var(--chip-bg);
+		color: var(--chip-text);
+		transition: border-color 0.15s, color 0.15s;
+		text-decoration: none;
+	}
+
+	.card-tag:hover {
+		border-color: var(--interactive-text);
+		color: var(--interactive-text);
+	}
+
+	.card-tag--expand {
+		cursor: pointer;
+	}
+
+	.why-toggle {
+		margin-left: auto;
+		border: 1px solid var(--surface-border);
+		padding: 0.125rem 0.625rem;
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		color: var(--alt-ash);
+		background: transparent;
+		cursor: pointer;
+		transition: border-color 0.15s, color 0.15s;
+	}
+
+	.why-toggle:hover {
+		border-color: var(--interactive-text);
+		color: var(--interactive-text);
+	}
+
+	.skeleton-line {
+		height: 0.75rem;
+		width: 100%;
+		background: var(--surface-hover);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.skeleton-line--short {
+		width: 66%;
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 0.3; }
+		50% { opacity: 1; }
+	}
+</style>

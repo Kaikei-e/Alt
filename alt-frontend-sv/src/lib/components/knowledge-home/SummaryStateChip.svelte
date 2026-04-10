@@ -11,7 +11,7 @@ const { state }: Props = $props();
 
 {#if state === "pending"}
 	<span
-		class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded-full bg-blue-500/10 text-blue-400"
+		class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-blue-500/10 text-blue-400"
 	>
 		<Loader class="h-3 w-3 animate-spin" />
 		Summarizing
