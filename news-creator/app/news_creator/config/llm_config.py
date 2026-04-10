@@ -37,6 +37,10 @@ class LLMConfig:
     # Summary-specific settings
     summary_num_predict: int = 1000
     summary_temperature: float = 0.5
+    # Recap-specific output budget (separate from article summary)
+    recap_summary_num_predict: int = 4000
+    # Minimum average bullet length (chars) to pass quality gate
+    recap_min_avg_bullet_length: int = 300
     # Repetition detection settings
     max_repetition_retries: int = 2
     repetition_threshold: float = 0.3
@@ -100,6 +104,8 @@ class LLMConfig:
             stop_tokens=stop_tokens,
             summary_num_predict=_get_int("SUMMARY_NUM_PREDICT", 1000),
             summary_temperature=_get_float("SUMMARY_TEMPERATURE", 0.5),
+            recap_summary_num_predict=_get_int("RECAP_SUMMARY_NUM_PREDICT", 4000),
+            recap_min_avg_bullet_length=_get_int("RECAP_MIN_AVG_BULLET_LENGTH", 300),
             max_repetition_retries=_get_int("MAX_REPETITION_RETRIES", 2),
             repetition_threshold=_get_float("REPETITION_THRESHOLD", 0.3),
             recap_min_source_articles_for_llm=_get_int(

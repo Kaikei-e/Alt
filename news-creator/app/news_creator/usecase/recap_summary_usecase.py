@@ -394,7 +394,7 @@ class RecapSummaryUsecase:
                     chunk_prompt,
                     cancel_event=cancel_event,
                     task_id=task_id,
-                    num_predict=self.config.summary_num_predict // 2,
+                    num_predict=self.config.recap_summary_num_predict // 2,
                     format=json_schema,
                     options=llm_options,
                 )
@@ -637,7 +637,7 @@ class RecapSummaryUsecase:
                     reduce_prompt,
                     cancel_event=cancel_event,
                     task_id=task_id,
-                    num_predict=self.config.summary_num_predict // 2,
+                    num_predict=self.config.recap_summary_num_predict // 2,
                     format=json_schema,
                     options=llm_options,
                 )
@@ -876,7 +876,7 @@ class RecapSummaryUsecase:
         except (NotImplementedError, TypeError):
             # Fallback: use generate() with raw prompt (legacy path)
             opts = {**llm_options}
-            num_predict = opts.pop("num_predict", self.config.summary_num_predict)
+            num_predict = opts.pop("num_predict", self.config.recap_summary_num_predict)
             prompt = self._wrap_gemma_prompt(messages[1]["content"])
             result = await self.llm_provider.generate(
                 prompt,
@@ -914,16 +914,17 @@ class RecapSummaryUsecase:
 
         for attempt in range(max_retries + 1):
             current_temp = base_temperature
-            current_repeat_penalty = self.config.llm_repeat_penalty
+            # Use lower repeat_penalty for recap to avoid EOS bias (ADR-632 insight)
+            current_repeat_penalty = 1.0
 
             if attempt > 0:
                 if is_3days:
                     current_temp = base_temperature
                 else:
                     current_temp = max(0.05, base_temperature - (0.05 * attempt))
-                    current_repeat_penalty = min(
-                        1.2, current_repeat_penalty + (0.05 * attempt)
-                    )
+                current_repeat_penalty = min(
+                    1.2, current_repeat_penalty + (0.05 * attempt)
+                )
 
             json_schema = RecapSummary.model_json_schema()
 
@@ -931,7 +932,7 @@ class RecapSummaryUsecase:
                 **(llm_options or {}),
                 "temperature": float(current_temp),
                 "repeat_penalty": float(current_repeat_penalty),
-                "num_predict": self.config.summary_num_predict,
+                "num_predict": self.config.recap_summary_num_predict,
             }
 
             llm_response = await self._call_llm_for_recap(
@@ -1022,6 +1023,31 @@ class RecapSummaryUsecase:
                         ]
                         continue
                     break
+
+                # Bullet length quality gate: reject too-short bullets
+                bullets = summary_payload.get("bullets", [])
+                min_avg = self._config_int(
+                    "recap_min_avg_bullet_length", 150
+                )
+                if bullets and min_avg > 0:
+                    avg_bullet_len = sum(len(b) for b in bullets) / len(
+                        bullets
+                    )
+                    if avg_bullet_len < min_avg and attempt < max_retries:
+                        logger.warning(
+                            "Recap bullets too short, will retry",
+                            extra={
+                                "job_id": str(request.job_id),
+                                "genre": request.genre,
+                                "attempt": attempt + 1,
+                                "avg_bullet_length": avg_bullet_len,
+                                "min_required": min_avg,
+                            },
+                        )
+                        last_error = RuntimeError(
+                            f"Bullets too short (avg: {avg_bullet_len:.0f} < {min_avg})"
+                        )
+                        continue
 
                 summary = RecapSummary(**summary_payload)
 

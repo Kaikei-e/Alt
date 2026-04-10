@@ -18,6 +18,8 @@ from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
 async def test_generate_summary_success():
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -94,7 +96,7 @@ async def test_generate_summary_success():
     assert kwargs["num_predict"] == config.summary_num_predict
     # Options should include temperature + repeat_penalty
     assert kwargs["options"]["temperature"] == 0.6
-    assert kwargs["options"]["repeat_penalty"] == 1.1
+    assert kwargs["options"]["repeat_penalty"] == 1.0  # Recap uses lower repeat_penalty
     # Check that format is a dict (JSON Schema)
     assert isinstance(kwargs["format"], dict)
 
@@ -103,6 +105,8 @@ async def test_generate_summary_success():
 async def test_generate_summary_raises_error_when_invalid_json():
     config = Mock()
     config.summary_num_predict = 300
+    config.recap_summary_num_predict = 300
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.2
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -146,6 +150,8 @@ async def test_generate_summary_raises_error_when_invalid_json():
 async def test_generate_summary_trims_excess_bullets():
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.5
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -198,6 +204,7 @@ def _create_mock_config():
     """Create a mock config for testing."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -206,6 +213,7 @@ def _create_mock_config():
     config.hierarchical_threshold_clusters = 50
     config.hierarchical_chunk_max_chars = 20000
     config.ollama_request_concurrency = 2
+    config.recap_min_avg_bullet_length = 0  # disabled for legacy tests
     return config
 
 
@@ -368,6 +376,8 @@ def test_split_clusters_into_chunks_basic():
     """Test basic chunk splitting without overlap."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.hierarchical_chunk_max_chars = 500  # Small for testing
     config.hierarchical_chunk_overlap_ratio = 0.0  # No overlap
 
@@ -486,6 +496,8 @@ async def test_recursive_reduce_with_large_intermediate_summaries():
 
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -597,6 +609,8 @@ async def test_recursive_reduce_respects_max_depth():
 
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -665,6 +679,8 @@ async def test_small_intermediate_summaries_skip_recursive_reduce():
 
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -754,6 +770,8 @@ def _make_recap_config_for_hierarchical():
     """Config that triggers hierarchical summarization."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -1024,6 +1042,8 @@ async def test_selects_3days_prompt_when_window_is_3():
     """window_days=3 → 3days-specific prompt template is used."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -1171,6 +1191,8 @@ async def test_selects_7days_prompt_when_window_is_none():
     """window_days=None (default) → existing 7days prompt template is used."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -1225,6 +1247,8 @@ async def test_3days_max_bullets_default_is_7():
     """window_days=3 with no explicit max_bullets → default is 7 (not 15)."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -1440,6 +1464,8 @@ async def test_reduce_group_uses_structured_prompt():
 
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
 
     llm_provider = Mock()
@@ -1498,6 +1524,8 @@ async def test_metadata_includes_reduce_depth():
     """Response metadata should include reduce_depth when hierarchical path is used."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 2
     config.llm_repeat_penalty = 1.1
@@ -1550,6 +1578,8 @@ async def test_fallback_includes_degraded_metadata():
     """When LLM returns invalid JSON on all retries, response has is_degraded=True."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 0  # No retries → immediate fallback
     config.llm_repeat_penalty = 1.1
@@ -1598,6 +1628,8 @@ async def test_fallback_preserves_references():
     """Fallback response should include references from cluster source_urls."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 0
     config.llm_repeat_penalty = 1.1
@@ -1655,6 +1687,8 @@ async def test_3days_fallback_wraps_english_source_sentences_in_japanese():
     """3days degraded fallback should remain Japanese even when source sentences are English."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 0
     config.llm_repeat_penalty = 1.1
@@ -1712,6 +1746,8 @@ async def test_fallback_selects_centroids_first():
     """Fallback should prefer centroid sentences over non-centroid."""
     config = Mock()
     config.summary_num_predict = 400
+    config.recap_summary_num_predict = 400
+    config.recap_min_avg_bullet_length = 0
     config.llm_temperature = 0.25
     config.max_repetition_retries = 0
     config.llm_repeat_penalty = 1.1
@@ -2560,3 +2596,218 @@ async def test_thin_evidence_allows_single_bullet():
     # Should NOT be degraded — 1 bullet is acceptable for thin evidence (2 sentences)
     assert response.metadata.is_degraded is False
     assert len(response.summary.bullets) == 1
+
+
+# ============================================================================
+# Bullet Quality Gate Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_short_bullets_trigger_quality_retry():
+    """Bullets averaging under MIN_AVG_BULLET_LENGTH should trigger retry."""
+    config = _create_mock_config()
+    config.recap_summary_num_predict = 4000
+    config.recap_min_avg_bullet_length = 300  # enable quality gate
+    llm_provider = AsyncMock()
+
+    # First call returns short bullets (avg ~50 chars), second returns good ones
+    short_response = json.dumps(
+        {
+            "title": "短いテスト",
+            "bullets": [
+                "AIモデルが発表された [1]",
+                "新ガイドラインが公開された [2]",
+            ],
+            "language": "ja",
+            "references": [
+                {"id": 1, "url": "https://a.com/1", "domain": "a.com", "article_id": "a1"},
+                {"id": 2, "url": "https://a.com/2", "domain": "a.com", "article_id": "a2"},
+            ],
+        }
+    )
+    good_response = json.dumps(
+        {
+            "title": "AI・データ3日間アップデート",
+            "bullets": [
+                "Googleは2026年4月5日にAIプラットフォームの大規模アップデートを発表し、新型推論エンジン「Gemini Ultra 2」を正式リリースした。同エンジンによりGPT-4oベースの企業向けAPIの応答速度が従来比30%向上し、1リクエストあたりの推論コストも約15%削減される見込みである。これによりAWSのBedrockやMicrosoft AzureのOpenAI Serviceとの価格競争が一段と激化する構図となった。Googleはさらに日本・東南アジア地域での新データセンター3拠点の開設を2026年内に計画しており、アジア太平洋市場でのクラウドAIシェア拡大を狙う方針を明確に示している。市場調査会社のGartnerは今回の発表を受けて2026年のクラウドAI市場規模を前年比25%増の1200億ドルに上方修正した [1]",
+                "日本政府の内閣府AI戦略会議は2026年4月4日、生成AIの出力に対する開発者・運用者の責任範囲を法的根拠に基づき初めて明文化した包括的な「AI安全性ガイドライン」を公開した。ガイドラインは全8章42条で構成され、特にハルシネーション（事実と異なる出力）や著作権侵害リスクへの対応義務が詳細に規定されている。施行は2026年6月1日を予定しており、違反企業には段階的な是正勧告および最大500万円の制裁金が科される可能性がある。欧州AI規制法（EU AI Act）との整合性を意識した設計となっており、国際的な相互認証の基盤となることが期待されている。経済産業省の試算では本ガイドライン対応に伴う国内AI関連企業のコンプライアンスコストは年間約300億円に達する見通しである [2]",
+            ],
+            "language": "ja",
+            "references": [
+                {"id": 1, "url": "https://a.com/1", "domain": "a.com", "article_id": "a1"},
+                {"id": 2, "url": "https://a.com/2", "domain": "a.com", "article_id": "a2"},
+            ],
+        }
+    )
+    llm_provider.chat_generate.side_effect = [
+        {
+            "message": {"content": short_response},
+            "model": "gemma4",
+            "prompt_eval_count": 100,
+            "eval_count": 50,
+            "total_duration": 500_000_000,
+        },
+        {
+            "message": {"content": good_response},
+            "model": "gemma4",
+            "prompt_eval_count": 100,
+            "eval_count": 150,
+            "total_duration": 800_000_000,
+        },
+    ]
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Google released new AI model with faster inference.",
+                        source_url="https://a.com/1",
+                        article_id="a1",
+                    ),
+                    RepresentativeSentence(
+                        text="Japan published new AI guidelines.",
+                        source_url="https://a.com/2",
+                        article_id="a2",
+                    ),
+                ],
+                top_terms=["AI", "model"],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # Should have retried: 2 calls to chat_generate (short rejected, good accepted)
+    assert llm_provider.chat_generate.call_count == 2
+    # Final result should have the good (longer) bullets — avg >= 150 chars
+    avg_len = sum(len(b) for b in response.summary.bullets) / len(response.summary.bullets)
+    assert avg_len >= 300, f"Average bullet length {avg_len:.0f} < 300 after retry"
+
+
+@pytest.mark.asyncio
+async def test_adequate_bullets_pass_quality_check():
+    """Bullets meeting MIN_AVG_BULLET_LENGTH should pass without retry."""
+    config = _create_mock_config()
+    config.recap_summary_num_predict = 4000
+    config.recap_min_avg_bullet_length = 300  # enable quality gate
+    llm_provider = AsyncMock()
+
+    good_response = json.dumps(
+        {
+            "title": "AI・データ3日間アップデート",
+            "bullets": [
+                "Googleは2026年4月5日にAIプラットフォームの大規模アップデートを発表し、新型推論エンジン「Gemini Ultra 2」を正式リリースした。同エンジンによりGPT-4oベースの企業向けAPIの応答速度が従来比30%向上し、1リクエストあたりの推論コストも約15%削減される見込みである。これによりAWSのBedrockやMicrosoft AzureのOpenAI Serviceとの価格競争が一段と激化する構図となった。Googleはさらに日本・東南アジア地域での新データセンター3拠点の開設を2026年内に計画しており、アジア太平洋市場でのクラウドAIシェア拡大を狙う方針を明確に示している。市場調査会社のGartnerは今回の発表を受けて2026年のクラウドAI市場規模を前年比25%増の1200億ドルに上方修正した [1]",
+                "日本政府の内閣府AI戦略会議は2026年4月4日、生成AIの出力に対する開発者・運用者の責任範囲を法的根拠に基づき初めて明文化した包括的な「AI安全性ガイドライン」を公開した。ガイドラインは全8章42条で構成され、特にハルシネーション（事実と異なる出力）や著作権侵害リスクへの対応義務が詳細に規定されている。施行は2026年6月1日を予定しており、違反企業には段階的な是正勧告および最大500万円の制裁金が科される可能性がある。欧州AI規制法（EU AI Act）との整合性を意識した設計となっており、国際的な相互認証の基盤となることが期待されている。経済産業省の試算では本ガイドライン対応に伴う国内AI関連企業のコンプライアンスコストは年間約300億円に達する見通しである [2]",
+            ],
+            "language": "ja",
+            "references": [
+                {"id": 1, "url": "https://a.com/1", "domain": "a.com", "article_id": "a1"},
+                {"id": 2, "url": "https://a.com/2", "domain": "a.com", "article_id": "a2"},
+            ],
+        }
+    )
+    llm_provider.chat_generate.return_value = {
+        "message": {"content": good_response},
+        "model": "gemma4",
+        "prompt_eval_count": 100,
+        "eval_count": 150,
+        "total_duration": 800_000_000,
+    }
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Google released new AI model.",
+                        source_url="https://a.com/1",
+                        article_id="a1",
+                    ),
+                    RepresentativeSentence(
+                        text="Japan published AI guidelines.",
+                        source_url="https://a.com/2",
+                        article_id="a2",
+                    ),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    # Should pass on first attempt — no retry
+    assert llm_provider.chat_generate.call_count == 1
+    assert len(response.summary.bullets) == 2
+
+
+@pytest.mark.asyncio
+async def test_recap_uses_recap_summary_num_predict():
+    """Recap generation should use recap_summary_num_predict, not summary_num_predict."""
+    config = _create_mock_config()
+    config.recap_summary_num_predict = 4000  # Recap-specific
+    config.summary_num_predict = 1000  # General (should NOT be used for recap)
+    llm_provider = AsyncMock()
+
+    llm_provider.chat_generate.return_value = {
+        "message": {
+            "content": json.dumps(
+                {
+                    "title": "テスト",
+                    "bullets": [
+                        "Googleは4月5日に新しいAI推論エンジンを発表し、GPT-4oベースの応答速度が従来比30%向上した。同社は企業向けAPI料金も15%引き下げている [1]",
+                    ],
+                    "language": "ja",
+                    "references": [
+                        {"id": 1, "url": "https://a.com/1", "domain": "a.com", "article_id": "a1"},
+                    ],
+                }
+            ),
+        },
+        "model": "gemma4",
+        "prompt_eval_count": 100,
+        "eval_count": 50,
+        "total_duration": 500_000_000,
+    }
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="ai_data",
+        clusters=[
+            RecapClusterInput(
+                cluster_id=0,
+                representative_sentences=[
+                    RepresentativeSentence(
+                        text="Google released new AI model.",
+                        source_url="https://a.com/1",
+                        article_id="a1",
+                    ),
+                    RepresentativeSentence(
+                        text="The model is faster than ever.",
+                        source_url="https://a.com/1",
+                        article_id="a1",
+                    ),
+                ],
+            )
+        ],
+        window_days=3,
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    await usecase.generate_summary(request)
+
+    # Verify chat_generate was called with recap_summary_num_predict (2000), not summary_num_predict (1000)
+    call_args = llm_provider.chat_generate.call_args
+    payload = call_args.args[0] if call_args.args else call_args.kwargs.get("payload", {})
+    assert payload["options"]["num_predict"] == 4000

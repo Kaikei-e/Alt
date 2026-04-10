@@ -129,7 +129,7 @@ class RecapQualityEvaluator:
     def evaluate_readability(self, summary: RecapSummary) -> float:
         """Score readability: bullet length and proper sentence endings.
 
-        Ideal bullet: 200-600 characters, ends with Japanese period or verb.
+        Ideal bullet: 400-1200 characters, ends with Japanese period or verb.
         Returns 0.0 (unreadable) to 1.0 (all bullets ideal).
         """
         if not summary.bullets:
@@ -139,12 +139,12 @@ class RecapQualityEvaluator:
         for bullet in summary.bullets:
             bullet_len = len(bullet)
             # Length score: 0.0 outside range, 1.0 in sweet spot
-            if 200 <= bullet_len <= 600:
+            if 400 <= bullet_len <= 1200:
                 length_score = 1.0
-            elif 100 <= bullet_len < 200:
-                length_score = (bullet_len - 100) / 100  # linear ramp
-            elif 600 < bullet_len <= 800:
-                length_score = (800 - bullet_len) / 200  # linear decay
+            elif 200 <= bullet_len < 400:
+                length_score = (bullet_len - 200) / 200  # linear ramp
+            elif 1200 < bullet_len <= 1600:
+                length_score = (1600 - bullet_len) / 400  # linear decay
             else:
                 length_score = 0.0
 

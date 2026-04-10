@@ -192,6 +192,16 @@ class NewsCreatorConfig:
         return self.llm.summary_num_predict
 
     @property
+    def recap_summary_num_predict(self) -> int:
+        """Recap-specific output token budget (separate from article summary)."""
+        return self.llm.recap_summary_num_predict
+
+    @property
+    def recap_min_avg_bullet_length(self) -> int:
+        """Minimum average bullet length (chars) to pass quality gate."""
+        return self.llm.recap_min_avg_bullet_length
+
+    @property
     def summary_temperature(self) -> float:
         """Backward compatible access to summary_temperature."""
         return self.llm.summary_temperature

@@ -144,6 +144,34 @@ def test_config_recap_quality_defaults():
     os.environ.pop("SERVICE_SECRET", None)
 
 
+def test_recap_summary_num_predict_default():
+    """recap_summary_num_predict should default to 4000 (separate from summary_num_predict)."""
+    os.environ["SERVICE_SECRET"] = "test-secret"
+    os.environ.pop("RECAP_SUMMARY_NUM_PREDICT", None)
+
+    config = NewsCreatorConfig()
+
+    assert config.recap_summary_num_predict == 4000
+    assert config.recap_min_avg_bullet_length == 300
+    # Must be independent from summary_num_predict (which defaults to 1000)
+    assert config.summary_num_predict == 1000
+
+    os.environ.pop("SERVICE_SECRET", None)
+
+
+def test_recap_summary_num_predict_env_override():
+    """RECAP_SUMMARY_NUM_PREDICT env should override the default."""
+    os.environ["SERVICE_SECRET"] = "test-secret"
+    os.environ["RECAP_SUMMARY_NUM_PREDICT"] = "3000"
+
+    config = NewsCreatorConfig()
+
+    assert config.recap_summary_num_predict == 3000
+
+    del os.environ["RECAP_SUMMARY_NUM_PREDICT"]
+    os.environ.pop("SERVICE_SECRET", None)
+
+
 def test_concurrency_defaults_to_one_when_envs_missing(monkeypatch):
     """When concurrency envs are missing, default to 1 via OLLAMA_NUM_PARALLEL."""
     # Ensure no concurrency envs are set
