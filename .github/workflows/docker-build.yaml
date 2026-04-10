@@ -64,6 +64,7 @@ jobs:
             "recap-worker"
             "recap-subworker"
             "rag-orchestrator"
+            "acolyte-orchestrator"
           )
 
           CHANGED=""

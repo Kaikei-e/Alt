@@ -23,6 +23,7 @@ on:
       - 'alt-butterfly-facade/internal/handler/contract/**'
       - 'auth-hub/internal/adapter/gateway/contract/**'
       - 'tts-speaker/tests/contract/**'
+      - 'acolyte-orchestrator/tests/contract/**'
   pull_request:
     branches: [main]
     paths:
@@ -44,6 +45,7 @@ on:
       - 'alt-butterfly-facade/internal/handler/contract/**'
       - 'auth-hub/internal/adapter/gateway/contract/**'
       - 'tts-speaker/tests/contract/**'
+      - 'acolyte-orchestrator/tests/contract/**'
 
 permissions:
   contents: read
@@ -396,9 +398,27 @@ jobs:
         working-directory: recap-evaluator
         run: uv run pytest tests/contract/ -v --no-cov
 
-      - name: Upload pact files
+      - name: Upload pact files (recap-evaluator)
         uses: actions/upload-artifact@v4
         with:
           name: pacts-recap-evaluator
           path: pacts/recap-evaluator-recap-worker.json
           if-no-files-found: error
+
+      - name: Install Python 3.14
+        run: uv python install 3.14
+
+      - name: Install acolyte-orchestrator dependencies
+        working-directory: acolyte-orchestrator
+        run: uv sync --dev
+
+      - name: Run acolyte-orchestrator consumer tests
+        working-directory: acolyte-orchestrator
+        run: uv run pytest tests/contract/ -v --no-cov
+
+      - name: Upload pact files (acolyte-orchestrator)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacts-acolyte-orchestrator
+          path: acolyte-orchestrator/pacts/*.json
+          if-no-files-found: warn
