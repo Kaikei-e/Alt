@@ -1,10 +1,8 @@
 <script lang="ts">
-import { Archive, Loader2, RefreshCw, Sparkles, Star } from "@lucide/svelte";
 import { tick, untrack } from "svelte";
 import { fade } from "svelte/transition";
 import { browser } from "$app/environment";
 import {
-	archiveContentClient,
 	type FeedContentOnTheFlyResponse,
 	type FetchArticleSummaryResponse,
 	getArticleSummaryClient,
@@ -12,7 +10,6 @@ import {
 	registerFavoriteFeedClient,
 	summarizeArticleClient,
 } from "$lib/api/client";
-import { Button, buttonVariants } from "$lib/components/ui/button";
 import * as Sheet from "$lib/components/ui/sheet";
 import {
 	createClientTransport,
@@ -45,8 +42,6 @@ let isLoading = $state(false);
 let isFavoriting = $state(false);
 let error = $state<string | null>(null);
 let isBookmarked = $state(false);
-let isArchiving = $state(false);
-let isArchived = $state(false);
 let summary = $state<string | null>(null);
 let summaryError = $state<string | null>(null);
 let isSummarizing = $state(false);
@@ -162,8 +157,6 @@ $effect(() => {
 		articleSummary = null;
 		feedDetails = null;
 		isFavoriting = false;
-		isArchiving = false;
-		isArchived = false;
 		contentRetryCount = 0;
 		summaryRetryCount = 0;
 
@@ -174,7 +167,6 @@ $effect(() => {
 
 const handleHideDetails = () => {
 	isOpen = false;
-	isArchived = false;
 	if (onOpenChange) {
 		onOpenChange(false);
 	}
@@ -225,13 +217,6 @@ const fetchData = async () => {
 
 		if (hasValidDetails) {
 			feedDetails = detailsResult;
-
-			// Auto-archive article when displaying content
-			// This ensures the article exists in DB before summarization
-			archiveContentClient(feedURL, feedTitle).catch((err) => {
-				console.warn("Failed to auto-archive article:", err);
-				// Don't block UI on archive failure
-			});
 		}
 
 		// If neither API call succeeded with valid content, show error
@@ -247,8 +232,6 @@ const fetchData = async () => {
 };
 
 const handleShowDetails = async () => {
-	isArchived = false;
-
 	// If we already have initial data, just open the modal
 	if (initialData) {
 		isOpen = true;
@@ -393,15 +376,14 @@ async function handleSummarize(forceRefresh = false) {
 </script>
 
 {#if showButton && !isOpen}
-	<Button
-		class="text-sm font-bold px-3 min-h-[44px] rounded-full border border-white/20 disabled:opacity-50 transition-all duration-200 hover:brightness-110 hover:-translate-y-[1px] active:scale-[0.98]"
-		style="background: var(--alt-secondary); color: var(--text-primary);"
+	<button
+		class="show-details-btn"
 		onclick={handleShowDetails}
 		data-testid="show-details-button-{uniqueId}"
 		disabled={isLoading}
 	>
-		{isLoading ? "Loading" : "Show Details"}
-	</Button>
+		{isLoading ? "Loading\u2026" : "Show Details"}
+	</button>
 {/if}
 
 <Sheet.Root
@@ -412,22 +394,15 @@ async function handleSummarize(forceRefresh = false) {
 >
 	<Sheet.Content
 		side="bottom"
-		class="max-w-[500px] h-[85vh] bg-surface-bg text-text-primary border-2 border-surface-border shadow-2xl rounded-2xl p-4 flex flex-col overflow-hidden gap-0 p-0"
+		class="sheet-content max-w-[500px] h-[85vh] flex flex-col overflow-hidden p-0"
 	>
-		<!-- Header -->
-		<Sheet.Header
-			class="flex items-center justify-between p-4 bg-white border-b-2 border-surface-border shrink-0"
-		>
-			<Sheet.Title class="text-xl font-bold text-text-primary break-words line-clamp-3 pr-4">
+		<Sheet.Header class="sheet-header">
+			<Sheet.Title class="sheet-title">
 				{feedTitle || "Article Details"}
 			</Sheet.Title>
 		</Sheet.Header>
 
-		<!-- Content -->
-		<div
-			class="flex-1 overflow-y-auto p-4 bg-[#f8f8f8] scrollable-content"
-			id="summary-content"
-		>
+		<div class="sheet-body scrollable-content" id="summary-content">
 			{#if feedDetails || articleSummary}
 				<RenderFeedDetails
 					feedDetails={feedDetails ?? articleSummary}
@@ -442,151 +417,272 @@ async function handleSummarize(forceRefresh = false) {
 				/>
 			{/if}
 
-			<!-- Display Japanese Summary -->
 			{#if summary}
 				<div
 					id="summary-section"
-					class="mt-6 p-5 rounded-lg border-2 border-alt-primary bg-white shadow-md"
+					class="summary-section"
 					transition:fade={{ duration: 200 }}
 				>
-					<div class="flex items-center gap-2 mb-3 pb-2 border-b border-surface-border">
-						<Sparkles size={20} class="text-alt-primary" />
-						<h3 class="text-lg font-bold text-text-primary">
-							Article Summary
-						</h3>
-					</div>
-					<p class="leading-relaxed text-base text-text-primary whitespace-pre-wrap">
-						{summary}
-					</p>
+					<h3 class="section-label">AI SUMMARY</h3>
+					<p class="summary-prose">{summary}</p>
 				</div>
 			{/if}
 
 			{#if summaryError}
-				<div
-					class="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-center"
-					role="alert"
-				>
+				<div class="error-stripe" role="alert">
 					{summaryError}
 				</div>
 			{/if}
 		</div>
 
-		<!-- Footer Actions -->
-		<Sheet.Footer
-			class="p-4 bg-[#e8e8e8] border-t-2 border-surface-border shrink-0 flex-row justify-end gap-3 sm:justify-end"
-		>
-			<Button
-				variant="outline"
-				size="sm"
-				class="rounded-full border-alt-secondary text-text-primary hover:bg-alt-secondary hover:text-white min-w-[100px] min-h-[44px] transition-all duration-200"
+		<Sheet.Footer class="sheet-footer">
+			<button
+				class="action-btn"
+				class:action-btn--success={isBookmarked}
 				onclick={async () => {
-					if (!feedURL) return;
+					if (!feedURL || isBookmarked) return;
 					isFavoriting = true;
 					try {
 						await registerFavoriteFeedClient(feedURL);
-						// Optional: Show success toast
+						isBookmarked = true;
 					} catch (e) {
 						console.error("Failed to favorite feed", e);
 					} finally {
 						isFavoriting = false;
 					}
 				}}
-				disabled={isFavoriting}
+				disabled={isFavoriting || isBookmarked}
 			>
-				<Star size={14} class="mr-1.5" />
-				Favorite
-			</Button>
+				{isFavoriting ? "Saving\u2026" : isBookmarked ? "Favorited" : "Favorite"}
+			</button>
 
-			<Button
-				variant="outline"
-				size="sm"
-				class="rounded-full border-alt-secondary text-text-primary hover:bg-alt-secondary hover:text-white min-w-[100px] min-h-[44px] transition-all duration-200"
-				onclick={async () => {
-					if (!feedURL) return;
-					isArchiving = true;
-					try {
-						await archiveContentClient(feedURL, feedTitle);
-						isArchived = true;
-					} catch (e) {
-						console.error("Failed to archive content", e);
-					} finally {
-						isArchiving = false;
-					}
-				}}
-				disabled={isArchiving || isArchived}
-			>
-				<Archive size={14} class="mr-1.5" />
-				{isArchiving ? "..." : isArchived ? "Saved" : "Archive"}
-			</Button>
-
-			<Button
-				size="sm"
-				variant={summaryButtonState === 'error' ? 'destructive' : undefined}
-				class={summaryButtonState === 'error'
-					? 'rounded-full font-bold min-w-[120px] min-h-[44px] active:scale-95 transition-all duration-200'
-					: 'rounded-full font-bold min-w-[120px] min-h-[44px] bg-alt-primary text-white hover:bg-alt-secondary active:scale-95 transition-all duration-200'}
+			<button
+				class="action-btn action-btn--primary"
+				class:action-btn--error={summaryButtonState === 'error'}
 				onclick={() => handleSummarize(summaryButtonState === 'success')}
 				disabled={isSummarizing}
 			>
 				{#if summaryButtonState === 'loading'}
-					<Loader2 size={14} class="mr-1.5 animate-spin" />
+					<span class="loading-pulse"></span>
 					Summarizing
 				{:else if summaryButtonState === 'error'}
-					<RefreshCw size={14} class="mr-1.5" />
-					Try again
+					Try Again
 				{:else if summaryButtonState === 'success'}
-					<RefreshCw size={14} class="mr-1.5" />
 					Re-summarize
 				{:else}
-					<Sparkles size={14} class="mr-1.5" />
-					Summary
+					Summarize
 				{/if}
-			</Button>
+			</button>
 		</Sheet.Footer>
 	</Sheet.Content>
 </Sheet.Root>
 
 <style>
-	/* Improve text rendering */
+	.show-details-btn {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		padding: 0.4rem 0.75rem;
+		min-height: 44px;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.show-details-btn:active {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.show-details-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	:global(.sheet-content) {
+		background: var(--surface-bg) !important;
+		border: 1px solid var(--surface-border) !important;
+		border-radius: 0 !important;
+		box-shadow: none !important;
+	}
+
+	:global(.sheet-header) {
+		padding: 1rem !important;
+		background: var(--surface-bg) !important;
+		border-bottom: 1px solid var(--surface-border) !important;
+		flex-shrink: 0;
+	}
+
+	:global(.sheet-title) {
+		font-family: var(--font-display) !important;
+		font-size: 1.1rem !important;
+		font-weight: 700 !important;
+		color: var(--alt-charcoal) !important;
+		line-height: 1.3 !important;
+		overflow-wrap: break-word;
+	}
+
+	.sheet-body {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		padding: 1rem;
+		background: var(--surface-2);
+	}
+
+	.summary-section {
+		margin-top: 1.5rem;
+		padding: 1rem;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
+	}
+
+	.section-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0 0 0.5rem;
+	}
+
+	.summary-prose {
+		font-family: var(--font-body);
+		font-size: 0.9rem;
+		line-height: 1.7;
+		color: var(--alt-charcoal);
+		white-space: pre-wrap;
+		margin: 0;
+	}
+
+	.error-stripe {
+		margin-top: 1rem;
+		padding: 0.75rem 1rem;
+		border-left: 3px solid var(--alt-terracotta);
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		color: var(--alt-terracotta);
+	}
+
+	:global(.sheet-footer) {
+		padding: 0.75rem 1rem !important;
+		background: var(--surface-bg) !important;
+		border-top: 1px solid var(--surface-border) !important;
+		flex-shrink: 0;
+		display: flex !important;
+		flex-direction: row !important;
+		justify-content: flex-end !important;
+		gap: 0.75rem !important;
+	}
+
+	.action-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		padding: 0.4rem 0.75rem;
+		min-height: 44px;
+		min-width: 100px;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.action-btn:active:not(:disabled) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.action-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.action-btn--primary {
+		background: var(--alt-primary);
+		color: var(--surface-bg);
+		border-color: var(--alt-primary);
+		min-width: 120px;
+	}
+
+	.action-btn--primary:active:not(:disabled) {
+		background: var(--alt-charcoal);
+		border-color: var(--alt-charcoal);
+	}
+
+	.action-btn--error {
+		color: var(--alt-terracotta);
+		border-color: var(--alt-terracotta);
+		background: transparent;
+	}
+
+	.action-btn--success {
+		color: var(--alt-sage);
+		border-color: var(--alt-sage);
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: currentColor;
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	/* Scrollable content styling */
 	:global(.scrollable-content) {
-		/* font-smoothing removed */
 		-webkit-font-smoothing: antialiased;
 		-moz-osx-font-smoothing: grayscale;
 		text-rendering: optimizeLegibility;
 	}
 
-	/* Better line height for readability */
 	:global(.scrollable-content p) {
 		line-height: 1.7;
 		margin-bottom: 1em;
 	}
 
-	/* Heading hierarchy */
 	:global(.scrollable-content h1),
 	:global(.scrollable-content h2),
 	:global(.scrollable-content h3) {
 		font-weight: 700;
-		color: var(--text-primary);
+		color: var(--alt-charcoal);
 		margin-top: 1.5em;
 		margin-bottom: 0.5em;
 	}
 
-	/* Scrollbar styling */
 	:global(.scrollable-content::-webkit-scrollbar) {
 		width: 6px;
 	}
 
 	:global(.scrollable-content::-webkit-scrollbar-track) {
-		background: #f0f0f0;
-		border-radius: 3px;
+		background: var(--surface-2);
 	}
 
 	:global(.scrollable-content::-webkit-scrollbar-thumb) {
-		background: #999999;
-		border-radius: 3px;
+		background: var(--alt-ash);
 	}
 
-	:global(.scrollable-content::-webkit-scrollbar-thumb:hover) {
-		background: #666666;
+	@keyframes pulse {
+		0%, 100% { opacity: 0.3; }
+		50% { opacity: 1; }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.loading-pulse {
+			animation: none;
+			opacity: 1;
+		}
 	}
 </style>

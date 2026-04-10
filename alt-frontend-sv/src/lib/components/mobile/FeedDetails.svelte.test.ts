@@ -54,6 +54,59 @@ vi.mock("$app/environment", () => ({
 const testFeedURL = "https://example.com/test-article";
 const testFeedTitle = "Test Article Title";
 
+describe("FeedDetails Alt-Paper compliance", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("renders Show Details button when showButton is true", async () => {
+		render(FeedDetails as never, {
+			props: {
+				feedURL: testFeedURL,
+				feedTitle: testFeedTitle,
+				showButton: true,
+			},
+		});
+
+		await expect.element(page.getByText("Show Details")).toBeInTheDocument();
+	});
+
+	it("does NOT render Archive button when open", async () => {
+		render(FeedDetails as never, {
+			props: {
+				feedURL: testFeedURL,
+				feedTitle: testFeedTitle,
+				open: true,
+				onOpenChange: vi.fn(),
+				showButton: false,
+			},
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		const archiveEl = page.getByText("Archive");
+		await expect.element(archiveEl).not.toBeInTheDocument();
+	});
+
+	it("renders Favorite button when open", async () => {
+		render(FeedDetails as never, {
+			props: {
+				feedURL: testFeedURL,
+				feedTitle: testFeedTitle,
+				open: true,
+				onOpenChange: vi.fn(),
+				showButton: false,
+			},
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		await expect
+			.element(page.getByRole("button", { name: /favorite/i }))
+			.toBeInTheDocument();
+	});
+});
+
 describe("FeedDetails retry", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
