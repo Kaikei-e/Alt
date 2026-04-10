@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ArrowLeft, Loader2, Shuffle } from "@lucide/svelte";
+import { ArrowLeft } from "@lucide/svelte";
 import {
 	createClientTransport,
 	fetchArticlesByTag,
@@ -168,7 +168,6 @@ function loadArticleTags(articleId: string) {
 				}
 				case "generating":
 					// Keep loading state - tags are being generated
-					// Could add UI feedback here if needed (e.g., "Generating...")
 					break;
 				case "error": {
 					console.error("Failed to load article tags:", event.message);
@@ -313,30 +312,31 @@ function handleBack() {
 }
 </script>
 
-<div class="flex flex-col h-full">
-	<!-- Header -->
-	<div
-		class="flex items-center gap-2 px-4 py-3 border-b"
-		style="border-color: var(--surface-border); background: var(--surface-bg);"
-	>
-		{#if isShowingArticles}
-			<button
-				type="button"
-				class="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-muted active:scale-95 transition-all"
-				onclick={handleBack}
-				aria-label="Go back"
-			>
-				<ArrowLeft size={20} style="color: var(--text-primary);" />
-			</button>
-		{:else}
-			<div class="w-8 h-8 flex items-center justify-center">
-				<Shuffle size={20} style="color: var(--alt-primary);" />
+<div class="flex flex-col h-full" data-role="tag-trail-screen">
+	<!-- Masthead -->
+	<header class="trail-masthead">
+		<div class="masthead-rule"></div>
+		<div class="masthead-content">
+			{#if isShowingArticles}
+				<button
+					type="button"
+					class="back-btn"
+					onclick={handleBack}
+					aria-label="Go back"
+				>
+					<ArrowLeft size={18} />
+				</button>
+			{/if}
+			<div class="flex-1 text-center">
+				<h1 class="masthead-title">Tag Trail</h1>
+				<p class="masthead-sub">Topic Cross-Reference &amp; Discovery</p>
 			</div>
-		{/if}
-		<h1 class="text-lg font-semibold flex-1" style="color: var(--text-primary);">
-			Tag Trail
-		</h1>
-	</div>
+			{#if isShowingArticles}
+				<div class="min-w-[44px]"></div>
+			{/if}
+		</div>
+		<div class="masthead-rule"></div>
+	</header>
 
 	<!-- Breadcrumb -->
 	{#if hops.length > 0}
@@ -346,8 +346,9 @@ function handleBack() {
 	<!-- Content -->
 	<div class="flex-1 min-h-0 flex flex-col overflow-hidden">
 		{#if isLoadingFeed}
-			<div class="flex-1 flex items-center justify-center">
-				<Loader2 size={32} class="animate-spin" style="color: var(--alt-primary);" />
+			<div class="flex-1 flex items-center justify-center gap-3">
+				<div class="loading-pulse"></div>
+				<span class="loading-text">Discovering a feed&hellip;</span>
 			</div>
 		{:else if !isShowingArticles}
 			<!-- Random feed view -->
@@ -362,14 +363,11 @@ function handleBack() {
 					/>
 				{:else}
 					<div class="flex flex-col items-center justify-center h-full px-4">
-						<p class="text-center mb-4" style="color: var(--text-secondary);">
-							No subscriptions found. Add some feeds to start exploring!
+						<div class="empty-ornament">&#9670;</div>
+						<p class="empty-text">
+							No subscriptions found. Add some feeds to start exploring.
 						</p>
-						<a
-							href="/settings/feeds"
-							class="px-4 py-2 rounded-lg font-medium min-h-[44px] flex items-center"
-							style="background: var(--alt-primary); color: var(--text-primary);"
-						>
+						<a href="/settings/feeds" class="editorial-btn">
 							Manage Feeds
 						</a>
 					</div>
@@ -390,3 +388,119 @@ function handleBack() {
 		{/if}
 	</div>
 </div>
+
+<style>
+	/* ===== Masthead ===== */
+	.trail-masthead {
+		padding: 0 1rem;
+		background: var(--surface-bg, #faf9f7);
+	}
+
+	.masthead-rule {
+		height: 2px;
+		background: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.masthead-content {
+		display: flex;
+		align-items: center;
+		padding: 0.5rem 0;
+	}
+
+	.masthead-title {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1.3rem;
+		font-weight: 800;
+		letter-spacing: -0.01em;
+		line-height: 1.1;
+		color: var(--alt-charcoal, #1a1a1a);
+		margin: 0;
+	}
+
+	.masthead-sub {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.7rem;
+		font-style: italic;
+		color: var(--alt-slate, #666);
+		margin: 0.1rem 0 0;
+	}
+
+	/* ===== Back button ===== */
+	.back-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 44px;
+		min-width: 44px;
+
+		color: var(--alt-charcoal, #1a1a1a);
+		background: transparent;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+	}
+	.back-btn:hover {
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+		border-color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	/* ===== Loading ===== */
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-ash, #999);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+	@keyframes pulse {
+		0%, 100% { opacity: 0.3; }
+		50% { opacity: 1; }
+	}
+	.loading-text {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--alt-ash, #999);
+	}
+
+	/* ===== Empty state ===== */
+	.empty-ornament {
+		font-size: 1.5rem;
+		color: var(--surface-border, #c8c8c8);
+		margin-bottom: 0.75rem;
+	}
+	.empty-text {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.85rem;
+		color: var(--alt-ash, #999);
+		text-align: center;
+		margin: 0 0 1rem;
+	}
+	.editorial-btn {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		padding: 0.5rem 1.25rem;
+
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.8rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		text-decoration: none;
+
+		color: var(--alt-charcoal, #1a1a1a);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal, #1a1a1a);
+		transition: background 0.15s, color 0.15s;
+	}
+	.editorial-btn:hover {
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.loading-pulse { animation: none; opacity: 0.6; }
+	}
+</style>

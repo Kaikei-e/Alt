@@ -83,10 +83,10 @@ export class DesktopTagTrailPage extends BasePage {
 	}
 
 	/**
-	 * Click "Home" in the trail breadcrumb to reset.
+	 * Click "Start" in the trail breadcrumb to reset.
 	 */
 	async clickHome(): Promise<void> {
-		await this.page.getByRole("button", { name: /home/i }).click();
+		await this.page.getByRole("button", { name: /start|home/i }).click();
 	}
 
 	/**

@@ -1,13 +1,5 @@
 <script lang="ts">
-import {
-	Loader2,
-	RefreshCw,
-	Shuffle,
-	Home,
-	ChevronRight,
-	ExternalLink,
-	Tag,
-} from "@lucide/svelte";
+import { RefreshCw, ChevronRight, ExternalLink } from "@lucide/svelte";
 import {
 	createClientTransport,
 	fetchArticlesByTag,
@@ -18,7 +10,6 @@ import {
 } from "$lib/connect";
 import { onDestroy, untrack } from "svelte";
 import type { TagTrailHop } from "$lib/schema/tagTrail";
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 
 // Create transport for connect-rpc calls
 const transport = createClientTransport();
@@ -88,12 +79,10 @@ $effect(() => {
 			feedTags = currentFeed.tags;
 			isLoadingFeedTags = false;
 		} else if (currentFeed.latestArticleId) {
-			// Tags not included in response but we have the article ID — stream tags directly
 			isLoadingFeedTags = true;
 			const articleId = currentFeed.latestArticleId;
 			untrack(() => streamFeedTags(articleId));
 		} else {
-			// No tags and no article ID — nothing to load
 			feedTags = [];
 			isLoadingFeedTags = false;
 		}
@@ -103,16 +92,14 @@ $effect(() => {
 function streamFeedTags(articleId: string) {
 	feedTagsError = null;
 
-	// Clear any existing timeout
 	if (feedTagsTimeoutId) {
 		clearTimeout(feedTagsTimeoutId);
 		feedTagsTimeoutId = null;
 	}
 
-	// Set a 45-second timeout for tag generation
 	feedTagsTimeoutId = setTimeout(() => {
 		if (isLoadingFeedTags) {
-			feedTagsError = "タグ生成がタイムアウトしました。更新してください。";
+			feedTagsError = "Tag generation timed out. Please refresh.";
 			isLoadingFeedTags = false;
 			const ctrl = activeStreamControllers.get(articleId);
 			if (ctrl) {
@@ -136,7 +123,7 @@ function streamFeedTags(articleId: string) {
 					feedTagsTimeoutId = null;
 				}
 			} else if (event.eventType === "error") {
-				feedTagsError = event.message || "タグの生成に失敗しました。";
+				feedTagsError = event.message || "Failed to generate tags.";
 				isLoadingFeedTags = false;
 				if (feedTagsTimeoutId) {
 					clearTimeout(feedTagsTimeoutId);
@@ -146,7 +133,7 @@ function streamFeedTags(articleId: string) {
 		},
 		(error) => {
 			console.error("Failed to stream feed tags:", error);
-			feedTagsError = "タグの読み込みに失敗しました。更新してください。";
+			feedTagsError = "Failed to load tags. Please refresh.";
 			isLoadingFeedTags = false;
 			if (feedTagsTimeoutId) {
 				clearTimeout(feedTagsTimeoutId);
@@ -160,9 +147,6 @@ function streamFeedTags(articleId: string) {
 	]);
 }
 
-// Load tags when articles are loaded
-// Guard reads use untrack() to prevent $effect re-firing when loadArticleTags()
-// mutates articleTagsCache/loadingArticleTags (new object references trigger reactivity).
 $effect(() => {
 	if (articles.length > 0) {
 		for (const article of articles) {
@@ -331,6 +315,13 @@ function handleHopClick(index: number) {
 	}
 }
 
+const dateStr = new Date().toLocaleDateString("en-US", {
+	weekday: "long",
+	year: "numeric",
+	month: "long",
+	day: "numeric",
+});
+
 const formatDate = (dateStr: string) => {
 	const date = new Date(dateStr);
 	return date.toLocaleDateString(undefined, {
@@ -342,125 +333,128 @@ const formatDate = (dateStr: string) => {
 </script>
 
 <div class="flex flex-col h-full">
-	<!-- Header with Actions -->
-	<PageHeader title="Tag Trail" description="Discover content through tag exploration">
-		{#snippet actions()}
-			<button
-				type="button"
-				onclick={handleRefresh}
-				disabled={isLoadingFeed}
-				class="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors
-					bg-[var(--surface-hover)] hover:bg-[var(--muted)] text-[var(--text-primary)]
-					disabled:opacity-50 disabled:cursor-not-allowed"
-			>
-				<RefreshCw size={16} class={isLoadingFeed ? "animate-spin" : ""} />
-				New Random Feed
-			</button>
-		{/snippet}
-	</PageHeader>
+	<!-- Masthead -->
+	<header class="trail-masthead">
+		<div class="masthead-rule"></div>
+		<div class="masthead-inner">
+			<span class="masthead-date">{dateStr}</span>
+			<h1 class="masthead-title">Tag Trail</h1>
+			<p class="masthead-sub">Topic Cross-Reference &amp; Discovery</p>
+		</div>
+		<div class="masthead-rule"></div>
+	</header>
+
+	<!-- Toolbar -->
+	<nav class="trail-toolbar">
+		<span class="toolbar-label">
+			{#if selectedTag}
+				{articles.length} article{articles.length !== 1 ? "s" : ""} found
+			{:else}
+				Serendipitous exploration
+			{/if}
+		</span>
+		<button
+			type="button"
+			onclick={handleRefresh}
+			disabled={isLoadingFeed}
+			class="editorial-btn"
+			class:editorial-btn--disabled={isLoadingFeed}
+		>
+			<RefreshCw size={14} class={isLoadingFeed ? "animate-spin" : ""} />
+			New Random Feed
+		</button>
+	</nav>
 
 	<!-- Main Content: Master-Detail Layout -->
-	<div class="flex-1 min-h-0 flex gap-6">
+	<div class="flex-1 min-h-0 flex gap-6 p-6">
 		<!-- Left Panel: Feed Card + Trail History (Master) -->
 		<aside class="w-80 flex-shrink-0 flex flex-col gap-4">
 			<!-- Feed Card -->
-			<div
-				class="p-4 rounded-lg border bg-[var(--surface-bg)] border-[var(--surface-border)]"
-			>
+			<div class="aside-panel">
 				{#if isLoadingFeed}
-					<div class="flex items-center justify-center py-12">
-						<Loader2 size={32} class="animate-spin text-[var(--alt-primary)]" />
+					<div class="flex items-center justify-center gap-3 py-12">
+						<div class="loading-pulse"></div>
+						<span class="loading-text">Discovering&hellip;</span>
 					</div>
 				{:else if refreshError}
-					<div class="text-center py-8">
-						<p class="text-sm text-red-500">{refreshError}</p>
+					<div class="error-stripe">
+						<p class="error-text">{refreshError}</p>
 						<button
 							type="button"
 							onclick={handleRefresh}
-							class="mt-2 text-xs text-[var(--alt-primary)] hover:underline"
+							class="error-link"
 						>
 							Try again
 						</button>
 					</div>
 				{:else if currentFeed}
 					<!-- Feed Info -->
-					<div class="flex items-start gap-3 mb-4">
-						<div class="w-10 h-10 rounded-lg bg-[var(--alt-primary)] bg-opacity-10 flex items-center justify-center flex-shrink-0">
-							<Shuffle size={20} class="text-[var(--alt-primary)]" />
-						</div>
-						<div class="flex-1 min-w-0">
-							<a
-								href={currentFeed.url}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="text-base font-semibold text-[var(--text-primary)] hover:text-[var(--accent-primary)] hover:underline line-clamp-2 flex items-center gap-1"
-							>
-								{currentFeed.title || currentFeed.url}
-								<ExternalLink size={14} class="flex-shrink-0 opacity-50" />
-							</a>
-							{#if currentFeed.description}
-								<p class="text-sm text-[var(--text-secondary)] mt-1 line-clamp-2">
-									{currentFeed.description}
-								</p>
-							{/if}
-						</div>
+					<div class="flex flex-col gap-1 mb-4">
+						<span class="section-label">Featured Section</span>
+						<a
+							href={currentFeed.url}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="feed-title"
+						>
+							{currentFeed.title || currentFeed.url}
+							<ExternalLink size={12} class="inline-block flex-shrink-0 opacity-40" />
+						</a>
+						{#if currentFeed.description}
+							<p class="feed-desc">{currentFeed.description}</p>
+						{/if}
 					</div>
 
 					<!-- Tags Section -->
-					<div class="border-t border-[var(--surface-border)] pt-4">
-						<h3 class="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-3">
-							Click a tag to explore
-						</h3>
+					<div class="tags-section">
+						<span class="section-label">Explore Topics</span>
 						{#if feedTagsError}
-							<div class="space-y-2">
-								<p class="text-sm text-[var(--text-secondary)]">{feedTagsError}</p>
+							<div class="error-stripe">
+								<p class="error-text">{feedTagsError}</p>
 								<button
 									type="button"
 									onclick={handleRefresh}
-									class="text-xs text-[var(--alt-primary)] hover:underline"
+									class="error-link"
 								>
 									Refresh
 								</button>
 							</div>
 						{:else if isLoadingFeedTags}
-							<div class="flex flex-wrap gap-2">
-								{#each [1, 2, 3, 4] as i}
-									<div
-										class="h-8 w-20 rounded-full animate-pulse bg-[var(--muted)]"
-									></div>
+							<div class="flex flex-wrap gap-2 mb-2">
+								{#each [1, 2, 3, 4] as _i}
+									<div class="skeleton-tag"></div>
 								{/each}
 							</div>
-							<p class="text-xs text-[var(--text-tertiary)] mt-2">Generating tags...</p>
+							<div class="flex items-center gap-2">
+								<div class="loading-pulse"></div>
+								<span class="loading-text">Generating tags&hellip;</span>
+							</div>
 						{:else if feedTags.length > 0}
 							<div class="flex flex-wrap gap-2">
-								{#each feedTags as tag}
+								{#each feedTags as tag, i}
 									<button
 										type="button"
 										onclick={() => handleTagClick(tag)}
-										class="px-3 py-1.5 text-sm rounded-full transition-all
-											{selectedTag?.id === tag.id
-											? 'bg-[var(--alt-primary)] text-white font-medium'
-											: 'bg-[var(--muted)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'}"
+										class="index-entry"
+										class:index-entry--active={selectedTag?.id === tag.id}
+										style="--stagger: {i};"
 									>
 										{tag.name}
 									</button>
 								{/each}
 							</div>
 						{:else}
-							<p class="text-sm text-[var(--text-secondary)]">No tags available</p>
+							<p class="empty-hint">No tags available</p>
 						{/if}
 					</div>
 				{:else}
 					<!-- No Feed State -->
-					<div class="text-center py-8">
-						<p class="text-[var(--text-secondary)] mb-4">
-							No subscriptions found. Add some feeds to start exploring!
+					<div class="flex flex-col items-center py-8 px-4">
+						<div class="empty-ornament">&#9670;</div>
+						<p class="empty-hint">
+							No subscriptions found. Add some feeds to start exploring.
 						</p>
-						<a
-							href="/settings/feeds"
-							class="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium
-								bg-[var(--alt-primary)] text-white hover:opacity-90 transition-opacity"
-						>
+						<a href="/settings/feeds" class="editorial-btn mt-4">
 							Manage Feeds
 						</a>
 					</div>
@@ -469,53 +463,30 @@ const formatDate = (dateStr: string) => {
 
 			<!-- Trail History Section -->
 			{#if hops.length > 0}
-				<div
-					class="p-4 rounded-lg border bg-[var(--surface-bg)] border-[var(--surface-border)]"
-				>
-					<h3 class="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-3">
-						Trail History
-					</h3>
+				<div class="aside-panel" data-testid="trail-breadcrumb">
+					<span class="section-label">Trail History</span>
 					<div class="overflow-x-auto scrollbar-thin">
 						<div class="flex flex-nowrap items-center gap-2 pb-2 min-w-max">
-							<!-- Start (Home) -->
+							<!-- Start -->
 							<button
 								type="button"
 								onclick={() => handleHopClick(-1)}
-								class="flex-shrink-0 flex flex-col items-center gap-1 p-2 rounded-lg transition-colors
-									hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+								class="trail-node"
+								aria-label="Go to start"
 							>
-								<div class="w-8 h-8 rounded-full bg-[var(--muted)] flex items-center justify-center">
-									<Home size={14} />
-								</div>
-								<span class="text-[10px] max-w-[50px] truncate">Start</span>
+								Start
 							</button>
 
 							{#each hops as hop, index}
-								<!-- Arrow -->
-								<ChevronRight size={14} class="text-[var(--text-tertiary)] flex-shrink-0" />
-
-								<!-- Hop Card -->
+								<ChevronRight size={12} class="flex-shrink-0" style="color: var(--surface-border, #c8c8c8);" />
 								<button
 									type="button"
 									onclick={() => handleHopClick(index)}
 									disabled={index === hops.length - 1}
-									class="flex-shrink-0 flex flex-col items-center gap-1 p-2 rounded-lg transition-colors
-										{index === hops.length - 1
-										? 'bg-[var(--alt-primary)] bg-opacity-10 ring-2 ring-[var(--alt-primary)] text-[var(--alt-primary)]'
-										: 'hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+									class="trail-node"
+									class:trail-node--current={index === hops.length - 1}
 								>
-									<div class="w-8 h-8 rounded-full flex items-center justify-center
-										{index === hops.length - 1
-										? 'bg-[var(--alt-primary)] text-white'
-										: 'bg-[var(--muted)]'}"
-									>
-										{#if hop.type === "feed"}
-											<Shuffle size={14} />
-										{:else}
-											<Tag size={14} />
-										{/if}
-									</div>
-									<span class="text-[10px] max-w-[60px] truncate font-medium">{hop.name}</span>
+									{hop.name}
 								</button>
 							{/each}
 						</div>
@@ -527,27 +498,29 @@ const formatDate = (dateStr: string) => {
 		<!-- Right Panel: Articles (Detail) -->
 		<main class="flex-1 min-w-0 flex flex-col">
 			{#if selectedTag}
-				<div class="mb-4">
-					<h2 class="text-lg font-semibold text-[var(--text-primary)]">
-						Articles tagged "{selectedTag.name}"
+				<div class="article-header">
+					<span class="section-label">Cross-Referenced Stories</span>
+					<h2 class="article-heading">
+						{selectedTag.name}
 					</h2>
-					<p class="text-sm text-[var(--text-secondary)]">
-						{articles.length} article{articles.length !== 1 ? "s" : ""} found
-					</p>
+					<span class="article-count">
+						{articles.length} article{articles.length !== 1 ? "s" : ""}
+					</span>
 				</div>
 
 				{#if isLoadingArticles && articles.length === 0}
-					<div class="flex items-center justify-center py-12">
-						<Loader2 size={32} class="animate-spin text-[var(--alt-primary)]" />
+					<div class="flex items-center justify-center gap-3 py-12">
+						<div class="loading-pulse"></div>
+						<span class="loading-text">Searching across subscriptions&hellip;</span>
 					</div>
 				{:else if articles.length > 0}
 					<!-- Article Grid -->
 					<div class="flex-1 overflow-y-auto">
 						<div class="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4 pb-4">
-							{#each articles as article (article.id)}
+							{#each articles as article, i (article.id)}
 								<article
-									class="p-4 rounded-lg border bg-[var(--surface-bg)] border-[var(--surface-border)]
-										hover:border-[var(--accent-primary)] hover:shadow-md transition-all group"
+									class="article-card"
+									style="--stagger: {i};"
 								>
 									<a
 										href={article.link}
@@ -555,24 +528,22 @@ const formatDate = (dateStr: string) => {
 										rel="noopener noreferrer"
 										class="block"
 									>
-										<h3 class="text-base font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] line-clamp-2 mb-2">
-											{article.title}
-										</h3>
-										<div class="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+										<h3 class="card-title">{article.title}</h3>
+										<div class="card-meta">
 											{#if article.feedTitle}
-												<span class="truncate max-w-[150px]">{article.feedTitle}</span>
-												<span>·</span>
+												<span class="meta-source">{article.feedTitle}</span>
+												<span class="meta-dot">&middot;</span>
 											{/if}
 											<span>{formatDate(article.publishedAt)}</span>
 										</div>
 									</a>
 
 									<!-- Article Tags -->
-									<div class="mt-3 pt-3 border-t border-[var(--surface-border)]">
+									<div class="card-tags">
 										{#if loadingArticleTags.has(article.id)}
 											<div class="flex gap-1">
-												{#each [1, 2] as i}
-													<div class="h-6 w-14 rounded-full animate-pulse bg-[var(--muted)]"></div>
+												{#each [1, 2] as _i}
+													<div class="skeleton-tag-sm"></div>
 												{/each}
 											</div>
 										{:else if getArticleTags(article.id).length > 0}
@@ -581,20 +552,19 @@ const formatDate = (dateStr: string) => {
 													<button
 														type="button"
 														onclick={() => handleTagClick(tag)}
-														class="px-2 py-0.5 text-xs rounded-full bg-[var(--muted)] text-[var(--text-secondary)]
-															hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] transition-colors"
+														class="article-tag"
 													>
 														{tag.name}
 													</button>
 												{/each}
 												{#if getArticleTags(article.id).length > 5}
-													<span class="px-2 py-0.5 text-xs text-[var(--text-tertiary)]">
-														+{getArticleTags(article.id).length - 5} more
+													<span class="tag-overflow">
+														+{getArticleTags(article.id).length - 5}
 													</span>
 												{/if}
 											</div>
 										{:else}
-											<span class="text-xs text-[var(--text-tertiary)]">No tags</span>
+											<span class="empty-hint">No tags</span>
 										{/if}
 									</div>
 								</article>
@@ -602,8 +572,9 @@ const formatDate = (dateStr: string) => {
 						</div>
 
 						{#if isLoadingArticles}
-							<div class="flex justify-center py-4">
-								<Loader2 size={24} class="animate-spin text-[var(--alt-primary)]" />
+							<div class="flex items-center justify-center gap-3 py-4">
+								<div class="loading-pulse"></div>
+								<span class="loading-text">Loading&hellip;</span>
 							</div>
 						{/if}
 
@@ -612,32 +583,27 @@ const formatDate = (dateStr: string) => {
 								<button
 									type="button"
 									onclick={handleLoadMore}
-									class="px-6 py-2 text-sm font-medium rounded-lg
-										bg-[var(--surface-hover)] hover:bg-[var(--muted)] text-[var(--text-primary)] transition-colors"
+									class="editorial-btn"
 								>
-									Load more articles
+									Load More Articles
 								</button>
 							</div>
 						{/if}
 					</div>
 				{:else}
 					<div class="flex-1 flex items-center justify-center">
-						<p class="text-[var(--text-secondary)]">No articles found with this tag</p>
+						<p class="empty-hint">No articles found with this tag</p>
 					</div>
 				{/if}
 			{:else}
 				<!-- Welcome State -->
 				<div class="flex-1 flex items-center justify-center">
-					<div class="text-center max-w-md">
-						<div class="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--alt-primary)] bg-opacity-10 flex items-center justify-center">
-							<Shuffle size={32} class="text-[var(--alt-primary)]" />
-						</div>
-						<h2 class="text-xl font-semibold text-[var(--text-primary)] mb-2">
-							Start Your Tag Trail
-						</h2>
-						<p class="text-[var(--text-secondary)]">
+					<div class="welcome-panel">
+						<div class="empty-ornament">&#9670;</div>
+						<h2 class="welcome-title">Start Your Tag Trail</h2>
+						<p class="welcome-text">
 							Click on a tag from the feed on the left to discover related articles across all your subscriptions.
-							Follow the tag trail to explore new content!
+							Follow the tag trail to explore new content.
 						</p>
 					</div>
 				</div>
@@ -645,3 +611,456 @@ const formatDate = (dateStr: string) => {
 		</main>
 	</div>
 </div>
+
+<style>
+	/* ===== Masthead ===== */
+	.trail-masthead {
+		padding: 0 1.5rem;
+	}
+
+	.masthead-rule {
+		height: 2px;
+		background: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.masthead-inner {
+		text-align: center;
+		padding: 0.75rem 0;
+	}
+
+	.masthead-date {
+		display: block;
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.14em;
+		color: var(--alt-ash, #999);
+	}
+
+	.masthead-title {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: clamp(2rem, 4vw, 2.5rem);
+		font-weight: 900;
+		letter-spacing: -0.02em;
+		line-height: 1.1;
+		color: var(--alt-charcoal, #1a1a1a);
+		margin: 0.15rem 0 0;
+	}
+
+	.masthead-sub {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.75rem;
+		font-style: italic;
+		color: var(--alt-slate, #666);
+		margin: 0.15rem 0 0;
+	}
+
+	/* ===== Toolbar ===== */
+	.trail-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.5rem 1.5rem;
+		border-bottom: 1px solid var(--surface-border, #c8c8c8);
+	}
+
+	.toolbar-label {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--alt-ash, #999);
+	}
+
+	/* ===== Aside Panels ===== */
+	.aside-panel {
+		padding: 1rem;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		background: var(--surface-bg, #faf9f7);
+	}
+
+	/* ===== Section Label ===== */
+	.section-label {
+		display: block;
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--alt-ash, #999);
+		margin-bottom: 0.35rem;
+	}
+
+	/* ===== Feed Title / Desc ===== */
+	.feed-title {
+		display: flex;
+		align-items: baseline;
+		gap: 0.35rem;
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1.15rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal, #1a1a1a);
+		text-decoration: none;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.feed-title:hover {
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	.feed-desc {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.8rem;
+		font-style: italic;
+		line-height: 1.5;
+		color: var(--alt-slate, #666);
+		margin: 0;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	/* ===== Tags Section ===== */
+	.tags-section {
+		border-top: 1px solid var(--surface-border, #c8c8c8);
+		padding-top: 0.75rem;
+	}
+
+	/* ===== Index Entry (Tags) ===== */
+	.index-entry {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.35rem 0.6rem;
+		min-height: 32px;
+
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+
+		color: var(--alt-slate, #666);
+		background: transparent;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+
+		opacity: 0;
+		animation: entry-in 0.3s ease forwards;
+		animation-delay: calc(var(--stagger) * 60ms);
+	}
+
+	.index-entry:hover {
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+		border-color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.index-entry--active {
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+		border-color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	/* ===== Trail Node (Breadcrumb) ===== */
+	.trail-node {
+		display: inline-flex;
+		align-items: center;
+		flex-shrink: 0;
+		padding: 0.3rem 0.6rem;
+		max-width: 80px;
+
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.6rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+
+		color: var(--alt-ash, #999);
+		background: transparent;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+	}
+
+	.trail-node:hover:not(:disabled) {
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+		border-color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.trail-node--current {
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+		border-color: var(--alt-charcoal, #1a1a1a);
+		cursor: default;
+	}
+
+	/* ===== Article Header ===== */
+	.article-header {
+		margin-bottom: 1rem;
+		padding-bottom: 0.5rem;
+		border-bottom: 1px solid var(--surface-border, #c8c8c8);
+	}
+
+	.article-heading {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1.15rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal, #1a1a1a);
+		margin: 0;
+	}
+
+	.article-count {
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.65rem;
+		color: var(--alt-ash, #999);
+	}
+
+	/* ===== Article Card ===== */
+	.article-card {
+		padding: 1rem;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		background: var(--surface-bg, #faf9f7);
+		transition: border-color 0.15s;
+
+		opacity: 0;
+		animation: entry-in 0.3s ease forwards;
+		animation-delay: calc(var(--stagger) * 60ms);
+	}
+
+	.article-card:hover {
+		border-color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.card-title {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1rem;
+		font-weight: 700;
+		line-height: 1.35;
+		color: var(--alt-charcoal, #1a1a1a);
+		margin: 0 0 0.35rem;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	.card-meta {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.65rem;
+		color: var(--alt-ash, #999);
+	}
+
+	.meta-source {
+		max-width: 150px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.meta-dot {
+		color: var(--surface-border, #c8c8c8);
+	}
+
+	.card-tags {
+		margin-top: 0.75rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid var(--surface-border, #c8c8c8);
+	}
+
+	/* ===== Article Tag (in cards) ===== */
+	.article-tag {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.2rem 0.5rem;
+
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+
+		color: var(--alt-slate, #666);
+		background: transparent;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+	}
+
+	.article-tag:hover {
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+		border-color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.tag-overflow {
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.6rem;
+		color: var(--alt-ash, #999);
+		padding: 0.2rem 0.3rem;
+	}
+
+	/* ===== Editorial Button ===== */
+	.editorial-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		min-height: 44px;
+		padding: 0.5rem 1rem;
+
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.8rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		text-decoration: none;
+
+		color: var(--alt-charcoal, #1a1a1a);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal, #1a1a1a);
+		cursor: pointer;
+		transition: background 0.2s, color 0.2s;
+	}
+
+	.editorial-btn:hover {
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+	}
+
+	.editorial-btn--disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	/* ===== Welcome State ===== */
+	.welcome-panel {
+		text-align: center;
+		max-width: 28rem;
+	}
+
+	.welcome-title {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1.3rem;
+		font-weight: 700;
+		color: var(--alt-charcoal, #1a1a1a);
+		margin: 0 0 0.5rem;
+	}
+
+	.welcome-text {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.9rem;
+		line-height: 1.6;
+		color: var(--alt-slate, #666);
+		margin: 0;
+	}
+
+	/* ===== Shared Utilities ===== */
+	.empty-ornament {
+		font-size: 1.5rem;
+		color: var(--surface-border, #c8c8c8);
+		margin-bottom: 0.75rem;
+	}
+
+	.empty-hint {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.8rem;
+		font-style: italic;
+		color: var(--alt-ash, #999);
+		margin: 0;
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-ash, #999);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.loading-text {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--alt-ash, #999);
+	}
+
+	.skeleton-tag {
+		height: 32px;
+		width: 80px;
+		background: var(--muted);
+		animation: shimmer 1.5s ease-in-out infinite;
+	}
+
+	.skeleton-tag-sm {
+		height: 24px;
+		width: 56px;
+		background: var(--muted);
+		animation: shimmer 1.5s ease-in-out infinite;
+	}
+
+	.error-stripe {
+		padding: 0.5rem 0.75rem;
+		border-left: 3px solid var(--alt-terracotta, #b85450);
+		background: #fef2f2;
+	}
+
+	.error-text {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.8rem;
+		color: var(--alt-terracotta, #b85450);
+		margin: 0;
+	}
+
+	.error-link {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.7rem;
+		color: var(--alt-primary, #2f4f4f);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		padding: 0;
+		margin-top: 0.25rem;
+	}
+
+	/* ===== Animations ===== */
+	@keyframes pulse {
+		0%, 100% { opacity: 0.3; }
+		50% { opacity: 1; }
+	}
+
+	@keyframes shimmer {
+		0%, 100% { opacity: 0.5; }
+		50% { opacity: 1; }
+	}
+
+	@keyframes entry-in {
+		to { opacity: 1; }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.index-entry,
+		.article-card {
+			animation: none;
+			opacity: 1;
+		}
+		.loading-pulse { animation: none; opacity: 0.6; }
+		.skeleton-tag,
+		.skeleton-tag-sm { animation: none; opacity: 0.5; }
+	}
+</style>

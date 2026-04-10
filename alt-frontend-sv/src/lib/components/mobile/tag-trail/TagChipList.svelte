@@ -16,15 +16,17 @@ const { tags, selectedTagId, onTagClick }: Props = $props();
 	style="-webkit-overflow-scrolling: touch;"
 	data-testid="tag-chip-list"
 >
-	{#each tags as tag (tag.id)}
-		<TagChip
-			{tag}
-			isSelected={tag.id === selectedTagId}
-			onclick={onTagClick}
-		/>
+	{#each tags as tag, index (tag.id)}
+		<div class="chip-enter" style="--stagger: {index};">
+			<TagChip
+				{tag}
+				isSelected={tag.id === selectedTagId}
+				onclick={onTagClick}
+			/>
+		</div>
 	{/each}
 	{#if tags.length === 0}
-		<p class="text-sm" style="color: var(--text-secondary);">No tags available</p>
+		<p class="empty-hint">No tags available</p>
 	{/if}
 </div>
 
@@ -35,5 +37,29 @@ const { tags, selectedTagId, onTagClick }: Props = $props();
 	}
 	.scrollbar-hide::-webkit-scrollbar {
 		display: none;
+	}
+
+	.chip-enter {
+		opacity: 0;
+		animation: chip-in 0.3s ease forwards;
+		animation-delay: calc(var(--stagger) * 40ms);
+	}
+	@keyframes chip-in {
+		to { opacity: 1; }
+	}
+
+	.empty-hint {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.8rem;
+		font-style: italic;
+		color: var(--alt-ash, #999);
+		margin: 0;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.chip-enter {
+			animation: none;
+			opacity: 1;
+		}
 	}
 </style>

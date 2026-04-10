@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { TagTrailHop } from "$lib/schema/tagTrail";
-import { ChevronRight, Home } from "@lucide/svelte";
+import { ChevronRight } from "@lucide/svelte";
 
 interface Props {
 	hops: TagTrailHop[];
@@ -10,34 +10,35 @@ interface Props {
 const { hops, onHopClick }: Props = $props();
 </script>
 
-<div
-	class="flex items-center gap-1 overflow-x-auto py-2 px-4 text-sm scrollbar-hide"
+<nav
+	class="flex items-center gap-1 overflow-x-auto py-2 px-4 scrollbar-hide"
 	style="-webkit-overflow-scrolling: touch;"
 	data-testid="tag-trail-breadcrumb"
+	data-role="trail-breadcrumb"
+	aria-label="Trail breadcrumb"
 >
 	<button
 		type="button"
-		class="flex items-center gap-1 min-h-[44px] px-2 rounded-lg hover:bg-muted active:scale-95 transition-all flex-shrink-0"
+		class="trail-hop"
 		onclick={() => onHopClick(-1)}
 		aria-label="Go to start"
 	>
-		<Home size={16} style="color: var(--alt-primary);" />
-		<span style="color: var(--text-secondary);">Start</span>
+		Start
 	</button>
 
 	{#each hops as hop, index (index)}
-		<ChevronRight size={16} class="flex-shrink-0" style="color: var(--text-secondary);" />
+		<ChevronRight size={14} class="flex-shrink-0" style="color: var(--surface-border, #c8c8c8);" />
 		<button
 			type="button"
-			class="min-h-[44px] px-2 rounded-lg hover:bg-muted active:scale-95 transition-all flex-shrink-0 truncate max-w-[120px]"
-			style="color: {index === hops.length - 1 ? 'var(--alt-primary)' : 'var(--text-secondary)'};"
+			class="trail-hop"
+			class:trail-hop--current={index === hops.length - 1}
 			onclick={() => onHopClick(index)}
 			aria-label="Go to {hop.name}"
 		>
 			{hop.name}
 		</button>
 	{/each}
-</div>
+</nav>
 
 <style>
 	.scrollbar-hide {
@@ -46,5 +47,38 @@ const { hops, onHopClick }: Props = $props();
 	}
 	.scrollbar-hide::-webkit-scrollbar {
 		display: none;
+	}
+
+	.trail-hop {
+		display: inline-flex;
+		align-items: center;
+		min-height: 44px;
+		padding: 0 0.5rem;
+		flex-shrink: 0;
+		max-width: 120px;
+
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+
+		color: var(--alt-ash, #999);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		transition: color 0.15s;
+	}
+
+	.trail-hop:hover {
+		color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.trail-hop--current {
+		color: var(--alt-charcoal, #1a1a1a);
+		font-weight: 700;
 	}
 </style>
