@@ -447,8 +447,8 @@ async def test_conclusion_planner_uses_different_prompt() -> None:
 
 
 @pytest.mark.asyncio
-async def test_conclusion_planner_without_analysis_claims_returns_empty() -> None:
-    """If analysis has no claims, conclusion gets empty claims too."""
+async def test_conclusion_planner_without_analysis_claims_uses_topic_fallback() -> None:
+    """If analysis has no claims and no facts, conclusion gets topic-based fallback claim."""
     llm = FakeLLM(_make_planner_response([]))
     node = SectionPlannerNode(llm)
 
@@ -466,7 +466,9 @@ async def test_conclusion_planner_without_analysis_claims_returns_empty() -> Non
     }
 
     result = await node(state)
-    assert result["claim_plans"]["conclusion"] == []
+    conclusion_claims = result["claim_plans"]["conclusion"]
+    assert len(conclusion_claims) >= 1
+    assert conclusion_claims[0]["claim_type"] == "synthesis"
 
 
 # --- Executive Summary-specific tests ---
@@ -610,7 +612,14 @@ async def test_section_planner_respects_max_claims_from_contract() -> None:
         "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis", "max_claims": 3}],
         "curated_by_section": {"analysis": [{"id": "art-1", "title": "Test"}]},
         "extracted_facts": [
-            {"claim": "fact", "source_id": "art-1", "source_title": "Test", "verbatim_quote": "q", "confidence": 0.9, "data_type": "quote"},
+            {
+                "claim": "fact",
+                "source_id": "art-1",
+                "source_title": "Test",
+                "verbatim_quote": "q",
+                "confidence": 0.9,
+                "data_type": "quote",
+            },
         ],
         "brief": {"topic": "test"},
     }
@@ -638,7 +647,14 @@ async def test_section_planner_injects_novelty_against_from_contract() -> None:
             "conclusion": [{"id": "art-1", "title": "Test"}],
         },
         "extracted_facts": [
-            {"claim": "fact", "source_id": "art-1", "source_title": "Test", "verbatim_quote": "q", "confidence": 0.9, "data_type": "quote"},
+            {
+                "claim": "fact",
+                "source_id": "art-1",
+                "source_title": "Test",
+                "verbatim_quote": "q",
+                "confidence": 0.9,
+                "data_type": "quote",
+            },
         ],
         "brief": {"topic": "test"},
     }
@@ -664,7 +680,14 @@ async def test_section_planner_injects_synthesis_only_from_contract() -> None:
             "conclusion": [{"id": "art-1", "title": "Test"}],
         },
         "extracted_facts": [
-            {"claim": "fact", "source_id": "art-1", "source_title": "Test", "verbatim_quote": "q", "confidence": 0.9, "data_type": "quote"},
+            {
+                "claim": "fact",
+                "source_id": "art-1",
+                "source_title": "Test",
+                "verbatim_quote": "q",
+                "confidence": 0.9,
+                "data_type": "quote",
+            },
         ],
         "brief": {"topic": "test"},
     }
@@ -682,11 +705,23 @@ async def test_section_planner_injects_must_include_data_types() -> None:
 
     state = {
         "outline": [
-            {"key": "analysis", "title": "Analysis", "section_role": "analysis", "must_include_data_types": ["statistic"]},
+            {
+                "key": "analysis",
+                "title": "Analysis",
+                "section_role": "analysis",
+                "must_include_data_types": ["statistic"],
+            },
         ],
         "curated_by_section": {"analysis": [{"id": "art-1", "title": "Test"}]},
         "extracted_facts": [
-            {"claim": "fact", "source_id": "art-1", "source_title": "Test", "verbatim_quote": "q", "confidence": 0.9, "data_type": "quote"},
+            {
+                "claim": "fact",
+                "source_id": "art-1",
+                "source_title": "Test",
+                "verbatim_quote": "q",
+                "confidence": 0.9,
+                "data_type": "quote",
+            },
         ],
         "brief": {"topic": "test"},
     }
@@ -696,8 +731,8 @@ async def test_section_planner_injects_must_include_data_types() -> None:
 
 
 @pytest.mark.asyncio
-async def test_es_planner_empty_when_no_other_claims() -> None:
-    """ES-only outline (no other sections) → empty claims for ES, LLM not called."""
+async def test_es_planner_uses_topic_fallback_when_no_other_claims() -> None:
+    """ES-only outline (no other sections) → topic-based fallback claim, LLM not called."""
 
     class TrackingLLM:
         def __init__(self) -> None:
@@ -722,6 +757,8 @@ async def test_es_planner_empty_when_no_other_claims() -> None:
     }
 
     result = await node(state)
-    assert result["claim_plans"]["executive_summary"] == []
+    es_claims = result["claim_plans"]["executive_summary"]
+    assert len(es_claims) >= 1
+    assert es_claims[0]["claim_type"] == "synthesis"
     # ES should skip LLM call when there are no accepted claims from other sections
     assert llm.call_count == 0

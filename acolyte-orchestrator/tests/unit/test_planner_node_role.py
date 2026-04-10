@@ -4,17 +4,16 @@ from __future__ import annotations
 
 from acolyte.domain.section_contract import PlannerOutput
 from acolyte.usecase.graph.nodes.planner_node import (
-    _default_fallback_sections,
+    DEFAULT_SKELETON,
     _infer_section_role,
 )
 
 
-def test_fallback_sections_include_section_role() -> None:
-    """Every fallback section must have a section_role field."""
-    sections = _default_fallback_sections("test topic")
-    for section in sections:
+def test_default_skeleton_includes_section_role() -> None:
+    """Every DEFAULT_SKELETON section must have a section_role field."""
+    for section in DEFAULT_SKELETON:
         assert "section_role" in section, f"Section '{section['key']}' missing section_role"
-    roles = {s["key"]: s["section_role"] for s in sections}
+    roles = {s["key"]: s["section_role"] for s in DEFAULT_SKELETON}
     assert roles["executive_summary"] == "executive_summary"
     assert roles["analysis"] == "analysis"
     assert roles["conclusion"] == "conclusion"

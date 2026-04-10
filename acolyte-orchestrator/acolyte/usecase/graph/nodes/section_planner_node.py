@@ -95,10 +95,10 @@ def _format_facts_block(facts: list[dict]) -> str:
     lines = []
     for i, fact in enumerate(facts, 1):
         line = f"{i}. [{fact.get('data_type', 'quote')}] {fact.get('claim', '')}"
-        quote = fact.get("verbatim_quote", "")
+        quote = fact.get("quote", fact.get("verbatim_quote", ""))
         if quote:
             line += f'\n   Quote: "{quote}"'
-        line += f"\n   Source: {fact.get('source_id', '')} — {fact.get('source_title', '')}"
+        line += f"\n   Source: {fact.get('source_id', '')}"
         conf = fact.get("confidence", 0)
         line += f"\n   Confidence: {conf}"
         lines.append(line)
@@ -176,14 +176,29 @@ def _rank_facts_for_synthesis(facts: list[dict]) -> list[dict]:
     return [f for _, f in scored]
 
 
+def _topic_overview_claim(topic: str, *, prefix: str) -> dict:
+    """Create a minimal topic-based claim as last-resort fallback."""
+    return {
+        "claim_id": f"{prefix}-topic-1",
+        "claim": f"{topic} の概要",
+        "claim_type": "synthesis",
+        "evidence_ids": [],
+        "supporting_quotes": [],
+        "numeric_facts": [],
+        "novelty_against": [],
+        "must_cite": False,
+    }
+
+
 def _fact_to_synthesis_claim(fact: dict, *, claim_id: str = "") -> dict:
     """Convert an extracted fact into a synthesis claim dict."""
+    quote = fact.get("quote", fact.get("verbatim_quote", ""))
     return {
         "claim_id": claim_id,
-        "claim": fact.get("claim", fact.get("verbatim_quote", "")),
+        "claim": fact.get("claim", quote),
         "claim_type": "synthesis",
         "evidence_ids": [fact["source_id"]] if fact.get("source_id") else [],
-        "supporting_quotes": [fact["verbatim_quote"]] if fact.get("verbatim_quote") else [],
+        "supporting_quotes": [quote] if quote else [],
         "numeric_facts": fact.get("numeric_facts", []),
         "novelty_against": [],
         "must_cite": True,
@@ -207,16 +222,18 @@ def _claims_to_synthesis(claims: list[dict], *, max_claims: int = 5, prefix: str
         if not is_diverse and len(result) >= 2:
             continue
         seen_sources.update(eids)
-        result.append({
-            "claim_id": f"{prefix}-synth-{len(result) + 1}" if prefix else claim.get("claim_id", ""),
-            "claim": claim.get("claim", ""),
-            "claim_type": "synthesis",
-            "evidence_ids": claim.get("evidence_ids", []),
-            "supporting_quotes": claim.get("supporting_quotes", []),
-            "numeric_facts": claim.get("numeric_facts", []),
-            "novelty_against": claim.get("novelty_against", []),
-            "must_cite": True,
-        })
+        result.append(
+            {
+                "claim_id": f"{prefix}-synth-{len(result) + 1}" if prefix else claim.get("claim_id", ""),
+                "claim": claim.get("claim", ""),
+                "claim_type": "synthesis",
+                "evidence_ids": claim.get("evidence_ids", []),
+                "supporting_quotes": claim.get("supporting_quotes", []),
+                "numeric_facts": claim.get("numeric_facts", []),
+                "novelty_against": claim.get("novelty_against", []),
+                "must_cite": True,
+            }
+        )
     return result
 
 
@@ -225,23 +242,26 @@ def _deterministic_conclusion_claims(
     extracted_facts: list[dict],
     *,
     max_claims: int = 5,
+    topic: str = "",
 ) -> list[dict]:
     """Deterministic fallback for conclusion: synthesis from analysis claims or facts.
 
-    Priority: analysis_claims → extracted_facts.
+    Priority: analysis_claims → extracted_facts → topic overview.
     Ranking: numeric_facts → source diversity → confidence.
     """
     if analysis_claims:
         return _claims_to_synthesis(analysis_claims, max_claims=max_claims, prefix="conclusion")
 
-    if not extracted_facts:
-        return []
+    if extracted_facts:
+        ranked = _rank_facts_for_synthesis(extracted_facts)
+        return [
+            _fact_to_synthesis_claim(f, claim_id=f"conclusion-synth-{i + 1}") for i, f in enumerate(ranked[:max_claims])
+        ]
 
-    ranked = _rank_facts_for_synthesis(extracted_facts)
-    return [
-        _fact_to_synthesis_claim(f, claim_id=f"conclusion-synth-{i + 1}")
-        for i, f in enumerate(ranked[:max_claims])
-    ]
+    # Last-resort: topic-based claim to prevent empty body
+    if topic:
+        return [_topic_overview_claim(topic, prefix="conclusion")]
+    return []
 
 
 def _deterministic_es_claims(
@@ -249,10 +269,11 @@ def _deterministic_es_claims(
     extracted_facts: list[dict],
     *,
     max_claims: int = 3,
+    topic: str = "",
 ) -> list[dict]:
     """Deterministic fallback for ES: pick top claims from all sections or facts.
 
-    Priority: existing claim_plans → extracted_facts.
+    Priority: existing claim_plans → extracted_facts → topic overview.
     Ranking: numeric_facts → source diversity.
     """
     # Flatten all claims from all sections
@@ -263,14 +284,14 @@ def _deterministic_es_claims(
     if flat_claims:
         return _claims_to_synthesis(flat_claims, max_claims=max_claims, prefix="es")
 
-    if not extracted_facts:
-        return []
+    if extracted_facts:
+        ranked = _rank_facts_for_synthesis(extracted_facts)
+        return [_fact_to_synthesis_claim(f, claim_id=f"es-synth-{i + 1}") for i, f in enumerate(ranked[:max_claims])]
 
-    ranked = _rank_facts_for_synthesis(extracted_facts)
-    return [
-        _fact_to_synthesis_claim(f, claim_id=f"es-synth-{i + 1}")
-        for i, f in enumerate(ranked[:max_claims])
-    ]
+    # Last-resort: topic-based claim to prevent empty body
+    if topic:
+        return [_topic_overview_claim(topic, prefix="es")]
+    return []
 
 
 class SectionPlannerNode:
@@ -300,7 +321,7 @@ class SectionPlannerNode:
                 all_claims = _collect_all_accepted_claims(claim_plans, outline)
                 if not all_claims:
                     # Deterministic fallback: use claim_plans or extracted_facts
-                    fallback_claims = _deterministic_es_claims(claim_plans, extracted_facts)
+                    fallback_claims = _deterministic_es_claims(claim_plans, extracted_facts, topic=topic)
                     if fallback_claims:
                         logger.info("ES using deterministic fallback", claim_count=len(fallback_claims))
                         claim_plans[key] = fallback_claims
@@ -320,7 +341,7 @@ class SectionPlannerNode:
                 analysis_claims = _collect_analysis_claims(claim_plans, outline)
                 if not analysis_claims:
                     # Deterministic fallback: use extracted_facts
-                    fallback_claims = _deterministic_conclusion_claims([], extracted_facts)
+                    fallback_claims = _deterministic_conclusion_claims([], extracted_facts, topic=topic)
                     if fallback_claims:
                         logger.info("Conclusion using deterministic fallback", claim_count=len(fallback_claims))
                         claim_plans[key] = fallback_claims
@@ -377,9 +398,9 @@ class SectionPlannerNode:
             if not claim_dicts and section_role in ("conclusion", "executive_summary"):
                 if section_role == "conclusion":
                     analysis_claims = _collect_analysis_claims(claim_plans, outline)
-                    claim_dicts = _deterministic_conclusion_claims(analysis_claims, extracted_facts)
+                    claim_dicts = _deterministic_conclusion_claims(analysis_claims, extracted_facts, topic=topic)
                 else:
-                    claim_dicts = _deterministic_es_claims(claim_plans, extracted_facts)
+                    claim_dicts = _deterministic_es_claims(claim_plans, extracted_facts, topic=topic)
                 if claim_dicts:
                     logger.info("Post-LLM deterministic fallback", section_key=key, claim_count=len(claim_dicts))
 
