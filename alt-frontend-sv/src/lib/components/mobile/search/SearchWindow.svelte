@@ -1,10 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import { Loader } from "@lucide/svelte";
 import * as v from "valibot";
 import { searchFeedsClient } from "$lib/api/client";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
 import type { SearchFeedItem, SearchQuery } from "$lib/schema/search";
 import { transformFeedSearchResult } from "$lib/utils/transformFeedSearchResult";
 
@@ -32,7 +29,6 @@ const {
 	setSearchTime,
 }: Props = $props();
 
-// Auto-trigger search when navigated with a pre-filled query (e.g., from Knowledge Home)
 onMount(() => {
 	if (autoSearch && searchQuery.query?.trim()) {
 		handleSearch();
@@ -43,7 +39,6 @@ let error = $state<string | null>(null);
 let validationError = $state<string | null>(null);
 let abortController: AbortController | null = $state(null);
 
-// Search query schema for validation
 const searchQuerySchema = v.object({
 	query: v.pipe(
 		v.string("Please enter a search query"),
@@ -54,7 +49,6 @@ const searchQuerySchema = v.object({
 	),
 });
 
-// Validate query function
 function validateQuery(queryText: string): string | null {
 	const trimmed = queryText.trim();
 
@@ -77,7 +71,6 @@ function validateQuery(queryText: string): string | null {
 const handleSearch = async () => {
 	if (isLoading) return;
 
-	// Cancel any in-flight request
 	if (abortController) {
 		abortController.abort();
 	}
@@ -90,12 +83,10 @@ const handleSearch = async () => {
 	validationError = null;
 
 	try {
-		// 1. Clear previous results
 		setFeedResults([]);
 		setCursor(null);
 		setHasMore(false);
 
-		// 2. Validate input
 		const validationResult = validateQuery(searchQuery.query || "");
 
 		if (validationResult) {
@@ -106,10 +97,8 @@ const handleSearch = async () => {
 
 		const validatedQuery = searchQuery.query.trim();
 
-		// 3. Call API
 		const searchResult = await searchFeedsClient(validatedQuery);
 
-		// Check if aborted
 		if (abortController?.signal.aborted) {
 			setIsLoading(false);
 			return;
@@ -121,48 +110,30 @@ const handleSearch = async () => {
 			return;
 		}
 
-		// 4. Transform results
 		const transformedResults = transformFeedSearchResult(searchResult);
 
-		console.log("[SearchWindow:handleSearch] API response", {
-			resultsCount: transformedResults.length,
-			nextCursor: searchResult.next_cursor,
-			hasMore: searchResult.has_more,
-			rawNextCursor: searchResult.next_cursor,
-		});
-
-		// 5. Update state
 		setFeedResults(transformedResults);
-		// Convert cursor to string for state management (offset as string)
 		const nextCursorStr =
 			searchResult.next_cursor !== null &&
 			searchResult.next_cursor !== undefined
 				? String(searchResult.next_cursor)
 				: null;
 		setCursor(nextCursorStr);
-		// Use has_more from response if available, otherwise fall back to next_cursor check
 		const hasMoreValue =
 			searchResult.has_more ?? searchResult.next_cursor !== null;
 		setHasMore(hasMoreValue);
 
-		console.log("[SearchWindow:handleSearch] State updated", {
-			cursor: nextCursorStr,
-			hasMore: hasMoreValue,
-		});
-
-		// 6. Track search time
 		const searchTime = Date.now() - startTime;
 		setSearchTime?.(searchTime);
 	} catch (err) {
 		if (abortController?.signal.aborted) {
 			setIsLoading(false);
-			return; // Ignore abort errors
+			return;
 		}
 		console.error("Search error:", err);
 		error =
 			err instanceof Error ? err.message : "Search failed. Please try again.";
 	} finally {
-		// Always reset loading state if not aborted
 		if (!abortController?.signal.aborted) {
 			setIsLoading(false);
 		}
@@ -171,20 +142,17 @@ const handleSearch = async () => {
 
 const handleFormSubmit = (e: Event) => {
 	e.preventDefault();
-	// Always validate on form submit
 	const validationResult = validateQuery(searchQuery.query || "");
 	if (validationResult) {
 		validationError = validationResult;
 		return;
 	}
-	// Only proceed with search if validation passes
 	handleSearch();
 };
 
 const handleKeyPress = (e: KeyboardEvent) => {
 	if (e.key === "Enter") {
 		e.preventDefault();
-		// Directly call the form submission logic
 		const validationResult = validateQuery(searchQuery.query || "");
 
 		if (validationResult) {
@@ -192,7 +160,6 @@ const handleKeyPress = (e: KeyboardEvent) => {
 			return;
 		}
 
-		// Only proceed with search if validation passes
 		handleSearch();
 	}
 };
@@ -202,10 +169,8 @@ const handleInputChange = (e: Event) => {
 	const newQuery = target.value;
 	setSearchQuery({ query: newQuery });
 
-	// Clear API errors when user starts typing
 	if (error) error = null;
 
-	// Clear validation error when user types enough characters
 	if (newQuery.trim().length >= 2) {
 		validationError = null;
 	}
@@ -218,12 +183,11 @@ const handleInputChange = (e: Event) => {
 			<div class="w-full">
 				<label
 					for="search-input"
-					class="block mb-2 text-sm font-medium"
-					style="color: var(--text-secondary);"
+					class="search-label"
 				>
 					Search Query
 				</label>
-				<Input
+				<input
 					id="search-input"
 					data-testid="search-input"
 					type="text"
@@ -232,49 +196,140 @@ const handleInputChange = (e: Event) => {
 					onkeydown={handleKeyPress}
 					placeholder="e.g. AI, technology, startup..."
 					disabled={isLoading}
-					class={validationError
-						? "border-[#dc2626] focus-visible:border-[#dc2626]"
-						: ""}
+					class="archive-input-mobile"
+					class:archive-input-mobile--error={!!validationError}
 				/>
 			</div>
 
-			<Button
+			<button
 				type="submit"
-				class="w-full rounded-full min-h-[48px] font-semibold text-base transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60"
-				style="
-					background: var(--alt-primary);
-					color: black;
-				"
+				class="archive-btn-mobile"
 				disabled={isLoading || !!validationError}
 			>
 				{#if isLoading}
-					<div class="flex items-center gap-2">
-						<Loader class="h-4 w-4 animate-spin" />
-						<span>Searching...</span>
-					</div>
+					<span class="loading-pulse"></span>
+					<span class="archive-btn-text">Searching...</span>
 				{:else}
-					Search
+					SEARCH
 				{/if}
-			</Button>
+			</button>
 
 			{#if validationError}
-				<p
-					class="text-center text-sm font-medium"
-					style="color: #dc2626;"
-				>
-					{validationError}
-				</p>
+				<div class="error-stripe">{validationError}</div>
 			{/if}
 
 			{#if error}
-				<p
-					class="text-center text-sm font-medium"
-					style="color: #dc2626;"
-				>
-					{error}
-				</p>
+				<div class="error-stripe">{error}</div>
 			{/if}
 		</div>
 	</form>
 </div>
 
+<style>
+	.search-label {
+		display: block;
+		margin-bottom: 0.5rem;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.archive-input-mobile {
+		width: 100%;
+		padding: 0.75rem;
+		font-family: var(--font-body);
+		font-size: 1rem;
+		color: var(--alt-charcoal);
+		background: var(--surface-bg);
+		border: 1px solid var(--surface-border);
+		border-radius: 0;
+		outline: none;
+		transition: border-color 0.15s;
+	}
+
+	.archive-input-mobile:focus {
+		border-color: var(--alt-charcoal);
+	}
+
+	.archive-input-mobile::placeholder {
+		color: var(--alt-ash);
+	}
+
+	.archive-input-mobile--error {
+		border-color: var(--alt-terracotta);
+	}
+
+	.archive-input-mobile--error:focus {
+		border-color: var(--alt-terracotta);
+	}
+
+	.archive-btn-mobile {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		width: 100%;
+		min-height: 44px;
+		padding: 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.archive-btn-mobile:hover:not(:disabled) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.archive-btn-mobile:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.archive-btn-text {
+		font-style: italic;
+	}
+
+	.error-stripe {
+		padding: 0.5rem 0.75rem;
+		border-left: 3px solid var(--alt-terracotta);
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-terracotta);
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: currentColor;
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.3;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.loading-pulse {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>

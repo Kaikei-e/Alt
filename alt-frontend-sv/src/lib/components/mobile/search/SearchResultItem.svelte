@@ -1,9 +1,6 @@
 <script lang="ts">
-import { Loader2, SquareArrowOutUpRight } from "@lucide/svelte";
 import type { FetchArticleSummaryResponse } from "$lib/api/client";
 import { getArticleSummaryClient } from "$lib/api/client";
-import FeedDetails from "$lib/components/mobile/FeedDetails.svelte";
-import { Button } from "$lib/components/ui/button";
 import type { SearchFeedItem } from "$lib/schema/search";
 
 interface Props {
@@ -19,7 +16,6 @@ let summaryError = $state<string | null>(null);
 let isSummarizing = $state(false);
 let isDescriptionExpanded = $state(false);
 
-// Check if description is long enough to need truncation
 const descriptionText = $derived((result.description || "").trim());
 const hasDescription = $derived(descriptionText.length > 0);
 const shouldTruncateDescription = $derived(descriptionText.length > 200);
@@ -73,158 +69,235 @@ const publishedDate = $derived(
 );
 </script>
 
-<div
-	class="p-5 rounded-2xl transition-all duration-300 hover:-translate-y-[2px]"
-	style="
-		background: #ffffff;
-		border: 2px solid #d0d0d0;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
-	"
-	data-testid="search-result-item"
->
-	<div class="flex flex-col gap-3">
-		<!-- Title as link -->
-		<div class="flex flex-row items-center gap-2">
-			<div
-				class="flex items-center justify-center w-6 h-6 flex-shrink-0"
-				style="color: var(--alt-primary);"
+<article class="archive-result" data-role="archive-result-item" data-testid="search-result-item">
+	<a
+		href={result.link || "#"}
+		target="_blank"
+		rel="noopener noreferrer"
+		class="result-title"
+	>
+		{result.title}
+	</a>
+
+	{#if result.published}
+		<span class="result-dateline">
+			{authorName}{publishedDate ? ` \u00b7 ${publishedDate}` : ""}
+		</span>
+	{/if}
+
+	{#if hasDescription}
+		<p class="result-excerpt">{displayDescription}</p>
+		{#if shouldTruncateDescription}
+			<button
+				type="button"
+				onclick={() => { isDescriptionExpanded = !isDescriptionExpanded; }}
+				class="result-toggle"
 			>
-				<SquareArrowOutUpRight size={16} />
-			</div>
-			<a
-				href={result.link || "#"}
-				target="_blank"
-				rel="noopener noreferrer"
-				class="text-base font-semibold hover:underline leading-tight break-words transition-colors duration-200"
-				style="color: var(--text-primary);"
-			>
-				{result.title}
-			</a>
-		</div>
-
-		<!-- Author and published date -->
-		{#if result.published}
-			<div class="flex justify-between items-center text-xs" style="color: var(--text-secondary);">
-				<span>{authorName}</span>
-				<span>{publishedDate}</span>
-			</div>
+				{isDescriptionExpanded ? "SHOW LESS" : "READ MORE"}
+			</button>
 		{/if}
+	{/if}
 
-		<!-- Description -->
-		{#if hasDescription}
-			<div>
-				<p
-					class="leading-relaxed break-words"
-					style="color: var(--text-secondary);"
-				>
-					{displayDescription}
-				</p>
-				{#if shouldTruncateDescription}
-					<Button
-						variant="ghost"
-						size="sm"
-						onclick={() => {
-							isDescriptionExpanded = !isDescriptionExpanded;
-						}}
-						class="mt-2 w-full text-xs"
-					>
-						{isDescriptionExpanded ? "Show less" : "Read more"}
-					</Button>
-				{/if}
-			</div>
-		{/if}
-
-		<!-- Summary section -->
-		{#if isExpanded}
-			<div class="mt-3">
-				{#if isLoadingSummary}
-					<div class="flex justify-center items-center gap-2 py-4">
-						<Loader2 class="h-4 w-4 animate-spin" style="color: var(--alt-primary);" />
-						<span class="text-sm" style="color: var(--text-secondary);">
-							Loading summary...
-						</span>
-					</div>
-				{:else if isSummarizing}
-					<div class="flex flex-col gap-3 py-4">
-						<div class="flex justify-center items-center gap-2">
-							<Loader2 class="h-4 w-4 animate-spin" style="color: var(--alt-primary);" />
-							<span class="text-sm" style="color: var(--text-secondary);">
-								Generating summary...
-							</span>
-						</div>
-						<p
-							class="text-xs text-center"
-							style="color: var(--text-muted);"
-						>
-							This may take a few seconds
-						</p>
-					</div>
-				{:else if summaryError}
-					<div class="flex flex-col gap-3 w-full">
-						<p
-							class="text-sm text-center"
-							style="color: var(--text-secondary);"
-						>
-							{summaryError}
-						</p>
-						{#if summaryError === "Failed to fetch summary"}
-							<Button
-								size="sm"
-								onclick={handleSummarizeNow}
-								class="w-full"
-								style="background: var(--alt-primary); color: white;"
-							>
-								✨ Summarize Immediately
-							</Button>
-						{/if}
-					</div>
-				{:else if summary?.matched_articles && summary.matched_articles.length > 0}
-					<div class="flex flex-col gap-2 w-full">
-						<h3
-							class="text-sm font-bold break-words"
-							style="color: var(--alt-primary);"
-						>
-							{summary.matched_articles[0].title}
-						</h3>
-						<p
-							class="text-sm leading-relaxed break-words whitespace-pre-wrap"
-							style="color: var(--text-primary);"
-						>
-							{summary.matched_articles[0].content}
-						</p>
-					</div>
-				{:else}
-					<div class="flex flex-col gap-3 w-full">
-						<p
-							class="text-sm text-center"
-							style="color: var(--text-secondary);"
-						>
-							No summary available for this article
-						</p>
-						<Button
-							size="sm"
-							onclick={handleSummarizeNow}
-							class="w-full"
-							style="background: var(--alt-primary); color: white;"
-						>
-							✨ Summarize Immediately
-						</Button>
-					</div>
-				{/if}
-			</div>
-		{/if}
-
-		<!-- Toggle summary button -->
-		<div class="flex gap-2 mt-3">
-			<Button
-				variant="outline"
-				size="sm"
-				onclick={handleToggleSummary}
-				class="w-full"
-			>
-				{isExpanded ? "Hide summary" : "Show summary"}
-			</Button>
-		</div>
+	<div class="result-actions">
+		<button
+			type="button"
+			onclick={handleToggleSummary}
+			class="result-action-btn"
+			data-role="toggle-summary-btn"
+		>
+			{isExpanded ? "HIDE SUMMARY" : "SHOW SUMMARY"}
+		</button>
 	</div>
-</div>
 
+	{#if isExpanded}
+		<div class="result-summary">
+			{#if isLoadingSummary}
+				<div class="result-summary-loading">
+					<span class="loading-pulse"></span>
+					<span class="result-loading-text">Loading summary...</span>
+				</div>
+			{:else if isSummarizing}
+				<div class="result-summary-loading">
+					<span class="loading-pulse"></span>
+					<span class="result-loading-text">Generating summary...</span>
+				</div>
+			{:else if summaryError}
+				<div class="error-stripe">{summaryError}</div>
+				{#if summaryError === "Failed to fetch summary"}
+					<button type="button" onclick={handleSummarizeNow} class="result-action-btn">
+						SUMMARIZE NOW
+					</button>
+				{/if}
+			{:else if summary?.matched_articles && summary.matched_articles.length > 0}
+				<h4 class="result-summary-title">{summary.matched_articles[0].title}</h4>
+				<p class="result-summary-prose">{summary.matched_articles[0].content}</p>
+			{:else}
+				<p class="result-summary-empty">No summary available</p>
+				<button type="button" onclick={handleSummarizeNow} class="result-action-btn">
+					SUMMARIZE NOW
+				</button>
+			{/if}
+		</div>
+	{/if}
+</article>
+
+<style>
+	.archive-result {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		padding: 0.75rem;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
+		transition: background 0.15s;
+	}
+
+	.result-title {
+		font-family: var(--font-display);
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: var(--alt-charcoal);
+		text-decoration: none;
+		line-height: 1.3;
+	}
+
+	.result-title:hover {
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	.result-dateline {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.04em;
+	}
+
+	.result-excerpt {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-slate);
+		line-height: 1.5;
+		margin: 0;
+	}
+
+	.result-toggle {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-primary);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		padding: 0;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+
+	.result-actions {
+		margin-top: 0.5rem;
+		padding-top: 0.5rem;
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.result-action-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		width: 100%;
+		min-height: 44px;
+		padding: 0.5rem 1rem;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.result-action-btn:hover {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.result-summary {
+		margin-top: 0.5rem;
+	}
+
+	.result-summary-loading {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem 0;
+	}
+
+	.result-loading-text {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-ash);
+		font-style: italic;
+	}
+
+	.result-summary-title {
+		font-family: var(--font-display);
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--alt-charcoal);
+		margin: 0 0 0.3rem;
+	}
+
+	.result-summary-prose {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-charcoal);
+		line-height: 1.7;
+		white-space: pre-wrap;
+		margin: 0;
+	}
+
+	.result-summary-empty {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-ash);
+		font-style: italic;
+		margin: 0;
+	}
+
+	.error-stripe {
+		padding: 0.5rem 0.75rem;
+		border-left: 3px solid var(--alt-terracotta);
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-terracotta);
+		margin: 0.3rem 0;
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: currentColor;
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.3;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.loading-pulse {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>

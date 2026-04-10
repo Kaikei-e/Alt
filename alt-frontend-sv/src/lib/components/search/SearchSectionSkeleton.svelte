@@ -7,39 +7,67 @@ interface Props {
 const { label = "Loading", rows = 3 }: Props = $props();
 </script>
 
-<section class="space-y-3">
-	<div
-		class="h-4 w-24 rounded skeleton-pulse"
-		aria-label="{label}"
-	></div>
+<section data-role="skeleton-section">
+	<div class="skeleton-label" aria-label={label}></div>
 	{#each Array(rows) as _}
-		<div
-			class="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] p-4 space-y-2"
-		>
-			<div class="h-4 w-3/4 rounded skeleton-pulse"></div>
-			<div class="h-3 w-full rounded skeleton-pulse"></div>
-			<div class="h-3 w-1/2 rounded skeleton-pulse"></div>
+		<div class="skeleton-card">
+			<div class="skeleton-bar skeleton-bar--wide"></div>
+			<div class="skeleton-bar skeleton-bar--full"></div>
+			<div class="skeleton-bar skeleton-bar--half"></div>
 		</div>
 	{/each}
 </section>
 
 <style>
-	.skeleton-pulse {
-		background: linear-gradient(
-			90deg,
-			var(--surface-hover) 25%,
-			var(--surface-bg) 50%,
-			var(--surface-hover) 75%
-		);
-		background-size: 200% 100%;
-		animation: pulse 1.5s ease-in-out infinite;
+	.skeleton-label {
+		width: 6rem;
+		height: 0.65rem;
+		background: var(--surface-hover);
+		margin-bottom: 0.5rem;
 	}
-	@keyframes pulse {
-		0% {
-			background-position: 200% 0;
-		}
+
+	.skeleton-card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
+		margin-bottom: 0.5rem;
+	}
+
+	.skeleton-bar {
+		height: 0.75rem;
+		background: var(--surface-hover);
+		animation: skeleton-pulse 1.2s ease-in-out infinite;
+	}
+
+	.skeleton-bar--wide {
+		width: 75%;
+	}
+
+	.skeleton-bar--full {
+		width: 100%;
+	}
+
+	.skeleton-bar--half {
+		width: 50%;
+	}
+
+	@keyframes skeleton-pulse {
+		0%,
 		100% {
-			background-position: -200% 0;
+			opacity: 0.4;
+		}
+		50% {
+			opacity: 0.8;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.skeleton-bar {
+			animation: none;
+			opacity: 0.6;
 		}
 	}
 </style>

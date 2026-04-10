@@ -1,5 +1,4 @@
 <script lang="ts">
-import { Loader } from "@lucide/svelte";
 import { browser } from "$app/environment";
 import { infiniteScroll } from "$lib/actions/infinite-scroll";
 import { searchFeedsClient } from "$lib/api/client";
@@ -33,34 +32,36 @@ const {
 	setIsLoading,
 }: Props = $props();
 
-// Use viewport as root for IntersectionObserver (no container reference needed)
-// This allows infinite scroll to work with page-level scrolling
 const getScrollRoot = $derived(browser ? null : null);
 
-// Load more results for infinite scroll
-const loadMore = async () => {
-	console.log("[SearchResults:loadMore] called", {
-		isLoading,
-		hasMore,
-		cursor,
-		resultsCount: results.length,
-	});
+// Track initial load so infinite scroll additions render instantly
+let initialLoadDone = $state(false);
+let prevResultsLen = $state(0);
 
-	if (isLoading) {
-		console.log("[SearchResults:loadMore] skipped: isLoading=true");
-		return;
+$effect(() => {
+	const len = results.length;
+	// Initial search result arrived — animate, then mark done
+	if (len > 0 && prevResultsLen === 0) {
+		initialLoadDone = false;
+		setTimeout(() => {
+			initialLoadDone = true;
+		}, 600);
 	}
-	if (!hasMore) {
-		console.log("[SearchResults:loadMore] skipped: hasMore=false");
-		return;
+	// Reset on new search (results cleared)
+	if (len === 0) {
+		initialLoadDone = false;
 	}
+	prevResultsLen = len;
+});
+
+const loadMore = async () => {
+	if (isLoading) return;
+	if (!hasMore) return;
 
 	const currentCursor = cursor;
 	setIsLoading(true);
 
 	try {
-		// Convert cursor string to number (offset)
-		// If cursor is null, pass undefined (same pattern as ViewedFeedsClient)
 		const cursorOffset = currentCursor
 			? parseInt(currentCursor, 10)
 			: undefined;
@@ -72,13 +73,6 @@ const loadMore = async () => {
 
 		const searchResult = await searchFeedsClient(searchQuery, cursorOffset, 20);
 
-		console.log("[SearchResults:loadMore] API response", {
-			resultsCount: searchResult.results?.length,
-			nextCursor: searchResult.next_cursor,
-			hasMore: searchResult.has_more,
-			error: searchResult.error,
-		});
-
 		if (searchResult.error) {
 			console.error("Error loading more results:", searchResult.error);
 			setIsLoading(false);
@@ -88,7 +82,6 @@ const loadMore = async () => {
 		const newResults = transformFeedSearchResult(searchResult);
 
 		if (newResults.length === 0) {
-			// No new results, check if there's a next cursor
 			setHasMore(searchResult.next_cursor !== null);
 			if (
 				searchResult.next_cursor !== null &&
@@ -100,9 +93,7 @@ const loadMore = async () => {
 				setCursor(null);
 			}
 		} else {
-			// Add new results
 			setResults([...results, ...newResults]);
-			// Convert cursor number to string for state management
 			setCursor(
 				searchResult.next_cursor !== null &&
 					searchResult.next_cursor !== undefined
@@ -120,94 +111,53 @@ const loadMore = async () => {
 </script>
 
 {#if !searchQuery.trim()}
-	<!-- No query state - don't show anything -->
+	<!-- No query state -->
 {:else if isLoading && results.length === 0}
-	<!-- Loading State (only for initial search) -->
-	<div
-		class="glass p-8 text-center rounded-[24px]"
-		style="
-			background: var(--surface-bg);
-			border: 2px solid var(--surface-border);
-			box-shadow: var(--shadow-sm);
-		"
-	>
-		<div class="flex flex-col gap-4 items-center">
-			<Loader class="h-8 w-8 animate-spin" style="color: var(--alt-primary);" />
-			<p style="color: var(--text-secondary);">Searching feeds...</p>
+	<div class="archive-loading-container">
+		<div class="archive-loading">
+			<span class="loading-pulse"></span>
+			<span class="archive-loading-text">Searching feeds...</span>
 		</div>
 	</div>
 {:else if results.length === 0}
-	<!-- Empty State -->
-	<div
-		class="glass p-8 text-center rounded-[24px]"
-		style="
-			background: var(--alt-glass);
-			border: 1px solid var(--alt-glass-border);
-			box-shadow: var(--alt-glass-shadow);
-		"
-	>
-		<div class="flex flex-col gap-3">
-			<p class="text-2xl">🔍</p>
-			<p class="font-medium" style="color: var(--text-secondary);">
-				No results found
+	<div class="archive-empty">
+		<p class="archive-empty-label">No results found</p>
+		{#if searchQuery}
+			<p class="archive-empty-hint">
+				No feeds match "{searchQuery}". Try different keywords.
 			</p>
-			{#if searchQuery}
-				<p class="text-sm" style="color: var(--text-muted);">
-					No feeds match &quot;{searchQuery}&quot;. Try different keywords.
-				</p>
-			{/if}
-		</div>
+		{/if}
 	</div>
 {:else}
-	<!-- Results List -->
-	<div
-		class="flex flex-col gap-4"
-	>
-		<!-- Search Stats -->
-		<div class="flex justify-between items-center mb-4">
-			<h2
-				class="text-lg font-bold"
-				style="color: var(--alt-primary);"
-			>
+	<div class="flex flex-col gap-4">
+		<div class="archive-stats-row">
+			<h2 class="archive-stats">
 				Search Results ({results.length})
 			</h2>
 			{#if searchTime}
-				<p class="text-sm" style="color: var(--text-muted);">
-					Found in {searchTime}ms
-				</p>
+				<span class="archive-stats-time">Found in {searchTime}ms</span>
 			{/if}
 		</div>
 
-		<!-- Results -->
 		<ul class="flex flex-col gap-4" role="list" aria-label="Search results">
 			{#each results as result, i (result.article_id || `${result.link}-${i}`)}
-				<li>
+				<li class={initialLoadDone ? "" : "stagger-entry"} style={initialLoadDone ? "" : `--stagger: ${i}`}>
 					<SearchResultItem {result} />
 				</li>
 			{/each}
 		</ul>
 
-		<!-- Loading more indicator -->
 		{#if isLoading}
-			<div class="py-4 text-center text-sm" style="color: var(--text-secondary);">
-				<div class="flex items-center justify-center gap-2">
-					<Loader class="h-4 w-4 animate-spin" style="color: var(--alt-primary);" />
-					<span>Loading more...</span>
-				</div>
+			<div class="archive-loading">
+				<span class="loading-pulse"></span>
+				<span class="archive-loading-text">Loading more...</span>
 			</div>
 		{/if}
 
-		<!-- No more results indicator -->
 		{#if !hasMore && results.length > 0}
-			<p
-				class="text-center text-sm mt-8 mb-4"
-				style="color: var(--text-secondary);"
-			>
-				No more results to load
-			</p>
+			<p class="archive-end">No more results to load</p>
 		{/if}
 
-		<!-- Infinite scroll sentinel -->
 		{#if hasMore}
 			<div
 				use:infiniteScroll={{
@@ -223,18 +173,160 @@ const loadMore = async () => {
 			></div>
 		{/if}
 
-		<!-- Load More button as fallback -->
 		{#if hasMore && !isLoading}
-			<div class="flex justify-center mt-4">
+			<div class="flex justify-center">
 				<button
+					type="button"
 					onclick={loadMore}
-					class="px-6 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-gray-50"
-					style="border-color: var(--alt-primary); color: var(--alt-primary);"
+					class="archive-btn-mobile"
 				>
-					Load More Results
+					LOAD MORE RESULTS
 				</button>
 			</div>
 		{/if}
 	</div>
 {/if}
 
+<style>
+	.archive-stats-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.archive-stats {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0;
+	}
+
+	.archive-stats-time {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.04em;
+	}
+
+	.archive-loading-container {
+		border: 1px solid var(--surface-border);
+		padding: 2rem;
+		background: var(--surface-bg);
+	}
+
+	.archive-loading {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.75rem 0;
+	}
+
+	.archive-loading-text {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-ash);
+		font-style: italic;
+	}
+
+	.archive-empty {
+		border: 1px solid var(--surface-border);
+		padding: 2rem;
+		text-align: center;
+		background: var(--surface-bg);
+	}
+
+	.archive-empty-label {
+		font-family: var(--font-body);
+		font-size: 0.9rem;
+		color: var(--alt-ash);
+		font-style: italic;
+		margin: 0;
+	}
+
+	.archive-empty-hint {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-ash);
+		margin: 0.3rem 0 0;
+	}
+
+	.archive-btn-mobile {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+		width: 100%;
+		min-height: 44px;
+		padding: 0.5rem 1rem;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.archive-btn-mobile:hover {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.archive-end {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		text-align: center;
+		padding: 1rem 0;
+		margin: 0;
+	}
+
+	.stagger-entry {
+		opacity: 0;
+		animation: reveal 0.3s ease forwards;
+		animation-delay: calc(var(--stagger) * 40ms);
+	}
+
+	@keyframes reveal {
+		to {
+			opacity: 1;
+		}
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: currentColor;
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.3;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.loading-pulse {
+			animation: none;
+			opacity: 1;
+		}
+
+		.stagger-entry {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>
