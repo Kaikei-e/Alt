@@ -1,14 +1,13 @@
 <script lang="ts">
 import { tick } from "svelte";
-import { FileText, Loader2, RotateCcw, Shuffle } from "@lucide/svelte";
+import { FileText, RotateCcw, Shuffle } from "@lucide/svelte";
 import * as Sheet from "$lib/components/ui/sheet";
-import ChatMessage from "$lib/components/desktop/augur/ChatMessage.svelte";
-import ChatInput from "$lib/components/desktop/augur/ChatInput.svelte";
+import ThreadEntry from "$lib/components/desktop/augur/ThreadEntry.svelte";
+import QuestionInput from "$lib/components/desktop/augur/QuestionInput.svelte";
 import { useAugurPane } from "$lib/hooks/useAugurPane.svelte";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import { buildAugurInitialMessage } from "$lib/utils/augur-entry";
 import { pickSuggestions } from "./ask-suggestions";
-import augurAvatar from "$lib/assets/augur-chat.webp";
 
 interface Props {
 	open: boolean;
@@ -210,55 +209,49 @@ function handleOpenChange(isOpen: boolean) {
 					</div>
 				</div>
 			{:else}
-				<!-- Chat phase: message list + input -->
+				<!-- Chat phase: editorial thread + input -->
 				<div
 					bind:this={chatContainer}
 					class="flex-1 overflow-y-auto p-4"
 				>
-					{#each pane.messages as msg (msg.id)}
-						<ChatMessage
+					{#each pane.messages as msg, idx (msg.id)}
+						<ThreadEntry
 							message={msg.message}
 							role={msg.role}
 							timestamp={msg.timestamp}
 							citations={msg.citations}
+							index={idx}
 						/>
 					{/each}
 
 					{#if pane.isLoading && pane.messages.at(-1)?.message === ""}
-						<div class="mb-4 flex gap-3">
-							<div class="relative mt-1 h-8 w-8 flex-shrink-0 overflow-hidden rounded-full border border-border/50 bg-muted shadow-sm">
-								<img src={augurAvatar} alt="Augur" class="h-full w-full object-cover" />
-								<div class="absolute inset-0 flex items-center justify-center bg-background/40">
-									<Loader2 class="h-4 w-4 animate-spin text-primary" />
-								</div>
-							</div>
-							<div class="rounded-2xl rounded-bl-none border border-border/50 bg-muted/50 p-3 text-sm shadow-sm">
-								<p class="text-muted-foreground">
-									{#if pane.statusText}
-										{pane.statusText}
-									{:else if pane.progressStage === "planning"}
-										Analyzing question...
-									{:else if pane.progressStage === "searching"}
-										Searching knowledge base...
-									{:else if pane.progressStage === "reranking"}
-										Ranking results...
-									{:else if pane.progressStage === "drafting"}
-										Drafting answer...
-									{:else if pane.progressStage === "validating"}
-										Verifying answer...
-									{:else if pane.progressStage === "generating"}
-										Generating answer...
-									{:else}
-										Augur is thinking...
-									{/if}
-								</p>
-							</div>
+						<div class="flex items-center gap-2 py-3" style="color: var(--alt-ash, #999); font-family: var(--font-body, 'Source Sans 3', sans-serif); font-size: 0.8rem;">
+							<div class="h-1.5 w-1.5 rounded-full" style="background: var(--alt-ash, #999); animation: ask-pulse 1.2s ease-in-out infinite;"></div>
+							<span style="font-style: italic;">
+								{#if pane.statusText}
+									{pane.statusText}
+								{:else if pane.progressStage === "planning"}
+									Planning search&hellip;
+								{:else if pane.progressStage === "searching"}
+									Searching evidence&hellip;
+								{:else if pane.progressStage === "reranking"}
+									Checking evidence quality&hellip;
+								{:else if pane.progressStage === "drafting"}
+									Drafting answer&hellip;
+								{:else if pane.progressStage === "validating"}
+									Validating answer&hellip;
+								{:else if pane.progressStage === "generating"}
+									Generating answer&hellip;
+								{:else}
+									Consulting the evidence&hellip;
+								{/if}
+							</span>
 						</div>
 					{/if}
 
 					{#if pane.isLoading && pane.progressStage === "refining" && pane.messages.at(-1)?.message}
 						<p class="mb-2 text-center text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] transition-opacity duration-300">
-							Refining answer...
+							Refining answer&hellip;
 						</p>
 					{/if}
 
@@ -266,7 +259,7 @@ function handleOpenChange(isOpen: boolean) {
 						<div class="mb-4 flex justify-center">
 							<button
 								type="button"
-								class="flex items-center gap-1.5 rounded-full border border-border/50 px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+								class="flex items-center gap-1.5 border border-[var(--surface-border)] px-3 py-1.5 text-xs text-[var(--alt-slate)] hover:border-[var(--alt-charcoal)] hover:text-[var(--alt-charcoal)]"
 								onclick={handleRetry}
 							>
 								<RotateCcw class="h-3 w-3" />
@@ -277,9 +270,13 @@ function handleOpenChange(isOpen: boolean) {
 				</div>
 
 				<div class="flex-shrink-0">
-					<ChatInput onSend={handleChatSend} disabled={pane.isLoading} />
+					<QuestionInput onSend={handleChatSend} disabled={pane.isLoading} />
 				</div>
 			{/if}
 		</Sheet.Content>
 	</Sheet.Root>
 {/key}
+
+<style>
+	@keyframes ask-pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+</style>

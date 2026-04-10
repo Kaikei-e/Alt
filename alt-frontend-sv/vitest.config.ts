@@ -8,6 +8,15 @@ const isBrowserTestEnabled = process.env.VITEST_BROWSER === "true";
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	cacheDir: "node_modules/.vite",
+	optimizeDeps: {
+		exclude: [
+			"bits-ui",
+			"@lucide/svelte",
+			"@threlte/core",
+			"@threlte/extras",
+			"@tanstack/svelte-query",
+		],
+	},
 	test: {
 		globals: true,
 		projects: [

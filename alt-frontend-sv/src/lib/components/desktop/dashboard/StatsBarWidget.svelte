@@ -1,98 +1,136 @@
 <script lang="ts">
-import { Rss, FileText, CheckCircle, Wifi, WifiOff } from "@lucide/svelte";
-import { useFeedStats } from "$lib/hooks/useFeedStats.svelte";
+interface Props {
+	feedAmount: number;
+	totalArticlesAmount: number;
+	unsummarizedArticlesAmount: number;
+	isConnected: boolean;
+}
 
-// Use unified feed stats hook (supports both SSE and Connect-RPC Streaming)
-const stats = useFeedStats();
+const {
+	feedAmount,
+	totalArticlesAmount,
+	unsummarizedArticlesAmount,
+	isConnected,
+}: Props = $props();
 
-// Use $derived to maintain reactivity - destructuring loses reactivity in Svelte 5
-let feedAmount = $derived(stats.feedAmount);
-let totalArticlesAmount = $derived(stats.totalArticlesAmount);
-let unsummarizedArticlesAmount = $derived(stats.unsummarizedArticlesAmount);
-let isConnected = $derived(stats.isConnected);
 let summarizedArticles = $derived(
 	totalArticlesAmount - unsummarizedArticlesAmount,
 );
 </script>
 
-<div class="border border-[var(--surface-border)] bg-white p-6">
-	<div class="grid grid-cols-4 gap-6">
-		<!-- Feed Count -->
-		<div class="flex items-center gap-3">
-			<div class="flex-shrink-0">
-				<div
-					class="w-10 h-10 flex items-center justify-center bg-[var(--alt-blue)]/10 text-[var(--alt-blue)]"
-				>
-					<Rss class="h-5 w-5" />
-				</div>
-			</div>
-			<div class="flex-1 min-w-0">
-				<p class="text-xs text-[var(--text-secondary)]">Feed Count</p>
-				<p class="text-xl font-semibold text-[var(--text-primary)] tabular-nums">
-					{feedAmount.toLocaleString()}
-				</p>
-			</div>
-		</div>
+<div class="figures-bar">
+	<div class="figure-group">
+		<span class="figure-label">FEEDS</span>
+		<span class="figure-value">{feedAmount.toLocaleString()}</span>
+	</div>
 
-		<!-- Total Articles -->
-		<div class="flex items-center gap-3">
-			<div class="flex-shrink-0">
-				<div
-					class="w-10 h-10 flex items-center justify-center bg-[var(--alt-purple)]/10 text-[var(--alt-purple)]"
-				>
-					<FileText class="h-5 w-5" />
-				</div>
-			</div>
-			<div class="flex-1 min-w-0">
-				<p class="text-xs text-[var(--text-secondary)]">Total Articles</p>
-				<p class="text-xl font-semibold text-[var(--text-primary)] tabular-nums">
-					{totalArticlesAmount.toLocaleString()}
-				</p>
-			</div>
-		</div>
+	<div class="figure-separator" aria-hidden="true"></div>
 
-		<!-- Summarized Articles -->
-		<div class="flex items-center gap-3">
-			<div class="flex-shrink-0">
-				<div
-					class="w-10 h-10 flex items-center justify-center bg-[var(--alt-success)]/10 text-[var(--alt-success)]"
-				>
-					<CheckCircle class="h-5 w-5" />
-				</div>
-			</div>
-			<div class="flex-1 min-w-0">
-				<p class="text-xs text-[var(--text-secondary)]">Summarized</p>
-				<p class="text-xl font-semibold text-[var(--text-primary)] tabular-nums">
-					{summarizedArticles.toLocaleString()}
-				</p>
-			</div>
-		</div>
+	<div class="figure-group">
+		<span class="figure-label">ARTICLES</span>
+		<span class="figure-value">{totalArticlesAmount.toLocaleString()}</span>
+	</div>
 
-		<!-- Connection Status -->
-		<div class="flex items-center gap-3">
-			<div class="flex-shrink-0">
-				<div
-					class="w-10 h-10 flex items-center justify-center {isConnected
-						? 'bg-[var(--alt-success)]/10 text-[var(--alt-success)]'
-						: 'bg-[var(--alt-error)]/10 text-[var(--alt-error)]'}"
-				>
-					{#if isConnected}
-						<Wifi class="h-5 w-5" />
-					{:else}
-						<WifiOff class="h-5 w-5" />
-					{/if}
-				</div>
-			</div>
-			<div class="flex-1 min-w-0">
-				<p class="text-xs text-[var(--text-secondary)]">Connection</p>
-				<p
-					class="text-sm font-medium {isConnected
-						? 'text-[var(--alt-success)]'
-						: 'text-[var(--alt-error)]'}"
-				>
-					{isConnected ? 'Connected' : 'Disconnected'}
-				</p>
-			</div>
-		</div>
+	<div class="figure-separator" aria-hidden="true"></div>
+
+	<div class="figure-group">
+		<span class="figure-label">SUMMARIZED</span>
+		<span class="figure-value">{summarizedArticles.toLocaleString()}</span>
+	</div>
+
+	<div class="status-group">
+		<span
+			class="status-dot"
+			class:status-dot--live={isConnected}
+			class:status-dot--offline={!isConnected}
+		></span>
+		<span class="status-label">{isConnected ? "Live" : "Offline"}</span>
 	</div>
 </div>
+
+<style>
+	.figures-bar {
+		display: flex;
+		align-items: baseline;
+		gap: 1.5rem;
+		padding: 0.75rem 0;
+	}
+
+	.figure-group {
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+	}
+
+	.figure-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.figure-value {
+		font-family: var(--font-mono);
+		font-size: 1.1rem;
+		font-weight: 600;
+		color: var(--alt-charcoal);
+		font-variant-numeric: tabular-nums;
+	}
+
+	.figure-separator {
+		width: 1px;
+		height: 1.2rem;
+		background: var(--surface-border);
+		flex-shrink: 0;
+	}
+
+	.status-group {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		margin-left: auto;
+	}
+
+	.status-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		flex-shrink: 0;
+	}
+
+	.status-dot--live {
+		background: var(--alt-sage);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.status-dot--offline {
+		background: var(--alt-ash);
+		animation: none;
+	}
+
+	.status-label {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.04em;
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 0.3;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.status-dot--live {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>

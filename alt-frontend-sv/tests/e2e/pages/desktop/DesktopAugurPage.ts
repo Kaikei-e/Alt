@@ -24,7 +24,7 @@ export class DesktopAugurPage extends BasePage {
 		super(page);
 
 		// Empty state title or thread heading
-		this.pageTitle = page.getByText(/ask augur/i);
+		this.pageTitle = page.locator(".augur-empty").getByText(/ask augur/i);
 
 		// Thread container
 		this.threadContainer = page.locator(".augur-thread");

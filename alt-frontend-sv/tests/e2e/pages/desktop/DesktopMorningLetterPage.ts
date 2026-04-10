@@ -37,9 +37,7 @@ export class DesktopMorningLetterPage extends BasePage {
 		this.chatContainer = page.locator(".letter-chat");
 
 		// Messages - use partial match for dynamic content
-		this.welcomeMessage = page.getByText(
-			/follow-up questions|today's edition/i,
-		);
+		this.welcomeMessage = page.getByText(/follow-up questions about today/i);
 		this.thinkingIndicator = page.getByText(
 			/searching recent news|searching\.\.\./i,
 		);
