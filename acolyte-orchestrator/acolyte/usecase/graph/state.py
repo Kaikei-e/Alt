@@ -17,7 +17,9 @@ class ReportGenerationState(TypedDict, total=False):
     curated: list[dict]
     curated_by_section: dict[str, list[dict]]  # section_key → curated evidence
     hydrated_evidence: dict[str, str]  # article_id → body text
-    extracted_facts: list[dict]  # ExtractedFact dicts from extractor
+    compressed_evidence: dict[str, list[dict]]  # article_id → CompressedSpan dicts
+    selected_quotes: list[dict]  # SelectedQuote dicts from QuoteSelectorNode
+    extracted_facts: list[dict]  # ExtractedFact dicts from FactNormalizerNode
     claim_plans: dict[str, list[dict]]  # section_key → PlannedClaim dicts
     section_citations: dict[str, list[dict]]  # section_key → citation objects
     sections: dict[str, str]  # section_key → body
@@ -26,5 +28,9 @@ class ReportGenerationState(TypedDict, total=False):
     weak_facets: list[dict]  # Facets with hit_count < threshold, for future query rewrite
     retrieval_debug: dict  # Per-facet variant hit counts for debugging (Issue 7)
     revision_count: int
+    section_paragraphs: dict[str, list[dict]]  # section_key → GeneratedParagraph dicts
+    best_sections: dict[str, str]  # section_key → best non-empty, non-blocking body
+    best_section_metrics: dict[str, dict]  # section_key → {"blocking_count": int, "char_len": int}
+    claim_feedbacks: dict[str, list[dict]]  # section_key → [{"claim_id", "action", "reason"}]
     final_version_no: int | None
     error: str | None

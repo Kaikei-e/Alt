@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from acolyte.domain.critic_taxonomy import FailureMode, FailureModeDetection
+from acolyte.port.llm_provider import LLMMode
 from acolyte.usecase.graph.state import ReportGenerationState
 
 if TYPE_CHECKING:
@@ -126,6 +127,112 @@ def detect_incomplete_sections(
                 )
             )
     return detections
+
+
+def detect_empty_body(
+    sections: dict[str, str],
+    outline: list[dict],
+) -> list[FailureModeDetection]:
+    """FM4: Detect sections with empty body → blocking."""
+    detections: list[FailureModeDetection] = []
+    for section in outline:
+        key = section.get("key", "")
+        body = sections.get(key, "")
+        if not body.strip():
+            detections.append(
+                FailureModeDetection(
+                    mode=FailureMode.FM4_EMPTY_BODY,
+                    severity="blocking",
+                    section_key=key,
+                    description=f"Section '{key}' has empty body",
+                    suggested_fix=f"Regenerate section '{key}' — body is empty (thinking exhaustion or no claims).",
+                )
+            )
+    return detections
+
+
+def detect_zero_claims(
+    claim_plans: dict[str, list[dict]],
+    outline: list[dict],
+    extracted_facts: list[dict] | None = None,
+) -> list[FailureModeDetection]:
+    """FM5: Detect sections with zero claims when evidence exists → blocking."""
+    detections: list[FailureModeDetection] = []
+    has_evidence = bool(extracted_facts)
+
+    for section in outline:
+        key = section.get("key", "")
+        claims = claim_plans.get(key, [])
+        if not claims and has_evidence:
+            detections.append(
+                FailureModeDetection(
+                    mode=FailureMode.FM5_ZERO_CLAIMS,
+                    severity="blocking",
+                    section_key=key,
+                    description=f"Section '{key}' has zero claims despite available evidence",
+                    suggested_fix=f"Re-plan claims for section '{key}' using deterministic fallback.",
+                )
+            )
+    return detections
+
+
+def detect_es_numeric_absence(
+    claim_plans: dict[str, list[dict]],
+    outline: list[dict],
+) -> list[FailureModeDetection]:
+    """FM11: Detect ES without numeric facts → warning."""
+    detections: list[FailureModeDetection] = []
+    for section in outline:
+        if section.get("section_role") != "executive_summary":
+            continue
+        key = section.get("key", "")
+        claims = claim_plans.get(key, [])
+        has_numeric = any(claim.get("numeric_facts") for claim in claims)
+        if claims and not has_numeric:
+            detections.append(
+                FailureModeDetection(
+                    mode=FailureMode.FM11_ES_NUMERIC_ABSENCE,
+                    severity="warning",
+                    section_key=key,
+                    description=f"Executive summary '{key}' has no numeric data in claims",
+                    suggested_fix=f"Include at least one claim with numeric facts in '{key}'.",
+                )
+            )
+    return detections
+
+
+def _build_claim_feedbacks(
+    detections: list[FailureModeDetection],
+    section_paragraphs: dict[str, list[dict]],
+) -> dict[str, list[dict]]:
+    """Build paragraph-level claim_feedbacks from heuristic detections."""
+    feedbacks: dict[str, list[dict]] = {}
+
+    # From section-level detections, create per-paragraph feedback
+    blocking_sections = {d.section_key for d in detections if d.severity == "blocking"}
+
+    for key in blocking_sections:
+        paras = section_paragraphs.get(key, [])
+        section_fbs: list[dict] = []
+        if paras:
+            for p in paras:
+                if p.get("status") == "rejected" or not p.get("body"):
+                    section_fbs.append({
+                        "claim_id": p.get("claim_id", ""),
+                        "action": "regenerate",
+                        "reason": "body empty",
+                    })
+        else:
+            # No paragraphs yet — generic section-level entry
+            section_fbs.append({
+                "claim_id": "",
+                "action": "regenerate",
+                "reason": "section has blocking issues",
+            })
+        if section_fbs:
+            feedbacks[key] = section_fbs
+
+    return feedbacks
 
 
 CONCLUSION_DUPLICATION_THRESHOLD = 0.20  # Jaccard bigram overlap
@@ -277,12 +384,25 @@ class CriticNode:
         outline = state.get("outline", [])
         topic = brief.get("topic", "")
 
+        claim_plans = state.get("claim_plans", {})
+        extracted_facts = state.get("extracted_facts", [])
+        section_paragraphs = state.get("section_paragraphs", {})
+
         all_detections: list[FailureModeDetection] = []
+
+        # FM4: Empty body (blocking) — replaces FM3 for empty bodies
+        all_detections.extend(detect_empty_body(sections, outline))
+
+        # FM5: Zero claims (blocking when evidence exists)
+        all_detections.extend(detect_zero_claims(claim_plans, outline, extracted_facts))
+
+        # FM11: ES numeric absence (warning)
+        all_detections.extend(detect_es_numeric_absence(claim_plans, outline))
 
         # FM2: Meta-statement heuristic (no LLM)
         all_detections.extend(detect_meta_statements(sections))
 
-        # FM3: Incomplete sections heuristic (no LLM)
+        # FM3: Incomplete sections heuristic (no LLM) — for short but non-empty
         all_detections.extend(detect_incomplete_sections(sections, outline))
 
         # FM8: Conclusion-Analysis duplication heuristic (no LLM)
@@ -322,6 +442,7 @@ class CriticNode:
                 num_predict=512,
                 temperature=0,
                 format=_CRITIC_FORMAT,
+                mode=LLMMode.STRUCTURED,
             )
 
             try:
@@ -349,9 +470,14 @@ class CriticNode:
                     )
                 critique["failure_modes"] = existing_fms
 
+        # Build claim-level feedbacks from detections + paragraph status
+        claim_fbs = _build_claim_feedbacks(all_detections, section_paragraphs)
+        critique["claim_feedbacks"] = claim_fbs
+
         logger.info("Critic completed", verdict=critique.get("verdict"), detections=len(all_detections))
         return {
             "critique": critique,
+            "claim_feedbacks": claim_fbs,
             "failure_modes": [
                 {"mode": d.mode.value, "section": d.section_key, "description": d.description} for d in all_detections
             ],

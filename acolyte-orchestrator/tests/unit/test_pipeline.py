@@ -14,6 +14,7 @@ from acolyte.port.evidence_provider import ArticleHit, RecapHit
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.critic_node import should_revise
 from acolyte.usecase.graph.nodes.planner_node import PlannerNode
+from acolyte.usecase.graph.nodes.quote_selector_node import QuoteSelectorNode
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
 from acolyte.usecase.graph.report_graph import build_report_graph
 
@@ -34,9 +35,13 @@ class FakeLLM:
         num_predict: int | None = None,
         temperature: float | None = None,
         format: dict | None = None,
+        think: bool | None = None,
+        mode: object = None,
     ) -> LLMResponse:
         self._call_count += 1
-        self._calls.append({"prompt": prompt, "num_predict": num_predict, "temperature": temperature, "format": format})
+        self._calls.append(
+            {"prompt": prompt, "num_predict": num_predict, "temperature": temperature, "format": format, "mode": mode}
+        )
 
         # Check for keyword matches in prompt
         for key, response in self._responses.items():
@@ -105,50 +110,44 @@ class FakeLLM:
                 ),
                 model="fake-model",
             )
-        if "extract" in prompt.lower() and "atomic" in prompt.lower():
+        if "select" in prompt.lower() and "quote" in prompt.lower() and "verbatim" in prompt.lower():
             return LLMResponse(
                 text=json.dumps(
                     {
-                        "reasoning": "Extracting key factual claims about AI trends.",
-                        "facts": [
+                        "reasoning": "Selecting key quotes.",
+                        "quotes": [
                             {
-                                "claim": "AI trends are accelerating",
+                                "text": "Article body text.",
                                 "source_id": "art-1",
                                 "source_title": "Test Article",
-                                "verbatim_quote": "Article body text.",
-                                "confidence": 0.9,
-                                "data_type": "quote",
                             },
                         ],
                     }
                 ),
                 model="fake-model",
             )
-        if "planner" in prompt.lower() or "plan" in prompt.lower() or "outline" in prompt.lower():
+        if "normalize" in prompt.lower() and "quote" in prompt.lower():
+            return LLMResponse(
+                text=json.dumps(
+                    {
+                        "reasoning": "Normalizing quote into fact.",
+                        "claim": "AI trends are accelerating",
+                        "confidence": 0.9,
+                        "data_type": "quote",
+                    }
+                ),
+                model="fake-model",
+            )
+        if "planner" in prompt.lower() or "plan" in prompt.lower() or "query" in prompt.lower():
             return LLMResponse(
                 text=json.dumps(
                     {
                         "reasoning": "Need ES, analysis, and conclusion",
-                        "sections": [
-                            {
-                                "key": "executive_summary",
-                                "title": "Executive Summary",
-                                "section_role": "executive_summary",
-                                "search_queries": ["AI trends overview"],
-                            },
-                            {
-                                "key": "analysis",
-                                "title": "Analysis",
-                                "section_role": "analysis",
-                                "search_queries": ["AI trends analysis"],
-                            },
-                            {
-                                "key": "conclusion",
-                                "title": "Conclusion",
-                                "section_role": "conclusion",
-                                "search_queries": ["AI trends conclusion"],
-                            },
-                        ],
+                        "queries": {
+                            "executive_summary": ["AI trends overview"],
+                            "analysis": ["AI trends analysis"],
+                            "conclusion": ["AI trends conclusion"],
+                        },
                     }
                 ),
                 model="fake-model",
@@ -165,7 +164,7 @@ class FakeLLM:
                 ),
                 model="fake-model",
             )
-        if "curator" in prompt.lower() or "select" in prompt.lower():
+        if "curator" in prompt.lower() or ("select" in prompt.lower() and "quote" not in prompt.lower()):
             return LLMResponse(
                 text=json.dumps(["art-1"]),
                 model="fake-model",
@@ -517,89 +516,83 @@ async def test_full_pipeline_es_uses_accepted_claims() -> None:
 
 
 @pytest.mark.asyncio
-async def test_planner_uses_num_predict_2048() -> None:
-    """Planner must request num_predict=2048 for sufficient Japanese JSON output budget."""
+async def test_planner_uses_num_predict_1024() -> None:
+    """Planner must request num_predict=1024 (skeleton only needs query expansion)."""
     llm = FakeLLM()
     node = PlannerNode(llm)
 
     await node({"scope": {"topic": "AI trends"}})
 
-    planner_calls = [c for c in llm._calls if "plan" in c["prompt"].lower() or "outline" in c["prompt"].lower()]
+    planner_calls = [c for c in llm._calls if "plan" in c["prompt"].lower() or "query" in c["prompt"].lower()]
     assert len(planner_calls) >= 1
-    assert planner_calls[0]["num_predict"] == 2048
+    assert planner_calls[0]["num_predict"] == 1024
 
 
 @pytest.mark.asyncio
-async def test_extractor_uses_num_predict_6000() -> None:
-    """Extractor must request num_predict=6000 — balanced between quality and timeout risk."""
-    from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
-
+async def test_quote_selector_uses_heuristic_primary() -> None:
+    """QuoteSelector uses heuristic primary and does NOT call LLM when body matches queries."""
     llm = FakeLLM()
-    node = ExtractorNode(llm)
+    node = QuoteSelectorNode(llm)
 
     state = {
         "curated_by_section": {"analysis": [{"id": "art-1", "title": "Test Article"}]},
         "hydrated_evidence": {"art-1": "Article body text about AI trends."},
-    }
-
-    await node(state)
-
-    extractor_calls = [c for c in llm._calls if "extract" in c["prompt"].lower()]
-    assert len(extractor_calls) >= 1
-    assert extractor_calls[0]["num_predict"] == 6000
-
-
-@pytest.mark.asyncio
-async def test_extractor_preserves_partial_results_on_failure() -> None:
-    """If one article extraction fails (e.g. ReadTimeout), facts from other articles are preserved."""
-    from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
-
-    call_count = 0
-
-    class AlwaysFailForArt2LLM(FakeLLM):
-        """Fails on EVERY call for art-2 (both retries), succeeds for others."""
-
-        async def generate(self, prompt: str, **kwargs) -> LLMResponse:
-            nonlocal call_count
-            call_count += 1
-            if "art-2" in prompt:
-                raise TimeoutError("ReadTimeout")
-            return await super().generate(prompt, **kwargs)
-
-    llm = AlwaysFailForArt2LLM()
-    node = ExtractorNode(llm)
-
-    state = {
-        "curated_by_section": {
-            "analysis": [
-                {"id": "art-1", "title": "Article 1"},
-                {"id": "art-2", "title": "Article 2"},
-                {"id": "art-3", "title": "Article 3"},
-            ]
-        },
-        "hydrated_evidence": {
-            "art-1": "Body about AI trends.",
-            "art-2": "Body about chips.",
-            "art-3": "Body about semiconductors.",
-        },
+        "compressed_evidence": {},
+        "outline": [{"key": "analysis", "search_queries": ["AI trends"]}],
     }
 
     result = await node(state)
 
-    # art-2 failed but art-1 and art-3 should have extracted facts
-    assert len(result["extracted_facts"]) >= 1, "Partial results should be preserved when one article fails"
+    # Heuristic primary means no LLM calls when body matches
+    assert len(llm._calls) == 0
+    assert len(result["selected_quotes"]) >= 1
 
 
-def test_extractor_output_has_reasoning_field() -> None:
-    """ExtractorOutput must have a 'reasoning' field to absorb Gemma4 thinking tokens into JSON.
+@pytest.mark.asyncio
+async def test_full_pipeline_compresses_evidence_before_extraction() -> None:
+    """CompressorNode reduces article body before quote selection."""
+    llm = FakeLLM()
+    evidence = FakeEvidence()
+    repo = FakeReportRepo()
+    content_store = MemoryContentStore()
 
-    Without this field, Gemma4's thinking mode generates tokens in the 'thinking' response field
-    (outside JSON), consuming num_predict budget without contributing to output.
-    ADR-632: reasoning-first field order prevents thinking token waste.
-    """
-    from acolyte.domain.fact import ExtractorOutput
+    # Long body with repeated relevant content — should be compressed
+    long_body = "Important AI trend: spending hit $100B in 2026. " * 50  # ~2450 chars
+    await content_store.store("art-1", long_body)
 
-    schema = ExtractorOutput.model_json_schema()
-    assert "reasoning" in schema["properties"], (
-        "ExtractorOutput must have 'reasoning' field to absorb Gemma4 thinking tokens"
+    report = await repo.create_report("Test Report", "weekly_briefing")
+    graph = build_report_graph(llm, evidence, repo, content_store=content_store)
+
+    result = await graph.ainvoke(
+        {
+            "report_id": str(report.report_id),
+            "run_id": str(uuid4()),
+            "brief": {"topic": "AI trends 2026"},
+            "revision_count": 0,
+        }
     )
+
+    assert result.get("final_version_no") == 1
+    # Compressor should have produced compressed_evidence
+    compressed = result.get("compressed_evidence", {})
+    assert "art-1" in compressed
+    total_chars = sum(len(s["text"]) for s in compressed["art-1"])
+    assert total_chars < len(long_body), "Compression should reduce body size"
+    # Pipeline should produce selected_quotes
+    assert "selected_quotes" in result
+
+
+def test_quote_selector_output_has_reasoning_field() -> None:
+    """QuoteSelectorOutput must have 'reasoning' field (ADR-632)."""
+    from acolyte.domain.quote_selection import QuoteSelectorOutput
+
+    schema = QuoteSelectorOutput.model_json_schema()
+    assert "reasoning" in schema["properties"]
+
+
+def test_fact_normalizer_output_has_reasoning_field() -> None:
+    """FactNormalizerOutput must have 'reasoning' field (ADR-632)."""
+    from acolyte.domain.quote_selection import FactNormalizerOutput
+
+    schema = FactNormalizerOutput.model_json_schema()
+    assert "reasoning" in schema["properties"]

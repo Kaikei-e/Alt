@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from acolyte.domain.claim import ClaimPlannerOutput
+from acolyte.port.llm_provider import LLMMode
 from acolyte.usecase.graph.llm_parse import generate_validated
 
 if TYPE_CHECKING:
@@ -152,6 +153,126 @@ def _collect_all_accepted_claims(
     return claims
 
 
+def _rank_facts_for_synthesis(facts: list[dict]) -> list[dict]:
+    """Rank facts by: numeric_facts presence → source diversity → confidence."""
+    seen_sources: set[str] = set()
+    scored: list[tuple[float, dict]] = []
+
+    for fact in facts:
+        score = 0.0
+        # Prefer facts with numeric data
+        if fact.get("numeric_facts") or fact.get("data_type") == "statistic":
+            score += 10.0
+        # Prefer diverse sources
+        src = fact.get("source_id", "")
+        if src and src not in seen_sources:
+            score += 5.0
+            seen_sources.add(src)
+        # Confidence
+        score += fact.get("confidence", 0.0)
+        scored.append((score, fact))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [f for _, f in scored]
+
+
+def _fact_to_synthesis_claim(fact: dict, *, claim_id: str = "") -> dict:
+    """Convert an extracted fact into a synthesis claim dict."""
+    return {
+        "claim_id": claim_id,
+        "claim": fact.get("claim", fact.get("verbatim_quote", "")),
+        "claim_type": "synthesis",
+        "evidence_ids": [fact["source_id"]] if fact.get("source_id") else [],
+        "supporting_quotes": [fact["verbatim_quote"]] if fact.get("verbatim_quote") else [],
+        "numeric_facts": fact.get("numeric_facts", []),
+        "novelty_against": [],
+        "must_cite": True,
+    }
+
+
+def _claims_to_synthesis(claims: list[dict], *, max_claims: int = 5, prefix: str = "") -> list[dict]:
+    """Convert existing claims into synthesis claims for conclusion/ES."""
+    result: list[dict] = []
+    seen_sources: set[str] = set()
+    # Prefer claims with numeric_facts and diverse sources
+    with_numeric = [c for c in claims if c.get("numeric_facts")]
+    without_numeric = [c for c in claims if not c.get("numeric_facts")]
+
+    for claim in with_numeric + without_numeric:
+        if len(result) >= max_claims:
+            break
+        eids = set(claim.get("evidence_ids", []))
+        # Prefer diverse sources
+        is_diverse = bool(eids - seen_sources)
+        if not is_diverse and len(result) >= 2:
+            continue
+        seen_sources.update(eids)
+        result.append({
+            "claim_id": f"{prefix}-synth-{len(result) + 1}" if prefix else claim.get("claim_id", ""),
+            "claim": claim.get("claim", ""),
+            "claim_type": "synthesis",
+            "evidence_ids": claim.get("evidence_ids", []),
+            "supporting_quotes": claim.get("supporting_quotes", []),
+            "numeric_facts": claim.get("numeric_facts", []),
+            "novelty_against": claim.get("novelty_against", []),
+            "must_cite": True,
+        })
+    return result
+
+
+def _deterministic_conclusion_claims(
+    analysis_claims: list[dict],
+    extracted_facts: list[dict],
+    *,
+    max_claims: int = 5,
+) -> list[dict]:
+    """Deterministic fallback for conclusion: synthesis from analysis claims or facts.
+
+    Priority: analysis_claims → extracted_facts.
+    Ranking: numeric_facts → source diversity → confidence.
+    """
+    if analysis_claims:
+        return _claims_to_synthesis(analysis_claims, max_claims=max_claims, prefix="conclusion")
+
+    if not extracted_facts:
+        return []
+
+    ranked = _rank_facts_for_synthesis(extracted_facts)
+    return [
+        _fact_to_synthesis_claim(f, claim_id=f"conclusion-synth-{i + 1}")
+        for i, f in enumerate(ranked[:max_claims])
+    ]
+
+
+def _deterministic_es_claims(
+    all_claims: dict[str, list[dict]],
+    extracted_facts: list[dict],
+    *,
+    max_claims: int = 3,
+) -> list[dict]:
+    """Deterministic fallback for ES: pick top claims from all sections or facts.
+
+    Priority: existing claim_plans → extracted_facts.
+    Ranking: numeric_facts → source diversity.
+    """
+    # Flatten all claims from all sections
+    flat_claims: list[dict] = []
+    for claims in all_claims.values():
+        flat_claims.extend(claims)
+
+    if flat_claims:
+        return _claims_to_synthesis(flat_claims, max_claims=max_claims, prefix="es")
+
+    if not extracted_facts:
+        return []
+
+    ranked = _rank_facts_for_synthesis(extracted_facts)
+    return [
+        _fact_to_synthesis_claim(f, claim_id=f"es-synth-{i + 1}")
+        for i, f in enumerate(ranked[:max_claims])
+    ]
+
+
 class SectionPlannerNode:
     def __init__(self, llm: LLMProviderPort) -> None:
         self._llm = llm
@@ -178,8 +299,14 @@ class SectionPlannerNode:
                 # ES uses accepted claims from ALL other sections
                 all_claims = _collect_all_accepted_claims(claim_plans, outline)
                 if not all_claims:
-                    logger.warning("No accepted claims for ES, using empty plan", section_key=key)
-                    claim_plans[key] = []
+                    # Deterministic fallback: use claim_plans or extracted_facts
+                    fallback_claims = _deterministic_es_claims(claim_plans, extracted_facts)
+                    if fallback_claims:
+                        logger.info("ES using deterministic fallback", claim_count=len(fallback_claims))
+                        claim_plans[key] = fallback_claims
+                    else:
+                        logger.warning("No claims or facts for ES", section_key=key)
+                        claim_plans[key] = []
                     continue
 
                 claims_block = _format_analysis_claims(all_claims)
@@ -192,8 +319,14 @@ class SectionPlannerNode:
                 # Conclusion uses analysis claims as input, not raw facts
                 analysis_claims = _collect_analysis_claims(claim_plans, outline)
                 if not analysis_claims:
-                    logger.warning("No analysis claims for conclusion, using empty plan", section_key=key)
-                    claim_plans[key] = []
+                    # Deterministic fallback: use extracted_facts
+                    fallback_claims = _deterministic_conclusion_claims([], extracted_facts)
+                    if fallback_claims:
+                        logger.info("Conclusion using deterministic fallback", claim_count=len(fallback_claims))
+                        claim_plans[key] = fallback_claims
+                    else:
+                        logger.warning("No analysis claims or facts for conclusion", section_key=key)
+                        claim_plans[key] = []
                     continue
 
                 claims_block = _format_analysis_claims(analysis_claims)
@@ -233,11 +366,23 @@ class SectionPlannerNode:
                 temperature=0,
                 num_predict=2048,
                 fallback=fallback,
+                mode=LLMMode.STRUCTURED,
             )
 
             claim_dicts = [c.model_dump() for c in result.claims]
             for i, cd in enumerate(claim_dicts, 1):
                 cd["claim_id"] = f"{key}-{i}"
+
+            # Post-LLM fallback: if LLM returned empty claims for conclusion/ES
+            if not claim_dicts and section_role in ("conclusion", "executive_summary"):
+                if section_role == "conclusion":
+                    analysis_claims = _collect_analysis_claims(claim_plans, outline)
+                    claim_dicts = _deterministic_conclusion_claims(analysis_claims, extracted_facts)
+                else:
+                    claim_dicts = _deterministic_es_claims(claim_plans, extracted_facts)
+                if claim_dicts:
+                    logger.info("Post-LLM deterministic fallback", section_key=key, claim_count=len(claim_dicts))
+
             claim_plans[key] = claim_dicts
 
         logger.info(

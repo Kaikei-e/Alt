@@ -55,10 +55,10 @@ async def test_writer_uses_claim_plans_when_present() -> None:
     assert "sections" in result
     assert "analysis" in result["sections"]
     assert result["sections"]["analysis"] == "Generated claim-based section."
-    # Verify claim-based prompt was used (contains claim content)
+    # Verify paragraph-based prompt was used (contains claim content in XML tags)
     assert len(llm.prompts) == 1
     assert "AI market grew 20%" in llm.prompts[0]
-    assert "計画済みクレーム" in llm.prompts[0]
+    assert "<claim>" in llm.prompts[0]
 
 
 @pytest.mark.asyncio
@@ -123,8 +123,10 @@ async def test_writer_revision_with_claim_plans() -> None:
 
     result = await node(state)
     assert "analysis" in result["sections"]
-    # Revision note should be in the prompt
-    assert "Add more statistical context" in llm.prompts[0]
+    # Paragraph-level revision: since there are no existing section_paragraphs,
+    # all paragraphs are generated fresh. The section-level feedback is not
+    # injected into paragraph prompts (claim_feedbacks is used instead).
+    assert len(llm.prompts) == 1
 
 
 @pytest.mark.asyncio
@@ -285,9 +287,9 @@ async def test_writer_legacy_path_returns_empty_citations() -> None:
 
 
 @pytest.mark.asyncio
-async def test_writer_rejects_section_with_uncited_must_cite_claims() -> None:
-    """Section where all must_cite claims lack evidence_ids → body rejected (empty)."""
-    llm = FakeLLM("Should be rejected because no citations.")
+async def test_writer_paragraph_with_no_evidence_still_generates() -> None:
+    """Paragraph with no evidence_ids still generates body (no section-level rejection)."""
+    llm = FakeLLM("Generated despite no evidence.")
     node = WriterNode(llm)
 
     state = {
@@ -300,7 +302,7 @@ async def test_writer_rejects_section_with_uncited_must_cite_claims() -> None:
                     "claim_id": "analysis-1",
                     "claim": "Unsupported claim",
                     "claim_type": "factual",
-                    "evidence_ids": [],  # no evidence → no citations
+                    "evidence_ids": [],
                     "supporting_quotes": [],
                     "numeric_facts": [],
                     "novelty_against": [],
@@ -313,8 +315,8 @@ async def test_writer_rejects_section_with_uncited_must_cite_claims() -> None:
     }
 
     result = await node(state)
-    # Section should be rejected (empty body) because must_cite claim has no citation
-    assert result["sections"]["analysis"] == ""
+    # Paragraph generates body; citation validation is now in Critic
+    assert result["sections"]["analysis"] == "Generated despite no evidence."
     assert result["section_citations"]["analysis"] == []
 
 
@@ -357,9 +359,10 @@ async def test_writer_keeps_section_when_some_claims_cited() -> None:
     }
 
     result = await node(state)
-    # Body is kept because at least one claim has citations
-    assert result["sections"]["analysis"] == "Body with cited content."
-    # But uncited must_cite claims should be flagged/excluded from citations
+    # Both paragraphs generated (paragraph-level, no section-level rejection)
+    body = result["sections"]["analysis"]
+    assert "Body with cited content." in body
+    # Cited claim should have citations
     citations = result["section_citations"]["analysis"]
     cited_claim_ids = {c["claim_id"] for c in citations}
     assert "analysis-1" in cited_claim_ids
@@ -518,8 +521,8 @@ async def test_writer_es_prompt_excludes_raw_evidence() -> None:
 
 
 @pytest.mark.asyncio
-async def test_writer_injects_novelty_against_from_contract() -> None:
-    """Outline has novelty_against=['market_analysis', 'tech_analysis']. Writer prompt must reference these."""
+async def test_writer_conclusion_paragraph_contains_synthesis_language() -> None:
+    """Conclusion paragraph prompt contains synthesis-specific language."""
     llm = FakeLLM("Contract-driven content.")
     node = WriterNode(llm)
 
@@ -554,13 +557,14 @@ async def test_writer_injects_novelty_against_from_contract() -> None:
 
     await node(state)
     prompt = llm.prompts[0]
-    assert "market_analysis" in prompt
-    assert "tech_analysis" in prompt
+    # Paragraph prompt uses XML tags and conclusion-specific language
+    assert "<claim>" in prompt
+    assert "意味づけ" in prompt or "統合" in prompt
 
 
 @pytest.mark.asyncio
-async def test_writer_injects_must_include_data_types() -> None:
-    """Outline has must_include_data_types=['statistic']. Writer prompt must mention it."""
+async def test_writer_paragraph_prompt_uses_xml_tags() -> None:
+    """Paragraph prompt uses XML-style tags for input boundaries."""
     llm = FakeLLM("Content with stats.")
     node = WriterNode(llm)
 
@@ -570,7 +574,6 @@ async def test_writer_injects_must_include_data_types() -> None:
                 "key": "analysis",
                 "title": "Analysis",
                 "section_role": "analysis",
-                "must_include_data_types": ["statistic", "trend"],
             },
         ],
         "curated": [],
@@ -595,13 +598,15 @@ async def test_writer_injects_must_include_data_types() -> None:
 
     await node(state)
     prompt = llm.prompts[0]
-    assert "statistic" in prompt.lower()
-    assert "trend" in prompt.lower()
+    assert "<topic>" in prompt
+    assert "<section>" in prompt
+    assert "<claim>" in prompt
+    assert "<supporting_quotes>" in prompt
 
 
 @pytest.mark.asyncio
-async def test_writer_injects_synthesis_only_instruction() -> None:
-    """Outline has synthesis_only=True. Writer prompt must contain no-new-facts instruction."""
+async def test_writer_conclusion_prompt_contains_no_new_facts() -> None:
+    """Conclusion paragraph prompt must contain no-new-facts instruction."""
     llm = FakeLLM("Synthesis content.")
     node = WriterNode(llm)
 
@@ -636,13 +641,12 @@ async def test_writer_injects_synthesis_only_instruction() -> None:
 
     await node(state)
     prompt = llm.prompts[0]
-    # Must contain instruction about no new facts / synthesis only
-    assert "新事実" in prompt or "synthesis" in prompt.lower() or "統合のみ" in prompt
+    assert "新事実" in prompt
 
 
 @pytest.mark.asyncio
-async def test_writer_uses_contract_not_title() -> None:
-    """Writer uses novelty_against keys from contract, not section title for constraints."""
+async def test_writer_uses_section_title_in_prompt() -> None:
+    """Writer puts section title in XML tag regardless of section_role."""
     llm = FakeLLM("Content.")
     node = WriterNode(llm)
 
@@ -677,5 +681,4 @@ async def test_writer_uses_contract_not_title() -> None:
 
     await node(state)
     prompt = llm.prompts[0]
-    assert "deep_dive_1" in prompt
-    assert "deep_dive_2" in prompt
+    assert "Wrap Up" in prompt

@@ -12,9 +12,12 @@ class FailureMode(Enum):
     FM3_INCOMPLETE_INFORMATION = "incomplete_info"
     FM6_MISSING_CITATION = "missing_citation"
     FM7_UNSUPPORTED_CLAIMS = "unsupported_claims"
+    FM4_EMPTY_BODY = "empty_body"
+    FM5_ZERO_CLAIMS = "zero_claims"
     FM8_CONCLUSION_ANALYSIS_DUPLICATION = "conclusion_analysis_duplication"
     FM9_INSUFFICIENT_CITATIONS = "insufficient_citations"
     FM10_NOVELTY_VIOLATION = "novelty_violation"
+    FM11_ES_NUMERIC_ABSENCE = "es_numeric_absence"
 
 
 @dataclass(frozen=True)

@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from acolyte.port.llm_provider import LLMMode
+
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
     from acolyte.usecase.graph.state import ReportGenerationState
@@ -92,7 +94,7 @@ class CuratorNode:
             section_title=section_title,
             evidence=json.dumps(section_evidence[:30]),
         )
-        response = await self._llm.generate(prompt)
+        response = await self._llm.generate(prompt, mode=LLMMode.STRUCTURED)
 
         try:
             selected_ids = json.loads(response.text)
