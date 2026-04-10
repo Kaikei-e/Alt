@@ -22,7 +22,7 @@ interface PageData {
 
 const { data }: { data: PageData } = $props();
 
-// Resolved article data from streaming - populated when promise resolves
+// Resolved article data from streaming
 let resolvedArticleData = $state<ArticleData | null>(null);
 let cacheSeeded = false;
 
@@ -31,7 +31,6 @@ onMount(() => {
 	data.articleData.then((articleData) => {
 		resolvedArticleData = articleData;
 
-		// Seed cache once
 		if (
 			!cacheSeeded &&
 			data.initialFeeds.length > 0 &&
@@ -59,18 +58,14 @@ onMount(() => {
 </svelte:head>
 
 {#if isDesktop}
-	<div class="flex flex-col items-center justify-center py-24 text-center">
-		<p class="text-lg font-medium text-[var(--text-primary)] mb-2">
+	<div class="desktop-fallback">
+		<p class="fallback-heading">
 			Visual Preview mode is optimized for mobile
 		</p>
-		<p class="text-sm text-[var(--text-secondary)] mb-6">
+		<p class="fallback-text">
 			Use a mobile device or resize your browser window to use the swipe interface.
 		</p>
-		<a
-			href="/feeds"
-			class="px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:opacity-90"
-			style="background: var(--accent-primary); color: var(--accent-primary-foreground);"
-		>
+		<a href="/feeds" class="fallback-link">
 			Go to Feeds
 		</a>
 	</div>
@@ -83,3 +78,51 @@ onMount(() => {
 		mode="visual-preview"
 	/>
 {/if}
+
+<style>
+	.desktop-fallback {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 6rem 1.5rem;
+		text-align: center;
+	}
+
+	.fallback-heading {
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 600;
+		color: var(--alt-charcoal);
+		margin: 0 0 0.5rem;
+	}
+
+	.fallback-text {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-slate);
+		margin: 0 0 1.5rem;
+	}
+
+	.fallback-link {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		padding: 0.5rem 1.5rem;
+		min-height: 44px;
+		display: inline-flex;
+		align-items: center;
+		text-decoration: none;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.fallback-link:hover {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+</style>

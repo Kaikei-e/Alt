@@ -3,53 +3,74 @@ import { fade } from "svelte/transition";
 
 interface Props {
 	isVisible: boolean;
-	reduceMotion?: boolean;
 }
 
-const { isVisible, reduceMotion = false }: Props = $props();
+const { isVisible }: Props = $props();
 </script>
 
 {#if isVisible}
   <div
-    class="absolute left-0 right-0 bottom-0 px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pointer-events-none z-10"
+    class="overlay-container"
     transition:fade={{ duration: 200 }}
     data-testid="swipe-progress-indicator"
   >
-    <div
-      class="rounded-xl border border-[var(--alt-glass-border)] bg-[rgba(10,10,20,0.85)] p-4 max-w-[26rem] mx-auto shadow-[0_8px_30px_rgba(0,0,0,0.35)]"
-    >
-      <p class="text-xs text-[var(--alt-text-secondary)] text-center">
-        Loading new article
-      </p>
-      <div
-        class="mt-3 h-1 rounded-full bg-[rgba(255,255,255,0.12)] overflow-hidden"
-        aria-hidden="true"
-      >
-        <div
-          class="h-full w-[45%] rounded-full bg-[var(--alt-primary)] opacity-85"
-          style:transform={reduceMotion ? "translateX(0)" : undefined}
-          class:animate-loading-bar={!reduceMotion}
-        ></div>
-      </div>
+    <div class="overlay-card">
+      <div class="loading-pulse" aria-hidden="true"></div>
+      <p class="loading-text">Loading dispatch...</p>
       <span class="sr-only">Loading new article</span>
     </div>
   </div>
 {/if}
 
 <style>
-  @keyframes loading-bar {
-    0% {
-      transform: translateX(-60%);
-    }
-    50% {
-      transform: translateX(-10%);
-    }
-    100% {
-      transform: translateX(120%);
-    }
+  .overlay-container {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 0 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    pointer-events: none;
+    z-index: 10;
   }
 
-  .animate-loading-bar {
-    animation: loading-bar 1.4s ease-in-out infinite;
+  .overlay-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--surface-bg);
+    border: 1px solid var(--surface-border);
+    padding: 1rem;
+    max-width: 26rem;
+    margin: 0 auto;
+  }
+
+  .loading-pulse {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--alt-ash);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .loading-text {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--alt-ash);
+    margin: 0;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loading-pulse {
+      animation: none;
+      opacity: 0.6;
+    }
   }
 </style>

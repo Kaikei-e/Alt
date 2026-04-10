@@ -2,7 +2,6 @@
 import { ChevronDown, ChevronUp, Link as LinkIcon } from "@lucide/svelte";
 import { Spring } from "svelte/motion";
 import { type SwipeDirection, swipe } from "$lib/actions/swipe";
-import { Button } from "$lib/components/ui/button";
 import type { RecapGenre } from "$lib/schema/recap";
 
 interface Props {
@@ -27,7 +26,6 @@ const cardStyle = $derived.by(() => {
 	const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
 
 	return [
-		"max-width: calc(100% - 1rem)",
 		`transform: translate3d(${translate}px, 0, 0)`,
 		`opacity: ${opacity}`,
 		"will-change: transform, opacity",
@@ -41,7 +39,6 @@ const handleToggle = () => {
 	isExpanded = !isExpanded;
 };
 
-// 箇条書きまたはサマリーから表示用のリストを生成
 const displayItems = $derived.by(() => {
 	if (genre.bullets && genre.bullets.length > 0) {
 		return genre.bullets;
@@ -69,7 +66,6 @@ $effect(() => {
 		}>;
 		const { deltaX, deltaY } = moveEvent.detail;
 
-		// 横方向の動きが優勢なときだけ追従させる
 		if (Math.abs(deltaX) > Math.abs(deltaY)) {
 			isDragging = true;
 			x.set(deltaX, { instant: true });
@@ -102,13 +98,9 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 	const width = swipeElement?.clientWidth ?? window.innerWidth;
 	const target = dir === "left" ? -width : width;
 
-	// 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
 	await x.set(target, { preserveMomentum: 120 });
-
-	// ここで「次のカードへ」「前のカードへ」のロジックを呼ぶ
 	await onDismiss(dir === "left" ? -1 : 1);
 
-	// 次のカードに備えてリセット
 	hasSwiped = false;
 	await x.set(0, { instant: true });
 }
@@ -116,116 +108,75 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
 <div
 	bind:this={swipeElement}
-	class="absolute w-full h-full p-[2px] rounded-[18px] border-2 select-none"
-	style="border-color: var(--surface-border); {cardStyle}; touch-action: none;"
+	class="recap-card"
+	style="max-width: calc(100% - 1rem); {cardStyle}; touch-action: none;"
 	use:swipe={{ threshold: SWIPE_THRESHOLD, restraint: 120, allowedTime: 500 }}
 	aria-busy={isBusy}
 	data-testid="swipe-recap-card"
 >
-	<div
-		class="glass w-full h-full rounded-[16px] flex flex-col"
-		style="background: var(--surface-bg);"
-	>
+	<div class="card-inner">
 		<!-- Header -->
-		<div
-			class="border-b px-4 py-3 rounded-t-[16px]"
-			style="border-color: var(--surface-border);"
-		>
+		<header class="card-header">
 			<div class="flex justify-between items-center flex-wrap gap-2">
-				<h3
-					class="text-lg font-bold uppercase tracking-wider flex-1 min-w-0 break-words"
-					style="color: var(--accent-primary);"
-				>
+				<h3 class="genre-title">
 					{genre.genre}
 				</h3>
-				<div
-					class="flex gap-3 text-xs flex-shrink-0"
-					style="color: var(--text-secondary);"
-				>
+				<div class="genre-meta">
 					<span>{genre.clusterCount} clusters</span>
 					<span>{genre.articleCount} articles</span>
 				</div>
 			</div>
-		</div>
+		</header>
 
 		<!-- Scrollable Content Area -->
 		<div
 			bind:this={scrollAreaRef}
 			style="touch-action: pan-y; overflow-x: hidden;"
-			class="flex-1 overflow-y-auto overflow-x-hidden px-4 py-4 bg-transparent scroll-smooth overscroll-contain scrollbar-thin select-none"
+			class="scroll-area"
 			data-testid="recap-scroll-area"
 		>
 			<div class="flex flex-col gap-5">
-				<!-- トピックChips -->
+				<!-- Topic chips -->
 				{#if genre.topTerms.length > 0}
 					<div class="flex gap-2 flex-wrap">
 						{#each genre.topTerms.slice(0, 5) as term}
-							<span
-								class="px-3 py-1.5 rounded-full text-xs font-medium border transition-colors duration-200"
-								style="background: var(--surface-hover); color: var(--text-primary); border-color: var(--surface-border);"
-							>
-								{term}
-							</span>
+							<span class="topic-chip">{term}</span>
 						{/each}
 					</div>
 				{/if}
 
-				<!-- 要約プレビュー: 箇条書きの最初の3つを表示 -->
-				<div class="flex flex-col gap-2">
+				<!-- Bullet list -->
+				<div class="bullet-list">
 					{#each visibleItems as bullet, idx}
-						<div class="flex gap-2 items-start">
-							<div
-								class="w-[6px] h-[6px] rounded-full mt-[9px] flex-shrink-0"
-								style="background: var(--alt-primary);"
-							></div>
-							<p
-								class="text-sm leading-relaxed {isExpanded ? '' : 'line-clamp-2'}"
-								style="color: var(--text-primary);"
-							>
+						<div class="bullet-item">
+							<div class="bullet-border" aria-hidden="true"></div>
+							<p class="bullet-text" class:bullet-text--clamped={!isExpanded}>
 								{bullet}
 							</p>
 						</div>
 					{/each}
 				</div>
 
-				<!-- 展開時: Evidence -->
+				<!-- Evidence (expanded) -->
 				{#if isExpanded && genre.evidenceLinks.length > 0}
-					<div class="flex flex-col gap-3 pt-4 border-t"
-						style="border-color: var(--surface-border);"
-					>
-						<!-- Evidence Links -->
-						<div>
-							<p
-								class="text-xs font-semibold mb-3 uppercase tracking-wider"
-								style="color: var(--text-secondary);"
-							>
-								Evidence ({genre.evidenceLinks.length} articles)
-							</p>
-							<div class="flex flex-col gap-2">
-								{#each genre.evidenceLinks as evidence}
-									<a
-										href={evidence.sourceUrl}
-										target="_blank"
-										rel="noopener noreferrer"
-										class="flex items-start gap-2 p-3 rounded-xl border transition-all duration-200 hover:-translate-y-[1px]"
-										style="background: var(--surface-hover); border-color: var(--surface-border); color: var(--text-primary);"
-										onmouseenter={(e) => {
-											e.currentTarget.style.borderColor = "var(--alt-primary)";
-										}}
-										onmouseleave={(e) => {
-											e.currentTarget.style.borderColor = "var(--surface-border)";
-										}}
-									>
-										<LinkIcon size={14} class="mt-0.5 flex-shrink-0" style="color: var(--alt-primary);" />
-										<span
-											class="text-sm flex-1 break-words leading-relaxed"
-											style="color: var(--text-primary);"
-										>
-											{evidence.title}
-										</span>
-									</a>
-								{/each}
-							</div>
+					<div class="evidence-section">
+						<p class="section-label">
+							Evidence ({genre.evidenceLinks.length} articles)
+						</p>
+						<div class="flex flex-col gap-2">
+							{#each genre.evidenceLinks as evidence}
+								<a
+									href={evidence.sourceUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+									class="evidence-link"
+								>
+									<LinkIcon size={14} class="evidence-icon" />
+									<span class="evidence-title">
+										{evidence.title}
+									</span>
+								</a>
+							{/each}
 						</div>
 					</div>
 				{/if}
@@ -233,16 +184,11 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 		</div>
 
 		<!-- Footer -->
-		<div
-			class="border-t px-4 py-3 rounded-b-[16px]"
-			style="border-color: var(--surface-border);"
-			data-testid="action-footer"
-		>
-			<Button
-				size="sm"
+		<footer class="card-footer" data-testid="action-footer">
+			<button
+				type="button"
 				onclick={handleToggle}
-				class="w-full rounded-full font-bold min-h-[44px] transition-all duration-200 hover:scale-[1.02] active:scale-95"
-				style="background: var(--alt-primary); color: var(--text-primary);"
+				class="action-btn"
 			>
 				<div class="flex items-center justify-center gap-2">
 					{#if isExpanded}
@@ -252,34 +198,202 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 					{/if}
 					<span>{isExpanded ? "Collapse" : "View details"}</span>
 				</div>
-			</Button>
-		</div>
+			</button>
+		</footer>
 	</div>
 </div>
 
 <style>
-	.scrollbar-thin::-webkit-scrollbar {
-		width: 4px;
-	}
-	.scrollbar-thin::-webkit-scrollbar-track {
-		background: transparent;
-		border-radius: 2px;
-	}
-	.scrollbar-thin::-webkit-scrollbar-thumb {
-		background: rgba(255, 255, 255, 0.2);
-		border-radius: 2px;
-	}
-	.scrollbar-thin::-webkit-scrollbar-thumb:hover {
-		background: rgba(255, 255, 255, 0.3);
+	.recap-card {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		user-select: none;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
 	}
 
-	/* Androidでテキスト選択がスワイプを妨げないように、親要素とすべての子要素でテキスト選択を無効化 */
-	[data-testid="recap-scroll-area"],
-	[data-testid="recap-scroll-area"] * {
-		-webkit-user-select: none; /* Safari, Chrome */
-		-moz-user-select: none;     /* Firefox */
-		-ms-user-select: none;      /* Internet Explorer, Edge */
-		user-select: none;          /* 標準 */
+	.card-inner {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* ── Header ── */
+	.card-header {
+		border-bottom: 1px solid var(--surface-border);
+		padding: 0.75rem 1rem;
+	}
+
+	.genre-title {
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 700;
+		color: var(--alt-primary);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		margin: 0;
+		flex: 1;
+		min-width: 0;
+		word-break: break-word;
+	}
+
+	.genre-meta {
+		display: flex;
+		gap: 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		flex-shrink: 0;
+	}
+
+	/* ── Scroll area ── */
+	.scroll-area {
+		flex: 1;
+		overflow-y: auto;
+		overflow-x: hidden;
+		padding: 1rem;
+		background: transparent;
+		scroll-behavior: smooth;
+		overscroll-behavior: contain;
+		user-select: none;
+	}
+
+	.scroll-area::-webkit-scrollbar { width: 3px; }
+	.scroll-area::-webkit-scrollbar-track { background: transparent; }
+	.scroll-area::-webkit-scrollbar-thumb { background: var(--surface-border); }
+
+	.scroll-area,
+	.scroll-area :global(*) {
+		-webkit-user-select: none;
+		-moz-user-select: none;
+		-ms-user-select: none;
+		user-select: none;
+	}
+
+	/* ── Topic chips ── */
+	.topic-chip {
+		font-family: var(--font-body);
+		font-size: 0.7rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1px solid var(--surface-border);
+		padding: 0.3rem 0.6rem;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+	}
+
+	/* ── Bullet list ── */
+	.bullet-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.bullet-item {
+		display: flex;
+		gap: 0.5rem;
+		align-items: stretch;
+	}
+
+	.bullet-border {
+		width: 1px;
+		flex-shrink: 0;
+		background: var(--alt-primary);
+	}
+
+	.bullet-text {
+		font-family: var(--font-body);
+		font-size: 0.88rem;
+		line-height: 1.6;
+		color: var(--alt-charcoal);
+		margin: 0;
+		padding: 0.15rem 0;
+	}
+
+	.bullet-text--clamped {
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+
+	/* ── Evidence ── */
+	.evidence-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.section-label {
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0;
+	}
+
+	.evidence-link {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.6rem 0.75rem;
+		border: 1px solid var(--surface-border);
+		text-decoration: none;
+		transition: border-color 0.15s;
+	}
+
+	.evidence-link:hover {
+		border-color: var(--alt-primary);
+	}
+
+	.evidence-link :global(.evidence-icon) {
+		color: var(--alt-primary);
+		flex-shrink: 0;
+		margin-top: 0.15rem;
+	}
+
+	.evidence-title {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		line-height: 1.5;
+		color: var(--alt-charcoal);
+		flex: 1;
+		word-break: break-word;
+	}
+
+	/* ── Footer ── */
+	.card-footer {
+		border-top: 1px solid var(--surface-border);
+		padding: 0.75rem 1rem;
+	}
+
+	.action-btn {
+		width: 100%;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		padding: 0.5rem 1rem;
+		min-height: 44px;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.action-btn:active {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
 	}
 </style>
-

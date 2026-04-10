@@ -64,9 +64,6 @@ const displayedDomains = $derived(
 );
 
 function handleSelect(domain: string) {
-	// Phase 1: Force keyboard dismiss before closing sheet.
-	// Safari iOS freezes the viewport if isOpen becomes false (triggering
-	// useKeyboardOffset → offset=0) while the keyboard is still animating away.
 	const input = document.querySelector<HTMLInputElement>(
 		'[data-testid="exclude-search-input"]',
 	);
@@ -79,7 +76,6 @@ function handleSelect(domain: string) {
 	onExclude(ids);
 	query = "";
 
-	// Phase 2: Close sheet AFTER keyboard dismiss animation (~350ms)
 	setTimeout(() => {
 		isOpen = false;
 	}, 350);
@@ -90,18 +86,18 @@ function handleClear() {
 }
 </script>
 
-<!-- Trigger Button (fixed, left side) -->
+<!-- Trigger Button -->
 <button
 	type="button"
-	class="fixed bottom-6 left-6 z-[1000] h-12 w-12 rounded-full border-2 border-[var(--text-primary)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--shadow-glass)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:bg-[var(--bg-surface-hover)] hover:border-[var(--accent-primary)] active:scale-95 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none"
+	class="filter-trigger"
 	onclick={() => { isOpen = true; }}
 	aria-label="Filter and sort"
 	data-testid="swipe-filter-trigger"
 >
-	<SlidersHorizontal class="h-5 w-5 relative z-[1]" />
+	<SlidersHorizontal size={18} />
 	{#if excludedFeedLinkIds.length > 0}
 		<span
-			class="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-[var(--alt-primary)] border-2 border-[var(--bg-surface)]"
+			class="filter-badge"
 			data-testid="filter-active-badge"
 		></span>
 	{/if}
@@ -111,99 +107,94 @@ function handleClear() {
 <Sheet.Root bind:open={isOpen}>
 	<Sheet.Content
 		side="bottom"
-		class="max-h-[70vh] rounded-t-[24px] border-t border-[var(--border-glass)] text-[var(--text-primary)] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] backdrop-blur-[20px] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
-		style="background: white !important; {kb.style}"
+		class="max-h-[70vh] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
+		style="background: var(--surface-bg) !important; border-top: 1px solid var(--surface-border); border-radius: 0; {kb.style}"
 		onOpenAutoFocus={(e) => e.preventDefault()}
 		onCloseAutoFocus={(e) => e.preventDefault()}
 	>
-		<Sheet.Header class="border-b border-[var(--border-glass)] px-6 pb-4 pt-6">
+		<Sheet.Header class="sheet-header">
 			<div class="flex items-center justify-between">
 				<div>
-					<Sheet.Title class="text-xl font-bold text-[var(--text-primary)]">
+					<Sheet.Title class="sheet-title">
 						Filter & Sort
 					</Sheet.Title>
-					<Sheet.Description class="text-sm text-[var(--text-secondary)]">
+					<Sheet.Description class="sheet-description">
 						Customize your swipe feed
 					</Sheet.Description>
 				</div>
 			</div>
 		</Sheet.Header>
 
-		<div class="overflow-y-auto flex-1 px-6 py-4 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]">
+		<div class="sheet-body">
 			<!-- Sort Section -->
 			<section>
-				<h3 class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3 flex items-center gap-2">
-					<ArrowUpDown class="h-3.5 w-3.5" />
+				<h3 class="section-label">
+					<ArrowUpDown size={12} />
 					Sort by
 				</h3>
 				<div class="flex flex-col gap-1">
-					<!-- Newest first -->
 					<button
 						type="button"
-						class="flex items-center justify-between w-full px-3 py-3 min-h-[44px] rounded-lg text-sm text-left transition-colors {sortOrder === 'newest' ? 'bg-[var(--surface-hover)] font-medium' : 'hover:bg-[var(--surface-hover)]'}"
+						class="sort-option {sortOrder === 'newest' ? 'sort-option--active' : ''}"
 						onclick={() => onSortChange("newest")}
 						data-testid="sort-newest"
 					>
-						<span class="text-[var(--text-primary)]">Newest first</span>
+						<span>Newest first</span>
 						{#if sortOrder === "newest"}
-							<Check class="h-4 w-4 text-[var(--alt-primary)]" />
+							<Check size={14} class="check-icon" />
 						{/if}
 					</button>
-					<!-- Oldest first (disabled) -->
 					<button
 						type="button"
-						class="flex items-center justify-between w-full px-3 py-3 min-h-[44px] rounded-lg text-sm text-left opacity-50 cursor-not-allowed"
+						class="sort-option sort-option--disabled"
 						disabled
 						data-testid="sort-oldest"
 					>
-						<span class="text-[var(--text-muted)]">
+						<span>
 							Oldest first
-							<span class="text-xs ml-1">(Coming soon)</span>
+							<span class="coming-soon">(Coming soon)</span>
 						</span>
 					</button>
 				</div>
 			</section>
 
-			<hr class="my-4 border-[var(--surface-border)]" />
+			<hr class="section-rule" />
 
 			<!-- Exclude Source Section -->
 			<section>
-				<h3 class="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3 flex items-center gap-2">
-					<Ban class="h-3.5 w-3.5" />
+				<h3 class="section-label">
+					<Ban size={12} />
 					Exclude source
 				</h3>
 
 				{#if excludedDomain}
-					<!-- Active exclusion chip -->
 					<button
 						type="button"
-						class="inline-flex items-center gap-1.5 px-3 py-2 rounded-full border border-[var(--surface-border)] bg-[var(--surface-bg)] text-sm text-[var(--text-primary)] active:bg-[var(--surface-hover)] transition-colors min-h-[44px]"
+						class="exclude-chip"
 						onclick={handleClear}
 						aria-label="Remove exclusion for {excludedDomain}"
 						data-testid="exclude-chip-active"
 					>
-						<Ban class="h-4 w-4 text-[var(--text-secondary)] shrink-0" />
-						<span class="max-w-[200px] truncate">{excludedDomain}</span>
-						<X class="h-4 w-4 text-[var(--text-secondary)] shrink-0" />
+						<Ban size={14} />
+						<span class="exclude-chip-text">{excludedDomain}</span>
+						<X size={14} />
 					</button>
 				{:else}
-					<!-- Search input -->
-					<div class="relative mb-2">
-						<Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--text-muted)]" />
+					<div class="search-wrapper">
+						<Search size={14} class="search-icon" />
 						<input
 							type="text"
 							bind:value={query}
 							placeholder="Search sources..."
 							inputmode="search"
 							enterkeyhint="search"
-							class="w-full h-11 pl-9 pr-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-bg)] text-base placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--alt-primary)]"
+							class="search-input"
 							data-testid="exclude-search-input"
 						/>
 					</div>
 
-					<!-- Source list -->
 					<div
-						class="overflow-y-auto max-h-[30vh]"
+						class="source-list"
 						role="listbox"
 						aria-label="Feed sources"
 					>
@@ -212,19 +203,14 @@ function handleClear() {
 								type="button"
 								role="option"
 								aria-selected={false}
-								class="w-full text-left px-3 py-3 min-h-[44px] text-sm text-[var(--text-primary)] rounded-lg active:bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)] transition-colors"
+								class="source-item"
 								onclick={() => handleSelect(entry.domain)}
 								data-testid="exclude-source-item"
 							>
-								<span class="block truncate">{entry.domain}{entry.count > 1 ? ` (${entry.count} feeds)` : ""}</span>
+								<span class="source-item-text">{entry.domain}{entry.count > 1 ? ` (${entry.count} feeds)` : ""}</span>
 							</button>
 						{:else}
-							<p
-								class="px-3 py-4 text-sm text-center"
-								style="color: var(--text-muted);"
-							>
-								No matching sources
-							</p>
+							<p class="source-empty">No matching sources</p>
 						{/each}
 					</div>
 				{/if}
@@ -232,10 +218,260 @@ function handleClear() {
 		</div>
 
 		<Sheet.Close
-			class="absolute right-6 top-6 h-10 w-10 rounded-full border border-[var(--border-glass)] bg-[var(--bg-glass)] backdrop-blur-md text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] hover:border-[var(--accent-primary)] transition-all duration-200 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none"
+			class="sheet-close"
 			aria-label="Close dialog"
 		>
-			<X class="h-4 w-4" />
+			<X size={14} />
 		</Sheet.Close>
 	</Sheet.Content>
 </Sheet.Root>
+
+<style>
+	/* ── Trigger ── */
+	.filter-trigger {
+		position: fixed;
+		bottom: 1.5rem;
+		left: 1.5rem;
+		z-index: 1000;
+		width: 44px;
+		height: 44px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--surface-bg);
+		border: 1.5px solid var(--alt-charcoal);
+		color: var(--alt-charcoal);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.filter-trigger:active {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.filter-badge {
+		position: absolute;
+		top: -2px;
+		right: -2px;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-primary);
+		border: 2px solid var(--surface-bg);
+	}
+
+	/* ── Sheet ── */
+	:global(.sheet-header) {
+		border-bottom: 1px solid var(--surface-border);
+		padding: 1.5rem 1.5rem 1rem;
+	}
+
+	:global(.sheet-title) {
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+	}
+
+	:global(.sheet-description) {
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		color: var(--alt-slate);
+	}
+
+	.sheet-body {
+		overflow-y: auto;
+		flex: 1;
+		padding: 1rem 1.5rem;
+		padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+	}
+
+	:global(.sheet-close) {
+		position: absolute;
+		right: 1.5rem;
+		top: 1.5rem;
+		width: 36px;
+		height: 36px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: transparent;
+		border: 1px solid var(--surface-border);
+		color: var(--alt-charcoal);
+		cursor: pointer;
+		transition: background 0.15s, border-color 0.15s;
+		border-radius: 0;
+	}
+
+	:global(.sheet-close:hover) {
+		background: var(--surface-hover);
+		border-color: var(--alt-charcoal);
+	}
+
+	/* ── Section label ── */
+	.section-label {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0 0 0.75rem;
+	}
+
+	.section-rule {
+		border: none;
+		border-top: 1px solid var(--surface-border);
+		margin: 1rem 0;
+	}
+
+	/* ── Sort options ── */
+	.sort-option {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 0.75rem;
+		min-height: 44px;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: none;
+		text-align: left;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+
+	.sort-option:hover {
+		background: var(--surface-hover);
+	}
+
+	.sort-option--active {
+		background: var(--surface-hover);
+		font-weight: 500;
+	}
+
+	.sort-option--disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+		color: var(--alt-ash);
+	}
+
+	.sort-option :global(.check-icon) {
+		color: var(--alt-primary);
+	}
+
+	.coming-soon {
+		font-size: 0.7rem;
+		margin-left: 0.25rem;
+	}
+
+	/* ── Exclude ── */
+	.exclude-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.5rem 0.75rem;
+		min-height: 44px;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-charcoal);
+		background: var(--surface-bg);
+		border: 1px solid var(--surface-border);
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+
+	.exclude-chip:active {
+		background: var(--surface-hover);
+	}
+
+	.exclude-chip-text {
+		max-width: 200px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	/* ── Search ── */
+	.search-wrapper {
+		position: relative;
+		margin-bottom: 0.5rem;
+	}
+
+	.search-wrapper :global(.search-icon) {
+		position: absolute;
+		left: 0.75rem;
+		top: 50%;
+		transform: translateY(-50%);
+		color: var(--alt-ash);
+	}
+
+	.search-input {
+		width: 100%;
+		height: 44px;
+		padding-left: 2.25rem;
+		padding-right: 0.75rem;
+		font-family: var(--font-body);
+		font-size: 1rem;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1px solid var(--surface-border);
+		outline: none;
+		transition: border-color 0.15s;
+	}
+
+	.search-input::placeholder {
+		color: var(--alt-ash);
+	}
+
+	.search-input:focus {
+		border-color: var(--alt-charcoal);
+	}
+
+	/* ── Source list ── */
+	.source-list {
+		overflow-y: auto;
+		max-height: 30vh;
+	}
+
+	.source-item {
+		width: 100%;
+		text-align: left;
+		padding: 0.75rem;
+		min-height: 44px;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+
+	.source-item:hover,
+	.source-item:active {
+		background: var(--surface-hover);
+	}
+
+	.source-item-text {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.source-empty {
+		padding: 1rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-ash);
+		text-align: center;
+		margin: 0;
+	}
+</style>

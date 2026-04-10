@@ -9,7 +9,6 @@ import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "$lib/api/client";
-import { Button } from "$lib/components/ui/button";
 import type { ConnectFeedSource } from "$lib/connect/feeds";
 import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
@@ -41,13 +40,11 @@ const prefetchAhead = $derived(isVisualPreview ? 10 : 2);
 
 const PAGE_SIZE = 20;
 
-// State - initialize directly from props (not via $effect to avoid circular deps)
+// State
 // svelte-ignore state_referenced_locally
 let feeds = $state<RenderFeed[]>([...(initialFeeds ?? [])]);
 // svelte-ignore state_referenced_locally
 let cursor = $state<string | null>(initialNextCursor ?? null);
-// When SSR fails, initialFeeds is empty and initialNextCursor is null.
-// In that case, assume hasMore=true so loadMore() fires as client-side fallback.
 // svelte-ignore state_referenced_locally
 let hasMore = $state(initialFeeds.length > 0 ? !!initialNextCursor : true);
 let isLoading = $state(false);
@@ -122,8 +119,7 @@ onMount(() => {
 	return () => articlePrefetcher.setOnOgImageFetched(null);
 });
 
-// Wire articleId callback to trigger batch image prefetch in visual-preview mode.
-// When prefetchContent resolves an article_id, batch-prefetch its OGP proxy image.
+// Wire articleId callback to trigger batch image prefetch in visual-preview mode
 onMount(() => {
 	if (!isVisualPreview) return;
 
@@ -153,15 +149,12 @@ onMount(() => {
 });
 
 // Re-evaluate OGP image when activeFeed changes or cache updates
-// Use SSR-provided initialOgImageUrl for first card before prefetcher cache is populated
 const currentOgImage = $derived.by(() => {
 	void ogImageVersion;
 	if (!activeFeed) return null;
 	const cached = articlePrefetcher.getCachedOgImage(activeFeed.normalizedUrl);
 	if (cached) return cached;
-	// Use pre-fetched OGP proxy URL from feed collection (no extra HTTP needed)
 	if (activeFeed.ogImageProxyUrl) return activeFeed.ogImageProxyUrl;
-	// SSR fallback: use server-provided URL for the first card
 	if (activeIndex === 0 && initialOgImageUrl) return initialOgImageUrl;
 	return null;
 });
@@ -193,7 +186,6 @@ async function loadMore() {
 	const isFirstLoad = feeds.length === 0;
 
 	try {
-		// 最初のフィード読み込み時は、feedとarticleを並列で取得
 		if (isFirstLoad) {
 			const feedsPromise = getFeedsWithCursorClient(
 				cursor ?? undefined,
@@ -201,30 +193,23 @@ async function loadMore() {
 				excludedFeedLinkIds.length > 0 ? excludedFeedLinkIds : undefined,
 			);
 
-			// feed取得を開始（article取得は後で開始）
 			const res = await feedsPromise;
 			const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
 
-			// Filter out read feeds
 			const filtered = newFeeds.filter(
 				(f) => !readFeeds.has(canonicalize(f.link)),
 			);
 
-			// feedが取得できたらすぐに表示
 			feeds = [...feeds, ...filtered];
 			cursor = res.next_cursor;
 			hasMore = res.next_cursor !== null;
 			isInitialLoading = false;
 
-			// 最初のフィードのarticleをバックグラウンドで取得
 			if (filtered.length > 0) {
 				const firstFeed = filtered[0];
-				// Use normalizedUrl for consistent cache key
 				const cacheKey = firstFeed.normalizedUrl;
 
-				// キャッシュに既に存在するかチェック
 				if (!articlePrefetcher.getCachedContent(cacheKey)) {
-					// バックグラウンドでarticle取得を開始（normalizedUrl使用）
 					getFeedContentOnTheFlyClient(cacheKey)
 						.then((articleRes) => {
 							if (articleRes.content) {
@@ -245,7 +230,6 @@ async function loadMore() {
 				}
 			}
 		} else {
-			// 通常の読み込み（2回目以降）
 			const res = await getFeedsWithCursorClient(
 				cursor ?? undefined,
 				PAGE_SIZE,
@@ -253,7 +237,6 @@ async function loadMore() {
 			);
 			const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
 
-			// Filter out read feeds
 			const filtered = newFeeds.filter(
 				(f) => !readFeeds.has(canonicalize(f.link)),
 			);
@@ -262,7 +245,6 @@ async function loadMore() {
 			cursor = res.next_cursor;
 			hasMore = res.next_cursor !== null;
 
-			// Batch prefetch OGP images for Visual Preview mode
 			if (isVisualPreview && filtered.length > 0) {
 				triggerBatchImagePrefetch(filtered);
 			}
@@ -278,10 +260,6 @@ async function loadMore() {
 	}
 }
 
-/**
- * Trigger batch image prefetch for visual preview mode.
- * Collects articleIds from prefetcher cache and calls BatchPrefetchImages.
- */
 function triggerBatchImagePrefetch(newFeeds: RenderFeed[]) {
 	const articleIds: string[] = [];
 	for (const feed of newFeeds.slice(0, 10)) {
@@ -294,7 +272,6 @@ function triggerBatchImagePrefetch(newFeeds: RenderFeed[]) {
 	batchPrefetchImagesClient(articleIds)
 		.then((results) => {
 			for (const info of results) {
-				// Find the feed that matches this articleId and update ogImage cache
 				for (const feed of newFeeds) {
 					if (feed.articleId === info.articleId && info.proxyUrl) {
 						articlePrefetcher.seedCache(
@@ -338,9 +315,8 @@ async function handleDismiss(_direction: number) {
 
 	const currentLink = canonicalize(activeFeed.link);
 
-	// Optimistic update
 	readFeeds.add(currentLink);
-	readFeeds = new Set(readFeeds); // Trigger reactivity
+	readFeeds = new Set(readFeeds);
 
 	liveRegionMessage = "Feed marked as read";
 	setTimeout(() => {
@@ -349,15 +325,11 @@ async function handleDismiss(_direction: number) {
 
 	articlePrefetcher.markAsDismissed(currentLink);
 
-	// Move to next
 	activeIndex++;
 
-	// Server update - always try to mark as read
-	// Backend uses feed_id (not article_id), so this works even for 404 articles
 	try {
 		await updateFeedReadStatusClient(currentLink);
 	} catch (err) {
-		// Log but don't block - feed might not exist in DB yet
 		console.warn("Failed to mark as read:", currentLink, err);
 	}
 }
@@ -370,50 +342,45 @@ function getCachedArticleId(url: string) {
 	return articlePrefetcher.getCachedArticleId(url);
 }
 
-/**
- * Handle articleId resolution when content fetch creates an article.
- * Updates the feed data so UI reflects that the article is now saved.
- */
 function handleArticleIdResolved(feedLink: string, articleId: string) {
 	feeds = feeds.map((f) => (f.link === feedLink ? { ...f, articleId } : f));
 }
 </script>
 
-<div
-  class="min-h-[100dvh] relative flex flex-col items-center justify-center overflow-hidden bg-[var(--app-bg)]"
->
+<div class="swipe-screen">
   <!-- Live Region -->
   <div
     aria-live="polite"
     aria-atomic="true"
-    class="absolute left-[-10000px] w-px h-px overflow-hidden"
+    class="sr-only"
   >
     {liveRegionMessage}
   </div>
 
   {#if isInitialLoading}
-    <div class="flex flex-col items-center justify-center gap-4">
-      <div
-        class="w-12 h-12 border-4 border-[var(--alt-primary)] border-t-transparent rounded-full animate-spin"
-      ></div>
-      <p class="text-[var(--alt-text-secondary)]">Loading feeds...</p>
+    <div class="initial-loading">
+      <div class="loading-dot" aria-hidden="true"></div>
+      <p class="loading-text">Loading feeds...</p>
     </div>
   {:else if error && feeds.length === 0}
-    <div class="flex flex-col items-center justify-center p-6 text-center">
-      <p class="text-[var(--destructive)] font-semibold mb-2">
-        Error loading feeds
-      </p>
-      <p class="text-sm text-[var(--alt-text-secondary)] mb-4">{error}</p>
-      <Button onclick={() => void loadMore()}>Retry</Button>
+    <div class="empty-state">
+      <p class="error-title">Error loading feeds</p>
+      <p class="error-message">{error}</p>
+      <button
+        type="button"
+        class="action-btn"
+        onclick={() => void loadMore()}
+      >
+        Retry
+      </button>
     </div>
   {:else if activeFeed}
-    <div class="relative w-full max-w-[30rem] h-[95dvh] px-2 sm:px-4 overflow-hidden">
+    <div class="card-container">
       <!-- Next card (background) -->
       {#if nextFeed}
         <div
-          class="absolute w-full h-[95dvh] bg-[var(--alt-glass)] border-2 border-[var(--alt-glass-border)] rounded-2xl p-4 opacity-50 pointer-events-none"
+          class="background-card"
           aria-hidden="true"
-          style="max-width: calc(100% - 1rem)"
         ></div>
       {/if}
 
@@ -451,9 +418,15 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
       {/key}
     </div>
   {:else}
-    <div class="flex flex-col items-center justify-center p-6 text-center">
-      <p class="text-[var(--alt-text-secondary)] mb-4">No more feeds</p>
-      <Button onclick={() => window.location.reload()}>Refresh</Button>
+    <div class="empty-state">
+      <p class="empty-text">No more feeds</p>
+      <button
+        type="button"
+        class="action-btn"
+        onclick={() => window.location.reload()}
+      >
+        Refresh
+      </button>
     </div>
   {/if}
 
@@ -467,3 +440,134 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
     onSortChange={(order) => { sortOrder = order; }}
   />
 </div>
+
+<style>
+  .swipe-screen {
+    min-height: 100dvh;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: var(--surface-bg);
+  }
+
+  .sr-only {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+
+  .card-container {
+    position: relative;
+    width: 100%;
+    max-width: 30rem;
+    height: 95dvh;
+    padding: 0 0.5rem;
+    overflow: hidden;
+  }
+
+  .background-card {
+    position: absolute;
+    width: 100%;
+    height: 95dvh;
+    max-width: calc(100% - 1rem);
+    background: var(--surface-bg);
+    border: 1px solid var(--surface-border);
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  /* ── Loading ── */
+  .initial-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+
+  .loading-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--alt-ash);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .loading-text {
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--alt-slate);
+    margin: 0;
+  }
+
+  /* ── Empty / Error ── */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    text-align: center;
+    gap: 0.5rem;
+  }
+
+  .empty-text {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    color: var(--alt-slate);
+    margin: 0 0 0.75rem;
+  }
+
+  .error-title {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--alt-terracotta);
+    margin: 0;
+  }
+
+  .error-message {
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    color: var(--alt-slate);
+    margin: 0 0 0.75rem;
+  }
+
+  .action-btn {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--alt-charcoal);
+    background: transparent;
+    border: 1.5px solid var(--alt-charcoal);
+    padding: 0.5rem 1.5rem;
+    min-height: 44px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .action-btn:active {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loading-dot {
+      animation: none;
+      opacity: 0.6;
+    }
+  }
+</style>

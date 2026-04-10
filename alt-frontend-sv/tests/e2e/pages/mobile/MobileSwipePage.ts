@@ -79,10 +79,10 @@ export class MobileSwipePage extends BasePage {
 	 */
 	async waitForAiSummary(timeout = 30000): Promise<void> {
 		await expect(this.aiSummarySection).toBeVisible({ timeout });
-		// Wait for spinner to disappear
-		await expect(
-			this.aiSummarySection.locator(".animate-spin"),
-		).not.toBeVisible({ timeout });
+		// Wait for loading indicator to disappear
+		await expect(this.aiSummarySection.locator(".loading-dot")).not.toBeVisible(
+			{ timeout },
+		);
 	}
 
 	/**

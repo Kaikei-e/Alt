@@ -24,7 +24,6 @@ import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import { page } from "$app/state";
 import * as Accordion from "$lib/components/ui/accordion";
-import { Button } from "$lib/components/ui/button";
 import * as Sheet from "$lib/components/ui/sheet";
 import { cn } from "$lib/utils";
 
@@ -32,28 +31,21 @@ let isOpen = $state(false);
 let isPrefetched = $state(false);
 let { class: className = "" } = $props();
 
-// Prevent body scroll lock when dialog is closed (following React version pattern)
-// This effect runs whenever isOpen changes and ensures body scroll is properly controlled
 $effect(() => {
 	if (!browser) return;
 
-	// Use requestAnimationFrame to ensure this runs after bits-ui's internal scroll lock
 	requestAnimationFrame(() => {
 		if (isOpen) {
-			// Prevent background scrolling when menu is open
 			document.body.style.overflow = "hidden";
 			document.body.style.position = "fixed";
 			document.body.style.width = "100%";
 		} else {
-			// Ensure body scroll is enabled when dialog is closed
-			// Override any scroll lock that bits-ui might have set
 			document.body.style.overflow = "";
 			document.body.style.position = "";
 			document.body.style.width = "";
 		}
 	});
 
-	// Cleanup function to ensure body scroll is restored
 	return () => {
 		requestAnimationFrame(() => {
 			document.body.style.overflow = "";
@@ -241,89 +233,71 @@ onMount(() => {
 	{#if !isOpen}
 		<Sheet.Trigger
 			class={cn(
-				"fixed bottom-6 right-6 z-[1000] h-12 w-12 rounded-full border-2 border-[var(--text-primary)] bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-[var(--shadow-glass)] backdrop-blur-md transition-all duration-300 hover:scale-105 hover:rotate-90 hover:bg-[var(--bg-surface-hover)] hover:border-[var(--accent-primary)] active:scale-95 active:rotate-90 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none disabled:pointer-events-none disabled:opacity-60",
+				"menu-trigger",
 				className,
 			)}
 			aria-label="Open floating menu"
 		>
-			<Menu class="h-5 w-5 relative z-[1]" />
+			<Menu size={18} />
 		</Sheet.Trigger>
 	{/if}
 	<Sheet.Content
 		side="bottom"
-		class="max-h-[90vh] min-h-[70vh] rounded-t-[32px] border-t border-[var(--border-glass)] text-[var(--text-primary)] shadow-[0_-10px_40px_rgba(0,0,0,0.2)] backdrop-blur-[20px] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
-		style="background: white !important; background-color: white !important;"
+		class="max-h-[90vh] min-h-[70vh] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
+		style="background: var(--surface-bg) !important; border-top: 1px solid var(--surface-border); border-radius: 0;"
 	>
-		<Sheet.Header class="border-b border-[var(--border-glass)] px-6 pb-6 pt-6">
+		<Sheet.Header class="sheet-header">
 			<div class="flex items-center justify-between">
-				<div class="flex gap-3">
-					<div
-						class="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--border-glass)] bg-[var(--bg-surface)]"
-					>
-						<Star class="h-5 w-5 text-[var(--accent-primary)]" />
+				<div class="flex gap-3 items-center">
+					<div class="header-icon-box">
+						<Star size={16} class="header-icon" />
 					</div>
 					<div class="text-left">
-						<Sheet.Title class="text-xl font-bold text-[var(--text-primary)]">
+						<Sheet.Title class="sheet-title">
 							Navigation
 						</Sheet.Title>
-						<Sheet.Description class="text-sm text-[var(--text-secondary)]">
+						<Sheet.Description class="sheet-description">
 							Quick access to all features
 						</Sheet.Description>
 					</div>
 				</div>
 			</div>
 		</Sheet.Header>
-		<div
-			class="overflow-y-auto px-6 py-6 pb-[calc(1.5rem+env(safe-area-inset-bottom,0px))]"
-		>
+		<div class="sheet-body">
 			<Accordion.Root type="multiple" class="w-full" value={["item-0"]}>
 				{#each categories as cat, idx}
-					<Accordion.Item value={`item-${idx}`} class="mb-4 border-none">
+					<Accordion.Item value={`item-${idx}`} class="mb-3 border-none">
 						<Accordion.Trigger
-							class="flex w-full items-center justify-between rounded-2xl px-4 py-4 hover:bg-[var(--bg-surface-hover)] hover:no-underline data-[state=open]:bg-[var(--bg-surface)] transition-all duration-200"
+							class="accordion-trigger"
 						>
-							<div class="flex items-center gap-4">
-								<div
-									class="text-[var(--text-secondary)] group-data-[state=open]:text-[var(--accent-primary)] transition-colors duration-200"
-								>
-									<cat.icon class="h-4 w-4" />
+							<div class="flex items-center gap-3">
+								<div class="cat-icon">
+									<cat.icon size={14} />
 								</div>
-								<span class="text-lg font-semibold text-[var(--text-primary)]">
+								<span class="cat-title">
 									{cat.title}
 								</span>
 							</div>
 						</Accordion.Trigger>
-						<Accordion.Content class="pt-2 px-2 pb-2">
-							<div class="flex flex-col gap-1">
+						<Accordion.Content class="pt-1 px-2 pb-2">
+							<div class="flex flex-col">
 								{#each cat.items as item}
 									{@const active = isActiveMenuItem(item.href)}
 									<a
 										href={item.href}
 										onclick={handleNavigate}
-										class="block rounded-xl p-3 transition-all duration-200 hover:bg-[var(--bg-surface-hover)] {active
-											? 'bg-[var(--bg-surface-active)]'
-											: 'bg-transparent'}"
+										class="nav-item {active ? 'nav-item--active' : ''}"
 									>
 										<div class="flex items-center gap-3">
-											<div
-												class={active
-													? "text-[var(--accent-primary)]"
-													: "text-[var(--text-secondary)]"}
-											>
-												<item.icon class="h-4 w-4" />
+											<div class="nav-item-icon {active ? 'nav-item-icon--active' : ''}">
+												<item.icon size={14} />
 											</div>
 											<div class="flex-1">
-												<div
-													class="text-sm font-medium {active
-														? 'text-[var(--text-primary)] font-semibold'
-														: 'text-[var(--text-primary)]'}"
-												>
+												<div class="nav-item-label {active ? 'nav-item-label--active' : ''}">
 													{item.label}
 												</div>
 												{#if item.description}
-													<div
-														class="mt-0.5 text-xs text-[var(--text-secondary)]"
-													>
+													<div class="nav-item-desc">
 														{item.description}
 													</div>
 												{/if}
@@ -338,10 +312,173 @@ onMount(() => {
 			</Accordion.Root>
 		</div>
 		<Sheet.Close
-			class="absolute right-6 top-6 h-10 w-10 rounded-full border-2 border-transparent bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] hover:border-[var(--surface-border)] hover:rotate-90 hover:border-[var(--accent-primary)] transition-all duration-200 inline-flex shrink-0 items-center justify-center focus-visible:outline-none outline-none disabled:pointer-events-none disabled:opacity-60 border border-[var(--border-glass)] bg-[var(--bg-glass)] backdrop-blur-md"
+			class="sheet-close"
 			aria-label="Close dialog"
 		>
-			<X class="h-4 w-4" />
+			<X size={14} />
 		</Sheet.Close>
 	</Sheet.Content>
 </Sheet.Root>
+
+<style>
+	/* ── Trigger ── */
+	:global(.menu-trigger) {
+		position: fixed;
+		bottom: 1.5rem;
+		right: 1.5rem;
+		z-index: 1000;
+		width: 48px;
+		height: 48px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--surface-bg);
+		border: 1.5px solid var(--alt-charcoal);
+		color: var(--alt-charcoal);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+		border-radius: 0;
+		outline: none;
+	}
+
+	:global(.menu-trigger:active) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	/* ── Sheet ── */
+	:global(.sheet-header) {
+		border-bottom: 1px solid var(--surface-border);
+		padding: 1.5rem;
+	}
+
+	.header-icon-box {
+		display: flex;
+		width: 36px;
+		height: 36px;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
+	}
+
+	.header-icon-box :global(.header-icon) {
+		color: var(--alt-primary);
+	}
+
+	:global(.sheet-title) {
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+	}
+
+	:global(.sheet-description) {
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		color: var(--alt-slate);
+	}
+
+	.sheet-body {
+		overflow-y: auto;
+		padding: 1.5rem;
+		padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+	}
+
+	:global(.sheet-close) {
+		position: absolute;
+		right: 1.5rem;
+		top: 1.5rem;
+		width: 36px;
+		height: 36px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: transparent;
+		border: 1px solid var(--surface-border);
+		color: var(--alt-charcoal);
+		cursor: pointer;
+		transition: background 0.15s, border-color 0.15s;
+		border-radius: 0;
+		outline: none;
+	}
+
+	:global(.sheet-close:hover) {
+		background: var(--surface-hover);
+		border-color: var(--alt-charcoal);
+	}
+
+	/* ── Accordion ── */
+	:global(.accordion-trigger) {
+		display: flex;
+		width: 100%;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.75rem;
+		border-radius: 0 !important;
+		transition: background 0.15s;
+	}
+
+	:global(.accordion-trigger:hover) {
+		background: var(--surface-hover);
+	}
+
+	:global(.accordion-trigger[data-state="open"]) {
+		background: var(--surface-bg);
+	}
+
+	.cat-icon {
+		color: var(--alt-slate);
+		transition: color 0.15s;
+	}
+
+	.cat-title {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		color: var(--alt-charcoal);
+	}
+
+	/* ── Nav items ── */
+	.nav-item {
+		display: block;
+		padding: 0.6rem 0.75rem;
+		text-decoration: none;
+		transition: background 0.15s;
+	}
+
+	.nav-item:hover {
+		background: var(--surface-hover);
+	}
+
+	.nav-item--active {
+		background: var(--surface-hover);
+	}
+
+	.nav-item-icon {
+		color: var(--alt-slate);
+	}
+
+	.nav-item-icon--active {
+		color: var(--alt-primary);
+	}
+
+	.nav-item-label {
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		color: var(--alt-charcoal);
+	}
+
+	.nav-item-label--active {
+		font-weight: 600;
+	}
+
+	.nav-item-desc {
+		font-family: var(--font-body);
+		font-size: 0.7rem;
+		color: var(--alt-ash);
+		margin-top: 0.15rem;
+	}
+</style>

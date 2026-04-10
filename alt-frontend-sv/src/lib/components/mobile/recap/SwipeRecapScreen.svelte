@@ -1,6 +1,5 @@
 <script lang="ts">
 import { fly } from "svelte/transition";
-import { Button } from "$lib/components/ui/button";
 import type { RecapGenre, RecapSummary } from "$lib/schema/recap";
 import SwipeRecapCard from "./SwipeRecapCard.svelte";
 
@@ -23,50 +22,32 @@ const prevGenre = $derived(
 const currentPosition = $derived(activeIndex + 1);
 const totalCount = $derived(genres.length);
 
-// 無限ループ機能付きスワイプハンドラー
 async function handleSwipe(direction: number) {
 	if (direction > 0) {
-		// 右スワイプ（前のカード）
 		activeIndex = activeIndex === 0 ? genres.length - 1 : activeIndex - 1;
 	} else {
-		// 左スワイプ（次のカード）
 		activeIndex = activeIndex === genres.length - 1 ? 0 : activeIndex + 1;
 	}
 }
 </script>
 
-<div
-  class="min-h-[100dvh] relative flex flex-col items-center overflow-hidden bg-[var(--app-bg)]"
->
+<div class="recap-screen">
   {#if genres.length === 0}
-    <div class="flex flex-col items-center justify-center p-6 text-center">
-      <p class="text-[var(--alt-text-secondary)] mb-4">
-        No recap data available
-      </p>
+    <div class="empty-state">
+      <p class="empty-text">No recap data available</p>
     </div>
   {:else if activeGenre}
-    <!-- Header Info (Top) -->
+    <!-- Header -->
     {#if summaryData}
-      <div class="w-full max-w-[30rem] mx-auto px-4 pt-3 pb-3 z-20">
-        <div
-          class="flex flex-col gap-1 px-4 py-3 rounded-xl border"
-          style="background: var(--surface-bg); border-color: var(--surface-border);"
-        >
+      <div class="screen-header">
+        <div class="header-card">
           <div class="flex justify-between items-center">
-            <h1
-              class="text-xl font-bold tracking-tight"
-              style="color: var(--accent-primary);"
-            >
-              7 Days Recap
-            </h1>
-            <span
-              class="text-sm font-semibold"
-              style="color: var(--text-primary);"
-            >
+            <h1 class="header-title">7 Days Recap</h1>
+            <span class="header-position">
               {currentPosition} / {totalCount}
             </span>
           </div>
-          <p class="text-xs" style="color: var(--text-secondary);">
+          <p class="header-meta">
             {new Date(summaryData.executedAt).toLocaleDateString("en-US", {
               month: "short",
               day: "numeric",
@@ -79,20 +60,17 @@ async function handleSwipe(direction: number) {
     {/if}
 
     <!-- Card Container -->
-    <div
-      class="relative w-full max-w-[30rem] flex-1 px-2 sm:px-4 overflow-hidden"
-    >
-      <!-- Next card (background preview - subtle depth indicator) -->
+    <div class="card-container">
+      <!-- Background card -->
       <div
-        class="absolute w-full h-full rounded-[18px] border opacity-30 pointer-events-none"
+        class="background-card"
         aria-hidden="true"
-        style="max-width: calc(100% - 1rem); background: var(--surface-bg); border-color: var(--surface-border);"
       ></div>
 
       <!-- Active card -->
       {#key activeGenre.genre}
         <div
-          class="absolute w-full h-full"
+          class="card-wrapper"
           in:fly={{ x: 0, y: 0, duration: 300 }}
           out:fly={{ x: 0, y: 0, duration: 300 }}
         >
@@ -106,3 +84,96 @@ async function handleSwipe(direction: number) {
     </div>
   {/if}
 </div>
+
+<style>
+  .recap-screen {
+    min-height: 100dvh;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+    background: var(--surface-bg);
+  }
+
+  .screen-header {
+    width: 100%;
+    max-width: 30rem;
+    margin: 0 auto;
+    padding: 0.75rem 1rem;
+    z-index: 20;
+  }
+
+  .header-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--surface-border);
+    background: var(--surface-bg);
+  }
+
+  .header-title {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--alt-charcoal);
+    margin: 0;
+  }
+
+  .header-position {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--alt-charcoal);
+  }
+
+  .header-meta {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--alt-ash);
+    margin: 0;
+  }
+
+  .card-container {
+    position: relative;
+    width: 100%;
+    max-width: 30rem;
+    flex: 1;
+    padding: 0 0.5rem;
+    overflow: hidden;
+  }
+
+  .background-card {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    max-width: calc(100% - 1rem);
+    background: var(--surface-bg);
+    border: 1px solid var(--surface-border);
+    opacity: 0.3;
+    pointer-events: none;
+  }
+
+  .card-wrapper {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    text-align: center;
+  }
+
+  .empty-text {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    color: var(--alt-slate);
+    margin: 0;
+  }
+</style>

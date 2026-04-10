@@ -1,7 +1,6 @@
 <script lang="ts">
 import {
 	BookOpen,
-	Loader,
 	RefreshCw,
 	Sparkles,
 	SquareArrowOutUpRight,
@@ -16,7 +15,6 @@ import {
 	registerFavoriteFeedClient,
 	summarizeArticleClient,
 } from "$lib/api/client";
-import { Button } from "$lib/components/ui/button";
 import type { RenderFeed } from "$lib/schema/feed";
 import { sanitizeHtml } from "$lib/utils/sanitizeHtml";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
@@ -72,14 +70,14 @@ let summaryRetryCount = $state(0);
 
 // Swipe state with Spring
 const SWIPE_THRESHOLD = 60;
-const HORIZONTAL_SWIPE_THRESHOLD = 10; // 横スワイプ検出の閾値（px）
+const HORIZONTAL_SWIPE_THRESHOLD = 10;
 let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
 let isDragging = $state(false);
 let hasSwiped = $state(false);
 let swipeElement: HTMLDivElement | null = $state(null);
 let scrollAreaRef: HTMLDivElement | null = $state(null);
 
-// Derived styles - Note: max-width is set via CSS class to avoid layout recalculation during animations
+// Derived styles
 const cardStyle = $derived.by(() => {
 	const translate = x.current;
 	const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
@@ -163,7 +161,6 @@ $effect(() => {
 	if (!swipeElement) return;
 
 	const swipeHandler = (event: Event) => {
-		// 重複処理を防ぐ（scrollAreaRefとswipeElementの両方から発火する可能性がある）
 		if (hasSwiped) return;
 		handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
 	};
@@ -175,7 +172,6 @@ $effect(() => {
 		}>;
 		const { deltaX, deltaY } = moveEvent.detail;
 
-		// 横方向の動きが優勢なときだけ追従させる
 		if (Math.abs(deltaX) > Math.abs(deltaY)) {
 			isDragging = true;
 			x.set(deltaX, { instant: true });
@@ -183,15 +179,10 @@ $effect(() => {
 	};
 
 	const swipeEndHandler = (_event: Event) => {
-		// ドラッグが終わったので中央に戻す
-		// 実際にスワイプが成立した場合は、swipe イベント → handleSwipe → onDismiss が走るので、
-		// カード自体はすぐ差し替えられる
-		// 成立しなかった場合だけ「中央にスナップバック」という役割分担
 		x.target = 0;
 		isDragging = false;
 	};
 
-	// swipeElementにリスナーを追加
 	swipeElement.addEventListener("swipe", swipeHandler);
 	swipeElement.addEventListener("swipe:move", swipeMoveHandler);
 	swipeElement.addEventListener("swipe:end", swipeEndHandler);
@@ -203,7 +194,7 @@ $effect(() => {
 	};
 });
 
-// Abort in-flight summary stream when component is destroyed (e.g., swipe away)
+// Abort in-flight summary stream when component is destroyed
 $effect(() => {
 	return () => {
 		summaryAbortController?.abort();
@@ -225,7 +216,6 @@ async function fetchArticleContent(forceRefresh = false): Promise<boolean> {
 		contentError = "Could not fetch article content";
 		return false;
 	} catch (err) {
-		// Auto-retry for transient errors (1 attempt only)
 		if (isTransientError(err) && contentRetryCount < 1) {
 			contentRetryCount++;
 			await new Promise((resolve) => setTimeout(resolve, 500));
@@ -251,7 +241,6 @@ async function fetchArticleContent(forceRefresh = false): Promise<boolean> {
 }
 
 async function handleRefetchContent() {
-	// Force re-fetch: clear content, summary, and fetch again
 	fullContent = null;
 	aiSummary = null;
 	summaryError = null;
@@ -265,7 +254,6 @@ async function handleRefetchContent() {
 }
 
 async function handleToggleContent() {
-	// If there's an error, retry the fetch (don't toggle)
 	if (contentError && !isLoadingContent) {
 		isLoadingContent = true;
 		contentError = null;
@@ -278,7 +266,6 @@ async function handleToggleContent() {
 	}
 
 	if (!isContentExpanded && !fullContent) {
-		// Use normalizedUrl for cache access (consistent with articlePrefetcher)
 		const cached = getCachedContent?.(feed.normalizedUrl);
 		if (cached) {
 			fullContent = cached;
@@ -295,21 +282,17 @@ async function handleToggleContent() {
 }
 
 function handleGenerateAISummary(forceRefresh = false) {
-	// If there's a summary error (and no partial data), allow retry
 	if (summaryError && !aiSummary) {
 		summaryError = null;
 	}
 
-	// Capture current feed link for stale response validation
 	const targetFeedLink = feed.link;
 
-	// Hide existing SUMMARY section
 	isAISummaryRequested = true;
 	isSummarizing = true;
 	summaryError = null;
 	aiSummary = "";
 
-	// Abort any previous in-flight summary request
 	summaryAbortController?.abort();
 
 	const transport = createClientTransport();
@@ -321,7 +304,6 @@ function handleGenerateAISummary(forceRefresh = false) {
 			forceRefresh,
 		},
 		(chunk) => {
-			// Discard stale chunks if feed changed during streaming
 			if (feed.link !== targetFeedLink) return;
 			aiSummary = (aiSummary || "") + chunk;
 		},
@@ -351,16 +333,13 @@ function handleGenerateAISummary(forceRefresh = false) {
 			},
 		},
 		(_result) => {
-			// onComplete callback
 			summaryAbortController = null;
 		},
 		async (err) => {
-			// onError callback
 			summaryAbortController = null;
 
 			const errorMessage = err instanceof Error ? err.message : String(err);
 
-			// Ignore abort errors (expected when swiping away)
 			if (errorMessage.includes("abort") || errorMessage.includes("cancel")) {
 				return;
 			}
@@ -394,7 +373,6 @@ function handleGenerateAISummary(forceRefresh = false) {
 				return;
 			}
 
-			// Auto-retry for transient errors (1 attempt only)
 			if (isTransientError(err) && summaryRetryCount < 1) {
 				summaryRetryCount++;
 				setTimeout(() => {
@@ -404,7 +382,6 @@ function handleGenerateAISummary(forceRefresh = false) {
 				return;
 			}
 
-			// Fallback to legacy endpoint only if no data was received
 			console.log("[StreamSummarize] Falling back to legacy endpoint");
 			try {
 				const res = await summarizeArticleClient(feed.link);
@@ -461,13 +438,9 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 	const width = swipeElement?.clientWidth ?? window.innerWidth;
 	const target = dir === "left" ? -width : width;
 
-	// 画面外までスプリングで飛ばす（慣性付きで気持ちよく）
 	await x.set(target, { preserveMomentum: 120 });
-
-	// ここで「次の記事へ」「前の記事へ」のロジックを呼ぶ
 	await onDismiss(dir === "left" ? -1 : 1);
 
-	// 次のカードに備えてリセット
 	hasSwiped = false;
 	await x.set(0, { instant: true });
 }
@@ -475,68 +448,51 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
 <div
   bind:this={swipeElement}
-  class="absolute w-full h-[95dvh] bg-[var(--alt-glass)] text-[var(--alt-text-primary)] border-2 border-[var(--alt-glass-border)] shadow-[0_12px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.1)] rounded-2xl p-4 backdrop-blur-[20px] select-none"
+  class="swipe-card"
   use:swipe={{ threshold: SWIPE_THRESHOLD, restraint: 120, allowedTime: 500 }}
   aria-busy={isBusy}
   data-testid="swipe-card"
-  style={`${cardStyle}; touch-action: none; max-width: calc(100% - 1rem);`}
+  style="{cardStyle}; touch-action: none;"
 >
-  <div class="flex flex-col gap-0 h-full">
+  <div class="card-inner">
     <!-- Header -->
-    <div
-      class="relative z-[2] bg-[rgba(255,255,255,0.03)] backdrop-blur-[20px] border-b border-[var(--alt-glass-border)] px-2 py-2 rounded-t-2xl"
-    >
-      <p
-        class="text-sm mb-2 uppercase tracking-[0.08em] font-semibold"
-        style="color: black;"
-      >
-        Swipe to mark as read
-      </p>
+    <header class="card-header">
+      <p class="card-label">Swipe to mark as read</p>
       <div class="flex items-center gap-2">
         <a
           href={feed.link}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Open article in new tab"
-          class="flex items-center justify-center text-[var(--alt-text-primary)] border border-[var(--alt-glass-border)] rounded-md p-2 flex-1 min-w-0 hover:bg-[rgba(255,255,255,0.05)] hover:border-[var(--alt-primary)] transition-colors"
+          class="card-title-link"
         >
-          <div class="shrink-0 mr-2">
+          <div class="flex-shrink-0">
             <SquareArrowOutUpRight
-              class="text-[var(--alt-primary)]"
-              size={20}
+              class="title-icon"
+              size={18}
             />
           </div>
-          <h2
-            class="text-xl font-bold flex-1 break-words whitespace-normal min-w-0"
-          >
+          <h2 class="card-title">
             {feed.title}
           </h2>
         </a>
       </div>
       {#if publishedLabel}
-        <p class="text-[var(--alt-text-secondary)] text-sm mt-2">
-          {publishedLabel}
-        </p>
+        <p class="card-dateline">{publishedLabel}</p>
       {/if}
-    </div>
+    </header>
 
-    <!-- Only Vertical Scroll Area -->
+    <!-- Scroll Area -->
     <div
       bind:this={scrollAreaRef}
       style="touch-action: pan-y; overflow-x: hidden;"
-      class="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2 bg-transparent scroll-smooth overscroll-contain scrollbar-thin select-none"
+      class="scroll-area"
       data-testid="unified-scroll-area"
     >
       {#if hasDescription && !isAISummaryRequested}
-        <div class="mb-4 overflow-x-hidden" transition:fade>
-          <p
-            class="text-xs text-[var(--alt-text-secondary)] font-bold mb-2 uppercase tracking-widest"
-          >
-            Summary
-          </p>
-          <div
-            class="text-sm text-[var(--alt-text-primary)] leading-[1.7] break-words overflow-wrap-anywhere"
-          >
+        <div class="content-block" transition:fade>
+          <p class="section-label">Summary</p>
+          <div class="summary-prose">
             {feed.description}
           </div>
         </div>
@@ -544,40 +500,28 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
       {#if isAISummaryRequested}
         <div
-          class="px-4 pt-2 pb-4 border-t mb-4 overflow-x-hidden"
+          class="content-block ai-summary-block"
           data-testid="ai-summary-section"
           transition:fade
         >
-          <p
-            class="text-xs text-[var(--alt-text-secondary)] font-semibold mb-2 uppercase tracking-[0.18em]"
-          >
-            {isSummarizing ? "SUMMARY" : "AI SUMMARY"}
+          <p class="section-label">
+            {isSummarizing ? "Summary" : "AI Summary"}
           </p>
           {#if isSummarizing}
-            <div class="flex flex-col items-center gap-3 py-4">
-              <Loader
-                class="animate-spin text-[var(--alt-primary)]"
-                size={20}
-              />
-              <span class="text-[var(--alt-text-secondary)] text-sm"
-                >Now summarizing ....</span
-              >
+            <div class="loading-state">
+              <div class="loading-dot" aria-hidden="true"></div>
+              <span class="loading-label">Summarizing...</span>
             </div>
           {:else if summaryError && !aiSummary}
-            <div
-              class="text-[var(--alt-text-secondary)] text-sm text-center py-4 bg-red-500/10 rounded-lg border border-red-500/20 p-3"
-              role="alert"
-            >
+            <div class="error-box" role="alert">
               {summaryError}
             </div>
           {:else if aiSummary}
-            <p
-              class="text-sm text-[var(--alt-text-primary)] leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere"
-            >
+            <p class="summary-prose ai-summary-text">
               {aiSummary}
             </p>
             {#if summaryError}
-              <p class="text-xs text-red-400 mt-2" role="alert">{summaryError}</p>
+              <p class="error-hint" role="alert">{summaryError}</p>
             {/if}
           {/if}
         </div>
@@ -585,33 +529,22 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
       {#if isContentExpanded}
         <div
-          class="mb-4 p-4 bg-[rgba(255,255,255,0.03)] rounded-xl border border-[var(--alt-glass-border)] overflow-x-hidden"
+          class="content-block article-block"
           data-testid="content-section"
           transition:fade
         >
-          <p
-            class="text-xs text-[var(--alt-text-secondary)] font-bold mb-2 uppercase tracking-widest"
-          >
-            Full Article
-          </p>
+          <p class="section-label">Full Article</p>
           {#if isLoadingContent}
-            <div class="flex justify-center py-4 gap-2">
-              <Loader
-                class="animate-spin text-[var(--alt-primary)]"
-                size={20}
-              />
-              <span class="text-[var(--alt-text-secondary)] text-sm"
-                >Loading article content...</span
-              >
+            <div class="loading-state">
+              <div class="loading-dot" aria-hidden="true"></div>
+              <span class="loading-label">Loading article...</span>
             </div>
           {:else if contentError}
-            <div class="text-[var(--alt-text-secondary)] text-sm text-center bg-red-500/10 rounded-lg border border-red-500/20 p-3" role="alert">
+            <div class="error-box" role="alert">
               {contentError}
             </div>
           {:else if sanitizedFullContent}
-            <div
-              class="text-sm text-[var(--alt-text-primary)] leading-[1.7] prose prose-invert max-w-none break-words overflow-wrap-anywhere overflow-x-hidden"
-            >
+            <div class="article-prose">
               {@html sanitizedFullContent}
             </div>
           {/if}
@@ -620,103 +553,339 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     </div>
 
     <!-- Footer -->
-    <div
-      class="relative z-[2] bg-[rgba(0,0,0,0.25)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
-      data-testid="action-footer"
-    >
-      <div class="flex gap-2 w-full justify-between">
-        <Button
+    <footer class="card-footer" data-testid="action-footer">
+      <div class="flex gap-2 w-full">
+        <button
+          type="button"
           onclick={isContentExpanded ? handleRefetchContent : handleToggleContent}
-          size="sm"
-          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {articleButtonState === 'error'
-            ? 'bg-red-500/80 shadow-red-500/50'
-            : isContentExpanded
-              ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
-              : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
+          class="action-btn {articleButtonState === 'error' ? 'action-btn--error' : ''} {isContentExpanded ? 'action-btn--active' : ''}"
           disabled={isLoadingContent}
+          class:action-btn--active={isContentExpanded && articleButtonState !== 'error'}
         >
           {#if articleButtonState === 'loading'}
-            <Loader class="mr-2 h-4 w-4 animate-spin" />
+            <div class="loading-dot-sm" aria-hidden="true"></div>
             Loading...
           {:else if articleButtonState === 'error'}
-            <RefreshCw class="mr-2 h-4 w-4" />
+            <RefreshCw size={14} />
             Try again
           {:else if isContentExpanded}
-            <RefreshCw class="mr-2 h-4 w-4" />
+            <RefreshCw size={14} />
             Re-fetch
           {:else}
-            <BookOpen class="mr-2 h-4 w-4" />
+            <BookOpen size={14} />
             Article
           {/if}
-        </Button>
-        <Button
+        </button>
+        <button
+          type="button"
           onclick={handleFavorite}
-          size="sm"
-          class="rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isFavorited
-            ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
-            : favoriteError
-              ? 'bg-red-500/80 shadow-red-500/50'
-              : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
+          class="action-btn action-btn--icon {isFavorited ? 'action-btn--active' : ''} {favoriteError ? 'action-btn--error' : ''}"
           disabled={isFavoriting || isFavorited}
           aria-label={isFavorited ? "Favorited" : isFavoriting ? "Saving favorite" : favoriteError ? "Favorite failed, tap to retry" : "Favorite"}
         >
           {#if isFavoriting}
-            <Loader class="h-5 w-5 animate-spin" />
+            <div class="loading-dot-sm" aria-hidden="true"></div>
           {:else}
-            <Star class="h-5 w-5" fill={isFavorited ? "currentColor" : "none"} stroke={favoriteError ? "red" : "currentColor"} />
+            <Star size={16} fill={isFavorited ? "currentColor" : "none"} stroke={favoriteError ? "var(--alt-terracotta)" : "currentColor"} />
           {/if}
-        </Button>
-        <Button
+        </button>
+        <button
+          type="button"
           onclick={() => handleGenerateAISummary(!!aiSummary)}
-          size="sm"
-          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {summaryButtonState === 'error'
-            ? 'bg-red-500/80 shadow-red-500/50'
-            : isAISummaryRequested
-              ? 'bg-[slate-200] shadow-[var(--alt-secondary)]/50'
-              : 'bg-[slate-200] shadow-[var(--alt-primary)]/50'}"
+          class="action-btn {summaryButtonState === 'error' ? 'action-btn--error' : ''} {isAISummaryRequested && summaryButtonState !== 'error' ? 'action-btn--active' : ''}"
           disabled={isSummarizing}
         >
           {#if summaryButtonState === 'loading'}
-            <Sparkles class="mr-2 h-4 w-4" />
+            <Sparkles size={14} />
             Summarizing...
           {:else if summaryButtonState === 'error'}
-            <RefreshCw class="mr-2 h-4 w-4" />
+            <RefreshCw size={14} />
             Try again
           {:else if aiSummary}
-            <RefreshCw class="mr-2 h-4 w-4" />
+            <RefreshCw size={14} />
             Re-summarize
           {:else}
-            <Sparkles class="mr-2 h-4 w-4" />
+            <Sparkles size={14} />
             Summary
           {/if}
-        </Button>
+        </button>
       </div>
-    </div>
+    </footer>
   </div>
 </div>
 
 <style>
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 4px;
-  }
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 2px;
-  }
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 2px;
-  }
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
+  .swipe-card {
+    position: absolute;
+    width: 100%;
+    height: 95dvh;
+    max-width: calc(100% - 1rem);
+    background: var(--surface-bg);
+    border: 1px solid var(--surface-border);
+    user-select: none;
   }
 
-  /* Androidでテキスト選択がスワイプを妨げないように、親要素とすべての子要素でテキスト選択を無効化 */
-  [data-testid="unified-scroll-area"],
-  [data-testid="unified-scroll-area"] * {
-    -webkit-user-select: none; /* Safari, Chrome */
-    -moz-user-select: none; /* Firefox */
-    -ms-user-select: none; /* Internet Explorer, Edge */
-    user-select: none; /* 標準 */
+  .card-inner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  /* ── Header ── */
+  .card-header {
+    position: relative;
+    z-index: 2;
+    border-bottom: 1px solid var(--surface-border);
+    padding: 0.75rem;
+  }
+
+  .card-label {
+    font-family: var(--font-body);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--alt-ash);
+    margin: 0 0 0.5rem;
+  }
+
+  .card-title-link {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    text-decoration: none;
+    min-width: 0;
+  }
+
+  .card-title-link :global(.title-icon) {
+    color: var(--alt-primary);
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+  }
+
+  .card-title {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--alt-primary);
+    line-height: 1.3;
+    margin: 0;
+    word-break: break-word;
+    white-space: normal;
+    min-width: 0;
+  }
+
+  .card-title-link:hover .card-title {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .card-dateline {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--alt-ash);
+    margin: 0.35rem 0 0;
+  }
+
+  /* ── Scroll area ── */
+  .scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0.75rem;
+    background: transparent;
+    scroll-behavior: smooth;
+    overscroll-behavior: contain;
+    user-select: none;
+  }
+
+  .scroll-area::-webkit-scrollbar { width: 3px; }
+  .scroll-area::-webkit-scrollbar-track { background: transparent; }
+  .scroll-area::-webkit-scrollbar-thumb { background: var(--surface-border); }
+
+  .scroll-area,
+  .scroll-area :global(*) {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  /* ── Content blocks ── */
+  .content-block {
+    margin-bottom: 1rem;
+  }
+
+  .ai-summary-block {
+    border-top: 1px solid var(--surface-border);
+    padding-top: 0.75rem;
+  }
+
+  .article-block {
+    border-top: 1px solid var(--surface-border);
+    padding-top: 0.75rem;
+  }
+
+  .section-label {
+    font-family: var(--font-body);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--alt-ash);
+    margin: 0 0 0.5rem;
+  }
+
+  .summary-prose {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    line-height: 1.65;
+    color: var(--alt-charcoal);
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .ai-summary-text {
+    white-space: pre-wrap;
+  }
+
+  .article-prose {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    line-height: 1.65;
+    color: var(--alt-charcoal);
+    max-width: 65ch;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .article-prose :global(a) {
+    color: var(--alt-primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .article-prose :global(img) {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* ── Loading ── */
+  .loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 0;
+  }
+
+  .loading-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--alt-ash);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .loading-dot-sm {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  .loading-label {
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    font-style: italic;
+    color: var(--alt-ash);
+  }
+
+  /* ── Error ── */
+  .error-box {
+    border: 1px solid var(--alt-terracotta);
+    padding: 0.75rem;
+    color: var(--alt-terracotta);
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    text-align: center;
+  }
+
+  .error-hint {
+    font-size: 0.7rem;
+    color: var(--alt-terracotta);
+    margin: 0.35rem 0 0;
+  }
+
+  /* ── Footer ── */
+  .card-footer {
+    position: relative;
+    z-index: 2;
+    border-top: 1px solid var(--surface-border);
+    padding: 0.75rem;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* ── Action buttons ── */
+  .action-btn {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--alt-charcoal);
+    background: transparent;
+    border: 1.5px solid var(--alt-charcoal);
+    padding: 0.5rem 0.75rem;
+    min-height: 44px;
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .action-btn:active:not(:disabled) {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  .action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .action-btn--icon {
+    flex: 0 0 auto;
+    padding: 0.5rem;
+    width: 44px;
+  }
+
+  .action-btn--error {
+    border-color: var(--alt-terracotta);
+    color: var(--alt-terracotta);
+  }
+
+  .action-btn--active {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  /* ── Animations ── */
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loading-dot,
+    .loading-dot-sm {
+      animation: none;
+      opacity: 0.6;
+    }
   }
 </style>

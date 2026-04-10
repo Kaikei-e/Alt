@@ -1,7 +1,6 @@
 <script lang="ts">
 import {
 	BookOpen,
-	Loader,
 	Sparkles,
 	SquareArrowOutUpRight,
 	Star,
@@ -15,7 +14,6 @@ import {
 	registerFavoriteFeedClient,
 	summarizeArticleClient,
 } from "$lib/api/client";
-import { Button } from "$lib/components/ui/button";
 import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
@@ -71,7 +69,7 @@ let favoriteError = $state<string | null>(null);
 let imgLoaded = $state(false);
 let imgError = $state(false);
 
-// Reset error/loaded state when thumbnailUrl changes (e.g. raw URL → proxy URL)
+// Reset error/loaded state when thumbnailUrl changes
 $effect(() => {
 	void thumbnailUrl;
 	imgError = false;
@@ -222,7 +220,6 @@ async function handleToggleContent() {
 }
 
 function handleGenerateAISummary() {
-	// Capture current feed link for stale response validation
 	const targetFeedLink = feed.link;
 
 	isAISummaryRequested = true;
@@ -240,7 +237,6 @@ function handleGenerateAISummary() {
 			title: feed.title,
 		},
 		(chunk) => {
-			// Discard stale chunks if feed changed during streaming
 			if (feed.link !== targetFeedLink) return;
 			aiSummary = (aiSummary || "") + chunk;
 		},
@@ -362,15 +358,15 @@ function handleImgError() {
 
 <div
   bind:this={swipeElement}
-  class="absolute w-full h-[95dvh] bg-[var(--alt-glass)] text-[var(--alt-text-primary)] border-2 border-[var(--alt-glass-border)] shadow-[0_12px_40px_rgba(0,0,0,0.3),0_0_0_1px_rgba(255,255,255,0.1)] rounded-2xl backdrop-blur-[20px] select-none overflow-hidden"
+  class="swipe-card"
   use:swipe={{ threshold: SWIPE_THRESHOLD, restraint: 120, allowedTime: 500 }}
   aria-busy={isBusy}
   data-testid="visual-preview-card"
-  style={`${cardStyle}; touch-action: none; max-width: calc(100% - 1rem);`}
+  style="{cardStyle}; touch-action: none;"
 >
-  <div class="flex flex-col gap-0 h-full">
-    <!-- Thumbnail Area (~35% height) -->
-    <div class="relative w-full" style="height: 35%; min-height: 150px;">
+  <div class="card-inner">
+    <!-- Thumbnail Area -->
+    <div class="thumbnail-area">
       {#if thumbnailUrl && !imgError}
         <img
           src={thumbnailUrl}
@@ -379,75 +375,61 @@ function handleImgError() {
           fetchpriority={isLcp ? "high" : undefined}
           decoding="async"
           data-testid="thumbnail-image"
-          class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 {imgLoaded ? 'opacity-100' : 'opacity-0'}"
+          class="thumbnail-img"
+          class:thumbnail-img--loaded={imgLoaded}
           onload={handleImgLoad}
           onerror={handleImgError}
         />
-        <!-- Shimmer placeholder while loading -->
         {#if !imgLoaded}
-          <div class="absolute inset-0 shimmer-bg" data-testid="thumbnail-shimmer"></div>
+          <div class="thumbnail-shimmer" data-testid="thumbnail-shimmer"></div>
         {/if}
       {:else}
-        <!-- No-image fallback: decorative gradient -->
-        <div
-          class="absolute inset-0 fallback-gradient"
-          data-testid="thumbnail-fallback"
-        ></div>
+        <div class="thumbnail-fallback" data-testid="thumbnail-fallback">
+          <span class="thumbnail-fallback-text">No preview</span>
+        </div>
       {/if}
-      <!-- Gradient overlay from bottom -->
-      <div class="absolute inset-0 pointer-events-none" style="background: linear-gradient(to top, var(--alt-glass) 0%, transparent 50%);"></div>
+      <div class="thumbnail-overlay"></div>
     </div>
 
     <!-- Content Area -->
-    <div class="flex flex-col flex-1 min-h-0 px-4 -mt-4 relative z-[1]">
-      <!-- Header info -->
-      <div class="mb-2">
-        <p
-          class="text-sm mb-1 uppercase tracking-[0.08em] font-semibold"
-          style="color: black;"
-        >
-          Swipe to mark as read
-        </p>
+    <div class="content-area">
+      <!-- Header -->
+      <div class="card-header-compact">
+        <p class="card-label">Swipe to mark as read</p>
         <div class="flex items-center gap-2">
           <a
             href={feed.link}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Open article"
-            class="flex items-center gap-2 text-[var(--alt-text-primary)] min-w-0 hover:opacity-80 transition-opacity"
+            class="card-title-link"
           >
-            <div class="shrink-0">
+            <div class="flex-shrink-0">
               <SquareArrowOutUpRight
-                class="text-[var(--alt-primary)]"
-                size={18}
+                class="title-icon"
+                size={16}
               />
             </div>
-            <h2
-              class="text-lg font-bold flex-1 break-words whitespace-normal min-w-0 line-clamp-2"
-            >
+            <h2 class="card-title">
               {feed.title}
             </h2>
           </a>
         </div>
         {#if publishedLabel}
-          <p class="text-[var(--alt-text-secondary)] text-xs mt-1">
-            {publishedLabel}
-          </p>
+          <p class="card-dateline">{publishedLabel}</p>
         {/if}
       </div>
 
-      <!-- Scrollable content area -->
+      <!-- Scrollable content -->
       <div
         bind:this={scrollAreaRef}
         style="touch-action: pan-y; overflow-x: hidden;"
-        class="flex-1 overflow-y-auto overflow-x-hidden bg-transparent scroll-smooth overscroll-contain scrollbar-thin select-none"
+        class="scroll-area"
         data-testid="unified-scroll-area"
       >
         {#if hasDescription && !isAISummaryRequested}
-          <div class="mb-3 overflow-x-hidden">
-            <div
-              class="text-sm text-[var(--alt-text-primary)] leading-[1.6] break-words overflow-wrap-anywhere line-clamp-3"
-            >
+          <div class="content-block">
+            <div class="summary-prose summary-prose--clamp">
               {feed.description}
             </div>
           </div>
@@ -455,35 +437,22 @@ function handleImgError() {
 
         {#if isAISummaryRequested}
           <div
-            class="px-3 pt-2 pb-3 border-t mb-3 overflow-x-hidden"
+            class="content-block ai-summary-block"
             data-testid="ai-summary-section"
             transition:fade
           >
-            <p
-              class="text-xs text-[var(--alt-text-secondary)] font-semibold mb-1 uppercase tracking-[0.18em]"
-            >
-              {isSummarizing ? "SUMMARY" : "AI SUMMARY"}
+            <p class="section-label">
+              {isSummarizing ? "Summary" : "AI Summary"}
             </p>
             {#if isSummarizing}
-              <div class="flex flex-col items-center gap-2 py-3">
-                <Loader
-                  class="animate-spin text-[var(--alt-primary)]"
-                  size={18}
-                />
-                <span class="text-[var(--alt-text-secondary)] text-xs"
-                  >Now summarizing ....</span
-                >
+              <div class="loading-state">
+                <div class="loading-dot" aria-hidden="true"></div>
+                <span class="loading-label">Summarizing...</span>
               </div>
             {:else if summaryError}
-              <p
-                class="text-[var(--alt-text-secondary)] text-xs text-center py-3"
-              >
-                {summaryError}
-              </p>
+              <p class="error-hint">{summaryError}</p>
             {:else if aiSummary}
-              <p
-                class="text-sm text-[var(--alt-text-primary)] leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere"
-              >
+              <p class="summary-prose ai-summary-text">
                 {aiSummary}
               </p>
             {/if}
@@ -492,33 +461,20 @@ function handleImgError() {
 
         {#if isContentExpanded}
           <div
-            class="mb-3 p-3 bg-[rgba(255,255,255,0.03)] rounded-xl border border-[var(--alt-glass-border)] overflow-x-hidden"
+            class="content-block article-block"
             data-testid="content-section"
             transition:fade
           >
-            <p
-              class="text-xs text-[var(--alt-text-secondary)] font-bold mb-1 uppercase tracking-widest"
-            >
-              Full Article
-            </p>
+            <p class="section-label">Full Article</p>
             {#if isLoadingContent}
-              <div class="flex justify-center py-3 gap-2">
-                <Loader
-                  class="animate-spin text-[var(--alt-primary)]"
-                  size={18}
-                />
-                <span class="text-[var(--alt-text-secondary)] text-xs"
-                  >Loading article content...</span
-                >
+              <div class="loading-state">
+                <div class="loading-dot" aria-hidden="true"></div>
+                <span class="loading-label">Loading article...</span>
               </div>
             {:else if contentError}
-              <p class="text-[var(--alt-text-secondary)] text-xs text-center">
-                {contentError}
-              </p>
+              <p class="error-hint">{contentError}</p>
             {:else if sanitizedFullContent}
-              <div
-                class="text-sm text-[var(--alt-text-primary)] leading-[1.7] prose prose-invert max-w-none break-words overflow-wrap-anywhere overflow-x-hidden"
-              >
+              <div class="article-prose">
                 {@html sanitizedFullContent}
               </div>
             {/if}
@@ -528,113 +484,398 @@ function handleImgError() {
     </div>
 
     <!-- Footer -->
-    <div
-      class="relative z-[2] bg-[rgba(0,0,0,0.25)] backdrop-blur-[20px] border-t border-[var(--alt-glass-border)] px-3 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] rounded-b-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.3)]"
-      data-testid="action-footer"
-    >
-      <div class="flex gap-2 w-full justify-between">
-        <Button
+    <footer class="card-footer" data-testid="action-footer">
+      <div class="flex gap-2 w-full">
+        <button
+          type="button"
           onclick={handleToggleContent}
-          size="sm"
-          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isContentExpanded
-            ? 'bg-[#4a5568] shadow-[var(--alt-secondary)]/50'
-            : 'bg-[#4a5568] shadow-[var(--alt-primary)]/50'}"
+          class="action-btn {isContentExpanded ? 'action-btn--active' : ''}"
           disabled={isLoadingContent}
         >
-          <BookOpen class="mr-2 h-4 w-4" />
+          <BookOpen size={14} />
           {isLoadingContent
             ? "Loading..."
             : isContentExpanded
               ? "Hide"
               : "Article"}
-        </Button>
-        <Button
+        </button>
+        <button
+          type="button"
           onclick={handleFavorite}
-          size="sm"
-          class="rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isFavorited
-            ? 'bg-[#4a5568] shadow-[var(--alt-secondary)]/50'
-            : favoriteError
-              ? 'bg-red-500/80 shadow-red-500/50'
-              : 'bg-[#4a5568] shadow-[var(--alt-primary)]/50'}"
+          class="action-btn action-btn--icon {isFavorited ? 'action-btn--active' : ''} {favoriteError ? 'action-btn--error' : ''}"
           disabled={isFavoriting || isFavorited}
           aria-label={isFavorited ? "Favorited" : isFavoriting ? "Saving favorite" : favoriteError ? "Favorite failed, tap to retry" : "Favorite"}
         >
           {#if isFavoriting}
-            <Loader class="h-5 w-5 animate-spin" />
+            <div class="loading-dot-sm" aria-hidden="true"></div>
           {:else}
-            <Star class="h-5 w-5" fill={isFavorited ? "currentColor" : "none"} stroke={favoriteError ? "red" : "currentColor"} />
+            <Star size={16} fill={isFavorited ? "currentColor" : "none"} stroke={favoriteError ? "var(--alt-terracotta)" : "currentColor"} />
           {/if}
-        </Button>
-        <Button
+        </button>
+        <button
+          type="button"
           onclick={handleGenerateAISummary}
-          size="sm"
-          class="flex-1 rounded-xl font-bold text-white hover:brightness-110 active:translate-y-0 transition-all duration-200 shadow-lg {isAISummaryRequested
-            ? 'bg-[#4a5568] shadow-[var(--alt-secondary)]/50'
-            : 'bg-[#4a5568] shadow-[var(--alt-primary)]/50'}"
+          class="action-btn {isAISummaryRequested ? 'action-btn--active' : ''}"
           disabled={isSummarizing}
         >
-          <Sparkles class="mr-2 h-4 w-4" />
+          <Sparkles size={14} />
           {isSummarizing
             ? "Summarizing..."
             : isAISummaryRequested
               ? "Summary"
               : "Summary"}
-        </Button>
+        </button>
       </div>
-    </div>
+    </footer>
   </div>
 </div>
 
 <style>
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 4px;
-  }
-  .scrollbar-thin::-webkit-scrollbar-track {
-    background: transparent;
-    border-radius: 2px;
-  }
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 2px;
-  }
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
+  .swipe-card {
+    position: absolute;
+    width: 100%;
+    height: 95dvh;
+    max-width: calc(100% - 1rem);
+    background: var(--surface-bg);
+    border: 1px solid var(--surface-border);
+    user-select: none;
+    overflow: hidden;
   }
 
-  [data-testid="unified-scroll-area"],
-  [data-testid="unified-scroll-area"] * {
+  .card-inner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  /* ── Thumbnail ── */
+  .thumbnail-area {
+    position: relative;
+    width: 100%;
+    height: 35%;
+    min-height: 150px;
+    overflow: hidden;
+  }
+
+  .thumbnail-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .thumbnail-img--loaded {
+    opacity: 1;
+  }
+
+  .thumbnail-shimmer {
+    position: absolute;
+    inset: 0;
+    background: var(--surface-2);
+    animation: shimmer-pulse 1.5s ease-in-out infinite;
+  }
+
+  .thumbnail-fallback {
+    position: absolute;
+    inset: 0;
+    background: var(--surface-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .thumbnail-fallback-text {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--alt-ash);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .thumbnail-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(to top, var(--surface-bg) 0%, transparent 50%);
+  }
+
+  /* ── Content area ── */
+  .content-area {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 0 0.75rem;
+    margin-top: -1rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .card-header-compact {
+    margin-bottom: 0.5rem;
+  }
+
+  .card-label {
+    font-family: var(--font-body);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--alt-ash);
+    margin: 0 0 0.35rem;
+  }
+
+  .card-title-link {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    text-decoration: none;
+    min-width: 0;
+  }
+
+  .card-title-link :global(.title-icon) {
+    color: var(--alt-primary);
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+  }
+
+  .card-title {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--alt-primary);
+    line-height: 1.3;
+    margin: 0;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .card-title-link:hover .card-title {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .card-dateline {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--alt-ash);
+    margin: 0.25rem 0 0;
+  }
+
+  /* ── Scroll area ── */
+  .scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: transparent;
+    scroll-behavior: smooth;
+    overscroll-behavior: contain;
+    user-select: none;
+  }
+
+  .scroll-area::-webkit-scrollbar { width: 3px; }
+  .scroll-area::-webkit-scrollbar-track { background: transparent; }
+  .scroll-area::-webkit-scrollbar-thumb { background: var(--surface-border); }
+
+  .scroll-area,
+  .scroll-area :global(*) {
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
     user-select: none;
   }
 
-  .shimmer-bg {
-    background: linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0.05) 25%,
-      rgba(255, 255, 255, 0.12) 50%,
-      rgba(255, 255, 255, 0.05) 75%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
+  /* ── Content blocks ── */
+  .content-block {
+    margin-bottom: 0.75rem;
   }
 
-  @keyframes shimmer {
-    0% {
-      background-position: 200% 0;
-    }
-    100% {
-      background-position: -200% 0;
-    }
+  .ai-summary-block {
+    border-top: 1px solid var(--surface-border);
+    padding-top: 0.5rem;
   }
 
-  .fallback-gradient {
-    background: linear-gradient(
-      135deg,
-      rgba(var(--alt-primary-rgb, 99, 102, 241), 0.15) 0%,
-      rgba(var(--alt-secondary-rgb, 168, 85, 247), 0.10) 50%,
-      rgba(var(--alt-primary-rgb, 99, 102, 241), 0.05) 100%
-    );
+  .article-block {
+    border-top: 1px solid var(--surface-border);
+    padding-top: 0.5rem;
+  }
+
+  .section-label {
+    font-family: var(--font-body);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--alt-ash);
+    margin: 0 0 0.35rem;
+  }
+
+  .summary-prose {
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--alt-charcoal);
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .summary-prose--clamp {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .ai-summary-text {
+    white-space: pre-wrap;
+  }
+
+  .article-prose {
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    line-height: 1.65;
+    color: var(--alt-charcoal);
+    max-width: 65ch;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .article-prose :global(a) {
+    color: var(--alt-primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .article-prose :global(img) {
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* ── Loading ── */
+  .loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.75rem 0;
+  }
+
+  .loading-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--alt-ash);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .loading-dot-sm {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: pulse 1.2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  .loading-label {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--alt-ash);
+  }
+
+  .error-hint {
+    font-size: 0.75rem;
+    color: var(--alt-terracotta);
+    text-align: center;
+    padding: 0.5rem 0;
+    margin: 0;
+  }
+
+  /* ── Footer ── */
+  .card-footer {
+    position: relative;
+    z-index: 2;
+    border-top: 1px solid var(--surface-border);
+    padding: 0.75rem;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* ── Action buttons ── */
+  .action-btn {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--alt-charcoal);
+    background: transparent;
+    border: 1.5px solid var(--alt-charcoal);
+    padding: 0.5rem 0.75rem;
+    min-height: 44px;
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .action-btn:active:not(:disabled) {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  .action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .action-btn--icon {
+    flex: 0 0 auto;
+    padding: 0.5rem;
+    width: 44px;
+  }
+
+  .action-btn--error {
+    border-color: var(--alt-terracotta);
+    color: var(--alt-terracotta);
+  }
+
+  .action-btn--active {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  /* ── Animations ── */
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
+  @keyframes shimmer-pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .loading-dot,
+    .loading-dot-sm {
+      animation: none;
+      opacity: 0.6;
+    }
+    .thumbnail-shimmer {
+      animation: none;
+      opacity: 0.7;
+    }
   }
 </style>
