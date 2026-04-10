@@ -1,27 +1,9 @@
-# Alt Design Language
+# Alt Design Language — Alt-Paper
 
-A comprehensive design system documentation for the Alt frontend application.
+Alt's unified design language. Newspaper-inspired editorial aesthetic applied across every surface.
 
-> **Mobile First**: This design system prioritizes mobile experiences. Components are designed for touch interactions first, then enhanced for desktop with hover states and dense layouts.
-
-## Table of Contents
-
-1. [Design Philosophy](#design-philosophy)
-   - [Mobile-First Architecture](#mobile-first-architecture)
-2. [Color System](#color-system)
-3. [Typography](#typography)
-4. [Spacing](#spacing)
-   - [Touch Target Guidelines](#touch-target-guidelines)
-5. [Components](#components)
-6. [Animation & Motion](#animation--motion)
-   - [Mobile Touch Feedback](#mobile-touch-feedback)
-7. [Iconography](#iconography)
-8. [Layout Patterns](#layout-patterns)
-   - [Mobile Layout](#mobile-layout-primary)
-   - [Mobile Gestures](#mobile-gestures)
-   - [Desktop Layout](#desktop-layout-enhanced)
-9. [Accessibility](#accessibility)
-   - [Mobile Accessibility](#mobile-accessibility)
+> **Mobile First**: Touch interactions first, desktop hover/density second.
+> **Responsibility-Driven**: Each UI's visual expression must reflect its unique purpose. Shared philosophy, unique execution.
 
 ---
 
@@ -29,294 +11,267 @@ A comprehensive design system documentation for the Alt frontend application.
 
 ### Core Principles
 
-1. **Mobile First** - Design and develop for mobile screens first, then enhance for larger viewports
-2. **Editorial Clarity** - Inspired by newspaper and magazine layouts, prioritizing readability and content hierarchy
-3. **Themeable Architecture** - CSS custom properties enable runtime theme switching without rebuilds
-4. **Utility-First** - TailwindCSS v4 with semantic CSS variables for maintainability
-5. **Component Composition** - Small, composable primitives over monolithic components
-6. **Progressive Enhancement** - Core functionality works without JavaScript; enhanced with interactivity
-
-### Mobile-First Architecture
-
-The codebase maintains **separate component trees** for mobile and desktop experiences:
-
-```
-src/lib/components/
-├── mobile/           # Mobile-optimized components (primary)
-│   ├── feeds/
-│   │   └── swipe/    # Gesture-based interactions
-│   ├── recap/
-│   ├── search/
-│   └── morning-letter/
-├── desktop/          # Desktop-enhanced components
-│   ├── layout/
-│   ├── feeds/
-│   ├── recap/
-│   └── augur/
-└── ui/               # Shared primitives
-```
-
-This separation allows:
-- **Touch-optimized interactions** on mobile (swipe gestures, larger tap targets)
-- **Pointer-optimized interactions** on desktop (hover states, dense layouts)
-- **Shared design tokens** across both experiences
+1. **Editorial Clarity** — Inspired by newspaper and magazine layouts. Readability and content hierarchy above all.
+2. **Responsibility-Driven Design** — Design philosophy is shared, visual patterns are NOT copied between pages. A report listing (Acolyte) earns a masthead. A knowledge consultation (Ask Augur) earns an avatar byline. Each UI must justify its own visual expression.
+3. **Mobile First** — Design for mobile screens first, enhance for desktop.
+4. **Scoped Styles** — Editorial styling lives in scoped `<style>` blocks with CSS custom properties, not Tailwind utility classes. Tailwind for layout only (flex, gap, padding).
+5. **Component Composition** — Small, composable primitives over monolithic components.
+6. **Progressive Enhancement** — Core functionality works without JavaScript; enhanced with interactivity.
 
 ### Visual Identity
 
-The default "Alt-Paper" theme embodies a **clean editorial aesthetic**:
-- Sharp edges (no border-radius)
-- High contrast typography
-- Minimal shadows
-- Monochromatic palette with accent colors
+Alt-Paper is the **sole** design language. There are no alternative themes.
+
+- **Sharp edges** — No border-radius on containers, cards, inputs, buttons
+- **Serif headings** — Playfair Display for all display text
+- **High contrast** — Charcoal text on cream backgrounds
+- **Thin structural rules** — 1-2px lines as separators, not decoration
+- **Minimal shadows** — Almost none in Alt-Paper; depth through typography hierarchy
+- **Monochromatic + semantic accents** — No gradients, no glass effects
+
+### Responsibility-Driven Examples
+
+| UI Surface | Responsibility | Visual Expression |
+|------------|---------------|-------------------|
+| **Acolyte** (report listing) | Publication of intelligence briefings | Masthead with double rules, date, serif title |
+| **Acolyte** (report detail) | Reading an analytical report | Section tabs, editorial prose, citation footnotes |
+| **Ask Augur** (empty) | Inviting a knowledge consultation | Avatar presence, italic serif prompt, centered input |
+| **Ask Augur** (active) | Evidence-based Q&A thread | User question as serif heading, Augur avatar byline on answers |
+| **Knowledge Home** | Daily knowledge stream | Card-based stream with why-badges, TodayBar |
+| **Feeds** | RSS article browsing | Swipeable cards, touch-optimized density |
+
+**Anti-pattern**: Copying Acolyte's masthead onto Ask Augur because "it looks editorial." The masthead is Acolyte's expression of its publishing responsibility. Ask Augur's responsibility is consultation — its expression is the avatar byline and the question-as-heading pattern.
 
 ---
 
 ## Color System
 
-### Architecture
+### Alt-Paper Palette
 
-Colors are defined using CSS custom properties with three distinct theme variants, selectable via `data-style` attribute.
+All colors defined as CSS custom properties in `src/app.css`.
 
-### Semantic Tokens (OKLCH Color Space)
+#### Text Colors
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--alt-charcoal` | `#1a1a1a` | Primary text, headings, high-emphasis elements |
+| `--alt-slate` | `#666666` | Secondary text, subtitles, byline names |
+| `--alt-ash` | `#999999` | Tertiary text, timestamps, labels, hints |
+
+#### Surface Colors
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--surface-bg` | `#faf9f7` | Page background, card backgrounds |
+| `--surface-2` | `#f5f4f1` | Code blocks, subtle alternation |
+| `--surface-border` | `#c8c8c8` | Borders, rules, separators |
+| `--surface-hover` | `#f3f1ed` | Hover state background |
+
+#### Accent Colors
+
+| Token | Value | Usage |
+|-------|-------|-------|
+| `--alt-primary` | `#2f4f4f` | Links, primary actions (dark teal) |
+
+#### Status Colors (Acolyte-specific)
+
+| Token | Value | Semantics |
+|-------|-------|-----------|
+| `--alt-sage` | `#7c9070` | Success / Completed |
+| `--alt-sand` | `#d4a574` | Running / In-progress |
+| `--alt-terracotta` | `#b85450` | Failed / Error |
+
+#### Semantic Tokens (OKLCH, Tailwind v4)
 
 ```css
-/* Light Mode */
---background: oklch(1 0 0)              /* Pure white */
---foreground: oklch(0.147 0.004 49.25)  /* Deep charcoal */
+--background: oklch(1 0 0)              /* White */
+--foreground: oklch(0.147 0.004 49.25)  /* Charcoal */
 --primary: oklch(0.216 0.006 56.043)    /* Dark teal */
---destructive: oklch(0.577 0.245 27.325) /* Red */
 --border: oklch(0.923 0.003 48.717)     /* Light gray */
-
-/* Dark Mode (.dark class) */
---background: oklch(0.147 0.004 49.25)  /* Dark background */
---foreground: oklch(0.985 0.001 106.423) /* Bright white */
---border: oklch(1 0 0 / 10%)            /* Subtle borders */
 ```
-
-### Theme Variants
-
-#### 1. Alt-Paper (Default)
-
-The newspaper-inspired theme with high contrast and sharp edges.
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--alt-primary` | `#2f4f4f` | Primary actions, links |
-| `--alt-secondary` | `#696969` | Secondary elements |
-| `--alt-tertiary` | `#808080` | Tertiary accents |
-| `--surface-bg` | `#dedede` | Card backgrounds |
-| `--surface-border` | `#e0e0e0` | Borders |
-| `--surface-hover` | `#f8f8f8` | Hover states |
-| `--text-primary` | `#1a1a1a` | Headings, body text |
-| `--text-secondary` | `#333333` | Subtitles |
-| `--text-muted` | `#666666` | Captions, hints |
-
-**Characteristics:**
-- No border-radius (`--surface-blur: 0px`)
-- Minimal shadows
-- High contrast text
-
-#### 2. Vaporwave
-
-Neon cyberpunk aesthetic with glassmorphism effects.
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--alt-primary` | `#ff006e` | Hot pink |
-| `--alt-secondary` | `#8338ec` | Vibrant purple |
-| `--alt-tertiary` | `#3a86ff` | Bright cyan-blue |
-| `--surface-bg` | `rgba(255,255,255,0.1)` | Glass surfaces |
-| `--surface-blur` | `20px` | Blur intensity |
-
-**App Background:**
-```css
-linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%)
-```
-
-#### 3. Liquid-Beige
-
-Earthy luxury aesthetic with warm tones.
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--alt-primary` | `#b85450` | Terracotta |
-| `--alt-secondary` | `#7c9070` | Sage green |
-| `--alt-tertiary` | `#d4a574` | Sandy beige |
-| `--surface-bg` | `rgba(255,253,250,0.1)` | Warm glass |
-| `--surface-blur` | `12px` | Softer blur |
-
-**App Background:**
-```css
-linear-gradient(135deg, #e8ded1 0%, #dfd4c5 25%, #d6c8b9 50%, #cdbaa8 75%, #c8b8a1 100%)
-```
-
-### Status Colors
-
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--alt-success` | `#00ff00` | Success states |
-| `--alt-error` | `#ff0000` | Error states |
-| `--alt-warning` | `#ffff00` | Warning states |
-| `--destructive` | `#dc2626` | Destructive actions |
 
 ### Shadow System
 
+Shadows are minimal in Alt-Paper. Use typography hierarchy for depth, not drop shadows.
+
 ```css
---shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05)
---shadow-md: 0 2px 4px rgba(0, 0, 0, 0.08)
---shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.12)
-```
-
-### Theme Switching
-
-```html
-<!-- Apply theme via data attribute -->
-<html data-style="alt-paper">  <!-- Default -->
-<html data-style="vaporwave">  <!-- Neon theme -->
-<html data-style="liquid-beige"> <!-- Earthy theme -->
+--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05)   /* Rare — only on floating elements */
+--shadow-md: 0 2px 4px rgba(0, 0, 0, 0.08)    /* FloatingMenu only */
 ```
 
 ---
 
 ## Typography
 
-### Font Stack
+### Three-Font Architecture
 
-System fonts for optimal performance:
+| Role | Family | Weights | Usage |
+|------|--------|---------|-------|
+| **Display** | `Playfair Display`, Georgia, serif | 400, 600, 700, 800, italic | Headings, titles, question text, mastheads |
+| **Body** | `Source Sans 3`, system-ui, sans-serif | 300, 400, 500, 600, 700 | Body text, labels, UI text, buttons |
+| **Mono** | `IBM Plex Mono`, Source Code Pro, monospace | 400, 500, 600 | Timestamps, version numbers, citation IDs, code |
+
+Loaded via Google Fonts in `src/app.html`. Applied globally in `src/app.css`:
 ```css
-font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+html, body { font-family: var(--font-body); }
+h1, h2, h3, h4, h5, h6 { font-family: var(--font-display); }
+code, kbd, samp, pre { font-family: var(--font-mono); }
 ```
 
-### Scale
+### Editorial Typography Patterns
 
-| Class | Size | Usage |
-|-------|------|-------|
-| `text-xs` | 12px / 0.75rem | Captions, badges |
-| `text-sm` | 14px / 0.875rem | Secondary text, labels |
-| `text-base` | 16px / 1rem | Body text |
-| `text-lg` | 18px / 1.125rem | Subheadings |
-| `text-xl` | 20px / 1.25rem | Section titles |
-| `text-2xl` | 24px / 1.5rem | Page headings |
-| `text-3xl` | 30px / 1.875rem | Hero text |
-
-### Weights
-
-| Class | Weight | Usage |
-|-------|--------|-------|
-| `font-normal` | 400 | Body text |
-| `font-medium` | 500 | Emphasized text |
-| `font-semibold` | 600 | Subheadings |
-| `font-bold` | 700 | Headings, buttons |
-
-### Letter Spacing
-
-| Class | Value | Usage |
-|-------|-------|-------|
-| `tracking-wider` | 0.05em | Uppercase labels |
-| `tracking-widest` | 0.1em | Category headers |
-| `tracking-[0.08em]` | 0.08em | UI labels |
-
-### Line Height
-
-| Class | Value | Usage |
-|-------|-------|-------|
-| `leading-normal` | 1.5 | Default |
-| `leading-relaxed` | 1.625 | Long-form content |
-| `leading-tight` | 1.25 | Headings |
-
-### Text Colors
-
+#### Labels (metadata, categories)
 ```css
-color: var(--text-primary)   /* #1a1a1a - Headings, body */
-color: var(--text-secondary) /* #333333 - Subtitles */
-color: var(--text-muted)     /* #666666 - Captions, hints */
+font-family: var(--font-body);
+font-size: 0.65rem; font-weight: 600;
+letter-spacing: 0.08em; text-transform: uppercase;
+color: var(--alt-ash);
 ```
+
+#### Prose Body (article text, answers)
+```css
+font-family: var(--font-body);
+font-size: 0.95rem; line-height: 1.72;
+color: var(--alt-charcoal);
+max-width: 65ch;
+```
+
+#### Serif Heading (questions, section titles)
+```css
+font-family: var(--font-display);
+font-size: 1.15rem; font-weight: 700; line-height: 1.3;
+color: var(--alt-charcoal);
+```
+
+#### Masthead Title (Acolyte only)
+```css
+font-family: var(--font-display);
+font-size: clamp(2rem, 5vw, 3rem); font-weight: 900;
+letter-spacing: -0.02em; line-height: 1.1;
+color: var(--alt-charcoal);
+```
+
+#### Monospace Metadata
+```css
+font-family: var(--font-mono);
+font-size: 0.65rem; color: var(--alt-ash);
+```
+
+### iOS Mobile Constraint
+
+**Input/textarea font-size must be >= 16px (1rem) on mobile.** iOS Safari auto-zooms when focusing on fields with smaller text. Always use `font-size: 1rem` for mobile input fields.
 
 ---
 
-## Spacing
+## Editorial Patterns
 
-### Base Scale (Tailwind Default)
+### Thin Rules
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `1` | 4px / 0.25rem | Micro spacing |
-| `2` | 8px / 0.5rem | Tight spacing |
-| `3` | 12px / 0.75rem | Compact spacing |
-| `4` | 16px / 1rem | Default spacing |
-| `6` | 24px / 1.5rem | Section spacing |
-| `8` | 32px / 2rem | Large spacing |
+Structural separators, not decoration. Always 1px `--surface-border` unless a heavier rule (2px `--alt-charcoal`) serves a specific framing purpose (e.g., Acolyte masthead).
 
-### Component Spacing Patterns
-
-**Cards:**
 ```css
-/* Mobile */
-padding: 16px (p-4)
-gap: 12px (gap-3)
+/* Standard separator between content blocks */
+.entry-rule { height: 1px; background: var(--surface-border); }
 
-/* Desktop */
-padding: 16px-24px (p-4 md:p-6)
-gap: 16px (gap-4)
+/* Heavy frame rule (Acolyte masthead only) */
+.masthead-rule { height: 2px; background: var(--alt-charcoal); }
 ```
 
-**Buttons:**
+### Avatar Byline (Ask Augur)
+
+Columnist-style attribution on Augur answers. Square, not circular — editorial, not chat.
+
 ```css
-/* Mobile - larger touch targets */
-height: 44px (h-11)         /* Minimum touch target */
-padding: 16px horizontal (px-4)
-
-/* Desktop */
-height: 36px (h-9)
-padding: 16px horizontal (px-4)
-
-/* Small (desktop only) */
-height: 32px (h-8)
-padding: 12px horizontal (px-3)
+.entry-byline { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.4rem; }
+.byline-avatar { width: 24px; height: 24px; object-fit: cover; border: 1px solid var(--surface-border); }
+.byline-name { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--alt-ash); }
 ```
 
-**Mobile Layout:**
-```css
-/* Full-width with safe padding */
-padding: 16px (p-4)
-padding-bottom: 80px (pb-20)  /* Space for bottom nav */
+Mobile: 20px avatar. Desktop: 24px.
 
-/* Bottom navigation */
-height: 64px (h-16)
-position: fixed
-bottom: 0
+### Citation Footnotes
+
+Numbered sources with monospace IDs and linked titles.
+
+```css
+.sources-heading { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--alt-ash); }
+.source-id { font-family: var(--font-mono); font-size: 0.65rem; font-weight: 600; color: var(--alt-charcoal); }
+.source-title { color: var(--alt-primary); text-decoration: underline; text-underline-offset: 2px; }
 ```
 
-**Desktop Layout:**
+### Status Stripe (Acolyte cards)
+
+3px left border indicating report status. Color from status tokens.
+
 ```css
-/* Container */
-max-width: 1400px
-padding: 32px (2rem)
-
-/* Sidebar */
-width: 240px (w-60)
-padding: 24px (p-6)
-
-/* Main content offset */
-margin-left: 240px (ml-60)
+.card-stripe { width: 3px; flex-shrink: 0; }
+.card-stripe--succeeded { background: var(--alt-sage); }
+.card-stripe--running { background: var(--alt-sand); }
+.card-stripe--failed { background: var(--alt-terracotta); }
 ```
 
-### Touch Target Guidelines
+### Loading States
 
-Per Apple HIG and Material Design guidelines:
+Single pulsing dot + italic stage text. Never bouncing dots or spinners.
 
-| Element | Minimum Size | Recommended |
-|---------|--------------|-------------|
-| Buttons | 44x44px (h-11 w-11) | 48x48px |
-| Icons (tappable) | 44x44px | 48x48px |
-| List items | 44px height | 48-56px |
-| Form inputs | 44px height | 48px |
+```css
+.loading-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--alt-ash); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+```
+
+### Page Reveal Animation
+
+Staggered entrance for content lists.
+
+```css
+/* Page container */
+.page { opacity: 0; transform: translateY(6px); transition: opacity 0.4s ease, transform 0.4s ease; }
+.page.revealed { opacity: 1; transform: translateY(0); }
+
+/* List items */
+.item { opacity: 0; animation: entry-in 0.3s ease forwards; animation-delay: calc(var(--stagger) * 60ms); }
+@keyframes entry-in { to { opacity: 1; } }
+```
+
+Desktop: 60ms stagger. Mobile: 40ms stagger.
+
+---
+
+## CSS Convention
+
+### Scoped Styles over Tailwind
+
+All editorial visual styling belongs in scoped `<style>` blocks referencing CSS custom properties. Tailwind is used only for structural layout (flex, grid, gap, padding).
+
+**Correct (editorial in scoped styles):**
+```svelte
+<h2 class="section-title">{title}</h2>
+
+<style>
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 1.15rem; font-weight: 700;
+    color: var(--alt-charcoal);
+  }
+</style>
+```
+
+**Incorrect (editorial in Tailwind):**
+```svelte
+<h2 class="font-serif text-lg font-bold text-gray-900">{title}</h2>
+```
+
+This convention ensures:
+- Design tokens are the single source of truth
+- Editorial aesthetics are self-contained and maintainable
+- Theme changes propagate through CSS variables without touching markup
+
+### `data-role` Attributes for Test Stability
+
+Interactive content entries use `data-role` for E2E test selectors. Never use class-based selectors (`[class*="bg-primary"]`) — they break on style changes.
 
 ```svelte
-<!-- Touch-friendly icon button -->
-<button class="h-11 w-11 flex items-center justify-center">
-  <Icon class="h-5 w-5" />
-</button>
+<article class="thread-entry" data-role={role}>
 ```
 
 ---
@@ -325,677 +280,144 @@ Per Apple HIG and Material Design guidelines:
 
 ### Button
 
-#### Variants
+Sharp-edged with charcoal border. Hover inverts to charcoal background.
 
-| Variant | Description |
-|---------|-------------|
-| `default` | Primary action - solid border, inverted on hover |
-| `destructive` | Dangerous action - red themed |
-| `outline` | Secondary action - subtle border |
-| `secondary` | Tertiary action |
-| `ghost` | Minimal - transparent background |
-| `link` | Text link with underline |
-
-#### Sizes
-
-| Size | Dimensions |
-|------|------------|
-| `default` | h-9 (36px), px-4 |
-| `sm` | h-8 (32px), px-3, text-sm |
-| `lg` | h-10 (40px), px-6, text-lg |
-| `icon` | 36x36px square |
-| `icon-sm` | 32x32px square |
-| `icon-lg` | 40x40px square |
-
-#### Usage
-
-```svelte
-<Button variant="default">Primary Action</Button>
-<Button variant="outline" size="sm">Secondary</Button>
-<Button variant="ghost" size="icon"><Icon /></Button>
+```css
+border: 1.5px solid var(--alt-charcoal);
+background: transparent; color: var(--alt-charcoal);
+font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+min-height: 44px; /* touch target */
 ```
+
+Hover: `background: var(--alt-charcoal); color: var(--surface-bg);`
 
 ### Card
 
-Sharp-edged container with subtle shadow.
-
-```svelte
-<Card>
-  <CardHeader>
-    <CardTitle>Title</CardTitle>
-    <CardDescription>Description</CardDescription>
-  </CardHeader>
-  <CardContent>Content</CardContent>
-  <CardFooter>Actions</CardFooter>
-</Card>
-```
-
-**Base Styles:**
-```css
-border-radius: 0
-border: 2px solid var(--surface-border)
-background: var(--surface-bg)
-box-shadow: var(--shadow-sm)
-```
-
-### Input
-
-Rounded text input with focus ring.
+No shadows. Thin border. No rounded corners.
 
 ```css
-height: 36px (h-9)
-border-radius: 12px
-border: 2px solid var(--surface-border)
-background: var(--surface-bg)
-
-/* Focus state */
-border-color: var(--alt-primary)
-box-shadow: var(--shadow-sm)
+border: 1px solid var(--surface-border);
+background: var(--surface-bg);
+border-radius: 0;
 ```
 
-### Status Badge
+### Input / Textarea
 
-Dynamic status indicators with color coding.
-
-| Status | Colors |
-|--------|--------|
-| `pending` | Gray background, gray text |
-| `running` | Blue background, blue text, pulse animation |
-| `completed` | Green background, green text |
-| `failed` | Red background, red text |
-
-### Glass Container
-
-Glassmorphism effect for themed variants.
+Sharp-edged. Focus state changes border to charcoal.
 
 ```css
-.glass {
-  background: var(--alt-glass);
-  border: 1px solid var(--alt-glass-border);
-  backdrop-filter: blur(var(--alt-glass-blur)) saturate(120%);
-  box-shadow: 0 4px 6px var(--alt-glass-shadow);
-}
+border: 1px solid var(--surface-border); border-radius: 0;
+background: transparent; font-size: 1rem; /* >= 16px for iOS */
+min-height: 44px;
 ```
+
+Focus: `border-color: var(--alt-charcoal); outline: none;`
 
 ---
 
-## Animation & Motion
+## Layout
 
-### Transitions
+### Mobile-First Architecture
 
-| Pattern | Duration | Easing |
-|---------|----------|--------|
-| Color changes | 200ms | ease |
-| Transform | 200-300ms | ease-in-out |
-| Layout | 300ms | ease |
+Separate component trees for mobile and desktop:
 
-### Mobile Touch Feedback
-
-Touch interactions require immediate visual feedback:
-
-**Tap feedback:**
-```css
-/* Active state for touch */
-&:active {
-  transform: scale(0.98);
-  opacity: 0.9;
-}
+```
+src/lib/components/
+├── mobile/           # Touch-optimized (primary)
+├── desktop/          # Pointer-optimized (enhanced)
+└── ui/               # Shared primitives
 ```
 
-**Swipe with Spring Physics:**
-```svelte
-import { spring } from 'svelte/motion';
+Breakpoint: **768px** (`md:`). Detection via `useViewport()` hook.
 
-const coords = spring({ x: 0, y: 0 }, {
-  stiffness: 0.2,
-  damping: 0.4
-});
+### Mobile Layout
 
-<!-- Card follows finger with physics-based motion -->
-<div style="transform: translateX({$coords.x}px)">
+```
+.augur-mobile (flex column, height: 100%)
+  ├── .content-area (flex: 1, overflow-y: auto)
+  └── .input-area (flex-shrink: 0)
 ```
 
-**Gesture Thresholds:**
-```typescript
-const SWIPE_THRESHOLD = 60;  // pixels to trigger action
-const VELOCITY_THRESHOLD = 0.5;  // speed-based triggering
-```
+- Use **flexbox layout** for full-height pages (thread + input)
+- **Never** use `position: fixed` on `html`/`body` — it breaks layout on iOS Safari
+- Use `touchmove` event prevention for iOS bounce control
+- `height: 100dvh` on shell (dynamic viewport height for iOS)
+- `env(safe-area-inset-top)` / `env(safe-area-inset-bottom)` for notch/home indicator
+- Bottom input: `flex-shrink: 0`, NOT `position: fixed/absolute`
 
-### Desktop Patterns
+### Desktop Layout
 
-**Hover elevation:**
-```css
-transition: all 200ms ease;
-&:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-```
-
-**Button press:**
-```css
-&:hover { transform: scale(1.05); }
-&:active { transform: scale(0.95); }
-```
-
-**Chevron rotation:**
-```css
-transition: transform 200ms ease;
-&.expanded { transform: rotate(180deg); }
-```
-
-### Common Patterns
-
-**Loading spinner:**
-```css
-animation: spin 1s linear infinite;
-```
-
-**Pulse (running state):**
-```css
-animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-```
-
-**Typewriter effect (AI responses):**
-```typescript
-// Progressive text reveal for streaming content
-function typewriter(text: string, speed: number = 30) {
-  let index = 0;
-  const interval = setInterval(() => {
-    displayText = text.slice(0, ++index);
-    if (index >= text.length) clearInterval(interval);
-  }, speed);
-}
-```
-
-### Svelte Transitions
-
-```svelte
-import { fade, slide, fly } from 'svelte/transition';
-
-<!-- Fade for modals/overlays -->
-<div transition:fade={{ duration: 200 }}>
-
-<!-- Slide for drawers/sheets -->
-<div transition:slide={{ duration: 300 }}>
-
-<!-- Fly for mobile cards entering -->
-<div in:fly={{ y: 50, duration: 300 }}>
-```
+Sidebar (240px) + main content. Max-width constraints per page type:
+- Report/consultation pages: `max-width: 720px`
+- Detail pages with sidebar: `max-width: 1080px`
+- Dashboard/admin: `max-width: 1400px`
 
 ---
 
-## Iconography
+## Touch & Accessibility
 
-### Library
+### Touch Targets
 
-**Lucide Svelte** (`@lucide/svelte`)
+Minimum **44x44px** on all interactive mobile elements (Apple HIG).
 
-### Sizing
-
-| Size | Class | Usage |
-|------|-------|-------|
-| XS | `h-3 w-3` | Inline indicators |
-| SM | `h-3.5 w-3.5` | Child menu items |
-| MD | `h-4 w-4` | Default icons |
-| LG | `h-5 w-5` | Emphasis |
-
-### Common Icons
-
-| Icon | Usage |
-|------|-------|
-| `Home` | Dashboard |
-| `Rss` | Feeds |
-| `Eye` | Read/viewed |
-| `Star` | Favorites |
-| `Search` | Search |
-| `CalendarRange` | Recap/timeline |
-| `Settings` | Settings |
-| `ChevronDown` | Expandable sections |
-| `Loader2` | Loading (with `animate-spin`) |
-| `Check` | Completed status |
-| `Circle` | Pending status |
-| `ExternalLink` | External links |
-
-### Coloring
-
-```svelte
-<Icon class="h-4 w-4" style="color: var(--alt-primary);" />
-<Icon class="h-4 w-4 text-[var(--text-muted)]" />
-```
-
----
-
-## Layout Patterns
-
-### Mobile Layout (Primary)
-
-Full-width, gesture-driven interface optimized for touch.
-
-```
-+---------------------------+
-|  Header (sticky)          |
-+---------------------------+
-|                           |
-|  Full-width Content       |
-|  - Swipeable cards        |
-|  - Touch-friendly spacing |
-|                           |
-+---------------------------+
-|  Bottom Navigation        |
-+---------------------------+
-```
-
-```svelte
-<div class="min-h-screen bg-[var(--surface-bg)]">
-  <header class="sticky top-0 z-50 p-4">
-    <!-- Logo, search, menu -->
-  </header>
-  <main class="px-4 pb-20">
-    <slot />
-  </main>
-  <nav class="fixed bottom-0 left-0 right-0 h-16 border-t">
-    <!-- Bottom navigation -->
-  </nav>
-</div>
-```
-
-**Mobile Design Guidelines:**
-- **Touch targets**: Minimum 44x44px (h-11 w-11)
-- **Spacing**: Generous padding (p-4, gap-4) for finger-friendly interactions
-- **Full-width cards**: Cards span 100% width for easy tapping
-- **Bottom navigation**: Primary actions within thumb reach
-- **Sticky headers**: Persistent access to navigation and search
-
-### Mobile Gestures
-
-The mobile experience leverages native gesture patterns:
-
-**Swipe Cards (`SwipeFeedCard`):**
-```svelte
-<!-- Swipe left/right to dismiss, with spring animation -->
-<div
-  use:swipe={{ threshold: 60 }}
-  style="transform: translateX({$springX}px) rotate({rotation}deg)"
->
-  <FeedCard />
-</div>
-```
-
-| Gesture | Action |
-|---------|--------|
-| Swipe left | Dismiss / Mark as read |
-| Swipe right | Save / Favorite |
-| Tap | Expand details |
-| Long press | Context menu |
-
-**Touch Action CSS:**
-```css
-/* Prevent scroll during horizontal swipe */
-touch-action: pan-y;
-
-/* Disable all touch actions during drag */
-touch-action: none;
-```
-
-### Mobile Components
-
-| Component | Purpose |
-|-----------|---------|
-| `SwipeFeedCard` | Gesture-based feed item (555 LOC) |
-| `VirtualFeedList` | Virtualized scrolling for performance |
-| `FeedCard` | Touch-friendly feed display |
-| `MobileRecapCard` | Summary card for mobile |
-| `MobileSearchInput` | Full-width search with suggestions |
-
-### Desktop Layout (Enhanced)
-
-Sidebar navigation with fixed positioning for larger screens.
-
-```
-+-----------------------------------------------------+
-| Sidebar (fixed, 240px)  |  Main Content (flex-1)    |
-|                         |                           |
-| - Logo                  |  - Page Header            |
-| - Navigation            |  - Content Grid           |
-|   - Collapsible groups  |                           |
-|                         |                           |
-+-----------------------------------------------------+
-```
-
-```svelte
-<div class="flex min-h-screen bg-[var(--surface-bg)]">
-  <Sidebar /> <!-- fixed w-60 -->
-  <main class="flex-1 ml-60 p-6">
-    <slot />
-  </main>
-</div>
-```
-
-**Desktop Enhancements:**
-- **Hover states**: Visual feedback on pointer interaction
-- **Dense layouts**: More information per viewport
-- **Keyboard navigation**: Full keyboard accessibility
-- **Multi-column grids**: Efficient use of horizontal space
-
-### Responsive Breakpoints
-
-Following Tailwind's mobile-first approach:
-
-| Breakpoint | Min Width | Usage |
-|------------|-----------|-------|
-| (default) | 0px | Mobile phones |
-| `sm` | 640px | Large phones, small tablets |
-| `md` | 768px | Tablets |
-| `lg` | 1024px | Laptops, small desktops |
-| `xl` | 1280px | Desktops |
-| `2xl` | 1536px | Large desktops |
-
-**Example - Mobile-First Grid:**
-```css
-/* Mobile: single column */
-grid-cols-1
-
-/* Tablet: two columns */
-md:grid-cols-2
-
-/* Desktop: three columns */
-lg:grid-cols-3
-```
-
-### Grid Patterns
-
-**Feed Grid (Responsive):**
-```svelte
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-  {#each feeds as feed}
-    <FeedCard {feed} />
-  {/each}
-</div>
-```
-
-**Mobile-First Spacing:**
-```css
-/* Mobile */
-padding: 16px (p-4)
-gap: 16px (gap-4)
-
-/* Desktop */
-md:padding: 24px (md:p-6)
-md:gap: 24px (md:gap-6)
-```
-
-### Container
+### Safe Area
 
 ```css
-/* Mobile: full-width with padding */
-width: 100%
-padding: 16px (p-4)
-
-/* Desktop: constrained width */
-max-width: 1400px (max-w-2xl)
-margin: 0 auto
-padding: 32px (p-8)
+padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
 ```
 
----
-
-## Accessibility
-
-### Mobile Accessibility
-
-**Touch Target Sizing:**
-```css
-/* Minimum 44x44px for all interactive elements */
-.touch-target {
-  min-height: 44px;
-  min-width: 44px;
-}
-```
-
-**Gesture Alternatives:**
-```svelte
-<!-- Swipe actions must have button alternatives -->
-<div class="swipeable-card">
-  <slot />
-  <!-- Visible action buttons for accessibility -->
-  <div class="flex gap-2 mt-2">
-    <button aria-label="Mark as read">Read</button>
-    <button aria-label="Save for later">Save</button>
-  </div>
-</div>
-```
-
-**Safe Area Insets (iOS):**
-```css
-/* Respect notch and home indicator */
-padding-bottom: env(safe-area-inset-bottom);
-padding-top: env(safe-area-inset-top);
-```
-
-### Focus States
-
-```css
-/* Visible focus for keyboard navigation */
-focus-visible:outline-none
-focus-visible:border-[var(--alt-primary)]
-focus-visible:shadow-[var(--shadow-sm)]
-
-/* Mobile: larger focus rings */
-focus-visible:ring-2
-focus-visible:ring-offset-2
-```
-
-### ARIA Patterns
-
-```svelte
-<!-- Buttons with icons -->
-<button aria-label="Open feed details">
-  <ExternalLink class="h-4 w-4" />
-</button>
-
-<!-- Loading states -->
-<div aria-busy={isLoading} role="status">
-
-<!-- Disabled links -->
-<a aria-disabled={disabled} tabindex={disabled ? -1 : 0}>
-
-<!-- Swipeable content -->
-<div role="article" aria-label="Feed item: {title}">
-```
-
-### Semantic HTML
-
-- Use `<button>` for actions, `<a>` for navigation
-- Use `<nav>` for navigation sections
-- Use `<main>` for primary content
-- Use `<aside>` for sidebars
-
-### Color Contrast
-
-Alt-Paper theme maintains WCAG AA compliance:
-- Text primary (#1a1a1a) on surface (#dedede): 10.5:1
-- Text secondary (#333333) on surface (#dedede): 7.2:1
-- Text muted (#666666) on surface (#dedede): 4.5:1
-
-### Motion Preferences
+### Reduced Motion
 
 ```css
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
-
-  /* Disable swipe animations */
-  .swipeable-card {
-    transition: none !important;
-  }
+  .animated { animation: none; opacity: 1; }
+  .page { transition: none; opacity: 1; transform: none; }
 }
 ```
 
+### Color Contrast (WCAG AA)
+
+- `--alt-charcoal` (#1a1a1a) on `--surface-bg` (#faf9f7): **16.1:1**
+- `--alt-slate` (#666666) on `--surface-bg` (#faf9f7): **5.7:1**
+- `--alt-ash` (#999999) on `--surface-bg` (#faf9f7): **3.0:1** (decorative only)
+
+### Semantic HTML
+
+- `<article>` for thread entries
+- `<footer>` for citation sections
+- `<nav>` for section tabs and navigation
+- `<h3>` for user questions (heading hierarchy)
+- `aria-label` on icon-only buttons
+
 ---
 
-## Code Examples
+## iOS Safari Considerations
 
-### Mobile Swipe Card
+Lessons from production. These are mandatory, not optional.
 
-```svelte
-<script lang="ts">
-  import { spring } from "svelte/motion";
-  import { cn } from "$lib/utils";
+| Issue | Fix |
+|-------|-----|
+| Auto-zoom on input focus | `font-size >= 1rem` (16px) on all mobile inputs |
+| Elastic bounce scroll | `touchmove` prevention on non-scroll areas, NOT `position: fixed` on body |
+| `100vh` includes URL bar | Use `100dvh` (dynamic viewport height) |
+| Safe area clipping | `env(safe-area-inset-top)` padding on scroll containers |
+| Nested fixed positioning | Never nest `position: fixed` inside `position: fixed` — use flexbox |
+| `overscroll-behavior` | Not reliable on iOS Safari alone — combine with JS `touchmove` |
 
-  const SWIPE_THRESHOLD = 60;
+---
 
-  let startX = $state(0);
-  let currentX = $state(0);
-  let isDragging = $state(false);
+## Animation Vocabulary
 
-  const springX = spring(0, { stiffness: 0.2, damping: 0.4 });
+All motion is **editorial** — deliberate, restrained, purposeful. No playful bouncing.
 
-  function handleTouchStart(e: TouchEvent) {
-    startX = e.touches[0].clientX;
-    isDragging = true;
-  }
-
-  function handleTouchMove(e: TouchEvent) {
-    if (!isDragging) return;
-    currentX = e.touches[0].clientX - startX;
-    springX.set(currentX, { hard: true });
-  }
-
-  function handleTouchEnd() {
-    isDragging = false;
-    if (Math.abs(currentX) > SWIPE_THRESHOLD) {
-      // Trigger swipe action
-      onSwipe(currentX > 0 ? "right" : "left");
-    }
-    springX.set(0);
-  }
-</script>
-
-<div
-  class="touch-pan-y"
-  ontouchstart={handleTouchStart}
-  ontouchmove={handleTouchMove}
-  ontouchend={handleTouchEnd}
-  style="transform: translateX({$springX}px)"
->
-  <slot />
-</div>
-```
-
-### Responsive Card
-
-```svelte
-<button
-  type="button"
-  class={cn(
-    "w-full text-left border-2",
-    "border-[var(--surface-border)] bg-white",
-    "transition-all duration-200",
-    /* Mobile: larger padding, touch feedback */
-    "p-4 active:scale-[0.98] active:opacity-90",
-    /* Desktop: hover effects */
-    "md:p-4 md:hover:shadow-md md:hover:-translate-y-1",
-    "cursor-pointer group"
-  )}
->
-  <h3 class={cn(
-    "font-semibold text-[var(--text-primary)]",
-    /* Mobile: larger text */
-    "text-base",
-    /* Desktop: smaller, with hover color */
-    "md:text-sm md:group-hover:text-[var(--accent-primary)]",
-    "transition-colors"
-  )}>
-    {title}
-  </h3>
-  <p class="text-sm md:text-xs text-[var(--text-secondary)] line-clamp-2">
-    {description}
-  </p>
-</button>
-```
-
-### Themed Component
-
-```svelte
-<script lang="ts">
-  import { cn } from "$lib/utils";
-
-  interface Props {
-    variant?: "primary" | "secondary";
-  }
-
-  let { variant = "primary" }: Props = $props();
-</script>
-
-<div
-  class={cn(
-    "p-4 border-2 transition-all duration-200",
-    variant === "primary"
-      ? "border-[var(--alt-primary)] bg-[var(--surface-bg)]"
-      : "border-[var(--surface-border)] bg-[var(--surface-hover)]"
-  )}
-  style="color: var(--text-primary);"
->
-  <slot />
-</div>
-```
-
-### Status Indicator
-
-```svelte
-<script lang="ts">
-  import { Check, Circle, Loader2 } from "@lucide/svelte";
-
-  let { status }: { status: "pending" | "running" | "completed" } = $props();
-</script>
-
-<div class={cn(
-  "rounded-full flex items-center justify-center",
-  /* Mobile: larger touch target */
-  "w-10 h-10 md:w-8 md:h-8",
-  status === "completed" && "bg-green-100 text-green-700 border-2 border-green-500",
-  status === "running" && "bg-blue-100 text-blue-700 border-2 border-blue-500",
-  status === "pending" && "bg-gray-100 text-gray-500 border-2 border-gray-300"
-)}>
-  {#if status === "completed"}
-    <Check class="w-5 h-5 md:w-4 md:h-4" />
-  {:else if status === "running"}
-    <Loader2 class="w-5 h-5 md:w-4 md:h-4 animate-spin" />
-  {:else}
-    <Circle class="w-5 h-5 md:w-4 md:h-4" />
-  {/if}
-</div>
-```
-
-### Mobile Bottom Navigation
-
-```svelte
-<nav class={cn(
-  "fixed bottom-0 left-0 right-0",
-  "h-16 px-4",
-  "bg-[var(--surface-bg)] border-t border-[var(--surface-border)]",
-  "flex items-center justify-around",
-  "safe-area-pb" /* iOS safe area */
-)}>
-  {#each navItems as item}
-    <a
-      href={item.href}
-      class={cn(
-        "flex flex-col items-center justify-center",
-        "h-11 w-11", /* Touch target */
-        "text-[var(--text-muted)]",
-        item.active && "text-[var(--alt-primary)]"
-      )}
-    >
-      <item.icon class="h-5 w-5" />
-      <span class="text-xs mt-1">{item.label}</span>
-    </a>
-  {/each}
-</nav>
-```
+| Pattern | Duration | Use |
+|---------|----------|-----|
+| Page reveal | 0.4s ease | Container fade-in + translateY |
+| Entry stagger | 0.3s ease, 40-60ms delay | List items appearing |
+| Pulse indicator | 1.2s ease-in-out infinite | Loading dot |
+| Color transition | 0.15-0.2s | Hover/focus state changes |
+| Border transition | 0.15s | Input focus |
 
 ---
 
@@ -1003,22 +425,21 @@ Alt-Paper theme maintains WCAG AA compliance:
 
 | File | Purpose |
 |------|---------|
-| `src/app.css` | Theme definitions, CSS variables |
-| `tailwind.config.ts` | Tailwind extensions |
-| `src/lib/components/ui/` | Base UI components |
-| `src/lib/components/mobile/` | Mobile-specific components |
-| `src/lib/components/desktop/` | Desktop-specific components |
-| `src/routes/mobile/` | Mobile route handlers |
-| `src/routes/desktop/` | Desktop route handlers |
-| `src/lib/utils.ts` | `cn()` utility function |
-| `components.json` | shadcn-svelte configuration |
+| `src/app.css` | All design tokens, CSS variables, Tailwind v4 config |
+| `src/app.html` | Google Fonts import (Playfair Display, Source Sans 3, IBM Plex Mono) |
+| `src/lib/components/ui/` | Shared primitives (button, card, input, sheet) |
+| `src/lib/components/mobile/` | Mobile components (105+) |
+| `src/lib/components/desktop/` | Desktop components (80+) |
+| `src/lib/stores/viewport.svelte.ts` | `useViewport()` — 768px breakpoint detection |
+| `src/lib/utils.ts` | `cn()` — clsx + tailwind-merge |
 
 ---
 
 ## Version
 
 - **SvelteKit**: 2.x
-- **Svelte**: 5 (Runes)
-- **TailwindCSS**: v4 (CSS-first)
-- **UI Library**: shadcn-svelte / bits-ui
-- **Icons**: Lucide Svelte
+- **Svelte**: 5 (Runes — `$state`, `$derived`, `$effect`, `$props`)
+- **TailwindCSS**: v4 (CSS-first, no tailwind.config.js)
+- **TypeScript**: 7 (tsgo)
+- **UI Primitives**: bits-ui / shadcn-svelte
+- **Icons**: @lucide/svelte

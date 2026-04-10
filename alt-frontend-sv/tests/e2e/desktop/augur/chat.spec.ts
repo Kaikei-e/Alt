@@ -14,18 +14,15 @@ test.describe("Desktop Augur Chat", () => {
 		augurPage = new DesktopAugurPage(page);
 	});
 
-	test("renders page title and welcome message", async () => {
+	test("renders empty state with invitation", async () => {
 		await augurPage.goto();
 
-		// Verify page title
+		// Verify title and empty state
 		await expect(augurPage.pageTitle).toBeVisible();
-		await expect(augurPage.pageTitle).toContainText("Ask Augur");
-
-		// Verify welcome message
 		await augurPage.waitForWelcomeMessage();
 	});
 
-	test("chat interface has input and send button", async () => {
+	test("has input and submit button", async () => {
 		await augurPage.goto();
 		await augurPage.waitForWelcomeMessage();
 
@@ -60,7 +57,7 @@ test.describe("Desktop Augur Chat", () => {
 		await expect(page.getByText(userMessage)).toBeVisible();
 	});
 
-	test("shows thinking indicator while waiting for response", async ({
+	test("shows loading indicator while waiting for response", async ({
 		page,
 	}) => {
 		// Mock with delay to observe loading state
@@ -74,8 +71,8 @@ test.describe("Desktop Augur Chat", () => {
 
 		await augurPage.sendMessage("Test question");
 
-		// Thinking indicator should appear
-		await expect(augurPage.thinkingIndicator).toBeVisible();
+		// Loading indicator should appear
+		await expect(augurPage.loadingIndicator).toBeVisible();
 	});
 
 	test("displays AI response after sending message", async ({ page }) => {
@@ -180,8 +177,8 @@ test.describe("Desktop Augur Chat - IME Input", () => {
 		// Text should still be in the input
 		await expect(augurPage.chatInput).toHaveValue("こんにちは");
 
-		// User message should NOT appear in chat
-		const userMessages = page.locator('[class*="bg-primary"]');
+		// User message should NOT appear in thread
+		const userMessages = page.locator('[data-role="user"]');
 		await expect(userMessages).toHaveCount(0);
 	});
 

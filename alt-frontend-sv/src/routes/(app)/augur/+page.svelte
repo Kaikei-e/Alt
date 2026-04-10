@@ -1,10 +1,10 @@
 <script lang="ts">
+import { onMount } from "svelte";
 import { page } from "$app/stores";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import { resolveAugurEntry } from "$lib/utils/augur-entry";
 
 // Desktop components
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
 
 // Mobile components
@@ -19,6 +19,38 @@ const augurEntry = $derived(
 		articleId: $page.url.searchParams.get("articleId"),
 	}),
 );
+
+// iOS Safari: prevent elastic bounce by blocking touchmove outside scroll container
+onMount(() => {
+	if (isDesktop) return;
+
+	document.documentElement.classList.add("augur-page");
+
+	function isScrollable(el: HTMLElement): boolean {
+		const style = window.getComputedStyle(el);
+		const oy = style.overflowY;
+		return (
+			(oy === "auto" || oy === "scroll") && el.scrollHeight > el.clientHeight
+		);
+	}
+
+	function onTouchMove(e: TouchEvent) {
+		// Allow scroll inside any scrollable container (thread, sheet, drawer, etc.)
+		let node = e.target as HTMLElement | null;
+		while (node && node !== document.documentElement) {
+			if (isScrollable(node)) return;
+			node = node.parentElement;
+		}
+		e.preventDefault();
+	}
+
+	document.addEventListener("touchmove", onTouchMove, { passive: false });
+
+	return () => {
+		document.documentElement.classList.remove("augur-page");
+		document.removeEventListener("touchmove", onTouchMove);
+	};
+});
 </script>
 
 <svelte:head>
@@ -26,16 +58,28 @@ const augurEntry = $derived(
 </svelte:head>
 
 {#if isDesktop}
-	<PageHeader title="Ask Augur" description="Query your knowledge base with AI" />
 	<AugurChat
 		initialContext={augurEntry.initialDraft}
 		initialQuestion={augurEntry.initialMessage}
 	/>
 {:else}
-	<div class="h-[calc(100vh-64px)] md:h-[calc(100vh-80px)] w-full overflow-hidden">
+	<div class="augur-mobile-shell">
 		<ChatWindow
 			initialContext={augurEntry.initialDraft}
 			initialQuestion={augurEntry.initialMessage}
 		/>
 	</div>
 {/if}
+
+<style>
+	/* Prevent body overflow on iOS — no position:fixed, just overflow control */
+	:global(html.augur-page),
+	:global(html.augur-page body) {
+		overflow: hidden !important;
+	}
+
+	.augur-mobile-shell {
+		height: 100dvh;
+		overflow: hidden;
+	}
+</style>

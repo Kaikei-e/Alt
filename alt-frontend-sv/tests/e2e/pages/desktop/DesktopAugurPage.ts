@@ -3,18 +3,18 @@ import { expect } from "@playwright/test";
 import { BasePage } from "../BasePage";
 
 /**
- * Page Object for Desktop Augur (AI Chat) page (/desktop/augur)
+ * Page Object for Desktop Augur (AI Q&A) page (/desktop/augur)
  */
 export class DesktopAugurPage extends BasePage {
-	// Page header
+	// Masthead
 	readonly pageTitle: Locator;
 
-	// Chat container
-	readonly chatContainer: Locator;
+	// Thread container
+	readonly threadContainer: Locator;
 
-	// Messages
-	readonly welcomeMessage: Locator;
-	readonly thinkingIndicator: Locator;
+	// States
+	readonly emptyState: Locator;
+	readonly loadingIndicator: Locator;
 
 	// Input area
 	readonly chatInput: Locator;
@@ -23,21 +23,19 @@ export class DesktopAugurPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 
-		// Page elements
-		this.pageTitle = page.getByRole("heading", { name: /ask augur/i });
+		// Empty state title or thread heading
+		this.pageTitle = page.getByText(/ask augur/i);
 
-		// Chat container
-		this.chatContainer = page
-			.locator(".flex.flex-col")
-			.filter({ hasText: /augur/i });
+		// Thread container
+		this.threadContainer = page.locator(".augur-thread");
 
-		// Messages
-		this.welcomeMessage = page.getByText(/hello! i'm augur/i);
-		this.thinkingIndicator = page.getByText(/augur is (thinking|reasoning)/i);
+		// States
+		this.emptyState = page.locator(".augur-empty");
+		this.loadingIndicator = page.locator(".augur-loading");
 
-		// Input - ChatInput component uses a textarea or input
+		// Input
 		this.chatInput = page.getByRole("textbox");
-		this.sendButton = page.getByRole("button", { name: /send/i });
+		this.sendButton = page.getByRole("button", { name: /submit/i });
 	}
 
 	get url(): string {
@@ -45,39 +43,35 @@ export class DesktopAugurPage extends BasePage {
 	}
 
 	/**
-	 * Get all chat messages
+	 * Get all thread entries (Q&A pairs)
 	 */
 	getChatMessages(): Locator {
-		// Each ChatMessage component renders with message text
-		return this.page
-			.locator('[class*="rounded-2xl"]')
-			.filter({ hasText: /.+/ });
+		return this.page.locator("[data-role]");
 	}
 
 	/**
-	 * Get the last message in the chat
+	 * Get the last entry in the thread
 	 */
 	getLastMessage(): Locator {
 		return this.getChatMessages().last();
 	}
 
 	/**
-	 * Get user messages only
+	 * Get user question entries only
 	 */
 	getUserMessages(): Locator {
-		// User messages typically aligned right or have different styling
-		return this.page.locator('[class*="bg-primary"]');
+		return this.page.locator('[data-role="user"]');
 	}
 
 	/**
-	 * Get assistant messages only
+	 * Get assistant answer entries only
 	 */
 	getAssistantMessages(): Locator {
-		return this.page.locator('[class*="bg-muted"]');
+		return this.page.locator('[data-role="assistant"]');
 	}
 
 	/**
-	 * Send a message in the chat
+	 * Send a message in the thread
 	 */
 	async sendMessage(message: string): Promise<void> {
 		await this.chatInput.fill(message);
@@ -86,15 +80,13 @@ export class DesktopAugurPage extends BasePage {
 
 	/**
 	 * Wait for the AI to finish responding
-	 * Note: With fast mocked responses, the thinking indicator might not appear
 	 */
 	async waitForResponse(timeout = 30000): Promise<void> {
-		// Wait for thinking indicator to disappear (or never appear if response is fast)
-		await expect(this.thinkingIndicator).not.toBeVisible({ timeout });
+		await expect(this.loadingIndicator).not.toBeVisible({ timeout });
 	}
 
 	/**
-	 * Get the text content of the last assistant message
+	 * Get the text content of the last assistant entry
 	 */
 	async getLastAssistantMessage(): Promise<string> {
 		const messages = this.getAssistantMessages();
@@ -103,7 +95,7 @@ export class DesktopAugurPage extends BasePage {
 	}
 
 	/**
-	 * Check if the chat input is disabled (during loading)
+	 * Check if the input is disabled (during loading)
 	 */
 	async isInputDisabled(): Promise<boolean> {
 		const disabled = await this.chatInput.getAttribute("disabled");
@@ -111,9 +103,9 @@ export class DesktopAugurPage extends BasePage {
 	}
 
 	/**
-	 * Wait for welcome message to appear
+	 * Wait for empty state to appear (replaces welcome message)
 	 */
 	async waitForWelcomeMessage(): Promise<void> {
-		await expect(this.welcomeMessage).toBeVisible({ timeout: 10000 });
+		await expect(this.emptyState).toBeVisible({ timeout: 10000 });
 	}
 }
