@@ -45,6 +45,19 @@ class AcolyteConnectService:
         self._graph = graph
         self._llm = llm
 
+    def set_graph(self, graph: CompiledStateGraph) -> None:
+        """Inject the compiled LangGraph at startup time."""
+        self._graph = graph
+
+    @staticmethod
+    def _thread_id_for_run(run_id: str) -> str:
+        """Build the LangGraph checkpoint namespace for a run."""
+        return f"acolyte-run:{run_id}"
+
+    def _graph_config(self, run_id: str) -> dict[str, dict[str, str]]:
+        """Build graph invocation config with stable thread_id."""
+        return {"configurable": {"thread_id": self._thread_id_for_run(run_id)}}
+
     def _verify_token(self, ctx: RequestContext) -> None:
         """Verify X-Service-Token header. Skip if secret is empty (dev mode)."""
         secret = self._settings.resolve_service_secret()
@@ -189,14 +202,70 @@ class AcolyteConnectService:
 
     async def _run_pipeline(self, report_id: str, run_id: str, brief_dict: dict) -> None:
         """Execute LangGraph pipeline in background."""
-        logger.info("Pipeline started", report_id=report_id, run_id=run_id)
+        if self._graph is None:
+            raise RuntimeError("Pipeline graph not configured")
+
+        config = self._graph_config(run_id)
+        initial_state = {
+            "report_id": report_id,
+            "run_id": run_id,
+            "brief": brief_dict,
+            "revision_count": 0,
+        }
+
+        logger.info(
+            "Pipeline started", report_id=report_id, run_id=run_id, thread_id=config["configurable"]["thread_id"]
+        )
         try:
-            result = await self._graph.ainvoke({
-                "report_id": report_id,
-                "run_id": run_id,
-                "brief": brief_dict,
-                "revision_count": 0,
-            })
+            result: dict[str, object]
+            invoke_input: dict[str, object] | None = initial_state
+
+            if self._settings.checkpoint_enabled:
+                snapshot = await self._graph.aget_state(config)
+                if snapshot.next:
+                    logger.info(
+                        "Resuming pipeline from checkpoint",
+                        report_id=report_id,
+                        run_id=run_id,
+                        pending_nodes=list(snapshot.next),
+                    )
+                    invoke_input = None
+                elif snapshot.values and snapshot.values.get("final_version_no") is not None:
+                    # Terminal checkpoint with final_version_no — truly completed
+                    logger.info(
+                        "Pipeline already completed for run, reusing terminal checkpoint",
+                        report_id=report_id,
+                        run_id=run_id,
+                    )
+                    result = dict(snapshot.values)
+                    final_version = result.get("final_version_no")
+                    error = result.get("error")
+                    if error:
+                        logger.error("Pipeline failed", report_id=report_id, run_id=run_id, error=error)
+                    else:
+                        logger.info(
+                            "Pipeline completed",
+                            report_id=report_id,
+                            run_id=run_id,
+                            final_version=final_version,
+                        )
+                    return
+                elif snapshot.values:
+                    # Terminal state but no final_version_no — suspicious/incomplete
+                    logger.warning(
+                        "Terminal checkpoint without final_version_no, re-running pipeline",
+                        report_id=report_id,
+                        run_id=run_id,
+                        state_keys=list(snapshot.values.keys()),
+                    )
+
+            # durability="sync" ensures checkpoint is persisted before proceeding
+            # to the next super-step (critical for 70+ minute runs)
+            invoke_kwargs: dict[str, object] = {"config": config}
+            if self._settings.checkpoint_enabled:
+                invoke_kwargs["durability"] = "sync"
+
+            result = await self._graph.ainvoke(invoke_input, **invoke_kwargs)
 
             final_version = result.get("final_version_no")
             error = result.get("error")
@@ -248,7 +317,7 @@ class AcolyteConnectService:
         try:
             await uc.execute(UUID(request.report_id), request.section_key)
         except ValueError as e:
-            raise ConnectError(Code.NOT_FOUND, str(e))
+            raise ConnectError(Code.NOT_FOUND, str(e)) from e
 
         return acolyte_pb2.RerunSectionResponse(run_id="")
 

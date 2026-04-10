@@ -79,6 +79,7 @@ services:
       - DEFAULT_MODEL=${ACOLYTE_MODEL:-gemma4-e4b-12k}
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret
       - LOG_LEVEL=info
+      - CHECKPOINT_ENABLED=true
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=acolyte-orchestrator

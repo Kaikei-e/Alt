@@ -15,6 +15,7 @@ from starlette.routing import Mount, Route
 import acolyte.gen  # noqa: F401, I001 — must precede generated imports
 from acolyte.config.settings import Settings
 from acolyte.domain.fusion import RRFFusion
+from acolyte.gateway.checkpoint_factory import create_checkpointer
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.memory_job_gw import MemoryJobGateway
 from acolyte.gateway.ollama_gw import OllamaGateway
@@ -59,25 +60,18 @@ _search_gw = SearchIndexerGateway(_http_client, settings, _content_store)
 # Fusion strategy for hybrid retrieval (Issue 7: RRF default, CC future)
 _fusion = RRFFusion(k=60)
 
-# LangGraph pipeline
-_graph = build_report_graph(_ollama_gw, _search_gw, _report_repo, content_store=_content_store, fusion=_fusion)
 
-
-@asynccontextmanager
-async def lifespan(app: Starlette) -> AsyncGenerator[None]:
-    """Application lifespan — open DB pool on startup, close on shutdown."""
-    logger.info("Starting acolyte-orchestrator", host=settings.host, port=settings.port)
-    await _pool.open()
-    logger.info(
-        "Database connection pool opened",
-        dsn=_dsn.split("@")[-1],
-        llm_url=settings.news_creator_url,
-        model=settings.default_model,
+def _compile_graph(*, checkpointer: object | None = None):
+    """Compile the LangGraph report pipeline with optional checkpointing."""
+    return build_report_graph(
+        _ollama_gw,
+        _search_gw,
+        _report_repo,
+        content_store=_content_store,
+        fusion=_fusion,
+        checkpointer=checkpointer,
+        settings=settings,
     )
-    yield
-    await _http_client.aclose()
-    await _pool.close()
-    logger.info("Shutting down acolyte-orchestrator")
 
 
 async def health_endpoint(request: Request) -> JSONResponse:
@@ -87,7 +81,34 @@ async def health_endpoint(request: Request) -> JSONResponse:
 
 def create_app() -> Starlette:
     """Create Starlette ASGI application instance."""
-    connect_service = AcolyteConnectService(settings, _report_repo, _job_queue, _graph, llm=_ollama_gw)
+    initial_graph = None if settings.checkpoint_enabled else _compile_graph()
+    connect_service = AcolyteConnectService(settings, _report_repo, _job_queue, initial_graph, llm=_ollama_gw)
+
+    @asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncGenerator[None]:
+        """Application lifespan — open DB pool on startup, close on shutdown."""
+        logger.info("Starting acolyte-orchestrator", host=settings.host, port=settings.port)
+        await _pool.open()
+        logger.info(
+            "Database connection pool opened",
+            dsn=_dsn.split("@")[-1],
+            llm_url=settings.news_creator_url,
+            model=settings.default_model,
+        )
+        try:
+            if settings.checkpoint_enabled:
+                async with create_checkpointer(_dsn) as checkpointer:
+                    connect_service.set_graph(_compile_graph(checkpointer=checkpointer))
+                    logger.info("LangGraph checkpointing enabled")
+                    yield
+            else:
+                logger.info("LangGraph checkpointing disabled")
+                yield
+        finally:
+            await _http_client.aclose()
+            await _pool.close()
+            logger.info("Shutting down acolyte-orchestrator")
+
     asgi_app = AcolyteServiceASGIApplication(connect_service)
 
     app = Starlette(
@@ -97,5 +118,6 @@ def create_app() -> Starlette:
             Mount(asgi_app.path, app=asgi_app),
         ],
     )
+    app.state.connect_service = connect_service
 
     return app
