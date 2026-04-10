@@ -42,9 +42,11 @@ export class DesktopFeedsPage extends BasePage {
 		// Page elements
 		this.pageTitle = page.getByRole("heading", { name: /feeds/i }).first();
 		this.feedGrid = page.locator(".grid");
-		this.loadingSpinner = page.locator(".animate-spin").first();
-		this.emptyState = page.getByText("No feeds found");
-		this.errorMessage = page.getByText(/error loading feeds/i);
+		this.loadingSpinner = page
+			.locator(".loading-pulse, .animate-spin")
+			.first();
+		this.emptyState = page.getByText("No dispatches on the wire");
+		this.errorMessage = page.locator(".error-state");
 
 		// Filters (role-based locators)
 		this.unreadOnlyCheckbox = page.getByRole("checkbox", { name: /unread/i });
@@ -73,8 +75,10 @@ export class DesktopFeedsPage extends BasePage {
 
 		// Infinite scroll elements
 		this.loadMoreTrigger = page.getByText("Scroll for more");
-		this.loadingMoreSpinner = page.locator(".animate-spin").last();
-		this.noMoreFeedsText = page.getByText("No more feeds");
+		this.loadingMoreSpinner = page
+			.locator(".loading-pulse, .animate-spin")
+			.last();
+		this.noMoreFeedsText = page.getByText("End of wire");
 	}
 
 	get url(): string {

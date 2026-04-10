@@ -22,10 +22,14 @@ export class MobileFeedsPage extends BasePage {
 		super(page);
 
 		this.pageTitle = page.getByRole("heading", { name: /feeds/i }).first();
-		this.feedList = page.locator("[data-testid='feed-list']");
-		this.loadingSpinner = page.locator(".animate-spin").first();
-		this.emptyState = page.getByText(/no feeds/i);
-		this.errorMessage = page.getByText(/error/i);
+		this.feedList = page.locator(
+			"[data-testid='virtual-feed-list'], [data-testid='feeds-scroll-container']",
+		);
+		this.loadingSpinner = page
+			.locator(".loading-pulse, .animate-spin, .animate-shimmer-warm")
+			.first();
+		this.emptyState = page.getByText(/no feeds yet/i);
+		this.errorMessage = page.getByText(/error loading feeds/i);
 		this.pullToRefresh = page.getByTestId("pull-to-refresh");
 
 		this.bottomNav = page.locator("nav").last();

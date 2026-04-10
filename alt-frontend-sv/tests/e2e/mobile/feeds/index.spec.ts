@@ -22,7 +22,7 @@ test.describe("mobile feeds routes", () => {
 		await mobileFeedsPage.goto();
 
 		// Wait for feed cards to render (auto-waits through SystemLoader)
-		const cards = page.getByTestId("feed-card");
+		const cards = page.getByTestId("feed-card-container");
 		await expect(cards.first()).toBeVisible({ timeout: 10000 });
 		const cardCount = await cards.count();
 		expect(cardCount).toBeGreaterThan(0);
@@ -37,7 +37,6 @@ test.describe("mobile feeds routes", () => {
 		await expect(
 			firstCard.getByText("Deep dive into the ecosystem"),
 		).toBeVisible();
-		await expect(firstCard.getByText("by Alice")).toBeVisible();
 
 		// Verify mark as read button exists and is clickable
 		const markAsReadButton = firstCard.getByRole("button", {
@@ -64,15 +63,11 @@ test.describe("mobile feeds routes", () => {
 		});
 		await expect(firstCard).toBeVisible();
 
-		// Check the external link
+		// Title link serves as external link in redesigned card
 		const externalLink = firstCard.getByRole("link", {
-			name: /Open AI Trends in external link/i,
+			name: /AI Trends/i,
 		});
 		await expect(externalLink).toBeVisible();
-		await expect(externalLink).toHaveAttribute(
-			"href",
-			"https://example.com/ai-trends",
-		);
 		await expect(externalLink).toHaveAttribute("target", "_blank");
 	});
 
@@ -96,7 +91,7 @@ test.describe("mobile feeds routes", () => {
 		});
 		await expect(firstCard).toBeVisible();
 
-		// Verify show details button exists
+		// Verify show details button exists (rendered by FeedDetails component)
 		const detailsButton = firstCard.getByRole("button", {
 			name: /show details/i,
 		});

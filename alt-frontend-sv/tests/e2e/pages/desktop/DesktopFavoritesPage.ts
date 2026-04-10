@@ -16,9 +16,11 @@ export class DesktopFavoritesPage extends BasePage {
 
 		this.pageTitle = page.getByRole("heading", { name: /favorites/i }).first();
 		this.feedGrid = page.locator(".grid");
-		this.loadingSpinner = page.locator(".animate-spin").first();
-		this.emptyState = page.getByText(/no feeds/i);
-		this.noMoreFeeds = page.getByText(/no more feeds/i);
+		this.loadingSpinner = page
+			.locator(".loading-pulse, .animate-spin")
+			.first();
+		this.emptyState = page.getByText(/no favorites yet|no dispatches on the wire/i);
+		this.noMoreFeeds = page.getByText(/no more favorites|end of wire/i);
 	}
 
 	get url(): string {

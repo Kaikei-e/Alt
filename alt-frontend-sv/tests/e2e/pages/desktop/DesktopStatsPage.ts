@@ -29,9 +29,13 @@ export class DesktopStatsPage extends BasePage {
 			.getByRole("heading", { name: /circulation ledger/i })
 			.first();
 
-		this.feedsLabel = page.getByText("FEEDS");
-		this.articlesLabel = page.getByText("ARTICLES");
-		this.unsummarizedLabel = page.getByText("UNSUMMARIZED");
+		this.feedsLabel = page.locator(".figure-label").filter({ hasText: "FEEDS" });
+		this.articlesLabel = page
+			.locator(".figure-label")
+			.filter({ hasText: "ARTICLES" });
+		this.unsummarizedLabel = page
+			.locator(".figure-label")
+			.filter({ hasText: "UNSUMMARIZED" });
 
 		this.statusLabel = page.locator(".status-label");
 		this.reconnectButton = page.getByRole("button", {

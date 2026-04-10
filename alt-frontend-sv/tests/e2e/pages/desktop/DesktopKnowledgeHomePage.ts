@@ -49,7 +49,7 @@ export class DesktopKnowledgeHomePage extends BasePage {
 
 	/** Get the summary excerpt text within a card */
 	getCardSummary(itemKey: string): Locator {
-		return this.getCard(itemKey).locator("p.line-clamp-2").first();
+		return this.getCard(itemKey).locator("p.card-summary").first();
 	}
 
 	/** Get the "Summarizing" chip within a card */
@@ -59,7 +59,7 @@ export class DesktopKnowledgeHomePage extends BasePage {
 
 	/** Get skeleton placeholders within a card */
 	getCardSkeleton(itemKey: string): Locator {
-		return this.getCard(itemKey).locator(".animate-pulse");
+		return this.getCard(itemKey).locator(".skeleton-line");
 	}
 
 	/** Get tag chips within a card */

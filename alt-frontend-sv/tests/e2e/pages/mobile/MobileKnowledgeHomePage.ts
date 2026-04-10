@@ -23,7 +23,7 @@ export class MobileKnowledgeHomePage extends BasePage {
 	}
 
 	getCardSummary(itemKey: string): Locator {
-		return this.getCard(itemKey).locator("p.line-clamp-2").first();
+		return this.getCard(itemKey).locator("p.card-summary").first();
 	}
 
 	getSummarizingChip(itemKey: string): Locator {
