@@ -9,7 +9,11 @@ from pydantic import BaseModel
 
 @dataclass(frozen=True)
 class ExtractedFact:
-    """An atomic factual claim extracted from an evidence source."""
+    """An atomic factual claim extracted from an evidence source.
+
+    is_fallback=True when LLM normalization failed and the raw quote
+    was preserved as the claim (confidence=0.3, data_type="quote").
+    """
 
     claim: str
     source_id: str
@@ -17,6 +21,7 @@ class ExtractedFact:
     verbatim_quote: str
     confidence: float
     data_type: str  # statistic | date | quote | trend | comparison
+    is_fallback: bool = False
 
 
 class ExtractedFactModel(BaseModel):
