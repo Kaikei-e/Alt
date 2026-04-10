@@ -8,6 +8,7 @@
 [![News-Creator Quality Gates](https://github.com/Kaikei-e/Alt/actions/workflows/news-creator.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/news-creator.yml)
 [![Recap Worker CI](https://github.com/Kaikei-e/Alt/actions/workflows/recap-worker.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/recap-worker.yml)
 [![Rag-orchestrator Quality Gates](https://github.com/Kaikei-e/Alt/actions/workflows/rag-orchestrator.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/rag-orchestrator.yml)
+[![Acolyte-Orchestrator Quality Gates](https://github.com/Kaikei-e/Alt/actions/workflows/acolyte-orchestrator.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/acolyte-orchestrator.yml)
 [![Rask Log Aggregator](https://github.com/Kaikei-e/Alt/actions/workflows/rask-log-aggregator.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/rask-log-aggregator.yaml)
 [![Rask Log Forwarder Tests](https://github.com/Kaikei-e/Alt/actions/workflows/rask-log-forwarder.yml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/rask-log-forwarder.yml)
 [![Build and Push Docker Images](https://github.com/Kaikei-e/Alt/actions/workflows/docker-build.yaml/badge.svg)](https://github.com/Kaikei-e/Alt/actions/workflows/docker-build.yaml)
