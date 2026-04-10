@@ -16,6 +16,7 @@ from acolyte.usecase.graph.nodes.critic_node import (
     detect_es_numeric_absence,
     detect_zero_claims,
 )
+from acolyte.usecase.graph.state import ReportGenerationState
 
 
 class FakeLLM:
@@ -170,7 +171,7 @@ async def test_llm_critic_failure_falls_back_to_heuristic() -> None:
     llm = FakeLLM(text="INVALID JSON {{{{")
     node = CriticNode(llm)
 
-    state = {
+    state: ReportGenerationState = {
         "sections": {"analysis": "Some reasonable content about AI trends that is long enough." * 5},
         "brief": {"topic": "AI trends"},
         "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],

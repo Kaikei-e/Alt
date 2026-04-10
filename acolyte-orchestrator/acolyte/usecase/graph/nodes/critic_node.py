@@ -37,7 +37,14 @@ META_PATTERNS = [
     "As a language model",
 ]
 
-MIN_SECTION_LENGTH = 100
+MIN_SECTION_LENGTH = 100  # legacy default
+
+_MIN_SECTION_LENGTH_BY_ROLE = {
+    "analysis": 200,
+    "conclusion": 100,
+    "executive_summary": 80,
+    "general": 100,
+}
 
 _CRITIC_FORMAT = {
     "type": "object",
@@ -103,11 +110,13 @@ def detect_incomplete_sections(
     sections: dict[str, str],
     outline: list[dict],
 ) -> list[FailureModeDetection]:
-    """FM3: Detect sections that are too short or missing."""
+    """FM3: Detect sections that are too short or missing. Per-role thresholds."""
     detections: list[FailureModeDetection] = []
     for section in outline:
         key = section.get("key", "")
         body = sections.get(key, "")
+        role = section.get("section_role", "general")
+        min_len = _MIN_SECTION_LENGTH_BY_ROLE.get(role, MIN_SECTION_LENGTH)
         if not body:
             detections.append(
                 FailureModeDetection(
@@ -117,13 +126,13 @@ def detect_incomplete_sections(
                     description=f"Section '{key}' is missing",
                 )
             )
-        elif len(body) < MIN_SECTION_LENGTH:
+        elif len(body) < min_len:
             detections.append(
                 FailureModeDetection(
                     mode=FailureMode.FM3_INCOMPLETE_INFORMATION,
                     severity="warning",
                     section_key=key,
-                    description=f"Section '{key}' is too short ({len(body)} chars, min {MIN_SECTION_LENGTH})",
+                    description=f"Section '{key}' is too short ({len(body)} chars, min {min_len})",
                 )
             )
     return detections
@@ -205,10 +214,23 @@ def _build_claim_feedbacks(
     detections: list[FailureModeDetection],
     section_paragraphs: dict[str, list[dict]],
 ) -> dict[str, list[dict]]:
-    """Build paragraph-level claim_feedbacks from heuristic detections."""
+    """Build paragraph-level claim_feedbacks from heuristic detections.
+
+    Maps each detection to claim-level feedback with specific reason.
+    """
     feedbacks: dict[str, list[dict]] = {}
 
-    # From section-level detections, create per-paragraph feedback
+    # Index detections that target specific paragraphs
+    para_detections: dict[str, list[FailureModeDetection]] = {}
+    section_detections: dict[str, list[FailureModeDetection]] = {}
+    for d in detections:
+        if d.mode == FailureMode.FM12_PARAGRAPH_DUPLICATION:
+            para_detections.setdefault(d.section_key, []).append(d)
+        elif d.mode == FailureMode.FM13_PARAGRAPH_MISSING_CITATION:
+            para_detections.setdefault(d.section_key, []).append(d)
+        else:
+            section_detections.setdefault(d.section_key, []).append(d)
+
     blocking_sections = {d.section_key for d in detections if d.severity == "blocking"}
 
     for key in blocking_sections:
@@ -216,23 +238,64 @@ def _build_claim_feedbacks(
         section_fbs: list[dict] = []
         if paras:
             for p in paras:
-                if p.get("status") == "rejected" or not p.get("body"):
-                    section_fbs.append({
-                        "claim_id": p.get("claim_id", ""),
-                        "action": "regenerate",
-                        "reason": "body empty",
-                    })
+                claim_id = p.get("claim_id", "")
+                body = p.get("body", "")
+
+                if not body:
+                    section_fbs.append(
+                        {
+                            "claim_id": claim_id,
+                            "action": "regenerate",
+                            "reason": "body empty — regenerate with claim evidence",
+                        }
+                    )
+                    continue
+
+                # Check paragraph-level detections
+                p_dets = [d for d in para_detections.get(key, []) if claim_id and claim_id in d.description]
+                if p_dets:
+                    for pd in p_dets:
+                        if pd.mode == FailureMode.FM12_PARAGRAPH_DUPLICATION:
+                            section_fbs.append(
+                                {
+                                    "claim_id": claim_id,
+                                    "action": "regenerate",
+                                    "reason": f"duplicate content — {pd.description}",
+                                }
+                            )
+                        elif pd.mode == FailureMode.FM13_PARAGRAPH_MISSING_CITATION:
+                            section_fbs.append(
+                                {
+                                    "claim_id": claim_id,
+                                    "action": "regenerate",
+                                    "reason": f"missing citation — {pd.suggested_fix}",
+                                }
+                            )
+                    continue
+
+                if p.get("status") == "rejected":
+                    section_fbs.append(
+                        {
+                            "claim_id": claim_id,
+                            "action": "regenerate",
+                            "reason": "paragraph rejected — regenerate with claim evidence",
+                        }
+                    )
         else:
-            # No paragraphs yet — generic section-level entry
-            section_fbs.append({
-                "claim_id": "",
-                "action": "regenerate",
-                "reason": "section has blocking issues",
-            })
+            section_fbs.append(
+                {
+                    "claim_id": "",
+                    "action": "regenerate",
+                    "reason": "section has blocking issues — regenerate all paragraphs",
+                }
+            )
         if section_fbs:
             feedbacks[key] = section_fbs
 
     return feedbacks
+
+
+WARNING_ACCUMULATION_THRESHOLD = 3
 
 
 CONCLUSION_DUPLICATION_THRESHOLD = 0.20  # Jaccard bigram overlap
@@ -359,6 +422,122 @@ def detect_novelty_violation(
     return detections
 
 
+PARAGRAPH_DUPLICATION_THRESHOLD = 0.30
+
+
+def detect_paragraph_duplication(
+    section_paragraphs: dict[str, list[dict]],
+    outline: list[dict],
+) -> list[FailureModeDetection]:
+    """FM12: Detect paragraph-level duplication within and across sections."""
+    detections: list[FailureModeDetection] = []
+
+    # Build novelty_against map from outline
+    novelty_map: dict[str, list[str]] = {}
+    for section_def in outline:
+        key = section_def.get("key", "")
+        novelty_map[key] = section_def.get("novelty_against", [])
+
+    for key, paras in section_paragraphs.items():
+        # Intra-section: compare paragraphs within same section
+        for i, p1 in enumerate(paras):
+            b1 = p1.get("body", "")
+            if not b1.strip():
+                continue
+            bg1 = _bigrams(b1)
+            if not bg1:
+                continue
+
+            for j, p2 in enumerate(paras):
+                if j <= i:
+                    continue
+                b2 = p2.get("body", "")
+                if not b2.strip():
+                    continue
+                bg2 = _bigrams(b2)
+                if not bg2:
+                    continue
+                intersection = bg1 & bg2
+                union = bg1 | bg2
+                jaccard = len(intersection) / len(union)
+                if jaccard > PARAGRAPH_DUPLICATION_THRESHOLD:
+                    detections.append(
+                        FailureModeDetection(
+                            mode=FailureMode.FM12_PARAGRAPH_DUPLICATION,
+                            severity="blocking",
+                            section_key=key,
+                            description=f"Paragraph '{p2.get('claim_id', '')}' duplicates '{p1.get('claim_id', '')}' (Jaccard {jaccard:.2f})",
+                            suggested_fix=f"Rephrase paragraph '{p2.get('claim_id', '')}' to differentiate from '{p1.get('claim_id', '')}'.",
+                        )
+                    )
+
+        # Cross-section: compare against novelty_against targets
+        against_keys = novelty_map.get(key, [])
+        for against_key in against_keys:
+            against_paras = section_paragraphs.get(against_key, [])
+            for p in paras:
+                body = p.get("body", "")
+                if not body.strip():
+                    continue
+                p_bg = _bigrams(body)
+                if not p_bg:
+                    continue
+                for ap in against_paras:
+                    a_body = ap.get("body", "")
+                    if not a_body.strip():
+                        continue
+                    a_bg = _bigrams(a_body)
+                    if not a_bg:
+                        continue
+                    intersection = p_bg & a_bg
+                    union = p_bg | a_bg
+                    jaccard = len(intersection) / len(union)
+                    if jaccard > PARAGRAPH_DUPLICATION_THRESHOLD:
+                        detections.append(
+                            FailureModeDetection(
+                                mode=FailureMode.FM12_PARAGRAPH_DUPLICATION,
+                                severity="blocking",
+                                section_key=key,
+                                description=f"Paragraph '{p.get('claim_id', '')}' overlaps with '{against_key}/{ap.get('claim_id', '')}' (Jaccard {jaccard:.2f})",
+                                suggested_fix=f"Rephrase paragraph '{p.get('claim_id', '')}' to avoid repeating '{against_key}' content.",
+                            )
+                        )
+                        break  # one detection per paragraph per against_key
+
+    return detections
+
+
+def detect_paragraph_missing_citation(
+    section_paragraphs: dict[str, list[dict]],
+    claim_plans: dict[str, list[dict]],
+) -> list[FailureModeDetection]:
+    """FM13: Detect paragraphs missing citations when claim has must_cite=True."""
+    detections: list[FailureModeDetection] = []
+
+    for key, paras in section_paragraphs.items():
+        plans = claim_plans.get(key, [])
+        plan_by_id = {p.get("claim_id", ""): p for p in plans}
+
+        for para in paras:
+            claim_id = para.get("claim_id", "")
+            plan = plan_by_id.get(claim_id, {})
+            if not plan.get("must_cite", False):
+                continue
+            citations = para.get("citations", [])
+            if not citations:
+                detections.append(
+                    FailureModeDetection(
+                        mode=FailureMode.FM13_PARAGRAPH_MISSING_CITATION,
+                        severity="warning",
+                        section_key=key,
+                        description=f"Paragraph '{claim_id}' has must_cite=True but no citations",
+                        suggested_fix=f"Include citation reference for claim '{claim_id}'.",
+                    )
+                )
+
+    return detections
+
+
 def should_revise(state: ReportGenerationState) -> str:
     """Conditional edge: should the writer revise or should we finalize?"""
     critique = state.get("critique")
@@ -390,7 +569,7 @@ class CriticNode:
 
         all_detections: list[FailureModeDetection] = []
 
-        # FM4: Empty body (blocking) — replaces FM3 for empty bodies
+        # FM4: Empty body (blocking)
         all_detections.extend(detect_empty_body(sections, outline))
 
         # FM5: Zero claims (blocking when evidence exists)
@@ -402,7 +581,7 @@ class CriticNode:
         # FM2: Meta-statement heuristic (no LLM)
         all_detections.extend(detect_meta_statements(sections))
 
-        # FM3: Incomplete sections heuristic (no LLM) — for short but non-empty
+        # FM3: Incomplete sections heuristic (no LLM) — per-role thresholds
         all_detections.extend(detect_incomplete_sections(sections, outline))
 
         # FM8: Conclusion-Analysis duplication heuristic (no LLM)
@@ -415,7 +594,29 @@ class CriticNode:
         # FM10: Novelty violation (contract-driven)
         all_detections.extend(detect_novelty_violation(sections, outline))
 
-        # Check if heuristic checks already found blocking issues
+        # FM12: Paragraph-level duplication (within and cross-section)
+        all_detections.extend(detect_paragraph_duplication(section_paragraphs, outline))
+
+        # FM13: Paragraph-level missing citation
+        all_detections.extend(detect_paragraph_missing_citation(section_paragraphs, claim_plans))
+
+        # Warning accumulation: 3+ warnings on same section → promote to blocking
+        warning_counts: dict[str, int] = {}
+        for d in all_detections:
+            if d.severity == "warning":
+                warning_counts[d.section_key] = warning_counts.get(d.section_key, 0) + 1
+        for section_key, count in warning_counts.items():
+            if count >= WARNING_ACCUMULATION_THRESHOLD:
+                all_detections.append(
+                    FailureModeDetection(
+                        mode=FailureMode.FM3_INCOMPLETE_INFORMATION,
+                        severity="blocking",
+                        section_key=section_key,
+                        description=f"Section '{section_key}' has {count} warnings — promoted to blocking",
+                        suggested_fix=f"Address accumulated quality issues in section '{section_key}'.",
+                    )
+                )
+
         blocking = [d for d in all_detections if d.severity == "blocking"]
 
         if blocking:
@@ -454,12 +655,13 @@ class CriticNode:
                     "verdict": "revise",
                     "failure_modes": [],
                     "revise_sections": list(sections.keys()),
-                    "feedback": {k: "Revision requested due to critic parse failure" for k in sections},
+                    "feedback": dict.fromkeys(sections, "Revision requested due to critic parse failure"),
                 }
 
             # Merge heuristic detections into LLM response
             if all_detections:
-                existing_fms = critique.get("failure_modes", [])
+                raw_fms = critique.get("failure_modes", [])
+                existing_fms: list[dict] = list(raw_fms) if isinstance(raw_fms, list) else []  # type: ignore[arg-type]
                 for d in all_detections:
                     existing_fms.append(
                         {
@@ -471,8 +673,8 @@ class CriticNode:
                 critique["failure_modes"] = existing_fms
 
         # Build claim-level feedbacks from detections + paragraph status
-        claim_fbs = _build_claim_feedbacks(all_detections, section_paragraphs)
-        critique["claim_feedbacks"] = claim_fbs
+        claim_fbs: dict[str, list[dict]] = _build_claim_feedbacks(all_detections, section_paragraphs)
+        critique["claim_feedbacks"] = claim_fbs  # type: ignore[assignment]
 
         logger.info("Critic completed", verdict=critique.get("verdict"), detections=len(all_detections))
         return {

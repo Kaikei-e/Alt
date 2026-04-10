@@ -8,7 +8,6 @@ from acolyte.usecase.graph.nodes.critic_node import (
     detect_novelty_violation,
 )
 
-
 # --- FM9: Insufficient citations ---
 
 

@@ -18,6 +18,8 @@ class FailureMode(Enum):
     FM9_INSUFFICIENT_CITATIONS = "insufficient_citations"
     FM10_NOVELTY_VIOLATION = "novelty_violation"
     FM11_ES_NUMERIC_ABSENCE = "es_numeric_absence"
+    FM12_PARAGRAPH_DUPLICATION = "paragraph_duplication"
+    FM13_PARAGRAPH_MISSING_CITATION = "paragraph_missing_citation"
 
 
 @dataclass(frozen=True)

@@ -33,13 +33,15 @@ async def test_parse_failure_triggers_revise() -> None:
 class AcceptLLM:
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
         return LLMResponse(
-            text=json.dumps({
-                "reasoning": "Quality is good",
-                "verdict": "accept",
-                "failure_modes": [],
-                "revise_sections": [],
-                "feedback": {},
-            }),
+            text=json.dumps(
+                {
+                    "reasoning": "Quality is good",
+                    "verdict": "accept",
+                    "failure_modes": [],
+                    "revise_sections": [],
+                    "feedback": {},
+                }
+            ),
             model="fake",
         )
 
