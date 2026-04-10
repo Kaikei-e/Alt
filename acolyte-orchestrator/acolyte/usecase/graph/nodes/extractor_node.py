@@ -54,14 +54,16 @@ def _quote_only_facts(
 
     facts = []
     for sent in sentences[:max_sentences]:
-        facts.append({
-            "claim": sent[:200],
-            "source_id": source_id,
-            "source_title": source_title,
-            "verbatim_quote": sent[:120],
-            "confidence": 0.3,
-            "data_type": "quote",
-        })
+        facts.append(
+            {
+                "claim": sent[:200],
+                "source_id": source_id,
+                "source_title": source_title,
+                "verbatim_quote": sent[:120],
+                "confidence": 0.3,
+                "data_type": "quote",
+            }
+        )
     return facts
 
 

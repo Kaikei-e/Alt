@@ -58,7 +58,7 @@ class MemoryReportGateway:
         *,
         prompt_template_version: str | None = None,
         scope_snapshot: dict | None = None,
-        outline_snapshot: dict | None = None,
+        outline_snapshot: list[dict] | dict | None = None,
         summary_snapshot: str | None = None,
     ) -> int:
         report = self._reports.get(report_id)
@@ -108,7 +108,9 @@ class MemoryReportGateway:
         return self._change_items.get((report_id, version_no), [])
 
     async def create_section(self, report_id: UUID, section_key: str, display_order: int) -> ReportSection:
-        sec = ReportSection(report_id=report_id, section_key=section_key, current_version=0, display_order=display_order)
+        sec = ReportSection(
+            report_id=report_id, section_key=section_key, current_version=0, display_order=display_order
+        )
         self._sections.setdefault(report_id, []).append(sec)
         return sec
 
@@ -127,8 +129,12 @@ class MemoryReportGateway:
                 )
                 break
         self._section_versions[(report_id, section_key, new_v)] = SectionVersion(
-            report_id=report_id, section_key=section_key, version_no=new_v, body=body,
-            citations=citations or [], created_at=datetime.now(UTC),
+            report_id=report_id,
+            section_key=section_key,
+            version_no=new_v,
+            body=body,
+            citations=citations or [],
+            created_at=datetime.now(UTC),
         )
         return new_v
 

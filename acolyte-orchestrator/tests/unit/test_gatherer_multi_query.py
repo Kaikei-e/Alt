@@ -275,8 +275,24 @@ async def test_gatherer_deduplicates_across_facets() -> None:
                 "key": "analysis",
                 "title": "Analysis",
                 "query_facets": [
-                    {"intent": "investigate", "raw_query": "AI market", "must_have_terms": ["AI"], "entities": [], "optional_terms": [], "time_range": None, "source_bias": "article"},
-                    {"intent": "investigate", "raw_query": "GPU demand", "must_have_terms": ["GPU"], "entities": [], "optional_terms": [], "time_range": None, "source_bias": "article"},
+                    {
+                        "intent": "investigate",
+                        "raw_query": "AI market",
+                        "must_have_terms": ["AI"],
+                        "entities": [],
+                        "optional_terms": [],
+                        "time_range": None,
+                        "source_bias": "article",
+                    },
+                    {
+                        "intent": "investigate",
+                        "raw_query": "GPU demand",
+                        "must_have_terms": ["GPU"],
+                        "entities": [],
+                        "optional_terms": [],
+                        "time_range": None,
+                        "source_bias": "article",
+                    },
                 ],
             },
         ],
@@ -302,7 +318,15 @@ async def test_gatherer_synthesis_only_sections_skip_search() -> None:
                 "key": "analysis",
                 "title": "Analysis",
                 "query_facets": [
-                    {"intent": "investigate", "raw_query": "AI analysis", "must_have_terms": ["AI"], "entities": [], "optional_terms": [], "time_range": None, "source_bias": "article"},
+                    {
+                        "intent": "investigate",
+                        "raw_query": "AI analysis",
+                        "must_have_terms": ["AI"],
+                        "entities": [],
+                        "optional_terms": [],
+                        "time_range": None,
+                        "source_bias": "article",
+                    },
                 ],
             },
             {

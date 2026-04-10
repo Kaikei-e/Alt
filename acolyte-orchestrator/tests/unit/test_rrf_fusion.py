@@ -6,8 +6,6 @@ before the implementation exists.
 
 from __future__ import annotations
 
-import pytest
-
 from acolyte.domain.fusion import RRFFusion, ScoredHit
 
 

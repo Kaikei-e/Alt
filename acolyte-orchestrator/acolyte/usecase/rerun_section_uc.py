@@ -58,7 +58,10 @@ class RerunSectionUsecase:
 
         # Bump section version
         await self._repo.bump_section_version(
-            report_id, section_key, target.current_version, response.text,
+            report_id,
+            section_key,
+            target.current_version,
+            response.text,
         )
 
         # Bump report version with change tracking
@@ -69,5 +72,7 @@ class RerunSectionUsecase:
             [ChangeItem(field_name=f"section:{section_key}", change_kind="regenerated")],
         )
 
-        logger.info("Section rerun completed", report_id=str(report_id), section_key=section_key, new_version=new_report_v)
+        logger.info(
+            "Section rerun completed", report_id=str(report_id), section_key=section_key, new_version=new_report_v
+        )
         return new_report_v

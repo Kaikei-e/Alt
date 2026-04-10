@@ -13,7 +13,7 @@ In this case, num_predict is increased by 25% (once only) for the retry.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from pydantic import TypeAdapter
@@ -21,11 +21,9 @@ from pydantic import TypeAdapter
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
-    from acolyte.port.llm_provider import LLMProviderPort
+    from acolyte.port.llm_provider import LLMProviderPort, LLMResponse
 
 logger = structlog.get_logger(__name__)
-
-T = TypeVar("T", bound="BaseModel")
 
 # Truncation detection threshold: completion_tokens / num_predict
 _TRUNCATION_RATIO = 0.95
@@ -33,14 +31,14 @@ _TRUNCATION_RATIO = 0.95
 _BUDGET_INCREASE = 1.25
 
 
-async def generate_validated(
+async def generate_validated[T: "BaseModel"](
     llm: LLMProviderPort,
     prompt: str,
     model_cls: type[T],
     *,
     retries: int = 1,
     fallback: T | None = None,
-    **llm_kwargs: object,
+    **llm_kwargs: Any,
 ) -> T:
     """Generate LLM output and validate with Pydantic.
 
@@ -58,6 +56,7 @@ async def generate_validated(
 
     last_error: Exception | None = None
     budget_increased = False
+    response: LLMResponse | None = None
 
     for attempt in range(1 + retries):
         try:
@@ -72,6 +71,7 @@ async def generate_validated(
                 not budget_increased
                 and isinstance(num_predict, int)
                 and num_predict > 0
+                and response is not None
                 and response.completion_tokens >= num_predict * _TRUNCATION_RATIO
             ):
                 increased = int(num_predict * _BUDGET_INCREASE)

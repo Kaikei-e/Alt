@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 KNOWN_SCOPE_KEYS = {"topic", "report_type", "time_range", "entities", "exclude"}
 
 

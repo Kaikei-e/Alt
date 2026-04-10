@@ -2621,8 +2621,18 @@ async def test_short_bullets_trigger_quality_retry():
             ],
             "language": "ja",
             "references": [
-                {"id": 1, "url": "https://a.com/1", "domain": "a.com", "article_id": "a1"},
-                {"id": 2, "url": "https://a.com/2", "domain": "a.com", "article_id": "a2"},
+                {
+                    "id": 1,
+                    "url": "https://a.com/1",
+                    "domain": "a.com",
+                    "article_id": "a1",
+                },
+                {
+                    "id": 2,
+                    "url": "https://a.com/2",
+                    "domain": "a.com",
+                    "article_id": "a2",
+                },
             ],
         }
     )
@@ -2635,8 +2645,18 @@ async def test_short_bullets_trigger_quality_retry():
             ],
             "language": "ja",
             "references": [
-                {"id": 1, "url": "https://a.com/1", "domain": "a.com", "article_id": "a1"},
-                {"id": 2, "url": "https://a.com/2", "domain": "a.com", "article_id": "a2"},
+                {
+                    "id": 1,
+                    "url": "https://a.com/1",
+                    "domain": "a.com",
+                    "article_id": "a1",
+                },
+                {
+                    "id": 2,
+                    "url": "https://a.com/2",
+                    "domain": "a.com",
+                    "article_id": "a2",
+                },
             ],
         }
     )
@@ -2687,7 +2707,9 @@ async def test_short_bullets_trigger_quality_retry():
     # Should have retried: 2 calls to chat_generate (short rejected, good accepted)
     assert llm_provider.chat_generate.call_count == 2
     # Final result should have the good (longer) bullets — avg >= 150 chars
-    avg_len = sum(len(b) for b in response.summary.bullets) / len(response.summary.bullets)
+    avg_len = sum(len(b) for b in response.summary.bullets) / len(
+        response.summary.bullets
+    )
     assert avg_len >= 300, f"Average bullet length {avg_len:.0f} < 300 after retry"
 
 
@@ -2708,8 +2730,18 @@ async def test_adequate_bullets_pass_quality_check():
             ],
             "language": "ja",
             "references": [
-                {"id": 1, "url": "https://a.com/1", "domain": "a.com", "article_id": "a1"},
-                {"id": 2, "url": "https://a.com/2", "domain": "a.com", "article_id": "a2"},
+                {
+                    "id": 1,
+                    "url": "https://a.com/1",
+                    "domain": "a.com",
+                    "article_id": "a1",
+                },
+                {
+                    "id": 2,
+                    "url": "https://a.com/2",
+                    "domain": "a.com",
+                    "article_id": "a2",
+                },
             ],
         }
     )
@@ -2770,7 +2802,12 @@ async def test_recap_uses_recap_summary_num_predict():
                     ],
                     "language": "ja",
                     "references": [
-                        {"id": 1, "url": "https://a.com/1", "domain": "a.com", "article_id": "a1"},
+                        {
+                            "id": 1,
+                            "url": "https://a.com/1",
+                            "domain": "a.com",
+                            "article_id": "a1",
+                        },
                     ],
                 }
             ),
@@ -2809,5 +2846,7 @@ async def test_recap_uses_recap_summary_num_predict():
 
     # Verify chat_generate was called with recap_summary_num_predict (2000), not summary_num_predict (1000)
     call_args = llm_provider.chat_generate.call_args
-    payload = call_args.args[0] if call_args.args else call_args.kwargs.get("payload", {})
+    payload = (
+        call_args.args[0] if call_args.args else call_args.kwargs.get("payload", {})
+    )
     assert payload["options"]["num_predict"] == 4000

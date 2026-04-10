@@ -5,12 +5,12 @@ TDD: Tests for multi-query variant retrieval and fusion integration.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from acolyte.domain.fusion import RRFFusion, ScoredHit
-from acolyte.port.evidence_provider import ArticleHit, RecapHit
+from acolyte.port.evidence_provider import ArticleHit
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode
 
 
@@ -30,9 +30,7 @@ def _make_evidence(*, fusion: RRFFusion | None = None) -> tuple[AsyncMock, Gathe
 async def test_multi_query_calls_variants() -> None:
     """Faceted search should call search_articles multiple times per facet (once per variant)."""
     evidence, node = _make_evidence()
-    evidence.search_articles = AsyncMock(
-        return_value=[_article_hit("a1", score=0.8)]
-    )
+    evidence.search_articles = AsyncMock(return_value=[_article_hit("a1", score=0.8)])
 
     state = {
         "brief": {"topic": "AI market", "entities": ["OpenAI"]},
@@ -55,7 +53,7 @@ async def test_multi_query_calls_variants() -> None:
             }
         ],
     }
-    result = await node(state)
+    await node(state)
 
     # Should call search_articles more than once (primary + broad + possibly narrow)
     assert evidence.search_articles.call_count >= 2
@@ -149,9 +147,7 @@ async def test_variant_failure_degrades_to_primary() -> None:
 async def test_legacy_path_unchanged() -> None:
     """Without query_facets, should use legacy search_queries path (no fusion)."""
     evidence, node = _make_evidence()
-    evidence.search_articles = AsyncMock(
-        return_value=[_article_hit("a1", score=0.5)]
-    )
+    evidence.search_articles = AsyncMock(return_value=[_article_hit("a1", score=0.5)])
 
     state = {
         "brief": {"topic": "AI market"},
@@ -187,9 +183,7 @@ async def test_fusion_strategy_injectable() -> None:
 
     mock_fusion = MockFusion()
     evidence = AsyncMock()
-    evidence.search_articles = AsyncMock(
-        return_value=[_article_hit("a1", score=0.8)]
-    )
+    evidence.search_articles = AsyncMock(return_value=[_article_hit("a1", score=0.8)])
     evidence.search_recaps = AsyncMock(return_value=[])
 
     node = GathererNode(evidence, fusion=mock_fusion)

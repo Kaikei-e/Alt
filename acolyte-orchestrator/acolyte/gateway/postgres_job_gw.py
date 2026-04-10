@@ -34,6 +34,7 @@ class PostgresJobGateway:
                     [report_id, target_version_no],
                 )
                 r = await cur.fetchone()
+                assert r is not None
                 run = ReportRun(
                     run_id=r[0],
                     report_id=r[1],

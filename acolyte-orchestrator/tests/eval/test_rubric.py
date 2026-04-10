@@ -14,13 +14,15 @@ class FakeLLM:
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
         # Return structured rubric scores
         return LLMResponse(
-            text=json.dumps({
-                "claims": [
-                    {"claim": "AI market grew 20%", "supported": True, "source_id": "art-1"},
-                    {"claim": "NVIDIA leads the market", "supported": True, "source_id": "art-2"},
-                    {"claim": "Market will reach $1T", "supported": False, "source_id": ""},
-                ]
-            }),
+            text=json.dumps(
+                {
+                    "claims": [
+                        {"claim": "AI market grew 20%", "supported": True, "source_id": "art-1"},
+                        {"claim": "NVIDIA leads the market", "supported": True, "source_id": "art-2"},
+                        {"claim": "Market will reach $1T", "supported": False, "source_id": ""},
+                    ]
+                }
+            ),
             model="fake",
         )
 

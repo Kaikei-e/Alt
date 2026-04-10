@@ -12,12 +12,8 @@ from pydantic import BaseModel
 
 WEAK_FACET_THRESHOLD: int = 2
 
-_COMPARE_KEYWORDS = frozenset(
-    {"vs", "versus", "compared", "comparison", "differ", "差", "比較", "対"}
-)
-_TREND_KEYWORDS = frozenset(
-    {"trend", "forecast", "growth", "decline", "outlook", "動向", "推移", "予測"}
-)
+_COMPARE_KEYWORDS = frozenset({"vs", "versus", "compared", "comparison", "differ", "差", "比較", "対"})
+_TREND_KEYWORDS = frozenset({"trend", "forecast", "growth", "decline", "outlook", "動向", "推移", "予測"})
 _STOP_WORDS = frozenset(
     {
         "the",

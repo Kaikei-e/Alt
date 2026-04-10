@@ -56,9 +56,13 @@ class MemoryJobGateway:
         job = self._jobs.get(job_id)
         if job:
             self._jobs[job_id] = ReportJob(
-                job_id=job.job_id, run_id=job.run_id, job_status=status,
-                attempt_no=job.attempt_no, claimed_by=job.claimed_by,
-                claimed_at=job.claimed_at, available_at=job.available_at,
+                job_id=job.job_id,
+                run_id=job.run_id,
+                job_status=status,
+                attempt_no=job.attempt_no,
+                claimed_by=job.claimed_by,
+                claimed_at=job.claimed_at,
+                available_at=job.available_at,
                 created_at=job.created_at,
             )
 
@@ -72,10 +76,14 @@ class MemoryJobGateway:
         run = self._runs.get(run_id)
         if run:
             self._runs[run_id] = ReportRun(
-                run_id=run.run_id, report_id=run.report_id,
-                target_version_no=run.target_version_no, run_status="succeeded",
-                planner_model=run.planner_model, writer_model=run.writer_model,
-                critic_model=run.critic_model, started_at=run.started_at,
+                run_id=run.run_id,
+                report_id=run.report_id,
+                target_version_no=run.target_version_no,
+                run_status="succeeded",
+                planner_model=run.planner_model,
+                writer_model=run.writer_model,
+                critic_model=run.critic_model,
+                started_at=run.started_at,
                 finished_at=datetime.now(UTC),
             )
 
@@ -83,10 +91,15 @@ class MemoryJobGateway:
         run = self._runs.get(run_id)
         if run:
             self._runs[run_id] = ReportRun(
-                run_id=run.run_id, report_id=run.report_id,
-                target_version_no=run.target_version_no, run_status="failed",
-                planner_model=run.planner_model, writer_model=run.writer_model,
-                critic_model=run.critic_model, started_at=run.started_at,
-                finished_at=datetime.now(UTC), failure_code=failure_code,
+                run_id=run.run_id,
+                report_id=run.report_id,
+                target_version_no=run.target_version_no,
+                run_status="failed",
+                planner_model=run.planner_model,
+                writer_model=run.writer_model,
+                critic_model=run.critic_model,
+                started_at=run.started_at,
+                finished_at=datetime.now(UTC),
+                failure_code=failure_code,
                 failure_message=failure_message,
             )

@@ -16,7 +16,7 @@ class FakeLLM:
     def __init__(self, response_text: str) -> None:
         self._response_text = response_text
         self.call_count = 0
-        self.last_format: dict | None = None
+        self.last_format: object | None = None
 
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
         self.call_count += 1

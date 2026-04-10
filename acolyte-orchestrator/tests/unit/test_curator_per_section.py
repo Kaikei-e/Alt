@@ -42,11 +42,13 @@ async def test_curator_produces_curated_by_section() -> None:
         {"key": "tech", "title": "Tech"},
     ]
 
-    result = await node({
-        "evidence": evidence,
-        "outline": outline,
-        "brief": {"topic": "AI"},
-    })
+    result = await node(
+        {
+            "evidence": evidence,
+            "outline": outline,
+            "brief": {"topic": "AI"},
+        }
+    )
 
     assert "curated_by_section" in result
     assert "market" in result["curated_by_section"]
@@ -69,11 +71,13 @@ async def test_curator_per_section_filters_by_section_key() -> None:
         {"key": "tech", "title": "Tech"},
     ]
 
-    result = await node({
-        "evidence": evidence,
-        "outline": outline,
-        "brief": {"topic": "AI"},
-    })
+    result = await node(
+        {
+            "evidence": evidence,
+            "outline": outline,
+            "brief": {"topic": "AI"},
+        }
+    )
 
     market_ids = {e["id"] for e in result["curated_by_section"]["market"]}
     tech_ids = {e["id"] for e in result["curated_by_section"]["tech"]}
@@ -99,11 +103,13 @@ async def test_curator_llm_curation_for_large_sections() -> None:
     ]
     outline = [{"key": "market", "title": "Market"}]
 
-    result = await node({
-        "evidence": evidence,
-        "outline": outline,
-        "brief": {"topic": "AI"},
-    })
+    result = await node(
+        {
+            "evidence": evidence,
+            "outline": outline,
+            "brief": {"topic": "AI"},
+        }
+    )
 
     market_curated = result["curated_by_section"]["market"]
     market_ids = {e["id"] for e in market_curated}
@@ -121,11 +127,13 @@ async def test_curator_backward_compat_curated_key() -> None:
     ]
     outline = [{"key": "market", "title": "Market"}]
 
-    result = await node({
-        "evidence": evidence,
-        "outline": outline,
-        "brief": {"topic": "AI"},
-    })
+    result = await node(
+        {
+            "evidence": evidence,
+            "outline": outline,
+            "brief": {"topic": "AI"},
+        }
+    )
 
     # Backward compat: curated should still be present
     assert "curated" in result

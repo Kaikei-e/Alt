@@ -1026,13 +1026,9 @@ class RecapSummaryUsecase:
 
                 # Bullet length quality gate: reject too-short bullets
                 bullets = summary_payload.get("bullets", [])
-                min_avg = self._config_int(
-                    "recap_min_avg_bullet_length", 150
-                )
+                min_avg = self._config_int("recap_min_avg_bullet_length", 150)
                 if bullets and min_avg > 0:
-                    avg_bullet_len = sum(len(b) for b in bullets) / len(
-                        bullets
-                    )
+                    avg_bullet_len = sum(len(b) for b in bullets) / len(bullets)
                     if avg_bullet_len < min_avg and attempt < max_retries:
                         logger.warning(
                             "Recap bullets too short, will retry",

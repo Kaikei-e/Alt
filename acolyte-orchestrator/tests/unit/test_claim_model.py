@@ -117,20 +117,22 @@ class TestClaimPlannerOutput:
 
     def test_planner_output_from_llm_json(self) -> None:
         """Simulate parsing LLM JSON output."""
-        llm_json = json.dumps({
-            "reasoning": "Need statistical and factual claims",
-            "claims": [
-                {
-                    "claim": "AI market grew 20%",
-                    "claim_type": "statistical",
-                    "evidence_ids": ["art-1"],
-                    "supporting_quotes": ["expanded by 20%"],
-                    "numeric_facts": ["20%"],
-                    "novelty_against": [],
-                    "must_cite": True,
-                },
-            ],
-        })
+        llm_json = json.dumps(
+            {
+                "reasoning": "Need statistical and factual claims",
+                "claims": [
+                    {
+                        "claim": "AI market grew 20%",
+                        "claim_type": "statistical",
+                        "evidence_ids": ["art-1"],
+                        "supporting_quotes": ["expanded by 20%"],
+                        "numeric_facts": ["20%"],
+                        "novelty_against": [],
+                        "must_cite": True,
+                    },
+                ],
+            }
+        )
         parsed = json.loads(llm_json)
         output = ClaimPlannerOutput.model_validate(parsed)
         assert len(output.claims) == 1

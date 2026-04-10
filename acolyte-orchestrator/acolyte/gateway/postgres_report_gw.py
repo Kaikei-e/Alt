@@ -40,6 +40,7 @@ class PostgresReportGateway:
                 [title, report_type],
             )
             r = await row.fetchone()
+            assert r is not None
             return Report(
                 report_id=r[0],
                 title=r[1],
@@ -143,7 +144,7 @@ class PostgresReportGateway:
         *,
         prompt_template_version: str | None = None,
         scope_snapshot: dict | None = None,
-        outline_snapshot: dict | None = None,
+        outline_snapshot: list[dict] | dict | None = None,
         summary_snapshot: str | None = None,
     ) -> int:
         """Bump report version with optimistic locking."""

@@ -60,20 +60,24 @@ class ChecklistEvaluator:
         if topic_words:
             matched = sum(1 for w in topic_words if w in all_text)
             ratio = matched / len(topic_words)
-            items.append(ChecklistItem(
-                name="topic_in_content",
-                passed=ratio >= 0.5,
-                detail=f"{matched}/{len(topic_words)} topic words found",
-            ))
+            items.append(
+                ChecklistItem(
+                    name="topic_in_content",
+                    passed=ratio >= 0.5,
+                    detail=f"{matched}/{len(topic_words)} topic words found",
+                )
+            )
 
         # Check all outline sections have corresponding generated sections
         for section in outline:
             key = section.get("key", "")
-            items.append(ChecklistItem(
-                name=f"section_generated:{key}",
-                passed=key in sections and len(sections.get(key, "")) > 0,
-                detail=f"Section '{key}' exists" if key in sections else f"Section '{key}' missing",
-            ))
+            items.append(
+                ChecklistItem(
+                    name=f"section_generated:{key}",
+                    passed=key in sections and len(sections.get(key, "")) > 0,
+                    detail=f"Section '{key}' exists" if key in sections else f"Section '{key}' missing",
+                )
+            )
 
         return items
 
@@ -88,18 +92,22 @@ class ChecklistEvaluator:
             key = section.get("key", "")
             body = sections.get(key, "")
 
-            items.append(ChecklistItem(
-                name=f"section_present:{key}",
-                passed=bool(body),
-                detail=f"length={len(body)}" if body else "missing",
-            ))
+            items.append(
+                ChecklistItem(
+                    name=f"section_present:{key}",
+                    passed=bool(body),
+                    detail=f"length={len(body)}" if body else "missing",
+                )
+            )
 
             if body:
-                items.append(ChecklistItem(
-                    name=f"section_length:{key}",
-                    passed=len(body) >= MIN_SECTION_LENGTH,
-                    detail=f"length={len(body)}, min={MIN_SECTION_LENGTH}",
-                ))
+                items.append(
+                    ChecklistItem(
+                        name=f"section_length:{key}",
+                        passed=len(body) >= MIN_SECTION_LENGTH,
+                        detail=f"length={len(body)}, min={MIN_SECTION_LENGTH}",
+                    )
+                )
 
         return items
 
@@ -116,11 +124,13 @@ class ChecklistEvaluator:
             if re.search(re.escape(pattern), all_text, re.IGNORECASE):
                 found_meta.append(pattern)
 
-        items.append(ChecklistItem(
-            name="no_meta_statements",
-            passed=len(found_meta) == 0,
-            detail=f"Found: {found_meta}" if found_meta else "Clean",
-        ))
+        items.append(
+            ChecklistItem(
+                name="no_meta_statements",
+                passed=len(found_meta) == 0,
+                detail=f"Found: {found_meta}" if found_meta else "Clean",
+            )
+        )
 
         # Check for section duplication (bigram overlap between sections)
         section_bodies = list(sections.values())
@@ -130,11 +140,13 @@ class ChecklistEvaluator:
                 for j in range(i + 1, len(section_bodies)):
                     overlap = _bigram_overlap(section_bodies[i], section_bodies[j])
                     max_overlap = max(max_overlap, overlap)
-            items.append(ChecklistItem(
-                name="low_section_duplication",
-                passed=max_overlap < 0.3,
-                detail=f"max_bigram_overlap={max_overlap:.2f}",
-            ))
+            items.append(
+                ChecklistItem(
+                    name="low_section_duplication",
+                    passed=max_overlap < 0.3,
+                    detail=f"max_bigram_overlap={max_overlap:.2f}",
+                )
+            )
 
         return items
 

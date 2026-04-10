@@ -40,22 +40,28 @@ class EvalRunner:
 
         # Checklist protocol (rule-based)
         cl_result = self._checklist.evaluate(scope, outline, sections)
-        dimensions.append(EvalDimension(
-            name="task_fulfillment",
-            score=_item_score(cl_result.items, "topic_in_content"),
-            protocol="checklist",
-            details={"items": [{"name": i.name, "passed": i.passed} for i in cl_result.items]},
-        ))
-        dimensions.append(EvalDimension(
-            name="coverage",
-            score=_item_score(cl_result.items, "section_"),
-            protocol="checklist",
-        ))
-        dimensions.append(EvalDimension(
-            name="presentation",
-            score=_item_score(cl_result.items, "no_meta"),
-            protocol="checklist",
-        ))
+        dimensions.append(
+            EvalDimension(
+                name="task_fulfillment",
+                score=_item_score(cl_result.items, "topic_in_content"),
+                protocol="checklist",
+                details={"items": [{"name": i.name, "passed": i.passed} for i in cl_result.items]},
+            )
+        )
+        dimensions.append(
+            EvalDimension(
+                name="coverage",
+                score=_item_score(cl_result.items, "section_"),
+                protocol="checklist",
+            )
+        )
+        dimensions.append(
+            EvalDimension(
+                name="presentation",
+                score=_item_score(cl_result.items, "no_meta"),
+                protocol="checklist",
+            )
+        )
 
         # Rubric protocol (LLM-based)
         if self._rubric:

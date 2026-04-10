@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from acolyte.domain.fusion import RRFFusion, ScoredHit
-from acolyte.domain.query_facet import WEAK_FACET_THRESHOLD, render_query_string
+from acolyte.domain.query_facet import WEAK_FACET_THRESHOLD
 from acolyte.domain.query_variant import generate_query_variants
 
 if TYPE_CHECKING:
@@ -82,7 +82,10 @@ class GathererNode:
         return {"evidence": evidence, "weak_facets": weak_facets}
 
     async def _search_by_facets(
-        self, outline: list[dict], topic: str, brief: dict,
+        self,
+        outline: list[dict],
+        topic: str,
+        brief: dict,
     ) -> tuple[dict[str, dict], list[dict]]:
         """Search using structured QueryFacet objects from outline with multi-query RRF fusion."""
         evidence_map: dict[str, dict] = {}
@@ -133,14 +136,16 @@ class GathererNode:
 
                 # Track weak facets (based on total fused results)
                 if len(fused) < WEAK_FACET_THRESHOLD:
-                    weak_facets.append({
-                        "section_key": section_key,
-                        "facet_index": facet_idx,
-                        "intent": facet.get("intent", ""),
-                        "raw_query": facet.get("raw_query", ""),
-                        "hit_count": len(fused),
-                        "threshold": WEAK_FACET_THRESHOLD,
-                    })
+                    weak_facets.append(
+                        {
+                            "section_key": section_key,
+                            "facet_index": facet_idx,
+                            "intent": facet.get("intent", ""),
+                            "raw_query": facet.get("raw_query", ""),
+                            "hit_count": len(fused),
+                            "threshold": WEAK_FACET_THRESHOLD,
+                        }
+                    )
 
                 for hit in fused:
                     if hit.article_id in evidence_map:
@@ -158,9 +163,7 @@ class GathererNode:
 
         return evidence_map, weak_facets
 
-    async def _search_by_queries(
-        self, outline: list[dict], topic: str
-    ) -> dict[str, dict]:
+    async def _search_by_queries(self, outline: list[dict], topic: str) -> dict[str, dict]:
         """Legacy search using plain search_queries strings."""
         evidence_map: dict[str, dict] = {}
 

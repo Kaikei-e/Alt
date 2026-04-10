@@ -33,8 +33,24 @@ class FakeRepo:
         self.bumped_sections: list[tuple[UUID, str, int, str]] = []
         self.bumped_versions: list[tuple[UUID, int, str]] = []
 
+    async def create_report(self, title: str, report_type: str) -> Report:
+        rid = uuid4()
+        report = Report(
+            report_id=rid,
+            title=title,
+            report_type=report_type,
+            current_version=0,
+            latest_successful_run_id=None,
+            created_at=datetime.now(UTC),
+        )
+        self.reports[rid] = report
+        return report
+
     async def get_report(self, report_id: UUID) -> Report | None:
         return self.reports.get(report_id)
+
+    async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
+        self.briefs[report_id] = brief
 
     async def get_brief(self, report_id: UUID) -> ReportBrief | None:
         return self.briefs.get(report_id)
@@ -62,19 +78,47 @@ class FakeRepo:
         self.bumped_versions.append((report_id, new_v, change_reason))
         report = self.reports[report_id]
         self.reports[report_id] = Report(
-            report_id=report.report_id, title=report.title, report_type=report.report_type,
-            current_version=new_v, latest_successful_run_id=report.latest_successful_run_id,
+            report_id=report.report_id,
+            title=report.title,
+            report_type=report.report_type,
+            current_version=new_v,
+            latest_successful_run_id=report.latest_successful_run_id,
             created_at=report.created_at,
         )
         return new_v
+
+    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+        return list(self.reports.values()), None
+
+    async def list_report_versions(
+        self, report_id: UUID, cursor: str | None, limit: int
+    ) -> tuple[list[ReportVersion], str | None]:
+        return list(self.versions.get(report_id, [])), None
+
+    async def get_change_items(self, report_id: UUID, version_no: int) -> list[ChangeItem]:
+        return []
+
+    async def create_section(self, report_id: UUID, section_key: str, display_order: int) -> ReportSection:
+        sec = ReportSection(
+            report_id=report_id, section_key=section_key, current_version=0, display_order=display_order
+        )
+        self.sections.setdefault(report_id, []).append(sec)
+        return sec
+
+    async def get_section_version(self, report_id: UUID, section_key: str, version_no: int) -> SectionVersion | None:
+        return self.section_versions.get((report_id, section_key, version_no))
 
 
 def _make_repo_with_report() -> tuple[FakeRepo, UUID]:
     repo = FakeRepo()
     rid = uuid4()
     repo.reports[rid] = Report(
-        report_id=rid, title="Test Report", report_type="weekly_briefing",
-        current_version=1, latest_successful_run_id=None, created_at=datetime.now(UTC),
+        report_id=rid,
+        title="Test Report",
+        report_type="weekly_briefing",
+        current_version=1,
+        latest_successful_run_id=None,
+        created_at=datetime.now(UTC),
     )
     repo.briefs[rid] = ReportBrief(topic="AI semiconductor", report_type="weekly_briefing")
     repo.sections[rid] = [
@@ -83,8 +127,12 @@ def _make_repo_with_report() -> tuple[FakeRepo, UUID]:
     ]
     repo.versions[rid] = [
         ReportVersion(
-            report_id=rid, version_no=1, change_seq=1, change_reason="gen",
-            created_at=datetime.now(UTC), outline_snapshot=[
+            report_id=rid,
+            version_no=1,
+            change_seq=1,
+            change_reason="gen",
+            created_at=datetime.now(UTC),
+            outline_snapshot=[
                 {"key": "summary", "title": "Executive Summary"},
                 {"key": "analysis", "title": "Analysis"},
             ],

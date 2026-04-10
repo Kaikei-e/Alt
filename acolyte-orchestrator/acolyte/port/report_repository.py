@@ -31,7 +31,7 @@ class ReportRepositoryPort(Protocol):
         *,
         prompt_template_version: str | None = None,
         scope_snapshot: dict | None = None,
-        outline_snapshot: dict | None = None,
+        outline_snapshot: list[dict] | dict | None = None,
         summary_snapshot: str | None = None,
     ) -> int: ...
 

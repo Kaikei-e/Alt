@@ -152,10 +152,14 @@ class TruncationLLM:
 async def test_detects_truncation_and_increases_budget() -> None:
     """When completion_tokens >= 95% of num_predict and JSON is truncated, increase budget +25%."""
     truncated = LLMResponse(
-        text='{"reasoning": "thinking...', model="test", completion_tokens=1900,
+        text='{"reasoning": "thinking...',
+        model="test",
+        completion_tokens=1900,
     )
     valid = LLMResponse(
-        text=json.dumps({"reasoning": "ok", "sections": []}), model="test", completion_tokens=500,
+        text=json.dumps({"reasoning": "ok", "sections": []}),
+        model="test",
+        completion_tokens=500,
     )
     llm = TruncationLLM([truncated, valid])
 
@@ -170,7 +174,9 @@ async def test_does_not_increase_budget_on_non_truncation() -> None:
     """When completion_tokens is well below num_predict, don't increase budget."""
     bad_json = LLMResponse(text="not json", model="test", completion_tokens=100)
     valid = LLMResponse(
-        text=json.dumps({"reasoning": "ok", "sections": []}), model="test", completion_tokens=50,
+        text=json.dumps({"reasoning": "ok", "sections": []}),
+        model="test",
+        completion_tokens=50,
     )
     llm = TruncationLLM([bad_json, valid])
 
@@ -188,7 +194,12 @@ async def test_budget_increase_bounded_once() -> None:
 
     fallback = SampleOutput(reasoning="fallback", sections=[])
     result = await generate_validated(
-        llm, "prompt", SampleOutput, num_predict=2000, temperature=0, fallback=fallback,
+        llm,
+        "prompt",
+        SampleOutput,
+        num_predict=2000,
+        temperature=0,
+        fallback=fallback,
     )
 
     assert result.reasoning == "fallback"

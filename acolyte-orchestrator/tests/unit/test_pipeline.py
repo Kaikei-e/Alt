@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from acolyte.domain.brief import ReportBrief
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.port.evidence_provider import ArticleHit, RecapHit
@@ -191,9 +192,16 @@ class FakeEvidence:
 class FakeReportRepo:
     def __init__(self) -> None:
         self.reports: dict[UUID, Report] = {}
+        self.briefs: dict[UUID, ReportBrief] = {}
         self.sections: dict[UUID, list[ReportSection]] = {}
         self.versions: list[ReportVersion] = []
         self.section_versions: list[SectionVersion] = []
+
+    async def create_brief(self, report_id: UUID, brief: ReportBrief) -> None:
+        self.briefs[report_id] = brief
+
+    async def get_brief(self, report_id: UUID) -> ReportBrief | None:
+        return self.briefs.get(report_id)
 
     async def create_report(self, title: str, report_type: str) -> Report:
         rid = uuid4()
@@ -263,6 +271,20 @@ class FakeReportRepo:
             )
         )
         return new_v
+
+    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+        return list(self.reports.values()), None
+
+    async def get_report_version(self, report_id: UUID, version_no: int) -> ReportVersion | None:
+        return None
+
+    async def list_report_versions(
+        self, report_id: UUID, cursor: str | None, limit: int
+    ) -> tuple[list[ReportVersion], str | None]:
+        return [], None
+
+    async def get_change_items(self, report_id: UUID, version_no: int) -> list[ChangeItem]:
+        return []
 
     async def get_section_version(self, report_id: UUID, section_key: str, version_no: int) -> SectionVersion | None:
         return None
@@ -590,9 +612,10 @@ def test_quote_selector_output_has_reasoning_field() -> None:
     assert "reasoning" in schema["properties"]
 
 
-def test_fact_normalizer_output_has_reasoning_field() -> None:
-    """FactNormalizerOutput must have 'reasoning' field (ADR-632)."""
+def test_fact_normalizer_output_uses_tiny_schema() -> None:
+    """FactNormalizerOutput should stay small and omit reasoning."""
     from acolyte.domain.quote_selection import FactNormalizerOutput
 
     schema = FactNormalizerOutput.model_json_schema()
-    assert "reasoning" in schema["properties"]
+    assert "reasoning" not in schema["properties"]
+    assert {"claim", "confidence", "data_type"}.issubset(schema["properties"])

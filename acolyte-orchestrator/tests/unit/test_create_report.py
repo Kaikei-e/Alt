@@ -7,13 +7,21 @@ from uuid import uuid4
 
 import pytest
 
-from acolyte.domain.report import Report
+from acolyte.domain.brief import ReportBrief
+from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 from acolyte.usecase.create_report_uc import CreateReportUsecase
 
 
 class FakeReportRepo:
     def __init__(self) -> None:
         self.reports: list[Report] = []
+        self.briefs: dict = {}
+
+    async def create_brief(self, report_id: object, brief: ReportBrief) -> None:
+        self.briefs[report_id] = brief
+
+    async def get_brief(self, report_id: object) -> ReportBrief | None:
+        return self.briefs.get(report_id)
 
     async def create_report(self, title: str, report_type: str) -> Report:
         report = Report(
@@ -26,6 +34,49 @@ class FakeReportRepo:
         )
         self.reports.append(report)
         return report
+
+    # --- Stubs required by ReportRepositoryPort ---
+
+    async def get_report(self, report_id: object) -> Report | None:
+        return None
+
+    async def list_reports(self, cursor: str | None, limit: int) -> tuple[list[Report], str | None]:
+        return self.reports, None
+
+    async def bump_version(
+        self,
+        report_id: object,
+        expected_version: int,
+        change_reason: str,
+        change_items: list[ChangeItem],
+        **kwargs: object,
+    ) -> int:
+        return expected_version + 1
+
+    async def get_report_version(self, report_id: object, version_no: int) -> ReportVersion | None:
+        return None
+
+    async def list_report_versions(
+        self, report_id: object, cursor: str | None, limit: int
+    ) -> tuple[list[ReportVersion], str | None]:
+        return [], None
+
+    async def get_change_items(self, report_id: object, version_no: int) -> list[ChangeItem]:
+        return []
+
+    async def create_section(self, report_id: object, section_key: str, display_order: int) -> ReportSection:
+        raise NotImplementedError
+
+    async def get_sections(self, report_id: object) -> list[ReportSection]:
+        return []
+
+    async def bump_section_version(
+        self, report_id: object, section_key: str, expected_version: int, body: str, citations: list[dict] | None = None
+    ) -> int:
+        return expected_version + 1
+
+    async def get_section_version(self, report_id: object, section_key: str, version_no: int) -> SectionVersion | None:
+        return None
 
 
 @pytest.mark.asyncio

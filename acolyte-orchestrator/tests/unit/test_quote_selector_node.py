@@ -8,6 +8,7 @@ import pytest
 
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.quote_selector_node import QuoteSelectorNode
+from acolyte.usecase.graph.state import ReportGenerationState
 
 
 class FakeLLM:
@@ -29,7 +30,7 @@ def _base_state(
     hydrated: dict | None = None,
     compressed: dict | None = None,
     outline: list | None = None,
-) -> dict:
+) -> ReportGenerationState:
     return {
         "curated_by_section": curated or {},
         "hydrated_evidence": hydrated or {},
@@ -310,7 +311,7 @@ async def test_llm_secondary_used_only_when_heuristic_returns_empty() -> None:
         hydrated={"art-1": "Completely unrelated weather forecast content."},
         outline=[{"key": "analysis", "search_queries": ["quantum computing blockchain"]}],
     )
-    result = await node(state)
+    await node(state)
     assert len(llm.calls) >= 1  # LLM was called as secondary
 
 

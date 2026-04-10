@@ -15,12 +15,14 @@ from acolyte.usecase.eval.rubric_evaluator import RubricEvaluator
 class FakeLLM:
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
         return LLMResponse(
-            text=json.dumps({
-                "claims": [
-                    {"claim": "AI market grew", "supported": True, "source_id": "art-1"},
-                    {"claim": "Unsupported claim", "supported": False, "source_id": ""},
-                ]
-            }),
+            text=json.dumps(
+                {
+                    "claims": [
+                        {"claim": "AI market grew", "supported": True, "source_id": "art-1"},
+                        {"claim": "Unsupported claim", "supported": False, "source_id": ""},
+                    ]
+                }
+            ),
             model="fake",
         )
 

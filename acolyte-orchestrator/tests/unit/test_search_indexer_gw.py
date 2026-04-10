@@ -89,9 +89,7 @@ async def test_search_articles_stores_content_in_content_store(
 
 
 @pytest.mark.asyncio
-async def test_search_articles_empty_response(
-    settings: Settings, content_store: MemoryContentStore
-) -> None:
+async def test_search_articles_empty_response(settings: Settings, content_store: MemoryContentStore) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"query": "xyz", "hits": []})
 
@@ -104,9 +102,7 @@ async def test_search_articles_empty_response(
 
 
 @pytest.mark.asyncio
-async def test_search_articles_extracts_score(
-    settings: Settings, content_store: MemoryContentStore
-) -> None:
+async def test_search_articles_extracts_score(settings: Settings, content_store: MemoryContentStore) -> None:
     """Score from search-indexer response should be propagated to ArticleHit."""
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -131,9 +127,7 @@ async def test_search_articles_extracts_score(
 
 
 @pytest.mark.asyncio
-async def test_search_articles_score_default_zero(
-    settings: Settings, content_store: MemoryContentStore
-) -> None:
+async def test_search_articles_score_default_zero(settings: Settings, content_store: MemoryContentStore) -> None:
     """When score is missing from response, default to 0.0."""
 
     def handler(request: httpx.Request) -> httpx.Response:

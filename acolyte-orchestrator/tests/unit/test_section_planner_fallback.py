@@ -128,13 +128,25 @@ def test_es_fallback_from_existing_claims() -> None:
 def test_deterministic_synthesis_prefers_source_diversity() -> None:
     """Claims from different sources should be preferred over same-source claims."""
     facts = [
-        {"claim": f"Fact {i}", "data_type": "quote", "source_id": "art-1",
-         "source_title": "Article 1", "verbatim_quote": f"Q{i}", "confidence": 0.9}
+        {
+            "claim": f"Fact {i}",
+            "data_type": "quote",
+            "source_id": "art-1",
+            "source_title": "Article 1",
+            "verbatim_quote": f"Q{i}",
+            "confidence": 0.9,
+        }
         for i in range(1, 6)
     ] + [
-        {"claim": "Diverse fact", "data_type": "statistic", "source_id": "art-2",
-         "source_title": "Article 2", "verbatim_quote": "QD", "confidence": 0.8,
-         "numeric_facts": ["42%"]}
+        {
+            "claim": "Diverse fact",
+            "data_type": "statistic",
+            "source_id": "art-2",
+            "source_title": "Article 2",
+            "verbatim_quote": "QD",
+            "confidence": 0.8,
+            "numeric_facts": ["42%"],
+        }
     ]
     result = _deterministic_es_claims({}, facts)
     # Should include the diverse source (art-2)

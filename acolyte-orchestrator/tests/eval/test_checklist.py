@@ -30,7 +30,7 @@ def test_task_fulfillment_fails_when_topic_absent(evaluator: ChecklistEvaluator)
 
 def test_coverage_passes_when_all_sections_present(evaluator: ChecklistEvaluator) -> None:
     outline = [{"key": "intro", "title": "Intro"}, {"key": "analysis", "title": "Analysis"}]
-    sections = {"intro": "x" * 250, "analysis": "y" * 250}
+    sections: dict[str, str] = {"intro": "x" * 250, "analysis": "y" * 250}
     result = evaluator.check_coverage(outline, sections)
     assert all(c.passed for c in result)
 
@@ -44,7 +44,7 @@ def test_coverage_fails_when_section_too_short(evaluator: ChecklistEvaluator) ->
 
 def test_coverage_fails_when_section_missing(evaluator: ChecklistEvaluator) -> None:
     outline = [{"key": "intro", "title": "Intro"}, {"key": "analysis", "title": "Analysis"}]
-    sections = {"intro": "x" * 250}  # analysis missing
+    sections: dict[str, str] = {"intro": "x" * 250}  # analysis missing
     result = evaluator.check_coverage(outline, sections)
     assert any(c.name == "section_present:analysis" and not c.passed for c in result)
 
@@ -70,7 +70,7 @@ def test_presentation_fails_on_english_meta(evaluator: ChecklistEvaluator) -> No
 def test_full_evaluate_returns_eval_result(evaluator: ChecklistEvaluator) -> None:
     scope = {"topic": "AI trends"}
     outline = [{"key": "summary", "title": "Summary"}]
-    sections = {"summary": "AI trends continue to accelerate. " * 20}
+    sections: dict[str, str] = {"summary": "AI trends continue to accelerate. " * 20}
     result = evaluator.evaluate(scope, outline, sections)
     assert 0.0 <= result.score <= 1.0
     assert len(result.items) > 0

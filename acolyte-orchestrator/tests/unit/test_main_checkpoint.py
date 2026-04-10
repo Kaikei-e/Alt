@@ -39,6 +39,6 @@ async def test_create_app_compiles_graph_with_checkpointer_on_startup(monkeypatc
         assert app.state.connect_service._graph is sentinel_graph
 
     assert compile_calls == [sentinel_checkpointer]
-    main_module._pool.open.assert_awaited_once()
-    main_module._pool.close.assert_awaited_once()
-    main_module._http_client.aclose.assert_awaited_once()
+    main_module._pool.open.assert_awaited_once()  # type: ignore[missing-attribute]
+    main_module._pool.close.assert_awaited_once()  # type: ignore[missing-attribute]
+    main_module._http_client.aclose.assert_awaited_once()  # type: ignore[missing-attribute]

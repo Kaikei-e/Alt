@@ -13,26 +13,28 @@ from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
 class FakeLLM:
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
         return LLMResponse(
-            text=json.dumps({
-                "facts": [
-                    {
-                        "claim": "AI market grew 20% in Q2",
-                        "source_id": "art-1",
-                        "source_title": "AI Market Report",
-                        "verbatim_quote": "The AI market expanded by 20% year-over-year",
-                        "confidence": 0.9,
-                        "data_type": "statistic",
-                    },
-                    {
-                        "claim": "NVIDIA dominates GPU market",
-                        "source_id": "art-1",
-                        "source_title": "AI Market Report",
-                        "verbatim_quote": "NVIDIA controls 80% of the AI GPU market",
-                        "confidence": 0.8,
-                        "data_type": "quote",
-                    },
-                ]
-            }),
+            text=json.dumps(
+                {
+                    "facts": [
+                        {
+                            "claim": "AI market grew 20% in Q2",
+                            "source_id": "art-1",
+                            "source_title": "AI Market Report",
+                            "verbatim_quote": "The AI market expanded by 20% year-over-year",
+                            "confidence": 0.9,
+                            "data_type": "statistic",
+                        },
+                        {
+                            "claim": "NVIDIA dominates GPU market",
+                            "source_id": "art-1",
+                            "source_title": "AI Market Report",
+                            "verbatim_quote": "NVIDIA controls 80% of the AI GPU market",
+                            "confidence": 0.8,
+                            "data_type": "quote",
+                        },
+                    ]
+                }
+            ),
             model="fake",
         )
 
