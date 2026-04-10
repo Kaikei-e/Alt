@@ -5,16 +5,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from acolyte.usecase.graph.nodes.compressor_node import CompressorNode
 from acolyte.usecase.graph.nodes.critic_node import CriticNode, should_revise
 from acolyte.usecase.graph.nodes.curator_node import CuratorNode
-from acolyte.usecase.graph.nodes.fact_normalizer_node import FactNormalizerNode
+from acolyte.usecase.graph.nodes.fact_normalizer_node import FactNormalizerNode, should_continue_fact_normalization
 from acolyte.usecase.graph.nodes.finalizer_node import FinalizerNode
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode
 from acolyte.usecase.graph.nodes.hydrator_node import HydratorNode
 from acolyte.usecase.graph.nodes.planner_node import PlannerNode
-from acolyte.usecase.graph.nodes.quote_selector_node import QuoteSelectorNode
+from acolyte.usecase.graph.nodes.quote_selector_node import QuoteSelectorNode, should_continue_quote_selection
 from acolyte.usecase.graph.nodes.section_planner_node import SectionPlannerNode
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
 from acolyte.usecase.graph.state import ReportGenerationState
@@ -37,7 +38,7 @@ def build_report_graph(
     fusion: FusionStrategy | None = None,
     checkpointer: object | None = None,
     settings: Settings | None = None,
-) -> StateGraph:
+) -> CompiledStateGraph:
     """Build the report generation StateGraph.
 
     Pipeline:
@@ -47,12 +48,16 @@ def build_report_graph(
     Revision loop: critic → writer (section_planner is NOT re-run on revision;
     claim_plans persist in state and writer re-uses them with revision feedback).
     """
-    graph = StateGraph(ReportGenerationState)
+    graph = StateGraph(ReportGenerationState)  # type: ignore[bad-specialization]
 
     graph.add_node("planner", PlannerNode(llm))
     graph.add_node("gatherer", GathererNode(evidence, content_store=content_store, fusion=fusion))
     graph.add_node("curator", CuratorNode(llm))
-    graph.add_node("writer", WriterNode(llm))
+    if settings is not None:
+        writer = WriterNode(llm, settings=settings)
+    else:
+        writer = WriterNode(llm)
+    graph.add_node("writer", writer)
     graph.add_node("critic", CriticNode(llm))
     graph.add_node("finalizer", FinalizerNode(report_repo))
 
@@ -63,22 +68,35 @@ def build_report_graph(
     if content_store is not None:
         graph.add_node("hydrator", HydratorNode(content_store))
         graph.add_node("compressor", CompressorNode())
-        graph.add_node("quote_selector", QuoteSelectorNode(llm))
+        incremental_extract = checkpointer is not None
+        graph.add_node("quote_selector", QuoteSelectorNode(llm, incremental=incremental_extract))
         # Settings injection for FactNormalizerNode (exec3.md Issue 2)
         if settings is not None:
-            fact_normalizer = FactNormalizerNode(llm, settings)
+            fact_normalizer = FactNormalizerNode(llm, settings, incremental=incremental_extract)
         else:
             # Fallback: use default config for backward compat (tests without settings)
             from acolyte.config.settings import Settings as _Settings
 
-            fact_normalizer = FactNormalizerNode(llm, _Settings())
+            fact_normalizer = FactNormalizerNode(llm, _Settings(), incremental=incremental_extract)
         graph.add_node("fact_normalizer", fact_normalizer)
         graph.add_node("section_planner", SectionPlannerNode(llm))
         graph.add_edge("curator", "hydrator")
         graph.add_edge("hydrator", "compressor")
         graph.add_edge("compressor", "quote_selector")
-        graph.add_edge("quote_selector", "fact_normalizer")
-        graph.add_edge("fact_normalizer", "section_planner")
+        if incremental_extract:
+            graph.add_conditional_edges(
+                "quote_selector",
+                should_continue_quote_selection,
+                {"more": "quote_selector", "done": "fact_normalizer"},
+            )
+            graph.add_conditional_edges(
+                "fact_normalizer",
+                should_continue_fact_normalization,
+                {"more": "fact_normalizer", "done": "section_planner"},
+            )
+        else:
+            graph.add_edge("quote_selector", "fact_normalizer")
+            graph.add_edge("fact_normalizer", "section_planner")
         graph.add_edge("section_planner", "writer")
     else:
         graph.add_edge("curator", "writer")

@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
     from acolyte.usecase.graph.state import ReportGenerationState
 
+from acolyte.config.settings import Settings
+
 logger = structlog.get_logger(__name__)
 
 # Legacy evidence-based prompt (kept for RerunSectionUsecase import + backward compat)
@@ -274,11 +276,81 @@ def _select_paragraph_prompt(section_role: str) -> str:
     return PARAGRAPH_WRITER_PROMPT
 
 
-def _format_supporting_quotes(quotes: list[str]) -> str:
-    """Format supporting quotes for prompt injection."""
+def _format_supporting_quotes(quotes: list[str], evidence_ids: list[str] | None = None) -> str:
+    """Format supporting quotes with numbered evidence-id mapping."""
     if not quotes:
         return "なし"
+    if evidence_ids and len(evidence_ids) >= len(quotes):
+        return "\n".join(f'- [{evidence_ids[i]}] "{q}"' for i, q in enumerate(quotes))
     return "\n".join(f'- "{q}"' for q in quotes)
+
+
+def _synthesis_claims_from_accepted(
+    claims: list[dict],
+    *,
+    section_key: str,
+    max_claims: int,
+) -> list[dict]:
+    """Convert accepted upstream claims into synthesis claims for ES/Conclusion."""
+    result: list[dict] = []
+    seen_sources: set[str] = set()
+    with_numeric = [c for c in claims if c.get("numeric_facts")]
+    without_numeric = [c for c in claims if not c.get("numeric_facts")]
+
+    for claim in with_numeric + without_numeric:
+        if len(result) >= max_claims:
+            break
+        evidence_ids = claim.get("evidence_ids", [])
+        if result and not set(evidence_ids) - seen_sources:
+            continue
+        seen_sources.update(evidence_ids)
+        result.append(
+            {
+                "claim_id": f"{section_key}-accepted-{len(result) + 1}",
+                "claim": claim.get("claim", ""),
+                "claim_type": "synthesis",
+                "evidence_ids": list(evidence_ids),
+                "supporting_quotes": list(claim.get("supporting_quotes", [])),
+                "numeric_facts": list(claim.get("numeric_facts", [])),
+                "novelty_against": list(claim.get("novelty_against", [])),
+                "must_cite": True,
+            }
+        )
+    return result
+
+
+def _collect_accepted_claims(
+    section_paragraphs: dict[str, list[dict]],
+    claim_plans: dict[str, list[dict]],
+    outline: list[dict],
+    *,
+    include_roles: set[str] | None = None,
+    exclude_roles: set[str] | None = None,
+) -> dict[str, list[dict]]:
+    """Collect claims whose paragraphs are accepted in already-written sections."""
+    accepted_by_section: dict[str, list[dict]] = {}
+
+    for section in outline:
+        key = section.get("key", "")
+        role = section.get("section_role", "general")
+        if include_roles is not None and role not in include_roles:
+            continue
+        if exclude_roles is not None and role in exclude_roles:
+            continue
+
+        accepted_ids = {
+            p.get("claim_id", "")
+            for p in section_paragraphs.get(key, [])
+            if p.get("status") == "accepted" and p.get("body", "").strip()
+        }
+        if not accepted_ids:
+            continue
+
+        accepted_claims = [claim for claim in claim_plans.get(key, []) if claim.get("claim_id", "") in accepted_ids]
+        if accepted_claims:
+            accepted_by_section[key] = accepted_claims
+
+    return accepted_by_section
 
 
 def _update_best_sections(
@@ -324,9 +396,80 @@ def _update_best_sections(
     return new_best, new_metrics
 
 
+_ROLE_TARGET_LENGTH = {
+    "analysis": "200-400字",
+    "conclusion": "150-300字",
+    "executive_summary": "100-200字",
+}
+
+_PRIOR_CONTEXT_MAX_CHARS = 500
+_PRIOR_ES_CONTEXT_MAX_CHARS = 300
+
+
+def _deterministic_fallback_body(
+    section_role: str,
+    sections: dict[str, str],
+    topic: str,
+) -> str:
+    """Generate a minimal deterministic body for ES/Conclusion when claims are empty.
+
+    This is a last-resort safety net — the SectionPlannerNode should normally
+    guarantee non-empty claims via _topic_overview_claim.
+    """
+    if section_role == "conclusion":
+        analysis = sections.get("analysis", "")
+        if analysis:
+            first_sentence = analysis.split("。")[0]
+            if first_sentence:
+                return f"本レポートでは{topic}について分析した。{first_sentence}。"
+    elif section_role == "executive_summary":
+        bodies = [v for v in sections.values() if v.strip()]
+        if bodies:
+            snippets = [b.split("。")[0] for b in bodies if b.split("。")[0]]
+            if snippets:
+                return "。".join(snippets[:3]) + "。"
+    return ""
+
+
+def _build_prior_sections_context(
+    section_role: str,
+    sections: dict[str, str],
+    non_es_sections: list[dict],
+) -> str:
+    """Build anti-duplication context for conclusion/ES paragraph prompts."""
+    if section_role == "conclusion":
+        analysis_body = sections.get("analysis", "")
+        if analysis_body:
+            truncated = analysis_body[:_PRIOR_CONTEXT_MAX_CHARS]
+            return f"<prior_analysis>{truncated}</prior_analysis>\n上記の Analysis 本文と重複する表現を避けてください。"
+    elif section_role == "executive_summary":
+        prior_bodies = []
+        for s in non_es_sections:
+            body = sections.get(s.get("key", ""), "")
+            if body:
+                prior_bodies.append(f"[{s.get('title', '')}] {body[:_PRIOR_ES_CONTEXT_MAX_CHARS]}")
+        if prior_bodies:
+            return (
+                "<prior_sections>\n" + "\n".join(prior_bodies) + "\n</prior_sections>\n"
+                "上記のセクション内容を簡潔に要約してください。"
+            )
+    return ""
+
+
 class WriterNode:
-    def __init__(self, llm: LLMProviderPort) -> None:
+    def __init__(self, llm: LLMProviderPort, *, settings: Settings | None = None) -> None:
         self._llm = llm
+        self._settings = settings or Settings()
+
+    def _role_num_predict(self, section_role: str) -> int:
+        """Resolve num_predict by section role."""
+        if section_role == "analysis":
+            return self._settings.paragraph_num_predict_analysis
+        if section_role == "conclusion":
+            return self._settings.paragraph_num_predict_conclusion
+        if section_role == "executive_summary":
+            return self._settings.paragraph_num_predict_es
+        return self._settings.paragraph_num_predict
 
     async def _generate_paragraph(
         self,
@@ -337,14 +480,15 @@ class WriterNode:
         *,
         delta_feedback: str = "",
         num_predict: int = 1000,
+        prior_sections_context: str = "",
     ) -> dict:
         """Generate a single paragraph from one claim via LLM.
 
         Returns a GeneratedParagraph-compatible dict.
         """
         prompt_template = _select_paragraph_prompt(section_role)
-        quotes_str = _format_supporting_quotes(claim.get("supporting_quotes", []))
         eids = claim.get("evidence_ids", [])
+        quotes_str = _format_supporting_quotes(claim.get("supporting_quotes", []), eids)
         numeric_facts = claim.get("numeric_facts", [])
 
         delta_block = ""
@@ -360,9 +504,14 @@ class WriterNode:
             delta_feedback_block=delta_block,
         )
 
-        # Add numeric facts reminder if present
+        target = _ROLE_TARGET_LENGTH.get(section_role, "200-400字")
+        prompt += f"\n<target_length>{target}</target_length>"
+
         if numeric_facts:
-            prompt += f"\n\n数値データ: {', '.join(numeric_facts)}"
+            prompt += f"\n数値データ: {', '.join(numeric_facts)}"
+
+        if prior_sections_context:
+            prompt += f"\n\n{prior_sections_context}"
 
         response = await self._llm.generate(prompt, num_predict=num_predict, mode=LLMMode.LONGFORM)
         body = response.text.strip()
@@ -389,6 +538,7 @@ class WriterNode:
         existing_paragraphs: list[dict] | None = None,
         claim_feedbacks: list[dict] | None = None,
         num_predict: int = 1000,
+        prior_sections_context: str = "",
     ) -> list[dict]:
         """Generate paragraphs for all claims in a section.
 
@@ -428,6 +578,7 @@ class WriterNode:
                 topic,
                 delta_feedback=delta,
                 num_predict=num_predict,
+                prior_sections_context=prior_sections_context,
             )
             paragraphs.append(para)
 
@@ -441,7 +592,8 @@ class WriterNode:
         brief = state.get("brief") or state.get("scope") or {}
         critique = state.get("critique")
         existing_sections = state.get("sections", {})
-        claim_plans = state.get("claim_plans")
+        raw_claim_plans = state.get("claim_plans")
+        claim_plans = dict(raw_claim_plans) if raw_claim_plans is not None else None
         existing_paragraphs = state.get("section_paragraphs", {})
         current_best = dict(state.get("best_sections", {}))
         current_metrics = dict(state.get("best_section_metrics", {}))
@@ -451,6 +603,7 @@ class WriterNode:
         section_paragraphs: dict[str, list[dict]] = dict(existing_paragraphs)
         use_claims = claim_plans is not None
         topic = brief.get("topic", "")
+        accepted_claims_by_section: dict[str, list[dict]] = {}
 
         # Extract claim_feedbacks from critique
         all_claim_feedbacks: dict[str, list[dict]] = {}
@@ -466,15 +619,71 @@ class WriterNode:
             title = section.get("title", key)
             section_role = section.get("section_role", "general")
 
-            if use_claims:
+            if use_claims and claim_plans is not None:
                 # Paragraph-based generation path
-                claims = claim_plans.get(key, [])
+                claims: list[dict] = list(claim_plans.get(key, []))
+                if section_role == "conclusion":
+                    accepted_analysis = _collect_accepted_claims(
+                        section_paragraphs,
+                        claim_plans,
+                        non_es,
+                        include_roles={"analysis"},
+                    )
+                    accepted_claims_by_section.update(accepted_analysis)
+                    accepted_flat = [claim for claims_in_section in accepted_analysis.values() for claim in claims_in_section]
+                    if accepted_flat:
+                        claims = _synthesis_claims_from_accepted(
+                            accepted_flat,
+                            section_key=key,
+                            max_claims=section.get("max_claims", 5),
+                        )
+                        claim_plans[key] = claims
+                        logger.info("Writer using accepted analysis claims", section_key=key, claim_count=len(claims))
+                elif section_role == "executive_summary":
+                    accepted_non_es = _collect_accepted_claims(
+                        section_paragraphs,
+                        claim_plans,
+                        non_es,
+                        exclude_roles={"executive_summary"},
+                    )
+                    accepted_claims_by_section.update(accepted_non_es)
+                    accepted_flat = [claim for claims_in_section in accepted_non_es.values() for claim in claims_in_section]
+                    if accepted_flat:
+                        claims = _synthesis_claims_from_accepted(
+                            accepted_flat,
+                            section_key=key,
+                            max_claims=section.get("max_claims", 3),
+                        )
+                        claim_plans[key] = claims
+                        logger.info("Writer using accepted section claims", section_key=key, claim_count=len(claims))
+
                 if not claims:
+                    # ES/Conclusion: deterministic fallback to prevent empty body
+                    if section_role in ("conclusion", "executive_summary"):
+                        fallback_body = _deterministic_fallback_body(section_role, sections, topic)
+                        if fallback_body:
+                            logger.info("Writer deterministic fallback", section_key=key, chars=len(fallback_body))
+                            sections[key] = fallback_body
+                            section_citations[key] = []
+                            section_paragraphs[key] = [
+                                {
+                                    "claim_id": f"{key}-fallback",
+                                    "claim_text": "",
+                                    "body": fallback_body,
+                                    "status": "accepted",
+                                    "citations": [],
+                                    "revision_feedback": "",
+                                }
+                            ]
+                            continue
                     logger.warning("No claims for section, producing empty body", section_key=key)
                     sections[key] = ""
                     section_citations[key] = []
                     section_paragraphs[key] = []
                     continue
+
+                # Build anti-duplication context for conclusion/ES
+                prior_ctx = _build_prior_sections_context(section_role, sections, non_es)
 
                 # Get existing paragraphs and feedbacks for this section
                 sect_existing = existing_paragraphs.get(key)
@@ -482,12 +691,13 @@ class WriterNode:
 
                 paragraphs = await self._generate_section_paragraphs(
                     claims,
-                    title,
+                    str(title or key),
                     section_role,
                     topic,
                     existing_paragraphs=sect_existing,
                     claim_feedbacks=sect_feedbacks,
-                    num_predict=1000,
+                    num_predict=self._role_num_predict(section_role),
+                    prior_sections_context=prior_ctx,
                 )
 
                 section_paragraphs[key] = paragraphs
@@ -506,7 +716,11 @@ class WriterNode:
                 # Count blocking paragraphs (rejected/empty)
                 blocking_count = sum(1 for p in paragraphs if p["status"] == "rejected")
                 current_best, current_metrics = _update_best_sections(
-                    current_best, current_metrics, key, section_body, blocking_count,
+                    current_best,
+                    current_metrics,
+                    key,
+                    section_body,
+                    blocking_count,
                 )
             else:
                 # Legacy evidence-based path (backward compat)
@@ -541,4 +755,6 @@ class WriterNode:
             result["section_paragraphs"] = section_paragraphs
             result["best_sections"] = current_best
             result["best_section_metrics"] = current_metrics
+            result["claim_plans"] = claim_plans
+            result["accepted_claims_by_section"] = accepted_claims_by_section
         return result

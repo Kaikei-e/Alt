@@ -37,20 +37,23 @@ class Settings(BaseSettings):
     default_model: str = "gemma4-e4b-12k"
     default_num_predict: int = 2000
 
-    # LLM mode defaults (Issue 7)
+    # LLM mode defaults
     structured_temperature: float = 0.0
     structured_num_predict: int = 1024
     longform_temperature: float = 0.7
     longform_num_predict: int = 4000
 
-    # Paragraph-level generation (Issue 3)
+    # Paragraph-level generation — per-role num_predict
     paragraph_num_predict: int = 1000
+    paragraph_num_predict_analysis: int = 1200
+    paragraph_num_predict_conclusion: int = 1500
+    paragraph_num_predict_es: int = 600
 
-    # Fact normalization (Issue 2)
+    # Fact normalization
     fact_num_predict: int = 512
     max_facts_total: int = 20
 
-    # Checkpointer (Issue 6)
+    # Checkpointer
     checkpoint_enabled: bool = False
 
     model_config = {"env_prefix": "", "case_sensitive": False}
@@ -66,7 +69,7 @@ class Settings(BaseSettings):
 
                 parsed = urlparse(self.acolyte_db_dsn)
                 replaced = parsed._replace(netloc=f"{parsed.username}:{password}@{parsed.hostname}:{parsed.port}")
-                return urlunparse(replaced)
+                return str(urlunparse(replaced))
             except OSError:
                 pass
         return self.acolyte_db_dsn

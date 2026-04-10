@@ -10,6 +10,7 @@ import pytest
 
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
+from acolyte.usecase.graph.state import ReportGenerationState
 
 
 class FakeLLM:
@@ -46,7 +47,7 @@ def _make_revision_state(
     rejected_body: str = "",
     feedback_reason: str = "body empty",
     revision_count: int = 1,
-) -> dict:
+) -> ReportGenerationState:
     claims = _make_claims(2)
     return {
         "outline": [{"key": "analysis", "title": "Analysis", "section_role": "analysis"}],
@@ -57,15 +58,31 @@ def _make_revision_state(
         "sections": {"analysis": accepted_body},
         "section_paragraphs": {
             "analysis": [
-                {"claim_id": "analysis-1", "claim_text": "Claim 1", "body": accepted_body, "status": "accepted", "citations": [], "revision_feedback": ""},
-                {"claim_id": "analysis-2", "claim_text": "Claim 2", "body": rejected_body, "status": "rejected", "citations": [], "revision_feedback": feedback_reason},
+                {
+                    "claim_id": "analysis-1",
+                    "claim_text": "Claim 1",
+                    "body": accepted_body,
+                    "status": "accepted",
+                    "citations": [],
+                    "revision_feedback": "",
+                },
+                {
+                    "claim_id": "analysis-2",
+                    "claim_text": "Claim 2",
+                    "body": rejected_body,
+                    "status": "rejected",
+                    "citations": [],
+                    "revision_feedback": feedback_reason,
+                },
             ],
         },
         "critique": {
             "verdict": "revise",
             "revise_sections": ["analysis"],
             "feedback": {"analysis": "Fix empty paragraph"},
-            "claim_feedbacks": {"analysis": [{"claim_id": "analysis-2", "action": "regenerate", "reason": feedback_reason}]},
+            "claim_feedbacks": {
+                "analysis": [{"claim_id": "analysis-2", "action": "regenerate", "reason": feedback_reason}]
+            },
         },
         "revision_count": revision_count,
     }

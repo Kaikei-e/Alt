@@ -10,6 +10,7 @@ import pytest
 
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
+from acolyte.usecase.graph.state import ReportGenerationState
 
 
 class FakeLLM:
@@ -36,7 +37,7 @@ def _make_state(
     critique: dict | None = None,
     section_paragraphs: dict | None = None,
     revision_count: int = 0,
-) -> dict:
+) -> ReportGenerationState:
     if claims is None:
         claims = [
             {
@@ -52,7 +53,7 @@ def _make_state(
         ]
     if outline is None:
         outline = [{"key": section_key, "title": section_key.replace("_", " ").title(), "section_role": section_role}]
-    state: dict = {
+    state: ReportGenerationState = {
         "outline": outline,
         "curated": [],
         "curated_by_section": {section_key: [{"id": "art-1", "title": "Test"}]},
@@ -195,8 +196,22 @@ async def test_writer_revision_only_regenerates_rejected() -> None:
     ]
     existing_paragraphs = {
         "analysis": [
-            {"claim_id": "analysis-1", "claim_text": "Claim A", "body": "Accepted para.", "status": "accepted", "citations": [], "revision_feedback": ""},
-            {"claim_id": "analysis-2", "claim_text": "Claim B", "body": "", "status": "rejected", "citations": [], "revision_feedback": "body empty"},
+            {
+                "claim_id": "analysis-1",
+                "claim_text": "Claim A",
+                "body": "Accepted para.",
+                "status": "accepted",
+                "citations": [],
+                "revision_feedback": "",
+            },
+            {
+                "claim_id": "analysis-2",
+                "claim_text": "Claim B",
+                "body": "",
+                "status": "rejected",
+                "citations": [],
+                "revision_feedback": "body empty",
+            },
         ],
     }
     llm = FakeLLM(responses=["Regenerated para B."])
@@ -207,7 +222,9 @@ async def test_writer_revision_only_regenerates_rejected() -> None:
             "verdict": "revise",
             "revise_sections": ["analysis"],
             "feedback": {"analysis": "Fix empty paragraph"},
-            "claim_feedbacks": {"analysis": [{"claim_id": "analysis-2", "action": "regenerate", "reason": "body empty"}]},
+            "claim_feedbacks": {
+                "analysis": [{"claim_id": "analysis-2", "action": "regenerate", "reason": "body empty"}]
+            },
         },
         section_paragraphs=existing_paragraphs,
         revision_count=1,
