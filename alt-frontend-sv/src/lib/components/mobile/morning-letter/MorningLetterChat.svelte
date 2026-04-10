@@ -1,7 +1,5 @@
 <script lang="ts">
 import { onMount, tick } from "svelte";
-import { Loader2, User, Clock, Newspaper, Send } from "@lucide/svelte";
-import { cn } from "$lib/utils";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import {
 	createClientTransport,
@@ -41,7 +39,7 @@ let chatOpen = $state(false);
 let messages = $state<Message[]>([
 	{
 		id: "welcome",
-		message: `Ask follow-up questions about today's briefing.`,
+		message: `Ask follow-up questions about today's edition.`,
 		role: "assistant",
 		timestamp: new Date().toLocaleTimeString(),
 	},
@@ -207,17 +205,15 @@ onMount(() => {
 		onclick={() => { chatOpen = !chatOpen; }}
 		aria-expanded={chatOpen}
 		aria-controls="follow-up-chat"
-		class="w-full flex items-center justify-between p-4 border-t"
-		style="background: var(--surface-bg); border-color: var(--border-color);"
+		class="disclosure-toggle"
 	>
 		<div class="flex items-center gap-2">
-			<span class="text-sm font-semibold" style="color: var(--text-primary);">Follow-up Chat</span>
-			<span class="text-xs" style="color: var(--text-secondary);">Ask about the briefing</span>
+			<span class="toggle-label">Follow-Up</span>
+			<span class="toggle-hint">Ask about the briefing</span>
 		</div>
 		<svg
-			class="h-4 w-4 transition-transform"
-			class:rotate-180={chatOpen}
-			style="color: var(--text-secondary);"
+			class="toggle-chevron"
+			class:toggle-chevron--open={chatOpen}
 			viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
 		>
 			<path d="m6 9 6 6 6-6" />
@@ -226,154 +222,377 @@ onMount(() => {
 
 	{#if chatOpen}
 	<div id="follow-up-chat" role="region" class="flex flex-col" style="height: 50vh;">
-	<!-- Messages -->
-	<div
-		bind:this={chatContainer}
-		class="flex-1 overflow-y-auto p-4 space-y-4"
-		role="log"
-		aria-live="polite"
-		aria-busy={isLoading}
-	>
-		{#each messages as msg (msg.id)}
-			<div
-				class={cn(
-					"flex gap-2",
-					msg.role === "user" ? "justify-end" : "justify-start",
-				)}
-			>
-				{#if msg.role === "assistant"}
-					<div
-						class="flex-shrink-0 w-7 h-7 rounded-full overflow-hidden mt-1"
-						style="background: var(--surface-bg);"
-					>
-						<img
-							src={augurAvatar}
-							alt="AI"
-							class="w-full h-full object-cover"
-						/>
-					</div>
-				{/if}
+		<!-- Thread -->
+		<div
+			bind:this={chatContainer}
+			class="letter-thread"
+			role="log"
+			aria-live="polite"
+			aria-busy={isLoading}
+		>
+			{#each messages as msg (msg.id)}
+				<article class="thread-entry" data-role={msg.role}>
+					{#if msg.role === "user"}
+						<h3 class="entry-question">{msg.message}</h3>
+					{:else}
+						<!-- Byline -->
+						<div class="entry-byline">
+							<img src={augurAvatar} alt="Morning Letter" class="byline-avatar" />
+							<span class="byline-name">Morning Letter</span>
+						</div>
 
-				<div class="max-w-[80%] flex flex-col gap-1">
-					<div
-						class={cn(
-							"px-3 py-2 text-sm rounded-2xl",
-							msg.role === "user"
-								? "rounded-br-sm"
-								: "rounded-bl-sm",
-						)}
-						style={msg.role === "user"
-							? "background: var(--alt-primary); color: var(--text-primary);"
-							: "background: var(--surface-bg); color: var(--text-primary); border: 1px solid var(--border-color);"}
-					>
-						{#if msg.role === "user"}
-							<p class="whitespace-pre-wrap break-words">{msg.message}</p>
-						{:else}
-							<div class="whitespace-pre-wrap break-words prose prose-sm max-w-none">
+						<!-- Prose -->
+						{#if msg.message}
+							<div class="entry-prose">
 								{@html parseMarkdown(msg.message)}
 							</div>
 						{/if}
-					</div>
 
-					{#if msg.role === "assistant" && msg.meta?.articlesScanned}
-						<div
-							class="flex items-center gap-1 text-xs px-1"
-							style="color: var(--text-secondary);"
-						>
-							<Newspaper class="h-3 w-3" />
-							<span>{msg.meta.articlesScanned} articles</span>
-						</div>
+						<!-- Meta -->
+						{#if msg.meta?.articlesScanned}
+							<span class="entry-meta">{msg.meta.articlesScanned} articles</span>
+						{/if}
+
+						<!-- Citations -->
+						{#if msg.citations && msg.citations.length > 0}
+							<div class="entry-sources">
+								<span class="sources-heading">Sources</span>
+								<ul class="sources-list">
+									{#each msg.citations.slice(0, 3) as cite, i}
+										<li>
+											<a
+												href={cite.URL}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="source-link"
+											>
+												<span class="source-id">[{i + 1}]</span>
+												<span class="source-title">{cite.Title || "Untitled"}</span>
+											</a>
+										</li>
+									{/each}
+									{#if msg.citations.length > 3}
+										<li class="source-overflow">
+											+{msg.citations.length - 3} more
+										</li>
+									{/if}
+								</ul>
+							</div>
+						{/if}
 					{/if}
+				</article>
+			{/each}
 
-					{#if msg.role === "assistant" && msg.citations && msg.citations.length > 0}
-						<div
-							class="rounded-lg p-2 text-xs"
-							style="background: var(--surface-bg); border: 1px solid var(--border-color);"
-						>
-							<p class="font-semibold mb-1" style="color: var(--text-secondary);">Sources:</p>
-							<ul class="space-y-1">
-								{#each msg.citations.slice(0, 3) as cite, i}
-									<li>
-										<a
-											href={cite.URL}
-											target="_blank"
-											rel="noopener noreferrer"
-											class="hover:underline flex gap-1 items-start"
-											style="color: var(--text-secondary);"
-										>
-											<span class="font-mono shrink-0">[{i + 1}]</span>
-											<span class="line-clamp-1">{cite.Title || "Untitled"}</span>
-										</a>
-									</li>
-								{/each}
-								{#if msg.citations.length > 3}
-									<li style="color: var(--text-secondary);">
-										+{msg.citations.length - 3} more sources
-									</li>
-								{/if}
-							</ul>
-						</div>
-					{/if}
+			{#if isLoading && messages[messages.length - 1]?.message === ""}
+				<div class="letter-loading">
+					<div class="loading-pulse"></div>
+					<span class="loading-text">Searching&hellip;</span>
 				</div>
-
-				{#if msg.role === "user"}
-					<div
-						class="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-1"
-						style="background: var(--alt-primary);"
-					>
-						<User class="h-4 w-4" style="color: var(--text-primary);" />
-					</div>
-				{/if}
-			</div>
-		{/each}
-
-		{#if isLoading}
-			<div class="flex gap-2">
-				<div
-					class="flex-shrink-0 w-7 h-7 rounded-full overflow-hidden relative"
-					style="background: var(--surface-bg);"
-				>
-					<img src={augurAvatar} alt="AI" class="w-full h-full object-cover opacity-50" />
-					<div class="absolute inset-0 flex items-center justify-center">
-						<Loader2 class="h-4 w-4 animate-spin" style="color: var(--alt-primary);" />
-					</div>
-				</div>
-				<div
-					class="px-3 py-2 text-sm rounded-2xl rounded-bl-sm"
-					style="background: var(--surface-bg); border: 1px solid var(--border-color);"
-				>
-					<span style="color: var(--text-secondary);">Searching...</span>
-				</div>
-			</div>
-		{/if}
-	</div>
-
-	<!-- Input -->
-	<div
-		class="sticky bottom-0 p-3 border-t"
-		style="background: var(--surface-bg); border-color: var(--border-color);"
-	>
-		<div class="flex gap-2">
-			<input
-				type="text"
-				bind:value={inputValue}
-				onkeydown={handleKeydown}
-				placeholder="Ask about the briefing..."
-				disabled={isLoading}
-				class="flex-1 px-4 py-2 rounded-full border focus:outline-none focus:ring-2 disabled:opacity-50"
-				style="background: var(--app-bg); border-color: var(--border-color); color: var(--text-primary); font-size: 16px;"
-			/>
-			<button
-				onclick={handleSend}
-				disabled={isLoading || !inputValue.trim()}
-				class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50"
-				style="background: var(--alt-primary);"
-				aria-label="Send"
-			>
-				<Send class="h-4 w-4" style="color: var(--text-primary);" />
-			</button>
+			{/if}
 		</div>
-	</div>
+
+		<!-- Input -->
+		<div class="letter-input-area">
+			<div class="flex gap-2">
+				<input
+					type="text"
+					bind:value={inputValue}
+					onkeydown={handleKeydown}
+					placeholder="Ask about the briefing..."
+					disabled={isLoading}
+					class="input-field"
+					aria-label="Question input"
+				/>
+				<button
+					onclick={handleSend}
+					disabled={isLoading || !inputValue.trim()}
+					class="input-submit"
+					aria-label="Send"
+				>
+					Send
+				</button>
+			</div>
+		</div>
 	</div>
 	{/if}
 </div>
+
+<style>
+	/* ===== Disclosure Toggle ===== */
+	.disclosure-toggle {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0.75rem 1rem;
+		min-height: 44px;
+
+		background: var(--surface-bg, #faf9f7);
+		border: none;
+		border-top: 1px solid var(--surface-border, #c8c8c8);
+		cursor: pointer;
+	}
+
+	.toggle-label {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.toggle-hint {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.7rem;
+		font-style: italic;
+		color: var(--alt-ash, #999);
+	}
+
+	.toggle-chevron {
+		width: 1rem;
+		height: 1rem;
+		color: var(--alt-ash, #999);
+		transition: transform 0.2s;
+	}
+
+	.toggle-chevron--open {
+		transform: rotate(180deg);
+	}
+
+	/* ===== Thread ===== */
+	.letter-thread {
+		flex: 1;
+		overflow-y: auto;
+		padding: 0.75rem 1rem;
+	}
+
+	/* ===== Thread Entry ===== */
+	.thread-entry {
+		padding: 0.6rem 0;
+		border-bottom: 1px solid var(--surface-border, #c8c8c8);
+	}
+
+	.thread-entry:last-child {
+		border-bottom: none;
+	}
+
+	/* ===== User Question ===== */
+	.entry-question {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 0.95rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal, #1a1a1a);
+		margin: 0;
+	}
+
+	/* ===== Byline ===== */
+	.entry-byline {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		margin-bottom: 0.3rem;
+	}
+
+	.byline-avatar {
+		width: 20px;
+		height: 20px;
+		object-fit: cover;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		filter: saturate(0.85);
+	}
+
+	.byline-name {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash, #999);
+	}
+
+	/* ===== Prose ===== */
+	.entry-prose {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.9rem;
+		line-height: 1.65;
+		color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.entry-prose :global(p) { margin: 0 0 0.4rem; }
+	.entry-prose :global(strong) { font-weight: 600; }
+	.entry-prose :global(a) {
+		color: var(--alt-primary, #2f4f4f);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+
+	/* ===== Meta ===== */
+	.entry-meta {
+		display: block;
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.6rem;
+		color: var(--alt-ash, #999);
+		margin-top: 0.35rem;
+	}
+
+	/* ===== Sources ===== */
+	.entry-sources {
+		margin-top: 0.5rem;
+		padding-top: 0.4rem;
+		border-top: 1px solid var(--surface-border, #c8c8c8);
+	}
+
+	.sources-heading {
+		display: block;
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.55rem;
+		font-weight: 700;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--alt-ash, #999);
+		margin-bottom: 0.2rem;
+	}
+
+	.sources-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+
+	.source-link {
+		display: flex;
+		align-items: baseline;
+		gap: 0.25rem;
+		text-decoration: none;
+	}
+
+	.source-link:hover .source-title {
+		text-decoration: underline;
+	}
+
+	.source-id {
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.6rem;
+		font-weight: 600;
+		color: var(--alt-charcoal, #1a1a1a);
+		flex-shrink: 0;
+	}
+
+	.source-title {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.7rem;
+		color: var(--alt-primary, #2f4f4f);
+		text-underline-offset: 2px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.source-overflow {
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.6rem;
+		color: var(--alt-ash, #999);
+	}
+
+	/* ===== Loading ===== */
+	.letter-loading {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.75rem 0;
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-ash, #999);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.loading-text {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.8rem;
+		font-style: italic;
+		color: var(--alt-ash, #999);
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 0.3; }
+		50% { opacity: 1; }
+	}
+
+	/* ===== Input Area ===== */
+	.letter-input-area {
+		flex-shrink: 0;
+		padding: 0.5rem 0.75rem;
+		padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+		border-top: 1px solid var(--surface-border, #c8c8c8);
+		background: var(--surface-bg, #faf9f7);
+	}
+
+	.input-field {
+		flex: 1;
+		min-height: 44px;
+		padding: 0.5rem 0.75rem;
+
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 1rem;
+		color: var(--alt-charcoal, #1a1a1a);
+
+		background: transparent;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		outline: none;
+		transition: border-color 0.15s;
+	}
+
+	.input-field:focus {
+		border-color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.input-field:disabled {
+		opacity: 0.5;
+	}
+
+	.input-submit {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 44px;
+		min-width: 44px;
+		padding: 0.5rem 0.75rem;
+		flex-shrink: 0;
+
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+
+		color: var(--alt-charcoal, #1a1a1a);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal, #1a1a1a);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.input-submit:hover:not(:disabled) {
+		background: var(--alt-charcoal, #1a1a1a);
+		color: var(--surface-bg, #faf9f7);
+	}
+
+	.input-submit:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.loading-pulse { animation: none; opacity: 0.6; }
+		.toggle-chevron { transition: none; }
+	}
+</style>

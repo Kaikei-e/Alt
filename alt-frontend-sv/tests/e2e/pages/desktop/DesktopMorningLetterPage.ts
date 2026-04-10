@@ -3,8 +3,8 @@ import { expect } from "@playwright/test";
 import { BasePage } from "../BasePage";
 
 /**
- * Page Object for Desktop MorningLetter page (/desktop/recap/morning-letter)
- * MorningLetter is a time-bounded chat interface for querying recent news.
+ * Page Object for Desktop MorningLetter page (/recap/morning-letter)
+ * MorningLetter is a document-first briefing with editorial Q&A thread.
  */
 export class DesktopMorningLetterPage extends BasePage {
 	// Page header
@@ -28,19 +28,17 @@ export class DesktopMorningLetterPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 
-		// Page elements — use .first() since empty state also has a heading containing "Morning Letter"
+		// Page elements
 		this.pageTitle = page
 			.getByRole("heading", { name: /morning letter/i })
 			.first();
 
 		// Chat container
-		this.chatContainer = page
-			.locator(".flex.flex-col")
-			.filter({ hasText: /morning letter/i });
+		this.chatContainer = page.locator(".letter-chat");
 
 		// Messages - use partial match for dynamic content
 		this.welcomeMessage = page.getByText(
-			/follow-up questions|morning letter assistant/i,
+			/follow-up questions|today's edition/i,
 		);
 		this.thinkingIndicator = page.getByText(
 			/searching recent news|searching\.\.\./i,
@@ -50,9 +48,9 @@ export class DesktopMorningLetterPage extends BasePage {
 		this.timeWindowDisplay = page.getByText(/articles from/i);
 		this.articlesScannedDisplay = page.getByText(/articles scanned/i);
 
-		// Input - uses textarea or input
+		// Input - uses textarea
 		this.chatInput = page.getByRole("textbox");
-		this.sendButton = page.getByRole("button", { name: /send/i });
+		this.sendButton = page.getByRole("button", { name: /send|submit/i });
 	}
 
 	get url(): string {
@@ -60,12 +58,10 @@ export class DesktopMorningLetterPage extends BasePage {
 	}
 
 	/**
-	 * Get all chat messages
+	 * Get all chat messages (thread entries)
 	 */
 	getChatMessages(): Locator {
-		return this.page
-			.locator('[class*="rounded-2xl"]')
-			.filter({ hasText: /.+/ });
+		return this.page.locator('[data-role="user"], [data-role="assistant"]');
 	}
 
 	/**
@@ -79,14 +75,14 @@ export class DesktopMorningLetterPage extends BasePage {
 	 * Get user messages only
 	 */
 	getUserMessages(): Locator {
-		return this.page.locator('[class*="bg-primary"]');
+		return this.page.locator('[data-role="user"]');
 	}
 
 	/**
 	 * Get assistant messages only
 	 */
 	getAssistantMessages(): Locator {
-		return this.page.locator('[class*="bg-muted"]');
+		return this.page.locator('[data-role="assistant"]');
 	}
 
 	/**
@@ -132,6 +128,6 @@ export class DesktopMorningLetterPage extends BasePage {
 	 * Get citations from the last response
 	 */
 	getCitations(): Locator {
-		return this.page.locator('[class*="bg-muted/30"]').getByRole("link");
+		return this.page.locator(".entry-sources").getByRole("link");
 	}
 }

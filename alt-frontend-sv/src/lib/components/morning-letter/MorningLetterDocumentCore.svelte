@@ -4,11 +4,7 @@ import type {
 	MorningLetterDocument,
 	MorningLetterSourceProto,
 } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
-import {
-	orderSections,
-	formatLetterDate,
-	isLetterStale,
-} from "./morning-letter-document";
+import { orderSections, isLetterStale } from "./morning-letter-document";
 import MorningLetterSectionCore from "./MorningLetterSectionCore.svelte";
 
 type Props = {
@@ -20,58 +16,125 @@ type Props = {
 let { letter, sources, sourcesLoading }: Props = $props();
 
 const orderedSections = $derived(orderSections(letter.body?.sections ?? []));
-const dateDisplay = $derived(
-	formatLetterDate(letter.targetDate, letter.editionTimezone),
-);
 const stale = $derived(isLetterStale(letter.createdAt, 12));
 </script>
 
-<article class="morning-letter-document">
-	<!-- Header -->
-	<header class="mb-6">
-		<div class="flex items-center gap-3 mb-2">
-			<time class="font-['Source_Sans_3'] text-sm" style="color: var(--text-secondary);" datetime={letter.targetDate}>
-				{dateDisplay}
-			</time>
-
+<article class="letter-document">
+	<!-- Badges (degraded / stale) -->
+	{#if letter.isDegraded || stale}
+		<div class="flex items-center gap-2 mb-3">
 			{#if letter.isDegraded}
-				<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+				<span class="edition-badge edition-badge--degraded">
 					<AlertTriangle class="h-3 w-3" />
 					Degraded
 				</span>
 			{/if}
-
 			{#if stale}
-				<span class="text-xs px-2 py-0.5 rounded" style="background: var(--skeleton-base, #e8e4de); color: var(--text-secondary);">
-					Stale
-				</span>
+				<span class="edition-badge edition-badge--stale">Stale</span>
 			{/if}
 		</div>
+	{/if}
 
-		{#if letter.body?.sourceRecapWindowDays}
-			<p class="text-xs" style="color: var(--text-secondary);">
-				Based on {letter.body.sourceRecapWindowDays}-day recap
-			</p>
-		{/if}
-	</header>
-
-	<!-- Lead paragraph -->
-	{#if letter.body?.lead}
-		<p class="font-['Playfair_Display'] text-lg leading-relaxed mb-8" style="color: var(--text-primary);">
-			{letter.body.lead}
+	<!-- Recap window -->
+	{#if letter.body?.sourceRecapWindowDays}
+		<p class="recap-window">
+			Based on {letter.body.sourceRecapWindowDays}-day recap
 		</p>
 	{/if}
 
+	<!-- Lead paragraph -->
+	{#if letter.body?.lead}
+		<p class="edition-lede">{letter.body.lead}</p>
+	{/if}
+
 	<!-- Sections -->
-	{#each orderedSections as section (section.key)}
-		<MorningLetterSectionCore {section} {sources} {sourcesLoading} />
+	{#each orderedSections as section, index (section.key)}
+		<div class="section-enter" style="--stagger: {index};">
+			<MorningLetterSectionCore {section} {sources} {sourcesLoading} />
+		</div>
 	{/each}
 
 	<!-- Footer -->
-	<footer class="mt-8 pt-4 border-t text-xs" style="border-color: var(--border-color); color: var(--text-secondary);">
+	<footer class="edition-footer">
 		<span>Model: {letter.model}</span>
 		{#if letter.generationRevision > 1}
-			<span class="ml-3">Rev. {letter.generationRevision}</span>
+			<span class="footer-sep">&middot;</span>
+			<span>Rev. {letter.generationRevision}</span>
 		{/if}
 	</footer>
 </article>
+
+<style>
+	.letter-document {
+		max-width: 65ch;
+	}
+
+	.edition-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.15rem 0.5rem;
+
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+
+	.edition-badge--degraded {
+		color: var(--alt-terracotta, #b85450);
+		border: 1px solid var(--alt-terracotta, #b85450);
+	}
+
+	.edition-badge--stale {
+		color: var(--alt-ash, #999);
+		border: 1px solid var(--surface-border, #c8c8c8);
+	}
+
+	.recap-window {
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.65rem;
+		color: var(--alt-ash, #999);
+		margin: 0 0 1rem;
+	}
+
+	.edition-lede {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 1.1rem;
+		line-height: 1.65;
+		color: var(--alt-charcoal, #1a1a1a);
+		margin: 0 0 2rem;
+	}
+
+	.section-enter {
+		opacity: 0;
+		animation: section-in 0.3s ease forwards;
+		animation-delay: calc(var(--stagger) * 60ms);
+	}
+	@keyframes section-in {
+		to { opacity: 1; }
+	}
+
+	.edition-footer {
+		margin-top: 2rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid var(--surface-border, #c8c8c8);
+
+		font-family: var(--font-mono, "IBM Plex Mono", monospace);
+		font-size: 0.65rem;
+		color: var(--alt-ash, #999);
+	}
+
+	.footer-sep {
+		margin: 0 0.35rem;
+		color: var(--surface-border, #c8c8c8);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.section-enter {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>
