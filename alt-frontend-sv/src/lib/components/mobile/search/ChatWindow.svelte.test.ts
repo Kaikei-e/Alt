@@ -3,36 +3,64 @@ import { render } from "vitest-browser-svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ChatWindow from "./ChatWindow.svelte";
 
+// Track typewriter calls
+const mockAdd = vi.fn();
+const mockCancel = vi.fn();
+
+vi.mock("$lib/utils/streamingRenderer", () => ({
+	simulateTypewriterEffect: vi.fn(() => ({
+		add: mockAdd,
+		cancel: mockCancel,
+		getPromise: () => Promise.resolve(),
+	})),
+}));
+
+// Capture streamAugurChat callbacks for manual invocation
+let capturedOnDelta: ((text: string) => void) | undefined;
+let capturedOnComplete: ((result: { answer: string; citations: never[] }) => void) | undefined;
+
 vi.mock("$lib/connect", () => ({
 	createClientTransport: vi.fn(() => ({})),
-	streamAugurChat: vi.fn(() => new AbortController()),
+	streamAugurChat: vi.fn(
+		(
+			_transport: unknown,
+			_options: unknown,
+			onDelta?: (text: string) => void,
+			_onThinking?: unknown,
+			_onMeta?: unknown,
+			onComplete?: (result: { answer: string; citations: never[] }) => void,
+		) => {
+			capturedOnDelta = onDelta;
+			capturedOnComplete = onComplete;
+			return new AbortController();
+		},
+	),
 }));
 
 describe("ChatWindow", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		// Mock fetch for browser environment
+		capturedOnDelta = undefined;
+		capturedOnComplete = undefined;
 		vi.stubGlobal("fetch", vi.fn());
 	});
 
 	it("renders correctly", async () => {
 		render(ChatWindow);
 		await expect
-			.element(page.getByPlaceholder("Type your message..."))
+			.element(page.getByPlaceholder("What would you like to know?"))
 			.toBeInTheDocument();
 	});
 
 	it("sends a message and displays user message", async () => {
 		render(ChatWindow);
-		const input = page.getByPlaceholder("Type your message...");
-		const button = page.getByRole("button", { name: /send/i });
+		const input = page.getByPlaceholder("What would you like to know?");
+		const button = page.getByRole("button", { name: /submit/i });
 
 		await input.fill("Hello Augur");
 		await button.click();
 
-		// Input should be cleared
 		await expect.element(input).toHaveValue("");
-		// User message should be displayed
 		await expect.element(page.getByText("Hello Augur")).toBeInTheDocument();
 	});
 
@@ -45,5 +73,62 @@ describe("ChatWindow", () => {
 		});
 
 		await expect.element(page.getByText("What changed?")).toBeInTheDocument();
+	});
+});
+
+describe("ChatWindow typewriter streaming", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		capturedOnDelta = undefined;
+		capturedOnComplete = undefined;
+		vi.stubGlobal("fetch", vi.fn());
+	});
+
+	it("uses simulateTypewriterEffect when streaming begins", async () => {
+		const { simulateTypewriterEffect } = await import(
+			"$lib/utils/streamingRenderer"
+		);
+		render(ChatWindow);
+
+		const input = page.getByPlaceholder("What would you like to know?");
+		const button = page.getByRole("button", { name: /submit/i });
+
+		await input.fill("Test question");
+		await button.click();
+
+		expect(simulateTypewriterEffect).toHaveBeenCalled();
+	});
+
+	it("feeds delta text to typewriter.add instead of direct state update", async () => {
+		render(ChatWindow);
+
+		const input = page.getByPlaceholder("What would you like to know?");
+		const button = page.getByRole("button", { name: /submit/i });
+
+		await input.fill("Test question");
+		await button.click();
+
+		// Simulate a delta arriving from the stream
+		expect(capturedOnDelta).toBeDefined();
+		capturedOnDelta!("Hello ");
+		capturedOnDelta!("world");
+
+		expect(mockAdd).toHaveBeenCalledWith("Hello ");
+		expect(mockAdd).toHaveBeenCalledWith("world");
+	});
+
+	it("cancels typewriter on stream completion", async () => {
+		render(ChatWindow);
+
+		const input = page.getByPlaceholder("What would you like to know?");
+		const button = page.getByRole("button", { name: /submit/i });
+
+		await input.fill("Test question");
+		await button.click();
+
+		expect(capturedOnComplete).toBeDefined();
+		capturedOnComplete!({ answer: "Full answer", citations: [] });
+
+		expect(mockCancel).toHaveBeenCalled();
 	});
 });

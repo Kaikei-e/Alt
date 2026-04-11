@@ -8,6 +8,7 @@ import {
 	type AugurCitation,
 } from "$lib/connect";
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
+import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
 import augurAvatar from "$lib/assets/augur-chat.webp";
 
 type Citation = {
@@ -115,13 +116,23 @@ const handleSubmit = async (messageOverride?: string) => {
 	messages = [...messages, { role: "assistant", content: "" }];
 	const currentAssistantMessageIndex = messages.length - 1;
 
-	// Throttling state
 	let bufferedContent = "";
-	let lastUpdateTime = 0;
-	const THROTTLE_MS = 50;
-
 	progressStage = "";
 	userScrolledUp = false;
+
+	// Typewriter effect: render characters one-by-one at 10ms intervals
+	const typewriter = simulateTypewriterEffect(
+		(char) => {
+			bufferedContent += char;
+			const currentMsg = messages[currentAssistantMessageIndex];
+			messages[currentAssistantMessageIndex] = {
+				...currentMsg,
+				content: bufferedContent,
+			};
+			throttledScrollToBottom();
+		},
+		{ tick, delay: 10 },
+	);
 
 	try {
 		const transport = createClientTransport();
@@ -135,22 +146,11 @@ const handleSubmit = async (messageOverride?: string) => {
 		streamAugurChat(
 			transport,
 			{ messages: chatMessages },
-			// onDelta: text chunks
+			// onDelta: feed chunks to typewriter
 			(text) => {
 				progressStage = "";
-				bufferedContent += text;
 				isProvisional = true;
-
-				const now = Date.now();
-				if (now - lastUpdateTime > THROTTLE_MS) {
-					const currentMsg = messages[currentAssistantMessageIndex];
-					messages[currentAssistantMessageIndex] = {
-						...currentMsg,
-						content: bufferedContent,
-					};
-					lastUpdateTime = now;
-					throttledScrollToBottom();
-				}
+				typewriter.add(text);
 			},
 			// onThinking: update live status text
 			(text) => {
@@ -170,9 +170,9 @@ const handleSubmit = async (messageOverride?: string) => {
 					citations: cleanCitations,
 				};
 			},
-			// onComplete: final result
+			// onComplete: cancel typewriter, set final content
 			(result) => {
-				// Ensure final content is rendered
+				typewriter.cancel();
 				const currentMsg = messages[currentAssistantMessageIndex];
 				messages[currentAssistantMessageIndex] = {
 					...currentMsg,
@@ -189,8 +189,9 @@ const handleSubmit = async (messageOverride?: string) => {
 				isProvisional = false;
 				scrollToBottom();
 			},
-			// onFallback: insufficient evidence
+			// onFallback: cancel typewriter, show fallback
 			(code) => {
+				typewriter.cancel();
 				const currentMsg = messages[currentAssistantMessageIndex];
 				messages[currentAssistantMessageIndex] = {
 					...currentMsg,
@@ -202,8 +203,9 @@ const handleSubmit = async (messageOverride?: string) => {
 				isProvisional = false;
 				scrollToBottom();
 			},
-			// onError: error handling
+			// onError: cancel typewriter, show error
 			(error) => {
+				typewriter.cancel();
 				console.error("Chat error:", error);
 				const currentMsg = messages[currentAssistantMessageIndex];
 				messages[currentAssistantMessageIndex] = {
@@ -223,6 +225,7 @@ const handleSubmit = async (messageOverride?: string) => {
 			},
 		);
 	} catch (error) {
+		typewriter.cancel();
 		console.error("Chat error:", error);
 		const currentMsg = messages[currentAssistantMessageIndex];
 		messages[currentAssistantMessageIndex] = {
