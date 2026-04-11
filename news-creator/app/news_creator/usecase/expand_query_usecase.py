@@ -24,6 +24,9 @@ EXPAND_QUERY_PROMPT_TEMPLATE = """<task>Generate search query variations for a k
 </rules>
 <input>{query}</input>
 Japanese({japanese_count}):
+1.
+English({english_count}):
+1.
 """
 
 # Prompt template for multi-turn expansion with coreference resolution
@@ -63,6 +66,9 @@ assistant: [TOPIC_B] には複数の選択肢があります。
 </conversation>
 <input>{query}</input>
 Japanese({japanese_count}):
+1.
+English({english_count}):
+1.
 """
 
 

@@ -77,9 +77,10 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 		Limit:            int64(limit),
 		ShowRankingScore: true,
 	}
-	if containsCJK(query) {
-		searchRequest.Locales = []string{"jpn"}
-	}
+	// Locales intentionally omitted: let Meilisearch match across all configured
+	// locales (jpn + eng). Previously CJK queries were restricted to jpn-only,
+	// which prevented Japanese queries from matching English article content
+	// (e.g., "ヴァンス副大統領" could not find "JD Vance" articles).
 
 	result, err := d.index.Search(query, searchRequest)
 	if err != nil {
@@ -111,9 +112,6 @@ func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string,
 		Query:            query,
 		Limit:            int64(limit),
 		ShowRankingScore: true,
-	}
-	if containsCJK(query) {
-		searchRequest.Locales = []string{"jpn"}
 	}
 
 	// Only add filter if it's not empty

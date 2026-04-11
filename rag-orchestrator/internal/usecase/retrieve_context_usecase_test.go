@@ -417,8 +417,8 @@ func TestRetrieveContext_BM25AndExpandedBothFail_StillSucceeds(t *testing.T) {
 		return len(texts) > 0 && texts[0] != "test query"
 	})).Return(nil, fmt.Errorf("embedder unavailable"))
 
-	// BM25 search FAILS
-	mockBM25.On("SearchBM25", mock.Anything, "test query", 50).Return(nil, fmt.Errorf("meilisearch down"))
+	// BM25 search FAILS (any query — expanded queries also searched now)
+	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("meilisearch down"))
 
 	// Original vector search succeeds
 	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{

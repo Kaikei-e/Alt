@@ -317,6 +317,35 @@ async def test_expand_query_rejects_wrapped_labels_and_preamble():
     assert len(expanded_queries) == 3
 
 
+class TestPromptHasBilingualOutputLabels:
+    """Prompt templates must include both Japanese and English output labels
+    to prevent small models from stopping after the Japanese section."""
+
+    def test_single_turn_template_has_english_label(self):
+        assert "English(" in EXPAND_QUERY_PROMPT_TEMPLATE, (
+            "Single-turn template must contain 'English(' label to prompt bilingual output"
+        )
+
+    def test_multi_turn_template_has_english_label(self):
+        assert "English(" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
+            "Multi-turn template must contain 'English(' label to prompt bilingual output"
+        )
+
+    def test_single_turn_english_label_comes_after_japanese(self):
+        jp_pos = EXPAND_QUERY_PROMPT_TEMPLATE.find("Japanese(")
+        en_pos = EXPAND_QUERY_PROMPT_TEMPLATE.find("English(")
+        assert jp_pos < en_pos, (
+            "English label must come after Japanese label in single-turn template"
+        )
+
+    def test_multi_turn_english_label_comes_after_japanese(self):
+        jp_pos = EXPAND_QUERY_WITH_HISTORY_TEMPLATE.find("Japanese(")
+        en_pos = EXPAND_QUERY_WITH_HISTORY_TEMPLATE.find("English(")
+        assert jp_pos < en_pos, (
+            "English label must come after Japanese label in multi-turn template"
+        )
+
+
 class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
     """The multi-turn few-shot example must not contain domain-specific content
     that Gemma 4 (12B) copies verbatim instead of learning the pattern."""

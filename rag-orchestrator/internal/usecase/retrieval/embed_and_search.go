@@ -44,23 +44,39 @@ func EmbedAndSearch(
 		})
 	}
 
-	// goroutine E: BM25 Search
+	// goroutine E: BM25 Search (original + expanded queries for cross-language matching)
 	if hybridEnabled && bm25Searcher != nil {
 		g.Go(func() error {
 			bm25Start := time.Now()
-			results, err := bm25Searcher.SearchBM25(gctx, sc.Query, bm25Limit)
-			bm25Duration := time.Since(bm25Start)
-			if err != nil {
-				logger.Warn("hybrid_bm25_search_failed",
-					slog.String("retrieval_id", sc.RetrievalID),
-					slog.String("error", err.Error()),
-					slog.Int64("duration_ms", bm25Duration.Milliseconds()))
-				return nil // non-fatal
+
+			// Build deduplicated query list: original + expanded (for cross-language BM25)
+			queries := bm25Queries(sc.Query, sc.AdditionalQueries)
+
+			var allResults []domain.BM25SearchResult
+			seen := make(map[string]struct{})
+			for _, q := range queries {
+				results, err := bm25Searcher.SearchBM25(gctx, q, bm25Limit)
+				if err != nil {
+					logger.Warn("hybrid_bm25_search_failed",
+						slog.String("retrieval_id", sc.RetrievalID),
+						slog.String("query", q),
+						slog.String("error", err.Error()))
+					continue // non-fatal per query
+				}
+				for _, r := range results {
+					if _, exists := seen[r.ArticleID]; !exists {
+						seen[r.ArticleID] = struct{}{}
+						allResults = append(allResults, r)
+					}
+				}
 			}
-			sc.BM25Results = results
+			sc.BM25Results = allResults
+
+			bm25Duration := time.Since(bm25Start)
 			logger.Info("hybrid_bm25_search_completed",
 				slog.String("retrieval_id", sc.RetrievalID),
-				slog.Int("bm25_hits", len(results)),
+				slog.Int("bm25_queries", len(queries)),
+				slog.Int("bm25_hits", len(allResults)),
 				slog.Int64("duration_ms", bm25Duration.Milliseconds()))
 			return nil
 		})
@@ -90,6 +106,21 @@ func EmbedAndSearch(
 	}
 
 	return g.Wait()
+}
+
+// bm25Queries builds a deduplicated list of queries for BM25 search.
+// Includes the original query plus expanded/translated queries for cross-language matching.
+func bm25Queries(original string, additionalQueries []string) []string {
+	queries := make([]string, 0, 1+len(additionalQueries))
+	queries = append(queries, original)
+	seen := map[string]struct{}{original: {}}
+	for _, q := range additionalQueries {
+		if _, exists := seen[q]; !exists {
+			seen[q] = struct{}{}
+			queries = append(queries, q)
+		}
+	}
+	return queries
 }
 
 func buildAdditionalQueries(expandedQueries, tagQueries []string) []string {
