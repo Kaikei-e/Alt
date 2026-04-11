@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 
 import pytest
@@ -31,14 +30,7 @@ class FakeLLM:
 
 
 def _normalize_response(claim: str, confidence: float = 0.9, data_type: str = "statistic") -> str:
-    return json.dumps(
-        {
-            "reasoning": "normalized",
-            "claim": claim,
-            "confidence": confidence,
-            "data_type": data_type,
-        }
-    )
+    return f"<facts><fact><claim>{claim}</claim><confidence>{confidence}</confidence><data_type>{data_type}</data_type></fact></facts>"
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +72,7 @@ async def test_converts_quote_to_fact() -> None:
 @pytest.mark.asyncio
 async def test_failure_preserves_quote_as_fact() -> None:
     """LLM fails → quote text becomes claim with confidence=0.3."""
-    llm = FakeLLM("invalid json")
+    llm = FakeLLM("invalid xml no tags")
     node = FactNormalizerNode(llm, FakeSettings())
 
     state = {
@@ -191,7 +183,7 @@ async def test_llm_success_sets_is_fallback_false() -> None:
 @pytest.mark.asyncio
 async def test_llm_failure_sets_is_fallback_true() -> None:
     """LLM failure → is_fallback=True, confidence=0.3."""
-    llm = FakeLLM("not json at all")
+    llm = FakeLLM("not xml at all")
     node = FactNormalizerNode(llm, FakeSettings())
 
     state = {
@@ -219,9 +211,9 @@ async def test_llm_empty_response_produces_fallback() -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_malformed_json_produces_fallback() -> None:
-    """LLM returns truncated / malformed JSON → fallback fact."""
-    llm = FakeLLM('{"claim": "partial json')  # truncated
+async def test_llm_malformed_xml_produces_fallback() -> None:
+    """LLM returns truncated / malformed XML → fallback fact."""
+    llm = FakeLLM("<facts><fact><claim>partial")  # truncated
     node = FactNormalizerNode(llm, FakeSettings())
 
     state = {
@@ -305,7 +297,7 @@ def test_fact_normalizer_output_tiny_schema_has_no_reasoning() -> None:
 async def test_selected_quotes_nonempty_never_returns_empty_facts() -> None:
     """If selected_quotes is non-empty, extracted_facts must be non-empty (fallback guarantees)."""
     # Even with complete LLM failure, every quote produces a fallback fact
-    llm = FakeLLM("totally broken")
+    llm = FakeLLM("totally broken no xml")
     node = FactNormalizerNode(llm, FakeSettings())
 
     state = {
@@ -316,3 +308,84 @@ async def test_selected_quotes_nonempty_never_returns_empty_facts() -> None:
     }
     result = await node(state)
     assert len(result["extracted_facts"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# XML DSL specific tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_no_format_kwarg_passed_to_llm() -> None:
+    """FactNormalizer must NOT pass format kwarg (XML DSL mode)."""
+
+    class CaptureLLM:
+        def __init__(self) -> None:
+            self.kwargs_list: list[dict] = []
+
+        async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
+            self.kwargs_list.append(kwargs)
+            return LLMResponse(text=_normalize_response("fact", 0.9, "statistic"), model="fake")
+
+    llm = CaptureLLM()
+    node = FactNormalizerNode(llm, FakeSettings())
+    await node({"selected_quotes": [{"text": "q", "source_id": "art-1", "source_title": "T"}]})
+
+    assert len(llm.kwargs_list) >= 1
+    assert "format" not in llm.kwargs_list[0]
+
+
+@pytest.mark.asyncio
+async def test_xml_with_thought_block_succeeds() -> None:
+    """Think block mixed in with XML should still parse successfully."""
+    xml_with_think = "<think>\nLet me analyze...\n</think>\n" + _normalize_response("GDP grew 3%", 0.95, "statistic")
+    llm = FakeLLM(xml_with_think)
+    node = FactNormalizerNode(llm, FakeSettings())
+
+    state = {"selected_quotes": [{"text": "GDP grew 3%", "source_id": "art-1", "source_title": "Economy"}]}
+    result = await node(state)
+    assert result["extracted_facts"][0]["claim"] == "GDP grew 3%"
+    assert result["extracted_facts"][0]["is_fallback"] is False
+
+
+@pytest.mark.asyncio
+async def test_confidence_non_numeric_defaults_to_fallback() -> None:
+    """Non-numeric confidence in XML → treated as parse failure → fallback."""
+    xml = "<facts><fact><claim>a claim</claim><confidence>high</confidence><data_type>quote</data_type></fact></facts>"
+    llm = FakeLLM(xml)
+    node = FactNormalizerNode(llm, FakeSettings())
+
+    state = {"selected_quotes": [{"text": "a claim", "source_id": "art-1", "source_title": "T"}]}
+    result = await node(state)
+    fact = result["extracted_facts"][0]
+    # confidence "high" → 0.3 (parsed by normalizer), data_type valid → not fallback
+    assert fact["confidence"] == 0.3
+    assert fact["is_fallback"] is False
+
+
+@pytest.mark.asyncio
+async def test_data_type_invalid_defaults_to_quote() -> None:
+    """Invalid data_type enum value → defaults to 'quote'."""
+    xml = "<facts><fact><claim>a claim</claim><confidence>0.8</confidence><data_type>magic</data_type></fact></facts>"
+    llm = FakeLLM(xml)
+    node = FactNormalizerNode(llm, FakeSettings())
+
+    state = {"selected_quotes": [{"text": "a claim", "source_id": "art-1", "source_title": "T"}]}
+    result = await node(state)
+    fact = result["extracted_facts"][0]
+    assert fact["data_type"] == "quote"
+    assert fact["is_fallback"] is False
+
+
+@pytest.mark.asyncio
+async def test_claim_missing_triggers_fallback() -> None:
+    """Missing claim in XML → XmlParseError → fallback fact."""
+    xml = "<facts><fact><confidence>0.9</confidence><data_type>statistic</data_type></fact></facts>"
+    llm = FakeLLM(xml)
+    node = FactNormalizerNode(llm, FakeSettings())
+
+    state = {"selected_quotes": [{"text": "Original quote text", "source_id": "art-1", "source_title": "T"}]}
+    result = await node(state)
+    fact = result["extracted_facts"][0]
+    assert fact["is_fallback"] is True
+    assert fact["claim"] == "Original quote text"

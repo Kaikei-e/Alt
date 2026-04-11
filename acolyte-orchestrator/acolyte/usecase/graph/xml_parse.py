@@ -108,7 +108,9 @@ def parse_xmlish_block(text: str, root_tag: str) -> ET.Element:
     # Apply repairs and retry
     repaired = _repair_xml(block)
     try:
-        return ET.fromstring(repaired)  # noqa: S314
+        element = ET.fromstring(repaired)  # noqa: S314
+        logger.info("xml_parse_repaired", root_tag=root_tag)
+        return element
     except ET.ParseError as exc:
         raise XmlParseError(f"XML parse failed after repair: {exc}") from exc
 
@@ -202,6 +204,33 @@ def normalize_section_plan_output(root: ET.Element) -> dict:
     return {"reasoning": reasoning, "claims": claims}
 
 
+# Valid data types for FactNormalizer
+_VALID_DATA_TYPES = {"statistic", "date", "quote", "trend", "comparison"}
+
+
+def normalize_fact_output(root: ET.Element) -> dict:
+    """Convert <facts> XML to FactNormalizerOutput-shaped dict."""
+    fact = root.find("fact")
+    if fact is None:
+        raise XmlParseError("No <fact> element in <facts> block")
+
+    claim = _text(fact.find("claim"))
+    if not claim:
+        raise XmlParseError("Empty <claim> in <fact>")
+
+    confidence_text = _text(fact.find("confidence"), "0.5")
+    try:
+        confidence = float(confidence_text)
+    except ValueError:
+        confidence = 0.3
+
+    data_type = _text(fact.find("data_type"), "quote")
+    if data_type not in _VALID_DATA_TYPES:
+        data_type = "quote"
+
+    return {"claim": claim, "confidence": confidence, "data_type": data_type}
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -234,7 +263,9 @@ async def generate_xml_validated[T: "BaseModel"](
             response = await llm.generate(prompt, **llm_kwargs)
             element = parse_xmlish_block(response.text, root_tag)
             parsed = normalizer(element)
-            return adapter.validate_python(parsed)
+            result = adapter.validate_python(parsed)
+            logger.info("xml_parse_success", root_tag=root_tag, attempt=attempt + 1)
+            return result
         except (XmlParseError, ET.ParseError) as exc:
             last_error = exc
             # Truncation detection: closing tag missing + near budget limit
@@ -272,7 +303,12 @@ async def generate_xml_validated[T: "BaseModel"](
             )
 
     if fallback is not None:
-        logger.info("Using fallback after XML parse failures", model=model_cls.__name__)
+        logger.warning(
+            "xml_parse_exhausted",
+            root_tag=root_tag,
+            attempts=1 + retries,
+            error=str(last_error),
+        )
         return fallback
 
     raise ValueError(f"XML parse/validation failed after {1 + retries} attempts: {last_error}")

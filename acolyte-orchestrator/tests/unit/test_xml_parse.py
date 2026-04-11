@@ -13,6 +13,7 @@ from acolyte.usecase.graph.xml_parse import (
     extract_tag_block,
     generate_xml_validated,
     normalize_critic_output,
+    normalize_fact_output,
     normalize_plan_output,
     normalize_section_plan_output,
     parse_xmlish_block,
@@ -251,6 +252,68 @@ class TestNormalizeSectionPlanOutput:
         elem = ET.fromstring(xml)
         result = normalize_section_plan_output(elem)
         assert len(result["claims"]) == 2
+
+
+class TestNormalizeFactOutput:
+    def test_basic_fact(self):
+        xml = "<facts><fact><claim>GDP grew 3%</claim><confidence>0.9</confidence><data_type>statistic</data_type></fact></facts>"
+        elem = ET.fromstring(xml)
+        result = normalize_fact_output(elem)
+        assert result["claim"] == "GDP grew 3%"
+        assert result["confidence"] == 0.9
+        assert result["data_type"] == "statistic"
+
+    def test_confidence_non_numeric_defaults_0_3(self):
+        xml = "<facts><fact><claim>a claim</claim><confidence>high</confidence><data_type>quote</data_type></fact></facts>"
+        elem = ET.fromstring(xml)
+        result = normalize_fact_output(elem)
+        assert result["confidence"] == 0.3
+
+    def test_data_type_invalid_defaults_quote(self):
+        xml = "<facts><fact><claim>a claim</claim><confidence>0.8</confidence><data_type>unknown_type</data_type></fact></facts>"
+        elem = ET.fromstring(xml)
+        result = normalize_fact_output(elem)
+        assert result["data_type"] == "quote"
+
+    def test_missing_claim_raises(self):
+        xml = "<facts><fact><confidence>0.9</confidence><data_type>statistic</data_type></fact></facts>"
+        elem = ET.fromstring(xml)
+        with pytest.raises(XmlParseError):
+            normalize_fact_output(elem)
+
+    def test_empty_claim_raises(self):
+        xml = "<facts><fact><claim></claim><confidence>0.9</confidence><data_type>statistic</data_type></fact></facts>"
+        elem = ET.fromstring(xml)
+        with pytest.raises(XmlParseError):
+            normalize_fact_output(elem)
+
+    def test_multiple_facts_takes_first(self):
+        xml = """<facts>
+          <fact><claim>first</claim><confidence>0.9</confidence><data_type>statistic</data_type></fact>
+          <fact><claim>second</claim><confidence>0.5</confidence><data_type>quote</data_type></fact>
+        </facts>"""
+        elem = ET.fromstring(xml)
+        result = normalize_fact_output(elem)
+        assert result["claim"] == "first"
+        assert result["confidence"] == 0.9
+
+    def test_no_fact_element_raises(self):
+        xml = "<facts></facts>"
+        elem = ET.fromstring(xml)
+        with pytest.raises(XmlParseError):
+            normalize_fact_output(elem)
+
+    def test_missing_confidence_defaults_0_5(self):
+        xml = "<facts><fact><claim>a claim</claim><data_type>quote</data_type></fact></facts>"
+        elem = ET.fromstring(xml)
+        result = normalize_fact_output(elem)
+        assert result["confidence"] == 0.5
+
+    def test_missing_data_type_defaults_quote(self):
+        xml = "<facts><fact><claim>a claim</claim><confidence>0.7</confidence></fact></facts>"
+        elem = ET.fromstring(xml)
+        result = normalize_fact_output(elem)
+        assert result["data_type"] == "quote"
 
 
 # ---------------------------------------------------------------------------

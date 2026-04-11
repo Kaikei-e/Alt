@@ -144,7 +144,10 @@ async def test_checkpoint_thread_id_isolation() -> None:
 
 class _NoopLLM:
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
-        return LLMResponse(text='{"claim":"normalized","confidence":0.9,"data_type":"quote"}', model="fake")
+        return LLMResponse(
+            text="<facts><fact><claim>normalized</claim><confidence>0.9</confidence><data_type>quote</data_type></fact></facts>",
+            model="fake",
+        )
 
 
 @pytest.mark.asyncio

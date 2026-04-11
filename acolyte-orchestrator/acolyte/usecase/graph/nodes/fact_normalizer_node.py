@@ -17,8 +17,8 @@ import structlog
 
 from acolyte.domain.quote_selection import FactNormalizerOutput
 from acolyte.port.llm_provider import LLMMode
-from acolyte.usecase.graph.llm_parse import generate_validated
 from acolyte.usecase.graph.state import ReportGenerationState
+from acolyte.usecase.graph.xml_parse import generate_xml_validated, normalize_fact_output
 
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
@@ -30,11 +30,16 @@ _NORMALIZE_PROMPT = """Normalize one quote into one atomic fact.
 Quote: "{text}"
 Source: {source_title}
 
-Return JSON with exactly these keys:
-- claim
-- confidence
-- data_type  # statistic|date|quote|trend|comparison
-"""
+Wrap your response in <facts> tags:
+<facts>
+  <fact>
+    <claim>atomic factual claim from the quote</claim>
+    <confidence>0.0 to 1.0</confidence>
+    <data_type>statistic|date|quote|trend|comparison</data_type>
+  </fact>
+</facts>
+
+Output ONLY the <facts> block."""
 
 
 class _FactNormalizerConfig(Protocol):
@@ -185,18 +190,27 @@ class FactNormalizerNode:
             )
 
             fallback_obj = FactNormalizerOutput(claim=quote.get("text", "")[:200], confidence=0.3, data_type="quote")
-            result = await generate_validated(
+            result = await generate_xml_validated(
                 self._llm,
                 prompt,
                 FactNormalizerOutput,
+                root_tag="facts",
+                normalizer=normalize_fact_output,
                 temperature=0,
                 num_predict=self._fact_num_predict,
                 fallback=fallback_obj,
                 mode=LLMMode.STRUCTURED,
             )
 
-            # Sentinel identity check: generate_validated returns fallback_obj as-is
+            # Sentinel identity check: generate_xml_validated returns fallback_obj as-is
             is_fallback = result is fallback_obj
+
+            logger.info(
+                "fact_normalized",
+                source_id=quote.get("source_id", ""),
+                is_fallback=is_fallback,
+                data_type=result.data_type,
+            )
 
             return {
                 "claim": result.claim,
