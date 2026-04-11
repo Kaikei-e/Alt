@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from acolyte.domain.source_map import SourceMap
 from acolyte.port.llm_provider import LLMMode
 
 if TYPE_CHECKING:
@@ -75,12 +76,24 @@ class CuratorNode:
             else:
                 curated_flat = evidence[: self._max_evidence]
 
+        # Build source map from all curated evidence
+        source_map = SourceMap()
+        for item in curated_flat:
+            source_map.register(
+                source_id=item.get("id", ""),
+                title=item.get("title", ""),
+                publisher=item.get("publisher", ""),
+                url=item.get("url", ""),
+                source_type=item.get("type", "article"),
+            )
+
         logger.info(
             "Curator completed",
             sections_curated=len(curated_by_section),
             total_curated=len(curated_flat),
+            source_map_size=len(source_map.all_entries()),
         )
-        return {"curated_by_section": curated_by_section, "curated": curated_flat}
+        return {"curated_by_section": curated_by_section, "curated": curated_flat, "source_map": source_map.to_dict()}
 
     async def _curate_with_llm(self, section_evidence: list[dict], topic: str, section_title: str) -> list[dict]:
         """Use LLM to select top evidence items for a section."""

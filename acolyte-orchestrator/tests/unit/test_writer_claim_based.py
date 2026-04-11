@@ -447,9 +447,9 @@ async def test_writer_conclusion_prompt_excludes_raw_evidence() -> None:
 
 
 @pytest.mark.asyncio
-async def test_writer_uses_es_prompt_for_executive_summary_role() -> None:
-    """Section with section_role='executive_summary' uses the ES-specific prompt."""
-    llm = FakeLLM("Executive summary content.")
+async def test_writer_es_renders_claims_deterministically() -> None:
+    """Section with section_role='executive_summary' uses deterministic renderer, not LLM."""
+    llm = FakeLLM("This should not appear.")
     node = WriterNode(llm)
 
     state = {
@@ -475,18 +475,17 @@ async def test_writer_uses_es_prompt_for_executive_summary_role() -> None:
     }
 
     result = await node(state)
-    assert result["sections"]["executive_summary"] == "Executive summary content."
-    assert len(llm.prompts) == 1
-    prompt = llm.prompts[0]
-    # ES prompt should contain ES-specific instructions
-    assert "要旨" in prompt or "主要な発見" in prompt
-    # Should NOT contain the standard claim-based header
-    assert "計画済みクレーム" not in prompt
+    es_body = result["sections"]["executive_summary"]
+    # Rendered from claim, not LLM output
+    assert "AI market is consolidating rapidly" in es_body
+    assert "20%" in es_body
+    # No LLM calls
+    assert len(llm.prompts) == 0
 
 
 @pytest.mark.asyncio
-async def test_writer_es_prompt_excludes_raw_evidence() -> None:
-    """ES prompt should not reference raw evidence articles."""
+async def test_writer_es_uses_deterministic_renderer() -> None:
+    """ES uses deterministic renderer — no LLM calls."""
     llm = FakeLLM("ES text.")
     node = WriterNode(llm)
 
@@ -512,9 +511,11 @@ async def test_writer_es_prompt_excludes_raw_evidence() -> None:
         "sections": {},
     }
 
-    await node(state)
-    prompt = llm.prompts[0]
-    assert "参考記事" not in prompt
+    result = await node(state)
+    # ES should NOT call the LLM (deterministic renderer)
+    assert len(llm.prompts) == 0
+    # ES body should be non-empty (rendered from claims)
+    assert result["sections"]["executive_summary"]
 
 
 # --- Contract field injection tests (Issue 5) ---

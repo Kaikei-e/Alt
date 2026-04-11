@@ -37,8 +37,10 @@ class FactNormalizerOutput(BaseModel):
 
     Tiny schema per exec3.md Issue 2.
     data_type constrained to Literal enum for stronger schema enforcement.
+    confidence uses discrete bands (low/medium/high) instead of float
+    for generation stability with local reasoning models.
     """
 
     claim: str
-    confidence: float = 0.5
+    confidence: Literal["low", "medium", "high"] = "medium"
     data_type: Literal["statistic", "date", "quote", "trend", "comparison"] = "quote"

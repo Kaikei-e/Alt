@@ -34,7 +34,7 @@ Wrap your response in <facts> tags:
 <facts>
   <fact>
     <claim>atomic factual claim from the quote</claim>
-    <confidence>0.0 to 1.0</confidence>
+    <confidence>low|medium|high</confidence>
     <data_type>statistic|date|quote|trend|comparison</data_type>
   </fact>
 </facts>
@@ -55,7 +55,7 @@ def _fallback_fact(quote: dict) -> dict:
         "claim": quote.get("text", "")[:200],
         "source_id": quote.get("source_id", ""),
         "quote": quote.get("text", "")[:120],
-        "confidence": 0.3,
+        "confidence": "low",
         "data_type": "quote",
         "is_fallback": True,
     }
@@ -189,7 +189,7 @@ class FactNormalizerNode:
                 source_title=quote.get("source_title", ""),
             )
 
-            fallback_obj = FactNormalizerOutput(claim=quote.get("text", "")[:200], confidence=0.3, data_type="quote")
+            fallback_obj = FactNormalizerOutput(claim=quote.get("text", "")[:200], confidence="low", data_type="quote")
             result = await generate_xml_validated(
                 self._llm,
                 prompt,

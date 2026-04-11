@@ -175,8 +175,12 @@ async def test_structured_mode_uses_chat_endpoint():
 
 
 @pytest.mark.asyncio
-async def test_longform_mode_uses_generate_endpoint():
-    """mode=LONGFORM routes to /api/generate with temperature=0.7."""
+async def test_longform_mode_uses_chat_endpoint():
+    """mode=LONGFORM routes to /api/chat with think=false (top-level) to suppress thinking exhaustion.
+
+    Ollama /api/generate ignores think=false for Qwen3.5 (#14793).
+    /api/chat with top-level think=false works correctly for all models.
+    """
     from acolyte.port.llm_provider import LLMMode
 
     captured_requests: list[httpx.Request] = []
@@ -186,7 +190,7 @@ async def test_longform_mode_uses_generate_endpoint():
         return httpx.Response(
             200,
             json={
-                "response": "Generated text.",
+                "message": {"content": "Generated text."},
                 "model": "gemma4:26b",
                 "eval_count": 200,
             },
@@ -195,12 +199,83 @@ async def test_longform_mode_uses_generate_endpoint():
     client = _mock_transport(handler)
     gw = OllamaGateway(client, _make_settings())
 
-    await gw.generate("test", mode=LLMMode.LONGFORM)
+    result = await gw.generate("test", mode=LLMMode.LONGFORM)
 
     assert len(captured_requests) == 1
-    assert "/api/generate" in str(captured_requests[0].url)
+    assert "/api/chat" in str(captured_requests[0].url)
     body = json.loads(captured_requests[0].content)
     assert body["options"]["temperature"] == 0.7
+    # think=false must be top-level, NOT inside options
+    assert body["think"] is False
+    assert "think" not in body.get("options", {})
+    # No format parameter for freetext
+    assert "format" not in body
+    # Messages format
+    assert body["messages"][0]["role"] == "user"
+    assert body["messages"][0]["content"] == "test"
+    assert result.text == "Generated text."
+
+
+@pytest.mark.asyncio
+async def test_longform_think_setting_controls_think_param():
+    """longform_think=True sends think=true for freetext generation."""
+    from acolyte.port.llm_provider import LLMMode
+
+    captured_requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "message": {"content": "Thinking text."},
+                "model": "gemma4:26b",
+                "eval_count": 200,
+            },
+        )
+
+    client = _mock_transport(handler)
+    gw = OllamaGateway(client, _make_settings(longform_think=True))
+
+    await gw.generate("test", mode=LLMMode.LONGFORM)
+
+    body = json.loads(captured_requests[0].content)
+    assert body["think"] is True
+
+
+@pytest.mark.asyncio
+async def test_structured_no_format_uses_chat_freetext():
+    """mode=STRUCTURED without format routes to /api/chat with think=false.
+
+    XML DSL nodes use STRUCTURED mode without format parameter.
+    Must use /api/chat for Qwen3.5 think=false compatibility.
+    """
+    from acolyte.port.llm_provider import LLMMode
+
+    captured_requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "message": {"content": "<plan>test</plan>"},
+                "model": "gemma4:26b",
+                "eval_count": 100,
+            },
+        )
+
+    client = _mock_transport(handler)
+    gw = OllamaGateway(client, _make_settings())
+
+    result = await gw.generate("test", mode=LLMMode.STRUCTURED)
+
+    assert len(captured_requests) == 1
+    assert "/api/chat" in str(captured_requests[0].url)
+    body = json.loads(captured_requests[0].content)
+    assert body["think"] is False
+    assert "format" not in body
+    assert result.text == "<plan>test</plan>"
 
 
 @pytest.mark.asyncio
@@ -293,7 +368,7 @@ async def test_longform_mode_num_predict_from_settings():
         return httpx.Response(
             200,
             json={
-                "response": "Text.",
+                "message": {"content": "Text."},
                 "model": "gemma4:26b",
                 "eval_count": 100,
             },

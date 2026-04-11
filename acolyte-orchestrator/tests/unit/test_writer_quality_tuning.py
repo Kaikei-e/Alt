@@ -92,17 +92,19 @@ async def test_conclusion_paragraph_uses_higher_num_predict() -> None:
 
 
 @pytest.mark.asyncio
-async def test_es_paragraph_uses_shortest_num_predict() -> None:
-    """Executive summary role uses paragraph_num_predict_es from settings."""
+async def test_es_uses_deterministic_renderer_no_llm() -> None:
+    """Executive summary uses deterministic renderer — zero LLM calls."""
     settings = Settings(paragraph_num_predict_es=600)
     llm = FakeLLM()
     node = WriterNode(llm, settings=settings)  # type: ignore[unexpected-keyword]
     state = _make_state(section_key="executive_summary", section_role="executive_summary")
 
-    await node(state)
+    result = await node(state)
 
-    assert len(llm.calls) == 1
-    assert llm.calls[0]["num_predict"] == 600
+    # No LLM calls — ES is rendered deterministically
+    assert len(llm.calls) == 0
+    # Body should be non-empty
+    assert result["sections"]["executive_summary"]
 
 
 # --- Prompt improvements ---

@@ -10,6 +10,7 @@ import pytest
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.xml_parse import (
     XmlParseError,
+    confidence_to_score,
     extract_tag_block,
     generate_xml_validated,
     normalize_critic_output,
@@ -265,47 +266,70 @@ class TestNormalizeSectionPlanOutput:
 
 
 class TestNormalizeFactOutput:
-    def test_basic_fact(self):
-        xml = "<facts><fact><claim>GDP grew 3%</claim><confidence>0.9</confidence><data_type>statistic</data_type></fact></facts>"
+    def test_basic_fact_with_confidence_band(self):
+        xml = "<facts><fact><claim>GDP grew 3%</claim><confidence>high</confidence><data_type>statistic</data_type></fact></facts>"
         elem = ET.fromstring(xml)
         result = normalize_fact_output(elem)
         assert result["claim"] == "GDP grew 3%"
-        assert result["confidence"] == 0.9
+        assert result["confidence"] == "high"
         assert result["data_type"] == "statistic"
 
-    def test_confidence_non_numeric_defaults_0_3(self):
-        xml = "<facts><fact><claim>a claim</claim><confidence>high</confidence><data_type>quote</data_type></fact></facts>"
+    def test_confidence_band_low(self):
+        xml = (
+            "<facts><fact><claim>a claim</claim><confidence>low</confidence><data_type>quote</data_type></fact></facts>"
+        )
         elem = ET.fromstring(xml)
         result = normalize_fact_output(elem)
-        assert result["confidence"] == 0.3
+        assert result["confidence"] == "low"
+
+    def test_confidence_band_medium(self):
+        xml = "<facts><fact><claim>a claim</claim><confidence>medium</confidence><data_type>quote</data_type></fact></facts>"
+        elem = ET.fromstring(xml)
+        result = normalize_fact_output(elem)
+        assert result["confidence"] == "medium"
+
+    def test_confidence_invalid_band_defaults_low(self):
+        xml = "<facts><fact><claim>a claim</claim><confidence>unknown</confidence><data_type>quote</data_type></fact></facts>"
+        elem = ET.fromstring(xml)
+        result = normalize_fact_output(elem)
+        assert result["confidence"] == "low"
+
+    def test_confidence_numeric_string_defaults_low(self):
+        """Old-style float confidence falls back to 'low' band."""
+        xml = (
+            "<facts><fact><claim>a claim</claim><confidence>0.9</confidence><data_type>quote</data_type></fact></facts>"
+        )
+        elem = ET.fromstring(xml)
+        result = normalize_fact_output(elem)
+        assert result["confidence"] == "low"
 
     def test_data_type_invalid_defaults_quote(self):
-        xml = "<facts><fact><claim>a claim</claim><confidence>0.8</confidence><data_type>unknown_type</data_type></fact></facts>"
+        xml = "<facts><fact><claim>a claim</claim><confidence>high</confidence><data_type>unknown_type</data_type></fact></facts>"
         elem = ET.fromstring(xml)
         result = normalize_fact_output(elem)
         assert result["data_type"] == "quote"
 
     def test_missing_claim_raises(self):
-        xml = "<facts><fact><confidence>0.9</confidence><data_type>statistic</data_type></fact></facts>"
+        xml = "<facts><fact><confidence>high</confidence><data_type>statistic</data_type></fact></facts>"
         elem = ET.fromstring(xml)
         with pytest.raises(XmlParseError):
             normalize_fact_output(elem)
 
     def test_empty_claim_raises(self):
-        xml = "<facts><fact><claim></claim><confidence>0.9</confidence><data_type>statistic</data_type></fact></facts>"
+        xml = "<facts><fact><claim></claim><confidence>high</confidence><data_type>statistic</data_type></fact></facts>"
         elem = ET.fromstring(xml)
         with pytest.raises(XmlParseError):
             normalize_fact_output(elem)
 
     def test_multiple_facts_takes_first(self):
         xml = """<facts>
-          <fact><claim>first</claim><confidence>0.9</confidence><data_type>statistic</data_type></fact>
-          <fact><claim>second</claim><confidence>0.5</confidence><data_type>quote</data_type></fact>
+          <fact><claim>first</claim><confidence>high</confidence><data_type>statistic</data_type></fact>
+          <fact><claim>second</claim><confidence>medium</confidence><data_type>quote</data_type></fact>
         </facts>"""
         elem = ET.fromstring(xml)
         result = normalize_fact_output(elem)
         assert result["claim"] == "first"
-        assert result["confidence"] == 0.9
+        assert result["confidence"] == "high"
 
     def test_no_fact_element_raises(self):
         xml = "<facts></facts>"
@@ -313,17 +337,31 @@ class TestNormalizeFactOutput:
         with pytest.raises(XmlParseError):
             normalize_fact_output(elem)
 
-    def test_missing_confidence_defaults_0_5(self):
+    def test_missing_confidence_defaults_medium(self):
         xml = "<facts><fact><claim>a claim</claim><data_type>quote</data_type></fact></facts>"
         elem = ET.fromstring(xml)
         result = normalize_fact_output(elem)
-        assert result["confidence"] == 0.5
+        assert result["confidence"] == "medium"
 
     def test_missing_data_type_defaults_quote(self):
-        xml = "<facts><fact><claim>a claim</claim><confidence>0.7</confidence></fact></facts>"
+        xml = "<facts><fact><claim>a claim</claim><confidence>high</confidence></fact></facts>"
         elem = ET.fromstring(xml)
         result = normalize_fact_output(elem)
         assert result["data_type"] == "quote"
+
+
+class TestConfidenceToScore:
+    def test_low(self):
+        assert confidence_to_score("low") == 0.3
+
+    def test_medium(self):
+        assert confidence_to_score("medium") == 0.6
+
+    def test_high(self):
+        assert confidence_to_score("high") == 0.9
+
+    def test_unknown_defaults_low(self):
+        assert confidence_to_score("unknown") == 0.3
 
 
 # ---------------------------------------------------------------------------

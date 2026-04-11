@@ -44,21 +44,26 @@ Wrap your response in <section_plan> tags:
 Output ONLY the <section_plan> block."""
 
 CONCLUSION_PLANNER_PROMPT = """You are a synthesis planner for the conclusion section "{title}".
-Topic: {topic}
 
-Analysis claims to synthesize:
+<data>
+<topic>{topic}</topic>
+<analysis_findings>
 {claims_block}
+</analysis_findings>
+</data>
 
-Create 3-5 synthesis claims for the conclusion. Rules:
-- claim_type MUST be "synthesis" for every claim
-- Each claim must integrate 2+ analysis claims — do NOT restate any single analysis claim
-- Focus on: implications, risks, priorities, and recommended actions
+Steps:
+1. Review all analysis findings above
+2. Create 3-5 synthesis points that integrate 2+ findings each
+3. Do NOT restate any single finding — combine and synthesize
+4. Focus on: implications, risks, priorities, and recommended actions
+5. Set claim_type to "synthesis" for every point
 
 Wrap your response in <section_plan> tags:
 <section_plan>
   <reasoning>your synthesis strategy</reasoning>
   <claim>
-    <text>synthesized conclusion claim</text>
+    <text>synthesized conclusion point</text>
     <claim_type>synthesis</claim_type>
     <evidence_id>src_1</evidence_id>
     <must_cite>true</must_cite>
@@ -179,6 +184,8 @@ def _collect_all_accepted_claims(
 
 def _rank_facts_for_synthesis(facts: list[dict]) -> list[dict]:
     """Rank facts by: numeric_facts presence → source diversity → confidence."""
+    from acolyte.usecase.graph.xml_parse import confidence_to_score
+
     seen_sources: set[str] = set()
     scored: list[tuple[float, dict]] = []
 
@@ -192,8 +199,9 @@ def _rank_facts_for_synthesis(facts: list[dict]) -> list[dict]:
         if src and src not in seen_sources:
             score += 5.0
             seen_sources.add(src)
-        # Confidence
-        score += fact.get("confidence", 0.0)
+        # Confidence: band string → numeric score
+        conf = fact.get("confidence", "medium")
+        score += confidence_to_score(conf) if isinstance(conf, str) else float(conf)
         scored.append((score, fact))
 
     scored.sort(key=lambda x: x[0], reverse=True)

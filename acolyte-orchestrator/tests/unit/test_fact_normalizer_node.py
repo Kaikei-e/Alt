@@ -29,7 +29,7 @@ class FakeLLM:
         return LLMResponse(text=self._response_text, model="fake")
 
 
-def _normalize_response(claim: str, confidence: float = 0.9, data_type: str = "statistic") -> str:
+def _normalize_response(claim: str, confidence: str = "high", data_type: str = "statistic") -> str:
     return f"<facts><fact><claim>{claim}</claim><confidence>{confidence}</confidence><data_type>{data_type}</data_type></fact></facts>"
 
 
@@ -41,7 +41,7 @@ def _normalize_response(claim: str, confidence: float = 0.9, data_type: str = "s
 @pytest.mark.asyncio
 async def test_converts_quote_to_fact() -> None:
     """1 quote → extracted_facts has 1 entry with all required fields."""
-    llm = FakeLLM(_normalize_response("AI market grew 20%", 0.9, "statistic"))
+    llm = FakeLLM(_normalize_response("AI market grew 20%", "high", "statistic"))
     node = FactNormalizerNode(llm, FakeSettings())
 
     state = {
@@ -64,14 +64,14 @@ async def test_converts_quote_to_fact() -> None:
     assert fact["claim"] == "AI market grew 20%"
     assert fact["source_id"] == "art-1"
     assert fact["quote"] == "The AI market expanded by 20%"
-    assert fact["confidence"] == 0.9
+    assert fact["confidence"] == "high"
     assert fact["data_type"] == "statistic"
     assert fact["is_fallback"] is False
 
 
 @pytest.mark.asyncio
 async def test_failure_preserves_quote_as_fact() -> None:
-    """LLM fails → quote text becomes claim with confidence=0.3."""
+    """LLM fails → quote text becomes claim with confidence='low'."""
     llm = FakeLLM("invalid xml no tags")
     node = FactNormalizerNode(llm, FakeSettings())
 
@@ -90,7 +90,7 @@ async def test_failure_preserves_quote_as_fact() -> None:
     facts = result["extracted_facts"]
     assert len(facts) == 1
     assert facts[0]["claim"] == "NVIDIA dominates the market"
-    assert facts[0]["confidence"] == 0.3
+    assert facts[0]["confidence"] == "low"
     assert facts[0]["data_type"] == "quote"
     assert facts[0]["source_id"] == "art-1"
     assert facts[0]["is_fallback"] is True
@@ -99,7 +99,7 @@ async def test_failure_preserves_quote_as_fact() -> None:
 @pytest.mark.asyncio
 async def test_processes_all_quotes() -> None:
     """3 quotes → 3 facts."""
-    llm = FakeLLM(_normalize_response("fact", 0.8, "quote"))
+    llm = FakeLLM(_normalize_response("fact", "medium", "quote"))
     node = FactNormalizerNode(llm, FakeSettings())
 
     state = {
@@ -141,7 +141,7 @@ async def test_partial_failure_preserves_successes() -> None:
             if "quote 2" in prompt:
                 raise TimeoutError("ReadTimeout")
             return LLMResponse(
-                text=_normalize_response("normalized claim", 0.85, "statistic"),
+                text=_normalize_response("normalized claim", "high", "statistic"),
                 model="fake",
             )
 
@@ -170,7 +170,7 @@ async def test_partial_failure_preserves_successes() -> None:
 @pytest.mark.asyncio
 async def test_llm_success_sets_is_fallback_false() -> None:
     """LLM success → is_fallback=False on the returned fact."""
-    llm = FakeLLM(_normalize_response("GDP grew 3%", 0.95, "statistic"))
+    llm = FakeLLM(_normalize_response("GDP grew 3%", "high", "statistic"))
     node = FactNormalizerNode(llm, FakeSettings())
 
     state = {
@@ -182,7 +182,7 @@ async def test_llm_success_sets_is_fallback_false() -> None:
 
 @pytest.mark.asyncio
 async def test_llm_failure_sets_is_fallback_true() -> None:
-    """LLM failure → is_fallback=True, confidence=0.3."""
+    """LLM failure → is_fallback=True, confidence='low'."""
     llm = FakeLLM("not xml at all")
     node = FactNormalizerNode(llm, FakeSettings())
 
@@ -192,7 +192,7 @@ async def test_llm_failure_sets_is_fallback_true() -> None:
     result = await node(state)
     fact = result["extracted_facts"][0]
     assert fact["is_fallback"] is True
-    assert fact["confidence"] == 0.3
+    assert fact["confidence"] == "low"
 
 
 @pytest.mark.asyncio
@@ -228,7 +228,7 @@ async def test_llm_malformed_xml_produces_fallback() -> None:
 @pytest.mark.asyncio
 async def test_fallback_fact_same_shape_as_llm_fact() -> None:
     """Fallback fact and LLM fact must have the same key set."""
-    success_llm = FakeLLM(_normalize_response("normalized", 0.9, "statistic"))
+    success_llm = FakeLLM(_normalize_response("normalized", "high", "statistic"))
     fail_llm = FakeLLM("bad")
 
     quote = {"text": "some quote", "source_id": "art-1", "source_title": "T"}
@@ -244,7 +244,7 @@ async def test_fallback_fact_same_shape_as_llm_fact() -> None:
 @pytest.mark.asyncio
 async def test_total_cap_uses_round_robin_across_sections() -> None:
     """When quotes exceed max_facts_total, cap with section round-robin, not raw slice."""
-    llm = FakeLLM(_normalize_response("fact", 0.8, "quote"))
+    llm = FakeLLM(_normalize_response("fact", "medium", "quote"))
     settings = FakeSettings(max_facts_total=4)
     node = FactNormalizerNode(llm, settings)
 
@@ -325,7 +325,7 @@ async def test_no_format_kwarg_passed_to_llm() -> None:
 
         async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
             self.kwargs_list.append(kwargs)
-            return LLMResponse(text=_normalize_response("fact", 0.9, "statistic"), model="fake")
+            return LLMResponse(text=_normalize_response("fact", "high", "statistic"), model="fake")
 
     llm = CaptureLLM()
     node = FactNormalizerNode(llm, FakeSettings())
@@ -338,7 +338,7 @@ async def test_no_format_kwarg_passed_to_llm() -> None:
 @pytest.mark.asyncio
 async def test_xml_with_thought_block_succeeds() -> None:
     """Think block mixed in with XML should still parse successfully."""
-    xml_with_think = "<think>\nLet me analyze...\n</think>\n" + _normalize_response("GDP grew 3%", 0.95, "statistic")
+    xml_with_think = "<think>\nLet me analyze...\n</think>\n" + _normalize_response("GDP grew 3%", "high", "statistic")
     llm = FakeLLM(xml_with_think)
     node = FactNormalizerNode(llm, FakeSettings())
 
@@ -349,8 +349,8 @@ async def test_xml_with_thought_block_succeeds() -> None:
 
 
 @pytest.mark.asyncio
-async def test_confidence_non_numeric_defaults_to_fallback() -> None:
-    """Non-numeric confidence in XML → treated as parse failure → fallback."""
+async def test_confidence_band_parsed_correctly() -> None:
+    """Confidence band 'high' in XML → parsed as 'high' string."""
     xml = "<facts><fact><claim>a claim</claim><confidence>high</confidence><data_type>quote</data_type></fact></facts>"
     llm = FakeLLM(xml)
     node = FactNormalizerNode(llm, FakeSettings())
@@ -358,15 +358,16 @@ async def test_confidence_non_numeric_defaults_to_fallback() -> None:
     state = {"selected_quotes": [{"text": "a claim", "source_id": "art-1", "source_title": "T"}]}
     result = await node(state)
     fact = result["extracted_facts"][0]
-    # confidence "high" → 0.3 (parsed by normalizer), data_type valid → not fallback
-    assert fact["confidence"] == 0.3
+    assert fact["confidence"] == "high"
     assert fact["is_fallback"] is False
 
 
 @pytest.mark.asyncio
 async def test_data_type_invalid_defaults_to_quote() -> None:
     """Invalid data_type enum value → defaults to 'quote'."""
-    xml = "<facts><fact><claim>a claim</claim><confidence>0.8</confidence><data_type>magic</data_type></fact></facts>"
+    xml = (
+        "<facts><fact><claim>a claim</claim><confidence>medium</confidence><data_type>magic</data_type></fact></facts>"
+    )
     llm = FakeLLM(xml)
     node = FactNormalizerNode(llm, FakeSettings())
 
@@ -380,7 +381,7 @@ async def test_data_type_invalid_defaults_to_quote() -> None:
 @pytest.mark.asyncio
 async def test_claim_missing_triggers_fallback() -> None:
     """Missing claim in XML → XmlParseError → fallback fact."""
-    xml = "<facts><fact><confidence>0.9</confidence><data_type>statistic</data_type></fact></facts>"
+    xml = "<facts><fact><confidence>high</confidence><data_type>statistic</data_type></fact></facts>"
     llm = FakeLLM(xml)
     node = FactNormalizerNode(llm, FakeSettings())
 

@@ -2,18 +2,35 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
 
 from acolyte.domain.report import ChangeItem
+from acolyte.domain.source_map import SourceMap
 
 if TYPE_CHECKING:
     from acolyte.port.report_repository import ReportRepositoryPort
     from acolyte.usecase.graph.state import ReportGenerationState
 
 logger = structlog.get_logger(__name__)
+
+_SHORT_ID_RE = re.compile(r"\[S(\d+)\]")
+
+
+def resolve_citations(body: str, source_map: SourceMap) -> str:
+    """Replace [S1], [S2], ... with [title] references."""
+
+    def _replace(match: re.Match) -> str:
+        short_id = f"S{match.group(1)}"
+        entry = source_map.resolve(short_id)
+        if entry:
+            return f"[{entry.title}]"
+        return match.group(0)
+
+    return _SHORT_ID_RE.sub(_replace, body)
 
 
 class FinalizerNode:
@@ -49,6 +66,13 @@ class FinalizerNode:
                 if key in best and best[key]:
                     sections[key] = best[key]
                     logger.info("Finalizer using best_sections", section_key=key, body_len=len(best[key]))
+
+        # Resolve [S1] citations to [title] if source_map is present
+        source_map_data = state.get("source_map")
+        if source_map_data:
+            sm = SourceMap.from_dict(source_map_data)
+            for key in list(sections.keys()):
+                sections[key] = resolve_citations(sections[key], sm)
 
         # Persist sections
         existing_sections = await self._report_repo.get_sections(report_id)

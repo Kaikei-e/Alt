@@ -48,6 +48,7 @@ class OllamaGateway:
         self._default_model = settings.default_model
         self._default_num_predict = settings.default_num_predict
         self._base_options = _build_base_options(settings)
+        self._longform_think = settings.longform_think
         self._mode_defaults = {
             LLMMode.STRUCTURED: {
                 "temperature": settings.structured_temperature,
@@ -96,9 +97,11 @@ class OllamaGateway:
         if mode == LLMMode.STRUCTURED:
             if format:
                 return await self._generate_structured(prompt, resolved_model, options, format)
-            return await self._generate_freetext(prompt, resolved_model, options, think=False)
+            # XML DSL nodes: /api/chat without format, think=false (#14793)
+            return await self._generate_chat_freetext(prompt, resolved_model, options, think=False)
         if mode == LLMMode.LONGFORM:
-            return await self._generate_freetext(prompt, resolved_model, options, think=think)
+            # Writer: /api/chat without format, think controlled by setting (#14793)
+            return await self._generate_chat_freetext(prompt, resolved_model, options, think=self._longform_think)
         # Fallback: format-based routing (backward compat)
         if format is not None:
             return await self._generate_structured(prompt, resolved_model, options, format)
@@ -126,6 +129,44 @@ class OllamaGateway:
             prompt_len=len(prompt),
             num_predict=options["num_predict"],
             temperature=options["temperature"],
+        )
+
+        resp = await self._client.post(f"{self._base_url}/api/chat", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+        text = data.get("message", {}).get("content", "")
+        return self._build_response(data, text, model)
+
+    async def _generate_chat_freetext(
+        self,
+        prompt: str,
+        model: str,
+        options: dict,
+        *,
+        think: bool = False,
+    ) -> LLMResponse:
+        """Free-text generation via /api/chat without format.
+
+        Uses /api/chat instead of /api/generate because Ollama /api/generate
+        ignores think=false for Qwen3.5 (#14793). /api/chat respects think
+        as a top-level parameter for all models.
+        """
+        payload: dict = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "options": options,
+            "think": think,
+        }
+
+        logger.info(
+            "Ollama chat (freetext)",
+            model=model,
+            prompt_len=len(prompt),
+            num_predict=options["num_predict"],
+            temperature=options["temperature"],
+            think=think,
         )
 
         resp = await self._client.post(f"{self._base_url}/api/chat", json=payload)

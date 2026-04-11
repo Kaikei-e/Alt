@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     structured_num_predict: int = 1024
     longform_temperature: float = 0.7
     longform_num_predict: int = 4000
+    longform_think: bool = False
 
     # Paragraph-level generation — per-role num_predict
     paragraph_num_predict: int = 1000

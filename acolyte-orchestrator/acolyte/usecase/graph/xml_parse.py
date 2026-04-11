@@ -207,6 +207,16 @@ def normalize_section_plan_output(root: ET.Element) -> dict:
 # Valid data types for FactNormalizer
 _VALID_DATA_TYPES = {"statistic", "date", "quote", "trend", "comparison"}
 
+# Valid confidence bands
+_VALID_CONFIDENCE_BANDS = {"low", "medium", "high"}
+
+_CONFIDENCE_SCORES: dict[str, float] = {"low": 0.3, "medium": 0.6, "high": 0.9}
+
+
+def confidence_to_score(band: str) -> float:
+    """Map confidence band to numeric score for downstream ranking."""
+    return _CONFIDENCE_SCORES.get(band, 0.3)
+
 
 def normalize_fact_output(root: ET.Element) -> dict:
     """Convert <facts> XML to FactNormalizerOutput-shaped dict."""
@@ -218,17 +228,15 @@ def normalize_fact_output(root: ET.Element) -> dict:
     if not claim:
         raise XmlParseError("Empty <claim> in <fact>")
 
-    confidence_text = _text(fact.find("confidence"), "0.5")
-    try:
-        confidence = float(confidence_text)
-    except ValueError:
-        confidence = 0.3
+    confidence_text = _text(fact.find("confidence"), "medium")
+    if confidence_text not in _VALID_CONFIDENCE_BANDS:
+        confidence_text = "low"
 
     data_type = _text(fact.find("data_type"), "quote")
     if data_type not in _VALID_DATA_TYPES:
         data_type = "quote"
 
-    return {"claim": claim, "confidence": confidence, "data_type": data_type}
+    return {"claim": claim, "confidence": confidence_text, "data_type": data_type}
 
 
 # ---------------------------------------------------------------------------

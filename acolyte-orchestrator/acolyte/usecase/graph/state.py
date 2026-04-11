@@ -16,6 +16,7 @@ class ReportGenerationState(TypedDict, total=False):
     evidence: list[dict]
     curated: list[dict]
     curated_by_section: dict[str, list[dict]]  # section_key → curated evidence
+    source_map: dict  # SourceMap.to_dict() — UUID → short ID mapping
     hydrated_evidence: dict[str, str]  # article_id → body text
     compressed_evidence: dict[str, list[dict]]  # article_id → CompressedSpan dicts
     quote_selector_work_items: list[dict]  # checkpoint-safe per-article queue

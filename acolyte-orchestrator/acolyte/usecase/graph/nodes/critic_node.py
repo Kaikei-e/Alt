@@ -281,6 +281,7 @@ WARNING_ACCUMULATION_THRESHOLD = 3
 
 
 CONCLUSION_DUPLICATION_THRESHOLD = 0.20  # Jaccard bigram overlap
+SYNTHESIS_RATIO_THRESHOLD = 0.5  # Minimum cross-claim synthesis ratio
 
 
 def _bigrams(text: str) -> set[tuple[str, str]]:
@@ -289,11 +290,51 @@ def _bigrams(text: str) -> set[tuple[str, str]]:
     return {(chars[i], chars[i + 1]) for i in range(len(chars) - 1)} if len(chars) >= 2 else set()
 
 
+def _claim_synthesis_ratio(
+    section_paragraphs: dict[str, list[dict]],
+    conclusion_keys: set[str],
+    analysis_claim_ids: set[str],
+) -> float:
+    """Calculate cross-claim synthesis ratio for conclusion paragraphs.
+
+    Returns 0.0-1.0: fraction of conclusion paragraphs that reference
+    claims from multiple analysis sources (cross-claim synthesis).
+    A paragraph that restates a single claim scores 0; one that integrates
+    multiple claims scores 1.
+    """
+    conclusion_paras: list[dict] = []
+    for key in conclusion_keys:
+        conclusion_paras.extend(section_paragraphs.get(key, []))
+
+    if not conclusion_paras:
+        return 0.0
+
+    cross_claim_count = 0
+    for para in conclusion_paras:
+        # Check how many analysis claims this paragraph references
+        evidence_ids = set(para.get("evidence_ids", []))
+        claim_refs = evidence_ids & analysis_claim_ids
+        if len(claim_refs) >= 2:
+            cross_claim_count += 1
+
+    return cross_claim_count / len(conclusion_paras)
+
+
 def detect_conclusion_analysis_duplication(
     sections: dict[str, str],
     outline: list[dict],
+    *,
+    section_paragraphs: dict[str, list[dict]] | None = None,
 ) -> list[FailureModeDetection]:
-    """FM8: Detect if conclusion substantially repeats analysis content via bigram Jaccard overlap."""
+    """FM8: Detect conclusion-analysis duplication via compound judgment.
+
+    Axis 1: Bigram Jaccard overlap (lexical similarity)
+    Axis 2: Cross-claim synthesis ratio (semantic differentiation)
+
+    Compound: overlap > 0.20 AND synthesis_ratio < 0.5 → blocking
+              overlap > 0.20 AND synthesis_ratio >= 0.5 → warning
+              overlap <= 0.20 → pass
+    """
     analysis_keys = {s.get("key", "") for s in outline if s.get("section_role") == "analysis"}
     conclusion_keys = {s.get("key", "") for s in outline if s.get("section_role") == "conclusion"}
 
@@ -316,17 +357,44 @@ def detect_conclusion_analysis_duplication(
     union = a_bigrams | c_bigrams
     jaccard = len(intersection) / len(union)
 
-    if jaccard > CONCLUSION_DUPLICATION_THRESHOLD:
-        return [
-            FailureModeDetection(
-                mode=FailureMode.FM8_CONCLUSION_ANALYSIS_DUPLICATION,
-                severity="blocking",
-                section_key=next(iter(conclusion_keys)),
-                description=f"Conclusion-Analysis bigram Jaccard overlap {jaccard:.2f} exceeds threshold {CONCLUSION_DUPLICATION_THRESHOLD}",
-                suggested_fix="Conclusion should synthesize analysis findings, not repeat them. Rewrite to focus on implications, priorities, and recommendations.",
-            )
-        ]
-    return []
+    if jaccard <= CONCLUSION_DUPLICATION_THRESHOLD:
+        return []
+
+    # Axis 2: synthesis ratio (if paragraph data available)
+    synthesis_ratio = 0.0
+    if section_paragraphs:
+        analysis_claim_ids: set[str] = set()
+        for key in analysis_keys:
+            for para in section_paragraphs.get(key, []):
+                cid = para.get("claim_id", "")
+                if cid:
+                    analysis_claim_ids.add(cid)
+        synthesis_ratio = _claim_synthesis_ratio(section_paragraphs, conclusion_keys, analysis_claim_ids)
+
+    # Compound judgment
+    if synthesis_ratio >= SYNTHESIS_RATIO_THRESHOLD:
+        severity = "warning"
+        description = (
+            f"Conclusion-Analysis bigram Jaccard overlap {jaccard:.2f} exceeds threshold "
+            f"{CONCLUSION_DUPLICATION_THRESHOLD}, but synthesis ratio {synthesis_ratio:.2f} "
+            f"indicates cross-claim integration"
+        )
+    else:
+        severity = "blocking"
+        description = (
+            f"Conclusion-Analysis bigram Jaccard overlap {jaccard:.2f} exceeds threshold "
+            f"{CONCLUSION_DUPLICATION_THRESHOLD} with low synthesis ratio {synthesis_ratio:.2f}"
+        )
+
+    return [
+        FailureModeDetection(
+            mode=FailureMode.FM8_CONCLUSION_ANALYSIS_DUPLICATION,
+            severity=severity,
+            section_key=next(iter(conclusion_keys)),
+            description=description,
+            suggested_fix="Conclusion should synthesize analysis findings, not repeat them. Rewrite to focus on implications, priorities, and recommendations.",
+        )
+    ]
 
 
 NOVELTY_VIOLATION_THRESHOLD = 0.20  # Same Jaccard threshold as FM8
@@ -566,8 +634,10 @@ class CriticNode:
         # FM3: Incomplete sections heuristic (no LLM) — per-role thresholds
         all_detections.extend(detect_incomplete_sections(sections, outline))
 
-        # FM8: Conclusion-Analysis duplication heuristic (no LLM)
-        all_detections.extend(detect_conclusion_analysis_duplication(sections, outline))
+        # FM8: Conclusion-Analysis duplication heuristic (no LLM) with synthesis ratio
+        all_detections.extend(
+            detect_conclusion_analysis_duplication(sections, outline, section_paragraphs=section_paragraphs)
+        )
 
         # FM9: Insufficient citations (contract-driven)
         section_citations = state.get("section_citations", {})
