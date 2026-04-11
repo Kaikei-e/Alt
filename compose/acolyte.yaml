@@ -75,6 +75,8 @@ services:
       - ACOLYTE_DB_PASSWORD_FILE=/run/secrets/acolyte_db_password
       # LLM inference: override ACOLYTE_LLM_URL in .env to route to remote host (e.g. AIX)
       - NEWS_CREATOR_URL=${ACOLYTE_LLM_URL:-http://news-creator:11434}
+      - LLM_PROVIDER=${ACOLYTE_LLM_PROVIDER:-ollama}
+      - VLLM_API_KEY=${ACOLYTE_VLLM_API_KEY:-}
       - SEARCH_INDEXER_URL=${ACOLYTE_SEARCH_URL:-http://search-indexer:9300}
       - DEFAULT_MODEL=${ACOLYTE_MODEL:-gemma4-e4b-12k}
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret

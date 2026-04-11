@@ -21,6 +21,7 @@ from acolyte.gateway.memory_job_gw import MemoryJobGateway
 from acolyte.gateway.ollama_gw import OllamaGateway
 from acolyte.gateway.postgres_report_gw import PostgresReportGateway
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
+from acolyte.gateway.vllm_gw import VllmGateway
 from acolyte.gen.proto.alt.acolyte.v1.acolyte_connect import AcolyteServiceASGIApplication
 from acolyte.handler.connect_service import AcolyteConnectService
 from acolyte.infra.logging import configure_logging
@@ -48,8 +49,11 @@ _http_client = httpx.AsyncClient(
     limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
 )
 
-# LLM gateway (Ollama remote — ADR-579: consistent options to prevent model reload)
-_ollama_gw = OllamaGateway(_http_client, settings)
+# LLM gateway — provider selection via LLM_PROVIDER env var
+if settings.llm_provider == "vllm":
+    _llm_gw = VllmGateway(_http_client, settings)
+else:
+    _llm_gw = OllamaGateway(_http_client, settings)
 
 # Run-scoped content store (article body cache for hydrator top-N fetch)
 _content_store = MemoryContentStore()
@@ -64,7 +68,7 @@ _fusion = RRFFusion(k=60)
 def _compile_graph(*, checkpointer: object | None = None):
     """Compile the LangGraph report pipeline with optional checkpointing."""
     return build_report_graph(
-        _ollama_gw,
+        _llm_gw,
         _search_gw,
         _report_repo,
         content_store=_content_store,
@@ -82,7 +86,7 @@ async def health_endpoint(request: Request) -> JSONResponse:
 def create_app() -> Starlette:
     """Create Starlette ASGI application instance."""
     initial_graph = None if settings.checkpoint_enabled else _compile_graph()
-    connect_service = AcolyteConnectService(settings, _report_repo, _job_queue, initial_graph, llm=_ollama_gw)
+    connect_service = AcolyteConnectService(settings, _report_repo, _job_queue, initial_graph, llm=_llm_gw)
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncGenerator[None]:

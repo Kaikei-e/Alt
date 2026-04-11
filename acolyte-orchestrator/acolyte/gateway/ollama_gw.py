@@ -5,7 +5,6 @@ Design notes (from ADR-579, ADR-632):
   to prevent Ollama model reload which causes 259s TTFT degradation.
 - For structured output: temperature=0, reasoning-first field order in prompts
 - For free-text generation: temperature=0.7
-- num_predict=2048 for 26B model (larger than 8B's 1200)
 """
 
 from __future__ import annotations
@@ -23,24 +22,24 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# Base options — consistent across ALL requests to prevent Ollama model reload (ADR-579)
-_BASE_OPTIONS = {
-    "num_batch": 1024,
-    "num_keep": -1,
-    "num_ctx": 12288,  # 32GB VRAM target — 12K context for Gemma4 26B
-    "stop": ["<end_of_turn>"],
-}
+
+def _build_base_options(settings: Settings) -> dict:
+    """Build base options from settings. Consistent across all requests (ADR-579)."""
+    opts: dict = {
+        "num_batch": 1024,
+        "num_keep": -1,
+        "num_ctx": settings.llm_num_ctx,
+    }
+    if settings.llm_stop_tokens:
+        opts["stop"] = [t.strip() for t in settings.llm_stop_tokens.split(",") if t.strip()]
+    return opts
 
 
 class OllamaGateway:
     """LLM text generation via Ollama API.
 
-    Structured output (format != None): uses /api/chat — Ollama docs recommend
-    this endpoint for structured outputs. think parameter is NOT sent to avoid
-    Gemma4 #15260 (think=false breaks format constraint).
-
-    Free-text generation (format == None): uses /api/generate — allows thinking
-    mode for longer reasoning in Writer.
+    Structured output (format != None): uses /api/chat with think=false.
+    Free-text generation (format == None): uses /api/generate with optional thinking.
     """
 
     def __init__(self, http_client: httpx.AsyncClient, settings: Settings) -> None:
@@ -48,6 +47,7 @@ class OllamaGateway:
         self._base_url = settings.news_creator_url
         self._default_model = settings.default_model
         self._default_num_predict = settings.default_num_predict
+        self._base_options = _build_base_options(settings)
         self._mode_defaults = {
             LLMMode.STRUCTURED: {
                 "temperature": settings.structured_temperature,
@@ -85,7 +85,7 @@ class OllamaGateway:
             resolved_predict = num_predict or self._default_num_predict
 
         options = {
-            **_BASE_OPTIONS,
+            **self._base_options,
             "num_predict": resolved_predict,
             "temperature": resolved_temp,
         }

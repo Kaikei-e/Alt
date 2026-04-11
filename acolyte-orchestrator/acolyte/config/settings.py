@@ -33,9 +33,15 @@ class Settings(BaseSettings):
     job_poll_interval_seconds: float = 5.0
     worker_id: str = "acolyte-1"
 
+    # LLM provider selection ("ollama" or "vllm")
+    llm_provider: str = "ollama"
+    vllm_api_key: str = ""
+
     # LLM defaults
     default_model: str = "gemma4-e4b-12k"
     default_num_predict: int = 2000
+    llm_num_ctx: int = 12288
+    llm_stop_tokens: str = ""  # comma-separated; empty = model default
 
     # LLM mode defaults
     structured_temperature: float = 0.0
