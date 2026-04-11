@@ -17,17 +17,47 @@ const tabs = [
 ];
 </script>
 
-<nav class="flex gap-1 rounded-lg p-1" style="background: var(--surface-bg);">
+<nav class="tab-bar" data-role="admin-tab-nav">
 	{#each tabs as tab (tab.id)}
 		<button
 			type="button"
-			class="rounded-md px-4 py-1.5 text-sm font-medium transition-colors"
-			style={activeTab === tab.id
-				? "background: var(--accent-blue, #3b82f6); color: #fff;"
-				: "background: transparent; color: var(--text-secondary);"}
+			class="tab-item"
+			class:active={activeTab === tab.id}
 			onclick={() => onTabChange(tab.id)}
 		>
 			{tab.label}
 		</button>
 	{/each}
 </nav>
+
+<style>
+	.tab-bar {
+		display: flex;
+		gap: 0;
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.tab-item {
+		padding: 0.5rem 1rem;
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		background: transparent;
+		border: none;
+		border-bottom: 2px solid transparent;
+		cursor: pointer;
+		transition: color 0.15s, border-color 0.15s;
+	}
+
+	.tab-item:hover {
+		color: var(--alt-slate);
+	}
+
+	.tab-item.active {
+		color: var(--alt-charcoal);
+		border-bottom-color: var(--alt-charcoal);
+	}
+</style>

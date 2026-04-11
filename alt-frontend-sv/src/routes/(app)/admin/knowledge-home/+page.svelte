@@ -1,8 +1,6 @@
 <script lang="ts">
 import { onDestroy, onMount } from "svelte";
 import { browser } from "$app/environment";
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import { Button } from "$lib/components/ui/button";
 import ProjectionStatusPanel from "$lib/components/knowledge-home-admin/ProjectionStatusPanel.svelte";
 import BackfillJobsTable from "$lib/components/knowledge-home-admin/BackfillJobsTable.svelte";
 import FeatureFlagPanel from "$lib/components/knowledge-home-admin/FeatureFlagPanel.svelte";
@@ -60,6 +58,7 @@ let { data } = $props<{
 }>();
 
 let activeTab = $state("overview");
+let revealed = $state(false);
 
 const fetchSnapshot = async () => {
 	const response = await fetch("/api/admin/knowledge-home", {
@@ -126,6 +125,9 @@ onMount(() => {
 	if (browser) {
 		admin.startPolling(10000);
 		sovereign.startPolling(30000);
+		requestAnimationFrame(() => {
+			revealed = true;
+		});
 	}
 });
 
@@ -139,145 +141,299 @@ onDestroy(() => {
 	<title>Knowledge Home Operations - Alt</title>
 </svelte:head>
 
-<PageHeader
-	title="Knowledge Home Operations"
-	description="Projection health, backfill status, and rollout configuration"
->
-	{#snippet actions()}
-		<div class="flex items-center gap-3 text-right">
-			<Button
-				variant="default"
-				size="sm"
-				disabled={admin.acting || !admin.health}
-				onclick={() => void admin.triggerBackfill(admin.health?.activeVersion ?? 1)}
-			>
-				{admin.acting && admin.activeJobId === null ? "Triggering..." : "Trigger Backfill"}
-			</Button>
-			<p class="text-xs text-[var(--text-secondary)]">
-				{admin.refreshing ? "Updating..." : "Up to date"}
-			</p>
-			<p class="text-xs text-[var(--text-secondary)]">
-				Last updated: {admin.lastUpdatedLabel}
-			</p>
+<div class="ops-page" class:revealed data-role="operations-page">
+	<!-- Page Header -->
+	<header class="ops-header">
+		<div class="ops-header-top">
+			<div>
+				<h1 class="ops-title">Knowledge Home Operations</h1>
+				<p class="ops-subtitle">Projection health, backfill status, and rollout configuration</p>
+			</div>
+			<div class="ops-actions">
+				<button
+					class="ops-action-btn"
+					disabled={admin.acting || !admin.health}
+					onclick={() => void admin.triggerBackfill(admin.health?.activeVersion ?? 1)}
+				>
+					{admin.acting && admin.activeJobId === null ? "Triggering..." : "Trigger Backfill"}
+				</button>
+				<span class="ops-status-text">
+					{admin.refreshing ? "Updating..." : "Up to date"}
+				</span>
+				<span class="ops-status-text">
+					Last updated: {admin.lastUpdatedLabel}
+				</span>
+			</div>
 		</div>
-	{/snippet}
-</PageHeader>
+		<div class="header-rule"></div>
+	</header>
 
-{#if admin.error}
-	<div
-		class="mb-4 rounded-lg border px-4 py-2 text-sm"
-		style="background: var(--error-bg, #fee2e2); border-color: var(--error-border, #ef4444); color: var(--error-text, #991b1b);"
-	>
-		{admin.error.message}
+	{#if admin.error}
+		<div class="ops-error" data-role="error-banner">
+			{admin.error.message}
+		</div>
+	{/if}
+
+	<div class="ops-tab-section">
+		<AdminTabNavigation {activeTab} onTabChange={(tab: string) => (activeTab = tab)} />
 	</div>
-{/if}
 
-<div class="mb-4">
-	<AdminTabNavigation {activeTab} onTabChange={(tab: string) => (activeTab = tab)} />
+	<div class="ops-content" style="--stagger: 0">
+		{#if activeTab === "overview"}
+			<div class="ops-section" style="--stagger: 1">
+				<SystemAtAGlancePanel
+					overallHealth={admin.sloStatus?.overallHealth ?? null}
+					lagSeconds={admin.systemMetrics?.projector?.lagSeconds ?? null}
+					healthyCount={admin.systemMetrics?.serviceHealth?.filter(s => s.status === "healthy").length ?? 0}
+					totalServiceCount={admin.systemMetrics?.serviceHealth?.length ?? 0}
+					activeAlertCount={admin.sloStatus?.activeAlerts?.length ?? 0}
+				/>
+			</div>
+			<div class="grid gap-6 lg:grid-cols-2 ops-section" style="--stagger: 2">
+				<ProjectionStatusPanel health={admin.health} />
+				<FeatureFlagPanel flags={admin.flags} />
+				<div class="lg:col-span-2">
+					<BackfillJobsTable
+						jobs={admin.health?.backfillJobs ?? []}
+						disableActions={admin.acting}
+						activeJobId={admin.activeJobId}
+						onPause={(job: BackfillJobData) => admin.pauseBackfill(job.jobId)}
+						onResume={(job: BackfillJobData) => admin.resumeBackfill(job.jobId)}
+					/>
+				</div>
+			</div>
+		{:else if activeTab === "slo"}
+			<div class="ops-section" style="--stagger: 1">
+				<SLOSummaryPanel sloStatus={admin.sloStatus} />
+			</div>
+			<div class="ops-section" style="--stagger: 2">
+				<ErrorBudgetBurnRatePanel slis={admin.sloStatus?.slis ?? []} />
+			</div>
+			<div class="ops-section" style="--stagger: 3">
+				<AlertStatusPanel alerts={admin.sloStatus?.activeAlerts ?? []} />
+			</div>
+			<div class="grid gap-6 lg:grid-cols-2 ops-section" style="--stagger: 4">
+				<InteractionFunnelPanel funnel={admin.systemMetrics?.tracking
+					? [
+						{ label: "Exposed", value: admin.systemMetrics.tracking.itemsExposed },
+						{ label: "Opened", value: admin.systemMetrics.tracking.itemsOpened },
+						{ label: "Dismissed", value: admin.systemMetrics.tracking.itemsDismissed },
+					]
+					: []} />
+				<ReasonDistributionChart distribution={(() => {
+					try {
+						if (!admin.auditResult?.detailsJson) return [];
+						const details = JSON.parse(admin.auditResult.detailsJson);
+						if (details.why_distribution && typeof details.why_distribution === "object") {
+							return Object.entries(details.why_distribution).map(([code, count]) => ({
+								code,
+								count: count as number,
+							}));
+						}
+						return [];
+					} catch {
+						return [];
+					}
+				})()} />
+			</div>
+		{:else if activeTab === "system"}
+			<div class="ops-section" style="--stagger: 1">
+				<ServiceHealthGrid services={admin.systemMetrics?.serviceHealth ?? []} />
+			</div>
+			<div class="ops-section" style="--stagger: 2">
+				<ProjectorPipelinePanel projector={admin.systemMetrics?.projector ?? null} />
+			</div>
+			<div class="ops-section" style="--stagger: 3">
+				<StreamHealthPanel stream={admin.systemMetrics?.stream ?? null} />
+			</div>
+			<div class="grid gap-6 lg:grid-cols-2 ops-section" style="--stagger: 4">
+				<RecallPipelinePanel recall={admin.systemMetrics?.recall ?? null} />
+				<SovereignMutationPanel sovereign={admin.systemMetrics?.sovereign ?? null} />
+			</div>
+		{:else if activeTab === "reproject"}
+			<div class="ops-section" style="--stagger: 1">
+				<ReprojectActions
+					onStart={(mode: string, fromVersion: string, toVersion: string, rangeStart?: string, rangeEnd?: string) =>
+						void admin.startReproject(mode, fromVersion, toVersion, rangeStart, rangeEnd)}
+					inFlight={admin.acting}
+				/>
+			</div>
+			<div class="ops-section" style="--stagger: 2">
+				<ReprojectRunsTable
+					runs={admin.reprojectRuns}
+					disableActions={admin.acting}
+					onCompare={(run: ReprojectRunData) => admin.compareReproject(run.reprojectRunId)}
+					onSwap={(run: ReprojectRunData) => admin.swapReproject(run.reprojectRunId)}
+					onRollback={(run: ReprojectRunData) => admin.rollbackReproject(run.reprojectRunId)}
+				/>
+			</div>
+			<div class="ops-section" style="--stagger: 3">
+				<DiffSummaryPanel diff={admin.reprojectDiff} />
+			</div>
+		{:else if activeTab === "storage"}
+			<div class="ops-section" style="--stagger: 1">
+				<StorageStatsPanel stats={sovereign.storageStats} />
+			</div>
+			<div class="ops-section" style="--stagger: 2">
+				<SnapshotListPanel
+					snapshots={sovereign.snapshots}
+					latestSnapshot={sovereign.latestSnapshot}
+					disabled={sovereign.acting}
+					onCreateSnapshot={() => sovereign.createSnapshot()}
+				/>
+			</div>
+			<div class="ops-section" style="--stagger: 3">
+				<RetentionStatusPanel
+					retentionLogs={sovereign.retentionLogs}
+					eligiblePartitions={sovereign.eligiblePartitions}
+					disabled={sovereign.acting}
+					onRunRetention={(dryRun) => sovereign.runRetention(dryRun)}
+				/>
+			</div>
+			<div class="ops-section" style="--stagger: 4">
+				<RetentionRunResultPanel result={sovereign.retentionResult} />
+			</div>
+		{:else if activeTab === "audit"}
+			<div class="ops-section" style="--stagger: 1">
+				<AuditActions
+					onRunAudit={(name, version, size) => void admin.runAudit(name, version, size)}
+					inFlight={admin.acting}
+				/>
+			</div>
+			<div class="ops-section" style="--stagger: 2">
+				<AuditResultPanel audit={admin.auditResult} />
+			</div>
+		{/if}
+	</div>
 </div>
 
-{#if activeTab === "overview"}
-	<div class="mt-4 flex flex-col gap-6">
-		<SystemAtAGlancePanel
-			overallHealth={admin.sloStatus?.overallHealth ?? null}
-			lagSeconds={admin.systemMetrics?.projector?.lagSeconds ?? null}
-			healthyCount={admin.systemMetrics?.serviceHealth?.filter(s => s.status === "healthy").length ?? 0}
-			totalServiceCount={admin.systemMetrics?.serviceHealth?.length ?? 0}
-			activeAlertCount={admin.sloStatus?.activeAlerts?.length ?? 0}
-		/>
-	</div>
-	<div class="mt-4 grid gap-6 lg:grid-cols-2">
-		<ProjectionStatusPanel health={admin.health} />
-		<FeatureFlagPanel flags={admin.flags} />
-		<div class="lg:col-span-2">
-			<BackfillJobsTable
-				jobs={admin.health?.backfillJobs ?? []}
-				disableActions={admin.acting}
-				activeJobId={admin.activeJobId}
-				onPause={(job: BackfillJobData) => admin.pauseBackfill(job.jobId)}
-				onResume={(job: BackfillJobData) => admin.resumeBackfill(job.jobId)}
-			/>
-		</div>
-	</div>
-{:else if activeTab === "slo"}
-	<div class="mt-4 flex flex-col gap-6">
-		<SLOSummaryPanel sloStatus={admin.sloStatus} />
-		<ErrorBudgetBurnRatePanel slis={admin.sloStatus?.slis ?? []} />
-		<AlertStatusPanel alerts={admin.sloStatus?.activeAlerts ?? []} />
-		<div class="grid gap-6 lg:grid-cols-2">
-			<InteractionFunnelPanel funnel={admin.systemMetrics?.tracking
-				? [
-					{ label: "Exposed", value: admin.systemMetrics.tracking.itemsExposed },
-					{ label: "Opened", value: admin.systemMetrics.tracking.itemsOpened },
-					{ label: "Dismissed", value: admin.systemMetrics.tracking.itemsDismissed },
-				]
-				: []} />
-			<ReasonDistributionChart distribution={(() => {
-				try {
-					if (!admin.auditResult?.detailsJson) return [];
-					const details = JSON.parse(admin.auditResult.detailsJson);
-					if (details.why_distribution && typeof details.why_distribution === "object") {
-						return Object.entries(details.why_distribution).map(([code, count]) => ({
-							code,
-							count: count as number,
-						}));
-					}
-					return [];
-				} catch {
-					return [];
-				}
-			})()} />
-		</div>
-	</div>
-{:else if activeTab === "system"}
-	<div class="mt-4 flex flex-col gap-6">
-		<ServiceHealthGrid services={admin.systemMetrics?.serviceHealth ?? []} />
-		<ProjectorPipelinePanel projector={admin.systemMetrics?.projector ?? null} />
-		<StreamHealthPanel stream={admin.systemMetrics?.stream ?? null} />
-		<div class="grid gap-6 lg:grid-cols-2">
-			<RecallPipelinePanel recall={admin.systemMetrics?.recall ?? null} />
-			<SovereignMutationPanel sovereign={admin.systemMetrics?.sovereign ?? null} />
-		</div>
-	</div>
-{:else if activeTab === "reproject"}
-	<div class="mt-4 flex flex-col gap-6">
-		<ReprojectActions
-			onStart={(mode: string, fromVersion: string, toVersion: string, rangeStart?: string, rangeEnd?: string) =>
-				void admin.startReproject(mode, fromVersion, toVersion, rangeStart, rangeEnd)}
-			inFlight={admin.acting}
-		/>
-		<ReprojectRunsTable
-			runs={admin.reprojectRuns}
-			disableActions={admin.acting}
-			onCompare={(run: ReprojectRunData) => admin.compareReproject(run.reprojectRunId)}
-			onSwap={(run: ReprojectRunData) => admin.swapReproject(run.reprojectRunId)}
-			onRollback={(run: ReprojectRunData) => admin.rollbackReproject(run.reprojectRunId)}
-		/>
-		<DiffSummaryPanel diff={admin.reprojectDiff} />
-	</div>
-{:else if activeTab === "storage"}
-	<div class="mt-4 flex flex-col gap-6">
-		<StorageStatsPanel stats={sovereign.storageStats} />
-		<SnapshotListPanel
-			snapshots={sovereign.snapshots}
-			latestSnapshot={sovereign.latestSnapshot}
-			disabled={sovereign.acting}
-			onCreateSnapshot={() => sovereign.createSnapshot()}
-		/>
-		<RetentionStatusPanel
-			retentionLogs={sovereign.retentionLogs}
-			eligiblePartitions={sovereign.eligiblePartitions}
-			disabled={sovereign.acting}
-			onRunRetention={(dryRun) => sovereign.runRetention(dryRun)}
-		/>
-		<RetentionRunResultPanel result={sovereign.retentionResult} />
-	</div>
-{:else if activeTab === "audit"}
-	<div class="mt-4 flex flex-col gap-6">
-		<AuditActions
-			onRunAudit={(name, version, size) => void admin.runAudit(name, version, size)}
-			inFlight={admin.acting}
-		/>
-		<AuditResultPanel audit={admin.auditResult} />
-	</div>
-{/if}
+<style>
+	.ops-page {
+		max-width: 1400px;
+		margin: 0 auto;
+		padding: 1.5rem 2rem;
+		opacity: 0;
+		transform: translateY(6px);
+		transition: opacity 0.4s ease, transform 0.4s ease;
+	}
+
+	.ops-page.revealed {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	.ops-header {
+		margin-bottom: 1.5rem;
+	}
+
+	.ops-header-top {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.ops-title {
+		font-family: var(--font-display);
+		font-size: 1.5rem;
+		font-weight: 700;
+		line-height: 1.2;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.ops-subtitle {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-slate);
+		margin: 0.25rem 0 0;
+	}
+
+	.ops-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-shrink: 0;
+	}
+
+	.ops-action-btn {
+		border: 1.5px solid var(--alt-charcoal);
+		background: transparent;
+		color: var(--alt-charcoal);
+		font-family: var(--font-body);
+		font-size: 0.7rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 0.4rem 0.75rem;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.ops-action-btn:hover:not(:disabled) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.ops-action-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.ops-status-text {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+	}
+
+	.header-rule {
+		height: 1px;
+		background: var(--surface-border);
+	}
+
+	.ops-error {
+		border-left: 3px solid var(--alt-terracotta);
+		background: var(--surface-bg);
+		padding: 0.5rem 1rem;
+		margin-bottom: 1rem;
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-terracotta);
+	}
+
+	.ops-tab-section {
+		margin-bottom: 1.5rem;
+	}
+
+	.ops-content {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	.ops-section {
+		opacity: 0;
+		animation: section-in 0.3s ease forwards;
+		animation-delay: calc(var(--stagger, 0) * 60ms);
+	}
+
+	@keyframes section-in {
+		to {
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.ops-page {
+			opacity: 1;
+			transform: none;
+			transition: none;
+		}
+
+		.ops-section {
+			opacity: 1;
+			animation: none;
+		}
+	}
+</style>

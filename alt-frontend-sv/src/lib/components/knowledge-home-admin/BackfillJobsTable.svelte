@@ -1,6 +1,5 @@
 <script lang="ts">
 import type { BackfillJobData } from "$lib/connect/knowledge_home_admin";
-import { Button } from "$lib/components/ui/button";
 
 let {
 	jobs,
@@ -19,15 +18,15 @@ let {
 const statusColor = (status: string) => {
 	switch (status) {
 		case "completed":
-			return "var(--accent-green, #22c55e)";
+			return "var(--alt-sage)";
 		case "running":
-			return "var(--accent-blue, #3b82f6)";
+			return "var(--alt-sand)";
 		case "paused":
-			return "var(--accent-amber, #f59e0b)";
+			return "var(--alt-ash)";
 		case "failed":
-			return "var(--accent-red, #ef4444)";
+			return "var(--alt-terracotta)";
 		default:
-			return "var(--text-secondary)";
+			return "var(--alt-ash)";
 	}
 };
 
@@ -40,69 +39,60 @@ const canPause = (job: BackfillJobData) => job.status === "running";
 const canResume = (job: BackfillJobData) => job.status === "paused";
 </script>
 
-<div class="flex flex-col gap-3">
-	<h3 class="text-sm font-semibold" style="color: var(--text-primary);">
-		Backfill Jobs
-	</h3>
+<div class="panel" data-role="backfill-jobs">
+	<h3 class="section-heading">Backfill Jobs</h3>
+	<div class="heading-rule"></div>
 
 	{#if jobs.length === 0}
-		<p class="text-xs" style="color: var(--text-secondary);">No backfill jobs.</p>
+		<p class="empty-text">No backfill jobs.</p>
 	{:else}
-		<div
-			class="overflow-x-auto rounded-lg border-2"
-			style="border-color: var(--border-primary);"
-		>
-			<table class="w-full text-xs">
+		<div class="table-container">
+			<table class="data-table">
 				<thead>
-					<tr style="background: var(--surface-bg);">
-						<th class="px-3 py-2 text-left">Status</th>
-						<th class="px-3 py-2 text-left">Version</th>
-						<th class="px-3 py-2 text-left">Progress</th>
-						<th class="px-3 py-2 text-left">Created</th>
-						<th class="px-3 py-2 text-left">Error</th>
-						<th class="px-3 py-2 text-left">Actions</th>
+					<tr>
+						<th class="th-left">Status</th>
+						<th class="th-left">Version</th>
+						<th class="th-left">Progress</th>
+						<th class="th-left">Created</th>
+						<th class="th-left">Error</th>
+						<th class="th-left">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each jobs as job (job.jobId)}
-						<tr class="border-t" style="border-color: var(--border-primary);">
-							<td class="px-3 py-2">
-								<span
-									class="inline-block rounded px-2 py-0.5 text-white text-xs font-medium"
-									style="background: {statusColor(job.status)};"
-								>
+						<tr>
+							<td>
+								<span class="status-text" style="color: {statusColor(job.status)};">
 									{job.status}
 								</span>
 							</td>
-							<td class="px-3 py-2">v{job.projectionVersion}</td>
-							<td class="px-3 py-2">
-								{job.processedEvents}/{job.totalEvents}
-								({progressPercent(job)}%)
+							<td class="td-mono">v{job.projectionVersion}</td>
+							<td>
+								<span class="td-mono">{job.processedEvents}/{job.totalEvents}</span>
+								<span class="progress-pct">({progressPercent(job)}%)</span>
 							</td>
-							<td class="px-3 py-2">
-								{job.createdAt ? new Date(job.createdAt).toLocaleString() : "—"}
+							<td class="td-mono">
+								{job.createdAt ? new Date(job.createdAt).toLocaleString() : "--"}
 							</td>
-							<td class="px-3 py-2 max-w-48 truncate" title={job.errorMessage}>
-								{job.errorMessage || "—"}
+							<td class="td-truncate" title={job.errorMessage}>
+								{job.errorMessage || "--"}
 							</td>
-							<td class="px-3 py-2">
-								<div class="flex gap-2">
-									<Button
-										variant="outline"
-										size="sm"
+							<td>
+								<div class="action-group">
+									<button
+										class="action-btn"
 										disabled={disableActions || activeJobId === job.jobId || !canPause(job)}
 										onclick={() => void onPause?.(job)}
 									>
 										{activeJobId === job.jobId && canPause(job) ? "Pausing..." : "Pause"}
-									</Button>
-									<Button
-										variant="outline"
-										size="sm"
+									</button>
+									<button
+										class="action-btn"
 										disabled={disableActions || activeJobId === job.jobId || !canResume(job)}
 										onclick={() => void onResume?.(job)}
 									>
 										{activeJobId === job.jobId && canResume(job) ? "Resuming..." : "Resume"}
-									</Button>
+									</button>
 								</div>
 							</td>
 						</tr>
@@ -112,3 +102,125 @@ const canResume = (job: BackfillJobData) => job.status === "paused";
 		</div>
 	{/if}
 </div>
+
+<style>
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.section-heading {
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.heading-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-bottom: 0.25rem;
+	}
+
+	.empty-text {
+		font-family: var(--font-display);
+		font-size: 0.8rem;
+		font-style: italic;
+		color: var(--alt-ash);
+	}
+
+	.table-container {
+		overflow-x: auto;
+		border: 1px solid var(--surface-border);
+	}
+
+	.data-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.7rem;
+	}
+
+	.data-table thead tr {
+		background: var(--surface-2);
+	}
+
+	.data-table th {
+		padding: 0.5rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.th-left { text-align: left; }
+
+	.data-table tbody tr {
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.data-table td {
+		padding: 0.5rem 0.75rem;
+		color: var(--alt-charcoal);
+	}
+
+	.td-mono {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+	}
+
+	.td-truncate {
+		max-width: 12rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.progress-pct {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: var(--alt-ash);
+		margin-left: 0.25rem;
+	}
+
+	.status-text {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+
+	.action-group {
+		display: flex;
+		gap: 0.35rem;
+	}
+
+	.action-btn {
+		border: 1px solid var(--alt-charcoal);
+		background: transparent;
+		color: var(--alt-charcoal);
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		padding: 0.2rem 0.5rem;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.action-btn:hover:not(:disabled) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.action-btn:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+	}
+</style>

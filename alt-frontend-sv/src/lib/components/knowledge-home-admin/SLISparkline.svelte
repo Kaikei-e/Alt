@@ -54,7 +54,7 @@ const lastPoint = $derived(() => {
 		<polyline
 			points={points()}
 			fill="none"
-			stroke="var(--accent-blue, #3b82f6)"
+			stroke="var(--alt-primary)"
 			stroke-width="1.5"
 			stroke-linecap="round"
 			stroke-linejoin="round"
@@ -64,7 +64,7 @@ const lastPoint = $derived(() => {
 				cx={lastPoint()!.x}
 				cy={lastPoint()!.y}
 				r="2.5"
-				fill="var(--accent-blue, #3b82f6)"
+				fill="var(--alt-primary)"
 			/>
 		{/if}
 	</svg>

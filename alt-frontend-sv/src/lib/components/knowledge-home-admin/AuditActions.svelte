@@ -20,77 +20,160 @@ const handleSubmit = () => {
 };
 </script>
 
-<div
-	class="rounded-lg border-2 p-4"
-	style="background: var(--surface-bg); border-color: var(--border-primary);"
-	data-testid="audit-actions-panel"
->
-	<h3 class="mb-3 text-sm font-semibold" style="color: var(--text-primary);">
-		Run Projection Audit
-	</h3>
-	<p class="mb-4 text-xs" style="color: var(--text-secondary);">
+<div class="panel" data-role="audit-actions">
+	<h3 class="section-heading">Run Projection Audit</h3>
+	<div class="heading-rule"></div>
+	<p class="panel-desc">
 		Sample items from the projection and verify correctness against the event log.
 		Detects drift in item count, scores, and empty summaries.
 	</p>
-	<div class="flex flex-wrap items-end gap-3">
-		<div class="flex flex-col gap-1">
-			<label
-				for="audit-projection-name"
-				class="text-xs font-medium"
-				style="color: var(--text-secondary);"
-			>
-				Projection Name
-			</label>
+	<div class="form-row">
+		<div class="form-field">
+			<label for="audit-projection-name" class="field-label">Projection Name</label>
 			<input
 				id="audit-projection-name"
 				type="text"
+				class="field-input field-mono"
 				bind:value={projectionName}
-				class="rounded border px-2 py-1.5 text-xs"
-				style="background: var(--surface-bg); border-color: var(--border-primary); color: var(--text-primary);"
 			/>
 		</div>
-		<div class="flex flex-col gap-1">
-			<label
-				for="audit-projection-version"
-				class="text-xs font-medium"
-				style="color: var(--text-secondary);"
-			>
-				Projection Version
-			</label>
+		<div class="form-field">
+			<label for="audit-projection-version" class="field-label">Projection Version</label>
 			<input
 				id="audit-projection-version"
 				type="text"
+				class="field-input field-mono"
 				bind:value={projectionVersion}
-				class="rounded border px-2 py-1.5 text-xs"
-				style="background: var(--surface-bg); border-color: var(--border-primary); color: var(--text-primary);"
 			/>
 		</div>
-		<div class="flex flex-col gap-1">
-			<label
-				for="audit-sample-size"
-				class="text-xs font-medium"
-				style="color: var(--text-secondary);"
-			>
-				Sample Size
-			</label>
+		<div class="form-field">
+			<label for="audit-sample-size" class="field-label">Sample Size</label>
 			<input
 				id="audit-sample-size"
 				type="number"
 				min="1"
 				max="1000"
+				class="field-input field-mono field-narrow"
 				bind:value={sampleSize}
-				class="w-24 rounded border px-2 py-1.5 text-xs"
-				style="background: var(--surface-bg); border-color: var(--border-primary); color: var(--text-primary);"
 			/>
 		</div>
-		<button
-			type="button"
-			class="rounded px-4 py-1.5 text-xs font-medium text-white transition-opacity"
-			style="background: var(--accent-blue, #3b82f6);"
-			disabled={inFlight}
-			onclick={handleSubmit}
-		>
-			{inFlight ? "Running..." : "Run Audit"}
-		</button>
+		<div class="form-field form-field-action">
+			<button
+				class="submit-btn"
+				disabled={inFlight}
+				onclick={handleSubmit}
+			>
+				{inFlight ? "Running..." : "Run Audit"}
+			</button>
+		</div>
 	</div>
 </div>
+
+<style>
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		padding: 1rem;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
+	}
+
+	.section-heading {
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.heading-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-bottom: 0.25rem;
+	}
+
+	.panel-desc {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		color: var(--alt-slate);
+		margin: 0;
+		max-width: 60ch;
+	}
+
+	.form-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		gap: 0.75rem;
+	}
+
+	.form-field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.form-field-action {
+		display: flex;
+		align-items: flex-end;
+	}
+
+	.field-label {
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.field-input {
+		border: 1px solid var(--surface-border);
+		background: transparent;
+		color: var(--alt-charcoal);
+		font-family: var(--font-body);
+		font-size: 1rem;
+		padding: 0.35rem 0.5rem;
+		transition: border-color 0.15s;
+	}
+
+	.field-input:focus {
+		border-color: var(--alt-charcoal);
+		outline: none;
+	}
+
+	.field-mono {
+		font-family: var(--font-mono);
+		font-size: 0.8rem;
+	}
+
+	.field-narrow {
+		width: 6rem;
+	}
+
+	.submit-btn {
+		border: 1.5px solid var(--alt-charcoal);
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 0.4rem 0.75rem;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+		white-space: nowrap;
+	}
+
+	.submit-btn:hover:not(:disabled) {
+		background: transparent;
+		color: var(--alt-charcoal);
+	}
+
+	.submit-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+</style>

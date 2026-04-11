@@ -35,10 +35,10 @@ let parsedDetails = $derived.by(() => {
 </script>
 
 {#if audit}
-	<div class="flex flex-col gap-3" data-testid="audit-result-panel">
-		<h3 class="text-sm font-semibold" style="color: var(--text-primary);">
-			Audit Result
-		</h3>
+	<div class="panel" data-role="audit-result">
+		<h3 class="section-heading">Audit Result</h3>
+		<div class="heading-rule"></div>
+
 		<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
 			<AdminMetricCard
 				label="Projection"
@@ -62,21 +62,78 @@ let parsedDetails = $derived.by(() => {
 			/>
 		</div>
 
-		<div class="flex gap-4 text-xs" style="color: var(--text-secondary);">
-			<span>Audit ID: <code class="font-mono">{audit.auditId}</code></span>
+		<div class="audit-meta">
+			<span>Audit ID: <code class="audit-id">{audit.auditId}</code></span>
 			<span>Checked: {new Date(audit.checkedAt).toLocaleString()}</span>
 		</div>
 
 		{#if parsedDetails}
-			<div class="flex flex-col gap-1">
-				<h4 class="text-xs font-medium" style="color: var(--text-secondary);">
-					Details
-				</h4>
-				<pre
-					class="max-h-48 overflow-auto rounded-lg border-2 p-3 text-xs font-mono"
-					style="background: var(--surface-bg); border-color: var(--border-primary); color: var(--text-primary);"
-				>{JSON.stringify(parsedDetails, null, 2)}</pre>
+			<div class="details-section">
+				<h4 class="details-label">Details</h4>
+				<pre class="details-pre">{JSON.stringify(parsedDetails, null, 2)}</pre>
 			</div>
 		{/if}
 	</div>
 {/if}
+
+<style>
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.section-heading {
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.heading-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-bottom: 0.25rem;
+	}
+
+	.audit-meta {
+		display: flex;
+		gap: 1rem;
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: var(--alt-ash);
+	}
+
+	.audit-id {
+		font-family: var(--font-mono);
+	}
+
+	.details-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.details-label {
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0;
+	}
+
+	.details-pre {
+		max-height: 12rem;
+		overflow: auto;
+		padding: 0.75rem;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-2);
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+</style>

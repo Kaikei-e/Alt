@@ -1,6 +1,5 @@
 <script lang="ts">
 import type { SnapshotMetadata } from "$lib/types/sovereign-admin";
-import { Button } from "$lib/components/ui/button";
 import AdminMetricCard from "./AdminMetricCard.svelte";
 import ConfirmActionDialog from "./ConfirmActionDialog.svelte";
 
@@ -23,37 +22,34 @@ let confirmOpen = $state(false);
 const statusColor = (status: string) => {
 	switch (status) {
 		case "valid":
-			return "var(--accent-green, #22c55e)";
+			return "var(--alt-sage)";
 		case "pending":
-			return "var(--accent-amber, #f59e0b)";
+			return "var(--alt-sand)";
 		case "invalidated":
-			return "var(--accent-red, #ef4444)";
+			return "var(--alt-terracotta)";
 		case "archived":
-			return "var(--text-secondary)";
+			return "var(--alt-ash)";
 		default:
-			return "var(--text-secondary)";
+			return "var(--alt-ash)";
 	}
 };
 
-const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "—");
+const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "--");
 </script>
 
-<div class="flex flex-col gap-3" data-testid="snapshot-list-panel">
-	<div class="flex items-center justify-between">
-		<h3 class="text-sm font-semibold" style="color: var(--text-primary);">
-			Projection Snapshots
-		</h3>
-		<Button
-			variant="outline"
-			size="sm"
+<div class="panel" data-role="snapshot-list">
+	<div class="panel-header">
+		<h3 class="section-heading">Projection Snapshots</h3>
+		<button
+			class="action-btn"
 			{disabled}
 			onclick={() => (confirmOpen = true)}
 		>
 			Create Snapshot
-		</Button>
+		</button>
 	</div>
+	<div class="heading-rule"></div>
 
-	<!-- Latest snapshot summary -->
 	{#if latestSnapshot}
 		<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
 			<AdminMetricCard
@@ -79,55 +75,40 @@ const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "—");
 		</div>
 	{/if}
 
-	<!-- Snapshots table -->
 	{#if snapshots.length === 0}
-		<p class="text-xs" style="color: var(--text-secondary);">No snapshots.</p>
+		<p class="empty-text">No snapshots.</p>
 	{:else}
-		<div
-			class="overflow-x-auto rounded-lg border-2"
-			style="border-color: var(--border-primary);"
-		>
-			<table class="w-full text-xs">
+		<div class="table-container">
+			<table class="data-table">
 				<thead>
-					<tr style="background: var(--surface-bg);">
-						<th class="px-3 py-2 text-left">Status</th>
-						<th class="px-3 py-2 text-left">Version</th>
-						<th class="px-3 py-2 text-left">Build Ref</th>
-						<th class="px-3 py-2 text-right">Event Seq</th>
-						<th class="px-3 py-2 text-right">Items</th>
-						<th class="px-3 py-2 text-right">Digest</th>
-						<th class="px-3 py-2 text-right">Recall</th>
-						<th class="px-3 py-2 text-left">Created</th>
+					<tr>
+						<th class="th-left">Status</th>
+						<th class="th-left">Version</th>
+						<th class="th-left">Build Ref</th>
+						<th class="th-right">Event Seq</th>
+						<th class="th-right">Items</th>
+						<th class="th-right">Digest</th>
+						<th class="th-right">Recall</th>
+						<th class="th-left">Created</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each snapshots as snap (snap.snapshotId)}
-						<tr class="border-t" style="border-color: var(--border-primary);">
-							<td class="px-3 py-2">
-								<span
-									class="inline-block rounded px-2 py-0.5 text-white text-xs font-medium"
-									style="background: {statusColor(snap.status)};"
-								>
+						<tr>
+							<td>
+								<span class="status-text" style="color: {statusColor(snap.status)};">
 									{snap.status}
 								</span>
 							</td>
-							<td class="px-3 py-2">v{snap.projectionVersion}</td>
-							<td class="px-3 py-2 font-mono max-w-24 truncate" title={snap.projectorBuildRef}>
+							<td class="td-mono">v{snap.projectionVersion}</td>
+							<td class="td-mono td-truncate" title={snap.projectorBuildRef}>
 								{snap.projectorBuildRef}
 							</td>
-							<td class="px-3 py-2 text-right tabular-nums">
-								{snap.eventSeqBoundary.toLocaleString()}
-							</td>
-							<td class="px-3 py-2 text-right tabular-nums">
-								{snap.itemsRowCount.toLocaleString()}
-							</td>
-							<td class="px-3 py-2 text-right tabular-nums">
-								{snap.digestRowCount.toLocaleString()}
-							</td>
-							<td class="px-3 py-2 text-right tabular-nums">
-								{snap.recallRowCount.toLocaleString()}
-							</td>
-							<td class="px-3 py-2">{formatDate(snap.createdAt)}</td>
+							<td class="td-right">{snap.eventSeqBoundary.toLocaleString()}</td>
+							<td class="td-right">{snap.itemsRowCount.toLocaleString()}</td>
+							<td class="td-right">{snap.digestRowCount.toLocaleString()}</td>
+							<td class="td-right">{snap.recallRowCount.toLocaleString()}</td>
+							<td class="td-mono">{formatDate(snap.createdAt)}</td>
 						</tr>
 					{/each}
 				</tbody>
@@ -148,3 +129,125 @@ const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "—");
 		onCancel={() => (confirmOpen = false)}
 	/>
 </div>
+
+<style>
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.panel-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.section-heading {
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.heading-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-bottom: 0.25rem;
+	}
+
+	.action-btn {
+		border: 1.5px solid var(--alt-charcoal);
+		background: transparent;
+		color: var(--alt-charcoal);
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 0.35rem 0.6rem;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.action-btn:hover:not(:disabled) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.action-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.empty-text {
+		font-family: var(--font-display);
+		font-size: 0.8rem;
+		font-style: italic;
+		color: var(--alt-ash);
+	}
+
+	.table-container {
+		overflow-x: auto;
+		border: 1px solid var(--surface-border);
+	}
+
+	.data-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.7rem;
+	}
+
+	.data-table thead tr {
+		background: var(--surface-2);
+	}
+
+	.data-table th {
+		padding: 0.5rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.th-left { text-align: left; }
+	.th-right { text-align: right; }
+
+	.data-table tbody tr {
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.data-table td {
+		padding: 0.5rem 0.75rem;
+		color: var(--alt-charcoal);
+	}
+
+	.td-mono {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+	}
+
+	.td-right {
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.td-truncate {
+		max-width: 6rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.status-text {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+</style>

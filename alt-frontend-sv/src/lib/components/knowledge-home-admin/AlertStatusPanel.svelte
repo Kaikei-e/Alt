@@ -1,76 +1,56 @@
 <script lang="ts">
 import type { AlertSummaryData } from "$lib/connect/knowledge_home_admin";
-import { AlertTriangle, Bell, ShieldAlert } from "@lucide/svelte";
 
 let { alerts }: { alerts: AlertSummaryData[] } = $props();
+
+const severityStatus = (severity: string): "error" | "warning" | "neutral" => {
+	switch (severity) {
+		case "critical":
+		case "page":
+			return "error";
+		case "warning":
+			return "warning";
+		default:
+			return "neutral";
+	}
+};
 
 const severityColor = (severity: string) => {
 	switch (severity) {
 		case "critical":
-			return "var(--accent-red, #ef4444)";
+		case "page":
+			return "var(--alt-terracotta)";
 		case "warning":
-			return "var(--accent-amber, #f59e0b)";
-		case "info":
-			return "var(--accent-blue, #3b82f6)";
+			return "var(--alt-sand)";
 		default:
-			return "var(--text-secondary)";
-	}
-};
-
-const severityIcon = (severity: string) => {
-	switch (severity) {
-		case "critical":
-			return ShieldAlert;
-		case "warning":
-			return AlertTriangle;
-		default:
-			return Bell;
+			return "var(--alt-ash)";
 	}
 };
 </script>
 
-<div class="flex flex-col gap-3">
-	<h3 class="text-sm font-semibold" style="color: var(--text-primary);">
-		Active Alerts
-	</h3>
+<div class="panel" data-role="alert-status">
+	<h3 class="section-heading">Active Alerts</h3>
+	<div class="heading-rule"></div>
 
 	{#if alerts.length === 0}
-		<div
-			class="flex items-center gap-2 rounded-lg border-2 px-4 py-3 text-xs"
-			style="background: var(--surface-bg); border-color: var(--border-primary); color: var(--text-secondary);"
-		>
-			<Bell size={14} />
-			<span>No active alerts.</span>
+		<div class="no-alerts">
+			<span class="no-alerts-dot"></span>
+			<span class="no-alerts-text">No active alerts</span>
 		</div>
 	{:else}
-		<div class="flex flex-col gap-2">
+		<div class="alert-list">
 			{#each alerts as alert (alert.alertName + alert.firedAt)}
-				{@const Icon = severityIcon(alert.severity)}
-				<div
-					class="flex items-start gap-3 rounded-lg border-2 px-4 py-3"
-					style="background: var(--surface-bg); border-color: var(--border-primary);"
-				>
-					<div class="mt-0.5 shrink-0" style="color: {severityColor(alert.severity)};">
-						<Icon size={16} />
-					</div>
-					<div class="flex flex-1 flex-col gap-1">
-						<div class="flex items-center justify-between">
-							<span class="text-sm font-medium" style="color: var(--text-primary);">
-								{alert.alertName}
-							</span>
-							<span
-								class="inline-block rounded px-2 py-0.5 text-xs font-medium text-white"
-								style="background: {severityColor(alert.severity)};"
-							>
-								{alert.severity}
-							</span>
+				<div class="alert-item" data-severity={severityStatus(alert.severity)}>
+					<div class="alert-stripe" style="background: {severityColor(alert.severity)};"></div>
+					<div class="alert-body">
+						<div class="alert-header">
+							<span class="alert-name">{alert.alertName}</span>
+							<span class="alert-severity">{alert.severity}</span>
 						</div>
-						<p class="text-xs" style="color: var(--text-secondary);">
-							{alert.description}
-						</p>
-						<p class="text-xs" style="color: var(--text-secondary);">
+						<p class="alert-desc">{alert.description}</p>
+						<p class="alert-meta">
 							Fired: {alert.firedAt
-								? new Date(alert.firedAt).toLocaleString("ja-JP")
+								? new Date(alert.firedAt).toLocaleString()
 								: "--"}
 							| Status: {alert.status}
 						</p>
@@ -80,3 +60,108 @@ const severityIcon = (severity: string) => {
 		</div>
 	{/if}
 </div>
+
+<style>
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.section-heading {
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.heading-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-bottom: 0.25rem;
+	}
+
+	.no-alerts {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0;
+	}
+
+	.no-alerts-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-sage);
+	}
+
+	.no-alerts-text {
+		font-family: var(--font-display);
+		font-size: 0.8rem;
+		font-style: italic;
+		color: var(--alt-ash);
+	}
+
+	.alert-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.alert-item {
+		display: flex;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
+	}
+
+	.alert-stripe {
+		width: 3px;
+		flex-shrink: 0;
+	}
+
+	.alert-body {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding: 0.6rem 0.75rem;
+		flex: 1;
+	}
+
+	.alert-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.alert-name {
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--alt-charcoal);
+	}
+
+	.alert-severity {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.alert-desc {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		color: var(--alt-slate);
+		margin: 0;
+	}
+
+	.alert-meta {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		color: var(--alt-ash);
+		margin: 0;
+	}
+</style>

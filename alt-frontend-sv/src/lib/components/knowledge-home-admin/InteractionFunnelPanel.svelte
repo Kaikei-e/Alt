@@ -8,37 +8,101 @@ let {
 const maxValue = $derived(
 	funnel.length > 0 ? Math.max(...funnel.map((f) => f.value)) : 1,
 );
-
-const funnelColors = [
-	"var(--accent-blue, #3b82f6)",
-	"var(--accent-teal, #14b8a6)",
-	"var(--accent-green, #22c55e)",
-	"var(--accent-amber, #f59e0b)",
-];
 </script>
 
-<div class="flex flex-col gap-3">
-	<h3 class="text-sm font-semibold" style="color: var(--text-primary);">
-		Interaction Funnel
-	</h3>
+<div class="panel" data-role="interaction-funnel">
+	<h3 class="section-heading">Interaction Funnel</h3>
+	<div class="heading-rule"></div>
 
 	{#if funnel.length === 0}
-		<p class="text-xs" style="color: var(--text-secondary);">No data available.</p>
+		<p class="empty-text">No data available.</p>
 	{:else}
-		<div class="flex flex-col gap-2">
-			{#each funnel as step, i}
-				<div class="flex items-center gap-2 text-xs">
-					<span class="w-20 text-right" style="color: var(--text-secondary);">
-						{step.label}
-					</span>
-					<div
-						class="h-5 rounded flex items-center px-2 text-white text-xs font-medium"
-						style="width: {maxValue > 0 ? (step.value / maxValue) * 100 : 0}%; min-width: 24px; background: {funnelColors[i % funnelColors.length]};"
-					>
-						{step.value}
+		<div class="funnel-list">
+			{#each funnel as step}
+				<div class="funnel-row">
+					<span class="funnel-label">{step.label}</span>
+					<div class="funnel-bar-container">
+						<div
+							class="funnel-bar"
+							style="width: {maxValue > 0 ? (step.value / maxValue) * 100 : 0}%; min-width: 20px;"
+						></div>
 					</div>
+					<span class="funnel-value">{step.value.toLocaleString()}</span>
 				</div>
 			{/each}
 		</div>
 	{/if}
 </div>
+
+<style>
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.section-heading {
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.heading-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-bottom: 0.25rem;
+	}
+
+	.empty-text {
+		font-family: var(--font-display);
+		font-size: 0.8rem;
+		font-style: italic;
+		color: var(--alt-ash);
+	}
+
+	.funnel-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.funnel-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.funnel-label {
+		width: 5rem;
+		text-align: right;
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		flex-shrink: 0;
+	}
+
+	.funnel-bar-container {
+		flex: 1;
+		height: 16px;
+	}
+
+	.funnel-bar {
+		height: 100%;
+		background: var(--alt-primary);
+		transition: width 0.3s ease;
+	}
+
+	.funnel-value {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: var(--alt-charcoal);
+		flex-shrink: 0;
+		min-width: 3rem;
+	}
+</style>

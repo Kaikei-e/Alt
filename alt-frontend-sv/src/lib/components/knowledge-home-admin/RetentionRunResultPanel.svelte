@@ -10,76 +10,64 @@ let { result }: Props = $props();
 const statusColor = (status: string) => {
 	switch (status) {
 		case "exported":
-			return "var(--accent-green, #22c55e)";
+		case "completed":
+			return "var(--alt-sage)";
 		case "dry_run":
 		case "planned":
-			return "var(--accent-blue, #3b82f6)";
+			return "var(--alt-primary)";
 		case "failed":
-			return "var(--accent-red, #ef4444)";
+			return "var(--alt-terracotta)";
 		default:
-			return "var(--text-secondary)";
+			return "var(--alt-ash)";
 	}
 };
 </script>
 
 {#if result}
-	<div class="flex flex-col gap-3">
-		<div class="flex items-center gap-2">
-			<h3 class="text-sm font-semibold" style="color: var(--text-primary);">
-				Retention Run Result
-			</h3>
-			<span
-				class="inline-block rounded px-2 py-0.5 text-xs font-medium"
-				style="background: {result.dry_run ? 'var(--accent-blue, #3b82f6)' : 'var(--accent-green, #22c55e)'}; color: #fff;"
-			>
+	<div class="panel" data-role="retention-result">
+		<div class="panel-header">
+			<h3 class="section-heading">Retention Run Result</h3>
+			<span class="mode-badge" class:dry={result.dry_run}>
 				{result.dry_run ? "Dry Run" : "Live"}
 			</span>
 		</div>
+		<div class="heading-rule"></div>
 
 		{#if result.error}
-			<div
-				class="rounded-lg border px-4 py-2 text-sm"
-				style="background: var(--error-bg, #fee2e2); border-color: var(--error-border, #ef4444); color: var(--error-text, #991b1b);"
-			>
+			<div class="error-banner">
 				{result.error}
 			</div>
 		{/if}
 
 		{#if result.actions.length === 0}
-			<p class="text-xs" style="color: var(--text-secondary);">No actions taken.</p>
+			<p class="empty-text">No actions taken.</p>
 		{:else}
-			<div
-				class="overflow-x-auto rounded-lg border-2"
-				style="border-color: var(--border-primary);"
-			>
-				<table class="w-full text-xs">
+			<div class="table-container">
+				<table class="data-table">
 					<thead>
-						<tr style="background: var(--surface-bg);">
-							<th class="px-3 py-2 text-left">Status</th>
-							<th class="px-3 py-2 text-left">Action</th>
-							<th class="px-3 py-2 text-left">Table</th>
-							<th class="px-3 py-2 text-left">Partition</th>
-							<th class="px-3 py-2 text-right">Rows</th>
-							<th class="px-3 py-2 text-left">Path</th>
+						<tr>
+							<th class="th-left">Status</th>
+							<th class="th-left">Action</th>
+							<th class="th-left">Table</th>
+							<th class="th-left">Partition</th>
+							<th class="th-right">Rows</th>
+							<th class="th-left">Path</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each result.actions as action}
-							<tr class="border-t" style="border-color: var(--border-primary);">
-								<td class="px-3 py-2">
-									<span
-										class="inline-block rounded px-2 py-0.5 text-white text-xs font-medium"
-										style="background: {statusColor(action.status)};"
-									>
+							<tr>
+								<td>
+									<span class="status-text" style="color: {statusColor(action.status)};">
 										{action.status}
 									</span>
 								</td>
-								<td class="px-3 py-2">{action.action}</td>
-								<td class="px-3 py-2 font-mono">{action.table}</td>
-								<td class="px-3 py-2 font-mono">{action.partition}</td>
-								<td class="px-3 py-2 text-right tabular-nums">{action.rows.toLocaleString()}</td>
-								<td class="px-3 py-2 max-w-48 truncate font-mono" title={action.path ?? ""}>
-									{action.path ?? "—"}
+								<td>{action.action}</td>
+								<td class="td-mono">{action.table}</td>
+								<td class="td-mono">{action.partition}</td>
+								<td class="td-right">{action.rows.toLocaleString()}</td>
+								<td class="td-mono td-truncate" title={action.path ?? ""}>
+									{action.path ?? "--"}
 								</td>
 							</tr>
 						{/each}
@@ -89,3 +77,126 @@ const statusColor = (status: string) => {
 		{/if}
 	</div>
 {/if}
+
+<style>
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.panel-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.section-heading {
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.heading-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-bottom: 0.25rem;
+	}
+
+	.mode-badge {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--alt-sage);
+		border: 1px solid var(--alt-sage);
+		padding: 0.15rem 0.4rem;
+	}
+
+	.mode-badge.dry {
+		color: var(--alt-primary);
+		border-color: var(--alt-primary);
+	}
+
+	.error-banner {
+		border-left: 3px solid var(--alt-terracotta);
+		background: var(--surface-bg);
+		padding: 0.5rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.8rem;
+		color: var(--alt-terracotta);
+	}
+
+	.empty-text {
+		font-family: var(--font-display);
+		font-size: 0.8rem;
+		font-style: italic;
+		color: var(--alt-ash);
+	}
+
+	.table-container {
+		overflow-x: auto;
+		border: 1px solid var(--surface-border);
+	}
+
+	.data-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.7rem;
+	}
+
+	.data-table thead tr {
+		background: var(--surface-2);
+	}
+
+	.data-table th {
+		padding: 0.5rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.th-left { text-align: left; }
+	.th-right { text-align: right; }
+
+	.data-table tbody tr {
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.data-table td {
+		padding: 0.5rem 0.75rem;
+		color: var(--alt-charcoal);
+	}
+
+	.td-mono {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+	}
+
+	.td-right {
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.td-truncate {
+		max-width: 12rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.status-text {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+</style>

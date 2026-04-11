@@ -1,6 +1,5 @@
 <script lang="ts">
 import type { ReprojectRunData } from "$lib/connect/knowledge_home_admin";
-import { Button } from "$lib/components/ui/button";
 
 let {
 	runs,
@@ -19,19 +18,18 @@ let {
 const statusColor = (status: string) => {
 	switch (status) {
 		case "swappable":
-			return "var(--accent-green, #22c55e)";
-		case "running":
-			return "var(--accent-blue, #3b82f6)";
-		case "pending":
-			return "var(--accent-amber, #f59e0b)";
-		case "failed":
-			return "var(--accent-red, #ef4444)";
 		case "swapped":
-			return "var(--accent-green, #22c55e)";
-		case "rolled_back":
-			return "var(--text-secondary)";
+			return "var(--alt-sage)";
+		case "running":
+		case "validating":
+			return "var(--alt-sand)";
+		case "pending":
+			return "var(--alt-ash)";
+		case "failed":
+		case "cancelled":
+			return "var(--alt-terracotta)";
 		default:
-			return "var(--text-secondary)";
+			return "var(--alt-ash)";
 	}
 };
 
@@ -55,80 +53,70 @@ const canSwap = (run: ReprojectRunData) => run.status === "swappable";
 const canRollback = (run: ReprojectRunData) => run.status === "swapped";
 </script>
 
-<div class="flex flex-col gap-3">
-	<h3 class="text-sm font-semibold" style="color: var(--text-primary);">
-		Reproject Runs
-	</h3>
+<div class="panel" data-role="reproject-runs">
+	<h3 class="section-heading">Reproject Runs</h3>
+	<div class="heading-rule"></div>
 
 	{#if runs.length === 0}
-		<p class="text-xs" style="color: var(--text-secondary);">No reproject runs.</p>
+		<p class="empty-text">No reproject runs.</p>
 	{:else}
-		<div
-			class="overflow-x-auto rounded-lg border-2"
-			style="border-color: var(--border-primary);"
-		>
-			<table class="w-full text-xs">
+		<div class="table-container">
+			<table class="data-table">
 				<thead>
-					<tr style="background: var(--surface-bg);">
-						<th class="px-3 py-2 text-left">Status</th>
-						<th class="px-3 py-2 text-left">Mode</th>
-						<th class="px-3 py-2 text-left">From</th>
-						<th class="px-3 py-2 text-left">To</th>
-						<th class="px-3 py-2 text-left">Created</th>
-						<th class="px-3 py-2 text-left">Finished</th>
-						<th class="px-3 py-2 text-left">Actions</th>
+					<tr>
+						<th class="th-left">Status</th>
+						<th class="th-left">Mode</th>
+						<th class="th-left">From</th>
+						<th class="th-left">To</th>
+						<th class="th-left">Created</th>
+						<th class="th-left">Finished</th>
+						<th class="th-left">Actions</th>
 					</tr>
 				</thead>
 				<tbody>
 					{#each runs as run (run.reprojectRunId)}
-						<tr class="border-t" style="border-color: var(--border-primary);">
-							<td class="px-3 py-2">
-								<span
-									class="inline-block rounded px-2 py-0.5 text-white text-xs font-medium"
-									style="background: {statusColor(run.status)};"
-								>
+						<tr>
+							<td>
+								<span class="status-text" style="color: {statusColor(run.status)};">
 									{run.status}
 								</span>
 							</td>
-							<td class="px-3 py-2">{modeLabel(run.mode)}</td>
-							<td class="px-3 py-2 font-mono">{run.fromVersion}</td>
-							<td class="px-3 py-2 font-mono">{run.toVersion}</td>
-							<td class="px-3 py-2">
+							<td>{modeLabel(run.mode)}</td>
+							<td class="td-mono">{run.fromVersion}</td>
+							<td class="td-mono">{run.toVersion}</td>
+							<td class="td-mono">
 								{run.createdAt
-									? new Date(run.createdAt).toLocaleString("ja-JP")
+									? new Date(run.createdAt).toLocaleString()
 									: "--"}
 							</td>
-							<td class="px-3 py-2">
+							<td class="td-mono">
 								{run.finishedAt
-									? new Date(run.finishedAt).toLocaleString("ja-JP")
+									? new Date(run.finishedAt).toLocaleString()
 									: "--"}
 							</td>
-							<td class="px-3 py-2">
-								<div class="flex gap-1">
-									<Button
-										variant="outline"
-										size="sm"
+							<td>
+								<div class="action-group">
+									<button
+										class="action-btn"
 										disabled={disableActions || !canCompare(run)}
 										onclick={() => void onCompare?.(run)}
 									>
 										Compare
-									</Button>
-									<Button
-										variant="outline"
-										size="sm"
+									</button>
+									<button
+										class="action-btn"
 										disabled={disableActions || !canSwap(run)}
 										onclick={() => void onSwap?.(run)}
 									>
 										Swap
-									</Button>
-									<Button
-										variant="outline"
-										size="sm"
+									</button>
+									<button
+										class="action-btn"
 										disabled={disableActions || !canRollback(run)}
 										onclick={() => void onRollback?.(run)}
 									>
 										Rollback
-									</Button>
+									</button>
 								</div>
 							</td>
 						</tr>
@@ -138,3 +126,111 @@ const canRollback = (run: ReprojectRunData) => run.status === "swapped";
 		</div>
 	{/if}
 </div>
+
+<style>
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.section-heading {
+		font-family: var(--font-display);
+		font-size: 1.05rem;
+		font-weight: 700;
+		line-height: 1.3;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.heading-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-bottom: 0.25rem;
+	}
+
+	.empty-text {
+		font-family: var(--font-display);
+		font-size: 0.8rem;
+		font-style: italic;
+		color: var(--alt-ash);
+	}
+
+	.table-container {
+		overflow-x: auto;
+		border: 1px solid var(--surface-border);
+	}
+
+	.data-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.7rem;
+	}
+
+	.data-table thead tr {
+		background: var(--surface-2);
+	}
+
+	.data-table th {
+		padding: 0.5rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.th-left { text-align: left; }
+
+	.data-table tbody tr {
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.data-table td {
+		padding: 0.5rem 0.75rem;
+		color: var(--alt-charcoal);
+	}
+
+	.td-mono {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+	}
+
+	.status-text {
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+
+	.action-group {
+		display: flex;
+		gap: 0.35rem;
+	}
+
+	.action-btn {
+		border: 1px solid var(--alt-charcoal);
+		background: transparent;
+		color: var(--alt-charcoal);
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		padding: 0.2rem 0.5rem;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.action-btn:hover:not(:disabled) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.action-btn:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+	}
+</style>
