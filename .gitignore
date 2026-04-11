@@ -134,6 +134,42 @@ docs/.obsidian/
 docs/daily/
 
 # ============================================
+# Internal documentation (not for public)
+# ============================================
+docs/review/
+docs/blog/
+docs/plan/
+
+# ============================================
+# Deployment & operational scripts (infra IPs/SSH targets)
+# ============================================
+scripts/deploy-*.sh
+scripts/backfill_*.sh
+scripts/migrate_sovereign_data.sh
+scripts/migrate-pre-processor-db.sh
+scripts/pgbouncer_stats.sh
+scripts/benchmark_augur.sh
+scripts/backup/
+setup.sh
+rerank-server/deploy.sh
+
+# ============================================
+# Build artifacts (generic patterns)
+# ============================================
+**/obj/
+**/bin/Debug/
+**/bin/Release/
+*.DotSettings.user
+nohup.out
+coverage.out
+
+# ============================================
+# Benchmark results (re-generable, may contain IPs)
+# ============================================
+**/benchmark_results*.json
+news-creator/app/benchmark_*/
+
+# ============================================
 # Misc
 # ============================================
 .fake
