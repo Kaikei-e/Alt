@@ -45,7 +45,7 @@ Non-breaking changes include:
 ```bash
 # Check the CI output for the specific break
 # Or run locally:
-cd /home/koko/Documents/dev/Alt/proto
+cd proto
 buf breaking --against '.git#branch=main'
 ```
 
@@ -54,7 +54,7 @@ The output will list specific files and fields that broke backward compatibility
 ### 2. Review the git diff
 
 ```bash
-cd /home/koko/Documents/dev/Alt/proto
+cd proto
 git diff main -- .
 ```
 
@@ -123,7 +123,7 @@ When one of these occurs:
 
 - Always run `buf breaking` locally before pushing proto changes:
   ```bash
-  cd /home/koko/Documents/dev/Alt/proto
+  cd proto
   buf breaking --against '.git#branch=main'
   ```
 - Use `reserved` to prevent accidental reuse of removed field numbers:

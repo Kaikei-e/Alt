@@ -33,7 +33,7 @@ Related: [[000418]]
 
 ```bash
 # Recent commits touching projector code
-cd /home/koko/Documents/dev/Alt/alt-backend
+cd alt-backend
 git log --oneline -10 -- app/*/knowledge_home*
 ```
 
