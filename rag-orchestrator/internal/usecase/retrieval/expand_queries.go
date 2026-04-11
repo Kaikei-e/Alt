@@ -82,6 +82,16 @@ func ExpandQueries(
 
 	// goroutine A: Query Expansion (with optional conversation history)
 	g.Go(func() error {
+		// Short-circuit: use planner queries when available (bypass expand-query LLM call)
+		if len(sc.PlannerQueries) > 0 {
+			sc.ExpandedQueries = sc.PlannerQueries
+			logger.Info("expand_query_skipped_planner_queries_available",
+				slog.String("retrieval_id", sc.RetrievalID),
+				slog.Int("planner_query_count", len(sc.PlannerQueries)),
+				slog.Any("planner_queries", sc.PlannerQueries))
+			return nil
+		}
+
 		expanded, err := expandQuery(gctx, sc.Query, sc.ConversationHistory, queryExpander, llmClient, logger)
 		if err != nil {
 			logger.Warn("expansion_failed",

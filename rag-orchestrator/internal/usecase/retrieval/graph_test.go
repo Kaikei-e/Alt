@@ -432,6 +432,121 @@ func TestRetrievalGraph_Execute_WithConversationHistory(t *testing.T) {
 	expander.AssertCalled(t, "ExpandQueryWithHistory", mock.Anything, "tell me more", history, 1, 3)
 }
 
+func TestRetrievalGraph_Execute_PlannerQueries_SkipsExpanderCall(t *testing.T) {
+	// When GraphInput.SearchQueries is populated (from query planner),
+	// ExpandQueries should use them directly and NOT call the expander.
+	expander := new(mockQueryExpander)
+	search := new(mockSearchClient)
+	encoder := new(mockVectorEncoder)
+	chunkRepo := new(mockChunkRepo)
+	bm25 := new(mockBM25Searcher)
+
+	queryVec := []float32{0.1, 0.2, 0.3}
+	chunkID := uuid.New()
+
+	plannerQueries := []string{
+		"ヴァンス副大統領 最新動向",
+		"JD Vance vice president recent activities",
+		"Vance policy changes 2026",
+	}
+
+	// expander should NOT be called (no ExpandQuery/ExpandQueryWithHistory mocks)
+	search.On("Search", mock.Anything, "ヴァンス副大統領の直近の動きは？").Return([]domain.SearchHit{}, nil)
+	encoder.On("Encode", mock.Anything, []string{"ヴァンス副大統領の直近の動きは？"}).Return([][]float32{queryVec}, nil)
+	encoder.On("Encode", mock.Anything, mock.MatchedBy(func(texts []string) bool {
+		return len(texts) > 0 && texts[0] != "ヴァンス副大統領の直近の動きは？"
+	})).Return([][]float32{queryVec, queryVec, queryVec}, nil)
+	chunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+		{
+			Chunk:           domain.RagChunk{ID: chunkID, Content: "Vance article content", CreatedAt: time.Now()},
+			Score:           0.90,
+			ArticleID:       "art-vance",
+			Title:           "JD Vance News",
+			URL:             "https://example.com/vance",
+			DocumentVersion: 1,
+		},
+	}, nil)
+	bm25.On("SearchBM25", mock.Anything, mock.Anything, 50).Return([]domain.BM25SearchResult{
+		{ArticleID: "art-vance", Content: "Vance article content", Title: "JD Vance News", Rank: 1, Score: 0.70},
+	}, nil)
+
+	g := retrieval.NewRetrievalGraph(retrieval.GraphDeps{
+		QueryExpander: expander,
+		LLMClient:     new(mockLLMClient),
+		SearchClient:  search,
+		Encoder:       encoder,
+		ChunkRepo:     chunkRepo,
+		BM25Searcher:  bm25,
+		Config: retrieval.GraphConfig{
+			SearchLimit:                      50,
+			RRFK:                             60.0,
+			QuotaOriginal:                    5,
+			QuotaExpanded:                    5,
+			RerankEnabled:                    false,
+			HybridSearchEnabled:              true,
+			BM25Limit:                        50,
+			DynamicLanguageAllocationEnabled: true,
+		},
+		Logger: discardLogger(),
+	})
+
+	result, err := g.Execute(context.Background(), retrieval.GraphInput{
+		Query:         "ヴァンス副大統領の直近の動きは？",
+		SearchQueries: plannerQueries,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	// Planner queries should appear as expanded queries
+	assert.Equal(t, plannerQueries, result.ExpandedQueries)
+	// Expander should NOT have been called
+	expander.AssertNotCalled(t, "ExpandQuery")
+	expander.AssertNotCalled(t, "ExpandQueryWithHistory")
+	// BM25 should have been called with planner queries
+	assert.Greater(t, result.BM25HitCount, 0)
+}
+
+func TestRetrievalGraph_Execute_EmptyPlannerQueries_CallsExpander(t *testing.T) {
+	// When GraphInput.SearchQueries is nil, ExpandQueries should call the expander as usual.
+	expander := new(mockQueryExpander)
+	search := new(mockSearchClient)
+	encoder := new(mockVectorEncoder)
+	chunkRepo := new(mockChunkRepo)
+
+	queryVec := []float32{0.1, 0.2, 0.3}
+
+	expander.On("ExpandQuery", mock.Anything, "fallback query", 1, 3).Return([]string{"expanded fallback"}, nil)
+	search.On("Search", mock.Anything, "fallback query").Return([]domain.SearchHit{}, nil)
+	encoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec}, nil)
+	chunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{}, nil)
+
+	g := retrieval.NewRetrievalGraph(retrieval.GraphDeps{
+		QueryExpander: expander,
+		LLMClient:     new(mockLLMClient),
+		SearchClient:  search,
+		Encoder:       encoder,
+		ChunkRepo:     chunkRepo,
+		Config: retrieval.GraphConfig{
+			SearchLimit:                      50,
+			RRFK:                             60.0,
+			QuotaOriginal:                    5,
+			QuotaExpanded:                    5,
+			DynamicLanguageAllocationEnabled: true,
+		},
+		Logger: discardLogger(),
+	})
+
+	result, err := g.Execute(context.Background(), retrieval.GraphInput{
+		Query: "fallback query",
+		// SearchQueries is nil — should fall back to expander
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	// Expander SHOULD have been called
+	expander.AssertCalled(t, "ExpandQuery", mock.Anything, "fallback query", 1, 3)
+}
+
 func TestRetrievalGraph_Execute_WithCandidateArticleIDs(t *testing.T) {
 	// Morning Letter use case: search within specific articles.
 	expander := new(mockQueryExpander)

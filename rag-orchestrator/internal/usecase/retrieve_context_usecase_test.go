@@ -441,6 +441,63 @@ func TestRetrieveContext_BM25AndExpandedBothFail_StillSucceeds(t *testing.T) {
 	assert.GreaterOrEqual(t, len(output.Contexts), 1, "should return results from original vector search")
 }
 
+func TestRetrieveContext_SearchQueries_BypassExpansion(t *testing.T) {
+	// When RetrieveContextInput.SearchQueries is populated (from query planner),
+	// the expand-query LLM call should be skipped and planner queries used directly.
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockEncoder := new(MockVectorEncoder)
+	mockLLM := new(mockLLMClient)
+	mockQueryExpander := new(MockQueryExpander)
+	mockBM25 := new(MockBM25Searcher)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewRetrieveContextUsecase(
+		mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander,
+		usecase.DefaultRetrievalConfig(), testLogger,
+		usecase.WithBM25Searcher(mockBM25),
+	)
+
+	ctx := context.Background()
+	input := usecase.RetrieveContextInput{
+		Query: "ヴァンス副大統領の直近の動きは？",
+		SearchQueries: []string{
+			"ヴァンス副大統領 最新動向",
+			"JD Vance vice president recent activities",
+			"Vance policy changes 2026",
+		},
+	}
+
+	// Expander should NOT be called — planner queries should be used
+	// (no mock setup for ExpandQuery/ExpandQueryWithHistory — will panic if called)
+
+	queryVec := []float32{0.1, 0.2, 0.3}
+	mockEncoder.On("Encode", mock.Anything, mock.Anything).Return([][]float32{queryVec, queryVec, queryVec}, nil)
+	mockChunkRepo.On("Search", mock.Anything, queryVec, 50).Return([]domain.SearchResult{
+		{
+			Chunk:           domain.RagChunk{ID: uuid.New(), Content: "Vance article content"},
+			Score:           0.90,
+			ArticleID:       "art-vance",
+			DocumentVersion: 1,
+		},
+	}, nil)
+	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything).Return([]domain.BM25SearchResult{
+		{ArticleID: "art-vance", Content: "Vance content", Title: "JD Vance", Rank: 1, Score: 0.7},
+	}, nil)
+
+	output, err := uc.Execute(ctx, input)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, output)
+	// Planner queries should appear as expanded queries
+	assert.Equal(t, input.SearchQueries, output.ExpandedQueries)
+	// Expander should NOT have been called
+	mockQueryExpander.AssertNotCalled(t, "ExpandQuery")
+	mockQueryExpander.AssertNotCalled(t, "ExpandQueryWithHistory")
+	// BM25 should have results
+	assert.Greater(t, output.BM25HitCount, 0)
+}
+
 // Test helper types
 type testSearchResult struct {
 	id      string

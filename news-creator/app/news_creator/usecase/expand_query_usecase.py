@@ -173,6 +173,13 @@ class ExpandQueryUsecase:
 
             # Parse response: split by newlines and filter empty lines
             raw_text = llm_response.response
+            logger.debug(
+                "expand_query_raw_output",
+                extra={
+                    "raw_text": raw_text[:500],
+                    "raw_line_count": len(raw_text.split("\n")),
+                },
+            )
             parsed_lines = _parse_expansion_lines(raw_text)
 
             # Validate: order-preserving dedup
@@ -299,6 +306,9 @@ def _is_repeating_pattern(line: str) -> bool:
     return False
 
 
+_LEADING_NUMBER_RE = _re.compile(r"^\d{1,3}[.):][ \t]")
+
+
 def _parse_expansion_lines(raw_text: str) -> List[str]:
     """Parse raw LLM output into candidate query lines."""
     lines = []
@@ -309,9 +319,10 @@ def _parse_expansion_lines(raw_text: str) -> List[str]:
         # Skip section labels (e.g., "Japanese:", "English(3):")
         if trimmed.lower().startswith(_LABEL_PREFIXES):
             continue
-        # Remove leading numbers/bullets
-        if len(trimmed) > 2 and trimmed[0].isdigit() and trimmed[1] in ".):":
-            trimmed = trimmed[2:].strip()
+        # Remove leading numbers/bullets (handles multi-digit: "1. ", "10. ", "100. ")
+        m = _LEADING_NUMBER_RE.match(trimmed)
+        if m:
+            trimmed = trimmed[m.end():].strip()
         if trimmed.startswith(("-", "*", "•")):
             trimmed = trimmed[1:].strip()
         if trimmed:

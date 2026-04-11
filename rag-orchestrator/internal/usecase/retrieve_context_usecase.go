@@ -17,6 +17,7 @@ type RetrieveContextInput struct {
 	Query               string
 	CandidateArticleIDs []string
 	ConversationHistory []domain.Message // Recent turns for query rewriting
+	SearchQueries       []string         // Pre-filtered queries from query planner (bypass expand-query)
 }
 
 // RetrieveContextOutput defines the output for RetrieveContext.
@@ -137,6 +138,7 @@ func (u *retrieveContextUsecase) Execute(ctx context.Context, input RetrieveCont
 		Query:               input.Query,
 		CandidateArticleIDs: input.CandidateArticleIDs,
 		ConversationHistory: input.ConversationHistory,
+		PlannerQueries:      input.SearchQueries,
 		SearchLimit:         u.config.SearchLimit,
 		RRFK:                u.config.RRFK,
 		QuotaOriginal:       u.config.QuotaOriginal,

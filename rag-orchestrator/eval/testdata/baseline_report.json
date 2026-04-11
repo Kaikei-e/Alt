@@ -1,19 +1,23 @@
 {
-  "timestamp": "2026-04-08T10:32:58Z",
+  "timestamp": "2026-04-11T02:21:52Z",
   "case_count": 12,
-  "pass_count": 4,
-  "fail_count": 8,
+  "pass_count": 2,
+  "fail_count": 10,
   "verdicts": [
     {
       "case_id": "iran-oil-crisis-causal",
       "passed": false,
       "failures": [
-        "answer length: got 561 runes, want \u003e= 800"
+        "answer length: got 444 runes, want \u003e= 800",
+        "expected entity \"石油\" not found in answer"
       ]
     },
     {
       "case_id": "iran-follow-up-developments",
-      "passed": true
+      "passed": false,
+      "failures": [
+        "citations required but none provided"
+      ]
     },
     {
       "case_id": "ambiguous-more-detail",
@@ -26,15 +30,14 @@
       "case_id": "ambiguous-is-that-true",
       "passed": false,
       "failures": [
-        "answer length: got 136 runes, want \u003e= 200",
-        "citations required but none provided"
+        "answer length: got 171 runes, want \u003e= 200"
       ]
     },
     {
       "case_id": "oil-crisis-root-cause",
       "passed": false,
       "failures": [
-        "answer length: got 565 runes, want \u003e= 600"
+        "answer length: got 400 runes, want \u003e= 600"
       ]
     },
     {
@@ -49,14 +52,18 @@
       "case_id": "synthesis-broad-topic",
       "passed": false,
       "failures": [
-        "intent: got \"general\", want \"synthesis\"",
-        "answer length: got 779 runes, want \u003e= 800",
+        "intent: got \"\", want \"synthesis\"",
+        "answer length: got 0 runes, want \u003e= 800",
         "citations required but none provided"
       ]
     },
     {
       "case_id": "topic-shift-explicit",
-      "passed": true
+      "passed": false,
+      "failures": [
+        "answer length: got 0 runes, want \u003e= 200",
+        "citations required but none provided"
+      ]
     },
     {
       "case_id": "cjk-short-query-bm25",
@@ -71,6 +78,7 @@
       "passed": false,
       "failures": [
         "intent: got \"\", want \"topic_deep_dive\"",
+        "answer length: got 0 runes, want \u003e= 500",
         "citations required but none provided"
       ]
     },
@@ -78,7 +86,6 @@
       "case_id": "follow-up-different-perspective",
       "passed": false,
       "failures": [
-        "answer length: got 0 runes, want \u003e= 300",
         "citations required but none provided"
       ]
     }
@@ -88,13 +95,13 @@
     "mean_ndcg_at_10": 0,
     "mean_top1_precision": 0,
     "bm25_zero_rate": 1,
-    "follow_up_resolution_rate": 0.5,
+    "follow_up_resolution_rate": 0,
     "clarification_precision": 0,
     "intent_accuracy": 0.7142857142857143,
-    "mean_faithfulness": 0.16666666666666666,
+    "mean_faithfulness": 0,
     "mean_citation_correctness": 0,
     "unsupported_claim_rate": 0,
-    "fallback_rate": 0.3333333333333333,
+    "fallback_rate": 0.5833333333333334,
     "instruction_adherence_rate": 0,
     "mean_prompt_tokens": 0
   }

@@ -16,6 +16,7 @@ type GraphInput struct {
 	Query               string
 	CandidateArticleIDs []string
 	ConversationHistory []domain.Message
+	SearchQueries       []string // Pre-filtered queries from query planner (bypass expand-query)
 }
 
 // GraphOutput defines the output of RetrievalGraph.Execute.
@@ -105,6 +106,7 @@ func (g *RetrievalGraph) Execute(ctx context.Context, input GraphInput) (*GraphO
 		Query:               input.Query,
 		CandidateArticleIDs: input.CandidateArticleIDs,
 		ConversationHistory: input.ConversationHistory,
+		PlannerQueries:      input.SearchQueries,
 		SearchLimit:         g.config.SearchLimit,
 		RRFK:                g.config.RRFK,
 		QuotaOriginal:       g.config.QuotaOriginal,

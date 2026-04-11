@@ -13,6 +13,7 @@ type StageContext struct {
 	Query               string
 	CandidateArticleIDs []string
 	ConversationHistory []domain.Message // Recent turns for multi-turn query rewriting
+	PlannerQueries      []string         // Pre-filtered queries from query planner (skip expand-query when set)
 
 	// Stage 1 outputs
 	OriginalEmbedding []float32

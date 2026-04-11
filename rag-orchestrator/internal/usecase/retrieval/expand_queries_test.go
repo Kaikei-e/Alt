@@ -336,3 +336,31 @@ func TestFilterExpandedQueries_GarbagePattern_Filtered(t *testing.T) {
 	result := filterExpandedQueries(queries)
 	assert.Equal(t, []string{"latest AI technology trends"}, result)
 }
+
+func TestFilterSearchQueries_PreservesValidPlannerQueries(t *testing.T) {
+	queries := []string{
+		"ヴァンス副大統領 最新動向",
+		"JD Vance vice president recent activities",
+		"Vance policy changes 2026",
+		"US vice president Vance news",
+	}
+	result := FilterSearchQueries(queries, "ヴァンス副大統領の直近の動きは？")
+	assert.Equal(t, queries, result)
+}
+
+func TestFilterSearchQueries_FallbackToResolvedQuery(t *testing.T) {
+	// When all planner queries are filtered (e.g. all garbage), fall back to resolvedQuery
+	queries := []string{
+		"2026-04-07",
+		":):):):):):):):):)",
+		"",
+	}
+	result := FilterSearchQueries(queries, "ヴァンス副大統領の直近の動きは？")
+	assert.Equal(t, []string{"ヴァンス副大統領の直近の動きは？"}, result)
+}
+
+func TestFilterSearchQueries_EmptyResolvedQueryNoFallback(t *testing.T) {
+	queries := []string{"2026-04-07"}
+	result := FilterSearchQueries(queries, "")
+	assert.Empty(t, result)
+}

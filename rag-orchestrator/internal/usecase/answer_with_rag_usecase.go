@@ -1361,10 +1361,12 @@ func (u *answerWithRAGUsecase) buildPromptWithQueryPlanner(
 	strategy := u.selectStrategy(result.intentType)
 	result.strategyUsed = strategy.Name()
 
-	// Use resolved query for retrieval
+	// Use resolved query for retrieval, passing planner's search queries
+	// to bypass the expand-query LLM call (which often over-filters).
 	retrieveInput := RetrieveContextInput{
 		Query:               qPlan.ResolvedQuery,
 		ConversationHistory: input.ConversationHistory,
+		SearchQueries:       result.expandedQueries,
 	}
 	if len(input.CandidateArticleIDs) > 0 {
 		retrieveInput.CandidateArticleIDs = input.CandidateArticleIDs

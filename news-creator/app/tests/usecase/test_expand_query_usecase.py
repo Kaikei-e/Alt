@@ -346,6 +346,38 @@ class TestPromptHasBilingualOutputLabels:
         )
 
 
+@pytest.mark.asyncio
+async def test_expand_query_parses_multi_digit_numbered_lines():
+    """Lines with multi-digit numbers (10., 11., etc.) must have numbers stripped."""
+    config = Mock()
+    llm_provider = AsyncMock()
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="1. ヴァンス副大統領 最新動向\n2. JD Vance vice president recent\n10. Vance policy changes\n11. US vice president news",
+        model="gemma4-e4b-12k",
+        prompt_eval_count=256,
+        eval_count=64,
+        total_duration=500_000_000,
+    )
+
+    usecase = ExpandQueryUsecase(config=config, llm_provider=llm_provider)
+
+    expanded_queries, _, _ = await usecase.expand_query(
+        query="ヴァンス副大統領",
+        japanese_count=1,
+        english_count=3,
+    )
+
+    # All numbered prefixes should be stripped
+    assert "ヴァンス副大統領 最新動向" in expanded_queries
+    assert "JD Vance vice president recent" in expanded_queries
+    assert "Vance policy changes" in expanded_queries
+    assert "US vice president news" in expanded_queries
+    # No numbered prefixes should remain
+    for q in expanded_queries:
+        assert not q.startswith("10."), f"Number prefix not stripped: {q}"
+        assert not q.startswith("11."), f"Number prefix not stripped: {q}"
+
+
 class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
     """The multi-turn few-shot example must not contain domain-specific content
     that Gemma 4 (12B) copies verbatim instead of learning the pattern."""
