@@ -126,12 +126,13 @@ test.describe("mobile feeds routes - search", () => {
 
 		// Wait for first page results
 		await expect(page.getByText("AI Weekly Issue 1")).toBeVisible();
-		await expect(mobileSearchPage.resultItems).toHaveCount(3);
 
 		// Scroll sentinel into view to trigger infinite scroll
+		// (on small mobile viewports the sentinel may already be visible,
+		//  so the second page can load automatically)
 		await mobileSearchPage.infiniteScrollSentinel.scrollIntoViewIfNeeded();
 
-		// Wait for second page to load
+		// Wait for all results including second page
 		await expect(page.getByText("AI Weekly Issue 4")).toBeVisible();
 		await expect(mobileSearchPage.resultItems).toHaveCount(4);
 

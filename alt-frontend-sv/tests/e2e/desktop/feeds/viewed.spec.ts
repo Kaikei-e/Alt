@@ -1,5 +1,5 @@
 import { test, expect } from "../../fixtures/pomFixtures";
-import { fulfillJson, fulfillError } from "../../utils/mockHelpers";
+import { fulfillJson, fulfillConnectError } from "../../utils/mockHelpers";
 import {
 	CONNECT_RPC_PATHS,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
@@ -90,7 +90,7 @@ test.describe("Desktop Morgue Desk (Viewed Feeds)", () => {
 		desktopViewedPage,
 	}) => {
 		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
-			fulfillError(route, "Server error", 500),
+			fulfillConnectError(route, "Server error"),
 		);
 
 		await desktopViewedPage.goto();

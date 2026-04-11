@@ -1618,6 +1618,23 @@ loop:
 		case <-retryStartedCh:
 			retryStarted = true
 			retryStartedCh = nil
+			// The "refining" event is guaranteed to be sent before Chat() signals
+			// retryStarted, but Go's select may pick this case before the events
+			// case when both are ready. Drain any buffered events first.
+			for {
+				select {
+				case ev, ok := <-events:
+					if !ok {
+						break
+					}
+					if ev.Kind == usecase.StreamEventKindProgress && ev.Payload == "refining" {
+						sawRefining = true
+					}
+				default:
+					goto drained
+				}
+			}
+		drained:
 			if !sawRefining {
 				t.Fatal("retry started before refining progress was emitted")
 			}

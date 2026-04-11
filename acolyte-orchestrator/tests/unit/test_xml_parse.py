@@ -82,22 +82,30 @@ class TestParseXmlishBlock:
         text = "<critic><verdict>accept</verdict></critic>"
         elem = parse_xmlish_block(text, "critic")
         assert elem.tag == "critic"
-        assert elem.find("verdict").text == "accept"
+        verdict = elem.find("verdict")
+        assert verdict is not None
+        assert verdict.text == "accept"
 
     def test_with_thought_block(self):
         text = "<think>\nthinking...\n</think>\n<critic><verdict>revise</verdict></critic>"
         elem = parse_xmlish_block(text, "critic")
-        assert elem.find("verdict").text == "revise"
+        verdict = elem.find("verdict")
+        assert verdict is not None
+        assert verdict.text == "revise"
 
     def test_bare_ampersand_repair(self):
         text = "<critic><reasoning>A &amp; B works, C & D too</reasoning><verdict>accept</verdict></critic>"
         elem = parse_xmlish_block(text, "critic")
-        assert "C & D" in elem.find("reasoning").text or "C &amp; D" in ET.tostring(elem, encoding="unicode")
+        reasoning = elem.find("reasoning")
+        assert reasoning is not None
+        assert "C & D" in (reasoning.text or "") or "C &amp; D" in ET.tostring(elem, encoding="unicode")
 
     def test_prose_around_xml(self):
         text = "Sure! Here's my analysis:\n<critic><verdict>accept</verdict></critic>\nHope this helps!"
         elem = parse_xmlish_block(text, "critic")
-        assert elem.find("verdict").text == "accept"
+        verdict = elem.find("verdict")
+        assert verdict is not None
+        assert verdict.text == "accept"
 
     def test_no_xml_raises(self):
         with pytest.raises(XmlParseError):
@@ -110,7 +118,9 @@ class TestParseXmlishBlock:
     def test_whitespace_in_content(self):
         text = "<plan>\n  <reasoning>\n    some reasoning\n  </reasoning>\n</plan>"
         elem = parse_xmlish_block(text, "plan")
-        assert "some reasoning" in elem.find("reasoning").text
+        reasoning = elem.find("reasoning")
+        assert reasoning is not None
+        assert "some reasoning" in (reasoning.text or "")
 
 
 # ---------------------------------------------------------------------------
