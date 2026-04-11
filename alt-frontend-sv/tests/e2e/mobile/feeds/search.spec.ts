@@ -127,13 +127,18 @@ test.describe("mobile feeds routes - search", () => {
 		// Wait for first page results
 		await expect(page.getByText("AI Weekly Issue 1")).toBeVisible();
 
-		// Scroll sentinel into view to trigger infinite scroll
-		// (on small mobile viewports the sentinel may already be visible,
-		//  so the second page can load automatically)
-		await mobileSearchPage.infiniteScrollSentinel.scrollIntoViewIfNeeded();
+		// Trigger infinite scroll: on small mobile viewports the sentinel may
+		// already be visible (auto-loading the second page before we act).
+		// Use evaluate-based scroll instead of scrollIntoViewIfNeeded on the
+		// sentinel — the sentinel is conditionally rendered ({#if hasMore}) and
+		// may be removed from the DOM before we can interact with it.
+		const secondPageItem = page.getByText("AI Weekly Issue 4");
+		if (!(await secondPageItem.isVisible().catch(() => false))) {
+			await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+		}
 
 		// Wait for all results including second page
-		await expect(page.getByText("AI Weekly Issue 4")).toBeVisible();
+		await expect(secondPageItem).toBeVisible({ timeout: 10000 });
 		await expect(mobileSearchPage.resultItems).toHaveCount(4);
 
 		// Verify "Loading more..." appears during loading

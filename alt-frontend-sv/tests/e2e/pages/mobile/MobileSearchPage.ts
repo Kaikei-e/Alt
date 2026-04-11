@@ -59,9 +59,14 @@ export class MobileSearchPage extends BasePage {
 	}
 
 	/**
-	 * Trigger infinite scroll by scrolling sentinel into view.
+	 * Trigger infinite scroll by scrolling to the bottom of the page.
+	 * Uses evaluate-based scroll instead of scrollIntoViewIfNeeded on the
+	 * sentinel, because the sentinel is conditionally rendered ({#if hasMore})
+	 * and may already be removed from the DOM on small viewports.
 	 */
 	async triggerLoadMore(): Promise<void> {
-		await this.infiniteScrollSentinel.scrollIntoViewIfNeeded();
+		await this.page.evaluate(() =>
+			window.scrollTo(0, document.body.scrollHeight),
+		);
 	}
 }
