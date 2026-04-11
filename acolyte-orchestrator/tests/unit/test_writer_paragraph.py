@@ -370,3 +370,43 @@ async def test_writer_preserves_claim_plan_order() -> None:
     # Section body preserves order
     body = result["sections"]["analysis"]
     assert body.index("Para 1.") < body.index("Para 2.") < body.index("Para 3.")
+
+
+# --- SourceMap integration ---
+
+
+@pytest.mark.asyncio
+async def test_writer_uses_short_ids_when_source_map_present() -> None:
+    """When source_map is in state, Writer prompt must use S1/S2 IDs, not UUIDs."""
+    from acolyte.domain.source_map import SourceMap
+
+    sm = SourceMap()
+    sm.register("abc-1234-5678-dead-beef00000001", "Article Alpha")
+    sm.register("def-1234-5678-dead-beef00000002", "Article Beta")
+
+    claims = [
+        {
+            "claim_id": "analysis-1",
+            "claim": "AI market grew 20%",
+            "claim_type": "statistical",
+            "evidence_ids": ["abc-1234-5678-dead-beef00000001", "def-1234-5678-dead-beef00000002"],
+            "supporting_quotes": ["quote alpha", "quote beta"],
+            "numeric_facts": ["20%"],
+            "novelty_against": [],
+            "must_cite": True,
+        },
+    ]
+    llm = FakeLLM()
+    node = WriterNode(llm)
+    state = _make_state(claims=claims)
+    state["source_map"] = sm.to_dict()
+
+    await node(state)
+
+    prompt = llm.prompts[0]
+    # Short IDs must appear in prompt
+    assert "S1" in prompt
+    assert "S2" in prompt
+    # UUIDs must NOT appear in prompt
+    assert "abc-1234-5678-dead-beef00000001" not in prompt
+    assert "def-1234-5678-dead-beef00000002" not in prompt

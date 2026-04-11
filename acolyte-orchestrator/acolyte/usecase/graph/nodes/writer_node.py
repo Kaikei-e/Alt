@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 from acolyte.config.settings import Settings
 from acolyte.domain.executive_summary import ExecutiveSummaryRenderer
+from acolyte.domain.source_map import SourceMap
 
 logger = structlog.get_logger(__name__)
 
@@ -462,6 +463,7 @@ class WriterNode:
         self._llm = llm
         self._settings = settings or Settings()
         self._es_renderer = ExecutiveSummaryRenderer()
+        self._source_map: SourceMap | None = None
 
     def _role_num_predict(self, section_role: str) -> int:
         """Resolve num_predict by section role."""
@@ -490,6 +492,9 @@ class WriterNode:
         """
         prompt_template = _select_paragraph_prompt(section_role)
         eids = claim.get("evidence_ids", [])
+        # Convert UUIDs to short IDs if SourceMap is available
+        if self._source_map:
+            eids = [self._source_map.short_id_for(eid) or eid for eid in eids]
         quotes_str = _format_supporting_quotes(claim.get("supporting_quotes", []), eids)
         numeric_facts = claim.get("numeric_facts", [])
 
@@ -599,6 +604,10 @@ class WriterNode:
         existing_paragraphs = state.get("section_paragraphs", {})
         current_best = dict(state.get("best_sections", {}))
         current_metrics = dict(state.get("best_section_metrics", {}))
+
+        # Load SourceMap for short ID conversion (Phase 4)
+        source_map_data = state.get("source_map")
+        self._source_map = SourceMap.from_dict(source_map_data) if source_map_data else None
 
         sections: dict[str, str] = dict(existing_sections)
         section_citations: dict[str, list[dict]] = {}
