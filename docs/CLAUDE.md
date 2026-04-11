@@ -29,5 +29,8 @@
 | イミュータブルデータモデル | IMPL_BASE.md |
 | Projector / Reproject | [[knowledge-home-projection-recovery]], IMPL_PHASE1-6 |
 | 是正・未達事項 | [[knowledge-home-phase0-4-audit-2026-03-18]], [[knowledge-home-phase1-5-remediation-directives-2026-03-18]] |
+| Acolyte 全般 | [[acolyte/README]], [[acolyte-design-evolution]], ADR 000653-000700 |
+| Acolyte パイプライン | [[acolyte/data-flow]], [[acolyte-checkpoint-resume]] |
+| Acolyte 運用 | runbooks/acolyte-*.md |
 | 運用手順 | runbooks/ 配下 |
 | 直近の作業文脈 | daily/ の最新エントリ |

@@ -20,6 +20,10 @@ Two F# 10/.NET 10 services for real-time article processing: breaking news detec
 
 How incremental RAG fixes led to an architectural reset — from stateless retrieval + prompt stitching to stateful conversation orchestration with an explicit planner. Plus: the Tier1 sidecar pattern for filtering low-quality content at the ingestion boundary.
 
+### 5. [Acolyte: From Concept to Production](acolyte-design-evolution.md)
+
+The design and implementation of Acolyte — Alt's versioned report generation orchestrator. Built on LangGraph for pipeline orchestration with a version-first data model (immutable snapshots, field-level change tracking). Features an 11-node pipeline with checkpointing, evidence grounding through QuoteSelector and FactNormalizer, and Connect-RPC API boundaries.
+
 ## Themes
 
 These documents share several recurring architectural principles:
@@ -32,10 +36,10 @@ These documents share several recurring architectural principles:
 
 ## Tech Stack
 
-- **Backend**: Go, F# 10/.NET 10
+- **Backend**: Go, F# 10/.NET 10, Python 3.14+
 - **Frontend**: SvelteKit, Svelte 5 Runes
 - **Data**: PostgreSQL, Redis Streams, Meilisearch
-- **AI/ML**: Ollama (Gemma 3), mxbai-embed-large embeddings
+- **AI/ML**: Ollama (Gemma 4), LangGraph, mxbai-embed-large embeddings
 - **Protocols**: Connect-RPC, SSE
 - **Infrastructure**: Docker Compose, nginx
-- **Patterns**: Event Sourcing, CQRS, Clean Architecture, Functional Core / Effectful Shell
+- **Patterns**: Event Sourcing, CQRS, Clean Architecture, Functional Core / Effectful Shell, Version-First Data Model
