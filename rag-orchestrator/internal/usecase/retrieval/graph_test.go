@@ -227,8 +227,9 @@ func TestRetrievalGraph_Execute_EmptyQuery_ReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "query is empty")
 }
 
-func TestRetrievalGraph_Execute_Stage1Error_PropagatesError(t *testing.T) {
-	// When the original embedding fails (fatal error in Stage 1), Execute returns an error.
+func TestRetrievalGraph_Execute_Stage1EmbedderDown_DegradesToEmpty(t *testing.T) {
+	// When the original embedding fails, retrieval degrades gracefully instead of erroring.
+	// Without BM25 configured, the result is empty but no error is returned.
 	encoder := new(mockVectorEncoder)
 	expander := new(mockQueryExpander)
 	search := new(mockSearchClient)
@@ -250,8 +251,9 @@ func TestRetrievalGraph_Execute_Stage1Error_PropagatesError(t *testing.T) {
 		Query: "test query",
 	})
 
-	assert.Error(t, err)
-	assert.Nil(t, result)
+	assert.NoError(t, err, "embedder failure should degrade gracefully, not error")
+	assert.NotNil(t, result)
+	assert.Empty(t, result.Contexts, "no contexts available without embedder or BM25")
 }
 
 func TestRetrievalGraph_Execute_WithReranker(t *testing.T) {

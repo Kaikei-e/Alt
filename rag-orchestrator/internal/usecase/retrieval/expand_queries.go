@@ -153,14 +153,21 @@ func ExpandQueries(
 		return nil
 	})
 
-	// goroutine C: Original Query Embedding
+	// goroutine C: Original Query Embedding (non-fatal: degrades to BM25-only retrieval)
 	g.Go(func() error {
 		embeddings, err := encoder.Encode(gctx, []string{sc.Query})
 		if err != nil {
-			return fmt.Errorf("failed to encode original query: %w", err)
+			logger.Warn("original_embedding_failed",
+				slog.String("retrieval_id", sc.RetrievalID),
+				slog.String("error", err.Error()),
+				slog.String("degraded_mode", "bm25_only"))
+			return nil // non-fatal: downstream stages check sc.OriginalEmbedding == nil
 		}
 		if len(embeddings) == 0 {
-			return fmt.Errorf("no embedding returned for original query")
+			logger.Warn("original_embedding_empty",
+				slog.String("retrieval_id", sc.RetrievalID),
+				slog.String("degraded_mode", "bm25_only"))
+			return nil
 		}
 		sc.OriginalEmbedding = embeddings[0]
 		return nil

@@ -66,21 +66,28 @@ func EmbedAndSearch(
 		})
 	}
 
-	// goroutine F: Original Vector Search
-	g.Go(func() error {
-		var results []domain.SearchResult
-		var err error
-		if hasCandidateArticles {
-			results, err = chunkRepo.SearchWithinArticles(gctx, sc.OriginalEmbedding, sc.CandidateArticleIDs, sc.SearchLimit)
-		} else {
-			results, err = chunkRepo.Search(gctx, sc.OriginalEmbedding, sc.SearchLimit)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to search original query: %w", err)
-		}
-		sc.OriginalResults = results
-		return nil
-	})
+	// goroutine F: Original Vector Search (skipped when embedding unavailable)
+	if sc.OriginalEmbedding != nil {
+		g.Go(func() error {
+			var results []domain.SearchResult
+			var err error
+			if hasCandidateArticles {
+				results, err = chunkRepo.SearchWithinArticles(gctx, sc.OriginalEmbedding, sc.CandidateArticleIDs, sc.SearchLimit)
+			} else {
+				results, err = chunkRepo.Search(gctx, sc.OriginalEmbedding, sc.SearchLimit)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to search original query: %w", err)
+			}
+			sc.OriginalResults = results
+			return nil
+		})
+	} else {
+		logger.Warn("vector_search_skipped",
+			slog.String("retrieval_id", sc.RetrievalID),
+			slog.String("reason", "original_embedding_unavailable"),
+			slog.String("degraded_mode", "bm25_only"))
+	}
 
 	return g.Wait()
 }

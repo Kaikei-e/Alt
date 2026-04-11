@@ -285,15 +285,20 @@ func TestRetrieveContext_ExpandedEmbeddingFailure_NonFatal(t *testing.T) {
 	assert.GreaterOrEqual(t, len(output.Contexts), 1, "should return results from original query")
 }
 
-func TestRetrieveContext_OriginalEmbeddingFailure_Fatal(t *testing.T) {
+func TestRetrieveContext_OriginalEmbeddingFailure_DegradesToBM25(t *testing.T) {
 	mockChunkRepo := new(MockRagChunkRepository)
 	mockDocRepo := new(MockRagDocumentRepository)
 	mockEncoder := new(MockVectorEncoder)
 	mockLLM := new(mockLLMClient)
 	mockQueryExpander := new(MockQueryExpander)
+	mockBM25 := new(MockBM25Searcher)
 	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, usecase.DefaultRetrievalConfig(), testLogger)
+	uc := usecase.NewRetrieveContextUsecase(
+		mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander,
+		usecase.DefaultRetrievalConfig(), testLogger,
+		usecase.WithBM25Searcher(mockBM25),
+	)
 
 	ctx := context.Background()
 	input := usecase.RetrieveContextInput{
@@ -308,19 +313,59 @@ func TestRetrieveContext_OriginalEmbeddingFailure_Fatal(t *testing.T) {
 		Text: "legacy",
 	}, nil).Maybe()
 
-	// Original query embedding FAILS — this must be fatal
-	mockEncoder.On("Encode", mock.Anything, []string{"test query"}).Return(nil, fmt.Errorf("embedder timeout"))
-	// Expanded embedding — allow anything
-	mockEncoder.On("Encode", mock.Anything, mock.MatchedBy(func(texts []string) bool {
-		return len(texts) > 0 && texts[0] != "test query"
-	})).Return(nil, nil).Maybe()
+	// ALL embeddings fail — embedder is completely down
+	mockEncoder.On("Encode", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("connection refused"))
 
-	// Execute — should fail because original embedding failed
+	// BM25 search succeeds — should be the fallback path (any query, since expanded queries also searched)
+	mockBM25.On("SearchBM25", mock.Anything, mock.Anything, mock.Anything).Return([]domain.BM25SearchResult{
+		{
+			ArticleID: "art-1",
+			Content:   "BM25 found content about test query",
+			Title:     "Test Article via BM25",
+			URL:       "http://example.com/1",
+			Rank:      1,
+			Score:     12.5,
+		},
+	}, nil)
+
+	// Execute — should succeed with BM25-only results
 	output, err := uc.Execute(ctx, input)
 
-	assert.Error(t, err, "original embedding failure must be fatal")
-	assert.Nil(t, output)
-	assert.Contains(t, err.Error(), "encode")
+	assert.NoError(t, err, "original embedding failure should degrade to BM25-only, not fail")
+	assert.NotNil(t, output)
+	assert.Greater(t, output.BM25HitCount, 0, "should report BM25 hits")
+}
+
+func TestRetrieveContext_EmbedderDown_NoBM25_ReturnsEmpty(t *testing.T) {
+	mockChunkRepo := new(MockRagChunkRepository)
+	mockDocRepo := new(MockRagDocumentRepository)
+	mockEncoder := new(MockVectorEncoder)
+	mockLLM := new(mockLLMClient)
+	mockQueryExpander := new(MockQueryExpander)
+	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	uc := usecase.NewRetrieveContextUsecase(
+		mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander,
+		usecase.DefaultRetrievalConfig(), testLogger,
+	)
+
+	ctx := context.Background()
+	input := usecase.RetrieveContextInput{
+		Query: "test query",
+	}
+
+	mockQueryExpander.On("ExpandQuery", mock.Anything, "test query", 1, 3).Return(nil, fmt.Errorf("embedder down"))
+	mockLLM.On("Generate", mock.Anything, mock.Anything, 100).Return(&domain.LLMResponse{Text: ""}, nil).Maybe()
+
+	// ALL embeddings fail
+	mockEncoder.On("Encode", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("connection refused"))
+
+	// No BM25 searcher configured — complete gracefully with empty results
+	output, err := uc.Execute(ctx, input)
+
+	assert.NoError(t, err, "should complete gracefully even with no search path available")
+	assert.NotNil(t, output)
+	assert.Empty(t, output.Contexts)
 }
 
 // MockBM25Searcher

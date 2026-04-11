@@ -20,6 +20,17 @@ func FuseResults(
 	chunkRepo domain.RagChunkRepository,
 	logger *slog.Logger,
 ) error {
+	// Degraded mode: no embeddings available, promote BM25 results directly
+	if sc.OriginalEmbedding == nil && len(sc.AdditionalEmbeddings) == 0 {
+		logger.Info("fuse_results_degraded_mode",
+			slog.String("retrieval_id", sc.RetrievalID),
+			slog.Int("bm25_results", len(sc.BM25Results)),
+			slog.String("degraded_mode", "bm25_only"))
+		sc.HitsOriginal = promoteBM25ToSearchResults(sc.BM25Results)
+		sc.HitsExpanded = nil
+		return nil
+	}
+
 	// Build all embeddings list: [original, ...additional]
 	allEmbeddings := make([][]float32, 0, 1+len(sc.AdditionalEmbeddings))
 	allEmbeddings = append(allEmbeddings, sc.OriginalEmbedding)
@@ -220,5 +231,39 @@ func fuseHybridResults(
 		slog.Int("bm25_count", len(bm25Results)),
 		slog.Int("fused_count", len(results)))
 
+	return results
+}
+
+// promoteBM25ToSearchResults converts BM25 results to domain.SearchResult format
+// for use in degraded mode (embedder unavailable). BM25 results provide article-level
+// data which is sufficient for answer generation even without vector-based chunk retrieval.
+func promoteBM25ToSearchResults(bm25Results []domain.BM25SearchResult) []domain.SearchResult {
+	if len(bm25Results) == 0 {
+		return nil
+	}
+	results := make([]domain.SearchResult, len(bm25Results))
+	for i, br := range bm25Results {
+		var chunkID uuid.UUID
+		if br.ChunkID != "" {
+			parsed, err := uuid.Parse(br.ChunkID)
+			if err == nil {
+				chunkID = parsed
+			} else {
+				chunkID = uuid.New()
+			}
+		} else {
+			chunkID = uuid.New()
+		}
+		results[i] = domain.SearchResult{
+			Chunk: domain.RagChunk{
+				ID:      chunkID,
+				Content: br.Content,
+			},
+			Score:     br.Score,
+			ArticleID: br.ArticleID,
+			Title:     br.Title,
+			URL:       br.URL,
+		}
+	}
 	return results
 }

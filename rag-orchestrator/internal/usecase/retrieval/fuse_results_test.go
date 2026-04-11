@@ -186,6 +186,59 @@ func TestFuseResults_SearchError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to search chunks")
 }
 
+func TestFuseResults_NilEmbedding_BM25OnlyDegraded(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	mockRepo := new(MockRagChunkRepository)
+
+	bm25ChunkID := uuid.New()
+	sc := &retrieval.StageContext{
+		RetrievalID:       "test-degraded",
+		Query:             "test query",
+		OriginalEmbedding: nil, // Embedder was down
+		OriginalResults:   nil,
+		BM25Results: []domain.BM25SearchResult{
+			{
+				ArticleID: "art-1",
+				ChunkID:   bm25ChunkID.String(),
+				Content:   "BM25 found content",
+				Title:     "BM25 Article",
+				URL:       "http://example.com/1",
+				Rank:      1,
+				Score:     10.5,
+			},
+		},
+		SearchLimit: 50,
+		RRFK:        60.0,
+	}
+
+	err := retrieval.FuseResults(context.Background(), sc, mockRepo, logger)
+	require.NoError(t, err, "FuseResults should handle nil OriginalEmbedding gracefully")
+
+	assert.GreaterOrEqual(t, len(sc.HitsOriginal), 1, "BM25 results should be promoted to HitsOriginal in degraded mode")
+	assert.Equal(t, "BM25 Article", sc.HitsOriginal[0].Title)
+}
+
+func TestFuseResults_NilEmbedding_NoBM25_EmptyResult(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	mockRepo := new(MockRagChunkRepository)
+
+	sc := &retrieval.StageContext{
+		RetrievalID:       "test-degraded-empty",
+		Query:             "test query",
+		OriginalEmbedding: nil,
+		OriginalResults:   nil,
+		BM25Results:       nil,
+		SearchLimit:       50,
+		RRFK:              60.0,
+	}
+
+	err := retrieval.FuseResults(context.Background(), sc, mockRepo, logger)
+	require.NoError(t, err, "FuseResults should handle nil embedding + no BM25 gracefully")
+
+	assert.Empty(t, sc.HitsOriginal)
+	assert.Empty(t, sc.HitsExpanded)
+}
+
 func TestFuseResults_DeduplicatesExpandedHits(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 	mockRepo := new(MockRagChunkRepository)
