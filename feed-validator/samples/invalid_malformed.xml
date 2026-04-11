@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 無効なXML: 閉じタグが不正 -->
+<rss version="2.0">
+  <channel>
+    <title>Malformed XML Feed</title>
+    <link>https://example.com</link>
+    <description>This XML is malformed
+    <!-- 閉じタグなし -->
+</rss>

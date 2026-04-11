@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Example Tech Blog</title>
+    <link>https://example.com</link>
+    <description>A blog about technology and programming</description>
+    <language>en-us</language>
+    <lastBuildDate>Sat, 25 Jan 2025 10:00:00 +0000</lastBuildDate>
+    <atom:link href="https://example.com/feed.xml" rel="self" type="application/rss+xml"/>
+
+    <item>
+      <title>Introduction to F# 10</title>
+      <link>https://example.com/posts/fsharp-10-intro</link>
+      <description><![CDATA[<p>F# 10 introduces several new features including scoped warning suppression and improved performance.</p>]]></description>
+      <pubDate>Fri, 24 Jan 2025 09:00:00 +0000</pubDate>
+      <guid isPermaLink="true">https://example.com/posts/fsharp-10-intro</guid>
+      <author>author@example.com (John Doe)</author>
+    </item>
+
+    <item>
+      <title>Domain Modeling with Algebraic Data Types</title>
+      <link>https://example.com/posts/domain-modeling-adt</link>
+      <description><![CDATA[<p>Learn how to use discriminated unions and record types to model your domain.</p>]]></description>
+      <pubDate>Wed, 22 Jan 2025 14:30:00 +0000</pubDate>
+      <guid isPermaLink="true">https://example.com/posts/domain-modeling-adt</guid>
+      <author>author@example.com (Jane Smith)</author>
+    </item>
+
+    <item>
+      <title>Building REST APIs with Giraffe</title>
+      <link>https://example.com/posts/giraffe-rest-api</link>
+      <description><![CDATA[<p>A comprehensive guide to building functional web APIs using Giraffe and ASP.NET Core.</p>]]></description>
+      <pubDate>Mon, 20 Jan 2025 08:00:00 +0000</pubDate>
+      <guid isPermaLink="true">https://example.com/posts/giraffe-rest-api</guid>
+      <author>author@example.com (John Doe)</author>
+    </item>
+  </channel>
+</rss>

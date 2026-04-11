@@ -1,0 +1,86 @@
+{
+  "version": "1.0",
+  "description": "Sample golden dataset for tag extraction quality evaluation (Japanese)",
+  "samples": [
+    {
+      "id": "sample-ja-001",
+      "title": "機械学習入門：ニューラルネットワークの基礎",
+      "content": "機械学習は人工知能の一分野であり、コンピュータがデータから学習する能力を持つ技術です。特にニューラルネットワークは、人間の脳の神経細胞の仕組みを模倣した計算モデルで、画像認識や自然言語処理など多くの分野で活用されています。深層学習（ディープラーニング）は、多層のニューラルネットワークを使用した手法で、近年のAI技術の発展を牽引しています。TensorFlowやPyTorchなどのフレームワークを使用することで、効率的にモデルを構築できます。",
+      "expected_tags": ["機械学習", "ニューラルネットワーク", "人工知能", "深層学習", "ディープラーニング", "TensorFlow", "PyTorch", "画像認識", "自然言語処理"],
+      "language": "ja",
+      "source": "manual"
+    },
+    {
+      "id": "sample-ja-002",
+      "title": "Rustプログラミング言語の特徴と活用事例",
+      "content": "Rustは、Mozillaが開発したシステムプログラミング言語です。メモリ安全性を保証しながら、C++並みのパフォーマンスを実現します。所有権システムにより、ガベージコレクタなしでメモリ管理が可能です。Webアセンブリ（WebAssembly）のターゲット言語としても人気があり、ブラウザ上で高速なアプリケーションを実行できます。LinuxカーネルやDiscordのバックエンドなど、大規模なプロジェクトでも採用されています。",
+      "expected_tags": ["Rust", "プログラミング言語", "Mozilla", "メモリ安全性", "所有権システム", "WebAssembly", "Linux", "Discord", "システムプログラミング"],
+      "language": "ja",
+      "source": "manual"
+    },
+    {
+      "id": "sample-ja-003",
+      "title": "クラウドコンピューティングとAWSの基礎",
+      "content": "クラウドコンピューティングは、インターネット経由でコンピューティングリソースを提供するサービスです。Amazon Web Services（AWS）は、世界最大のクラウドプロバイダーで、EC2（仮想サーバー）、S3（ストレージ）、Lambda（サーバーレス）など多数のサービスを提供しています。IaaS、PaaS、SaaSの3つのサービスモデルがあり、企業のデジタルトランスフォーメーション（DX）を支援しています。",
+      "expected_tags": ["クラウドコンピューティング", "AWS", "Amazon Web Services", "EC2", "S3", "Lambda", "サーバーレス", "IaaS", "PaaS", "SaaS", "DX"],
+      "language": "ja",
+      "source": "manual"
+    },
+    {
+      "id": "sample-ja-004",
+      "title": "TypeScriptとReactによるフロントエンド開発",
+      "content": "TypeScriptは、JavaScriptに静的型付けを追加したプログラミング言語です。Microsoftが開発し、大規模なアプリケーション開発において型安全性を提供します。Reactは、Facebookが開発したUIライブラリで、コンポーネントベースのアーキテクチャを採用しています。Next.jsやGatsbyなどのフレームワークと組み合わせることで、SEOに強いWebアプリケーションを構築できます。",
+      "expected_tags": ["TypeScript", "React", "JavaScript", "Microsoft", "Facebook", "Next.js", "Gatsby", "フロントエンド", "UIライブラリ", "コンポーネント"],
+      "language": "ja",
+      "source": "manual"
+    },
+    {
+      "id": "sample-ja-005",
+      "title": "Kubernetesによるコンテナオーケストレーション",
+      "content": "Kubernetesは、Googleが開発したコンテナオーケストレーションプラットフォームです。Dockerコンテナの自動デプロイ、スケーリング、管理を行います。Pod、Service、Deploymentなどのリソースを定義し、YAMLファイルで管理します。Helmチャートを使用することで、複雑なアプリケーションのデプロイを簡素化できます。マイクロサービスアーキテクチャの実現に不可欠なツールです。",
+      "expected_tags": ["Kubernetes", "Google", "Docker", "コンテナ", "オーケストレーション", "Pod", "Service", "Deployment", "Helm", "マイクロサービス"],
+      "language": "ja",
+      "source": "manual"
+    },
+    {
+      "id": "sample-ja-006",
+      "title": "PostgreSQLデータベースの最適化テクニック",
+      "content": "PostgreSQLは、オープンソースのリレーショナルデータベース管理システムです。高い拡張性と標準SQLへの準拠が特徴で、JSONBやGIS機能もサポートしています。インデックス設計、クエリ最適化、パーティショニングなどの手法でパフォーマンスを向上させることができます。EXPLAIN ANALYZEコマンドでクエリの実行計画を分析し、ボトルネックを特定します。",
+      "expected_tags": ["PostgreSQL", "データベース", "SQL", "JSONB", "GIS", "インデックス", "クエリ最適化", "パーティショニング", "EXPLAIN", "リレーショナルデータベース"],
+      "language": "ja",
+      "source": "manual"
+    },
+    {
+      "id": "sample-ja-007",
+      "title": "OpenAI GPT-4とLLMの活用方法",
+      "content": "GPT-4は、OpenAIが開発した大規模言語モデル（LLM）です。自然言語処理タスクにおいて人間に近い性能を発揮し、文章生成、翻訳、要約、質問応答などに活用されています。APIを通じてアプリケーションに統合でき、ChatGPTやBingなどのサービスで使用されています。プロンプトエンジニアリングにより、モデルの出力を制御することが可能です。",
+      "expected_tags": ["GPT-4", "OpenAI", "LLM", "大規模言語モデル", "自然言語処理", "ChatGPT", "Bing", "API", "プロンプトエンジニアリング", "文章生成"],
+      "language": "ja",
+      "source": "manual"
+    },
+    {
+      "id": "sample-ja-008",
+      "title": "GitHubとCI/CDパイプラインの構築",
+      "content": "GitHubは、世界最大のソースコード管理プラットフォームです。GitHub Actionsを使用することで、継続的インテグレーション（CI）と継続的デリバリー（CD）のパイプラインを構築できます。プルリクエスト時に自動テストを実行し、mainブランチへのマージ後に自動デプロイを行うワークフローが一般的です。セキュリティスキャンやコード品質チェックも統合できます。",
+      "expected_tags": ["GitHub", "GitHub Actions", "CI/CD", "継続的インテグレーション", "継続的デリバリー", "プルリクエスト", "自動テスト", "自動デプロイ", "ワークフロー", "ソースコード管理"],
+      "language": "ja",
+      "source": "manual"
+    },
+    {
+      "id": "sample-ja-009",
+      "title": "セキュリティ対策：OWASPトップ10脆弱性",
+      "content": "OWASPは、Webアプリケーションセキュリティのベストプラクティスを提供する非営利団体です。OWASP Top 10は、最も危険なセキュリティリスクをリストアップしています。SQLインジェクション、XSS（クロスサイトスクリプティング）、CSRF（クロスサイトリクエストフォージェリ）などの脆弱性に対する防御策が重要です。WAFやセキュリティヘッダーの設定も効果的な対策です。",
+      "expected_tags": ["OWASP", "セキュリティ", "脆弱性", "SQLインジェクション", "XSS", "CSRF", "WAF", "Webアプリケーション", "セキュリティヘッダー", "クロスサイトスクリプティング"],
+      "language": "ja",
+      "source": "manual"
+    },
+    {
+      "id": "sample-ja-010",
+      "title": "Pythonによるデータ分析と可視化",
+      "content": "Pythonは、データ分析に最も人気のあるプログラミング言語です。Pandasライブラリを使用してデータフレームを操作し、NumPyで数値計算を行います。MatplotlibやSeabornでグラフを作成し、Jupyter Notebookで対話的に分析を進めることができます。scikit-learnを使用した機械学習モデルの構築も容易です。",
+      "expected_tags": ["Python", "データ分析", "Pandas", "NumPy", "Matplotlib", "Seaborn", "Jupyter Notebook", "scikit-learn", "可視化", "データフレーム"],
+      "language": "ja",
+      "source": "manual"
+    }
+  ]
+}

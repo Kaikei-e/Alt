@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Developer Blog</title>
+  <subtitle>Thoughts on software development and functional programming</subtitle>
+  <link href="https://example.com/atom.xml" rel="self" type="application/atom+xml"/>
+  <link href="https://example.com" rel="alternate" type="text/html"/>
+  <id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6</id>
+  <updated>2025-01-25T10:00:00Z</updated>
+  <author>
+    <name>Example Team</name>
+    <email>team@example.com</email>
+  </author>
+
+  <entry>
+    <title>Railway Oriented Programming in F#</title>
+    <link href="https://example.com/posts/railway-oriented-programming" rel="alternate" type="text/html"/>
+    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
+    <updated>2025-01-24T15:00:00Z</updated>
+    <published>2025-01-24T12:00:00Z</published>
+    <author>
+      <name>Scott W</name>
+    </author>
+    <summary>An elegant approach to error handling using Result types and function composition.</summary>
+    <content type="html"><![CDATA[
+      <p>Railway Oriented Programming is a functional approach to error handling that makes your code more robust and easier to reason about.</p>
+      <p>Instead of throwing exceptions, we use the Result type to represent success or failure.</p>
+    ]]></content>
+  </entry>
+
+  <entry>
+    <title>Type Providers: Compile-Time Magic</title>
+    <link href="https://example.com/posts/type-providers" rel="alternate" type="text/html"/>
+    <id>urn:uuid:1225c695-cfb8-4ebb-bbbb-80da344efa6b</id>
+    <updated>2025-01-22T10:00:00Z</updated>
+    <published>2025-01-22T09:00:00Z</published>
+    <author>
+      <name>Data Expert</name>
+    </author>
+    <summary>How F# type providers generate types from external data sources at compile time.</summary>
+    <content type="html"><![CDATA[
+      <p>Type providers are one of F#'s most powerful features, allowing you to work with external data in a type-safe way.</p>
+    ]]></content>
+  </entry>
+
+  <entry>
+    <title>Computation Expressions Demystified</title>
+    <link href="https://example.com/posts/computation-expressions" rel="alternate" type="text/html"/>
+    <id>urn:uuid:1225c695-cfb8-4ebb-cccc-80da344efa6c</id>
+    <updated>2025-01-20T14:00:00Z</updated>
+    <published>2025-01-20T08:00:00Z</published>
+    <author>
+      <name>FP Advocate</name>
+    </author>
+    <summary>Understanding async, task, and custom computation expressions in F#.</summary>
+    <content type="html"><![CDATA[
+      <p>Computation expressions (also known as workflows) provide a clean syntax for working with monadic operations.</p>
+    ]]></content>
+  </entry>
+</feed>

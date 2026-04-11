@@ -1,0 +1,59 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "Example JSON Feed",
+  "home_page_url": "https://example.com",
+  "feed_url": "https://example.com/feed.json",
+  "description": "A modern JSON-based feed format",
+  "authors": [
+    {
+      "name": "Feed Author",
+      "url": "https://example.com/about"
+    }
+  ],
+  "language": "en-US",
+  "items": [
+    {
+      "id": "https://example.com/posts/json-feed-intro",
+      "url": "https://example.com/posts/json-feed-intro",
+      "title": "Why JSON Feed?",
+      "content_html": "<p>JSON Feed is a modern alternative to RSS and Atom, using JSON instead of XML.</p><p>It's easier to parse and more developer-friendly.</p>",
+      "summary": "An introduction to the JSON Feed specification",
+      "date_published": "2025-01-24T10:00:00Z",
+      "date_modified": "2025-01-24T12:00:00Z",
+      "authors": [
+        {
+          "name": "JSON Enthusiast"
+        }
+      ],
+      "tags": ["json", "rss", "feed"]
+    },
+    {
+      "id": "https://example.com/posts/fsharp-json-parsing",
+      "url": "https://example.com/posts/fsharp-json-parsing",
+      "title": "Parsing JSON in F# with FSharp.Data",
+      "content_html": "<p>The JSON type provider in FSharp.Data makes working with JSON data incredibly easy.</p>",
+      "summary": "How to use the JSON type provider",
+      "date_published": "2025-01-22T09:00:00Z",
+      "authors": [
+        {
+          "name": "F# Developer"
+        }
+      ],
+      "tags": ["fsharp", "json", "type-provider"]
+    },
+    {
+      "id": "https://example.com/posts/feed-validation",
+      "url": "https://example.com/posts/feed-validation",
+      "title": "Building a Feed Validator",
+      "content_html": "<p>Learn how to validate RSS, Atom, and JSON Feed formats using functional programming techniques.</p>",
+      "summary": "A practical guide to feed validation",
+      "date_published": "2025-01-20T08:00:00Z",
+      "authors": [
+        {
+          "name": "Validation Expert"
+        }
+      ],
+      "tags": ["validation", "feeds", "fsharp"]
+    }
+  ]
+}
