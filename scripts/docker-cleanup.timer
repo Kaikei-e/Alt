@@ -1,0 +1,15 @@
+[Unit]
+Description=Run Docker Disk Space Cleanup Periodically
+Requires=docker-cleanup.service
+
+[Timer]
+# Run 5 minutes after boot
+OnBootSec=5min
+# Run every 30 minutes
+OnUnitActiveSec=30min
+AccuracySec=1m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

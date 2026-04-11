@@ -1,0 +1,23 @@
+# Requirements for scripts in this directory
+# Install with: pip install -r scripts/requirements.txt
+
+# Database connectivity
+psycopg2-binary>=2.9.0
+
+# Data processing and Parquet output
+pandas>=2.0.0
+pyarrow>=10.0.0
+
+# Clustering helpers
+numpy>=1.26.0
+scikit-learn>=1.6.1
+scikit-optimize>=0.9.0
+# Serialization
+PyYAML>=6.0
+
+# HTML processing for article migration
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+readability-lxml>=0.8.1
+tqdm>=4.66.0
+

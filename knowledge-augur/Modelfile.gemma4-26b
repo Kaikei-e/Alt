@@ -1,0 +1,16 @@
+FROM gemma4:26b
+
+# Gemma 4 26B MoE: AIX (HX370) での RAG / 高品質生成用
+# 3.8B active / 25.2B total, 256K context capable
+# Ollama 公式モデルの RENDERER gemma4 が正しい <|turn>/<turn|> テンプレートを適用
+
+PARAMETER num_ctx 8192
+PARAMETER num_predict 4096
+PARAMETER num_batch 512
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.85
+PARAMETER top_k 40
+PARAMETER repeat_penalty 1.15
+
+PARAMETER stop <turn|>

@@ -1,0 +1,12 @@
+[Unit]
+Description=Docker Disk Space Cleanup Service
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/koko/Documents/dev/Alt/scripts/docker-cleanup.sh
+User=root
+StandardOutput=journal
+StandardError=journal
+

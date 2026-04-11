@@ -1,0 +1,145 @@
+%% Alt Compose Topology (日本語版)
+%% README.md の Compose Topology 図と同期
+%% Last updated: 2026-03-04
+flowchart TD
+    classDef core fill:#e8f5e9,stroke:#2f855a,stroke-width:2px
+    classDef ai fill:#fff4e5,stroke:#f97316,stroke-width:2px
+    classDef recap fill:#fce7f3,stroke:#db2777,stroke-width:2px
+    classDef rag fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px
+    classDef data fill:#fef3c7,stroke:#d97706,stroke-width:2px
+    classDef log fill:#fde4f7,stroke:#c026d3,stroke-width:2px
+    classDef obs fill:#fde4f7,stroke:#c026d3,stroke-width:2px,stroke-dasharray:4
+    classDef ext fill:#f3f4f6,stroke:#6b7280,stroke-width:1px,stroke-dasharray:4
+
+    Browser((ブラウザ)) --> Nginx
+
+    subgraph Edge["エッジ :80"]
+        Nginx[nginx]:::core
+        AuthHub[auth-hub :8888]:::core
+    end
+    Nginx --> AuthHub
+
+    subgraph Auth["認証"]
+        direction LR
+        Kratos[kratos :4433]:::core
+        KratosDB[(kratos-db :5434)]:::data
+    end
+    AuthHub --> Kratos
+    Kratos --> KratosDB
+
+    Nginx --> UI
+    Nginx --> UISv
+
+    subgraph FE["フロントエンド"]
+        direction LR
+        UI[alt-frontend :3000]:::core
+        UISv[alt-frontend-sv :4173]:::core
+    end
+
+    UI --> API
+    UISv --> BFF
+
+    subgraph BFFLayer["BFF層"]
+        BFF[alt-butterfly-facade :9250]:::core
+    end
+    BFF -->|Connect-RPC| API
+    BFF --> AuthHub
+
+    subgraph BE["バックエンド + MQ"]
+        API[alt-backend :9000/:9101]:::core
+        MQHub[mq-hub :9500]:::core
+        RedisStreams[(redis-streams :6380)]:::data
+    end
+    API -->|Connect-RPC| AuthHub
+    API -->|Connect-RPC| MQHub
+    MQHub --> RedisStreams
+
+    RedisStreams -.->|ストリーム| Idx
+    RedisStreams -.->|ストリーム| Tag
+    RedisStreams -.->|ストリーム| PP
+
+    subgraph Workers["ワーカー"]
+        Idx[search-indexer :9300/:9301]:::core
+        Tag[tag-generator :9400]:::core
+        PP[pre-processor :9200/:9202]:::ai
+        PPSidecar[pre-processor-sidecar]:::ai
+        ATM[auth-token-manager :9201]:::core
+    end
+
+    subgraph AI["AI / LLM"]
+        NC[news-creator :11434]:::ai
+        NCB[news-creator-backend :11435]:::ai
+        TTS[tts-speaker :9700]:::ai
+        RedisCache[(redis-cache :6379)]:::data
+    end
+    NC --> NCB
+    NC --> RedisCache
+    PP --> NC
+    BFF -.->|Connect-RPC| TTS
+    ATM -.->|OAuthトークン| PPSidecar
+
+    subgraph RC["Recapパイプライン"]
+        RW[recap-worker :9005]:::recap
+        RS[recap-subworker :8002]:::recap
+        Dash[dashboard :8501]:::recap
+        REval[recap-evaluator :8085]:::recap
+    end
+    RW --> RS
+    RW --> NC
+    RW --> API
+    REval --> NC
+    REval --> RW
+
+    subgraph RG["RAGパイプライン"]
+        RO[rag-orchestrator :9010/:9011]:::rag
+    end
+    RO --> Idx
+    RO --> NC
+    RO -.->|外部| ExtHosts([embedder / augur / rerank]):::ext
+
+    subgraph Data["データストア"]
+        DB[(db :5432)]:::data
+        PPDB[(pre-processor-db :5437)]:::data
+        Meili[(meilisearch :7700)]:::data
+        RecapDB[(recap-db :5435)]:::data
+        RagDB[(rag-db :5436)]:::data
+    end
+    API --> DB
+    Idx -->|Connect-RPC| API
+    Idx --> Meili
+    Tag -->|Connect-RPC| API
+    PP -->|Connect-RPC| API
+    PP --> PPDB
+    RW --> RecapDB
+    RS --> RecapDB
+    REval --> RecapDB
+    Dash --> RecapDB
+    RO --> RagDB
+
+    subgraph Log["ログ収集"]
+        Rask[rask-log-aggregator<br/>:9600 / :4317 / :4318]:::log
+        Fwds[log-forwarders x14]:::log
+        CH[(clickhouse :8123)]:::data
+    end
+    Fwds --> Rask
+    Rask --> CH
+    API -.->|OTLP| Rask
+    AuthHub -.->|OTLP| Rask
+    MQHub -.->|OTLP| Rask
+    Idx -.->|OTLP| Rask
+    Tag -.->|OTLP| Rask
+    NC -.->|OTLP| Rask
+    PP -.->|OTLP| Rask
+    RO -.->|OTLP| Rask
+
+    subgraph Obs["オブザーバビリティ"]
+        direction LR
+        Prom[prometheus :9090]:::obs
+        Graf[grafana :3001]:::obs
+        CAdv[cadvisor]:::obs
+        NginxExp[nginx-exporter]:::obs
+    end
+    Prom --> CAdv
+    Prom --> NginxExp
+    Graf --> Prom
+    Graf --> CH

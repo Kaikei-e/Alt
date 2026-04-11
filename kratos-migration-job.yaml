@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kratos-manual-migration
+  namespace: alt-auth
+  labels:
+    app.kubernetes.io/name: kratos
+    app.kubernetes.io/component: migration
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kratos
+        app.kubernetes.io/component: migration
+      annotations:
+        linkerd.io/inject: disabled
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: kratos-migrate
+        image: oryd/kratos:v1.3.1
+        command: ["kratos"]
+        args: ["migrate", "sql", "-e", "--yes"]
+        env:
+        - name: DSN
+          valueFrom:
+            secretKeyRef:
+              name: kratos-postgres-credentials
+              key: dsn
+        - name: KRATOS_LOG_LEVEL
+          value: "debug"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 10001
