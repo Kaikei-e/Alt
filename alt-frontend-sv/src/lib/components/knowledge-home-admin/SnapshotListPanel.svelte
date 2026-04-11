@@ -37,7 +37,7 @@ const statusColor = (status: string) => {
 const formatDate = (d: string) => (d ? new Date(d).toLocaleString() : "--");
 </script>
 
-<div class="panel" data-role="snapshot-list">
+<div class="panel" data-role="snapshot-list" data-testid="snapshot-list-panel">
 	<div class="panel-header">
 		<h3 class="section-heading">Projection Snapshots</h3>
 		<button

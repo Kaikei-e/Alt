@@ -15,7 +15,7 @@ const sizeStatus = (bytes: number): "ok" | "warning" | "error" | "neutral" => {
 };
 </script>
 
-<div class="panel" data-role="storage-stats">
+<div class="panel" data-role="storage-stats" data-testid="storage-stats-panel">
 	<h3 class="section-heading">Table Storage</h3>
 	<div class="heading-rule"></div>
 

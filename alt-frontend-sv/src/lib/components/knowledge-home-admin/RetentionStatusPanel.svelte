@@ -49,7 +49,7 @@ const totalEligiblePartitions = $derived(
 );
 </script>
 
-<div class="panel" data-role="retention-status">
+<div class="panel" data-role="retention-status" data-testid="retention-status-panel">
 	<div class="panel-header">
 		<h3 class="section-heading">Retention &amp; Archival</h3>
 		<div class="action-buttons">
@@ -58,7 +58,7 @@ const totalEligiblePartitions = $derived(
 				{disabled}
 				onclick={() => void onRunRetention?.(true)}
 			>
-				Dry Run
+				Run Retention (Dry Run)
 			</button>
 			<button
 				class="action-btn action-btn-primary"

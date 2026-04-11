@@ -20,7 +20,7 @@ const handleSubmit = () => {
 };
 </script>
 
-<div class="panel" data-role="audit-actions">
+<div class="panel" data-role="audit-actions" data-testid="audit-actions-panel">
 	<h3 class="section-heading">Run Projection Audit</h3>
 	<div class="heading-rule"></div>
 	<p class="panel-desc">

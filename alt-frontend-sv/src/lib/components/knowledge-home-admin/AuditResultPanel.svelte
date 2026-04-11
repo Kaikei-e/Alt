@@ -35,7 +35,7 @@ let parsedDetails = $derived.by(() => {
 </script>
 
 {#if audit}
-	<div class="panel" data-role="audit-result">
+	<div class="panel" data-role="audit-result" data-testid="audit-result-panel">
 		<h3 class="section-heading">Audit Result</h3>
 		<div class="heading-rule"></div>
 
