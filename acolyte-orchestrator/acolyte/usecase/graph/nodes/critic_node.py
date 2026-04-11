@@ -8,7 +8,6 @@ Multi-check evaluator:
 Parse failure → revise (never silent accept).
 """
 
-import json
 import re
 from typing import TYPE_CHECKING
 
@@ -46,28 +45,6 @@ _MIN_SECTION_LENGTH_BY_ROLE = {
     "general": 100,
 }
 
-_CRITIC_FORMAT = {
-    "type": "object",
-    "properties": {
-        "reasoning": {"type": "string"},
-        "verdict": {"type": "string", "enum": ["accept", "revise"]},
-        "failure_modes": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "mode": {"type": "string"},
-                    "section": {"type": "string"},
-                    "description": {"type": "string"},
-                },
-            },
-        },
-        "revise_sections": {"type": "array", "items": {"type": "string"}},
-        "feedback": {"type": "object"},
-    },
-    "required": ["reasoning", "verdict", "revise_sections", "feedback"],
-}
-
 CRITIC_PROMPT = """You are a strict report quality critic. Evaluate these report sections for the topic: {topic}
 
 {sections}
@@ -77,13 +54,18 @@ Check for:
 2. Unsupported claims — are there claims not backed by the referenced evidence?
 3. Overall quality — is the report informative, well-structured, and non-repetitive?
 
-Return JSON with:
-- "reasoning": your evaluation
-- "verdict": "accept" if quality passes ALL checks, "revise" if ANY section needs improvement
-- "failure_modes": array of detected issues [{{"mode": "FM1|FM7", "section": "key", "description": "..."}}]
-- "revise_sections": list of section keys needing revision
-- "feedback": object mapping section_key to specific revision instructions
+Wrap your entire response in <critic> tags. Use this exact format:
+<critic>
+  <reasoning>your evaluation</reasoning>
+  <verdict>accept or revise</verdict>
+  <revise_section>section_key</revise_section>
+  <feedback>
+    <section>section_key</section>
+    <message>specific revision instructions</message>
+  </feedback>
+</critic>
 
+Output ONLY the <critic> block. No other text.
 Be STRICT. Reject reports with off-topic content, meta-commentary, or unsupported claims."""
 
 
@@ -642,13 +624,15 @@ class CriticNode:
                 prompt,
                 num_predict=512,
                 temperature=0,
-                format=_CRITIC_FORMAT,
                 mode=LLMMode.STRUCTURED,
             )
 
             try:
-                critique = json.loads(response.text)
-            except json.JSONDecodeError:
+                from acolyte.usecase.graph.xml_parse import normalize_critic_output, parse_xmlish_block
+
+                element = parse_xmlish_block(response.text, "critic")
+                critique = normalize_critic_output(element)
+            except Exception:
                 # Parse failure → revise, never silent accept
                 critique = {
                     "reasoning": "Critic output malformed, requesting revision",

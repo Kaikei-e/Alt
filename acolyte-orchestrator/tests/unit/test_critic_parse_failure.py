@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from acolyte.port.llm_provider import LLMResponse
@@ -14,12 +12,12 @@ class BadLLM:
     """Always returns unparseable output."""
 
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
-        return LLMResponse(text="not json at all {{{", model="fake")
+        return LLMResponse(text="not xml at all {{{", model="fake")
 
 
 @pytest.mark.asyncio
 async def test_parse_failure_triggers_revise() -> None:
-    """JSON parse failure should trigger revision, NOT silent acceptance."""
+    """Parse failure should trigger revision, NOT silent acceptance."""
     node = CriticNode(BadLLM())
     state = {
         "sections": {"summary": "Some content here."},
@@ -33,15 +31,7 @@ async def test_parse_failure_triggers_revise() -> None:
 class AcceptLLM:
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
         return LLMResponse(
-            text=json.dumps(
-                {
-                    "reasoning": "Quality is good",
-                    "verdict": "accept",
-                    "failure_modes": [],
-                    "revise_sections": [],
-                    "feedback": {},
-                }
-            ),
+            text="<critic><reasoning>Quality is good</reasoning><verdict>accept</verdict></critic>",
             model="fake",
         )
 

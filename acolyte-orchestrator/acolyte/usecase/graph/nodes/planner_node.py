@@ -10,7 +10,6 @@ Design (Issue 5 + resolve + quality hotfix):
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
 import structlog
@@ -18,7 +17,7 @@ import structlog
 from acolyte.domain.query_facet import decompose_queries
 from acolyte.domain.section_contract import ROLE_CONTRACT_DEFAULTS, QueryExpansionOutput
 from acolyte.port.llm_provider import LLMMode
-from acolyte.usecase.graph.llm_parse import generate_validated
+from acolyte.usecase.graph.xml_parse import generate_xml_validated, normalize_plan_output
 
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
@@ -34,13 +33,22 @@ Sections (fixed structure):
 {skeleton_block}
 
 For each section, generate 1-3 specific search queries to find relevant articles.
-Return JSON with "reasoning" (one sentence) and "queries" (object mapping section key to list of search query strings).
-Keep reasoning to one sentence. Focus on generating diverse, specific search queries.
+Wrap your response in <plan> tags:
 
-JSON schema: {schema}
+<plan>
+  <reasoning>one sentence explaining your query strategy</reasoning>
+  <section>
+    <key>executive_summary</key>
+    <query>AI chip market overview 2026</query>
+  </section>
+  <section>
+    <key>analysis</key>
+    <query>NVIDIA Blackwell GPU</query>
+    <query>AMD MI400 series</query>
+  </section>
+</plan>
 
-Example:
-{{"reasoning": "Need market data and trend analysis.", "queries": {{"executive_summary": ["AI chip market overview 2026"], "analysis": ["NVIDIA Blackwell GPU", "AMD MI400 series"], "conclusion": ["AI chip market outlook"]}}}}"""
+Output ONLY the <plan> block. Focus on diverse, specific search queries."""
 
 # Default skeleton for unknown report_types (no pre-baked queries).
 DEFAULT_SKELETON: list[dict] = [
@@ -154,18 +162,18 @@ class PlannerNode:
         topic = brief.get("topic", "")
         skeleton = _get_skeleton(brief)
 
-        schema_str = json.dumps(QueryExpansionOutput.model_json_schema())
         prompt = PLANNER_PROMPT.format(
             scope=topic,
             skeleton_block=_format_skeleton_block(skeleton),
-            schema=schema_str,
         )
 
         fallback = QueryExpansionOutput(reasoning="fallback", queries={})
-        result = await generate_validated(
+        result = await generate_xml_validated(
             self._llm,
             prompt,
             QueryExpansionOutput,
+            root_tag="plan",
+            normalizer=normalize_plan_output,
             temperature=0,
             num_predict=1024,
             fallback=fallback,

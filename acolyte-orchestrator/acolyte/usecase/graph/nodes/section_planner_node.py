@@ -12,7 +12,7 @@ import structlog
 
 from acolyte.domain.claim import ClaimPlannerOutput
 from acolyte.port.llm_provider import LLMMode
-from acolyte.usecase.graph.llm_parse import generate_validated
+from acolyte.usecase.graph.xml_parse import generate_xml_validated, normalize_section_plan_output
 
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
@@ -26,14 +26,22 @@ Topic: {topic}
 Available facts from evidence:
 {facts_block}
 
-Plan up to {max_claims} claims for this section. Each claim must:
-- Be grounded in at least one evidence fact listed above
-- Include the evidence_ids and supporting_quotes from the facts
-- Specify claim_type: "factual", "statistical", "comparative", or "synthesis"
-- Include numeric_facts if the evidence contains numbers or statistics
-- Set novelty_against to list section keys whose claims this claim must NOT repeat
+Plan up to {max_claims} claims for this section. Each claim must be grounded in evidence.
 {contract_instructions}
-Return JSON with "reasoning" (your thinking) and "claims" array."""
+Wrap your response in <section_plan> tags:
+<section_plan>
+  <reasoning>your claim planning strategy</reasoning>
+  <claim>
+    <text>specific claim grounded in evidence</text>
+    <claim_type>factual</claim_type>
+    <evidence_id>src_1</evidence_id>
+    <supporting_quote>verbatim quote from evidence</supporting_quote>
+    <numeric_fact>42%</numeric_fact>
+    <must_cite>true</must_cite>
+  </claim>
+</section_plan>
+
+Output ONLY the <section_plan> block."""
 
 CONCLUSION_PLANNER_PROMPT = """You are a synthesis planner for the conclusion section "{title}".
 Topic: {topic}
@@ -43,13 +51,21 @@ Analysis claims to synthesize:
 
 Create 3-5 synthesis claims for the conclusion. Rules:
 - claim_type MUST be "synthesis" for every claim
-- Each claim must integrate 2 or more analysis claims — do NOT restate any single analysis claim
-- Do NOT introduce new facts not present in the analysis claims
+- Each claim must integrate 2+ analysis claims — do NOT restate any single analysis claim
 - Focus on: implications, risks, priorities, and recommended actions
-- Set evidence_ids to the evidence from the analysis claims you synthesize
-- Set novelty_against to ["analysis"] for all claims
 
-Return JSON with "reasoning" (your thinking) and "claims" array."""
+Wrap your response in <section_plan> tags:
+<section_plan>
+  <reasoning>your synthesis strategy</reasoning>
+  <claim>
+    <text>synthesized conclusion claim</text>
+    <claim_type>synthesis</claim_type>
+    <evidence_id>src_1</evidence_id>
+    <must_cite>true</must_cite>
+  </claim>
+</section_plan>
+
+Output ONLY the <section_plan> block."""
 
 ES_PLANNER_PROMPT = """You are a summary planner for the executive summary "{title}".
 Topic: {topic}
@@ -57,15 +73,23 @@ Topic: {topic}
 Key findings from all report sections:
 {claims_block}
 
-Select the 1-2 strongest claims from each section for the executive summary. Rules:
+Select the 1-2 strongest claims from each section. Rules:
 - claim_type MUST be "synthesis" for every claim
-- Do NOT introduce new facts — only summarize existing section findings
 - Prefer claims with numeric_facts when available
-- Must include at least one claim with numeric data if any source claim has numeric data
-- Set evidence_ids to the evidence from the source claims you summarize
-- Set novelty_against to all source section keys
+- Must include at least one claim with numeric data if available
 
-Return JSON with "reasoning" (your thinking) and "claims" array."""
+Wrap your response in <section_plan> tags:
+<section_plan>
+  <reasoning>your selection strategy</reasoning>
+  <claim>
+    <text>key finding summary</text>
+    <claim_type>synthesis</claim_type>
+    <evidence_id>src_1</evidence_id>
+    <must_cite>true</must_cite>
+  </claim>
+</section_plan>
+
+Output ONLY the <section_plan> block."""
 
 
 def _build_contract_instructions(section: dict) -> str:
@@ -380,10 +404,12 @@ class SectionPlannerNode:
                 )
 
             fallback = ClaimPlannerOutput(reasoning="fallback", claims=[])
-            result = await generate_validated(
+            result = await generate_xml_validated(
                 self._llm,
                 prompt,
                 ClaimPlannerOutput,
+                root_tag="section_plan",
+                normalizer=normalize_section_plan_output,
                 temperature=0,
                 num_predict=2048,
                 fallback=fallback,

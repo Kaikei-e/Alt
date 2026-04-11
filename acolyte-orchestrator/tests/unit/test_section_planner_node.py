@@ -2,16 +2,10 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.section_planner_node import SectionPlannerNode
-
-
-def _make_planner_response(claims: list[dict]) -> str:
-    return json.dumps({"reasoning": "test reasoning", "claims": claims})
 
 
 def _make_claim(
@@ -30,6 +24,21 @@ def _make_claim(
         "novelty_against": [],
         "must_cite": True,
     }
+
+
+def _make_planner_response(claims: list[dict]) -> str:
+    """Build XML section_plan response for testing."""
+    claim_blocks = []
+    for c in claims:
+        eids = "".join(f"<evidence_id>{e}</evidence_id>" for e in c.get("evidence_ids", []))
+        quotes = "".join(f"<supporting_quote>{q}</supporting_quote>" for q in c.get("supporting_quotes", []))
+        nfacts = "".join(f"<numeric_fact>{n}</numeric_fact>" for n in c.get("numeric_facts", []))
+        must_cite = str(c.get("must_cite", True)).lower()
+        claim_blocks.append(
+            f"<claim><text>{c['claim']}</text><claim_type>{c.get('claim_type', 'factual')}</claim_type>"
+            f"{eids}{quotes}{nfacts}<must_cite>{must_cite}</must_cite></claim>"
+        )
+    return f"<section_plan><reasoning>test reasoning</reasoning>{''.join(claim_blocks)}</section_plan>"
 
 
 class FakeLLM:
@@ -150,8 +159,8 @@ async def test_planner_filters_facts_by_section_evidence() -> None:
 
 
 @pytest.mark.asyncio
-async def test_planner_uses_generate_validated_format() -> None:
-    """Verify the LLM is called with format parameter for structured output."""
+async def test_planner_no_format_in_llm_kwargs() -> None:
+    """Verify the LLM is called WITHOUT format parameter (XML DSL mode)."""
 
     class CaptureLLM:
         def __init__(self) -> None:
@@ -181,9 +190,8 @@ async def test_planner_uses_generate_validated_format() -> None:
     }
 
     await node(state)
-    # generate_validated injects format parameter
     assert len(llm.kwargs_list) >= 1
-    assert "format" in llm.kwargs_list[0]
+    assert "format" not in llm.kwargs_list[0]
 
 
 @pytest.mark.asyncio

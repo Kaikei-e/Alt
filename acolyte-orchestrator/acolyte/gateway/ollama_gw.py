@@ -94,7 +94,9 @@ class OllamaGateway:
 
         # Endpoint routing: mode-based when set, format-based otherwise
         if mode == LLMMode.STRUCTURED:
-            return await self._generate_structured(prompt, resolved_model, options, format or {})
+            if format:
+                return await self._generate_structured(prompt, resolved_model, options, format)
+            return await self._generate_freetext(prompt, resolved_model, options, think=False)
         if mode == LLMMode.LONGFORM:
             return await self._generate_freetext(prompt, resolved_model, options, think=think)
         # Fallback: format-based routing (backward compat)
@@ -109,8 +111,8 @@ class OllamaGateway:
         options: dict,
         format: dict,
     ) -> LLMResponse:
-        """Structured output via /api/chat. No think parameter (Gemma4 #15260)."""
-        payload = {
+        """Structured output via /api/chat. No think parameter when format is set (Gemma4 #15260)."""
+        payload: dict = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "format": format,

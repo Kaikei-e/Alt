@@ -1,15 +1,13 @@
-"""Formal acceptance tests for Issue 4: Planner fixed skeleton + minimal query expansion.
+"""Formal acceptance tests for Planner fixed skeleton + XML DSL query expansion.
 
-Acceptance criteria (exec3.md):
+Acceptance criteria:
   1. market_analysis で固定 3 セクション生成が保証される
   2. Planner failure 時でも deterministic fallback で同じ skeleton が得られる
-  3. Planner の JSON schema が平坦で小さい
+  3. Planner が format kwarg を使わない (XML DSL モード)
   4. unit test に「LLM 出力なし」「LLM malformed」「fallback query generation」が追加される
 """
 
 from __future__ import annotations
-
-import json
 
 import pytest
 from structlog.testing import capture_logs
@@ -42,7 +40,11 @@ def _success_response(**extra_queries: list[str]) -> str:
         "conclusion": ["AI chip market outlook"],
     }
     queries.update(extra_queries)
-    return json.dumps({"reasoning": "Need market and trend data.", "queries": queries})
+    sections = "\n".join(
+        f"  <section><key>{k}</key>" + "".join(f"<query>{q}</query>" for q in v) + "</section>"
+        for k, v in queries.items()
+    )
+    return f"<plan><reasoning>Need market and trend data.</reasoning>\n{sections}\n</plan>"
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +79,7 @@ async def test_market_analysis_exact_keys_on_failure() -> None:
 @pytest.mark.asyncio
 async def test_market_analysis_exact_keys_on_empty_queries() -> None:
     """market_analysis produces exactly 3 sections when LLM returns empty queries."""
-    llm = FakeLLM(json.dumps({"reasoning": "nothing", "queries": {}}))
+    llm = FakeLLM("<plan><reasoning>nothing</reasoning></plan>")
     node = PlannerNode(llm)
 
     result = await node({"brief": {"topic": "AI chips", "report_type": "market_analysis"}})
@@ -188,23 +190,17 @@ async def test_planner_passes_structured_mode() -> None:
 
 
 @pytest.mark.asyncio
-async def test_schema_in_prompt_is_valid_json() -> None:
-    """The schema embedded in the prompt must be valid JSON (not Python repr)."""
+async def test_prompt_contains_xml_example() -> None:
+    """The prompt must contain XML DSL example tags."""
     llm = FakeLLM(_success_response())
     node = PlannerNode(llm)
 
     await node({"brief": {"topic": "test"}})
 
     prompt = llm.calls[0]["prompt"]
-    # Extract the schema substring between "JSON schema: " and the example line
-    marker = "JSON schema: "
-    start = prompt.index(marker) + len(marker)
-    end = prompt.index("\n\nExample:", start)
-    schema_str = prompt[start:end].strip()
-
-    parsed = json.loads(schema_str)  # must not raise
-    assert parsed["type"] == "object"
-    assert "queries" in parsed["properties"]
+    assert "<plan>" in prompt
+    assert "<section>" in prompt
+    assert "<query>" in prompt
 
 
 # ---------------------------------------------------------------------------
