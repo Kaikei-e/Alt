@@ -42,9 +42,7 @@ export class DesktopFeedsPage extends BasePage {
 		// Page elements
 		this.pageTitle = page.getByRole("heading", { name: /feeds/i }).first();
 		this.feedGrid = page.locator(".grid");
-		this.loadingSpinner = page
-			.locator(".loading-pulse, .animate-spin")
-			.first();
+		this.loadingSpinner = page.locator(".loading-pulse, .animate-spin").first();
 		this.emptyState = page.getByText("No dispatches on the wire");
 		this.errorMessage = page.locator(".error-state");
 

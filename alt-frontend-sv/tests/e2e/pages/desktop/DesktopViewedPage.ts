@@ -3,12 +3,13 @@ import { expect } from "@playwright/test";
 import { BasePage } from "../BasePage";
 
 /**
- * Page Object for Desktop Viewed/History page (/feeds/viewed)
+ * Page Object for Desktop Viewed/Morgue Desk page (/feeds/viewed)
  */
 export class DesktopViewedPage extends BasePage {
+	readonly pageContainer: Locator;
 	readonly pageTitle: Locator;
 	readonly feedGrid: Locator;
-	readonly loadingSpinner: Locator;
+	readonly loadingIndicator: Locator;
 	readonly emptyState: Locator;
 	readonly errorMessage: Locator;
 	readonly noMoreFeeds: Locator;
@@ -22,14 +23,17 @@ export class DesktopViewedPage extends BasePage {
 	constructor(page: Page) {
 		super(page);
 
-		this.pageTitle = page
-			.getByRole("heading", { name: /read history/i })
+		this.pageContainer = page.locator('[data-role="morgue-desk-page"]');
+		this.pageTitle = this.pageContainer
+			.getByRole("heading", { name: /the morgue desk/i })
 			.first();
-		this.feedGrid = page.locator(".grid");
-		this.loadingSpinner = page.locator(".animate-spin").first();
-		this.emptyState = page.getByText("No viewed feeds yet");
+		this.feedGrid = this.pageContainer.locator(".grid");
+		this.loadingIndicator = this.pageContainer
+			.locator(".loading-pulse")
+			.first();
+		this.emptyState = page.getByText(/nothing filed yet/i);
 		this.errorMessage = page.getByText(/error/i).first();
-		this.noMoreFeeds = page.getByText(/no more feeds/i);
+		this.noMoreFeeds = page.getByText(/end of wire/i);
 
 		this.feedDetailModal = page.locator('[role="dialog"]');
 		this.modalCloseButton = this.feedDetailModal
@@ -51,7 +55,7 @@ export class DesktopViewedPage extends BasePage {
 	 * Wait for viewed feeds to load.
 	 */
 	async waitForFeedsLoaded(): Promise<void> {
-		await expect(this.loadingSpinner).not.toBeVisible({ timeout: 15000 });
+		await expect(this.loadingIndicator).not.toBeVisible({ timeout: 15000 });
 		await expect(this.feedGrid.or(this.emptyState).first()).toBeVisible({
 			timeout: 10000,
 		});

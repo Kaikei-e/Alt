@@ -16,9 +16,7 @@ test.describe("Desktop Feeds Search - Error Handling", () => {
 	test("displays search input and button", async ({ page }) => {
 		// Verify search UI elements are present
 		await expect(page.getByPlaceholder(/search by title/i)).toBeVisible();
-		await expect(
-			page.getByRole("button", { name: /search/i }),
-		).toBeVisible();
+		await expect(page.getByRole("button", { name: /search/i })).toBeVisible();
 	});
 
 	test("shows initial state with search prompt", async ({ page }) => {

@@ -2,25 +2,29 @@ import type { Locator, Page } from "@playwright/test";
 import { BasePage } from "../BasePage";
 
 /**
- * Page Object for Desktop Favorites page (/feeds/favorites)
+ * Page Object for Desktop Favorites / Clippings File page (/feeds/favorites)
  */
 export class DesktopFavoritesPage extends BasePage {
+	readonly pageContainer: Locator;
 	readonly pageTitle: Locator;
 	readonly feedGrid: Locator;
-	readonly loadingSpinner: Locator;
+	readonly loadingIndicator: Locator;
 	readonly emptyState: Locator;
 	readonly noMoreFeeds: Locator;
 
 	constructor(page: Page) {
 		super(page);
 
-		this.pageTitle = page.getByRole("heading", { name: /favorites/i }).first();
-		this.feedGrid = page.locator(".grid");
-		this.loadingSpinner = page
-			.locator(".loading-pulse, .animate-spin")
+		this.pageContainer = page.locator('[data-role="clippings-file-page"]');
+		this.pageTitle = this.pageContainer
+			.getByRole("heading", { name: /the clippings file/i })
 			.first();
-		this.emptyState = page.getByText(/no favorites yet|no dispatches on the wire/i);
-		this.noMoreFeeds = page.getByText(/no more favorites|end of wire/i);
+		this.feedGrid = this.pageContainer.locator(".grid");
+		this.loadingIndicator = this.pageContainer
+			.locator(".loading-pulse")
+			.first();
+		this.emptyState = page.getByText(/no clippings yet/i);
+		this.noMoreFeeds = page.getByText(/end of wire/i);
 	}
 
 	get url(): string {

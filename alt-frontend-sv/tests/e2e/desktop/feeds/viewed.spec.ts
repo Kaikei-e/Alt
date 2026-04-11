@@ -7,14 +7,14 @@ import {
 } from "../../fixtures/mockData";
 import { buildConnectFeedItem } from "../../fixtures/factories";
 
-test.describe("Desktop Viewed Feeds", () => {
+test.describe("Desktop Morgue Desk (Viewed Feeds)", () => {
 	test.beforeEach(async ({ page }) => {
 		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
 			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
 		);
 	});
 
-	test("shows loading spinner then feeds", async ({
+	test("shows loading indicator then feeds", async ({
 		page,
 		desktopViewedPage,
 	}) => {
@@ -33,7 +33,6 @@ test.describe("Desktop Viewed Feeds", () => {
 		});
 
 		await desktopViewedPage.goto();
-		// Loading spinner may be visible briefly
 		await desktopViewedPage.waitForFeedsLoaded();
 	});
 

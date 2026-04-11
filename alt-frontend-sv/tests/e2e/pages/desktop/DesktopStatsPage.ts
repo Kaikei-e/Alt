@@ -29,7 +29,9 @@ export class DesktopStatsPage extends BasePage {
 			.getByRole("heading", { name: /circulation ledger/i })
 			.first();
 
-		this.feedsLabel = page.locator(".figure-label").filter({ hasText: "FEEDS" });
+		this.feedsLabel = page
+			.locator(".figure-label")
+			.filter({ hasText: "FEEDS" });
 		this.articlesLabel = page
 			.locator(".figure-label")
 			.filter({ hasText: "ARTICLES" });

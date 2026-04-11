@@ -1,179 +1,184 @@
 <script lang="ts">
+import { onMount } from "svelte";
 import { useViewport } from "$lib/stores/viewport.svelte";
 
-// Desktop components & deps
-import { Loader2 } from "@lucide/svelte";
 import { getReadFeedsWithCursorClient } from "$lib/api/client/feeds";
 import type { RenderFeed } from "$lib/schema/feed";
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
-import DesktopFeedCard from "$lib/components/desktop/feeds/DesktopFeedCard.svelte";
+import FeedGrid from "$lib/components/desktop/feeds/FeedGrid.svelte";
 import FeedDetailModal from "$lib/components/desktop/feeds/FeedDetailModal.svelte";
-import { onMount } from "svelte";
-import { infiniteScroll } from "$lib/actions/infinite-scroll";
+import type { FeedGridApi } from "$lib/components/desktop/feeds/feed-grid-types";
 
-// Mobile components
 import ViewedFeedsClient from "$lib/components/mobile/ViewedFeedsClient.svelte";
 
 const { isDesktop } = useViewport();
 
-// --- Desktop state ---
-let selectedFeed = $state<RenderFeed | null>(null);
-let isModalOpen = $state(false);
-
-let feeds = $state<RenderFeed[]>([]);
-let isLoading = $state(true);
-let isFetchingNextPage = $state(false);
-let error = $state<Error | null>(null);
-let nextCursor = $state<string | undefined>(undefined);
-let hasNextPage = $state(true);
-
-async function loadFeeds(cursor?: string) {
-	try {
-		const result = await getReadFeedsWithCursorClient(cursor, 20);
-
-		if (cursor) {
-			feeds = [...feeds, ...(result.data ?? [])];
-		} else {
-			feeds = result.data ?? [];
-		}
-
-		nextCursor = result.next_cursor ?? undefined;
-		hasNextPage = result.has_more ?? false;
-	} catch (err) {
-		error = err as Error;
-	}
-}
-
-async function loadMore() {
-	if (isFetchingNextPage || !hasNextPage) return;
-
-	isFetchingNextPage = true;
-	try {
-		await loadFeeds(nextCursor);
-	} finally {
-		isFetchingNextPage = false;
-	}
-}
-
-onMount(() => {
-	if (!isDesktop) return;
-
-	void (async () => {
-		try {
-			isLoading = true;
-			await loadFeeds();
-		} catch (err) {
-			error = err as Error;
-		} finally {
-			isLoading = false;
-		}
-	})();
+const dateStr = new Date().toLocaleDateString("en-US", {
+	weekday: "long",
+	year: "numeric",
+	month: "long",
+	day: "numeric",
 });
 
-// Navigation state
-let currentIndex = $state(-1);
+let revealed = $state(false);
 
+onMount(() => {
+	requestAnimationFrame(() => {
+		revealed = true;
+	});
+});
+
+// --- Desktop state ---
+let selectedFeedUrl = $state<string | null>(null);
+let isModalOpen = $state(false);
+let feedGridApi = $state<FeedGridApi | null>(null);
+
+const selectedFeed = $derived.by(() => {
+	if (!selectedFeedUrl || !feedGridApi) return null;
+	return feedGridApi.getFeedByUrl(selectedFeedUrl);
+});
+
+const currentIndex = $derived.by(() => {
+	if (!selectedFeedUrl || !feedGridApi) return -1;
+	const feeds = feedGridApi.getVisibleFeeds();
+	return feeds.findIndex(
+		(f: RenderFeed) => f.normalizedUrl === selectedFeedUrl,
+	);
+});
+
+const totalCount = $derived(feedGridApi?.getVisibleFeeds().length ?? 0);
 const hasPrevious = $derived(currentIndex > 0);
-const hasNext = $derived(currentIndex >= 0 && currentIndex < feeds.length - 1);
-
-function handleSelectFeed(feed: RenderFeed, index: number) {
-	selectedFeed = feed;
-	currentIndex = index;
-	isModalOpen = true;
-}
+const hasNext = $derived(currentIndex >= 0 && currentIndex < totalCount - 1);
 
 function handlePrevious() {
-	if (currentIndex > 0) {
-		selectedFeed = feeds[currentIndex - 1];
-		currentIndex = currentIndex - 1;
+	if (!feedGridApi || currentIndex <= 0) return;
+	const feeds = feedGridApi.getVisibleFeeds();
+	if (feeds[currentIndex - 1]) {
+		selectedFeedUrl = feeds[currentIndex - 1].normalizedUrl;
 	}
 }
 
 function handleNext() {
-	if (currentIndex >= 0 && currentIndex < feeds.length - 1) {
-		selectedFeed = feeds[currentIndex + 1];
-		currentIndex = currentIndex + 1;
+	if (!feedGridApi || currentIndex >= totalCount - 1) return;
+	const feeds = feedGridApi.getVisibleFeeds();
+	if (feeds[currentIndex + 1]) {
+		selectedFeedUrl = feeds[currentIndex + 1].normalizedUrl;
 	}
+}
+
+function handleSelectFeed(feed: RenderFeed, _index: number, _total: number) {
+	selectedFeedUrl = feed.normalizedUrl;
+	isModalOpen = true;
+}
+
+function handleFeedGridReady(api: FeedGridApi) {
+	feedGridApi = api;
 }
 </script>
 
 <svelte:head>
-	<title>History - Alt</title>
+	<title>The Morgue Desk - Alt</title>
 </svelte:head>
 
 {#if isDesktop}
-	<PageHeader title="Read History" description="Previously viewed feeds" />
+	<div class="morgue-page" class:revealed data-role="morgue-desk-page">
+		<header class="morgue-header">
+			<span class="morgue-date">{dateStr}</span>
+			<h1 class="morgue-title">The Morgue Desk</h1>
+			<div class="morgue-rule" aria-hidden="true"></div>
+		</header>
 
-	<div class="w-full">
-		{#if isLoading}
-			<div class="flex items-center justify-center py-24">
-				<Loader2 class="h-8 w-8 animate-spin text-[var(--accent-primary)]" />
-			</div>
-		{:else if error}
-			<div class="text-center py-12">
-				<p class="text-[var(--alt-error)] text-sm">
-					Error loading feeds: {error.message}
-				</p>
-			</div>
-		{:else if feeds.length === 0}
-			<div class="text-center py-12">
-				<p class="text-[var(--text-secondary)] text-sm">No viewed feeds yet</p>
-			</div>
-		{:else}
-			<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
-				{#each feeds as feed, index (feed.id)}
-					<DesktopFeedCard {feed} onSelect={(f: RenderFeed) => handleSelectFeed(f, index)} isRead={true} />
-				{/each}
-			</div>
+		<FeedGrid
+			onSelectFeed={handleSelectFeed}
+			onReady={handleFeedGridReady}
+			fetchFn={getReadFeedsWithCursorClient}
+			emptyText="Nothing filed yet"
+			loadingText="Retrieving filed clippings"
+		/>
 
-			<div
-				use:infiniteScroll={{
-					callback: loadMore,
-					disabled: isFetchingNextPage || !hasNextPage,
-					threshold: 0.1,
-					rootMargin: "0px 0px 200px 0px",
-				}}
-				class="py-8 text-center"
-			>
-				{#if isFetchingNextPage}
-					<Loader2 class="h-6 w-6 animate-spin text-[var(--accent-primary)] mx-auto" />
-				{:else if hasNextPage}
-					<p class="text-xs text-[var(--text-muted)]">Scroll for more</p>
-				{:else}
-					<p class="text-xs text-[var(--text-muted)]">No more feeds</p>
-				{/if}
-			</div>
-		{/if}
+		<FeedDetailModal
+			bind:open={isModalOpen}
+			feed={selectedFeed}
+			onOpenChange={(open: boolean) => (isModalOpen = open)}
+			{hasPrevious}
+			{hasNext}
+			onPrevious={handlePrevious}
+			onNext={handleNext}
+			feeds={feedGridApi?.getVisibleFeeds() ?? []}
+			{currentIndex}
+		/>
 	</div>
-
-	<FeedDetailModal
-		bind:open={isModalOpen}
-		feed={selectedFeed}
-		onOpenChange={(open: boolean) => (isModalOpen = open)}
-		{hasPrevious}
-		{hasNext}
-		onPrevious={handlePrevious}
-		onNext={handleNext}
-		{feeds}
-		{currentIndex}
-	/>
 {:else}
-	<div
-		class="h-screen overflow-hidden flex flex-col"
-		style="background: var(--app-bg);"
-	>
-		<div class="px-5 pt-4 pb-2">
-			<h1
-				class="text-2xl font-bold text-center"
-				style="color: var(--alt-primary); font-family: var(--font-outfit, sans-serif);"
-				data-testid="read-feeds-title"
-			>
-				History
-			</h1>
-		</div>
-
+	<div style="background: var(--app-bg);" class="h-screen overflow-hidden flex flex-col">
+		<header class="mobile-morgue-header">
+			<span class="morgue-date">{dateStr}</span>
+			<h1 class="morgue-title-mobile">The Morgue Desk</h1>
+			<div class="morgue-rule" aria-hidden="true"></div>
+		</header>
 		<div class="flex-1 min-h-0 flex flex-col">
 			<ViewedFeedsClient />
 		</div>
 	</div>
 {/if}
+
+<style>
+	.morgue-page {
+		opacity: 0;
+		transform: translateY(6px);
+		transition:
+			opacity 0.4s ease,
+			transform 0.4s ease;
+	}
+
+	.morgue-page.revealed {
+		opacity: 1;
+		transform: translateY(0);
+	}
+
+	.morgue-header {
+		padding: 1.5rem 0 0;
+	}
+
+	.mobile-morgue-header {
+		padding: 1rem 1.25rem 0;
+	}
+
+	.morgue-date {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-ash);
+		letter-spacing: 0.06em;
+	}
+
+	.morgue-title {
+		font-family: var(--font-display);
+		font-size: 1.6rem;
+		font-weight: 800;
+		color: var(--alt-charcoal);
+		letter-spacing: -0.01em;
+		margin: 0.15rem 0 0;
+		line-height: 1.2;
+	}
+
+	.morgue-title-mobile {
+		font-family: var(--font-display);
+		font-size: 1.3rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+		margin: 0.1rem 0 0;
+		line-height: 1.2;
+	}
+
+	.morgue-rule {
+		height: 1px;
+		background: var(--surface-border);
+		margin-top: 0.75rem;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.morgue-page {
+			opacity: 1;
+			transform: none;
+			transition: none;
+		}
+	}
+</style>

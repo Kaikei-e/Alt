@@ -6,11 +6,10 @@ import { getReadFeedsWithCursorClient } from "$lib/api/client";
 import type { RenderFeed, SanitizedFeed } from "$lib/schema/feed";
 import { toRenderFeed } from "$lib/schema/feed";
 import EmptyViewedFeedsState from "./EmptyViewedFeedsState.svelte";
-import ViewedFeedCard from "./ViewedFeedCard.svelte";
+import MorgueClipping from "./MorgueClipping.svelte";
 
 const PAGE_SIZE = 20;
 
-// State
 let feeds = $state<SanitizedFeed[]>([]);
 let cursor = $state<string | null>(null);
 let hasMore = $state(true);
@@ -22,17 +21,14 @@ let isRetrying = $state(false);
 
 let scrollContainerRef: HTMLDivElement | null = $state(null);
 
-// Use the scroll container as root for IntersectionObserver
 const getScrollRoot = $derived(browser ? scrollContainerRef : null);
 
-// Ensure we start at the top of the list on first render
 onMount(() => {
 	if (scrollContainerRef) {
 		scrollContainerRef.scrollTop = 0;
 	}
 });
 
-// Load initial feeds
 const loadInitial = async () => {
 	isInitialLoading = true;
 	isLoading = true;
@@ -60,7 +56,6 @@ const loadInitial = async () => {
 	}
 };
 
-// Load more feeds
 const loadMore = async () => {
 	if (isLoading) return;
 	if (!hasMore) return;
@@ -84,7 +79,6 @@ const loadMore = async () => {
 				cursor = null;
 			}
 		} else {
-			// Add new feeds
 			feeds = [...feeds, ...response.data];
 			cursor = response.next_cursor;
 			hasMore = response.next_cursor !== null;
@@ -104,19 +98,17 @@ const loadMore = async () => {
 	}
 };
 
-// Refresh feeds
 const refresh = async () => {
 	cursor = null;
 	hasMore = true;
 	await loadInitial();
 };
 
-// Retry functionality
 const retryFetch = async () => {
 	isRetrying = true;
 	try {
 		await refresh();
-		liveRegionMessage = "Read feeds refreshed successfully";
+		liveRegionMessage = "Filed clippings refreshed successfully";
 		setTimeout(() => {
 			liveRegionMessage = "";
 		}, 1000);
@@ -128,103 +120,76 @@ const retryFetch = async () => {
 	}
 };
 
-// Start loading feeds after initial render
 onMount(() => {
 	if (hasMore && !isLoading && feeds.length === 0) {
 		void loadInitial();
 	}
 });
 
-// Convert feeds to RenderFeed
 const renderFeeds = $derived.by(() => {
 	return feeds.map((feed: SanitizedFeed) => toRenderFeed(feed));
 });
 
 const hasVisibleContent = $derived(feeds.length > 0);
-
 const isInitialLoadingState = $derived(isInitialLoading && feeds.length === 0);
 </script>
 
-<div class="h-full flex flex-col" style="background: var(--app-bg);">
+<div class="morgue-container">
 	<div
 		aria-live="polite"
 		aria-atomic="true"
-		class="absolute left-[-10000px] w-px h-px overflow-hidden"
+		class="sr-only"
 	>
 		{liveRegionMessage}
 	</div>
 
 	<div
 		bind:this={scrollContainerRef}
-		class="px-5 py-5 max-w-2xl mx-auto overflow-y-auto overflow-x-clip flex-1 min-h-0"
-		data-testid="read-feeds-scroll-container"
-		style="background: var(--app-bg);"
+		class="morgue-scroll"
+		data-role="morgue-feed-list"
 	>
 		{#if isInitialLoadingState && !hasVisibleContent}
-			<!-- Skeleton loading state -->
-			<div class="flex flex-col gap-4">
-				{#each Array(5) as _}
-					<div
-						class="p-4 rounded-2xl border-2 border-border animate-pulse"
-						style="background: var(--surface-bg);"
-					>
-						<div class="h-4 bg-muted rounded w-3/4 mb-2"></div>
-						<div class="h-3 bg-muted rounded w-full mb-1"></div>
-						<div class="h-3 bg-muted rounded w-5/6"></div>
-					</div>
-				{/each}
+			<div class="loading-state">
+				<span class="loading-pulse"></span>
+				<span class="loading-text">Retrieving filed clippings&hellip;</span>
 			</div>
 		{:else if error}
-			<!-- Error state -->
-			<div class="flex flex-col items-center justify-center min-h-[50vh] p-6">
-				<div
-					class="p-6 rounded-lg border text-center"
-					style="background: var(--surface-bg); border-color: var(--destructive);"
-				>
-					<p class="text-destructive font-semibold mb-2">Error loading feeds</p>
-					<p class="text-sm text-muted-foreground mb-4">{error.message}</p>
+			<div class="error-state-container">
+				<div class="error-stripe">
+					<p class="error-stripe-title">Error loading filings</p>
+					<p>{error.message}</p>
 					<button
 						onclick={() => void retryFetch()}
 						disabled={isRetrying}
-						class="px-4 py-2 rounded bg-primary text-primary-foreground disabled:opacity-50"
+						class="retry-btn"
 					>
-						{isRetrying ? "Retrying..." : "Retry"}
+						{isRetrying ? "Retrying\u2026" : "Retry"}
 					</button>
 				</div>
 			</div>
 		{:else if renderFeeds.length > 0}
-			<!-- Feed list rendering -->
 			<div
-				class="flex flex-col gap-4"
-				data-testid="virtual-feed-list"
+				class="morgue-list"
 				style="content-visibility: auto; contain-intrinsic-size: 800px;"
 			>
-				{#each renderFeeds as feed (feed.link)}
-					<ViewedFeedCard {feed} />
+				{#each renderFeeds as feed, index (feed.link)}
+					<div class="morgue-item" style="--stagger: {index};">
+						<MorgueClipping {feed} />
+					</div>
 				{/each}
 			</div>
 
-			<!-- No more feeds indicator -->
 			{#if !hasMore && renderFeeds.length > 0}
-				<p
-					class="text-center text-sm mt-8 mb-4"
-					style="color: var(--alt-text-secondary);"
-				>
-					No more history to load
-				</p>
+				<p class="scroll-hint">End of filings</p>
 			{/if}
 
-			<!-- Loading indicator -->
 			{#if isLoading}
-				<div
-					class="py-4 text-center text-sm"
-					style="color: var(--alt-text-secondary);"
-				>
-					Loading more...
+				<div class="loading-state loading-state--compact">
+					<span class="loading-pulse"></span>
+					<span class="loading-text">Retrieving more&hellip;</span>
 				</div>
 			{/if}
 
-			<!-- Infinite scroll sentinel -->
 			{#if hasMore}
 				<div
 					use:infiniteScroll={{
@@ -236,13 +201,156 @@ const isInitialLoadingState = $derived(isInitialLoading && feeds.length === 0);
 					}}
 					aria-hidden="true"
 					style="height: 10px; min-height: 10px; width: 100%;"
-					data-testid="infinite-scroll-sentinel"
 				></div>
 			{/if}
 		{:else}
-			<!-- Empty state -->
 			<EmptyViewedFeedsState />
 		{/if}
 	</div>
 </div>
 
+<style>
+	.morgue-container {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+		background: var(--app-bg);
+	}
+
+	.sr-only {
+		position: absolute;
+		left: -10000px;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+	}
+
+	.morgue-scroll {
+		padding: 0 1.25rem 1.25rem;
+		max-width: 42rem;
+		margin: 0 auto;
+		overflow-y: auto;
+		overflow-x: clip;
+		flex: 1;
+		min-height: 0;
+		width: 100%;
+	}
+
+	.morgue-list {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.morgue-item {
+		opacity: 0;
+		animation: entry-in 0.3s ease forwards;
+		animation-delay: calc(var(--stagger) * 40ms);
+	}
+
+	.loading-state {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 2rem 0;
+		justify-content: center;
+	}
+
+	.loading-state--compact {
+		padding: 1rem 0;
+	}
+
+	.loading-pulse {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--alt-ash);
+		animation: pulse 1.2s ease-in-out infinite;
+	}
+
+	.loading-text {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--alt-ash);
+	}
+
+	.error-state-container {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		min-height: 50vh;
+		padding: 1.5rem;
+	}
+
+	.error-stripe {
+		padding: 0.75rem 1rem;
+		border-left: 3px solid var(--alt-terracotta);
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-terracotta);
+	}
+
+	.error-stripe-title {
+		font-weight: 600;
+		margin: 0 0 0.25rem;
+	}
+
+	.error-stripe p {
+		margin: 0;
+	}
+
+	.retry-btn {
+		margin-top: 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--alt-charcoal);
+		background: transparent;
+		border: 1.5px solid var(--alt-charcoal);
+		padding: 0.4rem 0.75rem;
+		min-height: 44px;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.retry-btn:active {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.retry-btn:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.scroll-hint {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-ash);
+		text-align: center;
+		margin: 1.5rem 0 0.5rem;
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 0.3; }
+		50% { opacity: 1; }
+	}
+
+	@keyframes entry-in {
+		to { opacity: 1; }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.morgue-item {
+			animation: none;
+			opacity: 1;
+		}
+		.loading-pulse {
+			animation: none;
+			opacity: 1;
+		}
+	}
+</style>

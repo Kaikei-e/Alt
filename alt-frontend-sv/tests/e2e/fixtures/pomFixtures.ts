@@ -39,6 +39,7 @@ import { MobileEveningPulsePage } from "../pages/mobile/MobileEveningPulsePage";
 import { Mobile3DayRecapPage } from "../pages/mobile/Mobile3DayRecapPage";
 import { MobileJobStatusPage } from "../pages/mobile/MobileJobStatusPage";
 import { MobileTagArticlesPage } from "../pages/mobile/MobileTagArticlesPage";
+import { MobileFavoritesPage } from "../pages/mobile/MobileFavoritesPage";
 
 // Component POMs
 import { SidebarComponent } from "../pages/components/SidebarComponent";
@@ -77,6 +78,7 @@ type PomFixtures = {
 	mobile3DayRecapPage: Mobile3DayRecapPage;
 	mobileJobStatusPage: MobileJobStatusPage;
 	mobileTagArticlesPage: MobileTagArticlesPage;
+	mobileFavoritesPage: MobileFavoritesPage;
 	// Components
 	sidebar: SidebarComponent;
 	floatingMenu: FloatingMenuComponent;
@@ -172,6 +174,9 @@ export const test = base.extend<PomFixtures>({
 	},
 	mobileTagArticlesPage: async ({ page }, use) => {
 		await use(new MobileTagArticlesPage(page));
+	},
+	mobileFavoritesPage: async ({ page }, use) => {
+		await use(new MobileFavoritesPage(page));
 	},
 	// Components
 	sidebar: async ({ page }, use) => {

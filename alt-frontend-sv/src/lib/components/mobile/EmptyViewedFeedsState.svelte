@@ -1,38 +1,50 @@
 <script lang="ts">
-import { History } from "@lucide/svelte";
 </script>
 
 <div
 	role="region"
-	aria-label="Empty viewed feeds state"
-	class="flex flex-col justify-center items-center min-h-[70vh] p-6 text-center"
+	aria-label="Empty morgue state"
+	class="empty-state"
+	data-role="morgue-empty-state"
 >
-	<div class="flex flex-col gap-8 max-w-[400px]">
-		<!-- Icon -->
-		<div
-			data-testid="empty-viewed-feeds-icon"
-			class="w-[120px] h-[120px] flex items-center justify-center rounded-full border-2 opacity-50"
-			style="background: rgba(30, 30, 40, 0.4); border-color: rgba(255, 255, 255, 0.05);"
-		>
-			<History size={48} style="color: white;" />
-		</div>
-
-		<!-- Heading -->
-		<div class="flex flex-col gap-3">
-			<h2
-				class="text-2xl md:text-3xl font-bold"
-				style="color: white;"
-			>
-				No History Yet
-			</h2>
-
-			<p
-				class="text-base leading-relaxed px-4"
-				style="color: rgba(255, 255, 255, 0.6);"
-			>
-				Articles you read will appear here.
-			</p>
-		</div>
-	</div>
+	<div class="empty-ornament" aria-hidden="true">&#9670;</div>
+	<h2 class="empty-heading">Nothing Filed Yet</h2>
+	<p class="empty-body">
+		Articles you read will appear in the morgue.
+	</p>
 </div>
 
+<style>
+	.empty-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		min-height: 70vh;
+		padding: 1.5rem;
+		text-align: center;
+	}
+
+	.empty-ornament {
+		font-size: 1.5rem;
+		color: var(--surface-border);
+		margin-bottom: 1rem;
+	}
+
+	.empty-heading {
+		font-family: var(--font-display);
+		font-size: 1.4rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+		margin: 0 0 0.5rem;
+	}
+
+	.empty-body {
+		font-family: var(--font-body);
+		font-size: 0.9rem;
+		line-height: 1.6;
+		color: var(--alt-slate);
+		max-width: 320px;
+		margin: 0;
+	}
+</style>

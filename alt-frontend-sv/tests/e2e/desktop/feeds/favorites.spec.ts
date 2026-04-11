@@ -1,9 +1,8 @@
 import { test, expect } from "../../fixtures/pomFixtures";
 import { fulfillJson } from "../../utils/mockHelpers";
 
-test.describe("Desktop Favorites", () => {
+test.describe("Desktop Clippings File (Favorites)", () => {
 	test("renders page title", async ({ page, desktopFavoritesPage }) => {
-		// Mock favorites endpoint
 		await page.route(
 			"**/api/v2/alt.feeds.v2.FeedService/GetFavoriteFeeds",
 			(route) =>

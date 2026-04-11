@@ -20,9 +20,11 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 		fetchFn?: (cursor?: string, limit?: number) => Promise<import("$lib/api").CursorResponse<RenderFeed>>;
 		cardRenderer?: Snippet<[{ feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void }]>;
 		gridClass?: string;
+		emptyText?: string;
+		loadingText?: string;
 	}
 
-	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkIds = [], onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4" }: Props = $props();
+	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkIds = [], onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4", emptyText = "No dispatches on the wire", loadingText = "Retrieving dispatches" }: Props = $props();
 
 	// Track initial load completion to only animate first batch
 	let initialLoadDone = $state(false);
@@ -257,14 +259,14 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 	{#if isLoading}
 		<div class="loading-state">
 			<span class="loading-pulse"></span>
-			<span class="loading-text">Retrieving dispatches&hellip;</span>
+			<span class="loading-text">{loadingText}&hellip;</span>
 		</div>
 	{:else if error}
 		<div class="error-state">
 			{error.message}
 		</div>
 	{:else if visibleFeeds.length === 0}
-		<p class="empty-state">No dispatches on the wire</p>
+		<p class="empty-state">{emptyText}</p>
 	{:else}
 		<div class={gridClass}>
 			{#each visibleFeeds as feed, index (feed.id)}
@@ -290,7 +292,7 @@ export type { RemoveFeedResult, FeedGridApi } from "./feed-grid-types";
 			{#if isFetchingNextPage}
 				<div class="loading-state">
 					<span class="loading-pulse"></span>
-					<span class="loading-text">Loading more dispatches&hellip;</span>
+					<span class="loading-text">Loading more&hellip;</span>
 				</div>
 			{:else if hasNextPage}
 				<p class="scroll-hint">Scroll for more</p>
