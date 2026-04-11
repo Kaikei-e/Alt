@@ -322,7 +322,7 @@ def _parse_expansion_lines(raw_text: str) -> List[str]:
         # Remove leading numbers/bullets (handles multi-digit: "1. ", "10. ", "100. ")
         m = _LEADING_NUMBER_RE.match(trimmed)
         if m:
-            trimmed = trimmed[m.end():].strip()
+            trimmed = trimmed[m.end() :].strip()
         if trimmed.startswith(("-", "*", "•")):
             trimmed = trimmed[1:].strip()
         if trimmed:
