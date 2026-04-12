@@ -24,6 +24,7 @@ type Config struct {
 	InternalAPI   InternalAPIConfig   `json:"internal_api"`
 	ImageProxy     ImageProxyConfig     `json:"image_proxy"`
 	KnowledgeHome  KnowledgeHomeConfig  `json:"knowledge_home"`
+	AdminMonitor   AdminMonitorConfig   `json:"admin_monitor"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -99,6 +100,19 @@ type KnowledgeHomeConfig struct {
 	ProjectorNotifyChannel string       `json:"projector_notify_channel" env:"KNOWLEDGE_HOME_PROJECTOR_NOTIFY_CHANNEL" default:"knowledge_projector"`
 	ProjectorDirectDBHost string        `json:"projector_direct_db_host" env:"KNOWLEDGE_HOME_PROJECTOR_DIRECT_DB_HOST" default:""`
 	ProjectorDirectDBPort string        `json:"projector_direct_db_port" env:"KNOWLEDGE_HOME_PROJECTOR_DIRECT_DB_PORT" default:""`
+}
+
+// AdminMonitorConfig controls the admin-facing Prometheus observability endpoint.
+// Queries are allowlisted server-side and run through a gated gateway with
+// cache, singleflight, and rate limit.
+type AdminMonitorConfig struct {
+	Enabled         bool          `json:"enabled" env:"ADMIN_MONITOR_ENABLED" default:"false"`
+	PrometheusURL   string        `json:"prometheus_url" env:"ADMIN_MONITOR_PROMETHEUS_URL" default:"http://prometheus:9090"`
+	QueryTimeout    time.Duration `json:"query_timeout" env:"ADMIN_MONITOR_QUERY_TIMEOUT" default:"3s"`
+	CacheTTL        time.Duration `json:"cache_ttl" env:"ADMIN_MONITOR_CACHE_TTL" default:"10s"`
+	RateLimitRPS    int           `json:"rate_limit_rps" env:"ADMIN_MONITOR_RATE_LIMIT_RPS" default:"5"`
+	RateLimitBurst  int           `json:"rate_limit_burst" env:"ADMIN_MONITOR_RATE_LIMIT_BURST" default:"10"`
+	StreamInterval  time.Duration `json:"stream_interval" env:"ADMIN_MONITOR_STREAM_INTERVAL" default:"5s"`
 }
 
 // InternalAPIConfig holds configuration for the internal service-to-service API.

@@ -74,6 +74,7 @@ import (
 	"alt/usecase/update_lens_usecase"
 	"alt/utils/batch_article_fetcher"
 	altotel "alt/utils/otel"
+	"log/slog"
 
 	"alt/driver/alt_db"
 
@@ -216,6 +217,10 @@ type ApplicationComponents struct {
 
 	// Observability
 	KnowledgeHomeMetrics *altotel.KnowledgeHomeMetrics
+
+	// Admin observability (Prometheus-backed metrics UI). Facade may be nil
+	// when cfg.AdminMonitor.Enabled is false; server.go skips registration.
+	AdminMonitor *AdminMonitorModule
 }
 
 func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
@@ -246,6 +251,9 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 	// 9. Search module (global federated search)
 	search := newSearchModule(infra)
+
+	// 10. Admin observability (gated by AdminMonitor.Enabled)
+	adminMonitor := newAdminMonitorModule(infra.Config, slog.Default())
 
 	return &ApplicationComponents{
 		// Modules
@@ -382,5 +390,8 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 
 		// Observability
 		KnowledgeHomeMetrics: knowledge.KnowledgeHomeMetrics,
+
+		// Admin observability
+		AdminMonitor: adminMonitor,
 	}
 }

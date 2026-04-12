@@ -14,6 +14,7 @@ import (
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
 	"alt/gen/proto/alt/search/v2/searchv2connect"
+	"alt/gen/proto/alt/admin_monitor/v1/adminmonitorv1connect"
 	"alt/gen/proto/alt/knowledge_home/v1/knowledgehomev1connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
@@ -27,6 +28,7 @@ import (
 	global_search "alt/connect/v2/global_search"
 	internalhandler "alt/connect/v2/internal"
 	knowledge_home "alt/connect/v2/knowledge_home"
+	"alt/connect/v2/admin_monitor"
 	"alt/connect/v2/knowledge_home_admin"
 	"alt/connect/v2/middleware"
 	"alt/connect/v2/morning_letter"
@@ -172,6 +174,20 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	khAdminPath, khAdminServiceHandler := knowledgehomev1connect.NewKnowledgeHomeAdminServiceHandler(khAdminHandler, adminOpts)
 	mux.Handle(khAdminPath, khAdminServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeHomeAdminService", "path", khAdminPath)
+
+	// Register AdminMonitorService (Prometheus-backed observability for Admin UI).
+	// Gated by config.AdminMonitor.Enabled so production rollout is flag-controlled.
+	// Auth: BFF (alt-butterfly-facade) validates the user JWT + admin role, then
+	// forwards to alt-backend with X-Service-Token — use adminOpts (serviceAuth),
+	// not opts (userAuth), to match that contract.
+	if container.AdminMonitor != nil && container.AdminMonitor.Enabled && container.AdminMonitor.Facade != nil {
+		amHandler := admin_monitor.NewHandler(container.AdminMonitor.Facade, logger)
+		amPath, amServiceHandler := adminmonitorv1connect.NewAdminMonitorServiceHandler(amHandler, adminOpts)
+		mux.Handle(amPath, amServiceHandler)
+		logger.Info("Registered Connect-RPC AdminMonitorService", "path", amPath)
+	} else {
+		logger.Info("AdminMonitorService disabled (config.AdminMonitor.Enabled=false)")
+	}
 
 	// Register GlobalSearchService
 	if container.Search != nil {

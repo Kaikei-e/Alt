@@ -39,6 +39,11 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=14d'
       - '--web.enable-lifecycle'
+      # Query resource protection for the admin observability allowlist.
+      # See docs/runbooks/admin-observability.md for tuning rationale.
+      - '--query.timeout=5s'
+      - '--query.max-samples=1000000'
+      - '--query.max-concurrency=8'
     networks:
       - alt-network
     depends_on:
