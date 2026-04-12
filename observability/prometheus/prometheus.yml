@@ -46,14 +46,18 @@ scrape_configs:
     scrape_interval: 15s
     metrics_path: /metrics
 
-  # pre-processor article processing metrics (separate metrics server on port 9201)
-  - job_name: 'pre-processor'
-    static_configs:
-      - targets: ['pre-processor:9201']
-        labels:
-          service: 'pre-processor'
-    scrape_interval: 15s
-    metrics_path: /metrics/prometheus
+  # pre-processor: /metrics/prometheus is defined in code (metrics/collector.go)
+  # but not wired into bootstrap/server.go yet — nothing listens on :9201 inside
+  # the container. Re-enable this job when the collector is started by main.
+  # Tracked as a follow-up to ADR-000704 (Admin Observability UI).
+  #
+  # - job_name: 'pre-processor'
+  #   static_configs:
+  #     - targets: ['pre-processor:9201']
+  #       labels:
+  #         service: 'pre-processor'
+  #   scrape_interval: 15s
+  #   metrics_path: /metrics/prometheus
 
   # recap-worker recap pipeline metrics (Rust/Axum)
   - job_name: 'recap-worker'
