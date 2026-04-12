@@ -1,4 +1,5 @@
 import type { FeedContentOnTheFlyResponse } from "$lib/api/client/articles";
+import type { StreamingRendererOptions } from "$lib/utils/streamingRenderer";
 
 /**
  * Process article fetch response, treating empty content as an error.
@@ -25,5 +26,15 @@ export function processArticleFetchResponse(
 		articleContent: null,
 		articleID: null,
 		contentError: "Article content could not be retrieved",
+	};
+}
+
+export function buildSummaryRendererOptions(params: {
+	tick: () => Promise<void>;
+}): StreamingRendererOptions {
+	return {
+		tick: params.tick,
+		typewriter: true,
+		typewriterDelay: 10,
 	};
 }

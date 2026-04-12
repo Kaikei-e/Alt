@@ -11,8 +11,11 @@
  * - isFetchingContent resets to false
  * → all conditions for auto-fetch remain true → infinite loop
  */
-import { describe, expect, it } from "vitest";
-import { processArticleFetchResponse } from "./FeedDetailModal.logic";
+import { describe, expect, it, vi } from "vitest";
+import {
+	buildSummaryRendererOptions,
+	processArticleFetchResponse,
+} from "./FeedDetailModal.logic";
 
 describe("processArticleFetchResponse", () => {
 	it("returns content and articleID when content is non-empty", () => {
@@ -72,5 +75,25 @@ describe("processArticleFetchResponse", () => {
 		expect(result.articleContent).toBe("<p>Content</p>");
 		expect(result.articleID).toBeNull();
 		expect(result.contentError).toBeNull();
+	});
+});
+
+/**
+ * Regression test for Desktop visual-preview typewriter rendering.
+ *
+ * Desktop was passing `{}` to createStreamingRenderer, so summary chunks
+ * rendered as a single block when the server returned fast. Mobile
+ * (SwipeFeedCard / VisualPreviewCard / FeedDetails) passes typewriter: true
+ * with a 10ms delay. This helper enforces the same shape for Desktop.
+ */
+describe("buildSummaryRendererOptions", () => {
+	it("enables typewriter with 10ms delay and forwards tick", () => {
+		const tick = vi.fn(async () => {});
+
+		const options = buildSummaryRendererOptions({ tick });
+
+		expect(options.typewriter).toBe(true);
+		expect(options.typewriterDelay).toBe(10);
+		expect(options.tick).toBe(tick);
 	});
 });

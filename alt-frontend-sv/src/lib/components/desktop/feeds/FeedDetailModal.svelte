@@ -7,11 +7,14 @@ import {
 	createClientTransport,
 	streamSummarizeWithAbortAdapter,
 } from "$lib/connect";
-import type { Snippet } from "svelte";
+import { tick, type Snippet } from "svelte";
 import type { RenderFeed } from "$lib/schema/feed";
 import { articlePrefetcher } from "$lib/utils/articlePrefetcher";
 import { isTransientError } from "$lib/utils/errorClassification";
-import { processArticleFetchResponse } from "./FeedDetailModal.logic";
+import {
+	buildSummaryRendererOptions,
+	processArticleFetchResponse,
+} from "./FeedDetailModal.logic";
 import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 
 interface Props {
@@ -348,7 +351,7 @@ async function handleSummarize(forceRefresh = false) {
 				if (feed.normalizedUrl !== targetFeedUrl) return;
 				summary = (summary || "") + chunk;
 			},
-			{}, // No typewriter effect for desktop
+			buildSummaryRendererOptions({ tick }),
 			(_result) => {
 				// onComplete — discard if feed changed
 				if (feed.normalizedUrl !== targetFeedUrl) return;
