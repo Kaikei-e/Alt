@@ -63,10 +63,15 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5, // Balanced compression level
 		Skipper: func(c echo.Context) bool {
-			// Skip compression for already compressed content and SSE endpoints
+			// Skip compression for already compressed content, SSE endpoints,
+			// and /metrics. Prometheus 3.x reports the gzip-framed response as
+			// "expected a valid start token, got \x1f" for this endpoint, and
+			// the scrape payload is small enough that compression savings are
+			// immaterial compared to parsing robustness.
 			return strings.Contains(c.Request().Header.Get("Accept-Encoding"), "br") ||
 				strings.Contains(c.Path(), "/health") ||
-				strings.Contains(c.Path(), "/sse/")
+				strings.Contains(c.Path(), "/sse/") ||
+				c.Path() == "/metrics"
 		},
 	}))
 
