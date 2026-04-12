@@ -5,6 +5,7 @@ inputs:
       - alt
       - alt/tts
       - alt/knowledge_home
+      - alt/admin_monitor
 plugins:
   # ============================================================================
   # alt-backend (public protos)

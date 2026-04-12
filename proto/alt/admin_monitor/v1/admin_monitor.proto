@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package alt.admin_monitor.v1;
+
+option go_package = "alt/gen/proto/alt/admin_monitor/v1;adminmonitorv1";
+
+// AdminMonitorService serves Prometheus-backed observability data to the Admin UI.
+// Queries are allowlisted on the server; clients may not submit raw PromQL.
+// Protected by the admin role middleware (role claim + service token at BFF).
+service AdminMonitorService {
+  // Catalog lists allowlisted metric keys and their descriptors.
+  rpc Catalog(CatalogRequest) returns (CatalogResponse);
+
+  // Snapshot returns a one-shot bundle for the requested keys.
+  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
+
+  // Watch emits WatchResponse messages on an interval until the client disconnects.
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+}
+
+// RangeWindow is the allowlisted range window for range queries.
+enum RangeWindow {
+  RANGE_WINDOW_UNSPECIFIED = 0;
+  RANGE_WINDOW_5M = 1;
+  RANGE_WINDOW_15M = 2;
+  RANGE_WINDOW_1H = 3;
+  RANGE_WINDOW_6H = 4;
+  RANGE_WINDOW_24H = 5;
+}
+
+// Step is the allowlisted query step size.
+enum Step {
+  STEP_UNSPECIFIED = 0;
+  STEP_15S = 1;
+  STEP_30S = 2;
+  STEP_1M = 3;
+  STEP_5M = 4;
+}
+
+// SeriesKind distinguishes instant samples from range matrices.
+enum SeriesKind {
+  SERIES_KIND_UNSPECIFIED = 0;
+  SERIES_KIND_INSTANT = 1;
+  SERIES_KIND_RANGE = 2;
+}
+
+message CatalogRequest {}
+
+message CatalogResponse {
+  repeated CatalogEntry entries = 1;
+}
+
+message CatalogEntry {
+  string key = 1;
+  string title = 2;
+  string unit = 3;
+  string description = 4;
+  string grafana_url = 5;
+  SeriesKind kind = 6;
+}
+
+message SnapshotRequest {
+  repeated string keys = 1;
+  RangeWindow window = 2;
+  Step step = 3;
+}
+
+message WatchRequest {
+  repeated string keys = 1;
+  RangeWindow window = 2;
+  Step step = 3;
+}
+
+message SnapshotResponse {
+  // RFC3339 timestamp when the snapshot was assembled on the server.
+  string time = 1;
+  repeated MetricResult metrics = 2;
+}
+
+// WatchResponse has the same shape as SnapshotResponse; a distinct type is
+// required by the protobuf style guide because streaming RPCs must not share
+// response types with unary RPCs.
+message WatchResponse {
+  string time = 1;
+  repeated MetricResult metrics = 2;
+}
+
+message MetricResult {
+  string key = 1;
+  SeriesKind kind = 2;
+  string unit = 3;
+  string grafana_url = 4;
+  repeated Series series = 5;
+  bool degraded = 6;
+  string reason = 7;
+  repeated string warnings = 8;
+}
+
+message Series {
+  map<string, string> labels = 1;
+  repeated Point points = 2;
+}
+
+message Point {
+  // RFC3339 timestamp.
+  string time = 1;
+  double value = 2;
+}
