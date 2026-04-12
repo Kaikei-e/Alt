@@ -17,7 +17,9 @@ vi.mock("$lib/utils/streamingRenderer", () => ({
 
 // Capture streamAugurChat callbacks for manual invocation
 let capturedOnDelta: ((text: string) => void) | undefined;
-let capturedOnComplete: ((result: { answer: string; citations: never[] }) => void) | undefined;
+let capturedOnComplete:
+	| ((result: { answer: string; citations: never[] }) => void)
+	| undefined;
 
 vi.mock("$lib/connect", () => ({
 	createClientTransport: vi.fn(() => ({})),

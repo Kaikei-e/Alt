@@ -12,7 +12,9 @@ let {
 	}[];
 } = $props();
 
-const statusInfo = (status: string): { color: string; status: "ok" | "error" | "neutral" } => {
+const statusInfo = (
+	status: string,
+): { color: string; status: "ok" | "error" | "neutral" } => {
 	switch (status) {
 		case "healthy":
 			return { color: "var(--alt-sage)", status: "ok" };

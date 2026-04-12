@@ -18,7 +18,9 @@ const overallHealthColor = (health: string) => {
 	}
 };
 
-const sliStatusLabel = (status: string): "ok" | "warning" | "error" | "neutral" => {
+const sliStatusLabel = (
+	status: string,
+): "ok" | "warning" | "error" | "neutral" => {
 	switch (status) {
 		case "meeting":
 			return "ok";

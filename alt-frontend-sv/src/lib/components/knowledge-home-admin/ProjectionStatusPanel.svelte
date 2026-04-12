@@ -5,7 +5,9 @@ import AdminMetricCard from "./AdminMetricCard.svelte";
 let { health }: { health: ProjectionHealthData | null } = $props();
 
 const lastUpdatedFormatted = $derived(
-	health?.lastUpdated ? new Date(health.lastUpdated).toLocaleTimeString() : "--",
+	health?.lastUpdated
+		? new Date(health.lastUpdated).toLocaleTimeString()
+		: "--",
 );
 </script>
 
