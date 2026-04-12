@@ -56,6 +56,7 @@ services:
     build:
       context: ../search-indexer
       dockerfile: Dockerfile.search-indexer
+    restart: always
     depends_on:
       redis-streams:
         condition: service_healthy
