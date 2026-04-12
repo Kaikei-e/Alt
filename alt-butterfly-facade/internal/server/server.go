@@ -191,6 +191,19 @@ func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.Roun
 			cfg.RequestTimeout,
 		)
 		mux.Handle("/alt.knowledge_home.v1.KnowledgeHomeAdminService/", adminProxy)
+
+		// Admin observability (Prometheus-backed). Uses a streaming-aware
+		// proxy that does not apply a short request timeout: Watch is
+		// a long-lived server stream.
+		adminMonitorProxy := handler.NewAdminMonitorProxyHandler(
+			backendClient,
+			cfg.Secret,
+			cfg.Issuer,
+			cfg.Audience,
+			cfg.ServiceSecret,
+			logger,
+		)
+		mux.Handle("/alt.admin_monitor.v1.AdminMonitorService/", adminMonitorProxy)
 	}
 
 	// Acolyte orchestrator routing (Connect protocol, HTTP/1.1)
