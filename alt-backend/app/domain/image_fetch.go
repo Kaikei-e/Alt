@@ -111,12 +111,29 @@ func IsValidImagePath(pathname string) bool {
 	return true // Default to allowing since some dynamic image URLs don't have obvious patterns
 }
 
-// IsValidImageContentType validates if the content type is an allowed image type
+// supportedImageContentTypes lists MIME types the proxy can actually decode.
+// Keep in sync with decoders registered in image_proxy_gateway.
+var supportedImageContentTypes = map[string]struct{}{
+	"image/jpeg": {},
+	"image/jpg":  {},
+	"image/png":  {},
+	"image/gif":  {},
+	"image/webp": {},
+}
+
+// IsValidImageContentType validates if the content type is an allowed image type.
+// Uses a strict whitelist so unsupported formats (AVIF, HEIC, JXL, SVG) are
+// rejected at the fetch boundary rather than surfacing as opaque decode errors.
 func IsValidImageContentType(contentType string) bool {
 	if contentType == "" {
 		return false
 	}
 
 	contentType = strings.ToLower(strings.TrimSpace(contentType))
-	return strings.HasPrefix(contentType, "image/")
+	// Strip parameters like "; charset=binary" before comparison.
+	if i := strings.Index(contentType, ";"); i >= 0 {
+		contentType = strings.TrimSpace(contentType[:i])
+	}
+	_, ok := supportedImageContentTypes[contentType]
+	return ok
 }

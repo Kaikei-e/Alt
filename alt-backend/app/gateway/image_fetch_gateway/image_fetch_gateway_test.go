@@ -16,6 +16,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestValidateResponseEncoding(t *testing.T) {
+	// When Go's http.Transport adds Accept-Encoding: gzip itself and receives a
+	// gzipped response, it transparently decompresses and strips the
+	// Content-Encoding header. Any remaining non-empty Content-Encoding after
+	// the response therefore indicates an encoding Go did not handle
+	// (br/zstd/deflate/etc.) — the bytes are still compressed and must not be
+	// fed to the image decoder. This is the defense-in-depth guard we rely on
+	// after removing the manual Accept-Encoding request header.
+	tests := []struct {
+		name            string
+		contentEncoding string
+		wantErr         bool
+	}{
+		{"empty (gzip auto-handled or identity)", "", false},
+		{"identity explicit", "identity", false},
+		{"stray gzip (Go would have stripped)", "gzip", true},
+		{"brotli unhandled", "br", true},
+		{"zstd unhandled", "zstd", true},
+		{"deflate unhandled", "deflate", true},
+		{"multiple encodings", "gzip, br", true},
+		{"uppercase", "GZIP", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{Header: http.Header{}}
+			if tt.contentEncoding != "" {
+				resp.Header.Set("Content-Encoding", tt.contentEncoding)
+			}
+			err := validateResponseEncoding(resp)
+			if tt.wantErr && err == nil {
+				t.Errorf("expected error for Content-Encoding=%q, got nil", tt.contentEncoding)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("expected no error for Content-Encoding=%q, got: %v", tt.contentEncoding, err)
+			}
+		})
+	}
+}
+
 func TestImageFetchGateway_FetchImage_SSRF_PrivateNetworks(t *testing.T) {
 	gateway := NewImageFetchGateway(&http.Client{Timeout: 10 * time.Second})
 

@@ -17,6 +17,21 @@ import (
 	"time"
 )
 
+// validateResponseEncoding rejects responses whose body is still in an
+// encoding Go's net/http Transport did not transparently decompress. When the
+// Transport auto-requests gzip and the server returns it, the Content-Encoding
+// header is stripped from the response — so any remaining non-empty value
+// (other than "identity") means the body is compressed with an algorithm we
+// cannot decode (br/zstd/deflate/etc.), and passing those bytes to the image
+// decoder would fail opaquely.
+func validateResponseEncoding(resp *http.Response) error {
+	enc := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
+	if enc == "" || enc == "identity" {
+		return nil
+	}
+	return fmt.Errorf("unhandled response Content-Encoding %q: body is still compressed and cannot be decoded safely", enc)
+}
+
 // allowedProxyHosts defines known safe proxy hosts that may be used for image fetching.
 // This prevents unexpected hosts from being targeted when proxy mode is enabled.
 var allowedProxyHosts = map[string]struct{}{
@@ -278,10 +293,17 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 		)
 	}
 
-	// Set appropriate headers for image fetching
+	// Set appropriate headers for image fetching.
+	// NOTE: We intentionally do not set Accept-Encoding. Go's http.Transport
+	// auto-adds "Accept-Encoding: gzip" and transparently decompresses the
+	// response body when the Transport — not the user — requested gzip
+	// (see https://pkg.go.dev/net/http#Transport). Setting it manually here
+	// disables that transparent decompression, which previously caused
+	// "image: unknown format" errors when upstream CDNs (e.g., Dezeen) served
+	// gzip-encoded JPEGs. The existing io.LimitReader below bounds the
+	// decompressed size, so gzip bombs are still contained.
 	req.Header.Set("User-Agent", "Alt-RSS-Reader/1.0 (+https://alt.example.com)")
 	req.Header.Set("Accept", "image/webp, image/jpeg, image/png, image/gif")
-	req.Header.Set("Accept-Encoding", "gzip, deflate")
 	req.Header.Set("Cache-Control", "no-cache")
 
 	// SSRF Protection Summary: Multi-layer defense implemented
@@ -337,6 +359,22 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 				"url":         imageURL.String(),
 				"status_code": resp.StatusCode,
 				"status":      resp.Status,
+			},
+		)
+	}
+
+	// Reject responses whose body remains in an encoding Go did not decompress
+	// (br/zstd/etc.). Must run before reading the body so we do not consume
+	// bytes we cannot interpret.
+	if err := validateResponseEncoding(resp); err != nil {
+		return nil, errors.NewValidationContextError(
+			"response encoding not supported",
+			"gateway",
+			"ImageFetchGateway",
+			"validate_content_encoding",
+			map[string]interface{}{
+				"url":              imageURL.String(),
+				"content_encoding": resp.Header.Get("Content-Encoding"),
 			},
 		)
 	}

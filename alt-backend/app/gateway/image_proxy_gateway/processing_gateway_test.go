@@ -8,6 +8,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -113,6 +114,53 @@ func TestProcessingGateway_ProcessImage_EmptyData(t *testing.T) {
 	_, err := gw.ProcessImage(context.Background(), nil, "image/jpeg", 600, 80)
 	if err == nil {
 		t.Fatal("expected error for empty data")
+	}
+}
+
+func TestProcessingGateway_ProcessImage_DecodeErrorIncludesDiagnostics(t *testing.T) {
+	gw := NewProcessingGateway()
+
+	// HTML error page bytes — valid content-type check could pass upstream if
+	// the server lies about the MIME, but image.Decode will reject it.
+	htmlBytes := []byte("<!DOCTYPE html><html><body>404 Not Found</body></html>")
+
+	_, err := gw.ProcessImage(context.Background(), htmlBytes, "text/html", 600, 80)
+	if err == nil {
+		t.Fatal("expected error for HTML input")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "text/html") {
+		t.Errorf("expected error to contain upstream content-type, got: %s", msg)
+	}
+	// Expect magic-byte hex prefix to be surfaced for triage.
+	if !strings.Contains(msg, "magic=") {
+		t.Errorf("expected error to contain magic byte prefix, got: %s", msg)
+	}
+}
+
+func TestProcessingGateway_ProcessImage_DecodeErrorNamesAVIF(t *testing.T) {
+	gw := NewProcessingGateway()
+
+	// Synthetic ISO-BMFF header with 'ftypavif' brand — enough for format
+	// detection to classify as AVIF even though image.Decode will fail.
+	avifHeader := []byte{
+		0x00, 0x00, 0x00, 0x20, // box size
+		'f', 't', 'y', 'p',
+		'a', 'v', 'i', 'f', // major brand = avif
+		0x00, 0x00, 0x00, 0x00, // minor version
+		'a', 'v', 'i', 'f', // compatible brand
+		'm', 'i', 'f', '1',
+		'm', 'i', 'a', 'f',
+		'M', 'A', '1', 'B',
+	}
+
+	_, err := gw.ProcessImage(context.Background(), avifHeader, "image/avif", 600, 80)
+	if err == nil {
+		t.Fatal("expected error for AVIF input (decoder not registered)")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "avif") && !strings.Contains(msg, "AVIF") {
+		t.Errorf("expected error to identify AVIF format, got: %s", msg)
 	}
 }
 

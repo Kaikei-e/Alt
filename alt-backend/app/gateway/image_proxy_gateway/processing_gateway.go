@@ -18,6 +18,51 @@ import (
 
 )
 
+// detectFormatFromMagic identifies common image container formats from their
+// leading bytes. Used for error diagnostics when image.Decode fails — tells
+// operators whether the upstream served AVIF/HEIC/JXL (decoder not registered)
+// vs. an HTML error page the Content-Type check let through.
+func detectFormatFromMagic(data []byte) string {
+	if len(data) < 4 {
+		return "unknown"
+	}
+	switch {
+	case bytes.HasPrefix(data, []byte{0xFF, 0xD8, 0xFF}):
+		return "jpeg"
+	case bytes.HasPrefix(data, []byte{0x89, 'P', 'N', 'G'}):
+		return "png"
+	case bytes.HasPrefix(data, []byte("GIF87a")) || bytes.HasPrefix(data, []byte("GIF89a")):
+		return "gif"
+	case len(data) >= 12 && bytes.Equal(data[0:4], []byte("RIFF")) && bytes.Equal(data[8:12], []byte("WEBP")):
+		return "webp"
+	case bytes.HasPrefix(data, []byte("<!DOC")) || bytes.HasPrefix(data, []byte("<html")) || bytes.HasPrefix(data, []byte("<HTML")):
+		return "html"
+	case bytes.HasPrefix(data, []byte{0xFF, 0x0A}) || (len(data) >= 12 && bytes.Equal(data[0:12], []byte{0x00, 0x00, 0x00, 0x0C, 'J', 'X', 'L', ' ', 0x0D, 0x0A, 0x87, 0x0A})):
+		return "jxl"
+	}
+	// ISO-BMFF family: size(4) + "ftyp" + major_brand(4)
+	if len(data) >= 12 && bytes.Equal(data[4:8], []byte("ftyp")) {
+		brand := string(data[8:12])
+		switch brand {
+		case "avif", "avis":
+			return "avif"
+		case "heic", "heix", "heim", "heis", "hevc", "hevx", "mif1", "msf1":
+			return "heic"
+		default:
+			return "iso-bmff:" + brand
+		}
+	}
+	return "unknown"
+}
+
+// magicPrefix returns a short hex string of the first n bytes for log triage.
+func magicPrefix(data []byte, n int) string {
+	if len(data) < n {
+		n = len(data)
+	}
+	return hex.EncodeToString(data[:n])
+}
+
 // ProcessingGateway implements ImageProcessingPort for resizing and JPEG compression.
 // Uses pure Go (no CGo) for compatibility with CGO_ENABLED=0 builds.
 type ProcessingGateway struct{}
@@ -36,7 +81,14 @@ func (g *ProcessingGateway) ProcessImage(ctx context.Context, data []byte, conte
 	// Decode the image
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("decode image: %w", err)
+		return nil, fmt.Errorf(
+			"decode image (upstream_content_type=%q detected_format=%s magic=%s size=%d): %w",
+			contentType,
+			detectFormatFromMagic(data),
+			magicPrefix(data, 16),
+			len(data),
+			err,
+		)
 	}
 
 	bounds := img.Bounds()
