@@ -25,6 +25,7 @@ import SovereignMutationPanel from "$lib/components/knowledge-home-admin/Soverei
 import ErrorBudgetBurnRatePanel from "$lib/components/knowledge-home-admin/ErrorBudgetBurnRatePanel.svelte";
 import InteractionFunnelPanel from "$lib/components/knowledge-home-admin/InteractionFunnelPanel.svelte";
 import ReasonDistributionChart from "$lib/components/knowledge-home-admin/ReasonDistributionChart.svelte";
+import ObservabilityPanel from "$lib/components/knowledge-home-admin/observability/ObservabilityPanel.svelte";
 import {
 	useKnowledgeHomeAdmin,
 	type KnowledgeHomeAdminActionRequest,
@@ -302,6 +303,10 @@ onDestroy(() => {
 			</div>
 			<div class="ops-section" style="--stagger: 2">
 				<AuditResultPanel audit={admin.auditResult} />
+			</div>
+		{:else if activeTab === "observability"}
+			<div class="ops-section" style="--stagger: 1">
+				<ObservabilityPanel />
 			</div>
 		{/if}
 	</div>

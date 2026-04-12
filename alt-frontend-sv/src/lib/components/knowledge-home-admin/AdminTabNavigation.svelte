@@ -14,6 +14,7 @@ const tabs = [
 	{ id: "reproject", label: "Reproject" },
 	{ id: "storage", label: "Storage" },
 	{ id: "audit", label: "Audit" },
+	{ id: "observability", label: "Observability" },
 ];
 </script>
 
