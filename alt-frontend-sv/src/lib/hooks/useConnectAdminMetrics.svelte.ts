@@ -24,7 +24,12 @@ import {
 	type CatalogEntry,
 } from "$lib/gen/alt/admin_monitor/v1/admin_monitor_pb";
 
-export type StreamState = "idle" | "connecting" | "live" | "degraded" | "closed";
+export type StreamState =
+	| "idle"
+	| "connecting"
+	| "live"
+	| "degraded"
+	| "closed";
 
 export interface UseConnectAdminMetricsOptions {
 	keys?: string[];
@@ -107,7 +112,8 @@ export function useConnectAdminMetrics(
 
 	function scheduleRotate() {
 		if (rotateTimer) clearTimeout(rotateTimer);
-		const rotateAfter = maxStreamMs + Math.floor((Math.random() - 0.5) * 120_000);
+		const rotateAfter =
+			maxStreamMs + Math.floor((Math.random() - 0.5) * 120_000);
 		rotateTimer = setTimeout(() => {
 			if (stopped) return;
 			if (abort) abort.abort();
@@ -129,7 +135,9 @@ export function useConnectAdminMetrics(
 				step: opts.step ?? Step.STEP_UNSPECIFIED,
 			} as const;
 
-			for await (const msg of c.watch(req, { signal: controller.signal }) as AsyncIterable<WatchResponse>) {
+			for await (const msg of c.watch(req, {
+				signal: controller.signal,
+			}) as AsyncIterable<WatchResponse>) {
 				if (stopped) break;
 				snapshotTime = msg.time;
 				metrics = msg.metrics;

@@ -21,7 +21,10 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 	const token = locals.backendToken;
 	if (!token) {
 		return new Response(
-			JSON.stringify({ code: "unauthenticated", message: "Authentication required" }),
+			JSON.stringify({
+				code: "unauthenticated",
+				message: "Authentication required",
+			}),
 			{ status: 401, headers: { "Content-Type": "application/json" } },
 		);
 	}
@@ -48,7 +51,11 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 
 		const responseHeaders = new Headers();
 		for (const [key, value] of upstream.headers.entries()) {
-			if (!["content-encoding", "transfer-encoding", "content-length"].includes(key.toLowerCase())) {
+			if (
+				!["content-encoding", "transfer-encoding", "content-length"].includes(
+					key.toLowerCase(),
+				)
+			) {
 				responseHeaders.set(key, value);
 			}
 		}
@@ -64,7 +71,10 @@ export const fallback: RequestHandler = async ({ request, params, locals }) => {
 	} catch (error) {
 		console.error("[admin-monitor-proxy] upstream error", error);
 		return new Response(
-			JSON.stringify({ code: "internal", message: "Admin monitor proxy failed" }),
+			JSON.stringify({
+				code: "internal",
+				message: "Admin monitor proxy failed",
+			}),
 			{ status: 502, headers: { "Content-Type": "application/json" } },
 		);
 	}

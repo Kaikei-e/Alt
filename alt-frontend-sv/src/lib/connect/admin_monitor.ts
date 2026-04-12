@@ -12,6 +12,8 @@ import { AdminMonitorService } from "$lib/gen/alt/admin_monitor/v1/admin_monitor
 
 export type AdminMonitorClient = Client<typeof AdminMonitorService>;
 
-export function createAdminMonitorClient(transport: Transport): AdminMonitorClient {
+export function createAdminMonitorClient(
+	transport: Transport,
+): AdminMonitorClient {
 	return createClient(AdminMonitorService, transport);
 }
