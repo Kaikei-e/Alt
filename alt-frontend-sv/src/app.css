@@ -409,7 +409,7 @@ pre {
 	 */
 	--alt-success: #2f6b3a; /* editorial forest, 5.73:1 on #faf9f7 */
 	--alt-warning: #8a5a00; /* ink ochre,         6.12:1 on #faf9f7 */
-	--alt-error: #8c1d1d;   /* oxblood ink,       8.29:1 on #faf9f7 */
+	--alt-error: #8c1d1d; /* oxblood ink,       8.29:1 on #faf9f7 */
 
 	/* Paper-specific shadows - subtle and minimal */
 	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -449,6 +449,25 @@ pre {
 	--badge-indigo-text: #4f46e5;
 	--badge-indigo-bg: #eef2ff;
 	--badge-indigo-border: #c7d2fe;
+
+	/*
+	 * Knowledge Home 3-tier accent system (Alt-Paper ink tones).
+	 * Collapses the 10-hue legacy badge palette to three semantic roles:
+	 *   - emphasis: Urgent / Need-to-Know          (oxblood ink)
+	 *   - info:     Fresh / New / Summary updated  (ink navy)
+	 *   - muted:    Contextual / Trending / Match  (slate neutral)
+	 * All background / border derived via color-mix for consistent cream harmony.
+	 * Contrast on #faf9f7 (AA pass): 8.29:1 / 9.8:1 / 6.8:1.
+	 */
+	--accent-emphasis-text: #8c1d1d;
+	--accent-emphasis-bg: color-mix(in srgb, #8c1d1d 8%, transparent);
+	--accent-emphasis-border: color-mix(in srgb, #8c1d1d 25%, transparent);
+	--accent-info-text: #1e3a5f;
+	--accent-info-bg: color-mix(in srgb, #1e3a5f 8%, transparent);
+	--accent-info-border: color-mix(in srgb, #1e3a5f 25%, transparent);
+	--accent-muted-text: #4b5563;
+	--accent-muted-bg: color-mix(in srgb, #4b5563 6%, transparent);
+	--accent-muted-border: color-mix(in srgb, #4b5563 20%, transparent);
 
 	/* Mobile navigation */
 	--nav-bg: #faf9f7;
