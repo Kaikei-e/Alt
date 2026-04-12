@@ -81,6 +81,30 @@ All colors defined as CSS custom properties in `src/app.css`.
 | `--alt-sand` | `#d4a574` | Running / In-progress |
 | `--alt-terracotta` | `#b85450` | Failed / Error |
 
+#### Knowledge Home Accent System (3 tiers)
+
+Knowledge Home collapses every reason-driven badge (why / recall / supersede)
+to three semantic ink tones. This keeps the feed monochromatic-with-accents
+instead of a grab-bag of saturated Tailwind hues. Status banners
+(`degraded` / `fallback`) reuse `--alt-warning` / `--alt-error` per the Phase 0
+canonical contract — no new tokens needed there.
+
+| Token | Value | Role | Contrast on cream |
+|-------|-------|------|------------------|
+| `--accent-emphasis-text` | `#8c1d1d` (oxblood) | Urgent: `pulse_need_to_know`, `pulse_followup_needed` | 8.29:1 |
+| `--accent-info-text` | `#1e3a5f` (ink navy) | Fresh: `new_unread`, `summary_completed`, supersede updates | 9.8:1 |
+| `--accent-muted-text` | `#4b5563` (slate) | Contextual: `tag_hotspot`, `in_weekly_recap`, `recent_interest_match`, etc. | 6.8:1 |
+
+Background / border variants (`--accent-*-bg`, `--accent-*-border`) are
+derived via `color-mix()` so they harmonize with `--surface-bg`.
+
+**Retired from Knowledge Home**: the legacy badge palette
+(`--badge-blue-*`, `--badge-purple-*`, `--badge-green-*`, `--badge-orange-*`,
+`--badge-amber-*`, `--badge-teal-*`, `--badge-yellow-*`, `--badge-sky-*`,
+`--badge-indigo-*`) still exists in `app.css` for surfaces outside Knowledge
+Home. Do not introduce new Knowledge Home usages — collapse to the 3-tier
+accent system above.
+
 #### Semantic Tokens (OKLCH, Tailwind v4)
 
 ```css
