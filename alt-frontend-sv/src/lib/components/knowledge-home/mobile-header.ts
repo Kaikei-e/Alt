@@ -3,11 +3,11 @@ export type ServiceQuality = "full" | "degraded" | "fallback";
 export function getQualityDotClass(quality: ServiceQuality): string {
 	switch (quality) {
 		case "full":
-			return "bg-[var(--badge-green-text)]";
+			return "bg-[var(--alt-success)]";
 		case "degraded":
-			return "bg-[var(--badge-amber-text)] animate-pulse";
+			return "bg-[var(--alt-warning)] animate-pulse";
 		case "fallback":
-			return "bg-[var(--badge-orange-text)]";
+			return "bg-[var(--alt-error)]";
 	}
 }
 

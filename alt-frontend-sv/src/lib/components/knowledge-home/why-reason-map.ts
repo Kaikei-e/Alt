@@ -1,6 +1,11 @@
 /**
- * Maps WHY reason codes to display labels, icon names, and color classes.
+ * Maps WHY reason codes to display labels, icon names, and 3-tier accent classes.
  * Extracted for testability — used by WhySurfacedBadge.svelte.
+ *
+ * Alt-Paper 3-tier accent system:
+ *   - Urgent      → --accent-emphasis  (oxblood ink)
+ *   - Fresh       → --accent-info      (ink navy)
+ *   - Contextual  → --accent-muted     (slate neutral)
  */
 
 export interface WhyReasonDisplay {
@@ -9,56 +14,47 @@ export interface WhyReasonDisplay {
 	colorClass: string;
 }
 
+const EMPHASIS =
+	"text-[var(--accent-emphasis-text)] border-[var(--accent-emphasis-border)] bg-[var(--accent-emphasis-bg)]";
+const INFO =
+	"text-[var(--accent-info-text)] border-[var(--accent-info-border)] bg-[var(--accent-info-bg)]";
+const MUTED =
+	"text-[var(--accent-muted-text)] border-[var(--accent-muted-border)] bg-[var(--accent-muted-bg)]";
+
 const WHY_REASON_MAP: Record<string, WhyReasonDisplay> = {
-	new_unread: {
-		label: "New",
-		iconName: "Sparkles",
-		colorClass:
-			"text-[var(--badge-blue-text)] border-[var(--badge-blue-border)] bg-[var(--badge-blue-bg)]",
+	pulse_need_to_know: {
+		label: "Need to Know",
+		iconName: "Activity",
+		colorClass: EMPHASIS,
+	},
+	new_unread: { label: "New", iconName: "Sparkles", colorClass: INFO },
+	summary_completed: {
+		label: "Summarized",
+		iconName: "FileText",
+		colorClass: INFO,
 	},
 	in_weekly_recap: {
 		label: "In Recap",
 		iconName: "CalendarRange",
-		colorClass:
-			"text-[var(--badge-purple-text)] border-[var(--badge-purple-border)] bg-[var(--badge-purple-bg)]",
+		colorClass: MUTED,
 	},
-	tag_hotspot: {
-		label: "Trending",
-		iconName: "Tag",
-		colorClass:
-			"text-[var(--badge-green-text)] border-[var(--badge-green-border)] bg-[var(--badge-green-bg)]",
-	},
-	summary_completed: {
-		label: "Summarized",
-		iconName: "FileText",
-		colorClass:
-			"text-[var(--badge-teal-text)] border-[var(--badge-teal-border)] bg-[var(--badge-teal-bg)]",
-	},
-	pulse_need_to_know: {
-		label: "Need to Know",
-		iconName: "Activity",
-		colorClass:
-			"text-[var(--badge-orange-text)] border-[var(--badge-orange-border)] bg-[var(--badge-orange-bg)]",
-	},
+	tag_hotspot: { label: "Trending", iconName: "Tag", colorClass: MUTED },
 	recent_interest_match: {
 		label: "Interest",
 		iconName: "Star",
-		colorClass:
-			"text-[var(--badge-yellow-text)] border-[var(--badge-yellow-border)] bg-[var(--badge-yellow-bg)]",
+		colorClass: MUTED,
 	},
 	related_to_recent_search: {
 		label: "Search related",
 		iconName: "Search",
-		colorClass:
-			"text-[var(--badge-blue-text)] border-[var(--badge-blue-border)] bg-[var(--badge-blue-bg)]",
+		colorClass: MUTED,
 	},
 };
 
 const FALLBACK: WhyReasonDisplay = {
 	label: "Info",
 	iconName: "Info",
-	colorClass:
-		"text-[var(--badge-gray-text)] border-[var(--badge-gray-border)] bg-[var(--badge-gray-bg)]",
+	colorClass: MUTED,
 };
 
 /**

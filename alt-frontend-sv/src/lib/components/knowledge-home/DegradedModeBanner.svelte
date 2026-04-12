@@ -11,7 +11,7 @@ const { serviceQuality = "full", onDismiss }: Props = $props();
 
 {#if serviceQuality === "degraded"}
 	<div
-		class="flex items-center gap-2  border border-[var(--badge-amber-border)] bg-[var(--badge-amber-bg)] px-4 py-2 text-sm text-[var(--badge-amber-text)]"
+		class="quality-banner quality-banner--degraded flex items-center gap-2 border px-4 py-2 text-sm"
 		role="alert"
 	>
 		<AlertTriangle size={16} class="flex-shrink-0" />
@@ -32,7 +32,7 @@ const { serviceQuality = "full", onDismiss }: Props = $props();
 	</div>
 {:else if serviceQuality === "fallback"}
 	<div
-		class="flex items-center gap-2  border border-[var(--badge-orange-border)] bg-[var(--badge-orange-bg)] px-4 py-2 text-sm text-[var(--badge-orange-text)]"
+		class="quality-banner quality-banner--fallback flex items-center gap-2 border px-4 py-2 text-sm"
 		role="alert"
 	>
 		<ShieldAlert size={16} class="flex-shrink-0" />
@@ -52,3 +52,16 @@ const { serviceQuality = "full", onDismiss }: Props = $props();
 		{/if}
 	</div>
 {/if}
+
+<style>
+	.quality-banner--degraded {
+		color: var(--alt-warning);
+		background: color-mix(in srgb, var(--alt-warning) 6%, var(--surface-bg));
+		border-color: color-mix(in srgb, var(--alt-warning) 30%, transparent);
+	}
+	.quality-banner--fallback {
+		color: var(--alt-error);
+		background: color-mix(in srgb, var(--alt-error) 6%, var(--surface-bg));
+		border-color: color-mix(in srgb, var(--alt-error) 30%, transparent);
+	}
+</style>

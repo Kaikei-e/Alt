@@ -162,22 +162,18 @@ function handleAction(type: string) {
 
 <style>
 	.card {
-		border-left: 3px solid var(--interactive-text);
-		border-top: 1px solid var(--surface-border);
-		border-right: 1px solid var(--surface-border);
-		border-bottom: 1px solid var(--surface-border);
+		border: 1px solid var(--surface-border);
 		padding: 1.25rem 1.25rem;
 		background: var(--surface-bg);
 		transition: border-color 0.15s;
 	}
 
 	.card:hover {
-		border-color: var(--interactive-text);
+		border-color: var(--alt-charcoal);
 	}
 
 	.card--urgent {
-		border-left-color: var(--badge-orange-text);
-		box-shadow: inset 0 0 0 1px var(--badge-orange-border);
+		border-left: 3px solid var(--accent-emphasis-text);
 	}
 
 	.card-title {

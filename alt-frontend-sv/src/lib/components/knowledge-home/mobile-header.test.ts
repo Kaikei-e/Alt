@@ -1,19 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { getQualityDotClass, getQualityLabel } from "./mobile-header";
 
-describe("getQualityDotClass", () => {
-	it("returns green for full", () => {
-		expect(getQualityDotClass("full")).toContain("green");
+describe("getQualityDotClass (Alt-Paper ink tones)", () => {
+	it("returns alt-success for full", () => {
+		expect(getQualityDotClass("full")).toContain("alt-success");
 	});
 
-	it("returns amber with pulse for degraded", () => {
+	it("returns alt-warning with pulse for degraded", () => {
 		const cls = getQualityDotClass("degraded");
-		expect(cls).toContain("amber");
+		expect(cls).toContain("alt-warning");
 		expect(cls).toContain("animate-pulse");
 	});
 
-	it("returns orange for fallback", () => {
-		expect(getQualityDotClass("fallback")).toContain("orange");
+	it("returns alt-error for fallback", () => {
+		expect(getQualityDotClass("fallback")).toContain("alt-error");
+	});
+
+	it("does not reference legacy badge-* tokens", () => {
+		for (const q of ["full", "degraded", "fallback"] as const) {
+			const cls = getQualityDotClass(q);
+			expect(cls).not.toMatch(/badge-(green|amber|orange)/);
+		}
 	});
 });
 

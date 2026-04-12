@@ -12,10 +12,10 @@ const { pendingCount, isConnected, isFallback, onApply }: Props = $props();
 
 const indicatorColor = $derived(
 	isFallback
-		? "var(--badge-orange-text)"
+		? "var(--alt-error)"
 		: isConnected
-			? "var(--badge-green-text)"
-			: "var(--badge-gray-text)",
+			? "var(--alt-success)"
+			: "var(--alt-ash)",
 );
 const indicatorPulse = $derived(isConnected && !isFallback);
 </script>
@@ -34,7 +34,7 @@ const indicatorPulse = $derived(isConnected && !isFallback);
 	</div>
 {:else if isFallback}
 	<div class="update-bar update-bar--fallback">
-		<AlertCircle class="h-3.5 w-3.5" style="color: var(--badge-orange-text);" />
+		<AlertCircle class="h-3.5 w-3.5" style="color: var(--alt-error);" />
 		<span class="update-text">Live updates unavailable</span>
 	</div>
 {:else if !isConnected}
@@ -61,8 +61,8 @@ const indicatorPulse = $derived(isConnected && !isFallback);
 	}
 
 	.update-bar--fallback {
-		border-color: var(--badge-orange-border);
-		background: var(--badge-orange-bg);
+		border-color: color-mix(in srgb, var(--alt-error) 30%, transparent);
+		background: color-mix(in srgb, var(--alt-error) 6%, var(--surface-bg));
 	}
 
 	.update-bar--disconnected {

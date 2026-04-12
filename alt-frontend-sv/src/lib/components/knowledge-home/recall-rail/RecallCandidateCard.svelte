@@ -29,18 +29,10 @@ const dateSource = $derived(
 	candidate.item?.publishedAt || candidate.firstEligibleAt || "",
 );
 const primaryReason = $derived(candidate.reasons[0]);
-const borderColor = $derived.by(() => {
-	if (!primaryReason) return "var(--surface-border)";
+const isUrgent = $derived.by(() => {
+	if (!primaryReason) return false;
 	const display = resolveRecallReason(primaryReason.type);
-	if (display.colorClass.includes("amber")) return "var(--badge-amber-border)";
-	if (display.colorClass.includes("blue")) return "var(--badge-blue-border)";
-	if (display.colorClass.includes("purple"))
-		return "var(--badge-purple-border)";
-	if (display.colorClass.includes("teal")) return "var(--badge-teal-border)";
-	if (display.colorClass.includes("orange"))
-		return "var(--badge-orange-border)";
-	if (display.colorClass.includes("green")) return "var(--badge-green-border)";
-	return "var(--surface-border)";
+	return display.colorClass.includes("accent-emphasis");
 });
 
 function formatRelativeTime(isoString: string): string {
@@ -63,7 +55,7 @@ const age = $derived(formatRelativeTime(dateSource));
 
 <div
 	class="recall-card"
-	style="border-left-color: {borderColor};"
+	class:recall-card--urgent={isUrgent}
 	role="button"
 	tabindex="0"
 	onclick={() => onOpen(candidate.itemKey)}
@@ -136,7 +128,6 @@ const age = $derived(formatRelativeTime(dateSource));
 <style>
 	.recall-card {
 		border: 1px solid var(--surface-border);
-		border-left: 3px solid var(--surface-border);
 		padding: 0.75rem;
 		background: var(--surface-bg);
 		cursor: pointer;
@@ -144,7 +135,11 @@ const age = $derived(formatRelativeTime(dateSource));
 	}
 
 	.recall-card:hover {
-		border-color: var(--alt-primary);
+		border-color: var(--alt-charcoal);
+	}
+
+	.recall-card--urgent {
+		border-left: 3px solid var(--accent-emphasis-text);
 	}
 
 	.recall-title {

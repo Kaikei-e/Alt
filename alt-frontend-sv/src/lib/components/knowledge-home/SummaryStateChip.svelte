@@ -10,10 +10,25 @@ const { state }: Props = $props();
 </script>
 
 {#if state === "pending"}
-	<span
-		class="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs bg-blue-500/10 text-blue-400"
-	>
+	<span class="summary-chip">
 		<Loader class="h-3 w-3 animate-spin" />
 		Summarizing
 	</span>
 {/if}
+
+<style>
+	.summary-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.15rem 0.4rem;
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--accent-info-text);
+		background: var(--accent-info-bg);
+		border: 1px solid var(--accent-info-border);
+	}
+</style>

@@ -229,11 +229,11 @@ onMount(() => {
 	}
 
 	.degraded-note {
-		border: 1px solid color-mix(in srgb, var(--badge-amber-border) 30%, transparent);
-		background: color-mix(in srgb, var(--badge-amber-bg) 5%, transparent);
+		border: 1px solid color-mix(in srgb, var(--alt-warning) 30%, transparent);
+		background: color-mix(in srgb, var(--alt-warning) 5%, var(--surface-bg));
 		padding: 0.5rem 0.75rem;
 		font-size: 0.75rem;
-		color: var(--badge-amber-text);
+		color: var(--alt-warning);
 	}
 
 	.loading-more {

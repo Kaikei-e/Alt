@@ -32,7 +32,7 @@ const isFallback = $derived(
 	</div>
 {:else if isFallback}
 	<div class="bar bar--muted">
-		<AlertCircle class="h-4 w-4" style="color: var(--badge-amber-text);" />
+		<AlertCircle class="h-4 w-4" style="color: var(--alt-warning);" />
 		<span class="bar-message">Digest section is temporarily unavailable or stale.</span>
 	</div>
 {:else}
@@ -85,18 +85,18 @@ const isFallback = $derived(
 		<div class="bar-figures">
 			<div class="figures-row">
 				<span class="figure">
-					<Sparkles class="h-3.5 w-3.5" style="color: var(--badge-blue-text);" />
+					<Sparkles class="h-3.5 w-3.5 figure-icon" />
 					<span class="figure-value">{digest.newArticles}</span>
 					<span class="figure-label">NEW</span>
 				</span>
 				<span class="figure">
-					<FileText class="h-3.5 w-3.5" style="color: var(--badge-teal-text);" />
+					<FileText class="h-3.5 w-3.5 figure-icon" />
 					<span class="figure-value">{digest.summarizedArticles}</span>
 					<span class="figure-label">SUMMARIZED</span>
 				</span>
 				{#if digest.unsummarizedArticles > 0}
 					<span class="figure">
-						<AlertCircle class="h-3.5 w-3.5" style="color: var(--badge-amber-text);" />
+						<AlertCircle class="h-3.5 w-3.5 figure-icon" />
 						<span class="figure-value">{digest.unsummarizedArticles}</span>
 						<span class="figure-label">PENDING</span>
 					</span>
@@ -186,8 +186,9 @@ const isFallback = $derived(
 		padding: 0 0.25rem;
 		font-size: 0.75rem;
 		font-weight: 600;
-		background: var(--badge-orange-bg);
-		color: var(--badge-orange-text);
+		background: var(--accent-emphasis-bg);
+		color: var(--accent-emphasis-text);
+		border: 1px solid var(--accent-emphasis-border);
 	}
 
 	.stale-indicator {
@@ -199,7 +200,11 @@ const isFallback = $derived(
 		font-size: 0.6rem;
 		font-weight: 600;
 		letter-spacing: 0.08em;
-		color: var(--badge-amber-text);
+		color: var(--alt-warning);
+	}
+
+	:global(.figure-icon) {
+		color: var(--alt-ash);
 	}
 
 	/* ── Row 2: Figures bar ── */
