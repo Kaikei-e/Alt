@@ -95,7 +95,9 @@ describe("MetricRow", () => {
 			reason: "prometheus_timeout",
 		});
 		render(MetricRow as never, { props: { metric, label: "Availability" } });
-		await expect.element(page.getByText(/prometheus_timeout/)).toBeInTheDocument();
+		await expect
+			.element(page.getByText(/prometheus_timeout/))
+			.toBeInTheDocument();
 	});
 
 	it("does not render the Grafana link when no URL is set", async () => {

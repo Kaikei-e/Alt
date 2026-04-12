@@ -19,7 +19,11 @@ describe("MetricSeriesDigest", () => {
 	it("renders top-N rows sorted by lead value", async () => {
 		render(MetricSeriesDigest as never, {
 			props: {
-				series: [series("alpha", [1]), series("beta", [5]), series("gamma", [3])],
+				series: [
+					series("alpha", [1]),
+					series("beta", [5]),
+					series("gamma", [3]),
+				],
 				preferLabel: "job",
 				unit: "req/s",
 				limit: 3,

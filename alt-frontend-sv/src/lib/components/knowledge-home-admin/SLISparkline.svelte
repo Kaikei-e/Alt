@@ -59,7 +59,9 @@ const lastPoint = $derived(() => {
 const thresholdY = $derived(() => {
 	const d = domain();
 	if (!d || threshold === undefined) return null;
-	return height - padding - ((threshold - d.min) / d.range) * (height - padding * 2);
+	return (
+		height - padding - ((threshold - d.min) / d.range) * (height - padding * 2)
+	);
 });
 </script>
 

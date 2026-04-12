@@ -15,18 +15,21 @@ function byKey(key: string): MetricResult | undefined {
 }
 
 // Thresholds are a conservative first pass; tune per service SLO later.
-const latencyThreshold = { warn: (v: number) => v > 1.0, value: 1.0 };       // p95 > 1s
-const errorRateThreshold = { warn: (v: number) => v > 0.01, value: 0.01 };   // > 1%
-const dbPoolThreshold = { warn: (v: number) => v > 20 };                     // > 20 conns
-const recapRequestThreshold = { warn: (v: number) => v > 3.0, value: 3.0 };  // p95 > 3s
-const redisThreshold = { warn: (v: number) => v < 1 };                        // disconnected
+const latencyThreshold = { warn: (v: number) => v > 1.0, value: 1.0 }; // p95 > 1s
+const errorRateThreshold = { warn: (v: number) => v > 0.01, value: 0.01 }; // > 1%
+const dbPoolThreshold = { warn: (v: number) => v > 20 }; // > 20 conns
+const recapRequestThreshold = { warn: (v: number) => v > 3.0, value: 3.0 }; // p95 > 3s
+const redisThreshold = { warn: (v: number) => v < 1 }; // disconnected
 
-const allDegraded = $derived(() =>
-	stream.metrics.length > 0 && stream.metrics.every((m) => m.degraded),
+const allDegraded = $derived(
+	() => stream.metrics.length > 0 && stream.metrics.every((m) => m.degraded),
 );
 
 const showBanner = $derived(
-	() => allDegraded() || stream.state === "degraded" || stream.state === "connecting",
+	() =>
+		allDegraded() ||
+		stream.state === "degraded" ||
+		stream.state === "connecting",
 );
 </script>
 

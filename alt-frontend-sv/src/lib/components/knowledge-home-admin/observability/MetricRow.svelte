@@ -31,7 +31,9 @@ const simpleSeries = $derived(() =>
 
 // Primary (first) series: used for the sparkline and the lead value.
 const primary = $derived(() => simpleSeries()[0]);
-const primaryPoints = $derived(() => (primary()?.points ?? []).map((p) => p.value));
+const primaryPoints = $derived(() =>
+	(primary()?.points ?? []).map((p) => p.value),
+);
 const leadValue = $derived(() => {
 	const pts = primary()?.points ?? [];
 	return pts.length ? pts[pts.length - 1].value : null;
@@ -53,7 +55,9 @@ const deltaText = $derived(() => {
 	const glyph = direction === "up" ? "▲" : direction === "down" ? "▼" : "·";
 	const abs = formatValue(Math.abs(d.absolute), metric?.unit);
 	const sign = d.percent === 0 ? "" : d.percent > 0 ? "+" : "−";
-	const pct = Number.isFinite(d.percent) ? `${sign}${Math.abs(d.percent).toFixed(1)}%` : "";
+	const pct = Number.isFinite(d.percent)
+		? `${sign}${Math.abs(d.percent).toFixed(1)}%`
+		: "";
 	return { glyph, abs, pct, direction };
 });
 
