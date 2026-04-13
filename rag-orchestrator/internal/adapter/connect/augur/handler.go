@@ -211,10 +211,12 @@ func (h *Handler) StreamChat(
 			}
 		}
 
-		if donePayload != nil {
-			// Persist the completed assistant turn. Use a fresh background
-			// context so a client disconnect right after "done" does not lose
-			// the answer. Keep a short timeout for safety.
+		// Persist the assistant turn whenever the terminal Done event carries
+		// non-empty content. This works for clean success, for partial-success
+		// fallback (deltas streamed before the strategy gave up), and is
+		// correctly skipped for hard failures (Answer == "") and clarification
+		// (no assistant answer to keep).
+		if donePayload != nil && strings.TrimSpace(donePayload.Answer) != "" {
 			persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			citations := citationsFromProto(donePayload.Citations)
 			if err := h.conversationUsecase.AppendAssistantTurn(persistCtx, conv.ID, donePayload.Answer, citations); err != nil {

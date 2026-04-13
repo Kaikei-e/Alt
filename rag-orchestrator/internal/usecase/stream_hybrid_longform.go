@@ -21,6 +21,14 @@ import (
 //  3. Validate raw response
 //  4. If retry needed: send progress=refining, run retry (no new deltas)
 //  5. done.answer = authoritative final text (replaces all previews)
+//
+// streamHybridLongForm runs the long-form ChatStream path. It returns a
+// non-nil *AnswerWithRAGOutput so the caller (Stream) can forward it to its
+// deferred Done emit. Empty Answer means "nothing worth persisting"
+// (clarification, hard-fail before any LLM output, ctx cancellation).
+//
+// Invariant: every return path leaves a non-nil pointer. Fallback returns set
+// Fallback=true and Reason; success returns the full output.
 func (u *answerWithRAGUsecase) streamHybridLongForm(
 	ctx context.Context,
 	events chan<- StreamEvent,
@@ -29,12 +37,13 @@ func (u *answerWithRAGUsecase) streamHybridLongForm(
 	profile answerAcceptanceProfile,
 	heartbeat *time.Ticker,
 	cacheKey string,
-) {
+) *AnswerWithRAGOutput {
+	out := &AnswerWithRAGOutput{}
 	if !u.sendStreamEvent(ctx, events, StreamEvent{
 		Kind:    StreamEventKindProgress,
 		Payload: "drafting",
 	}) {
-		return
+		return out
 	}
 
 	messages := promptData.messages
@@ -57,14 +66,17 @@ waitHybridChatStream:
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return out
 		case result := <-chatStreamCh:
 			if result.err != nil {
+				reason := fmt.Sprintf("llm chat stream setup failed: %v", result.err)
 				u.sendStreamEvent(ctx, events, StreamEvent{
 					Kind:    StreamEventKindFallback,
-					Payload: fmt.Sprintf("llm chat stream setup failed: %v", result.err),
+					Payload: reason,
 				})
-				return
+				out.Fallback = true
+				out.Reason = reason
+				return out
 			}
 			chunkCh = result.chunkCh
 			errCh = result.errCh
@@ -98,7 +110,7 @@ waitHybridChatStream:
 	for chunkStream != nil || errStream != nil {
 		select {
 		case <-ctx.Done():
-			return
+			return out
 		case chunk, ok := <-chunkStream:
 			if !ok {
 				chunkStream = nil
@@ -222,11 +234,15 @@ waitHybridChatStream:
 				errStream = nil
 				continue
 			}
+			reason := fmt.Sprintf("llm stream failed: %v", streamErr)
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
-				Payload: fmt.Sprintf("llm stream failed: %v", streamErr),
+				Payload: reason,
 			})
-			return
+			out.Answer = strings.TrimSpace(answerBuilder.String())
+			out.Fallback = true
+			out.Reason = reason
+			return out
 		case <-flushTicker.C:
 			// Time-based flush for pending content
 			if flush, ok := flusher.TimeFlush(); ok {
@@ -255,11 +271,14 @@ waitHybridChatStream:
 	}
 
 	if !hasData {
+		const reason = "llm stream produced no data"
 		u.sendStreamEvent(ctx, events, StreamEvent{
 			Kind:    StreamEventKindFallback,
-			Payload: "llm stream produced no data",
+			Payload: reason,
 		})
-		return
+		out.Fallback = true
+		out.Reason = reason
+		return out
 	}
 
 	// Validation
@@ -276,11 +295,15 @@ waitHybridChatStream:
 
 	parsedAnswer, err := u.validator.Validate(rawResponse, promptData.contexts)
 	if err != nil {
+		reason := fmt.Sprintf("validation failed: %v", err)
 		u.sendStreamEvent(ctx, events, StreamEvent{
 			Kind:    StreamEventKindFallback,
-			Payload: fmt.Sprintf("validation failed: %v", err),
+			Payload: reason,
 		})
-		return
+		out.Answer = strings.TrimSpace(answerBuilder.String())
+		out.Fallback = true
+		out.Reason = reason
+		return out
 	}
 
 	if parsedAnswer.Fallback {
@@ -288,7 +311,10 @@ waitHybridChatStream:
 			Kind:    StreamEventKindFallback,
 			Payload: parsedAnswer.Reason,
 		})
-		return
+		out.Answer = strings.TrimSpace(answerBuilder.String())
+		out.Fallback = true
+		out.Reason = parsedAnswer.Reason
+		return out
 	}
 
 	qualityFlags := AssessAnswerQuality(
@@ -319,11 +345,15 @@ waitHybridChatStream:
 		ctx, input, promptData, parsedAnswer, qualityFlags, profile, promptData.retrievalSetID, 0,
 	)
 	if retryErr != nil {
+		reason := fmt.Sprintf("generation failed: %v", retryErr)
 		u.sendStreamEvent(ctx, events, StreamEvent{
 			Kind:    StreamEventKindFallback,
-			Payload: fmt.Sprintf("generation failed: %v", retryErr),
+			Payload: reason,
 		})
-		return
+		out.Answer = strings.TrimSpace(answerBuilder.String())
+		out.Fallback = true
+		out.Reason = reason
+		return out
 	}
 
 	if !accepted {
@@ -335,7 +365,10 @@ waitHybridChatStream:
 			Kind:    StreamEventKindFallback,
 			Payload: fallbackReason,
 		})
-		return
+		out.Answer = strings.TrimSpace(answerBuilder.String())
+		out.Fallback = true
+		out.Reason = fallbackReason
+		return out
 	}
 
 	promptData = finalPromptData
@@ -384,9 +417,7 @@ waitHybridChatStream:
 	}
 	u.cache.Add(cacheKey, output)
 
-	// Send authoritative done (replaces all provisional previews)
-	u.sendStreamEvent(ctx, events, StreamEvent{
-		Kind:    StreamEventKindDone,
-		Payload: output,
-	})
+	// The caller (Stream) emits the terminal Done via its deferred closure;
+	// returning the output is enough to surface the authoritative answer.
+	return output
 }

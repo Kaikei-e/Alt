@@ -11,16 +11,39 @@ import (
 )
 
 // Stream streams a RAG answer using Server-Sent Events.
+//
+// Invariant: every invocation emits exactly one terminal StreamEventKindDone
+// event with a non-nil *AnswerWithRAGOutput payload as the LAST event before
+// the channel is closed. The Done is fired by a deferred closure so that all
+// return paths (success, fallback, error, clarification) honour the contract
+// without each call site having to remember to emit it. Persistence on the
+// handler side keys off Done.Answer != "" — empty answers signal "nothing
+// worth keeping" (clarification, hard-fail before any LLM output).
 func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGInput) <-chan StreamEvent {
 	events := make(chan StreamEvent, 4)
 	go func() {
 		defer close(events)
+
+		// Single source of truth for the terminal Done event. Code paths mutate
+		// this; the deferred emit below guarantees one — and only one — Done
+		// reaches the handler.
+		finalOutput := &AnswerWithRAGOutput{}
+		defer func() {
+			// Use a background context so a cancelled request context can never
+			// silently drop the terminal event. The select keeps it non-blocking
+			// in the unlikely case the buffered channel is already full.
+			select {
+			case events <- StreamEvent{Kind: StreamEventKindDone, Payload: finalOutput}:
+			default:
+			}
+		}()
 
 		if strings.TrimSpace(input.Query) == "" {
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindError,
 				Payload: "query is required",
 			})
+			finalOutput.Reason = "query is required"
 			return
 		}
 
@@ -39,10 +62,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				Kind:    StreamEventKindDelta,
 				Payload: val.Answer,
 			})
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindDone,
-				Payload: val,
-			})
+			finalOutput = val
 			return
 		}
 
@@ -93,6 +113,8 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 						Kind:    StreamEventKindFallback,
 						Payload: result.err.Error(),
 					})
+					finalOutput.Fallback = true
+					finalOutput.Reason = result.err.Error()
 					return
 				}
 				promptData = result.data
@@ -115,10 +137,9 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 					Options: promptData.plannerOutput.EntityFocus,
 				},
 			})
-			u.sendStreamEvent(ctx, events, StreamEvent{
-				Kind:    StreamEventKindDone,
-				Payload: nil,
-			})
+			// Clarification has no assistant answer to persist; deferred Done
+			// fires with empty Answer so the handler skips persistence.
+			finalOutput.Reason = "clarification requested"
 			return
 		}
 
@@ -160,7 +181,11 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			// previews instead of non-streaming generateAnswerWithRetries.
 			// Raw tokens are accumulated internally; flushes happen at paragraph
 			// or sentence boundaries via ParagraphFlusher.
-			u.streamHybridLongForm(ctx, events, input, promptData, profile, heartbeat, cacheKey)
+			//
+			// The hybrid path returns its terminal *AnswerWithRAGOutput so we
+			// can plumb it through this function's deferred Done emit. This
+			// keeps the "exactly one Done" invariant intact across both paths.
+			finalOutput = u.streamHybridLongForm(ctx, events, input, promptData, profile, heartbeat, cacheKey)
 			return
 		}
 
@@ -195,10 +220,13 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				return
 			case result := <-chatStreamCh:
 				if result.err != nil {
+					reason := fmt.Sprintf("llm chat stream setup failed: %v", result.err)
 					u.sendStreamEvent(ctx, events, StreamEvent{
 						Kind:    StreamEventKindFallback,
-						Payload: fmt.Sprintf("llm chat stream setup failed: %v", result.err),
+						Payload: reason,
 					})
+					finalOutput.Fallback = true
+					finalOutput.Reason = reason
 					return
 				}
 				chunkCh = result.chunkCh
@@ -353,10 +381,14 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 					errStream = nil
 					continue
 				}
+				reason := fmt.Sprintf("llm stream failed: %v", streamErr)
 				u.sendStreamEvent(ctx, events, StreamEvent{
 					Kind:    StreamEventKindFallback,
-					Payload: fmt.Sprintf("llm stream failed: %v", streamErr),
+					Payload: reason,
 				})
+				finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
+				finalOutput.Fallback = true
+				finalOutput.Reason = reason
 				return
 			case <-heartbeat.C:
 				u.sendStreamEvent(ctx, events, StreamEvent{
@@ -379,10 +411,13 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		if !hasData {
 			u.logger.Warn("stream_no_data_fallback",
 				slog.String("retrieval_set_id", promptData.retrievalSetID))
+			const reason = "llm stream produced no data"
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
-				Payload: "llm stream produced no data",
+				Payload: reason,
 			})
+			finalOutput.Fallback = true
+			finalOutput.Reason = reason
 			return
 		}
 
@@ -407,10 +442,14 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				slog.String("retrieval_set_id", promptData.retrievalSetID),
 				slog.String("error", err.Error()),
 				slog.String("raw_response", truncate(rawResponse, 1000)))
+			reason := fmt.Sprintf("validation failed: %v", err)
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
-				Payload: fmt.Sprintf("validation failed: %v", err),
+				Payload: reason,
 			})
+			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
+			finalOutput.Fallback = true
+			finalOutput.Reason = reason
 			return
 		}
 
@@ -445,6 +484,9 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				Kind:    StreamEventKindFallback,
 				Payload: parsedAnswer.Reason,
 			})
+			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
+			finalOutput.Fallback = true
+			finalOutput.Reason = parsedAnswer.Reason
 			return
 		}
 
@@ -452,10 +494,14 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 			ctx, input, promptData, parsedAnswer, qualityFlags, profile, promptData.retrievalSetID, 0,
 		)
 		if err != nil {
+			reason := fmt.Sprintf("generation failed: %v", err)
 			u.sendStreamEvent(ctx, events, StreamEvent{
 				Kind:    StreamEventKindFallback,
-				Payload: fmt.Sprintf("generation failed: %v", err),
+				Payload: reason,
 			})
+			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
+			finalOutput.Fallback = true
+			finalOutput.Reason = reason
 			return
 		}
 		if !accepted {
@@ -467,6 +513,9 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				Kind:    StreamEventKindFallback,
 				Payload: fallbackReason,
 			})
+			finalOutput.Answer = strings.TrimSpace(answerBuilder.String())
+			finalOutput.Fallback = true
+			finalOutput.Reason = fallbackReason
 			return
 		}
 		promptData = finalPromptData
@@ -520,10 +569,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		// Store in Cache
 		u.cache.Add(cacheKey, output)
 
-		u.sendStreamEvent(ctx, events, StreamEvent{
-			Kind:    StreamEventKindDone,
-			Payload: output,
-		})
+		finalOutput = output
 	}()
 
 	return events

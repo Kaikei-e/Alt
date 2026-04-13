@@ -136,10 +136,10 @@ func (f *fakeAugurRepo) DeleteConversation(_ context.Context, id uuid.UUID, user
 func fixedClock(base time.Time) (func() time.Time, func()) {
 	t := base
 	return func() time.Time {
-			now := t
-			t = t.Add(time.Second) // each call advances by one second
-			return now
-		}, func() {}
+		now := t
+		t = t.Add(time.Second) // each call advances by one second
+		return now
+	}, func() {}
 }
 
 func TestEnsureConversation_MintsNewWhenIDIsZero(t *testing.T) {
