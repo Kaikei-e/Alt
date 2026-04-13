@@ -20,8 +20,9 @@ type MorningLetterBulletEnrichment struct {
 	// Optional short summary excerpt (1-3 sentences) drawn from the
 	// article's stored summary or first content sentences.
 	SummaryExcerpt string
-	// Deep-link into Acolyte, pre-seeded with article context.
-	AcolyteHref string
+	// Deep-link into Augur (chat surface), pre-seeded with article
+	// context. Empty when no chat seed can be produced.
+	ChatHref string
 }
 
 // RelatedArticleTeaser is the minimum shape needed to render a related

@@ -19,8 +19,7 @@ const hasAny = $derived(enrichments.length > 0);
 			<h3 class="deck-section-title">Develop from here</h3>
 			<p class="deck-section-hint">
 				Each card links into the article, the tags it touches, and nearby
-				threads from your Alt. Start a conversation with Acolyte to dig
-				further.
+				threads from your Alt. Open a chat with Augur to dig further.
 			</p>
 		</header>
 

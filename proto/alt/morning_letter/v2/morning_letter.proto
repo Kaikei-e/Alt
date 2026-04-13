@@ -115,10 +115,10 @@ message MorningLetterBulletEnrichment {
   // summary pipeline has not caught up yet.
   string summary_excerpt = 9;
 
-  // Deep-link into Acolyte, pre-seeded with article context so the
-  // user can chat about this specific item. Empty when Acolyte is
-  // unavailable.
-  string acolyte_href = 10;
+  // Deep-link into Augur (the Alt chat surface), pre-seeded with
+  // article context so the user can ask a follow-up question about
+  // this specific item. Empty when no chat seed can be produced.
+  string chat_href = 10;
 }
 
 message RelatedArticleTeaser {

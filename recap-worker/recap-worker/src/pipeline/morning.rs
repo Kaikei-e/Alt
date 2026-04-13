@@ -460,10 +460,10 @@ fn build_through_line(
 
 /// Pick up to `max` display labels from the Morning Letter sections,
 /// skipping generic titles that add no editorial value.
-fn editorial_labels_for<'a>(
-    sections: &'a [crate::clients::news_creator::models::MorningLetterResponseSection],
+fn editorial_labels_for(
+    sections: &[crate::clients::news_creator::models::MorningLetterResponseSection],
     max: usize,
-) -> Vec<&'a str> {
+) -> Vec<&str> {
     const GENERIC: [&str; 6] = [
         "need to know",
         "today's headlines",
@@ -490,10 +490,10 @@ fn editorial_labels_for<'a>(
 }
 
 /// Collect unique dominant genres from sections, up to `max` in source order.
-fn dominant_genres_for<'a>(
-    sections: &'a [crate::clients::news_creator::models::MorningLetterResponseSection],
+fn dominant_genres_for(
+    sections: &[crate::clients::news_creator::models::MorningLetterResponseSection],
     max: usize,
-) -> Vec<&'a str> {
+) -> Vec<&str> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::with_capacity(max);
     for s in sections {

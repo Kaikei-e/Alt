@@ -188,7 +188,7 @@ func (h *Handler) GetLetterEnrichment(
 			Tags:            e.Tags,
 			RelatedArticles: related,
 			SummaryExcerpt:  e.SummaryExcerpt,
-			AcolyteHref:     e.AcolyteHref,
+			ChatHref:        e.ChatHref,
 		}
 	}
 	return connect.NewResponse(&morningletterv2.GetLetterEnrichmentResponse{

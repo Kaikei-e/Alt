@@ -2,6 +2,7 @@ package morning_usecase
 
 import (
 	"context"
+	"net/url"
 	"testing"
 	"time"
 
@@ -150,7 +151,7 @@ func TestGetLetterSources_AllSubscribed(t *testing.T) {
 	assert.Len(t, result, 2)
 }
 
-func TestGetLetterEnrichment_BuildsCardsWithAltHrefAndAcolyteLink(t *testing.T) {
+func TestGetLetterEnrichment_BuildsCardsWithAltHrefAndChatLink(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := mocks.NewMockMorningLetterRepository(ctrl)
 	feedPort := mocks.NewMockUserFeedPort(ctrl)
@@ -159,10 +160,9 @@ func TestGetLetterEnrichment_BuildsCardsWithAltHrefAndAcolyteLink(t *testing.T) 
 	searchRelated := mocks.NewMockSearchRelatedArticlesPort(ctrl)
 
 	articleID := uuid.New()
+	relatedID := uuid.New()
 	feedID := uuid.New()
 
-	// Sources are fetched (already subscription-filtered upstream in
-	// the real GetLetterSources; here we let user feeds match).
 	feedPort.EXPECT().GetUserFeedIDs(gomock.Any()).Return([]uuid.UUID{feedID}, nil)
 	repo.EXPECT().GetLetterSources(gomock.Any(), "L1").Return(
 		[]*domain.MorningLetterSourceEntry{
@@ -177,6 +177,7 @@ func TestGetLetterEnrichment_BuildsCardsWithAltHrefAndAcolyteLink(t *testing.T) 
 		}, nil,
 	)
 
+	// Seed article batch.
 	articleBatch.EXPECT().
 		FetchArticlesByIDs(gomock.Any(), []uuid.UUID{articleID}).
 		Return([]*domain.Article{
@@ -190,15 +191,25 @@ func TestGetLetterEnrichment_BuildsCardsWithAltHrefAndAcolyteLink(t *testing.T) 
 			},
 		}, nil)
 
+	// Related-article hydration batch (URL/title for navigable teasers).
+	articleBatch.EXPECT().
+		FetchArticlesByIDs(gomock.Any(), []uuid.UUID{relatedID}).
+		Return([]*domain.Article{
+			{
+				ID:    relatedID,
+				Title: "Deep dive into cert pinning",
+				URL:   "https://example.com/cert-pinning",
+			},
+		}, nil)
+
 	feedTitleBatch.EXPECT().
 		FetchFeedTitlesByIDs(gomock.Any(), []uuid.UUID{feedID}).
 		Return(map[uuid.UUID]string{feedID: "Example Weekly"}, nil)
 
-	// Related returns one hit for the seed title.
 	searchRelated.EXPECT().
 		SearchArticles(gomock.Any(), "SSL/TLS Certificates Explained", "user-1").
 		Return([]domain.SearchIndexerArticleHit{
-			{ID: "rel-1", Title: "Deep dive into cert pinning"},
+			{ID: relatedID.String(), Title: "Deep dive into cert pinning"},
 		}, nil)
 
 	uc := NewMorningLetterUsecaseWithEnrichment(
@@ -213,15 +224,27 @@ func TestGetLetterEnrichment_BuildsCardsWithAltHrefAndAcolyteLink(t *testing.T) 
 	assert.Equal(t, "top3", e.SectionKey)
 	assert.Equal(t, "SSL/TLS Certificates Explained", e.ArticleTitle)
 	assert.Equal(t, "https://example.com/tls", e.ArticleURL)
-	assert.Equal(t, "/articles/"+articleID.String(), e.ArticleAltHref)
+
+	// ArticleAltHref carries url/title query params so /articles/[id] can fetch on-the-fly.
+	assert.Contains(t, e.ArticleAltHref, "/articles/"+articleID.String()+"?")
+	assert.Contains(t, e.ArticleAltHref, "url="+url.QueryEscape("https://example.com/tls"))
+	assert.Contains(t, e.ArticleAltHref, "title="+url.QueryEscape("SSL/TLS Certificates Explained"))
+
 	assert.Equal(t, "Example Weekly", e.FeedTitle)
 	assert.ElementsMatch(t, []string{"security", "tls"}, e.Tags)
-	assert.Contains(t, e.AcolyteHref, "/acolyte/new?")
-	assert.Contains(t, e.AcolyteHref, "article_id="+articleID.String())
-	assert.Contains(t, e.AcolyteHref, "topic=")
-	assert.Len(t, e.RelatedArticles, 1)
-	assert.Equal(t, "Deep dive into cert pinning", e.RelatedArticles[0].Title)
-	assert.Equal(t, "/articles/rel-1", e.RelatedArticles[0].ArticleAltHref)
+
+	// ChatHref points to Augur (chat destination), not Acolyte (reporting).
+	assert.Contains(t, e.ChatHref, "/augur?")
+	assert.Contains(t, e.ChatHref, "articleId="+articleID.String())
+	assert.Contains(t, e.ChatHref, "context="+url.QueryEscape("SSL/TLS Certificates Explained"))
+
+	require.Len(t, e.RelatedArticles, 1)
+	rel := e.RelatedArticles[0]
+	assert.Equal(t, "Deep dive into cert pinning", rel.Title)
+	assert.Contains(t, rel.ArticleAltHref, "/articles/"+relatedID.String()+"?")
+	assert.Contains(t, rel.ArticleAltHref, "url="+url.QueryEscape("https://example.com/cert-pinning"))
+	assert.Contains(t, rel.ArticleAltHref, "title="+url.QueryEscape("Deep dive into cert pinning"))
+
 	assert.NotEmpty(t, e.SummaryExcerpt)
 }
 
@@ -257,10 +280,11 @@ func TestGetLetterEnrichment_GracefullyHandlesMissingArticle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	// Even without article metadata, the card still has an alt_href so the
-	// reader can click through to the stub article page.
+	// reader can click through to the stub article page. No query string
+	// because we have no URL/title to embed.
 	assert.Equal(t, "/articles/"+articleID.String(), got[0].ArticleAltHref)
 	assert.Empty(t, got[0].ArticleTitle)
-	assert.Empty(t, got[0].AcolyteHref)
+	assert.Empty(t, got[0].ChatHref)
 }
 
 func TestRegenerateLatest_FreshRun(t *testing.T) {

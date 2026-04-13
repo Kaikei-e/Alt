@@ -12,7 +12,7 @@ const altHref = $derived(enrichment.articleAltHref || "");
 const hasExcerpt = $derived(Boolean(enrichment.summaryExcerpt));
 const hasTags = $derived(enrichment.tags.length > 0);
 const hasRelated = $derived(enrichment.relatedArticles.length > 0);
-const hasAcolyte = $derived(Boolean(enrichment.acolyteHref));
+const hasChat = $derived(Boolean(enrichment.chatHref));
 </script>
 
 <article class="deck-card" data-role="article-deck-card">
@@ -58,13 +58,13 @@ const hasAcolyte = $derived(Boolean(enrichment.acolyteHref));
 	{/if}
 
 	<footer class="deck-actions">
-		{#if hasAcolyte}
+		{#if hasChat}
 			<a
 				class="deck-cta deck-cta--primary"
-				href={enrichment.acolyteHref}
-				data-role="deck-acolyte-cta"
+				href={enrichment.chatHref}
+				data-role="deck-chat-cta"
 			>
-				Chat with Acolyte →
+				Chat with Augur →
 			</a>
 		{/if}
 		{#if enrichment.articleUrl}

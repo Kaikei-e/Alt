@@ -328,7 +328,7 @@ export async function regenerateLatestLetter(
 
 /**
  * Fetch per-bullet enrichment for a letter: article alt-href, original URL,
- * feed title, tags, related articles, Acolyte seed link, summary excerpt.
+ * feed title, tags, related articles, Augur chat seed link, summary excerpt.
  * Capped server-side; absence means "no richer info available yet", not an
  * error. Returns [] on NotFound so the UI can degrade gracefully.
  */

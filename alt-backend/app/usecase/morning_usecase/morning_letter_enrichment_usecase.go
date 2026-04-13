@@ -99,27 +99,99 @@ func (u *morningLetterUsecase) GetLetterEnrichment(
 		enrichmentRelatedPerBullet,
 	)
 
+	// 4b. Hydrate related-article URL/title from Alt DB so the teaser
+	// links carry the ?url&title query params required by /articles/[id].
+	// search-indexer doesn't return URLs; the DB is the source of truth.
+	relatedMetaByID := hydrateRelatedArticleMeta(ctx, u.articleBatch, relatedByID)
+
 	// 5. Assemble per-source enrichments, in the same order as `sources`.
 	out := make([]*domain.MorningLetterBulletEnrichment, 0, len(sources))
 	for _, s := range sources {
 		article := articleByID[s.ArticleID]
 		enrichment := &domain.MorningLetterBulletEnrichment{
-			SectionKey:     s.SectionKey,
-			ArticleID:      s.ArticleID.String(),
-			ArticleAltHref: fmt.Sprintf("/articles/%s", s.ArticleID.String()),
+			SectionKey: s.SectionKey,
+			ArticleID:  s.ArticleID.String(),
 		}
 		if article != nil {
 			enrichment.ArticleTitle = article.Title
 			enrichment.ArticleURL = article.URL
+			enrichment.ArticleAltHref = buildArticleAltHref(article.ID.String(), article.URL, article.Title)
 			enrichment.Tags = normalizeTags(article.Tags)
 			enrichment.SummaryExcerpt = buildExcerpt(article)
 			enrichment.FeedTitle = feedTitleByID[article.FeedID]
-			enrichment.AcolyteHref = buildAcolyteHref(article.ID.String(), article.Title)
-			enrichment.RelatedArticles = relatedByID[article.ID]
+			enrichment.ChatHref = buildChatHref(article.ID.String(), article.Title)
+			enrichment.RelatedArticles = enrichRelatedTeasers(relatedByID[article.ID], relatedMetaByID)
+		} else {
+			// Graceful degradation: bare href so the card still renders.
+			enrichment.ArticleAltHref = fmt.Sprintf("/articles/%s", s.ArticleID.String())
 		}
 		out = append(out, enrichment)
 	}
 	return out, nil
+}
+
+// hydrateRelatedArticleMeta batch-fetches articles for every unique
+// related-article id discovered across all sources, returning a lookup
+// keyed by uuid string. Missing rows are silently skipped — the caller
+// falls back to bare /articles/<id> for those teasers.
+func hydrateRelatedArticleMeta(
+	ctx context.Context,
+	articleBatch morning_letter_port.ArticleMetadataBatchPort,
+	relatedByID map[uuid.UUID][]domain.RelatedArticleTeaser,
+) map[string]*domain.Article {
+	if articleBatch == nil || len(relatedByID) == 0 {
+		return map[string]*domain.Article{}
+	}
+	seen := map[uuid.UUID]struct{}{}
+	ids := make([]uuid.UUID, 0)
+	for _, teasers := range relatedByID {
+		for _, t := range teasers {
+			id, err := uuid.Parse(t.ArticleID)
+			if err != nil {
+				continue
+			}
+			if _, dup := seen[id]; dup {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return map[string]*domain.Article{}
+	}
+	articles, err := articleBatch.FetchArticlesByIDs(ctx, ids)
+	if err != nil {
+		return map[string]*domain.Article{}
+	}
+	out := make(map[string]*domain.Article, len(articles))
+	for _, a := range articles {
+		out[a.ID.String()] = a
+	}
+	return out
+}
+
+// enrichRelatedTeasers rewrites each teaser's ArticleAltHref to include
+// ?url&title when DB metadata is available, leaving the bare /articles/<id>
+// form otherwise.
+func enrichRelatedTeasers(
+	teasers []domain.RelatedArticleTeaser,
+	metaByID map[string]*domain.Article,
+) []domain.RelatedArticleTeaser {
+	if len(teasers) == 0 {
+		return teasers
+	}
+	out := make([]domain.RelatedArticleTeaser, len(teasers))
+	for i, t := range teasers {
+		out[i] = t
+		if a, ok := metaByID[t.ArticleID]; ok {
+			out[i].ArticleAltHref = buildArticleAltHref(a.ID.String(), a.URL, a.Title)
+			if t.Title == "" {
+				out[i].Title = a.Title
+			}
+		}
+	}
+	return out
 }
 
 // fetchRelatedArticles runs bounded-concurrent search-indexer calls keyed
@@ -179,19 +251,42 @@ func fetchRelatedArticles(
 	return result
 }
 
-// buildAcolyteHref pre-seeds an Acolyte "new report" with the article
-// title as the topic and the article_id so a future Acolyte extension
-// can load full context on the server side.
-func buildAcolyteHref(articleID, title string) string {
+// buildArticleAltHref produces the in-Alt route for an article card.
+// When url/title are present the route gains ?url&title query params so
+// /articles/[id]/+page.svelte can fetch content on-the-fly. When the
+// article metadata is missing the bare /articles/<id> form is returned
+// (graceful-degradation invariant from ADR-000707).
+func buildArticleAltHref(articleID, articleURL, title string) string {
+	if articleID == "" {
+		return ""
+	}
+	base := "/articles/" + articleID
+	if articleURL == "" && title == "" {
+		return base
+	}
+	v := url.Values{}
+	if articleURL != "" {
+		v.Set("url", articleURL)
+	}
+	if title != "" {
+		v.Set("title", title)
+	}
+	return base + "?" + v.Encode()
+}
+
+// buildChatHref pre-seeds Augur (the Alt chat surface) with the article
+// id and title so the user can ask a follow-up. The query keys match
+// resolveAugurEntry in the frontend.
+func buildChatHref(articleID, title string) string {
 	if articleID == "" {
 		return ""
 	}
 	v := url.Values{}
-	v.Set("article_id", articleID)
+	v.Set("articleId", articleID)
 	if title != "" {
-		v.Set("topic", title)
+		v.Set("context", title)
 	}
-	return "/acolyte/new?" + v.Encode()
+	return "/augur?" + v.Encode()
 }
 
 // buildExcerpt prefers the stored summary; falls back to the first
