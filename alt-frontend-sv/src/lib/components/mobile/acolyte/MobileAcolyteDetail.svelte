@@ -25,8 +25,16 @@ interface Props {
 	loading: boolean;
 	error: string | null;
 	generating: boolean;
+	pendingUpdate: boolean;
+	confirmingDelete: boolean;
+	deleting: boolean;
 	onGenerate: () => void;
 	onRerun: (sectionKey: string) => void;
+	onRefresh: () => void;
+	onDismissUpdate: () => void;
+	onRequestDelete: () => void;
+	onConfirmDelete: () => void;
+	onCancelDelete: () => void;
 }
 
 const {
@@ -36,12 +44,46 @@ const {
 	loading,
 	error,
 	generating,
+	pendingUpdate,
+	confirmingDelete,
+	deleting,
 	onGenerate,
 	onRerun,
+	onRefresh,
+	onDismissUpdate,
+	onRequestDelete,
+	onConfirmDelete,
+	onCancelDelete,
 }: Props = $props();
+
+function formatScopeLabel(key: string): string {
+	const overrides: Record<string, string> = {
+		topic: "Topic",
+		time_range: "Time Range",
+		entities: "Entities",
+		exclude: "Exclude",
+	};
+	return (
+		overrides[key] ??
+		key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+	);
+}
 
 let activeSection = $state<string | null>(null);
 let showHistory = $state(false);
+let showBrief = $state(false);
+
+const scopeEntries = $derived.by<Array<[string, string]>>(() => {
+	const s = report?.scope ?? {};
+	const order = ["topic", "time_range", "entities", "exclude"];
+	const known = order
+		.filter((k) => s[k])
+		.map((k) => [k, s[k]] as [string, string]);
+	const extras = Object.entries(s)
+		.filter(([k, v]) => !order.includes(k) && k !== "report_type" && v)
+		.sort(([a], [b]) => a.localeCompare(b));
+	return [...known, ...extras];
+});
 
 // Set first section as active when sections load
 $effect(() => {
@@ -107,6 +149,40 @@ const formattedDate = $derived(
 			</div>
 		{/if}
 
+		{#if pendingUpdate}
+			<div
+				class="mx-4 mb-3 py-2 flex flex-col gap-2 border-y border-[var(--alt-charcoal,#1a1a1a)]"
+				role="status"
+				aria-live="polite"
+			>
+				<div class="flex items-center gap-2">
+					<span class="font-[var(--font-body)] text-[0.65rem] font-bold uppercase tracking-[0.16em] text-[var(--alt-charcoal,#1a1a1a)]">
+						Updated
+					</span>
+					<span class="inline-block h-px w-5 bg-[var(--alt-charcoal,#1a1a1a)]" aria-hidden="true"></span>
+				</div>
+				<p class="font-[var(--font-body)] text-[0.85rem] leading-snug text-[var(--alt-charcoal,#1a1a1a)] m-0">
+					A new edition of this report has been generated.
+				</p>
+				<div class="flex gap-4 items-baseline">
+					<button
+						type="button"
+						class="font-[var(--font-body)] text-[0.8rem] font-semibold text-[var(--alt-charcoal,#1a1a1a)] underline underline-offset-[3px] bg-transparent border-none p-0 cursor-pointer"
+						onclick={onRefresh}
+					>
+						Refresh
+					</button>
+					<button
+						type="button"
+						class="font-[var(--font-body)] text-[0.8rem] font-semibold text-[var(--alt-ash,#999)] bg-transparent border-none p-0 cursor-pointer active:text-[var(--alt-charcoal,#1a1a1a)]"
+						onclick={onDismissUpdate}
+					>
+						Dismiss
+					</button>
+				</div>
+			</div>
+		{/if}
+
 		<!-- Header -->
 		<header class="px-4 mb-4">
 			<div class="flex items-center gap-1.5 mb-1 font-[var(--font-body)] text-[0.7rem] uppercase tracking-wider text-[var(--alt-ash,#999)]">
@@ -125,6 +201,14 @@ const formattedDate = $derived(
 				</span>
 				<button
 					class="font-[var(--font-body)] text-[0.75rem] font-semibold tracking-wide px-3 min-h-[44px] border-[1.5px] border-[var(--alt-charcoal,#1a1a1a)] bg-transparent text-[var(--alt-charcoal,#1a1a1a)] cursor-pointer transition-colors duration-200 active:bg-[var(--surface-2,#f5f4f1)]"
+					onclick={() => showBrief = !showBrief}
+					aria-label="{showBrief ? 'Hide' : 'Show'} Brief"
+					aria-expanded={showBrief}
+				>
+					{showBrief ? "Hide" : "Show"} Brief
+				</button>
+				<button
+					class="font-[var(--font-body)] text-[0.75rem] font-semibold tracking-wide px-3 min-h-[44px] border-[1.5px] border-[var(--alt-charcoal,#1a1a1a)] bg-transparent text-[var(--alt-charcoal,#1a1a1a)] cursor-pointer transition-colors duration-200 active:bg-[var(--surface-2,#f5f4f1)]"
 					onclick={() => showHistory = !showHistory}
 					aria-label="{showHistory ? 'Hide' : 'Show'} History"
 				>
@@ -135,15 +219,81 @@ const formattedDate = $derived(
 					style="background: var(--alt-charcoal, #1a1a1a); color: var(--surface-bg, #faf9f7);"
 					onclick={onGenerate}
 					disabled={generating}
+					aria-disabled={generating}
+					aria-busy={generating}
 					aria-label={generating ? "Generating" : "Generate"}
+					title={generating ? "Report generation in progress" : "Start a new generation run"}
 				>
 					{generating ? "Generating\u2026" : "Generate"}
 				</button>
+				<button
+					type="button"
+					class="font-[var(--font-body)] text-[0.75rem] font-semibold tracking-wide px-3 min-h-[44px] border border-[var(--surface-border,#c8c8c8)] bg-transparent text-[var(--alt-slate,#666)] cursor-pointer transition-colors duration-200 active:text-[var(--alt-terracotta,#b85450)] active:border-[var(--alt-terracotta,#b85450)] disabled:opacity-40 disabled:cursor-not-allowed"
+					onclick={onRequestDelete}
+					disabled={generating || confirmingDelete}
+					aria-label="Delete report"
+				>
+					Delete
+				</button>
 			</div>
+
+			{#if confirmingDelete}
+				<div class="mt-3 flex flex-col gap-2" role="alertdialog" aria-label="Confirm delete">
+					<p class="font-[var(--font-body)] text-[0.85rem] text-[var(--alt-charcoal,#1a1a1a)] m-0">
+						Delete this report permanently?
+					</p>
+					<div class="flex gap-2">
+						<button
+							type="button"
+							class="font-[var(--font-body)] text-[0.75rem] font-semibold tracking-wide px-3 min-h-[44px] border-[1.5px] cursor-pointer transition-opacity duration-200 active:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
+							style="background: var(--alt-terracotta, #b85450); color: var(--surface-bg, #faf9f7); border-color: var(--alt-terracotta, #b85450);"
+							onclick={onConfirmDelete}
+							disabled={deleting}
+							aria-busy={deleting}
+						>
+							{deleting ? "Deleting\u2026" : "Confirm delete"}
+						</button>
+						<button
+							type="button"
+							class="font-[var(--font-body)] text-[0.75rem] font-semibold tracking-wide px-3 min-h-[44px] bg-transparent text-[var(--alt-slate,#666)] cursor-pointer underline underline-offset-[3px] disabled:opacity-40 disabled:cursor-not-allowed"
+							onclick={onCancelDelete}
+							disabled={deleting}
+						>
+							Cancel
+						</button>
+					</div>
+				</div>
+			{/if}
 
 			<!-- Rule -->
 			<div class="h-[2px] mt-4" style="background: var(--alt-charcoal, #1a1a1a);"></div>
 		</header>
+
+		{#if showBrief}
+			<section class="px-4 mb-4" aria-label="Report Brief">
+				<h3 class="font-[var(--font-body)] text-[0.65rem] font-bold uppercase tracking-[0.12em] text-[var(--alt-ash,#999)] mb-2">
+					Report Brief
+				</h3>
+				{#if scopeEntries.length === 0}
+					<p class="font-[var(--font-body)] text-[0.85rem] italic text-[var(--alt-ash,#999)]">
+						No brief was recorded for this report.
+					</p>
+				{:else}
+					<dl class="m-0 flex flex-col gap-2">
+						{#each scopeEntries as [key, value]}
+							<div class="pb-2 border-b border-[var(--surface-border,#c8c8c8)] last:border-b-0">
+								<dt class="font-[var(--font-body)] text-[0.6rem] font-bold uppercase tracking-[0.1em] text-[var(--alt-ash,#999)] m-0">
+									{formatScopeLabel(key)}
+								</dt>
+								<dd class="font-[var(--font-body)] text-[0.9rem] leading-snug text-[var(--alt-charcoal,#1a1a1a)] mt-1 break-words">
+									{value}
+								</dd>
+							</div>
+						{/each}
+					</dl>
+				{/if}
+			</section>
+		{/if}
 
 		<!-- Content -->
 		<div class="px-4">

@@ -1,5 +1,6 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
+import { page } from "$app/state";
 import { onMount } from "svelte";
 import { listReports, type AcolyteReportSummary } from "$lib/connect/acolyte";
 import { useViewport } from "$lib/stores/viewport.svelte";
@@ -11,6 +12,11 @@ let reports = $state<AcolyteReportSummary[]>([]);
 let loading = $state(true);
 let error = $state<string | null>(null);
 let revealed = $state(false);
+let deletedNotice = $state<string | null>(null);
+
+function dismissDeletedNotice() {
+	deletedNotice = null;
+}
 
 async function loadReports() {
 	try {
@@ -38,6 +44,13 @@ function statusLabel(s: string): string {
 }
 
 onMount(() => {
+	const deleted = page.url.searchParams.get("deleted");
+	if (deleted) {
+		deletedNotice = deleted;
+		const url = new URL(page.url);
+		url.searchParams.delete("deleted");
+		history.replaceState(history.state, "", url.toString());
+	}
 	loadReports();
 });
 </script>
@@ -69,6 +82,15 @@ onMount(() => {
 			New Report
 		</a>
 	</nav>
+
+	{#if deletedNotice}
+		<div class="deleted-banner" role="status" aria-live="polite">
+			<span class="deleted-kicker">Deleted</span>
+			<span class="deleted-rule" aria-hidden="true"></span>
+			<p class="deleted-text">{deletedNotice}</p>
+			<button type="button" class="deleted-dismiss" onclick={dismissDeletedNotice}>Dismiss</button>
+		</div>
+	{/if}
 
 	{#if error}
 		<div class="aco-error">{error}</div>
@@ -228,6 +250,36 @@ onMount(() => {
 	.card-status--failed { color: var(--alt-terracotta, #b85450); }
 	.card-status--pending { color: var(--alt-ash, #999); }
 	.card-status--draft { color: var(--surface-border, #c8c8c8); }
+
+	/* Deleted notice (Alt-Paper hairline banner) */
+	.deleted-banner {
+		max-width: 720px; margin: 1rem auto; padding: 0.55rem 0;
+		display: grid; grid-template-columns: auto auto 1fr auto;
+		gap: 0.75rem; align-items: center;
+		border-top: 1px solid var(--alt-charcoal, #1a1a1a);
+		border-bottom: 1px solid var(--alt-charcoal, #1a1a1a);
+	}
+	.deleted-kicker {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em;
+		text-transform: uppercase; color: var(--alt-charcoal, #1a1a1a);
+	}
+	.deleted-rule {
+		display: inline-block; height: 1px; width: 1.25rem;
+		background: var(--alt-charcoal, #1a1a1a);
+	}
+	.deleted-text {
+		font-family: var(--font-display, "Playfair Display", serif);
+		font-size: 0.95rem; line-height: 1.3; color: var(--alt-charcoal, #1a1a1a);
+		margin: 0; word-break: break-word;
+	}
+	.deleted-dismiss {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.75rem; font-weight: 600;
+		background: none; border: none; padding: 0; cursor: pointer;
+		color: var(--alt-ash, #999);
+	}
+	.deleted-dismiss:hover { color: var(--alt-charcoal, #1a1a1a); }
 
 	/* ===== States ===== */
 	.aco-error {

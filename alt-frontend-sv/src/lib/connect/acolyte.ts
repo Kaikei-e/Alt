@@ -44,6 +44,14 @@ export function isAlreadyRunning(err: unknown): err is AcolyteRpcError {
 	return err instanceof AcolyteRpcError && err.code === "failed_precondition";
 }
 
+export function isFailedPrecondition(err: unknown): err is AcolyteRpcError {
+	return err instanceof AcolyteRpcError && err.code === "failed_precondition";
+}
+
+export function isNotFound(err: unknown): err is AcolyteRpcError {
+	return err instanceof AcolyteRpcError && err.code === "not_found";
+}
+
 // --- Types ---
 
 export interface AcolyteReport {
@@ -53,6 +61,7 @@ export interface AcolyteReport {
 	currentVersion: number;
 	latestSuccessfulRunId?: string;
 	createdAt: string;
+	scope?: Record<string, string>;
 }
 
 export interface AcolyteReportSummary {
@@ -162,4 +171,10 @@ export async function rerunSection(
 	sectionKey: string,
 ): Promise<{ runId: string }> {
 	return rpc("RerunSection", { reportId, sectionKey });
+}
+
+export async function deleteReport(
+	reportId: string,
+): Promise<Record<string, never>> {
+	return rpc("DeleteReport", { reportId });
 }
