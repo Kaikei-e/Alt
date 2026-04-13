@@ -33,6 +33,18 @@ service MorningLetterReadService {
   // GetLetterSources returns the article provenance for a letter's sections.
   // Sources are filtered by the requesting user's feed subscriptions.
   rpc GetLetterSources(GetLetterSourcesRequest) returns (GetLetterSourcesResponse);
+
+  // RegenerateLatest triggers an on-demand regeneration of the caller's
+  // Morning Letter for the current target_date in the edition timezone.
+  // Rate-limited to 1 request per hour per user.
+  rpc RegenerateLatest(RegenerateLatestRequest) returns (RegenerateLatestResponse);
+
+  // GetLetterEnrichment returns per-bullet enrichment (article link,
+  // feed title, tags, related articles, Acolyte chat seed, summary
+  // excerpt) computed at render time from Alt's knowledge graph.
+  // The Letter projector stays pure; this RPC does the outbound
+  // fan-out that turns bullets into clickable cards.
+  rpc GetLetterEnrichment(GetLetterEnrichmentRequest) returns (GetLetterEnrichmentResponse);
 }
 
 // =============================================================================
@@ -62,6 +74,70 @@ message GetLetterSourcesResponse {
   repeated MorningLetterSourceProto sources = 1;
 }
 
+message RegenerateLatestRequest {
+  // Optional edition timezone override (IANA name, e.g. "Asia/Tokyo").
+  // When absent, the caller's configured edition timezone is used.
+  optional string edition_timezone = 1;
+}
+
+message GetLetterEnrichmentRequest {
+  string letter_id = 1;
+}
+
+message GetLetterEnrichmentResponse {
+  // One enrichment entry per (section_key, article_id) pair in the Letter.
+  // Frontend joins on section_key to decorate bullets in-place.
+  repeated MorningLetterBulletEnrichment enrichments = 1;
+}
+
+// MorningLetterBulletEnrichment is a rendered-view augmentation of a
+// bullet. All fields are optional — absence means "Alt has no richer
+// information available for this article yet".
+message MorningLetterBulletEnrichment {
+  // Join keys back to MorningLetterSourceProto.
+  string section_key = 1;
+  string article_id = 2;
+
+  // Article navigation.
+  string article_title = 3;
+  string article_url = 4;       // Original source URL.
+  string article_alt_href = 5;  // In-Alt route, e.g. "/articles/<uuid>".
+  string feed_title = 6;
+
+  // Tag chips. Empty when tags have not been generated yet.
+  repeated string tags = 7;
+
+  // Up to ~3 related-article teasers surfaced by search-indexer.
+  repeated RelatedArticleTeaser related_articles = 8;
+
+  // Optional short summary excerpt (1-3 sentences) drawn from
+  // summary_versions or the article content cache. Empty when the
+  // summary pipeline has not caught up yet.
+  string summary_excerpt = 9;
+
+  // Deep-link into Acolyte, pre-seeded with article context so the
+  // user can chat about this specific item. Empty when Acolyte is
+  // unavailable.
+  string acolyte_href = 10;
+}
+
+message RelatedArticleTeaser {
+  string article_id = 1;
+  string title = 2;
+  string article_alt_href = 3;
+  string feed_title = 4;
+}
+
+message RegenerateLatestResponse {
+  // The Letter produced by the on-demand regeneration.
+  MorningLetterDocument letter = 1;
+  // True when the projector ran; false when a cached row was returned
+  // because the per-user rate limit was already consumed.
+  bool regenerated = 2;
+  // Number of seconds until the caller may request another regeneration.
+  int32 retry_after_seconds = 3;
+}
+
 // =============================================================================
 // Morning Letter Document
 // =============================================================================
@@ -86,6 +162,13 @@ message MorningLetterBody {
   repeated MorningLetterSection sections = 2;
   google.protobuf.Timestamp generated_at = 3;
   optional int32 source_recap_window_days = 4;
+  // Editorial through-line: one sentence tying the day's events together.
+  // Produced deterministically from the event projector; the LLM may rewrite
+  // it as prose but must not change its meaning.
+  optional string through_line = 5;
+  // Reference to the previous edition (for the Since-yesterday band).
+  // Absent on the very first Letter for a user.
+  optional PreviousLetterRef previous_letter_ref = 6;
 }
 
 message MorningLetterSection {
@@ -93,6 +176,34 @@ message MorningLetterSection {
   string title = 2;
   repeated string bullets = 3;
   optional string genre = 4;
+  // Optional short prose paragraph (1-3 sentences) written by the LLM.
+  // If LLM generation fails the string is empty; bullets remain usable.
+  optional string narrative = 5;
+  // Why-reasons parallel `bullets` by index. A section is considered to
+  // have why-attribution only when len(why_reasons) == len(bullets).
+  repeated WhyReason why_reasons = 6;
+}
+
+// PreviousLetterRef points to the Letter immediately preceding this one
+// in the same edition timezone, enabling the Since-yesterday narrative.
+message PreviousLetterRef {
+  string id = 1;
+  string target_date = 2;
+  // Short headline from the previous Letter's through_line for display.
+  string through_line = 3;
+}
+
+// WhyReason mirrors the shape used by knowledge_home_items.why_json
+// (domain.WhyReason) so the same WhySurfacedBadge component renders
+// consistently across Knowledge Home and Morning Letter.
+//
+// Well-known codes are defined alongside Knowledge Home; Morning Letter
+// additionally uses: "quiet_day", "subscription_update",
+// "supersede_trail".
+message WhyReason {
+  string code = 1;
+  optional string ref_id = 2;
+  optional string tag = 3;
 }
 
 // =============================================================================

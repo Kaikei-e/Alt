@@ -47,6 +47,12 @@ const (
 	// MorningLetterReadServiceGetLetterSourcesProcedure is the fully-qualified name of the
 	// MorningLetterReadService's GetLetterSources RPC.
 	MorningLetterReadServiceGetLetterSourcesProcedure = "/alt.morning_letter.v2.MorningLetterReadService/GetLetterSources"
+	// MorningLetterReadServiceRegenerateLatestProcedure is the fully-qualified name of the
+	// MorningLetterReadService's RegenerateLatest RPC.
+	MorningLetterReadServiceRegenerateLatestProcedure = "/alt.morning_letter.v2.MorningLetterReadService/RegenerateLatest"
+	// MorningLetterReadServiceGetLetterEnrichmentProcedure is the fully-qualified name of the
+	// MorningLetterReadService's GetLetterEnrichment RPC.
+	MorningLetterReadServiceGetLetterEnrichmentProcedure = "/alt.morning_letter.v2.MorningLetterReadService/GetLetterEnrichment"
 )
 
 // MorningLetterServiceClient is a client for the alt.morning_letter.v2.MorningLetterService
@@ -136,6 +142,16 @@ type MorningLetterReadServiceClient interface {
 	// GetLetterSources returns the article provenance for a letter's sections.
 	// Sources are filtered by the requesting user's feed subscriptions.
 	GetLetterSources(context.Context, *connect.Request[v2.GetLetterSourcesRequest]) (*connect.Response[v2.GetLetterSourcesResponse], error)
+	// RegenerateLatest triggers an on-demand regeneration of the caller's
+	// Morning Letter for the current target_date in the edition timezone.
+	// Rate-limited to 1 request per hour per user.
+	RegenerateLatest(context.Context, *connect.Request[v2.RegenerateLatestRequest]) (*connect.Response[v2.RegenerateLatestResponse], error)
+	// GetLetterEnrichment returns per-bullet enrichment (article link,
+	// feed title, tags, related articles, Acolyte chat seed, summary
+	// excerpt) computed at render time from Alt's knowledge graph.
+	// The Letter projector stays pure; this RPC does the outbound
+	// fan-out that turns bullets into clickable cards.
+	GetLetterEnrichment(context.Context, *connect.Request[v2.GetLetterEnrichmentRequest]) (*connect.Response[v2.GetLetterEnrichmentResponse], error)
 }
 
 // NewMorningLetterReadServiceClient constructs a client for the
@@ -168,14 +184,28 @@ func NewMorningLetterReadServiceClient(httpClient connect.HTTPClient, baseURL st
 			connect.WithSchema(morningLetterReadServiceMethods.ByName("GetLetterSources")),
 			connect.WithClientOptions(opts...),
 		),
+		regenerateLatest: connect.NewClient[v2.RegenerateLatestRequest, v2.RegenerateLatestResponse](
+			httpClient,
+			baseURL+MorningLetterReadServiceRegenerateLatestProcedure,
+			connect.WithSchema(morningLetterReadServiceMethods.ByName("RegenerateLatest")),
+			connect.WithClientOptions(opts...),
+		),
+		getLetterEnrichment: connect.NewClient[v2.GetLetterEnrichmentRequest, v2.GetLetterEnrichmentResponse](
+			httpClient,
+			baseURL+MorningLetterReadServiceGetLetterEnrichmentProcedure,
+			connect.WithSchema(morningLetterReadServiceMethods.ByName("GetLetterEnrichment")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // morningLetterReadServiceClient implements MorningLetterReadServiceClient.
 type morningLetterReadServiceClient struct {
-	getLatestLetter  *connect.Client[v2.GetLatestLetterRequest, v2.GetLatestLetterResponse]
-	getLetterByDate  *connect.Client[v2.GetLetterByDateRequest, v2.GetLetterByDateResponse]
-	getLetterSources *connect.Client[v2.GetLetterSourcesRequest, v2.GetLetterSourcesResponse]
+	getLatestLetter     *connect.Client[v2.GetLatestLetterRequest, v2.GetLatestLetterResponse]
+	getLetterByDate     *connect.Client[v2.GetLetterByDateRequest, v2.GetLetterByDateResponse]
+	getLetterSources    *connect.Client[v2.GetLetterSourcesRequest, v2.GetLetterSourcesResponse]
+	regenerateLatest    *connect.Client[v2.RegenerateLatestRequest, v2.RegenerateLatestResponse]
+	getLetterEnrichment *connect.Client[v2.GetLetterEnrichmentRequest, v2.GetLetterEnrichmentResponse]
 }
 
 // GetLatestLetter calls alt.morning_letter.v2.MorningLetterReadService.GetLatestLetter.
@@ -193,6 +223,16 @@ func (c *morningLetterReadServiceClient) GetLetterSources(ctx context.Context, r
 	return c.getLetterSources.CallUnary(ctx, req)
 }
 
+// RegenerateLatest calls alt.morning_letter.v2.MorningLetterReadService.RegenerateLatest.
+func (c *morningLetterReadServiceClient) RegenerateLatest(ctx context.Context, req *connect.Request[v2.RegenerateLatestRequest]) (*connect.Response[v2.RegenerateLatestResponse], error) {
+	return c.regenerateLatest.CallUnary(ctx, req)
+}
+
+// GetLetterEnrichment calls alt.morning_letter.v2.MorningLetterReadService.GetLetterEnrichment.
+func (c *morningLetterReadServiceClient) GetLetterEnrichment(ctx context.Context, req *connect.Request[v2.GetLetterEnrichmentRequest]) (*connect.Response[v2.GetLetterEnrichmentResponse], error) {
+	return c.getLetterEnrichment.CallUnary(ctx, req)
+}
+
 // MorningLetterReadServiceHandler is an implementation of the
 // alt.morning_letter.v2.MorningLetterReadService service.
 type MorningLetterReadServiceHandler interface {
@@ -204,6 +244,16 @@ type MorningLetterReadServiceHandler interface {
 	// GetLetterSources returns the article provenance for a letter's sections.
 	// Sources are filtered by the requesting user's feed subscriptions.
 	GetLetterSources(context.Context, *connect.Request[v2.GetLetterSourcesRequest]) (*connect.Response[v2.GetLetterSourcesResponse], error)
+	// RegenerateLatest triggers an on-demand regeneration of the caller's
+	// Morning Letter for the current target_date in the edition timezone.
+	// Rate-limited to 1 request per hour per user.
+	RegenerateLatest(context.Context, *connect.Request[v2.RegenerateLatestRequest]) (*connect.Response[v2.RegenerateLatestResponse], error)
+	// GetLetterEnrichment returns per-bullet enrichment (article link,
+	// feed title, tags, related articles, Acolyte chat seed, summary
+	// excerpt) computed at render time from Alt's knowledge graph.
+	// The Letter projector stays pure; this RPC does the outbound
+	// fan-out that turns bullets into clickable cards.
+	GetLetterEnrichment(context.Context, *connect.Request[v2.GetLetterEnrichmentRequest]) (*connect.Response[v2.GetLetterEnrichmentResponse], error)
 }
 
 // NewMorningLetterReadServiceHandler builds an HTTP handler from the service implementation. It
@@ -231,6 +281,18 @@ func NewMorningLetterReadServiceHandler(svc MorningLetterReadServiceHandler, opt
 		connect.WithSchema(morningLetterReadServiceMethods.ByName("GetLetterSources")),
 		connect.WithHandlerOptions(opts...),
 	)
+	morningLetterReadServiceRegenerateLatestHandler := connect.NewUnaryHandler(
+		MorningLetterReadServiceRegenerateLatestProcedure,
+		svc.RegenerateLatest,
+		connect.WithSchema(morningLetterReadServiceMethods.ByName("RegenerateLatest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	morningLetterReadServiceGetLetterEnrichmentHandler := connect.NewUnaryHandler(
+		MorningLetterReadServiceGetLetterEnrichmentProcedure,
+		svc.GetLetterEnrichment,
+		connect.WithSchema(morningLetterReadServiceMethods.ByName("GetLetterEnrichment")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.morning_letter.v2.MorningLetterReadService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case MorningLetterReadServiceGetLatestLetterProcedure:
@@ -239,6 +301,10 @@ func NewMorningLetterReadServiceHandler(svc MorningLetterReadServiceHandler, opt
 			morningLetterReadServiceGetLetterByDateHandler.ServeHTTP(w, r)
 		case MorningLetterReadServiceGetLetterSourcesProcedure:
 			morningLetterReadServiceGetLetterSourcesHandler.ServeHTTP(w, r)
+		case MorningLetterReadServiceRegenerateLatestProcedure:
+			morningLetterReadServiceRegenerateLatestHandler.ServeHTTP(w, r)
+		case MorningLetterReadServiceGetLetterEnrichmentProcedure:
+			morningLetterReadServiceGetLetterEnrichmentHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -258,4 +324,12 @@ func (UnimplementedMorningLetterReadServiceHandler) GetLetterByDate(context.Cont
 
 func (UnimplementedMorningLetterReadServiceHandler) GetLetterSources(context.Context, *connect.Request[v2.GetLetterSourcesRequest]) (*connect.Response[v2.GetLetterSourcesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.morning_letter.v2.MorningLetterReadService.GetLetterSources is not implemented"))
+}
+
+func (UnimplementedMorningLetterReadServiceHandler) RegenerateLatest(context.Context, *connect.Request[v2.RegenerateLatestRequest]) (*connect.Response[v2.RegenerateLatestResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.morning_letter.v2.MorningLetterReadService.RegenerateLatest is not implemented"))
+}
+
+func (UnimplementedMorningLetterReadServiceHandler) GetLetterEnrichment(context.Context, *connect.Request[v2.GetLetterEnrichmentRequest]) (*connect.Response[v2.GetLetterEnrichmentResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.morning_letter.v2.MorningLetterReadService.GetLetterEnrichment is not implemented"))
 }
