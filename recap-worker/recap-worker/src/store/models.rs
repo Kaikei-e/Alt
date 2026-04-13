@@ -834,7 +834,15 @@ pub(crate) struct MorningLetterContent {
     pub(crate) lead: String,
     pub(crate) sections: Vec<MorningLetterSection>,
     pub(crate) generated_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) source_recap_window_days: Option<u32>,
+    /// Deterministic one-sentence editorial thread. Produced by the
+    /// projector; LLM may rewrite for tone.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) through_line: Option<String>,
+    /// Reference to the preceding edition (nil on the very first Letter).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) previous_letter_ref: Option<PreviousLetterRef>,
 }
 
 /// A section in the Morning Letter.
@@ -846,4 +854,32 @@ pub(crate) struct MorningLetterSection {
     pub(crate) bullets: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) genre: Option<String>,
+    /// Optional LLM-written prose paragraph. Bullets remain usable when empty.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) narrative: Option<String>,
+    /// Parallel to `bullets`. A section has why-attribution only when
+    /// why_reasons.len() == bullets.len().
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) why_reasons: Vec<WhyReason>,
+}
+
+/// Pointer to the prior Morning Letter in the same timezone.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct PreviousLetterRef {
+    pub(crate) id: String,
+    pub(crate) target_date: String,
+    pub(crate) through_line: String,
+}
+
+/// Why-reason mirroring knowledge_home_items.why_json shape so the
+/// same WhySurfacedBadge renders across surfaces.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub(crate) struct WhyReason {
+    pub(crate) code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ref_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tag: Option<String>,
 }

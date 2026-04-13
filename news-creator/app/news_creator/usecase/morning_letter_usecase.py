@@ -1,5 +1,6 @@
 """Morning Letter usecase — generates document-first morning briefing."""
 
+import asyncio
 import json
 import logging
 import re
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from jinja2 import Template
+from pydantic import ValidationError
 
 try:
     import json_repair
@@ -65,7 +67,8 @@ class MorningLetterUsecase:
             else None
         )
 
-        # Try LLM generation
+        # Try LLM generation — typed catches so the real reason ends up in
+        # logs instead of being flattened to "LLM generation failed".
         try:
             content, metadata = await self._generate_via_llm(request, is_degraded)
             if is_degraded:
@@ -80,18 +83,36 @@ class MorningLetterUsecase:
                     is_degraded=True,
                     degradation_reason=degradation_reason,
                 )
-        except Exception as e:
-            logger.warning(
-                "LLM generation failed for Morning Letter, using extractive fallback",
-                extra={"error": str(e), "target_date": request.target_date},
+        except asyncio.TimeoutError as e:
+            content, metadata = self._fallback_with_reason(
+                request, "timeout", f"LLM call timed out: {e}", response_head=None
             )
-            content = self._build_extractive_fallback(request)
-            metadata = RecapSummaryMetadata(
-                model="extractive-fallback",
-                temperature=0.0,
-                is_degraded=True,
-                degradation_reason=f"LLM generation failed: {str(e)[:200]}",
-                summary_length_bullets=sum(len(s.bullets) for s in content.sections),
+        except json.JSONDecodeError as e:
+            content, metadata = self._fallback_with_reason(
+                request,
+                "json_decode",
+                f"JSON decode at pos={e.pos}: {e.msg}",
+                response_head=(e.doc[:200] if isinstance(e.doc, str) else None),
+            )
+        except ValidationError as e:
+            content, metadata = self._fallback_with_reason(
+                request,
+                "pydantic_validation",
+                f"{e.error_count()} validation errors: {e.errors()[:3]}",
+                response_head=None,
+            )
+        except RuntimeError as e:
+            # _parse_content raises RuntimeError for shape issues (non-dict,
+            # all sections filtered out, json_repair failure, etc.).
+            content, metadata = self._fallback_with_reason(
+                request, "parse_runtime", str(e)[:300], response_head=None
+            )
+        except Exception as e:  # noqa: BLE001 — keep safety net, typed above
+            content, metadata = self._fallback_with_reason(
+                request,
+                "unexpected",
+                f"{type(e).__name__}: {str(e)[:200]}",
+                response_head=None,
             )
 
         return MorningLetterResponse(
@@ -108,10 +129,12 @@ class MorningLetterUsecase:
         prompt = self._build_prompt(request, is_degraded)
 
         json_schema = MorningLetterContent.model_json_schema()
-        llm_options = {
-            "temperature": 0.1,
-            "repeat_penalty": float(self.config.llm_repeat_penalty),
-        }
+        # Use the shared Ollama options so model parameters stay consistent
+        # with other callers (prevents re-loads due to parameter drift).
+        # Per feedback_unify_ollama_options.md, callers override only the
+        # bits they truly need.
+        llm_options = dict(self.config.get_llm_options())
+        llm_options["temperature"] = 0.1
 
         result = await self.llm_provider.generate(
             prompt,
@@ -213,11 +236,13 @@ class MorningLetterUsecase:
                 "### 出力仕様",
                 "JSON オブジェクト 1 つのみ。以下の構造:",
                 '{ "schema_version": 1, "lead": "1-2文のトップニュース要約",',
-                f'  "sections": [{{key: "{sections_spec}", title, bullets}}...],',
+                f'  "sections": [{{key: "{sections_spec}", title, bullets,'
+                ' "narrative": "セクションのブリッジ段落 (1-3文, 任意)"}}...],',
                 '  "generated_at": "ISO8601", "source_recap_window_days": 3 }',
                 "",
                 "section の key は lead, top3, what_changed, by_genre:<genre名> のいずれかのみ使用。",
                 "各 bullet は具体的な事実と固有名詞を含む日本語。",
+                "narrative は任意の短い段落 (bullets を文脈化する地の文)。不要なら省略可。",
             ]
         )
 
@@ -295,6 +320,43 @@ class MorningLetterUsecase:
             generated_at=datetime.now(timezone.utc).isoformat(),
             source_recap_window_days=3 if request.recap_summaries else None,
         )
+
+    def _fallback_with_reason(
+        self,
+        request: MorningLetterRequest,
+        error_type: str,
+        error_detail: str,
+        response_head: Optional[str],
+    ) -> tuple:
+        """Return (extractive_content, metadata) and emit a structured log
+        that identifies the actual failure mode — so ops can see whether
+        the LLM timed out, returned malformed JSON, failed Pydantic
+        validation, or hit something unexpected, instead of the blanket
+        'LLM generation failed' we used to emit.
+        """
+        log_extra: Dict[str, Any] = {
+            "target_date": request.target_date,
+            "edition_timezone": request.edition_timezone,
+            "error_type": error_type,
+            "error_detail": error_detail,
+            "recap_summary_count": len(request.recap_summaries or []),
+            "overnight_group_count": len(request.overnight_groups),
+        }
+        if response_head is not None:
+            log_extra["response_head"] = response_head
+        logger.warning(
+            "Morning Letter LLM generation failed — using extractive fallback",
+            extra=log_extra,
+        )
+        content = self._build_extractive_fallback(request)
+        metadata = RecapSummaryMetadata(
+            model="extractive-fallback",
+            temperature=0.0,
+            is_degraded=True,
+            degradation_reason=f"{error_type}: {error_detail[:180]}",
+            summary_length_bullets=sum(len(s.bullets) for s in content.sections),
+        )
+        return content, metadata
 
     @staticmethod
     def _ns_to_ms(ns: Optional[int]) -> Optional[int]:

@@ -718,6 +718,10 @@ pub(crate) struct MorningLetterBodyResponse {
     generated_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     source_recap_window_days: Option<u32>,
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    through_line: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    previous_letter_ref: Option<PreviousLetterRefResponse>,
 }
 
 #[derive(Debug, Serialize)]
@@ -727,6 +731,26 @@ pub(crate) struct MorningLetterSectionResponse {
     bullets: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     genre: Option<String>,
+    #[serde(skip_serializing_if = "String::is_empty", default)]
+    narrative: String,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    why_reasons: Vec<WhyReasonResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct PreviousLetterRefResponse {
+    id: String,
+    target_date: String,
+    through_line: String,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct WhyReasonResponse {
+    code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ref_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tag: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -766,10 +790,28 @@ fn parse_morning_letter_body(
                     title: s.title,
                     bullets: s.bullets,
                     genre: s.genre,
+                    narrative: s.narrative.unwrap_or_default(),
+                    why_reasons: s
+                        .why_reasons
+                        .into_iter()
+                        .map(|w| WhyReasonResponse {
+                            code: w.code,
+                            ref_id: w.ref_id,
+                            tag: w.tag,
+                        })
+                        .collect(),
                 })
                 .collect(),
             generated_at: content.generated_at,
             source_recap_window_days: content.source_recap_window_days,
+            through_line: content.through_line.unwrap_or_default(),
+            previous_letter_ref: content.previous_letter_ref.map(|p| {
+                PreviousLetterRefResponse {
+                    id: p.id,
+                    target_date: p.target_date,
+                    through_line: p.through_line,
+                }
+            }),
         }),
         Err(e) => {
             error!(

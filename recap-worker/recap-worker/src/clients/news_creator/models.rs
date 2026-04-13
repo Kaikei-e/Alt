@@ -244,6 +244,10 @@ pub(crate) struct MorningLetterResponseSection {
     pub(crate) bullets: Vec<String>,
     #[serde(default)]
     pub(crate) genre: Option<String>,
+    /// Optional prose paragraph written by the LLM. When empty, bullets
+    /// remain renderable without degradation.
+    #[serde(default)]
+    pub(crate) narrative: Option<String>,
 }
 
 #[allow(dead_code)]

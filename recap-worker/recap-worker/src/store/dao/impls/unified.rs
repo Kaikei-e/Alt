@@ -455,7 +455,7 @@ impl MorningDao for UnifiedDao {
     async fn save_morning_letter(
         &self,
         letter: &crate::store::models::MorningLetter,
-    ) -> Result<()> {
+    ) -> Result<Uuid> {
         crate::store::dao::morning::RecapDao::save_morning_letter(&self.pool, letter).await
     }
 
@@ -485,6 +485,19 @@ impl MorningDao for UnifiedDao {
     ) -> Result<Vec<crate::store::models::MorningLetterSource>> {
         crate::store::dao::morning::RecapDao::get_morning_letter_sources(&self.pool, letter_id)
             .await
+    }
+
+    async fn get_previous_morning_letter(
+        &self,
+        edition_timezone: &str,
+        before: chrono::NaiveDate,
+    ) -> Result<Option<crate::store::models::MorningLetter>> {
+        crate::store::dao::morning::RecapDao::get_previous_morning_letter(
+            &self.pool,
+            edition_timezone,
+            before,
+        )
+        .await
     }
 }
 

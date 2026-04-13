@@ -1,6 +1,7 @@
 package morning_gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,9 @@ import (
 
 	"github.com/google/uuid"
 )
+
+// bytesReader wraps a byte slice in an io.Reader for http request bodies.
+func bytesReader(b []byte) *bytes.Reader { return bytes.NewReader(b) }
 
 // MorningLetterGateway implements MorningLetterRepository by calling recap-worker REST.
 type MorningLetterGateway struct {
@@ -56,13 +60,33 @@ type MorningLetterBodyAPI struct {
 	Sections              []MorningLetterSectionAPI   `json:"sections"`
 	GeneratedAt           string                      `json:"generated_at"`
 	SourceRecapWindowDays *int                        `json:"source_recap_window_days,omitempty"`
+	ThroughLine           string                      `json:"through_line,omitempty"`
+	PreviousLetterRef     *PreviousLetterRefAPI       `json:"previous_letter_ref,omitempty"`
+}
+
+type PreviousLetterRefAPI struct {
+	ID          string `json:"id"`
+	TargetDate  string `json:"target_date"`
+	ThroughLine string `json:"through_line"`
 }
 
 type MorningLetterSectionAPI struct {
-	Key     string   `json:"key"`
-	Title   string   `json:"title"`
-	Bullets []string `json:"bullets"`
-	Genre   *string  `json:"genre,omitempty"`
+	Key        string           `json:"key"`
+	Title      string           `json:"title"`
+	Bullets    []string         `json:"bullets"`
+	Genre      *string          `json:"genre,omitempty"`
+	Narrative  string           `json:"narrative,omitempty"`
+	WhyReasons []WhyReasonAPI   `json:"why_reasons,omitempty"`
+}
+
+type WhyReasonAPI struct {
+	Code  string `json:"code"`
+	RefID string `json:"ref_id,omitempty"`
+	Tag   string `json:"tag,omitempty"`
+}
+
+type RegenerateLatestRequestAPI struct {
+	EditionTimezone string `json:"edition_timezone,omitempty"`
 }
 
 type MorningLetterSourceAPI struct {
@@ -190,11 +214,17 @@ func mapAPIToDomain(api *MorningLetterAPIResponse) *domain.MorningLetterDocument
 		if s.Genre != nil {
 			genre = *s.Genre
 		}
+		whys := make([]domain.WhyReason, len(s.WhyReasons))
+		for j, w := range s.WhyReasons {
+			whys[j] = domain.WhyReason{Code: w.Code, RefID: w.RefID, Tag: w.Tag}
+		}
 		sections[i] = domain.MorningLetterSection{
-			Key:     s.Key,
-			Title:   s.Title,
-			Bullets: s.Bullets,
-			Genre:   genre,
+			Key:        s.Key,
+			Title:      s.Title,
+			Bullets:    s.Bullets,
+			Genre:      genre,
+			Narrative:  s.Narrative,
+			WhyReasons: whys,
 		}
 	}
 
@@ -205,6 +235,15 @@ func mapAPIToDomain(api *MorningLetterAPIResponse) *domain.MorningLetterDocument
 
 	generatedAt, _ := time.Parse(time.RFC3339, api.Body.GeneratedAt)
 	createdAt, _ := time.Parse(time.RFC3339, api.CreatedAt)
+
+	var prev *domain.PreviousLetterRef
+	if p := api.Body.PreviousLetterRef; p != nil {
+		prev = &domain.PreviousLetterRef{
+			ID:          p.ID,
+			TargetDate:  p.TargetDate,
+			ThroughLine: p.ThroughLine,
+		}
+	}
 
 	return &domain.MorningLetterDocument{
 		ID:                 api.ID,
@@ -221,6 +260,40 @@ func mapAPIToDomain(api *MorningLetterAPIResponse) *domain.MorningLetterDocument
 			Sections:              sections,
 			GeneratedAt:           generatedAt,
 			SourceRecapWindowDays: api.Body.SourceRecapWindowDays,
+			ThroughLine:           api.Body.ThroughLine,
+			PreviousLetterRef:     prev,
 		},
 	}
+}
+
+// RegenerateLatest POSTs to recap-worker to trigger on-demand projection.
+func (g *MorningLetterGateway) RegenerateLatest(ctx context.Context, editionTimezone string) (*domain.MorningLetterDocument, error) {
+	url := fmt.Sprintf("%s/v1/morning/letters/regenerate", g.recapWorkerURL)
+	payload := RegenerateLatestRequestAPI{EditionTimezone: editionTimezone}
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal regenerate payload: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytesReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create regenerate request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := g.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call recap-worker regenerate: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("recap-worker regenerate returned %d: %s", resp.StatusCode, string(b))
+	}
+
+	var apiResp MorningLetterAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("failed to decode regenerate response: %w", err)
+	}
+	return mapAPIToDomain(&apiResp), nil
 }

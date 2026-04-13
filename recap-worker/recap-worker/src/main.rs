@@ -102,8 +102,19 @@ async fn main() -> anyhow::Result<()> {
         let recap_window = registry.config().recap_3days_window_days();
         let _batch_daemon = spawn_jst_batch_daemon(scheduler.clone(), default_genres, recap_window);
     }
-    // Morning Letter機能を一時停止
-    // let _morning_daemon = recap_worker::scheduler::daemon::spawn_morning_update_daemon(scheduler);
+    // Morning Letter daemon: gated by MORNING_DAEMON_ENABLED env flag.
+    // Default is "false" to preserve current behaviour; set to "true" to
+    // re-enable the editorial projector tick.
+    let morning_daemon_enabled = std::env::var("MORNING_DAEMON_ENABLED")
+        .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
+        .unwrap_or(false);
+    if morning_daemon_enabled {
+        info!("MORNING_DAEMON_ENABLED=true — starting morning editorial projector daemon");
+        let _morning_daemon =
+            recap_worker::scheduler::daemon::spawn_morning_update_daemon(scheduler);
+    } else {
+        info!("morning daemon disabled (set MORNING_DAEMON_ENABLED=true to enable)");
+    }
     let router = build_router(registry);
 
     let listener = TcpListener::bind(bind_addr)

@@ -79,8 +79,11 @@ impl RecapDao {
     }
 
     /// Morning Letter を保存する (UPSERT on target_date + edition_timezone)。
-    pub(crate) async fn save_morning_letter(pool: &PgPool, letter: &MorningLetter) -> Result<()> {
-        sqlx::query(
+    /// 競合時は既存の id を残して update するため、**実際の id を返す**。
+    /// 呼び出し側は返ってきた id を morning_letter_sources の外部キーに使うこと
+    /// (ON CONFLICT 時のメモリ上の `letter.id` は DB 上の id と一致しない)。
+    pub(crate) async fn save_morning_letter(pool: &PgPool, letter: &MorningLetter) -> Result<Uuid> {
+        let row = sqlx::query(
             r"
             INSERT INTO morning_letters (
                 id, target_date, edition_timezone, source_recap_job_id,
@@ -93,6 +96,7 @@ impl RecapDao {
                 model = EXCLUDED.model,
                 generation_metadata_jsonb = EXCLUDED.generation_metadata_jsonb,
                 generation_revision = morning_letters.generation_revision + 1
+            RETURNING id
             ",
         )
         .bind(letter.id)
@@ -105,11 +109,11 @@ impl RecapDao {
         .bind(Json(&letter.result_jsonb))
         .bind(&letter.model)
         .bind(Json(&letter.generation_metadata_jsonb))
-        .execute(pool)
+        .fetch_one(pool)
         .await
         .context("failed to upsert morning letter")?;
 
-        Ok(())
+        Ok(row.try_get::<Uuid, _>("id")?)
     }
 
     /// Morning Letter のソース (provenance) を保存する。
@@ -216,6 +220,37 @@ impl RecapDao {
             });
         }
         Ok(sources)
+    }
+
+    /// Since-yesterday band 用: `before` 日より前で最新の同一 timezone の
+    /// Morning Letter を返す。存在しなければ `None`。
+    pub(crate) async fn get_previous_morning_letter(
+        pool: &PgPool,
+        edition_timezone: &str,
+        before: NaiveDate,
+    ) -> Result<Option<MorningLetter>> {
+        let row = sqlx::query(
+            r"
+            SELECT
+                id, target_date, edition_timezone, source_recap_job_id,
+                is_degraded, schema_version, generation_revision,
+                result_jsonb, model, generation_metadata_jsonb, created_at
+            FROM morning_letters
+            WHERE edition_timezone = $1 AND target_date < $2
+            ORDER BY target_date DESC
+            LIMIT 1
+            ",
+        )
+        .bind(edition_timezone)
+        .bind(before)
+        .fetch_optional(pool)
+        .await
+        .context("failed to fetch previous morning letter")?;
+
+        match row {
+            Some(row) => Ok(Some(map_row_to_morning_letter(row)?)),
+            None => Ok(None),
+        }
     }
 
     /// 最新の Morning Letter を取得する。

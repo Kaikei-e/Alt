@@ -20,6 +20,10 @@ def _make_config():
     config.summary_num_predict = 2048
     config.llm_temperature = 0.1
     config.llm_repeat_penalty = 1.1
+    config.get_llm_options.return_value = {
+        "temperature": 0.1,
+        "repeat_penalty": 1.1,
+    }
     return config
 
 
@@ -71,6 +75,7 @@ def _make_llm_response_full() -> LLMGenerateResponse:
                 "title": "AI",
                 "genre": "ai",
                 "bullets": ["AIスタートアップの買収が活発化 [1]"],
+                "narrative": "大規模モデルの競争が買収戦略へ波及している。",
             },
         ],
         "generated_at": "2026-04-07T06:00:00Z",
@@ -240,3 +245,75 @@ async def test_generate_letter_llm_failure_uses_extractive_fallback():
     assert response.metadata.model == "extractive-fallback"
     assert response.content.lead is not None
     assert len(response.content.sections) >= 1
+
+
+@pytest.mark.asyncio
+async def test_llm_timeout_is_tagged_in_degradation_reason(caplog):
+    """Timeout surfaces as error_type=timeout (not a flat 'LLM failed')."""
+    import asyncio as _asyncio
+    import logging as _logging
+
+    config = _make_config()
+    llm_provider = AsyncMock()
+    llm_provider.generate.side_effect = _asyncio.TimeoutError("upstream slow")
+
+    request = MorningLetterRequest(
+        target_date="2026-04-07",
+        recap_summaries=[_make_recap_input("ai")],
+        overnight_groups=[_make_overnight_group()],
+    )
+
+    usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
+    caplog.set_level(
+        _logging.WARNING, logger="news_creator.usecase.morning_letter_usecase"
+    )
+    response = await usecase.generate_letter(request)
+
+    assert response.metadata.is_degraded is True
+    assert response.metadata.degradation_reason.startswith("timeout:")
+    warning_records = [
+        r
+        for r in caplog.records
+        if r.levelno == _logging.WARNING
+        and r.name == "news_creator.usecase.morning_letter_usecase"
+    ]
+    assert warning_records, "expected a structured warning log"
+    rec = warning_records[-1]
+    assert getattr(rec, "error_type", None) == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_llm_validation_error_is_tagged_in_degradation_reason(caplog):
+    """LLM returning invalid JSON → parse_runtime or json_decode reason."""
+    import logging as _logging
+
+    config = _make_config()
+    llm_provider = AsyncMock()
+    # Non-JSON response — _parse_content raises RuntimeError when
+    # json_repair is unavailable or also fails.
+    llm_provider.generate.return_value = LLMGenerateResponse(
+        response="not a json payload at all",
+        model="gemma4-e4b-q4km",
+    )
+
+    request = MorningLetterRequest(
+        target_date="2026-04-07",
+        recap_summaries=[_make_recap_input("ai")],
+        overnight_groups=[_make_overnight_group()],
+    )
+
+    usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
+    caplog.set_level(
+        _logging.WARNING, logger="news_creator.usecase.morning_letter_usecase"
+    )
+    response = await usecase.generate_letter(request)
+
+    assert response.metadata.is_degraded is True
+    assert response.metadata.model == "extractive-fallback"
+    reason = response.metadata.degradation_reason
+    # Accept json_decode (no json_repair), parse_runtime (json_repair
+    # available but produces wrong shape), or pydantic_validation.
+    assert any(
+        reason.startswith(p + ":")
+        for p in ("json_decode", "parse_runtime", "pydantic_validation")
+    ), f"unexpected reason: {reason}"

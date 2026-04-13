@@ -178,7 +178,10 @@ impl MorningPipeline {
     }
 
     async fn load_recap_context(&self, job: &JobContext) -> RecapContext {
-        let recap_result = self.recap_dao.get_latest_completed_job(7).await;
+        // Morning Letter now grounds on the **3-day** recap window
+        // (previously 7). The 3-day window is produced by the 3days
+        // recap job and reflects fresher editorial signals.
+        let recap_result = self.recap_dao.get_latest_completed_job(3).await;
         match recap_result {
             Ok(Some(recap_job)) => {
                 let window_days = {
@@ -190,17 +193,27 @@ impl MorningPipeline {
                 };
                 match self.recap_dao.get_genres_by_job(recap_job.job_id).await {
                     Ok(genres) => {
+                        // news-creator requires each recap to have at least
+                        // one bullet (Pydantic `min_length=1`). Drop empties
+                        // so 422 validation errors never reach the LLM path.
                         let inputs: Vec<_> = genres
                             .iter()
-                            .map(|g| {
+                            .filter_map(|g| {
                                 let (title, bullets) =
                                     extract_title_and_bullets(g.summary_ja.as_deref());
-                                MorningLetterRecapInput {
+                                if bullets.is_empty() {
+                                    tracing::debug!(
+                                        genre = %g.genre_name,
+                                        "dropping recap summary with no bullets"
+                                    );
+                                    return None;
+                                }
+                                Some(MorningLetterRecapInput {
                                     genre: g.genre_name.clone(),
                                     title,
                                     bullets,
                                     window_days,
-                                }
+                                })
                             })
                             .collect();
                         tracing::info!(
@@ -244,13 +257,64 @@ impl MorningPipeline {
     ) -> Result<Uuid> {
         let letter_id = Uuid::new_v4();
         let content = &ml_response.content;
+
+        // Event-sourced editorial enrichment: through-line, previous-letter
+        // link, and per-bullet why_reasons — produced deterministically from
+        // the signals we already have (recap summaries + overnight groups).
+        let unique_groups: std::collections::HashSet<Uuid> =
+            groups.iter().map(|(gid, _, _)| *gid).collect();
+        let overnight_count = unique_groups.len();
+
+        // Deterministic editorial through-line: prefer concrete section
+        // labels the LLM chose, fall back to dominant genres, then to a
+        // count sentence. The degraded flag is surfaced visually by the
+        // UI badge, so we no longer prefix the prose with "Partial".
+        let labels = editorial_labels_for(&content.sections, 2);
+        let genres = dominant_genres_for(&content.sections, 2);
+        let through_line = build_through_line(&labels, &genres, overnight_count);
+        let _ = is_degraded; // kept in persisted metadata, not in the through-line
+        let _ = recap_window_days;
+
+        let previous = self
+            .load_previous_letter_ref(edition_timezone, target_date)
+            .await;
+
+        let sections_json = content
+            .sections
+            .iter()
+            .map(|s| {
+                let whys: Vec<serde_json::Value> = s
+                    .bullets
+                    .iter()
+                    .map(|_| {
+                        let code = if s.genre.as_deref().is_some_and(|g| !g.is_empty()) {
+                            "in_weekly_recap"
+                        } else if s.key == "top3" || s.key == "what_changed" {
+                            "pulse_need_to_know"
+                        } else {
+                            "new_unread"
+                        };
+                        serde_json::json!({ "code": code })
+                    })
+                    .collect();
+                serde_json::json!({
+                    "key": s.key,
+                    "title": s.title,
+                    "bullets": s.bullets,
+                    "genre": s.genre,
+                    "narrative": s.narrative,
+                    "why_reasons": whys,
+                })
+            })
+            .collect::<Vec<_>>();
+
         let result_jsonb = serde_json::json!({
             "lead": content.lead,
-            "sections": content.sections.iter().map(|s| {
-                serde_json::json!({ "key": s.key, "title": s.title, "bullets": s.bullets, "genre": s.genre })
-            }).collect::<Vec<_>>(),
+            "sections": sections_json,
             "generated_at": content.generated_at,
             "source_recap_window_days": recap_window_days,
+            "through_line": through_line,
+            "previous_letter_ref": previous,
         });
         let generation_metadata_jsonb = serde_json::json!({
             "model": ml_response.metadata.model,
@@ -274,24 +338,177 @@ impl MorningPipeline {
             generation_metadata_jsonb,
             created_at: chrono::Utc::now(),
         };
-        self.recap_dao.save_morning_letter(&letter).await?;
+        // UPSERT returns the *effective* letter id: on CONFLICT the
+        // existing row's id is preserved, so the in-memory `letter_id`
+        // we generated is discarded. Use the returned id for sources
+        // (they FK-reference morning_letters.id).
+        let effective_letter_id = self.recap_dao.save_morning_letter(&letter).await?;
 
+        // morning_letter_sources typically has a uniqueness constraint on
+        // (letter_id, section_key, article_id). The same article_id can
+        // appear in `groups` multiple times when it is listed as a
+        // duplicate of several primaries, so de-dup before insert.
+        let mut seen_article_ids = std::collections::HashSet::new();
         let mut sources = Vec::new();
-        for (position, (_, article_id, _)) in groups.iter().enumerate() {
+        for (_, article_id, _) in groups.iter() {
+            if !seen_article_ids.insert(*article_id) {
+                continue;
+            }
             #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
             sources.push(MorningLetterSource {
-                letter_id,
+                letter_id: effective_letter_id,
                 section_key: "overnight".to_string(),
                 article_id: *article_id,
                 source_type: "overnight_group".to_string(),
-                position: position as i32,
+                position: sources.len() as i32,
             });
         }
         if !sources.is_empty() {
             self.recap_dao.save_morning_letter_sources(&sources).await?;
         }
-        Ok(letter_id)
+        Ok(effective_letter_id)
     }
+}
+
+impl MorningPipeline {
+    /// Locate the previous Morning Letter in the same edition timezone and
+    /// extract its through_line (or a placeholder) for the Since-yesterday band.
+    async fn load_previous_letter_ref(
+        &self,
+        edition_timezone: &str,
+        target_date: &str,
+    ) -> Option<serde_json::Value> {
+        let Ok(date) = chrono::NaiveDate::parse_from_str(target_date, "%Y-%m-%d") else {
+            return None;
+        };
+        match self
+            .recap_dao
+            .get_previous_morning_letter(edition_timezone, date)
+            .await
+        {
+            Ok(Some(prev)) => {
+                let through_line = prev
+                    .result_jsonb
+                    .get("through_line")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("Yesterday's edition")
+                    .to_string();
+                Some(serde_json::json!({
+                    "id": prev.id.to_string(),
+                    "target_date": prev.target_date.to_string(),
+                    "through_line": through_line,
+                }))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Build a deterministic one-sentence editorial through-line from the
+/// deterministic signals we already have. Pure / idempotent so the line
+/// is reproducible on reproject. The `is_degraded` flag is surfaced by
+/// the UI badge separately — no need to prefix the prose with "Partial".
+///
+/// Precedence:
+/// 1. Two or more labels → "X and Y led overnight — N new threads surfaced."
+/// 2. One label → "X dominated overnight — N new threads surfaced."
+/// 3. No labels but dominant genres → "Tech and data topics dominated
+///    overnight — N new threads."
+/// 4. No labels, no genres, overnight_count > 0 →
+///    "Overnight brought N new threads across your feeds."
+/// 5. Nothing at all → "A quiet day across your feeds …"
+fn build_through_line(
+    section_labels: &[&str],
+    dominant_genres: &[&str],
+    overnight_count: usize,
+) -> String {
+    if section_labels.is_empty() && dominant_genres.is_empty() && overnight_count == 0 {
+        return "A quiet day across your feeds — nothing new surfaced overnight.".to_string();
+    }
+
+    let thread_tail = match overnight_count {
+        0 => String::new(),
+        1 => " — 1 new thread surfaced".to_string(),
+        n => format!(" — {n} new threads surfaced"),
+    };
+
+    if section_labels.len() >= 2 {
+        let a = section_labels[0];
+        let b = section_labels[1];
+        return format!("{a} and {b} led overnight{thread_tail}.");
+    }
+
+    if let Some(only) = section_labels.first() {
+        return format!("{only} dominated overnight{thread_tail}.");
+    }
+
+    if !dominant_genres.is_empty() {
+        let topics = if dominant_genres.len() >= 2 {
+            format!("{} and {} topics", dominant_genres[0], dominant_genres[1])
+        } else {
+            format!("{} coverage", dominant_genres[0])
+        };
+        return format!("{topics} dominated overnight{thread_tail}.");
+    }
+
+    match overnight_count {
+        0 => "A quiet day across your feeds — nothing new surfaced overnight.".to_string(),
+        1 => "Overnight brought 1 new thread across your feeds.".to_string(),
+        n => format!("Overnight brought {n} new threads across your feeds."),
+    }
+}
+
+/// Pick up to `max` display labels from the Morning Letter sections,
+/// skipping generic titles that add no editorial value.
+fn editorial_labels_for<'a>(
+    sections: &'a [crate::clients::news_creator::models::MorningLetterResponseSection],
+    max: usize,
+) -> Vec<&'a str> {
+    const GENERIC: [&str; 6] = [
+        "need to know",
+        "today's headlines",
+        "top stories",
+        "what changed",
+        "overview",
+        "summary",
+    ];
+    let mut picked = Vec::with_capacity(max);
+    for s in sections {
+        let t = s.title.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if GENERIC.iter().any(|g| g.eq_ignore_ascii_case(t)) {
+            continue;
+        }
+        picked.push(t);
+        if picked.len() >= max {
+            break;
+        }
+    }
+    picked
+}
+
+/// Collect unique dominant genres from sections, up to `max` in source order.
+fn dominant_genres_for<'a>(
+    sections: &'a [crate::clients::news_creator::models::MorningLetterResponseSection],
+    max: usize,
+) -> Vec<&'a str> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::with_capacity(max);
+    for s in sections {
+        if let Some(g) = s.genre.as_deref() {
+            let g = g.trim();
+            if g.is_empty() || !seen.insert(g) {
+                continue;
+            }
+            out.push(g);
+            if out.len() >= max {
+                break;
+            }
+        }
+    }
+    out
 }
 
 /// Extract title and bullets from the summary_ja JSON string.
@@ -402,6 +619,70 @@ mod tests {
         let (title, bullets) = extract_title_and_bullets(Some("plain text summary"));
         assert_eq!(title, "plain text summary");
         assert!(bullets.is_empty());
+    }
+
+    #[test]
+    fn through_line_quiet_day() {
+        let line = super::build_through_line(&[], &[], 0);
+        assert!(line.contains("quiet day"), "expected quiet-day phrasing: {line}");
+    }
+
+    #[test]
+    fn through_line_two_labels() {
+        let line = super::build_through_line(
+            &["AI tooling", "data pipelines"],
+            &["AI", "Data"],
+            7,
+        );
+        assert!(line.contains("AI tooling and data pipelines led overnight"), "got: {line}");
+        assert!(line.contains("7 new threads surfaced"), "got: {line}");
+        assert!(!line.contains("Partial"), "partial prefix should be gone: {line}");
+    }
+
+    #[test]
+    fn through_line_one_label() {
+        let line = super::build_through_line(&["AI regulation"], &[], 3);
+        assert!(line.contains("AI regulation dominated overnight"), "got: {line}");
+        assert!(line.contains("3 new threads surfaced"), "got: {line}");
+    }
+
+    #[test]
+    fn through_line_genres_only() {
+        let line = super::build_through_line(&[], &["Tech", "Data"], 5);
+        assert!(line.contains("Tech and Data topics dominated overnight"), "got: {line}");
+        assert!(line.contains("5 new threads surfaced"), "got: {line}");
+    }
+
+    #[test]
+    fn through_line_overnight_count_only() {
+        let line = super::build_through_line(&[], &[], 4);
+        assert_eq!(
+            line,
+            "Overnight brought 4 new threads across your feeds.",
+            "got: {line}"
+        );
+    }
+
+    #[test]
+    fn through_line_is_deterministic() {
+        let a = super::build_through_line(&["AI", "Data"], &["Tech"], 3);
+        let b = super::build_through_line(&["AI", "Data"], &["Tech"], 3);
+        assert_eq!(a, b, "through-line must be deterministic for reproject safety");
+    }
+
+    #[test]
+    fn through_line_never_says_partial() {
+        // Regression: "Partial briefing: 257 overnight threads." is the bug
+        // we're fixing. No branch of the composer should emit the word
+        // "Partial" — degraded state is signalled by the UI badge only.
+        for line in [
+            super::build_through_line(&[], &[], 257),
+            super::build_through_line(&["A"], &[], 1),
+            super::build_through_line(&[], &["X", "Y"], 10),
+            super::build_through_line(&[], &[], 0),
+        ] {
+            assert!(!line.contains("Partial"), "got: {line}");
+        }
     }
 
     #[test]

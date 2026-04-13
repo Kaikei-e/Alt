@@ -329,7 +329,7 @@ pub trait RecapDao: Send + Sync {
         since: DateTime<Utc>,
     ) -> anyhow::Result<Vec<(Uuid, Uuid, bool, DateTime<Utc>)>>;
 
-    async fn save_morning_letter(&self, letter: &MorningLetter) -> anyhow::Result<()>;
+    async fn save_morning_letter(&self, letter: &MorningLetter) -> anyhow::Result<Uuid>;
 
     async fn save_morning_letter_sources(
         &self,
@@ -347,6 +347,12 @@ pub trait RecapDao: Send + Sync {
         &self,
         letter_id: Uuid,
     ) -> anyhow::Result<Vec<MorningLetterSource>>;
+
+    async fn get_previous_morning_letter(
+        &self,
+        edition_timezone: &str,
+        before: NaiveDate,
+    ) -> anyhow::Result<Option<MorningLetter>>;
 
     // === JobStatusDao methods ===
     async fn get_extended_jobs(
@@ -783,7 +789,7 @@ where
         MorningDao::get_morning_article_groups(self, since).await
     }
 
-    async fn save_morning_letter(&self, letter: &MorningLetter) -> anyhow::Result<()> {
+    async fn save_morning_letter(&self, letter: &MorningLetter) -> anyhow::Result<Uuid> {
         MorningDao::save_morning_letter(self, letter).await
     }
 
@@ -810,6 +816,14 @@ where
         letter_id: Uuid,
     ) -> anyhow::Result<Vec<MorningLetterSource>> {
         MorningDao::get_morning_letter_sources(self, letter_id).await
+    }
+
+    async fn get_previous_morning_letter(
+        &self,
+        edition_timezone: &str,
+        before: NaiveDate,
+    ) -> anyhow::Result<Option<MorningLetter>> {
+        MorningDao::get_previous_morning_letter(self, edition_timezone, before).await
     }
 
     async fn get_extended_jobs(

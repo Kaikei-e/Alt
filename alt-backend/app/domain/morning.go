@@ -43,6 +43,13 @@ type MorningLetterBody struct {
 	Sections              []MorningLetterSection
 	GeneratedAt           time.Time
 	SourceRecapWindowDays *int
+	// ThroughLine is a one-sentence editorial thread tying the day's
+	// events together. Produced deterministically by the projector; the
+	// LLM may rewrite for tone but must not change meaning.
+	ThroughLine string
+	// PreviousLetterRef points at the prior edition in the same timezone.
+	// Nil on the very first edition.
+	PreviousLetterRef *PreviousLetterRef
 }
 
 // MorningLetterSection is a single section in the letter.
@@ -51,7 +58,30 @@ type MorningLetterSection struct {
 	Title   string
 	Bullets []string
 	Genre   string
+	// Narrative is an optional short paragraph written by the LLM.
+	// Empty string when generation failed; bullets remain usable.
+	Narrative string
+	// WhyReasons parallels Bullets by index. When len != len(Bullets)
+	// treat the section as having no why-attribution.
+	WhyReasons []WhyReason
 }
+
+// PreviousLetterRef captures the minimal shape needed to render the
+// Since-yesterday band in the UI.
+type PreviousLetterRef struct {
+	ID          string
+	TargetDate  string
+	ThroughLine string
+}
+
+// Morning Letter specific why-reason codes that extend the Knowledge Home
+// set defined in knowledge_home_item.go. The shared domain.WhyReason type
+// is reused so the same WhySurfacedBadge component renders everywhere.
+const (
+	WhyMorningQuietDay           = "quiet_day"
+	WhyMorningSubscriptionUpdate = "subscription_update"
+	WhyMorningSupersedeTrail     = "supersede_trail"
+)
 
 // MorningLetterSourceEntry is a provenance record linking a section to an article.
 type MorningLetterSourceEntry struct {

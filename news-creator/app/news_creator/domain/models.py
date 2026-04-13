@@ -465,6 +465,9 @@ class MorningLetterSection(BaseModel):
     title: str = Field(min_length=1)
     bullets: List[str] = Field(min_length=1)
     genre: Optional[str] = None
+    # Optional short prose paragraph written by the LLM. Empty when not
+    # produced; the projector's bullets remain renderable without it.
+    narrative: Optional[str] = None
 
 
 class MorningLetterContent(BaseModel):

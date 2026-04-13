@@ -424,8 +424,8 @@ impl RecapDao for MockRecapDao {
         Ok(vec![])
     }
 
-    async fn save_morning_letter(&self, _letter: &MorningLetter) -> Result<()> {
-        Ok(())
+    async fn save_morning_letter(&self, letter: &MorningLetter) -> Result<Uuid> {
+        Ok(letter.id)
     }
 
     async fn save_morning_letter_sources(&self, _sources: &[MorningLetterSource]) -> Result<()> {
@@ -448,6 +448,14 @@ impl RecapDao for MockRecapDao {
         _letter_id: Uuid,
     ) -> Result<Vec<MorningLetterSource>> {
         Ok(vec![])
+    }
+
+    async fn get_previous_morning_letter(
+        &self,
+        _edition_timezone: &str,
+        _before: chrono::NaiveDate,
+    ) -> Result<Option<MorningLetter>> {
+        Ok(None)
     }
 
     // Job Status Dashboard
