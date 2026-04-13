@@ -56,3 +56,27 @@ func (c *Client) StreamChat(
 
 	return stream, nil
 }
+
+// ListConversations forwards a history-list request to rag-orchestrator.
+func (c *Client) ListConversations(
+	ctx context.Context,
+	req *connect.Request[augurv2.ListConversationsRequest],
+) (*connect.Response[augurv2.ListConversationsResponse], error) {
+	return c.augurClient.ListConversations(ctx, req)
+}
+
+// GetConversation forwards a single-conversation read to rag-orchestrator.
+func (c *Client) GetConversation(
+	ctx context.Context,
+	req *connect.Request[augurv2.GetConversationRequest],
+) (*connect.Response[augurv2.GetConversationResponse], error) {
+	return c.augurClient.GetConversation(ctx, req)
+}
+
+// DeleteConversation forwards a destructive conversation delete.
+func (c *Client) DeleteConversation(
+	ctx context.Context,
+	req *connect.Request[augurv2.DeleteConversationRequest],
+) (*connect.Response[augurv2.DeleteConversationResponse], error) {
+	return c.augurClient.DeleteConversation(ctx, req)
+}

@@ -38,6 +38,15 @@ const (
 	// AugurServiceRetrieveContextProcedure is the fully-qualified name of the AugurService's
 	// RetrieveContext RPC.
 	AugurServiceRetrieveContextProcedure = "/alt.augur.v2.AugurService/RetrieveContext"
+	// AugurServiceListConversationsProcedure is the fully-qualified name of the AugurService's
+	// ListConversations RPC.
+	AugurServiceListConversationsProcedure = "/alt.augur.v2.AugurService/ListConversations"
+	// AugurServiceGetConversationProcedure is the fully-qualified name of the AugurService's
+	// GetConversation RPC.
+	AugurServiceGetConversationProcedure = "/alt.augur.v2.AugurService/GetConversation"
+	// AugurServiceDeleteConversationProcedure is the fully-qualified name of the AugurService's
+	// DeleteConversation RPC.
+	AugurServiceDeleteConversationProcedure = "/alt.augur.v2.AugurService/DeleteConversation"
 )
 
 // AugurServiceClient is a client for the alt.augur.v2.AugurService service.
@@ -48,6 +57,12 @@ type AugurServiceClient interface {
 	// RetrieveContext retrieves relevant context for a query without generating an answer.
 	// Useful for debugging or showing sources before chat.
 	RetrieveContext(context.Context, *connect.Request[v2.RetrieveContextRequest]) (*connect.Response[v2.RetrieveContextResponse], error)
+	// ListConversations returns the caller's chat history index (most recent first).
+	ListConversations(context.Context, *connect.Request[v2.ListConversationsRequest]) (*connect.Response[v2.ListConversationsResponse], error)
+	// GetConversation returns every message in a single conversation.
+	GetConversation(context.Context, *connect.Request[v2.GetConversationRequest]) (*connect.Response[v2.GetConversationResponse], error)
+	// DeleteConversation removes a conversation and its messages.
+	DeleteConversation(context.Context, *connect.Request[v2.DeleteConversationRequest]) (*connect.Response[v2.DeleteConversationResponse], error)
 }
 
 // NewAugurServiceClient constructs a client for the alt.augur.v2.AugurService service. By default,
@@ -73,13 +88,34 @@ func NewAugurServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(augurServiceMethods.ByName("RetrieveContext")),
 			connect.WithClientOptions(opts...),
 		),
+		listConversations: connect.NewClient[v2.ListConversationsRequest, v2.ListConversationsResponse](
+			httpClient,
+			baseURL+AugurServiceListConversationsProcedure,
+			connect.WithSchema(augurServiceMethods.ByName("ListConversations")),
+			connect.WithClientOptions(opts...),
+		),
+		getConversation: connect.NewClient[v2.GetConversationRequest, v2.GetConversationResponse](
+			httpClient,
+			baseURL+AugurServiceGetConversationProcedure,
+			connect.WithSchema(augurServiceMethods.ByName("GetConversation")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteConversation: connect.NewClient[v2.DeleteConversationRequest, v2.DeleteConversationResponse](
+			httpClient,
+			baseURL+AugurServiceDeleteConversationProcedure,
+			connect.WithSchema(augurServiceMethods.ByName("DeleteConversation")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // augurServiceClient implements AugurServiceClient.
 type augurServiceClient struct {
-	streamChat      *connect.Client[v2.StreamChatRequest, v2.StreamChatResponse]
-	retrieveContext *connect.Client[v2.RetrieveContextRequest, v2.RetrieveContextResponse]
+	streamChat         *connect.Client[v2.StreamChatRequest, v2.StreamChatResponse]
+	retrieveContext    *connect.Client[v2.RetrieveContextRequest, v2.RetrieveContextResponse]
+	listConversations  *connect.Client[v2.ListConversationsRequest, v2.ListConversationsResponse]
+	getConversation    *connect.Client[v2.GetConversationRequest, v2.GetConversationResponse]
+	deleteConversation *connect.Client[v2.DeleteConversationRequest, v2.DeleteConversationResponse]
 }
 
 // StreamChat calls alt.augur.v2.AugurService.StreamChat.
@@ -92,6 +128,21 @@ func (c *augurServiceClient) RetrieveContext(ctx context.Context, req *connect.R
 	return c.retrieveContext.CallUnary(ctx, req)
 }
 
+// ListConversations calls alt.augur.v2.AugurService.ListConversations.
+func (c *augurServiceClient) ListConversations(ctx context.Context, req *connect.Request[v2.ListConversationsRequest]) (*connect.Response[v2.ListConversationsResponse], error) {
+	return c.listConversations.CallUnary(ctx, req)
+}
+
+// GetConversation calls alt.augur.v2.AugurService.GetConversation.
+func (c *augurServiceClient) GetConversation(ctx context.Context, req *connect.Request[v2.GetConversationRequest]) (*connect.Response[v2.GetConversationResponse], error) {
+	return c.getConversation.CallUnary(ctx, req)
+}
+
+// DeleteConversation calls alt.augur.v2.AugurService.DeleteConversation.
+func (c *augurServiceClient) DeleteConversation(ctx context.Context, req *connect.Request[v2.DeleteConversationRequest]) (*connect.Response[v2.DeleteConversationResponse], error) {
+	return c.deleteConversation.CallUnary(ctx, req)
+}
+
 // AugurServiceHandler is an implementation of the alt.augur.v2.AugurService service.
 type AugurServiceHandler interface {
 	// StreamChat performs a streaming chat with RAG context.
@@ -100,6 +151,12 @@ type AugurServiceHandler interface {
 	// RetrieveContext retrieves relevant context for a query without generating an answer.
 	// Useful for debugging or showing sources before chat.
 	RetrieveContext(context.Context, *connect.Request[v2.RetrieveContextRequest]) (*connect.Response[v2.RetrieveContextResponse], error)
+	// ListConversations returns the caller's chat history index (most recent first).
+	ListConversations(context.Context, *connect.Request[v2.ListConversationsRequest]) (*connect.Response[v2.ListConversationsResponse], error)
+	// GetConversation returns every message in a single conversation.
+	GetConversation(context.Context, *connect.Request[v2.GetConversationRequest]) (*connect.Response[v2.GetConversationResponse], error)
+	// DeleteConversation removes a conversation and its messages.
+	DeleteConversation(context.Context, *connect.Request[v2.DeleteConversationRequest]) (*connect.Response[v2.DeleteConversationResponse], error)
 }
 
 // NewAugurServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -121,12 +178,36 @@ func NewAugurServiceHandler(svc AugurServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(augurServiceMethods.ByName("RetrieveContext")),
 		connect.WithHandlerOptions(opts...),
 	)
+	augurServiceListConversationsHandler := connect.NewUnaryHandler(
+		AugurServiceListConversationsProcedure,
+		svc.ListConversations,
+		connect.WithSchema(augurServiceMethods.ByName("ListConversations")),
+		connect.WithHandlerOptions(opts...),
+	)
+	augurServiceGetConversationHandler := connect.NewUnaryHandler(
+		AugurServiceGetConversationProcedure,
+		svc.GetConversation,
+		connect.WithSchema(augurServiceMethods.ByName("GetConversation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	augurServiceDeleteConversationHandler := connect.NewUnaryHandler(
+		AugurServiceDeleteConversationProcedure,
+		svc.DeleteConversation,
+		connect.WithSchema(augurServiceMethods.ByName("DeleteConversation")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.augur.v2.AugurService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AugurServiceStreamChatProcedure:
 			augurServiceStreamChatHandler.ServeHTTP(w, r)
 		case AugurServiceRetrieveContextProcedure:
 			augurServiceRetrieveContextHandler.ServeHTTP(w, r)
+		case AugurServiceListConversationsProcedure:
+			augurServiceListConversationsHandler.ServeHTTP(w, r)
+		case AugurServiceGetConversationProcedure:
+			augurServiceGetConversationHandler.ServeHTTP(w, r)
+		case AugurServiceDeleteConversationProcedure:
+			augurServiceDeleteConversationHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -142,4 +223,16 @@ func (UnimplementedAugurServiceHandler) StreamChat(context.Context, *connect.Req
 
 func (UnimplementedAugurServiceHandler) RetrieveContext(context.Context, *connect.Request[v2.RetrieveContextRequest]) (*connect.Response[v2.RetrieveContextResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.augur.v2.AugurService.RetrieveContext is not implemented"))
+}
+
+func (UnimplementedAugurServiceHandler) ListConversations(context.Context, *connect.Request[v2.ListConversationsRequest]) (*connect.Response[v2.ListConversationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.augur.v2.AugurService.ListConversations is not implemented"))
+}
+
+func (UnimplementedAugurServiceHandler) GetConversation(context.Context, *connect.Request[v2.GetConversationRequest]) (*connect.Response[v2.GetConversationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.augur.v2.AugurService.GetConversation is not implemented"))
+}
+
+func (UnimplementedAugurServiceHandler) DeleteConversation(context.Context, *connect.Request[v2.DeleteConversationRequest]) (*connect.Response[v2.DeleteConversationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.augur.v2.AugurService.DeleteConversation is not implemented"))
 }

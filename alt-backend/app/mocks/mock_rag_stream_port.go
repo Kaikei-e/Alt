@@ -56,3 +56,48 @@ func (mr *MockRagStreamPortMockRecorder) StreamChat(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StreamChat", reflect.TypeOf((*MockRagStreamPort)(nil).StreamChat), ctx, req)
 }
+
+// ListConversations mocks base method.
+func (m *MockRagStreamPort) ListConversations(ctx context.Context, req *connect.Request[v2.ListConversationsRequest]) (*connect.Response[v2.ListConversationsResponse], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListConversations", ctx, req)
+	ret0, _ := ret[0].(*connect.Response[v2.ListConversationsResponse])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListConversations indicates an expected call of ListConversations.
+func (mr *MockRagStreamPortMockRecorder) ListConversations(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListConversations", reflect.TypeOf((*MockRagStreamPort)(nil).ListConversations), ctx, req)
+}
+
+// GetConversation mocks base method.
+func (m *MockRagStreamPort) GetConversation(ctx context.Context, req *connect.Request[v2.GetConversationRequest]) (*connect.Response[v2.GetConversationResponse], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetConversation", ctx, req)
+	ret0, _ := ret[0].(*connect.Response[v2.GetConversationResponse])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetConversation indicates an expected call of GetConversation.
+func (mr *MockRagStreamPortMockRecorder) GetConversation(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetConversation", reflect.TypeOf((*MockRagStreamPort)(nil).GetConversation), ctx, req)
+}
+
+// DeleteConversation mocks base method.
+func (m *MockRagStreamPort) DeleteConversation(ctx context.Context, req *connect.Request[v2.DeleteConversationRequest]) (*connect.Response[v2.DeleteConversationResponse], error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteConversation", ctx, req)
+	ret0, _ := ret[0].(*connect.Response[v2.DeleteConversationResponse])
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DeleteConversation indicates an expected call of DeleteConversation.
+func (mr *MockRagStreamPortMockRecorder) DeleteConversation(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteConversation", reflect.TypeOf((*MockRagStreamPort)(nil).DeleteConversation), ctx, req)
+}

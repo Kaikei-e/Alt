@@ -17,4 +17,22 @@ type RagStreamPort interface {
 		ctx context.Context,
 		req *connect.Request[augurv2.StreamChatRequest],
 	) (*connect.ServerStreamForClient[augurv2.StreamChatResponse], error)
+
+	// ListConversations returns the caller's Ask Augur chat history.
+	ListConversations(
+		ctx context.Context,
+		req *connect.Request[augurv2.ListConversationsRequest],
+	) (*connect.Response[augurv2.ListConversationsResponse], error)
+
+	// GetConversation returns every message in a single conversation.
+	GetConversation(
+		ctx context.Context,
+		req *connect.Request[augurv2.GetConversationRequest],
+	) (*connect.Response[augurv2.GetConversationResponse], error)
+
+	// DeleteConversation removes a conversation and its messages.
+	DeleteConversation(
+		ctx context.Context,
+		req *connect.Request[augurv2.DeleteConversationRequest],
+	) (*connect.Response[augurv2.DeleteConversationResponse], error)
 }

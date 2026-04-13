@@ -14,6 +14,11 @@ import (
 	"connectrpc.com/connect"
 )
 
+// userIDHeader propagates the authenticated caller's UUID to rag-orchestrator
+// so persisted Ask Augur conversations can be scoped to a user. alt-backend is
+// the JWT trust boundary; rag-orchestrator trusts this header implicitly.
+const userIDHeader = "X-Alt-User-Id"
+
 // Handler implements augurv2connect.AugurServiceHandler
 type Handler struct {
 	retrieveContextUsecase retrieve_context_usecase.RetrieveContextUsecase
@@ -46,7 +51,7 @@ func (h *Handler) StreamChat(
 	stream *connect.ServerStream[augurv2.StreamChatResponse],
 ) error {
 	// Authentication check (handled by interceptor, but double-check)
-	_, err := domain.GetUserFromContext(ctx)
+	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "authentication failed", "error", err)
 		return connect.NewError(connect.CodeUnauthenticated, nil)
@@ -67,6 +72,10 @@ func (h *Handler) StreamChat(
 	}
 
 	h.logger.InfoContext(ctx, "starting stream chat via Connect-RPC", "query_length", len(query))
+
+	// Propagate the authenticated user id to rag-orchestrator so it can scope
+	// conversation persistence. Client-provided headers are overwritten.
+	req.Header().Set(userIDHeader, user.UserID.String())
 
 	// Call rag-orchestrator directly via Connect-RPC
 	ragStream, err := h.ragStreamPort.StreamChat(ctx, req)
@@ -172,4 +181,56 @@ func (h *Handler) RetrieveContext(
 	}
 
 	return connect.NewResponse(resp), nil
+}
+
+// ListConversations forwards the caller's chat history request to rag-orchestrator,
+// scoped by the authenticated user id header.
+func (h *Handler) ListConversations(
+	ctx context.Context,
+	req *connect.Request[augurv2.ListConversationsRequest],
+) (*connect.Response[augurv2.ListConversationsResponse], error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	req.Header().Set(userIDHeader, user.UserID.String())
+	resp, err := h.ragStreamPort.ListConversations(ctx, req)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "ListConversations")
+	}
+	return resp, nil
+}
+
+// GetConversation forwards a single-conversation read to rag-orchestrator.
+func (h *Handler) GetConversation(
+	ctx context.Context,
+	req *connect.Request[augurv2.GetConversationRequest],
+) (*connect.Response[augurv2.GetConversationResponse], error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	req.Header().Set(userIDHeader, user.UserID.String())
+	resp, err := h.ragStreamPort.GetConversation(ctx, req)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetConversation")
+	}
+	return resp, nil
+}
+
+// DeleteConversation forwards a destructive delete to rag-orchestrator.
+func (h *Handler) DeleteConversation(
+	ctx context.Context,
+	req *connect.Request[augurv2.DeleteConversationRequest],
+) (*connect.Response[augurv2.DeleteConversationResponse], error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	req.Header().Set(userIDHeader, user.UserID.String())
+	resp, err := h.ragStreamPort.DeleteConversation(ctx, req)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "DeleteConversation")
+	}
+	return resp, nil
 }
