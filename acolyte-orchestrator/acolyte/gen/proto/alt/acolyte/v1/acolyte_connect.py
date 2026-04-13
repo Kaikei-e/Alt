@@ -47,6 +47,9 @@ class AcolyteService(Protocol):
     async def rerun_section(self, request: alt_dot_acolyte_dot_v1_dot_acolyte__pb2.RerunSectionRequest, ctx: RequestContext) -> alt_dot_acolyte_dot_v1_dot_acolyte__pb2.RerunSectionResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def delete_report(self, request: alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportRequest, ctx: RequestContext) -> alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def health_check(self, request: alt_dot_acolyte_dot_v1_dot_acolyte__pb2.HealthCheckRequest, ctx: RequestContext) -> alt_dot_acolyte_dot_v1_dot_acolyte__pb2.HealthCheckResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -155,6 +158,16 @@ class AcolyteServiceASGIApplication(ConnectASGIApplication[AcolyteService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.rerun_section,
+                ),
+                "/alt.acolyte.v1.AcolyteService/DeleteReport": Endpoint.unary(
+                    method=MethodInfo(
+                        name="DeleteReport",
+                        service_name="alt.acolyte.v1.AcolyteService",
+                        input=alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportRequest,
+                        output=alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.delete_report,
                 ),
                 "/alt.acolyte.v1.AcolyteService/HealthCheck": Endpoint.unary(
                     method=MethodInfo(
@@ -379,6 +392,26 @@ class AcolyteServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def delete_report(
+        self,
+        request: alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DeleteReport",
+                service_name="alt.acolyte.v1.AcolyteService",
+                input=alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportRequest,
+                output=alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     async def health_check(
         self,
         request: alt_dot_acolyte_dot_v1_dot_acolyte__pb2.HealthCheckRequest,
@@ -420,6 +453,8 @@ class AcolyteServiceSync(Protocol):
     def stream_run_progress(self, request: alt_dot_acolyte_dot_v1_dot_acolyte__pb2.StreamRunProgressRequest, ctx: RequestContext) -> Iterator[alt_dot_acolyte_dot_v1_dot_acolyte__pb2.StreamRunProgressResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def rerun_section(self, request: alt_dot_acolyte_dot_v1_dot_acolyte__pb2.RerunSectionRequest, ctx: RequestContext) -> alt_dot_acolyte_dot_v1_dot_acolyte__pb2.RerunSectionResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def delete_report(self, request: alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportRequest, ctx: RequestContext) -> alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def health_check(self, request: alt_dot_acolyte_dot_v1_dot_acolyte__pb2.HealthCheckRequest, ctx: RequestContext) -> alt_dot_acolyte_dot_v1_dot_acolyte__pb2.HealthCheckResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
@@ -528,6 +563,16 @@ class AcolyteServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.rerun_section,
+                ),
+                "/alt.acolyte.v1.AcolyteService/DeleteReport": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="DeleteReport",
+                        service_name="alt.acolyte.v1.AcolyteService",
+                        input=alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportRequest,
+                        output=alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.delete_report,
                 ),
                 "/alt.acolyte.v1.AcolyteService/HealthCheck": EndpointSync.unary(
                     method=MethodInfo(
@@ -746,6 +791,26 @@ class AcolyteServiceClientSync(ConnectClientSync):
                 service_name="alt.acolyte.v1.AcolyteService",
                 input=alt_dot_acolyte_dot_v1_dot_acolyte__pb2.RerunSectionRequest,
                 output=alt_dot_acolyte_dot_v1_dot_acolyte__pb2.RerunSectionResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def delete_report(
+        self,
+        request: alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="DeleteReport",
+                service_name="alt.acolyte.v1.AcolyteService",
+                input=alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportRequest,
+                output=alt_dot_acolyte_dot_v1_dot_acolyte__pb2.DeleteReportResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

@@ -29,6 +29,9 @@ service AcolyteService {
   rpc StreamRunProgress(StreamRunProgressRequest) returns (stream StreamRunProgressResponse);
   // RerunSection re-generates a single section of a report.
   rpc RerunSection(RerunSectionRequest) returns (RerunSectionResponse);
+  // DeleteReport hard-deletes a report and all related versions/sections/runs/briefs.
+  // Refuses when an active run (pending/running) exists for the report.
+  rpc DeleteReport(DeleteReportRequest) returns (DeleteReportResponse);
   // HealthCheck returns the service health status.
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
 }
@@ -166,6 +169,12 @@ message RerunSectionResponse {
   string run_id = 1;
 }
 
+message DeleteReportRequest {
+  string report_id = 1;
+}
+
+message DeleteReportResponse {}
+
 // =============================================================================
 // Health Check
 // =============================================================================
@@ -187,6 +196,9 @@ message Report {
   int32 current_version = 4;
   optional string latest_successful_run_id = 5;
   string created_at = 6;
+  // Report generation brief (topic / entities / time_range / exclude / custom constraints).
+  // Populated from the report_briefs table; empty when no brief was supplied at creation.
+  map<string, string> scope = 7;
 }
 
 message ReportSummary {

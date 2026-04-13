@@ -63,6 +63,9 @@ const (
 	// AcolyteServiceRerunSectionProcedure is the fully-qualified name of the AcolyteService's
 	// RerunSection RPC.
 	AcolyteServiceRerunSectionProcedure = "/alt.acolyte.v1.AcolyteService/RerunSection"
+	// AcolyteServiceDeleteReportProcedure is the fully-qualified name of the AcolyteService's
+	// DeleteReport RPC.
+	AcolyteServiceDeleteReportProcedure = "/alt.acolyte.v1.AcolyteService/DeleteReport"
 	// AcolyteServiceHealthCheckProcedure is the fully-qualified name of the AcolyteService's
 	// HealthCheck RPC.
 	AcolyteServiceHealthCheckProcedure = "/alt.acolyte.v1.AcolyteService/HealthCheck"
@@ -90,6 +93,9 @@ type AcolyteServiceClient interface {
 	StreamRunProgress(context.Context, *connect.Request[v1.StreamRunProgressRequest]) (*connect.ServerStreamForClient[v1.StreamRunProgressResponse], error)
 	// RerunSection re-generates a single section of a report.
 	RerunSection(context.Context, *connect.Request[v1.RerunSectionRequest]) (*connect.Response[v1.RerunSectionResponse], error)
+	// DeleteReport hard-deletes a report and all related versions/sections/runs/briefs.
+	// Refuses when an active run (pending/running) exists for the report.
+	DeleteReport(context.Context, *connect.Request[v1.DeleteReportRequest]) (*connect.Response[v1.DeleteReportResponse], error)
 	// HealthCheck returns the service health status.
 	HealthCheck(context.Context, *connect.Request[v1.HealthCheckRequest]) (*connect.Response[v1.HealthCheckResponse], error)
 }
@@ -165,6 +171,12 @@ func NewAcolyteServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(acolyteServiceMethods.ByName("RerunSection")),
 			connect.WithClientOptions(opts...),
 		),
+		deleteReport: connect.NewClient[v1.DeleteReportRequest, v1.DeleteReportResponse](
+			httpClient,
+			baseURL+AcolyteServiceDeleteReportProcedure,
+			connect.WithSchema(acolyteServiceMethods.ByName("DeleteReport")),
+			connect.WithClientOptions(opts...),
+		),
 		healthCheck: connect.NewClient[v1.HealthCheckRequest, v1.HealthCheckResponse](
 			httpClient,
 			baseURL+AcolyteServiceHealthCheckProcedure,
@@ -186,6 +198,7 @@ type acolyteServiceClient struct {
 	getRunStatus       *connect.Client[v1.GetRunStatusRequest, v1.GetRunStatusResponse]
 	streamRunProgress  *connect.Client[v1.StreamRunProgressRequest, v1.StreamRunProgressResponse]
 	rerunSection       *connect.Client[v1.RerunSectionRequest, v1.RerunSectionResponse]
+	deleteReport       *connect.Client[v1.DeleteReportRequest, v1.DeleteReportResponse]
 	healthCheck        *connect.Client[v1.HealthCheckRequest, v1.HealthCheckResponse]
 }
 
@@ -239,6 +252,11 @@ func (c *acolyteServiceClient) RerunSection(ctx context.Context, req *connect.Re
 	return c.rerunSection.CallUnary(ctx, req)
 }
 
+// DeleteReport calls alt.acolyte.v1.AcolyteService.DeleteReport.
+func (c *acolyteServiceClient) DeleteReport(ctx context.Context, req *connect.Request[v1.DeleteReportRequest]) (*connect.Response[v1.DeleteReportResponse], error) {
+	return c.deleteReport.CallUnary(ctx, req)
+}
+
 // HealthCheck calls alt.acolyte.v1.AcolyteService.HealthCheck.
 func (c *acolyteServiceClient) HealthCheck(ctx context.Context, req *connect.Request[v1.HealthCheckRequest]) (*connect.Response[v1.HealthCheckResponse], error) {
 	return c.healthCheck.CallUnary(ctx, req)
@@ -266,6 +284,9 @@ type AcolyteServiceHandler interface {
 	StreamRunProgress(context.Context, *connect.Request[v1.StreamRunProgressRequest], *connect.ServerStream[v1.StreamRunProgressResponse]) error
 	// RerunSection re-generates a single section of a report.
 	RerunSection(context.Context, *connect.Request[v1.RerunSectionRequest]) (*connect.Response[v1.RerunSectionResponse], error)
+	// DeleteReport hard-deletes a report and all related versions/sections/runs/briefs.
+	// Refuses when an active run (pending/running) exists for the report.
+	DeleteReport(context.Context, *connect.Request[v1.DeleteReportRequest]) (*connect.Response[v1.DeleteReportResponse], error)
 	// HealthCheck returns the service health status.
 	HealthCheck(context.Context, *connect.Request[v1.HealthCheckRequest]) (*connect.Response[v1.HealthCheckResponse], error)
 }
@@ -337,6 +358,12 @@ func NewAcolyteServiceHandler(svc AcolyteServiceHandler, opts ...connect.Handler
 		connect.WithSchema(acolyteServiceMethods.ByName("RerunSection")),
 		connect.WithHandlerOptions(opts...),
 	)
+	acolyteServiceDeleteReportHandler := connect.NewUnaryHandler(
+		AcolyteServiceDeleteReportProcedure,
+		svc.DeleteReport,
+		connect.WithSchema(acolyteServiceMethods.ByName("DeleteReport")),
+		connect.WithHandlerOptions(opts...),
+	)
 	acolyteServiceHealthCheckHandler := connect.NewUnaryHandler(
 		AcolyteServiceHealthCheckProcedure,
 		svc.HealthCheck,
@@ -365,6 +392,8 @@ func NewAcolyteServiceHandler(svc AcolyteServiceHandler, opts ...connect.Handler
 			acolyteServiceStreamRunProgressHandler.ServeHTTP(w, r)
 		case AcolyteServiceRerunSectionProcedure:
 			acolyteServiceRerunSectionHandler.ServeHTTP(w, r)
+		case AcolyteServiceDeleteReportProcedure:
+			acolyteServiceDeleteReportHandler.ServeHTTP(w, r)
 		case AcolyteServiceHealthCheckProcedure:
 			acolyteServiceHealthCheckHandler.ServeHTTP(w, r)
 		default:
@@ -414,6 +443,10 @@ func (UnimplementedAcolyteServiceHandler) StreamRunProgress(context.Context, *co
 
 func (UnimplementedAcolyteServiceHandler) RerunSection(context.Context, *connect.Request[v1.RerunSectionRequest]) (*connect.Response[v1.RerunSectionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.acolyte.v1.AcolyteService.RerunSection is not implemented"))
+}
+
+func (UnimplementedAcolyteServiceHandler) DeleteReport(context.Context, *connect.Request[v1.DeleteReportRequest]) (*connect.Response[v1.DeleteReportResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.acolyte.v1.AcolyteService.DeleteReport is not implemented"))
 }
 
 func (UnimplementedAcolyteServiceHandler) HealthCheck(context.Context, *connect.Request[v1.HealthCheckRequest]) (*connect.Response[v1.HealthCheckResponse], error) {

@@ -195,6 +195,16 @@ class RerunSectionResponse(_message.Message):
     run_id: str
     def __init__(self, run_id: _Optional[str] = ...) -> None: ...
 
+class DeleteReportRequest(_message.Message):
+    __slots__ = ("report_id",)
+    REPORT_ID_FIELD_NUMBER: _ClassVar[int]
+    report_id: str
+    def __init__(self, report_id: _Optional[str] = ...) -> None: ...
+
+class DeleteReportResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
 class HealthCheckRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
@@ -206,20 +216,29 @@ class HealthCheckResponse(_message.Message):
     def __init__(self, status: _Optional[str] = ...) -> None: ...
 
 class Report(_message.Message):
-    __slots__ = ("report_id", "title", "report_type", "current_version", "latest_successful_run_id", "created_at")
+    __slots__ = ("report_id", "title", "report_type", "current_version", "latest_successful_run_id", "created_at", "scope")
+    class ScopeEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
     REPORT_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     REPORT_TYPE_FIELD_NUMBER: _ClassVar[int]
     CURRENT_VERSION_FIELD_NUMBER: _ClassVar[int]
     LATEST_SUCCESSFUL_RUN_ID_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    SCOPE_FIELD_NUMBER: _ClassVar[int]
     report_id: str
     title: str
     report_type: str
     current_version: int
     latest_successful_run_id: str
     created_at: str
-    def __init__(self, report_id: _Optional[str] = ..., title: _Optional[str] = ..., report_type: _Optional[str] = ..., current_version: _Optional[int] = ..., latest_successful_run_id: _Optional[str] = ..., created_at: _Optional[str] = ...) -> None: ...
+    scope: _containers.ScalarMap[str, str]
+    def __init__(self, report_id: _Optional[str] = ..., title: _Optional[str] = ..., report_type: _Optional[str] = ..., current_version: _Optional[int] = ..., latest_successful_run_id: _Optional[str] = ..., created_at: _Optional[str] = ..., scope: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class ReportSummary(_message.Message):
     __slots__ = ("report_id", "title", "report_type", "current_version", "latest_run_status", "created_at")
