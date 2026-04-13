@@ -326,6 +326,20 @@ class PostgresReportGateway:
 
                 return new_version
 
+    async def has_active_run(self, report_id: UUID) -> bool:
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT EXISTS(SELECT 1 FROM report_runs "
+                "WHERE report_id = %s AND run_status IN ('pending', 'running'))",
+                [report_id],
+            )
+            r = await cur.fetchone()
+            return bool(r and r[0])
+
+    async def delete_report(self, report_id: UUID) -> None:
+        async with self._pool.connection() as conn:
+            await conn.execute("DELETE FROM reports WHERE report_id = %s", [report_id])
+
     async def get_section_version(self, report_id: UUID, section_key: str, version_no: int) -> SectionVersion | None:
         async with self._pool.connection() as conn:
             cur = await conn.execute(

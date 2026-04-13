@@ -140,3 +140,18 @@ class MemoryReportGateway:
 
     async def get_section_version(self, report_id: UUID, section_key: str, version_no: int) -> SectionVersion | None:
         return self._section_versions.get((report_id, section_key, version_no))
+
+    async def has_active_run(self, report_id: UUID) -> bool:
+        return False
+
+    async def delete_report(self, report_id: UUID) -> None:
+        self._reports.pop(report_id, None)
+        self._briefs.pop(report_id, None)
+        self._versions.pop(report_id, None)
+        self._sections.pop(report_id, None)
+        self._change_items = {
+            key: v for key, v in self._change_items.items() if key[0] != report_id
+        }
+        self._section_versions = {
+            key: v for key, v in self._section_versions.items() if key[0] != report_id
+        }

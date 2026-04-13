@@ -87,6 +87,7 @@ class AcolyteConnectService:
             raise ConnectError(Code.NOT_FOUND, f"Report {request.report_id} not found")
 
         sections = await self._repo.get_sections(report.report_id)
+        brief = await self._repo.get_brief(report.report_id)
 
         proto_sections = []
         for sec in sections:
@@ -108,6 +109,7 @@ class AcolyteConnectService:
                 report_type=report.report_type,
                 current_version=report.current_version,
                 created_at=report.created_at.isoformat(),
+                scope=brief.to_scope() if brief else {},
             ),
             sections=proto_sections,
         )
@@ -321,6 +323,28 @@ class AcolyteConnectService:
             raise ConnectError(Code.NOT_FOUND, str(e)) from e
 
         return acolyte_pb2.RerunSectionResponse(run_id="")
+
+    async def delete_report(
+        self, request: acolyte_pb2.DeleteReportRequest, ctx: RequestContext
+    ) -> acolyte_pb2.DeleteReportResponse:
+        try:
+            rid = UUID(request.report_id)
+        except ValueError as e:
+            raise ConnectError(Code.INVALID_ARGUMENT, f"Invalid report_id: {e}") from e
+
+        report = await self._repo.get_report(rid)
+        if report is None:
+            raise ConnectError(Code.NOT_FOUND, f"Report {rid} not found")
+
+        if await self._repo.has_active_run(rid):
+            raise ConnectError(
+                Code.FAILED_PRECONDITION,
+                "A report generation is in progress; wait or cancel before deleting.",
+            )
+
+        await self._repo.delete_report(rid)
+        logger.info("Report deleted", report_id=str(rid))
+        return acolyte_pb2.DeleteReportResponse()
 
     async def health_check(
         self, request: acolyte_pb2.HealthCheckRequest, ctx: RequestContext

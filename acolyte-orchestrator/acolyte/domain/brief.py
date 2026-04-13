@@ -59,3 +59,16 @@ class ReportBrief:
             "exclude_topics": self.exclude_topics,
             "constraints": self.constraints,
         }
+
+    def to_scope(self) -> dict[str, str]:
+        """Round-trip back to the proto map<string, string> representation."""
+        scope: dict[str, str] = {"topic": self.topic}
+        if self.time_range:
+            scope["time_range"] = self.time_range
+        if self.entities:
+            scope["entities"] = ",".join(self.entities)
+        if self.exclude_topics:
+            scope["exclude"] = ",".join(self.exclude_topics)
+        for k, v in self.constraints.items():
+            scope[k] = v
+        return scope
