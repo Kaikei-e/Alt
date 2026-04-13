@@ -30,3 +30,15 @@ pnpm-lock.yaml
 
 # Editor
 .vscode/
+
+# Documentation and extras
+docs/
+
+# Caches and build artefacts
+coverage/
+.turbo/
+.bun/
+.vite/
+.vitest-cache/
+tsconfig.tsbuildinfo
+*.tsbuildinfo

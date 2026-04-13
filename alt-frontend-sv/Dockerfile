@@ -1,33 +1,36 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.7
 # ==============================================================================
 # alt-frontend-sv Dockerfile
-# SvelteKit + Bun multi-stage build (optimized)
+# SvelteKit + Bun multi-stage build
 # ==============================================================================
 
-FROM oven/bun:1.3.10-alpine AS base
+FROM oven/bun:1.3.12-alpine AS base
 WORKDIR /app
 
-# ---------- All deps (for building) ----------
-FROM base AS deps
-COPY package.json bun.lock ./
+# ---------- Install (dev + prod in one stage, per Bun official guide) ----------
+FROM base AS install
 RUN --mount=type=cache,id=bun-alt-frontend-sv,target=/root/.bun/install/cache \
-    bun install --frozen-lockfile
+    mkdir -p /temp/dev /temp/prod
 
-# ---------- Production deps only (for runtime) ----------
-FROM base AS prod-deps
-COPY package.json bun.lock ./
+COPY --link package.json bun.lock /temp/dev/
 RUN --mount=type=cache,id=bun-alt-frontend-sv,target=/root/.bun/install/cache \
-    bun install --frozen-lockfile --production
+    cd /temp/dev && bun install --frozen-lockfile
+
+COPY --link package.json bun.lock /temp/prod/
+RUN --mount=type=cache,id=bun-alt-frontend-sv,target=/root/.bun/install/cache \
+    cd /temp/prod && bun install --frozen-lockfile --production
 
 # ---------- Build ----------
 FROM base AS builder
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY --link --from=install /temp/dev/node_modules ./node_modules
+COPY --link . .
 ENV NODE_ENV=production
-RUN bun run prepare && bun run build
+RUN --mount=type=cache,id=vite-alt-frontend-sv,target=/app/node_modules/.vite \
+    --mount=type=cache,id=sveltekit-alt-frontend-sv,target=/app/.svelte-kit \
+    bun run prepare && bun run build
 
 # ---------- Runtime ----------
-FROM oven/bun:1.3.10-alpine AS runner
+FROM oven/bun:1.3.12-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production \
@@ -37,9 +40,9 @@ ENV NODE_ENV=production \
 RUN addgroup -g 1001 -S sveltekit && \
     adduser -u 1001 -S -G sveltekit sveltekit
 
-COPY --from=builder --chown=sveltekit:sveltekit /app/build ./build
-COPY --from=prod-deps --chown=sveltekit:sveltekit /app/node_modules ./node_modules
-COPY --chown=sveltekit:sveltekit package.json ./
+COPY --link --from=builder --chown=sveltekit:sveltekit /app/build ./build
+COPY --link --from=install --chown=sveltekit:sveltekit /temp/prod/node_modules ./node_modules
+COPY --link --chown=sveltekit:sveltekit package.json ./
 
 USER sveltekit
 EXPOSE 4173
