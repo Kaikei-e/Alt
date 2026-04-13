@@ -141,11 +141,16 @@ let isUser = $derived(role === "user");
 	.entry-prose :global(code) { font-family: var(--font-mono, "IBM Plex Mono", monospace); font-size: 0.85em; }
 	.entry-prose :global(strong) { font-weight: 700; }
 
-	/* Sources / citations */
+	/* Sources / citations — only shown on narrower viewports.
+	   At ≥1280px the AugurChat right-column rail takes over as the canonical
+	   citation surface, so this footer collapses to avoid duplication. */
 	.entry-sources {
 		margin-top: 1rem; padding-top: 0.6rem;
 		border-top: 1px solid var(--surface-border, #c8c8c8);
 		max-width: 65ch;
+	}
+	@media (min-width: 1280px) {
+		.entry-sources { display: none; }
 	}
 	.sources-heading {
 		font-family: var(--font-body, "Source Sans 3", sans-serif);

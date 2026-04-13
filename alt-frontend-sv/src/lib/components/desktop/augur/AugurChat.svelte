@@ -2,6 +2,7 @@
 import { onMount, tick } from "svelte";
 import ThreadEntry from "./ThreadEntry.svelte";
 import QuestionInput from "./QuestionInput.svelte";
+import CitationRail from "./CitationRail.svelte";
 import {
 	createClientTransport,
 	streamAugurChat,
@@ -56,6 +57,24 @@ let lastAutoSentQuestion = $state("");
 let revealed = $state(false);
 
 let hasMessages = $derived(messages.length > 0);
+
+// The latest assistant turn drives the right-column citation rail. Past
+// answers' citations stay reachable through inline chips inside ThreadEntry.
+let railCitations = $derived.by<Citation[]>(() => {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const m = messages[i];
+		if (m.role === "assistant") {
+			return m.citations ?? [];
+		}
+	}
+	return [];
+});
+
+let railActiveIndex = $state(-1);
+
+function focusCitation(index: number) {
+	railActiveIndex = index;
+}
 
 // Auto-scroll: throttled, suppressed when user scrolls up
 let lastScrollTime = 0;
@@ -296,7 +315,8 @@ $effect(() => {
 });
 </script>
 
-<div class="augur-column" class:revealed>
+<div class="augur-shell" class:revealed>
+<div class="augur-column">
 	{#if !hasMessages}
 		<!-- Empty state: the invitation -->
 		<div class="augur-empty">
@@ -339,17 +359,52 @@ $effect(() => {
 	{/if}
 </div>
 
+<aside class="augur-rail-slot">
+	<CitationRail
+		citations={railCitations as Citation[]}
+		activeIndex={railActiveIndex}
+		onSelect={focusCitation}
+		loading={isLoading && railCitations.length === 0}
+	/>
+</aside>
+</div>
+
 <style>
-	/* ===== Column layout ===== */
+	/* ===== Shell + Column layout =====
+	   Below 1280px the rail collapses out — ThreadEntry's existing inline
+	   citation footer takes over (responsive fallback). At ≥1280px the rail
+	   sits to the right of the thread, separated by a 1px rule. */
+	.augur-shell {
+		display: grid;
+		grid-template-columns: 1fr;
+		opacity: 0; transform: translateY(6px);
+		transition: opacity 0.4s ease, transform 0.4s ease;
+		min-height: calc(100vh - 5rem);
+	}
+	.augur-shell.revealed { opacity: 1; transform: translateY(0); }
 	.augur-column {
 		max-width: 720px; margin: 0 auto;
+		width: 100%;
 		padding: 0 1rem;
 		display: flex; flex-direction: column;
 		height: calc(100vh - 5rem);
-		opacity: 0; transform: translateY(6px);
-		transition: opacity 0.4s ease, transform 0.4s ease;
 	}
-	.augur-column.revealed { opacity: 1; transform: translateY(0); }
+	.augur-rail-slot { display: none; }
+	@media (min-width: 1280px) {
+		.augur-shell {
+			grid-template-columns: minmax(0, 1fr) 320px;
+		}
+		.augur-column {
+			margin: 0;
+			margin-left: auto;
+		}
+		.augur-rail-slot {
+			display: block;
+			height: calc(100vh - 5rem);
+			position: sticky;
+			top: 0;
+		}
+	}
 
 	/* ===== Empty state: the invitation ===== */
 	.augur-empty {
