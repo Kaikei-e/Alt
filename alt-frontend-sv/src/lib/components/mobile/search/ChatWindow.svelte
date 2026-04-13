@@ -381,8 +381,9 @@ $effect(() => {
 	}
 	.empty-title {
 		font-family: var(--font-display, "Playfair Display", serif);
-		font-size: 1.1rem; font-weight: 600; font-style: italic;
-		color: var(--alt-slate, #666);
+		font-size: 1.1rem; font-weight: 700;
+		letter-spacing: -0.01em;
+		color: var(--alt-charcoal, #1a1a1a);
 		margin: 0;
 	}
 	.empty-rule {
