@@ -237,10 +237,13 @@ impl Config {
         let db_pool = load_db_pool_config()?;
         let queue = load_classification_queue_config()?;
         let job_retention_days = parse_i64("RECAP_JOB_RETENTION_DAYS", 14)?;
-        // Recap pipeline can legitimately run for several hours (LLM batches +
-        // classification + embedding). 12h is a generous cap that still
-        // catches multi-day-old zombies.
-        let resumable_max_age_hours = parse_i64("RECAP_RESUMABLE_MAX_AGE_HOURS", 12)?;
+        // Default 4h: a legit batch Recap typically finishes in 1–2h, so 4h
+        // is ~2x headroom for a single crash-recover cycle. Longer ages are
+        // almost always chronic (resume-loop + subworker-orphan deadlock,
+        // see ADR-000709 post-mortem: job f67ffd79 ran for 7h+ through 5
+        // restarts and never completed). Operators with legitimately
+        // long-running jobs can set `RECAP_RESUMABLE_MAX_AGE_HOURS` higher.
+        let resumable_max_age_hours = parse_i64("RECAP_RESUMABLE_MAX_AGE_HOURS", 4)?;
         let classification_eval_enabled = parse_bool("RECAP_CLASSIFICATION_EVAL_ENABLED", true)?;
         let classification_eval_use_bootstrap =
             parse_bool("RECAP_CLASSIFICATION_EVAL_USE_BOOTSTRAP", true)?;
