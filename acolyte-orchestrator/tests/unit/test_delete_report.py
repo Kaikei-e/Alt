@@ -61,9 +61,7 @@ class FakeReportRepo:
     async def bump_section_version(self, *args: object, **kwargs: object) -> int:
         raise NotImplementedError
 
-    async def get_section_version(
-        self, report_id: UUID, section_key: str, version_no: int
-    ) -> SectionVersion | None:
+    async def get_section_version(self, report_id: UUID, section_key: str, version_no: int) -> SectionVersion | None:
         return None
 
     async def has_active_run(self, report_id: UUID) -> bool:
@@ -100,9 +98,7 @@ async def test_delete_report_happy_path() -> None:
     rid = _seed_report(repo)
 
     service = _service_with(repo)
-    resp = await service.delete_report(
-        acolyte_pb2.DeleteReportRequest(report_id=str(rid)), ctx=None
-    )  # type: ignore[bad-argument-type]
+    resp = await service.delete_report(acolyte_pb2.DeleteReportRequest(report_id=str(rid)), ctx=None)  # type: ignore[bad-argument-type]
 
     assert isinstance(resp, acolyte_pb2.DeleteReportResponse)
     assert rid not in repo.reports
@@ -117,9 +113,7 @@ async def test_delete_report_refuses_when_active_run_exists() -> None:
 
     service = _service_with(repo)
     with pytest.raises(ConnectError) as exc:
-        await service.delete_report(
-            acolyte_pb2.DeleteReportRequest(report_id=str(rid)), ctx=None
-        )  # type: ignore[bad-argument-type]
+        await service.delete_report(acolyte_pb2.DeleteReportRequest(report_id=str(rid)), ctx=None)  # type: ignore[bad-argument-type]
 
     assert exc.value.code == Code.FAILED_PRECONDITION
     assert rid in repo.reports
@@ -132,9 +126,7 @@ async def test_delete_report_returns_not_found() -> None:
 
     service = _service_with(repo)
     with pytest.raises(ConnectError) as exc:
-        await service.delete_report(
-            acolyte_pb2.DeleteReportRequest(report_id=str(uuid4())), ctx=None
-        )  # type: ignore[bad-argument-type]
+        await service.delete_report(acolyte_pb2.DeleteReportRequest(report_id=str(uuid4())), ctx=None)  # type: ignore[bad-argument-type]
 
     assert exc.value.code == Code.NOT_FOUND
     assert repo.deleted == []

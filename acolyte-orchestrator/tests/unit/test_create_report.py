@@ -78,6 +78,12 @@ class FakeReportRepo:
     async def get_section_version(self, report_id: object, section_key: str, version_no: int) -> SectionVersion | None:
         return None
 
+    async def has_active_run(self, report_id: object) -> bool:
+        return False
+
+    async def delete_report(self, report_id: object) -> None:
+        return None
+
 
 @pytest.mark.asyncio
 async def test_create_report_returns_new_report() -> None:

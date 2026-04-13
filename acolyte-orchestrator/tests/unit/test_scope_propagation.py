@@ -145,6 +145,14 @@ class FakeReportRepo:
     async def get_section_version(self, report_id, section_key, version_no):
         return None
 
+    async def has_active_run(self, report_id):
+        return False
+
+    async def delete_report(self, report_id):
+        self.reports.pop(report_id, None)
+        self.briefs.pop(report_id, None)
+        self.sections.pop(report_id, None)
+
 
 @pytest.mark.asyncio
 async def test_pipeline_with_valid_brief_succeeds() -> None:

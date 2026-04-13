@@ -149,9 +149,5 @@ class MemoryReportGateway:
         self._briefs.pop(report_id, None)
         self._versions.pop(report_id, None)
         self._sections.pop(report_id, None)
-        self._change_items = {
-            key: v for key, v in self._change_items.items() if key[0] != report_id
-        }
-        self._section_versions = {
-            key: v for key, v in self._section_versions.items() if key[0] != report_id
-        }
+        self._change_items = {key: v for key, v in self._change_items.items() if key[0] != report_id}
+        self._section_versions = {key: v for key, v in self._section_versions.items() if key[0] != report_id}

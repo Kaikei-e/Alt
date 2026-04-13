@@ -69,6 +69,12 @@ class FakeRepo:
     async def get_section_version(self, report_id, section_key, version_no):
         return None
 
+    async def has_active_run(self, report_id):
+        return False
+
+    async def delete_report(self, report_id):
+        return None
+
 
 @pytest.mark.asyncio
 async def test_finalizer_always_prefers_best_sections_when_available() -> None:
