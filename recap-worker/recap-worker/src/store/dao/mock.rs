@@ -59,6 +59,7 @@ impl RecapDao for MockRecapDao {
         _job_id: Uuid,
         _note: Option<&str>,
         _window_days: u32,
+        _trigger_source: &str,
     ) -> Result<Option<Uuid>> {
         Ok(None)
     }

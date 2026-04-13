@@ -157,7 +157,12 @@ impl FetchStage for AltBackendFetchStage {
 
         let lock_result = self
             .dao
-            .create_job_with_lock_and_window(job.job_id, None, window_days)
+            .create_job_with_lock_and_window(
+                job.job_id,
+                None,
+                window_days,
+                job.trigger_source(),
+            )
             .await
             .map_err(|err| {
                 tracing::error!(job_id = %job.job_id, error = ?err, "failed to create recap job record");

@@ -54,12 +54,14 @@ impl JobDao for UnifiedDao {
         job_id: Uuid,
         note: Option<&str>,
         window_days: u32,
+        trigger_source: &str,
     ) -> Result<Option<Uuid>> {
         crate::store::dao::job::RecapDao::create_job_with_lock_and_window(
             &self.pool,
             job_id,
             note,
             window_days,
+            trigger_source,
         )
         .await
     }

@@ -26,6 +26,11 @@ pub(crate) struct JobContext {
     pub(crate) genres: Vec<String>,
     pub(crate) current_stage: Option<String>,
     pub(crate) window_days: u32,
+    /// discriminator for `recap_jobs.trigger_source`:
+    ///   - `"system"`  (default; JST 02:00 batch daemon 由来)
+    ///   - `"morning"` (`POST /v1/morning/letters/regenerate` 由来)
+    ///   - `"user"`    (manual `/v1/generate/recaps/*`)
+    pub(crate) trigger_source: &'static str,
 }
 
 impl JobContext {
@@ -35,6 +40,7 @@ impl JobContext {
             genres,
             current_stage: None,
             window_days: 7, // Default to 7 days for backward compatibility
+            trigger_source: "system",
         }
     }
 
@@ -44,6 +50,21 @@ impl JobContext {
             genres,
             current_stage: None,
             window_days,
+            trigger_source: "system",
+        }
+    }
+
+    /// Morning-update 由来の Job 用 constructor。`trigger_source = "morning"`
+    /// がセットされるため、プロセスクラッシュで残った行が boot 時に
+    /// `find_resumable_job` から拾われず batch Recap として誤 resume されない。
+    pub(crate) fn new_morning_update(job_id: Uuid) -> Self {
+        Self {
+            job_id,
+            genres: Vec::new(),
+            current_stage: None,
+            // morning_update は overnight 1 日の窓で dedup + group する
+            window_days: 1,
+            trigger_source: "morning",
         }
     }
 
@@ -58,6 +79,10 @@ impl JobContext {
 
     pub(crate) fn window_days(&self) -> u32 {
         self.window_days
+    }
+
+    pub(crate) fn trigger_source(&self) -> &'static str {
+        self.trigger_source
     }
 }
 
@@ -348,6 +373,52 @@ impl Scheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression: `JobContext::new` and `new_with_window` must tag rows with
+    /// `trigger_source = "system"` so the JST 02:00 batch daemon remains the
+    /// only producer of auto-resumable rows.
+    #[test]
+    fn job_context_default_trigger_source_is_system() {
+        let plain = JobContext::new(Uuid::new_v4(), vec!["ai".into()]);
+        assert_eq!(plain.trigger_source(), "system");
+
+        let windowed = JobContext::new_with_window(Uuid::new_v4(), vec!["ai".into()], 3);
+        assert_eq!(windowed.trigger_source(), "system");
+        assert_eq!(windowed.window_days(), 3);
+    }
+
+    /// Core of Phase 4 (ADR-000709): morning_update Jobs MUST set
+    /// `trigger_source = "morning"` so `find_resumable_job` (which filters
+    /// `trigger_source = 'system'`) never picks them up as a batch Recap
+    /// candidate after a crash.
+    #[test]
+    fn job_context_new_morning_update_marks_trigger_source_morning() {
+        let ctx = JobContext::new_morning_update(Uuid::new_v4());
+        assert_eq!(ctx.trigger_source(), "morning");
+        assert_eq!(
+            ctx.window_days(),
+            1,
+            "morning_update operates on a single overnight window"
+        );
+        assert!(
+            ctx.genres().is_empty(),
+            "morning_update needs no genre fan-out; genres must be empty"
+        );
+        assert!(
+            ctx.current_stage.is_none(),
+            "fresh context has no resume stage"
+        );
+    }
+
+    /// `with_stage` preserves the existing `trigger_source` tag. Without this
+    /// invariant a resumed morning_update row could be silently relabelled
+    /// as 'system' when reconstructing a JobContext from DB state.
+    #[test]
+    fn job_context_with_stage_preserves_trigger_source() {
+        let ctx = JobContext::new_morning_update(Uuid::new_v4()).with_stage("dedup".into());
+        assert_eq!(ctx.trigger_source(), "morning");
+        assert_eq!(ctx.current_stage.as_deref(), Some("dedup"));
+    }
 
     /// Test: Job should be marked as Failed when genres_stored=0 but genres_failed>0
     #[test]

@@ -18,12 +18,15 @@ pub trait JobDao: Send + Sync {
         note: Option<&str>,
     ) -> impl Future<Output = Result<Option<Uuid>>> + Send;
 
-    /// アドバイザリロックを取得し、新しいジョブを作成する（ウィンドウ日数指定あり）
+    /// アドバイザリロックを取得し、新しいジョブを作成する（ウィンドウ日数指定あり）。
+    /// `trigger_source` は `'system' | 'morning' | 'user'` の識別子。
+    /// `find_resumable_job` の auto-resume 対象は `'system'` のみ。
     fn create_job_with_lock_and_window(
         &self,
         job_id: Uuid,
         note: Option<&str>,
         window_days: u32,
+        trigger_source: &str,
     ) -> impl Future<Output = Result<Option<Uuid>>> + Send;
 
     /// 指定されたjob_idのジョブが存在するかチェックする

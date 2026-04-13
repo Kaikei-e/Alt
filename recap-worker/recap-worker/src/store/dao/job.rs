@@ -23,10 +23,16 @@ impl RecapDao {
         job_id: Uuid,
         note: Option<&str>,
     ) -> Result<Option<Uuid>> {
-        Self::create_job_with_lock_and_window(pool, job_id, note, 7).await
+        Self::create_job_with_lock_and_window(pool, job_id, note, 7, "system").await
     }
 
     /// アドバイザリロックを取得し、新しいジョブを作成する（ウィンドウ日数指定あり）。
+    ///
+    /// `trigger_source` は `recap_jobs.trigger_source` に書き込む discriminator。
+    /// 値:
+    ///   - `"system"` : JST 02:00 batch daemon 由来 (自動再開対象)
+    ///   - `"morning"`: morning_update 由来 (再起動時に auto-resume しない)
+    ///   - `"user"`   : 手動 `/v1/generate/recaps/*` 由来
     ///
     /// ロックが取得できない場合は、既に他のワーカーがそのジョブを実行中であることを示します。
     ///
@@ -40,6 +46,7 @@ impl RecapDao {
         job_id: Uuid,
         note: Option<&str>,
         window_days: u32,
+        trigger_source: &str,
     ) -> Result<Option<Uuid>> {
         let mut tx = pool.begin().await.context("failed to begin transaction")?;
 
@@ -56,17 +63,19 @@ impl RecapDao {
             return Ok(None);
         }
 
-        // Create job record with window_days
+        // Create job record with window_days + trigger_source so the daemon's
+        // find_resumable_job can distinguish batch from morning/user origin.
         sqlx::query(
             r"
-            INSERT INTO recap_jobs (job_id, kicked_at, note, window_days)
-            VALUES ($1, NOW(), $2, $3)
+            INSERT INTO recap_jobs (job_id, kicked_at, note, window_days, trigger_source)
+            VALUES ($1, NOW(), $2, $3, $4)
             ON CONFLICT (job_id) DO NOTHING
             ",
         )
         .bind(job_id)
         .bind(note)
         .bind(i32::try_from(window_days).unwrap_or(7))
+        .bind(trigger_source)
         .execute(&mut *tx)
         .await
         .context("failed to insert recap_jobs record")?;
@@ -109,11 +118,16 @@ impl RecapDao {
         // 過去 i32::MAX 時間 (≈ 245k 年) を超える設定は現実的に出ない
         // ので、ここでは飽和キャストで安全側に倒す。
         let max_age_hours_i32 = i32::try_from(max_age_hours).unwrap_or(i32::MAX);
+        // Only **batch** Recap jobs (`trigger_source = 'system'`) are
+        // auto-resumed at boot. Morning-origin (`'morning'`) and
+        // user-origin (`'user'`) rows get sealed by `mark_abandoned_jobs`
+        // so they don't hijack the daemon into running the wrong pipeline.
         let row = sqlx::query(
             r"
             SELECT job_id, status, last_stage, window_days
             FROM recap_jobs
             WHERE status IN ('pending', 'running')
+              AND trigger_source = 'system'
               AND kicked_at > NOW() - make_interval(hours => $1)
             ORDER BY kicked_at DESC
             LIMIT 1

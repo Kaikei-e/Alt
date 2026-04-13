@@ -71,6 +71,7 @@ pub trait RecapDao: Send + Sync {
         job_id: Uuid,
         note: Option<&str>,
         window_days: u32,
+        trigger_source: &str,
     ) -> anyhow::Result<Option<Uuid>>;
 
     async fn job_exists(&self, job_id: Uuid) -> anyhow::Result<bool>;
@@ -450,8 +451,10 @@ where
         job_id: Uuid,
         note: Option<&str>,
         window_days: u32,
+        trigger_source: &str,
     ) -> anyhow::Result<Option<Uuid>> {
-        JobDao::create_job_with_lock_and_window(self, job_id, note, window_days).await
+        JobDao::create_job_with_lock_and_window(self, job_id, note, window_days, trigger_source)
+            .await
     }
 
     async fn job_exists(&self, job_id: Uuid) -> anyhow::Result<bool> {

@@ -156,7 +156,9 @@ impl MorningUpdateDaemon {
         loop {
             sleep(interval).await;
             let job_id = Uuid::new_v4();
-            let job = JobContext::new(job_id, Vec::new()); // No genres needed for update
+            // trigger_source="morning" is written into recap_jobs so boot-time
+            // find_resumable_job never picks this up as a batch Recap.
+            let job = JobContext::new_morning_update(job_id);
             match self.scheduler.run_morning_update(job).await {
                 Ok(()) => info!(%job_id, "morning update job completed"),
                 Err(err) => error!(%job_id, error = %err, "morning update job failed"),

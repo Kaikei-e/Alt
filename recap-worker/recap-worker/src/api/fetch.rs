@@ -976,7 +976,10 @@ pub(crate) async fn regenerate_morning_letter(
     use crate::scheduler::JobContext;
 
     let job_id = uuid::Uuid::new_v4();
-    let context = JobContext::new_with_window(job_id, vec![], 1);
+    // Morning regenerate: tag the row with trigger_source='morning' so a
+    // later crash can't cause boot-time find_resumable_job to mis-resume
+    // this as a full batch Recap pipeline.
+    let context = JobContext::new_morning_update(job_id);
 
     if let Err(e) = state
         .scheduler()
