@@ -16,9 +16,15 @@ describe("MENU_SECTIONS", () => {
 		expect(browse?.items).toHaveLength(6);
 	});
 
-	it("AI & Insights section has 4 items", () => {
+	it("AI & Insights section has 5 items", () => {
 		const ai = MENU_SECTIONS.find((s) => s.title === "AI & Insights");
-		expect(ai?.items).toHaveLength(4);
+		expect(ai?.items).toHaveLength(5);
+	});
+
+	it("AI & Insights includes Augur History entry", () => {
+		const ai = MENU_SECTIONS.find((s) => s.title === "AI & Insights");
+		const history = ai?.items.find((i) => i.label === "Augur History");
+		expect(history?.href).toBe("/augur/history");
 	});
 
 	it("Settings section has 1 item", () => {

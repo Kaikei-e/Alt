@@ -16,8 +16,7 @@ vi.mock("$lib/connect", () => ({
 	getLatestLetter: (...args: unknown[]) => mockGetLatestLetter(...args),
 	getLetterByDate: (...args: unknown[]) => mockGetLetterByDate(...args),
 	getLetterSources: (...args: unknown[]) => mockGetLetterSources(...args),
-	getLetterEnrichment: (...args: unknown[]) =>
-		mockGetLetterEnrichment(...args),
+	getLetterEnrichment: (...args: unknown[]) => mockGetLetterEnrichment(...args),
 	regenerateLatestLetter: (...args: unknown[]) =>
 		mockRegenerateLatestLetter(...args),
 }));

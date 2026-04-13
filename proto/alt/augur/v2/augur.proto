@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package alt.augur.v2;
 
+import "google/protobuf/timestamp.proto";
+
 option go_package = "alt/gen/proto/alt/augur/v2;augurv2";
 
 // =============================================================================
@@ -16,6 +18,15 @@ service AugurService {
   // RetrieveContext retrieves relevant context for a query without generating an answer.
   // Useful for debugging or showing sources before chat.
   rpc RetrieveContext(RetrieveContextRequest) returns (RetrieveContextResponse);
+
+  // ListConversations returns the caller's chat history index (most recent first).
+  rpc ListConversations(ListConversationsRequest) returns (ListConversationsResponse);
+
+  // GetConversation returns every message in a single conversation.
+  rpc GetConversation(GetConversationRequest) returns (GetConversationResponse);
+
+  // DeleteConversation removes a conversation and its messages.
+  rpc DeleteConversation(DeleteConversationRequest) returns (DeleteConversationResponse);
 }
 
 // =============================================================================
@@ -26,6 +37,10 @@ service AugurService {
 message StreamChatRequest {
   // Chat message history (alternating user/assistant messages)
   repeated ChatMessage messages = 1;
+
+  // Optional conversation identifier. Empty means "start a new conversation";
+  // the server will mint an id and return it in the meta event.
+  string conversation_id = 2;
 }
 
 // ChatMessage represents a single message in the conversation.
@@ -34,6 +49,10 @@ message ChatMessage {
   string role = 1;
   // Content of the message
   string content = 2;
+  // Optional creation timestamp (populated on read paths).
+  google.protobuf.Timestamp created_at = 3;
+  // Citations attached to assistant messages (empty for user messages).
+  repeated Citation citations = 4;
 }
 
 // StreamChatResponse is a single event in the streaming response.
@@ -63,6 +82,9 @@ message StreamChatResponse {
 message MetaPayload {
   // List of citations/sources used in the response
   repeated Citation citations = 1;
+  // Persisted conversation id (set on the first meta event of a new conversation
+  // and on every turn of an existing one so clients can update URL state).
+  string conversation_id = 2;
 }
 
 // Citation represents a source reference.
@@ -116,3 +138,49 @@ message ContextItem {
   // Relevance score (0-1)
   float score = 4;
 }
+
+// =============================================================================
+// Conversation History
+// =============================================================================
+
+// ConversationSummary is a row in the history index. All mutable fields
+// (last_activity_at, last_message_preview, message_count) are derived from
+// augur_messages via the augur_conversation_index view; they are never
+// stored on augur_conversations.
+message ConversationSummary {
+  string id = 1;
+  string title = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp last_activity_at = 4;
+  string last_message_preview = 5;
+  int32 message_count = 6;
+}
+
+message ListConversationsRequest {
+  // Page size (default: 20, max: 100)
+  int32 page_size = 1;
+  // Opaque continuation token from a previous response
+  string page_token = 2;
+}
+
+message ListConversationsResponse {
+  repeated ConversationSummary conversations = 1;
+  string next_page_token = 2;
+}
+
+message GetConversationRequest {
+  string id = 1;
+}
+
+message GetConversationResponse {
+  string id = 1;
+  string title = 2;
+  google.protobuf.Timestamp created_at = 3;
+  repeated ChatMessage messages = 4;
+}
+
+message DeleteConversationRequest {
+  string id = 1;
+}
+
+message DeleteConversationResponse {}

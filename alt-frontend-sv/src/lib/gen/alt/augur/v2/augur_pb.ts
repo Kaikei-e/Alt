@@ -4,13 +4,15 @@
 
 import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { Timestamp } from "@bufbuild/protobuf/wkt";
+import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { Message } from "@bufbuild/protobuf";
 
 /**
  * Describes the file alt/augur/v2/augur.proto.
  */
 export const file_alt_augur_v2_augur: GenFile = /*@__PURE__*/
-  fileDesc("ChhhbHQvYXVndXIvdjIvYXVndXIucHJvdG8SDGFsdC5hdWd1ci52MiJAChFTdHJlYW1DaGF0UmVxdWVzdBIrCghtZXNzYWdlcxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZSIsCgtDaGF0TWVzc2FnZRIMCgRyb2xlGAEgASgJEg8KB2NvbnRlbnQYAiABKAki4AEKElN0cmVhbUNoYXRSZXNwb25zZRIMCgRraW5kGAEgASgJEg8KBWRlbHRhGAIgASgJSAASKQoEbWV0YRgDIAEoCzIZLmFsdC5hdWd1ci52Mi5NZXRhUGF5bG9hZEgAEikKBGRvbmUYBCABKAsyGS5hbHQuYXVndXIudjIuRG9uZVBheWxvYWRIABIXCg1mYWxsYmFja19jb2RlGAUgASgJSAASFwoNZXJyb3JfbWVzc2FnZRgGIAEoCUgAEhgKDnRoaW5raW5nX2RlbHRhGAcgASgJSABCCQoHcGF5bG9hZCI4CgtNZXRhUGF5bG9hZBIpCgljaXRhdGlvbnMYASADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24iPAoIQ2l0YXRpb24SCwoDdXJsGAEgASgJEg0KBXRpdGxlGAIgASgJEhQKDHB1Ymxpc2hlZF9hdBgDIAEoCSJqCgtEb25lUGF5bG9hZBIOCgZhbnN3ZXIYASABKAkSKQoJY2l0YXRpb25zGAIgAygLMhYuYWx0LmF1Z3VyLnYyLkNpdGF0aW9uEg4KBmludGVudBgDIAEoCRIQCghzdHJhdGVneRgEIAEoCSI2ChZSZXRyaWV2ZUNvbnRleHRSZXF1ZXN0Eg0KBXF1ZXJ5GAEgASgJEg0KBWxpbWl0GAIgASgFIkYKF1JldHJpZXZlQ29udGV4dFJlc3BvbnNlEisKCGNvbnRleHRzGAEgAygLMhkuYWx0LmF1Z3VyLnYyLkNvbnRleHRJdGVtIk4KC0NvbnRleHRJdGVtEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkSDQoFc2NvcmUYBCABKAIywQEKDEF1Z3VyU2VydmljZRJRCgpTdHJlYW1DaGF0Eh8uYWx0LmF1Z3VyLnYyLlN0cmVhbUNoYXRSZXF1ZXN0GiAuYWx0LmF1Z3VyLnYyLlN0cmVhbUNoYXRSZXNwb25zZTABEl4KD1JldHJpZXZlQ29udGV4dBIkLmFsdC5hdWd1ci52Mi5SZXRyaWV2ZUNvbnRleHRSZXF1ZXN0GiUuYWx0LmF1Z3VyLnYyLlJldHJpZXZlQ29udGV4dFJlc3BvbnNlQiRaImFsdC9nZW4vcHJvdG8vYWx0L2F1Z3VyL3YyO2F1Z3VydjJiBnByb3RvMw");
+  fileDesc("ChhhbHQvYXVndXIvdjIvYXVndXIucHJvdG8SDGFsdC5hdWd1ci52MiJZChFTdHJlYW1DaGF0UmVxdWVzdBIrCghtZXNzYWdlcxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZRIXCg9jb252ZXJzYXRpb25faWQYAiABKAkihwEKC0NoYXRNZXNzYWdlEgwKBHJvbGUYASABKAkSDwoHY29udGVudBgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIpCgljaXRhdGlvbnMYBCADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24i4AEKElN0cmVhbUNoYXRSZXNwb25zZRIMCgRraW5kGAEgASgJEg8KBWRlbHRhGAIgASgJSAASKQoEbWV0YRgDIAEoCzIZLmFsdC5hdWd1ci52Mi5NZXRhUGF5bG9hZEgAEikKBGRvbmUYBCABKAsyGS5hbHQuYXVndXIudjIuRG9uZVBheWxvYWRIABIXCg1mYWxsYmFja19jb2RlGAUgASgJSAASFwoNZXJyb3JfbWVzc2FnZRgGIAEoCUgAEhgKDnRoaW5raW5nX2RlbHRhGAcgASgJSABCCQoHcGF5bG9hZCJRCgtNZXRhUGF5bG9hZBIpCgljaXRhdGlvbnMYASADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24SFwoPY29udmVyc2F0aW9uX2lkGAIgASgJIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiagoLRG9uZVBheWxvYWQSDgoGYW5zd2VyGAEgASgJEikKCWNpdGF0aW9ucxgCIAMoCzIWLmFsdC5hdWd1ci52Mi5DaXRhdGlvbhIOCgZpbnRlbnQYAyABKAkSEAoIc3RyYXRlZ3kYBCABKAkiNgoWUmV0cmlldmVDb250ZXh0UmVxdWVzdBINCgVxdWVyeRgBIAEoCRINCgVsaW1pdBgCIAEoBSJGChdSZXRyaWV2ZUNvbnRleHRSZXNwb25zZRIrCghjb250ZXh0cxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5Db250ZXh0SXRlbSJOCgtDb250ZXh0SXRlbRILCgN1cmwYASABKAkSDQoFdGl0bGUYAiABKAkSFAoMcHVibGlzaGVkX2F0GAMgASgJEg0KBXNjb3JlGAQgASgCIssBChNDb252ZXJzYXRpb25TdW1tYXJ5EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEi4KCmNyZWF0ZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjQKEGxhc3RfYWN0aXZpdHlfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhwKFGxhc3RfbWVzc2FnZV9wcmV2aWV3GAUgASgJEhUKDW1lc3NhZ2VfY291bnQYBiABKAUiQQoYTGlzdENvbnZlcnNhdGlvbnNSZXF1ZXN0EhEKCXBhZ2Vfc2l6ZRgBIAEoBRISCgpwYWdlX3Rva2VuGAIgASgJIm4KGUxpc3RDb252ZXJzYXRpb25zUmVzcG9uc2USOAoNY29udmVyc2F0aW9ucxgBIAMoCzIhLmFsdC5hdWd1ci52Mi5Db252ZXJzYXRpb25TdW1tYXJ5EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIkChZHZXRDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIpEBChdHZXRDb252ZXJzYXRpb25SZXNwb25zZRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCghtZXNzYWdlcxgEIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZSInChlEZWxldGVDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIhwKGkRlbGV0ZUNvbnZlcnNhdGlvblJlc3BvbnNlMvADCgxBdWd1clNlcnZpY2USUQoKU3RyZWFtQ2hhdBIfLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVxdWVzdBogLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVzcG9uc2UwARJeCg9SZXRyaWV2ZUNvbnRleHQSJC5hbHQuYXVndXIudjIuUmV0cmlldmVDb250ZXh0UmVxdWVzdBolLmFsdC5hdWd1ci52Mi5SZXRyaWV2ZUNvbnRleHRSZXNwb25zZRJkChFMaXN0Q29udmVyc2F0aW9ucxImLmFsdC5hdWd1ci52Mi5MaXN0Q29udmVyc2F0aW9uc1JlcXVlc3QaJy5hbHQuYXVndXIudjIuTGlzdENvbnZlcnNhdGlvbnNSZXNwb25zZRJeCg9HZXRDb252ZXJzYXRpb24SJC5hbHQuYXVndXIudjIuR2V0Q29udmVyc2F0aW9uUmVxdWVzdBolLmFsdC5hdWd1ci52Mi5HZXRDb252ZXJzYXRpb25SZXNwb25zZRJnChJEZWxldGVDb252ZXJzYXRpb24SJy5hbHQuYXVndXIudjIuRGVsZXRlQ29udmVyc2F0aW9uUmVxdWVzdBooLmFsdC5hdWd1ci52Mi5EZWxldGVDb252ZXJzYXRpb25SZXNwb25zZUIkWiJhbHQvZ2VuL3Byb3RvL2FsdC9hdWd1ci92MjthdWd1cnYyYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * StreamChatRequest is the request for streaming chat.
@@ -24,6 +26,14 @@ export type StreamChatRequest = Message<"alt.augur.v2.StreamChatRequest"> & {
    * @generated from field: repeated alt.augur.v2.ChatMessage messages = 1;
    */
   messages: ChatMessage[];
+
+  /**
+   * Optional conversation identifier. Empty means "start a new conversation";
+   * the server will mint an id and return it in the meta event.
+   *
+   * @generated from field: string conversation_id = 2;
+   */
+  conversationId: string;
 };
 
 /**
@@ -52,6 +62,20 @@ export type ChatMessage = Message<"alt.augur.v2.ChatMessage"> & {
    * @generated from field: string content = 2;
    */
   content: string;
+
+  /**
+   * Optional creation timestamp (populated on read paths).
+   *
+   * @generated from field: google.protobuf.Timestamp created_at = 3;
+   */
+  createdAt?: Timestamp;
+
+  /**
+   * Citations attached to assistant messages (empty for user messages).
+   *
+   * @generated from field: repeated alt.augur.v2.Citation citations = 4;
+   */
+  citations: Citation[];
 };
 
 /**
@@ -150,6 +174,14 @@ export type MetaPayload = Message<"alt.augur.v2.MetaPayload"> & {
    * @generated from field: repeated alt.augur.v2.Citation citations = 1;
    */
   citations: Citation[];
+
+  /**
+   * Persisted conversation id (set on the first meta event of a new conversation
+   * and on every turn of an existing one so clients can update URL state).
+   *
+   * @generated from field: string conversation_id = 2;
+   */
+  conversationId: string;
 };
 
 /**
@@ -328,6 +360,180 @@ export const ContextItemSchema: GenMessage<ContextItem> = /*@__PURE__*/
   messageDesc(file_alt_augur_v2_augur, 8);
 
 /**
+ * ConversationSummary is a row in the history index. All mutable fields
+ * (last_activity_at, last_message_preview, message_count) are derived from
+ * augur_messages via the augur_conversation_index view; they are never
+ * stored on augur_conversations.
+ *
+ * @generated from message alt.augur.v2.ConversationSummary
+ */
+export type ConversationSummary = Message<"alt.augur.v2.ConversationSummary"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 3;
+   */
+  createdAt?: Timestamp;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp last_activity_at = 4;
+   */
+  lastActivityAt?: Timestamp;
+
+  /**
+   * @generated from field: string last_message_preview = 5;
+   */
+  lastMessagePreview: string;
+
+  /**
+   * @generated from field: int32 message_count = 6;
+   */
+  messageCount: number;
+};
+
+/**
+ * Describes the message alt.augur.v2.ConversationSummary.
+ * Use `create(ConversationSummarySchema)` to create a new message.
+ */
+export const ConversationSummarySchema: GenMessage<ConversationSummary> = /*@__PURE__*/
+  messageDesc(file_alt_augur_v2_augur, 9);
+
+/**
+ * @generated from message alt.augur.v2.ListConversationsRequest
+ */
+export type ListConversationsRequest = Message<"alt.augur.v2.ListConversationsRequest"> & {
+  /**
+   * Page size (default: 20, max: 100)
+   *
+   * @generated from field: int32 page_size = 1;
+   */
+  pageSize: number;
+
+  /**
+   * Opaque continuation token from a previous response
+   *
+   * @generated from field: string page_token = 2;
+   */
+  pageToken: string;
+};
+
+/**
+ * Describes the message alt.augur.v2.ListConversationsRequest.
+ * Use `create(ListConversationsRequestSchema)` to create a new message.
+ */
+export const ListConversationsRequestSchema: GenMessage<ListConversationsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_augur_v2_augur, 10);
+
+/**
+ * @generated from message alt.augur.v2.ListConversationsResponse
+ */
+export type ListConversationsResponse = Message<"alt.augur.v2.ListConversationsResponse"> & {
+  /**
+   * @generated from field: repeated alt.augur.v2.ConversationSummary conversations = 1;
+   */
+  conversations: ConversationSummary[];
+
+  /**
+   * @generated from field: string next_page_token = 2;
+   */
+  nextPageToken: string;
+};
+
+/**
+ * Describes the message alt.augur.v2.ListConversationsResponse.
+ * Use `create(ListConversationsResponseSchema)` to create a new message.
+ */
+export const ListConversationsResponseSchema: GenMessage<ListConversationsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_augur_v2_augur, 11);
+
+/**
+ * @generated from message alt.augur.v2.GetConversationRequest
+ */
+export type GetConversationRequest = Message<"alt.augur.v2.GetConversationRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message alt.augur.v2.GetConversationRequest.
+ * Use `create(GetConversationRequestSchema)` to create a new message.
+ */
+export const GetConversationRequestSchema: GenMessage<GetConversationRequest> = /*@__PURE__*/
+  messageDesc(file_alt_augur_v2_augur, 12);
+
+/**
+ * @generated from message alt.augur.v2.GetConversationResponse
+ */
+export type GetConversationResponse = Message<"alt.augur.v2.GetConversationResponse"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+
+  /**
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp created_at = 3;
+   */
+  createdAt?: Timestamp;
+
+  /**
+   * @generated from field: repeated alt.augur.v2.ChatMessage messages = 4;
+   */
+  messages: ChatMessage[];
+};
+
+/**
+ * Describes the message alt.augur.v2.GetConversationResponse.
+ * Use `create(GetConversationResponseSchema)` to create a new message.
+ */
+export const GetConversationResponseSchema: GenMessage<GetConversationResponse> = /*@__PURE__*/
+  messageDesc(file_alt_augur_v2_augur, 13);
+
+/**
+ * @generated from message alt.augur.v2.DeleteConversationRequest
+ */
+export type DeleteConversationRequest = Message<"alt.augur.v2.DeleteConversationRequest"> & {
+  /**
+   * @generated from field: string id = 1;
+   */
+  id: string;
+};
+
+/**
+ * Describes the message alt.augur.v2.DeleteConversationRequest.
+ * Use `create(DeleteConversationRequestSchema)` to create a new message.
+ */
+export const DeleteConversationRequestSchema: GenMessage<DeleteConversationRequest> = /*@__PURE__*/
+  messageDesc(file_alt_augur_v2_augur, 14);
+
+/**
+ * @generated from message alt.augur.v2.DeleteConversationResponse
+ */
+export type DeleteConversationResponse = Message<"alt.augur.v2.DeleteConversationResponse"> & {
+};
+
+/**
+ * Describes the message alt.augur.v2.DeleteConversationResponse.
+ * Use `create(DeleteConversationResponseSchema)` to create a new message.
+ */
+export const DeleteConversationResponseSchema: GenMessage<DeleteConversationResponse> = /*@__PURE__*/
+  messageDesc(file_alt_augur_v2_augur, 15);
+
+/**
  * @generated from service alt.augur.v2.AugurService
  */
 export const AugurService: GenService<{
@@ -352,6 +558,36 @@ export const AugurService: GenService<{
     methodKind: "unary";
     input: typeof RetrieveContextRequestSchema;
     output: typeof RetrieveContextResponseSchema;
+  },
+  /**
+   * ListConversations returns the caller's chat history index (most recent first).
+   *
+   * @generated from rpc alt.augur.v2.AugurService.ListConversations
+   */
+  listConversations: {
+    methodKind: "unary";
+    input: typeof ListConversationsRequestSchema;
+    output: typeof ListConversationsResponseSchema;
+  },
+  /**
+   * GetConversation returns every message in a single conversation.
+   *
+   * @generated from rpc alt.augur.v2.AugurService.GetConversation
+   */
+  getConversation: {
+    methodKind: "unary";
+    input: typeof GetConversationRequestSchema;
+    output: typeof GetConversationResponseSchema;
+  },
+  /**
+   * DeleteConversation removes a conversation and its messages.
+   *
+   * @generated from rpc alt.augur.v2.AugurService.DeleteConversation
+   */
+  deleteConversation: {
+    methodKind: "unary";
+    input: typeof DeleteConversationRequestSchema;
+    output: typeof DeleteConversationResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_augur_v2_augur, 0);

@@ -37,8 +37,21 @@ function convertCitations(citations: AugurCitation[]): Citation[] {
 	}));
 }
 
-export function useAugurPane() {
-	let messages = $state<AugurPaneMessage[]>([]);
+export interface UseAugurPaneOptions {
+	/** Pre-populate the pane (e.g. when resuming a persisted conversation). */
+	initialMessages?: AugurPaneMessage[];
+	/** Existing persisted conversation id to append to. */
+	initialConversationId?: string;
+	/**
+	 * Called once the server confirms the persisted conversation id for a new
+	 * chat. Consumers typically use it to update the URL (e.g. /augur/<id>).
+	 */
+	onConversationIdChange?: (conversationId: string) => void;
+}
+
+export function useAugurPane(options: UseAugurPaneOptions = {}) {
+	let messages = $state<AugurPaneMessage[]>(options.initialMessages ?? []);
+	let conversationId = $state<string>(options.initialConversationId ?? "");
 	let isLoading = $state(false);
 	let progressStage = $state("");
 	let statusText = $state("");
@@ -77,6 +90,7 @@ export function useAugurPane() {
 	function reset() {
 		abort();
 		messages = [];
+		conversationId = "";
 	}
 
 	function sendMessage(text: string) {
@@ -131,7 +145,7 @@ export function useAugurPane() {
 		const transport = createClientTransport();
 		currentAbortController = streamAugurChat(
 			transport,
-			{ messages: chatHistory },
+			{ messages: chatHistory, conversationId },
 			// onDelta — provisional preview text
 			(delta) => {
 				bufferedContent += delta;
@@ -189,12 +203,24 @@ export function useAugurPane() {
 					statusText = "Refining answer...";
 				}
 			},
+			// onConversationId — server confirmed the persisted id
+			(id) => {
+				if (!id || id === conversationId) return;
+				const isNewChat = conversationId === "";
+				conversationId = id;
+				if (isNewChat) {
+					options.onConversationIdChange?.(id);
+				}
+			},
 		);
 	}
 
 	return {
 		get messages() {
 			return messages;
+		},
+		get conversationId() {
+			return conversationId;
 		},
 		get isLoading() {
 			return isLoading;

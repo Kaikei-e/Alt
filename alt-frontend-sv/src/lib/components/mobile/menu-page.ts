@@ -8,6 +8,7 @@ import {
 	GalleryHorizontalEnd,
 	Heart,
 	Link,
+	MessagesSquare,
 	Orbit,
 	ScrollText,
 	ShieldCheck,
@@ -55,6 +56,7 @@ export const MENU_SECTIONS: MenuSection[] = [
 		title: "AI & Insights",
 		items: [
 			{ label: "Ask Augur", href: "/augur", icon: Bird },
+			{ label: "Augur History", href: "/augur/history", icon: MessagesSquare },
 			{ label: "Acolyte", href: "/acolyte", icon: ScrollText },
 			{ label: "Statistics", href: "/stats", icon: BarChart3 },
 			{ label: "Job Status", href: "/recap/job-status", icon: Activity },

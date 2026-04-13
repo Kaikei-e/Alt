@@ -22,6 +22,7 @@ import {
 	Lightbulb,
 	Tag,
 	ScrollText,
+	MessagesSquare,
 } from "@lucide/svelte";
 import { page } from "$app/state";
 import { cn } from "$lib/utils";
@@ -123,10 +124,21 @@ const baseMenuItems = [
 		],
 	},
 	{
-		label: "Ask Augur",
-		href: `${svBasePath}/augur`,
+		label: "Augur",
+		category: "augur",
 		icon: BirdIcon,
-		category: "main",
+		children: [
+			{
+				label: "Ask Augur",
+				href: `${svBasePath}/augur`,
+				icon: BirdIcon,
+			},
+			{
+				label: "History",
+				href: `${svBasePath}/augur/history`,
+				icon: MessagesSquare,
+			},
+		],
 	},
 	{
 		label: "Acolyte Reports",

@@ -98,12 +98,18 @@ export {
 	streamAugurChat,
 	streamAugurChatAsync,
 	retrieveAugurContext,
+	listAugurConversations,
+	getAugurConversation,
+	deleteAugurConversation,
 	type AugurCitation,
 	type AugurChatMessage,
 	type AugurStreamOptions,
 	type AugurStreamResult,
 	type AugurContextItem,
 	type RetrieveContextOptions,
+	type AugurConversationSummary,
+	type AugurStoredMessage,
+	type AugurStoredConversation,
 } from "./augur";
 
 // MorningLetterService client (Time-bounded RAG Chat)

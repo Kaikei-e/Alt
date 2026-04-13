@@ -3,9 +3,11 @@ package augur
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 	"unicode"
 
 	augurv2 "alt/gen/proto/alt/augur/v2"
@@ -15,7 +17,14 @@ import (
 	"rag-orchestrator/internal/usecase"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// userIDHeader carries the authenticated caller's UUID across the
+// alt-backend → rag-orchestrator hop. alt-backend validates the JWT and sets
+// this header; rag-orchestrator never accepts unauthenticated traffic.
+const userIDHeader = "X-Alt-User-Id"
 
 // sanitizeUTF8 removes invalid UTF-8 sequences from a string.
 // This is necessary because Ollama LLM may return chunks containing
@@ -27,9 +36,10 @@ func sanitizeUTF8(s string) string {
 
 // Handler implements augurv2connect.AugurServiceHandler
 type Handler struct {
-	answerUsecase   usecase.AnswerWithRAGUsecase
-	retrieveUsecase usecase.RetrieveContextUsecase
-	logger          *slog.Logger
+	answerUsecase       usecase.AnswerWithRAGUsecase
+	retrieveUsecase     usecase.RetrieveContextUsecase
+	conversationUsecase usecase.AugurConversationUsecase
+	logger              *slog.Logger
 }
 
 // Ensure Handler implements the interface
@@ -39,13 +49,41 @@ var _ augurv2connect.AugurServiceHandler = (*Handler)(nil)
 func NewHandler(
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	retrieveUsecase usecase.RetrieveContextUsecase,
+	conversationUsecase usecase.AugurConversationUsecase,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
-		answerUsecase:   answerUsecase,
-		retrieveUsecase: retrieveUsecase,
-		logger:          logger,
+		answerUsecase:       answerUsecase,
+		retrieveUsecase:     retrieveUsecase,
+		conversationUsecase: conversationUsecase,
+		logger:              logger,
 	}
+}
+
+// extractUserID reads the authenticated caller from the X-Alt-User-Id header.
+// Empty or malformed values become a connect.CodeUnauthenticated error: chat
+// persistence requires a stable user id.
+func extractUserID(headers interface{ Get(string) string }) (uuid.UUID, error) {
+	raw := strings.TrimSpace(headers.Get(userIDHeader))
+	if raw == "" {
+		return uuid.Nil, errors.New("missing " + userIDHeader + " header")
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid %s header: %w", userIDHeader, err)
+	}
+	return id, nil
+}
+
+// firstUserMessage returns the first user-role message in the request.
+// Used to derive a conversation title when minting a new conversation.
+func firstUserMessage(msgs []*augurv2.ChatMessage) string {
+	for _, m := range msgs {
+		if m.Role == "user" && strings.TrimSpace(m.Content) != "" {
+			return m.Content
+		}
+	}
+	return ""
 }
 
 // StreamChat implements streaming RAG chat
@@ -54,6 +92,12 @@ func (h *Handler) StreamChat(
 	req *connect.Request[augurv2.StreamChatRequest],
 	stream *connect.ServerStream[augurv2.StreamChatResponse],
 ) error {
+	userID, err := extractUserID(req.Header())
+	if err != nil {
+		h.logger.Warn("augur stream chat rejected", slog.String("error", err.Error()))
+		return connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
 	// Extract last user message as query and build conversation history
 	var query string
 	var conversationHistory []domain.Message
@@ -85,12 +129,40 @@ func (h *Handler) StreamChat(
 		}
 	}
 
+	// Resolve persisted conversation row. Zero UUID = new conversation.
+	var requestedConvID uuid.UUID
+	if raw := strings.TrimSpace(req.Msg.ConversationId); raw != "" {
+		parsed, parseErr := uuid.Parse(raw)
+		if parseErr != nil {
+			return connect.NewError(connect.CodeInvalidArgument, parseErr)
+		}
+		requestedConvID = parsed
+	}
+
+	firstMsg := firstUserMessage(req.Msg.Messages)
+	if firstMsg == "" {
+		firstMsg = query
+	}
+	conv, err := h.conversationUsecase.EnsureConversation(ctx, userID, requestedConvID, firstMsg)
+	if err != nil {
+		h.logger.Error("failed to ensure conversation", slog.String("error", err.Error()))
+		return connect.NewError(connect.CodeInternal, err)
+	}
+
+	// Persist the user's current turn. If this fails we refuse to stream —
+	// we never want the LLM answer to outlive a lost user turn.
+	if err := h.conversationUsecase.AppendUserTurn(ctx, conv.ID, query); err != nil {
+		h.logger.Error("failed to persist user turn", slog.String("error", err.Error()))
+		return connect.NewError(connect.CodeInternal, err)
+	}
+
 	h.logger.Info("starting augur stream chat",
 		slog.String("query", query),
-		slog.Int("history_turns", len(conversationHistory)))
+		slog.Int("history_turns", len(conversationHistory)),
+		slog.String("conversation_id", conv.ID.String()))
 
-	// Derive thread ID for conversation state tracking.
-	// Uses hash of first user message as a deterministic thread identifier.
+	// Derive thread ID for the in-memory ConversationStore (separate from
+	// persisted conversation id — it feeds RAG context continuity, not history).
 	threadID := deriveThreadID(req.Msg.Messages)
 
 	// Build input for AnswerWithRAGUsecase
@@ -105,6 +177,19 @@ func (h *Handler) StreamChat(
 	// Stream answer using AnswerWithRAGUsecase
 	events := h.answerUsecase.Stream(ctx, input)
 
+	// Emit a leading meta event so the client can learn the persisted
+	// conversation id before any content deltas arrive.
+	if err := stream.Send(&augurv2.StreamChatResponse{
+		Kind: "meta",
+		Payload: &augurv2.StreamChatResponse_Meta{
+			Meta: &augurv2.MetaPayload{
+				ConversationId: conv.ID.String(),
+			},
+		},
+	}); err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+
 	// Process stream events and convert to Connect-RPC events
 	for event := range events {
 		select {
@@ -114,12 +199,28 @@ func (h *Handler) StreamChat(
 		default:
 		}
 
-		protoEvent, shouldContinue := h.convertStreamEvent(event)
+		protoEvent, shouldContinue, donePayload := h.convertStreamEvent(event)
 		if protoEvent != nil {
+			// Echo the persisted id on every meta event the usecase emits.
+			if meta := protoEvent.GetMeta(); meta != nil {
+				meta.ConversationId = conv.ID.String()
+			}
 			if err := stream.Send(protoEvent); err != nil {
 				h.logger.Error("failed to send event", slog.String("error", err.Error()))
 				return connect.NewError(connect.CodeInternal, err)
 			}
+		}
+
+		if donePayload != nil {
+			// Persist the completed assistant turn. Use a fresh background
+			// context so a client disconnect right after "done" does not lose
+			// the answer. Keep a short timeout for safety.
+			persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			citations := citationsFromProto(donePayload.Citations)
+			if err := h.conversationUsecase.AppendAssistantTurn(persistCtx, conv.ID, donePayload.Answer, citations); err != nil {
+				h.logger.Error("failed to persist assistant turn", slog.String("error", err.Error()))
+			}
+			cancel()
 		}
 
 		if !shouldContinue {
@@ -131,25 +232,27 @@ func (h *Handler) StreamChat(
 	return nil
 }
 
-// convertStreamEvent converts usecase.StreamEvent to augurv2.StreamChatResponse
-func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.StreamChatResponse, bool) {
+// convertStreamEvent converts usecase.StreamEvent to augurv2.StreamChatResponse.
+// The third return value is the DonePayload when the event is a terminal done
+// event, so the caller can persist the assistant turn.
+func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.StreamChatResponse, bool, *augurv2.DonePayload) {
 	switch event.Kind {
 	case usecase.StreamEventKindDelta:
 		delta, ok := event.Payload.(string)
 		if !ok {
-			return nil, true
+			return nil, true, nil
 		}
 		return &augurv2.StreamChatResponse{
 			Kind: "delta",
 			Payload: &augurv2.StreamChatResponse_Delta{
 				Delta: sanitizeUTF8(delta),
 			},
-		}, true
+		}, true, nil
 
 	case usecase.StreamEventKindMeta:
 		meta, ok := event.Payload.(usecase.StreamMeta)
 		if !ok {
-			return nil, true
+			return nil, true, nil
 		}
 		citations := h.convertContextsToCitations(meta.Contexts)
 		return &augurv2.StreamChatResponse{
@@ -159,27 +262,26 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 					Citations: citations,
 				},
 			},
-		}, true
+		}, true, nil
 
 	case usecase.StreamEventKindDone:
 		output, ok := event.Payload.(*usecase.AnswerWithRAGOutput)
 		if !ok {
-			return nil, false
+			return nil, false, nil
 		}
-		// ADR 000093: Use output.Citations (only citations LLM actually used)
-		// instead of output.Contexts (all search results)
 		citations := h.convertCitationsToProtoCitations(output.Citations)
+		done := &augurv2.DonePayload{
+			Answer:    sanitizeUTF8(output.Answer),
+			Citations: citations,
+			Intent:    output.Debug.IntentType,
+			Strategy:  output.Debug.StrategyUsed,
+		}
 		return &augurv2.StreamChatResponse{
 			Kind: "done",
 			Payload: &augurv2.StreamChatResponse_Done{
-				Done: &augurv2.DonePayload{
-					Answer:    sanitizeUTF8(output.Answer),
-					Citations: citations,
-					Intent:    output.Debug.IntentType,
-					Strategy:  output.Debug.StrategyUsed,
-				},
+				Done: done,
 			},
-		}, false
+		}, false, done
 
 	case usecase.StreamEventKindFallback:
 		reason, _ := event.Payload.(string)
@@ -188,7 +290,7 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 			Payload: &augurv2.StreamChatResponse_FallbackCode{
 				FallbackCode: sanitizeUTF8(reason),
 			},
-		}, false
+		}, false, nil
 
 	case usecase.StreamEventKindError:
 		errMsg, _ := event.Payload.(string)
@@ -197,19 +299,19 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 			Payload: &augurv2.StreamChatResponse_ErrorMessage{
 				ErrorMessage: sanitizeUTF8(errMsg),
 			},
-		}, false
+		}, false, nil
 
 	case usecase.StreamEventKindThinking:
 		thinking, ok := event.Payload.(string)
 		if !ok {
-			return nil, true
+			return nil, true, nil
 		}
 		return &augurv2.StreamChatResponse{
 			Kind: "thinking",
 			Payload: &augurv2.StreamChatResponse_ThinkingDelta{
 				ThinkingDelta: sanitizeUTF8(thinking),
 			},
-		}, true
+		}, true, nil
 
 	case usecase.StreamEventKindHeartbeat:
 		return &augurv2.StreamChatResponse{
@@ -217,42 +319,39 @@ func (h *Handler) convertStreamEvent(event usecase.StreamEvent) (*augurv2.Stream
 			Payload: &augurv2.StreamChatResponse_Delta{
 				Delta: "",
 			},
-		}, true
+		}, true, nil
 
 	case usecase.StreamEventKindClarification:
 		clarification, ok := event.Payload.(usecase.StreamClarification)
 		if !ok {
-			return nil, true
+			return nil, true, nil
 		}
 		return &augurv2.StreamChatResponse{
 			Kind: "clarification",
 			Payload: &augurv2.StreamChatResponse_Delta{
 				Delta: sanitizeUTF8(clarification.Message),
 			},
-		}, false // terminal — planner decided to stop and ask for clarification
+		}, false, nil
 
 	case usecase.StreamEventKindProgress:
 		progress, ok := event.Payload.(string)
 		if !ok {
-			return nil, true
+			return nil, true, nil
 		}
-		// Reuse delta payload as carrier for progress messages (e.g. "searching", "generating").
-		// The kind field distinguishes this from actual content deltas.
 		return &augurv2.StreamChatResponse{
 			Kind: "progress",
 			Payload: &augurv2.StreamChatResponse_Delta{
 				Delta: sanitizeUTF8(progress),
 			},
-		}, true
+		}, true, nil
 
 	default:
 		h.logger.Warn("unknown stream event kind", slog.String("kind", string(event.Kind)))
-		return nil, true
+		return nil, true, nil
 	}
 }
 
 // convertContextsToCitations converts usecase.ContextItem slice to augurv2.Citation slice
-// Used for Meta event (all search results as potential citations)
 func (h *Handler) convertContextsToCitations(contexts []usecase.ContextItem) []*augurv2.Citation {
 	citations := make([]*augurv2.Citation, 0, len(contexts))
 	for _, ctx := range contexts {
@@ -266,7 +365,6 @@ func (h *Handler) convertContextsToCitations(contexts []usecase.ContextItem) []*
 }
 
 // convertCitationsToProtoCitations converts usecase.Citation slice to augurv2.Citation slice
-// Used for Done event to return only the citations that LLM actually used in its response.
 func (h *Handler) convertCitationsToProtoCitations(citations []usecase.Citation) []*augurv2.Citation {
 	result := make([]*augurv2.Citation, 0, len(citations))
 	for _, c := range citations {
@@ -276,6 +374,22 @@ func (h *Handler) convertCitationsToProtoCitations(citations []usecase.Citation)
 		})
 	}
 	return result
+}
+
+// citationsFromProto converts proto citations into domain form for persistence.
+func citationsFromProto(cs []*augurv2.Citation) []domain.AugurCitation {
+	if len(cs) == 0 {
+		return nil
+	}
+	out := make([]domain.AugurCitation, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, domain.AugurCitation{
+			URL:         c.Url,
+			Title:       c.Title,
+			PublishedAt: c.PublishedAt,
+		})
+	}
+	return out
 }
 
 // RetrieveContext retrieves relevant context for a query without generating an answer
@@ -302,7 +416,6 @@ func (h *Handler) RetrieveContext(
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 
-	// Convert to proto ContextItems
 	contexts := make([]*augurv2.ContextItem, 0, len(output.Contexts))
 	for _, c := range output.Contexts {
 		contexts = append(contexts, &augurv2.ContextItem{
@@ -313,7 +426,6 @@ func (h *Handler) RetrieveContext(
 		})
 	}
 
-	// Apply limit if specified
 	limit := int(req.Msg.Limit)
 	if limit > 0 && limit < len(contexts) {
 		contexts = contexts[:limit]
@@ -322,6 +434,149 @@ func (h *Handler) RetrieveContext(
 	return connect.NewResponse(&augurv2.RetrieveContextResponse{
 		Contexts: contexts,
 	}), nil
+}
+
+// ListConversations returns the caller's chat history index (most recent first).
+func (h *Handler) ListConversations(
+	ctx context.Context,
+	req *connect.Request[augurv2.ListConversationsRequest],
+) (*connect.Response[augurv2.ListConversationsResponse], error) {
+	userID, err := extractUserID(req.Header())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+
+	limit := int(req.Msg.PageSize)
+	var afterActivity *time.Time
+	var afterID *uuid.UUID
+	if token := strings.TrimSpace(req.Msg.PageToken); token != "" {
+		ts, id, ok := decodePageToken(token)
+		if !ok {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid page_token"))
+		}
+		afterActivity = &ts
+		afterID = &id
+	}
+
+	summaries, err := h.conversationUsecase.ListConversations(ctx, userID, limit, afterActivity, afterID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	resp := &augurv2.ListConversationsResponse{
+		Conversations: make([]*augurv2.ConversationSummary, 0, len(summaries)),
+	}
+	for _, s := range summaries {
+		resp.Conversations = append(resp.Conversations, &augurv2.ConversationSummary{
+			Id:                 s.ID.String(),
+			Title:              sanitizeUTF8(s.Title),
+			CreatedAt:          timestamppb.New(s.CreatedAt),
+			LastActivityAt:     timestamppb.New(s.LastActivityAt),
+			LastMessagePreview: sanitizeUTF8(s.LastMessagePreview),
+			MessageCount:       int32(s.MessageCount),
+		})
+	}
+	if len(summaries) > 0 && len(summaries) == limit {
+		last := summaries[len(summaries)-1]
+		resp.NextPageToken = encodePageToken(last.LastActivityAt, last.ID)
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// GetConversation returns every message of a single conversation.
+func (h *Handler) GetConversation(
+	ctx context.Context,
+	req *connect.Request[augurv2.GetConversationRequest],
+) (*connect.Response[augurv2.GetConversationResponse], error) {
+	userID, err := extractUserID(req.Header())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	convID, err := uuid.Parse(strings.TrimSpace(req.Msg.Id))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	conv, msgs, err := h.conversationUsecase.GetConversation(ctx, userID, convID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if conv == nil {
+		return nil, connect.NewError(connect.CodeNotFound, nil)
+	}
+
+	resp := &augurv2.GetConversationResponse{
+		Id:        conv.ID.String(),
+		Title:     sanitizeUTF8(conv.Title),
+		CreatedAt: timestamppb.New(conv.CreatedAt),
+		Messages:  make([]*augurv2.ChatMessage, 0, len(msgs)),
+	}
+	for _, m := range msgs {
+		protoCitations := make([]*augurv2.Citation, 0, len(m.Citations))
+		for _, c := range m.Citations {
+			protoCitations = append(protoCitations, &augurv2.Citation{
+				Url:         c.URL,
+				Title:       c.Title,
+				PublishedAt: c.PublishedAt,
+			})
+		}
+		resp.Messages = append(resp.Messages, &augurv2.ChatMessage{
+			Role:      m.Role,
+			Content:   sanitizeUTF8(m.Content),
+			CreatedAt: timestamppb.New(m.CreatedAt),
+			Citations: protoCitations,
+		})
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// DeleteConversation removes a conversation and its messages.
+func (h *Handler) DeleteConversation(
+	ctx context.Context,
+	req *connect.Request[augurv2.DeleteConversationRequest],
+) (*connect.Response[augurv2.DeleteConversationResponse], error) {
+	userID, err := extractUserID(req.Header())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	convID, err := uuid.Parse(strings.TrimSpace(req.Msg.Id))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err := h.conversationUsecase.DeleteConversation(ctx, userID, convID); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&augurv2.DeleteConversationResponse{}), nil
+}
+
+// encodePageToken builds an opaque keyset-pagination token for (last_activity_at, id).
+func encodePageToken(last time.Time, id uuid.UUID) string {
+	return fmt.Sprintf("%d|%s", last.UnixNano(), id.String())
+}
+
+func decodePageToken(token string) (time.Time, uuid.UUID, bool) {
+	parts := strings.SplitN(token, "|", 2)
+	if len(parts) != 2 {
+		return time.Time{}, uuid.Nil, false
+	}
+	ns, err := parseInt64(parts[0])
+	if err != nil {
+		return time.Time{}, uuid.Nil, false
+	}
+	id, err := uuid.Parse(parts[1])
+	if err != nil {
+		return time.Time{}, uuid.Nil, false
+	}
+	return time.Unix(0, ns).UTC(), id, true
+}
+
+func parseInt64(s string) (int64, error) {
+	var n int64
+	_, err := fmt.Sscanf(s, "%d", &n)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 // detectLocale determines the response language based on query content.
@@ -336,14 +591,13 @@ func deriveThreadID(messages []*augurv2.ChatMessage) string {
 			return fmt.Sprintf("thread-%x", hash[:8])
 		}
 	}
-	// No user message found — generate from empty hash
 	hash := sha256.Sum256(nil)
 	return fmt.Sprintf("thread-%x", hash[:8])
 }
 
 func detectLocale(query string) string {
 	if query == "" {
-		return "ja" // Default
+		return "ja"
 	}
 	jaCount := 0
 	total := 0

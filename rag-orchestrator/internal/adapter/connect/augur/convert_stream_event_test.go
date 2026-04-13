@@ -35,7 +35,7 @@ func TestConvertStreamEvent_Progress(t *testing.T) {
 				Payload: tt.payload,
 			}
 
-			protoEvent, shouldContinue := h.convertStreamEvent(event)
+			protoEvent, shouldContinue, _ := h.convertStreamEvent(event)
 
 			require.NotNil(t, protoEvent, "progress event should produce a proto event")
 			assert.True(t, shouldContinue, "progress event should continue the stream")
@@ -56,7 +56,7 @@ func TestConvertStreamEvent_Heartbeat(t *testing.T) {
 		Payload: "",
 	}
 
-	protoEvent, shouldContinue := h.convertStreamEvent(event)
+	protoEvent, shouldContinue, _ := h.convertStreamEvent(event)
 
 	require.NotNil(t, protoEvent, "heartbeat event should produce a proto event")
 	assert.True(t, shouldContinue, "heartbeat event should continue the stream")
@@ -75,7 +75,7 @@ func TestConvertStreamEvent_ProgressInvalidPayload(t *testing.T) {
 		Payload: 123, // Not a string
 	}
 
-	protoEvent, shouldContinue := h.convertStreamEvent(event)
+	protoEvent, shouldContinue, _ := h.convertStreamEvent(event)
 
 	assert.Nil(t, protoEvent, "invalid payload should produce nil event")
 	assert.True(t, shouldContinue, "should continue the stream")

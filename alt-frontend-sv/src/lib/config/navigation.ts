@@ -21,6 +21,7 @@ import {
 	Lightbulb,
 	Tag,
 	ScrollText,
+	MessagesSquare,
 } from "@lucide/svelte";
 import type { IconProps } from "@lucide/svelte";
 import type { Component } from "svelte";
@@ -150,10 +151,21 @@ export const desktopNavigation: Array<
 		],
 	},
 	{
-		label: "Ask Augur",
-		href: `${svBasePath}/augur`,
+		label: "Augur",
+		category: "augur",
 		icon: BirdIcon,
-		category: "main",
+		children: [
+			{
+				label: "Ask Augur",
+				href: `${svBasePath}/augur`,
+				icon: BirdIcon,
+			},
+			{
+				label: "History",
+				href: `${svBasePath}/augur/history`,
+				icon: MessagesSquare,
+			},
+		],
 	},
 	{
 		label: "Acolyte Reports",
@@ -248,6 +260,13 @@ export const mobileMenuItems = [
 		category: "augur",
 		icon: BirdIcon,
 		description: "Chat with your knowledge base",
+	},
+	{
+		label: "Augur History",
+		href: `${svBasePath}/augur/history`,
+		category: "augur",
+		icon: MessagesSquare,
+		description: "Revisit past conversations",
 	},
 	{
 		label: "Acolyte Reports",

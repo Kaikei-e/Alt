@@ -10,13 +10,6 @@ import {
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
 import augurAvatar from "$lib/assets/augur-chat.webp";
 
-interface Props {
-	initialContext?: string;
-	initialQuestion?: string;
-}
-
-const { initialContext = "", initialQuestion = "" }: Props = $props();
-
 type Citation = {
 	URL: string;
 	Title: string;
@@ -32,7 +25,26 @@ type Message = {
 	citations?: Citation[];
 };
 
-let messages = $state<Message[]>([]);
+interface Props {
+	initialContext?: string;
+	initialQuestion?: string;
+	initialMessages?: Message[];
+	initialConversationId?: string;
+	title?: string;
+	onConversationIdChange?: (id: string) => void;
+}
+
+const {
+	initialContext = "",
+	initialQuestion = "",
+	initialMessages = [],
+	initialConversationId = "",
+	title = "",
+	onConversationIdChange,
+}: Props = $props();
+
+let messages = $state<Message[]>(initialMessages);
+let conversationId = $state<string>(initialConversationId);
 
 let isLoading = $state(false);
 let progressStage = $state<string>("");
@@ -157,7 +169,7 @@ async function handleSend(messageText: string) {
 
 		currentAbortController = streamAugurChat(
 			transport,
-			{ messages: chatHistory },
+			{ messages: chatHistory, conversationId },
 			// onDelta: text chunk received
 			(text) => {
 				progressStage = "";
@@ -234,6 +246,15 @@ async function handleSend(messageText: string) {
 			(stage) => {
 				progressStage = stage;
 				statusText = stageStatus(stage);
+			},
+			// onConversationId: server confirms the persisted id
+			(id) => {
+				if (!id || id === conversationId) return;
+				const wasNewChat = conversationId === "";
+				conversationId = id;
+				if (wasNewChat) {
+					onConversationIdChange?.(id);
+				}
 			},
 		);
 	} catch (error) {
@@ -351,8 +372,9 @@ $effect(() => {
 	}
 	.empty-title {
 		font-family: var(--font-display, "Playfair Display", serif);
-		font-size: 1.3rem; font-weight: 600; font-style: italic;
-		color: var(--alt-slate, #666);
+		font-size: 1.3rem; font-weight: 700;
+		letter-spacing: -0.01em;
+		color: var(--alt-charcoal, #1a1a1a);
 		margin: 0;
 	}
 	.empty-rule {

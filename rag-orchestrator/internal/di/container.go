@@ -43,6 +43,7 @@ type ApplicationComponents struct {
 	RetrieveUsecase      usecase.RetrieveContextUsecase
 	AnswerUsecase        usecase.AnswerWithRAGUsecase
 	MorningLetterUsecase usecase.MorningLetterUsecase
+	ConversationUsecase  usecase.AugurConversationUsecase
 
 	// Worker
 	Worker *worker.JobWorker
@@ -64,6 +65,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	chunkRepo := repository.NewRagChunkRepository(pool)
 	docRepo := repository.NewRagDocumentRepository(pool)
 	jobRepo := repository.NewRagJobRepository(pool)
+	augurConvRepo := repository.NewAugurConversationRepository(pool)
 	txManager := repository.NewPostgresTransactionManager(pool)
 
 	// Shared HTTP clients with connection pooling
@@ -277,6 +279,9 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		generator, cfg.RAG.MorningLetterMaxTokens, cfg.RAG.MaxPromptTokens, temporalBoostConfig, log,
 	)
 
+	// Ask Augur chat persistence (append-first rows in rag-db)
+	conversationUsecase := usecase.NewAugurConversationUsecase(augurConvRepo, nil)
+
 	// Morning letter fetcher for chat grounding (recap-worker REST)
 	recapWorkerURL := cfg.Backend.RecapWorkerURL
 	if recapWorkerURL == "" {
@@ -303,6 +308,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		RetrieveUsecase:      retrieveUsecase,
 		AnswerUsecase:        answerUsecase,
 		MorningLetterUsecase: morningLetterUsecase,
+		ConversationUsecase:  conversationUsecase,
 		Worker:               jobWorker,
 		EmbedderFactory:      embedderFactory,
 		IndexUsecaseFactory:  indexUsecaseFactory,

@@ -53,7 +53,7 @@ func TestHandler_RetrieveContext_Success(t *testing.T) {
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	handler := augur.NewHandler(mockAnswer, mockRetrieve, logger)
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, logger)
 
 	ctx := context.Background()
 	req := connect.NewRequest(&augurv2.RetrieveContextRequest{
@@ -94,7 +94,7 @@ func TestHandler_RetrieveContext_EmptyQuery(t *testing.T) {
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	handler := augur.NewHandler(mockAnswer, mockRetrieve, logger)
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, logger)
 
 	ctx := context.Background()
 	req := connect.NewRequest(&augurv2.RetrieveContextRequest{
@@ -113,7 +113,7 @@ func TestHandler_RetrieveContext_WithLimit(t *testing.T) {
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	handler := augur.NewHandler(mockAnswer, mockRetrieve, logger)
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, logger)
 
 	ctx := context.Background()
 	req := connect.NewRequest(&augurv2.RetrieveContextRequest{
@@ -153,7 +153,7 @@ func TestNewHandler(t *testing.T) {
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	handler := augur.NewHandler(mockAnswer, mockRetrieve, logger)
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, logger)
 
 	assert.NotNil(t, handler)
 }
@@ -163,7 +163,7 @@ func TestHandler_RetrieveContext_SanitizesInvalidUTF8(t *testing.T) {
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
 
-	handler := augur.NewHandler(mockAnswer, mockRetrieve, logger)
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, logger)
 
 	// Build strings with invalid UTF-8: truncated 3-byte Japanese char (日 = E6 97 A5, only 2 bytes)
 	invalidTitle := "記事タイトル" + string([]byte{0xe6, 0x97}) + "テスト"

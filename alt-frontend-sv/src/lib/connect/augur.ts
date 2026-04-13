@@ -12,6 +12,8 @@ import {
 	type RetrieveContextResponse,
 	type Citation as ProtoCitation,
 	type ContextItem as ProtoContextItem,
+	type ConversationSummary as ProtoConversationSummary,
+	type ChatMessage as ProtoChatMessage,
 } from "$lib/gen/alt/augur/v2/augur_pb";
 
 /** Type-safe AugurService client */
@@ -44,6 +46,11 @@ export interface AugurChatMessage {
 export interface AugurStreamOptions {
 	/** Chat message history (alternating user/assistant messages) */
 	messages: AugurChatMessage[];
+	/**
+	 * Conversation id to append to. Empty/undefined means a brand-new chat;
+	 * the server will mint an id and echo it back via the first meta event.
+	 */
+	conversationId?: string;
 }
 
 /**
@@ -87,6 +94,7 @@ export function createAugurClient(transport: Transport): AugurClient {
  * @param onFallback - Callback for fallback events (optional)
  * @param onError - Callback for errors (optional)
  * @param onProgress - Callback for progress stage updates e.g. "searching", "generating" (optional)
+ * @param onConversationId - Callback when the server confirms the persisted conversation id (optional)
  * @returns AbortController to cancel the stream
  */
 export function streamAugurChat(
@@ -99,6 +107,7 @@ export function streamAugurChat(
 	onFallback?: (code: string) => void,
 	onError?: (error: Error) => void,
 	onProgress?: (stage: string) => void,
+	onConversationId?: (conversationId: string) => void,
 ): AbortController {
 	const abortController = new AbortController();
 	const client = createAugurClient(transport);
@@ -117,9 +126,12 @@ export function streamAugurChat(
 						role: m.role,
 						content: m.content,
 					})),
+					conversationId: options.conversationId ?? "",
 				},
 				{ signal: abortController.signal },
 			);
+
+			let conversationIdNotified = false;
 
 			for await (const rawEvent of stream) {
 				const event = rawEvent as StreamChatResponse;
@@ -155,17 +167,27 @@ export function streamAugurChat(
 						break;
 
 					case "meta":
-						if (payload.value?.citations) {
-							const citations = payload.value.citations.map(
-								(c: ProtoCitation) => ({
-									url: c.url,
-									title: c.title,
-									publishedAt: c.publishedAt,
-								}),
-							);
-							latestCitations = citations;
-							if (onMeta) {
-								onMeta(citations);
+						if (payload.value) {
+							if (
+								payload.value.conversationId &&
+								!conversationIdNotified &&
+								onConversationId
+							) {
+								conversationIdNotified = true;
+								onConversationId(payload.value.conversationId);
+							}
+							if (payload.value.citations?.length) {
+								const citations = payload.value.citations.map(
+									(c: ProtoCitation) => ({
+										url: c.url,
+										title: c.title,
+										publishedAt: c.publishedAt,
+									}),
+								);
+								latestCitations = citations;
+								if (onMeta) {
+									onMeta(citations);
+								}
 							}
 						}
 						break;
@@ -313,4 +335,105 @@ export async function retrieveAugurContext(
 		publishedAt: c.publishedAt,
 		score: c.score,
 	}));
+}
+
+// =============================================================================
+// Conversation History
+// =============================================================================
+
+/** Row shape returned by ListConversations. Times are JS Date. */
+export interface AugurConversationSummary {
+	id: string;
+	title: string;
+	createdAt: Date | null;
+	lastActivityAt: Date | null;
+	lastMessagePreview: string;
+	messageCount: number;
+}
+
+/** Full message as surfaced by GetConversation. */
+export interface AugurStoredMessage {
+	role: "user" | "assistant";
+	content: string;
+	createdAt: Date | null;
+	citations: AugurCitation[];
+}
+
+/** Full conversation payload from GetConversation. */
+export interface AugurStoredConversation {
+	id: string;
+	title: string;
+	createdAt: Date | null;
+	messages: AugurStoredMessage[];
+}
+
+function protoTimestampToDate(
+	ts: { seconds: bigint; nanos: number } | undefined,
+): Date | null {
+	if (!ts) return null;
+	const ms = Number(ts.seconds) * 1000 + Math.floor(ts.nanos / 1_000_000);
+	return new Date(ms);
+}
+
+/**
+ * List the caller's Ask Augur chat history (most recent first).
+ * pageSize defaults to 20; pass pageToken from the previous response to page.
+ */
+export async function listAugurConversations(
+	transport: Transport,
+	options: { pageSize?: number; pageToken?: string } = {},
+): Promise<{ conversations: AugurConversationSummary[]; nextPageToken: string }> {
+	const client = createAugurClient(transport);
+	const response = await client.listConversations({
+		pageSize: options.pageSize ?? 20,
+		pageToken: options.pageToken ?? "",
+	});
+	return {
+		conversations: response.conversations.map(
+			(c: ProtoConversationSummary) => ({
+				id: c.id,
+				title: c.title,
+				createdAt: protoTimestampToDate(c.createdAt),
+				lastActivityAt: protoTimestampToDate(c.lastActivityAt),
+				lastMessagePreview: c.lastMessagePreview,
+				messageCount: c.messageCount,
+			}),
+		),
+		nextPageToken: response.nextPageToken,
+	};
+}
+
+/** Load a single conversation including every stored turn. */
+export async function getAugurConversation(
+	transport: Transport,
+	id: string,
+): Promise<AugurStoredConversation> {
+	const client = createAugurClient(transport);
+	const response = await client.getConversation({ id });
+	return {
+		id: response.id,
+		title: response.title,
+		createdAt: protoTimestampToDate(response.createdAt),
+		messages: response.messages.map((m: ProtoChatMessage) => ({
+			role: (m.role === "assistant" ? "assistant" : "user") as
+				| "user"
+				| "assistant",
+			content: m.content,
+			createdAt: protoTimestampToDate(m.createdAt),
+			citations: (m.citations ?? []).map((c: ProtoCitation) => ({
+				url: c.url,
+				title: c.title,
+				publishedAt: c.publishedAt,
+			})),
+		})),
+	};
+}
+
+/** Destructive delete — row + cascading messages are removed. */
+export async function deleteAugurConversation(
+	transport: Transport,
+	id: string,
+): Promise<void> {
+	const client = createAugurClient(transport);
+	await client.deleteConversation({ id });
 }

@@ -27,6 +27,7 @@ func SetupConnectHandlers(
 	articleClient domain.ArticleClient,
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	retrieveUsecase usecase.RetrieveContextUsecase,
+	conversationUsecase usecase.AugurConversationUsecase,
 	letterFetcher domain.MorningLetterFetcher,
 	logger *slog.Logger,
 ) {
@@ -45,6 +46,7 @@ func SetupConnectHandlers(
 	augurHandler := augur.NewHandler(
 		answerUsecase,
 		retrieveUsecase,
+		conversationUsecase,
 		logger,
 	)
 	augurPath, augurHTTPHandler := augurv2connect.NewAugurServiceHandler(augurHandler)
@@ -57,6 +59,7 @@ func CreateConnectServer(
 	articleClient domain.ArticleClient,
 	answerUsecase usecase.AnswerWithRAGUsecase,
 	retrieveUsecase usecase.RetrieveContextUsecase,
+	conversationUsecase usecase.AugurConversationUsecase,
 	letterFetcher domain.MorningLetterFetcher,
 	logger *slog.Logger,
 ) http.Handler {
@@ -69,7 +72,7 @@ func CreateConnectServer(
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"connect-rpc"}`))
 	})
 
-	SetupConnectHandlers(mux, articleClient, answerUsecase, retrieveUsecase, letterFetcher, logger)
+	SetupConnectHandlers(mux, articleClient, answerUsecase, retrieveUsecase, conversationUsecase, letterFetcher, logger)
 
 	// Support HTTP/2 without TLS (h2c) for Connect-RPC streaming
 	return h2c.NewHandler(mux, &http2.Server{})
