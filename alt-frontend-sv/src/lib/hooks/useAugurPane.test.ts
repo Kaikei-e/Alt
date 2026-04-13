@@ -47,6 +47,7 @@ describe("useAugurPane", () => {
 				onFallback?: (code: string) => void,
 				onError?: (error: Error) => void,
 				onProgress?: (stage: string) => void,
+				onConversationId?: (id: string) => void,
 			) => {
 				capturedCallbacks = {
 					onDelta,
@@ -57,6 +58,7 @@ describe("useAugurPane", () => {
 					onError,
 					onProgress,
 				};
+				// Store onConversationId separately or add to capturedCallbacks if needed
 				return mockAbortController;
 			},
 		);
@@ -121,6 +123,7 @@ describe("useAugurPane", () => {
 				expect.anything(), // transport
 				{
 					messages: [{ role: "user", content: "What is RSS?" }],
+					conversationId: "",
 				},
 				expect.any(Function), // onDelta
 				expect.any(Function), // onThinking
@@ -129,6 +132,7 @@ describe("useAugurPane", () => {
 				expect.any(Function), // onFallback
 				expect.any(Function), // onError
 				expect.any(Function), // onProgress
+				expect.any(Function), // onConversationId
 			);
 		});
 
@@ -166,12 +170,14 @@ describe("useAugurPane", () => {
 			const secondCall = mockStreamAugurChat.mock.calls[1];
 			const options = secondCall[1] as {
 				messages: Array<{ role: string; content: string }>;
+				conversationId: string;
 			};
 			expect(options.messages).toEqual([
 				{ role: "user", content: "What is RSS?" },
 				{ role: "assistant", content: "RSS is a web feed format." },
 				{ role: "user", content: "Tell me more" },
 			]);
+			expect(options.conversationId).toBe("");
 		});
 	});
 

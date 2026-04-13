@@ -61,6 +61,13 @@ onMount(() => {
 	<AugurChat
 		initialContext={augurEntry.initialDraft}
 		initialQuestion={augurEntry.initialMessage}
+		onConversationIdChange={(id) => {
+			// Reflect the persisted id in the URL without remounting the
+			// component so a reload resumes the same conversation.
+			if (typeof history !== "undefined") {
+				history.replaceState(history.state, "", `/augur/${id}`);
+			}
+		}}
 	/>
 {:else}
 	<div class="augur-mobile-shell">
