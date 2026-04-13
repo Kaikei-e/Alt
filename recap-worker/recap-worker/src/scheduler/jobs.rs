@@ -251,7 +251,23 @@ impl Scheduler {
     pub(crate) async fn find_resumable_job(
         &self,
     ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
-        self.recap_dao.find_resumable_job().await
+        let max_age = self.config.resumable_max_age_hours();
+        self.recap_dao.find_resumable_job(max_age).await
+    }
+
+    /// Boot 時に呼ぶ保守メソッド。前プロセスが落ちて pending / running の
+    /// まま残っている Job 行を全て `failed` に確定する。`keep_job_id` を
+    /// 渡すとその 1 件だけ sweep 対象から外す (resume 候補保護用)。
+    pub(crate) async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64> {
+        let updated = self.recap_dao.mark_abandoned_jobs(keep_job_id).await?;
+        if updated > 0 {
+            tracing::info!(
+                ?keep_job_id,
+                marked_failed = updated,
+                "sealed orphaned recap jobs as failed"
+            );
+        }
+        Ok(updated)
     }
 
     /// 保持期間より古いジョブを削除する。

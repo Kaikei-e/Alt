@@ -77,7 +77,10 @@ pub trait RecapDao: Send + Sync {
 
     async fn find_resumable_job(
         &self,
+        max_age_hours: i64,
     ) -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>, u32)>>;
+
+    async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> anyhow::Result<u64>;
 
     async fn update_job_status(
         &self,
@@ -451,8 +454,13 @@ where
 
     async fn find_resumable_job(
         &self,
+        max_age_hours: i64,
     ) -> anyhow::Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
-        JobDao::find_resumable_job(self).await
+        JobDao::find_resumable_job(self, max_age_hours).await
+    }
+
+    async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> anyhow::Result<u64> {
+        JobDao::mark_abandoned_jobs(self, keep_job_id).await
     }
 
     async fn update_job_status(

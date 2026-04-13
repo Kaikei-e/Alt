@@ -92,21 +92,34 @@ impl RecapDao {
         Ok(exists)
     }
 
-    /// 再開可能なジョブ（failedまたはrunningのまま放置されたジョブ）を探す。
+    /// 再開可能なジョブ (`pending` / `running` のままプロセスが落ちたジョブ) を探す。
     ///
-    /// ここでは簡易的に「最新の非完了ジョブ」を返す実装とします。
+    /// 起動時にだけ呼ばれる前提で、過去にクラッシュした自プロセスの中断 Job
+    /// を 1 件だけ返す。**`failed` は対象外** (一度失敗したものは自動再開せず、
+    /// 必要なら次の自動 batch / 手動再 kick で取り直す)。
+    ///
+    /// `max_age_hours` より古い `kicked_at` は **再開対象から外す**。Recap Job
+    /// が数時間掛かることを許容するため、デフォルトは 12h を想定。これより
+    /// 古いものはデータ窓が動いてしまい再開しても意味が薄い。
     pub async fn find_resumable_job(
         pool: &PgPool,
+        max_age_hours: i64,
     ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
+        // make_interval() の hours 引数は INT。i32 で bind する。
+        // 過去 i32::MAX 時間 (≈ 245k 年) を超える設定は現実的に出ない
+        // ので、ここでは飽和キャストで安全側に倒す。
+        let max_age_hours_i32 = i32::try_from(max_age_hours).unwrap_or(i32::MAX);
         let row = sqlx::query(
             r"
             SELECT job_id, status, last_stage, window_days
             FROM recap_jobs
-            WHERE status IN ('pending', 'running', 'failed')
+            WHERE status IN ('pending', 'running')
+              AND kicked_at > NOW() - make_interval(hours => $1)
             ORDER BY kicked_at DESC
             LIMIT 1
             ",
         )
+        .bind(max_age_hours_i32)
         .fetch_optional(pool)
         .await
         .context("failed to find resumable job")?;
@@ -227,14 +240,70 @@ impl RecapDao {
     ///
     /// # Returns
     /// 削除されたジョブの件数
+    /// 放置された `pending` / `running` ジョブを `failed` に確定させる。
+    /// `kicked_at` が `max_age_hours` より古いものを対象に、status と
+    /// `error_message` を一括更新し、変更件数を返す。
+    ///
+    /// 起動直後と一定間隔で叩くことを想定。これがないと、過去のクラッシュで
+    /// `pending` / `running` のまま残った行が dashboard に居座り続け、
+    /// `find_resumable_job` も同じ行を毎回掴んで失敗を繰り返す原因になる。
+    /// Boot 時の Job 衛生: `pending` / `running` のまま残っている全行を
+    /// `failed` に確定させる。**プロセスが起動し直したということは前プロセス
+    /// は死んでいる** ので、in-flight だった Job は定義上全て orphan。
+    /// `keep_job_id` を指定するとそのジョブだけは sweep 対象から外す
+    /// (resume 候補として残しておくため)。
+    pub async fn mark_abandoned_jobs(
+        pool: &PgPool,
+        keep_job_id: Option<Uuid>,
+    ) -> Result<u64> {
+        let result = match keep_job_id {
+            Some(keep) => {
+                sqlx::query(
+                    r"
+                    UPDATE recap_jobs
+                    SET status = 'failed',
+                        last_stage = COALESCE(last_stage, 'abandoned_at_startup'),
+                        updated_at = NOW()
+                    WHERE status IN ('pending', 'running')
+                      AND job_id <> $1
+                    ",
+                )
+                .bind(keep)
+                .execute(pool)
+                .await
+            }
+            None => {
+                sqlx::query(
+                    r"
+                    UPDATE recap_jobs
+                    SET status = 'failed',
+                        last_stage = COALESCE(last_stage, 'abandoned_at_startup'),
+                        updated_at = NOW()
+                    WHERE status IN ('pending', 'running')
+                    ",
+                )
+                .execute(pool)
+                .await
+            }
+        }
+        .context("failed to mark abandoned recap jobs")?;
+
+        Ok(result.rows_affected())
+    }
+
     pub async fn delete_old_jobs(pool: &PgPool, retention_days: i64) -> Result<u64> {
+        // Bug fix (2026-04-13): make_interval(days => $1) requires INT,
+        // but the original implementation bound $1 as f64, which Postgres
+        // rejects with `function make_interval(days => double precision)
+        // does not exist`. Cast safely to i32 (≈ 5.8M years headroom).
+        let retention_days_i32 = i32::try_from(retention_days).unwrap_or(i32::MAX);
         let result = sqlx::query(
             r"
             DELETE FROM recap_jobs
             WHERE kicked_at < NOW() - make_interval(days => $1)
             ",
         )
-        .bind(retention_days as f64)
+        .bind(retention_days_i32)
         .execute(pool)
         .await
         .context("failed to delete old jobs")?;

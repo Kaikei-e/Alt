@@ -68,8 +68,15 @@ impl RecapDao for MockRecapDao {
         Ok(false)
     }
 
-    async fn find_resumable_job(&self) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
+    async fn find_resumable_job(
+        &self,
+        _max_age_hours: i64,
+    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
         Ok(None)
+    }
+
+    async fn mark_abandoned_jobs(&self, _keep_job_id: Option<Uuid>) -> Result<u64> {
+        Ok(0)
     }
 
     async fn update_job_status(

@@ -29,10 +29,19 @@ pub trait JobDao: Send + Sync {
     /// 指定されたjob_idのジョブが存在するかチェックする
     fn job_exists(&self, job_id: Uuid) -> impl Future<Output = Result<bool>> + Send;
 
-    /// 再開可能なジョブを探す
+    /// 再開可能なジョブを探す。`max_age_hours` より古い `kicked_at` は除外。
     fn find_resumable_job(
         &self,
+        max_age_hours: i64,
     ) -> impl Future<Output = Result<Option<(Uuid, JobStatus, Option<String>, u32)>>> + Send;
+
+    /// `pending` / `running` のまま残っている全ジョブを `failed` に確定する。
+    /// `keep_job_id` を Some にすると、その 1 件だけ sweep 対象から外す
+    /// (resume 候補として保護)。戻り値は更新行数。
+    fn mark_abandoned_jobs(
+        &self,
+        keep_job_id: Option<Uuid>,
+    ) -> impl Future<Output = Result<u64>> + Send;
 
     /// ジョブのステータスと最終ステージを更新する
     fn update_job_status(

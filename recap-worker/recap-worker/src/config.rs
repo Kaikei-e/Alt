@@ -115,6 +115,7 @@ pub struct Config {
     classification_queue_max_retries: i32,
     classification_queue_retry_delay_ms: u64,
     job_retention_days: i64,
+    resumable_max_age_hours: i64,
     classification_eval: ClassificationEvalConfig,
     clustering_genre_timeout: Duration,
     clustering_job_timeout: Duration,
@@ -236,6 +237,10 @@ impl Config {
         let db_pool = load_db_pool_config()?;
         let queue = load_classification_queue_config()?;
         let job_retention_days = parse_i64("RECAP_JOB_RETENTION_DAYS", 14)?;
+        // Recap pipeline can legitimately run for several hours (LLM batches +
+        // classification + embedding). 12h is a generous cap that still
+        // catches multi-day-old zombies.
+        let resumable_max_age_hours = parse_i64("RECAP_RESUMABLE_MAX_AGE_HOURS", 12)?;
         let classification_eval_enabled = parse_bool("RECAP_CLASSIFICATION_EVAL_ENABLED", true)?;
         let classification_eval_use_bootstrap =
             parse_bool("RECAP_CLASSIFICATION_EVAL_USE_BOOTSTRAP", true)?;
@@ -279,6 +284,7 @@ impl Config {
             db_pool,
             queue,
             job_retention_days,
+            resumable_max_age_hours,
             classification_eval,
             clustering_genre_timeout,
             clustering_job_timeout,
@@ -299,6 +305,7 @@ impl Config {
         db_pool: DbPoolConfig,
         queue: QueueConfig,
         job_retention_days: i64,
+        resumable_max_age_hours: i64,
         classification_eval: ClassificationEvalConfig,
         clustering_genre_timeout: Duration,
         clustering_job_timeout: Duration,
@@ -359,6 +366,7 @@ impl Config {
             classification_queue_max_retries: queue.classification_queue_max_retries,
             classification_queue_retry_delay_ms: queue.classification_queue_retry_delay_ms,
             job_retention_days,
+            resumable_max_age_hours,
             classification_eval,
             clustering_genre_timeout,
             clustering_job_timeout,
@@ -627,6 +635,10 @@ impl Config {
     }
 
     #[must_use]
+    pub fn resumable_max_age_hours(&self) -> i64 {
+        self.resumable_max_age_hours
+    }
+
     pub fn job_retention_days(&self) -> i64 {
         self.job_retention_days
     }

@@ -68,8 +68,15 @@ impl JobDao for UnifiedDao {
         crate::store::dao::job::RecapDao::job_exists(&self.pool, job_id).await
     }
 
-    async fn find_resumable_job(&self) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
-        crate::store::dao::job::RecapDao::find_resumable_job(&self.pool).await
+    async fn find_resumable_job(
+        &self,
+        max_age_hours: i64,
+    ) -> Result<Option<(Uuid, JobStatus, Option<String>, u32)>> {
+        crate::store::dao::job::RecapDao::find_resumable_job(&self.pool, max_age_hours).await
+    }
+
+    async fn mark_abandoned_jobs(&self, keep_job_id: Option<Uuid>) -> Result<u64> {
+        crate::store::dao::job::RecapDao::mark_abandoned_jobs(&self.pool, keep_job_id).await
     }
 
     async fn update_job_status(
