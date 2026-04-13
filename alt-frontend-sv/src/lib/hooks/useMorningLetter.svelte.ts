@@ -5,10 +5,13 @@ import {
 	getLatestLetter,
 	getLetterByDate,
 	getLetterSources,
+	getLetterEnrichment,
+	regenerateLatestLetter,
 } from "$lib/connect";
 import type {
 	MorningLetterDocument,
 	MorningLetterSourceProto,
+	MorningLetterBulletEnrichment,
 } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
 
 /** Type guard for ConnectError Unauthenticated (handles both real and mocked instances). */
@@ -33,9 +36,31 @@ export function useMorningLetter(initialLetter?: MorningLetterDocument | null) {
 	const hasInitialData = initialLetter !== undefined;
 	let letter = $state<MorningLetterDocument | null>(initialLetter ?? null);
 	let sources = $state<MorningLetterSourceProto[]>([]);
+	let enrichments = $state<MorningLetterBulletEnrichment[]>([]);
 	let letterLoading = $state(!hasInitialData);
 	let sourcesLoading = $state(false);
+	let enrichmentsLoading = $state(false);
 	let error = $state<Error | null>(null);
+	let enrichedForLetterId: string | null = null;
+	let sourcedForLetterId: string | null = null;
+
+	// When a Letter arrives (via SSR load data or a subsequent fetch),
+	// auto-dispatch the sources + enrichment fan-outs exactly once per
+	// distinct letter.id. Without this, a letter preloaded by +page.ts
+	// would never trigger the enrichment RPC and the launch-pad deck
+	// would silently stay empty.
+	$effect(() => {
+		const id = letter?.id;
+		if (!id) return;
+		if (sourcedForLetterId !== id) {
+			sourcedForLetterId = id;
+			void loadSources(id);
+		}
+		if (enrichedForLetterId !== id) {
+			enrichedForLetterId = id;
+			void loadEnrichments(id);
+		}
+	});
 
 	const loadSources = async (letterId: string): Promise<void> => {
 		sourcesLoading = true;
@@ -51,6 +76,20 @@ export function useMorningLetter(initialLetter?: MorningLetterDocument | null) {
 		}
 	};
 
+	const loadEnrichments = async (letterId: string): Promise<void> => {
+		enrichmentsLoading = true;
+		try {
+			const transport = createClientTransport();
+			const result = await getLetterEnrichment(transport, letterId);
+			enrichments = result ?? [];
+		} catch (err) {
+			console.error("Failed to load letter enrichment:", err);
+			enrichments = [];
+		} finally {
+			enrichmentsLoading = false;
+		}
+	};
+
 	const fetchLetter = async (): Promise<void> => {
 		letterLoading = true;
 		error = null;
@@ -60,8 +99,15 @@ export function useMorningLetter(initialLetter?: MorningLetterDocument | null) {
 			letter = result;
 			letterLoading = false;
 
+			// Dispatch explicitly (keeps non-component test callers working).
+			// The $effect above is a safety net for the initialLetter /
+			// preloaded-via-+page.ts case where no method is ever called.
+			// Its memo guard (*_ForLetterId) prevents double-fetch.
 			if (result?.id) {
+				sourcedForLetterId = result.id;
+				enrichedForLetterId = result.id;
 				void loadSources(result.id);
+				void loadEnrichments(result.id);
 			}
 		} catch (err) {
 			if (isUnauthenticatedError(err)) {
@@ -84,7 +130,10 @@ export function useMorningLetter(initialLetter?: MorningLetterDocument | null) {
 			letterLoading = false;
 
 			if (result?.id) {
+				sourcedForLetterId = result.id;
+				enrichedForLetterId = result.id;
 				void loadSources(result.id);
+				void loadEnrichments(result.id);
 			}
 		} catch (err) {
 			if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
@@ -111,6 +160,40 @@ export function useMorningLetter(initialLetter?: MorningLetterDocument | null) {
 		}
 	};
 
+	let regenerating = $state(false);
+	let regenerateCooldownMsg = $state<string | null>(null);
+
+	const regenerate = async (
+		editionTimezone?: string,
+	): Promise<{ regenerated: boolean; retryAfterSeconds: number }> => {
+		regenerating = true;
+		regenerateCooldownMsg = null;
+		error = null;
+		try {
+			const transport = createClientTransport();
+			const result = await regenerateLatestLetter(transport, editionTimezone);
+			letter = result.letter;
+			if (!result.regenerated && result.retryAfterSeconds > 0) {
+				const minutes = Math.ceil(result.retryAfterSeconds / 60);
+				regenerateCooldownMsg = `Using the cached edition — try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`;
+			}
+			// sources + enrichments are dispatched by the $effect tracking letter.id
+			return {
+				regenerated: result.regenerated,
+				retryAfterSeconds: result.retryAfterSeconds,
+			};
+		} catch (err) {
+			if (isUnauthenticatedError(err)) {
+				goto("/login");
+				return { regenerated: false, retryAfterSeconds: 0 };
+			}
+			error = err instanceof Error ? err : new Error("Unknown error");
+			return { regenerated: false, retryAfterSeconds: 0 };
+		} finally {
+			regenerating = false;
+		}
+	};
+
 	return {
 		get letter() {
 			return letter;
@@ -118,17 +201,30 @@ export function useMorningLetter(initialLetter?: MorningLetterDocument | null) {
 		get sources() {
 			return sources;
 		},
+		get enrichments() {
+			return enrichments;
+		},
 		get letterLoading() {
 			return letterLoading;
 		},
 		get sourcesLoading() {
 			return sourcesLoading;
 		},
+		get enrichmentsLoading() {
+			return enrichmentsLoading;
+		},
 		get error() {
 			return error;
+		},
+		get regenerating() {
+			return regenerating;
+		},
+		get regenerateCooldownMsg() {
+			return regenerateCooldownMsg;
 		},
 		fetchLetter,
 		fetchByDate,
 		retrySources,
+		regenerate,
 	};
 }

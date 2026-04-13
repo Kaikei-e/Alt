@@ -121,6 +121,8 @@ export {
 	getLatestLetter,
 	getLetterByDate,
 	getLetterSources,
+	getLetterEnrichment,
+	regenerateLatestLetter,
 } from "./morning_letter";
 
 // Re-export generated Morning Letter types for consumers

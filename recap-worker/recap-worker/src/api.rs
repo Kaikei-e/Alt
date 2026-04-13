@@ -40,6 +40,10 @@ pub(crate) fn router(state: AppState) -> Router {
             get(fetch::get_latest_morning_letter),
         )
         .route(
+            "/v1/morning/letters/regenerate",
+            post(fetch::regenerate_morning_letter),
+        )
+        .route(
             "/v1/morning/letters/{target_date}",
             get(fetch::get_morning_letter_by_date),
         )

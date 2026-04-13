@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import { useViewport } from "$lib/stores/viewport.svelte";
 import { useMorningLetter } from "$lib/hooks/useMorningLetter.svelte";
@@ -43,6 +44,23 @@ onMount(() => {
 		void ml.fetchLetter();
 	}
 });
+
+async function handleRegenerate() {
+	const result = await ml.regenerate();
+	if (result.regenerated && ml.letter?.targetDate) {
+		await goto(
+			`/recap/morning-letter?date=${encodeURIComponent(ml.letter.targetDate)}`,
+			{ replaceState: true, noScroll: true, invalidateAll: false },
+		);
+	}
+}
+
+function handlePreviousLetterSelected(targetDate: string) {
+	void goto(
+		`/recap/morning-letter?date=${encodeURIComponent(targetDate)}`,
+		{ noScroll: false },
+	);
+}
 </script>
 
 <svelte:head>
@@ -64,12 +82,20 @@ onMount(() => {
 				{#if ml.letterLoading}
 					<MorningLetterSkeleton minHeight="60vh" />
 				{:else if !ml.letter}
-					<MorningLetterEmpty requestedDate={page.data.requestedDate} />
+					<MorningLetterEmpty
+						requestedDate={page.data.requestedDate}
+						onRegenerate={handleRegenerate}
+						regenerating={ml.regenerating}
+						regenerateDisabledReason={ml.regenerateCooldownMsg}
+					/>
 				{:else}
 					<MorningLetterDocumentCore
 						letter={ml.letter}
 						sources={ml.sources}
 						sourcesLoading={ml.sourcesLoading}
+						enrichments={ml.enrichments}
+						enrichmentsLoading={ml.enrichmentsLoading}
+						onPreviousLetterSelected={handlePreviousLetterSelected}
 					/>
 				{/if}
 			</div>
@@ -93,12 +119,20 @@ onMount(() => {
 				{#if ml.letterLoading}
 					<MorningLetterSkeleton minHeight="40vh" />
 				{:else if !ml.letter}
-					<MorningLetterEmpty requestedDate={page.data.requestedDate} />
+					<MorningLetterEmpty
+						requestedDate={page.data.requestedDate}
+						onRegenerate={handleRegenerate}
+						regenerating={ml.regenerating}
+						regenerateDisabledReason={ml.regenerateCooldownMsg}
+					/>
 				{:else}
 					<MorningLetterDocumentCore
 						letter={ml.letter}
 						sources={ml.sources}
 						sourcesLoading={ml.sourcesLoading}
+						enrichments={ml.enrichments}
+						enrichmentsLoading={ml.enrichmentsLoading}
+						onPreviousLetterSelected={handlePreviousLetterSelected}
 					/>
 				{/if}
 			</div>

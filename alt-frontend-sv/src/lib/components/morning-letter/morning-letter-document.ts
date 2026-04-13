@@ -40,6 +40,21 @@ const SECTION_DISPLAY_TITLES: Record<string, string> = {
 	what_changed: "What Changed",
 };
 
+/**
+ * Titles the LLM frequently emits that are too generic to display —
+ * we shadow them with a better derived title (mapped / genre / theme).
+ */
+const GENERIC_TITLE_BLOCKLIST = new Set(
+	[
+		"Need to Know",
+		"Today's Headlines",
+		"Top Stories",
+		"What Changed",
+		"Overview",
+		"Summary",
+	].map((t) => t.toLowerCase()),
+);
+
 export function orderSections<T extends Section>(sections: T[]): T[] {
 	return [...sections].sort((a, b) => {
 		const orderA = SECTION_ORDER[a.key] ?? 100;
@@ -66,19 +81,33 @@ export function formatLetterDate(
 export function getSectionDisplayTitle(
 	section: Pick<Section, "key" | "title">,
 ): string {
-	if (section.title) return section.title;
+	const mapped = SECTION_DISPLAY_TITLES[section.key];
 
-	if (SECTION_DISPLAY_TITLES[section.key]) {
-		return SECTION_DISPLAY_TITLES[section.key];
-	}
-
-	// by_genre:<genre> → capitalize genre
+	// by_genre:<genre> and by_theme:<slug> → derive from key.
+	let derived = "";
 	if (section.key.startsWith("by_genre:")) {
 		const genre = section.key.slice("by_genre:".length);
-		return genre.charAt(0).toUpperCase() + genre.slice(1);
+		derived = genre.charAt(0).toUpperCase() + genre.slice(1);
+	} else if (section.key.startsWith("by_theme:")) {
+		const theme = section.key.slice("by_theme:".length);
+		derived = theme
+			.split(/[-_\s]+/)
+			.filter(Boolean)
+			.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+			.join(" ");
 	}
 
-	return section.key;
+	// The LLM often writes generic titles like "Need to Know" across every
+	// section. When we have a better derived/mapped title, prefer it.
+	const trimmedTitle = section.title?.trim() ?? "";
+	const titleIsGeneric =
+		trimmedTitle === "" ||
+		GENERIC_TITLE_BLOCKLIST.has(trimmedTitle.toLowerCase());
+
+	if (titleIsGeneric) {
+		return mapped || derived || section.key;
+	}
+	return trimmedTitle;
 }
 
 export function getSourcesForSection(

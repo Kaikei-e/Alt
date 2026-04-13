@@ -302,6 +302,53 @@ export async function getLetterByDate(
 }
 
 /**
+ * Trigger on-demand regeneration of the caller's Morning Letter.
+ * Rate-limited server-side to one request per hour per user; the returned
+ * `regenerated` flag is false when the call served a cached letter instead
+ * of invoking the projector.
+ */
+export async function regenerateLatestLetter(
+	transport: Transport,
+	editionTimezone?: string,
+): Promise<{
+	letter: MorningLetterDocument | null;
+	regenerated: boolean;
+	retryAfterSeconds: number;
+}> {
+	const client = createClient(MorningLetterReadService, transport);
+	const res = await client.regenerateLatest({
+		editionTimezone: editionTimezone ?? undefined,
+	});
+	return {
+		letter: res.letter ?? null,
+		regenerated: res.regenerated,
+		retryAfterSeconds: res.retryAfterSeconds,
+	};
+}
+
+/**
+ * Fetch per-bullet enrichment for a letter: article alt-href, original URL,
+ * feed title, tags, related articles, Acolyte seed link, summary excerpt.
+ * Capped server-side; absence means "no richer info available yet", not an
+ * error. Returns [] on NotFound so the UI can degrade gracefully.
+ */
+export async function getLetterEnrichment(
+	transport: Transport,
+	letterId: string,
+) {
+	const client = createClient(MorningLetterReadService, transport);
+	try {
+		const res = await client.getLetterEnrichment({ letterId });
+		return res.enrichments;
+	} catch (err) {
+		if (err instanceof ConnectError && err.code === Code.NotFound) {
+			return [];
+		}
+		throw err;
+	}
+}
+
+/**
  * Get article provenance sources for a letter.
  * Returns null if letter not found (NotFound).
  * Rethrows Unauthenticated and other errors.

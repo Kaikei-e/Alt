@@ -7,12 +7,19 @@ vi.mock("$app/navigation", () => ({
 const mockGetLatestLetter = vi.fn();
 const mockGetLetterByDate = vi.fn();
 const mockGetLetterSources = vi.fn();
+const mockRegenerateLatestLetter = vi.fn();
+
+const mockGetLetterEnrichment = vi.fn().mockResolvedValue([]);
 
 vi.mock("$lib/connect", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	getLatestLetter: (...args: unknown[]) => mockGetLatestLetter(...args),
 	getLetterByDate: (...args: unknown[]) => mockGetLetterByDate(...args),
 	getLetterSources: (...args: unknown[]) => mockGetLetterSources(...args),
+	getLetterEnrichment: (...args: unknown[]) =>
+		mockGetLetterEnrichment(...args),
+	regenerateLatestLetter: (...args: unknown[]) =>
+		mockRegenerateLatestLetter(...args),
 }));
 
 import { goto } from "$app/navigation";
@@ -175,6 +182,31 @@ describe("useMorningLetter", () => {
 		expect(ml.sources).toEqual(fakeSources);
 		expect(mockGetLatestLetter).toHaveBeenCalledTimes(1); // not re-fetched
 		expect(mockGetLetterSources).toHaveBeenCalledTimes(2);
+	});
+
+	it("regenerate() sets letter and surfaces cooldown when rate-limited", async () => {
+		const fakeLetter = { id: "fresh", targetDate: "2026-04-13" };
+
+		mockRegenerateLatestLetter.mockResolvedValueOnce({
+			letter: fakeLetter,
+			regenerated: true,
+			retryAfterSeconds: 0,
+		});
+
+		const ml = useMorningLetter(null);
+		const first = await ml.regenerate();
+		expect(first.regenerated).toBe(true);
+		expect(ml.letter).toEqual(fakeLetter);
+		expect(ml.regenerateCooldownMsg).toBeNull();
+
+		mockRegenerateLatestLetter.mockResolvedValueOnce({
+			letter: fakeLetter,
+			regenerated: false,
+			retryAfterSeconds: 600,
+		});
+		const second = await ml.regenerate();
+		expect(second.regenerated).toBe(false);
+		expect(ml.regenerateCooldownMsg).toMatch(/10 minutes/);
 	});
 
 	it("redirects to /login on Unauthenticated error", async () => {

@@ -96,6 +96,44 @@ describe("getSectionDisplayTitle", () => {
 
 		expect(getSectionDisplayTitle(section)).toBe("unknown_key");
 	});
+
+	it("shadows generic LLM titles (Need to Know) with mapped title", () => {
+		const section = { key: "top3", title: "Need to Know", bullets: [] };
+
+		expect(getSectionDisplayTitle(section)).toBe("Top Stories");
+	});
+
+	it("shadows 'Today's Headlines' with genre-derived title", () => {
+		const section = {
+			key: "by_genre:ai",
+			title: "Today's Headlines",
+			bullets: [],
+		};
+
+		expect(getSectionDisplayTitle(section)).toBe("Ai");
+	});
+
+	it("derives title from by_theme:slug keys with hyphen/underscore splitting", () => {
+		const section = {
+			key: "by_theme:data-pipelines-etl",
+			title: "",
+			bullets: [],
+		};
+
+		expect(getSectionDisplayTitle(section)).toBe("Data Pipelines Etl");
+	});
+
+	it("keeps a non-generic LLM title when no mapping exists", () => {
+		const section = {
+			key: "by_theme:ai_regulation",
+			title: "AI regulation debate heats up",
+			bullets: [],
+		};
+
+		expect(getSectionDisplayTitle(section)).toBe(
+			"AI regulation debate heats up",
+		);
+	});
 });
 
 describe("getSourcesForSection", () => {

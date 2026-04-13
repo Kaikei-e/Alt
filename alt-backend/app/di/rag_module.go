@@ -55,9 +55,18 @@ func newRAGModule(infra *InfraModule, feed *FeedModule) *RAGModule {
 	morningGw := morning_gateway.NewMorningGateway(infra.Pool)
 	morningUC := morning_usecase.NewMorningUsecase(morningGw, userFeedGw)
 
-	// Morning Letter v2 read usecase
+	// Morning Letter v2 read usecase + v3 enrichment ports.
+	// ArticleRepository is embedded on AltDBRepository so FetchArticlesByIDs
+	// is method-promoted; same for the newly added FetchFeedTitlesByIDs.
+	// SearchIndexerDriver provides the related-articles fan-out.
 	morningLetterGw := morning_gateway.NewMorningLetterGateway(infra.Pool)
-	morningLetterUC := morning_usecase.NewMorningLetterUsecase(morningLetterGw, userFeedGw)
+	morningLetterUC := morning_usecase.NewMorningLetterUsecaseWithEnrichment(
+		morningLetterGw,
+		userFeedGw,
+		infra.AltDBRepository,
+		infra.AltDBRepository,
+		infra.SearchIndexerDriver,
+	)
 
 	return &RAGModule{
 		RagAdapter:             ragAdapter,

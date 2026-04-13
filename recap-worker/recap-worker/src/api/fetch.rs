@@ -959,6 +959,66 @@ pub(crate) async fn get_morning_letter_by_date(
     }
 }
 
+#[derive(Debug, serde::Deserialize, Default)]
+pub(crate) struct RegenerateLatestRequest {
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub edition_timezone: Option<String>,
+}
+
+/// POST /v1/morning/letters/regenerate
+/// On-demand regeneration. Runs the morning pipeline synchronously and
+/// returns the freshly persisted letter.
+pub(crate) async fn regenerate_morning_letter(
+    State(state): State<AppState>,
+    Json(_req): Json<RegenerateLatestRequest>,
+) -> impl IntoResponse {
+    use crate::scheduler::JobContext;
+
+    let job_id = uuid::Uuid::new_v4();
+    let context = JobContext::new_with_window(job_id, vec![], 1);
+
+    if let Err(e) = state
+        .scheduler()
+        .run_morning_update(context)
+        .await
+    {
+        error!(job_id = %job_id, "morning regenerate pipeline failed: {}", e);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Morning Letter regeneration failed".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
+    let dao = state.dao();
+    match dao.get_latest_morning_letter().await {
+        Ok(Some(letter)) => match map_morning_letter_response(&letter) {
+            Ok((headers, json)) => (StatusCode::OK, headers, json).into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
+        Ok(None) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "Regeneration completed but no letter persisted".to_string(),
+            }),
+        )
+            .into_response(),
+        Err(e) => {
+            error!("Failed to fetch regenerated letter: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch regenerated letter".to_string(),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
 /// GET /v1/morning/letters/{letter_id}/sources
 /// Morning Letter のソース (provenance) を返す。
 pub(crate) async fn get_morning_letter_sources(

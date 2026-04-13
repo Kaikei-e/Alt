@@ -147,6 +147,84 @@ func (h *Handler) GetLetterByDate(
 	}), nil
 }
 
+func (h *Handler) GetLetterEnrichment(
+	ctx context.Context,
+	req *connect.Request[morningletterv2.GetLetterEnrichmentRequest],
+) (*connect.Response[morningletterv2.GetLetterEnrichmentResponse], error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	if req.Msg.LetterId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
+	}
+
+	enrichments, err := h.morningLetterUC.GetLetterEnrichment(
+		ctx, req.Msg.LetterId, user.UserID.String(),
+	)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "GetLetterEnrichment")
+	}
+
+	out := make([]*morningletterv2.MorningLetterBulletEnrichment, len(enrichments))
+	for i, e := range enrichments {
+		related := make([]*morningletterv2.RelatedArticleTeaser, len(e.RelatedArticles))
+		for j, r := range e.RelatedArticles {
+			related[j] = &morningletterv2.RelatedArticleTeaser{
+				ArticleId:      r.ArticleID,
+				Title:          r.Title,
+				ArticleAltHref: r.ArticleAltHref,
+				FeedTitle:      r.FeedTitle,
+			}
+		}
+		out[i] = &morningletterv2.MorningLetterBulletEnrichment{
+			SectionKey:      e.SectionKey,
+			ArticleId:       e.ArticleID,
+			ArticleTitle:    e.ArticleTitle,
+			ArticleUrl:      e.ArticleURL,
+			ArticleAltHref:  e.ArticleAltHref,
+			FeedTitle:       e.FeedTitle,
+			Tags:            e.Tags,
+			RelatedArticles: related,
+			SummaryExcerpt:  e.SummaryExcerpt,
+			AcolyteHref:     e.AcolyteHref,
+		}
+	}
+	return connect.NewResponse(&morningletterv2.GetLetterEnrichmentResponse{
+		Enrichments: out,
+	}), nil
+}
+
+func (h *Handler) RegenerateLatest(
+	ctx context.Context,
+	req *connect.Request[morningletterv2.RegenerateLatestRequest],
+) (*connect.Response[morningletterv2.RegenerateLatestResponse], error) {
+	user, err := domain.GetUserFromContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	tz := ""
+	if req.Msg.EditionTimezone != nil {
+		tz = *req.Msg.EditionTimezone
+	}
+
+	doc, regenerated, retryAfter, err := h.morningLetterUC.RegenerateLatest(ctx, user.UserID.String(), tz)
+	if err != nil {
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RegenerateLatest")
+	}
+	if doc == nil {
+		return nil, connect.NewError(connect.CodeNotFound, nil)
+	}
+
+	return connect.NewResponse(&morningletterv2.RegenerateLatestResponse{
+		Letter:            domainToProto(doc),
+		Regenerated:       regenerated,
+		RetryAfterSeconds: int32(retryAfter.Seconds()),
+	}), nil
+}
+
 func (h *Handler) GetLetterSources(
 	ctx context.Context,
 	req *connect.Request[morningletterv2.GetLetterSourcesRequest],
@@ -192,11 +270,35 @@ func domainToProto(doc *domain.MorningLetterDocument) *morningletterv2.MorningLe
 			g := s.Genre
 			genre = &g
 		}
+		var narrative *string
+		if s.Narrative != "" {
+			n := s.Narrative
+			narrative = &n
+		}
+		whys := make([]*morningletterv2.WhyReason, len(s.WhyReasons))
+		for j, w := range s.WhyReasons {
+			var refID, tag *string
+			if w.RefID != "" {
+				r := w.RefID
+				refID = &r
+			}
+			if w.Tag != "" {
+				t := w.Tag
+				tag = &t
+			}
+			whys[j] = &morningletterv2.WhyReason{
+				Code:  w.Code,
+				RefId: refID,
+				Tag:   tag,
+			}
+		}
 		sections[i] = &morningletterv2.MorningLetterSection{
-			Key:     s.Key,
-			Title:   s.Title,
-			Bullets: s.Bullets,
-			Genre:   genre,
+			Key:        s.Key,
+			Title:      s.Title,
+			Bullets:    s.Bullets,
+			Genre:      genre,
+			Narrative:  narrative,
+			WhyReasons: whys,
 		}
 	}
 
@@ -204,6 +306,21 @@ func domainToProto(doc *domain.MorningLetterDocument) *morningletterv2.MorningLe
 	if doc.Body.SourceRecapWindowDays != nil {
 		d := int32(*doc.Body.SourceRecapWindowDays)
 		windowDays = &d
+	}
+
+	var throughLine *string
+	if doc.Body.ThroughLine != "" {
+		tl := doc.Body.ThroughLine
+		throughLine = &tl
+	}
+
+	var prev *morningletterv2.PreviousLetterRef
+	if p := doc.Body.PreviousLetterRef; p != nil {
+		prev = &morningletterv2.PreviousLetterRef{
+			Id:          p.ID,
+			TargetDate:  p.TargetDate,
+			ThroughLine: p.ThroughLine,
+		}
 	}
 
 	return &morningletterv2.MorningLetterDocument{
@@ -221,6 +338,8 @@ func domainToProto(doc *domain.MorningLetterDocument) *morningletterv2.MorningLe
 			Sections:              sections,
 			GeneratedAt:           timestamppb.New(doc.Body.GeneratedAt),
 			SourceRecapWindowDays: windowDays,
+			ThroughLine:           throughLine,
+			PreviousLetterRef:     prev,
 		},
 	}
 }

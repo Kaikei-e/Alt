@@ -8,6 +8,8 @@ import type {
 	MorningLetterSection,
 	MorningLetterSourceProto,
 } from "$lib/gen/alt/morning_letter/v2/morning_letter_pb";
+import WhySurfacedBadge from "$lib/components/knowledge-home/WhySurfacedBadge.svelte";
+import type { WhyReasonData } from "$lib/connect/knowledge_home";
 
 type Props = {
 	section: MorningLetterSection;
@@ -19,6 +21,17 @@ let { section, sources, sourcesLoading }: Props = $props();
 
 const title = $derived(getSectionDisplayTitle(section));
 const sectionSources = $derived(getSourcesForSection(sources, section.key));
+const narrative = $derived(section.narrative ?? "");
+// why_reasons are considered valid only when 1:1 with bullets.
+const whyByBullet = $derived<WhyReasonData[] | null>(
+	section.whyReasons && section.whyReasons.length === section.bullets.length
+		? section.whyReasons.map((w) => ({
+			code: w.code,
+			refId: w.refId ?? undefined,
+			tag: w.tag ?? undefined,
+		}))
+		: null,
+);
 </script>
 
 <section class="letter-section">
@@ -26,10 +39,21 @@ const sectionSources = $derived(getSourcesForSection(sources, section.key));
 
 	<h2 class="section-heading">{title}</h2>
 
+	{#if narrative}
+		<p class="section-narrative" data-role="section-narrative">{narrative}</p>
+	{/if}
+
 	<ul class="section-bullets">
-		{#each section.bullets as bullet}
+		{#each section.bullets as bullet, bulletIdx}
 			<li class="section-bullet">
-				{@html parseMarkdown(bullet)}
+				<div class="section-bullet-text">
+					{@html parseMarkdown(bullet)}
+				</div>
+				{#if whyByBullet}
+					<div class="section-bullet-why">
+						<WhySurfacedBadge reason={whyByBullet[bulletIdx]} />
+					</div>
+				{/if}
 			</li>
 		{/each}
 	</ul>
@@ -90,6 +114,28 @@ const sectionSources = $derived(getSourcesForSection(sources, section.key));
 		color: var(--alt-charcoal, #1a1a1a);
 		padding-left: 0.75rem;
 		border-left: 1px solid var(--surface-border, #c8c8c8);
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.section-bullet-text {
+		display: block;
+	}
+
+	.section-bullet-why {
+		display: inline-flex;
+	}
+
+	.section-narrative {
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.85rem;
+		line-height: 1.65;
+		color: var(--alt-slate, #555);
+		font-style: italic;
+		margin: 0 0 0.75rem;
+		border-left: 2px solid var(--alt-ink, #1a1a1a);
+		padding-left: 0.75rem;
 	}
 
 	.section-bullet :global(strong) {
