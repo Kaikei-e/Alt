@@ -10,7 +10,7 @@ import {
 	formatSubStageProgress,
 	inferStageCompletion,
 } from "$lib/utils/pipelineProgress";
-import { Check, Circle, Loader2 } from "@lucide/svelte";
+import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
 
 interface Props {
 	currentStage: string | null;
@@ -38,56 +38,73 @@ function getStageStatus(
 		stageIndex,
 	);
 }
+
+const NUMBERS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"] as const;
 </script>
 
-<div class="w-full overflow-x-auto">
-	<div class="flex items-center gap-1 min-w-max py-2">
-		{#each PIPELINE_STAGES as stage, index}
-			{@const status = getStageStatus(stage, index)}
-			<div class="flex items-center">
-				<!-- Stage indicator -->
-				<div class="flex flex-col items-center gap-1">
-					<div
-						class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all
-							{status === 'completed'
-							? 'bg-green-100 text-green-700 border-2 border-green-500'
-							: status === 'running'
-								? 'bg-blue-100 text-blue-700 border-2 border-blue-500'
-								: 'bg-gray-100 text-gray-500 border-2 border-gray-300'}"
-					>
-						{#if status === "completed"}
-							<Check class="w-4 h-4" />
-						{:else if status === "running"}
-							<Loader2 class="w-4 h-4 animate-spin" />
-						{:else}
-							<Circle class="w-4 h-4" />
-						{/if}
-					</div>
-					<span
-						class="text-xs font-medium
-							{status === 'completed'
-							? 'text-green-700'
-							: status === 'running'
-								? 'text-blue-700'
-								: 'text-gray-500'}"
-					>
-						{getStageLabel(stage)}
-						{#if shouldShowSubStageProgress(stage, status, subStageProgress)}
-							<span class="text-blue-600 ml-0.5">
-								({formatSubStageProgress(subStageProgress!)})
-							</span>
-						{/if}
-					</span>
-				</div>
+<ol class="pipeline" data-role="pipeline-progress">
+	{#each PIPELINE_STAGES as stage, index}
+		{@const status = getStageStatus(stage, index)}
+		<li class="step" data-stage-status={status}>
+			<span class="step-number" aria-hidden="true">{NUMBERS[index]}</span>
+			<span class="step-label">{getStageLabel(stage)}</span>
+			<StatusGlyph {status} pulse={status === "running"} />
+			{#if shouldShowSubStageProgress(stage, status, subStageProgress)}
+				<span class="substage">{formatSubStageProgress(subStageProgress!)}</span>
+			{/if}
+		</li>
+	{/each}
+</ol>
 
-				<!-- Connector line -->
-				{#if index < PIPELINE_STAGES.length - 1}
-					<div
-						class="w-6 h-0.5 mx-1
-							{status === 'completed' ? 'bg-green-500' : 'bg-gray-300'}"
-					></div>
-				{/if}
-			</div>
-		{/each}
-	</div>
-</div>
+<style>
+	.pipeline {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.4rem 1rem;
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.step {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.35rem;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--alt-ash);
+	}
+
+	.step[data-stage-status="completed"] {
+		color: var(--alt-charcoal);
+	}
+
+	.step[data-stage-status="running"] {
+		color: var(--alt-charcoal);
+		font-weight: 600;
+	}
+
+	.step[data-stage-status="pending"] {
+		color: var(--alt-ash);
+	}
+
+	.step-number {
+		font-family: var(--font-display);
+		font-size: 0.85rem;
+		color: inherit;
+	}
+
+	.step-label {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		letter-spacing: 0.02em;
+	}
+
+	.substage {
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		color: var(--alt-slate);
+		font-style: italic;
+	}
+</style>

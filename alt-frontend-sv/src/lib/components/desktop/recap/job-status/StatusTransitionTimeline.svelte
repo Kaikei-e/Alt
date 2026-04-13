@@ -1,5 +1,6 @@
 <script lang="ts">
-import type { JobStatus, StatusTransition } from "$lib/schema/dashboard";
+import type { StatusTransition } from "$lib/schema/dashboard";
+import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
 
 interface Props {
 	transitions: StatusTransition[];
@@ -14,67 +15,101 @@ function formatTime(isoString: string): string {
 		second: "2-digit",
 	});
 }
-
-const statusColors: Record<JobStatus, { text: string; bg: string }> = {
-	completed: { text: "text-green-600", bg: "bg-green-500" },
-	failed: { text: "text-red-600", bg: "bg-red-500" },
-	running: { text: "text-blue-600", bg: "bg-blue-500" },
-	pending: { text: "text-gray-500", bg: "bg-gray-400" },
-};
 </script>
 
-<div class="py-2">
+<div class="timeline" data-role="status-timeline">
 	{#if transitions.length === 0}
-		<p class="text-sm" style="color: var(--text-muted);">No status history available.</p>
+		<p class="empty">No status history.</p>
 	{:else}
-		<div class="relative pl-4">
-			<!-- Timeline line -->
-			<div
-				class="absolute left-1.5 top-2 bottom-2 w-0.5 bg-gray-200"
-			></div>
-
-			{#each transitions as transition, index}
-				{@const colors = statusColors[transition.status] ?? statusColors.pending}
-				{@const isLast = index === transitions.length - 1}
-				<div class="relative flex items-start gap-3 pb-3 {isLast ? 'pb-0' : ''}">
-					<!-- Timeline dot -->
-					<div
-						class="absolute -left-2.5 mt-1 w-3 h-3 rounded-full border-2 border-white {colors.bg}"
-					></div>
-
-					<!-- Content -->
-					<div class="flex-1 min-w-0">
-						<div class="flex items-center gap-2 flex-wrap">
-							<span
-								class="text-xs font-mono"
-								style="color: var(--text-muted);"
-							>
-								{formatTime(transition.transitioned_at)}
-							</span>
-							<span class="text-sm font-medium {colors.text}">
-								{transition.status}
-							</span>
-							{#if transition.stage}
-								<span
-									class="text-xs px-1.5 py-0.5 rounded bg-gray-100"
-									style="color: var(--text-muted);"
-								>
-									@ {transition.stage}
-								</span>
-							{/if}
-						</div>
-						{#if transition.reason}
-							<p
-								class="mt-1 text-xs truncate max-w-md"
-								style="color: var(--text-muted);"
-								title={transition.reason}
-							>
-								{transition.reason}
-							</p>
-						{/if}
-					</div>
-				</div>
+		<ol class="entries">
+			{#each transitions as transition}
+				<li class="entry" data-status={transition.status}>
+					<span class="time tabular-nums">{formatTime(transition.transitioned_at)}</span>
+					<span class="rule" aria-hidden="true"></span>
+					<span class="status-cell">
+						<StatusGlyph
+							status={transition.status}
+							pulse={transition.status === "running"}
+							includeLabel={true}
+						/>
+					</span>
+					{#if transition.stage}
+						<span class="stage">@ {transition.stage}</span>
+					{/if}
+					{#if transition.reason}
+						<span class="reason" title={transition.reason}>
+							{transition.reason}
+						</span>
+					{/if}
+				</li>
 			{/each}
-		</div>
+		</ol>
 	{/if}
 </div>
+
+<style>
+	.timeline {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.entries {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.entry {
+		display: grid;
+		grid-template-columns: 5rem 1px auto auto 1fr;
+		align-items: baseline;
+		gap: 0.6rem;
+		padding: 0.3rem 0;
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.entry:last-child {
+		border-bottom: none;
+	}
+
+	.time {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-slate);
+	}
+
+	.rule {
+		display: block;
+		height: 100%;
+		min-height: 1rem;
+		background: var(--surface-border);
+	}
+
+	.stage {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-slate);
+	}
+
+	.reason {
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-style: italic;
+		color: var(--alt-slate);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.empty {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--alt-slate);
+		margin: 0;
+	}
+</style>

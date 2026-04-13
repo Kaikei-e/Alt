@@ -2,8 +2,7 @@
 import type { ActiveJobInfo } from "$lib/schema/dashboard";
 import MobilePipelineProgress from "./MobilePipelineProgress.svelte";
 import MobileGenreProgressGrid from "./MobileGenreProgressGrid.svelte";
-import { StatusBadge } from "$lib/components/desktop/recap/job-status";
-import { Play, Clock, ChevronDown, ChevronUp, Activity } from "@lucide/svelte";
+import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
 
 interface Props {
 	job: ActiveJobInfo | null;
@@ -26,14 +25,12 @@ const elapsedTime = $derived.by(() => {
 	if (!job) return "";
 	const start = new Date(job.kicked_at).getTime();
 	const now = Date.now();
-	const secs = Math.floor((now - start) / 1000);
+	const secs = Math.max(0, Math.floor((now - start) / 1000));
 	if (secs < 60) return `${secs}s`;
 	const mins = Math.floor(secs / 60);
-	const remainingSecs = secs % 60;
-	return `${mins}m ${remainingSecs}s`;
+	return `${mins}m ${secs % 60}s`;
 });
 
-// Auto-expand when job is running
 $effect(() => {
 	if (job) {
 		isExpanded = true;
@@ -41,60 +38,47 @@ $effect(() => {
 });
 </script>
 
-<div class="px-4 mb-4" data-testid="mobile-active-job-panel">
+<section class="active-panel" data-testid="mobile-active-job-panel">
 	{#if job}
-		<div
-			class="rounded-xl border-2 border-blue-200 overflow-hidden"
-			style="background: var(--surface-bg);"
+		<article
+			class="active-card"
+			data-role="active-job"
+			data-status={job.status}
 		>
-			<!-- Header (always visible, tap to toggle) -->
 			<button
-				class="w-full flex items-center justify-between p-4"
-				onclick={() => isExpanded = !isExpanded}
+				type="button"
+				class="head"
+				onclick={() => (isExpanded = !isExpanded)}
 				data-testid="active-job-collapse-toggle"
 				aria-expanded={isExpanded}
 			>
-				<div class="flex items-center gap-3">
-					<div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-						<Play class="w-4 h-4 text-blue-600" />
-					</div>
-					<div class="text-left">
-						<h3 class="text-sm font-semibold" style="color: var(--text-primary);">
-							Active Job
-						</h3>
-						<p class="text-xs font-mono" style="color: var(--text-muted);">
-							{job.job_id.slice(0, 12)}...
-						</p>
-					</div>
+				<div class="head-left">
+					<span class="kicker">Active job</span>
+					<span class="job-id">{job.job_id.slice(0, 12)}…</span>
 				</div>
-				<div class="flex items-center gap-2">
-					<StatusBadge status={job.status} size="sm" />
-					{#if isExpanded}
-						<ChevronUp class="w-5 h-5" style="color: var(--text-muted);" />
-					{:else}
-						<ChevronDown class="w-5 h-5" style="color: var(--text-muted);" />
-					{/if}
+				<div class="head-right">
+					<StatusGlyph
+						status={job.status}
+						pulse={job.status === "running"}
+						includeLabel={true}
+					/>
+					<span class="caret" aria-hidden="true">{isExpanded ? "−" : "+"}</span>
 				</div>
 			</button>
 
-			<!-- Expandable content -->
 			{#if isExpanded}
-				<div class="px-4 pb-4 border-t" style="border-color: var(--surface-border);">
-					<!-- Meta info -->
-					<div class="flex gap-4 py-3 text-sm">
-						<div class="flex items-center gap-1">
-							<Clock class="w-3 h-3" style="color: var(--text-muted);" />
-							<span style="color: var(--text-muted);">Started:</span>
-							<span style="color: var(--text-primary);">{startedAt}</span>
+				<div class="body">
+					<dl class="meta">
+						<div class="meta-cell">
+							<dt>Started</dt>
+							<dd class="tabular-nums">{startedAt}</dd>
 						</div>
-						<div class="flex items-center gap-1">
-							<Clock class="w-3 h-3" style="color: var(--text-muted);" />
-							<span style="color: var(--text-muted);">Elapsed:</span>
-							<span style="color: var(--text-primary);">{elapsedTime}</span>
+						<div class="meta-cell">
+							<dt>Elapsed</dt>
+							<dd class="tabular-nums">{elapsedTime}</dd>
 						</div>
-					</div>
+					</dl>
 
-					<!-- Pipeline progress (vertical stepper) -->
 					<MobilePipelineProgress
 						currentStage={job.current_stage}
 						stageIndex={job.stage_index}
@@ -102,21 +86,143 @@ $effect(() => {
 						subStageProgress={job.sub_stage_progress}
 					/>
 
-					<!-- Genre progress (2-column grid) -->
 					{#if Object.keys(job.genre_progress).length > 0}
 						<MobileGenreProgressGrid genreProgress={job.genre_progress} />
 					{/if}
 				</div>
 			{/if}
-		</div>
+		</article>
 	{:else}
-		<!-- No job running -->
-		<div
-			class="p-6 rounded-xl border text-center"
-			style="background: var(--surface-bg); border-color: var(--surface-border);"
-		>
-			<Activity class="w-6 h-6 mx-auto mb-2" style="color: var(--text-muted);" />
-			<p class="text-sm" style="color: var(--text-muted);">No job currently running</p>
+		<div class="empty" data-role="active-empty">
+			<p>No active job.</p>
 		</div>
 	{/if}
-</div>
+</section>
+
+<style>
+	.active-panel {
+		padding: 0 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.active-card {
+		display: flex;
+		flex-direction: column;
+		background: var(--surface-bg);
+		border-top: 2px solid var(--alt-charcoal);
+		border-bottom: 2px solid var(--alt-charcoal);
+		border-left: 1px solid var(--surface-border);
+		border-right: 1px solid var(--surface-border);
+	}
+
+	.head {
+		all: unset;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.85rem 1rem;
+		min-height: 44px;
+		cursor: pointer;
+	}
+
+	.head:focus-visible {
+		outline: 2px solid var(--alt-charcoal);
+		outline-offset: -2px;
+	}
+
+	.head-left {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.head-right {
+		display: flex;
+		align-items: baseline;
+		gap: 0.65rem;
+	}
+
+	.kicker {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.job-id {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--alt-charcoal);
+	}
+
+	.caret {
+		font-family: var(--font-mono);
+		font-size: 1rem;
+		color: var(--alt-slate);
+		min-width: 1ch;
+		text-align: center;
+	}
+
+	.body {
+		display: flex;
+		flex-direction: column;
+		gap: 0.85rem;
+		padding: 0.85rem 1rem;
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.meta {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0;
+		margin: 0;
+		border-top: 1px solid var(--surface-border);
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.meta-cell {
+		padding: 0.5rem 0.6rem;
+		border-right: 1px solid var(--surface-border);
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.meta-cell:last-child {
+		border-right: none;
+	}
+
+	.meta-cell dt {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.meta-cell dd {
+		margin: 0;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-charcoal);
+	}
+
+	.empty {
+		padding: 1.25rem 1rem;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
+		text-align: center;
+	}
+
+	.empty p {
+		font-family: var(--font-body);
+		font-size: 0.95rem;
+		font-style: italic;
+		color: var(--alt-slate);
+		margin: 0;
+	}
+</style>

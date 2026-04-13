@@ -4,27 +4,17 @@ import { useViewport } from "$lib/stores/viewport.svelte";
 import { useJobProgress } from "$lib/hooks/useJobProgress.svelte";
 import { triggerRecapJob } from "$lib/api/client/dashboard";
 import { getLoadingStore } from "$lib/stores/loading.svelte";
-import type { TimeWindow } from "$lib/schema/dashboard";
+import type { TimeWindow, RecentJobSummary } from "$lib/schema/dashboard";
 
-// Desktop components
-import PageHeader from "$lib/components/desktop/layout/PageHeader.svelte";
 import {
-	MetricCard,
+	PageKicker,
+	LedgerFigure,
+} from "$lib/components/recap/job-status";
+import {
 	ActiveJobCard,
 	JobHistoryTable,
 } from "$lib/components/desktop/recap/job-status";
-import {
-	Activity,
-	CheckCircle,
-	XCircle,
-	Clock,
-	RefreshCw,
-	Pause,
-	Play,
-	Rocket,
-} from "@lucide/svelte";
 
-// Mobile components
 import {
 	MobileJobStatusHeader,
 	MobileStatsRow,
@@ -33,7 +23,6 @@ import {
 	MobileControlBar,
 	MobileJobDetailSheet,
 } from "$lib/components/mobile/recap/job-status";
-import type { RecentJobSummary } from "$lib/schema/dashboard";
 
 const { isDesktop } = useViewport();
 const loadingStore = getLoadingStore();
@@ -55,7 +44,6 @@ let triggerError = $state<string | null>(null);
 let triggerSuccess = $state<string | null>(null);
 let justStartedJobId = $state<string | null>(null);
 
-// Mobile-only state
 let selectedJob = $state<RecentJobSummary | null>(null);
 let detailSheetOpen = $state(false);
 
@@ -118,7 +106,6 @@ async function handleTriggerJob() {
 	}
 }
 
-// Mobile handlers
 function handleJobSelect(job: RecentJobSummary) {
 	selectedJob = job;
 	detailSheetOpen = true;
@@ -129,248 +116,189 @@ function handleCloseDetailSheet() {
 	selectedJob = null;
 }
 
-// Computed values
 const successRate = $derived(
 	jobProgress.data?.stats.success_rate_24h
 		? `${(jobProgress.data.stats.success_rate_24h * 100).toFixed(1)}%`
-		: "-",
+		: "—",
 );
 
 const avgDuration = $derived.by(() => {
 	const secs = jobProgress.data?.stats.avg_duration_secs;
-	if (!secs) return "-";
+	if (!secs) return "—";
 	if (secs < 60) return `${secs}s`;
 	const mins = Math.floor(secs / 60);
 	return `${mins}m`;
 });
 
-const hasRunningJob = $derived.by(() => {
-	const d = jobProgress.data;
-	return d?.active_job != null;
-});
+const hasRunningJob = $derived.by(() => jobProgress.data?.active_job != null);
 
 const runningJobTooltip = $derived.by(() => {
-	if (justStartedJobId) return "Job is starting...";
+	if (justStartedJobId) return "Job is starting…";
 	const activeJob = jobProgress.data?.active_job;
 	if (!activeJob) return "Start a new recap job";
 	const source = activeJob.trigger_source === "user" ? "user" : "system";
 	return `A ${source} job is already running`;
 });
+
+const windowLabel = $derived(jobProgress.currentWindow.toUpperCase());
 </script>
 
 <svelte:head>
-	<title>Job Status - Alt</title>
+	<title>Job Status — Alt</title>
 </svelte:head>
 
 {#if isDesktop}
-	<PageHeader
-		title="Recap Job Status"
-		description="Monitor real-time job progress and pipeline status"
-	/>
+	<div class="page" data-role="job-status-page">
+		<PageKicker
+			kicker={`JOB STATUS · ${windowLabel} WINDOW`}
+			title="Job Status"
+			lede="Monitor recap pipeline runs and recent job history."
+		/>
 
-	<!-- Controls bar -->
-	<div
-		class="flex items-center justify-between mb-6 pb-4 border-b"
-		style="border-color: var(--surface-border);"
-	>
-		<!-- Time window selector -->
-		<div class="flex items-center gap-2">
-			<span class="text-sm font-medium" style="color: var(--text-muted);">
-				Time Window:
-			</span>
-			<div class="flex rounded-lg overflow-hidden border" style="border-color: var(--surface-border, #e5e7eb);">
+		<section class="controls" data-role="controls">
+			<div class="window-group" role="group" aria-label="Time window">
+				<span class="control-label">Window</span>
 				{#each timeWindows as tw}
 					<button
+						type="button"
 						data-testid="time-window-{tw.value}"
-						class="px-3 py-1.5 text-sm font-medium transition-colors"
-						style={jobProgress.currentWindow === tw.value
-							? "background: var(--alt-primary, #2f4f4f); color: #ffffff;"
-							: "background: var(--surface-bg, #f9fafb); color: var(--text-primary, #1a1a1a);"}
+						class="window-pill"
 						aria-pressed={jobProgress.currentWindow === tw.value}
-						onmouseenter={(e) => {
-							if (jobProgress.currentWindow !== tw.value) {
-								e.currentTarget.style.background = 'var(--surface-hover, #f3f4f6)';
-							}
-						}}
-						onmouseleave={(e) => {
-							if (jobProgress.currentWindow !== tw.value) {
-								e.currentTarget.style.background = 'var(--surface-bg, #f9fafb)';
-							}
-						}}
 						onclick={() => handleWindowChange(tw.value)}
 					>
 						{tw.label}
 					</button>
 				{/each}
 			</div>
-		</div>
 
-		<!-- Polling controls -->
-		<div class="flex items-center gap-3">
-			<button
-				class="flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-100"
-				style="border-color: var(--surface-border); color: var(--text-primary);"
-				onclick={() => jobProgress.refresh()}
-				disabled={jobProgress.loading}
-			>
-				<RefreshCw class="w-4 h-4 {jobProgress.loading ? 'animate-spin' : ''}" />
-				Refresh
-			</button>
-			<button
-				class="flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors
-					{jobProgress.isPolling ? 'bg-green-50 border-green-200' : 'hover:bg-gray-100'}"
-				style={!jobProgress.isPolling ? "border-color: var(--surface-border); color: var(--text-primary);" : "color: #16a34a;"}
-				onclick={togglePolling}
-			>
-				{#if jobProgress.isPolling}
-					<Pause class="w-4 h-4" />
-					<span>Auto-refresh ON</span>
-				{:else}
-					<Play class="w-4 h-4" />
-					<span>Auto-refresh OFF</span>
-				{/if}
-			</button>
-			<button
-				class="flex items-center gap-2 px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-				style="background: var(--alt-primary, #2f4f4f); color: #ffffff;"
-				onclick={handleTriggerJob}
-				disabled={triggering || hasRunningJob || justStartedJobId !== null}
-				title={runningJobTooltip}
-			>
-				<Rocket class="w-4 h-4 {triggering ? 'animate-pulse' : ''}" />
-				{#if triggering}
-					<span>Starting...</span>
-				{:else}
-					<span>Start Job</span>
-				{/if}
-			</button>
-		</div>
-	</div>
-
-	{#if triggerSuccess}
-		<div class="mb-4 p-3 rounded-lg bg-green-50 border border-green-200">
-			<p class="text-sm text-green-700">{triggerSuccess}</p>
-		</div>
-	{/if}
-
-	{#if triggerError}
-		<div class="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
-			<p class="text-sm text-red-700">{triggerError}</p>
-		</div>
-	{/if}
-
-	{#if jobProgress.error}
-		<div class="mb-6 p-4 rounded-lg bg-red-50 border border-red-200">
-			<p class="text-sm text-red-700">
-				Error loading job data: {jobProgress.error}
-			</p>
-		</div>
-	{/if}
-
-	{#if jobProgress.data}
-		<!-- Stats cards -->
-		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-			<MetricCard
-				title="Success Rate"
-				value={successRate}
-				subtitle="Last 24 hours"
-				icon={CheckCircle}
-			/>
-			<MetricCard
-				title="Avg Duration"
-				value={avgDuration}
-				subtitle="Per job"
-				icon={Clock}
-			/>
-			<MetricCard
-				title="Jobs Today"
-				value={jobProgress.data.stats.total_jobs_24h}
-				subtitle={`${jobProgress.data.stats.running_jobs} running`}
-				icon={Activity}
-			/>
-			<MetricCard
-				title="Failed Jobs"
-				value={jobProgress.data.stats.failed_jobs_24h}
-				subtitle="Last 24 hours"
-				icon={XCircle}
-			/>
-		</div>
-
-		<!-- Active job section -->
-		{#if jobProgress.data.active_job}
-			<div class="mb-6">
-				<h2
-					class="text-lg font-semibold mb-4"
-					style="color: var(--text-primary);"
+			<div class="action-group">
+				<button
+					type="button"
+					class="action-button"
+					onclick={() => jobProgress.refresh()}
+					disabled={jobProgress.loading}
+					data-role="refresh"
 				>
-					Currently Running
-				</h2>
-				<ActiveJobCard job={jobProgress.data.active_job} />
+					{jobProgress.loading ? "Refreshing…" : "Refresh"}
+				</button>
+				<button
+					type="button"
+					class="action-button"
+					data-active={jobProgress.isPolling}
+					onclick={togglePolling}
+					data-role="auto-refresh"
+				>
+					Auto-refresh {jobProgress.isPolling ? "on" : "off"}
+				</button>
+				<button
+					type="button"
+					class="action-button action-button--primary"
+					onclick={handleTriggerJob}
+					disabled={triggering || hasRunningJob || justStartedJobId !== null}
+					title={runningJobTooltip}
+					data-role="start-job"
+				>
+					{triggering ? "Starting…" : "Start job"}
+				</button>
 			</div>
-		{:else}
-			<div
-				class="mb-6 p-6 rounded-lg border text-center"
-				style="background: var(--surface-bg); border-color: var(--surface-border);"
-			>
-				<Activity class="w-8 h-8 mx-auto mb-2" style="color: var(--text-muted);" />
-				<p style="color: var(--text-muted);">No job currently running</p>
-			</div>
+		</section>
+
+		{#if triggerSuccess}
+			<p class="banner banner--success" data-role="trigger-success">
+				<span class="glyph" aria-hidden="true">✓</span>
+				{triggerSuccess}
+			</p>
 		{/if}
 
-		<!-- Job history section -->
-		<div>
-			<h2
-				class="text-lg font-semibold mb-4"
-				style="color: var(--text-primary);"
-			>
-				Recent Jobs
-			</h2>
-			<JobHistoryTable jobs={jobProgress.data.recent_jobs} stats={jobProgress.data.stats} />
-		</div>
-	{:else if jobProgress.loading}
-		<!-- Loading state handled by SystemLoader -->
-	{:else}
-		<div class="text-center py-12">
-			<p style="color: var(--text-muted);">No job data available</p>
-		</div>
-	{/if}
+		{#if triggerError}
+			<p class="banner banner--error" data-role="trigger-error">
+				<span class="glyph" aria-hidden="true">✗</span>
+				{triggerError}
+			</p>
+		{/if}
+
+		{#if jobProgress.error}
+			<p class="banner banner--error" data-role="load-error">
+				<span class="glyph" aria-hidden="true">✗</span>
+				Error loading job data: {jobProgress.error}
+			</p>
+		{/if}
+
+		{#if jobProgress.data}
+			<dl class="ledger" data-role="ledger">
+				<LedgerFigure
+					label="Success rate"
+					value={successRate}
+					subtitle="Last 24 hours"
+				/>
+				<LedgerFigure
+					label="Avg duration"
+					value={avgDuration}
+					subtitle="Per job"
+				/>
+				<LedgerFigure
+					label="Jobs today"
+					value={jobProgress.data.stats.total_jobs_24h}
+					subtitle={`${jobProgress.data.stats.running_jobs} running`}
+				/>
+				<LedgerFigure
+					label="Failed jobs"
+					value={jobProgress.data.stats.failed_jobs_24h}
+					subtitle="Last 24 hours"
+				/>
+			</dl>
+
+			{#if jobProgress.data.active_job}
+				<section class="section" data-role="active-section">
+					<ActiveJobCard job={jobProgress.data.active_job} />
+				</section>
+			{:else}
+				<section class="empty-active" data-role="active-empty">
+					<p>No active job.</p>
+				</section>
+			{/if}
+
+			<section class="section" data-role="recent-section">
+				<header class="section-head">
+					<h2 class="section-title">Recent jobs</h2>
+					<span class="section-meta">Last {jobProgress.currentWindow}</span>
+				</header>
+				<JobHistoryTable
+					jobs={jobProgress.data.recent_jobs}
+					stats={jobProgress.data.stats}
+				/>
+			</section>
+		{:else if !jobProgress.loading}
+			<p class="empty-state">No job data available.</p>
+		{/if}
+	</div>
 {:else}
-	<!-- Mobile -->
-	<div class="min-h-[100dvh] pb-20 relative" style="background: var(--app-bg);">
+	<div class="mobile-shell" data-role="job-status-page">
 		{#if jobProgress.loading && !jobProgress.data}
-			<div class="p-4" data-testid="job-status-skeleton">
-				<div class="h-8 bg-muted rounded w-1/2 mb-4 animate-pulse"></div>
-				<div class="flex gap-3 overflow-x-auto pb-4">
+			<div class="mobile-skeleton" data-testid="job-status-skeleton">
+				<div class="skel skel--head"></div>
+				<div class="skel-row">
 					{#each Array(4) as _}
-						<div class="min-w-[120px] h-20 bg-muted rounded-lg animate-pulse"></div>
+						<div class="skel skel--stat"></div>
 					{/each}
 				</div>
-				<div class="space-y-3 mt-4">
+				<div class="skel-list">
 					{#each Array(3) as _}
-						<div class="h-24 bg-muted rounded-lg animate-pulse"></div>
+						<div class="skel skel--card"></div>
 					{/each}
 				</div>
 			</div>
 		{:else if jobProgress.error}
-			<div class="flex flex-col items-center justify-center min-h-[50vh] p-6">
-				<div
-					class="p-6 rounded-lg border text-center"
-					style="background: var(--surface-bg); border-color: hsl(var(--destructive));"
+			<div class="mobile-error">
+				<p class="mobile-error-title">Error loading job data</p>
+				<p class="mobile-error-detail">{jobProgress.error}</p>
+				<button
+					type="button"
+					class="mobile-retry"
+					onclick={() => jobProgress.refresh()}
 				>
-					<p class="font-semibold mb-2" style="color: hsl(var(--destructive));">
-						Error loading job data
-					</p>
-					<p class="text-sm mb-4" style="color: var(--text-secondary);">
-						{jobProgress.error}
-					</p>
-					<button
-						onclick={() => jobProgress.refresh()}
-						class="px-4 py-2 rounded disabled:opacity-50"
-						style="background: var(--alt-primary); color: white;"
-					>
-						Retry
-					</button>
-				</div>
+					Retry
+				</button>
 			</div>
 		{:else if jobProgress.data}
 			<MobileJobStatusHeader
@@ -387,15 +315,17 @@ const runningJobTooltip = $derived.by(() => {
 			/>
 
 			{#if triggerSuccess}
-				<div class="mx-4 mb-4 p-3 rounded-lg bg-green-50 border border-green-200">
-					<p class="text-sm text-green-700">{triggerSuccess}</p>
-				</div>
+				<p class="banner banner--success mobile-banner">
+					<span class="glyph" aria-hidden="true">✓</span>
+					{triggerSuccess}
+				</p>
 			{/if}
 
 			{#if triggerError}
-				<div class="mx-4 mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
-					<p class="text-sm text-red-700">{triggerError}</p>
-				</div>
+				<p class="banner banner--error mobile-banner">
+					<span class="glyph" aria-hidden="true">✗</span>
+					{triggerError}
+				</p>
 			{/if}
 
 			<MobileActiveJobPanel job={jobProgress.data.active_job} />
@@ -411,9 +341,7 @@ const runningJobTooltip = $derived.by(() => {
 				onClose={handleCloseDetailSheet}
 			/>
 		{:else}
-			<div class="text-center py-12">
-				<p style="color: var(--text-muted);">No job data available</p>
-			</div>
+			<p class="empty-state mobile-empty">No job data available.</p>
 		{/if}
 
 		<MobileControlBar
@@ -426,3 +354,335 @@ const runningJobTooltip = $derived.by(() => {
 		/>
 	</div>
 {/if}
+
+<style>
+	.page {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+		max-width: 1080px;
+		padding: 1.5rem 1.25rem 3rem;
+	}
+
+	.controls {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding: 0.75rem 0;
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.window-group {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+	}
+
+	.control-label {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.window-pill {
+		all: unset;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		padding: 0.4rem 0.75rem;
+		border: 1px solid var(--surface-border);
+		color: var(--alt-charcoal);
+		background: transparent;
+		cursor: pointer;
+		min-height: 32px;
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.window-pill[aria-pressed="true"] {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+		border-color: var(--alt-charcoal);
+	}
+
+	.window-pill:focus-visible {
+		outline: 2px solid var(--alt-charcoal);
+		outline-offset: 2px;
+	}
+
+	.action-group {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.action-button {
+		all: unset;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		padding: 0.5rem 0.85rem;
+		border: 1.5px solid var(--alt-charcoal);
+		color: var(--alt-charcoal);
+		background: transparent;
+		cursor: pointer;
+		min-height: 36px;
+		display: inline-flex;
+		align-items: center;
+		transition:
+			background 0.15s ease,
+			color 0.15s ease;
+	}
+
+	.action-button:hover:not(:disabled) {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.action-button:focus-visible {
+		outline: 2px solid var(--alt-charcoal);
+		outline-offset: 2px;
+	}
+
+	.action-button[data-active="true"] {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.action-button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.action-button--primary {
+		border-width: 2px;
+	}
+
+	.banner {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		padding: 0.65rem 0.85rem;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		border: 1px solid var(--surface-border);
+		margin: 0;
+	}
+
+	.banner .glyph {
+		font-family: var(--font-mono);
+	}
+
+	.banner--success {
+		color: var(--alt-success);
+		border-color: color-mix(in srgb, var(--alt-success) 35%, transparent);
+		background: color-mix(in srgb, var(--alt-success) 6%, transparent);
+	}
+
+	.banner--error {
+		color: var(--alt-error);
+		border-color: color-mix(in srgb, var(--alt-error) 35%, transparent);
+		background: color-mix(in srgb, var(--alt-error) 6%, transparent);
+	}
+
+	.ledger {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+		gap: 0;
+		margin: 0;
+		border-top: 1px solid var(--alt-charcoal);
+		border-bottom: 1px solid var(--alt-charcoal);
+	}
+
+	.ledger > :global(*) {
+		padding: 0.85rem 1rem;
+		border-right: 1px solid var(--surface-border);
+	}
+
+	.ledger > :global(*:last-child) {
+		border-right: none;
+	}
+
+	.section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.section-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 1rem;
+		padding-bottom: 0.4rem;
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.section-title {
+		font-family: var(--font-display);
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.section-meta {
+		font-family: var(--font-body);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.empty-active {
+		padding: 1.25rem 1rem;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
+	}
+
+	.empty-active p {
+		font-family: var(--font-body);
+		font-size: 0.95rem;
+		font-style: italic;
+		color: var(--alt-slate);
+		margin: 0;
+		text-align: center;
+	}
+
+	.empty-state {
+		font-family: var(--font-body);
+		font-size: 0.95rem;
+		font-style: italic;
+		color: var(--alt-slate);
+		text-align: center;
+		padding: 3rem 1rem;
+	}
+
+	/* Mobile shell */
+	.mobile-shell {
+		min-height: 100dvh;
+		padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+		background: var(--surface-bg);
+		position: relative;
+	}
+
+	.mobile-skeleton {
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.skel {
+		background: var(--surface-2);
+		animation: skel-pulse 1.4s ease-in-out infinite;
+	}
+
+	.skel--head {
+		height: 2rem;
+		width: 60%;
+	}
+
+	.skel-row {
+		display: flex;
+		gap: 0.75rem;
+		overflow-x: auto;
+		padding-bottom: 0.5rem;
+	}
+
+	.skel--stat {
+		min-width: 120px;
+		height: 5rem;
+	}
+
+	.skel-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.skel--card {
+		height: 6rem;
+	}
+
+	@keyframes skel-pulse {
+		0%,
+		100% {
+			opacity: 0.55;
+		}
+		50% {
+			opacity: 1;
+		}
+	}
+
+	.mobile-error {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 2rem 1.5rem;
+		text-align: center;
+		border: 1px solid color-mix(in srgb, var(--alt-error) 30%, transparent);
+		background: color-mix(in srgb, var(--alt-error) 5%, transparent);
+		margin: 1rem;
+	}
+
+	.mobile-error-title {
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 700;
+		color: var(--alt-error);
+		margin: 0;
+	}
+
+	.mobile-error-detail {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-slate);
+		margin: 0;
+	}
+
+	.mobile-retry {
+		all: unset;
+		padding: 0.6rem 1.25rem;
+		font-family: var(--font-body);
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		border: 1.5px solid var(--alt-charcoal);
+		color: var(--alt-charcoal);
+		cursor: pointer;
+		min-height: 44px;
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.mobile-retry:hover {
+		background: var(--alt-charcoal);
+		color: var(--surface-bg);
+	}
+
+	.mobile-banner {
+		margin: 0 1rem 0.75rem;
+	}
+
+	.mobile-empty {
+		padding: 4rem 1.5rem;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.skel {
+			animation: none;
+		}
+	}
+</style>

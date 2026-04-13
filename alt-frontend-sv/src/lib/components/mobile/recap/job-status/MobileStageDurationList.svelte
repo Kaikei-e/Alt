@@ -1,14 +1,7 @@
 <script lang="ts">
-import type {
-	StatusTransition,
-	PipelineStage,
-	JobStatus,
-} from "$lib/schema/dashboard";
-import { PIPELINE_STAGES, getStageLabel } from "$lib/schema/dashboard";
-import {
-	calculateStageDurations,
-	type StageDuration,
-} from "$lib/utils/stageMetrics";
+import type { StatusTransition, JobStatus } from "$lib/schema/dashboard";
+import { getStageLabel } from "$lib/schema/dashboard";
+import { calculateStageDurations } from "$lib/utils/stageMetrics";
 
 interface Props {
 	statusHistory: StatusTransition[];
@@ -28,7 +21,6 @@ const stageDurations = $derived(
 	),
 );
 
-// Find max duration for bar width calculation
 const maxDuration = $derived.by(() => {
 	let max = 0;
 	for (const s of stageDurations) {
@@ -37,7 +29,6 @@ const maxDuration = $derived.by(() => {
 	return max || 1;
 });
 
-// Calculate total duration
 const totalDuration = $derived.by(() => {
 	let total = 0;
 	for (const s of stageDurations) {
@@ -54,54 +45,135 @@ function formatSeconds(secs: number): string {
 }
 </script>
 
-<div class="space-y-2">
-	<h4 class="text-sm font-semibold" style="color: var(--text-muted);">
-		Stage Duration Breakdown
-	</h4>
+<section class="duration-list" data-role="stage-duration">
+	<h4 class="kicker">Stage duration</h4>
 
 	{#if stageDurations.length === 0}
-		<p class="text-xs" style="color: var(--text-muted);">No duration data available.</p>
+		<p class="empty">No duration data.</p>
 	{:else}
-		<div class="space-y-2">
+		<div class="rows">
 			{#each stageDurations as stageDuration}
-				<div class="flex items-center gap-2">
-					<span
-						class="w-20 text-xs font-medium truncate"
-						style="color: var(--text-primary);"
-					>
+				<div class="row">
+					<span class="stage-label">
 						{getStageLabel(stageDuration.stage)}
 					</span>
-					<div class="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden">
+					<div class="bar">
 						<div
-							class="h-full bg-blue-500 rounded-full transition-all"
+							class="bar-fill"
 							style="width: {(stageDuration.durationSecs / maxDuration) * 100}%"
 						></div>
 					</div>
-					<span
-						class="w-14 text-xs text-right tabular-nums"
-						style="color: var(--text-muted);"
-					>
+					<span class="duration tabular-nums">
 						{formatSeconds(stageDuration.durationSecs)}
 					</span>
 				</div>
 			{/each}
 
-			<!-- Total -->
-			<div class="flex items-center gap-2 pt-2 border-t" style="border-color: var(--surface-border);">
-				<span
-					class="w-20 text-xs font-semibold"
-					style="color: var(--text-primary);"
-				>
-					Total
-				</span>
-				<div class="flex-1"></div>
-				<span
-					class="w-14 text-xs font-semibold text-right tabular-nums"
-					style="color: var(--text-primary);"
-				>
+			<div class="total-row">
+				<span class="total-label">Total</span>
+				<span class="duration total-duration tabular-nums">
 					{formatSeconds(totalDuration)}
 				</span>
 			</div>
 		</div>
 	{/if}
-</div>
+</section>
+
+<style>
+	.duration-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.kicker {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0;
+	}
+
+	.empty {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--alt-slate);
+		margin: 0;
+	}
+
+	.rows {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.row {
+		display: grid;
+		grid-template-columns: 5rem 1fr 4rem;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.stage-label {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-charcoal);
+		text-transform: lowercase;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.bar {
+		height: 1px;
+		background: var(--surface-border);
+		position: relative;
+	}
+
+	.bar-fill {
+		position: absolute;
+		top: -1px;
+		left: 0;
+		height: 3px;
+		background: var(--alt-charcoal);
+		transition: width 0.3s ease;
+	}
+
+	.duration {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		text-align: right;
+		color: var(--alt-charcoal);
+	}
+
+	.total-row {
+		display: grid;
+		grid-template-columns: 5rem 1fr 4rem;
+		align-items: baseline;
+		gap: 0.5rem;
+		padding-top: 0.5rem;
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.total-label {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.total-duration {
+		font-weight: 600;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.bar-fill {
+			transition: none;
+		}
+	}
+</style>

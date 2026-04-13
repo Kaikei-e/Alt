@@ -1,13 +1,11 @@
 <script lang="ts">
 import type { RecentJobSummary } from "$lib/schema/dashboard";
-import {
-	StatusBadge,
-	StatusTransitionTimeline,
-} from "$lib/components/desktop/recap/job-status";
+import { StatusTransitionTimeline } from "$lib/components/desktop/recap/job-status";
+import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
 import MobileStageDurationList from "./MobileStageDurationList.svelte";
 import { formatDuration } from "$lib/schema/dashboard";
 import * as Sheet from "$lib/components/ui/sheet";
-import { Clock, Server, User, X } from "@lucide/svelte";
+import { X } from "@lucide/svelte";
 
 interface Props {
 	job: RecentJobSummary | null;
@@ -30,118 +28,204 @@ const startedAt = $derived(
 		: "",
 );
 
-const duration = $derived(job ? formatDuration(job.duration_secs) : "-");
+const duration = $derived(job ? formatDuration(job.duration_secs) : "—");
 </script>
 
-<Sheet.Root bind:open={open} onOpenChange={(value) => !value && onClose()}>
+<Sheet.Root bind:open onOpenChange={(value) => !value && onClose()}>
 	<Sheet.Content
 		side="bottom"
-		class="max-h-[85vh] rounded-t-[24px] border-t border-[var(--border-glass)] shadow-lg w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
-		style="background: white !important;"
+		class="max-h-[85vh] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden alt-paper-sheet [&>button.ring-offset-background]:hidden"
 		data-testid="mobile-job-detail-sheet"
 	>
-		<!-- Header -->
-		<Sheet.Header class="border-b border-[var(--border-glass)] px-4 py-4">
-			<div class="flex items-center justify-between">
-				<div class="flex-1 min-w-0">
-					<Sheet.Title class="text-lg font-bold text-[var(--text-primary)]">
-						Job Details
-					</Sheet.Title>
+		<Sheet.Header class="sheet-head">
+			<div class="head-row">
+				<div class="head-text">
+					<Sheet.Title class="sheet-title">Job details</Sheet.Title>
 					{#if job}
-						<Sheet.Description class="text-xs font-mono text-[var(--text-secondary)] truncate">
+						<Sheet.Description class="sheet-id">
 							{job.job_id}
 						</Sheet.Description>
 					{/if}
 				</div>
 				{#if job}
-					<StatusBadge status={job.status} />
+					<StatusGlyph
+						status={job.status}
+						pulse={job.status === "running"}
+						includeLabel={true}
+					/>
 				{/if}
 			</div>
 		</Sheet.Header>
 
-		<!-- Scrollable content -->
-		<div class="overflow-y-auto flex-1 px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
+		<div class="sheet-body">
 			{#if job}
-				<!-- Meta info -->
-				<div class="grid grid-cols-2 gap-3 mb-6">
-					<div
-						class="p-3 rounded-lg border"
-						style="background: var(--surface-bg); border-color: var(--surface-border);"
-					>
-						<div class="flex items-center gap-2 mb-1">
-							<Clock class="w-4 h-4" style="color: var(--text-muted);" />
-							<span class="text-xs" style="color: var(--text-muted);">Started</span>
-						</div>
-						<p class="text-sm font-medium" style="color: var(--text-primary);">
-							{startedAt}
-						</p>
+				<dl class="meta">
+					<div class="meta-cell">
+						<dt>Started</dt>
+						<dd class="tabular-nums">{startedAt}</dd>
 					</div>
-					<div
-						class="p-3 rounded-lg border"
-						style="background: var(--surface-bg); border-color: var(--surface-border);"
-					>
-						<div class="flex items-center gap-2 mb-1">
-							<Clock class="w-4 h-4" style="color: var(--text-muted);" />
-							<span class="text-xs" style="color: var(--text-muted);">Duration</span>
-						</div>
-						<p class="text-sm font-medium" style="color: var(--text-primary);">
-							{duration}
-						</p>
+					<div class="meta-cell">
+						<dt>Duration</dt>
+						<dd class="tabular-nums">{duration}</dd>
 					</div>
-					<div
-						class="p-3 rounded-lg border"
-						style="background: var(--surface-bg); border-color: var(--surface-border);"
-					>
-						<div class="flex items-center gap-2 mb-1">
-							{#if job.trigger_source === "user"}
-								<User class="w-4 h-4" style="color: var(--text-muted);" />
-							{:else}
-								<Server class="w-4 h-4" style="color: var(--text-muted);" />
-							{/if}
-							<span class="text-xs" style="color: var(--text-muted);">Source</span>
-						</div>
-						<p class="text-sm font-medium capitalize" style="color: var(--text-primary);">
-							{job.trigger_source}
-						</p>
+					<div class="meta-cell">
+						<dt>Source</dt>
+						<dd>{job.trigger_source === "user" ? "User" : "System"}</dd>
 					</div>
-					<div
-						class="p-3 rounded-lg border"
-						style="background: var(--surface-bg); border-color: var(--surface-border);"
-					>
-						<div class="flex items-center gap-2 mb-1">
-							<span class="text-xs" style="color: var(--text-muted);">Last Stage</span>
-						</div>
-						<p class="text-sm font-medium" style="color: var(--text-primary);">
-							{job.last_stage ?? "-"}
-						</p>
+					<div class="meta-cell">
+						<dt>Last stage</dt>
+						<dd>{job.last_stage ?? "—"}</dd>
 					</div>
-				</div>
+				</dl>
 
-				<!-- Stage Duration Breakdown -->
-				<div class="mb-6">
+				<section class="detail-section">
 					<MobileStageDurationList
 						statusHistory={job.status_history}
 						jobStatus={job.status}
 						jobKickedAt={job.kicked_at}
 					/>
-				</div>
+				</section>
 
-				<!-- Status History -->
-				<div>
-					<h4 class="text-sm font-semibold mb-2" style="color: var(--text-muted);">
-						Status History
-					</h4>
+				<section class="detail-section">
+					<h4 class="kicker">Status history</h4>
 					<StatusTransitionTimeline transitions={job.status_history} />
-				</div>
+				</section>
 			{/if}
 		</div>
 
-		<!-- Close button -->
-		<Sheet.Close
-			class="absolute right-4 top-4 h-8 w-8 rounded-full border border-[var(--border-glass)] bg-white text-[var(--text-primary)] hover:bg-gray-100 transition-colors inline-flex shrink-0 items-center justify-center focus-visible:outline-none"
-			aria-label="Close"
-		>
+		<Sheet.Close class="sheet-close" aria-label="Close">
 			<X class="h-4 w-4" />
 		</Sheet.Close>
 	</Sheet.Content>
 </Sheet.Root>
+
+<style>
+	:global(.alt-paper-sheet) {
+		background: var(--surface-bg) !important;
+		border-top: 2px solid var(--alt-charcoal) !important;
+		border-radius: 0 !important;
+	}
+
+	:global(.sheet-head) {
+		padding: 1rem 1rem 0.85rem;
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.head-row {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.75rem;
+	}
+
+	.head-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		min-width: 0;
+		flex: 1;
+	}
+
+	:global(.sheet-title) {
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+	}
+
+	:global(.sheet-id) {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-slate);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.sheet-body {
+		flex: 1;
+		overflow-y: auto;
+		padding: 1rem 1rem
+			calc(1.5rem + env(safe-area-inset-bottom, 0px));
+		display: flex;
+		flex-direction: column;
+		gap: 1.25rem;
+	}
+
+	.meta {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0;
+		margin: 0;
+		border-top: 1px solid var(--surface-border);
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.meta-cell {
+		padding: 0.55rem 0.6rem;
+		border-right: 1px solid var(--surface-border);
+		border-bottom: 1px solid var(--surface-border);
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.meta-cell:nth-child(2n) {
+		border-right: none;
+	}
+
+	.meta-cell:nth-last-child(-n + 2) {
+		border-bottom: none;
+	}
+
+	.meta-cell dt {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+	}
+
+	.meta-cell dd {
+		margin: 0;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		color: var(--alt-charcoal);
+	}
+
+	.detail-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.kicker {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0;
+	}
+
+	:global(.sheet-close) {
+		position: absolute;
+		right: 0.85rem;
+		top: 0.85rem;
+		width: 32px;
+		height: 32px;
+		border: 1px solid var(--surface-border);
+		background: var(--surface-bg);
+		color: var(--alt-charcoal);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+	}
+
+	:global(.sheet-close:hover) {
+		background: var(--surface-hover);
+	}
+</style>

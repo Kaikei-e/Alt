@@ -2,7 +2,6 @@
 import type {
 	RecentJobSummary,
 	JobStats,
-	StatusTransition,
 } from "$lib/schema/dashboard";
 import {
 	calculateJobMetrics,
@@ -11,15 +10,6 @@ import {
 } from "$lib/utils/stageMetrics";
 import StageDurationBar from "./StageDurationBar.svelte";
 import StatusTransitionTimeline from "./StatusTransitionTimeline.svelte";
-import {
-	Clock,
-	TrendingUp,
-	TrendingDown,
-	Minus,
-	BarChart3,
-	History,
-	Zap,
-} from "@lucide/svelte";
 
 interface Props {
 	job: RecentJobSummary;
@@ -28,7 +18,6 @@ interface Props {
 
 let { job, stats }: Props = $props();
 
-// Calculate metrics
 const metrics = $derived(
 	calculateJobMetrics(
 		job.status_history,
@@ -41,146 +30,171 @@ const metrics = $derived(
 
 const performance = $derived(getPerformanceLabel(metrics.performanceRatio));
 
-function getPerformanceIcon() {
-	if (!metrics.performanceRatio) return Minus;
-	if (metrics.performanceRatio <= 0.8) return TrendingUp;
-	if (metrics.performanceRatio > 1.2) return TrendingDown;
-	return Minus;
-}
+const performanceTone = $derived(
+	performance.color === "green"
+		? "success"
+		: performance.color === "amber"
+			? "warning"
+			: performance.color === "red"
+				? "error"
+				: "muted",
+);
 
-function getPerformanceColorClass(
-	color: "green" | "amber" | "red" | "gray",
-): string {
-	const colorMap = {
-		green: "text-green-600 bg-green-50",
-		amber: "text-amber-600 bg-amber-50",
-		red: "text-red-600 bg-red-50",
-		gray: "text-gray-500 bg-gray-50",
-	};
-	return colorMap[color];
-}
-
-// Calculate time delta from average
-const timeDelta = $derived.by(() => {
-	if (!stats?.avg_duration_secs || !metrics.totalDurationSecs) return null;
-	const delta = metrics.totalDurationSecs - stats.avg_duration_secs;
-	return delta;
+const performanceGlyph = $derived(() => {
+	if (!metrics.performanceRatio) return "●";
+	if (metrics.performanceRatio <= 0.8) return "▲";
+	if (metrics.performanceRatio > 1.2) return "▼";
+	return "●";
 });
 
-const PerformanceIcon = $derived(getPerformanceIcon());
+const timeDelta = $derived.by(() => {
+	if (!stats?.avg_duration_secs || !metrics.totalDurationSecs) return null;
+	return metrics.totalDurationSecs - stats.avg_duration_secs;
+});
+
+const stagesCompleted = $derived(
+	metrics.stageDurations.filter((s) => s.status === "completed").length,
+);
 </script>
 
-<div class="space-y-6">
-	<!-- Performance Summary Cards -->
-	<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-		<!-- Total Duration -->
-		<div
-			class="p-3 rounded-lg border"
-			style="background: var(--surface-bg); border-color: var(--surface-border);"
-		>
-			<div class="flex items-center gap-2 mb-1">
-				<Clock class="w-4 h-4" style="color: var(--text-muted);" />
-				<span class="text-xs font-medium" style="color: var(--text-muted);">
-					Duration
-				</span>
-			</div>
-			<p class="text-lg font-bold tabular-nums" style="color: var(--text-primary);">
+<div class="detail-metrics" data-role="job-detail-metrics">
+	<dl class="summary-row">
+		<div class="summary-cell">
+			<dt>Duration</dt>
+			<dd class="figure tabular-nums">
 				{formatDurationWithUnits(metrics.totalDurationSecs)}
-			</p>
+			</dd>
 		</div>
+		<div class="summary-cell">
+			<dt>Performance</dt>
+			<dd class="performance" data-tone={performanceTone}>
+				<span class="glyph" aria-hidden="true">{performanceGlyph()}</span>
+				<span>{performance.label}</span>
+			</dd>
+		</div>
+		<div class="summary-cell">
+			<dt>vs Average</dt>
+			<dd class="figure tabular-nums" data-tone={timeDelta === null ? "muted" : timeDelta > 0 ? "warning" : timeDelta < 0 ? "success" : "neutral"}>
+				{#if timeDelta !== null}
+					{timeDelta > 0 ? "+" : timeDelta < 0 ? "−" : ""}{formatDurationWithUnits(Math.abs(timeDelta))}
+				{:else}
+					—
+				{/if}
+			</dd>
+		</div>
+		<div class="summary-cell">
+			<dt>Stages</dt>
+			<dd class="figure tabular-nums">
+				{stagesCompleted}/{metrics.stageDurations.length}
+			</dd>
+		</div>
+	</dl>
 
-		<!-- Performance Indicator -->
-		<div
-			class="p-3 rounded-lg border"
-			style="background: var(--surface-bg); border-color: var(--surface-border);"
-		>
-			<div class="flex items-center gap-2 mb-1">
-				<Zap class="w-4 h-4" style="color: var(--text-muted);" />
-				<span class="text-xs font-medium" style="color: var(--text-muted);">
-					Performance
-				</span>
-			</div>
-			<div class="flex items-center gap-2">
-				<span
-					class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-sm font-medium {getPerformanceColorClass(performance.color)}"
-				>
-					<PerformanceIcon class="w-3.5 h-3.5" />
-					{performance.label}
-				</span>
-			</div>
-		</div>
+	<section class="detail-section">
+		<h4 class="kicker">Stage duration</h4>
+		<StageDurationBar stageDurations={metrics.stageDurations} />
+	</section>
 
-		<!-- Comparison to Average -->
-		<div
-			class="p-3 rounded-lg border"
-			style="background: var(--surface-bg); border-color: var(--surface-border);"
-		>
-			<div class="flex items-center gap-2 mb-1">
-				<BarChart3 class="w-4 h-4" style="color: var(--text-muted);" />
-				<span class="text-xs font-medium" style="color: var(--text-muted);">
-					vs Average
-				</span>
-			</div>
-			{#if timeDelta !== null}
-				<p
-					class="text-lg font-bold tabular-nums {timeDelta > 0 ? 'text-amber-600' : timeDelta < 0 ? 'text-green-600' : ''}"
-					style={timeDelta === 0 ? 'color: var(--text-primary);' : ''}
-				>
-					{timeDelta > 0 ? '+' : ''}{formatDurationWithUnits(Math.abs(timeDelta))}
-				</p>
-			{:else}
-				<p class="text-lg font-bold" style="color: var(--text-muted);">-</p>
-			{/if}
-		</div>
-
-		<!-- Stages Completed -->
-		<div
-			class="p-3 rounded-lg border"
-			style="background: var(--surface-bg); border-color: var(--surface-border);"
-		>
-			<div class="flex items-center gap-2 mb-1">
-				<History class="w-4 h-4" style="color: var(--text-muted);" />
-				<span class="text-xs font-medium" style="color: var(--text-muted);">
-					Stages
-				</span>
-			</div>
-			<p class="text-lg font-bold tabular-nums" style="color: var(--text-primary);">
-				{metrics.stageDurations.filter((s) => s.status === "completed").length}/{metrics.stageDurations.length}
-			</p>
-		</div>
-	</div>
-
-	<!-- Stage Duration Breakdown -->
-	<div>
-		<h4
-			class="text-sm font-semibold mb-3 flex items-center gap-2"
-			style="color: var(--text-primary);"
-		>
-			<BarChart3 class="w-4 h-4" />
-			Stage Duration Breakdown
-		</h4>
-		<div
-			class="p-4 rounded-lg border"
-			style="background: var(--surface-bg); border-color: var(--surface-border);"
-		>
-			<StageDurationBar stageDurations={metrics.stageDurations} />
-		</div>
-	</div>
-
-	<!-- Status History Timeline -->
-	<div>
-		<h4
-			class="text-sm font-semibold mb-3 flex items-center gap-2"
-			style="color: var(--text-primary);"
-		>
-			<History class="w-4 h-4" />
-			Status History
-		</h4>
-		<div
-			class="p-4 rounded-lg border"
-			style="background: var(--surface-bg); border-color: var(--surface-border);"
-		>
-			<StatusTransitionTimeline transitions={job.status_history} />
-		</div>
-	</div>
+	<section class="detail-section">
+		<h4 class="kicker">Status history</h4>
+		<StatusTransitionTimeline transitions={job.status_history} />
+	</section>
 </div>
+
+<style>
+	.detail-metrics {
+		display: flex;
+		flex-direction: column;
+		gap: 1.25rem;
+		padding: 1rem 0;
+	}
+
+	.summary-row {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		gap: 0;
+		margin: 0;
+		border-top: 1px solid var(--surface-border);
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.summary-cell {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		padding: 0.65rem 0.75rem;
+		border-right: 1px solid var(--surface-border);
+	}
+
+	.summary-cell:last-child {
+		border-right: none;
+	}
+
+	.summary-cell dt {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0;
+	}
+
+	.summary-cell dd {
+		margin: 0;
+		font-family: var(--font-body);
+		font-size: 0.95rem;
+		color: var(--alt-charcoal);
+	}
+
+	.figure {
+		font-family: var(--font-display);
+		font-size: 1.15rem;
+		font-weight: 700;
+		line-height: 1.1;
+	}
+
+	[data-tone="success"] {
+		color: var(--alt-success);
+	}
+
+	[data-tone="warning"] {
+		color: var(--alt-warning);
+	}
+
+	[data-tone="error"] {
+		color: var(--alt-error);
+	}
+
+	[data-tone="muted"] {
+		color: var(--alt-ash);
+	}
+
+	.performance {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.4rem;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+	}
+
+	.performance .glyph {
+		font-family: var(--font-mono);
+	}
+
+	.detail-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.kicker {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0;
+	}
+</style>

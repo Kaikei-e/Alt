@@ -1,8 +1,7 @@
 <script lang="ts">
 import type { GenreProgressInfo } from "$lib/schema/dashboard";
 import { filterGenreProgress } from "$lib/utils/genreProgress";
-import StatusBadge from "./StatusBadge.svelte";
-import { Folder, Layers } from "@lucide/svelte";
+import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
 
 interface Props {
 	genreProgress: Record<string, GenreProgressInfo>;
@@ -14,40 +13,89 @@ const genres = $derived(filterGenreProgress(genreProgress));
 </script>
 
 {#if genres.length > 0}
-	<div class="space-y-2">
-		<h4 class="text-sm font-semibold" style="color: var(--text-muted);">
-			Genre Progress
-		</h4>
-		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+	<section class="genre-section" data-role="genre-progress">
+		<h4 class="kicker">By genre</h4>
+		<ul class="grid">
 			{#each genres as [genre, info]}
-				<div
-					class="flex items-center justify-between p-3 rounded-lg border"
-					style="background: var(--surface-bg); border-color: var(--surface-border);"
-				>
-					<div class="flex items-center gap-2">
-						<Folder class="w-4 h-4" style="color: var(--text-muted);" />
-						<span class="text-sm font-medium" style="color: var(--text-primary);">
-							{genre}
-						</span>
-					</div>
-					<div class="flex items-center gap-2">
+				<li class="row" data-status={info.status}>
+					<span class="genre-name">{genre}</span>
+					<span class="meta">
 						{#if info.cluster_count !== null}
-							<span
-								class="text-xs flex items-center gap-1"
-								style="color: var(--text-muted);"
-							>
-								<Layers class="w-3 h-3" />
-								{info.cluster_count}
-							</span>
+							<span class="count tabular-nums">{info.cluster_count}c</span>
 						{/if}
-						<StatusBadge status={info.status} size="sm" />
-					</div>
-				</div>
+						<StatusGlyph
+							status={info.status}
+							pulse={info.status === "running"}
+						/>
+					</span>
+				</li>
 			{/each}
-		</div>
-	</div>
+		</ul>
+	</section>
 {:else}
-	<p class="text-sm" style="color: var(--text-muted);">
-		No genre progress data available.
-	</p>
+	<p class="empty">No genre data.</p>
 {/if}
+
+<style>
+	.genre-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+
+	.kicker {
+		font-family: var(--font-body);
+		font-size: 0.6rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--alt-ash);
+		margin: 0;
+	}
+
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: 0;
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.row {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.55rem 0.75rem;
+		border-bottom: 1px solid var(--surface-border);
+		font-family: var(--font-body);
+	}
+
+	.genre-name {
+		font-size: 0.85rem;
+		color: var(--alt-charcoal);
+		text-transform: capitalize;
+	}
+
+	.meta {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.6rem;
+	}
+
+	.count {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-slate);
+	}
+
+	.empty {
+		font-family: var(--font-body);
+		font-size: 0.85rem;
+		font-style: italic;
+		color: var(--alt-slate);
+		margin: 0;
+	}
+</style>

@@ -3,37 +3,30 @@ import { expect } from "@playwright/test";
 import { BasePage } from "../BasePage";
 
 /**
- * Page Object for Mobile Job Status page (/mobile/recap/job-status)
+ * Page Object for Mobile Job Status page (/recap/job-status, mobile viewport)
  */
 export class MobileJobStatusPage extends BasePage {
-	// Header
 	readonly pageTitle: Locator;
 
-	// Stats
 	readonly statsRow: Locator;
 	readonly successRate: Locator;
 	readonly jobsToday: Locator;
 
-	// Job cards
 	readonly jobCards: Locator;
 	readonly detailSheet: Locator;
 
-	// Active job
 	readonly activeJobPanel: Locator;
 	readonly collapseToggle: Locator;
 	readonly pipelineProgress: Locator;
 	readonly genreProgressGrid: Locator;
 
-	// Control bar
 	readonly controlBar: Locator;
 	readonly refreshButton: Locator;
 	readonly startJobButton: Locator;
 
-	// Time window
 	readonly timeWindow24h: Locator;
 	readonly timeWindow7d: Locator;
 
-	// States
 	readonly noJobRunning: Locator;
 	readonly emptyState: Locator;
 	readonly errorMessage: Locator;
@@ -44,8 +37,8 @@ export class MobileJobStatusPage extends BasePage {
 		this.pageTitle = page.getByRole("heading", { name: "Job Status" });
 
 		this.statsRow = page.getByTestId("mobile-stats-row");
-		this.successRate = page.getByText("Success Rate");
-		this.jobsToday = page.getByText("Jobs Today");
+		this.successRate = page.getByText("Success rate", { exact: true });
+		this.jobsToday = page.getByText("Jobs today", { exact: true });
 
 		this.jobCards = page.getByTestId("mobile-job-card");
 		this.detailSheet = page.getByTestId("mobile-job-detail-sheet");
@@ -63,11 +56,11 @@ export class MobileJobStatusPage extends BasePage {
 			name: /start new recap job/i,
 		});
 
-		this.timeWindow24h = page.getByRole("button", { name: "24h" });
-		this.timeWindow7d = page.getByRole("button", { name: "7d" });
+		this.timeWindow24h = page.locator('[data-testid="time-window-24h"]');
+		this.timeWindow7d = page.locator('[data-testid="time-window-7d"]');
 
-		this.noJobRunning = page.getByText("No job currently running");
-		this.emptyState = page.getByText("No jobs found");
+		this.noJobRunning = page.getByText("No active job.");
+		this.emptyState = page.getByText("No jobs in this window.");
 		this.errorMessage = page.getByText(/error loading/i);
 	}
 
@@ -75,33 +68,21 @@ export class MobileJobStatusPage extends BasePage {
 		return "./recap/job-status";
 	}
 
-	/**
-	 * Wait for the page to load.
-	 */
 	async waitForPageLoaded(): Promise<void> {
 		await expect(this.pageTitle).toBeVisible({ timeout: 15000 });
 	}
 
-	/**
-	 * Open the detail sheet for the first job.
-	 */
 	async openFirstJobDetail(): Promise<void> {
 		await this.jobCards.first().click();
 		await expect(this.detailSheet).toBeVisible();
 	}
 
-	/**
-	 * Close the detail sheet.
-	 */
 	async closeDetailSheet(): Promise<void> {
 		const closeBtn = this.detailSheet.getByRole("button", { name: /close/i });
 		await closeBtn.click();
 		await expect(this.detailSheet).not.toBeVisible();
 	}
 
-	/**
-	 * Toggle the active job panel collapse.
-	 */
 	async toggleActiveJobPanel(): Promise<void> {
 		await this.collapseToggle.click();
 	}

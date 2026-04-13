@@ -3,73 +3,58 @@ import { expect } from "@playwright/test";
 import { BasePage } from "../BasePage";
 
 /**
- * Page Object for Desktop Recap Job Status page (/desktop/recap/job-status)
+ * Page Object for Desktop Recap Job Status page (/recap/job-status)
  */
 export class DesktopJobStatusPage extends BasePage {
-	// Header
 	readonly pageTitle: Locator;
+	readonly pageKicker: Locator;
 
-	// Stats cards
 	readonly successRateCard: Locator;
 	readonly avgDurationCard: Locator;
 	readonly jobsTodayCard: Locator;
 	readonly failedJobsCard: Locator;
 
-	// Recent jobs section
 	readonly recentJobsHeading: Locator;
-	readonly jobTable: Locator;
+	readonly jobList: Locator;
 
-	// Control buttons
 	readonly startJobButton: Locator;
 	readonly refreshButton: Locator;
 	readonly autoRefreshButton: Locator;
 
-	// Time window
 	readonly timeWindow24h: Locator;
 	readonly timeWindow7d: Locator;
 
-	// Active job
-	readonly activeJobHeading: Locator;
+	readonly activeJob: Locator;
 	readonly noJobRunning: Locator;
 
-	// States
 	readonly emptyState: Locator;
 	readonly errorMessage: Locator;
 
 	constructor(page: Page) {
 		super(page);
 
-		this.pageTitle = page.getByRole("heading", {
-			name: "Recap Job Status",
-		});
+		this.pageTitle = page.getByRole("heading", { name: "Job Status" });
+		this.pageKicker = page.locator('[data-role="page-kicker"]');
 
-		this.successRateCard = page.getByText("Success Rate");
-		this.avgDurationCard = page.getByText("Avg Duration");
-		this.jobsTodayCard = page.getByText("Jobs Today");
-		this.failedJobsCard = page.getByText("Failed Jobs");
+		this.successRateCard = page.getByText("Success rate", { exact: true });
+		this.avgDurationCard = page.getByText("Avg duration", { exact: true });
+		this.jobsTodayCard = page.getByText("Jobs today", { exact: true });
+		this.failedJobsCard = page.getByText("Failed jobs", { exact: true });
 
-		this.recentJobsHeading = page.getByRole("heading", {
-			name: "Recent Jobs",
-		});
-		this.jobTable = page.locator("table");
+		this.recentJobsHeading = page.getByRole("heading", { name: "Recent jobs" });
+		this.jobList = page.locator('[data-role="recent-jobs"]');
 
-		this.startJobButton = page.getByRole("button", { name: "Start Job" });
-		this.refreshButton = page.getByRole("button", { name: /^Refresh$/i });
-		this.autoRefreshButton = page.getByRole("button", {
-			name: /auto-refresh/i,
-		});
+		this.startJobButton = page.locator('[data-role="start-job"]');
+		this.refreshButton = page.locator('[data-role="refresh"]');
+		this.autoRefreshButton = page.locator('[data-role="auto-refresh"]');
 
 		this.timeWindow24h = page.locator('[data-testid="time-window-24h"]');
 		this.timeWindow7d = page.locator('[data-testid="time-window-7d"]');
 
-		this.activeJobHeading = page.getByRole("heading", {
-			name: "Currently Running",
-		});
-		this.noJobRunning = page.getByText("No job currently running");
+		this.activeJob = page.locator('[data-role="active-job"]');
+		this.noJobRunning = page.getByText("No active job.");
 
-		this.emptyState = page.getByText(
-			"No jobs found in the selected time window",
-		);
+		this.emptyState = page.getByText("No jobs in this window.");
 		this.errorMessage = page.getByText(/error loading job data/i);
 	}
 
@@ -77,40 +62,29 @@ export class DesktopJobStatusPage extends BasePage {
 		return "./recap/job-status";
 	}
 
-	/**
-	 * Wait for the job status page to load.
-	 */
 	async waitForPageLoaded(): Promise<void> {
 		await expect(this.pageTitle).toBeVisible({ timeout: 15000 });
 	}
 
-	/**
-	 * Get a job row by partial job ID.
-	 */
 	getJobRow(jobIdPartial: string): Locator {
-		return this.page.locator("tr").filter({ hasText: jobIdPartial }).first();
+		return this.page
+			.locator('[data-role="job-row"]')
+			.filter({ hasText: jobIdPartial })
+			.first();
 	}
 
-	/**
-	 * Click on a job row to expand it.
-	 */
 	async expandJobRow(jobIdPartial: string): Promise<void> {
-		await this.getJobRow(jobIdPartial).click();
+		const row = this.getJobRow(jobIdPartial);
+		await row.locator("button").first().click();
 	}
 
-	/**
-	 * Get expandable job rows (with role="button").
-	 */
 	getExpandableJobRows(): Locator {
-		return this.page.locator('tr[role="button"]');
+		return this.page.locator('[data-role="job-row"] button[aria-expanded]');
 	}
 
-	/**
-	 * Turn off auto-refresh if it's on.
-	 */
 	async disableAutoRefresh(): Promise<void> {
-		const text = await this.autoRefreshButton.textContent();
-		if (text?.includes("ON")) {
+		const active = await this.autoRefreshButton.getAttribute("data-active");
+		if (active === "true") {
 			await this.autoRefreshButton.click();
 		}
 	}

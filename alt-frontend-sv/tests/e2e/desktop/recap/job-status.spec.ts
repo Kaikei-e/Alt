@@ -8,154 +8,137 @@ import {
 } from "../../fixtures/mockData";
 
 test.describe("Desktop Recap Job Status", () => {
-	// Helper to set up default mock
 	async function setupDefaultMock(page: import("@playwright/test").Page) {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 	}
 
-	test("renders page title and stats cards", async ({
+	test("renders page kicker, title, and ledger row", async ({
 		page,
 		desktopJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./recap/job-status");
 
-		// Wait for page title to be visible instead of networkidle
 		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
+		await expect(desktopJobStatusPage.pageKicker).toBeVisible();
+		await expect(desktopJobStatusPage.pageKicker).toContainText("JOB STATUS");
 
-		// Verify stats cards
 		await expect(desktopJobStatusPage.successRateCard).toBeVisible();
 		await expect(desktopJobStatusPage.avgDurationCard).toBeVisible();
 		await expect(desktopJobStatusPage.jobsTodayCard).toBeVisible();
 		await expect(desktopJobStatusPage.failedJobsCard).toBeVisible();
 	});
 
-	test("displays recent jobs in table", async ({
+	test("displays recent jobs as Alt-Paper rows", async ({
 		page,
 		desktopJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./recap/job-status");
 
-		// Wait for heading to be visible
 		await expect(desktopJobStatusPage.recentJobsHeading).toBeVisible();
-
-		// Verify table headers
-		await expect(
-			page.getByRole("columnheader", { name: "Job ID" }),
-		).toBeVisible();
-		await expect(
-			page.getByRole("columnheader", { name: "Status" }),
-		).toBeVisible();
-		await expect(
-			page.getByRole("columnheader", { name: "Stages" }),
-		).toBeVisible();
-
-		// Verify job data appears
 		await expect(page.getByText("job-001-")).toBeVisible();
-		await expect(page.getByText("Completed")).toBeVisible();
+		await expect(
+			page.locator('[data-role="job-row"]').first(),
+		).toBeVisible();
 	});
 
-	test("shows stage progress indicator in table", async ({ page }) => {
+	test("status row carries data-status for stripe color", async ({
+		page,
+	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./recap/job-status");
 
-		// Wait for table to be loaded
 		await expect(page.getByText("job-001-")).toBeVisible();
 
-		// Verify stage progress indicators are visible (8/8 for completed job)
-		await expect(page.getByText("8/8")).toBeVisible();
+		const completedRow = page
+			.locator('[data-role="job-row"]')
+			.filter({ hasText: "job-001-" })
+			.first();
+		await expect(completedRow).toHaveAttribute("data-status", "completed");
+
+		const failedRow = page
+			.locator('[data-role="job-row"]')
+			.filter({ hasText: "job-002-" })
+			.first();
+		await expect(failedRow).toHaveAttribute("data-status", "failed");
+	});
+
+	test("shows stage progress count", async ({ page }) => {
+		await setupDefaultMock(page);
+		await page.goto("./recap/job-status");
+
+		await expect(page.getByText("job-001-")).toBeVisible();
+		await expect(page.getByText("8/8").first()).toBeVisible();
 	});
 
 	test("expands job row to show detailed metrics", async ({ page }) => {
 		await setupDefaultMock(page);
 		await page.goto("./recap/job-status");
 
-		// Wait for first job to be visible
-		const firstJobRow = page
-			.locator("tr")
+		const firstJobToggle = page
+			.locator('[data-role="job-row"]')
 			.filter({ hasText: "job-001-" })
-			.first();
-		await expect(firstJobRow).toBeVisible();
+			.first()
+			.locator("button");
+		await expect(firstJobToggle).toBeVisible();
+		await firstJobToggle.click();
 
-		// Click on the first job row to expand
-		await firstJobRow.click();
-
-		// Verify detailed metrics panel appears
 		await expect(
-			page.getByRole("heading", { name: "Stage Duration Breakdown" }),
+			page.getByRole("heading", { name: "Stage duration" }),
 		).toBeVisible();
 		await expect(
-			page.getByRole("heading", { name: "Status History" }),
+			page.getByRole("heading", { name: "Status history" }),
 		).toBeVisible();
-
-		// Verify stage duration bars are present (use exact match to avoid matching status history)
 		await expect(page.getByText("Fetch", { exact: true })).toBeVisible();
 		await expect(page.getByText("Preprocess", { exact: true })).toBeVisible();
 		await expect(page.getByText("Total", { exact: true })).toBeVisible();
 	});
 
-	test("shows performance metrics summary cards in expanded view", async ({
-		page,
-	}) => {
+	test("shows performance summary in expanded view", async ({ page }) => {
 		await setupDefaultMock(page);
 		await page.goto("./recap/job-status");
 
-		// Wait for first job to be visible
-		const firstJobRow = page
-			.locator("tr")
+		const firstJobToggle = page
+			.locator('[data-role="job-row"]')
 			.filter({ hasText: "job-001-" })
-			.first();
-		await expect(firstJobRow).toBeVisible();
+			.first()
+			.locator("button");
+		await firstJobToggle.click();
 
-		// Click on the first job row to expand
-		await firstJobRow.click();
-
-		// Wait for expanded content
-		await expect(page.getByText("Stage Duration Breakdown")).toBeVisible();
-
-		// Verify performance summary cards - use more specific selectors
-		// The expanded view should show summary cards with metrics
 		await expect(
-			page.getByRole("heading", { name: "Stage Duration Breakdown" }),
+			page.getByRole("heading", { name: "Stage duration" }),
 		).toBeVisible();
-		await expect(page.getByText("Total")).toBeVisible();
+		await expect(page.getByText("Total", { exact: true })).toBeVisible();
 	});
 
 	test("displays active job when running", async ({
 		page,
 		desktopJobStatusPage,
 	}) => {
-		// Set up mock with active job data
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
 
 		await page.goto("./recap/job-status");
 
-		// Wait for page to load - check for stats cards first
 		await expect(desktopJobStatusPage.successRateCard).toBeVisible();
-
-		// Wait for heading to be visible
-		await expect(desktopJobStatusPage.activeJobHeading).toBeVisible();
-
-		// Verify active job details - use first() since there might be multiple "Running" texts
-		await expect(page.getByText("Running").first()).toBeVisible();
+		await expect(desktopJobStatusPage.activeJob).toBeVisible();
+		await expect(
+			desktopJobStatusPage.activeJob.getByText(/Running/i).first(),
+		).toBeVisible();
 	});
 
-	test("shows no job running message when no active job", async ({
+	test("shows no active job message when no active job", async ({
 		page,
 		desktopJobStatusPage,
 	}) => {
 		await setupDefaultMock(page);
 		await page.goto("./recap/job-status");
 
-		// Wait for page to be loaded by checking for a key element
 		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
-
-		// Verify no job running message
 		await expect(desktopJobStatusPage.noJobRunning).toBeVisible();
 	});
 
@@ -163,17 +146,13 @@ test.describe("Desktop Recap Job Status", () => {
 		page,
 		desktopJobStatusPage,
 	}) => {
-		// Set up mock with empty job data
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_EMPTY),
 		);
 
 		await page.goto("./recap/job-status");
 
-		// Wait for page title
 		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
-
-		// Verify empty state message
 		await expect(desktopJobStatusPage.emptyState).toBeVisible();
 	});
 
@@ -184,22 +163,15 @@ test.describe("Desktop Recap Job Status", () => {
 		await setupDefaultMock(page);
 		await page.goto("./recap/job-status");
 
-		// Wait for time window selector
-		await expect(page.getByText("Time Window:")).toBeVisible();
-
-		// Verify time window buttons using data-testid
 		await expect(desktopJobStatusPage.timeWindow24h).toBeVisible();
 		await expect(desktopJobStatusPage.timeWindow7d).toBeVisible();
 
-		// Click on 7d time window
 		await desktopJobStatusPage.timeWindow7d.click();
 
-		// Verify the button is now pressed (selected state)
 		await expect(desktopJobStatusPage.timeWindow7d).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);
-		// Verify the previously selected button is no longer pressed
 		await expect(desktopJobStatusPage.timeWindow24h).toHaveAttribute(
 			"aria-pressed",
 			"false",
@@ -211,7 +183,6 @@ test.describe("Desktop Recap Job Status", () => {
 		desktopJobStatusPage,
 	}) => {
 		let callCount = 0;
-		// Set up mock that tracks call count
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, async (route) => {
 			callCount++;
 			await fulfillJson(route, JOB_PROGRESS_RESPONSE);
@@ -219,26 +190,14 @@ test.describe("Desktop Recap Job Status", () => {
 
 		await page.goto("./recap/job-status");
 
-		// Wait for page to load - check for stats cards which appear when data loads
 		await expect(desktopJobStatusPage.successRateCard).toBeVisible();
 
-		// Turn off auto-refresh if it's on to avoid interference
-		const autoRefreshText =
-			await desktopJobStatusPage.autoRefreshButton.textContent();
-		if (autoRefreshText?.includes("ON")) {
-			await desktopJobStatusPage.autoRefreshButton.click();
-			// Wait for auto-refresh to be turned off
-			await expect(
-				page.getByRole("button", { name: /Auto-refresh OFF/i }),
-			).toBeVisible();
-		}
+		await desktopJobStatusPage.disableAutoRefresh();
 
 		const initialCallCount = callCount;
 
-		// Click refresh button (use regex to avoid matching "Auto-refresh")
 		await desktopJobStatusPage.refreshButton.click();
 
-		// Wait for API call to complete using Playwright's retry mechanism
 		await expect(async () => {
 			expect(callCount).toBeGreaterThan(initialCallCount);
 		}).toPass({ timeout: 5000 });
@@ -248,14 +207,12 @@ test.describe("Desktop Recap Job Status", () => {
 		page,
 		desktopJobStatusPage,
 	}) => {
-		// Set up mock that returns an error
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillError(route, "Server error", 500),
 		);
 
 		await page.goto("./recap/job-status");
 
-		// Wait for error message to appear with extended timeout
 		await expect(desktopJobStatusPage.errorMessage).toBeVisible({
 			timeout: 5000,
 		});
@@ -265,18 +222,14 @@ test.describe("Desktop Recap Job Status", () => {
 		await setupDefaultMock(page);
 		await page.goto("./recap/job-status");
 
-		// Wait for table to load
 		await expect(page.getByText("job-001-")).toBeVisible();
 
-		// Find the failed job row
-		const failedJobRow = page
-			.locator("tr")
+		const failedRow = page
+			.locator('[data-role="job-row"]')
 			.filter({ hasText: "job-002-" })
 			.first();
-		await expect(failedJobRow).toBeVisible();
-
-		// Verify Failed badge is shown
-		await expect(failedJobRow.getByText("Failed")).toBeVisible();
+		await expect(failedRow).toBeVisible();
+		await expect(failedRow.getByText(/Failed/i)).toBeVisible();
 	});
 });
 
@@ -285,17 +238,13 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 		page,
 		desktopJobStatusPage,
 	}) => {
-		// Mock job progress with an active job
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_WITH_ACTIVE_JOB),
 		);
 
 		await page.goto("./recap/job-status");
 
-		// Wait for page to load
 		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
-
-		// Button should be disabled when a job is running
 		await expect(desktopJobStatusPage.startJobButton).toBeDisabled();
 	});
 
@@ -303,17 +252,13 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 		page,
 		desktopJobStatusPage,
 	}) => {
-		// Mock job progress without active job
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
 		await page.goto("./recap/job-status");
 
-		// Wait for page to load
 		await expect(desktopJobStatusPage.pageTitle).toBeVisible();
-
-		// Button should be enabled when no job is running
 		await expect(desktopJobStatusPage.startJobButton).toBeEnabled();
 	});
 
@@ -321,13 +266,11 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 		page,
 		desktopJobStatusPage,
 	}) => {
-		// Mock job progress (no active job initially)
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
-		// Mock trigger endpoint
-		await page.route(JOB_DASHBOARD_PATHS.triggerJob, (route) =>
+		await page.route("**/api/v1/generate/recaps/3days", (route) =>
 			fulfillJson(route, {
 				job_id: "new-job-123",
 				genres: ["tech", "ai"],
@@ -338,11 +281,8 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 		await page.goto("./recap/job-status");
 
 		await expect(desktopJobStatusPage.startJobButton).toBeEnabled();
-
-		// Click start button
 		await desktopJobStatusPage.startJobButton.click();
 
-		// Should show success message with job ID
 		await expect(page.getByText(/Job.*started/i)).toBeVisible({
 			timeout: 5000,
 		});
@@ -350,34 +290,30 @@ test.describe("Desktop Job Status - Job Trigger", () => {
 });
 
 test.describe("Desktop Job Status - Accessibility", () => {
-	test("job history table is keyboard navigable", async ({ page }) => {
+	test("job row toggle is keyboard navigable", async ({ page }) => {
 		await page.route(JOB_DASHBOARD_PATHS.jobProgress, (route) =>
 			fulfillJson(route, JOB_PROGRESS_RESPONSE),
 		);
 
 		await page.goto("./recap/job-status");
 
-		// Wait for table to load
 		await expect(page.getByText("job-001-")).toBeVisible();
 
-		// Tab to first job row
-		const firstJobRow = page.locator("tr[role='button']").first();
-		await firstJobRow.focus();
+		const firstToggle = page
+			.locator('[data-role="job-row"] button[aria-expanded]')
+			.first();
+		await firstToggle.focus();
+		await expect(firstToggle).toBeFocused();
 
-		// Verify focus is visible
-		await expect(firstJobRow).toBeFocused();
-
-		// Press Enter to expand
 		await page.keyboard.press("Enter");
+		await expect(
+			page.getByRole("heading", { name: "Stage duration" }),
+		).toBeVisible();
 
-		// Verify expanded content appears
-		await expect(page.getByText("Stage Duration Breakdown")).toBeVisible();
-
-		// Press Enter again to collapse
 		await page.keyboard.press("Enter");
-
-		// Verify expanded content is hidden
-		await expect(page.getByText("Stage Duration Breakdown")).not.toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Stage duration" }),
+		).not.toBeVisible();
 	});
 
 	test("expanded job row has proper aria attributes", async ({ page }) => {
@@ -387,17 +323,14 @@ test.describe("Desktop Job Status - Accessibility", () => {
 
 		await page.goto("./recap/job-status");
 
-		// Wait for table to load
-		const firstJobRow = page.locator("tr[role='button']").first();
-		await expect(firstJobRow).toBeVisible();
+		const firstToggle = page
+			.locator('[data-role="job-row"] button[aria-expanded]')
+			.first();
+		await expect(firstToggle).toBeVisible();
 
-		// Verify aria-expanded is false initially
-		await expect(firstJobRow).toHaveAttribute("aria-expanded", "false");
+		await expect(firstToggle).toHaveAttribute("aria-expanded", "false");
 
-		// Click to expand
-		await firstJobRow.click();
-
-		// Verify aria-expanded is true
-		await expect(firstJobRow).toHaveAttribute("aria-expanded", "true");
+		await firstToggle.click();
+		await expect(firstToggle).toHaveAttribute("aria-expanded", "true");
 	});
 });

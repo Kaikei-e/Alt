@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { JobStatus, GenreStatusType } from "$lib/schema/dashboard";
+import StatusGlyph from "$lib/components/recap/job-status/StatusGlyph.svelte";
 
 interface Props {
 	status: JobStatus | GenreStatusType;
@@ -7,37 +8,25 @@ interface Props {
 }
 
 let { status, size = "md" }: Props = $props();
-
-const statusConfig: Record<
-	JobStatus | GenreStatusType,
-	{ bg: string; text: string; label: string }
-> = {
-	pending: { bg: "bg-gray-100", text: "text-gray-700", label: "Pending" },
-	running: { bg: "bg-blue-100", text: "text-blue-700", label: "Running" },
-	completed: {
-		bg: "bg-green-100",
-		text: "text-green-700",
-		label: "Completed",
-	},
-	succeeded: {
-		bg: "bg-green-100",
-		text: "text-green-700",
-		label: "Succeeded",
-	},
-	failed: { bg: "bg-red-100", text: "text-red-700", label: "Failed" },
-};
-
-const config = $derived(statusConfig[status] ?? statusConfig.pending);
-const sizeClass = $derived(
-	size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm",
-);
+const isRunning = $derived(status === "running");
 </script>
 
-<span
-	class="inline-flex items-center font-medium rounded-full {config.bg} {config.text} {sizeClass}"
->
-	{#if status === "running"}
-		<span class="w-2 h-2 mr-1.5 bg-blue-500 rounded-full animate-pulse"></span>
-	{/if}
-	{config.label}
+<span class="status-badge" data-status={status} data-size={size}>
+	<StatusGlyph {status} pulse={isRunning} includeLabel={true} />
 </span>
+
+<style>
+	.status-badge {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.4rem;
+	}
+
+	.status-badge[data-size="sm"] {
+		font-size: 0.65rem;
+	}
+
+	.status-badge[data-size="md"] {
+		font-size: 0.75rem;
+	}
+</style>

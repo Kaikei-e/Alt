@@ -1,7 +1,6 @@
 <script lang="ts">
 import type { RecentJobSummary } from "$lib/schema/dashboard";
 import MobileJobCard from "./MobileJobCard.svelte";
-import { Inbox } from "@lucide/svelte";
 
 interface Props {
 	jobs: RecentJobSummary[];
@@ -11,29 +10,74 @@ interface Props {
 let { jobs, onJobSelect }: Props = $props();
 </script>
 
-<div class="px-4">
-	<h2
-		class="text-sm font-semibold mb-3"
-		style="color: var(--text-muted);"
-	>
-		Recent Jobs
-	</h2>
+<section class="recent" data-role="recent-jobs">
+	<header class="head">
+		<h2 class="title">Recent jobs</h2>
+		<span class="meta">{jobs.length}</span>
+	</header>
 
 	{#if jobs.length === 0}
-		<div
-			class="p-8 rounded-xl border text-center"
-			style="background: var(--surface-bg); border-color: var(--surface-border);"
-		>
-			<Inbox class="w-8 h-8 mx-auto mb-2" style="color: var(--text-muted);" />
-			<p class="text-sm" style="color: var(--text-muted);">
-				No jobs found in the selected time window
-			</p>
-		</div>
+		<p class="empty">No jobs in this window.</p>
 	{:else}
-		<div class="space-y-3">
+		<ul class="list">
 			{#each jobs as job (job.job_id)}
-				<MobileJobCard {job} onSelect={onJobSelect} />
+				<li>
+					<MobileJobCard {job} onSelect={onJobSelect} />
+				</li>
 			{/each}
-		</div>
+		</ul>
 	{/if}
-</div>
+</section>
+
+<style>
+	.recent {
+		padding: 0 1rem 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+	}
+
+	.head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.5rem;
+		padding-bottom: 0.4rem;
+		border-bottom: 1px solid var(--surface-border);
+	}
+
+	.title {
+		font-family: var(--font-display);
+		font-size: 1.1rem;
+		font-weight: 700;
+		color: var(--alt-charcoal);
+		margin: 0;
+	}
+
+	.meta {
+		font-family: var(--font-mono);
+		font-size: 0.7rem;
+		color: var(--alt-ash);
+	}
+
+	.empty {
+		font-family: var(--font-body);
+		font-size: 0.95rem;
+		font-style: italic;
+		color: var(--alt-slate);
+		text-align: center;
+		padding: 2rem 1rem;
+		margin: 0;
+	}
+
+	.list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		border-top: 1px solid var(--surface-border);
+	}
+
+	.list > li {
+		border-bottom: 1px solid var(--surface-border);
+	}
+</style>
