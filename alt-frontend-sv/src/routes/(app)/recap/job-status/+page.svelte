@@ -6,10 +6,7 @@ import { triggerRecapJob } from "$lib/api/client/dashboard";
 import { getLoadingStore } from "$lib/stores/loading.svelte";
 import type { TimeWindow, RecentJobSummary } from "$lib/schema/dashboard";
 
-import {
-	PageKicker,
-	LedgerFigure,
-} from "$lib/components/recap/job-status";
+import { PageKicker, LedgerFigure } from "$lib/components/recap/job-status";
 import {
 	ActiveJobCard,
 	JobHistoryTable,

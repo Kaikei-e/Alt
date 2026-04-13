@@ -56,10 +56,9 @@ async function handleRegenerate() {
 }
 
 function handlePreviousLetterSelected(targetDate: string) {
-	void goto(
-		`/recap/morning-letter?date=${encodeURIComponent(targetDate)}`,
-		{ noScroll: false },
-	);
+	void goto(`/recap/morning-letter?date=${encodeURIComponent(targetDate)}`, {
+		noScroll: false,
+	});
 }
 </script>
 

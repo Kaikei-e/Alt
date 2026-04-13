@@ -29,9 +29,7 @@ const elapsedTime = $derived(() => {
 	return `${mins}m ${secs % 60}s`;
 });
 
-const sourceLabel = $derived(
-	job.trigger_source === "user" ? "User" : "System",
-);
+const sourceLabel = $derived(job.trigger_source === "user" ? "User" : "System");
 </script>
 
 <article

@@ -26,10 +26,10 @@ const narrative = $derived(section.narrative ?? "");
 const whyByBullet = $derived<WhyReasonData[] | null>(
 	section.whyReasons && section.whyReasons.length === section.bullets.length
 		? section.whyReasons.map((w) => ({
-			code: w.code,
-			refId: w.refId ?? undefined,
-			tag: w.tag ?? undefined,
-		}))
+				code: w.code,
+				refId: w.refId ?? undefined,
+				tag: w.tag ?? undefined,
+			}))
 		: null,
 );
 </script>

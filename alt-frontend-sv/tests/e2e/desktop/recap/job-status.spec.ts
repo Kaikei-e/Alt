@@ -40,14 +40,10 @@ test.describe("Desktop Recap Job Status", () => {
 
 		await expect(desktopJobStatusPage.recentJobsHeading).toBeVisible();
 		await expect(page.getByText("job-001-")).toBeVisible();
-		await expect(
-			page.locator('[data-role="job-row"]').first(),
-		).toBeVisible();
+		await expect(page.locator('[data-role="job-row"]').first()).toBeVisible();
 	});
 
-	test("status row carries data-status for stripe color", async ({
-		page,
-	}) => {
+	test("status row carries data-status for stripe color", async ({ page }) => {
 		await setupDefaultMock(page);
 		await page.goto("./recap/job-status");
 

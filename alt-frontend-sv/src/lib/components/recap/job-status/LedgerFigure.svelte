@@ -7,13 +7,7 @@ interface Props {
 	deltaUnit?: string;
 }
 
-let {
-	label,
-	value,
-	subtitle,
-	delta = null,
-	deltaUnit = "%",
-}: Props = $props();
+let { label, value, subtitle, delta = null, deltaUnit = "%" }: Props = $props();
 
 const deltaGlyph = $derived(() => {
 	if (delta === null || delta === 0) return "●";
