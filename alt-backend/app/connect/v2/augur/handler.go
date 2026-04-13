@@ -131,7 +131,11 @@ func (h *Handler) sanitizeMetaEvent(event *augurv2.StreamChatResponse) *augurv2.
 		Kind: "meta",
 		Payload: &augurv2.StreamChatResponse_Meta{
 			Meta: &augurv2.MetaPayload{
-				Citations: sanitizedCitations,
+				// Preserve the persisted conversation id so the client can
+				// keep appending turns to the same row instead of spawning
+				// a fresh conversation on every request.
+				ConversationId: meta.ConversationId,
+				Citations:      sanitizedCitations,
 			},
 		},
 	}
