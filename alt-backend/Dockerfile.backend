@@ -1,4 +1,8 @@
-FROM golang:1.26-alpine AS builder
+# L-001: ベースイメージは patch version + sha256 digest で固定する。
+# `1.26-alpine` のような floating tag はビルド毎に異なる成果物を生み再現性を
+# 損なうため、明示的に digest を指定して reproducible build を担保する。
+# digest 更新は依存 CVE 監査 (M-001 govulncheck) の結果と合わせて定期的に行う。
+FROM golang:1.26.2-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
 
 WORKDIR /app
 
@@ -18,7 +22,7 @@ FROM busybox:1.36-musl AS busybox
 
 # 最小イメージ (distroless/static) + 非rootユーザー
 # CA証明書、タイムゾーンデータ込み、シェルなし
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1
 
 # 静的 wget をコピー (compose.yaml ヘルスチェック用)
 COPY --from=busybox /bin/wget /usr/bin/wget
