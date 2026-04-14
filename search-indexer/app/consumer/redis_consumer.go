@@ -85,9 +85,12 @@ func (c *Consumer) Start(ctx context.Context) error {
 		"stream", c.config.StreamKey,
 		"group", c.config.GroupName,
 		"consumer", c.config.ConsumerName,
+		"dlq_stream", c.config.DLQStreamKey,
+		"max_deliveries", c.config.MaxDeliveries,
 	)
 
 	go c.consumeLoop(ctx)
+	go c.runReaper(ctx)
 	return nil
 }
 
