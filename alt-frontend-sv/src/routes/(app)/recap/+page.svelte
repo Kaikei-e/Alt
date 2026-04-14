@@ -373,7 +373,7 @@ onMount(() => {
 				<p class="text-[var(--text-secondary)] text-sm">No recap data available</p>
 			</div>
 		{:else}
-			<div class="grid grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
+			<div class="grid grid-cols-3 gap-6 h-[calc(100dvh-12rem)]">
 				<div class="col-span-1 h-full overflow-y-auto">
 					<RecapGenreList {genres} {selectedGenre} onSelectGenre={handleSelectGenre} />
 				</div>
@@ -385,10 +385,10 @@ onMount(() => {
 	{/if}
 {:else}
 	<!-- Mobile -->
-	<div class="min-h-[100dvh] relative" style="background: var(--app-bg);">
+	<div class="relative" style="background: var(--app-bg);">
 		{#if isLoading}
 			<div
-				class="p-5 max-w-2xl mx-auto h-[100dvh]"
+				class="p-5 max-w-2xl mx-auto"
 				data-testid="recap-skeleton-container"
 			>
 				<div class="flex flex-col gap-4">
@@ -405,7 +405,7 @@ onMount(() => {
 				</div>
 			</div>
 		{:else if error}
-			<div class="flex flex-col items-center justify-center min-h-[50vh] p-6">
+			<div class="flex flex-col items-center justify-center min-h-[50dvh] p-6">
 				<div
 					class="p-6 rounded-lg border text-center"
 					style="background: var(--surface-bg); border-color: hsl(var(--destructive));"
@@ -435,7 +435,7 @@ onMount(() => {
 		{:else if !recapData || recapData.genres.length === 0}
 			<RecapEmptyState />
 		{:else}
-			<SwipeRecapScreen genres={recapData.genres} summaryData={recapData} />
+			<SwipeRecapScreen window={selectedWindow} genres={recapData.genres} summaryData={recapData} />
 		{/if}
 	</div>
 {/if}
