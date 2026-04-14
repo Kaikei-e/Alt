@@ -2,8 +2,16 @@
 // @generated from file alt/augur/v2/augur.proto (package alt.augur.v2, syntax proto3)
 /* eslint-disable */
 
-import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
-import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type {
+	GenFile,
+	GenMessage,
+	GenService,
+} from "@bufbuild/protobuf/codegenv2";
+import {
+	fileDesc,
+	messageDesc,
+	serviceDesc,
+} from "@bufbuild/protobuf/codegenv2";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 import { file_google_protobuf_timestamp } from "@bufbuild/protobuf/wkt";
 import type { Message } from "@bufbuild/protobuf";
@@ -11,8 +19,12 @@ import type { Message } from "@bufbuild/protobuf";
 /**
  * Describes the file alt/augur/v2/augur.proto.
  */
-export const file_alt_augur_v2_augur: GenFile = /*@__PURE__*/
-  fileDesc("ChhhbHQvYXVndXIvdjIvYXVndXIucHJvdG8SDGFsdC5hdWd1ci52MiJZChFTdHJlYW1DaGF0UmVxdWVzdBIrCghtZXNzYWdlcxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZRIXCg9jb252ZXJzYXRpb25faWQYAiABKAkihwEKC0NoYXRNZXNzYWdlEgwKBHJvbGUYASABKAkSDwoHY29udGVudBgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIpCgljaXRhdGlvbnMYBCADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24i4AEKElN0cmVhbUNoYXRSZXNwb25zZRIMCgRraW5kGAEgASgJEg8KBWRlbHRhGAIgASgJSAASKQoEbWV0YRgDIAEoCzIZLmFsdC5hdWd1ci52Mi5NZXRhUGF5bG9hZEgAEikKBGRvbmUYBCABKAsyGS5hbHQuYXVndXIudjIuRG9uZVBheWxvYWRIABIXCg1mYWxsYmFja19jb2RlGAUgASgJSAASFwoNZXJyb3JfbWVzc2FnZRgGIAEoCUgAEhgKDnRoaW5raW5nX2RlbHRhGAcgASgJSABCCQoHcGF5bG9hZCJRCgtNZXRhUGF5bG9hZBIpCgljaXRhdGlvbnMYASADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24SFwoPY29udmVyc2F0aW9uX2lkGAIgASgJIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiagoLRG9uZVBheWxvYWQSDgoGYW5zd2VyGAEgASgJEikKCWNpdGF0aW9ucxgCIAMoCzIWLmFsdC5hdWd1ci52Mi5DaXRhdGlvbhIOCgZpbnRlbnQYAyABKAkSEAoIc3RyYXRlZ3kYBCABKAkiNgoWUmV0cmlldmVDb250ZXh0UmVxdWVzdBINCgVxdWVyeRgBIAEoCRINCgVsaW1pdBgCIAEoBSJGChdSZXRyaWV2ZUNvbnRleHRSZXNwb25zZRIrCghjb250ZXh0cxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5Db250ZXh0SXRlbSJOCgtDb250ZXh0SXRlbRILCgN1cmwYASABKAkSDQoFdGl0bGUYAiABKAkSFAoMcHVibGlzaGVkX2F0GAMgASgJEg0KBXNjb3JlGAQgASgCIssBChNDb252ZXJzYXRpb25TdW1tYXJ5EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEi4KCmNyZWF0ZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjQKEGxhc3RfYWN0aXZpdHlfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhwKFGxhc3RfbWVzc2FnZV9wcmV2aWV3GAUgASgJEhUKDW1lc3NhZ2VfY291bnQYBiABKAUiQQoYTGlzdENvbnZlcnNhdGlvbnNSZXF1ZXN0EhEKCXBhZ2Vfc2l6ZRgBIAEoBRISCgpwYWdlX3Rva2VuGAIgASgJIm4KGUxpc3RDb252ZXJzYXRpb25zUmVzcG9uc2USOAoNY29udmVyc2F0aW9ucxgBIAMoCzIhLmFsdC5hdWd1ci52Mi5Db252ZXJzYXRpb25TdW1tYXJ5EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIkChZHZXRDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIpEBChdHZXRDb252ZXJzYXRpb25SZXNwb25zZRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCghtZXNzYWdlcxgEIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZSInChlEZWxldGVDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIhwKGkRlbGV0ZUNvbnZlcnNhdGlvblJlc3BvbnNlMvADCgxBdWd1clNlcnZpY2USUQoKU3RyZWFtQ2hhdBIfLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVxdWVzdBogLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVzcG9uc2UwARJeCg9SZXRyaWV2ZUNvbnRleHQSJC5hbHQuYXVndXIudjIuUmV0cmlldmVDb250ZXh0UmVxdWVzdBolLmFsdC5hdWd1ci52Mi5SZXRyaWV2ZUNvbnRleHRSZXNwb25zZRJkChFMaXN0Q29udmVyc2F0aW9ucxImLmFsdC5hdWd1ci52Mi5MaXN0Q29udmVyc2F0aW9uc1JlcXVlc3QaJy5hbHQuYXVndXIudjIuTGlzdENvbnZlcnNhdGlvbnNSZXNwb25zZRJeCg9HZXRDb252ZXJzYXRpb24SJC5hbHQuYXVndXIudjIuR2V0Q29udmVyc2F0aW9uUmVxdWVzdBolLmFsdC5hdWd1ci52Mi5HZXRDb252ZXJzYXRpb25SZXNwb25zZRJnChJEZWxldGVDb252ZXJzYXRpb24SJy5hbHQuYXVndXIudjIuRGVsZXRlQ29udmVyc2F0aW9uUmVxdWVzdBooLmFsdC5hdWd1ci52Mi5EZWxldGVDb252ZXJzYXRpb25SZXNwb25zZUIkWiJhbHQvZ2VuL3Byb3RvL2FsdC9hdWd1ci92MjthdWd1cnYyYgZwcm90bzM", [file_google_protobuf_timestamp]);
+export const file_alt_augur_v2_augur: GenFile =
+	/*@__PURE__*/
+	fileDesc(
+		"ChhhbHQvYXVndXIvdjIvYXVndXIucHJvdG8SDGFsdC5hdWd1ci52MiJZChFTdHJlYW1DaGF0UmVxdWVzdBIrCghtZXNzYWdlcxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZRIXCg9jb252ZXJzYXRpb25faWQYAiABKAkihwEKC0NoYXRNZXNzYWdlEgwKBHJvbGUYASABKAkSDwoHY29udGVudBgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIpCgljaXRhdGlvbnMYBCADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24i4AEKElN0cmVhbUNoYXRSZXNwb25zZRIMCgRraW5kGAEgASgJEg8KBWRlbHRhGAIgASgJSAASKQoEbWV0YRgDIAEoCzIZLmFsdC5hdWd1ci52Mi5NZXRhUGF5bG9hZEgAEikKBGRvbmUYBCABKAsyGS5hbHQuYXVndXIudjIuRG9uZVBheWxvYWRIABIXCg1mYWxsYmFja19jb2RlGAUgASgJSAASFwoNZXJyb3JfbWVzc2FnZRgGIAEoCUgAEhgKDnRoaW5raW5nX2RlbHRhGAcgASgJSABCCQoHcGF5bG9hZCJRCgtNZXRhUGF5bG9hZBIpCgljaXRhdGlvbnMYASADKAsyFi5hbHQuYXVndXIudjIuQ2l0YXRpb24SFwoPY29udmVyc2F0aW9uX2lkGAIgASgJIjwKCENpdGF0aW9uEgsKA3VybBgBIAEoCRINCgV0aXRsZRgCIAEoCRIUCgxwdWJsaXNoZWRfYXQYAyABKAkiagoLRG9uZVBheWxvYWQSDgoGYW5zd2VyGAEgASgJEikKCWNpdGF0aW9ucxgCIAMoCzIWLmFsdC5hdWd1ci52Mi5DaXRhdGlvbhIOCgZpbnRlbnQYAyABKAkSEAoIc3RyYXRlZ3kYBCABKAkiNgoWUmV0cmlldmVDb250ZXh0UmVxdWVzdBINCgVxdWVyeRgBIAEoCRINCgVsaW1pdBgCIAEoBSJGChdSZXRyaWV2ZUNvbnRleHRSZXNwb25zZRIrCghjb250ZXh0cxgBIAMoCzIZLmFsdC5hdWd1ci52Mi5Db250ZXh0SXRlbSJOCgtDb250ZXh0SXRlbRILCgN1cmwYASABKAkSDQoFdGl0bGUYAiABKAkSFAoMcHVibGlzaGVkX2F0GAMgASgJEg0KBXNjb3JlGAQgASgCIssBChNDb252ZXJzYXRpb25TdW1tYXJ5EgoKAmlkGAEgASgJEg0KBXRpdGxlGAIgASgJEi4KCmNyZWF0ZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjQKEGxhc3RfYWN0aXZpdHlfYXQYBCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhwKFGxhc3RfbWVzc2FnZV9wcmV2aWV3GAUgASgJEhUKDW1lc3NhZ2VfY291bnQYBiABKAUiQQoYTGlzdENvbnZlcnNhdGlvbnNSZXF1ZXN0EhEKCXBhZ2Vfc2l6ZRgBIAEoBRISCgpwYWdlX3Rva2VuGAIgASgJIm4KGUxpc3RDb252ZXJzYXRpb25zUmVzcG9uc2USOAoNY29udmVyc2F0aW9ucxgBIAMoCzIhLmFsdC5hdWd1ci52Mi5Db252ZXJzYXRpb25TdW1tYXJ5EhcKD25leHRfcGFnZV90b2tlbhgCIAEoCSIkChZHZXRDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIpEBChdHZXRDb252ZXJzYXRpb25SZXNwb25zZRIKCgJpZBgBIAEoCRINCgV0aXRsZRgCIAEoCRIuCgpjcmVhdGVkX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIrCghtZXNzYWdlcxgEIAMoCzIZLmFsdC5hdWd1ci52Mi5DaGF0TWVzc2FnZSInChlEZWxldGVDb252ZXJzYXRpb25SZXF1ZXN0EgoKAmlkGAEgASgJIhwKGkRlbGV0ZUNvbnZlcnNhdGlvblJlc3BvbnNlMvADCgxBdWd1clNlcnZpY2USUQoKU3RyZWFtQ2hhdBIfLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVxdWVzdBogLmFsdC5hdWd1ci52Mi5TdHJlYW1DaGF0UmVzcG9uc2UwARJeCg9SZXRyaWV2ZUNvbnRleHQSJC5hbHQuYXVndXIudjIuUmV0cmlldmVDb250ZXh0UmVxdWVzdBolLmFsdC5hdWd1ci52Mi5SZXRyaWV2ZUNvbnRleHRSZXNwb25zZRJkChFMaXN0Q29udmVyc2F0aW9ucxImLmFsdC5hdWd1ci52Mi5MaXN0Q29udmVyc2F0aW9uc1JlcXVlc3QaJy5hbHQuYXVndXIudjIuTGlzdENvbnZlcnNhdGlvbnNSZXNwb25zZRJeCg9HZXRDb252ZXJzYXRpb24SJC5hbHQuYXVndXIudjIuR2V0Q29udmVyc2F0aW9uUmVxdWVzdBolLmFsdC5hdWd1ci52Mi5HZXRDb252ZXJzYXRpb25SZXNwb25zZRJnChJEZWxldGVDb252ZXJzYXRpb24SJy5hbHQuYXVndXIudjIuRGVsZXRlQ29udmVyc2F0aW9uUmVxdWVzdBooLmFsdC5hdWd1ci52Mi5EZWxldGVDb252ZXJzYXRpb25SZXNwb25zZUIkWiJhbHQvZ2VuL3Byb3RvL2FsdC9hdWd1ci92MjthdWd1cnYyYgZwcm90bzM",
+		[file_google_protobuf_timestamp],
+	);
 
 /**
  * StreamChatRequest is the request for streaming chat.
@@ -20,28 +32,29 @@ export const file_alt_augur_v2_augur: GenFile = /*@__PURE__*/
  * @generated from message alt.augur.v2.StreamChatRequest
  */
 export type StreamChatRequest = Message<"alt.augur.v2.StreamChatRequest"> & {
-  /**
-   * Chat message history (alternating user/assistant messages)
-   *
-   * @generated from field: repeated alt.augur.v2.ChatMessage messages = 1;
-   */
-  messages: ChatMessage[];
+	/**
+	 * Chat message history (alternating user/assistant messages)
+	 *
+	 * @generated from field: repeated alt.augur.v2.ChatMessage messages = 1;
+	 */
+	messages: ChatMessage[];
 
-  /**
-   * Optional conversation identifier. Empty means "start a new conversation";
-   * the server will mint an id and return it in the meta event.
-   *
-   * @generated from field: string conversation_id = 2;
-   */
-  conversationId: string;
+	/**
+	 * Optional conversation identifier. Empty means "start a new conversation";
+	 * the server will mint an id and return it in the meta event.
+	 *
+	 * @generated from field: string conversation_id = 2;
+	 */
+	conversationId: string;
 };
 
 /**
  * Describes the message alt.augur.v2.StreamChatRequest.
  * Use `create(StreamChatRequestSchema)` to create a new message.
  */
-export const StreamChatRequestSchema: GenMessage<StreamChatRequest> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 0);
+export const StreamChatRequestSchema: GenMessage<StreamChatRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 0);
 
 /**
  * ChatMessage represents a single message in the conversation.
@@ -49,41 +62,42 @@ export const StreamChatRequestSchema: GenMessage<StreamChatRequest> = /*@__PURE_
  * @generated from message alt.augur.v2.ChatMessage
  */
 export type ChatMessage = Message<"alt.augur.v2.ChatMessage"> & {
-  /**
-   * Role of the message sender: "user" or "assistant"
-   *
-   * @generated from field: string role = 1;
-   */
-  role: string;
+	/**
+	 * Role of the message sender: "user" or "assistant"
+	 *
+	 * @generated from field: string role = 1;
+	 */
+	role: string;
 
-  /**
-   * Content of the message
-   *
-   * @generated from field: string content = 2;
-   */
-  content: string;
+	/**
+	 * Content of the message
+	 *
+	 * @generated from field: string content = 2;
+	 */
+	content: string;
 
-  /**
-   * Optional creation timestamp (populated on read paths).
-   *
-   * @generated from field: google.protobuf.Timestamp created_at = 3;
-   */
-  createdAt?: Timestamp;
+	/**
+	 * Optional creation timestamp (populated on read paths).
+	 *
+	 * @generated from field: google.protobuf.Timestamp created_at = 3;
+	 */
+	createdAt?: Timestamp;
 
-  /**
-   * Citations attached to assistant messages (empty for user messages).
-   *
-   * @generated from field: repeated alt.augur.v2.Citation citations = 4;
-   */
-  citations: Citation[];
+	/**
+	 * Citations attached to assistant messages (empty for user messages).
+	 *
+	 * @generated from field: repeated alt.augur.v2.Citation citations = 4;
+	 */
+	citations: Citation[];
 };
 
 /**
  * Describes the message alt.augur.v2.ChatMessage.
  * Use `create(ChatMessageSchema)` to create a new message.
  */
-export const ChatMessageSchema: GenMessage<ChatMessage> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 1);
+export const ChatMessageSchema: GenMessage<ChatMessage> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 1);
 
 /**
  * StreamChatResponse is a single event in the streaming response.
@@ -92,75 +106,83 @@ export const ChatMessageSchema: GenMessage<ChatMessage> = /*@__PURE__*/
  * @generated from message alt.augur.v2.StreamChatResponse
  */
 export type StreamChatResponse = Message<"alt.augur.v2.StreamChatResponse"> & {
-  /**
-   * Event kind: "delta", "meta", "done", "fallback", "error", "thinking"
-   *
-   * @generated from field: string kind = 1;
-   */
-  kind: string;
+	/**
+	 * Event kind: "delta", "meta", "done", "fallback", "error", "thinking"
+	 *
+	 * @generated from field: string kind = 1;
+	 */
+	kind: string;
 
-  /**
-   * Payload based on kind (only one will be set)
-   *
-   * @generated from oneof alt.augur.v2.StreamChatResponse.payload
-   */
-  payload: {
-    /**
-     * Text chunk (when kind = "delta")
-     *
-     * @generated from field: string delta = 2;
-     */
-    value: string;
-    case: "delta";
-  } | {
-    /**
-     * Citations/metadata (when kind = "meta")
-     *
-     * @generated from field: alt.augur.v2.MetaPayload meta = 3;
-     */
-    value: MetaPayload;
-    case: "meta";
-  } | {
-    /**
-     * Completion result (when kind = "done")
-     *
-     * @generated from field: alt.augur.v2.DonePayload done = 4;
-     */
-    value: DonePayload;
-    case: "done";
-  } | {
-    /**
-     * Fallback reason code (when kind = "fallback")
-     *
-     * @generated from field: string fallback_code = 5;
-     */
-    value: string;
-    case: "fallbackCode";
-  } | {
-    /**
-     * Error message (when kind = "error")
-     *
-     * @generated from field: string error_message = 6;
-     */
-    value: string;
-    case: "errorMessage";
-  } | {
-    /**
-     * Thinking/reasoning chunk (when kind = "thinking")
-     *
-     * @generated from field: string thinking_delta = 7;
-     */
-    value: string;
-    case: "thinkingDelta";
-  } | { case: undefined; value?: undefined };
+	/**
+	 * Payload based on kind (only one will be set)
+	 *
+	 * @generated from oneof alt.augur.v2.StreamChatResponse.payload
+	 */
+	payload:
+		| {
+				/**
+				 * Text chunk (when kind = "delta")
+				 *
+				 * @generated from field: string delta = 2;
+				 */
+				value: string;
+				case: "delta";
+		  }
+		| {
+				/**
+				 * Citations/metadata (when kind = "meta")
+				 *
+				 * @generated from field: alt.augur.v2.MetaPayload meta = 3;
+				 */
+				value: MetaPayload;
+				case: "meta";
+		  }
+		| {
+				/**
+				 * Completion result (when kind = "done")
+				 *
+				 * @generated from field: alt.augur.v2.DonePayload done = 4;
+				 */
+				value: DonePayload;
+				case: "done";
+		  }
+		| {
+				/**
+				 * Fallback reason code (when kind = "fallback")
+				 *
+				 * @generated from field: string fallback_code = 5;
+				 */
+				value: string;
+				case: "fallbackCode";
+		  }
+		| {
+				/**
+				 * Error message (when kind = "error")
+				 *
+				 * @generated from field: string error_message = 6;
+				 */
+				value: string;
+				case: "errorMessage";
+		  }
+		| {
+				/**
+				 * Thinking/reasoning chunk (when kind = "thinking")
+				 *
+				 * @generated from field: string thinking_delta = 7;
+				 */
+				value: string;
+				case: "thinkingDelta";
+		  }
+		| { case: undefined; value?: undefined };
 };
 
 /**
  * Describes the message alt.augur.v2.StreamChatResponse.
  * Use `create(StreamChatResponseSchema)` to create a new message.
  */
-export const StreamChatResponseSchema: GenMessage<StreamChatResponse> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 2);
+export const StreamChatResponseSchema: GenMessage<StreamChatResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 2);
 
 /**
  * MetaPayload contains metadata about the response, including citations.
@@ -168,28 +190,29 @@ export const StreamChatResponseSchema: GenMessage<StreamChatResponse> = /*@__PUR
  * @generated from message alt.augur.v2.MetaPayload
  */
 export type MetaPayload = Message<"alt.augur.v2.MetaPayload"> & {
-  /**
-   * List of citations/sources used in the response
-   *
-   * @generated from field: repeated alt.augur.v2.Citation citations = 1;
-   */
-  citations: Citation[];
+	/**
+	 * List of citations/sources used in the response
+	 *
+	 * @generated from field: repeated alt.augur.v2.Citation citations = 1;
+	 */
+	citations: Citation[];
 
-  /**
-   * Persisted conversation id (set on the first meta event of a new conversation
-   * and on every turn of an existing one so clients can update URL state).
-   *
-   * @generated from field: string conversation_id = 2;
-   */
-  conversationId: string;
+	/**
+	 * Persisted conversation id (set on the first meta event of a new conversation
+	 * and on every turn of an existing one so clients can update URL state).
+	 *
+	 * @generated from field: string conversation_id = 2;
+	 */
+	conversationId: string;
 };
 
 /**
  * Describes the message alt.augur.v2.MetaPayload.
  * Use `create(MetaPayloadSchema)` to create a new message.
  */
-export const MetaPayloadSchema: GenMessage<MetaPayload> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 3);
+export const MetaPayloadSchema: GenMessage<MetaPayload> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 3);
 
 /**
  * Citation represents a source reference.
@@ -197,34 +220,35 @@ export const MetaPayloadSchema: GenMessage<MetaPayload> = /*@__PURE__*/
  * @generated from message alt.augur.v2.Citation
  */
 export type Citation = Message<"alt.augur.v2.Citation"> & {
-  /**
-   * URL of the source article
-   *
-   * @generated from field: string url = 1;
-   */
-  url: string;
+	/**
+	 * URL of the source article
+	 *
+	 * @generated from field: string url = 1;
+	 */
+	url: string;
 
-  /**
-   * Title of the source article
-   *
-   * @generated from field: string title = 2;
-   */
-  title: string;
+	/**
+	 * Title of the source article
+	 *
+	 * @generated from field: string title = 2;
+	 */
+	title: string;
 
-  /**
-   * Publication date (ISO8601 format)
-   *
-   * @generated from field: string published_at = 3;
-   */
-  publishedAt: string;
+	/**
+	 * Publication date (ISO8601 format)
+	 *
+	 * @generated from field: string published_at = 3;
+	 */
+	publishedAt: string;
 };
 
 /**
  * Describes the message alt.augur.v2.Citation.
  * Use `create(CitationSchema)` to create a new message.
  */
-export const CitationSchema: GenMessage<Citation> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 4);
+export const CitationSchema: GenMessage<Citation> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 4);
 
 /**
  * DonePayload is sent when streaming completes successfully.
@@ -232,90 +256,95 @@ export const CitationSchema: GenMessage<Citation> = /*@__PURE__*/
  * @generated from message alt.augur.v2.DonePayload
  */
 export type DonePayload = Message<"alt.augur.v2.DonePayload"> & {
-  /**
-   * Full answer text
-   *
-   * @generated from field: string answer = 1;
-   */
-  answer: string;
+	/**
+	 * Full answer text
+	 *
+	 * @generated from field: string answer = 1;
+	 */
+	answer: string;
 
-  /**
-   * List of citations used in the answer
-   *
-   * @generated from field: repeated alt.augur.v2.Citation citations = 2;
-   */
-  citations: Citation[];
+	/**
+	 * List of citations used in the answer
+	 *
+	 * @generated from field: repeated alt.augur.v2.Citation citations = 2;
+	 */
+	citations: Citation[];
 
-  /**
-   * Classified query intent (e.g. "causal_explanation", "temporal", "comparison")
-   *
-   * @generated from field: string intent = 3;
-   */
-  intent: string;
+	/**
+	 * Classified query intent (e.g. "causal_explanation", "temporal", "comparison")
+	 *
+	 * @generated from field: string intent = 3;
+	 */
+	intent: string;
 
-  /**
-   * Retrieval strategy used (e.g. "general", "article_scoped", "synthesis")
-   *
-   * @generated from field: string strategy = 4;
-   */
-  strategy: string;
+	/**
+	 * Retrieval strategy used (e.g. "general", "article_scoped", "synthesis")
+	 *
+	 * @generated from field: string strategy = 4;
+	 */
+	strategy: string;
 };
 
 /**
  * Describes the message alt.augur.v2.DonePayload.
  * Use `create(DonePayloadSchema)` to create a new message.
  */
-export const DonePayloadSchema: GenMessage<DonePayload> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 5);
+export const DonePayloadSchema: GenMessage<DonePayload> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 5);
 
 /**
  * RetrieveContextRequest is the request for retrieving context without chat.
  *
  * @generated from message alt.augur.v2.RetrieveContextRequest
  */
-export type RetrieveContextRequest = Message<"alt.augur.v2.RetrieveContextRequest"> & {
-  /**
-   * Query to search for relevant context
-   *
-   * @generated from field: string query = 1;
-   */
-  query: string;
+export type RetrieveContextRequest =
+	Message<"alt.augur.v2.RetrieveContextRequest"> & {
+		/**
+		 * Query to search for relevant context
+		 *
+		 * @generated from field: string query = 1;
+		 */
+		query: string;
 
-  /**
-   * Maximum number of context items to return (default: 5)
-   *
-   * @generated from field: int32 limit = 2;
-   */
-  limit: number;
-};
+		/**
+		 * Maximum number of context items to return (default: 5)
+		 *
+		 * @generated from field: int32 limit = 2;
+		 */
+		limit: number;
+	};
 
 /**
  * Describes the message alt.augur.v2.RetrieveContextRequest.
  * Use `create(RetrieveContextRequestSchema)` to create a new message.
  */
-export const RetrieveContextRequestSchema: GenMessage<RetrieveContextRequest> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 6);
+export const RetrieveContextRequestSchema: GenMessage<RetrieveContextRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 6);
 
 /**
  * RetrieveContextResponse contains the retrieved context items.
  *
  * @generated from message alt.augur.v2.RetrieveContextResponse
  */
-export type RetrieveContextResponse = Message<"alt.augur.v2.RetrieveContextResponse"> & {
-  /**
-   * List of relevant context items
-   *
-   * @generated from field: repeated alt.augur.v2.ContextItem contexts = 1;
-   */
-  contexts: ContextItem[];
-};
+export type RetrieveContextResponse =
+	Message<"alt.augur.v2.RetrieveContextResponse"> & {
+		/**
+		 * List of relevant context items
+		 *
+		 * @generated from field: repeated alt.augur.v2.ContextItem contexts = 1;
+		 */
+		contexts: ContextItem[];
+	};
 
 /**
  * Describes the message alt.augur.v2.RetrieveContextResponse.
  * Use `create(RetrieveContextResponseSchema)` to create a new message.
  */
-export const RetrieveContextResponseSchema: GenMessage<RetrieveContextResponse> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 7);
+export const RetrieveContextResponseSchema: GenMessage<RetrieveContextResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 7);
 
 /**
  * ContextItem represents a single piece of retrieved context.
@@ -323,41 +352,42 @@ export const RetrieveContextResponseSchema: GenMessage<RetrieveContextResponse> 
  * @generated from message alt.augur.v2.ContextItem
  */
 export type ContextItem = Message<"alt.augur.v2.ContextItem"> & {
-  /**
-   * URL of the source article
-   *
-   * @generated from field: string url = 1;
-   */
-  url: string;
+	/**
+	 * URL of the source article
+	 *
+	 * @generated from field: string url = 1;
+	 */
+	url: string;
 
-  /**
-   * Title of the source article
-   *
-   * @generated from field: string title = 2;
-   */
-  title: string;
+	/**
+	 * Title of the source article
+	 *
+	 * @generated from field: string title = 2;
+	 */
+	title: string;
 
-  /**
-   * Publication date (ISO8601 format)
-   *
-   * @generated from field: string published_at = 3;
-   */
-  publishedAt: string;
+	/**
+	 * Publication date (ISO8601 format)
+	 *
+	 * @generated from field: string published_at = 3;
+	 */
+	publishedAt: string;
 
-  /**
-   * Relevance score (0-1)
-   *
-   * @generated from field: float score = 4;
-   */
-  score: number;
+	/**
+	 * Relevance score (0-1)
+	 *
+	 * @generated from field: float score = 4;
+	 */
+	score: number;
 };
 
 /**
  * Describes the message alt.augur.v2.ContextItem.
  * Use `create(ContextItemSchema)` to create a new message.
  */
-export const ContextItemSchema: GenMessage<ContextItem> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 8);
+export const ContextItemSchema: GenMessage<ContextItem> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 8);
 
 /**
  * ConversationSummary is a row in the history index. All mutable fields
@@ -367,228 +397,239 @@ export const ContextItemSchema: GenMessage<ContextItem> = /*@__PURE__*/
  *
  * @generated from message alt.augur.v2.ConversationSummary
  */
-export type ConversationSummary = Message<"alt.augur.v2.ConversationSummary"> & {
-  /**
-   * @generated from field: string id = 1;
-   */
-  id: string;
+export type ConversationSummary =
+	Message<"alt.augur.v2.ConversationSummary"> & {
+		/**
+		 * @generated from field: string id = 1;
+		 */
+		id: string;
 
-  /**
-   * @generated from field: string title = 2;
-   */
-  title: string;
+		/**
+		 * @generated from field: string title = 2;
+		 */
+		title: string;
 
-  /**
-   * @generated from field: google.protobuf.Timestamp created_at = 3;
-   */
-  createdAt?: Timestamp;
+		/**
+		 * @generated from field: google.protobuf.Timestamp created_at = 3;
+		 */
+		createdAt?: Timestamp;
 
-  /**
-   * @generated from field: google.protobuf.Timestamp last_activity_at = 4;
-   */
-  lastActivityAt?: Timestamp;
+		/**
+		 * @generated from field: google.protobuf.Timestamp last_activity_at = 4;
+		 */
+		lastActivityAt?: Timestamp;
 
-  /**
-   * @generated from field: string last_message_preview = 5;
-   */
-  lastMessagePreview: string;
+		/**
+		 * @generated from field: string last_message_preview = 5;
+		 */
+		lastMessagePreview: string;
 
-  /**
-   * @generated from field: int32 message_count = 6;
-   */
-  messageCount: number;
-};
+		/**
+		 * @generated from field: int32 message_count = 6;
+		 */
+		messageCount: number;
+	};
 
 /**
  * Describes the message alt.augur.v2.ConversationSummary.
  * Use `create(ConversationSummarySchema)` to create a new message.
  */
-export const ConversationSummarySchema: GenMessage<ConversationSummary> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 9);
+export const ConversationSummarySchema: GenMessage<ConversationSummary> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 9);
 
 /**
  * @generated from message alt.augur.v2.ListConversationsRequest
  */
-export type ListConversationsRequest = Message<"alt.augur.v2.ListConversationsRequest"> & {
-  /**
-   * Page size (default: 20, max: 100)
-   *
-   * @generated from field: int32 page_size = 1;
-   */
-  pageSize: number;
+export type ListConversationsRequest =
+	Message<"alt.augur.v2.ListConversationsRequest"> & {
+		/**
+		 * Page size (default: 20, max: 100)
+		 *
+		 * @generated from field: int32 page_size = 1;
+		 */
+		pageSize: number;
 
-  /**
-   * Opaque continuation token from a previous response
-   *
-   * @generated from field: string page_token = 2;
-   */
-  pageToken: string;
-};
+		/**
+		 * Opaque continuation token from a previous response
+		 *
+		 * @generated from field: string page_token = 2;
+		 */
+		pageToken: string;
+	};
 
 /**
  * Describes the message alt.augur.v2.ListConversationsRequest.
  * Use `create(ListConversationsRequestSchema)` to create a new message.
  */
-export const ListConversationsRequestSchema: GenMessage<ListConversationsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 10);
+export const ListConversationsRequestSchema: GenMessage<ListConversationsRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 10);
 
 /**
  * @generated from message alt.augur.v2.ListConversationsResponse
  */
-export type ListConversationsResponse = Message<"alt.augur.v2.ListConversationsResponse"> & {
-  /**
-   * @generated from field: repeated alt.augur.v2.ConversationSummary conversations = 1;
-   */
-  conversations: ConversationSummary[];
+export type ListConversationsResponse =
+	Message<"alt.augur.v2.ListConversationsResponse"> & {
+		/**
+		 * @generated from field: repeated alt.augur.v2.ConversationSummary conversations = 1;
+		 */
+		conversations: ConversationSummary[];
 
-  /**
-   * @generated from field: string next_page_token = 2;
-   */
-  nextPageToken: string;
-};
+		/**
+		 * @generated from field: string next_page_token = 2;
+		 */
+		nextPageToken: string;
+	};
 
 /**
  * Describes the message alt.augur.v2.ListConversationsResponse.
  * Use `create(ListConversationsResponseSchema)` to create a new message.
  */
-export const ListConversationsResponseSchema: GenMessage<ListConversationsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 11);
+export const ListConversationsResponseSchema: GenMessage<ListConversationsResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 11);
 
 /**
  * @generated from message alt.augur.v2.GetConversationRequest
  */
-export type GetConversationRequest = Message<"alt.augur.v2.GetConversationRequest"> & {
-  /**
-   * @generated from field: string id = 1;
-   */
-  id: string;
-};
+export type GetConversationRequest =
+	Message<"alt.augur.v2.GetConversationRequest"> & {
+		/**
+		 * @generated from field: string id = 1;
+		 */
+		id: string;
+	};
 
 /**
  * Describes the message alt.augur.v2.GetConversationRequest.
  * Use `create(GetConversationRequestSchema)` to create a new message.
  */
-export const GetConversationRequestSchema: GenMessage<GetConversationRequest> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 12);
+export const GetConversationRequestSchema: GenMessage<GetConversationRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 12);
 
 /**
  * @generated from message alt.augur.v2.GetConversationResponse
  */
-export type GetConversationResponse = Message<"alt.augur.v2.GetConversationResponse"> & {
-  /**
-   * @generated from field: string id = 1;
-   */
-  id: string;
+export type GetConversationResponse =
+	Message<"alt.augur.v2.GetConversationResponse"> & {
+		/**
+		 * @generated from field: string id = 1;
+		 */
+		id: string;
 
-  /**
-   * @generated from field: string title = 2;
-   */
-  title: string;
+		/**
+		 * @generated from field: string title = 2;
+		 */
+		title: string;
 
-  /**
-   * @generated from field: google.protobuf.Timestamp created_at = 3;
-   */
-  createdAt?: Timestamp;
+		/**
+		 * @generated from field: google.protobuf.Timestamp created_at = 3;
+		 */
+		createdAt?: Timestamp;
 
-  /**
-   * @generated from field: repeated alt.augur.v2.ChatMessage messages = 4;
-   */
-  messages: ChatMessage[];
-};
+		/**
+		 * @generated from field: repeated alt.augur.v2.ChatMessage messages = 4;
+		 */
+		messages: ChatMessage[];
+	};
 
 /**
  * Describes the message alt.augur.v2.GetConversationResponse.
  * Use `create(GetConversationResponseSchema)` to create a new message.
  */
-export const GetConversationResponseSchema: GenMessage<GetConversationResponse> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 13);
+export const GetConversationResponseSchema: GenMessage<GetConversationResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 13);
 
 /**
  * @generated from message alt.augur.v2.DeleteConversationRequest
  */
-export type DeleteConversationRequest = Message<"alt.augur.v2.DeleteConversationRequest"> & {
-  /**
-   * @generated from field: string id = 1;
-   */
-  id: string;
-};
+export type DeleteConversationRequest =
+	Message<"alt.augur.v2.DeleteConversationRequest"> & {
+		/**
+		 * @generated from field: string id = 1;
+		 */
+		id: string;
+	};
 
 /**
  * Describes the message alt.augur.v2.DeleteConversationRequest.
  * Use `create(DeleteConversationRequestSchema)` to create a new message.
  */
-export const DeleteConversationRequestSchema: GenMessage<DeleteConversationRequest> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 14);
+export const DeleteConversationRequestSchema: GenMessage<DeleteConversationRequest> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 14);
 
 /**
  * @generated from message alt.augur.v2.DeleteConversationResponse
  */
-export type DeleteConversationResponse = Message<"alt.augur.v2.DeleteConversationResponse"> & {
-};
+export type DeleteConversationResponse =
+	Message<"alt.augur.v2.DeleteConversationResponse"> & {};
 
 /**
  * Describes the message alt.augur.v2.DeleteConversationResponse.
  * Use `create(DeleteConversationResponseSchema)` to create a new message.
  */
-export const DeleteConversationResponseSchema: GenMessage<DeleteConversationResponse> = /*@__PURE__*/
-  messageDesc(file_alt_augur_v2_augur, 15);
+export const DeleteConversationResponseSchema: GenMessage<DeleteConversationResponse> =
+	/*@__PURE__*/
+	messageDesc(file_alt_augur_v2_augur, 15);
 
 /**
  * @generated from service alt.augur.v2.AugurService
  */
 export const AugurService: GenService<{
-  /**
-   * StreamChat performs a streaming chat with RAG context.
-   * Returns a stream of events: delta (text chunks), meta (citations), done (completion), or error.
-   *
-   * @generated from rpc alt.augur.v2.AugurService.StreamChat
-   */
-  streamChat: {
-    methodKind: "server_streaming";
-    input: typeof StreamChatRequestSchema;
-    output: typeof StreamChatResponseSchema;
-  },
-  /**
-   * RetrieveContext retrieves relevant context for a query without generating an answer.
-   * Useful for debugging or showing sources before chat.
-   *
-   * @generated from rpc alt.augur.v2.AugurService.RetrieveContext
-   */
-  retrieveContext: {
-    methodKind: "unary";
-    input: typeof RetrieveContextRequestSchema;
-    output: typeof RetrieveContextResponseSchema;
-  },
-  /**
-   * ListConversations returns the caller's chat history index (most recent first).
-   *
-   * @generated from rpc alt.augur.v2.AugurService.ListConversations
-   */
-  listConversations: {
-    methodKind: "unary";
-    input: typeof ListConversationsRequestSchema;
-    output: typeof ListConversationsResponseSchema;
-  },
-  /**
-   * GetConversation returns every message in a single conversation.
-   *
-   * @generated from rpc alt.augur.v2.AugurService.GetConversation
-   */
-  getConversation: {
-    methodKind: "unary";
-    input: typeof GetConversationRequestSchema;
-    output: typeof GetConversationResponseSchema;
-  },
-  /**
-   * DeleteConversation removes a conversation and its messages.
-   *
-   * @generated from rpc alt.augur.v2.AugurService.DeleteConversation
-   */
-  deleteConversation: {
-    methodKind: "unary";
-    input: typeof DeleteConversationRequestSchema;
-    output: typeof DeleteConversationResponseSchema;
-  },
-}> = /*@__PURE__*/
-  serviceDesc(file_alt_augur_v2_augur, 0);
-
+	/**
+	 * StreamChat performs a streaming chat with RAG context.
+	 * Returns a stream of events: delta (text chunks), meta (citations), done (completion), or error.
+	 *
+	 * @generated from rpc alt.augur.v2.AugurService.StreamChat
+	 */
+	streamChat: {
+		methodKind: "server_streaming";
+		input: typeof StreamChatRequestSchema;
+		output: typeof StreamChatResponseSchema;
+	};
+	/**
+	 * RetrieveContext retrieves relevant context for a query without generating an answer.
+	 * Useful for debugging or showing sources before chat.
+	 *
+	 * @generated from rpc alt.augur.v2.AugurService.RetrieveContext
+	 */
+	retrieveContext: {
+		methodKind: "unary";
+		input: typeof RetrieveContextRequestSchema;
+		output: typeof RetrieveContextResponseSchema;
+	};
+	/**
+	 * ListConversations returns the caller's chat history index (most recent first).
+	 *
+	 * @generated from rpc alt.augur.v2.AugurService.ListConversations
+	 */
+	listConversations: {
+		methodKind: "unary";
+		input: typeof ListConversationsRequestSchema;
+		output: typeof ListConversationsResponseSchema;
+	};
+	/**
+	 * GetConversation returns every message in a single conversation.
+	 *
+	 * @generated from rpc alt.augur.v2.AugurService.GetConversation
+	 */
+	getConversation: {
+		methodKind: "unary";
+		input: typeof GetConversationRequestSchema;
+		output: typeof GetConversationResponseSchema;
+	};
+	/**
+	 * DeleteConversation removes a conversation and its messages.
+	 *
+	 * @generated from rpc alt.augur.v2.AugurService.DeleteConversation
+	 */
+	deleteConversation: {
+		methodKind: "unary";
+		input: typeof DeleteConversationRequestSchema;
+		output: typeof DeleteConversationResponseSchema;
+	};
+}> = /*@__PURE__*/ serviceDesc(file_alt_augur_v2_augur, 0);
