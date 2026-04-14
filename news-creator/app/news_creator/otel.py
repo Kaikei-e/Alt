@@ -4,17 +4,25 @@ import logging
 import os
 from typing import Callable
 
-from opentelemetry import trace
+from opentelemetry import metrics, trace
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.view import (
+    ExplicitBucketHistogramAggregation,
+    View,
+)
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry._logs import set_logger_provider
+
+_DISPATCH_DURATION_BUCKETS = [0.5, 1, 2, 5, 10, 20, 30, 60, 120, 180, 300]
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +74,23 @@ def init_otel_provider(config: OTelConfig | None = None) -> Callable[[], None]:
     tracer_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
     trace.set_tracer_provider(tracer_provider)
 
+    # Initialize Meter Provider with Prometheus scrape endpoint.
+    # The PrometheusMetricReader registers instruments with prometheus_client's
+    # global REGISTRY, which is served at /metrics via make_asgi_app in main.
+    metric_reader = PrometheusMetricReader()
+    dispatch_duration_view = View(
+        instrument_name="newscreator.distributed_be.request.duration",
+        aggregation=ExplicitBucketHistogramAggregation(
+            _DISPATCH_DURATION_BUCKETS
+        ),
+    )
+    meter_provider = MeterProvider(
+        resource=resource,
+        metric_readers=[metric_reader],
+        views=[dispatch_duration_view],
+    )
+    metrics.set_meter_provider(meter_provider)
+
     # Initialize Logger Provider
     logger_provider = LoggerProvider(resource=resource)
     log_exporter = OTLPLogExporter(
@@ -92,6 +117,7 @@ def init_otel_provider(config: OTelConfig | None = None) -> Callable[[], None]:
     def shutdown():
         """Shutdown OTel providers gracefully."""
         tracer_provider.shutdown()
+        meter_provider.shutdown()
         logger_provider.shutdown()
 
     return shutdown

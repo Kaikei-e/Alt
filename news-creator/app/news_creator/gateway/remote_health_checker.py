@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
+from news_creator.gateway import dispatch_metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -114,6 +116,7 @@ class RemoteHealthChecker:
         state["healthy"] = False
         state["consecutive_failures"] += 1
         state["last_checked"] = time.monotonic()
+        dispatch_metrics.record_cooldown(remote_url=url, reason="error")
 
     def status(self) -> List[Dict[str, Any]]:
         """Return state of all remotes for health endpoint."""

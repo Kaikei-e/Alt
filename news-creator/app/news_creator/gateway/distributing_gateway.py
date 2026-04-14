@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 from news_creator.domain.models import LLMGenerateResponse
+from news_creator.gateway import dispatch_metrics
 from news_creator.gateway.remote_health_checker import RemoteHealthChecker
 from news_creator.gateway.remote_ollama_driver import RemoteOllamaDriver
 from news_creator.port.llm_provider_port import LLMProviderPort
@@ -192,10 +193,15 @@ class DistributingGateway(LLMProviderPort):
                     },
                 )
                 try:
-                    response = await self._remote_driver.generate(
-                        base_url=candidate_url,
-                        payload=payload,
-                    )
+                    async with dispatch_metrics.dispatch_context(
+                        remote_url=candidate_url,
+                        model=str(payload.get("model") or ""),
+                    ) as obs:
+                        response = await self._remote_driver.generate(
+                            base_url=candidate_url,
+                            payload=payload,
+                        )
+                        obs.set_outcome("success")
                     self._health_checker.mark_success(candidate_url)
                     if (
                         dispatch_state is not None
@@ -216,6 +222,11 @@ class DistributingGateway(LLMProviderPort):
                         exclude=tried
                     )
                     if not next_candidates:
+                        dispatch_metrics.record_fallback(
+                            from_remote_url=failed_url,
+                            to="local",
+                            reason="exhausted",
+                        )
                         logger.warning(
                             "All healthy remotes exhausted during generate_raw; falling back to local",
                             extra={
@@ -225,6 +236,11 @@ class DistributingGateway(LLMProviderPort):
                             },
                         )
                         break
+                    dispatch_metrics.record_fallback(
+                        from_remote_url=failed_url,
+                        to="next_remote",
+                        reason="error",
+                    )
                     candidate_url = next_candidates[0]
                     replacement_state = {
                         "remote_url": candidate_url,

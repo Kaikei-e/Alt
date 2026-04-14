@@ -478,3 +478,125 @@ async def test_generate_is_local_only_contract():
     driver.generate.assert_not_awaited()
     # Health checker should never be consulted for generate()
     hc.acquire_idle_remote.assert_not_called()
+
+
+# --- Metrics integration ---
+
+
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+
+@pytest.fixture
+def metrics_reader():
+    from news_creator.gateway import dispatch_metrics
+
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
+    meter = provider.get_meter("news_creator.distributed_be")
+    dispatch_metrics.reset_metrics_for_tests(meter)
+    yield reader
+    dispatch_metrics.reset_metrics_for_tests(None)
+    provider.shutdown()
+
+
+def _metric_points(reader, name):
+    data = reader.get_metrics_data()
+    if data is None:
+        return []
+    points = []
+    for rm in data.resource_metrics:
+        for sm in rm.scope_metrics:
+            for metric in sm.metrics:
+                if metric.name == name:
+                    points.extend(metric.data.data_points)
+    return points
+
+
+def _match(points, **attrs):
+    return [
+        p
+        for p in points
+        if all(p.attributes.get(k) == v for k, v in attrs.items())
+    ]
+
+
+@pytest.mark.asyncio
+async def test_successful_remote_dispatch_records_success_metric(metrics_reader):
+    gw, _, _, _ = _make_gateway(
+        enabled=True, healthy_url="http://remote-a:11434"
+    )
+
+    async with gw.hold_slot(is_high_priority=False):
+        await gw.generate_raw("prompt")
+
+    dispatches = _match(
+        _metric_points(metrics_reader, "newscreator.distributed_be.dispatches"),
+        remote_url="http://remote-a:11434",
+        outcome="success",
+    )
+    assert len(dispatches) == 1
+    assert dispatches[0].value == 1
+
+
+@pytest.mark.asyncio
+async def test_cascade_retry_records_failure_and_fallback(metrics_reader):
+    gw, _, hc, driver = _make_gateway(
+        enabled=True, healthy_url="http://remote-a:11434"
+    )
+    # First call fails, second succeeds on the next healthy remote
+    hc.get_healthy_remotes.return_value = ["http://remote-b:11434"]
+    driver.generate = AsyncMock(
+        side_effect=[
+            RuntimeError("connection refused"),
+            LLMGenerateResponse(
+                response="ok", model="gemma4-e4b-q4km", done=True
+            ),
+        ]
+    )
+
+    async with gw.hold_slot(is_high_priority=False):
+        await gw.generate_raw("prompt")
+
+    dispatches = _metric_points(
+        metrics_reader, "newscreator.distributed_be.dispatches"
+    )
+    failure_a = _match(
+        dispatches, remote_url="http://remote-a:11434", outcome="failure"
+    )
+    success_b = _match(
+        dispatches, remote_url="http://remote-b:11434", outcome="success"
+    )
+    assert failure_a[0].value == 1
+    assert success_b[0].value == 1
+
+    fallbacks = _match(
+        _metric_points(metrics_reader, "newscreator.distributed_be.fallbacks"),
+        from_remote_url="http://remote-a:11434",
+        to="next_remote",
+        reason="error",
+    )
+    assert fallbacks[0].value == 1
+
+
+@pytest.mark.asyncio
+async def test_all_remotes_fail_falls_back_to_local(metrics_reader):
+    gw, local, hc, driver = _make_gateway(
+        enabled=True, healthy_url="http://remote-a:11434"
+    )
+    hc.get_healthy_remotes.return_value = []
+    driver.generate = AsyncMock(side_effect=RuntimeError("boom"))
+
+    async with gw.hold_slot(is_high_priority=False):
+        result = await gw.generate_raw("prompt")
+
+    assert result.response == "local raw response"
+    local.generate_raw.assert_awaited_once()
+
+    fallbacks = _match(
+        _metric_points(metrics_reader, "newscreator.distributed_be.fallbacks"),
+        from_remote_url="http://remote-a:11434",
+        to="local",
+        reason="exhausted",
+    )
+    assert fallbacks[0].value == 1
