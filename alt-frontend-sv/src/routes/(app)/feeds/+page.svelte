@@ -198,7 +198,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 		</FeedDetailModal>
 	</div>
 {:else}
-	<div style="background: var(--app-bg);" class="h-screen overflow-hidden flex flex-col">
+	<div style="background: var(--app-bg);" class="h-[100dvh] overflow-hidden flex flex-col">
 		<header class="mobile-wire-header">
 			<span class="wire-date">{dateStr}</span>
 			<h1 class="wire-title-mobile">Feeds</h1>

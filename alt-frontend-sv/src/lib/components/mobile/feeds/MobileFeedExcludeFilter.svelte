@@ -115,7 +115,7 @@ function openSheet() {
 <Sheet.Root bind:open={isSheetOpen}>
 	<Sheet.Content
 		side="bottom"
-		class="max-h-[70vh] rounded-t-2xl p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
+		class="max-h-[70dvh] rounded-t-2xl p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
 		style="background: white !important; {kb.style}"
 		onOpenAutoFocus={(e) => e.preventDefault()}
 		onCloseAutoFocus={(e) => e.preventDefault()}

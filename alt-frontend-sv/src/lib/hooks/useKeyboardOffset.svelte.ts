@@ -45,7 +45,7 @@ export function useKeyboardOffset(isActive: () => boolean) {
 		/** bottom + max-height override inline style string. Empty when offset=0. */
 		get style() {
 			if (offset <= 0) return "";
-			return `bottom: ${offset}px; max-height: min(70vh, calc(100vh - ${offset}px));`;
+			return `bottom: ${offset}px; max-height: min(70svh, calc(100dvh - ${offset}px));`;
 		},
 	};
 }

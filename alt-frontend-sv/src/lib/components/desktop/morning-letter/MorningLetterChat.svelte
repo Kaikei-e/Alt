@@ -298,7 +298,7 @@ onMount(() => {
 	.letter-chat {
 		display: flex;
 		flex-direction: column;
-		height: calc(100vh - 12rem);
+		height: calc(100dvh - 12rem);
 		max-width: 720px;
 		margin: 0 auto;
 		border: 1px solid var(--surface-border, #c8c8c8);

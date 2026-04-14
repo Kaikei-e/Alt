@@ -29,7 +29,7 @@ const CHANGE_COLORS: Record<string, { bg: string; text: string }> = {
 <Sheet.Root bind:open onOpenChange={(value) => !value && onClose()}>
 	<Sheet.Content
 		side="bottom"
-		class="max-h-[85vh] border-t border-[var(--surface-border,#c8c8c8)] shadow-lg w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
+		class="max-h-[85dvh] border-t border-[var(--surface-border,#c8c8c8)] shadow-lg w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
 		style="background: var(--surface-bg, #faf9f7) !important; border-radius: 0;"
 		data-testid="history-sheet"
 	>

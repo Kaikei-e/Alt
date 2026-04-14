@@ -34,7 +34,7 @@ const duration = $derived(job ? formatDuration(job.duration_secs) : "—");
 <Sheet.Root bind:open onOpenChange={(value) => !value && onClose()}>
 	<Sheet.Content
 		side="bottom"
-		class="max-h-[85vh] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden alt-paper-sheet [&>button.ring-offset-background]:hidden"
+		class="max-h-[85dvh] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden alt-paper-sheet [&>button.ring-offset-background]:hidden"
 		data-testid="mobile-job-detail-sheet"
 	>
 		<Sheet.Header class="sheet-head">

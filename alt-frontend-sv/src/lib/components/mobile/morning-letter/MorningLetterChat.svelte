@@ -221,7 +221,7 @@ onMount(() => {
 	</button>
 
 	{#if chatOpen}
-	<div id="follow-up-chat" role="region" class="flex flex-col" style="height: 50vh;">
+	<div id="follow-up-chat" role="region" class="flex flex-col" style="height: 50dvh;">
 		<!-- Thread -->
 		<div
 			bind:this={chatContainer}

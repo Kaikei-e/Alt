@@ -25,7 +25,7 @@ const formattedSourceNames = $derived.by(() => {
 <Sheet.Root bind:open onOpenChange={(value) => !value && onClose()}>
 	<Sheet.Content
 		side="bottom"
-		class="max-h-[85vh] rounded-t-[24px] border-t border-[var(--border-glass)] shadow-lg w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
+		class="max-h-[85dvh] rounded-t-[24px] border-t border-[var(--border-glass)] shadow-lg w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
 		style="background: white !important;"
 		data-testid="mobile-pulse-topic-sheet"
 	>

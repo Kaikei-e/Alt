@@ -90,7 +90,7 @@ onMount(() => {
 		description="Today's key topics curated for you"
 	/>
 
-	<div class="min-h-[calc(100vh-12rem)]">
+	<div class="min-h-[calc(100dvh-12rem)]">
 		{#if pulse.isLoading}
 			<DesktopPulseSkeleton />
 		{:else if pulse.error}

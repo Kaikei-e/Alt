@@ -21,7 +21,7 @@ onMount(() => {
 	<TagVerseScreen />
 {:else}
 	<div
-		class="flex h-screen items-center justify-center p-8 text-center"
+		class="flex h-[100dvh] items-center justify-center p-8 text-center"
 		style="background: var(--app-bg);"
 	>
 		<p class="text-muted-foreground">

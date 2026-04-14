@@ -122,7 +122,7 @@ function handleKeydown(e: KeyboardEvent) {
 
 <!-- Slide-over Panel -->
 <div
-	class="fixed right-0 top-0 z-40 h-screen w-[60%] flex flex-col
+	class="fixed right-0 top-0 z-40 h-[100dvh] w-[60%] flex flex-col
 		border-l shadow-[-8px_0_24px_rgba(0,0,0,0.12)]
 		transition-transform duration-300 ease-out"
 	style="background: var(--surface-bg); border-color: var(--surface-border);"

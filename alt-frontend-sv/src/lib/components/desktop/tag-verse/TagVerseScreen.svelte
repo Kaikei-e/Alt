@@ -39,7 +39,7 @@ onMount(async () => {
 });
 </script>
 
-<div class="relative w-full h-screen bg-black overflow-hidden">
+<div class="relative w-full h-[100dvh] bg-black overflow-hidden">
 	{#if isLoading}
 		<!-- Loading Screen -->
 		<div class="flex flex-col items-center justify-center h-full gap-4">

@@ -10,7 +10,7 @@ interface Props {
 const { error, onRetry, isRetrying = false }: Props = $props();
 </script>
 
-<div class="flex flex-col items-center justify-center min-h-[50vh] p-6">
+<div class="flex flex-col items-center justify-center min-h-[50dvh] p-6">
 	<div
 		class="p-8 border-2 text-center max-w-md w-full"
 		style="background: white; border-color: var(--destructive);"

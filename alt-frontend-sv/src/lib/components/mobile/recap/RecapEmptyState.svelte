@@ -5,7 +5,7 @@ import { Calendar } from "@lucide/svelte";
 <div
 	role="region"
 	aria-label="Empty recap state"
-	class="flex flex-col justify-center items-center min-h-[70vh] p-6 text-center"
+	class="flex flex-col justify-center items-center min-h-[70dvh] p-6 text-center"
 >
 	<div class="flex flex-col gap-8 max-w-[400px]">
 		<div

@@ -379,7 +379,7 @@ $effect(() => {
 		grid-template-columns: 1fr;
 		opacity: 0; transform: translateY(6px);
 		transition: opacity 0.4s ease, transform 0.4s ease;
-		min-height: calc(100vh - 5rem);
+		min-height: calc(100dvh - 5rem);
 	}
 	.augur-shell.revealed { opacity: 1; transform: translateY(0); }
 	.augur-column {
@@ -387,7 +387,7 @@ $effect(() => {
 		width: 100%;
 		padding: 0 1rem;
 		display: flex; flex-direction: column;
-		height: calc(100vh - 5rem);
+		height: calc(100dvh - 5rem);
 	}
 	.augur-rail-slot { display: none; }
 	@media (min-width: 1280px) {
@@ -400,7 +400,7 @@ $effect(() => {
 		}
 		.augur-rail-slot {
 			display: block;
-			height: calc(100vh - 5rem);
+			height: calc(100dvh - 5rem);
 			position: sticky;
 			top: 0;
 		}

@@ -403,7 +403,7 @@ const isInitialLoadingState = $derived(
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		min-height: 50vh;
+		min-height: 50dvh;
 		padding: 1.5rem;
 		text-align: center;
 	}

@@ -166,7 +166,7 @@ onMount(async () => {
 	</div>
 {:else}
 	<div
-		class="h-screen overflow-hidden flex flex-col"
+		class="h-[100dvh] overflow-hidden flex flex-col"
 		style="background: var(--app-bg);"
 		data-role="clippings-file-page"
 	>
@@ -371,7 +371,7 @@ onMount(async () => {
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		min-height: 70vh;
+		min-height: 70dvh;
 		padding: 1.5rem;
 		text-align: center;
 	}

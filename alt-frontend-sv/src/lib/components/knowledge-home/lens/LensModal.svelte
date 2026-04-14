@@ -111,7 +111,7 @@ async function submit() {
 </script>
 
 <Dialog.Root {open} {onOpenChange}>
-	<Dialog.Content class="sm:!max-w-2xl max-h-[85vh] overflow-y-auto">
+	<Dialog.Content class="sm:!max-w-2xl max-h-[85dvh] overflow-y-auto">
 		<Dialog.Header>
 			<Dialog.Title>Save current view</Dialog.Title>
 			<Dialog.Description>

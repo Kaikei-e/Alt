@@ -66,7 +66,7 @@ const canRegenerate = $derived(Boolean(onRegenerate) && !regenerating);
 		align-items: center;
 		justify-content: center;
 		padding: 4rem 1rem;
-		min-height: 40vh;
+		min-height: 40dvh;
 		text-align: center;
 		gap: 0.55rem;
 	}

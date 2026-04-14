@@ -75,11 +75,11 @@ function handlePreviousLetterSelected(targetDate: string) {
 			<div class="edition-rule"></div>
 		</header>
 
-		<div class="flex gap-6 max-w-7xl mx-auto px-4 min-h-[60vh]">
+		<div class="flex gap-6 max-w-7xl mx-auto px-4 min-h-[60dvh]">
 			<!-- Document (2/3) -->
 			<div class="flex-[2] min-w-0">
 				{#if ml.letterLoading}
-					<MorningLetterSkeleton minHeight="60vh" />
+					<MorningLetterSkeleton minHeight="60dvh" />
 				{:else if !ml.letter}
 					<MorningLetterEmpty
 						requestedDate={page.data.requestedDate}
@@ -100,7 +100,7 @@ function handlePreviousLetterSelected(targetDate: string) {
 			</div>
 
 			<!-- Follow-up Chat (1/3) -->
-			<aside class="flex-1 min-h-[40vh] max-w-md">
+			<aside class="flex-1 min-h-[40dvh] max-w-md">
 				<DesktopChat {withinHours} {targetDate} />
 			</aside>
 		</div>
@@ -116,7 +116,7 @@ function handlePreviousLetterSelected(targetDate: string) {
 			<!-- Document -->
 			<div class="flex-1 p-4">
 				{#if ml.letterLoading}
-					<MorningLetterSkeleton minHeight="40vh" />
+					<MorningLetterSkeleton minHeight="40dvh" />
 				{:else if !ml.letter}
 					<MorningLetterEmpty
 						requestedDate={page.data.requestedDate}

@@ -3,7 +3,7 @@ type Props = {
 	minHeight?: string;
 };
 
-let { minHeight = "60vh" }: Props = $props();
+let { minHeight = "60dvh" }: Props = $props();
 </script>
 
 <div class="skeleton-container" style="min-height: {minHeight};">

@@ -107,7 +107,7 @@ function handleClear() {
 <Sheet.Root bind:open={isOpen}>
 	<Sheet.Content
 		side="bottom"
-		class="max-h-[70vh] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
+		class="max-h-[70dvh] w-full max-w-full sm:max-w-full p-0 gap-0 flex flex-col overflow-hidden [&>button.ring-offset-background]:hidden"
 		style="background: var(--surface-bg) !important; border-top: 1px solid var(--surface-border); border-radius: 0; {kb.style}"
 		onOpenAutoFocus={(e) => e.preventDefault()}
 		onCloseAutoFocus={(e) => e.preventDefault()}

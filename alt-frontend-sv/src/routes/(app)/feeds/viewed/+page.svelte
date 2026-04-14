@@ -108,7 +108,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 		/>
 	</div>
 {:else}
-	<div style="background: var(--app-bg);" class="h-screen overflow-hidden flex flex-col">
+	<div style="background: var(--app-bg);" class="h-[100dvh] overflow-hidden flex flex-col">
 		<header class="mobile-morgue-header">
 			<span class="morgue-date">{dateStr}</span>
 			<h1 class="morgue-title-mobile">The Morgue Desk</h1>
