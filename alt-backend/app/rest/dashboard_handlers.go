@@ -1,20 +1,29 @@
 package rest
 
 import (
+	"alt/config"
 	"alt/di"
+	middleware_custom "alt/middleware"
 	dashboard_usecase "alt/usecase/dashboard"
+	"alt/utils/logger"
 	"net/http"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
 )
 
-func registerDashboardRoutes(v1 *echo.Group, container *di.ApplicationComponents) {
-	v1.GET("/dashboard/metrics", handleGetMetrics(container.DashboardMetricsUsecase))
-	v1.GET("/dashboard/overview", handleGetOverview(container.DashboardMetricsUsecase))
-	v1.GET("/dashboard/logs", handleGetLogs(container.DashboardMetricsUsecase))
-	v1.GET("/dashboard/jobs", handleGetJobs(container.DashboardMetricsUsecase))
-	v1.GET("/dashboard/recap_jobs", handleGetRecapJobs(container.GetRecapJobsUsecase))
+// registerDashboardRoutes wires the admin-only dashboard endpoints.
+// Access requires a valid JWT (RequireAuth) AND the admin role (RequireAdmin).
+// Dashboard data includes operational logs and metrics and must not be exposed
+// to regular users or unauthenticated traffic.
+func registerDashboardRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
+	authMiddleware := middleware_custom.NewAuthMiddleware(logger.Logger, cfg)
+	dashboard := v1.Group("/dashboard", authMiddleware.RequireAuth(), authMiddleware.RequireAdmin())
+	dashboard.GET("/metrics", handleGetMetrics(container.DashboardMetricsUsecase))
+	dashboard.GET("/overview", handleGetOverview(container.DashboardMetricsUsecase))
+	dashboard.GET("/logs", handleGetLogs(container.DashboardMetricsUsecase))
+	dashboard.GET("/jobs", handleGetJobs(container.DashboardMetricsUsecase))
+	dashboard.GET("/recap_jobs", handleGetRecapJobs(container.GetRecapJobsUsecase))
 }
 
 func handleGetMetrics(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.HandlerFunc {
