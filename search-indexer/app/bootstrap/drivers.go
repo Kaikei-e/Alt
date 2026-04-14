@@ -23,44 +23,64 @@ func initArticleDriver(cfg *config.Config) (gateway.ArticleDriver, error) {
 	return client, nil
 }
 
-// initMeilisearchClient initializes the Meilisearch client with retry logic.
-func initMeilisearchClient() (meilisearch.ServiceManager, error) {
+// readSecretEnv returns the value of key, or the contents of the file named
+// by key+"_FILE" if set (Docker Secrets convention).
+func readSecretEnv(key string) string {
+	if fileEnv := os.Getenv(key + "_FILE"); fileEnv != "" {
+		if content, err := os.ReadFile(fileEnv); err == nil {
+			return strings.TrimSpace(string(content))
+		}
+	}
+	return os.Getenv(key)
+}
+
+// initMeilisearchClients initializes one admin client (required) and,
+// if configured, a separate search-only client for read operations (L-001).
+// Operators can provision the search key via MEILISEARCH_SEARCH_API_KEY or
+// MEILISEARCH_SEARCH_API_KEY_FILE. When unset, the admin client is reused.
+func initMeilisearchClients() (admin meilisearch.ServiceManager, search meilisearch.ServiceManager, err error) {
 	const maxRetries = 5
 	const retryDelay = 5 * time.Second
 
 	meilisearchHost := os.Getenv("MEILISEARCH_HOST")
-
-	// Support _FILE suffix for Docker Secrets (same pattern as alt-backend)
-	meilisearchKey := os.Getenv("MEILISEARCH_API_KEY")
-	if meilisearchKeyFile := os.Getenv("MEILISEARCH_API_KEY_FILE"); meilisearchKeyFile != "" {
-		if content, err := os.ReadFile(meilisearchKeyFile); err == nil {
-			meilisearchKey = strings.TrimSpace(string(content))
-		}
-	}
-
 	if meilisearchHost == "" {
-		return nil, fmt.Errorf("MEILISEARCH_HOST environment variable is not set")
+		return nil, nil, fmt.Errorf("MEILISEARCH_HOST environment variable is not set")
 	}
 
-	logger.Logger.Info("Connecting to Meilisearch", "host", meilisearchHost)
+	adminKey := readSecretEnv("MEILISEARCH_API_KEY")
+	searchKey := readSecretEnv("MEILISEARCH_SEARCH_API_KEY")
 
-	var msClient meilisearch.ServiceManager
+	logger.Logger.Info("Connecting to Meilisearch",
+		"host", meilisearchHost,
+		"search_key_role_split", searchKey != "" && searchKey != adminKey,
+	)
 
 	for i := range maxRetries {
-		msClient = meilisearch.New(meilisearchHost, meilisearch.WithAPIKey(meilisearchKey))
+		admin = meilisearch.New(meilisearchHost, meilisearch.WithAPIKey(adminKey))
 
-		if _, healthErr := msClient.Health(); healthErr != nil {
+		if _, healthErr := admin.Health(); healthErr != nil {
 			logger.Logger.Warn("Meilisearch not ready, retrying", "attempt", i+1, "max", maxRetries, "err", healthErr)
 			if i < maxRetries-1 {
 				time.Sleep(retryDelay)
 				continue
 			}
-			return nil, fmt.Errorf("failed to connect to Meilisearch after %d attempts: %w", maxRetries, healthErr)
+			return nil, nil, fmt.Errorf("failed to connect to Meilisearch after %d attempts: %w", maxRetries, healthErr)
 		}
 
 		logger.Logger.Info("Connected to Meilisearch successfully")
 		break
 	}
 
-	return msClient, nil
+	if searchKey != "" && searchKey != adminKey {
+		search = meilisearch.New(meilisearchHost, meilisearch.WithAPIKey(searchKey))
+	}
+
+	return admin, search, nil
+}
+
+// initMeilisearchClient preserves the single-client API for existing callers
+// (recap indexer today). New code should prefer initMeilisearchClients.
+func initMeilisearchClient() (meilisearch.ServiceManager, error) {
+	admin, _, err := initMeilisearchClients()
+	return admin, err
 }

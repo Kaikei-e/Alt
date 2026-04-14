@@ -9,16 +9,39 @@ import (
 	"github.com/meilisearch/meilisearch-go"
 )
 
+// MeilisearchDriver isolates admin operations (IndexDocuments, Delete,
+// EnsureIndex, RegisterSynonyms) from search-only operations. If the operator
+// provisions a dedicated Search API key, L-001 lets us use it only for the
+// read path while admin writes keep the higher-privilege key.
 type MeilisearchDriver struct {
-	client meilisearch.ServiceManager
-	index  meilisearch.IndexManager
+	client      meilisearch.ServiceManager
+	index       meilisearch.IndexManager
+	searchIndex meilisearch.IndexManager
 }
 
+// NewMeilisearchDriver constructs a driver where the same client handles both
+// reads and writes. Used when only a single master/admin key is configured.
 func NewMeilisearchDriver(client meilisearch.ServiceManager, indexName string) *MeilisearchDriver {
+	idx := client.Index(indexName)
 	return &MeilisearchDriver{
-		client: client,
-		index:  client.Index(indexName),
+		client:      client,
+		index:       idx,
+		searchIndex: idx,
 	}
+}
+
+// NewMeilisearchDriverWithClients splits the read and write paths across two
+// clients. Pass nil for searchClient to fall back to the admin client.
+func NewMeilisearchDriverWithClients(adminClient meilisearch.ServiceManager, searchClient meilisearch.ServiceManager, indexName string) *MeilisearchDriver {
+	d := &MeilisearchDriver{
+		client:      adminClient,
+		index:       adminClient.Index(indexName),
+		searchIndex: adminClient.Index(indexName),
+	}
+	if searchClient != nil {
+		d.searchIndex = searchClient.Index(indexName)
+	}
+	return d
 }
 
 func (d *MeilisearchDriver) IndexDocuments(ctx context.Context, docs []SearchDocumentDriver) error {
@@ -82,7 +105,7 @@ func (d *MeilisearchDriver) Search(ctx context.Context, query string, limit int)
 	// which prevented Japanese queries from matching English article content
 	// (e.g., "ヴァンス副大統領" could not find "JD Vance" articles).
 
-	result, err := d.index.Search(query, searchRequest)
+	result, err := d.searchIndex.Search(query, searchRequest)
 	if err != nil {
 		return nil, &DriverError{
 			Op:  "Search",
@@ -119,7 +142,7 @@ func (d *MeilisearchDriver) SearchWithFilters(ctx context.Context, query string,
 		searchRequest.Filter = filter
 	}
 
-	result, err := d.index.Search(query, searchRequest)
+	result, err := d.searchIndex.Search(query, searchRequest)
 	if err != nil {
 		return nil, &DriverError{
 			Op:  "SearchWithFilters",
@@ -289,7 +312,7 @@ func (d *MeilisearchDriver) SearchByUserID(ctx context.Context, query string, us
 	if containsCJK(query) {
 		req.Locales = []string{"jpn"}
 	}
-	result, err := d.index.Search(query, req)
+	result, err := d.searchIndex.Search(query, req)
 	if err != nil {
 		return nil, &DriverError{Op: "SearchByUserID", Err: err.Error()}
 	}
@@ -316,7 +339,7 @@ func (d *MeilisearchDriver) SearchByUserIDWithPagination(ctx context.Context, qu
 	if containsCJK(query) {
 		paginReq.Locales = []string{"jpn"}
 	}
-	result, err := d.index.Search(query, paginReq)
+	result, err := d.searchIndex.Search(query, paginReq)
 	if err != nil {
 		return nil, 0, &DriverError{Op: "SearchByUserIDWithPagination", Err: err.Error()}
 	}

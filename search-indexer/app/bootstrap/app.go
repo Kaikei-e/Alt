@@ -68,12 +68,12 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
-	msClient, err := initMeilisearchClient()
+	msClient, searchOnlyClient, err := initMeilisearchClients()
 	if err != nil {
 		logger.Logger.Error("Failed to initialize Meilisearch", "err", err)
 		return err
 	}
-	searchDriver := driver.NewMeilisearchDriver(msClient, "articles")
+	searchDriver := driver.NewMeilisearchDriverWithClients(msClient, searchOnlyClient, "articles")
 
 	// ── Gateways (anti-corruption layer) ──
 	articleRepo := gateway.NewArticleRepositoryGateway(articleDriver)
