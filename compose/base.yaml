@@ -25,6 +25,8 @@ secrets:
     file: ../secrets/kratos_cipher_secret.txt
   meili_master_key:
     file: ../secrets/meili_master_key.txt
+  meili_search_key:
+    file: ../secrets/meili_search_key.txt
   clickhouse_password:
     file: ../secrets/clickhouse_password.txt
   csrf_secret:

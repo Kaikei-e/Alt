@@ -66,6 +66,7 @@ services:
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret
       - MEILISEARCH_HOST=${MEILISEARCH_HOST}
       - MEILISEARCH_API_KEY_FILE=/run/secrets/meili_master_key
+      - MEILISEARCH_SEARCH_API_KEY_FILE=/run/secrets/meili_search_key
       - MEILI_MASTER_KEY_FILE=/run/secrets/meili_master_key
       - REDIS_STREAMS_URL=redis://redis-streams:6379
       - CONSUMER_ENABLED=true
@@ -79,6 +80,7 @@ services:
     secrets:
       - service_secret
       - meili_master_key
+      - meili_search_key
     networks:
       - alt-network
     ports:
