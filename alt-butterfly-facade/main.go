@@ -19,8 +19,11 @@ import (
 )
 
 // newMTLSBackendTransport builds an HTTP/2 RoundTripper that presents the
-// alt-butterfly-facade leaf cert on every handshake to alt-backend. The
-// transport is used in place of the h2c path when MTLS_ENFORCE=true.
+// alt-butterfly-facade leaf cert on every handshake. The transport is used
+// for every mTLS upstream (alt-backend, acolyte-orchestrator, tts-speaker
+// nginx sidecars). ServerName is intentionally left empty so the HTTP
+// client derives SNI from each request's URL host — required because the
+// same transport is reused across multiple internal hostnames.
 func newMTLSBackendTransport() (http.RoundTripper, error) {
 	tlsCfg, err := tlsutil.LoadClientConfig(
 		os.Getenv("MTLS_CERT_FILE"),
@@ -29,9 +32,6 @@ func newMTLSBackendTransport() (http.RoundTripper, error) {
 	)
 	if err != nil {
 		return nil, err
-	}
-	if sn := os.Getenv("BACKEND_MTLS_SERVER_NAME"); sn != "" {
-		tlsCfg.ServerName = sn
 	}
 	return &http2.Transport{
 		TLSClientConfig: tlsCfg,
@@ -83,6 +83,8 @@ func main() {
 	}
 
 	backendURL := cfg.BackendConnectURL
+	acolyteURL := cfg.AcolyteConnectURL
+	ttsURL := cfg.TTSConnectURL
 	var backendTransport http.RoundTripper
 	if os.Getenv("MTLS_ENFORCE") == "true" {
 		backendTransport, err = newMTLSBackendTransport()
@@ -93,26 +95,44 @@ func main() {
 		if v := os.Getenv("BACKEND_CONNECT_MTLS_URL"); v != "" {
 			backendURL = v
 		}
-		slog.InfoContext(ctx, "backend Connect-RPC client: mTLS enforce enabled", "url", backendURL)
+		// Acolyte and TTS each expose their own nginx mTLS sidecar on :9443.
+		// When MTLS_ENFORCE is on, route BFF → Acolyte/TTS through those TLS
+		// listeners so the whole east-west fabric stays off plaintext.
+		if v := os.Getenv("ACOLYTE_CONNECT_MTLS_URL"); v != "" {
+			acolyteURL = v
+		}
+		if v := os.Getenv("TTS_CONNECT_MTLS_URL"); v != "" {
+			ttsURL = v
+		}
+		slog.InfoContext(ctx, "BFF outbound clients: mTLS enforce enabled",
+			"backend", backendURL, "acolyte", acolyteURL, "tts", ttsURL)
 	}
 
 	// Create server configuration
 	serverCfg := server.Config{
-		BackendURL:       backendURL,
-		BackendRESTURL:   cfg.BackendRESTURL,
-		Secret:           secret,
-		Issuer:           cfg.BackendTokenIssuer,
-		Audience:         cfg.BackendTokenAudience,
-		RequestTimeout:   cfg.RequestTimeout,
-		StreamingTimeout: cfg.StreamingTimeout,
-		TTSConnectURL:    cfg.TTSConnectURL,
-		TTSServiceSecret: cfg.TTSServiceSecret,
-		ServiceSecret:    serviceSecret,
-		AcolyteConnectURL: cfg.AcolyteConnectURL,
+		BackendURL:        backendURL,
+		BackendRESTURL:    cfg.BackendRESTURL,
+		Secret:            secret,
+		Issuer:            cfg.BackendTokenIssuer,
+		Audience:          cfg.BackendTokenAudience,
+		RequestTimeout:    cfg.RequestTimeout,
+		StreamingTimeout:  cfg.StreamingTimeout,
+		TTSConnectURL:     ttsURL,
+		TTSServiceSecret:  cfg.TTSServiceSecret,
+		ServiceSecret:     serviceSecret,
+		AcolyteConnectURL: acolyteURL,
 	}
 
-	// Create HTTP server (transport nil → default h2c path preserved)
-	handler := server.NewServerWithTransport(serverCfg, appLogger, backendTransport)
+	// Connect-RPC uses the mTLS transport when enforcement is on; REST
+	// proxies always stay on the default plaintext transport so that
+	// alt-backend's Echo listener on :9000 keeps serving OPML, dashboard,
+	// admin scraping and image proxy routes without TLS scheme conflicts.
+	handler := server.NewServerWithTransports(
+		serverCfg,
+		appLogger,
+		backendTransport,
+		nil,
+	)
 
 	address := fmt.Sprintf(":%s", cfg.Port)
 	srv := &http.Server{

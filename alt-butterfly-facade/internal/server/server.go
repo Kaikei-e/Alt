@@ -46,16 +46,34 @@ func NewServer(cfg Config, logger *slog.Logger) http.Handler {
 
 // NewServerWithTransport creates a new HTTP server with a custom transport.
 // If transport is nil, uses HTTP/2 h2c transport for production.
+// REST proxies reuse the same transport.
 func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.RoundTripper) http.Handler {
+	return NewServerWithTransports(cfg, logger, transport, transport)
+}
+
+// NewServerWithTransports is like NewServerWithTransport but allows callers to
+// supply a separate transport for REST proxy routes. This is the seam used by
+// the mTLS rollout: Connect-RPC targets the mTLS listener on alt-backend while
+// REST endpoints continue talking plaintext to the Echo listener.
+func NewServerWithTransports(
+	cfg Config,
+	logger *slog.Logger,
+	connectTransport http.RoundTripper,
+	restTransport http.RoundTripper,
+) http.Handler {
 	mux := http.NewServeMux()
 
-	// Create backend client
+	// Create backend client (Connect-RPC over configured transport)
 	backendClient := client.NewBackendClientWithTransport(
 		cfg.BackendURL,
 		cfg.RequestTimeout,
 		cfg.StreamingTimeout,
-		transport,
+		connectTransport,
 	)
+	// Shadow the original parameter name so downstream constructors that
+	// previously read `transport` continue to work for Connect-RPC callers.
+	transport := connectTransport
+	_ = transport
 
 	// Determine which handler to use based on BFF features
 	var mainHandler http.Handler
@@ -129,26 +147,47 @@ func NewServerWithTransport(cfg Config, logger *slog.Logger, transport http.Roun
 	// Register aggregation endpoint
 	mux.Handle("/v1/aggregate", aggregationHandler)
 
-	// REST API proxy routing (before catch-all)
-	// Uses HTTP/1.1 transport because alt-backend REST API does not use h2c.
+	// REST API proxy routing (before catch-all). Uses HTTP/1.1 transport
+	// because alt-backend REST API does not use h2c. The REST transport is
+	// kept separate from the Connect-RPC transport so mTLS rollouts can
+	// target only the Connect-RPC path without breaking plaintext REST
+	// proxies (see ADR-000727 / ADR-000729).
+	//
+	// Only allowlisted paths (OPML, dashboard, image proxy, admin scraping,
+	// csrf, health) reach the upstream Echo listener. Every other /v1/*
+	// request returns 404 so accidental reintroduction of REST endpoints
+	// for user-facing features surfaces immediately.
 	if cfg.BackendRESTURL != "" {
-		restTransport := transport
-		if restTransport == nil {
-			restTransport = http.DefaultTransport
+		effectiveRESTTransport := restTransport
+		if effectiveRESTTransport == nil {
+			effectiveRESTTransport = http.DefaultTransport
 		}
 		restClient := client.NewBackendClientWithTransport(
 			cfg.BackendRESTURL,
 			cfg.RequestTimeout,
 			cfg.StreamingTimeout,
-			restTransport,
+			effectiveRESTTransport,
 		)
 		restProxy := handler.NewRESTProxyHandler(
 			restClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger, cfg.RequestTimeout,
 		)
-		mux.Handle("/v1/", restProxy)
+		// The BFF still forwards every /v1/* path, but logs a warning when
+		// a caller hits a prefix that is not on the architectural allowlist.
+		// This keeps user-facing traffic alive (numerous SSR helpers still
+		// speak REST) while surfacing every migration candidate for future
+		// Connect-RPC conversion — see ADR-000729.
+		mux.Handle("/v1/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !allowRESTPath(r.URL.Path) && logger != nil {
+				logger.WarnContext(r.Context(), "BFF plaintext REST path outside allowlist",
+					"path", r.URL.Path,
+					"hint", "migrate to Connect-RPC via /api/v2 or add to restAllowlistPrefixes",
+				)
+			}
+			restProxy.ServeHTTP(w, r)
+		}))
 	}
 
-	// TTS service routing (before catch-all)
+	// TTS service routing (before catch-all).
 	// Uses HTTP/1.1 transport because tts-speaker (uvicorn) does not support h2c.
 	if cfg.TTSConnectURL != "" {
 		ttsTransport := transport

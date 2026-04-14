@@ -102,6 +102,9 @@ services:
       - MTLS_ENFORCE=${ALT_BUTTERFLY_FACADE_MTLS_ENFORCE:-true}
       - BACKEND_CONNECT_MTLS_URL=https://alt-backend:9443
       - BACKEND_MTLS_SERVER_NAME=alt-backend
+      # Acolyte and TTS each run an nginx mTLS sidecar on :9443
+      - ACOLYTE_CONNECT_MTLS_URL=https://acolyte-orchestrator:9443
+      - TTS_CONNECT_MTLS_URL=${TTS_CONNECT_MTLS_URL:-}
     extra_hosts:
       - "tts-external:${TTS_EXTERNAL_HOST:-127.0.0.1}"
     secrets:
