@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -59,13 +60,19 @@ func (m *HTTPClientManager) GetFeedClient() *http.Client {
 }
 
 func (m *HTTPClientManager) createOptimizedClient(timeout time.Duration) *http.Client {
+	// Layered timeouts: Client.Timeout caps the whole request lifecycle, while
+	// Transport fields bound each phase so a slow peer cannot tie up a slot
+	// (Cloudflare's "net/http default will break your production" pattern).
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
 	transport := &optimizedTransport{
 		Transport: &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment, // 統一プロキシ戦略サポート（HTTP_PROXY環境変数）
+			DialContext:           dialer.DialContext,
 			MaxIdleConns:          100,
 			MaxIdleConnsPerHost:   10,
 			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
+			TLSHandshakeTimeout:   5 * time.Second,
+			ResponseHeaderTimeout: 20 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 			DisableKeepAlives:     false,
 			DisableCompression:    false,

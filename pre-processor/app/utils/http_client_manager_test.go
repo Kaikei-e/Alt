@@ -32,7 +32,7 @@ func TestHTTPClientManager_GetDefaultClient(t *testing.T) {
 				maxIdleConns:        100,
 				maxIdleConnsPerHost: 10,
 				idleConnTimeout:     90 * time.Second,
-				tlsHandshakeTimeout: 10 * time.Second,
+				tlsHandshakeTimeout: 5 * time.Second,
 			},
 		},
 	}

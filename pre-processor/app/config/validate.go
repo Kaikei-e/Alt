@@ -2,8 +2,27 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
+
+// isProductionEnv centralises the rule used elsewhere in the service that
+// APP_ENV=production should fail-closed on missing security config.
+func isProductionEnv() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production")
+}
+
+// loadServiceSecretForValidation mirrors the middleware loader order so the
+// validator checks the same value the runtime will use.
+func loadServiceSecretForValidation() string {
+	secret := os.Getenv("SERVICE_SECRET")
+	if file := os.Getenv("SERVICE_SECRET_FILE"); file != "" {
+		if content, err := os.ReadFile(file); err == nil { // #nosec G304 -- env-configured secrets mount
+			secret = string(content)
+		}
+	}
+	return strings.TrimSpace(secret)
+}
 
 func validateConfig(config *Config) error {
 	if config.Server.Port <= 0 || config.Server.Port > 65535 {
@@ -82,6 +101,14 @@ func validateConfig(config *Config) error {
 		if config.HTTP.EnvoyTimeout <= 0 {
 			return fmt.Errorf("envoy timeout must be positive: %v", config.HTTP.EnvoyTimeout)
 		}
+	}
+
+	// LOW-2: in production, refuse to start with an empty shared secret.
+	// The middleware returns HTTP 500 on every request in that state, so
+	// fail-fast here is strictly better than a half-broken pod serving
+	// runtime errors in response to every internal call.
+	if isProductionEnv() && loadServiceSecretForValidation() == "" {
+		return fmt.Errorf("SERVICE_SECRET must be set (or SERVICE_SECRET_FILE point at a non-empty file) when APP_ENV=production")
 	}
 
 	return nil

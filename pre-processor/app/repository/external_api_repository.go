@@ -15,7 +15,12 @@ import (
 	"pre-processor/config"
 	"pre-processor/domain"
 	"pre-processor/driver"
+	"pre-processor/utils"
 )
+
+// maxInternalResponseBytes bounds response bodies read from internal services
+// so a misbehaving peer cannot exhaust memory.
+const maxInternalResponseBytes int64 = 10 * 1024 * 1024
 
 // ExternalAPIRepository implementation.
 type externalAPIRepository struct {
@@ -24,14 +29,14 @@ type externalAPIRepository struct {
 	config *config.Config
 }
 
-// NewExternalAPIRepository creates a new external API repository.
+// NewExternalAPIRepository creates a new external API repository. The HTTP
+// client uses the hardened transport (DialContext, TLSHandshake and
+// ResponseHeader timeouts) shared across the service.
 func NewExternalAPIRepository(cfg *config.Config, logger *slog.Logger) ExternalAPIRepository {
 	return &externalAPIRepository{
 		logger: logger,
 		config: cfg,
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		client: utils.NewHTTPClientManager().GetDefaultClient(),
 	}
 }
 
@@ -253,7 +258,8 @@ func (r *externalAPIRepository) getSystemUserIDOnce(ctx context.Context) (string
 		UserID string `json:"user_id"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	// Bound the decoder so a misbehaving alt-backend cannot exhaust memory.
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxInternalResponseBytes)).Decode(&result); err != nil {
 		return "", fmt.Errorf("failed to decode response: %w", err)
 	}
 
