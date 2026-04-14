@@ -394,7 +394,7 @@ async function handleSummarize(forceRefresh = false) {
 >
 	<Sheet.Content
 		side="bottom"
-		class="sheet-content max-w-[500px] h-[85vh] flex flex-col overflow-hidden p-0"
+		class="sheet-content max-w-[500px] h-[85dvh] flex flex-col overflow-hidden p-0"
 	>
 		<Sheet.Header class="sheet-header">
 			<Sheet.Title class="sheet-title">
@@ -512,6 +512,7 @@ async function handleSummarize(forceRefresh = false) {
 
 	:global(.sheet-header) {
 		padding: 1rem !important;
+		padding-inline-end: 2.5rem !important;
 		background: var(--surface-bg) !important;
 		border-bottom: 1px solid var(--surface-border) !important;
 		flex-shrink: 0;
@@ -523,6 +524,13 @@ async function handleSummarize(forceRefresh = false) {
 		font-weight: 700 !important;
 		color: var(--alt-charcoal) !important;
 		line-height: 1.3 !important;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
 		overflow-wrap: break-word;
 	}
 

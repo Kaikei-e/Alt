@@ -3,12 +3,13 @@ interface Props {
 	kicker: string;
 	title: string;
 	lede?: string;
+	testId?: string;
 }
 
-let { kicker, title, lede }: Props = $props();
+let { kicker, title, lede, testId }: Props = $props();
 </script>
 
-<header class="page-kicker" data-role="page-kicker">
+<header class="page-kicker" data-role="page-kicker" data-testid={testId}>
 	<p class="kicker">{kicker}</p>
 	<h1 class="title">{title}</h1>
 	{#if lede}

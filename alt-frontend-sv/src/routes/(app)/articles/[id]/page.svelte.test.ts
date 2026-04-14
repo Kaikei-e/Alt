@@ -22,6 +22,12 @@ vi.mock("$lib/api/client/articles", () => ({
 }));
 
 const mockSummarizerReset = vi.fn();
+let summarizerOverride: Partial<{
+	summary: string | null;
+	isSummarizing: boolean;
+	summaryError: string | null;
+	buttonState: "idle" | "loading" | "error" | "success";
+}> = {};
 vi.mock("$lib/hooks/useSummarize.svelte", () => ({
 	useSummarize: () => ({
 		summary: null,
@@ -31,6 +37,7 @@ vi.mock("$lib/hooks/useSummarize.svelte", () => ({
 		summarize: vi.fn(),
 		abort: vi.fn(),
 		reset: mockSummarizerReset,
+		...summarizerOverride,
 	}),
 }));
 
@@ -39,6 +46,7 @@ import Page from "./+page.svelte";
 describe("Article page fetch button", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		summarizerOverride = {};
 	});
 
 	it("shows disabled Fetching... button while loading", async () => {
@@ -115,5 +123,84 @@ describe("Article page fetch button", () => {
 		await button.click();
 
 		expect(mockSummarizerReset).toHaveBeenCalled();
+	});
+});
+
+describe("Article page Alt-Paper mobile layout", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		summarizerOverride = {};
+	});
+
+	it("renders editorial masthead with page-kicker role and article title", async () => {
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Article body</p>",
+			article_id: "a1",
+		});
+
+		render(Page as never);
+
+		const masthead = testPage.getByTestId("article-masthead");
+		await expect.element(masthead).toBeInTheDocument();
+		await expect.element(masthead).toHaveAttribute("data-role", "page-kicker");
+		await expect.element(masthead).toHaveTextContent("Test Article");
+	});
+
+	it("uses Alt-Paper surface tokens without rounded-lg/bg-white violations", async () => {
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Article body</p>",
+			article_id: "a1",
+		});
+
+		const { container } = render(Page as never);
+
+		await expect
+			.element(testPage.getByTestId("article-content-surface"))
+			.toBeInTheDocument();
+
+		const offenders = container.querySelectorAll(
+			".rounded-lg, .rounded-xl, .rounded-2xl, .bg-white",
+		);
+		expect(offenders.length).toBe(0);
+	});
+
+	it("renders AI SUMMARY kicker when summary is present", async () => {
+		summarizerOverride = {
+			summary: "Condensed bullet list",
+			buttonState: "success",
+		};
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Article body</p>",
+			article_id: "a1",
+		});
+
+		render(Page as never);
+
+		const summary = testPage.getByTestId("ai-summary");
+		await expect.element(summary).toBeInTheDocument();
+		await expect.element(summary).toHaveTextContent("AI SUMMARY");
+		await expect.element(summary).toHaveTextContent("Condensed bullet list");
+	});
+
+	it("exposes icon-only actions with accessible labels on mobile", async () => {
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Article body</p>",
+			article_id: "a1",
+		});
+
+		render(Page as never);
+
+		await expect
+			.element(testPage.getByRole("button", { name: /back to home/i }))
+			.toBeInTheDocument();
+		await expect
+			.element(testPage.getByTestId("fetch-button"))
+			.toHaveAttribute("aria-label");
+		await expect
+			.element(testPage.getByTestId("summarize-button"))
+			.toHaveAttribute("aria-label");
+		await expect
+			.element(testPage.getByRole("link", { name: /open original/i }))
+			.toBeInTheDocument();
 	});
 });

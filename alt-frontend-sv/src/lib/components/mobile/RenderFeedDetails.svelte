@@ -86,7 +86,7 @@ const safeOnTheFlyContent = $derived(
 			"
 		>
 			<div
-				class="article-content max-h-[50vh] overflow-auto"
+				class="article-content max-h-[50dvh] overflow-auto"
 				style="color: #1a1a1a;"
 			>
 				{@html safeArticleContent}
@@ -95,13 +95,8 @@ const safeOnTheFlyContent = $derived(
 	</div>
 {:else if "content" in feedDetails && feedDetails.content}
 	<!-- FeedContentOnTheFlyResponse - Rich content display with sanitization -->
-	<div class="px-4 py-4">
-		<div
-			class="article-content text-base leading-relaxed break-words"
-			style="color: var(--alt-text-primary);"
-		>
-			{@html safeOnTheFlyContent}
-		</div>
+	<div class="article-content break-words">
+		{@html safeOnTheFlyContent}
 	</div>
 {:else}
 	<p class="text-center py-8 italic" style="color: var(--alt-text-secondary);">
@@ -113,12 +108,15 @@ const safeOnTheFlyContent = $derived(
 	:global(.article-content) {
 		word-break: break-word;
 		overflow-wrap: anywhere;
-		font-size: clamp(0.95rem, 2.5vw, 1.1rem);
+		font-family: var(--font-body);
+		font-size: clamp(0.95rem, 2.5vw, 1.05rem);
 		line-height: 1.75;
+		color: var(--alt-charcoal, #1a1a1a);
+		max-width: 65ch;
 	}
 
 	:global(.article-content p) {
-		margin-bottom: 1em;
+		margin: 0 0 1em;
 		line-height: 1.7;
 	}
 
@@ -127,115 +125,118 @@ const safeOnTheFlyContent = $derived(
 	:global(.article-content h3),
 	:global(.article-content h4),
 	:global(.article-content h5),
-	:global(.article-content h6),
-	:global(.article-content p),
-	:global(.article-content li) {
-		color: #1a1a1a;
+	:global(.article-content h6) {
+		font-family: var(--font-display);
+		color: var(--alt-charcoal, #1a1a1a);
+		letter-spacing: -0.01em;
+		line-height: 1.2;
 	}
 
 	:global(.article-content h1) {
-		font-size: clamp(1.5rem, 4vw, 2rem);
+		font-size: clamp(1.5rem, 4vw, 1.9rem);
 		margin-top: 1.5em;
-		margin-bottom: 0.75em;
-		font-weight: bold;
+		margin-bottom: 0.6em;
+		font-weight: 700;
 	}
 
 	:global(.article-content h2) {
-		font-size: clamp(1.3rem, 3.5vw, 1.7rem);
-		margin-top: 1.5em;
+		font-size: clamp(1.3rem, 3.5vw, 1.55rem);
+		margin-top: 1.4em;
 		margin-bottom: 0.5em;
-		font-weight: bold;
+		font-weight: 700;
 	}
 
 	:global(.article-content h3) {
-		font-size: clamp(1.1rem, 3vw, 1.4rem);
-		margin-top: 1.5em;
-		margin-bottom: 0.5em;
-		font-weight: bold;
+		font-size: clamp(1.1rem, 3vw, 1.3rem);
+		margin-top: 1.3em;
+		margin-bottom: 0.4em;
+		font-weight: 700;
 	}
 
 	:global(.article-content h4) {
-		font-size: clamp(1rem, 2.5vw, 1.2rem);
-		margin-top: 1.25em;
-		margin-bottom: 0.5em;
-		font-weight: bold;
+		font-size: clamp(1rem, 2.5vw, 1.15rem);
+		margin-top: 1.2em;
+		margin-bottom: 0.4em;
+		font-weight: 700;
 	}
 
 	:global(.article-content ul),
 	:global(.article-content ol) {
-		margin-left: 1.5em;
-		margin-bottom: 1em;
+		margin: 0 0 1em 1.4em;
 	}
 
 	:global(.article-content li) {
 		margin-bottom: 0.3em;
+		color: var(--alt-charcoal, #1a1a1a);
 	}
 
 	:global(.article-content a) {
-		color: #2563eb; /* Blue for links on light bg */
+		color: var(--alt-primary, #2f4f4f);
 		text-decoration: underline;
+		text-underline-offset: 0.15em;
 	}
 
-	:global(.article-content a:hover) {
-		color: #1d4ed8;
+	:global(.article-content a:hover),
+	:global(.article-content a:focus-visible) {
+		color: var(--interactive-text-hover, #223b3b);
 	}
 
 	/* NOTE: img styles removed - images are stripped for security (XSS via onerror/onload) */
 
 	:global(.article-content blockquote) {
-		border-left: 3px solid #2563eb;
-		padding-left: 1em;
-		margin-left: 0;
+		border-left: 3px solid var(--alt-primary, #2f4f4f);
+		padding: 0.75em 1em;
+		margin: 1em 0;
 		font-style: italic;
-		background: rgba(0, 0, 0, 0.05);
-		padding: 1em;
-		border-radius: 0 8px 8px 0;
-		color: #4b5563;
+		background: var(--surface-2, #f5f4f1);
+		color: var(--alt-slate, #666666);
 	}
 
 	:global(.article-content pre) {
-		background: #1e1e1e; /* Keep code blocks dark */
-		color: #e5e5e5;
-		padding: 1em;
-		border-radius: 8px;
+		background: var(--surface-2, #f5f4f1);
+		color: var(--alt-charcoal, #1a1a1a);
+		border: 1px solid var(--surface-border, #c8c8c8);
+		padding: 0.9em 1em;
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
+		font-family: var(--font-mono);
 		font-size: clamp(0.8rem, 2vw, 0.9rem);
+		line-height: 1.55;
 	}
 
 	:global(.article-content code) {
-		background: rgba(0, 0, 0, 0.1);
-		color: #1a1a1a;
-		padding: 0.2em 0.4em;
-		border-radius: 3px;
+		background: var(--surface-2, #f5f4f1);
+		color: var(--alt-charcoal, #1a1a1a);
+		padding: 0.15em 0.35em;
+		font-family: var(--font-mono);
 		font-size: 0.9em;
-		font-family: monospace;
 	}
 
-	/* Override code inside pre to be light on dark */
+	/* Code inside pre inherits pre styling */
 	:global(.article-content pre code) {
 		background: transparent;
+		padding: 0;
 		color: inherit;
 	}
 
 	:global(.article-content table) {
 		border-collapse: collapse;
 		width: 100%;
-		margin-top: 1em;
-		margin-bottom: 1em;
+		margin: 1em 0;
+		font-size: 0.9em;
 	}
 
 	:global(.article-content th),
 	:global(.article-content td) {
-		border: 1px solid rgba(0, 0, 0, 0.2);
-		padding: 0.5em;
+		border: 1px solid var(--surface-border, #c8c8c8);
+		padding: 0.5em 0.75em;
 		text-align: left;
-		color: #1a1a1a;
+		color: var(--alt-charcoal, #1a1a1a);
 	}
 
 	:global(.article-content th) {
-		background: rgba(0, 0, 0, 0.05);
-		font-weight: bold;
+		background: var(--surface-2, #f5f4f1);
+		font-weight: 600;
 	}
 
 	:global(.article-content::-webkit-scrollbar) {
@@ -244,19 +245,12 @@ const safeOnTheFlyContent = $derived(
 
 	:global(.article-content::-webkit-scrollbar-track) {
 		background: transparent;
-		border-radius: 2px;
 	}
 
 	:global(.article-content::-webkit-scrollbar-thumb) {
-		background: rgba(0, 0, 0, 0.2);
-		border-radius: 2px;
+		background: var(--surface-border, #c8c8c8);
 	}
 
-	:global(.article-content::-webkit-scrollbar-thumb:hover) {
-		background: rgba(0, 0, 0, 0.3);
-	}
-
-	/* Mobile optimization */
 	@media (max-width: 640px) {
 		:global(.article-content) {
 			font-size: 1rem;

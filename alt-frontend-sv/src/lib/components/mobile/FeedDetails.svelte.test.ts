@@ -107,6 +107,79 @@ describe("FeedDetails Alt-Paper compliance", () => {
 	});
 });
 
+describe("FeedDetails Android layout", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("uses dvh (not vh) for bottom sheet height to avoid Android toolbar clip", async () => {
+		render(FeedDetails as never, {
+			props: {
+				feedURL: testFeedURL,
+				feedTitle: testFeedTitle,
+				open: true,
+				onOpenChange: vi.fn(),
+				showButton: false,
+			},
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		const sheet = document.querySelector<HTMLElement>(
+			'[data-slot="sheet-content"]',
+		);
+		if (!sheet) throw new Error("sheet-content not rendered");
+		expect(sheet.className).toContain("h-[85dvh]");
+		expect(sheet.className).not.toMatch(/h-\[85vh\]/);
+	});
+
+	it(".sheet-title clamps long title to avoid overlap with absolute close button", async () => {
+		const longTitle =
+			"This is an extremely long article title that would normally overflow the sheet header area and collide with the close X button in the top right corner of the sheet on a narrow Android viewport";
+
+		render(FeedDetails as never, {
+			props: {
+				feedURL: testFeedURL,
+				feedTitle: longTitle,
+				open: true,
+				onOpenChange: vi.fn(),
+				showButton: false,
+			},
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		const title = document.querySelector<HTMLElement>(".sheet-title");
+		if (!title) throw new Error("sheet-title not rendered");
+		const computed = window.getComputedStyle(title);
+		expect(computed.minWidth).toBe("0px");
+		expect(computed.overflow).toBe("hidden");
+		expect(computed.webkitLineClamp).toBe("2");
+	});
+
+	it("sheet header reserves space for close button via padding-inline-end", async () => {
+		render(FeedDetails as never, {
+			props: {
+				feedURL: testFeedURL,
+				feedTitle: testFeedTitle,
+				open: true,
+				onOpenChange: vi.fn(),
+				showButton: false,
+			},
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		const header = document.querySelector<HTMLElement>(
+			'[data-slot="sheet-header"]',
+		);
+		if (!header) throw new Error("sheet-header not rendered");
+		const computed = window.getComputedStyle(header);
+		const paddingRight = Number.parseFloat(computed.paddingRight);
+		expect(paddingRight).toBeGreaterThanOrEqual(40);
+	});
+});
+
 describe("FeedDetails retry", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
