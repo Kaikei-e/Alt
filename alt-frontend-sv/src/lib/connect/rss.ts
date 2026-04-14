@@ -13,6 +13,7 @@ import {
 	type DeleteRSSFeedLinkResponse,
 	type RegisterFavoriteFeedResponse,
 	type RemoveFavoriteFeedResponse,
+	type RandomSubscriptionResponse,
 	type RSSFeedLink as ProtoRSSFeedLink,
 } from "$lib/gen/alt/rss/v2/rss_pb";
 
@@ -192,5 +193,37 @@ export async function removeFavoriteFeed(
 
 	return {
 		message: response.message,
+	};
+}
+
+/**
+ * Random subscribed feed for Tag Trail discovery.
+ */
+export interface RandomSubscription {
+	id: string;
+	title: string;
+	description: string;
+	link: string;
+	publishedAt: string;
+}
+
+/**
+ * Fetches one random subscribed feed via Connect-RPC.
+ * Replaces GET /v1/rss-feed-link/random for the Tag Trail feature.
+ */
+export async function randomSubscription(
+	transport: Transport,
+): Promise<RandomSubscription> {
+	const client = createRSSClient(transport);
+	const response = (await client.randomSubscription(
+		{},
+	)) as RandomSubscriptionResponse;
+
+	return {
+		id: response.id,
+		title: response.title,
+		description: response.description,
+		link: response.link,
+		publishedAt: response.publishedAt,
 	};
 }
