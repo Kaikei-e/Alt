@@ -47,6 +47,8 @@ secrets:
     file: ../secrets/pp_db_password.txt
   image_proxy_secret:
     file: ../secrets/image_proxy_secret.txt
+  step_ca_root_password:
+    file: ../secrets/step_ca_root_password.txt
 
 networks:
   alt-network:
@@ -66,6 +68,8 @@ volumes:
   pre_processor_db_data:
   redis-streams-data:
   nginx-image-cache:
+  step_ca_data:
+  pki_trust_bundle:
 
 x-rask-env: &rask-env
   environment:

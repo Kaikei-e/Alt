@@ -1,0 +1,81 @@
+# compose/pki.yaml - Internal PKI for east-west mTLS
+# step-ca issues short-lived leaf certs; step-ca-bootstrap publishes the root
+# CA bundle to a shared volume so other services can build trust stores.
+#
+# Phase 0 of the mTLS rollout. Apps do not consume these certs yet.
+
+include:
+  - base.yaml
+
+services:
+  step-ca:
+    image: smallstep/step-ca:0.27.5
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      DOCKER_STEPCA_INIT_NAME: alt-ca
+      DOCKER_STEPCA_INIT_DNS_NAMES: step-ca,localhost
+      DOCKER_STEPCA_INIT_PROVISIONER_NAME: bootstrap
+      DOCKER_STEPCA_INIT_PASSWORD_FILE: /run/secrets/step_ca_root_password
+      DOCKER_STEPCA_INIT_REMOTE_MANAGEMENT: "false"
+      DOCKER_STEPCA_INIT_ACME: "false"
+    secrets:
+      - step_ca_root_password
+    volumes:
+      - step_ca_data:/home/step
+    healthcheck:
+      test:
+        - CMD
+        - step
+        - ca
+        - health
+        - --ca-url
+        - https://localhost:9000
+        - --root
+        - /home/step/certs/root_ca.crt
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - alt-network
+    labels:
+      - rask.group=pki
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  step-ca-bootstrap:
+    image: smallstep/step-ca:0.27.5
+    restart: "no"
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
+        set -e
+        until [ -f /home/step/certs/root_ca.crt ]; do
+          echo "step-ca-bootstrap: waiting for root_ca.crt..."
+          sleep 2
+        done
+        cp /home/step/certs/root_ca.crt /trust/ca-bundle.pem
+        chmod 0444 /trust/ca-bundle.pem
+        echo "step-ca-bootstrap: trust bundle published to /trust/ca-bundle.pem"
+    volumes:
+      - step_ca_data:/home/step:ro
+      - pki_trust_bundle:/trust
+    depends_on:
+      step-ca:
+        condition: service_healthy
+    networks:
+      - alt-network
+    labels:
+      - rask.group=pki
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

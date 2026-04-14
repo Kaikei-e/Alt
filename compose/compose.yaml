@@ -17,6 +17,7 @@ include:
   - observability.yaml
   - perf.yaml
   - pgbouncer.yaml
+  - pki.yaml
   - rag.yaml
   - recap.yaml
   - sovereign.yaml
