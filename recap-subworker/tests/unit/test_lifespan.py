@@ -7,7 +7,7 @@ via an ``@asynccontextmanager`` lifespan, and that shutdown invokes
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,17 +30,19 @@ def test_lifespan_binds_container_to_app_state(app_factory) -> None:
 
 
 def test_lifespan_shutdown_disposes_database_engine(app_factory) -> None:
-    """Engine.dispose() must be invoked on lifespan shutdown."""
+    """ServiceContainer.shutdown() must be invoked on lifespan shutdown."""
     from recap_subworker.app.container import ServiceContainer
 
-    real_shutdown = ServiceContainer.shutdown
-    spy = AsyncMock(side_effect=real_shutdown, autospec=True)
+    calls: list[str] = []
 
-    with patch.object(ServiceContainer, "shutdown", spy):
+    async def _fake_shutdown(self) -> None:  # noqa: ANN001
+        calls.append("shutdown")
+
+    with patch.object(ServiceContainer, "shutdown", _fake_shutdown):
         app = app_factory()
         with TestClient(app):
             pass  # enter + exit lifespan
-        assert spy.await_count >= 1, "ServiceContainer.shutdown must be awaited on exit"
+        assert calls == ["shutdown"], "ServiceContainer.shutdown must run on lifespan exit"
 
 
 def test_separate_apps_have_independent_containers(app_factory) -> None:

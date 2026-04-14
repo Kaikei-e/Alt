@@ -58,13 +58,13 @@ def test_post_runs_returns_accepted(monkeypatch):
     manager = FakeRunManager(record)
     app = create_app()
     app.dependency_overrides[deps.get_run_manager_dep] = lambda: manager
-    client = TestClient(app)
 
-    response = client.post(
-        "/v1/runs",
-        json=_make_payload(),
-        headers={"X-Alt-Job-Id": str(job_id), "X-Alt-Genre": "ai"},
-    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/runs",
+            json=_make_payload(),
+            headers={"X-Alt-Job-Id": str(job_id), "X-Alt-Genre": "ai"},
+        )
 
     assert response.status_code == 202
     assert response.json()["run_id"] == 1
@@ -72,9 +72,8 @@ def test_post_runs_returns_accepted(monkeypatch):
 
 def test_post_runs_requires_job_id_header():
     app = create_app()
-    client = TestClient(app)
-
-    response = client.post("/v1/runs", json=_make_payload(), headers={"X-Alt-Genre": "ai"})
+    with TestClient(app) as client:
+        response = client.post("/v1/runs", json=_make_payload(), headers={"X-Alt-Genre": "ai"})
 
     assert response.status_code == 422
 
@@ -87,8 +86,7 @@ def test_get_runs_not_found(monkeypatch):
             return None
 
     app.dependency_overrides[deps.get_run_manager_dep] = lambda: EmptyManager()
-    client = TestClient(app)
-
-    response = client.get("/v1/runs/999")
+    with TestClient(app) as client:
+        response = client.get("/v1/runs/999")
 
     assert response.status_code == 404

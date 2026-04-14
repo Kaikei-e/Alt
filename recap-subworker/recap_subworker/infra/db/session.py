@@ -1,14 +1,19 @@
 """Async SQLAlchemy session helpers with connection pooling.
 
-Replaces NullPool with proper connection pooling for better performance.
-uvicorn does not fork workers, so connection pooling is safe within
-a single process. PID detection logic is preserved for Gunicorn compatibility.
+Phase 1 refactor: ownership of the engine and session factory is delegated
+to ``ServiceContainer``. This module only exposes a pure builder
+(``create_database_resources``) and a dataclass that binds engine + factory
+together with a lifecycle. Module-level singletons were removed.
+
+Legacy ``get_session_factory(settings)`` is preserved as a thin wrapper
+for subprocess callers (learning scheduler) that run outside the FastAPI
+application and therefore cannot read from ``app.state``.
 """
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 
 import structlog
 from sqlalchemy.ext.asyncio import (
@@ -18,81 +23,79 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from ..config import Settings, get_settings
+from ..config import Settings
 
 logger = structlog.get_logger(__name__)
 
-_ENGINE: AsyncEngine | None = None
-_SESSION_FACTORY: async_sessionmaker[AsyncSession] | None = None
-_ENGINE_PID: int | None = None
+
+@dataclass(slots=True)
+class DatabaseResources:
+    """Engine + session factory bound together with a lifecycle.
+
+    Owned by ``ServiceContainer``. ``aclose()`` must be awaited on lifespan
+    shutdown to release pooled connections cleanly.
+    """
+
+    engine: AsyncEngine
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def aclose(self) -> None:
+        await self.engine.dispose()
 
 
-def get_engine(settings: Settings) -> AsyncEngine:
-    """Return a lazily initialized async engine with connection pooling."""
+def create_database_resources(settings: Settings) -> DatabaseResources:
+    """Build a fresh engine and session factory from settings.
 
-    global _ENGINE, _ENGINE_PID
-    current_pid = os.getpid()
+    No caching. The caller (ServiceContainer or a subprocess scheduler)
+    owns the returned resources and must call ``aclose()`` at shutdown.
+    """
 
-    if _ENGINE is not None and current_pid != _ENGINE_PID:
-        logger.info(
-            "detected pid change, resetting database engine",
-            old_pid=_ENGINE_PID,
-            new_pid=current_pid,
-        )
-        _ENGINE = None
-        _ENGINE_PID = None
-
-    if _ENGINE is None:
-        _ENGINE = create_async_engine(
-            settings.db_url_str,
-            pool_size=3,
-            max_overflow=2,
-            pool_timeout=30,
-            pool_recycle=1800,
-            pool_pre_ping=True,
-            connect_args={
-                "command_timeout": 60,
-                "server_settings": {
-                    "application_name": "recap-subworker",
-                },
+    engine = create_async_engine(
+        settings.db_url_str,
+        pool_size=3,
+        max_overflow=2,
+        pool_timeout=30,
+        pool_recycle=1800,
+        pool_pre_ping=True,
+        connect_args={
+            "command_timeout": 60,
+            "server_settings": {
+                "application_name": "recap-subworker",
             },
-        )
-        _ENGINE_PID = current_pid
-        logger.info(
-            "database engine created with connection pooling",
-            pool_size=3,
-            max_overflow=2,
-            pool_recycle=1800,
-            pid=current_pid,
-        )
-
-    return _ENGINE
+        },
+    )
+    factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    logger.info(
+        "database resources created",
+        pool_size=3,
+        max_overflow=2,
+        pool_recycle=1800,
+    )
+    return DatabaseResources(engine=engine, session_factory=factory)
 
 
 def get_session_factory(settings: Settings) -> async_sessionmaker[AsyncSession]:
-    """Return a session factory bound to the configured engine."""
+    """Legacy builder for subprocess callers.
 
-    global _SESSION_FACTORY, _ENGINE_PID
+    NOTE: Every call returns a freshly-built factory bound to a new engine.
+    Main-process code paths should instead use
+    ``ServiceContainer.db.session_factory`` which is owned by the lifespan.
+    """
 
-    current_pid = os.getpid()
-
-    if _SESSION_FACTORY is not None and _ENGINE_PID is not None and current_pid != _ENGINE_PID:
-        logger.info(
-            "detected pid change, resetting session factory",
-            old_pid=_ENGINE_PID,
-            new_pid=current_pid,
-        )
-        _SESSION_FACTORY = None
-
-    if _SESSION_FACTORY is None:
-        engine = get_engine(settings)
-        _SESSION_FACTORY = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
-    return _SESSION_FACTORY
+    return create_database_resources(settings).session_factory
 
 
-async def get_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency that yields an AsyncSession."""
-    settings = get_settings()
-    factory = get_session_factory(settings)
-    async with factory() as session:
-        yield session
+async def get_session() -> AsyncIterator[AsyncSession]:  # pragma: no cover - legacy
+    """Legacy FastAPI dependency for callers that have not yet migrated.
+
+    New code should inject ``ServiceContainer`` via ``deps.get_container``
+    and take sessions from ``container.db.session_factory``.
+    """
+    from ..config import get_settings
+
+    resources = create_database_resources(get_settings())
+    try:
+        async with resources.session_factory() as session:
+            yield session
+    finally:
+        await resources.aclose()

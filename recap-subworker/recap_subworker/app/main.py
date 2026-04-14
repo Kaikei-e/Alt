@@ -12,6 +12,9 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("NUMBA_THREADING_LAYER", "tbb")
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE
@@ -19,7 +22,7 @@ from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE
 from ..infra.config import get_settings
 from ..infra.logging import configure_logging
 from ..infra.telemetry import setup_metrics
-from . import deps
+from .container import ServiceContainer
 from .routers import (
     admin,
     classification,
@@ -48,6 +51,18 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Own the ServiceContainer lifecycle for the app instance."""
+    settings = get_settings()
+    container = ServiceContainer(settings)
+    app.state.container = container
+    try:
+        yield
+    finally:
+        await container.shutdown()
+
+
 def create_app() -> FastAPI:
     """Create a FastAPI application instance."""
 
@@ -66,6 +81,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="recap-subworker",
         version="0.1.0",
+        lifespan=_lifespan,
     )
 
     app.add_middleware(RequestSizeLimitMiddleware)
@@ -78,7 +94,5 @@ def create_app() -> FastAPI:
     app.include_router(classification.router, prefix="/v1")
     app.include_router(preprocessing.router, prefix="/v1")
     app.include_router(classification_runs.router)
-
-    deps.register_lifecycle(app)
 
     return app

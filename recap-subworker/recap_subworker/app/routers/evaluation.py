@@ -9,11 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from ...db.dao import SubworkerDAO
-from ...db.session import get_session
 from ...infra.config import Settings
 from ...infra.path_validation import ALLOWED_BASE_DIRS, validate_path
 from ...services.evaluation import EvaluationService
-from ..deps import get_settings_dep
+from ..deps import get_session, get_settings_dep
 
 router = APIRouter(prefix="/v1/evaluation", tags=["evaluation"])
 

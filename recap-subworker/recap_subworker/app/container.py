@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -18,10 +19,10 @@ from typing import Any
 
 import structlog
 
-from ..db.session import get_session_factory
 from ..gateway.hdbscan_clusterer import HdbscanClustererGateway
 from ..gateway.st_embedder import StEmbedderGateway
 from ..infra.config import Settings
+from ..infra.db.session import DatabaseResources, create_database_resources
 from ..services.async_jobs import AdminJobService
 from ..services.classification import CoarseClassifier
 from ..services.classification_runner import ClassificationRunner
@@ -48,6 +49,8 @@ class ServiceContainer:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._db: DatabaseResources | None = None
+        self._extract_semaphore: asyncio.Semaphore | None = None
         self._process_pool: ProcessPoolExecutor | None = None
         self._embedder: Embedder | None = None
         self._embedder_gateway: StEmbedderGateway | None = None
@@ -64,6 +67,20 @@ class ServiceContainer:
         self._content_extractor: ContentExtractor | None = None
         self._coarse_classifier: CoarseClassifier | None = None
         self._admin_job_service: AdminJobService | None = None
+
+    # --- Database ---
+
+    @property
+    def db(self) -> DatabaseResources:
+        if self._db is None:
+            self._db = create_database_resources(self.settings)
+        return self._db
+
+    @property
+    def extract_semaphore(self) -> asyncio.Semaphore:
+        if self._extract_semaphore is None:
+            self._extract_semaphore = asyncio.Semaphore(self.settings.extract_concurrency_max)
+        return self._extract_semaphore
 
     # --- Infrastructure ---
 
@@ -154,11 +171,10 @@ class ServiceContainer:
     @property
     def run_manager(self) -> RunManager:
         if self._run_manager is None:
-            session_factory = get_session_factory(self.settings)
             pipeline = None if self.settings.pipeline_mode == "processpool" else self.pipeline
             self._run_manager = RunManager(
                 self.settings,
-                session_factory,
+                self.db.session_factory,
                 pipeline=pipeline,
                 pipeline_runner=self.pipeline_runner,
                 classifier=self.classifier,
@@ -223,10 +239,9 @@ class ServiceContainer:
     @property
     def admin_job_service(self) -> AdminJobService:
         if self._admin_job_service is None:
-            session_factory = get_session_factory(self.settings)
             self._admin_job_service = AdminJobService(
                 settings=self.settings,
-                session_factory=session_factory,
+                session_factory=self.db.session_factory,
                 learning_client=self.learning_client,
             )
         return self._admin_job_service
@@ -278,6 +293,12 @@ class ServiceContainer:
                 await self._admin_job_service.shutdown()
             except Exception as exc:
                 logger.warning("error shutting down admin job service", error=str(exc))
+
+        if self._db is not None:
+            try:
+                await self._db.aclose()
+            except Exception as exc:
+                logger.warning("error disposing database engine", error=str(exc))
 
         logger.info("ServiceContainer shutdown complete")
 

@@ -15,8 +15,10 @@ from ...services.async_jobs import AdminJobService, ConcurrentAdminJobError
 from ...services.genre_learning import GenreLearningResult, GenreLearningService
 from ...services.learning_client import LearningClient
 from ...services.tag_label_graph_builder import TagLabelGraphBuilder
+from ..container import ServiceContainer
 from ..deps import (
     get_admin_job_service_dep,
+    get_container,
     get_learning_client,
     get_learning_service,
     get_pipeline_dep,
@@ -50,11 +52,10 @@ async def warmup(
 @router.post("/build-graph", status_code=status.HTTP_200_OK)
 async def build_tag_label_graph(
     settings: Settings = Depends(get_settings_dep),
+    container: ServiceContainer = Depends(get_container),
 ) -> dict[str, object]:
     """Manually trigger tag_label_graph rebuild."""
     import structlog
-
-    from ...db.session import get_session_factory
 
     logger = structlog.get_logger(__name__)
     logger.info("manually triggering tag_label_graph rebuild")
@@ -66,8 +67,7 @@ async def build_tag_label_graph(
         )
 
     try:
-        session_factory = get_session_factory(settings)
-        async with session_factory() as session:
+        async with container.db.session_factory() as session:
             builder = TagLabelGraphBuilder(
                 session=session,
                 max_tags=settings.graph_build_max_tags,
@@ -113,21 +113,17 @@ async def trigger_genre_learning(
     service: GenreLearningService = Depends(get_learning_service),
     client: LearningClient = Depends(get_learning_client),
     settings: Settings = Depends(get_settings_dep),
+    container: ServiceContainer = Depends(get_container),
 ) -> dict[str, object]:
     import structlog
-
-    from ...db.session import get_session_factory
 
     logger = structlog.get_logger(__name__)
     logger.info("triggering genre learning task")
 
-    # Phase 1: Rebuild tag_label_graph BEFORE learning
     if settings.graph_build_enabled:
         try:
             logger.debug("rebuilding tag_label_graph before learning")
-            from ...db.session import get_session_factory
-            session_factory = get_session_factory(settings)
-            async with session_factory() as session:
+            async with container.db.session_factory() as session:
                 builder = TagLabelGraphBuilder(
                     session=session,
                     max_tags=settings.graph_build_max_tags,

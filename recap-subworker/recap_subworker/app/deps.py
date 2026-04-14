@@ -1,18 +1,18 @@
 """Dependency wiring for FastAPI routes.
 
-This module delegates to ServiceContainer for actual instance creation,
-while preserving the existing FastAPI Depends() API surface so that
-routers do not need changes.
+Phase 1: the ServiceContainer is owned by the app's lifespan and stored on
+``request.app.state.container``. All dependencies route through
+``get_container`` — no module-level singletons, no hidden caches.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db.session import get_session
 from ..infra.config import Settings, get_settings
 from ..services.async_jobs import AdminJobService
 from ..services.classification import CoarseClassifier
@@ -27,56 +27,78 @@ from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
 from .container import ServiceContainer
 
-# Module-level container singleton
-_container: ServiceContainer | None = None
-_extract_semaphore: asyncio.Semaphore | None = None
 
+def get_container(request: Request) -> ServiceContainer:
+    """Return the ServiceContainer bound to the running FastAPI app.
 
-def _get_container() -> ServiceContainer:
-    global _container
-    if _container is None:
-        settings = get_settings()
-        _container = ServiceContainer(settings)
-    return _container
+    Raises:
+        RuntimeError: if the lifespan never populated ``app.state.container``.
+    """
+    container = getattr(request.app.state, "container", None)
+    if container is None:
+        raise RuntimeError(
+            "ServiceContainer is not initialized on app.state. "
+            "Ensure create_app()'s lifespan is active."
+        )
+    return container
 
 
 def get_settings_dep() -> Settings:
     return get_settings()
 
 
-def get_pipeline_dep(settings: Settings = Depends(get_settings_dep)) -> EvidencePipeline:
-    return _get_container().pipeline
+def get_pipeline_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> EvidencePipeline:
+    return container.pipeline
 
 
-def get_embedder_dep(settings: Settings = Depends(get_settings_dep)) -> Embedder:
-    return _get_container().embedder
+def get_embedder_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> Embedder:
+    return container.embedder
 
 
-def get_run_manager_dep(settings: Settings = Depends(get_settings_dep)) -> RunManager:
-    return _get_container().run_manager
+def get_run_manager_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> RunManager:
+    return container.run_manager
 
 
 def get_pipeline_runner_dep(
-    settings: Settings = Depends(get_settings_dep),
+    container: ServiceContainer = Depends(get_container),
 ) -> PipelineTaskRunner | None:
-    return _get_container().pipeline_runner
+    return container.pipeline_runner
 
 
-def get_classifier_dep(settings: Settings = Depends(get_settings_dep)) -> GenreClassifierService:
-    return _get_container().classifier
+def get_classifier_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> GenreClassifierService:
+    return container.classifier
 
 
-def get_classification_runner_dep(settings: Settings = Depends(get_settings_dep)) -> ClassificationRunner:
-    return _get_container().classification_runner
+def get_classification_runner_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> ClassificationRunner:
+    return container.classification_runner
+
+
+async def get_session(
+    container: ServiceContainer = Depends(get_container),
+) -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency that yields an AsyncSession owned by the container."""
+    async with container.db.session_factory() as session:
+        yield session
 
 
 def get_learning_service(
-    settings: Settings = Depends(get_settings_dep),
+    container: ServiceContainer = Depends(get_container),
     session: AsyncSession = Depends(get_session),
 ) -> GenreLearningService:
     import structlog
 
     logger = structlog.get_logger(__name__)
+    settings = container.settings
     should_auto_detect = (
         settings.learning_auto_detect_genres
         or not settings.learning_cluster_genres.strip()
@@ -109,41 +131,31 @@ def get_learning_service(
     )
 
 
-def get_learning_client(settings: Settings = Depends(get_settings_dep)) -> LearningClient:
-    return _get_container().learning_client
+def get_learning_client(
+    container: ServiceContainer = Depends(get_container),
+) -> LearningClient:
+    return container.learning_client
 
 
 def get_admin_job_service_dep(
-    settings: Settings = Depends(get_settings_dep),
+    container: ServiceContainer = Depends(get_container),
 ) -> AdminJobService:
-    return _get_container().admin_job_service
+    return container.admin_job_service
 
 
 def get_extract_semaphore_dep(
-    settings: Settings = Depends(get_settings_dep),
+    container: ServiceContainer = Depends(get_container),
 ) -> asyncio.Semaphore:
-    global _extract_semaphore
-    if _extract_semaphore is None:
-        _extract_semaphore = asyncio.Semaphore(settings.extract_concurrency_max)
-    return _extract_semaphore
+    return container.extract_semaphore
 
 
-def get_content_extractor_dep() -> ContentExtractor:
-    return _get_container().content_extractor
+def get_content_extractor_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> ContentExtractor:
+    return container.content_extractor
 
 
-def get_coarse_classifier_dep(settings: Settings = Depends(get_settings_dep)) -> CoarseClassifier:
-    return _get_container().coarse_classifier
-
-
-def register_lifecycle(app) -> None:
-    """Attach startup/shutdown hooks for globally shared resources."""
-
-    @app.on_event("startup")
-    async def startup_event() -> None:  # pragma: no cover
-        pass
-
-    @app.on_event("shutdown")
-    async def shutdown_event() -> None:  # pragma: no cover
-        container = _get_container()
-        await container.shutdown()
+def get_coarse_classifier_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> CoarseClassifier:
+    return container.coarse_classifier

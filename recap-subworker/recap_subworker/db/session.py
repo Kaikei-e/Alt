@@ -1,15 +1,21 @@
-"""Async SQLAlchemy session helpers.
+"""Async SQLAlchemy session helpers (compat shim).
 
-This module delegates to infra.db.session for the pooled engine implementation.
-Retained for backward compatibility with existing imports.
+Re-exports the Phase 1 ``DatabaseResources`` API from ``infra.db.session``.
+Retained for backwards compatibility with existing imports.
 """
 
 from __future__ import annotations
 
-from ..infra.db.session import get_engine, get_session, get_session_factory
+from ..infra.db.session import (
+    DatabaseResources,
+    create_database_resources,
+    get_session,
+    get_session_factory,
+)
 
 __all__ = [
-    "get_engine",
+    "DatabaseResources",
+    "create_database_resources",
     "get_session",
     "get_session_factory",
 ]
