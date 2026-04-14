@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -495,4 +496,135 @@ func TestDOSProtectionConfig_Validation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// M-005: isWhitelistedPath must reject substring abuse — only the explicit
+// allowlist plus an exact-match `/v1/feeds/summarize/stream` exemption are
+// recognised. Crafted paths like `/v1/feeds/livestream-config` must still be
+// rate-limited.
+func TestIsWhitelistedPath_DoesNotMatchSubstrings(t *testing.T) {
+	allow := []string{"/v1/health", "/v1/feeds/summarize/stream", "/security/csp-report", "/v1/images/proxy/"}
+
+	require.True(t, isWhitelistedPath("/v1/health", allow))
+	require.True(t, isWhitelistedPath("/v1/feeds/summarize/stream", allow))
+	require.True(t, isWhitelistedPath("/v1/images/proxy/abc.png", allow), "prefix path under /v1/images/proxy/ allowed")
+
+	require.False(t, isWhitelistedPath("/v1/health-hack", allow), "must not match `health` substring outside the exact path")
+	require.False(t, isWhitelistedPath("/v1/feeds/livestream-config", allow), "`stream` substring must not bypass rate limiting")
+	require.False(t, isWhitelistedPath("/api/v1/sse", allow), "non-registered SSE path must be rate limited")
+}
+
+// M-006: rate limiter map must shrink as IPs go cold, otherwise an attacker
+// using many spoofed IPs can blow up memory.
+func TestCleanupExpiredLimiters_RemovesBlockedAndStaleEntries(t *testing.T) {
+	limiters := map[string]*rateLimiter{
+		"hot": {
+			limiter:   nil, // unused in cleanup
+			blockedAt: time.Now(),
+		},
+		"cold": {
+			limiter:   nil,
+			blockedAt: time.Now().Add(-2 * time.Hour),
+		},
+	}
+	mu := sync.RWMutex{}
+
+	CleanupExpiredLimiters(limiters, &mu, time.Hour)
+
+	require.Contains(t, limiters, "hot", "recently blocked IP must remain")
+	require.NotContains(t, limiters, "cold", "stale blocked IP must be evicted")
+}
+
+// M-007: getClientIP must NOT trust X-Forwarded-For / X-Real-IP coming from
+// non-trusted hops. With trustProxies=false, the function falls back to the
+// connection RemoteAddr. With trustProxies=true (set by edge proxy config),
+// the leftmost non-trusted hop in XFF is used.
+func TestGetClientIPWithTrust_UntrustedHeadersIgnored(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.RemoteAddr = "10.0.0.1:12345"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	req.Header.Set("X-Real-IP", "5.6.7.8")
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	require.Equal(t, "10.0.0.1", getClientIPWithTrust(c, false),
+		"untrusted forwarders must be ignored — the connection peer is the source of truth")
+}
+
+func TestGetClientIPWithTrust_TrustedHeadersUsed(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/x", nil)
+	req.RemoteAddr = "10.0.0.1:12345" // edge proxy IP
+	req.Header.Set("X-Forwarded-For", "1.2.3.4, 10.0.0.1")
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	require.Equal(t, "1.2.3.4", getClientIPWithTrust(c, true),
+		"when proxies are trusted, leftmost XFF entry identifies the original client")
+}
+
+// H-004: Circuit breaker state transitions must be race-free under concurrent
+// shouldBlock/recordFailure/recordSuccess calls. Run with `go test -race`.
+func TestCircuitBreaker_ConcurrentStateIsRaceFree(t *testing.T) {
+	cb := &circuitBreaker{
+		config: CircuitBreakerConfig{
+			Enabled:          true,
+			FailureThreshold: 5,
+			TimeoutDuration:  time.Second,
+			RecoveryTimeout:  10 * time.Millisecond,
+		},
+		state: circuitClosed,
+	}
+
+	const goroutines = 64
+	const iterations = 200
+	done := make(chan struct{})
+	for i := 0; i < goroutines; i++ {
+		go func(id int) {
+			for j := 0; j < iterations; j++ {
+				switch (id + j) % 3 {
+				case 0:
+					_ = cb.shouldBlock()
+				case 1:
+					cb.recordFailure()
+				case 2:
+					cb.recordSuccess()
+				}
+			}
+			done <- struct{}{}
+		}(i)
+	}
+	for i := 0; i < goroutines; i++ {
+		<-done
+	}
+
+	// State must be one of the three valid states at the end; no sentinel
+	// corruption such as intermediate unexpected values.
+	require.Contains(t,
+		[]circuitState{circuitClosed, circuitOpen, circuitHalfOpen},
+		cb.state,
+		"circuit breaker state must remain within the known state set",
+	)
+}
+
+// H-004: After the recovery timeout, a single shouldBlock call on a breaker
+// in the open state must transition it to half-open exactly once. No other
+// state than open or half-open is reachable from an open breaker within a
+// single shouldBlock call.
+func TestCircuitBreaker_OpenToHalfOpenTransitionIsSingleStep(t *testing.T) {
+	cb := &circuitBreaker{
+		config: CircuitBreakerConfig{
+			Enabled:          true,
+			FailureThreshold: 1,
+			TimeoutDuration:  time.Second,
+			RecoveryTimeout:  5 * time.Millisecond,
+		},
+		state:           circuitOpen,
+		failures:        1,
+		lastFailureTime: time.Now().Add(-time.Second),
+	}
+
+	require.False(t, cb.shouldBlock(), "breaker past recovery timeout should allow the probe")
+	require.Equal(t, circuitHalfOpen, cb.state, "breaker should transition open->half-open")
 }

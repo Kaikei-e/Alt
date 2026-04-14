@@ -72,13 +72,18 @@ type rateLimiter struct {
 	mu        sync.Mutex // Protects blockedAt field
 }
 
-// circuitBreaker implements circuit breaker pattern
+// circuitBreaker implements circuit breaker pattern.
+// The mutex is a plain sync.Mutex (not RWMutex) to avoid the lock-upgrade
+// race that the previous implementation had: holding an RLock, releasing it
+// to acquire a Lock, and writing the state was a TOCTOU hazard because
+// another goroutine could have changed the state in between. Reads of state
+// are short, so the RWMutex optimisation was not worth the complexity.
 type circuitBreaker struct {
 	config          CircuitBreakerConfig
 	failures        int
 	lastFailureTime time.Time
 	state           circuitState
-	mu              sync.RWMutex
+	mu              sync.Mutex
 }
 
 type circuitState int
@@ -89,8 +94,18 @@ const (
 	circuitHalfOpen
 )
 
-// DOSProtectionMiddleware returns a middleware that provides DoS protection
+// DOSProtectionMiddleware returns a middleware that provides DoS protection.
+// Backward-compatible default: trusts X-Real-IP / X-Forwarded-For. New call
+// sites should prefer DOSProtectionMiddlewareWithTrust(config, false) when
+// not behind a controlled reverse proxy (M-007).
 func DOSProtectionMiddleware(config DOSProtectionConfig) echo.MiddlewareFunc {
+	return DOSProtectionMiddlewareWithTrust(config, true)
+}
+
+// DOSProtectionMiddlewareWithTrust is the trust-aware variant. Use this from
+// route registration when the deployment terminates TLS / sanitises XFF on a
+// trusted hop.
+func DOSProtectionMiddlewareWithTrust(config DOSProtectionConfig, trustForwardedHeaders bool) echo.MiddlewareFunc {
 	if err := config.Validate(); err != nil {
 		panic(fmt.Sprintf("invalid DoS protection config: %v", err))
 	}
@@ -103,6 +118,16 @@ func DOSProtectionMiddleware(config DOSProtectionConfig) echo.MiddlewareFunc {
 
 	limiters := make(map[string]*rateLimiter)
 	limiterMu := sync.RWMutex{}
+
+	// M-006: evict stale rate-limiter entries periodically. Without this the
+	// map grows without bound under attack from many spoofed source addresses.
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			CleanupExpiredLimiters(limiters, &limiterMu, 30*time.Minute)
+		}
+	}()
 
 	var cb *circuitBreaker
 	if config.CircuitBreaker.Enabled {
@@ -119,9 +144,9 @@ func DOSProtectionMiddleware(config DOSProtectionConfig) echo.MiddlewareFunc {
 			// Skip whitelisted paths
 			path := c.Request().URL.Path
 			if isWhitelistedPath(path, config.WhitelistedPaths) {
-				// Log whitelist hits for SSE endpoints for debugging
-				if strings.Contains(path, "/stream") || strings.Contains(path, "/sse") {
-					logger.Logger.DebugContext(ctx, "DoS protection: SSE endpoint whitelisted", "path", path)
+				// Log whitelist hits for streaming endpoints for debugging
+				if path == "/v1/feeds/summarize/stream" {
+					logger.Logger.DebugContext(ctx, "DoS protection: streaming endpoint whitelisted", "path", path)
 				}
 				return next(c)
 			}
@@ -132,7 +157,7 @@ func DOSProtectionMiddleware(config DOSProtectionConfig) echo.MiddlewareFunc {
 			}
 
 			// Get client IP
-			clientIP := getClientIP(c)
+			clientIP := getClientIPWithTrust(c, trustForwardedHeaders)
 			if clientIP == "" {
 				clientIP = "unknown"
 			}
@@ -166,45 +191,58 @@ func DOSProtectionMiddleware(config DOSProtectionConfig) echo.MiddlewareFunc {
 	}
 }
 
-// getClientIP extracts client IP from various headers
+// getClientIP extracts client IP from forwarded headers, treating them as
+// trusted. Kept for backward compatibility with existing tests; new callers
+// should use getClientIPWithTrust to make the trust decision explicit.
 func getClientIP(c echo.Context) string {
-	// Check X-Real-IP header first
-	if ip := c.Request().Header.Get("X-Real-IP"); ip != "" {
-		if net.ParseIP(ip) != nil {
-			return ip
-		}
-	}
+	return getClientIPWithTrust(c, true)
+}
 
-	// Check X-Forwarded-For header
-	if xff := c.Request().Header.Get("X-Forwarded-For"); xff != "" {
-		ips := strings.Split(xff, ",")
-		for _, ip := range ips {
-			ip = strings.TrimSpace(ip)
+// getClientIPWithTrust returns the client IP. When trustForwardedHeaders is
+// true, X-Real-IP and the leftmost X-Forwarded-For entry are honoured (use
+// only when behind a controlled reverse proxy that overwrites those headers).
+// When false, headers are ignored and only the connection peer is returned —
+// this prevents IP spoofing for rate-limit bypass when alt-backend is reached
+// directly (M-007).
+func getClientIPWithTrust(c echo.Context, trustForwardedHeaders bool) string {
+	if trustForwardedHeaders {
+		if ip := c.Request().Header.Get("X-Real-IP"); ip != "" {
 			if net.ParseIP(ip) != nil {
 				return ip
 			}
 		}
+		if xff := c.Request().Header.Get("X-Forwarded-For"); xff != "" {
+			for _, raw := range strings.Split(xff, ",") {
+				ip := strings.TrimSpace(raw)
+				if net.ParseIP(ip) != nil {
+					return ip
+				}
+			}
+		}
 	}
 
-	// Fallback to RemoteAddr
 	if ip, _, err := net.SplitHostPort(c.Request().RemoteAddr); err == nil {
 		if net.ParseIP(ip) != nil {
 			return ip
 		}
 	}
-
 	return ""
 }
 
-// isWhitelistedPath checks if the path is whitelisted
+// isWhitelistedPath checks if the path is whitelisted (M-005).
+// An entry ending with `/` is treated as a prefix; everything else must match
+// exactly. Substring matching is not allowed because it lets future routes
+// accidentally bypass DoS protection (e.g. `/v1/feeds/livestream-config` does
+// not slip past `/stream` matching).
 func isWhitelistedPath(path string, whitelistedPaths []string) bool {
-	// Check if path contains /stream or /sse for SSE endpoints (should not be rate limited)
-	if strings.Contains(path, "/stream") || strings.Contains(path, "/sse") {
-		return true
-	}
-
 	for _, whitelistedPath := range whitelistedPaths {
-		if path == whitelistedPath || strings.HasPrefix(path, whitelistedPath) {
+		if strings.HasSuffix(whitelistedPath, "/") {
+			if strings.HasPrefix(path, whitelistedPath) {
+				return true
+			}
+			continue
+		}
+		if path == whitelistedPath {
 			return true
 		}
 	}
@@ -257,28 +295,30 @@ func checkRateLimit(clientIP string, config DOSProtectionConfig, limiters map[st
 	return true
 }
 
-// Circuit breaker methods
+// Circuit breaker methods.
+// shouldBlock performs both the decision and any state transition
+// (Open -> HalfOpen after the recovery timeout) within a single critical
+// section. This avoids the previous RLock-then-Lock upgrade pattern whose
+// gap allowed concurrent goroutines to overwrite a state change made by
+// a peer (e.g. HalfOpen -> Closed from recordSuccess).
 func (cb *circuitBreaker) shouldBlock() bool {
-	cb.mu.RLock()
-	defer cb.mu.RUnlock()
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
 
 	switch cb.state {
 	case circuitClosed:
 		return false
 	case circuitOpen:
 		if time.Since(cb.lastFailureTime) > cb.config.RecoveryTimeout {
-			cb.mu.RUnlock()
-			cb.mu.Lock()
 			cb.state = circuitHalfOpen
-			cb.mu.Unlock()
-			cb.mu.RLock()
 			return false
 		}
 		return true
 	case circuitHalfOpen:
 		return false
+	default:
+		return false
 	}
-	return false
 }
 
 func (cb *circuitBreaker) recordFailure() {
