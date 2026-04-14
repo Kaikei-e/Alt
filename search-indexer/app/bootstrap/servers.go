@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	connectv2 "search-indexer/connect/v2"
 	"search-indexer/config"
 	"search-indexer/middleware"
@@ -14,7 +16,7 @@ import (
 )
 
 // newHTTPServer creates the REST HTTP server.
-func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArticlesUsecase *usecase.SearchArticlesUsecase, otelCfg appOtel.Config, serviceToken string) *http.Server {
+func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArticlesUsecase *usecase.SearchArticlesUsecase, otelCfg appOtel.Config, serviceToken string, rlCfg config.RateLimitConfig) *http.Server {
 	restHandler := rest.NewHandler(searchByUserUsecase, searchArticlesUsecase)
 
 	mux := http.NewServeMux()
@@ -25,10 +27,13 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArtic
 		_, _ = io.WriteString(w, `{"status":"ok"}`)
 	})
 
-	// Gate /v1/search behind X-Service-Token (ADR-000717 parity). /health stays
-	// open so that container probes and orchestrators can verify liveness.
+	// Gate /v1/search behind X-Service-Token (ADR-000717 parity) and a global
+	// rate limiter. /health stays open and unmetered for orchestrator probes.
 	serviceAuth := middleware.NewServiceAuthMiddleware(serviceToken)
-	searchHandler := serviceAuth.RequireServiceAuth(http.HandlerFunc(restHandler.SearchArticles))
+	rateLimiter := middleware.NewRateLimiter(rate.Limit(rlCfg.RequestsPerSecond), rlCfg.Burst)
+	searchHandler := rateLimiter.Middleware(
+		serviceAuth.RequireServiceAuth(http.HandlerFunc(restHandler.SearchArticles)),
+	)
 
 	if otelCfg.Enabled {
 		mux.Handle("/v1/search", middleware.OTelStatusHandler(searchHandler, "GET /v1/search"))
@@ -46,8 +51,8 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArtic
 }
 
 // newConnectServer creates the Connect-RPC server.
-func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, serviceToken string) *http.Server {
-	handler := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase, serviceToken)
+func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, serviceToken string, rlCfg config.RateLimitConfig) *http.Server {
+	handler := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase, serviceToken, rlCfg)
 
 	return &http.Server{
 		Addr:              config.ConnectAddr,

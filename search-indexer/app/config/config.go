@@ -5,15 +5,51 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
+
+func parseFloatEnv(key string, defaultValue float64) float64 {
+	v := getEnvOrDefault(key, "")
+	if v == "" {
+		return defaultValue
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || f <= 0 {
+		return defaultValue
+	}
+	return f
+}
+
+func parseIntEnv(key string, defaultValue int) int {
+	v := getEnvOrDefault(key, "")
+	if v == "" {
+		return defaultValue
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return defaultValue
+	}
+	return n
+}
 
 type Config struct {
 	Meilisearch MeilisearchConfig
 	Indexer     IndexerConfig
 	HTTP        HTTPConfig
 	BackendAPI  BackendAPIConfig
+	RateLimit   RateLimitConfig
+}
+
+// RateLimitConfig bounds incoming REST and Connect-RPC request throughput.
+// Global bucket because callers are already authenticated via X-Service-Token;
+// per-caller isolation is deferred until caller identity is propagated.
+type RateLimitConfig struct {
+	// RequestsPerSecond is the sustained refill rate for the token bucket.
+	RequestsPerSecond float64
+	// Burst is the maximum request count that can arrive simultaneously.
+	Burst int
 }
 
 // BackendAPIConfig holds configuration for connecting to alt-backend's internal API.
@@ -71,6 +107,10 @@ func Load() (*Config, error) {
 		HTTP: HTTPConfig{
 			Addr:              ":9300",
 			ReadHeaderTimeout: 5 * time.Second,
+		},
+		RateLimit: RateLimitConfig{
+			RequestsPerSecond: parseFloatEnv("SEARCH_RATE_LIMIT_RPS", 100),
+			Burst:             parseIntEnv("SEARCH_RATE_LIMIT_BURST", 200),
 		},
 	}
 

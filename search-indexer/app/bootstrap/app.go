@@ -143,8 +143,8 @@ func Run(ctx context.Context) error {
 
 	// ── Servers ──
 	app := &App{
-		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg, appCfg.BackendAPI.ServiceToken),
-		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, appCfg.BackendAPI.ServiceToken),
+		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg, appCfg.BackendAPI.ServiceToken, appCfg.RateLimit),
+		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, appCfg.BackendAPI.ServiceToken, appCfg.RateLimit),
 		redisConsumer: redisConsumer,
 		otelShutdown:  otelShutdown,
 	}
