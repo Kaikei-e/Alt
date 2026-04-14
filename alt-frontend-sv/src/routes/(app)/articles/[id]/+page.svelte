@@ -322,8 +322,14 @@ $effect(() => {
 	min-width: 0;
 }
 
-.action-label {
+:global(.action-label) {
 	display: none;
+}
+
+:global(.action-btn) {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .action-link {
@@ -422,8 +428,17 @@ $effect(() => {
 		padding: 0 1.5rem 3rem;
 	}
 
-	.action-label {
+	:global(.action-label) {
 		display: inline;
+	}
+
+	:global(.action-btn) {
+		width: auto;
+		height: auto;
+		gap: 0.4rem;
+		padding: 0.4rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.85rem;
 	}
 
 	.action-link {
