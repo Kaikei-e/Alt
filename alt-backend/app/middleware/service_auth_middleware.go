@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
 	"os"
@@ -75,7 +76,15 @@ func (m *ServiceAuthMiddleware) RequireServiceAuth() echo.MiddlewareFunc {
 				})
 			}
 
-			if token != m.serviceSecret {
+			// Constant-time comparison to avoid timing side-channels that would
+			// reveal how many leading bytes of the token are correct. Tokens of
+			// differing length always fail, but we still run the comparison on
+			// equal-length buffers to keep timing uniform across code paths.
+			expected := []byte(m.serviceSecret)
+			provided := []byte(token)
+			valid := len(expected) == len(provided) &&
+				subtle.ConstantTimeCompare(expected, provided) == 1
+			if !valid {
 				if m.logger != nil {
 					m.logger.Warn("service auth failed: invalid token",
 						"path", c.Request().URL.Path,
