@@ -48,6 +48,9 @@ const (
 	// RSSServiceRemoveFavoriteFeedProcedure is the fully-qualified name of the RSSService's
 	// RemoveFavoriteFeed RPC.
 	RSSServiceRemoveFavoriteFeedProcedure = "/alt.rss.v2.RSSService/RemoveFavoriteFeed"
+	// RSSServiceRandomSubscriptionProcedure is the fully-qualified name of the RSSService's
+	// RandomSubscription RPC.
+	RSSServiceRandomSubscriptionProcedure = "/alt.rss.v2.RSSService/RandomSubscription"
 )
 
 // RSSServiceClient is a client for the alt.rss.v2.RSSService service.
@@ -66,6 +69,9 @@ type RSSServiceClient interface {
 	RegisterFavoriteFeed(context.Context, *connect.Request[v2.RegisterFavoriteFeedRequest]) (*connect.Response[v2.RegisterFavoriteFeedResponse], error)
 	// RemoveFavoriteFeed removes a feed from favorites
 	RemoveFavoriteFeed(context.Context, *connect.Request[v2.RemoveFavoriteFeedRequest]) (*connect.Response[v2.RemoveFavoriteFeedResponse], error)
+	// RandomSubscription returns one random subscribed feed for Tag Trail
+	// discovery. Replaces GET /v1/rss-feed-link/random.
+	RandomSubscription(context.Context, *connect.Request[v2.RandomSubscriptionRequest]) (*connect.Response[v2.RandomSubscriptionResponse], error)
 }
 
 // NewRSSServiceClient constructs a client for the alt.rss.v2.RSSService service. By default, it
@@ -109,6 +115,12 @@ func NewRSSServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...
 			connect.WithSchema(rSSServiceMethods.ByName("RemoveFavoriteFeed")),
 			connect.WithClientOptions(opts...),
 		),
+		randomSubscription: connect.NewClient[v2.RandomSubscriptionRequest, v2.RandomSubscriptionResponse](
+			httpClient,
+			baseURL+RSSServiceRandomSubscriptionProcedure,
+			connect.WithSchema(rSSServiceMethods.ByName("RandomSubscription")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -119,6 +131,7 @@ type rSSServiceClient struct {
 	deleteRSSFeedLink    *connect.Client[v2.DeleteRSSFeedLinkRequest, v2.DeleteRSSFeedLinkResponse]
 	registerFavoriteFeed *connect.Client[v2.RegisterFavoriteFeedRequest, v2.RegisterFavoriteFeedResponse]
 	removeFavoriteFeed   *connect.Client[v2.RemoveFavoriteFeedRequest, v2.RemoveFavoriteFeedResponse]
+	randomSubscription   *connect.Client[v2.RandomSubscriptionRequest, v2.RandomSubscriptionResponse]
 }
 
 // RegisterRSSFeed calls alt.rss.v2.RSSService.RegisterRSSFeed.
@@ -146,6 +159,11 @@ func (c *rSSServiceClient) RemoveFavoriteFeed(ctx context.Context, req *connect.
 	return c.removeFavoriteFeed.CallUnary(ctx, req)
 }
 
+// RandomSubscription calls alt.rss.v2.RSSService.RandomSubscription.
+func (c *rSSServiceClient) RandomSubscription(ctx context.Context, req *connect.Request[v2.RandomSubscriptionRequest]) (*connect.Response[v2.RandomSubscriptionResponse], error) {
+	return c.randomSubscription.CallUnary(ctx, req)
+}
+
 // RSSServiceHandler is an implementation of the alt.rss.v2.RSSService service.
 type RSSServiceHandler interface {
 	// RegisterRSSFeed registers a new RSS feed link
@@ -162,6 +180,9 @@ type RSSServiceHandler interface {
 	RegisterFavoriteFeed(context.Context, *connect.Request[v2.RegisterFavoriteFeedRequest]) (*connect.Response[v2.RegisterFavoriteFeedResponse], error)
 	// RemoveFavoriteFeed removes a feed from favorites
 	RemoveFavoriteFeed(context.Context, *connect.Request[v2.RemoveFavoriteFeedRequest]) (*connect.Response[v2.RemoveFavoriteFeedResponse], error)
+	// RandomSubscription returns one random subscribed feed for Tag Trail
+	// discovery. Replaces GET /v1/rss-feed-link/random.
+	RandomSubscription(context.Context, *connect.Request[v2.RandomSubscriptionRequest]) (*connect.Response[v2.RandomSubscriptionResponse], error)
 }
 
 // NewRSSServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -201,6 +222,12 @@ func NewRSSServiceHandler(svc RSSServiceHandler, opts ...connect.HandlerOption) 
 		connect.WithSchema(rSSServiceMethods.ByName("RemoveFavoriteFeed")),
 		connect.WithHandlerOptions(opts...),
 	)
+	rSSServiceRandomSubscriptionHandler := connect.NewUnaryHandler(
+		RSSServiceRandomSubscriptionProcedure,
+		svc.RandomSubscription,
+		connect.WithSchema(rSSServiceMethods.ByName("RandomSubscription")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.rss.v2.RSSService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RSSServiceRegisterRSSFeedProcedure:
@@ -213,6 +240,8 @@ func NewRSSServiceHandler(svc RSSServiceHandler, opts ...connect.HandlerOption) 
 			rSSServiceRegisterFavoriteFeedHandler.ServeHTTP(w, r)
 		case RSSServiceRemoveFavoriteFeedProcedure:
 			rSSServiceRemoveFavoriteFeedHandler.ServeHTTP(w, r)
+		case RSSServiceRandomSubscriptionProcedure:
+			rSSServiceRandomSubscriptionHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -240,4 +269,8 @@ func (UnimplementedRSSServiceHandler) RegisterFavoriteFeed(context.Context, *con
 
 func (UnimplementedRSSServiceHandler) RemoveFavoriteFeed(context.Context, *connect.Request[v2.RemoveFavoriteFeedRequest]) (*connect.Response[v2.RemoveFavoriteFeedResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.rss.v2.RSSService.RemoveFavoriteFeed is not implemented"))
+}
+
+func (UnimplementedRSSServiceHandler) RandomSubscription(context.Context, *connect.Request[v2.RandomSubscriptionRequest]) (*connect.Response[v2.RandomSubscriptionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.rss.v2.RSSService.RandomSubscription is not implemented"))
 }

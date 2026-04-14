@@ -70,6 +70,8 @@ const (
 	FeedServiceSubscribeProcedure = "/alt.feeds.v2.FeedService/Subscribe"
 	// FeedServiceUnsubscribeProcedure is the fully-qualified name of the FeedService's Unsubscribe RPC.
 	FeedServiceUnsubscribeProcedure = "/alt.feeds.v2.FeedService/Unsubscribe"
+	// FeedServiceGetFeedTagsProcedure is the fully-qualified name of the FeedService's GetFeedTags RPC.
+	FeedServiceGetFeedTagsProcedure = "/alt.feeds.v2.FeedService/GetFeedTags"
 )
 
 // FeedServiceClient is a client for the alt.feeds.v2.FeedService service.
@@ -109,6 +111,9 @@ type FeedServiceClient interface {
 	Subscribe(context.Context, *connect.Request[v2.SubscribeRequest]) (*connect.Response[v2.SubscribeResponse], error)
 	// Unsubscribe unsubscribes the current user from a feed source
 	Unsubscribe(context.Context, *connect.Request[v2.UnsubscribeRequest]) (*connect.Response[v2.UnsubscribeResponse], error)
+	// GetFeedTags returns the tags associated with a single feed by ID.
+	// Replaces GET /v1/feeds/:id/tags used by the Tag Trail feature.
+	GetFeedTags(context.Context, *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error)
 }
 
 // NewFeedServiceClient constructs a client for the alt.feeds.v2.FeedService service. By default, it
@@ -206,6 +211,12 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("Unsubscribe")),
 			connect.WithClientOptions(opts...),
 		),
+		getFeedTags: connect.NewClient[v2.GetFeedTagsRequest, v2.GetFeedTagsResponse](
+			httpClient,
+			baseURL+FeedServiceGetFeedTagsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("GetFeedTags")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -225,6 +236,7 @@ type feedServiceClient struct {
 	listSubscriptions    *connect.Client[v2.ListSubscriptionsRequest, v2.ListSubscriptionsResponse]
 	subscribe            *connect.Client[v2.SubscribeRequest, v2.SubscribeResponse]
 	unsubscribe          *connect.Client[v2.UnsubscribeRequest, v2.UnsubscribeResponse]
+	getFeedTags          *connect.Client[v2.GetFeedTagsRequest, v2.GetFeedTagsResponse]
 }
 
 // GetFeedStats calls alt.feeds.v2.FeedService.GetFeedStats.
@@ -297,6 +309,11 @@ func (c *feedServiceClient) Unsubscribe(ctx context.Context, req *connect.Reques
 	return c.unsubscribe.CallUnary(ctx, req)
 }
 
+// GetFeedTags calls alt.feeds.v2.FeedService.GetFeedTags.
+func (c *feedServiceClient) GetFeedTags(ctx context.Context, req *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error) {
+	return c.getFeedTags.CallUnary(ctx, req)
+}
+
 // FeedServiceHandler is an implementation of the alt.feeds.v2.FeedService service.
 type FeedServiceHandler interface {
 	// GetFeedStats returns basic feed statistics (feed count, summarized count)
@@ -334,6 +351,9 @@ type FeedServiceHandler interface {
 	Subscribe(context.Context, *connect.Request[v2.SubscribeRequest]) (*connect.Response[v2.SubscribeResponse], error)
 	// Unsubscribe unsubscribes the current user from a feed source
 	Unsubscribe(context.Context, *connect.Request[v2.UnsubscribeRequest]) (*connect.Response[v2.UnsubscribeResponse], error)
+	// GetFeedTags returns the tags associated with a single feed by ID.
+	// Replaces GET /v1/feeds/:id/tags used by the Tag Trail feature.
+	GetFeedTags(context.Context, *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error)
 }
 
 // NewFeedServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -427,6 +447,12 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("Unsubscribe")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceGetFeedTagsHandler := connect.NewUnaryHandler(
+		FeedServiceGetFeedTagsProcedure,
+		svc.GetFeedTags,
+		connect.WithSchema(feedServiceMethods.ByName("GetFeedTags")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.feeds.v2.FeedService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FeedServiceGetFeedStatsProcedure:
@@ -457,6 +483,8 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceSubscribeHandler.ServeHTTP(w, r)
 		case FeedServiceUnsubscribeProcedure:
 			feedServiceUnsubscribeHandler.ServeHTTP(w, r)
+		case FeedServiceGetFeedTagsProcedure:
+			feedServiceGetFeedTagsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -520,4 +548,8 @@ func (UnimplementedFeedServiceHandler) Subscribe(context.Context, *connect.Reque
 
 func (UnimplementedFeedServiceHandler) Unsubscribe(context.Context, *connect.Request[v2.UnsubscribeRequest]) (*connect.Response[v2.UnsubscribeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.Unsubscribe is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) GetFeedTags(context.Context, *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.GetFeedTags is not implemented"))
 }
