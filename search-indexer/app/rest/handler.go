@@ -40,6 +40,7 @@ type SearchArticlesHit struct {
 type SearchArticlesResponse struct {
 	Query string              `json:"query"`
 	Hits  []SearchArticlesHit `json:"hits"`
+	Total int                 `json:"total"`
 }
 
 // SearchArticles handles GET /v1/search requests.
@@ -89,7 +90,7 @@ func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		logger.Logger.ErrorContext(ctx, "search failed", "err", err, "user_id", userID)
+		logger.Logger.ErrorContext(ctx, "search failed", "err", err, "user_id", userID, "query_hash", logger.HashQuery(query))
 		if m := appOtel.Metrics; m != nil {
 			m.ErrorsTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", "search")))
 		}
@@ -104,6 +105,7 @@ func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 	resp := SearchArticlesResponse{
 		Query: searchQuery,
 		Hits:  make([]SearchArticlesHit, 0, len(docs)),
+		Total: len(docs),
 	}
 
 	for _, doc := range docs {
@@ -120,7 +122,7 @@ func (h *Handler) SearchArticles(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	logger.Logger.InfoContext(ctx, "search ok", "query", query, "user_id", userID, "count", len(resp.Hits))
+	logger.Logger.InfoContext(ctx, "search ok", "query_hash", logger.HashQuery(query), "user_id", userID, "count", len(resp.Hits))
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)

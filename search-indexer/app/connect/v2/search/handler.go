@@ -49,7 +49,7 @@ func (h *Handler) SearchArticles(
 
 	result, err := h.searchByUserUsecase.ExecuteWithPagination(ctx, query, userID, offset, limit)
 	if err != nil {
-		logger.Logger.Error("search failed", "err", err, "user_id", userID, "offset", offset, "limit", limit)
+		logger.Logger.Error("search failed", "err", err, "user_id", userID, "query_hash", logger.HashQuery(query), "offset", offset, "limit", limit)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("search failed"))
 	}
 
@@ -67,7 +67,7 @@ func (h *Handler) SearchArticles(
 		})
 	}
 
-	logger.Logger.Info("search ok", "query", query, "user_id", userID, "count", len(hits), "estimated_total", result.EstimatedTotalHits)
+	logger.Logger.Info("search ok", "query_hash", logger.HashQuery(query), "user_id", userID, "count", len(hits), "estimated_total", result.EstimatedTotalHits)
 
 	return connect.NewResponse(&searchv2.SearchArticlesResponse{
 		Query:              query,
@@ -102,7 +102,7 @@ func (h *Handler) SearchRecaps(
 	}
 
 	if err != nil {
-		logger.Logger.Error("recap search failed", "err", err, "tag_name", tagName, "query", query)
+		logger.Logger.Error("recap search failed", "err", err, "tag_name", tagName, "query_hash", logger.HashQuery(query))
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("recap search failed"))
 	}
 
@@ -133,7 +133,7 @@ func (h *Handler) SearchRecaps(
 		})
 	}
 
-	logger.Logger.Info("recap search ok", "tag_name", tagName, "query", query, "count", len(hits), "estimated_total", result.EstimatedTotalHits)
+	logger.Logger.Info("recap search ok", "tag_name", tagName, "query_hash", logger.HashQuery(query), "count", len(hits), "estimated_total", result.EstimatedTotalHits)
 
 	return connect.NewResponse(&searchv2.SearchRecapsResponse{
 		Hits:               hits,

@@ -164,3 +164,39 @@ func TestHandler_SearchArticles_WithoutUserID_UsesUnfilteredSearch(t *testing.T)
 		t.Errorf("hit count = %d, want 2 (unfiltered search should return all results)", len(resp.Hits))
 	}
 }
+
+// TestHandler_SearchArticles_ResponseHasTotal verifies L-002: the REST
+// response must expose a Total field so paginating clients know when to stop,
+// matching the Connect-RPC SearchService contract's EstimatedTotalHits.
+func TestHandler_SearchArticles_ResponseHasTotal(t *testing.T) {
+	results := []domain.SearchDocument{
+		{ID: "1", Title: "a", Content: "a", Tags: []string{}},
+		{ID: "2", Title: "b", Content: "b", Tags: []string{}},
+		{ID: "3", Title: "c", Content: "c", Tags: []string{}},
+	}
+	mock := &mockSearchEngine{
+		searchResult:         results,
+		searchByUserIDResult: results,
+	}
+
+	handler := NewHandler(
+		usecase.NewSearchByUserUsecase(mock),
+		usecase.NewSearchArticlesUsecase(mock),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=test&user_id=u1", nil)
+	rec := httptest.NewRecorder()
+	handler.SearchArticles(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	var resp SearchArticlesResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Total != len(results) {
+		t.Fatalf("Total = %d, want %d", resp.Total, len(results))
+	}
+}
