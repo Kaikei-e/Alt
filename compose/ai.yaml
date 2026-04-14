@@ -200,7 +200,11 @@ services:
     environment:
       # Backend API mode: article/feed/summary repos via Connect-RPC
       - BACKEND_API_URL=http://alt-backend:9101
+      # SERVICE_TOKEN_FILE: outgoing token (pre-processor → alt-backend).
+      # SERVICE_SECRET_FILE: incoming token verification (alt-backend → pre-processor).
+      # Both resolve to the same shared service_secret on this node.
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret
+      - SERVICE_SECRET_FILE=/run/secrets/service_secret
       # Pre-processor dedicated DB (ADR-000246)
       - PP_DB_HOST=pre-processor-db
       - PP_DB_PORT=5432

@@ -111,7 +111,7 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 
 		logger.Logger.InfoContext(ctx, "Starting stream summarization", "article_id", req.ArticleID, "content_length", len(req.Content))
 
-		stream, err := streamPreProcessorSummarize(ctx, req.Content, req.ArticleID, req.Title, cfg.PreProcessor.URL)
+		stream, err := streamPreProcessorSummarize(ctx, req.Content, req.ArticleID, req.Title, cfg.PreProcessor.URL, cfg.InternalAPI.ServiceSecret)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "Failed to start stream summarization", "error", err, "article_id", req.ArticleID)
 			return handleError(c, err, "summarize_feed_stream")

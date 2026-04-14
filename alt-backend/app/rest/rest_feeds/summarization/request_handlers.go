@@ -68,7 +68,7 @@ func RestHandleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Co
 		} else {
 			logger.Logger.InfoContext(ctx, "No existing summary found, generating new summary", "article_id", articleID, "feed_url", req.FeedURL)
 			time.Sleep(100 * time.Millisecond)
-			summary, err = callPreProcessorSummarize(ctx, "", articleID, articleTitle, cfg.PreProcessor.URL)
+			summary, err = callPreProcessorSummarize(ctx, "", articleID, articleTitle, cfg.PreProcessor.URL, cfg.InternalAPI.ServiceSecret)
 			if err != nil {
 				logger.Logger.ErrorContext(ctx, "Failed to summarize article", "error", err, "url", req.FeedURL, "article_id", articleID)
 				return echo.NewHTTPError(http.StatusInternalServerError, "Failed to generate summary")
@@ -138,7 +138,7 @@ func RestHandleSummarizeFeedQueue(container *di.ApplicationComponents, cfg *conf
 		logger.Logger.InfoContext(ctx, "No existing summary found, queueing summarization job", "article_id", articleID, "feed_url", req.FeedURL)
 		time.Sleep(100 * time.Millisecond)
 
-		jobID, err := callPreProcessorSummarizeQueue(ctx, articleID, articleTitle, cfg.PreProcessor.URL)
+		jobID, err := callPreProcessorSummarizeQueue(ctx, articleID, articleTitle, cfg.PreProcessor.URL, cfg.InternalAPI.ServiceSecret)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "Failed to queue summarization job", "error", err, "url", req.FeedURL, "article_id", articleID)
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to queue summarization job")

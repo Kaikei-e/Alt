@@ -59,15 +59,19 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
 
-	// API routes
+	// Health endpoint stays unauthenticated so liveness probes keep working.
+	e.GET("/api/v1/health", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
+	})
+
+	// Summarize endpoints are service-to-service only and require X-Service-Token.
+	serviceAuth := appmiddleware.NewServiceAuthMiddleware(deps.Logger)
 	api := e.Group("/api/v1")
+	api.Use(serviceAuth.RequireServiceAuth())
 	api.POST("/summarize", deps.SummarizeHandler.HandleSummarize)
 	api.POST("/summarize/stream", deps.SummarizeHandler.HandleStreamSummarize)
 	api.POST("/summarize/queue", deps.SummarizeHandler.HandleSummarizeQueue)
 	api.GET("/summarize/status/:job_id", deps.SummarizeHandler.HandleSummarizeStatus)
-	api.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
-	})
 
 	return e
 }

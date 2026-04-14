@@ -21,7 +21,7 @@ func RestHandleSummarizeFeedStatus(container *di.ApplicationComponents, cfg *con
 
 		logger.Logger.DebugContext(ctx, "Checking summarization job status", "job_id", jobID)
 
-		status, err := callPreProcessorSummarizeStatus(ctx, jobID, cfg.PreProcessor.URL)
+		status, err := callPreProcessorSummarizeStatus(ctx, jobID, cfg.PreProcessor.URL, cfg.InternalAPI.ServiceSecret)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "Failed to get summarization job status", "error", err, "job_id", jobID)
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to get job status")

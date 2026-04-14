@@ -56,7 +56,19 @@ func respondWithSummary(c echo.Context, summary, articleID, feedURL string) erro
 	})
 }
 
-func callPreProcessorSummarize(ctx context.Context, content, articleID, title, preProcessorURL string) (string, error) {
+// setServiceToken attaches the shared service secret as X-Service-Token so
+// pre-processor's RequireServiceAuth middleware admits the request. When the
+// secret is empty, no header is set; production misconfig is caught earlier
+// by config validation, while tests and legacy paths remain unaffected.
+func setServiceToken(req *http.Request, secret string) {
+	trimmed := strings.TrimSpace(secret)
+	if trimmed == "" {
+		return
+	}
+	req.Header.Set("X-Service-Token", trimmed)
+}
+
+func callPreProcessorSummarize(ctx context.Context, content, articleID, title, preProcessorURL, serviceSecret string) (string, error) {
 	if articleID == "" {
 		return "", fmt.Errorf("article_id is required")
 	}
@@ -82,6 +94,7 @@ func callPreProcessorSummarize(ctx context.Context, content, articleID, title, p
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	setServiceToken(req, serviceSecret)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -116,7 +129,7 @@ func callPreProcessorSummarize(ctx context.Context, content, articleID, title, p
 	return response.Summary, nil
 }
 
-func streamPreProcessorSummarize(ctx context.Context, content, articleID, title, preProcessorURL string) (io.ReadCloser, error) {
+func streamPreProcessorSummarize(ctx context.Context, content, articleID, title, preProcessorURL, serviceSecret string) (io.ReadCloser, error) {
 	if articleID == "" {
 		return nil, fmt.Errorf("article_id is required")
 	}
@@ -142,6 +155,7 @@ func streamPreProcessorSummarize(ctx context.Context, content, articleID, title,
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	setServiceToken(req, serviceSecret)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -176,7 +190,7 @@ func streamPreProcessorSummarize(ctx context.Context, content, articleID, title,
 	return resp.Body, nil
 }
 
-func callPreProcessorSummarizeQueue(ctx context.Context, articleID, title, preProcessorURL string) (string, error) {
+func callPreProcessorSummarizeQueue(ctx context.Context, articleID, title, preProcessorURL, serviceSecret string) (string, error) {
 	if articleID == "" {
 		return "", fmt.Errorf("article_id is required")
 	}
@@ -202,6 +216,7 @@ func callPreProcessorSummarizeQueue(ctx context.Context, articleID, title, prePr
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	setServiceToken(req, serviceSecret)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -243,7 +258,7 @@ type SummarizeStatus struct {
 	ArticleID    string `json:"article_id"`
 }
 
-func callPreProcessorSummarizeStatus(ctx context.Context, jobID, preProcessorURL string) (*SummarizeStatus, error) {
+func callPreProcessorSummarizeStatus(ctx context.Context, jobID, preProcessorURL, serviceSecret string) (*SummarizeStatus, error) {
 	if jobID == "" {
 		return nil, fmt.Errorf("job_id is required")
 	}
@@ -257,6 +272,7 @@ func callPreProcessorSummarizeStatus(ctx context.Context, jobID, preProcessorURL
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	setServiceToken(req, serviceSecret)
 
 	resp, err := client.Do(req)
 	if err != nil {
