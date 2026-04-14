@@ -18,6 +18,11 @@ import {
 } from "$lib/connect/acolyte";
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import { useViewport } from "$lib/stores/viewport.svelte";
+import RunStatusPill from "$lib/components/acolyte/RunStatusPill.svelte";
+import {
+	deriveRunStatusKind,
+	type RunStatus as BackendRunStatus,
+} from "$lib/components/acolyte/runStatusPill";
 import MobileAcolyteDetail from "$lib/components/mobile/acolyte/MobileAcolyteDetail.svelte";
 
 type RunStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
@@ -77,6 +82,14 @@ let deleting = $state(false);
 
 const isGenerating = $derived(
 	runStatus === "pending" || runStatus === "running",
+);
+
+const runStatusKind = $derived(
+	deriveRunStatusKind({
+		runStatus: runStatus as BackendRunStatus | null,
+		pendingUpdate,
+		currentVersion: report?.currentVersion ?? 0,
+	}),
 );
 
 const scopeEntries = $derived.by<Array<[string, string]>>(() => {
@@ -242,6 +255,7 @@ onDestroy(stopPolling);
 	{error}
 	generating={isGenerating}
 	{pendingUpdate}
+	runStatus={runStatus as BackendRunStatus | null}
 	{confirmingDelete}
 	{deleting}
 	onGenerate={handleGenerate}
@@ -352,6 +366,8 @@ onDestroy(stopPolling);
 						Delete
 					</button>
 				{/if}
+				<div class="header-spacer" aria-hidden="true"></div>
+				<RunStatusPill status={runStatusKind} />
 			</div>
 			<div class="header-rule"></div>
 		</header>
@@ -473,6 +489,7 @@ onDestroy(stopPolling);
 </div>
 {/if}
 
+
 <style>
 	.aco-detail { max-width: 1080px; margin: 0 auto; padding: 1.5rem 1rem 3rem; opacity: 0; transform: translateY(6px); transition: opacity 0.35s ease, transform 0.35s ease; }
 	.aco-detail.revealed { opacity: 1; transform: translateY(0); }
@@ -502,6 +519,10 @@ onDestroy(stopPolling);
 		display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
 		margin-bottom: 0.75rem;
 	}
+	/* Pushes the run-status pill to the right end of the action row, while
+	   keeping the Edition/Brief/History/Generate/Delete cluster left-packed
+	   and respecting the flex-wrap behaviour of the row. */
+	.header-spacer { flex: 1 1 auto; }
 	.detail-version {
 		font-family: var(--font-mono, "IBM Plex Mono", monospace);
 		font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em;

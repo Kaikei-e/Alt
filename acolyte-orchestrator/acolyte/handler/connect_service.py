@@ -243,6 +243,8 @@ class AcolyteConnectService:
                     error = result.get("error")
                     if error:
                         logger.error("Pipeline failed", report_id=report_id, run_id=run_id, error=error)
+                        if self._jobs is not None:
+                            await self._jobs.fail_run(UUID(run_id), "pipeline_error", str(error))
                     else:
                         logger.info(
                             "Pipeline completed",
@@ -250,6 +252,8 @@ class AcolyteConnectService:
                             run_id=run_id,
                             final_version=final_version,
                         )
+                        if self._jobs is not None:
+                            await self._jobs.complete_run(UUID(run_id))
                     return
                 elif snapshot.values:
                     # Terminal state but no final_version_no — suspicious/incomplete
@@ -275,14 +279,28 @@ class AcolyteConnectService:
 
             if error:
                 logger.error("Pipeline failed", report_id=report_id, run_id=run_id, error=error)
+                if self._jobs is not None:
+                    await self._jobs.fail_run(UUID(run_id), "pipeline_error", str(error))
             else:
                 logger.info("Pipeline completed", report_id=report_id, run_id=run_id, final_version=final_version)
+                if self._jobs is not None:
+                    await self._jobs.complete_run(UUID(run_id))
 
         except Exception as exc:
             import traceback
 
             tb = traceback.format_exc()
             logger.error("Pipeline crashed", report_id=report_id, run_id=run_id, error=str(exc), traceback=tb)
+            if self._jobs is not None:
+                try:
+                    await self._jobs.fail_run(UUID(run_id), "pipeline_crashed", str(exc))
+                except Exception as mark_exc:
+                    logger.error(
+                        "Failed to mark run failed after crash",
+                        report_id=report_id,
+                        run_id=run_id,
+                        error=str(mark_exc),
+                    )
 
     async def get_run_status(
         self, request: acolyte_pb2.GetRunStatusRequest, ctx: RequestContext

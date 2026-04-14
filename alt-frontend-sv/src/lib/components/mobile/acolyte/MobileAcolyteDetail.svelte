@@ -8,6 +8,11 @@ import type {
 import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import MobileAcolyteSectionTabs from "./MobileAcolyteSectionTabs.svelte";
 import MobileAcolyteHistorySheet from "./MobileAcolyteHistorySheet.svelte";
+import RunStatusPill from "$lib/components/acolyte/RunStatusPill.svelte";
+import {
+	deriveRunStatusKind,
+	type RunStatus as BackendRunStatus,
+} from "$lib/components/acolyte/runStatusPill";
 
 function parseCitations(citationsJson: string): AcolyteCitation[] {
 	try {
@@ -26,6 +31,7 @@ interface Props {
 	error: string | null;
 	generating: boolean;
 	pendingUpdate: boolean;
+	runStatus: BackendRunStatus | null;
 	confirmingDelete: boolean;
 	deleting: boolean;
 	onGenerate: () => void;
@@ -45,6 +51,7 @@ const {
 	error,
 	generating,
 	pendingUpdate,
+	runStatus,
 	confirmingDelete,
 	deleting,
 	onGenerate,
@@ -55,6 +62,14 @@ const {
 	onConfirmDelete,
 	onCancelDelete,
 }: Props = $props();
+
+const runStatusKind = $derived(
+	deriveRunStatusKind({
+		runStatus,
+		pendingUpdate,
+		currentVersion: report?.currentVersion ?? 0,
+	}),
+);
 
 function formatScopeLabel(key: string): string {
 	const overrides: Record<string, string> = {
@@ -235,6 +250,8 @@ const formattedDate = $derived(
 				>
 					Delete
 				</button>
+				<div class="flex-1" aria-hidden="true"></div>
+				<RunStatusPill status={runStatusKind} />
 			</div>
 
 			{#if confirmingDelete}
