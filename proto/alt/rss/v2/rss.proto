@@ -98,6 +98,27 @@ message RemoveFavoriteFeedResponse {
 }
 
 // =============================================================================
+// Random Subscription Messages
+// =============================================================================
+
+// RandomSubscriptionRequest asks for a random subscribed feed.
+message RandomSubscriptionRequest {}
+
+// RandomSubscriptionResponse carries one random feed for Tag Trail discovery.
+message RandomSubscriptionResponse {
+  // Feed UUID
+  string id = 1;
+  // Feed title
+  string title = 2;
+  // Feed description
+  string description = 3;
+  // Feed URL (canonical link)
+  string link = 4;
+  // Published at (RFC3339)
+  string published_at = 5;
+}
+
+// =============================================================================
 // RSSService Definition
 // =============================================================================
 
@@ -121,4 +142,8 @@ service RSSService {
 
   // RemoveFavoriteFeed removes a feed from favorites
   rpc RemoveFavoriteFeed(RemoveFavoriteFeedRequest) returns (RemoveFavoriteFeedResponse);
+
+  // RandomSubscription returns one random subscribed feed for Tag Trail
+  // discovery. Replaces GET /v1/rss-feed-link/random.
+  rpc RandomSubscription(RandomSubscriptionRequest) returns (RandomSubscriptionResponse);
 }

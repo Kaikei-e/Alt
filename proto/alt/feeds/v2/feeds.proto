@@ -378,4 +378,38 @@ service FeedService {
 
   // Unsubscribe unsubscribes the current user from a feed source
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+
+  // GetFeedTags returns the tags associated with a single feed by ID.
+  // Replaces GET /v1/feeds/:id/tags used by the Tag Trail feature.
+  rpc GetFeedTags(GetFeedTagsRequest) returns (GetFeedTagsResponse);
+}
+
+// =============================================================================
+// GetFeedTags Messages
+// =============================================================================
+
+// GetFeedTagsRequest requests tags for a single feed by its ID.
+message GetFeedTagsRequest {
+  // Feed UUID (required)
+  string feed_id = 1;
+  // Optional RFC3339 cursor for keyset pagination
+  string cursor = 2;
+  // Maximum tags to return (default 20, max 100)
+  int32 limit = 3;
+}
+
+// FeedTag represents a tag attached to a feed.
+message FeedTag {
+  // Tag UUID
+  string id = 1;
+  // Tag name
+  string name = 2;
+  // Created at (RFC3339)
+  string created_at = 3;
+}
+
+// GetFeedTagsResponse carries the tags associated with the requested feed.
+message GetFeedTagsResponse {
+  // Tags attached to the feed
+  repeated FeedTag tags = 1;
 }
