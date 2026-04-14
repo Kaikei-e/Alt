@@ -1,363 +1,146 @@
 import {
-	Home,
-	Rss,
-	Eye,
-	Star,
-	Search,
-	CalendarRange,
-	Newspaper,
-	BirdIcon,
-	ChartBar,
-	Settings,
-	LinkIcon,
 	Activity,
-	Sparkles,
-	Shuffle,
+	BarChart3,
+	Bird,
+	CalendarRange,
 	Compass,
-	Infinity as InfinityIcon,
-	Moon,
+	Eye,
 	Globe,
-	Orbit,
+	Heart,
+	Home,
+	Infinity as InfinityIcon,
 	Lightbulb,
-	Tag,
-	ScrollText,
+	Link as LinkIcon,
+	Menu,
 	MessagesSquare,
+	Moon,
+	Newspaper,
+	Orbit,
+	Rss,
+	ScrollText,
+	Search,
+	ShieldCheck,
+	Sparkles,
+	Tag,
 } from "@lucide/svelte";
 import type { IconProps } from "@lucide/svelte";
 import type { Component } from "svelte";
 
 type IconComponent = Component<IconProps>;
 
-export interface NavigationItem {
+export interface NavTab {
 	label: string;
 	href: string;
 	icon: IconComponent;
-	description?: string;
 }
 
-export interface NavigationSection {
+export interface MobileMenuItem {
 	label: string;
-	category: string;
+	href: string;
 	icon: IconComponent;
-	children: NavigationItem[];
+	badge?: string;
+	requiresAdmin?: boolean;
 }
 
-export type NavigationEntry =
-	| { type: "link"; item: NavigationItem & { category: string } }
-	| { type: "section"; section: NavigationSection };
-
-const svBasePath = "";
+export interface MobileMenuSection {
+	title: string;
+	items: MobileMenuItem[];
+}
 
 /**
- * Sidebar navigation items for desktop.
- * Uses unified paths (no /desktop/ prefix).
+ * Persistent bottom navigation tabs for mobile.
+ * Five top-level destinations following Material 3 / NN/g guidance.
  */
-export const desktopNavigation: Array<
-	| { label: string; href: string; icon: IconComponent; category: string }
-	| NavigationSection
-> = [
+export const NAV_TABS: NavTab[] = [
+	{ label: "Home", href: "/home", icon: Lightbulb },
+	{ label: "Swipe", href: "/feeds/swipe/visual-preview", icon: Rss },
+	{ label: "Search", href: "/search", icon: Search },
+	{ label: "Augur", href: "/augur", icon: Bird },
+	{ label: "Menu", href: "/menu", icon: Menu },
+];
+
+/**
+ * Mobile Menu page sections.
+ * Holds every secondary destination not represented as a primary tab.
+ * Items here MUST NOT duplicate hrefs in NAV_TABS (enforced by tests).
+ */
+export const MOBILE_MENU_SECTIONS: MobileMenuSection[] = [
 	{
-		label: "Knowledge Home",
-		href: `${svBasePath}/home`,
-		icon: Lightbulb,
-		category: "main",
-	},
-	{
-		label: "Dashboard",
-		href: `${svBasePath}/dashboard`,
-		icon: Home,
-		category: "main",
-	},
-	{
-		label: "Global Search",
-		href: `${svBasePath}/search`,
-		icon: Search,
-		category: "main",
-	},
-	{
-		label: "Feeds",
-		category: "feeds",
-		icon: Rss,
-		children: [
-			{
-				label: "Unread Feeds",
-				href: `${svBasePath}/feeds`,
-				icon: Rss,
-			},
-			{
-				label: "Read History",
-				href: `${svBasePath}/feeds/viewed`,
-				icon: Eye,
-			},
-			{
-				label: "Favorites",
-				href: `${svBasePath}/feeds/favorites`,
-				icon: Star,
-			},
-			{
-				label: "Search",
-				href: `${svBasePath}/feeds/search`,
-				icon: Search,
-			},
-		],
-	},
-	{
-		label: "Recap",
-		category: "recap",
-		icon: CalendarRange,
-		children: [
-			{
-				label: "3-Day Summary",
-				href: `${svBasePath}/recap`,
-				icon: CalendarRange,
-			},
-			{
-				label: "Morning Letter",
-				href: `${svBasePath}/recap/morning-letter`,
-				icon: Newspaper,
-			},
-			{
-				label: "Evening Pulse",
-				href: `${svBasePath}/recap/evening-pulse`,
-				icon: Sparkles,
-			},
-			{
-				label: "Job Status",
-				href: `${svBasePath}/recap/job-status`,
-				icon: Activity,
-			},
-		],
-	},
-	{
-		label: "Explore",
-		category: "explore",
-		icon: Compass,
-		children: [
-			{
-				label: "Tag Trail",
-				href: `${svBasePath}/feeds/tag-trail`,
-				icon: Shuffle,
-			},
+		title: "Browse",
+		items: [
+			{ label: "Library", href: "/feeds", icon: Rss },
+			{ label: "Swipe Mode", href: "/feeds/swipe", icon: InfinityIcon },
+			{ label: "Favorites", href: "/feeds/favorites", icon: Heart },
+			{ label: "Viewed", href: "/feeds/viewed", icon: Eye },
+			{ label: "Tag Trail", href: "/feeds/tag-trail", icon: Compass },
 			{
 				label: "Tag Verse",
-				href: `${svBasePath}/feeds/tag-verse`,
+				href: "/feeds/tag-verse",
 				icon: Orbit,
+				badge: "Desktop",
 			},
-			{
-				label: "Tag Articles",
-				href: `${svBasePath}/articles/by-tag`,
-				icon: Tag,
-			},
+			{ label: "Articles by Tag", href: "/articles/by-tag", icon: Tag },
 		],
-	},
-	{
-		label: "Augur",
-		category: "augur",
-		icon: BirdIcon,
-		children: [
-			{
-				label: "Ask Augur",
-				href: `${svBasePath}/augur`,
-				icon: BirdIcon,
-			},
-			{
-				label: "History",
-				href: `${svBasePath}/augur/history`,
-				icon: MessagesSquare,
-			},
-		],
-	},
-	{
-		label: "Acolyte Reports",
-		href: `${svBasePath}/acolyte`,
-		icon: ScrollText,
-		category: "main",
-	},
-	{
-		label: "Settings",
-		category: "settings",
-		icon: Settings,
-		children: [
-			{
-				label: "Manage Feed Links",
-				href: `${svBasePath}/settings/feeds`,
-				icon: LinkIcon,
-			},
-		],
-	},
-	{
-		label: "Statistics",
-		href: `${svBasePath}/stats`,
-		icon: ChartBar,
-		category: "main",
-	},
-];
-
-/**
- * Mobile navigation items (used by FloatingMenu).
- * Uses unified paths where migrated, old paths where not yet migrated.
- */
-export const mobileMenuItems = [
-	{
-		label: "View Feeds",
-		href: `${svBasePath}/feeds`,
-		category: "feeds",
-		icon: Rss,
-		description: "Browse all RSS feeds",
-	},
-	{
-		label: "Swipe Mode",
-		href: `${svBasePath}/feeds/swipe`,
-		category: "feeds",
-		icon: InfinityIcon,
-		description: "Swipe through feeds",
-	},
-	{
-		label: "Viewed Feeds",
-		href: `${svBasePath}/feeds/viewed`,
-		category: "feeds",
-		icon: Eye,
-		description: "Previously read feeds",
-	},
-	{
-		label: "Favorite Feeds",
-		href: `${svBasePath}/feeds/favorites`,
-		category: "feeds",
-		icon: Star,
-		description: "Favorited articles",
-	},
-	{
-		label: "Manage Feeds Links",
-		href: `${svBasePath}/settings/feeds`,
-		category: "feeds",
-		icon: LinkIcon,
-		description: "Add or remove your registered RSS sources",
-	},
-	{
-		label: "Search Feeds",
-		href: `${svBasePath}/feeds/search`,
-		category: "feeds",
-		icon: Search,
-		description: "Find specific feeds",
-	},
-	{
-		label: "Global Search",
-		href: `${svBasePath}/search`,
-		category: "explore",
-		icon: Search,
-		description: "Search articles, recaps, and tags",
-	},
-	{
-		label: "Tag Trail",
-		href: `${svBasePath}/feeds/tag-trail`,
-		category: "explore",
-		icon: Shuffle,
-		description: "Discover feeds by exploring tags",
-	},
-	{
-		label: "Ask Augur",
-		href: `${svBasePath}/augur`,
-		category: "augur",
-		icon: BirdIcon,
-		description: "Chat with your knowledge base",
-	},
-	{
-		label: "Augur History",
-		href: `${svBasePath}/augur/history`,
-		category: "augur",
-		icon: MessagesSquare,
-		description: "Revisit past conversations",
-	},
-	{
-		label: "Acolyte Reports",
-		href: `${svBasePath}/acolyte`,
-		category: "augur",
-		icon: ScrollText,
-		description: "Versioned intelligence briefings",
-	},
-	{
-		label: "3-Day Recap",
-		href: `${svBasePath}/recap`,
-		category: "recap",
-		icon: CalendarRange,
-		description: "Review recent highlights",
-	},
-	{
-		label: "Morning Letter",
-		href: `${svBasePath}/recap/morning-letter`,
-		category: "recap",
-		icon: Newspaper,
-		description: "Today's overnight updates",
-	},
-	{
-		label: "Evening Pulse",
-		href: `${svBasePath}/recap/evening-pulse`,
-		category: "recap",
-		icon: Moon,
-		description: "Tonight's key highlights",
-	},
-	{
-		label: "Job Status",
-		href: `${svBasePath}/recap/job-status`,
-		category: "recap",
-		icon: Activity,
-		description: "Monitor recap job progress",
-	},
-	{
-		label: "View Stats",
-		href: `${svBasePath}/stats`,
-		category: "other",
-		icon: ChartBar,
-		description: "Analytics & insights",
-	},
-	{
-		label: "Knowledge Home",
-		href: `${svBasePath}/home`,
-		category: "other",
-		icon: Lightbulb,
-		description: "Today's knowledge starting point",
-	},
-	{
-		label: "Home",
-		href: `${svBasePath}/`,
-		category: "other",
-		icon: Home,
-		description: "Return to dashboard",
-	},
-	{
-		label: "Manage Domains",
-		href: `${svBasePath}/admin/scraping-domains`,
-		category: "other",
-		icon: Globe,
-		description: "Manage scraping domains",
-	},
-];
-
-export const mobileCategories = [
-	{
-		title: "Feeds",
-		items: mobileMenuItems.filter((i) => i.category === "feeds"),
-		icon: Rss,
-	},
-	{
-		title: "Explore",
-		items: mobileMenuItems.filter((i) => i.category === "explore"),
-		icon: Compass,
 	},
 	{
 		title: "Recap",
-		items: mobileMenuItems.filter((i) => i.category === "recap"),
-		icon: CalendarRange,
+		items: [
+			{ label: "3-Day Recap", href: "/recap", icon: CalendarRange },
+			{
+				label: "Morning Letter",
+				href: "/recap/morning-letter",
+				icon: Newspaper,
+			},
+			{ label: "Evening Pulse", href: "/recap/evening-pulse", icon: Moon },
+			{ label: "Job Status", href: "/recap/job-status", icon: Activity },
+		],
 	},
 	{
-		title: "Augur",
-		items: mobileMenuItems.filter((i) => i.category === "augur"),
-		icon: BirdIcon,
-		description: "Chat with your knowledge base",
+		title: "AI & Insights",
+		items: [
+			{
+				label: "Augur History",
+				href: "/augur/history",
+				icon: MessagesSquare,
+			},
+			{ label: "Acolyte Reports", href: "/acolyte", icon: ScrollText },
+			{ label: "Statistics", href: "/stats", icon: BarChart3 },
+			{ label: "Daily Pulse", href: "/dashboard", icon: Sparkles },
+		],
 	},
 	{
-		title: "Other",
-		items: mobileMenuItems.filter((i) => i.category === "other"),
-		icon: Star,
+		title: "Settings",
+		items: [
+			{ label: "Manage Feed Links", href: "/settings/feeds", icon: LinkIcon },
+		],
+	},
+	{
+		title: "Admin",
+		items: [
+			{
+				label: "Knowledge Home Admin",
+				href: "/admin/knowledge-home",
+				icon: ShieldCheck,
+				requiresAdmin: true,
+			},
+			{
+				label: "Manage Domains",
+				href: "/admin/scraping-domains",
+				icon: Globe,
+				requiresAdmin: true,
+			},
+		],
 	},
 ];
+
+export function getVisibleMobileMenuSections(
+	isAdmin: boolean,
+): MobileMenuSection[] {
+	return MOBILE_MENU_SECTIONS.map((section) => ({
+		...section,
+		items: section.items.filter((item) => !item.requiresAdmin || isAdmin),
+	})).filter((section) => section.items.length > 0);
+}
+
+// Re-export Home icon for callers that want it without depending on lucide directly.
+export { Home };

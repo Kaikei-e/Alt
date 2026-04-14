@@ -4,108 +4,92 @@ import { render } from "vitest-browser-svelte";
 import MobileBottomNav from "./MobileBottomNav.svelte";
 
 describe("MobileBottomNav", () => {
-	it("renders 5 tabs with correct labels", async () => {
-		render(MobileBottomNav as never, {
-			props: { pathname: "/home" },
-		});
+	it("renders 5 tab labels", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/home" } });
 
 		await expect.element(page.getByText("Home")).toBeInTheDocument();
+		await expect.element(page.getByText("Swipe")).toBeInTheDocument();
 		await expect.element(page.getByText("Search")).toBeInTheDocument();
-		await expect.element(page.getByText("Recap")).toBeInTheDocument();
-		await expect.element(page.getByText("Explore")).toBeInTheDocument();
-		await expect.element(page.getByText("Library")).toBeInTheDocument();
+		await expect.element(page.getByText("Augur")).toBeInTheDocument();
+		await expect.element(page.getByText("Menu")).toBeInTheDocument();
 	});
 
-	it("renders 5 tab links with correct hrefs", async () => {
-		render(MobileBottomNav as never, {
-			props: { pathname: "/home" },
-		});
+	it("renders 5 tab links with correct hrefs in order", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/home" } });
 
 		const nav = page.getByRole("navigation");
-		await expect.element(nav).toBeInTheDocument();
-
 		const links = nav.getByRole("link");
 		await expect.element(links.nth(0)).toHaveAttribute("href", "/home");
-		await expect.element(links.nth(1)).toHaveAttribute("href", "/search");
-		await expect.element(links.nth(2)).toHaveAttribute("href", "/recap");
 		await expect
-			.element(links.nth(3))
-			.toHaveAttribute("href", "/feeds/tag-trail");
-		await expect.element(links.nth(4)).toHaveAttribute("href", "/feeds");
+			.element(links.nth(1))
+			.toHaveAttribute("href", "/feeds/swipe/visual-preview");
+		await expect.element(links.nth(2)).toHaveAttribute("href", "/search");
+		await expect.element(links.nth(3)).toHaveAttribute("href", "/augur");
+		await expect.element(links.nth(4)).toHaveAttribute("href", "/menu");
 	});
 
-	it("highlights the active tab based on pathname", async () => {
-		render(MobileBottomNav as never, {
-			props: { pathname: "/recap" },
-		});
+	it("marks the active tab with aria-current=page", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/augur" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
-
-		// Recap tab (index 2) should have active styling
-		await expect.element(links.nth(2)).toHaveAttribute("data-active", "true");
-		// Home tab should not be active
-		await expect.element(links.nth(0)).toHaveAttribute("data-active", "false");
+		await expect.element(links.nth(3)).toHaveAttribute("aria-current", "page");
 	});
 
-	it("activates Explore for /feeds/tag-trail paths", async () => {
-		render(MobileBottomNav as never, {
-			props: { pathname: "/feeds/tag-trail" },
-		});
+	it("does not set aria-current on inactive tabs", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/augur" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
-
-		// Explore tab (index 3) should be active, not Library (index 4)
-		await expect.element(links.nth(3)).toHaveAttribute("data-active", "true");
-		await expect.element(links.nth(4)).toHaveAttribute("data-active", "false");
+		await expect.element(links.nth(0)).not.toHaveAttribute("aria-current");
+		await expect.element(links.nth(4)).not.toHaveAttribute("aria-current");
 	});
 
-	it("activates Library for /feeds paths", async () => {
-		render(MobileBottomNav as never, {
-			props: { pathname: "/feeds" },
-		});
+	it("activates Feeds tab for /feeds/swipe", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/feeds/swipe" } });
 
 		const nav = page.getByRole("navigation");
 		const links = nav.getByRole("link");
-
-		// Library tab (index 4) should be active
-		await expect.element(links.nth(4)).toHaveAttribute("data-active", "true");
-		// Explore should not be active
-		await expect.element(links.nth(3)).toHaveAttribute("data-active", "false");
+		await expect.element(links.nth(1)).toHaveAttribute("aria-current", "page");
 	});
 
-	it("renders nothing when pathname is a hidden route", async () => {
-		const { container } = render(MobileBottomNav as never, {
-			props: { pathname: "/augur" },
-		});
+	it("activates Search tab for /feeds/search", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/feeds/search" } });
 
-		expect(container.innerHTML.trim()).toBe("");
+		const nav = page.getByRole("navigation");
+		const links = nav.getByRole("link");
+		await expect.element(links.nth(2)).toHaveAttribute("aria-current", "page");
 	});
 
-	it("renders nothing for /feeds/swipe", async () => {
-		const { container } = render(MobileBottomNav as never, {
-			props: { pathname: "/feeds/swipe" },
-		});
+	it("activates Menu tab for /recap (secondary destination)", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/recap" } });
 
-		expect(container.innerHTML.trim()).toBe("");
+		const nav = page.getByRole("navigation");
+		const links = nav.getByRole("link");
+		await expect.element(links.nth(4)).toHaveAttribute("aria-current", "page");
 	});
 
-	it("renders nothing for /feeds/search", async () => {
-		const { container } = render(MobileBottomNav as never, {
-			props: { pathname: "/feeds/search" },
-		});
-
-		expect(container.innerHTML.trim()).toBe("");
+	it("is always rendered (no HIDE_PATHS)", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/augur" } });
+		await expect.element(page.getByRole("navigation")).toBeInTheDocument();
 	});
 
-	it("has aria-label on the nav element", async () => {
-		render(MobileBottomNav as never, {
-			props: { pathname: "/home" },
-		});
+	it("renders on /feeds/search (bottom nav is persistent)", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/feeds/search" } });
+		await expect.element(page.getByRole("navigation")).toBeInTheDocument();
+	});
 
+	it("has aria-label Main navigation on the nav element", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/home" } });
 		await expect
 			.element(page.getByRole("navigation"))
 			.toHaveAttribute("aria-label", "Main navigation");
+	});
+
+	it("does not use role=tab on links (ARIA nav pattern, not tablist)", async () => {
+		render(MobileBottomNav as never, { props: { pathname: "/home" } });
+		const nav = page.getByRole("navigation");
+		const links = nav.getByRole("link");
+		await expect.element(links.nth(0)).not.toHaveAttribute("role");
 	});
 });

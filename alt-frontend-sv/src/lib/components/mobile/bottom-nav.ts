@@ -1,46 +1,29 @@
-import {
-	Home,
-	Search,
-	CalendarRange,
-	Infinity as InfinityIcon,
-	Menu,
-} from "@lucide/svelte";
-import type { IconProps } from "@lucide/svelte";
-import type { Component } from "svelte";
+import { NAV_TABS, type NavTab } from "$lib/config/navigation";
 
-type IconComponent = Component<IconProps>;
+export { NAV_TABS };
+export type { NavTab };
 
-export interface NavTab {
-	label: string;
-	href: string;
-	icon: IconComponent;
-}
-
-export const NAV_TABS: NavTab[] = [
-	{ label: "Home", href: "/home", icon: Home },
-	{ label: "Swipe", href: "/feeds/swipe", icon: InfinityIcon },
-	{ label: "Search", href: "/search", icon: Search },
-	{ label: "Recap", href: "/recap", icon: CalendarRange },
-	{ label: "Menu", href: "/menu", icon: Menu },
-];
-
-const HIDE_PATHS = ["/augur", "/feeds/search"];
-
-export function shouldShowBottomNav(pathname: string): boolean {
-	return !HIDE_PATHS.includes(pathname);
-}
-
+/**
+ * Returns the index of the active bottom nav tab for a given pathname.
+ *
+ * Routing rules:
+ * - /home → Home (0)
+ * - /search and /feeds/search → Search (2) [search is one concept]
+ * - /feeds/* (other) → Feeds (1)
+ * - /augur/* → Augur (3)
+ * - everything else surfaced via the Menu page → Menu (4)
+ */
 export function getActiveTabIndex(pathname: string): number {
-	// Swipe must be checked before general /feeds paths
-	if (pathname === "/feeds/swipe" || pathname.startsWith("/feeds/swipe/")) {
-		return 1; // Swipe
+	if (pathname === "/home" || pathname.startsWith("/home/")) return 0;
+	if (
+		pathname === "/search" ||
+		pathname.startsWith("/search/") ||
+		pathname === "/feeds/search" ||
+		pathname.startsWith("/feeds/search/")
+	) {
+		return 2;
 	}
-	for (let i = 0; i < NAV_TABS.length; i++) {
-		const tab = NAV_TABS[i];
-		if (tab.href === "/feeds/swipe") continue; // Already handled
-		if (pathname === tab.href || pathname.startsWith(`${tab.href}/`)) {
-			return i;
-		}
-	}
-	return -1;
+	if (pathname === "/feeds" || pathname.startsWith("/feeds/")) return 1;
+	if (pathname === "/augur" || pathname.startsWith("/augur/")) return 3;
+	return 4;
 }

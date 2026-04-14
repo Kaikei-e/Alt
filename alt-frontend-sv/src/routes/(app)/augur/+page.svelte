@@ -20,35 +20,13 @@ const augurEntry = $derived(
 	}),
 );
 
-// iOS Safari: prevent elastic bounce by blocking touchmove outside scroll container
 onMount(() => {
 	if (isDesktop) return;
 
 	document.documentElement.classList.add("augur-page");
 
-	function isScrollable(el: HTMLElement): boolean {
-		const style = window.getComputedStyle(el);
-		const oy = style.overflowY;
-		return (
-			(oy === "auto" || oy === "scroll") && el.scrollHeight > el.clientHeight
-		);
-	}
-
-	function onTouchMove(e: TouchEvent) {
-		// Allow scroll inside any scrollable container (thread, sheet, drawer, etc.)
-		let node = e.target as HTMLElement | null;
-		while (node && node !== document.documentElement) {
-			if (isScrollable(node)) return;
-			node = node.parentElement;
-		}
-		e.preventDefault();
-	}
-
-	document.addEventListener("touchmove", onTouchMove, { passive: false });
-
 	return () => {
 		document.documentElement.classList.remove("augur-page");
-		document.removeEventListener("touchmove", onTouchMove);
 	};
 });
 </script>
@@ -86,7 +64,11 @@ onMount(() => {
 	}
 
 	.augur-mobile-shell {
-		height: 100dvh;
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px));
 		overflow: hidden;
 	}
 </style>
