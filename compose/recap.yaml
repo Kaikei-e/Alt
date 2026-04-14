@@ -43,7 +43,7 @@ services:
           --ca-url https://step-ca:9000 \
           --root /trust/ca-bundle.pem \
           --token "$$TOKEN" --force
-        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
+        chown 999:999 /certs /certs/svc-cert.pem /certs/svc-key.pem
         chmod 0444 /certs/svc-cert.pem
         chmod 0400 /certs/svc-key.pem
     volumes:
