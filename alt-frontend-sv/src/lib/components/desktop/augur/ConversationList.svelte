@@ -1,68 +1,68 @@
 <script lang="ts">
-  import type { AugurConversationSummary } from "$lib/connect";
-  import { MessagesSquare, Trash2 } from "@lucide/svelte";
+import type { AugurConversationSummary } from "$lib/connect";
+import { MessagesSquare, Trash2 } from "@lucide/svelte";
 
-  type Props = {
-    conversations: AugurConversationSummary[];
-    isLoading: boolean;
-    errorMessage: string;
-    hasMore: boolean;
-    onOpen: (id: string) => void;
-    onDelete: (id: string) => Promise<void> | void;
-    onLoadMore: () => Promise<void> | void;
-    onStartNew: () => void;
-  };
+type Props = {
+	conversations: AugurConversationSummary[];
+	isLoading: boolean;
+	errorMessage: string;
+	hasMore: boolean;
+	onOpen: (id: string) => void;
+	onDelete: (id: string) => Promise<void> | void;
+	onLoadMore: () => Promise<void> | void;
+	onStartNew: () => void;
+};
 
-  let {
-    conversations,
-    isLoading,
-    errorMessage,
-    hasMore,
-    onOpen,
-    onDelete,
-    onLoadMore,
-    onStartNew,
-  }: Props = $props();
+let {
+	conversations,
+	isLoading,
+	errorMessage,
+	hasMore,
+	onOpen,
+	onDelete,
+	onLoadMore,
+	onStartNew,
+}: Props = $props();
 
-  // Alt-Paper dateline: small-caps, abbreviated month + day, monospace time.
-  function formatDateline(date: Date | null): string {
-    if (!date) return "";
-    const months = [
-      "JAN",
-      "FEB",
-      "MAR",
-      "APR",
-      "MAY",
-      "JUN",
-      "JUL",
-      "AUG",
-      "SEP",
-      "OCT",
-      "NOV",
-      "DEC",
-    ];
-    const m = months[date.getMonth()];
-    const d = String(date.getDate()).padStart(2, "0");
-    const hh = String(date.getHours()).padStart(2, "0");
-    const mm = String(date.getMinutes()).padStart(2, "0");
-    return `${m} ${d} · ${hh}:${mm}`;
-  }
+// Alt-Paper dateline: small-caps, abbreviated month + day, monospace time.
+function formatDateline(date: Date | null): string {
+	if (!date) return "";
+	const months = [
+		"JAN",
+		"FEB",
+		"MAR",
+		"APR",
+		"MAY",
+		"JUN",
+		"JUL",
+		"AUG",
+		"SEP",
+		"OCT",
+		"NOV",
+		"DEC",
+	];
+	const m = months[date.getMonth()];
+	const d = String(date.getDate()).padStart(2, "0");
+	const hh = String(date.getHours()).padStart(2, "0");
+	const mm = String(date.getMinutes()).padStart(2, "0");
+	return `${m} ${d} · ${hh}:${mm}`;
+}
 
-  async function handleDelete(event: MouseEvent, id: string) {
-    event.stopPropagation();
-    try {
-      await onDelete(id);
-    } catch {
-      /* surfaced via errorMessage */
-    }
-  }
+async function handleDelete(event: MouseEvent, id: string) {
+	event.stopPropagation();
+	try {
+		await onDelete(id);
+	} catch {
+		/* surfaced via errorMessage */
+	}
+}
 
-  function handleKeydown(event: KeyboardEvent, id: string) {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      onOpen(id);
-    }
-  }
+function handleKeydown(event: KeyboardEvent, id: string) {
+	if (event.key === "Enter" || event.key === " ") {
+		event.preventDefault();
+		onOpen(id);
+	}
+}
 </script>
 
 <section class="conversation-list">

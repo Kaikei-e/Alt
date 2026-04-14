@@ -66,7 +66,7 @@ function clearSearch() {
 	<title>{gs.query ? `Search: ${gs.query}` : "Search"} - Alt</title>
 </svelte:head>
 
-<div class="ref-page" class:revealed data-role="reference-desk-page">
+<div class="ref-page px-4 md:px-0" class:revealed data-role="reference-desk-page">
 	<header class="ref-header">
 		<span class="ref-date">{dateStr}</span>
 		{#if isDesktop}
@@ -118,7 +118,7 @@ function clearSearch() {
 		</div>
 	{/if}
 
-	<div class="ref-content" class:px-4={!isDesktop}>
+	<div class="ref-content">
 		{#if gs.loading}
 			<SearchSectionSkeleton label="Loading articles" rows={3} />
 			<SearchSectionSkeleton label="Loading recaps" rows={2} />
@@ -221,7 +221,8 @@ function clearSearch() {
 	}
 
 	.ref-input {
-		flex: 1;
+		flex: 1 1 auto;
+		min-width: 0;
 		padding: 0.625rem 0.75rem;
 		font-family: var(--font-body);
 		font-size: 1rem;
@@ -242,6 +243,8 @@ function clearSearch() {
 	}
 
 	.ref-search-btn {
+		flex-shrink: 0;
+		white-space: nowrap;
 		min-height: 44px;
 		padding: 0 1.25rem;
 		font-family: var(--font-body);
@@ -262,6 +265,8 @@ function clearSearch() {
 	}
 
 	.ref-clear-btn {
+		flex-shrink: 0;
+		white-space: nowrap;
 		padding: 0 0.75rem;
 		min-height: 44px;
 		font-family: var(--font-mono);
@@ -278,6 +283,19 @@ function clearSearch() {
 	.ref-clear-btn:hover {
 		border-color: var(--alt-charcoal);
 		color: var(--alt-charcoal);
+	}
+
+	@media (max-width: 380px) {
+		.ref-search-bar {
+			flex-wrap: wrap;
+		}
+		.ref-input {
+			flex: 1 1 100%;
+		}
+		.ref-search-btn,
+		.ref-clear-btn {
+			flex: 1 1 0;
+		}
 	}
 
 	.ref-degraded-banner {

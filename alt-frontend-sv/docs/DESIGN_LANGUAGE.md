@@ -382,7 +382,7 @@ Sidebar (240px) + main content. Max-width constraints per page type:
 
 ### Touch Targets
 
-Minimum **44x44px** on all interactive mobile elements (Apple HIG).
+Minimum **44×44 CSS px** (Apple HIG) / **48dp** (Material Design 3) / **24×24 CSS px** (WCAG 2.2 SC 2.5.8 — with 24px spacing exception). Alt's baseline is 44px; never go below.
 
 ### Safe Area
 
@@ -416,6 +416,68 @@ padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
 
 ---
 
+## Flex Overflow Patterns
+
+Flex children default to `min-width: auto` (resolves to `min-content`), which prevents them from shrinking below their intrinsic content width. On narrow Android viewports this is the single most common cause of horizontal overflow. **Always set `min-width: 0` on shrinkable flex children** (`min-height: 0` for column flex).
+
+Reference: [MDN — min-width: auto for flex/grid items](https://developer.mozilla.org/en-US/docs/Web/CSS/min-width).
+
+### Row with input + button (input shrinks, button fixed)
+
+```css
+.row {
+  display: flex;
+  gap: 0.5rem;
+}
+.row > .input {
+  flex: 1 1 auto;
+  min-width: 0; /* required — overrides min-width: auto */
+}
+.row > .button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+```
+
+### Truncating title next to absolute close button
+
+```css
+/* Reserve X-button region on the header, not the title */
+.sheet-header {
+  padding-inline-end: 2.5rem; /* = pe-10 (absolute end-4 top-4 size-4) */
+}
+.sheet-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Two-line clamp for long article titles */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+```
+
+### Bottom sheet max height on Android
+
+```css
+.bottom-sheet {
+  max-height: 90dvh; /* follows toolbar expand/retract */
+  min-height: 70svh; /* safe even when toolbar is expanded */
+}
+```
+
+### Narrow-viewport wrap (< 380px)
+
+```css
+@media (max-width: 380px) {
+  .row { flex-wrap: wrap; }
+  .row > .input { flex: 1 1 100%; }
+  .row > .button { flex: 1 1 0; }
+}
+```
+
+---
+
 ## iOS Safari Considerations
 
 Lessons from production. These are mandatory, not optional.
@@ -424,10 +486,27 @@ Lessons from production. These are mandatory, not optional.
 |-------|-----|
 | Auto-zoom on input focus | `font-size >= 1rem` (16px) on all mobile inputs |
 | Elastic bounce scroll | `touchmove` prevention on non-scroll areas, NOT `position: fixed` on body |
-| `100vh` includes URL bar | Use `100dvh` (dynamic viewport height) |
+| `100vh` / `90vh` includes URL bar (iOS/Android both) | Use `100dvh` for fullscreen. Bottom sheets: `max: 90dvh` + `min: 70svh` |
 | Safe area clipping | `env(safe-area-inset-top)` padding on scroll containers |
 | Nested fixed positioning | Never nest `position: fixed` inside `position: fixed` — use flexbox |
 | `overscroll-behavior` | Not reliable on iOS Safari alone — combine with JS `touchmove` |
+
+---
+
+## Android Chrome Considerations
+
+Lessons from production (2026-04). These are mandatory, not optional.
+
+| Issue | Fix |
+|-------|-----|
+| `100vh` / `90vh` exceeds viewport on toolbar expand, clipping top of content | Use `dvh` (dynamic) / `svh` (small = toolbar-expanded) / `lvh` (large = toolbar-retracted). Bottom sheets: `max-h: 90dvh`, `min-h: 70svh`. Fullscreen pages: `h: 100dvh` |
+| Flex child overflows parent on narrow viewport | Set `min-width: 0` on the shrinkable flex child. Default `min-width: auto` resolves to `min-content` which refuses to shrink |
+| Button label overflows inline with input | Input gets `min-width: 0`, buttons get `flex-shrink: 0; white-space: nowrap`. Wrap at `< 380px` with `flex-wrap: wrap` |
+| Absolute close button overlaps with title | Reserve 2.5rem on the header via `padding-inline-end: 2.5rem` (= `pe-10`). Title gets `min-width: 0` + `-webkit-line-clamp: 2` |
+| Soft keyboard hides fixed bottom bar | Chrome 108+ defaults to `interactive-widget=resizes-visual` (Layout Viewport unchanged). `dvh`/`svh` do not shift when keyboard opens — prefer them over `vh` |
+| Viewport unit support | `dvh`/`svh`/`lvh`: Chrome 108+, Firefox 101+, Safari 15.4+. All supported Android Chrome versions have them |
+
+Reference: [web.dev — Viewport Units](https://web.dev/blog/viewport-units), [Chrome Developers — interactive-widget](https://developer.chrome.com/blog/viewport-resize-behavior).
 
 ---
 
