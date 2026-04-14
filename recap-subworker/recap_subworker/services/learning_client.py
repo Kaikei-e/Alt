@@ -8,6 +8,8 @@ from typing import Any
 
 import httpx
 
+from ..domain.errors import LearningClientTimeoutError
+
 # Per-stage httpx timeout budget. connect is kept short so an unreachable
 # recap-worker surfaces quickly; read absorbs slow downstream Bayesian
 # optimization bursts; write/pool are modest constants.
@@ -71,6 +73,16 @@ class LearningClient:
             )
             response.raise_for_status()
             return response
+        except (TimeoutError, httpx.TimeoutException) as exc:
+            logger.error(
+                "learning client timed out",
+                endpoint=endpoint,
+                outer_budget_seconds=outer_budget,
+                error_type=type(exc).__name__,
+            )
+            raise LearningClientTimeoutError(
+                f"{endpoint} exceeded {outer_budget:.1f}s budget"
+            ) from exc
         except httpx.HTTPStatusError as exc:
             logger.error(
                 "HTTP error response",

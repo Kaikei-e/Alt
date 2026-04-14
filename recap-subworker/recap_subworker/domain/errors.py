@@ -61,6 +61,20 @@ class OllamaConnectionError(EmbeddingError):
         super().__init__(f"Ollama API at {url} failed: {detail}")
 
 
+# --- Learning client errors ---
+
+
+class LearningClientError(SubworkerError):
+    """Error while dispatching learning payloads to recap-worker."""
+
+
+class LearningClientTimeoutError(LearningClientError):
+    """Raised when the outer asyncio budget or httpx timeout trips."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(f"learning client timed out: {detail}")
+
+
 # --- Classification errors ---
 
 class ClassificationError(SubworkerError):
