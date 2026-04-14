@@ -65,13 +65,15 @@ func TestImageFetchGateway_FetchImage_SSRF_PrivateNetworks(t *testing.T) {
 		expectedErr string
 	}{
 		{
+			// L-004 removed 8080 from default allowed ports; using 443 here
+			// keeps the test focused on the DNS-rebinding / private-IP layer.
 			name:        "localhost IPv4",
-			imageURL:    "https://127.0.0.1:8080/image.jpg",
+			imageURL:    "https://127.0.0.1/image.jpg",
 			expectedErr: "DNS rebinding attack detected",
 		},
 		{
 			name:        "localhost hostname",
-			imageURL:    "https://localhost:8080/image.jpg",
+			imageURL:    "https://localhost/image.jpg",
 			expectedErr: "DNS rebinding attack detected",
 		},
 		{

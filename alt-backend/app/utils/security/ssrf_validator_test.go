@@ -257,9 +257,12 @@ func TestSSRFValidator_PortValidation(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "allowed port 8080",
+			// L-004: 8080 is no longer in the default allow-list. Callers
+			// that need it must opt in by extending allowedPorts after
+			// construction.
+			name:    "non-standard port 8080 now blocked",
 			url:     "https://93.184.216.34:8080/image.jpg",
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name:    "disallowed port 3000",
@@ -622,8 +625,12 @@ func TestSSRFValidator_ComprehensiveAttackScenarios(t *testing.T) {
 			errorType:   "METADATA_ENDPOINT_BLOCKED",
 		},
 		{
-			name:        "DNS Rebinding to localhost",
-			url:         "http://127.0.0.1:8080/admin",
+			name: "DNS Rebinding to localhost",
+			// Port 80 is used so the port check passes first; the DNS
+			// rebinding / private-IP check is what blocks the request.
+			// L-004 removed 8080 from the default allow-list; if that port
+			// were used here the test would assert PORT_BLOCKED instead.
+			url:         "http://127.0.0.1/admin",
 			description: "Attempt to access localhost admin panel",
 			wantErr:     true,
 			errorType:   "DNS_REBINDING_BLOCKED",

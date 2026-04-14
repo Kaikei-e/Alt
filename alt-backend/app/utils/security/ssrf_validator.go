@@ -56,8 +56,13 @@ func NewSSRFValidator() *SSRFValidator {
 			".local", ".internal", ".corp", ".lan", ".intranet",
 			".test", ".localhost", ".cluster.local",
 		},
+		// L-004: only the IANA standard HTTP/HTTPS ports are accepted by
+		// default. Non-standard ports (8080, 8443, etc.) are common targets
+		// for internal services so we no longer allow them implicitly. If a
+		// caller needs them they can append via SSRFValidator.allowedPorts
+		// after construction.
 		allowedPorts: map[string]bool{
-			"80": true, "443": true, "8080": true, "8443": true,
+			"80": true, "443": true,
 		},
 		dnsCache:              make(map[string][]net.IP),
 		cacheTTL:              5 * time.Minute,
