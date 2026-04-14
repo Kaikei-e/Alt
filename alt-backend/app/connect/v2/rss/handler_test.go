@@ -378,6 +378,22 @@ func newTestHandler(t *testing.T, container *di.ApplicationComponents) *Handler 
 	return NewHandler(container, nil, logger)
 }
 
+func TestRandomSubscription_Unauthenticated(t *testing.T) {
+	h := newTestHandler(t, &di.ApplicationComponents{})
+	_, err := h.RandomSubscription(context.Background(),
+		connect.NewRequest(&rssv2.RandomSubscriptionRequest{}))
+	assert.Error(t, err)
+	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+}
+
+func TestRandomSubscription_NoUsecase_Unimplemented(t *testing.T) {
+	h := newTestHandler(t, &di.ApplicationComponents{})
+	_, err := h.RandomSubscription(createAuthContext(),
+		connect.NewRequest(&rssv2.RandomSubscriptionRequest{}))
+	assert.Error(t, err)
+	assert.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
+}
+
 func TestRegisterFavoriteFeed_EmptyURL(t *testing.T) {
 	h := newTestHandler(t, &di.ApplicationComponents{})
 	ctx := createAuthContext()

@@ -3,10 +3,12 @@ package rss
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -18,6 +20,7 @@ import (
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
 	"alt/di"
+	"alt/domain"
 	"alt/utils/url_validator"
 )
 
@@ -177,6 +180,37 @@ func (h *Handler) RegisterFavoriteFeed(
 
 	return connect.NewResponse(&rssv2.RegisterFavoriteFeedResponse{
 		Message: "favorite feed registered",
+	}), nil
+}
+
+// RandomSubscription returns one random subscribed feed for Tag Trail discovery.
+// Replaces GET /v1/rss-feed-link/random.
+func (h *Handler) RandomSubscription(
+	ctx context.Context,
+	req *connect.Request[rssv2.RandomSubscriptionRequest],
+) (*connect.Response[rssv2.RandomSubscriptionResponse], error) {
+	_ = req
+	if _, err := middleware.GetUserContext(ctx); err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+	if h.container == nil || h.container.FetchRandomSubscriptionUsecase == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented,
+			fmt.Errorf("random subscription usecase not wired"))
+	}
+	feed, err := h.container.FetchRandomSubscriptionUsecase.Execute(ctx)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoSubscriptions) {
+			return nil, connect.NewError(connect.CodeNotFound,
+				fmt.Errorf("no subscriptions available"))
+		}
+		return nil, errorhandler.HandleInternalError(ctx, h.logger, err, "RandomSubscription")
+	}
+	return connect.NewResponse(&rssv2.RandomSubscriptionResponse{
+		Id:          feed.ID.String(),
+		Title:       feed.Title,
+		Description: feed.Description,
+		Link:        feed.Link,
+		PublishedAt: feed.UpdatedAt.Format(time.RFC3339),
 	}), nil
 }
 
