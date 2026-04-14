@@ -1,6 +1,6 @@
 # Python Best Practices — Alt
 
-対象: Python 3.14+、uv、FastAPI、pytest。一次ソース: [PEP 8](https://peps.python.org/pep-0008/), [PEP 257](https://peps.python.org/pep-0257/), [PEP 484](https://peps.python.org/pep-0484/), [Ruff](https://docs.astral.sh/ruff/), [mypy](https://mypy.readthedocs.io/), [Pydantic v2](https://docs.pydantic.dev/)。
+対象: Python 3.14+、uv、FastAPI、pytest。一次ソース: [PEP 8](https://peps.python.org/pep-0008/), [PEP 257](https://peps.python.org/pep-0257/), [PEP 484](https://peps.python.org/pep-0484/), [Ruff](https://docs.astral.sh/ruff/), [Pyrefly](https://pyrefly.org/), [Pydantic v2](https://docs.pydantic.dev/)。型検査ツールは [[000530]] により Pyrefly ≥ 0.42.0 を採用（mypy は非推奨）。
 
 ## 1. Project Structure
 
@@ -43,7 +43,7 @@ def total(amounts: Sequence[int]) -> int:
 def total(amounts: list[int]) -> int: ...
 ```
 
-- `mypy --strict` または `pyright --strict` を CI 必須化
+- `uv run pyrefly check .` を CI 必須化（ADR-000530 で Pyrefly ≥ 0.42.0 を採用、mypy は非推奨）
 - `from __future__ import annotations` は不要（Python 3.14 で PEP 649 により遅延評価が既定）
 
 ## 3. Error Handling
@@ -210,9 +210,10 @@ def handler():
   - `E`, `W` (pycodestyle), `F` (Pyflakes), `I` (isort)
   - `B` (flake8-bugbear), `UP` (pyupgrade), `SIM` (simplify), `N` (pep8-naming)
   - `ANN` (annotations), `S` (bandit), `PTH` (use-pathlib), `C4` (comprehensions)
-- **mypy**: `--strict` を CI で必須化
+  - `BLE` (blind-except), `ASYNC` (async best practices), `TRY` (tryceratops), `RUF`, `PL` (pylint)
+- **Pyrefly**: `uv run pyrefly check .` を CI で必須化（[[000530]] で mypy から Pyrefly ≥ 0.42.0 に移行）
 - **uv**: 依存管理と仮想環境。`pip install` 禁止
-- **pre-commit**: Ruff + mypy を pre-commit フックで走らせる
+- **pre-commit**: Ruff + Pyrefly を pre-commit フックで走らせる
 
 ```toml
 # pyproject.toml (抜粋)
@@ -221,11 +222,16 @@ line-length = 100
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "ANN", "S", "PTH", "C4"]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "ANN", "S", "PTH", "C4", "BLE", "ASYNC", "TRY", "RUF", "PL"]
 ignore = ["ANN101", "ANN102"]  # self/cls の注釈は不要
 
-[tool.mypy]
-strict = true
+[tool.pyrefly]
+project-includes = ["src"]
+python-version = "3.14"
+# ML ライブラリは型スタブ不足のため import 解決の失敗のみ抑止（内部コードは厳密検査を維持）
+[tool.pyrefly.errors]
+missing-import = false
+missing-module-attribute = false
 ```
 
 ## 11. Security
@@ -259,3 +265,4 @@ await conn.fetch(f"SELECT * FROM articles WHERE id = '{article_id}'")
 - [ ] `asyncio.gather` ではなく `TaskGroup` が使えないか
 - [ ] Ruff `S`（bandit）ルール違反が無いか、`eval`/`exec`/`pickle`/`shell=True` が無いか
 - [ ] モジュールレベル `APIRouter()` 等のグローバル状態がテスト分離を壊していないか
+- [ ] 型検査は Pyrefly（mypy ではない）を使っているか、`uv run pyrefly check .` が 0 エラーか
