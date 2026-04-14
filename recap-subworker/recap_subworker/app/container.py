@@ -36,6 +36,12 @@ from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
 from ..usecase.cluster_evidence import ClusterEvidenceUsecase
 from ..usecase.manage_run import ManageRunUsecase
+from ..usecase.submit_run import (
+    GetClassificationRunUsecase,
+    GetRunUsecase,
+    SubmitClassificationRunUsecase,
+    SubmitRunUsecase,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -67,6 +73,10 @@ class ServiceContainer:
         self._content_extractor: ContentExtractor | None = None
         self._coarse_classifier: CoarseClassifier | None = None
         self._admin_job_service: AdminJobService | None = None
+        self._submit_run_usecase: SubmitRunUsecase | None = None
+        self._get_run_usecase: GetRunUsecase | None = None
+        self._submit_classification_run_usecase: SubmitClassificationRunUsecase | None = None
+        self._get_classification_run_usecase: GetClassificationRunUsecase | None = None
 
     # --- Database ---
 
@@ -201,6 +211,34 @@ class ServiceContainer:
                 settings=self.settings,
             )
         return self._manage_run
+
+    @property
+    def submit_run_usecase(self) -> SubmitRunUsecase:
+        if self._submit_run_usecase is None:
+            self._submit_run_usecase = SubmitRunUsecase(submitter=self.run_manager)
+        return self._submit_run_usecase
+
+    @property
+    def get_run_usecase(self) -> GetRunUsecase:
+        if self._get_run_usecase is None:
+            self._get_run_usecase = GetRunUsecase(reader=self.run_manager)
+        return self._get_run_usecase
+
+    @property
+    def submit_classification_run_usecase(self) -> SubmitClassificationRunUsecase:
+        if self._submit_classification_run_usecase is None:
+            self._submit_classification_run_usecase = SubmitClassificationRunUsecase(
+                submitter=self.run_manager,
+            )
+        return self._submit_classification_run_usecase
+
+    @property
+    def get_classification_run_usecase(self) -> GetClassificationRunUsecase:
+        if self._get_classification_run_usecase is None:
+            self._get_classification_run_usecase = GetClassificationRunUsecase(
+                reader=self.run_manager,
+            )
+        return self._get_classification_run_usecase
 
     # --- Supporting services ---
 

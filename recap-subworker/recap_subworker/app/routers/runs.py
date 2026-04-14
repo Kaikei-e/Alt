@@ -13,10 +13,14 @@ from ...infra.config import Settings
 from ...services.run_manager import (
     ConcurrentRunError,
     IdempotencyMismatchError,
-    RunManager,
     RunSubmission,
 )
-from ..deps import get_run_manager_dep, get_settings_dep
+from ...usecase.submit_run import GetRunUsecase, SubmitRunUsecase
+from ..deps import (
+    get_get_run_usecase_dep,
+    get_settings_dep,
+    get_submit_run_usecase_dep,
+)
 
 router = APIRouter(prefix="/v1", tags=["runs"])
 
@@ -43,7 +47,7 @@ async def create_run(
     genre: str = Header(..., alias="X-Alt-Genre"),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     settings: Settings = Depends(get_settings_dep),
-    manager: RunManager = Depends(get_run_manager_dep),
+    submit_uc: SubmitRunUsecase = Depends(get_submit_run_usecase_dep),
 ) -> ClusterJobResponse:
     try:
         job_id = UUID(job_id_header)
@@ -60,7 +64,7 @@ async def create_run(
         idempotency_key=idempotency_key,
     )
     try:
-        record = await manager.create_run(submission)
+        record = await submit_uc.execute(submission)
     except IdempotencyMismatchError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ConcurrentRunError as exc:
@@ -72,9 +76,9 @@ async def create_run(
 @router.get("/runs/{run_id}", response_model=ClusterJobResponse)
 async def get_run(
     run_id: int,
-    manager: RunManager = Depends(get_run_manager_dep),
+    get_uc: GetRunUsecase = Depends(get_get_run_usecase_dep),
 ) -> ClusterJobResponse:
-    record = await manager.get_run(run_id)
+    record = await get_uc.execute(run_id)
     if not record:
         raise HTTPException(status_code=404, detail="run not found")
     return _record_to_response(record)

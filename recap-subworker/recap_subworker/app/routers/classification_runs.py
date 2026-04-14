@@ -17,9 +17,15 @@ from ...services.run_manager import (
     ClassificationRunSubmission,
     ConcurrentRunError,
     IdempotencyMismatchError,
-    RunManager,
 )
-from ..deps import get_run_manager_dep
+from ...usecase.submit_run import (
+    GetClassificationRunUsecase,
+    SubmitClassificationRunUsecase,
+)
+from ..deps import (
+    get_get_classification_run_usecase_dep,
+    get_submit_classification_run_usecase_dep,
+)
 
 router = APIRouter()
 LOGGER = structlog.get_logger(__name__)
@@ -52,7 +58,9 @@ async def create_classification_run(
     payload: ClassificationJobPayload,
     job_id_header: str = Header(..., alias="X-Alt-Job-Id"),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    manager: RunManager = Depends(get_run_manager_dep),
+    submit_uc: SubmitClassificationRunUsecase = Depends(
+        get_submit_classification_run_usecase_dep
+    ),
 ) -> ClassificationJobResponse:
     """Create a new classification run (async job pattern)."""
     try:
@@ -67,7 +75,7 @@ async def create_classification_run(
         idempotency_key=idempotency_key,
     )
     try:
-        record = await manager.create_classification_run(submission)
+        record = await submit_uc.execute(submission)
     except IdempotencyMismatchError as exc:
         LOGGER.warning(
             "classification.run.idempotency_mismatch",
@@ -123,10 +131,12 @@ async def create_classification_run(
 @router.get("/v1/classify-runs/{run_id}", response_model=ClassificationJobResponse)
 async def get_classification_run(
     run_id: int,
-    manager: RunManager = Depends(get_run_manager_dep),
+    get_uc: GetClassificationRunUsecase = Depends(
+        get_get_classification_run_usecase_dep
+    ),
 ) -> ClassificationJobResponse:
     """Get classification run status and results."""
-    record = await manager.get_run(run_id)
+    record = await get_uc.execute(run_id)
     if not record:
         raise HTTPException(status_code=404, detail="run not found")
 

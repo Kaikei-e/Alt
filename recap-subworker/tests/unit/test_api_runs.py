@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from recap_subworker.app import deps
 from recap_subworker.app.main import create_app
 from recap_subworker.db.dao import RunRecord
+from recap_subworker.services.run_manager import RunSubmission
 
 
 class FakeRunManager:
@@ -16,11 +17,12 @@ class FakeRunManager:
         self.record = record
         self.created = False
 
-    async def create_run(self, submission):
+    async def create_run(self, submission: RunSubmission) -> RunRecord:
         self.created = True
+        assert self.record is not None
         return self.record
 
-    async def get_run(self, run_id: int):
+    async def get_run(self, run_id: int) -> RunRecord | None:
         return self.record
 
 
@@ -57,7 +59,14 @@ def test_post_runs_returns_accepted(monkeypatch):
     )
     manager = FakeRunManager(record)
     app = create_app()
-    app.dependency_overrides[deps.get_run_manager_dep] = lambda: manager
+    from recap_subworker.usecase.submit_run import GetRunUsecase, SubmitRunUsecase
+
+    app.dependency_overrides[deps.get_submit_run_usecase_dep] = lambda: SubmitRunUsecase(
+        submitter=manager,
+    )
+    app.dependency_overrides[deps.get_get_run_usecase_dep] = lambda: GetRunUsecase(
+        reader=manager,
+    )
 
     with TestClient(app) as client:
         response = client.post(
@@ -85,7 +94,11 @@ def test_get_runs_not_found(monkeypatch):
         async def get_run(self, run_id: int):  # type: ignore[override]
             return None
 
-    app.dependency_overrides[deps.get_run_manager_dep] = lambda: EmptyManager()
+    from recap_subworker.usecase.submit_run import GetRunUsecase
+
+    app.dependency_overrides[deps.get_get_run_usecase_dep] = lambda: GetRunUsecase(
+        reader=EmptyManager(),
+    )
     with TestClient(app) as client:
         response = client.get("/v1/runs/999")
 

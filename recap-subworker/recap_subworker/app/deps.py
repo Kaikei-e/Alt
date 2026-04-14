@@ -25,6 +25,12 @@ from ..services.learning_client import LearningClient
 from ..services.pipeline import EvidencePipeline
 from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
+from ..usecase.submit_run import (
+    GetClassificationRunUsecase,
+    GetRunUsecase,
+    SubmitClassificationRunUsecase,
+    SubmitRunUsecase,
+)
 from .container import ServiceContainer
 
 
@@ -63,6 +69,30 @@ def get_run_manager_dep(
     container: ServiceContainer = Depends(get_container),
 ) -> RunManager:
     return container.run_manager
+
+
+def get_submit_run_usecase_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> SubmitRunUsecase:
+    return container.submit_run_usecase
+
+
+def get_get_run_usecase_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> GetRunUsecase:
+    return container.get_run_usecase
+
+
+def get_submit_classification_run_usecase_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> SubmitClassificationRunUsecase:
+    return container.submit_classification_run_usecase
+
+
+def get_get_classification_run_usecase_dep(
+    container: ServiceContainer = Depends(get_container),
+) -> GetClassificationRunUsecase:
+    return container.get_classification_run_usecase
 
 
 def get_pipeline_runner_dep(

@@ -158,7 +158,13 @@ class _StubRunManager:
     async def create_run(self, submission):
         raise NotImplementedError(
             "Install a purpose-built RunManager stub via "
-            "app.dependency_overrides[deps.get_run_manager_dep]"
+            "app.dependency_overrides[deps.get_submit_run_usecase_dep]"
+        )
+
+    async def create_classification_run(self, submission):
+        raise NotImplementedError(
+            "Install a purpose-built RunManager stub via "
+            "app.dependency_overrides[deps.get_submit_classification_run_usecase_dep]"
         )
 
     async def get_run(self, run_id: int):
@@ -239,8 +245,29 @@ def _override_heavy_dependencies(request):
         original_create_app = _create_app
 
     def _install(app) -> None:
+        # Per-operation usecase stubs delegate to the same _StubRunManager
+        # so handler tests never hit the container's heavy properties.
+        stub_manager = _StubRunManager()
+
+        from recap_subworker.usecase.submit_run import (
+            GetClassificationRunUsecase,
+            GetRunUsecase,
+            SubmitClassificationRunUsecase,
+            SubmitRunUsecase,
+        )
+
         overrides = {
-            _deps.get_run_manager_dep: lambda: _StubRunManager(),
+            _deps.get_run_manager_dep: lambda: stub_manager,
+            _deps.get_submit_run_usecase_dep: lambda: SubmitRunUsecase(
+                submitter=stub_manager,
+            ),
+            _deps.get_get_run_usecase_dep: lambda: GetRunUsecase(reader=stub_manager),
+            _deps.get_submit_classification_run_usecase_dep: lambda: (
+                SubmitClassificationRunUsecase(submitter=stub_manager)
+            ),
+            _deps.get_get_classification_run_usecase_dep: lambda: (
+                GetClassificationRunUsecase(reader=stub_manager)
+            ),
             _deps.get_classifier_dep: lambda: _StubClassifier(),
             _deps.get_classification_runner_dep: lambda: _StubClassificationRunner(),
             _deps.get_content_extractor_dep: lambda: _StubContentExtractor(),
