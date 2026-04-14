@@ -77,6 +77,15 @@ scrape_configs:
     scrape_interval: 15s
     metrics_path: /metrics
 
+  # news-creator distributed BE dispatch metrics (OTel -> Prometheus exporter)
+  - job_name: 'news-creator'
+    static_configs:
+      - targets: ['news-creator:11434']
+        labels:
+          service: 'news-creator'
+    scrape_interval: 15s
+    metrics_path: /metrics
+
   # alt-backend feed read performance metrics (Go/OTel Prometheus exporter)
   - job_name: 'alt-backend'
     static_configs:
