@@ -12,12 +12,29 @@ import (
 // validation including scheme validation, private network detection, and
 // malicious URL pattern detection.
 type URLSecurityValidator struct {
-	// Future: Add configurable allow/block lists
+	// requireHTTPS, when true, rejects http:// URLs. Use for callers like the
+	// image proxy and RAG fetcher where plaintext HTTP is unacceptable (M-002).
+	requireHTTPS bool
 }
 
-// NewURLSecurityValidator creates a new URLSecurityValidator instance
+// NewURLSecurityValidator creates a new URLSecurityValidator instance.
 func NewURLSecurityValidator() *URLSecurityValidator {
 	return &URLSecurityValidator{}
+}
+
+// RequireHTTPS toggles HTTPS-only mode. Default is false (HTTP allowed for
+// RSS feed registration which still uses many plaintext endpoints).
+func (v *URLSecurityValidator) RequireHTTPS(require bool) {
+	v.requireHTTPS = require
+}
+
+// metadataHosts enumerates known cloud metadata hostnames. Exact-match lookup
+// (M-004) avoids the substring false positives of strings.Contains.
+var metadataHosts = map[string]struct{}{
+	"169.254.169.254":          {},
+	"metadata.google.internal": {},
+	"100.100.100.200":          {},
+	"192.0.0.192":              {},
 }
 
 // ValidateRSSURL performs comprehensive security validation on RSS URLs
@@ -48,13 +65,18 @@ func (v *URLSecurityValidator) ValidateRSSURL(rawURL string) error {
 		return errors.New("only HTTP and HTTPS schemes allowed")
 	}
 
+	if v.requireHTTPS && parsedURL.Scheme != "https" {
+		return errors.New("HTTPS scheme is required for this endpoint")
+	}
+
 	// Check if URL has scheme and host (basic malformed URL detection)
 	if parsedURL.Scheme == "" || parsedURL.Host == "" {
 		return errors.New("invalid URL format")
 	}
 
-	// Check for metadata server access
-	if strings.Contains(parsedURL.Host, "metadata") {
+	// Reject cloud metadata endpoints by exact hostname (M-004).
+	hostname := strings.ToLower(parsedURL.Hostname())
+	if _, isMetadata := metadataHosts[hostname]; isMetadata {
 		return errors.New("metadata server access denied")
 	}
 
@@ -87,23 +109,18 @@ func (v *URLSecurityValidator) ValidateForRSSFeed(rawURL string) error {
 	return nil
 }
 
-// IsAllowedDomain checks if a domain is allowed for RSS feed access
+// IsAllowedDomain checks if a domain is allowed for RSS feed access.
+// Metadata endpoints are rejected by exact hostname match (M-004).
 func (v *URLSecurityValidator) IsAllowedDomain(domain string) bool {
-	// Check for localhost
 	if domain == "localhost" {
 		return false
 	}
-
-	// Check for metadata servers
-	if strings.Contains(domain, "metadata") {
+	if _, isMetadata := metadataHosts[strings.ToLower(domain)]; isMetadata {
 		return false
 	}
-
-	// Check for private IP addresses
 	if v.isPrivateNetwork(domain) {
 		return false
 	}
-
 	return true
 }
 

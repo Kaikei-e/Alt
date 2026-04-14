@@ -37,13 +37,13 @@ func (e *ValidationError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Type, e.Message)
 }
 
-// NewSSRFValidator creates a new SSRF validator with default security settings
+// NewSSRFValidator creates a new SSRF validator with default security settings.
+// allowedDomains is intentionally left empty: callers that need an allow-list
+// should opt in explicitly. The previous placeholder ("example.com") was dead
+// code that risked giving readers a false sense of safety (M-003).
 func NewSSRFValidator() *SSRFValidator {
 	return &SSRFValidator{
-		allowedDomains: []string{
-			// Default allowed domains - should be configured per environment
-			"example.com",
-		},
+		allowedDomains: nil,
 		metadataEndpoints: []string{
 			"169.254.169.254",          // AWS/Azure/GCP metadata
 			"metadata.google.internal", // GCP metadata
