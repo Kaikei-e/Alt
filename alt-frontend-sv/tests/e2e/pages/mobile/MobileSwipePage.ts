@@ -17,7 +17,6 @@ export class MobileSwipePage extends BasePage {
 	readonly scrollArea: Locator;
 	readonly aiSummarySection: Locator;
 	readonly contentSection: Locator;
-	readonly floatingMenu: Locator;
 	readonly loadingOverlay: Locator;
 
 	constructor(page: Page) {
@@ -37,7 +36,6 @@ export class MobileSwipePage extends BasePage {
 		this.contentSection = page.getByTestId("content-section");
 
 		// UI components
-		this.floatingMenu = page.getByTestId("floating-menu");
 		this.loadingOverlay = page.getByTestId("swipe-loading-overlay");
 	}
 

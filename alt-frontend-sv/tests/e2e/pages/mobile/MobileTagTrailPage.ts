@@ -13,7 +13,6 @@ export class MobileTagTrailPage extends BasePage {
 	readonly backButton: Locator;
 	readonly welcomeState: Locator;
 	readonly generatingTags: Locator;
-	readonly floatingMenu: Locator;
 	readonly errorMessage: Locator;
 
 	constructor(page: Page) {
@@ -30,7 +29,6 @@ export class MobileTagTrailPage extends BasePage {
 		this.backButton = page.getByRole("button", { name: /back/i });
 		this.welcomeState = page.getByText(/start your tag trail/i);
 		this.generatingTags = page.getByText(/generating tags/i);
-		this.floatingMenu = page.getByLabel("Open floating menu");
 		this.errorMessage = page.getByText(/error|failed/i).first();
 	}
 

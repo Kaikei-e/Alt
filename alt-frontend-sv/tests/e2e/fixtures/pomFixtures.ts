@@ -43,7 +43,6 @@ import { MobileFavoritesPage } from "../pages/mobile/MobileFavoritesPage";
 
 // Component POMs
 import { SidebarComponent } from "../pages/components/SidebarComponent";
-import { FloatingMenuComponent } from "../pages/components/FloatingMenuComponent";
 
 type PomFixtures = {
 	// Auth
@@ -81,7 +80,6 @@ type PomFixtures = {
 	mobileFavoritesPage: MobileFavoritesPage;
 	// Components
 	sidebar: SidebarComponent;
-	floatingMenu: FloatingMenuComponent;
 };
 
 export const test = base.extend<PomFixtures>({
@@ -181,9 +179,6 @@ export const test = base.extend<PomFixtures>({
 	// Components
 	sidebar: async ({ page }, use) => {
 		await use(new SidebarComponent(page));
-	},
-	floatingMenu: async ({ page }, use) => {
-		await use(new FloatingMenuComponent(page));
 	},
 });
 

@@ -2,7 +2,6 @@
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
 import type { SearchFeedItem, SearchQuery } from "$lib/schema/search";
-import FloatingMenu from "../feeds/swipe/FloatingMenu.svelte";
 import SearchResults from "./SearchResults.svelte";
 import SearchWindow from "./SearchWindow.svelte";
 
@@ -90,8 +89,6 @@ onMount(() => {
 			</div>
 		{/if}
 	</div>
-
-	<FloatingMenu />
 </div>
 
 <style>

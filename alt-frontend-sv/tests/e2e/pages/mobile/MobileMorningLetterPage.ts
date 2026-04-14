@@ -11,7 +11,6 @@ export class MobileMorningLetterPage extends BasePage {
 	readonly sendButton: Locator;
 	readonly welcomeMessage: Locator;
 	readonly thinkingIndicator: Locator;
-	readonly floatingMenu: Locator;
 	readonly messageList: Locator;
 
 	readonly chatToggle: Locator;
@@ -29,7 +28,6 @@ export class MobileMorningLetterPage extends BasePage {
 			.locator(".entry-prose")
 			.getByText(/follow-up questions about today/i);
 		this.thinkingIndicator = page.getByText(/searching/i);
-		this.floatingMenu = page.getByLabel("Open floating menu");
 		this.messageList = page.locator('[role="log"]');
 	}
 

@@ -12,7 +12,6 @@ export class MobileEveningPulsePage extends BasePage {
 	readonly retryButton: Locator;
 	readonly quietDayMessage: Locator;
 	readonly topicSheet: Locator;
-	readonly floatingMenu: Locator;
 	readonly topicCards: Locator;
 
 	constructor(page: Page) {
@@ -28,7 +27,6 @@ export class MobileEveningPulsePage extends BasePage {
 		this.topicSheet = page
 			.getByTestId("pulse-topic-sheet")
 			.or(page.locator('[role="dialog"]'));
-		this.floatingMenu = page.getByLabel("Open floating menu");
 		this.topicCards = page.getByRole("button").filter({
 			hasText: /.+/,
 		});

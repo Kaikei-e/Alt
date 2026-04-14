@@ -25,15 +25,6 @@ vi.mock("$app/environment", () => ({
 	browser: true,
 }));
 
-// Mock FloatingMenu — provide a no-op Svelte component function
-vi.mock("$lib/components/mobile/feeds/swipe/FloatingMenu.svelte", () => {
-	return {
-		default: (_$$anchor: Comment) => {
-			// No-op component
-		},
-	};
-});
-
 describe("SearchFeedsClient Alt-Paper compliance", () => {
 	it("renders archive desk title", async () => {
 		render(SearchFeedsClient as never, { props: {} });
