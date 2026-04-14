@@ -9,10 +9,10 @@ import (
 
 func TestConvertFeedsToProto_IDPriority(t *testing.T) {
 	tests := []struct {
-		name        string
-		feed        *domain.FeedItem
-		expectedID  string
-		expectUUID  bool // when true, assert valid UUID format instead of exact match
+		name       string
+		feed       *domain.FeedItem
+		expectedID string
+		expectUUID bool // when true, assert valid UUID format instead of exact match
 	}{
 		{
 			name: "uses ArticleID when set",

@@ -923,10 +923,10 @@ func TestStreamKnowledgeHomeUpdates_SendsImmediateHeartbeat(t *testing.T) {
 		nil, nil, nil, // home, seen, action
 		nil, nil, nil, // recall: rail, snooze, dismiss
 		nil, nil, nil, nil, nil, // lens
-		nil,            // eventsPort
-		eventsForUser,  // eventsForUserPort
-		flagPort,       // featureFlagPort
-		nil,            // metrics
+		nil,           // eventsPort
+		eventsForUser, // eventsForUserPort
+		flagPort,      // featureFlagPort
+		nil,           // metrics
 		slog.Default(),
 	)
 

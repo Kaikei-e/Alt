@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	reprojectBatchSize         = 2000
-	reprojectLoopSafetyMargin  = 3 * time.Second
+	reprojectBatchSize        = 2000
+	reprojectLoopSafetyMargin = 3 * time.Second
 )
 
 // KnowledgeReprojectJob returns a function suitable for the JobScheduler that

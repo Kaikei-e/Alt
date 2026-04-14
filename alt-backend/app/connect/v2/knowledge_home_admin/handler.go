@@ -382,12 +382,12 @@ func (h *Handler) GetSLOStatus(
 	protoSLIs := make([]*knowledgehomev1.SLIStatus, 0, len(status.SLIs))
 	for _, sli := range status.SLIs {
 		protoSLIs = append(protoSLIs, &knowledgehomev1.SLIStatus{
-			Name:                    sli.Name,
-			CurrentValue:            sli.CurrentValue,
-			TargetValue:             sli.TargetValue,
-			Unit:                    sli.Unit,
-			Status:                  sli.Status,
-			ErrorBudgetConsumedPct:  sli.ErrorBudgetConsumedPct,
+			Name:                   sli.Name,
+			CurrentValue:           sli.CurrentValue,
+			TargetValue:            sli.TargetValue,
+			Unit:                   sli.Unit,
+			Status:                 sli.Status,
+			ErrorBudgetConsumedPct: sli.ErrorBudgetConsumedPct,
 		})
 	}
 
@@ -483,8 +483,8 @@ func (h *Handler) GetSystemMetrics(
 			Errors:             metrics.Projector.Errors,
 		},
 		Handler: &knowledgehomev1.HandlerMetrics{
-			PagesServed:    metrics.Handler.PagesServed,
-			PagesDegraded:  metrics.Handler.PagesDegraded,
+			PagesServed:     metrics.Handler.PagesServed,
+			PagesDegraded:   metrics.Handler.PagesDegraded,
 			DegradedRatePct: metrics.Handler.DegradedRatePct,
 		},
 		Tracking: &knowledgehomev1.TrackingMetrics{
@@ -510,18 +510,18 @@ func (h *Handler) GetSystemMetrics(
 			CorrectnessScorePct: metrics.Correctness.CorrectnessScorePct,
 		},
 		Sovereign: &knowledgehomev1.SovereignMetrics{
-			MutationsApplied:     metrics.Sovereign.MutationsApplied,
-			MutationsErrors:      metrics.Sovereign.MutationsErrors,
+			MutationsApplied:      metrics.Sovereign.MutationsApplied,
+			MutationsErrors:       metrics.Sovereign.MutationsErrors,
 			MutationDurationMsP50: metrics.Sovereign.MutationDurationMsP50,
 			MutationDurationMsP95: metrics.Sovereign.MutationDurationMsP95,
-			ErrorRatePct:         metrics.Sovereign.ErrorRatePct,
+			ErrorRatePct:          metrics.Sovereign.ErrorRatePct,
 		},
 		Recall: &knowledgehomev1.RecallMetrics{
 			SignalsAppended:        metrics.Recall.SignalsAppended,
 			SignalErrors:           metrics.Recall.SignalErrors,
-			CandidatesGenerated:   metrics.Recall.CandidatesGenerated,
-			CandidatesEmpty:       metrics.Recall.CandidatesEmpty,
-			UsersProcessed:        metrics.Recall.UsersProcessed,
+			CandidatesGenerated:    metrics.Recall.CandidatesGenerated,
+			CandidatesEmpty:        metrics.Recall.CandidatesEmpty,
+			UsersProcessed:         metrics.Recall.UsersProcessed,
 			ProjectorDurationMsP50: metrics.Recall.ProjectorDurationMsP50,
 			ProjectorDurationMsP95: metrics.Recall.ProjectorDurationMsP95,
 		},
@@ -560,15 +560,15 @@ func convertReprojectRun(run *domain.ReprojectRun) *knowledgehomev1.ReprojectRun
 		return nil
 	}
 	proto := &knowledgehomev1.ReprojectRun{
-		ReprojectRunId: run.ReprojectRunID.String(),
-		ProjectionName: run.ProjectionName,
-		FromVersion:    run.FromVersion,
-		ToVersion:      run.ToVersion,
-		Mode:           run.Mode,
-		Status:         run.Status,
-		StatsJson:      string(run.StatsJSON),
+		ReprojectRunId:  run.ReprojectRunID.String(),
+		ProjectionName:  run.ProjectionName,
+		FromVersion:     run.FromVersion,
+		ToVersion:       run.ToVersion,
+		Mode:            run.Mode,
+		Status:          run.Status,
+		StatsJson:       string(run.StatsJSON),
 		DiffSummaryJson: string(run.DiffSummaryJSON),
-		CreatedAt:      run.CreatedAt.Format(time.RFC3339),
+		CreatedAt:       run.CreatedAt.Format(time.RFC3339),
 	}
 	if run.InitiatedBy != nil {
 		proto.InitiatedBy = run.InitiatedBy.String()

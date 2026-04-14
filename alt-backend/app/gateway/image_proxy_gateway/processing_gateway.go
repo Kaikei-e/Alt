@@ -15,7 +15,6 @@ import (
 
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // Register WebP decoder for image.Decode()
-
 )
 
 // detectFormatFromMagic identifies common image container formats from their

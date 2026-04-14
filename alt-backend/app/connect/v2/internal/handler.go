@@ -13,7 +13,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"alt/domain"
-	"fmt"
 	backendv1 "alt/gen/proto/services/backend/v1"
 	"alt/gen/proto/services/backend/v1/backendv1connect"
 	"alt/port/event_publisher_port"
@@ -23,6 +22,7 @@ import (
 	"alt/port/knowledge_event_port"
 	"alt/usecase/create_summary_version_usecase"
 	"alt/usecase/create_tag_set_version_usecase"
+	"fmt"
 )
 
 const maxLimit = 500

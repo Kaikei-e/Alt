@@ -15,9 +15,9 @@ import (
 
 // ScrapingDomainUsecase handles scraping domain business logic
 type ScrapingDomainUsecase struct {
-	scrapingDomainPort   scraping_domain_port.ScrapingDomainPort
-	robotsTxtPort        robots_txt_port.RobotsTxtPort
-	feedLinkDomainPort   feed_link_domain_port.FeedLinkDomainPort
+	scrapingDomainPort scraping_domain_port.ScrapingDomainPort
+	robotsTxtPort      robots_txt_port.RobotsTxtPort
+	feedLinkDomainPort feed_link_domain_port.FeedLinkDomainPort
 }
 
 // NewScrapingDomainUsecase creates a new ScrapingDomainUsecase

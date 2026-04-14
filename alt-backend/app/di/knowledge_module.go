@@ -4,8 +4,8 @@ import (
 	"alt/driver/health_checker"
 	"alt/driver/sovereign_client"
 	"alt/gateway/feature_flag_gateway"
-	"alt/gateway/knowledge_metrics_gateway"
 	"alt/gateway/knowledge_backfill_gateway"
+	"alt/gateway/knowledge_metrics_gateway"
 	"alt/gateway/summary_version_gateway"
 	"alt/gateway/tag_set_version_gateway"
 	"alt/gateway/trending_tags_gateway"
@@ -38,18 +38,18 @@ import (
 // KnowledgeModule holds all Knowledge Home domain components.
 type KnowledgeModule struct {
 	// Usecases
-	GetKnowledgeHomeUsecase           *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
-	TrackHomeSeenUsecase              *track_home_seen_usecase.TrackHomeSeenUsecase
-	TrackHomeActionUsecase            *track_home_action_usecase.TrackHomeActionUsecase
-	AppendKnowledgeEventUsecase       *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
-	CreateSummaryVersionUsecase       *create_summary_version_usecase.CreateSummaryVersionUsecase
-	CreateTagSetVersionUsecase        *create_tag_set_version_usecase.CreateTagSetVersionUsecase
-	KnowledgeBackfillUsecase          *knowledge_backfill_usecase.Usecase
-	KnowledgeProjectionHealthUsecase  *knowledge_projection_health_usecase.Usecase
-	ReprojectUsecase                  *knowledge_reproject_usecase.Usecase
-	SLOUsecase                        *knowledge_slo_usecase.Usecase
-	AuditUsecase                      *knowledge_audit_usecase.Usecase
-	MetricsUsecase                    *knowledge_metrics_usecase.Usecase
+	GetKnowledgeHomeUsecase          *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
+	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
+	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
+	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
+	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
+	CreateTagSetVersionUsecase       *create_tag_set_version_usecase.CreateTagSetVersionUsecase
+	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
+	KnowledgeProjectionHealthUsecase *knowledge_projection_health_usecase.Usecase
+	ReprojectUsecase                 *knowledge_reproject_usecase.Usecase
+	SLOUsecase                       *knowledge_slo_usecase.Usecase
+	AuditUsecase                     *knowledge_audit_usecase.Usecase
+	MetricsUsecase                   *knowledge_metrics_usecase.Usecase
 
 	// Recall / Lens usecases
 	RecallRailUsecase    *recall_rail_usecase.RecallRailUsecase

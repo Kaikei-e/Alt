@@ -43,25 +43,25 @@ func NewMorningLetterGateway(pool alt_db.PgxIface) morning_letter_port.MorningLe
 // --- REST response DTOs ---
 
 type MorningLetterAPIResponse struct {
-	ID                 string                `json:"id"`
-	TargetDate         string                `json:"target_date"`
-	EditionTimezone    string                `json:"edition_timezone"`
-	IsDegraded         bool                  `json:"is_degraded"`
-	SchemaVersion      int                   `json:"schema_version"`
-	GenerationRevision int                   `json:"generation_revision"`
-	Model              *string               `json:"model"`
-	CreatedAt          string                `json:"created_at"`
-	Etag               string                `json:"etag"`
-	Body               MorningLetterBodyAPI  `json:"body"`
+	ID                 string               `json:"id"`
+	TargetDate         string               `json:"target_date"`
+	EditionTimezone    string               `json:"edition_timezone"`
+	IsDegraded         bool                 `json:"is_degraded"`
+	SchemaVersion      int                  `json:"schema_version"`
+	GenerationRevision int                  `json:"generation_revision"`
+	Model              *string              `json:"model"`
+	CreatedAt          string               `json:"created_at"`
+	Etag               string               `json:"etag"`
+	Body               MorningLetterBodyAPI `json:"body"`
 }
 
 type MorningLetterBodyAPI struct {
-	Lead                  string                      `json:"lead"`
-	Sections              []MorningLetterSectionAPI   `json:"sections"`
-	GeneratedAt           string                      `json:"generated_at"`
-	SourceRecapWindowDays *int                        `json:"source_recap_window_days,omitempty"`
-	ThroughLine           string                      `json:"through_line,omitempty"`
-	PreviousLetterRef     *PreviousLetterRefAPI       `json:"previous_letter_ref,omitempty"`
+	Lead                  string                    `json:"lead"`
+	Sections              []MorningLetterSectionAPI `json:"sections"`
+	GeneratedAt           string                    `json:"generated_at"`
+	SourceRecapWindowDays *int                      `json:"source_recap_window_days,omitempty"`
+	ThroughLine           string                    `json:"through_line,omitempty"`
+	PreviousLetterRef     *PreviousLetterRefAPI     `json:"previous_letter_ref,omitempty"`
 }
 
 type PreviousLetterRefAPI struct {
@@ -71,12 +71,12 @@ type PreviousLetterRefAPI struct {
 }
 
 type MorningLetterSectionAPI struct {
-	Key        string           `json:"key"`
-	Title      string           `json:"title"`
-	Bullets    []string         `json:"bullets"`
-	Genre      *string          `json:"genre,omitempty"`
-	Narrative  string           `json:"narrative,omitempty"`
-	WhyReasons []WhyReasonAPI   `json:"why_reasons,omitempty"`
+	Key        string         `json:"key"`
+	Title      string         `json:"title"`
+	Bullets    []string       `json:"bullets"`
+	Genre      *string        `json:"genre,omitempty"`
+	Narrative  string         `json:"narrative,omitempty"`
+	WhyReasons []WhyReasonAPI `json:"why_reasons,omitempty"`
 }
 
 type WhyReasonAPI struct {

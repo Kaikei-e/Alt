@@ -15,10 +15,10 @@ const projectorName = "knowledge-home-projector"
 
 // HealthStatus aggregates projection health information.
 type HealthStatus struct {
-	ActiveVersion int                            `json:"active_version"`
-	CheckpointSeq int64                          `json:"checkpoint_seq"`
-	LastUpdated   time.Time                      `json:"last_updated"`
-	BackfillJobs  []domain.KnowledgeBackfillJob  `json:"backfill_jobs"`
+	ActiveVersion int                           `json:"active_version"`
+	CheckpointSeq int64                         `json:"checkpoint_seq"`
+	LastUpdated   time.Time                     `json:"last_updated"`
+	BackfillJobs  []domain.KnowledgeBackfillJob `json:"backfill_jobs"`
 }
 
 // Usecase provides projection health information.

@@ -24,9 +24,9 @@ const (
 // GlobalSearchUsecase aggregates search results from multiple verticals.
 type GlobalSearchUsecase struct {
 	articleSearch global_search_port.SearchArticlesPort
-	recapSearch  global_search_port.SearchRecapsPort
-	tagSearch    global_search_port.SearchTagsPort
-	logger       *slog.Logger
+	recapSearch   global_search_port.SearchRecapsPort
+	tagSearch     global_search_port.SearchTagsPort
+	logger        *slog.Logger
 }
 
 // NewGlobalSearchUsecase creates a new GlobalSearchUsecase.

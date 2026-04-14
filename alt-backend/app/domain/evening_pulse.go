@@ -82,11 +82,11 @@ type QuietDayInfo struct {
 
 // EveningPulse represents the Evening Pulse data
 type EveningPulse struct {
-	JobID       string       `json:"job_id"`
-	Date        string       `json:"date"`
-	GeneratedAt time.Time    `json:"generated_at"`
-	Status      PulseStatus  `json:"status"`
-	Topics      []PulseTopic `json:"topics"`
+	JobID       string        `json:"job_id"`
+	Date        string        `json:"date"`
+	GeneratedAt time.Time     `json:"generated_at"`
+	Status      PulseStatus   `json:"status"`
+	Topics      []PulseTopic  `json:"topics"`
 	QuietDay    *QuietDayInfo `json:"quiet_day,omitempty"`
 }
 

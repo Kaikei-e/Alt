@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	strictPolicy   = bluemonday.StrictPolicy()
+	strictPolicy    = bluemonday.StrictPolicy()
 	spaceCollapseRe = regexp.MustCompile(`\s+`)
 )
 

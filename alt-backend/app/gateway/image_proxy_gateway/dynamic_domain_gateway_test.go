@@ -89,11 +89,11 @@ func TestDynamicDomainGateway_OGPImageDomains(t *testing.T) {
 	// The domain lister now returns both feed_links and article_heads.og_image_url domains.
 	gw := NewDynamicDomainGateway(&mockDomainLister{
 		domains: []domain.FeedLinkDomain{
-			{Domain: "feed.example.com", Scheme: "https"},     // feed domain
-			{Domain: "images.example.com", Scheme: "https"},   // OGP image domain (different from feed)
-			{Domain: "rss.example.org", Scheme: "https"},      // feed domain
-			{Domain: "cdn.example.org", Scheme: "https"},      // OGP image domain (different from feed)
-			{Domain: "ogp.example.net", Scheme: "https"},      // OGP image domain only
+			{Domain: "feed.example.com", Scheme: "https"},   // feed domain
+			{Domain: "images.example.com", Scheme: "https"}, // OGP image domain (different from feed)
+			{Domain: "rss.example.org", Scheme: "https"},    // feed domain
+			{Domain: "cdn.example.org", Scheme: "https"},    // OGP image domain (different from feed)
+			{Domain: "ogp.example.net", Scheme: "https"},    // OGP image domain only
 		},
 	})
 

@@ -22,13 +22,13 @@ const (
 
 // Recall reason weights.
 const (
-	weightOpenedNotRevisited    = 0.3
-	weightRelatedToSearch       = 0.25
-	weightRelatedToAugur        = 0.35
+	weightOpenedNotRevisited     = 0.3
+	weightRelatedToSearch        = 0.25
+	weightRelatedToAugur         = 0.35
 	weightRecapContextUnfinished = 0.2
-	weightPulseFollowup         = 0.25
-	weightTagInterest           = 0.15
-	weightTagClicked            = 0.20
+	weightPulseFollowup          = 0.25
+	weightTagInterest            = 0.15
+	weightTagClicked             = 0.20
 )
 
 // RecallProjectorJob returns a function that scores recall candidates from signals.

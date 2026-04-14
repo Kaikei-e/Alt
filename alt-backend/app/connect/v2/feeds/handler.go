@@ -32,11 +32,11 @@ type FeedHandlerDeps struct {
 	Subscribe             *subscription_usecase.SubscribeUsecase
 	Unsubscribe           *subscription_usecase.UnsubscribeUsecase
 	// Feed stats
-	FeedAmount       *fetch_feed_stats_usecase.FeedsCountUsecase
+	FeedAmount        *fetch_feed_stats_usecase.FeedsCountUsecase
 	UnsummarizedCount *fetch_feed_stats_usecase.UnsummarizedArticlesCountUsecase
-	SummarizedCount  *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
-	TotalCount       *fetch_feed_stats_usecase.TotalArticlesCountUsecase
-	TodayUnreadCount *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
+	SummarizedCount   *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
+	TotalCount        *fetch_feed_stats_usecase.TotalArticlesCountUsecase
+	TodayUnreadCount  *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
 	// Feed summary
 	AltDBRepository      *alt_db.AltDBRepository
 	PreProcessorClient   *preprocessor_connect.ConnectPreProcessorClient

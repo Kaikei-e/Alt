@@ -212,8 +212,8 @@ type promResponse struct {
 }
 
 type promData struct {
-	ResultType string            `json:"resultType"`
-	Result     json.RawMessage   `json:"result"`
+	ResultType string          `json:"resultType"`
+	Result     json.RawMessage `json:"result"`
 }
 
 type promSample struct {

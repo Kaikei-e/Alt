@@ -75,10 +75,10 @@ type FeedReadTimings struct {
 
 // FeedReadTimer measures per-phase durations and emits OTel spans + structured logs.
 type FeedReadTimer struct {
-	timings  FeedReadTimings
-	start    time.Time
-	enabled  bool
-	logger   *slog.Logger
+	timings FeedReadTimings
+	start   time.Time
+	enabled bool
+	logger  *slog.Logger
 }
 
 func isEnabled() bool {

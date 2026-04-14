@@ -949,8 +949,8 @@ func TestFetchRandomFeed_NoArticles_FlowCorrectness(t *testing.T) {
 	t.Run("url_parsing", func(t *testing.T) {
 		// Test that we correctly parse feed.Link URLs
 		testURLs := []struct {
-			link    string
-			valid   bool
+			link  string
+			valid bool
 		}{
 			{"https://example.com/article/123", true},
 			{"http://blog.example.org/post", true},

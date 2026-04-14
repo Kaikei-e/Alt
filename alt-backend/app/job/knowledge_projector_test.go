@@ -1383,4 +1383,3 @@ func TestKnowledgeProjectorJob_TagSetVersionCreated_UppercaseKeys(t *testing.T) 
 	assert.Len(t, homeItemsPort.upserted[0].WhyReasons, 1, "tag_hotspot is now computed at read time")
 	assert.Equal(t, domain.WhyNewUnread, homeItemsPort.upserted[0].WhyReasons[0].Code)
 }
-

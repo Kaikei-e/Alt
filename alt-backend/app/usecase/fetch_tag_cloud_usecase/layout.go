@@ -12,7 +12,7 @@ const (
 	attractionConstant = 0.0003
 	centeringForce     = 0.0001
 	dampingFactor      = 0.9
-	minDistance         = 1.0
+	minDistance        = 1.0
 	positionBound      = 100.0
 	layoutSeed         = 42
 

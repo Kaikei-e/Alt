@@ -93,10 +93,10 @@ func (u *Usecase) verifyProjection(ctx context.Context, projectionVersion string
 		if drift > 0.05 {
 			mismatchCount++
 			mismatches = append(mismatches, map[string]any{
-				"type":           "item_count_drift",
-				"from_count":     diff.FromItemCount,
-				"to_count":       diff.ToItemCount,
-				"drift_pct":      drift,
+				"type":       "item_count_drift",
+				"from_count": diff.FromItemCount,
+				"to_count":   diff.ToItemCount,
+				"drift_pct":  drift,
 			})
 		}
 	}

@@ -62,9 +62,9 @@ func (g *Gateway) GetSystemMetrics(_ context.Context) (*domain.SystemMetrics, er
 		Recall: domain.RecallMetrics{
 			SignalsAppended:        g.snapshot.RecallSignals(),
 			SignalErrors:           g.snapshot.RecallSignalErrors(),
-			CandidatesGenerated:   g.snapshot.RecallCandidates(),
-			CandidatesEmpty:       g.snapshot.RecallCandidatesEmpty(),
-			UsersProcessed:        g.snapshot.RecallUsersProcessed(),
+			CandidatesGenerated:    g.snapshot.RecallCandidates(),
+			CandidatesEmpty:        g.snapshot.RecallCandidatesEmpty(),
+			UsersProcessed:         g.snapshot.RecallUsersProcessed(),
 			ProjectorDurationMsP50: g.snapshot.RecallProjectorDurationP50(),
 			ProjectorDurationMsP95: g.snapshot.RecallProjectorDurationP95(),
 		},

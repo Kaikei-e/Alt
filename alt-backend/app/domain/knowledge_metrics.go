@@ -26,8 +26,8 @@ type ProjectorMetrics struct {
 
 // HandlerMetrics captures Knowledge Home page serving health.
 type HandlerMetrics struct {
-	PagesServed    int64
-	PagesDegraded  int64
+	PagesServed     int64
+	PagesDegraded   int64
 	DegradedRatePct float64
 }
 
@@ -51,30 +51,30 @@ type StreamMetrics struct {
 
 // CorrectnessMetrics captures data quality signals.
 type CorrectnessMetrics struct {
-	EmptyResponses     int64
-	MalformedWhy       int64
-	OrphanItems        int64
-	SupersedeMismatch  int64
-	RequestsTotal      int64
+	EmptyResponses      int64
+	MalformedWhy        int64
+	OrphanItems         int64
+	SupersedeMismatch   int64
+	RequestsTotal       int64
 	CorrectnessScorePct float64
 }
 
 // SovereignMetrics captures knowledge-sovereign mutation health.
 type SovereignMetrics struct {
-	MutationsApplied     int64
-	MutationsErrors      int64
+	MutationsApplied      int64
+	MutationsErrors       int64
 	MutationDurationMsP50 float64
 	MutationDurationMsP95 float64
-	ErrorRatePct         float64
+	ErrorRatePct          float64
 }
 
 // RecallMetrics captures recall pipeline health.
 type RecallMetrics struct {
-	SignalsAppended       int64
-	SignalErrors          int64
-	CandidatesGenerated   int64
-	CandidatesEmpty       int64
-	UsersProcessed        int64
+	SignalsAppended        int64
+	SignalErrors           int64
+	CandidatesGenerated    int64
+	CandidatesEmpty        int64
+	UsersProcessed         int64
 	ProjectorDurationMsP50 float64
 	ProjectorDurationMsP95 float64
 }

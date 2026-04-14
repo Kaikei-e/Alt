@@ -63,12 +63,12 @@ type KnowledgeHomeMetrics struct {
 	SovereignMutationDuration metric.Float64Histogram
 
 	// Recall
-	RecallSignalAppendTotal        metric.Int64Counter
-	RecallSignalAppendErrors       metric.Int64Counter
-	RecallCandidateGeneratedTotal  metric.Int64Counter
-	RecallCandidateEmptyTotal      metric.Int64Counter
-	RecallProjectorDurationMs      metric.Float64Histogram
-	RecallProjectorUsersProcessed  metric.Int64Counter
+	RecallSignalAppendTotal       metric.Int64Counter
+	RecallSignalAppendErrors      metric.Int64Counter
+	RecallCandidateGeneratedTotal metric.Int64Counter
+	RecallCandidateEmptyTotal     metric.Int64Counter
+	RecallProjectorDurationMs     metric.Float64Histogram
+	RecallProjectorUsersProcessed metric.Int64Counter
 }
 
 // NewKnowledgeHomeMetrics initializes all Knowledge Home OTel metrics.

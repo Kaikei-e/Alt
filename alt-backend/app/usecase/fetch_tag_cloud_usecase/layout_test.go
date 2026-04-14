@@ -65,7 +65,7 @@ func TestComputeLayout_ConnectedNodesCloserThanUnconnected(t *testing.T) {
 	}
 	ComputeLayout(items, edges)
 
-	connectedDist := distance(items[0], items[1]) // go-rust (connected)
+	connectedDist := distance(items[0], items[1])    // go-rust (connected)
 	unconnectedDist1 := distance(items[0], items[2]) // go-python
 	unconnectedDist2 := distance(items[1], items[2]) // rust-python
 

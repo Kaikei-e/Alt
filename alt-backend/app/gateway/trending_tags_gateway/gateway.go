@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	minRecentCount = 3
-	minSurgeRatio  = 1.5
+	minRecentCount  = 3
+	minSurgeRatio   = 1.5
 	maxTrendingTags = 20
-	baselineWeeks  = 4.0 // 30 days ≈ 4 weeks
+	baselineWeeks   = 4.0 // 30 days ≈ 4 weeks
 )
 
 // TrendingTagsGateway computes trending tags by comparing recent (7d) vs baseline (30d) article counts.
@@ -23,8 +23,8 @@ type TrendingTagsGateway struct {
 	fetchPort knowledge_home_port.FetchTagArticleCountsPort
 	cacheTTL  time.Duration
 
-	mu       sync.RWMutex
-	cache    map[uuid.UUID]cacheEntry
+	mu    sync.RWMutex
+	cache map[uuid.UUID]cacheEntry
 }
 
 type cacheEntry struct {

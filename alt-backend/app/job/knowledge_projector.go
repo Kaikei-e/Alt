@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	projectorName = "knowledge-home-projector"
-	batchSize     = 100
+	projectorName             = "knowledge-home-projector"
+	batchSize                 = 100
 	projectorLoopSafetyMargin = 250 * time.Millisecond
 )
 
@@ -671,7 +671,7 @@ func projectSummarySuperseded(ctx context.Context, event domain.KnowledgeEvent, 
 		TenantID:          event.TenantID,
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
 		ItemType:          domain.ItemArticle,
-		Tags:              []string{},  // must be empty slice, not nil — symmetry with projectTagSetSuperseded
+		Tags:              []string{}, // must be empty slice, not nil — symmetry with projectTagSetSuperseded
 		SupersedeState:    domain.SupersedeSummaryUpdated,
 		SupersededAt:      &now,
 		PreviousRefJSON:   string(prevRef),
@@ -716,7 +716,7 @@ func projectTagSetSuperseded(ctx context.Context, event domain.KnowledgeEvent, p
 		TenantID:          event.TenantID,
 		ItemKey:           fmt.Sprintf("article:%s", articleID),
 		ItemType:          domain.ItemArticle,
-		Tags:              []string{},  // must be empty slice, not nil — nil serializes to "null" JSON which overwrites existing tags
+		Tags:              []string{}, // must be empty slice, not nil — nil serializes to "null" JSON which overwrites existing tags
 		SupersedeState:    domain.SupersedeTagsUpdated,
 		SupersededAt:      &now,
 		PreviousRefJSON:   string(prevRef),

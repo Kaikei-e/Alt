@@ -15,9 +15,9 @@ import (
 )
 
 type RecapGateway struct {
-	httpClient      *http.Client
-	recapWorkerURL  string
-	searchIndexer   search_indexer_port.SearchIndexerPort
+	httpClient     *http.Client
+	recapWorkerURL string
+	searchIndexer  search_indexer_port.SearchIndexerPort
 }
 
 func NewRecapGateway(searchIndexer search_indexer_port.SearchIndexerPort) recap_port.RecapPort {
@@ -30,8 +30,8 @@ func NewRecapGateway(searchIndexer search_indexer_port.SearchIndexerPort) recap_
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		recapWorkerURL:  recapWorkerURL,
-		searchIndexer:   searchIndexer,
+		recapWorkerURL: recapWorkerURL,
+		searchIndexer:  searchIndexer,
 	}
 }
 
@@ -141,20 +141,20 @@ type eveningPulseResponse struct {
 }
 
 type pulseTopicResponse struct {
-	ClusterID              int64                          `json:"cluster_id"`
-	Role                   string                         `json:"role"`
-	Title                  string                         `json:"title"`
-	Rationale              rationaleResponse              `json:"rationale"`
-	ArticleCount           int                            `json:"article_count"`
-	SourceCount            int                            `json:"source_count"`
-	Tier1Count             *int                           `json:"tier1_count,omitempty"`
-	TimeAgo                string                         `json:"time_ago"`
-	TrendMultiplier        *float64                       `json:"trend_multiplier,omitempty"`
-	Genre                  *string                        `json:"genre,omitempty"`
-	ArticleIDs             []string                       `json:"article_ids"`
+	ClusterID              int64                           `json:"cluster_id"`
+	Role                   string                          `json:"role"`
+	Title                  string                          `json:"title"`
+	Rationale              rationaleResponse               `json:"rationale"`
+	ArticleCount           int                             `json:"article_count"`
+	SourceCount            int                             `json:"source_count"`
+	Tier1Count             *int                            `json:"tier1_count,omitempty"`
+	TimeAgo                string                          `json:"time_ago"`
+	TrendMultiplier        *float64                        `json:"trend_multiplier,omitempty"`
+	Genre                  *string                         `json:"genre,omitempty"`
+	ArticleIDs             []string                        `json:"article_ids"`
 	RepresentativeArticles []representativeArticleResponse `json:"representative_articles"`
-	TopEntities            []string                       `json:"top_entities"`
-	SourceNames            []string                       `json:"source_names"`
+	TopEntities            []string                        `json:"top_entities"`
+	SourceNames            []string                        `json:"source_names"`
 }
 
 type representativeArticleResponse struct {
@@ -203,10 +203,10 @@ func (r *eveningPulseResponse) toDomain() (*domain.EveningPulse, error) {
 		}
 
 		topics[i] = domain.PulseTopic{
-			ClusterID:       t.ClusterID,
-			Role:            parseTopicRole(t.Role),
-			Title:           t.Title,
-			Rationale:       domain.PulseRationale{
+			ClusterID: t.ClusterID,
+			Role:      parseTopicRole(t.Role),
+			Title:     t.Title,
+			Rationale: domain.PulseRationale{
 				Text:       t.Rationale.Text,
 				Confidence: parseConfidence(t.Rationale.Confidence),
 			},

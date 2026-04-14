@@ -100,5 +100,5 @@ func TestFetchFeedLinksWithAvailability_QueryError(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func boolPtr(b bool) *bool       { return &b }
-func intPtr(i int) *int           { return &i }
+func boolPtr(b bool) *bool { return &b }
+func intPtr(i int) *int    { return &i }

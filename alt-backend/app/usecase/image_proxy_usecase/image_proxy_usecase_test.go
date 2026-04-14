@@ -31,8 +31,8 @@ func (m *mockImageProcessingPort) ProcessImage(ctx context.Context, data []byte,
 }
 
 type mockImageProxyCachePort struct {
-	cached *domain.ImageProxyCacheEntry
-	getErr error
+	cached  *domain.ImageProxyCacheEntry
+	getErr  error
 	saveErr error
 }
 

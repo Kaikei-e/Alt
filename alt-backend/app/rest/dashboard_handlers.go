@@ -18,7 +18,7 @@ import (
 const (
 	dashboardMetricsLimitDefault  = int64(500)
 	dashboardOverviewLimitDefault = int64(200)
-	dashboardLogsLimitDefault     = int64(500)  // was 2000 before L-002
+	dashboardLogsLimitDefault     = int64(500) // was 2000 before L-002
 	dashboardJobsLimitDefault     = int64(200)
 	dashboardRecapLimitDefault    = int64(200)
 	dashboardLimitMax             = int64(1000)

@@ -15,10 +15,10 @@ import (
 	"alt/gateway/register_favorite_feed_gateway"
 	"alt/gateway/register_feed_gateway"
 	"alt/gateway/scraping_domain_gateway"
-	"alt/port/scraping_domain_port"
 	"alt/gateway/trend_stats_gateway"
 	"alt/gateway/update_feed_status_gateway"
 	"alt/gateway/validate_fetch_rss_gateway"
+	"alt/port/scraping_domain_port"
 	"alt/usecase/cached_feed_list_usecase"
 	"alt/usecase/feed_link_usecase"
 	"alt/usecase/fetch_feed_details_usecase"
@@ -177,7 +177,7 @@ func newFeedModule(infra *InfraModule, sub *SubscriptionModule) *FeedModule {
 		RegisterFavoriteFeedUsecase:         registerFavoriteFeedUC,
 		RemoveFavoriteFeedUsecase:           removeFavoriteFeedUC,
 		ListFeedLinksUsecase:                listFeedLinksUC,
-		ListFeedLinksWithHealthUsecase:       listFeedLinksWithHealthUC,
+		ListFeedLinksWithHealthUsecase:      listFeedLinksWithHealthUC,
 		DeleteFeedLinkUsecase:               nil, // set after subscription module
 		FeedsReadingStatusUsecase:           feedsReadingStatusUC,
 		ArticlesReadingStatusUsecase:        articlesReadingStatusUC,

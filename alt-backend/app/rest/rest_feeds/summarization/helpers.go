@@ -454,4 +454,3 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 func generateArticleID(feedURL string) string {
 	return fmt.Sprintf("article_%s", strings.ReplaceAll(feedURL, "/", "_"))
 }
-

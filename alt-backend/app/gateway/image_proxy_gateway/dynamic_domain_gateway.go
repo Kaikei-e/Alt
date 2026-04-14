@@ -45,9 +45,9 @@ const domainCacheTTL = 5 * time.Minute
 type DynamicDomainGateway struct {
 	lister DomainLister
 
-	mu              sync.RWMutex
-	cachedDomains   map[string]bool
-	cacheExpiry     time.Time
+	mu            sync.RWMutex
+	cachedDomains map[string]bool
+	cacheExpiry   time.Time
 }
 
 // NewDynamicDomainGateway creates a new DynamicDomainGateway.

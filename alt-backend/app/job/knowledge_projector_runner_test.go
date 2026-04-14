@@ -133,4 +133,3 @@ func TestKnowledgeProjectorRunner_FallsBackToPollingOnListenerErrors(t *testing.
 	defer mu.Unlock()
 	assert.GreaterOrEqual(t, processCount, 2, "expected initial run plus poll fallback")
 }
-

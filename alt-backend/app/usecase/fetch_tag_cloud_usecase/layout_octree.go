@@ -15,8 +15,8 @@ type octreeNode struct {
 	comX, comY, comZ float64
 
 	// Body info
-	bodyCount int
-	bodyIndex int // valid only for leaf with exactly 1 body
+	bodyCount           int
+	bodyIndex           int // valid only for leaf with exactly 1 body
 	bodyX, bodyY, bodyZ float64
 
 	// Children (8 octants)
@@ -27,11 +27,11 @@ type octreeNode struct {
 // newOctree creates a root octree node centered at (cx, cy, cz) with the given halfSize.
 func newOctree(cx, cy, cz, halfSize float64) *octreeNode {
 	return &octreeNode{
-		centerX:  cx,
-		centerY:  cy,
-		centerZ:  cz,
-		halfSize: halfSize,
-		isLeaf:   true,
+		centerX:   cx,
+		centerY:   cy,
+		centerZ:   cz,
+		halfSize:  halfSize,
+		isLeaf:    true,
 		bodyIndex: -1,
 	}
 }

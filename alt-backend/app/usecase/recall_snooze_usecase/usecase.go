@@ -38,8 +38,8 @@ func (u *RecallSnoozeUsecase) Execute(ctx context.Context, userID uuid.UUID, ten
 	}
 
 	payload, _ := json.Marshal(map[string]any{
-		"item_key":     itemKey,
-		"snooze_hours": snoozeHours,
+		"item_key":      itemKey,
+		"snooze_hours":  snoozeHours,
 		"snoozed_until": until.Format(time.RFC3339),
 	})
 

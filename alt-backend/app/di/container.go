@@ -46,8 +46,8 @@ import (
 	"alt/usecase/image_fetch_usecase"
 	"alt/usecase/image_proxy_usecase"
 	"alt/usecase/knowledge_audit_usecase"
-	"alt/usecase/knowledge_metrics_usecase"
 	"alt/usecase/knowledge_backfill_usecase"
+	"alt/usecase/knowledge_metrics_usecase"
 	"alt/usecase/knowledge_projection_health_usecase"
 	"alt/usecase/knowledge_reproject_usecase"
 	"alt/usecase/knowledge_slo_usecase"
@@ -182,30 +182,30 @@ type ApplicationComponents struct {
 	InternalArticleGateway *internal_article_gateway.Gateway
 
 	// Knowledge Home
-	GetKnowledgeHomeUsecase           *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
-	TrackHomeSeenUsecase              *track_home_seen_usecase.TrackHomeSeenUsecase
-	TrackHomeActionUsecase            *track_home_action_usecase.TrackHomeActionUsecase
-	AppendKnowledgeEventUsecase       *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
-	CreateSummaryVersionUsecase       *create_summary_version_usecase.CreateSummaryVersionUsecase
-	CreateTagSetVersionUsecase        *create_tag_set_version_usecase.CreateTagSetVersionUsecase
-	FeatureFlagGateway                *feature_flag_gateway.Gateway
-	KnowledgeBackfillArticlesGateway  *knowledge_backfill_gateway.Gateway
-	KnowledgeBackfillUsecase          *knowledge_backfill_usecase.Usecase
-	KnowledgeProjectionHealthUsecase  *knowledge_projection_health_usecase.Usecase
-	ReprojectUsecase                  *knowledge_reproject_usecase.Usecase
-	SLOUsecase                        *knowledge_slo_usecase.Usecase
-	AuditUsecase                      *knowledge_audit_usecase.Usecase
-	MetricsUsecase                    *knowledge_metrics_usecase.Usecase
+	GetKnowledgeHomeUsecase          *get_knowledge_home_usecase.GetKnowledgeHomeUsecase
+	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
+	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
+	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
+	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
+	CreateTagSetVersionUsecase       *create_tag_set_version_usecase.CreateTagSetVersionUsecase
+	FeatureFlagGateway               *feature_flag_gateway.Gateway
+	KnowledgeBackfillArticlesGateway *knowledge_backfill_gateway.Gateway
+	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
+	KnowledgeProjectionHealthUsecase *knowledge_projection_health_usecase.Usecase
+	ReprojectUsecase                 *knowledge_reproject_usecase.Usecase
+	SLOUsecase                       *knowledge_slo_usecase.Usecase
+	AuditUsecase                     *knowledge_audit_usecase.Usecase
+	MetricsUsecase                   *knowledge_metrics_usecase.Usecase
 
 	// Phase 4: RecallRail, Lens, Stream, Supersede
-	RecallRailUsecase    *recall_rail_usecase.RecallRailUsecase
-	RecallSnoozeUsecase  *recall_snooze_usecase.RecallSnoozeUsecase
-	RecallDismissUsecase *recall_dismiss_usecase.RecallDismissUsecase
-	CreateLensUsecase    *create_lens_usecase.CreateLensUsecase
-	UpdateLensUsecase    *update_lens_usecase.UpdateLensUsecase
-	ListLensesUsecase    *list_lenses_usecase.ListLensesUsecase
-	SelectLensUsecase    *select_lens_usecase.SelectLensUsecase
-	ArchiveLensUsecase   *archive_lens_usecase.ArchiveLensUsecase
+	RecallRailUsecase     *recall_rail_usecase.RecallRailUsecase
+	RecallSnoozeUsecase   *recall_snooze_usecase.RecallSnoozeUsecase
+	RecallDismissUsecase  *recall_dismiss_usecase.RecallDismissUsecase
+	CreateLensUsecase     *create_lens_usecase.CreateLensUsecase
+	UpdateLensUsecase     *update_lens_usecase.UpdateLensUsecase
+	ListLensesUsecase     *list_lenses_usecase.ListLensesUsecase
+	SelectLensUsecase     *select_lens_usecase.SelectLensUsecase
+	ArchiveLensUsecase    *archive_lens_usecase.ArchiveLensUsecase
 	SummaryVersionGateway *summary_version_gateway.Gateway
 	TagSetVersionGateway  *tag_set_version_gateway.Gateway
 
@@ -358,20 +358,20 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		PreProcessorConnectClient: preprocessor_connect.NewConnectPreProcessorClient(infra.Config.PreProcessor.ConnectURL, infra.Config.InternalAPI.ServiceSecret),
 
 		// Knowledge Home
-		GetKnowledgeHomeUsecase:           knowledge.GetKnowledgeHomeUsecase,
-		TrackHomeSeenUsecase:              knowledge.TrackHomeSeenUsecase,
-		TrackHomeActionUsecase:            knowledge.TrackHomeActionUsecase,
-		AppendKnowledgeEventUsecase:       knowledge.AppendKnowledgeEventUsecase,
-		CreateSummaryVersionUsecase:       knowledge.CreateSummaryVersionUsecase,
-		CreateTagSetVersionUsecase:        knowledge.CreateTagSetVersionUsecase,
-		FeatureFlagGateway:                knowledge.FeatureFlagGateway,
-		KnowledgeBackfillArticlesGateway:  knowledge.KnowledgeBackfillArticlesGateway,
-		KnowledgeBackfillUsecase:          knowledge.KnowledgeBackfillUsecase,
-		KnowledgeProjectionHealthUsecase:  knowledge.KnowledgeProjectionHealthUsecase,
-		ReprojectUsecase:                  knowledge.ReprojectUsecase,
-		SLOUsecase:                        knowledge.SLOUsecase,
-		AuditUsecase:                      knowledge.AuditUsecase,
-		MetricsUsecase:                    knowledge.MetricsUsecase,
+		GetKnowledgeHomeUsecase:          knowledge.GetKnowledgeHomeUsecase,
+		TrackHomeSeenUsecase:             knowledge.TrackHomeSeenUsecase,
+		TrackHomeActionUsecase:           knowledge.TrackHomeActionUsecase,
+		AppendKnowledgeEventUsecase:      knowledge.AppendKnowledgeEventUsecase,
+		CreateSummaryVersionUsecase:      knowledge.CreateSummaryVersionUsecase,
+		CreateTagSetVersionUsecase:       knowledge.CreateTagSetVersionUsecase,
+		FeatureFlagGateway:               knowledge.FeatureFlagGateway,
+		KnowledgeBackfillArticlesGateway: knowledge.KnowledgeBackfillArticlesGateway,
+		KnowledgeBackfillUsecase:         knowledge.KnowledgeBackfillUsecase,
+		KnowledgeProjectionHealthUsecase: knowledge.KnowledgeProjectionHealthUsecase,
+		ReprojectUsecase:                 knowledge.ReprojectUsecase,
+		SLOUsecase:                       knowledge.SLOUsecase,
+		AuditUsecase:                     knowledge.AuditUsecase,
+		MetricsUsecase:                   knowledge.MetricsUsecase,
 
 		// RecallRail, Lens
 		RecallRailUsecase:     knowledge.RecallRailUsecase,

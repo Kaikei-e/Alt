@@ -130,7 +130,7 @@ func TestRunProjectionAudit_WithVerification(t *testing.T) {
 		comparePort := &mockCompareProjectionsPort{
 			diff: &domain.ReprojectDiffSummary{
 				FromItemCount: 100, ToItemCount: 50, // 50% drift
-				FromAvgScore: 0.5, ToAvgScore: 0.2,  // 60% score drift
+				FromAvgScore: 0.5, ToAvgScore: 0.2, // 60% score drift
 			},
 		}
 		uc := NewUsecaseWithVerification(createPort, nil, comparePort)

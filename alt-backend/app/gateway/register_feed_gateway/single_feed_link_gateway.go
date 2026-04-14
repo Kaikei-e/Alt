@@ -116,7 +116,6 @@ func NewDefaultRSSFeedFetcher() *DefaultRSSFeedFetcher {
 	return f
 }
 
-
 func (f *DefaultRSSFeedFetcher) FetchRSSFeed(ctx context.Context, link string) (*gofeed.Feed, error) {
 	if f.proxyStrategy == nil {
 		logger.SafeWarnContext(ctx, "Proxy strategy not initialized, using direct connection")

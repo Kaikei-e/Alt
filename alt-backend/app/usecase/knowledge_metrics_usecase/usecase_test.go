@@ -102,11 +102,11 @@ func TestGetSystemMetrics(t *testing.T) {
 	t.Run("handles zero denominators gracefully", func(t *testing.T) {
 		metricsPort := &mockGetSystemMetricsPort{
 			result: &domain.SystemMetrics{
-				Handler:  domain.HandlerMetrics{PagesServed: 0, PagesDegraded: 0},
-				Tracking: domain.TrackingMetrics{ItemsExposed: 0},
-				Stream:   domain.StreamMetrics{ConnectionsTotal: 0},
+				Handler:     domain.HandlerMetrics{PagesServed: 0, PagesDegraded: 0},
+				Tracking:    domain.TrackingMetrics{ItemsExposed: 0},
+				Stream:      domain.StreamMetrics{ConnectionsTotal: 0},
 				Correctness: domain.CorrectnessMetrics{RequestsTotal: 0},
-				Sovereign: domain.SovereignMetrics{MutationsApplied: 0, MutationsErrors: 0},
+				Sovereign:   domain.SovereignMetrics{MutationsApplied: 0, MutationsErrors: 0},
 			},
 		}
 		healthPort := &mockCheckServiceHealthPort{result: nil}

@@ -26,8 +26,8 @@ type MetricsSnapshot struct {
 	itemsDismissed atomic.Int64
 
 	// SLI-A: availability
-	requestsTotal     atomic.Int64
-	degradedTotal     atomic.Int64
+	requestsTotal atomic.Int64
+	degradedTotal atomic.Int64
 
 	// SLI-C: durability
 	trackingReceived  atomic.Int64
@@ -41,22 +41,22 @@ type MetricsSnapshot struct {
 	streamDeliveries  atomic.Int64
 
 	// SLI-E: correctness
-	emptyResponses     atomic.Int64
-	malformedWhy       atomic.Int64
-	orphanItems        atomic.Int64
-	supersedeMismatch  atomic.Int64
+	emptyResponses    atomic.Int64
+	malformedWhy      atomic.Int64
+	orphanItems       atomic.Int64
+	supersedeMismatch atomic.Int64
 
 	// Sovereign
-	sovereignApplied  atomic.Int64
-	sovereignErrors   atomic.Int64
+	sovereignApplied   atomic.Int64
+	sovereignErrors    atomic.Int64
 	sovereignDurations *durationTracker
 
 	// Recall
-	recallSignals          atomic.Int64
-	recallSignalErrors     atomic.Int64
-	recallCandidates       atomic.Int64
-	recallCandidatesEmpty  atomic.Int64
-	recallUsersProcessed   atomic.Int64
+	recallSignals            atomic.Int64
+	recallSignalErrors       atomic.Int64
+	recallCandidates         atomic.Int64
+	recallCandidatesEmpty    atomic.Int64
+	recallUsersProcessed     atomic.Int64
 	recallProjectorDurations *durationTracker
 }
 
@@ -71,17 +71,27 @@ func NewMetricsSnapshot() *MetricsSnapshot {
 
 // --- Projector ---
 
-func (s *MetricsSnapshot) RecordProjectorEvent()          { s.projectorEventsProcessed.Add(1) }
-func (s *MetricsSnapshot) RecordProjectorError()           { s.projectorErrors.Add(1) }
-func (s *MetricsSnapshot) RecordProjectorLag(v float64)    { s.projectorLagSeconds.Store(math.Float64bits(v)) }
+func (s *MetricsSnapshot) RecordProjectorEvent() { s.projectorEventsProcessed.Add(1) }
+func (s *MetricsSnapshot) RecordProjectorError() { s.projectorErrors.Add(1) }
+func (s *MetricsSnapshot) RecordProjectorLag(v float64) {
+	s.projectorLagSeconds.Store(math.Float64bits(v))
+}
 func (s *MetricsSnapshot) RecordProjectorBatch(ms float64) { s.projectorBatchDurations.Record(ms) }
 
 func (s *MetricsSnapshot) ProjectorEventsProcessed() int64 { return s.projectorEventsProcessed.Load() }
 func (s *MetricsSnapshot) ProjectorErrors() int64          { return s.projectorErrors.Load() }
-func (s *MetricsSnapshot) ProjectorLagSeconds() float64    { return math.Float64frombits(s.projectorLagSeconds.Load()) }
-func (s *MetricsSnapshot) ProjectorBatchP50() float64      { return s.projectorBatchDurations.Percentile(50) }
-func (s *MetricsSnapshot) ProjectorBatchP95() float64      { return s.projectorBatchDurations.Percentile(95) }
-func (s *MetricsSnapshot) ProjectorBatchP99() float64      { return s.projectorBatchDurations.Percentile(99) }
+func (s *MetricsSnapshot) ProjectorLagSeconds() float64 {
+	return math.Float64frombits(s.projectorLagSeconds.Load())
+}
+func (s *MetricsSnapshot) ProjectorBatchP50() float64 {
+	return s.projectorBatchDurations.Percentile(50)
+}
+func (s *MetricsSnapshot) ProjectorBatchP95() float64 {
+	return s.projectorBatchDurations.Percentile(95)
+}
+func (s *MetricsSnapshot) ProjectorBatchP99() float64 {
+	return s.projectorBatchDurations.Percentile(99)
+}
 
 // --- Handler ---
 
@@ -94,20 +104,20 @@ func (s *MetricsSnapshot) PagesDegraded() int64 { return s.pagesDegraded.Load() 
 // --- Tracking ---
 
 func (s *MetricsSnapshot) RecordItemExposed()   { s.itemsExposed.Add(1) }
-func (s *MetricsSnapshot) RecordItemOpened()     { s.itemsOpened.Add(1) }
-func (s *MetricsSnapshot) RecordItemDismissed()  { s.itemsDismissed.Add(1) }
+func (s *MetricsSnapshot) RecordItemOpened()    { s.itemsOpened.Add(1) }
+func (s *MetricsSnapshot) RecordItemDismissed() { s.itemsDismissed.Add(1) }
 
 func (s *MetricsSnapshot) ItemsExposed() int64   { return s.itemsExposed.Load() }
-func (s *MetricsSnapshot) ItemsOpened() int64     { return s.itemsOpened.Load() }
-func (s *MetricsSnapshot) ItemsDismissed() int64  { return s.itemsDismissed.Load() }
+func (s *MetricsSnapshot) ItemsOpened() int64    { return s.itemsOpened.Load() }
+func (s *MetricsSnapshot) ItemsDismissed() int64 { return s.itemsDismissed.Load() }
 
 // --- SLI-A ---
 
-func (s *MetricsSnapshot) RecordRequest()         { s.requestsTotal.Add(1) }
+func (s *MetricsSnapshot) RecordRequest()          { s.requestsTotal.Add(1) }
 func (s *MetricsSnapshot) RecordDegradedResponse() { s.degradedTotal.Add(1) }
 
-func (s *MetricsSnapshot) RequestsTotal() int64  { return s.requestsTotal.Load() }
-func (s *MetricsSnapshot) DegradedTotal() int64   { return s.degradedTotal.Load() }
+func (s *MetricsSnapshot) RequestsTotal() int64 { return s.requestsTotal.Load() }
+func (s *MetricsSnapshot) DegradedTotal() int64 { return s.degradedTotal.Load() }
 
 // --- SLI-C ---
 
@@ -122,9 +132,9 @@ func (s *MetricsSnapshot) TrackingFailed() int64    { return s.trackingFailed.Lo
 // --- SLI-D ---
 
 func (s *MetricsSnapshot) RecordStreamConnection() { s.streamConnections.Add(1) }
-func (s *MetricsSnapshot) RecordStreamDisconnect()  { s.streamDisconnects.Add(1) }
-func (s *MetricsSnapshot) RecordStreamReconnect()   { s.streamReconnects.Add(1) }
-func (s *MetricsSnapshot) RecordStreamDelivery()    { s.streamDeliveries.Add(1) }
+func (s *MetricsSnapshot) RecordStreamDisconnect() { s.streamDisconnects.Add(1) }
+func (s *MetricsSnapshot) RecordStreamReconnect()  { s.streamReconnects.Add(1) }
+func (s *MetricsSnapshot) RecordStreamDelivery()   { s.streamDeliveries.Add(1) }
 
 func (s *MetricsSnapshot) StreamConnections() int64 { return s.streamConnections.Load() }
 func (s *MetricsSnapshot) StreamDisconnects() int64 { return s.streamDisconnects.Load() }
@@ -134,9 +144,9 @@ func (s *MetricsSnapshot) StreamDeliveries() int64  { return s.streamDeliveries.
 // --- SLI-E ---
 
 func (s *MetricsSnapshot) RecordEmptyResponse()     { s.emptyResponses.Add(1) }
-func (s *MetricsSnapshot) RecordMalformedWhy()       { s.malformedWhy.Add(1) }
-func (s *MetricsSnapshot) RecordOrphanItem()         { s.orphanItems.Add(1) }
-func (s *MetricsSnapshot) RecordSupersedeMismatch()  { s.supersedeMismatch.Add(1) }
+func (s *MetricsSnapshot) RecordMalformedWhy()      { s.malformedWhy.Add(1) }
+func (s *MetricsSnapshot) RecordOrphanItem()        { s.orphanItems.Add(1) }
+func (s *MetricsSnapshot) RecordSupersedeMismatch() { s.supersedeMismatch.Add(1) }
 
 func (s *MetricsSnapshot) EmptyResponses() int64    { return s.emptyResponses.Load() }
 func (s *MetricsSnapshot) MalformedWhy() int64      { return s.malformedWhy.Load() }
@@ -145,31 +155,37 @@ func (s *MetricsSnapshot) SupersedeMismatch() int64 { return s.supersedeMismatch
 
 // --- Sovereign ---
 
-func (s *MetricsSnapshot) RecordSovereignApplied()         { s.sovereignApplied.Add(1) }
-func (s *MetricsSnapshot) RecordSovereignError()           { s.sovereignErrors.Add(1) }
+func (s *MetricsSnapshot) RecordSovereignApplied()            { s.sovereignApplied.Add(1) }
+func (s *MetricsSnapshot) RecordSovereignError()              { s.sovereignErrors.Add(1) }
 func (s *MetricsSnapshot) RecordSovereignDuration(ms float64) { s.sovereignDurations.Record(ms) }
 
-func (s *MetricsSnapshot) SovereignApplied() int64    { return s.sovereignApplied.Load() }
-func (s *MetricsSnapshot) SovereignErrors() int64     { return s.sovereignErrors.Load() }
+func (s *MetricsSnapshot) SovereignApplied() int64       { return s.sovereignApplied.Load() }
+func (s *MetricsSnapshot) SovereignErrors() int64        { return s.sovereignErrors.Load() }
 func (s *MetricsSnapshot) SovereignDurationP50() float64 { return s.sovereignDurations.Percentile(50) }
 func (s *MetricsSnapshot) SovereignDurationP95() float64 { return s.sovereignDurations.Percentile(95) }
 
 // --- Recall ---
 
-func (s *MetricsSnapshot) RecordRecallSignal()          { s.recallSignals.Add(1) }
-func (s *MetricsSnapshot) RecordRecallSignalError()     { s.recallSignalErrors.Add(1) }
-func (s *MetricsSnapshot) RecordRecallCandidate()       { s.recallCandidates.Add(1) }
-func (s *MetricsSnapshot) RecordRecallCandidateEmpty()  { s.recallCandidatesEmpty.Add(1) }
-func (s *MetricsSnapshot) RecordRecallUserProcessed()   { s.recallUsersProcessed.Add(1) }
-func (s *MetricsSnapshot) RecordRecallProjectorDuration(ms float64) { s.recallProjectorDurations.Record(ms) }
+func (s *MetricsSnapshot) RecordRecallSignal()         { s.recallSignals.Add(1) }
+func (s *MetricsSnapshot) RecordRecallSignalError()    { s.recallSignalErrors.Add(1) }
+func (s *MetricsSnapshot) RecordRecallCandidate()      { s.recallCandidates.Add(1) }
+func (s *MetricsSnapshot) RecordRecallCandidateEmpty() { s.recallCandidatesEmpty.Add(1) }
+func (s *MetricsSnapshot) RecordRecallUserProcessed()  { s.recallUsersProcessed.Add(1) }
+func (s *MetricsSnapshot) RecordRecallProjectorDuration(ms float64) {
+	s.recallProjectorDurations.Record(ms)
+}
 
-func (s *MetricsSnapshot) RecallSignals() int64          { return s.recallSignals.Load() }
-func (s *MetricsSnapshot) RecallSignalErrors() int64     { return s.recallSignalErrors.Load() }
-func (s *MetricsSnapshot) RecallCandidates() int64       { return s.recallCandidates.Load() }
-func (s *MetricsSnapshot) RecallCandidatesEmpty() int64  { return s.recallCandidatesEmpty.Load() }
-func (s *MetricsSnapshot) RecallUsersProcessed() int64   { return s.recallUsersProcessed.Load() }
-func (s *MetricsSnapshot) RecallProjectorDurationP50() float64 { return s.recallProjectorDurations.Percentile(50) }
-func (s *MetricsSnapshot) RecallProjectorDurationP95() float64 { return s.recallProjectorDurations.Percentile(95) }
+func (s *MetricsSnapshot) RecallSignals() int64         { return s.recallSignals.Load() }
+func (s *MetricsSnapshot) RecallSignalErrors() int64    { return s.recallSignalErrors.Load() }
+func (s *MetricsSnapshot) RecallCandidates() int64      { return s.recallCandidates.Load() }
+func (s *MetricsSnapshot) RecallCandidatesEmpty() int64 { return s.recallCandidatesEmpty.Load() }
+func (s *MetricsSnapshot) RecallUsersProcessed() int64  { return s.recallUsersProcessed.Load() }
+func (s *MetricsSnapshot) RecallProjectorDurationP50() float64 {
+	return s.recallProjectorDurations.Percentile(50)
+}
+func (s *MetricsSnapshot) RecallProjectorDurationP95() float64 {
+	return s.recallProjectorDurations.Percentile(95)
+}
 
 // durationTracker is a ring-buffer based percentile tracker for histogram values.
 type durationTracker struct {

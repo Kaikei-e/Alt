@@ -22,16 +22,16 @@ func TestMain(m *testing.M) {
 // --- stubs ---
 
 type stubDB struct {
-	fetchTagsResult  []*domain.FeedTag
-	fetchTagsErr     error
-	fetchArticle     *domain.ArticleContent
-	fetchArticleErr  error
-	upsertCalled     bool
-	upsertArticleID  string
-	upsertFeedID     string
-	upsertTags       []alt_db.TagUpsertItem
-	upsertResult     int32
-	upsertErr        error
+	fetchTagsResult []*domain.FeedTag
+	fetchTagsErr    error
+	fetchArticle    *domain.ArticleContent
+	fetchArticleErr error
+	upsertCalled    bool
+	upsertArticleID string
+	upsertFeedID    string
+	upsertTags      []alt_db.TagUpsertItem
+	upsertResult    int32
+	upsertErr       error
 }
 
 func (s *stubDB) FetchArticleTags(_ context.Context, _ string) ([]*domain.FeedTag, error) {
