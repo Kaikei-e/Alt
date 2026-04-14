@@ -22,14 +22,15 @@ func issueReproTestJWT(t *testing.T, userID, email string) string {
 	t.Helper()
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"sub":   userID,
-		"email": email,
-		"role":  "user",
-		"sid":   "test-session",
-		"iss":   "auth-hub",
-		"aud":   []string{"alt-backend"},
-		"iat":   now.Unix(),
-		"exp":   now.Add(5 * time.Minute).Unix(),
+		"sub":       userID,
+		"email":     email,
+		"role":      "user",
+		"sid":       "test-session",
+		"tenant_id": userID,
+		"iss":       "auth-hub",
+		"aud":       []string{"alt-backend"},
+		"iat":       now.Unix(),
+		"exp":       now.Add(5 * time.Minute).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(reproTestSecret))

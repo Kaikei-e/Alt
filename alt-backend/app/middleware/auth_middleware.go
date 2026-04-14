@@ -72,7 +72,21 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 				}
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid subject claim")
 			}
-			tenantID := userID // Single-tenant: use userID as tenantID
+			// The tenant_id claim is authoritative for tenant scoping. In
+			// single-tenant deployments auth-hub sets tenant_id == subject,
+			// but we do not re-derive it here so that multi-tenant migration
+			// is a single upstream change.
+			tenantID, err := parseTenantUUID(jwtUserCtx.TenantID)
+			if err != nil {
+				if m.logger != nil {
+					m.logger.Warn("JWT tenant_id claim is invalid",
+						"path", c.Request().URL.Path,
+						"remote_addr", c.RealIP(),
+						"error", err,
+					)
+				}
+				return echo.NewHTTPError(http.StatusUnauthorized, "invalid tenant_id claim")
+			}
 			domainCtx := &domain.UserContext{
 				UserID:    userID,
 				Email:     jwtUserCtx.Email,
@@ -117,7 +131,17 @@ func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 						}
 						return next(c)
 					}
-					tenantID := userID // Single-tenant
+					tenantID, tenantErr := parseTenantUUID(jwtUserCtx.TenantID)
+					if tenantErr != nil {
+						if m.logger != nil {
+							m.logger.Warn("JWT tenant_id claim is invalid, continuing as anonymous",
+								"path", c.Request().URL.Path,
+								"remote_addr", c.RealIP(),
+								"error", tenantErr,
+							)
+						}
+						return next(c)
+					}
 					domainCtx := &domain.UserContext{
 						UserID:    userID,
 						Email:     jwtUserCtx.Email,
@@ -207,6 +231,23 @@ func parseSubjectUUID(sub string) (uuid.UUID, error) {
 	}
 	if id == uuid.Nil {
 		return uuid.Nil, errors.New("subject is the nil UUID")
+	}
+	return id, nil
+}
+
+// parseTenantUUID parses a JWT tenant_id claim into a UUID and rejects the
+// nil UUID. The claim is required to be non-empty; absence is a separate
+// error so callers can log "missing" distinctly from "malformed".
+func parseTenantUUID(tenant string) (uuid.UUID, error) {
+	if tenant == "" {
+		return uuid.Nil, errors.New("tenant_id claim is missing")
+	}
+	id, err := uuid.Parse(tenant)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("tenant_id is not a valid UUID: %w", err)
+	}
+	if id == uuid.Nil {
+		return uuid.Nil, errors.New("tenant_id is the nil UUID")
 	}
 	return id, nil
 }

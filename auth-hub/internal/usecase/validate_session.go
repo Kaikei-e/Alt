@@ -27,6 +27,7 @@ func (uc *ValidateSession) Execute(ctx context.Context, cookieValue string) (*do
 	if cached, found := uc.cache.Get(cookieValue); found {
 		return &domain.Identity{
 			UserID:    cached.UserID,
+			TenantID:  cached.TenantID,
 			Email:     cached.Email,
 			SessionID: cookieValue,
 		}, nil
@@ -47,5 +48,6 @@ func (uc *ValidateSession) Execute(ctx context.Context, cookieValue string) (*do
 	})
 
 	identity.SessionID = cookieValue
+	identity.TenantID = identity.UserID // Single-tenant fallback
 	return identity, nil
 }

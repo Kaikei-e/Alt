@@ -45,6 +45,7 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 	if cached, found := uc.cache.Get(cookieValue); found {
 		identity = &domain.Identity{
 			UserID:    cached.UserID,
+			TenantID:  cached.TenantID,
 			Email:     cached.Email,
 			Role:      cached.Role,
 			SessionID: cookieValue,
@@ -62,7 +63,8 @@ func (uc *GetSession) Execute(ctx context.Context, cookieValue string) (*Session
 
 		identity = kratosIdentity
 		identity.SessionID = cookieValue
-		tenantID = identity.UserID // Single-tenant
+		tenantID = identity.UserID // Single-tenant: tenant == user
+		identity.TenantID = tenantID
 		role = identity.Role
 		createdAt = identity.CreatedAt
 

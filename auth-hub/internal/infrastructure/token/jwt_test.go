@@ -118,6 +118,64 @@ func TestJWTIssuer_ExpiredToken(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// H-003a: tenant_id claim must be present in the issued JWT so that
+// alt-backend can use it instead of falling back to Subject.
+func TestJWTIssuer_IncludesTenantIDClaim(t *testing.T) {
+	issuer := NewJWTIssuer(JWTConfig{
+		Secret:   "this-is-a-valid-backend-token-secret-32-chars-long",
+		Issuer:   "auth-hub",
+		Audience: "alt-backend",
+		TTL:      5 * time.Minute,
+	})
+
+	identity := &domain.Identity{
+		UserID:   "user-123",
+		TenantID: "tenant-999",
+		Email:    "test@example.com",
+	}
+
+	tokenStr, err := issuer.IssueBackendToken(identity, "session-abc")
+	assert.NoError(t, err)
+
+	parsed, err := jwt.ParseWithClaims(tokenStr, &backendClaims{}, func(token *jwt.Token) (any, error) {
+		return []byte("this-is-a-valid-backend-token-secret-32-chars-long"), nil
+	})
+	assert.NoError(t, err)
+
+	claims := parsed.Claims.(*backendClaims)
+	assert.Equal(t, "tenant-999", claims.TenantID,
+		"JWT must carry the tenant_id claim taken from identity.TenantID")
+}
+
+// H-003a: when the caller omits TenantID, the issuer must default to UserID
+// to preserve the existing single-tenant semantics (UserID == TenantID).
+func TestJWTIssuer_TenantIDDefaultsToUserID(t *testing.T) {
+	issuer := NewJWTIssuer(JWTConfig{
+		Secret:   "this-is-a-valid-backend-token-secret-32-chars-long",
+		Issuer:   "auth-hub",
+		Audience: "alt-backend",
+		TTL:      5 * time.Minute,
+	})
+
+	identity := &domain.Identity{
+		UserID: "user-123",
+		Email:  "test@example.com",
+		// TenantID intentionally left empty
+	}
+
+	tokenStr, err := issuer.IssueBackendToken(identity, "session-abc")
+	assert.NoError(t, err)
+
+	parsed, err := jwt.ParseWithClaims(tokenStr, &backendClaims{}, func(token *jwt.Token) (any, error) {
+		return []byte("this-is-a-valid-backend-token-secret-32-chars-long"), nil
+	})
+	assert.NoError(t, err)
+
+	claims := parsed.Claims.(*backendClaims)
+	assert.Equal(t, "user-123", claims.TenantID,
+		"empty Identity.TenantID must default to UserID (single-tenant fallback)")
+}
+
 func TestJWTIssuer_InvalidSignature(t *testing.T) {
 	issuer := NewJWTIssuer(JWTConfig{
 		Secret:   "this-is-a-valid-backend-token-secret-32-chars-long",

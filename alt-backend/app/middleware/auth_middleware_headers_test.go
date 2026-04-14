@@ -17,14 +17,23 @@ import (
 
 const testBackendTokenSecret = "test-backend-token-secret-minimum-32!"
 
-// issueTestJWT creates a valid JWT for testing.
+// issueTestJWT creates a valid JWT for testing. tenant_id defaults to the
+// subject (userID) so that test cases written before tenant_id support
+// continue to work unchanged (single-tenant semantics).
 func issueTestJWT(t *testing.T, userID, email, role, sid string) string {
+	t.Helper()
+	return issueTestJWTWithTenant(t, userID, email, role, sid, userID)
+}
+
+// issueTestJWTWithTenant creates a JWT with an explicit tenant_id claim.
+func issueTestJWTWithTenant(t *testing.T, userID, email, role, sid, tenantID string) string {
 	t.Helper()
 	now := time.Now()
 	claims := BackendClaims{
-		Email: email,
-		Role:  role,
-		Sid:   sid,
+		Email:    email,
+		Role:     role,
+		Sid:      sid,
+		TenantID: tenantID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    "auth-hub",
 			Audience:  jwt.ClaimStrings{"alt-backend"},
@@ -270,6 +279,126 @@ func TestOptionalAuth_NoHeadersIsAnonymous(t *testing.T) {
 
 	err := h(c)
 	require.NoError(t, err)
+	require.True(t, called)
+}
+
+// H-003: When the JWT carries an explicit tenant_id claim different from
+// the subject, UserContext.TenantID must equal that claim (not the subject).
+// This is the multi-tenant-ready behaviour.
+func TestRequireAuth_UsesTenantIDClaim(t *testing.T) {
+	e := echo.New()
+	userID := uuid.New().String()
+	tenantID := uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	jwtToken := issueTestJWTWithTenant(t, userID, "u@example.com", "user", "s-1", tenantID)
+	req.Header.Set(backendTokenHeader, jwtToken)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	called := false
+	h := mw.RequireAuth()(func(c echo.Context) error {
+		called = true
+		user, err := domain.GetUserFromContext(c.Request().Context())
+		require.NoError(t, err)
+		require.Equal(t, userID, user.UserID.String())
+		require.Equal(t, tenantID, user.TenantID.String(),
+			"tenant_id claim must take precedence over subject for TenantID")
+		return c.NoContent(http.StatusOK)
+	})
+	require.NoError(t, h(c))
+	require.True(t, called)
+}
+
+// H-003: Missing tenant_id claim must be rejected with 401 under RequireAuth.
+func TestRequireAuth_MissingTenantIDRejectedWith401(t *testing.T) {
+	e := echo.New()
+	userID := uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	// Explicitly pass empty tenant_id
+	jwtToken := issueTestJWTWithTenant(t, userID, "u@example.com", "user", "s-1", "")
+	req.Header.Set(backendTokenHeader, jwtToken)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	h := mw.RequireAuth()(func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+	err := h(c)
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
+}
+
+// H-003: Non-UUID tenant_id must be rejected with 401.
+func TestRequireAuth_NonUUIDTenantIDRejectedWith401(t *testing.T) {
+	e := echo.New()
+	userID := uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	jwtToken := issueTestJWTWithTenant(t, userID, "u@example.com", "user", "s-1", "not-a-uuid")
+	req.Header.Set(backendTokenHeader, jwtToken)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	h := mw.RequireAuth()(func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+	err := h(c)
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
+}
+
+// H-003: Nil UUID tenant_id must be rejected with 401.
+func TestRequireAuth_NilTenantIDRejectedWith401(t *testing.T) {
+	e := echo.New()
+	userID := uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	jwtToken := issueTestJWTWithTenant(t, userID, "u@example.com", "user", "s-1", uuid.Nil.String())
+	req.Header.Set(backendTokenHeader, jwtToken)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	h := mw.RequireAuth()(func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+	err := h(c)
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
+}
+
+// H-003: OptionalAuth must treat invalid tenant_id as anonymous rather than
+// failing the request, to preserve the V-005 philosophy.
+func TestOptionalAuth_InvalidTenantIDTreatedAsAnonymous(t *testing.T) {
+	e := echo.New()
+	userID := uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, "/v1/articles", nil)
+	jwtToken := issueTestJWTWithTenant(t, userID, "u@example.com", "user", "s-1", "not-a-uuid")
+	req.Header.Set(backendTokenHeader, jwtToken)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	called := false
+	h := mw.OptionalAuth()(func(c echo.Context) error {
+		called = true
+		_, err := domain.GetUserFromContext(c.Request().Context())
+		require.Error(t, err, "no user context should be attached when tenant_id is invalid")
+		return c.NoContent(http.StatusOK)
+	})
+	require.NoError(t, h(c))
 	require.True(t, called)
 }
 

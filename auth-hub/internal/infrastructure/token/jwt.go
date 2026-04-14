@@ -17,10 +17,14 @@ type JWTConfig struct {
 }
 
 // backendClaims represents the JWT claims for backend authentication.
+// TenantID carries the tenant_id claim consumed by alt-backend; in single-tenant
+// deployments it equals Subject (UserID), but keeping it as a dedicated claim
+// decouples tenant from user identity and prepares for multi-tenant upgrades.
 type backendClaims struct {
-	Email string `json:"email"`
-	Role  string `json:"role"`
-	Sid   string `json:"sid"`
+	Email    string `json:"email"`
+	Role     string `json:"role"`
+	Sid      string `json:"sid"`
+	TenantID string `json:"tenant_id"`
 	jwt.RegisteredClaims
 }
 
@@ -42,11 +46,21 @@ func (j *JWTIssuer) IssueBackendToken(identity *domain.Identity, sessionID strin
 		role = "user"
 	}
 
+	// Single-tenant fallback: if the identity does not carry an explicit
+	// tenant, derive it from UserID so downstream always sees a non-empty
+	// tenant_id claim. Once multi-tenant support is wired upstream, callers
+	// set Identity.TenantID explicitly and this branch becomes a no-op.
+	tenantID := identity.TenantID
+	if tenantID == "" {
+		tenantID = identity.UserID
+	}
+
 	now := time.Now()
 	claims := backendClaims{
-		Email: identity.Email,
-		Role:  role,
-		Sid:   sessionID,
+		Email:    identity.Email,
+		Role:     role,
+		Sid:      sessionID,
+		TenantID: tenantID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    j.cfg.Issuer,
 			Audience:  jwt.ClaimStrings{j.cfg.Audience},
