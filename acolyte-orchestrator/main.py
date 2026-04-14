@@ -45,6 +45,7 @@ _pool = AsyncConnectionPool(_dsn, min_size=settings.db_pool_min_size, max_size=s
 _report_repo = PostgresReportGateway(_pool)
 _job_queue = MemoryJobGateway()
 
+
 def _build_mtls_context() -> ssl.SSLContext | None:
     """Build an SSLContext that presents the acolyte-orchestrator leaf cert.
 
