@@ -8,6 +8,32 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ClusterDiagnostics(BaseModel):
+    """Persisted run diagnostics built from an EvidenceResponse.
+
+    Replaces the raw ``dict[str, Any]`` previously assembled in
+    ``services.run_manager.RunManager._serialize_diagnostics``. The
+    ``model_dump(mode="json", exclude_none=True)`` output is contracted
+    to be byte-equal to the legacy dict so Pact responses and the
+    ``run_diagnostics`` DB column keep their current shape.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    dedup_pairs: int = Field(ge=0)
+    umap_used: bool
+    partial: bool
+    total_sentences: int = Field(ge=0)
+    embedding_ms: float | None = Field(default=None, ge=0.0)
+    hdbscan_ms: float | None = Field(default=None, ge=0.0)
+    noise_ratio: float | None = Field(default=None, ge=0.0, le=1.0)
+    dbcv_score: float | None = Field(default=None)
+    silhouette_score: float | None = Field(default=None)
+    hdbscan: dict[str, float | int | str] | None = Field(default=None)
+
 
 @dataclass(frozen=True, slots=True)
 class SentenceText:

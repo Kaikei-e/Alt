@@ -33,6 +33,7 @@ from ..domain.models import (
     EvidenceRequest,
     EvidenceResponse,
 )
+from ..domain.value_objects import ClusterDiagnostics
 from ..infra.config import Settings
 from .pipeline import EvidencePipeline
 from .pipeline_runner import PipelineTaskRunner
@@ -745,25 +746,19 @@ class RunManager:
 
     def _serialize_diagnostics(self, response: EvidenceResponse) -> dict[str, Any]:
         diag = response.diagnostics
-        payload: dict[str, Any] = {
-            "dedup_pairs": diag.dedup_pairs,
-            "umap_used": diag.umap_used,
-            "partial": diag.partial,
-            "total_sentences": diag.total_sentences,
-        }
-        if diag.embedding_ms is not None:
-            payload["embedding_ms"] = diag.embedding_ms
-        if diag.hdbscan_ms is not None:
-            payload["hdbscan_ms"] = diag.hdbscan_ms
-        if diag.noise_ratio is not None:
-            payload["noise_ratio"] = diag.noise_ratio
-        if diag.hdbscan is not None:
-            payload["hdbscan"] = diag.hdbscan.model_dump()
-        if diag.dbcv_score is not None:
-            payload["dbcv_score"] = diag.dbcv_score
-        if diag.silhouette_score is not None:
-            payload["silhouette_score"] = diag.silhouette_score
-        return payload
+        vo = ClusterDiagnostics(
+            dedup_pairs=diag.dedup_pairs,
+            umap_used=diag.umap_used,
+            partial=diag.partial,
+            total_sentences=diag.total_sentences,
+            embedding_ms=diag.embedding_ms,
+            hdbscan_ms=diag.hdbscan_ms,
+            noise_ratio=diag.noise_ratio,
+            hdbscan=diag.hdbscan.model_dump() if diag.hdbscan is not None else None,
+            dbcv_score=diag.dbcv_score,
+            silhouette_score=diag.silhouette_score,
+        )
+        return vo.model_dump(mode="json", exclude_none=True)
 
     def _build_diagnostics_entries(self, response: EvidenceResponse) -> list[DiagnosticEntry]:
         diag = response.diagnostics
