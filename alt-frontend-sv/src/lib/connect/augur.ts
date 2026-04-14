@@ -382,7 +382,10 @@ function protoTimestampToDate(
 export async function listAugurConversations(
 	transport: Transport,
 	options: { pageSize?: number; pageToken?: string } = {},
-): Promise<{ conversations: AugurConversationSummary[]; nextPageToken: string }> {
+): Promise<{
+	conversations: AugurConversationSummary[];
+	nextPageToken: string;
+}> {
 	const client = createAugurClient(transport);
 	const response = await client.listConversations({
 		pageSize: options.pageSize ?? 20,

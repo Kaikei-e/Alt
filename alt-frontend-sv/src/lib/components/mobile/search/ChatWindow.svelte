@@ -1,15 +1,14 @@
 <script lang="ts">
 import { tick } from "svelte";
-import FloatingMenu from "$lib/components/mobile/feeds/swipe/FloatingMenu.svelte";
-import { parseMarkdown } from "$lib/utils/simpleMarkdown";
+import augurAvatar from "$lib/assets/augur-chat.webp";
 import {
+	type AugurCitation,
 	createClientTransport,
 	streamAugurChat,
-	type AugurCitation,
 } from "$lib/connect";
 import { formatAugurFallbackMessage } from "$lib/utils/augurFallback";
+import { parseMarkdown } from "$lib/utils/simpleMarkdown";
 import { simulateTypewriterEffect } from "$lib/utils/streamingRenderer";
-import augurAvatar from "$lib/assets/augur-chat.webp";
 
 type Citation = {
 	url: string;
@@ -26,12 +25,20 @@ type Message = {
 interface Props {
 	initialContext?: string;
 	initialQuestion?: string;
+	initialMessages?: Message[];
+	initialConversationId?: string;
 }
 
-const { initialContext = "", initialQuestion = "" }: Props = $props();
+const {
+	initialContext = "",
+	initialQuestion = "",
+	initialMessages = [],
+	initialConversationId = "",
+}: Props = $props();
 
 // State
-let messages: Message[] = $state([]);
+let messages: Message[] = $state(initialMessages);
+let conversationId = $state<string>(initialConversationId);
 let inputValue = $state("");
 let isLoading = $state(false);
 let progressStage = $state<string>("");
@@ -145,7 +152,7 @@ const handleSubmit = async (messageOverride?: string) => {
 
 		streamAugurChat(
 			transport,
-			{ messages: chatMessages },
+			{ messages: chatMessages, conversationId },
 			// onDelta: feed chunks to typewriter
 			(text) => {
 				progressStage = "";
@@ -311,8 +318,6 @@ $effect(() => {
 		{/each}
 		<div bind:this={messagesEndRef}></div>
 	</div>
-
-	<FloatingMenu />
 
 	<!-- Input Area -->
 	<div class="augur-input-fixed">
@@ -536,7 +541,7 @@ $effect(() => {
 	.augur-input-fixed {
 		flex-shrink: 0;
 		background: var(--surface-bg, #faf9f7);
-		padding: 0 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+		padding: 0 1rem 0.75rem;
 	}
 	.input-rule {
 		height: 1px; background: var(--surface-border, #c8c8c8);
@@ -546,7 +551,8 @@ $effect(() => {
 		display: flex; gap: 0.5rem; align-items: flex-end;
 	}
 	.input-field {
-		flex: 1;
+		flex: 1 1 auto;
+		min-width: 0;
 		font-family: var(--font-body, "Source Sans 3", sans-serif);
 		font-size: 1rem; line-height: 1.4;
 		padding: 0.5rem 0.6rem;

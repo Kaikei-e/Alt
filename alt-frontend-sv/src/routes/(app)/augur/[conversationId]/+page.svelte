@@ -4,9 +4,9 @@ import { page } from "$app/stores";
 import AugurChat from "$lib/components/desktop/augur/AugurChat.svelte";
 import ChatWindow from "$lib/components/mobile/search/ChatWindow.svelte";
 import {
+	type AugurStoredConversation,
 	createClientTransport,
 	getAugurConversation,
-	type AugurStoredConversation,
 } from "$lib/connect";
 import { useViewport } from "$lib/stores/viewport.svelte";
 
@@ -19,6 +19,16 @@ type PaneMessage = {
 		URL: string;
 		Title: string;
 		PublishedAt?: string;
+	}[];
+};
+
+type MobileMessage = {
+	role: "user" | "assistant";
+	content: string;
+	citations?: {
+		url: string;
+		title: string;
+		publishedAt: string;
 	}[];
 };
 
@@ -35,13 +45,23 @@ function toPaneMessages(conv: AugurStoredConversation): PaneMessage[] {
 		id: `${m.role}-${conv.id}-${index}`,
 		message: m.content,
 		role: m.role,
-		timestamp: m.createdAt
-			? m.createdAt.toLocaleTimeString()
-			: "",
+		timestamp: m.createdAt ? m.createdAt.toLocaleTimeString() : "",
 		citations: m.citations.map((c) => ({
 			URL: c.url,
 			Title: c.title,
 			PublishedAt: c.publishedAt,
+		})),
+	}));
+}
+
+function toMobileMessages(conv: AugurStoredConversation): MobileMessage[] {
+	return conv.messages.map((m) => ({
+		role: m.role,
+		content: m.content,
+		citations: m.citations.map((c) => ({
+			url: c.url,
+			title: c.title,
+			publishedAt: c.publishedAt,
 		})),
 	}));
 }
@@ -86,7 +106,10 @@ async function load() {
 		/>
 	{:else}
 		<div class="augur-mobile-shell">
-			<ChatWindow />
+			<ChatWindow
+				initialMessages={toMobileMessages(conversation)}
+				initialConversationId={conversation.id}
+			/>
 		</div>
 	{/if}
 {/if}
@@ -107,7 +130,11 @@ async function load() {
 }
 
 .augur-mobile-shell {
-	height: 100dvh;
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: calc(2.75rem + env(safe-area-inset-bottom, 0px));
 	overflow: hidden;
 }
 </style>

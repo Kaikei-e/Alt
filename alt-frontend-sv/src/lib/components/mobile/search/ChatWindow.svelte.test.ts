@@ -20,18 +20,20 @@ let capturedOnDelta: ((text: string) => void) | undefined;
 let capturedOnComplete:
 	| ((result: { answer: string; citations: never[] }) => void)
 	| undefined;
+let capturedOptions: { messages: unknown; conversationId?: string } | undefined;
 
 vi.mock("$lib/connect", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	streamAugurChat: vi.fn(
 		(
 			_transport: unknown,
-			_options: unknown,
+			options: { messages: unknown; conversationId?: string },
 			onDelta?: (text: string) => void,
 			_onThinking?: unknown,
 			_onMeta?: unknown,
 			onComplete?: (result: { answer: string; citations: never[] }) => void,
 		) => {
+			capturedOptions = options;
 			capturedOnDelta = onDelta;
 			capturedOnComplete = onComplete;
 			return new AbortController();
@@ -75,6 +77,47 @@ describe("ChatWindow", () => {
 		});
 
 		await expect.element(page.getByText("What changed?")).toBeInTheDocument();
+	});
+
+	it("hydrates initialMessages so prior conversation renders instead of empty state", async () => {
+		render(ChatWindow as never, {
+			props: {
+				initialMessages: [
+					{ role: "user", content: "Tell me about quantum chips" },
+					{
+						role: "assistant",
+						content: "Quantum chips use qubits to perform computations.",
+					},
+				],
+			},
+		});
+
+		await expect
+			.element(page.getByText("Tell me about quantum chips"))
+			.toBeInTheDocument();
+		await expect
+			.element(
+				page.getByText("Quantum chips use qubits to perform computations."),
+			)
+			.toBeInTheDocument();
+	});
+
+	it("forwards initialConversationId to streamAugurChat so replies thread to the same conversation", async () => {
+		render(ChatWindow as never, {
+			props: {
+				initialMessages: [{ role: "user", content: "first" }],
+				initialConversationId: "conv-abc-123",
+			},
+		});
+
+		const input = page.getByPlaceholder("What would you like to know?");
+		const button = page.getByRole("button", { name: /submit/i });
+
+		await input.fill("follow-up");
+		await button.click();
+
+		expect(capturedOptions).toBeDefined();
+		expect(capturedOptions?.conversationId).toBe("conv-abc-123");
 	});
 });
 
