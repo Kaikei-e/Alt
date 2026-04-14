@@ -22,12 +22,6 @@ type FeedStatsSummary struct {
 	SummarizedFeedAmount summarizedFeedAmount `json:"summarized_feed"`
 }
 
-type UnsummarizedFeedStatsSummary struct {
-	FeedAmount             feedAmount             `json:"feed_amount"`
-	UnsummarizedFeedAmount unsummarizedFeedAmount `json:"unsummarized_feed"`
-	ArticleAmount          articleAmount          `json:"total_articles,omitempty"`
-}
-
 type DetailedFeedStatsSummary struct {
 	FeedAmount             feedAmount             `json:"feed_amount"`
 	ArticleAmount          articleAmount          `json:"total_articles"`
