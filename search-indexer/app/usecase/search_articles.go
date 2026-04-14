@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"regexp"
 	"search-indexer/domain"
 	"search-indexer/port"
 	"strings"
 	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 type SearchArticlesUsecase struct {
@@ -28,102 +29,46 @@ func NewSearchArticlesUsecase(searchEngine port.SearchEngine) *SearchArticlesUse
 	}
 }
 
-// Security validation patterns
+// Structural validation patterns. Meilisearch does not execute SQL, shell
+// commands, or render HTML, so SQLi/XSS/cmd denylists only generate false
+// positives against legitimate searches. We keep validation limited to
+// characters that break downstream parsers (control chars, zero-width
+// invisibles) and defer filter-value escaping to driver/filter.go.
 var (
-	// XSS prevention patterns
-	scriptTagPattern    = regexp.MustCompile(`(?i)<script[^>]*>.*?</script>`)
-	htmlTagPattern      = regexp.MustCompile(`(?i)<[^>]*>`)
-	javascriptProtocol  = regexp.MustCompile(`(?i)javascript:`)
-	eventHandlerPattern = regexp.MustCompile(`(?i)on\w+\s*=`)
-
-	// SQL injection prevention patterns
-	sqlInjectionPattern = regexp.MustCompile(`(?i)(\bunion\b|\bselect\b|\binsert\b|\bupdate\b|\bdelete\b|\bdrop\b|\bcreate\b|\balter\b|\bexec\b|\bexecute\b|\-\-|\/\*|\*\/|;|'|")`)
-
-	// Command injection prevention patterns
-	commandInjectionPattern = regexp.MustCompile(`[|;&$\x60]`)
-
-	// Control character patterns
 	controlCharPattern = regexp.MustCompile(`[\x00-\x1F\x7F]`)
-
-	// Zero-width character patterns (U+200B, U+200C, U+200D, U+FEFF)
-	zeroWidthPattern = regexp.MustCompile("[\u200B\u200C\u200D\uFEFF]")
+	zeroWidthPattern   = regexp.MustCompile("[\u200B\u200C\u200D\uFEFF]")
+	whitespaceRun      = regexp.MustCompile(`\s+`)
 )
 
-// validateQuerySecurity performs comprehensive security validation on search queries
+// validateQuerySecurity rejects queries whose raw bytes would confuse parsers
+// or log sinks downstream. Application-level injection concerns are handled
+// at the persistence boundary (Meilisearch filter escaping).
 func (u *SearchArticlesUsecase) validateQuerySecurity(query string) error {
-	// Check for null bytes and control characters
 	if controlCharPattern.MatchString(query) {
 		return errors.New("query contains invalid control characters")
 	}
-
-	// Check for zero-width characters
 	if zeroWidthPattern.MatchString(query) {
 		return errors.New("query contains zero-width characters")
 	}
-
-	// URL decode the query multiple times to check for encoded attacks
-	decoded := query
-	for i := 0; i < 3; i++ { // Decode up to 3 times to catch multiple encoding levels
-		newDecoded, err := url.QueryUnescape(decoded)
-		if err != nil || newDecoded == decoded {
-			break // Stop if error or no more changes
-		}
-		decoded = newDecoded
-
-		// Check the decoded version for attacks at each level
-		if scriptTagPattern.MatchString(decoded) ||
-			htmlTagPattern.MatchString(decoded) ||
-			javascriptProtocol.MatchString(decoded) ||
-			eventHandlerPattern.MatchString(decoded) {
-			return errors.New("query contains potential XSS attack vectors")
-		}
-
-		if sqlInjectionPattern.MatchString(decoded) {
-			return errors.New("query contains potential SQL injection patterns")
-		}
-
-		if commandInjectionPattern.MatchString(decoded) {
-			return errors.New("query contains potential command injection patterns")
-		}
-	}
-
-	// Check the original query as well
-	if scriptTagPattern.MatchString(query) ||
-		htmlTagPattern.MatchString(query) ||
-		javascriptProtocol.MatchString(query) ||
-		eventHandlerPattern.MatchString(query) {
-		return errors.New("query contains potential XSS attack vectors")
-	}
-
-	if sqlInjectionPattern.MatchString(query) {
-		return errors.New("query contains potential SQL injection patterns")
-	}
-
-	if commandInjectionPattern.MatchString(query) {
-		return errors.New("query contains potential command injection patterns")
-	}
-
 	return nil
 }
 
-// sanitizeQuery cleans and normalizes the query string
+// sanitizeQuery applies Unicode NFC normalization and whitespace folding so
+// equivalent Unicode representations produce the same Meilisearch query.
 func (u *SearchArticlesUsecase) sanitizeQuery(query string) string {
-	// Remove zero-width characters
+	query = norm.NFC.String(query)
 	query = zeroWidthPattern.ReplaceAllString(query, "")
-
-	// Normalize whitespace
 	query = strings.TrimSpace(query)
-	query = regexp.MustCompile(`\s+`).ReplaceAllString(query, " ")
+	query = whitespaceRun.ReplaceAllString(query, " ")
 
-	// Remove any remaining control characters except newlines and tabs
-	result := ""
+	var b strings.Builder
+	b.Grow(len(query))
 	for _, r := range query {
 		if unicode.IsGraphic(r) || unicode.IsSpace(r) {
-			result += string(r)
+			b.WriteRune(r)
 		}
 	}
-
-	return result
+	return b.String()
 }
 
 func (u *SearchArticlesUsecase) Execute(ctx context.Context, query string, limit int) (*SearchResult, error) {

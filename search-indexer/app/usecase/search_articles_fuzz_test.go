@@ -31,15 +31,17 @@ func FuzzSearchArticlesValidation(f *testing.F) {
 	usecase := NewSearchArticlesUsecase(searchEngine)
 
 	f.Fuzz(func(t *testing.T, query string) {
-		// The usecase should never panic, regardless of input
+		// The usecase must never panic, regardless of input. Policy: allow
+		// arbitrary search text but reject structural hazards (control chars,
+		// zero-width, over-length). Denylists for SQL/XSS/cmd were removed in
+		// H-002 because Meilisearch is not a vulnerable sink for those
+		// payloads and regex denylists produced false positives for legit
+		// queries.
 		_, err := usecase.Execute(context.Background(), query, 10)
 
-		// Empty queries should always error
 		if query == "" && err == nil {
 			t.Error("empty query should return error")
 		}
-
-		// Very long queries should error
 		if len(query) > 1000 && err == nil {
 			t.Error("very long query should return error")
 		}

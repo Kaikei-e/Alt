@@ -209,63 +209,47 @@ func TestSearchArticlesUsecase_ExecuteWithSecurityValidation(t *testing.T) {
 	searchEngine := &mockSearchEngine{}
 	usecase := NewSearchArticlesUsecase(searchEngine)
 
+	// After H-002 the validation policy is: allowlist-normalization, not
+	// denylist-regex. Meilisearch is not a SQL engine, does not render HTML,
+	// and does not execute shell commands, so SQLi/XSS/cmd strings are just
+	// ordinary search tokens. Filter values are escaped separately in
+	// driver/filter.go (escapeMeilisearchValue). Only structurally dangerous
+	// characters stay blocked.
 	tests := []struct {
 		name    string
 		query   string
 		limit   int
 		wantErr bool
 	}{
-		// XSS Prevention Tests
-		{"script tag injection", "<script>alert('xss')</script>", 10, true},
-		{"javascript protocol", "javascript:alert('xss')", 10, true},
-		{"img tag with onerror", "<img src=x onerror=alert('xss')>", 10, true},
-		{"iframe injection", "<iframe src=javascript:alert('xss')></iframe>", 10, true},
-		{"svg with script", "<svg onload=alert('xss')>", 10, true},
-
-		// SQL Injection Prevention Tests
-		{"sql injection single quote", "'; DROP TABLE articles; --", 10, true},
-		{"sql injection union", "test' UNION SELECT * FROM users--", 10, true},
-		{"sql injection comment", "test/* comment */", 10, true},
-		{"sql injection with semicolon", "test; DELETE FROM articles;", 10, true},
-
-		// Command Injection Prevention Tests
-		{"command injection pipe", "test | rm -rf /", 10, true},
-		{"command injection semicolon", "test; cat /etc/passwd", 10, true},
-		{"command injection backtick", "test`whoami`", 10, true},
-		{"command injection dollar", "test$(whoami)", 10, true},
-
-		// Control Character Tests
+		// Structural denial: control chars and zero-width are real attack
+		// vectors because they break downstream parsers and log analyzers.
 		{"null byte injection", "test\x00", 10, true},
 		{"carriage return", "test\r\n", 10, true},
 		{"vertical tab", "test\v", 10, true},
 		{"form feed", "test\f", 10, true},
-
-		// Unicode and Encoding Tests
-		{"url encoded script", "%3Cscript%3Ealert%28%27xss%27%29%3C%2Fscript%3E", 10, true},
-		{"double url encoded", "%253Cscript%253E", 10, true},
 		{"zero width characters", "test\u200B\u200C\u200D", 10, true},
 
-		// Valid queries that should pass
+		// Length limit stays enforced.
+		{"very long query", string(make([]byte, 1001)), 10, true},
+
+		// Ordinary search queries must not be rejected.
 		{"normal search", "golang programming", 10, false},
 		{"search with numbers", "python 3.11", 10, false},
 		{"search with hyphens", "test-driven development", 10, false},
 		{"search with spaces", "clean architecture", 10, false},
 		{"search with unicode", "プログラミング", 10, false},
-
-		// False positive prevention — words containing SQL keywords as substrings
 		{"executive summary should pass", "executive summary", 10, false},
 		{"selected items should pass", "selected items", 10, false},
-		{"updated article should pass", "updated article", 10, false},
-		{"created document should pass", "created document", 10, false},
-		{"dropped connection should pass", "dropped connection analysis", 10, false},
-		{"altered state should pass", "altered state of consciousness", 10, false},
-		{"insertion sort should pass", "insertion sort algorithm", 10, false},
-		// "union jack" contains standalone "union" — blocked by design (SQL UNION is high-risk)
-		{"union as standalone word blocked", "union jack flag", 10, true},
+		{"union jack flag should pass", "union jack flag", 10, false},
 
-		// Real SQL injection with standalone keywords should still be caught
-		{"exec standalone", "exec sp_help", 10, true},
-		{"select standalone", "SELECT * FROM users", 10, true},
+		// Formerly-blocked payloads are just strings to Meilisearch. Users
+		// legitimately search for HTML, SQL fragments, and code snippets.
+		{"html fragment in query allowed", "<script>alert('xss')</script>", 10, false},
+		{"sql fragment in query allowed", "SELECT * FROM users", 10, false},
+		{"quote and semicolon allowed", "'; DROP TABLE articles; --", 10, false},
+		{"backtick in query allowed", "test`whoami`", 10, false},
+		{"pipe in query allowed", "test | rm -rf /", 10, false},
+		{"url encoded script allowed", "%3Cscript%3E", 10, false},
 	}
 
 	for _, tt := range tests {
