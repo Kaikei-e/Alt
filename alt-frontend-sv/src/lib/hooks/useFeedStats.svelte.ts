@@ -1,11 +1,12 @@
 /**
- * Unified feed stats hook with feature flag support.
+ * Unified feed stats hook backed by Connect-RPC Server Streaming.
  *
- * Automatically switches between SSE and Connect-RPC Streaming
- * based on the USE_CONNECT_STREAMING environment variable.
+ * The previous SSE fallback was retired together with alt-backend's
+ * /v1/sse/feeds/stats endpoint (H-001) because Connect-RPC streaming is now
+ * the only authenticated path. The hook keeps the same public shape so
+ * existing components do not need to change.
  */
 
-import { useSSEFeedsStats } from "./useSSEFeedsStats.svelte";
 import { useStreamingFeedStats } from "./useStreamingFeedStats.svelte";
 
 interface FeedStatsState {
@@ -17,41 +18,6 @@ interface FeedStatsState {
 	reconnect: () => void;
 }
 
-/**
- * Safely read PUBLIC_USE_CONNECT_STREAMING.
- *
- * $env/dynamic/public compiles to `globalThis.__sveltekit_<hash>.env` which
- * throws if the SvelteKit bootstrap hasn't run yet. We lazy-import to avoid
- * crashing at module-evaluation time.
- */
-async function getUseStreaming(): Promise<boolean> {
-	try {
-		const { env } = await import("$env/dynamic/public");
-		return env?.PUBLIC_USE_CONNECT_STREAMING === "true";
-	} catch {
-		return false;
-	}
-}
-
-// Cache the resolved value so the hook stays synchronous after first call
-let _streamingResolved = false;
-let _useStreaming = false;
-getUseStreaming().then((v) => {
-	_useStreaming = v;
-	_streamingResolved = true;
-});
-
-/**
- * Unified hook for feed statistics.
- *
- * Uses Connect-RPC Streaming if PUBLIC_USE_CONNECT_STREAMING=true,
- * otherwise falls back to SSE.
- *
- * @returns Feed stats state
- */
 export function useFeedStats(): FeedStatsState {
-	if (_streamingResolved && _useStreaming) {
-		return useStreamingFeedStats();
-	}
-	return useSSEFeedsStats();
+	return useStreamingFeedStats();
 }
