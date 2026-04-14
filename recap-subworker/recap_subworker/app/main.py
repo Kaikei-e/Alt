@@ -15,9 +15,9 @@ os.environ.setdefault("NUMBA_THREADING_LAYER", "tbb")
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import FastAPI
 from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ..infra.config import get_settings
 from ..infra.logging import configure_logging
@@ -37,18 +37,53 @@ from .routers import (
 _MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
 
 
-class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
-    """Reject request bodies exceeding the configured size limit."""
+class RequestSizeLimitMiddleware:
+    """Reject request bodies exceeding the configured size limit.
 
-    async def dispatch(self, request: Request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > _MAX_REQUEST_BODY_BYTES:
-            return Response(
-                content='{"detail":"Request body too large"}',
-                status_code=HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                media_type="application/json",
-            )
-        return await call_next(request)
+    Pure ASGI middleware (not BaseHTTPMiddleware) to avoid Starlette's
+    known POST-body re-read deadlock on dependency-injection paths that
+    materialize a second ``Request`` object (see starlette #847 / #1320).
+    Only the Content-Length header is inspected; the body stream is not
+    consumed by this middleware.
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int = _MAX_REQUEST_BODY_BYTES) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        content_length_raw: bytes | None = None
+        for name, value in scope.get("headers", []):
+            if name == b"content-length":
+                content_length_raw = value
+                break
+
+        if content_length_raw is not None:
+            try:
+                length = int(content_length_raw)
+            except ValueError:
+                length = 0
+            if length > self.max_bytes:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": b'{"detail":"Request body too large"}',
+                    }
+                )
+                return
+
+        await self.app(scope, receive, send)
 
 
 @asynccontextmanager
