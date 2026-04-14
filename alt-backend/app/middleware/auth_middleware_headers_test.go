@@ -272,3 +272,152 @@ func TestOptionalAuth_NoHeadersIsAnonymous(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, called)
 }
+
+// C-003: RequireAuth must reject JWT whose subject is not a valid UUID.
+// A valid signature with a malformed UUID subject indicates a malformed
+// identity and must not result in uuid.Nil being accepted as a real user.
+func TestRequireAuth_NonUUIDSubjectRejectedWith401(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	// Craft a JWT with a valid signature but a non-UUID subject.
+	jwtToken := issueTestJWT(t, "not-a-uuid", "user@example.com", "user", "session-token")
+	req.Header.Set(backendTokenHeader, jwtToken)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	called := false
+	h := mw.RequireAuth()(func(c echo.Context) error {
+		called = true
+		return c.NoContent(http.StatusOK)
+	})
+
+	err := h(c)
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
+	require.False(t, called, "handler must not run when subject is not a UUID")
+}
+
+// C-003: RequireAuth must reject JWT whose subject is the nil UUID.
+// uuid.Nil is never a legitimate user identifier; treating it as authenticated
+// would give access to rows that happen to carry the zero UUID.
+func TestRequireAuth_NilUUIDSubjectRejectedWith401(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	jwtToken := issueTestJWT(t, uuid.Nil.String(), "user@example.com", "user", "session-token")
+	req.Header.Set(backendTokenHeader, jwtToken)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	called := false
+	h := mw.RequireAuth()(func(c echo.Context) error {
+		called = true
+		return c.NoContent(http.StatusOK)
+	})
+
+	err := h(c)
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
+	require.False(t, called, "handler must not run when subject is the nil UUID")
+}
+
+// C-002: RequireAdmin must let admin-role users through.
+func TestRequireAdmin_AdminPasses(t *testing.T) {
+	e := echo.New()
+	userID := uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/metrics", nil)
+	jwtToken := issueTestJWT(t, userID, "admin@example.com", string(domain.UserRoleAdmin), "session-a")
+	req.Header.Set(backendTokenHeader, jwtToken)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	called := false
+	chain := mw.RequireAuth()(mw.RequireAdmin()(func(c echo.Context) error {
+		called = true
+		return c.NoContent(http.StatusOK)
+	}))
+	require.NoError(t, chain(c))
+	require.True(t, called)
+}
+
+// C-002: RequireAdmin must reject regular users with 403.
+func TestRequireAdmin_NonAdminRejectedWith403(t *testing.T) {
+	e := echo.New()
+	userID := uuid.New().String()
+	req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/metrics", nil)
+	jwtToken := issueTestJWT(t, userID, "user@example.com", string(domain.UserRoleUser), "session-u")
+	req.Header.Set(backendTokenHeader, jwtToken)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	called := false
+	chain := mw.RequireAuth()(mw.RequireAdmin()(func(c echo.Context) error {
+		called = true
+		return c.NoContent(http.StatusOK)
+	}))
+	err := chain(c)
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusForbidden, httpErr.Code)
+	require.False(t, called)
+}
+
+// C-002: RequireAdmin called without an authenticated user returns 401 (not 403).
+// This ensures that the ordering RequireAuth -> RequireAdmin is enforced and
+// that if RequireAdmin is ever used without RequireAuth, missing context is
+// treated as unauthorized, not forbidden.
+func TestRequireAdmin_NoUserContextRejectedWith401(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/metrics", nil)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	h := mw.RequireAdmin()(func(c echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	})
+	err := h(c)
+	require.Error(t, err)
+	httpErr, ok := err.(*echo.HTTPError)
+	require.True(t, ok)
+	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
+}
+
+// C-003: OptionalAuth with a non-UUID subject must continue as anonymous
+// rather than setting a zero-UUID user context. The JWT is technically valid
+// but identity cannot be constructed safely, so downstream must see no user.
+func TestOptionalAuth_NonUUIDSubjectTreatedAsAnonymous(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/articles", nil)
+	jwtToken := issueTestJWT(t, "not-a-uuid", "user@example.com", "user", "session-token")
+	req.Header.Set(backendTokenHeader, jwtToken)
+	res := httptest.NewRecorder()
+	c := e.NewContext(req, res)
+
+	cfg := testAuthConfig()
+	mw := NewAuthMiddleware(nil, cfg)
+	called := false
+	h := mw.OptionalAuth()(func(c echo.Context) error {
+		called = true
+		_, err := domain.GetUserFromContext(c.Request().Context())
+		require.Error(t, err, "no user context should be attached when subject is not a UUID")
+		return c.NoContent(http.StatusOK)
+	})
+
+	err := h(c)
+	require.NoError(t, err, "request should continue as anonymous, not fail")
+	require.True(t, called)
+}

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -57,9 +58,21 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid authentication")
 			}
 
-			// JWT validation succeeded - convert to domain.UserContext
-			userID, _ := uuid.Parse(jwtUserCtx.ID)
-			tenantID, _ := uuid.Parse(jwtUserCtx.ID) // Single-tenant: use userID as tenantID
+			// JWT validation succeeded - convert to domain.UserContext.
+			// The subject claim must be a valid, non-nil UUID; otherwise identity
+			// cannot be constructed safely and the request must be rejected.
+			userID, err := parseSubjectUUID(jwtUserCtx.ID)
+			if err != nil {
+				if m.logger != nil {
+					m.logger.Warn("JWT subject is not a valid UUID",
+						"path", c.Request().URL.Path,
+						"remote_addr", c.RealIP(),
+						"error", err,
+					)
+				}
+				return echo.NewHTTPError(http.StatusUnauthorized, "invalid subject claim")
+			}
+			tenantID := userID // Single-tenant: use userID as tenantID
 			domainCtx := &domain.UserContext{
 				UserID:    userID,
 				Email:     jwtUserCtx.Email,
@@ -90,9 +103,21 @@ func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 			// Check if JWT token is present
 			if c.Request().Header.Get(backendTokenHeader) != "" {
 				if jwtUserCtx, err := m.jwtMiddleware.validateJWT(c); err == nil {
-					// Valid JWT - attach user context
-					userID, _ := uuid.Parse(jwtUserCtx.ID)
-					tenantID, _ := uuid.Parse(jwtUserCtx.ID) // Single-tenant
+					// Valid JWT signature/issuer/audience. The subject must also be
+					// a valid, non-nil UUID; otherwise no identity can be built and
+					// the request continues as anonymous.
+					userID, parseErr := parseSubjectUUID(jwtUserCtx.ID)
+					if parseErr != nil {
+						if m.logger != nil {
+							m.logger.Warn("JWT subject is not a valid UUID, continuing as anonymous",
+								"path", c.Request().URL.Path,
+								"remote_addr", c.RealIP(),
+								"error", parseErr,
+							)
+						}
+						return next(c)
+					}
+					tenantID := userID // Single-tenant
 					domainCtx := &domain.UserContext{
 						UserID:    userID,
 						Email:     jwtUserCtx.Email,
@@ -133,6 +158,31 @@ func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 	}
 }
 
+// RequireAdmin ensures that the authenticated user has the admin role.
+// Must be chained AFTER RequireAuth so that domain.UserContext is present.
+// Returns 401 when no user context is attached, 403 when the user is not admin.
+func (m *AuthMiddleware) RequireAdmin() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			user, err := domain.GetUserFromContext(c.Request().Context())
+			if err != nil || user == nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+			}
+			if !user.IsAdmin() {
+				if m.logger != nil {
+					m.logger.Warn("admin-only endpoint accessed by non-admin",
+						"path", c.Request().URL.Path,
+						"user_id", user.UserID,
+						"role", user.Role,
+					)
+				}
+				return echo.NewHTTPError(http.StatusForbidden, "admin role required")
+			}
+			return next(c)
+		}
+	}
+}
+
 func (m *AuthMiddleware) attachContext(c echo.Context, user *domain.UserContext) {
 	ctx := domain.SetUserContext(c.Request().Context(), user)
 	c.SetRequest(c.Request().WithContext(ctx))
@@ -146,6 +196,19 @@ func (m *AuthMiddleware) attachContext(c echo.Context, user *domain.UserContext)
 			"role", user.Role,
 		)
 	}
+}
+
+// parseSubjectUUID parses a JWT subject claim into a UUID and rejects the nil UUID.
+// A non-UUID or nil-UUID subject means identity cannot be constructed safely.
+func parseSubjectUUID(sub string) (uuid.UUID, error) {
+	id, err := uuid.Parse(sub)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("subject is not a valid UUID: %w", err)
+	}
+	if id == uuid.Nil {
+		return uuid.Nil, errors.New("subject is the nil UUID")
+	}
+	return id, nil
 }
 
 func parseRole(raw string) domain.UserRole {
