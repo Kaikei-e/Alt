@@ -16,6 +16,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from prometheus_client import make_asgi_app
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.ollama_gateway import OllamaGateway
@@ -192,6 +193,10 @@ app = FastAPI(
 
 # Instrument FastAPI with OpenTelemetry
 instrument_fastapi(app)
+
+# Prometheus scrape endpoint — serves OTel instruments registered via
+# PrometheusMetricReader along with any native prometheus_client metrics.
+app.mount("/metrics", make_asgi_app())
 
 # Register routers with dependency injection
 app.include_router(
