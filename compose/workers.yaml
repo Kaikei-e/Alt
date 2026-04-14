@@ -3,8 +3,77 @@
 
 include:
   - base.yaml
+  - pki.yaml
+
+x-tls-cert-sidecar: &tls-cert-sidecar
+  image: smallstep/step-ca:0.27.5
+  user: "0:0"
+  secrets:
+    - step_ca_root_password
+  networks:
+    - alt-network
+  labels:
+    - rask.group=pki
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 services:
+  search-indexer-cert-init:
+    <<: *tls-cert-sidecar
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
+        set -e
+        if [ -f /certs/svc-cert.pem ]; then
+          exit 0
+        fi
+        TOKEN=$$(step ca token "search-indexer" \
+          --san search-indexer --san localhost \
+          --ca-url https://step-ca:9000 \
+          --root /trust/ca-bundle.pem \
+          --provisioner bootstrap \
+          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
+        step ca certificate "search-indexer" /certs/svc-cert.pem /certs/svc-key.pem \
+          --ca-url https://step-ca:9000 \
+          --root /trust/ca-bundle.pem \
+          --token "$$TOKEN" --force
+        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
+        chmod 0444 /certs/svc-cert.pem
+        chmod 0400 /certs/svc-key.pem
+    volumes:
+      - search_indexer_certs:/certs
+      - pki_trust_bundle:/trust:ro
+    depends_on:
+      step-ca-bootstrap:
+        condition: service_completed_successfully
+
+  search-indexer-cert-renewer:
+    <<: *tls-cert-sidecar
+    restart: unless-stopped
+    entrypoint:
+      - step
+    command:
+      - ca
+      - renew
+      - --ca-url=https://step-ca:9000
+      - --root=/trust/ca-bundle.pem
+      - --daemon
+      - --expires-in=8h
+      - /certs/svc-cert.pem
+      - /certs/svc-key.pem
+    volumes:
+      - search_indexer_certs:/certs
+      - pki_trust_bundle:/trust:ro
+    depends_on:
+      search-indexer-cert-init:
+        condition: service_completed_successfully
+
   pre-processor-sidecar:
     env_file:
       - ../.env
@@ -60,7 +129,16 @@ services:
     depends_on:
       redis-streams:
         condition: service_healthy
+      search-indexer-cert-init:
+        condition: service_completed_successfully
     environment:
+      - MTLS_LISTEN=${MTLS_LISTEN:-true}
+      - MTLS_PORT=9443
+      - MTLS_CERT_FILE=/certs/svc-cert.pem
+      - MTLS_KEY_FILE=/certs/svc-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - MTLS_CLIENT_AUTH=${SEARCH_INDEXER_MTLS_CLIENT_AUTH:-}
+      - MTLS_ALLOWED_PEERS=${SEARCH_INDEXER_MTLS_ALLOWED_PEERS:-}
       # Backend API mode (replaces direct DB access)
       - BACKEND_API_URL=http://alt-backend:9101
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret
@@ -83,9 +161,13 @@ services:
       - meili_search_key
     networks:
       - alt-network
+    volumes:
+      - search_indexer_certs:/certs:ro
+      - pki_trust_bundle:/trust:ro
     ports:
       - "9300:9300"   # REST API
       - "9301:9301"   # Connect-RPC
+      # mTLS :9443 intentionally not published (internal east-west only)
     healthcheck:
       test: ["CMD", "/search-indexer", "healthcheck"]
       interval: 10s
@@ -95,6 +177,85 @@ services:
     tty: true
     labels:
       - rask.group=search-indexer
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  tag-generator-cert-init:
+    <<: *tls-cert-sidecar
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
+        set -e
+        if [ -f /certs/svc-cert.pem ]; then
+          exit 0
+        fi
+        TOKEN=$$(step ca token "tag-generator" \
+          --san tag-generator --san localhost \
+          --ca-url https://step-ca:9000 \
+          --root /trust/ca-bundle.pem \
+          --provisioner bootstrap \
+          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
+        step ca certificate "tag-generator" /certs/svc-cert.pem /certs/svc-key.pem \
+          --ca-url https://step-ca:9000 \
+          --root /trust/ca-bundle.pem \
+          --token "$$TOKEN" --force
+        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
+        chmod 0444 /certs/svc-cert.pem
+        chmod 0400 /certs/svc-key.pem
+    volumes:
+      - tag_generator_certs:/certs
+      - pki_trust_bundle:/trust:ro
+    depends_on:
+      step-ca-bootstrap:
+        condition: service_completed_successfully
+
+  tag-generator-cert-renewer:
+    <<: *tls-cert-sidecar
+    restart: unless-stopped
+    entrypoint:
+      - step
+    command:
+      - ca
+      - renew
+      - --ca-url=https://step-ca:9000
+      - --root=/trust/ca-bundle.pem
+      - --daemon
+      - --expires-in=8h
+      - /certs/svc-cert.pem
+      - /certs/svc-key.pem
+    volumes:
+      - tag_generator_certs:/certs
+      - pki_trust_bundle:/trust:ro
+    depends_on:
+      tag-generator-cert-init:
+        condition: service_completed_successfully
+
+  tag-generator-tls-sidecar:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    network_mode: "service:tag-generator"
+    environment:
+      UPSTREAM_PORT: "9400"
+      VERIFY_CLIENT: ${TAG_GENERATOR_VERIFY_CLIENT:-off}
+    volumes:
+      - ../docker/nginx-tls-sidecar/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+      - ../docker/nginx-tls-sidecar/entrypoint.sh:/entrypoint.sh:ro
+      - tag_generator_certs:/certs:ro
+      - pki_trust_bundle:/trust:ro
+    entrypoint: ["/entrypoint.sh"]
+    depends_on:
+      tag-generator:
+        condition: service_healthy
+      tag-generator-cert-init:
+        condition: service_completed_successfully
+    labels:
+      - rask.group=tag-generator
     logging:
       driver: "json-file"
       options:
@@ -115,6 +276,7 @@ services:
       - alt-network
     ports:
       - "9400:9400"
+      # mTLS :9443 exposed via tag-generator-tls-sidecar (shares net ns)
     environment:
       # Backend API mode (replaces direct DB access for article/tag operations)
       - BACKEND_API_URL=http://alt-backend:9101

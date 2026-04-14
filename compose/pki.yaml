@@ -1,8 +1,6 @@
 # compose/pki.yaml - Internal PKI for east-west mTLS
 # step-ca issues short-lived leaf certs; step-ca-bootstrap publishes the root
 # CA bundle to a shared volume so other services can build trust stores.
-#
-# Phase 0 of the mTLS rollout. Apps do not consume these certs yet.
 
 include:
   - base.yaml

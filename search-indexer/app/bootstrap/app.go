@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"search-indexer/config"
@@ -12,6 +13,7 @@ import (
 	"search-indexer/driver/recap_api"
 	"search-indexer/gateway"
 	"search-indexer/logger"
+	"search-indexer/tlsutil"
 	"search-indexer/tokenize"
 	"search-indexer/usecase"
 	appOtel "search-indexer/utils/otel"
@@ -25,6 +27,7 @@ import (
 type App struct {
 	httpServer    *http.Server
 	connectServer *http.Server
+	mtlsServer    *http.Server
 	redisConsumer *consumer.Consumer
 	otelShutdown  appOtel.ShutdownFunc
 }
@@ -163,6 +166,31 @@ func Run(ctx context.Context) error {
 		}
 	}()
 
+	if os.Getenv("MTLS_LISTEN") == "true" {
+		mtlsPort := os.Getenv("MTLS_PORT")
+		if mtlsPort == "" {
+			mtlsPort = "9443"
+		}
+		tlsCfg, tlsErr := tlsutil.LoadServerConfig(
+			os.Getenv("MTLS_CERT_FILE"),
+			os.Getenv("MTLS_KEY_FILE"),
+			os.Getenv("MTLS_CA_FILE"),
+			tlsutil.OptionsFromEnv()...,
+		)
+		if tlsErr != nil {
+			return fmt.Errorf("mTLS listener config (fail-closed): %w", tlsErr)
+		}
+		{
+			app.mtlsServer = tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, app.connectServer.Handler)
+			go func() {
+				logger.Logger.Info("mtls listen", "port", mtlsPort)
+				if err := app.mtlsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+					logger.Logger.Error("mtls", "err", err)
+				}
+			}()
+		}
+	}
+
 	// ── Wait for shutdown signal ──
 	<-ctx.Done()
 	app.shutdown()
@@ -179,6 +207,11 @@ func (a *App) shutdown() {
 	}
 	if err := a.connectServer.Shutdown(shutdownCtx); err != nil {
 		logger.Logger.Error("connect-rpc shutdown error", "err", err)
+	}
+	if a.mtlsServer != nil {
+		if err := a.mtlsServer.Shutdown(shutdownCtx); err != nil {
+			logger.Logger.Error("mtls shutdown error", "err", err)
+		}
 	}
 	if a.redisConsumer != nil {
 		a.redisConsumer.Stop()

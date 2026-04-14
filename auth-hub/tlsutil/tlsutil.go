@@ -2,6 +2,9 @@
 // mTLS rollout. Certificates are loaded from disk via GetCertificate /
 // GetClientCertificate callbacks so that a step-ca renewer sidecar can rotate
 // the underlying files without restarting the process.
+//
+// Canonical implementation lives in alt-backend/app/tlsutil. This copy is kept
+// in sync for the auth-hub Go module.
 package tlsutil
 
 import (
@@ -15,12 +18,9 @@ import (
 	"time"
 )
 
-// OptionsFromEnv returns ServerOptions derived from environment variables:
-//   - MTLS_CLIENT_AUTH: "require_and_verify" (anything else = NoClientCert)
-//   - MTLS_ALLOWED_PEERS: comma-separated CN/SAN allowlist
-//
-// Absent or empty variables produce no options, so callers can keep the
-// Phase 1 dual-stack behaviour by simply not setting the env.
+// OptionsFromEnv derives Phase 2 ServerOptions from env:
+//   - MTLS_CLIENT_AUTH=require_and_verify
+//   - MTLS_ALLOWED_PEERS=csv
 func OptionsFromEnv() []ServerOption {
 	var opts []ServerOption
 	if strings.EqualFold(os.Getenv("MTLS_CLIENT_AUTH"), "require_and_verify") {
@@ -41,9 +41,6 @@ func OptionsFromEnv() []ServerOption {
 	return opts
 }
 
-// certReloader caches a parsed tls.Certificate and re-reads the underlying PEM
-// files whenever either file's mtime advances. A single mutex protects both
-// the cached certificate and the observed mtimes.
 type certReloader struct {
 	certPath string
 	keyPath  string
@@ -87,9 +84,6 @@ func (r *certReloader) load() (*tls.Certificate, error) {
 
 	cert, err := tls.LoadX509KeyPair(r.certPath, r.keyPath)
 	if err != nil {
-		// Fall back to the last good certificate so a transient mid-rotation
-		// failure (truncated file, key/cert mismatch window) cannot take the
-		// listener down. The initial load still surfaces the error.
 		if r.cert != nil {
 			return r.cert, nil
 		}
@@ -114,7 +108,6 @@ func loadRootCAs(caPath string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-// ServerOption customises the *tls.Config produced by LoadServerConfig.
 type ServerOption func(*serverOpts)
 
 type serverOpts struct {
@@ -122,15 +115,10 @@ type serverOpts struct {
 	allowedPeers map[string]struct{}
 }
 
-// WithClientAuth sets tls.Config.ClientAuth. Default is tls.NoClientCert.
 func WithClientAuth(c tls.ClientAuthType) ServerOption {
 	return func(o *serverOpts) { o.clientAuth = c }
 }
 
-// WithAllowedPeers installs a VerifyConnection callback that rejects any
-// peer whose leaf does not carry one of the supplied CN / DNS SAN values.
-// This guards against a valid-chain but wrong-identity certificate issued by
-// the same internal CA (i.e. service B impersonating service A).
 func WithAllowedPeers(names ...string) ServerOption {
 	return func(o *serverOpts) {
 		if o.allowedPeers == nil {
@@ -146,9 +134,6 @@ func WithAllowedPeers(names ...string) ServerOption {
 }
 
 // LoadServerConfig returns a *tls.Config wired up for a mTLS-capable server.
-// Options control ClientAuth and peer allowlisting. The config re-reads the
-// cert/key files whenever their mtime advances so a sidecar renewer can
-// rotate the leaf without a process restart.
 func LoadServerConfig(certPath, keyPath, caPath string, opts ...ServerOption) (*tls.Config, error) {
 	reloader, err := newCertReloader(certPath, keyPath)
 	if err != nil {
@@ -189,9 +174,7 @@ func LoadServerConfig(certPath, keyPath, caPath string, opts ...ServerOption) (*
 	return cfg, nil
 }
 
-// LoadClientConfig returns a *tls.Config for an mTLS-capable HTTP client. The
-// client presents its leaf cert via GetClientCertificate (re-read on mtime
-// change) and trusts the supplied CA bundle as RootCAs.
+// LoadClientConfig returns a *tls.Config for an mTLS-capable HTTP client.
 func LoadClientConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
 	reloader, err := newCertReloader(certPath, keyPath)
 	if err != nil {
@@ -212,8 +195,7 @@ func LoadClientConfig(certPath, keyPath, caPath string) (*tls.Config, error) {
 
 // NewMTLSHTTPServer wraps a handler in an http.Server with timeouts tuned for
 // a mTLS rollout. IdleTimeout is bounded to 60s so that HTTP/2 connection
-// reuse cannot outlive a 24h leaf certificate by more than a negligible
-// window — the renewer sidecar rotates at 8h remaining, giving a wide margin.
+// reuse cannot outlive a 24h leaf certificate by more than a negligible window.
 func NewMTLSHTTPServer(addr string, tlsConfig *tls.Config, handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,

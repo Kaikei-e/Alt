@@ -119,9 +119,9 @@ func main() {
 		container.SovereignClient,
 	)
 	projectorRunner := job.NewKnowledgeProjectorRunner(job.KnowledgeProjectorRunnerConfig{
-		PollInterval:    cfg.KnowledgeHome.ProjectorPollInterval,
-		Timeout:         cfg.KnowledgeHome.ProjectorTimeout,
-		Process:         projectorProcess,
+		PollInterval: cfg.KnowledgeHome.ProjectorPollInterval,
+		Timeout:      cfg.KnowledgeHome.ProjectorTimeout,
+		Process:      projectorProcess,
 		ListenerFactory: job.NewSovereignProjectorListenerFactory(
 			func(ctx context.Context, name string) (job.KnowledgeProjectorListener, error) {
 				return container.SovereignClient.ConnectProjectorWatch(ctx, name)
@@ -221,9 +221,8 @@ func main() {
 		}
 	}()
 
-	// Phase 1 mTLS: additional HTTPS listener that mirrors the Connect-RPC
-	// handler. Server cert only in Phase 1 (ClientAuth=NoClientCert); clients
-	// still authenticate via X-Service-Token. Controlled by MTLS_LISTEN env.
+	// Optional mTLS HTTPS listener mirroring the Connect-RPC handler.
+	// ClientAuth defaults to NoClientCert; enabled by MTLS_LISTEN=true.
 	var mtlsServer *http.Server
 	if os.Getenv("MTLS_LISTEN") == "true" {
 		mtlsPort, _ := strconv.Atoi(os.Getenv("MTLS_PORT"))
@@ -234,11 +233,14 @@ func main() {
 			os.Getenv("MTLS_CERT_FILE"),
 			os.Getenv("MTLS_KEY_FILE"),
 			os.Getenv("MTLS_CA_FILE"),
+			tlsutil.OptionsFromEnv()...,
 		)
 		if err != nil {
-			logger.Logger.ErrorContext(ctx, "mTLS listener config failed, skipping", "error", err)
-		} else {
-			mtlsServer = tlsutil.NewMTLSHTTPServer(fmt.Sprintf(":%d", mtlsPort), tlsCfg, connectServer)
+			logger.Logger.ErrorContext(ctx, "mTLS listener config failed, aborting startup (fail-closed)", "error", err)
+			panic(fmt.Errorf("mtls listener config: %w", err))
+		}
+		{
+			mtlsServer = tlsutil.NewMTLSHTTPServer(fmt.Sprintf(":%d", mtlsPort), tlsCfg, middleware.PeerIdentityHTTPMiddleware(connectServer))
 			go func() {
 				logger.Logger.InfoContext(ctx, "mTLS HTTPS listener starting", "port", mtlsPort)
 				err := mtlsServer.ListenAndServeTLS("", "")

@@ -13,6 +13,7 @@ import (
 	"alt-butterfly-facade/config"
 	"alt-butterfly-facade/internal/logger"
 	"alt-butterfly-facade/internal/server"
+	"alt-butterfly-facade/internal/tlsutil"
 )
 
 func main() {
@@ -95,6 +96,35 @@ func main() {
 		}
 	}()
 
+	// Optional mTLS HTTPS listener mirroring the h2c handler.
+	// ClientAuth defaults to NoClientCert; enabled by MTLS_LISTEN=true.
+	var mtlsServer *http.Server
+	if os.Getenv("MTLS_LISTEN") == "true" {
+		mtlsPort := os.Getenv("MTLS_PORT")
+		if mtlsPort == "" {
+			mtlsPort = "9443"
+		}
+		tlsCfg, err := tlsutil.LoadServerConfig(
+			os.Getenv("MTLS_CERT_FILE"),
+			os.Getenv("MTLS_KEY_FILE"),
+			os.Getenv("MTLS_CA_FILE"),
+			tlsutil.OptionsFromEnv()...,
+		)
+		if err != nil {
+			slog.ErrorContext(ctx, "mTLS listener config failed, aborting startup (fail-closed)", "error", err)
+			os.Exit(1)
+		}
+		{
+			mtlsServer = tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, handler)
+			go func() {
+				slog.InfoContext(ctx, "mTLS HTTPS listener starting", "port", mtlsPort)
+				if err := mtlsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+					slog.ErrorContext(ctx, "mTLS HTTPS listener error", "error", err)
+				}
+			}()
+		}
+	}
+
 	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -103,6 +133,9 @@ func main() {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if mtlsServer != nil {
+		_ = mtlsServer.Shutdown(shutdownCtx)
+	}
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.ErrorContext(ctx, "server forced to shutdown", "error", err)
 		os.Exit(1)

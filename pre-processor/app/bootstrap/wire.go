@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"net/http"
+
 	"pre-processor/config"
 	"pre-processor/consumer"
 	"pre-processor/driver"
@@ -15,8 +17,40 @@ import (
 	"pre-processor/handler"
 	"pre-processor/repository"
 	"pre-processor/service"
+	"pre-processor/tlsutil"
 	logger "pre-processor/utils/logger"
 )
+
+// buildBackendHTTPClient returns an *http.Client the Connect-RPC backend
+// client uses to reach alt-backend. When MTLS_ENFORCE=true the client is
+// built with tlsutil.LoadClientConfig so it presents the pre-processor leaf
+// cert on every handshake; otherwise http.DefaultClient is returned.
+func buildBackendHTTPClient(log *slog.Logger) (*http.Client, error) {
+	if os.Getenv("MTLS_ENFORCE") != "true" {
+		return http.DefaultClient, nil
+	}
+	tlsCfg, err := tlsutil.LoadClientConfig(
+		os.Getenv("MTLS_CERT_FILE"),
+		os.Getenv("MTLS_KEY_FILE"),
+		os.Getenv("MTLS_CA_FILE"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("backend mTLS client (fail-closed): %w", err)
+	}
+	if sn := os.Getenv("BACKEND_MTLS_SERVER_NAME"); sn != "" {
+		tlsCfg.ServerName = sn
+	}
+	log.Info("backend API client: mTLS enforce enabled",
+		"server_name", tlsCfg.ServerName,
+	)
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig:     tlsCfg,
+			IdleConnTimeout:     30 * time.Second,
+			MaxIdleConnsPerHost: 4,
+		},
+	}, nil
+}
 
 const (
 	batchSize = 10
@@ -64,10 +98,20 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 
 	// Initialize repositories — API mode via Connect-RPC to alt-backend
 	serviceToken := readSecret("SERVICE_TOKEN")
+
+	backendHTTPClient, err := buildBackendHTTPClient(log)
+	if err != nil {
+		ppDBPoolCleanup()
+		return nil, nil, err
+	}
+	if mtlsURL := os.Getenv("BACKEND_API_MTLS_URL"); mtlsURL != "" && os.Getenv("MTLS_ENFORCE") == "true" {
+		backendAPIURL = mtlsURL
+	}
 	log.Info("Using backend API driver for article/feed/summary repos",
 		"url", backendAPIURL,
+		"mtls_enforce", os.Getenv("MTLS_ENFORCE") == "true",
 	)
-	client := backend_api.NewClient(backendAPIURL, serviceToken)
+	client := backend_api.NewClient(backendAPIURL, serviceToken, backendHTTPClient)
 	articleRepo := backend_api.NewArticleRepository(client, ppDBPool)
 	summaryRepo := backend_api.NewSummaryRepository(client)
 

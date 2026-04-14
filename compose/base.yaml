@@ -73,6 +73,13 @@ volumes:
   step_ca_data:
   pki_trust_bundle:
   alt_backend_certs:
+  auth_hub_certs:
+  pre_processor_certs:
+  search_indexer_certs:
+  alt_butterfly_facade_certs:
+  tag_generator_certs:
+  tts_speaker_certs:
+  acolyte_orchestrator_certs:
 
 x-rask-env: &rask-env
   environment:

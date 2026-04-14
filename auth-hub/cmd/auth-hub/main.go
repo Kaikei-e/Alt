@@ -19,6 +19,7 @@ import (
 
 	"auth-hub/config"
 	appmiddleware "auth-hub/middleware"
+	"auth-hub/tlsutil"
 	"auth-hub/utils/logger"
 	"auth-hub/utils/otel"
 
@@ -182,11 +183,44 @@ func main() {
 		return nil
 	})
 
+	// Optional mTLS HTTPS listener mirroring the Echo handler.
+	// ClientAuth defaults to NoClientCert; enabled by MTLS_LISTEN=true.
+	var mtlsServer *http.Server
+	if os.Getenv("MTLS_LISTEN") == "true" {
+		mtlsPort := os.Getenv("MTLS_PORT")
+		if mtlsPort == "" {
+			mtlsPort = "9443"
+		}
+		tlsCfg, err := tlsutil.LoadServerConfig(
+			os.Getenv("MTLS_CERT_FILE"),
+			os.Getenv("MTLS_KEY_FILE"),
+			os.Getenv("MTLS_CA_FILE"),
+			tlsutil.OptionsFromEnv()...,
+		)
+		if err != nil {
+			slog.ErrorContext(ctx, "mTLS listener config failed, aborting startup (fail-closed)", "error", err)
+			os.Exit(1)
+		}
+		{
+			mtlsServer = tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, e)
+			g.Go(func() error {
+				slog.InfoContext(ctx, "mTLS HTTPS listener starting", "port", mtlsPort)
+				if err := mtlsServer.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					return err
+				}
+				return nil
+			})
+		}
+	}
+
 	g.Go(func() error {
 		<-gCtx.Done()
 		slog.Info("shutting down server...")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		if mtlsServer != nil {
+			_ = mtlsServer.Shutdown(shutdownCtx)
+		}
 		return e.Shutdown(shutdownCtx)
 	})
 

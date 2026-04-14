@@ -17,10 +17,15 @@ type Client struct {
 	serviceToken string
 }
 
-// NewClient creates a new backend API client.
-func NewClient(baseURL string, serviceToken string) *Client {
+// NewClient creates a new backend API client. When httpClient is nil the
+// package-level http.DefaultClient is used; callers that need mTLS pass a
+// custom client built from tlsutil.LoadClientConfig.
+func NewClient(baseURL, serviceToken string, httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
 	c := backendv1connect.NewBackendInternalServiceClient(
-		http.DefaultClient,
+		httpClient,
 		baseURL,
 	)
 	return &Client{

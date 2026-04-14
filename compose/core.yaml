@@ -139,7 +139,9 @@ services:
           --ca-url https://step-ca:9000 \
           --root /trust/ca-bundle.pem \
           --token "$$TOKEN" --force
-        chmod 0644 /certs/svc-cert.pem /certs/svc-key.pem
+        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
+        chmod 0444 /certs/svc-cert.pem
+        chmod 0400 /certs/svc-key.pem
         echo "alt-backend-cert-init: cert issued"
     volumes:
       - alt_backend_certs:/certs
@@ -179,7 +181,7 @@ services:
     ports:
       - "9000:9000"
       - "9101:9101"
-      - "9443:9443"
+      # mTLS :9443 intentionally not published (internal east-west only)
     networks:
       - alt-network
     volumes:
@@ -206,6 +208,8 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - MTLS_CLIENT_AUTH=${ALT_BACKEND_MTLS_CLIENT_AUTH:-}
+      - MTLS_ALLOWED_PEERS=${ALT_BACKEND_MTLS_ALLOWED_PEERS:-}
       - DB_HOST=pgbouncer
       - DB_PORT=6432
       - DB_USER=${DB_USER}

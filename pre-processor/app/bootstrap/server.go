@@ -9,6 +9,7 @@ import (
 
 	connectv2 "pre-processor/connect/v2"
 	appmiddleware "pre-processor/middleware"
+	"pre-processor/tlsutil"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -96,7 +97,9 @@ func StartHTTPServer(e *echo.Echo, log *slog.Logger) {
 	}()
 }
 
-// StartConnectServer starts the Connect-RPC server in a goroutine.
+// StartConnectServer starts the Connect-RPC server in a goroutine. When
+// MTLS_LISTEN=true, an additional HTTPS listener on MTLS_PORT (default 9443)
+// is started alongside the plaintext listener.
 func StartConnectServer(deps *Dependencies) {
 	connectHandler := connectv2.CreateConnectServer(deps.APIRepo, deps.SummaryRepo, deps.ArticleRepo, deps.JobRepo, deps.Logger)
 	go func() {
@@ -122,4 +125,28 @@ func StartConnectServer(deps *Dependencies) {
 			deps.Logger.Error("Connect-RPC server error", "error", err)
 		}
 	}()
+
+	if os.Getenv("MTLS_LISTEN") == "true" {
+		mtlsPort := os.Getenv("MTLS_PORT")
+		if mtlsPort == "" {
+			mtlsPort = "9443"
+		}
+		tlsCfg, err := tlsutil.LoadServerConfig(
+			os.Getenv("MTLS_CERT_FILE"),
+			os.Getenv("MTLS_KEY_FILE"),
+			os.Getenv("MTLS_CA_FILE"),
+			tlsutil.OptionsFromEnv()...,
+		)
+		if err != nil {
+			deps.Logger.Error("mTLS listener config failed, aborting startup (fail-closed)", "error", err)
+			os.Exit(1)
+		}
+		mtlsServer := tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, connectHandler)
+		go func() {
+			deps.Logger.Info("Starting mTLS HTTPS listener", "port", mtlsPort)
+			if err := mtlsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				deps.Logger.Error("mTLS HTTPS listener error", "error", err)
+			}
+		}()
+	}
 }
