@@ -1,8 +1,8 @@
-"""Phase 5 timeout invariants for LearningClient.
+"""Timeout invariants for LearningClient.
 
-The Phase 5 plan requires every httpx call to use an explicit connect /
-read / write / pool budget instead of a single scalar, and to be wrapped
-in ``asyncio.timeout(...)`` at the call site so a stalled peer can be
+Every httpx call must use an explicit connect / read / write / pool
+budget instead of a single scalar, and be wrapped in
+``asyncio.timeout(...)`` at the call site so a stalled peer can be
 cancelled deterministically.
 """
 
