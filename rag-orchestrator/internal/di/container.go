@@ -266,6 +266,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	articleClient := altdb.NewHTTPArticleClient(
 		cfg.Backend.URL,
 		time.Duration(cfg.Backend.Timeout)*time.Second,
+		cfg.Backend.ServiceToken,
 		log,
 	)
 	morningLetterPromptBuilder := usecase.NewMorningLetterPromptBuilder()
