@@ -11,6 +11,9 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 os.environ.setdefault("NUMBA_THREADING_LAYER", "tbb")
+# Silence HuggingFace tokenizers fork-safety warning and avoid a potential
+# deadlock when spawn ProcessPoolExecutor bootstraps re-import tokenizers.
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
