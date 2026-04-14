@@ -80,6 +80,7 @@ volumes:
   tag_generator_certs:
   tts_speaker_certs:
   acolyte_orchestrator_certs:
+  recap_worker_certs:
 
 x-rask-env: &rask-env
   environment:

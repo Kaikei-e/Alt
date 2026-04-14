@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -10,16 +11,54 @@ import (
 	"search-indexer/driver/backend_api"
 	"search-indexer/gateway"
 	"search-indexer/logger"
+	"search-indexer/tlsutil"
 
 	"github.com/meilisearch/meilisearch-go"
 )
 
+// buildBackendHTTPClient returns the *http.Client used for outbound
+// Connect-RPC calls to alt-backend. When MTLS_ENFORCE=true the client is
+// built from tlsutil.LoadClientConfig; otherwise backend_api's default.
+func buildBackendHTTPClient() (*http.Client, error) {
+	if os.Getenv("MTLS_ENFORCE") != "true" {
+		return backend_api.DefaultHTTPClient(), nil
+	}
+	tlsCfg, err := tlsutil.LoadClientConfig(
+		os.Getenv("MTLS_CERT_FILE"),
+		os.Getenv("MTLS_KEY_FILE"),
+		os.Getenv("MTLS_CA_FILE"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("backend mTLS client (fail-closed): %w", err)
+	}
+	if sn := os.Getenv("BACKEND_MTLS_SERVER_NAME"); sn != "" {
+		tlsCfg.ServerName = sn
+	}
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig:     tlsCfg,
+			IdleConnTimeout:     30 * time.Second,
+			MaxIdleConnsPerHost: 4,
+		},
+	}, nil
+}
+
 // initArticleDriver creates the backend API article driver.
 func initArticleDriver(cfg *config.Config) (gateway.ArticleDriver, error) {
+	url := cfg.BackendAPI.URL
+	if mtlsURL := os.Getenv("BACKEND_API_MTLS_URL"); mtlsURL != "" && os.Getenv("MTLS_ENFORCE") == "true" {
+		url = mtlsURL
+	}
+	httpClient, err := buildBackendHTTPClient()
+	if err != nil {
+		return nil, err
+	}
 	logger.Logger.Info("Using backend API driver",
-		"url", cfg.BackendAPI.URL,
+		"url", url,
+		"mtls_enforce", os.Getenv("MTLS_ENFORCE") == "true",
 	)
-	client := backend_api.NewClient(cfg.BackendAPI.URL, cfg.BackendAPI.ServiceToken)
+	client := backend_api.NewClient(url, cfg.BackendAPI.ServiceToken, httpClient)
 	return client, nil
 }
 

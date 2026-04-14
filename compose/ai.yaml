@@ -278,7 +278,7 @@ services:
       - MTLS_CLIENT_AUTH=${PRE_PROCESSOR_MTLS_CLIENT_AUTH:-}
       - MTLS_ALLOWED_PEERS=${PRE_PROCESSOR_MTLS_ALLOWED_PEERS:-}
       # Outbound mTLS to alt-backend (pilot toggle)
-      - MTLS_ENFORCE=${PRE_PROCESSOR_MTLS_ENFORCE:-false}
+      - MTLS_ENFORCE=${PRE_PROCESSOR_MTLS_ENFORCE:-true}
       - BACKEND_API_MTLS_URL=https://alt-backend:9443
       - BACKEND_MTLS_SERVER_NAME=alt-backend
       # Backend API mode: article/feed/summary repos via Connect-RPC

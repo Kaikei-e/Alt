@@ -165,6 +165,9 @@ services:
     build:
       context: ../acolyte-orchestrator
       dockerfile: Dockerfile
+    volumes:
+      - acolyte_orchestrator_certs:/certs:ro
+      - pki_trust_bundle:/trust:ro
     environment:
       - ACOLYTE_DB_DSN=postgresql://${ACOLYTE_DB_USER:-acolyte_user}:placeholder@acolyte-db:5432/${ACOLYTE_DB_NAME:-acolyte}
       - ACOLYTE_DB_PASSWORD_FILE=/run/secrets/acolyte_db_password
@@ -177,6 +180,10 @@ services:
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret
       - LOG_LEVEL=info
       - CHECKPOINT_ENABLED=true
+      - MTLS_ENFORCE=${ACOLYTE_ORCHESTRATOR_MTLS_ENFORCE:-false}
+      - MTLS_CERT_FILE=/certs/svc-cert.pem
+      - MTLS_KEY_FILE=/certs/svc-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=acolyte-orchestrator
@@ -193,6 +200,8 @@ services:
       acolyte-db:
         condition: service_healthy
       acolyte-db-migrator:
+        condition: service_completed_successfully
+      acolyte-orchestrator-cert-init:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/health"]

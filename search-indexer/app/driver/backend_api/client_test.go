@@ -14,7 +14,7 @@ import (
 func TestClient_HTTPClient_HasTimeout(t *testing.T) {
 	t.Parallel()
 
-	hc := buildHTTPClient()
+	hc := DefaultHTTPClient()
 	if hc.Timeout == 0 {
 		t.Fatal("http.Client.Timeout must be non-zero to prevent resource exhaustion")
 	}
@@ -38,7 +38,7 @@ func TestClient_TimesOutOnSlowBackend(t *testing.T) {
 	}))
 	defer slow.Close()
 
-	c := NewClient(slow.URL, "test-token")
+	c := NewClient(slow.URL, "test-token", nil)
 
 	// Bound the call with a short context so the test completes quickly even
 	// if the http.Client timeout regresses.

@@ -14,7 +14,29 @@ import (
 	"alt-butterfly-facade/internal/logger"
 	"alt-butterfly-facade/internal/server"
 	"alt-butterfly-facade/internal/tlsutil"
+
+	"golang.org/x/net/http2"
 )
+
+// newMTLSBackendTransport builds an HTTP/2 RoundTripper that presents the
+// alt-butterfly-facade leaf cert on every handshake to alt-backend. The
+// transport is used in place of the h2c path when MTLS_ENFORCE=true.
+func newMTLSBackendTransport() (http.RoundTripper, error) {
+	tlsCfg, err := tlsutil.LoadClientConfig(
+		os.Getenv("MTLS_CERT_FILE"),
+		os.Getenv("MTLS_KEY_FILE"),
+		os.Getenv("MTLS_CA_FILE"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if sn := os.Getenv("BACKEND_MTLS_SERVER_NAME"); sn != "" {
+		tlsCfg.ServerName = sn
+	}
+	return &http2.Transport{
+		TLSClientConfig: tlsCfg,
+	}, nil
+}
 
 func main() {
 	// Handle healthcheck subcommand (for Docker healthcheck in distroless image)
@@ -60,9 +82,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	backendURL := cfg.BackendConnectURL
+	var backendTransport http.RoundTripper
+	if os.Getenv("MTLS_ENFORCE") == "true" {
+		backendTransport, err = newMTLSBackendTransport()
+		if err != nil {
+			slog.ErrorContext(ctx, "backend mTLS transport (fail-closed)", "error", err)
+			os.Exit(1)
+		}
+		if v := os.Getenv("BACKEND_CONNECT_MTLS_URL"); v != "" {
+			backendURL = v
+		}
+		slog.InfoContext(ctx, "backend Connect-RPC client: mTLS enforce enabled", "url", backendURL)
+	}
+
 	// Create server configuration
 	serverCfg := server.Config{
-		BackendURL:       cfg.BackendConnectURL,
+		BackendURL:       backendURL,
 		BackendRESTURL:   cfg.BackendRESTURL,
 		Secret:           secret,
 		Issuer:           cfg.BackendTokenIssuer,
@@ -75,8 +111,8 @@ func main() {
 		AcolyteConnectURL: cfg.AcolyteConnectURL,
 	}
 
-	// Create HTTP server
-	handler := server.NewServer(serverCfg, appLogger)
+	// Create HTTP server (transport nil → default h2c path preserved)
+	handler := server.NewServerWithTransport(serverCfg, appLogger, backendTransport)
 
 	address := fmt.Sprintf(":%s", cfg.Port)
 	srv := &http.Server{

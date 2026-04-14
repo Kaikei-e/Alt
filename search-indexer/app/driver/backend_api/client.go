@@ -28,11 +28,11 @@ type Client struct {
 
 const serviceTokenHeader = "X-Service-Token"
 
-// buildHTTPClient constructs a dedicated *http.Client for backend Connect-RPC
+// DefaultHTTPClient constructs a dedicated *http.Client for backend Connect-RPC
 // calls. http.DefaultClient must not be used: its zero Timeout allows a
 // hanging alt-backend to exhaust goroutines and file descriptors, and its
 // Transport is process-global.
-func buildHTTPClient() *http.Client {
+func DefaultHTTPClient() *http.Client {
 	return &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
@@ -49,10 +49,15 @@ func buildHTTPClient() *http.Client {
 	}
 }
 
-// NewClient creates a new backend API client.
-func NewClient(baseURL string, serviceToken string) *Client {
+// NewClient creates a new backend API client. When httpClient is nil a
+// reasonable default is used; callers that need mTLS pass a custom client
+// built via tlsutil.LoadClientConfig.
+func NewClient(baseURL, serviceToken string, httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = DefaultHTTPClient()
+	}
 	c := backendv1connect.NewBackendInternalServiceClient(
-		buildHTTPClient(),
+		httpClient,
 		baseURL,
 	)
 	return &Client{

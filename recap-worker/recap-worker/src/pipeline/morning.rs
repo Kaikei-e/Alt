@@ -1,5 +1,6 @@
 use crate::clients::NewsCreatorClient;
 use crate::clients::alt_backend::{AltBackendClient, AltBackendConfig};
+use crate::clients::mtls::{self, MtlsPaths};
 use crate::clients::news_creator::models::{
     MorningLetterGenerateRequest, MorningLetterGroupInput, MorningLetterRecapInput,
     RepresentativeSentence,
@@ -46,14 +47,32 @@ impl MorningPipeline {
         recap_dao: Arc<dyn RecapDao>,
         news_creator_client: Arc<NewsCreatorClient>,
     ) -> Self {
+        let mtls_paths = MtlsPaths::from_env().expect("mTLS env configuration (fail-closed)");
+        let alt_backend_url = if mtls_paths.is_some() {
+            std::env::var("ALT_BACKEND_MTLS_URL")
+                .unwrap_or_else(|_| config.alt_backend_base_url().to_string())
+        } else {
+            config.alt_backend_base_url().to_string()
+        };
         let alt_backend_config = AltBackendConfig {
-            base_url: config.alt_backend_base_url().to_string(),
+            base_url: alt_backend_url,
             connect_timeout: config.alt_backend_connect_timeout(),
             total_timeout: config.alt_backend_total_timeout(),
             service_token: config.alt_backend_service_token().map(ToString::to_string),
         };
         let alt_backend_client = Arc::new(
-            AltBackendClient::new(alt_backend_config).expect("failed to create alt-backend client"),
+            if let Some(paths) = mtls_paths.as_ref() {
+                let client = mtls::build_mtls_client(
+                    paths,
+                    alt_backend_config.connect_timeout,
+                    alt_backend_config.total_timeout,
+                )
+                .expect("failed to build alt-backend mTLS client (fail-closed)");
+                AltBackendClient::new_with_client(alt_backend_config, client)
+            } else {
+                AltBackendClient::new(alt_backend_config)
+            }
+            .expect("failed to create alt-backend client"),
         );
 
         let retry_config = RetryConfig {

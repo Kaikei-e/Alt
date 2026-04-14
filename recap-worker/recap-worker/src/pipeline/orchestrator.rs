@@ -6,6 +6,7 @@ use anyhow::{Context, Result};
 
 use crate::{
     clients::alt_backend::{AltBackendClient, AltBackendConfig},
+    clients::mtls::{self, MtlsPaths},
     clients::{NewsCreatorClient, SubworkerClient, TagGeneratorClient},
     config::Config,
     observability::metrics::Metrics,
@@ -87,26 +88,65 @@ impl PipelineOrchestrator {
         classification_queue: Arc<ClassificationJobQueue>,
         metrics: Arc<Metrics>,
     ) -> Result<Self> {
+        let mtls_paths = MtlsPaths::from_env().expect("mTLS env configuration (fail-closed)");
+
+        let alt_backend_url = if mtls_paths.is_some() {
+            std::env::var("ALT_BACKEND_MTLS_URL")
+                .unwrap_or_else(|_| config.alt_backend_base_url().to_string())
+        } else {
+            config.alt_backend_base_url().to_string()
+        };
         let alt_backend_config = AltBackendConfig {
-            base_url: config.alt_backend_base_url().to_string(),
+            base_url: alt_backend_url,
             connect_timeout: config.alt_backend_connect_timeout(),
             total_timeout: config.alt_backend_total_timeout(),
             service_token: config.alt_backend_service_token().map(ToString::to_string),
         };
         let alt_backend_client = Arc::new(
-            AltBackendClient::new(alt_backend_config).expect("failed to create alt-backend client"),
+            if let Some(paths) = mtls_paths.as_ref() {
+                let client = mtls::build_mtls_client(
+                    paths,
+                    alt_backend_config.connect_timeout,
+                    alt_backend_config.total_timeout,
+                )
+                .expect("failed to build alt-backend mTLS client (fail-closed)");
+                AltBackendClient::new_with_client(alt_backend_config, client)
+            } else {
+                AltBackendClient::new(alt_backend_config)
+            }
+            .expect("failed to create alt-backend client"),
         );
+
+        let tag_generator_url = if mtls_paths.is_some() {
+            std::env::var("TAG_GENERATOR_MTLS_URL")
+                .unwrap_or_else(|_| config.tag_generator_base_url().to_string())
+        } else {
+            config.tag_generator_base_url().to_string()
+        };
         let tag_generator_config = crate::clients::tag_generator::TagGeneratorConfig {
-            base_url: config.tag_generator_base_url().to_string(),
+            base_url: tag_generator_url,
             connect_timeout: config.tag_generator_connect_timeout(),
             total_timeout: config.tag_generator_total_timeout(),
             service_token: config
                 .tag_generator_service_token()
                 .map(ToString::to_string),
         };
-        let tag_generator_client = TagGeneratorClient::new(tag_generator_config)
+        let tag_generator_client = if let Some(paths) = mtls_paths.as_ref() {
+            mtls::build_mtls_client(
+                paths,
+                tag_generator_config.connect_timeout,
+                tag_generator_config.total_timeout,
+            )
             .ok()
-            .map(Arc::new);
+            .and_then(|client| {
+                TagGeneratorClient::new_with_client(tag_generator_config, client).ok()
+            })
+            .map(Arc::new)
+        } else {
+            TagGeneratorClient::new(tag_generator_config)
+                .ok()
+                .map(Arc::new)
+        };
         let retry_config = RetryConfig {
             max_attempts: config.http_max_retries(),
             base_delay_ms: config.http_backoff_base_ms(),

@@ -3,8 +3,77 @@
 
 include:
   - base.yaml
+  - pki.yaml
+
+x-tls-cert-sidecar: &tls-cert-sidecar
+  image: smallstep/step-ca:0.27.5
+  user: "0:0"
+  secrets:
+    - step_ca_root_password
+  networks:
+    - alt-network
+  labels:
+    - rask.group=pki
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 services:
+  recap-worker-cert-init:
+    <<: *tls-cert-sidecar
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - |
+        set -e
+        if [ -f /certs/svc-cert.pem ]; then
+          exit 0
+        fi
+        TOKEN=$$(step ca token "recap-worker" \
+          --san recap-worker --san localhost \
+          --ca-url https://step-ca:9000 \
+          --root /trust/ca-bundle.pem \
+          --provisioner bootstrap \
+          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
+        step ca certificate "recap-worker" /certs/svc-cert.pem /certs/svc-key.pem \
+          --ca-url https://step-ca:9000 \
+          --root /trust/ca-bundle.pem \
+          --token "$$TOKEN" --force
+        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
+        chmod 0444 /certs/svc-cert.pem
+        chmod 0400 /certs/svc-key.pem
+    volumes:
+      - recap_worker_certs:/certs
+      - pki_trust_bundle:/trust:ro
+    depends_on:
+      step-ca-bootstrap:
+        condition: service_completed_successfully
+
+  recap-worker-cert-renewer:
+    <<: *tls-cert-sidecar
+    restart: unless-stopped
+    entrypoint:
+      - step
+    command:
+      - ca
+      - renew
+      - --ca-url=https://step-ca:9000
+      - --root=/trust/ca-bundle.pem
+      - --daemon
+      - --expires-in=8h
+      - /certs/svc-cert.pem
+      - /certs/svc-key.pem
+    volumes:
+      - recap_worker_certs:/certs
+      - pki_trust_bundle:/trust:ro
+    depends_on:
+      recap-worker-cert-init:
+        condition: service_completed_successfully
+
   recap-db:
     build:
       context: ../docker/postgres
@@ -94,6 +163,12 @@ services:
       - SUBWORKER_BASE_URL=http://recap-subworker:8002
       - ALT_BACKEND_BASE_URL=${ALT_BACKEND_BASE_URL}
       - ALT_BACKEND_SERVICE_TOKEN_FILE=/run/secrets/service_secret
+      - MTLS_ENFORCE=${RECAP_WORKER_MTLS_ENFORCE:-true}
+      - MTLS_CERT_FILE=/certs/svc-cert.pem
+      - MTLS_KEY_FILE=/certs/svc-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - ALT_BACKEND_MTLS_URL=https://alt-backend:9443
+      - TAG_GENERATOR_MTLS_URL=https://tag-generator:9443
       - TAG_LABEL_GRAPH_WINDOW=${TAG_LABEL_GRAPH_WINDOW}
       - TAG_LABEL_GRAPH_TTL_SECONDS=${TAG_LABEL_GRAPH_TTL_SECONDS}
       - HUGGING_FACE_TOKEN_PATH=/run/secrets/hugging_face_token
@@ -120,9 +195,14 @@ services:
       - recap_db_password
       - service_secret
       - hugging_face_token
+    volumes:
+      - recap_worker_certs:/certs:ro
+      - pki_trust_bundle:/trust:ro
     depends_on:
       recap-db:
         condition: service_healthy
+      recap-worker-cert-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     deploy:
       resources:

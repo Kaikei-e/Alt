@@ -139,6 +139,9 @@ services:
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_CLIENT_AUTH=${SEARCH_INDEXER_MTLS_CLIENT_AUTH:-}
       - MTLS_ALLOWED_PEERS=${SEARCH_INDEXER_MTLS_ALLOWED_PEERS:-}
+      - MTLS_ENFORCE=${SEARCH_INDEXER_MTLS_ENFORCE:-true}
+      - BACKEND_API_MTLS_URL=https://alt-backend:9443
+      - BACKEND_MTLS_SERVER_NAME=alt-backend
       # Backend API mode (replaces direct DB access)
       - BACKEND_API_URL=http://alt-backend:9101
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret
@@ -272,6 +275,8 @@ services:
     depends_on:
       redis-streams:
         condition: service_healthy
+      tag-generator-cert-init:
+        condition: service_completed_successfully
     networks:
       - alt-network
     ports:
@@ -282,6 +287,11 @@ services:
       - BACKEND_API_URL=http://alt-backend:9101
       - SERVICE_TOKEN_FILE=/run/secrets/service_secret
       - SERVICE_SECRET_FILE=/run/secrets/service_secret
+      - MTLS_ENFORCE=${TAG_GENERATOR_MTLS_ENFORCE:-false}
+      - MTLS_CERT_FILE=/certs/svc-cert.pem
+      - MTLS_KEY_FILE=/certs/svc-key.pem
+      - MTLS_CA_FILE=/trust/ca-bundle.pem
+      - BACKEND_API_MTLS_URL=https://alt-backend:9443
       - PORT=9400
       - CUDA_VISIBLE_DEVICES=""
       - REDIS_STREAMS_URL=redis://redis-streams:6379
@@ -301,6 +311,8 @@ services:
     volumes:
       - ../scripts:/scripts:ro
       - ../tag-generator/models/onnx:/models/onnx:ro
+      - tag_generator_certs:/certs:ro
+      - pki_trust_bundle:/trust:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9400/health')"]
       interval: 10s

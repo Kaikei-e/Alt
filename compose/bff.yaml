@@ -99,6 +99,9 @@ services:
       - MTLS_CA_FILE=/trust/ca-bundle.pem
       - MTLS_CLIENT_AUTH=${ALT_BUTTERFLY_FACADE_MTLS_CLIENT_AUTH:-}
       - MTLS_ALLOWED_PEERS=${ALT_BUTTERFLY_FACADE_MTLS_ALLOWED_PEERS:-}
+      - MTLS_ENFORCE=${ALT_BUTTERFLY_FACADE_MTLS_ENFORCE:-true}
+      - BACKEND_CONNECT_MTLS_URL=https://alt-backend:9443
+      - BACKEND_MTLS_SERVER_NAME=alt-backend
     extra_hosts:
       - "tts-external:${TTS_EXTERNAL_HOST:-127.0.0.1}"
     secrets:

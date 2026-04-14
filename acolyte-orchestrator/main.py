@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import ssl
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -43,11 +45,37 @@ _pool = AsyncConnectionPool(_dsn, min_size=settings.db_pool_min_size, max_size=s
 _report_repo = PostgresReportGateway(_pool)
 _job_queue = MemoryJobGateway()
 
-# HTTP client for Ollama and search-indexer (600s timeout for 26B model with 8192 num_predict)
+def _build_mtls_context() -> ssl.SSLContext | None:
+    """Build an SSLContext that presents the acolyte-orchestrator leaf cert.
+
+    Returns None when MTLS_ENFORCE is not enabled. Raises when enforcement is
+    requested but required env is missing or certs are unreadable (fail-closed).
+    """
+    if os.getenv("MTLS_ENFORCE") != "true":
+        return None
+    cert = os.getenv("MTLS_CERT_FILE", "")
+    key = os.getenv("MTLS_KEY_FILE", "")
+    ca = os.getenv("MTLS_CA_FILE", "")
+    if not (cert and key and ca):
+        msg = "MTLS_ENFORCE=true but MTLS_CERT_FILE/KEY_FILE/CA_FILE not fully set"
+        raise RuntimeError(msg)
+    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=ca)
+    ctx.load_cert_chain(certfile=cert, keyfile=key)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_3
+    return ctx
+
+
+# HTTP client for Ollama and search-indexer (600s timeout for 26B model with 8192 num_predict).
+# When MTLS_ENFORCE=true the shared AsyncClient presents the acolyte-orchestrator
+# leaf cert on every handshake; every downstream must trust alt-ca.
+_mtls_ctx = _build_mtls_context()
 _http_client = httpx.AsyncClient(
     timeout=httpx.Timeout(connect=10, read=600, write=10, pool=10),
     limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+    verify=_mtls_ctx if _mtls_ctx is not None else True,
 )
+if _mtls_ctx is not None:
+    logger.info("acolyte-orchestrator outbound: mTLS enforce enabled")
 
 # LLM gateway — provider selection via LLM_PROVIDER env var
 if settings.llm_provider == "vllm":

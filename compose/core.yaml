@@ -208,8 +208,8 @@ services:
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
-      - MTLS_CLIENT_AUTH=${ALT_BACKEND_MTLS_CLIENT_AUTH:-}
-      - MTLS_ALLOWED_PEERS=${ALT_BACKEND_MTLS_ALLOWED_PEERS:-}
+      - MTLS_CLIENT_AUTH=${ALT_BACKEND_MTLS_CLIENT_AUTH:-require_and_verify}
+      - MTLS_ALLOWED_PEERS=${ALT_BACKEND_MTLS_ALLOWED_PEERS:-pre-processor,search-indexer,alt-butterfly-facade,auth-hub,tag-generator,acolyte-orchestrator,recap-worker}
       - DB_HOST=pgbouncer
       - DB_PORT=6432
       - DB_USER=${DB_USER}

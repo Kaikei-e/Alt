@@ -73,9 +73,16 @@ impl AltBackendClient {
             .timeout(config.total_timeout)
             .build()
             .context("failed to build alt-backend HTTP client")?;
+        Self::new_with_client(config, client)
+    }
 
+    /// 外部で構築済みの `reqwest::Client` を用いてクライアントを作成する。
+    /// mTLS 経路では、identity と root cert を既に反映した client を注入する。
+    ///
+    /// # Errors
+    /// URL のパースに失敗した場合はエラーを返します。
+    pub(crate) fn new_with_client(config: AltBackendConfig, client: Client) -> Result<Self> {
         let base_url = Url::parse(&config.base_url).context("invalid alt-backend base URL")?;
-
         Ok(Self {
             client,
             base_url,
