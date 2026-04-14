@@ -2,10 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+# Per-stage httpx timeout budget. connect is kept short so an unreachable
+# recap-worker surfaces quickly; read absorbs slow downstream Bayesian
+# optimization bursts; write/pool are modest constants.
+# Total budget is bounded by an outer asyncio.timeout() at the call site.
+_CONNECT_TIMEOUT_SECONDS = 2.0
+_WRITE_TIMEOUT_SECONDS = 10.0
+_POOL_TIMEOUT_SECONDS = 5.0
+
+
+def _build_timeout(read_timeout_seconds: float) -> httpx.Timeout:
+    return httpx.Timeout(
+        connect=_CONNECT_TIMEOUT_SECONDS,
+        read=read_timeout_seconds,
+        write=_WRITE_TIMEOUT_SECONDS,
+        pool=_POOL_TIMEOUT_SECONDS,
+    )
 
 
 @dataclass
@@ -18,9 +36,16 @@ class LearningClient:
 
     @classmethod
     def create(cls, base_url: str, timeout_seconds: float) -> LearningClient:
-        client = httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds))
+        # Enforce a floor on the read stage so the connect < read invariant
+        # from the Phase 5 tests holds even if a caller passes a tiny budget.
+        read_timeout = max(timeout_seconds, _CONNECT_TIMEOUT_SECONDS + 0.5)
+        client = httpx.AsyncClient(timeout=_build_timeout(read_timeout))
         sanitized = base_url.rstrip("/")
-        return cls(base_url=sanitized, timeout_seconds=timeout_seconds, _client=client)
+        return cls(
+            base_url=sanitized,
+            timeout_seconds=read_timeout,
+            _client=client,
+        )
 
     async def send_learning_payload(self, payload: dict[str, Any]) -> httpx.Response:
         import structlog
@@ -33,8 +58,12 @@ class LearningClient:
             endpoint=endpoint,
             timeout_seconds=self.timeout_seconds,
         )
+        # Outer asyncio budget: double the read budget so a misbehaving
+        # peer is cancelled even if the per-stage timeouts collude.
+        outer_budget = self.timeout_seconds * 2.0
         try:
-            response = await self._client.post(endpoint, json=payload)
+            async with asyncio.timeout(outer_budget):
+                response = await self._client.post(endpoint, json=payload)
             logger.debug(
                 "received response",
                 status_code=response.status_code,

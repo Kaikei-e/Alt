@@ -52,7 +52,11 @@ async def test_send_learning_payload_applies_asyncio_timeout(monkeypatch):  # no
         timeout=client._client.timeout,
     )
 
-    with pytest.raises((asyncio.TimeoutError, httpx.TimeoutException)):
+    expected: tuple[type[BaseException], ...] = (
+        asyncio.TimeoutError,
+        httpx.TimeoutException,
+    )
+    with pytest.raises(expected):
         async with asyncio.timeout(2.0):
             await client.send_learning_payload({"ping": "pong"})
 
