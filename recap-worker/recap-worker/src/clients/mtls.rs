@@ -12,9 +12,9 @@ use reqwest::{Certificate, Client, Identity};
 /// Paths the builder reads from disk. All three files are required.
 #[derive(Debug, Clone)]
 pub(crate) struct MtlsPaths {
-    pub(crate) cert_file: String,
-    pub(crate) key_file: String,
-    pub(crate) ca_file: String,
+    pub(crate) cert: String,
+    pub(crate) key: String,
+    pub(crate) ca: String,
 }
 
 impl MtlsPaths {
@@ -25,17 +25,13 @@ impl MtlsPaths {
         if std::env::var("MTLS_ENFORCE").unwrap_or_default() != "true" {
             return Ok(None);
         }
-        let cert_file = std::env::var("MTLS_CERT_FILE")
+        let cert = std::env::var("MTLS_CERT_FILE")
             .context("MTLS_ENFORCE=true but MTLS_CERT_FILE is unset (fail-closed)")?;
-        let key_file = std::env::var("MTLS_KEY_FILE")
+        let key = std::env::var("MTLS_KEY_FILE")
             .context("MTLS_ENFORCE=true but MTLS_KEY_FILE is unset (fail-closed)")?;
-        let ca_file = std::env::var("MTLS_CA_FILE")
+        let ca = std::env::var("MTLS_CA_FILE")
             .context("MTLS_ENFORCE=true but MTLS_CA_FILE is unset (fail-closed)")?;
-        Ok(Some(Self {
-            cert_file,
-            key_file,
-            ca_file,
-        }))
+        Ok(Some(Self { cert, key, ca }))
     }
 }
 
@@ -48,12 +44,12 @@ pub(crate) fn build_mtls_client(
     connect_timeout: Duration,
     total_timeout: Duration,
 ) -> Result<Client> {
-    let cert_pem = std::fs::read(&paths.cert_file)
-        .with_context(|| format!("failed to read mTLS cert {}", paths.cert_file))?;
-    let key_pem = std::fs::read(&paths.key_file)
-        .with_context(|| format!("failed to read mTLS key {}", paths.key_file))?;
-    let ca_pem = std::fs::read(&paths.ca_file)
-        .with_context(|| format!("failed to read CA bundle {}", paths.ca_file))?;
+    let cert_pem = std::fs::read(&paths.cert)
+        .with_context(|| format!("failed to read mTLS cert {}", paths.cert))?;
+    let key_pem = std::fs::read(&paths.key)
+        .with_context(|| format!("failed to read mTLS key {}", paths.key))?;
+    let ca_pem = std::fs::read(&paths.ca)
+        .with_context(|| format!("failed to read CA bundle {}", paths.ca))?;
 
     // reqwest's Identity::from_pem expects cert + private key concatenated.
     let mut identity_pem = Vec::with_capacity(cert_pem.len() + key_pem.len() + 1);
