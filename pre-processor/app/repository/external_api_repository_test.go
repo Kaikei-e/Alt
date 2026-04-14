@@ -573,6 +573,46 @@ func TestExternalAPIRepository_GetSystemUserID(t *testing.T) {
 		assert.Equal(t, "test-user-123", userID)
 	})
 
+	// C-001b: GetSystemUserID must send X-Service-Token when configured,
+	// so alt-backend's /v1/internal/* RequireServiceAuth accepts the call
+	// (ADR-000618 internal-API authentication pattern).
+	t.Run("should send X-Service-Token header when configured", func(t *testing.T) {
+		cfg := testConfig()
+		cfg.AltService.ServiceToken = "test-service-token"
+		repo := NewExternalAPIRepository(cfg, testLoggerExternalAPI())
+
+		var capturedToken string
+		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			capturedToken = r.Header.Get("X-Service-Token")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"user_id":"test-user-123"}`))
+		}, 0))
+
+		_, err := repo.GetSystemUserID(context.Background())
+		require.NoError(t, err)
+		assert.Equal(t, "test-service-token", capturedToken,
+			"X-Service-Token header must be forwarded to alt-backend")
+	})
+
+	t.Run("should not send X-Service-Token header when not configured", func(t *testing.T) {
+		cfg := testConfig() // ServiceToken is empty by default
+		repo := NewExternalAPIRepository(cfg, testLoggerExternalAPI())
+
+		var headerSeen bool
+		setRepoTransport(repo, newHandlerTransport(func(w http.ResponseWriter, r *http.Request) {
+			_, headerSeen = r.Header["X-Service-Token"]
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"user_id":"test-user-123"}`))
+		}, 0))
+
+		_, err := repo.GetSystemUserID(context.Background())
+		require.NoError(t, err)
+		assert.False(t, headerSeen,
+			"X-Service-Token must not be set when ServiceToken is empty")
+	})
+
 	t.Run("should return error on empty user_id", func(t *testing.T) {
 		repo := NewExternalAPIRepository(testConfig(), testLoggerExternalAPI())
 

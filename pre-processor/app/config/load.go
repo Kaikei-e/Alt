@@ -307,7 +307,21 @@ func loadAltServiceConfig(cfg *AltServiceConfig) error {
 		return err
 	}
 
+	cfg.ServiceToken = loadServiceTokenEnv()
+
 	return nil
+}
+
+// loadServiceTokenEnv resolves SERVICE_TOKEN, preferring SERVICE_TOKEN_FILE
+// (Docker Secrets) when present. Returns empty string if neither is set.
+func loadServiceTokenEnv() string {
+	if filePath := os.Getenv("SERVICE_TOKEN_FILE"); filePath != "" {
+		content, err := os.ReadFile(filePath) // #nosec G304 -- env-configured Docker Secrets path
+		if err == nil {
+			return strings.TrimSpace(string(content))
+		}
+	}
+	return os.Getenv("SERVICE_TOKEN")
 }
 
 // loadSummarizeQueueConfig loads summarize queue configuration from environment variables
