@@ -143,8 +143,8 @@ func Run(ctx context.Context) error {
 
 	// ── Servers ──
 	app := &App{
-		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg),
-		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase),
+		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg, appCfg.BackendAPI.ServiceToken),
+		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, appCfg.BackendAPI.ServiceToken),
 		redisConsumer: redisConsumer,
 		otelShutdown:  otelShutdown,
 	}
@@ -206,7 +206,7 @@ func newRetryBackoff() *backoff.ExponentialBackOff {
 func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecase) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Logger.Error("index loop panic", "err", r)
+			logPanic(ctx, "index loop panic", r)
 		}
 	}()
 
@@ -326,7 +326,7 @@ func runIndexLoop(ctx context.Context, indexUsecase *usecase.IndexArticlesUsecas
 func runRecapIndexLoop(ctx context.Context, indexRecapsUsecase *usecase.IndexRecapsUsecase) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Logger.Error("recap index loop panic", "err", r)
+			logPanic(ctx, "recap index loop panic", r)
 		}
 	}()
 

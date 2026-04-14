@@ -4,9 +4,11 @@ package v2
 import (
 	"net/http"
 
+	"connectrpc.com/connect"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"search-indexer/connect/v2/interceptor"
 	"search-indexer/connect/v2/search"
 	searchv2connect "search-indexer/gen/proto/services/search/v2/searchv2connect"
 	"search-indexer/logger"
@@ -14,22 +16,27 @@ import (
 )
 
 // CreateConnectServer creates the Connect-RPC server with HTTP/2 support.
-func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase) http.Handler {
+// All SearchService endpoints require X-Service-Token; see ADR-000717 for the
+// Public/Internal authentication boundary this enforces.
+func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, serviceToken string) http.Handler {
 	mux := http.NewServeMux()
 
-	// Add health check endpoint for Connect-RPC server
+	// Health check endpoint stays open so orchestrators can probe liveness.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"connect-rpc"}`))
 	})
 
-	// Register Search service (no auth interceptor for internal service communication)
+	serviceAuth := interceptor.NewServiceAuthInterceptor(serviceToken)
 	searchHandler := search.NewHandler(searchByUserUsecase, searchRecapsUsecase)
-	searchPath, searchServiceHandler := searchv2connect.NewSearchServiceHandler(searchHandler)
+	searchPath, searchServiceHandler := searchv2connect.NewSearchServiceHandler(
+		searchHandler,
+		connect.WithInterceptors(serviceAuth),
+	)
 	mux.Handle(searchPath, searchServiceHandler)
 	logger.Logger.Info("Registered Connect-RPC SearchService", "path", searchPath)
 
-	// Support HTTP/2 without TLS (h2c) for internal communication
+	// HTTP/2 without TLS (h2c) for internal communication within the compose network.
 	return h2c.NewHandler(mux, &http2.Server{})
 }

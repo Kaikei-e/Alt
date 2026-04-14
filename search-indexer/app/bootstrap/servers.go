@@ -14,7 +14,7 @@ import (
 )
 
 // newHTTPServer creates the REST HTTP server.
-func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArticlesUsecase *usecase.SearchArticlesUsecase, otelCfg appOtel.Config) *http.Server {
+func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArticlesUsecase *usecase.SearchArticlesUsecase, otelCfg appOtel.Config, serviceToken string) *http.Server {
 	restHandler := rest.NewHandler(searchByUserUsecase, searchArticlesUsecase)
 
 	mux := http.NewServeMux()
@@ -25,11 +25,16 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArtic
 		_, _ = io.WriteString(w, `{"status":"ok"}`)
 	})
 
+	// Gate /v1/search behind X-Service-Token (ADR-000717 parity). /health stays
+	// open so that container probes and orchestrators can verify liveness.
+	serviceAuth := middleware.NewServiceAuthMiddleware(serviceToken)
+	searchHandler := serviceAuth.RequireServiceAuth(http.HandlerFunc(restHandler.SearchArticles))
+
 	if otelCfg.Enabled {
-		mux.Handle("/v1/search", middleware.OTelStatusHandlerFunc(restHandler.SearchArticles, "GET /v1/search"))
+		mux.Handle("/v1/search", middleware.OTelStatusHandler(searchHandler, "GET /v1/search"))
 		mux.Handle("/health", middleware.OTelStatusHandlerFunc(healthHandler, "GET /health"))
 	} else {
-		mux.HandleFunc("/v1/search", restHandler.SearchArticles)
+		mux.Handle("/v1/search", searchHandler)
 		mux.Handle("/health", healthHandler)
 	}
 
@@ -41,8 +46,8 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchArtic
 }
 
 // newConnectServer creates the Connect-RPC server.
-func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase) *http.Server {
-	handler := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase)
+func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, serviceToken string) *http.Server {
+	handler := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase, serviceToken)
 
 	return &http.Server{
 		Addr:              config.ConnectAddr,
