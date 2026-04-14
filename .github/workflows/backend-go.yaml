@@ -27,3 +27,16 @@ jobs:
       coverage-flags: 'alt-backend'
       # GitHub-hosted runner では GitHub Actions Cache を使用
       use-local-persistent-cache: false
+
+  # M-001: govulncheck と gosec を SARIF として GitHub Code Scanning に
+  # アップロードして PR 時点で依存 CVE / コードの脆弱性を検出する。
+  # 既存の reusable-go-quality-gates.yaml をそのまま再利用する。
+  quality:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: 'alt-backend/app'
+      lint-only-new: true
+      upload-sarif: true
