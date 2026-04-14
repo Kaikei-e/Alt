@@ -1,24 +1,31 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Any
 
 import pandas as pd
 import structlog
 from pydantic import BaseModel
-from sklearn.metrics import classification_report, accuracy_score, hamming_loss, precision_recall_fscore_support, confusion_matrix
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    hamming_loss,
+    precision_recall_fscore_support,
+)
 from sklearn.preprocessing import MultiLabelBinarizer
+
 try:
     from statsmodels.stats.proportion import proportion_confint
 except ImportError:
     proportion_confint = None
 
 import numpy as np
-from sklearn.model_selection import StratifiedKFold
 from sklearn.base import clone
+from sklearn.model_selection import StratifiedKFold
 
 from ..infra.config import get_settings
 from ..infra.path_validation import validate_path
-from .classifier import GenreClassifierService, SudachiTokenizer
+from .classifier import GenreClassifierService
 from .embedder import Embedder, EmbedderConfig
 
 # Conditional import for deepeval
@@ -42,7 +49,7 @@ class ClassificationMetrics(BaseModel):
     micro_precision: float
     micro_recall: float
     micro_f1: float
-    per_genre: Dict[str, Dict[str, float]]
+    per_genre: dict[str, dict[str, float]]
 
 
 class SummarizationMetrics(BaseModel):
@@ -54,13 +61,13 @@ class SummarizationMetrics(BaseModel):
 class EvaluationService:
     def __init__(
         self,
-        weights_path: Optional[str] = None,
-        weights_ja_path: Optional[str] = None,
-        weights_en_path: Optional[str] = None,
-        vectorizer_ja_path: Optional[str] = None,
-        vectorizer_en_path: Optional[str] = None,
-        thresholds_ja_path: Optional[str] = None,
-        thresholds_en_path: Optional[str] = None,
+        weights_path: str | None = None,
+        weights_ja_path: str | None = None,
+        weights_en_path: str | None = None,
+        vectorizer_ja_path: str | None = None,
+        vectorizer_en_path: str | None = None,
+        thresholds_ja_path: str | None = None,
+        thresholds_en_path: str | None = None,
         use_bootstrap: bool = True,
         n_bootstrap: int = 1000,
         use_cross_validation: bool = False,
@@ -139,7 +146,7 @@ class EvaluationService:
              if not self.classifier_en:
                  self.classifier_en = self.classifier_default
 
-    def evaluate(self, golden_data_path: str | Path, language: Optional[str] = None) -> Dict[str, Any]:
+    def evaluate(self, golden_data_path: str | Path, language: str | None = None) -> dict[str, Any]:
         """
         Evaluate classifier against golden dataset.
 
@@ -156,14 +163,11 @@ class EvaluationService:
             raise FileNotFoundError(f"Golden data not found: {golden_path}")
 
         # Load Golden Data
-        with open(golden_path, "r") as f:
+        with golden_path.open() as f:
             data = json.load(f)
 
         # Handle wrapper structure
-        if isinstance(data, dict) and "items" in data:
-            items = data["items"]
-        else:
-            items = data
+        items = data["items"] if isinstance(data, dict) and "items" in data else data
 
         # Filter by language if specified
         if language:
@@ -253,7 +257,7 @@ class EvaluationService:
         # Router expects: accuracy, macro_f1, per_genre_metrics, etc.
         # plus CI intervals if requested (bootstrap).
 
-        results: Dict[str, Any] = {
+        results: dict[str, Any] = {
             "accuracy": metrics.accuracy,
             "macro_precision": metrics.macro_precision,
             "macro_recall": metrics.macro_recall,
@@ -318,7 +322,7 @@ class EvaluationService:
 
             # Compute Matrix
             # Use sorted unique labels from both true and pred to cover all cases
-            unique_labels = sorted(list(set(y_true_single) | set(y_pred_single)))
+            unique_labels = sorted(set(y_true_single) | set(y_pred_single))
             cm = confusion_matrix(y_true_single, y_pred_single, labels=unique_labels)
 
             results["confusion_matrix"] = {
@@ -346,7 +350,7 @@ class EvaluationService:
 
         return results
 
-    def evaluate_by_language(self, golden_data_path: str | Path) -> Dict[str, Any]:
+    def evaluate_by_language(self, golden_data_path: str | Path) -> dict[str, Any]:
         """Evaluate classifier separately for each language (ja, en).
 
         Returns:
@@ -366,9 +370,9 @@ class EvaluationService:
 
     def evaluate_classification(
         self,
-        y_true: List[List[int]],
-        y_pred: List[List[int]],
-        target_names: Optional[List[str]] = None
+        y_true: list[list[int]],
+        y_pred: list[list[int]],
+        target_names: list[str] | None = None
     ) -> ClassificationMetrics:
         """
         Evaluate multi-label classification performance.
@@ -411,7 +415,7 @@ class EvaluationService:
         self,
         source_text: str,
         generated_summary: str,
-        context: Optional[List[str]] = None
+        context: list[str] | None = None
     ) -> SummarizationMetrics:
         """
         Evaluate summary quality using DeepEval metrics if available.
@@ -430,7 +434,7 @@ class EvaluationService:
             test_case = LLMTestCase(
                 input=source_text,
                 actual_output=generated_summary,
-                retrieval_context=[source_text] if not context else context
+                retrieval_context=context if context else [source_text]
             )
 
             faithfulness = FaithfulnessMetric(threshold=0.5, include_reason=False)
@@ -444,7 +448,7 @@ class EvaluationService:
 
         return metrics
 
-    def _run_cross_validation(self, texts: List[str], y_true_labels: List[List[str]], classifier: GenreClassifierService) -> Dict[str, Any]:
+    def _run_cross_validation(self, texts: list[str], y_true_labels: list[list[str]], classifier: GenreClassifierService) -> dict[str, Any]:
         """
         Run Stratified K-Fold CV by retraining the model on folds.
         Approximates the training pipeline: Embed + TF-IDF -> LogisticRegression.
@@ -477,11 +481,8 @@ class EvaluationService:
         # but here we check against ground truth labels.
         # Let's fit MLB on all y_true_labels
         mlb.fit(y_true_labels)
-        all_classes = mlb.classes_
 
-        fold = 0
-        for train_index, test_index in skf.split(features, y_single):
-            fold += 1
+        for fold, (train_index, test_index) in enumerate(skf.split(features, y_single), start=1):
             X_train, X_test = features[train_index], features[test_index]
             y_train_single = y_single[train_index]
 
@@ -501,7 +502,7 @@ class EvaluationService:
             # Apply Thresholds (Reuse current thresholds)
             y_pred_labels = []
             for probs in probs_batch:
-                scores = {cls: float(prob) for cls, prob in zip(classes, probs)}
+                scores = {cls: float(prob) for cls, prob in zip(classes, probs, strict=False)}
 
                 candidates = []
                 for cls, score in scores.items():

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 from uuid import UUID
 
 import orjson
@@ -22,7 +23,6 @@ from ..db.dao import (
 )
 from ..domain.models import (
     ClassificationJobPayload,
-    ClassificationJobResponse,
     ClassificationResult,
     ClusterInfo,
     ClusterJobPayload,
@@ -34,9 +34,8 @@ from ..domain.models import (
     EvidenceResponse,
 )
 from ..infra.config import Settings
-from .pipeline_runner import PipelineTaskRunner
 from .pipeline import EvidencePipeline
-
+from .pipeline_runner import PipelineTaskRunner
 
 LOGGER = structlog.get_logger(__name__)
 
@@ -68,14 +67,14 @@ class RunSubmission:
     job_id: UUID
     genre: str
     payload: ClusterJobPayload
-    idempotency_key: Optional[str]
+    idempotency_key: str | None
 
 
 @dataclass(slots=True)
 class ClassificationRunSubmission:
     job_id: UUID
     payload: ClassificationJobPayload
-    idempotency_key: Optional[str]
+    idempotency_key: str | None
 
 
 class RunManager:
@@ -188,7 +187,7 @@ class RunManager:
             LOGGER.info("run.process.started", run_id=run_id)
             try:
                 await asyncio.wait_for(self._process_run_inner(run_id), timeout=self._run_timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await self._handle_failure(run_id, f"pipeline timed out after {self._run_timeout}s")
                 LOGGER.error("run.process.timeout", run_id=run_id, timeout_s=self._run_timeout)
             except Exception as exc:
@@ -365,7 +364,7 @@ class RunManager:
                 if existing:
                     if existing.request_payload.get("request_hash") != request_hash:
                         raise IdempotencyMismatchError(
-                            f"idempotency key reused with different payload"
+                            "idempotency key reused with different payload"
                         )
                     if _should_reuse_idempotent_run(existing.status):
                         LOGGER.info(
@@ -383,12 +382,14 @@ class RunManager:
 
             # Allow concurrent runs if they have different idempotency keys
             # This enables parallel processing of chunks from the same job
-            if not submission.idempotency_key:
+            if (
+                not submission.idempotency_key
+                and await dao.has_running_run(submission.job_id, "classification")
+            ):
                 # If no idempotency key provided, check for any running run (backward compatibility)
-                if await dao.has_running_run(submission.job_id, "classification"):
-                    raise ConcurrentRunError(
-                        f"classification run already in progress for job {submission.job_id}"
-                    )
+                raise ConcurrentRunError(
+                    f"classification run already in progress for job {submission.job_id}"
+                )
             # If idempotency_key is provided, only check for runs with the same key (idempotency check)
             # Different keys are allowed to run concurrently
 
@@ -471,7 +472,7 @@ class RunManager:
                 await asyncio.wait_for(
                     self._process_classification_run_inner(run_id), timeout=self._run_timeout
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await self._handle_failure(
                     run_id, f"classification timed out after {self._run_timeout}s"
                 )
@@ -606,7 +607,7 @@ class RunManager:
             # For other exceptions, re-raise to be handled by the caller
             raise
 
-    async def get_run(self, run_id: int) -> Optional[RunRecord]:
+    async def get_run(self, run_id: int) -> RunRecord | None:
         async with self._session_factory() as session:
             dao = self._dao_factory(session)
             record = await dao.fetch_run(run_id)
@@ -795,7 +796,7 @@ class RunManager:
 
     def _compute_cluster_statistics(
         self, response: EvidenceResponse
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Compute run-level statistics from cluster avg_sim values.
 
         Collects avg_sim from all clusters, filters out None values, and computes:
@@ -870,7 +871,7 @@ class RunManager:
                     asyncio.gather(*self._tasks, return_exceptions=True),  # pyrefly: ignore[bad-argument-type]
                     timeout=30.0,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 LOGGER.warning(
                     "some tasks did not complete within timeout during shutdown",
                     pending_count=len([t for t in self._tasks if not t.done()]),
@@ -881,8 +882,8 @@ class RunManager:
 
 
 __all__ = [
-    "RunManager",
-    "RunSubmission",
     "ConcurrentRunError",
     "IdempotencyMismatchError",
+    "RunManager",
+    "RunSubmission",
 ]

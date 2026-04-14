@@ -12,7 +12,7 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal
 
 import structlog
 
@@ -40,7 +40,7 @@ class BERTScoreResult:
     precision: float
     recall: float
     f1: float
-    individual_scores: Optional[list[dict[str, float]]] = field(default=None)
+    individual_scores: list[dict[str, float]] | None = field(default=None)
 
     def to_dict(self) -> dict[str, float | list[dict[str, float]] | None]:
         """Convert to dictionary representation."""
@@ -79,7 +79,7 @@ class SemanticEvaluator:
     def __init__(
         self,
         batch_size: int = 32,
-        device: Optional[str] = None,
+        device: str | None = None,
         use_fast_tokenizer: bool = True,
     ):
         """Initialize the semantic evaluator.
@@ -171,7 +171,7 @@ class SemanticEvaluator:
             f1_list = F1.tolist()
             result.individual_scores = [
                 {"precision": p, "recall": r, "f1": f}
-                for p, r, f in zip(p_list, r_list, f1_list)
+                for p, r, f in zip(p_list, r_list, f1_list, strict=False)
             ]
 
         logger.info(

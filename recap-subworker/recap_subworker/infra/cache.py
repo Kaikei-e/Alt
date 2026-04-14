@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Hashable, Iterator
 from threading import Lock
-from typing import Generic, Hashable, Iterator, TypeVar
-
+from typing import TypeVar
 
 K = TypeVar("K", bound=Hashable)
 V = TypeVar("V")
 
 
-class LRUCache(Generic[K, V]):
+class LRUCache[K: Hashable, V]:
     """Thread-safe LRU cache with a bounded capacity."""
 
     def __init__(self, capacity: int) -> None:

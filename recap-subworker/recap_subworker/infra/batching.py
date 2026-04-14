@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Iterator, Sequence, TypeVar
-
+from collections.abc import Iterable, Iterator, Sequence
+from typing import TypeVar
 
 T = TypeVar("T")
 
 
-def sliding_batches(items: Sequence[T], batch_size: int) -> Iterator[Sequence[T]]:
+def sliding_batches[T](items: Sequence[T], batch_size: int) -> Iterator[Sequence[T]]:
     """Yield slices of *items* with at most *batch_size* elements."""
 
     if batch_size <= 0:
@@ -17,14 +17,14 @@ def sliding_batches(items: Sequence[T], batch_size: int) -> Iterator[Sequence[T]
         yield items[index : index + batch_size]
 
 
-def adaptive_batches(
+def adaptive_batches[T](
     items: Sequence[T], estimate_tokens: Iterable[int], budget: int
 ) -> Iterator[list[T]]:
     """Yield batches where the sum of estimated tokens stays under *budget*."""
 
     current: list[T] = []
     current_tokens = 0
-    for item, tokens in zip(items, estimate_tokens):
+    for item, tokens in zip(items, estimate_tokens, strict=False):
         if tokens > budget:
             if current:
                 yield current

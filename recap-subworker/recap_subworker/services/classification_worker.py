@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import sys
-from typing import Any, Union
+
+# LearningMachineStudentClassifier is lazily imported in initialize() to avoid CUDA fork issues
+# See: https://docs.pytorch.org/docs/stable/notes/multiprocessing.html
+from typing import TYPE_CHECKING, Any
 
 from ..infra.config import Settings
 from .classifier import GenreClassifierService
 from .embedder import Embedder, EmbedderConfig
-# LearningMachineStudentClassifier is lazily imported in initialize() to avoid CUDA fork issues
-# See: https://docs.pytorch.org/docs/stable/notes/multiprocessing.html
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .learning_machine_classifier import LearningMachineStudentClassifier
 
-_CLASSIFIER: Union[GenreClassifierService, "LearningMachineStudentClassifier", None] = None
+_CLASSIFIER: GenreClassifierService | LearningMachineStudentClassifier | None = None
 
 
 def initialize(settings_payload: dict[str, Any]) -> None:
@@ -106,7 +106,7 @@ def initialize(settings_payload: dict[str, Any]) -> None:
         sys.exit(1)
 
 
-def _require_classifier() -> Union[GenreClassifierService, LearningMachineStudentClassifier]:
+def _require_classifier() -> GenreClassifierService | LearningMachineStudentClassifier:
     if _CLASSIFIER is None:  # pragma: no cover - runtime safeguard
         raise RuntimeError("Classification worker not initialized")
     return _CLASSIFIER

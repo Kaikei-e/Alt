@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import statistics
 import asyncio
+import statistics
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import partial
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -83,7 +84,7 @@ def _compute_boosted_scores(candidates: list[dict[str, Any]]) -> tuple[float, fl
 
 def _format_timestamp(value: Any) -> str:
     if isinstance(value, datetime):
-        return value.astimezone(timezone.utc).isoformat()
+        return value.astimezone(UTC).isoformat()
     if value is None:
         return ""
     return str(value)
@@ -156,7 +157,7 @@ class ClusterBuilder:
         if not summaries:
             return None
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         draft_id = f"graph-boost-reorg-{now.strftime('%Y%m%dT%H%M%SZ')}"
         return {
             "draft_id": draft_id,
@@ -217,7 +218,7 @@ class ClusterBuilder:
         for label in sorted(set(labels)):
             cluster_entries = [
                 entry
-                for entry, assigned in zip(entries, labels)
+                for entry, assigned in zip(entries, labels, strict=False)
                 if assigned == label
             ]
             if not cluster_entries:
@@ -312,13 +313,13 @@ def _objective_bayes(params: Sequence[float], df: pd.DataFrame) -> float:
         preds = (
             (df["margin"] >= graph_margin)
             & (df["top_boost"] >= boost_threshold)
-            & (df["tag_count"] >= int(round(tag_count_min)))
+            & (df["tag_count"] >= round(tag_count_min))
         )
     else:
         # top_boost がすべて 0 の場合は boost_threshold 条件をスキップ
         preds = (
             (df["margin"] >= graph_margin)
-            & (df["tag_count"] >= int(round(tag_count_min)))
+            & (df["tag_count"] >= round(tag_count_min))
         )
     accuracy = accuracy_score(df["label"], preds)
     return 1.0 - accuracy
@@ -352,7 +353,7 @@ def _params_from_raw(raw: Sequence[float]) -> GraphBoostParams:
     return GraphBoostParams(
         graph_margin=float(raw[0]),
         boost_threshold=float(raw[1]),
-        tag_count_threshold=int(round(raw[2])),
+        tag_count_threshold=round(raw[2]),
     )
 
 
@@ -591,7 +592,7 @@ class GenreLearningService:
         matched_tag_count = 0
         total_tag_count = 0
         genre_tag_matches: dict[str, int] = {}
-        tag_set = {t for _, t in graph_edges.keys()}
+        tag_set = {t for _, t in graph_edges}
 
         # If no graph edges, keep existing graph_boost values to avoid wiping signals
         if not graph_edges:

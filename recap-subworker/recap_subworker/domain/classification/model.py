@@ -1,9 +1,9 @@
 """Candle を用いた軽量ハイブリッド分類モデル。"""
 
 import json
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 import os
+from pathlib import Path
+
 import numpy as np
 
 from .features import (
@@ -36,8 +36,8 @@ class GenreClassifier:
 
     def __init__(
         self,
-        weights_path: Optional[str] = None,
-        weights_data: Optional[Dict] = None,
+        weights_path: str | None = None,
+        weights_data: dict | None = None,
     ):
         """初期化。
 
@@ -58,12 +58,13 @@ class GenreClassifier:
             if weights_path:
                 # Only validate if not the hardcoded default
                 # Allow absolute and relative, but only under root
-                resolved_path = os.path.normpath(os.path.join(SAFE_WEIGHTS_DIR, os.path.relpath(weights_path, '/')))
-                if not resolved_path.startswith(os.path.abspath(SAFE_WEIGHTS_DIR)):
+                safe_dir = Path(SAFE_WEIGHTS_DIR)
+                resolved_path = (safe_dir / Path(weights_path).relative_to("/")).resolve()
+                if not str(resolved_path).startswith(str(safe_dir.resolve())):
                     raise ValueError(f"weights_path '{weights_path}' is not allowed.")
-                if not os.path.exists(resolved_path):
+                if not resolved_path.exists():
                     raise ValueError(f"Weights file does not exist: {weights_path}")
-                with open(resolved_path, "r", encoding="utf-8") as f:
+                with resolved_path.open(encoding="utf-8") as f:
                     weights_data = json.load(f)
             else:
                 # デフォルトの埋め込みJSONを使用（フォールバック）
@@ -96,7 +97,7 @@ class GenreClassifier:
             self.average_doc_len,
         )
 
-    def _validate_weights(self, weights: Dict) -> None:
+    def _validate_weights(self, weights: dict) -> None:
         """重みデータを検証。"""
         if not weights.get("tfidf_weights") or len(weights["tfidf_weights"]) == 0:
             raise ValueError(
@@ -137,7 +138,7 @@ class GenreClassifier:
         ]:
             raise ValueError("feature idf length mismatch")
 
-    def predict(self, features: FeatureVector) -> List[Tuple[str, float]]:
+    def predict(self, features: FeatureVector) -> list[tuple[str, float]]:
         """特徴ベクトルからジャンルを予測。
 
         Args:

@@ -1,18 +1,17 @@
 import time
-from typing import List, Dict, Any
+
+import structlog
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-import structlog
-
-from ..deps import get_classifier_dep
 from ...services.classifier import GenreClassifierService
+from ..deps import get_classifier_dep
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
 class ClassificationRequest(BaseModel):
-    texts: List[str]
+    texts: list[str]
     multi_label: bool = False
     top_k: int = 5
 
@@ -24,11 +23,11 @@ class ValidationCandidate(BaseModel):
 class ClassificationResult(BaseModel):
     top_genre: str
     confidence: float
-    scores: Dict[str, float]
-    candidates: List[ValidationCandidate] = []
+    scores: dict[str, float]
+    candidates: list[ValidationCandidate] = []
 
 class ClassificationResponse(BaseModel):
-    results: List[ClassificationResult]
+    results: list[ClassificationResult]
 
 @router.post("/classify", response_model=ClassificationResponse)
 async def classify_texts(

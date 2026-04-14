@@ -14,13 +14,13 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal, Optional
+from typing import Literal
 
 import structlog
 
 try:
-    from gensim.models.coherencemodel import CoherenceModel
     from gensim.corpora import Dictionary
+    from gensim.models.coherencemodel import CoherenceModel
     GENSIM_AVAILABLE = True
 except ImportError:
     CoherenceModel = None
@@ -72,8 +72,8 @@ class CoherenceResult:
     overall_coherence: float
     coherence_type: str
     per_cluster_coherence: dict[int, float]
-    num_clusters: Optional[int] = field(default=None)
-    num_documents: Optional[int] = field(default=None)
+    num_clusters: int | None = field(default=None)
+    num_documents: int | None = field(default=None)
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""

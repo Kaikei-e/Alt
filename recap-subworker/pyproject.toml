@@ -86,6 +86,34 @@ dev = [
 line-length = 100
 target-version = "py314"
 
+[tool.ruff.lint]
+# Phase 0 ベースライン: 安全かつ自動修正可能なルールのみ有効化
+# BLE / ASYNC / TRY は Phase 5 (async 堅牢化) で段階的に追加する
+select = [
+  "E", "W", "F", "I",      # pycodestyle / pyflakes / isort
+  "B",                     # flake8-bugbear
+  "UP",                    # pyupgrade
+  "SIM",                   # flake8-simplify
+  "C4",                    # flake8-comprehensions
+  "PTH",                   # pathlib
+  "RUF",                   # ruff-specific
+]
+ignore = [
+  "E501",                  # line length (formatter で扱う)
+  "B008",                  # FastAPI Depends() の引数評価は意図的
+  "B023",                  # function definition does not bind loop variable (closure パターン)
+  "RUF001", "RUF002", "RUF003",  # 日本語 docstring/comment の confusable 警告は誤検出
+  "RUF012",                # mutable class attr は dataclass default で意図的
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 学習スクリプトは条件付き sys.path 操作 + 後置 import が必須パターン
+"recap_subworker/learning_machine/scripts/**/*.py" = ["E402", "E722", "E701", "F841", "PTH", "B904", "SIM"]
+# infra/classifier のトレーニングスクリプトも同様
+"recap_subworker/infra/classifier/**/*.py" = ["PTH", "B904"]
+# Gunicorn 設定は postgres ライブラリの遅延 import が必要
+"recap_subworker/infra/gunicorn_conf.py" = ["E402"]
+
 [tool.pyrefly]
 project-includes = ["."]
 project-excludes = ["**/__pycache__", "**/.venv", "**/build", "**/dist", "**/*.egg-info", "tests/**"]

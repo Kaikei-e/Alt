@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable, Coroutine
 from dataclasses import asdict
-from datetime import datetime, timezone
-from typing import Any, Callable, Coroutine
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
@@ -26,7 +27,7 @@ class ConcurrentAdminJobError(Exception):
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class AdminJobService:
@@ -315,7 +316,7 @@ class AdminJobService:
                 asyncio.gather(*self._tasks, return_exceptions=True),  # pyrefly: ignore[bad-argument-type]
                 timeout=10.0,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             LOGGER.warning("timeout while shutting down admin job tasks")
         self._tasks.clear()
 

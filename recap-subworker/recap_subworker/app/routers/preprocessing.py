@@ -1,20 +1,20 @@
-from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict
-import numpy as np
+from typing import Any
 
-from ...services.extraction import ContentExtractor
-from ...services.classification import CoarseClassifier
-from ...services.clusterer import Clusterer, ClusterResult
-from ...services.embedder import Embedder
-from ..deps import (
-    get_content_extractor_dep,
-    get_coarse_classifier_dep,
-    get_embedder_dep,
-    get_settings_dep
-)
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+
 from ...infra.config import Settings
-from ..deps import get_extract_semaphore_dep
+from ...services.classification import CoarseClassifier
+from ...services.clusterer import Clusterer
+from ...services.embedder import Embedder
+from ...services.extraction import ContentExtractor
+from ..deps import (
+    get_coarse_classifier_dep,
+    get_content_extractor_dep,
+    get_embedder_dep,
+    get_extract_semaphore_dep,
+    get_settings_dep,
+)
 
 router = APIRouter()
 
@@ -29,15 +29,15 @@ class CoarseClassifyRequest(BaseModel):
     text: str
 
 class CoarseClassifyResponse(BaseModel):
-    scores: Dict[str, float]
+    scores: dict[str, float]
 
 class SubClusterOtherRequest(BaseModel):
-    texts: List[str]
+    texts: list[str]
 
 class SubClusterOtherResponse(BaseModel):
-    labels: List[int]
-    probabilities: List[float]
-    diagnostics: Dict[str, Any]
+    labels: list[int]
+    probabilities: list[float]
+    diagnostics: dict[str, Any]
 
 @router.post("/extract", response_model=ExtractResponse)
 async def extract_content(

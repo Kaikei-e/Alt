@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlparse, urlunparse
 
-from pydantic import Field, AliasChoices, SecretStr, model_validator
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,15 +22,17 @@ class Settings(BaseSettings):
     recap_db_password: SecretStr | None = Field(default=None)
 
     @model_validator(mode='after')
-    def inject_db_password(self) -> 'Settings':
+    def inject_db_password(self) -> Settings:
         # If RECAP_SUBWORKER_DB_PASSWORD_FILE is set, read password from that file
         import os
+        from pathlib import Path
+
         password_file = os.getenv("RECAP_SUBWORKER_DB_PASSWORD_FILE")
         if password_file and not self.recap_db_password:
             try:
-                with open(password_file, "r") as f:
+                with Path(password_file).open() as f:
                     self.recap_db_password = SecretStr(f.read().strip())
-            except Exception:
+            except OSError:
                 pass  # Fall back to secrets_dir or default
 
         if self.recap_db_password:

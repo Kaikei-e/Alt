@@ -11,31 +11,28 @@ Usage:
 
 from __future__ import annotations
 
-import sys
+import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
 
-import multiprocessing
 import structlog
 
 from ..db.session import get_session_factory
 from ..gateway.hdbscan_clusterer import HdbscanClustererGateway
-from ..gateway.joblib_classifier import JoblibClassifierGateway
-from ..gateway.pg_repository import PgRunRepository
 from ..gateway.st_embedder import StEmbedderGateway
 from ..infra.config import Settings
+from ..services.async_jobs import AdminJobService
+from ..services.classification import CoarseClassifier
 from ..services.classification_runner import ClassificationRunner
+from ..services.classifier import GenreClassifierService
 from ..services.embedder import Embedder, EmbedderConfig
+from ..services.extraction import ContentExtractor
+from ..services.learning_client import LearningClient
+from ..services.learning_scheduler import LearningScheduler
 from ..services.pipeline import EvidencePipeline
 from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager
-from ..services.extraction import ContentExtractor
-from ..services.classification import CoarseClassifier
-from ..services.async_jobs import AdminJobService
-from ..services.learning_client import LearningClient
-from ..services.learning_scheduler import LearningScheduler
-from ..services.classifier import GenreClassifierService
 from ..usecase.cluster_evidence import ClusterEvidenceUsecase
 from ..usecase.manage_run import ManageRunUsecase
 
@@ -75,14 +72,9 @@ class ServiceContainer:
         if self._process_pool is None:
             max_workers = self.settings.process_pool_size
             mp_context = multiprocessing.get_context("spawn")
-            if sys.version_info >= (3, 13):
-                self._process_pool = ProcessPoolExecutor(
-                    max_workers=max_workers, mp_context=mp_context, max_tasks_per_child=100,
-                )
-            else:
-                self._process_pool = ProcessPoolExecutor(
-                    max_workers=max_workers, mp_context=mp_context,
-                )
+            self._process_pool = ProcessPoolExecutor(
+                max_workers=max_workers, mp_context=mp_context, max_tasks_per_child=100,
+            )
             logger.info(
                 "process pool created",
                 max_workers=self.settings.process_pool_size,
@@ -300,7 +292,7 @@ class ServiceContainer:
         clusterer: Any | None = None,
         pipeline: Any | None = None,
         run_manager: Any | None = None,
-    ) -> "ServiceContainer":
+    ) -> ServiceContainer:
         """Factory for test instances with injectable fakes.
 
         Pass fake/mock objects to override any dependency:

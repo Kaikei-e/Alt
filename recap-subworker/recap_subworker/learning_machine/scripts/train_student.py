@@ -3,9 +3,10 @@ import json
 import logging
 import os
 import sys
-import yaml
 from pathlib import Path
-from typing import List, Dict
+
+import yaml
+
 
 # CUDAライブラリのパスを動的に検出して設定（CUDA検出を確実にするため）
 def _setup_cuda_library_path():
@@ -74,16 +75,17 @@ def _setup_cuda_library_path():
 
 _setup_cuda_library_path()
 
+import random
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
+from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, f1_score
-from transformers import get_linear_schedule_with_warmup
 from torch.optim import AdamW
-import random
-import numpy as np
+from torch.utils.data import DataLoader, Dataset
+from transformers import get_linear_schedule_with_warmup
 
 # Path setup
 current_dir = Path(__file__).resolve().parent
@@ -140,16 +142,16 @@ class DistillationDataset(Dataset):
             'has_teacher': torch.tensor(1 if has_Teacher else 0, dtype=torch.long)
         }
 
-def load_genres(path: Path) -> List[str]:
+def load_genres(path: Path) -> list[str]:
     with open(path) as f:
         data = yaml.safe_load(f)
         return data.get("genres", [])
 
-def load_jsonl(path: Path, label2id: Dict) -> List[Dict]:
+def load_jsonl(path: Path, label2id: dict) -> list[dict]:
     data = []
     if not path.exists():
         return []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 try:

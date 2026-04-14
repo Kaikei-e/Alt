@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import sys
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from ..domain.models import EvidenceRequest, WarmupResponse
 from ..infra.config import Settings
 from .embedder import Embedder, EmbedderConfig
 from .pipeline import EvidencePipeline
-
 
 _PIPELINE: EvidencePipeline | None = None
 

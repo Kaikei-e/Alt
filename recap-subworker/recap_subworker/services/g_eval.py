@@ -14,7 +14,6 @@ import asyncio
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 import structlog
 
@@ -53,7 +52,7 @@ class GEvalResult:
     consistency: float
     fluency: float
     relevance: float
-    explanations: Optional[dict[str, str]] = field(default=None)
+    explanations: dict[str, str] | None = field(default=None)
 
     @property
     def average(self) -> float:
@@ -197,8 +196,8 @@ class GEvalEvaluator:
 
     def __init__(
         self,
-        dimensions: Optional[list[EvaluationDimension]] = None,
-        llm_client: Optional[object] = None,
+        dimensions: list[EvaluationDimension] | None = None,
+        llm_client: object | None = None,
         model_name: str = "gpt-4",
         temperature: float = 0.0,
     ):
@@ -272,7 +271,7 @@ class GEvalEvaluator:
         logger.warning("Failed to parse score from response", response=response[:100])
         return 3.0
 
-    def _parse_explanation(self, response: str) -> Optional[str]:
+    def _parse_explanation(self, response: str) -> str | None:
         """Extract explanation from LLM response.
 
         Args:
@@ -324,7 +323,7 @@ class GEvalEvaluator:
         dimension: EvaluationDimension,
         summary: str,
         source: str,
-    ) -> tuple[float, Optional[str]]:
+    ) -> tuple[float, str | None]:
         """Evaluate a single dimension.
 
         Args:
@@ -356,7 +355,7 @@ class GEvalEvaluator:
                 dimension=dimension.value,
                 error=str(e),
             )
-            return 3.0, f"Error: {str(e)}"
+            return 3.0, f"Error: {e!s}"
 
     async def evaluate(
         self,
@@ -393,7 +392,7 @@ class GEvalEvaluator:
         scores = {}
         explanations = {} if include_explanations else None
 
-        for dim, (score, explanation) in zip(self.dimensions, results):
+        for dim, (score, explanation) in zip(self.dimensions, results, strict=False):
             scores[dim.value] = score
             if explanations is not None and explanation:
                 explanations[dim.value] = explanation
@@ -433,7 +432,7 @@ class GEvalEvaluator:
 
         tasks = [
             self.evaluate(summary, source, include_explanations)
-            for summary, source in zip(summaries, sources)
+            for summary, source in zip(summaries, sources, strict=False)
         ]
 
         return await asyncio.gather(*tasks)

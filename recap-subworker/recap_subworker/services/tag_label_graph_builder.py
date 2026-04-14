@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
-import asyncio
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Sequence
-
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import UTC, datetime
+from typing import Any
 
 import structlog
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger(__name__)
 
@@ -132,7 +132,7 @@ class TagLabelGraphBuilder:
         for row in rows:
             genre = (row.get("genre") or "other").strip().lower()
             tags_raw = row.get("tags_json") or []
-            updated_at = row.get("updated_at") or datetime.now(timezone.utc)
+            updated_at = row.get("updated_at") or datetime.now(UTC)
 
             # Handle JSON string if needed
             if isinstance(tags_raw, str):
@@ -161,8 +161,6 @@ class TagLabelGraphBuilder:
         tag_frequencies: dict[str, int] = defaultdict(int)
         for (_, label), acc in stats.items():
             tag_frequencies[label] += acc.sample_size
-
-        max_tag_freq = max(tag_frequencies.values()) if tag_frequencies else 1
 
         edges: list[EdgePayload] = []
         for (genre, label), acc in stats.items():
@@ -203,7 +201,7 @@ class TagLabelGraphBuilder:
         edges: list[EdgePayload],
     ) -> int:
         """Upsert edges to tag_label_graph table."""
-        refresh_ts = datetime.now(timezone.utc)
+        refresh_ts = datetime.now(UTC)
 
         for edge in edges:
             await self.session.execute(

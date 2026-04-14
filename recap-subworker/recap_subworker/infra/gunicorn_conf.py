@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
-import threading
 
 import structlog
 
@@ -38,8 +37,8 @@ def _run_scheduler_process() -> None:
 
     This function (and the imported modules) will only be loaded in the spawned process.
     """
-    import asyncio
     import structlog
+
     from recap_subworker.infra.config import get_settings
     from recap_subworker.services.learning_scheduler import LearningScheduler
 
@@ -95,6 +94,7 @@ def _run_scheduler_process() -> None:
 
 
 import logging
+
 
 class NoisyPathFilter(logging.Filter):
     def filter(self, record):

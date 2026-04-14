@@ -1,6 +1,6 @@
 """統計分析ユーティリティ（信頼区間、McNemar's Testなど）。"""
 
-from typing import Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
 
 import numpy as np
 from scipy import stats
@@ -9,7 +9,7 @@ from statsmodels.stats.contingency_tables import mcnemar
 
 def calculate_confidence_interval(
     n_success: int, n_total: int, confidence: float = 0.95
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Wilson score intervalを使用して信頼区間を計算。
 
     Args:
@@ -39,8 +39,8 @@ def calculate_confidence_interval(
 
 
 def compare_models_mcnemar(
-    results_model_a: List[Tuple[bool, bool]], results_model_b: List[Tuple[bool, bool]]
-) -> Tuple[float, float, np.ndarray]:
+    results_model_a: list[tuple[bool, bool]], results_model_b: list[tuple[bool, bool]]
+) -> tuple[float, float, np.ndarray]:
     """McNemar's Testを使用して2つのモデルを比較。
 
     Args:
@@ -63,7 +63,7 @@ def compare_models_mcnemar(
     c = 0  # 両方正
     d = 0  # 両方誤
 
-    for (exp_a, pred_a), (exp_b, pred_b) in zip(results_model_a, results_model_b):
+    for (exp_a, pred_a), (exp_b, pred_b) in zip(results_model_a, results_model_b, strict=False):
         correct_a = exp_a == pred_a
         correct_b = exp_b == pred_b
 
@@ -91,7 +91,7 @@ def bootstrap_confidence_interval(
     confidence: float = 0.95,
     n_bootstrap: int = 1000,
     method: str = "percentile",
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Bootstrap法による信頼区間を計算。
 
     Args:
@@ -147,7 +147,7 @@ def _bca_bootstrap_interval(
     bootstrap_stats: np.ndarray,
     original_stat: float,
     confidence: float,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """BCa (Bias-corrected and accelerated) bootstrap信頼区間を計算。
 
     Args:
@@ -222,7 +222,7 @@ def _bca_bootstrap_interval(
 
 def clopper_pearson_interval(
     n_success: int, n_total: int, confidence: float = 0.95
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Clopper-Pearson信頼区間を計算（二項分布の正確な信頼区間）。
 
     小サンプルサイズや不均衡データに適している。
@@ -242,10 +242,7 @@ def clopper_pearson_interval(
     alpha = 1 - confidence
 
     # Clopper-Pearson interval
-    if n_success == 0:
-        lower = 0.0
-    else:
-        lower = stats.beta.ppf(alpha / 2, n_success, n_total - n_success + 1)
+    lower = 0.0 if n_success == 0 else stats.beta.ppf(alpha / 2, n_success, n_total - n_success + 1)
 
     if n_success == n_total:
         upper = 1.0
@@ -379,7 +376,7 @@ def cramers_v(confusion_matrix: np.ndarray) -> float:
         # chi2がNaNやInfの場合は0.0を返す
         if not np.isfinite(chi2) or chi2 < 0:
             return 0.0
-    except (ValueError, ZeroDivisionError) as e:
+    except (ValueError, ZeroDivisionError):
         # 期待度数がゼロなどの場合、エラーをキャッチして0.0を返す
         return 0.0
 
@@ -389,7 +386,7 @@ def cramers_v(confusion_matrix: np.ndarray) -> float:
 
 def wilcoxon_signed_rank_test(
     group1: np.ndarray, group2: np.ndarray
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """Wilcoxon signed-rank testを実行（対応のある2群の比較）。
 
     Args:
@@ -408,7 +405,7 @@ def wilcoxon_signed_rank_test(
 
 def mann_whitney_u_test(
     group1: np.ndarray, group2: np.ndarray, alternative: str = "two-sided"
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """Mann-Whitney U testを実行（独立した2群の比較）。
 
     Args:
@@ -423,7 +420,7 @@ def mann_whitney_u_test(
     return (statistic, pvalue)
 
 
-def bonferroni_correction(pvalues: List[float], alpha: float = 0.05) -> List[float]:
+def bonferroni_correction(pvalues: list[float], alpha: float = 0.05) -> list[float]:
     """Bonferroni補正を適用。
 
     Args:

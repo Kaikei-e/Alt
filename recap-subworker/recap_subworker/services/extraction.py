@@ -1,4 +1,5 @@
 import logging
+
 import trafilatura
 
 # Suppress noisy trafilatura logs

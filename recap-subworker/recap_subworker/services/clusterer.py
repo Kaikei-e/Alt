@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import concurrent.futures
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 import numpy as np
 import structlog
@@ -32,7 +32,7 @@ def compute_knn_faiss(embeddings: np.ndarray, n_neighbors: int) -> tuple[np.ndar
     """
     import faiss
 
-    n_samples, dim = embeddings.shape
+    _n_samples, dim = embeddings.shape
 
     # Ensure float32 for FAISS
     embeddings_f32 = embeddings.astype(np.float32)
@@ -411,7 +411,6 @@ class Clusterer:
     def _calculate_silhouette(self, embeddings: np.ndarray, labels: np.ndarray) -> float:
         try:
             # Silhouette score requires at least 2 distinct labels
-            unique_labels = set(labels)
             # Filter out noise points (-1) for silhouette calculation
             # This is a common practice as noise points don't belong to any cluster
             # and can skew the score.
@@ -551,13 +550,12 @@ class Clusterer:
                         if score > best_score:
                             best_score = score
                             best_result = result
-                        elif score == best_score:
-                            if best_result:
-                                if mcs > best_result.params.min_cluster_size:
-                                    best_result = result
-                                elif mcs == best_result.params.min_cluster_size:
-                                    if current_ms > best_result.params.min_samples:
-                                        best_result = result
+                        elif score == best_score and best_result:
+                            if mcs > best_result.params.min_cluster_size or (
+                                mcs == best_result.params.min_cluster_size
+                                and current_ms > best_result.params.min_samples
+                            ):
+                                best_result = result
 
         if best_result is None:
             # Fallback for very small data or failed searches
@@ -946,13 +944,12 @@ class Clusterer:
                         if score > best_score:
                             best_score = score
                             best_result = result
-                        elif score == best_score:
-                            if best_result:
-                                if mcs > best_result.params.min_cluster_size:
-                                    best_result = result
-                                elif mcs == best_result.params.min_cluster_size:
-                                    if current_ms > best_result.params.min_samples:
-                                        best_result = result
+                        elif score == best_score and best_result:
+                            if mcs > best_result.params.min_cluster_size or (
+                                mcs == best_result.params.min_cluster_size
+                                and current_ms > best_result.params.min_samples
+                            ):
+                                best_result = result
 
         if best_result is None:
             best_result = self.cluster(embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1)

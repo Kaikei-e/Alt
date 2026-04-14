@@ -1,7 +1,7 @@
 import json
 import logging
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Add project root to path
 current_dir = Path(__file__).resolve().parent
@@ -22,7 +22,7 @@ def main():
         logger.error(f"Source file not found: {source_path}")
         return
 
-    with open(source_path, "r", encoding="utf-8") as f:
+    with open(source_path, encoding="utf-8") as f:
         data = json.load(f)
 
     # Data is {"items": [...], "genres": [...]}

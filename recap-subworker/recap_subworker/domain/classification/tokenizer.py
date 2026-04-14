@@ -4,7 +4,6 @@ import re
 import unicodedata
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List
 
 try:
     from janome.tokenizer import Tokenizer as JanomeTokenizer
@@ -20,7 +19,7 @@ class ClassificationLanguage(Enum):
     UNKNOWN = "unknown"
 
     @classmethod
-    def from_code(cls, code: str) -> "ClassificationLanguage":
+    def from_code(cls, code: str) -> ClassificationLanguage:
         """言語コードからClassificationLanguageを取得。"""
         code_lower = code.lower()
         if code_lower in ("ja", "jp"):
@@ -33,7 +32,7 @@ class ClassificationLanguage(Enum):
 class NormalizedDocument:
     """正規化された文書。"""
 
-    def __init__(self, tokens: List[str], normalized: str):
+    def __init__(self, tokens: list[str], normalized: str):
         self.tokens = tokens
         self.normalized = normalized
 
@@ -47,7 +46,7 @@ class Tokenizer(ABC):
     """トークナイザーの基底クラス。"""
 
     @abstractmethod
-    def tokenize(self, text: str) -> List[str]:
+    def tokenize(self, text: str) -> list[str]:
         """テキストをトークン化。"""
         pass
 
@@ -60,7 +59,7 @@ class JapaneseTokenizer(Tokenizer):
         # Pythonのreモジュールでは\p{L}などが使えないため、代替パターンを使用
         self.fallback_word_re = re.compile(r"[^\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+")
 
-    def tokenize(self, text: str) -> List[str]:
+    def tokenize(self, text: str) -> list[str]:
         """日本語テキストをトークン化。"""
         if self.tokenizer:
             try:
@@ -72,7 +71,7 @@ class JapaneseTokenizer(Tokenizer):
                 pass
         return self._fallback_tokenize(text)
 
-    def _fallback_tokenize(self, text: str) -> List[str]:
+    def _fallback_tokenize(self, text: str) -> list[str]:
         """フォールバックトークン化。"""
         normalized = normalize_text(text)
         tokens = []
@@ -87,7 +86,7 @@ class EnglishTokenizer(Tokenizer):
     """英語トークナイザー。"""
 
     @staticmethod
-    def tokenize(text: str) -> List[str]:
+    def tokenize(text: str) -> list[str]:
         """英語テキストをトークン化。"""
         normalized = normalize_text(text)
         # 単語境界で分割
@@ -126,7 +125,7 @@ class FallbackTokenizer(Tokenizer):
         # Pythonのreモジュールでは\p{L}などが使えないため、代替パターンを使用
         self.split_re = re.compile(r"[^\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+")
 
-    def tokenize(self, text: str) -> List[str]:
+    def tokenize(self, text: str) -> list[str]:
         """フォールバックトークン化。"""
         normalized = normalize_text(text)
         tokens = []
@@ -137,7 +136,7 @@ class FallbackTokenizer(Tokenizer):
         return tokens
 
 
-def apply_augmented_tokens(tokens: List[str], mapping: List[tuple[str, List[str]]]) -> None:
+def apply_augmented_tokens(tokens: list[str], mapping: list[tuple[str, list[str]]]) -> None:
     """同義語拡張を適用。"""
     extras = []
     for needle, synonyms in mapping:
@@ -168,7 +167,7 @@ class TokenPipeline:
             return ClassificationLanguage.ENGLISH
         return ClassificationLanguage.UNKNOWN
 
-    def tokenize(self, text: str, lang: ClassificationLanguage) -> List[str]:
+    def tokenize(self, text: str, lang: ClassificationLanguage) -> list[str]:
         """テキストをトークン化。"""
         if lang == ClassificationLanguage.JAPANESE:
             return self.japanese.tokenize(text)
@@ -187,7 +186,7 @@ class TokenPipeline:
         normalized = " ".join(tokens)
         return NormalizedDocument(tokens=tokens, normalized=normalized)
 
-    def _augment_tokens(self, tokens: List[str], lang: ClassificationLanguage) -> None:
+    def _augment_tokens(self, tokens: list[str], lang: ClassificationLanguage) -> None:
         """同義語拡張を適用。"""
         if lang == ClassificationLanguage.JAPANESE:
             apply_augmented_tokens(

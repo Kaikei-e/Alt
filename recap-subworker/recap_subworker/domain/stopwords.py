@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 import warnings
+from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, Set
 
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
@@ -27,7 +27,7 @@ except (ImportError, OSError):
     nltk_stopwords = None
 
 # News article domain-specific stopwords that frequently appear but lack semantic value
-_NEWS_DOMAIN_STOPWORDS: Set[str] = {
+_NEWS_DOMAIN_STOPWORDS: set[str] = {
     # Reporting verbs and phrases
     "according",
     "reported",
@@ -108,7 +108,7 @@ _NEWS_DOMAIN_STOPWORDS: Set[str] = {
 }
 
 # Web, URL, and programming terms that dominate c-TF-IDF in developer-heavy content
-_WEB_TECH_STOPWORDS: Set[str] = {
+_WEB_TECH_STOPWORDS: set[str] = {
     # URL and web components
     "url",
     "http",
@@ -194,7 +194,7 @@ def _iterate_extra_terms() -> Iterable[str]:
 
 
 @lru_cache(maxsize=1)
-def get_stopwords() -> Set[str]:
+def get_stopwords() -> set[str]:
     """Return comprehensive stopword set combining multiple sources.
 
     Combines:

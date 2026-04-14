@@ -2,8 +2,9 @@
 import os
 import tarfile
 import urllib.request
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
 from datasets import load_dataset
 
 DATA_DIR = Path("data")
@@ -65,7 +66,7 @@ def process_livedoor():
             if file_path.name == "LICENSE.txt":
                 continue
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     lines = f.readlines()
                     # Skip header lines (url, time) - usually first 2 lines
                     if len(lines) > 2:
@@ -87,7 +88,7 @@ def process_ag_news():
         # Take e.g. 500 per class
         shuffled = dataset.shuffle(seed=42)
 
-        counts = {g: 0 for g in AG_NEWS_MAP.values()}
+        counts = dict.fromkeys(AG_NEWS_MAP.values(), 0)
         limit = 500
 
         for item in shuffled:

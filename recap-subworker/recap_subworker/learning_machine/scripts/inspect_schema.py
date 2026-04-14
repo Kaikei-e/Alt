@@ -2,8 +2,9 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+
+from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy import text, inspect
 
 # Ensure we can import from recap-subworker
 current_dir = Path(__file__).resolve().parent
@@ -26,7 +27,7 @@ def get_db_url_with_password(settings: Settings) -> str:
 
     if secret_path.exists():
         try:
-            with open(secret_path, "r") as f:
+            with open(secret_path) as f:
                 password = f.read().strip()
             u = urlparse(db_url)
             if '@' in u.netloc:

@@ -8,17 +8,16 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import List
 
 # 許可されたベースディレクトリ
 # NOTE: ここを変更する場合は、APIレイヤなどの仕様とも合わせて見直すこと。
-ALLOWED_BASE_DIRS: List[Path] = [
+ALLOWED_BASE_DIRS: list[Path] = [
     Path("/app/data"),
     Path("/app/resources"),
 ]
 
 
-def validate_path(user_path: str, base_dirs: List[Path] | None = None) -> Path:
+def validate_path(user_path: str, base_dirs: list[Path] | None = None) -> Path:
     """ユーザー入力のパスを検証し、安全なPathオブジェクトを返す。
 
     - パスを正規化（.. などを除去）
@@ -45,12 +44,13 @@ def validate_path(user_path: str, base_dirs: List[Path] | None = None) -> Path:
     # パスを文字列として正規化
     normalized = os.path.normpath(user_path)
 
+    # NOTE: 以下は CodeQL が `os.path.realpath() + startswith()` を sanitizer として
+    # 認識するため、意図的に pathlib ではなく os.path API を使用している。
     # 相対パスの場合は最初の許可ディレクトリをベースとして使用
-    if not os.path.isabs(normalized):
-        normalized = os.path.normpath(os.path.join(str(base_dirs[0]), normalized))
+    if not os.path.isabs(normalized):  # noqa: PTH117
+        normalized = os.path.normpath(os.path.join(str(base_dirs[0]), normalized))  # noqa: PTH118
 
     # realpath() でシンボリックリンクを解決し正規化
-    # NOTE: CodeQL は os.path.realpath() + startswith() を sanitizer として認識する
     real_path = os.path.realpath(normalized)
 
     for base_dir in base_dirs:

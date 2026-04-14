@@ -26,8 +26,13 @@ from structlog.typing import EventDict, WrappedLogger
 from .config import get_settings
 from .otel import OTelConfig, init_otel_provider
 
+
 # Global shutdown function for OTel provider
-_otel_shutdown: Callable[[], None] = lambda: None
+def _noop_shutdown() -> None:
+    return None
+
+
+_otel_shutdown: Callable[[], None] = _noop_shutdown
 
 # Context variables for ADR 98 business context (thread-safe for async)
 _alt_job_id: ContextVar[str | None] = ContextVar("alt.job.id", default=None)
@@ -150,7 +155,7 @@ class DBLogHandler(logging.Handler):
             if record.exc_info and record.exc_info[0] is not None:
                 error_type = f"{record.levelname}: {record.exc_info[0].__name__}"
             elif hasattr(record, "error_type"):
-                error_type = str(getattr(record, "error_type"))
+                error_type = str(record.error_type)
 
             # If msg is a JSON string (from structlog JSONRenderer), we might want to store it as raw_line
             # and try to extract a cleaner message. But for now, simple storage.

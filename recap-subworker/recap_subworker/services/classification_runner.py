@@ -10,6 +10,7 @@ import time
 from typing import Any
 
 from ..infra.config import Settings
+
 # classification_worker is lazily imported in _ensure_pool() to avoid CUDA fork issues
 # See: https://docs.pytorch.org/docs/stable/notes/multiprocessing.html
 
@@ -90,7 +91,7 @@ class ClassificationRunner:
         # Try a simple warmup to verify workers are ready
         try:
             future = self._pool.apply_async(classification_worker.predict_batch, ([],))
-            result = future.get(timeout=timeout)
+            future.get(timeout=timeout)
             logger.info(
                 "classification worker pool verified successfully",
                 timeout_seconds=timeout,

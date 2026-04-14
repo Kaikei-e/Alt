@@ -1,9 +1,9 @@
 
-import asyncio
-import pandas as pd
-from pathlib import Path
 import json
 from collections import Counter
+from pathlib import Path
+
+import pandas as pd
 
 # Define paths
 DATA_DIR = Path("data")
@@ -233,9 +233,9 @@ def collect_data():
                 genre = item.get('primary_genre')
                 if not genre:
                     continue
-                if 'content_ja' in item and item['content_ja']:
+                if item.get('content_ja'):
                     golden_rows.append({'content': item['content_ja'], 'genre': genre})
-                if 'content_en' in item and item['content_en']:
+                if item.get('content_en'):
                     golden_rows.append({'content': item['content_en'], 'genre': genre})
 
             golden_df = pd.DataFrame(golden_rows)

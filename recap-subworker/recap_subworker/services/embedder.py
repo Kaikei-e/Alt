@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import math
 import os
 import time
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from itertools import islice
-from typing import Iterable, Iterator, Literal, Sequence
+from pathlib import Path
+from threading import Lock
+from typing import Literal
 
 import numpy as np
 import structlog
 
 from ..infra.cache import LRUCache
-
-from threading import Lock
 
 logger = structlog.get_logger(__name__)
 
@@ -123,7 +124,7 @@ class Embedder:
                 "Set RECAP_SUBWORKER_ONNX_MODEL_PATH environment variable."
             )
 
-        if not os.path.exists(self.config.onnx_model_path):
+        if not Path(self.config.onnx_model_path).exists():
             raise FileNotFoundError(
                 f"ONNX model not found: {self.config.onnx_model_path}"
             )
@@ -229,7 +230,7 @@ class Embedder:
                     )
 
                     # Run inference
-                    ort_inputs = {k: v for k, v in tokens.items()}
+                    ort_inputs = dict(tokens.items())
                     hidden_states = self.session.run(None, ort_inputs)[0]
 
                     # Pooling
@@ -491,7 +492,7 @@ class Embedder:
                         normalize_embeddings=True,
                     )
 
-                for sentence, vector in zip(pending, embeddings):
+                for sentence, vector in zip(pending, embeddings, strict=False):
                     stored = np.asarray(vector, dtype=np.float32)
                     fresh[sentence] = stored
                     self._cache.set(sentence, stored)
@@ -539,10 +540,8 @@ class Embedder:
     def close(self) -> None:
         """Release resources (if any)."""
         if self._model is not None and hasattr(self._model, "close"):
-            try:
+            with contextlib.suppress(Exception):
                 self._model.close()
-            except Exception:
-                pass
         self._model = None
 
     def _hash_sentence(self, sentence: str) -> np.ndarray:

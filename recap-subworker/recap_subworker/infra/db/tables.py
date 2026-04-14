@@ -20,15 +20,15 @@ from ...db.dao import (
 )
 
 __all__ = [
-    "metadata",
-    "runs_table",
-    "clusters_table",
-    "sentences_table",
-    "diagnostics_table",
-    "run_diagnostics_table",
-    "cluster_evidence_table",
     "admin_jobs_table",
-    "genre_evaluation_runs_table",
+    "cluster_evidence_table",
+    "clusters_table",
+    "diagnostics_table",
     "genre_evaluation_metrics_table",
+    "genre_evaluation_runs_table",
+    "metadata",
+    "run_diagnostics_table",
+    "runs_table",
+    "sentences_table",
     "system_metrics_table",
 ]

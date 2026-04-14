@@ -1,12 +1,10 @@
 """Learning Machine Student Classifier for multi-language genre classification."""
 
-import json
-import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 
-import torch
 import structlog
+import torch
 import yaml
 
 from ..learning_machine.student.model import StudentDistilBERT
@@ -68,9 +66,9 @@ class LearningMachineStudentClassifier:
 
     def __init__(
         self,
-        student_ja_dir: Optional[str] = None,
-        student_en_dir: Optional[str] = None,
-        taxonomy_path: Optional[str] = None,
+        student_ja_dir: str | None = None,
+        student_en_dir: str | None = None,
+        taxonomy_path: str | None = None,
         device: str = "cpu",
     ):
         """Initialize the classifier with language-specific student models.
@@ -91,18 +89,18 @@ class LearningMachineStudentClassifier:
         if not taxonomy_path_obj.exists():
             raise FileNotFoundError(f"Taxonomy file not found: {taxonomy_path}")
 
-        with open(taxonomy_path_obj, "r", encoding="utf-8") as f:
+        with taxonomy_path_obj.open(encoding="utf-8") as f:
             taxonomy_data = yaml.safe_load(f)
         self.genres = taxonomy_data.get("genres", [])
-        self.id2label = {i: g for i, g in enumerate(self.genres)}
+        self.id2label = dict(enumerate(self.genres))
         self.label2id = {g: i for i, g in enumerate(self.genres)}
         self.num_labels = len(self.genres)
 
         logger.info(f"Loaded taxonomy with {self.num_labels} genres")
 
         # Load models
-        self.model_ja: Optional[StudentDistilBERT] = None
-        self.model_en: Optional[StudentDistilBERT] = None
+        self.model_ja: StudentDistilBERT | None = None
+        self.model_en: StudentDistilBERT | None = None
 
         if student_ja_dir:
             ja_path = Path(student_ja_dir)
@@ -135,11 +133,11 @@ class LearningMachineStudentClassifier:
 
     def predict_batch(
         self,
-        texts: List[str],
+        texts: list[str],
         multi_label: bool = False,
         top_k: int = 5,
-        threshold_overrides: Optional[Dict[str, float]] = None,
-    ) -> List[Dict[str, Any]]:
+        threshold_overrides: dict[str, float] | None = None,
+    ) -> list[dict[str, Any]]:
         """Predict genres for a batch of texts.
 
         Args:
@@ -165,7 +163,7 @@ class LearningMachineStudentClassifier:
         en_indices = []
         unknown_indices = []
 
-        for i, (text, lang) in enumerate(zip(texts, lang_detections)):
+        for i, (text, lang) in enumerate(zip(texts, lang_detections, strict=False)):
             if lang == "ja" and self.model_ja is not None:
                 ja_texts.append(text)
                 ja_indices.append(i)
@@ -178,18 +176,18 @@ class LearningMachineStudentClassifier:
                 unknown_indices.append(i)
 
         # Run inference for each language group
-        results: list[Dict[str, Any] | None] = [None] * len(texts)
+        results: list[dict[str, Any] | None] = [None] * len(texts)
 
         # Japanese predictions
         if ja_texts and self.model_ja:
             ja_results = self._predict_with_model(self.model_ja, ja_texts, multi_label, top_k, threshold_overrides)
-            for idx, result in zip(ja_indices, ja_results):
+            for idx, result in zip(ja_indices, ja_results, strict=False):
                 results[idx] = result
 
         # English predictions
         if en_texts and self.model_en:
             en_results = self._predict_with_model(self.model_en, en_texts, multi_label, top_k, threshold_overrides)
-            for idx, result in zip(en_indices, en_results):
+            for idx, result in zip(en_indices, en_results, strict=False):
                 results[idx] = result
 
         # Unknown/fallback: use Japanese model if available, otherwise English
@@ -197,7 +195,7 @@ class LearningMachineStudentClassifier:
             fallback_model = self.model_ja if self.model_ja else self.model_en
             if fallback_model:
                 fallback_results = self._predict_with_model(fallback_model, unknown_texts, multi_label, top_k, threshold_overrides)
-                for idx, result in zip(unknown_indices, fallback_results):
+                for idx, result in zip(unknown_indices, fallback_results, strict=False):
                     results[idx] = result
             else:
                 # No model available - return empty predictions
@@ -214,20 +212,20 @@ class LearningMachineStudentClassifier:
     def _predict_with_model(
         self,
         model: StudentDistilBERT,
-        texts: List[str],
+        texts: list[str],
         multi_label: bool,
         top_k: int,
-        threshold_overrides: Optional[Dict[str, float]] = None,
-    ) -> List[Dict[str, Any]]:
+        threshold_overrides: dict[str, float] | None = None,
+    ) -> list[dict[str, Any]]:
         """Run inference with a specific model."""
         with torch.no_grad():
-            probs, logits = model.predict(texts, max_length=256, device=self.device)
+            probs, _logits = model.predict(texts, max_length=256, device=self.device)
 
         # Default threshold (can be made configurable)
         default_threshold = 0.3
 
         results = []
-        for i, text in enumerate(texts):
+        for i, _text in enumerate(texts):
             prob_dist = probs[i].cpu().numpy()
 
             # Get top predictions

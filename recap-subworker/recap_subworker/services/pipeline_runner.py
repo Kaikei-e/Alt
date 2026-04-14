@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 import multiprocessing
 import multiprocessing.pool
-import signal
 import threading
 import time
-from typing import Sequence
+from collections.abc import Sequence
 
 from ..domain.models import EvidenceRequest, EvidenceResponse, WarmupResponse
 from ..infra.config import Settings
@@ -54,7 +53,7 @@ class PipelineTaskRunner:
         assert self._pool is not None, "Pool must be initialized before verification"
         try:
             future = self._pool.apply_async(pipeline_worker.warmup, ([]))
-            result = future.get(timeout=timeout)
+            future.get(timeout=timeout)
             logger.info(
                 "pipeline worker pool initialized successfully",
                 timeout_seconds=timeout,

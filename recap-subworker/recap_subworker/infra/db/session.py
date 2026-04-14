@@ -8,10 +8,15 @@ a single process. PID detection logic is preserved for Gunicorn compatibility.
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import structlog
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from ..config import Settings, get_settings
 
@@ -28,7 +33,7 @@ def get_engine(settings: Settings) -> AsyncEngine:
     global _ENGINE, _ENGINE_PID
     current_pid = os.getpid()
 
-    if _ENGINE is not None and _ENGINE_PID != current_pid:
+    if _ENGINE is not None and current_pid != _ENGINE_PID:
         logger.info(
             "detected pid change, resetting database engine",
             old_pid=_ENGINE_PID,
@@ -71,7 +76,7 @@ def get_session_factory(settings: Settings) -> async_sessionmaker[AsyncSession]:
 
     current_pid = os.getpid()
 
-    if _SESSION_FACTORY is not None and _ENGINE_PID is not None and _ENGINE_PID != current_pid:
+    if _SESSION_FACTORY is not None and _ENGINE_PID is not None and current_pid != _ENGINE_PID:
         logger.info(
             "detected pid change, resetting session factory",
             old_pid=_ENGINE_PID,

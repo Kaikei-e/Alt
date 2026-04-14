@@ -8,12 +8,11 @@ routers do not need changes.
 from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db.session import get_session, get_session_factory
+from ..db.session import get_session
 from ..infra.config import Settings, get_settings
 from ..services.async_jobs import AdminJobService
 from ..services.classification import CoarseClassifier
@@ -23,7 +22,6 @@ from ..services.embedder import Embedder
 from ..services.extraction import ContentExtractor
 from ..services.genre_learning import GenreLearningService
 from ..services.learning_client import LearningClient
-from ..services.learning_scheduler import LearningScheduler
 from ..services.pipeline import EvidencePipeline
 from ..services.pipeline_runner import PipelineTaskRunner
 from ..services.run_manager import RunManager

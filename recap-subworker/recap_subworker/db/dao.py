@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import inspect
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Iterable, Optional
-import inspect
-from uuid import UUID
+from typing import Any
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
     BigInteger,
@@ -24,11 +25,11 @@ from sqlalchemy import (
     text,
     update,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID, insert as pg_insert
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import uuid4
-
 
 metadata = MetaData()
 
@@ -182,14 +183,14 @@ class RunRecord:
     status: str
     cluster_count: int
     request_payload: dict[str, Any]
-    response_payload: Optional[dict[str, Any]]
-    error_message: Optional[str]
+    response_payload: dict[str, Any] | None
+    error_message: str | None
 
 
 @dataclass(slots=True)
 class PersistedSentence:
     article_id: str
-    paragraph_idx: Optional[int]
+    paragraph_idx: int | None
     sentence_id: int
     sentence_text: str
     lang: str
@@ -200,20 +201,20 @@ class PersistedSentence:
 class PersistedCluster:
     cluster_id: int
     size: int
-    label: Optional[str]
+    label: str | None
     top_terms: list[str]
     stats: dict[str, Any]
     sentences: list[PersistedSentence]
-    evidence: list["PersistedEvidence"] = field(default_factory=list)
+    evidence: list[PersistedEvidence] = field(default_factory=list)
 
 
 @dataclass(slots=True)
 class PersistedEvidence:
     article_id: str
-    title: Optional[str]
-    source_url: Optional[str]
-    published_at: Optional[datetime]
-    lang: Optional[str]
+    title: str | None
+    source_url: str | None
+    published_at: datetime | None
+    lang: str | None
     rank: int
 
 
@@ -229,10 +230,10 @@ class AdminJobRecord:
     kind: str
     status: str
     started_at: datetime
-    finished_at: Optional[datetime]
-    payload: Optional[dict[str, Any]]
-    result: Optional[dict[str, Any]]
-    error: Optional[str]
+    finished_at: datetime | None
+    payload: dict[str, Any] | None
+    result: dict[str, Any] | None
+    error: str | None
 
 
 class SubworkerDAO:
@@ -257,7 +258,7 @@ class SubworkerDAO:
 
     async def find_run_by_idempotency(
         self, job_id: UUID, genre: str, idempotency_key: str
-    ) -> Optional[RunRecord]:
+    ) -> RunRecord | None:
         request_json = runs_table.c.request_payload
         stmt = (
             select(
@@ -421,10 +422,10 @@ class SubworkerDAO:
         self,
         run_id: int,
         *,
-        cluster_avg_similarity_mean: Optional[float] = None,
-        cluster_avg_similarity_variance: Optional[float] = None,
-        cluster_avg_similarity_p95: Optional[float] = None,
-        cluster_avg_similarity_max: Optional[float] = None,
+        cluster_avg_similarity_mean: float | None = None,
+        cluster_avg_similarity_variance: float | None = None,
+        cluster_avg_similarity_p95: float | None = None,
+        cluster_avg_similarity_max: float | None = None,
         cluster_count: int = 0,
     ) -> None:
         """Upsert run-level cluster statistics into recap_run_diagnostics table."""
@@ -454,15 +455,15 @@ class SubworkerDAO:
             if "recap_run_diagnostics" in error_str and ("does not exist" in error_str or "relation" in error_str.lower()):
                 orig = e.orig if e.orig is not None else Exception(str(e))
                 raise ProgrammingError(
-                    f"Table 'recap_run_diagnostics' does not exist. "
-                    f"Please run database migrations: 'make recap-migrate' or "
-                    f"'docker compose --profile recap run --rm recap-db-migrator'",
+                    "Table 'recap_run_diagnostics' does not exist. "
+                    "Please run database migrations: 'make recap-migrate' or "
+                    "'docker compose --profile recap run --rm recap-db-migrator'",
                     e.params,
                     orig,
                 ) from e
             raise
 
-    async def fetch_run(self, run_id: int) -> Optional[RunRecord]:
+    async def fetch_run(self, run_id: int) -> RunRecord | None:
         stmt = select(
             runs_table.c.id,
             runs_table.c.job_id,
@@ -581,7 +582,7 @@ class SubworkerDAO:
         self,
         metric_type: str,
         metrics: dict[str, Any],
-        job_id: Optional[UUID] = None,
+        job_id: UUID | None = None,
     ) -> None:
         """Insert system-wide metrics for dashboard monitoring."""
         stmt = insert(system_metrics_table).values(
@@ -643,7 +644,7 @@ class SubworkerDAO:
         )
         await self.session.execute(stmt)
 
-    async def fetch_admin_job(self, job_id: UUID) -> Optional[AdminJobRecord]:
+    async def fetch_admin_job(self, job_id: UUID) -> AdminJobRecord | None:
         stmt = (
             select(
                 admin_jobs_table.c.job_id,
@@ -675,12 +676,12 @@ class SubworkerDAO:
 
 
 __all__ = [
-    "SubworkerDAO",
+    "AdminJobRecord",
+    "DiagnosticEntry",
     "NewRun",
-    "RunRecord",
     "PersistedCluster",
     "PersistedEvidence",
     "PersistedSentence",
-    "DiagnosticEntry",
-    "AdminJobRecord",
+    "RunRecord",
+    "SubworkerDAO",
 ]

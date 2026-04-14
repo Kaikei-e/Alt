@@ -3,9 +3,10 @@ import json
 import logging
 import os
 import sys
-import yaml
 from pathlib import Path
-from typing import List, Dict
+
+import yaml
+
 
 # CUDAライブラリのパスを動的に検出して設定（CUDA検出を確実にするため）
 def _setup_cuda_library_path():
@@ -84,15 +85,16 @@ project_root = current_dir.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from recap_subworker.learning_machine.teacher.model import TeacherBERT
 # We can use a simpler dataset class for inference
 from torch.utils.data import Dataset
+
+from recap_subworker.learning_machine.teacher.model import TeacherBERT
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class InferenceDataset(Dataset):
-    def __init__(self, texts: List[str], tokenizer, max_length: int = 256):
+    def __init__(self, texts: list[str], tokenizer, max_length: int = 256):
         self.texts = texts
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -117,7 +119,7 @@ class InferenceDataset(Dataset):
             'attention_mask': encoding['attention_mask'].flatten()
         }
 
-def load_genres(path: Path) -> List[str]:
+def load_genres(path: Path) -> list[str]:
     with open(path) as f:
         data = yaml.safe_load(f)
         return data.get("genres", [])
@@ -165,7 +167,7 @@ def main():
     genres = load_genres(taxonomy_path)
     # Reconstruct label maps (critical to match training)
     # Assuming the list order is stable.
-    id2label = {i: g for i, g in enumerate(genres)}
+    id2label = dict(enumerate(genres))
     label2id = {g: i for i, g in enumerate(genres)}
     num_labels = len(genres)
 
@@ -212,7 +214,7 @@ def main():
             return "en"
         return "unknown"
 
-    with open(args.input_path, "r", encoding="utf-8") as f:
+    with open(args.input_path, encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 item = json.loads(line)

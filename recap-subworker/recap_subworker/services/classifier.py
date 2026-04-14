@@ -1,13 +1,13 @@
-import joblib
 import json
-import numpy as np
 import time
 from pathlib import Path
 from threading import Lock
-from typing import List, Dict, Any
+from typing import Any
 
+import joblib
+import numpy as np
 import structlog
-from sudachipy import tokenizer, dictionary
+from sudachipy import dictionary, tokenizer
 
 from .embedder import Embedder
 
@@ -66,7 +66,7 @@ class GenreClassifierService:
         self.thresholds = None
         self._lock = Lock()
 
-    def _ensure_model(self, threshold_overrides: Dict[str, float] | None = None):
+    def _ensure_model(self, threshold_overrides: dict[str, float] | None = None):
         # Double-checked locking pattern: check outside lock first for performance
         if self.model is None:
             with self._lock:
@@ -109,7 +109,7 @@ class GenreClassifierService:
 
                     # Load base thresholds
                     if self.thresholds_path.exists():
-                        with open(self.thresholds_path) as f:
+                        with self.thresholds_path.open() as f:
                             self.thresholds = json.load(f)
                         logger.info("Base thresholds loaded", count=len(self.thresholds))
                     else:
@@ -143,7 +143,7 @@ class GenreClassifierService:
              logger.info("Classification model and artifacts loaded")
 
 
-    def predict_batch(self, texts: List[str], multi_label: bool = False, top_k: int = 5, threshold_overrides: Dict[str, float] | None = None) -> List[Dict[str, Any]]:
+    def predict_batch(self, texts: list[str], multi_label: bool = False, top_k: int = 5, threshold_overrides: dict[str, float] | None = None) -> list[dict[str, Any]]:
         """
         Predict genres for a batch of texts using Hybrid Features (Embedding + TF-IDF)
         and Dynamic Thresholding.
@@ -247,7 +247,7 @@ class GenreClassifierService:
         # 4. Apply Thresholds
         results = []
         for probs in probs_batch:
-            scores = {cls: float(prob) for cls, prob in zip(classes, probs)}
+            scores = {cls: float(prob) for cls, prob in zip(classes, probs, strict=False)}
 
             # Find candidate classes that pass threshold
             candidates = []

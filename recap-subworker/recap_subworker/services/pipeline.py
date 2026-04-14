@@ -6,27 +6,27 @@ import math
 import re
 import time
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Optional, Sequence
 
 import numpy as np
 import structlog
 
+from ..domain import selectors, topics
 from ..domain.models import (
+    ClusterLabel,
+    ClusterStats,
     CorpusClassifierStats,
     CorpusMetadata,
     EvidenceBudget,
     EvidenceCluster,
     EvidenceRequest,
     EvidenceResponse,
-    WarmupResponse,
-    ClusterLabel,
-    ClusterStats,
     RepresentativeSentence,
     RepresentativeSource,
+    WarmupResponse,
     build_response_template,
 )
-from ..domain import selectors, topics
 from ..domain.schema import validate_request
 from ..infra.config import Settings
 from ..infra.telemetry import (
@@ -39,8 +39,6 @@ from ..infra.telemetry import (
 )
 from ..port.embedder import EmbedderPort
 from .clusterer import Clusterer
-from .embedder import Embedder
-
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。！？])\s+")
 _LOGGER = structlog.get_logger(__name__)
@@ -196,7 +194,7 @@ class EvidencePipeline:
             min_samples=cluster_params[1],
         )
         cluster_start = time.perf_counter()
-        base_mcs, base_ms = cluster_params
+        base_mcs, _base_ms = cluster_params
 
         # Define search range around the heuristic base
         mcs_range = range(
@@ -311,7 +309,7 @@ class EvidencePipeline:
         Merge excessive clusters using Ward hierarchical clustering.
         Uses scipy.cluster.hierarchy to merge clusters until count <= max_clusters.
         """
-        from scipy.cluster.hierarchy import linkage, fcluster
+        from scipy.cluster.hierarchy import fcluster, linkage
 
         unique_labels = sorted(set(labels))
         unique_labels = [lbl for lbl in unique_labels if lbl != -1]  # Ignore noise
@@ -442,7 +440,7 @@ class EvidencePipeline:
         self,
         sentence_count: int,
         constraints,
-        classifier_stats: Optional[CorpusClassifierStats] = None,
+        classifier_stats: CorpusClassifierStats | None = None,
     ) -> tuple[int, int]:
         base = max(2, sentence_count // 20)
         min_cluster_size = constraints.hdbscan_min_cluster_size or base
@@ -459,7 +457,7 @@ class EvidencePipeline:
         return min_cluster_size, min_samples
 
     def _group_clusters(self, labels: np.ndarray) -> tuple[list[int], list[list[int]]]:
-        unique_labels = sorted(set(int(label) for label in labels))
+        unique_labels = sorted({int(label) for label in labels})
         cluster_sentences = [
             [idx for idx, label in enumerate(labels) if int(label) == cluster_id]
             for cluster_id in unique_labels
@@ -476,7 +474,7 @@ class EvidencePipeline:
             return future.result()
         return topics.extract_topics(corpora, bm25_weighting=True)
 
-    def _avg_pairwise_cosine_sim(self, cluster_embeddings: np.ndarray) -> Optional[float]:
+    def _avg_pairwise_cosine_sim(self, cluster_embeddings: np.ndarray) -> float | None:
         """Calculate average pairwise cosine similarity for cluster embeddings.
 
         Args:
@@ -500,7 +498,7 @@ class EvidencePipeline:
         # Clip to valid cosine similarity range [-1, 1]
         return min(1.0, max(-1.0, avg_sim))
 
-    def _lambda_from_avg_sim(self, avg_sim: Optional[float], base_lambda: float) -> float:
+    def _lambda_from_avg_sim(self, avg_sim: float | None, base_lambda: float) -> float:
         """Calculate adaptive lambda parameter from average similarity.
 
         Formula: lambda = 0.5 + 0.3 * (1 - avg_sim)
@@ -562,11 +560,7 @@ class EvidencePipeline:
 
         # Check for consecutive code-like patterns (e.g., "}){", "});", etc.)
         code_patterns = [r"\)\s*\{", r"\}\s*\)", r"\}\s*;", r"\)\s*;", r"\{\s*\}"]
-        for pattern in code_patterns:
-            if re.search(pattern, text):
-                return False
-
-        return True
+        return all(not re.search(pattern, text) for pattern in code_patterns)
 
     def _build_clusters(
         self,
@@ -582,7 +576,7 @@ class EvidencePipeline:
         budget_tokens = 0
         used_articles: set[str] = set()
         all_rep_indices: list[int] = []
-        for cluster_offset, (cluster_id, indices) in enumerate(zip(unique_labels, cluster_indices)):
+        for cluster_offset, (cluster_id, indices) in enumerate(zip(unique_labels, cluster_indices, strict=False)):
             cluster_embeddings = embeddings[indices]
 
             # Calculate avg_sim first, then derive adaptive lambda
@@ -726,7 +720,7 @@ class EvidencePipeline:
     def _adjust_dedup_threshold(
         self,
         base_threshold: float,
-        metadata: Optional[CorpusMetadata],
+        metadata: CorpusMetadata | None,
         genre: str,
     ) -> float:
         """

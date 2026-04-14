@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
 
 import structlog
 
@@ -73,7 +72,7 @@ class HallucinationResult:
     entailment_score: float
     contradiction_score: float
     neutral_score: float
-    sentence_results: Optional[list[SentenceResult]] = field(default=None)
+    sentence_results: list[SentenceResult] | None = field(default=None)
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
@@ -115,8 +114,8 @@ class HallucinationDetector:
 
     def __init__(
         self,
-        model_name: Optional[str] = None,
-        device: Optional[str] = None,
+        model_name: str | None = None,
+        device: str | None = None,
     ):
         """Initialize the hallucination detector.
 
@@ -310,7 +309,7 @@ class HallucinationDetector:
             )
 
         results = []
-        for summary, source_sentences in zip(summaries, sources):
+        for summary, source_sentences in zip(summaries, sources, strict=False):
             result = self.detect(
                 summary=summary,
                 source_sentences=source_sentences,

@@ -1,9 +1,11 @@
-import re
 import argparse
+import re
 import sqlite3
-import pandas as pd
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+
 
 def parse_logs(log_file_path: str) -> pd.DataFrame:
     """
@@ -25,7 +27,7 @@ def parse_logs(log_file_path: str) -> pd.DataFrame:
     timestamp_pattern = r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})"
 
     try:
-        with open(log_file_path, 'r', encoding='utf-8') as f:
+        with Path(log_file_path).open(encoding='utf-8') as f:
             for line in f:
                 # Extract timestamp
                 timestamp = None

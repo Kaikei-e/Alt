@@ -1,6 +1,7 @@
+
 import numpy as np
-from typing import Dict, List, Optional
 import structlog
+
 from .embedder import Embedder
 
 logger = structlog.get_logger(__name__)
@@ -45,7 +46,7 @@ class CoarseClassifier:
 
     def __init__(self, embedder: Embedder):
         self.embedder = embedder
-        self.prototypes: Dict[str, np.ndarray] = {}
+        self.prototypes: dict[str, np.ndarray] = {}
         self.initialized = False
 
     def initialize_prototypes(self):
@@ -63,13 +64,13 @@ class CoarseClassifier:
 
         embeddings = self.embedder.encode(texts)
 
-        for genre, embedding in zip(genres, embeddings):
+        for genre, embedding in zip(genres, embeddings, strict=False):
             self.prototypes[genre] = embedding
 
         self.initialized = True
         logger.info("Prototypes initialized", count=len(self.prototypes))
 
-    def predict_coarse(self, text: str, threshold: float = 0.0) -> Dict[str, float]:
+    def predict_coarse(self, text: str, threshold: float = 0.0) -> dict[str, float]:
         """
         Predict genre scores for input text.
 

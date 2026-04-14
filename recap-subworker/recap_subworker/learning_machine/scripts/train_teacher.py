@@ -3,9 +3,10 @@ import json
 import logging
 import os
 import sys
-import yaml
 from pathlib import Path
-from typing import List, Dict
+
+import yaml
+
 
 # CUDAライブラリのパスを動的に検出して設定（CUDA検出を確実にするため）
 def _setup_cuda_library_path():
@@ -76,12 +77,11 @@ _setup_cuda_library_path()
 
 import torch
 import torch.nn as nn
-import numpy as np
-from torch.utils.data import DataLoader
+from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, f1_score
-from transformers import get_linear_schedule_with_warmup
 from torch.optim import AdamW
+from torch.utils.data import DataLoader
+from transformers import get_linear_schedule_with_warmup
 
 # Path setup
 current_dir = Path(__file__).resolve().parent
@@ -89,13 +89,13 @@ project_root = current_dir.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from recap_subworker.learning_machine.teacher.model import TeacherBERT
 from recap_subworker.learning_machine.data.dataset import TextClassificationDataset
+from recap_subworker.learning_machine.teacher.model import TeacherBERT
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def load_genres(path: Path) -> List[str]:
+def load_genres(path: Path) -> list[str]:
     # Try different structures if needed
     with open(path) as f:
         # Check file extension
@@ -110,9 +110,9 @@ def load_genres(path: Path) -> List[str]:
             data = json.load(f)
             return data.get("genres", [])
 
-def load_jsonl(path: Path) -> List[Dict]:
+def load_jsonl(path: Path) -> list[dict]:
     data = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 data.append(json.loads(line))
@@ -161,7 +161,7 @@ def main():
 
     genres = load_genres(taxonomy_path)
     label2id = {g: i for i, g in enumerate(genres)}
-    id2label = {i: g for i, g in enumerate(genres)}
+    id2label = dict(enumerate(genres))
     num_labels = len(genres)
     logger.info(f"Loaded {num_labels} genres: {genres[:5]}...")
 

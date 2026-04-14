@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from ...domain.models import WarmupResponse
+from ...infra.config import Settings
+from ...services.async_jobs import AdminJobService, ConcurrentAdminJobError
+from ...services.genre_learning import GenreLearningResult, GenreLearningService
+from ...services.learning_client import LearningClient
+from ...services.tag_label_graph_builder import TagLabelGraphBuilder
 from ..deps import (
     get_admin_job_service_dep,
     get_learning_client,
@@ -18,12 +23,6 @@ from ..deps import (
     get_pipeline_runner_dep,
     get_settings_dep,
 )
-from ...services.learning_client import LearningClient
-from ...services.genre_learning import GenreLearningResult, GenreLearningService
-from ...services.tag_label_graph_builder import TagLabelGraphBuilder
-from ...infra.config import Settings
-from ...services.async_jobs import AdminJobService, ConcurrentAdminJobError
-
 
 router = APIRouter(tags=["admin"])
 
@@ -54,6 +53,7 @@ async def build_tag_label_graph(
 ) -> dict[str, object]:
     """Manually trigger tag_label_graph rebuild."""
     import structlog
+
     from ...db.session import get_session_factory
 
     logger = structlog.get_logger(__name__)
@@ -115,6 +115,7 @@ async def trigger_genre_learning(
     settings: Settings = Depends(get_settings_dep),
 ) -> dict[str, object]:
     import structlog
+
     from ...db.session import get_session_factory
 
     logger = structlog.get_logger(__name__)
@@ -203,7 +204,7 @@ def _build_learning_payload(result: GenreLearningResult) -> dict[str, object]:
         graph_override["tag_count_threshold"] = result.summary.tag_count_threshold_reference
 
     metadata: dict[str, object] = {
-        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "captured_at": datetime.now(UTC).isoformat(),
         "entries_observed": result.summary.total_records,
     }
     if result.summary.accuracy_estimate is not None:

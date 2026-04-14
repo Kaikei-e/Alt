@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends
 from ...domain.models import EvidenceRequest, EvidenceResponse
 from ..deps import get_pipeline_dep, get_pipeline_runner_dep
 
-
 router = APIRouter(tags=["evidence"])
 
 

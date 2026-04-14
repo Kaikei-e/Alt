@@ -1,12 +1,13 @@
+import argparse
 import asyncio
+import json
 import logging
 import sys
-import json
-import argparse
 from pathlib import Path
-from sqlalchemy.ext.asyncio import create_async_engine
+from typing import Any
+
 from sqlalchemy import text
-from typing import List, Dict, Any
+from sqlalchemy.ext.asyncio import create_async_engine
 
 # Ensure we can import from recap-subworker
 # Add 3 levels up to path (scripts -> learning_machine -> recap-subworker -> root)
@@ -22,7 +23,7 @@ from recap_subworker.infra.config import Settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def fetch_articles(db_url: str, limit: int, days: int) -> List[Dict[str, Any]]:
+async def fetch_articles(db_url: str, limit: int, days: int) -> list[dict[str, Any]]:
     """Fetch raw articles from recap-db."""
     engine = create_async_engine(db_url)
 
@@ -96,7 +97,7 @@ def get_db_url_with_password(settings: Settings) -> str:
 
     if secret_path.exists():
         try:
-            with open(secret_path, "r") as f:
+            with open(secret_path) as f:
                 password = f.read().strip()
 
             u = urlparse(db_url)

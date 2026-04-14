@@ -12,11 +12,13 @@ Usage:
 
 import argparse
 import asyncio
-import joblib
 import json
+from pathlib import Path
+
+import joblib
 import numpy as np
 import pandas as pd
-from pathlib import Path
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -24,11 +26,9 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, f1_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sklearn.base import BaseEstimator, TransformerMixin
 
-from recap_subworker.services.embedder import Embedder
 from recap_subworker.infra.config import get_settings
-
+from recap_subworker.services.embedder import Embedder
 
 # Default hyperparameters (can be overridden by --params)
 DEFAULT_HYPERPARAMS = {
@@ -141,7 +141,7 @@ async def main(
 
         if aug_dfs:
             # Combine all dataframes
-            all_dfs = [df] + aug_dfs
+            all_dfs = [df, *aug_dfs]
             df = pd.concat(all_dfs, ignore_index=True)
             # Keep only essential columns
             df = df[['content', 'genre']]

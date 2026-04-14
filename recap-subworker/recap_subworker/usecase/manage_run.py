@@ -7,8 +7,6 @@ depending on port protocols for testability.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import structlog
 
 from ..db.dao import RunRecord
@@ -54,7 +52,7 @@ class ManageRunUsecase:
         """Create a new classification run or return existing idempotent run."""
         return await self._run_manager.create_classification_run(submission)
 
-    async def get_run(self, run_id: int) -> Optional[RunRecord]:
+    async def get_run(self, run_id: int) -> RunRecord | None:
         """Fetch a run by its ID."""
         return await self._run_manager.get_run(run_id)
 

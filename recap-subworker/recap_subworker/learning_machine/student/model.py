@@ -1,7 +1,8 @@
+
 import torch
 import torch.nn as nn
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from typing import List, Dict
+
 
 class StudentDistilBERT(nn.Module):
     def __init__(self, model_name: str, num_labels: int):
@@ -30,7 +31,7 @@ class StudentDistilBERT(nn.Module):
         instance = cls(load_directory, num_labels)
         return instance
 
-    def predict(self, texts: List[str], max_length: int = 256, device="cpu"):
+    def predict(self, texts: list[str], max_length: int = 256, device="cpu"):
         self.bert.eval()
         inputs = self.tokenizer(
             texts,

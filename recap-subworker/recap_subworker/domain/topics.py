@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from functools import lru_cache
-from typing import Callable
 
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -76,10 +76,7 @@ def _is_simple_alpha_phrase(text: str) -> bool:
     collapsed = text.replace(" ", "").replace("-", "")
     if not collapsed or not collapsed.isalpha():
         return False
-    for part in re.split(r"[\s-]+", text):
-        if part and not part.isalpha():
-            return False
-    return True
+    return all(not (part and not part.isalpha()) for part in re.split(r"[\s-]+", text))
 
 
 def _is_informative(term: str, stopwords: set[str]) -> bool:
@@ -126,10 +123,7 @@ def _is_informative(term: str, stopwords: set[str]) -> bool:
         return False
     if all(token in stopwords for token in tokens):
         return False
-    if all(len(token) <= 2 and token not in _ALLOWED_SHORT_TOKENS for token in tokens):
-        return False
-
-    return True
+    return not all(len(token) <= 2 and token not in _ALLOWED_SHORT_TOKENS for token in tokens)
 
 
 def extract_topics(

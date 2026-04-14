@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 from uuid import UUID
 
 from ..db.dao import (
@@ -24,7 +24,7 @@ class RunRepositoryPort(Protocol):
 
     async def find_run_by_idempotency(
         self, job_id: UUID, genre: str, idempotency_key: str
-    ) -> Optional[RunRecord]:
+    ) -> RunRecord | None:
         """Find an existing run by idempotency key."""
         ...
 
@@ -64,16 +64,16 @@ class RunRepositoryPort(Protocol):
         self,
         run_id: int,
         *,
-        cluster_avg_similarity_mean: Optional[float] = None,
-        cluster_avg_similarity_variance: Optional[float] = None,
-        cluster_avg_similarity_p95: Optional[float] = None,
-        cluster_avg_similarity_max: Optional[float] = None,
+        cluster_avg_similarity_mean: float | None = None,
+        cluster_avg_similarity_variance: float | None = None,
+        cluster_avg_similarity_p95: float | None = None,
+        cluster_avg_similarity_max: float | None = None,
         cluster_count: int = 0,
     ) -> None:
         """Upsert run-level cluster statistics."""
         ...
 
-    async def fetch_run(self, run_id: int) -> Optional[RunRecord]:
+    async def fetch_run(self, run_id: int) -> RunRecord | None:
         """Fetch a run by its ID."""
         ...
 
@@ -81,7 +81,7 @@ class RunRepositoryPort(Protocol):
         self,
         metric_type: str,
         metrics: dict[str, Any],
-        job_id: Optional[UUID] = None,
+        job_id: UUID | None = None,
     ) -> None:
         """Insert system-wide metrics for dashboard monitoring."""
         ...
@@ -90,6 +90,6 @@ class RunRepositoryPort(Protocol):
         """Check if a running admin job of the given kind exists."""
         ...
 
-    async def fetch_admin_job(self, job_id: UUID) -> Optional[AdminJobRecord]:
+    async def fetch_admin_job(self, job_id: UUID) -> AdminJobRecord | None:
         """Fetch an admin job by its ID."""
         ...

@@ -7,7 +7,7 @@ while depending only on port protocols for testability.
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from ..domain.models import (
     EvidenceRequest,

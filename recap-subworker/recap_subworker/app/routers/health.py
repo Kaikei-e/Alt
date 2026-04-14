@@ -9,7 +9,6 @@ from ...infra.config import Settings
 from ...services.embedder import Embedder
 from ..deps import get_embedder_dep, get_settings_dep
 
-
 router = APIRouter(tags=["health"])
 
 

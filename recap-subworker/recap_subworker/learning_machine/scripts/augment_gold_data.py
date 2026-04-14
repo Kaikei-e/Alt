@@ -2,7 +2,6 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import List, Dict
 
 # Path setup
 current_dir = Path(__file__).resolve().parent

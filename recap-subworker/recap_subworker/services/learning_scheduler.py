@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+import contextlib
+from datetime import UTC, datetime
 
 import structlog
 
@@ -48,10 +49,8 @@ class LearningScheduler:
         self._running = False
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
         logger.info("learning scheduler stopped")
 
     async def _run_loop(self) -> None:
@@ -78,7 +77,7 @@ class LearningScheduler:
 
     async def _execute_learning(self) -> None:
         """Execute a single learning task."""
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
         logger.info(
             "starting scheduled genre learning task",
             recap_worker_url=self.settings.recap_worker_learning_url,
@@ -192,7 +191,7 @@ class LearningScheduler:
                         payload_size=len(str(payload)),
                     )
                     response = await client.send_learning_payload(payload)
-                    duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+                    duration = (datetime.now(UTC) - start_time).total_seconds()
 
                     logger.info(
                         "scheduled learning task completed",
@@ -213,7 +212,7 @@ class LearningScheduler:
                     await client.close()
 
         except Exception as exc:
-            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            duration = (datetime.now(UTC) - start_time).total_seconds()
             logger.error(
                 "scheduled learning task failed",
                 error=str(exc),
@@ -237,7 +236,7 @@ class LearningScheduler:
             graph_override["tag_count_threshold"] = result.summary.tag_count_threshold_reference
 
         metadata: dict[str, object] = {
-            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "captured_at": datetime.now(UTC).isoformat(),
             "entries_observed": result.summary.total_records,
         }
         if result.summary.accuracy_estimate is not None:

@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, HttpUrl, ConfigDict, field_validator
-
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 RunStatusLiteral = Literal["running", "succeeded", "partial", "failed"]
 
@@ -35,8 +34,8 @@ class ClassificationJobResponse(BaseModel):
     job_id: str
     status: RunStatusLiteral
     result_count: int = Field(default=0)
-    results: Optional[list[ClassificationResult]] = None
-    error_message: Optional[str] = None
+    results: list[ClassificationResult] | None = None
+    error_message: str | None = None
 
 
 class ClusterJobParams(BaseModel):
@@ -57,14 +56,14 @@ class ClusterDocument(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     article_id: str = Field(..., max_length=128)
-    title: Optional[str] = Field(default=None, max_length=512)
-    lang_hint: Optional[str] = Field(default=None, max_length=8)
-    published_at: Optional[datetime] = Field(default=None)
-    source_url: Optional[HttpUrl] = Field(default=None)
+    title: str | None = Field(default=None, max_length=512)
+    lang_hint: str | None = Field(default=None, max_length=8)
+    published_at: datetime | None = Field(default=None)
+    source_url: HttpUrl | None = Field(default=None)
     paragraphs: list[str] = Field(..., min_length=1)
-    genre_scores: Optional[dict[str, int]] = Field(default=None)
-    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    signals: Optional["ArticleSignals"] = Field(default=None)
+    genre_scores: dict[str, int] | None = Field(default=None)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    signals: ArticleSignals | None = Field(default=None)
 
     @field_validator("paragraphs")
     @classmethod
@@ -82,7 +81,7 @@ class ClusterJobPayload(BaseModel):
 
     params: ClusterJobParams
     documents: list[ClusterDocument] = Field(..., min_length=3, max_length=5000)
-    metadata: Optional["CorpusMetadata"] = Field(default=None)
+    metadata: CorpusMetadata | None = Field(default=None)
 
 
 class ArticleSignals(BaseModel):
@@ -90,10 +89,10 @@ class ArticleSignals(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    tfidf_sum: Optional[float] = Field(default=None)
-    bm25_peak: Optional[float] = Field(default=None)
-    token_count: Optional[int] = Field(default=None, ge=0)
-    keyword_hits: Optional[int] = Field(default=None, ge=0)
+    tfidf_sum: float | None = Field(default=None)
+    bm25_peak: float | None = Field(default=None)
+    token_count: int | None = Field(default=None, ge=0)
+    keyword_hits: int | None = Field(default=None, ge=0)
 
 
 class CorpusClassifierStats(BaseModel):
@@ -117,16 +116,16 @@ class CorpusMetadata(BaseModel):
     primary_language: str = Field(..., max_length=16)
     language_distribution: dict[str, int] = Field(default_factory=dict)
     character_count: int = Field(..., ge=0)
-    classifier: Optional[CorpusClassifierStats] = Field(default=None)
+    classifier: CorpusClassifierStats | None = Field(default=None)
 
 
 class ClusterSentencePayload(BaseModel):
     """Representative sentence returned to recap-worker."""
 
     article_id: str
-    paragraph_idx: Optional[int] = Field(default=None, ge=0)
+    paragraph_idx: int | None = Field(default=None, ge=0)
     sentence_text: str = Field(..., min_length=20)
-    lang: Optional[str] = Field(default=None, max_length=8)
+    lang: str | None = Field(default=None, max_length=8)
     score: float = Field(default=0.0)
 
 
@@ -135,7 +134,7 @@ class ClusterInfo(BaseModel):
 
     cluster_id: int
     size: int = Field(..., ge=1)
-    label: Optional[str] = Field(default=None, max_length=128)
+    label: str | None = Field(default=None, max_length=128)
     top_terms: list[str] = Field(default_factory=list)
     stats: dict[str, Any] = Field(default_factory=dict)
     representatives: list[ClusterSentencePayload] = Field(default_factory=list)
@@ -164,15 +163,15 @@ class EvidenceConstraints(BaseModel):
     dedup_threshold: float = Field(0.92, ge=0.0, le=1.0)
     mmr_lambda: float = Field(0.3, ge=0.0, le=1.0)
     hdbscan_min_cluster_size: int = Field(5, ge=2)
-    hdbscan_min_samples: Optional[int] = Field(default=None, ge=1)
+    hdbscan_min_samples: int | None = Field(default=None, ge=1)
     umap_n_components: int = Field(0, ge=0)
 
 
 class TelemetryEnvelope(BaseModel):
     """Trace & telemetry metadata passed by the caller."""
 
-    request_id: Optional[str] = Field(default=None, max_length=128)
-    prompt_version: Optional[str] = Field(default=None, max_length=64)
+    request_id: str | None = Field(default=None, max_length=128)
+    prompt_version: str | None = Field(default=None, max_length=64)
 
 
 class EvidenceRequest(BaseModel):
@@ -184,8 +183,8 @@ class EvidenceRequest(BaseModel):
     genre: str = Field(..., max_length=32)
     documents: list[ClusterDocument] = Field(..., min_length=1, max_length=5000)
     constraints: EvidenceConstraints = Field(default_factory=EvidenceConstraints)
-    telemetry: Optional[TelemetryEnvelope] = Field(default=None)
-    metadata: Optional["CorpusMetadata"] = Field(default=None)
+    telemetry: TelemetryEnvelope | None = Field(default=None)
+    metadata: CorpusMetadata | None = Field(default=None)
 
     def total_paragraphs(self) -> int:
         return sum(len(document.paragraphs) for document in self.documents)
@@ -195,16 +194,16 @@ class RepresentativeSource(BaseModel):
     """Source metadata for a representative sentence."""
 
     source_id: str = Field(...)
-    url: Optional[HttpUrl] = Field(default=None)
-    paragraph_idx: Optional[int] = Field(default=None, ge=0)
+    url: HttpUrl | None = Field(default=None)
+    paragraph_idx: int | None = Field(default=None, ge=0)
 
 
 class RepresentativeSentence(BaseModel):
     """Representative sentence selected for the cluster."""
 
     text: str
-    lang: Optional[str] = Field(default=None, max_length=8)
-    embedding_ref: Optional[str] = Field(default=None, max_length=64)
+    lang: str | None = Field(default=None, max_length=8)
+    embedding_ref: str | None = Field(default=None, max_length=64)
     reasons: list[str] = Field(default_factory=list)
     source: RepresentativeSource
 
@@ -219,8 +218,8 @@ class ClusterLabel(BaseModel):
 class ClusterStats(BaseModel):
     """Aggregate statistics for a cluster."""
 
-    avg_sim: Optional[float] = Field(default=None)
-    token_count: Optional[int] = Field(default=None, ge=0)
+    avg_sim: float | None = Field(default=None)
+    token_count: int | None = Field(default=None, ge=0)
 
 
 class EvidenceCluster(BaseModel):
@@ -253,14 +252,14 @@ class Diagnostics(BaseModel):
 
     dedup_pairs: int = 0
     umap_used: bool = False
-    hdbscan: Optional[HDBSCANSettings] = None
+    hdbscan: HDBSCANSettings | None = None
     partial: bool = False
     total_sentences: int = 0
-    embedding_ms: Optional[float] = None
-    hdbscan_ms: Optional[float] = None
-    noise_ratio: Optional[float] = None
-    dbcv_score: Optional[float] = None
-    silhouette_score: Optional[float] = None
+    embedding_ms: float | None = None
+    hdbscan_ms: float | None = None
+    noise_ratio: float | None = None
+    dbcv_score: float | None = None
+    silhouette_score: float | None = None
 
 
 class EvidenceResponse(BaseModel):
@@ -269,7 +268,7 @@ class EvidenceResponse(BaseModel):
     job_id: str
     genre: str
     clusters: list[EvidenceCluster]
-    genre_highlights: Optional[list[RepresentativeSentence]] = None
+    genre_highlights: list[RepresentativeSentence] | None = None
     evidence_budget: EvidenceBudget
     diagnostics: Diagnostics = Field(default_factory=Diagnostics)
 

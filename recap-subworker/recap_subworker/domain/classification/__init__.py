@@ -1,16 +1,16 @@
 """Genre classification domain modules."""
 
-from .tokenizer import TokenPipeline, NormalizedDocument, ClassificationLanguage
-from .features import FeatureExtractor, FeatureVector, EMBEDDING_DIM
+from .features import EMBEDDING_DIM, FeatureExtractor, FeatureVector
 from .model import GenreClassifier
+from .tokenizer import ClassificationLanguage, NormalizedDocument, TokenPipeline
 
 __all__ = [
-    "TokenPipeline",
-    "NormalizedDocument",
+    "EMBEDDING_DIM",
     "ClassificationLanguage",
     "FeatureExtractor",
     "FeatureVector",
-    "EMBEDDING_DIM",
     "GenreClassifier",
+    "NormalizedDocument",
+    "TokenPipeline",
 ]
 

@@ -7,7 +7,7 @@ to the RunRepositoryPort interface for dependency inversion.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +33,7 @@ class PgRunRepository:
 
     async def find_run_by_idempotency(
         self, job_id: UUID, genre: str, idempotency_key: str
-    ) -> Optional[RunRecord]:
+    ) -> RunRecord | None:
         return await self._dao.find_run_by_idempotency(job_id, genre, idempotency_key)
 
     async def has_running_run(self, job_id: UUID, genre: str) -> bool:
@@ -67,10 +67,10 @@ class PgRunRepository:
         self,
         run_id: int,
         *,
-        cluster_avg_similarity_mean: Optional[float] = None,
-        cluster_avg_similarity_variance: Optional[float] = None,
-        cluster_avg_similarity_p95: Optional[float] = None,
-        cluster_avg_similarity_max: Optional[float] = None,
+        cluster_avg_similarity_mean: float | None = None,
+        cluster_avg_similarity_variance: float | None = None,
+        cluster_avg_similarity_p95: float | None = None,
+        cluster_avg_similarity_max: float | None = None,
         cluster_count: int = 0,
     ) -> None:
         await self._dao.upsert_run_diagnostics(
@@ -82,19 +82,19 @@ class PgRunRepository:
             cluster_count=cluster_count,
         )
 
-    async def fetch_run(self, run_id: int) -> Optional[RunRecord]:
+    async def fetch_run(self, run_id: int) -> RunRecord | None:
         return await self._dao.fetch_run(run_id)
 
     async def insert_system_metrics(
         self,
         metric_type: str,
         metrics: dict[str, Any],
-        job_id: Optional[UUID] = None,
+        job_id: UUID | None = None,
     ) -> None:
         await self._dao.insert_system_metrics(metric_type, metrics, job_id)
 
     async def has_running_admin_job(self, kind: str) -> bool:
         return await self._dao.has_running_admin_job(kind)
 
-    async def fetch_admin_job(self, job_id: UUID) -> Optional[AdminJobRecord]:
+    async def fetch_admin_job(self, job_id: UUID) -> AdminJobRecord | None:
         return await self._dao.fetch_admin_job(job_id)

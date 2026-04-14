@@ -17,7 +17,7 @@ class LearningClient:
     _client: httpx.AsyncClient
 
     @classmethod
-    def create(cls, base_url: str, timeout_seconds: float) -> "LearningClient":
+    def create(cls, base_url: str, timeout_seconds: float) -> LearningClient:
         client = httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds))
         sanitized = base_url.rstrip("/")
         return cls(base_url=sanitized, timeout_seconds=timeout_seconds, _client=client)

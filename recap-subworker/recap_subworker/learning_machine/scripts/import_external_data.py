@@ -2,7 +2,6 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, List
 
 # Ensure transformers/datasets are installed
 try:
@@ -48,8 +47,7 @@ LIVEDOOR_MAP = {
 
 import tarfile
 import urllib.request
-import gzip
-import os
+
 
 def import_livedoor(output_path: Path):
     logger.info("Downloading/Loading Livedoor News Corpus Manually...")

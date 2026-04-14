@@ -80,7 +80,7 @@ def _prune_duplicates_faiss(embeddings: np.ndarray, threshold: float) -> tuple[l
 
     # range_search returns all pairs with similarity >= threshold
     # FAISS range_search uses radius as a lower bound for IP
-    lims, D, I = index.range_search(emb, threshold)
+    lims, _D, I = index.range_search(emb, threshold)  # noqa: E741  # FAISS convention: I = indices
 
     keep = np.ones(n, dtype=bool)
     removed = 0

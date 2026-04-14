@@ -1,9 +1,6 @@
 """トークン列から特徴量を抽出する。"""
 
-from collections import defaultdict
-from typing import Dict, List, Optional
 
-import numpy as np
 import xxhash
 
 EMBEDDING_DIM = 6
@@ -56,7 +53,7 @@ FALLBACK_IDF = [
 ]
 
 # Embedding lookup table (Rust実装から移植)
-EMBEDDING_LOOKUP: Dict[str, List[float]] = {
+EMBEDDING_LOOKUP: dict[str, list[float]] = {
     "人工知能": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
     "自動運転": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
     "transformer": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -82,12 +79,12 @@ EMBEDDING_LOOKUP: Dict[str, List[float]] = {
 class FeatureVector:
     """特徴ベクトル。"""
 
-    def __init__(self, tfidf: List[float], bm25: List[float], embedding: List[float]):
+    def __init__(self, tfidf: list[float], bm25: list[float], embedding: list[float]):
         self.tfidf = tfidf
         self.bm25 = bm25
         self.embedding = embedding
 
-    def max_bm25(self) -> Optional[float]:
+    def max_bm25(self) -> float | None:
         """BM25の最大値を取得。"""
         if not self.bm25:
             return None
@@ -97,17 +94,17 @@ class FeatureVector:
 class EmbeddingStats:
     """Embedding統計情報（Z-score正規化用）。"""
 
-    def __init__(self, mean: List[float], std: List[float]):
+    def __init__(self, mean: list[float], std: list[float]):
         self.mean = mean
         self.std = std
 
     @classmethod
-    def empty(cls, dim: int) -> "EmbeddingStats":
+    def empty(cls, dim: int) -> EmbeddingStats:
         """空の統計情報を作成（正規化なし）。"""
         return cls(mean=[0.0] * dim, std=[1.0] * dim)
 
     @classmethod
-    def from_embeddings(cls, embeddings: List[List[float]]) -> "EmbeddingStats":
+    def from_embeddings(cls, embeddings: list[list[float]]) -> EmbeddingStats:
         """Embeddingベクトルから統計を計算。"""
         if not embeddings:
             return cls.empty(EMBEDDING_DIM)
@@ -132,7 +129,7 @@ class EmbeddingStats:
 
         return cls(mean=mean, std=std)
 
-    def normalize(self, embedding: List[float]) -> None:
+    def normalize(self, embedding: list[float]) -> None:
         """EmbeddingベクトルにZ-score正規化を適用（in-place）。"""
         for i, val in enumerate(embedding):
             if i < len(self.mean) and i < len(self.std):
@@ -144,8 +141,8 @@ class FeatureExtractor:
 
     def __init__(
         self,
-        vocab: List[str],
-        idf: List[float],
+        vocab: list[str],
+        idf: list[float],
         bm25_k1: float = FALLBACK_BM25_K1,
         bm25_b: float = FALLBACK_BM25_B,
         average_doc_len: float = FALLBACK_AVG_DOC_LEN,
@@ -161,12 +158,12 @@ class FeatureExtractor:
     @classmethod
     def from_metadata(
         cls,
-        vocab: List[str],
-        idf: List[float],
+        vocab: list[str],
+        idf: list[float],
         bm25_k1: float = FALLBACK_BM25_K1,
         bm25_b: float = FALLBACK_BM25_B,
         average_doc_len: float = FALLBACK_AVG_DOC_LEN,
-    ) -> "FeatureExtractor":
+    ) -> FeatureExtractor:
         """メタデータからFeatureExtractorを作成。"""
         return cls(vocab, idf, bm25_k1, bm25_b, average_doc_len)
 
@@ -178,7 +175,7 @@ class FeatureExtractor:
         """語彙サイズを取得。"""
         return len(self.idf)
 
-    def extract(self, tokens: List[str]) -> FeatureVector:
+    def extract(self, tokens: list[str]) -> FeatureVector:
         """トークンから特徴ベクトルを抽出。"""
         vocab_len = len(self.idf)
         raw_counts = [0.0] * vocab_len

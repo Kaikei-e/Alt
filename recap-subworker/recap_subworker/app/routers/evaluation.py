@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from uuid import UUID
 
 from ...db.dao import SubworkerDAO
 from ...db.session import get_session
@@ -23,10 +21,10 @@ router = APIRouter(prefix="/v1/evaluation", tags=["evaluation"])
 class EvaluateRequest(BaseModel):
     """評価リクエスト。"""
 
-    golden_data_path: Optional[str] = Field(
+    golden_data_path: str | None = Field(
         None, description="Golden dataset JSONファイルのパス（デフォルト: /app/data/golden_classification.json）"
     )
-    weights_path: Optional[str] = Field(None, description="重みファイルのパス（オプション）")
+    weights_path: str | None = Field(None, description="重みファイルのパス（オプション）")
     use_bootstrap: bool = Field(True, description="Bootstrap法を使用するか")
     n_bootstrap: int = Field(1000, description="Bootstrapリサンプリング回数", ge=100, le=10000)
     use_cross_validation: bool = Field(False, description="Cross-Validationを使用するか")
@@ -40,7 +38,7 @@ class ConfidenceInterval(BaseModel):
     point: float = Field(..., description="点推定値")
     lower: float = Field(..., description="下限")
     upper: float = Field(..., description="上限")
-    width: Optional[float] = Field(None, description="信頼区間の幅")
+    width: float | None = Field(None, description="信頼区間の幅")
 
 
 class PerGenreMetric(BaseModel):
@@ -51,9 +49,9 @@ class PerGenreMetric(BaseModel):
     fn: int = Field(..., description="False Negatives")
     support: int = Field(..., description="サポート数（TP + FN）")
     precision: float = Field(..., description="Precision")
-    precision_ci: Optional[ConfidenceInterval] = Field(None, description="Precisionの信頼区間")
+    precision_ci: ConfidenceInterval | None = Field(None, description="Precisionの信頼区間")
     recall: float = Field(..., description="Recall")
-    recall_ci: Optional[ConfidenceInterval] = Field(None, description="Recallの信頼区間")
+    recall_ci: ConfidenceInterval | None = Field(None, description="Recallの信頼区間")
     f1: float = Field(..., description="F1スコア")
     warning: bool = Field(False, description="サンプル数不足の警告")
 
@@ -62,11 +60,11 @@ class MacroMetrics(BaseModel):
     """Macro平均メトリクス。"""
 
     precision: float = Field(..., description="Macro Precision")
-    precision_ci: Optional[ConfidenceInterval] = Field(None, description="Precisionの信頼区間")
+    precision_ci: ConfidenceInterval | None = Field(None, description="Precisionの信頼区間")
     recall: float = Field(..., description="Macro Recall")
-    recall_ci: Optional[ConfidenceInterval] = Field(None, description="Recallの信頼区間")
+    recall_ci: ConfidenceInterval | None = Field(None, description="Recallの信頼区間")
     f1: float = Field(..., description="Macro F1")
-    f1_ci: Optional[ConfidenceInterval] = Field(None, description="F1の信頼区間")
+    f1_ci: ConfidenceInterval | None = Field(None, description="F1の信頼区間")
 
 
 class StatisticalPower(BaseModel):
@@ -87,32 +85,32 @@ class IntegratedScore(BaseModel):
 class EvaluateResponse(BaseModel):
     """評価レスポンス。"""
 
-    run_id: Optional[UUID] = Field(None, description="データベースに保存されたrun_id")
+    run_id: UUID | None = Field(None, description="データベースに保存されたrun_id")
     accuracy: float = Field(..., description="Accuracy")
     accuracy_ci: ConfidenceInterval = Field(..., description="Accuracyの信頼区間")
     macro_precision: float = Field(..., description="Macro Precision")
     macro_recall: float = Field(..., description="Macro Recall")
     macro_f1: float = Field(..., description="Macro F1")
-    macro_metrics: Optional[MacroMetrics] = Field(None, description="Macro平均メトリクス（詳細）")
+    macro_metrics: MacroMetrics | None = Field(None, description="Macro平均メトリクス（詳細）")
     micro_precision: float = Field(..., description="Micro Precision")
     micro_recall: float = Field(..., description="Micro Recall")
     micro_f1: float = Field(..., description="Micro F1")
     per_genre_metrics: dict[str, PerGenreMetric] = Field(..., description="ジャンル別メトリクス")
     confusion_matrix: dict[str, list] = Field(..., description="混同行列")
-    effect_size: Optional[dict[str, float]] = Field(None, description="効果サイズ")
-    statistical_power: Optional[StatisticalPower] = Field(None, description="統計的検出力")
-    integrated_score: Optional[IntegratedScore] = Field(None, description="統合評価スコア")
+    effect_size: dict[str, float] | None = Field(None, description="効果サイズ")
+    statistical_power: StatisticalPower | None = Field(None, description="統計的検出力")
+    integrated_score: IntegratedScore | None = Field(None, description="統合評価スコア")
     total_samples: int = Field(..., description="総サンプル数")
     total_tp: int = Field(..., description="総True Positives")
     total_fp: int = Field(..., description="総False Positives")
     total_fn: int = Field(..., description="総False Negatives")
-    cv_results: Optional[dict] = Field(None, description="Cross-Validation結果")
+    cv_results: dict | None = Field(None, description="Cross-Validation結果")
 
 
 @router.post("/genres", response_model=EvaluateResponse)
 async def evaluate_genres(
     request: EvaluateRequest,
-    language: Optional[str] = None,
+    language: str | None = None,
     settings: Settings = Depends(get_settings_dep),
     session=Depends(get_session),
 ) -> EvaluateResponse:
@@ -132,7 +130,7 @@ async def evaluate_genres(
                 request.golden_data_path, ALLOWED_BASE_DIRS
             )
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
     if not golden_data_path.exists():
         raise HTTPException(
@@ -145,7 +143,7 @@ async def evaluate_genres(
         try:
             weights_path = validate_path(request.weights_path, ALLOWED_BASE_DIRS)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
         if not weights_path.exists():
             raise HTTPException(
@@ -193,7 +191,6 @@ async def evaluate_genres(
                     for genre, metrics in results["per_genre_metrics"].items()
                 ]
 
-                macro_metrics = results.get("macro_metrics", {})
                 run_id = await dao.save_genre_evaluation(
                     dataset_path=str(golden_data_path),
                     total_items=results["total_samples"],
@@ -327,18 +324,18 @@ async def evaluate_genres(
             ),
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {e!s}") from e
 
 
 class EvaluateSummaryRequest(BaseModel):
     """要約評価リクエスト。"""
 
-    job_id: Optional[UUID] = Field(None, description="Job ID (for logging)")
+    job_id: UUID | None = Field(None, description="Job ID (for logging)")
     source_text: str = Field(..., description="元のテキスト")
     generated_summary: str = Field(..., description="生成された要約")
-    context: Optional[list[str]] = Field(None, description="コンテキスト（オプション）")
+    context: list[str] | None = Field(None, description="コンテキスト（オプション）")
     save_to_db: bool = Field(True, description="評価結果をデータベースに保存するか")
 
 

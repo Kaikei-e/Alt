@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
 from uuid import UUID
 
 import structlog
@@ -52,7 +51,7 @@ def _record_to_classification_response(record) -> ClassificationJobResponse:
 async def create_classification_run(
     payload: ClassificationJobPayload,
     job_id_header: str = Header(..., alias="X-Alt-Job-Id"),
-    idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     manager: RunManager = Depends(get_run_manager_dep),
 ) -> ClassificationJobResponse:
     """Create a new classification run (async job pattern)."""

@@ -1,10 +1,11 @@
+
 import torch
 import torch.nn as nn
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
-from typing import Any, Dict, List, Optional
+
 
 class TeacherBERT(nn.Module):
-    def __init__(self, model_name: str, num_labels: int, label_map: Optional[Dict[str, int]] = None):
+    def __init__(self, model_name: str, num_labels: int, label_map: dict[str, int] | None = None):
         super().__init__()
         self.model_name = model_name
         self.num_labels = num_labels
@@ -31,7 +32,7 @@ class TeacherBERT(nn.Module):
         instance = cls(load_directory, num_labels)
         return instance
 
-    def predict(self, texts: List[str], max_length: int = 256, device="cpu"):
+    def predict(self, texts: list[str], max_length: int = 256, device="cpu"):
         self.eval()
         inputs = self.tokenizer(
             texts,

@@ -20,7 +20,15 @@ from ..infra.config import get_settings
 from ..infra.logging import configure_logging
 from ..infra.telemetry import setup_metrics
 from . import deps
-from .routers import admin, evaluation, health, runs, classification, classification_runs, preprocessing
+from .routers import (
+    admin,
+    classification,
+    classification_runs,
+    evaluation,
+    health,
+    preprocessing,
+    runs,
+)
 
 # 10 MB request body limit
 _MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
