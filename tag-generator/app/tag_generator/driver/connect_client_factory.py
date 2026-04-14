@@ -52,7 +52,6 @@ def create_backend_client() -> tuple[BackendInternalServiceClientSync, dict[str,
     if service_token:
         auth_headers["X-Service-Token"] = service_token
 
-    transport_kwargs: dict[str, object] = {"use_system_dns": True}
     if mtls_enforce:
         cert_file = os.getenv("MTLS_CERT_FILE", "")
         key_file = os.getenv("MTLS_KEY_FILE", "")
@@ -61,11 +60,20 @@ def create_backend_client() -> tuple[BackendInternalServiceClientSync, dict[str,
             msg = "MTLS_ENFORCE=true but MTLS_CERT_FILE/KEY_FILE/CA_FILE not fully set"
             logger.error(msg)
             raise RuntimeError(msg)
-        transport_kwargs["tls_cert"] = cert_file
-        transport_kwargs["tls_key"] = key_file
-        transport_kwargs["tls_ca_cert"] = ca_file
-
-    transport = SyncHTTPTransport(**transport_kwargs)
+        with open(cert_file, "rb") as f:
+            cert_pem = f.read()
+        with open(key_file, "rb") as f:
+            key_pem = f.read()
+        with open(ca_file, "rb") as f:
+            ca_pem = f.read()
+        transport = SyncHTTPTransport(
+            use_system_dns=True,
+            tls_cert=cert_pem,
+            tls_key=key_pem,
+            tls_ca_cert=ca_pem,
+        )
+    else:
+        transport = SyncHTTPTransport(use_system_dns=True)
     http_client = SyncClient(transport=transport)
 
     client = BackendInternalServiceClientSync(
