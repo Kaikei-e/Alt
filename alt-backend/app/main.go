@@ -8,6 +8,7 @@ import (
 	"alt/job"
 	"alt/middleware"
 	"alt/rest"
+	"alt/tlsutil"
 	"alt/utils/logger"
 	altotel "alt/utils/otel"
 	"context"
@@ -17,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -174,7 +176,7 @@ func main() {
 
 	rest.RegisterRoutes(e, container, cfg)
 
-	serverExitCh := make(chan serverExit, 2)
+	serverExitCh := make(chan serverExit, 3)
 
 	// Start REST server in a goroutine
 	go func() {
@@ -218,6 +220,39 @@ func main() {
 			serverExitCh <- serverExit{name: "connect_rpc", err: err}
 		}
 	}()
+
+	// Phase 1 mTLS: additional HTTPS listener that mirrors the Connect-RPC
+	// handler. Server cert only in Phase 1 (ClientAuth=NoClientCert); clients
+	// still authenticate via X-Service-Token. Controlled by MTLS_LISTEN env.
+	var mtlsServer *http.Server
+	if os.Getenv("MTLS_LISTEN") == "true" {
+		mtlsPort, _ := strconv.Atoi(os.Getenv("MTLS_PORT"))
+		if mtlsPort == 0 {
+			mtlsPort = 9443
+		}
+		tlsCfg, err := tlsutil.LoadServerConfig(
+			os.Getenv("MTLS_CERT_FILE"),
+			os.Getenv("MTLS_KEY_FILE"),
+			os.Getenv("MTLS_CA_FILE"),
+		)
+		if err != nil {
+			logger.Logger.ErrorContext(ctx, "mTLS listener config failed, skipping", "error", err)
+		} else {
+			mtlsServer = tlsutil.NewMTLSHTTPServer(fmt.Sprintf(":%d", mtlsPort), tlsCfg, connectServer)
+			go func() {
+				logger.Logger.InfoContext(ctx, "mTLS HTTPS listener starting", "port", mtlsPort)
+				err := mtlsServer.ListenAndServeTLS("", "")
+				switch {
+				case err == nil, err == http.ErrServerClosed:
+					logger.Logger.InfoContext(ctx, "mTLS HTTPS listener exited", "reason", "server_closed")
+					serverExitCh <- serverExit{name: "mtls", err: nil}
+				default:
+					logger.Logger.ErrorContext(ctx, "mTLS HTTPS listener exited with error", "error", err)
+					serverExitCh <- serverExit{name: "mtls", err: err}
+				}
+			}()
+		}
+	}
 
 	// Setup graceful shutdown
 	quit := make(chan os.Signal, 1)
@@ -304,6 +339,17 @@ func main() {
 		logger.Logger.ErrorContext(shutdownCtx, "Error during Connect-RPC server shutdown", "error", err)
 	} else {
 		logger.Logger.InfoContext(shutdownCtx, "Connect-RPC server shutdown completed")
+	}
+
+	if mtlsServer != nil {
+		logger.Logger.InfoContext(shutdownCtx, "Starting mTLS server shutdown",
+			"timeout", cfg.Server.WriteTimeout.String(),
+		)
+		if err := mtlsServer.Shutdown(shutdownCtx); err != nil {
+			logger.Logger.ErrorContext(shutdownCtx, "Error during mTLS server shutdown", "error", err)
+		} else {
+			logger.Logger.InfoContext(shutdownCtx, "mTLS server shutdown completed")
+		}
 	}
 
 	logger.Logger.Info("Server stopped",

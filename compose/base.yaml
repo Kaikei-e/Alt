@@ -72,6 +72,7 @@ volumes:
   nginx-image-cache:
   step_ca_data:
   pki_trust_bundle:
+  alt_backend_certs:
 
 x-rask-env: &rask-env
   environment:

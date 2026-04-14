@@ -22,9 +22,9 @@ type Config struct {
 	AuthHub       AuthHubConfig       `json:"auth_hub"`
 	MQHub         MQHubConfig         `json:"mq_hub"`
 	InternalAPI   InternalAPIConfig   `json:"internal_api"`
-	ImageProxy     ImageProxyConfig     `json:"image_proxy"`
-	KnowledgeHome  KnowledgeHomeConfig  `json:"knowledge_home"`
-	AdminMonitor   AdminMonitorConfig   `json:"admin_monitor"`
+	ImageProxy    ImageProxyConfig    `json:"image_proxy"`
+	KnowledgeHome KnowledgeHomeConfig `json:"knowledge_home"`
+	AdminMonitor  AdminMonitorConfig  `json:"admin_monitor"`
 
 	// Legacy fields for backward compatibility
 	Port               int           `json:"port"`
@@ -85,34 +85,34 @@ type ImageProxyConfig struct {
 
 // KnowledgeHomeConfig holds configuration for Knowledge Home feature flags.
 type KnowledgeHomeConfig struct {
-	EnableHomePage      bool   `json:"enable_home_page" env:"KNOWLEDGE_HOME_ENABLE_PAGE" default:"false"`
-	EnableTracking      bool   `json:"enable_tracking" env:"KNOWLEDGE_HOME_ENABLE_TRACKING" default:"false"`
-	EnableProjectionV2  bool   `json:"enable_projection_v2" env:"KNOWLEDGE_HOME_ENABLE_PROJECTION_V2" default:"false"`
-	RolloutPercentage   int    `json:"rollout_percentage" env:"KNOWLEDGE_HOME_ROLLOUT_PERCENTAGE" default:"0"`
-	AllowedUserIDs      string `json:"allowed_user_ids" env:"KNOWLEDGE_HOME_ALLOWED_USER_IDS" default:""`
-	EnableRecallRail    bool   `json:"enable_recall_rail" env:"KNOWLEDGE_HOME_ENABLE_RECALL_RAIL" default:"false"`
-	EnableLens          bool   `json:"enable_lens" env:"KNOWLEDGE_HOME_ENABLE_LENS" default:"false"`
-	EnableStreamUpdates bool   `json:"enable_stream_updates" env:"KNOWLEDGE_HOME_ENABLE_STREAM_UPDATES" default:"false"`
-	EnableSupersedeUX   bool   `json:"enable_supersede_ux" env:"KNOWLEDGE_HOME_ENABLE_SUPERSEDE_UX" default:"false"`
-	ProjectorPollInterval time.Duration `json:"projector_poll_interval" env:"KNOWLEDGE_HOME_PROJECTOR_POLL_INTERVAL" default:"5s"`
-	ProjectorTimeout      time.Duration `json:"projector_timeout" env:"KNOWLEDGE_HOME_PROJECTOR_TIMEOUT" default:"25s"`
-	ProjectorBatchSize    int           `json:"projector_batch_size" env:"KNOWLEDGE_HOME_PROJECTOR_BATCH_SIZE" default:"500"`
-	ProjectorNotifyChannel string       `json:"projector_notify_channel" env:"KNOWLEDGE_HOME_PROJECTOR_NOTIFY_CHANNEL" default:"knowledge_projector"`
-	ProjectorDirectDBHost string        `json:"projector_direct_db_host" env:"KNOWLEDGE_HOME_PROJECTOR_DIRECT_DB_HOST" default:""`
-	ProjectorDirectDBPort string        `json:"projector_direct_db_port" env:"KNOWLEDGE_HOME_PROJECTOR_DIRECT_DB_PORT" default:""`
+	EnableHomePage         bool          `json:"enable_home_page" env:"KNOWLEDGE_HOME_ENABLE_PAGE" default:"false"`
+	EnableTracking         bool          `json:"enable_tracking" env:"KNOWLEDGE_HOME_ENABLE_TRACKING" default:"false"`
+	EnableProjectionV2     bool          `json:"enable_projection_v2" env:"KNOWLEDGE_HOME_ENABLE_PROJECTION_V2" default:"false"`
+	RolloutPercentage      int           `json:"rollout_percentage" env:"KNOWLEDGE_HOME_ROLLOUT_PERCENTAGE" default:"0"`
+	AllowedUserIDs         string        `json:"allowed_user_ids" env:"KNOWLEDGE_HOME_ALLOWED_USER_IDS" default:""`
+	EnableRecallRail       bool          `json:"enable_recall_rail" env:"KNOWLEDGE_HOME_ENABLE_RECALL_RAIL" default:"false"`
+	EnableLens             bool          `json:"enable_lens" env:"KNOWLEDGE_HOME_ENABLE_LENS" default:"false"`
+	EnableStreamUpdates    bool          `json:"enable_stream_updates" env:"KNOWLEDGE_HOME_ENABLE_STREAM_UPDATES" default:"false"`
+	EnableSupersedeUX      bool          `json:"enable_supersede_ux" env:"KNOWLEDGE_HOME_ENABLE_SUPERSEDE_UX" default:"false"`
+	ProjectorPollInterval  time.Duration `json:"projector_poll_interval" env:"KNOWLEDGE_HOME_PROJECTOR_POLL_INTERVAL" default:"5s"`
+	ProjectorTimeout       time.Duration `json:"projector_timeout" env:"KNOWLEDGE_HOME_PROJECTOR_TIMEOUT" default:"25s"`
+	ProjectorBatchSize     int           `json:"projector_batch_size" env:"KNOWLEDGE_HOME_PROJECTOR_BATCH_SIZE" default:"500"`
+	ProjectorNotifyChannel string        `json:"projector_notify_channel" env:"KNOWLEDGE_HOME_PROJECTOR_NOTIFY_CHANNEL" default:"knowledge_projector"`
+	ProjectorDirectDBHost  string        `json:"projector_direct_db_host" env:"KNOWLEDGE_HOME_PROJECTOR_DIRECT_DB_HOST" default:""`
+	ProjectorDirectDBPort  string        `json:"projector_direct_db_port" env:"KNOWLEDGE_HOME_PROJECTOR_DIRECT_DB_PORT" default:""`
 }
 
 // AdminMonitorConfig controls the admin-facing Prometheus observability endpoint.
 // Queries are allowlisted server-side and run through a gated gateway with
 // cache, singleflight, and rate limit.
 type AdminMonitorConfig struct {
-	Enabled         bool          `json:"enabled" env:"ADMIN_MONITOR_ENABLED" default:"false"`
-	PrometheusURL   string        `json:"prometheus_url" env:"ADMIN_MONITOR_PROMETHEUS_URL" default:"http://prometheus:9090"`
-	QueryTimeout    time.Duration `json:"query_timeout" env:"ADMIN_MONITOR_QUERY_TIMEOUT" default:"3s"`
-	CacheTTL        time.Duration `json:"cache_ttl" env:"ADMIN_MONITOR_CACHE_TTL" default:"10s"`
-	RateLimitRPS    int           `json:"rate_limit_rps" env:"ADMIN_MONITOR_RATE_LIMIT_RPS" default:"5"`
-	RateLimitBurst  int           `json:"rate_limit_burst" env:"ADMIN_MONITOR_RATE_LIMIT_BURST" default:"10"`
-	StreamInterval  time.Duration `json:"stream_interval" env:"ADMIN_MONITOR_STREAM_INTERVAL" default:"5s"`
+	Enabled        bool          `json:"enabled" env:"ADMIN_MONITOR_ENABLED" default:"false"`
+	PrometheusURL  string        `json:"prometheus_url" env:"ADMIN_MONITOR_PROMETHEUS_URL" default:"http://prometheus:9090"`
+	QueryTimeout   time.Duration `json:"query_timeout" env:"ADMIN_MONITOR_QUERY_TIMEOUT" default:"3s"`
+	CacheTTL       time.Duration `json:"cache_ttl" env:"ADMIN_MONITOR_CACHE_TTL" default:"10s"`
+	RateLimitRPS   int           `json:"rate_limit_rps" env:"ADMIN_MONITOR_RATE_LIMIT_RPS" default:"5"`
+	RateLimitBurst int           `json:"rate_limit_burst" env:"ADMIN_MONITOR_RATE_LIMIT_BURST" default:"10"`
+	StreamInterval time.Duration `json:"stream_interval" env:"ADMIN_MONITOR_STREAM_INTERVAL" default:"5s"`
 }
 
 // InternalAPIConfig holds configuration for the internal service-to-service API.
