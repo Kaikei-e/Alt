@@ -74,14 +74,47 @@ impl ComponentRegistry {
     pub async fn build(config: Config) -> Result<Self> {
         let config = Arc::new(config);
         let telemetry = Telemetry::new()?;
-        let news_creator_client = Arc::new(NewsCreatorClient::new(
-            config.news_creator_base_url(),
-            config.llm_summary_timeout(),
-        )?);
-        let subworker_client = Arc::new(SubworkerClient::new(
-            config.subworker_base_url(),
-            config.min_documents_per_genre(),
-        )?);
+
+        // When MTLS_ENFORCE=true, present the recap-worker leaf cert on every
+        // outbound request. Fail-closed: missing cert/key/CA fails startup.
+        let mtls_paths = crate::clients::mtls::MtlsPaths::from_env()
+            .context("resolving mTLS env for outbound clients")?;
+
+        let news_creator_client = Arc::new(if let Some(paths) = mtls_paths.as_ref() {
+            let client = crate::clients::mtls::build_mtls_client(
+                paths,
+                std::time::Duration::from_secs(5),
+                config.llm_summary_timeout(),
+            )?;
+            NewsCreatorClient::new_with_client(
+                config.news_creator_base_url(),
+                config.llm_summary_timeout(),
+                client,
+            )?
+        } else {
+            NewsCreatorClient::new(
+                config.news_creator_base_url(),
+                config.llm_summary_timeout(),
+            )?
+        });
+
+        let subworker_client = Arc::new(if let Some(paths) = mtls_paths.as_ref() {
+            let client = crate::clients::mtls::build_mtls_client(
+                paths,
+                std::time::Duration::from_secs(5),
+                std::time::Duration::from_secs(3600),
+            )?;
+            SubworkerClient::new_with_client(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+                client,
+            )?
+        } else {
+            SubworkerClient::new(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+            )?
+        });
         let recap_pool = PgPoolOptions::new()
             .max_connections(config.recap_db_max_connections())
             .min_connections(config.recap_db_min_connections())
@@ -175,7 +208,6 @@ mod tests {
                     ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
                     ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
                     ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
-                    ("ALT_BACKEND_SERVICE_TOKEN", None),
                     (
                         "HUGGING_FACE_TOKEN_PATH",
                         Some("/tmp/test-token-which-does-not-exist"),

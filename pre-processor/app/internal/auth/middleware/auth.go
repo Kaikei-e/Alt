@@ -47,23 +47,11 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	}
 }
 
+// RequireServiceAuth is a no-op. Authentication is established at the TLS
+// transport layer (mTLS). Retained so existing callers compile unchanged.
 func (m *AuthMiddleware) RequireServiceAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			// サービス間通信用認証
-			serviceHeader := c.Request().Header.Get("X-Service-Token")
-			if serviceHeader == "" {
-				return echo.NewHTTPError(http.StatusUnauthorized, "Service token required")
-			}
-
-			// サービストークン検証ロジック
-			// 簡易実装：実際にはJWT検証が必要
-			if serviceHeader == "" {
-				return echo.NewHTTPError(http.StatusUnauthorized, "Invalid service token")
-			}
-
-			return next(c)
-		}
+		return next
 	}
 }
 

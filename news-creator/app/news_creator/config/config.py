@@ -28,26 +28,14 @@ class NewsCreatorConfig:
 
     def __init__(self):
         """Initialize configuration from environment variables."""
-        # Authentication settings (remain at top level)
+        # Auth service URL (kept for forward-compatible references; auth
+        # itself is now established at the TLS transport layer).
         self.auth_service_url = os.getenv(
             "AUTH_SERVICE_URL",
             "http://auth-service.alt-auth.svc.cluster.local:8080",
         )
         self.service_name = "news-creator"
-        self.service_secret = os.getenv("SERVICE_SECRET", "")
-        if not self.service_secret:
-            secret_file = os.getenv("SERVICE_SECRET_FILE")
-            if secret_file:
-                try:
-                    with open(secret_file, "r") as f:
-                        self.service_secret = f.read().strip()
-                except Exception as e:
-                    logger.error(f"Failed to read SERVICE_SECRET_FILE: {e}")
-
         self.token_ttl = 3600
-
-        if not self.service_secret:
-            raise ValueError("SERVICE_SECRET environment variable is required")
 
         # Compose specialized config dataclasses
         self.llm = LLMConfig.from_env()

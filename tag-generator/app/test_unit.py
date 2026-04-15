@@ -445,7 +445,7 @@ class TestTagGeneratorService:
         """TagGeneratorService should initialize with default configuration."""
         with patch("tag_generator.service.create_backend_client") as mock_create:
             mock_client = Mock()
-            mock_create.return_value = (mock_client, {"X-Service-Token": "test"})
+            mock_create.return_value = (mock_client, {})
             service = TagGeneratorService()
         assert service.config.batch_limit == 75
         # Default processing interval should match TagGeneratorConfig
@@ -457,7 +457,7 @@ class TestTagGeneratorService:
         mock_conn = Mock()
         with patch("tag_generator.service.create_backend_client") as mock_create:
             mock_client = Mock()
-            mock_create.return_value = (mock_client, {"X-Service-Token": "test"})
+            mock_create.return_value = (mock_client, {})
             service = TagGeneratorService()
 
         article = {
@@ -504,7 +504,7 @@ class TestTagGeneratorService:
         mock_conn = Mock()
         with patch("tag_generator.service.create_backend_client") as mock_create:
             mock_client = Mock()
-            mock_create.return_value = (mock_client, {"X-Service-Token": "test"})
+            mock_create.return_value = (mock_client, {})
             service = TagGeneratorService()
 
         article = {

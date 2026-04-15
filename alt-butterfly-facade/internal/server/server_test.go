@@ -138,7 +138,7 @@ func TestServer_TTSRoute_Success(t *testing.T) {
 	// Create mock TTS backend
 	ttsBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/alt.tts.v1.TTSService/Synthesize", r.URL.Path)
-		assert.Equal(t, "tts-secret", r.Header.Get("X-Service-Token"))
+		assert.Empty(t, r.Header.Get("X-Service-Token"), "auth is transport-layer now")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"audioWav":""}`))
@@ -154,7 +154,6 @@ func TestServer_TTSRoute_Success(t *testing.T) {
 	cfg := Config{
 		BackendURL:       altBackend.URL,
 		TTSConnectURL:    ttsBackend.URL,
-		TTSServiceSecret: "tts-secret",
 		Secret:           []byte("test-secret"),
 		Issuer:           "auth-hub",
 		Audience:         "alt-backend",
@@ -237,7 +236,7 @@ func TestServer_AcolyteRoute_Unauthorized(t *testing.T) {
 func TestServer_AcolyteRoute_Success(t *testing.T) {
 	acolyteBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/alt.acolyte.v1.AcolyteService/HealthCheck", r.URL.Path)
-		assert.Equal(t, "svc-secret", r.Header.Get("X-Service-Token"))
+		assert.Empty(t, r.Header.Get("X-Service-Token"), "auth is transport-layer now")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
@@ -252,7 +251,6 @@ func TestServer_AcolyteRoute_Success(t *testing.T) {
 	cfg := Config{
 		BackendURL:        altBackend.URL,
 		AcolyteConnectURL: acolyteBackend.URL,
-		ServiceSecret:     "svc-secret",
 		Secret:            []byte("test-secret"),
 		Issuer:            "auth-hub",
 		Audience:          "alt-backend",

@@ -96,9 +96,8 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		return nil, nil, err
 	}
 
-	// Initialize repositories — API mode via Connect-RPC to alt-backend
-	serviceToken := readSecret("SERVICE_TOKEN")
-
+	// Initialize repositories — API mode via Connect-RPC to alt-backend.
+	// Authentication is established at the TLS transport layer (mTLS).
 	backendHTTPClient, err := buildBackendHTTPClient(log)
 	if err != nil {
 		ppDBPoolCleanup()
@@ -111,7 +110,7 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 		"url", backendAPIURL,
 		"mtls_enforce", os.Getenv("MTLS_ENFORCE") == "true",
 	)
-	client := backend_api.NewClient(backendAPIURL, serviceToken, backendHTTPClient)
+	client := backend_api.NewClient(backendAPIURL, "", backendHTTPClient)
 	articleRepo := backend_api.NewArticleRepository(client, ppDBPool)
 	summaryRepo := backend_api.NewSummaryRepository(client)
 

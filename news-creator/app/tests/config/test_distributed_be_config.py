@@ -7,7 +7,6 @@ def test_distributed_be_defaults_off(monkeypatch):
     """DISTRIBUTED_BE_ENABLED defaults to false."""
     monkeypatch.delenv("DISTRIBUTED_BE_ENABLED", raising=False)
     monkeypatch.delenv("DISTRIBUTED_BE_REMOTES", raising=False)
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
@@ -26,7 +25,6 @@ def test_distributed_be_parses_remotes(monkeypatch):
         "DISTRIBUTED_BE_REMOTES",
         "http://remote-a:11434,http://remote-b:11434",
     )
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
@@ -44,7 +42,6 @@ def test_distributed_be_strips_whitespace_and_trailing_slash(monkeypatch):
         "DISTRIBUTED_BE_REMOTES",
         " http://host1:11434/ , http://host2:11434 ",
     )
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
@@ -61,7 +58,6 @@ def test_distributed_be_ignores_empty_elements(monkeypatch):
         "DISTRIBUTED_BE_REMOTES",
         "http://host1:11434,,http://host2:11434,",
     )
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
@@ -78,7 +74,6 @@ def test_distributed_be_deduplicates_urls(monkeypatch):
         "DISTRIBUTED_BE_REMOTES",
         "http://host1:11434,http://host1:11434,http://host2:11434",
     )
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
@@ -95,7 +90,6 @@ def test_distributed_be_rejects_schemeless_urls(monkeypatch):
         "DISTRIBUTED_BE_REMOTES",
         "remote-a:11434,http://host2:11434",
     )
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
@@ -106,7 +100,6 @@ def test_distributed_be_enabled_empty_remotes_warns(monkeypatch, caplog):
     """enabled=true with empty remotes logs a warning."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv("DISTRIBUTED_BE_REMOTES", "")
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     import logging
 
@@ -125,7 +118,6 @@ def test_distributed_be_custom_intervals(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS", "15")
     monkeypatch.setenv("DISTRIBUTED_BE_TIMEOUT_SECONDS", "120")
     monkeypatch.setenv("DISTRIBUTED_BE_COOLDOWN_SECONDS", "30")
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
@@ -139,7 +131,6 @@ def test_distributed_be_custom_remote_model(monkeypatch):
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv("DISTRIBUTED_BE_REMOTES", "http://host:11434")
     monkeypatch.setenv("DISTRIBUTED_BE_REMOTE_MODEL", "gemma4-e4b-q4km")
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
@@ -156,7 +147,6 @@ def test_distributed_be_model_overrides(monkeypatch):
         "DISTRIBUTED_BE_MODEL_OVERRIDES",
         "http://host-b:11434=gemma4-e4b-rag",
     )
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 
@@ -168,7 +158,6 @@ def test_distributed_be_model_overrides(monkeypatch):
 def test_distributed_be_model_overrides_empty_by_default(monkeypatch):
     """No overrides when env is empty."""
     monkeypatch.delenv("DISTRIBUTED_BE_MODEL_OVERRIDES", raising=False)
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     config = NewsCreatorConfig()
 

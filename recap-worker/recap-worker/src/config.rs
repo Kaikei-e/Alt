@@ -70,7 +70,6 @@ pub struct Config {
     news_creator_base_url: String,
     subworker_base_url: String,
     alt_backend_base_url: String,
-    alt_backend_service_token: Option<String>,
     alt_backend_connect_timeout: Duration,
     alt_backend_read_timeout: Duration,
     alt_backend_total_timeout: Duration,
@@ -94,7 +93,6 @@ pub struct Config {
     tag_label_graph_window: String,
     tag_label_graph_ttl: Duration,
     tag_generator_base_url: String,
-    tag_generator_service_token: Option<String>,
     tag_generator_connect_timeout: Duration,
     tag_generator_total_timeout: Duration,
     min_documents_per_genre: usize,
@@ -150,7 +148,6 @@ struct ExternalServiceConfig {
     news_creator_base_url: String,
     subworker_base_url: String,
     alt_backend_base_url: String,
-    alt_backend_service_token: Option<String>,
     alt_backend_connect_timeout: Duration,
     alt_backend_read_timeout: Duration,
     alt_backend_total_timeout: Duration,
@@ -184,7 +181,6 @@ struct GraphConfig {
 #[allow(clippy::struct_field_names)] // Field names match Config struct for clarity
 struct TagConfig {
     tag_generator_base_url: String,
-    tag_generator_service_token: Option<String>,
     tag_generator_connect_timeout: Duration,
     tag_generator_total_timeout: Duration,
 }
@@ -324,7 +320,6 @@ impl Config {
             news_creator_base_url: external_services.news_creator_base_url,
             subworker_base_url: external_services.subworker_base_url,
             alt_backend_base_url: external_services.alt_backend_base_url,
-            alt_backend_service_token: external_services.alt_backend_service_token,
             alt_backend_connect_timeout: external_services.alt_backend_connect_timeout,
             alt_backend_read_timeout: external_services.alt_backend_read_timeout,
             alt_backend_total_timeout: external_services.alt_backend_total_timeout,
@@ -348,7 +343,6 @@ impl Config {
             tag_label_graph_window: graph.tag_label_graph_window,
             tag_label_graph_ttl: graph.tag_label_graph_ttl,
             tag_generator_base_url: tag.tag_generator_base_url,
-            tag_generator_service_token: tag.tag_generator_service_token,
             tag_generator_connect_timeout: tag.tag_generator_connect_timeout,
             tag_generator_total_timeout: tag.tag_generator_total_timeout,
             min_documents_per_genre: subworker.min_documents_per_genre,
@@ -419,10 +413,6 @@ impl Config {
         &self.alt_backend_base_url
     }
 
-    #[must_use]
-    pub fn alt_backend_service_token(&self) -> Option<&str> {
-        self.alt_backend_service_token.as_deref()
-    }
 
     #[must_use]
     pub fn alt_backend_connect_timeout(&self) -> Duration {
@@ -537,11 +527,6 @@ impl Config {
     #[must_use]
     pub fn tag_generator_base_url(&self) -> &str {
         &self.tag_generator_base_url
-    }
-
-    #[must_use]
-    pub fn tag_generator_service_token(&self) -> Option<&str> {
-        self.tag_generator_service_token.as_deref()
     }
 
     #[must_use]
@@ -738,7 +723,6 @@ fn load_external_service_config() -> Result<ExternalServiceConfig, ConfigError> 
     let news_creator_base_url = env_var("NEWS_CREATOR_BASE_URL")?;
     let subworker_base_url = env_var("SUBWORKER_BASE_URL")?;
     let alt_backend_base_url = env_var("ALT_BACKEND_BASE_URL")?;
-    let alt_backend_service_token = env_var_optional("ALT_BACKEND_SERVICE_TOKEN");
 
     let (alt_backend_connect_timeout, alt_backend_read_timeout, alt_backend_total_timeout) =
         load_http_timeout_config()?;
@@ -749,7 +733,6 @@ fn load_external_service_config() -> Result<ExternalServiceConfig, ConfigError> 
         news_creator_base_url,
         subworker_base_url,
         alt_backend_base_url,
-        alt_backend_service_token,
         alt_backend_connect_timeout,
         alt_backend_read_timeout,
         alt_backend_total_timeout,
@@ -865,12 +848,10 @@ fn load_graph_config() -> Result<GraphConfig, ConfigError> {
 fn load_tag_config() -> Result<TagConfig, ConfigError> {
     let base_url = env::var("TAG_GENERATOR_BASE_URL")
         .unwrap_or_else(|_| "http://tag-generator:9400".to_string());
-    let service_token = env_var_optional("TAG_GENERATOR_SERVICE_TOKEN");
     let connect_timeout = parse_duration_ms("TAG_GENERATOR_CONNECT_TIMEOUT_MS", 3000)?;
     let total_timeout = parse_duration_ms("TAG_GENERATOR_TOTAL_TIMEOUT_MS", 30000)?;
     Ok(TagConfig {
         tag_generator_base_url: base_url,
-        tag_generator_service_token: service_token,
         tag_generator_connect_timeout: connect_timeout,
         tag_generator_total_timeout: total_timeout,
     })

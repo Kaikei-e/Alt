@@ -43,7 +43,7 @@ type Config struct {
 }
 
 // RateLimitConfig bounds incoming REST and Connect-RPC request throughput.
-// Global bucket because callers are already authenticated via X-Service-Token;
+// Global bucket because callers are already authenticated via TLS peer identity;
 // per-caller isolation is deferred until caller identity is propagated.
 type RateLimitConfig struct {
 	// RequestsPerSecond is the sustained refill rate for the token bucket.
@@ -56,8 +56,6 @@ type RateLimitConfig struct {
 type BackendAPIConfig struct {
 	// URL is the Connect-RPC URL for alt-backend's internal API.
 	URL string
-	// ServiceToken is the shared secret for service authentication.
-	ServiceToken string
 }
 
 type MeilisearchConfig struct {
@@ -89,8 +87,7 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		BackendAPI: BackendAPIConfig{
-			URL:          backendAPIURL,
-			ServiceToken: getEnvOrDefault("SERVICE_TOKEN", ""),
+			URL: backendAPIURL,
 		},
 		Meilisearch: MeilisearchConfig{
 			Host:    getEnvOrDefault("MEILISEARCH_HOST", ""),

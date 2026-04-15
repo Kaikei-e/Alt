@@ -65,4 +65,5 @@ pub mod replay;
 pub mod scheduler;
 pub(crate) mod schema;
 pub(crate) mod store;
+pub mod tls;
 pub mod util;

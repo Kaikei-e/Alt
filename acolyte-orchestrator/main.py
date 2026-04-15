@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import ssl
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -27,7 +25,9 @@ from acolyte.gateway.vllm_gw import VllmGateway
 from acolyte.gen.proto.alt.acolyte.v1.acolyte_connect import AcolyteServiceASGIApplication
 from acolyte.handler.connect_service import AcolyteConnectService
 from acolyte.infra.logging import configure_logging
+from acolyte.infra.peer_identity import PeerIdentityMiddleware, allowed_peers_from_env
 from acolyte.usecase.graph.report_graph import build_report_graph
+from starlette.middleware import Middleware
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -46,30 +46,12 @@ _report_repo = PostgresReportGateway(_pool)
 _job_queue = MemoryJobGateway()
 
 
-def _build_mtls_context() -> ssl.SSLContext | None:
-    """Build an SSLContext that presents the acolyte-orchestrator leaf cert.
-
-    Returns None when MTLS_ENFORCE is not enabled. Raises when enforcement is
-    requested but required env is missing or certs are unreadable (fail-closed).
-    """
-    if os.getenv("MTLS_ENFORCE") != "true":
-        return None
-    cert = os.getenv("MTLS_CERT_FILE", "")
-    key = os.getenv("MTLS_KEY_FILE", "")
-    ca = os.getenv("MTLS_CA_FILE", "")
-    if not (cert and key and ca):
-        msg = "MTLS_ENFORCE=true but MTLS_CERT_FILE/KEY_FILE/CA_FILE not fully set"
-        raise RuntimeError(msg)
-    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=ca)
-    ctx.load_cert_chain(certfile=cert, keyfile=key)
-    ctx.minimum_version = ssl.TLSVersion.TLSv1_3
-    return ctx
-
-
 # HTTP client for Ollama and search-indexer (600s timeout for 26B model with 8192 num_predict).
 # When MTLS_ENFORCE=true the shared AsyncClient presents the acolyte-orchestrator
 # leaf cert on every handshake; every downstream must trust alt-ca.
-_mtls_ctx = _build_mtls_context()
+from acolyte.infra.mtls_client import build_ssl_context  # noqa: E402
+
+_mtls_ctx = build_ssl_context()
 _http_client = httpx.AsyncClient(
     timeout=httpx.Timeout(connect=10, read=600, write=10, pool=10),
     limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
@@ -144,8 +126,19 @@ def create_app() -> Starlette:
 
     asgi_app = AcolyteServiceASGIApplication(connect_service)
 
+    # capture the peer CN injected by the nginx mTLS sidecar
+    # (VERIFY_CLIENT=on) and propagate into request.state + log context.
+    # strict=False during rollout so callers that haven't migrated to mTLS
+    # client certs still work; flip to True at cutover.
+    peer_identity_middleware = Middleware(
+        PeerIdentityMiddleware,
+        allowed=allowed_peers_from_env(),
+        strict=False,
+    )
+
     app = Starlette(
         lifespan=lifespan,
+        middleware=[peer_identity_middleware],
         routes=[
             Route("/health", health_endpoint),
             Mount(asgi_app.path, app=asgi_app),

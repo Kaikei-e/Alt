@@ -100,7 +100,6 @@ impl PipelineOrchestrator {
             base_url: alt_backend_url,
             connect_timeout: config.alt_backend_connect_timeout(),
             total_timeout: config.alt_backend_total_timeout(),
-            service_token: config.alt_backend_service_token().map(ToString::to_string),
         };
         let alt_backend_client = Arc::new(
             if let Some(paths) = mtls_paths.as_ref() {
@@ -127,9 +126,6 @@ impl PipelineOrchestrator {
             base_url: tag_generator_url,
             connect_timeout: config.tag_generator_connect_timeout(),
             total_timeout: config.tag_generator_total_timeout(),
-            service_token: config
-                .tag_generator_service_token()
-                .map(ToString::to_string),
         };
         let tag_generator_client = if let Some(paths) = mtls_paths.as_ref() {
             mtls::build_mtls_client(

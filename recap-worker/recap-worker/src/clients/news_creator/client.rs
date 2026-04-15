@@ -32,7 +32,16 @@ impl NewsCreatorClient {
             .timeout(Duration::from_secs(5))
             .build()
             .context("failed to build news-creator client")?;
+        Self::new_with_client(base_url, summary_timeout, client)
+    }
 
+    /// Construct with an externally-built `reqwest::Client`. Used by the
+    /// mTLS wiring in `app.rs` to inject an identity-presenting client.
+    pub(crate) fn new_with_client(
+        base_url: impl Into<String>,
+        summary_timeout: Duration,
+        client: Client,
+    ) -> Result<Self> {
         let base_url = Url::parse(&base_url.into()).context("invalid news-creator base URL")?;
 
         // Try to initialize TokenCounter, fallback to dummy if it fails (e.g., in test environments)

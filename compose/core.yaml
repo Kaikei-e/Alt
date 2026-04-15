@@ -217,7 +217,6 @@ services:
       - DB_NAME=${POSTGRES_DB}
       - DB_SSL_MODE=prefer
       - CSRF_SECRET_FILE=/run/secrets/csrf_secret
-      - SERVICE_SECRET_FILE=/run/secrets/service_secret
       - BACKEND_TOKEN_SECRET_FILE=/run/secrets/backend_token_secret
       - BACKEND_TOKEN_ISSUER=auth-hub
       - BACKEND_TOKEN_AUDIENCE=alt-backend
@@ -243,7 +242,6 @@ services:
       - backend_token_secret
       - postgres_password
       - csrf_secret
-      - service_secret
       - image_proxy_secret
     deploy:
       resources:

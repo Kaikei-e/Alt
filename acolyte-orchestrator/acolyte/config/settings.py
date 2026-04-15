@@ -21,10 +21,6 @@ class Settings(BaseSettings):
     news_creator_url: str = "http://news-creator:11434"
     search_indexer_url: str = "http://search-indexer:9300"
 
-    # Auth
-    service_secret: str = ""
-    service_token_file: str = ""
-
     # DB pool
     db_pool_min_size: int = 2
     db_pool_max_size: int = 10
@@ -80,13 +76,3 @@ class Settings(BaseSettings):
             except OSError:
                 pass
         return self.acolyte_db_dsn
-
-    def resolve_service_secret(self) -> str:
-        """Resolve service secret from file or env var."""
-        if self.service_token_file:
-            try:
-                with open(self.service_token_file) as f:
-                    return f.read().strip()
-            except OSError:
-                pass
-        return self.service_secret

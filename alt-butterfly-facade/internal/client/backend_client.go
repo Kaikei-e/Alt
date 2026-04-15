@@ -121,9 +121,7 @@ func (c *BackendClient) ForwardServiceRequest(req *http.Request, serviceToken st
 
 	copyHeaders(req.Header, backendReq.Header)
 	backendReq.Header.Del(middleware.BackendTokenHeader)
-	if serviceToken != "" {
-		backendReq.Header.Set("X-Service-Token", serviceToken)
-	}
+	_ = serviceToken // retained for signature compat; auth is mTLS transport-layer
 
 	return c.httpClient.Do(backendReq)
 }
@@ -200,7 +198,6 @@ func copyHeaders(src, dst http.Header) {
 		"Connect-Protocol-Version",
 		"Connect-Timeout-Ms",
 		"Grpc-Timeout",
-		"X-Service-Token",
 	}
 
 	for _, h := range headersToForward {

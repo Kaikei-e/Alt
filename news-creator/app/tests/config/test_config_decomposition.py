@@ -292,7 +292,6 @@ class TestNewsCreatorConfigComposition:
         """NewsCreatorConfig should compose LLMConfig, SchedulingConfig, etc."""
         from news_creator.config.config import NewsCreatorConfig
 
-        monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
         config = NewsCreatorConfig()
 
@@ -306,7 +305,6 @@ class TestNewsCreatorConfigComposition:
         """NewsCreatorConfig should maintain backward compatible LLM fields."""
         from news_creator.config.config import NewsCreatorConfig
 
-        monkeypatch.setenv("SERVICE_SECRET", "test-secret")
         monkeypatch.setenv("LLM_SERVICE_URL", "http://test:11435")
 
         config = NewsCreatorConfig()
@@ -322,7 +320,6 @@ class TestNewsCreatorConfigComposition:
         """NewsCreatorConfig should maintain backward compatible scheduling fields."""
         from news_creator.config.config import NewsCreatorConfig
 
-        monkeypatch.setenv("SERVICE_SECRET", "test-secret")
         monkeypatch.setenv("SCHEDULING_RT_RESERVED_SLOTS", "2")
 
         config = NewsCreatorConfig()
@@ -338,7 +335,6 @@ class TestNewsCreatorConfigComposition:
         """NewsCreatorConfig should maintain backward compatible hierarchical fields."""
         from news_creator.config.config import NewsCreatorConfig
 
-        monkeypatch.setenv("SERVICE_SECRET", "test-secret")
         monkeypatch.setenv("HIERARCHICAL_THRESHOLD_CHARS", "10000")
 
         config = NewsCreatorConfig()
@@ -354,7 +350,6 @@ class TestNewsCreatorConfigComposition:
         """NewsCreatorConfig should maintain backward compatible model routing fields."""
         from news_creator.config.config import NewsCreatorConfig
 
-        monkeypatch.setenv("SERVICE_SECRET", "test-secret")
         monkeypatch.setenv("MODEL_ROUTING_ENABLED", "false")
 
         config = NewsCreatorConfig()
@@ -368,7 +363,6 @@ class TestNewsCreatorConfigComposition:
         """NewsCreatorConfig.get_llm_options() should still work after refactoring."""
         from news_creator.config.config import NewsCreatorConfig
 
-        monkeypatch.setenv("SERVICE_SECRET", "test-secret")
         monkeypatch.setenv("LLM_NUM_CTX", "4096")
         monkeypatch.setenv("LLM_TEMPERATURE", "0.5")
 
@@ -382,7 +376,6 @@ class TestNewsCreatorConfigComposition:
         """NewsCreatorConfig.is_base_model_name() should still work after refactoring."""
         from news_creator.config.config import NewsCreatorConfig
 
-        monkeypatch.setenv("SERVICE_SECRET", "test-secret")
         monkeypatch.setenv("MODEL_BASE_NAME", "test-base")
 
         config = NewsCreatorConfig()
@@ -394,7 +387,6 @@ class TestNewsCreatorConfigComposition:
         """NewsCreatorConfig.is_bucket_model_name() should still work after refactoring."""
         from news_creator.config.config import NewsCreatorConfig
 
-        monkeypatch.setenv("SERVICE_SECRET", "test-secret")
         monkeypatch.setenv("MODEL_8K_NAME", "model-8k")
         monkeypatch.setenv("MODEL_60K_NAME", "model-60k")
 
@@ -410,7 +402,6 @@ class TestNewsCreatorConfigComposition:
         """NewsCreatorConfig.get_keep_alive_for_model() should still work after refactoring."""
         from news_creator.config.config import NewsCreatorConfig
 
-        monkeypatch.setenv("SERVICE_SECRET", "test-secret")
         monkeypatch.setenv("MODEL_8K_NAME", "model-8k")
         monkeypatch.setenv("LLM_KEEP_ALIVE_8K", "48h")
 

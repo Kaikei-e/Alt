@@ -63,10 +63,10 @@ func TestAdminMonitorProxy_RequiresAuth(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestAdminMonitorProxy_ForwardsUnaryWithServiceToken(t *testing.T) {
+func TestAdminMonitorProxy_ForwardsUnary(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/alt.admin_monitor.v1.AdminMonitorService/Snapshot", r.URL.Path)
-		assert.Equal(t, "service-secret", r.Header.Get("X-Service-Token"))
+		assert.Empty(t, r.Header.Get("X-Service-Token"), "auth is transport-layer now")
 		assert.Empty(t, r.Header.Get("X-Alt-Backend-Token"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -88,7 +88,7 @@ func TestAdminMonitorProxy_ForwardsUnaryWithServiceToken(t *testing.T) {
 func TestAdminMonitorProxy_StreamingFlushesChunks(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/alt.admin_monitor.v1.AdminMonitorService/Watch", r.URL.Path)
-		assert.Equal(t, "service-secret", r.Header.Get("X-Service-Token"))
+		assert.Empty(t, r.Header.Get("X-Service-Token"), "auth is transport-layer now")
 		w.Header().Set("Content-Type", "application/connect+json")
 		w.Header().Set("X-Accel-Buffering", "no")
 		w.WriteHeader(http.StatusOK)

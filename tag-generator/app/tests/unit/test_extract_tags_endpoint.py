@@ -11,20 +11,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-@pytest.fixture(autouse=True)
-def _set_service_secret(monkeypatch):
-    """Ensure SERVICE_SECRET is set for all tests."""
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret-token")
-
-
 @pytest.fixture()
 def client():
     """Create a test client with mocked background service."""
-    with patch.dict(os.environ, {"SERVICE_SECRET": "test-secret-token"}):
-        # Must import after env is set
-        from auth_service import app
+    from auth_service import app
 
-        return TestClient(app)
+    return TestClient(app)
 
 
 @pytest.fixture()
@@ -64,7 +56,6 @@ class TestExtractTagsEndpoint:
             resp = client.post(
                 "/api/v1/extract-tags",
                 json={"title": "Technology", "content": "AI and LLM are transforming computing with GPU acceleration."},
-                headers={"X-Service-Token": "test-secret-token"},
             )
 
         assert resp.status_code == 200
@@ -77,23 +68,6 @@ class TestExtractTagsEndpoint:
             "Technology",
             "AI and LLM are transforming computing with GPU acceleration.",
         )
-
-    def test_missing_service_token_returns_401(self, client):
-        """Request without X-Service-Token is rejected."""
-        resp = client.post(
-            "/api/v1/extract-tags",
-            json={"title": "Test", "content": "Some content"},
-        )
-        assert resp.status_code == 401
-
-    def test_invalid_service_token_returns_403(self, client):
-        """Request with wrong X-Service-Token is rejected."""
-        resp = client.post(
-            "/api/v1/extract-tags",
-            json={"title": "Test", "content": "Some content"},
-            headers={"X-Service-Token": "wrong-token"},
-        )
-        assert resp.status_code == 403
 
     def test_empty_content_returns_empty_tags(self, client):
         """Empty content returns empty tag list."""
@@ -120,7 +94,6 @@ class TestExtractTagsEndpoint:
             resp = client.post(
                 "/api/v1/extract-tags",
                 json={"title": "Empty", "content": ""},
-                headers={"X-Service-Token": "test-secret-token"},
             )
 
         assert resp.status_code == 200
@@ -134,7 +107,6 @@ class TestExtractTagsEndpoint:
             resp = client.post(
                 "/api/v1/extract-tags",
                 json={"title": "Test", "content": "Some content"},
-                headers={"X-Service-Token": "test-secret-token"},
             )
 
         assert resp.status_code == 503
@@ -150,7 +122,6 @@ class TestExtractTagsEndpoint:
             resp = client.post(
                 "/api/v1/extract-tags",
                 json={"title": "Test", "content": "Some content"},
-                headers={"X-Service-Token": "test-secret-token"},
             )
 
         assert resp.status_code == 500

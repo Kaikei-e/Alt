@@ -179,7 +179,6 @@ services:
       - LLM_KEEP_ALIVE_8K=24h
       - LLM_NUM_PREDICT=${LLM_NUM_PREDICT:-1200}
       - SUMMARY_NUM_PREDICT=${SUMMARY_NUM_PREDICT:-1200}
-      - SERVICE_SECRET_FILE=/run/secrets/service_secret
       # Concurrency: sync with OLLAMA_NUM_PARALLEL in news-creator-backend
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
       # LLM context window size (8k tokens)
@@ -212,8 +211,6 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=news-creator
-    secrets:
-      - service_secret
     extra_hosts:
       - "tts-external:${TTS_EXTERNAL_HOST:-127.0.0.1}"
     restart: unless-stopped
@@ -283,11 +280,6 @@ services:
       - BACKEND_MTLS_SERVER_NAME=alt-backend
       # Backend API mode: article/feed/summary repos via Connect-RPC
       - BACKEND_API_URL=http://alt-backend:9101
-      # SERVICE_TOKEN_FILE: outgoing token (pre-processor → alt-backend).
-      # SERVICE_SECRET_FILE: incoming token verification (alt-backend → pre-processor).
-      # Both resolve to the same shared service_secret on this node.
-      - SERVICE_TOKEN_FILE=/run/secrets/service_secret
-      - SERVICE_SECRET_FILE=/run/secrets/service_secret
       # Pre-processor dedicated DB (ADR-000246)
       - PP_DB_HOST=pre-processor-db
       - PP_DB_PORT=5432
@@ -305,7 +297,6 @@ services:
       - OTEL_SERVICE_NAME=pre-processor
     secrets:
       - pp_db_password
-      - service_secret
     restart: always
     ports:
       - "9200:9200" # REST API

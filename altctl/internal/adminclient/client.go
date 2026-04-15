@@ -65,9 +65,7 @@ func (c *AdminClient) Call(ctx context.Context, method string, reqBody, respBody
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if c.ServiceToken != "" {
-		req.Header.Set("X-Service-Token", c.ServiceToken)
-	}
+	// Authentication is established at the TLS transport layer (mTLS).
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

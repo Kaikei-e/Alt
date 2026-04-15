@@ -123,6 +123,18 @@ def create_app() -> FastAPI:
     )
 
     app.add_middleware(RequestSizeLimitMiddleware)
+
+    # peer-identity capture for mTLS audit (ADR-000737).
+    from recap_subworker.app.infra.peer_identity import (
+        PeerIdentityMiddleware,
+        allowed_peers_from_env,
+    )
+    app.add_middleware(
+        PeerIdentityMiddleware,
+        allowed=allowed_peers_from_env(),
+        strict=False,
+    )
+
     setup_metrics(app, settings)
 
     app.include_router(health.router)

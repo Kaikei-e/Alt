@@ -76,7 +76,7 @@ func newInfraModule(pool *pgxpool.Pool) *InfraModule {
 	kratosClientImpl := kratos_client.NewKratosClient(cfg.AuthHub.URL, cfg.Auth.BackendTokenSecret)
 
 	// Search indexer driver (shared between article search and feed search)
-	searchIndexerDriver := search_indexer_connect.NewConnectSearchIndexerDriver(cfg.SearchIndexer.ConnectURL)
+	searchIndexerDriver := search_indexer_connect.NewConnectSearchIndexerDriver(cfg.SearchIndexer.ConnectURL, "")
 
 	return &InfraModule{
 		Config:              cfg,

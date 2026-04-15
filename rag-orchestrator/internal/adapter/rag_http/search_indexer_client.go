@@ -16,7 +16,10 @@ type SearchIndexerClient struct {
 	Client  *http.Client
 }
 
-func NewSearchIndexerClient(baseURL string, timeout int) *SearchIndexerClient {
+// NewSearchIndexerClient constructs a client for search-indexer's REST API.
+// Authentication is established at the TLS transport layer (mTLS). The third
+// argument is retained for DI-signature compatibility and ignored.
+func NewSearchIndexerClient(baseURL string, timeout int, _ string) *SearchIndexerClient {
 	return &SearchIndexerClient{
 		BaseURL: baseURL,
 		Client: &http.Client{
@@ -54,7 +57,6 @@ func (c *SearchIndexerClient) Search(ctx context.Context, query string) ([]domai
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
 	resp, err := c.Client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("search request failed: %w", err)
@@ -101,7 +103,6 @@ func (c *SearchIndexerClient) SearchBM25(ctx context.Context, query string, limi
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
 	resp, err := c.Client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("bm25 search request failed: %w", err)

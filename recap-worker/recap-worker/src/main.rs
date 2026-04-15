@@ -117,6 +117,38 @@ async fn main() -> anyhow::Result<()> {
     }
     let router = build_router(registry);
 
+    // When MTLS_ENFORCE=true, bind the axum router to a rustls-backed
+    // listener on :9443 (MTLS_PORT overrides) that requires a client cert
+    // signed by the alt-CA. The existing plaintext listener stays up so
+    // dev/test stacks without step-ca keep working.
+    let mtls_listener_task = match recap_worker::tls::load_server_tls_config() {
+        Ok(Some(server_config)) => {
+            let mtls_port = std::env::var("MTLS_PORT").unwrap_or_else(|_| "9443".to_string());
+            let mtls_addr: std::net::SocketAddr = format!("0.0.0.0:{mtls_port}")
+                .parse()
+                .with_context(|| format!("parse mTLS bind addr for port {mtls_port}"))?;
+            let mtls_router = router.clone();
+            info!(%mtls_addr, "mTLS listener enabled");
+            Some(tokio::spawn(async move {
+                let tls_cfg = axum_server::tls_rustls::RustlsConfig::from_config(server_config);
+                if let Err(e) = axum_server::bind_rustls(mtls_addr, tls_cfg)
+                    .serve(mtls_router.into_make_service())
+                    .await
+                {
+                    error!(error = %e, "mTLS server exited with error");
+                }
+            }))
+        }
+        Ok(None) => {
+            info!("MTLS_ENFORCE!=true — mTLS listener disabled");
+            None
+        }
+        Err(e) => {
+            error!(error = %e, "failed to load mTLS config (fail-closed); refusing to start");
+            return Err(e);
+        }
+    };
+
     let listener = TcpListener::bind(bind_addr)
         .await
         .with_context(|| format!("failed to bind listener on {bind_addr}"))?;
@@ -125,6 +157,10 @@ async fn main() -> anyhow::Result<()> {
 
     if let Err(error) = axum::serve(listener, router).await {
         warn!(error = %error, "server exited with error");
+    }
+
+    if let Some(task) = mtls_listener_task {
+        task.abort();
     }
 
     // シャットダウン時にトレースをフラッシュ（将来実装）

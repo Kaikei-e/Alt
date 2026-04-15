@@ -87,7 +87,6 @@ def test_dependency_container_keeps_summarize_usecase_local(monkeypatch):
     """SummarizeUsecase must keep the local Ollama gateway even when distributed BE is enabled."""
     import sys
 
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
     import main as main_module
 
     monkeypatch.setattr(main_module, "NewsCreatorConfig", _DummyConfig)

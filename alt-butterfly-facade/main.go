@@ -76,11 +76,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	serviceSecret, err := cfg.LoadServiceSecret()
-	if err != nil {
-		slog.ErrorContext(ctx, "failed to load service secret", "error", err)
-		os.Exit(1)
-	}
+	// Service-to-service auth is established at the TLS transport layer.
 
 	backendURL := cfg.BackendConnectURL
 	acolyteURL := cfg.AcolyteConnectURL
@@ -118,8 +114,6 @@ func main() {
 		RequestTimeout:    cfg.RequestTimeout,
 		StreamingTimeout:  cfg.StreamingTimeout,
 		TTSConnectURL:     ttsURL,
-		TTSServiceSecret:  cfg.TTSServiceSecret,
-		ServiceSecret:     serviceSecret,
 		AcolyteConnectURL: acolyteURL,
 	}
 

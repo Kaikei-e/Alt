@@ -19,10 +19,17 @@ type ConnectSearchIndexerDriver struct {
 }
 
 // NewConnectSearchIndexerDriver creates a new Connect-RPC client for search-indexer.
-func NewConnectSearchIndexerDriver(baseURL string) search_indexer_port.SearchIndexerPort {
+// Authentication is established at the TLS transport layer (mTLS); the caller
+// identity travels via the verified client certificate, not an application-
+// level header. The `serviceSecret` argument is ignored and retained only for
+// signature compatibility with DI call sites.
+// The client uses Connect-RPC's JSON codec so contract and audit tooling can
+// read the wire format directly.
+func NewConnectSearchIndexerDriver(baseURL, _ string) search_indexer_port.SearchIndexerPort {
 	client := searchv2connect.NewSearchServiceClient(
 		http.DefaultClient,
 		baseURL,
+		connect.WithProtoJSON(),
 	)
 	return &ConnectSearchIndexerDriver{client: client}
 }

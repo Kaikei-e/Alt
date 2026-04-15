@@ -9,7 +9,6 @@ from tag_generator.scheduler import ProcessingScheduler
 def _set_backend_env(monkeypatch):
     """Ensure backend API env vars are set for TagGeneratorService init."""
     monkeypatch.setenv("BACKEND_API_URL", "http://localhost:9000")
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
 
 def _make_service():

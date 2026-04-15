@@ -51,7 +51,6 @@ pub(crate) struct AltBackendConfig {
     pub(crate) base_url: String,
     pub(crate) connect_timeout: Duration,
     pub(crate) total_timeout: Duration,
-    pub(crate) service_token: Option<String>,
 }
 
 /// alt-backendとの通信を管理するクライアント。
@@ -59,7 +58,6 @@ pub(crate) struct AltBackendConfig {
 pub(crate) struct AltBackendClient {
     client: Client,
     base_url: Url,
-    service_token: Option<String>,
 }
 
 impl AltBackendClient {
@@ -86,7 +84,6 @@ impl AltBackendClient {
         Ok(Self {
             client,
             base_url,
-            service_token: config.service_token,
         })
     }
 
@@ -155,12 +152,8 @@ impl AltBackendClient {
             query_pairs.append_pair("page_size", "500");
         }
 
-        let mut request = self.client.get(url.clone());
-
-        // Add service authentication token if configured
-        if let Some(ref token) = self.service_token {
-            request = request.header("X-Service-Token", token);
-        }
+        // Auth is established at the TLS transport layer (mTLS).
+        let request = self.client.get(url.clone());
 
         let response = request
             .send()
@@ -192,7 +185,6 @@ mod tests {
             base_url,
             connect_timeout: Duration::from_secs(3),
             total_timeout: Duration::from_secs(30),
-            service_token: None,
         }
     }
 

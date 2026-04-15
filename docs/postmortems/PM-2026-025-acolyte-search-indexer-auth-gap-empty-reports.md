@@ -119,8 +119,8 @@
 
 | # | カテゴリ | アクション | 担当 | 期限 | ステータス |
 |---|----------|-----------|------|------|-----------|
-| 1 | 予防 | `acolyte-orchestrator/acolyte/gateway/search_indexer_gw.py` に `X-Service-Token` を付与する修正をデプロイ済み。テスト (`tests/contract/`) に search-indexer との CDC 契約テストを追加し、401 を検出可能にする | acolyte-orchestrator owner | 2026-04-22 | **IN PROGRESS (修正デプロイ済、テスト未追加)** |
-| 2 | 予防 | search-indexer のクライアント一覧（alt-backend、pre-processor、acolyte-orchestrator、tag-generator、recap-worker 他）を棚卸しし、**全クライアントが `X-Service-Token` を送っているか**を cross-check するスクリプトを CI に追加 | search-indexer owner | 2026-04-29 | TODO |
+| 1 | 予防 | `acolyte-orchestrator/acolyte/gateway/search_indexer_gw.py` に `X-Service-Token` を付与する修正をデプロイ済み。テスト (`tests/contract/`) に search-indexer との CDC 契約テストを追加し、401 を検出可能にする | acolyte-orchestrator owner | 2026-04-22 | **DONE** ([[000736]] Phase D4: consumer test で `X-Service-Token` を `.with_header(...)` で pin、search-indexer provider 検証の除外解除) |
+| 2 | 予防 | search-indexer のクライアント一覧（alt-backend、pre-processor、acolyte-orchestrator、tag-generator、recap-worker 他）を棚卸しし、**全クライアントが `X-Service-Token` を送っているか**を cross-check するスクリプトを CI に追加 | search-indexer owner | 2026-04-29 | **DONE** ([[000735]] で alt-backend / rag-orchestrator の consumer pact を追加、[[000736]] Phase E2 で `proto-contract.yaml` が `search-indexer` Provider 検証を PR blocking gate として実行) |
 | 3 | 予防 | 以後、サービス間 API の認証境界を変更する ADR のテンプレートに「クライアント側の更新 PR リスト」チェックボックスを必須化 | platform/architecture owner | 2026-04-22 | TODO |
 | 4 | 検知 | acolyte-orchestrator の `"Gatherer: variant search failed"` および `"No claims for section, producing empty body"` を Prometheus counter として expose し、閾値超で alert 発報 | acolyte-orchestrator owner | 2026-05-06 | TODO |
 | 5 | 検知 | search-indexer `/v1/search` の `401 Unauthorized` をサービス別に集計する dashboard を Grafana に追加（正規クライアント以外からの 401 を異常として可視化） | observability owner | 2026-05-06 | TODO |

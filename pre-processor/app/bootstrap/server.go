@@ -58,22 +58,21 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 		},
 	}))
 	e.Use(middleware.Recover())
-	// No CORS: pre-processor is service-to-service only (X-Service-Token required)
-	// and must not be callable from a browser origin.
+	// No CORS: pre-processor is service-to-service only (mTLS on :9443) and
+	// must not be callable from a browser origin.
 
 	// Health endpoint stays unauthenticated so liveness probes keep working.
 	e.GET("/api/v1/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
 	})
 
-	// Summarize endpoints are service-to-service only and require X-Service-Token.
-	serviceAuth := appmiddleware.NewServiceAuthMiddleware(deps.Logger)
+	// Summarize endpoints are service-to-service only. Authentication is
+	// established at the TLS transport layer (mTLS on :9443).
 	api := e.Group("/api/v1")
 	// Cap request bodies: article content is already whitespace-collapsed by
 	// alt-backend, so 1 MiB comfortably covers real inputs while rejecting
 	// DoS payloads before they reach the summarize pipeline.
 	api.Use(middleware.BodyLimit("1M"))
-	api.Use(serviceAuth.RequireServiceAuth())
 	api.POST("/summarize", deps.SummarizeHandler.HandleSummarize)
 	api.POST("/summarize/stream", deps.SummarizeHandler.HandleStreamSummarize)
 	api.POST("/summarize/queue", deps.SummarizeHandler.HandleSummarizeQueue)

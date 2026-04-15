@@ -4,9 +4,7 @@ import (
 	"alt/config"
 	"alt/di"
 	"alt/domain"
-	middleware_custom "alt/middleware"
 	"alt/usecase/recap_articles_usecase"
-	"alt/utils/logger"
 	"fmt"
 	"math"
 	"net/http"
@@ -19,13 +17,10 @@ import (
 )
 
 func registerRecapRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {
-	// Service authentication middleware for internal service-to-service communication
-	serviceAuthMiddleware := middleware_custom.NewServiceAuthMiddleware(logger.Logger)
-
 	limiter := newRecapRateLimiter(cfg.Recap.RateLimitRPS, cfg.Recap.RateLimitBurst)
 
-	// Apply service auth middleware to recap routes
-	recap := v1.Group("/recap", serviceAuthMiddleware.RequireServiceAuth())
+	// Auth is enforced at the TLS transport layer (mTLS peer-identity on :9443).
+	recap := v1.Group("/recap")
 	recap.GET("/articles", handleRecapArticles(container, cfg, limiter))
 
 	// NOTE: 7-day recap endpoint migrated to Connect-RPC (RecapService.GetSevenDayRecap)

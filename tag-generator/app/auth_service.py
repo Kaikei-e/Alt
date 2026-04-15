@@ -106,22 +106,10 @@ class TagResult:
     source: str = "ml_model"
 
 
-def get_service_secret() -> str:
-    """Get service secret from env var or file."""
-    secret = os.getenv("SERVICE_SECRET", "")
-    if not secret:
-        secret_file = os.getenv("SERVICE_SECRET_FILE")
-        if secret_file:
-            try:
-                with open(secret_file) as f:
-                    secret = f.read().strip()
-            except Exception as e:
-                logger.error(f"Failed to read SERVICE_SECRET_FILE: {e}")
-    return secret
-
-
 class AuthenticatedTagGeneratorService:
-    """Enhanced tag generator service with authentication and tenant isolation."""
+    """Tag generator service. Authentication is established at the TLS
+    transport layer (mTLS); the legacy AuthConfig.service_secret field is
+    set to an empty string for forward-compatible struct construction."""
 
     def __init__(self):
         self.auth_config = AuthConfig(
@@ -130,12 +118,9 @@ class AuthenticatedTagGeneratorService:
                 "http://auth-service.alt-auth.svc.cluster.local:8080",
             ),
             service_name="tag-generator",
-            service_secret=get_service_secret(),
+            service_secret="",
             token_ttl=3600,
         )
-
-        if not self.auth_config.service_secret:
-            raise ValueError("SERVICE_SECRET environment variable is required")
 
         self.auth_client = None
         logger.info(
@@ -393,6 +378,21 @@ async def lifespan(app: FastAPI):
 # FastAPI application with authentication
 app = FastAPI(title="Tag Generator Service", version="1.0.0", lifespan=lifespan)
 
+# peer-identity capture. The nginx TLS sidecar (VERIFY_CLIENT=on,
+# ADR-000737) verifies every client cert and sets X-Alt-Peer-Identity. This
+# middleware attaches the CN to request.state + structlog context so the
+# Python app can audit caller identity and enforce allowlists.
+from tag_generator.infra.peer_identity import (  # noqa: E402
+    PeerIdentityMiddleware,
+    allowed_peers_from_env,
+)
+
+app.add_middleware(
+    PeerIdentityMiddleware,
+    allowed=allowed_peers_from_env(),
+    strict=False,  # flip to True once all callers present client certs
+)
+
 
 @app.post("/api/v1/generate-tags")
 @require_auth(tag_service.auth_client)
@@ -448,21 +448,13 @@ async def get_user_preferences(user_context: UserContext) -> dict[str, Any]:
 
 
 def verify_service_token(request: Request) -> None:
-    """Verify X-Service-Token header for service-to-service authentication."""
-    service_token = request.headers.get("X-Service-Token")
-    expected_token = get_service_secret()
+    """No-op: authentication is enforced at the TLS transport layer.
 
-    if not expected_token:
-        logger.warning("SERVICE_SECRET not configured, rejecting service token authentication")
-        raise HTTPException(status_code=500, detail="Service authentication not configured")
-
-    if not service_token:
-        logger.warning("Missing X-Service-Token header")
-        raise HTTPException(status_code=401, detail="Missing X-Service-Token header")
-
-    if service_token != expected_token:
-        logger.warning("Invalid service token provided")
-        raise HTTPException(status_code=403, detail="Invalid service token")
+    Retained as a function symbol so existing handler decorators compile
+    unchanged; the nginx mTLS sidecar rejects uncredentialled callers
+    before the request ever reaches this code path.
+    """
+    _ = request  # silence lint
 
 
 class BatchTagsRequest(BaseModel):
@@ -478,7 +470,7 @@ async def fetch_tags_batch(
 ) -> dict[str, Any]:
     """
     Batch fetch tags for multiple articles by their IDs.
-    Service-to-service endpoint (requires X-Service-Token header).
+    Service-to-service endpoint (requires TLS peer identity header).
     """
     # Verify service token
     verify_service_token(request)
@@ -519,7 +511,7 @@ async def extract_tags_endpoint(
 ) -> dict[str, Any]:
     """
     Extract semantic tags from arbitrary text.
-    Service-to-service endpoint (requires X-Service-Token header).
+    Service-to-service endpoint (requires TLS peer identity header).
     Used by recap-worker to tag recap genre outputs.
     """
     verify_service_token(request)

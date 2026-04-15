@@ -40,7 +40,6 @@ pub(crate) struct TagGeneratorConfig {
     pub(crate) base_url: String,
     pub(crate) connect_timeout: Duration,
     pub(crate) total_timeout: Duration,
-    pub(crate) service_token: Option<String>,
 }
 
 /// tag-generatorとの通信を管理するクライアント。
@@ -48,7 +47,6 @@ pub(crate) struct TagGeneratorConfig {
 pub(crate) struct TagGeneratorClient {
     client: Client,
     base_url: Url,
-    service_token: Option<String>,
 }
 
 impl TagGeneratorClient {
@@ -75,7 +73,6 @@ impl TagGeneratorClient {
         Ok(Self {
             client,
             base_url,
-            service_token: config.service_token,
         })
     }
 
@@ -114,12 +111,8 @@ impl TagGeneratorClient {
                 article_ids: chunk.to_vec(),
             };
 
-            let mut request = self.client.post(url.clone()).json(&request_body);
-
-            // Add service authentication token if configured
-            if let Some(ref token) = self.service_token {
-                request = request.header("X-Service-Token", token);
-            }
+            // Auth is established at the TLS transport layer (mTLS).
+            let request = self.client.post(url.clone()).json(&request_body);
 
             let response = request
                 .send()
@@ -194,11 +187,8 @@ impl TagGeneratorClient {
             content: content.to_string(),
         };
 
-        let mut request = self.client.post(url).json(&request_body);
-
-        if let Some(ref token) = self.service_token {
-            request = request.header("X-Service-Token", token);
-        }
+        // Auth is established at the TLS transport layer (mTLS).
+        let request = self.client.post(url).json(&request_body);
 
         let response = request
             .send()
@@ -253,7 +243,7 @@ struct ExtractTagsResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{body_json, header, method, path};
+    use wiremock::matchers::{body_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn test_config(base_url: String) -> TagGeneratorConfig {
@@ -261,7 +251,6 @@ mod tests {
             base_url,
             connect_timeout: Duration::from_secs(3),
             total_timeout: Duration::from_secs(30),
-            service_token: Some("test-token".to_string()),
         }
     }
 
@@ -297,7 +286,6 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/api/v1/tags/batch"))
-            .and(header("X-Service-Token", "test-token"))
             .and(body_json(&request_body))
             .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
             .mount(&server)
@@ -343,7 +331,6 @@ mod tests {
 
         Mock::given(method("POST"))
             .and(path("/api/v1/extract-tags"))
-            .and(header("X-Service-Token", "test-token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(response_body))
             .mount(&server)
             .await;

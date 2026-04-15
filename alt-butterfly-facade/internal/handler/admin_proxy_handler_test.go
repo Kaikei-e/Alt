@@ -51,10 +51,10 @@ func TestAdminProxyHandler_ServeHTTP_RequiresAdminRole(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, recorder.Code)
 }
 
-func TestAdminProxyHandler_ServeHTTP_ForwardsServiceTokenForAdmin(t *testing.T) {
+func TestAdminProxyHandler_ServeHTTP_AdminForwardedWithoutServiceToken(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth", r.URL.Path)
-		assert.Equal(t, "service-secret", r.Header.Get("X-Service-Token"))
+		assert.Empty(t, r.Header.Get("X-Service-Token"), "auth is transport-layer now")
 		assert.Empty(t, r.Header.Get("X-Alt-Backend-Token"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

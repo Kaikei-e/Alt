@@ -9,18 +9,17 @@ import (
 	"pre-processor/gen/proto/services/backend/v1/backendv1connect"
 )
 
-const serviceTokenHeader = "X-Service-Token"
-
 // Client wraps the BackendInternalService Connect-RPC client.
 type Client struct {
-	client       backendv1connect.BackendInternalServiceClient
-	serviceToken string
+	client backendv1connect.BackendInternalServiceClient
 }
 
 // NewClient creates a new backend API client. When httpClient is nil the
 // package-level http.DefaultClient is used; callers that need mTLS pass a
-// custom client built from tlsutil.LoadClientConfig.
-func NewClient(baseURL, serviceToken string, httpClient *http.Client) *Client {
+// custom client built from tlsutil.LoadClientConfig. The serviceToken arg
+// is retained for signature compatibility and ignored — authentication is
+// established at the TLS transport layer.
+func NewClient(baseURL, _ string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
@@ -28,14 +27,9 @@ func NewClient(baseURL, serviceToken string, httpClient *http.Client) *Client {
 		httpClient,
 		baseURL,
 	)
-	return &Client{
-		client:       c,
-		serviceToken: serviceToken,
-	}
+	return &Client{client: c}
 }
 
-func (c *Client) addAuth(req connect.AnyRequest) {
-	if c.serviceToken != "" {
-		req.Header().Set(serviceTokenHeader, c.serviceToken)
-	}
+func (c *Client) addAuth(_ connect.AnyRequest) {
+	// No-op: authentication is handled by the TLS transport layer (mTLS).
 }

@@ -194,6 +194,18 @@ app = FastAPI(
 # Instrument FastAPI with OpenTelemetry
 instrument_fastapi(app)
 
+# peer-identity capture for mTLS audit (ADR-000737).
+from news_creator.infra.peer_identity import (  # noqa: E402
+    PeerIdentityMiddleware,
+    allowed_peers_from_env,
+)
+
+app.add_middleware(
+    PeerIdentityMiddleware,
+    allowed=allowed_peers_from_env(),
+    strict=False,
+)
+
 # Prometheus scrape endpoint — serves OTel instruments registered via
 # PrometheusMetricReader along with any native prometheus_client metrics.
 app.mount("/metrics", make_asgi_app())

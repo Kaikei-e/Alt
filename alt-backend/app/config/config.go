@@ -116,11 +116,9 @@ type AdminMonitorConfig struct {
 }
 
 // InternalAPIConfig holds configuration for the internal service-to-service API.
-type InternalAPIConfig struct {
-	// ServiceSecret is the shared secret for service-to-service authentication.
-	ServiceSecret     string `json:"service_secret" env:"SERVICE_SECRET"`
-	ServiceSecretFile string `json:"-" env:"SERVICE_SECRET_FILE"`
-}
+// Authentication is established at the TLS transport layer (mTLS); the struct
+// is retained for forward-compatible field access and currently empty.
+type InternalAPIConfig struct{}
 
 type AuthConfig struct {
 	BackendTokenSecret     string `json:"backend_token_secret" env:"BACKEND_TOKEN_SECRET"`
@@ -197,14 +195,6 @@ func NewConfig() (*Config, error) {
 
 	if err := validateConfig(config); err != nil {
 		return nil, err
-	}
-
-	// Load service secret from file if configured (Docker Secrets support)
-	if config.InternalAPI.ServiceSecretFile != "" {
-		content, err := os.ReadFile(config.InternalAPI.ServiceSecretFile)
-		if err == nil {
-			config.InternalAPI.ServiceSecret = strings.TrimSpace(string(content))
-		}
 	}
 
 	// Load image proxy secret from file if configured (Docker Secrets support)

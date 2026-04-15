@@ -34,22 +34,16 @@ class SearchIndexerGateway:
         self._client = http_client
         self._base_url = settings.search_indexer_url
         self._content_store = content_store
-        # search-indexer enforces X-Service-Token on REST (ADR-000722).
-        # Resolve once at construction so every request carries the header.
-        self._auth_headers: dict[str, str] = {}
-        token = settings.resolve_service_secret()
-        if token:
-            self._auth_headers["X-Service-Token"] = token
 
     async def search_articles(self, query: str, *, limit: int = 20) -> list[ArticleHit]:
         """Search articles via GET /v1/search.
 
         Stores content in ContentStore; returns metadata-only ArticleHit.
+        Authentication is established at the TLS transport layer (mTLS).
         """
         resp = await self._client.get(
             f"{self._base_url}/v1/search",
             params={"q": query, "limit": limit},
-            headers=self._auth_headers or None,
         )
         resp.raise_for_status()
         data = resp.json()

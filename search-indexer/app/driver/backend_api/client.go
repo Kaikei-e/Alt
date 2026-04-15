@@ -22,11 +22,8 @@ import (
 // It implements gateway.ArticleDriver to serve as a drop-in replacement
 // for the database driver.
 type Client struct {
-	client       backendv1connect.BackendInternalServiceClient
-	serviceToken string
+	client backendv1connect.BackendInternalServiceClient
 }
-
-const serviceTokenHeader = "X-Service-Token"
 
 // DefaultHTTPClient constructs a dedicated *http.Client for backend Connect-RPC
 // calls. http.DefaultClient must not be used: its zero Timeout allows a
@@ -51,8 +48,10 @@ func DefaultHTTPClient() *http.Client {
 
 // NewClient creates a new backend API client. When httpClient is nil a
 // reasonable default is used; callers that need mTLS pass a custom client
-// built via tlsutil.LoadClientConfig.
-func NewClient(baseURL, serviceToken string, httpClient *http.Client) *Client {
+// built via tlsutil.LoadClientConfig. The serviceToken arg is retained for
+// signature compatibility with DI wiring and ignored — authentication is
+// established at the TLS transport layer.
+func NewClient(baseURL, _ string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = DefaultHTTPClient()
 	}
@@ -60,16 +59,11 @@ func NewClient(baseURL, serviceToken string, httpClient *http.Client) *Client {
 		httpClient,
 		baseURL,
 	)
-	return &Client{
-		client:       c,
-		serviceToken: serviceToken,
-	}
+	return &Client{client: c}
 }
 
-func (c *Client) addAuth(req connect.AnyRequest) {
-	if c.serviceToken != "" {
-		req.Header().Set(serviceTokenHeader, c.serviceToken)
-	}
+func (c *Client) addAuth(_ connect.AnyRequest) {
+	// No-op: authentication is handled by the TLS transport layer (mTLS).
 }
 
 // GetArticlesWithTags fetches articles with backward keyset pagination (backfill).

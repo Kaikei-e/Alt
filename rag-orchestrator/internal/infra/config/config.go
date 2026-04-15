@@ -174,7 +174,6 @@ type BackendConfig struct {
 	URL            string
 	ConnectURL     string // Connect-RPC URL (separate port from REST)
 	Timeout        int    // Seconds
-	ServiceToken   string // Shared secret for Connect-RPC auth (X-Service-Token header)
 	RecapWorkerURL string // recap-worker REST base URL for letter fetching
 }
 
@@ -278,10 +277,9 @@ func Load() *Config {
 			Boost18h: getEnvFloat32("TEMPORAL_BOOST_18H", defaultTemporalBoost18h),
 		},
 		Backend: BackendConfig{
-			URL:          getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),
-			ConnectURL:   getEnv("ALT_BACKEND_CONNECT_URL", "http://alt-backend:9101"),
-			Timeout:      getEnvInt("ALT_BACKEND_TIMEOUT", 30),
-			ServiceToken: getSecret("SERVICE_TOKEN", "SERVICE_TOKEN_FILE", ""),
+			URL:        getEnv("ALT_BACKEND_URL", "http://alt-backend:9000"),
+			ConnectURL: getEnv("ALT_BACKEND_CONNECT_URL", "http://alt-backend:9101"),
+			Timeout:    getEnvInt("ALT_BACKEND_TIMEOUT", 30),
 		},
 		Cache: CacheConfig{
 			Size: getEnvInt("RAG_CACHE_SIZE", defaultCacheSize),

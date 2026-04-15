@@ -56,16 +56,11 @@ func respondWithSummary(c echo.Context, summary, articleID, feedURL string) erro
 	})
 }
 
-// setServiceToken attaches the shared service secret as X-Service-Token so
-// pre-processor's RequireServiceAuth middleware admits the request. When the
-// secret is empty, no header is set; production misconfig is caught earlier
-// by config validation, while tests and legacy paths remain unaffected.
-func setServiceToken(req *http.Request, secret string) {
-	trimmed := strings.TrimSpace(secret)
-	if trimmed == "" {
-		return
-	}
-	req.Header.Set("X-Service-Token", trimmed)
+// setServiceToken is a no-op. Authentication to pre-processor is established
+// at the TLS transport layer (mTLS). Retained as a function symbol so the
+// existing call sites compile unchanged.
+func setServiceToken(req *http.Request, _ string) {
+	_ = req
 }
 
 func callPreProcessorSummarize(ctx context.Context, content, articleID, title, preProcessorURL, serviceSecret string) (string, error) {

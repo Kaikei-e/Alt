@@ -36,23 +36,3 @@ def test_settings_from_env(monkeypatch: object) -> None:
     mp.undo()
 
 
-def test_resolve_service_secret_from_file() -> None:
-    """resolve_service_secret() should read from file when configured."""
-    from acolyte.config.settings import Settings
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write("file-secret\n")
-        f.flush()
-        try:
-            s = Settings(service_token_file=f.name, service_secret="env-secret")
-            assert s.resolve_service_secret() == "file-secret"
-        finally:
-            os.unlink(f.name)
-
-
-def test_resolve_service_secret_fallback_to_env() -> None:
-    """resolve_service_secret() should fall back to env var when file is missing."""
-    from acolyte.config.settings import Settings
-
-    s = Settings(service_token_file="/nonexistent", service_secret="env-secret")
-    assert s.resolve_service_secret() == "env-secret"

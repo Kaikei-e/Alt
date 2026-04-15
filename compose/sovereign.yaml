@@ -62,7 +62,6 @@ services:
     mem_limit: 512m
     environment:
       - DATABASE_URL=postgres://sovereign:${POSTGRES_PASSWORD}@knowledge-sovereign-db:5432/knowledge_sovereign?sslmode=disable
-      - SERVICE_SECRET_FILE=/run/secrets/service_secret
       - LISTEN_ADDR=:9500
       - METRICS_ADDR=:9501
       - SNAPSHOT_DIR=/tmp/snapshots
@@ -76,8 +75,6 @@ services:
         condition: service_healthy
       knowledge-sovereign-db-migrator:
         condition: service_completed_successfully
-    secrets:
-      - service_secret
     networks:
       - alt-network
     healthcheck:

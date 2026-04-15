@@ -37,20 +37,8 @@ def create_backend_client() -> tuple[BackendInternalServiceClientSync, dict[str,
         return None
 
     # Read service token (file takes precedence)
-    service_token = ""
-    token_file = os.getenv("SERVICE_TOKEN_FILE", "")
-    if token_file:
-        try:
-            with open(token_file) as f:
-                service_token = f.read().strip()
-        except OSError:
-            pass
-    if not service_token:
-        service_token = os.getenv("SERVICE_TOKEN", "")
-
+    # Authentication is established at the TLS transport layer (mTLS).
     auth_headers: dict[str, str] = {}
-    if service_token:
-        auth_headers["X-Service-Token"] = service_token
 
     if mtls_enforce:
         cert_file = os.getenv("MTLS_CERT_FILE", "")

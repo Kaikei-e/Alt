@@ -355,7 +355,7 @@ func NewApplicationComponents(pool *pgxpool.Pool) *ApplicationComponents {
 		CSRFTokenUsecase:         sub.CSRFTokenUsecase,
 
 		// Service-to-service Connect-RPC clients
-		PreProcessorConnectClient: preprocessor_connect.NewConnectPreProcessorClient(infra.Config.PreProcessor.ConnectURL, infra.Config.InternalAPI.ServiceSecret),
+		PreProcessorConnectClient: preprocessor_connect.NewConnectPreProcessorClient(infra.Config.PreProcessor.ConnectURL, ""),
 
 		// Knowledge Home
 		GetKnowledgeHomeUsecase:          knowledge.GetKnowledgeHomeUsecase,

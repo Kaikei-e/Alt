@@ -162,7 +162,6 @@ services:
       - NEWS_CREATOR_BASE_URL=http://news-creator:11434
       - SUBWORKER_BASE_URL=http://recap-subworker:8002
       - ALT_BACKEND_BASE_URL=${ALT_BACKEND_BASE_URL}
-      - ALT_BACKEND_SERVICE_TOKEN_FILE=/run/secrets/service_secret
       - MTLS_ENFORCE=${RECAP_WORKER_MTLS_ENFORCE:-true}
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
@@ -193,7 +192,6 @@ services:
       - OTEL_SERVICE_NAME=recap-worker
     secrets:
       - recap_db_password
-      - service_secret
       - hugging_face_token
     volumes:
       - recap_worker_certs:/certs:ro

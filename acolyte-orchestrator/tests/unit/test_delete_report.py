@@ -75,7 +75,6 @@ class FakeReportRepo:
 
 def _service_with(repo: FakeReportRepo) -> AcolyteConnectService:
     fake_settings = MagicMock()
-    fake_settings.resolve_service_secret.return_value = ""
     return AcolyteConnectService(fake_settings, repo)
 
 

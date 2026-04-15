@@ -20,7 +20,7 @@ def mock_client() -> MagicMock:
 
 @pytest.fixture
 def auth_headers() -> dict[str, str]:
-    return {"X-Service-Token": "test-token"}
+    return {}
 
 
 @pytest.fixture

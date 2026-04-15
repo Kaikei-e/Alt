@@ -18,9 +18,9 @@ import (
 )
 
 // CreateConnectServer creates the Connect-RPC server with HTTP/2 support.
-// All SearchService endpoints require X-Service-Token and share a global rate
-// limiter; see ADR-000717 for the Public/Internal authentication boundary.
-func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, serviceToken string, rlCfg config.RateLimitConfig) http.Handler {
+// Authentication is established at the TLS transport layer (mTLS peer-identity
+// on :9443); the plaintext h2c mux here carries only a shared rate limiter.
+func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, rlCfg config.RateLimitConfig) http.Handler {
 	mux := http.NewServeMux()
 
 	// Health check endpoint stays open so orchestrators can probe liveness.
@@ -30,12 +30,11 @@ func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searc
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"connect-rpc"}`))
 	})
 
-	serviceAuth := interceptor.NewServiceAuthInterceptor(serviceToken)
 	rateLimit := interceptor.NewRateLimitInterceptor(rate.Limit(rlCfg.RequestsPerSecond), rlCfg.Burst)
 	searchHandler := search.NewHandler(searchByUserUsecase, searchRecapsUsecase)
 	searchPath, searchServiceHandler := searchv2connect.NewSearchServiceHandler(
 		searchHandler,
-		connect.WithInterceptors(rateLimit, serviceAuth),
+		connect.WithInterceptors(rateLimit),
 	)
 	mux.Handle(searchPath, searchServiceHandler)
 	logger.Logger.Info("Registered Connect-RPC SearchService", "path", searchPath)

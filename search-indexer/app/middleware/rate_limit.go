@@ -13,7 +13,7 @@ import (
 // RateLimiter wraps a single golang.org/x/time/rate Limiter to defend
 // search-indexer against request floods from trusted-but-misbehaving
 // internal callers. Since every caller is already authenticated with
-// X-Service-Token, a global token bucket is sufficient — per-caller
+// TLS peer identity, a global token bucket is sufficient — per-caller
 // identification would require propagating caller identity, which
 // ADR-000717 defers.
 type RateLimiter struct {

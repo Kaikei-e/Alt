@@ -26,9 +26,17 @@ impl SubworkerClient {
             .timeout(Duration::from_secs(SUBWORKER_TIMEOUT_SECS))
             .build()
             .context("failed to build subworker client")?;
+        Self::new_with_client(endpoint, min_documents_per_genre, client)
+    }
 
+    /// Construct with an externally-built `reqwest::Client`. Used by the
+    /// mTLS wiring in `app.rs` to inject an identity-presenting client.
+    pub(crate) fn new_with_client(
+        endpoint: impl Into<String>,
+        min_documents_per_genre: usize,
+        client: Client,
+    ) -> Result<Self> {
         let base_url = Url::parse(&endpoint.into()).context("invalid subworker base URL")?;
-
         Ok(Self {
             client,
             base_url,

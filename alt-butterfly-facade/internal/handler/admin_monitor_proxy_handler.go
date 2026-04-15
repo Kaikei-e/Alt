@@ -18,7 +18,7 @@ import (
 //
 // Contract:
 //   - caller must present an X-Alt-Backend-Token with role=admin
-//   - outbound request carries X-Service-Token only
+//   - outbound request carries TLS peer identity only
 //   - streaming headers (X-Accel-Buffering, Content-Type) are propagated
 //   - response chunks are flushed as soon as they arrive (io.Copy +
 //     http.Flusher) so intermediate proxies cannot batch them

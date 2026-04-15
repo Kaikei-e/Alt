@@ -144,7 +144,6 @@ services:
       - BACKEND_MTLS_SERVER_NAME=alt-backend
       # Backend API mode (replaces direct DB access)
       - BACKEND_API_URL=http://alt-backend:9101
-      - SERVICE_TOKEN_FILE=/run/secrets/service_secret
       - MEILISEARCH_HOST=${MEILISEARCH_HOST}
       - MEILISEARCH_API_KEY_FILE=/run/secrets/meili_master_key
       - MEILISEARCH_SEARCH_API_KEY_FILE=/run/secrets/meili_search_key
@@ -159,7 +158,6 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=search-indexer
     secrets:
-      - service_secret
       - meili_master_key
       - meili_search_key
     networks:
@@ -245,7 +243,9 @@ services:
     network_mode: "service:tag-generator"
     environment:
       UPSTREAM_PORT: "9400"
-      VERIFY_CLIENT: ${TAG_GENERATOR_VERIFY_CLIENT:-off}
+      # peer-identity 強制。VERIFY_CLIENT=on で client cert 必須化、
+      # CN を X-Alt-Peer-Identity header で upstream に転送する (ADR-000737)。
+      VERIFY_CLIENT: ${TAG_GENERATOR_VERIFY_CLIENT:-on}
     volumes:
       - ../docker/nginx-tls-sidecar/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
       - ../docker/nginx-tls-sidecar/entrypoint.sh:/entrypoint.sh:ro
@@ -285,12 +285,13 @@ services:
     environment:
       # Backend API mode (replaces direct DB access for article/tag operations)
       - BACKEND_API_URL=http://alt-backend:9101
-      - SERVICE_TOKEN_FILE=/run/secrets/service_secret
-      - SERVICE_SECRET_FILE=/run/secrets/service_secret
       - MTLS_ENFORCE=${TAG_GENERATOR_MTLS_ENFORCE:-false}
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem
+      # trust X-Alt-Peer-Identity header iff the sidecar above
+      # enforces client certs. Must track TAG_GENERATOR_VERIFY_CLIENT.
+      - PEER_IDENTITY_TRUSTED=${TAG_GENERATOR_VERIFY_CLIENT:-on}
       - BACKEND_API_MTLS_URL=https://alt-backend:9443
       - PORT=9400
       - CUDA_VISIBLE_DEVICES=""
@@ -306,8 +307,6 @@ services:
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
       - OTEL_SERVICE_NAME=tag-generator
-    secrets:
-      - service_secret
     volumes:
       - ../scripts:/scripts:ro
       - ../tag-generator/models/onnx:/models/onnx:ro

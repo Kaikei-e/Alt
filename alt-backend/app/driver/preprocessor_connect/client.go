@@ -5,41 +5,12 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"strings"
 
 	"connectrpc.com/connect"
 
 	ppv2 "alt/gen/proto/services/preprocessor/v2"
 	"alt/gen/proto/services/preprocessor/v2/preprocessorv2connect"
 )
-
-// serviceTokenTransport injects the X-Service-Token header on every outgoing
-// request so pre-processor's ServiceAuthInterceptor admits the call.
-// An empty secret yields the zero-value RoundTripper (no header added) so
-// tests and legacy paths without a configured secret keep working.
-type serviceTokenTransport struct {
-	base  http.RoundTripper
-	token string
-}
-
-func (t *serviceTokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if t.token != "" {
-		req.Header.Set("X-Service-Token", t.token)
-	}
-	return t.base.RoundTrip(req)
-}
-
-func newServiceTokenClient(secret string) *http.Client {
-	secret = strings.TrimSpace(secret)
-	if secret == "" {
-		return http.DefaultClient
-	}
-	base := http.DefaultTransport
-	if base == nil {
-		base = &http.Transport{}
-	}
-	return &http.Client{Transport: &serviceTokenTransport{base: base, token: secret}}
-}
 
 // SummarizeStatus represents the status of a summarization job.
 type SummarizeStatus struct {
@@ -56,10 +27,11 @@ type ConnectPreProcessorClient struct {
 }
 
 // NewConnectPreProcessorClient creates a new Connect-RPC client for pre-processor.
-// serviceSecret, when non-empty, is attached as X-Service-Token on every call.
-func NewConnectPreProcessorClient(baseURL, serviceSecret string) *ConnectPreProcessorClient {
+// Authentication is established at the TLS transport layer (mTLS); the
+// serviceSecret argument is retained for signature compatibility and ignored.
+func NewConnectPreProcessorClient(baseURL, _ string) *ConnectPreProcessorClient {
 	client := preprocessorv2connect.NewPreProcessorServiceClient(
-		newServiceTokenClient(serviceSecret),
+		http.DefaultClient,
 		baseURL,
 	)
 	return &ConnectPreProcessorClient{client: client}

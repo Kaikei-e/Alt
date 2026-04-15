@@ -155,11 +155,10 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	mux.Handle(khPath, khServiceHandler)
 	logger.Info("Registered Connect-RPC KnowledgeHomeService", "path", khPath)
 
-	// Register KnowledgeHomeAdminService (service-to-service API, uses service token auth)
-	serviceAuthInterceptor := middleware.NewServiceAuthInterceptor(logger, cfg.InternalAPI.ServiceSecret)
+	// Register KnowledgeHomeAdminService (service-to-service API). Auth is
+	// established at the TLS transport layer (mTLS peer-identity).
 	adminOpts := connect.WithInterceptors(
 		cancelInterceptor.Interceptor(),
-		serviceAuthInterceptor.Interceptor(),
 	)
 	khAdminHandler := knowledge_home_admin.NewHandler(
 		container.KnowledgeBackfillUsecase,
@@ -177,9 +176,8 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 
 	// Register AdminMonitorService (Prometheus-backed observability for Admin UI).
 	// Gated by config.AdminMonitor.Enabled so production rollout is flag-controlled.
-	// Auth: BFF (alt-butterfly-facade) validates the user JWT + admin role, then
-	// forwards to alt-backend with X-Service-Token — use adminOpts (serviceAuth),
-	// not opts (userAuth), to match that contract.
+	// Auth: BFF validates the user JWT + admin role; service-to-service auth is
+	// established at the TLS transport layer.
 	if container.AdminMonitor != nil && container.AdminMonitor.Enabled && container.AdminMonitor.Facade != nil {
 		amHandler := admin_monitor.NewHandler(container.AdminMonitor.Facade, logger)
 		amPath, amServiceHandler := adminmonitorv1connect.NewAdminMonitorServiceHandler(amHandler, adminOpts)
@@ -197,10 +195,10 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		logger.Info("Registered Connect-RPC GlobalSearchService", "path", gsPath)
 	}
 
-	// Register BackendInternalService (service-to-service API, uses service token auth)
+	// Register BackendInternalService (service-to-service API). Auth is
+	// established at the TLS transport layer (mTLS peer-identity).
 	internalOpts := connect.WithInterceptors(
 		cancelInterceptor.Interceptor(),
-		serviceAuthInterceptor.Interceptor(),
 	)
 	gw := container.InternalArticleGateway
 	internalHandler := internalhandler.NewHandler(

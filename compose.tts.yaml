@@ -7,7 +7,6 @@ services:
     ports:
       - "9700:9700"
     environment:
-      - SERVICE_SECRET=${SERVICE_SECRET:-}
       - TTS_DEFAULT_VOICE=${TTS_DEFAULT_VOICE:-jf_gongitsune}
       - TTS_DEFAULT_SPEED=${TTS_DEFAULT_SPEED:-1.25}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}

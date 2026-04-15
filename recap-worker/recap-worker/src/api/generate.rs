@@ -137,7 +137,6 @@ mod tests {
                     ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
                     ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
                     ("RECAP_GENRES", Some("ai,space")),
-                    ("ALT_BACKEND_SERVICE_TOKEN", None),
                     (
                         "HUGGING_FACE_TOKEN_PATH",
                         Some("/tmp/test-token-which-does-not-exist"),

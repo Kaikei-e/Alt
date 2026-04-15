@@ -21,10 +21,6 @@ type Config struct {
 type AltServiceConfig struct {
 	Host    string        `json:"host" env:"ALT_BACKEND_HOST" default:"http://alt-backend:9000"`
 	Timeout time.Duration `json:"timeout" env:"ALT_BACKEND_TIMEOUT" default:"10s"`
-	// ServiceToken is the shared secret used for the X-Service-Token header
-	// on alt-backend /v1/internal/* REST endpoints (ADR-000618).
-	// Loaded from SERVICE_TOKEN or SERVICE_TOKEN_FILE (Docker Secrets).
-	ServiceToken string `json:"-"`
 }
 
 type ServerConfig struct {

@@ -41,7 +41,6 @@ func DefaultSecretSpecs() []SecretSpec {
 		{Filename: "meili_master_key.txt", Description: "Meilisearch master key", AutoGenerate: true, Length: 32},
 		{Filename: "clickhouse_password.txt", Description: "ClickHouse password", AutoGenerate: true, Length: 32},
 		{Filename: "csrf_secret.txt", Description: "CSRF token secret (min 32 chars)", AutoGenerate: true, Length: 32},
-		{Filename: "service_secret.txt", Description: "Inter-service authentication secret", AutoGenerate: true, Length: 32},
 		{Filename: "auth_shared_secret.txt", Description: "Auth shared secret", AutoGenerate: true, Length: 32},
 		{Filename: "backend_token_secret.txt", Description: "Backend JWT token secret", AutoGenerate: true, Length: 32},
 		{Filename: "pp_db_password.txt", Description: "Pre-processor dedicated DB password", AutoGenerate: true, Length: 32},

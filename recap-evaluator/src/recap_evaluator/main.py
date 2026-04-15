@@ -49,12 +49,19 @@ async def lifespan(app: FastAPI):
         min_size=settings.db_pool_min_size,
         max_size=settings.db_pool_max_size,
     )
+    # mTLS outbound when MTLS_ENFORCE=true (ADR-000737).
+    from recap_evaluator.infra.mtls_client import build_ssl_context
+
+    ssl_ctx = build_ssl_context()
     http_client = httpx.AsyncClient(
         timeout=httpx.Timeout(
             connect=5, read=settings.ollama_timeout, write=10, pool=5
         ),
         limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),
+        verify=ssl_ctx if ssl_ctx is not None else True,
     )
+    if ssl_ctx is not None:
+        logger.info("recap-evaluator outbound: mTLS enforce enabled")
 
     # --- Gateway layer ---
     db_gateway = PostgresGateway(pool)
@@ -126,6 +133,18 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# peer-identity capture for mTLS audit (ADR-000737).
+from recap_evaluator.infra.peer_identity import (  # noqa: E402
+    PeerIdentityMiddleware,
+    allowed_peers_from_env,
+)
+
+app.add_middleware(
+    PeerIdentityMiddleware,
+    allowed=allowed_peers_from_env(),
+    strict=False,
 )
 
 # Include routers

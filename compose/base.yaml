@@ -31,8 +31,6 @@ secrets:
     file: ../secrets/clickhouse_password.txt
   csrf_secret:
     file: ../secrets/csrf_secret.txt
-  service_secret:
-    file: ../secrets/service_secret.txt
   hugging_face_token:
     file: ../secrets/hugging_face_token.txt
   inoreader_client_id:
@@ -51,6 +49,8 @@ secrets:
     file: ../secrets/image_proxy_secret.txt
   step_ca_root_password:
     file: ../secrets/step_ca_root_password.txt
+  pact_broker_basic_auth_password:
+    file: ../secrets/pact_broker_basic_auth_password.txt
 
 networks:
   alt-network:

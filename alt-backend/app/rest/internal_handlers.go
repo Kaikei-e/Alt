@@ -2,7 +2,6 @@ package rest
 
 import (
 	"alt/di"
-	middleware_custom "alt/middleware"
 	"alt/usecase/fetch_recent_articles_usecase"
 	"alt/utils/logger"
 	"net/http"
@@ -13,16 +12,12 @@ import (
 )
 
 // registerInternalRoutes wires service-to-service endpoints used by internal
-// callers (pre-processor, rag-orchestrator, etc.). Access is gated by
-// X-Service-Token shared-secret authentication per ADR-000618. This is an
-// application-layer defence complementing the transport-layer mTLS provided
-// by the Linkerd sidecar; loss of either still leaves the other in place.
-//
-// Future work: migrate to per-caller signed service tokens (JWT with iss/sub)
-// to give distinct identities to pre-processor, rag-orchestrator, etc.
+// callers (pre-processor, rag-orchestrator, etc.). Access is gated at the
+// TLS transport layer: the mTLS listener (:9443) requires a client cert
+// signed by alt-ca, and PeerIdentityHTTPMiddleware logs the verified CN.
+// Loss of the mTLS perimeter still leaves the Linkerd sidecar in place.
 func registerInternalRoutes(e *echo.Echo, container *di.ApplicationComponents) {
-	serviceAuth := middleware_custom.NewServiceAuthMiddleware(logger.Logger)
-	v1 := e.Group("/v1/internal", serviceAuth.RequireServiceAuth())
+	v1 := e.Group("/v1/internal")
 
 	v1.GET("/system-user", func(c echo.Context) error {
 		ctx := c.Request().Context()

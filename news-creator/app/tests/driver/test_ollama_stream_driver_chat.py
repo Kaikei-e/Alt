@@ -21,7 +21,6 @@ def config():
         {
             "LLM_SERVICE_URL": "http://test-backend:11435",
             "LLM_MODEL": "gemma4-e4b-12k",
-            "SERVICE_SECRET": "test-secret",
         },
     ):
         return NewsCreatorConfig()

@@ -2,11 +2,10 @@ package di
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
-
-	"connectrpc.com/connect"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -68,6 +67,13 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	augurConvRepo := repository.NewAugurConversationRepository(pool)
 	txManager := repository.NewPostgresTransactionManager(pool)
 
+	// Preflight mTLS cert loading so any cert/key/CA misconfiguration surfaces
+	// at startup rather than on first request. No-op when MTLS_ENFORCE!=true.
+	if err := httpclient.PreflightMTLS(); err != nil {
+		log.Error("mtls_preflight_failed", slog.String("error", err.Error()))
+		panic(fmt.Errorf("mTLS preflight: %w", err))
+	}
+
 	// Shared HTTP clients with connection pooling
 	embedderHTTP := httpclient.NewPooledClient(time.Duration(cfg.Embedder.Timeout) * time.Second)
 	augurHTTP := httpclient.NewPooledClient(time.Duration(cfg.Augur.Timeout) * time.Second)
@@ -76,7 +82,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 
 	// External clients
 	embedder := rag_augur.NewOllamaEmbedder(cfg.Embedder.URL, cfg.Embedder.Model, cfg.Embedder.Timeout, embedderHTTP)
-	searchClient := rag_http.NewSearchIndexerClient(cfg.Search.IndexerURL, cfg.Search.Timeout)
+	searchClient := rag_http.NewSearchIndexerClient(cfg.Search.IndexerURL, cfg.Search.Timeout, "")
 	queryExpander := rag_augur.NewQueryExpanderClient(cfg.QueryExpansion.URL, cfg.QueryExpansion.Timeout, log, queryExpanderHTTP)
 
 	var generator ragLLMClient
@@ -180,16 +186,11 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// Tool dispatcher (Agentic RAG: subintent-driven tool selection + synthesis tools)
 	relatedArticlesTool := tools.NewRelatedArticlesTool(searchClient)
 
-	// Connect-RPC clients for alt-backend and recap service (ADR-000617: Tool-Use Agentic RAG)
-	var connectOpts []connect.ClientOption
-	if cfg.Backend.ServiceToken != "" {
-		connectOpts = append(connectOpts, connect.WithInterceptors(
-			newServiceTokenInterceptor(cfg.Backend.ServiceToken),
-		))
-		log.Info("connect_rpc_service_token_configured")
-	}
+	// Connect-RPC clients for alt-backend and recap service. Authentication
+	// is established at the TLS transport layer (mTLS); no application-layer
+	// interceptor is needed.
 	backendInternalClient := backendv1connect.NewBackendInternalServiceClient(
-		http.DefaultClient, cfg.Backend.ConnectURL, connectOpts...,
+		http.DefaultClient, cfg.Backend.ConnectURL,
 	)
 	tagCloudClient := altdb.NewInternalTagCloudClient(backendInternalClient, log)
 	articlesByTagClient := altdb.NewInternalArticlesByTagClient(backendInternalClient, log)
@@ -266,7 +267,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	articleClient := altdb.NewHTTPArticleClient(
 		cfg.Backend.URL,
 		time.Duration(cfg.Backend.Timeout)*time.Second,
-		cfg.Backend.ServiceToken,
+		"",
 		log,
 	)
 	morningLetterPromptBuilder := usecase.NewMorningLetterPromptBuilder()
@@ -318,32 +319,4 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 		EmbeddingModel:       cfg.Embedder.Model,
 		EmbedderTimeout:      cfg.Embedder.Timeout,
 	}
-}
-
-// serviceTokenInterceptor adds X-Service-Token header to all Connect-RPC requests.
-type serviceTokenInterceptor struct {
-	token string
-}
-
-func newServiceTokenInterceptor(token string) *serviceTokenInterceptor {
-	return &serviceTokenInterceptor{token: token}
-}
-
-func (i *serviceTokenInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
-	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-		req.Header().Set("X-Service-Token", i.token)
-		return next(ctx, req)
-	}
-}
-
-func (i *serviceTokenInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
-	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
-		conn := next(ctx, spec)
-		conn.RequestHeader().Set("X-Service-Token", i.token)
-		return conn
-	}
-}
-
-func (i *serviceTokenInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
-	return next // No-op for handler side
 }

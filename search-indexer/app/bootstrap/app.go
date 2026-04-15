@@ -146,8 +146,8 @@ func Run(ctx context.Context) error {
 
 	// ── Servers ──
 	app := &App{
-		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg, appCfg.BackendAPI.ServiceToken, appCfg.RateLimit),
-		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, appCfg.BackendAPI.ServiceToken, appCfg.RateLimit),
+		httpServer:    newHTTPServer(searchByUserUsecase, searchArticlesUsecase, otelCfg, appCfg.RateLimit),
+		connectServer: newConnectServer(searchByUserUsecase, searchRecapsUsecase, appCfg.RateLimit),
 		redisConsumer: redisConsumer,
 		otelShutdown:  otelShutdown,
 	}
@@ -181,9 +181,20 @@ func Run(ctx context.Context) error {
 			return fmt.Errorf("mTLS listener config (fail-closed): %w", tlsErr)
 		}
 		{
-			app.mtlsServer = tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, app.connectServer.Handler)
+			// :9443 serves REST + Connect-RPC with peer-identity
+			// enforcement. Plain :9300 / :9301 remain during the migration
+			// window for callers that have not yet switched to mTLS.
+			mtlsHandler := newMTLSMuxHandler(
+				searchByUserUsecase,
+				searchArticlesUsecase,
+				searchRecapsUsecase,
+				app.connectServer.Handler,
+				otelCfg,
+				appCfg.RateLimit,
+			)
+			app.mtlsServer = tlsutil.NewMTLSHTTPServer(":"+mtlsPort, tlsCfg, mtlsHandler)
 			go func() {
-				logger.Logger.Info("mtls listen", "port", mtlsPort)
+				logger.Logger.Info("mtls listen (REST + Connect-RPC, peer-identity gated)", "port", mtlsPort)
 				if err := app.mtlsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 					logger.Logger.Error("mtls", "err", err)
 				}

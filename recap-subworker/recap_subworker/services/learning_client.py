@@ -39,9 +39,15 @@ class LearningClient:
     @classmethod
     def create(cls, base_url: str, timeout_seconds: float) -> LearningClient:
         # Enforce a floor on the read stage so the connect < read invariant
-        # from the Phase 5 tests holds even if a caller passes a tiny budget.
+        # holds even if a caller passes a tiny budget.
         read_timeout = max(timeout_seconds, _CONNECT_TIMEOUT_SECONDS + 0.5)
-        client = httpx.AsyncClient(timeout=_build_timeout(read_timeout))
+        from recap_subworker.app.infra.mtls_client import build_ssl_context
+
+        ssl_ctx = build_ssl_context()
+        client = httpx.AsyncClient(
+            timeout=_build_timeout(read_timeout),
+            verify=ssl_ctx if ssl_ctx is not None else True,
+        )
         sanitized = base_url.rstrip("/")
         return cls(
             base_url=sanitized,

@@ -89,8 +89,6 @@ services:
       - BFF_REQUEST_TIMEOUT=30s
       - BFF_STREAMING_TIMEOUT=40m
       - TTS_CONNECT_URL=${TTS_CONNECT_URL:-}
-      - TTS_SERVICE_SECRET=${TTS_SERVICE_SECRET:-}
-      - SERVICE_SECRET_FILE=/run/secrets/service_secret
       - ACOLYTE_CONNECT_URL=http://acolyte-orchestrator:8090
       - MTLS_LISTEN=${MTLS_LISTEN:-true}
       - MTLS_PORT=9443
@@ -109,7 +107,6 @@ services:
       - "tts-external:${TTS_EXTERNAL_HOST:-127.0.0.1}"
     secrets:
       - backend_token_secret
-      - service_secret
     ports:
       - "9250:9250"
       # mTLS :9443 intentionally not published (internal east-west only)

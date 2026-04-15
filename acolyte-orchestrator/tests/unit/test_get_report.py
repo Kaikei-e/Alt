@@ -159,7 +159,6 @@ async def test_handler_returns_stored_citations() -> None:
     )
 
     fake_settings = MagicMock()
-    fake_settings.resolve_service_secret.return_value = ""
     service = AcolyteConnectService(fake_settings, repo)
     request = acolyte_pb2.GetReportRequest(report_id=str(rid))
     response = await service.get_report(request, ctx=None)  # type: ignore[bad-argument-type]
@@ -201,7 +200,6 @@ async def test_handler_returns_brief_scope() -> None:
     )
 
     fake_settings = MagicMock()
-    fake_settings.resolve_service_secret.return_value = ""
     service = AcolyteConnectService(fake_settings, repo)
     request = acolyte_pb2.GetReportRequest(report_id=str(rid))
     response = await service.get_report(request, ctx=None)  # type: ignore[bad-argument-type]
@@ -234,7 +232,6 @@ async def test_handler_returns_empty_scope_when_no_brief() -> None:
     )
 
     fake_settings = MagicMock()
-    fake_settings.resolve_service_secret.return_value = ""
     service = AcolyteConnectService(fake_settings, repo)
     request = acolyte_pb2.GetReportRequest(report_id=str(rid))
     response = await service.get_report(request, ctx=None)  # type: ignore[bad-argument-type]

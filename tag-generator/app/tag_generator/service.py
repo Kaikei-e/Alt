@@ -44,8 +44,8 @@ class TagGeneratorService:
         else:
             raise RuntimeError(
                 "Backend API client could not be created. "
-                "Ensure BACKEND_API_URL and SERVICE_SECRET environment variables are set. "
-                "Legacy database mode has been removed."
+                "Ensure BACKEND_API_URL is set and the mTLS cert sidecar is "
+                "running. Legacy database mode has been removed."
             )
 
         # Initialize dependencies (shared across modes)

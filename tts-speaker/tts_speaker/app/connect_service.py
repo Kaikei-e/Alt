@@ -33,13 +33,8 @@ class TTSConnectService:
         self._settings = settings
 
     def _verify_token(self, ctx: RequestContext) -> None:
-        """Verify X-Service-Token header. Skip if secret is empty (dev mode)."""
-        secret = self._settings.service_secret
-        if not secret:
-            return
-        token = ctx.request_headers().get("x-service-token")
-        if not token or token != secret:
-            raise ConnectError(Code.UNAUTHENTICATED, "Invalid or missing service token")
+        """No-op: authentication is established at the TLS transport layer."""
+        _ = ctx
 
     async def synthesize(
         self,

@@ -58,7 +58,6 @@ impl MorningPipeline {
             base_url: alt_backend_url,
             connect_timeout: config.alt_backend_connect_timeout(),
             total_timeout: config.alt_backend_total_timeout(),
-            service_token: config.alt_backend_service_token().map(ToString::to_string),
         };
         let alt_backend_client = Arc::new(
             if let Some(paths) = mtls_paths.as_ref() {

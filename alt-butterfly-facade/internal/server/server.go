@@ -31,8 +31,6 @@ type Config struct {
 	RequestTimeout   time.Duration
 	StreamingTimeout time.Duration
 	TTSConnectURL      string
-	TTSServiceSecret   string
-	ServiceSecret      string
 	AcolyteConnectURL  string
 
 	// BFF Feature Configuration
@@ -204,28 +202,20 @@ func NewServerWithTransports(
 		ttsProxy := handler.NewProxyHandler(
 			ttsClient, cfg.Secret, cfg.Issuer, cfg.Audience, logger, cfg.StreamingTimeout, cfg.StreamingTimeout,
 		)
-		// Wrap to inject X-Service-Token for tts-speaker authentication
-		ttsServiceSecret := cfg.TTSServiceSecret
-		var ttsHandler http.Handler = ttsProxy
-		if ttsServiceSecret != "" {
-			ttsHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				r.Header.Set("X-Service-Token", ttsServiceSecret)
-				ttsProxy.ServeHTTP(w, r)
-			})
-		}
-		mux.Handle("/alt.tts.v1.TTSService/", ttsHandler)
+		// Auth to tts-speaker is established at the TLS transport layer (mTLS).
+		mux.Handle("/alt.tts.v1.TTSService/", ttsProxy)
 	}
 
 	// Knowledge Home admin routing (before catch-all).
-	// Requests are authenticated as admin users at the BFF boundary, then
-	// forwarded to alt-backend with service-token auth.
-	if cfg.ServiceSecret != "" {
+	// Requests are authenticated as admin users at the BFF boundary; service
+	// auth is established at the TLS transport layer (mTLS).
+	{
 		adminProxy := handler.NewAdminProxyHandler(
 			backendClient,
 			cfg.Secret,
 			cfg.Issuer,
 			cfg.Audience,
-			cfg.ServiceSecret,
+			"",
 			logger,
 			cfg.RequestTimeout,
 		)
@@ -239,7 +229,7 @@ func NewServerWithTransports(
 			cfg.Secret,
 			cfg.Issuer,
 			cfg.Audience,
-			cfg.ServiceSecret,
+			"",
 			logger,
 		)
 		mux.Handle("/alt.admin_monitor.v1.AdminMonitorService/", adminMonitorProxy)
@@ -267,15 +257,8 @@ func NewServerWithTransports(
 			cfg.StreamingTimeout,
 			cfg.StreamingTimeout,
 		)
-		acolyteServiceSecret := cfg.ServiceSecret
-		var acolyteHandler http.Handler = acolyteProxy
-		if acolyteServiceSecret != "" {
-			acolyteHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				r.Header.Set("X-Service-Token", acolyteServiceSecret)
-				acolyteProxy.ServeHTTP(w, r)
-			})
-		}
-		mux.Handle("/alt.acolyte.v1.AcolyteService/", acolyteHandler)
+		// Auth to acolyte is established at the TLS transport layer (mTLS).
+		mux.Handle("/alt.acolyte.v1.AcolyteService/", acolyteProxy)
 	}
 
 	// Register proxy handler for all other paths

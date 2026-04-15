@@ -107,10 +107,8 @@ services:
       - HYBRID_BM25_SOURCE=${HYBRID_BM25_SOURCE:-meilisearch}
       - LLM_BACKEND=${LLM_BACKEND:-ollama}
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
-      - SERVICE_TOKEN_FILE=/run/secrets/service_secret
     secrets:
       - rag_db_password
-      - service_secret
     ports:
       - "9010:9010"
       - "9011:9011"

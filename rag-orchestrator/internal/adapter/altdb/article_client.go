@@ -13,23 +13,17 @@ import (
 )
 
 // HTTPArticleClient implements domain.ArticleClient using HTTP calls to alt-backend.
-// It authenticates to alt-backend's /v1/internal/* endpoints via the X-Service-Token
-// shared-secret header (ADR-000618). An empty serviceToken omits the header and
-// relies on alt-backend to reject the call, which is useful for test setups.
+// Authentication is established at the TLS transport layer (mTLS).
 type HTTPArticleClient struct {
-	baseURL      string
-	serviceToken string
-	httpClient   *http.Client
-	logger       *slog.Logger
+	baseURL    string
+	httpClient *http.Client
+	logger     *slog.Logger
 }
 
 // NewHTTPArticleClient creates a new HTTP-based article client.
-// serviceToken is the shared secret forwarded as X-Service-Token; it should be
-// the same value alt-backend reads from SERVICE_SECRET.
-func NewHTTPArticleClient(baseURL string, timeout time.Duration, serviceToken string, logger *slog.Logger) *HTTPArticleClient {
+func NewHTTPArticleClient(baseURL string, timeout time.Duration, _ string, logger *slog.Logger) *HTTPArticleClient {
 	return &HTTPArticleClient{
-		baseURL:      baseURL,
-		serviceToken: serviceToken,
+		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
@@ -69,9 +63,7 @@ func (c *HTTPArticleClient) GetRecentArticles(ctx context.Context, withinHours i
 	}
 
 	req.Header.Set("Accept", "application/json")
-	if c.serviceToken != "" {
-		req.Header.Set("X-Service-Token", c.serviceToken)
-	}
+	// Authentication is established at the TLS transport layer (mTLS).
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

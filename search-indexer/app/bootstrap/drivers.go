@@ -58,7 +58,7 @@ func initArticleDriver(cfg *config.Config) (gateway.ArticleDriver, error) {
 		"url", url,
 		"mtls_enforce", os.Getenv("MTLS_ENFORCE") == "true",
 	)
-	client := backend_api.NewClient(url, cfg.BackendAPI.ServiceToken, httpClient)
+	client := backend_api.NewClient(url, "", httpClient)
 	return client, nil
 }
 

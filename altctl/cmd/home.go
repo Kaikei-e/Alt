@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/spf13/cobra"
 
 	"github.com/alt-project/altctl/internal/adminclient"
@@ -30,17 +27,12 @@ func init() {
 	rootCmd.AddCommand(homeCmd)
 }
 
-// newAdminClient creates an AdminClient from command flags and env vars.
+// newAdminClient creates an AdminClient from command flags. Authentication
+// is established at the TLS transport layer (mTLS); no service token is
+// passed through the CLI.
 func newAdminClient(cmd *cobra.Command) (*adminclient.AdminClient, error) {
 	backendURL, _ := cmd.Flags().GetString("backend-url")
-	serviceToken, _ := cmd.Flags().GetString("service-token")
-	if serviceToken == "" {
-		serviceToken = os.Getenv("SERVICE_TOKEN")
-	}
-	if serviceToken == "" {
-		return nil, fmt.Errorf("service token required: set SERVICE_TOKEN env var or use --service-token flag")
-	}
-	return adminclient.NewClient(backendURL, serviceToken), nil
+	return adminclient.NewClient(backendURL, ""), nil
 }
 
 // newSovereignClient creates a SovereignClient from command flags.
@@ -49,10 +41,10 @@ func newSovereignClient(cmd *cobra.Command) *sovereignclient.SovereignClient {
 	return sovereignclient.NewClient(sovereignURL)
 }
 
-// addAdminFlags adds backend-url and service-token flags to a command.
+// addAdminFlags adds the backend-url flag to a command. Authentication is
+// transport-layer (mTLS); no service-token flag is exposed.
 func addAdminFlags(cmd *cobra.Command) {
 	cmd.Flags().String("backend-url", "http://localhost:9001", "alt-backend admin API URL")
-	cmd.Flags().String("service-token", "", "service token (overrides SERVICE_TOKEN env var)")
 }
 
 // addSovereignFlags adds sovereign-url flag to a command.

@@ -14,7 +14,6 @@ def setup_test_logging(monkeypatch):
     monkeypatch.setenv("SERVICE_NAME", "tag-generator-test")
     # Backend API URL is required (legacy DB mode removed)
     monkeypatch.setenv("BACKEND_API_URL", "http://localhost:9101")
-    monkeypatch.setenv("SERVICE_SECRET", "test-secret")
 
     # Configure structlog to use standard logging (allows caplog to capture)
     structlog.configure(
