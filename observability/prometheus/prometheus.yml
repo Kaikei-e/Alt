@@ -94,3 +94,27 @@ scrape_configs:
           service: 'alt-backend'
     scrape_interval: 15s
     metrics_path: /metrics
+
+  # pki-agent sidecars: one per east-west service. Expose cert expiry and
+  # rotation outcomes so cert-lifecycle regressions (like the 2026-04-15
+  # Knowledge Home outage) are paged before they go dark.
+  - job_name: 'pki-agent'
+    static_configs:
+      - targets: ['pki-agent-alt-backend:9510']
+        labels: { service: 'pki-agent', subject: 'alt-backend' }
+      - targets: ['pki-agent-alt-butterfly-facade:9510']
+        labels: { service: 'pki-agent', subject: 'alt-butterfly-facade' }
+      - targets: ['pki-agent-auth-hub:9510']
+        labels: { service: 'pki-agent', subject: 'auth-hub' }
+      - targets: ['pki-agent-pre-processor:9510']
+        labels: { service: 'pki-agent', subject: 'pre-processor' }
+      - targets: ['pki-agent-search-indexer:9510']
+        labels: { service: 'pki-agent', subject: 'search-indexer' }
+      - targets: ['pki-agent-tag-generator:9510']
+        labels: { service: 'pki-agent', subject: 'tag-generator' }
+      - targets: ['pki-agent-recap-worker:9510']
+        labels: { service: 'pki-agent', subject: 'recap-worker' }
+      - targets: ['pki-agent-acolyte-orchestrator:9510']
+        labels: { service: 'pki-agent', subject: 'acolyte-orchestrator' }
+    scrape_interval: 30s
+    metrics_path: /metrics

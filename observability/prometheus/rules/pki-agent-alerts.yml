@@ -1,0 +1,73 @@
+# Prometheus alerting rules for pki-agent sidecars.
+#
+# Fires early when any east-west mTLS leaf is close to expiry, so we never
+# lose a Knowledge Home / alt-backend RPC path to a silent rotation failure
+# (see ADR-000747 and the 2026-04-15 incident).
+#
+# Metric source: pki-agent/internal/infrastructure/metrics.go
+
+groups:
+  - name: pki_agent_cert_lifecycle
+    interval: 30s
+    rules:
+      # PAGE: cert has less than 4h remaining. At 24h leaves this is ~83%
+      # elapsed — well past the 66% renewal point. Something broke the renew
+      # loop.
+      - alert: PkiAgentCertExpirySoon
+        expr: pki_agent_cert_remaining_seconds < 4 * 3600
+        for: 2m
+        labels:
+          severity: page
+          stack: mtls
+        annotations:
+          summary: "{{ $labels.subject }} mTLS cert expires in under 4h"
+          description: |
+            pki-agent-{{ $labels.subject }} reports only
+            {{ humanize $value }}s left on the leaf certificate.
+            Check: docker logs alt-pki-agent-{{ $labels.subject }}-1
+            Runbook: docs/runbooks/pki-agent-recovery.md
+
+      # PAGE: cert already expired. Consumer mTLS will be failing.
+      - alert: PkiAgentCertExpired
+        expr: pki_agent_healthy == 0
+        for: 1m
+        labels:
+          severity: page
+          stack: mtls
+        annotations:
+          summary: "{{ $labels.subject }} mTLS cert expired / missing / corrupt"
+          description: |
+            pki_agent_healthy=0 for subject {{ $labels.subject }}.
+            Consumer east-west calls will fail until rotation succeeds.
+            Runbook: docs/runbooks/pki-agent-recovery.md
+
+      # PAGE: a renewal attempt failed. A single failure is noise; sustained
+      # failures for 15m means the CA is unreachable or the provisioner is
+      # rejecting us.
+      - alert: PkiAgentRenewalFailing
+        expr: |
+          rate(pki_agent_renewal_total{result="failure"}[15m]) > 0
+          and
+          rate(pki_agent_renewal_total{result="success"}[15m]) == 0
+        for: 15m
+        labels:
+          severity: page
+          stack: mtls
+        annotations:
+          summary: "pki-agent-{{ $labels.subject }} renewal loop failing"
+          description: |
+            Renewal attempts are failing and no success in the last 15m.
+            Check step-ca health and the provisioner allowlist.
+
+      # TICKET: pki-agent process not reachable by Prometheus.
+      - alert: PkiAgentDown
+        expr: up{job="pki-agent"} == 0
+        for: 5m
+        labels:
+          severity: ticket
+          stack: mtls
+        annotations:
+          summary: "pki-agent-{{ $labels.subject }} Prometheus scrape failing"
+          description: |
+            /metrics scrape failed for pki-agent-{{ $labels.subject }}.
+            Container may be down or network policy changed.
