@@ -515,17 +515,13 @@ def _metric_points(reader, name):
 
 def _match(points, **attrs):
     return [
-        p
-        for p in points
-        if all(p.attributes.get(k) == v for k, v in attrs.items())
+        p for p in points if all(p.attributes.get(k) == v for k, v in attrs.items())
     ]
 
 
 @pytest.mark.asyncio
 async def test_successful_remote_dispatch_records_success_metric(metrics_reader):
-    gw, _, _, _ = _make_gateway(
-        enabled=True, healthy_url="http://remote-a:11434"
-    )
+    gw, _, _, _ = _make_gateway(enabled=True, healthy_url="http://remote-a:11434")
 
     async with gw.hold_slot(is_high_priority=False):
         await gw.generate_raw("prompt")
@@ -541,26 +537,20 @@ async def test_successful_remote_dispatch_records_success_metric(metrics_reader)
 
 @pytest.mark.asyncio
 async def test_cascade_retry_records_failure_and_fallback(metrics_reader):
-    gw, _, hc, driver = _make_gateway(
-        enabled=True, healthy_url="http://remote-a:11434"
-    )
+    gw, _, hc, driver = _make_gateway(enabled=True, healthy_url="http://remote-a:11434")
     # First call fails, second succeeds on the next healthy remote
     hc.get_healthy_remotes.return_value = ["http://remote-b:11434"]
     driver.generate = AsyncMock(
         side_effect=[
             RuntimeError("connection refused"),
-            LLMGenerateResponse(
-                response="ok", model="gemma4-e4b-q4km", done=True
-            ),
+            LLMGenerateResponse(response="ok", model="gemma4-e4b-q4km", done=True),
         ]
     )
 
     async with gw.hold_slot(is_high_priority=False):
         await gw.generate_raw("prompt")
 
-    dispatches = _metric_points(
-        metrics_reader, "newscreator.distributed_be.dispatches"
-    )
+    dispatches = _metric_points(metrics_reader, "newscreator.distributed_be.dispatches")
     failure_a = _match(
         dispatches, remote_url="http://remote-a:11434", outcome="failure"
     )

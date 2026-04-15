@@ -292,7 +292,6 @@ class TestNewsCreatorConfigComposition:
         """NewsCreatorConfig should compose LLMConfig, SchedulingConfig, etc."""
         from news_creator.config.config import NewsCreatorConfig
 
-
         config = NewsCreatorConfig()
 
         # Should have composed sub-configs

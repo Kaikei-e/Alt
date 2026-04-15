@@ -80,9 +80,7 @@ def init_otel_provider(config: OTelConfig | None = None) -> Callable[[], None]:
     metric_reader = PrometheusMetricReader()
     dispatch_duration_view = View(
         instrument_name="newscreator.distributed_be.request.duration",
-        aggregation=ExplicitBucketHistogramAggregation(
-            _DISPATCH_DURATION_BUCKETS
-        ),
+        aggregation=ExplicitBucketHistogramAggregation(_DISPATCH_DURATION_BUCKETS),
     )
     meter_provider = MeterProvider(
         resource=resource,

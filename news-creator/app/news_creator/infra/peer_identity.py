@@ -33,7 +33,9 @@ def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
 
 
 class PeerIdentityMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, allowed: Iterable[str] | None = None, *, strict: bool = False) -> None:
+    def __init__(
+        self, app, allowed: Iterable[str] | None = None, *, strict: bool = False
+    ) -> None:
         super().__init__(app)
         self._allowed = {c for c in (allowed or []) if c}
         self._strict = strict
@@ -51,7 +53,9 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
                 logger.warning("peer_identity.missing path=%s", request.url.path)
                 return PlainTextResponse("unauthenticated peer", status_code=401)
             if self._allowed and peer not in self._allowed:
-                logger.warning("peer_identity.forbidden peer=%s path=%s", peer, request.url.path)
+                logger.warning(
+                    "peer_identity.forbidden peer=%s path=%s", peer, request.url.path
+                )
                 return PlainTextResponse("peer not allowlisted", status_code=403)
         request.state.peer_identity = peer or None
         mutable = MutableHeaders(scope=request.scope)

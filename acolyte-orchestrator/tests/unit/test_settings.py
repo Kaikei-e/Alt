@@ -31,5 +31,3 @@ def test_settings_from_env(monkeypatch: object) -> None:
     assert s.acolyte_db_dsn == "postgresql://test:test@localhost/test"
     assert s.news_creator_url == "http://localhost:11434"
     mp.undo()
-
-

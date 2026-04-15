@@ -178,7 +178,6 @@ class TestContentValidatorDefaults:
         from news_creator.usecase.content_validator import ContentValidator
         from news_creator.config.config import NewsCreatorConfig
 
-
         config = NewsCreatorConfig()
         validator = ContentValidator.from_config(config)
 

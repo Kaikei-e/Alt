@@ -47,16 +47,16 @@ def _points_for(reader: InMemoryMetricReader, name: str):
 
 def _find(points, **attrs):
     matches = [
-        p
-        for p in points
-        if all(p.attributes.get(k) == v for k, v in attrs.items())
+        p for p in points if all(p.attributes.get(k) == v for k, v in attrs.items())
     ]
     return matches
 
 
 class TestDispatchContext:
     @pytest.mark.asyncio
-    async def test_success_increments_dispatches_and_records_duration(self, metrics_reader):
+    async def test_success_increments_dispatches_and_records_duration(
+        self, metrics_reader
+    ):
         from news_creator.gateway import dispatch_metrics
 
         async with dispatch_metrics.dispatch_context(

@@ -119,7 +119,6 @@ def test_config_recap_quality_defaults():
     assert config.recap_summary_repair_attempts == 2
 
 
-
 def test_recap_summary_num_predict_default():
     """recap_summary_num_predict should default to 4000 (separate from summary_num_predict)."""
     os.environ.pop("RECAP_SUMMARY_NUM_PREDICT", None)
@@ -130,7 +129,6 @@ def test_recap_summary_num_predict_default():
     assert config.recap_min_avg_bullet_length == 300
     # Must be independent from summary_num_predict (which defaults to 1000)
     assert config.summary_num_predict == 1000
-
 
 
 def test_recap_summary_num_predict_env_override():
