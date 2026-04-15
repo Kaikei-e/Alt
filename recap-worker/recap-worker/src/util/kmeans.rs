@@ -1,5 +1,5 @@
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::rng;
+use rand::seq::{IndexedRandom, SliceRandom};
 
 /// Simple K-Means clustering implementation for 1D vectors (embeddings).
 pub struct KMeans {
@@ -29,7 +29,7 @@ impl KMeans {
 
         let k = k.min(data.len());
         let dim = data[0].len();
-        let mut rng = thread_rng();
+        let mut rng = rng();
 
         // Initialize centroids randomly
         let mut centroids: Vec<Vec<f32>> = data.choose_multiple(&mut rng, k).cloned().collect();
@@ -111,7 +111,7 @@ impl MiniBatchKMeans {
 
         let k = k.min(data.len());
         let dim = data[0].len();
-        let mut rng = thread_rng();
+        let mut rng = rng();
         let mut centroids: Vec<Vec<f32>> = data.choose_multiple(&mut rng, k).cloned().collect();
         let mut counts = vec![0usize; k];
         let mut indices: Vec<usize> = (0..data.len()).collect();

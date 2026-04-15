@@ -62,7 +62,7 @@ impl EmbeddingService {
         // AllMiniLmL12V2 dimension is 384
         let mut embedding = Vec::with_capacity(384);
         for _ in 0..384 {
-            embedding.push(rng.gen_range(-1.0..1.0));
+            embedding.push(rng.random_range(-1.0..1.0));
         }
 
         // Normalize

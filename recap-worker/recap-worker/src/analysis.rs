@@ -161,14 +161,14 @@ pub fn synthetic_bodies(count: usize, avg_sentences: usize) -> Vec<String> {
 
     let mut bodies = Vec::with_capacity(count);
     for idx in 0..count {
-        let (genre, template) = templates[rng.gen_range(0..templates.len())];
-        let sentences = rng.gen_range((avg_sentences.saturating_sub(2))..=(avg_sentences + 2));
+        let (genre, template) = templates[rng.random_range(0..templates.len())];
+        let sentences = rng.random_range((avg_sentences.saturating_sub(2))..=(avg_sentences + 2));
         let mut body_parts = Vec::with_capacity(sentences);
 
         for _ in 0..sentences {
             let mut sentence = template.to_string();
             for (key, options) in &replacements {
-                let choice = options[rng.gen_range(0..options.len())];
+                let choice = options[rng.random_range(0..options.len())];
                 sentence = sentence.replace(&format!("{{{key}}}"), choice);
             }
             body_parts.push(sentence.clone());

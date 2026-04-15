@@ -18,7 +18,9 @@ async def test_dispatch_invokes_registered_action():
         seen.append(params)
 
     registry: StateRegistry = {"a known state": _action}
-    await dispatch(registry, {"state": "a known state", "params": {"k": 1}, "action": "setup"})
+    await dispatch(
+        registry, {"state": "a known state", "params": {"k": 1}, "action": "setup"}
+    )
     assert seen == [{"k": 1}]
 
 

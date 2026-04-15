@@ -61,8 +61,8 @@ impl RetryConfig {
 
         // Full Jitter: random(0, capped_delay)
         let jittered_delay = if capped_delay > 0 {
-            let mut rng = rand::thread_rng();
-            rng.gen_range(0..=capped_delay)
+            let mut rng = rand::rng();
+            rng.random_range(0..=capped_delay)
         } else {
             0
         };

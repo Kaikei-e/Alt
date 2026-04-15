@@ -66,14 +66,14 @@ recap-subworker = "recap_subworker.__main__:main"
 
 [tool.uv]
 package = true
-constraint-dependencies = ["wheel>=0.46.2", "protobuf>=6.33.5", "Pillow>=12.1.1", "lxml-html-clean>=0.4.4", "aiohttp>=3.13.4", "Pygments>=2.20.0", "onnx>=1.21.0"]
+constraint-dependencies = ["wheel>=0.46.2", "protobuf>=6.33.5", "Pillow>=12.2.0", "lxml-html-clean>=0.4.4", "aiohttp>=3.13.4", "Pygments>=2.20.0", "onnx>=1.21.0"]
 
 [tool.setuptools]
 packages = ["recap_subworker"]
 
 [dependency-groups]
 dev = [
-  "pytest>=8.3.0",
+  "pytest>=9.0.3",
   "pytest-asyncio>=0.24.0",
   "pytest-cov>=5.0.0",
   "pyrefly>=0.42.0",

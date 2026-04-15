@@ -65,7 +65,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     # Testing Framework
-    "pytest>=8.4.1",
+    "pytest>=9.0.3",
     "pytest-cov>=6.0.0",
     "pytest-mock>=3.14.1",
     "pytest-timeout>=2.4.0",
