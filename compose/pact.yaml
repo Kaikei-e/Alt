@@ -84,7 +84,14 @@ services:
     networks:
       - alt-network
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9292/diagnostic/status/heartbeat"]
+      # Heartbeat endpoint requires basic auth when ALLOW_PUBLIC_READ=false.
+      # The image ships BusyBox wget which lacks --user/--password but
+      # accepts user:pw@host in the URL.
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q --spider
+          "http://pact:$(cat /run/secrets/pact_broker_basic_auth_password)@127.0.0.1:9292/diagnostic/status/heartbeat"
       interval: 10s
       timeout: 5s
       retries: 5

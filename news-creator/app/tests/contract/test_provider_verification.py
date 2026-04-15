@@ -26,6 +26,8 @@ import uvicorn
 from fastapi import FastAPI
 from pact import Verifier
 
+from ._pact_state import StateRegistry, dispatch
+
 logger = logging.getLogger(__name__)
 
 # Pact Broker configuration (set in CI via environment variables)
@@ -63,12 +65,12 @@ def _create_provider_app() -> FastAPI:
     importlib.reload(summarize_mod)
 
     # Track provider state to switch mock behavior
-    provider_state = {"current": "default"}
+    provider_state: dict[str, Any] = {"mode": "default"}
 
     mock_summarize_usecase = Mock()
 
     async def _dynamic_generate_summary(*args: Any, **kwargs: Any):
-        if provider_state["current"] == "queue_full":
+        if provider_state["mode"] == "queue_full":
             from news_creator.gateway.hybrid_priority_semaphore import QueueFullError
 
             raise QueueFullError("Queue depth 20 >= max 20")
@@ -153,21 +155,23 @@ def _create_provider_app() -> FastAPI:
     plan_query_router = plan_query_mod.create_plan_query_router(mock_plan_query_usecase)
     app.include_router(plan_query_router)
 
-    # --- Provider state handler ---
-    from pydantic import BaseModel
+    # --- Provider state registry ---
+    async def _set_default(_params: dict[str, Any]) -> None:
+        provider_state["mode"] = "default"
 
-    class ProviderStateRequest(BaseModel):
-        state: str = ""
-        action: str = "setup"
+    async def _set_queue_full(_params: dict[str, Any]) -> None:
+        provider_state["mode"] = "queue_full"
+
+    registry: StateRegistry = {
+        "the LLM model is loaded and ready": _set_default,
+        "the LLM model is loaded and ready for chat": _set_default,
+        "the LLM model is loaded and ready for query planning": _set_default,
+        "the LLM queue is full": _set_queue_full,
+    }
 
     @app.post("/_pact/provider-states")
-    async def provider_states(req: ProviderStateRequest) -> dict:
-        """Handle provider state setup for Pact verification."""
-        logger.info("Setting up provider state: %s (action=%s)", req.state, req.action)
-        if "queue is full" in req.state.lower():
-            provider_state["current"] = "queue_full"
-        else:
-            provider_state["current"] = "default"
+    async def provider_states(payload: dict[str, Any]) -> dict:
+        await dispatch(registry, payload)
         return {"status": "ok"}
 
     return app

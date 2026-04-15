@@ -17,12 +17,15 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 import pytest
 import uvicorn
 from fastapi import FastAPI
 from pact import Verifier
 from pydantic import BaseModel
+
+from ._pact_state import StateRegistry, dispatch
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +60,7 @@ def _create_provider_app() -> FastAPI:
     app = FastAPI()
 
     # Track provider state to switch mock behavior
-    provider_state = {"current": "default"}
+    provider_state: dict[str, Any] = {"current": "default"}
 
     # ---- POST /v1/classify-runs ----
     class ClassifyRunsRequest(BaseModel):
@@ -120,16 +123,19 @@ def _create_provider_app() -> FastAPI:
             ],
         }
 
-    # ---- Provider state handler ----
-    class ProviderStateRequest(BaseModel):
-        state: str = ""
-        action: str = "setup"
+    # ---- Provider state registry ----
+    async def _set_state(params: dict) -> None:
+        provider_state["params"] = params
+
+    registry: StateRegistry = {
+        "the classification model is loaded": _set_state,
+        "classified articles are ready for clustering": _set_state,
+        "classification job 42 has succeeded": _set_state,
+    }
 
     @app.post("/_pact/provider-states")
-    async def provider_states(req: ProviderStateRequest) -> dict:
-        """Handle provider state setup for Pact verification."""
-        logger.info("Setting up provider state: %s (action=%s)", req.state, req.action)
-        provider_state["current"] = req.state
+    async def provider_states(payload: dict) -> dict:
+        await dispatch(registry, payload)
         return {"status": "ok"}
 
     return app

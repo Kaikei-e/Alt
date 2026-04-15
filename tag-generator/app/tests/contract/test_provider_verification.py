@@ -24,6 +24,8 @@ from fastapi import FastAPI
 from pact import Verifier
 from pydantic import BaseModel
 
+from ._pact_state import StateRegistry, dispatch
+
 logger = logging.getLogger(__name__)
 
 # Pact Broker configuration (set in CI via environment variables)
@@ -91,16 +93,18 @@ def _create_provider_app() -> FastAPI:
             "confidence": 0.92,
         }
 
-    # ---- Provider state handler ----
-    class ProviderStateRequest(BaseModel):
-        state: str = ""
-        action: str = "setup"
+    # ---- Provider state registry ----
+    async def _set_state(params: dict[str, Any]) -> None:
+        provider_state["params"] = params
+
+    registry: StateRegistry = {
+        "tags exist for the requested articles": _set_state,
+        "the tag extraction model is loaded": _set_state,
+    }
 
     @app.post("/_pact/provider-states")
-    async def provider_states(req: ProviderStateRequest) -> dict:
-        """Handle provider state setup for Pact verification."""
-        logger.info("Setting up provider state: %s (action=%s)", req.state, req.action)
-        provider_state["current"] = req.state
+    async def provider_states(payload: dict[str, Any]) -> dict:
+        await dispatch(registry, payload)
         return {"status": "ok"}
 
     return app

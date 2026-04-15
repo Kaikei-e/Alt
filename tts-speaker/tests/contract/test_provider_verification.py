@@ -26,6 +26,7 @@ from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.responses import JSONResponse
 
+from ._pact_state import StateRegistry, dispatch
 from tts_speaker.app.connect_service import TTSConnectService
 from tts_speaker.gen.proto.alt.tts.v1.tts_connect import TTSServiceASGIApplication
 from tts_speaker.infra.config import Settings
@@ -64,6 +65,23 @@ def _create_mock_pipeline():
     return pipeline
 
 
+def _build_state_registry() -> StateRegistry:
+    """States declared by alt-butterfly-facade-tts-speaker.json.
+
+    The TTS provider is stateless from a verification standpoint (the
+    pipeline is mocked), so each state is a no-op stub. The registry
+    still surfaces unknown states as warnings.
+    """
+
+    async def _noop(_params: dict) -> None:
+        return None
+
+    return {
+        "TTS service is available": _noop,
+        "TTS service encounters an error": _noop,
+    }
+
+
 def _create_provider_app():
     """Create a Starlette app with a mocked TTS pipeline for provider verification."""
     pipeline = _create_mock_pipeline()
@@ -72,13 +90,14 @@ def _create_provider_app():
     tts_service = TTSConnectService(pipeline, settings)
     tts_asgi = TTSServiceASGIApplication(tts_service)
 
+    registry = _build_state_registry()
+
     async def health(request):
         return JSONResponse({"status": "ok"})
 
     async def provider_states(request):
-        """Handle provider state setup for Pact verification."""
         body = await request.json()
-        logger.info("Provider state: %s", body.get("state", ""))
+        await dispatch(registry, body)
         return JSONResponse({"status": "ok"})
 
     app = Starlette(
