@@ -12,8 +12,10 @@
 #   - "Proto & Contract Validation / Contract Conformance Tests (FE)"
 #
 # Enforcement: see docs/runbooks/pact-broker-ops.md for the branch-protection
-# recipe. PR-level verification plus a `can-i-deploy` gate on docker publish
-# (release-gate.yaml) together form a two-stage gate (PR + deploy).
+# recipe. PR-level verification here is paired with a local `can-i-deploy`
+# gate (scripts/pre-deploy-verify.sh) run on the deploy host itself; the
+# production gate and record-deployment are intentionally kept off GitHub
+# Actions (OSS repo — no prod credentials or state in CI).
 
 name: Proto & Contract Validation
 
