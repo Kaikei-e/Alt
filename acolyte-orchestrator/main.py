@@ -9,6 +9,7 @@ import httpx
 import structlog
 from psycopg_pool import AsyncConnectionPool
 from starlette.applications import Starlette
+from starlette.middleware import Middleware
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
@@ -27,7 +28,6 @@ from acolyte.handler.connect_service import AcolyteConnectService
 from acolyte.infra.logging import configure_logging
 from acolyte.infra.peer_identity import PeerIdentityMiddleware, allowed_peers_from_env
 from acolyte.usecase.graph.report_graph import build_report_graph
-from starlette.middleware import Middleware
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

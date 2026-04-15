@@ -49,7 +49,7 @@ func TestNewMTLSClient_BadCertPathFailsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	t.Setenv("MTLS_ENFORCE", "true")
 	t.Setenv("MTLS_CERT_FILE", "/nonexistent/cert.pem")
 	t.Setenv("MTLS_KEY_FILE", tmp.Name())

@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	pactDir                  = "../../../../pacts"
-	providerName             = "alt-backend"
-	recapWorkerPactFile      = "recap-worker-alt-backend.json"
-	searchIndexerPactFile    = "search-indexer-alt-backend.json"
+	pactDir               = "../../../../pacts"
+	providerName          = "alt-backend"
+	recapWorkerPactFile   = "recap-worker-alt-backend.json"
+	searchIndexerPactFile = "search-indexer-alt-backend.json"
 )
 
 // recapArticleResponse mirrors the JSON shape expected by recap-worker.

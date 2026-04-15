@@ -35,19 +35,19 @@ func TestHTTPClientManager_HardenedTransportFields(t *testing.T) {
 			require.True(t, ok, "transport must be *optimizedTransport")
 			require.NotNil(t, ot.Transport)
 
-			require.NotNil(t, ot.Transport.DialContext,
+			require.NotNil(t, ot.DialContext,
 				"DialContext must be set so the dial phase has an explicit timeout")
-			require.Greater(t, ot.Transport.TLSHandshakeTimeout, time.Duration(0),
+			require.Greater(t, ot.TLSHandshakeTimeout, time.Duration(0),
 				"TLSHandshakeTimeout must be positive")
-			require.LessOrEqual(t, ot.Transport.TLSHandshakeTimeout, 10*time.Second,
+			require.LessOrEqual(t, ot.TLSHandshakeTimeout, 10*time.Second,
 				"TLSHandshakeTimeout must be aggressive (≤10s)")
 			if c.allowDisabledHeaderTOT {
-				require.Equal(t, time.Duration(0), ot.Transport.ResponseHeaderTimeout,
+				require.Equal(t, time.Duration(0), ot.ResponseHeaderTimeout,
 					"summary client must disable ResponseHeaderTimeout and rely on context timeout")
 			} else {
-				require.Greater(t, ot.Transport.ResponseHeaderTimeout, time.Duration(0),
+				require.Greater(t, ot.ResponseHeaderTimeout, time.Duration(0),
 					"ResponseHeaderTimeout must be set to cap slow-header attacks")
-				require.LessOrEqual(t, ot.Transport.ResponseHeaderTimeout, 30*time.Second,
+				require.LessOrEqual(t, ot.ResponseHeaderTimeout, 30*time.Second,
 					"ResponseHeaderTimeout must be aggressive (≤30s)")
 			}
 			require.Greater(t, ot.MaxIdleConnsPerHost, 0)

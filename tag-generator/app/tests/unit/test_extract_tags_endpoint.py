@@ -4,7 +4,6 @@ Service-to-service endpoint for extracting semantic tags from arbitrary text.
 Used by recap-worker to tag recap genre outputs.
 """
 
-import os
 from unittest.mock import MagicMock, patch
 
 import pytest

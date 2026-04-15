@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
-
 
 def test_settings_default_values() -> None:
     """Settings should have sensible defaults."""

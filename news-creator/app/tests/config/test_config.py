@@ -1,7 +1,7 @@
 """Tests for configuration module."""
 
 import os
-import pytest
+
 from news_creator.config.config import NewsCreatorConfig
 
 

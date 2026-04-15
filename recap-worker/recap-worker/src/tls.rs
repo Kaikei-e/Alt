@@ -31,8 +31,7 @@ use rustls::{RootCertStore, ServerConfig};
 pub fn enforced() -> bool {
     std::env::var("MTLS_ENFORCE")
         .ok()
-        .map(|v| v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"))
 }
 
 fn load_pem_certs(path: &str) -> Result<Vec<CertificateDer<'static>>> {

@@ -43,7 +43,7 @@ func loadMTLSTransport() (*http.Transport, error) {
 			mtlsTransportErr = fmt.Errorf("load leaf cert: %w", err)
 			return
 		}
-		caBytes, err := os.ReadFile(caFile)
+		caBytes, err := os.ReadFile(caFile) //nolint:gosec // G304: path from operator-controlled MTLS_CA_FILE env var
 		if err != nil {
 			mtlsTransportErr = fmt.Errorf("read CA bundle: %w", err)
 			return

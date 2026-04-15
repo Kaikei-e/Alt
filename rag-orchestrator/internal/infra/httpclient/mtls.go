@@ -41,7 +41,7 @@ func NewMTLSClient(timeout time.Duration) (*http.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load leaf cert: %w", err)
 	}
-	caBytes, err := os.ReadFile(caFile)
+	caBytes, err := os.ReadFile(caFile) //nolint:gosec // G304: path from operator-controlled MTLS_CA_FILE env var
 	if err != nil {
 		return nil, fmt.Errorf("read CA bundle: %w", err)
 	}

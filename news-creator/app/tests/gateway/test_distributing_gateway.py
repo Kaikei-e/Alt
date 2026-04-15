@@ -483,8 +483,8 @@ async def test_generate_is_local_only_contract():
 # --- Metrics integration ---
 
 
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.metrics import MeterProvider  # noqa: E402
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader  # noqa: E402
 
 
 @pytest.fixture

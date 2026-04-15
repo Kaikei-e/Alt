@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import ssl
 import tempfile
 
 import pytest
@@ -49,7 +48,7 @@ def test_build_ssl_context_fails_closed_when_cert_unreadable():
         os.environ["MTLS_KEY_FILE"] = ca.name
         os.environ["MTLS_CA_FILE"] = ca.name
         try:
-            with pytest.raises((FileNotFoundError, ssl.SSLError, OSError)):
+            with pytest.raises(OSError):
                 build_ssl_context()
         finally:
             for v in ("MTLS_ENFORCE", "MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"):
