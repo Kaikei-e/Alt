@@ -60,6 +60,7 @@ services:
       - oauth_token_data:/data/oauth_token_data:ro
       - prometheus_data:/data/prometheus_data:ro
       - grafana_data:/data/grafana_data:ro
+      - pact_db_data:/data/pact_db_data:ro
       # Backup scripts
       - ../scripts/backup:/scripts:ro
     networks:

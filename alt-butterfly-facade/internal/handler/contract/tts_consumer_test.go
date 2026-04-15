@@ -3,7 +3,7 @@
 // Package contract contains Consumer-Driven Contract tests for alt-butterfly-facade → tts-speaker.
 //
 // These tests verify that the BFF correctly routes TTS Connect-RPC requests
-// to tts-speaker and injects the X-Service-Token header.
+// to tts-speaker. Authentication is established at the transport layer.
 package contract
 
 import (
@@ -45,8 +45,7 @@ func TestBFFProxyTTSSynthesize(t *testing.T) {
 			Method: "POST",
 			Path:   matchers.String("/alt.tts.v1.TTSService/Synthesize"),
 			Headers: matchers.MapMatcher{
-				"Content-Type":    matchers.String("application/json"),
-				"X-Service-Token": matchers.String("tts-service-secret"),
+				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
 				"text": matchers.Like("Hello world"),
@@ -73,7 +72,6 @@ func TestBFFProxyTTSSynthesize(t *testing.T) {
 			cfg := server.Config{
 				BackendURL:       altBackend.URL,
 				TTSConnectURL:    ttsURL,
-				TTSServiceSecret: "tts-service-secret",
 				Secret:           []byte("test-secret"),
 				Issuer:           "auth-hub",
 				Audience:         "alt-backend",
@@ -111,8 +109,7 @@ func TestBFFProxyTTSError(t *testing.T) {
 			Method: "POST",
 			Path:   matchers.String("/alt.tts.v1.TTSService/Synthesize"),
 			Headers: matchers.MapMatcher{
-				"Content-Type":    matchers.String("application/json"),
-				"X-Service-Token": matchers.String("tts-service-secret"),
+				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{
 				"text": matchers.Like(""),
@@ -139,7 +136,6 @@ func TestBFFProxyTTSError(t *testing.T) {
 			cfg := server.Config{
 				BackendURL:       altBackend.URL,
 				TTSConnectURL:    ttsURL,
-				TTSServiceSecret: "tts-service-secret",
 				Secret:           []byte("test-secret"),
 				Issuer:           "auth-hub",
 				Audience:         "alt-backend",

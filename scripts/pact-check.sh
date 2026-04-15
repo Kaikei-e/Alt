@@ -45,16 +45,21 @@ skip_step() {
   SKIP=$((SKIP + 1))
 }
 
-# Check FFI library for Go/Rust pact tests
+# Check FFI library for Go/Rust pact tests. Accept any of:
+#   - already-on-LD_LIBRARY_PATH
+#   - $HOME/.pact/lib (pact-foundation default)
+#   - /usr/local/lib (system install)
 check_ffi() {
   if [[ -n "${LD_LIBRARY_PATH:-}" ]] && ls "${LD_LIBRARY_PATH}"/libpact_ffi.so &>/dev/null; then
     return 0
   fi
-  if ls "$HOME/.pact/lib/libpact_ffi.so" &>/dev/null; then
-    export LD_LIBRARY_PATH="$HOME/.pact/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    export CGO_LDFLAGS="-L$HOME/.pact/lib"
-    return 0
-  fi
+  for dir in "$HOME/.pact/lib" /usr/local/lib; do
+    if ls "$dir/libpact_ffi.so" &>/dev/null; then
+      export LD_LIBRARY_PATH="$dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+      export CGO_LDFLAGS="-L$dir"
+      return 0
+    fi
+  done
   return 1
 }
 
@@ -62,9 +67,18 @@ check_ffi() {
 if [[ "$MODE" == "broker" ]]; then
   echo "Starting Pact Broker via Docker Compose..."
   docker compose -f compose/compose.yaml -f compose/pact.yaml -p alt up -d pact-broker
+  export PACT_BROKER_BASE_URL=http://localhost:9292
+  export PACT_BROKER_USERNAME=pact
+  if [[ -r "$REPO_ROOT/secrets/pact_broker_basic_auth_password.txt" ]]; then
+    PACT_BROKER_PASSWORD="$(tr -d '\n' < "$REPO_ROOT/secrets/pact_broker_basic_auth_password.txt")"
+  else
+    PACT_BROKER_PASSWORD="${PACT_BROKER_PASSWORD:-pact}"
+  fi
+  export PACT_BROKER_PASSWORD
   echo "Waiting for Pact Broker to be healthy..."
   for i in $(seq 1 30); do
-    if curl -fsS http://localhost:9292/diagnostic/status/heartbeat &>/dev/null; then
+    if curl -fsS -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
+        "${PACT_BROKER_BASE_URL}/diagnostic/status/heartbeat" &>/dev/null; then
       echo "Pact Broker is ready."
       break
     fi
@@ -74,9 +88,6 @@ if [[ "$MODE" == "broker" ]]; then
     fi
     sleep 1
   done
-  export PACT_BROKER_BASE_URL=http://localhost:9292
-  export PACT_BROKER_USERNAME=pact
-  export PACT_BROKER_PASSWORD=pact
   export PACT_PROVIDER_VERSION="local-$(git rev-parse --short HEAD)"
   export PACT_PROVIDER_BRANCH="$(git branch --show-current)"
 fi
@@ -136,13 +147,14 @@ if [[ "$MODE" == "broker" ]]; then
       echo "Publishing ${CONSUMER} -> ${PROVIDER}"
       curl -fsS -X PUT \
         -H "Content-Type: application/json" \
-        -u "pact:pact" \
+        -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
         -d @"$pact_file" \
-        "http://localhost:9292/pacts/provider/${PROVIDER}/consumer/${CONSUMER}/version/${VERSION}"
+        "${PACT_BROKER_BASE_URL}/pacts/provider/${PROVIDER}/consumer/${CONSUMER}/version/${VERSION}"
+      # Branch versions API (tags are legacy as of 2021-07; matrix-aware).
       curl -fsS -X PUT \
         -H "Content-Type: application/json" \
-        -u "pact:pact" \
-        "http://localhost:9292/pacticipants/${CONSUMER}/versions/${VERSION}/tags/${BRANCH}"
+        -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
+        "${PACT_BROKER_BASE_URL}/pacticipants/${CONSUMER}/versions/${VERSION}/branches/${BRANCH}"
       COUNT=$((COUNT + 1))
     fi
   done
@@ -157,11 +169,11 @@ echo "============================="
 
 if command -v uv &>/dev/null; then
   run_step "Python: news-creator provider" \
-    bash -c 'cd news-creator/app && SERVICE_SECRET=test-secret uv run pytest tests/contract/ -v'
+    bash -c 'cd news-creator/app && uv run pytest tests/contract/ -v'
   run_step "Python: recap-subworker provider" \
-    bash -c 'cd recap-subworker && SERVICE_SECRET=test-secret uv run pytest tests/contract/ -v'
+    bash -c 'cd recap-subworker && uv run pytest tests/contract/ -v'
   run_step "Python: tag-generator provider" \
-    bash -c 'cd tag-generator/app && SERVICE_SECRET=test-secret uv run pytest tests/contract/ -v'
+    bash -c 'cd tag-generator/app && uv run pytest tests/contract/ -v'
   run_step "Python: tts-speaker provider" \
     bash -c 'cd tts-speaker && uv run pytest tests/contract/ -v'
 else
@@ -171,8 +183,17 @@ fi
 if command -v go &>/dev/null && check_ffi; then
   run_step "Go: alt-backend provider" \
     bash -c 'cd alt-backend/app && CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v'
+  run_step "Go: search-indexer provider" \
+    bash -c 'cd search-indexer/app && CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v'
 else
   skip_step "Go provider verification (go or libpact_ffi not found)"
+fi
+
+if command -v cargo &>/dev/null; then
+  run_step "Rust: recap-worker provider" \
+    bash -c 'cd recap-worker/recap-worker && cargo test --test provider_verification -- --ignored'
+else
+  skip_step "Rust provider verification (cargo not found)"
 fi
 
 # ---------- Summary ----------

@@ -12,8 +12,18 @@ permissions:
   contents: read
 
 jobs:
+  release-gate:
+    # block deploys that fail Pact can-i-deploy. Runs on self-hosted
+    # so it can reach the on-host Pact Broker at localhost:9292.
+    uses: ./.github/workflows/release-gate.yaml
+    with:
+      target_environment: production
+    secrets:
+      PACT_BROKER_PASSWORD: ${{ secrets.PACT_BROKER_PASSWORD }}
+
   deploy:
     runs-on: self-hosted
+    needs: release-gate
     timeout-minutes: 15
 
     steps:

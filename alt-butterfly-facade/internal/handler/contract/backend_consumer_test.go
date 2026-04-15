@@ -122,13 +122,12 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 	err := mockProvider.
 		AddInteraction().
 		Given("knowledge home admin service is available").
-		UponReceiving("a GetOverview admin Connect-RPC request with service token").
+		UponReceiving("a GetOverview admin Connect-RPC request").
 		WithCompleteRequest(consumer.Request{
 			Method: "POST",
 			Path:   matchers.String("/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview"),
 			Headers: matchers.MapMatcher{
-				"Content-Type":    matchers.String("application/json"),
-				"X-Service-Token": matchers.String("service-secret"),
+				"Content-Type": matchers.String("application/json"),
 			},
 			Body: matchers.MapMatcher{},
 		}).
@@ -150,7 +149,6 @@ func TestBFFProxyAdminRPC(t *testing.T) {
 				Audience:         "alt-backend",
 				RequestTimeout:   30 * time.Second,
 				StreamingTimeout: 5 * time.Minute,
-				ServiceSecret:    "service-secret",
 			}
 			handler := server.NewServerWithTransport(cfg, nil, http.DefaultTransport)
 

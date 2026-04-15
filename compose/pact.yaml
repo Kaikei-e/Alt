@@ -1,5 +1,13 @@
-# compose/pact.yaml - Pact Broker for Consumer-Driven Contract Testing
-# Usage: docker compose -f compose/compose.yaml -f compose/pact.yaml -p alt up -d pact-broker
+# compose/pact.yaml - Pact Broker (always-on; part of default `docker compose up`).
+#
+# Hosts Consumer-Driven Contract pacts and can-i-deploy state for all Alt
+# services. Authentication is basic-auth with a password sourced from the
+# `pact_broker_basic_auth_password` Docker secret. Public read is disabled —
+# the Broker only accepts authenticated requests on the alt-network.
+#
+# promoted from `profiles: [pact]` (opt-in) to always-on so
+# `scripts/pact-check.sh` and the release-gate workflow can rely on its
+# presence without a side-profile toggle.
 
 name: alt
 
@@ -11,8 +19,10 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: pact
-      POSTGRES_PASSWORD: pact
+      POSTGRES_PASSWORD_FILE: /run/secrets/pact_broker_basic_auth_password
       POSTGRES_DB: pact
+    secrets:
+      - pact_broker_basic_auth_password
     volumes:
       - pact_db_data:/var/lib/postgresql/data
     networks:
@@ -22,8 +32,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    profiles:
-      - pact
+    labels:
+      rask.group: pact
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   pact-broker:
     image: pactfoundation/pact-broker:latest
@@ -32,12 +47,40 @@ services:
         condition: service_healthy
     ports:
       - "9292:9292"
+    # pact-broker expects the DB URL inline; we render it from the secret
+    # via an entrypoint wrapper that reads the password from /run/secrets.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        PWD_FILE=/run/secrets/pact_broker_basic_auth_password
+        if [ ! -r "$$PWD_FILE" ]; then
+          echo "pact_broker_basic_auth_password secret not mounted or not readable" >&2
+          exit 1
+        fi
+        PASSWORD=$$(cat "$$PWD_FILE")
+        export PACT_BROKER_DATABASE_URL="postgres://pact:$${PASSWORD}@pact-db/pact"
+        export PACT_BROKER_BASIC_AUTH_PASSWORD="$${PASSWORD}"
+        cd /pact_broker && exec sh ./entrypoint.sh
     environment:
-      PACT_BROKER_DATABASE_URL: postgres://pact:pact@pact-db/pact
       PACT_BROKER_BASIC_AUTH_USERNAME: pact
-      PACT_BROKER_BASIC_AUTH_PASSWORD: pact
-      PACT_BROKER_ALLOW_PUBLIC_READ: "true"
+      PACT_BROKER_ALLOW_PUBLIC_READ: "false"
       PACT_BROKER_LOG_LEVEL: INFO
+      # Auto-clean (Broker image >= 2.72.0.0) — keep main, currently-deployed,
+      # and branches active in the last 30 days; everything else gets pruned
+      # nightly. Prevents unbounded DB growth from PR branches.
+      PACT_BROKER_DATABASE_CLEAN_ENABLED: "true"
+      PACT_BROKER_DATABASE_CLEAN_CRON_SCHEDULE: "0 3 * * *"
+      PACT_BROKER_DATABASE_CLEAN_KEEP_VERSION_SELECTORS: '[{"branch": "main"},{"deployed": true},{"released": true},{"maxAgeInDays": 30}]'
+      # Automatic branch deletion (Feb 2024 release) — drop ephemeral PR
+      # branches that have been stale for 14 days.
+      PACT_BROKER_AUTO_DELETE_BRANCHES_ENABLED: "true"
+      PACT_BROKER_AUTO_DELETE_BRANCHES_OLDER_THAN_DAYS: "14"
+      # Webhook scheme allowlist — refuse any non-HTTPS callback.
+      PACT_BROKER_WEBHOOK_SCHEME_WHITELIST: "https"
+    secrets:
+      - pact_broker_basic_auth_password
     networks:
       - alt-network
     healthcheck:
@@ -45,9 +88,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 15s
-    profiles:
-      - pact
+      start_period: 20s
+    labels:
+      rask.group: pact
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pact_db_data:

@@ -1,3 +1,20 @@
+# Proto & Contract Validation — blocking gate.
+#
+# This workflow runs on every PR to main. Both of the following jobs MUST be
+# listed in the `main` branch protection as required status checks so the
+# merge is blocked on contract/regression failures:
+#
+#   - "Proto & Contract Validation / Pact CDC Consumer Tests (Go)"
+#   - "Proto & Contract Validation / Pact CDC Consumer Tests (Rust)"
+#   - "Proto & Contract Validation / Pact CDC Consumer Tests (Python)"
+#   - "Proto & Contract Validation / Pact Publish & Provider Verification"
+#   - "Proto & Contract Validation / Buf Lint & Breaking Change Detection"
+#   - "Proto & Contract Validation / Contract Conformance Tests (FE)"
+#
+# Enforcement: see docs/runbooks/pact-broker-ops.md for the branch-protection
+# recipe. PR-level verification plus a `can-i-deploy` gate on docker publish
+# (release-gate.yaml) together form a two-stage gate (PR + deploy).
+
 name: Proto & Contract Validation
 
 on:
@@ -279,6 +296,28 @@ jobs:
           PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: go test -tags=contract ./driver/contract/ -v
 
+      - name: Run search-indexer provider verification
+        working-directory: search-indexer/app
+        env:
+          CGO_ENABLED: "1"
+          PACT_BROKER_BASE_URL: http://localhost:9292
+          PACT_BROKER_USERNAME: pact
+          PACT_BROKER_PASSWORD: pact
+          PACT_PROVIDER_VERSION: ${{ github.sha }}
+          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v
+
+      - name: Run mq-hub provider verification
+        working-directory: mq-hub/app
+        env:
+          CGO_ENABLED: "1"
+          PACT_BROKER_BASE_URL: http://localhost:9292
+          PACT_BROKER_USERNAME: pact
+          PACT_BROKER_PASSWORD: pact
+          PACT_PROVIDER_VERSION: ${{ github.sha }}
+          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v
+
       # --- Python provider verifications ---
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -293,7 +332,6 @@ jobs:
       - name: Run news-creator provider verification
         working-directory: news-creator/app
         env:
-          SERVICE_SECRET: test-secret
           PACT_BROKER_BASE_URL: http://localhost:9292
           PACT_BROKER_USERNAME: pact
           PACT_BROKER_PASSWORD: pact
@@ -310,7 +348,6 @@ jobs:
       - name: Run recap-subworker provider verification
         working-directory: recap-subworker
         env:
-          SERVICE_SECRET: test-secret
           PACT_BROKER_BASE_URL: http://localhost:9292
           PACT_BROKER_USERNAME: pact
           PACT_BROKER_PASSWORD: pact
@@ -325,7 +362,6 @@ jobs:
       - name: Run tag-generator provider verification
         working-directory: tag-generator/app
         env:
-          SERVICE_SECRET: test-secret
           PACT_BROKER_BASE_URL: http://localhost:9292
           PACT_BROKER_USERNAME: pact
           PACT_BROKER_PASSWORD: pact

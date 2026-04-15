@@ -454,3 +454,16 @@ proto/
 - [[000588]] マイクロサービス間 Contract Testing 戦略として Buf + Pact CDC の 2 層構成を採用する
 - [[000589]] Pact CDC テスト基盤を導入し最重要 3 ペアの Consumer/Provider テストを実装する
 - [[000590]] tdd-workflow スキルに CDC Contract Testing フローを統合する
+- [[000591]] Pact CDC テストを全サービスペアに全面展開し Pact Broker による契約管理を確立する
+- [[000735]] search-indexer を呼ぶ全 consumer に X-Service-Token を強制し Pact で回帰を封じる
+- [[000736]] Pact CDC の残ギャップを埋めて Broker を常時稼働・can-i-deploy で docker publish をブロックする
+- [[000737]] search-indexer REST を :9443 peer-identity 化し Acolyte sidecar を VERIFY_CLIENT=on へ昇格する
+- Runbook: [[pact-broker-ops]] / [[mtls-cutover]]
+
+### 現在の状態 (2026-04-15 時点)
+
+- **Pact Broker**: `compose/pact.yaml` default profile で常時稼働 ([[000736]])。Docker secret 認証、Restic バックアップ対象
+- **CI gate**: `.github/workflows/proto-contract.yaml` が PR 必須 gate、`release-gate.yaml` が deploy 前に `can-i-deploy` を強制
+- **pact-check.sh**: 15 検証 (consumer + provider) が 0 failed で pass
+- **Provider coverage**: alt-backend (3 consumers), search-indexer (3 consumers), mq-hub (1 async), news-creator (4), recap-subworker (1), tag-generator (2), tts-speaker (1)
+- **Auth**: REST `/v1/search` は X-Service-Token (Phase C で撤去予定)、Connect-RPC は peer-identity allowlist ([[000737]])

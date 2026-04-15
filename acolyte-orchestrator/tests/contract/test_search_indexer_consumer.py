@@ -1,15 +1,13 @@
 """Consumer contract tests for acolyte-orchestrator → search-indexer.
 
-Verifies that acolyte-orchestrator's expectations of the search-indexer
-REST API are documented as Pact contracts.
+Pins the REST /v1/search response shape that the Gatherer pipeline relies on.
+Authentication is now established at the transport layer (mTLS client cert
+verified by the nginx sidecar); the consumer no longer sends application-
+level auth headers.
 
 search-indexer actual API:
   GET /v1/search?q={query}&limit={limit}
   Response: {query: str, hits: [{id, title, content, tags, score}]}
-
-Note: search-indexer does NOT return url or published_at.
-score is Meilisearch _rankingScore (0.0-1.0).
-Recap search is available via Connect v2 SearchRecaps (not REST).
 
 Run with:
     cd acolyte-orchestrator && uv run pytest tests/contract/ -v --no-cov
@@ -29,7 +27,7 @@ def _new_pact() -> Pact:
 
 
 def test_search_articles():
-    """Verify contract for GET /v1/search (article search)."""
+    """GET /v1/search returns hits with id/title/content/tags/score."""
     pact = _new_pact()
     (
         pact.upon_receiving("an article search request for evidence gathering")
@@ -77,7 +75,7 @@ def test_search_articles():
 
 
 def test_search_articles_empty_results():
-    """Verify contract for GET /v1/search with no matches."""
+    """GET /v1/search returns empty hits array when no matches."""
     pact = _new_pact()
     (
         pact.upon_receiving("an article search request with no matches")

@@ -15,8 +15,7 @@
           "text": "Hello world"
         },
         "headers": {
-          "Content-Type": "application/json",
-          "X-Service-Token": "tts-service-secret"
+          "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
@@ -67,8 +66,7 @@
           "text": ""
         },
         "headers": {
-          "Content-Type": "application/json",
-          "X-Service-Token": "tts-service-secret"
+          "Content-Type": "application/json"
         },
         "matchingRules": {
           "body": {
