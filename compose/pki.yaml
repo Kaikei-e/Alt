@@ -1,9 +1,42 @@
 # compose/pki.yaml - Internal PKI for east-west mTLS
 # step-ca issues short-lived leaf certs; step-ca-bootstrap publishes the root
 # CA bundle to a shared volume so other services can build trust stores.
+# pki-agent sidecars own the cert lifecycle for each consumer service,
+# replacing the prior compose-embedded shell cert-init + cert-renewer pair.
 
 include:
   - base.yaml
+
+# Shared config for pki-agent sidecars. One sidecar per consumer service;
+# each owns exactly one cert volume. Runs as root so it can chown the cert
+# files to the consumer's uid (65532 / 999) before atomic rename.
+x-pki-agent: &pki-agent
+  image: alt/pki-agent:latest
+  build:
+    context: ../pki-agent
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  user: "0:0"
+  secrets:
+    - step_ca_root_password
+  networks:
+    - alt-network
+  labels:
+    - rask.group=pki
+  depends_on:
+    step-ca-bootstrap:
+      condition: service_completed_successfully
+  healthcheck:
+    test: ["CMD", "/usr/local/bin/pki-agent", "healthcheck"]
+    interval: 15s
+    timeout: 3s
+    retries: 3
+    start_period: 30s
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 services:
   step-ca:
@@ -77,3 +110,171 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # --- pki-agent sidecars (one per east-west consumer) ----------------------
+  # TODO(Phase 2.5): migrate STEP_CA_PROVISIONER from "bootstrap" to
+  # "pki-agent" with x509.allowedNames locking down the 8 CNs. See
+  # docs/review/pki-agent-security-audit-2026-04-16.md F-001 / F-002.
+
+  pki-agent-alt-backend:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=alt-backend
+      - CERT_SANS=alt-backend,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - CERT_OWNER_UID=65532
+      - CERT_OWNER_GID=65532
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - alt_backend_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  pki-agent-alt-butterfly-facade:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=alt-butterfly-facade
+      - CERT_SANS=alt-butterfly-facade,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - CERT_OWNER_UID=65532
+      - CERT_OWNER_GID=65532
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - alt_butterfly_facade_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  pki-agent-auth-hub:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=auth-hub
+      - CERT_SANS=auth-hub,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - CERT_OWNER_UID=65532
+      - CERT_OWNER_GID=65532
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - auth_hub_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  pki-agent-pre-processor:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=pre-processor
+      - CERT_SANS=pre-processor,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - CERT_OWNER_UID=65532
+      - CERT_OWNER_GID=65532
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - pre_processor_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  pki-agent-search-indexer:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=search-indexer
+      - CERT_SANS=search-indexer,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      - CERT_OWNER_UID=65532
+      - CERT_OWNER_GID=65532
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - search_indexer_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  pki-agent-tag-generator:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=tag-generator
+      - CERT_SANS=tag-generator,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      # tag-generator uses an nginx TLS sidecar that reads certs as root.
+      - CERT_OWNER_UID=0
+      - CERT_OWNER_GID=0
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - tag_generator_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  pki-agent-recap-worker:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=recap-worker
+      - CERT_SANS=recap-worker,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      # recap-worker runs as uid 999 (see fa771b1e5).
+      - CERT_OWNER_UID=999
+      - CERT_OWNER_GID=999
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - recap_worker_certs:/certs
+      - pki_trust_bundle:/trust:ro
+
+  pki-agent-acolyte-orchestrator:
+    <<: *pki-agent
+    environment:
+      - STEP_CA_URL=https://step-ca:9000
+      - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
+      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
+      - CERT_SUBJECT=acolyte-orchestrator
+      - CERT_SANS=acolyte-orchestrator,localhost
+      - CERT_PATH=/certs/svc-cert.pem
+      - KEY_PATH=/certs/svc-key.pem
+      # acolyte-orchestrator uses an nginx TLS sidecar that reads certs as root.
+      - CERT_OWNER_UID=0
+      - CERT_OWNER_GID=0
+      - RENEW_AT_FRACTION=0.66
+      - TICK_INTERVAL=5m
+      - METRICS_ADDR=:9510
+    volumes:
+      - acolyte_orchestrator_certs:/certs
+      - pki_trust_bundle:/trust:ro

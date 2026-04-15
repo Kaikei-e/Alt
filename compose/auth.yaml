@@ -5,77 +5,9 @@ include:
   - base.yaml
   - pki.yaml
 
-x-tls-cert-sidecar: &tls-cert-sidecar
-  image: smallstep/step-ca:0.27.5
-  user: "0:0"
-  secrets:
-    - step_ca_root_password
-  networks:
-    - alt-network
-  labels:
-    - rask.group=pki
-  logging:
-    driver: "json-file"
-    options:
-      max-size: "10m"
-      max-file: "3"
+# auth-hub cert lifecycle is owned by pki-agent-auth-hub in compose/pki.yaml.
 
 services:
-  auth-hub-cert-init:
-    <<: *tls-cert-sidecar
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-    command:
-      - |
-        set -e
-        if [ -f /certs/svc-cert.pem ]; then
-          echo "auth-hub-cert-init: cert already present, skipping"
-          exit 0
-        fi
-        TOKEN=$$(step ca token "auth-hub" \
-          --san auth-hub --san localhost \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --provisioner bootstrap \
-          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
-        step ca certificate "auth-hub" /certs/svc-cert.pem /certs/svc-key.pem \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --token "$$TOKEN" --force
-        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
-        chmod 0444 /certs/svc-cert.pem
-        chmod 0400 /certs/svc-key.pem
-        echo "auth-hub-cert-init: cert issued"
-    volumes:
-      - auth_hub_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      step-ca-bootstrap:
-        condition: service_completed_successfully
-
-  auth-hub-cert-renewer:
-    <<: *tls-cert-sidecar
-    restart: unless-stopped
-    entrypoint:
-      - step
-    command:
-      - ca
-      - renew
-      - --ca-url=https://step-ca:9000
-      - --root=/trust/ca-bundle.pem
-      - --daemon
-      - --expires-in=8h
-      - /certs/svc-cert.pem
-      - /certs/svc-key.pem
-    volumes:
-      - auth_hub_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      auth-hub-cert-init:
-        condition: service_completed_successfully
-
   kratos-db:
     image: postgres:16-alpine
     restart: always
@@ -223,8 +155,8 @@ services:
     depends_on:
       kratos:
         condition: service_healthy
-      auth-hub-cert-init:
-        condition: service_completed_successfully
+      pki-agent-auth-hub:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "/auth-hub", "healthcheck"]
       interval: 5s

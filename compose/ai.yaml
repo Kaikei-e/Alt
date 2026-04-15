@@ -5,76 +5,9 @@ include:
   - base.yaml
   - pki.yaml
 
-x-tls-cert-sidecar: &tls-cert-sidecar
-  image: smallstep/step-ca:0.27.5
-  user: "0:0"
-  secrets:
-    - step_ca_root_password
-  networks:
-    - alt-network
-  labels:
-    - rask.group=pki
-  logging:
-    driver: "json-file"
-    options:
-      max-size: "10m"
-      max-file: "3"
+# Cert lifecycle for pre-processor is owned by pki-agent-pre-processor in compose/pki.yaml.
 
 services:
-  pre-processor-cert-init:
-    <<: *tls-cert-sidecar
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-    command:
-      - |
-        set -e
-        if [ -f /certs/svc-cert.pem ]; then
-          echo "pre-processor-cert-init: cert already present, skipping"
-          exit 0
-        fi
-        TOKEN=$$(step ca token "pre-processor" \
-          --san pre-processor --san localhost \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --provisioner bootstrap \
-          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
-        step ca certificate "pre-processor" /certs/svc-cert.pem /certs/svc-key.pem \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --token "$$TOKEN" --force
-        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
-        chmod 0444 /certs/svc-cert.pem
-        chmod 0400 /certs/svc-key.pem
-    volumes:
-      - pre_processor_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      step-ca-bootstrap:
-        condition: service_completed_successfully
-
-  pre-processor-cert-renewer:
-    <<: *tls-cert-sidecar
-    restart: unless-stopped
-    entrypoint:
-      - step
-    command:
-      - ca
-      - renew
-      - --ca-url=https://step-ca:9000
-      - --root=/trust/ca-bundle.pem
-      - --daemon
-      - --expires-in=8h
-      - /certs/svc-cert.pem
-      - /certs/svc-key.pem
-    volumes:
-      - pre_processor_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      pre-processor-cert-init:
-        condition: service_completed_successfully
-
   # Redis cache for news-creator recap summaries
   redis-cache:
     image: redis:8.0.2-alpine
@@ -264,8 +197,8 @@ services:
         condition: service_healthy
       pre-processor-db-migrator:
         condition: service_completed_successfully
-      pre-processor-cert-init:
-        condition: service_completed_successfully
+      pki-agent-pre-processor:
+        condition: service_healthy
     environment:
       - MTLS_LISTEN=${MTLS_LISTEN:-true}
       - MTLS_PORT=9443

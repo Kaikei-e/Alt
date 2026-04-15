@@ -1,79 +1,12 @@
 # compose/bff.yaml - Backend for Frontend service
-# Transparent proxy between alt-frontend-sv and alt-backend
+# Transparent proxy between alt-frontend-sv and alt-backend.
+# Cert lifecycle is owned by pki-agent-alt-butterfly-facade in compose/pki.yaml.
 
 include:
   - base.yaml
   - pki.yaml
 
-x-tls-cert-sidecar: &tls-cert-sidecar
-  image: smallstep/step-ca:0.27.5
-  user: "0:0"
-  secrets:
-    - step_ca_root_password
-  networks:
-    - alt-network
-  labels:
-    - rask.group=pki
-  logging:
-    driver: "json-file"
-    options:
-      max-size: "10m"
-      max-file: "3"
-
 services:
-  alt-butterfly-facade-cert-init:
-    <<: *tls-cert-sidecar
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-    command:
-      - |
-        set -e
-        if [ -f /certs/svc-cert.pem ]; then
-          exit 0
-        fi
-        TOKEN=$$(step ca token "alt-butterfly-facade" \
-          --san alt-butterfly-facade --san localhost \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --provisioner bootstrap \
-          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
-        step ca certificate "alt-butterfly-facade" /certs/svc-cert.pem /certs/svc-key.pem \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --token "$$TOKEN" --force
-        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
-        chmod 0444 /certs/svc-cert.pem
-        chmod 0400 /certs/svc-key.pem
-    volumes:
-      - alt_butterfly_facade_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      step-ca-bootstrap:
-        condition: service_completed_successfully
-
-  alt-butterfly-facade-cert-renewer:
-    <<: *tls-cert-sidecar
-    restart: unless-stopped
-    entrypoint:
-      - step
-    command:
-      - ca
-      - renew
-      - --ca-url=https://step-ca:9000
-      - --root=/trust/ca-bundle.pem
-      - --daemon
-      - --expires-in=8h
-      - /certs/svc-cert.pem
-      - /certs/svc-key.pem
-    volumes:
-      - alt_butterfly_facade_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      alt-butterfly-facade-cert-init:
-        condition: service_completed_successfully
-
   alt-butterfly-facade:
     build:
       context: ../alt-butterfly-facade
@@ -118,8 +51,8 @@ services:
         condition: service_healthy
       auth-hub:
         condition: service_healthy
-      alt-butterfly-facade-cert-init:
-        condition: service_completed_successfully
+      pki-agent-alt-butterfly-facade:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "/alt-butterfly-facade", "healthcheck"]
       interval: 5s

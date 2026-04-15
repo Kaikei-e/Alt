@@ -6,23 +6,9 @@ include:
   - bff.yaml
   - pki.yaml
 
-# Shared base for cert provisioning sidecars. Runs as root so it can write
-# into fresh named volumes; the cert/key are then chmod'd to world-readable
-# (cert) and user-readable (key) for the app container to consume.
-x-tls-cert-sidecar: &tls-cert-sidecar
-  image: smallstep/step-ca:0.27.5
-  user: "0:0"
-  secrets:
-    - step_ca_root_password
-  networks:
-    - alt-network
-  labels:
-    - rask.group=pki
-  logging:
-    driver: "json-file"
-    options:
-      max-size: "10m"
-      max-file: "3"
+# Cert provisioning is owned by compose/pki.yaml's pki-agent sidecars.
+# The compose-embedded shell cert-init/cert-renewer pair was removed in the
+# pki-agent cutover (see docs/ADR/000747.md).
 
 services:
   nginx:
@@ -115,62 +101,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  alt-backend-cert-init:
-    <<: *tls-cert-sidecar
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-    command:
-      - |
-        set -e
-        if [ -f /certs/svc-cert.pem ]; then
-          echo "alt-backend-cert-init: cert already present, skipping"
-          exit 0
-        fi
-        echo "alt-backend-cert-init: requesting cert from step-ca..."
-        TOKEN=$$(step ca token "alt-backend" \
-          --san alt-backend --san localhost \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --provisioner bootstrap \
-          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
-        step ca certificate "alt-backend" /certs/svc-cert.pem /certs/svc-key.pem \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --token "$$TOKEN" --force
-        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
-        chmod 0444 /certs/svc-cert.pem
-        chmod 0400 /certs/svc-key.pem
-        echo "alt-backend-cert-init: cert issued"
-    volumes:
-      - alt_backend_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      step-ca-bootstrap:
-        condition: service_completed_successfully
-
-  alt-backend-cert-renewer:
-    <<: *tls-cert-sidecar
-    restart: unless-stopped
-    entrypoint:
-      - step
-    command:
-      - ca
-      - renew
-      - --ca-url=https://step-ca:9000
-      - --root=/trust/ca-bundle.pem
-      - --daemon
-      - --expires-in=8h
-      - /certs/svc-cert.pem
-      - /certs/svc-key.pem
-    volumes:
-      - alt_backend_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      alt-backend-cert-init:
-        condition: service_completed_successfully
-
   alt-backend:
     env_file:
       - ../.env
@@ -199,8 +129,8 @@ services:
         condition: service_healthy
       search-indexer:
         condition: service_healthy
-      alt-backend-cert-init:
-        condition: service_completed_successfully
+      pki-agent-alt-backend:
+        condition: service_healthy
     environment:
       - CONNECT_PORT=9101
       - MTLS_LISTEN=${MTLS_LISTEN:-true}

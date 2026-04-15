@@ -5,75 +5,10 @@ include:
   - base.yaml
   - pki.yaml
 
-x-tls-cert-sidecar: &tls-cert-sidecar
-  image: smallstep/step-ca:0.27.5
-  user: "0:0"
-  secrets:
-    - step_ca_root_password
-  networks:
-    - alt-network
-  labels:
-    - rask.group=pki
-  logging:
-    driver: "json-file"
-    options:
-      max-size: "10m"
-      max-file: "3"
+# Cert lifecycle for search-indexer / tag-generator is owned by
+# pki-agent-search-indexer / pki-agent-tag-generator in compose/pki.yaml.
 
 services:
-  search-indexer-cert-init:
-    <<: *tls-cert-sidecar
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-    command:
-      - |
-        set -e
-        if [ -f /certs/svc-cert.pem ]; then
-          exit 0
-        fi
-        TOKEN=$$(step ca token "search-indexer" \
-          --san search-indexer --san localhost \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --provisioner bootstrap \
-          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
-        step ca certificate "search-indexer" /certs/svc-cert.pem /certs/svc-key.pem \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --token "$$TOKEN" --force
-        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
-        chmod 0444 /certs/svc-cert.pem
-        chmod 0400 /certs/svc-key.pem
-    volumes:
-      - search_indexer_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      step-ca-bootstrap:
-        condition: service_completed_successfully
-
-  search-indexer-cert-renewer:
-    <<: *tls-cert-sidecar
-    restart: unless-stopped
-    entrypoint:
-      - step
-    command:
-      - ca
-      - renew
-      - --ca-url=https://step-ca:9000
-      - --root=/trust/ca-bundle.pem
-      - --daemon
-      - --expires-in=8h
-      - /certs/svc-cert.pem
-      - /certs/svc-key.pem
-    volumes:
-      - search_indexer_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      search-indexer-cert-init:
-        condition: service_completed_successfully
-
   pre-processor-sidecar:
     env_file:
       - ../.env
@@ -129,8 +64,8 @@ services:
     depends_on:
       redis-streams:
         condition: service_healthy
-      search-indexer-cert-init:
-        condition: service_completed_successfully
+      pki-agent-search-indexer:
+        condition: service_healthy
     environment:
       - MTLS_LISTEN=${MTLS_LISTEN:-true}
       - MTLS_PORT=9443
@@ -184,59 +119,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  tag-generator-cert-init:
-    <<: *tls-cert-sidecar
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-    command:
-      - |
-        set -e
-        if [ -f /certs/svc-cert.pem ]; then
-          exit 0
-        fi
-        TOKEN=$$(step ca token "tag-generator" \
-          --san tag-generator --san localhost \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --provisioner bootstrap \
-          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
-        step ca certificate "tag-generator" /certs/svc-cert.pem /certs/svc-key.pem \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --token "$$TOKEN" --force
-        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
-        chmod 0444 /certs/svc-cert.pem
-        chmod 0400 /certs/svc-key.pem
-    volumes:
-      - tag_generator_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      step-ca-bootstrap:
-        condition: service_completed_successfully
-
-  tag-generator-cert-renewer:
-    <<: *tls-cert-sidecar
-    restart: unless-stopped
-    entrypoint:
-      - step
-    command:
-      - ca
-      - renew
-      - --ca-url=https://step-ca:9000
-      - --root=/trust/ca-bundle.pem
-      - --daemon
-      - --expires-in=8h
-      - /certs/svc-cert.pem
-      - /certs/svc-key.pem
-    volumes:
-      - tag_generator_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      tag-generator-cert-init:
-        condition: service_completed_successfully
-
   tag-generator-tls-sidecar:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -255,8 +137,8 @@ services:
     depends_on:
       tag-generator:
         condition: service_healthy
-      tag-generator-cert-init:
-        condition: service_completed_successfully
+      pki-agent-tag-generator:
+        condition: service_healthy
     labels:
       - rask.group=tag-generator
     logging:
@@ -275,8 +157,8 @@ services:
     depends_on:
       redis-streams:
         condition: service_healthy
-      tag-generator-cert-init:
-        condition: service_completed_successfully
+      pki-agent-tag-generator:
+        condition: service_healthy
     networks:
       - alt-network
     ports:

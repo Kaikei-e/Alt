@@ -5,75 +5,9 @@ include:
   - base.yaml
   - pki.yaml
 
-x-tls-cert-sidecar: &tls-cert-sidecar
-  image: smallstep/step-ca:0.27.5
-  user: "0:0"
-  secrets:
-    - step_ca_root_password
-  networks:
-    - alt-network
-  labels:
-    - rask.group=pki
-  logging:
-    driver: "json-file"
-    options:
-      max-size: "10m"
-      max-file: "3"
+# Cert lifecycle for recap-worker is owned by pki-agent-recap-worker in compose/pki.yaml.
 
 services:
-  recap-worker-cert-init:
-    <<: *tls-cert-sidecar
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-    command:
-      - |
-        set -e
-        if [ -f /certs/svc-cert.pem ]; then
-          exit 0
-        fi
-        TOKEN=$$(step ca token "recap-worker" \
-          --san recap-worker --san localhost \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --provisioner bootstrap \
-          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
-        step ca certificate "recap-worker" /certs/svc-cert.pem /certs/svc-key.pem \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --token "$$TOKEN" --force
-        chown 999:999 /certs /certs/svc-cert.pem /certs/svc-key.pem
-        chmod 0444 /certs/svc-cert.pem
-        chmod 0400 /certs/svc-key.pem
-    volumes:
-      - recap_worker_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      step-ca-bootstrap:
-        condition: service_completed_successfully
-
-  recap-worker-cert-renewer:
-    <<: *tls-cert-sidecar
-    restart: unless-stopped
-    entrypoint:
-      - step
-    command:
-      - ca
-      - renew
-      - --ca-url=https://step-ca:9000
-      - --root=/trust/ca-bundle.pem
-      - --daemon
-      - --expires-in=8h
-      - /certs/svc-cert.pem
-      - /certs/svc-key.pem
-    volumes:
-      - recap_worker_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      recap-worker-cert-init:
-        condition: service_completed_successfully
-
   recap-db:
     build:
       context: ../docker/postgres
@@ -199,8 +133,8 @@ services:
     depends_on:
       recap-db:
         condition: service_healthy
-      recap-worker-cert-init:
-        condition: service_completed_successfully
+      pki-agent-recap-worker:
+        condition: service_healthy
     restart: unless-stopped
     deploy:
       resources:

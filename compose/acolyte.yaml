@@ -7,75 +7,10 @@ include:
   - base.yaml
   - pki.yaml
 
-x-tls-cert-sidecar: &tls-cert-sidecar
-  image: smallstep/step-ca:0.27.5
-  user: "0:0"
-  secrets:
-    - step_ca_root_password
-  networks:
-    - alt-network
-  labels:
-    - rask.group=pki
-  logging:
-    driver: "json-file"
-    options:
-      max-size: "10m"
-      max-file: "3"
+# Cert lifecycle for acolyte-orchestrator is owned by
+# pki-agent-acolyte-orchestrator in compose/pki.yaml.
 
 services:
-  acolyte-orchestrator-cert-init:
-    <<: *tls-cert-sidecar
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-    command:
-      - |
-        set -e
-        if [ -f /certs/svc-cert.pem ]; then
-          exit 0
-        fi
-        TOKEN=$$(step ca token "acolyte-orchestrator" \
-          --san acolyte-orchestrator --san localhost \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --provisioner bootstrap \
-          --password-file /run/secrets/step_ca_root_password 2>/dev/null)
-        step ca certificate "acolyte-orchestrator" /certs/svc-cert.pem /certs/svc-key.pem \
-          --ca-url https://step-ca:9000 \
-          --root /trust/ca-bundle.pem \
-          --token "$$TOKEN" --force
-        chown 65532:65532 /certs /certs/svc-cert.pem /certs/svc-key.pem
-        chmod 0444 /certs/svc-cert.pem
-        chmod 0400 /certs/svc-key.pem
-    volumes:
-      - acolyte_orchestrator_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      step-ca-bootstrap:
-        condition: service_completed_successfully
-
-  acolyte-orchestrator-cert-renewer:
-    <<: *tls-cert-sidecar
-    restart: unless-stopped
-    entrypoint:
-      - step
-    command:
-      - ca
-      - renew
-      - --ca-url=https://step-ca:9000
-      - --root=/trust/ca-bundle.pem
-      - --daemon
-      - --expires-in=8h
-      - /certs/svc-cert.pem
-      - /certs/svc-key.pem
-    volumes:
-      - acolyte_orchestrator_certs:/certs
-      - pki_trust_bundle:/trust:ro
-    depends_on:
-      acolyte-orchestrator-cert-init:
-        condition: service_completed_successfully
-
   acolyte-orchestrator-tls-sidecar:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -95,8 +30,8 @@ services:
     depends_on:
       acolyte-orchestrator:
         condition: service_healthy
-      acolyte-orchestrator-cert-init:
-        condition: service_completed_successfully
+      pki-agent-acolyte-orchestrator:
+        condition: service_healthy
     labels:
       - rask.group=acolyte-orchestrator
     logging:
@@ -205,8 +140,8 @@ services:
         condition: service_healthy
       acolyte-db-migrator:
         condition: service_completed_successfully
-      acolyte-orchestrator-cert-init:
-        condition: service_completed_successfully
+      pki-agent-acolyte-orchestrator:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
       interval: 30s
