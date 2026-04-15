@@ -112,6 +112,40 @@ func (r *summarizeJobRepository) HasRecentSuccessfulJob(ctx context.Context, art
 	return exists, nil
 }
 
+// HasInFlightJob reports whether the article has a pending/running job that is
+// fresher than the given cutoff. Stale rows (started_at or created_at older
+// than the cutoff) are ignored so a crashed worker cannot block re-enqueue
+// forever; RecoverStuckJobs will reset them independently.
+func (r *summarizeJobRepository) HasInFlightJob(ctx context.Context, articleID string, since time.Time) (bool, error) {
+	if articleID == "" {
+		r.logger.ErrorContext(ctx, "article ID cannot be empty")
+		return false, fmt.Errorf("article ID cannot be empty")
+	}
+
+	if r.db == nil {
+		r.logger.ErrorContext(ctx, "database connection is nil")
+		return false, fmt.Errorf("database connection is nil")
+	}
+
+	query := `
+		SELECT EXISTS (
+			SELECT 1
+			FROM summarize_job_queue
+			WHERE article_id = $1
+			  AND status IN ('pending', 'running')
+			  AND COALESCE(started_at, created_at) >= $2
+		)
+	`
+
+	var exists bool
+	if err := r.db.QueryRow(ctx, query, articleID, since).Scan(&exists); err != nil {
+		r.logger.ErrorContext(ctx, "failed to check in-flight job", "error", err, "article_id", articleID)
+		return false, fmt.Errorf("check in-flight job: %w", err)
+	}
+
+	return exists, nil
+}
+
 // GetJob retrieves a summarization job by job ID.
 func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*domain.SummarizeJob, error) {
 	if jobID == "" {

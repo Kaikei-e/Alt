@@ -3,9 +3,11 @@ package driver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -15,6 +17,25 @@ import (
 	"pre-processor/utils"
 	"pre-processor/utils/html_parser"
 )
+
+// isTransportBusyError reports whether the error from http.Client.Do is likely
+// caused by the upstream pipeline being busy processing an in-flight request
+// for the same article (response header timeout, context deadline, net dial
+// errors), as opposed to a permanent failure.
+func isTransportBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	// net/http emits this wrapped string when ResponseHeaderTimeout fires.
+	return strings.Contains(err.Error(), "timeout awaiting response headers")
+}
 
 type SummarizedContent struct {
 	ArticleID       string `json:"article_id"`
@@ -171,7 +192,10 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error("Failed to send request", "error", err, "api_url", apiURL)
-		return nil, err
+		if isTransportBusyError(err) {
+			return nil, fmt.Errorf("send request: %w", errors.Join(domain.ErrUpstreamBusy, err))
+		}
+		return nil, fmt.Errorf("send request: %w", err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
@@ -206,6 +230,17 @@ func ArticleSummarizerAPIClient(ctx context.Context, article *domain.Article, cf
 			// This allows the service to handle it gracefully (save placeholder summary)
 			logger.Info("Mapping 400 Bad Request to ErrContentTooShort", "article_id", article.ID)
 			return nil, ErrContentTooShort
+		}
+
+		// 502/503/504 typically mean news-creator is still digesting a concurrent
+		// request for the same article (Map-Reduce in flight); back off and
+		// recheck rather than escalate to dead_letter.
+		if resp.StatusCode == http.StatusBadGateway ||
+			resp.StatusCode == http.StatusServiceUnavailable ||
+			resp.StatusCode == http.StatusGatewayTimeout {
+			logger.Warn("news-creator returned busy status, treating as upstream busy",
+				"article_id", article.ID, "status_code", resp.StatusCode)
+			return nil, fmt.Errorf("upstream busy (status %d): %w", resp.StatusCode, domain.ErrUpstreamBusy)
 		}
 
 		return nil, fmt.Errorf("API request failed with status: %s", resp.Status)
@@ -394,6 +429,16 @@ func StreamArticleSummarizerAPIClient(ctx context.Context, article *domain.Artic
 			logger.Warn("news-creator returned 422 (streaming): content not processable by model",
 				"article_id", article.ID, "body", errorBody)
 			return nil, domain.ErrContentNotProcessable
+		}
+
+		// 502/503/504 on streaming path: upstream still digesting an earlier
+		// request. Same treatment as the blocking path.
+		if resp.StatusCode == http.StatusBadGateway ||
+			resp.StatusCode == http.StatusServiceUnavailable ||
+			resp.StatusCode == http.StatusGatewayTimeout {
+			logger.Warn("news-creator returned busy status (streaming), treating as upstream busy",
+				"article_id", article.ID, "status_code", resp.StatusCode)
+			return nil, fmt.Errorf("upstream busy (status %d): %w", resp.StatusCode, domain.ErrUpstreamBusy)
 		}
 
 		logger.Error("API returned non-200 status for streaming request",

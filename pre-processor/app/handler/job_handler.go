@@ -140,7 +140,7 @@ func (h *jobHandler) StartSummarizeQueueWorker(ctx context.Context) error {
 		Interval:        10 * time.Second,
 		InitialBackoff:  15 * time.Second,
 		MaxBackoff:      5 * time.Minute,
-		BackoffOnErrors: []error{domain.ErrServiceOverloaded},
+		BackoffOnErrors: []error{domain.ErrServiceOverloaded, domain.ErrUpstreamBusy},
 	}, func(ctx context.Context) error {
 		return h.queueWorker.ProcessQueue(ctx)
 	}, h.logger))

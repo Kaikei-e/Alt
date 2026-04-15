@@ -482,6 +482,21 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) GetPendingJobs(ctx, limit any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPendingJobs", reflect.TypeOf((*MockSummarizeJobRepository)(nil).GetPendingJobs), ctx, limit)
 }
 
+// HasInFlightJob mocks base method.
+func (m *MockSummarizeJobRepository) HasInFlightJob(ctx context.Context, articleID string, since time.Time) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasInFlightJob", ctx, articleID, since)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasInFlightJob indicates an expected call of HasInFlightJob.
+func (mr *MockSummarizeJobRepositoryMockRecorder) HasInFlightJob(ctx, articleID, since any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasInFlightJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).HasInFlightJob), ctx, articleID, since)
+}
+
 // HasRecentSuccessfulJob mocks base method.
 func (m *MockSummarizeJobRepository) HasRecentSuccessfulJob(ctx context.Context, articleID string, since time.Time) (bool, error) {
 	m.ctrl.T.Helper()

@@ -59,6 +59,29 @@ func TestShouldQueueSummarizeJob(t *testing.T) {
 		require.Equal(t, "recent_success", reason)
 	})
 
+	t.Run("skips when an in-flight job for the article exists", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+
+		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-inflight").Return(false, nil)
+		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-inflight", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-inflight", gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, since time.Time) (bool, error) {
+				require.WithinDuration(t, time.Now().Add(-10*time.Minute), since, 2*time.Second)
+				return true, nil
+			},
+		)
+
+		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-inflight", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
+
+		require.NoError(t, err)
+		require.False(t, shouldQueue)
+		require.Equal(t, "in_flight", reason)
+	})
+
 	t.Run("allows queue creation when no existing summary or recent success", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -68,6 +91,7 @@ func TestShouldQueueSummarizeJob(t *testing.T) {
 
 		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-3").Return(false, nil)
 		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-3", gomock.Any()).Return(false, nil)
+		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-3", gomock.Any()).Return(false, nil)
 
 		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-3", mockSummaryRepo, mockJobRepo, testQueueGuardLogger())
 

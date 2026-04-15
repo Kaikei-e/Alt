@@ -233,12 +233,7 @@ func (r *externalAPIRepository) getSystemUserIDOnce(ctx context.Context) (string
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// alt-backend /v1/internal/* requires X-Service-Token (ADR-000618).
-	// Empty token is left out so test configurations without a token keep
-	// working; alt-backend will still reject the call in that case.
-	if token := r.config.AltService.ServiceToken; token != "" {
-		req.Header.Set("X-Service-Token", token)
-	}
+	// Authentication is established at the TLS transport layer (mTLS).
 
 	resp, err := r.client.Do(req)
 	if err != nil {

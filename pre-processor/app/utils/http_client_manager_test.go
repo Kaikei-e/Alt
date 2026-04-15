@@ -111,6 +111,34 @@ func TestHTTPClientManager_GetFeedClient(t *testing.T) {
 	}
 }
 
+func TestHTTPClientManager_ResponseHeaderTimeoutPerClient(t *testing.T) {
+	manager := NewHTTPClientManager()
+
+	t.Run("summary client disables ResponseHeaderTimeout (context-driven)", func(t *testing.T) {
+		client := manager.GetSummaryClient()
+		require.NotNil(t, client)
+		transport := client.Transport.(*optimizedTransport)
+		assert.Equal(t, time.Duration(0), transport.ResponseHeaderTimeout,
+			"summary path runs Map-Reduce that may exceed any fixed header timeout; rely on context timeout instead")
+	})
+
+	t.Run("default client keeps 20s ResponseHeaderTimeout", func(t *testing.T) {
+		client := manager.GetDefaultClient()
+		require.NotNil(t, client)
+		transport := client.Transport.(*optimizedTransport)
+		assert.Equal(t, 20*time.Second, transport.ResponseHeaderTimeout,
+			"non-summary callers keep the short header timeout to avoid tying up slots on slow peers")
+	})
+
+	t.Run("feed client keeps 20s ResponseHeaderTimeout", func(t *testing.T) {
+		client := manager.GetFeedClient()
+		require.NotNil(t, client)
+		transport := client.Transport.(*optimizedTransport)
+		assert.Equal(t, 20*time.Second, transport.ResponseHeaderTimeout,
+			"feed fetching uses the short header timeout")
+	})
+}
+
 func TestHTTPClientManager_Singleton(t *testing.T) {
 	t.Run("should return same instance for multiple calls", func(t *testing.T) {
 		manager1 := NewHTTPClientManager()

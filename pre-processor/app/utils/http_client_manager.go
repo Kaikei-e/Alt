@@ -38,10 +38,12 @@ func NewHTTPClientManager() *HTTPClientManager {
 }
 
 func (m *HTTPClientManager) init() {
-	m.defaultClient = m.createOptimizedClient(30 * time.Second)
-	// Summary client: Client.Timeout=0 to delegate timeout control to context.WithTimeout in driver/summarizer_api.go (NEWS_CREATOR_TIMEOUT, default 600s)
-	m.summaryClient = m.createOptimizedClient(0)
-	m.feedClient = m.createOptimizedClient(15 * time.Second)
+	const shortResponseHeaderTimeout = 20 * time.Second
+	m.defaultClient = m.createOptimizedClient(30*time.Second, shortResponseHeaderTimeout)
+	// Summary client: Client.Timeout=0 to delegate timeout control to context.WithTimeout in driver/summarizer_api.go (NEWS_CREATOR_TIMEOUT, default 600s).
+	// ResponseHeaderTimeout=0 (disabled) because hierarchical Map-Reduce summarization in news-creator can take several minutes; a short per-header timeout causes client-side retry storms while the upstream request continues in flight.
+	m.summaryClient = m.createOptimizedClient(0, 0)
+	m.feedClient = m.createOptimizedClient(15*time.Second, shortResponseHeaderTimeout)
 }
 
 // GetDefaultClient returns the default HTTP client
@@ -59,10 +61,12 @@ func (m *HTTPClientManager) GetFeedClient() *http.Client {
 	return m.feedClient
 }
 
-func (m *HTTPClientManager) createOptimizedClient(timeout time.Duration) *http.Client {
+func (m *HTTPClientManager) createOptimizedClient(timeout, responseHeaderTimeout time.Duration) *http.Client {
 	// Layered timeouts: Client.Timeout caps the whole request lifecycle, while
 	// Transport fields bound each phase so a slow peer cannot tie up a slot
 	// (Cloudflare's "net/http default will break your production" pattern).
+	// ResponseHeaderTimeout is parameterized because summary callers stream
+	// from a multi-minute Map-Reduce pipeline and need it disabled.
 	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
 	transport := &optimizedTransport{
 		Transport: &http.Transport{
@@ -72,7 +76,7 @@ func (m *HTTPClientManager) createOptimizedClient(timeout time.Duration) *http.C
 			MaxIdleConnsPerHost:   10,
 			IdleConnTimeout:       90 * time.Second,
 			TLSHandshakeTimeout:   5 * time.Second,
-			ResponseHeaderTimeout: 20 * time.Second,
+			ResponseHeaderTimeout: responseHeaderTimeout,
 			ExpectContinueTimeout: 1 * time.Second,
 			DisableKeepAlives:     false,
 			DisableCompression:    false,

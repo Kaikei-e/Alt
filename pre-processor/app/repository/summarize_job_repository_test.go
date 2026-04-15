@@ -69,6 +69,34 @@ func TestSummarizeJobRepository_HasRecentSuccessfulJob(t *testing.T) {
 	})
 }
 
+func TestSummarizeJobRepository_HasInFlightJob(t *testing.T) {
+	t.Run("should handle nil database gracefully", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		exists, err := repo.HasInFlightJob(context.Background(), "test-article-id", time.Now().Add(-10*time.Minute))
+
+		assert.Error(t, err)
+		assert.False(t, exists)
+	})
+
+	t.Run("should reject empty article ID", func(t *testing.T) {
+		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
+
+		exists, err := repo.HasInFlightJob(context.Background(), "", time.Now().Add(-10*time.Minute))
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "article ID cannot be empty")
+		assert.False(t, exists)
+	})
+
+	// Note: Integration tests should verify:
+	// - Pending jobs within the window are reported as in-flight
+	// - Running jobs within the window are reported as in-flight
+	// - Jobs whose updated_at is older than the window are excluded (stale)
+	// - Jobs for other article_ids are excluded
+	// - Completed / failed / dead_letter jobs are excluded
+}
+
 func TestSummarizeJobRepository_GetJob(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())

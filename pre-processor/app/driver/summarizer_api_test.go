@@ -54,6 +54,49 @@ func TestArticleSummarizerAPIClient_Returns429(t *testing.T) {
 	})
 }
 
+func TestArticleSummarizerAPIClient_UpstreamBusyClassification(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+	}{
+		{name: "502 Bad Gateway (queue-full fallthrough / LLM RuntimeError)", statusCode: http.StatusBadGateway},
+		{name: "503 Service Unavailable", statusCode: http.StatusServiceUnavailable},
+		{name: "504 Gateway Timeout", statusCode: http.StatusGatewayTimeout},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				_, _ = w.Write([]byte(`{"error": "busy"}`))
+			}))
+			defer server.Close()
+
+			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+			cfg := &config.Config{
+				NewsCreator: config.NewsCreatorConfig{
+					Host:    server.URL,
+					APIPath: "/api/v1/summarize",
+					Timeout: 5 * 1_000_000_000,
+				},
+			}
+
+			article := &domain.Article{
+				ID:      "test-article-busy",
+				Content: strings.Repeat("Test content for summarization. ", 10),
+			}
+
+			_, err := ArticleSummarizerAPIClient(context.Background(), article, cfg, logger, "low")
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !errors.Is(err, domain.ErrUpstreamBusy) {
+				t.Errorf("expected ErrUpstreamBusy, got: %v", err)
+			}
+		})
+	}
+}
+
 // TestTitleFallback tests that title-based fallback is used when content is too short
 func TestTitleFallback(t *testing.T) {
 	t.Run("short content with long title uses title", func(t *testing.T) {

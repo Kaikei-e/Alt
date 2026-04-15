@@ -140,12 +140,13 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 			}
 
 			if err := w.processJob(ctx, job); err != nil {
-				if errors.Is(err, domain.ErrServiceOverloaded) {
+				if errors.Is(err, domain.ErrServiceOverloaded) || errors.Is(err, domain.ErrUpstreamBusy) {
 					overloadOnce.Do(func() {
 						overloaded.Store(true)
-						w.logger.WarnContext(ctx, "downstream service overloaded, backing off queue worker",
+						w.logger.WarnContext(ctx, "downstream service busy, backing off queue worker",
 							"job_id", job.JobID,
-							"article_id", job.ArticleID)
+							"article_id", job.ArticleID,
+							"error", err)
 					})
 					continue
 				}
@@ -178,6 +179,10 @@ func (w *SummarizeQueueWorker) ProcessQueue(ctx context.Context) error {
 	wg.Wait()
 
 	if overloaded.Load() {
+		// Returning ErrServiceOverloaded keeps the existing ticker backoff path;
+		// ErrUpstreamBusy is treated as equivalent here so callers (handler)
+		// can rely on a single sentinel while retaining the distinct driver-
+		// level diagnostic in logs.
 		return domain.ErrServiceOverloaded
 	}
 
@@ -297,6 +302,29 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 		// - Otherwise -> pending (will be retried)
 		nextRetryCount := job.RetryCount + 1
 		if nextRetryCount >= job.MaxRetries {
+			// When the upstream is busy, an earlier concurrent request for the
+			// same article may have succeeded while the client timed out.
+			// Before escalating to dead_letter, re-check whether a summary
+			// was actually persisted; if so, close the job as Completed.
+			if w.summaryRepo != nil {
+				if exists, existsErr := w.summaryRepo.Exists(ctx, job.ArticleID); existsErr == nil && exists {
+					w.logger.WarnContext(ctx, "upstream already persisted summary; closing job as completed instead of dead_letter",
+						"job_id", job.JobID,
+						"article_id", job.ArticleID,
+						"upstream_error", err)
+					if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, "", "upstream completed concurrently"); updateErr != nil {
+						w.logger.ErrorContext(ctx, "failed to update job status to completed after recheck", "error", updateErr, "job_id", job.JobID)
+					}
+					if errors.Is(err, domain.ErrUpstreamBusy) {
+						return domain.ErrUpstreamBusy
+					}
+					return nil
+				} else if existsErr != nil {
+					w.logger.WarnContext(ctx, "failed to recheck summary existence before dead_letter",
+						"error", existsErr, "article_id", job.ArticleID)
+				}
+			}
+
 			w.logger.WarnContext(ctx, "job exceeded max retries, moving to dead_letter",
 				"job_id", job.JobID,
 				"article_id", job.ArticleID,

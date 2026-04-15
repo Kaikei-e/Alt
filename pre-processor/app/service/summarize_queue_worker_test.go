@@ -652,6 +652,10 @@ func (m *stubJobRepoWithEnqueue) HasRecentSuccessfulJob(_ context.Context, artic
 	return m.recentSuccessMap[articleID], nil
 }
 
+func (m *stubJobRepoWithEnqueue) HasInFlightJob(_ context.Context, _ string, _ time.Time) (bool, error) {
+	return false, nil
+}
+
 func (m *stubJobRepoWithEnqueue) CreateJob(_ context.Context, articleID string) (string, error) {
 	m.createJobCalls = append(m.createJobCalls, articleID)
 	return uuid.New().String(), nil
@@ -982,6 +986,111 @@ func (m *stubAPIRepoContentTooLongThenSuccess) SummarizeArticle(_ context.Contex
 		return nil, domain.ErrContentTooLong
 	}
 	return &domain.SummarizedContent{SummaryJapanese: "テスト要約"}, nil
+}
+
+// stubAPIRepoUpstreamBusy returns ErrUpstreamBusy for SummarizeArticle.
+type stubAPIRepoUpstreamBusy struct {
+	repository.ExternalAPIRepository
+	summarizeCalls int
+}
+
+func (m *stubAPIRepoUpstreamBusy) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
+	m.summarizeCalls++
+	return nil, domain.ErrUpstreamBusy
+}
+
+// stubSummaryRepoExists reports Exists based on a preset map and tracks calls.
+type stubSummaryRepoExists struct {
+	repository.SummaryRepository
+	existsMap    map[string]bool
+	existsCalls  int
+	createCalls  int
+	createdItems []*domain.ArticleSummary
+}
+
+func (m *stubSummaryRepoExists) Exists(_ context.Context, articleID string) (bool, error) {
+	m.existsCalls++
+	return m.existsMap[articleID], nil
+}
+
+func (m *stubSummaryRepoExists) Create(_ context.Context, s *domain.ArticleSummary) error {
+	m.createCalls++
+	m.createdItems = append(m.createdItems, s)
+	return nil
+}
+
+func TestSummarizeQueueWorker_ProcessQueue_UpstreamBusy_TriggersBackoff(t *testing.T) {
+	t.Run("ErrUpstreamBusy from API halts the batch with ErrServiceOverloaded", func(t *testing.T) {
+		ctx := context.Background()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: uuid.New(), ArticleID: "article-1", MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-2", MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoUpstreamBusy{}
+		summaryRepo := &stubSummaryRepoExists{existsMap: map[string]bool{}}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		err := worker.ProcessQueue(ctx)
+
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, domain.ErrServiceOverloaded) || errors.Is(err, domain.ErrUpstreamBusy),
+			"upstream busy should trigger backoff, got: %v", err)
+		assert.Equal(t, 1, apiRepo.summarizeCalls,
+			"should stop after first upstream-busy response")
+	})
+}
+
+func TestSummarizeQueueWorker_ProcessQueue_DeadLetterRechecksSummaryExists(t *testing.T) {
+	t.Run("marks job Completed instead of dead_letter when summary already exists upstream", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		// Final attempt: retry_count=2, max_retries=3 -> next failure would dead_letter
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-saved", RetryCount: 2, MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoUpstreamBusy{}
+		summaryRepo := &stubSummaryRepoExists{existsMap: map[string]bool{"article-saved": true}}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		_ = worker.ProcessQueue(ctx)
+
+		assert.GreaterOrEqual(t, summaryRepo.existsCalls, 1, "should recheck summaryRepo.Exists before dead_letter")
+		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
+		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status,
+			"should mark as Completed when upstream summary is already persisted")
+	})
+
+	t.Run("falls through to Failed when summary does not exist", func(t *testing.T) {
+		ctx := context.Background()
+		jobID := uuid.New()
+
+		jobs := []*domain.SummarizeJob{
+			{JobID: jobID, ArticleID: "article-missing", RetryCount: 2, MaxRetries: 3},
+		}
+
+		jobRepo := &stubJobRepoTracking{jobs: jobs}
+		articleRepo := &stubArticleRepoForWorker{}
+		apiRepo := &stubAPIRepoUpstreamBusy{}
+		summaryRepo := &stubSummaryRepoExists{existsMap: map[string]bool{}}
+
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger(), 10)
+
+		_ = worker.ProcessQueue(ctx)
+
+		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
+		assert.Equal(t, domain.SummarizeJobStatusFailed, jobRepo.updateCalls[0].status,
+			"should mark as Failed (repository promotes to dead_letter) when no persisted summary")
+	})
 }
 
 func TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency(t *testing.T) {

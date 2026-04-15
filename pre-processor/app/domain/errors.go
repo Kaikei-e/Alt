@@ -49,4 +49,11 @@ var (
 
 	// ErrServiceOverloaded indicates downstream service returned 429 (queue full)
 	ErrServiceOverloaded = errors.New("downstream service overloaded")
+
+	// ErrUpstreamBusy indicates the downstream summarization pipeline is likely
+	// still processing an earlier request for the same article (502/503/504 or
+	// client-side header/context timeout). Treated as retryable with backoff,
+	// and signals the worker to re-check whether the original request
+	// succeeded before moving the job to dead_letter.
+	ErrUpstreamBusy = errors.New("upstream summarization pipeline busy")
 )
