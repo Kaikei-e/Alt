@@ -50,6 +50,11 @@ fn run_healthcheck() -> i32 {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Install rustls default crypto provider (required by rustls 0.23 when
+    // multiple providers may be linked transitively, e.g. via reqwest +
+    // axum-server). Ignore error if already installed by another path.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     // Handle healthcheck subcommand
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 && args[1] == "healthcheck" {
