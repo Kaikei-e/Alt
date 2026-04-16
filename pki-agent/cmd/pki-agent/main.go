@@ -7,6 +7,12 @@
 //   - Tick on startup (issues cert if missing/expired).
 //   - Tick on TICK_INTERVAL (default 5m). At ~66% of cert lifetime, reissue.
 //   - SIGTERM/SIGINT drain the ticker and shut down the metrics server.
+//   - Any long-lived server goroutine (metrics, optional TLS reverse proxy)
+//     exiting with a non-ErrServerClosed error is fatal to the whole
+//     process. Docker's `restart: unless-stopped` policy then respawns the
+//     container so it rejoins its parent service's netns. This avoids the
+//     silent-listener-death failure mode where the container stayed marked
+//     healthy while :9443 had stopped serving.
 //
 // Replaces the compose-embedded shell cert-init + cert-renewer pair.
 package main
@@ -14,7 +20,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -32,11 +37,13 @@ import (
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		healthcheck()
+		if err := runHealthcheck(os.Getenv("METRICS_ADDR"), os.Getenv("PROXY_LISTEN")); err != nil {
+			fmt.Fprintln(os.Stderr, "healthcheck:", err)
+			os.Exit(1)
+		}
 		return
 	}
 
-	flag.Parse()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
@@ -83,7 +90,12 @@ func main() {
 		slog.Info("initial tick ok", "state", state.String())
 	}
 
-	// Metrics + health server.
+	// serverErr collects the first non-ErrServerClosed exit from any
+	// long-lived server goroutine. Buffered so a goroutine exit does not
+	// block on an unselected send. We treat any such exit as fatal (see
+	// package doc) so Docker restart-unless-stopped respawns the container.
+	serverErr := make(chan error, 2)
+
 	srv := &http.Server{
 		Addr:              cfg.MetricsAddr,
 		Handler:           handler.NewMux(obs),
@@ -92,13 +104,14 @@ func main() {
 	go func() {
 		slog.Info("metrics server listening", "addr", cfg.MetricsAddr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("metrics server", "err", err)
+			serverErr <- fmt.Errorf("metrics server: %w", err)
+			return
 		}
 	}()
 
-	// Optional TLS reverse proxy (replaces nginx TLS sidecar for Python services).
+	var proxySrv *http.Server
 	if cfg.ProxyListen != "" {
-		proxySrv, err := handler.NewTLSProxy(handler.ProxyConfig{
+		proxySrv, err = handler.NewTLSProxy(handler.ProxyConfig{
 			Listen:       cfg.ProxyListen,
 			Upstream:     cfg.ProxyUpstream,
 			CertPath:     cfg.CertPath,
@@ -114,9 +127,20 @@ func main() {
 		go func() {
 			slog.Info("TLS reverse proxy listening", "addr", cfg.ProxyListen, "upstream", cfg.ProxyUpstream)
 			if err := proxySrv.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				slog.Error("proxy server", "err", err)
+				serverErr <- fmt.Errorf("proxy server: %w", err)
+				return
 			}
 		}()
+	}
+
+	shutdown := func(code int) {
+		shutdownCtx, c := context.WithTimeout(context.Background(), 10*time.Second)
+		defer c()
+		_ = srv.Shutdown(shutdownCtx)
+		if proxySrv != nil {
+			_ = proxySrv.Shutdown(shutdownCtx)
+		}
+		os.Exit(code)
 	}
 
 	// Ticker loop with jitter-free fixed interval. Rotation is idempotent
@@ -128,10 +152,15 @@ func main() {
 		select {
 		case <-ctx.Done():
 			slog.Info("shutting down")
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			_ = srv.Shutdown(shutdownCtx)
-			cancel()
-			return
+			shutdown(0)
+		case err := <-serverErr:
+			// A server goroutine has exited unexpectedly. Treat as fatal
+			// so Docker respawns the container. Catching this here (rather
+			// than letting the goroutine die quietly) is the whole point of
+			// the refactor: silent-death was the root cause of the
+			// AcolyteService/ListReports 502 incident.
+			slog.Error("server exited — terminating", "err", err)
+			shutdown(4)
 		case <-ticker.C:
 			tickCtx, tickCancel := context.WithTimeout(ctx, 30*time.Second)
 			state, err := rotator.Tick(tickCtx, time.Now())
@@ -144,30 +173,6 @@ func main() {
 			consecutiveFailures = 0
 			slog.Info("tick ok", "state", state.String())
 		}
-	}
-}
-
-// healthcheck is invoked as the Docker HEALTHCHECK command. It talks to the
-// in-process /healthz to get the agent's view. Plain HTTP to loopback.
-func healthcheck() {
-	addr := os.Getenv("METRICS_ADDR")
-	if addr == "" {
-		addr = ":9510"
-	}
-	if addr[0] == ':' {
-		addr = "127.0.0.1" + addr
-	}
-	url := "http://" + addr + "/healthz"
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "healthcheck:", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintln(os.Stderr, "healthcheck: status", resp.StatusCode)
-		os.Exit(1)
 	}
 }
 

@@ -56,6 +56,14 @@ service_in_compose() {
 }
 
 # Deploy a single service by recreate, then wait for health.
+#
+# Also force-recreates the matching pki-agent-<svc> sidecar when one exists.
+# pki-agent sidecars use `network_mode: service:<svc>` so when the parent is
+# recreated the sidecar's netns pointer goes stale. Without cascading the
+# sidecar keeps a dead listener (and its /healthz stays green because it
+# probes the rotator, not the proxy socket) — the exact failure mode that
+# blackholed AcolyteService/ListReports to 502 in production. See
+# [[ADR pki-agent cascading recreate]].
 deploy_single_service() {
   local svc="$1"
   echo "  [recreate] ${svc}"
@@ -73,6 +81,20 @@ deploy_single_service() {
     return 1
   fi
   echo "    healthy"
+
+  # Cascade-recreate the pki-agent sidecar that shares this service's netns,
+  # if one is defined. Without this step the sidecar runs against a stale
+  # netns and its TLS reverse proxy silently stops serving.
+  local sidecar="pki-agent-${svc}"
+  if service_in_compose "$sidecar"; then
+    echo "  [recreate] ${sidecar} (cascaded — shared netns)"
+    "${DOCKER_BIN:-docker}" compose -f "${COMPOSE_FILE}" up -d --no-deps --force-recreate "$sidecar" || return 1
+    if ! wait_until_healthy "$sidecar"; then
+      echo "    healthcheck timeout for ${sidecar}" >&2
+      return 1
+    fi
+    echo "    healthy"
+  fi
 }
 
 # Global smoke tests — curl the edge endpoints after the full stack is rolled.
