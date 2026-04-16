@@ -2,6 +2,7 @@
 import { page } from "$app/state";
 import { goto } from "$app/navigation";
 import { onDestroy } from "svelte";
+import { MediaQuery } from "svelte/reactivity";
 import {
 	ExternalLink,
 	ArrowLeft,
@@ -28,6 +29,9 @@ let previousUrl = $state<string | null>(null);
 
 const summarizer = useSummarize();
 
+const railQuery = new MediaQuery("(min-width: 1024px)", false);
+const hasRail = $derived(railQuery.current);
+
 const fetchButtonState = $derived.by(() => {
 	if (isFetching) return "loading" as const;
 	if (contentError) return "error" as const;
@@ -48,6 +52,16 @@ const mastheadKicker = $derived(
 	sourceHost ? sourceHost.toUpperCase() : "ARTICLE",
 );
 const mastheadTitle = $derived(articleTitle ?? sourceHost ?? "Article");
+
+const readingTimeMinutes = $derived.by<number | null>(() => {
+	if (!articleContent) return null;
+	const words = articleContent
+		.replace(/<[^>]+>/g, " ")
+		.trim()
+		.split(/\s+/)
+		.filter(Boolean).length;
+	return words > 0 ? Math.max(1, Math.round(words / 240)) : null;
+});
 
 const fetchAriaLabel = $derived.by(() => {
 	switch (fetchButtonState) {
@@ -154,6 +168,88 @@ $effect(() => {
 	<title>Article — Alt</title>
 </svelte:head>
 
+{#snippet actionControls()}
+	<div class="actions-cluster">
+		<Button
+			data-testid="fetch-button"
+			aria-label={fetchAriaLabel}
+			onclick={handleFetch}
+			disabled={fetchButtonState === 'loading'}
+			variant={fetchButtonState === 'error' ? 'destructive' : 'outline'}
+			size="icon"
+			class="action-btn"
+		>
+			{#if fetchButtonState === 'loading'}
+				<Loader2 class="h-4 w-4 animate-spin" />
+				<span class="action-label">Fetching...</span>
+			{:else if fetchButtonState === 'error'}
+				<RefreshCw class="h-4 w-4" />
+				<span class="action-label">Try again</span>
+			{:else if fetchButtonState === 'success'}
+				<RefreshCw class="h-4 w-4" />
+				<span class="action-label">Re-fetch</span>
+			{:else}
+				<Download class="h-4 w-4" />
+				<span class="action-label">Fetch</span>
+			{/if}
+		</Button>
+
+		<Button
+			data-testid="summarize-button"
+			aria-label={summarizeAriaLabel}
+			onclick={handleSummarize}
+			disabled={summarizer.buttonState === 'loading' || (!articleContent && summarizer.buttonState !== 'error' && summarizer.buttonState !== 'success')}
+			variant={summarizer.buttonState === 'error' ? 'destructive' : 'default'}
+			size="icon"
+			class={summarizer.buttonState === 'error' ? 'action-btn' : 'action-btn action-btn--primary'}
+		>
+			{#if summarizer.buttonState === 'loading'}
+				<Loader2 class="h-4 w-4 animate-spin" />
+				<span class="action-label">Summarizing...</span>
+			{:else if summarizer.buttonState === 'error'}
+				<RefreshCw class="h-4 w-4" />
+				<span class="action-label">Try again</span>
+			{:else if summarizer.buttonState === 'success'}
+				<RefreshCw class="h-4 w-4" />
+				<span class="action-label">Re-summarize</span>
+			{:else}
+				<Sparkles class="h-4 w-4" />
+				<span class="action-label">Summarize</span>
+			{/if}
+		</Button>
+
+		{#if articleUrl}
+			<a
+				href={articleUrl}
+				target="_blank"
+				rel="noopener noreferrer"
+				aria-label="Open original"
+				class="action-link"
+			>
+				<ExternalLink class="h-4 w-4" />
+				<span class="action-label">Open original</span>
+			</a>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet aiSummaryBlock()}
+	{#if summarizer.summary}
+		<section class="ai-summary" data-testid="ai-summary" aria-label="AI summary">
+			<p class="ai-summary__kicker">
+				<Sparkles class="h-[0.75rem] w-[0.75rem]" />
+				<span>AI SUMMARY</span>
+			</p>
+			<div class="ai-summary__body">{summarizer.summary}</div>
+		</section>
+	{:else if summarizer.summaryError}
+		<section class="ai-summary ai-summary--error" role="alert">
+			<p class="ai-summary__kicker">SUMMARIZE ERROR</p>
+			<div class="ai-summary__body">{summarizer.summaryError}</div>
+		</section>
+	{/if}
+{/snippet}
+
 <div class="article-page">
 	<header class="action-bar" aria-label="Article actions">
 		<Button
@@ -167,129 +263,88 @@ $effect(() => {
 			<span class="action-label">Back</span>
 		</Button>
 
-		<div class="actions-right">
-			<Button
-				data-testid="fetch-button"
-				aria-label={fetchAriaLabel}
-				onclick={handleFetch}
-				disabled={fetchButtonState === 'loading'}
-				variant={fetchButtonState === 'error' ? 'destructive' : 'outline'}
-				size="icon"
-				class="action-btn"
-			>
-				{#if fetchButtonState === 'loading'}
-					<Loader2 class="h-4 w-4 animate-spin" />
-					<span class="action-label">Fetching...</span>
-				{:else if fetchButtonState === 'error'}
-					<RefreshCw class="h-4 w-4" />
-					<span class="action-label">Try again</span>
-				{:else if fetchButtonState === 'success'}
-					<RefreshCw class="h-4 w-4" />
-					<span class="action-label">Re-fetch</span>
-				{:else}
-					<Download class="h-4 w-4" />
-					<span class="action-label">Fetch</span>
-				{/if}
-			</Button>
-
-			<Button
-				data-testid="summarize-button"
-				aria-label={summarizeAriaLabel}
-				onclick={handleSummarize}
-				disabled={summarizer.buttonState === 'loading' || (!articleContent && summarizer.buttonState !== 'error' && summarizer.buttonState !== 'success')}
-				variant={summarizer.buttonState === 'error' ? 'destructive' : 'default'}
-				size="icon"
-				class={summarizer.buttonState === 'error' ? 'action-btn' : 'action-btn action-btn--primary'}
-			>
-				{#if summarizer.buttonState === 'loading'}
-					<Loader2 class="h-4 w-4 animate-spin" />
-					<span class="action-label">Summarizing...</span>
-				{:else if summarizer.buttonState === 'error'}
-					<RefreshCw class="h-4 w-4" />
-					<span class="action-label">Try again</span>
-				{:else if summarizer.buttonState === 'success'}
-					<RefreshCw class="h-4 w-4" />
-					<span class="action-label">Re-summarize</span>
-				{:else}
-					<Sparkles class="h-4 w-4" />
-					<span class="action-label">Summarize</span>
-				{/if}
-			</Button>
-
-			{#if articleUrl}
-				<a
-					href={articleUrl}
-					target="_blank"
-					rel="noopener noreferrer"
-					aria-label="Open original"
-					class="action-link"
-				>
-					<ExternalLink class="h-4 w-4" />
-					<span class="action-label">Open original</span>
-				</a>
-			{/if}
-		</div>
+		{#if !hasRail}
+			{@render actionControls()}
+		{/if}
 	</header>
 
-	<article class="article-body">
-		<PageKicker
-			testId="article-masthead"
-			kicker={mastheadKicker}
-			title={mastheadTitle}
-		/>
+	<div class="article-layout">
+		<article class="article-body">
+			<PageKicker
+				testId="article-masthead"
+				kicker={mastheadKicker}
+				title={mastheadTitle}
+			/>
 
-		{#if summarizer.summary}
-			<section class="ai-summary" data-testid="ai-summary" aria-label="AI summary">
-				<p class="ai-summary__kicker">
-					<Sparkles class="h-[0.75rem] w-[0.75rem]" />
-					<span>AI SUMMARY</span>
-				</p>
-				<div class="ai-summary__body">{summarizer.summary}</div>
-			</section>
-		{:else if summarizer.summaryError}
-			<section class="ai-summary ai-summary--error" role="alert">
-				<p class="ai-summary__kicker">SUMMARIZE ERROR</p>
-				<div class="ai-summary__body">{summarizer.summaryError}</div>
-			</section>
-		{/if}
+			{#if !hasRail}
+				{@render aiSummaryBlock()}
+			{/if}
 
-		{#if !articleUrl}
-			<div class="placeholder">
-				<p>No article URL provided. Unable to load content.</p>
-				<Button variant="outline" onclick={() => goto("/home")} class="placeholder-cta mt-1">
-					Return to Home
-				</Button>
-			</div>
-		{:else if isFetching}
-			<div class="placeholder placeholder--center">
-				<Loader2 class="h-5 w-5 animate-spin" />
-				<span>Loading article...</span>
-			</div>
-		{:else if contentError}
-			<div class="placeholder">
-				<p class="placeholder__error">{contentError}</p>
-				<Button variant="outline" onclick={() => fetchContent()} class="placeholder-cta mt-1">
-					Try again
-				</Button>
-			</div>
-		{:else if articleContent}
-			<div class="article-surface" data-testid="article-content-surface">
-				<RenderFeedDetails
-					feedDetails={{
-						content: articleContent,
-						article_id: fetchedArticleId ?? "",
-						og_image_url: "",
-						og_image_proxy_url: "",
-					}}
-					error={contentError}
-				/>
-			</div>
-		{:else}
-			<div class="placeholder">
-				<p>No content available.</p>
-			</div>
+			{#if !articleUrl}
+				<div class="placeholder">
+					<p>No article URL provided. Unable to load content.</p>
+					<Button variant="outline" onclick={() => goto("/home")} class="placeholder-cta mt-1">
+						Return to Home
+					</Button>
+				</div>
+			{:else if isFetching}
+				<div class="placeholder placeholder--center">
+					<Loader2 class="h-5 w-5 animate-spin" />
+					<span>Loading article...</span>
+				</div>
+			{:else if contentError}
+				<div class="placeholder">
+					<p class="placeholder__error">{contentError}</p>
+					<Button variant="outline" onclick={() => fetchContent()} class="placeholder-cta mt-1">
+						Try again
+					</Button>
+				</div>
+			{:else if articleContent}
+				<div class="article-surface" data-testid="article-content-surface">
+					<RenderFeedDetails
+						feedDetails={{
+							content: articleContent,
+							article_id: fetchedArticleId ?? "",
+							og_image_url: "",
+							og_image_proxy_url: "",
+						}}
+						error={contentError}
+					/>
+				</div>
+			{:else}
+				<div class="placeholder">
+					<p>No content available.</p>
+				</div>
+			{/if}
+		</article>
+
+		{#if hasRail}
+			<aside
+				class="article-rail"
+				data-testid="article-rail"
+				aria-label="Article details"
+			>
+				<section class="rail-section">
+					<h2 class="rail-kicker">Source</h2>
+					<p class="rail-value">{sourceHost || "—"}</p>
+				</section>
+
+				<section class="rail-section">
+					<h2 class="rail-kicker">Reading time</h2>
+					<p class="rail-value">
+						{readingTimeMinutes ? `${readingTimeMinutes} min` : "—"}
+					</p>
+				</section>
+
+				<section class="rail-section rail-section--actions">
+					<h2 class="rail-kicker">Actions</h2>
+					{@render actionControls()}
+				</section>
+
+				{@render aiSummaryBlock()}
+			</aside>
 		{/if}
-	</article>
+	</div>
 </div>
 
 <style>
@@ -314,7 +369,7 @@ $effect(() => {
 	border-bottom: 1px solid var(--surface-border, #c8c8c8);
 }
 
-.actions-right {
+:global(.actions-cluster) {
 	display: flex;
 	align-items: center;
 	gap: 0.25rem;
@@ -349,6 +404,12 @@ $effect(() => {
 .action-link:focus-visible {
 	background: var(--surface-hover, #f3f1ed);
 	outline: none;
+}
+
+.article-layout {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
 }
 
 .article-body {
@@ -455,6 +516,96 @@ $effect(() => {
 	.article-page {
 		max-width: 820px;
 		padding: 0 2rem 3rem;
+	}
+}
+
+/* Editorial rail — desktop progressive enhancement over ADR-000715 */
+@media (min-width: 1024px) {
+	.article-page {
+		max-width: min(100%, 96rem);
+		padding: 0 2rem 3rem;
+	}
+
+	.article-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 72ch) 20rem;
+		column-gap: 2rem;
+		align-items: start;
+	}
+
+	.article-body {
+		margin-inline: auto;
+		width: 100%;
+		max-width: 72ch;
+	}
+
+	.article-rail {
+		position: sticky;
+		top: calc(env(safe-area-inset-top, 0px) + 1rem);
+		align-self: start;
+		display: flex;
+		flex-direction: column;
+		gap: 1.25rem;
+		padding: 1.1rem 1.1rem 1.25rem;
+		background: var(--surface-2, #f5f4f1);
+		border: 1px solid var(--surface-border, #c8c8c8);
+		border-top: 3px solid var(--alt-primary, #2f4f4f);
+		max-height: calc(100vh - 2rem);
+		overflow-y: auto;
+	}
+
+	.rail-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.rail-kicker {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 0.65rem;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--alt-ash, #999999);
+	}
+
+	.rail-value {
+		margin: 0;
+		font-family: var(--font-body);
+		font-size: 0.95rem;
+		color: var(--alt-charcoal, #1a1a1a);
+		word-break: break-word;
+	}
+
+	.rail-section--actions :global(.actions-cluster) {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 0.5rem;
+		margin-left: 0;
+	}
+
+	.rail-section--actions :global(.action-btn) {
+		width: 100%;
+		justify-content: flex-start;
+	}
+
+	.rail-section--actions .rail-kicker + :global(.actions-cluster) {
+		margin-top: 0.1rem;
+	}
+
+	.rail-section--actions :global(.actions-cluster) > :global(*) {
+		width: 100%;
+	}
+
+	.rail-section--actions :global(.action-link) {
+		width: 100%;
+		justify-content: flex-start;
+	}
+
+	.article-rail .ai-summary {
+		border: 1px solid var(--surface-border, #c8c8c8);
+		border-left: 3px solid var(--alt-primary, #2f4f4f);
 	}
 }
 </style>
