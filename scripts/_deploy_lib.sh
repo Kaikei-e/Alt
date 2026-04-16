@@ -41,12 +41,26 @@ wait_until_healthy() {
   return 1
 }
 
+# Returns 0 when the service is present in the active compose file, non-zero
+# otherwise. Some pacticipants (e.g. tts-speaker, deployed on a separate GPU
+# host) live in their own compose file and must be skipped here without
+# breaking the layered rollout.
+service_in_compose() {
+  local svc="$1"
+  "${DOCKER_BIN:-docker}" compose -f "${COMPOSE_FILE}" config --services 2>/dev/null \
+    | grep -qx -- "$svc"
+}
+
 # Deploy a single service by recreate, then wait for health.
 deploy_single_service() {
   local svc="$1"
   echo "  [recreate] ${svc}"
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "    (dry-run — skipping docker compose up)"
+    return 0
+  fi
+  if ! service_in_compose "$svc"; then
+    echo "    not defined on this host — skipping recreate (record-deployment still runs)"
     return 0
   fi
   "${DOCKER_BIN:-docker}" compose -f "${COMPOSE_FILE}" up -d --no-deps --force-recreate "$svc" || return 1

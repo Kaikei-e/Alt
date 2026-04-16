@@ -58,6 +58,9 @@ tc_recreates_services_in_layered_order() {
   make_conditional_stub docker '
     if [[ "$1" == "compose" ]]; then
       case "$*" in
+        *"config --services"*)
+          printf "%s\n" step-ca kratos alt-backend news-creator nginx
+          exit 0 ;;
         *"ps"*)
           echo "running healthy"
           exit 0 ;;
@@ -82,6 +85,10 @@ tc_rolls_back_on_healthcheck_failure() {
   # docker ps returns "unhealthy" for alt-backend always -> healthcheck timeout.
   make_conditional_stub docker '
     if [[ "$1" == "compose" ]]; then
+      if [[ "$*" == *"config --services"* ]]; then
+        printf "%s\n" step-ca kratos alt-backend news-creator nginx
+        exit 0
+      fi
       if [[ "$*" == *"ps --services --filter status=running"* ]]; then
         exit 0
       fi
@@ -114,6 +121,10 @@ tc_records_deployment_on_success() {
   make_stub "pre-deploy-verify.sh" 0 ""
   make_conditional_stub docker '
     if [[ "$1" == "compose" ]]; then
+      if [[ "$*" == *"config --services"* ]]; then
+        printf "%s\n" step-ca kratos alt-backend news-creator nginx
+        exit 0
+      fi
       if [[ "$*" == *"ps"* ]]; then echo "healthy"; exit 0; fi
       exit 0
     fi
@@ -152,6 +163,10 @@ tc_skip_verify_bypasses_gate() {
   make_stub "pre-deploy-verify.sh" 3 "would fail"
   make_conditional_stub docker '
     if [[ "$1" == "compose" ]]; then
+      if [[ "$*" == *"config --services"* ]]; then
+        printf "%s\n" step-ca kratos alt-backend news-creator nginx
+        exit 0
+      fi
       if [[ "$*" == *"ps"* ]]; then echo "healthy"; exit 0; fi
       exit 0
     fi
