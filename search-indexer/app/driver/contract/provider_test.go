@@ -225,9 +225,12 @@ func TestVerifySearchIndexerProviderContracts(t *testing.T) {
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "rag-orchestrator", Latest: true},
-			&provider.ConsumerVersionSelector{Consumer: "alt-backend", Latest: true},
-			&provider.ConsumerVersionSelector{Consumer: "acolyte-orchestrator", Latest: true},
+			&provider.ConsumerVersionSelector{Consumer: "rag-orchestrator", MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: "rag-orchestrator", DeployedOrReleased: true},
+			&provider.ConsumerVersionSelector{Consumer: "alt-backend", MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: "alt-backend", DeployedOrReleased: true},
+			&provider.ConsumerVersionSelector{Consumer: "acolyte-orchestrator", MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: "acolyte-orchestrator", DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver

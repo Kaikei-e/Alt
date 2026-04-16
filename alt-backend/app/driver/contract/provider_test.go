@@ -225,7 +225,8 @@ func TestVerifyRecapWorkerContract(t *testing.T) {
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "recap-worker", Latest: true},
+			&provider.ConsumerVersionSelector{Consumer: "recap-worker", MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: "recap-worker", DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
@@ -289,7 +290,8 @@ func TestVerifyAltButterflyFacadeContract(t *testing.T) {
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "alt-butterfly-facade", Latest: true},
+			&provider.ConsumerVersionSelector{Consumer: "alt-butterfly-facade", MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: "alt-butterfly-facade", DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
@@ -349,7 +351,8 @@ func TestVerifySearchIndexerContract(t *testing.T) {
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "search-indexer", Latest: true},
+			&provider.ConsumerVersionSelector{Consumer: "search-indexer", MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: "search-indexer", DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver

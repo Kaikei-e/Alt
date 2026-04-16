@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/pact-foundation/pact-go/v2/message"
 	"github.com/pact-foundation/pact-go/v2/models"
@@ -72,14 +73,16 @@ func indexArticleEvent() *domain.Event {
 // checks that the structure matches the expected payload in the pact file.
 func TestVerifySearchIndexerMqHubMessagePact(t *testing.T) {
 	pactFile := filepath.Join(pactDir, searchIndexerProviderPact)
-	if _, err := os.Stat(pactFile); os.IsNotExist(err) {
-		t.Skipf("pact file missing: %s (run search-indexer consumer tests first)", pactFile)
+
+	brokerURL := os.Getenv("PACT_BROKER_BASE_URL")
+	if brokerURL == "" {
+		if _, err := os.Stat(pactFile); os.IsNotExist(err) {
+			t.Skipf("pact file missing: %s (run search-indexer consumer tests first)", pactFile)
+		}
 	}
 
-	verifier := provider.NewVerifier()
-	err := verifier.VerifyProvider(t, provider.VerifyRequest{
-		Provider:  "mq-hub",
-		PactFiles: []string{pactFile},
+	verifyRequest := provider.VerifyRequest{
+		Provider: "mq-hub",
 		MessageHandlers: message.Handlers{
 			"an ArticleCreated event on alt:events:articles": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
 				return eventToWireFormat(buildArticleCreatedEvent()), message.Metadata{
@@ -105,6 +108,40 @@ func TestVerifySearchIndexerMqHubMessagePact(t *testing.T) {
 				return nil, nil
 			},
 		},
-	})
+	}
+
+	if brokerURL != "" {
+		verifyRequest.BrokerURL = brokerURL
+		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
+		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
+		// Pull both the consumer's main-branch pacts and any pacts
+		// currently deployed/released so the verification result lands
+		// against both the new and the deployed consumer hash (Pact's
+		// recommended provider configuration).
+		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
+			&provider.ConsumerVersionSelector{Consumer: "search-indexer", MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: "search-indexer", DeployedOrReleased: true},
+		}
+		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
+			verifyRequest.ProviderVersion = ver
+			verifyRequest.PublishVerificationResults = true
+		}
+		if branch := os.Getenv("PACT_PROVIDER_BRANCH"); branch != "" {
+			verifyRequest.ProviderBranch = branch
+		}
+		if os.Getenv("PACT_DISABLE_PENDING") != "true" {
+			verifyRequest.EnablePending = true
+		}
+		if since := os.Getenv("PACT_INCLUDE_WIP_SINCE"); since != "" {
+			if t, err := time.Parse(time.RFC3339, since); err == nil {
+				verifyRequest.IncludeWIPPactsSince = &t
+			}
+		}
+	} else {
+		verifyRequest.PactFiles = []string{pactFile}
+	}
+
+	verifier := provider.NewVerifier()
+	err := verifier.VerifyProvider(t, verifyRequest)
 	require.NoError(t, err)
 }

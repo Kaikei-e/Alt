@@ -134,8 +134,15 @@ func TestVerifyAltBackendContract(t *testing.T) {
 		verifyRequest.BrokerURL = brokerURL
 		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
+		// Per Pact's recommended provider-verification configuration, pull
+		// both the consumer's main-branch pacts and any pacts currently
+		// deployed/released. Without the deployedOrReleased selector the
+		// broker never records a verification for the currently-deployed
+		// consumer version, so can-i-deploy returns "unknown" after a SHA
+		// bump even when the pact contents are unchanged.
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "alt-backend", Latest: true},
+			&provider.ConsumerVersionSelector{Consumer: "alt-backend", MainBranch: true},
+			&provider.ConsumerVersionSelector{Consumer: "alt-backend", DeployedOrReleased: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver

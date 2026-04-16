@@ -156,7 +156,17 @@ def test_verify_bff_contract(provider_url: tuple[str, int]):
             password=PACT_BROKER_PASSWORD,
             selector=True,
         )
-        builder = builder.consumer_version(consumer="alt-butterfly-facade", latest=True)
+        # Pact's recommended provider configuration: include both the
+        # main-branch pacts (new contracts) and the currently deployed or
+        # released pacts. Without deployed_or_released, the broker never
+        # records a verification against the consumer version currently
+        # in production after a SHA bump, so can-i-deploy stays "unknown".
+        builder = builder.consumer_version(
+            consumer="alt-butterfly-facade", main_branch=True,
+        )
+        builder = builder.consumer_version(
+            consumer="alt-butterfly-facade", deployed_or_released=True,
+        )
         builder.build()
 
         if PACT_PROVIDER_VERSION:

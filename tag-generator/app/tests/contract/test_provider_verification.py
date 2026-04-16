@@ -155,10 +155,21 @@ def _configure_verifier(
             password=PACT_BROKER_PASSWORD,
             selector=True,
         )
+        # Pact's recommended provider configuration: include both the
+        # main-branch pacts (new contracts) and the currently deployed or
+        # released pacts. Without deployed_or_released, the broker never
+        # records a verification against the consumer version currently
+        # in production after a SHA bump, so can-i-deploy stays "unknown".
         if consumer_name:
-            builder = builder.consumer_version(consumer=consumer_name, latest=True)
+            builder = builder.consumer_version(
+                consumer=consumer_name, main_branch=True,
+            )
+            builder = builder.consumer_version(
+                consumer=consumer_name, deployed_or_released=True,
+            )
         else:
-            builder = builder.consumer_version(latest=True)
+            builder = builder.consumer_version(main_branch=True)
+            builder = builder.consumer_version(deployed_or_released=True)
         builder.build()
 
         if PACT_PROVIDER_VERSION:
