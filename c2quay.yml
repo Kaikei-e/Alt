@@ -1,0 +1,43 @@
+compose:
+  files:
+    - compose/compose.yaml
+  project_name: alt
+
+broker:
+  base_url: http://localhost:9292
+  # Credentials live in env:
+  #   PACT_BROKER_USERNAME / PACT_BROKER_PASSWORD
+  # scripts/deploy.sh exports these from secrets/pact_broker_basic_auth_password.txt.
+
+versioning:
+  strategy: git_sha
+
+deploy:
+  wait: true
+  wait_timeout: 180s
+  smoke:
+    command: ./scripts/smoke.sh
+    timeout: 30s
+    env:
+      SMOKE_WAIT_SECONDS: "10"
+
+environments:
+  production:
+    all_or_nothing: true
+    services:
+      alt-backend:          { pacticipant: alt-backend }
+      auth-hub:             { pacticipant: auth-hub }
+      pre-processor:        { pacticipant: pre-processor }
+      search-indexer:       { pacticipant: search-indexer }
+      mq-hub:               { pacticipant: mq-hub }
+      rag-orchestrator:     { pacticipant: rag-orchestrator }
+      recap-worker:         { pacticipant: recap-worker }
+      recap-subworker:      { pacticipant: recap-subworker }
+      recap-evaluator:      { pacticipant: recap-evaluator }
+      news-creator:         { pacticipant: news-creator }
+      tag-generator:        { pacticipant: tag-generator }
+      acolyte-orchestrator: { pacticipant: acolyte-orchestrator }
+      alt-butterfly-facade: { pacticipant: alt-butterfly-facade }
+      # tts-speaker runs on a separate GPU host. record-deployment for it is
+      # handled by scripts/record-remote-pacticipant.sh at the tail of
+      # scripts/deploy.sh.

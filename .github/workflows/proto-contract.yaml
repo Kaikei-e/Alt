@@ -13,8 +13,8 @@
 #
 # Enforcement: see docs/runbooks/pact-broker-ops.md for the branch-protection
 # recipe. PR-level verification here is paired with a local `can-i-deploy`
-# gate (scripts/pre-deploy-verify.sh) run on the deploy host itself; the
-# production gate and record-deployment are intentionally kept off GitHub
+# gate (c2quay, invoked via scripts/deploy.sh) run on the deploy host itself;
+# the production gate and record-deployment are intentionally kept off GitHub
 # Actions (OSS repo — no prod credentials or state in CI).
 
 name: Proto & Contract Validation

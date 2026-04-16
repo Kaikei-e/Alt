@@ -316,4 +316,25 @@ rust-clean:
 	@cd recap-worker/recap-worker && cargo clean 2>/dev/null && echo "    cleaned." || echo "    skipped (no target/)."
 	@echo "Rust cleanup complete."
 
-.PHONY: clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability rust-clean
+# c2quay — Pact-gated deployer used by scripts/deploy.sh.
+# Downloads, checksums, and installs the release tarball to INSTALL_DIR
+# (default /usr/local/bin, sudo required for that path).
+C2QUAY_VERSION ?= v0.4.2
+C2QUAY_OS ?= linux
+C2QUAY_ARCH ?= amd64
+C2QUAY_INSTALL_DIR ?= /usr/local/bin
+
+install-c2quay:
+	@echo "Installing c2quay $(C2QUAY_VERSION) ($(C2QUAY_OS)/$(C2QUAY_ARCH)) to $(C2QUAY_INSTALL_DIR)..."
+	@tmp="$$(mktemp -d)"; \
+	  tarball="c2quay_$(C2QUAY_OS)_$(C2QUAY_ARCH).tar.gz"; \
+	  base="https://github.com/Kaikei-e/c2quay/releases/download/$(C2QUAY_VERSION)"; \
+	  curl -fsSL -o "$$tmp/$$tarball"    "$$base/$$tarball"; \
+	  curl -fsSL -o "$$tmp/checksums.txt" "$$base/checksums.txt"; \
+	  ( cd "$$tmp" && grep " $$tarball$$" checksums.txt | sha256sum -c - ); \
+	  tar -xzf "$$tmp/$$tarball" -C "$$tmp" c2quay; \
+	  install -m 0755 "$$tmp/c2quay" "$(C2QUAY_INSTALL_DIR)/c2quay"; \
+	  rm -rf "$$tmp"
+	@c2quay version
+
+.PHONY: clean clean-env generate-mocks backup-db dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability rust-clean install-c2quay

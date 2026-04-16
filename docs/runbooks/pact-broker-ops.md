@@ -22,11 +22,8 @@ docker compose -f compose/compose.yaml -p alt up -d pact-db pact-broker
 ./scripts/pact-check.sh           # ファイルモード (Broker 不要)
 ./scripts/pact-check.sh --broker  # Broker モード (publish + can-i-deploy)
 
-# デプロイ直前ゲート (本番ホスト専用・手動実行)
-./scripts/pre-deploy-verify.sh    # heartbeat → pact-check --broker → can-i-deploy ×14
-
-# 実際のデプロイ
-./scripts/deploy.sh production    # gate → rolling recreate → smoke → record-deployment
+# 実際のデプロイ (本番ホスト専用・手動実行)
+./scripts/deploy.sh production    # pact-check --broker → c2quay deploy → tts-speaker record-deployment
 
 # Broker UI 認証
 curl -u pact:$(cat secrets/pact_broker_basic_auth_password.txt) \
@@ -35,7 +32,10 @@ curl -u pact:$(cat secrets/pact_broker_basic_auth_password.txt) \
 
 > **本番ゲートは単一ホストが唯一の真実ソース**。ADR-000740 は CI で
 > `can-i-deploy` を回す設計だったが、OSS リポで機微情報を GitHub Actions
-> に置かない方針に合わせ、`pre-deploy-verify.sh` + `deploy.sh` に移管済。
+> に置かない方針に合わせ `deploy.sh` に移管済。現在は
+> [c2quay](https://github.com/Kaikei-e/c2quay) が can-i-deploy ×13 と
+> `docker compose up --wait` と record-deployment を担い、別ホストの
+> tts-speaker だけ `scripts/record-remote-pacticipant.sh` が打刻する。
 > 詳細は [[deploy]] runbook を参照。
 
 ## 1. Broker 起動と認証
