@@ -47,8 +47,12 @@ wait_until_healthy() {
 # breaking the layered rollout.
 service_in_compose() {
   local svc="$1"
-  "${DOCKER_BIN:-docker}" compose -f "${COMPOSE_FILE}" config --services 2>/dev/null \
-    | grep -qx -- "$svc"
+  # Read the full service list into a variable before grep-ing so `set -o
+  # pipefail` does not trip on SIGPIPE when grep -q exits early for services
+  # near the top of the list.
+  local services
+  services="$("${DOCKER_BIN:-docker}" compose -f "${COMPOSE_FILE}" config --services 2>/dev/null)" || return 1
+  grep -qx -- "$svc" <<<"$services"
 }
 
 # Deploy a single service by recreate, then wait for health.
