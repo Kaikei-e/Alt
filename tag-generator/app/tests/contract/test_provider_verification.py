@@ -162,10 +162,12 @@ def _configure_verifier(
         # in production after a SHA bump, so can-i-deploy stays "unknown".
         if consumer_name:
             builder = builder.consumer_version(
-                consumer=consumer_name, main_branch=True,
+                consumer=consumer_name,
+                main_branch=True,
             )
             builder = builder.consumer_version(
-                consumer=consumer_name, deployed_or_released=True,
+                consumer=consumer_name,
+                deployed_or_released=True,
             )
         else:
             builder = builder.consumer_version(main_branch=True)

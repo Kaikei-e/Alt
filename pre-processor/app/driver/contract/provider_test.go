@@ -7,6 +7,7 @@
 //   - Summarize          — synchronous summarize-on-demand
 //   - QueueSummarize     — async enqueue returning jobId
 //   - GetSummarizeStatus — poll for completion + summary
+//
 // Authentication is handled at the transport layer (mTLS peer-identity
 // allowlist) in production; the stub accepts any caller because the pact
 // replay does not present a TLS peer.

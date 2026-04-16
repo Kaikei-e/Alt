@@ -40,9 +40,9 @@ ENV NODE_ENV=production \
 RUN addgroup -g 1001 -S sveltekit && \
     adduser -u 1001 -S -G sveltekit sveltekit
 
-COPY --link --from=builder --chown=sveltekit:sveltekit /app/build ./build
-COPY --link --from=install --chown=sveltekit:sveltekit /temp/prod/node_modules ./node_modules
-COPY --link --chown=sveltekit:sveltekit package.json ./
+COPY --link --from=builder --chown=1001:1001 /app/build ./build
+COPY --link --from=install --chown=1001:1001 /temp/prod/node_modules ./node_modules
+COPY --link --chown=1001:1001 package.json ./
 
 USER sveltekit
 EXPOSE 4173
