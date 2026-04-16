@@ -31,8 +31,9 @@ wait_until_healthy() {
     if echo "$output" | grep -qE '\bhealthy\b'; then
       return 0
     fi
-    # If the service has no healthcheck declared, docker reports "running" only.
-    if echo "$output" | grep -qE '\brunning\b'; then
+    # If the service has no healthcheck declared, docker reports state as
+    # "running" (docker CLI) or "Up" (docker compose ps table). Accept both.
+    if echo "$output" | grep -qE '\brunning\b|\bUp\b'; then
       return 0
     fi
     sleep 1
