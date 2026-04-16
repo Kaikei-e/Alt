@@ -112,16 +112,18 @@ services:
         max-file: "3"
 
   # --- pki-agent sidecars (one per east-west consumer) ----------------------
-  # TODO(Phase 2.5): migrate STEP_CA_PROVISIONER from "bootstrap" to
-  # "pki-agent" with x509.allowedNames locking down the 8 CNs. See
-  # docs/review/pki-agent-security-audit-2026-04-16.md F-001 / F-002.
+  # Each sidecar uses the dedicated `pki-agent` JWK provisioner. step-ca
+  # enforces an authority-level X.509 policy (allow.dns + allow.cn = 8 east-west
+  # subjects + localhost) so a compromised pki-agent cannot forge certs for
+  # arbitrary CNs. See docs/review/pki-agent-security-audit-2026-04-16.md
+  # F-001 / F-002 and `step-ca-provisioner-init` service above for bootstrap.
 
   pki-agent-alt-backend:
     <<: *pki-agent
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
-      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER=pki-agent
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
       - CERT_SUBJECT=alt-backend
       - CERT_SANS=alt-backend,localhost
@@ -141,7 +143,7 @@ services:
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
-      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER=pki-agent
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
       - CERT_SUBJECT=alt-butterfly-facade
       - CERT_SANS=alt-butterfly-facade,localhost
@@ -161,7 +163,7 @@ services:
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
-      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER=pki-agent
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
       - CERT_SUBJECT=auth-hub
       - CERT_SANS=auth-hub,localhost
@@ -181,7 +183,7 @@ services:
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
-      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER=pki-agent
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
       - CERT_SUBJECT=pre-processor
       - CERT_SANS=pre-processor,localhost
@@ -201,7 +203,7 @@ services:
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
-      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER=pki-agent
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
       - CERT_SUBJECT=search-indexer
       - CERT_SANS=search-indexer,localhost
@@ -228,7 +230,7 @@ services:
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
-      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER=pki-agent
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
       - CERT_SUBJECT=tag-generator
       - CERT_SANS=tag-generator,localhost
@@ -253,7 +255,7 @@ services:
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
-      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER=pki-agent
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
       - CERT_SUBJECT=recap-worker
       - CERT_SANS=recap-worker,localhost
@@ -281,7 +283,7 @@ services:
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
-      - STEP_CA_PROVISIONER=bootstrap
+      - STEP_CA_PROVISIONER=pki-agent
       - STEP_CA_PROVISIONER_PASSWORD_FILE=/run/secrets/step_ca_root_password
       - CERT_SUBJECT=acolyte-orchestrator
       - CERT_SANS=acolyte-orchestrator,localhost

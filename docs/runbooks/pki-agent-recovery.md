@@ -23,6 +23,34 @@ affected_services:
 「BFF ログに `certificate has expired`」や「Knowledge Home が空」が出たときの
 手順を上から順に実行する。
 
+## Provisioner 構成 (2026-04-16 更新)
+
+step-ca には 2 本の JWK provisioner が登録されている。
+
+| Provisioner | 用途 | 使用者 |
+|---|---|---|
+| `pki-agent` | 平常運用。pki-agent サイドカーが OTT mint に使う | 8 本の `alt-pki-agent-*` |
+| `bootstrap` | **緊急時フォールバックのみ** (pki-agent provisioner が壊れたとき) | 本 runbook Step 3 の手動発行 |
+
+両 provisioner には authority-level の X.509 CN allowlist が適用される。
+許可される CN/DNS: `alt-backend`, `alt-butterfly-facade`, `auth-hub`,
+`pre-processor`, `search-indexer`, `tag-generator`, `recap-worker`,
+`acolyte-orchestrator`, `localhost`。これ以外の CN は `step ca certificate`
+段階で `not allowed` と拒否される。
+
+フレッシュ install や step-ca volume 再作成後は、次のコマンドで provisioner と
+policy を復元する (冪等):
+
+```bash
+bash pki-agent/scripts/bootstrap-pki-provisioner.sh
+```
+
+検証のみを走らせるなら:
+
+```bash
+bash pki-agent/scripts/verify-cn-allowlist.sh
+```
+
 ## 症状からの分岐
 
 | 症状 | 最初に見る場所 |
