@@ -519,6 +519,13 @@ onMount(async () => {
 	onClose={() => {
 		askSheetOpen = false;
 	}}
+	onConversationId={(id) => {
+		// Expose the persisted Augur conversation as a bookmarkable URL so a
+		// premature sheet close no longer hides the saved conversation.
+		if (typeof history !== "undefined") {
+			history.replaceState(history.state, "", `/augur/${id}`);
+		}
+	}}
 />
 
 <ListenQueueBar

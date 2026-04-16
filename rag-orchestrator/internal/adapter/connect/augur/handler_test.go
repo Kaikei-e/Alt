@@ -4,14 +4,21 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	augurv2 "alt/gen/proto/alt/augur/v2"
+	"alt/gen/proto/alt/augur/v2/augurv2connect"
 
 	"rag-orchestrator/internal/adapter/connect/augur"
+	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -156,6 +163,153 @@ func TestNewHandler(t *testing.T) {
 	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, logger)
 
 	assert.NotNil(t, handler)
+}
+
+// MockAugurConversationUsecase mocks the AugurConversationUsecase interface.
+type MockAugurConversationUsecase struct {
+	mock.Mock
+}
+
+func (m *MockAugurConversationUsecase) EnsureConversation(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID, firstUserMessage string) (*domain.AugurConversation, error) {
+	args := m.Called(ctx, userID, conversationID, firstUserMessage)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.AugurConversation), args.Error(1)
+}
+
+func (m *MockAugurConversationUsecase) AppendUserTurn(ctx context.Context, conversationID uuid.UUID, content string) error {
+	return m.Called(ctx, conversationID, content).Error(0)
+}
+
+func (m *MockAugurConversationUsecase) AppendAssistantTurn(ctx context.Context, conversationID uuid.UUID, content string, citations []domain.AugurCitation) error {
+	return m.Called(ctx, conversationID, content, citations).Error(0)
+}
+
+func (m *MockAugurConversationUsecase) ListConversations(ctx context.Context, userID uuid.UUID, limit int, afterActivity *time.Time, afterID *uuid.UUID) ([]domain.AugurConversationSummary, error) {
+	args := m.Called(ctx, userID, limit, afterActivity, afterID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.AugurConversationSummary), args.Error(1)
+}
+
+func (m *MockAugurConversationUsecase) GetConversation(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) (*domain.AugurConversation, []domain.AugurMessage, error) {
+	args := m.Called(ctx, userID, conversationID)
+	var conv *domain.AugurConversation
+	if v := args.Get(0); v != nil {
+		conv = v.(*domain.AugurConversation)
+	}
+	var msgs []domain.AugurMessage
+	if v := args.Get(1); v != nil {
+		msgs = v.([]domain.AugurMessage)
+	}
+	return conv, msgs, args.Error(2)
+}
+
+func (m *MockAugurConversationUsecase) DeleteConversation(ctx context.Context, userID uuid.UUID, conversationID uuid.UUID) error {
+	return m.Called(ctx, userID, conversationID).Error(0)
+}
+
+// TestStreamChat_ClientAbortAfterDeltas_FlushesPartialAssistantTurn asserts the
+// write-path contract after the Knowledge Home → AskSheet regression: when the
+// client aborts a streaming chat mid-flight after deltas have been emitted, the
+// server must (a) still have persisted the user turn and (b) flush the
+// accumulated partial assistant content via AppendAssistantTurn using a context
+// that is decoupled from the now-canceled request context. Prior to the fix,
+// the conversation row survived but both turns were lost because every write
+// rode the request ctx.
+func TestStreamChat_ClientAbortAfterDeltas_FlushesPartialAssistantTurn(t *testing.T) {
+	mockAnswer := new(MockAnswerWithRAGUsecase)
+	mockRetrieve := new(MockRetrieveContextUsecase)
+	mockConv := new(MockAugurConversationUsecase)
+	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+
+	userID := uuid.New()
+	convID := uuid.New()
+	conv := &domain.AugurConversation{
+		ID:        convID,
+		UserID:    userID,
+		Title:     "test",
+		CreatedAt: time.Now().UTC(),
+	}
+
+	events := make(chan usecase.StreamEvent, 8)
+	var ensureDone <-chan struct{}
+	var userTurnDone <-chan struct{}
+	var assistantDone <-chan struct{}
+	var assistantContent string
+	assistantCalled := make(chan struct{})
+	var once sync.Once
+
+	mockConv.On("EnsureConversation", mock.Anything, userID, uuid.Nil, mock.AnythingOfType("string")).
+		Run(func(args mock.Arguments) {
+			ensureDone = args.Get(0).(context.Context).Done()
+		}).Return(conv, nil)
+	mockConv.On("AppendUserTurn", mock.Anything, convID, "test query").
+		Run(func(args mock.Arguments) {
+			userTurnDone = args.Get(0).(context.Context).Done()
+		}).Return(nil)
+	mockConv.On("AppendAssistantTurn", mock.Anything, convID, mock.AnythingOfType("string"), mock.Anything).
+		Run(func(args mock.Arguments) {
+			assistantDone = args.Get(0).(context.Context).Done()
+			assistantContent = args.String(2)
+			once.Do(func() { close(assistantCalled) })
+		}).Return(nil)
+	mockAnswer.On("Stream", mock.Anything, mock.Anything).Return((<-chan usecase.StreamEvent)(events))
+
+	handler := augur.NewHandler(mockAnswer, mockRetrieve, mockConv, logger)
+
+	mux := http.NewServeMux()
+	path, connectHandler := augurv2connect.NewAugurServiceHandler(handler)
+	mux.Handle(path, connectHandler)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := augurv2connect.NewAugurServiceClient(server.Client(), server.URL)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req := connect.NewRequest(&augurv2.StreamChatRequest{
+		Messages: []*augurv2.ChatMessage{{Role: "user", Content: "test query"}},
+	})
+	req.Header().Set("X-Alt-User-Id", userID.String())
+
+	stream, err := client.StreamChat(ctx, req)
+	require.NoError(t, err)
+
+	// Server emits the leading meta event automatically. Push two delta chunks
+	// so the buffered partial answer has something worth persisting.
+	events <- usecase.StreamEvent{Kind: usecase.StreamEventKindDelta, Payload: "Partial "}
+	events <- usecase.StreamEvent{Kind: usecase.StreamEventKindDelta, Payload: "answer"}
+
+	// Drain meta + two deltas on the client side to make sure they reached us
+	// before we abort — otherwise a cancel before the first flush is a no-op.
+	require.True(t, stream.Receive(), "expected meta event")
+	require.True(t, stream.Receive(), "expected first delta")
+	require.True(t, stream.Receive(), "expected second delta")
+
+	cancel()
+
+	select {
+	case <-assistantCalled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("AppendAssistantTurn was never invoked after client abort")
+	}
+
+	assert.Equal(t, "Partial answer", assistantContent, "partial deltas must be flushed as the assistant turn")
+	// Done-channel identity proves the ctx handed to persistence is not the
+	// request ctx. If it were, the fix never landed and a new class of aborts
+	// will keep orphaning conversations.
+	require.NotNil(t, ensureDone)
+	require.NotNil(t, userTurnDone)
+	require.NotNil(t, assistantDone)
+	assert.NotEqual(t, ctx.Done(), ensureDone, "EnsureConversation ctx must not be tied to the request ctx")
+	assert.NotEqual(t, ctx.Done(), userTurnDone, "AppendUserTurn ctx must not be tied to the request ctx")
+	assert.NotEqual(t, ctx.Done(), assistantDone, "AppendAssistantTurn partial-flush ctx must be detached from the request ctx")
+
+	close(events)
 }
 
 func TestHandler_RetrieveContext_SanitizesInvalidUTF8(t *testing.T) {

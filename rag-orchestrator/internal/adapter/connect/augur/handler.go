@@ -143,15 +143,21 @@ func (h *Handler) StreamChat(
 	if firstMsg == "" {
 		firstMsg = query
 	}
-	conv, err := h.conversationUsecase.EnsureConversation(ctx, userID, requestedConvID, firstMsg)
+	// Detach persistence writes from the request ctx. When the Knowledge Home
+	// AskSheet closes while a stream is in flight the client-side abort
+	// propagates into the handler; we must not let that orphan the conversation
+	// or the user turn. AppendAssistantTurn uses the same pattern on the
+	// completion path.
+	persistCtx, persistCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer persistCancel()
+
+	conv, err := h.conversationUsecase.EnsureConversation(persistCtx, userID, requestedConvID, firstMsg)
 	if err != nil {
 		h.logger.Error("failed to ensure conversation", slog.String("error", err.Error()))
 		return connect.NewError(connect.CodeInternal, err)
 	}
 
-	// Persist the user's current turn. If this fails we refuse to stream —
-	// we never want the LLM answer to outlive a lost user turn.
-	if err := h.conversationUsecase.AppendUserTurn(ctx, conv.ID, query); err != nil {
+	if err := h.conversationUsecase.AppendUserTurn(persistCtx, conv.ID, query); err != nil {
 		h.logger.Error("failed to persist user turn", slog.String("error", err.Error()))
 		return connect.NewError(connect.CodeInternal, err)
 	}
@@ -190,43 +196,81 @@ func (h *Handler) StreamChat(
 		return connect.NewError(connect.CodeInternal, err)
 	}
 
-	// Process stream events and convert to Connect-RPC events
-	for event := range events {
+	// Buffer the streaming assistant content so a mid-stream client abort still
+	// produces an assistant turn. Knowledge Home's AskSheet auto-aborts on
+	// close; without this buffer the conversation row survived with zero
+	// messages, violating the append-only invariant that every conversation
+	// carries at least the turns the user saw.
+	var (
+		assistantBuffer    strings.Builder
+		lastCitations      []domain.AugurCitation
+		authoritativeSaved bool
+	)
+
+	defer func() {
+		if authoritativeSaved {
+			return
+		}
+		if strings.TrimSpace(assistantBuffer.String()) == "" {
+			return
+		}
+		flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer flushCancel()
+		if err := h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, assistantBuffer.String(), lastCitations); err != nil {
+			h.logger.Error("failed to flush partial assistant turn", slog.String("error", err.Error()))
+		}
+	}()
+
+loop:
+	for {
 		select {
 		case <-ctx.Done():
 			h.logger.Info("stream chat cancelled by client")
 			return nil
-		default:
-		}
-
-		protoEvent, shouldContinue, donePayload := h.convertStreamEvent(event)
-		if protoEvent != nil {
-			// Echo the persisted id on every meta event the usecase emits.
-			if meta := protoEvent.GetMeta(); meta != nil {
-				meta.ConversationId = conv.ID.String()
+		case event, ok := <-events:
+			if !ok {
+				break loop
 			}
-			if err := stream.Send(protoEvent); err != nil {
-				h.logger.Error("failed to send event", slog.String("error", err.Error()))
-				return connect.NewError(connect.CodeInternal, err)
-			}
-		}
 
-		// Persist the assistant turn whenever the terminal Done event carries
-		// non-empty content. This works for clean success, for partial-success
-		// fallback (deltas streamed before the strategy gave up), and is
-		// correctly skipped for hard failures (Answer == "") and clarification
-		// (no assistant answer to keep).
-		if donePayload != nil && strings.TrimSpace(donePayload.Answer) != "" {
-			persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			citations := citationsFromProto(donePayload.Citations)
-			if err := h.conversationUsecase.AppendAssistantTurn(persistCtx, conv.ID, donePayload.Answer, citations); err != nil {
-				h.logger.Error("failed to persist assistant turn", slog.String("error", err.Error()))
+			if event.Kind == usecase.StreamEventKindDelta {
+				if delta, ok := event.Payload.(string); ok {
+					assistantBuffer.WriteString(sanitizeUTF8(delta))
+				}
 			}
-			cancel()
-		}
 
-		if !shouldContinue {
-			break
+			protoEvent, shouldContinue, donePayload := h.convertStreamEvent(event)
+			if protoEvent != nil {
+				// Echo the persisted id on every meta event the usecase emits.
+				if meta := protoEvent.GetMeta(); meta != nil {
+					meta.ConversationId = conv.ID.String()
+					if len(meta.Citations) > 0 {
+						lastCitations = citationsFromProto(meta.Citations)
+					}
+				}
+				if err := stream.Send(protoEvent); err != nil {
+					h.logger.Error("failed to send event", slog.String("error", err.Error()))
+					return connect.NewError(connect.CodeInternal, err)
+				}
+			}
+
+			// Persist the assistant turn whenever the terminal Done event carries
+			// non-empty content. This works for clean success, for partial-success
+			// fallback (deltas streamed before the strategy gave up), and is
+			// correctly skipped for hard failures (Answer == "") and clarification
+			// (no assistant answer to keep).
+			if donePayload != nil && strings.TrimSpace(donePayload.Answer) != "" {
+				flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				citations := citationsFromProto(donePayload.Citations)
+				if err := h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, donePayload.Answer, citations); err != nil {
+					h.logger.Error("failed to persist assistant turn", slog.String("error", err.Error()))
+				}
+				flushCancel()
+				authoritativeSaved = true
+			}
+
+			if !shouldContinue {
+				break loop
+			}
 		}
 	}
 

@@ -16,6 +16,7 @@ interface Props {
 	scopeArticleId?: string;
 	scopeTags?: string[];
 	onClose: () => void;
+	onConversationId?: (id: string) => void;
 }
 
 const {
@@ -25,10 +26,13 @@ const {
 	scopeArticleId,
 	scopeTags,
 	onClose,
+	onConversationId,
 }: Props = $props();
 
 const { isDesktop } = useViewport();
-const pane = useAugurPane();
+const pane = useAugurPane({
+	onConversationIdChange: (id) => onConversationId?.(id),
+});
 
 let phase = $state<"ask" | "chat">("ask");
 let question = $state("");

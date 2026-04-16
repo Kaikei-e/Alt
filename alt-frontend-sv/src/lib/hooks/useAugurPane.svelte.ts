@@ -58,6 +58,11 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 	let isProvisional = $state(false);
 	let currentAbortController: AbortController | null = null;
 	let streamTimeout: ReturnType<typeof setTimeout> | null = null;
+	// When reset() is invoked mid-stream we defer the cleanup so the Connect
+	// stream can complete and rag-orchestrator can persist the partial turn.
+	// AskSheet's close-on-dismiss previously aborted the stream, orphaning the
+	// conversation row with zero messages.
+	let pendingReset = false;
 
 	function clearStreamTimeout() {
 		if (streamTimeout !== null) {
@@ -66,13 +71,25 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 		}
 	}
 
-	function finalize() {
+	function clearTransientState() {
 		isLoading = false;
 		progressStage = "";
 		statusText = "";
 		isProvisional = false;
-		currentAbortController = null;
 		clearStreamTimeout();
+	}
+
+	function runPendingReset() {
+		if (!pendingReset) return;
+		pendingReset = false;
+		messages = [];
+		conversationId = "";
+	}
+
+	function finalize() {
+		currentAbortController = null;
+		clearTransientState();
+		runPendingReset();
 	}
 
 	function abort() {
@@ -80,15 +97,20 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 			currentAbortController.abort();
 			currentAbortController = null;
 		}
-		isLoading = false;
-		progressStage = "";
-		statusText = "";
-		isProvisional = false;
-		clearStreamTimeout();
+		clearTransientState();
+		runPendingReset();
 	}
 
 	function reset() {
-		abort();
+		if (isLoading) {
+			// Defer the clear until the stream finalizes so the backend can
+			// commit the partial assistant turn. finalize()/abort() will run
+			// runPendingReset() once the stream actually ends.
+			pendingReset = true;
+			return;
+		}
+		clearTransientState();
+		currentAbortController = null;
 		messages = [];
 		conversationId = "";
 	}

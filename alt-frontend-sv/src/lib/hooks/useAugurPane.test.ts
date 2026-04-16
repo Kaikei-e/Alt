@@ -23,6 +23,7 @@ describe("useAugurPane", () => {
 		onFallback?: (code: string) => void;
 		onError?: (error: Error) => void;
 		onProgress?: (stage: string) => void;
+		onConversationId?: (id: string) => void;
 	};
 	let mockAbortController: AbortController;
 
@@ -57,8 +58,8 @@ describe("useAugurPane", () => {
 					onFallback,
 					onError,
 					onProgress,
+					onConversationId,
 				};
-				// Store onConversationId separately or add to capturedCallbacks if needed
 				return mockAbortController;
 			},
 		);
@@ -74,11 +75,11 @@ describe("useAugurPane", () => {
 	});
 
 	describe("reset()", () => {
-		it("clears messages and sets isLoading to false", () => {
+		it("clears messages and UI state when no stream is in flight", () => {
 			const pane = useAugurPane();
 			pane.sendMessage("Hello");
-			expect(pane.messages.length).toBeGreaterThan(0);
-			expect(pane.isLoading).toBe(true);
+			capturedCallbacks.onComplete?.({ answer: "done", citations: [] });
+			expect(pane.isLoading).toBe(false);
 
 			pane.reset();
 			expect(pane.messages).toEqual([]);
@@ -86,14 +87,14 @@ describe("useAugurPane", () => {
 			expect(pane.progressStage).toBe("");
 		});
 
-		it("aborts active stream", () => {
+		it("does not abort an in-flight stream — deferred-abort semantics let the backend persist the partial turn", () => {
 			const pane = useAugurPane();
 			const abortSpy = vi.spyOn(mockAbortController, "abort");
 
 			pane.sendMessage("Hello");
 			pane.reset();
 
-			expect(abortSpy).toHaveBeenCalled();
+			expect(abortSpy).not.toHaveBeenCalled();
 		});
 	});
 
@@ -388,6 +389,95 @@ describe("useAugurPane", () => {
 			capturedCallbacks.onThinking?.("Thinking...");
 			capturedCallbacks.onComplete?.({ answer: "Done", citations: [] });
 			expect(pane.statusText).toBe("");
+		});
+	});
+
+	describe("onConversationIdChange option", () => {
+		it("fires the callback exactly once when the server assigns a new conversation id", () => {
+			const onConversationIdChange = vi.fn();
+			const pane = useAugurPane({ onConversationIdChange });
+
+			pane.sendMessage("What is RSS?");
+
+			// Server confirms the persisted id
+			capturedCallbacks.onConversationId?.(
+				"11111111-1111-1111-1111-111111111111",
+			);
+
+			expect(onConversationIdChange).toHaveBeenCalledTimes(1);
+			expect(onConversationIdChange).toHaveBeenCalledWith(
+				"11111111-1111-1111-1111-111111111111",
+			);
+			expect(pane.conversationId).toBe("11111111-1111-1111-1111-111111111111");
+		});
+
+		it("does not re-fire the callback when the same id is echoed by follow-up meta events", () => {
+			const onConversationIdChange = vi.fn();
+			const pane = useAugurPane({ onConversationIdChange });
+
+			pane.sendMessage("Hi");
+			capturedCallbacks.onConversationId?.(
+				"22222222-2222-2222-2222-222222222222",
+			);
+			capturedCallbacks.onConversationId?.(
+				"22222222-2222-2222-2222-222222222222",
+			);
+
+			expect(onConversationIdChange).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not fire when resuming an existing conversation via initialConversationId", () => {
+			const onConversationIdChange = vi.fn();
+			const pane = useAugurPane({
+				initialConversationId: "33333333-3333-3333-3333-333333333333",
+				onConversationIdChange,
+			});
+
+			pane.sendMessage("follow up");
+			capturedCallbacks.onConversationId?.(
+				"33333333-3333-3333-3333-333333333333",
+			);
+
+			expect(onConversationIdChange).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("reset() while loading", () => {
+		it("defers abort until the stream finalizes so backend persistence can complete", () => {
+			const pane = useAugurPane();
+			const abortSpy = vi.spyOn(mockAbortController, "abort");
+
+			pane.sendMessage("Hello");
+			expect(pane.isLoading).toBe(true);
+
+			// User closes the sheet mid-stream. Historically this aborted the
+			// Connect stream and caused rag-orchestrator to lose the partial
+			// assistant turn; the hook must now defer abort until the stream
+			// finalizes on its own.
+			pane.reset();
+
+			expect(abortSpy).not.toHaveBeenCalled();
+
+			// Stream finalizes normally — only NOW should the abort controller
+			// be torn down (if still held) and state be reset.
+			capturedCallbacks.onComplete?.({
+				answer: "Final answer",
+				citations: [],
+			});
+
+			expect(pane.isLoading).toBe(false);
+			expect(pane.messages).toEqual([]);
+		});
+
+		it("abort() still aborts immediately when called explicitly", () => {
+			const pane = useAugurPane();
+			const abortSpy = vi.spyOn(mockAbortController, "abort");
+
+			pane.sendMessage("Hello");
+			pane.abort();
+
+			expect(abortSpy).toHaveBeenCalled();
+			expect(pane.isLoading).toBe(false);
 		});
 	});
 
