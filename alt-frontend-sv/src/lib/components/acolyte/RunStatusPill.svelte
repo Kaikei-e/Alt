@@ -1,8 +1,5 @@
 <script lang="ts">
-import {
-	RUN_STATUS_LABELS,
-	type RunStatusKind,
-} from "./runStatusPill";
+import { RUN_STATUS_LABELS, type RunStatusKind } from "./runStatusPill";
 
 interface Props {
 	status: RunStatusKind;
