@@ -415,7 +415,7 @@ async function handleSummarize(forceRefresh = false) {
 		<DialogPrimitive.Overlay class="fixed inset-0 z-50" style="background: rgba(0,0,0,0.5);" />
 		<DialogPrimitive.Content
 			preventScroll={false}
-			class="modal-content fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[75vw] sm:max-w-[1800px] h-[75vh] overflow-hidden flex flex-col z-50"
+			class="modal-content fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[88vw] sm:max-w-[1920px] h-[88vh] overflow-hidden flex flex-col z-50"
 		>
 			{#if hasPrevious}
 				<button
@@ -469,58 +469,65 @@ async function handleSummarize(forceRefresh = false) {
 				</div>
 
 				<div class="modal-body">
-					{#if feed.excerpt}
-						<section class="content-section">
-							<h3 class="section-label">EXCERPT</h3>
-							<p class="section-prose">{feed.excerpt}</p>
-						</section>
-					{/if}
-
-					{#if articleContent}
-						<section class="content-section">
-							<h3 class="section-label">FULL ARTICLE</h3>
-							<RenderFeedDetails
-								feedDetails={articleContent ? { content: articleContent, article_id: articleID ?? "", og_image_url: "", og_image_proxy_url: "" } : null}
-								error={contentError}
-							/>
-						</section>
-					{:else if contentError}
-						<div class="error-stripe" role="alert">
-							<p>{contentError}</p>
-						</div>
-					{/if}
-
-					{#if summary}
-						<section class="content-section">
-							<div class="flex items-center justify-between">
-								<h3 class="section-label">AI SUMMARY</h3>
-								{#if !isSummarizing}
-									<button
-										onclick={handleTtsClick}
-										class="tts-button"
-										aria-label={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
-										title={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
-									>
-										{#if tts.isLoading}
-											<span class="loading-pulse"></span>
-										{:else if tts.isPlaying}
-											<Square class="h-4 w-4" />
-										{:else}
-											<Volume2 class="h-4 w-4" />
-										{/if}
-									</button>
-								{/if}
-							</div>
-							<div class="section-prose">{summary}</div>
-							{#if tts.error}
-								<p class="tts-error">{tts.error}</p>
+					<div class="modal-body-grid">
+						<article class="modal-article">
+							{#if articleContent}
+								<section class="content-section">
+									<h3 class="section-label">FULL ARTICLE</h3>
+									<RenderFeedDetails
+										feedDetails={articleContent ? { content: articleContent, article_id: articleID ?? "", og_image_url: "", og_image_proxy_url: "" } : null}
+										error={contentError}
+									/>
+								</section>
+							{:else if contentError}
+								<div class="error-stripe" role="alert">
+									<p>{contentError}</p>
+								</div>
 							{/if}
-						</section>
-					{:else if summaryError}
-						<div class="error-stripe" role="alert">
-							<p>{summaryError}</p>
-						</div>
-					{/if}
+						</article>
+
+						<aside class="modal-rail" data-testid="modal-rail" aria-label="Article details">
+							{#if feed.excerpt}
+								<section class="rail-section">
+									<h3 class="section-label">EXCERPT</h3>
+									<p class="section-prose rail-prose">{feed.excerpt}</p>
+								</section>
+							{/if}
+
+							{#if summary}
+								<section class="rail-section">
+									<div class="flex items-center justify-between">
+										<h3 class="section-label">AI SUMMARY</h3>
+										{#if !isSummarizing}
+											<button
+												onclick={handleTtsClick}
+												class="tts-button"
+												aria-label={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
+												title={tts.isPlaying ? "Stop reading" : tts.isLoading ? "Cancel loading" : "Read aloud"}
+											>
+												{#if tts.isLoading}
+													<span class="loading-pulse"></span>
+												{:else if tts.isPlaying}
+													<Square class="h-4 w-4" />
+												{:else}
+													<Volume2 class="h-4 w-4" />
+												{/if}
+											</button>
+										{/if}
+									</div>
+									<div class="section-prose rail-prose">{summary}</div>
+									{#if tts.error}
+										<p class="tts-error">{tts.error}</p>
+									{/if}
+								</section>
+							{:else if summaryError}
+								<section class="rail-section rail-section--error" role="alert">
+									<h3 class="section-label">AI SUMMARY</h3>
+									<p class="section-prose rail-prose">{summaryError}</p>
+								</section>
+							{/if}
+						</aside>
+					</div>
 				</div>
 
 				<div class="modal-footer">
@@ -610,7 +617,7 @@ async function handleSummarize(forceRefresh = false) {
 	}
 
 	.modal-header {
-		padding: 1.5rem 4.5rem;
+		padding: 1.5rem 3rem;
 		border-bottom: 1px solid var(--surface-border);
 	}
 
@@ -659,8 +666,67 @@ async function handleSummarize(forceRefresh = false) {
 		min-height: 0;
 		flex: 1;
 		overflow-y: auto;
-		padding: 1.5rem 4.5rem;
+		padding: 1.75rem 3rem;
 		background: var(--surface-2);
+		container-type: inline-size;
+		container-name: modal-body;
+	}
+
+	.modal-body-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	.modal-article {
+		min-width: 0;
+	}
+
+	.modal-article > :global(.content-section) {
+		width: 100%;
+		padding: 1.5rem 2rem;
+	}
+
+	.modal-article :global(.article-content) {
+		max-width: 100%;
+	}
+
+	.modal-rail {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.rail-section {
+		padding: 1rem;
+		background: var(--surface-bg);
+		border: 1px solid var(--surface-border);
+		border-top: 3px solid var(--alt-primary);
+	}
+
+	.rail-section--error {
+		border-top-color: var(--alt-terracotta);
+	}
+
+	.rail-prose {
+		font-size: 0.85rem;
+	}
+
+	@container modal-body (min-width: 960px) {
+		.modal-body-grid {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) clamp(20rem, 22%, 26rem);
+			column-gap: 2.5rem;
+			align-items: start;
+		}
+
+		.modal-rail {
+			position: sticky;
+			top: 0;
+			align-self: start;
+			max-height: calc(88vh - 3rem);
+			overflow-y: auto;
+		}
 	}
 
 	.content-section {
@@ -724,7 +790,7 @@ async function handleSummarize(forceRefresh = false) {
 		flex-wrap: wrap;
 		gap: 0.75rem;
 		align-items: center;
-		padding: 0.75rem 4.5rem;
+		padding: 0.75rem 3rem;
 		border-top: 1px solid var(--surface-border);
 	}
 

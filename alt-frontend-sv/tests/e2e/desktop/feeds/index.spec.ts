@@ -205,6 +205,24 @@ test.describe("Desktop Feeds", () => {
 		).toBeEnabled();
 	});
 
+	test("renders editorial rail inside FeedDetailModal on wide viewport", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await feedsPage.goto();
+		await feedsPage.waitForFeedsLoaded();
+
+		await feedsPage.selectFeed("AI Trends");
+		await expect(feedsPage.feedDetailModal).toBeVisible();
+
+		const rail = page.getByTestId("modal-rail");
+		await expect(rail).toBeVisible({ timeout: 10000 });
+		// Rail carries the excerpt copy surfaced from feed.description
+		await expect(rail.getByText(/deep dive into the ecosystem/i)).toBeVisible();
+		// Rail carries the EXCERPT kicker label
+		await expect(rail.getByText(/^excerpt$/i)).toBeVisible();
+	});
+
 	test("displays feed grid with 3 columns on large screens", async ({
 		page,
 	}) => {
