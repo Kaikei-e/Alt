@@ -67,6 +67,47 @@ echo "==> deploy  env=${TARGET_ENV}  version=${VERSION}  dry_run=${DRY_RUN}  onl
 # --- 1. gate --------------------------------------------------------------
 if (( SKIP_VERIFY == 1 )); then
   echo "==> skipping pre-deploy-verify (--skip-verify set)"
+  # --skip-verify bypasses the can-i-deploy gate, but the Pact Broker still
+  # needs the current pacticipant version to exist before record-deployment
+  # can write to it. Publish the pact files at VERSION so record-deployment
+  # in step 7 has a version row to point at. Failures are treated as
+  # non-fatal — this path is an escape hatch, not a gate.
+  if (( DRY_RUN == 0 )); then
+    echo "==> publishing pact files at ${VERSION} (skip-verify escape hatch)"
+    for pact_file in \
+        "$DEPLOY_REPO_ROOT"/alt-backend/pacts/*.json \
+        "$DEPLOY_REPO_ROOT"/pacts/*.json \
+        "$DEPLOY_REPO_ROOT"/rag-orchestrator/pacts/*.json; do
+      [[ -f "$pact_file" ]] || continue
+      consumer="$(jq -r '.consumer.name' "$pact_file" 2>/dev/null)"
+      provider="$(jq -r '.provider.name' "$pact_file" 2>/dev/null)"
+      [[ -z "$consumer" || -z "$provider" ]] && continue
+      "${CURL_BIN:-curl}" -fsS -X PUT \
+        -H 'Content-Type: application/json' \
+        -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
+        -d @"$pact_file" \
+        "${PACT_BROKER_BASE_URL}/pacts/provider/${provider}/consumer/${consumer}/version/${VERSION}" \
+        >/dev/null 2>&1 || echo "  publish: ${consumer} → ${provider} failed (continuing)"
+      # Associate the version with the current git branch so the broker
+      # treats it as a regular main-branch version, not an orphan.
+      "${CURL_BIN:-curl}" -fsS -X PUT \
+        -H 'Content-Type: application/json' \
+        -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
+        "${PACT_BROKER_BASE_URL}/pacticipants/${consumer}/branches/main/versions/${VERSION}" \
+        >/dev/null 2>&1 || true
+    done
+    # Pacticipants without pact files (pure providers or services with no
+    # consumers registered yet) still need a version to exist for
+    # record-deployment. Create-or-touch branch versions for every
+    # pacticipant we intend to record-deploy.
+    for svc in $DEPLOY_PACTICIPANTS; do
+      "${CURL_BIN:-curl}" -fsS -X PUT \
+        -H 'Content-Type: application/json' \
+        -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
+        "${PACT_BROKER_BASE_URL}/pacticipants/${svc}/branches/main/versions/${VERSION}" \
+        >/dev/null 2>&1 || echo "  version-tag: ${svc} failed (continuing)"
+    done
+  fi
 else
   echo "==> running pre-deploy-verify"
   if ! "$PRE_DEPLOY_VERIFY_SCRIPT"; then
