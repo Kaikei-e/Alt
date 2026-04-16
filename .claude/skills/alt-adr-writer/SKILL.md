@@ -1,174 +1,172 @@
 ---
 name: alt-adr-writer
-description: |
-  Altプロジェクト専用のADR（Architecture Decision Record）作成スキル。
-  実装完了後にコンテナの再ビルド・起動・動作確認を行い、その内容を最新のADRファイルに日本語でまとめる。
-  以下のようなフレーズが出たときは必ずこのスキルを使うこと:
-  - 「ADRを書いて」「ADRにまとめて」「ADRに記録して」
-  - 「コンテナ再ビルドしてADR書いて」
-  - 「実装まとめをADRに」「docs/ADR」への言及
-  - 「〜の実装が終わったのでドキュメントに」
-  コンテナ操作なしでADRだけ書く場合にも使うこと。
+description: Writes an Architecture Decision Record for the Alt project in Japanese after a completed implementation, then runs the Pact-gated manual deploy (./scripts/deploy.sh production). Trigger when the user says "ADR書いて" / "ADRにまとめて" / "ADRに記録して" / "実装が終わったのでドキュメントに" / "コンテナ再ビルドしてADR書いて" / "docs/ADR" 関連のまとめ依頼, or after finishing code changes that clearly warrant a decision record. Skip the deploy step only when the user explicitly says "ADRだけ書いて"; skip the build step only for documentation-only changes.
 allowed-tools: Bash, Read, Glob, Grep, Edit, Write
 ---
 
-# Alt ADR Writer スキル
+# Alt ADR Writer
 
-Altプロジェクトで実装が完了した際に、関連コンテナの再ビルド・起動・確認を行い、
-最新のADRファイルに実装内容を日本語でまとめるスキル。
+このスキルは 3 つのフェーズを順に実行する:
 
----
+1. **実装確認** (§1) — 動作と green を担保してから書く
+2. **ADR 執筆** (§2) — `docs/ADR/NNNNNN.md` を日本語で追加する
+3. **Pact ゲート付きデプロイ** (§3) — `./scripts/deploy.sh production`
 
-## 前提
-
-- Altリポジトリのルートで作業していること（`compose/compose.yaml` が存在する場所）
-- `docs/ADR/` ディレクトリにADRファイルが連番で存在すること（例: `0032-*.md`）
-- `docs/ADR/template.md` が参照テンプレートとして存在すること
+各フェーズはユーザ依頼の範囲に応じてスキップ条件がある (§5 参照)。
 
 ---
 
-## ステップ 1: ADRテンプレートと最新ADRを確認する
+## §1. 実装確認
+
+ADR を書くのは「動いた状態」を固定する行為なので、最低限のテストと起動確認を先に済ませる。
+
+| 変更の種類 | 最低限回すコマンド |
+|---|---|
+| Go service | `go test ./...` + 必要なら `docker compose -f compose/compose.yaml -p alt up --build -d <service>` |
+| Rust service | `cargo test` + 上記 compose 再ビルド |
+| TypeScript / Svelte (alt-frontend-sv) | `bun run check && bun test` + 上記 compose 再ビルド |
+| Python (news-creator 等) | `uv run pytest` |
+| ドキュメント・scripts のみ | 再ビルド不要。`bash tests/scripts/run.sh` など該当テストだけ |
+
+再ビルドは**変更のあったサービスだけ**をターゲットにする。`docker build --no-cache` は許可されない限り使わない。
+
+テストが落ちていたら ADR は書かず、ユーザに原因を報告して止まる。ADR は「動いた実装の決定記録」であり、憶測を書く場所ではない。
+
+---
+
+## §2. ADR 執筆
+
+### 2.1 番号とテンプレート
 
 ```bash
-# テンプレートを読む
-cat docs/ADR/template.md
-
-# 最新のADR番号とファイルを確認
-ls docs/ADR/ | sort | tail -5
-
-# 対象ADRの現在の内容を読む（番号は会話から判断、不明なら最新を使う）
-cat docs/ADR/.md
+ls docs/ADR/ | sort | tail -1     # 最新番号を確認
 ```
 
-- ADR番号は会話中で明示されていればそれを使う。なければ `ls` で最新を特定する。
-- テンプレートのセクション構成・書き方を把握してから執筆に入る。
+最新 +1 の 6 桁ゼロ埋め（例: `000750` → `000751`）をファイル名にする。`docs/ADR/template.md` を Read で開き、そのセクション見出しをそのまま使う（勝手に増減しない）。
 
----
+### 2.2 Frontmatter
 
-## ステップ 2: 関連コンテナの再ビルドと起動
+| フィールド | 値の決め方 |
+|---|---|
+| `title` | 動詞始まりの行動指向の一文。ADR 番号は含めない |
+| `date` | `YYYY-MM-DD`（当日） |
+| `status` | 原則 `accepted`。過去 ADR を無効化する場合のみ `superseded` |
+| `tags` | §2.4 の許可タグから最大 5 個 |
+| `affected_services` | サービス名と変更概要を 1 行/件で列挙 |
+| `aliases` | `ADR-NNN` と `ADR-000NNN` の 2 形式を必ず両方入れる（Obsidian リンク解決用） |
 
-実装内容から影響を受けるサービス名を特定し、ピンポイントで再ビルドする。
+### 2.3 本文ルール
 
-```bash
-# 対象サービスを再ビルドして起動（サービス名は会話から判断）
-docker compose -f compose/compose.yaml up --build -d
+- **日本語で書く**。サービス名 / コマンド / ライブラリ名 / ファイルパスは英語のまま。
+- **セクション順は `template.md` を尊重**する。Context / Decision / Consequences (Pros, Cons/Tradeoffs) / Related ADRs の順が基本。
+- **Context** は「なぜこの決定が必要だったか」を定量/定性の根拠とともに書く。障害や計測結果があれば数値を残す。
+- **Decision** は採用した選択肢に加え、**検討した代替案と却下理由**を書く。これが後から読む人への最大の贈り物になる。
+- **Consequences** は Pros と Cons/Tradeoffs を分けて列挙する。未解決の負債は Cons に書く。
+- コードブロックは判断の根拠に必要な最小限にする。ロジックの羅列は GitHub の diff で読めるので省く。
+- **Related ADRs は wikilink `[[000NNN]] タイトル` 形式**で列挙する。Obsidian のグラフビュー / バックリンクがこの形式でのみ機能するため、`ADR-000NNN (タイトル)` 形式は使わない。
 
-# 全サービスが対象の場合
-docker compose -f compose/compose.yaml up --build -d
+### 2.4 許可タグ
+
 ```
-
-### ビルド失敗時
-- エラーログを表示してユーザーに報告し、ADR執筆の前に修正を促す
-- `docker compose -f compose/compose.yaml logs <service>` で詳細を確認
-
----
-
-## ステップ 3: 起動確認
-
-```bash
-# コンテナの状態確認
-docker compose -f compose/compose.yaml ps
-
-# ヘルスチェック（数秒待ってから）
-sleep 5 && docker compose -f compose/compose.yaml ps
-
-# 必要に応じてログ確認
-docker compose -f compose/compose.yaml logs --tail=50
-```
-
-**確認ポイント:**
-- 対象サービスの `State` が `Up` または `running` になっていること
-- `Exit` や `Restarting` が出ていないこと
-- ヘルスチェックがある場合は `healthy` になっていること
-
-コンテナが正常に起動したことを確認してからADR執筆に進む。
-異常があればユーザーに報告して止まる。
-
----
-
-## ステップ 4: ADRを日本語で執筆する
-
-### 執筆ルール
-
-1. **テンプレートの構成に従う** — `template.md` のセクション見出しをそのまま使う
-2. **日本語で書く** — コード・コマンド・固有名詞（サービス名、ライブラリ名等）は英語のまま
-3. **OSSとして公開されているため、機微な情報を一切含めない:**
-   - IPアドレス・ドメイン・ポート番号の具体値（`localhost:8080` 程度はOK）
-   - 認証情報・APIキー・シークレット類
-   - 社内・個人的なサーバー名、インフラ固有の構成
-   - 個人名・組織名（Altコントリビューターとして公開されている情報は除く）
-4. **実装の意図・背景・トレードオフを重視する** — コードの羅列ではなく「なぜそう決めたか」を書く
-5. **既存の記載を尊重する** — Contextセクションなど既に書かれている部分は保持・拡充する
-6. **Related ADRsはwikilink形式で書く** — `[[000NNN]]` 形式を使い、説明テキストはリンクの外に書く
-   - 正: `- [[000139]] Dead Letter Queue パターン導入`
-   - 誤: `- ADR-000139 (Dead Letter Queue パターン導入)`
-   - 理由: Obsidianのグラフビュー・バックリンクがwikilink形式でのみ機能するため
-
-### テンプレート典型構成（template.mdの実際の内容に従うこと）
-
-テンプレートに含まれていることが多いセクション（実際のtemplate.mdを優先）:
-- **タイトル / ADR番号**
-- **ステータス** (Proposed / Accepted / Deprecated / Superseded)
-- **コンテキスト** — なぜこの決定が必要になったか
-- **決定事項** — 何を決めたか
-- **実装の概要** — どう実装したか（アーキテクチャ、主要コンポーネント）
-- **影響・トレードオフ** — メリット・デメリット・今後の課題
-- **関連するADR** — 参照・影響するADR番号
-
-### 執筆後の確認チェックリスト
-
-- [ ] テンプレートの全セクションが埋まっているか
-- [ ] 機微な情報が含まれていないか
-- [ ] Clean Architecture / Altの設計原則と矛盾していないか
-- [ ] 日本語として自然に読めるか
-
-### frontmatter 記入ルール
-
-| フィールド | 型 | 説明 |
-|---|---|---|
-| title | text | ADR番号を除いたタイトル（動詞始まりの行動指向） |
-| date | date | 作成日 YYYY-MM-DD |
-| status | text | proposed / accepted / deprecated / superseded |
-| tags | list | 分類タグ（下記の許可リストから選択） |
-| affected_services | list | 影響サービス名（例: alt-backend, pre-processor） |
-| aliases | list | Obsidianリンク用の別名。`ADR-NNN` と `ADR-000NNN` の2形式を必ず含める |
-
-### 使用可能なタグ
-
 architecture, clean-architecture, connect-rpc, performance, security,
 database, migration, pgbouncer, frontend, backend, api, rss, search,
 caching, authentication, docker, networking, ci-cd, testing, refactoring,
 bugfix, monitoring, logging, ai, rag, recap, nats, queue, 3d-graphics
+```
+
+この外のタグを増やしたくなったら ADR ではなく `docs/CLAUDE.md` を先に更新する。
+
+### 2.5 情報衛生
+
+Alt は OSS として公開されている。以下を含めない:
+
+- 本番 IP / 本番ドメイン / 秘匿ポート
+- 資格情報・API キー・シークレット類
+- 社内・個人的なサーバー名
+- 個人名・組織名（公開コントリビューターとして記録されているものを除く）
+
+`localhost:XXXX` と compose サービス名は OK。
+
+### 2.6 書き込み
+
+Write ツールで `docs/ADR/NNNNNN.md` を作る。heredoc や `cat > ...` は使わない。書き込み後に Read で自分の出力を読み返し、見出し / frontmatter / wikilink 形式を確認する。
 
 ---
 
-## ステップ 5: ファイルに書き込む
+## §3. Pact ゲート付きデプロイ
+
+ADR を書いたら**コードと ADR を同じ commit にまとめて**、`scripts/deploy.sh` を手で叩く。CI 自動発火はしない（方針: [[000740]] / [[deploy]]）。
 
 ```bash
-# 既存ファイルを上書き（バックアップ不要、Gitで管理されているため）
-cat > docs/ADR/.md << 'EOF'
+git add -A
+git commit -m "<英語の 1 行メッセージ>"     # Co-Authored-By は付けない
+./scripts/deploy.sh production
+```
 
-EOF
+`deploy.sh` が以下を順に行う:
 
-# 確認
-cat docs/ADR/.md
+1. `scripts/pre-deploy-verify.sh` による Pact `can-i-deploy` ゲート（14 pacticipant）
+2. レイヤ順 rolling recreate（`docker compose ... --no-deps --force-recreate`、healthcheck 最大 120s 待ち）
+3. nginx / alt-backend / bff / meilisearch の global smoke
+4. `pact-broker-cli record-deployment` × 14
+
+途中で失敗すると `.deploy-prev` の SHA に自動ロールバックし、record-deployment は打たれない。
+
+### 使えるフラグ
+
+| フラグ | 使いどころ |
+|---|---|
+| `--only <svc>` | 1 サービスだけ差し替え。gate は全件走る |
+| `--dry-run` | compose も record-deployment も叩かず、順序だけ確認 |
+| `--skip-verify` | Broker 障害時の緊急デプロイ。理由を必ず運用ログに残す |
+| `--no-record` | smoke まで通すが broker 打刻を保留 |
+
+### 失敗時の判断
+
+| 終了コード | 意味 | 対処 |
+|---|---|---|
+| `5` | `pact-broker-cli` が PATH 不在 | CLI を導入 (`curl ... install.sh`) または `PACT_BROKER_BIN` を設定 |
+| `10` | Pact gate 失敗 | `pact-check.sh` ログで対象 pacticipant を特定 → provider を修正 → 再実行 |
+| `11` | recreate / smoke 失敗 | 直前 SHA に自動ロールバック済。コード修正 → 再 commit → 再 deploy |
+| `12` | record-deployment 失敗 | broker matrix が現実と乖離。失敗サービスだけ手で `pact-broker-cli record-deployment` |
+
+### DB マイグレーションが絡む場合
+
+必ず `migrate → deploy` の順。逆にするとアプリが新スキーマを期待するまま旧スキーマで起動し、healthcheck が通らず自動ロールバックで戻される:
+
+```bash
+cd migrations-atlas && atlas migrate hash && atlas migrate apply --env production
+cd ~/alt && ./scripts/deploy.sh production
 ```
 
 ---
 
-## ステップ 6: 完了報告
+## §4. 完了報告
 
-以下をユーザーに報告する:
-1. 再ビルドしたサービス名と起動状態
-2. 書き込んだADRファイルのパス
-3. ADRの主要セクションのサマリー（3〜5行）
-4. `git diff docs/ADR/` で変更差分を表示（オプション）
+ユーザに以下を伝える:
+
+- 書いた ADR のパス（`docs/ADR/NNNNNN.md`）とタイトル
+- 緑だったテスト / 再ビルド / healthcheck
+- `deploy.sh` の終了コード + `.deploy-current` に記録された SHA
+- 次に目を向けておく指標や運用フォロー（あれば 1 行）
 
 ---
 
-## 注意事項
+## §5. スキップ条件
 
-- コンテナ再ビルドが不要な場合（「ADRだけ書いて」など）はステップ2〜3をスキップしてよい
-- ADR番号が会話中に明示されている場合はそれを使い、`ls`で確認しない
-- 複数サービスにまたがる実装の場合、各サービスの役割を明示してADRに記載する
-- Altのマイクロサービス構成（Go / TypeScript / Rust / Python）を意識した記述を心がける
+| ユーザ発話 | §1 | §2 | §3 |
+|---|---|---|---|
+| 「ADR だけ書いて」「docs だけ」 | skip | run | skip |
+| 「実装まとめて ADR 書いて」「ADR 書いてデプロイして」 | run | run | run |
+| ドキュメント / scripts のみの変更 | skip build (test は run) | run | run |
+
+迷ったら `§1 → §2 → §3` の全実行を既定とする。Alt の運用は「ADR を書く = デプロイ準備完了」という前提で組まれている。
+
+---
+
+## 参照
+
+- `docs/ADR/template.md` — セクションと frontmatter のソース
+- `docs/runbooks/deploy.md` ([[deploy]]) — デプロイ手順の完全版
+- `docs/runbooks/pact-broker-ops.md` ([[pact-broker-ops]]) — Broker 運用
+- `docs/CLAUDE.md` — vault 全体の編集ルール
