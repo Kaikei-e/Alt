@@ -34,6 +34,7 @@ import { useStreamUpdates } from "$lib/hooks/useStreamUpdates.svelte";
 import { useTtsPlayback } from "$lib/hooks/useTtsPlayback.svelte";
 import { useToastStore } from "$lib/stores/toast.svelte";
 import { useViewport } from "$lib/stores/viewport.svelte";
+import { buildHomeActionMetadata } from "./home-actions";
 import { refreshHomeWithRecallSync } from "./stream-refresh";
 
 const { isDesktop } = useViewport();
@@ -163,11 +164,7 @@ async function syncLensQuery(lensId: string | null) {
 
 function handleAction(type: string, item: KnowledgeHomeItemData) {
 	const itemKey = item.itemKey;
-	const metadata = JSON.stringify({
-		articleId: item.articleId,
-		title: item.title,
-		summaryExcerpt: item.summaryExcerpt,
-	});
+	const metadata = buildHomeActionMetadata(type, item);
 
 	if (type === "dismiss") {
 		home.trackAction(type, itemKey, metadata);
