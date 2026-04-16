@@ -73,13 +73,12 @@ func (r *recordingLensVisibility) AreArticlesVisibleInLens(_ context.Context, te
 }
 
 type stubResolveLensPort struct {
-	filter      *domain.KnowledgeHomeLensFilter
-	err         error
-	gotUserID   uuid.UUID
-	gotLensID   *uuid.UUID
-	calls       int
-	mu          sync.Mutex
-	failOnLensA bool
+	filter    *domain.KnowledgeHomeLensFilter
+	err       error
+	gotUserID uuid.UUID
+	gotLensID *uuid.UUID
+	calls     int
+	mu        sync.Mutex
 }
 
 func (s *stubResolveLensPort) ResolveKnowledgeHomeLens(_ context.Context, userID uuid.UUID, lensID *uuid.UUID) (*domain.KnowledgeHomeLensFilter, error) {
