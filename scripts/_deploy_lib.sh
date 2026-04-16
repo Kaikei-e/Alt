@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Helpers for scripts/deploy.sh. Sourced, not executed.
-# Kept tiny and pure so tests can stub docker/curl/pact-broker on PATH.
+# Kept tiny and pure so tests can stub docker/curl/pact-broker-cli on PATH.
 
 # Default layer ordering. One service per line, groups separated by blank lines.
 # Layer 1 DB/storage is intentionally skipped (stateful — migrations go through Atlas).
@@ -105,16 +105,25 @@ record_deployments() {
   local version="$1"
   local env="$2"
   local count=0
+  local failed=0
   for svc in $DEPLOY_PACTICIPANTS; do
-    "${PACT_BROKER_BIN:-pact-broker}" record-deployment \
-      --pacticipant "$svc" \
-      --version "$version" \
-      --environment "$env" \
-      --broker-base-url "${PACT_BROKER_BASE_URL}" \
-      --broker-username "${PACT_BROKER_USERNAME}" \
-      --broker-password "${PACT_BROKER_PASSWORD}" >/dev/null 2>&1 \
-      || echo "  record-deployment: ${svc} failed (non-fatal)"
-    count=$((count+1))
+    if "${PACT_BROKER_BIN:-pact-broker-cli}" record-deployment \
+        --pacticipant "$svc" \
+        --version "$version" \
+        --environment "$env" \
+        --broker-base-url "${PACT_BROKER_BASE_URL}" \
+        --broker-username "${PACT_BROKER_USERNAME}" \
+        --broker-password "${PACT_BROKER_PASSWORD}" >/dev/null 2>&1; then
+      count=$((count+1))
+    else
+      failed=$((failed+1))
+      echo "  record-deployment: ${svc} failed" >&2
+    fi
   done
   echo "recorded ${count} deployments against ${env}"
+  if (( failed > 0 )); then
+    echo "  ${failed} record-deployment call(s) failed — broker matrix is out of sync" >&2
+    return 1
+  fi
+  return 0
 }

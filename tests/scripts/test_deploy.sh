@@ -10,7 +10,7 @@ SUT="$REPO_ROOT/scripts/deploy.sh"
 
 export_sut_env() {
   export PRE_DEPLOY_VERIFY_SCRIPT="$STUB_BIN/pre-deploy-verify.sh"
-  export PACT_BROKER_BIN="$STUB_BIN/pact-broker"
+  export PACT_BROKER_BIN="$STUB_BIN/pact-broker-cli"
   export DOCKER_BIN="$STUB_BIN/docker"
   export CURL_BIN="$STUB_BIN/curl"
   export GIT_BIN="$(command -v git)"
@@ -34,7 +34,7 @@ tc_refuses_when_verify_fails() {
   make_stub "pre-deploy-verify.sh" 3 "broker heartbeat failed"
   make_stub docker 0 ""
   make_stub curl 0 ""
-  make_stub "pact-broker" 0 ""
+  make_stub "pact-broker-cli" 0 ""
 
   run_output=$("$SUT" production 2>&1); rc=$?
   assert_ne "$rc" "0" "must refuse deploy when verify fails" || return 1
@@ -68,7 +68,7 @@ tc_recreates_services_in_layered_order() {
     fi
     exit 0'
   make_stub curl 0 "ok"
-  make_stub "pact-broker" 0 ""
+  make_stub "pact-broker-cli" 0 ""
 
   run_output=$("$SUT" production 2>&1); rc=$?
   assert_eq "$rc" "0" "happy path must exit 0" || { echo "$run_output"; return 1; }
@@ -97,7 +97,7 @@ tc_rolls_back_on_healthcheck_failure() {
     fi
     exit 0'
   make_stub curl 0 "ok"
-  make_stub "pact-broker" 0 ""
+  make_stub "pact-broker-cli" 0 ""
 
   run_output=$("$SUT" production 2>&1); rc=$?
   assert_ne "$rc" "0" "must exit non-zero when healthcheck never turns healthy" || return 1
@@ -119,7 +119,7 @@ tc_records_deployment_on_success() {
     fi
     exit 0'
   make_stub curl 0 "ok"
-  make_stub "pact-broker" 0 ""
+  make_stub "pact-broker-cli" 0 ""
 
   run_output=$("$SUT" production 2>&1); rc=$?
   assert_eq "$rc" "0" "happy path must exit 0" || { echo "$run_output"; return 1; }
@@ -132,7 +132,7 @@ tc_dry_run_does_not_call_docker_up() {
   make_stub "pre-deploy-verify.sh" 0 ""
   make_stub docker 0 ""
   make_stub curl 0 "ok"
-  make_stub "pact-broker" 0 ""
+  make_stub "pact-broker-cli" 0 ""
 
   run_output=$("$SUT" --dry-run production 2>&1); rc=$?
   assert_eq "$rc" "0" "dry-run must succeed" || { echo "$run_output"; return 1; }
@@ -157,7 +157,7 @@ tc_skip_verify_bypasses_gate() {
     fi
     exit 0'
   make_stub curl 0 "ok"
-  make_stub "pact-broker" 0 ""
+  make_stub "pact-broker-cli" 0 ""
 
   run_output=$("$SUT" --skip-verify production 2>&1); rc=$?
   assert_eq "$rc" "0" "--skip-verify must bypass gate" || { echo "$run_output"; return 1; }

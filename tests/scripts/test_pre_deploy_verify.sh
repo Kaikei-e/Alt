@@ -16,7 +16,7 @@ export_sut_env() {
   export PACT_BROKER_USERNAME="pact"
   export PACT_BROKER_PASSWORD="test-pw"
   export PACT_CHECK_SCRIPT="$STUB_BIN/pact-check.sh"
-  export PACT_BROKER_BIN="$STUB_BIN/pact-broker"
+  export PACT_BROKER_BIN="$STUB_BIN/pact-broker-cli"
   export TARGET_ENV="production"
   export SKIP_CREATE_ENV_ON_SEED="0"
 }
@@ -26,7 +26,7 @@ tc_fails_when_broker_unreachable() {
   # curl stub that always fails heartbeat.
   make_stub curl 7 ""
   make_stub "pact-check.sh" 0 ""
-  make_stub "pact-broker" 0 ""
+  make_stub "pact-broker-cli" 0 ""
 
   run_output=$("$SUT" 2>&1); rc=$?
   assert_ne "$rc" "0" "should fail when broker heartbeat unreachable" || return 1
@@ -37,7 +37,7 @@ tc_fails_when_pact_check_fails() {
   export_sut_env
   make_stub curl 0 '{"ok":true}'
   make_stub "pact-check.sh" 1 "contract regression detected"
-  make_stub "pact-broker" 0 ""
+  make_stub "pact-broker-cli" 0 ""
 
   run_output=$("$SUT" 2>&1); rc=$?
   assert_ne "$rc" "0" "should fail when pact-check fails" || return 1
@@ -49,7 +49,7 @@ tc_fails_when_can_i_deploy_fails_for_any_pacticipant() {
   make_stub curl 0 '{"ok":true}'
   make_stub "pact-check.sh" 0 ""
   # Fail for alt-backend only.
-  make_conditional_stub "pact-broker" '
+  make_conditional_stub "pact-broker-cli" '
     case "$1" in
       can-i-deploy)
         for arg in "$@"; do
@@ -69,7 +69,7 @@ tc_happy_path_runs_create_env_and_all_pacticipants() {
   export_sut_env
   make_stub curl 0 '{"ok":true}'
   make_stub "pact-check.sh" 0 ""
-  make_stub "pact-broker" 0 ""
+  make_stub "pact-broker-cli" 0 ""
 
   run_output=$("$SUT" 2>&1); rc=$?
   assert_eq "$rc" "0" "happy path must exit 0" || { echo "$run_output"; return 1; }
@@ -81,12 +81,30 @@ tc_happy_path_runs_create_env_and_all_pacticipants() {
   assert_eq "$count" "14" "must run can-i-deploy 14 times (one per pacticipant)" || return 1
 }
 
+tc_fails_when_broker_cli_missing() {
+  export_sut_env
+  # Point PACT_BROKER_BIN at a nonexistent path — preflight must catch this
+  # before any broker interaction.
+  export PACT_BROKER_BIN="$SANDBOX/nonexistent-pact-broker-cli"
+  make_stub curl 0 '{"ok":true}'
+  make_stub "pact-check.sh" 0 ""
+
+  run_output=$("$SUT" 2>&1); rc=$?
+  assert_ne "$rc" "0" "should fail when broker CLI is missing" || return 1
+  assert_contains "$run_output" "not found on PATH" "must explain missing CLI" || return 1
+  # Heartbeat curl must NOT have run — preflight should abort first.
+  if grep -q "heartbeat" "$STUB_LOG"; then
+    echo "  FAIL: heartbeat should not have run before CLI preflight"
+    return 1
+  fi
+}
+
 tc_create_environment_is_idempotent() {
   export_sut_env
   make_stub curl 0 '{"ok":true}'
   make_stub "pact-check.sh" 0 ""
   # pact-broker create-environment returns 1 the first time (seeded already) but script must ignore.
-  make_conditional_stub "pact-broker" '
+  make_conditional_stub "pact-broker-cli" '
     if [[ "$1" == "create-environment" ]]; then
       # Simulate "already exists" by exiting non-zero. pre-deploy-verify must tolerate.
       exit 1
@@ -103,6 +121,7 @@ main() {
   run_case "exits non-zero when pact-check.sh --broker fails" tc_fails_when_pact_check_fails
   run_case "exits non-zero when any pacticipant fails can-i-deploy" tc_fails_when_can_i_deploy_fails_for_any_pacticipant
   run_case "happy path runs create-environment and 14 can-i-deploy" tc_happy_path_runs_create_env_and_all_pacticipants
+  run_case "fails fast when broker CLI binary is missing from PATH" tc_fails_when_broker_cli_missing
   run_case "create-environment failure is tolerated (idempotent)" tc_create_environment_is_idempotent
   summary
 }

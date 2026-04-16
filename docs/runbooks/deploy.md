@@ -18,6 +18,11 @@ tags:
 ## TL;DR
 
 ```bash
+# 初回のみ: broker CLI (Rust 版、pact_broker-client gem の後継) をホストに入れる
+curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-broker-cli/main/install.sh | sh
+# ダウンロードされたバイナリを PATH 上のディレクトリに置く (例: ~/.local/bin)
+pact-broker-cli --version   # → 0.6.3 以降
+
 cd ~/alt
 git pull origin main
 ./scripts/deploy.sh production
@@ -28,18 +33,23 @@ git pull origin main
 1. **pre-deploy Pact gate** (`scripts/pre-deploy-verify.sh`)
 2. **レイヤ順 rolling recreate** — サービスを 1 つずつ `--no-deps --force-recreate`
 3. **global smoke** (nginx / alt-backend / bff / meilisearch)
-4. **`pact-broker record-deployment`** × 14 pacticipants
+4. **`pact-broker-cli record-deployment`** × 14 pacticipants
 
 途中で失敗すると直前 SHA に自動でロールバックし、record-deployment は打刻されない。
+record-deployment が 1 件でも失敗した場合は exit 12 で終了 (broker matrix と現実が乖離しないよう構造的に fail-fast)。
 
 ## 0. 前提
 
 | 条件 | 確認コマンド |
 |------|---|
+| `pact-broker-cli` が PATH | `pact-broker-cli --version` (v0.6.3+) |
 | Pact Broker が healthy | `curl -fsS -u pact:$(cat secrets/pact_broker_basic_auth_password.txt) http://localhost:9292/diagnostic/status/heartbeat` |
 | secrets 配置 | `ls secrets/pact_broker_basic_auth_password.txt` |
 | mTLS step-ca 稼働 | `docker compose -f compose/compose.yaml ps step-ca` → healthy |
 | disk / loadavg 余裕 | `df -h` / `uptime` |
+
+> CLI は `PACT_BROKER_BIN` 環境変数で上書き可能 (例: Docker イメージ
+> `pactfoundation/pact-broker-cli:latest-debian` を薄いラッパで呼びたい場合)。
 
 ## 1. ADR → deploy
 

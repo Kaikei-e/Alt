@@ -14,7 +14,7 @@
 #   PACT_BROKER_PASSWORD   falls back to secrets/pact_broker_basic_auth_password.txt
 #   TARGET_ENV             default production
 #   PACT_CHECK_SCRIPT      default $REPO_ROOT/scripts/pact-check.sh
-#   PACT_BROKER_BIN        default pact-broker (must be on PATH)
+#   PACT_BROKER_BIN        default pact-broker-cli (must be on PATH)
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -30,7 +30,7 @@ if [[ -z "${PACT_BROKER_PASSWORD:-}" ]]; then
 fi
 TARGET_ENV="${TARGET_ENV:-production}"
 PACT_CHECK_SCRIPT="${PACT_CHECK_SCRIPT:-$REPO_ROOT/scripts/pact-check.sh}"
-PACT_BROKER_BIN="${PACT_BROKER_BIN:-pact-broker}"
+PACT_BROKER_BIN="${PACT_BROKER_BIN:-pact-broker-cli}"
 
 PACTICIPANTS=(
   alt-backend
@@ -52,6 +52,16 @@ PACTICIPANTS=(
 VERSION="$(cd "$REPO_ROOT" && git rev-parse --short HEAD 2>/dev/null || echo "local-$(date +%s)")"
 
 echo "==> pre-deploy-verify  target=${TARGET_ENV}  version=${VERSION}"
+
+# --- 0. CLI preflight ----------------------------------------------------
+# Fail fast if the broker CLI cannot be located. Without this, every
+# can-i-deploy call would error out opaquely in step 4.
+if ! command -v "$PACT_BROKER_BIN" >/dev/null 2>&1; then
+  echo "ERROR: broker CLI '$PACT_BROKER_BIN' not found on PATH." >&2
+  echo "       Install it via: curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-broker-cli/main/install.sh | sh" >&2
+  echo "       (Drop the downloaded binary into a directory on PATH, e.g. ~/.local/bin.)" >&2
+  exit 5
+fi
 
 # --- 1. heartbeat --------------------------------------------------------
 echo "--- 1/4 Pact Broker heartbeat ---"

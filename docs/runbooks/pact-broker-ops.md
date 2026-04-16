@@ -79,7 +79,7 @@ Settings → Branches → Branch protection rules → main → Require status ch
 ```bash
 # Broker に今の main を publish した直後
 export PACT_BROKER_PASSWORD=$(cat secrets/pact_broker_basic_auth_password.txt)
-pact-broker can-i-deploy \
+pact-broker-cli can-i-deploy \
   --pacticipant search-indexer \
   --version $(git rev-parse --short HEAD) \
   --to-environment production \
@@ -87,6 +87,9 @@ pact-broker can-i-deploy \
   --broker-username pact \
   --broker-password "$PACT_BROKER_PASSWORD"
 ```
+
+> CLI は Rust 版 `pact-broker-cli` (ADR-000740 の Ruby gem 時代から更新済)。
+> 未導入なら `curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-broker-cli/main/install.sh | sh` で入れる。
 
 `Computer says yes \o/` なら safe to deploy。failing matrix row は broker UI の
 "Matrix" タブで可視化される。
@@ -144,7 +147,7 @@ Broker UI の "Pacticipants" → provider → Tab "Contract requiring verificati
 Phase E3 では未配線。配線時は:
 
 ```bash
-pact-broker create-webhook \
+pact-broker-cli create-webhook \
   --request POST \
   --url https://api.github.com/repos/Kaikei-e/Alt/actions/workflows/proto-contract.yaml/dispatches \
   --header "Authorization: token $GH_TOKEN" \

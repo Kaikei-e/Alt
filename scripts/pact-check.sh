@@ -88,7 +88,9 @@ if [[ "$MODE" == "broker" ]]; then
     fi
     sleep 1
   done
-  export PACT_PROVIDER_VERSION="local-$(git rev-parse --short HEAD)"
+  # Keep the version identifier consistent with pre-deploy-verify.sh and
+  # deploy.sh so can-i-deploy / record-deployment can match what was published.
+  export PACT_PROVIDER_VERSION="$(git rev-parse --short HEAD)"
   export PACT_PROVIDER_BRANCH="$(git branch --show-current)"
 fi
 
@@ -154,7 +156,7 @@ if [[ "$MODE" == "broker" ]]; then
       curl -fsS -X PUT \
         -H "Content-Type: application/json" \
         -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
-        "${PACT_BROKER_BASE_URL}/pacticipants/${CONSUMER}/versions/${VERSION}/branches/${BRANCH}"
+        "${PACT_BROKER_BASE_URL}/pacticipants/${CONSUMER}/branches/${BRANCH}/versions/${VERSION}"
       COUNT=$((COUNT + 1))
     fi
   done

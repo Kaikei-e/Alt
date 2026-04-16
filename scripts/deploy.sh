@@ -11,7 +11,7 @@
 #
 # Pipeline:
 #   pre-deploy-verify  →  build/pull  →  layered rolling recreate  →
-#   global smoke  →  pact-broker record-deployment
+#   global smoke  →  pact-broker-cli record-deployment
 # Any failure in recreate/smoke triggers a best-effort rollback to the previous SHA.
 set -uo pipefail
 
@@ -135,7 +135,11 @@ elif (( NO_RECORD == 1 )); then
   echo "==> skipping record-deployment (--no-record set)"
 else
   echo "==> recording deployment to Pact Broker"
-  record_deployments "$VERSION" "$TARGET_ENV"
+  if ! record_deployments "$VERSION" "$TARGET_ENV"; then
+    echo "deploy finished but record-deployment failed for at least one pacticipant." >&2
+    echo "Broker matrix is out of sync — re-run record-deployment for the failed services." >&2
+    exit 12
+  fi
 fi
 
 echo ""
