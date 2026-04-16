@@ -24,10 +24,11 @@ import (
 )
 
 const (
-	pactDir               = "../../../../pacts"
-	providerName          = "alt-backend"
-	recapWorkerPactFile   = "recap-worker-alt-backend.json"
-	searchIndexerPactFile = "search-indexer-alt-backend.json"
+	pactDir                   = "../../../../pacts"
+	providerName              = "alt-backend"
+	recapWorkerPactFile       = "recap-worker-alt-backend.json"
+	searchIndexerPactFile     = "search-indexer-alt-backend.json"
+	altButterflyFacadePactFile = "alt-butterfly-facade-alt-backend.json"
 )
 
 // recapArticleResponse mirrors the JSON shape expected by recap-worker.
@@ -136,6 +137,51 @@ func startStubServer(t *testing.T) int {
 			})
 		})
 
+	// ---- alt-butterfly-facade proxy targets (Connect-RPC, JSON wire format) ----
+	// BFF unit-tests its proxy by speaking Connect-RPC directly to alt-backend.
+	// Only the 404 path is covered by the consumer pact.
+	mux.HandleFunc("/alt.feeds.v2.FeedService/GetFeed",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"code":    "not_found",
+				"message": "feed not found",
+			})
+		})
+
+	mux.HandleFunc("/alt.feeds.v2.FeedService/GetFeedStats",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]int{
+				"totalArticles": 250,
+				"totalFeeds":    10,
+			})
+		})
+
+	mux.HandleFunc("/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetOverview",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]int{
+				"totalEvents": 100,
+			})
+		})
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
@@ -180,6 +226,70 @@ func TestVerifyRecapWorkerContract(t *testing.T) {
 		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
 		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
 			&provider.ConsumerVersionSelector{Consumer: "recap-worker", Latest: true},
+		}
+		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
+			verifyRequest.ProviderVersion = ver
+		}
+		if branch := os.Getenv("PACT_PROVIDER_BRANCH"); branch != "" {
+			verifyRequest.ProviderBranch = branch
+		}
+		verifyRequest.PublishVerificationResults = os.Getenv("PACT_PROVIDER_VERSION") != ""
+		if os.Getenv("PACT_DISABLE_PENDING") != "true" {
+			verifyRequest.EnablePending = true
+		}
+		if since := os.Getenv("PACT_INCLUDE_WIP_SINCE"); since != "" {
+			if t, err := time.Parse(time.RFC3339, since); err == nil {
+				verifyRequest.IncludeWIPPactsSince = &t
+			}
+		}
+	} else {
+		verifyRequest.PactFiles = []string{pactFile}
+	}
+
+	verifier := provider.NewVerifier()
+	err := verifier.VerifyProvider(t, verifyRequest)
+	require.NoError(t, err)
+}
+
+// TestVerifyAltButterflyFacadeContract verifies that alt-backend satisfies
+// the BFF's proxy-layer contract for FeedService.GetFeed/GetFeedStats and
+// KnowledgeHomeAdminService.GetOverview. The BFF fans these Connect-RPC
+// calls out to alt-backend; alt-backend must keep the wire format stable.
+func TestVerifyAltButterflyFacadeContract(t *testing.T) {
+	pactFile := filepath.Join(pactDir, altButterflyFacadePactFile)
+
+	brokerURL := os.Getenv("PACT_BROKER_BASE_URL")
+	if brokerURL == "" {
+		if _, err := os.Stat(pactFile); os.IsNotExist(err) {
+			t.Skipf("No Broker URL set and pact file not found: %s. "+
+				"Run alt-butterfly-facade consumer tests first.", pactFile)
+		}
+	}
+
+	port := startStubServer(t)
+
+	verifyRequest := provider.VerifyRequest{
+		Provider:        providerName,
+		ProviderBaseURL: fmt.Sprintf("http://127.0.0.1:%d", port),
+		StateHandlers: models.StateHandlers{
+			"article does not exist": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"feed stats are available": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"knowledge home admin service is available": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+		},
+	}
+
+	if brokerURL != "" {
+		verifyRequest.BrokerURL = brokerURL
+		verifyRequest.BrokerUsername = os.Getenv("PACT_BROKER_USERNAME")
+		verifyRequest.BrokerPassword = os.Getenv("PACT_BROKER_PASSWORD")
+		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
+			&provider.ConsumerVersionSelector{Consumer: "alt-butterfly-facade", Latest: true},
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver

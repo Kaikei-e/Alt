@@ -183,10 +183,17 @@ else
 fi
 
 if command -v go &>/dev/null && check_ffi; then
+  # alt-backend provider verifies 3 consumer pacts in one pass via the
+  # whole-directory go-test invocation: TestVerifyRecapWorkerContract,
+  # TestVerifySearchIndexerContract, TestVerifyAltButterflyFacadeContract.
   run_step "Go: alt-backend provider" \
     bash -c 'cd alt-backend/app && CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v'
   run_step "Go: search-indexer provider" \
     bash -c 'cd search-indexer/app && CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerProviderContracts ./driver/contract/ -v'
+  run_step "Go: pre-processor provider" \
+    bash -c 'cd pre-processor/app && CGO_ENABLED=1 go test -tags=contract -run TestVerifyAltBackendContract ./driver/contract/ -v'
+  run_step "Go: mq-hub provider (search-indexer message pact)" \
+    bash -c 'cd mq-hub/app && CGO_ENABLED=1 go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v'
 else
   skip_step "Go provider verification (go or libpact_ffi not found)"
 fi
