@@ -147,6 +147,8 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		container.ArchiveLensUsecase,
 		container.SovereignClient,
 		container.SovereignClient,
+		container.SovereignClient,
+		container.SovereignClient,
 		container.FeatureFlagGateway,
 		container.KnowledgeHomeMetrics,
 		logger,

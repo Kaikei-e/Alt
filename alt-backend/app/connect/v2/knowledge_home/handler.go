@@ -17,6 +17,7 @@ import (
 
 	"alt/port/feature_flag_port"
 	"alt/port/knowledge_event_port"
+	"alt/port/knowledge_lens_port"
 	"alt/usecase/archive_lens_usecase"
 	"alt/usecase/create_lens_usecase"
 	"alt/usecase/get_knowledge_home_usecase"
@@ -52,6 +53,8 @@ type Handler struct {
 	eventsPort           knowledge_event_port.ListKnowledgeEventsPort
 	eventsForUserPort    knowledge_event_port.ListKnowledgeEventsForUserPort
 	latestSeqPort        knowledge_event_port.LatestKnowledgeEventSeqForUserPort
+	lensVisibilityPort   knowledge_event_port.IsArticleVisibleInLensPort
+	resolveLensPort      knowledge_lens_port.ResolveKnowledgeHomeLensPort
 	featureFlagPort      feature_flag_port.FeatureFlagPort
 	metrics              *altotel.KnowledgeHomeMetrics
 	logger               *slog.Logger
@@ -75,6 +78,8 @@ func NewHandler(
 	archiveLens *archive_lens_usecase.ArchiveLensUsecase,
 	eventsPort knowledge_event_port.ListKnowledgeEventsPort,
 	eventsForUserPort knowledge_event_port.ListKnowledgeEventsForUserPort,
+	lensVisibilityPort knowledge_event_port.IsArticleVisibleInLensPort,
+	resolveLensPort knowledge_lens_port.ResolveKnowledgeHomeLensPort,
 	featureFlag feature_flag_port.FeatureFlagPort,
 	metrics *altotel.KnowledgeHomeMetrics,
 	logger *slog.Logger,
@@ -99,6 +104,8 @@ func NewHandler(
 		eventsPort:           eventsPort,
 		eventsForUserPort:    eventsForUserPort,
 		latestSeqPort:        latestSeqPort,
+		lensVisibilityPort:   lensVisibilityPort,
+		resolveLensPort:      resolveLensPort,
 		featureFlagPort:      featureFlag,
 		metrics:              metrics,
 		logger:               logger,

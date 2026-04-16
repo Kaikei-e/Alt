@@ -28,11 +28,16 @@ var (
 	errInvalidAudience = errors.New("invalid audience")
 )
 
-// BackendClaims represents the JWT claims for backend authentication
+// BackendClaims represents the JWT claims for backend authentication.
+// TenantID carries the tenant_id claim emitted by auth-hub. Keeping it as
+// a dedicated claim — rather than collapsing it to Subject — is what lets
+// downstream authorization (event filters, projection queries) enforce a
+// real tenant boundary instead of an implicit user==tenant assumption.
 type BackendClaims struct {
-	Email string `json:"email"`
-	Role  string `json:"role"`
-	Sid   string `json:"sid"`
+	Email    string `json:"email"`
+	Role     string `json:"role"`
+	Sid      string `json:"sid"`
+	TenantID string `json:"tenant_id"`
 	jwt.RegisteredClaims
 }
 
@@ -172,12 +177,19 @@ func (a *AuthInterceptor) validateToken(tokenStr string) (*domain.UserContext, e
 		loginAt = claims.IssuedAt.Time
 	}
 
-	// Note: Using UserID as TenantID (single-tenant architecture per auth-hub)
+	if claims.TenantID == "" {
+		return nil, errInvalidClaims
+	}
+	tenantID, err := uuid.Parse(claims.TenantID)
+	if err != nil {
+		return nil, errInvalidClaims
+	}
+
 	return &domain.UserContext{
 		UserID:    userID,
 		Email:     claims.Email,
 		Role:      domain.UserRole(claims.Role),
-		TenantID:  userID, // Use UserID as TenantID (single-tenant model)
+		TenantID:  tenantID,
 		SessionID: claims.Sid,
 		LoginAt:   loginAt,
 		ExpiresAt: expiresAt,

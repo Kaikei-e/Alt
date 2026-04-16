@@ -11,6 +11,7 @@ import {
 	KnowledgeHomeItemSchema,
 	WhyReasonSchema,
 	SupersedeInfoSchema,
+	StreamKnowledgeHomeUpdatesRequestSchema,
 	StreamKnowledgeHomeUpdatesResponseSchema,
 	TrackHomeActionRequestSchema,
 	RecallCandidateSchema,
@@ -173,6 +174,28 @@ describe("Knowledge Home API Contract", () => {
 				});
 				expect(info.state).toBe(state);
 			}
+		});
+	});
+
+	describe("StreamKnowledgeHomeUpdatesRequest", () => {
+		// Regression net for the multi-tenant stream scoping fix:
+		// the request must carry lens_id so the backend can apply the
+		// same lens scope as the unary GetKnowledgeHome path. If this
+		// field disappears from the proto, lens-scoped streaming silently
+		// degrades to "all events for the user", which is the bug we just
+		// closed. Authentication-derived tenant_id and user_id stay in
+		// transport metadata, not the request body.
+		it("carries lens_id so backend can scope events to the active lens", () => {
+			const lensID = "11111111-1111-1111-1111-111111111111";
+			const req = create(StreamKnowledgeHomeUpdatesRequestSchema, {
+				lensId: lensID,
+			});
+			expect(req.lensId).toBe(lensID);
+		});
+
+		it("permits omitting lens_id for the default-lens subscriber", () => {
+			const req = create(StreamKnowledgeHomeUpdatesRequestSchema, {});
+			expect(req.lensId).toBeUndefined();
 		});
 	});
 

@@ -38,22 +38,28 @@ func (r *Repository) ListKnowledgeEventsSince(ctx context.Context, afterSeq int6
 	return r.scanEvents(ctx, query, afterSeq, limit)
 }
 
-// ListKnowledgeEventsSinceForUser returns events for a specific user after the given sequence number.
-func (r *Repository) ListKnowledgeEventsSinceForUser(ctx context.Context, userID uuid.UUID, afterSeq int64, limit int) ([]KnowledgeEvent, error) {
+// ListKnowledgeEventsSinceForUser returns events scoped to a tenant and user
+// after the given sequence number. The tenant predicate is the primary
+// authorization gate; user_id IS NULL admits tenant-wide system events
+// (e.g., ArticleCreated) that all users in the tenant should observe.
+func (r *Repository) ListKnowledgeEventsSinceForUser(ctx context.Context, tenantID, userID uuid.UUID, afterSeq int64, limit int) ([]KnowledgeEvent, error) {
 	query := `SELECT event_id, event_seq, occurred_at, tenant_id, user_id,
 		actor_type, actor_id, event_type, aggregate_type, aggregate_id,
 		correlation_id, causation_id, dedupe_key, payload
-		FROM knowledge_events WHERE event_seq > $1 AND (user_id = $2 OR user_id IS NULL)
-		ORDER BY event_seq ASC LIMIT $3`
+		FROM knowledge_events
+		WHERE event_seq > $1 AND tenant_id = $2 AND (user_id = $3 OR user_id IS NULL)
+		ORDER BY event_seq ASC LIMIT $4`
 
-	return r.scanEvents(ctx, query, afterSeq, userID, limit)
+	return r.scanEvents(ctx, query, afterSeq, tenantID, userID, limit)
 }
 
-// GetLatestKnowledgeEventSeqForUser returns the latest event sequence number for a user.
-func (r *Repository) GetLatestKnowledgeEventSeqForUser(ctx context.Context, userID uuid.UUID) (int64, error) {
-	query := `SELECT COALESCE(MAX(event_seq), 0) FROM knowledge_events WHERE user_id = $1 OR user_id IS NULL`
+// GetLatestKnowledgeEventSeqForUser returns the latest event sequence number
+// observable by the given (tenant, user) pair.
+func (r *Repository) GetLatestKnowledgeEventSeqForUser(ctx context.Context, tenantID, userID uuid.UUID) (int64, error) {
+	query := `SELECT COALESCE(MAX(event_seq), 0) FROM knowledge_events
+		WHERE tenant_id = $1 AND (user_id = $2 OR user_id IS NULL)`
 	var seq int64
-	if err := r.pool.QueryRow(ctx, query, userID).Scan(&seq); err != nil {
+	if err := r.pool.QueryRow(ctx, query, tenantID, userID).Scan(&seq); err != nil {
 		return 0, fmt.Errorf("GetLatestKnowledgeEventSeqForUser: %w", err)
 	}
 	return seq, nil

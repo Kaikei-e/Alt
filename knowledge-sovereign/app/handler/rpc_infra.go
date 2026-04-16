@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
@@ -24,8 +25,21 @@ func (h *SovereignHandler) ListKnowledgeEvents(
 	var err error
 
 	if msg.UserId != "" {
-		userID := parseUUID(msg.UserId)
-		events, err = h.readDB.ListKnowledgeEventsSinceForUser(ctx, userID, msg.AfterSeq, int(msg.Limit))
+		if msg.TenantId == "" {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("tenant_id is required when user_id is set"))
+		}
+		userID, parseErr := uuid.Parse(msg.UserId)
+		if parseErr != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid user_id: %w", parseErr))
+		}
+		tenantID, parseErr := uuid.Parse(msg.TenantId)
+		if parseErr != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid tenant_id: %w", parseErr))
+		}
+		events, err = h.readDB.ListKnowledgeEventsSinceForUser(ctx, tenantID, userID, msg.AfterSeq, int(msg.Limit))
 	} else {
 		events, err = h.readDB.ListKnowledgeEventsSince(ctx, msg.AfterSeq, int(msg.Limit))
 	}
@@ -44,12 +58,79 @@ func (h *SovereignHandler) GetLatestEventSeq(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetLatestEventSeqRequest],
 ) (*connect.Response[sovereignv1.GetLatestEventSeqResponse], error) {
-	userID := parseUUID(req.Msg.UserId)
-	seq, err := h.readDB.GetLatestKnowledgeEventSeqForUser(ctx, userID)
+	if req.Msg.TenantId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("tenant_id is required"))
+	}
+	userID, err := uuid.Parse(req.Msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid user_id: %w", err))
+	}
+	tenantID, err := uuid.Parse(req.Msg.TenantId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid tenant_id: %w", err))
+	}
+	seq, err := h.readDB.GetLatestKnowledgeEventSeqForUser(ctx, tenantID, userID)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLatestEventSeq: %w", err))
 	}
 	return connect.NewResponse(&sovereignv1.GetLatestEventSeqResponse{EventSeq: seq}), nil
+}
+
+func (h *SovereignHandler) AreArticlesVisibleInLens(
+	ctx context.Context,
+	req *connect.Request[sovereignv1.AreArticlesVisibleInLensRequest],
+) (*connect.Response[sovereignv1.AreArticlesVisibleInLensResponse], error) {
+	msg := req.Msg
+	if msg.TenantId == "" || msg.UserId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("tenant_id and user_id are required"))
+	}
+	tenantID, err := uuid.Parse(msg.TenantId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid tenant_id: %w", err))
+	}
+	userID, err := uuid.Parse(msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid user_id: %w", err))
+	}
+
+	articleIDs := make([]uuid.UUID, 0, len(msg.ArticleIds))
+	for _, idStr := range msg.ArticleIds {
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("invalid article_id %q: %w", idStr, err))
+		}
+		articleIDs = append(articleIDs, id)
+	}
+
+	var filter *sovereign_db.LensFilter
+	if msg.Filter != nil {
+		filter = &sovereign_db.LensFilter{
+			QueryText:    msg.Filter.QueryText,
+			TagNames:     msg.Filter.TagIds,
+			SourceIDs:    msg.Filter.SourceIds,
+			TimeWindow:   msg.Filter.TimeWindow,
+			IncludeRecap: msg.Filter.IncludeRecap,
+			IncludePulse: msg.Filter.IncludePulse,
+			SortMode:     msg.Filter.SortMode,
+		}
+	}
+
+	visibleMap, err := h.readDB.AreArticlesVisibleInLens(ctx, tenantID, userID, articleIDs, filter)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("AreArticlesVisibleInLens: %w", err))
+	}
+	out := make(map[string]bool, len(visibleMap))
+	for id, v := range visibleMap {
+		out[id.String()] = v
+	}
+	return connect.NewResponse(&sovereignv1.AreArticlesVisibleInLensResponse{Visibility: out}), nil
 }
 
 func (h *SovereignHandler) AppendKnowledgeEvent(

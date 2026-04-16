@@ -94,7 +94,7 @@ type mockLatestSeqPort struct {
 	err error
 }
 
-func (m *mockLatestSeqPort) GetLatestKnowledgeEventSeqForUser(_ context.Context, _ uuid.UUID) (int64, error) {
+func (m *mockLatestSeqPort) GetLatestKnowledgeEventSeqForUser(_ context.Context, _, _ uuid.UUID) (int64, error) {
 	return m.seq, m.err
 }
 
@@ -150,6 +150,8 @@ func setupHandlerWithFlags(flagPort *mockFeatureFlagPort) (*Handler, *mockHomeIt
 		nil, nil, nil, nil, nil, // lens: create, update, list, select, archive
 		nil, // eventsPort
 		nil, // eventsForUserPort
+		nil, // lensVisibilityPort
+		nil, // resolveLensPort
 		flagPort,
 		nil, // metrics
 		slog.Default(),
@@ -365,7 +367,7 @@ func TestHandler_GetKnowledgeHome_WithMetrics_DoesNotPanic(t *testing.T) {
 	handler := NewHandler(
 		getHomeUsecase, trackSeenUsecase, trackActionUsecase,
 		nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil,
+		nil, nil, nil, nil, nil,
 		metrics,
 		slog.Default(),
 	)
@@ -756,6 +758,8 @@ func newStreamTestHandler(flagPort *mockFeatureFlagPort, eventsPort *mockListEve
 		nil, nil, nil, nil, nil, // lens: create, update, list, select, archive
 		eventsPort,
 		nil, // eventsForUserPort
+		nil, // lensVisibilityPort
+		nil, // resolveLensPort
 		flagPort,
 		nil, // metrics
 		slog.Default(),
@@ -789,7 +793,7 @@ func TestHandler_InitialStreamSeq_UsesLatestKnownSeq(t *testing.T) {
 		logger:        slog.Default(),
 	}
 
-	seq, err := handler.initialStreamSeq(context.Background(), uuid.New())
+	seq, err := handler.initialStreamSeq(context.Background(), uuid.New(), uuid.New())
 
 	require.NoError(t, err)
 	assert.Equal(t, int64(42), seq)
@@ -801,7 +805,7 @@ type mockEventsForUserPort struct {
 	err    error
 }
 
-func (m *mockEventsForUserPort) ListKnowledgeEventsSinceForUser(_ context.Context, _ uuid.UUID, _ int64, _ int) ([]domain.KnowledgeEvent, error) {
+func (m *mockEventsForUserPort) ListKnowledgeEventsSinceForUser(_ context.Context, _, _ uuid.UUID, _ int64, _ int) ([]domain.KnowledgeEvent, error) {
 	return m.events, m.err
 }
 
@@ -925,6 +929,8 @@ func TestStreamKnowledgeHomeUpdates_SendsImmediateHeartbeat(t *testing.T) {
 		nil, nil, nil, nil, nil, // lens
 		nil,           // eventsPort
 		eventsForUser, // eventsForUserPort
+		nil,           // lensVisibilityPort
+		nil,           // resolveLensPort
 		flagPort,      // featureFlagPort
 		nil,           // metrics
 		slog.Default(),

@@ -25,6 +25,7 @@ service KnowledgeSovereignService {
   rpc ListKnowledgeEvents(ListKnowledgeEventsRequest) returns (ListKnowledgeEventsResponse);
   rpc GetLatestEventSeq(GetLatestEventSeqRequest) returns (GetLatestEventSeqResponse);
   rpc AppendKnowledgeEvent(AppendKnowledgeEventRequest) returns (AppendKnowledgeEventResponse);
+  rpc AreArticlesVisibleInLens(AreArticlesVisibleInLensRequest) returns (AreArticlesVisibleInLensResponse);
 
   // === Projection infrastructure ===
   rpc GetActiveProjectionVersion(GetActiveProjectionVersionRequest) returns (GetActiveProjectionVersionResponse);
@@ -370,7 +371,10 @@ message CountNeedToKnowItemsResponse {
 message ListKnowledgeEventsRequest {
   int64 after_seq = 1;
   int32 limit = 2;
-  string user_id = 3; // optional: empty = all users
+  string user_id = 3; // optional: empty = all users (projector path only)
+  // tenant_id is required when user_id is set; both must match the
+  // authenticated principal so cross-tenant events cannot leak.
+  string tenant_id = 4;
 }
 
 message ListKnowledgeEventsResponse {
@@ -379,10 +383,26 @@ message ListKnowledgeEventsResponse {
 
 message GetLatestEventSeqRequest {
   string user_id = 1;
+  string tenant_id = 2;
 }
 
 message GetLatestEventSeqResponse {
   int64 event_seq = 1;
+}
+
+// Lens-scoped visibility check used by the stream subscriber to filter
+// candidate events at delivery time without re-running the full Home query.
+message AreArticlesVisibleInLensRequest {
+  string tenant_id = 1;
+  string user_id = 2;
+  repeated string article_ids = 3;
+  LensFilter filter = 4;
+}
+
+message AreArticlesVisibleInLensResponse {
+  // article_id (string form) → true if the article would appear in the
+  // user's lens-filtered Home view. Missing keys are treated as not visible.
+  map<string, bool> visibility = 1;
 }
 
 message AppendKnowledgeEventRequest {

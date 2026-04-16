@@ -1,4 +1,4 @@
-h1:e+gUDhq0I7GQUW8fVtDNLeI4teTwwZEgeBBbmO7lyWQ=
+h1:AXQ14H/PkDWF/g4JeJZ9hpipdJfOtb/YD4eqHhaqbHI=
 00001_initial_schema.sql h1:CSFJx5Q5Jv44C4sqoKpzvdh6t8Unwog8bZw9/VBd3NQ=
 00002_add_link_column.sql h1:A2QxniA5wEK9bo0UnqTNKX5TgvkR/zugtdCKs8O07DE=
 00003_fix_user_events_dedupe_constraint.sql h1:5EpJwNHbInepPLqTMNG3YL/FPTqvpkpqazjt6rK0PkQ=
@@ -8,3 +8,4 @@ h1:e+gUDhq0I7GQUW8fVtDNLeI4teTwwZEgeBBbmO7lyWQ=
 00007_partition_knowledge_user_events.sql h1:zFkdBxjOidb9J8FVIvm+my23Yi685xDCn8Pdi5yEIA0=
 00008_create_projection_snapshots.sql h1:YUAVFpVQVoRtI2kTHaIfh/L2Hxtvp4vAEtQi/qcbiuU=
 00009_create_retention_tables.sql h1:fUBOkOvsbIwWD+lCLbWi5Pt6q1R0Nz58Ggrs+vfV0lg=
+00010_add_tenant_event_seq_index_for_stream_filter.sql h1:m1+XlIY8+CbUtNIY6oIM7GQ8K9nbKGdES2gEyo5Y12k=

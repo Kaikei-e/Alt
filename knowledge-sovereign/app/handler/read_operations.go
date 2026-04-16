@@ -21,9 +21,10 @@ type ReadOperations interface {
 
 	// Events
 	ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
-	ListKnowledgeEventsSinceForUser(ctx context.Context, userID uuid.UUID, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
-	GetLatestKnowledgeEventSeqForUser(ctx context.Context, userID uuid.UUID) (int64, error)
+	ListKnowledgeEventsSinceForUser(ctx context.Context, tenantID, userID uuid.UUID, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error)
+	GetLatestKnowledgeEventSeqForUser(ctx context.Context, tenantID, userID uuid.UUID) (int64, error)
 	AppendKnowledgeEvent(ctx context.Context, event sovereign_db.KnowledgeEvent) (int64, error)
+	AreArticlesVisibleInLens(ctx context.Context, tenantID, userID uuid.UUID, articleIDs []uuid.UUID, filter *sovereign_db.LensFilter) (map[uuid.UUID]bool, error)
 
 	// Projection infra
 	GetActiveProjectionVersion(ctx context.Context) (*sovereign_db.ProjectionVersion, error)

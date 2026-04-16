@@ -67,6 +67,9 @@ const (
 	// KnowledgeSovereignServiceAppendKnowledgeEventProcedure is the fully-qualified name of the
 	// KnowledgeSovereignService's AppendKnowledgeEvent RPC.
 	KnowledgeSovereignServiceAppendKnowledgeEventProcedure = "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+	// KnowledgeSovereignServiceAreArticlesVisibleInLensProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's AreArticlesVisibleInLens RPC.
+	KnowledgeSovereignServiceAreArticlesVisibleInLensProcedure = "/services.sovereign.v1.KnowledgeSovereignService/AreArticlesVisibleInLens"
 	// KnowledgeSovereignServiceGetActiveProjectionVersionProcedure is the fully-qualified name of the
 	// KnowledgeSovereignService's GetActiveProjectionVersion RPC.
 	KnowledgeSovereignServiceGetActiveProjectionVersionProcedure = "/services.sovereign.v1.KnowledgeSovereignService/GetActiveProjectionVersion"
@@ -182,6 +185,7 @@ type KnowledgeSovereignServiceClient interface {
 	ListKnowledgeEvents(context.Context, *connect.Request[v1.ListKnowledgeEventsRequest]) (*connect.Response[v1.ListKnowledgeEventsResponse], error)
 	GetLatestEventSeq(context.Context, *connect.Request[v1.GetLatestEventSeqRequest]) (*connect.Response[v1.GetLatestEventSeqResponse], error)
 	AppendKnowledgeEvent(context.Context, *connect.Request[v1.AppendKnowledgeEventRequest]) (*connect.Response[v1.AppendKnowledgeEventResponse], error)
+	AreArticlesVisibleInLens(context.Context, *connect.Request[v1.AreArticlesVisibleInLensRequest]) (*connect.Response[v1.AreArticlesVisibleInLensResponse], error)
 	// === Projection infrastructure ===
 	GetActiveProjectionVersion(context.Context, *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.GetActiveProjectionVersionResponse], error)
 	ListProjectionVersions(context.Context, *connect.Request[v1.ListProjectionVersionsRequest]) (*connect.Response[v1.ListProjectionVersionsResponse], error)
@@ -299,6 +303,12 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			httpClient,
 			baseURL+KnowledgeSovereignServiceAppendKnowledgeEventProcedure,
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("AppendKnowledgeEvent")),
+			connect.WithClientOptions(opts...),
+		),
+		areArticlesVisibleInLens: connect.NewClient[v1.AreArticlesVisibleInLensRequest, v1.AreArticlesVisibleInLensResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceAreArticlesVisibleInLensProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("AreArticlesVisibleInLens")),
 			connect.WithClientOptions(opts...),
 		),
 		getActiveProjectionVersion: connect.NewClient[v1.GetActiveProjectionVersionRequest, v1.GetActiveProjectionVersionResponse](
@@ -509,6 +519,7 @@ type knowledgeSovereignServiceClient struct {
 	listKnowledgeEvents        *connect.Client[v1.ListKnowledgeEventsRequest, v1.ListKnowledgeEventsResponse]
 	getLatestEventSeq          *connect.Client[v1.GetLatestEventSeqRequest, v1.GetLatestEventSeqResponse]
 	appendKnowledgeEvent       *connect.Client[v1.AppendKnowledgeEventRequest, v1.AppendKnowledgeEventResponse]
+	areArticlesVisibleInLens   *connect.Client[v1.AreArticlesVisibleInLensRequest, v1.AreArticlesVisibleInLensResponse]
 	getActiveProjectionVersion *connect.Client[v1.GetActiveProjectionVersionRequest, v1.GetActiveProjectionVersionResponse]
 	listProjectionVersions     *connect.Client[v1.ListProjectionVersionsRequest, v1.ListProjectionVersionsResponse]
 	createProjectionVersion    *connect.Client[v1.CreateProjectionVersionRequest, v1.CreateProjectionVersionResponse]
@@ -599,6 +610,12 @@ func (c *knowledgeSovereignServiceClient) GetLatestEventSeq(ctx context.Context,
 // AppendKnowledgeEvent calls services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeEvent.
 func (c *knowledgeSovereignServiceClient) AppendKnowledgeEvent(ctx context.Context, req *connect.Request[v1.AppendKnowledgeEventRequest]) (*connect.Response[v1.AppendKnowledgeEventResponse], error) {
 	return c.appendKnowledgeEvent.CallUnary(ctx, req)
+}
+
+// AreArticlesVisibleInLens calls
+// services.sovereign.v1.KnowledgeSovereignService.AreArticlesVisibleInLens.
+func (c *knowledgeSovereignServiceClient) AreArticlesVisibleInLens(ctx context.Context, req *connect.Request[v1.AreArticlesVisibleInLensRequest]) (*connect.Response[v1.AreArticlesVisibleInLensResponse], error) {
+	return c.areArticlesVisibleInLens.CallUnary(ctx, req)
 }
 
 // GetActiveProjectionVersion calls
@@ -788,6 +805,7 @@ type KnowledgeSovereignServiceHandler interface {
 	ListKnowledgeEvents(context.Context, *connect.Request[v1.ListKnowledgeEventsRequest]) (*connect.Response[v1.ListKnowledgeEventsResponse], error)
 	GetLatestEventSeq(context.Context, *connect.Request[v1.GetLatestEventSeqRequest]) (*connect.Response[v1.GetLatestEventSeqResponse], error)
 	AppendKnowledgeEvent(context.Context, *connect.Request[v1.AppendKnowledgeEventRequest]) (*connect.Response[v1.AppendKnowledgeEventResponse], error)
+	AreArticlesVisibleInLens(context.Context, *connect.Request[v1.AreArticlesVisibleInLensRequest]) (*connect.Response[v1.AreArticlesVisibleInLensResponse], error)
 	// === Projection infrastructure ===
 	GetActiveProjectionVersion(context.Context, *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.GetActiveProjectionVersionResponse], error)
 	ListProjectionVersions(context.Context, *connect.Request[v1.ListProjectionVersionsRequest]) (*connect.Response[v1.ListProjectionVersionsResponse], error)
@@ -900,6 +918,12 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 		KnowledgeSovereignServiceAppendKnowledgeEventProcedure,
 		svc.AppendKnowledgeEvent,
 		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("AppendKnowledgeEvent")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeSovereignServiceAreArticlesVisibleInLensHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceAreArticlesVisibleInLensProcedure,
+		svc.AreArticlesVisibleInLens,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("AreArticlesVisibleInLens")),
 		connect.WithHandlerOptions(opts...),
 	)
 	knowledgeSovereignServiceGetActiveProjectionVersionHandler := connect.NewUnaryHandler(
@@ -1118,6 +1142,8 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 			knowledgeSovereignServiceGetLatestEventSeqHandler.ServeHTTP(w, r)
 		case KnowledgeSovereignServiceAppendKnowledgeEventProcedure:
 			knowledgeSovereignServiceAppendKnowledgeEventHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceAreArticlesVisibleInLensProcedure:
+			knowledgeSovereignServiceAreArticlesVisibleInLensHandler.ServeHTTP(w, r)
 		case KnowledgeSovereignServiceGetActiveProjectionVersionProcedure:
 			knowledgeSovereignServiceGetActiveProjectionVersionHandler.ServeHTTP(w, r)
 		case KnowledgeSovereignServiceListProjectionVersionsProcedure:
@@ -1233,6 +1259,10 @@ func (UnimplementedKnowledgeSovereignServiceHandler) GetLatestEventSeq(context.C
 
 func (UnimplementedKnowledgeSovereignServiceHandler) AppendKnowledgeEvent(context.Context, *connect.Request[v1.AppendKnowledgeEventRequest]) (*connect.Response[v1.AppendKnowledgeEventResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeEvent is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) AreArticlesVisibleInLens(context.Context, *connect.Request[v1.AreArticlesVisibleInLensRequest]) (*connect.Response[v1.AreArticlesVisibleInLensResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.AreArticlesVisibleInLens is not implemented"))
 }
 
 func (UnimplementedKnowledgeSovereignServiceHandler) GetActiveProjectionVersion(context.Context, *connect.Request[v1.GetActiveProjectionVersionRequest]) (*connect.Response[v1.GetActiveProjectionVersionResponse], error) {

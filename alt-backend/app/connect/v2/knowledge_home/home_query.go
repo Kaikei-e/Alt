@@ -179,16 +179,45 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 	}
 	user, _ := middleware.GetUserContext(ctx)
 
-	var lensID string
+	var lensIDPtr *uuid.UUID
+	var lensIDStr string
 	if req.Msg.LensId != nil && *req.Msg.LensId != "" {
 		parsedLensID, err := parseUUID(*req.Msg.LensId, "lens_id")
 		if err != nil {
 			return err
 		}
-		lensID = parsedLensID.String()
+		lensIDPtr = &parsedLensID
+		lensIDStr = parsedLensID.String()
 	}
 
-	lastSeq, err := h.initialStreamSeq(ctx, user.UserID)
+	// Resolve the lens once per connection. The resolved filter is held for
+	// the lifetime of the stream so the subscriber sees a stable view —
+	// switching lenses requires a new connection (matches the unary
+	// GetKnowledgeHome contract).
+	var lensFilter *domain.KnowledgeHomeLensFilter
+	if h.resolveLensPort != nil {
+		resolved, resolveErr := h.resolveLensPort.ResolveKnowledgeHomeLens(ctx, user.UserID, lensIDPtr)
+		if resolveErr != nil {
+			// When the caller named a specific lens that we cannot resolve,
+			// surface NotFound. PermissionDenied would let an attacker probe
+			// for lens existence; NotFound treats unknown and unauthorized
+			// the same way.
+			if lensIDPtr != nil {
+				h.logger.WarnContext(ctx, "alt.knowledge_home.stream_lens_resolve_failed",
+					"user_id", user.UserID, "lens_id", lensIDStr, "error", resolveErr)
+				return connect.NewError(connect.CodeNotFound,
+					fmt.Errorf("lens not found"))
+			}
+			// No explicit lens requested — fall back to no filter rather
+			// than fail the stream.
+			h.logger.WarnContext(ctx, "alt.knowledge_home.stream_default_lens_resolve_failed",
+				"user_id", user.UserID, "error", resolveErr)
+		} else {
+			lensFilter = resolved
+		}
+	}
+
+	lastSeq, err := h.initialStreamSeq(ctx, user.TenantID, user.UserID)
 	if err != nil {
 		return errorhandler.HandleInternalError(ctx, h.logger, err, "StreamKnowledgeHomeUpdates")
 	}
@@ -211,7 +240,9 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 
 	h.logger.InfoContext(ctx, "alt.knowledge_home.stream_started",
 		"user_id", user.UserID,
-		"lens_id", lensID,
+		"tenant_id", user.TenantID,
+		"lens_id", lensIDStr,
+		"lens_resolved", lensFilter != nil,
 		"start_seq", lastSeq)
 
 	// Send immediate heartbeat so the client receives the first byte instantly.
@@ -268,7 +299,7 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 			if h.eventsForUserPort == nil {
 				continue
 			}
-			events, err := h.eventsForUserPort.ListKnowledgeEventsSinceForUser(ctx, user.UserID, lastSeq, 50)
+			events, err := h.eventsForUserPort.ListKnowledgeEventsSinceForUser(ctx, user.TenantID, user.UserID, lastSeq, 50)
 			if err != nil {
 				consecutiveErrors++
 				h.logger.ErrorContext(ctx, "stream: failed to fetch events", "error", err, "consecutive_errors", consecutiveErrors)
@@ -287,6 +318,27 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 				continue
 			}
 			consecutiveErrors = 0
+
+			// Apply lens filter at delivery time. The events are already
+			// scoped to (tenant, user) by the DB query above; lens filter
+			// drops article-aggregate events whose underlying article would
+			// not appear in the subscriber's lens-filtered Home view. This
+			// keeps the projector reproject-safe — lens preference never
+			// influences the projection.
+			//
+			// `lastSeq` advances over the *fetched* range (including dropped
+			// events) so the next tick does not re-fetch what we already
+			// evaluated.
+			highestFetchedSeq := lastSeq
+			if len(events) > 0 {
+				highestFetchedSeq = events[len(events)-1].EventSeq
+			}
+			events = h.filterEventsByLens(ctx, events, user.TenantID, user.UserID, lensFilter)
+			// Advance the cursor over dropped events too so the next tick
+			// does not re-evaluate them.
+			if highestFetchedSeq > lastSeq && len(events) == 0 {
+				lastSeq = highestFetchedSeq
+			}
 
 			// Phase 5: Coalesce events - deduplicate by item_key, keep latest
 			coalesced := coalesceStreamEvents(events)
@@ -332,12 +384,85 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 	}
 }
 
-func (h *Handler) initialStreamSeq(ctx context.Context, userID uuid.UUID) (int64, error) {
+func (h *Handler) initialStreamSeq(ctx context.Context, tenantID, userID uuid.UUID) (int64, error) {
 	if h.latestSeqPort == nil {
 		return 0, nil
 	}
 
-	return h.latestSeqPort.GetLatestKnowledgeEventSeqForUser(ctx, userID)
+	return h.latestSeqPort.GetLatestKnowledgeEventSeqForUser(ctx, tenantID, userID)
+}
+
+// filterEventsByLens drops article-aggregate events whose underlying article
+// is not visible in the subscriber's lens-filtered Home view. Non-article
+// aggregates (home_session, recap) are user-scoped at the DB layer and are
+// always passed through.
+//
+// Fail-closed semantics: if the visibility check fails, article events are
+// dropped for this tick — never delivered. Non-article events still flow.
+func (h *Handler) filterEventsByLens(
+	ctx context.Context,
+	events []domain.KnowledgeEvent,
+	tenantID, userID uuid.UUID,
+	filter *domain.KnowledgeHomeLensFilter,
+) []domain.KnowledgeEvent {
+	if filter == nil || h.lensVisibilityPort == nil || len(events) == 0 {
+		return events
+	}
+
+	seen := make(map[uuid.UUID]struct{}, len(events))
+	articleIDs := make([]uuid.UUID, 0, len(events))
+	for _, e := range events {
+		if e.AggregateType != domain.AggregateArticle {
+			continue
+		}
+		id, err := uuid.Parse(e.AggregateID)
+		if err != nil {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		articleIDs = append(articleIDs, id)
+	}
+
+	if len(articleIDs) == 0 {
+		return events
+	}
+
+	visibility, err := h.lensVisibilityPort.AreArticlesVisibleInLens(ctx, tenantID, userID, articleIDs, filter)
+	if err != nil {
+		h.logger.WarnContext(ctx, "alt.knowledge_home.stream_lens_visibility_failed",
+			"user_id", userID, "tenant_id", tenantID, "error", err)
+		return dropArticleAggregates(events)
+	}
+
+	out := make([]domain.KnowledgeEvent, 0, len(events))
+	for _, e := range events {
+		if e.AggregateType != domain.AggregateArticle {
+			out = append(out, e)
+			continue
+		}
+		id, parseErr := uuid.Parse(e.AggregateID)
+		if parseErr != nil {
+			continue
+		}
+		if visibility[id] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func dropArticleAggregates(events []domain.KnowledgeEvent) []domain.KnowledgeEvent {
+	out := make([]domain.KnowledgeEvent, 0, len(events))
+	for _, e := range events {
+		if e.AggregateType == domain.AggregateArticle {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // streamFlagGuard checks authentication and feature flag for stream access.

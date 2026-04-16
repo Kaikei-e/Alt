@@ -73,14 +73,17 @@ func (m *mockRepo) GetProjectionFreshness(_ context.Context, _ string) (*time.Ti
 func (m *mockRepo) ListKnowledgeEventsSince(_ context.Context, _ int64, _ int) ([]sovereign_db.KnowledgeEvent, error) {
 	return nil, m.returnErr
 }
-func (m *mockRepo) ListKnowledgeEventsSinceForUser(_ context.Context, _ uuid.UUID, _ int64, _ int) ([]sovereign_db.KnowledgeEvent, error) {
+func (m *mockRepo) ListKnowledgeEventsSinceForUser(_ context.Context, _, _ uuid.UUID, _ int64, _ int) ([]sovereign_db.KnowledgeEvent, error) {
 	return nil, m.returnErr
 }
-func (m *mockRepo) GetLatestKnowledgeEventSeqForUser(_ context.Context, _ uuid.UUID) (int64, error) {
+func (m *mockRepo) GetLatestKnowledgeEventSeqForUser(_ context.Context, _, _ uuid.UUID) (int64, error) {
 	return 0, m.returnErr
 }
 func (m *mockRepo) AppendKnowledgeEvent(_ context.Context, _ sovereign_db.KnowledgeEvent) (int64, error) {
 	return 0, m.returnErr
+}
+func (m *mockRepo) AreArticlesVisibleInLens(_ context.Context, _, _ uuid.UUID, _ []uuid.UUID, _ *sovereign_db.LensFilter) (map[uuid.UUID]bool, error) {
+	return nil, m.returnErr
 }
 func (m *mockRepo) GetActiveProjectionVersion(_ context.Context) (*sovereign_db.ProjectionVersion, error) {
 	return nil, m.returnErr
