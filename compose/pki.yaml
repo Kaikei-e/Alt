@@ -218,6 +218,13 @@ services:
 
   pki-agent-tag-generator:
     <<: *pki-agent
+    network_mode: "service:tag-generator"
+    networks: !override []
+    depends_on:
+      tag-generator:
+        condition: service_healthy
+      step-ca:
+        condition: service_healthy
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
@@ -227,12 +234,16 @@ services:
       - CERT_SANS=tag-generator,localhost
       - CERT_PATH=/certs/svc-cert.pem
       - KEY_PATH=/certs/svc-key.pem
-      # tag-generator uses an nginx TLS sidecar that reads certs as root.
       - CERT_OWNER_UID=0
       - CERT_OWNER_GID=0
       - RENEW_AT_FRACTION=0.66
       - TICK_INTERVAL=5m
       - METRICS_ADDR=:9510
+      - PROXY_LISTEN=:9443
+      - PROXY_UPSTREAM=http://127.0.0.1:9400
+      - PROXY_VERIFY_CLIENT=${TAG_GENERATOR_VERIFY_CLIENT:-on}
+      - PROXY_ALLOWED_PEERS=${TAG_GENERATOR_MTLS_ALLOWED_PEERS:-alt-butterfly-facade,alt-backend,search-indexer}
+      - PROXY_CA_FILE=/trust/ca-bundle.pem
     volumes:
       - tag_generator_certs:/certs
       - pki_trust_bundle:/trust:ro
@@ -260,6 +271,13 @@ services:
 
   pki-agent-acolyte-orchestrator:
     <<: *pki-agent
+    network_mode: "service:acolyte-orchestrator"
+    networks: !override []
+    depends_on:
+      acolyte-orchestrator:
+        condition: service_healthy
+      step-ca:
+        condition: service_healthy
     environment:
       - STEP_CA_URL=https://step-ca:9000
       - STEP_CA_ROOT_FILE=/trust/ca-bundle.pem
@@ -269,12 +287,16 @@ services:
       - CERT_SANS=acolyte-orchestrator,localhost
       - CERT_PATH=/certs/svc-cert.pem
       - KEY_PATH=/certs/svc-key.pem
-      # acolyte-orchestrator uses an nginx TLS sidecar that reads certs as root.
       - CERT_OWNER_UID=0
       - CERT_OWNER_GID=0
       - RENEW_AT_FRACTION=0.66
       - TICK_INTERVAL=5m
       - METRICS_ADDR=:9510
+      - PROXY_LISTEN=:9443
+      - PROXY_UPSTREAM=http://127.0.0.1:8090
+      - PROXY_VERIFY_CLIENT=${ACOLYTE_ORCHESTRATOR_VERIFY_CLIENT:-on}
+      - PROXY_ALLOWED_PEERS=${ACOLYTE_ORCHESTRATOR_MTLS_ALLOWED_PEERS:-alt-butterfly-facade}
+      - PROXY_CA_FILE=/trust/ca-bundle.pem
     volumes:
       - acolyte_orchestrator_certs:/certs
       - pki_trust_bundle:/trust:ro

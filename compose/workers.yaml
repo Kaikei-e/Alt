@@ -119,33 +119,9 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  tag-generator-tls-sidecar:
-    image: nginx:1.27-alpine
-    restart: unless-stopped
-    network_mode: "service:tag-generator"
-    environment:
-      UPSTREAM_PORT: "9400"
-      # peer-identity 強制。VERIFY_CLIENT=on で client cert 必須化、
-      # CN を X-Alt-Peer-Identity header で upstream に転送する (ADR-000737)。
-      VERIFY_CLIENT: ${TAG_GENERATOR_VERIFY_CLIENT:-on}
-    volumes:
-      - ../docker/nginx-tls-sidecar/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
-      - ../docker/nginx-tls-sidecar/entrypoint.sh:/entrypoint.sh:ro
-      - tag_generator_certs:/certs:ro
-      - pki_trust_bundle:/trust:ro
-    entrypoint: ["/entrypoint.sh"]
-    depends_on:
-      tag-generator:
-        condition: service_healthy
-      pki-agent-tag-generator:
-        condition: service_healthy
-    labels:
-      - rask.group=tag-generator
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # nginx TLS sidecar replaced by pki-agent proxy mode (ADR-000747, F-007).
+  # pki-agent-tag-generator in compose/pki.yaml handles both cert lifecycle
+  # AND mTLS reverse proxy (:9443 → :9400).
 
   tag-generator:
     env_file:
@@ -157,13 +133,11 @@ services:
     depends_on:
       redis-streams:
         condition: service_healthy
-      pki-agent-tag-generator:
-        condition: service_healthy
     networks:
       - alt-network
     ports:
       - "9400:9400"
-      # mTLS :9443 exposed via tag-generator-tls-sidecar (shares net ns)
+      # mTLS :9443 served by pki-agent-tag-generator (shares net ns via network_mode)
     environment:
       # Backend API mode (replaces direct DB access for article/tag operations)
       - BACKEND_API_URL=http://alt-backend:9101

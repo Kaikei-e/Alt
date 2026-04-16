@@ -37,6 +37,13 @@ type Config struct {
 
 	// Observability.
 	MetricsAddr string
+
+	// Optional TLS reverse proxy mode. Set PROXY_LISTEN to enable.
+	ProxyListen       string
+	ProxyUpstream     string
+	ProxyVerifyClient bool
+	ProxyAllowedPeers []string
+	ProxyCAPath       string
 }
 
 // Load parses environment variables (with _FILE support for secrets) into
@@ -85,6 +92,18 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("TICK_INTERVAL: %w", err)
 	}
 	c.TickInterval = tick
+
+	c.ProxyListen = getEnv("PROXY_LISTEN", "")
+	c.ProxyUpstream = getEnv("PROXY_UPSTREAM", "")
+	c.ProxyCAPath = getEnv("PROXY_CA_FILE", c.RootFile)
+	c.ProxyVerifyClient = strings.EqualFold(getEnv("PROXY_VERIFY_CLIENT", "off"), "on")
+	if peers := getEnv("PROXY_ALLOWED_PEERS", ""); peers != "" {
+		for _, p := range strings.Split(peers, ",") {
+			if s := strings.TrimSpace(p); s != "" {
+				c.ProxyAllowedPeers = append(c.ProxyAllowedPeers, s)
+			}
+		}
+	}
 
 	return c, c.validate()
 }

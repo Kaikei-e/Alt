@@ -96,6 +96,29 @@ func main() {
 		}
 	}()
 
+	// Optional TLS reverse proxy (replaces nginx TLS sidecar for Python services).
+	if cfg.ProxyListen != "" {
+		proxySrv, err := handler.NewTLSProxy(handler.ProxyConfig{
+			Listen:       cfg.ProxyListen,
+			Upstream:     cfg.ProxyUpstream,
+			CertPath:     cfg.CertPath,
+			KeyPath:      cfg.KeyPath,
+			CAPath:       cfg.ProxyCAPath,
+			VerifyClient: cfg.ProxyVerifyClient,
+			AllowedPeers: cfg.ProxyAllowedPeers,
+		})
+		if err != nil {
+			slog.Error("proxy setup failed", "err", err)
+			os.Exit(3)
+		}
+		go func() {
+			slog.Info("TLS reverse proxy listening", "addr", cfg.ProxyListen, "upstream", cfg.ProxyUpstream)
+			if err := proxySrv.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("proxy server", "err", err)
+			}
+		}()
+	}
+
 	// Ticker loop with jitter-free fixed interval. Rotation is idempotent
 	// per state, so we don't need to randomize.
 	ticker := time.NewTicker(cfg.TickInterval)
