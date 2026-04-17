@@ -1115,15 +1115,15 @@ mod tests {
             assert_eq!(config.alt_backend_base_url(), "http://localhost:9000/");
             assert_eq!(
                 config.alt_backend_connect_timeout(),
-                Duration::from_millis(3000)
+                Duration::from_secs(3)
             );
             assert_eq!(
                 config.alt_backend_read_timeout(),
-                Duration::from_millis(20000)
+                Duration::from_secs(20)
             );
             assert_eq!(
                 config.alt_backend_total_timeout(),
-                Duration::from_millis(30000)
+                Duration::from_secs(30)
             );
             assert_eq!(config.http_max_retries(), 3);
             assert_eq!(config.http_backoff_base_ms(), 250);
@@ -1132,7 +1132,7 @@ mod tests {
             assert!((config.otel_sampling_ratio() - 1.0).abs() < f64::EPSILON);
             assert_eq!(config.recap_window_days(), 7);
             assert_eq!(config.tag_label_graph_window(), "7d");
-            assert_eq!(config.tag_label_graph_ttl(), Duration::from_secs(900));
+            assert_eq!(config.tag_label_graph_ttl(), Duration::from_mins(15));
             assert_eq!(
                 config.recap_genres(),
                 &[
@@ -1217,14 +1217,14 @@ mod tests {
             );
             assert_eq!(
                 config.alt_backend_connect_timeout(),
-                Duration::from_millis(5000)
+                Duration::from_secs(5)
             );
             assert_eq!(config.http_max_retries(), 5);
             assert_eq!(config.otel_exporter_endpoint(), Some("http://otel:4317"));
             assert_eq!(config.recap_window_days(), 14);
             assert_eq!(config.recap_genres(), &["ai", "tech"]);
             assert_eq!(config.tag_label_graph_window(), "30d");
-            assert_eq!(config.tag_label_graph_ttl(), Duration::from_secs(600));
+            assert_eq!(config.tag_label_graph_ttl(), Duration::from_mins(10));
         });
     }
 

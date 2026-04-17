@@ -255,7 +255,7 @@ impl DefaultPulseStage {
             }
         }
         let mut top_entities: Vec<(String, usize)> = entity_counts.into_iter().collect();
-        top_entities.sort_by(|a, b| b.1.cmp(&a.1));
+        top_entities.sort_by_key(|b| std::cmp::Reverse(b.1));
         let top_entities: Vec<String> = top_entities.into_iter().take(5).map(|(e, _)| e).collect();
 
         // Build representative articles (top 3 from original articles after syndication removal)

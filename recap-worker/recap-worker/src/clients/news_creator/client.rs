@@ -72,7 +72,7 @@ impl NewsCreatorClient {
         Self {
             client: Client::new(),
             base_url: Url::parse(&base_url.into()).unwrap(),
-            summary_timeout: Duration::from_secs(60),
+            summary_timeout: Duration::from_mins(1),
             token_counter: TokenCounter::dummy(),
         }
     }
@@ -106,7 +106,7 @@ impl NewsCreatorClient {
             .client
             .post(url)
             .json(&payload)
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_mins(1))
             .send()
             .await
             .context("news-creator summarize request failed")?

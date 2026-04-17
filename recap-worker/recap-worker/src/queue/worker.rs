@@ -61,7 +61,7 @@ impl QueueWorker {
                 Err(e) => {
                     error!(error = %e, "failed to pick next job");
                     drop(permit);
-                    sleep(Duration::from_millis(1000)).await;
+                    sleep(Duration::from_secs(1)).await;
                     continue;
                 }
             };

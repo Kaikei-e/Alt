@@ -73,7 +73,7 @@ impl SubworkerClient {
         corpus: &EvidenceCorpus,
     ) -> Result<ClusteringResponse> {
         // デフォルトのtimeoutを使用
-        let default_timeout = Duration::from_secs(300);
+        let default_timeout = Duration::from_mins(5);
         self.cluster_corpus_with_timeout(job_id, corpus, default_timeout, None)
             .await
     }
@@ -300,7 +300,7 @@ impl SubworkerClient {
 
         // Stuck検知: 進捗が無い場合（statusやcluster_countが変化しない）
         // デフォルトは600秒（10分）
-        let stuck_limit = stuck_threshold.unwrap_or_else(|| Duration::from_secs(600));
+        let stuck_limit = stuck_threshold.unwrap_or_else(|| Duration::from_mins(10));
         let time_since_progress = progress_tracker.time_since_progress();
         if time_since_progress > stuck_limit {
             warn!(

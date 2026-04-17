@@ -538,7 +538,7 @@ impl EvaluationContext {
             Arc::new(DbTagLabelGraphSource::new(
                 state.dao(),
                 "7d",                      // Use 7-day window
-                Duration::from_secs(3600), // 1 hour TTL
+                Duration::from_hours(1),   // 1 hour TTL
             ));
         let refine_engine: Arc<dyn RefineEngine> =
             Arc::new(DefaultRefineEngine::new(refine_config, graph_source));

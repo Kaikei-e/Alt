@@ -152,7 +152,7 @@ impl MorningUpdateDaemon {
     }
 
     async fn run(self) {
-        let interval = Duration::from_secs(30 * 60); // 30 minutes
+        let interval = Duration::from_mins(30);
         loop {
             sleep(interval).await;
             let job_id = Uuid::new_v4();

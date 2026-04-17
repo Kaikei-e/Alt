@@ -102,7 +102,7 @@ impl ComponentRegistry {
             let client = crate::clients::mtls::build_mtls_client(
                 paths,
                 std::time::Duration::from_secs(5),
-                std::time::Duration::from_secs(3600),
+                std::time::Duration::from_hours(1),
             )?;
             SubworkerClient::new_with_client(
                 config.subworker_base_url(),

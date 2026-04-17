@@ -218,7 +218,7 @@ pub fn get_top_entities(articles: &[ArticleEntities], limit: usize) -> Vec<Strin
     }
 
     let mut entities: Vec<(String, usize)> = entity_counts.into_iter().collect();
-    entities.sort_by(|a, b| b.1.cmp(&a.1));
+    entities.sort_by_key(|b| std::cmp::Reverse(b.1));
 
     entities.into_iter().take(limit).map(|(e, _)| e).collect()
 }

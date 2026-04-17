@@ -183,7 +183,7 @@ impl FeatureExtractor {
 
         // 2. 上位vocab_size個のトークンを選択（DF降順）
         let mut token_df_pairs: Vec<(String, usize)> = doc_freq.into_iter().collect();
-        token_df_pairs.sort_by(|a, b| b.1.cmp(&a.1)); // DF降順でソート
+        token_df_pairs.sort_by_key(|b| std::cmp::Reverse(b.1)); // DF降順でソート
         token_df_pairs.truncate(vocab_size);
 
         // 3. 語彙とIDFを構築

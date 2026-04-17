@@ -51,7 +51,7 @@ impl<'a> SummaryRequestBuilder<'a> {
             .collect();
 
         // size（記事数）の降順でソート
-        sorted_clusters.sort_by(|a, b| b.size.cmp(&a.size));
+        sorted_clusters.sort_by_key(|b| std::cmp::Reverse(b.size));
 
         // 上位MAX_CLUSTERS件に制限
         let target_clusters: Vec<_> = sorted_clusters.into_iter().take(MAX_CLUSTERS).collect();

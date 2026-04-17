@@ -458,5 +458,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pacts-acolyte-orchestrator
-          path: acolyte-orchestrator/pacts/*.json
-          if-no-files-found: warn
+          path: pacts/acolyte-orchestrator-*.json
+          if-no-files-found: error
