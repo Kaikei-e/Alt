@@ -159,11 +159,12 @@ class EvaluationService:
             golden_path = golden_data_path  # 既にバリデーション済み
         else:
             golden_path = validate_path(golden_data_path)  # defense-in-depth
-        if not golden_path.exists():
+        if not golden_path.exists():  # codeql[py/path-injection] -- validate_path applies realpath + allow-list; Path inputs are pre-validated by the router
             raise FileNotFoundError(f"Golden data not found: {golden_path}")
 
         # Load Golden Data
-        with golden_path.open() as f:
+        with golden_path.open() as f:  # codeql[py/path-injection] -- path already validated above
+
             data = json.load(f)
 
         # Handle wrapper structure

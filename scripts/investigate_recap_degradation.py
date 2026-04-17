@@ -384,10 +384,25 @@ async def fetch_genre_evaluation(conn) -> Optional[Dict[str, Any]]:
     }
 
 
+def _safe_dsn_for_log(dsn: str) -> str:
+    """Return a copy of *dsn* with any user/password stripped.
+
+    ``dsn.split('@')[-1]`` leaks credentials when the password itself
+    contains ``@`` or when the DSN has no userinfo at all. Parsing with
+    urllib keeps the host/port/db visible without ever touching the
+    secret.
+    """
+    parsed = urlparse(dsn)
+    redacted = parsed._replace(netloc=parsed.hostname or "")
+    if parsed.port is not None:
+        redacted = redacted._replace(netloc=f"{parsed.hostname}:{parsed.port}")
+    return urlunparse(redacted)
+
+
 async def main():
     """メイン処理"""
     db_url = get_db_url()
-    logger.info(f"Connecting to DB: {db_url.split('@')[-1]}")
+    logger.info("Connecting to DB: %s", _safe_dsn_for_log(db_url))
 
     engine = create_async_engine(db_url, echo=False)
 

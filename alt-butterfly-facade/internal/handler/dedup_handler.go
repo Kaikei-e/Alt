@@ -256,5 +256,8 @@ func (r *responseRecorder) WriteHeader(statusCode int) {
 
 func (r *responseRecorder) Write(b []byte) (int, error) {
 	r.body.Write(b)
-	return r.ResponseWriter.Write(b) // lgtm[go/reflected-xss]
+	// ResponseWriter.Write passthrough on a recording middleware. The bytes
+	// come from the upstream alt-backend response; escaping, if needed, is
+	// the responsibility of the handler that originally produced them.
+	return r.ResponseWriter.Write(b) //nolint:gosec // codeql[go/reflected-xss]
 }

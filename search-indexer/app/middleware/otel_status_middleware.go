@@ -35,7 +35,10 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	if !r.wroteHeader {
 		r.wroteHeader = true
 	}
-	return r.ResponseWriter.Write(b) // lgtm[go/reflected-xss]
+	// OTel tracing middleware passthrough. The bytes originate from the
+	// wrapped handler (Meilisearch-backed handlers that JSON-encode their
+	// responses), not from user input routed through this recorder.
+	return r.ResponseWriter.Write(b) //nolint:gosec // codeql[go/reflected-xss]
 }
 
 // OTelStatusHandler wraps an http.Handler with OpenTelemetry tracing

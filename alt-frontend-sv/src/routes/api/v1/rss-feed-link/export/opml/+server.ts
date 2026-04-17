@@ -22,13 +22,15 @@ export const GET: RequestHandler = async ({ request }) => {
 		);
 
 		if (!response.ok) {
-			return new Response(
-				JSON.stringify({ error: `Backend error: ${response.status}` }),
-				{
-					status: response.status,
-					headers: { "Content-Type": "application/json" },
-				},
+			console.error(
+				"OPML export backend returned non-OK",
+				response.status,
+				await response.text().catch(() => ""),
 			);
+			return new Response(JSON.stringify({ error: "Export failed" }), {
+				status: response.status,
+				headers: { "Content-Type": "application/json" },
+			});
 		}
 
 		const xmlData = await response.arrayBuffer();
@@ -41,9 +43,8 @@ export const GET: RequestHandler = async ({ request }) => {
 			},
 		});
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		console.error("Error in /api/v1/rss-feed-link/export/opml:", errorMessage);
-		return new Response(JSON.stringify({ error: errorMessage }), {
+		console.error("Error in /api/v1/rss-feed-link/export/opml:", error);
+		return new Response(JSON.stringify({ error: "Export failed" }), {
 			status: 500,
 			headers: { "Content-Type": "application/json" },
 		});

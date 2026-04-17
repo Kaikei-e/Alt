@@ -120,6 +120,7 @@ export function createKratosServer(): http.Server {
 			);
 
 			res.writeHead(303, {
+				// codeql[js/server-side-unvalidated-url-redirection] -- validateRedirectUrl enforces origin allow-list
 				Location: returnTo,
 				"Set-Cookie": `${KRATOS_SESSION_COOKIE_NAME}=${KRATOS_SESSION_COOKIE_VALUE}; Path=/; HttpOnly`,
 			});
@@ -139,6 +140,7 @@ export function createKratosServer(): http.Server {
 			);
 
 			res.writeHead(303, {
+				// codeql[js/server-side-unvalidated-url-redirection] -- validateRedirectUrl enforces origin allow-list
 				Location: returnTo,
 				"Set-Cookie": `${KRATOS_SESSION_COOKIE_NAME}=${KRATOS_SESSION_COOKIE_VALUE}; Path=/; HttpOnly`,
 			});

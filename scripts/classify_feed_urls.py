@@ -30,6 +30,20 @@ def normalize_domain(url_str: str) -> str:
         return ""
 
 
+def _host_matches(host: str, *suffixes: str) -> bool:
+    """Safe host-suffix match.
+
+    ``"theverge.com" in host`` also matches ``evil-theverge.com`` and
+    ``theverge.com.attacker.com`` — classic substring-sanitisation bug.
+    This helper accepts the host only when it equals a suffix or ends
+    with ``"." + suffix``.
+    """
+    if not host:
+        return False
+    host = host.lower()
+    return any(host == s or host.endswith("." + s) for s in suffixes)
+
+
 def classify_by_domain_and_path(url_str: str) -> Optional[str]:
     """
     URLのドメインとパスからジャンルを分類。
@@ -68,7 +82,7 @@ def classify_by_domain_and_path(url_str: str) -> Optional[str]:
             return "travel_lifestyle"
 
         # ドメインベースの分類
-        if "theguardian.com" in domain:
+        if _host_matches(domain, "theguardian.com"):
             if "/artanddesign" in path or "/culture" in path:
                 return "art_culture"
             if "/science" in path:
@@ -87,29 +101,39 @@ def classify_by_domain_and_path(url_str: str) -> Optional[str]:
                 return "consumer_tech"
             return "global_politics"  # デフォルト
 
-        if "androidauthority.com" in domain or "9to5mac.com" in domain or "9to5google.com" in domain:
+        if _host_matches(
+            domain,
+            "androidauthority.com",
+            "9to5mac.com",
+            "9to5google.com",
+        ):
             return "consumer_tech"
 
-        if "theverge.com" in domain or "wired.com" in domain:
+        if _host_matches(domain, "theverge.com", "wired.com"):
             return "consumer_tech"
 
-        if "zenn.dev" in domain or "qiita.com" in domain:
+        if _host_matches(domain, "zenn.dev", "qiita.com"):
             return "developer_insights"
 
         if any(x in domain for x in ["techblog", "tech-blog", "engineering", "developers"]):
             return "developer_insights"
 
-        if "techno-edge.net" in domain or "impress.co.jp" in domain or "zdnet.com" in domain:
+        if _host_matches(
+            domain,
+            "techno-edge.net",
+            "impress.co.jp",
+            "zdnet.com",
+        ):
             return "pro_it_media"
 
-        if "travelvoice.jp" in domain or "flywheel.jp" in domain:
+        if _host_matches(domain, "travelvoice.jp", "flywheel.jp"):
             return "travel_lifestyle"
 
-        if "io.cyberdefense.jp" in domain or "security" in domain:
+        if _host_matches(domain, "io.cyberdefense.jp") or "security" in domain:
             return "security_policy"
 
         # AI関連の特定ドメイン
-        if "openai.com" in domain or "anthropic.com" in domain:
+        if _host_matches(domain, "openai.com", "anthropic.com"):
             return "ai_research"
 
         # その他の技術系
@@ -137,7 +161,7 @@ def classify_by_domain_and_path(url_str: str) -> Optional[str]:
             return "health"
 
         # 科学・研究系
-        if "sciencedaily.com" in domain:
+        if _host_matches(domain, "sciencedaily.com"):
             return "science"
 
         # ニュース・メディア系

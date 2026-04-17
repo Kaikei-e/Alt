@@ -389,8 +389,7 @@ func fetchArticleContent(ctx context.Context, urlStr string, container *di.Appli
 
 	// SSRF protection: URL validated by url_validator.IsAllowedURL() and SSRFValidator.ValidateURL().
 	// secureClient created via SSRFValidator.CreateSecureHTTPClient() validates IPs at connection time.
-	// codeql[go/request-forgery]
-	resp, err := secureClient.Do(req)
+	resp, err := secureClient.Do(req) //nolint:gosec // codeql[go/request-forgery] -- URL passes url_validator + SSRFValidator; client blocks private IPs at Dial
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to fetch URL: %w", err)
 	}
