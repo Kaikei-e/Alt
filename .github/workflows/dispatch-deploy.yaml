@@ -4,10 +4,14 @@
 # only on `push: branches: [main]` — fork PRs cannot reach this job.
 #
 # The fine-grained PAT `ALT_DEPLOY_DISPATCH_PAT` is scoped to
-# repository_dispatch on `kaikei/alt-deploy` and nothing else. It is not
+# repository_dispatch on `Kaikei-e/alt-deploy` and nothing else. It is not
 # accessible from fork-PR contexts (GitHub withholds secrets there on push
 # events by construction), so a malicious PR cannot exfiltrate it even if it
 # modifies this file — the attacker's version never runs on `main`.
+#
+# When the PAT is missing (pre-bootstrap state), the workflow logs a warning
+# and exits successfully instead of failing — the deploy pipeline isn't
+# production-gating the mainline build, it's an additive notifier.
 #
 # All third-party actions should migrate to commit-SHA pins once Renovate is
 # configured with `pinDigests: true` (tracked under the deploy-strategy
@@ -30,8 +34,21 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
+      - name: Check PAT availability
+        id: check
+        env:
+          PAT: ${{ secrets.ALT_DEPLOY_DISPATCH_PAT }}
+        run: |
+          if [[ -z "${PAT}" ]]; then
+            echo "::warning::ALT_DEPLOY_DISPATCH_PAT is not configured yet. Skipping dispatch — see docs/runbooks/runner-setup.md step 4."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Fire repository_dispatch at alt-deploy
-        uses: actions/github-script@v7
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.ALT_DEPLOY_DISPATCH_PAT }}
           script: |
@@ -40,7 +57,7 @@ jobs:
             const changed = (context.payload.commits || [])
               .flatMap(c => [...(c.added || []), ...(c.modified || []), ...(c.removed || [])]);
             await github.rest.repos.createDispatchEvent({
-              owner: 'kaikei',
+              owner: 'Kaikei-e',
               repo: 'alt-deploy',
               event_type: 'deploy',
               client_payload: { sha, ref, changed },
