@@ -57,7 +57,7 @@ services:
   search-indexer:
     env_file:
       - ../.env
-    image: ghcr.io/${GHCR_OWNER:-kaikei}/alt-search-indexer:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-search-indexer:${IMAGE_TAG:-main}
     build:
       context: ../search-indexer
       dockerfile: Dockerfile.search-indexer

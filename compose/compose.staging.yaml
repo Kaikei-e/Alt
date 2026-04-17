@@ -48,7 +48,7 @@ services:
       start_period: 2s
 
   search-indexer:
-    image: ghcr.io/${GHCR_OWNER:-kaikei}/alt-search-indexer:${IMAGE_TAG:-main}
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-search-indexer:${IMAGE_TAG:-main}
     container_name: alt-staging-search-indexer
     depends_on:
       meilisearch:

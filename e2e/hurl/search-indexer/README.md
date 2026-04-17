@@ -10,7 +10,7 @@ they move together.
 The staging stack must be up and healthy:
 
 ```sh
-IMAGE_TAG=sha-<short> GHCR_OWNER=kaikei \
+IMAGE_TAG=sha-<short> GHCR_OWNER=kaikei-e \
   docker compose -f compose/compose.staging.yaml -p alt-staging up -d --wait
 ```
 
