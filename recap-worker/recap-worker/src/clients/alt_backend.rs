@@ -39,14 +39,23 @@ pub(crate) struct AltBackendArticle {
 }
 
 /// alt-backendのページング付き応答。
+///
+/// protojson は zero-valued フィールドを省略するため、`total`・`page`・
+/// `page_size`・`has_more` は欠落した JSON でも受理できるよう
+/// `#[serde(default)]` を付与する。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)] // total, page, page_size は将来使用する可能性があるため
 struct RecapArticlesResponse {
+    #[serde(default)]
     total: i32,
+    #[serde(default)]
     page: i32,
+    #[serde(default)]
     page_size: i32,
+    #[serde(default)]
     has_more: bool,
+    #[serde(default)]
     articles: Vec<AltBackendArticle>,
 }
 
