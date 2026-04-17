@@ -1,0 +1,128 @@
+# workflow-safety-lint — mechanically enforce the fork-PR safety rules from
+# ADR-000763. Fails the build if:
+#   (1) any workflow defines `pull_request_target:` or `workflow_run:` triggers
+#       (both run with elevated trust and are common exfil / RCE vectors for
+#       OSS repos), or
+#   (2) a workflow has a `pull_request:` trigger AND a job with
+#       `runs-on:` containing the `self-hosted` label (fork PRs would land on
+#       privileged infrastructure).
+#
+# This workflow itself must stay on ubuntu-latest with no secrets, which is
+# why it's listed among the safe exceptions the policy expects.
+
+name: workflow-safety-lint
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflow-safety-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Reject pull_request_target and workflow_run triggers
+        shell: bash
+        run: |
+          set -u
+          shopt -s nullglob
+          violations=0
+          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            # grep -nE exits 1 on no match; that's the happy path here.
+            matches=$(grep -nE '^[[:space:]]*(pull_request_target|workflow_run)[[:space:]]*:' "$f" || true)
+            if [ -n "$matches" ]; then
+              while IFS= read -r line; do
+                ln="${line%%:*}"
+                echo "::error file=$f,line=$ln::Forbidden trigger — 'pull_request_target' and 'workflow_run' run with elevated trust and must not be introduced (ADR-000763 security hardening)."
+              done <<< "$matches"
+              violations=$((violations + 1))
+            fi
+          done
+          if [ "$violations" -gt 0 ]; then
+            echo "FAIL: $violations workflow file(s) use forbidden triggers."
+            exit 1
+          fi
+          echo "OK: no pull_request_target / workflow_run triggers found."
+
+      - name: Reject self-hosted runners on pull_request-triggered jobs
+        shell: bash
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import glob
+          import sys
+          import yaml
+
+          bad = 0
+          files = sorted(glob.glob('.github/workflows/*.yml')
+                         + glob.glob('.github/workflows/*.yaml'))
+
+          for path in files:
+              with open(path) as fh:
+                  try:
+                      doc = yaml.safe_load(fh)
+                  except yaml.YAMLError as e:
+                      print(f'::error file={path}::failed to parse YAML: {e}',
+                            file=sys.stderr)
+                      bad += 1
+                      continue
+
+              if not isinstance(doc, dict):
+                  continue
+
+              # PyYAML parses the `on:` key as Python True (YAML 1.1 boolean).
+              triggers = doc.get(True)
+              if triggers is None:
+                  triggers = doc.get('on', {})
+
+              trigger_names = set()
+              if isinstance(triggers, dict):
+                  trigger_names = set(triggers.keys())
+              elif isinstance(triggers, list):
+                  trigger_names = set(triggers)
+              elif isinstance(triggers, str):
+                  trigger_names = {triggers}
+
+              if 'pull_request' not in trigger_names:
+                  continue
+
+              for job_name, job in (doc.get('jobs') or {}).items():
+                  if not isinstance(job, dict):
+                      continue
+                  runs_on = job.get('runs-on')
+                  labels = []
+                  if isinstance(runs_on, str):
+                      labels = [runs_on]
+                  elif isinstance(runs_on, list):
+                      labels = runs_on
+                  if any('self-hosted' in str(l) for l in labels):
+                      print(
+                          f'::error file={path}::job {job_name!r} has a '
+                          f'pull_request trigger and runs on self-hosted. '
+                          f'Route PR validation through ubuntu-latest only '
+                          f'(ADR-000763 security hardening).',
+                          file=sys.stderr,
+                      )
+                      bad += 1
+
+          if bad:
+              sys.exit(1)
+          print('OK: no self-hosted runner reachable from pull_request triggers.')
+          PY
