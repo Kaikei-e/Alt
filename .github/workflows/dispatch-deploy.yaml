@@ -56,10 +56,31 @@ jobs:
             const ref = context.ref;
             const changed = (context.payload.commits || [])
               .flatMap(c => [...(c.added || []), ...(c.modified || []), ...(c.removed || [])]);
-            await github.rest.repos.createDispatchEvent({
-              owner: 'Kaikei-e',
-              repo: 'alt-deploy',
-              event_type: 'deploy',
-              client_payload: { sha, ref, changed },
-            });
-            core.info(`Dispatched deploy event for ${sha} on ${ref}`);
+            try {
+              await github.rest.repos.createDispatchEvent({
+                owner: 'Kaikei-e',
+                repo: 'alt-deploy',
+                event_type: 'deploy',
+                client_payload: { sha, ref, changed },
+              });
+              core.info(`Dispatched deploy event for ${sha} on ${ref}`);
+            } catch (err) {
+              if (err.status === 403) {
+                core.setFailed(
+                  'Dispatch rejected with 403 "Resource not accessible by personal access token". ' +
+                  'The fine-grained PAT stored as ALT_DEPLOY_DISPATCH_PAT needs Contents: Read and write ' +
+                  'on Kaikei-e/alt-deploy — Contents: Read alone returns exactly this error. ' +
+                  'Regenerate the PAT per docs/runbooks/runner-setup.md step 4 and overwrite the repo secret.'
+                );
+                return;
+              }
+              if (err.status === 404) {
+                core.setFailed(
+                  'Dispatch rejected with 404 from Kaikei-e/alt-deploy. ' +
+                  'Either the PAT is not scoped to that repository (Fine-grained PATs only expose the ' +
+                  'repos listed under "Only select repositories"), or the repository name is typoed.'
+                );
+                return;
+              }
+              throw err;
+            }
