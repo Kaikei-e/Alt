@@ -11,6 +11,8 @@ broker:
 
 versioning:
   strategy: git_sha
+  options:
+    short: true
 
 deploy:
   wait: true
