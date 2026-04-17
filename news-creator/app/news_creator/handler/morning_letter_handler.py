@@ -21,9 +21,7 @@ def create_morning_letter_router(usecase: MorningLetterUsecase) -> APIRouter:
             logger.warning("Morning Letter validation failed", extra={"error": str(e)})
             from fastapi.responses import JSONResponse
 
-            return JSONResponse(
-                status_code=400, content={"error": "Invalid request"}
-            )
+            return JSONResponse(status_code=400, content={"error": "Invalid request"})
         except Exception as e:
             logger.error("Morning Letter generation failed", extra={"error": str(e)})
             from fastapi.responses import JSONResponse

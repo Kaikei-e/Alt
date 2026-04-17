@@ -408,4 +408,3 @@ func TestHandler_SearchRecapsByTag(t *testing.T) {
 		assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 	})
 }
-
