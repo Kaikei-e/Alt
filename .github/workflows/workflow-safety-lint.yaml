@@ -4,8 +4,13 @@
 #       (both run with elevated trust and are common exfil / RCE vectors for
 #       OSS repos), or
 #   (2) a workflow has a `pull_request:` trigger AND a job with
-#       `runs-on:` containing the `self-hosted` label (fork PRs would land on
-#       privileged infrastructure).
+#       `runs-on:` that enlists the `self-hosted` label (fork PRs would land
+#       on privileged infrastructure).
+#
+# Scope boundary: this lint only inspects `.github/workflows/**`. Composite
+# actions under `.github/actions/**` cannot declare their own triggers or
+# runners, so they are out of scope here; guard them separately if the trust
+# model ever requires it.
 #
 # This workflow itself must stay on ubuntu-latest with no secrets, which is
 # why it's listed among the safe exceptions the policy expects.
@@ -25,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: workflow-safety-lint-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -38,14 +43,18 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Reject pull_request_target and workflow_run triggers
+      - name: Install PyYAML
+        # ubuntu-latest ships python3 but not PyYAML. Pin to the 6.x line so
+        # supply-chain drift is bounded.
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Reject pull_request_target and workflow_run (grep, defence in depth)
         shell: bash
         run: |
-          set -u
+          set -euo pipefail
           shopt -s nullglob
           violations=0
           for f in .github/workflows/*.yml .github/workflows/*.yaml; do
-            # grep -nE exits 1 on no match; that's the happy path here.
             matches=$(grep -nE '^[[:space:]]*(pull_request_target|workflow_run)[[:space:]]*:' "$f" || true)
             if [ -n "$matches" ]; then
               while IFS= read -r line; do
@@ -56,23 +65,51 @@ jobs:
             fi
           done
           if [ "$violations" -gt 0 ]; then
-            echo "FAIL: $violations workflow file(s) use forbidden triggers."
+            echo "FAIL: $violations workflow file(s) use forbidden triggers (grep check)."
             exit 1
           fi
-          echo "OK: no pull_request_target / workflow_run triggers found."
+          echo "OK: grep check clean."
 
-      - name: Reject self-hosted runners on pull_request-triggered jobs
+      - name: Structural check (PyYAML — authoritative)
         shell: bash
         run: |
-          set -eu
+          set -euo pipefail
           python3 - <<'PY'
           import glob
           import sys
           import yaml
 
+          FORBIDDEN_TRIGGERS = {'pull_request_target', 'workflow_run'}
+
           bad = 0
           files = sorted(glob.glob('.github/workflows/*.yml')
                          + glob.glob('.github/workflows/*.yaml'))
+
+          def extract_labels(runs_on):
+              """Return (labels, had_expression) from any `runs-on` shape."""
+              if runs_on is None:
+                  return [], False
+              # Simple string form: "ubuntu-latest" or "${{ vars.X }}"
+              if isinstance(runs_on, str):
+                  return [runs_on], ('${{' in runs_on)
+              # List form: [self-hosted, linux] or ["${{ ... }}", "linux"]
+              if isinstance(runs_on, list):
+                  labels = [str(x) for x in runs_on]
+                  return labels, any('${{' in l for l in labels)
+              # Mapping form: { group: my-group, labels: [self-hosted] }
+              if isinstance(runs_on, dict):
+                  labels = runs_on.get('labels', [])
+                  if isinstance(labels, str):
+                      labels = [labels]
+                  elif not isinstance(labels, list):
+                      labels = []
+                  labels = [str(x) for x in labels]
+                  group = runs_on.get('group')
+                  had_expr = any('${{' in l for l in labels) or (
+                      isinstance(group, str) and '${{' in group
+                  )
+                  return labels, had_expr
+              return [], False
 
           for path in files:
               with open(path) as fh:
@@ -100,19 +137,25 @@ jobs:
               elif isinstance(triggers, str):
                   trigger_names = {triggers}
 
+              # Rule 1 (authoritative) — forbidden trigger names.
+              used = trigger_names & FORBIDDEN_TRIGGERS
+              if used:
+                  for t in sorted(used):
+                      print(
+                          f'::error file={path}::workflow uses forbidden '
+                          f'trigger {t!r} (ADR-000763 security hardening).',
+                          file=sys.stderr,
+                      )
+                  bad += 1
+
+              # Rule 2 — self-hosted on pull_request-triggered jobs.
               if 'pull_request' not in trigger_names:
                   continue
-
               for job_name, job in (doc.get('jobs') or {}).items():
                   if not isinstance(job, dict):
                       continue
-                  runs_on = job.get('runs-on')
-                  labels = []
-                  if isinstance(runs_on, str):
-                      labels = [runs_on]
-                  elif isinstance(runs_on, list):
-                      labels = runs_on
-                  if any('self-hosted' in str(l) for l in labels):
+                  labels, had_expr = extract_labels(job.get('runs-on'))
+                  if any('self-hosted' in l for l in labels):
                       print(
                           f'::error file={path}::job {job_name!r} has a '
                           f'pull_request trigger and runs on self-hosted. '
@@ -121,8 +164,21 @@ jobs:
                           file=sys.stderr,
                       )
                       bad += 1
+                  elif had_expr:
+                      # Expression-derived runner labels can't be resolved
+                      # statically. Force a reviewer to justify.
+                      print(
+                          f'::error file={path}::job {job_name!r} has a '
+                          f'pull_request trigger and an expression-derived '
+                          f"runs-on (${{{{ ... }}}}). Static analysis can't "
+                          f'confirm it is not self-hosted — either pin the '
+                          f'runner literal or split PR and self-hosted into '
+                          f'separate workflows.',
+                          file=sys.stderr,
+                      )
+                      bad += 1
 
           if bad:
               sys.exit(1)
-          print('OK: no self-hosted runner reachable from pull_request triggers.')
+          print('OK: no forbidden triggers and no self-hosted on pull_request.')
           PY
