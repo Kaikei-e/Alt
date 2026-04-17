@@ -99,6 +99,9 @@ const (
 	// BackendInternalServiceFetchArticlesByTagProcedure is the fully-qualified name of the
 	// BackendInternalService's FetchArticlesByTag RPC.
 	BackendInternalServiceFetchArticlesByTagProcedure = "/services.backend.v1.BackendInternalService/FetchArticlesByTag"
+	// BackendInternalServiceListRecapArticlesProcedure is the fully-qualified name of the
+	// BackendInternalService's ListRecapArticles RPC.
+	BackendInternalServiceListRecapArticlesProcedure = "/services.backend.v1.BackendInternalService/ListRecapArticles"
 )
 
 // BackendInternalServiceClient is a client for the services.backend.v1.BackendInternalService
@@ -151,6 +154,9 @@ type BackendInternalServiceClient interface {
 	FetchTagCloud(context.Context, *connect.Request[v1.BackendInternalServiceFetchTagCloudRequest]) (*connect.Response[v1.BackendInternalServiceFetchTagCloudResponse], error)
 	// FetchArticlesByTag returns articles filtered by tag name.
 	FetchArticlesByTag(context.Context, *connect.Request[v1.BackendInternalServiceFetchArticlesByTagRequest]) (*connect.Response[v1.BackendInternalServiceFetchArticlesByTagResponse], error)
+	// ListRecapArticles returns paginated articles within a time window.
+	// Service-to-service only; auth is established at the mTLS transport layer.
+	ListRecapArticles(context.Context, *connect.Request[v1.ListRecapArticlesRequest]) (*connect.Response[v1.ListRecapArticlesResponse], error)
 }
 
 // NewBackendInternalServiceClient constructs a client for the
@@ -296,6 +302,12 @@ func NewBackendInternalServiceClient(httpClient connect.HTTPClient, baseURL stri
 			connect.WithSchema(backendInternalServiceMethods.ByName("FetchArticlesByTag")),
 			connect.WithClientOptions(opts...),
 		),
+		listRecapArticles: connect.NewClient[v1.ListRecapArticlesRequest, v1.ListRecapArticlesResponse](
+			httpClient,
+			baseURL+BackendInternalServiceListRecapArticlesProcedure,
+			connect.WithSchema(backendInternalServiceMethods.ByName("ListRecapArticles")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -323,6 +335,7 @@ type backendInternalServiceClient struct {
 	getEmptyFeedID              *connect.Client[v1.GetEmptyFeedIDRequest, v1.GetEmptyFeedIDResponse]
 	fetchTagCloud               *connect.Client[v1.BackendInternalServiceFetchTagCloudRequest, v1.BackendInternalServiceFetchTagCloudResponse]
 	fetchArticlesByTag          *connect.Client[v1.BackendInternalServiceFetchArticlesByTagRequest, v1.BackendInternalServiceFetchArticlesByTagResponse]
+	listRecapArticles           *connect.Client[v1.ListRecapArticlesRequest, v1.ListRecapArticlesResponse]
 }
 
 // ListArticlesWithTags calls services.backend.v1.BackendInternalService.ListArticlesWithTags.
@@ -440,6 +453,11 @@ func (c *backendInternalServiceClient) FetchArticlesByTag(ctx context.Context, r
 	return c.fetchArticlesByTag.CallUnary(ctx, req)
 }
 
+// ListRecapArticles calls services.backend.v1.BackendInternalService.ListRecapArticles.
+func (c *backendInternalServiceClient) ListRecapArticles(ctx context.Context, req *connect.Request[v1.ListRecapArticlesRequest]) (*connect.Response[v1.ListRecapArticlesResponse], error) {
+	return c.listRecapArticles.CallUnary(ctx, req)
+}
+
 // BackendInternalServiceHandler is an implementation of the
 // services.backend.v1.BackendInternalService service.
 type BackendInternalServiceHandler interface {
@@ -490,6 +508,9 @@ type BackendInternalServiceHandler interface {
 	FetchTagCloud(context.Context, *connect.Request[v1.BackendInternalServiceFetchTagCloudRequest]) (*connect.Response[v1.BackendInternalServiceFetchTagCloudResponse], error)
 	// FetchArticlesByTag returns articles filtered by tag name.
 	FetchArticlesByTag(context.Context, *connect.Request[v1.BackendInternalServiceFetchArticlesByTagRequest]) (*connect.Response[v1.BackendInternalServiceFetchArticlesByTagResponse], error)
+	// ListRecapArticles returns paginated articles within a time window.
+	// Service-to-service only; auth is established at the mTLS transport layer.
+	ListRecapArticles(context.Context, *connect.Request[v1.ListRecapArticlesRequest]) (*connect.Response[v1.ListRecapArticlesResponse], error)
 }
 
 // NewBackendInternalServiceHandler builds an HTTP handler from the service implementation. It
@@ -631,6 +652,12 @@ func NewBackendInternalServiceHandler(svc BackendInternalServiceHandler, opts ..
 		connect.WithSchema(backendInternalServiceMethods.ByName("FetchArticlesByTag")),
 		connect.WithHandlerOptions(opts...),
 	)
+	backendInternalServiceListRecapArticlesHandler := connect.NewUnaryHandler(
+		BackendInternalServiceListRecapArticlesProcedure,
+		svc.ListRecapArticles,
+		connect.WithSchema(backendInternalServiceMethods.ByName("ListRecapArticles")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.backend.v1.BackendInternalService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case BackendInternalServiceListArticlesWithTagsProcedure:
@@ -677,6 +704,8 @@ func NewBackendInternalServiceHandler(svc BackendInternalServiceHandler, opts ..
 			backendInternalServiceFetchTagCloudHandler.ServeHTTP(w, r)
 		case BackendInternalServiceFetchArticlesByTagProcedure:
 			backendInternalServiceFetchArticlesByTagHandler.ServeHTTP(w, r)
+		case BackendInternalServiceListRecapArticlesProcedure:
+			backendInternalServiceListRecapArticlesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -772,4 +801,8 @@ func (UnimplementedBackendInternalServiceHandler) FetchTagCloud(context.Context,
 
 func (UnimplementedBackendInternalServiceHandler) FetchArticlesByTag(context.Context, *connect.Request[v1.BackendInternalServiceFetchArticlesByTagRequest]) (*connect.Response[v1.BackendInternalServiceFetchArticlesByTagResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.FetchArticlesByTag is not implemented"))
+}
+
+func (UnimplementedBackendInternalServiceHandler) ListRecapArticles(context.Context, *connect.Request[v1.ListRecapArticlesRequest]) (*connect.Response[v1.ListRecapArticlesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.backend.v1.BackendInternalService.ListRecapArticles is not implemented"))
 }

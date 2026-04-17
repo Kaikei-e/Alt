@@ -45,9 +45,6 @@ const (
 	// RecapServiceSearchRecapsByTagProcedure is the fully-qualified name of the RecapService's
 	// SearchRecapsByTag RPC.
 	RecapServiceSearchRecapsByTagProcedure = "/alt.recap.v2.RecapService/SearchRecapsByTag"
-	// RecapServiceListRecapArticlesProcedure is the fully-qualified name of the RecapService's
-	// ListRecapArticles RPC.
-	RecapServiceListRecapArticlesProcedure = "/alt.recap.v2.RecapService/ListRecapArticles"
 )
 
 // RecapServiceClient is a client for the alt.recap.v2.RecapService service.
@@ -64,10 +61,6 @@ type RecapServiceClient interface {
 	// SearchRecapsByTag searches across all completed recap jobs for genres matching a tag
 	// Used by Tag Verse to show historical recaps for a specific tag
 	SearchRecapsByTag(context.Context, *connect.Request[v2.SearchRecapsByTagRequest]) (*connect.Response[v2.SearchRecapsByTagResponse], error)
-	// ListRecapArticles returns paginated articles within a time window.
-	// Internal RPC for recap-worker. Authentication is enforced by mTLS peer
-	// identity on :9443; no end-user auth header is required.
-	ListRecapArticles(context.Context, *connect.Request[v2.ListRecapArticlesRequest]) (*connect.Response[v2.ListRecapArticlesResponse], error)
 }
 
 // NewRecapServiceClient constructs a client for the alt.recap.v2.RecapService service. By default,
@@ -105,12 +98,6 @@ func NewRecapServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(recapServiceMethods.ByName("SearchRecapsByTag")),
 			connect.WithClientOptions(opts...),
 		),
-		listRecapArticles: connect.NewClient[v2.ListRecapArticlesRequest, v2.ListRecapArticlesResponse](
-			httpClient,
-			baseURL+RecapServiceListRecapArticlesProcedure,
-			connect.WithSchema(recapServiceMethods.ByName("ListRecapArticles")),
-			connect.WithClientOptions(opts...),
-		),
 	}
 }
 
@@ -120,7 +107,6 @@ type recapServiceClient struct {
 	getThreeDayRecap  *connect.Client[v2.GetThreeDayRecapRequest, v2.GetThreeDayRecapResponse]
 	getEveningPulse   *connect.Client[v2.GetEveningPulseRequest, v2.GetEveningPulseResponse]
 	searchRecapsByTag *connect.Client[v2.SearchRecapsByTagRequest, v2.SearchRecapsByTagResponse]
-	listRecapArticles *connect.Client[v2.ListRecapArticlesRequest, v2.ListRecapArticlesResponse]
 }
 
 // GetSevenDayRecap calls alt.recap.v2.RecapService.GetSevenDayRecap.
@@ -143,11 +129,6 @@ func (c *recapServiceClient) SearchRecapsByTag(ctx context.Context, req *connect
 	return c.searchRecapsByTag.CallUnary(ctx, req)
 }
 
-// ListRecapArticles calls alt.recap.v2.RecapService.ListRecapArticles.
-func (c *recapServiceClient) ListRecapArticles(ctx context.Context, req *connect.Request[v2.ListRecapArticlesRequest]) (*connect.Response[v2.ListRecapArticlesResponse], error) {
-	return c.listRecapArticles.CallUnary(ctx, req)
-}
-
 // RecapServiceHandler is an implementation of the alt.recap.v2.RecapService service.
 type RecapServiceHandler interface {
 	// GetSevenDayRecap returns 7-day recap summary (authentication required)
@@ -162,10 +143,6 @@ type RecapServiceHandler interface {
 	// SearchRecapsByTag searches across all completed recap jobs for genres matching a tag
 	// Used by Tag Verse to show historical recaps for a specific tag
 	SearchRecapsByTag(context.Context, *connect.Request[v2.SearchRecapsByTagRequest]) (*connect.Response[v2.SearchRecapsByTagResponse], error)
-	// ListRecapArticles returns paginated articles within a time window.
-	// Internal RPC for recap-worker. Authentication is enforced by mTLS peer
-	// identity on :9443; no end-user auth header is required.
-	ListRecapArticles(context.Context, *connect.Request[v2.ListRecapArticlesRequest]) (*connect.Response[v2.ListRecapArticlesResponse], error)
 }
 
 // NewRecapServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -199,12 +176,6 @@ func NewRecapServiceHandler(svc RecapServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(recapServiceMethods.ByName("SearchRecapsByTag")),
 		connect.WithHandlerOptions(opts...),
 	)
-	recapServiceListRecapArticlesHandler := connect.NewUnaryHandler(
-		RecapServiceListRecapArticlesProcedure,
-		svc.ListRecapArticles,
-		connect.WithSchema(recapServiceMethods.ByName("ListRecapArticles")),
-		connect.WithHandlerOptions(opts...),
-	)
 	return "/alt.recap.v2.RecapService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case RecapServiceGetSevenDayRecapProcedure:
@@ -215,8 +186,6 @@ func NewRecapServiceHandler(svc RecapServiceHandler, opts ...connect.HandlerOpti
 			recapServiceGetEveningPulseHandler.ServeHTTP(w, r)
 		case RecapServiceSearchRecapsByTagProcedure:
 			recapServiceSearchRecapsByTagHandler.ServeHTTP(w, r)
-		case RecapServiceListRecapArticlesProcedure:
-			recapServiceListRecapArticlesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -240,8 +209,4 @@ func (UnimplementedRecapServiceHandler) GetEveningPulse(context.Context, *connec
 
 func (UnimplementedRecapServiceHandler) SearchRecapsByTag(context.Context, *connect.Request[v2.SearchRecapsByTagRequest]) (*connect.Response[v2.SearchRecapsByTagResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.recap.v2.RecapService.SearchRecapsByTag is not implemented"))
-}
-
-func (UnimplementedRecapServiceHandler) ListRecapArticles(context.Context, *connect.Request[v2.ListRecapArticlesRequest]) (*connect.Response[v2.ListRecapArticlesResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.recap.v2.RecapService.ListRecapArticles is not implemented"))
 }

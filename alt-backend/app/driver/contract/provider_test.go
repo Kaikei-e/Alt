@@ -3,7 +3,7 @@
 // Package contract contains provider verification tests for alt-backend.
 //
 // These tests verify that alt-backend fulfills contracts from two consumers:
-//   - recap-worker → alt.recap.v2.RecapService/ListRecapArticles (Connect-RPC / JSON)
+//   - recap-worker → services.backend.v1.BackendInternalService/ListRecapArticles (Connect-RPC / JSON)
 //   - search-indexer → BackendInternalService (Connect-RPC / JSON wire format)
 package contract
 
@@ -67,8 +67,8 @@ func startStubServer(t *testing.T) int {
 
 	mux := http.NewServeMux()
 
-	// ---- POST /alt.recap.v2.RecapService/ListRecapArticles (Connect-RPC) ----
-	mux.HandleFunc("/alt.recap.v2.RecapService/ListRecapArticles",
+	// ---- POST /services.backend.v1.BackendInternalService/ListRecapArticles (Connect-RPC) ----
+	mux.HandleFunc("/services.backend.v1.BackendInternalService/ListRecapArticles",
 		func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				w.WriteHeader(http.StatusMethodNotAllowed)

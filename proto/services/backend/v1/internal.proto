@@ -415,6 +415,12 @@ service BackendInternalService {
 
   // FetchArticlesByTag returns articles filtered by tag name.
   rpc FetchArticlesByTag(BackendInternalServiceFetchArticlesByTagRequest) returns (BackendInternalServiceFetchArticlesByTagResponse);
+
+  // ── Recap Article Window ──
+
+  // ListRecapArticles returns paginated articles within a time window.
+  // Service-to-service only; auth is established at the mTLS transport layer.
+  rpc ListRecapArticles(ListRecapArticlesRequest) returns (ListRecapArticlesResponse);
 }
 
 // BackendInternalServiceFetchTagCloudRequest is the request for FetchTagCloud via BackendInternalService.
@@ -451,4 +457,62 @@ message ArticleByTagItem {
   string title = 2;
   string url = 3;
   string published_at = 4;
+}
+
+// =============================================================================
+// ListRecapArticles — service-to-service paginated article window fetch
+// =============================================================================
+
+// ListRecapArticlesRequest is the request for paginated article fetch in a window
+message ListRecapArticlesRequest {
+  // Lower bound of the time window (RFC3339)
+  string from = 1;
+  // Upper bound of the time window (RFC3339)
+  string to = 2;
+  // 1-indexed page number (default 1)
+  optional int32 page = 3;
+  // Articles per page (default server-side)
+  optional int32 page_size = 4;
+  // Optional projection: "title" / "fulltext"; empty = all fields
+  repeated string fields = 5;
+  // Optional language filter: "ja" / "en"
+  optional string lang_hint = 6;
+}
+
+// RecapArticleRange echoes the window bounds in the response
+message RecapArticleRange {
+  string from = 1;
+  string to = 2;
+}
+
+// RecapArticleItem is a single article entry in the response
+message RecapArticleItem {
+  // Article UUID
+  string article_id = 1;
+  // Optional title
+  optional string title = 2;
+  // Full article text (may be empty if fields=title)
+  string fulltext = 3;
+  // Optional publication timestamp (RFC3339)
+  optional string published_at = 4;
+  // Optional source URL
+  optional string source_url = 5;
+  // Optional detected language
+  optional string lang_hint = 6;
+}
+
+// ListRecapArticlesResponse is the paginated response
+message ListRecapArticlesResponse {
+  // Echo of requested window
+  RecapArticleRange range = 1;
+  // Total matching articles in the window
+  int32 total = 2;
+  // Current page (1-indexed)
+  int32 page = 3;
+  // Page size used
+  int32 page_size = 4;
+  // Whether additional pages exist
+  bool has_more = 5;
+  // Articles on this page
+  repeated RecapArticleItem articles = 6;
 }

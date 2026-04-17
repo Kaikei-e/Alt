@@ -225,10 +225,8 @@ services:
     depends_on:
       # restart: true re-creates this sidecar whenever tag-generator is
       # recreated (compose v2.30+). Without it, `network_mode: service:X`
-      # leaves the sidecar joined to the parent's old netns — the
-      # PM-2026-030 failure mode. Keeps compose as the single source of
-      # truth after the c2quay cutover (ADR-000758) removed the
-      # shell-based cascade.
+      # leaves the sidecar joined to the parent's old netns and its
+      # reverse-proxy listener becomes unreachable from the new IP.
       tag-generator:
         condition: service_healthy
         restart: true
@@ -283,9 +281,7 @@ services:
     network_mode: "service:acolyte-orchestrator"
     networks: !override []
     depends_on:
-      # See pki-agent-tag-generator for the rationale. The acolyte sidecar
-      # is the service that hit PM-2026-030 twice; the second recurrence
-      # at 2026-04-17 09:11 was what forced this compose-native fix.
+      # See pki-agent-tag-generator for the rationale behind restart: true.
       acolyte-orchestrator:
         condition: service_healthy
         restart: true

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Cascades recreate of netns-sharing pki-agent sidecars when their parent
-# container id has changed. Closes the PM-2026-030 gap that
-# compose `depends_on.restart: true` leaves open when c2quay force-recreates
-# a single parent service per-pacticipant: the sidecar keeps pointing at the
-# parent's old netns and silently loses its listener.
+# container id has changed. Closes the gap that compose
+# `depends_on.restart: true` leaves open when the deploy tool recreates a
+# single parent service: the sidecar keeps pointing at the parent's old
+# netns and silently loses its reverse-proxy listener.
 #
-# Invoked by scripts/deploy.sh right after c2quay returns. Idempotent.
+# Invoked by scripts/deploy.sh right after the deploy tool returns.
+# Idempotent — exits 0 when all sidecars already match their parents.
 #
 # Environment overrides (for tests):
 #   DOCKER_BIN        — defaults to `docker`

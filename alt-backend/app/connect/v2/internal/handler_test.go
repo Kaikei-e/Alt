@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"alt/domain"
@@ -16,6 +17,7 @@ import (
 	"alt/port/internal_article_port"
 	"alt/port/internal_feed_port"
 	"alt/port/internal_tag_port"
+	"alt/usecase/recap_articles_usecase"
 
 	"go.uber.org/mock/gomock"
 )
@@ -1294,5 +1296,163 @@ func TestClampLimit(t *testing.T) {
 		if got != tt.expected {
 			t.Errorf("clampLimit(%d) = %d, want %d", tt.input, got, tt.expected)
 		}
+	}
+}
+
+// fakeRecapArticlesUsecase is a testify-less inline mock for the handler's
+// recap article window fetch.
+type fakeRecapArticlesUsecase struct {
+	gotInput *domain.RecapArticlesPage
+	err      error
+	lastCall struct {
+		page     int
+		pageSize int
+		from     time.Time
+		to       time.Time
+	}
+	returnPage *domain.RecapArticlesPage
+}
+
+func (f *fakeRecapArticlesUsecase) Execute(_ context.Context, input recap_articles_usecase.Input) (*domain.RecapArticlesPage, error) {
+	f.lastCall.page = input.Page
+	f.lastCall.pageSize = input.PageSize
+	f.lastCall.from = input.From
+	f.lastCall.to = input.To
+	return f.returnPage, f.err
+}
+
+func TestListRecapArticles_SuccessMapsDomainToProto(t *testing.T) {
+	articleID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	title := "Test Article"
+	sourceURL := "https://example.com/a"
+	langHint := "en"
+	publishedAt := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
+
+	uc := &fakeRecapArticlesUsecase{
+		returnPage: &domain.RecapArticlesPage{
+			Total:    1,
+			Page:     1,
+			PageSize: 500,
+			HasMore:  false,
+			Articles: []domain.RecapArticle{{
+				ID:          articleID,
+				Title:       &title,
+				FullText:    "Body text here.",
+				SourceURL:   &sourceURL,
+				LangHint:    &langHint,
+				PublishedAt: &publishedAt,
+			}},
+		},
+	}
+
+	h, _, _, _, _, _ := setupHandler(t)
+	WithRecapArticlesUsecase(uc)(h)
+
+	pageReq := int32(2)
+	pageSizeReq := int32(100)
+	req := connect.NewRequest(&backendv1.ListRecapArticlesRequest{
+		From:     "2026-04-14T00:00:00Z",
+		To:       "2026-04-15T00:00:00Z",
+		Page:     &pageReq,
+		PageSize: &pageSizeReq,
+	})
+
+	resp, err := h.ListRecapArticles(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Msg.Total != 1 {
+		t.Errorf("Total = %d, want 1", resp.Msg.Total)
+	}
+	if resp.Msg.Range.From != "2026-04-14T00:00:00Z" {
+		t.Errorf("Range.From = %q", resp.Msg.Range.From)
+	}
+	if len(resp.Msg.Articles) != 1 {
+		t.Fatalf("Articles len = %d, want 1", len(resp.Msg.Articles))
+	}
+	got := resp.Msg.Articles[0]
+	if got.ArticleId != articleID.String() {
+		t.Errorf("ArticleId = %q", got.ArticleId)
+	}
+	if got.Title == nil || *got.Title != title {
+		t.Errorf("Title = %v", got.Title)
+	}
+	if got.Fulltext != "Body text here." {
+		t.Errorf("Fulltext = %q", got.Fulltext)
+	}
+	if got.PublishedAt == nil || *got.PublishedAt != "2026-04-15T12:00:00Z" {
+		t.Errorf("PublishedAt = %v", got.PublishedAt)
+	}
+	if uc.lastCall.page != 2 || uc.lastCall.pageSize != 100 {
+		t.Errorf("usecase got page=%d size=%d", uc.lastCall.page, uc.lastCall.pageSize)
+	}
+}
+
+func TestListRecapArticles_InvalidFromMissing(t *testing.T) {
+	uc := &fakeRecapArticlesUsecase{}
+	h, _, _, _, _, _ := setupHandler(t)
+	WithRecapArticlesUsecase(uc)(h)
+
+	req := connect.NewRequest(&backendv1.ListRecapArticlesRequest{To: "2026-04-15T00:00:00Z"})
+	_, err := h.ListRecapArticles(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	connErr, ok := err.(*connect.Error)
+	if !ok || connErr.Code() != connect.CodeInvalidArgument {
+		t.Errorf("expected InvalidArgument, got %v", err)
+	}
+}
+
+func TestListRecapArticles_InvalidFromNotRFC3339(t *testing.T) {
+	uc := &fakeRecapArticlesUsecase{}
+	h, _, _, _, _, _ := setupHandler(t)
+	WithRecapArticlesUsecase(uc)(h)
+
+	req := connect.NewRequest(&backendv1.ListRecapArticlesRequest{From: "yesterday", To: "2026-04-15T00:00:00Z"})
+	_, err := h.ListRecapArticles(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	connErr, ok := err.(*connect.Error)
+	if !ok || connErr.Code() != connect.CodeInvalidArgument {
+		t.Errorf("expected InvalidArgument, got %v", err)
+	}
+}
+
+func TestListRecapArticles_UsecaseErrorMapsToInvalidArgument(t *testing.T) {
+	uc := &fakeRecapArticlesUsecase{err: errors.New("page_size must be <= 2000")}
+	h, _, _, _, _, _ := setupHandler(t)
+	WithRecapArticlesUsecase(uc)(h)
+
+	req := connect.NewRequest(&backendv1.ListRecapArticlesRequest{
+		From: "2026-04-14T00:00:00Z",
+		To:   "2026-04-15T00:00:00Z",
+	})
+	_, err := h.ListRecapArticles(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	connErr, ok := err.(*connect.Error)
+	if !ok || connErr.Code() != connect.CodeInvalidArgument {
+		t.Errorf("expected InvalidArgument, got %v", err)
+	}
+}
+
+func TestListRecapArticles_NotConfiguredReturnsUnimplemented(t *testing.T) {
+	h, _, _, _, _, _ := setupHandler(t)
+	// No WithRecapArticlesUsecase call.
+
+	req := connect.NewRequest(&backendv1.ListRecapArticlesRequest{
+		From: "2026-04-14T00:00:00Z",
+		To:   "2026-04-15T00:00:00Z",
+	})
+	_, err := h.ListRecapArticles(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	connErr, ok := err.(*connect.Error)
+	if !ok || connErr.Code() != connect.CodeUnimplemented {
+		t.Errorf("expected Unimplemented, got %v", err)
 	}
 }

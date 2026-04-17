@@ -25,11 +25,6 @@ service RecapService {
   // SearchRecapsByTag searches across all completed recap jobs for genres matching a tag
   // Used by Tag Verse to show historical recaps for a specific tag
   rpc SearchRecapsByTag(SearchRecapsByTagRequest) returns (SearchRecapsByTagResponse);
-
-  // ListRecapArticles returns paginated articles within a time window.
-  // Internal RPC for recap-worker. Authentication is enforced by mTLS peer
-  // identity on :9443; no end-user auth header is required.
-  rpc ListRecapArticles(ListRecapArticlesRequest) returns (ListRecapArticlesResponse);
 }
 
 // =============================================================================
@@ -384,76 +379,4 @@ message RecapSearchResultItem {
 message SearchRecapsByTagResponse {
   // Matching recap genres sorted by date descending
   repeated RecapSearchResultItem results = 1;
-}
-
-// =============================================================================
-// ListRecapArticles (recap-worker → alt-backend)
-// =============================================================================
-
-// ListRecapArticlesRequest is the request for paginated article fetch in a window
-message ListRecapArticlesRequest {
-  // Lower bound of the time window (RFC3339)
-  string from = 1;
-  // Upper bound of the time window (RFC3339)
-  string to = 2;
-  // 1-indexed page number (default 1)
-  optional int32 page = 3;
-  // Articles per page (default server-side)
-  optional int32 page_size = 4;
-  // Optional projection: "title" / "fulltext"; empty = all fields
-  repeated string fields = 5;
-  // Optional language filter: "ja" / "en"
-  optional string lang_hint = 6;
-}
-
-// RecapArticleRange echoes the window bounds in the response
-message RecapArticleRange {
-  string from = 1;
-  string to = 2;
-}
-
-// RecapArticleTag is a tag attached to an article
-message RecapArticleTag {
-  // Tag label (e.g. "technology")
-  string label = 1;
-  // Optional classifier confidence (0..1)
-  optional float confidence = 2;
-  // Optional source/classifier name
-  optional string source = 3;
-  // Optional update timestamp (RFC3339)
-  optional string updated_at = 4;
-}
-
-// RecapArticleItem is a single article entry in the response
-message RecapArticleItem {
-  // Article UUID
-  string article_id = 1;
-  // Optional title
-  optional string title = 2;
-  // Full article text (may be empty if fields=title)
-  string fulltext = 3;
-  // Optional publication timestamp (RFC3339)
-  optional string published_at = 4;
-  // Optional source URL
-  optional string source_url = 5;
-  // Optional detected language
-  optional string lang_hint = 6;
-  // Tags attached to this article
-  repeated RecapArticleTag tags = 7;
-}
-
-// ListRecapArticlesResponse is the paginated response
-message ListRecapArticlesResponse {
-  // Echo of requested window
-  RecapArticleRange range = 1;
-  // Total matching articles in the window
-  int32 total = 2;
-  // Current page (1-indexed)
-  int32 page = 3;
-  // Page size used
-  int32 page_size = 4;
-  // Whether additional pages exist
-  bool has_more = 5;
-  // Articles on this page
-  repeated RecapArticleItem articles = 6;
 }

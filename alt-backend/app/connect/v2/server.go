@@ -127,7 +127,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 
 	// Register Recap service
 	clusterDraftLoader := recapinternal.NewClusterDraftLoader(cfg.Recap.ClusterDraftPath)
-	recapHandler := recap.NewHandler(container.RecapUsecase, container.RecapArticlesUsecase, clusterDraftLoader, logger)
+	recapHandler := recap.NewHandler(container.RecapUsecase, clusterDraftLoader, logger)
 	recapPath, recapServiceHandler := recapv2connect.NewRecapServiceHandler(recapHandler, opts)
 	mux.Handle(recapPath, recapServiceHandler)
 	logger.Info("Registered Connect-RPC RecapService", "path", recapPath)
@@ -215,6 +215,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		internalhandler.WithKnowledgeVersionUsecases(container.CreateSummaryVersionUsecase, container.CreateTagSetVersionUsecase),
 		internalhandler.WithKnowledgeEventPort(container.SovereignClient),
 		internalhandler.WithRAGToolPorts(container.FetchTagCloudUsecase, container.FetchArticlesByTagUsecase),
+		internalhandler.WithRecapArticlesUsecase(container.RecapArticlesUsecase),
 	)
 	internalPath, internalServiceHandler := backendv1connect.NewBackendInternalServiceHandler(internalHandler, internalOpts)
 	mux.Handle(internalPath, internalServiceHandler)

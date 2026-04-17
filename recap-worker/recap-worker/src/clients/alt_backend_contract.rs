@@ -1,7 +1,9 @@
 //! Consumer-Driven Contract tests for recap-worker → alt-backend.
 //!
-//! Verifies the Connect-RPC `ListRecapArticles` paginated endpoint.
-//! Path: POST `/alt.recap.v2.RecapService/ListRecapArticles`, JSON body.
+//! Verifies the Connect-RPC `ListRecapArticles` paginated endpoint on
+//! `BackendInternalService`. Service-to-service endpoint — auth is
+//! established at the mTLS transport layer, no user token required.
+//! Path: POST `/services.backend.v1.BackendInternalService/ListRecapArticles`, JSON body.
 
 use pact_consumer::prelude::*;
 use reqwest::Client;
@@ -18,7 +20,7 @@ struct ListRecapArticlesResponse {
 
 const PACT_DIR: &str = "../../pacts";
 
-/// Paginated article fetch: POST /alt.recap.v2.RecapService/ListRecapArticles → 200 OK
+/// Paginated article fetch: POST /services.backend.v1.BackendInternalService/ListRecapArticles → 200 OK
 #[tokio::test]
 #[ignore = "CDC contract test"]
 async fn contract_alt_backend_recap_articles() {
@@ -26,7 +28,7 @@ async fn contract_alt_backend_recap_articles() {
         .interaction("a paginated recap articles request", "", |mut i| {
             i.given("articles exist in the recap window");
             i.request.method("POST");
-            i.request.path("/alt.recap.v2.RecapService/ListRecapArticles");
+            i.request.path("/services.backend.v1.BackendInternalService/ListRecapArticles");
             i.request.content_type("application/json");
             i.request.json_body(json_pattern!({
                 "from": like!("2026-03-19T00:00:00Z"),
@@ -56,7 +58,7 @@ async fn contract_alt_backend_recap_articles() {
         .with_output_dir(PACT_DIR)
         .start_mock_server(None, None);
 
-    let url = pact.path("/alt.recap.v2.RecapService/ListRecapArticles");
+    let url = pact.path("/services.backend.v1.BackendInternalService/ListRecapArticles");
     let body = serde_json::json!({
         "from": "2026-03-19T00:00:00Z",
         "to": "2026-03-26T00:00:00Z",

@@ -64,8 +64,9 @@ struct ListRecapArticlesRequest {
     page_size: i32,
 }
 
-/// Connect-RPC ListRecapArticles RPC のフルパス。
-const LIST_RECAP_ARTICLES_PATH: &str = "alt.recap.v2.RecapService/ListRecapArticles";
+/// Connect-RPC ListRecapArticles RPC のフルパス
+/// (service-to-service RPC なので BackendInternalService に居る)。
+const LIST_RECAP_ARTICLES_PATH: &str = "services.backend.v1.BackendInternalService/ListRecapArticles";
 
 /// alt-backendクライアントの設定。
 #[derive(Debug, Clone)]
@@ -210,7 +211,7 @@ mod tests {
         }
     }
 
-    const RPC_PATH: &str = "/alt.recap.v2.RecapService/ListRecapArticles";
+    const RPC_PATH: &str = "/services.backend.v1.BackendInternalService/ListRecapArticles";
 
     #[tokio::test]
     async fn fetch_articles_returns_single_page() {

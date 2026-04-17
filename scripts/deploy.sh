@@ -11,7 +11,7 @@
 #        → docker compose up -d --wait --remove-orphans
 #        → scripts/smoke.sh
 #        → record-deployment × 13
-#   3. scripts/cascade-pki-sidecars.sh            (netns-sharing sidecar cascade; closes PM-2026-030 gap)
+#   3. scripts/cascade-pki-sidecars.sh            (netns-sharing sidecar cascade)
 #   4. scripts/record-remote-pacticipant.sh <env>   (tts-speaker, remote GPU host)
 #
 # Any step failing aborts the chain. Recovery is manual: git revert → re-commit

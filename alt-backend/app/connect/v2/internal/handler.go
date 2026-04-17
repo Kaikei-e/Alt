@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -22,6 +23,7 @@ import (
 	"alt/port/knowledge_event_port"
 	"alt/usecase/create_summary_version_usecase"
 	"alt/usecase/create_tag_set_version_usecase"
+	"alt/usecase/recap_articles_usecase"
 	"fmt"
 )
 
@@ -64,6 +66,9 @@ type Handler struct {
 	// RAG Tool Operations (ADR-000617)
 	fetchTagCloudPort      fetchTagCloudPort
 	fetchArticlesByTagPort fetchArticlesByTagPort
+
+	// Recap article window (recap-worker paginated fetch).
+	recapArticlesUsecase recapArticlesUsecase
 
 	// Event publishing
 	eventPublisher     event_publisher_port.EventPublisherPort
@@ -936,6 +941,112 @@ func WithRAGToolPorts(
 		h.fetchTagCloudPort = tagCloud
 		h.fetchArticlesByTagPort = articlesByTag
 	}
+}
+
+// recapArticlesUsecase is the minimal interface for paginated article window
+// fetch. The concrete usecase lives at alt/usecase/recap_articles_usecase.
+type recapArticlesUsecase interface {
+	Execute(ctx context.Context, input recap_articles_usecase.Input) (*domain.RecapArticlesPage, error)
+}
+
+// WithRecapArticlesUsecase wires the recap-worker's paginated article window
+// fetch (service-to-service RPC ListRecapArticles).
+func WithRecapArticlesUsecase(uc recapArticlesUsecase) HandlerOption {
+	return func(h *Handler) {
+		h.recapArticlesUsecase = uc
+	}
+}
+
+// ListRecapArticles returns paginated articles in a time window for the
+// recap-worker. Authentication is enforced at the TLS transport layer
+// (mTLS peer identity on :9443); this RPC intentionally does not require
+// an end-user auth token.
+func (h *Handler) ListRecapArticles(
+	ctx context.Context,
+	req *connect.Request[backendv1.ListRecapArticlesRequest],
+) (*connect.Response[backendv1.ListRecapArticlesResponse], error) {
+	if h.recapArticlesUsecase == nil {
+		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("ListRecapArticles not configured"))
+	}
+
+	msg := req.Msg
+	if msg == nil || strings.TrimSpace(msg.From) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("from is required"))
+	}
+	if strings.TrimSpace(msg.To) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("to is required"))
+	}
+
+	from, err := time.Parse(time.RFC3339, msg.From)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("from must be RFC3339: %w", err))
+	}
+	to, err := time.Parse(time.RFC3339, msg.To)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to must be RFC3339: %w", err))
+	}
+
+	var langHint *string
+	if msg.LangHint != nil {
+		lower := strings.ToLower(strings.TrimSpace(*msg.LangHint))
+		if lower != "" {
+			langHint = &lower
+		}
+	}
+
+	input := recap_articles_usecase.Input{
+		From:     from.UTC(),
+		To:       to.UTC(),
+		LangHint: langHint,
+		Fields:   msg.Fields,
+	}
+	if msg.Page != nil {
+		input.Page = int(*msg.Page)
+	}
+	if msg.PageSize != nil {
+		input.PageSize = int(*msg.PageSize)
+	}
+
+	page, err := h.recapArticlesUsecase.Execute(ctx, input)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	if page == nil {
+		page = &domain.RecapArticlesPage{Page: input.Page, PageSize: input.PageSize}
+	}
+
+	articles := make([]*backendv1.RecapArticleItem, 0, len(page.Articles))
+	for _, a := range page.Articles {
+		item := &backendv1.RecapArticleItem{
+			ArticleId: a.ID.String(),
+			Fulltext:  a.FullText,
+		}
+		if a.Title != nil {
+			item.Title = a.Title
+		}
+		if a.SourceURL != nil {
+			item.SourceUrl = a.SourceURL
+		}
+		if a.LangHint != nil {
+			item.LangHint = a.LangHint
+		}
+		if a.PublishedAt != nil {
+			formatted := a.PublishedAt.UTC().Format(time.RFC3339)
+			item.PublishedAt = &formatted
+		}
+		articles = append(articles, item)
+	}
+
+	resp := &backendv1.ListRecapArticlesResponse{
+		Range:    &backendv1.RecapArticleRange{From: from.UTC().Format(time.RFC3339), To: to.UTC().Format(time.RFC3339)},
+		Total:    int32(page.Total),
+		Page:     int32(page.Page),
+		PageSize: int32(page.PageSize),
+		HasMore:  page.HasMore,
+		Articles: articles,
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // FetchTagCloud returns tag cloud data for topic exploration.
