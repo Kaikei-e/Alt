@@ -6,11 +6,15 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use reqwest::{Client, Url};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 /// alt-backendから取得した記事の構造。
+///
+/// Connect-RPC の JSON wire format は camelCase を使うため、proto フィールドの
+/// snake_case (e.g. `article_id`) は JSON 上 `articleId` として現れる。
 #[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct AltBackendTag {
     pub(crate) label: String,
     #[serde(default)]
@@ -22,6 +26,7 @@ pub(crate) struct AltBackendTag {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct AltBackendArticle {
     pub(crate) article_id: String,
     pub(crate) title: Option<String>,
@@ -35,15 +40,32 @@ pub(crate) struct AltBackendArticle {
 
 /// alt-backendのページング付き応答。
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[allow(dead_code)] // total, page, page_size は将来使用する可能性があるため
 struct RecapArticlesResponse {
-    // range: RecapRange,  // 不要なので省略
     total: i32,
     page: i32,
     page_size: i32,
     has_more: bool,
     articles: Vec<AltBackendArticle>,
 }
+
+/// ListRecapArticles Connect-RPC リクエスト。
+///
+/// Connect-RPC unary は POST + JSON body で wire 化される。protojson は
+/// proto field の snake_case を camelCase に変換するため、ここでも同じ
+/// エンコーディングを採用する。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListRecapArticlesRequest {
+    from: String,
+    to: String,
+    page: i32,
+    page_size: i32,
+}
+
+/// Connect-RPC ListRecapArticles RPC のフルパス。
+const LIST_RECAP_ARTICLES_PATH: &str = "alt.recap.v2.RecapService/ListRecapArticles";
 
 /// alt-backendクライアントの設定。
 #[derive(Debug, Clone)]
@@ -131,31 +153,31 @@ impl AltBackendClient {
         Ok(all_articles)
     }
 
-    /// 単一ページの記事を取得する。
+    /// 単一ページの記事を取得する (Connect-RPC unary, JSON body)。
     async fn fetch_page(
         &self,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
         page: i32,
     ) -> Result<RecapArticlesResponse> {
-        let mut url = self
+        let url = self
             .base_url
-            .join("v1/recap/articles")
-            .context("failed to build recap articles URL")?;
+            .join(LIST_RECAP_ARTICLES_PATH)
+            .context("failed to build recap articles Connect-RPC URL")?;
 
-        // クエリパラメータを構築
-        {
-            let mut query_pairs = url.query_pairs_mut();
-            query_pairs.append_pair("from", &from.to_rfc3339());
-            query_pairs.append_pair("to", &to.to_rfc3339());
-            query_pairs.append_pair("page", &page.to_string());
-            query_pairs.append_pair("page_size", "500");
-        }
+        let body = ListRecapArticlesRequest {
+            from: from.to_rfc3339(),
+            to: to.to_rfc3339(),
+            page,
+            page_size: 500,
+        };
 
         // Auth is established at the TLS transport layer (mTLS).
-        let request = self.client.get(url.clone());
-
-        let response = request
+        let response = self
+            .client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .json(&body)
             .send()
             .await
             .context("alt-backend articles request failed")?;
@@ -177,7 +199,7 @@ impl AltBackendClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{method, path, query_param};
+    use wiremock::matchers::{body_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn test_config(base_url: String) -> AltBackendConfig {
@@ -188,12 +210,15 @@ mod tests {
         }
     }
 
+    const RPC_PATH: &str = "/alt.recap.v2.RecapService/ListRecapArticles";
+
     #[tokio::test]
     async fn fetch_articles_returns_single_page() {
         let server = MockServer::start().await;
         let from = Utc::now();
         let to = Utc::now();
 
+        // Connect-RPC JSON uses camelCase for proto snake_case fields.
         let body = serde_json::json!({
             "range": {
                 "from": from.to_rfc3339(),
@@ -201,22 +226,22 @@ mod tests {
             },
             "total": 1,
             "page": 1,
-            "page_size": 500,
-            "has_more": false,
+            "pageSize": 500,
+            "hasMore": false,
             "articles": [
                 {
-                    "article_id": "art-1",
+                    "articleId": "art-1",
                     "title": "Article 1",
                     "fulltext": "Content 1",
-                    "published_at": "2025-01-01T00:00:00Z",
-                    "source_url": "https://example.com/1",
-                    "lang_hint": "en"
+                    "publishedAt": "2025-01-01T00:00:00Z",
+                    "sourceUrl": "https://example.com/1",
+                    "langHint": "en"
                 }
             ]
         });
 
-        Mock::given(method("GET"))
-            .and(path("/v1/recap/articles"))
+        Mock::given(method("POST"))
+            .and(path(RPC_PATH))
             .respond_with(ResponseTemplate::new(200).set_body_json(body))
             .mount(&server)
             .await;
@@ -238,36 +263,48 @@ mod tests {
         let from = Utc::now();
         let to = Utc::now();
 
-        // First page
         let body1 = serde_json::json!({
             "range": {"from": from.to_rfc3339(), "to": to.to_rfc3339()},
             "total": 2,
             "page": 1,
-            "page_size": 1,
-            "has_more": true,
-            "articles": [{"article_id": "art-1", "title": "Article 1", "fulltext": "C1", "published_at": null, "source_url": null, "lang_hint": "en"}]
+            "pageSize": 1,
+            "hasMore": true,
+            "articles": [{"articleId": "art-1", "title": "Article 1", "fulltext": "C1", "publishedAt": null, "sourceUrl": null, "langHint": "en"}]
         });
 
-        Mock::given(method("GET"))
-            .and(path("/v1/recap/articles"))
-            .and(query_param("page", "1"))
+        let expected_req1 = serde_json::json!({
+            "from": from.to_rfc3339(),
+            "to": to.to_rfc3339(),
+            "page": 1,
+            "pageSize": 500,
+        });
+
+        Mock::given(method("POST"))
+            .and(path(RPC_PATH))
+            .and(body_json(&expected_req1))
             .respond_with(ResponseTemplate::new(200).set_body_json(body1))
             .mount(&server)
             .await;
 
-        // Second page
         let body2 = serde_json::json!({
             "range": {"from": from.to_rfc3339(), "to": to.to_rfc3339()},
             "total": 2,
             "page": 2,
-            "page_size": 1,
-            "has_more": false,
-            "articles": [{"article_id": "art-2", "title": "Article 2", "fulltext": "C2", "published_at": null, "source_url": null, "lang_hint": "ja"}]
+            "pageSize": 1,
+            "hasMore": false,
+            "articles": [{"articleId": "art-2", "title": "Article 2", "fulltext": "C2", "publishedAt": null, "sourceUrl": null, "langHint": "ja"}]
         });
 
-        Mock::given(method("GET"))
-            .and(path("/v1/recap/articles"))
-            .and(query_param("page", "2"))
+        let expected_req2 = serde_json::json!({
+            "from": from.to_rfc3339(),
+            "to": to.to_rfc3339(),
+            "page": 2,
+            "pageSize": 500,
+        });
+
+        Mock::given(method("POST"))
+            .and(path(RPC_PATH))
+            .and(body_json(&expected_req2))
             .respond_with(ResponseTemplate::new(200).set_body_json(body2))
             .mount(&server)
             .await;

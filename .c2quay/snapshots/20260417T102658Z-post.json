@@ -1,0 +1,618 @@
+{
+  "captured_at": "2026-04-17T10:26:58.556216489Z",
+  "env": "production",
+  "releases": {
+    "acolyte-orchestrator": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "alt-backend": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "alt-butterfly-facade": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "auth-hub": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "mq-hub": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "news-creator": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "pre-processor": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "rag-orchestrator": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "recap-evaluator": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "recap-subworker": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "recap-worker": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "search-indexer": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "tag-generator": {
+      "Version": "254144071",
+      "ImageRef": ""
+    },
+    "tts-speaker": {
+      "Version": "254144071",
+      "ImageRef": ""
+    }
+  },
+  "containers": [
+    {
+      "Name": "acolyte-db",
+      "Service": "acolyte-db",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 20 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "acolyte-db-migrator",
+      "Service": "acolyte-db-migrator",
+      "State": "exited",
+      "Health": "",
+      "Status": "Exited (0) 5 minutes ago",
+      "ExitCode": 0
+    },
+    {
+      "Name": "acolyte-orchestrator",
+      "Service": "acolyte-orchestrator",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 5 minutes (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-alt-backend-1",
+      "Service": "alt-backend",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 36 minutes (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-alt-backend-logs-1",
+      "Service": "alt-backend-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-alt-butterfly-facade-1",
+      "Service": "alt-butterfly-facade",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 12 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-alt-frontend-sv-1",
+      "Service": "alt-frontend-sv",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 12 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-auth-hub-1",
+      "Service": "auth-hub",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 13 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-auth-hub-logs-1",
+      "Service": "auth-hub-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-auth-token-manager-1",
+      "Service": "auth-token-manager",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-cadvisor-1",
+      "Service": "cadvisor",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 5 days (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-clickhouse-1",
+      "Service": "clickhouse",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 43 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-dashboard-1",
+      "Service": "dashboard",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 20 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-dashboard-logs-1",
+      "Service": "dashboard-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-db",
+      "Service": "db",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 20 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-grafana-1",
+      "Service": "grafana",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 23 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-knowledge-sovereign-1",
+      "Service": "knowledge-sovereign",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 36 minutes (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-knowledge-sovereign-db-1",
+      "Service": "knowledge-sovereign-db",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 20 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-kratos-1",
+      "Service": "kratos",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 13 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-kratos-db-1",
+      "Service": "kratos-db",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 20 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-meilisearch-1",
+      "Service": "meilisearch",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 5 days (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-mq-hub-logs-1",
+      "Service": "mq-hub-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-news-creator-backend-logs-1",
+      "Service": "news-creator-backend-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-news-creator-logs-1",
+      "Service": "news-creator-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-nginx-1",
+      "Service": "nginx",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 12 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-nginx-exporter-1",
+      "Service": "nginx-exporter",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-nginx-logs-1",
+      "Service": "nginx-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pact-broker-1",
+      "Service": "pact-broker",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 47 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pact-db-1",
+      "Service": "pact-db",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 20 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pgbouncer-1",
+      "Service": "pgbouncer",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 5 days (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pgbouncer-kratos-1",
+      "Service": "pgbouncer-kratos",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 5 days (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pki-agent-acolyte-orchestrator-1",
+      "Service": "pki-agent-acolyte-orchestrator",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 5 minutes (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pki-agent-alt-backend-1",
+      "Service": "pki-agent-alt-backend",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 36 minutes (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pki-agent-alt-butterfly-facade-1",
+      "Service": "pki-agent-alt-butterfly-facade",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 12 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pki-agent-auth-hub-1",
+      "Service": "pki-agent-auth-hub",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 13 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pki-agent-pre-processor-1",
+      "Service": "pki-agent-pre-processor",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 12 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pki-agent-recap-worker-1",
+      "Service": "pki-agent-recap-worker",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 12 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pki-agent-search-indexer-1",
+      "Service": "pki-agent-search-indexer",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 36 minutes (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pki-agent-tag-generator-1",
+      "Service": "pki-agent-tag-generator",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 12 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pre-processor-1",
+      "Service": "pre-processor",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 13 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pre-processor-logs-1",
+      "Service": "pre-processor-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-pre-processor-sidecar-1",
+      "Service": "pre-processor-sidecar",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 3 days (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-prometheus-1",
+      "Service": "prometheus",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 43 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-rag-orchestrator-1",
+      "Service": "rag-orchestrator",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 12 hours",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-rag-orchestrator-logs-1",
+      "Service": "rag-orchestrator-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-rask-log-aggregator-1",
+      "Service": "rask-log-aggregator",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 5 days (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-recap-evaluator-1",
+      "Service": "recap-evaluator",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 12 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-recap-evaluator-logs-1",
+      "Service": "recap-evaluator-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-recap-subworker-1",
+      "Service": "recap-subworker",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 12 hours",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-recap-subworker-logs-1",
+      "Service": "recap-subworker-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-recap-worker-1",
+      "Service": "recap-worker",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 14 minutes (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-recap-worker-logs-1",
+      "Service": "recap-worker-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-search-indexer-1",
+      "Service": "search-indexer",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 36 minutes (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-search-indexer-logs-1",
+      "Service": "search-indexer-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-step-ca-1",
+      "Service": "step-ca",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 13 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-tag-generator-1",
+      "Service": "tag-generator",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 12 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "alt-tag-generator-logs-1",
+      "Service": "tag-generator-logs",
+      "State": "running",
+      "Health": "",
+      "Status": "Up 5 days",
+      "ExitCode": 0
+    },
+    {
+      "Name": "mq-hub",
+      "Service": "mq-hub",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 36 minutes (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "news-creator",
+      "Service": "news-creator",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 12 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "news-creator-backend",
+      "Service": "news-creator-backend",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 2 days (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "pre-processor-db",
+      "Service": "pre-processor-db",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 20 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "rag-db",
+      "Service": "rag-db",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 21 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "recap-db",
+      "Service": "recap-db",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 47 hours (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "redis-cache",
+      "Service": "redis-cache",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 5 days (healthy)",
+      "ExitCode": 0
+    },
+    {
+      "Name": "redis-streams",
+      "Service": "redis-streams",
+      "State": "running",
+      "Health": "healthy",
+      "Status": "Up 20 hours (healthy)",
+      "ExitCode": 0
+    }
+  ],
+  "images": {
+    "acolyte-db": "postgres:18-alpine",
+    "cadvisor": "gcr.io/cadvisor/cadvisor:v0.51.0",
+    "clickhouse": "clickhouse/clickhouse-server:25.9",
+    "db": "postgres:17-alpine",
+    "grafana": "grafana/grafana:11.4.0",
+    "knowledge-sovereign-db": "postgres:16-alpine",
+    "kratos": "oryd/kratos:v1.3.0",
+    "kratos-db": "postgres:16-alpine",
+    "kratos-migrate": "oryd/kratos:v1.3.0",
+    "meilisearch": "getmeili/meilisearch:v1.27.0",
+    "news-creator-volume-init": "alpine:3.21",
+    "nginx": "nginx:latest",
+    "nginx-exporter": "nginx/nginx-prometheus-exporter:1.4",
+    "oauth-token-init": "alpine:latest",
+    "pact-broker": "pactfoundation/pact-broker:latest",
+    "pact-db": "postgres:16-alpine",
+    "pgbouncer": "edoburu/pgbouncer:v1.25.1-p0",
+    "pgbouncer-kratos": "edoburu/pgbouncer:v1.25.1-p0",
+    "pki-agent-acolyte-orchestrator": "alt/pki-agent:latest",
+    "pki-agent-alt-backend": "alt/pki-agent:latest",
+    "pki-agent-alt-butterfly-facade": "alt/pki-agent:latest",
+    "pki-agent-auth-hub": "alt/pki-agent:latest",
+    "pki-agent-pre-processor": "alt/pki-agent:latest",
+    "pki-agent-recap-worker": "alt/pki-agent:latest",
+    "pki-agent-search-indexer": "alt/pki-agent:latest",
+    "pki-agent-tag-generator": "alt/pki-agent:latest",
+    "pre-processor-db": "postgres:17-alpine",
+    "prometheus": "prom/prometheus:v3.1.0",
+    "redis-cache": "redis:8.0.2-alpine",
+    "redis-streams": "redis:8.4-alpine",
+    "step-ca": "smallstep/step-ca:0.27.5",
+    "step-ca-bootstrap": "smallstep/step-ca:0.27.5"
+  }
+}

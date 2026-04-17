@@ -3,7 +3,7 @@
 // Package contract contains provider verification tests for alt-backend.
 //
 // These tests verify that alt-backend fulfills contracts from two consumers:
-//   - recap-worker → /v1/recap/articles (REST JSON)
+//   - recap-worker → alt.recap.v2.RecapService/ListRecapArticles (Connect-RPC / JSON)
 //   - search-indexer → BackendInternalService (Connect-RPC / JSON wire format)
 package contract
 
@@ -31,28 +31,31 @@ const (
 	altButterflyFacadePactFile = "alt-butterfly-facade-alt-backend.json"
 )
 
-// recapArticleResponse mirrors the JSON shape expected by recap-worker.
+// recapArticleResponse mirrors the Connect-RPC JSON shape produced by
+// alt.recap.v2.RecapService/ListRecapArticles. protojson uses camelCase, so
+// the JSON tags do the same.
 type recapArticleResponse struct {
-	ArticleID string       `json:"article_id"`
-	Title     string       `json:"title"`
-	FullText  string       `json:"fulltext"`
-	Tags      []tagPayload `json:"tags"`
-}
-
-type tagPayload struct {
-	Label string `json:"label"`
+	ArticleID string `json:"articleId"`
+	Title     string `json:"title"`
+	FullText  string `json:"fulltext"`
 }
 
 type recapArticlesResponse struct {
 	Range    rangeResponse          `json:"range"`
 	Total    int                    `json:"total"`
 	Page     int                    `json:"page"`
-	PageSize int                    `json:"page_size"`
-	HasMore  bool                   `json:"has_more"`
+	PageSize int                    `json:"pageSize"`
+	HasMore  bool                   `json:"hasMore"`
 	Articles []recapArticleResponse `json:"articles"`
 }
 
 type rangeResponse struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// listRecapArticlesRequest mirrors the Connect-RPC request body.
+type listRecapArticlesRequest struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
@@ -64,40 +67,47 @@ func startStubServer(t *testing.T) int {
 
 	mux := http.NewServeMux()
 
-	// ---- GET /v1/recap/articles ----
-	mux.HandleFunc("/v1/recap/articles", func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		fromStr := q.Get("from")
-		toStr := q.Get("to")
-		if fromStr == "" {
-			fromStr = "2026-03-19T00:00:00Z"
-		}
-		if toStr == "" {
-			toStr = "2026-03-26T00:00:00Z"
-		}
+	// ---- POST /alt.recap.v2.RecapService/ListRecapArticles (Connect-RPC) ----
+	mux.HandleFunc("/alt.recap.v2.RecapService/ListRecapArticles",
+		func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
 
-		resp := recapArticlesResponse{
-			Range: rangeResponse{
-				From: fromStr,
-				To:   toStr,
-			},
-			Total:    42,
-			Page:     1,
-			PageSize: 500,
-			HasMore:  false,
-			Articles: []recapArticleResponse{
-				{
-					ArticleID: "art-001",
-					Title:     "Test Article Title",
-					FullText:  "Full article text content here.",
-					Tags:      []tagPayload{{Label: "technology"}},
+			var req listRecapArticlesRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if req.From == "" {
+				req.From = "2026-03-19T00:00:00Z"
+			}
+			if req.To == "" {
+				req.To = "2026-03-26T00:00:00Z"
+			}
+
+			resp := recapArticlesResponse{
+				Range: rangeResponse{
+					From: req.From,
+					To:   req.To,
 				},
-			},
-		}
+				Total:    42,
+				Page:     1,
+				PageSize: 500,
+				HasMore:  false,
+				Articles: []recapArticleResponse{
+					{
+						ArticleID: "art-001",
+						Title:     "Test Article Title",
+						FullText:  "Full article text content here.",
+					},
+				},
+			}
 
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-	})
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		})
 
 	// ---- Connect-RPC BackendInternalService (JSON wire format) ----
 	// search-indexer-alt-backend.json contract.

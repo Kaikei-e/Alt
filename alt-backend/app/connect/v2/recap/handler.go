@@ -4,7 +4,9 @@ package recap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -16,6 +18,7 @@ import (
 	"alt/connect/v2/middleware"
 	"alt/domain"
 	recapinternal "alt/internal/recap"
+	"alt/usecase/recap_articles_usecase"
 	recap_usecase "alt/usecase/recap_usecase"
 )
 
@@ -23,8 +26,17 @@ import (
 type Handler struct {
 	recapUsecase          *recap_usecase.RecapUsecase
 	recapUsecaseInterface RecapUsecaseInterface
+	articlesUsecase       RecapArticlesUsecaseInterface
 	clusterDraftLoader    *recapinternal.ClusterDraftLoader
 	logger                *slog.Logger
+}
+
+// RecapArticlesUsecaseInterface defines the interface for the paginated article
+// fetch usecase (separate from the recap summary usecase). Kept minimal so that
+// production can inject the concrete *recap_articles_usecase.RecapArticlesUsecase
+// while tests inject mocks.
+type RecapArticlesUsecaseInterface interface {
+	Execute(ctx context.Context, input recap_articles_usecase.Input) (*domain.RecapArticlesPage, error)
 }
 
 // getRecapUsecase returns the usecase interface, preferring interface if set
@@ -47,11 +59,13 @@ type RecapUsecaseInterface interface {
 // NewHandler creates a new Recap service handler.
 func NewHandler(
 	recapUsecase *recap_usecase.RecapUsecase,
+	articlesUsecase *recap_articles_usecase.RecapArticlesUsecase,
 	clusterDraftLoader *recapinternal.ClusterDraftLoader,
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{
 		recapUsecase:       recapUsecase,
+		articlesUsecase:    articlesUsecase,
 		clusterDraftLoader: clusterDraftLoader,
 		logger:             logger,
 	}
@@ -491,6 +505,102 @@ func (h *Handler) SearchRecapsByTag(
 	return connect.NewResponse(&recapv2.SearchRecapsByTagResponse{
 		Results: protoResults,
 	}), nil
+}
+
+// ListRecapArticles returns paginated articles in a time window for recap-worker.
+// Authentication is enforced at the TLS transport layer (mTLS peer identity
+// on :9443); no end-user auth check is performed here — this mirrors the
+// legacy REST `/v1/recap/articles` handler's posture.
+func (h *Handler) ListRecapArticles(
+	ctx context.Context,
+	req *connect.Request[recapv2.ListRecapArticlesRequest],
+) (*connect.Response[recapv2.ListRecapArticlesResponse], error) {
+	msg := req.Msg
+
+	if msg == nil || strings.TrimSpace(msg.From) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("from is required"))
+	}
+	if strings.TrimSpace(msg.To) == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("to is required"))
+	}
+
+	from, err := time.Parse(time.RFC3339, msg.From)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("from must be RFC3339: %w", err))
+	}
+	to, err := time.Parse(time.RFC3339, msg.To)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to must be RFC3339: %w", err))
+	}
+
+	var langHint *string
+	if msg.LangHint != nil {
+		lower := strings.ToLower(strings.TrimSpace(*msg.LangHint))
+		if lower != "" {
+			langHint = &lower
+		}
+	}
+
+	input := recap_articles_usecase.Input{
+		From:     from.UTC(),
+		To:       to.UTC(),
+		LangHint: langHint,
+		Fields:   msg.Fields,
+	}
+	if msg.Page != nil {
+		input.Page = int(*msg.Page)
+	}
+	if msg.PageSize != nil {
+		input.PageSize = int(*msg.PageSize)
+	}
+
+	page, err := h.articlesUsecase.Execute(ctx, input)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	if page == nil {
+		page = &domain.RecapArticlesPage{Page: input.Page, PageSize: input.PageSize}
+	}
+
+	resp := &recapv2.ListRecapArticlesResponse{
+		Range:    &recapv2.RecapArticleRange{From: from.UTC().Format(time.RFC3339), To: to.UTC().Format(time.RFC3339)},
+		Total:    int32(page.Total),
+		Page:     int32(page.Page),
+		PageSize: int32(page.PageSize),
+		HasMore:  page.HasMore,
+		Articles: recapArticlesToProto(page.Articles),
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// recapArticlesToProto maps the domain articles to their proto wire form.
+func recapArticlesToProto(articles []domain.RecapArticle) []*recapv2.RecapArticleItem {
+	if len(articles) == 0 {
+		return nil
+	}
+	result := make([]*recapv2.RecapArticleItem, len(articles))
+	for i, a := range articles {
+		item := &recapv2.RecapArticleItem{
+			ArticleId: a.ID.String(),
+			Fulltext:  a.FullText,
+		}
+		if a.Title != nil {
+			item.Title = a.Title
+		}
+		if a.SourceURL != nil {
+			item.SourceUrl = a.SourceURL
+		}
+		if a.LangHint != nil {
+			item.LangHint = a.LangHint
+		}
+		if a.PublishedAt != nil {
+			formatted := a.PublishedAt.UTC().Format(time.RFC3339)
+			item.PublishedAt = &formatted
+		}
+		result[i] = item
+	}
+	return result
 }
 
 func quietDayToProto(qd *domain.QuietDayInfo) *recapv2.QuietDayInfo {

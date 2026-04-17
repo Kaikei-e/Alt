@@ -11,40 +11,66 @@
         }
       ],
       "request": {
-        "method": "GET",
-        "path": "/v1/recap/articles",
-        "query": {
-          "from": [
-            "2026-03-19T00:00:00Z"
-          ],
-          "page": [
-            "1"
-          ],
-          "page_size": [
-            "500"
-          ],
-          "to": [
-            "2026-03-26T00:00:00Z"
-          ]
-        }
+        "body": {
+          "from": "2026-03-19T00:00:00Z",
+          "page": 1,
+          "pageSize": 500,
+          "to": "2026-03-26T00:00:00Z"
+        },
+        "headers": {
+          "content-type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.from": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.page": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.pageSize": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.to": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.recap.v2.RecapService/ListRecapArticles"
       },
       "response": {
         "body": {
           "articles": [
             {
-              "article_id": "art-001",
+              "articleId": "art-001",
               "fulltext": "Full article text content here.",
-              "tags": [
-                {
-                  "label": "technology"
-                }
-              ],
               "title": "Test Article Title"
             }
           ],
-          "has_more": false,
+          "hasMore": false,
           "page": 1,
-          "page_size": 500,
+          "pageSize": 500,
           "range": {
             "from": "2026-03-19T00:00:00Z",
             "to": "2026-03-26T00:00:00Z"
@@ -73,7 +99,7 @@
                 }
               ]
             },
-            "$.articles[*].article_id": {
+            "$.articles[*].articleId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -89,31 +115,6 @@
                 }
               ]
             },
-            "$.articles[*].tags": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.articles[*].tags[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.articles[*].tags[*].label": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.articles[*].title": {
               "combine": "AND",
               "matchers": [
@@ -122,7 +123,7 @@
                 }
               ]
             },
-            "$.has_more": {
+            "$.hasMore": {
               "combine": "AND",
               "matchers": [
                 {
@@ -138,7 +139,7 @@
                 }
               ]
             },
-            "$.page_size": {
+            "$.pageSize": {
               "combine": "AND",
               "matchers": [
                 {

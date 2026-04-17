@@ -124,7 +124,8 @@ func RegisterRoutes(e *echo.Echo, container *di.ApplicationComponents, cfg *conf
 	registerImageProxyRoutes(v1, container, cfg)
 	// SSE feed stats (/v1/sse/feeds/stats) は H-001 で削除し、Connect-RPC
 	// `StreamFeedStats` (port 9101) に一本化された。
-	registerRecapRoutes(v1, container, cfg)
+	// /v1/recap/articles も ADR-000760 で Connect-RPC
+	// `alt.recap.v2.RecapService/ListRecapArticles` に移行済。
 	registerScrapingDomainRoutes(v1, container, cfg)
 	registerDashboardRoutes(v1, container, cfg)
 	RegisterAugurRoutes(e, v1, container)

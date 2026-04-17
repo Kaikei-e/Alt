@@ -127,7 +127,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 
 	// Register Recap service
 	clusterDraftLoader := recapinternal.NewClusterDraftLoader(cfg.Recap.ClusterDraftPath)
-	recapHandler := recap.NewHandler(container.RecapUsecase, clusterDraftLoader, logger)
+	recapHandler := recap.NewHandler(container.RecapUsecase, container.RecapArticlesUsecase, clusterDraftLoader, logger)
 	recapPath, recapServiceHandler := recapv2connect.NewRecapServiceHandler(recapHandler, opts)
 	mux.Handle(recapPath, recapServiceHandler)
 	logger.Info("Registered Connect-RPC RecapService", "path", recapPath)
