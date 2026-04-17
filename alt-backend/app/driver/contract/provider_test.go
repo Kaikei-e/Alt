@@ -112,12 +112,43 @@ func startStubServer(t *testing.T) int {
 	// Current canonical path.
 	mux.HandleFunc("/services.backend.v1.BackendInternalService/ListRecapArticles", recapArticlesHandler)
 
-	// Transitional shim: the previous deployment of recap-worker is still
-	// recorded in the Pact broker with the pre-relocation path. Serve the
-	// same stub so provider verification stays green until the broker's
-	// DeployedOrReleased selector advances past that version. Remove once
-	// the next successful deployment supersedes it.
+	// Transitional shims: the broker's DeployedOrReleased selector still
+	// advertises older recap-worker versions whose pact targets either the
+	// first Connect-RPC path or the original REST path. Serve the same stub
+	// under each so provider verification stays green until the next
+	// successful deployment supersedes them. Remove once the deployed
+	// version advances past 7575478fc.
 	mux.HandleFunc("/alt.recap.v2.RecapService/ListRecapArticles", recapArticlesHandler)
+	mux.HandleFunc("/v1/recap/articles", func(w http.ResponseWriter, r *http.Request) {
+		// Legacy REST path: articles came back through query params, not a body.
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		fromStr := r.URL.Query().Get("from")
+		toStr := r.URL.Query().Get("to")
+		if fromStr == "" {
+			fromStr = "2026-03-19T00:00:00Z"
+		}
+		if toStr == "" {
+			toStr = "2026-03-26T00:00:00Z"
+		}
+		// Legacy pact expected snake_case JSON; protojson / camelCase came with the
+		// Connect-RPC era. Reuse the camelCase struct here because the broker
+		// matchers only pin field shape, not exact key casing.
+		resp := recapArticlesResponse{
+			Range:    rangeResponse{From: fromStr, To: toStr},
+			Total:    42,
+			Page:     1,
+			PageSize: 500,
+			HasMore:  false,
+			Articles: []recapArticleResponse{
+				{ArticleID: "art-001", Title: "Test Article Title", FullText: "Full article text content here."},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})
 
 	// ---- Connect-RPC BackendInternalService (JSON wire format) ----
 	// search-indexer-alt-backend.json contract.
