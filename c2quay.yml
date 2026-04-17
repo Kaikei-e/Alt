@@ -40,6 +40,11 @@ environments:
       tag-generator:        { pacticipant: tag-generator }
       acolyte-orchestrator: { pacticipant: acolyte-orchestrator }
       alt-butterfly-facade: { pacticipant: alt-butterfly-facade }
-      # tts-speaker runs on a separate GPU host. record-deployment for it is
-      # handled by scripts/record-remote-pacticipant.sh at the tail of
-      # scripts/deploy.sh.
+      # tts-speaker runs on a separate GPU host and is intentionally NOT declared
+      # in compose/compose.yaml on this box. We still need the broker to treat
+      # its version as known during the aggregate can-i-deploy gate (otherwise
+      # alt-butterfly-facade's consumer-side pact against tts-speaker shows up
+      # as "no verification result as consumer against tts-speaker@"). If
+      # c2quay refuses or tries to recreate it, revert this entry and fall back
+      # to scripts/record-remote-pacticipant.sh.
+      tts-speaker:          { pacticipant: tts-speaker }
