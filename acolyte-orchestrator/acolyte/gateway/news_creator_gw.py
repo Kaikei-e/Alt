@@ -48,10 +48,9 @@ class NewsCreatorGateway:
         resp.raise_for_status()
         data = resp.json()
 
-        metadata = data.get("metadata", {})
         return LLMResponse(
             text=data.get("summary", ""),
-            model=metadata.get("model", model or self._default_model),
-            prompt_tokens=metadata.get("prompt_tokens", 0),
-            completion_tokens=metadata.get("tokens", 0),
+            model=data.get("model") or model or self._default_model,
+            prompt_tokens=data.get("prompt_tokens") or 0,
+            completion_tokens=data.get("completion_tokens") or 0,
         )

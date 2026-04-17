@@ -21,8 +21,13 @@ def mock_transport() -> httpx.MockTransport:
             return httpx.Response(
                 200,
                 json={
+                    "success": True,
+                    "article_id": "acolyte-gen",
                     "summary": "Generated text output.",
-                    "metadata": {"model": "gemma4-e4b-12k", "tokens": 42},
+                    "model": "gemma4-e4b-12k",
+                    "prompt_tokens": 17,
+                    "completion_tokens": 42,
+                    "total_duration_ms": 1234.5,
                 },
             )
         return httpx.Response(404)
@@ -38,7 +43,35 @@ async def test_generate_returns_llm_response(settings: Settings, mock_transport:
 
     assert result.text == "Generated text output."
     assert result.model == "gemma4-e4b-12k"
+    assert result.prompt_tokens == 17
     assert result.completion_tokens == 42
+
+
+@pytest.mark.asyncio
+async def test_generate_tolerates_missing_token_counts(settings: Settings) -> None:
+    """news-creator returns prompt_tokens/completion_tokens as Optional[int]; treat None as 0."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "success": True,
+                "article_id": "acolyte-gen",
+                "summary": "Short output.",
+                "model": "gemma4-e4b-12k",
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "total_duration_ms": None,
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, base_url="http://fake:11434") as client:
+        gw = NewsCreatorGateway(client, settings)
+        result = await gw.generate("test")
+
+    assert result.prompt_tokens == 0
+    assert result.completion_tokens == 0
 
 
 @pytest.mark.asyncio

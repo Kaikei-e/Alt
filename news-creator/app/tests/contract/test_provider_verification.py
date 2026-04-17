@@ -355,28 +355,12 @@ def test_verify_rag_orchestrator_contract(provider_url: tuple[str, int]):
     verifier.verify()
 
 
-@pytest.mark.xfail(
-    reason=(
-        "acolyte-orchestrator's consumer pact asserts a {metadata, summary} "
-        "response shape from /api/v1/summarize, but news-creator's production "
-        "SummarizeResponse returns {success, article_id, summary}. The pact "
-        "also publishes a null request body (acolyte's consumer test did not "
-        "specify one) which FastAPI rejects with 422. This xfail keeps the "
-        "CDC gate surfacing the drift without blocking deploys. Fix by either "
-        "regenerating acolyte's consumer pact against reality or adding a "
-        "compat response shape to news-creator."
-    ),
-    strict=False,
-)
 @pytest.mark.skipif(
     not PACT_BROKER_URL and not ACOLYTE_ORCHESTRATOR_PACT.exists(),
     reason=f"No Broker URL and pact file not found: {ACOLYTE_ORCHESTRATOR_PACT}",
 )
 def test_verify_acolyte_orchestrator_contract(provider_url: tuple[str, int]):
-    """Verify news-creator satisfies acolyte-orchestrator's contract.
-
-    Currently expected to fail — see xfail reason above for the drift detail.
-    """
+    """Verify news-creator satisfies acolyte-orchestrator's contract."""
     base_url, port = provider_url
 
     verifier = Verifier("news-creator")

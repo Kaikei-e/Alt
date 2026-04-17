@@ -12,17 +12,12 @@
         }
       ],
       "request": {
-        "method": "POST",
-        "path": "/api/v1/summarize"
-      },
-      "response": {
         "body": {
           "content": {
-            "metadata": {
-              "model": "gemma4-e4b-12k",
-              "tokens": 200
-            },
-            "summary": "Market trends indicate..."
+            "article_id": "acolyte-gen",
+            "content": "Write a market-trends section analysing venture funding flows, the latest GPU supply dynamics, and what that means for inference costs for small operators over the next six months.",
+            "priority": "low",
+            "stream": false
           },
           "contentType": "application/json",
           "encoded": false
@@ -31,6 +26,88 @@
           "Content-Type": [
             "application/json"
           ]
+        },
+        "method": "POST",
+        "path": "/api/v1/summarize"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "article_id": "acolyte-gen",
+            "completion_tokens": 200,
+            "model": "gemma4-e4b-12k",
+            "prompt_tokens": 120,
+            "success": true,
+            "summary": "Market trends indicate...",
+            "total_duration_ms": 1234.5
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.article_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.completion_tokens": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.prompt_tokens": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.success": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "boolean"
+                }
+              ]
+            },
+            "$.summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.total_duration_ms": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "decimal"
+                }
+              ]
+            }
+          }
         },
         "status": 200
       },

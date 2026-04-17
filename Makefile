@@ -319,7 +319,7 @@ rust-clean:
 # c2quay — Pact-gated deployer used by scripts/deploy.sh.
 # Downloads, checksums, and installs the release tarball to INSTALL_DIR
 # (default /usr/local/bin, sudo required for that path).
-C2QUAY_VERSION ?= v0.4.4
+C2QUAY_VERSION ?= v0.4.7
 C2QUAY_OS ?= linux
 C2QUAY_ARCH ?= amd64
 C2QUAY_INSTALL_DIR ?= /usr/local/bin
