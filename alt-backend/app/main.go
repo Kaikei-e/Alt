@@ -14,7 +14,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" //#nosec G108 -- listener only starts when PPROF_ENABLED=true (dev/debug)
 	"os"
 	"os/signal"
 	"runtime"
@@ -83,7 +83,7 @@ func main() {
 	if os.Getenv("PPROF_ENABLED") == "true" {
 		runtime.SetMutexProfileFraction(5)
 		runtime.SetBlockProfileRate(1)
-		pprofServer = &http.Server{Addr: ":6060", Handler: nil}
+		pprofServer = &http.Server{Addr: ":6060", Handler: nil, ReadHeaderTimeout: 10 * time.Second}
 		go func() { _ = pprofServer.ListenAndServe() }()
 		log.InfoContext(ctx, "pprof server started", "port", 6060)
 	}
@@ -160,13 +160,17 @@ func main() {
 		_ = c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "internal_error"})
 	}
 
-	// Use configuration for server settings
+	// Use configuration for server settings.
+	// ReadHeaderTimeout is set independently of ReadTimeout so large payload
+	// reads remain bounded by ReadTimeout while slow-header (Slowloris)
+	// attacks are cut off within 10s.
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
-		Handler:      e,
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
-		IdleTimeout:  cfg.Server.IdleTimeout,
+		Addr:              fmt.Sprintf(":%d", cfg.Server.Port),
+		Handler:           e,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       cfg.Server.ReadTimeout,
+		WriteTimeout:      cfg.Server.WriteTimeout,
+		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
 
 	// Register Prometheus metrics endpoint

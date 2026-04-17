@@ -21,7 +21,7 @@ func WriteFeedsToFile(feeds []*rssFeed.Feed) error {
 	}
 
 	cleanedPath := PathCleaner(FeedsFilePath)
-	err = os.WriteFile(cleanedPath, jsonData, 0644)
+	err = os.WriteFile(cleanedPath, jsonData, 0o600)
 	if err != nil {
 		return err
 	}

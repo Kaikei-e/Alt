@@ -16,7 +16,7 @@ import (
 type jwtContextKey string
 
 const (
-	backendTokenHeader               = "X-Alt-Backend-Token"
+	backendTokenHeader               = "X-Alt-Backend-Token" //#nosec G101 -- HTTP header name, not a credential
 	userContextKey     jwtContextKey = "altUser"
 )
 

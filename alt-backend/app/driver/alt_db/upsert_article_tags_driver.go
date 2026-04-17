@@ -45,7 +45,7 @@ func (r *TagRepository) UpsertArticleTags(ctx context.Context, articleID string,
 	br := tx.SendBatch(ctx, batch)
 	for _, tag := range tags {
 		if _, err := br.Exec(); err != nil {
-			br.Close()
+			_ = br.Close() //#nosec G104 -- batch Exec error already surfaced; Close error is noise
 			return 0, fmt.Errorf("upsert tag %q: %w", tag.Name, err)
 		}
 	}
@@ -94,7 +94,7 @@ func (r *TagRepository) BatchUpsertArticleTags(ctx context.Context, items []Batc
 	br := tx.SendBatch(ctx, batch)
 	for i := 0; i < totalTags; i++ {
 		if _, err := br.Exec(); err != nil {
-			br.Close()
+			_ = br.Close() //#nosec G104 -- batch Exec error already surfaced; Close error is noise
 			return 0, fmt.Errorf("batch upsert tag %d: %w", i, err)
 		}
 	}

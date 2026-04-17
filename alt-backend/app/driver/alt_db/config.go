@@ -3,6 +3,7 @@ package alt_db
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -59,9 +60,10 @@ func (dc *DatabaseConfig) BuildDirectConnectionString(hostOverride string, portO
 }
 
 func getEnvOrDefault(key, defaultValue string) string {
-	// Check for _FILE suffix (Docker Secrets support)
+	// Check for _FILE suffix (Docker Secrets support).
+	// The path is operator-supplied via env var, not user input.
 	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
-		if content, err := os.ReadFile(fileValue); err == nil {
+		if content, err := os.ReadFile(filepath.Clean(fileValue)); err == nil { //#nosec G304,G703 -- path from *_FILE env var (Docker Secrets)
 			return strings.TrimSpace(string(content))
 		}
 	}

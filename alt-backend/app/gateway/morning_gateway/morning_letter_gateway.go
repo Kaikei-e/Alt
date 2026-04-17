@@ -31,7 +31,7 @@ type MorningLetterGateway struct {
 func NewMorningLetterGateway(pool alt_db.PgxIface) morning_letter_port.MorningLetterRepository {
 	recapWorkerURL := os.Getenv("RECAP_WORKER_URL")
 	if recapWorkerURL == "" {
-		recapWorkerURL = "http://recap-worker:9005"
+		recapWorkerURL = "http://recap-worker:9005" //#nosec G101 -- service-discovery default, not a credential
 	}
 	return &MorningLetterGateway{
 		altDBRepository: alt_db.NewAltDBRepository(pool),

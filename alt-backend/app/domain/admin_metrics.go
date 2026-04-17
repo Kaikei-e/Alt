@@ -16,7 +16,7 @@ const (
 	MetricMQHubPublishRate           MetricKey = "mqhub_publish_rate"
 	MetricMQHubRedis                 MetricKey = "mqhub_redis"
 	MetricRecapDBPoolInUse           MetricKey = "recap_db_pool_in_use"
-	MetricRecapWorkerRSS             MetricKey = "recap_worker_rss"
+	MetricRecapWorkerRSS             MetricKey = "recap_worker_rss" //#nosec G101 -- Prometheus metric key, not a credential
 	MetricRecapRequestP95            MetricKey = "recap_request_p95"
 	MetricRecapSubworkerAdminSuccess MetricKey = "recap_subworker_admin_success"
 )

@@ -76,8 +76,9 @@ func computeLayoutInternal(items []*domain.TagCloudItem, edges []*domain.TagCooc
 		}
 	}
 
-	// Initialize positions on sphere surface (deterministic)
-	rng := rand.New(rand.NewSource(layoutSeed))
+	// Initialize positions on sphere surface (deterministic seed for
+	// reproducible 3D tag-cloud layout — not a cryptographic context).
+	rng := rand.New(rand.NewSource(layoutSeed)) //#nosec G404 -- deterministic seeded RNG for visual layout, not security-sensitive
 	initialRadius := math.Sqrt(float64(n)) * 8.0
 	nodes := make([]node, n)
 	for i := range nodes {

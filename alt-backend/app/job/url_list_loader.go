@@ -27,7 +27,9 @@ func PathCleaner(csvPath string) string {
 
 func CSVToURLList(csvPath string) ([]url.URL, error) {
 	ctx := context.Background()
-	csvFile, err := os.Open(csvPath)
+	// csvPath is produced by PathCleaner(CSVPath) — a hard-coded constant
+	// joined with the process working directory, never user input.
+	csvFile, err := os.Open(filepath.Clean(csvPath)) //#nosec G304 -- path derived from CSVPath constant via PathCleaner
 	if err != nil {
 		return nil, err
 	}

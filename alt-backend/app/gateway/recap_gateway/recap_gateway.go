@@ -23,7 +23,7 @@ type RecapGateway struct {
 func NewRecapGateway(searchIndexer search_indexer_port.SearchIndexerPort) recap_port.RecapPort {
 	recapWorkerURL := os.Getenv("RECAP_WORKER_URL")
 	if recapWorkerURL == "" {
-		recapWorkerURL = "http://recap-worker:9005"
+		recapWorkerURL = "http://recap-worker:9005" //#nosec G101 -- service-discovery default, not a credential
 	}
 
 	return &RecapGateway{

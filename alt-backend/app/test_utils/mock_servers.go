@@ -154,7 +154,7 @@ func (m *MockRSSServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(response.StatusCode)
 
 	// Write response body
-	w.Write([]byte(response.Body))
+	_, _ = w.Write([]byte(response.Body)) //#nosec G104 -- test mock response writer
 }
 
 func (m *MockRSSServer) setupDefaultResponses() {
@@ -325,23 +325,23 @@ func (m *MockDatabaseServer) handleDatabaseRequest(w http.ResponseWriter, r *htt
 	switch {
 	case strings.Contains(query, "SELECT"):
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"rows": [{"id": 1, "title": "Test Feed", "link": "http://example.com"}]}`))
+		_, _ = w.Write([]byte(`{"rows": [{"id": 1, "title": "Test Feed", "link": "http://example.com"}]}`)) //#nosec G104 -- test mock response writer
 
 	case strings.Contains(query, "INSERT"):
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{"id": 123, "status": "created"}`))
+		_, _ = w.Write([]byte(`{"id": 123, "status": "created"}`)) //#nosec G104 -- test mock response writer
 
 	case strings.Contains(query, "UPDATE"):
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"affected_rows": 1, "status": "updated"}`))
+		_, _ = w.Write([]byte(`{"affected_rows": 1, "status": "updated"}`)) //#nosec G104 -- test mock response writer
 
 	case strings.Contains(query, "DELETE"):
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"affected_rows": 1, "status": "deleted"}`))
+		_, _ = w.Write([]byte(`{"affected_rows": 1, "status": "deleted"}`)) //#nosec G104 -- test mock response writer
 
 	default:
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "ok"}`))
+		_, _ = w.Write([]byte(`{"status": "ok"}`)) //#nosec G104 -- test mock response writer
 	}
 }
 
@@ -455,7 +455,7 @@ func (m *MockSearchServer) handleSearchRequest(w http.ResponseWriter, r *http.Re
 		"totalHits": %d
 	}`, formatDocumentsAsJSON(results), query, len(results))
 
-	w.Write([]byte(response))
+	_, _ = w.Write([]byte(response)) //#nosec G104,G705 -- test mock response writer; query is echoed through a fixed template, not rendered to a browser
 }
 
 func (m *MockSearchServer) setupDefaultIndexes() {

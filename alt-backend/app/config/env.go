@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -49,7 +50,9 @@ func loadStruct(v reflect.Value) error {
 		fileValue := os.Getenv(envFileTag)
 		var value string
 		if fileValue != "" {
-			content, err := os.ReadFile(fileValue)
+			// Path comes from a trusted env var (Docker Secrets pattern:
+			// *_FILE injects operator-controlled paths, never user input).
+			content, err := os.ReadFile(filepath.Clean(fileValue)) //#nosec G304,G703 -- path is operator-supplied via *_FILE env var (Docker Secrets)
 			if err == nil {
 				value = strings.TrimSpace(string(content))
 			}

@@ -305,13 +305,13 @@ func GenerateMockRSSFeedXML(itemCount int) string {
 func SetTestEnv(t *testing.T, key, value string) {
 	t.Helper()
 	original := os.Getenv(key)
-	os.Setenv(key, value)
+	_ = os.Setenv(key, value) //#nosec G104 -- test-only env setup; failure would fail downstream assertions
 
 	t.Cleanup(func() {
 		if original == "" {
-			os.Unsetenv(key)
+			_ = os.Unsetenv(key) //#nosec G104 -- test cleanup
 		} else {
-			os.Setenv(key, original)
+			_ = os.Setenv(key, original) //#nosec G104 -- test cleanup
 		}
 	})
 }
@@ -319,11 +319,11 @@ func SetTestEnv(t *testing.T, key, value string) {
 func ClearTestEnv(t *testing.T, key string) {
 	t.Helper()
 	original := os.Getenv(key)
-	os.Unsetenv(key)
+	_ = os.Unsetenv(key) //#nosec G104 -- test-only env setup
 
 	t.Cleanup(func() {
 		if original != "" {
-			os.Setenv(key, original)
+			_ = os.Setenv(key, original) //#nosec G104 -- test cleanup
 		}
 	})
 }

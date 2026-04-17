@@ -96,7 +96,7 @@ func (r *FeedRepository) RegisterMultipleFeedsWithState(ctx context.Context, fee
 	for range feeds {
 		var result FeedRegistrationResult
 		if err := br.QueryRow().Scan(&result.ArticleID, &result.Created); err != nil {
-			br.Close()
+			_ = br.Close() //#nosec G104 -- Scan error already surfaced; Close error is noise
 			return nil, fmt.Errorf("batch upsert feed: %w", err)
 		}
 		results = append(results, result)

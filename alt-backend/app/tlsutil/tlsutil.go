@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -103,7 +104,9 @@ func (r *certReloader) load() (*tls.Certificate, error) {
 }
 
 func loadRootCAs(caPath string) (*x509.CertPool, error) {
-	pem, err := os.ReadFile(caPath)
+	// caPath is sourced from service configuration (mTLS CA bundle path),
+	// never user input.
+	pem, err := os.ReadFile(filepath.Clean(caPath)) //#nosec G304 -- caPath is operator-configured CA bundle location
 	if err != nil {
 		return nil, fmt.Errorf("read ca bundle %q: %w", caPath, err)
 	}
