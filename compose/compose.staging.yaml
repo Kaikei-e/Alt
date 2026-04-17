@@ -1,0 +1,98 @@
+# compose/compose.staging.yaml
+#
+# Ephemeral E2E staging stack — brought up per run of the Hurl suite and
+# torn down at the end. Project name `alt-staging` keeps it isolated from
+# any prod compose stack that may be running on the same host.
+#
+# Minimum services needed for the search-indexer Hurl suite:
+#   meilisearch    — the search engine search-indexer wraps
+#   stub-backend   — satisfies search-indexer's BACKEND_API_URL startup probe
+#   search-indexer — the SUT (ghcr.io/${GHCR_OWNER}/alt-search-indexer:${IMAGE_TAG})
+#
+# Every secret in this stack is a test fixture committed under
+# e2e/fixtures/staging-secrets/ — never reuse these values anywhere else.
+
+name: alt-staging
+
+services:
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    container_name: alt-staging-meilisearch
+    environment:
+      MEILI_MASTER_KEY: alt-staging-test-master-key
+      MEILI_ENV: development
+      MEILI_NO_ANALYTICS: "true"
+    ports:
+      - "17700:7700"
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:7700/health | grep -q available"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  stub-backend:
+    # Nginx returning 200 to every request — search-indexer only probes
+    # BACKEND_API_URL for reachability at startup, it doesn't validate the body.
+    image: nginx:1.27-alpine
+    container_name: alt-staging-stub-backend
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost/ >/dev/null 2>&1 || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  search-indexer:
+    image: ghcr.io/${GHCR_OWNER:-kaikei}/alt-search-indexer:${IMAGE_TAG:-main}
+    container_name: alt-staging-search-indexer
+    depends_on:
+      meilisearch:
+        condition: service_healthy
+      stub-backend:
+        condition: service_healthy
+    environment:
+      - MTLS_LISTEN=false
+      - MTLS_ENFORCE=false
+      - BACKEND_API_URL=http://stub-backend
+      - BACKEND_API_MTLS_URL=http://stub-backend
+      - BACKEND_MTLS_SERVER_NAME=stub-backend
+      - MEILISEARCH_HOST=http://meilisearch:7700
+      - MEILISEARCH_API_KEY_FILE=/run/secrets/meili_master_key
+      - MEILISEARCH_SEARCH_API_KEY_FILE=/run/secrets/meili_master_key
+      - MEILI_MASTER_KEY_FILE=/run/secrets/meili_master_key
+      - CONSUMER_ENABLED=false
+      - REDIS_STREAMS_URL=redis://stub-backend:6379
+      - RECAP_WORKER_URL=http://stub-backend
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://stub-backend:4318
+      - OTEL_SERVICE_NAME=search-indexer-staging
+      - LOG_LEVEL=info
+    ports:
+      - "19300:9300"
+    networks:
+      - alt-staging
+    secrets:
+      - meili_master_key
+    healthcheck:
+      test: ["CMD", "/search-indexer", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+networks:
+  alt-staging:
+    name: alt-staging
+    driver: bridge
+    # `internal: true` blocks container egress to the Internet while still
+    # permitting intra-stack + host-port traffic. Docker daemon-driven
+    # image pulls happen outside this network so they're unaffected.
+    internal: true
+
+secrets:
+  meili_master_key:
+    file: ../e2e/fixtures/staging-secrets/meili_master_key.txt

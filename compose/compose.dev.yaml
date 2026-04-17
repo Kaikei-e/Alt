@@ -1,0 +1,18 @@
+# compose/compose.dev.yaml — local development override.
+#
+# Apply alongside the root compose:
+#   docker compose -f compose/compose.yaml -f compose/compose.dev.yaml up -d --build <service>
+#
+# Purpose: when a service carries both `build:` and `image:` in its stack
+# (the pull-based deploy default), this override pins `pull_policy: never`
+# so local `docker compose up --build` does not silently fall back to
+# pulling the registry tag if the local image tag happens to match.
+#
+# Only services that gained a GHCR `image:` reference need to be listed here.
+# Start with search-indexer; add entries as other services migrate.
+
+name: alt
+
+services:
+  search-indexer:
+    pull_policy: never
