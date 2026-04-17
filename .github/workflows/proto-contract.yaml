@@ -1,8 +1,8 @@
 # Proto & Contract Validation — blocking gate.
 #
-# This workflow runs on every PR to main. Both of the following jobs MUST be
-# listed in the `main` branch protection as required status checks so the
-# merge is blocked on contract/regression failures:
+# This workflow runs on every PR to main. The following jobs MUST be listed in
+# the `main` branch protection as required status checks so the merge is
+# blocked on contract/regression failures:
 #
 #   - "Proto & Contract Validation / Pact CDC Consumer Tests (Go)"
 #   - "Proto & Contract Validation / Pact CDC Consumer Tests (Rust)"
@@ -10,6 +10,14 @@
 #   - "Proto & Contract Validation / Pact Publish & Provider Verification"
 #   - "Proto & Contract Validation / Buf Lint & Breaking Change Detection"
 #   - "Proto & Contract Validation / Contract Conformance Tests (FE)"
+#
+# `Pact Publish & Provider Verification` is an aggregator that waits on
+# `pact-verify-go` and `pact-verify-python` (matrix). Those two jobs carry the
+# actual publish + verify work; the aggregator keeps the historical required-
+# check name stable so branch-protection does not need to be re-wired on every
+# split. tts-speaker provider verification is not run in CI by design — it is
+# hosted separately and its can-i-deploy record is published via
+# scripts/pact-check.sh against the persistent deploy-host broker.
 #
 # Enforcement: see docs/runbooks/pact-broker-ops.md for the branch-protection
 # recipe. PR-level verification here is paired with a local `can-i-deploy`
@@ -184,8 +192,8 @@ jobs:
           path: ${{ matrix.pact-dir }}/*.json
           if-no-files-found: error
 
-  pact-publish-and-verify:
-    name: Pact Publish & Provider Verification
+  pact-verify-go:
+    name: Pact Provider Verify (Go)
     runs-on: ubuntu-latest
     needs: [pact-cdc-go, pact-cdc-rust, pact-cdc-python-consumer]
     services:
@@ -217,6 +225,18 @@ jobs:
           --health-retries 30
           --health-start-period 60s
     steps:
+      - name: Free disk space
+        if: runner.environment != 'self-hosted'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - uses: actions/checkout@v5
 
       - name: Download all pact artifacts
@@ -226,25 +246,18 @@ jobs:
           pattern: pacts-*
           merge-multiple: true
 
-      - name: List collected pact files
-        run: ls -la collected-pacts/
-
       - name: Wait for Pact Broker database connection
         run: |
-          echo "Waiting for Pact Broker to connect to database..."
           for i in {1..30}; do
             RESPONSE=$(curl -sS -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies 2>/dev/null || echo '{}')
             if echo "$RESPONSE" | jq -e '.database.ok == true' > /dev/null 2>&1; then
-              echo "Pact Broker is ready with database connection!"
-              echo "Response: $RESPONSE"
+              echo "Pact Broker ready."
               exit 0
             fi
-            echo "Attempt $i/30: Pact Broker not ready yet (response: $RESPONSE), waiting..."
+            echo "Attempt $i/30: not ready, waiting..."
             sleep 2
           done
-          echo "Pact Broker failed to become ready after 60 seconds"
-          curl -sS -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies || true
-          exit 1
+          echo "Pact Broker failed to become ready"; exit 1
 
       - name: Publish all pact files to Broker
         env:
@@ -252,28 +265,17 @@ jobs:
           PACT_BROKER_USERNAME: pact
           PACT_BROKER_PASSWORD: pact
         run: |
-          # Use official pact-cli for publishing (best practice per pact-foundation docs)
-          # See: https://docs.pact.io/pact_broker/publishing_and_retrieving_pacts
           VERSION="${GITHUB_SHA:0:7}"
           BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
-
-          echo "Publishing pacts to broker (version: ${VERSION}, branch: ${BRANCH})"
-          ls -la collected-pacts/
-
-          # Install pact CLI via standalone script (official method)
           curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-ruby-standalone/master/install.sh | PACT_CLI_VERSION=v2.4.10 bash
           export PATH="${PATH}:${PWD}/pact/bin"
-
-          # Publish all pacts using official CLI
           pact-broker publish collected-pacts \
             --consumer-app-version "${VERSION}" \
             --branch "${BRANCH}" \
             --broker-base-url "${PACT_BROKER_BASE_URL}" \
             --broker-username "${PACT_BROKER_USERNAME}" \
-            --broker-password "${PACT_BROKER_PASSWORD}" \
-            --verbose
+            --broker-password "${PACT_BROKER_PASSWORD}"
 
-      # --- Go provider verification (alt-backend) ---
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26"
@@ -320,19 +322,123 @@ jobs:
           PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: go test -tags=contract -run TestVerifySearchIndexerMqHubMessagePact ./driver/contract/ -v
 
-      # --- Python provider verifications ---
+  pact-verify-python:
+    name: Pact Provider Verify (Python)
+    runs-on: ubuntu-latest
+    needs: [pact-cdc-go, pact-cdc-rust, pact-cdc-python-consumer]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: news-creator/app
+            python: "3.13"
+            lock: news-creator/app/uv.lock
+          - service: recap-subworker
+            python: "3.13"
+            lock: recap-subworker/uv.lock
+            extra-env: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
+          - service: tag-generator/app
+            python: "3.13"
+            lock: tag-generator/app/uv.lock
+    services:
+      pact-db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pact
+          POSTGRES_PASSWORD: pact
+          POSTGRES_DB: pact
+        options: >-
+          --health-cmd "pg_isready -U pact"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      pact-broker:
+        image: pactfoundation/pact-broker:latest
+        env:
+          PACT_BROKER_DATABASE_URL: postgres://pact:pact@pact-db/pact
+          PACT_BROKER_BASIC_AUTH_USERNAME: pact
+          PACT_BROKER_BASIC_AUTH_PASSWORD: pact
+          PACT_BROKER_ALLOW_PUBLIC_READ: "true"
+          PACT_BROKER_LOG_LEVEL: WARN
+        ports:
+          - 9292:9292
+        options: >-
+          --health-cmd "ruby -e \"require 'net/http'; require 'json'; r = Net::HTTP.get(URI('http://localhost:9292/diagnostic/status/dependencies')); exit(JSON.parse(r).dig('database','ok') ? 0 : 1)\""
+          --health-interval 5s
+          --health-timeout 10s
+          --health-retries 30
+          --health-start-period 60s
+    steps:
+      - name: Free disk space
+        if: runner.environment != 'self-hosted'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - uses: actions/checkout@v5
+
+      - name: Download all pact artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: collected-pacts
+          pattern: pacts-*
+          merge-multiple: true
+
+      - name: Wait for Pact Broker database connection
+        run: |
+          for i in {1..30}; do
+            RESPONSE=$(curl -sS -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies 2>/dev/null || echo '{}')
+            if echo "$RESPONSE" | jq -e '.database.ok == true' > /dev/null 2>&1; then
+              echo "Pact Broker ready."
+              exit 0
+            fi
+            echo "Attempt $i/30: not ready, waiting..."
+            sleep 2
+          done
+          echo "Pact Broker failed to become ready"; exit 1
+
+      - name: Publish all pact files to Broker
+        env:
+          PACT_BROKER_BASE_URL: http://localhost:9292
+          PACT_BROKER_USERNAME: pact
+          PACT_BROKER_PASSWORD: pact
+        run: |
+          VERSION="${GITHUB_SHA:0:7}"
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          curl -fsSL https://raw.githubusercontent.com/pact-foundation/pact-ruby-standalone/master/install.sh | PACT_CLI_VERSION=v2.4.10 bash
+          export PATH="${PATH}:${PWD}/pact/bin"
+          pact-broker publish collected-pacts \
+            --consumer-app-version "${VERSION}" \
+            --branch "${BRANCH}" \
+            --broker-base-url "${PACT_BROKER_BASE_URL}" \
+            --broker-username "${PACT_BROKER_USERNAME}" \
+            --broker-password "${PACT_BROKER_PASSWORD}"
+
       - name: Install uv
         uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: ${{ matrix.lock }}
 
       - name: Install Python
-        run: uv python install 3.13
+        run: uv python install ${{ matrix.python }}
 
-      - name: Install news-creator dependencies
-        working-directory: news-creator/app
-        run: uv sync --dev
+      - name: Install ${{ matrix.service }} dependencies
+        working-directory: ${{ matrix.service }}
+        run: |
+          if [[ -n "${{ matrix.extra-env }}" ]]; then
+            export ${{ matrix.extra-env }}
+          fi
+          uv sync --dev
 
-      - name: Run news-creator provider verification
-        working-directory: news-creator/app
+      - name: Run ${{ matrix.service }} provider verification
+        working-directory: ${{ matrix.service }}
         env:
           PACT_BROKER_BASE_URL: http://localhost:9292
           PACT_BROKER_USERNAME: pact
@@ -341,49 +447,19 @@ jobs:
           PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: uv run pytest tests/contract/ -v
 
-      - name: Install recap-subworker dependencies
-        working-directory: recap-subworker
-        env:
-          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
-        run: uv sync --dev
-
-      - name: Run recap-subworker provider verification
-        working-directory: recap-subworker
-        env:
-          PACT_BROKER_BASE_URL: http://localhost:9292
-          PACT_BROKER_USERNAME: pact
-          PACT_BROKER_PASSWORD: pact
-          PACT_PROVIDER_VERSION: ${{ github.sha }}
-          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: uv run pytest tests/contract/ -v
-
-      - name: Install tag-generator dependencies
-        working-directory: tag-generator/app
-        run: uv sync --dev
-
-      - name: Run tag-generator provider verification
-        working-directory: tag-generator/app
-        env:
-          PACT_BROKER_BASE_URL: http://localhost:9292
-          PACT_BROKER_USERNAME: pact
-          PACT_BROKER_PASSWORD: pact
-          PACT_PROVIDER_VERSION: ${{ github.sha }}
-          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: uv run pytest tests/contract/ -v
-
-      - name: Install tts-speaker dependencies
-        working-directory: tts-speaker
-        run: uv sync --dev
-
-      - name: Run tts-speaker provider verification
-        working-directory: tts-speaker
-        env:
-          PACT_BROKER_BASE_URL: http://localhost:9292
-          PACT_BROKER_USERNAME: pact
-          PACT_BROKER_PASSWORD: pact
-          PACT_PROVIDER_VERSION: ${{ github.sha }}
-          PACT_PROVIDER_BRANCH: ${{ github.head_ref || github.ref_name }}
-        run: uv run pytest tests/contract/ -v
+  pact-publish-and-verify:
+    # Aggregator that preserves the existing required-status-check name.
+    # Actual work happens in pact-verify-go and pact-verify-python (matrix).
+    # tts-speaker's provider verification is intentionally not included: the
+    # service runs on a separate GPU host (see c2quay.yml) and its verification
+    # is handled via manual publish in scripts/pact-check.sh against the
+    # persistent deploy-host broker, not the ephemeral CI broker.
+    name: Pact Publish & Provider Verification
+    runs-on: ubuntu-latest
+    needs: [pact-verify-go, pact-verify-python]
+    steps:
+      - name: All provider verifications passed
+        run: echo "Go + Python provider verifications succeeded."
 
   pact-cdc-rust:
     name: Pact CDC Consumer Tests (Rust)
