@@ -54,10 +54,10 @@ type recapArticlesResponse struct {
 // transitional commits still expect snake_case fields with a tags array.
 // Kept only as long as those pacts are the deployed version on the broker.
 type legacyRestRecapArticleResponse struct {
-	ArticleID string           `json:"article_id"`
-	Title     string           `json:"title"`
-	FullText  string           `json:"fulltext"`
-	Tags      []legacyRestTag  `json:"tags"`
+	ArticleID string          `json:"article_id"`
+	Title     string          `json:"title"`
+	FullText  string          `json:"fulltext"`
+	Tags      []legacyRestTag `json:"tags"`
 }
 
 type legacyRestTag struct {
