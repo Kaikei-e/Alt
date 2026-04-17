@@ -67,47 +67,57 @@ func startStubServer(t *testing.T) int {
 
 	mux := http.NewServeMux()
 
-	// ---- POST /services.backend.v1.BackendInternalService/ListRecapArticles (Connect-RPC) ----
-	mux.HandleFunc("/services.backend.v1.BackendInternalService/ListRecapArticles",
-		func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				w.WriteHeader(http.StatusMethodNotAllowed)
-				return
-			}
+	// Shared handler for the recap-worker paginated article window fetch.
+	recapArticlesHandler := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 
-			var req listRecapArticlesRequest
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			if req.From == "" {
-				req.From = "2026-03-19T00:00:00Z"
-			}
-			if req.To == "" {
-				req.To = "2026-03-26T00:00:00Z"
-			}
+		var req listRecapArticlesRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if req.From == "" {
+			req.From = "2026-03-19T00:00:00Z"
+		}
+		if req.To == "" {
+			req.To = "2026-03-26T00:00:00Z"
+		}
 
-			resp := recapArticlesResponse{
-				Range: rangeResponse{
-					From: req.From,
-					To:   req.To,
+		resp := recapArticlesResponse{
+			Range: rangeResponse{
+				From: req.From,
+				To:   req.To,
+			},
+			Total:    42,
+			Page:     1,
+			PageSize: 500,
+			HasMore:  false,
+			Articles: []recapArticleResponse{
+				{
+					ArticleID: "art-001",
+					Title:     "Test Article Title",
+					FullText:  "Full article text content here.",
 				},
-				Total:    42,
-				Page:     1,
-				PageSize: 500,
-				HasMore:  false,
-				Articles: []recapArticleResponse{
-					{
-						ArticleID: "art-001",
-						Title:     "Test Article Title",
-						FullText:  "Full article text content here.",
-					},
-				},
-			}
+			},
+		}
 
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(resp)
-		})
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}
+
+	// ---- POST /services.backend.v1.BackendInternalService/ListRecapArticles ----
+	// Current canonical path.
+	mux.HandleFunc("/services.backend.v1.BackendInternalService/ListRecapArticles", recapArticlesHandler)
+
+	// Transitional shim: the previous deployment of recap-worker is still
+	// recorded in the Pact broker with the pre-relocation path. Serve the
+	// same stub so provider verification stays green until the broker's
+	// DeployedOrReleased selector advances past that version. Remove once
+	// the next successful deployment supersedes it.
+	mux.HandleFunc("/alt.recap.v2.RecapService/ListRecapArticles", recapArticlesHandler)
 
 	// ---- Connect-RPC BackendInternalService (JSON wire format) ----
 	// search-indexer-alt-backend.json contract.
