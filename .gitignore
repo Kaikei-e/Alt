@@ -179,3 +179,4 @@ migrations-atlas/migrations/atlas.sum
 rag-orchestrator/start_backfill.sh
 .obsidian/
 docs/retrospective/
+.c2quay/snapshots/
