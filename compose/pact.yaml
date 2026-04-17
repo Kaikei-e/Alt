@@ -45,8 +45,13 @@ services:
     depends_on:
       pact-db:
         condition: service_healthy
+    # Bind on the prod-host Tailscale interface only so the alt-builder runner
+    # can reach the Broker over the tailnet while the port stays closed on
+    # public / LAN interfaces. Operator sets PROD_TAILNET_IP in .env to the
+    # output of `tailscale ip -4` on the prod host. Defaults to 127.0.0.1
+    # (loopback-only) when unset so a missed configuration fails closed.
     ports:
-      - "9292:9292"
+      - "${PROD_TAILNET_IP:-127.0.0.1}:9292:9292"
     # pact-broker expects the DB URL inline; we render it from the secret
     # via an entrypoint wrapper that reads the password from /run/secrets.
     entrypoint:
@@ -84,14 +89,17 @@ services:
     networks:
       - alt-network
     healthcheck:
-      # Heartbeat endpoint requires basic auth when ALLOW_PUBLIC_READ=false.
-      # The image ships BusyBox wget which lacks --user/--password but
-      # accepts user:pw@host in the URL.
+      # Heartbeat requires basic auth when ALLOW_PUBLIC_READ=false. The image
+      # ships BusyBox wget which lacks --user/--password but does accept
+      # --header, so we build the Basic auth header from the secret instead
+      # of embedding it in the URL. This keeps the password out of the URL
+      # that `docker inspect` / wget error messages would otherwise surface.
       test:
         - CMD-SHELL
         - >-
           wget -q --spider
-          "http://pact:$(cat /run/secrets/pact_broker_basic_auth_password)@127.0.0.1:9292/diagnostic/status/heartbeat"
+          --header="Authorization: Basic $(printf 'pact:%s' "$(cat /run/secrets/pact_broker_basic_auth_password)" | base64 -w 0)"
+          http://127.0.0.1:9292/diagnostic/status/heartbeat
       interval: 10s
       timeout: 5s
       retries: 5
