@@ -32,7 +32,7 @@ const (
 )
 
 // recapArticleResponse mirrors the Connect-RPC JSON shape produced by
-// alt.recap.v2.RecapService/ListRecapArticles. protojson uses camelCase, so
+// BackendInternalService/ListRecapArticles. protojson uses camelCase, so
 // the JSON tags do the same.
 type recapArticleResponse struct {
 	ArticleID string `json:"articleId"`
@@ -47,6 +47,30 @@ type recapArticlesResponse struct {
 	PageSize int                    `json:"pageSize"`
 	HasMore  bool                   `json:"hasMore"`
 	Articles []recapArticleResponse `json:"articles"`
+}
+
+// legacyRestRecapArticleResponse / legacyRestRecapArticlesResponse mirror the
+// pre-Connect-RPC REST shape. Broker "DeployedOrReleased" pacts from the
+// transitional commits still expect snake_case fields with a tags array.
+// Kept only as long as those pacts are the deployed version on the broker.
+type legacyRestRecapArticleResponse struct {
+	ArticleID string           `json:"article_id"`
+	Title     string           `json:"title"`
+	FullText  string           `json:"fulltext"`
+	Tags      []legacyRestTag  `json:"tags"`
+}
+
+type legacyRestTag struct {
+	Label string `json:"label"`
+}
+
+type legacyRestRecapArticlesResponse struct {
+	Range    rangeResponse                    `json:"range"`
+	Total    int                              `json:"total"`
+	Page     int                              `json:"page"`
+	PageSize int                              `json:"page_size"`
+	HasMore  bool                             `json:"has_more"`
+	Articles []legacyRestRecapArticleResponse `json:"articles"`
 }
 
 type rangeResponse struct {
@@ -133,17 +157,19 @@ func startStubServer(t *testing.T) int {
 		if toStr == "" {
 			toStr = "2026-03-26T00:00:00Z"
 		}
-		// Legacy pact expected snake_case JSON; protojson / camelCase came with the
-		// Connect-RPC era. Reuse the camelCase struct here because the broker
-		// matchers only pin field shape, not exact key casing.
-		resp := recapArticlesResponse{
+		resp := legacyRestRecapArticlesResponse{
 			Range:    rangeResponse{From: fromStr, To: toStr},
 			Total:    42,
 			Page:     1,
 			PageSize: 500,
 			HasMore:  false,
-			Articles: []recapArticleResponse{
-				{ArticleID: "art-001", Title: "Test Article Title", FullText: "Full article text content here."},
+			Articles: []legacyRestRecapArticleResponse{
+				{
+					ArticleID: "art-001",
+					Title:     "Test Article Title",
+					FullText:  "Full article text content here.",
+					Tags:      []legacyRestTag{{Label: "technology"}},
+				},
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
