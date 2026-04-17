@@ -1,0 +1,48 @@
+# Cross-repo dispatch: when main advances, notify the private alt-deploy repo
+# to kick off build / gate / E2E / deploy against the new HEAD. This is the
+# only public-repo workflow that talks to the deploy side, and it does so
+# only on `push: branches: [main]` — fork PRs cannot reach this job.
+#
+# The fine-grained PAT `ALT_DEPLOY_DISPATCH_PAT` is scoped to
+# repository_dispatch on `kaikei/alt-deploy` and nothing else. It is not
+# accessible from fork-PR contexts (GitHub withholds secrets there on push
+# events by construction), so a malicious PR cannot exfiltrate it even if it
+# modifies this file — the attacker's version never runs on `main`.
+#
+# All third-party actions should migrate to commit-SHA pins once Renovate is
+# configured with `pinDigests: true` (tracked under the deploy-strategy
+# security-hardening checklist). Tag pins are kept as a bootstrapping step.
+
+name: dispatch-deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dispatch-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fire repository_dispatch at alt-deploy
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.ALT_DEPLOY_DISPATCH_PAT }}
+          script: |
+            const sha = context.sha;
+            const ref = context.ref;
+            const changed = (context.payload.commits || [])
+              .flatMap(c => [...(c.added || []), ...(c.modified || []), ...(c.removed || [])]);
+            await github.rest.repos.createDispatchEvent({
+              owner: 'kaikei',
+              repo: 'alt-deploy',
+              event_type: 'deploy',
+              client_payload: { sha, ref, changed },
+            });
+            core.info(`Dispatched deploy event for ${sha} on ${ref}`);
