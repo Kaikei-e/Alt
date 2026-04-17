@@ -48,23 +48,39 @@ jobs:
       - name: Detect changed services
         id: set-matrix
         run: |
-          # Service directories with Dockerfiles
+          # Service directories with Dockerfiles.
+          # Covers every pacticipant listed in c2quay.yml (so the pull-based
+          # deploy in ADR-000763 has an image for each gate check) plus the
+          # runtime services referenced by compose that we need as versioned
+          # images (pki-agent, knowledge-sovereign, dashboard).
+          # Migration containers (*-migration-atlas, docker/postgres, *-db
+          # DB containers) and local perf tooling (alt-perf, *-mock-*) are
+          # intentionally excluded — they are not runtime services.
+          # tts-speaker lives on a separate GPU host and is built out-of-band.
           SERVICES=(
+            # --- 13 Pact pacticipants (mirrors c2quay.yml) ---
             "alt-backend"
-            "alt-frontend-sv"
-            "pre-processor"
-            "pre-processor-sidecar"
-            "search-indexer"
-            "tag-generator"
-            "news-creator"
+            "alt-butterfly-facade"
             "auth-hub"
+            "pre-processor"
+            "search-indexer"
+            "mq-hub"
+            "rag-orchestrator"
+            "recap-worker"
+            "recap-subworker"
+            "recap-evaluator"
+            "news-creator"
+            "tag-generator"
+            "acolyte-orchestrator"
+            # --- Additional runtime services used by compose ---
+            "alt-frontend-sv"
+            "pre-processor-sidecar"
             "auth-token-manager"
             "rask-log-aggregator"
             "rask-log-forwarder"
-            "recap-worker"
-            "recap-subworker"
-            "rag-orchestrator"
-            "acolyte-orchestrator"
+            "pki-agent"
+            "knowledge-sovereign"
+            "dashboard"
           )
 
           CHANGED=""
