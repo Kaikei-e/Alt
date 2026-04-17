@@ -244,7 +244,8 @@ func main() {
 			panic(fmt.Errorf("mtls listener config: %w", err))
 		}
 		{
-			mtlsServer = tlsutil.NewMTLSHTTPServer(fmt.Sprintf(":%d", mtlsPort), tlsCfg, middleware.PeerIdentityHTTPMiddleware(connectServer))
+			mtlsHandler := buildMTLSHandler(connectServer, e)
+			mtlsServer = tlsutil.NewMTLSHTTPServer(fmt.Sprintf(":%d", mtlsPort), tlsCfg, middleware.PeerIdentityHTTPMiddleware(mtlsHandler))
 			go func() {
 				logger.Logger.InfoContext(ctx, "mTLS HTTPS listener starting", "port", mtlsPort)
 				err := mtlsServer.ListenAndServeTLS("", "")
