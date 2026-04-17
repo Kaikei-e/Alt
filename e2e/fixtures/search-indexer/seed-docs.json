@@ -1,0 +1,30 @@
+[
+  {
+    "id": "doc-rust-tokio",
+    "title": "Rust Tokio runtime internals",
+    "content": "The Tokio async runtime schedules tasks across worker threads using a work-stealing scheduler.",
+    "tags": ["rust", "tokio", "async"],
+    "user_id": "alice"
+  },
+  {
+    "id": "doc-go-channels",
+    "title": "Go channels and goroutines",
+    "content": "Goroutines communicate over channels using CSP-style semantics.",
+    "tags": ["go", "concurrency"],
+    "user_id": "alice"
+  },
+  {
+    "id": "doc-rust-borrow",
+    "title": "Rust borrow checker in depth",
+    "content": "The borrow checker rejects programs with aliased mutable references at compile time.",
+    "tags": ["rust", "ownership", "borrow-checker"],
+    "user_id": "bob"
+  },
+  {
+    "id": "doc-meilisearch-ranking",
+    "title": "Meilisearch ranking rules",
+    "content": "Typo tolerance, word proximity, attribute priority, sort, and exactness drive the default ranking order.",
+    "tags": ["meilisearch", "search", "ranking"],
+    "user_id": "alice"
+  }
+]
