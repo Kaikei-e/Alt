@@ -144,19 +144,76 @@ Broker UI の "Pacticipants" → provider → Tab "Contract requiring verificati
 
 ## 7. Broker webhook (consumer 変更 → provider CI 自動実行)
 
-Phase E3 では未配線。配線時は:
+### 7.1 なぜ必要か
+
+Path-filtered CI matrix (`.github/workflows/docker-build.yaml`) は
+**provider のソースが変わったとき**だけ provider image を rebuild し、
+verification を再実行する。consumer 側だけの pact 変更 —
+typical には新しい consumer が追加されたり、既存 consumer が
+interaction を追加したり — だと provider の rebuild は走らず、
+Broker 上の verification 結果は古いまま。`can-i-deploy` は
+「既存の verification が green だから OK」と答えてしまい、
+次の provider deploy で初めて実体と契約が乖離していることが
+露見する。
+
+Pact 公式は 2021-10 以降 `contract_requiring_verification_published`
+webhook をこのケース専用に提供している。Broker が「この pact は
+まだ provider main 側で verify されていない」と判定した瞬間に fire
+する。
+
+### 7.2 配線方法
+
+対応 workflow は **alt-deploy** 側 (private):
+`.github/workflows/verify-pact-on-demand.yaml` (`repository_dispatch`
+type `verify_pact` を受信し、`scripts/pact-check.sh --publish-only
+--services <provider>` を当該 provider SHA で走らせる)。
+
+Broker 側は provider ごとに 1 度 webhook を登録する:
 
 ```bash
-pact-broker-cli create-webhook \
-  --request POST \
-  --url https://api.github.com/repos/Kaikei-e/Alt/actions/workflows/proto-contract.yaml/dispatches \
-  --header "Authorization: token $GH_TOKEN" \
-  --data '{"ref":"main"}' \
-  --provider <provider-name> \
-  --contract-requiring-verification-published
+# Fine-grained PAT: Kaikei-e/alt-deploy に Contents:Read + Actions:Write
+# のみ許可したものを $GH_TOKEN に置く。他 repo には scope させない。
+export GH_TOKEN=...
+for provider in alt-backend alt-butterfly-facade auth-hub pre-processor \
+                search-indexer mq-hub rag-orchestrator \
+                recap-worker recap-subworker recap-evaluator \
+                news-creator tag-generator acolyte-orchestrator; do
+  pact-broker-cli create-webhook \
+    --request POST \
+    --url "https://api.github.com/repos/Kaikei-e/alt-deploy/dispatches" \
+    --header "Authorization: Bearer $GH_TOKEN" \
+    --header "Accept: application/vnd.github+json" \
+    --data "$(jq -nc --arg p "$provider" '{
+      event_type: "verify_pact",
+      client_payload: {
+        provider:        $p,
+        providerVersion: "\u0024{pactbroker.providerVersionNumber}",
+        pactUrl:         "\u0024{pactbroker.pactUrl}",
+        consumer:        "\u0024{pactbroker.consumerName}",
+        consumerVersion: "\u0024{pactbroker.consumerVersionNumber}"
+      }
+    }')" \
+    --provider "$provider" \
+    --contract-requiring-verification-published \
+    --broker-base-url "$PACT_BROKER_BASE_URL" \
+    --broker-username "$PACT_BROKER_USERNAME" \
+    --broker-password "$PACT_BROKER_PASSWORD"
+done
 ```
 
-これで consumer の main pact が更新された瞬間に provider 側 CI が再起動される。
+`${pactbroker.*}` は Broker 側のテンプレート変数。JSON 文字列は
+リテラル `${...}` のまま Broker に渡し、webhook 発火時に Broker が
+実値を埋める。上の heredoc は `\u0024` で `$` をエスケープして
+shell 展開を避ける。
+
+### 7.3 期待する動作
+
+1. consumer が pact publish → Broker が「provider main 未 verify」と判定
+2. webhook fire → alt-deploy `verify-pact-on-demand.yaml` に dispatch
+3. self-hosted runner が Alt を `providerVersion` SHA で checkout
+4. `pact-check.sh --publish-only --services <provider>` が走る
+5. verification result が Broker に publish される
+6. 次の `can-i-deploy` query で正しい verdict が返る
 
 ## 8. Failed provider verification の調査フロー
 
