@@ -1,26 +1,39 @@
 #!/usr/bin/env bash
-# Pact CDC contract regression check for local development.
+# Pact CDC contract regression check for local development + CI.
 # Run before `docker compose up --build` to catch breaking changes.
 #
 # Usage:
-#   ./scripts/pact-check.sh            # File-based mode (no Broker, fast)
-#   ./scripts/pact-check.sh --broker   # Broker mode (starts Pact Broker via Docker Compose)
-#   ./scripts/pact-check.sh --help     # Show help
+#   ./scripts/pact-check.sh                 # File-based mode (no Broker, fast)
+#   ./scripts/pact-check.sh --broker        # Broker mode — starts local Pact Broker via compose
+#   ./scripts/pact-check.sh --publish-only  # Broker mode, external Broker (CI: PACT_BROKER_BASE_URL
+#                                           # + _USERNAME + _PASSWORD already in env). Does NOT
+#                                           # start a local broker; everything else (publish,
+#                                           # verify, manual bridging) runs identically.
+#   ./scripts/pact-check.sh --help          # Show help
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
 MODE="file"
-if [[ "${1:-}" == "--broker" ]]; then
-  MODE="broker"
-elif [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  echo "Usage: $0 [--broker]"
-  echo ""
-  echo "  (default)   File-based mode: run consumer + provider tests against local pact files"
-  echo "  --broker    Broker mode: start Pact Broker, publish pacts, verify via Broker"
-  exit 0
-fi
+BROKER_EXTERNAL=false
+case "${1:-}" in
+  --broker)
+    MODE="broker"
+    ;;
+  --publish-only)
+    MODE="broker"
+    BROKER_EXTERNAL=true
+    ;;
+  --help|-h)
+    echo "Usage: $0 [--broker|--publish-only]"
+    echo ""
+    echo "  (default)        File-based mode: consumer + provider tests against local pact files"
+    echo "  --broker         Broker mode: start Pact Broker via compose, publish, verify"
+    echo "  --publish-only   CI broker mode: external Broker, no local startup"
+    exit 0
+    ;;
+esac
 
 PASS=0
 FAIL=0
@@ -65,16 +78,27 @@ check_ffi() {
 
 # ---------- Broker mode setup ----------
 if [[ "$MODE" == "broker" ]]; then
-  echo "Starting Pact Broker via Docker Compose..."
-  docker compose -f compose/compose.yaml -f compose/pact.yaml -p alt up -d pact-broker
-  export PACT_BROKER_BASE_URL=http://localhost:9292
-  export PACT_BROKER_USERNAME=pact
-  if [[ -r "$REPO_ROOT/secrets/pact_broker_basic_auth_password.txt" ]]; then
-    PACT_BROKER_PASSWORD="$(tr -d '\n' < "$REPO_ROOT/secrets/pact_broker_basic_auth_password.txt")"
+  if [[ "$BROKER_EXTERNAL" == "true" ]]; then
+    # CI path: Broker already running elsewhere (reached via env). Require
+    # the three env vars; fail fast if any are missing rather than
+    # proceeding silently against a wrong target.
+    : "${PACT_BROKER_BASE_URL:?--publish-only requires PACT_BROKER_BASE_URL}"
+    : "${PACT_BROKER_USERNAME:?--publish-only requires PACT_BROKER_USERNAME}"
+    : "${PACT_BROKER_PASSWORD:?--publish-only requires PACT_BROKER_PASSWORD}"
+    export PACT_BROKER_BASE_URL PACT_BROKER_USERNAME PACT_BROKER_PASSWORD
+    echo "Using external Pact Broker at ${PACT_BROKER_BASE_URL}"
   else
-    PACT_BROKER_PASSWORD="${PACT_BROKER_PASSWORD:-pact}"
+    echo "Starting Pact Broker via Docker Compose..."
+    docker compose -f compose/compose.yaml -f compose/pact.yaml -p alt up -d pact-broker
+    export PACT_BROKER_BASE_URL=http://localhost:9292
+    export PACT_BROKER_USERNAME=pact
+    if [[ -r "$REPO_ROOT/secrets/pact_broker_basic_auth_password.txt" ]]; then
+      PACT_BROKER_PASSWORD="$(tr -d '\n' < "$REPO_ROOT/secrets/pact_broker_basic_auth_password.txt")"
+    else
+      PACT_BROKER_PASSWORD="${PACT_BROKER_PASSWORD:-pact}"
+    fi
+    export PACT_BROKER_PASSWORD
   fi
-  export PACT_BROKER_PASSWORD
   echo "Waiting for Pact Broker to be healthy..."
   for i in $(seq 1 30); do
     if curl -fsS -u "${PACT_BROKER_USERNAME}:${PACT_BROKER_PASSWORD}" \
