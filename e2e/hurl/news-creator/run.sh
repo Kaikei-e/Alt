@@ -92,6 +92,7 @@ hurl_run --test \
   "${common_vars[@]}" \
   --report-junit "$REPORT_DIR/junit.xml" \
   --report-html  "$REPORT_DIR/html" \
-  e2e/hurl/news-creator/0[1-9]-*.hurl
+  e2e/hurl/news-creator/0[1-9]-*.hurl \
+  e2e/hurl/news-creator/1[0-9]-*.hurl
 
 echo "==> suite passed. reports: $REPORT_DIR" >&2

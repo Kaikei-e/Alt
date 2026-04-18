@@ -1,0 +1,29 @@
+{
+  "target_date": "2026-04-18",
+  "edition_timezone": "Asia/Tokyo",
+  "recap_summaries": [
+    {
+      "genre": "ai",
+      "title": "AI: stub recap title",
+      "bullets": [
+        "stub bullet covering the AI genre overnight."
+      ],
+      "window_days": 3
+    }
+  ],
+  "overnight_groups": [
+    {
+      "group_id": "00000000-0000-4000-8000-000000000301",
+      "articles": [
+        {
+          "text": "Stub overnight article one for the morning letter test.",
+          "is_centroid": true
+        },
+        {
+          "text": "Stub overnight article two providing additional content.",
+          "is_centroid": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "model": "gemma3:4b-it-qat",
+  "messages": [
+    {"role": "user", "content": "stub chat streaming smoke test"}
+  ],
+  "stream": true
+}
