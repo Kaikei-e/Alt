@@ -19,7 +19,7 @@ jsonpath "$.status" == "available"
 POST http://meilisearch:7700/indexes/articles/documents
 Authorization: Bearer {{meili_master_key}}
 Content-Type: application/json
-file,e2e/fixtures/search-indexer/seed-docs.json;
+file,../../fixtures/search-indexer/seed-docs.json;
 HTTP 202
 [Captures]
 task_uid: jsonpath "$.taskUid"
