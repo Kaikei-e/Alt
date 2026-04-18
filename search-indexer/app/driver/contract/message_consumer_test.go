@@ -153,6 +153,66 @@ func TestConsumeArticleCreatedFatEvent(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestConsumeArticleUpdatedFatEvent locks in that the ArticleUpdated event
+// must be carried by the same stream and shaped identically to ArticleCreated.
+// Without this pact, the provider (alt-backend via mq-hub) was free to add
+// the event type while the consumer silently dropped it — exactly the
+// regression observed on 2026-04-18 where the search index went stale on
+// every article edit.
+func TestConsumeArticleUpdatedFatEvent(t *testing.T) {
+	p, err := message.NewAsynchronousPact(message.Config{
+		Consumer: "search-indexer",
+		Provider: "mq-hub",
+		PactDir:  pactDir,
+	})
+	require.NoError(t, err)
+
+	err = p.AddAsynchronousMessage().
+		Given("the articles stream exists and an article was updated").
+		ExpectsToReceive("an ArticleUpdated fat event on alt:events:articles").
+		WithJSONContent(matchers.MapMatcher{
+			"event_id":   matchers.Like("evt-uuid-upd-001"),
+			"event_type": matchers.String("ArticleUpdated"),
+			"source":     matchers.Like("alt-backend"),
+			"created_at": matchers.Like("2026-03-26T00:00:00.000Z"),
+			"payload": matchers.Like(matchers.MapMatcher{
+				"article_id":   matchers.Like("art-001"),
+				"user_id":      matchers.Like("user-001"),
+				"feed_id":      matchers.Like("feed-001"),
+				"title":        matchers.Like("Updated Article"),
+				"url":          matchers.Like("https://example.com/article"),
+				"content":      matchers.Like("Updated article content."),
+				"tags":         matchers.EachLike(matchers.Like("technology"), 1),
+				"published_at": matchers.Like("2026-03-26T00:00:00Z"),
+			}),
+			"metadata": matchers.Like(matchers.MapMatcher{
+				"trace_id": matchers.Like("trace-001"),
+			}),
+		}).
+		AsType(&RedisStreamEvent{}).
+		ConsumedBy(func(contents message.AsynchronousMessage) error {
+			var wireEvent RedisStreamEvent
+			err := json.Unmarshal(contents.Contents, &wireEvent)
+			require.NoError(t, err)
+
+			assert.Equal(t, "ArticleUpdated", wireEvent.EventType)
+
+			// ArticleUpdated shares the fat-event payload with ArticleCreated
+			// so search-indexer can upsert via the same code path.
+			var payload ArticleCreatedPayload
+			err = json.Unmarshal(wireEvent.Payload, &payload)
+			require.NoError(t, err)
+			assert.NotEmpty(t, payload.ArticleID)
+			assert.NotEmpty(t, payload.Content, "fat event must include fresh content for re-indexing")
+			assert.NotEmpty(t, payload.UserID, "user_id is needed for search document")
+
+			return nil
+		}).
+		Verify(t)
+
+	require.NoError(t, err)
+}
+
 func TestConsumeIndexArticleEvent(t *testing.T) {
 	p, err := message.NewAsynchronousPact(message.Config{
 		Consumer: "search-indexer",

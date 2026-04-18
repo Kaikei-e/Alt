@@ -115,6 +115,46 @@ func TestIndexEventHandler_HandleEvent_ArticleCreated(t *testing.T) {
 	}
 }
 
+// ArticleUpdated shares the fat-event payload shape with ArticleCreated.
+// alt-backend publishes it whenever an article's content/tags change; before
+// this handler existed the events fell through the default branch and the
+// search index silently went stale against provider-side updates.
+func TestIndexEventHandler_HandleEvent_ArticleUpdated_FatEvent(t *testing.T) {
+	repo := &mockArticleRepo{articles: map[string]*domain.Article{}}
+	se := &mockSearchEngine{}
+	uc := usecase.NewIndexArticlesUsecase(repo, se, (*tokenizer.Tokenizer)(nil))
+	handler := NewIndexEventHandler(uc, slog.Default())
+	defer handler.Stop()
+
+	payload, _ := json.Marshal(ArticleCreatedPayload{
+		ArticleID: "art-upd-1",
+		UserID:    "user-1",
+		Title:     "Updated Title",
+		Content:   "Updated content body",
+		Tags:      []string{"go", "updated"},
+	})
+
+	err := handler.HandleEvent(context.Background(), Event{
+		EventType: "ArticleUpdated",
+		EventID:   "evt-upd-1",
+		Payload:   payload,
+	})
+	if err != nil {
+		t.Fatalf("HandleEvent(ArticleUpdated) error = %v", err)
+	}
+
+	// Flush the fat-event buffer.
+	handler.Stop()
+
+	if len(se.indexedDocs) != 1 {
+		t.Fatalf("expected 1 indexed doc for ArticleUpdated, got %d", len(se.indexedDocs))
+	}
+	doc := se.indexedDocs[0]
+	if doc.ID != "art-upd-1" || doc.Title != "Updated Title" || doc.Content != "Updated content body" {
+		t.Errorf("upsert payload wrong: %+v", doc)
+	}
+}
+
 func TestIndexEventHandler_HandleEvent_IndexArticle(t *testing.T) {
 	now := time.Now()
 	article, _ := domain.NewArticle("art-2", "Another Title", "Another Content", []string{"rust"}, now, "user-2")

@@ -97,7 +97,13 @@ func (h *IndexEventHandler) Stop() {
 // flushed when the batch reaches batchFlushSize or after batchFlushInterval.
 func (h *IndexEventHandler) HandleEvent(ctx context.Context, event Event) error {
 	switch event.EventType {
-	case "ArticleCreated":
+	case "ArticleCreated", "ArticleUpdated":
+		// ArticleUpdated shares the fat-event payload with ArticleCreated and
+		// Meilisearch AddDocuments is upsert-by-primary-key, so re-using the
+		// same handler is correct: fresh Content/Tags overwrite the existing
+		// document atomically. Before this branch existed, ArticleUpdated
+		// fell through the default case and the search index silently went
+		// stale for every article edit published by alt-backend.
 		return h.handleArticleCreated(ctx, event)
 	case "IndexArticle":
 		return h.handleIndexArticle(ctx, event)
