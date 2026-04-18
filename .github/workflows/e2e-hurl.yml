@@ -1,11 +1,13 @@
 # E2E Hurl suites (one job per service under e2e/hurl/).
 #
-# Gating is per-suite via path filters: the mq-hub job only runs when the
-# mq-hub code, its compose wiring, its Hurl suite, its fixtures, or this
-# workflow changes. Unrelated PRs don't pay the build + stack bring-up cost.
+# Gating is per-suite via path filters: each job only runs when the
+# service code, its compose wiring, its Hurl suite, its fixtures, or
+# this workflow changes. Unrelated PRs don't pay the build + stack
+# bring-up cost.
 #
-# To add another service's suite later (e.g. search-indexer), add a matching
-# `paths:` block and a sibling job; keep existing job names stable.
+# To add another service's suite later (e.g. search-indexer), add a
+# matching `paths:` block and a sibling job; keep existing job names
+# stable.
 
 name: E2E Hurl
 
@@ -13,18 +15,24 @@ on:
   pull_request:
     paths:
       - 'mq-hub/**'
+      - 'tag-generator/**'
       - 'compose/compose.staging.yaml'
       - 'e2e/hurl/mq-hub/**'
+      - 'e2e/hurl/tag-generator/**'
       - 'e2e/fixtures/mq-hub/**'
+      - 'e2e/fixtures/tag-generator/**'
       - 'e2e/fixtures/staging-secrets/**'
       - '.github/workflows/e2e-hurl.yml'
   push:
     branches: [main]
     paths:
       - 'mq-hub/**'
+      - 'tag-generator/**'
       - 'compose/compose.staging.yaml'
       - 'e2e/hurl/mq-hub/**'
+      - 'e2e/hurl/tag-generator/**'
       - 'e2e/fixtures/mq-hub/**'
+      - 'e2e/fixtures/tag-generator/**'
       - 'e2e/fixtures/staging-secrets/**'
       - '.github/workflows/e2e-hurl.yml'
 
@@ -75,6 +83,60 @@ jobs:
         with:
           name: mq-hub-hurl-reports
           path: e2e/reports/mq-hub-*
+          if-no-files-found: ignore
+
+      - name: Tear down alt-staging stack
+        if: always()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            down -v --remove-orphans || true
+
+  tag-generator:
+    name: tag-generator Hurl suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build tag-generator image locally (tag `ci`)
+        run: |
+          docker build \
+            -t ghcr.io/kaikei-e/alt-tag-generator:ci \
+            -f tag-generator/Dockerfile.tag-generator \
+            tag-generator
+
+      # Scenario 04 round-trips through mq-hub's GenerateTagsForArticle
+      # RPC, so we need its image available to the staging stack too.
+      - name: Build mq-hub image locally (tag `ci`)
+        run: |
+          docker build \
+            -t ghcr.io/kaikei-e/alt-mq-hub:ci \
+            -f mq-hub/Dockerfile \
+            mq-hub
+
+      - name: Pre-pull Hurl image
+        run: docker pull ghcr.io/orange-opensource/hurl:7.1.0
+
+      - name: Run tag-generator Hurl suite
+        env:
+          IMAGE_TAG: ci
+          GHCR_OWNER: kaikei-e
+          HURL_IMAGE: ghcr.io/orange-opensource/hurl:7.1.0
+          KEEP_STACK: 1
+        run: bash e2e/hurl/tag-generator/run.sh
+
+      - name: Dump alt-staging logs on failure
+        if: failure()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            logs --no-color --tail=300 || true
+
+      - name: Upload Hurl reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tag-generator-hurl-reports
+          path: e2e/reports/tag-generator-*
           if-no-files-found: ignore
 
       - name: Tear down alt-staging stack
