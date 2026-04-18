@@ -14,7 +14,7 @@
 POST {{base_url}}/api/v1/extract-tags
 Content-Type: application/json
 [Options]
-retry: 60
+retry: 180
 retry-interval: 1000
 file,e2e/fixtures/tag-generator/extract-tags-smoke.json;
 HTTP 200

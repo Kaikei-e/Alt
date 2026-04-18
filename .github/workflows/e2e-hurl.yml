@@ -128,8 +128,16 @@ jobs:
       - name: Dump alt-staging logs on failure
         if: failure()
         run: |
-          docker compose -f compose/compose.staging.yaml -p alt-staging \
-            logs --no-color --tail=300 || true
+          # docker compose logs without --profile silently omits services
+          # whose profile isn't active, which is exactly the services we
+          # need to diagnose. Go directly through docker logs on the
+          # explicit container names from compose.staging.yaml.
+          echo "===== docker ps -a ====="
+          docker ps -a --filter "name=alt-staging-" || true
+          for svc in tag-generator mq-hub redis-streams stub-backend; do
+            echo "===== alt-staging-$svc logs (tail=500) ====="
+            docker logs --tail=500 "alt-staging-$svc" 2>&1 || true
+          done
 
       - name: Upload Hurl reports
         if: always()
