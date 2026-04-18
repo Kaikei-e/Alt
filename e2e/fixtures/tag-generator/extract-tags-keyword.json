@@ -1,0 +1,4 @@
+{
+  "title": "Machine learning tag extraction in Python",
+  "content": "KeyBERT uses sentence-transformers to extract semantic tags from text. This article covers machine learning, natural language processing, and Python tooling with FastAPI. The approach relies on contextual embeddings computed by a multilingual transformer model."
+}
