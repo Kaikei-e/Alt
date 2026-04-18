@@ -334,6 +334,23 @@ class AcolyteConnectService:
             await uc.execute(UUID(request.report_id), request.section_key)
         except ValueError as e:
             raise ConnectError(Code.NOT_FOUND, str(e)) from e
+        except ConnectError:
+            # Typed error raised from a lower layer (e.g. the usecase
+            # re-mapping a repo ValueError). Preserve the code untouched.
+            raise
+        except Exception as exc:
+            # Last-line visibility so a 500 still ships a traceback to
+            # the structured log instead of disappearing behind the
+            # Connect-RPC INTERNAL envelope. Mirrors the pattern used by
+            # the pipeline runner above (line 284).
+            logger.exception(
+                "RerunSection failed",
+                report_id=request.report_id,
+                section_key=request.section_key,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            raise ConnectError(Code.INTERNAL, f"rerun failed: {type(exc).__name__}") from exc
 
         return acolyte_pb2.RerunSectionResponse(run_id="")
 

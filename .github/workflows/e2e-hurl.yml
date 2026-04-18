@@ -241,7 +241,11 @@ jobs:
           # docker logs on the explicit container names instead.
           echo "===== docker ps -a ====="
           docker ps -a --filter "name=alt-staging-" || true
-          for svc in acolyte-orchestrator acolyte-db acolyte-db-migrator; do
+          # Cover every container run.sh brings up so a request that
+          # never reached its peer is visible from both ends of the wire.
+          for svc in acolyte-orchestrator acolyte-db acolyte-db-migrator \
+                     news-creator-ollama-stub \
+                     search-indexer meilisearch stub-backend; do
             echo "===== alt-staging-$svc logs (tail=300) ====="
             docker logs --tail=300 "alt-staging-$svc" 2>&1 || true
           done
