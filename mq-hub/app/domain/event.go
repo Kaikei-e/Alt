@@ -15,6 +15,9 @@ type EventType string
 const (
 	// EventTypeArticleCreated is emitted when a new article is saved.
 	EventTypeArticleCreated EventType = "ArticleCreated"
+	// EventTypeArticleUpdated is emitted when an existing article's content
+	// or tags change. Consumers (search-indexer) upsert by article_id.
+	EventTypeArticleUpdated EventType = "ArticleUpdated"
 	// EventTypeSummarizeRequested is emitted when summarization is requested.
 	EventTypeSummarizeRequested EventType = "SummarizeRequested"
 	// EventTypeArticleSummarized is emitted when summarization completes.

@@ -51,6 +51,30 @@ func articleCreatedFatEvent() *domain.Event {
 	return event
 }
 
+// articleUpdatedFatEvent mirrors articleCreatedFatEvent but with a different
+// event_type so search-indexer's ArticleUpdated pact (added 2026-04-18)
+// can be verified against real mq-hub wire output.
+func articleUpdatedFatEvent() *domain.Event {
+	payload := ArticleCreatedPayload{
+		ArticleID:   "art-001",
+		UserID:      "user-001",
+		FeedID:      "feed-001",
+		Title:       "Updated Article",
+		URL:         "https://example.com/article",
+		Content:     "Updated article content.",
+		Tags:        []string{"technology"},
+		PublishedAt: "2026-03-26T00:00:00Z",
+	}
+	payloadJSON, _ := json.Marshal(payload)
+	event, _ := domain.NewEvent(
+		domain.EventTypeArticleUpdated,
+		"alt-backend",
+		payloadJSON,
+		map[string]string{"trace_id": "trace-001"},
+	)
+	return event
+}
+
 func indexArticleEvent() *domain.Event {
 	payload := map[string]interface{}{
 		"article_id": "art-003",
@@ -94,6 +118,11 @@ func TestVerifySearchIndexerMqHubMessagePact(t *testing.T) {
 					"contentType": "application/json",
 				}, nil
 			},
+			"an ArticleUpdated fat event on alt:events:articles": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
+				return eventToWireFormat(articleUpdatedFatEvent()), message.Metadata{
+					"contentType": "application/json",
+				}, nil
+			},
 			"an IndexArticle event on alt:events:index": func(_ []models.ProviderState) (message.Body, message.Metadata, error) {
 				return eventToWireFormat(indexArticleEvent()), message.Metadata{
 					"contentType": "application/json",
@@ -102,6 +131,9 @@ func TestVerifySearchIndexerMqHubMessagePact(t *testing.T) {
 		},
 		StateHandlers: models.StateHandlers{
 			"the articles stream exists": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"the articles stream exists and an article was updated": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 			"the index stream exists": func(bool, models.ProviderState) (models.ProviderStateResponse, error) {
