@@ -1,6 +1,6 @@
 ---
 name: tdd-workflow
-description: Test-Driven Development workflow for all languages. Use when implementing new features, fixing bugs, or refactoring code, or when the user says "TDDで". Enforces RED-GREEN-REFACTOR discipline with Pact CDCT-first boundary checks and concrete unit-test stubs.
+description: Test-Driven Development workflow for all languages. Use when implementing new features, fixing bugs, or refactoring code, or when the user says "TDDで". Enforces outside-in order E2E (Playwright/Hurl) → CDC (Pact) → Unit (RED-GREEN-REFACTOR) with concrete stubs.
 allowed-tools: Bash, Read, Glob, Grep, Edit, Write
 argument-hint: <feature-description> [--service=<dir>]
 ---
@@ -10,18 +10,108 @@ argument-hint: <feature-description> [--service=<dir>]
 Test-Driven Development workflow following Claude Code best practices.
 Use this skill in both Plan mode and implementation mode whenever the task may change code or tests.
 When the work is implementation-oriented, read this skill before setting the test order and again before editing code.
-It includes Pact CDC (Consumer-Driven Contract) testing for service boundary changes.
-For boundary changes, treat the Pact scenario as the first end-to-end test you write.
-Use an outside-in order for feature work: `E2E` → `CDCT` → `Unit tests`.
+
+**Use outside-in order for feature work: E2E → CDC → Unit.** This governs the *order of writing tests*.
+The test pyramid still governs *quantity*: few E2E, more CDC, many unit tests
+([Fowler — Practical Test Pyramid](https://martinfowler.com/articles/practical-test-pyramid.html)).
+These are two different axes — order vs. quantity — and both apply simultaneously.
+
+Three layers, with designated tools in this repo:
+
+- **E2E (outermost)** — answers *"does the user journey / cross-service flow work?"*
+  - Browser user journeys → **Playwright** (`alt-frontend-sv/tests/e2e/`)
+  - HTTP / Connect-RPC service scenarios → **Hurl** (`e2e/hurl/<service>/`)
+- **CDC** — answers *"do consumer and provider understand each other?"* → **Pact** at every service boundary the change crosses.
+- **Unit** — answers *"does each component work?"* → per-layer tests under each service (Handler / Usecase / Gateway / Driver).
+
+For a pure refactor inside one service's inner layers (no UI, no boundary change), skip Phase 0 and Phase 1 and jump to Phase 2.
 
 ## Arguments
 
 - `$ARGUMENTS` - Feature description and optional flags
 - `--service=<dir>` - Target service directory (auto-detected if omitted)
 
-## Phase 0: CONTRACT CHECK (Pact CDCT / E2E First)
+## Phase 0: E2E FIRST (Playwright / Hurl)
 
-**Goal:** Determine if the change touches a service boundary. If yes, write Pact CDCT/E2E tests first.
+**Goal:** Write the outermost failing test — the one that expresses the user-visible / cross-service behavior the change is supposed to deliver. This is the acceptance test Dave Farley and Martin Fowler call the "executable specification." It drives everything else.
+
+### Decision tree
+
+- Change touches browser UI (Svelte component, page, or user flow) → **Playwright**
+- Change touches an HTTP endpoint, Connect-RPC method, or service-to-service flow → **Hurl**
+- Change is full-stack (FE calls a new BE endpoint) → **both**: one Playwright journey + one Hurl scenario
+- Change is a pure inner-layer refactor with no external behavior change → skip Phase 0 (go to Phase 2)
+
+### Playwright — where & how (frontend E2E)
+
+- Config: `alt-frontend-sv/playwright.config.ts`
+- Specs: `alt-frontend-sv/tests/e2e/{auth,desktop,mobile,visual,integration,a11y}/*.spec.ts`
+- Page Object base: `alt-frontend-sv/tests/e2e/pages/BasePage.ts` — extend it, don't reinvent
+- Fixtures / factories: `alt-frontend-sv/tests/e2e/fixtures/`
+- Global setup (MSW, Kratos session): `alt-frontend-sv/tests/e2e/global-setup.ts`
+
+**Commands:**
+```bash
+cd alt-frontend-sv && bun run test:e2e:integration   # integration project (default)
+cd alt-frontend-sv && bun run test:e2e:ui            # UI mode for debugging a single spec
+cd alt-frontend-sv && bun run test:e2e               # full suite (build + all projects)
+```
+
+**Playwright best practices** (from [playwright.dev best practices](https://playwright.dev/docs/best-practices)):
+
+- **Locators**: `getByRole` / `getByLabel` / `getByText` / `getByTestId` — avoid CSS / XPath
+- **Web-first async assertions**: `await expect(locator).toBeVisible()` — **never** `expect(await locator.isVisible()).toBe(true)`
+- Trust auto-waiting — no manual `waitForTimeout`, no manual retry loops
+- One `test()` = one user journey; isolation via fresh browser context per test
+- Group with `test.describe()`; share setup with `beforeEach`, not global mutable state
+- Mock third-party deps via the MSW server wired in `global-setup.ts`
+- Keep specs deterministic — seed Kratos sessions and backend fixtures, don't rely on "whatever is in the DB"
+
+### Hurl — where & how (API / service-boundary E2E)
+
+- Specs: `e2e/hurl/<service>/*.hurl` (one `.hurl` file per scenario)
+- Runner: `e2e/hurl/<service>/run.sh` — boots the right `compose/compose.staging.yaml` profile, runs Hurl **inside the alt-staging Docker network**, writes reports to `e2e/reports/<service>-<run_id>/`
+- Staging profiles: `search-indexer` / `mq-hub` / `knowledge-sovereign` in `compose/compose.staging.yaml`
+- CI: `.github/workflows/e2e-hurl.yml` (path-gated per service)
+
+**Commands:**
+```bash
+bash e2e/hurl/search-indexer/run.sh
+bash e2e/hurl/mq-hub/run.sh
+bash e2e/hurl/knowledge-sovereign/run.sh
+```
+
+**Hurl best practices** (from [hurl.dev asserting-response](https://hurl.dev/docs/asserting-response.html), [hurl.dev CI/CD](https://hurl.dev/docs/tutorial/ci-cd-integration.html), and ADRs 000763 / 000764 / 000765):
+
+- **Parameterize** hosts / tokens with `--variable host=...` — never hardcode `http://localhost:...`
+- **Health-gate** scenarios with `--retry` before exercising business endpoints
+- **CI flags**: `--test --report-junit <dir>/junit.xml --report-html <dir>/html`
+- **DB-backed scenarios MUST use `--jobs 1`** — FK / sequence ordering breaks under parallel execution (precedent: ADR-000765)
+- Pass `--file-root` whenever scenarios reference fixtures via `file,e2e/fixtures/...;`
+- **Assertions**: implicit version/status/headers first, then explicit `jsonpath` / `xpath` with predicates (`contains`, `matches /regex/`, `isIsoDate`, `isUuid`, `isInteger`, `not exists`)
+- **Connect-RPC idiom** (ADR-000764): `POST /services.<package>.v1.<Service>/<Method>` with `Content-Type: application/json`; int64 fields are JSON strings; empty repeated fields are omitted
+- **Chain requests** with `[Captures]` and reference via `{{var}}` in subsequent entries — don't duplicate setup across files
+- Order sections inside an entry: request → `[Captures]` → implicit response (status/headers) → `[Asserts]` → body
+
+### Steps
+
+1. **Detect scope** using the decision tree above (UI / API / both / skip).
+2. **Write the failing E2E first**:
+   - Playwright: new `*.spec.ts` under the matching `tests/e2e/<area>/` directory, extending the correct Page Object.
+   - Hurl: new `*.hurl` under `e2e/hurl/<service>/`, following a neighboring file as the template.
+3. **Run it** — confirm RED for the *right reason* (missing behavior), not for the wrong reason (404 / connection refused from a missing route stub, syntax error, or compose service not up).
+4. **Commit the failing E2E** on its own:
+   ```bash
+   git add <spec-or-hurl-file>
+   git commit -m "test(e2e): add failing <feature> scenario"
+   ```
+5. **Proceed**: if the change crosses a service boundary → Phase 1 (CDC). Otherwise → Phase 2 (Unit RED).
+
+## Phase 1: CDC CONTRACT CHECK (Pact)
+
+**Goal:** Determine if the change touches a service boundary. If yes, write/update Pact CDC tests so every boundary the flow crosses has a contract.
+
+Run Phase 1 **after** Phase 0's outer E2E is RED. CDC focuses on the request/response shape at each boundary — not the journey itself.
 
 ### Steps
 
@@ -44,9 +134,9 @@ Use an outside-in order for feature work: `E2E` → `CDCT` → `Unit tests`.
       - Go: provider verification test in the providing service
    d. **Proto changes** — Run `cd proto && buf lint && buf breaking --against '.git#branch=main'`
 
-3. **If no service boundary:** Skip to Phase 1.
+3. **If no service boundary:** Skip to Phase 2 (Unit RED).
 
-## Phase 0b: PROVIDER-ADDS-REQUIREMENT PLAYBOOK
+## Phase 1b: PROVIDER-ADDS-REQUIREMENT PLAYBOOK
 
 **When the change is on the provider side and tightens what consumers must send** (new required header, new required field, stricter auth, mTLS promotion), the consumer-driven contract pipeline cannot protect you unless every consumer has a pact and that pact is verified by this change. Follow this playbook before merging:
 
@@ -81,7 +171,7 @@ Use an outside-in order for feature work: `E2E` → `CDCT` → `Unit tests`.
 
 ### Why this exists
 
-Missing this playbook caused the April 2026 "RAG dead / Augur falls over" incident: `search-indexer` promoted `X-Service-Token` to required (ADR-000722), but neither `alt-backend` nor `rag-orchestrator` had a consumer pact with `search-indexer`. Pact CDCT was installed but the provider verification could not see those consumers, so the 401 cascade only surfaced in production.
+Missing this playbook caused the April 2026 "RAG dead / Augur falls over" incident: `search-indexer` promoted `X-Service-Token` to required (ADR-000722), but neither `alt-backend` nor `rag-orchestrator` had a consumer pact with `search-indexer`. Pact CDC was installed but the provider verification could not see those consumers, so the 401 cascade only surfaced in production.
 
 ### Existing CDC Tests
 
@@ -104,7 +194,7 @@ Direction reads `A → B` as "A consumes B" (so `A`'s `pacts/A-B.json` is the co
 
 ### Providers and the consumers they verify (reverse lookup)
 
-Use this table when planning a **provider-side change** (Phase 0b) to confirm every consumer is under contract.
+Use this table when planning a **provider-side change** (Phase 1b) to confirm every consumer is under contract.
 
 | Provider | Consumers whose pacts the provider verifies | Provider verification location |
 |----------|---------------------------------------------|--------------------------------|
@@ -148,10 +238,10 @@ cd alt-backend/app && CGO_ENABLED=1 go test -tags=contract ./driver/contract/ -v
 cd proto && buf lint && buf breaking --against '.git#branch=main'
 ```
 
-## Phase 1: RED (Write Failing Test)
+## Phase 2: RED (Write Failing Unit Test)
 
-**Goal:** Define expected behavior through tests BEFORE implementation.
-For feature work, use this phase only after the outer E2E and Pact contract checks have been written or updated.
+**Goal:** Define expected behavior through unit tests BEFORE implementation.
+For feature work, enter this phase only after Phase 0 (E2E) and — if a boundary is crossed — Phase 1 (CDC) tests have been written and are RED.
 
 ### Steps
 
@@ -183,7 +273,7 @@ For feature work, use this phase only after the outer E2E and Pact contract chec
    git commit -m "test(<service>): add failing tests for <feature>"
    ```
 
-## Phase 2: GREEN (Minimal Implementation)
+## Phase 3: GREEN (Minimal Implementation)
 
 **Goal:** Write ONLY enough code to pass the tests.
 
@@ -203,7 +293,7 @@ For feature work, use this phase only after the outer E2E and Pact contract chec
    - Usecase can only import Port
    - Gateway can import Port and Driver
 
-## Phase 3: REFACTOR (Clean Up)
+## Phase 4: REFACTOR (Clean Up)
 
 **Goal:** Improve code quality while keeping tests green.
 
@@ -217,7 +307,7 @@ For feature work, use this phase only after the outer E2E and Pact contract chec
 2. **Verify Tests Still Pass**
    - Run tests after each change
 
-3. **Contract Regression Check** (if Phase 0 detected boundary change)
+3. **Contract Regression Check** (if Phase 1 detected a boundary change)
    - Re-run CDC consumer tests → Verify pact files are still valid
    - Re-run provider verification → Verify provider still satisfies contracts
    - Or run `./scripts/pact-check.sh` for a full consumer + provider sweep
@@ -228,7 +318,17 @@ For feature work, use this phase only after the outer E2E and Pact contract chec
    git commit -m "feat(<service>): implement <feature>"
    ```
 
-## Test Commands by Language
+## Test Commands
+
+### E2E (Phase 0)
+
+| Layer | Tool | Command |
+|-------|------|---------|
+| E2E (UI) | Playwright | `cd alt-frontend-sv && bun run test:e2e:integration` |
+| E2E (UI debug) | Playwright | `cd alt-frontend-sv && bun run test:e2e:ui` |
+| E2E (API) | Hurl | `bash e2e/hurl/<service>/run.sh` |
+
+### CDC + Unit (Phase 1 / Phase 2) by Language
 
 | Language | Detection | Unit Test | CDC Consumer Test |
 |----------|-----------|-----------|-------------------|
@@ -282,9 +382,15 @@ When modifying service-to-service communication, verify:
 8. Bypassing the semaphore for GPU shared resources
 9. Writing unit tests that only fail because a file or function does not exist yet
 10. Using RED to validate missing symbols instead of behavior through a concrete stub
-11. **Tightening a provider's requirements (new required header, new required field, auth promotion) without updating every consumer's Pact to pin the new requirement** — see Phase 0b
+11. **Tightening a provider's requirements (new required header, new required field, auth promotion) without updating every consumer's Pact to pin the new requirement** — see Phase 1b
 12. **Treating mTLS / auth / required-header changes as "infra" and skipping Phase 0** — they change the request contract and must start with a failing consumer test
 13. **Leaving a consumer without a pact for a protected provider** — if a provider enforces auth, every caller must have a pact that asserts the auth is present, so provider verification can reject regressions
+14. **Writing `expect(await locator.isVisible()).toBe(true)` in Playwright** — use the web-first async form `await expect(locator).toBeVisible()` so auto-waiting applies
+15. **Using CSS / XPath selectors in Playwright** when `getByRole` / `getByLabel` / `getByText` / `getByTestId` work — user-facing locators survive DOM refactors
+16. **Hardcoding `http://localhost:...` in `.hurl` files** — always parameterize with `--variable host=...` so the same scenario runs against local / staging / CI
+17. **Running DB-backed Hurl scenarios with `--jobs >1`** — FK / sequence ordering breaks under parallelism (precedent: ADR-000765 `knowledge-sovereign`)
+18. **Skipping Phase 0 because "CDC already covers it"** — CDC verifies per-boundary request/response shape; Phase 0 verifies the user journey / cross-service flow. They are not substitutes
+19. **Writing unit tests first and backfilling E2E at the end** — this violates the outside-in order. The outer test is what drives the design of the inner layers
 
 ## References
 
@@ -292,4 +398,16 @@ When modifying service-to-service communication, verify:
 - Pact: Pending pacts — https://docs.pact.io/pact_broker/advanced_topics/pending_pacts
 - Pact: Webhooks (`contract_requiring_verification_published`) — https://docs.pact.io/pact_broker/webhooks
 - Pact: Can I Deploy — https://docs.pact.io/pact_broker/can_i_deploy
+- Pact: Contract Tests vs Functional Tests — https://docs.pact.io/consumer/contract_tests_not_functional_tests
 - PactFlow: Compatibility Checks — https://docs.pactflow.io/docs/bi-directional-contract-testing/compatibility-checks/
+- Playwright: Best Practices — https://playwright.dev/docs/best-practices
+- Playwright: Writing tests — https://playwright.dev/docs/writing-tests
+- Playwright: Continuous Integration — https://playwright.dev/docs/ci
+- Hurl: Asserting Response — https://hurl.dev/docs/asserting-response.html
+- Hurl: CI/CD Integration — https://hurl.dev/docs/tutorial/ci-cd-integration.html
+- Hurl: Chaining Requests — https://hurl.dev/docs/tutorial/chaining-requests.html
+- Martin Fowler: The Practical Test Pyramid — https://martinfowler.com/articles/practical-test-pyramid.html
+- Martin Fowler: TestPyramid bliki — https://martinfowler.com/bliki/TestPyramid.html
+- ADR-000763 (Hurl framework inception — search-indexer phase 1)
+- ADR-000764 (Hurl mq-hub phase 2 — Connect-RPC over HTTP/1.1+JSON)
+- ADR-000765 (Hurl knowledge-sovereign phase 1 — DB state machine, `--jobs 1`)
