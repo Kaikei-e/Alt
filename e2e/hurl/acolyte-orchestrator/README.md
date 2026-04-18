@@ -65,6 +65,12 @@ a single `.hurl` file.
 | `04-list-reports.hurl` | Creates two reports, asserts both ids and titles appear in `ListReports`, cleans up. |
 | `10-start-and-poll-run.hurl` | Full async run lifecycle: `CreateReport` → `StartReportRun` → poll `GetRunStatus` until `succeeded` (Postgres job gateway sets terminal state to `succeeded`, not `completed`) → `GetReport` confirms `currentVersion >= 1` and a section was committed → `ListReportVersions` shows the version → `RerunSection` returns 200. Polls with retry: 240 × 5000ms (20-min ceiling); converges in <1s against the stub. |
 | `11-delete-during-active-run.hurl` | `CreateReport` → `StartReportRun` → poll until run is observably active (or fast-path raced past it) → `DeleteReport` accepts either 200 or 412 (Connect `failed_precondition`) depending on which side of the FK-cascade the request lands. Drains to a terminal state and idempotent cleanup. |
+| `20-get-version-unimplemented.hurl` | `GetReportVersion` returns Connect `unimplemented` (HTTP 501). Locks the contract so accidentally enabling the half-built handler shows up in CI. |
+| `21-diff-versions-unimplemented.hurl` | `DiffReportVersions` — same `unimplemented` contract. |
+| `22-stream-progress-unimplemented.hurl` | `StreamRunProgress` (server-streaming) is rejected as `unimplemented` inside the Connect end-stream envelope — request uses `application/connect+json` and asserts the body contains `unimplemented`. |
+| `23-get-report-not-found.hurl` | `GetReport` with a syntactically valid but unknown UUID returns Connect `not_found` (HTTP 404). |
+| `24-delete-report-malformed.hurl` | `DeleteReport` with a non-UUID `reportId` returns Connect `invalid_argument` (HTTP 400). |
+| `25-rerun-section-empty-key.hurl` | `RerunSection` with empty `sectionKey` returns Connect `invalid_argument` (HTTP 400). |
 
 ## Out of scope
 
