@@ -1,0 +1,36 @@
+{
+  "requests": [
+    {
+      "job_id": "00000000-0000-4000-8000-000000000201",
+      "genre": "ai",
+      "clusters": [
+        {
+          "cluster_id": 0,
+          "representative_sentences": [
+            {
+              "text": "OpenAI が GPT 系列の改善版を公開した。",
+              "is_centroid": true
+            }
+          ]
+        }
+      ],
+      "options": {"max_bullets": 2}
+    },
+    {
+      "job_id": "00000000-0000-4000-8000-000000000202",
+      "genre": "security",
+      "clusters": [
+        {
+          "cluster_id": 0,
+          "representative_sentences": [
+            {
+              "text": "新しい脆弱性が公開された。",
+              "is_centroid": true
+            }
+          ]
+        }
+      ],
+      "options": {"max_bullets": 2}
+    }
+  ]
+}

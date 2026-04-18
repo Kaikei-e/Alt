@@ -1,0 +1,30 @@
+{
+  "job_id": "00000000-0000-4000-8000-000000000101",
+  "genre": "ai",
+  "clusters": [
+    {
+      "cluster_id": 0,
+      "representative_sentences": [
+        {
+          "text": "OpenAI が新しい大規模言語モデルを発表した。",
+          "published_at": "2026-04-17T09:00:00Z",
+          "source_url": "https://example.com/openai-announce",
+          "article_id": "art-recap-001",
+          "is_centroid": true
+        },
+        {
+          "text": "推論性能が従来比で大幅に向上したと報告されている。",
+          "published_at": "2026-04-17T09:30:00Z",
+          "source_url": "https://example.com/openai-perf",
+          "article_id": "art-recap-002",
+          "is_centroid": false
+        }
+      ],
+      "top_terms": ["openai", "llm", "performance"]
+    }
+  ],
+  "options": {
+    "max_bullets": 3,
+    "temperature": 0.3
+  }
+}
