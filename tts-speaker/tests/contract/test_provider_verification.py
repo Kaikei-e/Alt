@@ -39,6 +39,11 @@ PACT_BROKER_USERNAME = os.environ.get("PACT_BROKER_USERNAME")
 PACT_BROKER_PASSWORD = os.environ.get("PACT_BROKER_PASSWORD")
 PACT_PROVIDER_VERSION = os.environ.get("PACT_PROVIDER_VERSION")
 PACT_PROVIDER_BRANCH = os.environ.get("PACT_PROVIDER_BRANCH")
+# Pending + WIP selector: both default to "include" so new consumer
+# pacts do not block provider main-branch CI but are still verified
+# and recorded. Mirrors the Go providers' env contract.
+PACT_DISABLE_PENDING = os.environ.get("PACT_DISABLE_PENDING") == "true"
+PACT_INCLUDE_WIP_SINCE = os.environ.get("PACT_INCLUDE_WIP_SINCE")
 
 # Local pact file
 PACT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "pacts"
@@ -167,6 +172,10 @@ def test_verify_bff_contract(provider_url: tuple[str, int]):
         builder = builder.consumer_version(
             consumer="alt-butterfly-facade", deployed_or_released=True,
         )
+        if not PACT_DISABLE_PENDING:
+            builder = builder.include_pending()
+        if PACT_INCLUDE_WIP_SINCE:
+            builder = builder.include_wip_since(PACT_INCLUDE_WIP_SINCE)
         builder.build()
 
         if PACT_PROVIDER_VERSION:
