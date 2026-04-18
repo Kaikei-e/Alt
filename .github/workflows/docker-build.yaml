@@ -119,6 +119,30 @@ jobs:
             fi
           fi
 
+          # Shared-paths escape hatch: a change to any file outside a
+          # specific service directory can still affect every service.
+          # Examples: shared proto definitions, docker base images,
+          # docker-build.yaml itself, Go workspace pinning. Paths that
+          # are intentionally excluded:
+          #   - compose/compose.staging.yaml (E2E stack only; production
+          #     rebuild not required when staging profiles change)
+          #   - docs/, README, tests outside service dirs, etc.
+          if [[ "$BUILD_ALL" != "true" && -n "$CHANGED_FILES" ]]; then
+            while IFS= read -r file; do
+              [[ -z "$file" ]] && continue
+              case "$file" in
+                compose/compose.staging.yaml)
+                  ;;   # staging-only — not a production trigger
+                compose/*|docker/*|proto/*|go.work|go.work.sum|.github/workflows/docker-build.yaml)
+                  BUILD_ALL=true
+                  break ;;
+              esac
+            done <<< "$CHANGED_FILES"
+            if [[ "$BUILD_ALL" == "true" ]]; then
+              echo "Shared-path change detected — rebuilding all services."
+            fi
+          fi
+
           if [[ "$BUILD_ALL" == "true" ]]; then
             for svc in "${SERVICES[@]}"; do
               CHANGED="$CHANGED\"$svc\","
