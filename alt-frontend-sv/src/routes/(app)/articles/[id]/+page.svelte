@@ -528,7 +528,7 @@ $effect(() => {
 
 	.article-layout {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) 20rem;
+		grid-template-columns: minmax(0, 1fr) 22rem;
 		column-gap: 2rem;
 		align-items: start;
 	}

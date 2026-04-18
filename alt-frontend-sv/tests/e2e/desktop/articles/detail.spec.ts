@@ -89,6 +89,12 @@ test.describe("Desktop Article Detail", () => {
 			rail.getByRole("link", { name: /open original/i }),
 		).toBeVisible();
 		await expect(rail.getByRole("button", { name: /summariz/i })).toBeVisible();
+
+		const railBox = await rail.boundingBox();
+		expect(railBox).not.toBeNull();
+		if (!railBox) return;
+		expect(railBox.width).toBeGreaterThanOrEqual(350);
+		expect(railBox.width).toBeLessThanOrEqual(354);
 	});
 
 	test("article body uses centered reading measure, not pinned-left", async ({
