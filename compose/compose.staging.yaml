@@ -4,11 +4,15 @@
 # torn down at the end. Project name `alt-staging` keeps it isolated from
 # any prod compose stack that may be running on the same host.
 #
-# Services grouped by suite (bring only what each suite needs via `up <svc>`):
-#   search-indexer suite:
+# Services are tagged with Compose profiles so each Hurl suite brings up
+# only its own dependencies:
+#   search-indexer suite  → profile `search-indexer`
 #     meilisearch, stub-backend, search-indexer
-#   mq-hub suite:
+#   mq-hub suite          → profile `mq-hub`
 #     redis-streams, mq-hub
+# Bring a suite up with:
+#   docker compose -f compose.staging.yaml --profile <suite> -p alt-staging up -d --wait
+# Services with NO profile are never auto-started (Compose default).
 #
 # Every secret in this stack is a test fixture committed under
 # e2e/fixtures/staging-secrets/ — never reuse these values anywhere else.
@@ -19,6 +23,7 @@ services:
   meilisearch:
     image: getmeili/meilisearch:v1.11
     container_name: alt-staging-meilisearch
+    profiles: [search-indexer]
     environment:
       MEILI_MASTER_KEY: alt-staging-test-master-key
       MEILI_ENV: development
@@ -39,6 +44,7 @@ services:
     # BACKEND_API_URL for reachability at startup, it doesn't validate the body.
     image: nginx:1.27-alpine
     container_name: alt-staging-stub-backend
+    profiles: [search-indexer]
     networks:
       - alt-staging
     healthcheck:
@@ -51,6 +57,7 @@ services:
   search-indexer:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-search-indexer:${IMAGE_TAG:-main}
     container_name: alt-staging-search-indexer
+    profiles: [search-indexer]
     depends_on:
       meilisearch:
         condition: service_healthy
@@ -89,6 +96,7 @@ services:
   redis-streams:
     image: redis:8.4-alpine
     container_name: alt-staging-redis-streams
+    profiles: [mq-hub]
     command: >
       redis-server
       --maxmemory 256mb
@@ -107,6 +115,7 @@ services:
   mq-hub:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-mq-hub:${IMAGE_TAG:-main}
     container_name: alt-staging-mq-hub
+    profiles: [mq-hub]
     depends_on:
       redis-streams:
         condition: service_healthy
