@@ -1,0 +1,84 @@
+# E2E Hurl suites (one job per service under e2e/hurl/).
+#
+# Gating is per-suite via path filters: the mq-hub job only runs when the
+# mq-hub code, its compose wiring, its Hurl suite, its fixtures, or this
+# workflow changes. Unrelated PRs don't pay the build + stack bring-up cost.
+#
+# To add another service's suite later (e.g. search-indexer), add a matching
+# `paths:` block and a sibling job; keep existing job names stable.
+
+name: E2E Hurl
+
+on:
+  pull_request:
+    paths:
+      - 'mq-hub/**'
+      - 'compose/compose.staging.yaml'
+      - 'e2e/hurl/mq-hub/**'
+      - 'e2e/fixtures/mq-hub/**'
+      - 'e2e/fixtures/staging-secrets/**'
+      - '.github/workflows/e2e-hurl.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'mq-hub/**'
+      - 'compose/compose.staging.yaml'
+      - 'e2e/hurl/mq-hub/**'
+      - 'e2e/fixtures/mq-hub/**'
+      - 'e2e/fixtures/staging-secrets/**'
+      - '.github/workflows/e2e-hurl.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-hurl-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mq-hub:
+    name: mq-hub Hurl suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build mq-hub image locally (tag `ci`)
+        run: |
+          docker build \
+            -t ghcr.io/kaikei-e/alt-mq-hub:ci \
+            -f mq-hub/Dockerfile \
+            mq-hub
+
+      - name: Pre-pull Hurl image
+        run: docker pull ghcr.io/orange-opensource/hurl:7.1.0
+
+      - name: Run mq-hub Hurl suite
+        env:
+          IMAGE_TAG: ci
+          GHCR_OWNER: kaikei-e
+          HURL_IMAGE: ghcr.io/orange-opensource/hurl:7.1.0
+          # Leave stack up on failure so the next step can dump logs; the
+          # runner VM is torn down after the job anyway.
+          KEEP_STACK: 1
+        run: bash e2e/hurl/mq-hub/run.sh
+
+      - name: Dump alt-staging logs on failure
+        if: failure()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            logs --no-color --tail=200 || true
+
+      - name: Upload Hurl reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mq-hub-hurl-reports
+          path: e2e/reports/mq-hub-*
+          if-no-files-found: ignore
+
+      - name: Tear down alt-staging stack
+        if: always()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            down -v --remove-orphans || true

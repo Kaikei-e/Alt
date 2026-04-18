@@ -4,10 +4,11 @@
 # torn down at the end. Project name `alt-staging` keeps it isolated from
 # any prod compose stack that may be running on the same host.
 #
-# Minimum services needed for the search-indexer Hurl suite:
-#   meilisearch    — the search engine search-indexer wraps
-#   stub-backend   — satisfies search-indexer's BACKEND_API_URL startup probe
-#   search-indexer — the SUT (ghcr.io/${GHCR_OWNER}/alt-search-indexer:${IMAGE_TAG})
+# Services grouped by suite (bring only what each suite needs via `up <svc>`):
+#   search-indexer suite:
+#     meilisearch, stub-backend, search-indexer
+#   mq-hub suite:
+#     redis-streams, mq-hub
 #
 # Every secret in this stack is a test fixture committed under
 # e2e/fixtures/staging-secrets/ — never reuse these values anywhere else.
@@ -83,6 +84,50 @@ services:
       timeout: 3s
       retries: 30
       start_period: 10s
+
+  # mq-hub suite — Redis Streams + mq-hub broker
+  redis-streams:
+    image: redis:8.4-alpine
+    container_name: alt-staging-redis-streams
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+      --appendonly no
+      --save ""
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  mq-hub:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-mq-hub:${IMAGE_TAG:-main}
+    container_name: alt-staging-mq-hub
+    depends_on:
+      redis-streams:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis-streams:6379
+      - CONNECT_PORT=9500
+      - LOG_LEVEL=info
+      - REDIS_POOL_SIZE=20
+      - STREAM_MAX_LEN=10000
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://redis-streams:4318
+      - OTEL_SERVICE_NAME=mq-hub-staging
+    ports:
+      - "19500:9500"
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9500/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
 
 networks:
   alt-staging:

@@ -1,0 +1,29 @@
+{
+  "stream": "alt:events:articles",
+  "events": [
+    {
+      "eventId": "hurl-e2e-batch-00000000-0000-4000-8000-000000000101",
+      "eventType": "ArticleCreated",
+      "source": "e2e-hurl",
+      "createdAt": "2026-04-17T12:01:00Z",
+      "payload": "eyJhcnRpY2xlX2lkIjoiYXJ0LWUyZS1iYXRjaC0xIn0=",
+      "metadata": {"batch_index": "0"}
+    },
+    {
+      "eventId": "hurl-e2e-batch-00000000-0000-4000-8000-000000000102",
+      "eventType": "ArticleCreated",
+      "source": "e2e-hurl",
+      "createdAt": "2026-04-17T12:01:01Z",
+      "payload": "eyJhcnRpY2xlX2lkIjoiYXJ0LWUyZS1iYXRjaC0yIn0=",
+      "metadata": {"batch_index": "1"}
+    },
+    {
+      "eventId": "hurl-e2e-batch-00000000-0000-4000-8000-000000000103",
+      "eventType": "ArticleCreated",
+      "source": "e2e-hurl",
+      "createdAt": "2026-04-17T12:01:02Z",
+      "payload": "eyJhcnRpY2xlX2lkIjoiYXJ0LWUyZS1iYXRjaC0zIn0=",
+      "metadata": {"batch_index": "2"}
+    }
+  ]
+}

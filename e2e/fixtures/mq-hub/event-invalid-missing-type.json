@@ -1,0 +1,11 @@
+{
+  "stream": "alt:events:articles",
+  "event": {
+    "eventId": "hurl-e2e-invalid-00000000-0000-4000-8000-000000000002",
+    "eventType": "",
+    "source": "e2e-hurl",
+    "createdAt": "2026-04-17T12:00:00Z",
+    "payload": "",
+    "metadata": {}
+  }
+}

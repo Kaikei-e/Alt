@@ -1,0 +1,14 @@
+{
+  "stream": "alt:events:articles",
+  "event": {
+    "eventId": "hurl-e2e-00000000-0000-4000-8000-000000000001",
+    "eventType": "ArticleCreated",
+    "source": "e2e-hurl",
+    "createdAt": "2026-04-17T12:00:00Z",
+    "payload": "eyJhcnRpY2xlX2lkIjoiYXJ0LWUyZS0wMDEiLCJ1c2VyX2lkIjoidXNlci1lMmUifQ==",
+    "metadata": {
+      "trace_id": "hurl-trace-0001",
+      "correlation_id": "hurl-corr-0001"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "articleId": "hurl-e2e-timeout-article-001",
+  "title": "Hurl timeout test article",
+  "content": "This article exists only to drive a GenerateTagsForArticle call that must time out.",
+  "feedId": "hurl-e2e-feed-001",
+  "timeoutMs": 200
+}
