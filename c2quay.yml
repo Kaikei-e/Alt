@@ -26,8 +26,21 @@ deploy:
 environments:
   production:
     all_or_nothing: true
+    # Services block regenerated from services.yaml. The block below is
+    # overwritten in place by scripts/regen-service-registry.py; do not
+    # hand-edit. tts-speaker is flagged `kind: external` in the registry
+    # because it runs on a separate GPU host and is intentionally NOT
+    # declared in compose/compose.yaml on this box. We still need the
+    # broker to treat its version as known during the aggregate
+    # can-i-deploy gate (otherwise alt-butterfly-facade's consumer-side
+    # pact against tts-speaker shows up as "no verification result").
+    # If c2quay ever refuses or tries to recreate that entry, flip the
+    # registry's `kind: external` back out and fall back to
+    # scripts/record-remote-pacticipant.sh.
     services:
+      # <<<SERVICES-REGISTRY-BEGIN>>>
       alt-backend:          { pacticipant: alt-backend }
+      alt-butterfly-facade: { pacticipant: alt-butterfly-facade }
       auth-hub:             { pacticipant: auth-hub }
       pre-processor:        { pacticipant: pre-processor }
       search-indexer:       { pacticipant: search-indexer }
@@ -39,12 +52,5 @@ environments:
       news-creator:         { pacticipant: news-creator }
       tag-generator:        { pacticipant: tag-generator }
       acolyte-orchestrator: { pacticipant: acolyte-orchestrator }
-      alt-butterfly-facade: { pacticipant: alt-butterfly-facade }
-      # tts-speaker runs on a separate GPU host and is intentionally NOT declared
-      # in compose/compose.yaml on this box. We still need the broker to treat
-      # its version as known during the aggregate can-i-deploy gate (otherwise
-      # alt-butterfly-facade's consumer-side pact against tts-speaker shows up
-      # as "no verification result as consumer against tts-speaker@"). If
-      # c2quay refuses or tries to recreate it, revert this entry and fall back
-      # to scripts/record-remote-pacticipant.sh.
       tts-speaker:          { pacticipant: tts-speaker }
+      # <<<SERVICES-REGISTRY-END>>>

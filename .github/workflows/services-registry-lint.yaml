@@ -1,0 +1,55 @@
+# services-registry-lint — fail when services.yaml and the derived
+# artifacts (.github/workflows/docker-build.yaml SERVICES[],
+# c2quay.yml environments.production.services, and
+# .github/generated/alt-deploy-service-paths.js) drift.
+#
+# Runs on any PR or push that touches either the registry itself or a
+# derived artifact. Keeps the monorepo from regressing back to the
+# manually-synced three-file state that produced the
+# "only search-indexer + tag-generator built" incident.
+
+name: services-registry-lint
+
+on:
+  pull_request:
+    paths:
+      - 'services.yaml'
+      - 'scripts/regen-service-registry.py'
+      - '.github/workflows/docker-build.yaml'
+      - '.github/workflows/services-registry-lint.yaml'
+      - 'c2quay.yml'
+      - '.github/generated/alt-deploy-service-paths.js'
+  push:
+    branches: [main]
+    paths:
+      - 'services.yaml'
+      - 'scripts/regen-service-registry.py'
+      - '.github/workflows/docker-build.yaml'
+      - '.github/workflows/services-registry-lint.yaml'
+      - 'c2quay.yml'
+      - '.github/generated/alt-deploy-service-paths.js'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: services-registry-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyYAML
+        run: pip install --no-cache-dir pyyaml
+
+      - name: Verify registry artifacts are in sync
+        run: python3 scripts/regen-service-registry.py --check

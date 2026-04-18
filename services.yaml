@@ -1,0 +1,91 @@
+# services.yaml — single source of truth for service registration.
+#
+# Regenerated artifacts (scripts/regen-service-registry.py --write):
+#   1. .github/workflows/docker-build.yaml SERVICES=(...) block
+#   2. c2quay.yml environments.production.services block
+#   3. .github/generated/alt-deploy-service-paths.js (snippet to paste
+#      into alt-deploy's release-deploy.yaml SERVICE_PATHS)
+#
+# CI lint (.github/workflows/services-registry-lint.yaml) fails when
+# those files drift from this registry. Edit here, run the regen
+# script, and commit all four changes together.
+#
+# The three fields that drive the regen:
+#   name          — directory name under the repo root; also the ghcr
+#                   image suffix (ghcr.io/kaikei-e/alt-<name>)
+#   kind          — pacticipant | runtime | external
+#                   * pacticipant: enters c2quay.yml + alt-deploy matrix,
+#                     plus docker-build SERVICES[]
+#                   * runtime: built via docker-build but not a Pact
+#                     pacticipant (no alt-deploy deploy gate)
+#                   * external: Pact pacticipant that lives on another
+#                     host (e.g. tts-speaker on a GPU box) — enters
+#                     c2quay.yml only, no local build
+#   compose_files — production compose include files that define or
+#                   reference this service; their paths seed alt-deploy
+#                   SERVICE_PATHS so compose-layer edits trigger the
+#                   right rebuild. Omitted for `runtime` and `external`.
+
+services:
+  # --- 13 Pact pacticipants deployed locally via pull-deploy ---
+  - name: alt-backend
+    kind: pacticipant
+    compose_files: [bff.yaml, core.yaml]
+  - name: alt-butterfly-facade
+    kind: pacticipant
+    compose_files: [bff.yaml]
+  - name: auth-hub
+    kind: pacticipant
+    compose_files: [auth.yaml]
+  - name: pre-processor
+    kind: pacticipant
+    compose_files: [ai.yaml]
+  - name: search-indexer
+    kind: pacticipant
+    compose_files: [workers.yaml]
+  - name: mq-hub
+    kind: pacticipant
+    compose_files: [mq.yaml]
+  - name: rag-orchestrator
+    kind: pacticipant
+    compose_files: [rag.yaml]
+  - name: recap-worker
+    kind: pacticipant
+    compose_files: [recap.yaml]
+  - name: recap-subworker
+    kind: pacticipant
+    compose_files: [recap.yaml]
+  - name: recap-evaluator
+    kind: pacticipant
+    compose_files: [recap.yaml]
+  - name: news-creator
+    kind: pacticipant
+    compose_files: [ai.yaml]
+  - name: tag-generator
+    kind: pacticipant
+    compose_files: [workers.yaml]
+  - name: acolyte-orchestrator
+    kind: pacticipant
+    compose_files: [acolyte.yaml]
+
+  # --- Runtime images built via docker-build but not Pact pacticipants ---
+  - name: alt-frontend-sv
+    kind: runtime
+  - name: pre-processor-sidecar
+    kind: runtime
+  - name: auth-token-manager
+    kind: runtime
+  - name: rask-log-aggregator
+    kind: runtime
+  - name: rask-log-forwarder
+    kind: runtime
+  - name: pki-agent
+    kind: runtime
+  - name: knowledge-sovereign
+    kind: runtime
+  - name: dashboard
+    kind: runtime
+
+  # --- External pacticipants (not built here; referenced for gate only) ---
+  - name: tts-speaker
+    kind: external

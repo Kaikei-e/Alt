@@ -55,15 +55,20 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          # Service directories with Dockerfiles.
-          # Covers every pacticipant listed in c2quay.yml (so the pull-based
-          # deploy in ADR-000763 has an image for each gate check) plus the
-          # runtime services referenced by compose that we need as versioned
-          # images (pki-agent, knowledge-sovereign, dashboard).
-          # Migration containers (*-migration-atlas, docker/postgres, *-db
-          # DB containers) and local perf tooling (alt-perf, *-mock-*) are
-          # intentionally excluded — they are not runtime services.
-          # tts-speaker lives on a separate GPU host and is built out-of-band.
+          # Service list regenerated from services.yaml by
+          # scripts/regen-service-registry.py. Do not hand-edit the
+          # SERVICES=(...) block below — edit services.yaml and run the
+          # regen script. CI (.github/workflows/services-registry-lint.yaml)
+          # fails on drift.
+          #
+          # Scope: every Pact pacticipant from c2quay.yml (so ADR-000763's
+          # pull-based deploy has an image per gate check) plus the runtime
+          # services referenced by compose that need versioned images
+          # (pki-agent, knowledge-sovereign, dashboard, etc.). Migration
+          # containers, DB containers, and local perf tooling are excluded.
+          # tts-speaker is external (separate GPU host); it is in c2quay
+          # but not here.
+          # <<<SERVICES-REGISTRY-BEGIN>>>
           SERVICES=(
             # --- 13 Pact pacticipants (mirrors c2quay.yml) ---
             "alt-backend"
@@ -89,6 +94,7 @@ jobs:
             "knowledge-sovereign"
             "dashboard"
           )
+          # <<<SERVICES-REGISTRY-END>>>
 
           CHANGED=""
           ZERO_SHA="0000000000000000000000000000000000000000"
