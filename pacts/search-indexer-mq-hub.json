@@ -304,6 +304,169 @@
       "contents": {
         "content": {
           "created_at": "2026-03-26T00:00:00.000Z",
+          "event_id": "evt-uuid-upd-001",
+          "event_type": "ArticleUpdated",
+          "metadata": {
+            "trace_id": "trace-001"
+          },
+          "payload": {
+            "article_id": "art-001",
+            "content": "Updated article content.",
+            "feed_id": "feed-001",
+            "published_at": "2026-03-26T00:00:00Z",
+            "tags": [
+              "technology"
+            ],
+            "title": "Updated Article",
+            "url": "https://example.com/article",
+            "user_id": "user-001"
+          },
+          "source": "alt-backend"
+        },
+        "contentType": "application/json",
+        "encoded": false
+      },
+      "description": "an ArticleUpdated fat event on alt:events:articles",
+      "matchingRules": {
+        "body": {
+          "$.created_at": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.event_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.metadata": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.metadata.trace_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.article_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.content": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.feed_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.published_at": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.tags": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type",
+                "min": 1
+              }
+            ]
+          },
+          "$.payload.tags[*]": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.title": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.url": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.payload.user_id": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          },
+          "$.source": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "contentType": "application/json"
+      },
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "the articles stream exists and an article was updated"
+        }
+      ],
+      "type": "Asynchronous/Messages"
+    },
+    {
+      "contents": {
+        "content": {
+          "created_at": "2026-03-26T00:00:00.000Z",
           "event_id": "evt-uuid-idx-001",
           "event_type": "IndexArticle",
           "metadata": {
