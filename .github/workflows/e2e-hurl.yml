@@ -17,15 +17,20 @@ on:
       - 'mq-hub/**'
       - 'tag-generator/**'
       - 'news-creator/**'
+      - 'recap-worker/**'
+      - 'recap-migration-atlas/**'
       - 'compose/compose.staging.yaml'
       - 'compose/news-creator-ollama-stub/**'
       - 'e2e/hurl/mq-hub/**'
       - 'e2e/hurl/tag-generator/**'
       - 'e2e/hurl/news-creator/**'
+      - 'e2e/hurl/recap-worker/**'
       - 'e2e/fixtures/mq-hub/**'
       - 'e2e/fixtures/tag-generator/**'
       - 'e2e/fixtures/news-creator/**'
+      - 'e2e/fixtures/recap-worker/**'
       - 'e2e/fixtures/staging-secrets/**'
+      - 'e2e/stubs/recap-pipeline-stub/**'
       - '.github/workflows/e2e-hurl.yml'
   push:
     branches: [main]
@@ -33,15 +38,20 @@ on:
       - 'mq-hub/**'
       - 'tag-generator/**'
       - 'news-creator/**'
+      - 'recap-worker/**'
+      - 'recap-migration-atlas/**'
       - 'compose/compose.staging.yaml'
       - 'compose/news-creator-ollama-stub/**'
       - 'e2e/hurl/mq-hub/**'
       - 'e2e/hurl/tag-generator/**'
       - 'e2e/hurl/news-creator/**'
+      - 'e2e/hurl/recap-worker/**'
       - 'e2e/fixtures/mq-hub/**'
       - 'e2e/fixtures/tag-generator/**'
       - 'e2e/fixtures/news-creator/**'
+      - 'e2e/fixtures/recap-worker/**'
       - 'e2e/fixtures/staging-secrets/**'
+      - 'e2e/stubs/recap-pipeline-stub/**'
       - '.github/workflows/e2e-hurl.yml'
 
 permissions:
@@ -91,6 +101,61 @@ jobs:
         with:
           name: mq-hub-hurl-reports
           path: e2e/reports/mq-hub-*
+          if-no-files-found: ignore
+
+      - name: Tear down alt-staging stack
+        if: always()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            down -v --remove-orphans || true
+
+  recap-worker:
+    name: recap-worker Hurl suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # recap-worker's image bundles libtorch (~600MB download) +
+      # cargo-chef cooks the workspace, so the cold build is the
+      # dominant cost of this job. Pre-warming via cargo cache is left
+      # for a follow-up if wall-clock pain becomes an issue.
+      - name: Build recap-worker image locally (tag `ci`)
+        run: |
+          docker build \
+            -t ghcr.io/kaikei-e/alt-recap-worker:ci \
+            -f recap-worker/Dockerfile.recap-worker \
+            recap-worker
+
+      - name: Build recap-pipeline-stub image locally (tag `ci`)
+        run: |
+          docker build \
+            -t ghcr.io/kaikei-e/alt-recap-pipeline-stub:ci \
+            e2e/stubs/recap-pipeline-stub
+
+      - name: Pre-pull Hurl image
+        run: docker pull ghcr.io/orange-opensource/hurl:7.1.0
+
+      - name: Run recap-worker Hurl suite
+        env:
+          IMAGE_TAG: ci
+          GHCR_OWNER: kaikei-e
+          HURL_IMAGE: ghcr.io/orange-opensource/hurl:7.1.0
+          KEEP_STACK: 1
+        run: bash e2e/hurl/recap-worker/run.sh
+
+      - name: Dump alt-staging logs on failure
+        if: failure()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            logs --no-color --tail=300 || true
+
+      - name: Upload Hurl reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recap-worker-hurl-reports
+          path: e2e/reports/recap-worker-*
           if-no-files-found: ignore
 
       - name: Tear down alt-staging stack
