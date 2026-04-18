@@ -54,8 +54,45 @@ jobs:
           script: |
             const sha = context.sha;
             const ref = context.ref;
-            const changed = (context.payload.commits || [])
-              .flatMap(c => [...(c.added || []), ...(c.modified || []), ...(c.removed || [])]);
+            // Push webhooks sometimes deliver `commits[].{added,modified,removed}`
+            // empty even when the push carries real diff — the alt-deploy
+            // resolve job then can't tell what moved and (prior to its fix)
+            // fell back to deploying every pacticipant. Use the Compare
+            // Commits API instead, which is authoritative regardless of
+            // webhook quirks. Falls back to the webhook payload when
+            // before/after are unusable (e.g. first push, force-push that
+            // collapses branch history).
+            const before = context.payload.before;
+            const after = context.payload.after;
+            const zeroSha = '0000000000000000000000000000000000000000';
+            // Hex-40 pre-validation before interpolating into the API path.
+            // Octokit URL-encodes parameters so this is defense-in-depth, not
+            // a live exploit vector — it matches the `sha` regex above and
+            // keeps the invariant explicit for future refactors.
+            const shaRe = /^[0-9a-f]{40}$/;
+            let changed = [];
+            if (
+              shaRe.test(before) && shaRe.test(after) &&
+              before !== zeroSha && after !== zeroSha && before !== after
+            ) {
+              try {
+                const cmp = await github.rest.repos.compareCommitsWithBasehead({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  basehead: `${before}...${after}`,
+                });
+                changed = (cmp.data.files || []).map(f => f.filename);
+              } catch (cmpErr) {
+                core.warning(
+                  `compareCommits failed (${cmpErr.status || cmpErr.message}); ` +
+                  `falling back to webhook commits[]`
+                );
+              }
+            }
+            if (changed.length === 0) {
+              changed = (context.payload.commits || [])
+                .flatMap(c => [...(c.added || []), ...(c.modified || []), ...(c.removed || [])]);
+            }
             try {
               await github.rest.repos.createDispatchEvent({
                 owner: 'Kaikei-e',
@@ -63,7 +100,7 @@ jobs:
                 event_type: 'deploy',
                 client_payload: { sha, ref, changed },
               });
-              core.info(`Dispatched deploy event for ${sha} on ${ref}`);
+              core.info(`Dispatched deploy event for ${sha} on ${ref} (changed=${changed.length})`);
             } catch (err) {
               if (err.status === 403) {
                 core.setFailed(
