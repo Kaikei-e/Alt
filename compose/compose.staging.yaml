@@ -29,6 +29,12 @@
 #     recap-subworker, news-creator, alt-backend, and tag-generator so
 #     recap-worker's pipeline runs end-to-end without the real
 #     GPU-bound services)
+#   acolyte-orchestrator suite → profile `acolyte-orchestrator`
+#     acolyte-db, acolyte-db-migrator, acolyte-orchestrator
+#     (Postgres + Atlas migrator + Starlette/Connect-RPC service.
+#     CRUD scenarios run against the migrated DB only; the run-
+#     lifecycle scenarios additionally activate the news-creator and
+#     search-indexer profiles to drive the LangGraph pipeline.)
 # Bring a suite up with:
 #   docker compose -f compose.staging.yaml --profile <suite> -p alt-staging up -d --wait
 # Services with NO profile are never auto-started (Compose default).
@@ -519,6 +525,83 @@ services:
       - alt-staging
     healthcheck:
       test: ["CMD", "/usr/local/bin/recap-worker", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  # acolyte-orchestrator suite — Postgres + Atlas migrator + the
+  # Starlette/Connect-RPC orchestrator. The migrator runs `atlas
+  # migrate apply` once and exits; the orchestrator's
+  # service_completed_successfully gate guarantees the schema is
+  # present before uvicorn binds. mTLS is off and peer-identity is
+  # unauthenticated, mirroring the news-creator / tag-generator
+  # staging conventions. CHECKPOINT_ENABLED=false keeps the
+  # langgraph-checkpoint-postgres schema out of scope for the CRUD
+  # slice; the run-lifecycle scenarios stay tolerant of either
+  # in-memory or DB-backed checkpointing.
+  acolyte-db:
+    image: postgres:16-alpine
+    container_name: alt-staging-acolyte-db
+    profiles: [acolyte-orchestrator]
+    environment:
+      POSTGRES_DB: acolyte
+      POSTGRES_USER: acolyte
+      POSTGRES_PASSWORD: alt-staging-test-acolyte-password
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acolyte -d acolyte"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  acolyte-db-migrator:
+    build:
+      context: ../acolyte-migration-atlas
+      dockerfile: docker/Dockerfile
+    container_name: alt-staging-acolyte-db-migrator
+    profiles: [acolyte-orchestrator]
+    command: ["apply"]
+    environment:
+      DATABASE_URL: postgres://acolyte:alt-staging-test-acolyte-password@acolyte-db:5432/acolyte?sslmode=disable&search_path=public
+      ATLAS_REVISIONS_SCHEMA: "public"
+    depends_on:
+      acolyte-db:
+        condition: service_healthy
+    networks:
+      - alt-staging
+    restart: "no"
+
+  acolyte-orchestrator:
+    build:
+      context: ../acolyte-orchestrator
+      dockerfile: Dockerfile
+    image: alt-staging/acolyte-orchestrator:local
+    container_name: alt-staging-acolyte-orchestrator
+    profiles: [acolyte-orchestrator]
+    depends_on:
+      acolyte-db:
+        condition: service_healthy
+      acolyte-db-migrator:
+        condition: service_completed_successfully
+    environment:
+      - ACOLYTE_DB_DSN=postgresql://acolyte:alt-staging-test-acolyte-password@acolyte-db:5432/acolyte
+      - NEWS_CREATOR_URL=http://news-creator:11434
+      - SEARCH_INDEXER_URL=http://search-indexer:9300
+      - LLM_PROVIDER=ollama
+      - DEFAULT_MODEL=gemma4-e4b-12k
+      - CHECKPOINT_ENABLED=false
+      - LOG_LEVEL=info
+      - MTLS_ENFORCE=false
+      - PEER_IDENTITY_TRUSTED=off
+    ports:
+      - "18090:8090"
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/health"]
       interval: 3s
       timeout: 3s
       retries: 30
