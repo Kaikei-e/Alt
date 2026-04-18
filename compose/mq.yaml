@@ -38,6 +38,7 @@ services:
 
   # mq-hub event broker service
   mq-hub:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-mq-hub:${IMAGE_TAG:-main}
     build:
       context: ../mq-hub
       dockerfile: Dockerfile
@@ -60,7 +61,7 @@ services:
     ports:
       - "9500:9500"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9500/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9500/health"]
       interval: 10s
       timeout: 5s
       retries: 5

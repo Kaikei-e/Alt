@@ -16,3 +16,5 @@ name: alt
 services:
   search-indexer:
     pull_policy: never
+  mq-hub:
+    pull_policy: never
