@@ -48,7 +48,7 @@ services:
   meilisearch:
     image: getmeili/meilisearch:v1.11
     container_name: alt-staging-meilisearch
-    profiles: [search-indexer]
+    profiles: [search-indexer, acolyte-orchestrator]
     environment:
       MEILI_MASTER_KEY: alt-staging-test-master-key
       MEILI_ENV: development
@@ -76,7 +76,7 @@ services:
     # need real Connect-RPC responses.
     image: nginx:1.27-alpine
     container_name: alt-staging-stub-backend
-    profiles: [search-indexer, tag-generator]
+    profiles: [search-indexer, tag-generator, acolyte-orchestrator]
     networks:
       - alt-staging
     healthcheck:
@@ -89,7 +89,7 @@ services:
   search-indexer:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-search-indexer:${IMAGE_TAG:-main}
     container_name: alt-staging-search-indexer
-    profiles: [search-indexer]
+    profiles: [search-indexer, acolyte-orchestrator]
     depends_on:
       meilisearch:
         condition: service_healthy
@@ -321,7 +321,7 @@ services:
     build:
       context: ./news-creator-ollama-stub
     container_name: alt-staging-news-creator-ollama-stub
-    profiles: [news-creator]
+    profiles: [news-creator, acolyte-orchestrator]
     networks:
       - alt-staging
     healthcheck:
@@ -588,7 +588,14 @@ services:
         condition: service_completed_successfully
     environment:
       - ACOLYTE_DB_DSN=postgresql://acolyte:alt-staging-test-acolyte-password@acolyte-db:5432/acolyte
-      - NEWS_CREATOR_URL=http://news-creator:11434
+      # Acolyte's OllamaGateway calls /api/generate and /api/chat
+      # directly. The real news-creator FastAPI only exposes
+      # /api/v1/summarize, so the only thing serving Ollama-shaped
+      # endpoints inside alt-staging is the news-creator-ollama-stub on
+      # :11435. Phase 2's run-lifecycle scenarios bring it up via the
+      # acolyte-orchestrator profile activation; Phase 1's CRUD slice
+      # never makes an LLM call, so the URL is unused there.
+      - NEWS_CREATOR_URL=http://news-creator-ollama-stub:11435
       - SEARCH_INDEXER_URL=http://search-indexer:9300
       - LLM_PROVIDER=ollama
       - DEFAULT_MODEL=gemma4-e4b-12k

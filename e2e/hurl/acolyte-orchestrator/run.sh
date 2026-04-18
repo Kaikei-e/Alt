@@ -28,7 +28,17 @@ cd "$ROOT"
 
 : "${BASE_URL:=http://acolyte-orchestrator:8090}"
 : "${HURL_IMAGE:=ghcr.io/orange-opensource/hurl:7.1.0}"
+: "${IMAGE_TAG:=main}"
+: "${GHCR_OWNER:=kaikei-e}"
 : "${RUN_ID:=$(date +%s)}"
+
+export IMAGE_TAG GHCR_OWNER
+
+# Master key for the Meilisearch seed step in scenario 09 (gatherer
+# needs an indexed corpus to return non-empty hits). Anchored on the
+# same fixture file the compose `secrets:` block mounts so changing
+# one rotates both.
+MEILI_MASTER_KEY="$(tr -d '\n' < "$ROOT/e2e/fixtures/staging-secrets/meili_master_key.txt")"
 
 REPORT_DIR="$ROOT/e2e/reports/acolyte-orchestrator-$RUN_ID"
 mkdir -p "$REPORT_DIR"
@@ -45,15 +55,23 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> bringing up acolyte-orchestrator staging slice" >&2
-# --build because acolyte-db-migrator and acolyte-orchestrator are local
-# build contexts (no GHCR image). --wait blocks on healthcheck
-# convergence; the migrator's restart=no + orchestrator's
-# service_completed_successfully gate guarantees Atlas migration runs
-# before the orchestrator boots.
+# --build is required because acolyte-db-migrator, acolyte-orchestrator,
+# and news-creator-ollama-stub are local build contexts (no GHCR image).
+# --wait blocks on healthcheck convergence; the migrator's restart=no +
+# orchestrator's service_completed_successfully gate guarantees Atlas
+# migration runs before the orchestrator boots.
+#
+# news-creator-ollama-stub is the destination of acolyte's
+# OllamaGateway calls (/api/generate, /api/chat). search-indexer +
+# meilisearch + stub-backend back the gatherer node's hybrid search.
+# All four containers are profile-tagged with `acolyte-orchestrator`
+# so a single --profile flag is enough.
 docker compose -f compose/compose.staging.yaml -p alt-staging \
   --profile acolyte-orchestrator \
   up -d --wait --build \
-  acolyte-db acolyte-db-migrator acolyte-orchestrator
+  acolyte-db acolyte-db-migrator acolyte-orchestrator \
+  news-creator-ollama-stub \
+  meilisearch stub-backend search-indexer
 
 # Run Hurl inside the alt-staging network. Mount the repo at the same
 # absolute path so any `file,e2e/fixtures/...;` body resolves via
@@ -78,6 +96,16 @@ hurl_run --test \
   --file-root "$ROOT" \
   "${common_vars[@]}" \
   e2e/hurl/acolyte-orchestrator/00-setup.hurl
+
+echo "==> seeding meilisearch articles index for gatherer node" >&2
+# Reuses the canonical search-indexer seed fixture. The Acolyte run
+# scenarios depend on a non-empty index so the gatherer node returns
+# evidence; without it the curator/writer nodes get empty input and
+# the pipeline still completes but with degraded content shape.
+hurl_run --test \
+  --file-root "$ROOT" \
+  --variable "meili_master_key=$MEILI_MASTER_KEY" \
+  e2e/hurl/search-indexer/00-seed-meilisearch.hurl
 
 # Collect suite files via nullglob so future increments can land
 # 1[0-9]-*.hurl and 2[0-9]-*.hurl without script edits, and so the
