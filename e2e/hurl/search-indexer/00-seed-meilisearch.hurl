@@ -19,7 +19,11 @@ jsonpath "$.status" == "available"
 POST http://meilisearch:7700/indexes/articles/documents
 Authorization: Bearer {{meili_master_key}}
 Content-Type: application/json
-file,../../fixtures/search-indexer/seed-docs.json;
+# Paths are resolved from --file-root (= repo root when invoked via the
+# release-deploy workflow, or the e2e/ directory via the local runner in
+# e2e/hurl/search-indexer/README.md). Hurl forbids `..` in body-file paths
+# unconditionally, so anchoring here is the only portable form.
+file,e2e/fixtures/search-indexer/seed-docs.json;
 HTTP 202
 [Captures]
 task_uid: jsonpath "$.taskUid"

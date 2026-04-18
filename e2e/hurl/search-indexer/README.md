@@ -24,12 +24,16 @@ From the repo root:
 
 ```sh
 # Seed first (serial — later tests depend on this state).
+# --file-root is required: Hurl forbids `..` in body-file paths, and the
+# fixtures directory is a sibling of hurl/, not a child.
 hurl --test \
+  --file-root . \
   --variable meili_master_key=alt-staging-test-master-key \
   e2e/hurl/search-indexer/00-seed-meilisearch.hurl
 
 # Then run the test suite (parallel is safe).
 hurl --test --jobs 4 --retry 5 --retry-interval 500 \
+  --file-root . \
   --report-junit e2e/reports/junit.xml \
   --report-html  e2e/reports/html \
   e2e/hurl/search-indexer/0[1-9]-*.hurl
