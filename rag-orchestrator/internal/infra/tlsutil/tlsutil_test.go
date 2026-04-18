@@ -69,9 +69,9 @@ func writeTestPKI(t *testing.T, dir, cn string) (certPath, keyPath, caPath strin
 
 func writePEM(t *testing.T, path, blockType string, der []byte) {
 	t.Helper()
-	f, err := os.Create(path)
+	f, err := os.Create(path) // #nosec G304 -- test-controlled path under t.TempDir()
 	require.NoError(t, err)
-	defer f.Close()
+	t.Cleanup(func() { _ = f.Close() })
 	require.NoError(t, pem.Encode(f, &pem.Block{Type: blockType, Bytes: der}))
 }
 
@@ -129,7 +129,7 @@ func TestLoadClientConfig_ReloadFailure_FallsBackToCached(t *testing.T) {
 	// Corrupt the cert file after advancing mtime: a parse error at reload
 	// time should NOT kill the client; the cached cert must be returned.
 	time.Sleep(10 * time.Millisecond)
-	require.NoError(t, os.WriteFile(certPath, []byte("not a pem"), 0o644))
+	require.NoError(t, os.WriteFile(certPath, []byte("not a pem"), 0o600))
 	future := time.Now().Add(2 * time.Second)
 	require.NoError(t, os.Chtimes(certPath, future, future))
 

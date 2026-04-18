@@ -13,8 +13,12 @@ import ssl
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import structlog
+
 if TYPE_CHECKING:
     pass
+
+_logger = structlog.get_logger(__name__)
 
 
 def mtls_enforced() -> bool:
@@ -82,7 +86,7 @@ class SslContextReloader:
             return False
         try:
             self._ctx.load_cert_chain(certfile=self._cert_path, keyfile=self._key_path)
-        except (ssl.SSLError, OSError):
+        except ssl.SSLError, OSError:
             return False
         self._cert_mtime = cm
         self._key_mtime = km
@@ -107,4 +111,5 @@ async def watch_cert_rotation(
         except asyncio.CancelledError:
             raise
         except Exception:
+            _logger.debug("cert_rotation_iteration_failed", exc_info=True)
             continue
