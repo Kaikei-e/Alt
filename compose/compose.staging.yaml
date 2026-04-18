@@ -23,6 +23,12 @@
 #     contract surface — `/health`, `/queue/status` — can be exercised
 #     without LLM inference. `WARMUP_ENABLED=false` keeps lifespan from
 #     calling `/api/generate` against the stub during Phase 1.)
+#   recap-worker suite         → profile `recap-worker`
+#     recap-db, recap-db-migrator, recap-pipeline-stub, recap-worker
+#     (the stub container is multi-aliased on alt-staging as
+#     recap-subworker, news-creator, alt-backend, and tag-generator so
+#     recap-worker's pipeline runs end-to-end without the real
+#     GPU-bound services)
 # Bring a suite up with:
 #   docker compose -f compose.staging.yaml --profile <suite> -p alt-staging up -d --wait
 # Services with NO profile are never auto-started (Compose default).
@@ -381,6 +387,142 @@ services:
       # against the stub). With warmup disabled this is sub-second, but
       # Python cold-start + uvicorn boot needs a few seconds of headroom.
       start_period: 15s
+
+  # recap-worker suite — Postgres + Atlas migrator + multi-aliased
+  # pipeline stub + recap-worker SUT. The stub stands in for
+  # recap-subworker, news-creator, alt-backend, and tag-generator so
+  # the full recap pipeline (POST /v1/generate/recaps/7days → row in
+  # recap_outputs → GET /v1/recaps/7days) runs without GPU-bound deps.
+  recap-db:
+    # Production image (docker/postgres/Dockerfile.recap-db) bakes in
+    # postgresql-18-cron — migration 20260101000000 needs it. Reuse the
+    # same Dockerfile so staging schema parity holds with prod.
+    build:
+      context: ../docker/postgres
+      dockerfile: Dockerfile.recap-db
+    image: alt-staging/recap-db:local
+    container_name: alt-staging-recap-db
+    profiles: [recap-worker]
+    # Plain env credentials — staging password is a committed test
+    # fixture with no meaning outside the alt-staging network. Mirrors
+    # the knowledge-sovereign-db pattern above.
+    environment:
+      POSTGRES_DB: recap
+      POSTGRES_USER: recap
+      POSTGRES_PASSWORD: alt-staging-test-recap-password
+    # pg_cron requires `shared_preload_libraries=pg_cron` at server
+    # boot. Staging doesn't bind-mount postgresql-recap.conf, so inline
+    # the minimum flags as command args instead.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_cron
+      - -c
+      - cron.database_name=recap
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recap -d recap"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  recap-db-migrator:
+    build:
+      context: ../recap-migration-atlas
+      dockerfile: docker/Dockerfile
+    container_name: alt-staging-recap-db-migrator
+    profiles: [recap-worker]
+    command: ["apply"]
+    environment:
+      DATABASE_URL: postgres://recap:alt-staging-test-recap-password@recap-db:5432/recap?sslmode=disable&search_path=public
+      ATLAS_REVISIONS_SCHEMA: "public"
+    depends_on:
+      recap-db:
+        condition: service_healthy
+    networks:
+      - alt-staging
+    restart: "no"
+
+  recap-pipeline-stub:
+    build:
+      context: ../e2e/stubs/recap-pipeline-stub
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-pipeline-stub:${IMAGE_TAG:-main}
+    container_name: alt-staging-recap-pipeline-stub
+    profiles: [recap-worker]
+    networks:
+      alt-staging:
+        # recap-worker's clients are pointed at these hostnames via env
+        # below. Network aliases let one container answer to all four,
+        # so we don't ship four near-identical stub services. The
+        # `rw-stub-` prefix keeps these aliases disjoint from the real
+        # service names used by the other profiles (news-creator,
+        # tag-generator, ...) so multiple staging profiles can be up on
+        # alt-staging at the same time.
+        aliases:
+          - rw-stub-subworker
+          - rw-stub-news-creator
+          - rw-stub-alt-backend
+          - rw-stub-tag-generator
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1/health').read()",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  recap-worker:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-recap-worker:${IMAGE_TAG:-main}
+    container_name: alt-staging-recap-worker
+    profiles: [recap-worker]
+    depends_on:
+      recap-db:
+        condition: service_healthy
+      recap-db-migrator:
+        condition: service_completed_successfully
+      recap-pipeline-stub:
+        condition: service_healthy
+    environment:
+      # Plaintext upstream URLs — mTLS is off in staging so the worker
+      # talks HTTP/1.1 + JSON to every alias of recap-pipeline-stub on
+      # port 80. ALT_BACKEND_BASE_URL drives Connect-RPC over JSON
+      # (alt_backend.rs:64-78) which the stub serves at the FQSN path.
+      - MTLS_ENFORCE=false
+      - MTLS_LISTEN=false
+      - PEER_IDENTITY_TRUSTED=off
+      - RECAP_DB_HOST=recap-db
+      - RECAP_DB_PORT=5432
+      - RECAP_DB_USER=recap
+      - RECAP_DB_NAME=recap
+      - RECAP_DB_PASSWORD=alt-staging-test-recap-password
+      - NEWS_CREATOR_BASE_URL=http://rw-stub-news-creator/
+      - SUBWORKER_BASE_URL=http://rw-stub-subworker/
+      - ALT_BACKEND_BASE_URL=http://rw-stub-alt-backend/
+      - TAG_GENERATOR_BASE_URL=http://rw-stub-tag-generator/
+      - HUGGING_FACE_TOKEN_PATH=/tmp/staging-hf-token-not-used
+      - HF_HOME=/tmp/huggingface
+      - TRANSFORMERS_CACHE=/tmp/huggingface/transformers
+      - RECAP_GENRES=ai
+      - RECAP_WORKER_HTTP_BIND=0.0.0.0:9005
+      - PORT=9005
+      - LOG_LEVEL=info
+    ports:
+      - "19005:9005"
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/recap-worker", "healthcheck"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
 
 networks:
   alt-staging:
