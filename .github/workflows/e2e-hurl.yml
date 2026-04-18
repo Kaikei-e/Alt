@@ -16,11 +16,15 @@ on:
     paths:
       - 'mq-hub/**'
       - 'tag-generator/**'
+      - 'news-creator/**'
       - 'compose/compose.staging.yaml'
+      - 'compose/news-creator-ollama-stub/**'
       - 'e2e/hurl/mq-hub/**'
       - 'e2e/hurl/tag-generator/**'
+      - 'e2e/hurl/news-creator/**'
       - 'e2e/fixtures/mq-hub/**'
       - 'e2e/fixtures/tag-generator/**'
+      - 'e2e/fixtures/news-creator/**'
       - 'e2e/fixtures/staging-secrets/**'
       - '.github/workflows/e2e-hurl.yml'
   push:
@@ -28,11 +32,15 @@ on:
     paths:
       - 'mq-hub/**'
       - 'tag-generator/**'
+      - 'news-creator/**'
       - 'compose/compose.staging.yaml'
+      - 'compose/news-creator-ollama-stub/**'
       - 'e2e/hurl/mq-hub/**'
       - 'e2e/hurl/tag-generator/**'
+      - 'e2e/hurl/news-creator/**'
       - 'e2e/fixtures/mq-hub/**'
       - 'e2e/fixtures/tag-generator/**'
+      - 'e2e/fixtures/news-creator/**'
       - 'e2e/fixtures/staging-secrets/**'
       - '.github/workflows/e2e-hurl.yml'
 
@@ -83,6 +91,51 @@ jobs:
         with:
           name: mq-hub-hurl-reports
           path: e2e/reports/mq-hub-*
+          if-no-files-found: ignore
+
+      - name: Tear down alt-staging stack
+        if: always()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            down -v --remove-orphans || true
+
+  news-creator:
+    name: news-creator Hurl suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build news-creator image locally (tag `ci`)
+        run: |
+          docker build \
+            -t ghcr.io/kaikei-e/alt-news-creator:ci \
+            -f news-creator/Dockerfile.app \
+            news-creator
+
+      - name: Pre-pull Hurl image
+        run: docker pull ghcr.io/orange-opensource/hurl:7.1.0
+
+      - name: Run news-creator Hurl suite
+        env:
+          IMAGE_TAG: ci
+          GHCR_OWNER: kaikei-e
+          HURL_IMAGE: ghcr.io/orange-opensource/hurl:7.1.0
+          KEEP_STACK: 1
+        run: bash e2e/hurl/news-creator/run.sh
+
+      - name: Dump alt-staging logs on failure
+        if: failure()
+        run: |
+          docker compose -f compose/compose.staging.yaml -p alt-staging \
+            logs --no-color --tail=300 || true
+
+      - name: Upload Hurl reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: news-creator-hurl-reports
+          path: e2e/reports/news-creator-*
           if-no-files-found: ignore
 
       - name: Tear down alt-staging stack

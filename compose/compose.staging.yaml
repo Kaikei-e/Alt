@@ -16,6 +16,13 @@
 #     redis-streams, stub-backend, mq-hub, tag-generator
 #     (round-trips through mq-hub's GenerateTagsForArticle RPC because
 #     Hurl cannot XREAD Redis directly)
+#   news-creator suite         → profile `news-creator`
+#     news-creator-ollama-stub, news-creator
+#     (real Ollama needs a GPU; the stub returns a fixed `/api/tags`
+#     response so OllamaGateway.list_models() succeeds and the FastAPI
+#     contract surface — `/health`, `/queue/status` — can be exercised
+#     without LLM inference. `WARMUP_ENABLED=false` keeps lifespan from
+#     calling `/api/generate` against the stub during Phase 1.)
 # Bring a suite up with:
 #   docker compose -f compose.staging.yaml --profile <suite> -p alt-staging up -d --wait
 # Services with NO profile are never auto-started (Compose default).
@@ -291,6 +298,89 @@ services:
       # FastAPI's lifespan background thread is still warming the ML
       # model.
       start_period: 60s
+
+  # news-creator suite — FastAPI Ollama-proxy service. The real backend
+  # is Ollama on an RTX 4060 GPU; staging swaps it for a tiny FastAPI
+  # stub that answers `/api/tags` with a fixed model list. That's
+  # sufficient for OllamaGateway.list_models() (powering `/health`) and
+  # for `/queue/status` (HybridPrioritySemaphore, no Ollama call).
+  # Phase 2+ extends the stub with `/api/generate` & friends.
+  news-creator-ollama-stub:
+    build:
+      context: ./news-creator-ollama-stub
+    container_name: alt-staging-news-creator-ollama-stub
+    profiles: [news-creator]
+    networks:
+      - alt-staging
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:11435/api/tags').read()",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  news-creator:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-news-creator:${IMAGE_TAG:-main}
+    container_name: alt-staging-news-creator
+    profiles: [news-creator]
+    depends_on:
+      news-creator-ollama-stub:
+        condition: service_healthy
+    environment:
+      # NewsCreatorConfig refuses to boot without this; plain test value
+      # — the staging stack runs unauthenticated and the secret is only
+      # consumed by Pact publish helpers, not by request handlers.
+      - SERVICE_SECRET=alt-staging-test-service-secret
+      # Point the Ollama driver at the in-network stub.
+      - LLM_SERVICE_URL=http://news-creator-ollama-stub:11435
+      - LLM_MODEL=gemma3:4b-it-qat
+      # Keep lifespan startup cheap: skip warm-up (would hit /api/generate
+      # which the Phase-1 stub doesn't implement) and disable model
+      # routing so a single fixed model name is used everywhere.
+      - WARMUP_ENABLED=false
+      - MODEL_ROUTING_ENABLED=false
+      - MODEL_60K_ENABLED=false
+      # No Redis cache wired in this slice — defaults to false anyway,
+      # but make it explicit so the lifespan never tries to dial Redis.
+      - CACHE_ENABLED=false
+      # mTLS off, peer-identity unauthenticated. Matches mq-hub /
+      # tag-generator / knowledge-sovereign staging conventions.
+      - MTLS_ENFORCE=false
+      - PEER_IDENTITY_TRUSTED=off
+      # Disable OpenTelemetry — alt-staging has no collector and the
+      # exporter would log connect-refused noise on every span.
+      - OTEL_ENABLED=false
+      - OTEL_SERVICE_NAME=news-creator-staging
+      - LOG_LEVEL=info
+      # Backpressure knobs — keep defaults for Phase 1 health/queue
+      # checks; Phase 4 will override MAX_QUEUE_DEPTH at run time.
+      - MAX_QUEUE_DEPTH=10
+      - SCHEDULING_RT_RESERVED_SLOTS=1
+    ports:
+      - "11434:11434"
+    networks:
+      - alt-staging
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:11434/health').read()",
+        ]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+      # FastAPI lifespan initializes OllamaGateway (one /api/tags probe
+      # against the stub). With warmup disabled this is sub-second, but
+      # Python cold-start + uvicorn boot needs a few seconds of headroom.
+      start_period: 15s
 
 networks:
   alt-staging:
