@@ -105,6 +105,8 @@ hyper-util = { version = "0.1", features = [
   "http2",
   "server",
 ] }
+filetime = "0.2"
+rcgen = "0.13"
 rstest = "0.22"
 tokio = { version = "1.49", features = ["rt", "macros"] }
 wiremock = "0.6"

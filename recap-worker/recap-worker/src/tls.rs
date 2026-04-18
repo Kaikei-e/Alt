@@ -22,7 +22,7 @@ use std::io;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::pki_types::CertificateDer;
 use rustls::{RootCertStore, ServerConfig};
 
 /// Returns true when `MTLS_ENFORCE=true`. Any other value (including unset)
@@ -44,19 +44,13 @@ fn load_pem_certs(path: &str) -> Result<Vec<CertificateDer<'static>>> {
     Ok(certs)
 }
 
-fn load_pem_private_key(path: &str) -> Result<PrivateKeyDer<'static>> {
-    let raw = fs::read(path).with_context(|| format!("read key file {path}"))?;
-    let mut reader = io::Cursor::new(raw);
-    if let Some(key) = rustls_pemfile::private_key(&mut reader)? {
-        return Ok(key);
-    }
-    anyhow::bail!("no private key found in {path}")
-}
-
 /// Load the leaf cert + key + CA bundle from env-specified files and produce
 /// a rustls `ServerConfig` that **requires** a valid client cert signed by
 /// the alt-CA. Returns None if `MTLS_ENFORCE=false` — the caller should then
 /// fall back to the plaintext listener.
+///
+/// The leaf cert / key are served via a `ReloadingCertResolver` so the
+/// pki-agent sidecar can rotate them on disk without restarting the process.
 pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
     if !enforced() {
         return Ok(None);
@@ -66,9 +60,6 @@ pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
     let key_file = std::env::var("MTLS_KEY_FILE").context("MTLS_KEY_FILE unset")?;
     let ca_file = std::env::var("MTLS_CA_FILE").context("MTLS_CA_FILE unset")?;
 
-    let certs = load_pem_certs(&cert_file)?;
-    let key = load_pem_private_key(&key_file)?;
-
     let mut trust_store = RootCertStore::empty();
     for cert in load_pem_certs(&ca_file)? {
         trust_store.add(cert).context("add CA to trust store")?;
@@ -77,10 +68,11 @@ pub fn load_server_tls_config() -> Result<Option<Arc<ServerConfig>>> {
     let client_verifier =
         rustls::server::WebPkiClientVerifier::builder(Arc::new(trust_store)).build()?;
 
+    let resolver = crate::clients::mtls::server_cert_resolver(&cert_file, &key_file)?;
+
     let server_config = ServerConfig::builder()
         .with_client_cert_verifier(client_verifier)
-        .with_single_cert(certs, key)
-        .context("build rustls ServerConfig")?;
+        .with_cert_resolver(resolver);
 
     Ok(Some(Arc::new(server_config)))
 }
