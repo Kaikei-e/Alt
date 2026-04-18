@@ -286,6 +286,16 @@ services:
       - DEFAULT_USER_ID=hurl-e2e
       - DEFAULT_TENANT_ID=public
       - LOG_LEVEL=info
+      # SBERT + transformers otherwise HEAD huggingface.co on every load
+      # to check for model updates. The alt-staging network is
+      # `internal: true`, so the request hangs until the httpx client
+      # gets closed and warmup() raises ModelLoadError, which leaves
+      # _background_tag_service as None forever and every
+      # /api/v1/extract-tags returns 503. The SBERT weights are already
+      # baked into the image by the builder stage, so forcing offline
+      # mode is safe and the correct semantic for E2E.
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
     ports:
       - "19400:9400"
     networks:
