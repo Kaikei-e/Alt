@@ -33,7 +33,11 @@ services:
     networks:
       - alt-staging
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://localhost:7700/health | grep -q available"]
+      # Meilisearch binds IPv4 only (0.0.0.0:7700). On hosts where the
+      # runtime resolves `localhost` to ::1 first, wget against localhost
+      # gets "connection refused" and the container is marked unhealthy
+      # forever. Always use 127.0.0.1 for intra-container loopback probes.
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:7700/health | grep -q available"]
       interval: 3s
       timeout: 3s
       retries: 30
@@ -48,7 +52,7 @@ services:
     networks:
       - alt-staging
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://localhost/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -132,7 +136,7 @@ services:
     networks:
       - alt-staging
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9500/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9500/health"]
       interval: 3s
       timeout: 3s
       retries: 30
