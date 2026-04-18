@@ -6,10 +6,12 @@
 #
 # Services are tagged with Compose profiles so each Hurl suite brings up
 # only its own dependencies:
-#   search-indexer suite  → profile `search-indexer`
+#   search-indexer suite       → profile `search-indexer`
 #     meilisearch, stub-backend, search-indexer
-#   mq-hub suite          → profile `mq-hub`
+#   mq-hub suite               → profile `mq-hub`
 #     redis-streams, mq-hub
+#   knowledge-sovereign suite  → profile `knowledge-sovereign`
+#     knowledge-sovereign-db, knowledge-sovereign-db-migrator, knowledge-sovereign
 # Bring a suite up with:
 #   docker compose -f compose.staging.yaml --profile <suite> -p alt-staging up -d --wait
 # Services with NO profile are never auto-started (Compose default).
@@ -137,6 +139,92 @@ services:
       - alt-staging
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9500/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  # knowledge-sovereign suite — Postgres + Atlas migrator + sovereign service
+  knowledge-sovereign-db:
+    image: postgres:16-alpine
+    container_name: alt-staging-knowledge-sovereign-db
+    profiles: [knowledge-sovereign]
+    # Plain env — staging password is a committed test fixture with no
+    # meaning outside the ephemeral alt-staging network (see
+    # e2e/fixtures/staging-secrets/README.md). Using env + DATABASE_URL
+    # avoids the distroless sovereign image's lack of `cat` for reading
+    # a secrets file.
+    environment:
+      POSTGRES_DB: knowledge_sovereign
+      POSTGRES_USER: sovereign
+      POSTGRES_PASSWORD: alt-staging-test-postgres-password
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sovereign -d knowledge_sovereign"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 3s
+
+  knowledge-sovereign-db-migrator:
+    build:
+      context: ../knowledge-sovereign
+      dockerfile: docker/Dockerfile.migrator
+    container_name: alt-staging-knowledge-sovereign-db-migrator
+    profiles: [knowledge-sovereign]
+    command: ["apply"]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - exec /scripts/migrate.sh "$$@"
+      - --
+    environment:
+      DATABASE_URL: postgres://sovereign:alt-staging-test-postgres-password@knowledge-sovereign-db:5432/knowledge_sovereign?sslmode=disable
+      DB_HOST: knowledge-sovereign-db
+      DB_PORT: "5432"
+      DB_USER: sovereign
+      DB_NAME: knowledge_sovereign
+      ATLAS_REVISIONS_SCHEMA: "public"
+    depends_on:
+      knowledge-sovereign-db:
+        condition: service_healthy
+    networks:
+      - alt-staging
+    restart: "no"
+
+  knowledge-sovereign:
+    build:
+      context: ../knowledge-sovereign
+      dockerfile: Dockerfile.sovereign
+    container_name: alt-staging-knowledge-sovereign
+    profiles: [knowledge-sovereign]
+    depends_on:
+      knowledge-sovereign-db:
+        condition: service_healthy
+      knowledge-sovereign-db-migrator:
+        condition: service_completed_successfully
+    environment:
+      - DATABASE_URL=postgres://sovereign:alt-staging-test-postgres-password@knowledge-sovereign-db:5432/knowledge_sovereign?sslmode=disable
+      - LISTEN_ADDR=:9500
+      - METRICS_ADDR=:9501
+      - SNAPSHOT_DIR=/tmp/snapshots
+      - ARCHIVE_DIR=/tmp/archives
+      - BUILD_REF=staging
+      - LOG_LEVEL=info
+    ports:
+      - "19510:9500"
+      - "19511:9501"
+    tmpfs:
+      # Override the Dockerfile's root-owned /tmp/snapshots with a tmpfs
+      # mount whose default mode (1777) lets the distroless nonroot user
+      # write snapshot + retention artifacts. Ephemeral per run.
+      - /tmp/snapshots:mode=1777
+      - /tmp/archives:mode=1777
+    networks:
+      - alt-staging
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9501/health"]
       interval: 3s
       timeout: 3s
       retries: 30
