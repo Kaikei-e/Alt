@@ -284,8 +284,13 @@ services:
       retries: 30
       # FastAPI lifespan blocks on SBERT warm-up + Redis consumer join.
       # The SBERT cache is baked into the image so this is bounded, but
-      # the cold mmap still needs a few seconds.
-      start_period: 20s
+      # on GitHub-hosted 2-core runners TagExtractor.warmup() has been
+      # observed to run past 20 s. The Hurl scenarios carry their own
+      # retry budgets for the same reason; this just keeps the Compose
+      # up --wait gate from declaring the container unhealthy while
+      # FastAPI's lifespan background thread is still warming the ML
+      # model.
+      start_period: 60s
 
 networks:
   alt-staging:
