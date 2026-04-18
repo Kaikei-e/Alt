@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import os
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -48,10 +50,23 @@ _job_queue = MemoryJobGateway()
 
 # HTTP client for Ollama and search-indexer (600s timeout for 26B model with 8192 num_predict).
 # When MTLS_ENFORCE=true the shared AsyncClient presents the acolyte-orchestrator
-# leaf cert on every handshake; every downstream must trust alt-ca.
-from acolyte.infra.mtls_client import build_ssl_context  # noqa: E402
+# leaf cert on every handshake; every downstream must trust alt-ca. The
+# SSLContext is reused across requests and the lifespan spawns a watcher
+# that reloads the leaf cert in place whenever pki-agent rotates it.
+from acolyte.infra.mtls_client import (  # noqa: E402
+    SslContextReloader,
+    build_ssl_context,
+    watch_cert_rotation,
+)
 
 _mtls_ctx = build_ssl_context()
+_mtls_reloader: SslContextReloader | None = None
+if _mtls_ctx is not None:
+    _mtls_reloader = SslContextReloader(
+        _mtls_ctx,
+        os.environ["MTLS_CERT_FILE"],
+        os.environ["MTLS_KEY_FILE"],
+    )
 _http_client = httpx.AsyncClient(
     timeout=httpx.Timeout(connect=10, read=600, write=10, pool=10),
     limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
@@ -110,6 +125,12 @@ def create_app() -> Starlette:
             llm_url=settings.news_creator_url,
             model=settings.default_model,
         )
+        cert_watch_task: asyncio.Task[None] | None = None
+        if _mtls_reloader is not None:
+            cert_watch_task = asyncio.create_task(
+                watch_cert_rotation(_mtls_reloader, interval_seconds=30.0),
+                name="mtls-cert-rotation-watch",
+            )
         try:
             if settings.checkpoint_enabled:
                 async with create_checkpointer(_dsn) as checkpointer:
@@ -120,6 +141,12 @@ def create_app() -> Starlette:
                 logger.info("LangGraph checkpointing disabled")
                 yield
         finally:
+            if cert_watch_task is not None:
+                cert_watch_task.cancel()
+                try:
+                    await cert_watch_task
+                except asyncio.CancelledError:
+                    pass
             await _http_client.aclose()
             await _pool.close()
             logger.info("Shutting down acolyte-orchestrator")

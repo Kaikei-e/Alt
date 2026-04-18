@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -35,15 +36,26 @@ class LearningClient:
     base_url: str
     timeout_seconds: float
     _client: httpx.AsyncClient
+    _mtls_reloader: Any = field(default=None)
 
     @classmethod
     def create(cls, base_url: str, timeout_seconds: float) -> LearningClient:
         # Enforce a floor on the read stage so the connect < read invariant
         # holds even if a caller passes a tiny budget.
         read_timeout = max(timeout_seconds, _CONNECT_TIMEOUT_SECONDS + 0.5)
-        from recap_subworker.app.infra.mtls_client import build_ssl_context
+        from recap_subworker.app.infra.mtls_client import (
+            SslContextReloader,
+            build_ssl_context,
+        )
 
         ssl_ctx = build_ssl_context()
+        reloader = None
+        if ssl_ctx is not None:
+            reloader = SslContextReloader(
+                ssl_ctx,
+                os.environ["MTLS_CERT_FILE"],
+                os.environ["MTLS_KEY_FILE"],
+            )
         client = httpx.AsyncClient(
             timeout=_build_timeout(read_timeout),
             verify=ssl_ctx if ssl_ctx is not None else True,
@@ -53,11 +65,17 @@ class LearningClient:
             base_url=sanitized,
             timeout_seconds=read_timeout,
             _client=client,
+            _mtls_reloader=reloader,
         )
 
     async def send_learning_payload(self, payload: dict[str, Any]) -> httpx.Response:
         import structlog
         logger = structlog.get_logger(__name__)
+
+        # Pick up any cert rotation done by pki-agent before opening a new
+        # TLS session. The reloader is a cheap stat + conditional reload.
+        if self._mtls_reloader is not None:
+            self._mtls_reloader.maybe_reload()
 
         # base_url is already a complete URL (e.g., http://recap-worker:9005/admin/genre-learning)
         endpoint = self.base_url

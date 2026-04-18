@@ -1,5 +1,7 @@
 """FastAPI application — Composition Root + DI wiring."""
 
+import asyncio
+import os
 from contextlib import asynccontextmanager
 
 import asyncpg
@@ -49,8 +51,15 @@ async def lifespan(app: FastAPI):
         min_size=settings.db_pool_min_size,
         max_size=settings.db_pool_max_size,
     )
-    # mTLS outbound when MTLS_ENFORCE=true (ADR-000737).
-    from recap_evaluator.infra.mtls_client import build_ssl_context
+    # mTLS outbound when MTLS_ENFORCE=true (ADR-000737). The SSLContext is
+    # kept live (same object) and its leaf cert is re-loaded in-place by the
+    # rotation watcher whenever pki-agent updates the on-disk files, so the
+    # shared httpx.AsyncClient never needs to be rebuilt.
+    from recap_evaluator.infra.mtls_client import (
+        SslContextReloader,
+        build_ssl_context,
+        watch_cert_rotation,
+    )
 
     ssl_ctx = build_ssl_context()
     http_client = httpx.AsyncClient(
@@ -60,8 +69,16 @@ async def lifespan(app: FastAPI):
         limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),
         verify=ssl_ctx if ssl_ctx is not None else True,
     )
+    cert_watch_task: asyncio.Task[None] | None = None
     if ssl_ctx is not None:
         logger.info("recap-evaluator outbound: mTLS enforce enabled")
+        cert_path = os.environ["MTLS_CERT_FILE"]
+        key_path = os.environ["MTLS_KEY_FILE"]
+        reloader = SslContextReloader(ssl_ctx, cert_path, key_path)
+        cert_watch_task = asyncio.create_task(
+            watch_cert_rotation(reloader, interval_seconds=30.0),
+            name="mtls-cert-rotation-watch",
+        )
 
     # --- Gateway layer ---
     db_gateway = PostgresGateway(pool)
@@ -112,6 +129,12 @@ async def lifespan(app: FastAPI):
     # --- Shutdown ---
     logger.info("Shutting down recap-evaluator")
     scheduler.stop()
+    if cert_watch_task is not None:
+        cert_watch_task.cancel()
+        try:
+            await cert_watch_task
+        except asyncio.CancelledError:
+            pass
     await http_client.aclose()
     await pool.close()
     shutdown_logging()
