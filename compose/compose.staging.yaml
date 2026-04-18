@@ -12,6 +12,10 @@
 #     redis-streams, mq-hub
 #   knowledge-sovereign suite  → profile `knowledge-sovereign`
 #     knowledge-sovereign-db, knowledge-sovereign-db-migrator, knowledge-sovereign
+#   tag-generator suite        → profile `tag-generator`
+#     redis-streams, stub-backend, mq-hub, tag-generator
+#     (round-trips through mq-hub's GenerateTagsForArticle RPC because
+#     Hurl cannot XREAD Redis directly)
 # Bring a suite up with:
 #   docker compose -f compose.staging.yaml --profile <suite> -p alt-staging up -d --wait
 # Services with NO profile are never auto-started (Compose default).
@@ -48,9 +52,12 @@ services:
   stub-backend:
     # Nginx returning 200 to every request — search-indexer only probes
     # BACKEND_API_URL for reachability at startup, it doesn't validate the body.
+    # tag-generator also uses it as a BACKEND_API_URL stub; the Phase-1
+    # scenarios never actually invoke the article-fetch path that would
+    # need real Connect-RPC responses.
     image: nginx:1.27-alpine
     container_name: alt-staging-stub-backend
-    profiles: [search-indexer]
+    profiles: [search-indexer, tag-generator]
     networks:
       - alt-staging
     healthcheck:
@@ -99,10 +106,13 @@ services:
       start_period: 10s
 
   # mq-hub suite — Redis Streams + mq-hub broker
+  # Redis is shared with the tag-generator suite (tag-generator's
+  # consumer joins the alt:events:tags group) and mq-hub itself is
+  # reused by scenario 04 of the tag-generator suite.
   redis-streams:
     image: redis:8.4-alpine
     container_name: alt-staging-redis-streams
-    profiles: [mq-hub]
+    profiles: [mq-hub, tag-generator]
     command: >
       redis-server
       --maxmemory 256mb
@@ -121,7 +131,7 @@ services:
   mq-hub:
     image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-mq-hub:${IMAGE_TAG:-main}
     container_name: alt-staging-mq-hub
-    profiles: [mq-hub]
+    profiles: [mq-hub, tag-generator]
     depends_on:
       redis-streams:
         condition: service_healthy
@@ -229,6 +239,53 @@ services:
       timeout: 3s
       retries: 30
       start_period: 5s
+
+  # tag-generator suite — FastAPI service that consumes alt:events:tags
+  # and replies via Redis Streams. Scenario 04 reaches the consumer
+  # through mq-hub's GenerateTagsForArticle RPC. stub-backend satisfies
+  # BACKEND_API_URL reachability; DB_TAG_GENERATOR_* are deliberately
+  # unset so the Postgres-backed /api/v1/tags/batch endpoint stays out
+  # of scope for this slice.
+  tag-generator:
+    image: ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-tag-generator:${IMAGE_TAG:-main}
+    container_name: alt-staging-tag-generator
+    profiles: [tag-generator]
+    depends_on:
+      redis-streams:
+        condition: service_healthy
+      stub-backend:
+        condition: service_healthy
+    environment:
+      - PORT=9400
+      - BACKEND_API_URL=http://stub-backend
+      - REDIS_STREAMS_URL=redis://redis-streams:6379
+      - CONSUMER_ENABLED=true
+      - CONSUMER_GROUP=tag-generator-group
+      - CONSUMER_NAME=tag-generator-staging
+      - MTLS_ENFORCE=false
+      - PEER_IDENTITY_TRUSTED=off
+      - DEFAULT_USER_ID=hurl-e2e
+      - DEFAULT_TENANT_ID=public
+      - LOG_LEVEL=info
+    ports:
+      - "19400:9400"
+    networks:
+      - alt-staging
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9400/health').read()",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      # FastAPI lifespan blocks on SBERT warm-up + Redis consumer join.
+      # The SBERT cache is baked into the image so this is bounded, but
+      # the cold mmap still needs a few seconds.
+      start_period: 20s
 
 networks:
   alt-staging:
