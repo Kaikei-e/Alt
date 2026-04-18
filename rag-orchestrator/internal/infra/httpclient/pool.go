@@ -1,14 +1,13 @@
 package httpclient
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"sync"
 	"time"
+
+	"rag-orchestrator/internal/infra/tlsutil"
 )
 
 // sharedTransport is reused across all pooled clients to maximize
@@ -22,7 +21,11 @@ var sharedTransport = &http.Transport{
 }
 
 // mTLS-capable transport. Lazily constructed on first use; shared to
-// preserve the connection-reuse benefit of the plaintext path.
+// preserve the connection-reuse benefit of the plaintext path. The
+// `tls.Config` itself is built once, but the leaf cert it presents is
+// re-read from disk on every handshake via `GetClientCertificate` (see
+// tlsutil.LoadClientConfig), so pki-agent cert rotations are picked up
+// without rebuilding the transport or losing connection pooling.
 var (
 	mtlsTransportOnce sync.Once
 	mtlsTransport     *http.Transport
@@ -38,27 +41,13 @@ func loadMTLSTransport() (*http.Transport, error) {
 			mtlsTransportErr = errors.New("MTLS_ENFORCE=true but MTLS_CERT_FILE/KEY_FILE/CA_FILE not fully set")
 			return
 		}
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		tlsCfg, err := tlsutil.LoadClientConfig(certFile, keyFile, caFile)
 		if err != nil {
-			mtlsTransportErr = fmt.Errorf("load leaf cert: %w", err)
-			return
-		}
-		caBytes, err := os.ReadFile(caFile) //nolint:gosec // G304: path from operator-controlled MTLS_CA_FILE env var
-		if err != nil {
-			mtlsTransportErr = fmt.Errorf("read CA bundle: %w", err)
-			return
-		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(caBytes) {
-			mtlsTransportErr = fmt.Errorf("no certs parsed from CA bundle %s", caFile)
+			mtlsTransportErr = err
 			return
 		}
 		mtlsTransport = &http.Transport{
-			TLSClientConfig: &tls.Config{
-				Certificates: []tls.Certificate{cert},
-				RootCAs:      pool,
-				MinVersion:   tls.VersionTLS13,
-			},
+			TLSClientConfig:     tlsCfg,
 			MaxIdleConns:        20,
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     120 * time.Second,

@@ -7,13 +7,12 @@
 package httpclient
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"time"
+
+	"rag-orchestrator/internal/infra/tlsutil"
 )
 
 // MTLSEnforced reports whether MTLS_ENFORCE=true is set.
@@ -26,7 +25,9 @@ func MTLSEnforced() bool {
 // returned client has no TLS config (matches existing plaintext behaviour).
 //
 // Env vars: MTLS_CERT_FILE, MTLS_KEY_FILE, MTLS_CA_FILE. All three must be
-// set when MTLSEnforced() is true; missing envs fail-closed.
+// set when MTLSEnforced() is true; missing envs fail-closed. The leaf cert
+// is re-read from disk on every handshake via GetClientCertificate, so the
+// pki-agent sidecar can rotate it without a process restart.
 func NewMTLSClient(timeout time.Duration) (*http.Client, error) {
 	if !MTLSEnforced() {
 		return &http.Client{Timeout: timeout}, nil
@@ -37,26 +38,14 @@ func NewMTLSClient(timeout time.Duration) (*http.Client, error) {
 	if certFile == "" || keyFile == "" || caFile == "" {
 		return nil, errors.New("MTLS_ENFORCE=true but MTLS_CERT_FILE/KEY_FILE/CA_FILE not fully set")
 	}
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	tlsCfg, err := tlsutil.LoadClientConfig(certFile, keyFile, caFile)
 	if err != nil {
-		return nil, fmt.Errorf("load leaf cert: %w", err)
-	}
-	caBytes, err := os.ReadFile(caFile) //nolint:gosec // G304: path from operator-controlled MTLS_CA_FILE env var
-	if err != nil {
-		return nil, fmt.Errorf("read CA bundle: %w", err)
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(caBytes) {
-		return nil, fmt.Errorf("no certs parsed from CA bundle %s", caFile)
+		return nil, err
 	}
 	return &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				Certificates: []tls.Certificate{cert},
-				RootCAs:      pool,
-				MinVersion:   tls.VersionTLS13,
-			},
+			TLSClientConfig:     tlsCfg,
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: 10,
 			IdleConnTimeout:     90 * time.Second,
