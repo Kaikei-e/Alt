@@ -29,31 +29,71 @@ export PATH
 
 MODE="file"
 BROKER_EXTERNAL=false
-case "${1:-}" in
-  --broker)
-    MODE="broker"
-    ;;
-  --publish-only)
-    MODE="broker"
-    BROKER_EXTERNAL=true
-    ;;
-  --help|-h)
-    echo "Usage: $0 [--broker|--publish-only]"
-    echo ""
-    echo "  (default)        File-based mode: consumer + provider tests against local pact files"
-    echo "  --broker         Broker mode: start Pact Broker via compose, publish, verify"
-    echo "  --publish-only   CI broker mode: external Broker, no local startup"
-    exit 0
-    ;;
-esac
+SERVICE_FILTER=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --broker)
+      MODE="broker"
+      shift
+      ;;
+    --publish-only)
+      MODE="broker"
+      BROKER_EXTERNAL=true
+      shift
+      ;;
+    --services)
+      SERVICE_FILTER="$2"
+      shift 2
+      ;;
+    --services=*)
+      SERVICE_FILTER="${1#--services=}"
+      shift
+      ;;
+    --help|-h)
+      echo "Usage: $0 [--broker|--publish-only] [--services svc1,svc2]"
+      echo ""
+      echo "  (default)               File-based mode: all consumer + provider tests"
+      echo "  --broker                Broker mode: start local Pact Broker, publish, verify"
+      echo "  --publish-only          CI broker mode: external Broker, no local startup"
+      echo "  --services svc1,svc2    Only run run_step entries whose label contains any"
+      echo "                          of the listed services. Skipped steps still count"
+      echo "                          as skipped (not failed). Use when the release matrix"
+      echo "                          only touches a subset of the monorepo."
+      exit 0
+      ;;
+    *)
+      echo "unknown flag: $1" >&2
+      exit 2
+      ;;
+  esac
+done
 
 PASS=0
 FAIL=0
 SKIP=0
 
+# Return 0 if the step label should execute under the current --services
+# filter. Empty filter = run everything. Non-empty = run only if the label
+# contains one of the filter service names as a substring.
+should_run_service_filter() {
+  local label="$1"
+  [[ -z "$SERVICE_FILTER" ]] && return 0
+  local IFS=','
+  for svc in $SERVICE_FILTER; do
+    [[ -n "$svc" && "$label" == *"$svc"* ]] && return 0
+  done
+  return 1
+}
+
 run_step() {
   local label="$1"
   shift
+  if ! should_run_service_filter "$label"; then
+    echo ""
+    echo "=== SKIP (filter: --services $SERVICE_FILTER): ${label} ==="
+    SKIP=$((SKIP + 1))
+    return 0
+  fi
   echo ""
   echo "=== ${label} ==="
   if "$@"; then
