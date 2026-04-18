@@ -15,6 +15,18 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Self-hosted GitHub Actions runners inherit PATH from the .path file
+# generated at svc.sh install time — they do NOT source /etc/profile or
+# ~/.profile. If Go is installed after the runner was registered, its
+# /usr/local/go/bin is missing. Re-stitch common toolchain paths here so
+# the script works identically from a dev shell and from runsvc.sh.
+for candidate in /usr/local/go/bin /usr/local/bin /home/$USER/.local/bin "$HOME/.cargo/bin" "$HOME/.pyenv/shims"; do
+  if [[ -d "$candidate" ]] && [[ ":$PATH:" != *":$candidate:"* ]]; then
+    PATH="$PATH:$candidate"
+  fi
+done
+export PATH
+
 MODE="file"
 BROKER_EXTERNAL=false
 case "${1:-}" in
