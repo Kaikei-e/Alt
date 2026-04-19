@@ -1,0 +1,27 @@
+# Cargo network config — scoped to recap-worker so it only affects this
+# crate's fetches (the other Rust sub-crates in Alt don't share this dir).
+#
+# Why these settings:
+# - `net.retry` default is 3; the self-hosted deploy runner has hit
+#   `error: failed to get <crate> as a dependency` during Pact CDC runs
+#   when crates.io sparse-index responses are slow. 10 retries lets
+#   the pipeline survive a multi-minute crates.io incident without
+#   operator intervention.
+# - `net.git-fetch-with-cli = true` swaps cargo's bundled libgit2 for
+#   the system `git` binary when resolving git-url dependencies.
+#   libgit2 sometimes mis-handles partial clones + proxies on Tailscale-
+#   routed self-hosted runners; system git is battle-tested for that
+#   shape of traffic. Registry index fetches (sparse protocol) already
+#   go through curl/reqwest, so this only touches git-dep resolution.
+# - `http.timeout = 60` doubles the default 30s. Crates.io's sparse
+#   index CDN has occasional tail-latency spikes that exceed 30s but
+#   resolve within a minute.
+#
+# See: https://doc.rust-lang.org/cargo/reference/config.html
+
+[net]
+retry = 10
+git-fetch-with-cli = true
+
+[http]
+timeout = 60
