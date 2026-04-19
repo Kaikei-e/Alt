@@ -19,6 +19,7 @@ class SourceEntry:
     publisher: str = ""
     url: str = ""
     source_type: str = "article"
+    language: str = "und"
 
 
 class SourceMap:
@@ -36,6 +37,7 @@ class SourceMap:
         publisher: str = "",
         url: str = "",
         source_type: str = "article",
+        language: str = "und",
     ) -> str:
         """Register a source and return its short ID. Idempotent for same source_id."""
         if source_id in self._id_to_short:
@@ -50,6 +52,7 @@ class SourceMap:
             publisher=publisher,
             url=url,
             source_type=source_type,
+            language=language or "und",
         )
         self._entries[short_id] = entry
         self._id_to_short[source_id] = short_id
@@ -78,6 +81,7 @@ class SourceMap:
                     "publisher": e.publisher,
                     "url": e.url,
                     "source_type": e.source_type,
+                    "language": e.language,
                 }
                 for sid, e in self._entries.items()
             }
@@ -94,5 +98,6 @@ class SourceMap:
                 publisher=entry_data.get("publisher", ""),
                 url=entry_data.get("url", ""),
                 source_type=entry_data.get("source_type", "article"),
+                language=entry_data.get("language", "und"),
             )
         return sm

@@ -376,6 +376,85 @@ async def test_writer_preserves_claim_plan_order() -> None:
 
 
 @pytest.mark.asyncio
+async def test_writer_rejects_inline_title_bracket_output() -> None:
+    """Writer rejects LLM output that inlines full article titles in brackets."""
+    claims = [
+        {
+            "claim_id": "analysis-1",
+            "claim": "Fire spread",
+            "claim_type": "factual",
+            "evidence_ids": ["art-1"],
+            "supporting_quotes": ["the fire expanded"],
+            "numeric_facts": [],
+            "novelty_against": [],
+            "must_cite": True,
+        },
+    ]
+    bad = "延焼範囲が拡大した [山梨 山林火災 延焼範囲が西側に拡大 約180ha焼ける | NHKニュース]"
+    llm = FakeLLM(responses=[bad])
+    node = WriterNode(llm)
+    state = _make_state(claims=claims)
+
+    result = await node(state)
+
+    paras = result["section_paragraphs"]["analysis"]
+    assert paras[0]["status"] == "rejected"
+    assert "citation_format_violation" in paras[0]["revision_feedback"]
+
+
+@pytest.mark.asyncio
+async def test_writer_rejects_bare_url_output() -> None:
+    """Writer rejects LLM output containing a raw URL in the body."""
+    claims = [
+        {
+            "claim_id": "analysis-1",
+            "claim": "Claim A",
+            "claim_type": "factual",
+            "evidence_ids": ["art-1"],
+            "supporting_quotes": ["Q"],
+            "numeric_facts": [],
+            "novelty_against": [],
+            "must_cite": True,
+        },
+    ]
+    llm = FakeLLM(responses=["詳細は https://example.com/foo を参照 [S1]"])
+    node = WriterNode(llm)
+    state = _make_state(claims=claims)
+
+    result = await node(state)
+
+    paras = result["section_paragraphs"]["analysis"]
+    assert paras[0]["status"] == "rejected"
+    assert "citation_format_violation" in paras[0]["revision_feedback"]
+
+
+@pytest.mark.asyncio
+async def test_writer_prompt_forbids_inline_titles() -> None:
+    """The paragraph prompt explicitly forbids inlining article titles."""
+    claims = [
+        {
+            "claim_id": "analysis-1",
+            "claim": "Claim A",
+            "claim_type": "factual",
+            "evidence_ids": ["art-1"],
+            "supporting_quotes": ["Q"],
+            "numeric_facts": [],
+            "novelty_against": [],
+            "must_cite": True,
+        },
+    ]
+    llm = FakeLLM()
+    node = WriterNode(llm)
+    state = _make_state(claims=claims)
+
+    await node(state)
+
+    prompt = llm.prompts[0]
+    assert "[S1]" in prompt or "[S2]" in prompt
+    assert "記事タイトル" in prompt or "タイトル" in prompt
+
+
+@pytest.mark.asyncio
 async def test_writer_uses_short_ids_when_source_map_present() -> None:
     """When source_map is in state, Writer prompt must use S1/S2 IDs, not UUIDs."""
     from acolyte.domain.source_map import SourceMap

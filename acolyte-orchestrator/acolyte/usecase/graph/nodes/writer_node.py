@@ -23,12 +23,13 @@ if TYPE_CHECKING:
     from acolyte.usecase.graph.state import ReportGenerationState
 
 from acolyte.config.settings import Settings
+from acolyte.domain.citation_format import validate_citation_format
 from acolyte.domain.executive_summary import ExecutiveSummaryRenderer
 from acolyte.domain.source_map import SourceMap
 
 logger = structlog.get_logger(__name__)
 
-# Legacy evidence-based prompt (kept for RerunSectionUsecase import + backward compat)
+# Evidence-based prompt used by RerunSectionUsecase.
 WRITER_PROMPT = """あなたはプロのレポートライターです。「{title}」セクションを日本語で執筆してください。
 
 トピック: {topic}
@@ -43,48 +44,62 @@ WRITER_PROMPT = """あなたはプロのレポートライターです。「{tit
 - 具体的なデータや事例を含めること
 - 参考記事がない場合は、その旨を明記し、証拠に基づかない主張を避けてください
 - 追加情報を求めないこと — 手元の情報で最善のセクションを書くこと
-- 各主張に参考記事番号を [1], [2] のように付記してください"""
+- 出典は必ず [S1], [S2] の形式のみで本文中に記す。記事タイトル・URL・サイト名・タグを本文中に書いてはならない"""
 
-# Paragraph-level prompts (Issue 3)
-PARAGRAPH_WRITER_PROMPT = """あなたはプロのレポートライターです。以下の分析ポイント1件について、1段落で日本語で執筆してください。
+# Shared citation rule snippet (forbids inline titles / URLs).
+_CITATION_RULE = (
+    "- 出典は必ず [S1], [S2] の形式のみで本文中に記す。記事タイトル・URL・サイト名・タグを本文中に書いてはならない"
+)
 
-<topic>{topic}</topic>
-<section>{section_title}</section>
-<claim>{claim}</claim>
-<supporting_quotes>{supporting_quotes}</supporting_quotes>
-<evidence_ids>{evidence_ids}</evidence_ids>
-{delta_feedback_block}
+# Cross-lingual gloss rule: surface English originals with a Japanese summary.
+_CROSS_LINGUAL_RULE = (
+    "- supporting_quotes の行末に [en] タグが付いている原文を使う場合は、"
+    "本文中で「原文の主旨を要約した日本語」を書き、続けて（原文: \"…冒頭40字…\"）[Sn] を付す"
+)
+
+# Paragraph-level prompts (one paragraph per claim).
+PARAGRAPH_WRITER_PROMPT = f"""あなたはプロのレポートライターです。以下の分析ポイント1件について、1段落で日本語で執筆してください。
+
+<topic>{{topic}}</topic>
+<section>{{section_title}}</section>
+<claim>{{claim}}</claim>
+<supporting_quotes>{{supporting_quotes}}</supporting_quotes>
+<evidence_ids>{{evidence_ids}}</evidence_ids>
+{{delta_feedback_block}}
 ルール:
 - 1段落のみ出力すること
-- 参考記事番号を [1], [2] のように付記すること
+{_CITATION_RULE}
+{_CROSS_LINGUAL_RULE}
 - 新事実を追加しないこと
 - numeric_facts がある場合は必ず本文に含めること"""
 
-CONCLUSION_PARAGRAPH_PROMPT = """あなたはプロのレポートライターです。以下の統合的な知見1件について、1段落で日本語で結論を執筆してください。
+CONCLUSION_PARAGRAPH_PROMPT = f"""あなたはプロのレポートライターです。以下の統合的な知見1件について、1段落で日本語で結論を執筆してください。
 
-<topic>{topic}</topic>
-<section>{section_title}</section>
-<claim>{claim}</claim>
-<supporting_quotes>{supporting_quotes}</supporting_quotes>
-{delta_feedback_block}
+<topic>{{topic}}</topic>
+<section>{{section_title}}</section>
+<claim>{{claim}}</claim>
+<supporting_quotes>{{supporting_quotes}}</supporting_quotes>
+{{delta_feedback_block}}
 ルール:
 - 1段落のみ出力すること
 - 新事実を追加しないこと — 意味づけ・リスク・優先順位・推奨行動に限定
 - Analysis の文をそのまま再掲しないこと
-- 出典番号を [1], [2] のように付記すること"""
+{_CITATION_RULE}
+{_CROSS_LINGUAL_RULE}"""
 
-ES_PARAGRAPH_PROMPT = """あなたはプロのレポートライターです。以下の主要な発見1件について、1段落で日本語で要旨を執筆してください。
+ES_PARAGRAPH_PROMPT = f"""あなたはプロのレポートライターです。以下の主要な発見1件について、1段落で日本語で要旨を執筆してください。
 
-<topic>{topic}</topic>
-<section>{section_title}</section>
-<claim>{claim}</claim>
-<supporting_quotes>{supporting_quotes}</supporting_quotes>
-{delta_feedback_block}
+<topic>{{topic}}</topic>
+<section>{{section_title}}</section>
+<claim>{{claim}}</claim>
+<supporting_quotes>{{supporting_quotes}}</supporting_quotes>
+{{delta_feedback_block}}
 ルール:
 - 1段落のみ、簡潔に出力すること
 - 新事実を追加しないこと — 既存セクションの発見の要約のみ
 - 数値データがある場合は必ず含めること
-- 出典番号を [1], [2] のように付記すること"""
+{_CITATION_RULE}
+{_CROSS_LINGUAL_RULE}"""
 
 # Legacy section-level prompts (kept for backward compat path)
 CLAIM_WRITER_PROMPT = """あなたはプロのレポートライターです。「{title}」セクションを日本語で執筆してください。
@@ -278,12 +293,22 @@ def _select_paragraph_prompt(section_role: str) -> str:
     return PARAGRAPH_WRITER_PROMPT
 
 
-def _format_supporting_quotes(quotes: list[str], evidence_ids: list[str] | None = None) -> str:
-    """Format supporting quotes with numbered evidence-id mapping."""
+def _format_supporting_quotes(
+    quotes: list[str],
+    evidence_ids: list[str] | None = None,
+    languages: list[str] | None = None,
+) -> str:
+    """Format supporting quotes, attaching ``[Sn][lang]`` when available."""
     if not quotes:
         return "なし"
     if evidence_ids and len(evidence_ids) >= len(quotes):
-        return "\n".join(f'- [{evidence_ids[i]}] "{q}"' for i, q in enumerate(quotes))
+        lines: list[str] = []
+        for i, quote in enumerate(quotes):
+            sn = evidence_ids[i]
+            lang = languages[i] if languages and i < len(languages) and languages[i] else ""
+            tag = f"[{sn}][{lang}]" if lang and lang != "und" else f"[{sn}]"
+            lines.append(f'- {tag} "{quote}"')
+        return "\n".join(lines)
     return "\n".join(f'- "{q}"' for q in quotes)
 
 
@@ -491,11 +516,17 @@ class WriterNode:
         Returns a GeneratedParagraph-compatible dict.
         """
         prompt_template = _select_paragraph_prompt(section_role)
-        eids = claim.get("evidence_ids", [])
+        raw_eids = claim.get("evidence_ids", [])
         # Convert UUIDs to short IDs if SourceMap is available
         if self._source_map:
-            eids = [self._source_map.short_id_for(eid) or eid for eid in eids]
-        quotes_str = _format_supporting_quotes(claim.get("supporting_quotes", []), eids)
+            eids = [self._source_map.short_id_for(eid) or eid for eid in raw_eids]
+            languages = [
+                (entry.language if (entry := self._source_map.resolve(sn)) else "und") for sn in eids
+            ]
+        else:
+            eids = list(raw_eids)
+            languages = []
+        quotes_str = _format_supporting_quotes(claim.get("supporting_quotes", []), eids, languages)
         numeric_facts = claim.get("numeric_facts", [])
 
         delta_block = ""
@@ -523,6 +554,18 @@ class WriterNode:
         response = await self._llm.generate(prompt, num_predict=num_predict, mode=LLMMode.LONGFORM)
         body = response.text.strip()
 
+        feedback = delta_feedback
+        if body:
+            is_valid, reason = validate_citation_format(body)
+            if not is_valid:
+                logger.warning(
+                    "Writer rejected paragraph due to citation format violation",
+                    claim_id=claim.get("claim_id", ""),
+                    reason=reason,
+                )
+                feedback = f"citation_format_violation: {reason}"
+                body = ""
+
         citations = _assemble_paragraph_citations(claim, body) if body else []
         status = "accepted" if body else "rejected"
 
@@ -532,7 +575,7 @@ class WriterNode:
             "body": body,
             "status": status,
             "citations": citations,
-            "revision_feedback": delta_feedback,
+            "revision_feedback": feedback,
         }
 
     async def _generate_section_paragraphs(
