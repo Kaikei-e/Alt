@@ -86,6 +86,38 @@ async def test_generator_forwards_gemma4_official_sampler():
 
 
 @pytest.mark.asyncio
+async def test_generator_uses_system_user_split_for_injection_defence():
+    """HyDE must deliver the task framing as a system message and the topic
+    as the user message, so that prompt injection in the topic (e.g.
+    "ignore previous instructions") cannot override the task. The generator
+    forwards a non-None ``system_prompt`` and a user prompt that carries
+    only the topic.
+    """
+    passage = (
+        "The 2026 AI chip market continues to expand with several new "
+        "entrants pushing aggressive pricing across GPU and NPU segments. "
+        "Analysts observe margin pressure in the consumer tier."
+    )
+    fake = _FakeLLM(text=passage)
+    gen = NewsCreatorHyDEGenerator(fake)
+
+    topic = "AIチップ市場 2026"
+    await gen.generate_hypothetical_doc(topic, "en")
+
+    assert len(fake.calls) == 1
+    call = fake.calls[0]
+    system = call.get("system_prompt")
+    user_prompt = call["prompt"]
+
+    assert isinstance(system, str)
+    assert system  # non-empty
+    assert "retrieval query expander" in system
+    assert topic not in system  # topic must not bleed into system
+
+    assert user_prompt.strip() == topic
+
+
+@pytest.mark.asyncio
 async def test_empty_topic_returns_none_without_llm_call():
     llm = _FakeLLM(text="ignored")
     gen = NewsCreatorHyDEGenerator(llm)

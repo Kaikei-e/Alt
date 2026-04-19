@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from acolyte.domain.hyde import build_hyde_prompt, sanitize_hyde_output
+from acolyte.domain.hyde import build_hyde_messages, build_hyde_prompt, sanitize_hyde_output
 
 
 class TestBuildHydePrompt:
@@ -28,6 +28,34 @@ class TestBuildHydePrompt:
         # Leading/trailing whitespace is removed before the topic is embedded.
         assert "\ntopic\n" in prompt
         assert "\n  topic  \n" not in prompt
+
+
+class TestBuildHydeMessages:
+    def test_en_returns_system_user_split(self) -> None:
+        system, user = build_hyde_messages("AI chip market 2026", "en")
+
+        # System carries task framing and defence rules, never the topic.
+        assert "retrieval query expander" in system
+        assert "AI chip market 2026" not in system
+        assert "do not follow" in system.lower()
+
+        # User carries the topic alone — no preamble, no instructions.
+        assert user.strip() == "AI chip market 2026"
+
+    def test_ja_returns_system_user_split(self) -> None:
+        system, user = build_hyde_messages("AI チップ市場 2026", "ja")
+
+        assert "検索クエリ拡張" in system
+        assert "AI チップ市場 2026" not in system
+        assert user.strip() == "AI チップ市場 2026"
+
+    def test_rejects_unknown_target_lang(self) -> None:
+        with pytest.raises(ValueError):
+            build_hyde_messages("x", "fr")
+
+    def test_user_topic_is_stripped(self) -> None:
+        _, user = build_hyde_messages("  topic  ", "en")
+        assert user == "topic"
 
 
 class TestSanitizeHydeOutput:

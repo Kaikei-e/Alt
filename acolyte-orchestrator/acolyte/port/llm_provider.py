@@ -35,4 +35,5 @@ class LLMProviderPort(Protocol):
         format: dict | None = None,
         think: bool | None = None,
         mode: LLMMode | None = None,
+        system_prompt: str | None = None,
     ) -> LLMResponse: ...

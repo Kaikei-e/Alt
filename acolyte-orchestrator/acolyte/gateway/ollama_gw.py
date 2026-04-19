@@ -72,11 +72,14 @@ class OllamaGateway:
         format: dict | None = None,
         think: bool | None = None,
         mode: LLMMode | None = None,
+        system_prompt: str | None = None,
     ) -> LLMResponse:
         """Generate text via Ollama.
 
         When mode is set, uses mode defaults for temperature/num_predict (explicit kwargs override).
         Routes: STRUCTURED → /api/chat, LONGFORM → /api/generate, None → format-based routing.
+        When system_prompt is provided, always routes through /api/chat with a
+        [system, user] messages array so task framing lives in the system role.
         """
         # Resolve defaults: mode defaults → explicit kwargs → gateway defaults
         if mode is not None:
@@ -99,6 +102,13 @@ class OllamaGateway:
 
         resolved_model = model or self._default_model
 
+        # system_prompt callers get a [system, user] chat, regardless of mode.
+        if system_prompt is not None:
+            resolved_think = think if think is not None else False
+            return await self._generate_chat_with_system(
+                system_prompt, prompt, resolved_model, options, think=resolved_think
+            )
+
         # Endpoint routing: mode-based when set, format-based otherwise
         if mode == LLMMode.STRUCTURED:
             if format:
@@ -112,6 +122,44 @@ class OllamaGateway:
         if format is not None:
             return await self._generate_structured(prompt, resolved_model, options, format)
         return await self._generate_freetext(prompt, resolved_model, options, think=think)
+
+    async def _generate_chat_with_system(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        model: str,
+        options: dict,
+        *,
+        think: bool,
+    ) -> LLMResponse:
+        """Free-text /api/chat with a [system, user] messages pair."""
+        payload: dict = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "stream": False,
+            "options": options,
+            "think": think,
+        }
+
+        logger.info(
+            "Ollama chat (system+user)",
+            model=model,
+            system_len=len(system_prompt),
+            user_len=len(user_prompt),
+            num_predict=options["num_predict"],
+            temperature=options["temperature"],
+            think=think,
+        )
+
+        resp = await self._client.post(f"{self._base_url}/api/chat", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+        text = data.get("message", {}).get("content", "")
+        return self._build_response(data, text, model)
 
     async def _generate_structured(
         self,

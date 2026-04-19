@@ -40,6 +40,7 @@ class FakeLLM:
         format: dict | None = None,
         think: bool | None = None,
         mode: object = None,
+        system_prompt: str | None = None,
     ) -> LLMResponse:
         self._call_count += 1
         self._calls.append(

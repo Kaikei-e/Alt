@@ -55,6 +55,7 @@ class VllmGateway:
         format: dict | None = None,
         think: bool | None = None,
         mode: LLMMode | None = None,
+        system_prompt: str | None = None,
     ) -> LLMResponse:
         """Generate text via vLLM OpenAI-compatible API."""
         if mode is not None:
@@ -68,9 +69,14 @@ class VllmGateway:
         resolved_model = model or self._default_model
         use_structured = mode == LLMMode.STRUCTURED or (mode is None and format is not None)
 
+        messages: list[dict] = []
+        if system_prompt is not None:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
         payload: dict = {
             "model": resolved_model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "max_tokens": resolved_predict,
             "temperature": resolved_temp,
             "stream": False,

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
-from acolyte.domain.hyde import build_hyde_prompt, sanitize_hyde_output
+from acolyte.domain.hyde import build_hyde_messages, sanitize_hyde_output
 
 if TYPE_CHECKING:
     from acolyte.port.llm_provider import LLMProviderPort
@@ -48,12 +48,13 @@ class NewsCreatorHyDEGenerator:
         if target_lang not in {"en", "ja"}:
             return None
 
-        prompt = build_hyde_prompt(topic, target_lang)
+        system_prompt, user_prompt = build_hyde_messages(topic, target_lang)
 
         try:
             response = await asyncio.wait_for(
                 self._llm.generate(
-                    prompt,
+                    user_prompt,
+                    system_prompt=system_prompt,
                     num_predict=self._num_predict,
                     temperature=self._temperature,
                     top_p=self._top_p,
